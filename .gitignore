@@ -1,0 +1,84 @@
+# 忽略所有编译生成的文件
+*.o
+*.obj
+*.exe
+*.so
+*.a
+*.pdb
+*.ilk
+*.exp
+*.sln
+*.sln
+*.stash
+*.tlog
+*.vcxproj
+*.filters
+*.cbt
+*.idb
+
+
+
+# 忽略构建目录
+[Bb]uild/
+launcher/debug/*.obj
+launcher/release/launcher.obj
+core/debug/*.obj
+core/release/*.obj
+core/debug
+core/release
+launcher/release
+launcher/debug
+[Oo]bj/
+[Bb]in/
+x64/
+x86/
+plugins/Base_MaterialManager/My Advisor Results - Base_MaterialManager
+plugins/Base_Output/My Advisor Results - Base_Output
+plugins/Base_PhysicalField/My Advisor Results - Base_PhysicalField
+plugins/Base_PostProcessing/My Advisor Results - Base_PostProcessing
+plugins/Base_PreProcessing/My Advisor Results - Base_PreProcessing
+plugins/Base_ProjectManager/My Advisor Results - Base_ProjectManager
+plugins/Base_Slover/My Advisor Results - Base_Slover
+plugins/Base_UiFrame/My Advisor Results - Base_UiFrame
+plugins/Base_Visualization/My Advisor Results - Base_Visualization
+core/My Advisor Results - core
+launcher/My Advisor Results - CAE_BASE
+
+# 忽略IDE相关文件
+.vs/
+.vscode/
+*.suo
+*.user
+*.sdf
+*.ncb
+*.opendb
+
+# 忽略Qt生成的文件
+Makefile*
+*.pro.user
+moc_*.cpp
+moc_*.h
+moc_*.obj
+qrc_*.cpp
+ui_*.h
+*.qrc.d
+*.moc
+
+# 忽略CMake生成的文件
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+Makefile
+
+# 忽略其他中间文件
+*.log
+*.tmp
+*.bak
+*.autosave
+
+# 忽略系统文件
+.DS_Store
+Thumbs.db
+build/
+libs/

@@ -1,0 +1,408 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>DatasetEvaluation</class>
+ <widget class="QWidget" name="DatasetEvaluation">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>565</width>
+    <height>997</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>数据集评估</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QWidget{
+font-family: &quot;Microsoft YaHei&quot;, &quot;微软雅黑&quot;;
+}
+QPushButton#pushButton_2,
+QPushButton#pushButton,
+QPushButton#pushButton_3 {
+    background-color: rgb(224, 233, 244);
+    border-width: 1px;
+    border-color: rgb(121, 121, 121);
+    border-style: solid;
+    height: 33px;
+    border-top: 1px solid rgb(169, 169, 169); /* 上边框为灰色 */
+    border-bottom: 1px solid rgb(169, 169, 169); /* 下边框为灰色 */
+    border-left: none; /* 移除左边框 */
+    border-right: none;
+    text-align: left;
+	padding-left: 15px;
+	font-size: 17px;
+	border-style: solid;
+}
+QLabel {
+    font-family: &quot;Microsoft YaHei&quot;, &quot;微软雅黑&quot;;
+    font-size: 17px;
+    text-align: left;
+    color: rgb(51, 51, 51);
+    white-space: nowrap;
+    line-height: 50px;
+    position: absolute;
+    top: 0px;
+    left: 0px;
+}
+QLabel#label {
+    font-size: 20px;
+    font-family: &quot;Microsoft YaHei&quot;, 微软雅黑;
+    text-align: left;
+	padding-left:9px;
+    color: rgb(53, 103, 147);
+}
+QComboBox {
+    font-family: &quot;Microsoft YaHei&quot;, 微软雅黑;
+    font-size: 17px;
+    text-align: left;
+    color: rgb(51, 51, 51);
+    padding-left:6px;
+    background: rgb(240, 240, 240);
+    border: 1px solid rgb(169, 169, 169);
+    border-radius: 3px; /* 设置边框的圆角半径为5像素 */
+}
+QComboBox::drop-down {
+    background: rgb(240, 240, 240);
+}
+QComboBox::down-arrow {
+    image: url(:/resources/down_arrow.png); /* 替换下拉箭头图标 */
+}
+/*QCombobox右侧按钮*/
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;/*放于右方顶部*/
+    border-top-right-radius: 3px;/*设置边框圆角*/
+    border-bottom-right-radius: 3px;
+}
+QLineEdit {
+    border: 1px solid rgb(200, 200, 200); /* 设置边框为淡灰色 */
+    border-radius: 2px; /* 设置圆角半径为 5 像素 */
+	font-size: 17px;
+}
+QLineEdit:focus {
+    border-color: rgb(100, 100, 255); /* 设置焦点时的边框颜色为蓝色 */
+    outline: none; /* 去掉默认的焦点边框 */
+}
+
+QRadioButton {
+    font-size: 17px; /* 设置字体大小为 14 像素 */
+}
+
+QCheckBox {
+    font-size: 17px; /* 设置字体大小为 14 像素 */
+}
+
+QGroupBox{
+    font-size: 17px; /* 设置字体大小为 14 像素 */   
+}
+
+QPushButton#pushButton_contour_multi{
+    background-color: rgb(255, 255, 255); /* 背景色 */
+    border-width: 1px;                   /* 边框宽度 */
+    border-color: rgb(121, 121, 121);    /* 边框颜色 */	
+	font-size: 17px;
+    border-style: solid;                 /* 边框样式 */
+    border-radius: 2px;                /* 边框圆角 */
+    text-align: center;                    /* 文字左对齐 */
+
+    /* 默认状态 */
+}
+QPushButton#pushButton_contour_multi:hover{
+    background-color: rgb(235, 235, 235); /* 悬浮时的背景色 */
+    border-color: rgb(100, 100, 100);     /* 悬浮时的边框颜色 */
+}
+
+QPushButton#pushButton_contour_multi:pressed{
+    background-color: rgb(200, 200, 200); /* 点击时的背景色 */
+    border-color: rgb(80, 80, 80);         /* 点击时的边框颜色 */
+}
+
+QPushButton#pushButton_contour_single{
+    background-color: rgb(255, 255, 255); /* 背景色 */
+    border-width: 1px;                   /* 边框宽度 */
+    border-color: rgb(121, 121, 121);    /* 边框颜色 */	
+	font-size: 17px;
+    border-style: solid;                 /* 边框样式 */
+    border-radius: 2px;                /* 边框圆角 */
+    text-align: center;                    /* 文字左对齐 */
+
+    /* 默认状态 */
+}
+QPushButton#pushButton_contour_single:hover{
+    background-color: rgb(235, 235, 235); /* 悬浮时的背景色 */
+    border-color: rgb(100, 100, 100);     /* 悬浮时的边框颜色 */
+}
+
+QPushButton#pushButton_contour_single:pressed{
+    background-color: rgb(200, 200, 200); /* 点击时的背景色 */
+    border-color: rgb(80, 80, 80);         /* 点击时的边框颜色 */
+}</string>
+  </property>
+  <layout class="QVBoxLayout" name="root">
+   <property name="spacing">
+    <number>8</number>
+   </property>
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>8</number>
+   </property>
+   <item>
+    <widget class="QPushButton" name="pushButton">
+     <property name="text">
+      <string>数据集</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="datasetRow">
+     <item>
+      <widget class="QLabel" name="dsLabel">
+       <property name="text">
+        <string>数据集来源</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QComboBox" name="datasetCombo">
+       <item>
+        <property name="text">
+         <string>正交采样</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>拉丁超立方</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>自定义文件...</string>
+        </property>
+       </item>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="datasetPathEdit"/>
+     </item>
+     <item>
+      <widget class="QPushButton" name="browseDatasetBtn">
+       <property name="text">
+        <string>浏览...</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="refreshBtn">
+       <property name="text">
+        <string>识别参数</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="paramBox">
+     <property name="title">
+      <string>参数列（勾选作为输入维度）</string>
+     </property>
+     <layout class="QHBoxLayout" name="paramLayout">
+      <item>
+       <widget class="QListWidget" name="paramList">
+        <property name="selectionMode">
+         <enum>QAbstractItemView::ExtendedSelection</enum>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout">
+     <item>
+      <spacer name="horizontalSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="invertSelBtn">
+       <property name="text">
+        <string>反选</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="selectAllBtn">
+       <property name="text">
+        <string>全选</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QPushButton" name="pushButton_2">
+     <property name="text">
+      <string>测试点</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="opsRow">
+     <item>
+      <widget class="QLabel" name="thrLabel">
+       <property name="text">
+        <string>阈值</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QDoubleSpinBox" name="thresholdSpin">
+       <property name="decimals">
+        <number>3</number>
+       </property>
+       <property name="minimum">
+        <double>0.000000000000000</double>
+       </property>
+       <property name="maximum">
+        <double>1.000000000000000</double>
+       </property>
+       <property name="singleStep">
+        <double>0.050000000000000</double>
+       </property>
+       <property name="value">
+        <double>0.600000000000000</double>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="sp2">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="addRowBtn">
+       <property name="text">
+        <string>添加测试点</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="delRowBtn">
+       <property name="text">
+        <string>删除选中</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="evaluateBtn">
+       <property name="text">
+        <string>评估</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="tablesRow">
+     <item>
+      <widget class="QGroupBox" name="testBox">
+       <property name="title">
+        <string>测试点</string>
+       </property>
+       <layout class="QVBoxLayout" name="testLayout">
+        <item>
+         <widget class="QTableWidget" name="testTable"/>
+        </item>
+       </layout>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QPushButton" name="pushButton_3">
+     <property name="text">
+      <string>评估结果</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTableWidget" name="resultTable"/>
+   </item>
+   <item>
+    <widget class="QLabel" name="imageLabel">
+     <property name="text">
+      <string/>
+     </property>
+     <property name="scaledContents">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QGridLayout" name="pyRow">
+     <item row="0" column="0">
+      <widget class="QLabel" name="pyLab">
+       <property name="text">
+        <string>Python</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="QLineEdit" name="pythonExeEdit"/>
+     </item>
+     <item row="0" column="2">
+      <widget class="QPushButton" name="browsePyBtn">
+       <property name="text">
+        <string>浏览...</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="0">
+      <widget class="QLabel" name="scLab">
+       <property name="text">
+        <string>脚本</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="1">
+      <widget class="QLineEdit" name="scriptPathEdit"/>
+     </item>
+     <item row="1" column="2">
+      <widget class="QPushButton" name="browseScBtn">
+       <property name="text">
+        <string>浏览...</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
