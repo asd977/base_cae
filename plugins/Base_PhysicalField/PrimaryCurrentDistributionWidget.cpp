@@ -1,14 +1,13 @@
 #include "PrimaryCurrentDistributionWidget.h"
 #include "ui_PrimaryCurrentDistributionWidget.h"
 
-#include <ElectrolyteSettingWidget.h>
-#include <ProjectNode.h>
-
 PrimaryCurrentDistributionWidget::PrimaryCurrentDistributionWidget(QWidget *parent)
-    : ui(new Ui::PrimaryCurrentDistributionWidget),
-    BasePage("PrimaryCurrentDistributionWidget")
+    : CurrentDistributionWidgetBase("PrimaryCurrentDistributionWidget", "primary", parent),
+      ui(new Ui::PrimaryCurrentDistributionWidget)
 {
     ui->setupUi(this);
+    connectCommonUi();
+    loadConfigFromSolver();
 }
 
 PrimaryCurrentDistributionWidget::~PrimaryCurrentDistributionWidget()
@@ -16,39 +15,73 @@ PrimaryCurrentDistributionWidget::~PrimaryCurrentDistributionWidget()
     delete ui;
 }
 
-void PrimaryCurrentDistributionWidget::beforeLoad()
+QLineEdit *PrimaryCurrentDistributionWidget::meshPathLineEdit() const
 {
-    //页面加载前
+    return ui->meshPathLineEdit;
 }
 
-void PrimaryCurrentDistributionWidget::beforeUnload()
+QPushButton *PrimaryCurrentDistributionWidget::meshBrowseButton() const
 {
-    //页面退出后
+    return ui->meshBrowsePushButton;
 }
 
-void PrimaryCurrentDistributionWidget::setNode(ProjectNode *node)
+QLineEdit *PrimaryCurrentDistributionWidget::outputDirLineEdit() const
 {
-    m_node = node;
+    return ui->outputDirLineEdit;
 }
 
-void PrimaryCurrentDistributionWidget::on_electrolytePushButton_clicked()
+QPushButton *PrimaryCurrentDistributionWidget::outputBrowseButton() const
 {
-    //添加电解质
-    ElectrolyteSettingWidget *electrolyteSettingWidget= new ElectrolyteSettingWidget;
-
-    ProjectNode *node2 = new ProjectNode("电解质",QUuid::createUuid().toString(),(BasePage*)electrolyteSettingWidget);
-    m_node->addChild(node2);
+    return ui->outputBrowsePushButton;
 }
 
-
-void PrimaryCurrentDistributionWidget::on_electrodeSurfacePushButton_clicked()
+QLineEdit *PrimaryCurrentDistributionWidget::electrolyteLineEdit() const
 {
-    //添加电极表面
+    return ui->electrolyteLineEdit;
 }
 
-
-void PrimaryCurrentDistributionWidget::on_insulationPushButton_clicked()
+QLineEdit *PrimaryCurrentDistributionWidget::electrodeLineEdit() const
 {
-    //添加绝缘面
+    return ui->electrodeLineEdit;
+}
+
+QLineEdit *PrimaryCurrentDistributionWidget::insulationLineEdit() const
+{
+    return ui->insulationLineEdit;
+}
+
+QPushButton *PrimaryCurrentDistributionWidget::electrolyteButton() const
+{
+    return ui->electrolytePushButton;
+}
+
+QPushButton *PrimaryCurrentDistributionWidget::electrodeButton() const
+{
+    return ui->electrodeSurfacePushButton;
+}
+
+QPushButton *PrimaryCurrentDistributionWidget::insulationButton() const
+{
+    return ui->insulationPushButton;
+}
+
+QPushButton *PrimaryCurrentDistributionWidget::runButton() const
+{
+    return ui->runPushButton;
+}
+
+QDoubleSpinBox *PrimaryCurrentDistributionWidget::conductivitySpin() const
+{
+    return ui->conductivityDoubleSpinBox;
+}
+
+QDoubleSpinBox *PrimaryCurrentDistributionWidget::anodePotentialSpin() const
+{
+    return ui->anodePotentialDoubleSpinBox;
+}
+
+QDoubleSpinBox *PrimaryCurrentDistributionWidget::cathodePotentialSpin() const
+{
+    return ui->cathodePotentialDoubleSpinBox;
 }
 

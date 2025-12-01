@@ -1,0 +1,311 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>TertiaryCurrentDistributionWidget</class>
+ <widget class="QWidget" name="TertiaryCurrentDistributionWidget">
+  <property name="windowTitle">
+   <string>三次电流分布</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <layout class="QHBoxLayout" name="runLayout">
+     <item>
+      <spacer name="runSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="runPushButton">
+       <property name="text">
+        <string>运行三次分布</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="meshGroupBox">
+     <property name="title">
+      <string>网格与输出</string>
+     </property>
+     <layout class="QGridLayout" name="meshLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="meshLabel">
+        <property name="text">
+         <string>网格文件</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="meshPathLineEdit">
+        <property name="placeholderText">
+         <string>选择 *.msh</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="2">
+       <widget class="QPushButton" name="meshBrowsePushButton">
+        <property name="text">
+         <string>浏览</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="outputLabel">
+        <property name="text">
+         <string>输出目录</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLineEdit" name="outputDirLineEdit">
+        <property name="placeholderText">
+         <string>选择输出目录</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="2">
+       <widget class="QPushButton" name="outputBrowsePushButton">
+        <property name="text">
+         <string>浏览</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="parameterGroupBox">
+     <property name="title">
+      <string>三次电流分布参数</string>
+     </property>
+     <layout class="QGridLayout" name="paramLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="conductivityLabel">
+        <property name="text">
+         <string>电导率 (S/m)</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QDoubleSpinBox" name="conductivityDoubleSpinBox">
+        <property name="maximum">
+         <double>1000000.000000000000000</double>
+        </property>
+        <property name="value">
+         <double>1.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="anodeLabel">
+        <property name="text">
+         <string>阳极电位 (V)</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QDoubleSpinBox" name="anodePotentialDoubleSpinBox">
+        <property name="minimum">
+         <double>-1000.000000000000000</double>
+        </property>
+        <property name="maximum">
+         <double>1000.000000000000000</double>
+        </property>
+        <property name="value">
+         <double>-0.440000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="cathodeLabel">
+        <property name="text">
+         <string>阴极电位 (V)</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QDoubleSpinBox" name="cathodePotentialDoubleSpinBox">
+        <property name="minimum">
+         <double>-1000.000000000000000</double>
+        </property>
+        <property name="maximum">
+         <double>1000.000000000000000</double>
+        </property>
+        <property name="value">
+         <double>0.340000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="exchangeCurrentLabel">
+        <property name="text">
+         <string>交换电流密度 (A/m²)</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QDoubleSpinBox" name="exchangeCurrentDoubleSpinBox">
+        <property name="decimals">
+         <number>6</number>
+        </property>
+        <property name="maximum">
+         <double>1000000.000000000000000</double>
+        </property>
+        <property name="value">
+         <double>10.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="anodicCoeffLabel">
+        <property name="text">
+         <string>阳极转移系数</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QDoubleSpinBox" name="anodicCoeffDoubleSpinBox">
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>1.000000000000000</double>
+        </property>
+        <property name="singleStep">
+         <double>0.010000000000000</double>
+        </property>
+        <property name="value">
+         <double>0.500000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="0">
+       <widget class="QLabel" name="cathodicCoeffLabel">
+        <property name="text">
+         <string>阴极转移系数</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="1">
+       <widget class="QDoubleSpinBox" name="cathodicCoeffDoubleSpinBox">
+        <property name="decimals">
+         <number>3</number>
+        </property>
+        <property name="maximum">
+         <double>1.000000000000000</double>
+        </property>
+        <property name="singleStep">
+         <double>0.010000000000000</double>
+        </property>
+        <property name="value">
+         <double>0.500000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="0">
+       <widget class="QLabel" name="diffusivityLabel">
+        <property name="text">
+         <string>扩散系数 (m²/s)</string>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="1">
+       <widget class="QDoubleSpinBox" name="diffusivityDoubleSpinBox">
+        <property name="decimals">
+         <number>9</number>
+        </property>
+        <property name="maximum">
+         <double>1.000000000000000</double>
+        </property>
+        <property name="value">
+         <double>0.000000001000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="0">
+       <widget class="QLabel" name="concentrationLabel">
+        <property name="text">
+         <string>本体浓度 (mol/m³)</string>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="1">
+       <widget class="QDoubleSpinBox" name="concentrationDoubleSpinBox">
+        <property name="decimals">
+         <number>6</number>
+        </property>
+        <property name="maximum">
+         <double>1000000.000000000000000</double>
+        </property>
+        <property name="value">
+         <double>1.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="selectionGroupBox">
+     <property name="title">
+      <string>物理组选择</string>
+     </property>
+     <layout class="QGridLayout" name="selectionLayout">
+      <item row="0" column="0">
+       <widget class="QPushButton" name="electrolytePushButton">
+        <property name="text">
+         <string>添加电解质体</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="electrolyteLineEdit">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QPushButton" name="electrodeSurfacePushButton">
+        <property name="text">
+         <string>添加电极表面</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLineEdit" name="electrodeLineEdit">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QPushButton" name="insulationPushButton">
+        <property name="text">
+         <string>添加绝缘面</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QLineEdit" name="insulationLineEdit">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

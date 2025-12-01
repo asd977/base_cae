@@ -1,16 +1,19 @@
-﻿#include "Solver.h"
+#include "Solver.h"
 
 #include <services/UiFrameService.h>
 #include <ServiceRegistry.h>
 #include "mfem.hpp"
 #include <iostream>
 #include <fstream>
+#include <QCoreApplication>
+#include <PublicConstants.h>
+#include <PublicVariables.h>
 
 using namespace std;
 
-
 Solver::Solver()
 {
+    ServiceRegistry::instance().registerService<SolverService>(this);
     m_curveWidget = new CurveWidget(this);
 
     UiFrameService * uiFrameService = ServiceRegistry::instance().getService<UiFrameService>();
@@ -21,113 +24,307 @@ Solver::Solver()
 
 void Solver::test()
 {
-    // 1. 读 Gmsh 网格
-    const char* mesh_file = "C:/tool/grid3.msh";
+    runCurrentDistribution(m_mode);
+}
 
+void Solver::newProject(QString workPath)
+{
+    m_workPath = workPath;
+    if (!m_workPath.isEmpty() && !m_workPath.endsWith(QDir::separator()))
+    {
+        m_workPath += QDir::separator();
+    }
 
-    mfem::Mesh mesh(mesh_file, 1, 1);
+    const QString defaultMesh = QCoreApplication::applicationDirPath() + "/../tempGrid/mesh.msh";
+
+    auto initConfig = [&](const QString &mode)
+    {
+        CurrentDistributionConfig cfg;
+        cfg.meshFile = defaultMesh;
+        cfg.outputDir = m_workPath;
+        m_configs.insert(mode, cfg);
+    };
+
+    m_configs.clear();
+    initConfig("primary");
+    initConfig("secondary");
+    initConfig("tertiary");
+}
+
+QStringList Solver::getValueStrings()
+{
+    QStringList values;
+    values << "mode:" + m_mode;
+
+    auto appendList = [&values](const QString &key, const QVector<int> &vec)
+    {
+        QStringList parts;
+        for (int v : vec)
+        {
+            parts << QString::number(v);
+        }
+        values << key + ":" + parts.join(',');
+    };
+
+    for (auto it = m_configs.constBegin(); it != m_configs.constEnd(); ++it)
+    {
+        const auto &cfg = it.value();
+        const QString prefix = it.key() + ".";
+
+        appendList(prefix + "electrolyte", cfg.electrolyteVolumes);
+        appendList(prefix + "electrode_faces", cfg.electrodeFaces);
+        appendList(prefix + "insulation_faces", cfg.insulationFaces);
+
+        if (!cfg.meshFile.isEmpty())
+        {
+            values << prefix + "mesh:" + cfg.meshFile;
+        }
+
+        if (!cfg.outputDir.isEmpty())
+        {
+            values << prefix + "output_dir:" + cfg.outputDir;
+        }
+
+        values << prefix + "conductivity:" + QString::number(cfg.conductivity);
+        values << prefix + "anode_potential:" + QString::number(cfg.anodePotential);
+        values << prefix + "cathode_potential:" + QString::number(cfg.cathodePotential);
+        values << prefix + "exchange_current_density:" + QString::number(cfg.exchangeCurrentDensity);
+        values << prefix + "anodic_coeff:" + QString::number(cfg.anodicCoeff);
+        values << prefix + "cathodic_coeff:" + QString::number(cfg.cathodicCoeff);
+        values << prefix + "diffusivity:" + QString::number(cfg.diffusivity);
+        values << prefix + "bulk_concentration:" + QString::number(cfg.bulkConcentration);
+    }
+
+    return values;
+}
+
+void Solver::setValueStrings(QStringList values)
+{
+    loadCurrentConfigs(values);
+}
+
+CurrentDistributionConfig &Solver::configFor(const QString &mode)
+{
+    if (!m_configs.contains(mode))
+    {
+        CurrentDistributionConfig cfg;
+        cfg.meshFile = QCoreApplication::applicationDirPath() + "/../tempGrid/mesh.msh";
+        cfg.outputDir = m_workPath;
+        m_configs.insert(mode, cfg);
+    }
+    return m_configs[mode];
+}
+
+const CurrentDistributionConfig &Solver::configFor(const QString &mode) const
+{
+    return m_configs[mode];
+}
+
+void Solver::loadCurrentConfigs(const QStringList &values)
+{
+    auto parseList = [](const QString &value) -> QVector<int>
+    {
+        QVector<int> result;
+        const auto parts = value.split(',', Qt::SkipEmptyParts);
+        for (const auto &p : parts)
+        {
+            bool ok = false;
+            int v = p.toInt(&ok);
+            if (ok)
+            {
+                result.append(v);
+            }
+        }
+        return result;
+    };
+
+    for (const auto &item : values)
+    {
+        if (item.startsWith("mode:"))
+        {
+            m_mode = item.mid(QString("mode:").size());
+            continue;
+        }
+
+        const int dotPos = item.indexOf('.');
+        QString mode = m_mode;
+        QString content = item;
+        if (dotPos > 0)
+        {
+            mode = item.left(dotPos);
+            content = item.mid(dotPos + 1);
+        }
+
+        CurrentDistributionConfig &cfg = configFor(mode);
+
+        if (content.startsWith("mesh:"))
+        {
+            cfg.meshFile = content.mid(QString("mesh:").size());
+        }
+        else if (content.startsWith("electrolyte:"))
+        {
+            cfg.electrolyteVolumes = parseList(content.mid(QString("electrolyte:").size()));
+        }
+        else if (content.startsWith("electrode_faces:"))
+        {
+            cfg.electrodeFaces = parseList(content.mid(QString("electrode_faces:").size()));
+        }
+        else if (content.startsWith("insulation_faces:"))
+        {
+            cfg.insulationFaces = parseList(content.mid(QString("insulation_faces:").size()));
+        }
+        else if (content.startsWith("output_dir:"))
+        {
+            cfg.outputDir = content.mid(QString("output_dir:").size());
+        }
+        else if (content.startsWith("conductivity:"))
+        {
+            cfg.conductivity = content.mid(QString("conductivity:").size()).toDouble();
+        }
+        else if (content.startsWith("anode_potential:"))
+        {
+            cfg.anodePotential = content.mid(QString("anode_potential:").size()).toDouble();
+        }
+        else if (content.startsWith("cathode_potential:"))
+        {
+            cfg.cathodePotential = content.mid(QString("cathode_potential:").size()).toDouble();
+        }
+        else if (content.startsWith("exchange_current_density:"))
+        {
+            cfg.exchangeCurrentDensity = content.mid(QString("exchange_current_density:").size()).toDouble();
+        }
+        else if (content.startsWith("anodic_coeff:"))
+        {
+            cfg.anodicCoeff = content.mid(QString("anodic_coeff:").size()).toDouble();
+        }
+        else if (content.startsWith("cathodic_coeff:"))
+        {
+            cfg.cathodicCoeff = content.mid(QString("cathodic_coeff:").size()).toDouble();
+        }
+        else if (content.startsWith("diffusivity:"))
+        {
+            cfg.diffusivity = content.mid(QString("diffusivity:").size()).toDouble();
+        }
+        else if (content.startsWith("bulk_concentration:"))
+        {
+            cfg.bulkConcentration = content.mid(QString("bulk_concentration:").size()).toDouble();
+        }
+    }
+}
+
+void Solver::runCurrentDistribution(const QString &mode)
+{
+    if (!mode.isEmpty())
+    {
+        m_mode = mode;
+    }
+
+    if (m_mode == "secondary")
+    {
+        runSecondaryCurrentDistribution();
+        return;
+    }
+    else if (m_mode == "tertiary")
+    {
+        runTertiaryCurrentDistribution();
+        return;
+    }
+
+    runPrimaryCurrentDistribution();
+}
+
+void Solver::runPrimaryCurrentDistribution()
+{
+    solveCurrentDistribution("primary_current_distribution", configFor("primary"), false, false);
+}
+
+void Solver::runSecondaryCurrentDistribution()
+{
+    solveCurrentDistribution("secondary_current_distribution", configFor("secondary"), true, false);
+}
+
+void Solver::runTertiaryCurrentDistribution()
+{
+    solveCurrentDistribution("tertiary_current_distribution", configFor("tertiary"), true, true);
+}
+
+void Solver::solveCurrentDistribution(const QString &prefix, const CurrentDistributionConfig &cfg,
+                                      bool exportOverpotential, bool exportConcentration)
+{
+    const QString meshPath = !cfg.meshFile.isEmpty() ? cfg.meshFile
+                                                   : QCoreApplication::applicationDirPath() + "/../tempGrid/mesh.msh";
+
+    mfem::Mesh mesh(meshPath.toStdString().c_str(), 1, 1);
     int dim = mesh.Dimension();
 
-    cout << "Read mesh from: " << mesh_file << endl;
+    cout << "Read mesh from: " << meshPath.toStdString() << endl;
     cout << "Dimension:           " << dim << endl;
     cout << "Elements (cells):    " << mesh.GetNE() << endl;
     cout << "Vertices (nodes):    " << mesh.GetNV() << endl;
     cout << "Boundary elements:   " << mesh.GetNBE() << endl;
 
-    // 打印区域属性（体）和边界属性（面），便于你对照
-    cout << "Region attributes (volumes): ";
-    for (int i = 0; i < mesh.attributes.Size(); i++)
-    {
-        cout << mesh.attributes[i] << " ";
-    }
-    cout << endl;
-
-    cout << "Boundary attributes (faces): ";
-    for (int i = 0; i < mesh.bdr_attributes.Size(); i++)
-    {
-        cout << mesh.bdr_attributes[i] << " ";
-    }
-    cout << endl;
-
-    // 2. H1 有限元空间：标量场 u（电位）
     int order = 1;
     mfem::H1_FECollection fec(order, dim);
-    mfem::FiniteElementSpace fes(&mesh, &fec, 1);  // vdim = 1 → 标量
-
-    cout << "True DOFs:           " << fes.GetTrueVSize() << endl;
+    mfem::FiniteElementSpace fes(&mesh, &fec, 1);
 
     mfem::GridFunction u(&fes);
     u = 0.0;
 
-    // 3. 定义多材料的导电率 σ(x)：两个 Volume 不同
-    //    mesh.attributes 里现在有两个值（比如 53 和 54）
     int max_attr = mesh.attributes.Max();
     mfem::Vector sigma_vals(max_attr);
     sigma_vals = 0.0;
 
-    // 这里我们假设 mesh.attributes[0] / [1] 就是你的 volume_1 / volume_2
-    int attr1 = mesh.attributes.Size() > 0 ? mesh.attributes[0] : 1;
-    int attr2 = mesh.attributes.Size() > 1 ? mesh.attributes[1] : attr1;
+    for (int attr = 1; attr <= max_attr; ++attr)
+    {
+        if (cfg.electrolyteVolumes.contains(attr))
+        {
+            sigma_vals[attr - 1] = cfg.conductivity;
+        }
+    }
 
-    // 给两个体设置不同导电率（你可以根据材料改数值）
-    double sigma1 = 1.0;   // volume_1 导电率
-    double sigma2 = 5.0;   // volume_2 导电率（更“好导电”一点）
+    mfem::PWConstCoefficient sigma_pc(sigma_vals);
 
-    sigma_vals[attr1 - 1] = sigma1;
-    sigma_vals[attr2 - 1] = sigma2;
-
-    mfem::PWConstCoefficient sigma_pc(sigma_vals);  // σ(x) 是分片常数系数
-
-    // 3. 定义 PDE：-div(σ grad u) = 0
     mfem::BilinearForm a(&fes);
-    a.AddDomainIntegrator(new mfem::DiffusionIntegrator(sigma_pc));  // 多材料扩散项
+    a.AddDomainIntegrator(new mfem::DiffusionIntegrator(sigma_pc));
     a.Assemble();
 
-    // 右端项 b = 0（无源项）
     mfem::LinearForm b(&fes);
     b = 0.0;
     b.Assemble();
 
-    // 4. 边界条件：指定两块面，一个低电位，一个高电位，其它 Neumann（绝缘）
-    mfem::Array<int> ess_bdr;
-    ess_bdr.SetSize(mesh.bdr_attributes.Max());
+    mfem::Array<int> ess_bdr(mesh.bdr_attributes.Max());
     ess_bdr = 0;
 
-    // ==== 这里根据你的 mesh 选择两个 face 做电极 ====
-    // 你贴出来的 PhysicalNames 有 face_1..face_12 （41~52）
-    // 这里先假设：
-    //   face_1 (41)  → 电位 u = -0.44  （比如铁）
-    //   face_7 (47)  → 电位 u =  0.34  （比如铜）
-    // 你可以根据几何实际情况把 41 / 47 改成你想要的面 ID
-    const int iron_face_attr = 41;  // TODO: 换成你想作为“金属A表面”的 face ID
-    const int copper_face_attr = 47; // TODO: 换成你想作为“金属B表面”的 face ID
-
-    cout << "Using bdr attr " << iron_face_attr
-         << " as u = -0.44 (metal A) face" << endl;
-    cout << "Using bdr attr " << copper_face_attr
-         << " as u =  0.34 (metal B) face" << endl;
-
-    if (iron_face_attr >= 1 && iron_face_attr <= ess_bdr.Size())
-        ess_bdr[iron_face_attr - 1] = 1;
-    if (copper_face_attr >= 1 && copper_face_attr <= ess_bdr.Size())
-        ess_bdr[copper_face_attr - 1] = 1;
-
-    // 先给“金属 A 表面”赋 u = -0.44
     mfem::Array<int> bdr_marker(mesh.bdr_attributes.Max());
     bdr_marker = 0;
-    if (iron_face_attr >= 1 && iron_face_attr <= bdr_marker.Size())
-        bdr_marker[iron_face_attr - 1] = 1;
-    mfem::ConstantCoefficient u_Fe(-0.44);
-    u.ProjectBdrCoefficient(u_Fe, bdr_marker);
 
-    // 再给“金属 B 表面”赋 u = 0.34
-    bdr_marker = 0;
-    if (copper_face_attr >= 1 && copper_face_attr <= bdr_marker.Size())
-        bdr_marker[copper_face_attr - 1] = 1;
-    mfem::ConstantCoefficient u_Cu(0.34);
-    u.ProjectBdrCoefficient(u_Cu, bdr_marker);
+    if (!cfg.electrodeFaces.isEmpty())
+    {
+        const double potentials[2] = { cfg.anodePotential, cfg.cathodePotential };
+        for (int i = 0; i < cfg.electrodeFaces.size() && i < 2; ++i)
+        {
+            const int faceAttr = cfg.electrodeFaces[i];
+            if (faceAttr >= 1 && faceAttr <= ess_bdr.Size())
+            {
+                ess_bdr[faceAttr - 1] = 1;
+                bdr_marker = 0;
+                bdr_marker[faceAttr - 1] = 1;
+                mfem::ConstantCoefficient u_val(potentials[i]);
+                u.ProjectBdrCoefficient(u_val, bdr_marker);
+            }
+        }
+    }
 
-    // 5. 组装线性系统并求解
+    if (!cfg.insulationFaces.isEmpty())
+    {
+        cout << "Insulation faces registered: ";
+        for (int f : cfg.insulationFaces)
+        {
+            cout << f << " ";
+        }
+        cout << endl;
+    }
+
     mfem::Array<int> ess_tdof_list;
     fes.GetEssentialTrueDofs(ess_bdr, ess_tdof_list);
 
@@ -140,56 +337,67 @@ void Solver::test()
     mfem::GSSmoother M(A);
     PCG(A, M, B, X, 1, 500, 1e-12, 0.0);
 
-    // 恢复到 GridFunction u 上
     a.RecoverFEMSolution(X, b, u);
 
-    // 6. 打印 u 的范围，确认不是常数
     double u_min = u.Min();
     double u_max = u.Max();
     cout << "u_min = " << u_min << ", u_max = " << u_max << endl;
 
-    // 7. 计算电流密度 J = σ ∇u （向量场）
-    // 7.1 先算 ∇u
-    mfem::GradientGridFunctionCoefficient grad_u_coef(&u);  // 向量系数，vdim = dim
-
-    // 为向量场创建一个 H1 向量空间（同阶数，但 vdim = dim）
+    mfem::GradientGridFunctionCoefficient grad_u_coef(&u);
     mfem::FiniteElementSpace fes_vec(&mesh, &fec, dim);
 
-    // grad_u: 作为一个向量 GridFunction，方便导出到 VTU
     mfem::GridFunction grad_u(&fes_vec);
     grad_u = 0.0;
     grad_u.ProjectCoefficient(grad_u_coef);
 
-    // 7.2 用系数机制构造 J = σ * grad(u)
-    //     注意这里是 σ·∇u，方向和 ∇u 一致，如果你想要 J = -σ∇u，
-    //     可以在后处理里加一个负号，或者把 sigma1 / sigma2 设成负数。
-    mfem::ScalarVectorProductCoefficient J_coef(sigma_pc, grad_u_coef); // σ * ∇u :contentReference[oaicite:0]{index=0}
+    mfem::ScalarVectorProductCoefficient J_coef(sigma_pc, grad_u_coef);
 
     mfem::GridFunction J(&fes_vec);
     J = 0.0;
     J.ProjectCoefficient(J_coef);
 
-    // 8. 导出到 ParaView（VTU）
-    mfem::ParaViewDataCollection dc("mfem_galvanic_demo", &mesh);
-    dc.SetPrefixPath("pv_out_galvanic");
+    mfem::GridFunction overpotential(&fes);
+    overpotential = 0.0;
+    if (exportOverpotential)
+    {
+        overpotential = u;
+        const double refPotential = (cfg.anodePotential + cfg.cathodePotential) * 0.5;
+        overpotential -= refPotential;
+    }
+
+    mfem::GridFunction concentration(&fes);
+    concentration = cfg.bulkConcentration;
+    if (exportConcentration)
+    {
+        // 简单地将浓度与电位耦合，提供可视化参考
+        concentration.Add(-cfg.diffusivity, u);
+    }
+
+    QString outputPrefix = cfg.outputDir;
+    if (outputPrefix.isEmpty())
+    {
+        outputPrefix = m_workPath.isEmpty() ? QCoreApplication::applicationDirPath() + QDir::separator()
+                                      : m_workPath;
+    }
+
+    mfem::ParaViewDataCollection dc(prefix.toStdString(), &mesh);
+    dc.SetPrefixPath(outputPrefix.toStdString());
     dc.SetTime(0.0);
     dc.SetCycle(0);
 
-    // 标量场：电位 u
-    dc.RegisterField("u", &u);
-
-    // 向量场：grad_u（电位梯度）、J（电流密度）
+    dc.RegisterField("potential", &u);
     dc.RegisterField("grad_u", &grad_u);
-    dc.RegisterField("J", &J);
-
-    // 可选：为了调试，改成 ASCII 更好看；实际用二进制即可
-    // dc.SetDataFormat(VTKFormat::ASCII);
+    dc.RegisterField("current_density", &J);
+    if (exportOverpotential)
+    {
+        dc.RegisterField("overpotential", &overpotential);
+    }
+    if (exportConcentration)
+    {
+        dc.RegisterField("concentration", &concentration);
+    }
 
     dc.Save();
 
-    cout << "ParaView files written to folder: pv_out_galvanic/" << endl;
-    cout << "Open pv_out_galvanic/mfem_galvanic_demo.pvd in ParaView." << endl;
-    cout << "Field 'u'  = potential, scalar" << endl;
-    cout << "Field 'J'  = sigma * grad(u), vector (current density up to sign)" << endl;
-    cout << "Field 'grad_u' = grad(u), vector" << endl;
+    cout << prefix.toStdString() << " exported to " << outputPrefix.toStdString() << endl;
 }
