@@ -16,8 +16,6 @@ public:
     ~TertiaryCurrentDistributionWidget();
 
 private:
-    QLineEdit *meshPathLineEdit() const override;
-    QPushButton *meshBrowseButton() const override;
     QLineEdit *outputDirLineEdit() const override;
     QPushButton *outputBrowseButton() const override;
     QLineEdit *electrolyteLineEdit() const override;

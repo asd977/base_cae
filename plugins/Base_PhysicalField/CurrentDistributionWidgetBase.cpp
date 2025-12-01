@@ -41,10 +41,6 @@ void CurrentDistributionWidgetBase::connectCommonUi()
     {
         connect(btn, &QPushButton::clicked, this, &CurrentDistributionWidgetBase::onInsulationClicked);
     }
-    if (auto *btn = meshBrowseButton())
-    {
-        connect(btn, &QPushButton::clicked, this, &CurrentDistributionWidgetBase::onMeshBrowse);
-    }
     if (auto *btn = outputBrowseButton())
     {
         connect(btn, &QPushButton::clicked, this, &CurrentDistributionWidgetBase::onOutputBrowse);
@@ -71,10 +67,6 @@ void CurrentDistributionWidgetBase::connectCommonUi()
     connectSpin(diffusivitySpin());
     connectSpin(concentrationSpin());
 
-    if (auto *line = meshPathLineEdit())
-    {
-        connect(line, &QLineEdit::editingFinished, this, &CurrentDistributionWidgetBase::syncConfigToSolver);
-    }
     if (auto *line = outputDirLineEdit())
     {
         connect(line, &QLineEdit::editingFinished, this, &CurrentDistributionWidgetBase::syncConfigToSolver);
@@ -94,16 +86,6 @@ void CurrentDistributionWidgetBase::onElectrodeClicked()
 void CurrentDistributionWidgetBase::onInsulationClicked()
 {
     cacheCurrentSelections(static_cast<int>(BCSelectMode::Face), m_insulationFaces);
-}
-
-void CurrentDistributionWidgetBase::onMeshBrowse()
-{
-    const QString file = QFileDialog::getOpenFileName(this, tr("选择网格"), meshPathLineEdit() ? meshPathLineEdit()->text() : QString(), tr("Mesh (*.msh)"));
-    if (!file.isEmpty() && meshPathLineEdit())
-    {
-        meshPathLineEdit()->setText(file);
-        syncConfigToSolver();
-    }
 }
 
 void CurrentDistributionWidgetBase::onOutputBrowse()
@@ -169,10 +151,6 @@ void CurrentDistributionWidgetBase::syncConfigToSolver()
     values << prefix + "electrolyte:" + vecToString(m_electrolyteVolumes);
     values << prefix + "electrode_faces:" + vecToString(m_electrodeFaces);
     values << prefix + "insulation_faces:" + vecToString(m_insulationFaces);
-    if (meshPathLineEdit())
-    {
-        values << prefix + "mesh:" + meshPathLineEdit()->text();
-    }
     if (outputDirLineEdit())
     {
         values << prefix + "output_dir:" + outputDirLineEdit()->text();
@@ -238,11 +216,7 @@ void CurrentDistributionWidgetBase::loadConfigFromSolver()
             continue;
         }
 
-        if (content.startsWith("mesh:") && meshPathLineEdit())
-        {
-            meshPathLineEdit()->setText(content.mid(QString("mesh:").size()));
-        }
-        else if (content.startsWith("output_dir:") && outputDirLineEdit())
+        if (content.startsWith("output_dir:") && outputDirLineEdit())
         {
             outputDirLineEdit()->setText(content.mid(QString("output_dir:").size()));
         }

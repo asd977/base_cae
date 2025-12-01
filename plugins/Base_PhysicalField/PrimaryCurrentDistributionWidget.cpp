@@ -15,16 +15,6 @@ PrimaryCurrentDistributionWidget::~PrimaryCurrentDistributionWidget()
     delete ui;
 }
 
-QLineEdit *PrimaryCurrentDistributionWidget::meshPathLineEdit() const
-{
-    return ui->meshPathLineEdit;
-}
-
-QPushButton *PrimaryCurrentDistributionWidget::meshBrowseButton() const
-{
-    return ui->meshBrowsePushButton;
-}
-
 QLineEdit *PrimaryCurrentDistributionWidget::outputDirLineEdit() const
 {
     return ui->outputDirLineEdit;

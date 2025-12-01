@@ -35,12 +35,9 @@ void Solver::newProject(QString workPath)
         m_workPath += QDir::separator();
     }
 
-    const QString defaultMesh = QCoreApplication::applicationDirPath() + "/../tempGrid/mesh.msh";
-
     auto initConfig = [&](const QString &mode)
     {
         CurrentDistributionConfig cfg;
-        cfg.meshFile = defaultMesh;
         cfg.outputDir = m_workPath;
         m_configs.insert(mode, cfg);
     };
@@ -75,11 +72,6 @@ QStringList Solver::getValueStrings()
         appendList(prefix + "electrode_faces", cfg.electrodeFaces);
         appendList(prefix + "insulation_faces", cfg.insulationFaces);
 
-        if (!cfg.meshFile.isEmpty())
-        {
-            values << prefix + "mesh:" + cfg.meshFile;
-        }
-
         if (!cfg.outputDir.isEmpty())
         {
             values << prefix + "output_dir:" + cfg.outputDir;
@@ -108,7 +100,6 @@ CurrentDistributionConfig &Solver::configFor(const QString &mode)
     if (!m_configs.contains(mode))
     {
         CurrentDistributionConfig cfg;
-        cfg.meshFile = QCoreApplication::applicationDirPath() + "/../tempGrid/mesh.msh";
         cfg.outputDir = m_workPath;
         m_configs.insert(mode, cfg);
     }
@@ -157,11 +148,7 @@ void Solver::loadCurrentConfigs(const QStringList &values)
 
         CurrentDistributionConfig &cfg = configFor(mode);
 
-        if (content.startsWith("mesh:"))
-        {
-            cfg.meshFile = content.mid(QString("mesh:").size());
-        }
-        else if (content.startsWith("electrolyte:"))
+        if (content.startsWith("electrolyte:"))
         {
             cfg.electrolyteVolumes = parseList(content.mid(QString("electrolyte:").size()));
         }
@@ -251,8 +238,7 @@ void Solver::runTertiaryCurrentDistribution()
 void Solver::solveCurrentDistribution(const QString &prefix, const CurrentDistributionConfig &cfg,
                                       bool exportOverpotential, bool exportConcentration)
 {
-    const QString meshPath = !cfg.meshFile.isEmpty() ? cfg.meshFile
-                                                   : QCoreApplication::applicationDirPath() + "/../tempGrid/mesh.msh";
+    const QString meshPath = QCoreApplication::applicationDirPath() + "/../tempGrid/mesh.msh";
 
     mfem::Mesh mesh(meshPath.toStdString().c_str(), 1, 1);
     int dim = mesh.Dimension();

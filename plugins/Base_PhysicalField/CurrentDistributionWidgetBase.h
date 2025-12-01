@@ -26,7 +26,6 @@ protected slots:
     void onElectrolyteClicked();
     void onElectrodeClicked();
     void onInsulationClicked();
-    void onMeshBrowse();
     void onOutputBrowse();
     void onRunClicked();
 
@@ -38,8 +37,6 @@ protected:
 
     QString mode() const { return m_mode; }
 
-    virtual QLineEdit *meshPathLineEdit() const = 0;
-    virtual QPushButton *meshBrowseButton() const = 0;
     virtual QLineEdit *outputDirLineEdit() const = 0;
     virtual QPushButton *outputBrowseButton() const = 0;
     virtual QLineEdit *electrolyteLineEdit() const = 0;

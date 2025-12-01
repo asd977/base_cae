@@ -11,7 +11,6 @@
 
 struct CurrentDistributionConfig
 {
-    QString meshFile;
     QString outputDir;
     QVector<int> electrolyteVolumes;
     QVector<int> electrodeFaces;
