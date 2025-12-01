@@ -12,7 +12,10 @@ HEADERS += \
     ElectrolyteSettingWidget.h \
     PhySicalField.h \
     PhysicalFieldSettingWidget.h \
-    PrimaryCurrentDistributionWidget.h
+    CurrentDistributionWidgetBase.h \
+    PrimaryCurrentDistributionWidget.h \
+    SecondaryCurrentDistributionWidget.h \
+    TertiaryCurrentDistributionWidget.h
 
 SOURCES += \
     ElectroPhoresisSettingWidget.cpp \
@@ -22,7 +25,10 @@ SOURCES += \
     ElectrolyteSettingWidget.cpp \
     PhySicalField.cpp \
     PhysicalFieldSettingWidget.cpp \
-    PrimaryCurrentDistributionWidget.cpp
+    CurrentDistributionWidgetBase.cpp \
+    PrimaryCurrentDistributionWidget.cpp \
+    SecondaryCurrentDistributionWidget.cpp \
+    TertiaryCurrentDistributionWidget.cpp
 
 
 FORMS += \
@@ -32,7 +38,9 @@ FORMS += \
     ElectrolysisSettingWidget.ui \
     ElectrolyteSettingWidget.ui \
     PhysicalFieldSettingWidget.ui \
-    PrimaryCurrentDistributionWidget.ui
+    PrimaryCurrentDistributionWidget.ui \
+    SecondaryCurrentDistributionWidget.ui \
+    TertiaryCurrentDistributionWidget.ui
 
 
 RESOURCES += \

@@ -2,51 +2,180 @@
 <ui version="4.0">
  <class>PrimaryCurrentDistributionWidget</class>
  <widget class="QWidget" name="PrimaryCurrentDistributionWidget">
-  <property name="geometry">
-   <rect>
-    <x>0</x>
-    <y>0</y>
-    <width>308</width>
-    <height>446</height>
-   </rect>
-  </property>
   <property name="windowTitle">
-   <string>Form</string>
+   <string>一次电流分布</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="QPushButton" name="electrolytePushButton">
-     <property name="text">
-      <string>电解质</string>
+    <layout class="QHBoxLayout" name="runLayout">
+     <item>
+      <spacer name="runSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="runPushButton">
+       <property name="text">
+        <string>运行一次分布</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="meshGroupBox">
+     <property name="title">
+      <string>输出</string>
      </property>
+     <layout class="QGridLayout" name="meshLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="outputLabel">
+        <property name="text">
+         <string>输出目录</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="outputDirLineEdit">
+        <property name="placeholderText">
+         <string>选择输出目录</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="2">
+       <widget class="QPushButton" name="outputBrowsePushButton">
+        <property name="text">
+         <string>浏览</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </widget>
    </item>
    <item>
-    <widget class="QPushButton" name="electrodeSurfacePushButton">
-     <property name="text">
-      <string>电极表面</string>
+    <widget class="QGroupBox" name="parameterGroupBox">
+     <property name="title">
+      <string>一次电流分布参数</string>
      </property>
+     <layout class="QGridLayout" name="paramLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="conductivityLabel">
+        <property name="text">
+         <string>电导率 (S/m)</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QDoubleSpinBox" name="conductivityDoubleSpinBox">
+        <property name="maximum">
+         <double>1000000.000000000000000</double>
+        </property>
+        <property name="value">
+         <double>1.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="anodeLabel">
+        <property name="text">
+         <string>阳极电位 (V)</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QDoubleSpinBox" name="anodePotentialDoubleSpinBox">
+        <property name="minimum">
+         <double>-1000.000000000000000</double>
+        </property>
+        <property name="maximum">
+         <double>1000.000000000000000</double>
+        </property>
+        <property name="value">
+         <double>-0.440000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="cathodeLabel">
+        <property name="text">
+         <string>阴极电位 (V)</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QDoubleSpinBox" name="cathodePotentialDoubleSpinBox">
+        <property name="minimum">
+         <double>-1000.000000000000000</double>
+        </property>
+        <property name="maximum">
+         <double>1000.000000000000000</double>
+        </property>
+        <property name="value">
+         <double>0.340000000000000</double>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </widget>
    </item>
    <item>
-    <widget class="QPushButton" name="insulationPushButton">
-     <property name="text">
-      <string>绝缘</string>
+    <widget class="QGroupBox" name="selectionGroupBox">
+     <property name="title">
+      <string>物理组选择</string>
      </property>
+     <layout class="QGridLayout" name="selectionLayout">
+      <item row="0" column="0">
+       <widget class="QPushButton" name="electrolytePushButton">
+        <property name="text">
+         <string>添加电解质体</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="electrolyteLineEdit">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QPushButton" name="electrodeSurfacePushButton">
+        <property name="text">
+         <string>添加电极表面</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLineEdit" name="electrodeLineEdit">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QPushButton" name="insulationPushButton">
+        <property name="text">
+         <string>添加绝缘面</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QLineEdit" name="insulationLineEdit">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </widget>
-   </item>
-   <item>
-    <spacer name="verticalSpacer">
-     <property name="orientation">
-      <enum>Qt::Orientation::Vertical</enum>
-     </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>40</height>
-      </size>
-     </property>
-    </spacer>
    </item>
   </layout>
  </widget>
