@@ -2,6 +2,9 @@
 #include "ui_ElectrolyteSettingWidget.h"
 
 #include <QListWidgetItem>
+#include <ServiceRegistry.h>
+
+#include <services/PreProcessingService.h>
 
 ElectrolyteSettingWidget::ElectrolyteSettingWidget(QWidget *parent)
     : BasePage("ElectrolyteSettingWidget")
@@ -37,29 +40,129 @@ void ElectrolyteSettingWidget::beforeLoad()
     ui->volumeComboBox->clear();
     ui->listWidget->clear();
 
-    auto volumeGroups = BoundaryConditions::instance().getGroupsForDim(3);
-    QVector<PhysGroupInfo> tmp(volumeGroups.begin(), volumeGroups.end());
-    qDebug() << "ElectrolyteSettingWidget volumes:" << tmp.size();
+    BoundaryConditions &bc = BoundaryConditions::instance();
 
-    for (int i = 0; i < tmp.size(); ++i)
+    // 1. 加载所有体
+    auto volumeGroups = bc.getGroupsForDim(3);
+    for (const auto &g : volumeGroups)
     {
-        const auto &g = tmp[i];
-        QString text = QString::fromStdString(g.name)
-                       + QString(" (id=%1)").arg(g.physId);
-        // text 显示，UserRole 保存 physId
-        ui->volumeComboBox->addItem(text, g.physId);
+        ui->volumeComboBox->addItem(
+            QString("%1 (id=%2)")
+                .arg(QString::fromStdString(g.name))
+                .arg(g.physId),
+            g.physId
+            );
     }
 
-    // 进入页面时：取消预选、预删
-    BoundaryConditions::instance().previewSelection(BCSelectMode::Volume, -1);
-    BoundaryConditions::instance().previewRemoveSelection(BCSelectMode::Volume, -1);
+    // 2. 查询本 page 的已选 physId
+    auto physIds =
+        bc.getPhysIdsForBc(
+            m_uuid.toStdString(),
+            SolverType::PrimaryCurrent,
+            3);
+
+    // 3. 更新 listWidget
+    for (int pid : physIds)
+    {
+        QString name;
+        for (const auto &g : volumeGroups)
+            if (g.physId == pid) name = QString::fromStdString(g.name);
+
+        QListWidgetItem *item =
+            new QListWidgetItem(name + QString(" (id=%1)").arg(pid));
+        item->setData(Qt::UserRole, pid);
+        ui->listWidget->addItem(item);
+    }
+
+    // 4. 由 BoundaryConditions 统一高亮颜色
+    bc.highlightForPage(3, physIds);
+
+    // 5. 预选/预删清理
+    // bc.previewSelection(BCSelectMode::Volume, -1);
+    // bc.previewRemoveSelection(BCSelectMode::Volume, -1);
 
     refreshRender();
 }
 
+
+
 void ElectrolyteSettingWidget::beforeUnload()
 {
-    // 看你需求，一般不用特别处理
+    BoundaryConditions &bc = BoundaryConditions::instance();
+
+    const std::string bcId = m_uuid.toStdString();
+    const SolverType solver = SolverType::PrimaryCurrent;
+    const int dim = 3;
+
+    bc.clearSolverParamsForPage(bcId, solver, dim);
+
+    std::vector<BCSolverRecord> records;
+
+    // 从界面拿电导率（假设只有一个电导率，对当前页面所有体共用）
+    double sigma = ui->conductivityLineEdit->text().toDouble();
+
+    std::map<std::string,double> scalars;
+    scalars["sigma"] = sigma;   // 约定 key = "sigma"
+
+    // 对 listWidget 中的每个体构建一条 solver 记录
+    for (int i = 0; i < ui->listWidget->count(); ++i)
+    {
+        auto *item = ui->listWidget->item(i);
+        int physId = item->data(Qt::UserRole).toInt();
+        if (physId <= 0)
+            continue;
+
+        BCSolverRecord rec;
+        rec.dim    = 3;                         // 体
+        rec.physId = physId;
+        rec.solver = SolverType::PrimaryCurrent;
+        rec.bcId   = m_uuid.toStdString();             // 如果你给 Electrolyte 也做分组的话，这里改成 m_bcId
+        rec.scalars = scalars;
+
+        records.push_back(std::move(rec));
+    }
+
+    // 批量写入（merge = true：合并，不清空其它页面的配置）
+    BoundaryConditions::instance().setSolverParamsBulk(records, /*merge=*/true);
+
+    // 离开页面时，只清预选/预删，不动“已选”
+    // BoundaryConditions::instance().previewSelection(BCSelectMode::Volume, -1);
+    // BoundaryConditions::instance().previewRemoveSelection(BCSelectMode::Volume, -1);
+    BoundaryConditions::instance().clearHighlight();
+    refreshRender();
+}
+void ElectrolyteSettingWidget::refreshColorsFromBC()
+{
+    BoundaryConditions &bc = BoundaryConditions::instance();
+
+    // 取当前 page 对应的 physId 集合
+    auto physIds =
+        bc.getPhysIdsForBc(
+            m_uuid.toStdString(),
+            SolverType::PrimaryCurrent,
+            3);
+
+    QSet<int> selected;
+    for (int pid : physIds) selected.insert(pid);
+
+    // 先把所有 item 重置为“未选中”样式
+    for (int i = 0; i < ui->listWidget->count(); ++i) {
+        auto *item = ui->listWidget->item(i);
+        item->setBackground(Qt::NoBrush);
+        item->setForeground(Qt::black);
+        item->setCheckState(Qt::Unchecked);
+    }
+
+    // 再根据 selected 里有的 physId，设置“选中”颜色
+    for (int i = 0; i < ui->listWidget->count(); ++i) {
+        auto *item = ui->listWidget->item(i);
+        int pid = item->data(Qt::UserRole).toInt();
+        if (selected.contains(pid)) {
+            item->setBackground(QColor("#3d6af2"));   // 你原来的高亮色
+            item->setForeground(Qt::white);
+            item->setCheckState(Qt::Checked);
+        }
+    }
 }
 
 // ================== 添加 ==================
@@ -165,7 +268,6 @@ void ElectrolyteSettingWidget::onListItemSelectionChanged()
 
 void ElectrolyteSettingWidget::refreshRender()
 {
-    // 这里按你的架构来写，例如：
-    // auto* w = ServiceRegistry::instance().getPreProcessingWidget();
-    // if (w) w->render();
+    auto* w = ServiceRegistry::instance().getService<PreProcessingService>();
+    if (w) w->render();
 }

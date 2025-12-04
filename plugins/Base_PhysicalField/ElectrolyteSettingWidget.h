@@ -40,4 +40,5 @@ private:
 
 private:
     Ui::ElectrolyteSettingWidget *ui;
+    void refreshColorsFromBC();
 };

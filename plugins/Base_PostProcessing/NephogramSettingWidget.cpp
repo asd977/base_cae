@@ -26,7 +26,17 @@
 #include <PublicVariables.h>
 #include <PublicConstants.h>
 #include <PostProcessingWidget.h>
+#include <vtkSmartPointer.h>
+#include <vtkUnstructuredGrid.h>
+#include <vtkPoints.h>
+#include <vtkTetra.h>
+#include <vtkMath.h>
 
+#include <fstream>
+#include <sstream>
+#include <unordered_map>
+#include <string>
+#include <algorithm>
 #include <vtkSmartPointer.h>
 #include <vtkDataSetMapper.h>
 #include <vtkActor.h>
@@ -38,6 +48,9 @@
 #include <vtkCellData.h>
 #include <vtkStringArray.h>
 #include <QFileDialog>
+#include <vtkDataSetSurfaceFilter.h>
+#include <vtkPolyDataConnectivityFilter.h>
+#include <vtkPolyDataMapper.h>
 
 NephogramSettingWidget::NephogramSettingWidget(PostProcessingWidget *postProcessingWidget, QWidget *parent)
     : BasePage(PublicConstants::PAGE_POSTPROCESS_NEPHOGRAM),
@@ -555,3 +568,239 @@ void NephogramSettingWidget::loadJson(const QJsonObject& obj)
     qDebug()<<obj.value("range_max").toDouble();
 }
 
+#include <vtkSmartPointer.h>
+#include <vtkUnstructuredGrid.h>
+#include <vtkPoints.h>
+#include <vtkTetra.h>
+#include <vtkPolyDataNormals.h>
+
+#include <fstream>
+#include <sstream>
+#include <unordered_map>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include <iostream>
+
+// 很简单的 trim
+static inline void trim(std::string &s)
+{
+    size_t b = s.find_first_not_of(" \t\r\n");
+    size_t e = s.find_last_not_of(" \t\r\n");
+    if (b == std::string::npos) { s.clear(); return; }
+    s = s.substr(b, e - b + 1);
+}
+
+// Nastran 小字段：每 8 字符一个 field
+static inline void splitNas8(const std::string &line,
+                             std::vector<std::string> &fields)
+{
+    fields.clear();
+    const std::size_t n = line.size();
+    for (std::size_t i = 0; i < n; i += 8) {
+        std::string f = line.substr(i, std::min<std::size_t>(8, n - i));
+        trim(f);
+        fields.push_back(f); // 可以允许空字符串保留或在这里 if(!f.empty()) 再 push
+    }
+}
+
+// 只演示 GRID + CTETRA(4 节点)
+vtkSmartPointer<vtkUnstructuredGrid>
+LoadNasToUnstructuredGrid(const std::string &filename)
+{
+    auto ug     = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    auto points = vtkSmartPointer<vtkPoints>::New();
+
+    // Nastran GRID id -> VTK point id
+    std::unordered_map<int, vtkIdType> gridId2VtkId;
+
+    std::ifstream in(filename);
+    if (!in) {
+        std::cerr << "Cannot open nas file: " << filename << std::endl;
+        return nullptr;
+    }
+
+    std::string line;
+    std::vector<std::string> fields;
+
+    while (std::getline(in, line)) {
+        // 跳过空行和注释
+        trim(line);
+        if (line.empty()) continue;
+        if (line[0] == '$' || line[0] == '#') continue;
+
+        // 切成 8 字段
+        splitNas8(line, fields);
+        if (fields.empty()) continue;
+
+        const std::string &card = fields[0];
+
+        // ---- GRID 节点 ----
+        if (card == "GRID") {
+            // F1=GRID, F2=ID, F3=CP, F4=X, F5=Y, F6=Z
+            if (fields.size() < 6) {
+                std::cerr << "Invalid GRID line: " << line << std::endl;
+                continue;
+            }
+
+            int id  = std::stoi(fields[1]);
+            // int cp  = std::stoi(fields[2]); // 暂时用不上
+            double x = std::stod(fields[3]);
+            double y = std::stod(fields[4]);
+            double z = std::stod(fields[5]);
+
+            vtkIdType pid = points->InsertNextPoint(x, y, z);
+            gridId2VtkId[id] = pid;
+        }
+        // ---- CTETRA 四节点 ----
+        else if (card == "CTETRA" || card == "CTETRA4") {
+            // F1=CTETRA, F2=EID, F3=PID, F4=G1, F5=G2, F6=G3, F7=G4, [F8..F10=中间节点]
+            if (fields.size() < 7) {
+                std::cerr << "Invalid CTETRA line: " << line << std::endl;
+                continue;
+            }
+
+            int eid = std::stoi(fields[1]);
+            int pid = std::stoi(fields[2]); (void)eid; (void)pid; // 先不用
+
+            int nasIds[4];
+            for (int i = 0; i < 4; ++i) {
+                nasIds[i] = std::stoi(fields[3 + i]); // F4..F7
+            }
+
+            auto tet = vtkSmartPointer<vtkTetra>::New();
+            bool ok = true;
+            for (int i = 0; i < 4; ++i) {
+                auto it = gridId2VtkId.find(nasIds[i]);
+                if (it == gridId2VtkId.end()) {
+                    std::cerr << "CTETRA uses unknown GRID id: "
+                              << nasIds[i] << std::endl;
+                    ok = false;
+                    break;
+                }
+                tet->GetPointIds()->SetId(i, it->second);
+            }
+            if (!ok) continue;
+
+            ug->InsertNextCell(tet->GetCellType(), tet->GetPointIds());
+        }
+        else {
+            // 其他卡片不管，比如 PSOLID、MAT1 之类，如果有的话
+        }
+    }
+
+    ug->SetPoints(points);
+    return ug;
+}
+
+void NephogramSettingWidget::on_pushButton_4_clicked()
+{
+    std::string filename = "C:/project/cae_base_test/base_cae/build/tempGrid/mesh.nas";
+
+    // 1. 读取 Nastran 网格（体单元）
+    auto ug = LoadNasToUnstructuredGrid(filename);
+    if (!ug || ug->GetNumberOfCells() == 0)
+    {
+        std::cerr << "Failed to load nas file or no cells: " << filename << std::endl;
+        return;
+    }
+
+    std::cout << "UnstructuredGrid: points=" << ug->GetNumberOfPoints()
+              << " cells=" << ug->GetNumberOfCells() << std::endl;
+
+    // 2. 提取外表面
+    auto surfaceFilter = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+    surfaceFilter->SetInputData(ug);
+    surfaceFilter->Update();
+    auto surface = surfaceFilter->GetOutput();
+
+    std::cout << "Surface polys: " << surface->GetNumberOfCells() << std::endl;
+
+    // 2.5 用法向 + Splitting 把锐边打断（按几何面切开）
+    auto normals = vtkSmartPointer<vtkPolyDataNormals>::New();
+    normals->SetInputData(surface);
+    normals->SplittingOn();          // 关键：沿锐边打断拓扑
+    normals->SetFeatureAngle(45.0);  // 锐边阈值，90°的棱肯定会被打断
+    normals->ConsistencyOn();
+    normals->AutoOrientNormalsOn();
+    normals->Update();
+    auto facetedSurface = normals->GetOutput();
+
+    // 3. 连通性分区：每个连通区域 = 一个“几何边界面”
+    auto conn = vtkSmartPointer<vtkPolyDataConnectivityFilter>::New();
+    conn->SetInputData(facetedSurface);
+    conn->SetExtractionModeToAllRegions();
+    conn->ColorRegionsOn(); // 生成 RegionId 标量
+    conn->Update();
+
+    auto coloredSurface = conn->GetOutput();
+    int numRegions = conn->GetNumberOfExtractedRegions();
+    std::cout << "Extracted boundary regions: " << numRegions << std::endl;
+
+    // 4. 取出 RegionId 数组（CellData / PointData 里找）
+    vtkDataArray* regionArray = coloredSurface->GetCellData()->GetArray("RegionId");
+    bool useCellData = true;
+    if (!regionArray)
+    {
+        regionArray = coloredSurface->GetPointData()->GetArray("RegionId");
+        useCellData = false;
+    }
+
+    if (!regionArray)
+    {
+        qWarning() << "No RegionId array found on connectivity output!";
+        return;
+    }
+
+    double range[2] = {0.0, 1.0};
+    regionArray->GetRange(range);   // 理论上就是 [0, numRegions-1]
+
+    if (numRegions <= 0)
+    {
+        numRegions = static_cast<int>(range[1] - range[0] + 0.5);
+        if (numRegions <= 0) numRegions = 1;
+    }
+
+    // 5. 建立 LookupTable，为每个 RegionId 分配不同颜色
+    auto lut = vtkSmartPointer<vtkLookupTable>::New();
+    lut->SetNumberOfTableValues(std::max(numRegions, 1));
+    lut->Build();
+
+    for (int i = 0; i < numRegions; ++i)
+    {
+        // [0,1) 均匀取色相
+        double hue = static_cast<double>(i) / std::max(numRegions, 1);
+        double hsv[3] = { hue, 0.8, 0.9 };  // H, S, V
+        double rgb[3] = { 0.0, 0.0, 0.0 };
+
+        vtkMath::HSVToRGB(hsv, rgb);
+        lut->SetTableValue(i, rgb[0], rgb[1], rgb[2], 1.0);
+    }
+
+    // 6. Mapper：使用 RegionId 作为 scalar 着色
+    auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    mapper->SetInputData(coloredSurface);
+
+    if (useCellData)
+    {
+        coloredSurface->GetCellData()->SetScalars(regionArray);
+        mapper->SetScalarModeToUseCellData();
+    }
+    else
+    {
+        coloredSurface->GetPointData()->SetScalars(regionArray);
+        mapper->SetScalarModeToUsePointData();
+    }
+
+    mapper->SetLookupTable(lut);
+    mapper->SetScalarRange(range);
+    mapper->ScalarVisibilityOn();
+
+    // 7. Actor & 加到你的后处理窗口
+    auto actor = vtkSmartPointer<vtkActor>::New();
+    actor->SetMapper(mapper);
+    actor->GetProperty()->EdgeVisibilityOn();
+    actor->GetProperty()->SetEdgeColor(0, 0, 0);
+
+    m_postProcessingWidget->addActor(actor); // 确保内部会 Render / ResetCamera
+}

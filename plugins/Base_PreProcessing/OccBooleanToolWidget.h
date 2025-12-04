@@ -12,15 +12,18 @@
 
 #include <TopoDS_Shape.hxx>
 
+class vtkActor;
+class PreProcessingWidget;
+
 class OccBooleanTool
 {
 public:
     static TopoDS_Shape Fuse(const TopoDS_Shape& a, const TopoDS_Shape& b);
     static TopoDS_Shape Cut(const TopoDS_Shape& a, const TopoDS_Shape& b);
     static TopoDS_Shape Common(const TopoDS_Shape& a, const TopoDS_Shape& b);
+    static TopoDS_Shape Splitter(const TopoDS_Shape &a, const TopoDS_Shape &b);
 };
-class vtkActor;
-class PreProcessingWidget;
+
 namespace Ui {
 class OccBooleanToolWidget;
 }
@@ -29,7 +32,8 @@ class OccBooleanToolWidget : public BasePage
 {
     Q_OBJECT
 public:
-    explicit OccBooleanToolWidget(PreProcessingWidget *preProcessingWidget,QWidget *parent = nullptr);
+    explicit OccBooleanToolWidget(PreProcessingWidget *preProcessingWidget,
+                                  QWidget *parent = nullptr);
     ~OccBooleanToolWidget() override;
 
     void beforeLoad() override;
@@ -43,6 +47,7 @@ private slots:
     void on_comboBoxB_currentIndexChanged(int index);
     void on_pushButtonApply_clicked();
 
+    // 预留：比如“刷新几何列表”之类
     void on_pushButton_clicked();
 
 private:
@@ -61,12 +66,14 @@ private:
 
     QString m_keyA;
     QString m_keyB;
-    PreProcessingWidget *m_preProcessingWidget;
+    PreProcessingWidget *m_preProcessingWidget = nullptr;
     QString test_tmp;
+
 private:
     void initConnections();
     void fillComboBoxes();
     void setHighlight(const QString& key, const QColor& color, bool on);
     void requestRender();  // 根据你自己的渲染系统实现
 };
+
 #endif // OCCBOOLEANTOOLWIDGET_H

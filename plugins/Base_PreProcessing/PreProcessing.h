@@ -23,6 +23,7 @@ public:
 	bool loadProject() override;
 	void closeProject() override;
 	bool getGridIsDraw() override;
+    void render() override;
 private:
 	bool writeJsonFile(const QString &filePath, const QJsonObject &obj);
 	bool readJsonFile(const QString &filePath, QJsonObject &out);

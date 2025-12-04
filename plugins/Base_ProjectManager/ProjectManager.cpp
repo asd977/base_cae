@@ -7,6 +7,7 @@
 #include <services/SurrogateModelService.h>
 #include <services/PhysicalFieldService.h>
 #include <services/BoundaryConditionsService.h>
+#include <services/SolverService.h>
 
 #include <PublicVariables.h>
 
@@ -276,9 +277,9 @@ qDebug()<<"222";
     PostProcessingService *postProcessingService = ServiceRegistry::instance().getService<PostProcessingService>();
     postProcessingService->newProject();
 qDebug()<<"222";
-    //代理模型
-    // SurrogateModelService *surrogateModelService = ServiceRegistry::instance().getService<SurrogateModelService>();
-    // surrogateModelService->newProject();
+    //求解器
+    SolverService *solverService = ServiceRegistry::instance().getService<SolverService>();
+    solverService->newProject();
 qDebug()<<"222";
 	//代理模型
 	BoundaryConditionsService *boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>();

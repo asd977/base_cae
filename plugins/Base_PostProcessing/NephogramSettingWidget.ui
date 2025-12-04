@@ -136,7 +136,7 @@ QPushButton#pushButton_contour_single:pressed{
     border-color: rgb(80, 80, 80);         /* 点击时的边框颜色 */
 }</string>
   </property>
-  <layout class="QVBoxLayout" name="verticalLayout" stretch="0,0,0,0,0,0,0,0,0,0,1">
+  <layout class="QVBoxLayout" name="verticalLayout" stretch="0,0,0,0,0,0,0,0,0,0,0,1">
    <property name="leftMargin">
     <number>0</number>
    </property>
@@ -280,6 +280,13 @@ QPushButton#pushButton_contour_single:pressed{
     <widget class="QPushButton" name="pushButton_3">
      <property name="text">
       <string>test</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="pushButton_4">
+     <property name="text">
+      <string>PushButton</string>
      </property>
     </widget>
    </item>

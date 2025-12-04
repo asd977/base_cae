@@ -1,6 +1,7 @@
 #include "PrimaryCurrentDistributionWidget.h"
 #include "ui_PrimaryCurrentDistributionWidget.h"
 
+#include <ElectrodeSurfaceSettingWidget.h>
 #include <ElectrolyteSettingWidget.h>
 #include <ProjectNode.h>
 
@@ -44,6 +45,10 @@ void PrimaryCurrentDistributionWidget::on_electrolytePushButton_clicked()
 void PrimaryCurrentDistributionWidget::on_electrodeSurfacePushButton_clicked()
 {
     //添加电极表面
+    ElectrodeSurfaceSettingWidget *electrodeSurfaceSettingWidget= new ElectrodeSurfaceSettingWidget;
+
+    ProjectNode *node2 = new ProjectNode("电极表面",QUuid::createUuid().toString(),(BasePage*)electrodeSurfaceSettingWidget);
+    m_node->addChild(node2);
 }
 
 

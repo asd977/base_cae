@@ -26,6 +26,44 @@ template <typename T> class vtkSmartPointer; // 智能指针模板前置声明
 // -------------------------------------------------------------
 
 
+// 哪个 solver：一次/二次电流分布之类的
+enum class SolverType
+{
+    PrimaryCurrent,   // 一次电流分布
+    SecondaryCurrent, // 二次电流分布
+    // 将来继续加 TertiaryCurrent, ...
+};
+
+// 每个 solver 在某个物理组上的参数：通用 key-value
+struct BCSolverParam
+{
+    SolverType solver;                                 // 哪个 solver
+    std::string bcId;
+    std::map<std::string, double> scalars;            // 标量参数，比如 "phi" / "sigma" / "i0" ...
+};
+
+// Bulk 提交用的记录（一条记录 = 一个物理组在一个 solver 下的一组参数）
+struct BCSolverRecord
+{
+    int dim = -1;                                     // 0/1/2/3
+    int physId = -1;                                  // 物理组 ID
+    SolverType solver = SolverType::PrimaryCurrent;   // solver 类型
+    std::string bcId;
+    std::map<std::string, double> scalars;            // 参数
+};
+
+// 导出给 solver 的最终条目
+struct BCSolverEntry
+{
+    int dim = -1;
+    int physId = -1;
+    std::string name;                        // 物理组名
+    std::vector<vtkIdType> cellIds;         // 单元 id 列表
+    SolverType solver;
+    std::string bcId;
+    std::map<std::string, double> scalars;  // 参数
+};
+
 // 你自己的：从 .msh 里读取 physical names 等
 struct GmshPhysicalInfo
 {
@@ -122,6 +160,7 @@ public:
     // 取出“最近一次 applySelection 的结果”，并清空
     std::vector<BCSelectedGroup> takeSelectionOnce();
 
+    void clearHighlight();
     // -------- 父子关系 & 物理组列表 --------
 
     // 按维度获取所有物理组（用于下拉框）
@@ -137,6 +176,40 @@ public:
     // 物理组 -> cell 列表：给定 (dim, physId)，返回所有 cellId
     std::vector<vtkIdType> getCellsOfGroup(int dim, int physId) const;
 
+    std::vector<int> getPhysIdsForBc(const std::string &bcId, SolverType solver, int dim) const;
+
+    // ========== 边界条件参数: 设置 & 查询 & 导出 ==========
+
+    // 批量提交本页面的配置：
+    //   - 典型用法：在 beforeUnload() 里，把当前页面所有 dim/physId 的配置打包成 records，
+    //              调一次 setSolverParamsBulk。
+    //   - merge = true 表示合并：同 (dim, physId, solver) 会覆盖旧值，其他保持不变。
+    void setSolverParamsBulk(const std::vector<BCSolverRecord>& records,
+                             bool merge = true);
+
+    // 单条设置（有时候页面只改一个也可以用）
+    void setSolverParam(int dim, int physId,
+                        SolverType solver,
+                        const std::string& bcId,
+                        const std::map<std::string, double>& scalars);
+
+    // 判断某个 (dim, physId, solver) 是否已经有设置 —— UI 可据此弹 “是否覆盖？”
+    bool hasSolverParam(int dim, int physId, SolverType solver) const;
+
+    // 获取某个 (dim, physId, solver) 的参数 —— 用于 beforeLoad 回填界面
+    bool getSolverParam(int dim, int physId,
+                        SolverType solver,
+                        BCSolverParam& outParam) const;
+
+    // 导出给某个 solver 的所有边界条件条目：
+    //   - solver: 哪个 solver
+    //   - dimFilter: 若 >=0 则只导出指定维度 (0/1/2/3)，否则导出所有
+    std::vector<BCSolverEntry> exportForSolver(SolverType solver,
+                                               int dimFilter = -1) const;
+
+    void highlightForPage(int dim, const std::vector<int>& physIds);
+
+    void clearSolverParamsForPage(const std::string &bcId, SolverType solver, int dim);
 private:
     // 禁止外部构造 / 拷贝 / 移动
     BoundaryConditions();
@@ -174,6 +247,8 @@ private:
                                   void* clientData,
                                   void* callData);
 
+
+
 private:
     // -------------------------------------------------------------
     // Pimpl Idiom: 所有 VTK 成员都移到了私有实现类中
@@ -207,4 +282,8 @@ private:
 
     // 拾取相关 (非 VTK 依赖，保留)
     BCSelectMode m_pickMode = BCSelectMode::Face;
+
+    std::vector<BCSolverRecord> m_solverRecords;
+
+    std::map<std::tuple<int,int,SolverType>, BCSolverParam> m_solverParams;
 };

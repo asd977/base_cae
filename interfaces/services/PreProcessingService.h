@@ -20,6 +20,7 @@ struct PreProcessingService
 	virtual bool loadProject() = 0;
 	virtual void closeProject() = 0;
 	virtual bool getGridIsDraw() = 0;
+    virtual void render() = 0;
 };
 
 #endif // PREPROCESSINGSERVICE_H

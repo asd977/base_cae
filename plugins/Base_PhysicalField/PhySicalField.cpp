@@ -1,8 +1,4 @@
-﻿#include "ElectroPhoresisSettingWidget.h"
-#include "ElectroPlatingSettingWidget.h"
-#include "ElectrodeSettingWidget.h"
-#include "ElectrolysisSettingWidget.h"
-#include "PhySicalField.h"
+﻿#include "PhySicalField.h"
 #include "PhysicalFieldSettingWidget.h"
 #include <ServiceRegistry.h>
 #include <services/ProjectManagerService.h>
@@ -31,6 +27,7 @@ void PhysicalField::newProject()
     ProjectNode *node2 = new ProjectNode("一次电流分布",QUuid::createUuid().toString(),(BasePage*)primaryCurrentDistributionWidget);
     primaryCurrentDistributionWidget->setNode(node2);
     m_node->addChild(node2);
+
 
 
 

@@ -46,6 +46,8 @@ private slots:
     void on_rightStepComboBox_currentIndexChanged(int index);
     void on_splitSlider_valueChanged(int value);
 
+    void on_pushButton_4_clicked();
+
 private:
     void buildDimPhysIndex();
     void resetCellColors();

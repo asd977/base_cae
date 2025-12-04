@@ -6,14 +6,17 @@ INCLUDEPATH += $$PWD/../../interfaces
 
 HEADERS += \
     CurveWidget.h \
-    Solver.h
+    Solver.h \
+    SolverSettingWidget.h
 
 SOURCES += \
     CurveWidget.cpp \
-    Solver.cpp
+    Solver.cpp \
+    SolverSettingWidget.cpp
 
 FORMS += \
-    CurveWidget.ui
+    CurveWidget.ui \
+    SolverSettingWidget.ui
 
 RESOURCES += \
     ../../res.qrc

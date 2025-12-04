@@ -1,16 +1,19 @@
 ﻿#include "Solver.h"
 
+#include <services/ProjectManagerService.h>
 #include <services/UiFrameService.h>
 #include <ServiceRegistry.h>
 #include "mfem.hpp"
 #include <iostream>
 #include <fstream>
+#include <SolverSettingWidget.h>
 
 using namespace std;
 
 
 Solver::Solver()
 {
+    ServiceRegistry::instance().registerService<SolverService>(this);
     m_curveWidget = new CurveWidget(this);
 
     UiFrameService * uiFrameService = ServiceRegistry::instance().getService<UiFrameService>();
@@ -26,6 +29,7 @@ void Solver::test()
 
 
     mfem::Mesh mesh(mesh_file, 1, 1);
+
     int dim = mesh.Dimension();
 
     cout << "Read mesh from: " << mesh_file << endl;
@@ -192,4 +196,27 @@ void Solver::test()
     cout << "Field 'u'  = potential, scalar" << endl;
     cout << "Field 'J'  = sigma * grad(u), vector (current density up to sign)" << endl;
     cout << "Field 'grad_u' = grad(u), vector" << endl;
+}
+
+void Solver::newProject()
+{
+    SolverSettingWidget *tmp = new SolverSettingWidget;
+    m_root = new ProjectNode("求解器",QUuid::createUuid().toString(),(BasePage*)tmp);
+    ProjectManagerService *projectManagerService= ServiceRegistry::instance().getService<ProjectManagerService>();
+    projectManagerService->addTreeItem(m_root);
+}
+
+bool Solver::saveProject()
+{
+    return true;
+}
+
+bool Solver::loadProject()
+{
+    return true;
+}
+
+void Solver::closeProject()
+{
+
 }

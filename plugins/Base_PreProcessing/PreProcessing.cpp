@@ -290,4 +290,9 @@ bool PreProcessing::getGridIsDraw()
 	return m_preProcessingWidget->getGridIsDraw();
 }
 
+void PreProcessing::render()
+{
+    m_preProcessingWidget->render();
+}
+
 

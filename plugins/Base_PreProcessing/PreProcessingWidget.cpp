@@ -498,6 +498,12 @@ void PreProcessingWidget::addActor(vtkSmartPointer<vtkActor> actor)
     m_renderer->AddActor(actor);
 }
 
+void PreProcessingWidget::render()
+{
+    m_renderWindow->Render();
+
+}
+
 void PreProcessingWidget::removeAllGeomActor()
 {
 	for (auto const & actor : m_mainGeomActor)

@@ -250,6 +250,8 @@ public:
     void afterCreateSimpleGeom(TopoDS_Shape* shape,const QString &uuid);
 
     void addActor(vtkSmartPointer<vtkActor> actor);
+
+    void render();
 public slots:
     void showEvent(QShowEvent *event);
 private:

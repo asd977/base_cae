@@ -350,6 +350,43 @@ void BoundaryConditions::highlightDimPhys(int dim, int physId,
     m_private->m_cellColors->Modified();
 }
 
+void BoundaryConditions::clearSolverParamsForPage(
+    const std::string& bcId,
+    SolverType solver,
+    int dim)
+{
+    // 1) 删 m_solverParams 里属于这个页面的所有条目
+    for (auto it = m_solverParams.begin(); it != m_solverParams.end(); )
+    {
+        int d, physId;
+        SolverType s;
+        std::tie(d, physId, s) = it->first;
+        const auto& param = it->second;
+
+        if (param.bcId == bcId &&
+            param.solver == solver &&
+            d == dim)
+        {
+            it = m_solverParams.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+
+    // 2) 同时清掉 m_solverRecords 里的对应记录（可选，但推荐保持一致）
+    m_solverRecords.erase(
+        std::remove_if(m_solverRecords.begin(), m_solverRecords.end(),
+                       [&](const BCSolverRecord& r){
+                           return r.bcId  == bcId &&
+                                  r.solver == solver &&
+                                  r.dim    == dim;
+                       }),
+        m_solverRecords.end());
+}
+
+
 // ========== 统一刷新：已选 + 预选 + 预删 ==========
 
 void BoundaryConditions::updateSelectionColors()
@@ -581,6 +618,20 @@ std::vector<BCSelectedGroup> BoundaryConditions::takeSelectionOnce()
     return result;
 }
 
+void BoundaryConditions::clearHighlight()
+{
+    // 1. 清所有“持久”状态
+    m_selectedGroups.clear();
+    m_previewGroup       = std::make_pair(-1, -1);
+    m_previewRemoveGroup = std::make_pair(-1, -1);
+
+    // 2. 清“一次性”拾取结果
+    m_currentSelection.clear();
+
+    // 3. 用统一逻辑把所有 cell 颜色恢复默认
+    updateSelectionColors();
+}
+
 // ========== 按维度获取物理组列表 ==========
 
 std::vector<PhysGroupInfo> BoundaryConditions::getGroupsForDim(int dim) const
@@ -716,3 +767,189 @@ void BoundaryConditions::handlePickEvent(vtkObject* caller,
     std::vector<int> ids(1, pid);
     applySelection(static_cast<BCSelectMode>(dim), ids);
 }
+
+// ========== 边界条件参数: 单条设置 & 查询 ==========
+
+void BoundaryConditions::setSolverParam(
+    int dim, int physId,
+    SolverType solver,
+    const std::string& bcId,
+    const std::map<std::string,double>& scalars)
+{
+    std::tuple<int,int,SolverType> key(dim, physId, solver);
+    BCSolverParam p;
+    p.solver  = solver;
+    p.bcId    = bcId;
+    p.scalars = scalars;
+    m_solverParams[key] = std::move(p);
+}
+
+
+bool BoundaryConditions::hasSolverParam(
+    int dim, int physId,
+    SolverType solver) const
+{
+    std::tuple<int,int,SolverType> key(dim, physId, solver);
+    return m_solverParams.find(key) != m_solverParams.end();
+}
+
+bool BoundaryConditions::getSolverParam(
+    int dim, int physId,
+    SolverType solver,
+    BCSolverParam& outParam) const
+{
+    std::tuple<int,int,SolverType> key(dim, physId, solver);
+    auto it = m_solverParams.find(key);
+    if (it == m_solverParams.end())
+        return false;
+    outParam = it->second;
+    return true;
+}
+
+std::vector<int> BoundaryConditions::getPhysIdsForBc(
+    const std::string& bcId,
+    SolverType solver,
+    int dim) const
+{
+    std::vector<int> result;
+
+    for (const auto& kv : m_solverParams)
+    {
+        const auto& key   = kv.first;
+        const auto& param = kv.second;
+
+        if (param.bcId != bcId)
+            continue;
+        if (param.solver != solver)
+            continue;
+
+        int d, physId;
+        SolverType s;
+        std::tie(d, physId, s) = key;
+        if (d != dim)
+            continue;
+
+        result.push_back(physId);
+    }
+
+    return result;
+}
+
+// ========== 边界条件参数: 批量设置 ==========
+
+void BoundaryConditions::setSolverParamsBulk(
+    const std::vector<BCSolverRecord> &records,
+    bool merge)
+{
+    if (!merge)
+    {
+        // 清空所有旧参数
+        m_solverParams.clear();
+        m_solverRecords.clear();
+    }
+    else
+    {
+        // 这次更新涉及到哪些 (bcId, solver, dim)
+        std::set<std::tuple<std::string, SolverType, int>> pageKeys;
+        for (const auto &r : records)
+        {
+            pageKeys.emplace(r.bcId, r.solver, r.dim);
+        }
+
+        // 先把这些 key 所对应的旧参数删掉
+        for (auto it = m_solverParams.begin(); it != m_solverParams.end(); )
+        {
+            int dim; int physId; SolverType s;
+            std::tie(dim, physId, s) = it->first;
+            const auto &param = it->second;
+
+            auto key = std::make_tuple(param.bcId, param.solver, dim);
+            if (pageKeys.count(key) > 0)
+            {
+                it = m_solverParams.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+    }
+
+    // 把新的记录写入 m_solverParams 和 m_solverRecords
+    for (const auto &r : records)
+    {
+        setSolverParam(r.dim, r.physId, r.solver, r.bcId, r.scalars);
+    }
+
+    m_solverRecords.insert(m_solverRecords.end(),
+                           records.begin(), records.end());
+}
+
+
+
+
+// ========== 导出给 solver ==========
+
+std::vector<BCSolverEntry> BoundaryConditions::exportForSolver(
+    SolverType solver,
+    int dimFilter) const
+{
+    std::vector<BCSolverEntry> result;
+
+    for (const auto &kv : m_solverParams)
+    {
+        const auto &key   = kv.first;
+        const auto &param = kv.second;
+
+        if (param.solver != solver)
+            continue;
+
+        int dim, physId;
+        SolverType s;
+        std::tie(dim, physId, s) = key;
+
+        if (dimFilter >= 0 && dim != dimFilter)
+            continue;
+
+
+        BCSolverEntry e;
+        e.dim    = dim;
+        e.physId = physId;
+        e.solver = solver;
+        e.bcId   = param.bcId;
+        e.scalars = param.scalars;
+
+        auto itName = m_gmshInfo.physicalNameMap.find({dim, physId});
+        if (itName != m_gmshInfo.physicalNameMap.end())
+            e.name = itName->second;
+
+        e.cellIds = getCellsOfGroup(dim, physId);
+
+        result.push_back(std::move(e));
+    }
+
+    return result;
+}
+
+void BoundaryConditions::highlightForPage(int dim,
+                                          const std::vector<int>& physIds)
+{
+    if (!m_private->m_fullGrid || !m_private->m_cellColors)
+        return;
+
+    // 1. 清掉旧的“已选 / 预选 / 预删”状态
+    m_selectedGroups.clear();
+    m_previewGroup       = std::make_pair(-1, -1);
+    m_previewRemoveGroup = std::make_pair(-1, -1);
+
+    // 2. 把本页传进来的 physIds 标记为“已选”
+    for (int pid : physIds)
+    {
+        if (pid <= 0) continue;
+        m_selectedGroups[std::make_pair(dim, pid)] = true;
+    }
+
+    // 3. 用统一逻辑刷新颜色
+    updateSelectionColors();
+}
+
