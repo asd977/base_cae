@@ -58,6 +58,7 @@ private:
     static vtkDataArray* arrayByName(vtkUnstructuredGrid* grid, const QString& name);
     void loadFileName(QString dataPath);
     double computeAutoBaseScale(vtkUnstructuredGrid *grid);
+    vtkSmartPointer<vtkUnstructuredGrid> readVtu(const QString &fileName);
 };
 
 #endif // VECTORSETTINGWIDGET_H

@@ -138,7 +138,7 @@ void NephogramSettingWidget::beforeLoad()
 
         m_dataPath = workPath + "/data";
         loadFileName(m_dataPath);
-        fillCompareCombosFromSteps();
+        // fillCompareCombosFromSteps();
         ensureActorAttached();
         m_initialized = true;
 
@@ -175,10 +175,27 @@ void NephogramSettingWidget::on_stepComboBox_currentIndexChanged(int index)
 {
     if (index < 0) return;
     const QString stepText = ui->stepComboBox->itemText(index);
+
     QDir dir(m_dataPath);
-    const QString fullName = dir.filePath(QString("stress_strain%1.txt").arg(stepText));
-    readTecplot(fullName);
+
+    // 自动匹配文件名：stress_strain1-1.xxx
+    QString base = QString("stress_strain%1").arg(stepText);
+
+    // 依次检测 .txt / .vtu
+    QString txtFile = dir.filePath(base + ".txt");
+    QString vtuFile = dir.filePath(base + ".vtu");
+
+    if (QFileInfo::exists(txtFile)) {
+        readTecplot(txtFile);   // 已有流程
+    }
+    else if (QFileInfo::exists(vtuFile)) {
+        readVtu(vtuFile);       // 新增的 vtu 读取
+    }
+    else {
+        qWarning() << "No data file found for step:" << stepText;
+    }
 }
+
 
 void NephogramSettingWidget::loadFileName(QString dataPath)
 {
@@ -193,7 +210,9 @@ void NephogramSettingWidget::loadFileName(QString dataPath)
 
     const QString baseName = "stress_strain";
     const QString extension = ".txt";
-    const QRegularExpression regex(baseName + "(\\d+)" "-" "(\\d+)" + extension);
+    // 匹配 stress_strain1-1.txt 或 stress_strain1-1.vtu
+    const QRegularExpression regex(baseName + "(\\d+)-(\\d+)(\\.txt|\\.vtu)");
+
 
     const QStringList files = directory.entryList(QDir::Files);
     for (const QString &filename : files) {
@@ -573,6 +592,8 @@ void NephogramSettingWidget::loadJson(const QJsonObject& obj)
 #include <vtkPoints.h>
 #include <vtkTetra.h>
 #include <vtkPolyDataNormals.h>
+#include <vtkXMLUnstructuredGridReader.h>
+#include <vtkXMLPolyDataReader.h>
 
 #include <fstream>
 #include <sstream>
@@ -803,4 +824,71 @@ void NephogramSettingWidget::on_pushButton_4_clicked()
     actor->GetProperty()->SetEdgeColor(0, 0, 0);
 
     m_postProcessingWidget->addActor(actor); // 确保内部会 Render / ResetCamera
+}
+
+void NephogramSettingWidget::readVtu(const QString &fileName)
+{
+    // 1) 使用 VTK 的 XML UnstructuredGrid Reader
+    auto reader = vtkSmartPointer<vtkXMLUnstructuredGridReader>::New();
+    reader->SetFileName(fileName.toUtf8().constData());
+
+    // 若是 polydata 也兼容
+    auto readerPoly = vtkSmartPointer<vtkXMLPolyDataReader>::New();
+    bool isUGrid = true;
+
+    QFileInfo info(fileName);
+    if (info.suffix().toLower() == "vtu")
+    {
+        reader->Update();
+        if (!reader->GetOutput())
+        {
+            // 尝试 PolyData
+            readerPoly->SetFileName(fileName.toUtf8().constData());
+            readerPoly->Update();
+            isUGrid = false;
+        }
+    }
+
+    vtkSmartPointer<vtkUnstructuredGrid> grid;
+
+    if (isUGrid && reader->GetOutput())
+    {
+        grid = reader->GetOutput();
+    }
+    else if (readerPoly->GetOutput())
+    {
+        // 把 polydata 包成 unstructuredGrid
+        auto pd = readerPoly->GetOutput();
+        auto append = vtkSmartPointer<vtkAppendFilter>::New();
+        append->AddInputData(pd);
+        append->Update();
+        grid = append->GetOutput();
+    }
+    else
+    {
+        qWarning() << "Failed to read VTU file:" << fileName;
+        return;
+    }
+
+    m_grid = grid;
+    m_loadedFileName = fileName;
+
+    // 2) 填充 scalarComboBox
+    QStringList scalarNames;
+    if (auto* pd = grid->GetPointData()) {
+        const int n = pd->GetNumberOfArrays();
+        for (int i = 0; i < n; ++i) {
+            const char* name = pd->GetArrayName(i);
+            if (name && *name) scalarNames << QString::fromUtf8(name);
+        }
+    }
+
+    ui->scalarComboBox->blockSignals(true);
+    ui->scalarComboBox->clear();
+    ui->scalarComboBox->addItems(scalarNames);
+    if (ui->scalarComboBox->count() > 0)
+        ui->scalarComboBox->setCurrentIndex(0);
+    ui->scalarComboBox->blockSignals(false);
+
+    updateNephogram(ui->scalarComboBox->currentText());
 }

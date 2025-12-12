@@ -282,8 +282,8 @@ qDebug()<<"222";
     solverService->newProject();
 qDebug()<<"222";
 	//代理模型
-	BoundaryConditionsService *boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>();
-	boundaryConditionsService->newProject();
+    // BoundaryConditionsService *boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>();
+    // boundaryConditionsService->newProject();
 qDebug()<<"222";
 
 //	const QString treeXmlPath = m_projectTempFolder + "projectTree.xml";

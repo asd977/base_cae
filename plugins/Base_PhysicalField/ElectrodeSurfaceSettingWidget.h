@@ -20,23 +20,40 @@ public:
     void beforeUnload() override;
 
 private slots:
-    // 按钮
+    // UI 按钮
     void on_addPushButton_clicked();
     void on_removePushButton_clicked();
 
-    // comboBox 下拉 hover（预选面：黄）
+    // comboBox Hover 高亮
     void onComboItemHovered(int row);
-    // comboBox 收起（取消预选）
     void onComboDropdownClosed();
 
-    // listWidget hover 某个 item（预删面：红）
+    // listWidget Hover/选择 预删
     void onListItemEntered(QListWidgetItem *item);
-    // listWidget 选择变化时，取消预删
     void onListItemSelectionChanged();
 
-private:
-    void refreshRender(); // 调你自己的 VTK 刷新接口
+    // 二次电流分布 开关 & 模型切换
+    void on_secondaryCheckBox_toggled(bool checked);
+    void on_modelComboBox_currentIndexChanged(int index);
+
+    // Tafel 子支路启用/禁用
+    void on_useAnodicTafelCheckBox_toggled(bool checked);
+    void on_useCathodicTafelCheckBox_toggled(bool checked);
 
 private:
     Ui::ElectrodeSurfaceSettingWidget *ui;
+
+    // 渲染
+    void refreshRender();
+
+    // 根据当前 secondaryCheckBox / modelComboBox 等更新 UI 显示与 enabled
+    void updateModelUI();
+    void updateTafelSubUI();
+
+    // 从 BCSolverParam 回填二次电流分布 UI
+    void loadSecondaryParams(const BCSolverParam &param);
+
+    // 把 UI 中二次电流分布设置打包进 scalars
+    void collectSecondaryScalars(std::map<std::string, double> &scalars) const;
 };
+

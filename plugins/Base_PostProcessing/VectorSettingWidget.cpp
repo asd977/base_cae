@@ -27,6 +27,7 @@
 #include <cmath>
 #include <limits>
 #include <stdio.h>
+#include <vtkXMLUnstructuredGridReader.h>
 
 VectorSettingWidget::VectorSettingWidget(PostProcessingWidget *postProcessingWidget, QWidget *parent) :
     ui(new Ui::VectorSettingWidget),
@@ -119,7 +120,8 @@ void VectorSettingWidget::loadFileName(QString dataPath)
 
     const QString baseName = "stress_strain";
     const QString extension = ".txt";
-    const QRegularExpression regex(baseName + "(\\d+)" "-" "(\\d+)" + extension);
+    const QRegularExpression regex(baseName + "(\\d+)-(\\d+)(\\.txt|\\.vtu)");
+
 
     const QStringList files = directory.entryList(QDir::Files);
     for (const QString &filename : files) {
@@ -153,10 +155,20 @@ void VectorSettingWidget::on_stepComboBox_currentIndexChanged(int index)
 
     const QString stepText = ui->stepComboBox->itemText(index).trimmed();
     QDir dir(m_dataPath);
-    const QString newFile = dir.filePath(QString("stress_strain%1.txt").arg(stepText));
+    QString base = QString("stress_strain%1").arg(stepText);
+    QString txtFile = dir.filePath(base + ".txt");
+    QString vtuFile = dir.filePath(base + ".vtu");
 
-    // 关键：用 setFileName()，内部会把 m_grid 置空，强制下次重新读取
+    QString newFile;
+    if (QFileInfo::exists(txtFile)) newFile = txtFile;
+    else if (QFileInfo::exists(vtuFile)) newFile = vtuFile;
+    else {
+        qWarning() << "[Vector] No data file found for step:" << stepText;
+        return;
+    }
+
     setFileName(newFile);
+
 
     // 切文件时，先把旧的箭头从场景移除，避免看到旧结果
     if (m_postProcessingWidget && m_vectorActor) {
@@ -181,40 +193,52 @@ void VectorSettingWidget::setFileName(const QString &file)
 bool VectorSettingWidget::ensureDataLoaded()
 {
     if (m_grid) return true;
-    if (m_fileName.isEmpty()) {
-        qWarning() << "[Vector] 未设置 Tecplot 文件路径。";
-        return false;
-    }
+    if (m_fileName.isEmpty()) return false;
 
-    auto reader = vtkSmartPointer<vtkTecplotReader>::New();
-    reader->SetFileName(m_fileName.toUtf8().constData());
-    reader->Update();
+    QFileInfo info(m_fileName);
+    QString ext = info.suffix().toLower();
 
-    vtkMultiBlockDataSet* multi = vtkMultiBlockDataSet::SafeDownCast(reader->GetOutput());
-    if (!multi) {
-        qWarning() << "[Vector] Tecplot 读取失败：不是 MultiBlock 数据。";
-        return false;
-    }
+    vtkSmartPointer<vtkUnstructuredGrid> grid;
 
-    auto appender = vtkSmartPointer<vtkAppendFilter>::New();
-    for (int i = 0; i < multi->GetNumberOfBlocks(); ++i) {
-        if (auto* block = vtkUnstructuredGrid::SafeDownCast(multi->GetBlock(i))) {
-            appender->AddInputData(block);
+    if (ext == "txt")
+    {
+        // ---- 原来的 Tecplot ----
+        auto reader = vtkSmartPointer<vtkTecplotReader>::New();
+        reader->SetFileName(m_fileName.toUtf8().constData());
+        reader->Update();
+
+        auto multi = vtkMultiBlockDataSet::SafeDownCast(reader->GetOutput());
+        if (!multi) return false;
+
+        auto appender = vtkSmartPointer<vtkAppendFilter>::New();
+        for (int i = 0; i < multi->GetNumberOfBlocks(); ++i) {
+            if (auto* block = vtkUnstructuredGrid::SafeDownCast(multi->GetBlock(i))) {
+                appender->AddInputData(block);
+            }
         }
-    }
-    appender->Update();
+        appender->Update();
 
-    if (!appender->GetOutput() || appender->GetOutput()->GetNumberOfPoints() == 0) {
-        qWarning() << "[Vector] Tecplot 多块合并为空。";
+        grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+        grid->ShallowCopy(appender->GetOutput());
+    }
+    else if (ext == "vtu")
+    {
+        // ---- 新增的 vtu ----
+        grid = readVtu(m_fileName);
+    }
+    else
+    {
+        qWarning() << "[Vector] Unsupported file:" << m_fileName;
         return false;
     }
 
-    m_grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
-    m_grid->ShallowCopy(appender->GetOutput());
+    if (!grid || grid->GetNumberOfPoints() == 0) return false;
 
+    m_grid = grid;
     populateComponentCombos();
     return true;
 }
+
 
 void VectorSettingWidget::populateComponentCombos()
 {
@@ -463,3 +487,20 @@ void VectorSettingWidget::on_scaleSlider_valueChanged(int value)
     }
 }
 
+vtkSmartPointer<vtkUnstructuredGrid>
+VectorSettingWidget::readVtu(const QString &fileName)
+{
+    auto reader = vtkSmartPointer<vtkXMLUnstructuredGridReader>::New();
+    reader->SetFileName(fileName.toUtf8().constData());
+    reader->Update();
+
+    vtkUnstructuredGrid* ug = reader->GetOutput();
+    if (!ug || ug->GetNumberOfPoints() == 0) {
+        qWarning() << "[Vector] Failed to read VTU file:" << fileName;
+        return nullptr;
+    }
+
+    auto result = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    result->ShallowCopy(ug);
+    return result;
+}

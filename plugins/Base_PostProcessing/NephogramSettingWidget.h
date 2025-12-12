@@ -107,6 +107,7 @@ private:
     bool m_initialized{false};    // 首次进入才读数据/填 step
     bool m_actorAttached{false};  // 避免重复 addActor
 
+    void readVtu(const QString &fileName);
 };
 
 #endif

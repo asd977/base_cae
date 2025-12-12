@@ -24,7 +24,7 @@ void PhysicalField::newProject()
     projectManagerService->addTreeItem(m_node);
 
     PrimaryCurrentDistributionWidget *primaryCurrentDistributionWidget = new PrimaryCurrentDistributionWidget;
-    ProjectNode *node2 = new ProjectNode("一次电流分布",QUuid::createUuid().toString(),(BasePage*)primaryCurrentDistributionWidget);
+    ProjectNode *node2 = new ProjectNode("一次/二次电流分布",QUuid::createUuid().toString(),(BasePage*)primaryCurrentDistributionWidget);
     primaryCurrentDistributionWidget->setNode(node2);
     m_node->addChild(node2);
 
