@@ -27,10 +27,10 @@ UiFrame::UiFrame(QWidget* par, SARibbonMainWindowStyles style) : SARibbonMainWin
     initDockManager();
     ServiceRegistry::instance().registerService<UiFrameService>(this);
     setWindowFlags(Qt::Window | Qt::WindowTitleHint | Qt::WindowSystemMenuHint | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint);
-    EventManager::instance().registerHandler(PublicConstants::EVENT_LODA_COMPLETE, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kEventLoadComplete, [this](const QVariantMap &data) {
         this->restoreUiState();
     });
-    EventManager::instance().registerHandler(PublicConstants::EVENT_QUIT_APP, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kEventQuitApp, [this](const QVariantMap &data) {
         this->storeUiState();
     });
     setWindowIcon(QIcon(":/resources/icon.svg"));
@@ -496,10 +496,10 @@ void UiFrame::buildRibbonAppButton()
 	addRibbonPanelAction(boundPanel, m_lineBoundAct, 3);
     m_pointBoundAct = new QAction(QIcon(":/resources/menu/boundary_point.png"), ("&点"));
 	addRibbonPanelAction(boundPanel, m_pointBoundAct, 3);
-	connect(m_solidBoundAct, &QAction::triggered, this, [this]() {EventManager::instance().sendEvent(PublicConstants::ACTION_BOUNDARY_SOLID); });
-	connect(m_faceBoundAct, &QAction::triggered, this, [this]() {EventManager::instance().sendEvent(PublicConstants::ACTION_BOUNDARY_FACE); });
-	connect(m_lineBoundAct, &QAction::triggered, this, [this]() {EventManager::instance().sendEvent(PublicConstants::ACTION_BOUNDARY_LINE); });
-	connect(m_pointBoundAct, &QAction::triggered, this, [this]() {EventManager::instance().sendEvent(PublicConstants::ACTION_BOUNDARY_POINT); });
+	connect(m_solidBoundAct, &QAction::triggered, this, [this]() {EventManager::instance().sendEvent(PublicConstants::kActionBoundarySolid); });
+	connect(m_faceBoundAct, &QAction::triggered, this, [this]() {EventManager::instance().sendEvent(PublicConstants::kActionBoundaryFace); });
+	connect(m_lineBoundAct, &QAction::triggered, this, [this]() {EventManager::instance().sendEvent(PublicConstants::kActionBoundaryLine); });
+	connect(m_pointBoundAct, &QAction::triggered, this, [this]() {EventManager::instance().sendEvent(PublicConstants::kActionBoundaryPoint); });
 #pragma endregion 
 
 #pragma region 结果标签页
@@ -883,87 +883,87 @@ void UiFrame::setRibbonCategoryVisible(SARibbonCategory * cate, bool isVisible)
 
 void UiFrame::onNewProjectClicked()
 {
-    EventManager::instance().sendEvent(PublicConstants::ACTION_NEW_PROJECT);
+    EventManager::instance().sendEvent(PublicConstants::kActionNewProject);
 }
 
 void UiFrame::onNephogramClicked()
 {
-    EventManager::instance().sendEvent(PublicConstants::ACTION_POSTPROCESS_NEPHOGRAM);
+    EventManager::instance().sendEvent(PublicConstants::kActionPostProcessNephogram);
 }
 
 void UiFrame::onVectorsClicked()
 {
-    EventManager::instance().sendEvent(PublicConstants::ACTION_POSTPROCESS_VECTOR);
+    EventManager::instance().sendEvent(PublicConstants::kActionPostProcessVector);
 }
 
 void UiFrame::onSectionClicked()
 {
-    EventManager::instance().sendEvent(PublicConstants::ACTION_POSTPROCESS_SECTION);
+    EventManager::instance().sendEvent(PublicConstants::kActionPostProcessSection);
 }
 
 void UiFrame::onDiceResultClicked()
 {
-    EventManager::instance().sendEvent(PublicConstants::ACTION_POSTPROCESS_DICE);
+    EventManager::instance().sendEvent(PublicConstants::kActionPostProcessDice);
 }
 
 void UiFrame::onIsosurfacesResultClicked()
 {
-    EventManager::instance().sendEvent(PublicConstants::ACTION_POSTPROCESS_ISOSURFACE);
+    EventManager::instance().sendEvent(PublicConstants::kActionPostProcessIsosurface);
 }
 
 void UiFrame::onIsosurfacesSegClicked()
 {
-    EventManager::instance().sendEvent(PublicConstants::ACTION_POSTPROCESS_ISOSURFACESEG);
+    EventManager::instance().sendEvent(PublicConstants::kActionPostProcessIsosurfaceSegmentation);
 }
 
 void UiFrame::onXYPlotResultClicked()
 {
-    EventManager::instance().sendEvent(PublicConstants::ACTION_POSTPROCESS_XYPLOT);
+    EventManager::instance().sendEvent(PublicConstants::kActionPostProcessXyPlot);
 }
 
 void UiFrame::onAnimationResultClicked()
 {
-    EventManager::instance().sendEvent(PublicConstants::ACTION_POSTPROCESS_ANIMATION);
+    EventManager::instance().sendEvent(PublicConstants::kActionPostProcessAnimation);
 }
 
 void UiFrame::onPickPhysicalResultClicked()
 {
-    EventManager::instance().sendEvent(PublicConstants::ACTION_POSTPROCESS_PICKPHYSICAL);
+    EventManager::instance().sendEvent(PublicConstants::kActionPostProcessPickPhysical);
 }
 
 void UiFrame::onDerivativeResultClicked()
 {
-    EventManager::instance().sendEvent(PublicConstants::ACTION_POSTPROCESS_DERIVATIVE);
+    EventManager::instance().sendEvent(PublicConstants::kActionPostProcessDerivative);
 }
 
 void UiFrame::onDataExpResultClicked()
 {
-    EventManager::instance().sendEvent(PublicConstants::ACTION_POSTPROCESS_DATAEXP);
+    EventManager::instance().sendEvent(PublicConstants::kActionPostProcessDataExport);
 }
 
 void UiFrame::onZJSamplingModelClicked()
 {
-    EventManager::instance().sendEvent(PublicConstants::ACTION_SURROGATEMODEL_ORTHOGONAL);
+    EventManager::instance().sendEvent(PublicConstants::kActionSurrogateModelOrthogonal);
 }
 
 void UiFrame::onLdclfSamplingModelClicked()
 {
-    EventManager::instance().sendEvent(PublicConstants::ACTION_SURROGATEMODEL_LATIN);
+    EventManager::instance().sendEvent(PublicConstants::kActionSurrogateModelLatin);
 }
 
 void UiFrame::onDataEvalModelClicked()
 {
-    EventManager::instance().sendEvent(PublicConstants::ACTION_SURROGATEMODEL_DATAEVALUATION);
+    EventManager::instance().sendEvent(PublicConstants::kActionSurrogateModelDataEvaluation);
 }
 
 void UiFrame::onDNNModelClicked()
 {
-    EventManager::instance().sendEvent(PublicConstants::ACTION_SURROGATEMODEL_DNN);
+    EventManager::instance().sendEvent(PublicConstants::kActionSurrogateModelDnn);
 }
 
 void UiFrame::onPODModelClicked()
 {
-    EventManager::instance().sendEvent(PublicConstants::ACTION_SURROGATEMODEL_POD);
+    EventManager::instance().sendEvent(PublicConstants::kActionSurrogateModelPod);
 }
 
 void UiFrame::updateTransparencyLabel(int value)
@@ -979,7 +979,7 @@ void UiFrame::onResetWidgetClicked()
 
 void UiFrame::onBoolenClicked()
 {
-    EventManager::instance().sendEvent(PublicConstants::ACTION_POSTPROCESS_OCCBOOLEN);
+    EventManager::instance().sendEvent(PublicConstants::kActionPostProcessOccBoolean);
 }
 void UiFrame::onColorThemeChanged(const QString & text)
 {

@@ -53,21 +53,14 @@ public:
 		selectPointButton->setIcon(QIcon(":resources/icon/switch-off.png"));
 		selectPointButton->setFixedSize(50, 50);
 		selectPointButton->setIconSize(selectPointButton->size());
-		selectPointButton->setStyleSheet("QPushButton { border: none; padding: 0px; }");
 
 		selectPointOrLineButton->setIcon(QIcon(":resources/icon/switch-off.png"));
 		selectPointOrLineButton->setFixedSize(50, 50);
 		selectPointOrLineButton->setIconSize(selectPointOrLineButton->size());
-		selectPointOrLineButton->setStyleSheet("QPushButton { border: none; padding: 0px; }");
 
 		calculateDistanceButton->setIcon(QIcon(":resources/icon/ruler.png"));
 		calculateDistanceButton->setFixedSize(50, 50);
 		calculateDistanceButton->setIconSize(calculateDistanceButton->size());
-		calculateDistanceButton->setStyleSheet(
-			"QPushButton { border: none; padding: 0px; }"
-			"QPushButton:hover:enabled { background-color: #87CEEB; color: black; }"
-			"QPushButton:disabled { background-color: #A0A0A0; color: white; }"
-		);
 		calculateDistanceButton->setEnabled(false);
 
 		comboBox->addItems(QStringList() << "点" << "线");

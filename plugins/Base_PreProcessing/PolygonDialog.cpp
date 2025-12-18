@@ -5,7 +5,7 @@
 #include <PublicVariables.h>
 #include <PublicConstants.h>
 
-PolygonDialog::PolygonDialog(QWidget* parent) : BasePage(PublicConstants::PAGE_PREPROCESS_POLYGON)
+PolygonDialog::PolygonDialog(QWidget* parent) : BasePage(PublicConstants::kPagePreprocessPolygon)
 {
 	QVBoxLayout* layout = new QVBoxLayout(this);
 
@@ -40,24 +40,6 @@ PolygonDialog::PolygonDialog(QWidget* parent) : BasePage(PublicConstants::PAGE_P
 	// 创建按钮
 	QPushButton *okButton = new QPushButton("生成几何体", this);
 	okButton->setIcon(QIcon(":/resources/icon/confirm.png")); // 确认图标
-
-	// 使用 QSS 去除按钮边框并优化视觉融合
-	QString buttonStyle = R"(
-        QPushButton {
-            border: none; /* 去除边框 */
-            background: transparent; /* 透明背景 */
-            padding: 2px; /* 减少内边距，文字和图标更紧凑 */
-            color: #333; /* 文字颜色，深灰色 */
-        }
-        QPushButton:hover {
-            background: #e0e0e0; /* 鼠标悬停时浅灰背景 */
-            border-radius: 4px; /* 圆角效果 */
-        }
-        QPushButton:pressed {
-            background: #c0c0c0; /* 点击时更深的背景 */
-        }
-    )";
-	okButton->setStyleSheet(buttonStyle);
 	QHBoxLayout* buttonLayout = new QHBoxLayout();
 	buttonLayout->addStretch();
 	buttonLayout->addWidget(okButton);

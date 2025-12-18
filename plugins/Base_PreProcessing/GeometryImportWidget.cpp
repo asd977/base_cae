@@ -5,7 +5,7 @@
 #include <PublicVariables.h>
 #include <PublicConstants.h>
 
-GeometryImportWidget::GeometryImportWidget(QWidget *parent) : BasePage(PublicConstants::PAGE_PREPROCESS_IMPORTGEOM)
+GeometryImportWidget::GeometryImportWidget(QWidget *parent) : BasePage(PublicConstants::kPagePreprocessImportGeometry)
 {
 	// 创建 UI 组件
 	pathLabel = new QLabel("几何文件路径:", this);
@@ -30,23 +30,6 @@ GeometryImportWidget::GeometryImportWidget(QWidget *parent) : BasePage(PublicCon
 	importButton->setIcon(QIcon(":/resources/icon/geomImport.png"));
 	browseButton->setFixedWidth(60);
 	importButton->setFixedWidth(60);
-	QString buttonStyle = R"(
-        QPushButton {
-            border: none; /* 去除边框 */
-            background: transparent; /* 透明背景 */
-            padding: 2px; /* 减少内边距，文字和图标更紧凑 */
-            color: #333; /* 文字颜色，深灰色 */
-        }
-        QPushButton:hover {
-            background: #e0e0e0; /* 鼠标悬停时浅灰背景 */
-            border-radius: 4px; /* 圆角效果 */
-        }
-        QPushButton:pressed {
-            background: #c0c0c0; /* 点击时更深的背景 */
-        }
-    )";
-	browseButton->setStyleSheet(buttonStyle);
-	importButton->setStyleSheet(buttonStyle);
 
 	// 连接信号和槽
 	connect(browseButton, &QPushButton::clicked, this, &GeometryImportWidget::onBrowseButtonClicked);

@@ -5,26 +5,19 @@
 #include <PluginInterface.h>
 #include <EventManager.h>
 #include <PublicConstants.h>
+#include <StyleManager.h>
 #include <QSurfaceFormat>
 
 void onAppAboutToQuit()
 {
-    EventManager::instance().sendEvent(PublicConstants::EVENT_QUIT_APP);
+    EventManager::instance().sendEvent(PublicConstants::kEventQuitApp);
 }
 
 int main(int argc, char** argv)
 {
-
-    qDebug()<<"asd";
     QApplication app(argc, argv);
 
-    qDebug()<<"asd";
-
-//    QFile styleFile(":/resources/style/app.qss");
-//    if (styleFile.open(QFile::ReadOnly))
-//    {
-//        app.setStyleSheet(styleFile.readAll());
-//    }
+    StyleManager::applyStyleSheet(app, QStringLiteral(":/resources/style/app.qss"));
 
     QString exePath = QCoreApplication::applicationDirPath();
 
@@ -80,8 +73,7 @@ int main(int argc, char** argv)
         }
     }
 
-    EventManager::instance().sendEvent(PublicConstants::EVENT_LODA_COMPLETE);
+    EventManager::instance().sendEvent(PublicConstants::kEventLoadComplete);
     return app.exec();
 }
-
 

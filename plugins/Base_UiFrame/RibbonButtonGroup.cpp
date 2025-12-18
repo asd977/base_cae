@@ -9,16 +9,6 @@ RibbonButtonGroup::RibbonButtonGroup(QWidget *parent)
   , m_title("")
 {
   ui->setupUi(this);
-  QString styleSheetText = QString(
-      "QToolButton {"
-      "    border: none;"
-      "    padding: 5px;"
-      "}"
-      "QToolButton:hover {"
-      "    background-color: #D3D3D3;"
-      "}"
-  );
-  setStyleSheet(styleSheetText);
 }
 
 RibbonButtonGroup::~RibbonButtonGroup()

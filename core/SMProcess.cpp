@@ -4,16 +4,17 @@ namespace SMProcessTool
 {
 SMProcess::SMProcess(const QString &program)
 {
-    this->setProgram(program);
-	m_name = program;
-    initConn();
+    setProgram(program);
+	m_programPath = program;
+    initializeConnections();
 }
 
 SMProcess::SMProcess(const QString &program, const QStringList &args)
 {
-    m_name = program;
-    m_args = args;
-    initConn();
+    setProgram(program);
+    m_programPath = program;
+    m_arguments = args;
+    initializeConnections();
 }
 
 SMProcess::~SMProcess()
@@ -24,24 +25,30 @@ SMProcess::~SMProcess()
 
 void SMProcess::startProcess(bool async)
 {
-    qInfo().noquote() << m_name;
-    if(m_args.empty()){
-        if(async){
-		    this->setProcessChannelMode(QProcess::ForwardedChannels);
-            this->startDetached();
-        }else{
-            this->start();
+    qInfo().noquote() << m_programPath;
+    const bool hasArguments = !m_arguments.isEmpty();
+
+    if (async)
+    {
+        setProcessChannelMode(QProcess::ForwardedChannels);
+        if (hasArguments)
+        {
+            QProcess::startDetached(m_programPath, m_arguments);
         }
+        else
+        {
+            QProcess::startDetached(m_programPath, {});
+        }
+        return;
     }
 
-    if(!m_args.empty()){
-        qInfo().noquote() << m_args;
-        if(async){
-            this->setProcessChannelMode(QProcess::ForwardedChannels);
-            this->startDetached(m_name, m_args);
-        }else{
-            this->start(m_name, m_args);
-        }
+    if (hasArguments)
+    {
+        start(m_programPath, m_arguments);
+    }
+    else
+    {
+        start(m_programPath, {});
     }
 }
 
@@ -85,11 +92,10 @@ void SMProcess::onError(ProcessError error)
 void SMProcess::onOutput()
 {
 	QByteArray outputData = this->readAllStandardOutput();
-	QString text = outputData;
     qInfo().noquote()<< outputData;
 }
 
-void SMProcess::initConn()
+void SMProcess::initializeConnections()
 {
     connect(this, &QProcess::readyReadStandardOutput, this, &SMProcess::onOutput);
     connect(this, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, &SMProcess::onFinished);

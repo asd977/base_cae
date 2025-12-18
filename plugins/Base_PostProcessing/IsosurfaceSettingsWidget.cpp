@@ -62,7 +62,7 @@ static QVector<double> genUniformTs(int N, bool includeEnds)
 IsosurfaceSettingsWidget::IsosurfaceSettingsWidget(PostProcessingWidget* ppw,
                                                    QWidget *parent)
     : ui(new Ui::IsosurfaceSettingsWidget),
-      BasePage(PublicConstants::PAGE_POSTPROCESS_ISOSURFACE)
+      BasePage(PublicConstants::kPagePostProcessIsosurface)
     , m_postProcessingWidget(ppw)
 {
     ui->setupUi(this);
@@ -121,7 +121,7 @@ void IsosurfaceSettingsWidget::beforeLoad()
     }
     if (!m_loadedOnce) {
         // <project>/data
-        m_dataPath = PublicVariables::instance().get(PublicConstants::VALUE_PROJECT_DIR).toString() + "/data";
+        m_dataPath = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString() + "/data";
 //        readTecplotLatest();
         loadFileName(m_dataPath);
 //        fillScalarCombo();

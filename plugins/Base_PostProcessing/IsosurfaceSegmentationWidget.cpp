@@ -30,7 +30,7 @@
 IsosurfaceSegmentationWidget::IsosurfaceSegmentationWidget(PostProcessingWidget* postProcessingWidget,
                                                            QWidget* parent)
     : ui(new Ui::IsosurfaceSegmentationWidget),
-      BasePage(PublicConstants::PAGE_POSTPROCESS_ISOSURFACESEG)
+      BasePage(PublicConstants::kPagePostProcessIsosurfaceSegmentation)
     , m_postProcessingWidget(postProcessingWidget)
 {
     ui->setupUi(this);
@@ -89,7 +89,7 @@ IsosurfaceSegmentationWidget::~IsosurfaceSegmentationWidget()
 void IsosurfaceSegmentationWidget::beforeLoad()
 {
     if (m_dataPath.isEmpty()) {
-        m_dataPath = PublicVariables::instance().get(PublicConstants::VALUE_PROJECT_DIR).toString() + "/data";
+        m_dataPath = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString() + "/data";
     }
 
     if (ui->stepComboBox->count() == 0) {

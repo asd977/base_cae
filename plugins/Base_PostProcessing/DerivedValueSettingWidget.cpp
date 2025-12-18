@@ -83,7 +83,7 @@ static Stats calcArrayStats(vtkDataArray* arr, bool magnitude)
 
 DerivedValueSettingWidget::DerivedValueSettingWidget(QWidget *parent)
     : ui(new Ui::DerivedValueSettingWidget),
-      BasePage(PublicConstants::PAGE_POSTPROCESS_DERIVATIVE)
+      BasePage(PublicConstants::kPagePostProcessDerivative)
 {
     ui->setupUi(this);
 
@@ -138,7 +138,7 @@ DerivedValueSettingWidget::~DerivedValueSettingWidget()
 
 void DerivedValueSettingWidget::beforeLoad()
 {
-    m_dataPath = PublicVariables::instance().get(PublicConstants::VALUE_PROJECT_DIR).toString() + "/data";
+    m_dataPath = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString() + "/data";
 //    if (!m_loadedOnce) {
 //
 

@@ -10,42 +10,6 @@
 Ribbon::Ribbon(QWidget *parent)
   : QTabWidget(parent)
 {
-//  setAutoFillBackground(true);
-
-  // Set stylesheet
-  QString styleSheetText = QString(
-
-
-    "QTabBar::tab {"
-             " font-size: 17px;"
-    "  padding: 0px;"
-              "width:70px;"
-              "height:30px;"
-
-    "  margin: 0px;"
-    "}"
-    ""
-    "QTabBar::tab::!selected {"
-    "  background-color:rgb(234,237,238);"
-    "}"
-    ""
-    "QTabBar::tab:selected {"
-    "  background-color: rgb(255, 255, 255);"
-    "}"
-    ""
-    "QTabBar::tab:hover"
-    "{"
-    "  background-color: rgb(205, 232, 255);"
-    "}"
-    ""
-    "QTabBar::tab:selected:hover {"
-
-    "}"
-    );
-
-  setStyleSheet(styleSheetText);
-
-
 }
 
 void Ribbon::addFileButton(QPushButton *button)

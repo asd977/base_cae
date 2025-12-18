@@ -34,7 +34,7 @@
 AnimationAviWidget::AnimationAviWidget(PostProcessingWidget* postProcessingWidget,
                                        QWidget* parent)
     : ui(new Ui::AnimationAviWidget)
-    , BasePage(PublicConstants::PAGE_POSTPROCESS_ANIMATION)
+    , BasePage(PublicConstants::kPagePostProcessAnimation)
     , m_postProcessingWidget(postProcessingWidget)
 {
     ui->setupUi(this);
@@ -486,7 +486,7 @@ void AnimationAviWidget::on_saveAviButton_clicked()
 void AnimationAviWidget::on_loadPushButton_clicked()
 {
     // <project>/data
-    m_dataPath = QDir(PublicVariables::instance().get(PublicConstants::VALUE_PROJECT_DIR).toString())
+    m_dataPath = QDir(PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString())
                  .filePath("data");
 
     scanFrames();

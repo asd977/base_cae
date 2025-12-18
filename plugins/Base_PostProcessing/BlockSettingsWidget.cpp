@@ -23,7 +23,7 @@
 BlockSettingsWidget::BlockSettingsWidget(PostProcessingWidget* postProcessingWidget,
                                          QWidget* parent)
     : ui(new Ui::BlockSettingsWidget),
-      BasePage(PublicConstants::PAGE_POSTPROCESS_BLOCK)
+      BasePage(PublicConstants::kPagePostProcessBlock)
     , m_postProcessingWidget(postProcessingWidget)
 {
     ui->setupUi(this);
@@ -58,7 +58,7 @@ void BlockSettingsWidget::beforeLoad()
 {
     if (m_dataPath.isEmpty()) {
         const QString workPath =
-            PublicVariables::instance().get(PublicConstants::VALUE_PROJECT_DIR).toString();
+            PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
         m_dataPath = workPath + "/data";
     }
 

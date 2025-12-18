@@ -37,16 +37,10 @@ public:
 		toggleButton->setIcon(QIcon(":resources/icon/switch-off.png"));
 		toggleButton->setFixedSize(50, 50);
 		toggleButton->setIconSize(toggleButton->size());
-		toggleButton->setStyleSheet("QPushButton { border: none; padding: 0px; }");
 		calculateButton->setEnabled(false);
 		calculateButton->setIcon(QIcon(":resources/icon/centroid.png"));
 		calculateButton->setFixedSize(50, 50);
 		calculateButton->setIconSize(calculateButton->size());
-		calculateButton->setStyleSheet(
-			"QPushButton { border: none; padding: 0px; }"
-			"QPushButton:hover:enabled { background-color: #87CEEB; color: black; }" // 悬停（启用时）
-			"QPushButton:disabled { background-color: #A0A0A0; color: white; }" // 禁用
-		);
 		connect(toggleButton, &QPushButton::clicked, this, &CentroidPickingDialog::togglePicking);
 		connect(this, &QDialog::rejected, this, &CentroidPickingDialog::onDialogClosed);
 		connect(calculateButton, &QPushButton::clicked, this, &CentroidPickingDialog::onCalculateCentroid);
@@ -103,4 +97,3 @@ private:
 	bool pickingEnabled = false;
 	QPushButton* calculateButton;
 };
-

@@ -27,42 +27,7 @@ void ProjectManagerWidget::setupMenuButton()
     //-----------添加到文件的
     QPushButton *button = new QPushButton(("文件"));
 
-    QString buttonstyle = "QPushButton {"
-                          "    background-color: rgb(54, 140, 203); /* 设置背景色 */"
-                          "  text-align: center;"
-                          "padding:0px;"
-                          "padding-left:5px;"
-                          "font-size:17px;"
-                          "font-family: Microsoft YaHei, 微软雅黑;"
-                          "    color: white; /* 设置文本颜色 */"
-                          "}"
-                          "QPushButton::menu-indicator{image:none}"
-                          "QPushButton:hover {"
-                          "    background-color: #0078D7; /* 设置鼠标悬停时的背景色 */"
-                          "    color: black; /* 设置鼠标悬停时的文本颜色 */"
-                          "}"
-                          "QPushButton:pressed {"
-                          "    background-color: #005499; /* 设置按钮按下时的背景色 */"
-                          "}";
-
-    button->setStyleSheet(buttonstyle);
-
     QMenu *menu = new QMenu(button);
-
-    QString style = "QMenu {"
-                    "    background-color: #F0F0F0; /* 设置背景色 */"
-                    "    border: 1px solid #707070; /* 设置边框 */"
-                    "}"
-
-                    "QMenu::item {"
-                    "    padding: 5px 20px; /* 设置每个菜单项的内边距 */"
-                    "}"
-                    "QMenu::item:selected {"
-                    "    background-color: #0078D7; /* 设置选中时的背景色 */"
-                    "    color: white; /* 设置选中时的文本颜色 */"
-                    "}";
-
-    menu->setStyleSheet(style);
 
     // 创建 QActions，并添加到 QMenu
     m_newProjectAction = new QAction(("新建"), menu);
@@ -109,45 +74,8 @@ void ProjectManagerWidget::setupTreeWidget()
 {
     //树形列表窗口
     QWidget *treeWidget = new QWidget;
-    m_treeWidget = new QTreeWidget();
-    m_treeWidget->setIndentation(20);
-    m_treeWidget->setStyleSheet(QString(
-                                    "QTreeWidget {"
-                                    "    border: none;"
-                                    "    font-family: Microsoft YaHei, 微软雅黑;"
-                                    "}"
-                                    "QTreeView {"
-                                    "    font-size: %2px;"
-                                    "    show-decoration-selected: 1;"
-                                    "    selection-background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,"
-                                    "        stop:0 rgba(255, 255, 255, 255), stop:0.5 rgba(235, 247, 253, 255), stop:1 rgba(213, 237, 250, 255));"
-                                    "    color: black;"
-                                    "    background-color: rgb(255, 255, 255);"
-                                    "}"
-                                    "QTreeView::item {"
-                                    "    height: %1px;"
-                                    "    border: 1px solid transparent;"
-                                    "    color: black;"
-                                    "    background-color: rgb(255, 255, 255);"
-                                    "}"
-                                    "QTreeView::item:selected, QTreeView::branch:selected {"
-                                    "    background-color: rgb(192, 226, 252) !important;"
-                                    "    color: black;"
-                                    "}"
-                                    "QTreeView::item:hover, QTreeView::branch:hover {"
-                                    "    background-color: rgb(226, 242, 254) !important;"
-                                    "    color: black;"
-                                    "}"
-                                    "QTreeView::branch {"
-                                    "    color: black;"
-                                    "}"
-                                    "QTreeView::branch:closed:has-children {"
-                                    "    image: url(:/resources/btn_up.png);"
-                                    "}"
-                                    "QTreeView::branch:open:has-children {"
-                                    "    image: url(:/resources/btn_down.png);"
-                                    "}"
-                                    ).arg(30).arg(16));
+	m_treeWidget = new QTreeWidget();
+	m_treeWidget->setIndentation(20);
 
 
     QHBoxLayout *mylayout = new QHBoxLayout(treeWidget);
@@ -246,7 +174,6 @@ void ProjectManagerWidget::setupSettingWidget()
 
     m_settingLayout = new QVBoxLayout(m_settingWidget);
     m_tmpSettingWidget = new QWidget();
-    m_settingWidget->setStyleSheet("background: rgb(255, 255, 255);");
     m_settingLayout->addWidget(m_tmpSettingWidget);
     m_settingLayout->setSpacing(0);
     m_settingLayout->setContentsMargins(0, 0, 0, 0);
@@ -305,6 +232,3 @@ void ProjectManagerWidget::closeProject()
         m_rootItem = nullptr;
     }
 }
-
-
-

@@ -6,7 +6,7 @@
 #include <PublicVariables.h>
 #include <PublicConstants.h>
 
-MeshRefinement3DWidget::MeshRefinement3DWidget(QWidget *parent) : BasePage(PublicConstants::PAGE_PREPROCESS_MESH3D)
+MeshRefinement3DWidget::MeshRefinement3DWidget(QWidget *parent) : BasePage(PublicConstants::kPagePreprocessMesh3d)
 {
 	setupUi();
 }

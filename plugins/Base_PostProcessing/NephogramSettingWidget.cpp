@@ -53,7 +53,7 @@
 #include <vtkPolyDataMapper.h>
 
 NephogramSettingWidget::NephogramSettingWidget(PostProcessingWidget *postProcessingWidget, QWidget *parent)
-    : BasePage(PublicConstants::PAGE_POSTPROCESS_NEPHOGRAM),
+    : BasePage(PublicConstants::kPagePostProcessNephogram),
       ui(new Ui::NephogramSettingWidget)
 {
     ui->setupUi(this);
@@ -134,7 +134,7 @@ void NephogramSettingWidget::beforeLoad()
     }
     if (!m_initialized)
     {
-        const QString workPath = PublicVariables::instance().get(PublicConstants::VALUE_PROJECT_DIR).toString();
+        const QString workPath = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
 
         m_dataPath = workPath + "/data";
         loadFileName(m_dataPath);

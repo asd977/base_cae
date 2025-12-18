@@ -162,28 +162,28 @@ void PreProcessingWidget::initRibbonActionConn()
 #pragma endregion
 
 
-    EventManager::instance().registerHandler(PublicConstants::ACTION_POSTPROCESS_OCCBOOLEN, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessOccBoolean, [this](const QVariantMap &data) {
         this->newOccBoolenToolWidget();
     });
 
     const char PAGE_PREPROCESS_OCCBOOLEN[] = "occboolen";
 #pragma region 接收边界条件模块传输的信息
-EventManager::instance().registerHandler(PublicConstants::SHOW_GEOM_SOLID_MODEL, [this](const QVariantMap &data) {
+EventManager::instance().registerHandler(PublicConstants::kShowGeomSolidModel, [this](const QVariantMap &data) {
 	this->solidViewActor();
 });
 
-EventManager::instance().registerHandler(PublicConstants::SET_GEOM_SELECT_TYPE, [this](const QVariantMap &data) {
+EventManager::instance().registerHandler(PublicConstants::kSetGeomSelectType, [this](const QVariantMap &data) {
 	int type = data["data"].toInt();
 	this->onSetSelectType(type, false);
 });
 
-EventManager::instance().registerHandler(PublicConstants::GET_GRID_NODE_INDEX, [this](const QVariantMap &data) {
+EventManager::instance().registerHandler(PublicConstants::kGetGridNodeIndex, [this](const QVariantMap &data) {
 	int index = data["data"].toInt();
 	int type = data["type"].toInt();
 	this->getGridDataByGridIndex(type, index);
 });
 
-EventManager::instance().registerHandler(PublicConstants::CLEAR_COLOR_BY_GEOM_INDEX, [this](const QVariantMap &data) {
+EventManager::instance().registerHandler(PublicConstants::kClearColorByGeomIndex, [this](const QVariantMap &data) {
 	int index = data["data"].toInt();
 	int type = data["type"].toInt();
 	QString shape = data["shape"].toString();
@@ -1647,26 +1647,26 @@ void PreProcessingWidget::onSelectedGeomShapeIndex(GeomShapeObject * shape, int 
 		 m_iNewSelPointGeomIndex = index;
 		 payload["data"] = m_iNewSelPointGeomIndex;
 		 payload["shape"] = shape->getUUid();
-		 EventManager::instance().sendEvent(PublicConstants::UPDATE_GEOM_POINT_INDEX, payload);
+		 EventManager::instance().sendEvent(PublicConstants::kUpdateGeomPointIndex, payload);
 		 break;
 	 case 2:
 		 m_iNewSelLineGeomIndex = index;
 		 payload["data"] = m_iNewSelLineGeomIndex;
 		 payload["shape"] = shape->getUUid();
-		 EventManager::instance().sendEvent(PublicConstants::UPDATE_GEOM_LINE_INDEX, payload);
+		 EventManager::instance().sendEvent(PublicConstants::kUpdateGeomLineIndex, payload);
 		 break;
 	 case 3:
 		 m_iNewSelFaceGeomIndex = index;
 		 payload["data"] = m_iNewSelFaceGeomIndex;
 		 payload["shape"] = shape->getUUid();
          qDebug()<<"shape->getUUid() "<<shape->getUUid()<<" "<<m_iNewSelFaceGeomIndex;
-		 EventManager::instance().sendEvent(PublicConstants::UPDATE_GEOM_FACE_INDEX, payload);
+		 EventManager::instance().sendEvent(PublicConstants::kUpdateGeomFaceIndex, payload);
 		 break;
 	 case 4:
 		 m_iNewSelSolidGeomIndex = index;
 		 payload["data"] = m_iNewSelSolidGeomIndex;
 		 payload["shape"] = shape->getUUid();
-		 EventManager::instance().sendEvent(PublicConstants::UPDATE_GEOM_SOLID_INDEX, payload);
+		 EventManager::instance().sendEvent(PublicConstants::kUpdateGeomSolidIndex, payload);
 		 break;
 	}
 }

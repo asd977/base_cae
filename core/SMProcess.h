@@ -20,13 +20,13 @@
 //	}
 //});
 
-namespace SMProcessTool
+	namespace SMProcessTool
 {
     class CORE_EXPORT SMProcess : public QProcess
 	{
 		Q_OBJECT
 	public:
-		SMProcess(const QString& program);
+		explicit SMProcess(const QString& program);
 		SMProcess(const QString& program, const QStringList& args);
 		~SMProcess();
 		void startProcess(bool async = false);//async 是否异步启动
@@ -42,10 +42,10 @@ namespace SMProcessTool
 
 	private:
 		SMProcess() = delete;
-		void initConn();
+		void initializeConnections();
 
-		QString m_name;
-		QStringList m_args;
+		QString m_programPath;
+		QStringList m_arguments;
 	};
 }
 

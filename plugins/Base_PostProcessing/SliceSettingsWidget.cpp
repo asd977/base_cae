@@ -61,7 +61,7 @@ static QVector<double> genUniformTs(int N, bool includeEnds)
 SliceSettingsWidget::SliceSettingsWidget(PostProcessingWidget* postProcessingWidget,
                                          QWidget* parent)
     : ui(new Ui::SliceSettingsWidget),
-      BasePage(PublicConstants::PAGE_POSTPROCESS_SLICE)
+      BasePage(PublicConstants::kPagePostProcessSlice)
     , m_postProcessingWidget(postProcessingWidget)
 {
     ui->setupUi(this);
@@ -119,7 +119,7 @@ void SliceSettingsWidget::beforeLoad()
         if (!m_plane) m_plane = vtkSmartPointer<vtkPlane>::New();
 
         const QString workPath =
-            PublicVariables::instance().get(PublicConstants::VALUE_PROJECT_DIR).toString();
+            PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
         m_dataPath = QDir(workPath).filePath("data");
         loadFileName(m_dataPath);
 

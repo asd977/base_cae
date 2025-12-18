@@ -71,24 +71,6 @@ LatinHypercubeSampling::LatinHypercubeSampling(QWidget *parent)
                                             | QAbstractItemView::EditKeyPressed);
     ui->parameterTableWidget->setAlternatingRowColors(true);
 
-    // 更漂亮的选中/悬停样式
-    ui->parameterTableWidget->setStyleSheet(
-        "QTableWidget {"
-        "  gridline-color: #e5e7eb;"
-        "  alternate-background-color: #fafafa;"
-        "}"
-        "QHeaderView::section {"
-        "  background: #f3f4f6; padding: 6px; border: 0px; border-bottom: 1px solid #e5e7eb;"
-        "  font-weight: 600;"
-        "}"
-        "QTableWidget::item { padding: 6px; border: none; }"
-        "QTableWidget::item:hover { background: #eef2ff; padding: 6px; }"
-        "QTableWidget::item:selected {"
-        "  background: #a5c9ff; color: white; border-radius: 8px;"
-        "}"
-    );
-    ui->label;
-
     ui->parameterTableWidget->installEventFilter(this);
 
     ensureOnceInit();

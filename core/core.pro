@@ -28,6 +28,7 @@ HEADERS += \
         BasePage.h \
         SMThreading.h \
         SMProcess.h \
+    StyleManager.h \
     EventManager.h \
     mesh/BoundaryConditions.h \
     mesh/GmshV2Reader.h
@@ -40,6 +41,7 @@ SOURCES += \
         SMThreading.cpp \
 		BasePage.cpp \
         SMProcess.cpp \
+    StyleManager.cpp \
     EventManager.cpp \
     mesh/BoundaryConditions.cpp \
     mesh/GmshV2Reader.cpp

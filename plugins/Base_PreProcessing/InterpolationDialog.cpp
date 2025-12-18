@@ -5,7 +5,7 @@
 #include <PublicVariables.h>
 #include <PublicConstants.h>
 
-InterpolationDialog::InterpolationDialog(QWidget* parent) : BasePage(PublicConstants::PAGE_PREPROCESS_INTER)
+InterpolationDialog::InterpolationDialog(QWidget* parent) : BasePage(PublicConstants::kPagePreprocessInterCurve)
 {
 	QVBoxLayout* mainLayout = new QVBoxLayout(this);
 
@@ -46,25 +46,6 @@ InterpolationDialog::InterpolationDialog(QWidget* parent) : BasePage(PublicConst
 	addButton->setIcon(QIcon(":/resources/icon/InnerAdd.png")); 
 	removeButton->setIcon(QIcon(":/resources/icon/InnerSub.png"));
 
-	// 使用 QSS 去除按钮边框并优化视觉融合
-	QString buttonStyle = R"(
-        QPushButton {
-            border: none; /* 去除边框 */
-            background: transparent; /* 透明背景 */
-            padding: 2px; /* 减少内边距，文字和图标更紧凑 */
-            color: #333; /* 文字颜色，深灰色 */
-        }
-        QPushButton:hover {
-            background: #e0e0e0; /* 鼠标悬停时浅灰背景 */
-            border-radius: 4px; /* 圆角效果 */
-        }
-        QPushButton:pressed {
-            background: #c0c0c0; /* 点击时更深的背景 */
-        }
-    )";
-	okButton->setStyleSheet(buttonStyle);
-	addButton->setStyleSheet(buttonStyle);
-	removeButton->setStyleSheet(buttonStyle);
 	actionLayout->addWidget(okButton);
 	mainLayout->addStretch();
 

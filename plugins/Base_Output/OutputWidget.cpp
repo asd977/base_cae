@@ -11,21 +11,6 @@ OutputWidget::OutputWidget(QWidget *parent) :
     ui(new Ui::OutputWidget)
 {
     ui->setupUi(this);
-    ui->textEdit->setStyleSheet("QTextEdit {"
-                                "    border-top: 1px solid rgba(0, 0, 0, 0.2);"
-                                "    border-right: none;"
-                                "    border-bottom: none;"
-                                "    border-left: none;"
-                                "    font-family: 'Microsoft YaHei';"
-                                "    font-size: 15px;"
-                                "}"
-                                "QTextEdit:focus {"
-                                "    border-top: 1px solid black;"
-                                "}"
-                                "QTextEdit::selection {"
-                                "    background: none;"
-                                "    color: black;"
-                                "}");
     ui->textEdit->setReadOnly(true);
     MAX_LINES = 100;
 }

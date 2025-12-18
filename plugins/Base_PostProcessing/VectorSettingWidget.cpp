@@ -31,7 +31,7 @@
 
 VectorSettingWidget::VectorSettingWidget(PostProcessingWidget *postProcessingWidget, QWidget *parent) :
     ui(new Ui::VectorSettingWidget),
-    BasePage(PublicConstants::PAGE_POSTPROCESS_VECTOR)
+    BasePage(PublicConstants::kPagePostProcessVector)
 {
     ui->setupUi(this);
 
@@ -81,7 +81,7 @@ double  VectorSettingWidget::computeAutoBaseScale(vtkUnstructuredGrid* grid)
 
 void VectorSettingWidget::beforeLoad()
 {
-    const QString proj = PublicVariables::instance().get(PublicConstants::VALUE_PROJECT_DIR).toString();
+    const QString proj = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     m_dataPath = proj + "/data";
 
     if (ui->stepComboBox->count() == 0) {

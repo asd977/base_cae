@@ -34,14 +34,14 @@ VTK_MODULE_INIT(vtkInteractionStyle);
 
 void PostProcessing::initPageFactory() {
     m_pageFactory.clear();
-    m_pageFactory[PublicConstants::PAGE_POSTPROCESS_NEPHOGRAM]       = [this](PostProcessingWidget* host){ return new NephogramSettingWidget(host); };
-    m_pageFactory[PublicConstants::PAGE_POSTPROCESS_VECTOR]          = [this](PostProcessingWidget* host){ return new VectorSettingWidget(host); };
-    m_pageFactory[PublicConstants::PAGE_POSTPROCESS_SLICE]           = [this](PostProcessingWidget* host){ return new SliceSettingsWidget(host); };
-    m_pageFactory[PublicConstants::PAGE_POSTPROCESS_BLOCK]           = [this](PostProcessingWidget* host){ return new BlockSettingsWidget(host); };
-    m_pageFactory[PublicConstants::PAGE_POSTPROCESS_ISOSURFACE]      = [this](PostProcessingWidget* host){ return new IsosurfaceSettingsWidget(host); };
-    m_pageFactory[PublicConstants::PAGE_POSTPROCESS_ISOSURFACESEG]   = [this](PostProcessingWidget* host){ return new IsosurfaceSegmentationWidget(host); };
-    m_pageFactory[PublicConstants::PAGE_POSTPROCESS_ANIMATION]       = [this](PostProcessingWidget* host){ return new AnimationAviWidget(host); };
-    m_pageFactory[PublicConstants::PAGE_POSTPROCESS_DERIVATIVE]         = [this](PostProcessingWidget* /*host*/){ return new DerivedValueSettingWidget(); };
+    m_pageFactory[PublicConstants::kPagePostProcessNephogram]       = [this](PostProcessingWidget* host){ return new NephogramSettingWidget(host); };
+    m_pageFactory[PublicConstants::kPagePostProcessVector]          = [this](PostProcessingWidget* host){ return new VectorSettingWidget(host); };
+    m_pageFactory[PublicConstants::kPagePostProcessSlice]           = [this](PostProcessingWidget* host){ return new SliceSettingsWidget(host); };
+    m_pageFactory[PublicConstants::kPagePostProcessBlock]           = [this](PostProcessingWidget* host){ return new BlockSettingsWidget(host); };
+    m_pageFactory[PublicConstants::kPagePostProcessIsosurface]      = [this](PostProcessingWidget* host){ return new IsosurfaceSettingsWidget(host); };
+    m_pageFactory[PublicConstants::kPagePostProcessIsosurfaceSegmentation]   = [this](PostProcessingWidget* host){ return new IsosurfaceSegmentationWidget(host); };
+    m_pageFactory[PublicConstants::kPagePostProcessAnimation]       = [this](PostProcessingWidget* host){ return new AnimationAviWidget(host); };
+    m_pageFactory[PublicConstants::kPagePostProcessDerivative]         = [this](PostProcessingWidget* /*host*/){ return new DerivedValueSettingWidget(); };
 }
 
 BasePage* PostProcessing::createPageByType(const QString& type)
@@ -144,37 +144,37 @@ void PostProcessing::newProject()
 
 void PostProcessing::initAction()
 {
-    EventManager::instance().registerHandler(PublicConstants::ACTION_POSTPROCESS_NEPHOGRAM, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessNephogram, [this](const QVariantMap &data) {
         this->newNephogramSettingWidget();
     });
-    EventManager::instance().registerHandler(PublicConstants::ACTION_POSTPROCESS_VECTOR, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessVector, [this](const QVariantMap &data) {
         this->newVectorSettingWidget();
     });
-    EventManager::instance().registerHandler(PublicConstants::ACTION_POSTPROCESS_SECTION, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessSection, [this](const QVariantMap &data) {
         this->newSliceSettingWidget();
     });
-    EventManager::instance().registerHandler(PublicConstants::ACTION_POSTPROCESS_DICE, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessDice, [this](const QVariantMap &data) {
         this->newBlockSettingsWidget();
     });
-    EventManager::instance().registerHandler(PublicConstants::ACTION_POSTPROCESS_ISOSURFACE, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessIsosurface, [this](const QVariantMap &data) {
         this->newIsosurfaceSettingsWidget();
     });
-    EventManager::instance().registerHandler(PublicConstants::ACTION_POSTPROCESS_ISOSURFACESEG, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessIsosurfaceSegmentation, [this](const QVariantMap &data) {
         this->newIsosurfaceSegmentationWidget();
     });
-    EventManager::instance().registerHandler(PublicConstants::ACTION_POSTPROCESS_XYPLOT, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessXyPlot, [this](const QVariantMap &data) {
 //        this->new();
     });
-    EventManager::instance().registerHandler(PublicConstants::ACTION_POSTPROCESS_ANIMATION, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessAnimation, [this](const QVariantMap &data) {
         this->newAnimationAviWidget();
     });
-    EventManager::instance().registerHandler(PublicConstants::ACTION_POSTPROCESS_PICKPHYSICAL, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessPickPhysical, [this](const QVariantMap &data) {
 //        this->ne();
     });
-    EventManager::instance().registerHandler(PublicConstants::ACTION_POSTPROCESS_DERIVATIVE, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessDerivative, [this](const QVariantMap &data) {
         this->newDerivedValueSettingWidget();
     });
-    EventManager::instance().registerHandler(PublicConstants::ACTION_POSTPROCESS_DATAEXP, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessDataExport, [this](const QVariantMap &data) {
 //        this->newNephogramSettingWidget();
     });
 }
@@ -182,8 +182,8 @@ void PostProcessing::initAction()
 bool PostProcessing::saveProject()
 {
     if (!m_root) return true;
-    QString projectDir = PublicVariables::instance().get(PublicConstants::VALUE_PROJECT_DIR).toString();
-    const QString filePath = QDir(projectDir).filePath(PublicConstants::PROJECT_FILE_POSTPROCESSING);
+    QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QString filePath = QDir(projectDir).filePath(PublicConstants::kPostProcessingProjectFileName);
 
     QJsonObject root;
     root["module"] = "PostProcessing";
@@ -211,11 +211,11 @@ bool PostProcessing::saveProject()
 bool PostProcessing::loadProject()
 {
     m_root = new ProjectNode("后处理");
-    QString projectDir = PublicVariables::instance().get(PublicConstants::VALUE_PROJECT_DIR).toString();
+    QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     auto *pm = ServiceRegistry::instance().getService<ProjectManagerService>();
     pm->addTreeItem(m_root);
 
-    const QString filePath = QDir(projectDir).filePath(PublicConstants::PROJECT_FILE_POSTPROCESSING);
+    const QString filePath = QDir(projectDir).filePath(PublicConstants::kPostProcessingProjectFileName);
     QJsonObject root;
     if (!readJsonFile(filePath, root))
     {

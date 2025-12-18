@@ -1,144 +1,101 @@
 ﻿#ifndef PUBLICCONSTANT_H
 #define PUBLICCONSTANT_H
 
-
 namespace PublicConstants {
 
-    //软件
-    const char EVENT_LODA_COMPLETE[] = "load_complete";
-    const char EVENT_QUIT_APP[] = "quit_app";
+// 软件
+constexpr char kEventLoadComplete[] = "load_complete";
+constexpr char kEventQuitApp[] = "quit_app";
 
-    //工程
-    const char VALUE_PROJECT_DIR[] = "project_dir";
-    const char ACTION_NEW_PROJECT[] = "new_project";
-    const char PROJECT_FILE_POSTPROCESSING[] = "postprocessing.json";
-	const char PROJECT_FILE_PREPROCESSING[] = "preprocessing.json";
-//    const char ACTION_NEW_PROJECT[] = "new_project";
-//    const char ACTION_NEW_PROJECT[] = "new_project";
-//    const char ACTION_NEW_PROJECT[] = "new_project";
-//    const char ACTION_NEW_PROJECT[] = "new_project";
-//    const char ACTION_NEW_PROJECT[] = "new_project";
+// 工程
+constexpr char kProjectDirectoryKey[] = "project_dir";
+constexpr char kActionNewProject[] = "new_project";
+constexpr char kPostProcessingProjectFileName[] = "postprocessing.json";
+constexpr char kPreProcessingProjectFileName[] = "preprocessing.json";
 
-    //前处理-action
-    const char ACTION_POSTPROCESS_OCCBOOLEN[] = "new_occboolen";
+// 前处理 / 后处理 action
+constexpr char kActionPostProcessOccBoolean[] = "new_occboolen";
+constexpr char kActionPostProcessNephogram[] = "new_nephogram";
+constexpr char kActionPostProcessVector[] = "new_vector";
+constexpr char kActionPostProcessSection[] = "new_section";
+constexpr char kActionPostProcessDice[] = "new_dice";
+constexpr char kActionPostProcessIsosurface[] = "new_isosurface";
+constexpr char kActionPostProcessIsosurfaceSegmentation[] = "new_isosurfaceseg";
+constexpr char kActionPostProcessXyPlot[] = "new_xyplot";
+constexpr char kActionPostProcessAnimation[] = "new_animation";
+constexpr char kActionPostProcessPickPhysical[] = "new_pickphysical";
+constexpr char kActionPostProcessDerivative[] = "new_derivative";
+constexpr char kActionPostProcessDataExport[] = "new_dataexp";
 
-    //后处理-action
-    const char ACTION_POSTPROCESS_NEPHOGRAM[] = "new_nephogram";
-    const char ACTION_POSTPROCESS_VECTOR[] = "new_vector";
-    const char ACTION_POSTPROCESS_SECTION[] = "new_section";
-    const char ACTION_POSTPROCESS_DICE[] = "new_dice";
-    const char ACTION_POSTPROCESS_ISOSURFACE[] = "new_isosurface";
-    const char ACTION_POSTPROCESS_ISOSURFACESEG[] = "new_isosurfaceseg";
-    const char ACTION_POSTPROCESS_XYPLOT[] = "new_xyplot";
-    const char ACTION_POSTPROCESS_ANIMATION[] = "new_animation";
-    const char ACTION_POSTPROCESS_PICKPHYSICAL[] = "new_pickphysical";
-    const char ACTION_POSTPROCESS_DERIVATIVE[] = "new_derivative";
-    const char ACTION_POSTPROCESS_DATAEXP[] = "new_dataexp";
-    //后处理-page
-    const char PAGE_POSTPROCESS_NEPHOGRAM[] = "nephogram";
-    const char PAGE_POSTPROCESS_VECTOR[] = "vector";
-    const char PAGE_POSTPROCESS_SLICE[] = "slice";
-    const char PAGE_POSTPROCESS_BLOCK[] = "block";
-    const char PAGE_POSTPROCESS_ISOSURFACE[] = "isosurface";
-    const char PAGE_POSTPROCESS_ISOSURFACESEG[] = "isosurfaceseg";
-//    const char ACTION_POSTPROCESS_XYPLOT[] = "xyplot";
-    const char PAGE_POSTPROCESS_ANIMATION[] = "animation";
-//    const char ACTION_POSTPROCESS_PICKPHYSICAL[] = "pickphysical";
-    const char PAGE_POSTPROCESS_DERIVATIVE[] = "derivative";
-//    const char ACTION_POSTPROCESS_DATAEXP[] = "dataexp";
+// 后处理 page
+constexpr char kPagePostProcessNephogram[] = "nephogram";
+constexpr char kPagePostProcessVector[] = "vector";
+constexpr char kPagePostProcessSlice[] = "slice";
+constexpr char kPagePostProcessBlock[] = "block";
+constexpr char kPagePostProcessIsosurface[] = "isosurface";
+constexpr char kPagePostProcessIsosurfaceSegmentation[] = "isosurfaceseg";
+constexpr char kPagePostProcessAnimation[] = "animation";
+constexpr char kPagePostProcessDerivative[] = "derivative";
+constexpr char kPagePostProcessOccBoolean[] = "occboolen";
 
-    //后处理中，当前使用的物理量名称
-    const char VALUE_POST_SCALAR[] = "post_scalar";
+// 后处理中，当前使用的物理量名称
+constexpr char kValuePostScalar[] = "post_scalar";
 
-    //代理模型
-    const char ACTION_SURROGATEMODEL_LATIN[] = "new_LatinHypercubeSampling";
-    const char ACTION_SURROGATEMODEL_ORTHOGONAL[] = "new_OrthogonalSampling";
-    const char ACTION_SURROGATEMODEL_DNN[] = "new_DNNModel";
-    const char ACTION_SURROGATEMODEL_POD[] = "new_PODModel";
-    const char ACTION_SURROGATEMODEL_DATAEVALUATION[] = "new_data_evaluation";
+// 代理模型
+constexpr char kActionSurrogateModelLatin[] = "new_LatinHypercubeSampling";
+constexpr char kActionSurrogateModelOrthogonal[] = "new_OrthogonalSampling";
+constexpr char kActionSurrogateModelDnn[] = "new_DNNModel";
+constexpr char kActionSurrogateModelPod[] = "new_PODModel";
+constexpr char kActionSurrogateModelDataEvaluation[] = "new_data_evaluation";
 
-	//前处理
-	const char PAGE_PREPROCESS_ARC[] = "arc";
-	const char PAGE_PREPROCESS_BEZIER2D[] = "bezier2d";
-	const char PAGE_PREPROCESS_BEZIER3D[] = "bezier3d";
-	const char PAGE_PREPROCESS_CONE[] = "cone";
-	const char PAGE_PREPROCESS_CYLINDER[] = "cylinder";
-	const char PAGE_PREPROCESS_ELLIPSE[] = "ellipse";
-	const char PAGE_PREPROCESS_IMPORTGEOM[] = "importGeom";
-	const char PAGE_PREPROCESS_HELIX[] = "helix";
-	const char PAGE_PREPROCESS_CIRCLE[] = "circle";
-	const char PAGE_PREPROCESS_LINE[] = "line";
-	const char PAGE_PREPROCESS_TORUS[] = "torus";
-	const char PAGE_PREPROCESS_SQUARE[] = "square";
-	const char PAGE_PREPROCESS_SPHERE[] = "sphere";
-	const char PAGE_PREPROCESS_RECTANGLE[] = "rectangle";
-	const char PAGE_PREPROCESS_POLYGON[] = "polygon";
-	const char PAGE_PREPROCESS_MESH2D[] = "mesh2d";
-	const char PAGE_PREPROCESS_MESH3D[] = "mesh3d";
-	const char PAGE_PREPROCESS_IMPORT_GRID[] = "import_grid";
-	const char PAGE_PREPROCESS_INTER[] = "inter";
-	const char PAGE_PREPROCESS_POINT[] = "point";
-	const char PAGE_PREPROCESS_PARAM[] = "param";
-	const char PAGE_PREPROCESS_BOX[] = "box";
-	const char PAGE_PREPROCESS_HYPER[] = "hyper";
-	const char PAGE_PREPROCESS_PARABOLA[] = "parabola";
-    //处理-page
-    const char PAGE_POSTPROCESS_OCCBOOLEN[] = "occboolen";
+// 前处理 page
+constexpr char kPagePreprocessArc[] = "arc";
+constexpr char kPagePreprocessBezier2d[] = "bezier2d";
+constexpr char kPagePreprocessBezier3d[] = "bezier3d";
+constexpr char kPagePreprocessCone[] = "cone";
+constexpr char kPagePreprocessCylinder[] = "cylinder";
+constexpr char kPagePreprocessEllipse[] = "ellipse";
+constexpr char kPagePreprocessImportGeometry[] = "importGeom";
+constexpr char kPagePreprocessHelix[] = "helix";
+constexpr char kPagePreprocessCircle[] = "circle";
+constexpr char kPagePreprocessLine[] = "line";
+constexpr char kPagePreprocessTorus[] = "torus";
+constexpr char kPagePreprocessSquare[] = "square";
+constexpr char kPagePreprocessSphere[] = "sphere";
+constexpr char kPagePreprocessRectangle[] = "rectangle";
+constexpr char kPagePreprocessPolygon[] = "polygon";
+constexpr char kPagePreprocessMesh2d[] = "mesh2d";
+constexpr char kPagePreprocessMesh3d[] = "mesh3d";
+constexpr char kPagePreprocessImportGrid[] = "import_grid";
+constexpr char kPagePreprocessInterCurve[] = "inter";
+constexpr char kPagePreprocessPoint[] = "point";
+constexpr char kPagePreprocessParametricCurve[] = "param";
+constexpr char kPagePreprocessBox[] = "box";
+constexpr char kPagePreprocessHyperbola[] = "hyper";
+constexpr char kPagePreprocessParabola[] = "parabola";
 
+// 边界条件
+constexpr char kActionBoundarySolid[] = "boundary_solid";
+constexpr char kActionBoundaryFace[] = "boundary_face";
+constexpr char kActionBoundaryLine[] = "boundary_line";
+constexpr char kActionBoundaryPoint[] = "boundary_point";
 
-	// 边界条件
-	const char ACTION_BOUNDARY_SOLID[] = "boundary_solid";
-	const char ACTION_BOUNDARY_FACE[] = "boundary_face";
-	const char ACTION_BOUNDARY_LINE[] = "boundary_line";
-	const char ACTION_BOUNDARY_POINT[] = "boundary_point";
+constexpr char kPageBoundarySolid[] = "page_boundary_solid";
+constexpr char kPageBoundaryFace[] = "page_boundary_face";
+constexpr char kPageBoundaryLine[] = "page_boundary_line";
+constexpr char kPageBoundaryPoint[] = "page_boundary_point";
 
-	const char PAGE_BOUNDARY_SOLID[] = "page_boundary_solid";
-	const char PAGE_BOUNDARY_FACE[] = "page_boundary_face";
-	const char PAGE_BOUNDARY_LINE[] = "page_boundary_line";
-	const char PAGE_BOUNDARY_POINT[] = "page_boundary_point";
+// 通知事件
+constexpr char kUpdateGeomPointIndex[] = "update_geom_point_index";
+constexpr char kUpdateGeomLineIndex[] = "update_geom_line_index";
+constexpr char kUpdateGeomFaceIndex[] = "update_geom_face_index";
+constexpr char kUpdateGeomSolidIndex[] = "update_geom_solid_index";
+constexpr char kShowGeomSolidModel[] = "show_geom_solid_model";
 
-	
-	const char UPDATE_GEOM_POINT_INDEX[] = "update_geom_point_index";
-	const char UPDATE_GEOM_LINE_INDEX[] = "update_geom_line_index";
-	const char UPDATE_GEOM_FACE_INDEX[] = "update_geom_face_index";
-	const char UPDATE_GEOM_SOLID_INDEX[] = "update_geom_solid_index";
-	const char SHOW_GEOM_SOLID_MODEL[] = "show_geom_solid_model";
+constexpr char kSetGeomSelectType[] = "set_geom_select_type";
+constexpr char kGetGridNodeIndex[] = "get_grid_node_index"; // 获取网格节点的集合
+constexpr char kClearColorByGeomIndex[] = "clear_color_by_geom_index"; // 清除指定索引的颜色
 
-	const char SET_GEOM_SELECT_TYPE[] = "set_geom_select_type";
-	const char GET_GRID_NODE_INDEX[] = "get_grid_node_index";// 获取网格节点的集合
-	const char CLEAR_COLOR_BY_GEOM_INDEX[] = "clear_color_by_geom_index";// 获取网格节点的集合
-
-	
-
-
-	
-	
-	
-
-
-	
-
-	
-	
-
-	
-
-	
-	
-	
-
-	
-	
-
-	
-
-	
-	
-	
-	
-	
-
-	
 }
 
 #endif // PUBLICCONSTANT_H

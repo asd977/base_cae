@@ -57,19 +57,19 @@ void SurrogateModel::newProject()
 
 void SurrogateModel::initAction()
 {
-    EventManager::instance().registerHandler(PublicConstants::ACTION_SURROGATEMODEL_LATIN, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionSurrogateModelLatin, [this](const QVariantMap &data) {
         this->newLatinHypercubeSamplingWidget();
     });
-    EventManager::instance().registerHandler(PublicConstants::ACTION_SURROGATEMODEL_ORTHOGONAL, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionSurrogateModelOrthogonal, [this](const QVariantMap &data) {
         this->newOrthogonalSamplingWidget();
     });
-    EventManager::instance().registerHandler(PublicConstants::ACTION_SURROGATEMODEL_DNN, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionSurrogateModelDnn, [this](const QVariantMap &data) {
         this->newDNNModel();
     });
-    EventManager::instance().registerHandler(PublicConstants::ACTION_SURROGATEMODEL_POD, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionSurrogateModelPod, [this](const QVariantMap &data) {
 //        this->();
     });
-    EventManager::instance().registerHandler(PublicConstants::ACTION_SURROGATEMODEL_DATAEVALUATION, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionSurrogateModelDataEvaluation, [this](const QVariantMap &data) {
         this->newDatasetEvaluation();
     });
 }

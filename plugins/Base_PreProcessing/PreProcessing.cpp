@@ -80,31 +80,31 @@ void PreProcessing::initPageFactory()
 {
 	m_pageFactory.clear();
 	// 网格
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_MESH2D] = [this](QString title) { return m_preProcessingWidget->newTetrahedronGridWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_MESH3D] = [this](QString title) { return m_preProcessingWidget->newHexahedronGridWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_IMPORT_GRID] = [this](QString title) { return m_preProcessingWidget->newGridImportWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessMesh2d] = [this](QString title) { return m_preProcessingWidget->newTetrahedronGridWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessMesh3d] = [this](QString title) { return m_preProcessingWidget->newHexahedronGridWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessImportGrid] = [this](QString title) { return m_preProcessingWidget->newGridImportWidget(title); };
 	// 几何
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_IMPORTGEOM] = [this](QString title) { return m_preProcessingWidget->newGeometryImportWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_ARC] = [this](QString title){ return m_preProcessingWidget->newGeometryArcWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_BEZIER2D] = [this](QString title) { return m_preProcessingWidget->newGeometryTwoBsrWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_BEZIER3D] = [this](QString title) { return m_preProcessingWidget->newGeometryThreeBsrWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_CONE] = [this](QString title) { return m_preProcessingWidget->newGeometryConeWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_CYLINDER] = [this](QString title) { return m_preProcessingWidget->newGeometryCylinderWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_ELLIPSE] = [this](QString title) { return m_preProcessingWidget->newGeometryEllipseWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_HELIX] = [this](QString title) { return m_preProcessingWidget->newGeometryHelixWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_CIRCLE] = [this](QString title) { return m_preProcessingWidget->newGeometryCircleWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_LINE] = [this](QString title) { return m_preProcessingWidget->newGeometryLineWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_TORUS] = [this](QString title) { return m_preProcessingWidget->newGeometryTorusWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_SQUARE] = [this](QString title) { return m_preProcessingWidget->newGeometrySquareWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_SPHERE] = [this](QString title) { return m_preProcessingWidget->newGeometrySphereWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_RECTANGLE] = [this](QString title) { return m_preProcessingWidget->newGeometryRectangleWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_POLYGON] = [this](QString title) { return m_preProcessingWidget->newGeometryPolygonWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_INTER] = [this](QString title) { return m_preProcessingWidget->newGeometryInterCurveWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_POINT] = [this](QString title) { return m_preProcessingWidget->newGeometryPointWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_PARAM] = [this](QString title) { return m_preProcessingWidget->newGeometryParamCurveWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_BOX] = [this](QString title) { return m_preProcessingWidget->newGeometryBoxWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_HYPER] = [this](QString title) { return m_preProcessingWidget->newGeometryHyperbolaWidget(title); };
-	m_pageFactory[PublicConstants::PAGE_PREPROCESS_PARABOLA] = [this](QString title) { return m_preProcessingWidget->newGeometryParabolaEdgeWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessImportGeometry] = [this](QString title) { return m_preProcessingWidget->newGeometryImportWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessArc] = [this](QString title){ return m_preProcessingWidget->newGeometryArcWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessBezier2d] = [this](QString title) { return m_preProcessingWidget->newGeometryTwoBsrWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessBezier3d] = [this](QString title) { return m_preProcessingWidget->newGeometryThreeBsrWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessCone] = [this](QString title) { return m_preProcessingWidget->newGeometryConeWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessCylinder] = [this](QString title) { return m_preProcessingWidget->newGeometryCylinderWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessEllipse] = [this](QString title) { return m_preProcessingWidget->newGeometryEllipseWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessHelix] = [this](QString title) { return m_preProcessingWidget->newGeometryHelixWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessCircle] = [this](QString title) { return m_preProcessingWidget->newGeometryCircleWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessLine] = [this](QString title) { return m_preProcessingWidget->newGeometryLineWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessTorus] = [this](QString title) { return m_preProcessingWidget->newGeometryTorusWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessSquare] = [this](QString title) { return m_preProcessingWidget->newGeometrySquareWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessSphere] = [this](QString title) { return m_preProcessingWidget->newGeometrySphereWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessRectangle] = [this](QString title) { return m_preProcessingWidget->newGeometryRectangleWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessPolygon] = [this](QString title) { return m_preProcessingWidget->newGeometryPolygonWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessInterCurve] = [this](QString title) { return m_preProcessingWidget->newGeometryInterCurveWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessPoint] = [this](QString title) { return m_preProcessingWidget->newGeometryPointWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessParametricCurve] = [this](QString title) { return m_preProcessingWidget->newGeometryParamCurveWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessBox] = [this](QString title) { return m_preProcessingWidget->newGeometryBoxWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessHyperbola] = [this](QString title) { return m_preProcessingWidget->newGeometryHyperbolaWidget(title); };
+	m_pageFactory[PublicConstants::kPagePreprocessParabola] = [this](QString title) { return m_preProcessingWidget->newGeometryParabolaEdgeWidget(title); };
 
 }
 
@@ -128,8 +128,8 @@ void PreProcessing::newProject()
 bool PreProcessing::saveProject()
 {
 	if (!m_geomNode || !m_gridNode) return true;
-	QString projectDir = PublicVariables::instance().get(PublicConstants::VALUE_PROJECT_DIR).toString();
-	const QString filePath = QDir(projectDir).filePath(PublicConstants::PROJECT_FILE_PREPROCESSING);
+	QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+	const QString filePath = QDir(projectDir).filePath(PublicConstants::kPreProcessingProjectFileName);
 
 	QJsonObject root;
 	root["module"] = "PreProcessing";
@@ -191,8 +191,8 @@ bool PreProcessing::loadProject()
 
 bool PreProcessing::loadChildProject(ProjectNode * rootNode,const QString & name)
 {
-	QString projectDir = PublicVariables::instance().get(PublicConstants::VALUE_PROJECT_DIR).toString();
-	const QString filePath = QDir(projectDir).filePath(PublicConstants::PROJECT_FILE_PREPROCESSING);
+	QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+	const QString filePath = QDir(projectDir).filePath(PublicConstants::kPreProcessingProjectFileName);
 	QJsonObject root;
 	if (!readJsonFile(filePath, root))
 	{

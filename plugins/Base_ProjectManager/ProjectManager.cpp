@@ -21,15 +21,15 @@ ProjectManager::ProjectManager()
 	m_uiFrameService->addWidget(m_projectTreeWidget,"模型管理");
 	QStackedWidget* stackWidget = m_settingWidget->getStackedWidget();
 	m_projectTreeWidget->setStackedWidget(stackWidget);
-	EventManager::instance().registerHandler(PublicConstants::EVENT_LODA_COMPLETE, [this](const QVariantMap &data) {
+	EventManager::instance().registerHandler(PublicConstants::kEventLoadComplete, [this](const QVariantMap &data) {
 		this->initRibbonActionConn();
 		m_outputService = ServiceRegistry::instance().getService<OutputService>();
 	});
-	EventManager::instance().registerHandler(PublicConstants::EVENT_QUIT_APP, [this](const QVariantMap &data) {
+	EventManager::instance().registerHandler(PublicConstants::kEventQuitApp, [this](const QVariantMap &data) {
 		this->saveProject();
 	});
 
-    EventManager::instance().registerHandler(PublicConstants::ACTION_NEW_PROJECT, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionNewProject, [this](const QVariantMap &data) {
         this->newProject();
 
     });
@@ -192,7 +192,7 @@ void ProjectManager::openProject()
     m_projectEnginePath = smprjo_path;
     QStringList files /*= JlCompress::extractDir(smprjo_path, m_projectTempFolder)*/;
 
-    PublicVariables::instance().set(PublicConstants::VALUE_PROJECT_DIR, m_projectTempFolder,"project_dir");
+    PublicVariables::instance().set(PublicConstants::kProjectDirectoryKey, m_projectTempFolder,"project_dir");
 
     m_rootNode = new ProjectNode(m_projectName);
     m_projectTreeWidget->addTopLevelItem((QTreeWidgetItem*)m_rootNode);
@@ -417,7 +417,7 @@ bool ProjectManager::createProjectFilesFolder()
 	QString	exelPath = QCoreApplication::applicationDirPath();
 	const QString tempPath = exelPath + "/../ProjectFolder/";
     m_projectTempFolder = tempPath;
-    PublicVariables::instance().set(PublicConstants::VALUE_PROJECT_DIR, m_projectTempFolder,"project_dir");
+    PublicVariables::instance().set(PublicConstants::kProjectDirectoryKey, m_projectTempFolder,"project_dir");
 	removeDir(tempPath);
 	QDir dir = QDir(tempPath);
 	if (!dir.exists())

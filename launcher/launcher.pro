@@ -26,3 +26,6 @@ INCLUDEPATH += $$PWD/../interfaces
 
 SOURCES += \
     launcher.cpp
+
+RESOURCES += \
+    ../res.qrc

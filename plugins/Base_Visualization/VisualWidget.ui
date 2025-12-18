@@ -44,9 +44,6 @@
          <layout class="QHBoxLayout" name="horizontalLayout_2">
           <item>
            <widget class="QChartView" name="graphicsView_curve">
-            <property name="styleSheet">
-             <string notr="true"/>
-            </property>
            </widget>
           </item>
          </layout>

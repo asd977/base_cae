@@ -27,7 +27,6 @@ public:
 		toggleButton->setIcon(QIcon(":resources/icon/switch-off.png"));
 		toggleButton->setFixedSize(50, 50);
 		toggleButton->setIconSize(toggleButton->size());
-		toggleButton->setStyleSheet("QPushButton { border: none; padding: 0px; }");
 		connect(toggleButton, &QPushButton::clicked, this, &PointPickingDialog::togglePicking);
 		connect(this, &QDialog::rejected, this, &PointPickingDialog::onDialogClosed);
 	}

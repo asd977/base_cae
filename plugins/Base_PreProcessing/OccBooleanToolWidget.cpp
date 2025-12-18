@@ -96,7 +96,7 @@ TopoDS_Shape OccBooleanTool::Splitter(const TopoDS_Shape& a, const TopoDS_Shape&
 
 OccBooleanToolWidget::OccBooleanToolWidget(PreProcessingWidget *preProcessingWidget,
                                            QWidget *parent)
-    : BasePage(PublicConstants::PAGE_POSTPROCESS_OCCBOOLEN)
+    : BasePage(PublicConstants::kPagePostProcessOccBoolean)
     , ui(new Ui::OccBooleanToolWidget)
     , m_preProcessingWidget(preProcessingWidget)
 {

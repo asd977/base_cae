@@ -62,7 +62,7 @@ DNNModel::~DNNModel()
 
 void DNNModel::beforeLoad()
 {
-    m_workPath = PublicVariables::instance().get(PublicConstants::VALUE_PROJECT_DIR).toString();
+    m_workPath = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
 }
 
 void DNNModel::beforeUnload()
@@ -618,40 +618,8 @@ void DNNModel::on_continueTrainModel_clicked()
 
 void DNNModel::setStyle()
 {
-
-    ui->sourceFileTableWidget->setStyleSheet(
-                "QHeaderView::section {"
-                "background-color: rgb(240, 240, 240);"
-                "font-size: 17px;"
-                "border: 1px solid rgb(214,216,218);"
-                "}"
-                "QHeaderView::section:selected {"
-                "background-color: lightblue;"
-                "}"
-                "QTableCornerButton::section {"
-                "background-color: rgb(240, 240, 240);"
-                "border: 1px solid rgb(214,216,218);"
-                "}"
-                );
-
     ui->sourceFileTableWidget->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     ui->sourceFileTableWidget->horizontalHeader()->setSectionResizeMode(0,QHeaderView::ResizeToContents);
-
-
-    ui->layerWidget->setStyleSheet(
-                "QHeaderView::section {"
-                "background-color: rgb(240, 240, 240);"
-                "font-size: 17px;"
-                "border: 1px solid rgb(214,216,218);"
-                "}"
-                "QHeaderView::section:selected {"
-                "background-color: lightblue;"
-                "}"
-                "QTableCornerButton::section {"
-                "background-color: rgb(240, 240, 240);"
-                "border: 1px solid rgb(214,216,218);"
-                "}"
-                );
 
     ui->layerWidget->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     ui->layerWidget->horizontalHeader()->setSectionResizeMode(0,QHeaderView::ResizeToContents);
