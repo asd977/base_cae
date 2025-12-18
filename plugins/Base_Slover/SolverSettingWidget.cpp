@@ -6,6 +6,146 @@
 
 #include <mesh/BoundaryConditions.h>
 
+namespace
+{
+inline double GetScalar(const std::map<std::string,double> &s,
+                        const std::string &key, double def = 0.0)
+{
+    auto it = s.find(key);
+    return (it == s.end()) ? def : it->second;
+}
+
+inline int GetIntScalar(const std::map<std::string,double> &s,
+                        const std::string &key, int def = 0)
+{
+    auto it = s.find(key);
+    return (it == s.end()) ? def : static_cast<int>(it->second);
+}
+
+// 统一的动力学：给 eta -> j 以及 dj/dphi_e（注意 phi_e 在 eta 里是负号，所以 dj/dphi_e = -dj/deta）
+inline void EvalJandDeriv(double eta,
+                          const std::map<std::string,double> &s,
+                          double &j, double &dj_dphi)
+{
+    const double ln10 = 2.302585092994046;
+
+    const int model_type = GetIntScalar(s, "model_type", 1);
+
+    j = 0.0;
+    dj_dphi = 0.0;
+
+    if (model_type == 1) // Tafel
+    {
+        const bool useA = (GetScalar(s, "use_anodic", 0.0) != 0.0);
+        const bool useC = (GetScalar(s, "use_cathodic", 0.0) != 0.0);
+
+        double djd_eta = 0.0;
+
+        if (useA)
+        {
+            double beta_a = std::fabs(GetScalar(s, "beta_a", 0.1));
+            if (beta_a <= 0.0) beta_a = 1e-12;
+            const double i0_a = GetScalar(s, "i0_a", 0.0);
+
+            const double j_a = i0_a * std::pow(10.0, eta / beta_a);
+            j += j_a;
+            djd_eta += (ln10 / beta_a) * j_a;
+        }
+
+        if (useC)
+        {
+            double beta_c = std::fabs(GetScalar(s, "beta_c", 0.1));
+            if (beta_c <= 0.0) beta_c = 1e-12;
+            const double i0_c = GetScalar(s, "i0_c", 0.0);
+
+            const double t   = std::pow(10.0, -eta / beta_c);
+            const double j_c = -i0_c * t;
+            j += j_c;
+            djd_eta += (ln10 / beta_c) * i0_c * t; // derivative of (-i0*10^(-eta/beta))
+        }
+
+        dj_dphi = -djd_eta;
+    }
+    else // Butler-Volmer
+    {
+        const double F  = 96485.0;
+        const double Rg = 8.314;
+        const double T  = GetScalar(s, "temp", 298.15);
+
+        const double i0      = GetScalar(s, "i0", 0.0);
+        const double alpha_a = GetScalar(s, "alpha_a", 0.5);
+        const double alpha_c = GetScalar(s, "alpha_c", 0.5);
+
+        const double k_a = alpha_a * F / (Rg * T);
+        const double k_c = alpha_c * F / (Rg * T);
+
+        const double exp_a = std::exp( k_a * eta);
+        const double exp_c = std::exp(-k_c * eta);
+
+        j = i0 * (exp_a - exp_c);
+        const double djd_eta = i0 * (k_a * exp_a + k_c * exp_c);
+        dj_dphi = -djd_eta;
+    }
+}
+
+// 在电极边界输出 itot = j(eta)
+class ItotOnBdrCoefficient : public mfem::Coefficient
+{
+public:
+    ItotOnBdrCoefficient(const mfem::GridFunction &phil,
+                         const mfem::Mesh &mesh,
+                         const std::map<int, const BCSolverEntry*> &bcMap)
+        : phil_(phil), mesh_(mesh), bcMap_(bcMap) {}
+
+    double Eval(mfem::ElementTransformation &T,
+                const mfem::IntegrationPoint &ip) override
+    {
+        const int be = T.ElementNo;
+        const int battr = mesh_.GetBdrAttribute(be);
+
+        auto it = bcMap_.find(battr);
+        if (it == bcMap_.end()) return 0.0;
+
+        const auto &s = it->second->scalars;
+
+        const double phi_m = GetScalar(s, "phi", 0.0);
+        const double Eeq   = GetScalar(s, "Eeq", 0.0);
+
+        const double phi_e = phil_.GetValue(T, ip);
+        const double eta   = phi_m - phi_e - Eeq;
+
+        double j = 0.0, dj = 0.0;
+        EvalJandDeriv(eta, s, j, dj);
+        return j;
+    }
+
+private:
+    const mfem::GridFunction &phil_;
+    const mfem::Mesh &mesh_;
+    const std::map<int, const BCSolverEntry*> &bcMap_;
+};
+
+class AbsItotOnBdrCoefficient : public mfem::Coefficient
+{
+public:
+    AbsItotOnBdrCoefficient(const mfem::GridFunction &phil,
+                            const mfem::Mesh &mesh,
+                            const std::map<int, const BCSolverEntry*> &bcMap)
+        : itot_(phil, mesh, bcMap) {}
+
+    double Eval(mfem::ElementTransformation &T,
+                const mfem::IntegrationPoint &ip) override
+    {
+        return std::fabs(itot_.Eval(T, ip));
+    }
+
+private:
+    ItotOnBdrCoefficient itot_;
+};
+
+} // namespace
+
+
 SolverSettingWidget::SolverSettingWidget(QWidget *parent)
     : BasePage("SolverSettingWidget")
     , ui(new Ui::SolverSettingWidget)
@@ -434,45 +574,6 @@ void SolverSettingWidget::solvePrimaryCurrentWithMfem(
                   << " avg(phi)=" << avg_val << "\n";
     }
 
-
-    // ---- DEBUG 3: 检查 ProjectBdrCoefficient 之后，实际边界上的 x 值 ----
-    std::cout << "===== DEBUG: value of x on each boundary element center (AFTER ProjectBdrCoefficient) =====\n";
-    for (int i = 0; i < mesh.GetNBE(); i++)
-    {
-        int battr = mesh.GetBdrAttribute(i);
-
-        // 边界单元的几何中心
-        Array<int> v;
-        mesh.GetBdrElement(i)->GetVertices(v);
-        double cx=0, cy=0, cz=0;
-        for (int k = 0; k < v.Size(); k++)
-        {
-            const double *p = mesh.GetVertex(v[k]);
-            cx += p[0]; cy += p[1]; cz += p[2];
-        }
-        cx /= v.Size(); cy /= v.Size(); cz /= v.Size();
-
-        // 在该边界单元中心点 eval 一下 x
-        ElementTransformation *T = mesh.GetBdrElementTransformation(i);
-        Geometry::Type geom = mesh.GetBdrElementBaseGeometry(i);
-        const IntegrationRule &ir = IntRules.Get(geom, 1);
-
-        const IntegrationPoint &ip = ir.IntPoint(0);
-        T->SetIntPoint(&ip);
-
-        double val = x.GetValue(*T, ip);
-
-        std::cout << "  bdr " << i
-                  << " attr=" << battr
-                  << " center=(" << cx << "," << cy << "," << cz << ")"
-                  << "  x(center)=" << val;
-
-        auto it = bdrAttrPhi.find(battr);
-        if (it != bdrAttrPhi.end())
-            std::cout << "  (target phi=" << it->second << ")";
-        std::cout << "\n";
-    }
-
     // (8) 形成线性系统
     SparseMatrix A;
     Vector B, X;
@@ -515,6 +616,9 @@ void SolverSettingWidget::solvePrimaryCurrentWithMfem(
     std::cout << "  phi_min = " << x.Min()
               << ", phi_max = " << x.Max() << "\n";
 
+
+
+
     // (11) 使用 ParaViewDataCollection 输出 VTU
     {
         ParaViewDataCollection d(outputPrefix.c_str(), &mesh);
@@ -549,323 +653,155 @@ void SolverSettingWidget::solveSecondaryCurrentWithMfem(
 {
     using namespace mfem;
 
+    auto NormDof = [](int dof)->int { return (dof < 0) ? (-1 - dof) : dof; };
+    auto DofSign = [](int dof)->double { return (dof < 0) ? -1.0 : 1.0; };
+
     const int dim = mesh.Dimension();
 
-    // --------- 0. 网格统一细化 ---------
-    for (int l = 0; l < refLevels; l++)
-    {
-        mesh.UniformRefinement();
-    }
+    // 0) refine
+    for (int l = 0; l < refLevels; l++) { mesh.UniformRefinement(); }
 
-    // --------- 1. H1 空间 & sigma 系数 ---------
+    // 1) H1 space
     H1_FECollection fec(order, dim);
     FiniteElementSpace fespace(&mesh, &fec);
-
     const int ndofs = fespace.GetVSize();
 
-    // *** 1.1: 构造 sigma，只允许在 attrSigma 里配置的体作为电解质 ***
+    // sigma (piecewise constant on elements)
     Vector sigma_vec(mesh.GetNE());
     sigma_vec = 0.0;
 
-    std::cout << "[Secondary] attrSigma (volume attribute -> sigma):\n";
-    for (auto &kv : attrSigma)
-    {
-        std::cout << "  attr " << kv.first << " -> sigma=" << kv.second << "\n";
-    }
-
     bool has_missing_sigma = false;
-    for (int i = 0; i < mesh.GetNE(); ++i)
+    for (int e = 0; e < mesh.GetNE(); ++e)
     {
-        int attr = mesh.GetAttribute(i);
+        const int attr = mesh.GetAttribute(e);
         auto it = attrSigma.find(attr);
-        if (it != attrSigma.end())
-        {
-            sigma_vec(i) = it->second; // 电解质导电率
-        }
-        else
-        {
-            // 没配置 sigma 的体：当成绝缘体（不导电），sigma = 0
-            sigma_vec(i) = 0.0;
-            has_missing_sigma = true;
-            std::cerr << "[Secondary] WARNING: element " << i
-                      << " attribute=" << attr
-                      << " 未在 attrSigma 中配置 sigma，按绝缘体处理 (sigma=0)。\n";
-        }
+        if (it != attrSigma.end()) sigma_vec(e) = it->second;
+        else { sigma_vec(e) = 0.0; has_missing_sigma = true; }
     }
     if (has_missing_sigma)
     {
-        std::cerr << "[Secondary] 提示：建议在 ElectrolyteSettingWidget 中只选择真正的电解质体，"
-                  << "其它体可以不参与本方程，或者在网格里根本不要导入。\n";
+        std::cerr << "[Secondary][WARN] some volume attrs not in attrSigma => sigma=0.\n";
     }
 
     PWConstCoefficient sigma_coef(sigma_vec);
 
-    // 电位场 phi，x 作为它的别名向量（共用数据指针）
+    // unknown
     GridFunction phi(&fespace);
     phi = 0.0;
-    Vector x(phi.GetData(), ndofs);  // 注意：不分配内存，只是别名
+    Vector x(phi.GetData(), ndofs); // alias to phi
 
     if (usePrimaryAsInitial)
-    {
-        std::cout << "[Secondary] usePrimaryAsInitial=TRUE，但暂未从文件加载一次结果，初值仍为 0。\n";
-        // 将来你可以在这里从一次求解结果中读回 phi。
-    }
+        std::cout << "[Secondary] usePrimaryAsInitial=TRUE, but not loaded here => still 0.\n";
 
-    // --------- 2. 线性部分刚度矩阵 K = ∫ σ∇u·∇v ---------
+    // 2) linear stiffness K
     BilinearForm a_lin(&fespace);
     a_lin.AddDomainIntegrator(new DiffusionIntegrator(sigma_coef));
     a_lin.Assemble();
     a_lin.Finalize();
-    SparseMatrix K = a_lin.SpMat();   // 拷贝一份基准矩阵
+    SparseMatrix K = a_lin.SpMat();
 
-    // --------- 3. electrode physId -> BCEntry 映射 ---------
+    // 3) bcMap: battr -> BC entry
     std::map<int, const BCSolverEntry*> bcMap;
-    for (const auto &rec : electrodeBCs)
-    {
-        bcMap[rec.physId] = &rec;
-    }
+    for (const auto &rec : electrodeBCs) bcMap[rec.physId] = &rec;
 
-    std::cout << "===== [Secondary] Electrode BCs from UI =====\n";
-    for (const auto &kv : bcMap)
+    // 3.1) DEBUG coverage (count/area)
     {
-        int phys = kv.first;
-        const BCSolverEntry &rec = *(kv.second);
-        std::cout << "  face physId = " << phys << "\n";
-        for (auto &s : rec.scalars)
+        std::map<int,int>  battr_cnt;
+        std::map<int,double> battr_area;
+
+        for (int be = 0; be < mesh.GetNBE(); ++be)
         {
-            std::cout << "    " << s.first << " = " << s.second << "\n";
+            int battr = mesh.GetBdrAttribute(be);
+            if (bcMap.find(battr) == bcMap.end()) continue;
+
+            ElementTransformation *Ttr = fespace.GetBdrElementTransformation(be);
+            Geometry::Type geom = mesh.GetBdrElementBaseGeometry(be);
+            const IntegrationRule &irA = IntRules.Get(geom, std::max(2, 2*order));
+
+            double area_be = 0.0;
+            for (int k = 0; k < irA.GetNPoints(); ++k)
+            {
+                const IntegrationPoint &ip = irA.IntPoint(k);
+                Ttr->SetIntPoint(&ip);
+                area_be += ip.weight * Ttr->Weight();
+            }
+
+            battr_cnt[battr] += 1;
+            battr_area[battr] += area_be;
+        }
+
+        std::cout << "===== [Secondary][DEBUG] electrode boundary coverage (count/area) =====\n";
+        for (auto &kv : bcMap)
+        {
+            int battr = kv.first;
+            std::cout << "  battr=" << battr
+                      << "  count=" << battr_cnt[battr]
+                      << "  area="  << battr_area[battr] << "\n";
         }
     }
 
-    // --------- 4. Newton 迭代准备 ---------
-    Vector x_old(ndofs);
-    Vector delta(ndofs);
-    Vector residual(ndofs);
-
+    // 4) linear solver
     CGSolver lin_solver;
     lin_solver.SetRelTol(linRelTol);
     lin_solver.SetMaxIter(linMaxIter);
     lin_solver.SetPrintLevel(printLog ? 1 : 0);
 
     std::unique_ptr<Solver> prec;
-
 #ifdef MFEM_USE_HYPRE
-    HypreBoomerAMG *amg = nullptr;
     if (useAMG)
     {
-        amg = new HypreBoomerAMG();
+        auto *amg = new HypreBoomerAMG();
         prec.reset(amg);
     }
 #else
     (void)useAMG;
 #endif
 
-    // ---- j(eta) 和 j'(eta) 的计算器 ----
-    auto assemble_j_and_jprime = [](
-                                     double eta,
-                                     const std::map<std::string,double> &s,
-                                     double &j, double &dj_dphi)
-    {
-        const double ln10 = 2.302585092994046; // log(10)
-        const double F    = 96485.0;           // C/mol
-        const double Rg   = 8.314;             // J/(mol*K)
+    // 5) Newton
+    Vector residual(ndofs), delta(ndofs);
+    double r0 = -1.0;
 
-        int model_type = 1;
-        if (auto it = s.find("model_type"); it != s.end())
-            model_type = static_cast<int>(it->second);
-
-        double T = 298.15;
-        if (auto it = s.find("temp"); it != s.end())
-            T = it->second;
-
-        j = 0.0;
-        dj_dphi = 0.0;
-
-        if (model_type == 1)
-        {
-            // ---------- Tafel ----------
-            bool useA = false;
-            if (auto it = s.find("use_anodic"); it != s.end())
-                useA = (it->second != 0.0);
-
-            bool useC = false;
-            if (auto it = s.find("use_cathodic"); it != s.end())
-                useC = (it->second != 0.0);
-
-            double djd_eta = 0.0;
-
-            if (useA)
-            {
-                double beta_a = 0.1;
-                double i0_a   = 0.0;
-                if (auto it = s.find("beta_a"); it != s.end())
-                    beta_a = it->second;
-                if (auto it = s.find("i0_a"); it != s.end())
-                    i0_a = it->second;
-
-                double j_a = i0_a * std::pow(10.0, eta / beta_a);
-                j += j_a;
-                djd_eta += (ln10 / beta_a) * j_a;
-            }
-
-            if (useC)
-            {
-                double beta_c = 0.1;
-                double i0_c   = 0.0;
-                if (auto it = s.find("beta_c"); it != s.end())
-                    beta_c = it->second;
-                if (auto it = s.find("i0_c"); it != s.end())
-                    i0_c = it->second;
-
-                double t    = std::pow(10.0, -eta / beta_c);
-                double j_c  = -i0_c * t;
-                j += j_c;
-
-                djd_eta += (ln10 / beta_c) * i0_c * t;
-            }
-
-            // eta = phi_m - phi_e - Eeq => d eta / d phi_e = -1
-            dj_dphi = -djd_eta;
-        }
-        else
-        {
-            // ---------- Butler-Volmer ----------
-            double i0      = 0.0;
-            double alpha_a = 0.5;
-            double alpha_c = 0.5;
-            if (auto it = s.find("i0"); it != s.end())       i0 = it->second;
-            if (auto it = s.find("alpha_a"); it != s.end())  alpha_a = it->second;
-            if (auto it = s.find("alpha_c"); it != s.end())  alpha_c = it->second;
-
-            double k_a = alpha_a * F / (Rg * T);
-            double k_c = alpha_c * F / (Rg * T);
-
-            double exp_a = std::exp(k_a * eta);
-            double exp_c = std::exp(-k_c * eta);
-
-            j = i0 * (exp_a - exp_c);
-
-            double djd_eta = i0 * (k_a * exp_a + k_c * exp_c);
-            dj_dphi = -djd_eta; // d eta / d phi_e = -1
-        }
-    };
-
-    // --------- 5. Newton 迭代 ---------
     for (int it = 0; it < newtonMaxIter; ++it)
     {
-        std::cout << "[Secondary] Newton iter " << it << std::endl;
+        std::cout << "\n[Secondary] Newton iter " << it << "\n";
 
-        x_old = x;
-
-        // 残量 R = K * x - ∑_bdr ∫ j(η(φ)) N_i dΓ
-        residual.SetSize(ndofs);
         residual = 0.0;
-
-        // 5.1 域内部分：R_dom = K * x
         K.Mult(x, residual);
 
-        // 5.2 边界非线性部分
+        std::map<int,double> I_kin_iter;
+        double eta_min=1e100, eta_max=-1e100;
+        double j_min=1e100, j_max=-1e100;
+
         for (int be = 0; be < mesh.GetNBE(); ++be)
         {
-            int battr = mesh.GetBdrAttribute(be);
+            const int battr = mesh.GetBdrAttribute(be);
             auto itBC = bcMap.find(battr);
-            if (itBC == bcMap.end())
-                continue; // 不是二次电流电极
+            if (itBC == bcMap.end()) continue;
 
-            const BCSolverEntry &rec = *(itBC->second);
-            const auto &s = rec.scalars;
+            const auto &s = itBC->second->scalars;
+            const double phi_m = GetScalar(s, "phi", 0.0);
+            const double Eeq   = GetScalar(s, "Eeq", 0.0);
 
-            double phi_m = 0.0;
-            if (auto itp = s.find("phi"); itp != s.end())
-                phi_m = itp->second;
-
-            double Eeq = 0.0;
-            if (auto ite = s.find("Eeq"); ite != s.end())
-                Eeq = ite->second;
-
-            Array<int> vdofs;
-            fespace.GetBdrElementDofs(be, vdofs);
+            Array<int> vdofs_raw;
+            fespace.GetBdrElementDofs(be, vdofs_raw);
 
             const FiniteElement &fe = *fespace.GetBE(be);
             const int nd = fe.GetDof();
 
-            Vector el_x(nd);
+            Array<int> gdofs(nd);
+            Vector sgn(nd), el_x(nd);
             for (int i = 0; i < nd; ++i)
-                el_x[i] = x[vdofs[i]];
-
-            Vector el_res(nd);
-            el_res = 0.0;
-
-            ElementTransformation *Ttr = mesh.GetBdrElementTransformation(be);
-            Geometry::Type geom = mesh.GetBdrElementBaseGeometry(be);
-            const IntegrationRule &ir = IntRules.Get(geom, 2 * order);
-
-            Vector shape(nd);
-
-            for (int ip_idx = 0; ip_idx < ir.GetNPoints(); ++ip_idx)
             {
-                const IntegrationPoint &ip = ir.IntPoint(ip_idx);
-                Ttr->SetIntPoint(&ip);
-
-                double w = ip.weight * Ttr->Weight();
-
-                fe.CalcShape(ip, shape);
-
-                double phi_e = 0.0;
-                for (int j = 0; j < nd; ++j)
-                    phi_e += el_x[j] * shape[j];
-
-                double eta = phi_m - phi_e - Eeq;
-                double j_val = 0.0, dj_dphi = 0.0;
-                assemble_j_and_jprime(eta, s, j_val, dj_dphi);
-
-                // 残量边界项：R_i += - ∫ j(φ) N_i dΓ
-                for (int i = 0; i < nd; ++i)
-                    el_res[i] += (-j_val) * shape[i] * w;
+                gdofs[i] = NormDof(vdofs_raw[i]);
+                sgn[i]   = DofSign(vdofs_raw[i]);
+                el_x[i]  = sgn[i] * x[gdofs[i]];
             }
 
-            // 累加到全局残量
-            for (int i = 0; i < nd; ++i)
-                residual[vdofs[i]] += el_res[i];
-        }
+            Vector el_res(nd); el_res = 0.0;
 
-        // --------- 5.3 构造雅可比矩阵 J = K + 边界项 ---------
-        SparseMatrix J(K); // 基于线性部分复制一份
-
-        for (int be = 0; be < mesh.GetNBE(); ++be)
-        {
-            int battr = mesh.GetBdrAttribute(be);
-            auto itBC = bcMap.find(battr);
-            if (itBC == bcMap.end())
-                continue;
-
-            const BCSolverEntry &rec = *(itBC->second);
-            const auto &s = rec.scalars;
-
-            double phi_m = 0.0;
-            if (auto itp = s.find("phi"); itp != s.end())
-                phi_m = itp->second;
-
-            double Eeq = 0.0;
-            if (auto ite = s.find("Eeq"); ite != s.end())
-                Eeq = ite->second;
-
-            Array<int> vdofs;
-            fespace.GetBdrElementDofs(be, vdofs);
-
-            const FiniteElement &fe = *fespace.GetBE(be);
-            const int nd = fe.GetDof();
-
-            Vector el_x(nd);
-            for (int i = 0; i < nd; ++i)
-                el_x[i] = x[vdofs[i]];
-
-            DenseMatrix el_J(nd);
-            el_J = 0.0;
-
-            ElementTransformation *Ttr = mesh.GetBdrElementTransformation(be);
+            ElementTransformation *Ttr = fespace.GetBdrElementTransformation(be);
             Geometry::Type geom = mesh.GetBdrElementBaseGeometry(be);
-            const IntegrationRule &ir = IntRules.Get(geom, 2 * order);
+            const IntegrationRule &ir = IntRules.Get(geom, std::max(2, 2*order));
 
             Vector shape(nd);
 
@@ -874,32 +810,110 @@ void SolverSettingWidget::solveSecondaryCurrentWithMfem(
                 const IntegrationPoint &ip = ir.IntPoint(ip_idx);
                 Ttr->SetIntPoint(&ip);
 
-                double w = ip.weight * Ttr->Weight();
-
+                const double w = ip.weight * Ttr->Weight();
                 fe.CalcShape(ip, shape);
 
                 double phi_e = 0.0;
-                for (int j = 0; j < nd; ++j)
-                    phi_e += el_x[j] * shape[j];
+                for (int j = 0; j < nd; ++j) phi_e += el_x[j] * shape[j];
 
-                double eta = phi_m - phi_e - Eeq;
+                const double eta = phi_m - phi_e - Eeq;
+
                 double j_val = 0.0, dj_dphi = 0.0;
-                assemble_j_and_jprime(eta, s, j_val, dj_dphi);
+                EvalJandDeriv(eta, s, j_val, dj_dphi);
 
-                // 雅可比边界项：J_ij += - ∫ j'(φ) N_j N_i dΓ
+                eta_min = std::min(eta_min, eta);
+                eta_max = std::max(eta_max, eta);
+                j_min   = std::min(j_min, j_val);
+                j_max   = std::max(j_max, j_val);
+
+                for (int i = 0; i < nd; ++i)
+                    el_res[i] += (-j_val) * shape[i] * w;
+
+                I_kin_iter[battr] += j_val * w;
+            }
+
+            for (int i = 0; i < nd; ++i)
+                residual[gdofs[i]] += sgn[i] * el_res[i];
+        }
+
+        const double rnorm = residual.Norml2();
+        if (it == 0) r0 = std::max(rnorm, 1e-30);
+
+        std::cout << "  ||R||=" << rnorm << "  relR=" << (rnorm / r0) << "\n";
+        std::cout << "  eta range=[" << eta_min << "," << eta_max << "]  j range=[" << j_min << "," << j_max << "]\n";
+
+        if (printLog)
+        {
+            for (auto &kv : I_kin_iter)
+                std::cout << "  [iter kin] battr=" << kv.first << "  I_kin=" << kv.second << "\n";
+        }
+
+        // Jacobian J = K + boundary term
+        SparseMatrix J(K);
+
+        for (int be = 0; be < mesh.GetNBE(); ++be)
+        {
+            const int battr = mesh.GetBdrAttribute(be);
+            auto itBC = bcMap.find(battr);
+            if (itBC == bcMap.end()) continue;
+
+            const auto &s = itBC->second->scalars;
+            const double phi_m = GetScalar(s, "phi", 0.0);
+            const double Eeq   = GetScalar(s, "Eeq", 0.0);
+
+            Array<int> vdofs_raw;
+            fespace.GetBdrElementDofs(be, vdofs_raw);
+
+            const FiniteElement &fe = *fespace.GetBE(be);
+            const int nd = fe.GetDof();
+
+            Array<int> gdofs(nd);
+            Vector sgn(nd), el_x(nd);
+            for (int i = 0; i < nd; ++i)
+            {
+                gdofs[i] = NormDof(vdofs_raw[i]);
+                sgn[i]   = DofSign(vdofs_raw[i]);
+                el_x[i]  = sgn[i] * x[gdofs[i]];
+            }
+
+            DenseMatrix el_J(nd); el_J = 0.0;
+
+            ElementTransformation *Ttr = fespace.GetBdrElementTransformation(be);
+            Geometry::Type geom = mesh.GetBdrElementBaseGeometry(be);
+            const IntegrationRule &ir = IntRules.Get(geom, std::max(2, 2*order));
+
+            Vector shape(nd);
+
+            for (int ip_idx = 0; ip_idx < ir.GetNPoints(); ++ip_idx)
+            {
+                const IntegrationPoint &ip = ir.IntPoint(ip_idx);
+                Ttr->SetIntPoint(&ip);
+
+                const double w = ip.weight * Ttr->Weight();
+                fe.CalcShape(ip, shape);
+
+                double phi_e = 0.0;
+                for (int j = 0; j < nd; ++j) phi_e += el_x[j] * shape[j];
+
+                const double eta = phi_m - phi_e - Eeq;
+
+                double j_val = 0.0, dj_dphi = 0.0;
+                EvalJandDeriv(eta, s, j_val, dj_dphi);
+
+                // note: boundary Jacobian contribution is (-dj_dphi) * Ni * Nj
                 for (int i = 0; i < nd; ++i)
                     for (int j = 0; j < nd; ++j)
                         el_J(i,j) += (-dj_dphi) * shape[i] * shape[j] * w;
             }
 
-            // 加到全局 J
-            J.AddSubMatrix(vdofs, vdofs, el_J);
+            for (int i = 0; i < nd; ++i)
+                for (int j = 0; j < nd; ++j)
+                    el_J(i,j) *= (sgn[i] * sgn[j]);
+
+            J.AddSubMatrix(gdofs, gdofs, el_J);
         }
 
-        // --------- 5.5 解 J * delta = - residual ---------
-        Vector rhs(ndofs);
-        rhs = residual;
-        rhs *= -1.0;
+        Vector rhs(ndofs); rhs = residual; rhs *= -1.0;
 
 #ifdef MFEM_USE_HYPRE
         if (useAMG && prec)
@@ -909,317 +923,123 @@ void SolverSettingWidget::solveSecondaryCurrentWithMfem(
         }
 #endif
         lin_solver.SetOperator(J);
-
-        delta.SetSize(ndofs);
         delta = 0.0;
         lin_solver.Mult(rhs, delta);
 
-        // --------- 5.6 更新解 x_new = x + damping * delta ---------
+        if (printLog)
+        {
+            std::cout << "  [lin] iters=" << lin_solver.GetNumIterations()
+            << " final_norm=" << lin_solver.GetFinalNorm()
+            << " converged=" << (lin_solver.GetConverged() ? "YES":"NO")
+            << "\n";
+        }
+
         x.Add(newtonDamping, delta);
 
-        // --------- 5.7 收敛检查 ---------
-        double norm_delta = delta.Norml2();
-        double norm_x     = x.Norml2();
-        double rel_change = norm_delta / (norm_x + 1e-16);
+        const double norm_delta = delta.Norml2();
+        const double norm_x = x.Norml2();
+        const double rel_change = norm_delta / (norm_x + 1e-16);
 
-        std::cout << "    ||delta|| = " << norm_delta
-                  << ", ||x|| = " << norm_x
-                  << ", rel_change = " << rel_change << std::endl;
+        std::cout << "  ||delta||=" << norm_delta
+                  << "  ||x||=" << norm_x
+                  << "  relStep=" << rel_change << "\n";
 
-        if (rel_change < newtonRelTol)
+        if ((rnorm / r0) < newtonRelTol && rel_change < (10.0 * newtonRelTol))
         {
-            std::cout << "[Secondary] Newton converged at iter " << it << std::endl;
+            std::cout << "[Secondary] Newton converged at iter " << it << "\n";
             break;
         }
 
         if (it == newtonMaxIter - 1)
-        {
-            std::cout << "[Secondary] Newton reached max iterations without full convergence.\n";
-        }
+            std::cerr << "[Secondary][WARN] Newton reached max iterations without convergence.\n";
     }
 
-    // ================== 6. 生成各种场 ==================
-
-    // 6.1 电解质电位 phil（直接就是求解出来的 phi，和 COMSOL 的 phil 对应）
+    // ================== POST ==================
     GridFunction phil(&fespace);
     phil = phi;
 
-    // 6.2 对地电极电位 cd.phisext   （这里只在电极 DOF 上有意义）
-    GridFunction phisext(&fespace);
-    phisext = 0.0;
+    std::cout << "===== [Secondary] phil range =====\n";
+    std::cout << "  phil_min=" << phil.Min() << "  phil_max=" << phil.Max() << "\n";
 
-    Vector sum_phi_m(ndofs);
-    Vector cnt_phi_m(ndofs);
-    sum_phi_m = 0.0;
-    cnt_phi_m = 0.0;
+    // ---- (A) IlMag (cell-wise) : |J| where J = -sigma * grad(phil) ----
+    L2_FECollection l2c0(0, dim);
+    FiniteElementSpace l2fes0(&mesh, &l2c0);
+    GridFunction IlMag(&l2fes0);
+    IlMag = 0.0;
 
-    for (int be = 0; be < mesh.GetNBE(); ++be)
+    for (int e = 0; e < mesh.GetNE(); ++e)
     {
-        int battr = mesh.GetBdrAttribute(be);
-        auto itBC = bcMap.find(battr);
-        if (itBC == bcMap.end())
-            continue;   // 不是电极边界，跳过
+        ElementTransformation *T = fespace.GetElementTransformation(e);
+        Geometry::Type geom = mesh.GetElementBaseGeometry(e);
+        const IntegrationRule &ir = IntRules.Get(geom, std::max(2, 2*order+2));
 
-        const BCSolverEntry &rec = *(itBC->second);
-        const auto &s = rec.scalars;
+        const int attr = mesh.GetAttribute(e);
+        auto itS = attrSigma.find(attr);
+        const double sigma = (itS != attrSigma.end()) ? itS->second : 0.0;
 
-        double phi_m = 0.0;
-        if (auto itp = s.find("phi"); itp != s.end())
-            phi_m = itp->second;   // 金属电极电位（对地）
+        double vol = 0.0, mag_int = 0.0;
 
-        Array<int> vdofs;
-        fespace.GetBdrElementDofs(be, vdofs);
-
-        for (int k = 0; k < vdofs.Size(); ++k)
+        for (int k = 0; k < ir.GetNPoints(); ++k)
         {
-            int dof = vdofs[k];
-            sum_phi_m[dof] += phi_m;
-            cnt_phi_m[dof] += 1.0;
-        }
-    }
+            const IntegrationPoint &ip = ir.IntPoint(k);
+            T->SetIntPoint(&ip);
 
-    for (int i = 0; i < ndofs; ++i)
-    {
-        if (cnt_phi_m[i] > 0.0)
-            phisext[i] = sum_phi_m[i] / cnt_phi_m[i];
-        else
-            phisext[i] = 0.0;      // 非电极区域：这里先设 0
-    }
+            const double w = ip.weight * T->Weight();
+            vol += w;
 
-    // 6.3 界面腐蚀电流密度 cd.jcorr（A/m^2，带符号，定义在电极边界上）
-    GridFunction jcorr(&fespace);
-    jcorr = 0.0;
+            Vector grad(dim);
+            phil.GetGradient(*T, grad);
 
-    Vector sum_j(ndofs);
-    Vector cnt_j(ndofs);
-    sum_j = 0.0;
-    cnt_j = 0.0;
-
-    // 额外保存每个边界单元的平均 j，用于将来单独导出“纯表面 vtu”
-    std::vector<double> jcorr_bdr_avg(mesh.GetNBE(), 0.0);
-    std::vector<double> abs_jcorr_bdr_avg(mesh.GetNBE(), 0.0);
-
-    // 用最终的 phi 再在电极边界上算一遍 j(eta)，做一个平均场
-    for (int be = 0; be < mesh.GetNBE(); ++be)
-    {
-        int battr = mesh.GetBdrAttribute(be);
-        auto itBC = bcMap.find(battr);
-        if (itBC == bcMap.end())
-            continue;   // 非电极边界
-
-        const BCSolverEntry &rec = *(itBC->second);
-        const auto &s = rec.scalars;
-
-        double phi_m = 0.0;
-        if (auto itp = s.find("phi"); itp != s.end())
-            phi_m = itp->second;
-
-        double Eeq = 0.0;
-        if (auto ite = s.find("Eeq"); ite != s.end())
-            Eeq = ite->second;
-
-        Array<int> vdofs;
-        fespace.GetBdrElementDofs(be, vdofs);
-
-        const FiniteElement &fe = *fespace.GetBE(be);
-        const int nd = fe.GetDof();
-
-        Vector el_x(nd);
-        for (int i = 0; i < nd; ++i)
-            el_x[i] = phi[vdofs[i]];   // 用最终解 phi
-
-        ElementTransformation *Ttr = mesh.GetBdrElementTransformation(be);
-        Geometry::Type geom = mesh.GetBdrElementBaseGeometry(be);
-        const IntegrationRule &ir = IntRules.Get(geom, 2 * order);
-
-        Vector shape(nd);
-
-        double num = 0.0;
-        double den = 0.0;
-
-        for (int ip_idx = 0; ip_idx < ir.GetNPoints(); ++ip_idx)
-        {
-            const IntegrationPoint &ip = ir.IntPoint(ip_idx);
-            Ttr->SetIntPoint(&ip);
-
-            double w = ip.weight * Ttr->Weight();
-
-            fe.CalcShape(ip, shape);
-
-            double phi_e = 0.0;
-            for (int j = 0; j < nd; ++j)
-                phi_e += el_x[j] * shape[j];
-
-            double eta = phi_m - phi_e - Eeq;
-            double j_val = 0.0, dj_dphi = 0.0;
-            assemble_j_and_jprime(eta, s, j_val, dj_dphi);
-
-            num += j_val * w;
-            den += w;
+            // J = -sigma * grad(phi)
+            grad *= (-sigma);
+            mag_int += grad.Norml2() * w;
         }
 
-        double j_avg = 0.0;
-        if (den > 0.0)
-            j_avg = num / den;
-
-        jcorr_bdr_avg[be]      = j_avg;
-        abs_jcorr_bdr_avg[be]  = std::fabs(j_avg);
-
-        // 把这个边界单元上的平均腐蚀电流 j_avg 分配给该边界单元关联的 dof
-        for (int k = 0; k < vdofs.Size(); ++k)
-        {
-            int dof = vdofs[k];
-            sum_j[dof] += j_avg;
-            cnt_j[dof] += 1.0;
-        }
+        IlMag(e) = (vol > 0.0) ? (mag_int / vol) : 0.0;
     }
 
-    for (int i = 0; i < ndofs; ++i)
+    // ---- (B) itot / abs_itot on electrode boundaries ----
+    Array<int> elec_bdr(mesh.bdr_attributes.Max());
+    elec_bdr = 0;
+    for (auto &kv : bcMap)
     {
-        if (cnt_j[i] > 0.0)
-            jcorr[i] = sum_j[i] / cnt_j[i];   // 电极边界上的腐蚀强度（A/m^2）
-        else
-            jcorr[i] = 0.0;                   // 非电极区域设为 0
+        int battr = kv.first;
+        if (battr >= 1 && battr <= elec_bdr.Size()) elec_bdr[battr-1] = 1;
     }
 
-    // 为了对齐 COMSOL 的 abs(cd.itot)，这里再做一个绝对值版本
-    GridFunction abs_cd_itot(&fespace);
-    abs_cd_itot = 0.0;
-    for (int i = 0; i < ndofs; ++i)
+    GridFunction itot(&fespace);     itot = 0.0;
+    GridFunction abs_itot(&fespace); abs_itot = 0.0;
+
+    ItotOnBdrCoefficient    itot_coef(phil, mesh, bcMap);
+    AbsItotOnBdrCoefficient abs_itot_coef(phil, mesh, bcMap);
+
+    itot.ProjectBdrCoefficient(itot_coef, elec_bdr);
+    abs_itot.ProjectBdrCoefficient(abs_itot_coef, elec_bdr);
+
+
+
+    // ---- output VTU ----
     {
-        abs_cd_itot[i] = std::fabs(jcorr[i]); // |界面电流密度|
-    }
-
-    // 6.4 电解质电流密度向量 Je = -sigma * grad(phil)  （体内 L2 向量场）
-    const int vdim = dim;
-    L2_FECollection l2_fec(order, dim);
-    FiniteElementSpace l2_vfes(&mesh, &l2_fec, vdim);
-
-    GridFunction Je(&l2_vfes);
-    Je = 0.0;
-
-    ElectrolyteCurrentCoefficient Je_coef(mesh, phil, attrSigma);
-    Je.ProjectCoefficient(Je_coef);
-
-    // 6.5 拆分 Je 为三个分量：cd.Ilx, cd.Ily, cd.Ilz
-    FiniteElementSpace l2_sfes(&mesh, &l2_fec); // 标量 L2 空间
-
-    GridFunction cd_Ilx(&l2_sfes);
-    GridFunction cd_Ily(&l2_sfes);
-    GridFunction cd_Ilz(&l2_sfes);
-
-    cd_Ilx = 0.0;
-    cd_Ily = 0.0;
-    cd_Ilz = 0.0;
-
-    FiniteElementSpace *vfes = Je.FESpace();
-    int nd_l2   = vfes->GetNDofs();
-    int vdim_l2 = vfes->GetVDim();
-    const Vector &Je_data = Je;  // Je 作为 Vector 看
-
-    MFEM_VERIFY(vdim_l2 >= dim, "Je vdim < mesh dim ?");
-
-    Ordering::Type ord = vfes->GetOrdering();
-
-    if (ord == Ordering::byNODES)
-    {
-        // data(i + j*nd) : i=dof, j=分量
-        for (int i = 0; i < nd_l2; ++i)
-        {
-            cd_Ilx(i) = Je_data(i + 0*nd_l2);
-            if (dim > 1) cd_Ily(i) = Je_data(i + 1*nd_l2);
-            if (dim > 2) cd_Ilz(i) = Je_data(i + 2*nd_l2);
-        }
-    }
-    else // Ordering::byVDIM
-    {
-        // data(j + vdim*i) : i=dof, j=分量
-        for (int i = 0; i < nd_l2; ++i)
-        {
-            cd_Ilx(i) = Je_data(0 + vdim_l2*i);
-            if (dim > 1) cd_Ily(i) = Je_data(1 + vdim_l2*i);
-            if (dim > 2) cd_Ilz(i) = Je_data(2 + vdim_l2*i);
-        }
-    }
-
-    // 6.6 体内电流密度模长：cd.IlMag = |Je|，对应 COMSOL 的 cd.IlMag （L2 体场）
-    GridFunction cd_IlMag(&l2_sfes);
-    cd_IlMag = 0.0;
-
-    int nd_l2_scalar = l2_sfes.GetNDofs();
-    for (int i = 0; i < nd_l2_scalar; ++i)
-    {
-        double Jx = cd_Ilx(i);
-        double Jy = (dim > 1) ? cd_Ily(i) : 0.0;
-        double Jz = (dim > 2) ? cd_Ilz(i) : 0.0;
-
-        cd_IlMag(i) = std::sqrt(Jx*Jx + Jy*Jy + Jz*Jz);
-    }
-
-    // --------- 7. 打印各字段范围，方便和 COMSOL 对比 ---------
-    auto print_min_max = [](const char* name, const GridFunction &gf)
-    {
-        double minv = gf.Min();
-        double maxv = gf.Max();
-        std::cout << "[Secondary] " << name
-                  << " : min = " << minv
-                  << ", max = " << maxv << std::endl;
-    };
-
-    std::cout << "[Secondary] ===== Field ranges (for debug) =====\n";
-    print_min_max("phil (V)",          phil);
-    print_min_max("cd.IlMag (A/m^2)",  cd_IlMag);
-    print_min_max("jcorr / cd.itot (A/m^2)", jcorr);
-    print_min_max("abs(cd.itot) (A/m^2)",    abs_cd_itot);
-
-    // ================== 8. 输出 VTU ==================
-    {
-        QString exePath  = QCoreApplication::applicationDirPath();
+        QString exePath = QCoreApplication::applicationDirPath();
         QString dataPath = exePath + "/../ProjectFolder/data";
-        QDir().mkpath(dataPath);  // 确保目录存在
+        QDir().mkpath(dataPath);
 
-        std::string prefixPath     = dataPath.toStdString();
+        std::string prefixPath = dataPath.toStdString();
         std::string collectionName = outputPrefix.empty() ? "tmp" : outputPrefix;
 
-        mfem::ParaViewDataCollection d(collectionName, &mesh);
+        ParaViewDataCollection d(collectionName, &mesh);
         d.SetPrefixPath(prefixPath);
         d.SetDataFormat(VTKFormat::ASCII);
-
         d.SetHighOrderOutput(true);
         d.SetLevelsOfDetail(order);
 
-        // ---------- 电位 ----------
-        d.RegisterField("phi2",  &phisext); // 对地电极电位（COMSOL: phi2）
-        d.RegisterField("phil",  &phil);    // 电解质电位（COMSOL: phil）
-
-        // ---------- 体内电流（向量 + 组件 + 模长） ----------
-        d.RegisterField("Je",      &Je);       // 电流密度向量
-        d.RegisterField("cd.Ilx",  &cd_Ilx);   // x 分量
-        d.RegisterField("cd.Ily",  &cd_Ily);   // y 分量
-        d.RegisterField("cd.Ilz",  &cd_Ilz);   // z 分量
-        d.RegisterField("cd.IlMag",&cd_IlMag); // 体内电流模长，对齐 COMSOL cd.IlMag
-
-        // ---------- 界面电流（腐蚀强度） ----------
-        d.RegisterField("cd.jcorr",     &jcorr);       // 带符号界面腐蚀电流
-        d.RegisterField("cd.itot",      &jcorr);       // 同一内容，用 COMSOL 的名字
-        d.RegisterField("abs(cd.itot)", &abs_cd_itot); // 绝对值，用来对齐 COMSOL 的 abs(cd.itot)
+        d.RegisterField("phil", &phil);
+        d.RegisterField("IlMag", &IlMag);
+        d.RegisterField("itot", &itot);
+        d.RegisterField("abs_itot", &abs_itot);
 
         d.SetCycle(0);
         d.SetTime(0.0);
         d.Save();
     }
-
-    // 你之前的搬运 / 改名逻辑
-    QString exePath  = QCoreApplication::applicationDirPath();
-    QString dataPath = exePath + "/../ProjectFolder/data";
-
-    MoveAndRenameVTU(dataPath);
-
-    std::cout << "[Secondary] 输出 VTU 完成："
-              << "phi2（对地电极电位）、"
-              << "phil（电解质电位）、"
-              << "Je / cd.Ilx/cd.Ily/cd.Ilz（体内电流密度及分量）、"
-              << "cd.IlMag（体内电流模长）、"
-              << "cd.jcorr / cd.itot（界面电流）、"
-              << "abs(cd.itot)（界面电流绝对值）\n";
 }

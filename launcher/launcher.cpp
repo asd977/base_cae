@@ -15,8 +15,10 @@ void onAppAboutToQuit()
 int main(int argc, char** argv)
 {
 
+    qDebug()<<"asd";
     QApplication app(argc, argv);
 
+    qDebug()<<"asd";
 
 //    QFile styleFile(":/resources/style/app.qss");
 //    if (styleFile.open(QFile::ReadOnly))
