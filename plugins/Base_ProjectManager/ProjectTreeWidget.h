@@ -62,14 +62,20 @@ public:
 	*/
 	void deleteProjectNode(ProjectNode* node);
 	/**
-	* @brief 删除stackedwidget里面的所有内容
-	* @param stackedWidget stackedwidget指针
-	*/
-	void clearStackedWidget(QStackedWidget* stackedWidget);
-	/**
-	* @brief 获取项目xml文件的路径
-	*/
-	QString getProjectTreeXmlPath()const {return m_projectTreeXmlPath;};
+        * @brief 删除stackedwidget里面的所有内容
+        * @param stackedWidget stackedwidget指针
+        */
+        void clearStackedWidget(QStackedWidget* stackedWidget);
+        /**
+        * @brief 递归展开或折叠子树
+        * @param item 需要处理的节点
+        * @param expanded 是否展开
+        */
+        void setSubtreeExpanded(QTreeWidgetItem* item, bool expanded);
+        /**
+        * @brief 获取项目xml文件的路径
+        */
+        QString getProjectTreeXmlPath()const {return m_projectTreeXmlPath;};
 	/**
 	* @brief 获取根节点下面的所有节点(主要用于打开项目使用)
 	*/

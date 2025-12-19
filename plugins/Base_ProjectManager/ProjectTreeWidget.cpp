@@ -5,6 +5,8 @@
 #include <QVariant>
 #include <QAction>
 #include <QMenu>
+#include <QApplication>
+#include <QClipboard>
 
 ProjectTreeWidget::ProjectTreeWidget(QWidget *parent) :
     QWidget(parent),
@@ -293,37 +295,78 @@ void ProjectTreeWidget::deletePage(QTreeWidgetItem* item)
 
 void ProjectTreeWidget::contextMenuEvent(QContextMenuEvent* event)
 {
-	if (!m_treeWidget)
-	{
-		return;
-	}
-	QTreeWidgetItem* item = m_treeWidget->itemAt(m_treeWidget->viewport()->mapFromGlobal(event->globalPos()));
-	if (!item)
-	{
-		return;
-	}
+        if (!m_treeWidget)
+        {
+                return;
+        }
+        QTreeWidgetItem* item = m_treeWidget->itemAt(m_treeWidget->viewport()->mapFromGlobal(event->globalPos()));
+        if (!item)
+        {
+                return;
+        }
 
-	auto* node = dynamic_cast<ProjectNode*>(item);
-	QMenu menu(this);
-	QAction* renameAction = menu.addAction(tr("重命名"));
-	QAction* deleteAction = menu.addAction(tr("删除节点"));
+        auto* node = dynamic_cast<ProjectNode*>(item);
+        QMenu menu(this);
+        QAction* openPageAction = nullptr;
+        QAction* expandAction = nullptr;
+        QAction* collapseAction = nullptr;
 
-	const bool isEditable = item->flags().testFlag(Qt::ItemIsEditable);
-	renameAction->setEnabled(isEditable);
-	const bool isLeaf = node && node->getChildren().isEmpty();
-	deleteAction->setEnabled(isLeaf);
+        const bool hasChildren = node && !node->getChildren().isEmpty();
+        const bool isEditable = item->flags().testFlag(Qt::ItemIsEditable);
+        const bool isLeaf = node && node->getChildren().isEmpty();
+        const bool hasPage = node && node->getPage();
 
-	connect(renameAction, &QAction::triggered, this, [this, item]() {
-		m_treeWidget->setCurrentItem(item);
-		m_treeWidget->editItem(item, 0);
-	});
-	connect(deleteAction, &QAction::triggered, this, [this, item, isLeaf]() {
-		if (isLeaf)
-		{
-			deletePage(item);
-		}
-	});
-	menu.exec(event->globalPos());
+        if (hasPage)
+        {
+                openPageAction = menu.addAction(tr("打开页面"));
+        }
+        if (hasChildren)
+        {
+                expandAction = menu.addAction(tr("展开全部子节点"));
+                collapseAction = menu.addAction(tr("折叠全部子节点"));
+        }
+        QAction* copyNameAction = menu.addAction(tr("复制名称"));
+        QAction* renameAction = menu.addAction(tr("重命名"));
+        QAction* deleteAction = menu.addAction(tr("删除节点"));
+
+        renameAction->setEnabled(isEditable);
+        deleteAction->setEnabled(isLeaf);
+
+        if (openPageAction)
+        {
+                connect(openPageAction, &QAction::triggered, this, [this, item]() {
+                        m_treeWidget->setCurrentItem(item);
+                });
+        }
+        if (expandAction)
+        {
+                connect(expandAction, &QAction::triggered, this, [this, item]() {
+                        setSubtreeExpanded(item, true);
+                });
+        }
+        if (collapseAction)
+        {
+                connect(collapseAction, &QAction::triggered, this, [this, item]() {
+                        setSubtreeExpanded(item, false);
+                });
+        }
+        connect(copyNameAction, &QAction::triggered, this, [item]() {
+                if (QClipboard* clipboard = QApplication::clipboard())
+                {
+                        clipboard->setText(item->text(0));
+                }
+        });
+        connect(renameAction, &QAction::triggered, this, [this, item]() {
+                m_treeWidget->setCurrentItem(item);
+                m_treeWidget->editItem(item, 0);
+        });
+        connect(deleteAction, &QAction::triggered, this, [this, item, isLeaf]() {
+                if (isLeaf)
+                {
+                        deletePage(item);
+                }
+        });
+        menu.exec(event->globalPos());
 }
 
 void ProjectTreeWidget::deleteProjectNode(ProjectNode* node)
@@ -341,14 +384,27 @@ void ProjectTreeWidget::deleteProjectNode(ProjectNode* node)
 	delete node;
 }
 
-void ProjectTreeWidget::clearStackedWidget(QStackedWidget* stackedWidget) 
+void ProjectTreeWidget::clearStackedWidget(QStackedWidget* stackedWidget)
 {
-	while (stackedWidget->count() > 0)
-	{
-		QWidget* widget = stackedWidget->widget(0);
-		stackedWidget->removeWidget(widget);
-		widget->deleteLater();
-	}
+        while (stackedWidget->count() > 0)
+        {
+                QWidget* widget = stackedWidget->widget(0);
+                stackedWidget->removeWidget(widget);
+                widget->deleteLater();
+        }
+}
+
+void ProjectTreeWidget::setSubtreeExpanded(QTreeWidgetItem* item, bool expanded)
+{
+        if (!item || !m_treeWidget)
+        {
+                return;
+        }
+        m_treeWidget->setItemExpanded(item, expanded);
+        for (int i = 0; i < item->childCount(); ++i)
+        {
+                setSubtreeExpanded(item->child(i), expanded);
+        }
 }
 
 QTreeWidgetItem* ProjectTreeWidget::findItemByNameIterative(QTreeWidget* tree, const QString& name)

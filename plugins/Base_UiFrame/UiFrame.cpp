@@ -62,39 +62,39 @@ void UiFrame::initDockManager()
 
     m_dockManager = new ads::CDockManager(this);
     setDockWidgetStyle();
-	m_welcomeWidget = createWelcomeWidget();
-    QString initName = ("工作台");
-    m_initDockWidget = new ads::CDockWidget(initName);
-    m_initDockWidget->setWidget(m_welcomeWidget);
-    m_dockManager->setCentralWidget(m_initDockWidget);
-    m_dockManager->addDockWidget(ads::CenterDockWidgetArea, m_initDockWidget);
-	m_centerDockArea = m_initDockWidget->dockAreaWidget();
-    m_initDockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetMovable, false);
-    m_initDockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetClosable, false);
-    m_initDockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetFloatable, false);
-    m_initDockWidget->toggleView(true);
-	captureDefaultDockState();
+        captureDefaultDockState();
 }
 
 QAction *UiFrame::addWidget(QWidget *widget, QString name)
 {
     ads::CDockWidget *dockWidget = new ads::CDockWidget(name);
     dockWidget->setWidget(widget);
-	dockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetClosable, true);
-	dockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetMovable, true);
-	dockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetFloatable, true);
-	const ads::DockWidgetArea area = preferDockArea(name);
-	ads::CDockAreaWidget* referenceArea = m_centerDockArea ? m_centerDockArea : m_initDockWidget->dockAreaWidget();
-	if (area == ads::CenterDockWidgetArea)
-	{
-		m_dockManager->addDockWidgetTabToArea(dockWidget, referenceArea);
-		m_initDockWidget->toggleView(false);
-	}
-	else
-	{
-		m_dockManager->addDockWidget(area, dockWidget, referenceArea);
-	}
-	captureDefaultDockState();
+        dockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetClosable, true);
+        dockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetMovable, true);
+        dockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetFloatable, true);
+        const ads::DockWidgetArea area = preferDockArea(name);
+        ads::CDockAreaWidget* targetArea = m_centerDockArea;
+        if (!targetArea)
+        {
+                targetArea = m_dockManager->addDockWidget(area, dockWidget);
+                if (area == ads::CenterDockWidgetArea)
+                {
+                        m_centerDockArea = targetArea;
+                }
+        }
+        else if (area == ads::CenterDockWidgetArea)
+        {
+                m_dockManager->addDockWidgetTabToArea(dockWidget, targetArea);
+        }
+        else
+        {
+                m_dockManager->addDockWidget(area, dockWidget, targetArea);
+        }
+        if (!m_centerDockArea && targetArea)
+        {
+                m_centerDockArea = targetArea;
+        }
+        captureDefaultDockState();
     return dockWidget->toggleViewAction();
 }
 
@@ -102,15 +102,21 @@ QAction * UiFrame::addWidgetForTabwidget(QWidget * widget, QString name)
 {
 	ads::CDockWidget *dockWidget = new ads::CDockWidget(name);
 	dockWidget->setWidget(widget);
-	dockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetMovable, true);
-	dockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetClosable, true);
-	dockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetFloatable, false);
-	dockWidget->toggleView(false);
+        dockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetMovable, true);
+        dockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetClosable, true);
+        dockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetFloatable, false);
+        dockWidget->toggleView(false);
 
-	ads::CDockAreaWidget* targetArea = m_centerDockArea ? m_centerDockArea : m_initDockWidget->dockAreaWidget();
-	m_dockManager->addDockWidgetTabToArea(dockWidget, targetArea);
-	captureDefaultDockState();
-	return dockWidget->toggleViewAction();
+        if (!m_centerDockArea)
+        {
+                m_centerDockArea = m_dockManager->addDockWidget(ads::CenterDockWidgetArea, dockWidget);
+        }
+        else
+        {
+                m_dockManager->addDockWidgetTabToArea(dockWidget, m_centerDockArea);
+        }
+        captureDefaultDockState();
+        return dockWidget->toggleViewAction();
 }
 
 void UiFrame::restoreUiState()
@@ -202,35 +208,7 @@ void UiFrame::captureDefaultDockState()
 	{
 		return;
 	}
-	m_defaultDockState = m_dockManager->saveState();
-}
-
-QWidget* UiFrame::createWelcomeWidget() const
-{
-	QWidget* container = new QWidget();
-	QVBoxLayout* layout = new QVBoxLayout(container);
-	layout->setContentsMargins(24, 24, 24, 24);
-	layout->setSpacing(6);
-
-	QLabel* title = new QLabel(("欢迎使用 CAE_BASE"), container);
-	title->setStyleSheet("font-size:22px;font-weight:600;color:#1f2c3d;");
-	QLabel* subtitle = new QLabel(("从左上角“文件”菜单创建工程，模型树与日志区会自动布置在常见的CAE布局上。"), container);
-	subtitle->setWordWrap(true);
-	subtitle->setStyleSheet("color:#55657d;");
-	QLabel* hint = new QLabel(("提示：所有停靠窗口都支持拖拽、吸附与折叠，点击“恢复默认布局”可快速归位。"), container);
-	hint->setWordWrap(true);
-	hint->setStyleSheet("color:#6b7b95;");
-
-	layout->addStretch();
-	layout->addWidget(title, 0, Qt::AlignLeft);
-	layout->addWidget(subtitle, 0, Qt::AlignLeft);
-	layout->addWidget(hint, 0, Qt::AlignLeft);
-	layout->addStretch();
-
-	container->setAutoFillBackground(true);
-	container->setStyleSheet("background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #f6f8fb, stop:1 #ffffff);"
-		"border: 1px solid #dfe3eb; border-radius: 6px;");
-	return container;
+        m_defaultDockState = m_dockManager->saveState();
 }
 
 void UiFrame::test()
@@ -277,13 +255,13 @@ void UiFrame::test()
 void UiFrame::initSARibbon()
 {
     //SARibbonBar::initHighDpi();
-	setWindowTitle("CAE_BASE");
-	setWindowModified(true);
-	m_pSARibbon = ribbonBar();
-	m_pSARibbon->setRibbonStyle(SARibbonBar::RibbonStyleCompactThreeRow);
-	setRibbonTheme(SARibbonTheme::RibbonThemeOffice2021Blue);
-	m_pSARibbon->setContentsMargins(5, 0, 5, 0);
-	buildRibbonAppButton();
+        setWindowTitle("CAE_BASE");
+        setWindowModified(true);
+        m_pSARibbon = ribbonBar();
+        m_pSARibbon->setRibbonStyle(SARibbonBar::RibbonStyleTwoRow);
+        setRibbonTheme(SARibbonTheme::RibbonThemeOffice2021Blue);
+        m_pSARibbon->setContentsMargins(2, 0, 2, 0);
+        buildRibbonAppButton();
     //QTimer::singleShot(0, this, [this]() {setWindowState(windowState() | Qt::WindowMaximized);});
 }
 

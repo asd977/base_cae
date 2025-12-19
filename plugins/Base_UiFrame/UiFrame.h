@@ -164,14 +164,11 @@ public:
 private:
     QVBoxLayout *m_mainLayout;
     ads::CDockManager* m_dockManager;
-    //初始的DockWidget
-    ads::CDockWidget *m_initDockWidget;
-	ads::CDockAreaWidget* m_centerDockArea = nullptr;
-	QByteArray m_defaultDockState;
-	QWidget* m_welcomeWidget = nullptr;
-	/**
-	 * @brief ribbonbarWindow 指针
-	 */
+        ads::CDockAreaWidget* m_centerDockArea = nullptr;
+        QByteArray m_defaultDockState;
+        /**
+         * @brief ribbonbarWindow 指针
+         */
 	SARibbonMainWindow*  m_pSARibbonMainWindow;
 	/**
 	 * @brief ribbonbarWindow的ribbonbar指针
@@ -341,15 +338,11 @@ private:
 	 * @brief 基于名称推断停靠区域，保持常见CAE软件的布局习惯
 	 */
 	ads::DockWidgetArea preferDockArea(const QString& name) const;
-	/**
-	 * @brief 捕获当前dock布局作为默认状态，用于重置
-	 */
-	void captureDefaultDockState();
-	/**
-	 * @brief 构建欢迎占位页
-	 */
-	QWidget* createWelcomeWidget() const;
-	void test();
+        /**
+         * @brief 捕获当前dock布局作为默认状态，用于重置
+         */
+        void captureDefaultDockState();
+        void test();
 	/**
 	 * @brief 初始化ribbonbar
 	 */
