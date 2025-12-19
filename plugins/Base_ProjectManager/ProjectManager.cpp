@@ -360,7 +360,6 @@ void ProjectManager::saveProjectTreeXml()
 	m_projectTreeWidget->saveTreeStructure(file);
 }
 
-}
 
 void ProjectManager::onDeletePageSig(const QString & uuid)
 {
