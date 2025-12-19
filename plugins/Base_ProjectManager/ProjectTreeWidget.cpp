@@ -5,6 +5,7 @@
 #include <QVariant>
 #include <QAction>
 #include <QMenu>
+#include <algorithm>
 
 ProjectTreeWidget::ProjectTreeWidget(QWidget *parent) :
     QWidget(parent),
@@ -377,10 +378,10 @@ void ProjectTreeWidget::deletePage(QTreeWidgetItem* item)
 
 void ProjectTreeWidget::contextMenuEvent(QContextMenuEvent* event)
 {
-	if (!m_treeWidget)
-	{
-		return;
-	}
+        if (!m_treeWidget)
+        {
+                return;
+        }
 	QTreeWidgetItem* item = m_treeWidget->itemAt(m_treeWidget->viewport()->mapFromGlobal(event->globalPos()));
 	if (!item)
 	{
@@ -389,13 +390,37 @@ void ProjectTreeWidget::contextMenuEvent(QContextMenuEvent* event)
 
 	auto* node = dynamic_cast<ProjectNode*>(item);
 	QMenu menu(this);
-	QAction* renameAction = menu.addAction(tr("重命名"));
-	QAction* deleteAction = menu.addAction(tr("删除节点"));
+        QAction* addChildAction = menu.addAction(tr("添加子节点"));
+        QAction* renameAction = menu.addAction(tr("重命名"));
+        QAction* deleteAction = menu.addAction(tr("删除节点"));
 
-	const bool isEditable = item->flags().testFlag(Qt::ItemIsEditable);
-	renameAction->setEnabled(isEditable);
-	const bool isLeaf = node && node->getChildren().isEmpty();
-	deleteAction->setEnabled(isLeaf);
+        const bool isEditable = item->flags().testFlag(Qt::ItemIsEditable);
+        renameAction->setEnabled(isEditable);
+        const bool isLeaf = node && node->getChildren().isEmpty();
+        deleteAction->setEnabled(isLeaf);
+
+        connect(addChildAction, &QAction::triggered, this, [this, node]() {
+                if (!node)
+                {
+                        return;
+                }
+                QString baseName = tr("新建节点");
+                QString name = baseName;
+                int counter = 1;
+                const auto children = node->getChildren();
+                while (std::any_of(children.begin(), children.end(), [&name](ProjectNode* child) { return child && child->text(0) == name; }))
+                {
+                        name = baseName + QString::number(counter++);
+                }
+
+                auto* page = new ConcretePageA();
+                ProjectNode* child = addLeaf(node, name, ":/resources/menu/Parameter.png", page);
+                if (child)
+                {
+                        m_treeWidget->setCurrentItem(child);
+                        child->setExpanded(true);
+                }
+        });
 
 	connect(renameAction, &QAction::triggered, this, [this, item]() {
 		m_treeWidget->setCurrentItem(item);

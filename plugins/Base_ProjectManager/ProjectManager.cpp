@@ -56,7 +56,7 @@ ProjectManager::~ProjectManager()
 void ProjectManager::initRibbonActionConn()
 {
 #pragma region 文件下的action槽函数
-//	connect(m_uiFrameService->getNewProAct(), &QAction::triggered, this, [this]() {this->newProject(); });
+        connect(m_uiFrameService->getNewProAct(), &QAction::triggered, this, [this]() {this->newProject(); });
 	connect(m_uiFrameService->getOpenProAct(), &QAction::triggered, this, [this]() {this->openProject(); });
 	connect(m_uiFrameService->getSaveProAct(), &QAction::triggered, this, [this]() {this->saveProject(); });
 	connect(m_uiFrameService->getExportCurDatabaseAct(), &QAction::triggered, this, [this]() {this->exportCurDatabase(); });
@@ -82,6 +82,15 @@ void ProjectManager::initRibbonActionConn()
 void ProjectManager::addTreeItem(ProjectNode *node)
 {
     m_rootNode->addChild(node);
+}
+
+ProjectNode* ProjectManager::nodeByKey(const QString& key) const
+{
+        if (!m_projectTreeWidget)
+        {
+                return nullptr;
+        }
+        return m_projectTreeWidget->nodeByKey(key);
 }
 
 void ProjectManager::resetDefaultNodePointer()
@@ -150,11 +159,17 @@ void ProjectManager::openProject()
     PostProcessingService *postProcessingService = ServiceRegistry::instance().getService<PostProcessingService>();
     postProcessingService->loadProject();
 
-	PreProcessingService *preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>();
-	preProcessingService->loadProject();
+        PreProcessingService *preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>();
+        preProcessingService->loadProject();
 
-	BoundaryConditionsService *boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>();
-	boundaryConditionsService->loadProject();
+        BoundaryConditionsService *boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>();
+        boundaryConditionsService->loadProject();
+
+        SurrogateModelService *surrogateModelService = ServiceRegistry::instance().getService<SurrogateModelService>();
+        if (surrogateModelService)
+        {
+                surrogateModelService->loadProject();
+        }
 
     //todo 读取项目模型树的数据
 //	loadProTreeData();
@@ -199,43 +214,24 @@ void ProjectManager::newProject()
 
     m_projectEnginePath = m_projectPath + "/" + m_projectName + ".smproj";
     createProjectFilesFolder();
-        m_projectTreeWidget->buildDefaultProjectTree(m_projectName);
-        m_rootNode = m_projectTreeWidget->m_rootNode;
-        resetDefaultNodePointer();
+    m_projectTreeWidget->buildDefaultProjectTree(m_projectName);
+    m_rootNode = m_projectTreeWidget->m_rootNode;
+    resetDefaultNodePointer();
 
+    if (auto* preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>())
+    {
+            preProcessingService->newProject();
+    }
 
-//	const QString treeXmlPath = m_projectTempFolder + "projectTree.xml";
-//	m_projectTreeWidget->setProjectTreeXmlPath(treeXmlPath);
-//	//todo 清空项目树和堆栈窗口内容
-    QTreeWidget* treeWidget = m_projectTreeWidget->m_treeWidget;
-//	treeWidget->clear();
-//	m_projectTreeWidget->clearStackedWidget(m_projectTreeWidget->m_stackWidget);
-//	//todo 创建固定不变的树节点
-//	m_projectTreeWidget->m_rootNode = new ProjectNode(m_projectName);
-//	ProjectNode* rootNode = m_projectTreeWidget->m_rootNode;
-//	paramNode = new ProjectNode("参数定义");
-//	materNode = new ProjectNode("材料");
-//	gemoNode = new ProjectNode("几何");
-//	gridNode = new ProjectNode("网格");
-//	boundNode = new ProjectNode("边界条件");
-//	phyNode = new ProjectNode("物理场");
-//	solveNode = new ProjectNode("求解");
-//	resNode = new ProjectNode("结果");
-//	nephogramNode = new ProjectNode("云图");
-//	vectorNode = new ProjectNode("矢量图");
-//	rootNode->addChild(paramNode);
-//	rootNode->addChild(materNode);
-//	rootNode->addChild(gemoNode);
-//	rootNode->addChild(gridNode);
-//	rootNode->addChild(boundNode);
-//	rootNode->addChild(phyNode);
-//	rootNode->addChild(solveNode);
-//	rootNode->addChild(resNode);
-//	resNode->addChild(nephogramNode);
-//	resNode->addChild(vectorNode);
-//	m_projectTreeWidget->addNodeToTree(treeWidget->invisibleRootItem(), rootNode, "");
-//    connect(treeWidget, &QTreeWidget::currentItemChanged, m_projectTreeWidget, &ProjectTreeWidget::onCurItemChanged);
-//    connect(treeWidget, &QTreeWidget::itemChanged, m_projectTreeWidget, &ProjectTreeWidget::onItemChanged);
+    if (auto* postProcessingService = ServiceRegistry::instance().getService<PostProcessingService>())
+    {
+            postProcessingService->newProject();
+    }
+
+    if (auto* surrogateModelService = ServiceRegistry::instance().getService<SurrogateModelService>())
+    {
+            surrogateModelService->newProject();
+    }
 }
 
 void ProjectManager::exportCurDatabase()

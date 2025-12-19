@@ -349,7 +349,6 @@ private:
 	 * @brief 构建欢迎占位页
 	 */
 	QWidget* createWelcomeWidget() const;
-	void test();
 	/**
 	 * @brief 初始化ribbonbar
 	 */

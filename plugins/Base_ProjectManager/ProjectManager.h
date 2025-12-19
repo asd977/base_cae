@@ -24,12 +24,13 @@ class ProjectManager: public QObject, public ProjectManagerService
     Q_OBJECT
 public:
     ProjectManager();
-	~ProjectManager();
-	/**
-	 * @brief 是否有工程
-	 */
+        ~ProjectManager();
+        /**
+         * @brief 是否有工程
+         */
     bool isHaveProject();
     void addTreeItem(ProjectNode *node);
+    ProjectNode* nodeByKey(const QString& key) const override;
 private slots:
 	void newProject();
 	void openProject();
