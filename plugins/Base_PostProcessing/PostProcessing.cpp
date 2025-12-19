@@ -137,9 +137,8 @@ void PostProcessing::newDerivedValueSettingWidget()
 
 void PostProcessing::newProject()
 {
-    m_root = new ProjectNode("后处理");
-    ProjectManagerService *projectManagerService= ServiceRegistry::instance().getService<ProjectManagerService>();
-    projectManagerService->addTreeItem(m_root);
+ProjectManagerService *projectManagerService= ServiceRegistry::instance().getService<ProjectManagerService>();
+m_root = projectManagerService->nodeByKey("results");
 }
 
 void PostProcessing::initAction()
@@ -210,10 +209,12 @@ bool PostProcessing::saveProject()
 
 bool PostProcessing::loadProject()
 {
-    m_root = new ProjectNode("后处理");
-    QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    auto *pm = ServiceRegistry::instance().getService<ProjectManagerService>();
-    pm->addTreeItem(m_root);
+m_root = ServiceRegistry::instance().getService<ProjectManagerService>()->nodeByKey("results");
+if (!m_root)
+{
+return true;
+}
+QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
 
     const QString filePath = QDir(projectDir).filePath(PublicConstants::kPostProcessingProjectFileName);
     QJsonObject root;

@@ -17,6 +17,7 @@ SurrogateModel::SurrogateModel()
 
 void SurrogateModel::newLatinHypercubeSamplingWidget()
 {
+    if (!m_root) return;
     LatinHypercubeSampling *tmp = new LatinHypercubeSampling();
     ProjectNode *node = new ProjectNode("拉丁超立方采样",QUuid::createUuid().toString(),(BasePage*)tmp);
 
@@ -25,6 +26,7 @@ void SurrogateModel::newLatinHypercubeSamplingWidget()
 
 void SurrogateModel::newOrthogonalSamplingWidget()
 {
+    if (!m_root) return;
     OrthogonalSampling *tmp = new OrthogonalSampling();
     ProjectNode *node = new ProjectNode("正交采样",QUuid::createUuid().toString(),(BasePage*)tmp);
 
@@ -34,6 +36,7 @@ void SurrogateModel::newOrthogonalSamplingWidget()
 
 void SurrogateModel::newDNNModel()
 {
+    if (!m_root) return;
     DNNModel *tmp = new DNNModel();
     ProjectNode *node = new ProjectNode("DNN模型",QUuid::createUuid().toString(),(BasePage*)tmp);
 
@@ -42,6 +45,7 @@ void SurrogateModel::newDNNModel()
 
 void SurrogateModel::newDatasetEvaluation()
 {
+    if (!m_root) return;
     DatasetEvaluation *tmp = new DatasetEvaluation();
     ProjectNode *node = new ProjectNode("数据集评估",QUuid::createUuid().toString(),(BasePage*)tmp);
 
@@ -50,9 +54,8 @@ void SurrogateModel::newDatasetEvaluation()
 
 void SurrogateModel::newProject()
 {
-    // m_root = new ProjectNode("代理模型");
-    // ProjectManagerService *projectManagerService= ServiceRegistry::instance().getService<ProjectManagerService>();
-    // projectManagerService->addTreeItem(m_root);
+    ProjectManagerService *projectManagerService= ServiceRegistry::instance().getService<ProjectManagerService>();
+    m_root = projectManagerService->nodeByKey("surrogate");
 }
 
 void SurrogateModel::initAction()
@@ -81,6 +84,8 @@ bool SurrogateModel::saveProject()
 
 bool SurrogateModel::loadProject()
 {
+    ProjectManagerService *projectManagerService= ServiceRegistry::instance().getService<ProjectManagerService>();
+    m_root = projectManagerService ? projectManagerService->nodeByKey("surrogate") : nullptr;
     return true;
 }
 

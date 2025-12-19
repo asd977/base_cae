@@ -116,13 +116,15 @@ BasePage* PreProcessing::createPageByType(const QString& type, const QString& ti
 
 void PreProcessing::newProject()
 {
-	m_geomNode = new ProjectNode("几何");
-	ProjectManagerService *projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
-	projectManagerService->addTreeItem(m_geomNode);
-	m_preProcessingWidget->setGeomNode(m_geomNode);
-	m_gridNode = new ProjectNode("网格");
-	projectManagerService->addTreeItem(m_gridNode);
-	m_preProcessingWidget->setGridNode(m_gridNode);
+ProjectManagerService *projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
+if (!projectManagerService)
+{
+return;
+}
+m_geomNode = projectManagerService->nodeByKey("geometry");
+m_gridNode = projectManagerService->nodeByKey("mesh");
+m_preProcessingWidget->setGeomNode(m_geomNode);
+m_preProcessingWidget->setGridNode(m_gridNode);
 }
 
 bool PreProcessing::saveProject()
@@ -174,19 +176,27 @@ bool PreProcessing::saveProject()
 
 bool PreProcessing::loadProject()
 {
-	bool success = false;
-	ProjectManagerService *projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
-	m_geomNode = new ProjectNode("几何");
-	projectManagerService->addTreeItem(m_geomNode);
-	m_preProcessingWidget->setGeomNode(m_geomNode);
-	success = loadChildProject(m_geomNode, "geom_items");
-	if (!success) return false;
-	m_gridNode = new ProjectNode("网格");
-	projectManagerService->addTreeItem(m_gridNode);
-	m_preProcessingWidget->setGridNode(m_gridNode);
-	success = loadChildProject(m_gridNode, "grid_items");
-	if (!success) return false;
-	return success;
+bool success = false;
+ProjectManagerService *projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
+if (!projectManagerService)
+{
+return false;
+}
+m_geomNode = projectManagerService->nodeByKey("geometry");
+m_gridNode = projectManagerService->nodeByKey("mesh");
+m_preProcessingWidget->setGeomNode(m_geomNode);
+m_preProcessingWidget->setGridNode(m_gridNode);
+
+if (!m_geomNode || !m_gridNode)
+{
+return false;
+}
+
+success = loadChildProject(m_geomNode, "geom_items");
+if (!success) return false;
+success = loadChildProject(m_gridNode, "grid_items");
+if (!success) return false;
+return success;
 }
 
 bool PreProcessing::loadChildProject(ProjectNode * rootNode,const QString & name)

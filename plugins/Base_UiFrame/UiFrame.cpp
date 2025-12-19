@@ -233,47 +233,6 @@ QWidget* UiFrame::createWelcomeWidget() const
 	return container;
 }
 
-void UiFrame::test()
-{
-    QAction* act1 = new QAction(QIcon(":Resource/Ribbon/new.png"), ("&新建项目"));
-    QAction* act2 = new QAction(QIcon(":Resource/Ribbon/new.png"), ("&保存项目"));
-    QAction* act3 = new QAction(QIcon(":Resource/Ribbon/new.png"), ("&另存为项目"));
-    QAction* act4 = new QAction(QIcon(":Resource/Ribbon/new.png"), ("&打开项目"));
-	addMenuAction(act1);
-	addMenuAction(act2);
-	addMenuAction(act3);
-	addMenuAction(act4);
-	addRibbonCategory("&主页", "main");
-	addRibbonCategory("&主页1", "main1");
-	addRibbonCategory("&主页2", "main2");
-	auto p = getCategoryByObjName("main");
-	auto p1 = addRibbonPanel(p, "name");
-	auto p2 = addRibbonPanel(p, "name2");
-    QAction* m_actionCreateProject = new QAction(QIcon(":Resource/Ribbon/new.png"), ("&新建项目"));
-    QAction* m_actionCreateProject2 = new QAction(QIcon(":Resource/Ribbon/new.png"), ("&新建项目666"));
-    QAction* m_actionCreateProject3 = new QAction(QIcon(":Resource/Ribbon/new.png"), ("&新建项目888"));
-	addRibbonPanelAction(p1, m_actionCreateProject);
-	addRibbonPanelAction(p1, m_actionCreateProject2, 2);
-	QList<QAction*> _list;
-	_list << m_actionCreateProject2 << m_actionCreateProject3;
-	QList<QString> _list2;
-	_list2 << "666" << "777";
-	addRibbonPanelCombox(p1, m_actionCreateProject, "666", _list, _list2);
-	QStringList list;
-	list << "888" << "999";
-	addRibbonPanelCheckBox(p1, "123", "123");
-	addRibbonPanelBtnWidget(p2, "123", "123", "字体", "ziti", "combox", list);
-	setRibbonPanelEnabled(p2,false);
-	//setRibbonCategoryEnabled(getCategoryByObjName("main"),false);
-	// 创建滑动条和标签
-	QLabel* label = new QLabel("透明度:");
-	QSlider* slider = new QSlider(Qt::Horizontal);
-	slider->setRange(0, 100); 
-	slider->setValue(100);
-	QLabel* valueLabel = new QLabel("100%");
-	addRibbonPanelSlider(p1, label, valueLabel, slider,3);
-}
-
 void UiFrame::initSARibbon()
 {
     //SARibbonBar::initHighDpi();
