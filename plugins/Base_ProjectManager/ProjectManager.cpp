@@ -10,8 +10,7 @@
 #include <services/SolverService.h>
 
 #include <PublicVariables.h>
-#include <QHash>
-#include <QPair>
+#include <QVariant>
 
 ProjectManager::ProjectManager()
 {
@@ -63,13 +62,9 @@ void ProjectManager::initRibbonActionConn()
 	connect(m_uiFrameService->getExitAct(), &QAction::triggered, this, [this]() {this->exitProject(); });
 #pragma endregion
 
-#pragma region 文件下的action槽函数
-    connect(m_uiFrameService->getParamAct(), &QAction::triggered, this, [this]() {this->onParamAct(); });
-#pragma endregion
-
 #pragma region 几何下的action槽函数
-	//connect(m_uiFrameService->getImportGemoAct(), &QAction::triggered, this, [this]() {this->onImportGeomAct(); });
-	//connect(m_uiFrameService->getCuboidGemoAct(), &QAction::triggered, this, [this]() {this->onCuboidGemoAct(); });
+        //connect(m_uiFrameService->getImportGemoAct(), &QAction::triggered, this, [this]() {this->onImportGeomAct(); });
+        //connect(m_uiFrameService->getCuboidGemoAct(), &QAction::triggered, this, [this]() {this->onCuboidGemoAct(); });
 	//connect(m_uiFrameService->getSphereGemoAct(), &QAction::triggered, this, [this]() {this->onSphereGemoAct(); });
 #pragma endregion 
 #pragma region 网格下的action槽函数
@@ -81,42 +76,14 @@ void ProjectManager::initRibbonActionConn()
 
 void ProjectManager::addTreeItem(ProjectNode *node)
 {
+    if (!m_rootNode || !node)
+    {
+        return;
+    }
+    node->setData(0, Qt::UserRole, QVariant::fromValue(node));
     m_rootNode->addChild(node);
 }
 
-void ProjectManager::resetDefaultNodePointer()
-{
-	paramNode = m_projectTreeWidget->nodeByKey("parameters");
-	materNode = m_projectTreeWidget->nodeByKey("materials");
-	gemoNode = m_projectTreeWidget->nodeByKey("geometry");
-	gridNode = m_projectTreeWidget->nodeByKey("mesh");
-	boundNode = m_projectTreeWidget->nodeByKey("boundary");
-	phyNode = m_projectTreeWidget->nodeByKey("physics");
-	solveNode = m_projectTreeWidget->nodeByKey("solver");
-	resNode = m_projectTreeWidget->nodeByKey("results");
-	nephogramNode = m_projectTreeWidget->nodeByKey("result_cloud");
-	vectorNode = m_projectTreeWidget->nodeByKey("result_vector");
-}
-
-void ProjectManager::judgeTreeNodeNameIsSame(const ProjectNode * parentNode, QString & originName)
-{
-	QList<ProjectNode*> nodeList = parentNode->getChildren();
-	QSet<QString> nameSet;
-	for (auto node : nodeList) 
-	{
-		nameSet.insert(node->getName());
-	}
-	if (!nameSet.contains(originName)) 
-	{
-		return;
-	}
-	int counter = 1;
-	QString newName;
-	do {
-		newName = originName + QString::number(counter++);
-	} while (nameSet.contains(newName)); 
-	originName = newName; 
-}
 
 void ProjectManager::openProject()
 {
@@ -145,7 +112,6 @@ void ProjectManager::openProject()
 
 	m_projectTreeWidget->buildDefaultProjectTree(m_projectName);
 	m_rootNode = m_projectTreeWidget->m_rootNode;
-	resetDefaultNodePointer();
 
     PostProcessingService *postProcessingService = ServiceRegistry::instance().getService<PostProcessingService>();
     postProcessingService->loadProject();
@@ -156,9 +122,6 @@ void ProjectManager::openProject()
 	BoundaryConditionsService *boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>();
 	boundaryConditionsService->loadProject();
 
-    //todo 读取项目模型树的数据
-//	loadProTreeData();
-//	resetDefaultNodePointer();
     //todo 读取其他模块的数据
 
 }
@@ -201,7 +164,39 @@ void ProjectManager::newProject()
     createProjectFilesFolder();
         m_projectTreeWidget->buildDefaultProjectTree(m_projectName);
         m_rootNode = m_projectTreeWidget->m_rootNode;
-        resetDefaultNodePointer();
+
+        if (auto* globalParameterService = ServiceRegistry::instance().getService<GlobalParameterService>())
+        {
+                globalParameterService->newProject();
+        }
+        if (auto* materialManagerService = ServiceRegistry::instance().getService<MaterialManagerService>())
+        {
+                materialManagerService->newProject();
+        }
+        if (auto* preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>())
+        {
+                preProcessingService->newProject();
+        }
+        if (auto* physicalFieldService = ServiceRegistry::instance().getService<PhysicalFieldService>())
+        {
+                physicalFieldService->newProject();
+        }
+        if (auto* boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>())
+        {
+                boundaryConditionsService->newProject();
+        }
+        if (auto* solverService = ServiceRegistry::instance().getService<SolverService>())
+        {
+                solverService->newProject();
+        }
+        if (auto* postProcessingService = ServiceRegistry::instance().getService<PostProcessingService>())
+        {
+                postProcessingService->newProject();
+        }
+        if (auto* surrogateModelService = ServiceRegistry::instance().getService<SurrogateModelService>())
+        {
+                surrogateModelService->newProject();
+        }
 
 
 //	const QString treeXmlPath = m_projectTempFolder + "projectTree.xml";
@@ -256,14 +251,6 @@ bool ProjectManager::isHaveProject()
 	return true;
 }
 
-void ProjectManager::onParamAct()
-{
-    const QString type = "param";
-    QString name = "全局参数1";
-    GlobalParameterService *globalParameterService = ServiceRegistry::instance().getService<GlobalParameterService>();
-    BasePage* page = globalParameterService->newGlobalParameterSettingWidget();
-    treeChildFactory(type, page,name);
-}
 
 void ProjectManager::onImportGeomAct()
 {
@@ -373,59 +360,6 @@ void ProjectManager::saveProjectTreeXml()
 	m_projectTreeWidget->saveTreeStructure(file);
 }
 
-void ProjectManager::loadProTreeData()
-{
-	const QString treeXmlPath = m_projectTempFolder + "projectTree.xml";
-	QFile file(treeXmlPath);
-	if (file.exists())
-	{
-		QTreeWidget* treeWidget = m_projectTreeWidget->m_treeWidget;
-		treeWidget->clear();
-		m_projectTreeWidget->clearStackedWidget(m_projectTreeWidget->m_stackWidget);
-		m_projectTreeWidget->setProjectTreeXmlPath(treeXmlPath);
-		m_projectTreeWidget->loadTreeStructure(file);
-		ProjectNode* rootNode = m_projectTreeWidget->m_rootNode;
-		m_projectTreeWidget->addNodeToTree(treeWidget->invisibleRootItem(), rootNode, "");
-		connect(treeWidget, &QTreeWidget::currentItemChanged, m_projectTreeWidget, &ProjectTreeWidget::onCurItemChanged);
-		connect(treeWidget, &QTreeWidget::itemChanged, m_projectTreeWidget, &ProjectTreeWidget::onItemChanged);
-	}
-}
-
-void ProjectManager::treeChildFactory(const QString& rootNodeType, BasePage* page, QString& nodeName)
-{
-	QHash<QString, QPair<ProjectNode*, QString>> targets;
-	targets.insert("param", { paramNode, ":/resources/menu/Parameter.png" });
-	targets.insert("mater", { materNode, ":/resources/menu/Block.png" });
-	targets.insert("gemo", { gemoNode, ":/resources/icon/geomImport.png" });
-	targets.insert("grid", { gridNode, ":/resources/icon/mesh.png" });
-	targets.insert("bound", { boundNode, ":/resources/menu/boundary_face.png" });
-	targets.insert("phy", { phyNode, ":/resources/icon/bound.png" });
-	targets.insert("solve", { solveNode, ":/resources/icon/report.png" });
-	targets.insert("res", { resNode, ":/resources/menu/Nephogram.png" });
-	targets.insert("nephogram", { nephogramNode, ":/resources/menu/Nephogram.png" });
-	targets.insert("vector", { vectorNode, ":/resources/menu/Vector.png" });
-	targets.insert("section", { vectorNode, ":/resources/menu/Slice.png" });
-
-	if (!targets.contains(rootNodeType))
-	{
-		return;
-	}
-	auto target = targets.value(rootNodeType);
-	if (!target.first)
-	{
-		return;
-	}
-	if (rootNodeType == "grid")
-	{
-		const QList<ProjectNode*> children = target.first->getChildren();
-		for (auto child : children)
-		{
-			target.first->removeChild(child);
-			m_projectTreeWidget->deleteProjectNode(child);
-		}
-	}
-	judgeTreeNodeNameIsSame(target.first, nodeName);
-	m_projectTreeWidget->addLeaf(target.first, nodeName, target.second, page);
 }
 
 void ProjectManager::onDeletePageSig(const QString & uuid)
