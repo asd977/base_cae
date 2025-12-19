@@ -3,6 +3,8 @@
 #include <QIcon>
 #include <QPalette>
 #include <QVariant>
+#include <QAction>
+#include <QMenu>
 
 ProjectTreeWidget::ProjectTreeWidget(QWidget *parent) :
     QWidget(parent),
@@ -343,51 +345,69 @@ void ProjectTreeWidget::loadTreeStructure(QFile& file)
 
 void ProjectTreeWidget::deletePage(QTreeWidgetItem* item)
 {
-//	if (!item) return;
-//	ProjectNode* node = item->data(0, Qt::UserRole).value<ProjectNode*>();
-//	if (node && node->isLeaf())
-//	{
-//		BasePage* page = node->getPage();
-//		if (page)
-//		{
-//			QString uuid = page->getUuid();
-//			QWidget* widget = page->getWidget();
-//			m_stackWidget->removeWidget(widget);
-//			emit deletePageSig(uuid);
-//		}
-//		// 从父节点移除
-//		QTreeWidgetItem* parentItem = item->parent();
-//		if (parentItem) {
-//			ProjectNode* parentNode = parentItem->data(0, Qt::UserRole).value<ProjectNode*>();
-//			if (parentNode) {
-//				parentNode->removeChild(node);
-//			}
-//		}
-//		// 删除树节点
-//		delete item;
-//		// 删除 ProjectNode 和页面
-//		delete node;
-//		// 保存更新后的树形结构
-//		QFile file(m_projectTreeXmlPath);
-//		saveTreeStructure(file);
-//	}
+	if (!item || !m_treeWidget)
+	{
+		return;
+	}
+	auto* node = dynamic_cast<ProjectNode*>(item);
+	if (!node || !node->getChildren().isEmpty())
+	{
+		return;
+	}
+
+	if (BasePage* page = node->getPage())
+	{
+		const QString uuid = page->getUuid();
+		QWidget* widget = page->getWidget();
+		m_stackWidget->removeWidget(widget);
+		emit deletePageSig(uuid);
+	}
+
+	if (QTreeWidgetItem* parentItem = item->parent())
+	{
+		if (auto* parentNode = dynamic_cast<ProjectNode*>(parentItem))
+		{
+			parentNode->removeChild(node);
+		}
+	}
+
+	delete node;
+	updatePlaceholderVisibility();
 }
 
 void ProjectTreeWidget::contextMenuEvent(QContextMenuEvent* event)
 {
-//	QTreeWidgetItem* item = m_treeWidget->itemAt(m_treeWidget->viewport()->mapFromGlobal(event->globalPos()));
-//	if (item)
-//	{
-//		ProjectNode* node = item->data(0, Qt::UserRole).value<ProjectNode*>();
-//		if (node && node->isLeaf()) {
-//			QMenu menu(this);
-//			QAction* deleteAction = menu.addAction("删除节点");
-//			connect(deleteAction, &QAction::triggered, this, [=]() {
-//				deletePage(item);
-//			});
-//			menu.exec(event->globalPos());
-//		}
-//	}
+	if (!m_treeWidget)
+	{
+		return;
+	}
+	QTreeWidgetItem* item = m_treeWidget->itemAt(m_treeWidget->viewport()->mapFromGlobal(event->globalPos()));
+	if (!item)
+	{
+		return;
+	}
+
+	auto* node = dynamic_cast<ProjectNode*>(item);
+	QMenu menu(this);
+	QAction* renameAction = menu.addAction(tr("重命名"));
+	QAction* deleteAction = menu.addAction(tr("删除节点"));
+
+	const bool isEditable = item->flags().testFlag(Qt::ItemIsEditable);
+	renameAction->setEnabled(isEditable);
+	const bool isLeaf = node && node->getChildren().isEmpty();
+	deleteAction->setEnabled(isLeaf);
+
+	connect(renameAction, &QAction::triggered, this, [this, item]() {
+		m_treeWidget->setCurrentItem(item);
+		m_treeWidget->editItem(item, 0);
+	});
+	connect(deleteAction, &QAction::triggered, this, [this, item, isLeaf]() {
+		if (isLeaf)
+		{
+			deletePage(item);
+		}
+	});
+	menu.exec(event->globalPos());
 }
 
 void ProjectTreeWidget::deleteProjectNode(ProjectNode* node)

@@ -197,45 +197,12 @@ void ProjectManager::newProject()
         return;
     }
 
-    qDebug()<<"111";
     m_projectEnginePath = m_projectPath + "/" + m_projectName + ".smproj";
     createProjectFilesFolder();
-    qDebug()<<"222";
-	m_projectTreeWidget->buildDefaultProjectTree(m_projectName);
-	m_rootNode = m_projectTreeWidget->m_rootNode;
-	resetDefaultNodePointer();
-	qDebug()<<"222";
-    //参数定义
-    GlobalParameterService *globalParameterService = ServiceRegistry::instance().getService<GlobalParameterService>();
-    globalParameterService->newProject();
-qDebug()<<"222";
-    //材料
-    MaterialManagerService *materialManagerService = ServiceRegistry::instance().getService<MaterialManagerService>();
-    materialManagerService->newProject();
-qDebug()<<"222";
-    //前处理
-    PreProcessingService *preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>();
-    preProcessingService->newProject();
-qDebug()<<"222";
-    //物理场
-    PhysicalFieldService *physicalFieldService = ServiceRegistry::instance().getService<PhysicalFieldService>();
-    physicalFieldService->newProject();
-//    //求解
-//    MaterialManagerService *materialManagerService = ServiceRegistry::instance().getService<MaterialManagerService>();
-//    materialManagerService->newProject();
-qDebug()<<"222";
-    //结果
-    PostProcessingService *postProcessingService = ServiceRegistry::instance().getService<PostProcessingService>();
-    postProcessingService->newProject();
-qDebug()<<"222";
-    //求解器
-    SolverService *solverService = ServiceRegistry::instance().getService<SolverService>();
-    solverService->newProject();
-qDebug()<<"222";
-	//代理模型
-    // BoundaryConditionsService *boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>();
-    // boundaryConditionsService->newProject();
-qDebug()<<"222";
+        m_projectTreeWidget->buildDefaultProjectTree(m_projectName);
+        m_rootNode = m_projectTreeWidget->m_rootNode;
+        resetDefaultNodePointer();
+
 
 //	const QString treeXmlPath = m_projectTempFolder + "projectTree.xml";
 //	m_projectTreeWidget->setProjectTreeXmlPath(treeXmlPath);
