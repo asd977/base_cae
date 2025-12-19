@@ -19,6 +19,7 @@
 #include <EventManager.h>
 #include <PublicConstants.h>
 #include <QPainter>
+#include <QFile>
 
 
 UiFrame::UiFrame(QWidget* par, SARibbonMainWindowStyles style) : SARibbonMainWindow(par, style)
@@ -61,25 +62,39 @@ void UiFrame::initDockManager()
 
     m_dockManager = new ads::CDockManager(this);
     setDockWidgetStyle();
-    //todo 创建初始化的widget
-    QWidget* initWidget = new QWidget();
-    QString initName = "default";
+	m_welcomeWidget = createWelcomeWidget();
+    QString initName = ("工作台");
     m_initDockWidget = new ads::CDockWidget(initName);
-    m_initDockWidget->setWidget(initWidget);
+    m_initDockWidget->setWidget(m_welcomeWidget);
     m_dockManager->setCentralWidget(m_initDockWidget);
     m_dockManager->addDockWidget(ads::CenterDockWidgetArea, m_initDockWidget);
+	m_centerDockArea = m_initDockWidget->dockAreaWidget();
     m_initDockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetMovable, false);
-    m_initDockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetClosable, true);
+    m_initDockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetClosable, false);
     m_initDockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetFloatable, false);
-    m_initDockWidget->toggleView(false);
+    m_initDockWidget->toggleView(true);
+	captureDefaultDockState();
 }
 
 QAction *UiFrame::addWidget(QWidget *widget, QString name)
 {
     ads::CDockWidget *dockWidget = new ads::CDockWidget(name);
     dockWidget->setWidget(widget);
-
-    m_dockManager->addDockWidget(ads::TopDockWidgetArea, dockWidget, m_initDockWidget->dockAreaWidget());
+	dockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetClosable, true);
+	dockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetMovable, true);
+	dockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetFloatable, true);
+	const ads::DockWidgetArea area = preferDockArea(name);
+	ads::CDockAreaWidget* referenceArea = m_centerDockArea ? m_centerDockArea : m_initDockWidget->dockAreaWidget();
+	if (area == ads::CenterDockWidgetArea)
+	{
+		m_dockManager->addDockWidgetTabToArea(dockWidget, referenceArea);
+		m_initDockWidget->toggleView(false);
+	}
+	else
+	{
+		m_dockManager->addDockWidget(area, dockWidget, referenceArea);
+	}
+	captureDefaultDockState();
     return dockWidget->toggleViewAction();
 }
 
@@ -92,7 +107,9 @@ QAction * UiFrame::addWidgetForTabwidget(QWidget * widget, QString name)
 	dockWidget->setFeature(ads::CDockWidget::DockWidgetFeature::DockWidgetFloatable, false);
 	dockWidget->toggleView(false);
 
-	m_dockManager->addDockWidgetTabToArea(dockWidget, m_initDockWidget->dockAreaWidget());
+	ads::CDockAreaWidget* targetArea = m_centerDockArea ? m_centerDockArea : m_initDockWidget->dockAreaWidget();
+	m_dockManager->addDockWidgetTabToArea(dockWidget, targetArea);
+	captureDefaultDockState();
 	return dockWidget->toggleViewAction();
 }
 
@@ -110,6 +127,10 @@ void UiFrame::restoreUiState()
     if (settings.contains("windowSize")) {
         resize(settings.value("windowSize").toSize());
     }
+	if (success)
+	{
+		m_defaultDockState = savedState;
+	}
 
     if (!success)
     {
@@ -144,70 +165,72 @@ void UiFrame::addFileButton(QPushButton *button)
 
 void UiFrame::setDockWidgetStyle()
 {
-//    QString qss = R"(
-//                  QSplitter::handle {
-//                  height: 4px; /* 间接调整分隔线的高度（如果是水平分隔线） */
-//                     width: 4px; /* 间接调整分隔线的宽度（如果是垂直分隔线） */
-//                  }
-//                  ads--CDockAreaWidget[focused="true"]  {
-//                  background: white;
+	QFile qssFile(":/resources/style/dock.css");
+	if (qssFile.open(QIODevice::ReadOnly | QIODevice::Text))
+	{
+		QString qss = QString::fromUtf8(qssFile.readAll());
+		m_dockManager->setStyleSheet(qss);
+	}
+}
 
-//                  border-color: rgb(96,181,247);
-//                  }
+ads::DockWidgetArea UiFrame::preferDockArea(const QString& name) const
+{
+	const QString lower = name.toLower();
+	if (lower.contains(QStringLiteral("模型")) || lower.contains("model") || lower.contains(QStringLiteral("工程")) || lower.contains("tree"))
+	{
+		return ads::LeftDockWidgetArea;
+	}
+	if (lower.contains(QStringLiteral("日志")) || lower.contains("log") || lower.contains(QStringLiteral("输出"))
+		|| lower.contains(QStringLiteral("进度")) || lower.contains("console") || lower.contains("message"))
+	{
+		return ads::BottomDockWidgetArea;
+	}
+	if (lower.contains(QStringLiteral("图形")) || lower.contains(QStringLiteral("视图")) || lower.contains("render") || lower.contains("viewer"))
+	{
+		return ads::CenterDockWidgetArea;
+	}
+	if (lower.contains(QStringLiteral("属性")) || lower.contains(QStringLiteral("设置")) || lower.contains("property") || lower.contains("panel"))
+	{
+		return ads::RightDockWidgetArea;
+	}
+	return ads::RightDockWidgetArea;
+}
 
-//                  #dockAreaAutoHideButton {
-//                      qproperty-icon: url(:/resources/images/vs-pin-button.svg),
-//                          url(:/resources/images/vs-pin-button-disabled.svg) disabled;
-//                      qproperty-iconSize: 16px;
-//                  }
+void UiFrame::captureDefaultDockState()
+{
+	if (!m_dockManager)
+	{
+		return;
+	}
+	m_defaultDockState = m_dockManager->saveState();
+}
 
-//                  ads--CAutoHideDockContainer #dockAreaAutoHideButton {
-//                      qproperty-icon: url(:/resources/images/vs-pin-button-pinned-focused.svg);
-//                      qproperty-iconSize: 16px;
-//                  }
+QWidget* UiFrame::createWelcomeWidget() const
+{
+	QWidget* container = new QWidget();
+	QVBoxLayout* layout = new QVBoxLayout(container);
+	layout->setContentsMargins(24, 24, 24, 24);
+	layout->setSpacing(6);
 
+	QLabel* title = new QLabel(("欢迎使用 CAE_BASE"), container);
+	title->setStyleSheet("font-size:22px;font-weight:600;color:#1f2c3d;");
+	QLabel* subtitle = new QLabel(("从左上角“文件”菜单创建工程，模型树与日志区会自动布置在常见的CAE布局上。"), container);
+	subtitle->setWordWrap(true);
+	subtitle->setStyleSheet("color:#55657d;");
+	QLabel* hint = new QLabel(("提示：所有停靠窗口都支持拖拽、吸附与折叠，点击“恢复默认布局”可快速归位。"), container);
+	hint->setWordWrap(true);
+	hint->setStyleSheet("color:#6b7b95;");
 
-//                  ads--CDockAreaWidget #tabsMenuButton::menu-indicator {
-//                      image: none;
-//                  }
-//                  QScrollArea#dockWidgetScrollArea {
-//                  padding: 0px;
-//                  }
-//                  QScrollArea#dockWidgetScrollArea {
-//                      border: 0px solid rgb(200, 200, 200);
-//                  }
-//                  ads--CDockAreaWidget {
-//                      border: 1px solid rgb(200, 200, 200);
-//                  }
-//                  ads--CDockWidgetTab  {
-//                      background: red;
-//                  }
-//                  QLabel#dockWidgetTabLabel {
-//                      text-align: left;
-//                  }
-//                  QScrollBar:vertical {
-//                      width: 10px; /* 设置垂直滚动条的宽度 */
-//                      background: #f0f0f0; /* 设置滚动条的背景颜色 */
-//                      border: none; /* 取消垂直滚动条的边框样式 */
-//                      border-radius: 5px; /* 设置滚动条的圆角 */
-//                  }
+	layout->addStretch();
+	layout->addWidget(title, 0, Qt::AlignLeft);
+	layout->addWidget(subtitle, 0, Qt::AlignLeft);
+	layout->addWidget(hint, 0, Qt::AlignLeft);
+	layout->addStretch();
 
-//                  QScrollBar:horizontal {
-//                      height: 10px; /* 设置水平滚动条的高度 */
-//                      background: #f0f0f0; /* 设置滚动条的背景颜色 */
-//                      border: none; /* 取消水平滚动条的边框样式 */
-//                      border-radius: 5px; /* 设置滚动条的圆角 */
-//                  }
-
-//                  QScrollBar::handle:vertical {
-//                      background: #c0c0c0; /* 设置垂直滚动条滑块的背景颜色 */
-//                  }
-
-//                  QScrollBar::handle:horizontal {
-//                      background: #c0c0c0; /* 设置水平滚动条滑块的背景颜色 */
-//                  }
-//                  )";
-//    m_dockManager->setStyleSheet(qss);
+	container->setAutoFillBackground(true);
+	container->setStyleSheet("background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #f6f8fb, stop:1 #ffffff);"
+		"border: 1px solid #dfe3eb; border-radius: 6px;");
+	return container;
 }
 
 void UiFrame::test()
@@ -973,7 +996,10 @@ void UiFrame::updateTransparencyLabel(int value)
 
 void UiFrame::onResetWidgetClicked()
 {
-
+	if (m_dockManager && !m_defaultDockState.isEmpty())
+	{
+		m_dockManager->restoreState(m_defaultDockState);
+	}
 }
 
 

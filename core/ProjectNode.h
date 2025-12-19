@@ -12,10 +12,14 @@ public:
     ProjectNode(const QString& n, const QString& id = QUuid::createUuid().toString(), BasePage* p = nullptr);
     ~ProjectNode() {}
     /**
+    * @brief 添加子节点，同时维护内部子节点列表
+    */
+    void addChild(ProjectNode* child);
+    /**
     * @brief 移除当前节点的子节点
     * @child 子节点指针
     */
-    bool removeChild(ProjectNode* child) {return children.removeOne(child);}
+    bool removeChild(ProjectNode* child);
     /**
     * @brief 获取所有的子节点
     */
@@ -48,5 +52,7 @@ private:
     QList<ProjectNode*> children;
     QString uuid;
 };
+
+Q_DECLARE_METATYPE(ProjectNode*)
 
 #endif // PROJECTNODE_H

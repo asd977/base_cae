@@ -10,6 +10,8 @@
 #include <services/SolverService.h>
 
 #include <PublicVariables.h>
+#include <QHash>
+#include <QPair>
 
 ProjectManager::ProjectManager()
 {
@@ -84,69 +86,16 @@ void ProjectManager::addTreeItem(ProjectNode *node)
 
 void ProjectManager::resetDefaultNodePointer()
 {
-	auto nodeMap = m_projectTreeWidget->getProjectRootNodeMap();
-	if (nodeMap.size()<1)return;
-	int size = nodeMap.values().size();
-	QList<ProjectNode*> _nodeList = nodeMap.values();
-	for (size_t i = 0; i < size; i++)
-	{
-		auto curNode = _nodeList[i];
-		auto name = curNode->getName();
-		if (name == "参数定义")
-		{
-			paramNode = curNode;
-			continue;
-		}
-		else if(name == "材料")
-		{
-			materNode = curNode;
-			continue;
-		}
-		else if (name == "几何")
-		{
-			gemoNode = curNode;
-			continue;
-		}
-		else if (name == "网格")
-		{
-			gridNode = curNode;
-			continue;
-		}
-		else if (name == "边界条件")
-		{
-			boundNode = curNode;
-			continue;
-		}
-		else if (name == "物理场")
-		{
-			phyNode = curNode;
-			continue;
-		}
-		else if (name == "求解")
-		{
-			solveNode = curNode;
-			continue;
-		}
-		else if (name == "结果")
-		{
-			resNode = curNode;
-			continue;
-		}
-		else if (name == "云图")
-		{
-			nephogramNode = curNode;
-			continue;
-		}
-		else if (name == "矢量图")
-		{
-			vectorNode = curNode;
-			continue;
-		}
-		else
-		{
-			continue;
-		}
-	}
+	paramNode = m_projectTreeWidget->nodeByKey("parameters");
+	materNode = m_projectTreeWidget->nodeByKey("materials");
+	gemoNode = m_projectTreeWidget->nodeByKey("geometry");
+	gridNode = m_projectTreeWidget->nodeByKey("mesh");
+	boundNode = m_projectTreeWidget->nodeByKey("boundary");
+	phyNode = m_projectTreeWidget->nodeByKey("physics");
+	solveNode = m_projectTreeWidget->nodeByKey("solver");
+	resNode = m_projectTreeWidget->nodeByKey("results");
+	nephogramNode = m_projectTreeWidget->nodeByKey("result_cloud");
+	vectorNode = m_projectTreeWidget->nodeByKey("result_vector");
 }
 
 void ProjectManager::judgeTreeNodeNameIsSame(const ProjectNode * parentNode, QString & originName)
@@ -194,8 +143,9 @@ void ProjectManager::openProject()
 
     PublicVariables::instance().set(PublicConstants::kProjectDirectoryKey, m_projectTempFolder,"project_dir");
 
-    m_rootNode = new ProjectNode(m_projectName);
-    m_projectTreeWidget->addTopLevelItem((QTreeWidgetItem*)m_rootNode);
+	m_projectTreeWidget->buildDefaultProjectTree(m_projectName);
+	m_rootNode = m_projectTreeWidget->m_rootNode;
+	resetDefaultNodePointer();
 
     PostProcessingService *postProcessingService = ServiceRegistry::instance().getService<PostProcessingService>();
     postProcessingService->loadProject();
@@ -251,9 +201,10 @@ void ProjectManager::newProject()
     m_projectEnginePath = m_projectPath + "/" + m_projectName + ".smproj";
     createProjectFilesFolder();
     qDebug()<<"222";
-    m_rootNode = new ProjectNode(m_projectName);
-    m_projectTreeWidget->addTopLevelItem((QTreeWidgetItem*)m_rootNode);
-qDebug()<<"222";
+	m_projectTreeWidget->buildDefaultProjectTree(m_projectName);
+	m_rootNode = m_projectTreeWidget->m_rootNode;
+	resetDefaultNodePointer();
+	qDebug()<<"222";
     //参数定义
     GlobalParameterService *globalParameterService = ServiceRegistry::instance().getService<GlobalParameterService>();
     globalParameterService->newProject();
@@ -333,7 +284,7 @@ void ProjectManager::exitProject()
 bool ProjectManager::isHaveProject()
 {
 	if (!m_projectTreeWidget) return false;
-	QTreeWidgetItem*  item = m_projectTreeWidget->findItemByNameIterative(m_projectTreeWidget->m_treeWidget, "几何");
+	QTreeWidgetItem*  item = m_projectTreeWidget->findItemByNameIterative(m_projectTreeWidget->m_treeWidget, "几何建模");
 	if (!item) return false;
 	return true;
 }
@@ -475,134 +426,39 @@ void ProjectManager::loadProTreeData()
 
 void ProjectManager::treeChildFactory(const QString& rootNodeType, BasePage* page, QString& nodeName)
 {
-	if (rootNodeType == "param")
-	{
-		if (!paramNode)return;
-		judgeTreeNodeNameIsSame(paramNode, nodeName);
-		ProjectNode* nodeA = new ProjectNode(nodeName, QUuid::createUuid().toString(), page);
-		paramNode->addChild(nodeA);
-		QTreeWidgetItem*  item = m_projectTreeWidget->findItemByNameIterative(m_projectTreeWidget->m_treeWidget, "参数定义");
-		if (!item) return;
-		m_projectTreeWidget->addNodeToTree(item, nodeA, "");
-	}
-	else if (rootNodeType == "mater")
-	{
-		if (!materNode)return;
-		judgeTreeNodeNameIsSame(materNode, nodeName);
-		ProjectNode* nodeA = new ProjectNode(nodeName, QUuid::createUuid().toString(), page);
-		materNode->addChild(nodeA);
-		QTreeWidgetItem*  item = m_projectTreeWidget->findItemByNameIterative(m_projectTreeWidget->m_treeWidget, "材料");
-		if (!item) return;
-		m_projectTreeWidget->addNodeToTree(item, nodeA, "");
-	}
-	else if (rootNodeType == "gemo")
-	{
-		if (!gemoNode)return;
-		judgeTreeNodeNameIsSame(gemoNode, nodeName);
-		ProjectNode* nodeA = new ProjectNode(nodeName, QUuid::createUuid().toString(), page);
-		gemoNode->addChild(nodeA);
-		QTreeWidgetItem*  item = m_projectTreeWidget->findItemByNameIterative(m_projectTreeWidget->m_treeWidget, "几何");
-		if (!item) return;
-		m_projectTreeWidget->addNodeToTree(item, nodeA, "");
-	}
-	else if (rootNodeType == "grid")
-	{
-		if (!gridNode)return;
-		QList<ProjectNode*> children = gridNode->getChildren();
-		for (auto child : children)
-		{
-			gridNode->removeChild(child);
-			QTreeWidgetItem*  item1 = m_projectTreeWidget->findItemByNameIterative(m_projectTreeWidget->m_treeWidget, "二维曲面网格");
-			QTreeWidgetItem*  item2 = m_projectTreeWidget->findItemByNameIterative(m_projectTreeWidget->m_treeWidget, "三维实体网格");
-			if (item1)
-			{
-				m_projectTreeWidget->deletePage(item1);
-			}
-			if (item2)
-			{
-				m_projectTreeWidget->deletePage(item2);
-			}
-		}
-		ProjectNode* nodeA = new ProjectNode(nodeName, QUuid::createUuid().toString(), page);
-		gridNode->addChild(nodeA);
-		QTreeWidgetItem*  item = m_projectTreeWidget->findItemByNameIterative(m_projectTreeWidget->m_treeWidget, "网格");
-		if (!item) return;
-		m_projectTreeWidget->addNodeToTree(item, nodeA, "");
-	}
-	else if (rootNodeType == "bound")
-	{
-		if (!boundNode)return;
-		judgeTreeNodeNameIsSame(boundNode, nodeName);
-		ProjectNode* nodeA = new ProjectNode(nodeName, QUuid::createUuid().toString(), page);
-		boundNode->addChild(nodeA);
-		QTreeWidgetItem*  item = m_projectTreeWidget->findItemByNameIterative(m_projectTreeWidget->m_treeWidget, "边界条件");
-		if (!item) return;
-		m_projectTreeWidget->addNodeToTree(item, nodeA, "");
-	}
-	else if (rootNodeType == "phy")
-	{
-		if (!phyNode)return;
-		judgeTreeNodeNameIsSame(phyNode, nodeName);
-		ProjectNode* nodeA = new ProjectNode(nodeName, QUuid::createUuid().toString(), page);
-		phyNode->addChild(nodeA);
-		QTreeWidgetItem*  item = m_projectTreeWidget->findItemByNameIterative(m_projectTreeWidget->m_treeWidget, "物理场");
-		if (!item) return;
-		m_projectTreeWidget->addNodeToTree(item, nodeA, "");
-	}
-	else if (rootNodeType == "solve")
-	{
-		if (!solveNode)return;
-		judgeTreeNodeNameIsSame(solveNode, nodeName);
-		ProjectNode* nodeA = new ProjectNode(nodeName, QUuid::createUuid().toString(), page);
-		solveNode->addChild(nodeA);
-		QTreeWidgetItem*  item = m_projectTreeWidget->findItemByNameIterative(m_projectTreeWidget->m_treeWidget, "求解");
-		if (!item) return;
-		m_projectTreeWidget->addNodeToTree(item, nodeA, "");
-	}
-	else if (rootNodeType == "res")
-	{
-		if (!resNode)return;
-		judgeTreeNodeNameIsSame(resNode, nodeName);
-		ProjectNode* nodeA = new ProjectNode(nodeName, QUuid::createUuid().toString(), page);
-		resNode->addChild(nodeA);
-		QTreeWidgetItem*  item = m_projectTreeWidget->findItemByNameIterative(m_projectTreeWidget->m_treeWidget, "结果");
-		if (!item) return;
-		m_projectTreeWidget->addNodeToTree(item, nodeA, "");
-	}
-	else if (rootNodeType == "nephogram")
-	{
-		if (!nephogramNode)return;
-		judgeTreeNodeNameIsSame(nephogramNode, nodeName);
-		ProjectNode* nodeA = new ProjectNode(nodeName, QUuid::createUuid().toString(), page);
-		nephogramNode->addChild(nodeA);
-		QTreeWidgetItem*  item = m_projectTreeWidget->findItemByNameIterative(m_projectTreeWidget->m_treeWidget, "云图");
-		if (!item) return;
-		m_projectTreeWidget->addNodeToTree(item, nodeA, "");
-	}
-	else if (rootNodeType == "vector")
-	{
-		if (!vectorNode)return;
-		judgeTreeNodeNameIsSame(vectorNode, nodeName);
-		ProjectNode* nodeA = new ProjectNode(nodeName, QUuid::createUuid().toString(), page);
-		vectorNode->addChild(nodeA);
-		QTreeWidgetItem*  item = m_projectTreeWidget->findItemByNameIterative(m_projectTreeWidget->m_treeWidget, "矢量图");
-		if (!item) return;
-		m_projectTreeWidget->addNodeToTree(item, nodeA, "");
-	}
-    else if (rootNodeType == "section")
-    {
-        if (!vectorNode)return;
-        judgeTreeNodeNameIsSame(vectorNode, nodeName);
-        ProjectNode* nodeA = new ProjectNode(nodeName, QUuid::createUuid().toString(), page);
-        vectorNode->addChild(nodeA);
-        QTreeWidgetItem*  item = m_projectTreeWidget->findItemByNameIterative(m_projectTreeWidget->m_treeWidget, "矢量图");
-        if (!item) return;
-        m_projectTreeWidget->addNodeToTree(item, nodeA, "");
-    }
-	else
+	QHash<QString, QPair<ProjectNode*, QString>> targets;
+	targets.insert("param", { paramNode, ":/resources/menu/Parameter.png" });
+	targets.insert("mater", { materNode, ":/resources/menu/Block.png" });
+	targets.insert("gemo", { gemoNode, ":/resources/icon/geomImport.png" });
+	targets.insert("grid", { gridNode, ":/resources/icon/mesh.png" });
+	targets.insert("bound", { boundNode, ":/resources/menu/boundary_face.png" });
+	targets.insert("phy", { phyNode, ":/resources/icon/bound.png" });
+	targets.insert("solve", { solveNode, ":/resources/icon/report.png" });
+	targets.insert("res", { resNode, ":/resources/menu/Nephogram.png" });
+	targets.insert("nephogram", { nephogramNode, ":/resources/menu/Nephogram.png" });
+	targets.insert("vector", { vectorNode, ":/resources/menu/Vector.png" });
+	targets.insert("section", { vectorNode, ":/resources/menu/Slice.png" });
+
+	if (!targets.contains(rootNodeType))
 	{
 		return;
 	}
+	auto target = targets.value(rootNodeType);
+	if (!target.first)
+	{
+		return;
+	}
+	if (rootNodeType == "grid")
+	{
+		const QList<ProjectNode*> children = target.first->getChildren();
+		for (auto child : children)
+		{
+			target.first->removeChild(child);
+			m_projectTreeWidget->deleteProjectNode(child);
+		}
+	}
+	judgeTreeNodeNameIsSame(target.first, nodeName);
+	m_projectTreeWidget->addLeaf(target.first, nodeName, target.second, page);
 }
 
 void ProjectManager::onDeletePageSig(const QString & uuid)
@@ -611,4 +467,3 @@ void ProjectManager::onDeletePageSig(const QString & uuid)
 	//PreProcessingService *preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>();
 	//preProcessingService->deletePage(uuid);
 }
-

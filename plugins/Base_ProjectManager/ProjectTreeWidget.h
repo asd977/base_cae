@@ -11,10 +11,13 @@
 #include <QContextMenuEvent>
 #include "ConcretePageA.h"
 #include <QTextStream>
+#include <QLabel>
+#include <QHash>
 #include <qdebug.h>
 #include "QStack"
 #include <services/PreProcessingService.h>
 #include <ServiceRegistry.h>
+#include <QStackedLayout>
 
 /**
 * @brief 项目模型树类
@@ -30,10 +33,15 @@ class ProjectTreeWidget : public QWidget
     Q_OBJECT
 
 public:
-    explicit ProjectTreeWidget(QWidget *parent = nullptr);
+	explicit ProjectTreeWidget(QWidget *parent = nullptr);
     ~ProjectTreeWidget();
 	QTreeWidget * getTreeWidget() const { return m_treeWidget; };
 	void setStackedWidget(QStackedWidget* stackWidget) { m_stackWidget = stackWidget; };
+	/**
+	* @brief 构建默认的工程模型树骨架
+	* @param projectName 工程名称
+	*/
+	void buildDefaultProjectTree(const QString& projectName);
 	/**
 	* @brief 给树添加节点
 	* @param parentItem 父节点指针
@@ -101,6 +109,20 @@ public:
 
 
     void addTopLevelItem(QTreeWidgetItem* node);
+	/**
+	 * @brief 通过key获取节点
+	 * @param key 预定义的节点key
+	 */
+	ProjectNode* nodeByKey(const QString& key) const { return m_namedNodeMap.value(key, nullptr); }
+	/**
+	 * @brief 在指定父节点下添加叶子节点
+	 * @param parent 父节点
+	 * @param name 叶子名称
+	 * @param iconPath 图标路径
+	 * @param page 绑定的页面
+	 * @param key 保存到索引map的key，非必须
+	 */
+	ProjectNode* addLeaf(ProjectNode* parent, const QString& name, const QString& iconPath, BasePage* page = nullptr, const QString& key = QString());
 signals:
 	void deletePageSig(const QString &uuid);
 public:
@@ -112,6 +134,9 @@ private:
 	QHBoxLayout * m_layout;
 	QString m_projectTreeXmlPath = "./project.xml";// 项目树结构保存地址
 	QMap<QString, ProjectNode*> nodeMap;// 节点的map
+	QHash<QString, ProjectNode*> m_namedNodeMap;
+	QLabel* m_placeholderLabel = nullptr;
+	QStackedLayout* m_stackedLayout = nullptr;
 protected:
 	/**
 	* @brief 右键节点弹出的删除事件
@@ -126,6 +151,22 @@ private:
 	* @brief 更新节点路径
 	*/
 	void updateItemPath(QTreeWidgetItem* item, const QString& parentPath);
+	/**
+	 * @brief 构建基础节点
+	 */
+	void buildBaseNodes(const QString& projectName);
+	/**
+	 * @brief 创建分组节点
+	 */
+	ProjectNode* createCategory(ProjectNode* parent, const QString& title, const QString& iconPath, const QString& key = QString());
+	/**
+	 * @brief 初始化树样式
+	 */
+	void applyTreeTheme();
+	/**
+	 * @brief 更新空状态提示
+	 */
+	void updatePlaceholderVisibility();
 public slots:
 	/**
 	* @brief 双击节点修改名称的槽函数

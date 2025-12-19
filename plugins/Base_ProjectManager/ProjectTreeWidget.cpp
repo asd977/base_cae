@@ -1,5 +1,8 @@
 ﻿#include "ProjectTreeWidget.h"
 #include "ui_ProjectTreeWidget.h"
+#include <QIcon>
+#include <QPalette>
+#include <QVariant>
 
 ProjectTreeWidget::ProjectTreeWidget(QWidget *parent) :
     QWidget(parent),
@@ -17,52 +20,192 @@ ProjectTreeWidget::~ProjectTreeWidget()
 void ProjectTreeWidget::init()
 {
 	m_layout = new QHBoxLayout(this);
+	m_layout->setContentsMargins(6, 6, 6, 6);
 	m_treeWidget = new QTreeWidget(this);
 	m_treeWidget->setColumnCount(1);
 	m_treeWidget->setSelectionMode(QAbstractItemView::SingleSelection);
 	m_treeWidget->setExpandsOnDoubleClick(true);
 	m_treeWidget->setEditTriggers(QAbstractItemView::DoubleClicked);
 	m_treeWidget->setHeaderHidden(true);
-	m_treeWidget->setIndentation(20);
-	m_layout->addWidget(m_treeWidget);
-	m_layout->setContentsMargins(3, 3, 3, 3);
+	m_treeWidget->setIndentation(18);
+	m_treeWidget->setAnimated(true);
+	m_treeWidget->setAlternatingRowColors(true);
+	m_treeWidget->setUniformRowHeights(true);
+
+	m_placeholderLabel = new QLabel(("新建或打开工程以查看模型树"), this);
+	m_placeholderLabel->setAlignment(Qt::AlignCenter);
+	m_placeholderLabel->setObjectName("projectTreePlaceholder");
+
+	m_stackedLayout = new QStackedLayout();
+	m_stackedLayout->addWidget(m_treeWidget);
+	m_stackedLayout->addWidget(m_placeholderLabel);
+	m_layout->addLayout(m_stackedLayout);
+
+	applyTreeTheme();
     connect(m_treeWidget, &QTreeWidget::currentItemChanged, this, &ProjectTreeWidget::onCurItemChanged);
+	updatePlaceholderVisibility();
 	//connect(m_treeWidget, &QTreeWidget::itemChanged, this, &ProjectTreeWidget::onItemChanged);
-//	m_treeWidget->setStyleSheet(QString(
-//		"QTreeWidget {border:none;font-family: Microsoft YaHei, 微软雅黑;}"
-//		"QTreeView{"
-//		"font-size:%2px;"
-//		"show-decoration-selected:1;"
-//		"selection-background-color:qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,stop:0 rgba(255, 255, 255, 255), stop:0.5 rgba(235, 247, 253, 255), stop:1 rgba(213, 237, 250, 255));"
-//		"color:black; "
-//		"background-color: rgb(255, 255, 255);	"
-//		"}"
-//		"  QTreeView::item {"
-//		"      height:%1px;"
-//		"       border: 1px;"
-//		"       color:black;"
-//		"      border: transparent;"
-//		"  }"
-//		"QTreeView::item:selected,"
-//		"QTreeView::branch:selected {"
-//		"    background: rgb(192,226,252);color: black;"
-//		"}"
-//		"QTreeView::item:hover,"
-//		"QTreeView::branch:hover {"
-//		"    background: rgb(226,242,254);color: black;"
-//		"}"
+}
 
-//		"QTreeView::branch {"
-//		"    color: black; /* 箭头颜色设为黑色 */"
-//		"}"
-//		"QTreeView::branch:closed:has-children {"
-//		" image: url(:/resources/btn_up.png);"
-//		"}"
+void ProjectTreeWidget::applyTreeTheme()
+{
+	if (!m_treeWidget)
+	{
+		return;
+	}
+	QString qss = QString(
+		"QTreeWidget {"
+		"    border: none;"
+		"    font-family: \"Microsoft YaHei\", \"微软雅黑\";"
+		"    background: transparent;"
+		"}"
+		"QTreeView{"
+		"    font-size: 14px;"
+		"    show-decoration-selected: 1;"
+		"    selection-background-color: rgba(56, 140, 230, 45%);"
+		"    selection-color: #1b2533;"
+		"    color: #1b2533; "
+		"    background-color: rgba(255,255,255,0.6);"
+		"}"
+		"QTreeView::item {"
+		"    height: 26px;"
+		"    padding: 4px 6px;"
+		"    border: 1px solid transparent;"
+		"}"
+		"QTreeView::item:selected,"
+		"QTreeView::branch:selected {"
+		"    background: rgba(56, 140, 230, 18%);"
+		"    color: #0b1f33;"
+		"}"
+		"QTreeView::item:hover,"
+		"QTreeView::branch:hover {"
+		"    background: rgba(79, 160, 255, 12%);"
+		"    color: #0b1f33;"
+		"}"
+		"QTreeView::branch:closed:has-children {"
+		"    image: url(:/resources/btn_up.png);"
+		"}"
+		"QTreeView::branch:open:has-children {"
+		"    image: url(:/resources/btn_down.png);"
+		"}");
+	m_treeWidget->setStyleSheet(qss);
+	if (m_placeholderLabel)
+	{
+		QPalette pal = m_placeholderLabel->palette();
+		pal.setColor(QPalette::WindowText, QColor("#60708a"));
+		m_placeholderLabel->setPalette(pal);
+	}
+}
 
-//		"QTreeView::branch:open:has-children {"
-//		"image: url(:/resources/btn_down.png);"
-//		" }"
-//	).arg(30).arg(16));
+void ProjectTreeWidget::updatePlaceholderVisibility()
+{
+	if (!m_stackedLayout)
+	{
+		return;
+	}
+	const bool hasContent = m_treeWidget && m_treeWidget->topLevelItemCount() > 0;
+	m_stackedLayout->setCurrentWidget(hasContent ? static_cast<QWidget*>(m_treeWidget)
+		: static_cast<QWidget*>(m_placeholderLabel));
+}
+
+void ProjectTreeWidget::buildDefaultProjectTree(const QString& projectName)
+{
+	m_treeWidget->clear();
+	m_namedNodeMap.clear();
+	nodeMap.clear();
+
+	m_rootNode = new ProjectNode(projectName);
+	m_rootNode->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+	m_rootNode->setIcon(0, QIcon(":/resources/icon/reportTemplate.png"));
+	m_rootNode->setData(0, Qt::UserRole, QVariant::fromValue(m_rootNode));
+	m_treeWidget->addTopLevelItem(m_rootNode);
+	m_rootNode->setExpanded(true);
+
+	buildBaseNodes(projectName);
+	m_treeWidget->setCurrentItem(m_rootNode);
+	updatePlaceholderVisibility();
+}
+
+void ProjectTreeWidget::buildBaseNodes(const QString& projectName)
+{
+	Q_UNUSED(projectName);
+	nodeMap.insert(m_rootNode->getName(), m_rootNode);
+	const QString iconParameter = ":/resources/menu/Parameter.png";
+	const QString iconMaterial = ":/resources/menu/Block.png";
+	const QString iconGeometry = ":/resources/icon/geomImport.png";
+	const QString iconMesh = ":/resources/icon/mesh.png";
+	const QString iconPhysics = ":/resources/icon/bound.png";
+	const QString iconBoundary = ":/resources/menu/boundary_face.png";
+	const QString iconSolver = ":/resources/icon/report.png";
+	const QString iconResult = ":/resources/menu/Nephogram.png";
+	const QString iconSurrogate = ":/resources/menu/DataSampling.png";
+
+	ProjectNode* param = createCategory(m_rootNode, ("参数定义"), iconParameter, "parameters");
+	ProjectNode* material = createCategory(m_rootNode, ("材料库"), iconMaterial, "materials");
+	ProjectNode* geom = createCategory(m_rootNode, ("几何建模"), iconGeometry, "geometry");
+	ProjectNode* mesh = createCategory(m_rootNode, ("网格划分"), iconMesh, "mesh");
+	ProjectNode* physics = createCategory(m_rootNode, ("物理场"), iconPhysics, "physics");
+	ProjectNode* boundary = createCategory(m_rootNode, ("边界条件"), iconBoundary, "boundary");
+	ProjectNode* solver = createCategory(m_rootNode, ("求解控制"), iconSolver, "solver");
+	ProjectNode* result = createCategory(m_rootNode, ("结果分析"), iconResult, "results");
+	ProjectNode* surrogate = createCategory(m_rootNode, ("代理模型"), iconSurrogate, "surrogate");
+
+	createCategory(result, ("云图"), ":/resources/menu/Nephogram.png", "result_cloud");
+	createCategory(result, ("矢量图"), ":/resources/menu/Vector.png", "result_vector");
+	createCategory(result, ("切片/截面"), ":/resources/menu/Slice.png", "result_section");
+	createCategory(result, ("曲线/报告"), ":/resources/menu/Curve.png", "result_curve");
+
+	QList<ProjectNode*> defaults{ param, material, geom, mesh, physics, boundary, solver, result, surrogate };
+	for (ProjectNode* node : defaults)
+	{
+		if (!node)
+		{
+			continue;
+		}
+		node->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+		node->setData(0, Qt::UserRole, QVariant::fromValue(node));
+		m_treeWidget->expandItem(node);
+	}
+}
+
+ProjectNode* ProjectTreeWidget::createCategory(ProjectNode* parent, const QString& title, const QString& iconPath, const QString& key)
+{
+	if (!parent)
+	{
+		return nullptr;
+	}
+	ProjectNode* node = new ProjectNode(title);
+	node->setIcon(0, QIcon(iconPath));
+	node->setData(0, Qt::UserRole, QVariant::fromValue(node));
+	parent->addChild(node);
+	if (!key.isEmpty())
+	{
+		m_namedNodeMap.insert(key, node);
+	}
+	nodeMap.insert(title, node);
+	return node;
+}
+
+ProjectNode* ProjectTreeWidget::addLeaf(ProjectNode* parent, const QString& name, const QString& iconPath, BasePage* page, const QString& key)
+{
+	if (!parent)
+	{
+		return nullptr;
+	}
+	auto* leaf = new ProjectNode(name);
+	leaf->setIcon(0, QIcon(iconPath));
+	leaf->setFlags(leaf->flags() | Qt::ItemIsEditable | Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+	leaf->setPage(page);
+	leaf->setData(0, Qt::UserRole, QVariant::fromValue(leaf));
+	parent->addChild(leaf);
+	if (!key.isEmpty())
+	{
+		m_namedNodeMap.insert(key, leaf);
+	}
+	nodeMap.insert(name, leaf);
+	m_treeWidget->expandItem(parent);
+	updatePlaceholderVisibility();
+	return leaf;
 }
 
 void ProjectTreeWidget::addNodeToTree(QTreeWidgetItem* parentItem, ProjectNode* node, const QString& path)
