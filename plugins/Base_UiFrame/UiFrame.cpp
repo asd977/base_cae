@@ -20,6 +20,7 @@
 #include <QPainter>
 #include <QFile>
 #include <QLayout>
+#include <QVBoxLayout>
 
 
 UiFrame::UiFrame(QWidget* par, SARibbonMainWindowStyles style) : SARibbonMainWindow(par, style)
@@ -61,6 +62,19 @@ void UiFrame::initDockManager()
     ads::CDockManager::setAutoHideConfigFlags(ads::CDockManager::DefaultAutoHideConfig);
 
     m_dockManager = new ads::CDockManager(this);
+        m_dockManager->setContentsMargins(0, 0, 0, 0);
+        if (auto layout = m_dockManager->layout())
+        {
+                layout->setContentsMargins(0, 0, 0, 0);
+                layout->setSpacing(0);
+        }
+
+        QWidget *central = new QWidget(this);
+        QVBoxLayout *centralLayout = new QVBoxLayout(central);
+        centralLayout->setContentsMargins(0, 0, 0, 0);
+        centralLayout->setSpacing(0);
+        centralLayout->addWidget(m_dockManager);
+        setCentralWidget(central);
     setDockWidgetStyle();
         captureDefaultDockState();
 }
