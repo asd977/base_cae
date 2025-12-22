@@ -12,6 +12,7 @@
 #include <DockWidgetTab.h>
 #include <QSplitter>
 #include <QCoreApplication>
+#include <QApplication>
 #include <ServiceRegistry.h>
 #include <qtimer.h>
 #include <QDir>
@@ -19,11 +20,12 @@
 #include <PublicConstants.h>
 #include <QPainter>
 #include <QFile>
+#include <StyleManager.h>
 
 
 UiFrame::UiFrame(QWidget* par, SARibbonMainWindowStyles style) : SARibbonMainWindow(par, style)
 {
-	initSARibbon();
+        initSARibbon();
     initDockManager();
     ServiceRegistry::instance().registerService<UiFrameService>(this);
     setWindowFlags(Qt::Window | Qt::WindowTitleHint | Qt::WindowSystemMenuHint | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint);
@@ -259,6 +261,12 @@ void UiFrame::initSARibbon()
         m_pSARibbon = ribbonBar();
         m_pSARibbon->setRibbonStyle(SARibbonBar::RibbonStyleTwoRow);
         setRibbonTheme(SARibbonTheme::RibbonThemeOffice2021Blue);
+        m_pSARibbon->setAttribute(Qt::WA_StyledBackground, true);
+        m_pSARibbon->setAutoFillBackground(true);
+
+        if (QApplication* app = qobject_cast<QApplication*>(QCoreApplication::instance())) {
+            StyleManager::applyStyleSheet(*app, QStringLiteral(":/resources/style/app.qss"));
+        }
         // m_pSARibbon->setContentsMargins(2, 0, 2, 0);
         buildRibbonAppButton();
     //QTimer::singleShot(0, this, [this]() {setWindowState(windowState() | Qt::WindowMaximized);});
@@ -664,9 +672,11 @@ void UiFrame::addMenuSeparator()
 
 void UiFrame::addRibbonCategory(const QString& catName, const QString& objName)
 {
-	SARibbonCategory* categoryMain = m_pSARibbon->addCategoryPage(catName);
-	categoryMain->setObjectName(objName);
-	m_mRibbonCategoryMap.insert(objName, categoryMain);
+        SARibbonCategory* categoryMain = m_pSARibbon->addCategoryPage(catName);
+        categoryMain->setObjectName(objName);
+        categoryMain->setAttribute(Qt::WA_StyledBackground, true);
+        categoryMain->setAutoFillBackground(true);
+        m_mRibbonCategoryMap.insert(objName, categoryMain);
 }
 
 SARibbonCategory * UiFrame::getCategoryByObjName(const QString & objName)
