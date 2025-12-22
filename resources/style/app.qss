@@ -7,24 +7,55 @@ QWidget {
 }
 
 /* 标签栏（Ribbon） */
-QTabBar::tab {
+SARibbonBar, QTabWidget::pane {
+    background-color: #ffffff;
+    border: 1px solid #c7cdd8;
+    margin-top: -1px;
+}
+
+SARibbonCategoryContainer,
+SARibbonCategory,
+SARibbonCategoryScrollArea,
+QTabWidget::pane > QWidget {
+    background-color: #ffffff;
+    border: 1px solid #c7cdd8;
+    border-top: 0;
+}
+
+SARibbonPannel,
+SARibbonPannel::title {
+    background-color: #ffffff;
+    border: 0;
+}
+
+SARibbonTabBar::tab, QTabBar::tab {
     font-size: 16px;
-    padding: 0px;
+    padding: 0 12px;
     min-width: 70px;
     min-height: 30px;
-    margin: 0px;
+    margin: 0;
+    border: 1px solid transparent;
+    border-bottom: 0;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    background-color: #e6ecf7;
 }
 
-QTabBar::tab:!selected {
-    background-color: #eaecee;
+SARibbonTabBar::tab:!selected, QTabBar::tab:!selected {
+    color: #2f3a4a;
+    background-color: #e6ecf7;
+    border-color: transparent;
 }
 
-QTabBar::tab:selected {
+SARibbonTabBar::tab:selected, QTabBar::tab:selected {
     background-color: #ffffff;
+    color: #1f2933;
+    border-color: #c7cdd8;
+    margin-bottom: -1px;
 }
 
-QTabBar::tab:hover {
-    background-color: #cde8ff;
+SARibbonTabBar::tab:hover:!selected, QTabBar::tab:hover:!selected {
+    background-color: #d7e5fb;
 }
 
 /* 工具按钮（Ribbon 按钮） */
