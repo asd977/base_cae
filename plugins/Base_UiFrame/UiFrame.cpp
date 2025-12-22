@@ -283,7 +283,7 @@ void UiFrame::initSARibbon()
         }
 
     m_pSARibbon = ribbonBar();
-    m_pSARibbon->setRibbonStyle(SARibbonBar::RibbonStyleTwoRow);
+    m_pSARibbon->setRibbonStyle(SARibbonBar::RibbonStyleCompactTwoRow);
     setRibbonTheme(SARibbonTheme::RibbonThemeOffice2021Blue);
 
         // 默认布局的边距会在 Ribbon 左侧和底部留下空白，这里清零边距保持贴合
