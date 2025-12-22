@@ -7,18 +7,24 @@ QWidget {
 }
 
 /* 标签栏（Ribbon） */
-QTabWidget::pane {
-    border: 1px solid #c7cdd8;
+SARibbonBar, QTabWidget::pane {
     background-color: #ffffff;
+    border: 1px solid #c7cdd8;
     margin-top: -1px;
 }
 
-QTabBar::tab {
+SARibbonCategoryContainer, QTabWidget::pane > QWidget {
+    background-color: #ffffff;
+    border: 1px solid #c7cdd8;
+    border-top: 0;
+}
+
+SARibbonTabBar::tab, QTabBar::tab {
     font-size: 16px;
-    padding: 0px 10px;
+    padding: 0 12px;
     min-width: 70px;
     min-height: 30px;
-    margin: 0px;
+    margin: 0;
     border: 1px solid transparent;
     border-bottom: 0;
     border-top-left-radius: 4px;
@@ -26,20 +32,20 @@ QTabBar::tab {
     background-color: #e6ecf7;
 }
 
-QTabBar::tab:!selected {
+SARibbonTabBar::tab:!selected, QTabBar::tab:!selected {
     color: #2f3a4a;
     background-color: #e6ecf7;
     border-color: transparent;
 }
 
-QTabBar::tab:selected {
+SARibbonTabBar::tab:selected, QTabBar::tab:selected {
     background-color: #ffffff;
     color: #1f2933;
     border-color: #c7cdd8;
     margin-bottom: -1px;
 }
 
-QTabBar::tab:hover:!selected {
+SARibbonTabBar::tab:hover:!selected, QTabBar::tab:hover:!selected {
     background-color: #d7e5fb;
 }
 
