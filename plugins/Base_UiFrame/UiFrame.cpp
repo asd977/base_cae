@@ -21,6 +21,7 @@
 #include <QFile>
 #include <QLayout>
 #include <QVBoxLayout>
+#include <QSizePolicy>
 
 
 UiFrame::UiFrame(QWidget* par, SARibbonMainWindowStyles style) : SARibbonMainWindow(par, style)
@@ -62,6 +63,7 @@ void UiFrame::initDockManager()
     ads::CDockManager::setAutoHideConfigFlags(ads::CDockManager::DefaultAutoHideConfig);
 
     m_dockManager = new ads::CDockManager(this);
+        m_dockManager->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         m_dockManager->setContentsMargins(0, 0, 0, 0);
         if (auto layout = m_dockManager->layout())
         {
@@ -269,14 +271,20 @@ void UiFrame::test()
 void UiFrame::initSARibbon()
 {
     //SARibbonBar::initHighDpi();
-        setWindowTitle("CAE_BASE");
-        setWindowModified(true);
-        // 保持整个窗口与 Ribbon 布局无缝贴合
-        setContentsMargins(0, 0, 0, 0);
+    setWindowTitle("CAE_BASE");
+    setWindowModified(true);
+    // 保持整个窗口与 Ribbon 布局无缝贴合
+    setContentsMargins(0, 0, 0, 0);
 
-        m_pSARibbon = ribbonBar();
-        m_pSARibbon->setRibbonStyle(SARibbonBar::RibbonStyleTwoRow);
-        setRibbonTheme(SARibbonTheme::RibbonThemeOffice2021Blue);
+        if (auto mainLayout = layout())
+        {
+                mainLayout->setContentsMargins(0, 0, 0, 0);
+                mainLayout->setSpacing(0);
+        }
+
+    m_pSARibbon = ribbonBar();
+    m_pSARibbon->setRibbonStyle(SARibbonBar::RibbonStyleTwoRow);
+    setRibbonTheme(SARibbonTheme::RibbonThemeOffice2021Blue);
 
         // 默认布局的边距会在 Ribbon 左侧和底部留下空白，这里清零边距保持贴合
         m_pSARibbon->setContentsMargins(0, 0, 0, 0);
