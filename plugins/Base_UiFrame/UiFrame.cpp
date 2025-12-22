@@ -1,5 +1,4 @@
-﻿#include "Ribbon.h"
-#include "UiFrame.h"
+﻿#include "UiFrame.h"
 
 #include <QDockWidget>
 #include <QMenuBar>
@@ -260,7 +259,7 @@ void UiFrame::initSARibbon()
         m_pSARibbon = ribbonBar();
         m_pSARibbon->setRibbonStyle(SARibbonBar::RibbonStyleTwoRow);
         setRibbonTheme(SARibbonTheme::RibbonThemeOffice2021Blue);
-        m_pSARibbon->setContentsMargins(2, 0, 2, 0);
+        // m_pSARibbon->setContentsMargins(2, 0, 2, 0);
         buildRibbonAppButton();
     //QTimer::singleShot(0, this, [this]() {setWindowState(windowState() | Qt::WindowMaximized);});
 }

@@ -9,7 +9,6 @@
 #include <services/UiFrameService.h>
 #include <QHeaderView>
 #include <QToolButton>
-#include <Ribbon.h>
 #include <QLabel>
 #include <QStackedWidget>
 

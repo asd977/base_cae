@@ -400,11 +400,11 @@ void ProjectTreeWidget::setSubtreeExpanded(QTreeWidgetItem* item, bool expanded)
         {
                 return;
         }
-        m_treeWidget->setItemExpanded(item, expanded);
-        for (int i = 0; i < item->childCount(); ++i)
-        {
-                setSubtreeExpanded(item->child(i), expanded);
-        }
+        // m_treeWidget->setItemExpanded(item, expanded);
+        // for (int i = 0; i < item->childCount(); ++i)
+        // {
+        //         setSubtreeExpanded(item->child(i), expanded);
+        // }
 }
 
 QTreeWidgetItem* ProjectTreeWidget::findItemByNameIterative(QTreeWidget* tree, const QString& name)
