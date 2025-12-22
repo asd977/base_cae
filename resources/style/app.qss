@@ -13,10 +13,19 @@ SARibbonBar, QTabWidget::pane {
     margin-top: -1px;
 }
 
-SARibbonCategoryContainer, QTabWidget::pane > QWidget {
+SARibbonCategoryContainer,
+SARibbonCategory,
+SARibbonCategoryScrollArea,
+QTabWidget::pane > QWidget {
     background-color: #ffffff;
     border: 1px solid #c7cdd8;
     border-top: 0;
+}
+
+SARibbonPannel,
+SARibbonPannel::title {
+    background-color: #ffffff;
+    border: 0;
 }
 
 SARibbonTabBar::tab, QTabBar::tab {

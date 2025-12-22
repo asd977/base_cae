@@ -9,6 +9,7 @@
 #include <QTextEdit>
 #include <QMdiArea>
 #include <QSettings>
+#include <QTabBar>
 #include <DockWidgetTab.h>
 #include <QSplitter>
 #include <QCoreApplication>
@@ -256,13 +257,18 @@ void UiFrame::test()
 void UiFrame::initSARibbon()
 {
     //SARibbonBar::initHighDpi();
-        setWindowTitle("CAE_BASE");
-        setWindowModified(true);
-        m_pSARibbon = ribbonBar();
-        m_pSARibbon->setRibbonStyle(SARibbonBar::RibbonStyleTwoRow);
-        setRibbonTheme(SARibbonTheme::RibbonThemeOffice2021Blue);
-        m_pSARibbon->setAttribute(Qt::WA_StyledBackground, true);
-        m_pSARibbon->setAutoFillBackground(true);
+    setWindowTitle("CAE_BASE");
+    setWindowModified(true);
+    m_pSARibbon = ribbonBar();
+    m_pSARibbon->setRibbonStyle(SARibbonBar::RibbonStyleTwoRow);
+    setRibbonTheme(SARibbonTheme::RibbonThemeOffice2021Blue);
+    m_pSARibbon->setAttribute(Qt::WA_StyledBackground, true);
+    m_pSARibbon->setAutoFillBackground(true);
+
+    if (QTabBar *tabBar = m_pSARibbon->findChild<QTabBar *>()) {
+        tabBar->setAttribute(Qt::WA_StyledBackground, true);
+        tabBar->setAutoFillBackground(true);
+    }
 
         if (QApplication* app = qobject_cast<QApplication*>(QCoreApplication::instance())) {
             StyleManager::applyStyleSheet(*app, QStringLiteral(":/resources/style/app.qss"));
