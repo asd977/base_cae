@@ -22,6 +22,62 @@
 #include <QPainter>
 #include <QFile>
 #include <StyleManager.h>
+#include <QProxyStyle>
+
+class RibbonTabStyle : public QProxyStyle
+{
+public:
+    using QProxyStyle::QProxyStyle;
+
+    void drawControl(ControlElement element, const QStyleOption *option, QPainter *painter,
+                     const QWidget *widget = nullptr) const override
+    {
+        if (element == CE_TabBarTab) {
+            const QStyleOptionTab *tab = qstyleoption_cast<const QStyleOptionTab *>(option);
+            if (tab) {
+                painter->save();
+                painter->setRenderHint(QPainter::Antialiasing, true);
+
+                const QColor frameColor(QStringLiteral("#c7cdd8"));
+                const QColor activeBg(QStringLiteral("#ffffff"));
+                const QColor hoverBg(QStringLiteral("#d7e5fb"));
+                const QColor normalBg(QStringLiteral("#e6ecf7"));
+
+                const bool isSelected = tab->state & State_Selected;
+                const bool isHover = tab->state & State_MouseOver;
+                const QColor fillColor = isSelected ? activeBg : (isHover ? hoverBg : normalBg);
+
+                QRect r = tab->rect.adjusted(0, 0, 0, -1);
+                painter->fillRect(r, fillColor);
+
+                if (isSelected) {
+                    painter->setPen(frameColor);
+                    painter->drawRect(r.adjusted(0, 0, -1, 0));
+                }
+
+                painter->restore();
+
+                QStyleOptionTab labelOpt(*tab);
+                labelOpt.rect = r;
+                QProxyStyle::drawControl(CE_TabBarTabLabel, &labelOpt, painter, widget);
+                return;
+            }
+        }
+
+        QProxyStyle::drawControl(element, option, painter, widget);
+    }
+
+    QSize sizeFromContents(ContentsType type, const QStyleOption *option, const QSize &size,
+                           const QWidget *widget) const override
+    {
+        QSize result = QProxyStyle::sizeFromContents(type, option, size, widget);
+        if (type == CT_TabBarTab) {
+            result.rheight() = qMax(result.height(), 32);
+            result.rwidth() += 12;
+        }
+        return result;
+    }
+};
 
 
 UiFrame::UiFrame(QWidget* par, SARibbonMainWindowStyles style) : SARibbonMainWindow(par, style)
@@ -264,10 +320,15 @@ void UiFrame::initSARibbon()
     setRibbonTheme(SARibbonTheme::RibbonThemeOffice2021Blue);
     m_pSARibbon->setAttribute(Qt::WA_StyledBackground, true);
     m_pSARibbon->setAutoFillBackground(true);
+    m_pSARibbon->setStyleSheet(QStringLiteral(
+        "SARibbonBar{background-color:#ffffff;border:1px solid #c7cdd8;}"
+        "SARibbonCategoryContainer,SARibbonCategory,SARibbonCategoryScrollArea{"
+        "background-color:#ffffff;border:1px solid #c7cdd8;border-top:0;}"));
 
     if (QTabBar *tabBar = m_pSARibbon->findChild<QTabBar *>()) {
         tabBar->setAttribute(Qt::WA_StyledBackground, true);
         tabBar->setAutoFillBackground(true);
+        tabBar->setStyle(new RibbonTabStyle(tabBar->style()));
     }
 
         if (QApplication* app = qobject_cast<QApplication*>(QCoreApplication::instance())) {
