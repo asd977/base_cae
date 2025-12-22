@@ -9,18 +9,24 @@ QWidget {
 /* 标签栏（Ribbon） */
 QTabBar::tab {
     font-size: 16px;
-    padding: 0px;
-    min-width: 70px;
+    padding: 6px 14px;
+    min-width: 72px;
     min-height: 30px;
-    margin: 0px;
+    margin: 4px 4px 2px 4px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    color: #3b3b3b;
 }
 
 QTabBar::tab:!selected {
     background-color: #eaecee;
+    border-color: transparent;
 }
 
 QTabBar::tab:selected {
-    background-color: #ffffff;
+    background-color: #e3f0ff;
+    border: 1px solid #5b8def;
+    color: #1f5fbf;
 }
 
 QTabBar::tab:hover {

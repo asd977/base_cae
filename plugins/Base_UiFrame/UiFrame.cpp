@@ -19,6 +19,7 @@
 #include <PublicConstants.h>
 #include <QPainter>
 #include <QFile>
+#include <QLayout>
 
 
 UiFrame::UiFrame(QWidget* par, SARibbonMainWindowStyles style) : SARibbonMainWindow(par, style)
@@ -256,10 +257,20 @@ void UiFrame::initSARibbon()
     //SARibbonBar::initHighDpi();
         setWindowTitle("CAE_BASE");
         setWindowModified(true);
+        // 保持整个窗口与 Ribbon 布局无缝贴合
+        setContentsMargins(0, 0, 0, 0);
+
         m_pSARibbon = ribbonBar();
         m_pSARibbon->setRibbonStyle(SARibbonBar::RibbonStyleTwoRow);
         setRibbonTheme(SARibbonTheme::RibbonThemeOffice2021Blue);
-        // m_pSARibbon->setContentsMargins(2, 0, 2, 0);
+
+        // 默认布局的边距会在 Ribbon 左侧和底部留下空白，这里清零边距保持贴合
+        m_pSARibbon->setContentsMargins(0, 0, 0, 0);
+        if (auto layout = m_pSARibbon->layout())
+        {
+                layout->setContentsMargins(0, 0, 0, 0);
+                layout->setSpacing(0);
+        }
         buildRibbonAppButton();
     //QTimer::singleShot(0, this, [this]() {setWindowState(windowState() | Qt::WindowMaximized);});
 }
