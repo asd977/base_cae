@@ -2,7 +2,6 @@
 #include "MaterialLibraryWidget.h"
 #include "MaterialEntryWidget.h"
 #include "MaterialModelWidget.h"
-#include "MaterialManager.h"
 
 #include <QDebug>
 #include <QFile>
@@ -16,7 +15,6 @@
 #include <QPair>
 #include <QSet>
 #include <QToolButton>
-#include <QTreeWidgetItem>
 #include <QUuid>
 #include <QString>
 #include <QTextStream>
@@ -24,21 +22,39 @@
 
 #include <tuple>
 
-#include <public/services/PhysicalFieldService.h>
-#include <public/services/PreProcessingService.h>
-#include <utils/ServiceRegistry.h>
+#include <services/PhysicalFieldService.h>
+#include <services/PreProcessingService.h>
+#include <ProjectNode.h>
+#include <PublicConstants.h>
+#include <PublicVariables.h>
+#include <ServiceRegistry.h>
 
 MaterialManager::MaterialManager()
     : m_materialLibraryWidget(nullptr)
     , m_materialManagerWidget(nullptr)
     , m_rootItem(nullptr)
 {
-    m_projectManagerService = ServiceRegistry<ProjectManagerService>::instance().getService();
-    m_uiFrameService = ServiceRegistry<UiFrameService>::instance().getService();
-    ServiceRegistry<MaterialManagerService>::instance().registerService(this);
+    m_projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
+    m_uiFrameService = ServiceRegistry::instance().getService<UiFrameService>();
+    ServiceRegistry::instance().registerService<MaterialManagerService>(this);
     setupTreeWidget();
     loadDefaultLibrary();
     ensureEntryIds();
+}
+
+BasePage *MaterialManager::getMaterialManagerWidget()
+{
+    if (!m_materialManagerWidget) {
+        m_materialManagerWidget = new MaterialManagerWidget(this);
+    }
+    return m_materialManagerWidget;
+}
+
+void MaterialManager::newProject()
+{
+    const QString workPath =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    newProjectForPath(workPath);
 }
 
 void MaterialManager::setupTreeWidget()
@@ -52,40 +68,39 @@ void MaterialManager::loadDefaultLibrary()
     notifyLibraryChanged();
 }
 
-void MaterialManager::newProject(QString workPath)
+void MaterialManager::newProjectForPath(const QString &workPath)
 {
     m_workPath = workPath;
-    if (m_materialManagerWidget) {
-        QString oldUuid = m_rootItem ? m_rootItem->data(0, Qt::UserRole).toString() : QString();
-        if (!oldUuid.isEmpty()) {
-            m_projectManagerService->setItemWidget(oldUuid, nullptr);
-        }
-        delete m_materialManagerWidget;
-        m_materialManagerWidget = nullptr;
-    }
-    if (m_rootItem) {
-        clearProjectTree();
-        delete m_rootItem;
-        m_rootItem = nullptr;
-    }
-    m_modelItems.clear();
-    m_entryItems.clear();
+
     qDeleteAll(m_modelWidgets);
     m_modelWidgets.clear();
     qDeleteAll(m_entryWidgets);
     m_entryWidgets.clear();
+
+    delete m_materialManagerWidget;
+    m_materialManagerWidget = nullptr;
+
+    m_rootItem = nullptr;
+    m_modelItems.clear();
+    m_entryItems.clear();
     m_addedEntryIds.clear();
     m_selectedMatypes.clear();
+    m_previewMatypes.clear();
+    m_preDeleteMatypes.clear();
+
     m_materialManagerWidget = new MaterialManagerWidget(this);
     loadDefaultLibrary();
     ensureEntryIds();
 
-    QString uuid = QUuid::createUuid().toString();
-    m_rootItem = new QTreeWidgetItem();
-    m_rootItem->setText(0, QStringLiteral("材料"));
-    m_rootItem->setData(0, Qt::UserRole, uuid);
+    if (!m_projectManagerService) {
+        return;
+    }
+
+    m_rootItem = new ProjectNode(QStringLiteral("材料"));
+    m_rootItem->setData(0, ProjectNode::RoleUuid, m_rootItem->getUuid());
+    m_rootItem->setData(0, ProjectNode::RoleModule, QStringLiteral("Material"));
+    m_rootItem->setPage(m_materialManagerWidget);
     m_projectManagerService->addTreeItem(m_rootItem);
-    m_projectManagerService->setItemWidget(uuid, m_materialManagerWidget);
 }
 
 const QVector<MaterialModel> &MaterialManager::models() const
@@ -143,7 +158,7 @@ void MaterialManager::notifyLibraryChanged(bool refreshProjectTree)
 void MaterialManager::notifyEntryUpdated(const QString &entryId, bool nameChanged)
 {
     if (nameChanged) {
-        QTreeWidgetItem *item = m_entryItems.value(entryId, nullptr);
+        ProjectNode *item = m_entryItems.value(entryId, nullptr);
         MaterialEntry *entry = findEntry(entryId);
         if (item && entry) {
             item->setText(0, entry->name);
@@ -276,7 +291,7 @@ void MaterialManager::focusOnMaterial(const QString &entryId)
     if (!m_projectManagerService) {
         return;
     }
-    QTreeWidgetItem *item = m_entryItems.value(entryId, nullptr);
+    ProjectNode *item = m_entryItems.value(entryId, nullptr);
     if (item) {
         m_projectManagerService->setCurrentItem(item);
     }
@@ -287,7 +302,7 @@ void MaterialManager::focusOnModel(const QString &modelKey)
     if (!m_projectManagerService) {
         return;
     }
-    QTreeWidgetItem *item = m_modelItems.value(modelKey, nullptr);
+    ProjectNode *item = m_modelItems.value(modelKey, nullptr);
     if (item) {
         m_projectManagerService->setCurrentItem(item);
     }
@@ -322,15 +337,16 @@ void MaterialManager::rebuildProjectTree()
         validEntries.insert(entryId);
         activeModelKeys.insert(model->key);
 
-        QTreeWidgetItem *modelItem = m_modelItems.value(model->key, nullptr);
+        ProjectNode *modelItem = m_modelItems.value(model->key, nullptr);
         if (!modelItem) {
-            modelItem = new QTreeWidgetItem(m_rootItem);
-            QString modelUuid = QUuid::createUuid().toString();
-            modelItem->setData(0, Qt::UserRole, modelUuid);
             auto *modelWidget = new MaterialModelWidget(this);
+            modelItem = new ProjectNode(model->displayName, QUuid::createUuid().toString(), modelWidget);
+            modelItem->setData(0, ProjectNode::RoleUuid, modelItem->getUuid());
+            modelItem->setData(0, ProjectNode::RoleModule, QStringLiteral("Material"));
+            modelItem->setData(0, ProjectNode::RoleKind, QStringLiteral("MaterialModel"));
             m_modelWidgets.insert(model->key, modelWidget);
-            m_projectManagerService->setItemWidget(modelUuid, modelWidget);
             m_modelItems.insert(model->key, modelItem);
+            m_rootItem->addChild(modelItem);
         }
         modelItem->setText(0, model->displayName);
         modelItem->setExpanded(true);
@@ -339,17 +355,19 @@ void MaterialManager::rebuildProjectTree()
             m_modelWidgets[model->key]->setModel(*model);
         }
 
-        QTreeWidgetItem *entryItem = m_entryItems.value(entryId, nullptr);
+        ProjectNode *entryItem = m_entryItems.value(entryId, nullptr);
         if (!entryItem) {
-            entryItem = new QTreeWidgetItem(modelItem);
-            entryItem->setData(0, Qt::UserRole, entryId);
             auto *entryWidget = new MaterialEntryWidget(this);
             entryWidget->setEntry(model->key, entryId);
+            entryItem = new ProjectNode(entry->name, entryId, entryWidget);
+            entryItem->setData(0, ProjectNode::RoleUuid, entryId);
+            entryItem->setData(0, ProjectNode::RoleModule, QStringLiteral("Material"));
+            entryItem->setData(0, ProjectNode::RoleKind, QStringLiteral("MaterialEntry"));
             m_entryWidgets.insert(entryId, entryWidget);
-            m_projectManagerService->setItemWidget(entryId, entryWidget);
             m_entryItems.insert(entryId, entryItem);
+            modelItem->addChild(entryItem);
         } else if (entryItem->parent() != modelItem) {
-            QTreeWidgetItem *oldParent = entryItem->parent();
+            auto *oldParent = dynamic_cast<ProjectNode *>(entryItem->parent());
             if (oldParent) {
                 oldParent->removeChild(entryItem);
             }
@@ -369,10 +387,11 @@ void MaterialManager::rebuildProjectTree()
         }
     }
     for (const QString &id : staleEntries) {
-        QTreeWidgetItem *item = m_entryItems.take(id);
+        ProjectNode *item = m_entryItems.take(id);
         if (item) {
-            QString uuid = item->data(0, Qt::UserRole).toString();
-            m_projectManagerService->setItemWidget(uuid, nullptr);
+            if (auto *parent = dynamic_cast<ProjectNode *>(item->parent())) {
+                parent->removeChild(item);
+            }
             delete item;
         }
         if (m_entryWidgets.contains(id)) {
@@ -389,15 +408,15 @@ void MaterialManager::rebuildProjectTree()
         }
     }
     for (const QString &modelKey : staleModels) {
-        QTreeWidgetItem *item = m_modelItems.value(modelKey, nullptr);
+        ProjectNode *item = m_modelItems.take(modelKey);
         if (item) {
             QList<QString> orphanEntries;
             for (auto it = m_entryItems.begin(); it != m_entryItems.end();) {
                 if (it.value()->parent() == item) {
                     orphanEntries.append(it.key());
-                    QString uuid = it.value()->data(0, Qt::UserRole).toString();
-                    m_projectManagerService->setItemWidget(uuid, nullptr);
-                    delete it.value();
+                    ProjectNode *entryItem = it.value();
+                    item->removeChild(entryItem);
+                    delete entryItem;
                     it = m_entryItems.erase(it);
                 } else {
                     ++it;
@@ -408,8 +427,9 @@ void MaterialManager::rebuildProjectTree()
                     delete m_entryWidgets.take(id);
                 }
             }
-            QString uuid = item->data(0, Qt::UserRole).toString();
-            m_projectManagerService->setItemWidget(uuid, nullptr);
+            if (auto *parent = dynamic_cast<ProjectNode *>(item->parent())) {
+                parent->removeChild(item);
+            }
             delete item;
         }
         if (m_modelWidgets.contains(modelKey)) {
@@ -425,8 +445,10 @@ void MaterialManager::clearProjectTree()
     if (!m_rootItem) {
         return;
     }
-    while (m_rootItem->childCount() > 0) {
-        delete m_rootItem->takeChild(0);
+    const auto children = m_rootItem->getChildren();
+    for (ProjectNode *child : children) {
+        m_rootItem->removeChild(child);
+        delete child;
     }
 }
 
@@ -454,7 +476,7 @@ void MaterialManager::removeEntryFromProjectTree(const QString &entryId)
 
 QSet<int> MaterialManager::availableMatypes() const
 {
-    PreProcessingService *service = ServiceRegistry<PreProcessingService>::instance().getService();
+    PreProcessingService *service = ServiceRegistry::instance().getService<PreProcessingService>();
     if (!service) {
         return {};
     }
@@ -467,7 +489,7 @@ void MaterialManager::highlightMatypes(const QSet<int> &matypes,
                                        int previewMatype,
                                        int preDeleteMatype)
 {
-    PreProcessingService *service = ServiceRegistry<PreProcessingService>::instance().getService();
+    PreProcessingService *service = ServiceRegistry::instance().getService<PreProcessingService>();
     if (!service) {
         return;
     }

@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-#include <QWidget>
+#include <BasePage.h>
 #include <QFormLayout>
 #include <QLineEdit>
 #include <QListWidget>
@@ -12,7 +12,7 @@ class MaterialModel;
 class MaterialEntry;
 class CustomComboBox;
 
-class MaterialEntryWidget : public QWidget
+class MaterialEntryWidget : public BasePage
 {
     Q_OBJECT
 public:
@@ -22,9 +22,8 @@ public:
 
     void refreshAppliedMatypes(const QSet<int> &appliedMatypes, int selectedMatype);
 
-protected:
-    void showEvent(QShowEvent *e) override;
-    void hideEvent(QHideEvent *e) override;
+    void beforeLoad() override;
+    void beforeUnload() override;
 
 private slots:
     void onNameEdited(const QString &text);

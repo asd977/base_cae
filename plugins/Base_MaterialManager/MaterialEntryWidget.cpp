@@ -5,8 +5,6 @@
 #include <QScrollArea>
 #include <QVBoxLayout>
 #include <QColor>
-#include <QShowEvent>
-#include <QHideEvent>
 #include <QBrush>
 #include <algorithm>
 #include <QFontDatabase>
@@ -14,7 +12,7 @@
 #include <utils/CustomComboBox.h>
 
 MaterialEntryWidget::MaterialEntryWidget(MaterialManager *manager, QWidget *parent)
-    : QWidget(parent)
+    : BasePage("MaterialEntryWidget")
     , m_materialManager(manager)
     , m_isUpdating(false)
     , m_formLayout(new QFormLayout)
@@ -123,10 +121,8 @@ QRadioButton {
     layout->addWidget(scrollArea);
 }
 
-void MaterialEntryWidget::showEvent(QShowEvent *e)
+void MaterialEntryWidget::beforeLoad()
 {
-    QWidget::showEvent(e);
-
     // 回到页面：只恢复 Selected（预选中/预删除不恢复）
     m_previewMatype = -1;
     m_preDeleteMatype = -1;
@@ -138,10 +134,8 @@ void MaterialEntryWidget::showEvent(QShowEvent *e)
     updateAppliedListColors();
 }
 
-void MaterialEntryWidget::hideEvent(QHideEvent *e)
+void MaterialEntryWidget::beforeUnload()
 {
-    QWidget::hideEvent(e);
-
     // 离开页面：清空所有高亮
     if (!m_entryId.isEmpty()) {
         m_previewMatype = -1;

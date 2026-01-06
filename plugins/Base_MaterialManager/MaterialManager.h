@@ -6,21 +6,21 @@
 
 #include "MaterialManagerWidget.h"
 
-#include <public/services/MaterialManagerService.h>
-#include <public/services/PreProcessingService.h>
-#include <public/services/ProjectManagerService.h>
-#include <public/services/UiFrameService.h>
+#include <services/MaterialManagerService.h>
+#include <services/PreProcessingService.h>
+#include <services/ProjectManagerService.h>
+#include <services/UiFrameService.h>
 
 #include <QSqlDatabase>
 #include <QHash>
 #include <QMap>
 #include <QSet>
-#include <QTreeWidgetItem>
 
 class MaterialManagerWidget;
 class MaterialLibraryWidget;
 class MaterialEntryWidget;
 class MaterialModelWidget;
+class ProjectNode;
 
 class MaterialManager:public QObject,public MaterialManagerService
 {
@@ -28,13 +28,14 @@ class MaterialManager:public QObject,public MaterialManagerService
 public:
     MaterialManager();
 
+    BasePage *getMaterialManagerWidget() override;
+    void newProject() override;
+
     const QVector<MaterialModel> &models() const;
     QVector<MaterialModel> &models();
 
     MaterialModel *findModel(const QString &key);
     MaterialEntry *findEntry(const QString &id, MaterialModel **outModel = nullptr);
-
-    void newProject(QString workPath);
 
     void notifyLibraryChanged(bool refreshProjectTree = true);
     void notifyEntryUpdated(const QString &entryId, bool nameChanged);
@@ -74,6 +75,7 @@ public:
     void setValueStrings(QVector<QStringList> values);
 
 private:
+    void newProjectForPath(const QString &workPath);
     void setupTreeWidget();
     void loadDefaultLibrary();
     void ensureEntryIds();
@@ -91,9 +93,9 @@ private:
     MaterialManagerWidget *m_materialManagerWidget;
 
     // project tree
-    QTreeWidgetItem *m_rootItem;
-    QHash<QString, QTreeWidgetItem*> m_modelItems;
-    QHash<QString, QTreeWidgetItem*> m_entryItems;
+    ProjectNode *m_rootItem;
+    QHash<QString, ProjectNode*> m_modelItems;
+    QHash<QString, ProjectNode*> m_entryItems;
 
     QHash<QString, MaterialModelWidget*> m_modelWidgets;
     QHash<QString, MaterialEntryWidget*> m_entryWidgets;

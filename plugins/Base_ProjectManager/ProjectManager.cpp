@@ -79,6 +79,16 @@ void ProjectManager::addTreeItem(ProjectNode *node)
     m_rootNode->addChild(node);
 }
 
+void ProjectManager::setCurrentItem(ProjectNode *node)
+{
+    if (!m_projectTreeWidget || !node) {
+        return;
+    }
+    if (auto *treeWidget = m_projectTreeWidget->getTreeWidget()) {
+        treeWidget->setCurrentItem(node);
+    }
+}
+
 
 void ProjectManager::openProject()
 {

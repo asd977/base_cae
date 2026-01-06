@@ -12,7 +12,7 @@
 
 MaterialManagerWidget::MaterialManagerWidget(MaterialManager *manager,QWidget *parent) :
     m_materialManager(manager),
-    QWidget(parent),
+    BasePage("MaterialManagerWidget"),
     ui(new Ui::MaterialManagerWidget)
 {
     ui->setupUi(this);

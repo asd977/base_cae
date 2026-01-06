@@ -30,6 +30,7 @@ public:
 	 */
     bool isHaveProject();
     void addTreeItem(ProjectNode *node);
+    void setCurrentItem(ProjectNode *node) override;
 private slots:
 	void newProject();
 	void openProject();

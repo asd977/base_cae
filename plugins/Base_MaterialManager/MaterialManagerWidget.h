@@ -1,7 +1,7 @@
 ﻿#ifndef MATERIALMANAGERWIDGET_H
 #define MATERIALMANAGERWIDGET_H
 
-#include <QWidget>
+#include <BasePage.h>
 
 #include<QStringList>
 
@@ -13,7 +13,7 @@ namespace Ui {
 class MaterialManagerWidget;
 }
 
-class MaterialManagerWidget : public QWidget
+class MaterialManagerWidget : public BasePage
 {
     Q_OBJECT
 
@@ -21,6 +21,8 @@ public:
     explicit MaterialManagerWidget(MaterialManager *manager,QWidget *parent = nullptr);
     ~MaterialManagerWidget();
     void refreshSummary(const QVector<MaterialModel> &models);
+    void beforeLoad() override {}
+    void beforeUnload() override {}
 
 
 private slots:

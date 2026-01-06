@@ -5,7 +5,7 @@
 #include <QHBoxLayout>
 
 MaterialModelWidget::MaterialModelWidget(MaterialManager *manager, QWidget *parent)
-    : QWidget(parent)
+    : BasePage("MaterialModelWidget")
     , m_materialManager(manager)
     , m_titleLabel(new QLabel(this))
     , m_summaryLabel(new QLabel(this))

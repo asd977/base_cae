@@ -1,22 +1,24 @@
 #ifndef MATERIALMODELWIDGET_H
 #define MATERIALMODELWIDGET_H
 
+#include <BasePage.h>
 #include <QLabel>
 #include <QPushButton>
 #include <QVBoxLayout>
-#include <QWidget>
 
 #include "MaterialLibraryData.h"
 
 class MaterialManager;
 
-class MaterialModelWidget : public QWidget
+class MaterialModelWidget : public BasePage
 {
     Q_OBJECT
 public:
     explicit MaterialModelWidget(MaterialManager *manager, QWidget *parent = nullptr);
 
     void setModel(const MaterialModel &model);
+    void beforeLoad() override {}
+    void beforeUnload() override {}
 
 private slots:
     void onOpenLibrary();
