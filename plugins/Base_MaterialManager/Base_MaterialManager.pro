@@ -3,23 +3,25 @@ include($$PWD/plugin-dev.pri)
 INCLUDEPATH += $$PWD/../../interfaces
 
 HEADERS += \
-    ElectrolyteSettingWidget.h \
     MaterialManager.h \
     MaterialManagerWidget.h \
-    MetalSettingWidget.h \
-    ThinFilmSettingWidget.h
+    MaterialLibraryData.h \
+    MaterialEntryWidget.h \
+    MaterialModelWidget.h \
+    MaterialLibraryWidget.h
 
 
 SOURCES += \
-    ElectrolyteSettingWidget.cpp \
     MaterialManager.cpp \
     MaterialManagerWidget.cpp \
-    MetalSettingWidget.cpp \
-    ThinFilmSettingWidget.cpp
+    MaterialLibraryData.cpp \
+    MaterialEntryWidget.cpp \
+    MaterialModelWidget.cpp \
+    MaterialLibraryWidget.cpp
+
 
 FORMS += \
-    ElectrolyteSettingWidget.ui \
     MaterialManagerWidget.ui \
-    MetalSettingWidget.ui \
-    ThinFilmSettingWidget.ui
+    MaterialLibraryWidget.ui
+
 
