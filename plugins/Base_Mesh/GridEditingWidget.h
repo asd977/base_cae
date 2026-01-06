@@ -38,6 +38,10 @@ public:
 
     void setModel(const IiinGridModel &model);
     void clearIiinGrid();
+    void highlightMatypes(const QSet<int> &matypes,
+                          int selectedMatype,
+                          int previewMatype,
+                          int preDeleteMatype);
 
     bool isMousePickingEnabled() const { return m_enableMousePicking; }
     bool isDraggingNode() const { return m_isDragging; }

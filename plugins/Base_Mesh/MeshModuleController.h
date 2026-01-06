@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
 #include <vtkSmartPointer.h>
+#include <QSet>
 
 #include <services/MeshModuleControllerService.h>
 
@@ -11,6 +12,7 @@ class ProjectNode;
 class VisualWidgetService;
 class vtkActor;
 class vtkDataSetMapper;
+class GridEditingWidget;
 
 class MeshModuleController : public QObject, public MeshModuleControllerService
 {
@@ -23,6 +25,11 @@ public:
     bool loadProject();
     void closeProject();
     bool currentModel(IiinGridModel &model) const override;
+    QSet<int> getAvailableMatypes() const override;
+    void highlightMatypes(const QSet<int> &matypes,
+                          int selectedMatype,
+                          int previewMatype,
+                          int preDeleteMatype) override;
 
 
 private:
@@ -53,6 +60,7 @@ private:
     bool m_hasModel = false;
     MeshGridIO m_gridIO;
     VisualWidgetService *m_visualWidgetService = nullptr;
+    GridEditingWidget *m_gridEditingWidget = nullptr;
     vtkSmartPointer<vtkDataSetMapper> m_previewMapper;
     vtkSmartPointer<vtkActor> m_previewActor;
 };

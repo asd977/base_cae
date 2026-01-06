@@ -7,7 +7,7 @@
 #include "MaterialManagerWidget.h"
 
 #include <services/MaterialManagerService.h>
-#include <services/PreProcessingService.h>
+#include <services/MeshModuleControllerService.h>
 #include <services/ProjectManagerService.h>
 #include <services/UiFrameService.h>
 

@@ -23,7 +23,7 @@
 #include <tuple>
 
 #include <services/PhysicalFieldService.h>
-#include <services/PreProcessingService.h>
+#include <services/MeshModuleControllerService.h>
 #include <ProjectNode.h>
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -476,7 +476,7 @@ void MaterialManager::removeEntryFromProjectTree(const QString &entryId)
 
 QSet<int> MaterialManager::availableMatypes() const
 {
-    PreProcessingService *service = ServiceRegistry::instance().getService<PreProcessingService>();
+    auto *service = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!service) {
         return {};
     }
@@ -489,7 +489,7 @@ void MaterialManager::highlightMatypes(const QSet<int> &matypes,
                                        int previewMatype,
                                        int preDeleteMatype)
 {
-    PreProcessingService *service = ServiceRegistry::instance().getService<PreProcessingService>();
+    auto *service = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!service) {
         return;
     }

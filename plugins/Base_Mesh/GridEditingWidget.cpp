@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <utility>
 
 // VTK
 #include <vtkSmartPointer.h>
@@ -227,6 +228,80 @@ void GridEditingWidget::clearIiinGrid()
         ui->lineEditDeleteElemId->clear();
         ui->labelFilterSummary->setText(QStringLiteral("当前过滤：全部"));
     }
+}
+
+void GridEditingWidget::highlightMatypes(const QSet<int> &matypes,
+                                         int selectedMatype,
+                                         int previewMatype,
+                                         int preDeleteMatype)
+{
+    m_highlightedMatypes = matypes;
+    m_highlightedMatype = selectedMatype;
+
+    if (!m_meshMapper || !m_grid || !m_visualWidgetService) {
+        return;
+    }
+
+    const bool hasSelection = !matypes.isEmpty()
+        || selectedMatype >= 0
+        || previewMatype >= 0
+        || preDeleteMatype >= 0;
+
+    if (!hasSelection) {
+        m_meshMapper->ScalarVisibilityOff();
+        m_visualWidgetService->render();
+        return;
+    }
+
+    QSet<int> allMatypes = m_model.allMatypes();
+    if (selectedMatype >= 0) {
+        allMatypes.insert(selectedMatype);
+    }
+    if (previewMatype >= 0) {
+        allMatypes.insert(previewMatype);
+    }
+    if (preDeleteMatype >= 0) {
+        allMatypes.insert(preDeleteMatype);
+    }
+    allMatypes.unite(matypes);
+
+    int maxMatype = -1;
+    for (int v : std::as_const(allMatypes)) {
+        maxMatype = qMax(maxMatype, v);
+    }
+    if (maxMatype < 0) {
+        return;
+    }
+
+    auto lut = vtkSmartPointer<vtkLookupTable>::New();
+    lut->SetNumberOfTableValues(maxMatype + 1);
+    lut->Build();
+
+    for (int i = 0; i <= maxMatype; ++i) {
+        lut->SetTableValue(i, 0.75, 0.75, 0.75, 0.25);
+    }
+    for (int matype : std::as_const(matypes)) {
+        if (matype >= 0 && matype <= maxMatype) {
+            lut->SetTableValue(matype, 0.25, 0.75, 0.25, 1.0);
+        }
+    }
+    if (selectedMatype >= 0 && selectedMatype <= maxMatype) {
+        lut->SetTableValue(selectedMatype, 0.9, 0.2, 0.2, 1.0);
+    }
+    if (previewMatype >= 0 && previewMatype <= maxMatype) {
+        lut->SetTableValue(previewMatype, 0.2, 0.4, 0.9, 1.0);
+    }
+    if (preDeleteMatype >= 0 && preDeleteMatype <= maxMatype) {
+        lut->SetTableValue(preDeleteMatype, 0.9, 0.55, 0.2, 1.0);
+    }
+
+    m_matypeLookupTable = lut;
+    m_meshMapper->SetScalarModeToUseCellData();
+    m_meshMapper->SelectColorArray("MATYPE");
+    m_meshMapper->SetLookupTable(lut);
+    m_meshMapper->UseLookupTableScalarRangeOn();
+    m_meshMapper->ScalarVisibilityOn();
+    m_visualWidgetService->render();
 }
 
 // ----------- 过滤解析 -----------

@@ -71,6 +71,22 @@ bool MeshModuleController::currentModel(IiinGridModel &model) const
     return true;
 }
 
+QSet<int> MeshModuleController::getAvailableMatypes() const
+{
+    return m_currentModel.allMatypes();
+}
+
+void MeshModuleController::highlightMatypes(const QSet<int> &matypes,
+                                            int selectedMatype,
+                                            int previewMatype,
+                                            int preDeleteMatype)
+{
+    if (!m_gridEditingWidget) {
+        return;
+    }
+    m_gridEditingWidget->highlightMatypes(matypes, selectedMatype, previewMatype, preDeleteMatype);
+}
+
 void MeshModuleController::initAction()
 {
     auto &em = EventManager::instance();
@@ -242,8 +258,9 @@ void MeshModuleController::onQualityStd()
 
 void MeshModuleController::onMeshEdit()
 {
-    GridEditingWidget* w = new GridEditingWidget();
-    auto *node = new ProjectNode("网格编辑", QUuid::createUuid().toString(), (BasePage*)w);
+    auto *w = new GridEditingWidget();
+    m_gridEditingWidget = w;
+    auto *node = new ProjectNode("网格编辑", QUuid::createUuid().toString(), w);
     m_gridNode->addChild(node);
 }
 
