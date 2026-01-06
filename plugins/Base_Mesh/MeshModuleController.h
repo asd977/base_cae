@@ -1,8 +1,9 @@
 #pragma once
 #include <QObject>
-#include <vtkUnstructuredGrid.h>
-
 #include <services/MeshModuleControllerService.h>
+
+#include "IiinGridModel.h"
+#include "MeshGridIO.h"
 
 class ProjectNode;
 
@@ -38,6 +39,7 @@ private:
 
 private:
     ProjectNode* m_gridNode = nullptr;
-    vtkSmartPointer<vtkUnstructuredGrid> loadFlac3dGrid(const QString &fileName);
-    void importFlac3D(QString fileName);
+    IiinGridModel m_currentModel;
+    bool m_hasModel = false;
+    MeshGridIO m_gridIO;
 };

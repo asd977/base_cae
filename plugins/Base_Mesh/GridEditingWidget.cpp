@@ -194,17 +194,12 @@ void GridEditingWidget::clearData()
 }
 
 // 对外接口
-void GridEditingWidget::loadIiinFile(const QString &fileName)
+void GridEditingWidget::setModel(const IiinGridModel &model)
 {
     clearData();
 
-    QString err;
-    if (!m_model.loadFromFile(fileName, &err)) {
-        qWarning() << "[GridEditingWidget] loadFromFile failed:" << err;
-        return;
-    }
-
-    m_fileName = fileName;
+    m_model = model;
+    m_fileName = model.fileName();
 
     updateIdRangeLabels();
     buildOrUpdateGrid();
@@ -299,6 +294,12 @@ int GridEditingWidget::expectedNodeCountForKetype(int ketype) const
     // 3D 四面体
     case 35:
         return 4;
+
+    // 3D 楔形 / 棱锥
+    case 38:
+        return 6;
+    case 39:
+        return 5;
 
     default:
         return m_model.manod();
@@ -473,6 +474,16 @@ void GridEditingWidget::buildOrUpdateGrid()
         case 35:
             vtkCellType = VTK_TETRA;
             if (!addIds(4)) continue;
+            break;
+
+        case 38:
+            vtkCellType = VTK_WEDGE;
+            if (!addIds(6)) continue;
+            break;
+
+        case 39:
+            vtkCellType = VTK_PYRAMID;
+            if (!addIds(5)) continue;
             break;
 
         default:

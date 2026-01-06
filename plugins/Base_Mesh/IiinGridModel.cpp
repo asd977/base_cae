@@ -1,6 +1,7 @@
 ﻿#include "IiinGridModel.h"
 
 #include <QFile>
+#include <QObject>
 #include <QTextStream>
 #include <QStringList>
 #include <QDebug>
@@ -270,6 +271,60 @@ bool IiinGridModel::saveToFile(const QString &fileName, QString *errMsg) const
     f.close();
 
     qDebug() << "[IiinGridModel] saved IIIN.DAT:" << fileName;
+    return true;
+}
+
+bool IiinGridModel::setFromData(const QVector<Node> &nodes,
+                                const QVector<Elem> &elems,
+                                int madim,
+                                int manod,
+                                double am,
+                                int iobject,
+                                int ivertical,
+                                double xmin,
+                                double xmax,
+                                double ymin,
+                                double ymax,
+                                double zmin,
+                                double zmax,
+                                const QString &fileName,
+                                QString *errMsg)
+{
+    if (nodes.isEmpty() || elems.isEmpty()) {
+        if (errMsg) *errMsg = QObject::tr("节点或单元为空，无法生成 IIIN.DAT");
+        return false;
+    }
+
+    clear();
+
+    m_nodes = nodes;
+    m_elems = elems;
+
+    m_numnp = m_nodes.size();
+    m_nelem = m_elems.size();
+    m_madim = madim;
+    m_manod = manod;
+    m_am = am;
+    m_iobject = iobject;
+    m_ivertical = ivertical;
+    m_xmin = xmin;
+    m_xmax = xmax;
+    m_ymin = ymin;
+    m_ymax = ymax;
+    m_zmin = zmin;
+    m_zmax = zmax;
+    m_fileName = fileName;
+
+    m_allKetypes.clear();
+    m_allMatypes.clear();
+    m_allLayers.clear();
+    for (const Elem &e : m_elems) {
+        m_allKetypes.insert(e.ketype);
+        m_allMatypes.insert(e.matype);
+        m_allLayers.insert(e.layer);
+    }
+
+    rebuildNodeIndexMap();
     return true;
 }
 

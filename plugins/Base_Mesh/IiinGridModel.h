@@ -37,6 +37,21 @@ public:
     // 读 / 写 IIIN.DAT
     bool loadFromFile(const QString &fileName, QString *errMsg = nullptr);
     bool saveToFile(const QString &fileName, QString *errMsg = nullptr) const;
+    bool setFromData(const QVector<Node> &nodes,
+                     const QVector<Elem> &elems,
+                     int madim,
+                     int manod,
+                     double am,
+                     int iobject,
+                     int ivertical,
+                     double xmin,
+                     double xmax,
+                     double ymin,
+                     double ymax,
+                     double zmin,
+                     double zmax,
+                     const QString &fileName,
+                     QString *errMsg = nullptr);
 
     // 访问基础信息
     const QString &fileName() const { return m_fileName; }

@@ -36,7 +36,7 @@ public:
     explicit GridEditingWidget(QWidget *parent = nullptr);
     ~GridEditingWidget() override;
 
-    void loadIiinFile(const QString &fileName);
+    void setModel(const IiinGridModel &model);
     void clearIiinGrid();
 
     bool isMousePickingEnabled() const { return m_enableMousePicking; }

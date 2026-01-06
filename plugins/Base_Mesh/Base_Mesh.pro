@@ -8,6 +8,7 @@ HEADERS += \
     MeshGlobalMeshingWidget.h \
     MeshModuleController.h \
     MeshProcessor.h \
+    MeshGridIO.h \
     GridEditingWidget.h \
     IiinGridModel.h
 
@@ -15,6 +16,7 @@ SOURCES += \
     MeshGlobalMeshingWidget.cpp \
     MeshModuleController.cpp \
     MeshProcessor.cpp \
+    MeshGridIO.cpp \
     GridEditingWidget.cpp \
     IiinGridModel.cpp
 
