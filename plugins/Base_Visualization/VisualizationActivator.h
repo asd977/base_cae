@@ -1,14 +1,15 @@
 ﻿#ifndef VISUALIZATIONACTIVATOR_H
 #define VISUALIZATIONACTIVATOR_H
-#include "Visualization.h"
+
+#include "VisualizationWidget.h"
 
 #include <PluginInterface.h>
 #include <QObject>
 #include <QDebug>
 
-VTK_MODULE_INIT(vtkRenderingFreeType);
-VTK_MODULE_INIT(vtkRenderingOpenGL2);
-VTK_MODULE_INIT(vtkInteractionStyle);
+
+
+
 
 
 class VisualizationActivator : public QObject, public PluginInterface
@@ -21,7 +22,7 @@ public:
     VisualizationActivator();
 
     QString pluginName() const override { return "Visualization"; }
-    void start() override { qDebug() << "Start Visualization"; }
+    void start() override { qDebug() << "Start Visualization"; VisualizationWidget *visualizationWidget = new VisualizationWidget;}
     void stop() override { qDebug() << "Stopping..."; }
 };
 

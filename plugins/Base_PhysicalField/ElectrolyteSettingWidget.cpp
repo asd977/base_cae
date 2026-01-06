@@ -269,5 +269,4 @@ void ElectrolyteSettingWidget::onListItemSelectionChanged()
 void ElectrolyteSettingWidget::refreshRender()
 {
     auto* w = ServiceRegistry::instance().getService<PreProcessingService>();
-    if (w) w->render();
 }

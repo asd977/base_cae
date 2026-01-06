@@ -144,37 +144,37 @@ void PostProcessing::newProject()
 
 void PostProcessing::initAction()
 {
-    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessNephogram, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessNephogram,this, [this](const QVariantMap &data) {
         this->newNephogramSettingWidget();
     });
-    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessVector, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessVector,this, [this](const QVariantMap &data) {
         this->newVectorSettingWidget();
     });
-    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessSection, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessSection,this, [this](const QVariantMap &data) {
         this->newSliceSettingWidget();
     });
-    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessDice, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessDice,this, [this](const QVariantMap &data) {
         this->newBlockSettingsWidget();
     });
-    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessIsosurface, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessIsosurface,this, [this](const QVariantMap &data) {
         this->newIsosurfaceSettingsWidget();
     });
-    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessIsosurfaceSegmentation, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessIsosurfaceSegmentation,this, [this](const QVariantMap &data) {
         this->newIsosurfaceSegmentationWidget();
     });
-    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessXyPlot, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessXyPlot,this, [this](const QVariantMap &data) {
 //        this->new();
     });
-    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessAnimation, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessAnimation,this, [this](const QVariantMap &data) {
         this->newAnimationAviWidget();
     });
-    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessPickPhysical, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessPickPhysical,this, [this](const QVariantMap &data) {
 //        this->ne();
     });
-    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessDerivative, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessDerivative,this, [this](const QVariantMap &data) {
         this->newDerivedValueSettingWidget();
     });
-    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessDataExport, [this](const QVariantMap &data) {
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessDataExport,this, [this](const QVariantMap &data) {
 //        this->newNephogramSettingWidget();
     });
 }

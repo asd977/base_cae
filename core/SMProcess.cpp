@@ -1,4 +1,4 @@
-#include "SMProcess.h"
+﻿#include "SMProcess.h"
 #include <QDebug>
 namespace SMProcessTool
 {
@@ -48,7 +48,7 @@ void SMProcess::startProcess(bool async)
     }
     else
     {
-        start(m_programPath, {});
+//        start(m_programPath, {});
     }
 }
 

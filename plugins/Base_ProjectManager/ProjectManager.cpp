@@ -8,6 +8,7 @@
 #include <services/PhysicalFieldService.h>
 #include <services/BoundaryConditionsService.h>
 #include <services/SolverService.h>
+#include <services/MeshModuleControllerService.h>
 
 #include <PublicVariables.h>
 #include <QVariant>
@@ -22,20 +23,12 @@ ProjectManager::ProjectManager()
 	m_uiFrameService->addWidget(m_projectTreeWidget,"模型管理");
 	QStackedWidget* stackWidget = m_settingWidget->getStackedWidget();
 	m_projectTreeWidget->setStackedWidget(stackWidget);
-	EventManager::instance().registerHandler(PublicConstants::kEventLoadComplete, [this](const QVariantMap &data) {
-		this->initRibbonActionConn();
-		m_outputService = ServiceRegistry::instance().getService<OutputService>();
-	});
-	EventManager::instance().registerHandler(PublicConstants::kEventQuitApp, [this](const QVariantMap &data) {
-		this->saveProject();
-	});
-
-    EventManager::instance().registerHandler(PublicConstants::kActionNewProject, [this](const QVariantMap &data) {
-        this->newProject();
-
-    });
 
 	connect(m_projectTreeWidget, &ProjectTreeWidget::deletePageSig, this, [this](QString uuid) {this->onDeletePageSig(uuid); });
+    EventManager::instance().registerHandler(PublicConstants::kEventLoadComplete,this, [this](const QVariantMap &data) {
+        this->initRibbonActionConn();
+        m_outputService = ServiceRegistry::instance().getService<OutputService>();
+    });
 }
 
 ProjectManager::~ProjectManager()
@@ -54,24 +47,26 @@ ProjectManager::~ProjectManager()
 
 void ProjectManager::initRibbonActionConn()
 {
-#pragma region 文件下的action槽函数
-//	connect(m_uiFrameService->getNewProAct(), &QAction::triggered, this, [this]() {this->newProject(); });
-	connect(m_uiFrameService->getOpenProAct(), &QAction::triggered, this, [this]() {this->openProject(); });
-	connect(m_uiFrameService->getSaveProAct(), &QAction::triggered, this, [this]() {this->saveProject(); });
-	connect(m_uiFrameService->getExportCurDatabaseAct(), &QAction::triggered, this, [this]() {this->exportCurDatabase(); });
-	connect(m_uiFrameService->getExitAct(), &QAction::triggered, this, [this]() {this->exitProject(); });
-#pragma endregion
 
-#pragma region 几何下的action槽函数
-        //connect(m_uiFrameService->getImportGemoAct(), &QAction::triggered, this, [this]() {this->onImportGeomAct(); });
-        //connect(m_uiFrameService->getCuboidGemoAct(), &QAction::triggered, this, [this]() {this->onCuboidGemoAct(); });
-	//connect(m_uiFrameService->getSphereGemoAct(), &QAction::triggered, this, [this]() {this->onSphereGemoAct(); });
-#pragma endregion 
-#pragma region 网格下的action槽函数
-	//connect(m_uiFrameService->getCurvedSurfaceGridAct(), &QAction::triggered, this, [this]() {this->onCurvedSurfaceGridAct(); });
-	//connect(m_uiFrameService->getEntityGridAct(), &QAction::triggered, this, [this]() {this->onEntityGridAct(); });
-#pragma endregion 
+    EventManager::instance().registerHandler(PublicConstants::kActionNewProject,this, [this](const QVariantMap &) {
+        this->newProject();
+    });
+    EventManager::instance().registerHandler(PublicConstants::kActionOpenProject,this, [this](const QVariantMap &) {
+        this->openProject();
+    });
+    EventManager::instance().registerHandler(PublicConstants::kActionSaveProject,this, [this](const QVariantMap &) {
+        this->saveProject();
+    });
+    EventManager::instance().registerHandler(PublicConstants::kActionExportCurrentDatabase,this, [this](const QVariantMap &) {
+        this->exportCurDatabase();
+    });
+    EventManager::instance().registerHandler(PublicConstants::kActionEXitProject,this, [this](const QVariantMap &) {
+        this->exitProject();
+    });
 
+    EventManager::instance().registerHandler(PublicConstants::kEventQuitApp,this, [this](const QVariantMap &data) {
+        this->saveProject();
+    });
 }
 
 void ProjectManager::addTreeItem(ProjectNode *node)
@@ -128,23 +123,23 @@ void ProjectManager::openProject()
 
 void ProjectManager::saveProject()
 {
-	if (m_projectEnginePath =="")return;
-//	saveAllProModelData(m_projectEnginePath);
+// 	if (m_projectEnginePath =="")return;
+// //	saveAllProModelData(m_projectEnginePath);
 
-    PostProcessingService *postProcessingService = ServiceRegistry::instance().getService<PostProcessingService>();
-    postProcessingService->saveProject();
+//     PostProcessingService *postProcessingService = ServiceRegistry::instance().getService<PostProcessingService>();
+//     postProcessingService->saveProject();
 
-	PreProcessingService *preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>();
-	preProcessingService->saveProject();
+// 	PreProcessingService *preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>();
+// 	preProcessingService->saveProject();
 
-	BoundaryConditionsService *boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>();
-	boundaryConditionsService->saveProject();
+// 	BoundaryConditionsService *boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>();
+// 	boundaryConditionsService->saveProject();
 
-    bool isok/* = JlCompress::compressDir(m_projectEnginePath, m_projectTempFolder)*/;
-    if (!isok)
-    {
-        qDebug() << "smproj save failed!!!";
-    }
+//     bool isok/* = JlCompress::compressDir(m_projectEnginePath, m_projectTempFolder)*/;
+//     if (!isok)
+//     {
+//         qDebug() << "smproj save failed!!!";
+//     }
 }
 
 void ProjectManager::newProject()
@@ -162,75 +157,51 @@ void ProjectManager::newProject()
 
     m_projectEnginePath = m_projectPath + "/" + m_projectName + ".smproj";
     createProjectFilesFolder();
-        m_projectTreeWidget->buildDefaultProjectTree(m_projectName);
-        m_rootNode = m_projectTreeWidget->m_rootNode;
-
-        if (auto* globalParameterService = ServiceRegistry::instance().getService<GlobalParameterService>())
-        {
-                globalParameterService->newProject();
-        }
-        if (auto* materialManagerService = ServiceRegistry::instance().getService<MaterialManagerService>())
-        {
-                materialManagerService->newProject();
-        }
-        if (auto* preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>())
-        {
-                preProcessingService->newProject();
-        }
-        if (auto* physicalFieldService = ServiceRegistry::instance().getService<PhysicalFieldService>())
-        {
-                physicalFieldService->newProject();
-        }
-        if (auto* boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>())
-        {
-                boundaryConditionsService->newProject();
-        }
-        if (auto* solverService = ServiceRegistry::instance().getService<SolverService>())
-        {
-                solverService->newProject();
-        }
-        if (auto* postProcessingService = ServiceRegistry::instance().getService<PostProcessingService>())
-        {
-                postProcessingService->newProject();
-        }
-        if (auto* surrogateModelService = ServiceRegistry::instance().getService<SurrogateModelService>())
-        {
-                surrogateModelService->newProject();
-        }
+    m_projectTreeWidget->buildDefaultProjectTree(m_projectName);
+    m_rootNode = m_projectTreeWidget->m_rootNode;
+    m_projectTreeWidget->blockSignal(true);
+    if (auto* globalParameterService = ServiceRegistry::instance().getService<GlobalParameterService>())
+    {
+        globalParameterService->newProject();
+    }
+    if (auto* materialManagerService = ServiceRegistry::instance().getService<MaterialManagerService>())
+    {
+        materialManagerService->newProject();
+    }
+    if (auto* preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>())
+    {
+        preProcessingService->newProject();
+    }
+    if (auto* meshModuleControllerService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+    {
+        meshModuleControllerService->newProject();
+    }
 
 
-//	const QString treeXmlPath = m_projectTempFolder + "projectTree.xml";
-//	m_projectTreeWidget->setProjectTreeXmlPath(treeXmlPath);
-//	//todo 清空项目树和堆栈窗口内容
+    if (auto* physicalFieldService = ServiceRegistry::instance().getService<PhysicalFieldService>())
+    {
+        physicalFieldService->newProject();
+    }
+    if (auto* boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>())
+    {
+        boundaryConditionsService->newProject();
+    }
+    if (auto* solverService = ServiceRegistry::instance().getService<SolverService>())
+    {
+        solverService->newProject();
+    }
+    if (auto* postProcessingService = ServiceRegistry::instance().getService<PostProcessingService>())
+    {
+        postProcessingService->newProject();
+    }
+    if (auto* surrogateModelService = ServiceRegistry::instance().getService<SurrogateModelService>())
+    {
+        surrogateModelService->newProject();
+    }
+
+     m_projectTreeWidget->blockSignal(false);
     QTreeWidget* treeWidget = m_projectTreeWidget->m_treeWidget;
-//	treeWidget->clear();
-//	m_projectTreeWidget->clearStackedWidget(m_projectTreeWidget->m_stackWidget);
-//	//todo 创建固定不变的树节点
-//	m_projectTreeWidget->m_rootNode = new ProjectNode(m_projectName);
-//	ProjectNode* rootNode = m_projectTreeWidget->m_rootNode;
-//	paramNode = new ProjectNode("参数定义");
-//	materNode = new ProjectNode("材料");
-//	gemoNode = new ProjectNode("几何");
-//	gridNode = new ProjectNode("网格");
-//	boundNode = new ProjectNode("边界条件");
-//	phyNode = new ProjectNode("物理场");
-//	solveNode = new ProjectNode("求解");
-//	resNode = new ProjectNode("结果");
-//	nephogramNode = new ProjectNode("云图");
-//	vectorNode = new ProjectNode("矢量图");
-//	rootNode->addChild(paramNode);
-//	rootNode->addChild(materNode);
-//	rootNode->addChild(gemoNode);
-//	rootNode->addChild(gridNode);
-//	rootNode->addChild(boundNode);
-//	rootNode->addChild(phyNode);
-//	rootNode->addChild(solveNode);
-//	rootNode->addChild(resNode);
-//	resNode->addChild(nephogramNode);
-//	resNode->addChild(vectorNode);
-//	m_projectTreeWidget->addNodeToTree(treeWidget->invisibleRootItem(), rootNode, "");
-//    connect(treeWidget, &QTreeWidget::currentItemChanged, m_projectTreeWidget, &ProjectTreeWidget::onCurItemChanged);
-//    connect(treeWidget, &QTreeWidget::itemChanged, m_projectTreeWidget, &ProjectTreeWidget::onItemChanged);
+
 }
 
 void ProjectManager::exportCurDatabase()
@@ -245,9 +216,6 @@ void ProjectManager::exitProject()
 
 bool ProjectManager::isHaveProject()
 {
-	if (!m_projectTreeWidget) return false;
-	QTreeWidgetItem*  item = m_projectTreeWidget->findItemByNameIterative(m_projectTreeWidget->m_treeWidget, "几何建模");
-	if (!item) return false;
 	return true;
 }
 
@@ -345,8 +313,8 @@ bool ProjectManager::saveAllProModelData(const QString& fileName)
 
 void ProjectManager::saveProjectTreeXml()
 {
-	QString xmlPath = m_projectTreeWidget->getProjectTreeXmlPath();
-	QFile file(xmlPath);
+    // QString xmlPath = m_projectTreeWidget->getProjectTreeXmlPath();
+    // QFile file(xmlPath);
 
     //
     //参数定义
@@ -357,7 +325,7 @@ void ProjectManager::saveProjectTreeXml()
 //    MaterialManagerService *materialManagerService = ServiceRegistry::instance().getService<MaterialManagerService>();
 //    materialManagerService->saveProject();
 
-	m_projectTreeWidget->saveTreeStructure(file);
+    // m_projectTreeWidget->saveTreeStructure(file);
 }
 
 

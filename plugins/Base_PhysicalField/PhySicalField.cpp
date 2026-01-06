@@ -27,8 +27,4 @@ void PhysicalField::newProject()
     ProjectNode *node2 = new ProjectNode("一次/二次电流分布",QUuid::createUuid().toString(),(BasePage*)primaryCurrentDistributionWidget);
     primaryCurrentDistributionWidget->setNode(node2);
     m_node->addChild(node2);
-
-
-
-
 }

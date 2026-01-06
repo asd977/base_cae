@@ -17,7 +17,8 @@ int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
 
-    StyleManager::applyStyleSheet(app, QStringLiteral(":/resources/style/app.qss"));
+    qDebug()<<"asd";
+    // StyleManager::applyStyleSheet(app, QStringLiteral(":/resources/style/app.qss"));
 
     QString exePath = QCoreApplication::applicationDirPath();
 
@@ -62,7 +63,10 @@ int main(int argc, char** argv)
         }
     }
 
-    QStringList runOrder = { "UiFrame","ProjectManager", "Output","MaterialManager","PreProcessing","Solver","PostProcessing","GlobalParameter","SurrogateModel","PhySicalField","BoundaryConditions" };//
+    QStringList runOrder = { "UiFrame","ProjectManager", "Output",
+                            "MaterialManager","PreProcessing","Solver","PostProcessing",
+                            "GlobalParameter","SurrogateModel","PhySicalField","BoundaryConditions",
+                            "Visualization","MeshModuleController" };//
 
     for (const QString& name : runOrder) {
         if (loadedPlugins.contains(name)) {

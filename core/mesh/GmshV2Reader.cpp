@@ -1,4 +1,4 @@
-#include "GmshV2Reader.h"
+﻿#include "GmshV2Reader.h"
 
 #include <fstream>
 #include <sstream>
@@ -12,7 +12,7 @@
 #include <vtkIntArray.h>
 #include <vtkStringArray.h>
 #include <vtkIdTypeArray.h>
-
+#include <cctype>
 // 工具函数：trim
 static inline std::string trim(const std::string& s)
 {

@@ -1,34 +1,73 @@
-﻿#ifndef VISUALWIDGETSERVICE_H
-#define VISUALWIDGETSERVICE_H
+﻿#pragma once
 
+#include <QString>
+#include <QList>
+
+#include <vtkSmartPointer.h>
+
+class vtkProp;
 class vtkActor;
-class vtkActor2D;
-class vtkScalarBarActor;
-class vtkRenderWindowInteractor;
-class vtkRenderWindow;
+class vtkProp3D;
+class vtkTransform;
 class vtkRenderer;
-class chartCurveUseTimes;
+class vtkRenderWindow;
+class vtkRenderWindowInteractor;
+class vtkLookupTable;
+class vtkPolyData;
+class vtkMapper;
 
-template <typename T> class vtkSmartPointer;
-
-struct VisualWidgetService
+class VisualWidgetService
 {
-//    virtual void addActor(vtkSmartPointer<vtkActor> actor) = 0;
-//    virtual void addActor2D(vtkSmartPointer<vtkActor2D> actor) = 0;
-//    virtual void addActor2D2(vtkSmartPointer<vtkScalarBarActor> actor) = 0;
-//    virtual void removeActor(vtkSmartPointer<vtkActor> actor) = 0;
-//    virtual void setScalarBar(vtkSmartPointer<vtkScalarBarActor> scalarBar) = 0;
-//    virtual void removeAllActor() = 0;
-//    virtual void removeAllActor2() = 0;
-//    virtual void reFreash() = 0;
-//    virtual void reFresh() = 0;
-//    virtual vtkSmartPointer<vtkRenderer> getRender() = 0;
-//    virtual vtkSmartPointer<vtkRenderWindowInteractor> getInteractor() = 0;
-//    virtual vtkSmartPointer<vtkRenderWindow> getrenderWindow() = 0;
-//    virtual void setChart(chartCurveUseTimes *chart_use) = 0;
-//    virtual void changeShowType(int show_type) = 0;
-//    virtual void setScalarBarWidgetWidgetOnOrOff(int i_value)= 0;
-//    virtual void saveImage(QString file_name,int i_type)= 0;
-////    virtual void test() = 0;
+public:
+    virtual ~VisualWidgetService() = default;
+
+    // ---- core access ----
+    virtual void render() = 0;
+    virtual void resetCamera(bool renderNow = true) = 0;
+
+    virtual vtkRenderer* renderer() const = 0;
+    virtual vtkRenderWindow* renderWindow() const = 0;
+    virtual vtkRenderWindowInteractor* interactor() const = 0;
+
+    // ---- prop registry ----
+    virtual bool addProp(const QString& id,
+                         vtkSmartPointer<vtkProp> prop,
+                         const QString& group = QString(),
+                         const QString& name  = QString(),
+                         bool resetCam = false,
+                         bool renderNow = true) = 0;
+
+    virtual bool removeProp(const QString& id, bool renderNow = true) = 0;
+    virtual void clearAll(bool renderNow = true) = 0;
+
+    virtual vtkProp* getProp(const QString& id) const = 0;
+    virtual QList<QString> allIds() const = 0;
+
+    virtual bool setVisible(const QString& id, bool on, bool renderNow = true) = 0;
+    virtual void setGroupVisible(const QString& group, bool on, bool renderNow = true) = 0;
+
+    virtual bool setOpacity(const QString& id, double alpha, bool renderNow = true) = 0;
+    virtual bool setTransform(const QString& id, vtkTransform* tr, bool renderNow = true) = 0;
+
+    // ---- LUT & ScalarBar ----
+    virtual void setLookupTable(vtkLookupTable* lut,
+                                bool applyToAllActors = false,
+                                bool renderNow = true) = 0;
+
+    virtual vtkLookupTable* lookupTable() const = 0;
+
+    virtual void showScalarBar(bool on, bool renderNow = true) = 0;
+    virtual bool isScalarBarVisible() const = 0;
+    virtual void setScalarBarTitle(const QString& title, bool renderNow = true) = 0;
+    virtual void setScalarBarNumberOfLabels(int n, bool renderNow = true) = 0;
+
+    // ---- helpers ----
+    virtual bool applyLookupTableToActor(const QString& id,
+                                         const QString& scalarArrayName,
+                                         double rangeMin,
+                                         double rangeMax,
+                                         bool useRange,
+                                         bool renderNow = true) = 0;
+
+    virtual bool updateActorPolyData(const QString& id, vtkPolyData* poly, bool renderNow = true) = 0;
 };
-#endif // VISUALWIDGETSERVICE_H

@@ -24,6 +24,7 @@ HEADERS += \
     services/UiFrameService.h \
     services/VisualWidgetService.h \
     struct/Mesh.h \
+    services/MeshModuleControllerService.h \
     PublicConstants.h
 
 CONFIG += qt \

@@ -1,1 +1,0 @@
-﻿#include "PointPickingDialog.h"

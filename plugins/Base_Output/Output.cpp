@@ -10,18 +10,8 @@ Output::Output()
     m_progressOutputWidget = new OutputWidget;
     m_uiFrameService = ServiceRegistry::instance().getService<UiFrameService>();
     QAction *toggleAction = m_uiFrameService->addWidget(m_logOutputWidget,("日志"));
-    QToolButton *toolButton = new QToolButton();
-    toolButton->setText(("日志"));
-    toolButton->setIcon(QIcon(":/resources/menu/log.png"));
-    m_uiFrameService->addMenuButton(("视图"), "1", toolButton);
-    connect(toolButton, &QToolButton::clicked, toggleAction, &QAction::trigger);
 
     QAction *toggleAction2 = m_uiFrameService->addWidget(m_progressOutputWidget,("进度"));
-    QToolButton *toolButton2 = new QToolButton();
-    toolButton2->setText(("进度"));
-    toolButton2->setIcon(QIcon(":/resources/menu/progress.png"));
-    m_uiFrameService->addMenuButton(("视图"), "1", toolButton2);
-    connect(toolButton2, &QToolButton::clicked, toggleAction2, &QAction::trigger);
 }
 
 void Output::outputProgress(QString str)

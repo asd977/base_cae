@@ -1,0 +1,638 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>GridEditingWidget</class>
+ <widget class="QWidget" name="GridEditingWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>542</width>
+    <height>1156</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>网格编辑</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QWidget{
+font-family: &quot;Microsoft YaHei&quot;, &quot;微软雅黑&quot;;
+}
+QPushButton {
+    background-color: rgb(255, 255, 255); /* 背景色 */
+    border-width: 1px;                   /* 边框宽度 */
+    border-color: rgb(121, 121, 121);    /* 边框颜色 */
+    border-style: solid;                 /* 边框样式 */
+	font-size:17px;
+    border-radius: 2px;                /* 边框圆角 */
+    text-align: center;                    /* 文字左对齐 */
+
+    /* 默认状态 */
+}
+
+QPushButton:hover {
+    background-color: rgb(235, 235, 235); /* 悬浮时的背景色 */
+    border-color: rgb(100, 100, 100);     /* 悬浮时的边框颜色 */
+}
+
+QPushButton:pressed {
+    background-color: rgb(200, 200, 200); /* 点击时的背景色 */
+    border-color: rgb(80, 80, 80);         /* 点击时的边框颜色 */
+}
+
+QPushButton#pushButton,
+QPushButton#pushButton_2,
+QPushButton#pushButton_3,
+QPushButton#pushButton_4
+{
+    background-color: rgb(224, 233, 244);
+    border-width: 1px;
+    border-color: rgb(121, 121, 121);
+    border-style: solid;
+    height: 33px;
+    border-top: 1px solid rgb(169, 169, 169); /* 上边框为灰色 */
+    border-bottom: 1px solid rgb(169, 169, 169); /* 下边框为灰色 */
+    border-left: none; /* 移除左边框 */
+    border-right: none;
+    text-align: left;
+	padding-left: 15px;
+	font-size: 17px;
+	border-style: solid;
+}
+QLabel {
+    font-family: &quot;Microsoft YaHei&quot;, &quot;微软雅黑&quot;;
+    font-size: 17px;
+    text-align: left;
+    color: rgb(51, 51, 51);
+    white-space: nowrap;
+    line-height: 50px;
+    position: absolute;
+    top: 0px;
+    left: 0px;
+}
+QLabel#label {
+    font-size: 20px;
+    font-family: &quot;Microsoft YaHei&quot;, 微软雅黑;
+    text-align: left;
+	padding-left:9px;
+    color: rgb(53, 103, 147);
+}
+QComboBox {
+    font-family: &quot;Microsoft YaHei&quot;, 微软雅黑;
+    font-size: 17px;
+    text-align: left;
+    color: rgb(51, 51, 51);
+    background: rgb(240, 240, 240);
+    border: 1px solid rgb(169, 169, 169);
+	padding-left:6px;
+    border-radius: 3px; /* 设置边框的圆角半径为5像素 */
+}
+QComboBox::drop-down {
+    background: rgb(240, 240, 240);
+}
+QComboBox::down-arrow {
+    image: url(:/resources/down_arrow.png); /* 替换下拉箭头图标 */
+}
+/*QCombobox右侧按钮*/
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;/*放于右方顶部*/
+    border-top-right-radius: 3px;/*设置边框圆角*/
+    border-bottom-right-radius: 3px;
+}
+QLineEdit {
+    border: 1px solid rgb(200, 200, 200); /* 设置边框为淡灰色 */
+    border-radius: 2px; /* 设置圆角半径为 5 像素 */
+	font-size: 17px;
+}
+QLineEdit:focus {
+    border-color: rgb(100, 100, 255); /* 设置焦点时的边框颜色为蓝色 */
+    outline: none; /* 去掉默认的焦点边框 */
+}
+
+
+QRadioButton {
+    font-size: 17px; /* 设置字体大小为 14 像素 */
+}</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
+   <item>
+    <widget class="QLabel" name="label">
+     <property name="text">
+      <string>网格编辑</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="pushButton_2">
+     <property name="text">
+      <string>显示属性</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QWidget" name="widget_3" native="true">
+     <layout class="QGridLayout" name="gridLayout_3">
+      <item row="0" column="0">
+       <widget class="QLabel" name="labelOpacity">
+        <property name="text">
+         <string>网格透明度:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QSlider" name="horizontalSliderOpacity">
+        <property name="minimum">
+         <number>10</number>
+        </property>
+        <property name="maximum">
+         <number>100</number>
+        </property>
+        <property name="value">
+         <number>100</number>
+        </property>
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0" colspan="2">
+       <layout class="QHBoxLayout" name="horizontalLayout_3">
+        <item>
+         <spacer name="horizontalSpacerPicking">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QCheckBox" name="checkBoxShowInternalGrid">
+          <property name="text">
+           <string>线框显示</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="pushButton">
+     <property name="text">
+      <string>显示过滤</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QWidget" name="widget_2" native="true">
+     <layout class="QGridLayout" name="gridLayout_2">
+      <item row="2" column="1">
+       <widget class="QComboBox" name="comboBoxLayer">
+        <property name="editable">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="labelMatypeFilter">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>材料类型:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="labelLayerFilter">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>填筑分层:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="comboBoxKetype">
+        <property name="editable">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="comboBoxMatype">
+        <property name="editable">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="labelKetypeFilter">
+        <property name="text">
+         <string>单元类型:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0" colspan="2">
+       <layout class="QHBoxLayout" name="horizontalLayout_2">
+        <item>
+         <spacer name="horizontalSpacer">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pushButtonApplyFilter">
+          <property name="text">
+           <string>应用过滤</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pushButtonResetFilter">
+         <property name="text">
+          <string>重置</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+      <item row="4" column="0" colspan="2">
+       <widget class="QLabel" name="labelFilterSummary">
+        <property name="text">
+         <string>当前过滤：全部</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="pushButton_4">
+     <property name="text">
+      <string>编号显示</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QWidget" name="widget_4" native="true">
+     <layout class="QGridLayout" name="gridLayout_4">
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="lineEditElemIdForLabels">
+        <property name="placeholderText">
+         <string>输入一个单元号</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="labelElemForLabels">
+        <property name="text">
+         <string>单元号:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0" colspan="2">
+       <layout class="QHBoxLayout" name="horizontalLayout_4">
+        <item>
+         <spacer name="horizontalSpacer_2">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pushButtonShowNodeLabels">
+          <property name="text">
+           <string>显示该单元的节点号</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pushButtonShowElemLabel">
+          <property name="text">
+           <string>显示该单元号</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pushButtonShowSurfaceLabels">
+          <property name="text">
+           <string>显示外表面编号</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="2" column="0" colspan="2">
+       <widget class="QLabel" name="labelSurfaceLabelSummary">
+        <property name="text">
+         <string>外表面编号：未生成</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="pushButton_3">
+     <property name="text">
+      <string>网格编辑</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QWidget" name="widget" native="true">
+     <layout class="QGridLayout" name="gridLayout">
+      <item row="1" column="0">
+       <widget class="QLabel" name="labelElemRangeTitle">
+        <property name="text">
+         <string>单元号范围:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayoutNodeCoord0">
+        <item>
+         <widget class="QLineEdit" name="lineEditNodeX0">
+          <property name="readOnly">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="lineEditNodeY0">
+          <property name="readOnly">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="lineEditNodeZ0">
+          <property name="readOnly">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="labelMoveNodeId">
+        <property name="text">
+         <string>节点号:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="9" column="1">
+       <widget class="QLineEdit" name="lineEditDeleteElemId">
+        <property name="placeholderText">
+         <string>输入要删除的单元号</string>
+        </property>
+       </widget>
+      </item>
+      <item row="9" column="0">
+       <widget class="QLabel" name="labelDeleteElem">
+        <property name="text">
+         <string>删除单元号:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QLineEdit" name="lineEditMoveNodeId">
+        <property name="placeholderText">
+         <string>要移动的节点号</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="labelNodeCoord0">
+        <property name="text">
+         <string>初始坐标 (x,y,z):</string>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayoutNewCoord">
+        <item>
+         <widget class="QLineEdit" name="lineEditNewX">
+          <property name="placeholderText">
+           <string>x(空=保持不变)</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="lineEditNewY">
+          <property name="placeholderText">
+           <string>y</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="lineEditNewZ">
+          <property name="placeholderText">
+           <string>z(2D可留0)</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="2" column="0" colspan="2">
+       <layout class="QHBoxLayout" name="horizontalLayout">
+        <item>
+         <spacer name="horizontalSpacerDisplay">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QCheckBox" name="checkBoxEnablePicking">
+          <property name="text">
+           <string>启用鼠标编辑</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pushButtonSave">
+          <property name="text">
+           <string>写回文件</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="5" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayoutNodeCoordCur">
+        <item>
+         <widget class="QLineEdit" name="lineEditNodeXCur">
+          <property name="readOnly">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="lineEditNodeYCur">
+          <property name="readOnly">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="lineEditNodeZCur">
+          <property name="readOnly">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="8" column="0" colspan="2">
+       <layout class="QHBoxLayout" name="horizontalLayout_6">
+        <item>
+         <spacer name="horizontalSpacer_3">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pushButtonMoveNode">
+          <property name="text">
+           <string>移动节点</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="5" column="0">
+       <widget class="QLabel" name="labelNodeCoordCur">
+        <property name="text">
+         <string>当前坐标 (x,y,z):</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="labelNodeRangeTitle">
+        <property name="text">
+         <string>节点号范围:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLabel" name="labelNodeRangeValue">
+        <property name="text">
+         <string>--</string>
+        </property>
+       </widget>
+      </item>
+      <item row="10" column="0" colspan="2">
+       <layout class="QHBoxLayout" name="horizontalLayout_5">
+        <item>
+         <spacer name="horizontalSpacer_4">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pushButtonDeleteElem">
+          <property name="text">
+           <string>删除单元</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLabel" name="labelElemRangeValue">
+        <property name="text">
+         <string>--</string>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="0">
+       <widget class="QLabel" name="labelNewCoord">
+        <property name="text">
+         <string>新坐标 (x,y,z):</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

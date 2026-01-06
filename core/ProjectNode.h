@@ -11,6 +11,13 @@ class CORE_EXPORT ProjectNode :public QTreeWidgetItem
 public:
     ProjectNode(const QString& n, const QString& id = QUuid::createUuid().toString(), BasePage* p = nullptr);
     ~ProjectNode() {}
+
+    enum DataRole {
+        RoleUuid   = Qt::UserRole + 100,
+        RoleModule = Qt::UserRole + 101, //group
+        RoleKind   = Qt::UserRole + 102  //kind
+    };
+
     /**
     * @brief 添加子节点，同时维护内部子节点列表
     */

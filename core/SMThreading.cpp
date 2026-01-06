@@ -36,14 +36,12 @@ namespace SMThreadingTool
 					std::lock_guard<std::mutex> lock(m_mutex);
 					task = m_taskQueue.front();
 					m_taskQueue.pop();
-					queueEmpty = m_taskQueue.empty(); // 露状态
+                    queueEmpty = m_taskQueue.empty();
 				}
 
-				task(); // 执
-
-				// 欠执泻为
+                task();
 				if (queueEmpty) {
-					emit allTasksFinished(); // 藕
+                    emit allTasksFinished(); //
 				}
 			}
 			QThread::msleep(100);

@@ -389,8 +389,6 @@ void ElectrodeSurfaceSettingWidget::on_useCathodicTafelCheckBox_toggled(bool /*c
 void ElectrodeSurfaceSettingWidget::refreshRender()
 {
     PreProcessingService* w = ServiceRegistry::instance().getService<PreProcessingService>();
-    if (w)
-        w->render();
 }
 
 // ================== UI 状态更新辅助函数 ==================

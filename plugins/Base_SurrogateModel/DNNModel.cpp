@@ -3,6 +3,7 @@
 #include <ServiceRegistry.h>
 #include <PublicVariables.h>
 #include <PublicConstants.h>
+#include <QString>
 
 DNNModel::DNNModel(QWidget *parent) :
     ui(new Ui::DNNModel),
@@ -918,7 +919,7 @@ bool DNNModel::writeToStream(QTextStream& out)
 bool DNNModel::readFromStream(QTextStream& in)
 {
     QString line = in.readLine();
-    QStringList sections = line.split("|", Qt::KeepEmptyParts);
+    QStringList sections = line.split("|", Qt::SkipEmptyParts);
     // 检查字段部分是否存在
     if (sections.isEmpty()) {
         qDebug() << "错误：DNNModel 数据为空";

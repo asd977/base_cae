@@ -18,6 +18,7 @@ else
 DESTDIR = $$APP_PLUGIN_OUTPUT_DIR
 
 HEADERS += \
+    ContextMenuHub.h \
     EventManager.h \
     KeyValueLineEdit.h \
     ProjectNode.h \
@@ -34,6 +35,7 @@ HEADERS += \
     mesh/GmshV2Reader.h
 
 SOURCES += \
+    ContextMenuHub.cpp \
     KeyValueLineEdit.cpp \
     ProjectNode.cpp \
     ServiceRegistry.cpp \

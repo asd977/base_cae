@@ -1,4 +1,4 @@
-#include "VisualizationActivator.h"
+﻿#include "VisualizationActivator.h"
 
 VisualizationActivator::VisualizationActivator()
 {
