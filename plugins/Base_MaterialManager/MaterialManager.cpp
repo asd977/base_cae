@@ -257,7 +257,7 @@ void MaterialManager::setValueStrings(QVector<QStringList> values)
 
         MaterialEntry entry;
         entry.name = name;
-        const QStringList pairs = encoded.split(QStringLiteral("|;|"), QString::SkipEmptyParts);
+        const QStringList pairs = encoded.split(QStringLiteral("|;|"), Qt::SkipEmptyParts);
         for (const QString &pair : pairs) {
             int sep = pair.indexOf(QLatin1Char(':'));
             if (sep <= 0) {
@@ -272,7 +272,7 @@ void MaterialManager::setValueStrings(QVector<QStringList> values)
         }
 
         m_models[index].materials.append(entry);
-        const QStringList matypeList = appliedMatypes.split(QLatin1Char(','), QString::SkipEmptyParts);
+        const QStringList matypeList = appliedMatypes.split(QLatin1Char(','), Qt::SkipEmptyParts);
         for (const QString &matypeStr : matypeList) {
             bool ok = false;
             int value = matypeStr.toInt(&ok);
@@ -658,7 +658,6 @@ bool MaterialManager::generateCaculateFile()
         return false;
 
     QTextStream out(&file);
-    out.setCodec("UTF-8");
 
     // ===== 4) 预先构造数值表：values[row(0..199)][matype(0..nmat-1)] =====
     QVector<QVector<double>> values(ncon, QVector<double>(nmat, 0.0));

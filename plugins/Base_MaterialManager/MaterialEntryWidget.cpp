@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <QFontDatabase>
 
-#include <utils/CustomComboBox.h>
+#include <CustomComboBox.h>
 
 MaterialEntryWidget::MaterialEntryWidget(MaterialManager *manager, QWidget *parent)
     : BasePage("MaterialEntryWidget")
