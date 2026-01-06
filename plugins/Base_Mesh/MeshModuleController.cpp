@@ -3,12 +3,21 @@
 #include <ProjectNode.h>
 #include <ServiceRegistry.h>
 #include <services/ProjectManagerService.h>
+#include <services/VisualWidgetService.h>
 #include <EventManager.h>
 #include <GridEditingWidget.h>
 #include <MeshGlobalMeshingWidget.h>
 #include <PublicConstants.h>
 #include <QMessageBox>
 #include <qfiledialog.h>
+#include <QVector>
+#include <vtkActor.h>
+#include <vtkCell.h>
+#include <vtkCellType.h>
+#include <vtkDataSetMapper.h>
+#include <vtkPoints.h>
+#include <vtkProperty.h>
+#include <vtkUnstructuredGrid.h>
 
 // === 这些头文件你后面真正实现时再加 ===
 // #include "MeshImportGridWidget.h"
@@ -26,6 +35,7 @@ MeshModuleController::MeshModuleController(QObject* parent)
     : QObject(parent)
 {
     ServiceRegistry::instance().registerService<MeshModuleControllerService>(this);
+    m_visualWidgetService = ServiceRegistry::instance().getService<VisualWidgetService>();
     initAction();
 }
 
@@ -51,6 +61,14 @@ bool MeshModuleController::loadProject()
 void MeshModuleController::closeProject()
 {
     // TODO: 释放/清理网格模块相关资源
+}
+
+bool MeshModuleController::currentModel(IiinGridModel &model) const
+{
+    if (!m_hasModel)
+        return false;
+    model = m_currentModel;
+    return true;
 }
 
 void MeshModuleController::initAction()
@@ -141,6 +159,7 @@ void MeshModuleController::onImportGrid()
 
     m_currentModel = model;
     m_hasModel = true;
+    displayCurrentModel();
 }
 
 void MeshModuleController::onExportGrid()
@@ -223,15 +242,166 @@ void MeshModuleController::onQualityStd()
 
 void MeshModuleController::onMeshEdit()
 {
-    if (!m_hasModel) {
-        QMessageBox::warning(nullptr,
-                             QStringLiteral("未导入网格"),
-                             QStringLiteral("请先导入网格后再进行编辑。"));
-        return;
-    }
-
     GridEditingWidget* w = new GridEditingWidget();
-    w->setModel(m_currentModel);
     auto *node = new ProjectNode("网格编辑", QUuid::createUuid().toString(), (BasePage*)w);
     m_gridNode->addChild(node);
+}
+
+void MeshModuleController::displayCurrentModel()
+{
+    if (!m_visualWidgetService || !m_hasModel)
+        return;
+
+    auto grid = buildGridFromModel(m_currentModel);
+    if (!grid || grid->GetNumberOfCells() == 0)
+        return;
+
+    auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
+    mapper->SetInputData(grid);
+    mapper->ScalarVisibilityOff();
+
+    auto actor = vtkSmartPointer<vtkActor>::New();
+    actor->SetMapper(mapper);
+    actor->GetProperty()->EdgeVisibilityOn();
+    actor->GetProperty()->SetLineWidth(1.0);
+
+    static const QString kImportedMeshPropId = QStringLiteral("mesh.imported");
+    m_visualWidgetService->removeProp(kImportedMeshPropId, false);
+    m_visualWidgetService->addProp(kImportedMeshPropId,
+                                   actor,
+                                   QStringLiteral("网格"),
+                                   QStringLiteral("导入网格"),
+                                   true,
+                                   true);
+
+    m_previewMapper = mapper;
+    m_previewActor = actor;
+}
+
+vtkSmartPointer<vtkUnstructuredGrid>
+MeshModuleController::buildGridFromModel(const IiinGridModel &model) const
+{
+    const auto &nodes = model.nodes();
+    const auto &elems = model.elems();
+    if (nodes.isEmpty() || elems.isEmpty())
+        return nullptr;
+
+    auto points = vtkSmartPointer<vtkPoints>::New();
+    points->SetNumberOfPoints(nodes.size());
+
+    for (vtkIdType i = 0; i < static_cast<vtkIdType>(nodes.size()); ++i) {
+        const Node &n = nodes[static_cast<int>(i)];
+        points->SetPoint(i, n.x, n.y, n.z);
+    }
+
+    auto grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    grid->SetPoints(points);
+
+    for (const Elem &e : elems) {
+        int expectedNodes = expectedNodeCountForKetype(e.ketype);
+        int vtkCellType = ketypeToVtkCellType(e.ketype);
+        if (vtkCellType < 0)
+            continue;
+
+        if (e.nodeIds.size() < expectedNodes)
+            continue;
+
+        QVector<vtkIdType> cellPtIds;
+        cellPtIds.reserve(expectedNodes);
+        for (int i = 0; i < expectedNodes; ++i) {
+            int nid = e.nodeIds[i];
+            if (nid <= 0 || nid > nodes.size())
+                continue;
+            cellPtIds.push_back(nid - 1);
+        }
+
+        if (cellPtIds.size() != expectedNodes)
+            continue;
+
+        grid->InsertNextCell(vtkCellType,
+                             cellPtIds.size(),
+                             cellPtIds.data());
+    }
+
+    return grid;
+}
+
+int MeshModuleController::expectedNodeCountForKetype(int ketype) const
+{
+    switch (ketype) {
+    case 1:
+    case 2:
+    case 10:
+    case 21:
+        return 2;
+    case 3:
+    case 4:
+    case 5:
+    case 7:
+    case 8:
+    case 11:
+    case 12:
+    case 29:
+        return 4;
+    case 31:
+    case 32:
+    case 33:
+    case 34:
+        return 3;
+    case 6:
+    case 9:
+    case 13:
+    case 17:
+    case 36:
+    case 37:
+        return 8;
+    case 35:
+        return 4;
+    case 38:
+        return 6;
+    case 39:
+        return 5;
+    default:
+        return m_currentModel.manod();
+    }
+}
+
+int MeshModuleController::ketypeToVtkCellType(int ketype) const
+{
+    switch (ketype) {
+    case 1:
+    case 2:
+    case 10:
+    case 21:
+        return VTK_LINE;
+    case 3:
+    case 4:
+    case 5:
+    case 7:
+    case 8:
+    case 11:
+    case 12:
+    case 29:
+        return VTK_QUAD;
+    case 31:
+    case 32:
+    case 33:
+    case 34:
+        return VTK_TRIANGLE;
+    case 6:
+    case 9:
+    case 13:
+    case 17:
+    case 36:
+    case 37:
+        return VTK_HEXAHEDRON;
+    case 35:
+        return VTK_TETRA;
+    case 38:
+        return VTK_WEDGE;
+    case 39:
+        return VTK_PYRAMID;
+    default:
+        return -1;
+    }
 }

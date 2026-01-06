@@ -1,6 +1,8 @@
 ﻿#ifndef MESH_MODULE_CONTROLLER_SERVICE_H
 #define MESH_MODULE_CONTROLLER_SERVICE_H
 
+class IiinGridModel;
+
 struct MeshModuleControllerService
 {
     virtual ~MeshModuleControllerService() {}
@@ -8,6 +10,7 @@ struct MeshModuleControllerService
 	virtual bool saveProject() = 0;
 	virtual bool loadProject() = 0;
 	virtual void closeProject() = 0;
+    virtual bool currentModel(IiinGridModel &model) const = 0;
 };
 
 #endif // MESH_MODULE_CONTROLLER_SERVICE_H

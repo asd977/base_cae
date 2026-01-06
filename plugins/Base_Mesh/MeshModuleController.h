@@ -1,11 +1,16 @@
 #pragma once
 #include <QObject>
+#include <vtkSmartPointer.h>
+
 #include <services/MeshModuleControllerService.h>
 
 #include "IiinGridModel.h"
 #include "MeshGridIO.h"
 
 class ProjectNode;
+class VisualWidgetService;
+class vtkActor;
+class vtkDataSetMapper;
 
 class MeshModuleController : public QObject, public MeshModuleControllerService
 {
@@ -17,6 +22,7 @@ public:
     bool saveProject();
     bool loadProject();
     void closeProject();
+    bool currentModel(IiinGridModel &model) const override;
 
 
 private:
@@ -36,10 +42,17 @@ private:
     void onCtrlEdge();
     void onQualityStd();
     void onMeshEdit();
+    void displayCurrentModel();
+    vtkSmartPointer<vtkUnstructuredGrid> buildGridFromModel(const IiinGridModel &model) const;
+    int expectedNodeCountForKetype(int ketype) const;
+    int ketypeToVtkCellType(int ketype) const;
 
 private:
     ProjectNode* m_gridNode = nullptr;
     IiinGridModel m_currentModel;
     bool m_hasModel = false;
     MeshGridIO m_gridIO;
+    VisualWidgetService *m_visualWidgetService = nullptr;
+    vtkSmartPointer<vtkDataSetMapper> m_previewMapper;
+    vtkSmartPointer<vtkActor> m_previewActor;
 };

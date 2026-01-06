@@ -8,6 +8,7 @@
 #include <QComboBox>
 
 #include <services/VisualWidgetService.h>
+#include <services/MeshModuleControllerService.h>
 #include <ServiceRegistry.h>
 
 #include <algorithm>
@@ -1419,7 +1420,16 @@ void GridEditingWidget::endNodeDrag()
 
 void GridEditingWidget::beforeLoad()
 {
+    auto *meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshService)
+        return;
 
+    IiinGridModel model;
+    if (!meshService->currentModel(model))
+        return;
+
+    setModel(model);
+    setupInteractor();
 }
 
 void GridEditingWidget::beforeUnload()
