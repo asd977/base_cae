@@ -48,7 +48,7 @@
 namespace {
 // registry ids
 static const QString kIiinGroup         = QStringLiteral("IIIN");
-static const QString kIiinMeshPropId    = QStringLiteral("iiin.mesh");
+static const QString kImportedMeshPropId = QStringLiteral("mesh.imported");
 static const QString kIiinNodeLblPropId = QStringLiteral("iiin.node_labels");
 static const QString kIiinElemLblPropId = QStringLiteral("iiin.elem_labels");
 } // namespace
@@ -212,7 +212,6 @@ void GridEditingWidget::setModel(const IiinGridModel &model)
 void GridEditingWidget::clearIiinGrid()
 {
     if (m_visualWidgetService) {
-        m_visualWidgetService->removeProp(kIiinMeshPropId, false);
         m_visualWidgetService->removeProp(kIiinNodeLblPropId, false);
         m_visualWidgetService->removeProp(kIiinElemLblPropId, false);
         m_visualWidgetService->render();
@@ -513,33 +512,25 @@ void GridEditingWidget::buildOrUpdateGrid()
     spGrid->GetCellData()->AddArray(layerArray);
     spGrid->GetCellData()->SetScalars(ketypeArray);
 
-    // --- actor/mapper ---
-    if (!m_meshMapper) {
-        auto spMapper = vtkSmartPointer<vtkDataSetMapper>::New();
-        auto spActor  = vtkSmartPointer<vtkActor>::New();
+    vtkActor *existingActor = nullptr;
+    if (m_visualWidgetService) {
+        existingActor = vtkActor::SafeDownCast(m_visualWidgetService->getProp(kImportedMeshPropId));
+    }
 
-        spMapper->SetInputData(spGrid);
-        spMapper->ScalarVisibilityOff();
-
-        spActor->SetMapper(spMapper);
-        spActor->GetProperty()->EdgeVisibilityOn();
-        spActor->GetProperty()->SetLineWidth(1.0);
-
-        m_meshMapper = spMapper;
-        m_meshActor  = spActor;
+    if (existingActor) {
+        m_meshActor = existingActor;
+        m_meshMapper = vtkDataSetMapper::SafeDownCast(existingActor->GetMapper());
+        if (m_meshMapper) {
+            m_meshMapper->SetInputData(spGrid);
+            m_meshMapper->ScalarVisibilityOff();
+        }
     } else {
-        m_meshMapper->SetInputData(spGrid);
+        m_meshMapper = nullptr;
+        m_meshActor = nullptr;
     }
 
     m_points = spPoints;
     m_grid   = spGrid;
-
-    // ✅ 确保 prop 在 renderer：首次 add / clear 后补 add
-    if (m_meshActor && m_visualWidgetService->getProp(kIiinMeshPropId) == nullptr) {
-        // 第一次加载可以 resetCam=true，你如果不想跳镜头就 false
-        m_visualWidgetService->addProp(kIiinMeshPropId, m_meshActor, kIiinGroup, QStringLiteral("IIIN网格"),
-                                       /*resetCam*/true, /*renderNow*/false);
-    }
 
     ensureLabelActorsCreated();
 
@@ -1132,7 +1123,7 @@ void GridEditingWidget::on_horizontalSliderOpacity_valueChanged(int value)
     // qBound(min, current, max)
     double alpha = qBound(10, value, 100) / 100.0;
 
-    m_visualWidgetService->setOpacity(kIiinMeshPropId, alpha, true);
+    m_visualWidgetService->setOpacity(kImportedMeshPropId, alpha, true);
 }
 
 // 内外网格显示
