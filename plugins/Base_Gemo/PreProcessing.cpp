@@ -1,11 +1,14 @@
 ﻿
 #include "PreProcessing.h"
 #include <QDebug>
+#include <QColor>
 #include <QString>
 #include <QUuid>
 #include <services/PhysicalFieldService.h>
 #include <services/VisualWidgetService.h>
+#include <services/MeshModuleControllerService.h>
 #include <ServiceRegistry.h>
+#include <IiinGridModel.h>
 #include<iostream>
 #include <fstream>
 #include<string>
@@ -13,6 +16,7 @@
 #include<vtkProperty.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkRenderWindow.h>
+#include <vtkUnsignedCharArray.h>
 #include "vtkCamera.h"
 #include "vtkActor.h"
 #include "vtkRenderer.h"
@@ -85,6 +89,50 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
+
+namespace {
+static const QString kImportedMeshPropId = QStringLiteral("mesh.imported");
+
+int expectedNodeCountForKetype(int ketype)
+{
+    switch (ketype) {
+    case 1:
+    case 2:
+    case 10:
+    case 21:
+        return 2;
+    case 3:
+    case 4:
+    case 5:
+    case 7:
+    case 8:
+    case 11:
+    case 12:
+    case 29:
+        return 4;
+    case 31:
+    case 32:
+    case 33:
+    case 34:
+        return 3;
+    case 6:
+    case 9:
+    case 13:
+    case 17:
+    case 36:
+    case 37:
+        return 8;
+    case 35:
+        return 4;
+    case 38:
+        return 6;
+    case 39:
+        return 5;
+    default:
+        return -1;
+    }
+}
+} // namespace
 
 PreProcessing::PreProcessing()
 {
@@ -305,6 +353,137 @@ void PreProcessing::closeProject()
 
 	delete m_gridNode;
 	m_gridNode = nullptr;
+}
+
+QSet<int> PreProcessing::getAvailableMatypes() const
+{
+    auto *meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshService) {
+        return {};
+    }
+
+    IiinGridModel model;
+    if (!meshService->currentModel(model)) {
+        return {};
+    }
+
+    return model.allMatypes();
+}
+
+void PreProcessing::highlightMatypes(const QSet<int> &matypes,
+                                     int selectedMatype,
+                                     int previewMatype,
+                                     int preDeleteMatype)
+{
+    auto *visualService = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!visualService) {
+        return;
+    }
+
+    auto *actor = vtkActor::SafeDownCast(visualService->getProp(kImportedMeshPropId));
+    if (!actor) {
+        return;
+    }
+
+    auto *mapper = vtkDataSetMapper::SafeDownCast(actor->GetMapper());
+    if (!mapper) {
+        return;
+    }
+
+    auto *grid = mapper->GetInput();
+    if (!grid || grid->GetNumberOfCells() == 0) {
+        return;
+    }
+
+    if (matypes.isEmpty() && selectedMatype < 0 && previewMatype < 0 && preDeleteMatype < 0) {
+        grid->GetCellData()->SetScalars(nullptr);
+        mapper->ScalarVisibilityOff();
+        visualService->render();
+        return;
+    }
+
+    auto *meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshService) {
+        return;
+    }
+
+    IiinGridModel model;
+    if (!meshService->currentModel(model)) {
+        return;
+    }
+
+    const QColor baseColor(220, 220, 220);
+    const QColor appliedColor(110, 176, 255);
+    const QColor selectedColor(255, 221, 102);
+    const QColor previewColor(200, 230, 255);
+    const QColor preDeleteColor(255, 160, 160);
+
+    auto colors = vtkSmartPointer<vtkUnsignedCharArray>::New();
+    colors->SetName("MatypeColors");
+    colors->SetNumberOfComponents(3);
+    colors->SetNumberOfTuples(grid->GetNumberOfCells());
+
+    vtkIdType cellIndex = 0;
+    const auto &nodes = model.nodes();
+    const auto &elems = model.elems();
+
+    for (const Elem &e : elems) {
+        const int expectedNodes = expectedNodeCountForKetype(e.ketype);
+        if (expectedNodes < 0 || e.nodeIds.size() < expectedNodes) {
+            continue;
+        }
+
+        bool valid = true;
+        for (int i = 0; i < expectedNodes; ++i) {
+            const int nid = e.nodeIds[i];
+            if (nid <= 0 || nid > nodes.size()) {
+                valid = false;
+                break;
+            }
+        }
+        if (!valid) {
+            continue;
+        }
+
+        if (cellIndex >= grid->GetNumberOfCells()) {
+            break;
+        }
+
+        QColor color = baseColor;
+        if (previewMatype >= 0 && e.matype == previewMatype) {
+            color = previewColor;
+        } else if (preDeleteMatype >= 0 && e.matype == preDeleteMatype) {
+            color = preDeleteColor;
+        } else if (selectedMatype >= 0 && e.matype == selectedMatype) {
+            color = selectedColor;
+        } else if (matypes.contains(e.matype)) {
+            color = appliedColor;
+        }
+
+        unsigned char rgb[3] = {
+            static_cast<unsigned char>(color.red()),
+            static_cast<unsigned char>(color.green()),
+            static_cast<unsigned char>(color.blue())
+        };
+        colors->SetTypedTuple(cellIndex, rgb);
+        ++cellIndex;
+    }
+
+    while (cellIndex < grid->GetNumberOfCells()) {
+        unsigned char rgb[3] = {
+            static_cast<unsigned char>(baseColor.red()),
+            static_cast<unsigned char>(baseColor.green()),
+            static_cast<unsigned char>(baseColor.blue())
+        };
+        colors->SetTypedTuple(cellIndex, rgb);
+        ++cellIndex;
+    }
+
+    grid->GetCellData()->SetScalars(colors);
+    mapper->SetScalarModeToUseCellData();
+    mapper->SetColorModeToDirectScalars();
+    mapper->ScalarVisibilityOn();
+    visualService->render();
 }
 
 bool PreProcessing::writeJsonFile(const QString& filePath, const QJsonObject& obj)
