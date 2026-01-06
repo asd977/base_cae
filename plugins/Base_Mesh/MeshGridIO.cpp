@@ -7,7 +7,7 @@
 #include <QMap>
 #include <QObject>
 #include <vector>
-#include <QRegExp>
+#include <QRegularExpression>
 #include <QStringConverter>
 #include <QTextStream>
 #include <QVector3D>
@@ -239,7 +239,7 @@ MeshGridIO::loadFlac3dGrid(const QString &fileName) const
             continue;
 
         line.replace(',', ' ');
-        QStringList tok = line.split(QRegExp("\\s+"), QString::SkipEmptyParts);
+        QStringList tok = line.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
         if (tok.isEmpty())
             continue;
 
@@ -636,7 +636,7 @@ MeshGridIO::loadAbaqusInpGrid(const QString &fileName) const
     };
 
     auto splitCsv = [](const QString& s) {
-        return s.split(',', QString::SkipEmptyParts);
+        return s.split(',', Qt::SkipEmptyParts);
     };
 
     bool inNode = false;
