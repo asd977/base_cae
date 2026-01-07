@@ -141,7 +141,7 @@ void MeshModuleController::highlightMatypes(const QSet<int> &matypes,
             lut->SetTableValue(preDeleteMatype, 0.9, 0.55, 0.2, 1.0);
         }
 
-        m_previewMapper->SetScalarModeToUseCellFieldData();
+        m_previewMapper->SetScalarModeToUseCellData();
         m_previewMapper->SelectColorArray("MATYPE");
         m_previewMapper->SetLookupTable(lut);
         m_previewMapper->UseLookupTableScalarRangeOn();
@@ -412,6 +412,7 @@ MeshModuleController::buildGridFromModel(const IiinGridModel &model) const
     }
 
     grid->GetCellData()->AddArray(matypeArray);
+    grid->GetCellData()->SetScalars(matypeArray);
     return grid;
 }
 

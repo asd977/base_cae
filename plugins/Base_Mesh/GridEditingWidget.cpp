@@ -296,7 +296,7 @@ void GridEditingWidget::highlightMatypes(const QSet<int> &matypes,
     }
 
     m_matypeLookupTable = lut;
-    m_meshMapper->SetScalarModeToUseCellFieldData();
+    m_meshMapper->SetScalarModeToUseCellData();
     m_meshMapper->SelectColorArray("MATYPE");
     m_meshMapper->SetLookupTable(lut);
     m_meshMapper->UseLookupTableScalarRangeOn();
