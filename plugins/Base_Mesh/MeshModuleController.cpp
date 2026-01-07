@@ -124,7 +124,7 @@ void MeshModuleController::highlightMatypes(const QSet<int> &matypes,
         lut->Build();
 
         for (int i = 0; i <= maxMatype; ++i) {
-            lut->SetTableValue(i, 0.75, 0.75, 0.75, 0.25);
+            lut->SetTableValue(i, 0.75, 0.75, 0.75, 1.0);
         }
         for (int matype : std::as_const(matypes)) {
             if (matype >= 0 && matype <= maxMatype) {
