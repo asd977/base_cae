@@ -12,6 +12,7 @@ class ProjectNode;
 class VisualWidgetService;
 class vtkActor;
 class vtkDataSetMapper;
+class vtkUnstructuredGrid;
 class GridEditingWidget;
 
 class MeshModuleController : public QObject, public MeshModuleControllerService
@@ -63,4 +64,5 @@ private:
     GridEditingWidget *m_gridEditingWidget = nullptr;
     vtkSmartPointer<vtkDataSetMapper> m_previewMapper;
     vtkSmartPointer<vtkActor> m_previewActor;
+    vtkSmartPointer<vtkUnstructuredGrid> m_previewGrid;
 };

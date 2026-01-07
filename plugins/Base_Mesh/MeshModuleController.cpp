@@ -15,6 +15,8 @@
 #include <vtkCell.h>
 #include <vtkCellType.h>
 #include <vtkDataSetMapper.h>
+#include <vtkIntArray.h>
+#include <vtkLookupTable.h>
 #include <vtkPoints.h>
 #include <vtkProperty.h>
 #include <vtkUnstructuredGrid.h>
@@ -82,6 +84,69 @@ void MeshModuleController::highlightMatypes(const QSet<int> &matypes,
                                             int preDeleteMatype)
 {
     if (!m_gridEditingWidget) {
+        if (!m_previewMapper || !m_visualWidgetService) {
+            return;
+        }
+
+        const bool hasSelection = !matypes.isEmpty()
+            || selectedMatype >= 0
+            || previewMatype >= 0
+            || preDeleteMatype >= 0;
+
+        if (!hasSelection) {
+            m_previewMapper->ScalarVisibilityOff();
+            m_visualWidgetService->render();
+            return;
+        }
+
+        QSet<int> allMatypes = m_currentModel.allMatypes();
+        if (selectedMatype >= 0) {
+            allMatypes.insert(selectedMatype);
+        }
+        if (previewMatype >= 0) {
+            allMatypes.insert(previewMatype);
+        }
+        if (preDeleteMatype >= 0) {
+            allMatypes.insert(preDeleteMatype);
+        }
+        allMatypes.unite(matypes);
+
+        int maxMatype = -1;
+        for (int v : std::as_const(allMatypes)) {
+            maxMatype = qMax(maxMatype, v);
+        }
+        if (maxMatype < 0) {
+            return;
+        }
+
+        auto lut = vtkSmartPointer<vtkLookupTable>::New();
+        lut->SetNumberOfTableValues(maxMatype + 1);
+        lut->Build();
+
+        for (int i = 0; i <= maxMatype; ++i) {
+            lut->SetTableValue(i, 0.75, 0.75, 0.75, 0.25);
+        }
+        for (int matype : std::as_const(matypes)) {
+            if (matype >= 0 && matype <= maxMatype) {
+                lut->SetTableValue(matype, 0.25, 0.75, 0.25, 1.0);
+            }
+        }
+        if (selectedMatype >= 0 && selectedMatype <= maxMatype) {
+            lut->SetTableValue(selectedMatype, 0.9, 0.2, 0.2, 1.0);
+        }
+        if (previewMatype >= 0 && previewMatype <= maxMatype) {
+            lut->SetTableValue(previewMatype, 0.2, 0.4, 0.9, 1.0);
+        }
+        if (preDeleteMatype >= 0 && preDeleteMatype <= maxMatype) {
+            lut->SetTableValue(preDeleteMatype, 0.9, 0.55, 0.2, 1.0);
+        }
+
+        m_previewMapper->SetScalarModeToUseCellFieldData();
+        m_previewMapper->SelectColorArray("MATYPE");
+        m_previewMapper->SetLookupTable(lut);
+        m_previewMapper->UseLookupTableScalarRangeOn();
+        m_previewMapper->ScalarVisibilityOn();
+        m_visualWidgetService->render();
         return;
     }
     m_gridEditingWidget->highlightMatypes(matypes, selectedMatype, previewMatype, preDeleteMatype);
@@ -293,6 +358,7 @@ void MeshModuleController::displayCurrentModel()
 
     m_previewMapper = mapper;
     m_previewActor = actor;
+    m_previewGrid = grid;
 }
 
 vtkSmartPointer<vtkUnstructuredGrid>
@@ -313,6 +379,10 @@ MeshModuleController::buildGridFromModel(const IiinGridModel &model) const
 
     auto grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
     grid->SetPoints(points);
+
+    auto matypeArray = vtkSmartPointer<vtkIntArray>::New();
+    matypeArray->SetName("MATYPE");
+    matypeArray->SetNumberOfComponents(1);
 
     for (const Elem &e : elems) {
         int expectedNodes = expectedNodeCountForKetype(e.ketype);
@@ -338,8 +408,10 @@ MeshModuleController::buildGridFromModel(const IiinGridModel &model) const
         grid->InsertNextCell(vtkCellType,
                              cellPtIds.size(),
                              cellPtIds.data());
+        matypeArray->InsertNextValue(e.matype);
     }
 
+    grid->GetCellData()->AddArray(matypeArray);
     return grid;
 }
 
