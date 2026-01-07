@@ -121,6 +121,7 @@ void MeshModuleController::highlightMatypes(const QSet<int> &matypes,
 
         auto lut = vtkSmartPointer<vtkLookupTable>::New();
         lut->SetNumberOfTableValues(maxMatype + 1);
+        lut->SetTableRange(0.0, maxMatype);
         lut->Build();
 
         for (int i = 0; i <= maxMatype; ++i) {

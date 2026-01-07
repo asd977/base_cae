@@ -275,6 +275,7 @@ void GridEditingWidget::highlightMatypes(const QSet<int> &matypes,
 
     auto lut = vtkSmartPointer<vtkLookupTable>::New();
     lut->SetNumberOfTableValues(maxMatype + 1);
+    lut->SetTableRange(0.0, maxMatype);
     lut->Build();
 
     for (int i = 0; i <= maxMatype; ++i) {
@@ -296,7 +297,7 @@ void GridEditingWidget::highlightMatypes(const QSet<int> &matypes,
     }
 
     m_matypeLookupTable = lut;
-    m_meshMapper->SetScalarModeToUseCellData();
+    m_meshMapper->SetScalarModeToUseCellFieldData();
     m_meshMapper->SelectColorArray("MATYPE");
     m_meshMapper->SetLookupTable(lut);
     m_meshMapper->UseLookupTableScalarRangeOn();
