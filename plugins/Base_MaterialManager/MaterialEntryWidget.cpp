@@ -8,6 +8,7 @@
 #include <QBrush>
 #include <algorithm>
 #include <QFontDatabase>
+#include <QSignalBlocker>
 
 #include <CustomComboBox.h>
 
@@ -445,8 +446,18 @@ void MaterialEntryWidget::onDropdownClosed()
     if (m_previewMatype != -1) {
         m_previewMatype = -1;
         m_materialManager->setPreviewMatypeForEntry(m_entryId, -1);
-        m_materialManager->refreshMatypeHighlight(m_entryId);
     }
+
+    if (m_matypeCombo) {
+        const int selected = m_materialManager->selectedMatypeForEntry(m_entryId);
+        int comboIndex = (selected >= 0) ? m_matypeCombo->findData(selected) : 0;
+        if (comboIndex < 0) comboIndex = 0;
+        QSignalBlocker blocker(m_matypeCombo);
+        m_matypeCombo->setCurrentIndex(comboIndex);
+    }
+
+    updateAppliedListColors();
+    m_materialManager->refreshMatypeHighlight(m_entryId);
 }
 
 void MaterialEntryWidget::onRemoveMatypeClicked()
