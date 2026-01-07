@@ -11,6 +11,7 @@
 #include "IiinGridModel.h"
 
 class VisualWidgetService;
+class MeshModuleControllerService;
 class vtkActor;
 class vtkPointPicker;
 class vtkRenderer;
@@ -81,6 +82,7 @@ private:
 
 private slots:
     void on_buttonLoadMesh_clicked();
+    void on_buttonUseCurrentMesh_clicked();
     void on_buttonLoadLoad_clicked();
     void on_buttonSaveLoad_clicked();
     void on_checkShowBody_toggled(bool checked);
@@ -100,6 +102,7 @@ private:
     Ui::LoadSettingWidget *ui;
 
     VisualWidgetService *m_visualWidgetService = nullptr;
+    MeshModuleControllerService *m_meshModuleService = nullptr;
     vtkSmartPointer<vtkRenderer> m_renderer;
     vtkSmartPointer<vtkUnstructuredGrid> m_grid;
     vtkSmartPointer<vtkActor> m_meshActor;

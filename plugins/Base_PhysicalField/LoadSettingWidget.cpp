@@ -9,6 +9,7 @@
 #include <QColor>
 
 #include <ServiceRegistry.h>
+#include <services/MeshModuleControllerService.h>
 #include <services/VisualWidgetService.h>
 
 #include <vtkActor.h>
@@ -102,10 +103,12 @@ LoadSettingWidget::LoadSettingWidget(QWidget *parent)
 {
     ui->setupUi(this);
     m_visualWidgetService = ServiceRegistry::instance().getService<VisualWidgetService>();
+    m_meshModuleService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (m_visualWidgetService)
         m_renderer = m_visualWidgetService->renderer();
 
     connect(ui->buttonLoadMesh, &QPushButton::clicked, this, &LoadSettingWidget::on_buttonLoadMesh_clicked);
+    connect(ui->buttonUseCurrentMesh, &QPushButton::clicked, this, &LoadSettingWidget::on_buttonUseCurrentMesh_clicked);
     connect(ui->buttonLoadLoad, &QPushButton::clicked, this, &LoadSettingWidget::on_buttonLoadLoad_clicked);
     connect(ui->buttonSaveLoad, &QPushButton::clicked, this, &LoadSettingWidget::on_buttonSaveLoad_clicked);
     connect(ui->checkShowBody, &QCheckBox::toggled, this, &LoadSettingWidget::on_checkShowBody_toggled);
@@ -177,6 +180,49 @@ void LoadSettingWidget::loadMeshFromFile(const QString &fileName)
     m_model = model;
     m_meshFileName = fileName;
     ui->lineEditMeshFile->setText(fileName);
+
+    m_grid = PhysicalFieldMeshDisplay::buildGridFromModel(model);
+    if (!m_grid || !m_visualWidgetService)
+        return;
+
+    auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
+    mapper->SetInputData(m_grid);
+    mapper->ScalarVisibilityOff();
+
+    m_meshActor = vtkSmartPointer<vtkActor>::New();
+    m_meshActor->SetMapper(mapper);
+    m_meshActor->GetProperty()->EdgeVisibilityOn();
+
+    static const QString kMeshPropId = QStringLiteral("physicalfield.mesh");
+    m_visualWidgetService->removeProp(kMeshPropId, false);
+    m_visualWidgetService->addProp(kMeshPropId,
+                                   m_meshActor,
+                                   QStringLiteral("物理场"),
+                                   QStringLiteral("荷载网格"),
+                                   true,
+                                   true);
+
+    if (m_pointPicker) {
+        m_pointPicker->InitializePickList();
+        m_pointPicker->AddPickList(m_meshActor);
+        m_pointPicker->PickFromListOn();
+    }
+
+    updateLoadMarkers();
+}
+
+void LoadSettingWidget::on_buttonUseCurrentMesh_clicked()
+{
+    if (!m_meshModuleService)
+        return;
+
+    IiinGridModel model;
+    if (!m_meshModuleService->currentModel(model))
+        return;
+
+    m_model = model;
+    m_meshFileName = model.fileName();
+    ui->lineEditMeshFile->setText(model.fileName());
 
     m_grid = PhysicalFieldMeshDisplay::buildGridFromModel(model);
     if (!m_grid || !m_visualWidgetService)
