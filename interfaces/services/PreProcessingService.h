@@ -1,8 +1,6 @@
 ﻿#ifndef PREPROCESSINGSERVICE_H
 #define PREPROCESSINGSERVICE_H
 
-
-
 class QString;
 class vtkActor;
 class vtkPolyData;

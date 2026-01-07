@@ -8,6 +8,7 @@
 #include <GridEditingWidget.h>
 #include <MeshGlobalMeshingWidget.h>
 #include <PublicConstants.h>
+#include <QColor>
 #include <QMessageBox>
 #include <qfiledialog.h>
 #include <QVector>
@@ -15,9 +16,14 @@
 #include <vtkCell.h>
 #include <vtkCellType.h>
 #include <vtkDataSetMapper.h>
+#include <vtkUnsignedCharArray.h>
 #include <vtkPoints.h>
 #include <vtkProperty.h>
 #include <vtkUnstructuredGrid.h>
+
+namespace {
+static const QString kImportedMeshPropId = QStringLiteral("mesh.imported");
+}
 
 // === 这些头文件你后面真正实现时再加 ===
 // #include "MeshImportGridWidget.h"
@@ -69,6 +75,122 @@ bool MeshModuleController::currentModel(IiinGridModel &model) const
         return false;
     model = m_currentModel;
     return true;
+}
+
+QSet<int> MeshModuleController::getAvailableMatypes() const
+{
+    if (!m_hasModel) {
+        return {};
+    }
+    return m_currentModel.allMatypes();
+}
+
+void MeshModuleController::highlightMatypes(const QSet<int> &matypes,
+                                            int selectedMatype,
+                                            int previewMatype,
+                                            int preDeleteMatype)
+{
+    if (!m_hasModel) {
+        return;
+    }
+    if (!m_visualWidgetService) {
+        return;
+    }
+
+    auto *actor = vtkActor::SafeDownCast(m_visualWidgetService->getProp(kImportedMeshPropId));
+    if (!actor) {
+        return;
+    }
+
+    auto *mapper = vtkDataSetMapper::SafeDownCast(actor->GetMapper());
+    if (!mapper) {
+        return;
+    }
+
+    auto *grid = mapper->GetInput();
+    if (!grid || grid->GetNumberOfCells() == 0) {
+        return;
+    }
+
+    if (matypes.isEmpty() && selectedMatype < 0 && previewMatype < 0 && preDeleteMatype < 0) {
+        grid->GetCellData()->SetScalars(nullptr);
+        mapper->ScalarVisibilityOff();
+        m_visualWidgetService->render();
+        return;
+    }
+
+    const QColor baseColor(220, 220, 220);
+    const QColor appliedColor(110, 176, 255);
+    const QColor selectedColor(255, 221, 102);
+    const QColor previewColor(200, 230, 255);
+    const QColor preDeleteColor(255, 160, 160);
+
+    auto colors = vtkSmartPointer<vtkUnsignedCharArray>::New();
+    colors->SetName("MatypeColors");
+    colors->SetNumberOfComponents(3);
+    colors->SetNumberOfTuples(grid->GetNumberOfCells());
+
+    vtkIdType cellIndex = 0;
+    const auto &nodes = m_currentModel.nodes();
+    const auto &elems = m_currentModel.elems();
+
+    for (const Elem &e : elems) {
+        const int expectedNodes = expectedNodeCountForKetype(e.ketype);
+        if (expectedNodes < 0 || e.nodeIds.size() < expectedNodes) {
+            continue;
+        }
+
+        bool valid = true;
+        for (int i = 0; i < expectedNodes; ++i) {
+            const int nid = e.nodeIds[i];
+            if (nid <= 0 || nid > nodes.size()) {
+                valid = false;
+                break;
+            }
+        }
+        if (!valid) {
+            continue;
+        }
+
+        if (cellIndex >= grid->GetNumberOfCells()) {
+            break;
+        }
+
+        QColor color = baseColor;
+        if (previewMatype >= 0 && e.matype == previewMatype) {
+            color = previewColor;
+        } else if (preDeleteMatype >= 0 && e.matype == preDeleteMatype) {
+            color = preDeleteColor;
+        } else if (selectedMatype >= 0 && e.matype == selectedMatype) {
+            color = selectedColor;
+        } else if (matypes.contains(e.matype)) {
+            color = appliedColor;
+        }
+
+        unsigned char rgb[3] = {
+            static_cast<unsigned char>(color.red()),
+            static_cast<unsigned char>(color.green()),
+            static_cast<unsigned char>(color.blue())
+        };
+        colors->SetTypedTuple(cellIndex, rgb);
+        ++cellIndex;
+    }
+
+    while (cellIndex < grid->GetNumberOfCells()) {
+        unsigned char rgb[3] = {
+            static_cast<unsigned char>(baseColor.red()),
+            static_cast<unsigned char>(baseColor.green()),
+            static_cast<unsigned char>(baseColor.blue())
+        };
+        colors->SetTypedTuple(cellIndex, rgb);
+        ++cellIndex;
+    }
+
+    grid->GetCellData()->SetScalars(colors);
+    mapper->SetScalarModeToUseCellData();
+    mapper->SetColorModeToDirectScalars();
+    mapper->ScalarVisibilityOn();
+    m_visualWidgetService->render();
 }
 
 void MeshModuleController::initAction()
@@ -265,7 +387,6 @@ void MeshModuleController::displayCurrentModel()
     actor->GetProperty()->EdgeVisibilityOn();
     actor->GetProperty()->SetLineWidth(1.0);
 
-    static const QString kImportedMeshPropId = QStringLiteral("mesh.imported");
     m_visualWidgetService->removeProp(kImportedMeshPropId, false);
     m_visualWidgetService->addProp(kImportedMeshPropId,
                                    actor,

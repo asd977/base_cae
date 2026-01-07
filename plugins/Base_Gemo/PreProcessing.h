@@ -23,8 +23,6 @@ public:
 	bool loadProject() override;
 	void closeProject() override;
 
-
-
     BasePage *newGeometryImportWidget(QString title = QObject::tr("导入几何体"));
     void newGeometryBoxWidget(QString title = QObject::tr("创建长方体"));
     void newGeometrySphereWidget(QString title = QObject::tr("创建球体"));
