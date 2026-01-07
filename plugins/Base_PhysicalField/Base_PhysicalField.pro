@@ -5,26 +5,22 @@ QT += widgets core charts
 INCLUDEPATH += $$PWD/../../interfaces
 
 HEADERS += \
-    ElectrodeSurfaceSettingWidget.h \
-    ElectrolysisSettingWidget.h \
-    ElectrolyteSettingWidget.h \
+    ConstraintSettingWidget.h \
+    LoadSettingWidget.h \
     PhySicalField.h \
-    PhysicalFieldSettingWidget.h \
-    PrimaryCurrentDistributionWidget.h
+    PhysicalFieldSettingWidget.h
 
 SOURCES += \
-    ElectrodeSurfaceSettingWidget.cpp \
-    ElectrolyteSettingWidget.cpp \
+    ConstraintSettingWidget.cpp \
+    LoadSettingWidget.cpp \
     PhySicalField.cpp \
-    PhysicalFieldSettingWidget.cpp \
-    PrimaryCurrentDistributionWidget.cpp
+    PhysicalFieldSettingWidget.cpp
 
 
 FORMS += \
-    ElectrodeSurfaceSettingWidget.ui \
-    ElectrolyteSettingWidget.ui \
-    PhysicalFieldSettingWidget.ui \
-    PrimaryCurrentDistributionWidget.ui
+    ConstraintSettingWidget.ui \
+    LoadSettingWidget.ui \
+    PhysicalFieldSettingWidget.ui
 
 
 RESOURCES += \

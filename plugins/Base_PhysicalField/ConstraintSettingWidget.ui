@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ConstraintSettingWidget</class>
+ <widget class="QWidget" name="ConstraintSettingWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>720</width>
+    <height>780</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>约束设置</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QGroupBox" name="groupBoxFormat">
+     <property name="title">
+      <string>IIID.DAT 文件格式</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayoutFormat">
+      <item>
+       <widget class="QTextEdit" name="textEditFormat">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+        <property name="plainText">
+         <string>NUMNP(节点数)、MADOF(节点自由度数)
+逐节点约束信息：Ux、Uy、Uz 等自由度
+约束类型：0=固定；1=自由；-N=给定位移值；-10000=悬浮锚杆节点
+无效节点各自由度为 0</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupBoxDisplay">
+     <property name="title">
+      <string>约束显示</string>
+     </property>
+     <layout class="QGridLayout" name="gridLayoutDisplay">
+      <item row="0" column="0" colspan="3">
+       <widget class="QLabel" name="labelDisplayHint">
+        <property name="text">
+         <string>加载 IIIN.DAT 网格模型并显示约束状态</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QPushButton" name="buttonLoadConstraint">
+        <property name="text">
+         <string>加载约束文件</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QCheckBox" name="checkShowUx">
+        <property name="text">
+         <string>显示 X 方向约束</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="2">
+       <widget class="QCheckBox" name="checkShowUy">
+        <property name="text">
+         <string>显示 Y 方向约束</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QCheckBox" name="checkShowUz">
+        <property name="text">
+         <string>显示 Z 方向约束</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupBoxEdit">
+     <property name="title">
+      <string>约束编辑</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayoutEdit">
+      <item>
+       <widget class="QGroupBox" name="groupBoxNode">
+        <property name="title">
+         <string>节点约束</string>
+        </property>
+        <layout class="QFormLayout" name="formLayoutNode">
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelNodeId">
+           <property name="text">
+            <string>节点编号</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QLineEdit" name="lineEditNodeId"/>
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="labelNodeType">
+           <property name="text">
+            <string>约束类型</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="1">
+          <widget class="QComboBox" name="comboNodeType">
+           <item>
+            <property name="text">
+             <string>0 固定</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>1 自由</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>-N 给定位移</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>-10000 悬浮锚杆</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item row="2" column="0">
+          <widget class="QLabel" name="labelNodeValueIndex">
+           <property name="text">
+            <string>位移值序号 N</string>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="1">
+          <widget class="QLineEdit" name="lineEditNodeValueIndex"/>
+         </item>
+         <item row="3" column="1">
+          <widget class="QPushButton" name="buttonApplyNode">
+           <property name="text">
+            <string>应用到节点</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGroupBox" name="groupBoxFace">
+        <property name="title">
+         <string>面约束</string>
+        </property>
+        <layout class="QFormLayout" name="formLayoutFace">
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelFaceExpression">
+           <property name="text">
+            <string>节点方程</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QLineEdit" name="lineEditFaceExpression">
+           <property name="placeholderText">
+            <string>x + y + z = 0</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="labelFaceType">
+           <property name="text">
+            <string>约束类型</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="1">
+          <widget class="QComboBox" name="comboFaceType">
+           <item>
+            <property name="text">
+             <string>固定/自由/给定位移</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item row="2" column="1">
+          <widget class="QPushButton" name="buttonApplyFace">
+           <property name="text">
+            <string>应用到面</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGroupBox" name="groupBoxMaterial">
+        <property name="title">
+         <string>材料集约束</string>
+        </property>
+        <layout class="QFormLayout" name="formLayoutMaterial">
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelMaterialId">
+           <property name="text">
+            <string>材料集编号</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QLineEdit" name="lineEditMaterialId"/>
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="labelMaterialType">
+           <property name="text">
+            <string>约束类型</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="1">
+          <widget class="QComboBox" name="comboMaterialType">
+           <item>
+            <property name="text">
+             <string>固定/自由/给定位移</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item row="2" column="1">
+          <widget class="QPushButton" name="buttonApplyMaterial">
+           <property name="text">
+            <string>应用到材料集</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Orientation::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

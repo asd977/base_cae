@@ -6,38 +6,47 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>434</width>
-    <height>681</height>
+    <width>520</width>
+    <height>420</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>腐蚀类型选择</string>
+   <string>物理场设置</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="QGroupBox" name="groupBoxSurfaceTreatment">
-     <property name="title">
-      <string>分析类型</string>
+    <widget class="QLabel" name="labelTitle">
+     <property name="text">
+      <string>物理场设置</string>
      </property>
-     <layout class="QVBoxLayout" name="verticalLayoutSurfaceTreatment">
+     <property name="alignment">
+      <set>Qt::AlignHCenter|Qt::AlignVCenter</set>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="labelDescription">
+     <property name="text">
+      <string>本模块包含约束与荷载两类功能页面，用于文件格式查看、显示控制以及编辑操作。</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupBoxConstraint">
+     <property name="title">
+      <string>约束</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayoutConstraint">
       <item>
-       <widget class="QRadioButton" name="radioSurfaceElectroplating">
+       <widget class="QLabel" name="labelConstraintHint">
         <property name="text">
-         <string>电流分布（一次）</string>
+         <string>查看 IIID.DAT 文件格式，控制约束显示与编辑。</string>
         </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QRadioButton" name="radioSurfaceElectrolysis">
-        <property name="text">
-         <string>电流分布（二次，含极化）</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QRadioButton" name="radioSurfaceElectrophoresis">
-        <property name="text">
-         <string>电流分布（三次，含传质）</string>
+        <property name="wordWrap">
+         <bool>true</bool>
         </property>
        </widget>
       </item>
@@ -45,35 +54,23 @@
     </widget>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="horizontalLayoutButtons">
-     <item>
-      <spacer name="horizontalSpacer">
-       <property name="orientation">
-        <enum>Qt::Orientation::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-     <item>
-      <widget class="QPushButton" name="buttonOk">
-       <property name="text">
-        <string>确定</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="buttonCancel">
-       <property name="text">
-        <string>取消</string>
-       </property>
-      </widget>
-     </item>
-    </layout>
+    <widget class="QGroupBox" name="groupBoxLoad">
+     <property name="title">
+      <string>荷载</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayoutLoad">
+      <item>
+       <widget class="QLabel" name="labelLoadHint">
+        <property name="text">
+         <string>查看 IIWL.DAT 文件格式，控制荷载显示与编辑。</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
    </item>
    <item>
     <spacer name="verticalSpacer">
