@@ -11,7 +11,6 @@
 #include "ProjectNode.h"
 #include <PublicVariables.h>
 #include <PublicConstants.h>
-#include <QSet>
 #include <functional>
 
 class PreProcessing:public QObject,public PreProcessingService
@@ -23,13 +22,6 @@ public:
 	bool saveProject() override;
 	bool loadProject() override;
 	void closeProject() override;
-
-    QSet<int> getAvailableMatypes() const override;
-    void highlightMatypes(const QSet<int> &matypes,
-                          int selectedMatype,
-                          int previewMatype,
-                          int preDeleteMatype) override;
-
 
     BasePage *newGeometryImportWidget(QString title = QObject::tr("导入几何体"));
     void newGeometryBoxWidget(QString title = QObject::tr("创建长方体"));

@@ -25,7 +25,7 @@
 #include <tuple>
 
 #include <public/services/PhysicalFieldService.h>
-#include <public/services/PreProcessingService.h>
+#include <services/MeshModuleControllerService.h>
 #include <utils/ServiceRegistry.h>
 
 MaterialManager::MaterialManager()
@@ -454,7 +454,7 @@ void MaterialManager::removeEntryFromProjectTree(const QString &entryId)
 
 QSet<int> MaterialManager::availableMatypes() const
 {
-    PreProcessingService *service = ServiceRegistry<PreProcessingService>::instance().getService();
+    auto *service = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!service) {
         return {};
     }
@@ -467,7 +467,7 @@ void MaterialManager::highlightMatypes(const QSet<int> &matypes,
                                        int previewMatype,
                                        int preDeleteMatype)
 {
-    PreProcessingService *service = ServiceRegistry<PreProcessingService>::instance().getService();
+    auto *service = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!service) {
         return;
     }

@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
 #include <vtkSmartPointer.h>
+#include <QSet>
 
 #include <services/MeshModuleControllerService.h>
 
@@ -23,6 +24,11 @@ public:
     bool loadProject();
     void closeProject();
     bool currentModel(IiinGridModel &model) const override;
+    QSet<int> getAvailableMatypes() const override;
+    void highlightMatypes(const QSet<int> &matypes,
+                          int selectedMatype,
+                          int previewMatype,
+                          int preDeleteMatype) override;
 
 
 private:
