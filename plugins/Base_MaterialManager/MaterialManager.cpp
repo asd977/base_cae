@@ -505,16 +505,7 @@ void MaterialManager::refreshMatypeHighlight(const QString &entryId)
     const int preDelete = m_preDeleteMatypes.value(entryId, -1);
     const int selected  = m_selectedMatypes.value(entryId, -1);
 
-    if (preview >= 0) {
-        highlightMatypes(QSet<int>{}, -1, preview, -1);
-        return;
-    }
-    if (preDelete >= 0) {
-        highlightMatypes(QSet<int>{}, -1, -1, preDelete);
-        return;
-    }
-
-    highlightMatypes(entry->appliedMatypes, selected, -1, -1);
+    highlightMatypes(entry->appliedMatypes, selected, preview, preDelete);
 }
 
 
