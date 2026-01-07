@@ -230,6 +230,8 @@ void MaterialEntryWidget::rebuildForm(MaterialModel *model, MaterialEntry *entry
     connect(m_matypeCombo, &CustomComboBox::dropdownClosed, this, &MaterialEntryWidget::onDropdownClosed);
     connect(m_matypeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MaterialEntryWidget::onMatypeChanged);
+    connect(m_matypeCombo, QOverload<int>::of(&QComboBox::activated),
+            this, &MaterialEntryWidget::onMatypeActivated);
 
     m_applyButton = new QPushButton(QStringLiteral("施加到网格"), matypeRowWidget);
     connect(m_applyButton, &QPushButton::clicked, this, &MaterialEntryWidget::onApplyMatypeClicked);
@@ -350,6 +352,13 @@ void MaterialEntryWidget::refreshAppliedMatypes(const QSet<int> &appliedMatypes,
 }
 
 void MaterialEntryWidget::onMatypeChanged(int)
+{
+    if (m_isUpdating || !m_matypeCombo) return;
+
+    updateAppliedListColors();
+}
+
+void MaterialEntryWidget::onMatypeActivated(int)
 {
     if (m_isUpdating || !m_matypeCombo) return;
 

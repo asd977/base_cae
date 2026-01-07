@@ -30,6 +30,7 @@ private slots:
     void onValueEdited(const QString &text);
 
     void onMatypeChanged(int index);
+    void onMatypeActivated(int index);
     void onApplyMatypeClicked();
 
     void onAppliedMatypeSelected(const QString &text);
