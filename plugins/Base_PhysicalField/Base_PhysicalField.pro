@@ -2,29 +2,28 @@ include($$PWD/plugin-dev.pri)
 
 QT += widgets core charts
 
-INCLUDEPATH += $$PWD/../../interfaces
+INCLUDEPATH += $$PWD/../../interfaces \
+               $$PWD/../Base_Mesh
 
 HEADERS += \
-    ElectrodeSurfaceSettingWidget.h \
-    ElectrolysisSettingWidget.h \
-    ElectrolyteSettingWidget.h \
+    ConstraintSettingWidget.h \
+    LoadSettingWidget.h \
+    PhysicalFieldMeshDisplay.h \
     PhySicalField.h \
-    PhysicalFieldSettingWidget.h \
-    PrimaryCurrentDistributionWidget.h
+    PhysicalFieldSettingWidget.h
 
 SOURCES += \
-    ElectrodeSurfaceSettingWidget.cpp \
-    ElectrolyteSettingWidget.cpp \
+    ConstraintSettingWidget.cpp \
+    LoadSettingWidget.cpp \
+    PhysicalFieldMeshDisplay.cpp \
     PhySicalField.cpp \
-    PhysicalFieldSettingWidget.cpp \
-    PrimaryCurrentDistributionWidget.cpp
+    PhysicalFieldSettingWidget.cpp
 
 
 FORMS += \
-    ElectrodeSurfaceSettingWidget.ui \
-    ElectrolyteSettingWidget.ui \
-    PhysicalFieldSettingWidget.ui \
-    PrimaryCurrentDistributionWidget.ui
+    ConstraintSettingWidget.ui \
+    LoadSettingWidget.ui \
+    PhysicalFieldSettingWidget.ui
 
 
 RESOURCES += \

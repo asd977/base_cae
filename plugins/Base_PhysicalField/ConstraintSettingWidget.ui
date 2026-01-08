@@ -1,0 +1,350 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ConstraintSettingWidget</class>
+ <widget class="QWidget" name="ConstraintSettingWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>760</width>
+    <height>780</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>约束设置</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QGroupBox" name="groupBoxMesh">
+     <property name="title">
+      <string>IIIN.DAT 网格加载</string>
+     </property>
+     <layout class="QHBoxLayout" name="horizontalLayoutMesh">
+      <item>
+       <widget class="QLineEdit" name="lineEditMeshFile"/>
+      </item>
+      <item>
+       <widget class="QPushButton" name="buttonLoadMesh">
+        <property name="text">
+         <string>加载网格</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="buttonUseCurrentMesh">
+        <property name="text">
+         <string>使用当前网格</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupBoxConstraintFile">
+     <property name="title">
+      <string>IIID.DAT 约束文件</string>
+     </property>
+     <layout class="QHBoxLayout" name="horizontalLayoutConstraintFile">
+      <item>
+       <widget class="QLineEdit" name="lineEditConstraintFile"/>
+      </item>
+      <item>
+       <widget class="QPushButton" name="buttonLoadConstraint">
+        <property name="text">
+         <string>加载约束</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="buttonSaveConstraint">
+        <property name="text">
+         <string>保存约束</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupBoxDisplay">
+     <property name="title">
+      <string>约束显示</string>
+     </property>
+     <layout class="QGridLayout" name="gridLayoutDisplay">
+      <item row="0" column="0" colspan="3">
+       <widget class="QLabel" name="labelDisplayHint">
+        <property name="text">
+         <string>加载网格模型并显示约束状态（点选节点可快速填写）</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QCheckBox" name="checkShowUx">
+        <property name="text">
+         <string>显示 X 方向约束</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QCheckBox" name="checkShowUy">
+        <property name="text">
+         <string>显示 Y 方向约束</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="2">
+       <widget class="QCheckBox" name="checkShowUz">
+        <property name="text">
+         <string>显示 Z 方向约束</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QCheckBox" name="checkEnablePicking">
+        <property name="text">
+         <string>启用点选</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1" colspan="2">
+       <layout class="QHBoxLayout" name="horizontalLayoutSelectedNode">
+        <item>
+         <widget class="QLabel" name="labelSelectedNode">
+          <property name="text">
+           <string>当前选中节点</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="lineEditSelectedNode"/>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupBoxEdit">
+     <property name="title">
+      <string>约束编辑</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayoutEdit">
+      <item>
+       <widget class="QGroupBox" name="groupBoxNode">
+        <property name="title">
+         <string>节点约束</string>
+        </property>
+        <layout class="QGridLayout" name="gridLayoutNode">
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelUx">
+           <property name="text">
+            <string>Ux</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QComboBox" name="comboUx">
+           <item>
+            <property name="text">
+             <string>固定 (0)</string>
+            </property>
+            <property name="userData">
+             <number>0</number>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>自由 (1)</string>
+            </property>
+            <property name="userData">
+             <number>1</number>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>给定位移 (-N)</string>
+            </property>
+            <property name="userData">
+             <number>-1</number>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>悬浮锚杆 (-10000)</string>
+            </property>
+            <property name="userData">
+             <number>-10000</number>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item row="0" column="2">
+          <widget class="QLabel" name="labelUy">
+           <property name="text">
+            <string>Uy</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="3">
+          <widget class="QComboBox" name="comboUy">
+           <item>
+            <property name="text">
+             <string>固定 (0)</string>
+            </property>
+            <property name="userData">
+             <number>0</number>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>自由 (1)</string>
+            </property>
+            <property name="userData">
+             <number>1</number>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>给定位移 (-N)</string>
+            </property>
+            <property name="userData">
+             <number>-1</number>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>悬浮锚杆 (-10000)</string>
+            </property>
+            <property name="userData">
+             <number>-10000</number>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="labelUz">
+           <property name="text">
+            <string>Uz</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="1">
+          <widget class="QComboBox" name="comboUz">
+           <item>
+            <property name="text">
+             <string>固定 (0)</string>
+            </property>
+            <property name="userData">
+             <number>0</number>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>自由 (1)</string>
+            </property>
+            <property name="userData">
+             <number>1</number>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>给定位移 (-N)</string>
+            </property>
+            <property name="userData">
+             <number>-1</number>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>悬浮锚杆 (-10000)</string>
+            </property>
+            <property name="userData">
+             <number>-10000</number>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item row="1" column="2">
+          <widget class="QLabel" name="labelGivenIndex">
+           <property name="text">
+            <string>位移值序号 N</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="3">
+          <widget class="QLineEdit" name="lineEditGivenIndex"/>
+         </item>
+         <item row="2" column="3">
+          <widget class="QPushButton" name="buttonApplyNode">
+           <property name="text">
+            <string>应用到选中节点</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGroupBox" name="groupBoxMaterial">
+        <property name="title">
+         <string>材料集约束</string>
+        </property>
+        <layout class="QHBoxLayout" name="horizontalLayoutMaterial">
+         <item>
+          <widget class="QLabel" name="labelMaterialSet">
+           <property name="text">
+            <string>材料集</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="comboMaterialSet"/>
+         </item>
+         <item>
+          <widget class="QPushButton" name="buttonApplyMaterial">
+           <property name="text">
+            <string>应用到材料集</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelFacePlaceholder">
+        <property name="text">
+         <string>面约束：暂不启用（后续可按方程选取节点集）。</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Orientation::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

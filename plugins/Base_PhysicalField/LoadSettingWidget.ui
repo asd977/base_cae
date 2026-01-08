@@ -1,0 +1,430 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>LoadSettingWidget</class>
+ <widget class="QWidget" name="LoadSettingWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>780</width>
+    <height>920</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>荷载设置</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QGroupBox" name="groupBoxMesh">
+     <property name="title">
+      <string>IIIN.DAT 网格加载</string>
+     </property>
+     <layout class="QHBoxLayout" name="horizontalLayoutMesh">
+      <item>
+       <widget class="QLineEdit" name="lineEditMeshFile"/>
+      </item>
+      <item>
+       <widget class="QPushButton" name="buttonLoadMesh">
+        <property name="text">
+         <string>加载网格</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="buttonUseCurrentMesh">
+        <property name="text">
+         <string>使用当前网格</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupBoxLoadFile">
+     <property name="title">
+      <string>IIWL.DAT 荷载文件</string>
+     </property>
+     <layout class="QHBoxLayout" name="horizontalLayoutLoadFile">
+      <item>
+       <widget class="QLineEdit" name="lineEditLoadFile"/>
+      </item>
+      <item>
+       <widget class="QPushButton" name="buttonLoadLoad">
+        <property name="text">
+         <string>加载荷载</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="buttonSaveLoad">
+        <property name="text">
+         <string>保存荷载</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupBoxDisplay">
+     <property name="title">
+      <string>荷载显示</string>
+     </property>
+     <layout class="QGridLayout" name="gridLayoutDisplay">
+      <item row="0" column="0" colspan="4">
+       <widget class="QLabel" name="labelDisplayHint">
+        <property name="text">
+         <string>加载网格并显示荷载（点选节点用于面力/集中力输入）</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QCheckBox" name="checkShowBody">
+        <property name="text">
+         <string>体力</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QCheckBox" name="checkShowSurface">
+        <property name="text">
+         <string>面力</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="2">
+       <widget class="QCheckBox" name="checkShowPoint">
+        <property name="text">
+         <string>集中力</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="3">
+       <widget class="QCheckBox" name="checkShowTemperature">
+        <property name="text">
+         <string>变温荷载</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QCheckBox" name="checkShowSeepage">
+        <property name="text">
+         <string>渗透体力</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QCheckBox" name="checkEnablePicking">
+        <property name="text">
+         <string>启用点选</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0" colspan="4">
+       <layout class="QHBoxLayout" name="horizontalLayoutPicked">
+        <item>
+         <widget class="QLabel" name="labelPickedNodes">
+          <property name="text">
+           <string>已选节点</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="lineEditPickedNodes">
+          <property name="readOnly">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="buttonClearPicked">
+          <property name="text">
+           <string>清空</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupBoxEdit">
+     <property name="title">
+      <string>荷载编辑</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayoutEdit">
+      <item>
+       <widget class="QGroupBox" name="groupBoxBody">
+        <property name="title">
+         <string>体力荷载</string>
+        </property>
+        <layout class="QGridLayout" name="gridLayoutBody">
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelBodyTargetType">
+           <property name="text">
+            <string>目标类型</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QComboBox" name="comboBodyTargetType">
+           <item>
+            <property name="text">
+             <string>材料集</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>单元集</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item row="0" column="2">
+          <widget class="QLabel" name="labelBodyTarget">
+           <property name="text">
+            <string>编号</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="3">
+          <widget class="QLineEdit" name="lineEditBodyTarget"/>
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="labelBodyValue">
+           <property name="text">
+            <string>分量 (Fx,Fy,Fz)</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="1" colspan="2">
+          <widget class="QLineEdit" name="lineEditBodyValue">
+           <property name="placeholderText">
+            <string>0, 0, -9.8</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="3">
+          <widget class="QPushButton" name="buttonApplyBody">
+           <property name="text">
+            <string>应用体力</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGroupBox" name="groupBoxSurface">
+        <property name="title">
+         <string>面力荷载</string>
+        </property>
+        <layout class="QGridLayout" name="gridLayoutSurface">
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelSurfaceNodes">
+           <property name="text">
+            <string>选中节点 (2D=2, 3D=4)</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1" colspan="2">
+          <widget class="QLineEdit" name="lineEditSurfaceNodes">
+           <property name="readOnly">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="3">
+          <widget class="QLabel" name="labelSurfaceHint">
+           <property name="text">
+            <string>使用“已选节点”</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="labelSurfaceValue">
+           <property name="text">
+            <string>分量 (Fx,Fy,Fz)</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="1" colspan="2">
+          <widget class="QLineEdit" name="lineEditSurfaceValue"/>
+         </item>
+         <item row="1" column="3">
+          <widget class="QPushButton" name="buttonApplySurface">
+           <property name="text">
+            <string>应用面力</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGroupBox" name="groupBoxPoint">
+        <property name="title">
+         <string>集中力荷载</string>
+        </property>
+        <layout class="QGridLayout" name="gridLayoutPoint">
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelPointNode">
+           <property name="text">
+            <string>节点编号</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QLineEdit" name="lineEditPointNode"/>
+         </item>
+         <item row="0" column="2">
+          <widget class="QLabel" name="labelPointValue">
+           <property name="text">
+            <string>分量 (Fx,Fy,Fz)</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="3">
+          <widget class="QLineEdit" name="lineEditPointValue"/>
+         </item>
+         <item row="1" column="3">
+          <widget class="QPushButton" name="buttonApplyPoint">
+           <property name="text">
+            <string>应用集中力</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGroupBox" name="groupBoxTemperature">
+        <property name="title">
+         <string>变温荷载</string>
+        </property>
+        <layout class="QGridLayout" name="gridLayoutTemperature">
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelTemperatureNode">
+           <property name="text">
+            <string>节点编号</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QLineEdit" name="lineEditTemperatureNode"/>
+         </item>
+         <item row="0" column="2">
+          <widget class="QLabel" name="labelTemperatureValue">
+           <property name="text">
+            <string>ALFA, ΔT</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="3">
+          <widget class="QLineEdit" name="lineEditTemperatureValue"/>
+         </item>
+         <item row="1" column="3">
+          <widget class="QPushButton" name="buttonApplyTemperature">
+           <property name="text">
+            <string>应用变温</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGroupBox" name="groupBoxSeepage">
+        <property name="title">
+         <string>渗透体力</string>
+        </property>
+        <layout class="QGridLayout" name="gridLayoutSeepage">
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelSeepageTargetType">
+           <property name="text">
+            <string>目标类型</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QComboBox" name="comboSeepageTargetType">
+           <item>
+            <property name="text">
+             <string>材料集</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>单元集</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item row="0" column="2">
+          <widget class="QLabel" name="labelSeepageTarget">
+           <property name="text">
+            <string>编号</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="3">
+          <widget class="QLineEdit" name="lineEditSeepageTarget"/>
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="labelSeepageValue">
+           <property name="text">
+            <string>分量 (Fx,Fy,Fz)</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="1" colspan="2">
+          <widget class="QLineEdit" name="lineEditSeepageValue"/>
+         </item>
+         <item row="1" column="3">
+          <widget class="QPushButton" name="buttonApplySeepage">
+           <property name="text">
+            <string>应用渗透体力</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Orientation::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
