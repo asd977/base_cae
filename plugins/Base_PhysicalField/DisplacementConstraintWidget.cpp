@@ -1,5 +1,6 @@
 #include "DisplacementConstraintWidget.h"
 #include "ui_DisplacementConstraintWidget.h"
+#include "DisplacementConstraintSelectionManager.h"
 
 #include <QDebug>
 #include <ServiceRegistry.h>
@@ -34,11 +35,14 @@ DisplacementConstraintWidget::DisplacementConstraintWidget(QWidget *parent)
     , ui(new Ui::DisplacementConstraintWidget)
 {
     ui->setupUi(this);
+    ui->uxRadio->setChecked(true);
+    DisplacementConstraintSelectionManager::instance().registerWidget(this);
 }
 
 DisplacementConstraintWidget::~DisplacementConstraintWidget()
 {
     teardownPicking();
+    DisplacementConstraintSelectionManager::instance().unregisterWidget(this);
     delete ui;
 }
 
@@ -83,6 +87,10 @@ void DisplacementConstraintWidget::beforeLoad()
     // build nodeId->vtkPid map once (for fast multi-select updates)
     buildNodeIdToVtkPidMap();
 
+    rebuildSelectionIndex();
+    rebuildSelectedPoints();
+    updateLastSelectedFallback();
+
     // 如果你希望进入页面默认启用点选，可打开：
     // enablePicking(true);
 }
@@ -102,8 +110,6 @@ void DisplacementConstraintWidget::beforeUnload()
     m_selPoly = nullptr;
     m_selPts = nullptr;
 
-    m_selNodeIds.clear();
-    m_nodeId2SelIndex.clear();
     m_nodeId2VtkPid.clear();
 
     m_nodeIdArr = nullptr;
@@ -286,11 +292,18 @@ void DisplacementConstraintWidget::toggleSelectNode(int nodeId, vtkIdType vtkPid
     // 已选则取消，否则选中
     if (m_nodeId2SelIndex.contains(nodeId)) {
         removeSelected(nodeId);
+        m_nodeConstraints.remove(nodeId);
+        DisplacementConstraintSelectionManager::instance().releaseSelection(this, nodeId);
+        if (m_lastSelectedNodeId == nodeId) {
+            m_lastSelectedNodeId = -1;
+            updateLastSelectedFallback();
+        }
     } else {
-        // 如果你希望只允许单选，把这两行打开：
-        // m_selNodeIds.clear(); m_nodeId2SelIndex.clear(); m_selPts->Reset();
-
+        DisplacementConstraintSelectionManager::instance().requestSelection(this, nodeId);
         addSelected(nodeId, vtkPid);
+        applyConstraintToNode(nodeId);
+        m_lastSelectedNodeId = nodeId;
+        updateLastSelectedLabels(nodeId);
     }
 
     // 让 VTK 知道数据变了
@@ -317,8 +330,6 @@ void DisplacementConstraintWidget::addSelected(int nodeId, vtkIdType vtkPid)
 
 void DisplacementConstraintWidget::removeSelected(int nodeId)
 {
-    if (!m_selPts) return;
-
     auto it = m_nodeId2SelIndex.find(nodeId);
     if (it == m_nodeId2SelIndex.end()) return;
 
@@ -329,10 +340,12 @@ void DisplacementConstraintWidget::removeSelected(int nodeId)
     if (idx != lastIdx) {
         const int lastNodeId = m_selNodeIds[lastIdx];
 
-        // 把最后一个点坐标搬到 idx
-        double lastP[3];
-        m_selPts->GetPoint(lastIdx, lastP);
-        m_selPts->SetPoint(idx, lastP);
+        if (m_selPts) {
+            // 把最后一个点坐标搬到 idx
+            double lastP[3];
+            m_selPts->GetPoint(lastIdx, lastP);
+            m_selPts->SetPoint(idx, lastP);
+        }
 
         // 更新 nodeId 列表与映射
         m_selNodeIds[idx] = lastNodeId;
@@ -344,5 +357,127 @@ void DisplacementConstraintWidget::removeSelected(int nodeId)
     m_nodeId2SelIndex.remove(nodeId);
 
     // vtkPoints 没有 RemoveLastPoint，最稳的做法：缩小点数
-    m_selPts->SetNumberOfPoints(m_selNodeIds.size());
+    if (m_selPts) {
+        m_selPts->SetNumberOfPoints(m_selNodeIds.size());
+    }
+}
+
+void DisplacementConstraintWidget::rebuildSelectedPoints()
+{
+    if (!m_selPts || !m_grid) return;
+
+    m_selPts->Reset();
+    m_selPts->SetNumberOfPoints(0);
+
+    for (int nodeId : m_selNodeIds) {
+        vtkIdType pid = resolveVtkPid(nodeId);
+        if (pid < 0) continue;
+        double p[3];
+        m_grid->GetPoint(pid, p);
+        m_selPts->InsertNextPoint(p);
+    }
+
+    m_selPts->Modified();
+    if (m_selPoly) m_selPoly->Modified();
+    if (m_visual) m_visual->render();
+}
+
+vtkIdType DisplacementConstraintWidget::resolveVtkPid(int nodeId) const
+{
+    if (m_nodeId2VtkPid.contains(nodeId)) return m_nodeId2VtkPid.value(nodeId);
+    if (!m_nodeIdArr && m_grid) {
+        const vtkIdType pid = static_cast<vtkIdType>(nodeId - 1);
+        if (pid >= 0 && pid < m_grid->GetNumberOfPoints()) return pid;
+    }
+    return -1;
+}
+
+void DisplacementConstraintWidget::rebuildSelectionIndex()
+{
+    m_nodeId2SelIndex.clear();
+    for (int i = 0; i < m_selNodeIds.size(); ++i) {
+        m_nodeId2SelIndex.insert(m_selNodeIds[i], i);
+    }
+}
+
+DisplacementConstraintWidget::DisplacementConstraintData
+DisplacementConstraintWidget::currentConstraintFromUi() const
+{
+    DisplacementConstraintData data;
+
+    if (ui->uxRadio->isChecked()) {
+        data.uxFixed = true;
+    } else if (ui->uyRadio->isChecked()) {
+        data.uyFixed = true;
+    } else if (ui->uzRadio->isChecked()) {
+        data.uzFixed = true;
+    } else {
+        data.uxFixed = true;
+    }
+
+    return data;
+}
+
+void DisplacementConstraintWidget::applyConstraintToNode(int nodeId)
+{
+    m_nodeConstraints.insert(nodeId, currentConstraintFromUi());
+}
+
+void DisplacementConstraintWidget::updateLastSelectedLabels(int nodeId)
+{
+    const auto it = m_nodeConstraints.find(nodeId);
+    if (it == m_nodeConstraints.end()) {
+        clearLastSelectedLabels();
+        return;
+    }
+
+    const auto& data = it.value();
+    const auto fixedText = [](bool fixed, double value) {
+        return fixed ? QString::number(value, 'g', 16) : QStringLiteral("自由");
+    };
+
+    ui->IDLabel->setText(QString::number(nodeId));
+    ui->UXLabel->setText(fixedText(data.uxFixed, data.uxValue));
+    ui->UYLabel->setText(fixedText(data.uyFixed, data.uyValue));
+    ui->UZLabel->setText(fixedText(data.uzFixed, data.uzValue));
+}
+
+void DisplacementConstraintWidget::updateLastSelectedFallback()
+{
+    if (m_lastSelectedNodeId >= 0 && m_nodeConstraints.contains(m_lastSelectedNodeId)) {
+        updateLastSelectedLabels(m_lastSelectedNodeId);
+        return;
+    }
+
+    if (!m_selNodeIds.isEmpty()) {
+        m_lastSelectedNodeId = m_selNodeIds.last();
+        updateLastSelectedLabels(m_lastSelectedNodeId);
+        return;
+    }
+
+    clearLastSelectedLabels();
+}
+
+void DisplacementConstraintWidget::clearLastSelectedLabels()
+{
+    ui->IDLabel->clear();
+    ui->UXLabel->clear();
+    ui->UYLabel->clear();
+    ui->UZLabel->clear();
+}
+
+void DisplacementConstraintWidget::removeSelectedByManager(int nodeId)
+{
+    if (!m_nodeId2SelIndex.contains(nodeId)) return;
+
+    removeSelected(nodeId);
+    m_nodeConstraints.remove(nodeId);
+    if (m_lastSelectedNodeId == nodeId) {
+        m_lastSelectedNodeId = -1;
+        updateLastSelectedFallback();
+    }
+
+    if (m_selPts) m_selPts->Modified();
+    if (m_selPoly) m_selPoly->Modified();
+    if (m_visual) m_visual->render();
 }

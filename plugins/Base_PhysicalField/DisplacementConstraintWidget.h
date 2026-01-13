@@ -23,10 +23,12 @@ class vtkRenderWindowInteractor;
 namespace Ui { class DisplacementConstraintWidget; }
 
 class VisualWidgetService;
+class DisplacementConstraintSelectionManager;
 
 class DisplacementConstraintWidget : public BasePage
 {
     Q_OBJECT
+    friend class DisplacementConstraintSelectionManager;
 public:
     explicit DisplacementConstraintWidget(QWidget *parent = nullptr);
     ~DisplacementConstraintWidget() override;
@@ -43,6 +45,7 @@ private:
     void setupPicking();
     void teardownPicking();
     bool pickAt(int x, int y);
+    void removeSelectedByManager(int nodeId);
 
     static void OnLeftButtonPress(vtkObject* caller,
                                   unsigned long eventId,
@@ -55,6 +58,23 @@ private:
     void toggleSelectNode(int nodeId, vtkIdType vtkPid);
     void addSelected(int nodeId, vtkIdType vtkPid);
     void removeSelected(int nodeId);
+    void rebuildSelectedPoints();
+    vtkIdType resolveVtkPid(int nodeId) const;
+    void rebuildSelectionIndex();
+
+    struct DisplacementConstraintData {
+        bool uxFixed = false;
+        bool uyFixed = false;
+        bool uzFixed = false;
+        double uxValue = 0.0;
+        double uyValue = 0.0;
+        double uzValue = 0.0;
+    };
+    DisplacementConstraintData currentConstraintFromUi() const;
+    void applyConstraintToNode(int nodeId);
+    void updateLastSelectedLabels(int nodeId);
+    void updateLastSelectedFallback();
+    void clearLastSelectedLabels();
 
 private:
     Ui::DisplacementConstraintWidget *ui = nullptr;
@@ -79,6 +99,8 @@ private:
     // selected node ids (order matters for O(1) remove by swap)
     QVector<int> m_selNodeIds;          // index -> nodeId
     QHash<int, int> m_nodeId2SelIndex;  // nodeId -> index in m_selNodeIds
+    QHash<int, DisplacementConstraintData> m_nodeConstraints;
+    int m_lastSelectedNodeId = -1;
 
     vtkSmartPointer<vtkPoints> m_selPts;
     vtkSmartPointer<vtkPolyData> m_selPoly;

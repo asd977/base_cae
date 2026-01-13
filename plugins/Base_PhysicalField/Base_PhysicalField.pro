@@ -6,12 +6,14 @@ INCLUDEPATH += $$PWD/../../interfaces
 
 HEADERS += \
     DisplacementConstraintWidget.h \
+    DisplacementConstraintSelectionManager.h \
     LoadSpecificationWidget.h \
     PhySicalField.h \
     PhysicalFieldSettingWidget.h
 
 SOURCES += \
     DisplacementConstraintWidget.cpp \
+    DisplacementConstraintSelectionManager.cpp \
     LoadSpecificationWidget.cpp \
     PhySicalField.cpp \
     PhysicalFieldSettingWidget.cpp
