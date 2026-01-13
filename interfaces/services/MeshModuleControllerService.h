@@ -1,9 +1,10 @@
 ﻿#ifndef MESH_MODULE_CONTROLLER_SERVICE_H
 #define MESH_MODULE_CONTROLLER_SERVICE_H
 
-#include <QSet>
-
+template <typename T> class vtkSmartPointer;
+template <typename T> class QSet;
 class IiinGridModel;
+class vtkUnstructuredGrid;
 
 struct MeshModuleControllerService
 {
@@ -18,6 +19,7 @@ struct MeshModuleControllerService
                                   int selectedMatype,
                                   int previewMatype,
                                   int preDeleteMatype) = 0;
+    virtual vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGrid() = 0;
 };
 
 #endif // MESH_MODULE_CONTROLLER_SERVICE_H

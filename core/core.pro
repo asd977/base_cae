@@ -30,9 +30,7 @@ HEADERS += \
         SMThreading.h \
         SMProcess.h \
     StyleManager.h \
-    EventManager.h \
-    mesh/BoundaryConditions.h \
-    mesh/GmshV2Reader.h
+    EventManager.h
 
 SOURCES += \
     ContextMenuHub.cpp \
@@ -44,9 +42,7 @@ SOURCES += \
 		BasePage.cpp \
         SMProcess.cpp \
     StyleManager.cpp \
-    EventManager.cpp \
-    mesh/BoundaryConditions.cpp \
-    mesh/GmshV2Reader.cpp
+    EventManager.cpp
 
 
 

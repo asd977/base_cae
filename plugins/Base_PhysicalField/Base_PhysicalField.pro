@@ -8,7 +8,7 @@ HEADERS += \
     DisplacementConstraintWidget.h \
     LoadSpecificationWidget.h \
     PhySicalField.h \
-    PhysicalFieldSettingWidget.
+    PhysicalFieldSettingWidget.h
 
 SOURCES += \
     DisplacementConstraintWidget.cpp \

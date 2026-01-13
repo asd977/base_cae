@@ -21,6 +21,7 @@
 #include <vtkProperty.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkCellData.h>
+#include <vtkPointData.h>
 
 // === 这些头文件你后面真正实现时再加 ===
 // #include "MeshImportGridWidget.h"
@@ -363,6 +364,13 @@ void MeshModuleController::displayCurrentModel()
     m_previewGrid = grid;
 }
 
+vtkSmartPointer<vtkUnstructuredGrid> MeshModuleController::getVtkUnstructuredGrid()
+{
+    return m_previewGrid;
+}
+
+
+
 vtkSmartPointer<vtkUnstructuredGrid>
 MeshModuleController::buildGridFromModel(const IiinGridModel &model) const
 {
@@ -373,14 +381,20 @@ MeshModuleController::buildGridFromModel(const IiinGridModel &model) const
 
     auto points = vtkSmartPointer<vtkPoints>::New();
     points->SetNumberOfPoints(nodes.size());
+    auto nodeIdArray = vtkSmartPointer<vtkIntArray>::New();
+    nodeIdArray->SetName("node_id");
+    nodeIdArray->SetNumberOfComponents(1);
+    nodeIdArray->SetNumberOfTuples(nodes.size());
 
     for (vtkIdType i = 0; i < static_cast<vtkIdType>(nodes.size()); ++i) {
         const Node &n = nodes[static_cast<int>(i)];
         points->SetPoint(i, n.x, n.y, n.z);
+        nodeIdArray->SetValue(i, n.id);
     }
 
     auto grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
     grid->SetPoints(points);
+    grid->GetPointData()->AddArray(nodeIdArray);
 
     auto matypeArray = vtkSmartPointer<vtkIntArray>::New();
     matypeArray->SetName("MATYPE");
@@ -415,6 +429,7 @@ MeshModuleController::buildGridFromModel(const IiinGridModel &model) const
 
     grid->GetCellData()->AddArray(matypeArray);
     grid->GetCellData()->SetScalars(matypeArray);
+
     return grid;
 }
 

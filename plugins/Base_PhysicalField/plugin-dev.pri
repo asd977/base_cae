@@ -1,3 +1,4 @@
+include($$PWD/../../libs/vtk/vtk.pri)
 TARGET = Base_PhysicalField
 TEMPLATE = lib
 QT += widgets core

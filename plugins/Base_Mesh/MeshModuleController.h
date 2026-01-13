@@ -33,6 +33,7 @@ public:
                           int preDeleteMatype) override;
 
 
+    vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGrid();
 private:
     void initAction();
 

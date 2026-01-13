@@ -4,7 +4,6 @@
 #include <services/ProjectManagerService.h>
 #include <DisplacementConstraintWidget.h>
 #include <LoadSpecificationWidget.h>
-#include <PrimaryCurrentDistributionWidget.h>
 #include <ServiceRegistry.h>
 
 PhysicalField::PhysicalField()

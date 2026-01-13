@@ -1,7 +1,5 @@
 ﻿#include "MeshProcessor.h"
 
-#include <mesh/BoundaryConditions.h>
-
 MeshProcessor::MeshProcessor()
 {
 	gmsh::initialize();
