@@ -6,13 +6,326 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>350</width>
-    <height>456</height>
+    <width>520</width>
+    <height>620</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Form</string>
+   <string>位移约束</string>
   </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QLabel" name="meshFileLabel">
+     <property name="text">
+      <string>网格文件: 未加载</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="displayGroup">
+     <property name="title">
+      <string>约束显示</string>
+     </property>
+     <layout class="QHBoxLayout" name="displayLayout">
+      <item>
+       <widget class="QCheckBox" name="showUxCheck">
+        <property name="text">
+         <string>显示 Ux</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="showUyCheck">
+        <property name="text">
+         <string>显示 Uy</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="showUzCheck">
+        <property name="text">
+         <string>显示 Uz</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="nodeConstraintGroup">
+     <property name="title">
+      <string>节点约束</string>
+     </property>
+     <layout class="QVBoxLayout" name="nodeConstraintLayout">
+      <item>
+       <layout class="QFormLayout" name="nodeFormLayout">
+        <item row="0" column="0">
+         <widget class="QLabel" name="nodeIdLabel">
+          <property name="text">
+           <string>节点 ID</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QSpinBox" name="nodeIdSpin">
+          <property name="minimum">
+           <number>1</number>
+          </property>
+          <property name="maximum">
+           <number>100000000</number>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="uxLabel">
+          <property name="text">
+           <string>Ux</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QSpinBox" name="uxSpin">
+          <property name="minimum">
+           <number>-10000</number>
+          </property>
+          <property name="maximum">
+           <number>10000</number>
+          </property>
+          <property name="value">
+           <number>1</number>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="uyLabel">
+          <property name="text">
+           <string>Uy</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QSpinBox" name="uySpin">
+          <property name="minimum">
+           <number>-10000</number>
+          </property>
+          <property name="maximum">
+           <number>10000</number>
+          </property>
+          <property name="value">
+           <number>1</number>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="0">
+         <widget class="QLabel" name="uzLabel">
+          <property name="text">
+           <string>Uz</string>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="1">
+         <widget class="QSpinBox" name="uzSpin">
+          <property name="minimum">
+           <number>-10000</number>
+          </property>
+          <property name="maximum">
+           <number>10000</number>
+          </property>
+          <property name="value">
+           <number>1</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QPushButton" name="applyNodeButton">
+        <property name="text">
+         <string>应用到节点</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="planeConstraintGroup">
+     <property name="title">
+      <string>方程约束 (ax + by + cz + d = 0)</string>
+     </property>
+     <layout class="QVBoxLayout" name="planeLayout">
+      <item>
+       <layout class="QFormLayout" name="planeFormLayout">
+        <item row="0" column="0">
+         <widget class="QLabel" name="aLabel">
+          <property name="text">
+           <string>a</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QDoubleSpinBox" name="aSpin">
+          <property name="minimum">
+           <double>-100000.000000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>100000.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="bLabel">
+          <property name="text">
+           <string>b</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QDoubleSpinBox" name="bSpin">
+          <property name="minimum">
+           <double>-100000.000000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>100000.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="cLabel">
+          <property name="text">
+           <string>c</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QDoubleSpinBox" name="cSpin">
+          <property name="minimum">
+           <double>-100000.000000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>100000.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="0">
+         <widget class="QLabel" name="dLabel">
+          <property name="text">
+           <string>d</string>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="1">
+         <widget class="QDoubleSpinBox" name="dSpin">
+          <property name="minimum">
+           <double>-100000.000000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>100000.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="0">
+         <widget class="QLabel" name="tolLabel">
+          <property name="text">
+           <string>容差</string>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="1">
+         <widget class="QDoubleSpinBox" name="tolSpin">
+          <property name="decimals">
+           <number>8</number>
+          </property>
+          <property name="minimum">
+           <double>0.000000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>100000.000000000000000</double>
+          </property>
+          <property name="value">
+           <double>0.000001000000000</double>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QPushButton" name="applyPlaneButton">
+        <property name="text">
+         <string>应用到方程节点</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="matypeConstraintGroup">
+     <property name="title">
+      <string>材料集约束</string>
+     </property>
+     <layout class="QHBoxLayout" name="matypeLayout">
+      <item>
+       <widget class="QComboBox" name="matypeCombo"/>
+      </item>
+      <item>
+       <widget class="QPushButton" name="applyMatypeButton">
+        <property name="text">
+         <string>应用到材料集</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="fileButtonsLayout">
+     <item>
+      <widget class="QPushButton" name="loadConstraintButton">
+       <property name="text">
+        <string>加载约束文件</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="saveConstraintButton">
+       <property name="text">
+        <string>保存约束文件</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="generateTestButton">
+       <property name="text">
+        <string>生成测试约束文件</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+  </layout>
  </widget>
  <resources/>
  <connections/>

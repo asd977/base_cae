@@ -3,6 +3,7 @@
 
 #include <BasePage.h>
 #include <QWidget>
+#include <QVector>
 
 namespace Ui {
 class DisplacementConstraintWidget;
@@ -19,6 +20,13 @@ public:
     void beforeUnload() override;
 
 private:
+    void connectSignals();
+    void refreshMeshInfo();
+    void updateMatypeList();
+    QVector<int> currentDofValues() const;
+    QString defaultConstraintFilePath(const QString &fallbackName) const;
+    void applyConstraintVisibility();
+
     Ui::DisplacementConstraintWidget *ui;
 };
 

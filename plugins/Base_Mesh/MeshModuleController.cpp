@@ -19,6 +19,8 @@
 #include <vtkLookupTable.h>
 #include <vtkPoints.h>
 #include <vtkProperty.h>
+#include <vtkPolyData.h>
+#include <vtkCellArray.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkCellData.h>
 
@@ -72,6 +74,14 @@ bool MeshModuleController::currentModel(IiinGridModel &model) const
         return false;
     model = m_currentModel;
     return true;
+}
+
+QString MeshModuleController::currentModelFileName() const
+{
+    if (!m_hasModel) {
+        return {};
+    }
+    return m_currentModel.fileName();
 }
 
 QSet<int> MeshModuleController::getAvailableMatypes() const
@@ -152,6 +162,126 @@ void MeshModuleController::highlightMatypes(const QSet<int> &matypes,
         return;
     }
     m_gridEditingWidget->highlightMatypes(matypes, selectedMatype, previewMatype, preDeleteMatype);
+}
+
+bool MeshModuleController::ensureConstraintModel(QString *errMsg)
+{
+    if (!m_hasModel) {
+        if (errMsg) *errMsg = QStringLiteral("未加载网格");
+        return false;
+    }
+    if (!m_hasConstraints) {
+        if (!m_constraintModel.resetFromModel(m_currentModel, 3)) {
+            if (errMsg) *errMsg = QStringLiteral("约束模型初始化失败");
+            return false;
+        }
+        m_hasConstraints = true;
+    }
+    refreshConstraintActors();
+    return true;
+}
+
+bool MeshModuleController::loadConstraintFile(const QString &fileName, QString *errMsg)
+{
+    if (!m_hasModel) {
+        if (errMsg) *errMsg = QStringLiteral("未加载网格");
+        return false;
+    }
+    if (!m_constraintModel.loadFromFile(fileName, m_currentModel, errMsg)) {
+        return false;
+    }
+    m_hasConstraints = true;
+    refreshConstraintActors();
+    return true;
+}
+
+bool MeshModuleController::saveConstraintFile(const QString &fileName, QString *errMsg) const
+{
+    if (!m_hasModel) {
+        if (errMsg) *errMsg = QStringLiteral("未加载网格");
+        return false;
+    }
+    if (!m_hasConstraints) {
+        if (errMsg) *errMsg = QStringLiteral("约束模型未初始化");
+        return false;
+    }
+    return m_constraintModel.saveToFile(fileName, m_currentModel, errMsg);
+}
+
+bool MeshModuleController::generateDefaultConstraintFile(const QString &fileName, QString *errMsg)
+{
+    if (!ensureConstraintModel(errMsg)) {
+        return false;
+    }
+    return m_constraintModel.saveToFile(fileName, m_currentModel, errMsg);
+}
+
+bool MeshModuleController::setNodeConstraint(int nodeId,
+                                             const QVector<int> &dofs,
+                                             QString *errMsg)
+{
+    if (!ensureConstraintModel(errMsg)) {
+        return false;
+    }
+    if (!m_constraintModel.setNodeConstraint(m_currentModel, nodeId, dofs, errMsg)) {
+        return false;
+    }
+    refreshConstraintActors();
+    return true;
+}
+
+bool MeshModuleController::setConstraintsForMatype(int matype, const QVector<int> &dofs)
+{
+    if (!ensureConstraintModel(nullptr)) {
+        return false;
+    }
+    if (!m_constraintModel.setConstraintsForMatype(m_currentModel, matype, dofs)) {
+        return false;
+    }
+    refreshConstraintActors();
+    return true;
+}
+
+bool MeshModuleController::setConstraintsForPlane(double a,
+                                                  double b,
+                                                  double c,
+                                                  double d,
+                                                  double tolerance,
+                                                  const QVector<int> &dofs)
+{
+    if (!ensureConstraintModel(nullptr)) {
+        return false;
+    }
+    if (!m_constraintModel.setConstraintsForPlane(m_currentModel, a, b, c, d, tolerance, dofs)) {
+        return false;
+    }
+    refreshConstraintActors();
+    return true;
+}
+
+bool MeshModuleController::currentConstraintState(QVector<QVector<int>> &constraints,
+                                                  int &madof) const
+{
+    if (!m_hasConstraints) {
+        return false;
+    }
+    constraints = m_constraintModel.constraints();
+    madof = m_constraintModel.madof();
+    return true;
+}
+
+void MeshModuleController::setConstraintVisibility(bool showUx, bool showUy, bool showUz)
+{
+    m_constraintVisibility[0] = showUx;
+    m_constraintVisibility[1] = showUy;
+    m_constraintVisibility[2] = showUz;
+    ensureConstraintActors();
+    if (!m_visualWidgetService) {
+        return;
+    }
+    m_visualWidgetService->setVisible(QStringLiteral("constraint.ux"), showUx, false);
+    m_visualWidgetService->setVisible(QStringLiteral("constraint.uy"), showUy, false);
+    m_visualWidgetService->setVisible(QStringLiteral("constraint.uz"), showUz, true);
 }
 
 void MeshModuleController::initAction()
@@ -242,6 +372,8 @@ void MeshModuleController::onImportGrid()
 
     m_currentModel = model;
     m_hasModel = true;
+    m_hasConstraints = false;
+    m_constraintModel.clear();
     displayCurrentModel();
 }
 
@@ -361,6 +493,8 @@ void MeshModuleController::displayCurrentModel()
     m_previewMapper = mapper;
     m_previewActor = actor;
     m_previewGrid = grid;
+
+    ensureConstraintModel();
 }
 
 vtkSmartPointer<vtkUnstructuredGrid>
@@ -496,4 +630,87 @@ int MeshModuleController::ketypeToVtkCellType(int ketype) const
     default:
         return -1;
     }
+}
+
+void MeshModuleController::refreshConstraintActors()
+{
+    if (!m_visualWidgetService || !m_hasConstraints) {
+        return;
+    }
+    ensureConstraintActors();
+    for (int i = 0; i < 3; ++i) {
+        if (!m_constraintActors[i]) {
+            continue;
+        }
+        auto poly = buildConstraintPolyData(i);
+        const QString id = (i == 0) ? QStringLiteral("constraint.ux")
+                                    : (i == 1) ? QStringLiteral("constraint.uy")
+                                               : QStringLiteral("constraint.uz");
+        m_visualWidgetService->updateActorPolyData(id, poly, false);
+    }
+    m_visualWidgetService->render();
+}
+
+vtkSmartPointer<vtkPolyData> MeshModuleController::buildConstraintPolyData(int dofIndex) const
+{
+    auto poly = vtkSmartPointer<vtkPolyData>::New();
+    if (!m_hasConstraints || !m_hasModel || dofIndex < 0 || dofIndex >= 3) {
+        return poly;
+    }
+
+    const QVector<int> indices = m_constraintModel.constrainedNodeIndices(dofIndex);
+    auto points = vtkSmartPointer<vtkPoints>::New();
+    auto verts = vtkSmartPointer<vtkCellArray>::New();
+    points->SetNumberOfPoints(indices.size());
+
+    for (vtkIdType i = 0; i < static_cast<vtkIdType>(indices.size()); ++i) {
+        const int idx = indices[static_cast<int>(i)];
+        if (idx < 0 || idx >= m_currentModel.nodes().size()) {
+            continue;
+        }
+        const auto &node = m_currentModel.nodes()[idx];
+        points->SetPoint(i, node.x, node.y, node.z);
+        verts->InsertNextCell(1, &i);
+    }
+
+    poly->SetPoints(points);
+    poly->SetVerts(verts);
+    return poly;
+}
+
+void MeshModuleController::ensureConstraintActors()
+{
+    if (!m_visualWidgetService) {
+        return;
+    }
+    static const QString kGroup = QStringLiteral("约束");
+    struct ActorInfo {
+        QString id;
+        double color[3];
+    };
+    const ActorInfo infos[3] = {
+        {QStringLiteral("constraint.ux"), {0.9, 0.2, 0.2}},
+        {QStringLiteral("constraint.uy"), {0.2, 0.8, 0.2}},
+        {QStringLiteral("constraint.uz"), {0.2, 0.4, 0.9}},
+    };
+
+    for (int i = 0; i < 3; ++i) {
+        if (!m_constraintActors[i]) {
+            auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
+            mapper->ScalarVisibilityOff();
+            auto actor = vtkSmartPointer<vtkActor>::New();
+            actor->SetMapper(mapper);
+            actor->GetProperty()->SetColor(infos[i].color);
+            actor->GetProperty()->SetPointSize(6.0);
+            m_constraintActors[i] = actor;
+            m_visualWidgetService->addProp(infos[i].id,
+                                           actor,
+                                           kGroup,
+                                           infos[i].id,
+                                           false,
+                                           false);
+        }
+        m_visualWidgetService->setVisible(infos[i].id, m_constraintVisibility[i], false);
+    }
+    m_visualWidgetService->render();
 }
