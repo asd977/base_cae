@@ -215,7 +215,12 @@ void UiFrame::storeUiState()
 
 void UiFrame::setDockWidgetStyle()
 {
-    // 有 qss 就在这里加载；没用就留空即可
+    // QFile StyleSheetFile(":adsdemo/res/visual_studio_light.css");
+    // StyleSheetFile.open(QIODevice::ReadOnly);
+    // QTextStream StyleSheetStream(&StyleSheetFile);
+    // auto Stylesheet = StyleSheetStream.readAll();
+    // StyleSheetFile.close();
+    // m_dockManager->setStyleSheet(Stylesheet);
 }
 
 ads::DockWidgetArea UiFrame::preferDockArea(const QString& name) const

@@ -2,6 +2,8 @@
 #include "PhysicalFieldSettingWidget.h"
 #include <ServiceRegistry.h>
 #include <services/ProjectManagerService.h>
+#include <DisplacementConstraintWidget.h>
+#include <LoadSpecificationWidget.h>
 #include <PrimaryCurrentDistributionWidget.h>
 #include <ServiceRegistry.h>
 
@@ -23,8 +25,14 @@ void PhysicalField::newProject()
     ProjectManagerService *projectManagerService= ServiceRegistry::instance().getService<ProjectManagerService>();
     projectManagerService->addTreeItem(m_node);
 
-    PrimaryCurrentDistributionWidget *primaryCurrentDistributionWidget = new PrimaryCurrentDistributionWidget;
-    ProjectNode *node2 = new ProjectNode("一次/二次电流分布",QUuid::createUuid().toString(),(BasePage*)primaryCurrentDistributionWidget);
-    primaryCurrentDistributionWidget->setNode(node2);
+
+
+    DisplacementConstraintWidget *displacementConstraintWidget = new DisplacementConstraintWidget;
+    ProjectNode *node2 = new ProjectNode("位移约束",QUuid::createUuid().toString(),(BasePage*)displacementConstraintWidget);
     m_node->addChild(node2);
+
+    LoadSpecificationWidget *loadSpecificationWidget = new LoadSpecificationWidget;
+    ProjectNode *node3 = new ProjectNode("荷载设置",QUuid::createUuid().toString(),(BasePage*)loadSpecificationWidget);
+    m_node->addChild(node3);
+
 }
