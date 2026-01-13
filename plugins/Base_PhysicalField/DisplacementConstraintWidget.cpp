@@ -37,6 +37,14 @@ DisplacementConstraintWidget::DisplacementConstraintWidget(QWidget *parent)
     ui->setupUi(this);
     ui->uxRadio->setChecked(true);
     DisplacementConstraintSelectionManager::instance().registerWidget(this);
+
+    auto updateSelection = [this](bool checked) {
+        if (!checked) return;
+        applyConstraintToSelectedNodes();
+    };
+    connect(ui->uxRadio, &QRadioButton::toggled, this, updateSelection);
+    connect(ui->uyRadio, &QRadioButton::toggled, this, updateSelection);
+    connect(ui->uzRadio, &QRadioButton::toggled, this, updateSelection);
 }
 
 DisplacementConstraintWidget::~DisplacementConstraintWidget()
@@ -421,6 +429,22 @@ DisplacementConstraintWidget::currentConstraintFromUi() const
 void DisplacementConstraintWidget::applyConstraintToNode(int nodeId)
 {
     m_nodeConstraints.insert(nodeId, currentConstraintFromUi());
+}
+
+void DisplacementConstraintWidget::applyConstraintToSelectedNodes()
+{
+    if (m_selNodeIds.isEmpty()) return;
+
+    const auto constraint = currentConstraintFromUi();
+    for (int nodeId : m_selNodeIds) {
+        m_nodeConstraints.insert(nodeId, constraint);
+    }
+
+    if (m_lastSelectedNodeId >= 0) {
+        updateLastSelectedLabels(m_lastSelectedNodeId);
+    } else {
+        updateLastSelectedFallback();
+    }
 }
 
 void DisplacementConstraintWidget::updateLastSelectedLabels(int nodeId)

@@ -72,6 +72,7 @@ private:
     };
     DisplacementConstraintData currentConstraintFromUi() const;
     void applyConstraintToNode(int nodeId);
+    void applyConstraintToSelectedNodes();
     void updateLastSelectedLabels(int nodeId);
     void updateLastSelectedFallback();
     void clearLastSelectedLabels();
