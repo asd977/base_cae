@@ -1,5 +1,15 @@
 #include "LoadSpecificationWidget.h"
 #include "ui_LoadSpecificationWidget.h"
+#include "AddedMassPage.h"
+#include "BeamLoadPage.h"
+#include "BodyForcePage.h"
+#include "GeoFitPage.h"
+#include "GeoMeasurePage.h"
+#include "LineForcePage.h"
+#include "PointForcePage.h"
+#include "SeismicPage.h"
+#include "SurfaceForcePage.h"
+#include "TemperaturePage.h"
 
 #include <QDebug>
 #include <ServiceRegistry.h>
@@ -35,6 +45,7 @@ LoadSpecificationWidget::LoadSpecificationWidget(QWidget *parent)
     , ui(new Ui::LoadSpecificationWidget)
 {
     ui->setupUi(this);
+    setupTabs();
 }
 
 LoadSpecificationWidget::~LoadSpecificationWidget()
@@ -62,11 +73,17 @@ void LoadSpecificationWidget::beforeLoad()
 
     // 默认不启用，等勾选框触发
     m_pickEnabled = false;
+    m_activeTabWidget = ui->tabWidget ? ui->tabWidget->currentWidget() : nullptr;
+    clearSelectionsExcept(m_activeTabWidget);
+    updateSelectionList();
 }
 
 void LoadSpecificationWidget::beforeUnload()
 {
     enableFacePick(false);
+
+    m_pageSurfaceSelections.clear();
+    m_activeTabWidget = nullptr;
 
     m_volumeGrid = nullptr;
     m_renderer = nullptr;
@@ -78,6 +95,18 @@ void LoadSpecificationWidget::beforeUnload()
 void LoadSpecificationWidget::on_clickCheckBox_checkStateChanged(const Qt::CheckState &arg1)
 {
     enableFacePick(arg1 == Qt::Checked);
+}
+
+void LoadSpecificationWidget::on_tabWidget_currentChanged(int index)
+{
+    if (index < 0)
+        return;
+
+    m_activeTabWidget = ui->tabWidget ? ui->tabWidget->widget(index) : nullptr;
+    clearSelectionsExcept(m_activeTabWidget);
+    rebuildHighlight();
+    updateSelectionList();
+    if (m_visual) m_visual->render();
 }
 
 void LoadSpecificationWidget::enableFacePick(bool on)
@@ -163,7 +192,8 @@ void LoadSpecificationWidget::setupSurfaceAndPicker()
     m_leftPressCb->SetCallback(&LoadSpecificationWidget::OnLeftButtonPress);
     m_interactor->AddObserver(vtkCommand::LeftButtonPressEvent, m_leftPressCb);
 
-    m_selectedSurfaceCellIds.clear();
+    m_activeTabWidget = ui->tabWidget ? ui->tabWidget->currentWidget() : nullptr;
+    clearSelectionsExcept(m_activeTabWidget);
 
     qDebug() << "[LoadSpecificationWidget] Face picking enabled. surfaceCells="
              << m_surface->GetNumberOfCells();
@@ -181,7 +211,7 @@ void LoadSpecificationWidget::teardownSurfaceAndPicker()
     m_leftPressCb = nullptr;
     m_picker = nullptr;
 
-    m_selectedSurfaceCellIds.clear();
+    m_pageSurfaceSelections.clear();
 
     if (m_visual) {
         m_visual->removeProp(kPickHighlightPropId, false);
@@ -245,11 +275,18 @@ void LoadSpecificationWidget::handlePick(int displayX, int displayY)
         }
     }
 
+    m_activeTabWidget = ui->tabWidget ? ui->tabWidget->currentWidget() : nullptr;
+    if (!m_activeTabWidget)
+        return;
+
+    clearSelectionsExcept(m_activeTabWidget);
+    auto &currentSelection = m_pageSurfaceSelections[m_activeTabWidget];
+
     // 再点一次取消选中
-    if (m_selectedSurfaceCellIds.contains(cellId))
-        m_selectedSurfaceCellIds.remove(cellId);
+    if (currentSelection.contains(cellId))
+        currentSelection.remove(cellId);
     else
-        m_selectedSurfaceCellIds.insert(cellId);
+        currentSelection.insert(cellId);
 
     if (nodeIdArr) {
         qDebug() << "[PickFace] surfaceCellId=" << cellId
@@ -262,6 +299,7 @@ void LoadSpecificationWidget::handlePick(int displayX, int displayY)
     }
 
     rebuildHighlight();
+    updateSelectionList();
     if (m_visual) m_visual->render();
 }
 
@@ -269,17 +307,25 @@ void LoadSpecificationWidget::rebuildHighlight()
 {
     if (!m_surface || !m_highlightMapper) return;
 
-    if (m_selectedSurfaceCellIds.isEmpty()) {
+    if (!m_activeTabWidget) {
+        auto empty = vtkSmartPointer<vtkPolyData>::New();
+        m_highlightMapper->SetInputData(empty);
+        return;
+    }
+
+    const auto currentSelection = m_pageSurfaceSelections.value(m_activeTabWidget);
+
+    if (currentSelection.isEmpty()) {
         auto empty = vtkSmartPointer<vtkPolyData>::New();
         m_highlightMapper->SetInputData(empty);
         return;
     }
 
     auto idList = vtkSmartPointer<vtkIdList>::New();
-    idList->SetNumberOfIds(m_selectedSurfaceCellIds.size());
+    idList->SetNumberOfIds(currentSelection.size());
 
     int k = 0;
-    for (vtkIdType cid : m_selectedSurfaceCellIds)
+    for (vtkIdType cid : currentSelection)
         idList->SetId(k++, cid);
 
     auto extract = vtkSmartPointer<vtkExtractCells>::New();
@@ -293,4 +339,58 @@ void LoadSpecificationWidget::rebuildHighlight()
     geom->Update();
 
     m_highlightMapper->SetInputData(geom->GetOutput());
+}
+
+void LoadSpecificationWidget::clearSelectionsExcept(const QWidget *activeWidget)
+{
+    for (auto it = m_pageSurfaceSelections.begin(); it != m_pageSurfaceSelections.end(); ++it) {
+        if (it.key() != activeWidget) {
+            it.value().clear();
+        }
+    }
+}
+
+void LoadSpecificationWidget::updateSelectionList()
+{
+    if (!ui || !ui->selectedFaceList)
+        return;
+
+    ui->selectedFaceList->clear();
+
+    const auto currentSelection = m_activeTabWidget
+        ? m_pageSurfaceSelections.value(m_activeTabWidget)
+        : QSet<vtkIdType>();
+    for (vtkIdType cid : currentSelection) {
+        ui->selectedFaceList->addItem(QString::number(cid));
+    }
+}
+
+void LoadSpecificationWidget::setupTabs()
+{
+    if (!ui->tabWidget)
+        return;
+
+    ui->tabWidget->clear();
+
+    auto *geoMeasure = new GeoMeasurePage(ui->tabWidget);
+    auto *geoFit = new GeoFitPage(ui->tabWidget);
+    auto *bodyForce = new BodyForcePage(ui->tabWidget);
+    auto *pointForce = new PointForcePage(ui->tabWidget);
+    auto *lineForce = new LineForcePage(ui->tabWidget);
+    auto *surfaceForce = new SurfaceForcePage(ui->tabWidget);
+    auto *temperature = new TemperaturePage(ui->tabWidget);
+    auto *beamLoad = new BeamLoadPage(ui->tabWidget);
+    auto *seismic = new SeismicPage(ui->tabWidget);
+    auto *addedMass = new AddedMassPage(ui->tabWidget);
+
+    ui->tabWidget->addTab(geoMeasure, geoMeasure->title());
+    ui->tabWidget->addTab(geoFit, geoFit->title());
+    ui->tabWidget->addTab(bodyForce, bodyForce->title());
+    ui->tabWidget->addTab(pointForce, pointForce->title());
+    ui->tabWidget->addTab(lineForce, lineForce->title());
+    ui->tabWidget->addTab(surfaceForce, surfaceForce->title());
+    ui->tabWidget->addTab(temperature, temperature->title());
+    ui->tabWidget->addTab(beamLoad, beamLoad->title());
+    ui->tabWidget->addTab(seismic, seismic->title());
+    ui->tabWidget->addTab(addedMass, addedMass->title());
 }

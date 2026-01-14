@@ -8,6 +8,17 @@ HEADERS += \
     DisplacementConstraintWidget.h \
     DisplacementConstraintSelectionManager.h \
     LoadSpecificationWidget.h \
+    LoadSpecPageBase.h \
+    GeoMeasurePage.h \
+    GeoFitPage.h \
+    BodyForcePage.h \
+    PointForcePage.h \
+    LineForcePage.h \
+    SurfaceForcePage.h \
+    TemperaturePage.h \
+    BeamLoadPage.h \
+    SeismicPage.h \
+    AddedMassPage.h \
     PhySicalField.h \
     PhysicalFieldSettingWidget.h
 
@@ -15,6 +26,17 @@ SOURCES += \
     DisplacementConstraintWidget.cpp \
     DisplacementConstraintSelectionManager.cpp \
     LoadSpecificationWidget.cpp \
+    LoadSpecPageBase.cpp \
+    GeoMeasurePage.cpp \
+    GeoFitPage.cpp \
+    BodyForcePage.cpp \
+    PointForcePage.cpp \
+    LineForcePage.cpp \
+    SurfaceForcePage.cpp \
+    TemperaturePage.cpp \
+    BeamLoadPage.cpp \
+    SeismicPage.cpp \
+    AddedMassPage.cpp \
     PhySicalField.cpp \
     PhysicalFieldSettingWidget.cpp
 

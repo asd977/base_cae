@@ -6,26 +6,37 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>301</width>
-    <height>451</height>
+    <width>520</width>
+    <height>640</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Form</string>
+   <string>LoadSpecification</string>
   </property>
-  <widget class="QCheckBox" name="clickCheckBox">
-   <property name="geometry">
-    <rect>
-     <x>60</x>
-     <y>140</y>
-     <width>60</width>
-     <height>16</height>
-    </rect>
-   </property>
-   <property name="text">
-    <string>CheckBox</string>
-   </property>
-  </widget>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QCheckBox" name="clickCheckBox">
+     <property name="text">
+      <string>启用面选择</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTabWidget" name="tabWidget"/>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupSelection">
+     <property name="title">
+      <string>当前页面选中面</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayoutSelection">
+      <item>
+       <widget class="QListWidget" name="selectedFaceList"/>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
  </widget>
  <resources/>
  <connections/>
