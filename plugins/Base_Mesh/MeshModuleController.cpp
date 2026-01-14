@@ -400,6 +400,10 @@ MeshModuleController::buildGridFromModel(const IiinGridModel &model) const
     matypeArray->SetName("MATYPE");
     matypeArray->SetNumberOfComponents(1);
 
+    auto elemIdArray = vtkSmartPointer<vtkIntArray>::New();
+    elemIdArray->SetName("elem_id");
+    elemIdArray->SetNumberOfComponents(1);
+
     for (const Elem &e : elems) {
         int expectedNodes = expectedNodeCountForKetype(e.ketype);
         int vtkCellType = ketypeToVtkCellType(e.ketype);
@@ -425,10 +429,12 @@ MeshModuleController::buildGridFromModel(const IiinGridModel &model) const
                              cellPtIds.size(),
                              cellPtIds.data());
         matypeArray->InsertNextValue(e.matype);
+        elemIdArray->InsertNextValue(e.id);
     }
 
     grid->GetCellData()->AddArray(matypeArray);
     grid->GetCellData()->SetScalars(matypeArray);
+    grid->GetCellData()->AddArray(elemIdArray);
 
     return grid;
 }
