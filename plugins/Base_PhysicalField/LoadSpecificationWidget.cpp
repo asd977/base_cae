@@ -10,8 +10,10 @@
 #include "SeismicPage.h"
 #include "SurfaceForcePage.h"
 #include "TemperaturePage.h"
+#include "LoadSpecPageBase.h"
 
 #include <QDebug>
+#include <algorithm>
 #include <ServiceRegistry.h>
 
 #include <services/VisualWidgetService.h>
@@ -360,8 +362,18 @@ void LoadSpecificationWidget::updateSelectionList()
     const auto currentSelection = m_activeTabWidget
         ? m_pageSurfaceSelections.value(m_activeTabWidget)
         : QSet<vtkIdType>();
+    QList<vtkIdType> faceIds;
+    faceIds.reserve(currentSelection.size());
     for (vtkIdType cid : currentSelection) {
+        faceIds.append(cid);
+    }
+    std::sort(faceIds.begin(), faceIds.end());
+    for (vtkIdType cid : faceIds) {
         ui->selectedFaceList->addItem(QString::number(cid));
+    }
+
+    if (auto *page = dynamic_cast<LoadSpecPageBase*>(m_activeTabWidget)) {
+        page->setSelectedFaceIds(faceIds);
     }
 }
 

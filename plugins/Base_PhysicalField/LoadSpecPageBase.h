@@ -1,6 +1,8 @@
 #pragma once
 
 #include <BasePage.h>
+#include <QList>
+#include <vtkType.h>
 
 class QLabel;
 class QTableWidget;
@@ -16,6 +18,8 @@ public:
 
     void beforeLoad() override {}
     void beforeUnload() override {}
+
+    virtual void setSelectedFaceIds(const QList<vtkIdType> &faceIds);
 
 protected:
     QVBoxLayout *layout() const;

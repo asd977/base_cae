@@ -41,3 +41,8 @@ QTableWidget *LoadSpecPageBase::createTable(const QStringList &headers)
     table->verticalHeader()->setVisible(false);
     return table;
 }
+
+void LoadSpecPageBase::setSelectedFaceIds(const QList<vtkIdType> &faceIds)
+{
+    Q_UNUSED(faceIds);
+}

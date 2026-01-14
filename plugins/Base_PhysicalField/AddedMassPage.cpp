@@ -2,8 +2,10 @@
 
 #include <QFormLayout>
 #include <QLineEdit>
+#include <QSignalBlocker>
 #include <QSpinBox>
 #include <QTableWidget>
+#include <QTableWidgetItem>
 
 AddedMassPage::AddedMassPage(QWidget *parent)
     : LoadSpecPageBase(QStringLiteral("附加质量"),
@@ -11,10 +13,10 @@ AddedMassPage::AddedMassPage(QWidget *parent)
                        parent)
 {
     auto *formLayout = new QFormLayout();
-    auto *nmmSpin = new QSpinBox(this);
-    nmmSpin->setMinimum(0);
-    nmmSpin->setMaximum(100000);
-    formLayout->addRow(QStringLiteral("NMM"), nmmSpin);
+    m_countSpin = new QSpinBox(this);
+    m_countSpin->setMinimum(0);
+    m_countSpin->setMaximum(100000);
+    formLayout->addRow(QStringLiteral("NMM"), m_countSpin);
 
     auto *makodEdit = new QLineEdit(this);
     formLayout->addRow(QStringLiteral("MAKOD"), makodEdit);
@@ -30,14 +32,29 @@ AddedMassPage::AddedMassPage(QWidget *parent)
 
     layout()->insertLayout(1, formLayout);
 
-    auto *table = createTable({QStringLiteral("面序号"),
-                               QStringLiteral("KE1"),
-                               QStringLiteral("KE2"),
-                               QStringLiteral("JD1"),
-                               QStringLiteral("JD2"),
-                               QStringLiteral("JD3"),
-                               QStringLiteral("JD4")});
-    layout()->insertWidget(2, table);
+    m_table = createTable({QStringLiteral("面序号"),
+                           QStringLiteral("KE1"),
+                           QStringLiteral("KE2"),
+                           QStringLiteral("JD1"),
+                           QStringLiteral("JD2"),
+                           QStringLiteral("JD3"),
+                           QStringLiteral("JD4")});
+    layout()->insertWidget(2, m_table);
 
-    connect(nmmSpin, QOverload<int>::of(&QSpinBox::valueChanged), table, &QTableWidget::setRowCount);
+    connect(m_countSpin, QOverload<int>::of(&QSpinBox::valueChanged), m_table, &QTableWidget::setRowCount);
+}
+
+void AddedMassPage::setSelectedFaceIds(const QList<vtkIdType> &faceIds)
+{
+    if (!m_table || !m_countSpin)
+        return;
+
+    QSignalBlocker blocker(m_countSpin);
+    m_countSpin->setValue(faceIds.size());
+    m_table->setRowCount(faceIds.size());
+
+    for (int row = 0; row < faceIds.size(); ++row) {
+        auto *item = new QTableWidgetItem(QString::number(faceIds.at(row)));
+        m_table->setItem(row, 0, item);
+    }
 }
