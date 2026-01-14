@@ -1,6 +1,8 @@
 #include "LoadSpecPageBase.h"
 
+#include <QHeaderView>
 #include <QLabel>
+#include <QTableWidget>
 #include <QVBoxLayout>
 
 LoadSpecPageBase::LoadSpecPageBase(const QString &title, const QString &description, QWidget *parent)
@@ -8,11 +10,11 @@ LoadSpecPageBase::LoadSpecPageBase(const QString &title, const QString &descript
     , m_title(title)
     , m_description(description)
 {
-    auto *layout = new QVBoxLayout(this);
+    m_layout = new QVBoxLayout(this);
     m_label = new QLabel(description, this);
     m_label->setWordWrap(true);
-    layout->addWidget(m_label);
-    layout->addStretch();
+    m_layout->addWidget(m_label);
+    m_layout->addStretch();
 }
 
 QString LoadSpecPageBase::title() const
@@ -23,4 +25,19 @@ QString LoadSpecPageBase::title() const
 QString LoadSpecPageBase::description() const
 {
     return m_description;
+}
+
+QVBoxLayout *LoadSpecPageBase::layout() const
+{
+    return m_layout;
+}
+
+QTableWidget *LoadSpecPageBase::createTable(const QStringList &headers)
+{
+    auto *table = new QTableWidget(this);
+    table->setColumnCount(headers.size());
+    table->setHorizontalHeaderLabels(headers);
+    table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    table->verticalHeader()->setVisible(false);
+    return table;
 }
