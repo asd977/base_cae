@@ -3,6 +3,7 @@
 #include "BasePage.h"
 #include "vtkObject.h"
 
+#include <QHash>
 #include <QSet>
 #include <vtkSmartPointer.h>
 
@@ -14,6 +15,7 @@ class vtkCellPicker;
 class vtkCallbackCommand;
 class vtkRenderer;
 class vtkRenderWindowInteractor;
+class QWidget;
 
 namespace Ui { class LoadSpecificationWidget; }
 
@@ -29,17 +31,21 @@ public:
 
 private slots:
     void on_clickCheckBox_checkStateChanged(const Qt::CheckState &arg1);
+    void on_tabWidget_currentChanged(int index);
 
 private:
     void enableFacePick(bool on);
 
     void setupSurfaceAndPicker();
     void teardownSurfaceAndPicker();
+    void setupTabs();
 
     static void OnLeftButtonPress(vtkObject* caller, unsigned long eid, void* clientdata, void* calldata);
     void handlePick(int displayX, int displayY);
 
     void rebuildHighlight();
+    void clearSelectionsExcept(const QWidget *activeWidget);
+    void updateSelectionList();
 
 private:
     Ui::LoadSpecificationWidget *ui = nullptr;
@@ -60,8 +66,9 @@ private:
     vtkSmartPointer<vtkDataSetMapper> m_surfaceMapper;
     vtkSmartPointer<vtkActor> m_surfaceActor;
 
-    // highlight (选中面片集合 -> 一个 actor)
-    QSet<vtkIdType> m_selectedSurfaceCellIds;
+    // highlight (页面 -> 选中面片集合)
+    QHash<const QWidget*, QSet<vtkIdType>> m_pageSurfaceSelections;
+    const QWidget *m_activeTabWidget = nullptr;
     vtkSmartPointer<vtkDataSetMapper> m_highlightMapper;
     vtkSmartPointer<vtkActor> m_highlightActor;
 
