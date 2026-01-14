@@ -20,6 +20,10 @@ private slots:
 private:
     ProjectNode *m_node;
     void intitTreeMenu();
+    void addLoadSpecificationPage(const QString &parentUuid, const QString &title, BasePage *page, const QString &kind);
+    void addLoadSpecificationPages(ProjectNode *parentNode);
+    ProjectNode *findNodeByUuid(ProjectNode *root, const QString &uuid);
+    bool hasChildKind(ProjectNode *parentNode, const QString &kind) const;
 };
 
 #endif // PHYSICALFIELD_H

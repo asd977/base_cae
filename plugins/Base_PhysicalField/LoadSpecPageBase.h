@@ -1,18 +1,21 @@
 #pragma once
 
-#include <QWidget>
+#include <BasePage.h>
 
 class QLabel;
 class QTableWidget;
 class QVBoxLayout;
 
-class LoadSpecPageBase : public QWidget
+class LoadSpecPageBase : public BasePage
 {
 public:
     LoadSpecPageBase(const QString &title, const QString &description, QWidget *parent = nullptr);
 
     QString title() const;
     QString description() const;
+
+    void beforeLoad() override {}
+    void beforeUnload() override {}
 
 protected:
     QVBoxLayout *layout() const;

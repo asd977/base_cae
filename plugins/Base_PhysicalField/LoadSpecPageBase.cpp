@@ -6,7 +6,7 @@
 #include <QVBoxLayout>
 
 LoadSpecPageBase::LoadSpecPageBase(const QString &title, const QString &description, QWidget *parent)
-    : QWidget(parent)
+    : BasePage(title)
     , m_title(title)
     , m_description(description)
 {
