@@ -12,6 +12,7 @@
 
 #include <PublicVariables.h>
 #include <QBrush>
+#include <QIcon>
 #include <QVariant>
 
 namespace
@@ -127,8 +128,11 @@ void ProjectManager::setNodeDimmed(const QString& uuid, bool dimmed)
     if (!node) {
         return;
     }
-    node->setDisabled(dimmed);
-    node->setForeground(0, dimmed ? QBrush(Qt::gray) : QBrush(Qt::black));
+    const QIcon icon = dimmed
+        ? QIcon(":/resources/icon/switch-off.png")
+        : QIcon(":/resources/icon/switch-on.png");
+    node->setIcon(0, icon);
+    node->setForeground(0, QBrush(Qt::black));
 }
 
 
