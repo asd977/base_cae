@@ -249,12 +249,13 @@ signals:
     void logMessage(const QString& msg);
 
 private slots:
-    void onBrowseStep();
     void onGenerate();
     void onExportAs();
     void onOpenTempDir();
     void onDimChanged(int idx);
     void onElemTypeChanged(int idx);
+
+    void on_generateButton_clicked();
 
 private:
 

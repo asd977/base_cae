@@ -336,7 +336,7 @@ void PreProcessing::initRibbonActionConn()
 
     auto reg = [&](const char* actionId, std::function<void()> fn)
     {
-        em.registerHandler(actionId, [this, fn](const QVariantMap &)
+        em.registerHandler(actionId,this, [this, fn](const QVariantMap &)
                            {
                                fn();
                            });

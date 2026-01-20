@@ -34,10 +34,6 @@ MeshGlobalMeshingWidget::MeshGlobalMeshingWidget(QWidget* parent)
 
     initCombos();
 
-    connect(ui->btnBrowse,   &QPushButton::clicked, this, &MeshGlobalMeshingWidget::onBrowseStep);
-    connect(ui->btnGenerate, &QPushButton::clicked, this, &MeshGlobalMeshingWidget::onGenerate);
-    connect(ui->btnExportAs, &QPushButton::clicked, this, &MeshGlobalMeshingWidget::onExportAs);
-    connect(ui->btnOpenTemp, &QPushButton::clicked, this, &MeshGlobalMeshingWidget::onOpenTempDir);
 
     connect(ui->cmbDim, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MeshGlobalMeshingWidget::onDimChanged);
@@ -62,7 +58,6 @@ void MeshGlobalMeshingWidget::beforeUnload()
 
 void MeshGlobalMeshingWidget::appendLog(const QString& s)
 {
-    ui->txtLog->append(s);
     emit logMessage(s);
 }
 
@@ -81,11 +76,6 @@ void MeshGlobalMeshingWidget::initCombos()
     ui->chkFix->setChecked(true);
     ui->dsTol->setValue(1e-6);
 
-    ui->chkOutMsh->setChecked(true);
-    ui->chkOutVtk->setChecked(true);
-    ui->chkOutNas->setChecked(true);
-
-    ui->rbUseCurrent->setChecked(true);
 }
 
 void MeshGlobalMeshingWidget::refreshElemCombo(int dim)
@@ -140,8 +130,6 @@ void MeshGlobalMeshingWidget::onElemTypeChanged(int)
 Params MeshGlobalMeshingWidget::collectParams() const
 {
     Params p;
-    p.useCurrentGeometry = ui->rbUseCurrent->isChecked();
-    p.inputStepPath      = ui->leStep->text().trimmed();
 
     p.dimension    = ui->cmbDim->currentData().toInt();
     p.elemType     = ui->cmbElemType->currentData().toInt();
@@ -154,9 +142,6 @@ Params MeshGlobalMeshingWidget::collectParams() const
     p.fixShape     = ui->chkFix->isChecked();
     p.tolerance    = ui->dsTol->value();
 
-    p.exportMsh = ui->chkOutMsh->isChecked();
-    p.exportVtk = ui->chkOutVtk->isChecked();
-    p.exportNas = ui->chkOutNas->isChecked();
     return p;
 }
 
@@ -169,14 +154,6 @@ QString MeshGlobalMeshingWidget::tempStepPath() const { return tempDirPath() + "
 QString MeshGlobalMeshingWidget::tempMshPath()  const { return tempDirPath() + "mesh.msh"; }
 QString MeshGlobalMeshingWidget::tempVtkPath()  const { return tempDirPath() + "mesh.vtk"; }
 QString MeshGlobalMeshingWidget::tempNasPath()  const { return tempDirPath() + "mesh.nas"; }
-
-void MeshGlobalMeshingWidget::onBrowseStep()
-{
-    const QString f = QFileDialog::getOpenFileName(
-        this, "选择 STEP 文件", QString(), "STEP (*.step *.stp);;All (*.*)");
-    if (!f.isEmpty())
-        ui->leStep->setText(f);
-}
 
 void MeshGlobalMeshingWidget::onGenerate()
 {
@@ -284,3 +261,9 @@ void MeshGlobalMeshingWidget::onOpenTempDir()
 {
     QDesktopServices::openUrl(QUrl::fromLocalFile(tempDirPath()));
 }
+
+void MeshGlobalMeshingWidget::on_generateButton_clicked()
+{
+    onGenerate();
+}
+
