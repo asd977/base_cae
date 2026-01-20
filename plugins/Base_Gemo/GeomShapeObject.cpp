@@ -7,10 +7,14 @@
 #include <QUuid>
 #include <OccShapeToVtk.h>
 
-GeomShapeObject::GeomShapeObject(QString uuid, TopoDS_Shape* shape)
-:_shape(shape)
+GeomShapeObject::GeomShapeObject(QString uuid, TopoDS_Shape* shape, QString name)
+    : _shape(shape),
+      m_uuid(std::move(uuid)),
+      m_name(std::move(name))
 {
-    m_uuid = uuid;
+    if (m_name.isEmpty()) {
+        m_name = m_uuid;
+    }
     initActor();
 }
 

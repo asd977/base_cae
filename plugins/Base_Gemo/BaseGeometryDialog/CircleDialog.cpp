@@ -236,7 +236,7 @@ void CircleDialog::validateInput()
 
     TopoDS_Shape *shape = new TopoDS_Shape(circleShape);
     GeomManager::GeomManagerInstance* mgr = GeomManager::GeomManagerInstance::getInstance();
-    GeomShapeObject* object = new GeomShapeObject(m_uuid, shape);
+    GeomShapeObject* object = new GeomShapeObject(m_uuid, shape, getDisplayName());
     mgr->appendGeomShapeObject(object);
     // ---- 显示注册（面/边分开加）----
     auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>();

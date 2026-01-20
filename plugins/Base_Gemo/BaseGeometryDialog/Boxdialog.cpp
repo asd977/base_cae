@@ -145,10 +145,9 @@ void BoxDialog::onOkClicked()
     TopoDS_Shape *shape = new TopoDS_Shape(boxShape);
 
     GeomManager::GeomManagerInstance* mgr = GeomManager::GeomManagerInstance::getInstance();
-    GeomShapeObject* object = new GeomShapeObject(m_uuid, shape);
+    GeomShapeObject* object = new GeomShapeObject(m_uuid, shape, getDisplayName());
     mgr->appendGeomShapeObject(object);
     VisualWidgetService *vis = ServiceRegistry::instance().getService<VisualWidgetService>();
     vis->addProp(m_uuid + "_face", object->getSurfActor(), "Geometry", m_uuid + "_face",true);
     vis->addProp(m_uuid + "_edge", object->getEdgeActor(), "Geometry", m_uuid + "_face",true);
 }
-

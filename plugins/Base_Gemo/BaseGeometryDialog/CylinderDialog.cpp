@@ -165,7 +165,7 @@ void CylinderDialog::onOkClicked()
     TopoDS_Shape *shape = new TopoDS_Shape(cylinderShape);
 
     GeomManager::GeomManagerInstance* mgr = GeomManager::GeomManagerInstance::getInstance();
-    GeomShapeObject* object = new GeomShapeObject(m_uuid, shape);
+    GeomShapeObject* object = new GeomShapeObject(m_uuid, shape, getDisplayName());
     mgr->appendGeomShapeObject(object);
 
     VisualWidgetService *vis = ServiceRegistry::instance().getService<VisualWidgetService>();

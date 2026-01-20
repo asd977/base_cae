@@ -32,7 +32,14 @@ class OccBooleanToolWidget : public BasePage
 {
     Q_OBJECT
 public:
-    explicit OccBooleanToolWidget(QWidget *parent = nullptr);
+    enum class BooleanOp
+    {
+        Cut,
+        Fuse,
+        Common
+    };
+
+    explicit OccBooleanToolWidget(BooleanOp opType, QWidget *parent = nullptr);
     ~OccBooleanToolWidget() override;
 
     void beforeLoad() override;
@@ -57,21 +64,27 @@ private:
         double r{0.8};
         double g{0.8};
         double b{0.8};
+        double opacity{1.0};
     };
 
     GeomManager::GeomManagerInstance* m_geomMgr = nullptr;
     QHash<QString, GeomShapeObject*>  m_geomMap;       // key -> 几何对象
     QHash<QString, ColorBackup>       m_colorBackup;   // key -> 原始颜色备份
+    QHash<QString, ColorBackup>       m_dimmedBackup;  // key -> 灰显前的颜色备份
 
     QString m_keyA;
     QString m_keyB;
     QString test_tmp;
+    BooleanOp m_opType;
 
 private:
     void initConnections();
     void fillComboBoxes();
     void setHighlight(const QString& key, const QColor& color, bool on);
+    void setDimmed(const QString& key, bool on);
     void requestRender();  // 根据你自己的渲染系统实现
+    QString opDisplayName() const;
+    QString makeResultName() const;
 };
 
 #endif // OCCBOOLEANTOOLWIDGET_H
