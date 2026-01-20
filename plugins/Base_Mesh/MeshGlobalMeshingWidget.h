@@ -17,8 +17,7 @@ namespace {
 
 struct Params
 {
-    bool useCurrentGeometry = true;  // true: 导出当前几何到STEP再剖分；false: 用用户选的STEP
-    QString inputStepPath;           // useCurrentGeometry=false 时使用
+    QString inputStepPath = "./tmp/geom.step";           // useCurrentGeometry=false 时使用
 
     int dimension = 3;               // 2 or 3
     int elemType = 4;                // 2D: 1 Tri / 2 Quad; 3D: 3 Tet / 4 Hex

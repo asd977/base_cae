@@ -148,12 +148,12 @@ Params MeshGlobalMeshingWidget::collectParams() const
 QString MeshGlobalMeshingWidget::tempDirPath() const
 {
     const QString base = QCoreApplication::applicationDirPath();
-    return QDir::cleanPath(base + "/../tempGrid/");
+    return base + "./tmp";
 }
-QString MeshGlobalMeshingWidget::tempStepPath() const { return tempDirPath() + "geom.step"; }
-QString MeshGlobalMeshingWidget::tempMshPath()  const { return tempDirPath() + "mesh.msh"; }
-QString MeshGlobalMeshingWidget::tempVtkPath()  const { return tempDirPath() + "mesh.vtk"; }
-QString MeshGlobalMeshingWidget::tempNasPath()  const { return tempDirPath() + "mesh.nas"; }
+QString MeshGlobalMeshingWidget::tempStepPath() const { return tempDirPath() + "/geom.step"; }
+QString MeshGlobalMeshingWidget::tempMshPath()  const { return tempDirPath() + "/mesh.msh"; }
+QString MeshGlobalMeshingWidget::tempVtkPath()  const { return tempDirPath() + "/mesh.vtk"; }
+QString MeshGlobalMeshingWidget::tempNasPath()  const { return tempDirPath() + "/mesh.nas"; }
 
 void MeshGlobalMeshingWidget::onGenerate()
 {
@@ -164,18 +164,16 @@ void MeshGlobalMeshingWidget::onGenerate()
         QMessageBox::warning(this, "整体剖分", "最小尺寸不能大于最大尺寸。");
         return;
     }
-    if (!p.useCurrentGeometry)
+
+    if (p.inputStepPath.isEmpty() || !QFileInfo::exists(p.inputStepPath))
     {
-        if (p.inputStepPath.isEmpty() || !QFileInfo::exists(p.inputStepPath))
-        {
-            QMessageBox::warning(this, "整体剖分", "STEP 文件不存在。");
-            return;
-        }
+        QMessageBox::warning(this, "整体剖分", "STEP 文件不存在。");
+        return;
     }
+
 
     // 准备 temp 目录
     QDir dir(tempDirPath());
-    if (dir.exists()) dir.removeRecursively();
     dir.mkpath(tempDirPath());
 
     appendLog("准备临时目录：" + tempDirPath());
