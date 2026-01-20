@@ -16,10 +16,19 @@ public:
 
 private slots:
     void addDisplacementConstraint();
-    void addLoadSpecification();
+    void addGeoStressPointPage();
+    void addGeoStressFitFacePage();
+    void addBodyForcePage();
+    void addConcentratedForcePage();
+    void addSurfaceForcePage();
+    void addTemperatureLoadPage();
+    void addSeismicAndAddedMassPage();
+
+
 private:
     ProjectNode *m_node;
     void intitTreeMenu();
+
 };
 
 #endif // PHYSICALFIELD_H

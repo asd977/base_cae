@@ -8,6 +8,7 @@
 #include <Bnd_Box.hxx>
 #include <TopoDS_Shape.hxx>
 
+#include <BRepMesh_IncrementalMesh.hxx>   // ★新增：强制 OCC 侧三角化
 #include <Prs3d_Drawer.hxx>
 #include <IVtkOCC_Shape.hxx>
 #include <IVtkTools_ShapeDataSource.hxx>
@@ -18,6 +19,7 @@
 #include <vtkSmartPointer.h>
 #include <vtkNew.h>
 
+#include <vtkTriangleFilter.h>            // ★新增：统一三角形
 #include <vtkCleanPolyData.h>
 #include <vtkPolyDataNormals.h>
 #include <vtkFeatureEdges.h>
@@ -61,50 +63,71 @@ DisplayPolyData BuildDisplayPolyData(const TopoDS_Shape& shape,
     if (shape.IsNull())
         return out;
 
-    // ---------- 1) 计算参数 ----------
+    // ---------- 1) 参数 ----------
     const double diag = ShapeDiag(shape);
 
-    // deviationCoeff 是“相对精度”（SizeOfObject * deviationCoeff）
-    // 文档解释：相对偏差 = 物体尺寸 * DeviationCoefficient :contentReference[oaicite:2]{index=2}
-    deviationCoeff = Clamp(deviationCoeff, 0.0003, 0.02);
-    featureAngleDeg = Clamp(featureAngleDeg, 5.0, 80.0);
+    // 允许更小的 deviationCoeff（球体更需要细一点）
+    deviationCoeff   = Clamp(deviationCoeff, 0.0001, 0.02);
+    featureAngleDeg  = Clamp(featureAngleDeg, 5.0, 120.0);
 
-    // Clean 容差：用于焊接 seam/重复点（对球体 seam 很关键）
-    // 取相对偏差的 1e-3~1e-2 比较稳；并设置一个极小下限
-    const double cleanTol = std::max(diag * 1e-9, (diag * deviationCoeff) * 1e-3);
+    // 线性偏差（绝对值）：OCC 侧三角化用它更稳定
+    const double linDefl = std::max(1e-6, diag * deviationCoeff);
+    const double angDefl = 0.15; // 弧度，越小越细；球体推荐 0.10~0.20
 
-    // ---------- 2) TKIVtk：Shape -> PolyData ----------
-    // (a) drawer 控制三角化质量（相对偏差 + 角度）
+    // ★关键：球体 seam 的点通常“非常接近但不完全相等”
+    // 你原先 *1e-3 太保守，焊不上。这里提高到 5e-2（仍然远小于 linDefl）
+    const double cleanTol = std::max(diag * 1e-10, linDefl * 5e-2);
+
+    // ---------- 2) ★先在 OCC 侧强制三角化（避免 seam 两侧采样不一致） ----------
+    // relative=true 表示 linDefl 作为相对/绝对取决于版本实现；这里我们给的是绝对值量级
+    // 如果你的 OCCT 版本构造参数不匹配，就用 Set* 的形式（见下方注释替代写法）
+    try
+    {
+        BRepMesh_IncrementalMesh mesher(shape, linDefl, /*isRelative*/ false, angDefl, /*parallel*/ true);
+        (void)mesher;
+    }
+    catch (...)
+    {
+        // 即使失败也继续走 TKIVtk（不至于直接崩）
+    }
+
+    // ---------- 3) TKIVtk：Shape -> PolyData ----------
     Handle(Prs3d_Drawer) drawer = new Prs3d_Drawer();
     drawer->SetDeviationCoefficient(deviationCoeff);
-    drawer->SetDeviationAngle(0.25); // 弧度，越小越细；一般 0.15~0.35
+    drawer->SetDeviationAngle(angDefl);
 
-    // (b) IVtkOCC_Shape 包装 OCC shape
     IVtkOCC_Shape::Handle occShape = new IVtkOCC_Shape(shape);
-    // 不同 OCCT 版本对 Attributes() 可写性略不同；下面这句大多版本可用：
-    // 如果你这里编译不过，就删掉（仍然能跑，只是用默认精度）。
-    //occShape->Attributes() = drawer;
 
-    // (c) DataSource
+    // ★如果你能找到“设置 Drawer/Attributes”的正确 API，就把它打开
+    // 不同版本名字不同，你任选能编译的一个：
+    //
+    // occShape->SetDrawer(drawer);
+    // occShape->SetAttributes(drawer);
+    // occShape->Attributes() = drawer;
+
     vtkNew<IVtkTools_ShapeDataSource> src;
     src->SetShape(occShape);
 
-    // ---------- 3) DisplayModeFilter：只要 Shading 输出 ----------
     vtkNew<IVtkTools_DisplayModeFilter> dm;
     dm->SetDisplayMode(DM_Shading);
-    dm->SetSmoothShading(smoothShading);     // DM_Shading 时输出顶点法线 :contentReference[oaicite:3]{index=3}
-    dm->SetFaceBoundaryDraw(false);          // 关键：不画“面边界”（球体 seam 线从这里最常见）
+    dm->SetSmoothShading(smoothShading);
+    dm->SetFaceBoundaryDraw(false);   // 不画面边界（避免 seam 线被显式画出来）
     dm->SetInputConnection(src->GetOutputPort());
 
-    // ---------- 4) Clean：焊接 seam/重复点，减少球体褶皱/虚线 ----------
+    // ---------- 4) ★TriangleFilter：统一为三角形（更利于 clean / normals） ----------
+    vtkNew<vtkTriangleFilter> tri;
+    tri->SetInputConnection(dm->GetOutputPort());
+    tri->Update();
+
+    // ---------- 5) ★Clean：焊接 seam（容差用 cleanTol） ----------
     vtkNew<vtkCleanPolyData> clean;
-    clean->SetInputConnection(dm->GetOutputPort());
+    clean->SetInputConnection(tri->GetOutputPort());
     clean->PointMergingOn();
     clean->SetToleranceIsAbsolute(true);
     clean->SetAbsoluteTolerance(cleanTol);
     clean->Update();
 
-    // ---------- 5) Normals：让光照更稳定（球体褶皱很多时候是法线不连续/不一致） ----------
+    // ---------- 6) ★Normals：球体优先“连续法线”，不要拆分 ----------
     vtkNew<vtkPolyDataNormals> normals;
     normals->SetInputConnection(clean->GetOutputPort());
     normals->ComputePointNormalsOn();
@@ -112,33 +135,26 @@ DisplayPolyData BuildDisplayPolyData(const TopoDS_Shape& shape,
     normals->ConsistencyOn();
     normals->AutoOrientNormalsOn();
 
-    // 既保留硬边（立方体不发圆），又不影响球体（球体夹角都很小）
-    normals->SplittingOn();
-    normals->SetFeatureAngle(45.0);
+    // ★关键：避免 seam 被当成锐边拆法线
+    normals->SplittingOff();
+    // 如果你坚持要 SplittingOn，也务必 180：
+    // normals->SplittingOn();
+    // normals->SetFeatureAngle(180.0);
 
     normals->Update();
-
-    // 把输出拷贝出来（避免 pipeline 对象析构后悬空）
     out.surface->ShallowCopy(normals->GetOutput());
 
-    // ---------- 6) Edges：不要用“全部线框”，只提取“特征边/边界边” ----------
-    // 这样球体不会出一堆乱线/虚线；圆柱/立方体等硬边仍然清晰
+    // ---------- 7) Edges：只提取特征边/边界边（球体一般不会有） ----------
     vtkNew<vtkFeatureEdges> fe;
     fe->SetInputConnection(clean->GetOutputPort());
-
-    fe->BoundaryEdgesOn();     // 边界边
-    fe->FeatureEdgesOn();      // 特征锐边
+    fe->BoundaryEdgesOn();
+    fe->FeatureEdgesOn();
     fe->ManifoldEdgesOff();
     fe->NonManifoldEdgesOff();
-
     fe->SetFeatureAngle(featureAngleDeg);
-
-    // 关键：关掉 Coloring，避免生成 edge type 标量导致“边变红”
     fe->ColoringOff();
-
     fe->Update();
 
-    // 线也 clean 一下（去重）
     vtkNew<vtkCleanPolyData> cleanEdges;
     cleanEdges->SetInputConnection(fe->GetOutputPort());
     cleanEdges->PointMergingOn();

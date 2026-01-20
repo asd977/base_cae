@@ -26,15 +26,15 @@ public:
 
 
     BasePage *newGeometryImportWidget(QString title = QObject::tr("导入几何体"));
-    void newGeometryBoxWidget(QString title = QObject::tr("创建长方体"));
-    void newGeometrySphereWidget(QString title = QObject::tr("创建球体"));
-    void newGeometryConeWidget(QString title = QObject::tr("创建圆锥体"));
-    void newGeometryTorusWidget(QString title = QObject::tr("创建圆环体"));
-    void newGeometryCylinderWidget(QString title = QObject::tr("创建圆柱体"));
-    BasePage *newGeometryCircleWidget(QString title = QObject::tr("创建圆形"));
-    BasePage *newGeometryEllipseWidget(QString title = QObject::tr("创建椭圆"));
-    BasePage *newGeometryPolygonWidget(QString title = QObject::tr("创建多边形"));
-    BasePage *newGeometryRectangleWidget(QString title = QObject::tr("创建矩形"));
+    void newGeometryBoxWidget(QString title = QObject::tr("长方体"));
+    void newGeometrySphereWidget(QString title = QObject::tr("球体"));
+    void newGeometryConeWidget(QString title = QObject::tr("圆锥体"));
+    void newGeometryTorusWidget(QString title = QObject::tr("圆环体"));
+    void newGeometryCylinderWidget(QString title = QObject::tr("圆柱体"));
+    BasePage *newGeometryCircleWidget(QString title = QObject::tr("圆形"));
+    BasePage *newGeometryEllipseWidget(QString title = QObject::tr("椭圆"));
+    BasePage *newGeometryPolygonWidget(QString title = QObject::tr("多边形"));
+    BasePage *newGeometryRectangleWidget(QString title = QObject::tr("矩形"));
     void newOccBoolenToolWidget();
     bool exportGeom();
 private:

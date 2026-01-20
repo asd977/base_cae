@@ -61,6 +61,12 @@ void GeomShapeObject::initActor()
 
     auto surfActor = vtkSmartPointer<vtkActor>::New();
     surfActor->SetMapper(surfMapper);
+    auto p = surfActor->GetProperty();
+    p->LightingOff();
+    p->SetColor(0.85, 0.85, 0.85);
+    // surfActor->GetProperty()->LightingOff();
+
+    // surfActor->GetProperty()->SetInterpolationToPhong();
 
     // ---- edges ----
     auto edgeMapper = vtkSmartPointer<vtkPolyDataMapper>::New();

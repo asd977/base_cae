@@ -1,0 +1,288 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SeismicAndAddedMassPage</class>
+ <widget class="QWidget" name="SeismicAndAddedMassPage">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>368</width>
+    <height>578</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>地震加速度表与附加质量法</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QGroupBox" name="groupSeismic">
+     <property name="title">
+      <string>地震加速度表（X/Y/Z）</string>
+     </property>
+     <layout class="QVBoxLayout" name="vlSeismic">
+      <item>
+       <widget class="QGroupBox" name="groupX">
+        <property name="title">
+         <string>X 方向</string>
+        </property>
+        <layout class="QGridLayout" name="glX">
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelNTBX">
+           <property name="text">
+            <string>NTBX</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QSpinBox" name="spinNTBX">
+           <property name="minimum">
+            <number>0</number>
+           </property>
+           <property name="maximum">
+            <number>1000000</number>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="2">
+          <widget class="QPushButton" name="btnExampleX">
+           <property name="text">
+            <string>填充示例</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0" colspan="3">
+          <widget class="QPlainTextEdit" name="editX">
+           <property name="placeholderText">
+            <string>每行一个数值（也支持空格/逗号分隔）；当 NTBX != 0 输出会自动插入“空二行”</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGroupBox" name="groupY">
+        <property name="title">
+         <string>Y 方向</string>
+        </property>
+        <layout class="QGridLayout" name="glY">
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelNTBY">
+           <property name="text">
+            <string>NTBY</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QSpinBox" name="spinNTBY">
+           <property name="minimum">
+            <number>0</number>
+           </property>
+           <property name="maximum">
+            <number>1000000</number>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="2">
+          <widget class="QPushButton" name="btnExampleY">
+           <property name="text">
+            <string>填充示例</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0" colspan="3">
+          <widget class="QPlainTextEdit" name="editY">
+           <property name="placeholderText">
+            <string>每行一个数值（也支持空格/逗号分隔）</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGroupBox" name="groupZ">
+        <property name="title">
+         <string>Z 方向</string>
+        </property>
+        <layout class="QGridLayout" name="glZ">
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelNTBZ">
+           <property name="text">
+            <string>NTBZ</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QSpinBox" name="spinNTBZ">
+           <property name="minimum">
+            <number>0</number>
+           </property>
+           <property name="maximum">
+            <number>1000000</number>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="2">
+          <widget class="QPushButton" name="btnExampleZ">
+           <property name="text">
+            <string>填充示例</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0" colspan="3">
+          <widget class="QPlainTextEdit" name="editZ">
+           <property name="placeholderText">
+            <string>每行一个数值（也支持空格/逗号分隔）</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupAddedMass">
+     <property name="title">
+      <string>附加质量法</string>
+     </property>
+     <layout class="QVBoxLayout" name="vlMass">
+      <item>
+       <layout class="QGridLayout" name="glMassHeader">
+        <item row="0" column="0">
+         <widget class="QLabel" name="labelNMM">
+          <property name="text">
+           <string>NMM</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QSpinBox" name="spinNMM">
+          <property name="minimum">
+           <number>0</number>
+          </property>
+          <property name="maximum">
+           <number>100000</number>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="2">
+         <widget class="QLabel" name="labelMAKOD">
+          <property name="text">
+           <string>MAKOD</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="3">
+         <widget class="QSpinBox" name="spinMAKOD">
+          <property name="minimum">
+           <number>0</number>
+          </property>
+          <property name="maximum">
+           <number>100000</number>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="labelTop">
+          <property name="text">
+           <string>HWUP_TOP</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QDoubleSpinBox" name="spinHWUPTop">
+          <property name="decimals">
+           <number>6</number>
+          </property>
+          <property name="minimum">
+           <double>-1000000000.000000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>1000000000.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="2">
+         <widget class="QLabel" name="labelBot">
+          <property name="text">
+           <string>HWUP_BOT</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="3">
+         <widget class="QDoubleSpinBox" name="spinHWUPBot">
+          <property name="decimals">
+           <number>6</number>
+          </property>
+          <property name="minimum">
+           <double>-1000000000.000000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>1000000000.000000000000000</double>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="labelIFWEST">
+          <property name="text">
+           <string>IFWEST</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QCheckBox" name="checkIFWEST">
+          <property name="text">
+           <string>计入(1)</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="2">
+         <widget class="QPushButton" name="btnAddRow">
+          <property name="text">
+           <string>添加一行</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="3">
+         <widget class="QPushButton" name="btnRemoveRow">
+          <property name="text">
+           <string>删除当前行</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QTableWidget" name="tableMass"/>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="btnGenerate">
+     <property name="text">
+      <string>生成并打印到日志</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Orientation::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

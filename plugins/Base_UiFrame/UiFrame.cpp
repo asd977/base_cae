@@ -393,24 +393,24 @@ void UiFrame::buildRibbonTabs()
         // ---------------------------------
         // 3) 特征（Feature）：在树上加特征节点
         // ---------------------------------
-        {
-            auto* panel = cate->addPannel("特征");
+        // {
+        //     auto* panel = cate->addPannel("特征");
 
-            auto* actExtrude = makeAction(this, "", "&拉伸");
-            auto* actRevolve = makeAction(this, "", "&旋转");
-            auto* actThicken = makeAction(this, "", "&加厚");
-            auto* actShell   = makeAction(this, "", "&抽壳");
+        //     auto* actExtrude = makeAction(this, "", "&拉伸");
+        //     auto* actRevolve = makeAction(this, "", "&旋转");
+        //     auto* actThicken = makeAction(this, "", "&加厚");
+        //     auto* actShell   = makeAction(this, "", "&抽壳");
 
-            addActionToPanel(panel, actExtrude, 3);
-            addActionToPanel(panel, actRevolve, 3);
-            addActionToPanel(panel, actThicken, 3);
-            addActionToPanel(panel, actShell,   3);
+        //     addActionToPanel(panel, actExtrude, 3);
+        //     addActionToPanel(panel, actRevolve, 3);
+        //     addActionToPanel(panel, actThicken, 3);
+        //     addActionToPanel(panel, actShell,   3);
 
-            bindEvent(this, actExtrude, PublicConstants::kActionGeomAddExtrude);
-            bindEvent(this, actRevolve, PublicConstants::kActionGeomAddRevolve);
-            bindEvent(this, actThicken, PublicConstants::kActionGeomAddThicken);
-            bindEvent(this, actShell,   PublicConstants::kActionGeomAddShell);
-        }
+        //     bindEvent(this, actExtrude, PublicConstants::kActionGeomAddExtrude);
+        //     bindEvent(this, actRevolve, PublicConstants::kActionGeomAddRevolve);
+        //     bindEvent(this, actThicken, PublicConstants::kActionGeomAddThicken);
+        //     bindEvent(this, actShell,   PublicConstants::kActionGeomAddShell);
+        // }
 
         // ---------------------------------
         // 4) 布尔（Boolean）：不合并，保留 Fuse/Cut/Common 三个节点入口
@@ -418,9 +418,9 @@ void UiFrame::buildRibbonTabs()
         {
             auto* panel = cate->addPannel("布尔");
 
-            auto* actFuse   = makeAction(this, "", "&Fuse");
-            auto* actCut    = makeAction(this, "", "&Cut");
-            auto* actCommon = makeAction(this, "", "&Common");
+            auto* actFuse   = makeAction(this, "", "&并集");
+            auto* actCut    = makeAction(this, "", "&差集");
+            auto* actCommon = makeAction(this, "", "&交集");
 
             addActionToPanel(panel, actFuse,   3);
             addActionToPanel(panel, actCut,    3);
@@ -434,40 +434,40 @@ void UiFrame::buildRibbonTabs()
         // ---------------------------------
         // 5) 修改（Modify）：节点化（边处理/偏移/分割）
         // ---------------------------------
-        {
-            auto* panel = cate->addPannel("修改");
+        // {
+        //     auto* panel = cate->addPannel("修改");
 
-            auto* actEdgeBlend = makeAction(this, "", "&边处理"); // 圆角/倒角在节点属性里选择
-            auto* actOffset    = makeAction(this, "", "&偏移");
-            auto* actSplit     = makeAction(this, "", "&分割");
+        //     auto* actEdgeBlend = makeAction(this, "", "&边处理"); // 圆角/倒角在节点属性里选择
+        //     auto* actOffset    = makeAction(this, "", "&偏移");
+        //     auto* actSplit     = makeAction(this, "", "&分割");
 
-            addActionToPanel(panel, actEdgeBlend, 3);
-            addActionToPanel(panel, actOffset,    3);
-            addActionToPanel(panel, actSplit,     3);
+        //     addActionToPanel(panel, actEdgeBlend, 3);
+        //     addActionToPanel(panel, actOffset,    3);
+        //     addActionToPanel(panel, actSplit,     3);
 
-            bindEvent(this, actEdgeBlend, PublicConstants::kActionGeomAddEdgeBlend);
-            bindEvent(this, actOffset,    PublicConstants::kActionGeomAddOffset);
-            bindEvent(this, actSplit,     PublicConstants::kActionGeomAddSplit);
-        }
+        //     bindEvent(this, actEdgeBlend, PublicConstants::kActionGeomAddEdgeBlend);
+        //     bindEvent(this, actOffset,    PublicConstants::kActionGeomAddOffset);
+        //     bindEvent(this, actSplit,     PublicConstants::kActionGeomAddSplit);
+        // }
 
-        // ---------------------------------
-        // 6) 变换与阵列（Transform）：节点化（变换/镜像/阵列）
-        // ---------------------------------
-        {
-            auto* panel = cate->addPannel("变换");
+        // // ---------------------------------
+        // // 6) 变换与阵列（Transform）：节点化（变换/镜像/阵列）
+        // // ---------------------------------
+        // {
+        //     auto* panel = cate->addPannel("变换");
 
-            auto* actTransform = makeAction(this, "", "&移动/旋转");
-            auto* actMirror    = makeAction(this, "", "&镜像");
-            auto* actPattern   = makeAction(this, "", "&阵列"); // 线性/圆周/矩形在节点属性里选
+        //     auto* actTransform = makeAction(this, "", "&移动/旋转");
+        //     auto* actMirror    = makeAction(this, "", "&镜像");
+        //     auto* actPattern   = makeAction(this, "", "&阵列"); // 线性/圆周/矩形在节点属性里选
 
-            addActionToPanel(panel, actTransform, 3);
-            addActionToPanel(panel, actMirror,    3);
-            addActionToPanel(panel, actPattern,   3);
+        //     addActionToPanel(panel, actTransform, 3);
+        //     addActionToPanel(panel, actMirror,    3);
+        //     addActionToPanel(panel, actPattern,   3);
 
-            bindEvent(this, actTransform, PublicConstants::kActionGeomAddTransform);
-            bindEvent(this, actMirror,    PublicConstants::kActionGeomAddMirror);
-            bindEvent(this, actPattern,   PublicConstants::kActionGeomAddPattern);
-        }
+        //     bindEvent(this, actTransform, PublicConstants::kActionGeomAddTransform);
+        //     bindEvent(this, actMirror,    PublicConstants::kActionGeomAddMirror);
+        //     bindEvent(this, actPattern,   PublicConstants::kActionGeomAddPattern);
+        // }
 
         // ---------------------------------
         // 7) 显示与测量（Display/Measure）：保留；删除“选择模式”控件
