@@ -6,6 +6,7 @@
 #include <BRepPrimAPI_MakeCylinder.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
 #include <GeomManagerInstance.h>
+#include <GeometryCleanup.h>
 #include <ServiceRegistry.h>
 #include <services/VisualWidgetService.h>
 
@@ -150,6 +151,8 @@ void CylinderDialog::onOkClicked()
 		QMessageBox::warning(this, "无效输入", "高度必须为正数！");
 		return;
 	}
+
+    GeometryCleanup::removeExistingGeometry(m_uuid);
 
     gp_Pnt baseCenter = getBaseCenter();
 

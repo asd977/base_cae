@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "GeomShapeObject.h"
 #include <QObject>
+#include <QString>
 /**
  * @file GeomManagerInstance.h
  * @brief 几何数据管理单例类
@@ -39,6 +40,9 @@ public:
          * @return void
          */
     void removeGeomShapeObject(GeomShapeObject* shape);
+    bool removeGeomShapeObject(const QString& uuid);
+
+    GeomShapeObject* getGeomShapeObject(const QString& uuid) const;
 
     /**
 		 * @brief 判断几何数据是否为空
@@ -60,4 +64,3 @@ private:
     QHash<QString, GeomShapeObject *> _geomShapeMap{};
 };
 }
-

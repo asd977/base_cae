@@ -11,7 +11,31 @@
 #include <services/MeshModuleControllerService.h>
 
 #include <PublicVariables.h>
+#include <QBrush>
 #include <QVariant>
+
+namespace
+{
+ProjectNode* findNodeRecursive(ProjectNode* node, const QString& uuid)
+{
+    if (!node) {
+        return nullptr;
+    }
+    QString nodeUuid = node->data(0, ProjectNode::RoleUuid).toString();
+    if (nodeUuid.isEmpty()) {
+        nodeUuid = node->getUuid();
+    }
+    if (nodeUuid == uuid) {
+        return node;
+    }
+    for (ProjectNode* child : node->getChildren()) {
+        if (auto* found = findNodeRecursive(child, uuid)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+}
 
 ProjectManager::ProjectManager()
 {
@@ -87,6 +111,24 @@ void ProjectManager::setCurrentItem(ProjectNode *node)
     if (auto *treeWidget = m_projectTreeWidget->getTreeWidget()) {
         treeWidget->setCurrentItem(node);
     }
+}
+
+ProjectNode* ProjectManager::findNodeByUuid(const QString& uuid)
+{
+    if (!m_rootNode || uuid.isEmpty()) {
+        return nullptr;
+    }
+    return findNodeRecursive(m_rootNode, uuid);
+}
+
+void ProjectManager::setNodeDimmed(const QString& uuid, bool dimmed)
+{
+    ProjectNode* node = findNodeByUuid(uuid);
+    if (!node) {
+        return;
+    }
+    node->setDisabled(dimmed);
+    node->setForeground(0, dimmed ? QBrush(Qt::gray) : QBrush(Qt::black));
 }
 
 

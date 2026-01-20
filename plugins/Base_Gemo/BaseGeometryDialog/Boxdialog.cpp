@@ -6,6 +6,7 @@
 #include <PublicVariables.h>
 #include <PublicConstants.h>
 #include <GeomManagerInstance.h>
+#include <GeometryCleanup.h>
 #include <ServiceRegistry.h>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
@@ -133,6 +134,8 @@ void BoxDialog::onOkClicked()
 		QMessageBox::warning(this, "无效输入", "高度必须为正数！");
 		return;
 	}
+
+    GeometryCleanup::removeExistingGeometry(m_uuid);
 
     gp_Pnt position = getPosition();
     BRepPrimAPI_MakeBox boxMaker(length, width, height);

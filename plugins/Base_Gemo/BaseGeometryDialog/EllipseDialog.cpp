@@ -24,6 +24,7 @@
 #include <BRepBuilderAPI_MakeWire.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <GeomManagerInstance.h>
+#include <GeometryCleanup.h>
 
 #include <GeomShapeObject.h>
 #include <ServiceRegistry.h>
@@ -263,6 +264,8 @@ void EllipseDialog::validateInput()
         delete shape;
         return;
     }
+
+    GeometryCleanup::removeExistingGeometry(m_uuid);
 
     GeomShapeObject* object = new GeomShapeObject(m_uuid, shape, getDisplayName());
     mgr->appendGeomShapeObject(object);

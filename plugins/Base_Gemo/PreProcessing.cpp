@@ -451,7 +451,7 @@ void PreProcessing::newGeometryBoxWidget(QString title)
 {
     if (!m_geomNode) return;
     auto *w = new BoxDialog();
-    QString uuid = QUuid::createUuid().toString();
+    QString uuid = w->getUuid();
     QString displayName = makeUniqueName(title, "Box");
     ProjectNode *node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);
@@ -465,7 +465,7 @@ void PreProcessing::newGeometrySphereWidget(QString title)
 {
     if (!m_geomNode) return;
     auto *w = new SphereDialog();
-    QString uuid = QUuid::createUuid().toString();
+    QString uuid = w->getUuid();
     QString displayName = makeUniqueName(title, "Sphere");
     ProjectNode *node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);
@@ -480,7 +480,7 @@ void PreProcessing::newGeometryConeWidget(QString title)
 {
     if (!m_geomNode) return;
     auto *w = new ConeDialog();
-    QString uuid = QUuid::createUuid().toString();
+    QString uuid = w->getUuid();
     QString displayName = makeUniqueName(title, "Cone");
     ProjectNode *node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);
@@ -495,7 +495,7 @@ void PreProcessing::newGeometryTorusWidget(QString title)
 {
     if (!m_geomNode) return;
     auto *w = new TorusDialog();
-    QString uuid = QUuid::createUuid().toString();
+    QString uuid = w->getUuid();
     QString displayName = makeUniqueName(title, "Torus");
     ProjectNode *node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);
@@ -510,7 +510,7 @@ void PreProcessing::newGeometryCylinderWidget(QString title)
 {
     if (!m_geomNode) return;
     auto *w = new CylinderDialog();
-    QString uuid = QUuid::createUuid().toString();
+    QString uuid = w->getUuid();
     QString displayName = makeUniqueName(title, "Cylinder");
     ProjectNode *node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);
@@ -518,7 +518,7 @@ void PreProcessing::newGeometryCylinderWidget(QString title)
     w->setDisplayName(displayName);
     node->setData(0, ProjectNode::RoleUuid,   uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
-    node->setData(0, ProjectNode::RoleKind,   "Sphere");
+    node->setData(0, ProjectNode::RoleKind,   "Cylinder");
 }
 
 BasePage* PreProcessing::newGeometryCircleWidget(QString title)
@@ -526,7 +526,7 @@ BasePage* PreProcessing::newGeometryCircleWidget(QString title)
     if (!m_geomNode) return nullptr;
 
     auto* w = new CircleDialog();
-    QString uuid = QUuid::createUuid().toString();
+    QString uuid = w->getUuid();
     QString displayName = makeUniqueName(title, "Circle");
 
     ProjectNode* node = new ProjectNode(displayName, uuid, (BasePage*)w);
@@ -545,7 +545,7 @@ BasePage* PreProcessing::newGeometryEllipseWidget(QString title)
     if (!m_geomNode) return nullptr;
 
     auto* w = new EllipseDialog();
-    QString uuid = QUuid::createUuid().toString();
+    QString uuid = w->getUuid();
     QString displayName = makeUniqueName(title, "Ellipse");
 
     ProjectNode* node = new ProjectNode(displayName, uuid, (BasePage*)w);
@@ -564,7 +564,7 @@ BasePage* PreProcessing::newGeometryPolygonWidget(QString title)
     if (!m_geomNode) return nullptr;
 
     auto* w = new PolygonDialog();
-    QString uuid = QUuid::createUuid().toString();
+    QString uuid = w->getUuid();
     QString displayName = makeUniqueName(title, "Polygon");
 
     ProjectNode* node = new ProjectNode(displayName, uuid, (BasePage*)w);
@@ -583,7 +583,7 @@ BasePage* PreProcessing::newGeometryRectangleWidget(QString title)
     if (!m_geomNode) return nullptr;
 
     auto* w = new RectangleDialog();
-    QString uuid = QUuid::createUuid().toString();
+    QString uuid = w->getUuid();
     QString displayName = makeUniqueName(title, "Rectangle");
 
     ProjectNode* node = new ProjectNode(displayName, uuid, (BasePage*)w);
@@ -601,7 +601,7 @@ void PreProcessing::newOccBooleanFuseWidget(QString title)
 {
     if (!m_geomNode) return;
     auto *w = new OccBooleanFuseWidget();
-    QString uuid = QUuid::createUuid().toString();
+    QString uuid = w->getUuid();
     QString displayName = makeUniqueName(title, "BooleanFuse");
     auto *node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);
@@ -615,7 +615,7 @@ void PreProcessing::newOccBooleanCutWidget(QString title)
 {
     if (!m_geomNode) return;
     auto *w = new OccBooleanCutWidget();
-    QString uuid = QUuid::createUuid().toString();
+    QString uuid = w->getUuid();
     QString displayName = makeUniqueName(title, "BooleanCut");
     auto *node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);
@@ -629,7 +629,7 @@ void PreProcessing::newOccBooleanCommonWidget(QString title)
 {
     if (!m_geomNode) return;
     auto *w = new OccBooleanCommonWidget();
-    QString uuid = QUuid::createUuid().toString();
+    QString uuid = w->getUuid();
     QString displayName = makeUniqueName(title, "BooleanCommon");
     auto *node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);

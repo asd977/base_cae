@@ -20,6 +20,7 @@ HEADERS += \
     OccBooleanCommonWidget.h \
     OccShapeToVtk.h \
     PreProcessing.h \
+    GeometryCleanup.h \
     GeomManagerInstance.h\
     GeomShapeObject.h\
     GeometryImportWidget.h

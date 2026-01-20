@@ -24,14 +24,38 @@ namespace GeomManager
 
     void GeomManagerInstance::removeGeomShapeObject(GeomShapeObject *shape)
     {
-       _geomShapeMap.remove(shape->getUUid());
+        if (!shape) {
+            return;
+        }
+        _geomShapeMap.remove(shape->getUUid());
+        delete shape;
+    }
+
+    bool GeomManagerInstance::removeGeomShapeObject(const QString &uuid)
+    {
+        if (uuid.isEmpty()) {
+            return false;
+        }
+        GeomShapeObject* shape = _geomShapeMap.value(uuid, nullptr);
+        if (!shape) {
+            return false;
+        }
+        _geomShapeMap.remove(uuid);
+        delete shape;
+        return true;
+    }
+
+    GeomShapeObject* GeomManagerInstance::getGeomShapeObject(const QString &uuid) const
+    {
+        if (uuid.isEmpty()) {
+            return nullptr;
+        }
+        return _geomShapeMap.value(uuid, nullptr);
     }
 
 	bool GeomManagerInstance::isEmpty()
 	{
-        bool flag = 0 < 1;
-		return flag;
+		return _geomShapeMap.isEmpty();
 	}
 
 }
-

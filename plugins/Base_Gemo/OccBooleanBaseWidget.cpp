@@ -12,6 +12,10 @@
 #include <vtkActor.h>
 #include <vtkProperty.h>
 
+#include <ServiceRegistry.h>
+#include <services/ProjectManagerService.h>
+#include <services/VisualWidgetService.h>
+
 TopoDS_Shape OccBooleanTool::Fuse(const TopoDS_Shape& a, const TopoDS_Shape& b)
 {
     if (a.IsNull() || b.IsNull())
@@ -310,6 +314,40 @@ QString OccBooleanBaseWidget::makeResultName() const
     return QStringLiteral("%1(%2)").arg(opDisplayName()).arg(count);
 }
 
+void OccBooleanBaseWidget::removeComboItem(QComboBox *combo, const QString &key)
+{
+    if (!combo) {
+        return;
+    }
+    int index = combo->findData(key);
+    if (index >= 0) {
+        combo->removeItem(index);
+    }
+}
+
+void OccBooleanBaseWidget::removeGeometryAndDimNode(const QString &key)
+{
+    if (key.isEmpty()) {
+        return;
+    }
+    if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>()) {
+        vis->removeProp(key + "_face", false);
+        vis->removeProp(key + "_edge", true);
+    }
+    if (m_geomMgr) {
+        m_geomMgr->removeGeomShapeObject(key);
+    }
+    m_geomMap.remove(key);
+    m_colorBackup.remove(key);
+    m_dimmedBackup.remove(key);
+
+    if (auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>()) {
+        projectManagerService->setNodeDimmed(key, true);
+    }
+    removeComboItem(ui->comboBoxA, key);
+    removeComboItem(ui->comboBoxB, key);
+}
+
 void OccBooleanBaseWidget::on_comboBoxA_currentIndexChanged(int index)
 {
     if (index < 0 || index >= ui->comboBoxA->count())
@@ -422,8 +460,8 @@ void OccBooleanBaseWidget::on_pushButtonApply_clicked()
 
     setHighlight(m_keyA, QColor(), false);
     setHighlight(m_keyB, QColor(), false);
-    setDimmed(m_keyA, true);
-    setDimmed(m_keyB, true);
+    removeGeometryAndDimNode(m_keyA);
+    removeGeometryAndDimNode(m_keyB);
 
     requestRender();
 }

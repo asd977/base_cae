@@ -13,6 +13,7 @@
 #include <TopoDS_Shape.hxx>
 
 class vtkActor;
+class QComboBox;
 
 class OccBooleanTool
 {
@@ -79,6 +80,8 @@ private:
     void requestRender();
     QString opDisplayName() const;
     QString makeResultName() const;
+    void removeGeometryAndDimNode(const QString& key);
+    void removeComboItem(QComboBox* combo, const QString& key);
 };
 
 #endif // OCCBOOLEANBASEWIDGET_H
