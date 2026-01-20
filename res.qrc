@@ -67,6 +67,8 @@
 		<file>resources/icon/confirm.png</file>
 		<file>resources/icon/geomSearch.png</file>
 		<file>resources/icon/geomImport.png</file>
+        <file>resources/icon/geom-unused.svg</file>
+        <file>resources/icon/geom-used.svg</file>
         <file>resources/icon/switch-off.png</file>
         <file>resources/icon/switch-on.png</file>
         <file>resources/icon/ruler.png</file>

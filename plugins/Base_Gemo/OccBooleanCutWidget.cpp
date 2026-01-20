@@ -372,6 +372,8 @@ void OccBooleanCutWidget::onApplyClicked()
         return;
     }
 
+    const QString sourceKeyA = m_keyA;
+    const QString sourceKeyB = m_keyB;
     GeomShapeObject* objA = m_geomMap.value(m_keyA, nullptr);
     GeomShapeObject* objB = m_geomMap.value(m_keyB, nullptr);
     if (!objA || !objB) {
@@ -429,10 +431,13 @@ void OccBooleanCutWidget::onApplyClicked()
         m_comboBoxB->setCurrentIndex(idxB);
     }
 
-    setHighlight(m_keyA, QColor(), false);
-    setHighlight(m_keyB, QColor(), false);
-    removeGeometryAndDimNode(m_keyA);
-    removeGeometryAndDimNode(m_keyB);
+    setHighlight(sourceKeyA, QColor(), false);
+    setHighlight(sourceKeyB, QColor(), false);
+    removeGeometryAndDimNode(sourceKeyA);
+    removeGeometryAndDimNode(sourceKeyB);
+    if (auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>()) {
+        projectManagerService->setNodeDimmed(resultUuid, false);
+    }
 
     requestRender();
 }
