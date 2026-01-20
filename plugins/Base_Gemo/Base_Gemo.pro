@@ -14,7 +14,10 @@ HEADERS += \
     BaseGeometryDialog\EllipseDialog.h\
     BaseGeometryDialog\PolygonDialog.h\
     BaseGeometryDialog\RectangleDialog.h\
-    OccBooleanToolWidget.h \
+    OccBooleanBaseWidget.h \
+    OccBooleanFuseWidget.h \
+    OccBooleanCutWidget.h \
+    OccBooleanCommonWidget.h \
     OccShapeToVtk.h \
     PreProcessing.h \
     GeomManagerInstance.h\
@@ -31,7 +34,10 @@ SOURCES += \
     BaseGeometryDialog\EllipseDialog.cpp\
     BaseGeometryDialog\PolygonDialog.cpp\
     BaseGeometryDialog\RectangleDialog.cpp\
-    OccBooleanToolWidget.cpp \
+    OccBooleanBaseWidget.cpp \
+    OccBooleanFuseWidget.cpp \
+    OccBooleanCutWidget.cpp \
+    OccBooleanCommonWidget.cpp \
     OccShapeToVtk.cpp \
     PreProcessing.cpp \
     GeomManagerInstance.cpp\
@@ -42,7 +48,7 @@ SOURCES += \
 	
 
 FORMS += \
-    OccBooleanToolWidget.ui
+    OccBooleanBaseWidget.ui
 
 
 RESOURCES += \

@@ -38,7 +38,7 @@ public:
     /**
 		* @brief 构造函数
 		*/
-    GeomShapeObject(QString uuid, TopoDS_Shape* shape);
+    GeomShapeObject(QString uuid, TopoDS_Shape* shape, QString name = QString());
     /**
 		* @brief 析构函数
 		*/
@@ -50,6 +50,8 @@ public:
     TopoDS_Shape *getShape();
 
     QString getUUid() { return m_uuid; };
+    QString getName() const { return m_name; }
+    void setName(const QString &name) { m_name = name; }
 
     void setActor(vtkSmartPointer<vtkActor>surfActor, vtkSmartPointer<vtkActor> edgeActor);
 
@@ -60,10 +62,10 @@ public:
 private:
     TopoDS_Shape* _shape;// 当前对象的TopoDS_Shape对象
     QString m_uuid;// 唯一索引
+    QString m_name;
     vtkSmartPointer<vtkActor> m_surfActor;
     vtkSmartPointer<vtkActor> m_edgeActor;
 
 };
-
 
 

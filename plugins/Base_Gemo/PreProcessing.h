@@ -35,7 +35,9 @@ public:
     BasePage *newGeometryEllipseWidget(QString title = QObject::tr("椭圆"));
     BasePage *newGeometryPolygonWidget(QString title = QObject::tr("多边形"));
     BasePage *newGeometryRectangleWidget(QString title = QObject::tr("矩形"));
-    void newOccBoolenToolWidget();
+    void newOccBooleanFuseWidget(QString title = QObject::tr("布尔融合"));
+    void newOccBooleanCutWidget(QString title = QObject::tr("布尔切割"));
+    void newOccBooleanCommonWidget(QString title = QObject::tr("布尔求交"));
     bool exportGeom();
 private:
 	bool writeJsonFile(const QString &filePath, const QJsonObject &obj);
@@ -55,6 +57,9 @@ private:
 
     void initTreeMenu();
     bool writeMultipleShapesStepFile(const QString &filePath);
+    QString makeUniqueName(const QString &baseName, const QString &typeKey);
+
+    QHash<QString, int> m_nameCounters;
 };
 
 #endif // PREPROCESSING_H

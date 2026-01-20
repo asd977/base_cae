@@ -24,6 +24,8 @@ public:
 	* @brief 获取页面的唯一标识符
 	*/
     QString getUuid() const { return m_uuid; }
+    QString getDisplayName() const { return m_displayName; }
+    void setDisplayName(const QString &name) { m_displayName = name; }
 	/**
 	* @brief 返回页面类型
 	*/
@@ -50,5 +52,5 @@ public:
 protected:
     QString m_uuid;
     QString m_type;
+    QString m_displayName;
 };
-

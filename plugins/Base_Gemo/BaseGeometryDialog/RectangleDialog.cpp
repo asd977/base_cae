@@ -272,7 +272,7 @@ void RectangleDialog::validateInput()
         return;
     }
 
-    GeomShapeObject* object = new GeomShapeObject(m_uuid, shape);
+    GeomShapeObject* object = new GeomShapeObject(m_uuid, shape, getDisplayName());
     mgr->appendGeomShapeObject(object);
 
     // ---- 显示注册（面/边分开加）----
