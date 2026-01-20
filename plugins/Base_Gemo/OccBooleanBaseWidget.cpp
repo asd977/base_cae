@@ -1,12 +1,9 @@
-#include "OccBooleanToolWidget.h"
-#include "ui_OccBooleanToolWidget.h"
+﻿#include "OccBooleanBaseWidget.h"
+#include "ui_OccBooleanBaseWidget.h"
 
-#include <BOPAlgo_Splitter.hxx>
 #include <BRepAlgoAPI_Common.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
-
-#include <PreProcessing.h>
 
 #include <QDebug>
 #include <QColor>
@@ -14,9 +11,6 @@
 
 #include <vtkActor.h>
 #include <vtkProperty.h>
-#include <BRepBuilderAPI_Sewing.hxx>
-
-// -------------------- OccBooleanTool 实现 --------------------
 
 TopoDS_Shape OccBooleanTool::Fuse(const TopoDS_Shape& a, const TopoDS_Shape& b)
 {
@@ -57,53 +51,15 @@ TopoDS_Shape OccBooleanTool::Common(const TopoDS_Shape& a, const TopoDS_Shape& b
     return op.Shape();
 }
 
-TopoDS_Shape OccBooleanTool::Splitter(const TopoDS_Shape& a, const TopoDS_Shape& b)
-{
-    // 1. 检查输入是否为空
-    if (a.IsNull() && b.IsNull())
-        return TopoDS_Shape();
-
-    // 2. 实例化 BRepBuilderAPI_Sewing 类
-    // Sewing 工具用于连接松散的面或壳
-    BRepBuilderAPI_Sewing sewingOp;
-
-    // 3. 添加要缝合的第一个形状 (a)
-    if (!a.IsNull())
-    {
-        sewingOp.Add(a);
-    }
-
-    // 4. 添加要缝合的第二个形状 (b)
-    if (!b.IsNull())
-    {
-        sewingOp.Add(b);
-    }
-
-    // 5. 【可选但推荐】设置容差
-    // 可以设置一个容差，在这个距离内的边会被认为是重合的，从而进行缝合。
-    // 例如：sewingOp.SetTolerance(1e-3);
-
-    // 6. 执行操作
-    sewingOp.Perform();
-
-
-        return sewingOp.SewedShape();
-
-}
-
-
-// -------------------- OccBooleanToolWidget 实现 --------------------
-
-OccBooleanToolWidget::OccBooleanToolWidget(BooleanOp opType, QWidget *parent)
+OccBooleanBaseWidget::OccBooleanBaseWidget(BooleanOp opType, QWidget *parent)
     : BasePage(PublicConstants::kPagePostProcessOccBoolean)
-    , ui(new Ui::OccBooleanToolWidget)
+    , ui(new Ui::OccBooleanBaseWidget)
     , m_opType(opType)
 {
     Q_UNUSED(parent);
 
     ui->setupUi(this);
 
-    // 操作类型：0-Cut, 1-Fuse, 2-Common
     if (ui->comboBoxOp->count() == 0) {
         ui->comboBoxOp->addItem(tr("Cut (A - B)"));              // index 0
         ui->comboBoxOp->addItem(tr("Fuse (A ∪ B)"));             // index 1
@@ -130,12 +86,12 @@ OccBooleanToolWidget::OccBooleanToolWidget(BooleanOp opType, QWidget *parent)
     initConnections();
 }
 
-OccBooleanToolWidget::~OccBooleanToolWidget()
+OccBooleanBaseWidget::~OccBooleanBaseWidget()
 {
     delete ui;
 }
 
-void OccBooleanToolWidget::initConnections()
+void OccBooleanBaseWidget::initConnections()
 {
     connect(ui->comboBoxA, SIGNAL(currentIndexChanged(int)),
             this, SLOT(on_comboBoxA_currentIndexChanged(int)));
@@ -147,25 +103,23 @@ void OccBooleanToolWidget::initConnections()
             this, SLOT(on_pushButton_clicked()));
 }
 
-void OccBooleanToolWidget::beforeLoad()
+void OccBooleanBaseWidget::beforeLoad()
 {
     m_geomMgr = GeomManager::GeomManagerInstance::getInstance();
     if (!m_geomMgr) {
-        qWarning() << "[OccBooleanToolWidget] GeomManagerInstance is null";
+        qWarning() << "[OccBooleanBaseWidget] GeomManagerInstance is null";
         return;
     }
 
     m_colorBackup.clear();
 
-    // 取一份当前几何列表快照
     m_geomMap = m_geomMgr->getShapMap();
 
     fillComboBoxes();
 }
 
-void OccBooleanToolWidget::beforeUnload()
+void OccBooleanBaseWidget::beforeUnload()
 {
-    // 离开页面时，把所有被改过的颜色恢复
     for (auto it = m_colorBackup.constBegin(); it != m_colorBackup.constEnd(); ++it)
     {
         const QString& key = it.key();
@@ -188,7 +142,7 @@ void OccBooleanToolWidget::beforeUnload()
     requestRender();
 }
 
-QJsonObject OccBooleanToolWidget::saveJson()
+QJsonObject OccBooleanBaseWidget::saveJson()
 {
     QJsonObject obj;
     obj["keyA"]    = m_keyA;
@@ -196,7 +150,7 @@ QJsonObject OccBooleanToolWidget::saveJson()
     return obj;
 }
 
-void OccBooleanToolWidget::loadJson(const QJsonObject &obj)
+void OccBooleanBaseWidget::loadJson(const QJsonObject &obj)
 {
     QString keyA = obj.value("keyA").toString();
     QString keyB = obj.value("keyB").toString();
@@ -219,7 +173,7 @@ void OccBooleanToolWidget::loadJson(const QJsonObject &obj)
         ui->comboBoxB->setCurrentIndex(indexB);
 }
 
-void OccBooleanToolWidget::fillComboBoxes()
+void OccBooleanBaseWidget::fillComboBoxes()
 {
     ui->comboBoxA->clear();
     ui->comboBoxB->clear();
@@ -243,12 +197,11 @@ void OccBooleanToolWidget::fillComboBoxes()
     else if (ui->comboBoxB->count() > 0)
         ui->comboBoxB->setCurrentIndex(0);
 
-    // 手动触发一次，以便高亮
     on_comboBoxA_currentIndexChanged(ui->comboBoxA->currentIndex());
     on_comboBoxB_currentIndexChanged(ui->comboBoxB->currentIndex());
 }
 
-void OccBooleanToolWidget::setHighlight(const QString& key,
+void OccBooleanBaseWidget::setHighlight(const QString& key,
                                         const QColor& color,
                                         bool on)
 {
@@ -269,7 +222,6 @@ void OccBooleanToolWidget::setHighlight(const QString& key,
     }
 
     if (on) {
-        // 首次高亮时，备份原始颜色
         if (!m_colorBackup.contains(key)) {
             ColorBackup cb;
             double rgb[3] = {0.8, 0.8, 0.8};
@@ -287,14 +239,13 @@ void OccBooleanToolWidget::setHighlight(const QString& key,
             const ColorBackup& cb = m_colorBackup.value(key);
             prop->SetColor(cb.r, cb.g, cb.b);
             prop->SetOpacity(cb.opacity);
-            // 不移除，让 beforeUnload 统一清理；如果你想实时清掉，也可以 remove
         }
     }
 
     requestRender();
 }
 
-void OccBooleanToolWidget::setDimmed(const QString &key, bool on)
+void OccBooleanBaseWidget::setDimmed(const QString &key, bool on)
 {
     GeomShapeObject* obj = m_geomMap.value(key, nullptr);
     if (!obj)
@@ -333,16 +284,11 @@ void OccBooleanToolWidget::setDimmed(const QString &key, bool on)
     requestRender();
 }
 
-void OccBooleanToolWidget::requestRender()
+void OccBooleanBaseWidget::requestRender()
 {
-    // TODO: 根据你的渲染系统来实现
-    // 比如：
-    // RenderManager::instance()->renderAll();
-    // 或者：
-    // if (auto rw = m_preProcessingWidget->renderWindow()) rw->Render();
 }
 
-QString OccBooleanToolWidget::opDisplayName() const
+QString OccBooleanBaseWidget::opDisplayName() const
 {
     switch (m_opType) {
     case BooleanOp::Cut:
@@ -355,7 +301,7 @@ QString OccBooleanToolWidget::opDisplayName() const
     return tr("布尔");
 }
 
-QString OccBooleanToolWidget::makeResultName() const
+QString OccBooleanBaseWidget::makeResultName() const
 {
     static QHash<int, int> counters;
     int key = static_cast<int>(m_opType);
@@ -364,9 +310,7 @@ QString OccBooleanToolWidget::makeResultName() const
     return QStringLiteral("%1(%2)").arg(opDisplayName()).arg(count);
 }
 
-// ---------------- 信号槽：选择 A/B 时高亮 ----------------
-
-void OccBooleanToolWidget::on_comboBoxA_currentIndexChanged(int index)
+void OccBooleanBaseWidget::on_comboBoxA_currentIndexChanged(int index)
 {
     if (index < 0 || index >= ui->comboBoxA->count())
         return;
@@ -376,18 +320,16 @@ void OccBooleanToolWidget::on_comboBoxA_currentIndexChanged(int index)
         newKey = ui->comboBoxA->itemText(index);
     }
 
-    // 先把旧的 A 恢复原色（前提是它不是当前 B）
     if (!m_keyA.isEmpty() && m_keyA != m_keyB)
         setHighlight(m_keyA, QColor(), false);
 
     m_keyA = newKey;
 
-    // 给新的 A 上红色（如果 A/B 不同）
     if (!m_keyA.isEmpty() && m_keyA != m_keyB)
         setHighlight(m_keyA, Qt::red, true);
 }
 
-void OccBooleanToolWidget::on_comboBoxB_currentIndexChanged(int index)
+void OccBooleanBaseWidget::on_comboBoxB_currentIndexChanged(int index)
 {
     if (index < 0 || index >= ui->comboBoxB->count())
         return;
@@ -397,43 +339,38 @@ void OccBooleanToolWidget::on_comboBoxB_currentIndexChanged(int index)
         newKey = ui->comboBoxB->itemText(index);
     }
 
-    // 先把旧的 B 恢复原色（前提是它不是当前 A）
     if (!m_keyB.isEmpty() && m_keyB != m_keyA)
         setHighlight(m_keyB, QColor(), false);
 
     m_keyB = newKey;
 
-    // 给新的 B 上蓝色（如果 A/B 不同）
     if (!m_keyB.isEmpty() && m_keyB != m_keyA)
         setHighlight(m_keyB, Qt::blue, true);
 }
 
-// ---------------- Apply：执行布尔运算 ----------------
-
-void OccBooleanToolWidget::on_pushButtonApply_clicked()
+void OccBooleanBaseWidget::on_pushButtonApply_clicked()
 {
-
     if (m_keyA.isEmpty() || m_keyB.isEmpty()) {
-        qWarning() << "[OccBooleanToolWidget] A or B key is empty.";
+        qWarning() << "[OccBooleanBaseWidget] A or B key is empty.";
         return;
     }
 
     if (m_keyA == m_keyB) {
-        qWarning() << "[OccBooleanToolWidget] A and B are the same object.";
+        qWarning() << "[OccBooleanBaseWidget] A and B are the same object.";
         return;
     }
 
     GeomShapeObject* objA = m_geomMap.value(m_keyA, nullptr);
     GeomShapeObject* objB = m_geomMap.value(m_keyB, nullptr);
     if (!objA || !objB) {
-        qWarning() << "[OccBooleanToolWidget] invalid GeomShapeObject for A or B.";
+        qWarning() << "[OccBooleanBaseWidget] invalid GeomShapeObject for A or B.";
         return;
     }
 
     TopoDS_Shape* shapeA = objA->getShape();
     TopoDS_Shape* shapeB = objB->getShape();
     if (!shapeA || !shapeB || shapeA->IsNull() || shapeB->IsNull()) {
-        qWarning() << "[OccBooleanToolWidget] A or B shape is null.";
+        qWarning() << "[OccBooleanBaseWidget] A or B shape is null.";
         return;
     }
 
@@ -442,26 +379,25 @@ void OccBooleanToolWidget::on_pushButtonApply_clicked()
 
     switch (opIndex)
     {
-    case 0: // Cut (A - B)
+    case 0:
         resultShape = OccBooleanTool::Cut(*shapeA, *shapeB);
         break;
-    case 1: // Fuse (A ∪ B)
+    case 1:
         resultShape = OccBooleanTool::Fuse(*shapeA, *shapeB);
         break;
-    case 2: // Common (A ∩ B)
+    case 2:
         resultShape = OccBooleanTool::Common(*shapeA, *shapeB);
         break;
     default:
-        qWarning() << "[OccBooleanToolWidget] invalid op index:" << opIndex;
+        qWarning() << "[OccBooleanBaseWidget] invalid op index:" << opIndex;
         return;
     }
 
     if (resultShape.IsNull()) {
-        qWarning() << "[OccBooleanToolWidget] Boolean result is null.";
+        qWarning() << "[OccBooleanBaseWidget] Boolean result is null.";
         return;
     }
 
-    // 生成新的几何对象并注册
     QString resultUuid = QUuid::createUuid().toString();
     QString resultName = makeResultName();
     TopoDS_Shape* newShape = new TopoDS_Shape(resultShape);
@@ -470,50 +406,12 @@ void OccBooleanToolWidget::on_pushButtonApply_clicked()
     m_geomMgr->appendGeomShapeObject(resultObj);
     m_geomMap.insert(resultUuid, resultObj);
 
-    // 设置结果几何的颜色，比如黄色
     if (vtkSmartPointer<vtkActor> resultActor = resultObj->getSurfActor()) {
-        resultActor->GetProperty()->SetColor(1.0, 1.0, 0.0); // 黄
+        resultActor->GetProperty()->SetColor(1.0, 1.0, 0.0);
     }
 
     ui->comboBoxA->addItem(resultName, resultUuid);
     ui->comboBoxB->addItem(resultName, resultUuid);
-
-    // if (vtkSmartPointer<vtkActor> edgeActor = resultObj->getEdgeActor())
-    //     m_preProcessingWidget->addActor(edgeActor);
-    // if (vtkSmartPointer<vtkActor> surfActor = resultObj->getSurfActor())
-    //     m_preProcessingWidget->addActor(surfActor);
-
-
-
-    // // 删除旧的 A/B 几何
-    // if (opIndex == 0) {
-    //     // Cut：删除 A，保留 B
-    //     if (vtkSmartPointer<vtkActor> aEdge = objA->getEdgeActor())
-    //         m_preProcessingWidget->removeActor(aEdge);
-    //     if (vtkSmartPointer<vtkActor> aSurf = objA->getSurfActor())
-    //         m_preProcessingWidget->removeActor(aSurf);
-
-    //     m_geomMgr->removeGeomShapeObject(objA);
-    //     m_geomMap.remove(m_keyA);
-    //     m_colorBackup.remove(m_keyA);
-    // } else {
-    //     // Fuse / Common / Fuse+keepCommon：删除 A 和 B
-    //     if (vtkSmartPointer<vtkActor> aEdge = objA->getEdgeActor())
-    //         m_preProcessingWidget->removeActor(aEdge);
-    //     if (vtkSmartPointer<vtkActor> aSurf = objA->getSurfActor())
-    //         m_preProcessingWidget->removeActor(aSurf);
-    //     m_geomMgr->removeGeomShapeObject(objA);
-    //     m_geomMap.remove(m_keyA);
-    //     m_colorBackup.remove(m_keyA);
-
-    //     if (vtkSmartPointer<vtkActor> bEdge = objB->getEdgeActor())
-    //         m_preProcessingWidget->removeActor(bEdge);
-    //     if (vtkSmartPointer<vtkActor> bSurf = objB->getSurfActor())
-    //         m_preProcessingWidget->removeActor(bSurf);
-    //     m_geomMgr->removeGeomShapeObject(objB);
-    //     m_geomMap.remove(m_keyB);
-    //     m_colorBackup.remove(m_keyB);
-    // }
 
     int idxA = ui->comboBoxA->findData(resultUuid);
     if (idxA >= 0)
@@ -530,18 +428,16 @@ void OccBooleanToolWidget::on_pushButtonApply_clicked()
     requestRender();
 }
 
-void OccBooleanToolWidget::on_pushButton_clicked()
+void OccBooleanBaseWidget::on_pushButton_clicked()
 {
-    // 这里假设 pushButton 是“刷新几何列表”
     if (!m_geomMgr) {
         m_geomMgr = GeomManager::GeomManagerInstance::getInstance();
         if (!m_geomMgr) {
-            qWarning() << "[OccBooleanToolWidget] GeomManagerInstance is null (refresh).";
+            qWarning() << "[OccBooleanBaseWidget] GeomManagerInstance is null (refresh).";
             return;
         }
     }
 
-    // 恢复已有高亮颜色
     for (auto it = m_colorBackup.constBegin(); it != m_colorBackup.constEnd(); ++it)
     {
         const QString& key = it.key();

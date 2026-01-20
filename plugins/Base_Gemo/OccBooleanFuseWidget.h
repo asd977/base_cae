@@ -1,9 +1,9 @@
 ﻿#ifndef OCCBOOLEANFUSEWIDGET_H
 #define OCCBOOLEANFUSEWIDGET_H
 
-#include "OccBooleanToolWidget.h"
+#include "OccBooleanBaseWidget.h"
 
-class OccBooleanFuseWidget : public OccBooleanToolWidget
+class OccBooleanFuseWidget : public OccBooleanBaseWidget
 {
     Q_OBJECT
 public:

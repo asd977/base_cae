@@ -1,6 +1,6 @@
 ﻿#include "OccBooleanFuseWidget.h"
 
 OccBooleanFuseWidget::OccBooleanFuseWidget(QWidget *parent)
-    : OccBooleanToolWidget(BooleanOp::Fuse, parent)
+    : OccBooleanBaseWidget(BooleanOp::Fuse, parent)
 {
 }

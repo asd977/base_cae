@@ -75,7 +75,6 @@
 #include <ContextMenuHub.h>
 #include <EventManager.h>
 #include <GeomManagerInstance.h>
-#include <OccBooleanToolWidget.h>
 #include "OccBooleanFuseWidget.h"
 #include "OccBooleanCutWidget.h"
 #include "OccBooleanCommonWidget.h"
