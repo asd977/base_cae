@@ -8,6 +8,7 @@
 #include <QMessageBox>
 #include <QIcon>
 #include <GeomManagerInstance.h>
+#include <GeometryCleanup.h>
 
 #include <cmath>
 
@@ -280,6 +281,8 @@ void PolygonDialog::validateInput()
         delete shape;
         return;
     }
+
+    GeometryCleanup::removeExistingGeometry(m_uuid);
 
     GeomShapeObject* object = new GeomShapeObject(m_uuid, shape, getDisplayName());
     mgr->appendGeomShapeObject(object);

@@ -31,6 +31,8 @@ public:
     bool isHaveProject();
     void addTreeItem(ProjectNode *node);
     void setCurrentItem(ProjectNode *node) override;
+    ProjectNode* findNodeByUuid(const QString& uuid) override;
+    void setNodeDimmed(const QString& uuid, bool dimmed) override;
 private slots:
 	void newProject();
 	void openProject();

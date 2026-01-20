@@ -11,6 +11,7 @@
 #include <PublicVariables.h>
 #include <PublicConstants.h>
 #include <GeomManagerInstance.h>
+#include <GeometryCleanup.h>
 
 // ===== OCC =====
 #include <gp_Ax2.hxx>
@@ -224,6 +225,8 @@ void CircleDialog::validateInput()
 
     // ---- OCC：圆 -> Edge -> Wire -> Face ----
     TopoDS_Shape circleShape;
+
+    GeometryCleanup::removeExistingGeometry(m_uuid);
 
     Handle(Geom_Circle) gc = new Geom_Circle(axis, radius);
     TopoDS_Edge edge = BRepBuilderAPI_MakeEdge(gc);

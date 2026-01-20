@@ -6,6 +6,7 @@
 #include <BRepPrimAPI_MakeTorus.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
 #include <GeomManagerInstance.h>
+#include <GeometryCleanup.h>
 #include <ServiceRegistry.h>
 #include <services/VisualWidgetService.h>
 
@@ -86,6 +87,8 @@ void TorusDialog::onOkClicked()
 		QMessageBox::warning(this, "无效输入", "小半径必须为正数且小于大半径！");
 		return;
 	}
+
+    GeometryCleanup::removeExistingGeometry(m_uuid);
 
     gp_Pnt center = getCenter();
     BRepPrimAPI_MakeTorus torusMaker(majorRadius, minorRadius);

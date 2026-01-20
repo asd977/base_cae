@@ -7,6 +7,7 @@
 
 #include <BRepPrimAPI_MakeSphere.hxx>
 #include <GeomManagerInstance.h>
+#include <GeometryCleanup.h>
 #include <ServiceRegistry.h>
 #include <services/VisualWidgetService.h>
 
@@ -115,6 +116,7 @@ void SphereDialog::onOkClicked()
 		QMessageBox::warning(this, "无效输入", "半径必须为正数!");
 		return;
 	}
+    GeometryCleanup::removeExistingGeometry(m_uuid);
     gp_Pnt pos = gp_Pnt(xEdit->text().toDouble(), yEdit->text().toDouble(), zEdit->text().toDouble());
     BRepPrimAPI_MakeSphere sphereMaker(pos, radius);
     TopoDS_Shape *shape = new TopoDS_Shape(sphereMaker.Shape());

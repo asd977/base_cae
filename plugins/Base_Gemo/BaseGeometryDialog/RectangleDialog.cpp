@@ -20,6 +20,7 @@
 #include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <GeomManagerInstance.h>
+#include <GeometryCleanup.h>
 
 // ===== 你的项目类（按你 CircleDialog 用的）=====
 #include <ServiceRegistry.h>
@@ -271,6 +272,8 @@ void RectangleDialog::validateInput()
         delete shape;
         return;
     }
+
+    GeometryCleanup::removeExistingGeometry(m_uuid);
 
     GeomShapeObject* object = new GeomShapeObject(m_uuid, shape, getDisplayName());
     mgr->appendGeomShapeObject(object);
