@@ -20,28 +20,40 @@
       <string>梯形边界荷载参数</string>
      </property>
      <layout class="QGridLayout" name="gridLayout">
-      <item row="0" column="0">
-       <widget class="QLabel" name="labelFname">
+      <item row="6" column="0">
+       <widget class="QLabel" name="labelII">
         <property name="text">
-         <string>FNAME</string>
+         <string>II</string>
         </property>
        </widget>
       </item>
-      <item row="0" column="1">
-       <widget class="QLineEdit" name="editFname">
-        <property name="placeholderText">
-         <string>例如 LEFT.DAT</string>
+      <item row="6" column="1">
+       <widget class="QSpinBox" name="spinII">
+        <property name="minimum">
+         <number>-999999</number>
+        </property>
+        <property name="maximum">
+         <number>999999</number>
+        </property>
+        <property name="value">
+         <number>1</number>
         </property>
        </widget>
       </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="labelIdir">
-        <property name="text">
-         <string>IDIR</string>
+      <item row="3" column="1">
+       <widget class="QDoubleSpinBox" name="spinHeight">
+        <property name="decimals">
+         <number>6</number>
+        </property>
+        <property name="minimum">
+         <double>-1000000000000.000000000000000</double>
+        </property>
+        <property name="maximum">
+         <double>1000000000000.000000000000000</double>
         </property>
        </widget>
       </item>
-      <item row="1" column="1">
+      <item row="2" column="1">
        <widget class="QComboBox" name="comboIdir">
         <item>
          <property name="text">
@@ -60,15 +72,22 @@
         </item>
        </widget>
       </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="labelHeight">
+      <item row="5" column="0">
+       <widget class="QLabel" name="labelPgrout">
         <property name="text">
-         <string>HEIGHT</string>
+         <string>PGROUT</string>
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
-       <widget class="QDoubleSpinBox" name="spinHeight">
+      <item row="4" column="0">
+       <widget class="QLabel" name="labelRou">
+        <property name="text">
+         <string>GAMA</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="1">
+       <widget class="QDoubleSpinBox" name="spinPgrout">
         <property name="decimals">
          <number>6</number>
         </property>
@@ -81,13 +100,27 @@
        </widget>
       </item>
       <item row="3" column="0">
-       <widget class="QLabel" name="labelRou">
+       <widget class="QLabel" name="labelHeight">
         <property name="text">
-         <string>ROU</string>
+         <string>HEIGHT</string>
         </property>
        </widget>
       </item>
-      <item row="3" column="1">
+      <item row="1" column="0">
+       <widget class="QLabel" name="labelFname">
+        <property name="text">
+         <string>FNAME</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="labelIdir">
+        <property name="text">
+         <string>IDIR</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
        <widget class="QDoubleSpinBox" name="spinRou">
         <property name="decimals">
          <number>6</number>
@@ -103,54 +136,28 @@
         </property>
        </widget>
       </item>
-      <item row="4" column="0">
-       <widget class="QLabel" name="labelPgrout">
+      <item row="1" column="1">
+       <widget class="QLineEdit" name="editFname">
+        <property name="placeholderText">
+         <string>例如 LEFT.DAT</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="0">
+       <widget class="QRadioButton" name="radionButtonEdge">
         <property name="text">
-         <string>PGROUT</string>
+         <string>网格边</string>
         </property>
        </widget>
       </item>
-      <item row="4" column="1">
-       <widget class="QDoubleSpinBox" name="spinPgrout">
-        <property name="decimals">
-         <number>6</number>
-        </property>
-        <property name="minimum">
-         <double>-1000000000000.000000000000000</double>
-        </property>
-        <property name="maximum">
-         <double>1000000000000.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="0">
-       <widget class="QLabel" name="labelII">
+      <item row="0" column="1">
+       <widget class="QRadioButton" name="radionButtonFace">
         <property name="text">
-         <string>II</string>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="1">
-       <widget class="QSpinBox" name="spinII">
-        <property name="minimum">
-         <number>-999999</number>
-        </property>
-        <property name="maximum">
-         <number>999999</number>
-        </property>
-        <property name="value">
-         <number>1</number>
+         <string>网格面</string>
         </property>
        </widget>
       </item>
      </layout>
-    </widget>
-   </item>
-   <item>
-    <widget class="QPushButton" name="btnGenerate">
-     <property name="text">
-      <string>生成并打印到日志</string>
-     </property>
     </widget>
    </item>
    <item>

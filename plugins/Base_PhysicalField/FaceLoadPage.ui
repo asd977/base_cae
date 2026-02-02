@@ -15,83 +15,9 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="QGroupBox" name="groupBoxMode">
-     <property name="title">
-      <string>模式</string>
-     </property>
-     <layout class="QGridLayout" name="gridLayoutMode">
-      <item row="0" column="0">
-       <widget class="QLabel" name="labelMode">
-        <property name="text">
-         <string>LXJMET</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <widget class="QComboBox" name="comboMode">
-        <item>
-         <property name="text">
-          <string>0 未知相关单元（不输出KE）</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>1 已知相关单元（输出KE）</string>
-         </property>
-        </item>
-       </widget>
-      </item>
-
-      <item row="1" column="0">
-       <widget class="QLabel" name="labelKE">
-        <property name="text">
-         <string>KE（相关单元）</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="QSpinBox" name="spinKE">
-        <property name="minimum">
-         <number>-999999999</number>
-        </property>
-        <property name="maximum">
-         <number>999999999</number>
-        </property>
-        <property name="value">
-         <number>0</number>
-        </property>
-       </widget>
-      </item>
-
-      <item row="2" column="0">
-       <widget class="QLabel" name="labelII">
-        <property name="text">
-         <string>II</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <widget class="QSpinBox" name="spinII">
-        <property name="minimum">
-         <number>-999999</number>
-        </property>
-        <property name="maximum">
-         <number>999999</number>
-        </property>
-        <property name="value">
-         <number>1</number>
-        </property>
-       </widget>
-      </item>
-
-     </layout>
-    </widget>
-   </item>
-
-   <item>
     <widget class="QGroupBox" name="groupBoxLoad">
      <property name="title">
-      <string>面力分量（N/m²）统一应用到选中节点</string>
+      <string>面力分量</string>
      </property>
      <layout class="QGridLayout" name="gridLayoutLoad">
       <item row="0" column="0">
@@ -101,20 +27,6 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="1">
-       <widget class="QDoubleSpinBox" name="spinFx">
-        <property name="decimals">
-         <number>6</number>
-        </property>
-        <property name="minimum">
-         <double>-1000000000000.000000000000000</double>
-        </property>
-        <property name="maximum">
-         <double>1000000000000.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-
       <item row="1" column="0">
        <widget class="QLabel" name="labelFy">
         <property name="text">
@@ -122,20 +34,6 @@
         </property>
        </widget>
       </item>
-      <item row="1" column="1">
-       <widget class="QDoubleSpinBox" name="spinFy">
-        <property name="decimals">
-         <number>6</number>
-        </property>
-        <property name="minimum">
-         <double>-1000000000000.000000000000000</double>
-        </property>
-        <property name="maximum">
-         <double>1000000000000.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-
       <item row="2" column="0">
        <widget class="QLabel" name="labelFz">
         <property name="text">
@@ -143,35 +41,22 @@
         </property>
        </widget>
       </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="lineEditX"/>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLineEdit" name="lineEditY"/>
+      </item>
       <item row="2" column="1">
-       <widget class="QDoubleSpinBox" name="spinFz">
-        <property name="decimals">
-         <number>6</number>
-        </property>
-        <property name="minimum">
-         <double>-1000000000000.000000000000000</double>
-        </property>
-        <property name="maximum">
-         <double>1000000000000.000000000000000</double>
-        </property>
-       </widget>
+       <widget class="QLineEdit" name="lineEditZ"/>
       </item>
      </layout>
     </widget>
    </item>
-
-   <item>
-    <widget class="QPushButton" name="btnGenerate">
-     <property name="text">
-      <string>生成并打印到日志</string>
-     </property>
-    </widget>
-   </item>
-
    <item>
     <spacer name="verticalSpacer">
      <property name="orientation">
-      <enum>Qt::Vertical</enum>
+      <enum>Qt::Orientation::Vertical</enum>
      </property>
      <property name="sizeHint" stdset="0">
       <size>

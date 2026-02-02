@@ -211,6 +211,9 @@ constexpr char kPreProcessingProjectFileName[]   = "preprocessing.json";
 // --- Runtime values ---
 constexpr char kValuePostScalar[] = "post_scalar";
 
+// --- 网格类型：几维空间 ---
+constexpr char kMeshDimension[]  = "mesh_dimension";
+
 } // namespace PublicConstants
 
 #endif // PUBLICCONSTANT_H

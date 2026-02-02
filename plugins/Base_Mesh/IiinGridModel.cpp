@@ -6,9 +6,17 @@
 #include <QStringList>
 #include <QDebug>
 
-IiinGridModel::IiinGridModel()
+#include <PublicVariables.h>
+#include <PublicConstants.h>
+
+static inline bool parseInt(const QString& s, int& v)
 {
+    bool ok = false;
+    v = s.toInt(&ok);
+    return ok;
 }
+
+IiinGridModel::IiinGridModel() {}
 
 void IiinGridModel::clear()
 {
@@ -47,6 +55,7 @@ bool IiinGridModel::loadFromFile(const QString &fileName, QString *errMsg)
     }
 
     QTextStream in(&f);
+
     // ---------- 头两行 ----------
     int extra   = 0;
     double d1   = 0.0, d2 = 0.0, d3 = 0.0;
@@ -58,9 +67,9 @@ bool IiinGridModel::loadFromFile(const QString &fileName, QString *errMsg)
     }
 
     in >> m_iobject >> m_ivertical
-       >> m_xmin >> m_xmax
-       >> m_ymin >> m_ymax
-       >> m_zmin >> m_zmax;
+        >> m_xmin >> m_xmax
+        >> m_ymin >> m_ymax
+        >> m_zmin >> m_zmax;
     if (in.status() != QTextStream::Ok) {
         if (errMsg) *errMsg = "第二行(对象信息)读取失败";
         return false;
@@ -69,48 +78,39 @@ bool IiinGridModel::loadFromFile(const QString &fileName, QString *errMsg)
     // 丢弃第二行后面剩余内容
     in.readLine();
 
-    qDebug() << "[IiinGridModel] header:"
-             << "numnp=" << m_numnp
-             << "madim=" << m_madim
-             << "nelem=" << m_nelem
-             << "manod=" << m_manod
-             << "am="    << m_am
-             << "iobject=" << m_iobject
-             << "ivertical=" << m_ivertical;
+    PublicVariables::instance().set(PublicConstants::kMeshDimension, m_madim ,"mesh");
 
     if (m_numnp <= 0) {
         if (errMsg) *errMsg = "节点数 numnp 非法";
         return false;
+    }
+    if (m_manod <= 0) {
+        // 容错：有些文件 manod 写 0，这里给一个保底
+        m_manod = 8;
     }
 
     // ---------- 读节点 ----------
     m_nodes.reserve(m_numnp);
     while (!in.atEnd() && m_nodes.size() < m_numnp) {
         QString raw = in.readLine();
-        if (raw.isNull())
-            break;
+        if (raw.isNull()) break;
         QString line = raw.trimmed();
-        if (line.isEmpty())
-            continue;
+        if (line.isEmpty()) continue;
 
         QString simplified = line.simplified();
         QStringList parts  = simplified.split(' ', Qt::SkipEmptyParts);
-        if (parts.size() < 3) {
-            qWarning() << "[IiinGridModel] bad node line:" << line;
-            continue;
-        }
+        if (parts.size() < 3) continue;
 
         bool ok = false;
         Node n;
 
         if (parts.size() >= 4) {
-            // x y z id
             n.x  = parts[0].toDouble(&ok); if (!ok) continue;
             n.y  = parts[1].toDouble(&ok); if (!ok) continue;
             n.z  = parts[2].toDouble(&ok); if (!ok) continue;
             n.id = parts[3].toInt(&ok);    if (!ok) continue;
         } else {
-            // 3 列: 2D 情况: x y id
+            // 3 列：2D 情况 x y id；3D 情况 x y z（id 默认顺序）
             if (m_madim == 2) {
                 n.x  = parts[0].toDouble(&ok); if (!ok) continue;
                 n.y  = parts[1].toDouble(&ok); if (!ok) continue;
@@ -124,7 +124,7 @@ bool IiinGridModel::loadFromFile(const QString &fileName, QString *errMsg)
             }
         }
 
-        // 应用坐标放大倍数 AM
+        // 应用 AM
         n.x *= m_am;
         n.y *= m_am;
         n.z *= m_am;
@@ -137,73 +137,105 @@ bool IiinGridModel::loadFromFile(const QString &fileName, QString *errMsg)
         return false;
     }
 
-    qDebug() << "[IiinGridModel] read nodes =" << m_nodes.size()
-             << " first node id=" << m_nodes[0].id
-             << " coord=(" << m_nodes[0].x << m_nodes[0].y << m_nodes[0].z << ")";
-
     // ---------- 读单元 ----------
     m_elems.reserve(m_nelem > 0 ? m_nelem : 1024);
-    int countElemLines = 0;
 
+    // 关键：有些文件 element 行是“变长”的：id + Nnode + ketype matype layer (+ tail1 tail2)
+    // 我们用“从右往左”来解析，兼容两种：
+    //  A) ... ketype matype layer
+    //  B) ... ketype matype layer tail1 tail2
     while (!in.atEnd()) {
+        if (m_nelem > 0 && m_elems.size() >= m_nelem) break; // 容错：后面可能还有其它块
+
         QString raw = in.readLine();
-        if (raw.isNull())
-            break;
+        if (raw.isNull()) break;
         QString line = raw.trimmed();
-        if (line.isEmpty())
-            continue;
+        if (line.isEmpty()) continue;
 
         QString simplified = line.simplified();
         QStringList parts  = simplified.split(' ', Qt::SkipEmptyParts);
+        if (parts.size() < 4) continue; // 至少：id + ketype + matype + layer
 
-        int minNeeded = 1 + m_manod + 3;
-        if (parts.size() < minNeeded) {
-            qWarning() << "[IiinGridModel] too few columns for element line, got"
-                       << parts.size() << "need >=" << minNeeded
-                       << ", raw line:" << line;
-            continue;
-        }
+        int elemId = 0;
+        if (!parseInt(parts[0], elemId)) continue;
 
-        bool ok = false;
+        auto tryParse = [&](bool withTail, Elem& e)->bool {
+            const int n = parts.size();
+            int ketype=0, matype=0, layer=0, tail1=0, tail2=0;
+            int nodeCount = 0;
+
+            if (withTail) {
+                if (n < 6) return false; // id + ketype matype layer tail1 tail2
+                if (!parseInt(parts[n-5], ketype)) return false;
+                if (!parseInt(parts[n-4], matype)) return false;
+                if (!parseInt(parts[n-3], layer))  return false;
+                if (!parseInt(parts[n-2], tail1))  return false;
+                if (!parseInt(parts[n-1], tail2))  return false;
+                nodeCount = n - 1 - 5;
+            } else {
+                if (!parseInt(parts[n-3], ketype)) return false;
+                if (!parseInt(parts[n-2], matype)) return false;
+                if (!parseInt(parts[n-1], layer))  return false;
+                tail1 = tail2 = 0;
+                nodeCount = n - 1 - 3;
+            }
+
+            if (ketype <= 0 || ketype > 100) return false;
+            if (nodeCount < 0 || nodeCount > m_manod) return false;
+
+            e.id = elemId;
+            e.ketype = ketype;
+            e.matype = matype;
+            e.layer  = layer;
+            e.tail1  = tail1;
+            e.tail2  = tail2;
+
+            e.nodeIds.clear();
+            e.nodeIds.resize(m_manod, 0);
+
+            for (int i = 0; i < nodeCount; ++i) {
+                int nid = 0;
+                if (!parseInt(parts[1 + i], nid)) return false;
+                e.nodeIds[i] = nid; // 允许重复（退化节点）
+            }
+            return true;
+        };
+
         Elem e;
-        e.nodeIds.resize(m_manod);
 
-        e.id = parts[0].toInt(&ok);
+        // 优先尝试“带尾巴”，失败再尝试“不带尾巴”
+        bool ok = tryParse(true, e);
+        if (!ok) ok = tryParse(false, e);
         if (!ok) {
-            qWarning() << "[IiinGridModel] bad elem id line:" << line;
-            continue;
+            // 再给一次兼容：如果它确实是固定 manod 的老格式
+            const int minNeeded = 1 + m_manod + 3;
+            if (parts.size() >= minNeeded) {
+                bool ok2 = false;
+                e.id = elemId;
+                e.nodeIds.resize(m_manod, 0);
+                for (int j = 0; j < m_manod; ++j) {
+                    e.nodeIds[j] = parts[1 + j].toInt(&ok2);
+                    if (!ok2) break;
+                }
+                if (!ok2) continue;
+
+                e.ketype = parts[1 + m_manod].toInt(&ok2); if (!ok2) continue;
+                e.matype = parts[2 + m_manod].toInt(&ok2); if (!ok2) continue;
+                e.layer  = parts[3 + m_manod].toInt(&ok2); if (!ok2) continue;
+                e.tail1 = e.tail2 = 0;
+                ok = true;
+            }
         }
 
-        for (int j = 0; j < m_manod; ++j) {
-            e.nodeIds[j] = parts[1 + j].toInt(&ok);
-            if (!ok) break;
-        }
-        if (!ok) {
-            qWarning() << "[IiinGridModel] bad node id in elem:" << e.id;
-            continue;
-        }
-
-        e.ketype = parts[1 + m_manod].toInt(&ok);
-        if (!ok) { qWarning() << "[IiinGridModel] bad ketype in elem:" << e.id; continue; }
-
-        e.matype = parts[2 + m_manod].toInt(&ok);
-        if (!ok) { qWarning() << "[IiinGridModel] bad matype in elem:" << e.id; continue; }
-
-        e.layer  = parts[3 + m_manod].toInt(&ok);
-        if (!ok) { qWarning() << "[IiinGridModel] bad layer in elem:"  << e.id; continue; }
+        if (!ok) continue;
 
         m_elems.push_back(e);
-        ++countElemLines;
-
         m_allKetypes.insert(e.ketype);
         m_allMatypes.insert(e.matype);
         m_allLayers.insert(e.layer);
     }
 
     m_nelem = m_elems.size();
-
-    qDebug() << "[IiinGridModel] read elems =" << m_elems.size();
-
     if (m_elems.isEmpty()) {
         if (errMsg) *errMsg = "未读取到任何单元";
         return false;
@@ -232,7 +264,6 @@ bool IiinGridModel::saveToFile(const QString &fileName, QString *errMsg) const
     out.setRealNumberNotation(QTextStream::FixedNotation);
     out.setRealNumberPrecision(6);
 
-    // 首行: 简化写回: 第 5 个写 0, 第 6 个写 AM, 后面三个 0
     out << m_nodes.size() << " "
         << m_madim        << " "
         << m_elems.size() << " "
@@ -243,13 +274,11 @@ bool IiinGridModel::saveToFile(const QString &fileName, QString *errMsg) const
         << 0.0            << " "
         << 0.0            << "\n";
 
-    // 第二行: 对象信息
     out << m_iobject  << " " << m_ivertical << " "
         << m_xmin     << " " << m_xmax     << " "
         << m_ymin     << " " << m_ymax     << " "
         << m_zmin     << " " << m_zmax     << "\n";
 
-    // 节点
     for (const Node &n : m_nodes) {
         double ox = n.x / m_am;
         double oy = n.y / m_am;
@@ -257,20 +286,19 @@ bool IiinGridModel::saveToFile(const QString &fileName, QString *errMsg) const
         out << ox << " " << oy << " " << oz << " " << n.id << "\n";
     }
 
-    // 单元
     for (const Elem &e : m_elems) {
         out << e.id;
         for (int j = 0; j < m_manod; ++j) {
             int nid = (j < e.nodeIds.size()) ? e.nodeIds[j] : 0;
             out << " " << nid;
         }
-        out << " " << e.ketype << " " << e.matype << " " << e.layer << " 0 0\n";
+        // 写回尾巴：保持读到的 tail1/tail2（没读到就是 0）
+        out << " " << e.ketype << " " << e.matype << " " << e.layer
+            << " " << e.tail1  << " " << e.tail2 << "\n";
     }
 
     out.flush();
     f.close();
-
-    qDebug() << "[IiinGridModel] saved IIIN.DAT:" << fileName;
     return true;
 }
 
@@ -351,15 +379,12 @@ bool IiinGridModel::moveNode(int nodeId,
                              const double *newZ)
 {
     int idx = nodeIndexById(nodeId);
-    if (idx < 0)
-        return false;
+    if (idx < 0) return false;
 
     Node &n = m_nodes[idx];
-
     if (newX) n.x = *newX;
     if (newY) n.y = *newY;
     if (newZ) n.z = *newZ;
-
     return true;
 }
 

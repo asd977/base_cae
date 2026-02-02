@@ -14,14 +14,12 @@
    <string>变温荷载</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
-
    <item>
     <widget class="QGroupBox" name="groupBoxParams">
      <property name="title">
       <string>统一参数（应用到选中节点）</string>
      </property>
      <layout class="QGridLayout" name="gridLayout">
-
       <item row="0" column="0">
        <widget class="QLabel" name="labelAlfa">
         <property name="text">
@@ -29,20 +27,6 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="1">
-       <widget class="QDoubleSpinBox" name="spinAlfa">
-        <property name="decimals">
-         <number>6</number>
-        </property>
-        <property name="minimum">
-         <double>-1000000000000.000000000000000</double>
-        </property>
-        <property name="maximum">
-         <double>1000000000000.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-
       <item row="1" column="0">
        <widget class="QLabel" name="labelDT">
         <property name="text">
@@ -50,57 +34,19 @@
         </property>
        </widget>
       </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="lineEditAlfa"/>
+      </item>
       <item row="1" column="1">
-       <widget class="QDoubleSpinBox" name="spinDT">
-        <property name="decimals">
-         <number>6</number>
-        </property>
-        <property name="minimum">
-         <double>-1000000000000.000000000000000</double>
-        </property>
-        <property name="maximum">
-         <double>1000000000000.000000000000000</double>
-        </property>
-       </widget>
+       <widget class="QLineEdit" name="lineEditDT"/>
       </item>
-
-      <item row="2" column="0">
-       <widget class="QLabel" name="labelII">
-        <property name="text">
-         <string>II</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <widget class="QSpinBox" name="spinII">
-        <property name="minimum">
-         <number>-999999</number>
-        </property>
-        <property name="maximum">
-         <number>999999</number>
-        </property>
-        <property name="value">
-         <number>1</number>
-        </property>
-       </widget>
-      </item>
-
      </layout>
     </widget>
    </item>
-
-   <item>
-    <widget class="QPushButton" name="btnGenerate">
-     <property name="text">
-      <string>生成并打印到日志</string>
-     </property>
-    </widget>
-   </item>
-
    <item>
     <spacer name="verticalSpacer">
      <property name="orientation">
-      <enum>Qt::Vertical</enum>
+      <enum>Qt::Orientation::Vertical</enum>
      </property>
      <property name="sizeHint" stdset="0">
       <size>
@@ -110,7 +56,6 @@
      </property>
     </spacer>
    </item>
-
   </layout>
  </widget>
  <resources/>

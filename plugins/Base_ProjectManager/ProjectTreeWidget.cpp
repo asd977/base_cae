@@ -44,50 +44,76 @@ void ProjectTreeWidget::init()
 
 void ProjectTreeWidget::applyTreeTheme()
 {
-	if (!m_treeWidget)
-	{
-		return;
-	}
-    m_treeWidget->setStyleSheet(QString(
-                                    "QTreeWidget {"
-                                    "    border: none;"
-                                    "    font-family: Microsoft YaHei, 微软雅黑;"
-                                    "}"
-                                    "QTreeView {"
-                                    "    font-size: %2px;"
-                                    "    show-decoration-selected: 1;"
-                                    "    selection-background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,"
-                                    "        stop:0 rgba(255, 255, 255, 255), stop:0.5 rgba(235, 247, 253, 255), stop:1 rgba(213, 237, 250, 255));"
-                                    "    color: black;"
-                                    "    background-color: rgb(255, 255, 255);"
-                                    "}"
-                                    "QTreeView::item {"
-                                    "    height: %1px;"
-                                    "    border: 1px solid transparent;"
-                                    "    color: black;"
-                                    "    background-color: rgb(255, 255, 255);"
-                                    "}"
-                                    "QTreeView::item:selected, QTreeView::branch:selected {"
-                                    "    background-color: rgb(192, 226, 252) !important;"
-                                    "    color: black;"
-                                    "}"
-                                    "QTreeView::item:hover, QTreeView::branch:hover {"
-                                    "    background-color: rgb(226, 242, 254) !important;"
-                                    "    color: black;"
-                                    "}"
-                                    "QTreeView::branch {"
-                                    "    color: black;"
-                                    "}"
-                                    "QTreeView::branch:closed:has-children {"
-                                    "    image: url(:/resources/btn_up.png);"
-                                    "}"
-                                    "QTreeView::branch:open:has-children {"
-                                    "    image: url(:/resources/btn_down.png);"
-                                    "}"
-                                    ).arg(20).arg(12));
-    // m_treeWidget->setStyleSheet(qss);
-}
+    if (!m_treeWidget)
+    {
+        return;
+    }
 
+    // 将树形样式和菜单样式组合在一起
+    // %1 为行高 (20px)，%2 为字体大小 (12px)
+    QString combinedQss = QString(
+                              /* --- QTreeWidget & QTreeView 样式 --- */
+                              "QTreeWidget {"
+                              "    border: none;"
+                              "    font-family: 'Microsoft YaHei', 微软雅黑;"
+                              "}"
+                              "QTreeView {"
+                              "    font-size: %2px;"
+                              "    show-decoration-selected: 1;"
+                              "    selection-background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,"
+                              "        stop:0 rgba(255, 255, 255, 255), stop:0.5 rgba(235, 247, 253, 255), stop:1 rgba(213, 237, 250, 255));"
+                              "    color: black;"
+                              "    background-color: rgb(255, 255, 255);"
+                              "    outline: 0;"
+                              "}"
+                              "QTreeView::item {"
+                              "    height: %1px;"
+                              "    border: 1px solid transparent;"
+                              "    color: black;"
+                              "    background-color: rgb(255, 255, 255);"
+                              "}"
+                              "QTreeView::item:selected, QTreeView::branch:selected {"
+                              "    background-color: rgb(192, 226, 252) !important;"
+                              "    color: black;"
+                              "}"
+                              "QTreeView::item:hover, QTreeView::branch:hover {"
+                              "    background-color: rgb(226, 242, 254) !important;"
+                              "    color: black;"
+                              "}"
+                              "QTreeView::branch:closed:has-children {"
+                              "    image: url(:/resources/btn_up.png);"
+                              "}"
+                              "QTreeView::branch:open:has-children {"
+                              "    image: url(:/resources/btn_down.png);"
+                              "}"
+
+                              /* --- QMenu (右键菜单) 样式 --- */
+                              "QMenu {"
+                              "    background-color: white;"
+                              "    border: 1px solid rgb(200, 200, 200);"
+                              "    padding: 2px;"
+                              "}"
+                              "QMenu::item {"
+                              "    padding: 6px 25px 6px 20px;"
+                              "    background-color: transparent;"
+                              "    color: black;"
+                              "}"
+                              "QMenu::item:selected {"
+                              "    background-color: rgb(226, 242, 254);" /* 与树节点 Hover 颜色一致 */
+                              "    color: black;"
+                              "}"
+                              "QMenu::separator {"
+                              "    height: 1px;"
+                              "    background: rgb(230, 230, 230);"
+                              "    margin: 4px 5px;"
+                              "}"
+                              "QMenu::icon {"
+                              "    padding-left: 10px;"
+                              "}"
+                              ).arg(20).arg(12); // 这里我把行高改成了30，20稍微有点挤，你可以根据需求调回20
+
+    m_treeWidget->setStyleSheet(combinedQss);
+}
 void ProjectTreeWidget::buildDefaultProjectTree(const QString& projectName)
 {
         m_treeWidget->clear();

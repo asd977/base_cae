@@ -6,6 +6,7 @@
 #include <QSet>
 #include <QVector>
 #include <QString>
+#include <QTimer>
 
 #include "services/VisualWidgetService.h"
 
@@ -13,24 +14,31 @@
 #include <vtkSmartPointer.h>
 #include <vtkCallbackCommand.h>
 #include <vtkCellPicker.h>
+#include <vtkAreaPicker.h>
+#include <vtkPlanes.h>
+#include <vtkExtractSelectedFrustum.h>
+
+#include <vtkDataSet.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkIntArray.h>
+#include <vtkDataArray.h>
 
 #include <vtkPoints.h>
 #include <vtkPolyData.h>
 #include <vtkVertexGlyphFilter.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkActor.h>
-
-#include <vtkDataSetMapper.h>
-#include <vtkIdTypeArray.h>
-#include <vtkSelection.h>
-#include <vtkSelectionNode.h>
-#include <vtkExtractSelection.h>
-
 #include <vtkCellArray.h>
+#include <vtkProp.h>
+
+#include <vtkPolyDataMapper2D.h>
+#include <vtkActor2D.h>
+#include <vtkProperty2D.h>
+#include <vtkCoordinate.h>
+
 
 enum class PickMode { Node, Edge, Face };
+enum class GridKind { Solid, Line };
 
 class PickManager : public QObject
 {
@@ -38,133 +46,230 @@ class PickManager : public QObject
 public:
     static PickManager& instance();
 
-    // 激活某个 domain + uuid + mode（同 domain 内互斥占有）
     void activate(const QString& domain, const QString& uuid, PickMode mode);
     void deactivate(const QString& domain, const QString& uuid, PickMode mode);
 
-    // 返回当前 domain/uuid/mode 的 id 列表
-    // Node: vtkPid
-    // Edge: cellId
-    // Face: faceKey = (cellId<<4) | faceLocalId (2D: faceLocalId=15)
     QVector<vtkIdType> getIdList(const QString& domain, const QString& uuid, PickMode mode) const;
+    QVector<vtkIdType> getIdList(const QString& domain, const QString& uuid, PickMode mode, GridKind kind) const;
+
+    QHash<int, QVector<int>> getEdgeNodesByKe(const QString& domain,
+                                              const QString& uuid,
+                                              GridKind kind) const;
+    QHash<int, QVector<int>> getFaceNodesByKe(const QString& domain,
+                                              const QString& uuid,
+                                              GridKind kind) const;
 
     void updateStructure();
 
     static void OnLeftButtonPress(vtkObject* caller, unsigned long, void* clientData, void*);
+    static void OnLeftButtonRelease(vtkObject* caller, unsigned long, void* clientData, void*);
+    static void OnMouseMove(vtkObject* caller, unsigned long, void* clientData, void*);
 
-    static inline vtkIdType unpackFaceCellId(vtkIdType faceKey)
-    {
-        return (faceKey >> 4);
-    }
+    // ---- face key ----
+    vtkIdType packFaceKey(vtkIdType cellId, int faceLocalId) const { return (cellId << 4) | (vtkIdType(faceLocalId) & 0xF); }
+    vtkIdType unpackFaceCellId(vtkIdType faceKey) const { return (faceKey >> 4); }
+    int       unpackFaceLocalId(vtkIdType faceKey) const { return int(faceKey & 0xF); }
 
-    static inline int unpackFaceLocalId(vtkIdType faceKey)
-    {
-        return int(faceKey & 0xF);
-    }
+    // ---- edge key ----
+    vtkIdType packEdgeKey(vtkIdType cellId, int edgeLocalId) const { return (cellId << 4) | (vtkIdType(edgeLocalId) & 0xF); }
+    vtkIdType unpackEdgeCellId(vtkIdType edgeKey) const { return (edgeKey >> 4); }
+    int       unpackEdgeLocalId(vtkIdType edgeKey) const { return int(edgeKey & 0xF); }
+
+    vtkUnstructuredGrid* solidGrid() const { return m_gridSolid; }
+    vtkUnstructuredGrid* lineGrid()  const { return m_gridLine;  }
+
+    void clearSelection(const QString& domain, const QString& uuid, PickMode mode);
+    void setShowBoxRect(bool on);
+
+    // 页面控制：是否启用批量框选（不使用 Shift）
+    void setBatchSelectEnabled(bool on);
+    bool batchSelectEnabled() const { return m_batchEnabled; }
+
+    // Shift 框选开关
+    void setShiftBoxSelectEnabled(bool on) { m_enableShiftBoxSelect = on; }
+    bool shiftBoxSelectEnabled() const { return m_enableShiftBoxSelect; }
 
 
 private:
     explicit PickManager(QObject* parent=nullptr);
     ~PickManager() override = default;
 
+    // picking
     void setupPicking();
     void teardownPicking();
     bool pickAt(int x, int y);
 
     // ---- node ----
-    void toggleSelectNode(vtkIdType vtkPid);
-    void appendSelectedPoint(vtkIdType pid);
-    void removeSelectedPoint(vtkIdType pid);
-    void rebuildPointsForActive(); // activate 时重建显示
+    void toggleSelectNode(GridKind kind, vtkIdType pid);
+    void rebuildPointsForActive();
 
     // ---- edge ----
-    void toggleSelectEdge(vtkIdType cellId);
-    void appendSelectedEdge(vtkIdType cellId);
-    void removeSelectedEdge(vtkIdType cellId);
-    void rebuildEdgesForActive(); // activate 时重建显示
-    void ensureEdgePipelineReady(); // 确保 extract+mapper 连接且输入有效
+    void toggleSelectEdge(GridKind kind, vtkIdType edgeKey);
+    void rebuildEdgePolyForActive();
+    bool computePickedEdge(vtkUnstructuredGrid* grid,
+                           vtkIdType cellId,
+                           const double pickPos[3],
+                           int& outEdgeLocalId,
+                           QVector<vtkIdType>& outEdgePids) const;
 
     // ---- face ----
-    // faceKey = packFaceKey(cellId, faceLocalId)
-    void toggleSelectFace(vtkIdType faceKey);
-    void rebuildFacesForActive(); // activate 时重建显示（只显示面，不显示整个 cell）
-    void rebuildFacePolyForActive(); // 真正构建 face polydata
-    bool computePickedFace(vtkIdType cellId, const double pickPos[3],
-                           int& outFaceLocalId, QVector<vtkIdType>& outFacePids) const;
+    void toggleSelectFace(GridKind kind, vtkIdType faceKey);
+    void rebuildFacePolyForActive();
+    bool computePickedFace(vtkUnstructuredGrid* grid,
+                           vtkIdType cellId,
+                           const double pickPos[3],
+                           int& outFaceLocalId,
+                           QVector<vtkIdType>& outFacePids) const;
 
-    // 显示层：根据当前 mode 决定谁可见
     void updateActorVisibility();
 
-    // faceKey pack/unpack
-    static inline vtkIdType packFaceKey(vtkIdType cellId, int faceLocalId)
-    {
-        return (cellId << 4) | (vtkIdType(faceLocalId) & 0xF);
-    }
+    // line node overlay
+    void rebuildLineNodeOverlayAll();
 
+    // commit exclusive on deactivate
+    void commitNodeExclusive(const QString& domain, const QString& uuid);
+    void commitEdgeExclusive(const QString& domain, const QString& uuid);
+    void commitFaceExclusive(const QString& domain, const QString& uuid);
+
+    // ====== box selection ======
+    enum class BoxOp { Add, Toggle, Remove };
+    void boxSelect(int x0, int y0, int x1, int y1, BoxOp op);
+
+    // batch modify helpers (NO rebuild / NO render)
+    void setNodeSelected_NoRefresh(GridKind kind, vtkIdType pid, bool selected);
+    void setEdgeSelected_NoRefresh(GridKind kind, vtkIdType edgeKey, bool selected);
+    void setFaceSelected_NoRefresh(GridKind kind, vtkIdType faceKey, bool selected);
+
+    // ====== coalesced rebuild/render ======
+    enum DirtyBits : int { DirtyNone=0, DirtyNode=1, DirtyEdge=2, DirtyFace=4 };
+    void markDirty(int bits);
+    void flushRebuild();
 
 private:
-    // ============ 互斥占有关系 ============
-    // domain -> (vtkPid -> uuid)
-    QHash<QString, QHash<vtkIdType, QString>> m_ownerPointByDomain;
-    // domain -> (uuid -> set(vtkPid))
-    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_pointsByDomainUuid;
-
-    // domain -> (cellId -> uuid)
-    QHash<QString, QHash<vtkIdType, QString>> m_ownerEdgeByDomain;
-    // domain -> (uuid -> set(cellId))
-    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_edgesByDomainUuid;
-
-    // domain -> (faceKey -> uuid)
-    QHash<QString, QHash<vtkIdType, QString>> m_ownerFaceByDomain;
-    // domain -> (uuid -> set(faceKey))
-    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_facesByDomainUuid;
-
-    // ============ 当前激活态 ============
+    // ============ active ============
     QString  m_currentDomain;
     QString  m_currentUUid;
     PickMode m_pickMode = PickMode::Node;
 
     VisualWidgetService* m_visual = nullptr;
 
-    // ============ Picker ============
+    // ============ observers / pickers ============
     vtkSmartPointer<vtkCallbackCommand> m_cbLeftPress;
+    vtkSmartPointer<vtkCallbackCommand> m_cbLeftRelease;
+    vtkSmartPointer<vtkCallbackCommand> m_cbMouseMove;
+
     vtkSmartPointer<vtkCellPicker>      m_cellPicker;
-    unsigned long                       m_leftPressTag = 0;
+    vtkSmartPointer<vtkAreaPicker>      m_areaPicker;
 
-    // ============ Mesh ============
-    vtkSmartPointer<vtkUnstructuredGrid> m_grid;
-    vtkSmartPointer<vtkIntArray>         m_nodeIdArr; // optional
+    unsigned long m_leftPressTag   = 0;
+    unsigned long m_leftReleaseTag = 0;
+    unsigned long m_mouseMoveTag   = 0;
 
-    // ============ Node (Points) 显示 ============
+    bool m_boxing = false;
+    int  m_boxStart[2] = {0,0};
+    int  m_boxEnd[2]   = {0,0};
+
+    // coalesce
+    int  m_dirtyBits = DirtyNone;
+    bool m_rebuildScheduled = false;
+
+    // ============ mesh cache ============
+    vtkUnstructuredGrid* m_gridSolid = nullptr;
+    vtkUnstructuredGrid* m_gridLine  = nullptr;
+
+    vtkIntArray* m_nodeIdArrSolid = nullptr;
+    vtkIntArray* m_elemIdArrSolid = nullptr;
+    vtkIntArray* m_nodeIdArrLine  = nullptr;
+    vtkIntArray* m_elemIdArrLine  = nullptr;
+
+    vtkProp* m_solidProp = nullptr;
+    vtkProp* m_lineProp  = nullptr;
+
+    // ============ line node hints ============
+    vtkSmartPointer<vtkPoints>            m_lineNodePts;
+    vtkSmartPointer<vtkPolyData>          m_lineNodePoly;
+    vtkSmartPointer<vtkVertexGlyphFilter> m_lineNodeGlyph;
+    vtkSmartPointer<vtkPolyDataMapper>    m_lineNodeMapper;
+    vtkSmartPointer<vtkActor>             m_lineNodeActor;
+    bool                                  m_showLineNodes = true;
+
+    // ============ node overlay ============
     vtkSmartPointer<vtkPoints>            m_selPts;
     vtkSmartPointer<vtkPolyData>          m_selPoly;
     vtkSmartPointer<vtkVertexGlyphFilter> m_selGlyph;
     vtkSmartPointer<vtkPolyDataMapper>    m_selMapper;
     vtkSmartPointer<vtkActor>             m_selActor;
 
-    // vtkPid -> index in m_selPts (O(1) add/remove)
-    QHash<vtkIdType, int> m_pid2SelIndex;
-    QVector<vtkIdType>    m_selIndex2Pid;
+    QHash<QString, QHash<vtkIdType, QString>>        m_ownerPointSolidByDomain;
+    QHash<QString, QHash<QString, QSet<vtkIdType>>>  m_pointsSolidByDomainUuid;
+    QHash<QString, QHash<vtkIdType, QString>>        m_ownerPointLineByDomain;
+    QHash<QString, QHash<QString, QSet<vtkIdType>>>  m_pointsLineByDomainUuid;
 
-    // ============ Edge 显示（ExtractSelection） ============
-    vtkSmartPointer<vtkIdTypeArray>      m_edgeSelIds;
-    vtkSmartPointer<vtkSelectionNode>    m_edgeSelNode;
-    vtkSmartPointer<vtkSelection>        m_edgeSel;
-    vtkSmartPointer<vtkExtractSelection> m_edgeExtract;
-    vtkSmartPointer<vtkDataSetMapper>    m_edgeMapper;
-    vtkSmartPointer<vtkActor>            m_edgeActor;
+    QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerPointSolidByDomain;
+    QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerPointLineByDomain;
 
-    // cellId -> idx in m_edgeSelIds (O(1) add/remove)
-    QHash<vtkIdType, int> m_edgeId2Idx;
-    QVector<vtkIdType>    m_edgeIdx2Id;
+    // ============ edge overlay ============
+    vtkSmartPointer<vtkPoints>         m_edgePts;
+    vtkSmartPointer<vtkCellArray>      m_edgeLines;
+    vtkSmartPointer<vtkPolyData>       m_edgePoly;
+    vtkSmartPointer<vtkPolyDataMapper> m_edgeMapper;
+    vtkSmartPointer<vtkActor>          m_edgeActor;
 
-    // ============ Face 显示（PolyData，仅高亮面） ============
+    QHash<QString, QHash<vtkIdType, QString>>        m_ownerEdgeSolidByDomain;
+    QHash<QString, QHash<QString, QSet<vtkIdType>>>  m_edgesSolidByDomainUuid;
+    QHash<QString, QHash<vtkIdType, QString>>        m_ownerEdgeLineByDomain;
+    QHash<QString, QHash<QString, QSet<vtkIdType>>>  m_edgesLineByDomainUuid;
+
+    QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerEdgeSolidByDomain;
+    QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerEdgeLineByDomain;
+
+    // ============ face overlay ============
     vtkSmartPointer<vtkPoints>         m_facePts;
     vtkSmartPointer<vtkCellArray>      m_facePolys;
     vtkSmartPointer<vtkPolyData>       m_facePoly;
     vtkSmartPointer<vtkPolyDataMapper> m_faceMapper;
     vtkSmartPointer<vtkActor>          m_faceActor;
 
+    QHash<QString, QHash<vtkIdType, QString>>        m_ownerFaceSolidByDomain;
+    QHash<QString, QHash<QString, QSet<vtkIdType>>>  m_facesSolidByDomainUuid;
+    QHash<QString, QHash<vtkIdType, QString>>        m_ownerFaceLineByDomain;
+    QHash<QString, QHash<QString, QSet<vtkIdType>>>  m_facesLineByDomainUuid;
+
+    QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerFaceSolidByDomain;
+    QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerFaceLineByDomain;
+
+    // ====== rubber band rect (2D) ======
+    vtkSmartPointer<vtkPoints>          m_boxPts;
+    vtkSmartPointer<vtkCellArray>       m_boxLines;
+    vtkSmartPointer<vtkPolyData>        m_boxPoly;
+    vtkSmartPointer<vtkPolyDataMapper2D> m_boxMapper2D;
+    vtkSmartPointer<vtkActor2D>         m_boxActor2D;
+    vtkSmartPointer<vtkCoordinate>      m_boxCoord;
+
+    bool   m_showBoxRect = true;
+    qint64 m_lastBoxRenderMs = 0;
+    bool m_batchEnabled = false;     // 由页面控制
+    bool m_mouseDown    = false;     // 左键按下
+    bool m_dragging     = false;     // 是否已进入拖拽框选
+    int  m_dragThresholdPx = 4;      // 超过这个像素才认为在拖拽（可调）
+
+    bool m_enableShiftBoxSelect = true;
+    bool m_leftDown = false;
+    int  m_leftDownPos[2] = {0,0};
+    int  m_clickThresholdPx = 4; // 2~6 之间自行调
+
+
+    void updateBoxRectActor(int x0, int y0, int x1, int y1);
+    void setBoxRectVisible(bool on);
+
+signals:
+    void nodePicked(const QString& domain,
+                    const QString& activeUuid,
+                    GridKind kind,
+                    vtkIdType pid,
+                    int nodeId,
+                    double x, double y, double z,
+                    const QString& prevUuid);
 };
 
 #endif // PICKMANAGER_H

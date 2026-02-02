@@ -1,61 +1,40 @@
 #pragma once
 
 #include "BasePage.h"
+#include <QVector>
+#include <QPair>
 
-class QPlainTextEdit;
-class QSpinBox;
-class QDoubleSpinBox;
-class QCheckBox;
-class QTableWidget;
-class QPushButton;
+namespace Ui { class SeismicAndAddedMassPage; }
 
 class SeismicAndAddedMassPage : public BasePage
 {
     Q_OBJECT
 public:
-    explicit SeismicAndAddedMassPage(QWidget* parent = nullptr);
+    explicit SeismicAndAddedMassPage(QWidget* parent=nullptr);
     ~SeismicAndAddedMassPage() override;
 
-    void beforeLoad() override {}
-    void beforeUnload() override {}
+    void beforeLoad() override;
+    void beforeUnload() override;
+
+    // AMP（写到第一行的第二列）
+    double ampX() const;
+    double ampY() const;
+    double ampZ() const;
+
+    // 从表格解析出的序列 (T, A*)
+    QVector<QPair<double,double>> seriesX() const; // (T, AX)
+    QVector<QPair<double,double>> seriesY() const; // (T, AY)
+    QVector<QPair<double,double>> seriesZ() const; // (T, AZ)
 
 private slots:
-    void onGenerate();
-    void onFillExampleX();
-    void onFillExampleY();
-    void onFillExampleZ();
-    void onAddMassRow();
-    void onRemoveMassRow();
+    void on_btnAddRow_clicked();
+    void on_btnDeleteRow_clicked();
+    void on_btnClear_clicked();
 
 private:
-    // 解析多行文本为 double 列表（每行一个数；也允许空格分隔）
-    static QVector<double> parseSeries(const QString& text, QString* err = nullptr);
-
-    void dumpGeneratedToDebug();
+    bool cellToDouble(int row, int col, double& out) const;
+    void ensureAtLeastOneRow();
 
 private:
-    // Seismic series
-    QSpinBox*       m_ntbx = nullptr;
-    QSpinBox*       m_ntby = nullptr;
-    QSpinBox*       m_ntbz = nullptr;
-
-    QPlainTextEdit* m_xSeries = nullptr;
-    QPlainTextEdit* m_ySeries = nullptr;
-    QPlainTextEdit* m_zSeries = nullptr;
-
-    // Added mass
-    QSpinBox*       m_nmm = nullptr;
-    QSpinBox*       m_makod = nullptr;
-    QDoubleSpinBox* m_hwupTop = nullptr;
-    QDoubleSpinBox* m_hwupBot = nullptr;
-    QCheckBox*      m_ifwest = nullptr;
-
-    QTableWidget*   m_massTable = nullptr;
-
-    QPushButton*    m_btnGenerate = nullptr;
-    QPushButton*    m_btnAddRow = nullptr;
-    QPushButton*    m_btnRemoveRow = nullptr;
-    QPushButton*    m_btnExampleX = nullptr;
-    QPushButton*    m_btnExampleY = nullptr;
-    QPushButton*    m_btnExampleZ = nullptr;
+    Ui::SeismicAndAddedMassPage* ui = nullptr;
 };

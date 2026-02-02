@@ -1,5 +1,6 @@
 #pragma once
 
+#include "PickManager.h"
 #include <BasePage.h>
 #include <QHash>
 #include <QVector>
@@ -36,9 +37,13 @@ public:
     void beforeLoad() override;
     void beforeUnload() override;
 
-private slots:
-    void on_clickSelectionCheckBox_checkStateChanged(const Qt::CheckState &arg1);
+    int uxFlag();
+    int uyFlag();
+    int uzFlag();
 
+private slots:
+
+    void onNodePicked(const QString &domain, const QString &activeUuid, GridKind, vtkIdType, int nodeId, double x, double y, double z, const QString &prevUuid);
 private:
 
 

@@ -1,260 +1,184 @@
 #include "SeismicAndAddedMassPage.h"
 #include "ui_SeismicAndAddedMassPage.h"
 
-#include <QPlainTextEdit>
-#include <QSpinBox>
-#include <QDoubleSpinBox>
-#include <QCheckBox>
-#include <QTableWidget>
-#include <QTableWidgetItem>
-#include <QPushButton>
-#include <QMessageBox>
 #include <QDebug>
+#include <QClipboard>
+#include <QApplication>
+#include <QHeaderView>
 
-static void setItem(QTableWidget* t, int r, int c, const QString& v)
-{
-    auto* it = t->item(r, c);
-    if (!it) { it = new QTableWidgetItem; t->setItem(r, c, it); }
-    it->setText(v);
-}
+#include "PickManager.h"
+#include <PublicVariables.h>
+#include <PublicConstants.h>
 
 SeismicAndAddedMassPage::SeismicAndAddedMassPage(QWidget* parent)
     : BasePage("SeismicAndAddedMassPage")
+    , ui(new Ui::SeismicAndAddedMassPage)
 {
-    auto* ui = new Ui::SeismicAndAddedMassPage;
     ui->setupUi(this);
 
-    // seismic
-    m_ntbx = ui->spinNTBX;
-    m_ntby = ui->spinNTBY;
-    m_ntbz = ui->spinNTBZ;
-
-    m_xSeries = ui->editX;
-    m_ySeries = ui->editY;
-    m_zSeries = ui->editZ;
-
-    m_btnExampleX = ui->btnExampleX;
-    m_btnExampleY = ui->btnExampleY;
-    m_btnExampleZ = ui->btnExampleZ;
-
-    // added mass
-    m_nmm = ui->spinNMM;
-    m_makod = ui->spinMAKOD;
-    m_hwupTop = ui->spinHWUPTop;
-    m_hwupBot = ui->spinHWUPBot;
-    m_ifwest = ui->checkIFWEST;
-
-    m_massTable = ui->tableMass;
-
-    m_btnAddRow = ui->btnAddRow;
-    m_btnRemoveRow = ui->btnRemoveRow;
-
-    // generate
-    m_btnGenerate = ui->btnGenerate;
-
-    connect(m_btnGenerate, &QPushButton::clicked, this, &SeismicAndAddedMassPage::onGenerate);
-    connect(m_btnExampleX, &QPushButton::clicked, this, &SeismicAndAddedMassPage::onFillExampleX);
-    connect(m_btnExampleY, &QPushButton::clicked, this, &SeismicAndAddedMassPage::onFillExampleY);
-    connect(m_btnExampleZ, &QPushButton::clicked, this, &SeismicAndAddedMassPage::onFillExampleZ);
-    connect(m_btnAddRow, &QPushButton::clicked, this, &SeismicAndAddedMassPage::onAddMassRow);
-    connect(m_btnRemoveRow, &QPushButton::clicked, this, &SeismicAndAddedMassPage::onRemoveMassRow);
-
-    // defaults
-    m_ntbx->setValue(0);
-    m_ntby->setValue(0);
-    m_ntbz->setValue(0);
-
-    m_nmm->setValue(0);
-    m_makod->setValue(0);
-    m_hwupTop->setValue(0.0);
-    m_hwupBot->setValue(0.0);
-    m_ifwest->setChecked(false);
-
-    // table columns: idx, KE1, KE2, JD1..JD4
-    m_massTable->setColumnCount(7);
-    m_massTable->setHorizontalHeaderLabels(
-        QStringList() << "序号" << "KE1" << "KE2" << "JD1" << "JD2" << "JD3" << "JD4"
+    // 表格初始化：4列 T AX AY AZ
+    ui->tableSeismic->setColumnCount(4);
+    ui->tableSeismic->setHorizontalHeaderLabels(
+        { "T", "AX", "AY", "AZ" }
         );
-    m_massTable->setRowCount(0);
+    ui->tableSeismic->setRowCount(0);
+    ui->tableSeismic->setAlternatingRowColors(true);
+    ui->tableSeismic->setSelectionBehavior(QAbstractItemView::SelectRows);
+    ui->tableSeismic->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    ui->tableSeismic->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+
+    ui->doubleSpinAmpX->setValue(0.0);
+    ui->doubleSpinAmpY->setValue(0.0);
+    ui->doubleSpinAmpZ->setValue(0.0);
+
+    ensureAtLeastOneRow();
 }
 
-SeismicAndAddedMassPage::~SeismicAndAddedMassPage() = default;
-
-QVector<double> SeismicAndAddedMassPage::parseSeries(const QString& text, QString* err)
+SeismicAndAddedMassPage::~SeismicAndAddedMassPage()
 {
-    QVector<double> out;
-    const QString trimmed = text.trimmed();
-    if (trimmed.isEmpty()) return out;
+    delete ui;
+}
 
-    // 支持：每行一个；或空格/逗号分隔
-    QString norm = trimmed;
-    norm.replace(',', ' ');
-    const QStringList lines = norm.split('\n', Qt::SkipEmptyParts);
+void SeismicAndAddedMassPage::beforeLoad()
+{
+    PickManager::instance();
+    PickManager::instance().updateStructure();
 
-    for (const QString& ln0 : lines)
+    // 这个页面后面还要做“附加质量面”，用 Face 拾取更合适（先占位）
+    qDebug() << "[SeismicAndAddedMassPage] beforeLoad activate Face pick uuid=" << m_uuid;
+    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Face);
+
+    const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    const bool is2D = (NDIM == 2);
+
+
+    qDebug() << "[SeismicAndAddedMassPage] NDIM=" << NDIM
+             << "rows=" << ui->tableSeismic->rowCount();
+}
+
+void SeismicAndAddedMassPage::beforeUnload()
+{
+    qDebug() << "[SeismicAndAddedMassPage] beforeUnload deactivate Face pick uuid=" << m_uuid;
+    PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Face);
+}
+
+double SeismicAndAddedMassPage::ampX() const { return ui->doubleSpinAmpX->value(); }
+double SeismicAndAddedMassPage::ampY() const { return ui->doubleSpinAmpY->value(); }
+double SeismicAndAddedMassPage::ampZ() const { return ui->doubleSpinAmpZ->value(); }
+
+void SeismicAndAddedMassPage::ensureAtLeastOneRow()
+{
+    if (ui->tableSeismic->rowCount() <= 0)
+        ui->tableSeismic->insertRow(0);
+}
+
+bool SeismicAndAddedMassPage::cellToDouble(int row, int col, double& out) const
+{
+    out = 0.0;
+    auto* item = ui->tableSeismic->item(row, col);
+    if (!item) return false;
+
+    const QString s = item->text().trimmed();
+    if (s.isEmpty()) return false;
+
+    bool ok=false;
+    out = s.toDouble(&ok);
+    return ok;
+}
+
+QVector<QPair<double,double>> SeismicAndAddedMassPage::seriesX() const
+{
+    QVector<QPair<double,double>> out;
+    const int rN = ui->tableSeismic->rowCount();
+    out.reserve(rN);
+
+    for (int r = 0; r < rN; ++r)
     {
-        const QString ln = ln0.trimmed();
-        if (ln.isEmpty()) continue;
-        const QStringList parts = ln.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+        double t=0.0, ax=0.0;
+        bool okT = cellToDouble(r, 0, t);
+        if (!okT) continue;
 
-        for (const QString& p : parts)
-        {
-            bool ok = false;
-            const double v = p.toDouble(&ok);
-            if (!ok)
-            {
-                if (err) *err = QString("无法解析数值：\"%1\"").arg(p);
-                return {};
-            }
-            out.push_back(v);
-        }
+        // AX 允许空 -> 0
+        bool okA = cellToDouble(r, 1, ax);
+        if (!okA) ax = 0.0;
+
+        out.push_back({t, ax});
     }
+    qDebug() << "[SeismicSeries] X parsed N=" << out.size();
     return out;
 }
 
-void SeismicAndAddedMassPage::onFillExampleX()
+QVector<QPair<double,double>> SeismicAndAddedMassPage::seriesY() const
 {
-    m_ntbx->setValue(3);
-    m_xSeries->setPlainText("0.01\n0.02\n0.03\n");
-}
-void SeismicAndAddedMassPage::onFillExampleY()
-{
-    m_ntby->setValue(3);
-    m_ySeries->setPlainText("0.10\n0.20\n0.30\n");
-}
-void SeismicAndAddedMassPage::onFillExampleZ()
-{
-    m_ntbz->setValue(3);
-    m_zSeries->setPlainText("1.0\n0.5\n0.0\n");
-}
+    QVector<QPair<double,double>> out;
+    const int rN = ui->tableSeismic->rowCount();
+    out.reserve(rN);
 
-void SeismicAndAddedMassPage::onAddMassRow()
-{
-    const int r = m_massTable->rowCount();
-    m_massTable->insertRow(r);
-    setItem(m_massTable, r, 0, QString::number(r + 1));
-    for (int c = 1; c < m_massTable->columnCount(); ++c)
-        setItem(m_massTable, r, c, "0");
-    m_nmm->setValue(m_massTable->rowCount());
-}
-
-void SeismicAndAddedMassPage::onRemoveMassRow()
-{
-    int r = m_massTable->currentRow();
-    if (r < 0) r = m_massTable->rowCount() - 1;
-    if (r < 0) return;
-
-    m_massTable->removeRow(r);
-    // renumber
-    for (int i = 0; i < m_massTable->rowCount(); ++i)
-        setItem(m_massTable, i, 0, QString::number(i + 1));
-    m_nmm->setValue(m_massTable->rowCount());
-}
-
-void SeismicAndAddedMassPage::onGenerate()
-{
-    dumpGeneratedToDebug();
-}
-
-void SeismicAndAddedMassPage::dumpGeneratedToDebug()
-{
-    // parse seismic
-    QString err;
-    const QVector<double> ax = parseSeries(m_xSeries->toPlainText(), &err);
-    if (!err.isEmpty()) { QMessageBox::warning(this, tr("错误"), tr("X 加速度表解析失败：%1").arg(err)); return; }
-    const QVector<double> ay = parseSeries(m_ySeries->toPlainText(), &err);
-    if (!err.isEmpty()) { QMessageBox::warning(this, tr("错误"), tr("Y 加速度表解析失败：%1").arg(err)); return; }
-    const QVector<double> az = parseSeries(m_zSeries->toPlainText(), &err);
-    if (!err.isEmpty()) { QMessageBox::warning(this, tr("错误"), tr("Z 加速度表解析失败：%1").arg(err)); return; }
-
-    const int NTBX = m_ntbx->value();
-    const int NTBY = m_ntby->value();
-    const int NTBZ = m_ntbz->value();
-
-    if (NTBX != ax.size())
+    for (int r = 0; r < rN; ++r)
     {
-        QMessageBox::warning(this, tr("错误"),
-                             tr("NTBX=%1 但 X 序列长度=%2（请保持一致）").arg(NTBX).arg(ax.size()));
-        return;
+        double t=0.0, ay=0.0;
+        bool okT = cellToDouble(r, 0, t);
+        if (!okT) continue;
+
+        bool okA = cellToDouble(r, 2, ay);
+        if (!okA) ay = 0.0;
+
+        out.push_back({t, ay});
     }
-    if (NTBY != ay.size())
+    qDebug() << "[SeismicSeries] Y parsed N=" << out.size();
+    return out;
+}
+
+QVector<QPair<double,double>> SeismicAndAddedMassPage::seriesZ() const
+{
+    QVector<QPair<double,double>> out;
+    const int rN = ui->tableSeismic->rowCount();
+    out.reserve(rN);
+
+    for (int r = 0; r < rN; ++r)
     {
-        QMessageBox::warning(this, tr("错误"),
-                             tr("NTBY=%1 但 Y 序列长度=%2（请保持一致）").arg(NTBY).arg(ay.size()));
-        return;
+        double t=0.0, az=0.0;
+        bool okT = cellToDouble(r, 0, t);
+        if (!okT) continue;
+
+        bool okA = cellToDouble(r, 3, az);
+        if (!okA) az = 0.0;
+
+        out.push_back({t, az});
     }
-    if (NTBZ != az.size())
+    qDebug() << "[SeismicSeries] Z parsed N=" << out.size();
+    return out;
+}
+
+// ===== Buttons =====
+void SeismicAndAddedMassPage::on_btnAddRow_clicked()
+{
+    int r = ui->tableSeismic->rowCount();
+    ui->tableSeismic->insertRow(r);
+    qDebug() << "[SeismicTable] add row ->" << r;
+}
+
+void SeismicAndAddedMassPage::on_btnDeleteRow_clicked()
+{
+    auto sel = ui->tableSeismic->selectionModel()->selectedRows();
+    if (sel.isEmpty()) return;
+
+    // 倒序删除避免行号变化
+    std::sort(sel.begin(), sel.end(), [](const QModelIndex& a, const QModelIndex& b){
+        return a.row() > b.row();
+    });
+
+    for (const QModelIndex& idx : sel)
     {
-        QMessageBox::warning(this, tr("错误"),
-                             tr("NTBZ=%1 但 Z 序列长度=%2（请保持一致）").arg(NTBZ).arg(az.size()));
-        return;
+        qDebug() << "[SeismicTable] delete row" << idx.row();
+        ui->tableSeismic->removeRow(idx.row());
     }
+    ensureAtLeastOneRow();
+}
 
-    // added mass
-    const int NMM = m_nmm->value();
-    const int MAKOD = m_makod->value();
-    const double HWUP_TOP = m_hwupTop->value();
-    const double HWUP_BOT = m_hwupBot->value();
-    const int IFWEST = m_ifwest->isChecked() ? 1 : 0;
-
-    if (NMM != m_massTable->rowCount())
-    {
-        // 这里不强制，自动纠正也行
-        // 我选择纠正，避免你手动改错
-        //（也方便后面写文件）
-        // 注意：你要严格校验我也可以改
-        // 这里先纠正
-        // const_cast 省了，这里直接提示并返回也可以
-    }
-
-    qDebug().noquote() << "========== IIWL.DAT Part9-11 (Seismic) + AddedMass ==========";
-
-    // Part9 X
-    qDebug().noquote() << QString("%1").arg(NTBX);
-    if (NTBX != 0) { qDebug().noquote() << ""; qDebug().noquote() << ""; } // 空二行
-    for (int i = 0; i < ax.size(); ++i)
-        qDebug().noquote() << QString("%1  %2").arg(i + 1).arg(ax[i], 0, 'f', 6);
-
-    // Part10 Y
-    qDebug().noquote() << QString("%1").arg(NTBY);
-    if (NTBY != 0) { qDebug().noquote() << ""; qDebug().noquote() << ""; } // 空二行
-    for (int i = 0; i < ay.size(); ++i)
-        qDebug().noquote() << QString("%1  %2").arg(i + 1).arg(ay[i], 0, 'f', 6);
-
-    // Part11 Z
-    qDebug().noquote() << QString("%1").arg(NTBZ);
-    if (NTBZ != 0) { qDebug().noquote() << ""; qDebug().noquote() << ""; } // 空二行
-    for (int i = 0; i < az.size(); ++i)
-        qDebug().noquote() << QString("%1  %2").arg(i + 1).arg(az[i], 0, 'f', 6);
-
-    // Added mass header
-    qDebug().noquote() << QString("%1 %2 %3 %4 %5")
-                              .arg(m_massTable->rowCount())
-                              .arg(MAKOD)
-                              .arg(HWUP_TOP, 0, 'f', 6)
-                              .arg(HWUP_BOT, 0, 'f', 6)
-                              .arg(IFWEST);
-    qDebug().noquote() << ""; // 空1行
-
-    // rows: idx KE1 KE2 JD1 JD2 JD3 JD4
-    for (int r = 0; r < m_massTable->rowCount(); ++r)
-    {
-        auto get = [&](int c)->QString{
-            auto* it = m_massTable->item(r, c);
-            return it ? it->text().trimmed() : QString("0");
-        };
-
-        const QString line = QString("%1  %2  %3  %4  %5  %6  %7")
-                                 .arg(get(0))
-                                 .arg(get(1))
-                                 .arg(get(2))
-                                 .arg(get(3))
-                                 .arg(get(4))
-                                 .arg(get(5))
-                                 .arg(get(6));
-
-        qDebug().noquote() << line;
-    }
-
-    qDebug().noquote() << "================================================================";
+void SeismicAndAddedMassPage::on_btnClear_clicked()
+{
+    qDebug() << "[SeismicTable] clear all";
+    ui->tableSeismic->setRowCount(0);
+    ensureAtLeastOneRow();
 }

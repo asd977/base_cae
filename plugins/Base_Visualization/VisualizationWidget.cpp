@@ -34,10 +34,14 @@ VisualizationWidget::VisualizationWidget(QWidget* parent)
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
 
+    qDebug()<<"test1";
     m_vtkWidget = new QVTKOpenGLNativeWidget(this);
+    qDebug()<<"test2";
     layout->addWidget(m_vtkWidget);
 
+    qDebug()<<"test3";
     initVtk();
+    qDebug()<<"test4";
 
     UiFrameService* uiFrameService = ServiceRegistry::instance().getService<UiFrameService>();
     if (uiFrameService) {

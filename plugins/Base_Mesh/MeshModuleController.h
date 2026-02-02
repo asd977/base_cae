@@ -34,6 +34,8 @@ public:
 
 
     vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGrid();
+    vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGridSolid();
+    vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGridLine();
 private:
     void initAction();
 
@@ -55,6 +57,11 @@ private:
     vtkSmartPointer<vtkUnstructuredGrid> buildGridFromModel(const IiinGridModel &model) const;
     int expectedNodeCountForKetype(int ketype) const;
     int ketypeToVtkCellType(int ketype) const;
+    void splitGridByDim(vtkUnstructuredGrid* src,
+                        vtkSmartPointer<vtkUnstructuredGrid>& outLine,
+                        vtkSmartPointer<vtkUnstructuredGrid>& outNonLine) const;
+    vtkSmartPointer<vtkActor> createSurfaceActor(vtkUnstructuredGrid* grid) const;
+    vtkSmartPointer<vtkActor> createLineActor(vtkUnstructuredGrid* grid) const;
 
 private:
     ProjectNode* m_gridNode = nullptr;
@@ -63,6 +70,15 @@ private:
     MeshGridIO m_gridIO;
     VisualWidgetService *m_visualWidgetService = nullptr;
     GridEditingWidget *m_gridEditingWidget = nullptr;
+
+    vtkSmartPointer<vtkDataSetMapper> m_previewSurfaceMapper;
+    vtkSmartPointer<vtkActor>         m_previewSurfaceActor;
+    vtkSmartPointer<vtkUnstructuredGrid> m_previewSurfaceGrid;
+
+    vtkSmartPointer<vtkDataSetMapper> m_previewLineMapper;
+    vtkSmartPointer<vtkActor>         m_previewLineActor;
+    vtkSmartPointer<vtkUnstructuredGrid> m_previewLineGrid;
+
     vtkSmartPointer<vtkDataSetMapper> m_previewMapper;
     vtkSmartPointer<vtkActor> m_previewActor;
     vtkSmartPointer<vtkUnstructuredGrid> m_previewGrid;

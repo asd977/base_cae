@@ -12,6 +12,7 @@
 */
 class CORE_EXPORT BasePage: public QWidget
 {
+    friend class ProjectNode;
     Q_OBJECT
 public:
     BasePage(QString pageType);

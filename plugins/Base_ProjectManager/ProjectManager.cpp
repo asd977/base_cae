@@ -49,10 +49,14 @@ ProjectManager::ProjectManager()
 	QStackedWidget* stackWidget = m_settingWidget->getStackedWidget();
 	m_projectTreeWidget->setStackedWidget(stackWidget);
 
+    this->initRibbonActionConn();
+
 	connect(m_projectTreeWidget, &ProjectTreeWidget::deletePageSig, this, [this](QString uuid) {this->onDeletePageSig(uuid); });
     EventManager::instance().registerHandler(PublicConstants::kEventLoadComplete,this, [this](const QVariantMap &data) {
-        this->initRibbonActionConn();
+        qDebug()<<"m_outputService";
+
         m_outputService = ServiceRegistry::instance().getService<OutputService>();
+        qDebug()<<"end m_outputService";
     });
 }
 

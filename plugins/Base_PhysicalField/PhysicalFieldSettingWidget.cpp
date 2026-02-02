@@ -1,6 +1,10 @@
 ﻿#include "PhysicalFieldSettingWidget.h"
 #include "ui_PhysicalFieldSettingWidget.h"
 
+#include <ServiceRegistry.h>
+
+#include <services/PhysicalFieldService.h>
+
 PhysicalFieldSettingWidget::PhysicalFieldSettingWidget(QWidget *parent) :
     ui(new Ui::PhysicalFieldSettingWidget),
     BasePage("PhysicalFieldSettingWidget")
@@ -22,5 +26,19 @@ void PhysicalFieldSettingWidget::beforeLoad()
 void PhysicalFieldSettingWidget::beforeUnload()
 {
 
+}
+
+
+void PhysicalFieldSettingWidget::on_testPushButton_clicked()
+{
+    PhysicalFieldService *service = ServiceRegistry::instance().getService<PhysicalFieldService>();
+    service->generateIIIDFile();
+}
+
+
+void PhysicalFieldSettingWidget::on_pushButton_clicked()
+{
+    PhysicalFieldService *service = ServiceRegistry::instance().getService<PhysicalFieldService>();
+    service->generateIIWLFile();
 }
 

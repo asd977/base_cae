@@ -6,6 +6,8 @@ class QDoubleSpinBox;
 class QSpinBox;
 class QPushButton;
 
+namespace Ui { class TemperatureLoadPage; }
+
 class TemperatureLoadPage : public BasePage
 {
     Q_OBJECT
@@ -16,16 +18,10 @@ public:
     void beforeLoad() override;
     void beforeUnload() override;
 
-private slots:
-    void onGenerate();
+    double alfaValue() const;
+    double dtValue() const;
 
 private:
-    void dumpGeneratedToDebug();
+    Ui::TemperatureLoadPage* ui = nullptr;
 
-private:
-    QDoubleSpinBox* m_alfa = nullptr;   // 热值导系数/换热系数(按你文档写法：ALFA)
-    QDoubleSpinBox* m_dt   = nullptr;   // 变温
-    QSpinBox*       m_ii   = nullptr;   // II
-
-    QPushButton*    m_btnGenerate = nullptr;
 };

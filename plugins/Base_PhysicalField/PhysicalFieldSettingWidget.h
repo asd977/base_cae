@@ -20,6 +20,11 @@ public:
     void beforeUnload() override;
 
 
+private slots:
+    void on_testPushButton_clicked();
+
+    void on_pushButton_clicked();
+
 private:
     Ui::PhysicalFieldSettingWidget *ui;
 };

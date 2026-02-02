@@ -20,6 +20,8 @@ struct MeshModuleControllerService
                                   int previewMatype,
                                   int preDeleteMatype) = 0;
     virtual vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGrid() = 0;
+    virtual vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGridSolid() = 0;
+    virtual vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGridLine() = 0;
 };
 
 #endif // MESH_MODULE_CONTROLLER_SERVICE_H

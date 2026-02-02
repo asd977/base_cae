@@ -1,11 +1,17 @@
-#ifndef GEOSTRESSPOINTPAGE_H
-#define GEOSTRESSPOINTPAGE_H
+#pragma once
 
 #include "BasePage.h"
-#include "PickManager.h"
+#include <QString>
 
-class QDoubleSpinBox;
-class QPushButton;
+#include <vtkType.h> // vtkIdType
+
+class PickManager;
+
+namespace Ui {
+class GeoStressPointPage;
+}
+
+enum class GridKind; // 你工程里已有这个枚举
 
 class GeoStressPointPage : public BasePage
 {
@@ -17,22 +23,30 @@ public:
     void beforeLoad() override;
     void beforeUnload() override;
 
+    // ===== 参数获取：直接从 ui 读 =====
+    double sxValue()  const;
+    double syValue()  const;
+    double szValue()  const;
+    double sxyValue() const;
+    double sxzValue() const;
+    double syzValue() const;
+
 private slots:
-    void onGenerate(); // 生成并 qDebug 输出
+
+    // ✅ 注意：这里的参数列表必须和 PickManager::nodePicked(...) 完全一致
+    void onNodePicked(const QString& domain,
+                      const QString& activeUuid,
+                      GridKind kind,
+                      vtkIdType pidOrCellId,
+                      int nodeId,
+                      double x, double y, double z,
+                      const QString& prevUuid);
 
 private:
-    void dumpGeneratedToDebug();
+    void applyDimensionUi(int dim);
+    void refreshPrevOwnerTitle(const QString& prevUuid);
 
 private:
-    // UI: 统一应力 6 分量
-    QDoubleSpinBox* m_sx  = nullptr;
-    QDoubleSpinBox* m_sy  = nullptr;
-    QDoubleSpinBox* m_sz  = nullptr;
-    QDoubleSpinBox* m_sxy = nullptr;
-    QDoubleSpinBox* m_sxz = nullptr;
-    QDoubleSpinBox* m_syz = nullptr;
-
-    QPushButton* m_btnGenerate = nullptr;
+    Ui::GeoStressPointPage* ui = nullptr;
+    int m_dim = 3;
 };
-
-#endif // GEOSTRESSPOINTPAGE_H

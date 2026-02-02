@@ -68,10 +68,12 @@ UiFrame::UiFrame(QWidget* parent, SARibbonMainWindowStyles style)
                    | Qt::WindowMinMaxButtonsHint
                    | Qt::WindowCloseButtonHint);
 
-    EventManager::instance().registerHandler(PublicConstants::kEventLoadComplete, [this](const QVariantMap&) {
+    EventManager::instance().registerHandler(PublicConstants::kEventLoadComplete,this, [this](const QVariantMap&) {
+        qDebug()<<"restoreUiState";
         this->restoreUiState();
+        qDebug()<<"end restoreUiState";
     });
-    EventManager::instance().registerHandler(PublicConstants::kEventQuitApp, [this](const QVariantMap&) {
+    EventManager::instance().registerHandler(PublicConstants::kEventQuitApp,this, [this](const QVariantMap&) {
         this->storeUiState();
     });
 
@@ -540,253 +542,253 @@ void UiFrame::buildRibbonTabs()
         bindEvent(this, actImport, PublicConstants::kActionPreprocessImportGrid);
         bindEvent(this, actExport, PublicConstants::kActionPreprocessExportGrid);
 
-        // ============ 剖分方式 ============
-        auto* panelMesh = cate->addPannel("剖分");
-        auto* actGlobal = makeAction(this, ":/resources/menu/meshGlobal.png",  "&整体剖分");
-        auto* actSingle = makeAction(this, ":/resources/menu/meshSingle.png",  "&单体剖分");
-        auto* actMapped = makeAction(this, ":/resources/menu/meshMapped.png",  "&映射剖分");
-        auto* actSweep  = makeAction(this, ":/resources/menu/meshSweep.png",   "&扫掠剖分");
+        // // ============ 剖分方式 ============
+        // auto* panelMesh = cate->addPannel("剖分");
+        // auto* actGlobal = makeAction(this, ":/resources/menu/meshGlobal.png",  "&整体剖分");
+        // auto* actSingle = makeAction(this, ":/resources/menu/meshSingle.png",  "&单体剖分");
+        // auto* actMapped = makeAction(this, ":/resources/menu/meshMapped.png",  "&映射剖分");
+        // auto* actSweep  = makeAction(this, ":/resources/menu/meshSweep.png",   "&扫掠剖分");
 
-        addActionToPanel(panelMesh, actGlobal, 2);
-        addActionToPanel(panelMesh, actSingle, 2);
-        addActionToPanel(panelMesh, actMapped, 2);
-        addActionToPanel(panelMesh, actSweep,  2);
+        // addActionToPanel(panelMesh, actGlobal, 2);
+        // addActionToPanel(panelMesh, actSingle, 2);
+        // addActionToPanel(panelMesh, actMapped, 2);
+        // addActionToPanel(panelMesh, actSweep,  2);
 
-        bindEvent(this, actGlobal, PublicConstants::kActionPreprocessMeshGlobal);
-        bindEvent(this, actSingle, PublicConstants::kActionPreprocessMeshSingle);
-        bindEvent(this, actMapped, PublicConstants::kActionPreprocessMeshMapped);
-        bindEvent(this, actSweep,  PublicConstants::kActionPreprocessMeshSweep);
+        // bindEvent(this, actGlobal, PublicConstants::kActionPreprocessMeshGlobal);
+        // bindEvent(this, actSingle, PublicConstants::kActionPreprocessMeshSingle);
+        // bindEvent(this, actMapped, PublicConstants::kActionPreprocessMeshMapped);
+        // bindEvent(this, actSweep,  PublicConstants::kActionPreprocessMeshSweep);
 
-        // ============ 控制与质量 ============
-        auto* panelCtrl = cate->addPannel("控制与质量");
-        auto* actVolCtrl  = makeAction(this, ":/resources/menu/volumeCtrl.png", "&体控制");
-        auto* actFaceCtrl = makeAction(this, ":/resources/menu/surfaceCtrl.png","&面控制");
-        auto* actEdgeCtrl = makeAction(this, ":/resources/menu/edgeCtrl.png",    "&边控制");
+        // // ============ 控制与质量 ============
+        auto* panelCtrl = cate->addPannel("控制");
+        // auto* actVolCtrl  = makeAction(this, ":/resources/menu/volumeCtrl.png", "&体控制");
+        // auto* actFaceCtrl = makeAction(this, ":/resources/menu/surfaceCtrl.png","&面控制");
+        // auto* actEdgeCtrl = makeAction(this, ":/resources/menu/edgeCtrl.png",    "&边控制");
         auto* actMeshEdit = makeAction(this, ":/resources/menu/meshEdit.png", "&网格编辑");
-        auto* actQuality  = makeAction(this, ":/resources/menu/qualityStd.png", "&网格质量标准");
+        // auto* actQuality  = makeAction(this, ":/resources/menu/qualityStd.png", "&网格质量标准");
 
-        addActionToPanel(panelCtrl, actVolCtrl, 2);
-        addActionToPanel(panelCtrl, actFaceCtrl,2);
-        addActionToPanel(panelCtrl, actEdgeCtrl, 2);
+        // addActionToPanel(panelCtrl, actVolCtrl, 2);
+        // addActionToPanel(panelCtrl, actFaceCtrl,2);
+        // addActionToPanel(panelCtrl, actEdgeCtrl, 2);
         addActionToPanel(panelCtrl, actMeshEdit, 2);
-        addActionToPanel(panelCtrl, actQuality, 2);
+        // addActionToPanel(panelCtrl, actQuality, 2);
 
-        bindEvent(this, actVolCtrl,  PublicConstants::kActionPreprocessCtrlVolume);
-        bindEvent(this, actFaceCtrl, PublicConstants::kActionPreprocessCtrlSurface);
-        bindEvent(this, actEdgeCtrl, PublicConstants::kActionPreprocessCtrlEdge);
+        // bindEvent(this, actVolCtrl,  PublicConstants::kActionPreprocessCtrlVolume);
+        // bindEvent(this, actFaceCtrl, PublicConstants::kActionPreprocessCtrlSurface);
+        // bindEvent(this, actEdgeCtrl, PublicConstants::kActionPreprocessCtrlEdge);
         bindEvent(this, actMeshEdit, PublicConstants::kActionPreprocessMeshEdit);
-        bindEvent(this, actQuality,  PublicConstants::kActionPreprocessQualityStd);
+        // bindEvent(this, actQuality,  PublicConstants::kActionPreprocessQualityStd);
     }
 
 
-    // =========================
-    // 边界条件（你已有常量，统一改 bindEvent）
-    // =========================
-    {
-        auto* cate = m_ribbon->addCategoryPage("边界条件");
-        cate->setObjectName("boundObj");
+    // // =========================
+    // // 边界条件（你已有常量，统一改 bindEvent）
+    // // =========================
+    // {
+    //     auto* cate = m_ribbon->addCategoryPage("边界条件");
+    //     cate->setObjectName("boundObj");
 
-        auto* panel = cate->addPannel("边界条件");
-        auto* actSolid = makeAction(this, ":/resources/menu/boundary_solid.png", "&域");
-        auto* actFace  = makeAction(this, ":/resources/menu/boundary_face.png",  "&边界");
-        auto* actLine  = makeAction(this, ":/resources/menu/boundary_line.png",  "&边");
-        auto* actPoint = makeAction(this, ":/resources/menu/boundary_point.png", "&点");
+    //     auto* panel = cate->addPannel("边界条件");
+    //     auto* actSolid = makeAction(this, ":/resources/menu/boundary_solid.png", "&域");
+    //     auto* actFace  = makeAction(this, ":/resources/menu/boundary_face.png",  "&边界");
+    //     auto* actLine  = makeAction(this, ":/resources/menu/boundary_line.png",  "&边");
+    //     auto* actPoint = makeAction(this, ":/resources/menu/boundary_point.png", "&点");
 
-        addActionToPanel(panel, actSolid, 3);
-        addActionToPanel(panel, actFace,  3);
-        addActionToPanel(panel, actLine,  3);
-        addActionToPanel(panel, actPoint, 3);
+    //     addActionToPanel(panel, actSolid, 3);
+    //     addActionToPanel(panel, actFace,  3);
+    //     addActionToPanel(panel, actLine,  3);
+    //     addActionToPanel(panel, actPoint, 3);
 
-        bindEvent(this, actSolid, PublicConstants::kActionBoundarySolid);
-        bindEvent(this, actFace,  PublicConstants::kActionBoundaryFace);
-        bindEvent(this, actLine,  PublicConstants::kActionBoundaryLine);
-        bindEvent(this, actPoint, PublicConstants::kActionBoundaryPoint);
-    }
+    //     bindEvent(this, actSolid, PublicConstants::kActionBoundarySolid);
+    //     bindEvent(this, actFace,  PublicConstants::kActionBoundaryFace);
+    //     bindEvent(this, actLine,  PublicConstants::kActionBoundaryLine);
+    //     bindEvent(this, actPoint, PublicConstants::kActionBoundaryPoint);
+    // }
 
-    // =========================
-    // 结果（你已有的“标准方式”，这里也统一 bindEvent）
-    // =========================
-    {
-        auto* cate = m_ribbon->addCategoryPage("结果");
+    // // =========================
+    // // 结果（你已有的“标准方式”，这里也统一 bindEvent）
+    // // =========================
+    // {
+    //     auto* cate = m_ribbon->addCategoryPage("结果");
 
-        auto* panel = cate->addPannel("后处理操作");
-        auto* actNeph = makeAction(this, ":/resources/menu/Nephogram.png", "&云图");
-        auto* actVec  = makeAction(this, ":/resources/menu/Vector.png",   "&矢量");
-        auto* actSlc  = makeAction(this, ":/resources/menu/Slice.png",    "&切面");
-        auto* actDice = makeAction(this, ":/resources/menu/Block.png",    "&切块");
-        auto* actIso  = makeAction(this, ":/resources/menu/Isosurface.png", "&等值面");
-        auto* actIsoS = makeAction(this, ":/resources/menu/IsosurfaceSegmentation.png", "&等值面分割");
-        auto* actXY   = makeAction(this, ":/resources/menu/Curve.png",    "&曲线");
-        auto* actAnim = makeAction(this, ":/resources/menu/Animation.png","&动画");
-        auto* actPick = makeAction(this, ":/resources/menu/PickUp.png",   "&拾取物理量");
-        auto* actDer  = makeAction(this, ":/resources/menu/DerivedValue2.png", "&派生值");
-        auto* actExp  = makeAction(this, ":/resources/menu/Vector.png",   "&数据导出");
+    //     auto* panel = cate->addPannel("后处理操作");
+    //     auto* actNeph = makeAction(this, ":/resources/menu/Nephogram.png", "&云图");
+    //     auto* actVec  = makeAction(this, ":/resources/menu/Vector.png",   "&矢量");
+    //     auto* actSlc  = makeAction(this, ":/resources/menu/Slice.png",    "&切面");
+    //     auto* actDice = makeAction(this, ":/resources/menu/Block.png",    "&切块");
+    //     auto* actIso  = makeAction(this, ":/resources/menu/Isosurface.png", "&等值面");
+    //     auto* actIsoS = makeAction(this, ":/resources/menu/IsosurfaceSegmentation.png", "&等值面分割");
+    //     auto* actXY   = makeAction(this, ":/resources/menu/Curve.png",    "&曲线");
+    //     auto* actAnim = makeAction(this, ":/resources/menu/Animation.png","&动画");
+    //     auto* actPick = makeAction(this, ":/resources/menu/PickUp.png",   "&拾取物理量");
+    //     auto* actDer  = makeAction(this, ":/resources/menu/DerivedValue2.png", "&派生值");
+    //     auto* actExp  = makeAction(this, ":/resources/menu/Vector.png",   "&数据导出");
 
-        addActionToPanel(panel, actNeph, 2);
-        addActionToPanel(panel, actVec,  2);
-        addActionToPanel(panel, actSlc,  2);
-        addActionToPanel(panel, actDice, 2);
-        addActionToPanel(panel, actIso,  2);
-        addActionToPanel(panel, actIsoS, 2);
-        addActionToPanel(panel, actXY,   3);
-        addActionToPanel(panel, actAnim, 3);
-        addActionToPanel(panel, actPick, 3);
-        addActionToPanel(panel, actDer,  2);
-        addActionToPanel(panel, actExp,  2);
+    //     addActionToPanel(panel, actNeph, 2);
+    //     addActionToPanel(panel, actVec,  2);
+    //     addActionToPanel(panel, actSlc,  2);
+    //     addActionToPanel(panel, actDice, 2);
+    //     addActionToPanel(panel, actIso,  2);
+    //     addActionToPanel(panel, actIsoS, 2);
+    //     addActionToPanel(panel, actXY,   3);
+    //     addActionToPanel(panel, actAnim, 3);
+    //     addActionToPanel(panel, actPick, 3);
+    //     addActionToPanel(panel, actDer,  2);
+    //     addActionToPanel(panel, actExp,  2);
 
-        bindEvent(this, actNeph, PublicConstants::kActionPostProcessNephogram);
-        bindEvent(this, actVec,  PublicConstants::kActionPostProcessVector);
-        bindEvent(this, actSlc,  PublicConstants::kActionPostProcessSection);
-        bindEvent(this, actDice, PublicConstants::kActionPostProcessDice);
-        bindEvent(this, actIso,  PublicConstants::kActionPostProcessIsosurface);
-        bindEvent(this, actIsoS, PublicConstants::kActionPostProcessIsosurfaceSegmentation);
-        bindEvent(this, actXY,   PublicConstants::kActionPostProcessXyPlot);
-        bindEvent(this, actAnim, PublicConstants::kActionPostProcessAnimation);
-        bindEvent(this, actPick, PublicConstants::kActionPostProcessPickPhysical);
-        bindEvent(this, actDer,  PublicConstants::kActionPostProcessDerivative);
-        bindEvent(this, actExp,  PublicConstants::kActionPostProcessDataExport);
-    }
+    //     bindEvent(this, actNeph, PublicConstants::kActionPostProcessNephogram);
+    //     bindEvent(this, actVec,  PublicConstants::kActionPostProcessVector);
+    //     bindEvent(this, actSlc,  PublicConstants::kActionPostProcessSection);
+    //     bindEvent(this, actDice, PublicConstants::kActionPostProcessDice);
+    //     bindEvent(this, actIso,  PublicConstants::kActionPostProcessIsosurface);
+    //     bindEvent(this, actIsoS, PublicConstants::kActionPostProcessIsosurfaceSegmentation);
+    //     bindEvent(this, actXY,   PublicConstants::kActionPostProcessXyPlot);
+    //     bindEvent(this, actAnim, PublicConstants::kActionPostProcessAnimation);
+    //     bindEvent(this, actPick, PublicConstants::kActionPostProcessPickPhysical);
+    //     bindEvent(this, actDer,  PublicConstants::kActionPostProcessDerivative);
+    //     bindEvent(this, actExp,  PublicConstants::kActionPostProcessDataExport);
+    // }
 
-    // =========================
-    // 显示（视图）
-    // =========================
-    {
-        auto* cate = m_ribbon->addCategoryPage("显示");
-        cate->setObjectName("viewObj");
+    // // =========================
+    // // 显示（视图）
+    // // =========================
+    // {
+    //     auto* cate = m_ribbon->addCategoryPage("显示");
+    //     cate->setObjectName("viewObj");
 
-        auto* panel = cate->addPannel("显示");
+    //     auto* panel = cate->addPannel("显示");
 
-        auto* actPX = makeAction(this, ":/resources/icon/view_right.png", "&+X");
-        auto* actNX = makeAction(this, ":/resources/icon/view_left.png",  "&-X");
-        auto* actPY = makeAction(this, ":/resources/icon/view_top.png",   "&+Y");
-        auto* actNY = makeAction(this, ":/resources/icon/view_bottom.png","&-Y");
-        auto* actPZ = makeAction(this, ":/resources/icon/view_front.png", "&+Z");
-        auto* actNZ = makeAction(this, ":/resources/icon/view_back.png",  "&-Z");
-        auto* actFit= makeAction(this, ":/resources/icon/autofit.png",    "&重置相机");
-        auto* actLay= makeAction(this, ":/resources/icon/reset_default_setting.png", "&恢复默认布局");
+    //     auto* actPX = makeAction(this, ":/resources/icon/view_right.png", "&+X");
+    //     auto* actNX = makeAction(this, ":/resources/icon/view_left.png",  "&-X");
+    //     auto* actPY = makeAction(this, ":/resources/icon/view_top.png",   "&+Y");
+    //     auto* actNY = makeAction(this, ":/resources/icon/view_bottom.png","&-Y");
+    //     auto* actPZ = makeAction(this, ":/resources/icon/view_front.png", "&+Z");
+    //     auto* actNZ = makeAction(this, ":/resources/icon/view_back.png",  "&-Z");
+    //     auto* actFit= makeAction(this, ":/resources/icon/autofit.png",    "&重置相机");
+    //     auto* actLay= makeAction(this, ":/resources/icon/reset_default_setting.png", "&恢复默认布局");
 
-        addActionToPanel(panel, actPX, 2);
-        addActionToPanel(panel, actNX, 2);
-        addActionToPanel(panel, actPY, 2);
-        addActionToPanel(panel, actNY, 2);
-        addActionToPanel(panel, actPZ, 2);
-        addActionToPanel(panel, actNZ, 2);
-        addActionToPanel(panel, actFit,3);
-        addActionToPanel(panel, actLay,3);
+    //     addActionToPanel(panel, actPX, 2);
+    //     addActionToPanel(panel, actNX, 2);
+    //     addActionToPanel(panel, actPY, 2);
+    //     addActionToPanel(panel, actNY, 2);
+    //     addActionToPanel(panel, actPZ, 2);
+    //     addActionToPanel(panel, actNZ, 2);
+    //     addActionToPanel(panel, actFit,3);
+    //     addActionToPanel(panel, actLay,3);
 
-        bindEvent(this, actPX, PublicConstants::kActionViewPosX);
-        bindEvent(this, actNX, PublicConstants::kActionViewNegX);
-        bindEvent(this, actPY, PublicConstants::kActionViewPosY);
-        bindEvent(this, actNY, PublicConstants::kActionViewNegY);
-        bindEvent(this, actPZ, PublicConstants::kActionViewPosZ);
-        bindEvent(this, actNZ, PublicConstants::kActionViewNegZ);
-        bindEvent(this, actFit, PublicConstants::kActionViewResetCamera);
+    //     bindEvent(this, actPX, PublicConstants::kActionViewPosX);
+    //     bindEvent(this, actNX, PublicConstants::kActionViewNegX);
+    //     bindEvent(this, actPY, PublicConstants::kActionViewPosY);
+    //     bindEvent(this, actNY, PublicConstants::kActionViewNegY);
+    //     bindEvent(this, actPZ, PublicConstants::kActionViewPosZ);
+    //     bindEvent(this, actNZ, PublicConstants::kActionViewNegZ);
+    //     bindEvent(this, actFit, PublicConstants::kActionViewResetCamera);
 
-        connect(actLay, &QAction::triggered, this, [this]() {
-            if (m_dockManager && !m_defaultDockState.isEmpty())
-                m_dockManager->restoreState(m_defaultDockState);
-            EventManager::instance().sendEvent(PublicConstants::kActionViewResetLayout);
-        });
+    //     connect(actLay, &QAction::triggered, this, [this]() {
+    //         if (m_dockManager && !m_defaultDockState.isEmpty())
+    //             m_dockManager->restoreState(m_defaultDockState);
+    //         EventManager::instance().sendEvent(PublicConstants::kActionViewResetLayout);
+    //     });
 
-        // checkbox：标尺/光照
-        auto* staff = new SARibbonCheckBox(this);
-        staff->setText("标尺显示");
-        staff->setChecked(true);
-        panel->addSmallWidget(staff);
-        connect(staff, &QCheckBox::toggled, this, [](bool on) {
-            QVariantMap data; data["checked"] = on;
-            EventManager::instance().sendEvent(PublicConstants::kActionViewToggleStaff, data);
-        });
+    //     // checkbox：标尺/光照
+    //     auto* staff = new SARibbonCheckBox(this);
+    //     staff->setText("标尺显示");
+    //     staff->setChecked(true);
+    //     panel->addSmallWidget(staff);
+    //     connect(staff, &QCheckBox::toggled, this, [](bool on) {
+    //         QVariantMap data; data["checked"] = on;
+    //         EventManager::instance().sendEvent(PublicConstants::kActionViewToggleStaff, data);
+    //     });
 
-        auto* light = new SARibbonCheckBox(this);
-        light->setText("光照");
-        light->setChecked(false);
-        panel->addSmallWidget(light);
-        connect(light, &QCheckBox::toggled, this, [](bool on) {
-            QVariantMap data; data["checked"] = on;
-            EventManager::instance().sendEvent(PublicConstants::kActionViewToggleLight, data);
-        });
+    //     auto* light = new SARibbonCheckBox(this);
+    //     light->setText("光照");
+    //     light->setChecked(false);
+    //     panel->addSmallWidget(light);
+    //     connect(light, &QCheckBox::toggled, this, [](bool on) {
+    //         QVariantMap data; data["checked"] = on;
+    //         EventManager::instance().sendEvent(PublicConstants::kActionViewToggleLight, data);
+    //     });
 
-        // 透明度 slider + label
-        auto* container = new QWidget(this);
-        auto* lay = new QHBoxLayout(container);
-        lay->setContentsMargins(0,0,0,0);
-        lay->setSpacing(5);
+    //     // 透明度 slider + label
+    //     auto* container = new QWidget(this);
+    //     auto* lay = new QHBoxLayout(container);
+    //     lay->setContentsMargins(0,0,0,0);
+    //     lay->setSpacing(5);
 
-        auto* lbl = new QLabel("透明度:", container);
-        auto* slider = new QSlider(Qt::Horizontal, container);
-        slider->setRange(1, 100);
-        slider->setValue(100);
-        slider->setFixedWidth(120);
-        auto* val = new QLabel("100", container);
-        val->setFixedWidth(40);
+    //     auto* lbl = new QLabel("透明度:", container);
+    //     auto* slider = new QSlider(Qt::Horizontal, container);
+    //     slider->setRange(1, 100);
+    //     slider->setValue(100);
+    //     slider->setFixedWidth(120);
+    //     auto* val = new QLabel("100", container);
+    //     val->setFixedWidth(40);
 
-        lay->addWidget(lbl);
-        lay->addWidget(slider);
-        lay->addWidget(val);
+    //     lay->addWidget(lbl);
+    //     lay->addWidget(slider);
+    //     lay->addWidget(val);
 
-        panel->addWidget(container, SARibbonPannelItem::Small);
+    //     panel->addWidget(container, SARibbonPannelItem::Small);
 
-        connect(slider, &QSlider::valueChanged, this, [val](int v) {
-            val->setText(QString::number(v));
-            QVariantMap data; data["value"] = v;
-            EventManager::instance().sendEvent(PublicConstants::kActionViewSetTransparency, data);
-        });
+    //     connect(slider, &QSlider::valueChanged, this, [val](int v) {
+    //         val->setText(QString::number(v));
+    //         QVariantMap data; data["value"] = v;
+    //         EventManager::instance().sendEvent(PublicConstants::kActionViewSetTransparency, data);
+    //     });
 
-        // 主题下拉
-        auto* groupWidget = new SARibbonButtonGroupWidget(panel);
-        groupWidget->setMinimumWidth(170);
-        groupWidget->setContentsMargins(0, 0, 0, 0);
-        groupWidget->setWindowTitle("颜色主题");
+    //     // 主题下拉
+    //     auto* groupWidget = new SARibbonButtonGroupWidget(panel);
+    //     groupWidget->setMinimumWidth(170);
+    //     groupWidget->setContentsMargins(0, 0, 0, 0);
+    //     groupWidget->setWindowTitle("颜色主题");
 
-        auto* tlabel = new QLabel(groupWidget);
-        tlabel->setText("颜色主题");
-        groupWidget->addWidget(tlabel);
+    //     auto* tlabel = new QLabel(groupWidget);
+    //     tlabel->setText("颜色主题");
+    //     groupWidget->addWidget(tlabel);
 
-        auto* combo = new SARibbonComboBox(groupWidget);
-        combo->addItems(QStringList() << "亮色主题" << "暗色主题");
-        combo->setMinimumWidth(100);
-        groupWidget->addWidget(combo);
+    //     auto* combo = new SARibbonComboBox(groupWidget);
+    //     combo->addItems(QStringList() << "亮色主题" << "暗色主题");
+    //     combo->setMinimumWidth(100);
+    //     groupWidget->addWidget(combo);
 
-        panel->addWidget(groupWidget, SARibbonPannelItem::Large);
+    //     panel->addWidget(groupWidget, SARibbonPannelItem::Large);
 
-        connect(combo, &QComboBox::currentTextChanged, this, [](const QString& text) {
-            QVariantMap data; data["theme"] = text;
-            EventManager::instance().sendEvent(PublicConstants::kActionViewSetTheme, data);
-        });
-    }
+    //     connect(combo, &QComboBox::currentTextChanged, this, [](const QString& text) {
+    //         QVariantMap data; data["theme"] = text;
+    //         EventManager::instance().sendEvent(PublicConstants::kActionViewSetTheme, data);
+    //     });
+    // }
 
-    // =========================
-    // 代理模型（你已有常量）
-    // =========================
-    {
-        auto* cate = m_ribbon->addCategoryPage("代理模型");
-        cate->setObjectName("modelObj");
+    // // =========================
+    // // 代理模型（你已有常量）
+    // // =========================
+    // {
+    //     auto* cate = m_ribbon->addCategoryPage("代理模型");
+    //     cate->setObjectName("modelObj");
 
-        auto* panel = cate->addPannel("代理模型");
-        auto* actSampling = makeAction(this, ":/resources/menu/DataSampling.png", "&数据采样");
+    //     auto* panel = cate->addPannel("代理模型");
+    //     auto* actSampling = makeAction(this, ":/resources/menu/DataSampling.png", "&数据采样");
 
-        auto* menu = new SARibbonMenu(this);
-        auto* actOrtho = makeAction(this, ":/resources/menu/OrthogonalSampling.png", "&正交采样");
-        auto* actLatin = makeAction(this, ":/resources/menu/LatinHypercubeSampling.png", "&拉丁超立方采样");
-        menu->addAction(actOrtho);
-        menu->addAction(actLatin);
+    //     auto* menu = new SARibbonMenu(this);
+    //     auto* actOrtho = makeAction(this, ":/resources/menu/OrthogonalSampling.png", "&正交采样");
+    //     auto* actLatin = makeAction(this, ":/resources/menu/LatinHypercubeSampling.png", "&拉丁超立方采样");
+    //     menu->addAction(actOrtho);
+    //     menu->addAction(actLatin);
 
-        actSampling->setMenu(menu);
-        addActionToPanel(panel, actSampling, 3);
+    //     actSampling->setMenu(menu);
+    //     addActionToPanel(panel, actSampling, 3);
 
-        bindEvent(this, actOrtho, PublicConstants::kActionSurrogateModelOrthogonal);
-        bindEvent(this, actLatin, PublicConstants::kActionSurrogateModelLatin);
+    //     bindEvent(this, actOrtho, PublicConstants::kActionSurrogateModelOrthogonal);
+    //     bindEvent(this, actLatin, PublicConstants::kActionSurrogateModelLatin);
 
-        auto* actEval = makeAction(this, ":/resources/menu/DatasetEvaluation.png", "&数据集评估");
-        auto* actDnn  = makeAction(this, ":/resources/menu/DNN.png", "&DNN");
-        auto* actPod  = makeAction(this, ":/resources/menu/POD.png", "&POD");
-        addActionToPanel(panel, actEval, 3);
-        addActionToPanel(panel, actDnn,  2);
-        addActionToPanel(panel, actPod,  2);
+    //     auto* actEval = makeAction(this, ":/resources/menu/DatasetEvaluation.png", "&数据集评估");
+    //     auto* actDnn  = makeAction(this, ":/resources/menu/DNN.png", "&DNN");
+    //     auto* actPod  = makeAction(this, ":/resources/menu/POD.png", "&POD");
+    //     addActionToPanel(panel, actEval, 3);
+    //     addActionToPanel(panel, actDnn,  2);
+    //     addActionToPanel(panel, actPod,  2);
 
-        bindEvent(this, actEval, PublicConstants::kActionSurrogateModelDataEvaluation);
-        bindEvent(this, actDnn,  PublicConstants::kActionSurrogateModelDnn);
-        bindEvent(this, actPod,  PublicConstants::kActionSurrogateModelPod);
-    }
+    //     bindEvent(this, actEval, PublicConstants::kActionSurrogateModelDataEvaluation);
+    //     bindEvent(this, actDnn,  PublicConstants::kActionSurrogateModelDnn);
+    //     bindEvent(this, actPod,  PublicConstants::kActionSurrogateModelPod);
+    // }
 }

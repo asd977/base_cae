@@ -6,6 +6,8 @@ class QDoubleSpinBox;
 class QSpinBox;
 class QPushButton;
 
+namespace Ui { class PointForcePage; }
+
 class PointForcePage : public BasePage
 {
     Q_OBJECT
@@ -16,20 +18,16 @@ public:
     void beforeLoad() override;
     void beforeUnload() override;
 
-private slots:
-    void onGenerate();
+    double fxValue() const;
+    double fyValue() const;
+    double fzValue() const;
+    double mxValue() const;
+    double myValue() const;
+    double mzValue() const;
+
+
 
 private:
-    void dumpGeneratedToDebug();
+    Ui::PointForcePage* ui = nullptr;
 
-private:
-    QDoubleSpinBox* m_x   = nullptr;
-    QDoubleSpinBox* m_y   = nullptr;
-    QDoubleSpinBox* m_z   = nullptr;
-    QDoubleSpinBox* m_fcx = nullptr;
-    QDoubleSpinBox* m_fcy = nullptr;
-    QDoubleSpinBox* m_fcz = nullptr;
-    QSpinBox*       m_ii  = nullptr;
-
-    QPushButton*    m_btnGenerate = nullptr;
 };

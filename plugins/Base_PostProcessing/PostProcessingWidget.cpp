@@ -18,47 +18,47 @@ PostProcessingWidget::PostProcessingWidget(QWidget *parent) :
     ui->setupUi(this);
 
 
-    m_render = vtkSmartPointer<vtkRenderer>::New();
+    // m_render = vtkSmartPointer<vtkRenderer>::New();
 
-    m_render->SetBackground(231.0 / 255.0, 242.0 / 255.0, 255.0 / 255.0);
-    m_render->SetBackground2(1.0,1.0,1.0);
-    m_render->SetGradientBackground(true);
+    // m_render->SetBackground(231.0 / 255.0, 242.0 / 255.0, 255.0 / 255.0);
+    // m_render->SetBackground2(1.0,1.0,1.0);
+    // m_render->SetGradientBackground(true);
 
-    vtkSmartPointer<vtkRenderWindowInteractor> getInteractor();
+    // vtkSmartPointer<vtkRenderWindowInteractor> getInteractor();
 
-    m_renderWindow =  ui->vtkWidget->renderWindow();
-    m_renderWindow->AddRenderer(m_render);
+    // m_renderWindow =  ui->vtkWidget->renderWindow();
+    // m_renderWindow->AddRenderer(m_render);
 
-    m_renderWindowInteractor = ui->vtkWidget->interactor();
-    m_renderWindowInteractor->SetRenderWindow(m_renderWindow);
+    // m_renderWindowInteractor = ui->vtkWidget->interactor();
+    // m_renderWindowInteractor->SetRenderWindow(m_renderWindow);
 
-    QToolBar *m_toolBar = new QToolBar(ui->vtkWidget);
-    m_toolBar->setOrientation(Qt::Vertical);
-    m_toolBar->setIconSize(QSize(30, 30));
-    m_toolBar->setAllowedAreas(Qt::LeftToolBarArea);
+    // QToolBar *m_toolBar = new QToolBar(ui->vtkWidget);
+    // m_toolBar->setOrientation(Qt::Vertical);
+    // m_toolBar->setIconSize(QSize(30, 30));
+    // m_toolBar->setAllowedAreas(Qt::LeftToolBarArea);
 
-    m_fitView = new QAction(QIcon(":/resources/icon/autofit.png"), tr("FitView"), m_toolBar);
-    m_XplusView = new QAction(QIcon(":/resources/icon/view_right.png"), tr("X+"), m_toolBar);
-    m_XminView = new QAction(QIcon(":/resources/icon/view_left.png"), tr("X-"), m_toolBar);
-    m_YplusView = new QAction(QIcon(":/resources/icon/view_top.png"), tr("Y+"), m_toolBar);
-    m_YminView = new QAction(QIcon(":/resources/icon/view_bottom.png"), tr("Y-"), m_toolBar);
-    m_ZplusView = new QAction(QIcon(":/resources/icon/view_front.png"), tr("Z+"), m_toolBar);
-    m_ZminView = new QAction(QIcon(":/resources/icon/view_back.png"), tr("Z-"), m_toolBar);
-    m_perspective = new QAction(QIcon(":/resources/icon/perspective.png"), tr("Perspective"), m_toolBar);
+    // m_fitView = new QAction(QIcon(":/resources/icon/autofit.png"), tr("FitView"), m_toolBar);
+    // m_XplusView = new QAction(QIcon(":/resources/icon/view_right.png"), tr("X+"), m_toolBar);
+    // m_XminView = new QAction(QIcon(":/resources/icon/view_left.png"), tr("X-"), m_toolBar);
+    // m_YplusView = new QAction(QIcon(":/resources/icon/view_top.png"), tr("Y+"), m_toolBar);
+    // m_YminView = new QAction(QIcon(":/resources/icon/view_bottom.png"), tr("Y-"), m_toolBar);
+    // m_ZplusView = new QAction(QIcon(":/resources/icon/view_front.png"), tr("Z+"), m_toolBar);
+    // m_ZminView = new QAction(QIcon(":/resources/icon/view_back.png"), tr("Z-"), m_toolBar);
+    // m_perspective = new QAction(QIcon(":/resources/icon/perspective.png"), tr("Perspective"), m_toolBar);
 
 
-    connect(m_fitView, &QAction::triggered, this, [=]() {this->setView(ViewType::FitView); m_render->Render(); });
-    connect(m_XplusView, &QAction::triggered, this, [=]() {this->setView(ViewType::XPlusView); m_render->Render(); });
-    connect(m_XminView, &QAction::triggered, this, [=]() {this->setView(ViewType::XMinusView); m_render->Render(); });
-    connect(m_YplusView, &QAction::triggered, this, [=]() {this->setView(ViewType::YPlusView); m_render->Render(); });
-    connect(m_YminView, &QAction::triggered, this, [=]() {this->setView(ViewType::YMinusView); m_render->Render(); });
-    connect(m_ZplusView, &QAction::triggered, this, [=]() {this->setView(ViewType::ZPlusView); m_render->Render(); });
-    connect(m_ZminView, &QAction::triggered, this, [=]() {this->setView(ViewType::ZMinusView); m_render->Render(); });
+    // connect(m_fitView, &QAction::triggered, this, [=]() {this->setView(ViewType::FitView); m_render->Render(); });
+    // connect(m_XplusView, &QAction::triggered, this, [=]() {this->setView(ViewType::XPlusView); m_render->Render(); });
+    // connect(m_XminView, &QAction::triggered, this, [=]() {this->setView(ViewType::XMinusView); m_render->Render(); });
+    // connect(m_YplusView, &QAction::triggered, this, [=]() {this->setView(ViewType::YPlusView); m_render->Render(); });
+    // connect(m_YminView, &QAction::triggered, this, [=]() {this->setView(ViewType::YMinusView); m_render->Render(); });
+    // connect(m_ZplusView, &QAction::triggered, this, [=]() {this->setView(ViewType::ZPlusView); m_render->Render(); });
+    // connect(m_ZminView, &QAction::triggered, this, [=]() {this->setView(ViewType::ZMinusView); m_render->Render(); });
 
-    m_toolBar->addActions(this->getViewActions());
+    // m_toolBar->addActions(this->getViewActions());
 
-    initScalarBar();
-    createOrientationMarkerWidget();
+    // initScalarBar();
+    // createOrientationMarkerWidget();
 }
 
 vtkSmartPointer<vtkScalarBarActor> PostProcessingWidget::getScalarBarActor()

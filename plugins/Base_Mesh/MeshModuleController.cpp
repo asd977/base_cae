@@ -22,6 +22,7 @@
 #include <vtkUnstructuredGrid.h>
 #include <vtkCellData.h>
 #include <vtkPointData.h>
+#include <vtkExtractCells.h>
 
 // === 这些头文件你后面真正实现时再加 ===
 // #include "MeshImportGridWidget.h"
@@ -39,8 +40,11 @@ MeshModuleController::MeshModuleController(QObject* parent)
     : QObject(parent)
 {
     ServiceRegistry::instance().registerService<MeshModuleControllerService>(this);
+    qDebug()<<"end1";
     m_visualWidgetService = ServiceRegistry::instance().getService<VisualWidgetService>();
+    qDebug()<<"end2";
     initAction();
+    qDebug()<<"end3";
 }
 
 void MeshModuleController::newProject()
@@ -341,32 +345,84 @@ void MeshModuleController::displayCurrentModel()
     if (!grid || grid->GetNumberOfCells() == 0)
         return;
 
-    auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
-    mapper->SetInputData(grid);
-    mapper->ScalarVisibilityOff();
+    vtkSmartPointer<vtkUnstructuredGrid> lineGrid;
+    vtkSmartPointer<vtkUnstructuredGrid> nonLineGrid;
+    splitGridByDim(grid, lineGrid, nonLineGrid);
 
-    auto actor = vtkSmartPointer<vtkActor>::New();
-    actor->SetMapper(mapper);
-    actor->GetProperty()->EdgeVisibilityOn();
-    actor->GetProperty()->SetLineWidth(1.0);
+    // 先删旧的两个 prop
+    static const QString kMeshSurfId = QStringLiteral("mesh.imported.surface");
+    static const QString kMeshLineId = QStringLiteral("mesh.imported.line");
+    m_visualWidgetService->removeProp(kMeshSurfId, false);
+    m_visualWidgetService->removeProp(kMeshLineId, false);
 
-    static const QString kImportedMeshPropId = QStringLiteral("mesh.imported");
-    m_visualWidgetService->removeProp(kImportedMeshPropId, false);
-    m_visualWidgetService->addProp(kImportedMeshPropId,
-                                   actor,
-                                   QStringLiteral("网格"),
-                                   QStringLiteral("导入网格"),
-                                   true,
-                                   true);
+    // 1) 面/体
+    if (nonLineGrid && nonLineGrid->GetNumberOfCells() > 0)
+    {
+        auto surfActor = createSurfaceActor(nonLineGrid);
 
-    m_previewMapper = mapper;
-    m_previewActor = actor;
-    m_previewGrid = grid;
+        m_visualWidgetService->addProp(kMeshSurfId,
+                                       surfActor,
+                                       QStringLiteral("网格"),
+                                       QStringLiteral("导入网格-面/体"),
+                                       true,
+                                       true);
+
+        // 保存引用（如果你后续 pick 需要）
+        m_previewSurfaceGrid  = nonLineGrid;
+        m_previewSurfaceActor = surfActor;
+        m_previewSurfaceMapper = vtkDataSetMapper::SafeDownCast(surfActor->GetMapper());
+    }
+    else
+    {
+        m_previewSurfaceGrid = nullptr;
+        m_previewSurfaceActor = nullptr;
+        m_previewSurfaceMapper = nullptr;
+    }
+
+    // 2) 线
+    if (lineGrid && lineGrid->GetNumberOfCells() > 0)
+    {
+        auto lineActor = createLineActor(lineGrid);
+
+        m_visualWidgetService->addProp(kMeshLineId,
+                                       lineActor,
+                                       QStringLiteral("网格"),
+                                       QStringLiteral("导入网格-线"),
+                                       true,
+                                       true);
+
+        m_previewLineGrid  = lineGrid;
+        m_previewLineActor = lineActor;
+        m_previewLineMapper = vtkDataSetMapper::SafeDownCast(lineActor->GetMapper());
+    }
+    else
+    {
+        m_previewLineGrid = nullptr;
+        m_previewLineActor = nullptr;
+        m_previewLineMapper = nullptr;
+    }
+
+    // 原先你还存了 m_previewGrid/m_previewActor/m_previewMapper
+    // 如果旧代码依赖它们，你可以决定：
+    // - 优先指向 nonLine（面/体）；
+    // - 若没有 nonLine，则指向 line
+    // if (m_previewSurfaceGrid)
+    // {
+    //     m_previewGrid  = m_previewSurfaceGrid;
+    //     m_previewActor = m_previewSurfaceActor;
+    //     m_previewMapper = m_previewSurfaceMapper;
+    // }
+    // else
+    // {
+        m_previewGrid  = m_previewLineGrid;
+        m_previewActor = m_previewLineActor;
+        m_previewMapper = m_previewLineMapper;
+    // }
 }
 
 vtkSmartPointer<vtkUnstructuredGrid> MeshModuleController::getVtkUnstructuredGrid()
 {
-    return m_previewGrid;
+    return m_previewSurfaceGrid;
 }
 
 
@@ -375,12 +431,14 @@ vtkSmartPointer<vtkUnstructuredGrid>
 MeshModuleController::buildGridFromModel(const IiinGridModel &model) const
 {
     const auto &nodes = model.nodes();
-    const auto &elems = model.elems();
+    auto &elems = model.elems();
     if (nodes.isEmpty() || elems.isEmpty())
         return nullptr;
 
+    // --- points ---
     auto points = vtkSmartPointer<vtkPoints>::New();
     points->SetNumberOfPoints(nodes.size());
+
     auto nodeIdArray = vtkSmartPointer<vtkIntArray>::New();
     nodeIdArray->SetName("node_id");
     nodeIdArray->SetNumberOfComponents(1);
@@ -396,6 +454,7 @@ MeshModuleController::buildGridFromModel(const IiinGridModel &model) const
     grid->SetPoints(points);
     grid->GetPointData()->AddArray(nodeIdArray);
 
+    // --- cell arrays ---
     auto matypeArray = vtkSmartPointer<vtkIntArray>::New();
     matypeArray->SetName("MATYPE");
     matypeArray->SetNumberOfComponents(1);
@@ -404,110 +463,233 @@ MeshModuleController::buildGridFromModel(const IiinGridModel &model) const
     elemIdArray->SetName("elem_id");
     elemIdArray->SetNumberOfComponents(1);
 
-    for (const Elem &e : elems) {
-        int expectedNodes = expectedNodeCountForKetype(e.ketype);
-        int vtkCellType = ketypeToVtkCellType(e.ketype);
-        if (vtkCellType < 0)
-            continue;
+    auto ketypeArray = vtkSmartPointer<vtkIntArray>::New();
+    ketypeArray->SetName("KETYPE");
+    ketypeArray->SetNumberOfComponents(1);
 
-        if (e.nodeIds.size() < expectedNodes)
-            continue;
+    auto layerArray = vtkSmartPointer<vtkIntArray>::New();
+    layerArray->SetName("LAYER");
+    layerArray->SetNumberOfComponents(1);
 
+    auto partArray = vtkSmartPointer<vtkIntArray>::New();
+    partArray->SetName("src_part");
+    partArray->SetNumberOfComponents(1);
+
+    auto addCell = [&](int vtkCellType,
+                       const QVector<int>& localNodeLids,
+                       const Elem& e,
+                       int part) -> void
+    {
         QVector<vtkIdType> cellPtIds;
-        cellPtIds.reserve(expectedNodes);
-        for (int i = 0; i < expectedNodes; ++i) {
-            int nid = e.nodeIds[i];
-            if (nid <= 0 || nid > nodes.size())
-                continue;
-            cellPtIds.push_back(nid - 1);
+        cellPtIds.reserve(localNodeLids.size());
+
+        for (int lid : localNodeLids) {
+            if (lid < 0 || lid >= e.nodeIds.size()) return;
+
+            const int nid = e.nodeIds[lid];
+            if (nid == 0) return; // 缺省/填充 0：说明这个位置没节点
+
+            const int pidx = model.nodeIndexById(nid);
+            if (pidx < 0) return;
+
+            cellPtIds.push_back(static_cast<vtkIdType>(pidx));
         }
 
-        if (cellPtIds.size() != expectedNodes)
-            continue;
+        if (cellPtIds.size() != localNodeLids.size())
+            return;
 
         grid->InsertNextCell(vtkCellType,
-                             cellPtIds.size(),
+                             static_cast<vtkIdType>(cellPtIds.size()),
                              cellPtIds.data());
+
         matypeArray->InsertNextValue(e.matype);
         elemIdArray->InsertNextValue(e.id);
+        ketypeArray->InsertNextValue(e.ketype);
+        layerArray->InsertNextValue(e.layer);
+        partArray->InsertNextValue(part);
+    };
+
+    // 代理显示策略（先保证“能显示/能点选/不丢 elem_id”，高阶节点以后再升级成高阶 VTK cell）
+    auto proxyPieces = [&](int ketype) -> QVector<QPair<int, QVector<int>>>
+    {
+        QVector<QPair<int, QVector<int>>> pieces;
+
+        switch (ketype)
+        {
+        // ---------------- 1D ----------------
+        case 1: case 10: case 21:
+            pieces.push_back({VTK_LINE, {0,1}});
+            break;
+
+        case 2: // 3-node line: IIIN=[1,2,3] (2 is mid) -> VTK_QUADRATIC_EDGE=[1,3,2]
+            pieces.push_back({VTK_QUADRATIC_EDGE, {0,2,1}});
+            break;
+
+        // ---------------- 2D quad ----------------
+        case 3: // 4-node quad: [1,2,3,4] matches VTK_QUAD
+            pieces.push_back({VTK_QUAD, {0,1,2,3}});
+            break;
+
+        case 4: // 6-node quad (your picture)
+            // VTK_QUADRATIC_LINEAR_QUAD = [c0,c1,c2,c3, mid01, mid23]
+            // IIIN corners: 1,3,4,6 ; mids: 2(bottom),5(top)
+            pieces.push_back({VTK_QUADRATIC_LINEAR_QUAD, {0,2,3,5,1,4}});
+            break;
+
+        case 5: // 8-node quad (your picture)
+            // VTK_QUADRATIC_QUAD = [1,3,5,7,2,4,6,8]
+            pieces.push_back({VTK_QUADRATIC_QUAD, {0,2,4,6,1,3,5,7}});
+            break;
+
+        case 29: // 9-node quad (your picture)
+            // VTK_BIQUADRATIC_QUAD = [1,3,5,7,2,4,6,8,9]
+            pieces.push_back({VTK_BIQUADRATIC_QUAD, {0,2,4,6,1,3,5,7,8}});
+            break;
+
+        case 11:
+            pieces.push_back({VTK_QUAD, {0,1,2,3}});
+            break;
+
+        case 12: // 5-node quad, node5 is center -> split into 4 triangles
+            pieces.push_back({VTK_TRIANGLE, {0,1,4}});
+            pieces.push_back({VTK_TRIANGLE, {1,2,4}});
+            pieces.push_back({VTK_TRIANGLE, {2,3,4}});
+            pieces.push_back({VTK_TRIANGLE, {3,0,4}});
+            break;
+
+        // ---------------- 2D triangle ----------------
+        case 31:
+            pieces.push_back({VTK_TRIANGLE, {0,1,2}});
+            break;
+
+        case 32: // 6-node triangle (your picture)
+            // corners: 1,3,5 ; mids: 2(1-3),4(3-5),6(5-1)
+            // VTK_QUADRATIC_TRIANGLE = [c0,c1,c2, mid01, mid12, mid20]
+            pieces.push_back({VTK_QUADRATIC_TRIANGLE, {0,2,4,1,3,5}});
+            break;
+
+        case 33: // 10-node triangle (your picture) -> proxy with corner triangle
+            // corners: 1,4,7
+            pieces.push_back({VTK_TRIANGLE, {0,3,6}});
+            break;
+
+        case 34: // 15-node triangle (your picture) -> proxy with corner triangle
+            // corners: 1,5,9
+            pieces.push_back({VTK_TRIANGLE, {0,4,8}});
+            break;
+
+        // ---------------- 3D ----------------
+        case 35:
+            pieces.push_back({VTK_TETRA, {0,1,2,3}});
+            break;
+
+        case 6:  // 8-node hex
+        case 13: // 8-node unbounded hex
+            pieces.push_back({VTK_HEXAHEDRON, {0,1,2,3,4,5,6,7}});
+            break;
+
+        case 36: // 14-node hex (your picture): corners are 1,2,3,4,10,11,12,13
+            // local index: 1->0,2->1,3->2,4->3,10->9,11->10,12->11,13->12
+            pieces.push_back({VTK_HEXAHEDRON, {0,1,2,3,9,10,11,12}});
+            break;
+
+        case 37: // 20-node hex (your picture) -> can use full VTK_QUADRATIC_HEXAHEDRON
+            // corners: 1,3,5,7,13,15,17,19
+            // mids: 2,4,6,8,14,16,18,20,9,10,11,12
+            pieces.push_back({VTK_QUADRATIC_HEXAHEDRON,
+                              {0,2,4,6,12,14,16,18,
+                               1,3,5,7,
+                               13,15,17,19,
+                               8,9,10,11}});
+            break;
+
+        case 9:  // 8-node joint: show as two quads
+        case 17: // doc says “transform to 9” -> for display you can also do two quads first
+            pieces.push_back({VTK_QUAD, {0,1,2,3}});
+            pieces.push_back({VTK_QUAD, {4,5,6,7}});
+            break;
+
+        default:
+            break;
+        }
+
+        return pieces;
+    };
+
+
+    // --- build cells ---
+    for (const Elem &e : elems) {
+        auto pieces = proxyPieces(e.ketype);
+        if (pieces.isEmpty()) continue;
+
+        for (int i = 0; i < pieces.size(); ++i) {
+            addCell(pieces[i].first, pieces[i].second, e, i);
+        }
     }
 
     grid->GetCellData()->AddArray(matypeArray);
     grid->GetCellData()->SetScalars(matypeArray);
+
     grid->GetCellData()->AddArray(elemIdArray);
+    grid->GetCellData()->AddArray(ketypeArray);
+    grid->GetCellData()->AddArray(layerArray);
+    grid->GetCellData()->AddArray(partArray);
 
     return grid;
 }
 
+
 int MeshModuleController::expectedNodeCountForKetype(int ketype) const
 {
     switch (ketype) {
-    case 1:
-    case 2:
-    case 10:
-    case 21:
-        return 2;
-    case 3:
-    case 4:
-    case 5:
-    case 7:
-    case 8:
-    case 11:
-    case 12:
-    case 29:
-        return 4;
-    case 31:
-    case 32:
-    case 33:
-    case 34:
-        return 3;
-    case 6:
-    case 9:
-    case 13:
-    case 17:
-    case 36:
-    case 37:
-        return 8;
-    case 35:
-        return 4;
-    case 38:
-        return 6;
-    case 39:
-        return 5;
+    case 1:  return 2;
+    case 2:  return 3;
+    case 3:  return 4;
+    case 4:  return 6;
+    case 5:  return 8;
+    case 6:  return 8;
+    case 7:  return 4;
+    case 8:  return 6;
+    case 9:  return 8;
+    case 10: return 2;
+    case 11: return 4;
+    case 12: return 5;
+    case 13: return 8;
+    case 17: return 8;
+    case 21: return 2;
+    case 29: return 9;
+    case 31: return 3;
+    case 32: return 6;
+    case 33: return 10;
+    case 34: return 15;
+    case 35: return 4;
+    case 36: return 14;
+    case 37: return 20;
+    case 38: return 6;
+    case 39: return 5;
     default:
         return m_currentModel.manod();
     }
 }
 
+
 int MeshModuleController::ketypeToVtkCellType(int ketype) const
 {
+    // 这里返回“显示代理类型”（不代表求解器真实高阶）
     switch (ketype) {
-    case 1:
-    case 2:
-    case 10:
-    case 21:
+    case 1: case 2: case 10: case 21:
         return VTK_LINE;
-    case 3:
-    case 4:
-    case 5:
-    case 7:
-    case 8:
-    case 11:
-    case 12:
-    case 29:
+    case 3: case 5: case 7: case 8: case 11: case 29:
         return VTK_QUAD;
-    case 31:
-    case 32:
-    case 33:
-    case 34:
+    case 12:
+        return VTK_POLYGON;
+    case 31: case 32: case 33: case 34: case 4:
         return VTK_TRIANGLE;
-    case 6:
-    case 9:
-    case 13:
-    case 17:
-    case 36:
-    case 37:
+    case 6: case 13: case 36: case 37:
         return VTK_HEXAHEDRON;
+    case 9: case 17:
+        // 实际 buildGridFromModel 是拆两片 QUAD
+        return VTK_QUAD;
     case 35:
         return VTK_TETRA;
     case 38:
@@ -518,3 +700,95 @@ int MeshModuleController::ketypeToVtkCellType(int ketype) const
         return -1;
     }
 }
+
+void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
+                                          vtkSmartPointer<vtkUnstructuredGrid>& outLine,
+                                          vtkSmartPointer<vtkUnstructuredGrid>& outNonLine) const
+{
+    outLine = nullptr;
+    outNonLine = nullptr;
+    if (!src) return;
+
+    auto lineIds = vtkSmartPointer<vtkIdList>::New();
+    auto nonLineIds = vtkSmartPointer<vtkIdList>::New();
+
+    const vtkIdType nCells = src->GetNumberOfCells();
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    {
+        vtkCell* c = src->GetCell(cid);
+        if (!c) continue;
+
+        const int dim = c->GetCellDimension(); // 1=线,2=面,3=体
+        if (dim == 1) lineIds->InsertNextId(cid);
+        else          nonLineIds->InsertNextId(cid);
+    }
+
+    if (lineIds->GetNumberOfIds() > 0)
+    {
+        auto ex = vtkSmartPointer<vtkExtractCells>::New();
+        ex->SetInputData(src);
+        ex->SetCellList(lineIds);
+        ex->Update();
+        outLine = vtkUnstructuredGrid::SafeDownCast(ex->GetOutput());
+    }
+
+    if (nonLineIds->GetNumberOfIds() > 0)
+    {
+        auto ex = vtkSmartPointer<vtkExtractCells>::New();
+        ex->SetInputData(src);
+        ex->SetCellList(nonLineIds);
+        ex->Update();
+        outNonLine = vtkUnstructuredGrid::SafeDownCast(ex->GetOutput());
+    }
+}
+
+vtkSmartPointer<vtkActor> MeshModuleController::createSurfaceActor(vtkUnstructuredGrid* grid) const
+{
+    if (!grid) return nullptr;
+
+    auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
+    mapper->SetInputData(grid);
+    mapper->ScalarVisibilityOff();
+
+    auto actor = vtkSmartPointer<vtkActor>::New();
+    actor->SetMapper(mapper);
+
+    auto* p = actor->GetProperty();
+    p->SetColor(0.7, 0.7, 0.7);      // 灰色面
+    p->EdgeVisibilityOn();           // 显示边
+    p->SetEdgeColor(0.0, 0.0, 0.0);  // 黑色边
+    p->SetLineWidth(1.0);
+
+    return actor;
+}
+
+vtkSmartPointer<vtkActor> MeshModuleController::createLineActor(vtkUnstructuredGrid* grid) const
+{
+    if (!grid) return nullptr;
+
+    auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
+    mapper->SetInputData(grid);
+    mapper->ScalarVisibilityOff();
+
+    auto actor = vtkSmartPointer<vtkActor>::New();
+    actor->SetMapper(mapper);
+
+    auto* p = actor->GetProperty();
+    p->SetColor(0.0, 0.0, 0.0);   // 黑线
+    p->SetLineWidth(2.0);
+    p->LightingOff();             // 关键：避免线被光照“洗白/发虚”
+    p->RenderLinesAsTubesOn();    // 可选但很推荐：更粗更好点选（VTK支持则生效）
+
+    return actor;
+}
+
+vtkSmartPointer<vtkUnstructuredGrid> MeshModuleController::getVtkUnstructuredGridSolid()
+{
+    return m_previewSurfaceGrid;
+}
+
+vtkSmartPointer<vtkUnstructuredGrid> MeshModuleController::getVtkUnstructuredGridLine()
+{
+    return m_previewLineGrid;
+}
+

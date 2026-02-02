@@ -5,6 +5,8 @@ ProjectNode::ProjectNode(const QString &n, const QString &id, BasePage *p)
     : name(n), uuid(id), page(p)
 {
     setText(0, n);
+    if(p != nullptr)
+        page->m_uuid = uuid;
 }
 
 void ProjectNode::addChild(ProjectNode *child)

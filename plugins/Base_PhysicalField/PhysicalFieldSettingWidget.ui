@@ -15,33 +15,17 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="QGroupBox" name="groupBoxSurfaceTreatment">
-     <property name="title">
-      <string>分析类型</string>
+    <widget class="QPushButton" name="testPushButton">
+     <property name="text">
+      <string>test（IIIN.DAT）</string>
      </property>
-     <layout class="QVBoxLayout" name="verticalLayoutSurfaceTreatment">
-      <item>
-       <widget class="QRadioButton" name="radioSurfaceElectroplating">
-        <property name="text">
-         <string>电流分布（一次）</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QRadioButton" name="radioSurfaceElectrolysis">
-        <property name="text">
-         <string>电流分布（二次，含极化）</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QRadioButton" name="radioSurfaceElectrophoresis">
-        <property name="text">
-         <string>电流分布（三次，含传质）</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="pushButton">
+     <property name="text">
+      <string>test(IIWL.DAT)</string>
+     </property>
     </widget>
    </item>
    <item>

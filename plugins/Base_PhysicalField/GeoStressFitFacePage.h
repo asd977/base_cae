@@ -1,37 +1,42 @@
 #pragma once
 
 #include "BasePage.h"
+#include "PickManager.h"
+#include <QWidget>
 
-class QLineEdit;
-class QComboBox;
-class QDoubleSpinBox;
-class QSpinBox;
-class QPushButton;
+namespace Ui { class GeoStressFitFacePage; }
 
 class GeoStressFitFacePage : public BasePage
 {
     Q_OBJECT
 public:
-    explicit GeoStressFitFacePage(QWidget* parent = nullptr);
+    explicit GeoStressFitFacePage(QWidget* parent=nullptr);
     ~GeoStressFitFacePage() override;
 
     void beforeLoad() override;
     void beforeUnload() override;
 
+    // -------- Part2 参数读取 --------
+    QString fname()  const;
+    int     idir()   const;   // 1/2/3
+    double  height() const;
+    double  rou()    const;
+    double  pgrout() const;
+    int     ii()     const;
+
+    // 用户选择：边 or 面
+    bool pickEdge() const;
+    bool pickFace() const;
+
+    bool exportLeftDatFile();
 private slots:
-    void onGenerate();
+    void onPickTargetChanged();
 
 private:
-    void dumpGeneratedToDebug();
+    Ui::GeoStressFitFacePage* ui = nullptr;
+    PickMode m_activeMode = PickMode::Edge; // 记录 unload 时用哪个 mode deactivate
 
-private:
-    // UI pointers
-    QLineEdit*      m_fname = nullptr;
-    QComboBox*      m_idir  = nullptr;
-    QDoubleSpinBox* m_height = nullptr;
-    QDoubleSpinBox* m_rou    = nullptr;
-    QDoubleSpinBox* m_pgrout = nullptr;
-    QSpinBox*       m_ii     = nullptr;
-
-    QPushButton*    m_btnGenerate = nullptr;
+    PickMode decidePickMode() const;
+    void ensureDefaultPickTarget();
+    QString fnameForExport() const;
 };
