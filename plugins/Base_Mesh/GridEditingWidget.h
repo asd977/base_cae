@@ -116,9 +116,6 @@ private:
 
     void beginNodeDragByPointId(long long pointId);
     void beginLabelBoxSelection(LabelSelectionMode mode);
-    void startLabelBoxSelection(int x, int y);
-    void updateLabelBoxSelection(int x, int y);
-    void finishLabelBoxSelection(int x, int y);
     void showSurfaceLabelsInRect(const QRect &rect, LabelSelectionMode mode);
     void applyColorMode();
     vtkSmartPointer<vtkLookupTable> buildLookupTable(const QSet<int> &values) const;
