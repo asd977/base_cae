@@ -33,6 +33,9 @@ class GridEditingWidget : public BasePage
 {
     Q_OBJECT
 public:
+    enum class LabelSelectionMode { None, SurfaceNode, SurfaceElem, SurfaceBoth };
+    enum class ColorMode { None, Ketype, Matype, Layer };
+
     explicit GridEditingWidget(QWidget *parent = nullptr);
     ~GridEditingWidget() override;
 
@@ -45,6 +48,8 @@ public:
 
     bool isMousePickingEnabled() const { return m_enableMousePicking; }
     bool isDraggingNode() const { return m_isDragging; }
+    bool isLabelBoxSelectionActive() const { return m_labelSelectionMode != LabelSelectionMode::None; }
+    bool isBoxSelecting() const { return m_isBoxSelecting; }
 
     // mouse callback -> widget
     void onPicked(long long pickedPointId, long long pickedCellId);
@@ -52,6 +57,10 @@ public:
     void beginNodeDragFromCell(long long cellId, int displayX, int displayY);
     void dragNodeToWorldPosition(const double worldPos[3]);
     void endNodeDrag();
+
+    void startLabelBoxSelection(int x, int y);
+    void updateLabelBoxSelection(int x, int y);
+    void finishLabelBoxSelection(int x, int y);
 
     void beforeLoad();
     void beforeUnload();
@@ -71,6 +80,7 @@ private slots:
     void on_horizontalSliderOpacity_valueChanged(int value);
     void on_checkBoxShowInternalGrid_toggled(bool checked);
     void on_checkBoxEnablePicking_toggled(bool checked);
+    void on_comboBoxColorMode_currentIndexChanged(int index);
 
     void on_pushButtonSave_clicked();
 
@@ -105,6 +115,14 @@ private:
     void updateSurfaceLabelSummary(const QString &text);
 
     void beginNodeDragByPointId(long long pointId);
+    void beginLabelBoxSelection(LabelSelectionMode mode);
+    void startLabelBoxSelection(int x, int y);
+    void updateLabelBoxSelection(int x, int y);
+    void finishLabelBoxSelection(int x, int y);
+    void showSurfaceLabelsInRect(const QRect &rect, LabelSelectionMode mode);
+    void applyColorMode();
+    vtkSmartPointer<vtkLookupTable> buildLookupTable(const QSet<int> &values) const;
+    QStringList availableMeshPropIds() const;
 
     int maxSurfaceLabelCount() const { return 300; } // 你想做成 UI 可配也行
 
@@ -158,6 +176,15 @@ private:
     vtkSmartPointer<vtkCommand> m_mouseCallback;
 
     bool m_enableMousePicking = false;
+
+    // label box selection
+    LabelSelectionMode m_labelSelectionMode = LabelSelectionMode::None;
+    bool m_isBoxSelecting = false;
+    int m_boxStart[2] = {0, 0};
+    int m_boxEnd[2] = {0, 0};
+
+    // color mode
+    ColorMode m_colorMode = ColorMode::None;
 
     // drag state
     bool      m_isDragging = false;

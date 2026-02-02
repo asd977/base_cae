@@ -6,6 +6,8 @@
 #include <QTextStream>
 #include <QDebug>
 #include <QComboBox>
+#include <QColor>
+#include <QRect>
 
 #include <services/VisualWidgetService.h>
 #include <services/MeshModuleControllerService.h>
@@ -49,7 +51,8 @@
 namespace {
 // registry ids
 static const QString kIiinGroup         = QStringLiteral("IIIN");
-static const QString kImportedMeshPropId = QStringLiteral("mesh.imported");
+static const QString kImportedMeshSurfacePropId = QStringLiteral("mesh.imported.surface");
+static const QString kImportedMeshLinePropId = QStringLiteral("mesh.imported.line");
 static const QString kIiinNodeLblPropId = QStringLiteral("iiin.node_labels");
 static const QString kIiinElemLblPropId = QStringLiteral("iiin.elem_labels");
 } // namespace
@@ -72,7 +75,7 @@ public:
         auto iren = vtkRenderWindowInteractor::SafeDownCast(caller);
         if (!iren || !Widget) return;
 
-        if (!Widget->isMousePickingEnabled()) return;
+        if (!Widget->isMousePickingEnabled() && !Widget->isLabelBoxSelectionActive()) return;
 
         auto rw = iren->GetRenderWindow();
         if (!rw) return;
@@ -91,6 +94,12 @@ public:
         // ===== 左键按下：选中节点 & 准备拖拽 =====
         if (eventId == vtkCommand::LeftButtonPressEvent)
         {
+            if (Widget->isLabelBoxSelectionActive()) {
+                Widget->startLabelBoxSelection(x, y);
+                this->AbortFlagOn();
+                return;
+            }
+
             long long pickedPoint = -1;
             long long pickedCell  = -1;
 
@@ -121,6 +130,12 @@ public:
         // ===== 鼠标移动：拖拽更新 =====
         if (eventId == vtkCommand::MouseMoveEvent)
         {
+            if (Widget->isLabelBoxSelectionActive() && Widget->isBoxSelecting()) {
+                Widget->updateLabelBoxSelection(x, y);
+                this->AbortFlagOn();
+                return;
+            }
+
             if (!Widget->isDraggingNode())
                 return;
 
@@ -140,6 +155,12 @@ public:
         // ===== 左键抬起：结束拖拽 =====
         if (eventId == vtkCommand::LeftButtonReleaseEvent)
         {
+            if (Widget->isLabelBoxSelectionActive() && Widget->isBoxSelecting()) {
+                Widget->finishLabelBoxSelection(x, y);
+                this->AbortFlagOn();
+                return;
+            }
+
             if (Widget->isDraggingNode()) {
                 Widget->endNodeDrag();
                 this->AbortFlagOn();
@@ -159,6 +180,15 @@ GridEditingWidget::GridEditingWidget(QWidget *parent)
     updateSurfaceLabelSummary(QStringLiteral("外表面编号：未生成"));
 
     m_visualWidgetService = ServiceRegistry::instance().getService<VisualWidgetService>();
+
+    if (ui->comboBoxColorMode) {
+        ui->comboBoxColorMode->clear();
+        ui->comboBoxColorMode->addItem(QStringLiteral("默认"), static_cast<int>(ColorMode::None));
+        ui->comboBoxColorMode->addItem(QStringLiteral("单元类型"), static_cast<int>(ColorMode::Ketype));
+        ui->comboBoxColorMode->addItem(QStringLiteral("材料类型"), static_cast<int>(ColorMode::Matype));
+        ui->comboBoxColorMode->addItem(QStringLiteral("填筑分层"), static_cast<int>(ColorMode::Layer));
+        ui->comboBoxColorMode->setCurrentIndex(0);
+    }
 }
 
 GridEditingWidget::~GridEditingWidget()
@@ -191,6 +221,11 @@ void GridEditingWidget::clearData()
 
     m_points = nullptr;
     m_grid   = nullptr;
+
+    m_labelSelectionMode = LabelSelectionMode::None;
+    m_isBoxSelecting = false;
+
+    m_colorMode = ColorMode::None;
 
     updateSurfaceLabelSummary(QStringLiteral("外表面编号：未生成"));
 }
@@ -227,6 +262,7 @@ void GridEditingWidget::clearIiinGrid()
         ui->lineEditElemIdForLabels->clear();
         ui->lineEditDeleteElemId->clear();
         ui->labelFilterSummary->setText(QStringLiteral("当前过滤：全部"));
+        if (ui->comboBoxColorMode) ui->comboBoxColorMode->setCurrentIndex(0);
     }
 }
 
@@ -248,8 +284,7 @@ void GridEditingWidget::highlightMatypes(const QSet<int> &matypes,
         || preDeleteMatype >= 0;
 
     if (!hasSelection) {
-        m_meshMapper->ScalarVisibilityOff();
-        m_visualWidgetService->render();
+        applyColorMode();
         return;
     }
 
@@ -590,7 +625,10 @@ void GridEditingWidget::buildOrUpdateGrid()
 
     vtkActor *existingActor = nullptr;
     if (m_visualWidgetService) {
-        existingActor = vtkActor::SafeDownCast(m_visualWidgetService->getProp(kImportedMeshPropId));
+        existingActor = vtkActor::SafeDownCast(m_visualWidgetService->getProp(kImportedMeshSurfacePropId));
+        if (!existingActor) {
+            existingActor = vtkActor::SafeDownCast(m_visualWidgetService->getProp(kImportedMeshLinePropId));
+        }
     }
 
     if (existingActor) {
@@ -598,7 +636,6 @@ void GridEditingWidget::buildOrUpdateGrid()
         m_meshMapper = vtkDataSetMapper::SafeDownCast(existingActor->GetMapper());
         if (m_meshMapper) {
             m_meshMapper->SetInputData(spGrid);
-            m_meshMapper->ScalarVisibilityOff();
         }
     } else {
         m_meshMapper = nullptr;
@@ -625,6 +662,8 @@ void GridEditingWidget::buildOrUpdateGrid()
         m_pointPicker->AddPickList(m_meshActor);
         m_pointPicker->PickFromListOn();
     }
+
+    applyColorMode();
 
     m_visualWidgetService->render();
 }
@@ -1062,23 +1101,17 @@ void GridEditingWidget::on_pushButtonResetFilter_clicked()
 
 void GridEditingWidget::on_pushButtonShowNodeLabels_clicked()
 {
-    bool ok = false;
-    int elemId = ui->lineEditElemIdForLabels->text().trimmed().toInt(&ok);
-    if (!ok) return;
-    showNodeLabelsForElem(elemId);
+    beginLabelBoxSelection(LabelSelectionMode::SurfaceNode);
 }
 
 void GridEditingWidget::on_pushButtonShowElemLabel_clicked()
 {
-    bool ok = false;
-    int elemId = ui->lineEditElemIdForLabels->text().trimmed().toInt(&ok);
-    if (!ok) return;
-    showElemLabelForElem(elemId);
+    beginLabelBoxSelection(LabelSelectionMode::SurfaceElem);
 }
 
 void GridEditingWidget::on_pushButtonShowSurfaceLabels_clicked()
 {
-    showSurfaceLabels();
+    beginLabelBoxSelection(LabelSelectionMode::SurfaceBoth);
 }
 
 // ----------- 节点移动 & 单元删除 -----------
@@ -1199,7 +1232,13 @@ void GridEditingWidget::on_horizontalSliderOpacity_valueChanged(int value)
     // qBound(min, current, max)
     double alpha = qBound(10, value, 100) / 100.0;
 
-    m_visualWidgetService->setOpacity(kImportedMeshPropId, alpha, true);
+    const QStringList ids = availableMeshPropIds();
+    if (ids.isEmpty())
+        return;
+    for (const QString &id : ids) {
+        m_visualWidgetService->setOpacity(id, alpha, false);
+    }
+    m_visualWidgetService->render();
 }
 
 // 内外网格显示
@@ -1220,6 +1259,22 @@ void GridEditingWidget::on_checkBoxShowInternalGrid_toggled(bool checked)
 void GridEditingWidget::on_checkBoxEnablePicking_toggled(bool checked)
 {
     m_enableMousePicking = checked;
+}
+
+void GridEditingWidget::on_comboBoxColorMode_currentIndexChanged(int index)
+{
+    Q_UNUSED(index);
+    if (!ui || !ui->comboBoxColorMode)
+        return;
+
+    QVariant data = ui->comboBoxColorMode->currentData();
+    if (data.isValid()) {
+        m_colorMode = static_cast<ColorMode>(data.toInt());
+    } else {
+        m_colorMode = ColorMode::None;
+    }
+
+    applyColorMode();
 }
 
 // 保存
@@ -1322,6 +1377,385 @@ void GridEditingWidget::updateSurfaceLabelSummary(const QString &text)
     if (ui && ui->labelSurfaceLabelSummary) {
         ui->labelSurfaceLabelSummary->setText(text);
     }
+}
+
+void GridEditingWidget::beginLabelBoxSelection(LabelSelectionMode mode)
+{
+    m_labelSelectionMode = mode;
+    m_isBoxSelecting = false;
+
+    if (m_visualWidgetService) {
+        m_visualWidgetService->setVisible(kIiinNodeLblPropId, false, false);
+        m_visualWidgetService->setVisible(kIiinElemLblPropId, false, false);
+        m_visualWidgetService->render();
+    }
+
+    QString hint;
+    switch (mode) {
+    case LabelSelectionMode::SurfaceNode:
+        hint = QStringLiteral("外表面编号：请在视图区框选（网格点号）");
+        break;
+    case LabelSelectionMode::SurfaceElem:
+        hint = QStringLiteral("外表面编号：请在视图区框选（单元号）");
+        break;
+    case LabelSelectionMode::SurfaceBoth:
+        hint = QStringLiteral("外表面编号：请在视图区框选（节点+单元）");
+        break;
+    default:
+        hint = QStringLiteral("外表面编号：未生成");
+        break;
+    }
+    updateSurfaceLabelSummary(hint);
+}
+
+void GridEditingWidget::startLabelBoxSelection(int x, int y)
+{
+    if (m_labelSelectionMode == LabelSelectionMode::None)
+        return;
+
+    m_isBoxSelecting = true;
+    m_boxStart[0] = x;
+    m_boxStart[1] = y;
+    m_boxEnd[0] = x;
+    m_boxEnd[1] = y;
+}
+
+void GridEditingWidget::updateLabelBoxSelection(int x, int y)
+{
+    if (!m_isBoxSelecting)
+        return;
+    m_boxEnd[0] = x;
+    m_boxEnd[1] = y;
+}
+
+void GridEditingWidget::finishLabelBoxSelection(int x, int y)
+{
+    if (!m_isBoxSelecting)
+        return;
+
+    m_boxEnd[0] = x;
+    m_boxEnd[1] = y;
+    m_isBoxSelecting = false;
+
+    const int minX = std::min(m_boxStart[0], m_boxEnd[0]);
+    const int maxX = std::max(m_boxStart[0], m_boxEnd[0]);
+    const int minY = std::min(m_boxStart[1], m_boxEnd[1]);
+    const int maxY = std::max(m_boxStart[1], m_boxEnd[1]);
+    const QRect rect(QPoint(minX, minY), QPoint(maxX, maxY));
+
+    showSurfaceLabelsInRect(rect, m_labelSelectionMode);
+    m_labelSelectionMode = LabelSelectionMode::None;
+}
+
+void GridEditingWidget::showSurfaceLabelsInRect(const QRect &rect, LabelSelectionMode mode)
+{
+    if (!m_visualWidgetService) {
+        updateSurfaceLabelSummary(QStringLiteral("外表面编号：渲染服务不可用"));
+        return;
+    }
+
+    ensureLabelActorsCreated();
+    applyLabelTextStyles();
+
+    vtkRenderer* renderer = m_visualWidgetService->renderer();
+    if (!renderer) {
+        updateSurfaceLabelSummary(QStringLiteral("外表面编号：缺少渲染器"));
+        return;
+    }
+
+    const bool showNodes = (mode == LabelSelectionMode::SurfaceNode || mode == LabelSelectionMode::SurfaceBoth);
+    const bool showElems = (mode == LabelSelectionMode::SurfaceElem || mode == LabelSelectionMode::SurfaceBoth);
+
+    const double binSize = 60.0;
+    const auto &nodes = m_model.nodes();
+    const auto &elems = m_model.elems();
+    if (nodes.isEmpty() || elems.isEmpty()) {
+        m_visualWidgetService->setVisible(kIiinNodeLblPropId, false, false);
+        m_visualWidgetService->setVisible(kIiinElemLblPropId, false, true);
+        return;
+    }
+
+    auto projectToDisplay = [&](const double world[3], double &sx, double &sy, double &sz) -> bool {
+        renderer->SetWorldPoint(world[0], world[1], world[2], 1.0);
+        renderer->WorldToDisplay();
+        double *dp = renderer->GetDisplayPoint();
+        sx = dp[0];
+        sy = dp[1];
+        sz = dp[2];
+        return std::isfinite(sx) && std::isfinite(sy) && std::isfinite(sz);
+    };
+
+    const double xmin = m_model.xmin();
+    const double xmax = m_model.xmax();
+    const double ymin = m_model.ymin();
+    const double ymax = m_model.ymax();
+    const double zmin = m_model.zmin();
+    const double zmax = m_model.zmax();
+
+    const double span = std::max({xmax - xmin, ymax - ymin, zmax - zmin});
+    const double eps  = std::max(1e-6, span * 1e-6);
+
+    auto isBoundaryNode = [&](const Node &n) {
+        return (std::abs(n.x - xmin) <= eps) || (std::abs(n.x - xmax) <= eps)
+        || (std::abs(n.y - ymin) <= eps) || (std::abs(n.y - ymax) <= eps)
+            || (std::abs(n.z - zmin) <= eps) || (std::abs(n.z - zmax) <= eps);
+    };
+
+    QSet<int> boundaryNodeIds;
+    struct ElemCenter { double x; double y; double z; int id; };
+    QVector<ElemCenter> surfaceElemCenters;
+
+    for (const Elem &e : elems) {
+        if (!elemMatchesFilter(e))
+            continue;
+
+        bool onSurface = false;
+        double cx = 0, cy = 0, cz = 0;
+        int cnt = 0;
+
+        for (int nid : e.nodeIds) {
+            if (nid == 0) continue;
+            int idx = nodeIndexById(nid);
+            if (idx < 0 || idx >= nodes.size()) continue;
+            const Node &n = nodes[idx];
+            cx += n.x; cy += n.y; cz += n.z;
+            ++cnt;
+            if (isBoundaryNode(n)) {
+                boundaryNodeIds.insert(n.id);
+                onSurface = true;
+            }
+        }
+
+        if (cnt == 0 || !onSurface) continue;
+        surfaceElemCenters.push_back({cx / cnt, cy / cnt, cz / cnt, e.id});
+    }
+
+    const int minX = rect.left();
+    const int maxX = rect.right();
+    const int minY = rect.top();
+    const int maxY = rect.bottom();
+
+    auto inRect = [&](double sx, double sy) {
+        return sx >= minX && sx <= maxX && sy >= minY && sy <= maxY;
+    };
+
+    struct ScreenCandidate {
+        double x;
+        double y;
+        double z;
+        double depth;
+        int    id;
+    };
+
+    QMap<QPair<int, int>, ScreenCandidate> nodeBuckets;
+    QMap<QPair<int, int>, ScreenCandidate> elemBuckets;
+
+    auto selectFrontmost = [&](QMap<QPair<int, int>, ScreenCandidate> &buckets,
+                               int bx, int by, const ScreenCandidate &candidate) {
+        const QPair<int, int> key(bx, by);
+        auto it = buckets.find(key);
+        if (it == buckets.end() || candidate.depth < it->depth) {
+            buckets.insert(key, candidate);
+        }
+    };
+
+    if (showNodes) {
+        QList<int> boundaryNodeList = boundaryNodeIds.values();
+        std::sort(boundaryNodeList.begin(), boundaryNodeList.end());
+        for (int nid : boundaryNodeList) {
+            int idx = nodeIndexById(nid);
+            if (idx < 0 || idx >= nodes.size()) continue;
+            const Node &n = nodes[idx];
+
+            double sx = 0, sy = 0, sz = 0;
+            double world[3] = {n.x, n.y, n.z};
+            if (!projectToDisplay(world, sx, sy, sz)) continue;
+            if (!inRect(sx, sy)) continue;
+
+            const int bx = static_cast<int>(std::floor(sx / binSize));
+            const int by = static_cast<int>(std::floor(sy / binSize));
+            selectFrontmost(nodeBuckets, bx, by, {n.x, n.y, n.z, sz, n.id});
+        }
+    }
+
+    if (showElems) {
+        for (const ElemCenter &c : surfaceElemCenters) {
+            double sx = 0, sy = 0, sz = 0;
+            double world[3] = {c.x, c.y, c.z};
+            if (!projectToDisplay(world, sx, sy, sz)) continue;
+            if (!inRect(sx, sy)) continue;
+
+            const int bx = static_cast<int>(std::floor(sx / binSize));
+            const int by = static_cast<int>(std::floor(sy / binSize));
+            selectFrontmost(elemBuckets, bx, by, {c.x, c.y, c.z, sz, c.id});
+        }
+    }
+
+    auto downsample = [&](QVector<ScreenCandidate> &candidates) {
+        const int maxLabels = maxSurfaceLabelCount();
+        if (candidates.size() > maxLabels) {
+            const int step = std::max<int>(1, (candidates.size() + maxLabels - 1) / maxLabels);
+            QVector<ScreenCandidate> trimmed;
+            trimmed.reserve((candidates.size() + step - 1) / step);
+            for (int i = 0; i < candidates.size(); i += step) {
+                trimmed.push_back(candidates[i]);
+            }
+            candidates.swap(trimmed);
+        }
+    };
+
+    if (showNodes) {
+        QVector<ScreenCandidate> nodeCandidates = nodeBuckets.values().toVector();
+        std::sort(nodeCandidates.begin(), nodeCandidates.end(), [](const ScreenCandidate &a, const ScreenCandidate &b) {
+            return a.id < b.id;
+        });
+        downsample(nodeCandidates);
+
+        auto nodePoly   = vtkSmartPointer<vtkPolyData>::New();
+        auto nodePoints = vtkSmartPointer<vtkPoints>::New();
+        auto nodeIdArr  = vtkSmartPointer<vtkIntArray>::New();
+        nodeIdArr->SetName("NodeId");
+        nodeIdArr->SetNumberOfComponents(1);
+
+        for (const ScreenCandidate &c : nodeCandidates) {
+            nodePoints->InsertNextPoint(c.x, c.y, c.z);
+            nodeIdArr->InsertNextValue(c.id);
+        }
+
+        nodePoly->SetPoints(nodePoints);
+        nodePoly->GetPointData()->AddArray(nodeIdArr);
+        m_nodeLabelMapper->SetInputData(nodePoly);
+        m_nodeLabelMapper->SetFieldDataName("NodeId");
+        m_visualWidgetService->setVisible(kIiinNodeLblPropId, nodePoints->GetNumberOfPoints() > 0, false);
+    } else {
+        m_visualWidgetService->setVisible(kIiinNodeLblPropId, false, false);
+    }
+
+    if (showElems) {
+        QVector<ScreenCandidate> elemCandidates = elemBuckets.values().toVector();
+        std::sort(elemCandidates.begin(), elemCandidates.end(), [](const ScreenCandidate &a, const ScreenCandidate &b) {
+            return a.id < b.id;
+        });
+        downsample(elemCandidates);
+
+        auto elemPoly   = vtkSmartPointer<vtkPolyData>::New();
+        auto elemPoints = vtkSmartPointer<vtkPoints>::New();
+        auto elemIdArr  = vtkSmartPointer<vtkIntArray>::New();
+        elemIdArr->SetName("ElemId");
+        elemIdArr->SetNumberOfComponents(1);
+
+        for (const ScreenCandidate &c : elemCandidates) {
+            elemPoints->InsertNextPoint(c.x, c.y, c.z);
+            elemIdArr->InsertNextValue(c.id);
+        }
+
+        elemPoly->SetPoints(elemPoints);
+        elemPoly->GetPointData()->AddArray(elemIdArr);
+        m_elemLabelMapper->SetInputData(elemPoly);
+        m_elemLabelMapper->SetFieldDataName("ElemId");
+        m_visualWidgetService->setVisible(kIiinElemLblPropId, elemPoints->GetNumberOfPoints() > 0, false);
+    } else {
+        m_visualWidgetService->setVisible(kIiinElemLblPropId, false, false);
+    }
+
+    const int nodeCount = showNodes ? nodeBuckets.size() : 0;
+    const int elemCount = showElems ? elemBuckets.size() : 0;
+    const QString summary = QStringLiteral("外表面编号：框选节点 %1，框选单元 %2（分桶 %3px）")
+                                .arg(nodeCount)
+                                .arg(elemCount)
+                                .arg(binSize);
+    updateSurfaceLabelSummary(summary);
+
+    m_visualWidgetService->render();
+}
+
+void GridEditingWidget::applyColorMode()
+{
+    if (!m_meshMapper || !m_visualWidgetService)
+        return;
+
+    QString arrayName;
+    QSet<int> values;
+
+    switch (m_colorMode) {
+    case ColorMode::Ketype:
+        arrayName = QStringLiteral("KETYPE");
+        values = m_model.allKetypes();
+        break;
+    case ColorMode::Matype:
+        arrayName = QStringLiteral("MATYPE");
+        values = m_model.allMatypes();
+        break;
+    case ColorMode::Layer:
+        arrayName = QStringLiteral("LAYER");
+        values = m_model.allLayers();
+        break;
+    case ColorMode::None:
+    default:
+        m_meshMapper->ScalarVisibilityOff();
+        m_visualWidgetService->render();
+        return;
+    }
+
+    if (values.isEmpty()) {
+        m_meshMapper->ScalarVisibilityOff();
+        m_visualWidgetService->render();
+        return;
+    }
+
+    auto lut = buildLookupTable(values);
+    if (!lut) {
+        m_meshMapper->ScalarVisibilityOff();
+        m_visualWidgetService->render();
+        return;
+    }
+
+    const QByteArray arrayNameBytes = arrayName.toUtf8();
+    m_meshMapper->SetScalarModeToUseCellFieldData();
+    m_meshMapper->SelectColorArray(arrayNameBytes.constData());
+    m_meshMapper->SetLookupTable(lut);
+    m_meshMapper->UseLookupTableScalarRangeOn();
+    m_meshMapper->ScalarVisibilityOn();
+    m_visualWidgetService->render();
+}
+
+vtkSmartPointer<vtkLookupTable> GridEditingWidget::buildLookupTable(const QSet<int> &values) const
+{
+    int maxValue = -1;
+    for (int v : values) {
+        maxValue = qMax(maxValue, v);
+    }
+    if (maxValue < 0)
+        return nullptr;
+
+    auto lut = vtkSmartPointer<vtkLookupTable>::New();
+    lut->SetNumberOfTableValues(maxValue + 1);
+    lut->SetTableRange(0.0, maxValue);
+    lut->Build();
+
+    for (int i = 0; i <= maxValue; ++i) {
+        if (values.contains(i)) {
+            QColor c = QColor::fromHsv((i * 37) % 360, 170, 220);
+            lut->SetTableValue(i, c.redF(), c.greenF(), c.blueF(), 1.0);
+        } else {
+            lut->SetTableValue(i, 0.85, 0.85, 0.85, 1.0);
+        }
+    }
+
+    return lut;
+}
+
+QStringList GridEditingWidget::availableMeshPropIds() const
+{
+    QStringList ids;
+    if (!m_visualWidgetService)
+        return ids;
+
+    if (m_visualWidgetService->getProp(kImportedMeshSurfacePropId))
+        ids << kImportedMeshSurfacePropId;
+    if (m_visualWidgetService->getProp(kImportedMeshLinePropId))
+        ids << kImportedMeshLinePropId;
+    return ids;
 }
 
 // ------- 鼠标 picking 反馈 -------
