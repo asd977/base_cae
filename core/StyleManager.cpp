@@ -13,6 +13,6 @@ bool StyleManager::applyStyleSheet(QApplication &app, const QString &resourcePat
     }
 
     const QString styleSheet = QString::fromUtf8(styleFile.readAll());
-    app.setStyleSheet(styleSheet);
+//    app.setStyleSheet(styleSheet);
     return true;
 }
