@@ -50,11 +50,11 @@
 
 namespace {
 // registry ids
-static const QString kIiinGroup         = QStringLiteral("IIIN");
-static const QString kImportedMeshSurfacePropId = QStringLiteral("mesh.imported.surface");
-static const QString kImportedMeshLinePropId = QStringLiteral("mesh.imported.line");
-static const QString kIiinNodeLblPropId = QStringLiteral("iiin.node_labels");
-static const QString kIiinElemLblPropId = QStringLiteral("iiin.elem_labels");
+static const QString kIiinGroup         = QString("IIIN");
+static const QString kImportedMeshSurfacePropId = QString("mesh.imported.surface");
+static const QString kImportedMeshLinePropId = QString("mesh.imported.line");
+static const QString kIiinNodeLblPropId = QString("iiin.node_labels");
+static const QString kIiinElemLblPropId = QString("iiin.elem_labels");
 } // namespace
 
 // ------------------- 鼠标回调 -------------------
@@ -177,16 +177,16 @@ GridEditingWidget::GridEditingWidget(QWidget *parent)
     , ui(new Ui::GridEditingWidget)
 {
     ui->setupUi(this);
-    updateSurfaceLabelSummary(QStringLiteral("外表面编号：未生成"));
+    updateSurfaceLabelSummary(QString("外表面编号：未生成"));
 
     m_visualWidgetService = ServiceRegistry::instance().getService<VisualWidgetService>();
 
     if (ui->comboBoxColorMode) {
         ui->comboBoxColorMode->clear();
-        ui->comboBoxColorMode->addItem(QStringLiteral("默认"), static_cast<int>(ColorMode::None));
-        ui->comboBoxColorMode->addItem(QStringLiteral("单元类型"), static_cast<int>(ColorMode::Ketype));
-        ui->comboBoxColorMode->addItem(QStringLiteral("材料类型"), static_cast<int>(ColorMode::Matype));
-        ui->comboBoxColorMode->addItem(QStringLiteral("填筑分层"), static_cast<int>(ColorMode::Layer));
+        ui->comboBoxColorMode->addItem(QString("默认"), static_cast<int>(ColorMode::None));
+        ui->comboBoxColorMode->addItem(QString("单元类型"), static_cast<int>(ColorMode::Ketype));
+        ui->comboBoxColorMode->addItem(QString("材料类型"), static_cast<int>(ColorMode::Matype));
+        ui->comboBoxColorMode->addItem(QString("填筑分层"), static_cast<int>(ColorMode::Layer));
         ui->comboBoxColorMode->setCurrentIndex(0);
     }
 }
@@ -227,7 +227,7 @@ void GridEditingWidget::clearData()
 
     m_colorMode = ColorMode::None;
 
-    updateSurfaceLabelSummary(QStringLiteral("外表面编号：未生成"));
+    updateSurfaceLabelSummary(QString("外表面编号：未生成"));
 }
 
 // 对外接口
@@ -261,7 +261,7 @@ void GridEditingWidget::clearIiinGrid()
         ui->lineEditMoveNodeId->clear();
         ui->lineEditElemIdForLabels->clear();
         ui->lineEditDeleteElemId->clear();
-        ui->labelFilterSummary->setText(QStringLiteral("当前过滤：全部"));
+        ui->labelFilterSummary->setText(QString("当前过滤：全部"));
         if (ui->comboBoxColorMode) ui->comboBoxColorMode->setCurrentIndex(0);
     }
 }
@@ -348,9 +348,9 @@ QSet<int> GridEditingWidget::parseIntSetFromString(const QString &text) const
     QString t = text;
 
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
-    const auto parts = t.split(',', Qt::SkipEmptyParts);
+    const auto parts = t.split(',', QString::SkipEmptyParts);
 #else
-    const auto parts = t.split(',', Qt::SkipEmptyParts);
+    const auto parts = t.split(',', QString::SkipEmptyParts);
 #endif
 
     for (const QString &part : parts) {
@@ -686,7 +686,7 @@ void GridEditingWidget::ensureLabelActorsCreated()
 
         if (m_visualWidgetService->getProp(kIiinNodeLblPropId) == nullptr) {
             m_visualWidgetService->addProp(kIiinNodeLblPropId, m_nodeLabelActor, kIiinGroup,
-                                           QStringLiteral("节点号"),
+                                           QString("节点号"),
                                            /*resetCam*/false, /*renderNow*/false);
         }
         m_visualWidgetService->setVisible(kIiinNodeLblPropId, false, false);
@@ -705,7 +705,7 @@ void GridEditingWidget::ensureLabelActorsCreated()
 
         if (m_visualWidgetService->getProp(kIiinElemLblPropId) == nullptr) {
             m_visualWidgetService->addProp(kIiinElemLblPropId, m_elemLabelActor, kIiinGroup,
-                                           QStringLiteral("单元号"),
+                                           QString("单元号"),
                                            /*resetCam*/false, /*renderNow*/false);
         }
         m_visualWidgetService->setVisible(kIiinElemLblPropId, false, false);
@@ -851,7 +851,7 @@ void GridEditingWidget::showElemLabelForElem(int elemId)
 void GridEditingWidget::showSurfaceLabels()
 {
     if (!m_visualWidgetService) {
-        updateSurfaceLabelSummary(QStringLiteral("外表面编号：渲染服务不可用"));
+        updateSurfaceLabelSummary(QString("外表面编号：渲染服务不可用"));
         return;
     }
 
@@ -860,12 +860,12 @@ void GridEditingWidget::showSurfaceLabels()
 
     vtkRenderer* renderer = m_visualWidgetService->renderer();
     if (!renderer) {
-        updateSurfaceLabelSummary(QStringLiteral("外表面编号：缺少渲染器"));
+        updateSurfaceLabelSummary(QString("外表面编号：缺少渲染器"));
         return;
     }
 
     const double binSize = 80.0;
-    updateSurfaceLabelSummary(QStringLiteral("外表面编号：统计中..."));
+    updateSurfaceLabelSummary(QString("外表面编号：统计中..."));
 
     auto projectToDisplay = [&](const double world[3], double &sx, double &sy, double &sz) -> bool {
         renderer->SetWorldPoint(world[0], world[1], world[2], 1.0);
@@ -1043,7 +1043,7 @@ void GridEditingWidget::showSurfaceLabels()
 
     m_visualWidgetService->setVisible(kIiinElemLblPropId, elemPoints->GetNumberOfPoints() > 0, false);
 
-    const QString summary = QStringLiteral(
+    const QString summary = QString(
                                 "外表面编号：节点 %1/%2（桶后 %3），单元 %4/%5（桶后 %6）；分桶 %7px，上限 %8")
                                 .arg(nodeCandidates.size())
                                 .arg(totalSurfaceNodes)
@@ -1331,7 +1331,7 @@ void GridEditingWidget::updateFilterCombosFromModel()
     auto fillCombo = [](QComboBox *combo, const QSet<int> &values) {
         if (!combo) return;
         combo->clear();
-        combo->addItem(QStringLiteral("全部"), QVariant());
+        combo->addItem(QString("全部"), QVariant());
 
         if (values.isEmpty()) return;
 
@@ -1355,7 +1355,7 @@ void GridEditingWidget::updateFilterSummaryLabel()
 
     auto describeSet = [](const QSet<int> &values) {
         if (values.isEmpty())
-            return QStringLiteral("全部");
+            return QString("全部");
         QList<int> list = values.values();
         std::sort(list.begin(), list.end());
         QStringList strList;
@@ -1364,7 +1364,7 @@ void GridEditingWidget::updateFilterSummaryLabel()
         return strList.join(',');
     };
 
-    const QString summary = QStringLiteral("当前过滤：KETYPE(%1) | MATYPE(%2) | LAYER(%3)")
+    const QString summary = QString("当前过滤：KETYPE(%1) | MATYPE(%2) | LAYER(%3)")
                                 .arg(describeSet(m_filterKetypes))
                                 .arg(describeSet(m_filterMatypes))
                                 .arg(describeSet(m_filterLayers));
@@ -1393,16 +1393,16 @@ void GridEditingWidget::beginLabelBoxSelection(LabelSelectionMode mode)
     QString hint;
     switch (mode) {
     case LabelSelectionMode::SurfaceNode:
-        hint = QStringLiteral("外表面编号：请在视图区框选（网格点号）");
+        hint = QString("外表面编号：请在视图区框选（网格点号）");
         break;
     case LabelSelectionMode::SurfaceElem:
-        hint = QStringLiteral("外表面编号：请在视图区框选（单元号）");
+        hint = QString("外表面编号：请在视图区框选（单元号）");
         break;
     case LabelSelectionMode::SurfaceBoth:
-        hint = QStringLiteral("外表面编号：请在视图区框选（节点+单元）");
+        hint = QString("外表面编号：请在视图区框选（节点+单元）");
         break;
     default:
-        hint = QStringLiteral("外表面编号：未生成");
+        hint = QString("外表面编号：未生成");
         break;
     }
     updateSurfaceLabelSummary(hint);
@@ -1450,7 +1450,7 @@ void GridEditingWidget::finishLabelBoxSelection(int x, int y)
 void GridEditingWidget::showSurfaceLabelsInRect(const QRect &rect, LabelSelectionMode mode)
 {
     if (!m_visualWidgetService) {
-        updateSurfaceLabelSummary(QStringLiteral("外表面编号：渲染服务不可用"));
+        updateSurfaceLabelSummary(QString("外表面编号：渲染服务不可用"));
         return;
     }
 
@@ -1459,7 +1459,7 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect &rect, LabelSelectio
 
     vtkRenderer* renderer = m_visualWidgetService->renderer();
     if (!renderer) {
-        updateSurfaceLabelSummary(QStringLiteral("外表面编号：缺少渲染器"));
+        updateSurfaceLabelSummary(QString("外表面编号：缺少渲染器"));
         return;
     }
 
@@ -1660,7 +1660,7 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect &rect, LabelSelectio
 
     const int nodeCount = showNodes ? nodeBuckets.size() : 0;
     const int elemCount = showElems ? elemBuckets.size() : 0;
-    const QString summary = QStringLiteral("外表面编号：框选节点 %1，框选单元 %2（分桶 %3px）")
+    const QString summary = QString("外表面编号：框选节点 %1，框选单元 %2（分桶 %3px）")
                                 .arg(nodeCount)
                                 .arg(elemCount)
                                 .arg(binSize);
@@ -1679,15 +1679,15 @@ void GridEditingWidget::applyColorMode()
 
     switch (m_colorMode) {
     case ColorMode::Ketype:
-        arrayName = QStringLiteral("KETYPE");
+        arrayName = QString("KETYPE");
         values = m_model.allKetypes();
         break;
     case ColorMode::Matype:
-        arrayName = QStringLiteral("MATYPE");
+        arrayName = QString("MATYPE");
         values = m_model.allMatypes();
         break;
     case ColorMode::Layer:
-        arrayName = QStringLiteral("LAYER");
+        arrayName = QString("LAYER");
         values = m_model.allLayers();
         break;
     case ColorMode::None:

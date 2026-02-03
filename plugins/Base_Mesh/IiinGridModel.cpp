@@ -98,7 +98,7 @@ bool IiinGridModel::loadFromFile(const QString &fileName, QString *errMsg)
         if (line.isEmpty()) continue;
 
         QString simplified = line.simplified();
-        QStringList parts  = simplified.split(' ', Qt::SkipEmptyParts);
+        QStringList parts  = simplified.split(' ', QString::SkipEmptyParts);
         if (parts.size() < 3) continue;
 
         bool ok = false;
@@ -153,7 +153,7 @@ bool IiinGridModel::loadFromFile(const QString &fileName, QString *errMsg)
         if (line.isEmpty()) continue;
 
         QString simplified = line.simplified();
-        QStringList parts  = simplified.split(' ', Qt::SkipEmptyParts);
+        QStringList parts  = simplified.split(' ', QString::SkipEmptyParts);
         if (parts.size() < 4) continue; // 至少：id + ketype + matype + layer
 
         int elemId = 0;
@@ -191,7 +191,7 @@ bool IiinGridModel::loadFromFile(const QString &fileName, QString *errMsg)
             e.tail2  = tail2;
 
             e.nodeIds.clear();
-            e.nodeIds.resize(m_manod, 0);
+            e.nodeIds.resize(m_manod);
 
             for (int i = 0; i < nodeCount; ++i) {
                 int nid = 0;
@@ -212,7 +212,7 @@ bool IiinGridModel::loadFromFile(const QString &fileName, QString *errMsg)
             if (parts.size() >= minNeeded) {
                 bool ok2 = false;
                 e.id = elemId;
-                e.nodeIds.resize(m_manod, 0);
+                e.nodeIds.resize(m_manod);
                 for (int j = 0; j < m_manod; ++j) {
                     e.nodeIds[j] = parts[1 + j].toInt(&ok2);
                     if (!ok2) break;

@@ -1,6 +1,6 @@
 include($$PWD/plugin-dev.pri)
 
-QT += widgets core xml gui openglwidgets
+QT += widgets core xml gui
 
 INCLUDEPATH += $$PWD/../../interfaces
 

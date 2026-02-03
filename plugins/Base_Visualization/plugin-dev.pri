@@ -1,4 +1,4 @@
-include($$PWD/../../libs/vtk/vtk.pri)
+include($$PWD/../../libs/vtk-9.2/vtk.pri)
 
 TARGET = Base_Visualization
 TEMPLATE = lib

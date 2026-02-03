@@ -1,4 +1,4 @@
-#include "BodyForcePage.h"
+﻿#include "BodyForcePage.h"
 #include "ui_BodyForcePage.h"
 
 #include <QDoubleSpinBox>
@@ -77,7 +77,7 @@ QVector<BodyForcePage::Part3Row> BodyForcePage::buildPart3Rows() const
     }
 
     // 有选择：每个 JD 一行（同一组分量）
-    QVector<int> jds = jdSet.values();
+    QVector<int> jds = QVector<int>::fromList(jdSet.values());
     std::sort(jds.begin(), jds.end());
 
     rows.reserve(jds.size());

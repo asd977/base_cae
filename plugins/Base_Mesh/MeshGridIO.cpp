@@ -1,4 +1,4 @@
-#include "MeshGridIO.h"
+﻿#include "MeshGridIO.h"
 
 #include <algorithm>
 #include <cmath>
@@ -8,7 +8,6 @@
 #include <QObject>
 #include <vector>
 #include <QRegularExpression>
-#include <QStringConverter>
 #include <QTextStream>
 #include <QVector3D>
 #include <QDebug>
@@ -239,7 +238,7 @@ MeshGridIO::loadFlac3dGrid(const QString &fileName) const
             continue;
 
         line.replace(',', ' ');
-        QStringList tok = line.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+        QStringList tok = line.split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
         if (tok.isEmpty())
             continue;
 
@@ -636,7 +635,7 @@ MeshGridIO::loadAbaqusInpGrid(const QString &fileName) const
     };
 
     auto splitCsv = [](const QString& s) {
-        return s.split(',', Qt::SkipEmptyParts);
+        return s.split(',', QString::SkipEmptyParts);
     };
 
     bool inNode = false;

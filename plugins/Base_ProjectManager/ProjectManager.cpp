@@ -47,6 +47,7 @@ ProjectManager::ProjectManager()
 	m_uiFrameService->addWidget(m_settingWidget,"设置");
 	m_uiFrameService->addWidget(m_projectTreeWidget,"模型管理");
 	QStackedWidget* stackWidget = m_settingWidget->getStackedWidget();
+    stackWidget->setStyleSheet("background-color: white;");
 	m_projectTreeWidget->setStackedWidget(stackWidget);
 
     this->initRibbonActionConn();

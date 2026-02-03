@@ -77,6 +77,14 @@ UiFrame::UiFrame(QWidget* parent, SARibbonMainWindowStyles style)
         this->storeUiState();
     });
 
+
+
+
+    // 2. 如果你使用的是 ads::CDockManager，它会接管中央区域
+    // 你需要针对 Dock 容器设置，否则背景会被覆盖
+//    if (m_dockManager) { // 假设你的 DockManager 变量名是这个
+//        m_dockManager->setStyleSheet("ads--CDockContainerWidget { background-color: white; }");
+//    }
     setWindowIcon(QIcon(":/resources/icon.svg"));
 }
 
@@ -105,6 +113,7 @@ void UiFrame::initDockManager()
     ads::CDockManager::setAutoHideConfigFlags(ads::CDockManager::DefaultAutoHideConfig);
 
     m_dockManager = new ads::CDockManager(this);
+
     m_dockManager->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     m_dockManager->setContentsMargins(0, 0, 0, 0);
 
@@ -120,8 +129,9 @@ void UiFrame::initDockManager()
     centralLayout->setSpacing(0);
     centralLayout->addWidget(m_dockManager);
     setCentralWidget(central);
-
     setDockWidgetStyle();
+
+
     captureDefaultDockState();
 }
 
@@ -194,6 +204,7 @@ void UiFrame::restoreUiState()
     if (success)
         m_defaultDockState = savedState;
 
+    setDockWidgetStyle();
     show();
 }
 
@@ -217,12 +228,76 @@ void UiFrame::storeUiState()
 
 void UiFrame::setDockWidgetStyle()
 {
-    // QFile StyleSheetFile(":adsdemo/res/visual_studio_light.css");
-    // StyleSheetFile.open(QIODevice::ReadOnly);
-    // QTextStream StyleSheetStream(&StyleSheetFile);
-    // auto Stylesheet = StyleSheetStream.readAll();
-    // StyleSheetFile.close();
-    // m_dockManager->setStyleSheet(Stylesheet);
+//        if (this->centralWidget()) {
+//            // 使用 setStyleSheet 仅针对中央区域
+//            this->centralWidget()->setStyleSheet("background:white;");
+//        }
+    QString qss = R"(
+                  QSplitter::handle {
+                  height: 4px; /* 间接调整分隔线的高度（如果是水平分隔线） */
+                     width: 4px; /* 间接调整分隔线的宽度（如果是垂直分隔线） */
+                  }
+                  ads--CDockAreaWidget[focused="true"]  {
+                  background: white;
+
+                  border-color: rgb(96,181,247);
+                  }
+
+                  #dockAreaAutoHideButton {
+                      qproperty-icon: url(:/resources/images/vs-pin-button.svg),
+                          url(:/resources/images/vs-pin-button-disabled.svg) disabled;
+                      qproperty-iconSize: 16px;
+                  }
+
+                  ads--CAutoHideDockContainer #dockAreaAutoHideButton {
+                      qproperty-icon: url(:/resources/images/vs-pin-button-pinned-focused.svg);
+                      qproperty-iconSize: 16px;
+                  }
+
+
+                  ads--CDockAreaWidget #tabsMenuButton::menu-indicator {
+                      image: none;
+                  }
+                  QScrollArea#dockWidgetScrollArea {
+                  padding: 0px;
+                  }
+                  QScrollArea#dockWidgetScrollArea {
+                      border: 0px solid rgb(200, 200, 200);
+                  }
+                  ads--CDockAreaWidget {
+                      border: 1px solid rgb(200, 200, 200);
+                  }
+                  ads--CDockWidgetTab  {
+                      background: red;
+                  }
+                  QLabel#dockWidgetTabLabel {
+                      text-align: left;
+                  }
+                  QScrollBar:vertical {
+                      width: 10px; /* 设置垂直滚动条的宽度 */
+                      background: #f0f0f0; /* 设置滚动条的背景颜色 */
+                      border: none; /* 取消垂直滚动条的边框样式 */
+                      border-radius: 5px; /* 设置滚动条的圆角 */
+                  }
+
+                  QScrollBar:horizontal {
+                      height: 10px; /* 设置水平滚动条的高度 */
+                      background: #f0f0f0; /* 设置滚动条的背景颜色 */
+                      border: none; /* 取消水平滚动条的边框样式 */
+                      border-radius: 5px; /* 设置滚动条的圆角 */
+                  }
+
+                  QScrollBar::handle:vertical {
+                      background: #c0c0c0; /* 设置垂直滚动条滑块的背景颜色 */
+                  }
+
+                  QScrollBar::handle:horizontal {
+                      background: #c0c0c0; /* 设置水平滚动条滑块的背景颜色 */
+                  }
+                  )";
+    qDebug()<<"m_dockManager->setStyleSheet(qss)";
+    m_dockManager->setStyleSheet(qss);
+    qDebug()<<"m_dockManager->setStyleSheet(qss)";
 }
 
 ads::DockWidgetArea UiFrame::preferDockArea(const QString& name) const

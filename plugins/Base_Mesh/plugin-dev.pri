@@ -1,4 +1,4 @@
-include($$PWD/../../libs/vtk/vtk.pri)
+include($$PWD/../../libs/vtk-9.2/vtk.pri)
 include($$PWD/../../libs/gmsh-4.8.4/gmsh.pri)
 include($$PWD/../../libs/OCC/occ.pri)
 

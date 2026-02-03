@@ -1,5 +1,5 @@
-include($$PWD/../../libs/Qt6-AdvancedDock/DockingWidget.pri)
-include($$PWD/../../libs/SARibbon-qt6/SARibbon.pri)
+include($$PWD/../../libs/Qt-AdvancedDock/DockingWidget.pri)
+include($$PWD/../../libs/SARibbon-v2.3.0/SARibbon.pri)
 TARGET = Base_UiFrame
 TEMPLATE = lib
 QT += widgets core

@@ -9,7 +9,7 @@ SUBDIRS += \
     Base_Mesh \
     Base_MaterialManager \
     Base_PostProcessing \
-    Base_Slover \
+#    Base_Slover \
     Base_GlobalParameter \
     Base_SurrogateModel \
     Base_PhysicalField

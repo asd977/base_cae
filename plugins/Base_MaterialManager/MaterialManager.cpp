@@ -257,7 +257,7 @@ void MaterialManager::setValueStrings(QVector<QStringList> values)
 
         MaterialEntry entry;
         entry.name = name;
-        const QStringList pairs = encoded.split(QStringLiteral("|;|"), Qt::SkipEmptyParts);
+        const QStringList pairs = encoded.split(QStringLiteral("|;|"), QString::SkipEmptyParts);
         for (const QString &pair : pairs) {
             int sep = pair.indexOf(QLatin1Char(':'));
             if (sep <= 0) {
@@ -272,7 +272,7 @@ void MaterialManager::setValueStrings(QVector<QStringList> values)
         }
 
         m_models[index].materials.append(entry);
-        const QStringList matypeList = appliedMatypes.split(QLatin1Char(','), Qt::SkipEmptyParts);
+        const QStringList matypeList = appliedMatypes.split(QLatin1Char(','), QString::SkipEmptyParts);
         for (const QString &matypeStr : matypeList) {
             bool ok = false;
             int value = matypeStr.toInt(&ok);

@@ -98,10 +98,10 @@ QStringList OrthogonalSampling::splitValues(const QString& text) const
 {
     QString t = text;
     t.replace('\n',' ').replace('\r',' ').replace(',', ' ').replace(';',' ');
-    QStringList parts = t.split(' ', Qt::SkipEmptyParts);
+    QStringList parts = t.split(' ', QString::SkipEmptyParts);
     QStringList out;
     for (auto s : parts) {
-        for (auto v : s.split('|', Qt::SkipEmptyParts)) {
+        for (auto v : s.split('|', QString::SkipEmptyParts)) {
             v = v.trimmed(); if (!v.isEmpty()) out << v;
         }
     }
@@ -247,9 +247,9 @@ void OrthogonalSampling::loadSampleTable(const QString& path)
 
     // 兼容 \t 或逗号/分号/空白
     auto split = [](const QString& s){
-        if (s.contains('\t')) return s.split('\t', Qt::SkipEmptyParts);
+        if (s.contains('\t')) return s.split('\t', QString::SkipEmptyParts);
         QString t = s; for (QChar ch : QString(",;")) t.replace(ch, ' ');
-        return t.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+        return t.split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
     };
     QStringList headers = split(headerLine);
     ui->sampleTable->setColumnCount(headers.size());
