@@ -9,7 +9,7 @@ SettingWidget::SettingWidget(QWidget *parent) :
 	m_layout = new QHBoxLayout(this);
 	m_stackedWidget = new QStackedWidget(this);
 	m_layout->addWidget(m_stackedWidget);
-	m_layout->setContentsMargins(3, 3, 3, 3);
+    m_layout->setContentsMargins(0, 0, 0, 0);
 }
 
 SettingWidget::~SettingWidget()

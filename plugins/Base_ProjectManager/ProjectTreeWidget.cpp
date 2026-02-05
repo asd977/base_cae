@@ -30,7 +30,7 @@ void ProjectTreeWidget::init()
 
 
     m_layout->addWidget(m_treeWidget);
-    m_layout->setContentsMargins(3, 3, 3, 3);
+    m_layout->setContentsMargins(0, 0, 0, 0);
 
 	applyTreeTheme();
     connect(m_treeWidget, &QTreeWidget::currentItemChanged, this, &ProjectTreeWidget::onCurItemChanged);
@@ -106,33 +106,43 @@ void ProjectTreeWidget::buildDefaultProjectTree(const QString& projectName)
 
 void ProjectTreeWidget::onCurItemChanged(QTreeWidgetItem* current, QTreeWidgetItem* previous)
 {
-    if (current)
-    {
-        ProjectNode* node = (ProjectNode*)current;
-        if (node) {
-            BasePage* page = node->getPage();
-            if (page) {
-                qDebug()<<m_stackWidget->currentIndex();
+    if (!current) return;
 
-                if(m_stackWidget->currentIndex() != -1)
-                {
-                    QWidget *widget = m_stackWidget->currentWidget();
-                    BasePage *tmp = (BasePage*)widget;
-                    tmp->beforeUnload();
-                }
+    // 建议使用 dynamic_cast 确保安全，或者确认 ProjectNode 继承自 QTreeWidgetItem
+    ProjectNode* node = static_cast<ProjectNode*>(current);
+    if (!node) return;
 
-                QWidget* widget = page->getWidget();
-                if (m_stackWidget->indexOf(widget) == -1)
-                {
-                    m_stackWidget->addWidget(widget);
-                }
-                page->beforeLoad();
-                m_stackWidget->setCurrentWidget(widget);
-            }
-        }
+    BasePage* page = node->getPage();
+    if (!page) return;
+
+    // 1. 处理旧页面的卸载
+    QWidget *currentW = m_stackWidget->currentWidget();
+    if (currentW) {
+        // 假设所有放入 stack 的 widget 都是从 BasePage 获取的
+        // 建议在 BasePage 关联 widget 时建立双向引用
+
+        // 如果无法找回，目前的强转逻辑需确保 currentW 确实是 Page 的 Widget
+        page->beforeUnload();
     }
-}
 
+    // 2. 获取并配置新页面
+    QWidget* widget = page->getWidget();
+
+    // 关键修正：确保新页面具有拉伸属性
+    if (widget->sizePolicy().verticalPolicy() != QSizePolicy::Expanding) {
+        widget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+    }
+
+    if (m_stackWidget->indexOf(widget) == -1) {
+        m_stackWidget->addWidget(widget);
+    }
+
+    page->beforeLoad();
+    m_stackWidget->setCurrentWidget(widget);
+
+    // 3. 强制更新 UI 几何结构
+    widget->updateGeometry();
+}
 
 
 void ProjectTreeWidget::deletePage(QTreeWidgetItem* item)

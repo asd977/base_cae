@@ -1,4 +1,4 @@
-#include "DisplacementConstraintWidget.h"
+﻿#include "DisplacementConstraintWidget.h"
 #include "ui_DisplacementConstraintWidget.h"
 
 #include <QDebug>
@@ -17,6 +17,7 @@
 #include <vtkCell.h>
 #include <vtkIdList.h>
 #include <vtkPointData.h>
+
 #include <vtkIntArray.h>
 #include <vtkMath.h>
 
