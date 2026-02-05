@@ -1,4 +1,4 @@
-#include "MeshGlobalMeshingWidget.h"
+﻿#include "MeshGlobalMeshingWidget.h"
 #include "ui_MeshGlobalMeshingWidget.h"
 
 #include <QFileDialog>
@@ -8,6 +8,7 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <QThread>
+#include <vtkUnstructuredGridReader.h>
 
 // ===== 你的几何导出依赖（按你项目实际路径改 include）=====
 #include <BRep_Builder.hxx>
@@ -20,11 +21,19 @@
 
 // ===== gmsh =====
 #include <gmsh.h>
+#include <vtkActor.h>
+#include <vtkDataSetMapper.h>
 
 
-
+#include <vtkProperty.h>
 #include "MeshGlobalMeshingWidget.h"
 #include "ui_MeshGlobalMeshingWidget.h"
+
+#include <ServiceRegistry.h>
+#include <services/PreProcessingService.h>
+#include <services/VisualWidgetService.h>
+#include <vtkUnstructuredGrid.h>
+
 // ---------------- Widget ----------------
 MeshGlobalMeshingWidget::MeshGlobalMeshingWidget(QWidget* parent)
     : BasePage("MeshGlobalMeshingWidget")
@@ -147,8 +156,10 @@ Params MeshGlobalMeshingWidget::collectParams() const
 
 QString MeshGlobalMeshingWidget::tempDirPath() const
 {
-    const QString base = QCoreApplication::applicationDirPath();
-    return base + "./tmp";
+
+    QString fileName = "ExportedModel.step";
+    QString currentWorPath = QCoreApplication::applicationDirPath();
+    return currentWorPath;
 }
 QString MeshGlobalMeshingWidget::tempStepPath() const { return tempDirPath() + "/geom.step"; }
 QString MeshGlobalMeshingWidget::tempMshPath()  const { return tempDirPath() + "/mesh.msh"; }
@@ -157,7 +168,17 @@ QString MeshGlobalMeshingWidget::tempNasPath()  const { return tempDirPath() + "
 
 void MeshGlobalMeshingWidget::onGenerate()
 {
-    const Params p = collectParams();
+
+    PreProcessingService *service = ServiceRegistry::instance().getService<PreProcessingService>();
+    service->generateStepFile();
+
+    QString fileName = "ExportedModel.step";
+    QString currentWorPath = QCoreApplication::applicationDirPath();
+    QString filePath = currentWorPath + "/data/"+fileName;
+
+    Params p = collectParams();
+
+    p.inputStepPath = filePath;
 
     if (p.lenMin > p.lenMax)
     {
@@ -207,6 +228,7 @@ void MeshGlobalMeshingWidget::onGenerate()
                 appendLog("整体剖分成功。");
                 emit meshGenerated(msh, vtk, nas);
                 QMessageBox::information(this, "整体剖分", "生成成功！");
+                showMeshVtk(tempVtkPath());
                 if (m_thread) { m_thread->quit(); }
             });
 
@@ -265,3 +287,69 @@ void MeshGlobalMeshingWidget::on_generateButton_clicked()
     onGenerate();
 }
 
+void MeshGlobalMeshingWidget::showMeshVtk(const QString& vtkPath)
+{
+    auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!visual) return;
+
+    auto reader = vtkSmartPointer<vtkUnstructuredGridReader>::New();
+    reader->SetFileName(vtkPath.toLocal8Bit().constData());
+    reader->Update();
+
+    auto grid = reader->GetOutput();
+    if (!grid || grid->GetNumberOfCells() == 0) return;
+
+    // 共享 mapper（表面 + 线框用同一份数据）
+    auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
+    mapper->SetInputData(grid);
+    mapper->ScalarVisibilityOff();
+
+    // 1) 表面 actor：灰色 + 半透明
+    auto actorSurf = vtkSmartPointer<vtkActor>::New();
+    actorSurf->SetMapper(mapper);
+    {
+        auto* p = actorSurf->GetProperty();
+        p->SetColor(0.7, 0.7, 0.7);   // 灰色
+        p->SetOpacity(0.35);          // 半透明（0~1）
+        p->SetRepresentationToSurface();
+
+        // 灰色半透明更“干净”的常用设置（可选）
+        p->SetAmbient(0.35);
+        p->SetDiffuse(0.65);
+        p->SetSpecular(0.0);
+    }
+
+    // 2) 线框 actor：灰色线（叠加）
+    auto actorWire = vtkSmartPointer<vtkActor>::New();
+    actorWire->SetMapper(mapper);
+    {
+        auto* p = actorWire->GetProperty();
+        p->SetColor(0.35, 0.35, 0.35);   // 深一点的灰，线更清楚
+        p->SetOpacity(1.0);
+        p->SetRepresentationToWireframe();
+        p->SetLineWidth(1.0);            // 需要更粗就 1.5/2.0
+
+        // 避免“虚线感”（不同平台不一定有用）
+        p->SetRenderLinesAsTubes(false);
+    }
+
+    // 清理旧的显示（你 clearAll 和 removeProp 二选一就行，建议别同时用）
+     visual->clearAll();
+//    visual->removeProp("mesh.global.surf", true);
+//    visual->removeProp("mesh.global.wire", true);
+
+    // 加入显示
+    visual->addProp("mesh.global.surf", actorSurf, QStringLiteral("{mesh} 全局网格-表面"));
+    visual->addProp("mesh.global.wire", actorWire, QStringLiteral("{mesh} 全局网格-线框"));
+
+    visual->resetCamera();
+    visual->render();
+
+    const vtkIdType nPts   = grid->GetNumberOfPoints();
+    const vtkIdType nCells = grid->GetNumberOfCells();
+
+    qDebug()<<QString("网格加载成功：Points=%1, Elements(Cells)=%2")
+              .arg((qlonglong)nPts)
+              .arg((qlonglong)nCells);
+
+}

@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>252</width>
+    <width>442</width>
     <height>762</height>
    </rect>
   </property>
@@ -20,7 +20,52 @@
    <string>Form</string>
   </property>
   <property name="styleSheet">
-   <string notr="true"/>
+   <string notr="true">QWidget{
+font-family: &quot;Microsoft YaHei&quot;, &quot;微软雅黑&quot;;
+}
+QPushButton#pushButton {
+    background-color: rgb(224, 233, 244);
+    border-width: 1px;
+    border-color: rgb(121, 121, 121);
+    border-style: solid;
+    height: 33px;
+    border-top: 1px solid rgb(169, 169, 169); /* 上边框为灰色 */
+    border-bottom: 1px solid rgb(169, 169, 169); /* 下边框为灰色 */
+    border-left: none; /* 移除左边框 */
+    border-right: none;
+    text-align: left;
+	padding-left: 15px;
+	font-size: 17px;
+	border-style: solid;
+}
+QLabel {
+    font-family: &quot;Microsoft YaHei&quot;, &quot;微软雅黑&quot;;
+    font-size: 17px;
+    text-align: left;
+    color: rgb(51, 51, 51);
+    white-space: nowrap;
+    line-height: 50px;
+    position: absolute;
+    top: 0px;
+    left: 0px;
+}
+QLabel#pageNameLabel {
+    font-size: 20px;
+    font-family: &quot;Microsoft YaHei&quot;, 微软雅黑;
+    text-align: left;
+	padding-left:9px;
+    color: rgb(53, 103, 147);
+}
+QLineEdit {
+    border: 1px solid rgb(200, 200, 200); /* 设置边框为淡灰色 */
+    border-radius: 2px; /* 设置圆角半径为 5 像素 */
+	font-size: 17px;
+}
+QLineEdit:focus {
+    border-color: rgb(100, 100, 255); /* 设置焦点时的边框颜色为蓝色 */
+    outline: none; /* 去掉默认的焦点边框 */
+}
+</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="leftMargin">
@@ -33,9 +78,9 @@
     <number>0</number>
    </property>
    <item>
-    <widget class="QLabel" name="label">
+    <widget class="QLabel" name="pageNameLabel">
      <property name="sizePolicy">
-      <sizepolicy hsizetype="Ignored" vsizetype="Preferred">
+      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
        <horstretch>0</horstretch>
        <verstretch>0</verstretch>
       </sizepolicy>
@@ -61,7 +106,7 @@
    <item>
     <widget class="QWidget" name="widget_2" native="true">
      <property name="sizePolicy">
-      <sizepolicy hsizetype="Ignored" vsizetype="Expanding">
+      <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
        <horstretch>0</horstretch>
        <verstretch>0</verstretch>
       </sizepolicy>
@@ -247,9 +292,6 @@
    </item>
    <item>
     <spacer name="verticalSpacer">
-     <property name="orientation">
-      <enum>Qt::Orientation::Vertical</enum>
-     </property>
      <property name="sizeHint" stdset="0">
       <size>
        <width>20</width>

@@ -51,6 +51,7 @@
 #include <math.h>
 #include <cctype>
 #include <algorithm>
+#include <vtkProperty2D.h>
 
 namespace {
 // registry ids

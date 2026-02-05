@@ -78,12 +78,16 @@
 #include "OccBooleanFuseWidget.h"
 #include "OccBooleanCutWidget.h"
 #include "OccBooleanCommonWidget.h"
+#include "GeometryImportWidget.h"
 #include <QFileDialog>
 #include <STEPControl_Writer.hxx>
 #include <TopoDS_Compound.hxx>
 #include <cmath>
+#include <TopoDS_Shape.hxx>
 
 #include <services/ProjectManagerService.h>
+
+#include <QCoreApplication>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -306,7 +310,61 @@ void PreProcessing::closeProject()
 	m_geomNode = nullptr;
 
 	delete m_gridNode;
-	m_gridNode = nullptr;
+    m_gridNode = nullptr;
+}
+
+void PreProcessing::generateStepFile()
+{
+    // 1. 初始化容器
+    TopoDS_Compound compound;
+    BRep_Builder builder;
+    builder.MakeCompound(compound);
+
+    // 2. 获取单例数据
+    GeomManager::GeomManagerInstance* mgr = GeomManager::GeomManagerInstance::getInstance();
+    QHash<QString, GeomShapeObject *> tmp = mgr->getShapMap();
+
+    bool hasShape = false;
+
+    // 3. 遍历并添加形状
+    // 使用 QHash 的迭代器或 values() 列表
+    for (GeomShapeObject* shapeObj : tmp.values())
+    {
+        if (shapeObj && !shapeObj->getShape()->IsNull()) // 假设 getShape() 返回 TopoDS_Shape
+        {
+            builder.Add(compound, *(shapeObj->getShape()));
+            hasShape = true;
+        }
+    }
+
+    if (!hasShape) {
+        // 如果没有有效形状，直接返回避免生成空文件
+        return;
+    }
+
+    // 4. 配置 STEP 写入器
+    STEPControl_Writer stepWriter;
+
+    // 设置模式（AsIs 保持原样，ManifoldSolidBrep 适合实体）
+    IFSelect_ReturnStatus transferStatus = stepWriter.Transfer(compound, STEPControl_AsIs);
+
+    if (transferStatus != IFSelect_RetDone)
+    {
+        return;
+    }
+
+    // 5. 文件路径处理
+    // 假设 currentWorPath 是类成员，这里拼接完整路径
+    QString fileName = "ExportedModel.step";
+    QString currentWorPath = QCoreApplication::applicationDirPath();
+    QString filePath = currentWorPath + "/data/"+fileName;
+
+    // 6. 执行写入操作
+    IFSelect_ReturnStatus writeStatus = stepWriter.Write(filePath.toLocal8Bit().constData());
+
+    if (writeStatus != IFSelect_RetDone) {
+        return;
+    }
 }
 
 bool PreProcessing::writeJsonFile(const QString& filePath, const QJsonObject& obj)
@@ -366,12 +424,12 @@ void PreProcessing::initRibbonActionConn()
 
 BasePage* PreProcessing::newGeometryImportWidget(QString title)
 {
-    // if (!m_geomNode) return nullptr;
-    // auto *w = new GeometryImportWidget();
-    // auto *node = new ProjectNode(title, QUuid::createUuid().toString(), (BasePage*)w);
-    // m_geomNode->addChild(node);
+     if (!m_geomNode) return nullptr;
+     auto *w = new GeometryImportWidget();
+     auto *node = new ProjectNode(title, QUuid::createUuid().toString(), (BasePage*)w);
+     m_geomNode->addChild(node);
 
-    // return w;
+     return w;
     return nullptr;
 }
 

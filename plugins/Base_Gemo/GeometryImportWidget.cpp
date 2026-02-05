@@ -1,9 +1,16 @@
-﻿#include "GeometryImportWidget.h"
+﻿#include "GeomManagerInstance.h"
+#include "GeometryImportWidget.h"
 #include <QFileDialog>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <PublicVariables.h>
 #include <PublicConstants.h>
+#include <services/VisualWidgetService.h>
+#include <ServiceRegistry.h>
+#include <STEPControl_Reader.hxx>
+#include <TCollection_ExtendedString.hxx>
+
+#include <STEPCAFControl_Writer.hxx>
 
 GeometryImportWidget::GeometryImportWidget(QWidget *parent) : BasePage(PublicConstants::kPagePreprocessImportGeometry)
 {
@@ -68,6 +75,39 @@ void GeometryImportWidget::onImportButtonClicked()
 	{
 		return;
 	}
+
+    TopoDS_Shape* shape = new TopoDS_Shape();
+    if (filePath.endsWith(".step", Qt::CaseInsensitive) || filePath.endsWith(".stp", Qt::CaseInsensitive))
+    {
+
+        STEPControl_Reader readerSTEP;
+        IFSelect_ReturnStatus statSTEP = readerSTEP.ReadFile(filePath.toUtf8().constData());
+        if (statSTEP != IFSelect_RetDone) {
+            return;
+        }
+        IFSelect_PrintCount modeSTEP = IFSelect_ListByItem;
+        readerSTEP.PrintCheckLoad(Standard_False, modeSTEP);
+        readerSTEP.TransferRoots();
+        *shape = readerSTEP.OneShape();
+    }
+    else if (filePath.endsWith(".iges", Qt::CaseInsensitive) || filePath.endsWith(".igs", Qt::CaseInsensitive))
+    {
+//        isSuccess = GemoRWUtilInstance::getInstance()->readOneShapeIgesFile(filePath, shape);
+    }
+    else if (filePath.endsWith(".brep", Qt::CaseInsensitive))
+    {
+//        isSuccess = GemoRWUtilInstance::getInstance()->readOneShapeBrepFile(filePath, shape);
+    }
+
+    GeomManager::GeomManagerInstance* mgr = GeomManager::GeomManagerInstance::getInstance();
+    GeomShapeObject* object = new GeomShapeObject(m_uuid, shape, getDisplayName());
+    mgr->appendGeomShapeObject(object);
+
+    VisualWidgetService *vis = ServiceRegistry::instance().getService<VisualWidgetService>();
+    vis->addProp(m_uuid + "_face", object->getSurfActor(), "Geometry", m_uuid + "_face");
+    vis->addProp(m_uuid + "_edge", object->getEdgeActor(), "Geometry", m_uuid + "_face");
+
+
 	emit fileImported(filePath, m_uuid);
 }
 

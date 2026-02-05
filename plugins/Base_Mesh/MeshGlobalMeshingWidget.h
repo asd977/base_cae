@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <QWidget>
 #include <QMap>
@@ -276,4 +276,5 @@ private:
 private:
     Ui::MeshGlobalMeshingWidget* ui = nullptr;
     QThread* m_thread = nullptr;
+    void showMeshVtk(const QString &vtkPath);
 };

@@ -17,6 +17,7 @@ struct PreProcessingService
 	virtual bool saveProject() = 0;
 	virtual bool loadProject() = 0;
 	virtual void closeProject() = 0;
+    virtual void generateStepFile() = 0;
 };
 
 #endif // PREPROCESSINGSERVICE_H

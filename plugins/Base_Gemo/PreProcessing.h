@@ -23,6 +23,8 @@ public:
 	bool loadProject() override;
 	void closeProject() override;
 
+    void generateStepFile() override;
+
 
 
     BasePage *newGeometryImportWidget(QString title = QObject::tr("导入几何体"));

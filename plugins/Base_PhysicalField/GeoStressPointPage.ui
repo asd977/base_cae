@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>520</width>
-    <height>360</height>
+    <width>522</width>
+    <height>512</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -164,7 +164,7 @@
       <item row="0" column="0">
        <widget class="QLabel" name="labelNodeId">
         <property name="sizePolicy">
-         <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
           <horstretch>0</horstretch>
           <verstretch>0</verstretch>
          </sizepolicy>
@@ -177,7 +177,7 @@
       <item row="0" column="1">
        <widget class="QLabel" name="labelNodeIdValue">
         <property name="frameShape">
-         <enum>QFrame::Shape::StyledPanel</enum>
+         <enum>QFrame::NoFrame</enum>
         </property>
         <property name="text">
          <string/>
@@ -194,7 +194,7 @@
       <item row="1" column="1">
        <widget class="QLabel" name="labelXValue">
         <property name="frameShape">
-         <enum>QFrame::Shape::StyledPanel</enum>
+         <enum>QFrame::NoFrame</enum>
         </property>
         <property name="text">
          <string/>
@@ -211,7 +211,7 @@
       <item row="2" column="1">
        <widget class="QLabel" name="labelYValue">
         <property name="frameShape">
-         <enum>QFrame::Shape::StyledPanel</enum>
+         <enum>QFrame::NoFrame</enum>
         </property>
         <property name="text">
          <string/>
@@ -228,7 +228,7 @@
       <item row="3" column="1">
        <widget class="QLabel" name="labelZValue">
         <property name="frameShape">
-         <enum>QFrame::Shape::StyledPanel</enum>
+         <enum>QFrame::NoFrame</enum>
         </property>
         <property name="text">
          <string/>
@@ -245,7 +245,7 @@
       <item row="4" column="1">
        <widget class="QLabel" name="labelPrevOwnerValue">
         <property name="frameShape">
-         <enum>QFrame::Shape::StyledPanel</enum>
+         <enum>QFrame::NoFrame</enum>
         </property>
         <property name="text">
          <string/>
@@ -257,9 +257,6 @@
    </item>
    <item>
     <spacer name="verticalSpacer">
-     <property name="orientation">
-      <enum>Qt::Orientation::Vertical</enum>
-     </property>
      <property name="sizeHint" stdset="0">
       <size>
        <width>20</width>
