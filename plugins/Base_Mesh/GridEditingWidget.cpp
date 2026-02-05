@@ -29,6 +29,9 @@
 #include <vtkActor.h>
 #include <vtkActor2D.h>
 #include <vtkPolyData.h>
+#include <vtkPolyDataMapper2D.h>
+#include <vtkPolyLine.h>
+#include <vtkCellArray.h>
 #include <vtkLabeledDataMapper.h>
 #include <vtkCellType.h>
 #include <vtkProperty.h>
@@ -44,6 +47,7 @@
 #include <vtkCell.h>
 #include <vtkIdList.h>
 #include <vtkRendererCollection.h>
+#include <vtkCoordinate.h>
 #include <math.h>
 #include <cctype>
 #include <algorithm>
@@ -55,6 +59,7 @@ static const QString kImportedMeshSurfacePropId = QString("mesh.imported.surface
 static const QString kImportedMeshLinePropId = QString("mesh.imported.line");
 static const QString kIiinNodeLblPropId = QString("iiin.node_labels");
 static const QString kIiinElemLblPropId = QString("iiin.elem_labels");
+static const QString kIiinSelectBoxPropId = QString("iiin.box_selection");
 } // namespace
 
 // ------------------- 鼠标回调 -------------------
@@ -228,6 +233,10 @@ void GridEditingWidget::clearData()
     m_colorMode = ColorMode::None;
 
     updateSurfaceLabelSummary(QString("外表面编号：未生成"));
+
+    if (m_visualWidgetService) {
+        m_visualWidgetService->setVisible(kIiinSelectBoxPropId, false, false);
+    }
 }
 
 // 对外接口
@@ -368,50 +377,31 @@ QSet<int> GridEditingWidget::parseIntSetFromString(const QString &text) const
 int GridEditingWidget::expectedNodeCountForKetype(int ketype) const
 {
     switch (ketype) {
-    // 1D
-    case 1:
-    case 2:
-    case 10:
-    case 21:
-        return 2;
-
-    // 2D 四边形族
-    case 3:
-    case 4:
-    case 5:
-    case 7:
-    case 8:
-    case 11:
-    case 12:
-    case 29:
-        return 4;
-
-    // 2D 三角形族
-    case 31:
-    case 32:
-    case 33:
-    case 34:
-        return 3;
-
-    // 3D 六面体族
-    case 6:
-    case 9:
-    case 13:
-    case 17:
-    case 36:
-    case 37:
-        return 8;
-
-    // 3D 四面体
-    case 35:
-        return 4;
-
-    // 3D 楔形 / 棱锥
-    case 38:
-        return 6;
-    case 39:
-        return 5;
-
+    case 1:  return 2;
+    case 2:  return 3;
+    case 3:  return 4;
+    case 4:  return 6;
+    case 5:  return 8;
+    case 6:  return 8;
+    case 7:  return 4;
+    case 8:  return 6;
+    case 9:  return 8;
+    case 10: return 2;
+    case 11: return 4;
+    case 12: return 5;
+    case 13: return 8;
+    case 17: return 8;
+    case 21: return 2;
+    case 29: return 9;
+    case 31: return 3;
+    case 32: return 6;
+    case 33: return 10;
+    case 34: return 15;
+    case 35: return 4;
+    case 36: return 14;
+    case 37: return 20;
+    case 38: return 6;
+    case 39: return 5;
     default:
         return m_model.manod();
     }
@@ -477,140 +467,130 @@ void GridEditingWidget::buildOrUpdateGrid()
     }
     spGrid->GetPointData()->AddArray(nodeIdArray);
 
-    // 2D quad 顺序矫正
-    auto reorderQuad2D = [&](QVector<vtkIdType> &ids) {
-        if (ids.size() != 4) return;
-        struct QuadPt { vtkIdType pid; double ang; };
-        QuadPt qp[4];
-        double cx = 0.0, cy = 0.0;
-        double p[3];
-
-        for (int i = 0; i < 4; ++i) {
-            spPoints->GetPoint(ids[i], p);
-            cx += p[0];
-            cy += p[1];
-        }
-        cx /= 4.0;
-        cy /= 4.0;
-
-        for (int i = 0; i < 4; ++i) {
-            spPoints->GetPoint(ids[i], p);
-            double dx = p[0] - cx;
-            double dy = p[1] - cy;
-            qp[i].pid = ids[i];
-            qp[i].ang = std::atan2(dy, dx);
-        }
-
-        std::sort(qp, qp + 4,
-                  [](const QuadPt &a, const QuadPt &b) {
-                      return a.ang < b.ang;
-                  });
-
-        for (int i = 0; i < 4; ++i)
-            ids[i] = qp[i].pid;
-    };
-
     vtkIdType validCellCount = 0;
 
-    for (const Elem &e : elems) {
-        if (!elemMatchesFilter(e))
-            continue;
-
-        int ketype      = e.ketype;
-        int vtkCellType = -1;
-        int nNodes      = expectedNodeCountForKetype(ketype);
-
+    auto addCell = [&](int vtkCellType,
+                       const QVector<int> &localNodeLids,
+                       const Elem &e) -> bool {
         QVector<vtkIdType> cellPtIds;
-        cellPtIds.reserve(nNodes);
+        cellPtIds.reserve(localNodeLids.size());
 
-        auto addIds = [&](int count) -> bool {
-            for (int k = 0; k < count; ++k) {
-                if (k >= e.nodeIds.size())
-                    return false;
-                int nid = e.nodeIds[k];
-                if (nid == 0) return false;
-                if (!m_nodeIdToVtkId.contains(nid))
-                    return false;
-                cellPtIds.push_back(m_nodeIdToVtkId.value(nid));
-            }
-            return true;
-        };
+        for (int lid : localNodeLids) {
+            if (lid < 0 || lid >= e.nodeIds.size()) return false;
 
-        switch (ketype) {
-        // 1D
-        case 1:
-        case 2:
-        case 10:
-        case 21:
-            vtkCellType = VTK_LINE;
-            if (!addIds(2)) continue;
-            break;
-
-        // 2D quad
-        case 3:
-        case 4:
-        case 5:
-        case 7:
-        case 8:
-        case 11:
-        case 12:
-        case 29:
-            vtkCellType = VTK_QUAD;
-            if (!addIds(4)) continue;
-            if (m_model.madim() == 2)
-                reorderQuad2D(cellPtIds);
-            break;
-
-        // 2D tri
-        case 31:
-        case 32:
-        case 33:
-        case 34:
-            vtkCellType = VTK_TRIANGLE;
-            if (!addIds(3)) continue;
-            break;
-
-        // 3D hex
-        case 6:
-        case 9:
-        case 13:
-        case 17:
-        case 36:
-        case 37:
-            vtkCellType = VTK_HEXAHEDRON;
-            if (!addIds(8)) continue;
-            break;
-
-        // 3D tet
-        case 35:
-            vtkCellType = VTK_TETRA;
-            if (!addIds(4)) continue;
-            break;
-
-        case 38:
-            vtkCellType = VTK_WEDGE;
-            if (!addIds(6)) continue;
-            break;
-
-        case 39:
-            vtkCellType = VTK_PYRAMID;
-            if (!addIds(5)) continue;
-            break;
-
-        default:
-            continue;
+            const int nid = e.nodeIds[lid];
+            if (nid == 0) return false;
+            if (!m_nodeIdToVtkId.contains(nid)) return false;
+            cellPtIds.push_back(m_nodeIdToVtkId.value(nid));
         }
 
+        if (cellPtIds.size() != localNodeLids.size())
+            return false;
+
         spGrid->InsertNextCell(vtkCellType,
-                               cellPtIds.size(),
+                               static_cast<vtkIdType>(cellPtIds.size()),
                                cellPtIds.data());
 
         elemIdArray->InsertNextValue(e.id);
         ketypeArray->InsertNextValue(e.ketype);
         matypeArray->InsertNextValue(e.matype);
         layerArray->InsertNextValue(e.layer);
-
         ++validCellCount;
+        return true;
+    };
+
+    auto proxyPieces = [&](int ketype) -> QVector<QPair<int, QVector<int>>> {
+        QVector<QPair<int, QVector<int>>> pieces;
+
+        switch (ketype)
+        {
+        case 1:
+        case 10:
+        case 21:
+            pieces.push_back({VTK_LINE, {0,1}});
+            break;
+        case 2:
+            pieces.push_back({VTK_QUADRATIC_EDGE, {0,2,1}});
+            break;
+        case 3:
+            pieces.push_back({VTK_QUAD, {0,1,2,3}});
+            break;
+        case 4:
+            pieces.push_back({VTK_QUADRATIC_LINEAR_QUAD, {0,2,3,5,1,4}});
+            break;
+        case 5:
+            pieces.push_back({VTK_QUADRATIC_QUAD, {0,2,4,6,1,3,5,7}});
+            break;
+        case 29:
+            pieces.push_back({VTK_BIQUADRATIC_QUAD, {0,2,4,6,1,3,5,7,8}});
+            break;
+        case 11:
+            pieces.push_back({VTK_QUAD, {0,1,2,3}});
+            break;
+        case 12:
+            pieces.push_back({VTK_TRIANGLE, {0,1,4}});
+            pieces.push_back({VTK_TRIANGLE, {1,2,4}});
+            pieces.push_back({VTK_TRIANGLE, {2,3,4}});
+            pieces.push_back({VTK_TRIANGLE, {3,0,4}});
+            break;
+        case 31:
+            pieces.push_back({VTK_TRIANGLE, {0,1,2}});
+            break;
+        case 32:
+            pieces.push_back({VTK_QUADRATIC_TRIANGLE, {0,2,4,1,3,5}});
+            break;
+        case 33:
+            pieces.push_back({VTK_TRIANGLE, {0,3,6}});
+            break;
+        case 34:
+            pieces.push_back({VTK_TRIANGLE, {0,4,8}});
+            break;
+        case 35:
+            pieces.push_back({VTK_TETRA, {0,1,2,3}});
+            break;
+        case 6:
+        case 13:
+            pieces.push_back({VTK_HEXAHEDRON, {0,1,2,3,4,5,6,7}});
+            break;
+        case 36:
+            pieces.push_back({VTK_HEXAHEDRON, {0,1,2,3,9,10,11,12}});
+            break;
+        case 37:
+            pieces.push_back({VTK_QUADRATIC_HEXAHEDRON,
+                              {0,2,4,6,12,14,16,18,
+                               1,3,5,7,
+                               13,15,17,19,
+                               8,9,10,11}});
+            break;
+        case 9:
+        case 17:
+            pieces.push_back({VTK_QUAD, {0,1,2,3}});
+            pieces.push_back({VTK_QUAD, {4,5,6,7}});
+            break;
+        case 38:
+            pieces.push_back({VTK_WEDGE, {0,1,2,3,4,5}});
+            break;
+        case 39:
+            pieces.push_back({VTK_PYRAMID, {0,1,2,3,4}});
+            break;
+        default:
+            break;
+        }
+
+        return pieces;
+    };
+
+    for (const Elem &e : elems) {
+        if (!elemMatchesFilter(e))
+            continue;
+
+        auto pieces = proxyPieces(e.ketype);
+        if (pieces.isEmpty())
+            continue;
+
+        for (const auto &piece : pieces) {
+            addCell(piece.first, piece.second, e);
+        }
     }
 
     if (validCellCount == 0) {
@@ -1379,6 +1359,69 @@ void GridEditingWidget::updateSurfaceLabelSummary(const QString &text)
     }
 }
 
+void GridEditingWidget::ensureSelectionBoxActorCreated()
+{
+    if (!m_visualWidgetService || m_boxSelectionActor)
+        return;
+
+    m_boxSelectionPoly = vtkSmartPointer<vtkPolyData>::New();
+    auto points = vtkSmartPointer<vtkPoints>::New();
+    points->SetNumberOfPoints(5);
+    m_boxSelectionPoly->SetPoints(points);
+
+    auto polyLine = vtkSmartPointer<vtkPolyLine>::New();
+    polyLine->GetPointIds()->SetNumberOfIds(5);
+    for (vtkIdType i = 0; i < 5; ++i) {
+        polyLine->GetPointIds()->SetId(i, i);
+    }
+
+    auto lines = vtkSmartPointer<vtkCellArray>::New();
+    lines->InsertNextCell(polyLine);
+    m_boxSelectionPoly->SetLines(lines);
+
+    m_boxSelectionCoord = vtkSmartPointer<vtkCoordinate>::New();
+    m_boxSelectionCoord->SetCoordinateSystemToDisplay();
+
+    m_boxSelectionMapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
+    m_boxSelectionMapper->SetTransformCoordinate(m_boxSelectionCoord);
+    m_boxSelectionMapper->SetInputData(m_boxSelectionPoly);
+
+    m_boxSelectionActor = vtkSmartPointer<vtkActor2D>::New();
+    m_boxSelectionActor->SetMapper(m_boxSelectionMapper);
+    m_boxSelectionActor->GetProperty()->SetColor(0.05, 0.55, 0.95);
+    m_boxSelectionActor->GetProperty()->SetLineWidth(1.5);
+
+    if (m_visualWidgetService->getProp(kIiinSelectBoxPropId) == nullptr) {
+        m_visualWidgetService->addProp(kIiinSelectBoxPropId, m_boxSelectionActor, kIiinGroup,
+                                       QString("框选区域"),
+                                       /*resetCam*/false, /*renderNow*/false);
+    }
+    m_visualWidgetService->setVisible(kIiinSelectBoxPropId, false, false);
+}
+
+void GridEditingWidget::updateSelectionBoxActor(const QRect &rect)
+{
+    if (!m_boxSelectionPoly)
+        return;
+
+    auto points = m_boxSelectionPoly->GetPoints();
+    if (!points)
+        return;
+
+    const double minX = rect.left();
+    const double maxX = rect.right();
+    const double minY = rect.top();
+    const double maxY = rect.bottom();
+
+    points->SetPoint(0, minX, minY, 0.0);
+    points->SetPoint(1, maxX, minY, 0.0);
+    points->SetPoint(2, maxX, maxY, 0.0);
+    points->SetPoint(3, minX, maxY, 0.0);
+    points->SetPoint(4, minX, minY, 0.0);
+    points->Modified();
+    m_boxSelectionPoly->Modified();
+}
+
 void GridEditingWidget::beginLabelBoxSelection(LabelSelectionMode mode)
 {
     m_labelSelectionMode = mode;
@@ -1387,6 +1430,7 @@ void GridEditingWidget::beginLabelBoxSelection(LabelSelectionMode mode)
     if (m_visualWidgetService) {
         m_visualWidgetService->setVisible(kIiinNodeLblPropId, false, false);
         m_visualWidgetService->setVisible(kIiinElemLblPropId, false, false);
+        m_visualWidgetService->setVisible(kIiinSelectBoxPropId, false, false);
         m_visualWidgetService->render();
     }
 
@@ -1418,6 +1462,14 @@ void GridEditingWidget::startLabelBoxSelection(int x, int y)
     m_boxStart[1] = y;
     m_boxEnd[0] = x;
     m_boxEnd[1] = y;
+
+    ensureSelectionBoxActorCreated();
+    const QRect rect(QPoint(x, y), QPoint(x, y));
+    updateSelectionBoxActor(rect);
+    if (m_visualWidgetService) {
+        m_visualWidgetService->setVisible(kIiinSelectBoxPropId, true, false);
+        m_visualWidgetService->render();
+    }
 }
 
 void GridEditingWidget::updateLabelBoxSelection(int x, int y)
@@ -1426,6 +1478,16 @@ void GridEditingWidget::updateLabelBoxSelection(int x, int y)
         return;
     m_boxEnd[0] = x;
     m_boxEnd[1] = y;
+
+    const int minX = std::min(m_boxStart[0], m_boxEnd[0]);
+    const int maxX = std::max(m_boxStart[0], m_boxEnd[0]);
+    const int minY = std::min(m_boxStart[1], m_boxEnd[1]);
+    const int maxY = std::max(m_boxStart[1], m_boxEnd[1]);
+    const QRect rect(QPoint(minX, minY), QPoint(maxX, maxY));
+    updateSelectionBoxActor(rect);
+    if (m_visualWidgetService) {
+        m_visualWidgetService->render();
+    }
 }
 
 void GridEditingWidget::finishLabelBoxSelection(int x, int y)
@@ -1442,6 +1504,11 @@ void GridEditingWidget::finishLabelBoxSelection(int x, int y)
     const int minY = std::min(m_boxStart[1], m_boxEnd[1]);
     const int maxY = std::max(m_boxStart[1], m_boxEnd[1]);
     const QRect rect(QPoint(minX, minY), QPoint(maxX, maxY));
+
+    updateSelectionBoxActor(rect);
+    if (m_visualWidgetService) {
+        m_visualWidgetService->setVisible(kIiinSelectBoxPropId, false, false);
+    }
 
     showSurfaceLabelsInRect(rect, m_labelSelectionMode);
     m_labelSelectionMode = LabelSelectionMode::None;
@@ -1466,7 +1533,6 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect &rect, LabelSelectio
     const bool showNodes = (mode == LabelSelectionMode::SurfaceNode || mode == LabelSelectionMode::SurfaceBoth);
     const bool showElems = (mode == LabelSelectionMode::SurfaceElem || mode == LabelSelectionMode::SurfaceBoth);
 
-    const double binSize = 60.0;
     const auto &nodes = m_model.nodes();
     const auto &elems = m_model.elems();
     if (nodes.isEmpty() || elems.isEmpty()) {
@@ -1543,25 +1609,17 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect &rect, LabelSelectio
         double x;
         double y;
         double z;
-        double depth;
         int    id;
     };
 
-    QMap<QPair<int, int>, ScreenCandidate> nodeBuckets;
-    QMap<QPair<int, int>, ScreenCandidate> elemBuckets;
-
-    auto selectFrontmost = [&](QMap<QPair<int, int>, ScreenCandidate> &buckets,
-                               int bx, int by, const ScreenCandidate &candidate) {
-        const QPair<int, int> key(bx, by);
-        auto it = buckets.find(key);
-        if (it == buckets.end() || candidate.depth < it->depth) {
-            buckets.insert(key, candidate);
-        }
-    };
+    int selectedNodeCount = 0;
+    int selectedElemCount = 0;
 
     if (showNodes) {
         QList<int> boundaryNodeList = boundaryNodeIds.values();
         std::sort(boundaryNodeList.begin(), boundaryNodeList.end());
+        QVector<ScreenCandidate> nodeCandidates;
+        nodeCandidates.reserve(boundaryNodeList.size());
         for (int nid : boundaryNodeList) {
             int idx = nodeIndexById(nid);
             if (idx < 0 || idx >= nodes.size()) continue;
@@ -1571,45 +1629,12 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect &rect, LabelSelectio
             double world[3] = {n.x, n.y, n.z};
             if (!projectToDisplay(world, sx, sy, sz)) continue;
             if (!inRect(sx, sy)) continue;
-
-            const int bx = static_cast<int>(std::floor(sx / binSize));
-            const int by = static_cast<int>(std::floor(sy / binSize));
-            selectFrontmost(nodeBuckets, bx, by, {n.x, n.y, n.z, sz, n.id});
+            nodeCandidates.push_back({n.x, n.y, n.z, n.id});
         }
-    }
-
-    if (showElems) {
-        for (const ElemCenter &c : surfaceElemCenters) {
-            double sx = 0, sy = 0, sz = 0;
-            double world[3] = {c.x, c.y, c.z};
-            if (!projectToDisplay(world, sx, sy, sz)) continue;
-            if (!inRect(sx, sy)) continue;
-
-            const int bx = static_cast<int>(std::floor(sx / binSize));
-            const int by = static_cast<int>(std::floor(sy / binSize));
-            selectFrontmost(elemBuckets, bx, by, {c.x, c.y, c.z, sz, c.id});
-        }
-    }
-
-    auto downsample = [&](QVector<ScreenCandidate> &candidates) {
-        const int maxLabels = maxSurfaceLabelCount();
-        if (candidates.size() > maxLabels) {
-            const int step = std::max<int>(1, (candidates.size() + maxLabels - 1) / maxLabels);
-            QVector<ScreenCandidate> trimmed;
-            trimmed.reserve((candidates.size() + step - 1) / step);
-            for (int i = 0; i < candidates.size(); i += step) {
-                trimmed.push_back(candidates[i]);
-            }
-            candidates.swap(trimmed);
-        }
-    };
-
-    if (showNodes) {
-        QVector<ScreenCandidate> nodeCandidates = nodeBuckets.values().toVector();
         std::sort(nodeCandidates.begin(), nodeCandidates.end(), [](const ScreenCandidate &a, const ScreenCandidate &b) {
             return a.id < b.id;
         });
-        downsample(nodeCandidates);
+        selectedNodeCount = nodeCandidates.size();
 
         auto nodePoly   = vtkSmartPointer<vtkPolyData>::New();
         auto nodePoints = vtkSmartPointer<vtkPoints>::New();
@@ -1632,11 +1657,19 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect &rect, LabelSelectio
     }
 
     if (showElems) {
-        QVector<ScreenCandidate> elemCandidates = elemBuckets.values().toVector();
+        QVector<ScreenCandidate> elemCandidates;
+        elemCandidates.reserve(surfaceElemCenters.size());
+        for (const ElemCenter &c : surfaceElemCenters) {
+            double sx = 0, sy = 0, sz = 0;
+            double world[3] = {c.x, c.y, c.z};
+            if (!projectToDisplay(world, sx, sy, sz)) continue;
+            if (!inRect(sx, sy)) continue;
+            elemCandidates.push_back({c.x, c.y, c.z, c.id});
+        }
         std::sort(elemCandidates.begin(), elemCandidates.end(), [](const ScreenCandidate &a, const ScreenCandidate &b) {
             return a.id < b.id;
         });
-        downsample(elemCandidates);
+        selectedElemCount = elemCandidates.size();
 
         auto elemPoly   = vtkSmartPointer<vtkPolyData>::New();
         auto elemPoints = vtkSmartPointer<vtkPoints>::New();
@@ -1658,12 +1691,9 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect &rect, LabelSelectio
         m_visualWidgetService->setVisible(kIiinElemLblPropId, false, false);
     }
 
-    const int nodeCount = showNodes ? nodeBuckets.size() : 0;
-    const int elemCount = showElems ? elemBuckets.size() : 0;
-    const QString summary = QString("外表面编号：框选节点 %1，框选单元 %2（分桶 %3px）")
-                                .arg(nodeCount)
-                                .arg(elemCount)
-                                .arg(binSize);
+    const QString summary = QString("外表面编号：框选节点 %1，框选单元 %2")
+                                .arg(showNodes ? selectedNodeCount : 0)
+                                .arg(showElems ? selectedElemCount : 0);
     updateSurfaceLabelSummary(summary);
 
     m_visualWidgetService->render();

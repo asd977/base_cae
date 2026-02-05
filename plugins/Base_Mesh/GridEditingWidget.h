@@ -28,6 +28,9 @@ class vtkLookupTable;
 class vtkRenderer;
 class vtkRenderWindowInteractor;
 class vtkCommand;
+class vtkPolyData;
+class vtkPolyDataMapper2D;
+class vtkCoordinate;
 
 class GridEditingWidget : public BasePage
 {
@@ -117,6 +120,8 @@ private:
     void beginNodeDragByPointId(long long pointId);
     void beginLabelBoxSelection(LabelSelectionMode mode);
     void showSurfaceLabelsInRect(const QRect &rect, LabelSelectionMode mode);
+    void ensureSelectionBoxActorCreated();
+    void updateSelectionBoxActor(const QRect &rect);
     void applyColorMode();
     vtkSmartPointer<vtkLookupTable> buildLookupTable(const QSet<int> &values) const;
     QStringList availableMeshPropIds() const;
@@ -162,6 +167,11 @@ private:
     vtkSmartPointer<vtkLabeledDataMapper> m_elemLabelMapper;
     vtkSmartPointer<vtkActor2D>           m_elemLabelActor;
     vtkSmartPointer<vtkTextProperty>      m_elemLabelTextProperty;
+
+    vtkSmartPointer<vtkPolyData>          m_boxSelectionPoly;
+    vtkSmartPointer<vtkPolyDataMapper2D>  m_boxSelectionMapper;
+    vtkSmartPointer<vtkCoordinate>        m_boxSelectionCoord;
+    vtkSmartPointer<vtkActor2D>           m_boxSelectionActor;
 
     // picking / interactor
     vtkRenderWindowInteractor* m_interactor = nullptr;
