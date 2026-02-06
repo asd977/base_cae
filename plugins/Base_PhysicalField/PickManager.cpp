@@ -1417,7 +1417,7 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
         float* zbuf = rw->GetZbufferData(x0, y0, x1, y1);
         if (!zbuf) return ids;
 
-        constexpr double kDepthTol = 0.01;
+        constexpr double kDepthTol = 1e-3;
         const vtkIdType nPts = grid->GetNumberOfPoints();
         ids.reserve(int(nPts / 8 + 1));
 
@@ -1442,7 +1442,11 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
             const double pointZ = d[2];
             if (pointZ < -1e-6 || pointZ > 1.0 + 1e-6) continue;
 
-            if (pointZ <= sceneZ + kDepthTol) ids.push_back(pid);
+            // z-buffer 为 1 近似表示该像素没有几何体，不应选中内部点
+            if (sceneZ >= 0.999999) continue;
+
+            // 仅保留与可见表面深度接近的点（避免选中内部/后方节点）
+            if (std::abs(pointZ - sceneZ) <= kDepthTol) ids.push_back(pid);
         }
 
         delete[] zbuf;
