@@ -6,6 +6,7 @@
 
 #include <QDebug>
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 // VTK
@@ -1399,64 +1400,63 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
     const QString dom = m_currentDomain;
     const QString uid = m_currentUUid;
 
-    auto extractVisiblePointIds = [&](vtkProp* targetProp, vtkUnstructuredGrid* grid) -> HardwarePickResult
+    auto collectNodeIdsFromVisibleCells = [&](vtkUnstructuredGrid* grid,
+                                             const QVector<vtkIdType>& cellIds) -> QVector<vtkIdType>
     {
-        HardwarePickResult result;
-        if (!targetProp || !grid) return result;
+        QVector<vtkIdType> pointIds;
+        if (!grid || !ren || cellIds.isEmpty()) return pointIds;
 
-        auto selector = vtkSmartPointer<vtkHardwareSelector>::New();
-        selector->SetRenderer(ren);
-        selector->SetArea(x0, y0, x1, y1);
-        selector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_POINTS);
-
-        vtkSmartPointer<vtkSelection> sel = selector->Select();
-        if (!sel) return result;
-
-        const unsigned int nNodes = sel->GetNumberOfNodes();
-        result.hasAnyNode = (nNodes > 0);
-        for (unsigned int i = 0; i < nNodes; ++i)
+        QSet<vtkIdType> uniquePids;
+        for (vtkIdType cellId : cellIds)
         {
-            vtkSelectionNode* node = sel->GetNode(i);
-            if (!node) continue;
+            vtkCell* cell = grid->GetCell(cellId);
+            if (!cell) continue;
 
-            vtkInformation* info = node->GetProperties();
-            vtkProp* nodeProp = info ? vtkProp::SafeDownCast(info->Get(vtkSelectionNode::PROP())) : nullptr;
+            vtkIdList* ids = cell->GetPointIds();
+            if (!ids) continue;
 
-            bool propMatched = (nodeProp == targetProp);
-            if (!propMatched)
+            for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
             {
-                vtkActor* actor = vtkActor::SafeDownCast(nodeProp);
-                vtkMapper* mapper = actor ? actor->GetMapper() : nullptr;
-                vtkDataSet* inputDs = mapper ? vtkDataSet::SafeDownCast(mapper->GetInput()) : nullptr;
-                propMatched = (inputDs == grid);
-            }
-            if (!propMatched) continue;
-
-            auto* list = vtkIdTypeArray::SafeDownCast(node->GetSelectionList());
-            if (!list) continue;
-
-            const vtkIdType n = list->GetNumberOfTuples();
-            result.ids.reserve(result.ids.size() + int(n));
-            for (vtkIdType j = 0; j < n; ++j)
-            {
-                const vtkIdType id = list->GetValue(j);
-                if (id >= 0 && id < grid->GetNumberOfPoints()) result.ids.push_back(id);
+                uniquePids.insert(ids->GetId(i));
             }
         }
 
-        std::sort(result.ids.begin(), result.ids.end());
-        result.ids.erase(std::unique(result.ids.begin(), result.ids.end()), result.ids.end());
-        return result;
+        pointIds.reserve(uniquePids.size());
+        for (vtkIdType pid : uniquePids)
+        {
+            double p[3];
+            grid->GetPoint(pid, p);
+
+            ren->SetWorldPoint(p[0], p[1], p[2], 1.0);
+            ren->WorldToDisplay();
+            double d[3];
+            ren->GetDisplayPoint(d);
+
+            const int px = int(std::lround(d[0]));
+            const int py = int(std::lround(d[1]));
+            if (px < x0 || px > x1 || py < y0 || py > y1) continue;
+
+            pointIds.push_back(pid);
+        }
+
+        std::sort(pointIds.begin(), pointIds.end());
+        pointIds.erase(std::unique(pointIds.begin(), pointIds.end()), pointIds.end());
+        return pointIds;
     };
 
     auto applyOnGrid = [&](GridKind kind, vtkUnstructuredGrid* grid)
     {
         if (!grid) return;
 
+        const auto visible = extractVisibleCellIds(kind == GridKind::Solid ? m_solidProp : m_lineProp, grid);
+        const auto cellIds = (!visible.ids.isEmpty())
+                                 ? visible.ids
+                                 : (visible.hasAnyNode ? QVector<vtkIdType>{} : extractFrustumCellIds(grid));
+        if (cellIds.isEmpty()) return;
+
         if (m_pickMode == PickMode::Node)
         {
-            const auto visiblePts = extractVisiblePointIds(kind == GridKind::Solid ? m_solidProp : m_lineProp, grid);
-            const auto& pointIds = visiblePts.ids;
+            const auto pointIds = collectNodeIdsFromVisibleCells(grid, cellIds);
             if (pointIds.isEmpty()) return;
 
             for (vtkIdType pid : pointIds)
@@ -1471,12 +1471,6 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
             }
             return;
         }
-
-        const auto visible = extractVisibleCellIds(kind == GridKind::Solid ? m_solidProp : m_lineProp, grid);
-        const auto cellIds = (!visible.ids.isEmpty())
-                                 ? visible.ids
-                                 : (visible.hasAnyNode ? QVector<vtkIdType>{} : extractFrustumCellIds(grid));
-        if (cellIds.isEmpty()) return;
 
         if (m_pickMode == PickMode::Edge)
         {
