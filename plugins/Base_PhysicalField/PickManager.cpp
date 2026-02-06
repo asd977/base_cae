@@ -6,6 +6,7 @@
 
 #include <QDebug>
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 // VTK
@@ -29,6 +30,7 @@
 #include <vtkIdTypeArray.h>
 #include <vtkInformation.h>
 #include <vtkDataObject.h>
+#include <vtkRenderWindow.h>
 
 
 static inline double dist2PointToSegment(const double x[3], const double a[3], const double b[3])
@@ -1399,38 +1401,83 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
     const QString dom = m_currentDomain;
     const QString uid = m_currentUUid;
 
+    auto collectVisiblePointIds = [&](vtkUnstructuredGrid* grid) -> QVector<vtkIdType>
+    {
+        QVector<vtkIdType> ids;
+        if (!grid || !ren) return ids;
+
+        vtkRenderWindow* rw = ren->GetRenderWindow();
+        if (!rw) return ids;
+
+        rw->Render();
+        const int w = x1 - x0 + 1;
+        const int h = y1 - y0 + 1;
+        if (w <= 0 || h <= 0) return ids;
+
+        float* zbuf = rw->GetZbufferData(x0, y0, x1, y1);
+        if (!zbuf) return ids;
+
+        constexpr double kDepthTol = 0.01;
+        const vtkIdType nPts = grid->GetNumberOfPoints();
+        ids.reserve(int(nPts / 8 + 1));
+
+        for (vtkIdType pid = 0; pid < nPts; ++pid)
+        {
+            double p[3];
+            grid->GetPoint(pid, p);
+
+            ren->SetWorldPoint(p[0], p[1], p[2], 1.0);
+            ren->WorldToDisplay();
+            double d[3];
+            ren->GetDisplayPoint(d);
+
+            const int px = int(std::lround(d[0]));
+            const int py = int(std::lround(d[1]));
+            if (px < x0 || px > x1 || py < y0 || py > y1) continue;
+
+            const int idx = (py - y0) * w + (px - x0);
+            if (idx < 0 || idx >= w * h) continue;
+
+            const double sceneZ = double(zbuf[idx]);
+            const double pointZ = d[2];
+            if (pointZ < -1e-6 || pointZ > 1.0 + 1e-6) continue;
+
+            if (pointZ <= sceneZ + kDepthTol) ids.push_back(pid);
+        }
+
+        delete[] zbuf;
+        std::sort(ids.begin(), ids.end());
+        ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+        return ids;
+    };
+
     auto applyOnGrid = [&](GridKind kind, vtkUnstructuredGrid* grid)
     {
         if (!grid) return;
+
+        if (m_pickMode == PickMode::Node)
+        {
+            const auto pointIds = collectVisiblePointIds(grid);
+            if (pointIds.isEmpty()) return;
+
+            for (vtkIdType pid : pointIds)
+            {
+                bool cur = (kind==GridKind::Solid)
+                               ? m_pointsSolidByDomainUuid[dom][uid].contains(pid)
+                               : m_pointsLineByDomainUuid[dom][uid].contains(pid);
+
+                if (op == BoxOp::Add) setNodeSelected_NoRefresh(kind, pid, true);
+                else if (op == BoxOp::Remove) setNodeSelected_NoRefresh(kind, pid, false);
+                else setNodeSelected_NoRefresh(kind, pid, !cur);
+            }
+            return;
+        }
 
         const auto visible = extractVisibleCellIds(kind == GridKind::Solid ? m_solidProp : m_lineProp, grid);
         const auto cellIds = (!visible.ids.isEmpty())
                                  ? visible.ids
                                  : (visible.hasAnyNode ? QVector<vtkIdType>{} : extractFrustumCellIds(grid));
         if (cellIds.isEmpty()) return;
-
-        if (m_pickMode == PickMode::Node)
-        {
-            for (vtkIdType cellId : cellIds)
-            {
-                vtkCell* cell = grid->GetCell(cellId);
-                if (!cell) continue;
-                vtkIdList* ids = cell->GetPointIds();
-                if (!ids) continue;
-                for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
-                {
-                    vtkIdType pid = ids->GetId(i);
-                    bool cur = (kind==GridKind::Solid)
-                                   ? m_pointsSolidByDomainUuid[dom][uid].contains(pid)
-                                   : m_pointsLineByDomainUuid[dom][uid].contains(pid);
-
-                    if (op == BoxOp::Add) setNodeSelected_NoRefresh(kind, pid, true);
-                    else if (op == BoxOp::Remove) setNodeSelected_NoRefresh(kind, pid, false);
-                    else setNodeSelected_NoRefresh(kind, pid, !cur);
-                }
-            }
-            return;
-        }
 
         if (m_pickMode == PickMode::Edge)
         {
