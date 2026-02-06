@@ -356,6 +356,14 @@ void MaterialEntryWidget::onMatypeChanged(int)
 {
     if (m_isUpdating || !m_matypeCombo) return;
 
+    const QVariant data = m_matypeCombo->currentData();
+    const int matype = data.isValid() ? data.toInt() : -1;
+
+    // 兼容 currentIndexChanged 触发场景（键盘切换、滚轮、某些自定义下拉实现）：
+    // 保证“关联 MATYPE”变化时网格颜色高亮会立即同步。
+    m_materialManager->setSelectedMatypeForEntry(m_entryId, matype);
+    m_materialManager->refreshMatypeHighlight(m_entryId);
+
     updateAppliedListColors();
 }
 
