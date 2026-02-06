@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <QFontDatabase>
 #include <QSignalBlocker>
+#include <QAbstractItemView>
 
 #include <CustomComboBox.h>
 
@@ -356,11 +357,17 @@ void MaterialEntryWidget::onMatypeChanged(int)
 {
     if (m_isUpdating || !m_matypeCombo) return;
 
+    // 下拉弹层可见时，currentIndexChanged 可能由“悬浮预览”触发，
+    // 不能把该值写成 Selected（否则关闭下拉后会残留红色选中高亮）。
+    if (m_matypeCombo->view() && m_matypeCombo->view()->isVisible()) {
+        updateAppliedListColors();
+        return;
+    }
+
     const QVariant data = m_matypeCombo->currentData();
     const int matype = data.isValid() ? data.toInt() : -1;
 
-    // 兼容 currentIndexChanged 触发场景（键盘切换、滚轮、某些自定义下拉实现）：
-    // 保证“关联 MATYPE”变化时网格颜色高亮会立即同步。
+    // 仅在非下拉预览阶段同步 Selected，覆盖键盘/滚轮等非 activated 路径。
     m_materialManager->setSelectedMatypeForEntry(m_entryId, matype);
     m_materialManager->refreshMatypeHighlight(m_entryId);
 
