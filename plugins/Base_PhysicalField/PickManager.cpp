@@ -1,4 +1,4 @@
-#include "PickManager.h"
+﻿#include "PickManager.h"
 
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
@@ -31,6 +31,7 @@ static inline double dist2PointToSegment(const double x[3], const double a[3], c
     return vtkMath::Distance2BetweenPoints(x, closest);
 }
 
+
 static inline void sortRect(int& x0,int& y0,int& x1,int& y1)
 {
     if (x0 > x1) std::swap(x0,x1);
@@ -46,8 +47,6 @@ PickManager& PickManager::instance()
 PickManager::PickManager(QObject* parent)
     : QObject(parent)
 {
-    setShiftBoxSelectEnabled(true);
-    setBatchSelectEnabled(true);
 
     m_visual = ServiceRegistry::instance().getService<VisualWidgetService>();
 
@@ -125,23 +124,32 @@ PickManager::PickManager(QObject* parent)
                       true, true);
 
     // ================== Face overlay ==================
+    // --- 数据初始化 ---
     m_facePts   = vtkSmartPointer<vtkPoints>::New();
     m_facePolys = vtkSmartPointer<vtkCellArray>::New();
     m_facePoly  = vtkSmartPointer<vtkPolyData>::New();
+
     m_facePoly->SetPoints(m_facePts);
     m_facePoly->SetPolys(m_facePolys);
 
+    // --- Mapper 配置 ---
     m_faceMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    m_faceMapper->SetRelativeCoincidentTopologyPolygonOffsetParameters(-1.0, -20.0);
     m_faceMapper->SetInputData(m_facePoly);
 
+    // --- Actor 属性设置 ---
     m_faceActor = vtkSmartPointer<vtkActor>::New();
-    m_faceActor->SetMapper(m_faceMapper);
     m_faceActor->GetProperty()->BackfaceCullingOn();
+    m_faceActor->SetMapper(m_faceMapper);
     m_faceActor->GetProperty()->SetColor(0.2, 0.6, 1.0);
-    m_faceActor->GetProperty()->SetOpacity(1.0);
+    m_faceActor->GetProperty()->SetOpacity(1);
     m_faceActor->GetProperty()->SetRepresentationToSurface();
-    m_faceActor->PickableOff();
     m_faceActor->SetVisibility(false);
+
+    // --- 交互控制 (高亮 actor 不参与 pick) ---
+    m_selActor->PickableOff();
+    m_edgeActor->PickableOff();
+    m_faceActor->PickableOff();
 
     m_visual->removeProp("pick.face", false);
     m_visual->addProp("pick.face", m_faceActor,
@@ -266,6 +274,8 @@ void PickManager::activate(const QString& domain, const QString& uuid, PickMode 
     if (mode == PickMode::Face) markDirty(DirtyFace);
 
     setupPicking();
+
+
 }
 
 void PickManager::deactivate(const QString& domain, const QString& uuid, PickMode mode)
@@ -317,15 +327,10 @@ void PickManager::setupPicking()
 
     teardownPicking();
 
-    // 左键按下始终要（单点选 或 记录框选起点）
-    m_leftPressTag = iren->AddObserver(vtkCommand::LeftButtonPressEvent, m_cbLeftPress, 1.0);
-
-    // 只有批量框选开启时，才装 move / release（避免无意义开销）
-    if (m_batchEnabled)
-    {
-        m_leftReleaseTag = iren->AddObserver(vtkCommand::LeftButtonReleaseEvent, m_cbLeftRelease, 1.0);
-        m_mouseMoveTag   = iren->AddObserver(vtkCommand::MouseMoveEvent,         m_cbMouseMove,   1.0);
-    }
+    // 全装，逻辑在回调里分流：不按Shift拖拽=相机；Shift拖拽=框选
+    m_leftPressTag   = iren->AddObserver(vtkCommand::LeftButtonPressEvent,   m_cbLeftPress,   1.0);
+    m_leftReleaseTag = iren->AddObserver(vtkCommand::LeftButtonReleaseEvent, m_cbLeftRelease, 1.0);
+    m_mouseMoveTag   = iren->AddObserver(vtkCommand::MouseMoveEvent,         m_cbMouseMove,   1.0);
 }
 
 void PickManager::teardownPicking()
@@ -347,6 +352,7 @@ void PickManager::teardownPicking()
 
 void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clientData, void*)
 {
+    qDebug()<<"Press";
     auto* self = static_cast<PickManager*>(clientData);
     auto iren = vtkRenderWindowInteractor::SafeDownCast(caller);
     if (!self || !iren) return;
@@ -355,10 +361,12 @@ void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clie
     iren->GetEventPosition(xy);
 
     self->m_leftDown = true;
+    self->m_dragging = false;              // 关键：每次按下重置
     self->m_leftDownPos[0] = xy[0];
     self->m_leftDownPos[1] = xy[1];
 
-    if (self->m_enableShiftBoxSelect && iren->GetShiftKey())
+    // 只有 Shift 才开启框选
+    if ( iren->GetShiftKey())
     {
         self->m_boxing = true;
         self->m_boxStart[0] = xy[0];
@@ -375,13 +383,19 @@ void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clie
 
         if (self->m_visual) self->m_visual->render();
 
+        // Shift 框选：吃掉事件，禁止相机开始旋转
         if (self->m_cbLeftPress) self->m_cbLeftPress->AbortFlagOn();
         return;
     }
+    else
+    {
+        auto* self = static_cast<PickManager*>(clientData);
 
+        self->pickAt(xy[0],xy[1]);
+    }
+
+    // 非Shift：不 Abort，让 VTK style 正常接管（开始旋转/平移）
 }
-
-
 
 void PickManager::OnMouseMove(vtkObject* caller, unsigned long, void* clientData, void*)
 {
@@ -389,36 +403,37 @@ void PickManager::OnMouseMove(vtkObject* caller, unsigned long, void* clientData
     auto iren = vtkRenderWindowInteractor::SafeDownCast(caller);
     if (!self || !iren) return;
 
-    if (!self->m_boxing) {
-        // 非框选：什么都不做，不 Abort，让相机正常旋转
+    int xy[2];
+    iren->GetEventPosition(xy);
+
+    if (self->m_boxing)
+    {
+        self->m_boxEnd[0] = xy[0];
+        self->m_boxEnd[1] = xy[1];
+
+        int x0 = self->m_boxStart[0], y0 = self->m_boxStart[1];
+        int x1 = self->m_boxEnd[0],   y1 = self->m_boxEnd[1];
+        sortRect(x0,y0,x1,y1);
+        self->updateBoxRectActor(x0,y0,x1,y1);
+
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (self->m_visual && (now - self->m_lastBoxRenderMs) >= 16) {
+            self->m_lastBoxRenderMs = now;
+            self->m_visual->render();
+        }
+
+        if (self->m_cbMouseMove) self->m_cbMouseMove->AbortFlagOn();
         return;
     }
 
-    int xy[2];
-    iren->GetEventPosition(xy);
-    self->m_boxEnd[0] = xy[0];
-    self->m_boxEnd[1] = xy[1];
 
-    int x0 = self->m_boxStart[0], y0 = self->m_boxStart[1];
-    int x1 = self->m_boxEnd[0],   y1 = self->m_boxEnd[1];
-    sortRect(x0,y0,x1,y1);
-    self->updateBoxRectActor(x0,y0,x1,y1);
-
-    // 16ms 节流（≈60fps）
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    if (self->m_visual && (now - self->m_lastBoxRenderMs) >= 16) {
-        self->m_lastBoxRenderMs = now;
-        self->m_visual->render();
-    }
-
-    // 框选中 Abort，防止相机也响应 move
-    if (self->m_cbMouseMove) self->m_cbMouseMove->AbortFlagOn();
+    // 非Shift拖动：绝不 Abort，让相机持续正常旋转
 }
-
-
 
 void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* clientData, void*)
 {
+
+    qDebug()<<"release";
     auto* self = static_cast<PickManager*>(clientData);
     auto iren = vtkRenderWindowInteractor::SafeDownCast(caller);
     if (!self || !iren) return;
@@ -426,13 +441,9 @@ void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* cl
     int xy[2];
     iren->GetEventPosition(xy);
 
-    const int dx = xy[0] - self->m_leftDownPos[0];
-    const int dy = xy[1] - self->m_leftDownPos[1];
-    const int d2 = dx*dx + dy*dy;
-
     self->m_leftDown = false;
 
-    // ============ 框选结束 ============
+    // ===== 框选结束（Shift）=====
     if (self->m_boxing)
     {
         self->m_boxing = false;
@@ -442,13 +453,12 @@ void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* cl
         int x1 = xy[0],               y1 = xy[1];
         sortRect(x0,y0,x1,y1);
 
-        // 框太小：当作 click（Shift+click 也能点选，体验更自然）
+        // Shift+轻点：当 click 点选（可选保留）
         if (std::abs(x1-x0) < self->m_clickThresholdPx &&
             std::abs(y1-y0) < self->m_clickThresholdPx)
         {
             self->pickAt(xy[0], xy[1]);
             if (self->m_cbLeftRelease) self->m_cbLeftRelease->AbortFlagOn();
-            if (self->m_visual) self->m_visual->render();
             return;
         }
 
@@ -459,17 +469,26 @@ void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* cl
         self->boxSelect(x0, y0, x1, y1, op);
 
         if (self->m_cbLeftRelease) self->m_cbLeftRelease->AbortFlagOn();
-        if (self->m_visual) self->m_visual->render();
         return;
     }
 
-    // ============ 非框选：click 才 pick ============
-    if (d2 <= self->m_clickThresholdPx * self->m_clickThresholdPx) {
-        self->pickAt(xy[0], xy[1]);
-        // 这里一般不 Abort，让 style 正常结束；也可按你习惯 Abort
+
+    // ===== 非Shift：单击才 pick；拖拽旋转绝不 pick =====
+    {
+        const int dx = xy[0] - self->m_leftDownPos[0];
+        const int dy = xy[1] - self->m_leftDownPos[1];
+        const int d2 = dx*dx + dy*dy;
+        qDebug() << "release d2=" << d2 << "thr=" << self->m_clickThresholdPx;
+
+        const int thr = self->m_clickThresholdPx;
+        const bool isClick = (d2 <= thr * thr);
+
+        if (isClick) {
+            self->pickAt(xy[0], xy[1]);
+        }
     }
 
-    // 大位移：说明是拖拽旋转，不做 pick，不 Abort
+    // 非Shift：不 Abort，让 VTK style 正常结束旋转
 }
 
 
@@ -1763,21 +1782,4 @@ void PickManager::setShowBoxRect(bool on)
     if (m_visual) m_visual->render();
 }
 
-void PickManager::setBatchSelectEnabled(bool on)
-{
-    if (m_batchEnabled == on) return;
-    m_batchEnabled = on;
-
-    // 切换时清理状态，避免残留框
-    m_mouseDown = false;
-    m_dragging  = false;
-    m_boxing    = false;
-    setBoxRectVisible(false);
-
-    // 如果当前正在 activate 状态，重新安装 observer（更省一点）
-    if (!m_currentDomain.isEmpty() && !m_currentUUid.isEmpty())
-        setupPicking();
-
-    if (m_visual) m_visual->render();
-}
 

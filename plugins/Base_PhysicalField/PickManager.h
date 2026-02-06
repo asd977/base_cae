@@ -1,4 +1,4 @@
-#ifndef PICKMANAGER_H
+﻿#ifndef PICKMANAGER_H
 #define PICKMANAGER_H
 
 #include <QObject>
@@ -83,11 +83,6 @@ public:
 
     // 页面控制：是否启用批量框选（不使用 Shift）
     void setBatchSelectEnabled(bool on);
-    bool batchSelectEnabled() const { return m_batchEnabled; }
-
-    // Shift 框选开关
-    void setShiftBoxSelectEnabled(bool on) { m_enableShiftBoxSelect = on; }
-    bool shiftBoxSelectEnabled() const { return m_enableShiftBoxSelect; }
 
 
 private:
@@ -248,12 +243,10 @@ private:
 
     bool   m_showBoxRect = true;
     qint64 m_lastBoxRenderMs = 0;
-    bool m_batchEnabled = false;     // 由页面控制
     bool m_mouseDown    = false;     // 左键按下
     bool m_dragging     = false;     // 是否已进入拖拽框选
     int  m_dragThresholdPx = 4;      // 超过这个像素才认为在拖拽（可调）
 
-    bool m_enableShiftBoxSelect = true;
     bool m_leftDown = false;
     int  m_leftDownPos[2] = {0,0};
     int  m_clickThresholdPx = 4; // 2~6 之间自行调
