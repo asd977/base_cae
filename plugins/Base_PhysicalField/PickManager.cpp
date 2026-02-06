@@ -23,6 +23,9 @@
 #include <vtkPlane.h>
 #include <vtkLine.h>
 #include <QDateTime>
+#include <vtkHardwareSelector.h>
+#include <vtkSelectionNode.h>
+
 
 static inline double dist2PointToSegment(const double x[3], const double a[3], const double b[3])
 {
