@@ -90,7 +90,15 @@ void MeshModuleController::highlightMatypes(const QSet<int> &matypes,
                                             int preDeleteMatype)
 {
     if (!m_gridEditingWidget) {
-        if (!m_previewMapper || !m_visualWidgetService) {
+        if (!m_visualWidgetService) {
+            return;
+        }
+
+        QList<vtkDataSetMapper*> targetMappers;
+        if (m_previewSurfaceMapper) targetMappers.push_back(m_previewSurfaceMapper);
+        if (m_previewLineMapper) targetMappers.push_back(m_previewLineMapper);
+        if (targetMappers.isEmpty() && m_previewMapper) targetMappers.push_back(m_previewMapper);
+        if (targetMappers.isEmpty()) {
             return;
         }
 
@@ -100,7 +108,11 @@ void MeshModuleController::highlightMatypes(const QSet<int> &matypes,
             || preDeleteMatype >= 0;
 
         if (!hasSelection) {
-            m_previewMapper->ScalarVisibilityOff();
+            for (auto *mapper : std::as_const(targetMappers)) {
+                if (mapper) {
+                    mapper->ScalarVisibilityOff();
+                }
+            }
             m_visualWidgetService->render();
             return;
         }
@@ -148,11 +160,16 @@ void MeshModuleController::highlightMatypes(const QSet<int> &matypes,
             lut->SetTableValue(preDeleteMatype, 0.9, 0.55, 0.2, 1.0);
         }
 
-        m_previewMapper->SetScalarModeToUseCellData();
-        m_previewMapper->SelectColorArray("MATYPE");
-        m_previewMapper->SetLookupTable(lut);
-        m_previewMapper->UseLookupTableScalarRangeOn();
-        m_previewMapper->ScalarVisibilityOn();
+        for (auto *mapper : std::as_const(targetMappers)) {
+            if (!mapper) {
+                continue;
+            }
+            mapper->SetScalarModeToUseCellFieldData();
+            mapper->SelectColorArray("MATYPE");
+            mapper->SetLookupTable(lut);
+            mapper->UseLookupTableScalarRangeOn();
+            mapper->ScalarVisibilityOn();
+        }
         m_visualWidgetService->render();
         return;
     }
@@ -406,18 +423,18 @@ void MeshModuleController::displayCurrentModel()
     // 如果旧代码依赖它们，你可以决定：
     // - 优先指向 nonLine（面/体）；
     // - 若没有 nonLine，则指向 line
-    // if (m_previewSurfaceGrid)
-    // {
-    //     m_previewGrid  = m_previewSurfaceGrid;
-    //     m_previewActor = m_previewSurfaceActor;
-    //     m_previewMapper = m_previewSurfaceMapper;
-    // }
-    // else
-    // {
+    if (m_previewSurfaceGrid)
+    {
+        m_previewGrid  = m_previewSurfaceGrid;
+        m_previewActor = m_previewSurfaceActor;
+        m_previewMapper = m_previewSurfaceMapper;
+    }
+    else
+    {
         m_previewGrid  = m_previewLineGrid;
         m_previewActor = m_previewLineActor;
         m_previewMapper = m_previewLineMapper;
-    // }
+    }
 }
 
 vtkSmartPointer<vtkUnstructuredGrid> MeshModuleController::getVtkUnstructuredGrid()
