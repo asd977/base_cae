@@ -6,7 +6,6 @@
 
 #include <QDebug>
 #include <algorithm>
-#include <cmath>
 #include <limits>
 
 // VTK
@@ -30,7 +29,6 @@
 #include <vtkIdTypeArray.h>
 #include <vtkInformation.h>
 #include <vtkDataObject.h>
-#include <vtkRenderWindow.h>
 
 
 static inline double dist2PointToSegment(const double x[3], const double a[3], const double b[3])
@@ -1401,58 +1399,54 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
     const QString dom = m_currentDomain;
     const QString uid = m_currentUUid;
 
-    auto collectVisiblePointIds = [&](vtkUnstructuredGrid* grid) -> QVector<vtkIdType>
+    auto extractVisiblePointIds = [&](vtkProp* targetProp, vtkUnstructuredGrid* grid) -> HardwarePickResult
     {
-        QVector<vtkIdType> ids;
-        if (!grid || !ren) return ids;
+        HardwarePickResult result;
+        if (!targetProp || !grid) return result;
 
-        vtkRenderWindow* rw = ren->GetRenderWindow();
-        if (!rw) return ids;
+        auto selector = vtkSmartPointer<vtkHardwareSelector>::New();
+        selector->SetRenderer(ren);
+        selector->SetArea(x0, y0, x1, y1);
+        selector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_POINTS);
 
-        rw->Render();
-        const int w = x1 - x0 + 1;
-        const int h = y1 - y0 + 1;
-        if (w <= 0 || h <= 0) return ids;
+        vtkSmartPointer<vtkSelection> sel = selector->Select();
+        if (!sel) return result;
 
-        float* zbuf = rw->GetZbufferData(x0, y0, x1, y1);
-        if (!zbuf) return ids;
-
-        constexpr double kDepthTol = 1e-3;
-        const vtkIdType nPts = grid->GetNumberOfPoints();
-        ids.reserve(int(nPts / 8 + 1));
-
-        for (vtkIdType pid = 0; pid < nPts; ++pid)
+        const unsigned int nNodes = sel->GetNumberOfNodes();
+        result.hasAnyNode = (nNodes > 0);
+        for (unsigned int i = 0; i < nNodes; ++i)
         {
-            double p[3];
-            grid->GetPoint(pid, p);
+            vtkSelectionNode* node = sel->GetNode(i);
+            if (!node) continue;
 
-            ren->SetWorldPoint(p[0], p[1], p[2], 1.0);
-            ren->WorldToDisplay();
-            double d[3];
-            ren->GetDisplayPoint(d);
+            vtkInformation* info = node->GetProperties();
+            vtkProp* nodeProp = info ? vtkProp::SafeDownCast(info->Get(vtkSelectionNode::PROP())) : nullptr;
 
-            const int px = int(std::lround(d[0]));
-            const int py = int(std::lround(d[1]));
-            if (px < x0 || px > x1 || py < y0 || py > y1) continue;
+            bool propMatched = (nodeProp == targetProp);
+            if (!propMatched)
+            {
+                vtkActor* actor = vtkActor::SafeDownCast(nodeProp);
+                vtkMapper* mapper = actor ? actor->GetMapper() : nullptr;
+                vtkDataSet* inputDs = mapper ? vtkDataSet::SafeDownCast(mapper->GetInput()) : nullptr;
+                propMatched = (inputDs == grid);
+            }
+            if (!propMatched) continue;
 
-            const int idx = (py - y0) * w + (px - x0);
-            if (idx < 0 || idx >= w * h) continue;
+            auto* list = vtkIdTypeArray::SafeDownCast(node->GetSelectionList());
+            if (!list) continue;
 
-            const double sceneZ = double(zbuf[idx]);
-            const double pointZ = d[2];
-            if (pointZ < -1e-6 || pointZ > 1.0 + 1e-6) continue;
-
-            // z-buffer 为 1 近似表示该像素没有几何体，不应选中内部点
-            if (sceneZ >= 0.999999) continue;
-
-            // 仅保留与可见表面深度接近的点（避免选中内部/后方节点）
-            if (std::abs(pointZ - sceneZ) <= kDepthTol) ids.push_back(pid);
+            const vtkIdType n = list->GetNumberOfTuples();
+            result.ids.reserve(result.ids.size() + int(n));
+            for (vtkIdType j = 0; j < n; ++j)
+            {
+                const vtkIdType id = list->GetValue(j);
+                if (id >= 0 && id < grid->GetNumberOfPoints()) result.ids.push_back(id);
+            }
         }
 
-        delete[] zbuf;
-        std::sort(ids.begin(), ids.end());
-        ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
-        return ids;
+        std::sort(result.ids.begin(), result.ids.end());
+        result.ids.erase(std::unique(result.ids.begin(), result.ids.end()), result.ids.end());
+        return result;
     };
 
     auto applyOnGrid = [&](GridKind kind, vtkUnstructuredGrid* grid)
@@ -1461,7 +1455,8 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
 
         if (m_pickMode == PickMode::Node)
         {
-            const auto pointIds = collectVisiblePointIds(grid);
+            const auto visiblePts = extractVisiblePointIds(kind == GridKind::Solid ? m_solidProp : m_lineProp, grid);
+            const auto& pointIds = visiblePts.ids;
             if (pointIds.isEmpty()) return;
 
             for (vtkIdType pid : pointIds)
