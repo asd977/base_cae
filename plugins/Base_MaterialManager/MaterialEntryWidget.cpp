@@ -10,6 +10,7 @@
 #include <QFontDatabase>
 #include <QSignalBlocker>
 #include <QAbstractItemView>
+#include <QTimer>
 
 #include <CustomComboBox.h>
 
@@ -357,8 +358,15 @@ void MaterialEntryWidget::onMatypeChanged(int)
 {
     if (m_isUpdating || !m_matypeCombo) return;
 
+    // 下拉关闭时某些实现会额外发一次 currentIndexChanged（并非真实提交），直接忽略。
+    if (m_ignoreNextMatypeChanged) {
+        m_ignoreNextMatypeChanged = false;
+        updateAppliedListColors();
+        return;
+    }
+
     // 下拉弹层可见时，currentIndexChanged 可能由“悬浮预览”触发，
-    // 不能把该值写成 Selected（否则关闭下拉后会残留红色选中高亮）。
+    // 不能把该值写成 Selected（否则关闭下拉后会残留预选色/选中色）。
     if (m_matypeCombo->view() && m_matypeCombo->view()->isVisible()) {
         updateAppliedListColors();
         return;
@@ -467,8 +475,10 @@ void MaterialEntryWidget::onDropdownClosed()
         const int selected = m_materialManager->selectedMatypeForEntry(m_entryId);
         int comboIndex = (selected >= 0) ? m_matypeCombo->findData(selected) : 0;
         if (comboIndex < 0) comboIndex = 0;
+        m_ignoreNextMatypeChanged = true;
         QSignalBlocker blocker(m_matypeCombo);
         m_matypeCombo->setCurrentIndex(comboIndex);
+        QTimer::singleShot(0, this, [this]() { m_ignoreNextMatypeChanged = false; });
     }
 
     updateAppliedListColors();
