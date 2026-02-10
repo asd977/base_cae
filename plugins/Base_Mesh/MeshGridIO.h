@@ -1,19 +1,20 @@
-#pragma once
+﻿#pragma once
 
 #include <QString>
 #include <vtkSmartPointer.h>
-
-#include "IiinGridModel.h"
 
 class vtkUnstructuredGrid;
 
 class MeshGridIO
 {
 public:
-    bool loadIiinFile(const QString &fileName, IiinGridModel &model, QString *errMsg = nullptr) const;
-    bool importFlac3D(const QString &fileName, IiinGridModel &model, QString *errMsg = nullptr) const;
-    bool importInp(const QString &fileName, IiinGridModel &model, QString *errMsg = nullptr) const;
-    bool exportIiinFile(const QString &fileName, const IiinGridModel &model, QString *errMsg = nullptr) const;
+    // 直接返回 vtk 网格
+    vtkSmartPointer<vtkUnstructuredGrid> loadIiinFile(const QString &fileName, QString *errMsg = nullptr) const;
+    vtkSmartPointer<vtkUnstructuredGrid> importFlac3D(const QString &fileName, QString *errMsg = nullptr) const;
+    vtkSmartPointer<vtkUnstructuredGrid> importInp(const QString &fileName, QString *errMsg = nullptr) const;
+
+    // 从 vtk 网格导出 IIIN.DAT
+    bool exportIiinFile(const QString &fileName, vtkUnstructuredGrid *grid, QString *errMsg = nullptr) const;
 
     static QString defaultIiinOutputPath(const QString &sourceFile);
 
@@ -21,8 +22,6 @@ private:
     vtkSmartPointer<vtkUnstructuredGrid> loadFlac3dGrid(const QString &fileName) const;
     vtkSmartPointer<vtkUnstructuredGrid> loadAbaqusInpGrid(const QString &fileName) const;
 
-    bool populateModelFromGrid(vtkUnstructuredGrid *grid,
-                               const QString &outputFileName,
-                               IiinGridModel &model,
-                               QString *errMsg) const;
+    // 确保网格上有这些数组：point: node_id；cell: MATYPE/LAYER/KETYPE/elem_id/src_part/TAIL1/TAIL2
+    void ensureDefaultArrays(vtkUnstructuredGrid *grid) const;
 };

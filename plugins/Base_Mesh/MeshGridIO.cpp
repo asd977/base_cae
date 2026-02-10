@@ -24,79 +24,596 @@
 #include <vtkIntArray.h>
 #include <vtkStringArray.h>
 #include <vtkCellData.h>
+#include <vtkPointData.h>
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+static constexpr auto kSkipEmptyParts = Qt::SkipEmptyParts;
+#else
+static constexpr auto kSkipEmptyParts = QString::SkipEmptyParts;
+#endif
 
 namespace {
 
-bool mapVtkCellToKetype(int vtkCellType, int nodeCount, int &ketype, int &expectedNodes)
+static inline bool parseInt(const QString& s, int& v)
 {
-    switch (vtkCellType) {
-    case VTK_HEXAHEDRON:
-        ketype = 6;
-        expectedNodes = 8;
-        return nodeCount == 8;
-    case VTK_TETRA:
-        ketype = 35;
-        expectedNodes = 4;
-        return nodeCount == 4;
-    case VTK_WEDGE:
-        ketype = 38;
-        expectedNodes = 6;
-        return nodeCount == 6;
-    case VTK_PYRAMID:
-        ketype = 39;
-        expectedNodes = 5;
-        return nodeCount == 5;
-    case VTK_TRIANGLE:
-        ketype = 31;
-        expectedNodes = 3;
-        return nodeCount == 3;
-    case VTK_QUAD:
-        ketype = 3;
-        expectedNodes = 4;
-        return nodeCount == 4;
-    case VTK_LINE:
-        ketype = 1;
-        expectedNodes = 2;
-        return nodeCount == 2;
+    bool ok = false;
+    v = s.toInt(&ok);
+    return ok;
+}
+
+static inline bool parseDouble(const QString& s, double& v)
+{
+    bool ok = false;
+    v = s.toDouble(&ok);
+    return ok;
+}
+
+// 你的“显示代理策略”搬到 IO 层：ketype -> (vtkCellType, localNodeLids) 若干片
+static QVector<QPair<int, QVector<int>>> proxyPieces(int ketype)
+{
+    QVector<QPair<int, QVector<int>>> pieces;
+
+    switch (ketype)
+    {
+    // 1D
+    case 1: case 10: case 21:
+        pieces.push_back({VTK_LINE, {0,1}});
+        break;
+
+    case 2: // 3-node line: IIIN=[1,2,3] mid=2 -> VTK_QUADRATIC_EDGE=[1,3,2]
+        pieces.push_back({VTK_QUADRATIC_EDGE, {0,2,1}});
+        break;
+
+    // 2D quad
+    case 3:
+        pieces.push_back({VTK_QUAD, {0,1,2,3}});
+        break;
+
+    case 4: // 6-node quad -> VTK_QUADRATIC_LINEAR_QUAD
+        pieces.push_back({VTK_QUADRATIC_LINEAR_QUAD, {0,2,3,5,1,4}});
+        break;
+
+    case 5: // 8-node quad -> VTK_QUADRATIC_QUAD
+        pieces.push_back({VTK_QUADRATIC_QUAD, {0,2,4,6,1,3,5,7}});
+        break;
+
+    case 29: // 9-node quad -> VTK_BIQUADRATIC_QUAD
+        pieces.push_back({VTK_BIQUADRATIC_QUAD, {0,2,4,6,1,3,5,7,8}});
+        break;
+
+    case 11:
+        pieces.push_back({VTK_QUAD, {0,1,2,3}});
+        break;
+
+    case 12: // 5-node quad (node5 center) -> split 4 tris
+        pieces.push_back({VTK_TRIANGLE, {0,1,4}});
+        pieces.push_back({VTK_TRIANGLE, {1,2,4}});
+        pieces.push_back({VTK_TRIANGLE, {2,3,4}});
+        pieces.push_back({VTK_TRIANGLE, {3,0,4}});
+        break;
+
+    // 2D tri
+    case 31:
+        pieces.push_back({VTK_TRIANGLE, {0,1,2}});
+        break;
+
+    case 32: // 6-node tri -> VTK_QUADRATIC_TRIANGLE
+        pieces.push_back({VTK_QUADRATIC_TRIANGLE, {0,2,4,1,3,5}});
+        break;
+
+    case 33: // proxy to corner tri
+        pieces.push_back({VTK_TRIANGLE, {0,3,6}});
+        break;
+
+    case 34: // proxy to corner tri
+        pieces.push_back({VTK_TRIANGLE, {0,4,8}});
+        break;
+
+    // 3D
+    case 35:
+        pieces.push_back({VTK_TETRA, {0,1,2,3}});
+        break;
+
+    case 6:
+    case 13:
+        pieces.push_back({VTK_HEXAHEDRON, {0,1,2,3,4,5,6,7}});
+        break;
+
+    case 36: // 14-node hex -> proxy to 8-corner hex
+        pieces.push_back({VTK_HEXAHEDRON, {0,1,2,3,9,10,11,12}});
+        break;
+
+    case 37: // 20-node hex -> VTK_QUADRATIC_HEXAHEDRON
+        pieces.push_back({VTK_QUADRATIC_HEXAHEDRON,
+                          {0,2,4,6,12,14,16,18,
+                           1,3,5,7,
+                           13,15,17,19,
+                           8,9,10,11}});
+        break;
+
+    case 9:
+    case 17:
+        pieces.push_back({VTK_QUAD, {0,1,2,3}});
+        pieces.push_back({VTK_QUAD, {4,5,6,7}});
+        break;
+
     default:
         break;
     }
 
+    return pieces;
+}
+
+// 导出时：vtk cell -> ketype
+static bool mapVtkCellToKetypeExt(int vtkCellType, int nodeCount, int &ketype, int &expectedNodes)
+{
+    switch (vtkCellType) {
+    case VTK_LINE:                ketype = 1;  expectedNodes = 2;  return nodeCount == 2;
+    case VTK_QUADRATIC_EDGE:      ketype = 2;  expectedNodes = 3;  return nodeCount == 3;
+
+    case VTK_TRIANGLE:            ketype = 31; expectedNodes = 3;  return nodeCount == 3;
+    case VTK_QUADRATIC_TRIANGLE:  ketype = 32; expectedNodes = 6;  return nodeCount == 6;
+
+    case VTK_QUAD:                ketype = 3;  expectedNodes = 4;  return nodeCount == 4;
+    case VTK_QUADRATIC_LINEAR_QUAD: ketype = 4; expectedNodes = 6; return nodeCount == 6;
+    case VTK_QUADRATIC_QUAD:      ketype = 5;  expectedNodes = 8;  return nodeCount == 8;
+    case VTK_BIQUADRATIC_QUAD:    ketype = 29; expectedNodes = 9;  return nodeCount == 9;
+
+    case VTK_TETRA:               ketype = 35; expectedNodes = 4;  return nodeCount == 4;
+    case VTK_HEXAHEDRON:          ketype = 6;  expectedNodes = 8;  return nodeCount == 8;
+    case VTK_WEDGE:               ketype = 38; expectedNodes = 6;  return nodeCount == 6;
+    case VTK_PYRAMID:             ketype = 39; expectedNodes = 5;  return nodeCount == 5;
+
+    case VTK_QUADRATIC_HEXAHEDRON: ketype = 37; expectedNodes = 20; return nodeCount == 20;
+
+    default:
+        break;
+    }
     return false;
+}
+
+// 导出时把 VTK 节点顺序改回 IIIN 顺序（只对你用到的高阶单元做重排）
+static QVector<int> vtkToIiinOrder(int ketype)
+{
+    switch (ketype) {
+    case 2:  return {0,2,1};                 // VTK [end0,end1,mid] -> IIIN [end0,mid,end1]
+    case 4:  return {0,4,1,2,5,3};           // VTK QLIN_QUAD -> IIIN 6节点顺序
+    case 5:  return {0,4,1,5,2,6,3,7};       // VTK QUADRATIC_QUAD -> IIIN 8节点顺序
+    case 29: return {0,4,1,5,2,6,3,7,8};     // VTK BIQUADRATIC_QUAD -> IIIN 9节点顺序
+    case 32: return {0,3,1,4,2,5};           // VTK QUADRATIC_TRIANGLE -> IIIN 6节点顺序
+    case 37: // 由你 forward map 反推的 inverse
+        return {0,8,1,9,2,10,3,11,16,17,18,19,4,12,5,13,6,14,7,15};
+    default:
+        return {}; // 线性单元不需要重排
+    }
+}
+
+static vtkSmartPointer<vtkIntArray> getOrCreateCellIntArray(vtkUnstructuredGrid* g, const char* name)
+{
+    auto* cd = g->GetCellData();
+    auto* a = vtkIntArray::SafeDownCast(cd->GetArray(name));
+    if (a) return a;
+    auto arr = vtkSmartPointer<vtkIntArray>::New();
+    arr->SetName(name);
+    arr->SetNumberOfComponents(1);
+    cd->AddArray(arr);
+    return arr;
+}
+
+static vtkSmartPointer<vtkIntArray> getOrCreatePointIntArray(vtkUnstructuredGrid* g, const char* name)
+{
+    auto* pd = g->GetPointData();
+    auto* a = vtkIntArray::SafeDownCast(pd->GetArray(name));
+    if (a) return a;
+    auto arr = vtkSmartPointer<vtkIntArray>::New();
+    arr->SetName(name);
+    arr->SetNumberOfComponents(1);
+    pd->AddArray(arr);
+    return arr;
 }
 
 } // namespace
 
-bool MeshGridIO::loadIiinFile(const QString &fileName, IiinGridModel &model, QString *errMsg) const
+vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString &fileName, QString *errMsg) const
 {
-    return model.loadFromFile(fileName, errMsg);
-}
-
-bool MeshGridIO::importFlac3D(const QString &fileName, IiinGridModel &model, QString *errMsg) const
-{
-    vtkSmartPointer<vtkUnstructuredGrid> grid = loadFlac3dGrid(fileName);
+    auto grid = loadFlac3dGrid(fileName);
     if (!grid || grid->GetNumberOfCells() == 0) {
         if (errMsg) *errMsg = QObject::tr("无法解析 Flac3D 网格: %1").arg(fileName);
-        return false;
+        return nullptr;
     }
-
-    return populateModelFromGrid(grid, defaultIiinOutputPath(fileName), model, errMsg);
+    ensureDefaultArrays(grid);
+    return grid;
 }
 
-bool MeshGridIO::importInp(const QString &fileName, IiinGridModel &model, QString *errMsg) const
+vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importInp(const QString &fileName, QString *errMsg) const
 {
-    vtkSmartPointer<vtkUnstructuredGrid> grid = loadAbaqusInpGrid(fileName);
+    auto grid = loadAbaqusInpGrid(fileName);
     if (!grid || grid->GetNumberOfCells() == 0) {
         if (errMsg) *errMsg = QObject::tr("无法解析 Abaqus 网格: %1").arg(fileName);
+        return nullptr;
+    }
+    ensureDefaultArrays(grid);
+    return grid;
+}
+
+vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString &fileName, QString *errMsg) const
+{
+    QFile f(fileName);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        if (errMsg) *errMsg = QObject::tr("无法打开文件: %1").arg(fileName);
+        return nullptr;
+    }
+
+    QTextStream in(&f);
+
+    int numnp=0, madim=3, nelem=0, manod=0, extra=0;
+    double am=1.0, d1=0.0,d2=0.0,d3=0.0;
+
+    in >> numnp >> madim >> nelem >> manod >> extra >> am >> d1 >> d2 >> d3;
+    if (in.status() != QTextStream::Ok) {
+        if (errMsg) *errMsg = "首行(控制信息)读取失败";
+        return nullptr;
+    }
+
+    int iobject=0, ivertical=2;
+    double xmin=0,xmax=0,ymin=0,ymax=0,zmin=0,zmax=0;
+    in >> iobject >> ivertical >> xmin >> xmax >> ymin >> ymax >> zmin >> zmax;
+    if (in.status() != QTextStream::Ok) {
+        if (errMsg) *errMsg = "第二行(对象信息)读取失败";
+        return nullptr;
+    }
+    in.readLine(); // 丢弃第二行尾部
+
+    if (numnp <= 0) {
+        if (errMsg) *errMsg = "节点数 numnp 非法";
+        return nullptr;
+    }
+    if (manod <= 0) manod = 8; // 容错
+
+    // -------- nodes --------
+    struct NodeRec { double x,y,z; int id; };
+    QVector<NodeRec> nodes;
+    nodes.reserve(numnp);
+
+    while (!in.atEnd() && nodes.size() < numnp) {
+        QString raw = in.readLine();
+        if (raw.isNull()) break;
+        QString line = raw.trimmed();
+        if (line.isEmpty()) continue;
+
+        QStringList parts = line.simplified().split(' ', kSkipEmptyParts);
+        if (parts.size() < 3) continue;
+
+        NodeRec n{};
+        bool ok = true;
+
+        if (parts.size() >= 4) {
+            ok &= parseDouble(parts[0], n.x);
+            ok &= parseDouble(parts[1], n.y);
+            ok &= parseDouble(parts[2], n.z);
+            ok &= parseInt(parts[3], n.id);
+        } else {
+            if (madim == 2) {
+                ok &= parseDouble(parts[0], n.x);
+                ok &= parseDouble(parts[1], n.y);
+                n.z = 0.0;
+                ok &= parseInt(parts[2], n.id);
+            } else {
+                ok &= parseDouble(parts[0], n.x);
+                ok &= parseDouble(parts[1], n.y);
+                ok &= parseDouble(parts[2], n.z);
+                n.id = nodes.size() + 1;
+            }
+        }
+        if (!ok) continue;
+
+        n.x *= am; n.y *= am; n.z *= am;
+        nodes.push_back(n);
+    }
+
+    if (nodes.size() != numnp) {
+        // 容错：不强制失败，但提醒
+        qWarning() << "[IIIN] node count mismatch, header=" << numnp << "read=" << nodes.size();
+        numnp = nodes.size();
+    }
+
+    // points + node_id
+    auto pts = vtkSmartPointer<vtkPoints>::New();
+    pts->SetNumberOfPoints(numnp);
+
+    auto nodeIdArr = vtkSmartPointer<vtkIntArray>::New();
+    nodeIdArr->SetName("node_id");
+    nodeIdArr->SetNumberOfComponents(1);
+    nodeIdArr->SetNumberOfTuples(numnp);
+
+    // id->pointIndex
+    QHash<int, vtkIdType> id2p;
+    id2p.reserve(numnp * 2);
+
+    for (int i = 0; i < numnp; ++i) {
+        pts->SetPoint(i, nodes[i].x, nodes[i].y, nodes[i].z);
+        nodeIdArr->SetValue(i, nodes[i].id);
+        id2p.insert(nodes[i].id, static_cast<vtkIdType>(i));
+    }
+
+    auto grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    grid->SetPoints(pts);
+    grid->GetPointData()->AddArray(nodeIdArr);
+
+    // cell arrays
+    auto matypeArr = vtkSmartPointer<vtkIntArray>::New();
+    matypeArr->SetName("MATYPE"); matypeArr->SetNumberOfComponents(1);
+
+    auto elemIdArr = vtkSmartPointer<vtkIntArray>::New();
+    elemIdArr->SetName("elem_id"); elemIdArr->SetNumberOfComponents(1);
+
+    auto ketypeArr = vtkSmartPointer<vtkIntArray>::New();
+    ketypeArr->SetName("KETYPE"); ketypeArr->SetNumberOfComponents(1);
+
+    auto layerArr = vtkSmartPointer<vtkIntArray>::New();
+    layerArr->SetName("LAYER"); layerArr->SetNumberOfComponents(1);
+
+    auto partArr = vtkSmartPointer<vtkIntArray>::New();
+    partArr->SetName("src_part"); partArr->SetNumberOfComponents(1);
+
+    auto tail1Arr = vtkSmartPointer<vtkIntArray>::New();
+    tail1Arr->SetName("TAIL1"); tail1Arr->SetNumberOfComponents(1);
+
+    auto tail2Arr = vtkSmartPointer<vtkIntArray>::New();
+    tail2Arr->SetName("TAIL2"); tail2Arr->SetNumberOfComponents(1);
+
+    // -------- elems --------
+    struct ElemRec {
+        int id=0;
+        QVector<int> nodeIds; // 0..manod-1
+        int ketype=0, matype=0, layer=0, tail1=0, tail2=0;
+    };
+
+    auto addCellPiece = [&](int vtkCellType,
+                            const QVector<int>& localNodeLids,
+                            const ElemRec& e,
+                            int part)->void
+    {
+        QVector<vtkIdType> ptIds;
+        ptIds.reserve(localNodeLids.size());
+
+        for (int lid : localNodeLids) {
+            if (lid < 0 || lid >= e.nodeIds.size()) return;
+            int nid = e.nodeIds[lid];
+            if (nid == 0) return;
+
+            auto it = id2p.find(nid);
+            if (it == id2p.end()) return;
+            ptIds.push_back(it.value());
+        }
+
+        if (ptIds.size() != localNodeLids.size()) return;
+
+        grid->InsertNextCell(vtkCellType,
+                             static_cast<vtkIdType>(ptIds.size()),
+                             ptIds.data());
+
+        matypeArr->InsertNextValue(e.matype);
+        elemIdArr->InsertNextValue(e.id);
+        ketypeArr->InsertNextValue(e.ketype);
+        layerArr ->InsertNextValue(e.layer);
+        partArr  ->InsertNextValue(part);
+        tail1Arr ->InsertNextValue(e.tail1);
+        tail2Arr ->InsertNextValue(e.tail2);
+    };
+
+    int readElems = 0;
+    while (!in.atEnd()) {
+        if (nelem > 0 && readElems >= nelem) break;
+
+        QString raw = in.readLine();
+        if (raw.isNull()) break;
+        QString line = raw.trimmed();
+        if (line.isEmpty()) continue;
+
+        QStringList parts = line.simplified().split(' ', kSkipEmptyParts);
+        if (parts.size() < 4) continue;
+
+        int elemId = 0;
+        if (!parseInt(parts[0], elemId)) continue;
+
+        auto tryParse = [&](bool withTail, ElemRec& e)->bool {
+            const int n = parts.size();
+            int ket=0, mat=0, lay=0, t1=0, t2=0;
+            int nodeCount = 0;
+
+            if (withTail) {
+                if (n < 6) return false;
+                if (!parseInt(parts[n-5], ket)) return false;
+                if (!parseInt(parts[n-4], mat)) return false;
+                if (!parseInt(parts[n-3], lay)) return false;
+                if (!parseInt(parts[n-2], t1))  return false;
+                if (!parseInt(parts[n-1], t2))  return false;
+                nodeCount = n - 1 - 5;
+            } else {
+                if (!parseInt(parts[n-3], ket)) return false;
+                if (!parseInt(parts[n-2], mat)) return false;
+                if (!parseInt(parts[n-1], lay)) return false;
+                t1 = t2 = 0;
+                nodeCount = n - 1 - 3;
+            }
+
+            if (ket <= 0 || ket > 200) return false;
+            if (nodeCount < 0 || nodeCount > manod) return false;
+
+            e.id = elemId;
+            e.ketype = ket;
+            e.matype = mat;
+            e.layer  = lay;
+            e.tail1  = t1;
+            e.tail2  = t2;
+            e.nodeIds.clear();
+            e.nodeIds.resize(manod);
+
+            for (int i = 0; i < nodeCount; ++i) {
+                int nid = 0;
+                if (!parseInt(parts[1 + i], nid)) return false;
+                e.nodeIds[i] = nid;
+            }
+            return true;
+        };
+
+        ElemRec e;
+        bool ok = tryParse(true, e);
+        if (!ok) ok = tryParse(false, e);
+        if (!ok) continue;
+
+        auto pieces = proxyPieces(e.ketype);
+        if (pieces.isEmpty()) continue;
+
+        for (int pi = 0; pi < pieces.size(); ++pi) {
+            addCellPiece(pieces[pi].first, pieces[pi].second, e, pi);
+        }
+
+        ++readElems;
+    }
+
+    grid->GetCellData()->AddArray(matypeArr);
+    grid->GetCellData()->SetScalars(matypeArr);
+
+    grid->GetCellData()->AddArray(elemIdArr);
+    grid->GetCellData()->AddArray(ketypeArr);
+    grid->GetCellData()->AddArray(layerArr);
+    grid->GetCellData()->AddArray(partArr);
+    grid->GetCellData()->AddArray(tail1Arr);
+    grid->GetCellData()->AddArray(tail2Arr);
+
+    ensureDefaultArrays(grid);
+    return grid;
+}
+
+bool MeshGridIO::exportIiinFile(const QString &fileName, vtkUnstructuredGrid *grid, QString *errMsg) const
+{
+    if (!grid || grid->GetNumberOfPoints() == 0 || grid->GetNumberOfCells() == 0) {
+        if (errMsg) *errMsg = "网格为空，无法导出 IIIN.DAT";
         return false;
     }
 
-    return populateModelFromGrid(grid, defaultIiinOutputPath(fileName), model, errMsg);
-}
+    QFile f(fileName);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        if (errMsg) *errMsg = QObject::tr("无法写入文件: %1").arg(fileName);
+        return false;
+    }
 
-bool MeshGridIO::exportIiinFile(const QString &fileName, const IiinGridModel &model, QString *errMsg) const
-{
-    return model.saveToFile(fileName, errMsg);
+    // 先确保数组齐全
+    ensureDefaultArrays(grid);
+
+    auto* matypeArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"));
+    auto* layerArr  = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"));
+    auto* tail1Arr  = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("TAIL1"));
+    auto* tail2Arr  = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("TAIL2"));
+
+    const vtkIdType numnp = grid->GetNumberOfPoints();
+    const vtkIdType ncell = grid->GetNumberOfCells();
+
+    double bounds[6];
+    grid->GetBounds(bounds);
+    double xmin=bounds[0], xmax=bounds[1], ymin=bounds[2], ymax=bounds[3], zmin=bounds[4], zmax=bounds[5];
+
+    const int madim = (std::abs(zmax - zmin) < 1e-12) ? 2 : 3;
+    const double am = 1.0;
+    const int extra = 0;
+    const double d1=0.0,d2=0.0,d3=0.0;
+    const int iobject=0, ivertical=2;
+
+    // 统计 manod（全局最大节点数）
+    int manod = 0;
+    QVector<int> cellKetype(ncell, 0);
+    QVector<int> cellExpN(ncell, 0);
+
+    int unsupported = 0;
+    for (vtkIdType cid = 0; cid < ncell; ++cid) {
+        vtkCell* c = grid->GetCell(cid);
+        if (!c) { unsupported++; continue; }
+        int k=0, expN=0;
+        if (!mapVtkCellToKetypeExt(c->GetCellType(), static_cast<int>(c->GetNumberOfPoints()), k, expN)) {
+            unsupported++;
+            continue;
+        }
+        cellKetype[cid] = k;
+        cellExpN[cid]   = expN;
+        manod = std::max(manod, expN);
+    }
+
+    if (unsupported > 0) {
+        if (errMsg) *errMsg = QObject::tr("存在 %1 个不支持的单元类型，无法导出").arg(unsupported);
+        f.close();
+        return false;
+    }
+
+    QTextStream out(&f);
+    out.setRealNumberNotation(QTextStream::FixedNotation);
+    out.setRealNumberPrecision(6);
+
+    // header line 1
+    out << numnp << " " << madim << " " << ncell << " " << manod << " "
+        << extra << " " << am << " " << d1 << " " << d2 << " " << d3 << "\n";
+
+    // header line 2
+    out << iobject << " " << ivertical << " "
+        << xmin << " " << xmax << " "
+        << ymin << " " << ymax << " "
+        << zmin << " " << zmax << "\n";
+
+    // nodes: 这里统一按点序号写 nodeId=idx+1（最稳，不依赖 pointData node_id）
+    for (vtkIdType i = 0; i < numnp; ++i) {
+        double p[3]; grid->GetPoint(i, p);
+        out << p[0] << " " << p[1] << " " << p[2] << " " << (static_cast<int>(i) + 1) << "\n";
+    }
+
+    // elems: elemId=cid+1；nodeId=pointId+1（必要时按 ketype 做重排）
+    for (vtkIdType cid = 0; cid < ncell; ++cid) {
+        vtkCell* c = grid->GetCell(cid);
+        const int k = cellKetype[cid];
+        const int expN = cellExpN[cid];
+
+        int mat = matypeArr ? matypeArr->GetValue(cid) : 1;
+        int lay = layerArr  ? layerArr->GetValue(cid)  : 1;
+        int t1  = tail1Arr  ? tail1Arr->GetValue(cid)  : 0;
+        int t2  = tail2Arr  ? tail2Arr->GetValue(cid)  : 0;
+
+        // 取 VTK 顺序的点
+        QVector<int> vtkNodeIds;
+        vtkNodeIds.reserve(expN);
+
+        for (int i = 0; i < c->GetNumberOfPoints(); ++i) {
+            vtkIdType pid = c->GetPointId(i);
+            vtkNodeIds.push_back(static_cast<int>(pid) + 1);
+        }
+
+        // 如果 expN > 实际点数（一般不会），补 0
+        while (vtkNodeIds.size() < expN) vtkNodeIds.push_back(0);
+
+        // 重排到 IIIN 顺序
+        QVector<int> iiOrder = vtkToIiinOrder(k);
+        QVector<int> outConn;
+        outConn.reserve(expN);
+
+        if (!iiOrder.isEmpty() && iiOrder.size() == expN) {
+            for (int idx : iiOrder) outConn.push_back(vtkNodeIds[idx]);
+        } else {
+            outConn = vtkNodeIds; // 线性或无需重排
+        }
+
+        // 写出：id + manod 个节点(不足补0) + ketype matype layer tail1 tail2
+        out << (static_cast<int>(cid) + 1);
+
+        for (int j = 0; j < manod; ++j) {
+            int nid = (j < outConn.size()) ? outConn[j] : 0;
+            out << " " << nid;
+        }
+
+        out << " " << k << " " << mat << " " << lay << " " << t1 << " " << t2 << "\n";
+    }
+
+    out.flush();
+    f.close();
+    return true;
 }
 
 QString MeshGridIO::defaultIiinOutputPath(const QString &sourceFile)
@@ -105,105 +622,6 @@ QString MeshGridIO::defaultIiinOutputPath(const QString &sourceFile)
     return info.path() + "/" + info.completeBaseName() + ".dat";
 }
 
-bool MeshGridIO::populateModelFromGrid(vtkUnstructuredGrid *grid,
-                                       const QString &outputFileName,
-                                       IiinGridModel &model,
-                                       QString *errMsg) const
-{
-    if (!grid || grid->GetNumberOfPoints() == 0 || grid->GetNumberOfCells() == 0) {
-        if (errMsg) *errMsg = QObject::tr("网格为空，无法转换为 IIIN.DAT");
-        return false;
-    }
-
-    const vtkIdType pointCount = grid->GetNumberOfPoints();
-    QVector<Node> nodes;
-    nodes.reserve(static_cast<int>(pointCount));
-
-    double xmin = 0.0, xmax = 0.0;
-    double ymin = 0.0, ymax = 0.0;
-    double zmin = 0.0, zmax = 0.0;
-
-    for (vtkIdType i = 0; i < pointCount; ++i) {
-        double p[3];
-        grid->GetPoint(i, p);
-
-        Node node;
-        node.id = static_cast<int>(i) + 1;
-        node.x = p[0];
-        node.y = p[1];
-        node.z = p[2];
-        nodes.push_back(node);
-
-        if (i == 0) {
-            xmin = xmax = p[0];
-            ymin = ymax = p[1];
-            zmin = zmax = p[2];
-        } else {
-            xmin = std::min(xmin, p[0]);
-            xmax = std::max(xmax, p[0]);
-            ymin = std::min(ymin, p[1]);
-            ymax = std::max(ymax, p[1]);
-            zmin = std::min(zmin, p[2]);
-            zmax = std::max(zmax, p[2]);
-        }
-    }
-
-    QVector<Elem> elems;
-    elems.reserve(static_cast<int>(grid->GetNumberOfCells()));
-    int manod = 0;
-
-    for (vtkIdType i = 0; i < grid->GetNumberOfCells(); ++i) {
-        vtkCell *cell = grid->GetCell(i);
-        if (!cell) continue;
-
-        const int nodeCount = static_cast<int>(cell->GetNumberOfPoints());
-        int ketype = 0;
-        int expectedNodes = 0;
-        if (!mapVtkCellToKetype(cell->GetCellType(), nodeCount, ketype, expectedNodes)) {
-            qWarning() << "[MeshGridIO] Unsupported cell type" << cell->GetCellType()
-                       << "with" << nodeCount << "points, skipping.";
-            continue;
-        }
-
-        Elem elem;
-        elem.id = elems.size() + 1;
-        elem.ketype = ketype;
-        elem.matype = 1;
-        elem.layer = 1;
-        elem.nodeIds.reserve(expectedNodes);
-
-        for (int j = 0; j < nodeCount; ++j) {
-            vtkIdType pointId = cell->GetPointId(j);
-            elem.nodeIds.push_back(static_cast<int>(pointId) + 1);
-        }
-
-        manod = std::max(manod, nodeCount);
-        elems.push_back(elem);
-    }
-
-    if (elems.isEmpty()) {
-        if (errMsg) *errMsg = QObject::tr("未能转换任何单元为 IIIN.DAT");
-        return false;
-    }
-
-    int madim = (std::abs(zmax - zmin) < 1e-12) ? 2 : 3;
-    const int iobject = 0;
-    const int ivertical = 2;
-    const double am = 1.0;
-
-    return model.setFromData(nodes,
-                             elems,
-                             madim,
-                             manod,
-                             am,
-                             iobject,
-                             ivertical,
-                             xmin, xmax,
-                             ymin, ymax,
-                             zmin, zmax,
-                             outputFileName,
-                             errMsg);
-}
 
 vtkSmartPointer<vtkUnstructuredGrid>
 MeshGridIO::loadFlac3dGrid(const QString &fileName) const
@@ -221,39 +639,111 @@ MeshGridIO::loadFlac3dGrid(const QString &fileName) const
     };
     QVector<Zone> zones;
 
-    QMap<int, QString> zoneGroups;
+    // 一个 zone 可能属于多个 group（同一 slot），所以用 QStringList
+    QMap<int, QStringList> zoneGroups;
 
+    // ========= 打开文件 =========
     QFile f(fileName);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
         qWarning() << "cannot open flac3d file:" << fileName;
         return nullptr;
     }
 
+    // ========= 一些解析工具 =========
+    auto stripInlineComment = [](QString s) -> QString {
+        // 处理： "305238 * FACES" 这种行内注释
+        const int p = s.indexOf('*');
+        if (p >= 0) s = s.left(p);
+        return s.trimmed();
+    };
+
+    auto unquote = [](QString s) -> QString {
+        s = s.trimmed();
+        if (s.size() >= 2) {
+            const QChar a = s.front();
+            const QChar b = s.back();
+            if ((a == '"'  && b == '"') || (a == '\'' && b == '\''))
+                s = s.mid(1, s.size() - 2);
+        }
+        return s;
+    };
+
+    auto addGroup = [&](int zid, const QString& gname) {
+        auto& lst = zoneGroups[zid];
+        if (!lst.contains(gname))
+            lst.push_back(gname);
+    };
+
+    // 你可以只关心 slot "1"（常见），如果想全收集就设为空字符串
+    const QString kWantedSlot = QStringLiteral("1");
+
+    QString curGroupName;
+    QString curSlot = kWantedSlot;
+    bool inZGroupIds = false;
+
+    auto parseZoneIdToken = [&](const QString& t) {
+        // 支持： 12  或  12-20
+        if (t.isEmpty()) return;
+
+        if (t.contains('-')) {
+            const auto parts = t.split('-', kSkipEmptyParts);
+            if (parts.size() != 2) return;
+
+            bool ok1 = false, ok2 = false;
+            int a = parts[0].toInt(&ok1);
+            int b = parts[1].toInt(&ok2);
+            if (!ok1 || !ok2) return;
+            if (a > b) std::swap(a, b);
+
+            for (int zid = a; zid <= b; ++zid) {
+                if (!kWantedSlot.isEmpty() && curSlot != kWantedSlot) continue;
+                addGroup(zid, curGroupName);
+            }
+        } else {
+            bool ok = false;
+            int zid = t.toInt(&ok);
+            if (!ok) return;
+            if (!kWantedSlot.isEmpty() && curSlot != kWantedSlot) return;
+            addGroup(zid, curGroupName);
+        }
+    };
+
+    // ========= 第一遍：读 G/Z/ZGROUP =========
     QTextStream in(&f);
     while (!in.atEnd()) {
-        QString line = in.readLine().trimmed();
-        if (line.isEmpty())
-            continue;
-        if (line.startsWith('*'))
-            continue;
+        QString line = stripInlineComment(in.readLine());
+        if (line.isEmpty()) continue;
+
+        // 若正在读取 ZGROUP 的 zone-id 列表（多行）
+        if (inZGroupIds) {
+            // 纯数字/范围行通常以数字开头
+            if (!line.isEmpty() && line.front().isDigit()) {
+                line.replace(',', ' ');
+                const QStringList tok = line.split(QRegularExpression("\\s+"), kSkipEmptyParts);
+                for (const QString& t : tok) parseZoneIdToken(t);
+                continue;
+            } else {
+                // 遇到下一段命令（如 ZGROUP / G / Z / FACE...），退出列表模式
+                inZGroupIds = false;
+                // 不 continue，让这行走正常解析
+            }
+        }
 
         line.replace(',', ' ');
-        QStringList tok = line.split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
-        if (tok.isEmpty())
-            continue;
+        const QStringList tok = line.split(QRegularExpression("\\s+"), kSkipEmptyParts);
+        if (tok.isEmpty()) continue;
 
         if (tok[0] == "G") {
-            if (tok.size() < 5)
-                continue;
-            int id = tok[1].toInt();
+            if (tok.size() < 5) continue;
+            const int id = tok[1].toInt();
             NodeData n;
             n.x = tok[2].toDouble();
             n.y = tok[3].toDouble();
             n.z = tok[4].toDouble();
             nodes[id] = n;
-        } else if (tok[0] == "Z") {
-            if (tok.size() < 4)
-                continue;
+        }
+        else if (tok[0] == "Z") {
+            if (tok.size() < 4) continue;
 
             Zone z;
             z.type = tok[1];
@@ -261,52 +751,48 @@ MeshGridIO::loadFlac3dGrid(const QString &fileName) const
 
             if (z.type == "B8") {
                 if (tok.size() < 11) continue;
-                for (int i = 3; i < 11; ++i)
-                    z.verts.push_back(tok[i].toInt());
+                for (int i = 3; i < 11; ++i) z.verts.push_back(tok[i].toInt());
             } else if (z.type == "W6") {
                 if (tok.size() < 9) continue;
-                for (int i = 3; i < 9; ++i)
-                    z.verts.push_back(tok[i].toInt());
+                for (int i = 3; i < 9; ++i) z.verts.push_back(tok[i].toInt());
             } else if (z.type == "T4") {
                 if (tok.size() < 7) continue;
-                for (int i = 3; i < 7; ++i)
-                    z.verts.push_back(tok[i].toInt());
+                for (int i = 3; i < 7; ++i) z.verts.push_back(tok[i].toInt());
             } else if (z.type == "P5") {
                 if (tok.size() < 8) continue;
-                for (int i = 3; i < 8; ++i)
-                    z.verts.push_back(tok[i].toInt());
+                for (int i = 3; i < 8; ++i) z.verts.push_back(tok[i].toInt());
             } else {
                 continue;
             }
 
             zones.push_back(z);
-        } else if (tok[0] == "ZGROUP") {
-            if (tok.size() < 3)
-                continue;
+        }
+        else if (tok[0] == "ZGROUP") {
+            // 典型： ZGROUP "BIANPO" SLOT "1"
+            if (tok.size() < 2) continue;
 
-            QString groupName = tok[1];
+            curGroupName = unquote(tok[1]);
+            curSlot = kWantedSlot; // 默认
 
-            for (int i = 2; i < tok.size(); ++i) {
-                QString t = tok[i];
-                if (t.contains('-')) {
-                    const auto parts = t.split('-');
-                    if (parts.size() != 2) continue;
-                    bool ok1 = false, ok2 = false;
-                    int a = parts[0].toInt(&ok1);
-                    int b = parts[1].toInt(&ok2);
-                    if (!ok1 || !ok2) continue;
-                    if (a > b) std::swap(a, b);
-                    for (int zid = a; zid <= b; ++zid) {
-                        zoneGroups[zid] = groupName;
-                    }
-                } else {
-                    bool ok = false;
-                    int zid = t.toInt(&ok);
-                    if (ok)
-                        zoneGroups[zid] = groupName;
+            // 找 SLOT
+            for (int i = 2; i + 1 < tok.size(); ++i) {
+                if (tok[i].compare("SLOT", Qt::CaseInsensitive) == 0) {
+                    curSlot = unquote(tok[i + 1]);
+                    break;
                 }
             }
+
+            // 同行如果也带了 zone ids，也顺手解析（容错）
+            for (int i = 2; i < tok.size(); ++i) {
+                if (tok[i].compare("SLOT", Qt::CaseInsensitive) == 0) { ++i; continue; }
+                if (!tok[i].isEmpty() && tok[i].front().isDigit())
+                    parseZoneIdToken(tok[i]);
+            }
+
+            // 进入“多行 zone id 列表”模式
+            inZGroupIds = true;
         }
+        // 其它段落（FACE GROUPS 等）这里暂不处理
     }
     f.close();
 
@@ -315,6 +801,7 @@ MeshGridIO::loadFlac3dGrid(const QString &fileName) const
         return nullptr;
     }
 
+    // ========= 建 vtkPoints =========
     vtkSmartPointer<vtkPoints> pts = vtkSmartPointer<vtkPoints>::New();
     QMap<int, vtkIdType> idMap;
     vtkIdType nextId = 0;
@@ -349,41 +836,25 @@ MeshGridIO::loadFlac3dGrid(const QString &fileName) const
                                  const std::vector<double>& zs)
     {
         double cx = 0, cy = 0, cz = 0;
-        for (int i : idx) {
-            cx += xs[i]; cy += ys[i]; cz += zs[i];
-        }
-        cx /= idx.size();
-        cy /= idx.size();
-        cz /= idx.size();
+        for (int i : idx) { cx += xs[i]; cy += ys[i]; cz += zs[i]; }
+        cx /= idx.size(); cy /= idx.size(); cz /= idx.size();
 
-        struct Ang {
-            int id;
-            double ang;
-        };
+        struct Ang { int id; double ang; };
         QVector<Ang> arr;
         arr.reserve(idx.size());
 
         for (int i : idx) {
             double u, v;
-            if (axis == 0) {
-                u = ys[i] - cy;
-                v = zs[i] - cz;
-            } else if (axis == 1) {
-                u = xs[i] - cx;
-                v = zs[i] - cz;
-            } else {
-                u = xs[i] - cx;
-                v = ys[i] - cy;
-            }
-            double ang = std::atan2(v, u);
-            arr.push_back({i, ang});
+            if (axis == 0)      { u = ys[i] - cy; v = zs[i] - cz; }
+            else if (axis == 1) { u = xs[i] - cx; v = zs[i] - cz; }
+            else                { u = xs[i] - cx; v = ys[i] - cy; }
+            arr.push_back({i, std::atan2(v, u)});
         }
 
         std::sort(arr.begin(), arr.end(),
                   [](const Ang& a, const Ang& b){ return a.ang < b.ang; });
 
-        for (int k = 0; k < idx.size(); ++k)
-            idx[k] = arr[k].id;
+        for (int k = 0; k < idx.size(); ++k) idx[k] = arr[k].id;
     };
 
     auto addHex = [&](const QVector<int>& ids) -> bool
@@ -558,34 +1029,39 @@ MeshGridIO::loadFlac3dGrid(const QString &fileName) const
         return true;
     };
 
-    QVector<int>   cellZoneIds;
+    // ========= 生成 cell 数据 + 组->cell 列表 =========
+    QVector<int>     cellZoneIds;
     QVector<QString> cellGroupNames;
     cellZoneIds.reserve(zones.size());
     cellGroupNames.reserve(zones.size());
 
+    // groupName -> cellId list
+    QMap<QString, QVector<vtkIdType>> groupToCells;
+
     for (const Zone &z : zones) {
         bool ok = false;
-        if (z.type == "B8")
-            ok = addHex(z.verts);
-        else if (z.type == "W6")
-            ok = addW6(z.verts);
-        else if (z.type == "T4")
-            ok = addT4(z.verts);
-        else if (z.type == "P5")
-            ok = addP5(z.verts);
+        if (z.type == "B8")      ok = addHex(z.verts);
+        else if (z.type == "W6") ok = addW6(z.verts);
+        else if (z.type == "T4") ok = addT4(z.verts);
+        else if (z.type == "P5") ok = addP5(z.verts);
 
         if (ok) {
+            const vtkIdType cellId = grid->GetNumberOfCells() - 1;
+
             cellZoneIds.push_back(z.id);
-            cellGroupNames.push_back(zoneGroups.value(z.id));
+
+            const QStringList groups = zoneGroups.value(z.id);
+            const QString joined = groups.join(';'); // 多组时用 ; 拼起来
+            cellGroupNames.push_back(joined);
+
+            for (const QString& g : groups) {
+                if (!g.isEmpty())
+                    groupToCells[g].push_back(cellId);
+            }
         }
     }
 
-    vtkIdType nCells = grid->GetNumberOfCells();
-    if (nCells != cellZoneIds.size()) {
-        qWarning() << "[importFlac3D] cell count mismatch:"
-                   << nCells << "vs" << cellZoneIds.size();
-    }
-
+    // ========= 填 ZoneId / GroupName 到 CellData =========
     auto zoneIdArr = vtkSmartPointer<vtkIntArray>::New();
     zoneIdArr->SetName("ZoneId");
     zoneIdArr->SetNumberOfComponents(1);
@@ -597,10 +1073,44 @@ MeshGridIO::loadFlac3dGrid(const QString &fileName) const
 
     for (int i = 0; i < cellZoneIds.size(); ++i) {
         zoneIdArr->SetValue(i, cellZoneIds[i]);
+        groupArr->SetValue(i, cellGroupNames[i].toStdString()); // ✅ 你原来漏了这句
     }
 
     grid->GetCellData()->AddArray(zoneIdArr);
     grid->GetCellData()->AddArray(groupArr);
+
+    // ========= 把“每个组有哪些 cellId”塞进 FieldData（可选但你要的就是这个） =========
+    // 采用打包结构：
+    //   ZGroupNames[i]    = 第 i 个组名
+    //   ZGroupOffsets[i]  = 该组的 cellId 起始下标
+    //   ZGroupOffsets[i+1]= 结束下标（不含）
+    //   ZGroupCellIds[off..end-1] = 该组的所有 cellId
+    auto zGroupNames   = vtkSmartPointer<vtkStringArray>::New();
+    auto zGroupOffsets = vtkSmartPointer<vtkIdTypeArray>::New();
+    auto zGroupCellIds = vtkSmartPointer<vtkIdTypeArray>::New();
+
+    zGroupNames->SetName("ZGroupNames");
+    zGroupOffsets->SetName("ZGroupOffsets");
+    zGroupCellIds->SetName("ZGroupCellIds");
+
+    vtkIdType off = 0;
+    zGroupOffsets->InsertNextValue(off);
+
+    for (auto it = groupToCells.begin(); it != groupToCells.end(); ++it) {
+        const QString& gname = it.key();
+        const QVector<vtkIdType>& cells = it.value();
+
+        zGroupNames->InsertNextValue(gname.toStdString());
+        for (vtkIdType cid : cells)
+            zGroupCellIds->InsertNextValue(cid);
+
+        off += static_cast<vtkIdType>(cells.size());
+        zGroupOffsets->InsertNextValue(off);
+    }
+
+    grid->GetFieldData()->AddArray(zGroupNames);
+    grid->GetFieldData()->AddArray(zGroupOffsets);
+    grid->GetFieldData()->AddArray(zGroupCellIds);
 
     return grid;
 }
@@ -782,4 +1292,57 @@ MeshGridIO::loadAbaqusInpGrid(const QString &fileName) const
     }
 
     return grid;
+}
+
+void MeshGridIO::ensureDefaultArrays(vtkUnstructuredGrid *grid) const
+{
+    if (!grid) return;
+
+    const vtkIdType nPts   = grid->GetNumberOfPoints();
+    const vtkIdType nCells = grid->GetNumberOfCells();
+
+    // point: node_id
+    {
+        auto nodeId = getOrCreatePointIntArray(grid, "node_id");
+        nodeId->SetNumberOfTuples(nPts);
+        for (vtkIdType i = 0; i < nPts; ++i) nodeId->SetValue(i, static_cast<int>(i) + 1);
+    }
+
+    // cell arrays
+    auto matype = getOrCreateCellIntArray(grid, "MATYPE");
+    auto layer  = getOrCreateCellIntArray(grid, "LAYER");
+    auto ketype = getOrCreateCellIntArray(grid, "KETYPE");
+    auto elemId = getOrCreateCellIntArray(grid, "elem_id");
+    auto part   = getOrCreateCellIntArray(grid, "src_part");
+    auto tail1  = getOrCreateCellIntArray(grid, "TAIL1");
+    auto tail2  = getOrCreateCellIntArray(grid, "TAIL2");
+
+    matype->SetNumberOfTuples(nCells);
+    layer ->SetNumberOfTuples(nCells);
+    ketype->SetNumberOfTuples(nCells);
+    elemId->SetNumberOfTuples(nCells);
+    part  ->SetNumberOfTuples(nCells);
+    tail1 ->SetNumberOfTuples(nCells);
+    tail2 ->SetNumberOfTuples(nCells);
+
+    for (vtkIdType cid = 0; cid < nCells; ++cid) {
+        // 若已有值也无所谓，这里给默认兜底
+        if (matype->GetValue(cid) == 0) matype->SetValue(cid, 1);
+        if (layer ->GetValue(cid) == 0) layer ->SetValue(cid, 1);
+        if (elemId->GetValue(cid) == 0) elemId->SetValue(cid, static_cast<int>(cid) + 1);
+
+        int k = 0, expN = 0;
+        vtkCell* c = grid->GetCell(cid);
+        if (c && mapVtkCellToKetypeExt(c->GetCellType(), static_cast<int>(c->GetNumberOfPoints()), k, expN)) {
+            if (ketype->GetValue(cid) == 0) ketype->SetValue(cid, k);
+        } else {
+            if (ketype->GetValue(cid) == 0) ketype->SetValue(cid, 0);
+        }
+
+        // src_part / tail 默认 0
+        // part->GetValue(cid) == 0 ok
+    }
+
+    // 默认把 MATYPE 作为 scalars（你高亮逻辑用到）
+    grid->GetCellData()->SetScalars(matype);
 }

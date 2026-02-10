@@ -9,16 +9,14 @@ HEADERS += \
     MeshModuleController.h \
     MeshProcessor.h \
     MeshGridIO.h \
-    GridEditingWidget.h \
-    IiinGridModel.h
+    GridEditingWidget.h
 
 SOURCES += \
     MeshGlobalMeshingWidget.cpp \
     MeshModuleController.cpp \
     MeshProcessor.cpp \
     MeshGridIO.cpp \
-    GridEditingWidget.cpp \
-    IiinGridModel.cpp
+    GridEditingWidget.cpp
 
 FORMS += \
     MeshGlobalMeshingWidget.ui \

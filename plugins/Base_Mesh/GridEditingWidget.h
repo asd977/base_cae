@@ -3,13 +3,15 @@
 #include <QWidget>
 #include <QSet>
 #include <QHash>
+#include <QMap>
+#include <QPair>
 #include <QString>
 #include <QStringList>
+#include <QRect>
+
 #include <BasePage.h>
 
 #include <vtkSmartPointer.h>
-
-#include "IiinGridModel.h"
 
 namespace Ui { class GridEditingWidget; }
 
@@ -31,6 +33,7 @@ class vtkCommand;
 class vtkPolyData;
 class vtkPolyDataMapper2D;
 class vtkCoordinate;
+class vtkDataArray;
 
 class GridEditingWidget : public BasePage
 {
@@ -42,8 +45,11 @@ public:
     explicit GridEditingWidget(QWidget *parent = nullptr);
     ~GridEditingWidget() override;
 
-    void setModel(const IiinGridModel &model);
-    void clearIiinGrid();
+    // ===================== 关键：完全不依赖 IiinGridModel =====================
+    // 传入“可编辑网格”（内部 DeepCopy 一份作为 fullGrid）
+    void setEditableGrid(vtkUnstructuredGrid* grid, const QString& sourceName = QString());
+    void clearGrid();
+
     void highlightMatypes(const QSet<int> &matypes,
                           int selectedMatype,
                           int previewMatype,
@@ -68,7 +74,6 @@ public:
     void beforeLoad();
     void beforeUnload();
 
-
 private slots:
     void on_pushButtonApplyFilter_clicked();
     void on_pushButtonResetFilter_clicked();
@@ -91,51 +96,61 @@ private:
     void clearData();
 
     QSet<int> parseIntSetFromString(const QString &text) const;
-    int expectedNodeCountForKetype(int ketype) const;
-    bool elemMatchesFilter(const Elem &e) const;
 
-    void buildOrUpdateGrid();
+    // fullGrid -> viewGrid（过滤后的显示数据）
+    void buildOrUpdateViewGrid();
     void setupInteractor();
 
     void ensureLabelActorsCreated();
     void applyLabelTextStyles();
 
-    const Elem* findElemById(int elemId) const;
-    Elem*       findElemById(int elemId);
+    // maps
+    void rebuildFullMaps();
+    void rebuildViewMaps();
 
-    int nodeIndexById(int nodeId) const;
+    vtkDataArray* pointArray(const char* name) const;
+    vtkDataArray* cellArray(const char* name) const;
 
-    void showNodeLabelsForElem(int elemId);
-    void showElemLabelForElem(int elemId);
-    void showSurfaceLabels();
-
-    void moveNode(int nodeId, double *newX, double *newY, double *newZ);
-    void deleteElemById(int elemId);
+    bool cellMatchesFilter(vtkIdType fullCellId) const;
+    QSet<int> collectUniqueCellInts(const char* arrayName) const;
 
     void updateIdRangeLabels();
-    void updateFilterCombosFromModel();
+    void updateFilterCombosFromGrid();
     void updateFilterSummaryLabel();
     void updateSurfaceLabelSummary(const QString &text);
 
-    void beginNodeDragByPointId(long long pointId);
+    void showNodeLabelsForElem(int elemId);
+    void showElemLabelForElem(int elemId);
+
+    void beginNodeDragByPointId(long long viewPointId);
     void beginLabelBoxSelection(LabelSelectionMode mode);
     void showSurfaceLabelsInRect(const QRect &rect, LabelSelectionMode mode);
+
     void ensureSelectionBoxActorCreated();
     void updateSelectionBoxActor(const QRect &rect);
+
     void applyColorMode();
     vtkSmartPointer<vtkLookupTable> buildLookupTable(const QSet<int> &values) const;
     QStringList availableMeshPropIds() const;
 
-    int maxSurfaceLabelCount() const { return 300; } // 你想做成 UI 可配也行
+    // editing helpers
+    void moveNodeById(int nodeId, const double* newX, const double* newY, const double* newZ);
+    void deleteElemById(int elemId);
+
+    bool saveAsVtu(const QString& filePath);
+
+    int maxSurfaceLabelCount() const { return 300; } // 可改 UI 可配
 
 private:
     Ui::GridEditingWidget *ui = nullptr;
 
     VisualWidgetService *m_visualWidgetService = nullptr;
 
-    // 数据
-    IiinGridModel m_model;
-    QString m_fileName;
+    // ============ 彻底剔除 IiinGridModel：只保留 VTK 网格 ============
+    vtkSmartPointer<vtkUnstructuredGrid> m_fullGrid; // 权威可编辑数据
+    vtkSmartPointer<vtkUnstructuredGrid> m_viewGrid; // 过滤后的显示数据（无过滤时 = fullGrid）
+
+    QString m_sourceName; // 保存/溯源用
     bool m_dirty = false;
 
     // filter
@@ -152,10 +167,13 @@ private:
     int m_minNodeId = 0, m_maxNodeId = 0;
     int m_minElemId = 0, m_maxElemId = 0;
 
-    // vtk cached
-    vtkSmartPointer<vtkPoints> m_points;
-    vtkSmartPointer<vtkUnstructuredGrid> m_grid;
+    // maps
+    QHash<int, vtkIdType> m_fullNodeIdToVtkId;
+    QHash<int, vtkIdType> m_viewNodeIdToVtkId;
+    QHash<int, vtkIdType> m_fullElemIdToCellId;
 
+    // vtk cached (view)
+    vtkSmartPointer<vtkPoints> m_points;
     vtkSmartPointer<vtkDataSetMapper> m_meshMapper;
     vtkSmartPointer<vtkActor>         m_meshActor;
 
@@ -168,6 +186,7 @@ private:
     vtkSmartPointer<vtkActor2D>           m_elemLabelActor;
     vtkSmartPointer<vtkTextProperty>      m_elemLabelTextProperty;
 
+    // selection box
     vtkSmartPointer<vtkPolyData>          m_boxSelectionPoly;
     vtkSmartPointer<vtkPolyDataMapper2D>  m_boxSelectionMapper;
     vtkSmartPointer<vtkCoordinate>        m_boxSelectionCoord;
@@ -195,10 +214,7 @@ private:
 
     // drag state
     bool      m_isDragging = false;
-    long long m_dragVtkPointId = -1;
+    long long m_dragViewPointId = -1;
     int       m_dragNodeId = -1;
     double    m_dragStartX = 0, m_dragStartY = 0, m_dragStartZ = 0;
-
-    // node id -> vtk point id
-    QHash<int, vtkIdType> m_nodeIdToVtkId;
 };

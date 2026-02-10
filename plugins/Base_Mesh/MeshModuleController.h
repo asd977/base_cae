@@ -1,11 +1,11 @@
-#pragma once
+﻿#pragma once
 #include <QObject>
-#include <vtkSmartPointer.h>
 #include <QSet>
+#include <QString>
 
+#include <vtkSmartPointer.h>
 #include <services/MeshModuleControllerService.h>
 
-#include "IiinGridModel.h"
 #include "MeshGridIO.h"
 
 class ProjectNode;
@@ -25,21 +25,20 @@ public:
     bool saveProject();
     bool loadProject();
     void closeProject();
-    bool currentModel(IiinGridModel &model) const override;
+
     QSet<int> getAvailableMatypes() const override;
     void highlightMatypes(const QSet<int> &matypes,
                           int selectedMatype,
                           int previewMatype,
                           int preDeleteMatype) override;
 
-
     vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGrid();
     vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGridSolid();
     vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGridLine();
+
 private:
     void initAction();
 
-    // --- slots (handlers) ---
     void onImportGrid();
     void onExportGrid();
 
@@ -53,21 +52,26 @@ private:
     void onCtrlEdge();
     void onQualityStd();
     void onMeshEdit();
-    void displayCurrentModel();
-    vtkSmartPointer<vtkUnstructuredGrid> buildGridFromModel(const IiinGridModel &model) const;
-    int expectedNodeCountForKetype(int ketype) const;
-    int ketypeToVtkCellType(int ketype) const;
+
+    void displayCurrentGrid(); // 只显示 m_importedGrid
+
     void splitGridByDim(vtkUnstructuredGrid* src,
                         vtkSmartPointer<vtkUnstructuredGrid>& outLine,
                         vtkSmartPointer<vtkUnstructuredGrid>& outNonLine) const;
+
     vtkSmartPointer<vtkActor> createSurfaceActor(vtkUnstructuredGrid* grid) const;
     vtkSmartPointer<vtkActor> createLineActor(vtkUnstructuredGrid* grid) const;
 
 private:
     ProjectNode* m_gridNode = nullptr;
-    IiinGridModel m_currentModel;
-    bool m_hasModel = false;
+
+    // 彻底删掉 IiinGridModel，改为只存 vtk
+    vtkSmartPointer<vtkUnstructuredGrid> m_importedGrid;
+    bool m_hasGrid = false;
+    QString m_sourceFileName;
+
     MeshGridIO m_gridIO;
+
     VisualWidgetService *m_visualWidgetService = nullptr;
     GridEditingWidget *m_gridEditingWidget = nullptr;
 

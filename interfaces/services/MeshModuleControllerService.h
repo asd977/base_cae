@@ -13,7 +13,6 @@ struct MeshModuleControllerService
 	virtual bool saveProject() = 0;
 	virtual bool loadProject() = 0;
 	virtual void closeProject() = 0;
-    virtual bool currentModel(IiinGridModel &model) const = 0;
     virtual QSet<int> getAvailableMatypes() const = 0;
     virtual void highlightMatypes(const QSet<int> &matypes,
                                   int selectedMatype,
