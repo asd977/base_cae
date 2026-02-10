@@ -236,6 +236,375 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importInp(const QString &fileNa
     return grid;
 }
 
+vtkSmartPointer<vtkUnstructuredGrid>
+MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg) const
+{
+
+    auto fail = [&](const QString& s) -> vtkSmartPointer<vtkUnstructuredGrid> {
+        if (errMsg) *errMsg = s;
+        qWarning() << "[loadMshFile]" << s;
+        return nullptr;
+    };
+    if (errMsg) errMsg->clear();
+
+    QFile f(fileName);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return fail(QString("cannot open msh file: %1").arg(fileName));
+    }
+
+    QTextStream in(&f);
+    in.setLocale(QLocale::c());
+
+    auto stripInlineComment = [](QString s) -> QString {
+        // msh 通常没注释；为了稳妥，处理行内 '*' 后面的内容
+        const int p = s.indexOf('*');
+        if (p >= 0) s = s.left(p);
+        return s.trimmed();
+    };
+
+    auto unquote = [](QString s) -> QString {
+        s = s.trimmed();
+        if (s.size() >= 2) {
+            const QChar a = s.front(), b = s.back();
+            if ((a == '"' && b == '"') || (a == '\'' && b == '\''))
+                s = s.mid(1, s.size() - 2);
+        }
+        return s;
+    };
+
+    // ===== PhysicalNames: physicalTag -> name / dim =====
+    QMap<int, QString> physNameById;
+    QMap<int, int>     physDimById;
+
+    // ===== Nodes =====
+    auto pts = vtkSmartPointer<vtkPoints>::New();
+    pts->SetDataTypeToDouble();
+
+    QHash<int, vtkIdType> nodeIdToVtkId;
+    nodeIdToVtkId.reserve(4096);
+
+    auto nodeIdArr = vtkSmartPointer<vtkIntArray>::New();
+    nodeIdArr->SetName("NodeId");
+    nodeIdArr->SetNumberOfComponents(1);
+
+    // ===== Grid =====
+    auto grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+
+    // ===== CellData (只针对体单元) =====
+    auto elemIdArr   = vtkSmartPointer<vtkIntArray>::New();    elemIdArr->SetName("ElementId");
+    auto gmshTypeArr = vtkSmartPointer<vtkIntArray>::New();    gmshTypeArr->SetName("GmshType");
+    auto physIdArr   = vtkSmartPointer<vtkIntArray>::New();    physIdArr->SetName("PhysicalId");
+    auto entityIdArr = vtkSmartPointer<vtkIntArray>::New();    entityIdArr->SetName("EntityId");
+    auto groupArr    = vtkSmartPointer<vtkStringArray>::New(); groupArr->SetName("GroupName");      // 兼容你之前 flac 的命名
+    auto physNameArr = vtkSmartPointer<vtkStringArray>::New(); physNameArr->SetName("PhysicalName");
+
+    // ===== 分组打包 =====
+    // 体单元：PhysicalName -> cellIds
+    QMap<QString, QVector<vtkIdType>> volumeGroupToCells;
+
+    // 边界/非体元素：PhysicalName -> nodeIds(去重)
+    QMap<QString, QSet<int>> boundaryGroupToNodes;
+
+    auto physNameOf = [&](int physId) -> QString {
+        QString name = physNameById.value(physId);
+        if (name.isEmpty() && physId != 0) name = QString("phys_%1").arg(physId);
+        return name;
+    };
+
+    bool haveNodes = false;
+    bool haveElements = false;
+
+    while (!in.atEnd()) {
+        QString line = stripInlineComment(in.readLine());
+        if (line.isEmpty()) continue;
+
+        // ---- MeshFormat ----
+        if (line == "$MeshFormat") {
+            if (in.atEnd()) return fail("unexpected EOF after $MeshFormat");
+
+            const QString fmt = stripInlineComment(in.readLine());
+            const auto tok = fmt.split(QRegularExpression("\\s+"), kSkipEmptyParts);
+            if (tok.size() < 3) return fail("invalid MeshFormat line");
+
+            // 2.2 0 8
+            const int fileType = tok[1].toInt(); // 0 ascii, 1 binary
+            // consume $EndMeshFormat
+            while (!in.atEnd()) {
+                const QString t = stripInlineComment(in.readLine());
+                if (t == "$EndMeshFormat") break;
+            }
+            if (fileType != 0) {
+                return fail(QString("only ASCII msh is supported (fileType=%1)").arg(fileType));
+            }
+            continue;
+        }
+
+        // ---- PhysicalNames ----
+        if (line == "$PhysicalNames") {
+            if (in.atEnd()) return fail("unexpected EOF after $PhysicalNames");
+            const int n = stripInlineComment(in.readLine()).toInt();
+            if (n < 0) return fail("invalid $PhysicalNames count");
+
+            // dim tag "name"
+            QRegularExpression re("^\\s*(\\d+)\\s+(\\d+)\\s+\"(.*)\"\\s*$");
+            for (int i = 0; i < n; ++i) {
+                if (in.atEnd()) return fail("unexpected EOF in $PhysicalNames");
+                const QString s = stripInlineComment(in.readLine());
+
+                auto m = re.match(s);
+                if (m.hasMatch()) {
+                    const int dim = m.captured(1).toInt();
+                    const int tag = m.captured(2).toInt();
+                    const QString name = m.captured(3);
+                    physDimById[tag] = dim;
+                    physNameById[tag] = name;
+                } else {
+                    const auto tok = s.split(QRegularExpression("\\s+"), kSkipEmptyParts);
+                    if (tok.size() >= 3) {
+                        const int dim = tok[0].toInt();
+                        const int tag = tok[1].toInt();
+                        QString name = tok.mid(2).join(' ');
+                        name = unquote(name);
+                        physDimById[tag] = dim;
+                        physNameById[tag] = name;
+                    }
+                }
+            }
+
+            while (!in.atEnd()) {
+                const QString t = stripInlineComment(in.readLine());
+                if (t == "$EndPhysicalNames") break;
+            }
+            continue;
+        }
+
+        // ---- Nodes ----
+        if (line == "$Nodes") {
+            if (in.atEnd()) return fail("unexpected EOF after $Nodes");
+            const int nNodes = stripInlineComment(in.readLine()).toInt();
+            if (nNodes <= 0) return fail("invalid $Nodes count");
+
+            pts->Allocate(nNodes);
+            nodeIdArr->Allocate(nNodes);
+
+            for (int i = 0; i < nNodes; ++i) {
+                if (in.atEnd()) return fail("unexpected EOF in $Nodes");
+                const QString s = stripInlineComment(in.readLine());
+                const auto tok = s.split(QRegularExpression("\\s+"), kSkipEmptyParts);
+                if (tok.size() < 4) return fail("invalid node line");
+
+                bool okId=false, okX=false, okY=false, okZ=false;
+                const int nid = tok[0].toInt(&okId);
+                const double x = tok[1].toDouble(&okX);
+                const double y = tok[2].toDouble(&okY);
+                const double z = tok[3].toDouble(&okZ);
+                if (!okId || !okX || !okY || !okZ) return fail("failed to parse node");
+
+                const vtkIdType vid = pts->InsertNextPoint(x, y, z);
+                nodeIdToVtkId.insert(nid, vid);
+                nodeIdArr->InsertNextValue(nid);
+            }
+
+            while (!in.atEnd()) {
+                const QString t = stripInlineComment(in.readLine());
+                if (t == "$EndNodes") break;
+            }
+
+            grid->SetPoints(pts);
+            grid->GetPointData()->AddArray(nodeIdArr);
+
+            haveNodes = true;
+            continue;
+        }
+
+        // ---- Elements ----
+        if (line == "$Elements") {
+            if (!haveNodes) return fail("$Elements appears before $Nodes (unsupported order)");
+            if (in.atEnd()) return fail("unexpected EOF after $Elements");
+
+            const int nElem = stripInlineComment(in.readLine()).toInt();
+            if (nElem <= 0) return fail("invalid $Elements count");
+
+            // 只为“体单元”预留，实际体单元数可能 < nElem
+            grid->Allocate(nElem);
+
+            for (int i = 0; i < nElem; ++i) {
+                if (in.atEnd()) return fail("unexpected EOF in $Elements");
+
+                const QString s = stripInlineComment(in.readLine());
+                const auto tok = s.split(QRegularExpression("\\s+"), kSkipEmptyParts);
+                if (tok.size() < 3) return fail("invalid element line");
+
+                int p = 0;
+                bool okE=false, okT=false, okNT=false;
+                const int elemId   = tok[p++].toInt(&okE);
+                const int elemType = tok[p++].toInt(&okT);
+                const int numTags  = tok[p++].toInt(&okNT);
+                if (!okE || !okT || !okNT) return fail("failed to parse element header");
+                if (numTags < 0) return fail("invalid numTags");
+                if (tok.size() < 3 + numTags) return fail("element line too short for tags");
+
+                QVector<int> tags;
+                tags.reserve(numTags);
+                for (int k = 0; k < numTags; ++k) {
+                    bool ok=false;
+                    tags.push_back(tok[p++].toInt(&ok));
+                    if (!ok) return fail("failed to parse element tag");
+                }
+
+                // msh2.2 常见：tag1=physicalId, tag2=entityId
+                const int physicalId = (numTags >= 1 ? tags[0] : 0);
+                const int entityId   = (numTags >= 2 ? tags[1] : 0);
+                const QString physicalName = physNameOf(physicalId);
+
+                QVector<int> nodeIds;
+                nodeIds.reserve(tok.size() - p);
+                for (; p < tok.size(); ++p) {
+                    bool ok=false;
+                    const int nid = tok[p].toInt(&ok);
+                    if (ok) nodeIds.push_back(nid);
+                }
+
+                // ========= 只导体单元 =========
+                int vtkType = -1;
+                int needN = 0;
+
+                if (elemType == 4) {            // tet4（就算给了更多点也只取前4）
+                    vtkType = VTK_TETRA;
+                    needN = 4;
+                } else if (elemType == 5) {     // hex8
+                    vtkType = VTK_HEXAHEDRON;
+                    needN = 8;
+                }
+
+                if (vtkType != -1) {
+                    if (nodeIds.size() < needN) {
+                        return fail(QString("volume element %1 type %2 has too few nodes (%3)")
+                                    .arg(elemId).arg(elemType).arg(nodeIds.size()));
+                    }
+
+                    QVector<vtkIdType> ptIds;
+                    ptIds.reserve(needN);
+                    for (int k = 0; k < needN; ++k) {
+                        const int nid = nodeIds[k];
+                        auto it = nodeIdToVtkId.find(nid);
+                        if (it == nodeIdToVtkId.end()) {
+                            return fail(QString("element %1 references unknown node id %2").arg(elemId).arg(nid));
+                        }
+                        ptIds.push_back(it.value());
+                    }
+
+                    const vtkIdType cellId = grid->InsertNextCell(
+                                vtkType,
+                                static_cast<vtkIdType>(ptIds.size()),
+                                ptIds.data()
+                                );
+
+                    // 只对体单元写 CellData
+                    elemIdArr->InsertNextValue(elemId);
+                    gmshTypeArr->InsertNextValue(elemType);
+                    physIdArr->InsertNextValue(physicalId);
+                    entityIdArr->InsertNextValue(entityId);
+                    groupArr->InsertNextValue(physicalName.toStdString());
+                    physNameArr->InsertNextValue(physicalName.toStdString());
+
+                    if (!physicalName.isEmpty())
+                        volumeGroupToCells[physicalName].push_back(cellId);
+
+                } else {
+                    // ========= 非体单元：只作为分组信息（收集节点集合） =========
+                    if (!physicalName.isEmpty()) {
+                        auto &set = boundaryGroupToNodes[physicalName];
+                        for (int nid : nodeIds) set.insert(nid);
+                    }
+                    // 不插入 cell
+                }
+            }
+
+            while (!in.atEnd()) {
+                const QString t = stripInlineComment(in.readLine());
+                if (t == "$EndElements") break;
+            }
+
+            haveElements = true;
+            continue;
+        }
+
+        // 其它段落：$NodeData/$ElementData/... 暂时忽略
+    }
+
+    f.close();
+
+    if (!haveNodes) {
+        return fail("no $Nodes section found");
+    }
+    if (!haveElements || grid->GetNumberOfCells() == 0) {
+        return fail("no volume cells imported (missing $Elements or no tet/hex found)");
+    }
+
+    // ===== 挂载 CellData（只对应体单元数） =====
+    grid->GetCellData()->AddArray(elemIdArr);
+    grid->GetCellData()->AddArray(gmshTypeArr);
+    grid->GetCellData()->AddArray(physIdArr);
+    grid->GetCellData()->AddArray(entityIdArr);
+    grid->GetCellData()->AddArray(groupArr);
+    grid->GetCellData()->AddArray(physNameArr);
+
+    // ===== FieldData: 体单元分组 -> cellIds =====
+    // VolumeGroupNames[i]
+    // VolumeGroupOffsets[i..i+1)
+    // VolumeGroupCellIds[off..end-1]
+    auto volNames   = vtkSmartPointer<vtkStringArray>::New();
+    auto volOffsets = vtkSmartPointer<vtkIdTypeArray>::New();
+    auto volCellIds = vtkSmartPointer<vtkIdTypeArray>::New();
+    volNames->SetName("VolumeGroupNames");
+    volOffsets->SetName("VolumeGroupOffsets");
+    volCellIds->SetName("VolumeGroupCellIds");
+
+    vtkIdType off = 0;
+    volOffsets->InsertNextValue(off);
+    for (auto it = volumeGroupToCells.begin(); it != volumeGroupToCells.end(); ++it) {
+        const QString& name = it.key();
+        const QVector<vtkIdType>& cells = it.value();
+        volNames->InsertNextValue(name.toStdString());
+        for (vtkIdType cid : cells) volCellIds->InsertNextValue(cid);
+        off += static_cast<vtkIdType>(cells.size());
+        volOffsets->InsertNextValue(off);
+    }
+    grid->GetFieldData()->AddArray(volNames);
+    grid->GetFieldData()->AddArray(volOffsets);
+    grid->GetFieldData()->AddArray(volCellIds);
+
+    // ===== FieldData: 边界分组(非体元素) -> nodeIds =====
+    // BoundaryGroupNames[i]
+    // BoundaryGroupOffsets[i..i+1)
+    // BoundaryGroupNodeIds[off..end-1]  (这里存的是 msh 的 NodeId，不是 vtk pointId)
+    auto bndNames   = vtkSmartPointer<vtkStringArray>::New();
+    auto bndOffsets = vtkSmartPointer<vtkIdTypeArray>::New();
+    auto bndNodeIds = vtkSmartPointer<vtkIntArray>::New();
+    bndNames->SetName("BoundaryGroupNames");
+    bndOffsets->SetName("BoundaryGroupOffsets");
+    bndNodeIds->SetName("BoundaryGroupNodeIds");
+
+    vtkIdType boff = 0;
+    bndOffsets->InsertNextValue(boff);
+    for (auto it = boundaryGroupToNodes.begin(); it != boundaryGroupToNodes.end(); ++it) {
+        const QString& name = it.key();
+        const QSet<int>& nodes = it.value();
+
+        bndNames->InsertNextValue(name.toStdString());
+        for (int nid : nodes) bndNodeIds->InsertNextValue(nid);
+
+        boff += static_cast<vtkIdType>(nodes.size());
+        bndOffsets->InsertNextValue(boff);
+    }
+    grid->GetFieldData()->AddArray(bndNames);
+    grid->GetFieldData()->AddArray(bndOffsets);
+    grid->GetFieldData()->AddArray(bndNodeIds);
+
+    grid->Squeeze();
+    return grid;
+}
 vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString &fileName, QString *errMsg) const
 {
     QFile f(fileName);
@@ -370,9 +739,9 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString &fil
     };
 
     auto addCellPiece = [&](int vtkCellType,
-                            const QVector<int>& localNodeLids,
-                            const ElemRec& e,
-                            int part)->void
+            const QVector<int>& localNodeLids,
+            const ElemRec& e,
+            int part)->void
     {
         QVector<vtkIdType> ptIds;
         ptIds.reserve(localNodeLids.size());
@@ -813,13 +1182,13 @@ MeshGridIO::loadFlac3dGrid(const QString &fileName) const
     }
 
     vtkSmartPointer<vtkUnstructuredGrid> grid =
-        vtkSmartPointer<vtkUnstructuredGrid>::New();
+            vtkSmartPointer<vtkUnstructuredGrid>::New();
     grid->SetPoints(pts);
     grid->Allocate(zones.size());
 
     auto chooseMainAxis = [](const std::vector<double>& xs,
-                             const std::vector<double>& ys,
-                             const std::vector<double>& zs) -> int
+            const std::vector<double>& ys,
+            const std::vector<double>& zs) -> int
     {
         double dx = *std::max_element(xs.begin(), xs.end()) - *std::min_element(xs.begin(), xs.end());
         double dy = *std::max_element(ys.begin(), ys.end()) - *std::min_element(ys.begin(), ys.end());
@@ -830,10 +1199,10 @@ MeshGridIO::loadFlac3dGrid(const QString &fileName) const
     };
 
     auto sortByAngleInPlane = [](QVector<int>& idx,
-                                 int axis,
-                                 const std::vector<double>& xs,
-                                 const std::vector<double>& ys,
-                                 const std::vector<double>& zs)
+            int axis,
+            const std::vector<double>& xs,
+            const std::vector<double>& ys,
+            const std::vector<double>& zs)
     {
         double cx = 0, cy = 0, cz = 0;
         for (int i : idx) { cx += xs[i]; cy += ys[i]; cz += zs[i]; }
@@ -1346,3 +1715,5 @@ void MeshGridIO::ensureDefaultArrays(vtkUnstructuredGrid *grid) const
     // 默认把 MATYPE 作为 scalars（你高亮逻辑用到）
     grid->GetCellData()->SetScalars(matype);
 }
+
+

@@ -12,6 +12,7 @@ public:
     vtkSmartPointer<vtkUnstructuredGrid> loadIiinFile(const QString &fileName, QString *errMsg = nullptr) const;
     vtkSmartPointer<vtkUnstructuredGrid> importFlac3D(const QString &fileName, QString *errMsg = nullptr) const;
     vtkSmartPointer<vtkUnstructuredGrid> importInp(const QString &fileName, QString *errMsg = nullptr) const;
+    vtkSmartPointer<vtkUnstructuredGrid> loadMshFile(const QString &fileName, QString *errMsg = nullptr) const;
 
     // 从 vtk 网格导出 IIIN.DAT
     bool exportIiinFile(const QString &fileName, vtkUnstructuredGrid *grid, QString *errMsg = nullptr) const;

@@ -40,11 +40,8 @@ MeshModuleController::MeshModuleController(QObject* parent)
     : QObject(parent)
 {
     ServiceRegistry::instance().registerService<MeshModuleControllerService>(this);
-    qDebug()<<"end1";
     m_visualWidgetService = ServiceRegistry::instance().getService<VisualWidgetService>();
-    qDebug()<<"end2";
     initAction();
-    qDebug()<<"end3";
 }
 
 void MeshModuleController::newProject()
@@ -215,7 +212,7 @@ void MeshModuleController::onImportGrid()
 {
     QString fileName;
     QFileDialog dialog(nullptr, QStringLiteral("选择网格文件"));
-    dialog.setNameFilter(QStringLiteral("Grid Files (*.nas *.inp *.flac3d *.f3grid *.DAT)"));
+    dialog.setNameFilter(QStringLiteral("Grid Files (*.nas *.inp *.flac3d *.f3grid *.DAT *.msh)"));
     dialog.setFilter(QDir::Files);
     if (dialog.exec() == QDialog::Accepted) {
         fileName = dialog.selectedFiles().first();
@@ -237,7 +234,10 @@ void MeshModuleController::onImportGrid()
         grid = m_gridIO.importInp(fileName, &err);
     } else if (ext == "dat") {
         grid = m_gridIO.loadIiinFile(fileName, &err);
-    } else {
+    } else if (ext == "msh") {
+        grid = m_gridIO.loadMshFile(fileName, &err);
+    }
+    else {
         QMessageBox::warning(nullptr, QStringLiteral("不支持的格式"),
                              QStringLiteral("当前只支持 .nas / .inp / .flac3d / .f3grid / .dat"));
         return;
