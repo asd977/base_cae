@@ -54,8 +54,8 @@ PickManager::PickManager(QObject* parent)
     m_visual = ServiceRegistry::instance().getService<VisualWidgetService>();
 
     // 全局解决共面闪烁（面/边 overlay）
-    vtkMapper::SetResolveCoincidentTopologyToPolygonOffset();
-    vtkMapper::SetResolveCoincidentTopologyPolygonOffsetParameters(+1.0, +1000.0);
+//    vtkMapper::SetResolveCoincidentTopologyToPolygonOffset();
+//    vtkMapper::SetResolveCoincidentTopologyPolygonOffsetParameters(+1.0, +1000.0);
 
     // callbacks
     m_cbLeftPress = vtkSmartPointer<vtkCallbackCommand>::New();
@@ -232,6 +232,46 @@ PickManager::PickManager(QObject* parent)
     }
 
     m_visual->render();
+}
+
+void PickManager::clearNodeSelection_NoRefresh(const QString& domain,
+                                               const QString& uuid,
+                                               GridKind kind)
+{
+    // owners: pid -> ownerUuid
+    // uuid2set: uuid -> set<pid>
+    // prevOwners: pid -> previousOwnerUuid （用于“抢占后可回退”）
+    auto& owners = (kind==GridKind::Solid)
+        ? m_ownerPointSolidByDomain[domain]
+        : m_ownerPointLineByDomain[domain];
+
+    auto& uuid2set = (kind==GridKind::Solid)
+        ? m_pointsSolidByDomainUuid[domain]
+        : m_pointsLineByDomainUuid[domain];
+
+    auto& prevOwners = (kind==GridKind::Solid)
+        ? m_prevOwnerPointSolidByDomain[domain]
+        : m_prevOwnerPointLineByDomain[domain];
+
+    QSet<vtkIdType>& mySet = uuid2set[uuid];
+    if (mySet.isEmpty()) return;
+
+    const auto keys = mySet.values(); // copy
+    for (vtkIdType pid : keys)
+    {
+        mySet.remove(pid);
+
+        // 如果当前 owner 就是我，先移除 owner
+        if (owners.value(pid) == uuid) owners.remove(pid);
+
+        // 尝试恢复之前 owner（如果存在）
+        const QString oldUid = prevOwners.take(pid);
+        if (!oldUid.isEmpty())
+        {
+            owners[pid] = oldUid;
+            uuid2set[oldUid].insert(pid);
+        }
+    }
 }
 
 void PickManager::updateStructure()
@@ -1784,5 +1824,32 @@ void PickManager::setShowBoxRect(bool on)
     if (!on) setBoxRectVisible(false);
     if (m_visual) m_visual->render();
 }
+
+void PickManager::setSelectedPointIds(const QString& domain,
+                                      const QString& uuid,
+                                      GridKind kind,
+                                      const QVector<vtkIdType>& pointIds,
+                                      bool replace)
+{
+    if (domain.isEmpty() || uuid.isEmpty()) return;
+
+    // replace：先清空（不触发 rebuild）
+    if (replace)
+        clearNodeSelection_NoRefresh(domain, uuid, kind);
+
+    // 批量加入（不触发 rebuild）
+    // 复用你已有的 setNodeSelected_NoRefresh，它会处理“抢占/回退 owner”
+    for (vtkIdType pid : pointIds)
+        setNodeSelected_NoRefresh(kind, pid, true);
+
+    // 如果当前正在这个页面的 Node 模式，刷新一次即可
+    if (domain == m_currentDomain &&
+        uuid  == m_currentUUid &&
+        m_pickMode == PickMode::Node)
+    {
+        markDirty(DirtyNode);
+    }
+}
+
 
 

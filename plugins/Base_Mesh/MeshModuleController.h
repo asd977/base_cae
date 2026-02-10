@@ -36,6 +36,9 @@ public:
     vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGridSolid();
     vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGridLine();
 
+    void importMshGrid(QString path);
+
+    MshPickMap mshPickMapSolid();
 private:
     void initAction();
 
@@ -69,8 +72,6 @@ private:
     vtkSmartPointer<vtkUnstructuredGrid> m_importedGrid;
     bool m_hasGrid = false;
     QString m_sourceFileName;
-
-    MeshGridIO m_gridIO;
 
     VisualWidgetService *m_visualWidgetService = nullptr;
     GridEditingWidget *m_gridEditingWidget = nullptr;

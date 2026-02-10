@@ -84,10 +84,20 @@ public:
     // 页面控制：是否启用批量框选（不使用 Shift）
     void setBatchSelectEnabled(bool on);
 
+    void setSelectedPointIds(const QString& domain,
+                             const QString& uuid,
+                             GridKind kind,
+                             const QVector<vtkIdType>& pointIds,
+                             bool replace = true);
+
 
 private:
     explicit PickManager(QObject* parent=nullptr);
     ~PickManager() override = default;
+
+    void clearNodeSelection_NoRefresh(const QString& domain,
+                                      const QString& uuid,
+                                      GridKind kind);
 
     // picking
     void setupPicking();

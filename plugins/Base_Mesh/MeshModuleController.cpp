@@ -207,7 +207,6 @@ void MeshModuleController::initAction()
 }
 
 // -------------------- handlers --------------------
-
 void MeshModuleController::onImportGrid()
 {
     QString fileName;
@@ -229,13 +228,13 @@ void MeshModuleController::onImportGrid()
         QMessageBox::warning(nullptr, QStringLiteral("不支持的格式"), QStringLiteral("当前暂不支持 .nas 格式"));
         return;
     } else if (ext == "flac3d" || ext == "f3grid") {
-        grid = m_gridIO.importFlac3D(fileName, &err);
+        grid = MeshGridIO::instance().importFlac3D(fileName, &err);
     } else if (ext == "inp") {
-        grid = m_gridIO.importInp(fileName, &err);
+        grid = MeshGridIO::instance().importInp(fileName, &err);
     } else if (ext == "dat") {
-        grid = m_gridIO.loadIiinFile(fileName, &err);
+        grid = MeshGridIO::instance().loadIiinFile(fileName, &err);
     } else if (ext == "msh") {
-        grid = m_gridIO.loadMshFile(fileName, &err);
+        grid = MeshGridIO::instance().loadMshFile(fileName, &err);
     }
     else {
         QMessageBox::warning(nullptr, QStringLiteral("不支持的格式"),
@@ -256,6 +255,25 @@ void MeshModuleController::onImportGrid()
     displayCurrentGrid();
 }
 
+void MeshModuleController::importMshGrid(QString path)
+{
+    vtkSmartPointer<vtkUnstructuredGrid> grid;
+    QString err;
+    grid = MeshGridIO::instance().loadMshFile(path, &err);
+
+    m_importedGrid = grid;
+    m_hasGrid = true;
+    m_sourceFileName = path;
+
+    m_visualWidgetService->clearAll();
+    displayCurrentGrid();
+}
+
+MshPickMap MeshModuleController::mshPickMapSolid()
+{
+    return MeshGridIO::instance().getMeshMap();
+}
+
 void MeshModuleController::onExportGrid()
 {
     if (!m_hasGrid || !m_importedGrid) {
@@ -274,7 +292,7 @@ void MeshModuleController::onExportGrid()
     if (fileName.isEmpty()) return;
 
     QString err;
-    if (!m_gridIO.exportIiinFile(fileName, m_importedGrid, &err)) {
+    if (!MeshGridIO::instance().exportIiinFile(fileName, m_importedGrid, &err)) {
         QMessageBox::warning(nullptr, QStringLiteral("导出失败"),
                              err.isEmpty() ? QStringLiteral("IIIN.DAT 导出失败") : err);
         return;
@@ -334,6 +352,10 @@ void MeshModuleController::onMeshEdit()
 {
     auto *w = new GridEditingWidget();
     m_gridEditingWidget = w;
+    if (m_importedGrid && m_importedGrid->GetNumberOfCells() > 0) {
+        w->setEditableGrid(m_importedGrid, m_sourceFileName);
+    }
+
     auto *node = new ProjectNode("网格编辑", QUuid::createUuid().toString(), w);
     m_gridNode->addChild(node);
 }

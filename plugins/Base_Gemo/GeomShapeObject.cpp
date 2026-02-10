@@ -1,4 +1,4 @@
-#include "GeomShapeObject.h"
+﻿#include "GeomShapeObject.h"
 #include <TopoDS_Vertex.hxx>
 #include <TopoDS_Edge.hxx>
 #include <TopExp.hxx>
@@ -66,7 +66,7 @@ void GeomShapeObject::initActor()
     auto surfActor = vtkSmartPointer<vtkActor>::New();
     surfActor->SetMapper(surfMapper);
     auto p = surfActor->GetProperty();
-    p->LightingOff();
+
     p->SetColor(0.85, 0.85, 0.85);
     // surfActor->GetProperty()->LightingOff();
 

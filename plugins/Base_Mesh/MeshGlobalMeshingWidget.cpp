@@ -23,13 +23,14 @@
 #include <gmsh.h>
 #include <vtkActor.h>
 #include <vtkDataSetMapper.h>
-
+#include <MeshGridIO.h>
 
 #include <vtkProperty.h>
 #include "MeshGlobalMeshingWidget.h"
 #include "ui_MeshGlobalMeshingWidget.h"
 
 #include <ServiceRegistry.h>
+#include <services/MeshModuleControllerService.h>
 #include <services/PreProcessingService.h>
 #include <services/VisualWidgetService.h>
 #include <vtkUnstructuredGrid.h>
@@ -228,7 +229,10 @@ void MeshGlobalMeshingWidget::onGenerate()
                 appendLog("整体剖分成功。");
                 emit meshGenerated(msh, vtk, nas);
                 QMessageBox::information(this, "整体剖分", "生成成功！");
-                showMeshVtk(tempVtkPath());
+//                showMeshVtk(tempVtkPath());
+                MeshModuleControllerService *service = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+                service->importMshGrid(tempMshPath());
+
                 if (m_thread) { m_thread->quit(); }
             });
 

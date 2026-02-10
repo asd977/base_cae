@@ -1,4 +1,4 @@
-#include "VisualizationWidget.h"
+﻿#include "VisualizationWidget.h"
 
 #include <QSurfaceFormat>
 
@@ -357,4 +357,20 @@ void VisualizationWidget::showOrientationMarker(bool on)
     if (!m_omw) return;
     m_omw->SetEnabled(on ? 1 : 0);
     render();
+}
+
+
+void VisualizationWidget::on_horizontalSliderOpacity_valueChanged(int value)
+{
+//    if (!m_visualWidgetService) return;
+
+//    double alpha = qBound(10, value, 100) / 100.0;
+
+//    const QStringList ids = availableMeshPropIds();
+//    if (ids.isEmpty()) return;
+
+//    for (const QString &id : ids) {
+//        m_visualWidgetService->setOpacity(id, alpha, false);
+//    }
+//    m_visualWidgetService->render();
 }

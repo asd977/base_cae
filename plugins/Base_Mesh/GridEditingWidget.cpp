@@ -1377,35 +1377,6 @@ QStringList GridEditingWidget::availableMeshPropIds() const
     return ids;
 }
 
-void GridEditingWidget::on_horizontalSliderOpacity_valueChanged(int value)
-{
-    if (!m_visualWidgetService) return;
-
-    double alpha = qBound(10, value, 100) / 100.0;
-
-    const QStringList ids = availableMeshPropIds();
-    if (ids.isEmpty()) return;
-
-    for (const QString &id : ids) {
-        m_visualWidgetService->setOpacity(id, alpha, false);
-    }
-    m_visualWidgetService->render();
-}
-
-void GridEditingWidget::on_checkBoxShowInternalGrid_toggled(bool checked)
-{
-    if (!m_meshActor || !m_visualWidgetService) return;
-
-    if (checked) {
-        m_meshActor->GetProperty()->SetRepresentationToWireframe();
-        m_meshActor->GetProperty()->EdgeVisibilityOn();
-    } else {
-        m_meshActor->GetProperty()->SetRepresentationToSurface();
-        m_meshActor->GetProperty()->EdgeVisibilityOn();
-    }
-    m_visualWidgetService->render();
-}
-
 void GridEditingWidget::on_checkBoxEnablePicking_toggled(bool checked)
 {
     m_enableMousePicking = checked;

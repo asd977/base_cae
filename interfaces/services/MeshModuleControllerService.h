@@ -1,9 +1,12 @@
 ﻿#ifndef MESH_MODULE_CONTROLLER_SERVICE_H
 #define MESH_MODULE_CONTROLLER_SERVICE_H
 
+#include <QHash>
+#include <QSet>
+#include <QVector>
+#include <QString>
+class MshPickMap;
 template <typename T> class vtkSmartPointer;
-template <typename T> class QSet;
-class IiinGridModel;
 class vtkUnstructuredGrid;
 
 struct MeshModuleControllerService
@@ -21,6 +24,9 @@ struct MeshModuleControllerService
     virtual vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGrid() = 0;
     virtual vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGridSolid() = 0;
     virtual vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGridLine() = 0;
+    virtual void importMshGrid(QString path) = 0;
+    virtual MshPickMap mshPickMapSolid() = 0;
 };
+
 
 #endif // MESH_MODULE_CONTROLLER_SERVICE_H

@@ -119,6 +119,9 @@ QLineEdit:focus {
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_3">
       <item>
+       <widget class="QComboBox" name="comboBoxGroup"/>
+      </item>
+      <item>
        <widget class="QGroupBox" name="groupBox">
         <property name="title">
          <string>约束</string>

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "PickManager.h"
 #include <BasePage.h>
@@ -44,6 +44,7 @@ public:
 private slots:
 
     void onNodePicked(const QString &domain, const QString &activeUuid, GridKind, vtkIdType, int nodeId, double x, double y, double z, const QString &prevUuid);
+    void onGroupChanged(int index);
 private:
 
 

@@ -85,8 +85,6 @@ private slots:
     void on_pushButtonMoveNode_clicked();
     void on_pushButtonDeleteElem_clicked();
 
-    void on_horizontalSliderOpacity_valueChanged(int value);
-    void on_checkBoxShowInternalGrid_toggled(bool checked);
     void on_checkBoxEnablePicking_toggled(bool checked);
     void on_comboBoxColorMode_currentIndexChanged(int index);
 

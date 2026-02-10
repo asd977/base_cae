@@ -237,8 +237,11 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importInp(const QString &fileNa
 }
 
 vtkSmartPointer<vtkUnstructuredGrid>
-MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg) const
+MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg)
 {
+    // 说明：本函数是 const，但要写入 m_lastPickMap
+    // 建议在类里这样定义：
+    // mutable MshPickMap m_lastPickMap;
 
     auto fail = [&](const QString& s) -> vtkSmartPointer<vtkUnstructuredGrid> {
         if (errMsg) *errMsg = s;
@@ -247,6 +250,9 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg) const
     };
     if (errMsg) errMsg->clear();
 
+    // 每次加载先清空上次映射
+    m_lastPickMap = MshPickMap{};
+
     QFile f(fileName);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
         return fail(QString("cannot open msh file: %1").arg(fileName));
@@ -254,6 +260,12 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg) const
 
     QTextStream in(&f);
     in.setLocale(QLocale::c());
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    static constexpr auto kSkipEmptyParts = Qt::SkipEmptyParts;
+#else
+    static constexpr auto kSkipEmptyParts = QString::SkipEmptyParts;
+#endif
 
     auto stripInlineComment = [](QString s) -> QString {
         // msh 通常没注释；为了稳妥，处理行内 '*' 后面的内容
@@ -273,6 +285,7 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg) const
     };
 
     // ===== PhysicalNames: physicalTag -> name / dim =====
+    // 这里留一份本地表，解析时用；同时写入 m_lastPickMap
     QMap<int, QString> physNameById;
     QMap<int, int>     physDimById;
 
@@ -280,35 +293,46 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg) const
     auto pts = vtkSmartPointer<vtkPoints>::New();
     pts->SetDataTypeToDouble();
 
+    // msh nodeId -> vtk pointId（vtkIdType 版本用于构 cell）
     QHash<int, vtkIdType> nodeIdToVtkId;
     nodeIdToVtkId.reserve(4096);
-
-    auto nodeIdArr = vtkSmartPointer<vtkIntArray>::New();
-    nodeIdArr->SetName("NodeId");
-    nodeIdArr->SetNumberOfComponents(1);
 
     // ===== Grid =====
     auto grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
 
-    // ===== CellData (只针对体单元) =====
-    auto elemIdArr   = vtkSmartPointer<vtkIntArray>::New();    elemIdArr->SetName("ElementId");
-    auto gmshTypeArr = vtkSmartPointer<vtkIntArray>::New();    gmshTypeArr->SetName("GmshType");
-    auto physIdArr   = vtkSmartPointer<vtkIntArray>::New();    physIdArr->SetName("PhysicalId");
-    auto entityIdArr = vtkSmartPointer<vtkIntArray>::New();    entityIdArr->SetName("EntityId");
-    auto groupArr    = vtkSmartPointer<vtkStringArray>::New(); groupArr->SetName("GroupName");      // 兼容你之前 flac 的命名
-    auto physNameArr = vtkSmartPointer<vtkStringArray>::New(); physNameArr->SetName("PhysicalName");
+    // ===== 临时去重集合：boundary physicalId -> nodeId set =====
+    QHash<int, QSet<int>> bndPointSet; // dim=0
+    QHash<int, QSet<int>> bndEdgeSet;  // dim=1
+    QHash<int, QSet<int>> bndFaceSet;  // dim=2
 
-    // ===== 分组打包 =====
-    // 体单元：PhysicalName -> cellIds
-    QMap<QString, QVector<vtkIdType>> volumeGroupToCells;
+    // 统一保证：物理分组有名字/维度（用于下拉框显示）
+    auto ensurePhysMeta = [&](int physicalId, int fallbackDim) {
+        if (physicalId == 0) return;
 
-    // 边界/非体元素：PhysicalName -> nodeIds(去重)
-    QMap<QString, QSet<int>> boundaryGroupToNodes;
+        // name
+        if (!m_lastPickMap.physIdToName.contains(physicalId)) {
+            QString name = physNameById.value(physicalId);
+            if (name.isEmpty()) name = QString("phys_%1").arg(physicalId);
+            m_lastPickMap.physIdToName.insert(physicalId, name);
+        }
 
-    auto physNameOf = [&](int physId) -> QString {
-        QString name = physNameById.value(physId);
-        if (name.isEmpty() && physId != 0) name = QString("phys_%1").arg(physId);
-        return name;
+        // dim
+        if (!m_lastPickMap.physIdToDim.contains(physicalId)) {
+            int dim = physDimById.contains(physicalId) ? physDimById.value(physicalId) : fallbackDim;
+            if (dim < 0) dim = fallbackDim;
+            m_lastPickMap.physIdToDim.insert(physicalId, dim);
+        }
+    };
+
+    // 从 elemType 推断 dim（当 $PhysicalNames 不给 dim 时兜底）
+    auto inferDimByElemType = [&](int elemType) -> int {
+        // Gmsh 2.2 常见：15=点，1=线，2=三角形面，3=四边形面，4=四面体，5=六面体
+        if (elemType == 15) return 0;
+        if (elemType == 1)  return 1;
+        if (elemType == 2 || elemType == 3) return 2;
+        if (elemType == 4 || elemType == 5) return 3;
+        // 其它类型你后续要用再补
+        return -1;
     };
 
     bool haveNodes = false;
@@ -328,6 +352,7 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg) const
 
             // 2.2 0 8
             const int fileType = tok[1].toInt(); // 0 ascii, 1 binary
+
             // consume $EndMeshFormat
             while (!in.atEnd()) {
                 const QString t = stripInlineComment(in.readLine());
@@ -351,24 +376,31 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg) const
                 if (in.atEnd()) return fail("unexpected EOF in $PhysicalNames");
                 const QString s = stripInlineComment(in.readLine());
 
+                int dim = -1, tag = 0;
+                QString name;
+
                 auto m = re.match(s);
                 if (m.hasMatch()) {
-                    const int dim = m.captured(1).toInt();
-                    const int tag = m.captured(2).toInt();
-                    const QString name = m.captured(3);
-                    physDimById[tag] = dim;
-                    physNameById[tag] = name;
+                    dim = m.captured(1).toInt();
+                    tag = m.captured(2).toInt();
+                    name = m.captured(3);
                 } else {
                     const auto tok = s.split(QRegularExpression("\\s+"), kSkipEmptyParts);
                     if (tok.size() >= 3) {
-                        const int dim = tok[0].toInt();
-                        const int tag = tok[1].toInt();
-                        QString name = tok.mid(2).join(' ');
-                        name = unquote(name);
-                        physDimById[tag] = dim;
-                        physNameById[tag] = name;
+                        dim = tok[0].toInt();
+                        tag = tok[1].toInt();
+                        name = unquote(tok.mid(2).join(' '));
+                    } else {
+                        return fail("invalid PhysicalNames line");
                     }
                 }
+
+                physDimById[tag] = dim;
+                physNameById[tag] = name;
+
+                // 同步写入 pick map（用于下拉框）
+                m_lastPickMap.physIdToDim.insert(tag, dim);
+                m_lastPickMap.physIdToName.insert(tag, name);
             }
 
             while (!in.atEnd()) {
@@ -385,7 +417,8 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg) const
             if (nNodes <= 0) return fail("invalid $Nodes count");
 
             pts->Allocate(nNodes);
-            nodeIdArr->Allocate(nNodes);
+            nodeIdToVtkId.reserve(nNodes * 2);
+            m_lastPickMap.nodeIdToPointId.reserve(nNodes * 2);
 
             for (int i = 0; i < nNodes; ++i) {
                 if (in.atEnd()) return fail("unexpected EOF in $Nodes");
@@ -402,7 +435,7 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg) const
 
                 const vtkIdType vid = pts->InsertNextPoint(x, y, z);
                 nodeIdToVtkId.insert(nid, vid);
-                nodeIdArr->InsertNextValue(nid);
+                m_lastPickMap.nodeIdToPointId.insert(nid, static_cast<int>(vid));
             }
 
             while (!in.atEnd()) {
@@ -411,8 +444,6 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg) const
             }
 
             grid->SetPoints(pts);
-            grid->GetPointData()->AddArray(nodeIdArr);
-
             haveNodes = true;
             continue;
         }
@@ -425,7 +456,7 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg) const
             const int nElem = stripInlineComment(in.readLine()).toInt();
             if (nElem <= 0) return fail("invalid $Elements count");
 
-            // 只为“体单元”预留，实际体单元数可能 < nElem
+            // 只为体单元预留，实际插入体单元数可能 < nElem
             grid->Allocate(nElem);
 
             for (int i = 0; i < nElem; ++i) {
@@ -455,8 +486,8 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg) const
                 // msh2.2 常见：tag1=physicalId, tag2=entityId
                 const int physicalId = (numTags >= 1 ? tags[0] : 0);
                 const int entityId   = (numTags >= 2 ? tags[1] : 0);
-                const QString physicalName = physNameOf(physicalId);
 
+                // 解析节点列表
                 QVector<int> nodeIds;
                 nodeIds.reserve(tok.size() - p);
                 for (; p < tok.size(); ++p) {
@@ -465,11 +496,15 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg) const
                     if (ok) nodeIds.push_back(nid);
                 }
 
-                // ========= 只导体单元 =========
+                // 元素维度兜底推断
+                const int inferredDim = inferDimByElemType(elemType);
+                ensurePhysMeta(physicalId, inferredDim);
+
+                // ========= 只导入体单元（tet4 / hex8） =========
                 int vtkType = -1;
                 int needN = 0;
 
-                if (elemType == 4) {            // tet4（就算给了更多点也只取前4）
+                if (elemType == 4) {            // tet4
                     vtkType = VTK_TETRA;
                     needN = 4;
                 } else if (elemType == 5) {     // hex8
@@ -478,6 +513,7 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg) const
                 }
 
                 if (vtkType != -1) {
+                    // 体单元：插入 grid cell + 写入 pick map
                     if (nodeIds.size() < needN) {
                         return fail(QString("volume element %1 type %2 has too few nodes (%3)")
                                     .arg(elemId).arg(elemType).arg(nodeIds.size()));
@@ -494,30 +530,46 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg) const
                         ptIds.push_back(it.value());
                     }
 
-                    const vtkIdType cellId = grid->InsertNextCell(
-                                vtkType,
-                                static_cast<vtkIdType>(ptIds.size()),
-                                ptIds.data()
-                                );
+                    const int cellId = static_cast<int>(
+                        grid->InsertNextCell(
+                            vtkType,
+                            static_cast<vtkIdType>(ptIds.size()),
+                            ptIds.data()
+                        )
+                    );
 
-                    // 只对体单元写 CellData
-                    elemIdArr->InsertNextValue(elemId);
-                    gmshTypeArr->InsertNextValue(elemType);
-                    physIdArr->InsertNextValue(physicalId);
-                    entityIdArr->InsertNextValue(entityId);
-                    groupArr->InsertNextValue(physicalName.toStdString());
-                    physNameArr->InsertNextValue(physicalName.toStdString());
+                    // 体单元属性（全 int）
+                    m_lastPickMap.cellIdToElemId.insert(cellId, elemId);
+                    m_lastPickMap.cellIdToGmshType.insert(cellId, elemType);
+                    m_lastPickMap.cellIdToPhysId.insert(cellId, physicalId);
+                    m_lastPickMap.cellIdToEntityId.insert(cellId, entityId);
 
-                    if (!physicalName.isEmpty())
-                        volumeGroupToCells[physicalName].push_back(cellId);
+                    // 体分组：physicalId -> cellIds
+                    if (physicalId != 0)
+                        m_lastPickMap.volPhysToCellIds[physicalId].push_back(cellId);
 
                 } else {
-                    // ========= 非体单元：只作为分组信息（收集节点集合） =========
-                    if (!physicalName.isEmpty()) {
-                        auto &set = boundaryGroupToNodes[physicalName];
-                        for (int nid : nodeIds) set.insert(nid);
+                    // ========= 非体单元：只收集分组节点（用于选点/线/面高亮点） =========
+                    // 按 physicalId 的 dim 分类：0点/1线/2面
+                    if (physicalId != 0) {
+                        int dim = -1;
+                        if (m_lastPickMap.physIdToDim.contains(physicalId))
+                            dim = m_lastPickMap.physIdToDim.value(physicalId);
+                        if (dim < 0) dim = inferredDim;
+
+                        if (dim == 0) {
+                            auto &set = bndPointSet[physicalId];
+                            for (int nid : nodeIds) set.insert(nid);
+                        } else if (dim == 1) {
+                            auto &set = bndEdgeSet[physicalId];
+                            for (int nid : nodeIds) set.insert(nid);
+                        } else if (dim == 2) {
+                            auto &set = bndFaceSet[physicalId];
+                            for (int nid : nodeIds) set.insert(nid);
+                        } else {
+                            // dim=3 的非体元素一般不会出现；其它 dim 暂不处理
+                        }
                     }
-                    // 不插入 cell
                 }
             }
 
@@ -542,69 +594,65 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg) const
         return fail("no volume cells imported (missing $Elements or no tet/hex found)");
     }
 
-    // ===== 挂载 CellData（只对应体单元数） =====
-    grid->GetCellData()->AddArray(elemIdArr);
-    grid->GetCellData()->AddArray(gmshTypeArr);
-    grid->GetCellData()->AddArray(physIdArr);
-    grid->GetCellData()->AddArray(entityIdArr);
-    grid->GetCellData()->AddArray(groupArr);
-    grid->GetCellData()->AddArray(physNameArr);
+    // ===== 把 boundary 的 nodeId(set) 转成 QVector，并生成 pointId 版本 =====
+    auto setToSortedVec = [](const QSet<int>& s)->QVector<int>{
+        QVector<int> v;
+        v.reserve(s.size());
+        for (int x : s) v.push_back(x);
+        std::sort(v.begin(), v.end());
+        return v;
+    };
 
-    // ===== FieldData: 体单元分组 -> cellIds =====
-    // VolumeGroupNames[i]
-    // VolumeGroupOffsets[i..i+1)
-    // VolumeGroupCellIds[off..end-1]
-    auto volNames   = vtkSmartPointer<vtkStringArray>::New();
-    auto volOffsets = vtkSmartPointer<vtkIdTypeArray>::New();
-    auto volCellIds = vtkSmartPointer<vtkIdTypeArray>::New();
-    volNames->SetName("VolumeGroupNames");
-    volOffsets->SetName("VolumeGroupOffsets");
-    volCellIds->SetName("VolumeGroupCellIds");
+    auto nodeVecToPointVec = [&](const QVector<int>& nodeIds)->QVector<int>{
+        QVector<int> p;
+        p.reserve(nodeIds.size());
+        for (int nid : nodeIds) {
+            auto it = m_lastPickMap.nodeIdToPointId.find(nid);
+            if (it != m_lastPickMap.nodeIdToPointId.end())
+                p.push_back(it.value());
+        }
+        // nodeIds 已经去重了，pointId 一般也唯一；如你担心重复可再去重
+        return p;
+    };
 
-    vtkIdType off = 0;
-    volOffsets->InsertNextValue(off);
-    for (auto it = volumeGroupToCells.begin(); it != volumeGroupToCells.end(); ++it) {
-        const QString& name = it.key();
-        const QVector<vtkIdType>& cells = it.value();
-        volNames->InsertNextValue(name.toStdString());
-        for (vtkIdType cid : cells) volCellIds->InsertNextValue(cid);
-        off += static_cast<vtkIdType>(cells.size());
-        volOffsets->InsertNextValue(off);
+    // dim=0
+    for (auto it = bndPointSet.begin(); it != bndPointSet.end(); ++it) {
+        const int phys = it.key();
+        const QVector<int> nodes = setToSortedVec(it.value());
+        m_lastPickMap.bndPointPhysToNodeIds.insert(phys, nodes);
+        m_lastPickMap.bndPointPhysToPointIds.insert(phys, nodeVecToPointVec(nodes));
     }
-    grid->GetFieldData()->AddArray(volNames);
-    grid->GetFieldData()->AddArray(volOffsets);
-    grid->GetFieldData()->AddArray(volCellIds);
-
-    // ===== FieldData: 边界分组(非体元素) -> nodeIds =====
-    // BoundaryGroupNames[i]
-    // BoundaryGroupOffsets[i..i+1)
-    // BoundaryGroupNodeIds[off..end-1]  (这里存的是 msh 的 NodeId，不是 vtk pointId)
-    auto bndNames   = vtkSmartPointer<vtkStringArray>::New();
-    auto bndOffsets = vtkSmartPointer<vtkIdTypeArray>::New();
-    auto bndNodeIds = vtkSmartPointer<vtkIntArray>::New();
-    bndNames->SetName("BoundaryGroupNames");
-    bndOffsets->SetName("BoundaryGroupOffsets");
-    bndNodeIds->SetName("BoundaryGroupNodeIds");
-
-    vtkIdType boff = 0;
-    bndOffsets->InsertNextValue(boff);
-    for (auto it = boundaryGroupToNodes.begin(); it != boundaryGroupToNodes.end(); ++it) {
-        const QString& name = it.key();
-        const QSet<int>& nodes = it.value();
-
-        bndNames->InsertNextValue(name.toStdString());
-        for (int nid : nodes) bndNodeIds->InsertNextValue(nid);
-
-        boff += static_cast<vtkIdType>(nodes.size());
-        bndOffsets->InsertNextValue(boff);
+    // dim=1
+    for (auto it = bndEdgeSet.begin(); it != bndEdgeSet.end(); ++it) {
+        const int phys = it.key();
+        const QVector<int> nodes = setToSortedVec(it.value());
+        m_lastPickMap.bndEdgePhysToNodeIds.insert(phys, nodes);
+        m_lastPickMap.bndEdgePhysToPointIds.insert(phys, nodeVecToPointVec(nodes));
     }
-    grid->GetFieldData()->AddArray(bndNames);
-    grid->GetFieldData()->AddArray(bndOffsets);
-    grid->GetFieldData()->AddArray(bndNodeIds);
+    // dim=2
+    for (auto it = bndFaceSet.begin(); it != bndFaceSet.end(); ++it) {
+        const int phys = it.key();
+        const QVector<int> nodes = setToSortedVec(it.value());
+        m_lastPickMap.bndFacePhysToNodeIds.insert(phys, nodes);
+        m_lastPickMap.bndFacePhysToPointIds.insert(phys, nodeVecToPointVec(nodes));
+    }
 
     grid->Squeeze();
     return grid;
 }
+
+
+MeshGridIO& MeshGridIO::instance()
+{
+    static MeshGridIO s;
+    return s;
+}
+
+MshPickMap MeshGridIO::getMeshMap()
+{
+    return m_lastPickMap;
+}
+
 vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString &fileName, QString *errMsg) const
 {
     QFile f(fileName);

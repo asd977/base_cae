@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <QWidget>
 #include <QHash>
@@ -107,4 +107,5 @@ private:
     vtkSmartPointer<vtkOrientationMarkerWidget> m_omw;
 
     QHash<QString, Item> m_registry;
+    void on_horizontalSliderOpacity_valueChanged(int value);
 };
