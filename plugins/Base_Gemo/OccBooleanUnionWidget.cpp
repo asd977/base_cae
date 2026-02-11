@@ -10,7 +10,7 @@
 
 #include <CustomComboBox.h>
 
-#include <BOPAlgo_Builder.hxx>
+#include <BOPAlgo_CellsBuilder.hxx>
 #include <BOPAlgo_GlueEnum.hxx>
 #include <TopTools_ListOfShape.hxx>
 
@@ -36,7 +36,10 @@ TopoDS_Shape unionShapesKeepDomains(const TopoDS_Shape& a, const TopoDS_Shape& b
     args.Append(a);
     args.Append(b);
 
-    BOPAlgo_Builder builder;
+    // Official OCCT multi-domain workflow: Cells Builder based on General Fuse.
+    // Keep all cells, then build typed containers (COMPSOLID for solids),
+    // so adjacent domains can share one interface instead of duplicated faces.
+    BOPAlgo_CellsBuilder builder;
     builder.SetArguments(args);
     builder.SetNonDestructive(false);
     builder.SetGlue(BOPAlgo_GlueFull);
@@ -45,6 +48,8 @@ TopoDS_Shape unionShapesKeepDomains(const TopoDS_Shape& a, const TopoDS_Shape& b
         return TopoDS_Shape();
     }
 
+    builder.AddAllToResult();
+    builder.MakeContainers();
     return builder.Shape();
 }
 }
