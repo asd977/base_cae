@@ -87,6 +87,8 @@ public slots:
 
             std::vector<std::pair<int,int>> outDimTags;
             gmsh::model::occ::importShapes(stepPath.toStdString(), outDimTags, true);
+            // Ensure touching domains share one interface entity after STEP import.
+            gmsh::model::occ::removeAllDuplicates();
             gmsh::model::occ::synchronize();
 
             emit log(QString("导入几何完成，实体数：%1").arg((int)outDimTags.size()));
