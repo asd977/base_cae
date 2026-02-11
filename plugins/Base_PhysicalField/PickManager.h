@@ -90,6 +90,18 @@ public:
                              const QVector<vtkIdType>& pointIds,
                              bool replace = true);
 
+    void setSelectedEdgeKeys(const QString& domain,
+                             const QString& uuid,
+                             GridKind kind,
+                             const QVector<vtkIdType>& edgeKeys,
+                             bool replace = true);
+
+    void setSelectedFaceKeys(const QString& domain,
+                             const QString& uuid,
+                             GridKind kind,
+                             const QVector<vtkIdType>& faceKeys,
+                             bool replace = true);
+
 
 private:
     explicit PickManager(QObject* parent=nullptr);

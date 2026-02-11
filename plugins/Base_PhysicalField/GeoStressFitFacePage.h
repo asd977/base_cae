@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "BasePage.h"
 #include "PickManager.h"
@@ -29,6 +29,8 @@ public:
     bool pickFace() const;
 
     bool exportLeftDatFile();
+protected slots:
+    void onGroupComboChanged(int idx);
 private slots:
     void onPickTargetChanged();
 
@@ -39,4 +41,5 @@ private:
     PickMode decidePickMode() const;
     void ensureDefaultPickTarget();
     QString fnameForExport() const;
+    void refreshGroupCombo();
 };

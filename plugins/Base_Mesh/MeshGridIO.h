@@ -45,5 +45,5 @@ private:
     // 确保网格上有这些数组：point: node_id；cell: MATYPE/LAYER/KETYPE/elem_id/src_part/TAIL1/TAIL2
     void ensureDefaultArrays(vtkUnstructuredGrid *grid) const;
 
-    MshPickMap m_lastPickMap;
+    MshPickMap m_mshPickMap;
 };

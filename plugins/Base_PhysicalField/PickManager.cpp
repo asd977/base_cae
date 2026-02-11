@@ -1851,5 +1851,143 @@ void PickManager::setSelectedPointIds(const QString& domain,
     }
 }
 
+void PickManager::setSelectedEdgeKeys(const QString& domain,
+                                      const QString& uuid,
+                                      GridKind kind,
+                                      const QVector<vtkIdType>& edgeKeys,
+                                      bool replace)
+{
+    if (domain.isEmpty() || uuid.isEmpty()) return;
+
+    // 选边的数据结构（按 kind 分流）
+    auto& owners     = (kind==GridKind::Solid) ? m_ownerEdgeSolidByDomain[domain]
+                                              : m_ownerEdgeLineByDomain[domain];
+    auto& uuid2set   = (kind==GridKind::Solid) ? m_edgesSolidByDomainUuid[domain]
+                                              : m_edgesLineByDomainUuid[domain];
+    auto& prevOwners = (kind==GridKind::Solid) ? m_prevOwnerEdgeSolidByDomain[domain]
+                                              : m_prevOwnerEdgeLineByDomain[domain];
+
+    // -------- replace：清空该 uuid 的旧选择（并恢复被抢占的归属）--------
+    if (replace)
+    {
+        QSet<vtkIdType>& mySet = uuid2set[uuid];
+        const auto keys = mySet.values(); // copy（遍历时会删）
+        for (vtkIdType k : keys)
+        {
+            mySet.remove(k);
+
+            // 只有当前 owner 还是我，才移除
+            if (owners.value(k) == uuid) owners.remove(k);
+
+            // 如果当时我“抢占”了别人，要恢复回去
+            const QString oldUid = prevOwners.take(k);
+            if (!oldUid.isEmpty())
+            {
+                owners[k] = oldUid;
+                uuid2set[oldUid].insert(k);
+            }
+        }
+    }
+
+    // -------- 追加：把 edgeKeys 全部选上（带抢占机制）--------
+    QVector<vtkIdType> keys = edgeKeys;
+    if (!keys.isEmpty())
+    {
+        std::sort(keys.begin(), keys.end());
+        keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
+    }
+
+    QSet<vtkIdType>& mySet = uuid2set[uuid];
+
+    for (vtkIdType k : keys)
+    {
+        if (mySet.contains(k)) continue;
+
+        const QString oldUid = owners.value(k);
+        if (!oldUid.isEmpty() && oldUid != uuid)
+        {
+            // 记录“原归属”，便于以后取消时恢复
+            prevOwners[k] = oldUid;
+            uuid2set[oldUid].remove(k);
+        }
+
+        owners[k] = uuid;
+        mySet.insert(k);
+    }
+
+    // -------- 如果刚好是当前激活对象，并且处于 Edge 模式，则刷新高亮 --------
+    if (domain == m_currentDomain && uuid == m_currentUUid && m_pickMode == PickMode::Edge)
+    {
+        markDirty(DirtyEdge);
+    }
+}
+
+void PickManager::setSelectedFaceKeys(const QString& domain,
+                                      const QString& uuid,
+                                      GridKind kind,
+                                      const QVector<vtkIdType>& faceKeys,
+                                      bool replace)
+{
+    if (domain.isEmpty() || uuid.isEmpty()) return;
+
+    // 选面的数据结构（按 kind 分流）
+    auto& owners     = (kind==GridKind::Solid) ? m_ownerFaceSolidByDomain[domain]
+                                              : m_ownerFaceLineByDomain[domain];
+    auto& uuid2set   = (kind==GridKind::Solid) ? m_facesSolidByDomainUuid[domain]
+                                              : m_facesLineByDomainUuid[domain];
+    auto& prevOwners = (kind==GridKind::Solid) ? m_prevOwnerFaceSolidByDomain[domain]
+                                              : m_prevOwnerFaceLineByDomain[domain];
+
+    // -------- replace：清空该 uuid 的旧选择（并恢复被抢占的归属）--------
+    if (replace)
+    {
+        QSet<vtkIdType>& mySet = uuid2set[uuid];
+        const auto keys = mySet.values(); // copy
+        for (vtkIdType k : keys)
+        {
+            mySet.remove(k);
+
+            if (owners.value(k) == uuid) owners.remove(k);
+
+            const QString oldUid = prevOwners.take(k);
+            if (!oldUid.isEmpty())
+            {
+                owners[k] = oldUid;
+                uuid2set[oldUid].insert(k);
+            }
+        }
+    }
+
+    // -------- 追加：把 faceKeys 全部选上（带抢占机制）--------
+    QVector<vtkIdType> keys = faceKeys;
+    if (!keys.isEmpty())
+    {
+        std::sort(keys.begin(), keys.end());
+        keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
+    }
+
+    QSet<vtkIdType>& mySet = uuid2set[uuid];
+
+    for (vtkIdType k : keys)
+    {
+        if (mySet.contains(k)) continue;
+
+        const QString oldUid = owners.value(k);
+        if (!oldUid.isEmpty() && oldUid != uuid)
+        {
+            prevOwners[k] = oldUid;
+            uuid2set[oldUid].remove(k);
+        }
+
+        owners[k] = uuid;
+        mySet.insert(k);
+    }
+
+    // -------- 如果刚好是当前激活对象，并且处于 Face 模式，则刷新高亮 --------
+    if (domain == m_currentDomain && uuid == m_currentUUid && m_pickMode == PickMode::Face)
+    {
+        markDirty(DirtyFace);
+    }
+}
 
 
