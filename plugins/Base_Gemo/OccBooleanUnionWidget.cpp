@@ -11,6 +11,7 @@
 #include <CustomComboBox.h>
 
 #include <BOPAlgo_Builder.hxx>
+#include <BOPAlgo_GlueEnum.hxx>
 #include <TopTools_ListOfShape.hxx>
 
 #include <vtkActor.h>
@@ -37,6 +38,8 @@ TopoDS_Shape unionShapesKeepDomains(const TopoDS_Shape& a, const TopoDS_Shape& b
 
     BOPAlgo_Builder builder;
     builder.SetArguments(args);
+    builder.SetNonDestructive(false);
+    builder.SetGlue(BOPAlgo_GlueFull);
     builder.Perform();
     if (builder.HasErrors()) {
         return TopoDS_Shape();
