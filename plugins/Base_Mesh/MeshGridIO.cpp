@@ -1369,8 +1369,8 @@ MeshGridIO::loadFlac3dGrid(const QString &fileName) const
             lst.push_back(gname);
     };
 
-    // 你可以只关心 slot "1"（常见），如果想全收集就设为空字符串
-    const QString kWantedSlot = QStringLiteral("1");
+    // 收集所有 slot 的 ZGROUP，避免文件把分区写在非 "1" 槽位时被忽略
+    const QString kWantedSlot;
 
     QString curGroupName;
     QString curSlot = kWantedSlot;
@@ -1467,7 +1467,7 @@ MeshGridIO::loadFlac3dGrid(const QString &fileName) const
             if (tok.size() < 2) continue;
 
             curGroupName = unquote(tok[1]);
-            curSlot = kWantedSlot; // 默认
+            curSlot.clear(); // 默认：未指定 slot
 
             // 找 SLOT
             for (int i = 2; i + 1 < tok.size(); ++i) {
