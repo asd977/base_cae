@@ -97,6 +97,7 @@ PreProcessing::PreProcessing()
 	ServiceRegistry::instance().registerService<PreProcessingService>(this);
 	initPageFactory();
     initRibbonActionConn();
+    initTreeMenu();
 
     m_uiFrameService  = ServiceRegistry::instance().getService<UiFrameService>();
 }
@@ -145,20 +146,16 @@ void PreProcessing::initTreeMenu()
 
             ContextMenuHub::addSeparator(menu);
 
-            ContextMenuHub::addAction(menu, this, "重建", [this, uuid]{
-                // this->rebuildFeature(uuid);
-            });
-
             ContextMenuHub::addAction(menu, this, "隐藏/显示", [this, uuid]{
-                // this->toggleVisible(uuid);
+//                 this->toggleVisible(uuid);
             });
 
-            if (kind.startsWith("Box"))
-            {
-                ContextMenuHub::addAction(menu, this, "删除", [this, uuid]{
-                    // this->editBooleanParams(uuid);
-                });
-            }
+            ContextMenuHub::addAction(menu, this, "删除", [this, uuid]{
+//                 this->remove(uuid);
+            });
+            ContextMenuHub::addAction(menu, this, "重命名", [this, uuid]{
+//                 this->rename(uuid);
+            });
         },
         100,
         [](const QVariantMap& ctx)->bool{
