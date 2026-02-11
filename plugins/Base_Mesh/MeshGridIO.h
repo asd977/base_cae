@@ -27,9 +27,9 @@ private:
 
 public:
     // 直接返回 vtk 网格
-    vtkSmartPointer<vtkUnstructuredGrid> loadIiinFile(const QString &fileName, QString *errMsg = nullptr) const;
-    vtkSmartPointer<vtkUnstructuredGrid> importFlac3D(const QString &fileName, QString *errMsg = nullptr) const;
-    vtkSmartPointer<vtkUnstructuredGrid> importInp(const QString &fileName, QString *errMsg = nullptr) const;
+    vtkSmartPointer<vtkUnstructuredGrid> loadIiinFile(const QString &fileName, QString *errMsg = nullptr);
+    vtkSmartPointer<vtkUnstructuredGrid> importFlac3D(const QString &fileName, QString *errMsg = nullptr);
+    vtkSmartPointer<vtkUnstructuredGrid> importInp(const QString &fileName, QString *errMsg = nullptr);
     vtkSmartPointer<vtkUnstructuredGrid> loadMshFile(const QString &fileName, QString *errMsg = nullptr) ;
 
     // 从 vtk 网格导出 IIIN.DAT
@@ -44,6 +44,8 @@ private:
 
     // 确保网格上有这些数组：point: node_id；cell: MATYPE/LAYER/KETYPE/elem_id/src_part/TAIL1/TAIL2
     void ensureDefaultArrays(vtkUnstructuredGrid *grid) const;
+
+    void clearPickMap();
 
     MshPickMap m_mshPickMap;
 };

@@ -25,6 +25,7 @@
 #include <vtkStringArray.h>
 #include <vtkCellData.h>
 #include <vtkPointData.h>
+#include <vtkFieldData.h>
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 static constexpr auto kSkipEmptyParts = Qt::SkipEmptyParts;
@@ -214,19 +215,117 @@ static vtkSmartPointer<vtkIntArray> getOrCreatePointIntArray(vtkUnstructuredGrid
 
 } // namespace
 
-vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString &fileName, QString *errMsg) const
+vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString &fileName, QString *errMsg)
 {
+    clearPickMap();
+
     auto grid = loadFlac3dGrid(fileName);
     if (!grid || grid->GetNumberOfCells() == 0) {
         if (errMsg) *errMsg = QObject::tr("无法解析 Flac3D 网格: %1").arg(fileName);
         return nullptr;
     }
+
     ensureDefaultArrays(grid);
+
+    auto* cd = grid->GetCellData();
+    auto* fd = grid->GetFieldData();
+
+    auto* groupArr = cd ? vtkStringArray::SafeDownCast(cd->GetArray("GroupName")) : nullptr;
+    auto* matypeArr = cd ? vtkIntArray::SafeDownCast(cd->GetArray("MATYPE")) : nullptr;
+    auto* nodeIdArr = grid->GetPointData() ? vtkIntArray::SafeDownCast(grid->GetPointData()->GetArray("node_id")) : nullptr;
+
+    QHash<QString, int> groupToPhysId;
+    int nextPhysId = 1;
+
+    const vtkIdType nCells = grid->GetNumberOfCells();
+    for (vtkIdType cid = 0; cid < nCells; ++cid) {
+        const QString groupName =
+            (groupArr && cid < groupArr->GetNumberOfValues())
+            ? QString::fromStdString(groupArr->GetValue(cid)).trimmed()
+            : QString();
+
+        if (groupName.isEmpty()) continue;
+
+        const QString firstGroup = groupName.split(';', kSkipEmptyParts).value(0).trimmed();
+        if (firstGroup.isEmpty()) continue;
+
+        int physId = groupToPhysId.value(firstGroup, 0);
+        if (physId == 0) {
+            physId = nextPhysId++;
+            groupToPhysId.insert(firstGroup, physId);
+            m_mshPickMap.physIdToName.insert(physId, firstGroup);
+            m_mshPickMap.physIdToDim.insert(physId, 3);
+        }
+
+        m_mshPickMap.volPhysToCellIds[physId].push_back(static_cast<qint64>(cid));
+        if (matypeArr) {
+            matypeArr->SetValue(cid, physId);
+        }
+    }
+
+    if (nodeIdArr) {
+        const vtkIdType nPts = nodeIdArr->GetNumberOfTuples();
+        for (vtkIdType pid = 0; pid < nPts; ++pid) {
+            const int vtkPid = static_cast<int>(pid);
+            const int nodeId = nodeIdArr->GetValue(pid);
+            m_mshPickMap.pointIdToNodeId.insert(vtkPid, nodeId);
+            m_mshPickMap.nodeIdToPointId.insert(nodeId, vtkPid);
+        }
+    }
+
+    // 同步一份 RegionId/RegionName，方便后续统一按区域批量赋材
+    auto regionIdArr = vtkSmartPointer<vtkIntArray>::New();
+    regionIdArr->SetName("RegionId");
+    regionIdArr->SetNumberOfTuples(nCells);
+
+    auto regionNameArr = vtkSmartPointer<vtkStringArray>::New();
+    regionNameArr->SetName("RegionName");
+    regionNameArr->SetNumberOfValues(nCells);
+
+    for (vtkIdType cid = 0; cid < nCells; ++cid) {
+        int regionId = 0;
+        QString regionName;
+
+        if (matypeArr) {
+            regionId = matypeArr->GetValue(cid);
+            regionName = m_mshPickMap.physIdToName.value(regionId);
+        }
+        regionIdArr->SetValue(cid, regionId);
+        regionNameArr->SetValue(cid, regionName.toStdString());
+    }
+
+    if (cd) {
+        cd->AddArray(regionIdArr);
+        cd->AddArray(regionNameArr);
+    }
+
+    if (fd) {
+        auto* zNames = vtkStringArray::SafeDownCast(fd->GetAbstractArray("ZGroupNames"));
+        if (zNames) {
+            auto bndNames = vtkSmartPointer<vtkStringArray>::New();
+            auto bndDims = vtkSmartPointer<vtkIntArray>::New();
+            bndNames->SetName("BndGroupNames");
+            bndDims->SetName("BndGroupDims");
+            for (vtkIdType i = 0; i < zNames->GetNumberOfValues(); ++i) {
+                bndNames->InsertNextValue(zNames->GetValue(i));
+                bndDims->InsertNextValue(3);
+            }
+            fd->AddArray(bndNames);
+            fd->AddArray(bndDims);
+        }
+    }
+
+    if (matypeArr) {
+        grid->GetCellData()->SetScalars(matypeArr);
+    }
+
     return grid;
 }
 
-vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importInp(const QString &fileName, QString *errMsg) const
+vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importInp(const QString &fileName, QString *errMsg)
 {
+    clearPickMap();
+
     auto grid = loadAbaqusInpGrid(fileName);
     if (!grid || grid->GetNumberOfCells() == 0) {
         if (errMsg) *errMsg = QObject::tr("无法解析 Abaqus 网格: %1").arg(fileName);
@@ -269,6 +368,8 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg)
         }
         return s;
     };
+
+    clearPickMap();
 
     // ------------------ 结果：grid + pickMap ------------------
     auto grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
@@ -765,6 +866,49 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg)
     // 写回成员：供外部 DisplacementConstraintWidget / FaceLoadPage 等查询
     m_mshPickMap = pick;
 
+    // 同步 RegionId/RegionName，且将 MATYPE 直接映射到体 physicalId（便于材料批量设置）
+    auto* cd = grid->GetCellData();
+
+    auto* matype = vtkIntArray::SafeDownCast(cd->GetArray("MATYPE"));
+    if (!matype) {
+        matype = vtkIntArray::New();
+        matype->SetName("MATYPE");
+        matype->SetNumberOfTuples(nCells);
+        for (vtkIdType cid = 0; cid < nCells; ++cid) matype->SetValue(cid, 1);
+        cd->AddArray(matype);
+        matype->Delete();
+        matype = vtkIntArray::SafeDownCast(cd->GetArray("MATYPE"));
+    }
+
+    auto regionId = vtkSmartPointer<vtkIntArray>::New();
+    regionId->SetName("RegionId");
+    regionId->SetNumberOfTuples(nCells);
+
+    auto regionName = vtkSmartPointer<vtkStringArray>::New();
+    regionName->SetName("RegionName");
+    regionName->SetNumberOfValues(nCells);
+
+    QHash<vtkIdType, int> cellToPhys;
+    for (auto it = pick.volPhysToCellIds.begin(); it != pick.volPhysToCellIds.end(); ++it) {
+        const int physId = it.key();
+        const auto& cids = it.value();
+        for (qint64 c : cids) {
+            if (c >= 0) cellToPhys.insert(static_cast<vtkIdType>(c), physId);
+        }
+    }
+
+    for (vtkIdType cid = 0; cid < nCells; ++cid) {
+        const int physId = cellToPhys.value(cid, 0);
+        const int mappedMatype = (physId > 0 ? physId : 1);
+        matype->SetValue(cid, mappedMatype);
+        regionId->SetValue(cid, physId);
+        regionName->SetValue(cid, pick.physIdToName.value(physId).toStdString());
+    }
+
+    cd->AddArray(regionId);
+    cd->AddArray(regionName);
+    cd->SetScalars(matype);
+
     grid->Squeeze();
     return grid;
 }
@@ -780,8 +924,15 @@ MshPickMap MeshGridIO::getMeshMap()
     return m_mshPickMap;
 }
 
-vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString &fileName, QString *errMsg) const
+void MeshGridIO::clearPickMap()
 {
+    m_mshPickMap = MshPickMap{};
+}
+
+vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString &fileName, QString *errMsg)
+{
+    clearPickMap();
+
     QFile f(fileName);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
         if (errMsg) *errMsg = QObject::tr("无法打开文件: %1").arg(fileName);
@@ -1890,5 +2041,4 @@ void MeshGridIO::ensureDefaultArrays(vtkUnstructuredGrid *grid) const
     // 默认把 MATYPE 作为 scalars（你高亮逻辑用到）
     grid->GetCellData()->SetScalars(matype);
 }
-
 
