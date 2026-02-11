@@ -16,7 +16,7 @@
       </widget>
      </item>
      <item>
-      <widget class="QComboBox" name="modelComboBox"/>
+      <widget class="CustomComboBox" name="modelComboBox"/>
      </item>
      <item>
       <spacer name="headerSpacer">
@@ -103,6 +103,13 @@
    </item>
   </layout>
  </widget>
+ <customwidgets>
+ <customwidget>
+  <class>CustomComboBox</class>
+  <extends>QComboBox</extends>
+  <header>CustomComboBox.h</header>
+ </customwidget>
+</customwidgets>
  <resources/>
  <connections/>
 </ui>

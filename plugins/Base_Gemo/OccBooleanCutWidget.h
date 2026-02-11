@@ -12,6 +12,7 @@
 class QComboBox;
 class QPushButton;
 class QListView;
+class CustomComboBox;
 
 class OccBooleanCutWidget : public BasePage
 {
@@ -29,6 +30,8 @@ public:
 private slots:
     void onComboBoxAChanged(int index);
     void onComboBoxBChanged(int index);
+    void onComboBoxHovered(int index);
+    void onComboBoxDropdownClosed();
     void onApplyClicked();
     void onRefreshClicked();
 
@@ -50,8 +53,8 @@ private:
     void removeComboItem(QComboBox* combo, const QString& key);
     void removeGeometryAndDimNode(const QString& key);
 
-    QComboBox* m_comboBoxA = nullptr;
-    QComboBox* m_comboBoxB = nullptr;
+    CustomComboBox* m_comboBoxA = nullptr;
+    CustomComboBox* m_comboBoxB = nullptr;
     QComboBox* m_comboBoxOp = nullptr;
     QPushButton* m_applyButton = nullptr;
     QPushButton* m_refreshButton = nullptr;
@@ -64,6 +67,7 @@ private:
 
     QString m_keyA;
     QString m_keyB;
+    QString m_hoveredKey;
 };
 
 #endif // OCCBOOLEANCUTWIDGET_H

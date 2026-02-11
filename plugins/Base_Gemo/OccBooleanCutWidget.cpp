@@ -8,6 +8,8 @@
 #include <QListView>
 #include <QPushButton>
 
+#include <CustomComboBox.h>
+
 #include <BRepAlgoAPI_Cut.hxx>
 
 #include <vtkActor.h>
@@ -51,8 +53,8 @@ void OccBooleanCutWidget::initUi()
     auto* labelA = new QLabel(tr("a:"), this);
     auto* labelB = new QLabel(tr("b:"), this);
 
-    m_comboBoxA = new QComboBox(this);
-    m_comboBoxB = new QComboBox(this);
+    m_comboBoxA = new CustomComboBox(this);
+    m_comboBoxB = new CustomComboBox(this);
     m_comboBoxOp = new QComboBox(this);
     m_comboBoxOp->addItem(tr("Cut (A - B)"));
     m_comboBoxOp->setCurrentIndex(0);
@@ -80,6 +82,14 @@ void OccBooleanCutWidget::initConnections()
             this, SLOT(onComboBoxAChanged(int)));
     connect(m_comboBoxB, SIGNAL(currentIndexChanged(int)),
             this, SLOT(onComboBoxBChanged(int)));
+    connect(m_comboBoxA, SIGNAL(itemHovered(int)),
+            this, SLOT(onComboBoxHovered(int)));
+    connect(m_comboBoxB, SIGNAL(itemHovered(int)),
+            this, SLOT(onComboBoxHovered(int)));
+    connect(m_comboBoxA, SIGNAL(dropdownClosed()),
+            this, SLOT(onComboBoxDropdownClosed()));
+    connect(m_comboBoxB, SIGNAL(dropdownClosed()),
+            this, SLOT(onComboBoxDropdownClosed()));
     connect(m_applyButton, SIGNAL(clicked()),
             this, SLOT(onApplyClicked()));
     connect(m_refreshButton, SIGNAL(clicked()),
@@ -122,6 +132,7 @@ void OccBooleanCutWidget::beforeUnload()
         actor->GetProperty()->SetOpacity(cb.opacity);
     }
 
+    m_hoveredKey.clear();
     m_colorBackup.clear();
     requestRender();
 }
@@ -280,6 +291,9 @@ void OccBooleanCutWidget::setDimmed(const QString &key, bool on)
 
 void OccBooleanCutWidget::requestRender()
 {
+    if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>()) {
+        vis->render();
+    }
 }
 
 void OccBooleanCutWidget::removeComboItem(QComboBox *combo, const QString &key)
@@ -327,15 +341,7 @@ void OccBooleanCutWidget::onComboBoxAChanged(int index)
         newKey = m_comboBoxA->itemText(index);
     }
 
-    if (!m_keyA.isEmpty() && m_keyA != m_keyB) {
-        setHighlight(m_keyA, QColor(), false);
-    }
-
     m_keyA = newKey;
-
-    if (!m_keyA.isEmpty() && m_keyA != m_keyB) {
-        setHighlight(m_keyA, Qt::red, true);
-    }
 }
 
 void OccBooleanCutWidget::onComboBoxBChanged(int index)
@@ -349,15 +355,41 @@ void OccBooleanCutWidget::onComboBoxBChanged(int index)
         newKey = m_comboBoxB->itemText(index);
     }
 
-    if (!m_keyB.isEmpty() && m_keyB != m_keyA) {
-        setHighlight(m_keyB, QColor(), false);
-    }
-
     m_keyB = newKey;
+}
 
-    if (!m_keyB.isEmpty() && m_keyB != m_keyA) {
-        setHighlight(m_keyB, Qt::blue, true);
+
+void OccBooleanCutWidget::onComboBoxHovered(int index)
+{
+    auto* combo = qobject_cast<CustomComboBox*>(sender());
+    if (!combo || index < 0 || index >= combo->count()) {
+        return;
     }
+
+    QString key = combo->itemData(index).toString();
+    if (key.isEmpty()) {
+        key = combo->itemText(index);
+    }
+    if (key.isEmpty() || key == m_hoveredKey) {
+        return;
+    }
+
+    if (!m_hoveredKey.isEmpty()) {
+        setHighlight(m_hoveredKey, QColor(), false);
+    }
+
+    m_hoveredKey = key;
+    setHighlight(m_hoveredKey, QColor(255, 243, 191), true);
+}
+
+void OccBooleanCutWidget::onComboBoxDropdownClosed()
+{
+    if (m_hoveredKey.isEmpty()) {
+        return;
+    }
+
+    setHighlight(m_hoveredKey, QColor(), false);
+    m_hoveredKey.clear();
 }
 
 void OccBooleanCutWidget::onApplyClicked()
@@ -404,10 +436,6 @@ void OccBooleanCutWidget::onApplyClicked()
     m_geomMgr->appendGeomShapeObject(resultObj);
     m_geomMap.insert(resultUuid, resultObj);
 
-    if (vtkSmartPointer<vtkActor> resultActor = resultObj->getSurfActor()) {
-        resultActor->GetProperty()->SetColor(1.0, 1.0, 0.0);
-    }
-
     if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>()) {
         if (resultObj->getSurfActor()) {
             vis->addProp(resultUuid + "_face", resultObj->getSurfActor(), "Geometry", resultUuid + "_face");
@@ -439,6 +467,7 @@ void OccBooleanCutWidget::onApplyClicked()
         projectManagerService->setNodeDimmed(resultUuid, false);
     }
 
+    m_hoveredKey.clear();
     requestRender();
 }
 
@@ -469,6 +498,7 @@ void OccBooleanCutWidget::onRefreshClicked()
             actor->GetProperty()->SetOpacity(cb.opacity);
         }
     }
+    m_hoveredKey.clear();
     m_colorBackup.clear();
 
     m_geomMap = m_geomMgr->getShapMap();

@@ -503,9 +503,8 @@ void MaterialManager::refreshMatypeHighlight(const QString &entryId)
 
     const int preview   = m_previewMatypes.value(entryId, -1);
     const int preDelete = m_preDeleteMatypes.value(entryId, -1);
-    const int selected  = m_selectedMatypes.value(entryId, -1);
-
-    highlightMatypes(entry->appliedMatypes, selected, preview, preDelete);
+    // 不再使用 Selected 高亮，仅保留 Applied / Preview / PreDelete。
+    highlightMatypes(entry->appliedMatypes, -1, preview, preDelete);
 }
 
 
