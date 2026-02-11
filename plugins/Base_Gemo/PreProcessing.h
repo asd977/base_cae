@@ -42,6 +42,11 @@ public:
     void newOccBooleanCommonWidget(QString title = QObject::tr("布尔求交"));
     bool exportGeom();
 private:
+	void toggleVisible(const QString& uuid);
+	void removeGeometryNode(const QString& uuid);
+	void renameGeometryNode(const QString& uuid);
+	void initGeometryNode(ProjectNode* node, const QString& uuid, const QString& kind);
+
 	bool writeJsonFile(const QString &filePath, const QJsonObject &obj);
 	bool readJsonFile(const QString &filePath, QJsonObject &out);
 	bool loadChildProject(ProjectNode * node,const QString & name);
