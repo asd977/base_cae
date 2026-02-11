@@ -2020,6 +2020,15 @@ void MeshGridIO::ensureDefaultArrays(vtkUnstructuredGrid *grid) const
     tail1 ->SetNumberOfTuples(nCells);
     tail2 ->SetNumberOfTuples(nCells);
 
+    // vtkIntArray 的新 tuple 默认值未定义，先显式置零，避免出现随机 MATYPE/LAYER
+    matype->FillComponent(0, 0.0);
+    layer ->FillComponent(0, 0.0);
+    ketype->FillComponent(0, 0.0);
+    elemId->FillComponent(0, 0.0);
+    part  ->FillComponent(0, 0.0);
+    tail1 ->FillComponent(0, 0.0);
+    tail2 ->FillComponent(0, 0.0);
+
     for (vtkIdType cid = 0; cid < nCells; ++cid) {
         // 若已有值也无所谓，这里给默认兜底
         if (matype->GetValue(cid) == 0) matype->SetValue(cid, 1);

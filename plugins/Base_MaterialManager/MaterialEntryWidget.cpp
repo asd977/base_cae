@@ -124,8 +124,16 @@ QRadioButton {
     layout->addWidget(scrollArea);
 }
 
+
+MaterialEntryWidget::~MaterialEntryWidget()
+{
+    beforeUnload();
+}
+
 void MaterialEntryWidget::beforeLoad()
 {
+    m_beforeUnloadHandled = false;
+
     // 回到页面：只恢复 Selected（预选中/预删除不恢复）
     m_previewMatype = -1;
     m_preDeleteMatype = -1;
@@ -139,6 +147,9 @@ void MaterialEntryWidget::beforeLoad()
 
 void MaterialEntryWidget::beforeUnload()
 {
+    if (m_beforeUnloadHandled) return;
+    m_beforeUnloadHandled = true;
+
     // 离开页面：清空所有高亮
     if (!m_entryId.isEmpty()) {
         m_previewMatype = -1;

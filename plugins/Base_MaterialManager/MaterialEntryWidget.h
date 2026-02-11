@@ -17,6 +17,7 @@ class MaterialEntryWidget : public BasePage
     Q_OBJECT
 public:
     explicit MaterialEntryWidget(MaterialManager *manager, QWidget *parent = nullptr);
+    ~MaterialEntryWidget() override;
 
     void setEntry(const QString &modelKey, const QString &entryId);
 
@@ -72,4 +73,5 @@ private:
     int m_preDeleteMatype = -1;  // list 选中
 
     bool m_ignoreNextMatypeChanged = false; // 忽略下拉关闭后可能触发的伪 currentIndexChanged
+    bool m_beforeUnloadHandled = false;
 };
