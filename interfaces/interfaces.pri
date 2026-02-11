@@ -25,6 +25,7 @@ HEADERS += \
     $$PWD/services/VisualWidgetService.h \
     $$PWD/services/MeshModuleControllerService.h \
     $$PWD/PublicConstants.h \
+    $$PWD/CustomComboBox.h \
     $$PWD/struct/MeshMap.h
 
 
