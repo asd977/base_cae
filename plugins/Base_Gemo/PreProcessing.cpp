@@ -88,6 +88,10 @@
 #include <services/ProjectManagerService.h>
 
 #include <QCoreApplication>
+#include <QInputDialog>
+#include <QLineEdit>
+#include <QIcon>
+#include "GeometryCleanup.h"
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -147,14 +151,14 @@ void PreProcessing::initTreeMenu()
             ContextMenuHub::addSeparator(menu);
 
             ContextMenuHub::addAction(menu, this, "隐藏/显示", [this, uuid]{
-//                 this->toggleVisible(uuid);
+                this->toggleVisible(uuid);
             });
 
             ContextMenuHub::addAction(menu, this, "删除", [this, uuid]{
-//                 this->remove(uuid);
+                this->removeNode(uuid);
             });
             ContextMenuHub::addAction(menu, this, "重命名", [this, uuid]{
-//                 this->rename(uuid);
+                this->renameNode(uuid);
             });
         },
         100,
@@ -162,6 +166,100 @@ void PreProcessing::initTreeMenu()
             return ctx.value("module").toString() == "Geometry";
         }
         );
+}
+
+void PreProcessing::toggleVisible(const QString& uuid)
+{
+    if (uuid.isEmpty()) return;
+
+    auto* mgr = GeomManager::GeomManagerInstance::getInstance();
+    if (!mgr) return;
+
+    GeomShapeObject* object = mgr->getGeomShapeObject(uuid);
+    if (!object) return;
+
+    const bool currentVisible =
+        (object->getSurfActor() && object->getSurfActor()->GetVisibility() != 0) ||
+        (object->getEdgeActor() && object->getEdgeActor()->GetVisibility() != 0);
+    const bool targetVisible = !currentVisible;
+
+    if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>()) {
+        vis->setVisible(uuid + "_face", targetVisible, false);
+        vis->setVisible(uuid + "_edge", targetVisible, true);
+    } else {
+        if (object->getSurfActor()) object->getSurfActor()->SetVisibility(targetVisible);
+        if (object->getEdgeActor()) object->getEdgeActor()->SetVisibility(targetVisible);
+    }
+
+    if (auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>()) {
+        projectManagerService->setNodeDimmed(uuid, !targetVisible);
+    }
+}
+
+void PreProcessing::removeNode(const QString& uuid)
+{
+    if (uuid.isEmpty() || !m_geomNode) return;
+
+    GeometryCleanup::removeExistingGeometry(uuid);
+
+    for (int i = 0; i < m_geomNode->childCount(); ++i)
+    {
+        auto* node = static_cast<ProjectNode*>(m_geomNode->child(i));
+        if (!node) continue;
+
+        QString nodeUuid = node->data(0, ProjectNode::RoleUuid).toString();
+        if (nodeUuid.isEmpty()) nodeUuid = node->getUuid();
+        if (nodeUuid != uuid) continue;
+
+        if (BasePage* page = node->getPage()) {
+            page->deleteLater();
+            node->setPage(nullptr);
+        }
+
+        delete m_geomNode->takeChild(i);
+        break;
+    }
+}
+
+void PreProcessing::renameNode(const QString& uuid)
+{
+    if (uuid.isEmpty() || !m_geomNode) return;
+
+    for (int i = 0; i < m_geomNode->childCount(); ++i)
+    {
+        auto* node = static_cast<ProjectNode*>(m_geomNode->child(i));
+        if (!node) continue;
+
+        QString nodeUuid = node->data(0, ProjectNode::RoleUuid).toString();
+        if (nodeUuid.isEmpty()) nodeUuid = node->getUuid();
+        if (nodeUuid != uuid) continue;
+
+        const QString currentName = node->text(0);
+        bool ok = false;
+        const QString newName = QInputDialog::getText(
+            nullptr,
+            tr("重命名几何"),
+            tr("请输入新名称："),
+            QLineEdit::Normal,
+            currentName,
+            &ok);
+
+        if (!ok) return;
+        const QString trimmedName = newName.trimmed();
+        if (trimmedName.isEmpty() || trimmedName == currentName) return;
+
+        node->setText(0, trimmedName);
+        node->setName(trimmedName);
+        if (BasePage* page = node->getPage()) {
+            page->setDisplayName(trimmedName);
+        }
+        if (auto* mgr = GeomManager::GeomManagerInstance::getInstance()) {
+            if (GeomShapeObject* object = mgr->getGeomShapeObject(uuid)) {
+                object->setName(trimmedName);
+            }
+        }
+        return;
+    }
 }
 
 BasePage* PreProcessing::createPageByType(const QString& type, const QString& title)
@@ -514,6 +612,7 @@ void PreProcessing::newGeometryBoxWidget(QString title)
     node->setData(0, ProjectNode::RoleUuid,   uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
     node->setData(0, ProjectNode::RoleKind,   "Box");
+    node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 
 void PreProcessing::newGeometrySphereWidget(QString title)
@@ -529,6 +628,7 @@ void PreProcessing::newGeometrySphereWidget(QString title)
     node->setData(0, ProjectNode::RoleUuid,   uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
     node->setData(0, ProjectNode::RoleKind,   "Sphere");
+    node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 
 void PreProcessing::newGeometryConeWidget(QString title)
@@ -544,6 +644,7 @@ void PreProcessing::newGeometryConeWidget(QString title)
     node->setData(0, ProjectNode::RoleUuid,   uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
     node->setData(0, ProjectNode::RoleKind,   "Cone");
+    node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 
 void PreProcessing::newGeometryTorusWidget(QString title)
@@ -559,6 +660,7 @@ void PreProcessing::newGeometryTorusWidget(QString title)
     node->setData(0, ProjectNode::RoleUuid,   uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
     node->setData(0, ProjectNode::RoleKind,   "Torus");
+    node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 
 void PreProcessing::newGeometryCylinderWidget(QString title)
@@ -574,6 +676,7 @@ void PreProcessing::newGeometryCylinderWidget(QString title)
     node->setData(0, ProjectNode::RoleUuid,   uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
     node->setData(0, ProjectNode::RoleKind,   "Cylinder");
+    node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 
 BasePage* PreProcessing::newGeometryCircleWidget(QString title)
@@ -591,6 +694,7 @@ BasePage* PreProcessing::newGeometryCircleWidget(QString title)
     node->setData(0, ProjectNode::RoleUuid,   uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
     node->setData(0, ProjectNode::RoleKind,   "Circle");
+    node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 
     return w;
 }
@@ -610,6 +714,7 @@ BasePage* PreProcessing::newGeometryEllipseWidget(QString title)
     node->setData(0, ProjectNode::RoleUuid,   uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
     node->setData(0, ProjectNode::RoleKind,   "Ellipse");
+    node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 
     return w;
 }
@@ -629,6 +734,7 @@ BasePage* PreProcessing::newGeometryPolygonWidget(QString title)
     node->setData(0, ProjectNode::RoleUuid,   uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
     node->setData(0, ProjectNode::RoleKind,   "Polygon");
+    node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 
     return w;
 }
@@ -648,6 +754,7 @@ BasePage* PreProcessing::newGeometryRectangleWidget(QString title)
     node->setData(0, ProjectNode::RoleUuid,   uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
     node->setData(0, ProjectNode::RoleKind,   "Rectangle");
+    node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 
     return w;
 }
@@ -664,6 +771,7 @@ void PreProcessing::newOccBooleanFuseWidget(QString title)
     node->setData(0, ProjectNode::RoleUuid,   uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
     node->setData(0, ProjectNode::RoleKind,   "BooleanFuse");
+    node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 
 void PreProcessing::newOccBooleanCutWidget(QString title)
@@ -678,6 +786,7 @@ void PreProcessing::newOccBooleanCutWidget(QString title)
     node->setData(0, ProjectNode::RoleUuid,   uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
     node->setData(0, ProjectNode::RoleKind,   "BooleanCut");
+    node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 
 void PreProcessing::newOccBooleanCommonWidget(QString title)
@@ -692,6 +801,7 @@ void PreProcessing::newOccBooleanCommonWidget(QString title)
     node->setData(0, ProjectNode::RoleUuid,   uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
     node->setData(0, ProjectNode::RoleKind,   "BooleanCommon");
+    node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 
 QString PreProcessing::makeUniqueName(const QString &baseName, const QString &typeKey)

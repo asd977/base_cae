@@ -27,6 +27,7 @@
 #include <ServiceRegistry.h>
 
 #include <services/VisualWidgetService.h>
+#include <services/ProjectManagerService.h>
 
 PolygonDialog::PolygonDialog(QWidget* parent)
     : BasePage(PublicConstants::kPagePreprocessPolygon)
@@ -296,6 +297,10 @@ void PolygonDialog::validateInput()
         }
         if (object->getEdgeActor()) {
             vis->addProp(m_uuid + "_edge", object->getEdgeActor(), "Geometry", m_uuid + "_edge");
+
+    if (auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>()) {
+        projectManagerService->setNodeDimmed(m_uuid, false);
+    }
         }
     }
 }

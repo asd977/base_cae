@@ -28,6 +28,7 @@
 
 // 你工程里这几个类应当已有
 #include <ServiceRegistry.h>
+#include <services/ProjectManagerService.h>
 // #include <GeomShapeManager.h>  // 视你项目实际头文件
 // #include <GeomShapeObject.h>
 
@@ -250,6 +251,10 @@ void CircleDialog::validateInput()
         }
         if (object->getEdgeActor()) {
             vis->addProp(m_uuid + "_edge", object->getEdgeActor(), "Geometry", m_uuid + "_edge");
+
+    if (auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>()) {
+        projectManagerService->setNodeDimmed(m_uuid, false);
+    }
         }
     }
 }

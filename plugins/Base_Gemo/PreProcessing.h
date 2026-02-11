@@ -56,6 +56,9 @@ private:
 	ProjectNode *m_gridNode;
     UiFrameService *m_uiFrameService;
 
+    void toggleVisible(const QString& uuid);
+    void removeNode(const QString& uuid);
+    void renameNode(const QString& uuid);
 
     void initTreeMenu();
     bool writeMultipleShapesStepFile(const QString &filePath);

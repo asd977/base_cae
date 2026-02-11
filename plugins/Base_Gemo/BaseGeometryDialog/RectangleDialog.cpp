@@ -27,6 +27,7 @@
 #include <GeomShapeObject.h>  // 你项目里 GeomShapeObject
 
 #include <services/VisualWidgetService.h>
+#include <services/ProjectManagerService.h>
 
 RectangleDialog::RectangleDialog(QWidget* parent)
     : BasePage(PublicConstants::kPagePreprocessRectangle)
@@ -287,6 +288,10 @@ void RectangleDialog::validateInput()
         }
         if (object->getEdgeActor()) {
             vis->addProp(m_uuid + "_edge", object->getEdgeActor(), "Geometry", m_uuid + "_edge");
+
+    if (auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>()) {
+        projectManagerService->setNodeDimmed(m_uuid, false);
+    }
         }
     }
 }

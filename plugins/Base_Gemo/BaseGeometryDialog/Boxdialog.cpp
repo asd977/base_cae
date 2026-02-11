@@ -11,6 +11,7 @@
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
 #include <services/VisualWidgetService.h>
+#include <services/ProjectManagerService.h>
 
 BoxDialog::BoxDialog(QWidget *parent) : BasePage(PublicConstants::kPagePreprocessBox)
 {
@@ -153,4 +154,8 @@ void BoxDialog::onOkClicked()
     VisualWidgetService *vis = ServiceRegistry::instance().getService<VisualWidgetService>();
     vis->addProp(m_uuid + "_face", object->getSurfActor(), "Geometry", m_uuid + "_face",true);
     vis->addProp(m_uuid + "_edge", object->getEdgeActor(), "Geometry", m_uuid + "_face",true);
+
+    if (auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>()) {
+        projectManagerService->setNodeDimmed(m_uuid, false);
+    }
 }

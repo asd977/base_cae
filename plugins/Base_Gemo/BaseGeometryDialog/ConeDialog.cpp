@@ -9,6 +9,7 @@
 #include <GeometryCleanup.h>
 #include <ServiceRegistry.h>
 #include <services/VisualWidgetService.h>
+#include <services/ProjectManagerService.h>
 
 ConeDialog::ConeDialog(QWidget *parent) : BasePage(PublicConstants::kPagePreprocessCone)
 {
@@ -126,6 +127,10 @@ void ConeDialog::onOkClicked()
     VisualWidgetService *vis = ServiceRegistry::instance().getService<VisualWidgetService>();
     vis->addProp(m_uuid + "_face", object->getSurfActor(), "Geometry", m_uuid + "_face");
     vis->addProp(m_uuid + "_edge", object->getEdgeActor(), "Geometry", m_uuid + "_face");
+
+    if (auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>()) {
+        projectManagerService->setNodeDimmed(m_uuid, false);
+    }
 }
 
 void ConeDialog::onCancelClicked()
