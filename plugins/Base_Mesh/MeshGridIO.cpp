@@ -2012,22 +2012,24 @@ void MeshGridIO::ensureDefaultArrays(vtkUnstructuredGrid *grid) const
     auto tail1  = getOrCreateCellIntArray(grid, "TAIL1");
     auto tail2  = getOrCreateCellIntArray(grid, "TAIL2");
 
-    matype->SetNumberOfTuples(nCells);
-    layer ->SetNumberOfTuples(nCells);
-    ketype->SetNumberOfTuples(nCells);
-    elemId->SetNumberOfTuples(nCells);
-    part  ->SetNumberOfTuples(nCells);
-    tail1 ->SetNumberOfTuples(nCells);
-    tail2 ->SetNumberOfTuples(nCells);
+    auto resizeAndInitIfNeeded = [nCells](vtkIntArray* arr) {
+        if (!arr) return;
+        const bool hasExactTupleCount = (arr->GetNumberOfTuples() == nCells);
+        arr->SetNumberOfTuples(nCells);
 
-    // vtkIntArray 的新 tuple 默认值未定义，先显式置零，避免出现随机 MATYPE/LAYER
-    matype->FillComponent(0, 0.0);
-    layer ->FillComponent(0, 0.0);
-    ketype->FillComponent(0, 0.0);
-    elemId->FillComponent(0, 0.0);
-    part  ->FillComponent(0, 0.0);
-    tail1 ->FillComponent(0, 0.0);
-    tail2 ->FillComponent(0, 0.0);
+        // 只在“新建/尺寸变化”时清零，避免覆盖已正确导入的数据（如 IIIN 的 MATYPE/LAYER）
+        if (!hasExactTupleCount) {
+            arr->FillComponent(0, 0.0);
+        }
+    };
+
+    resizeAndInitIfNeeded(matype);
+    resizeAndInitIfNeeded(layer);
+    resizeAndInitIfNeeded(ketype);
+    resizeAndInitIfNeeded(elemId);
+    resizeAndInitIfNeeded(part);
+    resizeAndInitIfNeeded(tail1);
+    resizeAndInitIfNeeded(tail2);
 
     for (vtkIdType cid = 0; cid < nCells; ++cid) {
         // 若已有值也无所谓，这里给默认兜底
@@ -2050,4 +2052,3 @@ void MeshGridIO::ensureDefaultArrays(vtkUnstructuredGrid *grid) const
     // 默认把 MATYPE 作为 scalars（你高亮逻辑用到）
     grid->GetCellData()->SetScalars(matype);
 }
-
