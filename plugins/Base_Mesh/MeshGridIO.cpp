@@ -246,14 +246,15 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString &fil
 
         if (groupName.isEmpty()) continue;
 
-        const QString firstGroup = groupName.split(';', kSkipEmptyParts).value(0).trimmed();
-        if (firstGroup.isEmpty()) continue;
+        // 使用完整分组串（例如 slotA;slotB），避免只取第一个组导致材料分区塌缩
+        const QString groupKey = groupName;
+        if (groupKey.isEmpty()) continue;
 
-        int physId = groupToPhysId.value(firstGroup, 0);
+        int physId = groupToPhysId.value(groupKey, 0);
         if (physId == 0) {
             physId = nextPhysId++;
-            groupToPhysId.insert(firstGroup, physId);
-            m_mshPickMap.physIdToName.insert(physId, firstGroup);
+            groupToPhysId.insert(groupKey, physId);
+            m_mshPickMap.physIdToName.insert(physId, groupKey);
             m_mshPickMap.physIdToDim.insert(physId, 3);
         }
 
@@ -1375,6 +1376,7 @@ MeshGridIO::loadFlac3dGrid(const QString &fileName) const
     QString curGroupName;
     QString curSlot = kWantedSlot;
     bool inZGroupIds = false;
+    QSet<QString> seenSlots;
 
     auto parseZoneIdToken = [&](const QString& t) {
         // 支持： 12  或  12-20
@@ -1428,7 +1430,9 @@ MeshGridIO::loadFlac3dGrid(const QString &fileName) const
         const QStringList tok = line.split(QRegularExpression("\\s+"), kSkipEmptyParts);
         if (tok.isEmpty()) continue;
 
-        if (tok[0] == "G") {
+        const QString keyword = tok[0].toUpper();
+
+        if (keyword == "G") {
             if (tok.size() < 5) continue;
             const int id = tok[1].toInt();
             NodeData n;
@@ -1437,7 +1441,7 @@ MeshGridIO::loadFlac3dGrid(const QString &fileName) const
             n.z = tok[4].toDouble();
             nodes[id] = n;
         }
-        else if (tok[0] == "Z") {
+        else if (keyword == "Z") {
             if (tok.size() < 4) continue;
 
             Zone z;
@@ -1462,7 +1466,7 @@ MeshGridIO::loadFlac3dGrid(const QString &fileName) const
 
             zones.push_back(z);
         }
-        else if (tok[0] == "ZGROUP") {
+        else if (keyword == "ZGROUP") {
             // 典型： ZGROUP "BIANPO" SLOT "1"
             if (tok.size() < 2) continue;
 
@@ -1476,6 +1480,10 @@ MeshGridIO::loadFlac3dGrid(const QString &fileName) const
                     break;
                 }
             }
+
+            seenSlots.insert(curSlot.isEmpty() ? QStringLiteral("<none>") : curSlot);
+
+            qInfo() << "[Flac3D] parse ZGROUP name=" << curGroupName << " slot=" << (curSlot.isEmpty() ? QStringLiteral("<none>") : curSlot);
 
             // 同行如果也带了 zone ids，也顺手解析（容错）
             for (int i = 2; i < tok.size(); ++i) {
@@ -1723,6 +1731,8 @@ MeshGridIO::loadFlac3dGrid(const QString &fileName) const
         grid->InsertNextCell(pyr->GetCellType(), pyr->GetPointIds());
         return true;
     };
+
+    qInfo() << "[Flac3D] all seen slots=" << QStringList(seenSlots.values()).join(',');
 
     // ========= 生成 cell 数据 + 组->cell 列表 =========
     QVector<int>     cellZoneIds;
