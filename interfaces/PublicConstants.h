@@ -83,6 +83,7 @@ constexpr char kActionGeomCreatePlanarPolygon[] = "geom_planar_polygon";
 
 // --- 布尔 ---
 constexpr char kActionGeomFuse[]             = "geom_boolean_fuse";
+constexpr char kActionGeomUnion[]            = "geom_boolean_union";
 constexpr char kActionGeomCut[]              = "geom_boolean_cut";
 constexpr char kActionGeomCommon[]           = "geom_boolean_common";
 

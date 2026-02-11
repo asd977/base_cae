@@ -76,6 +76,7 @@
 #include <EventManager.h>
 #include <GeomManagerInstance.h>
 #include "OccBooleanFuseWidget.h"
+#include "OccBooleanUnionWidget.h"
 #include "OccBooleanCutWidget.h"
 #include "OccBooleanCommonWidget.h"
 #include "GeometryImportWidget.h"
@@ -514,6 +515,7 @@ void PreProcessing::initRibbonActionConn()
     reg(PublicConstants::kActionGeomCreatePlanarRect,       [this]{ newGeometryRectangleWidget(); }); //矩形
 
     reg(PublicConstants::kActionGeomFuse,   [this]{ newOccBooleanFuseWidget();}); //fuse
+    reg(PublicConstants::kActionGeomUnion,  [this]{ newOccBooleanUnionWidget();}); //union keep domains
     reg(PublicConstants::kActionGeomCut,    [this]{ newOccBooleanCutWidget();}); //cut
     reg(PublicConstants::kActionGeomCommon, [this]{ newOccBooleanCommonWidget();}); //common
 }
@@ -787,6 +789,21 @@ void PreProcessing::newOccBooleanCutWidget(QString title)
     node->setData(0, ProjectNode::RoleUuid,   uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
     node->setData(0, ProjectNode::RoleKind,   "BooleanCut");
+    node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
+}
+
+void PreProcessing::newOccBooleanUnionWidget(QString title)
+{
+    if (!m_geomNode) return;
+    auto *w = new OccBooleanUnionWidget();
+    QString uuid = w->getUuid();
+    QString displayName = makeUniqueName(title, "BooleanUnion");
+    auto *node = new ProjectNode(displayName, uuid, (BasePage*)w);
+    m_geomNode->addChild(node);
+    w->setDisplayName(displayName);
+    node->setData(0, ProjectNode::RoleUuid,   uuid);
+    node->setData(0, ProjectNode::RoleModule, "Geometry");
+    node->setData(0, ProjectNode::RoleKind,   "BooleanUnion");
     node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 

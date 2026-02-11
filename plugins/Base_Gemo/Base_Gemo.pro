@@ -15,6 +15,7 @@ HEADERS += \
     BaseGeometryDialog\PolygonDialog.h\
     BaseGeometryDialog\RectangleDialog.h\
     OccBooleanFuseWidget.h \
+    OccBooleanUnionWidget.h \
     OccBooleanCutWidget.h \
     OccBooleanCommonWidget.h \
     OccShapeToVtk.h \
@@ -35,6 +36,7 @@ SOURCES += \
     BaseGeometryDialog\PolygonDialog.cpp\
     BaseGeometryDialog\RectangleDialog.cpp\
     OccBooleanFuseWidget.cpp \
+    OccBooleanUnionWidget.cpp \
     OccBooleanCutWidget.cpp \
     OccBooleanCommonWidget.cpp \
     OccShapeToVtk.cpp \

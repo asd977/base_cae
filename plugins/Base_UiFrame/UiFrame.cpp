@@ -490,20 +490,23 @@ void UiFrame::buildRibbonTabs()
         // }
 
         // ---------------------------------
-        // 4) 布尔（Boolean）：不合并，保留 Fuse/Cut/Common 三个节点入口
+        // 4) 布尔（Boolean）：不合并，保留 Fuse/Union/Cut/Common 四个节点入口
         // ---------------------------------
         {
             auto* panel = cate->addPannel("布尔");
 
             auto* actFuse   = makeAction(this, "", "&并集");
+            auto* actUnion  = makeAction(this, "", "联&合体");
             auto* actCut    = makeAction(this, "", "&差集");
             auto* actCommon = makeAction(this, "", "&交集");
 
             addActionToPanel(panel, actFuse,   3);
+            addActionToPanel(panel, actUnion,  3);
             addActionToPanel(panel, actCut,    3);
             addActionToPanel(panel, actCommon, 3);
 
             bindEvent(this, actFuse,   PublicConstants::kActionGeomFuse);
+            bindEvent(this, actUnion,  PublicConstants::kActionGeomUnion);
             bindEvent(this, actCut,    PublicConstants::kActionGeomCut);
             bindEvent(this, actCommon, PublicConstants::kActionGeomCommon);
         }
