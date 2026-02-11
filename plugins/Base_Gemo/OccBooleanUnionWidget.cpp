@@ -10,7 +10,8 @@
 
 #include <CustomComboBox.h>
 
-#include <BOPAlgo_Splitter.hxx>
+#include <BOPAlgo_Builder.hxx>
+#include <TopTools_ListOfShape.hxx>
 
 #include <vtkActor.h>
 #include <vtkProperty.h>
@@ -28,15 +29,20 @@ TopoDS_Shape unionShapesKeepDomains(const TopoDS_Shape& a, const TopoDS_Shape& b
         return TopoDS_Shape();
     }
 
-    BOPAlgo_Splitter splitter;
-    splitter.AddArgument(a);
-    splitter.AddArgument(b);
-    splitter.Perform();
-    if (splitter.HasErrors()) {
+    // Use General Fuse builder to create shared topology between domains.
+    // This keeps multi-domain solids while avoiding duplicated coincident faces.
+    TopTools_ListOfShape args;
+    args.Append(a);
+    args.Append(b);
+
+    BOPAlgo_Builder builder;
+    builder.SetArguments(args);
+    builder.Perform();
+    if (builder.HasErrors()) {
         return TopoDS_Shape();
     }
 
-    return splitter.Shape();
+    return builder.Shape();
 }
 }
 
