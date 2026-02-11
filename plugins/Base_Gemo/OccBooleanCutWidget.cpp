@@ -436,10 +436,6 @@ void OccBooleanCutWidget::onApplyClicked()
     m_geomMgr->appendGeomShapeObject(resultObj);
     m_geomMap.insert(resultUuid, resultObj);
 
-    if (vtkSmartPointer<vtkActor> resultActor = resultObj->getSurfActor()) {
-        resultActor->GetProperty()->SetColor(1.0, 1.0, 0.0);
-    }
-
     if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>()) {
         if (resultObj->getSurfActor()) {
             vis->addProp(resultUuid + "_face", resultObj->getSurfActor(), "Geometry", resultUuid + "_face");
@@ -471,6 +467,7 @@ void OccBooleanCutWidget::onApplyClicked()
         projectManagerService->setNodeDimmed(resultUuid, false);
     }
 
+    m_hoveredKey.clear();
     requestRender();
 }
 

@@ -511,10 +511,7 @@ void MaterialEntryWidget::updateAppliedListColors()
 {
     if (!m_appliedMatypesList) return;
 
-    const int selected = m_materialManager->selectedMatypeForEntry(m_entryId);
-
-    // 三种色：选中(淡黄)、预删除(淡红)、其他(无)
-    const QColor selectedColor(255, 243, 191);
+    // 两种色：预删除(淡红)、其他(无)
     const QColor preDeleteColor(255, 230, 230);
 
     for (int i = 0; i < m_appliedMatypesList->count(); ++i) {
@@ -528,8 +525,6 @@ void MaterialEntryWidget::updateAppliedListColors()
 
         if (m_preDeleteMatype >= 0 && v == m_preDeleteMatype) {
             it->setBackground(preDeleteColor);
-        } else if (selected >= 0 && v == selected) {
-            it->setBackground(selectedColor);
         } else {
             it->setBackground(QBrush());
         }
