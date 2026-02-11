@@ -230,12 +230,17 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString &fil
     auto* cd = grid->GetCellData();
     auto* fd = grid->GetFieldData();
 
-    auto* groupArr = cd ? vtkStringArray::SafeDownCast(cd->GetArray("GroupName")) : nullptr;
+    // GroupName 是 vtkStringArray（vtkAbstractArray），不能用 GetArray 取
+    auto* groupArr = cd ? vtkStringArray::SafeDownCast(cd->GetAbstractArray("GroupName")) : nullptr;
     auto* matypeArr = cd ? vtkIntArray::SafeDownCast(cd->GetArray("MATYPE")) : nullptr;
     auto* nodeIdArr = grid->GetPointData() ? vtkIntArray::SafeDownCast(grid->GetPointData()->GetArray("node_id")) : nullptr;
 
     QHash<QString, int> groupToPhysId;
     int nextPhysId = 1;
+
+    if (!groupArr) {
+        qWarning() << "[Flac3D] GroupName array missing or type mismatch; MATYPE fallback may collapse to default";
+    }
 
     const vtkIdType nCells = grid->GetNumberOfCells();
     for (vtkIdType cid = 0; cid < nCells; ++cid) {
@@ -319,6 +324,8 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString &fil
     if (matypeArr) {
         grid->GetCellData()->SetScalars(matypeArr);
     }
+
+    qInfo() << "[Flac3D] unique group->MATYPE count=" << groupToPhysId.size();
 
     return grid;
 }
