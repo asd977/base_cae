@@ -6,7 +6,6 @@
 
 #include <qcombobox.h>
 #include <qlistview.h>
-#include <QAbstractItemView>
 #include <core_global.h>
 
 class CORE_EXPORT CustomComboBox : public QComboBox
@@ -16,22 +15,8 @@ class CORE_EXPORT CustomComboBox : public QComboBox
 public:
     CustomComboBox(QWidget *parent = nullptr) : QComboBox(parent) {
         // 设置自定义的视图
-        auto *listView = new QListView(this);
-        listView->setMouseTracking(true);
-        if (listView->viewport()) {
-            listView->viewport()->setMouseTracking(true);
-        }
-        setView(listView);
-
-        // 鼠标悬浮高亮（鼠标路径）
+        setView(new QListView(this));
         connect(view(), &QListView::entered, this, &CustomComboBox::onItemHovered);
-        // 鼠标/键盘高亮（Qt 内置路径）
-        connect(this, QOverload<int>::of(&QComboBox::highlighted),
-                this, [this](int index) {
-                    if (index >= 0) {
-                        emit itemHovered(index);
-                    }
-                });
     }
 
 signals:

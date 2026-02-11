@@ -291,6 +291,9 @@ void OccBooleanFuseWidget::setDimmed(const QString &key, bool on)
 
 void OccBooleanFuseWidget::requestRender()
 {
+    if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>()) {
+        vis->render();
+    }
 }
 
 void OccBooleanFuseWidget::removeComboItem(QComboBox *combo, const QString &key)

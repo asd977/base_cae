@@ -483,8 +483,8 @@ void MaterialEntryWidget::onDropdownClosed()
 
     updateAppliedListColors();
 
-    // 下拉关闭后仅保留数据状态，不保留“下拉交互导致”的网格临时高亮，恢复网格原本着色。
-    m_materialManager->clearMatypeHighlight(m_entryId);
+    // 下拉关闭后仅取消 Preview，并恢复到该条目的应有高亮状态（Selected / PreDelete / Applied）。
+    m_materialManager->refreshMatypeHighlight(m_entryId);
 }
 
 void MaterialEntryWidget::onRemoveMatypeClicked()
