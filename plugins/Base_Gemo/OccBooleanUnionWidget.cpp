@@ -13,6 +13,7 @@
 #include <BOPAlgo_CellsBuilder.hxx>
 #include <BOPAlgo_GlueEnum.hxx>
 #include <TopTools_ListOfShape.hxx>
+#include <ShapeUpgrade_UnifySameDomain.hxx>
 
 #include <vtkActor.h>
 #include <vtkProperty.h>
@@ -50,7 +51,12 @@ TopoDS_Shape unionShapesKeepDomains(const TopoDS_Shape& a, const TopoDS_Shape& b
 
     builder.AddAllToResult();
     builder.MakeContainers();
-    return builder.Shape();
+
+    // Try to merge same-domain duplicates early at geometry stage
+    // so users can see the shared interface before meshing/export.
+    ShapeUpgrade_UnifySameDomain unifier(builder.Shape(), true, true, false);
+    unifier.Build();
+    return unifier.Shape();
 }
 }
 
