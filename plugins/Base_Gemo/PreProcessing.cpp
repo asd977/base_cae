@@ -216,7 +216,8 @@ void PreProcessing::removeNode(const QString& uuid)
             node->setPage(nullptr);
         }
 
-        delete m_geomNode->takeChild(i);
+        m_geomNode->removeChild(node);
+        delete node;
         break;
     }
 }
