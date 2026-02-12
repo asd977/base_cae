@@ -9,6 +9,34 @@ struct MshPickMap;
 template <typename T> class vtkSmartPointer;
 class vtkUnstructuredGrid;
 
+struct EdgeControlRule
+{
+    QString edgeIds;
+    double size = 1.0;
+    int divisions = 10;
+    double bias = 1.0;
+    bool hardConstraint = false;
+};
+
+struct FaceControlRule
+{
+    QString faceIds;
+    double minSize = 0.2;
+    double maxSize = 1.0;
+    bool curvatureRefine = true;
+    int curvatureLevel = 2;
+};
+
+struct VolumeControlRule
+{
+    QString volumeIds;
+    double minSize = 0.5;
+    double maxSize = 2.0;
+    double growthRate = 1.2;
+    bool boundaryLayer = false;
+    int layerCount = 3;
+};
+
 struct MeshModuleControllerService
 {
     virtual ~MeshModuleControllerService() {}
@@ -39,6 +67,13 @@ struct MeshModuleControllerService
                                         int value,
                                         const QString& groupName,
                                         QString* errMsg = nullptr) = 0;
+
+    virtual void setEdgeControlRules(const QVector<EdgeControlRule>& rules) = 0;
+    virtual void setFaceControlRules(const QVector<FaceControlRule>& rules) = 0;
+    virtual void setVolumeControlRules(const QVector<VolumeControlRule>& rules) = 0;
+    virtual QVector<EdgeControlRule> edgeControlRules() const = 0;
+    virtual QVector<FaceControlRule> faceControlRules() const = 0;
+    virtual QVector<VolumeControlRule> volumeControlRules() const = 0;
 };
 
 

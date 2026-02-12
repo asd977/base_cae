@@ -3,6 +3,7 @@
 
 #include <ServiceRegistry.h>
 #include <services/PreProcessingService.h>
+#include <services/MeshModuleControllerService.h>
 #include <QMessageBox>
 #include <QTableWidgetItem>
 
@@ -30,12 +31,12 @@ MeshEdgeControlWidget::MeshEdgeControlWidget(QWidget *parent)
 }
 
 MeshEdgeControlWidget::~MeshEdgeControlWidget(){ beforeUnload(); delete ui; }
-void MeshEdgeControlWidget::beforeLoad(){ rebuildEdgeCandidates(); refreshSummary(); }
+void MeshEdgeControlWidget::beforeLoad(){ rebuildEdgeCandidates(); loadRulesFromService(); refreshSummary(); }
 void MeshEdgeControlWidget::beforeUnload(){ if(auto* s=ServiceRegistry::instance().getService<PreProcessingService>()) s->clearEntityHighlight(); }
 
-void MeshEdgeControlWidget::onAddControl(){ QString err; if(!validateInput(err)){ QMessageBox::warning(this,tr("边控制"),err); return;} auto item=collectFormData(); m_items.push_back(item); appendOrUpdateTableRow(ui->tableControls->rowCount(),item); onResetForm(); }
-void MeshEdgeControlWidget::onUpdateControl(){ int row=ui->tableControls->currentRow(); if(row<0||row>=m_items.size())return; QString err; if(!validateInput(err)){ QMessageBox::warning(this,tr("边控制"),err); return;} auto item=collectFormData(); m_items[row]=item; appendOrUpdateTableRow(row,item); refreshSummary(); }
-void MeshEdgeControlWidget::onDeleteControl(){ int row=ui->tableControls->currentRow(); if(row<0||row>=m_items.size())return; m_items.removeAt(row); ui->tableControls->removeRow(row); onResetForm(); }
+void MeshEdgeControlWidget::onAddControl(){ QString err; if(!validateInput(err)){ QMessageBox::warning(this,tr("边控制"),err); return;} auto item=collectFormData(); m_items.push_back(item); appendOrUpdateTableRow(ui->tableControls->rowCount(),item); syncRulesToService(); onResetForm(); }
+void MeshEdgeControlWidget::onUpdateControl(){ int row=ui->tableControls->currentRow(); if(row<0||row>=m_items.size())return; QString err; if(!validateInput(err)){ QMessageBox::warning(this,tr("边控制"),err); return;} auto item=collectFormData(); m_items[row]=item; appendOrUpdateTableRow(row,item); syncRulesToService(); refreshSummary(); }
+void MeshEdgeControlWidget::onDeleteControl(){ int row=ui->tableControls->currentRow(); if(row<0||row>=m_items.size())return; m_items.removeAt(row); ui->tableControls->removeRow(row); syncRulesToService(); onResetForm(); }
 void MeshEdgeControlWidget::onResetForm(){ ui->editEdgeIds->clear(); ui->spinSize->setValue(1.0); ui->spinDivisions->setValue(10); ui->spinBias->setValue(1.0); ui->checkHardConstraint->setChecked(false); ui->tableControls->clearSelection(); refreshButtons(); refreshSummary(); }
 void MeshEdgeControlWidget::onSelectionChanged(){ int row=ui->tableControls->currentRow(); if(row>=0&&row<m_items.size()) fillFormData(m_items[row]); refreshButtons(); }
 void MeshEdgeControlWidget::onParameterEdited(){ refreshButtons(); refreshSummary(); }
@@ -54,3 +55,23 @@ void MeshEdgeControlWidget::refreshSummary(){ ui->labelSummary->setText(tr("已�
 void MeshEdgeControlWidget::rebuildEdgeCandidates(){ ui->cmbEntity->clear(); m_entityIds.clear(); if(auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) m_entityIds = svc->listEntityIds(1); for(const auto& id:m_entityIds) ui->cmbEntity->addItem(tr("边 #%1").arg(id), id.toInt()); updateEntityUiState(); refreshSummary(); }
 void MeshEdgeControlWidget::clearHighlight(){ if(auto* s=ServiceRegistry::instance().getService<PreProcessingService>()) s->clearEntityHighlight(); }
 void MeshEdgeControlWidget::updateEntityUiState(){ bool has=!m_entityIds.isEmpty(); ui->cmbEntity->setEnabled(has); ui->btnAppendEntity->setEnabled(has); ui->btnHighlightEntity->setEnabled(has); }
+
+void MeshEdgeControlWidget::syncRulesToService()
+{
+    auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!svc) return;
+    QVector<EdgeControlRule> rules;
+    rules.reserve(m_items.size());
+    for (const auto& it : m_items) { EdgeControlRule r; r.edgeIds=it.edgeIds; r.size=it.size; r.divisions=it.divisions; r.bias=it.bias; r.hardConstraint=it.hardConstraint; rules.push_back(r);}
+    svc->setEdgeControlRules(rules);
+}
+
+void MeshEdgeControlWidget::loadRulesFromService()
+{
+    auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!svc) return;
+    const auto rules = svc->edgeControlRules();
+    m_items.clear();
+    ui->tableControls->setRowCount(0);
+    for (const auto& r : rules) { EdgeControlItem i; i.edgeIds=r.edgeIds; i.size=r.size; i.divisions=r.divisions; i.bias=r.bias; i.hardConstraint=r.hardConstraint; m_items.push_back(i); appendOrUpdateTableRow(ui->tableControls->rowCount(), i); }
+}

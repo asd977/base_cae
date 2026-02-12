@@ -3,6 +3,7 @@
 
 #include <ServiceRegistry.h>
 #include <services/PreProcessingService.h>
+#include <services/MeshModuleControllerService.h>
 #include <QMessageBox>
 #include <QTableWidgetItem>
 
@@ -31,12 +32,12 @@ MeshVolumeControlWidget::MeshVolumeControlWidget(QWidget *parent)
 }
 
 MeshVolumeControlWidget::~MeshVolumeControlWidget(){ beforeUnload(); delete ui; }
-void MeshVolumeControlWidget::beforeLoad(){ rebuildVolumeCandidates(); refreshSummary(); }
+void MeshVolumeControlWidget::beforeLoad(){ rebuildVolumeCandidates(); loadRulesFromService(); refreshSummary(); }
 void MeshVolumeControlWidget::beforeUnload(){ if(auto* s=ServiceRegistry::instance().getService<PreProcessingService>()) s->clearEntityHighlight(); }
 
-void MeshVolumeControlWidget::onAddControl(){ QString err; if(!validateInput(err)){ QMessageBox::warning(this,tr("体控制"),err); return;} auto item=collectFormData(); m_items.push_back(item); appendOrUpdateTableRow(ui->tableControls->rowCount(),item); onResetForm(); }
-void MeshVolumeControlWidget::onUpdateControl(){ int row=ui->tableControls->currentRow(); if(row<0||row>=m_items.size())return; QString err; if(!validateInput(err)){ QMessageBox::warning(this,tr("体控制"),err); return;} auto item=collectFormData(); m_items[row]=item; appendOrUpdateTableRow(row,item); refreshSummary(); }
-void MeshVolumeControlWidget::onDeleteControl(){ int row=ui->tableControls->currentRow(); if(row<0||row>=m_items.size())return; m_items.removeAt(row); ui->tableControls->removeRow(row); onResetForm(); }
+void MeshVolumeControlWidget::onAddControl(){ QString err; if(!validateInput(err)){ QMessageBox::warning(this,tr("体控制"),err); return;} auto item=collectFormData(); m_items.push_back(item); appendOrUpdateTableRow(ui->tableControls->rowCount(),item); syncRulesToService(); onResetForm(); }
+void MeshVolumeControlWidget::onUpdateControl(){ int row=ui->tableControls->currentRow(); if(row<0||row>=m_items.size())return; QString err; if(!validateInput(err)){ QMessageBox::warning(this,tr("体控制"),err); return;} auto item=collectFormData(); m_items[row]=item; appendOrUpdateTableRow(row,item); syncRulesToService(); refreshSummary(); }
+void MeshVolumeControlWidget::onDeleteControl(){ int row=ui->tableControls->currentRow(); if(row<0||row>=m_items.size())return; m_items.removeAt(row); ui->tableControls->removeRow(row); syncRulesToService(); onResetForm(); }
 void MeshVolumeControlWidget::onResetForm(){ ui->editVolumeIds->clear(); ui->spinMinSize->setValue(0.5); ui->spinMaxSize->setValue(2.0); ui->spinGrowthRate->setValue(1.2); ui->checkBoundaryLayer->setChecked(false); ui->spinLayerCount->setValue(3); ui->tableControls->clearSelection(); refreshButtons(); refreshSummary(); }
 void MeshVolumeControlWidget::onSelectionChanged(){ int row=ui->tableControls->currentRow(); if(row>=0&&row<m_items.size()) fillFormData(m_items[row]); refreshButtons(); }
 void MeshVolumeControlWidget::onParameterEdited(){ ui->spinLayerCount->setEnabled(ui->checkBoundaryLayer->isChecked()); refreshButtons(); refreshSummary(); }
@@ -55,3 +56,22 @@ void MeshVolumeControlWidget::refreshSummary(){ const QString layerHint=ui->chec
 void MeshVolumeControlWidget::rebuildVolumeCandidates(){ ui->cmbEntity->clear(); m_entityIds.clear(); if(auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) m_entityIds=svc->listEntityIds(3); for(const auto& id:m_entityIds) ui->cmbEntity->addItem(tr("体 #%1").arg(id), id.toInt()); updateEntityUiState(); refreshSummary(); }
 void MeshVolumeControlWidget::clearHighlight(){ if(auto* s=ServiceRegistry::instance().getService<PreProcessingService>()) s->clearEntityHighlight(); }
 void MeshVolumeControlWidget::updateEntityUiState(){ bool has=!m_entityIds.isEmpty(); ui->cmbEntity->setEnabled(has); ui->btnAppendEntity->setEnabled(has); ui->btnHighlightEntity->setEnabled(has); }
+
+void MeshVolumeControlWidget::syncRulesToService()
+{
+    auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!svc) return;
+    QVector<VolumeControlRule> rules;
+    for (const auto& it : m_items) { VolumeControlRule r; r.volumeIds=it.volumeIds; r.minSize=it.minSize; r.maxSize=it.maxSize; r.growthRate=it.growthRate; r.boundaryLayer=it.boundaryLayer; r.layerCount=it.layerCount; rules.push_back(r); }
+    svc->setVolumeControlRules(rules);
+}
+
+void MeshVolumeControlWidget::loadRulesFromService()
+{
+    auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!svc) return;
+    const auto rules = svc->volumeControlRules();
+    m_items.clear();
+    ui->tableControls->setRowCount(0);
+    for (const auto& r : rules) { VolumeControlItem i; i.volumeIds=r.volumeIds; i.minSize=r.minSize; i.maxSize=r.maxSize; i.growthRate=r.growthRate; i.boundaryLayer=r.boundaryLayer; i.layerCount=r.layerCount; m_items.push_back(i); appendOrUpdateTableRow(ui->tableControls->rowCount(), i); }
+}

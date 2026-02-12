@@ -53,6 +53,13 @@ public:
                                 const QString& groupName,
                                 QString* errMsg = nullptr) override;
 
+    void setEdgeControlRules(const QVector<EdgeControlRule>& rules) override;
+    void setFaceControlRules(const QVector<FaceControlRule>& rules) override;
+    void setVolumeControlRules(const QVector<VolumeControlRule>& rules) override;
+    QVector<EdgeControlRule> edgeControlRules() const override;
+    QVector<FaceControlRule> faceControlRules() const override;
+    QVector<VolumeControlRule> volumeControlRules() const override;
+
 private:
     void initAction();
 
@@ -100,6 +107,9 @@ private:
     vtkSmartPointer<vtkUnstructuredGrid> m_previewLineGrid;
 
     vtkSmartPointer<vtkDataSetMapper> m_previewMapper;
+    QVector<EdgeControlRule> m_edgeRules;
+    QVector<FaceControlRule> m_faceRules;
+    QVector<VolumeControlRule> m_volumeRules;
     vtkSmartPointer<vtkActor> m_previewActor;
     vtkSmartPointer<vtkUnstructuredGrid> m_previewGrid;
 };

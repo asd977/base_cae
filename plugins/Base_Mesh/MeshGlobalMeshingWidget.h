@@ -6,6 +6,9 @@
 #include <gmsh.h>
 #include <BasePage.h>
 #include <QThread>
+#include <algorithm>
+#include <set>
+#include <services/MeshModuleControllerService.h>
 
 class QThread;
 
@@ -34,6 +37,10 @@ struct Params
     bool exportMsh = true;
     bool exportVtk = true;
     bool exportNas = true;
+
+    QVector<EdgeControlRule> edgeRules;
+    QVector<FaceControlRule> faceRules;
+    QVector<VolumeControlRule> volumeRules;
 };
 
 }
@@ -51,6 +58,81 @@ signals:
     void finishedFail(const QString& err);
 
 public slots:
+    static std::set<int> parseIdSet(const QString& text)
+    {
+        std::set<int> ids;
+        const auto parts = text.split(',', Qt::SkipEmptyParts);
+        for (QString p : parts) {
+            p = p.trimmed();
+            if (p.contains('-')) {
+                const auto lr = p.split('-', Qt::SkipEmptyParts);
+                if (lr.size() == 2) {
+                    bool ok1=false, ok2=false;
+                    int a=lr[0].toInt(&ok1), b=lr[1].toInt(&ok2);
+                    if (ok1 && ok2) { if (a>b) std::swap(a,b); for (int i=a;i<=b;++i) ids.insert(i); }
+                }
+            } else { bool ok=false; int v=p.toInt(&ok); if (ok) ids.insert(v); }
+        }
+        return ids;
+    }
+
+    std::set<int> collectBoundaryPoints(int dim, int tag)
+    {
+        std::set<int> pts;
+        std::vector<std::pair<int,int>> level1;
+        try { gmsh::model::getBoundary({{dim, tag}}, level1, false, false, false); } catch (...) { return pts; }
+
+        std::vector<std::pair<int,int>> level2;
+        for (const auto& dt : level1) {
+            if (dt.first == 0) pts.insert(dt.second);
+            else {
+                std::vector<std::pair<int,int>> b;
+                try { gmsh::model::getBoundary({dt}, b, false, false, false); } catch (...) { continue; }
+                for (const auto& p : b) {
+                    if (p.first == 0) pts.insert(p.second);
+                    else {
+                        std::vector<std::pair<int,int>> b2;
+                        try { gmsh::model::getBoundary({p}, b2, false, false, false); } catch (...) { continue; }
+                        for (const auto& pp : b2) if (pp.first == 0) pts.insert(pp.second);
+                    }
+                }
+            }
+        }
+        return pts;
+    }
+
+    void setPointSizeFromEntity(int dim, int tag, double size)
+    {
+        const auto pts = collectBoundaryPoints(dim, tag);
+        for (int p : pts) {
+            try { gmsh::model::mesh::setSize({{0, p}}, size); } catch (...) {}
+        }
+    }
+
+    void applyLocalControls()
+    {
+        for (const auto& r : m_p.edgeRules) {
+            const auto ids = parseIdSet(r.edgeIds);
+            for (int id : ids) {
+                try { gmsh::model::mesh::setTransfiniteCurve(id, r.divisions, "Progression", r.bias); } catch (...) {}
+                setPointSizeFromEntity(1, id, r.size);
+            }
+        }
+
+        for (const auto& r : m_p.faceRules) {
+            const auto ids = parseIdSet(r.faceIds);
+            const double target = 0.5 * (r.minSize + r.maxSize);
+            for (int id : ids) setPointSizeFromEntity(2, id, target);
+        }
+
+        for (const auto& r : m_p.volumeRules) {
+            const auto ids = parseIdSet(r.volumeIds);
+            const double target = 0.5 * (r.minSize + r.maxSize);
+            for (int id : ids) setPointSizeFromEntity(3, id, target);
+        }
+    }
+
+
     void run()
     {
         try
@@ -120,6 +202,8 @@ public slots:
             gmsh::option::setNumber("Mesh.MeshSizeFactor",          m_p.sizeFactor);
             gmsh::option::setNumber("Mesh.ElementOrder",            m_p.elementOrder);
             gmsh::option::setNumber("Mesh.Smoothing",               m_p.smoothing);
+
+            applyLocalControls();
 
             // 2D/3D 单元类型
             if (m_p.dimension == 2)

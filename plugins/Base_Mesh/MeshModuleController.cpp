@@ -75,7 +75,9 @@ bool MeshModuleController::loadProject()
 
 void MeshModuleController::closeProject()
 {
-    // TODO: 释放/清理网格模块相关资源
+    m_edgeRules.clear();
+    m_faceRules.clear();
+    m_volumeRules.clear();
 }
 
 QSet<int> MeshModuleController::getAvailableMatypes() const
@@ -752,4 +754,35 @@ bool MeshModuleController::groupByCoordinateRange(double xmin, double xmax,
     syncPickMapGroupingFromGrid(m_importedGrid);
     displayCurrentGrid();
     return true;
+}
+
+
+void MeshModuleController::setEdgeControlRules(const QVector<EdgeControlRule>& rules)
+{
+    m_edgeRules = rules;
+}
+
+void MeshModuleController::setFaceControlRules(const QVector<FaceControlRule>& rules)
+{
+    m_faceRules = rules;
+}
+
+void MeshModuleController::setVolumeControlRules(const QVector<VolumeControlRule>& rules)
+{
+    m_volumeRules = rules;
+}
+
+QVector<EdgeControlRule> MeshModuleController::edgeControlRules() const
+{
+    return m_edgeRules;
+}
+
+QVector<FaceControlRule> MeshModuleController::faceControlRules() const
+{
+    return m_faceRules;
+}
+
+QVector<VolumeControlRule> MeshModuleController::volumeControlRules() const
+{
+    return m_volumeRules;
 }

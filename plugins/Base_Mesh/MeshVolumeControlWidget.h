@@ -5,6 +5,7 @@
 #include <QMap>
 #include <QVector>
 #include <QStringList>
+#include <services/MeshModuleControllerService.h>
 namespace Ui {
 class MeshVolumeControlWidget;
 }
@@ -53,6 +54,8 @@ private:
     void rebuildVolumeCandidates();
     void clearHighlight();
     void updateEntityUiState();
+    void syncRulesToService();
+    void loadRulesFromService();
 
 private:
     Ui::MeshVolumeControlWidget *ui;

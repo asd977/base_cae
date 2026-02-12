@@ -5,6 +5,7 @@
 #include <QMap>
 #include <QVector>
 #include <QStringList>
+#include <services/MeshModuleControllerService.h>
 
 namespace Ui {
 class MeshEdgeControlWidget;
@@ -53,6 +54,8 @@ private:
     void rebuildEdgeCandidates();
     void clearHighlight();
     void updateEntityUiState();
+    void syncRulesToService();
+    void loadRulesFromService();
 
 private:
     Ui::MeshEdgeControlWidget *ui;

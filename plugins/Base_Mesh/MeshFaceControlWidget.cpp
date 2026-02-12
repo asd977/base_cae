@@ -3,6 +3,7 @@
 
 #include <ServiceRegistry.h>
 #include <services/PreProcessingService.h>
+#include <services/MeshModuleControllerService.h>
 #include <QMessageBox>
 #include <QTableWidgetItem>
 
@@ -30,12 +31,12 @@ MeshFaceControlWidget::MeshFaceControlWidget(QWidget *parent)
 }
 
 MeshFaceControlWidget::~MeshFaceControlWidget(){ beforeUnload(); delete ui; }
-void MeshFaceControlWidget::beforeLoad(){ rebuildFaceCandidates(); refreshSummary(); }
+void MeshFaceControlWidget::beforeLoad(){ rebuildFaceCandidates(); loadRulesFromService(); refreshSummary(); }
 void MeshFaceControlWidget::beforeUnload(){ if(auto* s=ServiceRegistry::instance().getService<PreProcessingService>()) s->clearEntityHighlight(); }
 
-void MeshFaceControlWidget::onAddControl(){ QString err; if(!validateInput(err)){ QMessageBox::warning(this,tr("面控制"),err); return;} auto item=collectFormData(); m_items.push_back(item); appendOrUpdateTableRow(ui->tableControls->rowCount(),item); onResetForm(); refreshSummary(); }
-void MeshFaceControlWidget::onUpdateControl(){ int row=ui->tableControls->currentRow(); if(row<0||row>=m_items.size()) return; QString err; if(!validateInput(err)){ QMessageBox::warning(this,tr("面控制"),err); return;} auto item=collectFormData(); m_items[row]=item; appendOrUpdateTableRow(row,item); refreshSummary(); }
-void MeshFaceControlWidget::onDeleteControl(){ int row=ui->tableControls->currentRow(); if(row<0||row>=m_items.size()) return; m_items.removeAt(row); ui->tableControls->removeRow(row); onResetForm(); }
+void MeshFaceControlWidget::onAddControl(){ QString err; if(!validateInput(err)){ QMessageBox::warning(this,tr("面控制"),err); return;} auto item=collectFormData(); m_items.push_back(item); appendOrUpdateTableRow(ui->tableControls->rowCount(),item); syncRulesToService(); onResetForm(); refreshSummary(); }
+void MeshFaceControlWidget::onUpdateControl(){ int row=ui->tableControls->currentRow(); if(row<0||row>=m_items.size()) return; QString err; if(!validateInput(err)){ QMessageBox::warning(this,tr("面控制"),err); return;} auto item=collectFormData(); m_items[row]=item; appendOrUpdateTableRow(row,item); syncRulesToService(); refreshSummary(); }
+void MeshFaceControlWidget::onDeleteControl(){ int row=ui->tableControls->currentRow(); if(row<0||row>=m_items.size()) return; m_items.removeAt(row); ui->tableControls->removeRow(row); syncRulesToService(); onResetForm(); }
 void MeshFaceControlWidget::onResetForm(){ ui->editFaceIds->clear(); ui->spinMinSize->setValue(0.2); ui->spinMaxSize->setValue(1.0); ui->checkCurvature->setChecked(true); ui->spinCurvatureLevel->setValue(2); ui->tableControls->clearSelection(); refreshButtons(); refreshSummary(); }
 void MeshFaceControlWidget::onSelectionChanged(){ int row=ui->tableControls->currentRow(); if(row>=0&&row<m_items.size()) fillFormData(m_items[row]); refreshButtons(); }
 void MeshFaceControlWidget::onParameterEdited(){ ui->spinCurvatureLevel->setEnabled(ui->checkCurvature->isChecked()); refreshButtons(); refreshSummary(); }
@@ -56,3 +57,22 @@ void MeshFaceControlWidget::rebuildFaceCandidates(){ ui->cmbEntity->clear(); m_e
 void MeshFaceControlWidget::clearHighlight(){ if(auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) svc->clearEntityHighlight(); }
 void MeshFaceControlWidget::updateEntityUiState(){ const bool hasEntities=!m_entityIds.isEmpty(); ui->cmbEntity->setEnabled(hasEntities); ui->btnAppendEntity->setEnabled(hasEntities); ui->btnHighlightEntity->setEnabled(hasEntities); }
 bool MeshFaceControlWidget::appendEntityIdToEdit(int id){ QStringList parts=ui->editFaceIds->text().trimmed().split(',',Qt::SkipEmptyParts); QString idStr=QString::number(id); if(!parts.contains(idStr)){ parts.append(idStr); ui->editFaceIds->setText(parts.join(',')); } return true; }
+
+void MeshFaceControlWidget::syncRulesToService()
+{
+    auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!svc) return;
+    QVector<FaceControlRule> rules;
+    for (const auto& it : m_items) { FaceControlRule r; r.faceIds=it.faceIds; r.minSize=it.minSize; r.maxSize=it.maxSize; r.curvatureRefine=it.curvatureRefine; r.curvatureLevel=it.curvatureLevel; rules.push_back(r); }
+    svc->setFaceControlRules(rules);
+}
+
+void MeshFaceControlWidget::loadRulesFromService()
+{
+    auto* svc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!svc) return;
+    const auto rules = svc->faceControlRules();
+    m_items.clear();
+    ui->tableControls->setRowCount(0);
+    for (const auto& r : rules) { FaceControlItem i; i.faceIds=r.faceIds; i.minSize=r.minSize; i.maxSize=r.maxSize; i.curvatureRefine=r.curvatureRefine; i.curvatureLevel=r.curvatureLevel; m_items.push_back(i); appendOrUpdateTableRow(ui->tableControls->rowCount(), i); }
+}

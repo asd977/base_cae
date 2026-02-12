@@ -5,6 +5,7 @@
 #include <QMap>
 #include <QVector>
 #include <QStringList>
+#include <services/MeshModuleControllerService.h>
 
 class vtkActor;
 
@@ -55,6 +56,8 @@ private:
     void rebuildFaceCandidates();
     void clearHighlight();
     void updateEntityUiState();
+    void syncRulesToService();
+    void loadRulesFromService();
     bool appendEntityIdToEdit(int id);
 
 private:

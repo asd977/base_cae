@@ -180,6 +180,15 @@ void MeshGlobalMeshingWidget::onGenerate()
     Params p = collectParams();
 
     p.inputStepPath = filePath;
+    if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>()) {
+        p.edgeRules = meshSvc->edgeControlRules();
+        p.faceRules = meshSvc->faceControlRules();
+        p.volumeRules = meshSvc->volumeControlRules();
+        appendLog(QString("读取局部控制：边%1 面%2 体%3")
+                      .arg(p.edgeRules.size())
+                      .arg(p.faceRules.size())
+                      .arg(p.volumeRules.size()));
+    }
 
     if (p.lenMin > p.lenMax)
     {
