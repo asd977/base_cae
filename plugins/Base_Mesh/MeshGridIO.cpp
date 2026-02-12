@@ -605,7 +605,7 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg)
                     if (ok) nodeIds.push_back(nid);
                 }
 
-                // ========== 体单元：只导入 tet/hex（高阶取角点）==========
+                // ========== 体单元：导入 tet/hex/wedge/pyramid（高阶取角点）==========
                 int vtkType = -1;
                 int needN = 0;
 
@@ -615,6 +615,12 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg)
                 } else if (elemType == 5 || elemType == 17 || elemType == 12) { // hexa8 / hexa20 / hexa27
                     vtkType = VTK_HEXAHEDRON;
                     needN   = 8;
+                } else if (elemType == 6 || elemType == 13 || elemType == 18) { // prism6 / prism18 / prism15
+                    vtkType = VTK_WEDGE;
+                    needN   = 6;
+                } else if (elemType == 7 || elemType == 14 || elemType == 19) { // pyramid5 / pyramid14 / pyramid13
+                    vtkType = VTK_PYRAMID;
+                    needN   = 5;
                 }
 
                 if (vtkType != -1)
@@ -624,7 +630,7 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg)
                                     .arg(elemId).arg(elemType).arg(nodeIds.size()));
                     }
 
-                    vtkIdType ptIds[8]; // tet最多4，hex最多8
+                    vtkIdType ptIds[8]; // tet4/hex8/wedge6/pyramid5（最多8）
                     for (int k = 0; k < needN; ++k)
                     {
                         const int nid = nodeIds[k];
@@ -729,7 +735,7 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg)
         return fail("no $Nodes section found (only msh2.2 supported in this loader)");
     }
     if (!haveElements || grid->GetNumberOfCells() == 0) {
-        return fail("no volume cells imported (missing $Elements or no tet/hex found)");
+        return fail("no volume cells imported (missing $Elements or no supported 3D cells found)");
     }
 
     // ======================= 后处理：去重点集 =======================
