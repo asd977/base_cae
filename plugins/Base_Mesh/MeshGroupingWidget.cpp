@@ -10,7 +10,6 @@
 #include <cmath>
 #include <QSet>
 #include <algorithm>
-#include <cstring>
 #include <limits>
 #include <QMessageBox>
 #include <QTableWidgetItem>
@@ -245,23 +244,14 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
         }
     };
 
-    auto packSortedFace = [](vtkIdList* ids)->QByteArray {
-        QVector<int> v;
-        if (!ids) return QByteArray();
-        v.reserve((int)ids->GetNumberOfIds());
-        for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i) {
-            const vtkIdType pid = ids->GetId(i);
-            if (pid < 0 || pid > std::numeric_limits<int>::max()) return QByteArray();
-            v.push_back((int)pid);
-        }
-        std::sort(v.begin(), v.end());
-        QByteArray k;
-        k.resize((int)v.size() * (int)sizeof(int));
-        if (!v.isEmpty()) std::memcpy(k.data(), v.constData(), (size_t)k.size());
-        return k;
+    struct FaceEntry {
+        qint64 key = -1;
+        QVector<int> pointIds;
     };
 
-    QHash<QByteArray, qint64> faceKeyIndex;
+    QVector<FaceEntry> allFaces;
+    allFaces.reserve((int)grid->GetNumberOfCells() * 4);
+
     const vtkIdType nVolCells = grid->GetNumberOfCells();
     for (vtkIdType cid = 0; cid < nVolCells; ++cid) {
         vtkCell* volCell = grid->GetCell(cid);
@@ -270,15 +260,23 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
         for (int fi = 0; fi < nFaces; ++fi) {
             vtkCell* face = volCell->GetFace(fi);
             if (!face) continue;
-            QByteArray key = packSortedFace(face->GetPointIds());
-            if (key.isEmpty()) continue;
-            const qint64 faceKey = (qint64(cid) << 4) | (qint64(fi) & 0xF);
-            faceKeyIndex.insert(key, faceKey);
+            vtkIdList* ids = face->GetPointIds();
+            if (!ids || ids->GetNumberOfIds() < 3) continue;
+
+            FaceEntry e;
+            e.key = (qint64(cid) << 4) | (qint64(fi) & 0xF);
+            e.pointIds.reserve((int)ids->GetNumberOfIds());
+            for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i) {
+                const vtkIdType pid = ids->GetId(i);
+                if (pid < 0 || pid > std::numeric_limits<int>::max()) continue;
+                e.pointIds.push_back((int)pid);
+            }
+            if (e.pointIds.size() >= 3)
+                allFaces.push_back(e);
         }
     }
 
     QHash<int, QSet<int>> regionToPointIds;
-    QHash<int, QVector<qint64>> regionToFaceKeys;
     if (regionArr) {
         const vtkIdType nCells = poly->GetNumberOfCells();
         for (vtkIdType cid = 0; cid < nCells; ++cid) {
@@ -286,9 +284,6 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
             vtkCell *cell = poly->GetCell(cid);
             if (!cell) continue;
             vtkIdList *ids = cell->GetPointIds();
-            QByteArray key = packSortedFace(ids);
-            auto hit = faceKeyIndex.find(key);
-            if (hit != faceKeyIndex.end()) regionToFaceKeys[region].push_back(hit.value());
             for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i) {
                 const vtkIdType surfPid = ids->GetId(i);
                 int originalPid = static_cast<int>(surfPid);
@@ -310,20 +305,8 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
             byRegion->SetExtractionModeToSpecifiedRegions();
             byRegion->AddSpecifiedRegion(r);
             byRegion->Update();
-
             vtkPolyData *regionPoly = vtkPolyData::SafeDownCast(byRegion->GetOutput());
             collectPointsFromPoly(regionPoly, r, regionToPointIds);
-            if (regionPoly) {
-                const vtkIdType nRC = regionPoly->GetNumberOfCells();
-                for (vtkIdType rcid = 0; rcid < nRC; ++rcid) {
-                    vtkCell* surfCell = regionPoly->GetCell(rcid);
-                    if (!surfCell) continue;
-                    QByteArray key = packSortedFace(surfCell->GetPointIds());
-                    if (key.isEmpty()) continue;
-                    auto hit = faceKeyIndex.find(key);
-                    if (hit != faceKeyIndex.end()) regionToFaceKeys[r].push_back(hit.value());
-                }
-            }
         }
     }
 
@@ -332,24 +315,66 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
         return;
     }
 
+    // 把每个体网格面唯一指派到最匹配的 region，避免重合/交界碎片被单独算一组。
+    QHash<int, QVector<qint64>> regionToFaceKeys;
+    const QList<int> regionIds = regionToPointIds.keys();
+    for (const FaceEntry& f : allFaces) {
+        int bestRegion = -1;
+        int bestHit = -1;
+        bool tie = false;
+        for (int rid : regionIds) {
+            const QSet<int>& pts = regionToPointIds[rid];
+            int hit = 0;
+            for (int pid : f.pointIds) {
+                if (pts.contains(pid)) ++hit;
+            }
+            if (hit > bestHit) {
+                bestHit = hit;
+                bestRegion = rid;
+                tie = false;
+            } else if (hit == bestHit) {
+                tie = true;
+            }
+        }
+        if (bestRegion < 0 || tie) continue;
+        if (bestHit != f.pointIds.size()) continue; // 必须完整覆盖该面
+        regionToFaceKeys[bestRegion].push_back(f.key);
+    }
+
     MshPickMap merged = meshService->mshPickMapSolid();
 
-    QList<int> regions = regionToPointIds.keys();
+    QList<int> regions = regionToFaceKeys.keys();
     std::sort(regions.begin(), regions.end());
 
     int autoPhysId = 910001;
     int added = 0;
     for (int r : regions) {
-        QVector<int> pts = regionToPointIds.value(r).values().toVector();
-        if (pts.size() < 3) continue;
+        QVector<qint64> faceKeys = regionToFaceKeys.value(r);
+        std::sort(faceKeys.begin(), faceKeys.end());
+        faceKeys.erase(std::unique(faceKeys.begin(), faceKeys.end()), faceKeys.end());
+        if (faceKeys.isEmpty()) continue;
+
+        QSet<int> pointSet;
+        for (qint64 fk : faceKeys) {
+            const vtkIdType cid = vtkIdType((fk >> 4));
+            const int fi = int(fk & 0xF);
+            vtkCell* volCell = grid->GetCell(cid);
+            if (!volCell || fi < 0 || fi >= volCell->GetNumberOfFaces()) continue;
+            vtkCell* face = volCell->GetFace(fi);
+            if (!face) continue;
+            vtkIdList* ids = face->GetPointIds();
+            for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i) {
+                const vtkIdType pid = ids->GetId(i);
+                if (pid >= 0 && pid <= std::numeric_limits<int>::max()) pointSet.insert((int)pid);
+            }
+        }
+        QVector<int> pts = pointSet.values().toVector();
         std::sort(pts.begin(), pts.end());
+        if (pts.size() < 3) continue;
 
         while (merged.physIdToName.contains(autoPhysId)) ++autoPhysId;
 
         merged.bndFacePhysToPointIds[autoPhysId] = pts;
-        QVector<qint64> faceKeys = regionToFaceKeys.value(r);
-        std::sort(faceKeys.begin(), faceKeys.end());
-        faceKeys.erase(std::unique(faceKeys.begin(), faceKeys.end()), faceKeys.end());
         merged.bndFacePhysToFaceKeys[autoPhysId] = faceKeys;
         merged.physIdToDim[autoPhysId] = 2;
         merged.physIdToName[autoPhysId] = QString("AutoPatch_%1").arg(added + 1, 3, 10, QChar('0'));
