@@ -444,6 +444,9 @@ void OccBooleanCutWidget::onApplyClicked()
             vis->addProp(resultUuid + "_edge", resultObj->getEdgeActor(), "Geometry", resultUuid + "_edge");
         }
     }
+    if (auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>()) {
+        projectManagerService->setNodeDimmed(resultUuid, false);
+    }
 
     removeComboItem(m_comboBoxA, resultUuid);
     removeComboItem(m_comboBoxB, resultUuid);
