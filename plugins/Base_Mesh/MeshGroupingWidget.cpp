@@ -384,8 +384,10 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
     for (auto it = regionToFaceKeys.constBegin(); it != regionToFaceKeys.constEnd(); ++it) {
         totalFaceCount += it.value().size();
     }
-    const int minFaceThreshold = std::max(6, totalFaceCount / 200); // 至少约 0.5%
-    const int maxBoundaryGroupCount = 24;
+    const int minFaceThreshold = std::max(10, totalFaceCount / 120); // 至少约 0.8%
+    const int initialRegionCount = regionToFaceKeys.size();
+    const int targetBoundaryGroupCount = std::max(6, std::min(12, initialRegionCount / 3));
+    const int maxBoundaryGroupCount = std::max(targetBoundaryGroupCount, 16);
 
     QHash<int, QSet<int>> regionToPoints;
     for (auto it = regionToFaceKeys.constBegin(); it != regionToFaceKeys.constEnd(); ++it) {
@@ -400,7 +402,9 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
         int smallSize = std::numeric_limits<int>::max();
         for (int rid : regionIds) {
             const int sz = regionToFaceKeys.value(rid).size();
-            const bool mustMerge = (sz < minFaceThreshold) || (regionIds.size() > maxBoundaryGroupCount);
+            const bool overSoftLimit = regionIds.size() > targetBoundaryGroupCount;
+            const bool overHardLimit = regionIds.size() > maxBoundaryGroupCount;
+            const bool mustMerge = (sz < minFaceThreshold) || overSoftLimit || overHardLimit;
             if (!mustMerge) continue;
             if (sz < smallSize) {
                 smallSize = sz;
@@ -425,14 +429,26 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
             }
 
             const int targetSize = regionToFaceKeys.value(rid).size();
-            if (share > bestShare || (share == bestShare && targetSize > bestTargetSize)) {
+            const bool hasEffectiveNeighbor = (bestShare <= 0 && share > 0) || (bestShare > 0 && share >= bestShare);
+            if (hasEffectiveNeighbor || (share == bestShare && targetSize > bestTargetSize)) {
                 bestShare = share;
                 bestTarget = rid;
                 bestTargetSize = targetSize;
             }
         }
 
-        if (bestTarget < 0) break;
+        if (bestTarget < 0) {
+            // 若当前碎片与其它组完全无点交集，也强制并入最大组，防止不规则网格产生海量孤岛组。
+            for (int rid : regionIds) {
+                if (rid == smallRid) continue;
+                const int targetSize = regionToFaceKeys.value(rid).size();
+                if (targetSize > bestTargetSize) {
+                    bestTarget = rid;
+                    bestTargetSize = targetSize;
+                }
+            }
+            if (bestTarget < 0) break;
+        }
 
         QVector<qint64> mergedKeys = regionToFaceKeys.value(bestTarget);
         mergedKeys += regionToFaceKeys.value(smallRid);
