@@ -207,30 +207,62 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
     }
 
     auto *regionArr = vtkIntArray::SafeDownCast(poly->GetCellData()->GetArray("RegionId"));
-    if (!regionArr) {
-        QMessageBox::warning(this, "边界自动分组", "边界连通域识别失败(RegionId 缺失)。");
-        return;
-    }
-
     auto *origPointIds = vtkIdTypeArray::SafeDownCast(poly->GetPointData()->GetArray("vtkOriginalPointIds"));
 
-    QHash<int, QSet<int>> regionToPointIds;
-    const vtkIdType nCells = poly->GetNumberOfCells();
-    for (vtkIdType cid = 0; cid < nCells; ++cid) {
-        const int region = regionArr->GetValue(cid);
-        vtkCell *cell = poly->GetCell(cid);
-        if (!cell) continue;
-        vtkIdList *ids = cell->GetPointIds();
-        for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i) {
-            const vtkIdType surfPid = ids->GetId(i);
-            int originalPid = static_cast<int>(surfPid);
-            if (origPointIds && surfPid < origPointIds->GetNumberOfValues()) {
-                const vtkIdType oid = origPointIds->GetValue(surfPid);
-                if (oid >= 0 && oid <= std::numeric_limits<int>::max()) {
-                    originalPid = static_cast<int>(oid);
+    auto collectPointsFromPoly = [&](vtkPolyData* p, int regionId, QHash<int, QSet<int>>& out) {
+        if (!p) return;
+        auto *pointIds = vtkIdTypeArray::SafeDownCast(p->GetPointData()->GetArray("vtkOriginalPointIds"));
+        const vtkIdType nCellsLocal = p->GetNumberOfCells();
+        for (vtkIdType cid = 0; cid < nCellsLocal; ++cid) {
+            vtkCell *cell = p->GetCell(cid);
+            if (!cell) continue;
+            vtkIdList *ids = cell->GetPointIds();
+            for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i) {
+                const vtkIdType surfPid = ids->GetId(i);
+                int originalPid = static_cast<int>(surfPid);
+                if (pointIds && surfPid < pointIds->GetNumberOfValues()) {
+                    const vtkIdType oid = pointIds->GetValue(surfPid);
+                    if (oid >= 0 && oid <= std::numeric_limits<int>::max()) {
+                        originalPid = static_cast<int>(oid);
+                    }
                 }
+                out[regionId].insert(originalPid);
             }
-            regionToPointIds[region].insert(originalPid);
+        }
+    };
+
+    QHash<int, QSet<int>> regionToPointIds;
+    if (regionArr) {
+        const vtkIdType nCells = poly->GetNumberOfCells();
+        for (vtkIdType cid = 0; cid < nCells; ++cid) {
+            const int region = regionArr->GetValue(cid);
+            vtkCell *cell = poly->GetCell(cid);
+            if (!cell) continue;
+            vtkIdList *ids = cell->GetPointIds();
+            for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i) {
+                const vtkIdType surfPid = ids->GetId(i);
+                int originalPid = static_cast<int>(surfPid);
+                if (origPointIds && surfPid < origPointIds->GetNumberOfValues()) {
+                    const vtkIdType oid = origPointIds->GetValue(surfPid);
+                    if (oid >= 0 && oid <= std::numeric_limits<int>::max()) {
+                        originalPid = static_cast<int>(oid);
+                    }
+                }
+                regionToPointIds[region].insert(originalPid);
+            }
+        }
+    } else {
+        // 某些 VTK 版本/管线不会输出 RegionId：退化为按指定连通域逐个提取。
+        const int regionCount = conn->GetNumberOfExtractedRegions();
+        for (int r = 0; r < regionCount; ++r) {
+            vtkNew<vtkConnectivityFilter> byRegion;
+            byRegion->SetInputData(surfaceFilter->GetOutput());
+            byRegion->SetExtractionModeToSpecifiedRegions();
+            byRegion->AddSpecifiedRegion(r);
+            byRegion->Update();
+
+            vtkPolyData *regionPoly = vtkPolyData::SafeDownCast(byRegion->GetOutput());
+            collectPointsFromPoly(regionPoly, r, regionToPointIds);
         }
     }
 
