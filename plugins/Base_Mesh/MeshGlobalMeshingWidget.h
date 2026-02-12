@@ -140,7 +140,17 @@ public slots:
             }
             else
             {
-                // Hex（重组）
+                auto count3dCells = []() -> std::size_t {
+                    std::vector<int> elemTypes3d;
+                    std::vector<std::vector<std::size_t>> elemTags3d;
+                    std::vector<std::vector<std::size_t>> nodeTags3d;
+                    gmsh::model::mesh::getElements(elemTypes3d, elemTags3d, nodeTags3d, 3);
+                    std::size_t total3d = 0;
+                    for (const auto &v : elemTags3d) total3d += v.size();
+                    return total3d;
+                };
+
+                // 首轮：按用户选择（tet/hex）
                 if (m_p.elemType == 4)
                 {
                     gmsh::option::setNumber("Mesh.Recombine3DAll", 1);
@@ -154,13 +164,35 @@ public slots:
                 gmsh::option::setNumber("Mesh.Algorithm3D", m_p.algorithm);
                 emit log("开始生成 3D 网格...");
                 gmsh::model::mesh::generate(3);
+
+                std::size_t total3d = count3dCells();
+
+                // 回退：若首轮没有3D单元，自动使用稳定tet方案再试一次
+                if (total3d == 0)
+                {
+                    emit log("首轮3D生成未得到体单元，自动回退到稳定四面体方案重试...");
+                    gmsh::model::mesh::clear();
+                    gmsh::option::setNumber("Mesh.Recombine3DAll", 0);
+                    gmsh::option::setNumber("Mesh.Algorithm3D", 1); // Delaunay
+                    gmsh::model::mesh::generate(3);
+                    total3d = count3dCells();
+                }
+
+                if (total3d == 0)
+                {
+                    emit finishedFail("3D网格生成后仍未检测到体单元（tet/hex/wedge/pyramid）。请检查几何是否为封闭体，或尝试放宽尺寸参数。\n"
+                                     "若看到 no volume cells imported，通常就是这里没有生成可识别的体单元。");
+                    return;
+                }
+
+                emit log(QString("3D体单元数量：%1").arg((qlonglong)total3d));
             }
 
             emit log("网格生成完成。");
 
             // 6) 输出
-            // 只输出物理组元素（你旧代码就是这么干的）
-            gmsh::option::setNumber("Mesh.SaveAll", 0);
+            // 为避免物理组过滤导致二次划分时导出缺失体单元，这里强制导出全部网格元素。
+            gmsh::option::setNumber("Mesh.SaveAll", 1);
 
             QString msh = m_tempMshPath;
             QString vtk = m_tempVtkPath;

@@ -2,25 +2,16 @@
 <ui version="4.0">
  <class>MeshVolumeControlWidget</class>
  <widget class="QWidget" name="MeshVolumeControlWidget">
-  <property name="geometry">
-   <rect><x>0</x><y>0</y><width>420</width><height>240</height></rect>
-  </property>
-  <property name="windowTitle">
-   <string>体控制</string>
-  </property>
+  <property name="geometry"><rect><x>0</x><y>0</y><width>620</width><height>500</height></rect></property>
+  <property name="windowTitle"><string>体控制</string></property>
   <layout class="QVBoxLayout" name="verticalLayout">
-   <item>
-    <widget class="QGroupBox" name="groupBox">
-     <property name="title"><string>体控制</string></property>
-     <layout class="QVBoxLayout" name="verticalLayout_2">
-      <item>
-       <widget class="QLabel" name="labelHint">
-        <property name="text"><string>用于设置体单元尺寸、增长率等体控制参数（预留功能）。</string></property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
+   <item><widget class="QGroupBox" name="groupPick"><property name="title"><string>体组选择（剖分后）</string></property><layout class="QGridLayout" name="gridPick"><item row="0" column="0"><widget class="QLabel" name="labelGroup"><property name="text"><string>体组</string></property></widget></item><item row="0" column="1"><widget class="QComboBox" name="comboBoxGroup"/></item><item row="1" column="0" colspan="2"><widget class="QLabel" name="labelPickStatus"><property name="text"><string>当前选择体组：无</string></property></widget></item></layout></widget></item>
+   <item><widget class="QGroupBox" name="groupInputs"><property name="title"><string>体控制参数</string></property><layout class="QGridLayout" name="gridLayout"><item row="0" column="0"><widget class="QLabel" name="labelMin"><property name="text"><string>最小尺寸</string></property></widget></item><item row="0" column="1"><widget class="QDoubleSpinBox" name="dsMinSize"><property name="decimals"><number>3</number></property><property name="minimum"><double>0.001000000000000</double></property><property name="maximum"><double>9999.000000000000000</double></property></widget></item><item row="0" column="2"><widget class="QLabel" name="labelMax"><property name="text"><string>最大尺寸</string></property></widget></item><item row="0" column="3"><widget class="QDoubleSpinBox" name="dsMaxSize"><property name="decimals"><number>3</number></property><property name="minimum"><double>0.001000000000000</double></property><property name="maximum"><double>9999.000000000000000</double></property></widget></item><item row="1" column="0"><widget class="QLabel" name="labelGrowth"><property name="text"><string>增长率</string></property></widget></item><item row="1" column="1"><widget class="QDoubleSpinBox" name="dsGrowthRate"><property name="minimum"><double>1.000000000000000</double></property><property name="maximum"><double>10.000000000000000</double></property></widget></item><item row="1" column="2"><widget class="QLabel" name="labelOrder"><property name="text"><string>单元阶次</string></property></widget></item><item row="1" column="3"><widget class="QSpinBox" name="spElementOrder"><property name="minimum"><number>1</number></property><property name="maximum"><number>2</number></property></widget></item></layout></widget></item>
+   <item><layout class="QHBoxLayout" name="horizontalLayoutBtns"><item><widget class="QPushButton" name="btnAddOrUpdate"><property name="text"><string>添加/更新规则</string></property></widget></item><item><widget class="QPushButton" name="btnRemoveSelected"><property name="text"><string>删除选中</string></property></widget></item><item><widget class="QPushButton" name="btnClearRules"><property name="text"><string>清空规则</string></property></widget></item><item><widget class="QPushButton" name="btnResetDefaults"><property name="text"><string>恢复默认</string></property></widget></item></layout></item>
+   <item><widget class="QPushButton" name="btnApplyControls"><property name="text"><string>执行体控制</string></property></widget></item>
+   <item><widget class="QLabel" name="labelApplyStatus"><property name="text"><string>未执行。</string></property></widget></item>
+   <item><widget class="QTableWidget" name="tableRules"/></item>
+   <item><widget class="QLabel" name="labelSummary"><property name="text"><string>当前体控制规则数：0</string></property></widget></item>
   </layout>
  </widget>
  <resources/>
