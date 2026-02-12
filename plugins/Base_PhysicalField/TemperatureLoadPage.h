@@ -5,6 +5,7 @@
 class QDoubleSpinBox;
 class QSpinBox;
 class QPushButton;
+class QComboBox;
 
 namespace Ui { class TemperatureLoadPage; }
 
@@ -21,7 +22,14 @@ public:
     double alfaValue() const;
     double dtValue() const;
 
+private slots:
+    void onGroupChanged(int index);
+
+private:
+    void setupBatchGroupCombo();
+
 private:
     Ui::TemperatureLoadPage* ui = nullptr;
+    QComboBox* m_groupCombo = nullptr;
 
 };

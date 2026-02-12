@@ -3,6 +3,7 @@
 
 #include <BasePage.h>
 #include <QWidget>
+class QComboBox;
 
 namespace Ui {
 class LinearForcePage;
@@ -23,8 +24,15 @@ public:
     double fyValue();
     double fzValue();
 
+private slots:
+    void onGroupChanged(int index);
+
+private:
+    void setupBatchGroupCombo();
+
 private:
     Ui::LinearForcePage *ui;
+    QComboBox* m_groupCombo = nullptr;
 };
 
 #endif // LINEARFORCEPAGE_H

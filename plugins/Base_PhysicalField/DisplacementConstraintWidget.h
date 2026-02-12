@@ -45,8 +45,9 @@ private slots:
 
     void onNodePicked(const QString &domain, const QString &activeUuid, GridKind, vtkIdType, int nodeId, double x, double y, double z, const QString &prevUuid);
     void onGroupChanged(int index);
+    void onDimChanged(int index);
 private:
-
+    void refreshGroupCombo(int dimFilter);
 
 private:
     Ui::DisplacementConstraintWidget *ui = nullptr;

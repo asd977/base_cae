@@ -7,7 +7,6 @@
 #include <EventManager.h>
 #include <GridEditingWidget.h>
 #include <MeshGlobalMeshingWidget.h>
-#include <MeshGroupingWidget.h>
 #include <PublicConstants.h>
 #include <QMessageBox>
 #include <qfiledialog.h>
@@ -204,7 +203,6 @@ void MeshModuleController::initAction()
     reg(PublicConstants::kActionPreprocessMeshSweep,  [this]{ onMeshSweep(); });
 
     reg(PublicConstants::kActionPreprocessMeshEdit,  [this]{ onMeshEdit(); });
-    reg(PublicConstants::kActionPreprocessMeshGrouping, [this]{ onMeshGrouping(); });
 
 
     // --- Control & Quality ---
@@ -365,9 +363,6 @@ void MeshModuleController::onQualityStd()
 
 void MeshModuleController::onMeshGrouping()
 {
-    auto *w = new MeshGroupingWidget();
-    auto *node = new ProjectNode("网格分组", QUuid::createUuid().toString(), w);
-    m_gridNode->addChild(node);
 }
 
 void MeshModuleController::onMeshEdit()

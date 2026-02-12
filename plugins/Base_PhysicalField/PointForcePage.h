@@ -5,6 +5,7 @@
 class QDoubleSpinBox;
 class QSpinBox;
 class QPushButton;
+class QComboBox;
 
 namespace Ui { class PointForcePage; }
 
@@ -27,7 +28,14 @@ public:
 
 
 
+private slots:
+    void onGroupChanged(int index);
+
+private:
+    void setupBatchGroupCombo();
+
 private:
     Ui::PointForcePage* ui = nullptr;
+    QComboBox* m_groupCombo = nullptr;
 
 };

@@ -22,7 +22,6 @@
 #include <vtkPolygon.h>
 #include <vtkPlane.h>
 #include <vtkLine.h>
-#include <QDateTime>
 #include <vtkHardwareSelector.h>
 #include <vtkSelectionNode.h>
 
@@ -395,7 +394,6 @@ void PickManager::teardownPicking()
 
 void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clientData, void*)
 {
-    qDebug()<<"Press";
     auto* self = static_cast<PickManager*>(clientData);
     auto iren = vtkRenderWindowInteractor::SafeDownCast(caller);
     if (!self || !iren) return;
@@ -408,36 +406,7 @@ void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clie
     self->m_leftDownPos[0] = xy[0];
     self->m_leftDownPos[1] = xy[1];
 
-    // 只有 Shift 才开启框选
-    if ( iren->GetShiftKey())
-    {
-        self->m_boxing = true;
-        self->m_boxStart[0] = xy[0];
-        self->m_boxStart[1] = xy[1];
-        self->m_boxEnd[0]   = xy[0];
-        self->m_boxEnd[1]   = xy[1];
-
-        self->setBoxRectVisible(true);
-
-        int x0 = self->m_boxStart[0], y0 = self->m_boxStart[1];
-        int x1 = self->m_boxEnd[0],   y1 = self->m_boxEnd[1];
-        sortRect(x0,y0,x1,y1);
-        self->updateBoxRectActor(x0,y0,x1,y1);
-
-        if (self->m_visual) self->m_visual->render();
-
-        // Shift 框选：吃掉事件，禁止相机开始旋转
-        if (self->m_cbLeftPress) self->m_cbLeftPress->AbortFlagOn();
-        return;
-    }
-    else
-    {
-        auto* self = static_cast<PickManager*>(clientData);
-
-        self->pickAt(xy[0],xy[1]);
-    }
-
-    // 非Shift：不 Abort，让 VTK style 正常接管（开始旋转/平移）
+    self->pickAt(xy[0],xy[1]);
 }
 
 void PickManager::OnMouseMove(vtkObject* caller, unsigned long, void* clientData, void*)
@@ -449,34 +418,11 @@ void PickManager::OnMouseMove(vtkObject* caller, unsigned long, void* clientData
     int xy[2];
     iren->GetEventPosition(xy);
 
-    if (self->m_boxing)
-    {
-        self->m_boxEnd[0] = xy[0];
-        self->m_boxEnd[1] = xy[1];
-
-        int x0 = self->m_boxStart[0], y0 = self->m_boxStart[1];
-        int x1 = self->m_boxEnd[0],   y1 = self->m_boxEnd[1];
-        sortRect(x0,y0,x1,y1);
-        self->updateBoxRectActor(x0,y0,x1,y1);
-
-        const qint64 now = QDateTime::currentMSecsSinceEpoch();
-        if (self->m_visual && (now - self->m_lastBoxRenderMs) >= 16) {
-            self->m_lastBoxRenderMs = now;
-            self->m_visual->render();
-        }
-
-        if (self->m_cbMouseMove) self->m_cbMouseMove->AbortFlagOn();
-        return;
-    }
-
-
-    // 非Shift拖动：绝不 Abort，让相机持续正常旋转
+    Q_UNUSED(xy);
 }
 
 void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* clientData, void*)
 {
-
-    qDebug()<<"release";
     auto* self = static_cast<PickManager*>(clientData);
     auto iren = vtkRenderWindowInteractor::SafeDownCast(caller);
     if (!self || !iren) return;
@@ -486,43 +432,12 @@ void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* cl
 
     self->m_leftDown = false;
 
-    // ===== 框选结束（Shift）=====
-    if (self->m_boxing)
-    {
-        self->m_boxing = false;
-        self->setBoxRectVisible(false);
 
-        int x0 = self->m_boxStart[0], y0 = self->m_boxStart[1];
-        int x1 = xy[0],               y1 = xy[1];
-        sortRect(x0,y0,x1,y1);
-
-        // Shift+轻点：当 click 点选（可选保留）
-        if (std::abs(x1-x0) < self->m_clickThresholdPx &&
-            std::abs(y1-y0) < self->m_clickThresholdPx)
-        {
-            self->pickAt(xy[0], xy[1]);
-            if (self->m_cbLeftRelease) self->m_cbLeftRelease->AbortFlagOn();
-            return;
-        }
-
-        PickManager::BoxOp op = PickManager::BoxOp::Add;
-        if (iren->GetControlKey()) op = PickManager::BoxOp::Toggle;
-        if (iren->GetAltKey())     op = PickManager::BoxOp::Remove;
-
-        self->boxSelect(x0, y0, x1, y1, op);
-
-        if (self->m_cbLeftRelease) self->m_cbLeftRelease->AbortFlagOn();
-        return;
-    }
-
-
-    // ===== 非Shift：单击才 pick；拖拽旋转绝不 pick =====
+    // 单击才 pick；拖拽旋转不 pick
     {
         const int dx = xy[0] - self->m_leftDownPos[0];
         const int dy = xy[1] - self->m_leftDownPos[1];
         const int d2 = dx*dx + dy*dy;
-        qDebug() << "release d2=" << d2 << "thr=" << self->m_clickThresholdPx;
-
         const int thr = self->m_clickThresholdPx;
         const bool isClick = (d2 <= thr * thr);
 
@@ -531,7 +446,6 @@ void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* cl
         }
     }
 
-    // 非Shift：不 Abort，让 VTK style 正常结束旋转
 }
 
 
@@ -1989,5 +1903,4 @@ void PickManager::setSelectedFaceKeys(const QString& domain,
         markDirty(DirtyFace);
     }
 }
-
 

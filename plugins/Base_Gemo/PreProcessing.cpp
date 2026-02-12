@@ -442,8 +442,11 @@ void PreProcessing::generateStepFile()
     // 4. 配置 STEP 写入器
     STEPControl_Writer stepWriter;
 
-    // 设置模式（AsIs 保持原样，ManifoldSolidBrep 适合实体）
-    IFSelect_ReturnStatus transferStatus = stepWriter.Transfer(compound, STEPControl_AsIs);
+    // 设置模式：优先实体 BRep，失败时回退到 AsIs，兼容单体/多体场景
+    IFSelect_ReturnStatus transferStatus = stepWriter.Transfer(compound, STEPControl_ManifoldSolidBrep);
+    if (transferStatus != IFSelect_RetDone) {
+        transferStatus = stepWriter.Transfer(compound, STEPControl_AsIs);
+    }
 
     if (transferStatus != IFSelect_RetDone)
     {
@@ -454,7 +457,12 @@ void PreProcessing::generateStepFile()
     // 假设 currentWorPath 是类成员，这里拼接完整路径
     QString fileName = "ExportedModel.step";
     QString currentWorPath = QCoreApplication::applicationDirPath();
-    QString filePath = currentWorPath + "/data/"+fileName;
+    QString dataDir = currentWorPath + "/data";
+    QDir().mkpath(dataDir);
+    QString filePath = dataDir + "/" + fileName;
+
+    // 避免旧文件残留导致后续误读
+    QFile::remove(filePath);
 
     // 6. 执行写入操作
     IFSelect_ReturnStatus writeStatus = stepWriter.Write(filePath.toLocal8Bit().constData());

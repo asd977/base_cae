@@ -64,27 +64,51 @@ void DisplacementConstraintWidget::beforeLoad()
     // 例如：const MshPickMap& map = meshSvc->mshPickMapSolid();
     const MshPickMap& map = meshSvc->mshPickMapSolid();
 
-    // ===== 2) 填充下拉框 =====
+    ui->comboBoxDim->blockSignals(true);
+    ui->comboBoxDim->clear();
+    ui->comboBoxDim->addItem("全部维度", -1);
+    ui->comboBoxDim->addItem("dim0 点", 0);
+    ui->comboBoxDim->addItem("dim1 线", 1);
+    ui->comboBoxDim->addItem("dim2 面", 2);
+    ui->comboBoxDim->setCurrentIndex(3);
+    ui->comboBoxDim->blockSignals(false);
+
+    refreshGroupCombo(ui->comboBoxDim->currentData().toInt());
+
+    // 下拉框改变 -> 批量选
+    QObject::connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     this, &DisplacementConstraintWidget::onDimChanged);
+    QObject::connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     this, &DisplacementConstraintWidget::onGroupChanged);
+}
+
+
+void DisplacementConstraintWidget::refreshGroupCombo(int dimFilter)
+{
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshSvc) return;
+
+    const MshPickMap& map = meshSvc->mshPickMapSolid();
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
 
-    // 只把 dim=0/1/2 的边界组放进去（位移约束通常选边界节点）
-    // 文本显示：name + dim
     for (auto it = map.physIdToName.begin(); it != map.physIdToName.end(); ++it)
     {
         const int physId = it.key();
         const QString name = it.value();
         const int dim = map.physIdToDim.value(physId, -1);
         if (dim < 0 || dim > 2) continue;
+        if (dimFilter >= 0 && dimFilter != dim) continue;
 
         const QString text = QString("%1  (dim=%2, id=%3)").arg(name).arg(dim).arg(physId);
         ui->comboBoxGroup->addItem(text, physId);
     }
     ui->comboBoxGroup->blockSignals(false);
+}
 
-    // 下拉框改变 -> 批量选
-    QObject::connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged),
-                     this, &DisplacementConstraintWidget::onGroupChanged);
+void DisplacementConstraintWidget::onDimChanged(int)
+{
+    refreshGroupCombo(ui->comboBoxDim->currentData().toInt());
 }
 
 void DisplacementConstraintWidget::onGroupChanged(int index)

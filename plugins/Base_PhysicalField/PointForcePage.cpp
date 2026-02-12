@@ -12,12 +12,16 @@
 #include "PickManager.h"
 #include <PublicConstants.h>
 #include <services/MeshModuleControllerService.h>
+#include <QComboBox>
+#include <QVBoxLayout>
+#include <struct/MeshMap.h>
 
 PointForcePage::PointForcePage(QWidget* parent)
     : BasePage("PointForcePage")
     , ui(new Ui::PointForcePage)
 {
     ui->setupUi(this);
+    setupBatchGroupCombo();
 
 }
 
@@ -29,6 +33,7 @@ void PointForcePage::beforeLoad()
     PickManager::instance().updateStructure();
 
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
+    setupBatchGroupCombo();
 
     const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     const bool is3D = (NDIM == 3);
@@ -60,3 +65,48 @@ double PointForcePage::fzValue() const { return ui->spinFz->value(); }
 double PointForcePage::mxValue() const { return ui->spinMx->value(); }
 double PointForcePage::myValue() const { return ui->spinMy->value(); }
 double PointForcePage::mzValue() const { return ui->spinMz->value(); }
+
+void PointForcePage::setupBatchGroupCombo()
+{
+    if (!ui || m_groupCombo) return;
+    auto* layout = qobject_cast<QVBoxLayout*>(this->layout());
+    if (!layout) return;
+
+    m_groupCombo = new QComboBox(this);
+    m_groupCombo->setToolTip("批量选择分组");
+    layout->insertWidget(0, m_groupCombo);
+
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshSvc) return;
+    const MshPickMap& map = meshSvc->mshPickMapSolid();
+    for (auto it = map.physIdToName.constBegin(); it != map.physIdToName.constEnd(); ++it)
+    {
+        const int physId = it.key();
+        const int dim = map.physIdToDim.value(physId, -1);
+        if (dim < 0 || dim > 2) continue;
+        m_groupCombo->addItem(QString("%1  (dim=%2, id=%3)").arg(it.value()).arg(dim).arg(physId), physId);
+    }
+    connect(m_groupCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &PointForcePage::onGroupChanged);
+}
+
+void PointForcePage::onGroupChanged(int index)
+{
+    if (!m_groupCombo || index < 0) return;
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshSvc) return;
+    const MshPickMap& map = meshSvc->mshPickMapSolid();
+
+    const int physId = m_groupCombo->itemData(index).toInt();
+    const int dim = map.physIdToDim.value(physId, -1);
+    QVector<int> pointIdsInt;
+    if (dim == 0) pointIdsInt = map.bndPointPhysToPointIds.value(physId);
+    else if (dim == 1) pointIdsInt = map.bndEdgePhysToPointIds.value(physId);
+    else if (dim == 2) pointIdsInt = map.bndFacePhysToPointIds.value(physId);
+    else return;
+
+    QVector<vtkIdType> pids;
+    pids.reserve(pointIdsInt.size());
+    for (int pid : pointIdsInt) pids.push_back(vtkIdType(pid));
+    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pids, true);
+}

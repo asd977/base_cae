@@ -14,7 +14,6 @@ class vtkActor;
 class vtkDataSetMapper;
 class vtkUnstructuredGrid;
 class GridEditingWidget;
-class MeshGroupingWidget;
 
 class MeshModuleController : public QObject, public MeshModuleControllerService
 {
