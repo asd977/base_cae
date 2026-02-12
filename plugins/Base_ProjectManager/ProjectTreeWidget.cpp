@@ -115,11 +115,13 @@ void ProjectTreeWidget::onCurItemChanged(QTreeWidgetItem* current, QTreeWidgetIt
     BasePage* page = node->getPage();
     if (!page) return;
 
-    // 1. 处理旧页面的卸载
+    // 1. 处理旧页面的卸载（同页重入不触发 unload）
+    BasePage* prevPage = nullptr;
     if (previous) {
         auto *prevNode = dynamic_cast<ProjectNode*>(previous);
         if (prevNode) {
-            if (BasePage *prevPage = prevNode->getPage()) {
+            prevPage = prevNode->getPage();
+            if (prevPage && prevPage != page) {
                 prevPage->beforeUnload();
             }
         }
@@ -137,7 +139,10 @@ void ProjectTreeWidget::onCurItemChanged(QTreeWidgetItem* current, QTreeWidgetIt
         m_stackWidget->addWidget(widget);
     }
 
-    page->beforeLoad();
+    const bool switchedToDifferentPage = (prevPage != page);
+    if (switchedToDifferentPage) {
+        page->beforeLoad();
+    }
     m_stackWidget->setCurrentWidget(widget);
 
     // 3. 强制更新 UI 几何结构
