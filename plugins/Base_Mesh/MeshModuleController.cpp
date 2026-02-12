@@ -280,6 +280,11 @@ MshPickMap MeshModuleController::mshPickMapSolid()
     return MeshGridIO::instance().getMeshMap();
 }
 
+void MeshModuleController::setMshPickMapSolid(const MshPickMap& pickMap)
+{
+    MeshGridIO::instance().setMeshMap(pickMap);
+}
+
 void MeshModuleController::onExportGrid()
 {
     if (!m_hasGrid || !m_importedGrid) {

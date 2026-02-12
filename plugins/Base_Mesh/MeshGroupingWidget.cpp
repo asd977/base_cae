@@ -10,6 +10,7 @@
 #include <cmath>
 #include <QSet>
 #include <algorithm>
+#include <cstring>
 #include <limits>
 #include <QMessageBox>
 #include <QTableWidgetItem>
@@ -244,7 +245,40 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
         }
     };
 
+    auto packSortedFace = [](vtkIdList* ids)->QByteArray {
+        QVector<int> v;
+        if (!ids) return QByteArray();
+        v.reserve((int)ids->GetNumberOfIds());
+        for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i) {
+            const vtkIdType pid = ids->GetId(i);
+            if (pid < 0 || pid > std::numeric_limits<int>::max()) return QByteArray();
+            v.push_back((int)pid);
+        }
+        std::sort(v.begin(), v.end());
+        QByteArray k;
+        k.resize((int)v.size() * (int)sizeof(int));
+        if (!v.isEmpty()) std::memcpy(k.data(), v.constData(), (size_t)k.size());
+        return k;
+    };
+
+    QHash<QByteArray, qint64> faceKeyIndex;
+    const vtkIdType nVolCells = grid->GetNumberOfCells();
+    for (vtkIdType cid = 0; cid < nVolCells; ++cid) {
+        vtkCell* volCell = grid->GetCell(cid);
+        if (!volCell) continue;
+        const int nFaces = volCell->GetNumberOfFaces();
+        for (int fi = 0; fi < nFaces; ++fi) {
+            vtkCell* face = volCell->GetFace(fi);
+            if (!face) continue;
+            QByteArray key = packSortedFace(face->GetPointIds());
+            if (key.isEmpty()) continue;
+            const qint64 faceKey = (qint64(cid) << 4) | (qint64(fi) & 0xF);
+            faceKeyIndex.insert(key, faceKey);
+        }
+    }
+
     QHash<int, QSet<int>> regionToPointIds;
+    QHash<int, QVector<qint64>> regionToFaceKeys;
     if (regionArr) {
         const vtkIdType nCells = poly->GetNumberOfCells();
         for (vtkIdType cid = 0; cid < nCells; ++cid) {
@@ -252,6 +286,9 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
             vtkCell *cell = poly->GetCell(cid);
             if (!cell) continue;
             vtkIdList *ids = cell->GetPointIds();
+            QByteArray key = packSortedFace(ids);
+            auto hit = faceKeyIndex.find(key);
+            if (hit != faceKeyIndex.end()) regionToFaceKeys[region].push_back(hit.value());
             for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i) {
                 const vtkIdType surfPid = ids->GetId(i);
                 int originalPid = static_cast<int>(surfPid);
@@ -276,6 +313,17 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
 
             vtkPolyData *regionPoly = vtkPolyData::SafeDownCast(byRegion->GetOutput());
             collectPointsFromPoly(regionPoly, r, regionToPointIds);
+            if (regionPoly) {
+                const vtkIdType nRC = regionPoly->GetNumberOfCells();
+                for (vtkIdType rcid = 0; rcid < nRC; ++rcid) {
+                    vtkCell* surfCell = regionPoly->GetCell(rcid);
+                    if (!surfCell) continue;
+                    QByteArray key = packSortedFace(surfCell->GetPointIds());
+                    if (key.isEmpty()) continue;
+                    auto hit = faceKeyIndex.find(key);
+                    if (hit != faceKeyIndex.end()) regionToFaceKeys[r].push_back(hit.value());
+                }
+            }
         }
     }
 
@@ -299,6 +347,10 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
         while (merged.physIdToName.contains(autoPhysId)) ++autoPhysId;
 
         merged.bndFacePhysToPointIds[autoPhysId] = pts;
+        QVector<qint64> faceKeys = regionToFaceKeys.value(r);
+        std::sort(faceKeys.begin(), faceKeys.end());
+        faceKeys.erase(std::unique(faceKeys.begin(), faceKeys.end()), faceKeys.end());
+        merged.bndFacePhysToFaceKeys[autoPhysId] = faceKeys;
         merged.physIdToDim[autoPhysId] = 2;
         merged.physIdToName[autoPhysId] = QString("AutoPatch_%1").arg(added + 1, 3, 10, QChar('0'));
 
@@ -313,6 +365,7 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
 
     m_autoBoundaryPickMap = merged;
     m_hasAutoBoundaryGroups = true;
+    meshService->setMshPickMapSolid(merged);
 
     QMessageBox::information(this, "边界自动分组",
                              QString("已按外表面连通域自动识别 %1 个边界组。\n(CAE 常规做法：先提取外表面，再按连通域/特征角分块)").arg(added));
