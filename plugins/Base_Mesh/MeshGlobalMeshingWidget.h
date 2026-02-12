@@ -85,6 +85,14 @@ public slots:
             gmsh::clear();
             gmsh::model::add("global_mesh");
 
+            // 几何修复相关选项必须在 importShapes 前设置；
+            // 这些选项是全局状态，若放在后面会在“下一次剖分”才生效，导致跨次串扰。
+            gmsh::option::setNumber("Geometry.OCCFixDegenerated", m_p.fixShape ? 1 : 0);
+            gmsh::option::setNumber("Geometry.OCCFixSmallEdges",  m_p.fixShape ? 1 : 0);
+            gmsh::option::setNumber("Geometry.OCCFixSmallFaces",  m_p.fixShape ? 1 : 0);
+            gmsh::option::setNumber("Geometry.OCCSewFaces",       m_p.fixShape ? 1 : 0);
+            gmsh::option::setNumber("Geometry.Tolerance", m_p.tolerance);
+
             std::vector<std::pair<int,int>> outDimTags;
             gmsh::model::occ::importShapes(stepPath.toStdString(), outDimTags, true);
             // Ensure touching domains share one interface entity after STEP import.
@@ -105,14 +113,7 @@ public slots:
             // 3) 物理组（建议：否则你 set SaveAll=0 时会输出为空）
             createPhysicalGroupsAllDims();
 
-            // 4) 设置几何修复/容差
-            gmsh::option::setNumber("Geometry.OCCFixDegenerated", m_p.fixShape ? 1 : 0);
-            gmsh::option::setNumber("Geometry.OCCFixSmallEdges",  m_p.fixShape ? 1 : 0);
-            gmsh::option::setNumber("Geometry.OCCFixSmallFaces",  m_p.fixShape ? 1 : 0);
-            gmsh::option::setNumber("Geometry.OCCSewFaces",       m_p.fixShape ? 1 : 0);
-            gmsh::option::setNumber("Geometry.Tolerance", m_p.tolerance);
-
-            // 5) 设置网格参数
+            // 4) 设置网格参数
             gmsh::option::setNumber("Mesh.CharacteristicLengthMin", m_p.lenMin);
             gmsh::option::setNumber("Mesh.CharacteristicLengthMax", m_p.lenMax);
             gmsh::option::setNumber("Mesh.MeshSizeFactor",          m_p.sizeFactor);
