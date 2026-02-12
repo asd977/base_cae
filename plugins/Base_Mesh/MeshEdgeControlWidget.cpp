@@ -8,8 +8,19 @@
 
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
+#include <services/VisualWidgetService.h>
 #include <struct/MeshMap.h>
-#include <PickManager.h>
+
+#include <vtkActor.h>
+#include <vtkProperty.h>
+#include <vtkPolyDataMapper.h>
+#include <vtkUnstructuredGrid.h>
+#include <vtkPoints.h>
+#include <vtkPolyData.h>
+#include <vtkCellArray.h>
+#include <vtkVertexGlyphFilter.h>
+
+static const QString kEdgeHighlightPropId = QStringLiteral("mesh.ctrl.edge.highlight");
 
 MeshEdgeControlWidget::MeshEdgeControlWidget(QWidget *parent)
     : BasePage("MeshEdgeControlWidget")
@@ -34,20 +45,25 @@ MeshEdgeControlWidget::MeshEdgeControlWidget(QWidget *parent)
     connect(ui->btnClearRules, &QPushButton::clicked, this, &MeshEdgeControlWidget::onClearRules);
     connect(ui->btnResetDefaults, &QPushButton::clicked, this, &MeshEdgeControlWidget::onResetDefaults);
 
+    m_highlightMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    m_highlightMapper->ScalarVisibilityOff();
+    m_highlightActor = vtkSmartPointer<vtkActor>::New();
+    m_highlightActor->SetMapper(m_highlightMapper);
+    m_highlightActor->PickableOff();
+    m_highlightActor->GetProperty()->SetColor(1.0, 0.15, 0.05);
+    m_highlightActor->GetProperty()->SetPointSize(10.0);
+
     onResetDefaults();
 }
 
 MeshEdgeControlWidget::~MeshEdgeControlWidget()
 {
+    clearGroupHighlight(false);
     delete ui;
 }
 
 void MeshEdgeControlWidget::beforeLoad()
 {
-    PickManager::instance();
-    PickManager::instance().updateStructure();
-    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Edge);
-
     {
         QSignalBlocker blocker(ui->comboBoxDim);
         ui->comboBoxDim->clear();
@@ -60,7 +76,7 @@ void MeshEdgeControlWidget::beforeLoad()
 
 void MeshEdgeControlWidget::beforeUnload()
 {
-    PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Edge);
+    clearGroupHighlight(true);
 }
 
 void MeshEdgeControlWidget::onDimChanged()
@@ -70,31 +86,7 @@ void MeshEdgeControlWidget::onDimChanged()
 
 void MeshEdgeControlWidget::onGroupChanged()
 {
-    const int idx = ui->comboBoxGroup->currentIndex();
-    if (idx < 0) {
-        return;
-    }
-
-    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    if (!meshSvc) {
-        return;
-    }
-
-    const MshPickMap& map = meshSvc->mshPickMapSolid();
-    const int physId = ui->comboBoxGroup->itemData(idx).toInt();
-
-    const QVector<qint64> edgeKeys64 = map.bndEdgePhysToEdgeKeys.value(physId);
-    QVector<vtkIdType> edgeKeys;
-    edgeKeys.reserve(edgeKeys64.size());
-    for (qint64 key : edgeKeys64) {
-        edgeKeys.push_back(static_cast<vtkIdType>(key));
-    }
-
-    PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid, edgeKeys, true);
-
-    ui->labelPickStatus->setText(QStringLiteral("当前高亮线组：%1（边数 %2）")
-                                 .arg(ui->comboBoxGroup->currentText())
-                                 .arg(edgeKeys.size()));
+    updateGroupHighlight();
 }
 
 void MeshEdgeControlWidget::refreshGroupCombo()
@@ -105,6 +97,7 @@ void MeshEdgeControlWidget::refreshGroupCombo()
         return;
     }
 
+    m_cachedGrid = meshSvc->getVtkUnstructuredGridSolid();
     const int dimFilter = ui->comboBoxDim->currentData().toInt();
     const MshPickMap& map = meshSvc->mshPickMapSolid();
 
@@ -126,9 +119,80 @@ void MeshEdgeControlWidget::refreshGroupCombo()
     if (ui->comboBoxGroup->count() > 0) {
         ui->comboBoxGroup->setCurrentIndex(0);
         blocker.unblock();
-        onGroupChanged();
+        updateGroupHighlight();
     } else {
         ui->labelPickStatus->setText(QStringLiteral("暂无可用线组，请先完成整体剖分/导入带分组网格。"));
+        clearGroupHighlight(true);
+    }
+}
+
+void MeshEdgeControlWidget::updateGroupHighlight()
+{
+    const int idx = ui->comboBoxGroup->currentIndex();
+    if (idx < 0) {
+        clearGroupHighlight(true);
+        return;
+    }
+
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!meshSvc || !visual) {
+        return;
+    }
+
+    if (!m_cachedGrid) {
+        m_cachedGrid = meshSvc->getVtkUnstructuredGridSolid();
+    }
+    if (!m_cachedGrid || m_cachedGrid->GetNumberOfPoints() <= 0) {
+        ui->labelPickStatus->setText(QStringLiteral("无可高亮点。"));
+        clearGroupHighlight(true);
+        return;
+    }
+
+    const MshPickMap& map = meshSvc->mshPickMapSolid();
+    const int physId = ui->comboBoxGroup->itemData(idx).toInt();
+    const QVector<int> pids = map.bndEdgePhysToPointIds.value(physId);
+    if (pids.isEmpty()) {
+        ui->labelPickStatus->setText(QStringLiteral("当前线组没有关联点。"));
+        clearGroupHighlight(true);
+        return;
+    }
+
+    auto pts = vtkSmartPointer<vtkPoints>::New();
+    auto verts = vtkSmartPointer<vtkCellArray>::New();
+    for (int pid : pids) {
+        if (pid < 0 || pid >= m_cachedGrid->GetNumberOfPoints()) {
+            continue;
+        }
+        double p[3];
+        m_cachedGrid->GetPoint(pid, p);
+        vtkIdType id = pts->InsertNextPoint(p);
+        verts->InsertNextCell(1);
+        verts->InsertCellPoint(id);
+    }
+
+    auto poly = vtkSmartPointer<vtkPolyData>::New();
+    poly->SetPoints(pts);
+    poly->SetVerts(verts);
+
+    auto glyph = vtkSmartPointer<vtkVertexGlyphFilter>::New();
+    glyph->SetInputData(poly);
+    glyph->Update();
+
+    m_highlightMapper->SetInputData(glyph->GetOutput());
+    visual->removeProp(kEdgeHighlightPropId, false);
+    visual->addProp(kEdgeHighlightPropId, m_highlightActor, QStringLiteral("网格"), QStringLiteral("边控制高亮"), false, true);
+
+    ui->labelPickStatus->setText(QStringLiteral("当前高亮线组：%1（点数 %2）")
+                                 .arg(ui->comboBoxGroup->currentText())
+                                 .arg(pids.size()));
+}
+
+void MeshEdgeControlWidget::clearGroupHighlight(bool renderNow)
+{
+    auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (visual) {
+        visual->removeProp(kEdgeHighlightPropId, renderNow);
     }
 }
 

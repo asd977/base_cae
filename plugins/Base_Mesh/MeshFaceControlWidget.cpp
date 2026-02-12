@@ -8,8 +8,19 @@
 
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
+#include <services/VisualWidgetService.h>
 #include <struct/MeshMap.h>
-#include <PickManager.h>
+
+#include <vtkActor.h>
+#include <vtkProperty.h>
+#include <vtkPolyDataMapper.h>
+#include <vtkUnstructuredGrid.h>
+#include <vtkPoints.h>
+#include <vtkPolyData.h>
+#include <vtkCellArray.h>
+#include <vtkVertexGlyphFilter.h>
+
+static const QString kFaceHighlightPropId = QStringLiteral("mesh.ctrl.face.highlight");
 
 MeshFaceControlWidget::MeshFaceControlWidget(QWidget *parent)
     : BasePage("MeshFaceControlWidget")
@@ -34,20 +45,25 @@ MeshFaceControlWidget::MeshFaceControlWidget(QWidget *parent)
     connect(ui->btnClearRules, &QPushButton::clicked, this, &MeshFaceControlWidget::onClearRules);
     connect(ui->btnResetDefaults, &QPushButton::clicked, this, &MeshFaceControlWidget::onResetDefaults);
 
+    m_highlightMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    m_highlightMapper->ScalarVisibilityOff();
+    m_highlightActor = vtkSmartPointer<vtkActor>::New();
+    m_highlightActor->SetMapper(m_highlightMapper);
+    m_highlightActor->PickableOff();
+    m_highlightActor->GetProperty()->SetColor(0.12, 0.58, 1.0);
+    m_highlightActor->GetProperty()->SetPointSize(9.0);
+
     onResetDefaults();
 }
 
 MeshFaceControlWidget::~MeshFaceControlWidget()
 {
+    clearGroupHighlight(false);
     delete ui;
 }
 
 void MeshFaceControlWidget::beforeLoad()
 {
-    PickManager::instance();
-    PickManager::instance().updateStructure();
-    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Face);
-
     {
         QSignalBlocker blocker(ui->comboBoxDim);
         ui->comboBoxDim->clear();
@@ -60,7 +76,7 @@ void MeshFaceControlWidget::beforeLoad()
 
 void MeshFaceControlWidget::beforeUnload()
 {
-    PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Face);
+    clearGroupHighlight(true);
 }
 
 void MeshFaceControlWidget::onDimChanged()
@@ -70,31 +86,7 @@ void MeshFaceControlWidget::onDimChanged()
 
 void MeshFaceControlWidget::onGroupChanged()
 {
-    const int idx = ui->comboBoxGroup->currentIndex();
-    if (idx < 0) {
-        return;
-    }
-
-    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    if (!meshSvc) {
-        return;
-    }
-
-    const MshPickMap& map = meshSvc->mshPickMapSolid();
-    const int physId = ui->comboBoxGroup->itemData(idx).toInt();
-
-    const QVector<qint64> faceKeys64 = map.bndFacePhysToFaceKeys.value(physId);
-    QVector<vtkIdType> faceKeys;
-    faceKeys.reserve(faceKeys64.size());
-    for (qint64 key : faceKeys64) {
-        faceKeys.push_back(static_cast<vtkIdType>(key));
-    }
-
-    PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, faceKeys, true);
-
-    ui->labelPickStatus->setText(QStringLiteral("当前高亮面组：%1（面数 %2）")
-                                 .arg(ui->comboBoxGroup->currentText())
-                                 .arg(faceKeys.size()));
+    updateGroupHighlight();
 }
 
 void MeshFaceControlWidget::refreshGroupCombo()
@@ -105,6 +97,7 @@ void MeshFaceControlWidget::refreshGroupCombo()
         return;
     }
 
+    m_cachedGrid = meshSvc->getVtkUnstructuredGridSolid();
     const int dimFilter = ui->comboBoxDim->currentData().toInt();
     const MshPickMap& map = meshSvc->mshPickMapSolid();
 
@@ -126,9 +119,80 @@ void MeshFaceControlWidget::refreshGroupCombo()
     if (ui->comboBoxGroup->count() > 0) {
         ui->comboBoxGroup->setCurrentIndex(0);
         blocker.unblock();
-        onGroupChanged();
+        updateGroupHighlight();
     } else {
         ui->labelPickStatus->setText(QStringLiteral("暂无可用面组，请先完成整体剖分/导入带分组网格。"));
+        clearGroupHighlight(true);
+    }
+}
+
+void MeshFaceControlWidget::updateGroupHighlight()
+{
+    const int idx = ui->comboBoxGroup->currentIndex();
+    if (idx < 0) {
+        clearGroupHighlight(true);
+        return;
+    }
+
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!meshSvc || !visual) {
+        return;
+    }
+
+    if (!m_cachedGrid) {
+        m_cachedGrid = meshSvc->getVtkUnstructuredGridSolid();
+    }
+    if (!m_cachedGrid || m_cachedGrid->GetNumberOfPoints() <= 0) {
+        ui->labelPickStatus->setText(QStringLiteral("无可高亮点。"));
+        clearGroupHighlight(true);
+        return;
+    }
+
+    const MshPickMap& map = meshSvc->mshPickMapSolid();
+    const int physId = ui->comboBoxGroup->itemData(idx).toInt();
+    const QVector<int> pids = map.bndFacePhysToPointIds.value(physId);
+    if (pids.isEmpty()) {
+        ui->labelPickStatus->setText(QStringLiteral("当前面组没有关联点。"));
+        clearGroupHighlight(true);
+        return;
+    }
+
+    auto pts = vtkSmartPointer<vtkPoints>::New();
+    auto verts = vtkSmartPointer<vtkCellArray>::New();
+    for (int pid : pids) {
+        if (pid < 0 || pid >= m_cachedGrid->GetNumberOfPoints()) {
+            continue;
+        }
+        double p[3];
+        m_cachedGrid->GetPoint(pid, p);
+        vtkIdType id = pts->InsertNextPoint(p);
+        verts->InsertNextCell(1);
+        verts->InsertCellPoint(id);
+    }
+
+    auto poly = vtkSmartPointer<vtkPolyData>::New();
+    poly->SetPoints(pts);
+    poly->SetVerts(verts);
+
+    auto glyph = vtkSmartPointer<vtkVertexGlyphFilter>::New();
+    glyph->SetInputData(poly);
+    glyph->Update();
+
+    m_highlightMapper->SetInputData(glyph->GetOutput());
+    visual->removeProp(kFaceHighlightPropId, false);
+    visual->addProp(kFaceHighlightPropId, m_highlightActor, QStringLiteral("网格"), QStringLiteral("面控制高亮"), false, true);
+
+    ui->labelPickStatus->setText(QStringLiteral("当前高亮面组：%1（点数 %2）")
+                                 .arg(ui->comboBoxGroup->currentText())
+                                 .arg(pids.size()));
+}
+
+void MeshFaceControlWidget::clearGroupHighlight(bool renderNow)
+{
+    auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (visual) {
+        visual->removeProp(kFaceHighlightPropId, renderNow);
     }
 }
 
