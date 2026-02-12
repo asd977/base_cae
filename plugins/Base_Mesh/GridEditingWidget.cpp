@@ -439,6 +439,12 @@ void GridEditingWidget::buildOrUpdateViewGrid()
 
     const bool hasFilter = !m_filterKetypes.isEmpty() || !m_filterMatypes.isEmpty() || !m_filterLayers.isEmpty();
 
+    // 记录 mapper 原有着色状态：避免仅因重建 viewGrid 就丢失当前颜色。
+    const int prevScalarVisibility = m_meshMapper->GetScalarVisibility();
+    const int prevScalarMode = m_meshMapper->GetScalarMode();
+    const char* prevArrayName = m_meshMapper->GetArrayName();
+    vtkLookupTable* prevLookupTable = m_meshMapper->GetLookupTable();
+
     if (!hasFilter) {
         m_viewGrid = m_fullGrid;
         m_meshMapper->SetInputData(m_viewGrid);
@@ -479,9 +485,20 @@ void GridEditingWidget::buildOrUpdateViewGrid()
     }
 
     // 仅在显式选择颜色模式或存在材料高亮 LUT 时改写 mapper 颜色状态。
-    // 避免进入/重建网格编辑视图时把外部已有着色（例如材料模块高亮）清掉。
+    // 否则恢复 mapper 原有着色配置，避免创建/重建网格编辑时颜色丢失。
     if (m_matypeLookupTable || m_colorMode != ColorMode::None) {
         applyColorMode();
+    } else {
+        m_meshMapper->SetScalarMode(prevScalarMode);
+        if (prevArrayName && prevArrayName[0] != '\0') {
+            m_meshMapper->SelectColorArray(prevArrayName);
+        }
+        if (prevLookupTable) {
+            m_meshMapper->SetLookupTable(prevLookupTable);
+            m_meshMapper->UseLookupTableScalarRangeOn();
+        }
+        if (prevScalarVisibility) m_meshMapper->ScalarVisibilityOn();
+        else m_meshMapper->ScalarVisibilityOff();
     }
     m_visualWidgetService->render();
 }
