@@ -153,13 +153,28 @@ public slots:
                 gmsh::option::setNumber("Mesh.Algorithm3D", m_p.algorithm);
                 emit log("开始生成 3D 网格...");
                 gmsh::model::mesh::generate(3);
+
+                // 关键保护：确认确实生成了体单元（tet/hex 等）
+                std::vector<int> elemTypes3d;
+                std::vector<std::vector<std::size_t>> elemTags3d;
+                std::vector<std::vector<std::size_t>> nodeTags3d;
+                gmsh::model::mesh::getElements(elemTypes3d, elemTags3d, nodeTags3d, 3);
+                std::size_t total3d = 0;
+                for (const auto &v : elemTags3d) total3d += v.size();
+                if (total3d == 0)
+                {
+                    emit finishedFail("3D网格生成后未检测到体单元（tet/hex）。请检查几何是否为封闭体，或尝试调整算法/尺寸。\n"
+                                     "若看到 no volume cells imported，通常就是这里没有生成体单元。");
+                    return;
+                }
+                emit log(QString("3D体单元数量：%1").arg((qlonglong)total3d));
             }
 
             emit log("网格生成完成。");
 
             // 6) 输出
-            // 只输出物理组元素（你旧代码就是这么干的）
-            gmsh::option::setNumber("Mesh.SaveAll", 0);
+            // 为避免物理组过滤导致二次划分时导出缺失体单元，这里强制导出全部网格元素。
+            gmsh::option::setNumber("Mesh.SaveAll", 1);
 
             QString msh = m_tempMshPath;
             QString vtk = m_tempVtkPath;
