@@ -155,17 +155,24 @@ void MaterialEntryWidget::beforeUnload()
     if (m_beforeUnloadHandled) return;
     m_beforeUnloadHandled = true;
 
-    // 离开页面：清空所有高亮
-    if (!m_entryId.isEmpty()) {
-        m_previewMatype = -1;
-        m_preDeleteMatype = -1;
+    // 离开页面：仅做“清理”，不要再触发恢复高亮逻辑
+    m_previewMatype = -1;
+    m_preDeleteMatype = -1;
+
+    if (!m_entryId.isEmpty() && m_materialManager) {
         m_materialManager->setPreviewMatypeForEntry(m_entryId, -1);
         m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
+    }
+    if (m_materialManager) {
+        // 即使 entryId 为空也兜底清空全局高亮
         m_materialManager->clearAllMatypeHighlight();
     }
 
-    // UI 层清理 hover 背景
-    onDropdownClosed();
+    // 仅清理 UI hover，不调用 onDropdownClosed（其末尾会 refresh 高亮）
+    if (m_matypeCombo && m_lastHoveredIndex >= 0) {
+        m_matypeCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
+        m_lastHoveredIndex = -1;
+    }
 
     // list 背景也清掉
     if (m_appliedMatypesList) {
@@ -498,6 +505,11 @@ void MaterialEntryWidget::onDropdownClosed()
     }
 
     updateAppliedListColors();
+
+    // 卸载过程中只做状态清理，不回刷高亮，避免离开页面后颜色被重新点亮
+    if (m_beforeUnloadHandled) {
+        return;
+    }
 
     // 下拉关闭后仅取消 Preview，并恢复到该条目的应有高亮状态（Selected / PreDelete / Applied）。
     m_materialManager->refreshMatypeHighlight(m_entryId);
