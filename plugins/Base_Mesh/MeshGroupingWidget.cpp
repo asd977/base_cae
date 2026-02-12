@@ -7,6 +7,8 @@
 #include <struct/MeshMap.h>
 
 #include <QMap>
+#include <cmath>
+#include <QSet>
 #include <algorithm>
 #include <QMessageBox>
 #include <QTableWidgetItem>
@@ -59,6 +61,7 @@ MeshGroupingWidget::MeshGroupingWidget(QWidget *parent)
     bindRangeChanged(ui->dsZMin);
     bindRangeChanged(ui->dsZMax);
 
+    initializeRangeByGridBounds(false);
     refreshGroupList();
     refreshBoundaryGroupList();
 }
@@ -71,6 +74,7 @@ MeshGroupingWidget::~MeshGroupingWidget()
 
 void MeshGroupingWidget::beforeLoad()
 {
+    initializeRangeByGridBounds(false);
     refreshGroupList();
     refreshBoundaryGroupList();
     if (ui->chkShowRangeBox->isChecked()) {
@@ -145,8 +149,36 @@ void MeshGroupingWidget::onRangeGrouping()
 
 void MeshGroupingWidget::onRefreshGroups()
 {
+    initializeRangeByGridBounds(true);
     refreshGroupList();
     refreshBoundaryGroupList();
+}
+
+void MeshGroupingWidget::initializeRangeByGridBounds(bool force)
+{
+    auto *meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshService) return;
+
+    vtkSmartPointer<vtkUnstructuredGrid> grid = meshService->getVtkUnstructuredGridSolid();
+    if (!grid || grid->GetNumberOfCells() <= 0) {
+        grid = meshService->getVtkUnstructuredGrid();
+    }
+    if (!grid || grid->GetNumberOfPoints() <= 0) return;
+
+    const bool hasUserRange =
+            std::abs(ui->dsXMin->value() - ui->dsXMax->value()) > 1e-12 ||
+            std::abs(ui->dsYMin->value() - ui->dsYMax->value()) > 1e-12 ||
+            std::abs(ui->dsZMin->value() - ui->dsZMax->value()) > 1e-12;
+    if (hasUserRange && !force) return;
+
+    double bounds[6] = {0,0,0,0,0,0};
+    grid->GetBounds(bounds);
+    ui->dsXMin->setValue(bounds[0]);
+    ui->dsXMax->setValue(bounds[1]);
+    ui->dsYMin->setValue(bounds[2]);
+    ui->dsYMax->setValue(bounds[3]);
+    ui->dsZMin->setValue(bounds[4]);
+    ui->dsZMax->setValue(bounds[5]);
 }
 
 void MeshGroupingWidget::onToggleRangePreview(bool on)
@@ -222,7 +254,59 @@ void MeshGroupingWidget::refreshBoundaryGroupList()
     ui->tblBoundaryGroups->setRowCount(0);
     if (!meshService) return;
 
-    const MshPickMap pick = meshService->mshPickMapSolid();
+    MshPickMap pick = meshService->mshPickMapSolid();
+
+    auto ensureBoundaryFallback = [&]() {
+        const bool hasBoundary = !pick.bndPointPhysToPointIds.isEmpty()
+                || !pick.bndEdgePhysToPointIds.isEmpty()
+                || !pick.bndFacePhysToPointIds.isEmpty();
+        if (hasBoundary) return;
+
+        vtkSmartPointer<vtkUnstructuredGrid> grid = meshService->getVtkUnstructuredGridSolid();
+        if (!grid || grid->GetNumberOfPoints() <= 0) {
+            grid = meshService->getVtkUnstructuredGrid();
+        }
+        if (!grid || grid->GetNumberOfPoints() <= 0) return;
+
+        double b[6] = {0,0,0,0,0,0};
+        grid->GetBounds(b);
+        const double spanX = std::max(std::abs(b[1] - b[0]), 1e-12);
+        const double spanY = std::max(std::abs(b[3] - b[2]), 1e-12);
+        const double spanZ = std::max(std::abs(b[5] - b[4]), 1e-12);
+        const double tolX = std::max(spanX * 1e-6, 1e-9);
+        const double tolY = std::max(spanY * 1e-6, 1e-9);
+        const double tolZ = std::max(spanZ * 1e-6, 1e-9);
+
+        QHash<int, QSet<int>> physToPts;
+        for (vtkIdType pid = 0; pid < grid->GetNumberOfPoints(); ++pid) {
+            double p[3] = {0,0,0};
+            grid->GetPoint(pid, p);
+            if (std::abs(p[0] - b[0]) <= tolX) physToPts[900001].insert((int)pid);
+            if (std::abs(p[0] - b[1]) <= tolX) physToPts[900002].insert((int)pid);
+            if (std::abs(p[1] - b[2]) <= tolY) physToPts[900003].insert((int)pid);
+            if (std::abs(p[1] - b[3]) <= tolY) physToPts[900004].insert((int)pid);
+            if (std::abs(p[2] - b[4]) <= tolZ) physToPts[900005].insert((int)pid);
+            if (std::abs(p[2] - b[5]) <= tolZ) physToPts[900006].insert((int)pid);
+        }
+
+        const QHash<int, QString> nameMap {
+            {900001, "Auto_XMin"}, {900002, "Auto_XMax"},
+            {900003, "Auto_YMin"}, {900004, "Auto_YMax"},
+            {900005, "Auto_ZMin"}, {900006, "Auto_ZMax"},
+        };
+
+        for (auto it = physToPts.begin(); it != physToPts.end(); ++it) {
+            if (it.value().isEmpty()) continue;
+            QVector<int> pts;
+            pts.reserve(it.value().size());
+            for (int v : it.value()) pts.push_back(v);
+            std::sort(pts.begin(), pts.end());
+            pick.bndFacePhysToPointIds[it.key()] = pts;
+            pick.physIdToDim[it.key()] = 2;
+            pick.physIdToName[it.key()] = nameMap.value(it.key(), QString("Auto_Boundary_%1").arg(it.key()));
+        }
+    };
+    ensureBoundaryFallback();
     QList<int> physIds = pick.physIdToName.keys();
     std::sort(physIds.begin(), physIds.end());
 
@@ -279,6 +363,24 @@ void MeshGroupingWidget::updateRangePreview(bool forceOn)
     actor->SetMapper(mapper);
     actor->GetProperty()->SetColor(1.0, 0.2, 0.2);
     actor->GetProperty()->SetLineWidth(2.0);
+    actor->GetProperty()->LightingOff();
+
+    if (std::abs(xmax - xmin) < 1e-12 || std::abs(ymax - ymin) < 1e-12 || std::abs(zmax - zmin) < 1e-12) {
+        auto *meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+        vtkSmartPointer<vtkUnstructuredGrid> grid = meshService ? meshService->getVtkUnstructuredGridSolid() : nullptr;
+        if ((!grid || grid->GetNumberOfPoints() <= 0) && meshService) {
+            grid = meshService->getVtkUnstructuredGrid();
+        }
+        if (grid && grid->GetNumberOfPoints() > 0) {
+            double gb[6] = {0,0,0,0,0,0};
+            grid->GetBounds(gb);
+            const double eps = std::max({std::abs(gb[1]-gb[0]), std::abs(gb[3]-gb[2]), std::abs(gb[5]-gb[4]), 1.0}) * 1e-4;
+            if (std::abs(xmax - xmin) < 1e-12) { xmin -= eps; xmax += eps; }
+            if (std::abs(ymax - ymin) < 1e-12) { ymin -= eps; ymax += eps; }
+            if (std::abs(zmax - zmin) < 1e-12) { zmin -= eps; zmax += eps; }
+            cube->SetBounds(xmin, xmax, ymin, ymax, zmin, zmax);
+        }
+    }
 
     visual->removeProp(kRangePreviewPropId, false);
     visual->addProp(kRangePreviewPropId, actor, "网格", "分组范围框", false, true);

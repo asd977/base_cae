@@ -31,6 +31,7 @@ private slots:
 private:
     void refreshGroupList();
     void refreshBoundaryGroupList();
+    void initializeRangeByGridBounds(bool force = false);
     void updateRangePreview(bool forceOn = false);
     void clearRangePreview(bool renderNow = true);
     QString currentTargetArrayName() const;

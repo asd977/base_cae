@@ -604,18 +604,24 @@ bool MeshModuleController::autoGroupingBySpatialBins(int binCount,
         groupArr->SetNumberOfValues(nCells);
     }
 
-    const double axisMin = minV[axis];
-    const double axisSpan = std::max(span[axis], 1e-12);
+    // 使用“按主轴排序后的等数量分箱”（quantile binning），避免仅按跨度均分导致某些组过密/过疏。
+    std::sort(centers.begin(), centers.end(), [axis](const CellCenter &a, const CellCenter &b){
+        const double av = (axis == 0 ? a.x : (axis == 1 ? a.y : a.z));
+        const double bv = (axis == 0 ? b.x : (axis == 1 ? b.y : b.z));
+        if (av == bv) return a.cid < b.cid;
+        return av < bv;
+    });
 
-    for (const auto &c : centers) {
-        const double coord = (axis == 0 ? c.x : (axis == 1 ? c.y : c.z));
-        int bin = static_cast<int>(((coord - axisMin) / axisSpan) * binCount);
+    const int n = centers.size();
+    for (int i = 0; i < n; ++i) {
+        int bin = (i * binCount) / n;
         if (bin >= binCount) bin = binCount - 1;
         if (bin < 0) bin = 0;
 
         const int targetValue = startValue + bin;
-        targetArr->SetValue(c.cid, targetValue);
-        groupArr->SetValue(c.cid, QString("%1_%2").arg(groupPrefix).arg(targetValue).toStdString());
+        const vtkIdType cid = centers[i].cid;
+        targetArr->SetValue(cid, targetValue);
+        groupArr->SetValue(cid, QString("%1_%2").arg(groupPrefix).arg(targetValue).toStdString());
     }
 
     m_importedGrid->GetCellData()->Modified();
