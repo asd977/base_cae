@@ -88,7 +88,16 @@ public slots:
             std::vector<std::pair<int,int>> outDimTags;
             gmsh::model::occ::importShapes(stepPath.toStdString(), outDimTags, true);
             // Ensure touching domains share one interface entity after STEP import.
-            gmsh::model::occ::removeAllDuplicates();
+            // 单体模型在某些 OCC 情况下会抛出 “Boolean fragments failed”，这里容错处理。
+            if (outDimTags.size() > 1) {
+                try {
+                    gmsh::model::occ::removeAllDuplicates();
+                } catch (const std::exception& e) {
+                    emit log(QString("removeAllDuplicates 跳过：%1").arg(e.what()));
+                } catch (...) {
+                    emit log("removeAllDuplicates 跳过：unknown error");
+                }
+            }
             gmsh::model::occ::synchronize();
 
             emit log(QString("导入几何完成，实体数：%1").arg((int)outDimTags.size()));

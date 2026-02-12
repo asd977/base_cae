@@ -54,7 +54,8 @@ void DisplacementConstraintWidget::beforeLoad()
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
 
     QObject::connect(&PickManager::instance(), &PickManager::nodePicked,
-                     this, &DisplacementConstraintWidget::onNodePicked);
+                     this, &DisplacementConstraintWidget::onNodePicked,
+                     Qt::UniqueConnection);
 
     // ===== 1) 从某处拿到映射（示例：meshSvc 提供 pick map）=====
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
@@ -77,9 +78,9 @@ void DisplacementConstraintWidget::beforeLoad()
 
     // 下拉框改变 -> 批量选
     QObject::connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged),
-                     this, &DisplacementConstraintWidget::onDimChanged);
+                     this, &DisplacementConstraintWidget::onDimChanged, Qt::UniqueConnection);
     QObject::connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged),
-                     this, &DisplacementConstraintWidget::onGroupChanged);
+                     this, &DisplacementConstraintWidget::onGroupChanged, Qt::UniqueConnection);
 }
 
 
@@ -144,6 +145,8 @@ void DisplacementConstraintWidget::onGroupChanged(int index)
 
 void DisplacementConstraintWidget::beforeUnload()
 {
+    QObject::disconnect(&PickManager::instance(), &PickManager::nodePicked,
+                        this, &DisplacementConstraintWidget::onNodePicked);
     PickManager::instance().deactivate(getPageType(),m_uuid,PickMode::Node);
 }
 

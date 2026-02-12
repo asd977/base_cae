@@ -406,7 +406,6 @@ void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clie
     self->m_leftDownPos[0] = xy[0];
     self->m_leftDownPos[1] = xy[1];
 
-    self->pickAt(xy[0],xy[1]);
 }
 
 void PickManager::OnMouseMove(vtkObject* caller, unsigned long, void* clientData, void*)
