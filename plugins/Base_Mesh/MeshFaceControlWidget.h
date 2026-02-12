@@ -2,6 +2,7 @@
 #define MESHFACECONTROLWIDGET_H
 
 #include <BasePage.h>
+#include <QVector>
 
 namespace Ui {
 class MeshFaceControlWidget;
@@ -14,11 +15,38 @@ class MeshFaceControlWidget : public BasePage
 public:
     explicit MeshFaceControlWidget(QWidget *parent = nullptr);
     ~MeshFaceControlWidget() override;
-    void beforeLoad(){};
-    void beforeUnload() {};
+    void beforeLoad() override;
+    void beforeUnload() override;
+
+private slots:
+    void onAddControl();
+    void onUpdateControl();
+    void onDeleteControl();
+    void onResetForm();
+    void onSelectionChanged();
+    void onParameterEdited();
+
+private:
+    struct FaceControlItem
+    {
+        QString faceIds;
+        double minSize = 0.2;
+        double maxSize = 1.0;
+        bool curvatureRefine = true;
+        int curvatureLevel = 2;
+    };
+
+    void setupUiState();
+    bool validateInput(QString &err) const;
+    FaceControlItem collectFormData() const;
+    void fillFormData(const FaceControlItem &item);
+    void appendOrUpdateTableRow(int row, const FaceControlItem &item);
+    void refreshButtons();
+    void refreshSummary();
 
 private:
     Ui::MeshFaceControlWidget *ui;
+    QVector<FaceControlItem> m_items;
 };
 
 #endif // MESHFACECONTROLWIDGET_H
