@@ -28,7 +28,7 @@
 #include <vtkFieldData.h>
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-static constexpr auto kSkipEmptyParts = Qt::SkipEmptyParts;
+static constexpr auto kSkipEmptyParts = QString::SkipEmptyParts;
 #else
 static constexpr auto kSkipEmptyParts = QString::SkipEmptyParts;
 #endif

@@ -43,7 +43,7 @@ void MeshVolumeControlWidget::onSelectionChanged(){ int row=ui->tableControls->c
 void MeshVolumeControlWidget::onParameterEdited(){ ui->spinLayerCount->setEnabled(ui->checkBoundaryLayer->isChecked()); refreshButtons(); refreshSummary(); }
 
 void MeshVolumeControlWidget::onRefreshEntities(){ rebuildVolumeCandidates(); }
-void MeshVolumeControlWidget::onAppendSelectedEntity(){ int id=ui->cmbEntity->currentData().toInt(); if(id<=0)return; QStringList p=ui->editVolumeIds->text().trimmed().split(',',Qt::SkipEmptyParts); QString s=QString::number(id); if(!p.contains(s)){ p<<s; ui->editVolumeIds->setText(p.join(',')); }}
+void MeshVolumeControlWidget::onAppendSelectedEntity(){ int id=ui->cmbEntity->currentData().toInt(); if(id<=0)return; QStringList p=ui->editVolumeIds->text().trimmed().split(',',QString::SkipEmptyParts); QString s=QString::number(id); if(!p.contains(s)){ p<<s; ui->editVolumeIds->setText(p.join(',')); }}
 void MeshVolumeControlWidget::onHighlightSelectedEntity(){ int id=ui->cmbEntity->currentData().toInt(); if(id<=0)return; if(auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) svc->highlightEntity(3,id); }
 
 void MeshVolumeControlWidget::setupUiState(){ ui->tableControls->setColumnCount(6); ui->tableControls->setHorizontalHeaderLabels({tr("体 ID"),tr("最小尺寸"),tr("最大尺寸"),tr("增长率"),tr("边界层"),tr("层数")}); ui->tableControls->horizontalHeader()->setStretchLastSection(true); ui->tableControls->setSelectionBehavior(QAbstractItemView::SelectRows); ui->tableControls->setSelectionMode(QAbstractItemView::SingleSelection); ui->tableControls->setEditTriggers(QAbstractItemView::NoEditTriggers); onResetForm(); rebuildVolumeCandidates(); }

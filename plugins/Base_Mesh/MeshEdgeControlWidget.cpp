@@ -1,4 +1,4 @@
-#include "MeshEdgeControlWidget.h"
+﻿#include "MeshEdgeControlWidget.h"
 #include "ui_MeshEdgeControlWidget.h"
 
 #include <ServiceRegistry.h>
@@ -42,7 +42,7 @@ void MeshEdgeControlWidget::onSelectionChanged(){ int row=ui->tableControls->cur
 void MeshEdgeControlWidget::onParameterEdited(){ refreshButtons(); refreshSummary(); }
 
 void MeshEdgeControlWidget::onRefreshEntities(){ rebuildEdgeCandidates(); }
-void MeshEdgeControlWidget::onAppendSelectedEntity(){ int id=ui->cmbEntity->currentData().toInt(); if(id<=0)return; QStringList p=ui->editEdgeIds->text().trimmed().split(',',Qt::SkipEmptyParts); const QString s=QString::number(id); if(!p.contains(s)){ p<<s; ui->editEdgeIds->setText(p.join(',')); }}
+void MeshEdgeControlWidget::onAppendSelectedEntity(){ int id=ui->cmbEntity->currentData().toInt(); if(id<=0)return; QStringList p=ui->editEdgeIds->text().trimmed().split(',',QString::SkipEmptyParts); const QString s=QString::number(id); if(!p.contains(s)){ p<<s; ui->editEdgeIds->setText(p.join(',')); }}
 void MeshEdgeControlWidget::onHighlightSelectedEntity(){ int id=ui->cmbEntity->currentData().toInt(); if(id<=0)return; if(auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) svc->highlightEntity(1,id); }
 
 void MeshEdgeControlWidget::setupUiState(){ ui->tableControls->setColumnCount(5); ui->tableControls->setHorizontalHeaderLabels({tr("边 ID"),tr("目标尺寸"),tr("分段数"),tr("偏置比"),tr("硬约束")}); ui->tableControls->horizontalHeader()->setStretchLastSection(true); ui->tableControls->setSelectionBehavior(QAbstractItemView::SelectRows); ui->tableControls->setSelectionMode(QAbstractItemView::SingleSelection); ui->tableControls->setEditTriggers(QAbstractItemView::NoEditTriggers); onResetForm(); rebuildEdgeCandidates(); }

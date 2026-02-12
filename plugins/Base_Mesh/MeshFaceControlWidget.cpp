@@ -1,4 +1,4 @@
-#include "MeshFaceControlWidget.h"
+﻿#include "MeshFaceControlWidget.h"
 #include "ui_MeshFaceControlWidget.h"
 
 #include <ServiceRegistry.h>
@@ -56,7 +56,7 @@ void MeshFaceControlWidget::refreshSummary(){ const QString modeHint = ui->check
 void MeshFaceControlWidget::rebuildFaceCandidates(){ ui->cmbEntity->clear(); m_entityIds.clear(); if(auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) m_entityIds=svc->listEntityIds(2); for(const auto& id:m_entityIds) ui->cmbEntity->addItem(tr("面 #%1").arg(id), id.toInt()); updateEntityUiState(); refreshSummary(); }
 void MeshFaceControlWidget::clearHighlight(){ if(auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) svc->clearEntityHighlight(); }
 void MeshFaceControlWidget::updateEntityUiState(){ const bool hasEntities=!m_entityIds.isEmpty(); ui->cmbEntity->setEnabled(hasEntities); ui->btnAppendEntity->setEnabled(hasEntities); ui->btnHighlightEntity->setEnabled(hasEntities); }
-bool MeshFaceControlWidget::appendEntityIdToEdit(int id){ QStringList parts=ui->editFaceIds->text().trimmed().split(',',Qt::SkipEmptyParts); QString idStr=QString::number(id); if(!parts.contains(idStr)){ parts.append(idStr); ui->editFaceIds->setText(parts.join(',')); } return true; }
+bool MeshFaceControlWidget::appendEntityIdToEdit(int id){ QStringList parts=ui->editFaceIds->text().trimmed().split(',',QString::SkipEmptyParts); QString idStr=QString::number(id); if(!parts.contains(idStr)){ parts.append(idStr); ui->editFaceIds->setText(parts.join(',')); } return true; }
 
 void MeshFaceControlWidget::syncRulesToService()
 {

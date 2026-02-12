@@ -61,11 +61,11 @@ public slots:
     static std::set<int> parseIdSet(const QString& text)
     {
         std::set<int> ids;
-        const auto parts = text.split(',', Qt::SkipEmptyParts);
+        const auto parts = text.split(',', QString::SkipEmptyParts);
         for (QString p : parts) {
             p = p.trimmed();
             if (p.contains('-')) {
-                const auto lr = p.split('-', Qt::SkipEmptyParts);
+                const auto lr = p.split('-', QString::SkipEmptyParts);
                 if (lr.size() == 2) {
                     bool ok1=false, ok2=false;
                     int a=lr[0].toInt(&ok1), b=lr[1].toInt(&ok2);
