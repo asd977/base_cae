@@ -7,6 +7,8 @@
 #include <QDebug>
 #include <algorithm>
 #include <limits>
+#include <cmath>
+#include <vector>
 
 // VTK
 #include <vtkCommand.h>
@@ -23,12 +25,7 @@
 #include <vtkPlane.h>
 #include <vtkLine.h>
 #include <QDateTime>
-#include <vtkHardwareSelector.h>
-#include <vtkSelection.h>
-#include <vtkSelectionNode.h>
-#include <vtkIdTypeArray.h>
-#include <vtkInformation.h>
-#include <vtkDataObject.h>
+#include <vtkRenderWindow.h>
 
 
 static inline double dist2PointToSegment(const double x[3], const double a[3], const double b[3])
@@ -1348,39 +1345,81 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
     auto* ren = m_visual->renderer();
     if (!ren) return;
 
-    auto extractVisibleCellIds = [&](vtkUnstructuredGrid* grid, vtkProp* prop) -> QVector<vtkIdType>
+    if (!m_areaPicker) m_areaPicker = vtkSmartPointer<vtkAreaPicker>::New();
+    m_areaPicker->AreaPick(x0, y0, x1, y1, ren);
+
+    vtkPlanes* frustum = m_areaPicker->GetFrustum();
+    if (!frustum) return;
+
+    auto* rw = ren->GetRenderWindow();
+    if (!rw) return;
+    rw->Render();
+
+    float* zbuf = rw->GetZbufferData(x0, y0, x1, y1);
+    const int w = x1 - x0 + 1;
+    const int h = y1 - y0 + 1;
+
+    auto extractVisibleCellIds = [&](vtkUnstructuredGrid* grid) -> QVector<vtkIdType>
     {
         QVector<vtkIdType> ids;
-        if (!grid || !prop || grid->GetNumberOfCells() <= 0) return ids;
+        if (!grid || grid->GetNumberOfCells() <= 0) return ids;
 
-        auto selector = vtkSmartPointer<vtkHardwareSelector>::New();
-        selector->SetRenderer(ren);
-        selector->SetArea(x0, y0, x1, y1);
-        selector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_CELLS);
-        vtkSmartPointer<vtkSelection> sel = selector->Select();
-        if (!sel) return ids;
+        auto ex = vtkSmartPointer<vtkExtractSelectedFrustum>::New();
+        ex->SetFrustum(frustum);
+        ex->PreserveTopologyOff();
+        ex->SetInputData(grid);
+        ex->Update();
 
-        for (unsigned int i = 0; i < sel->GetNumberOfNodes(); ++i)
+        vtkUnstructuredGrid* out = (vtkUnstructuredGrid*)ex->GetOutput();
+        if (!out || out->GetNumberOfCells() <= 0) return ids;
+
+        vtkDataArray* orig = out->GetCellData()->GetArray("vtkOriginalCellIds");
+        if (!orig) return ids;
+
+        const vtkIdType n = out->GetNumberOfCells();
+        ids.reserve(int(n));
+
+        constexpr double kDepthEps = 1e-4;
+        for (vtkIdType i = 0; i < n; ++i)
         {
-            vtkSelectionNode* node = sel->GetNode(i);
-            if (!node) continue;
+            const vtkIdType cellId = vtkIdType(orig->GetTuple1(i));
+            if (cellId < 0 || cellId >= grid->GetNumberOfCells()) continue;
 
-            vtkInformation* props = node->GetProperties();
-            if (!props) continue;
+            vtkCell* cell = grid->GetCell(cellId);
+            if (!cell) continue;
 
-            vtkProp* nodeProp = vtkProp::SafeDownCast(props->Get(vtkSelectionNode::PROP()));
-            if (!nodeProp || nodeProp != prop) continue;
+            double pcoords[3] = {0.0, 0.0, 0.0};
+            int subId = 0;
+            std::vector<double> weights(size_t(cell->GetNumberOfPoints()), 0.0);
+            if (weights.empty()) continue;
 
-            auto* arr = vtkIdTypeArray::SafeDownCast(node->GetSelectionList());
-            if (!arr) continue;
+            cell->GetParametricCenter(pcoords);
+            double world[3] = {0.0, 0.0, 0.0};
+            cell->EvaluateLocation(subId, pcoords, world, weights.data());
 
-            const vtkIdType n = arr->GetNumberOfTuples();
-            ids.reserve(ids.size() + int(n));
-            for (vtkIdType k = 0; k < n; ++k)
-                ids.push_back(arr->GetValue(k));
+            ren->SetWorldPoint(world[0], world[1], world[2], 1.0);
+            ren->WorldToDisplay();
+            double disp[3] = {0.0, 0.0, 0.0};
+            ren->GetDisplayPoint(disp);
+
+            const int ix = int(std::lround(disp[0]));
+            const int iy = int(std::lround(disp[1]));
+
+            if (ix < x0 || ix > x1 || iy < y0 || iy > y1) continue;
+            if (!zbuf || w <= 0 || h <= 0) {
+                ids.push_back(cellId);
+                continue;
+            }
+
+            const int ox = ix - x0;
+            const int oy = iy - y0;
+            if (ox < 0 || ox >= w || oy < 0 || oy >= h) continue;
+
+            const double zScreen = disp[2];
+            const double zFront = zbuf[oy * w + ox];
+            if (zScreen <= zFront + kDepthEps)
+                ids.push_back(cellId);
         }
-
-        if (ids.isEmpty()) return ids;
 
         std::sort(ids.begin(), ids.end());
         ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
@@ -1394,8 +1433,7 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
     {
         if (!grid) return;
 
-        vtkProp* targetProp = (kind == GridKind::Solid) ? m_solidProp : m_lineProp;
-        const auto cellIds = extractVisibleCellIds(grid, targetProp);
+        const auto cellIds = extractVisibleCellIds(grid);
         if (cellIds.isEmpty()) return;
 
         if (m_pickMode == PickMode::Node)
@@ -1499,6 +1537,8 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
 
     applyOnGrid(GridKind::Solid, m_gridSolid);
     applyOnGrid(GridKind::Line,  m_gridLine);
+
+    if (zbuf) delete[] zbuf;
 
     if (m_pickMode == PickMode::Node) markDirty(DirtyNode);
     if (m_pickMode == PickMode::Edge) markDirty(DirtyEdge);
