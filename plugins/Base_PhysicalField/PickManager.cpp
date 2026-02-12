@@ -406,6 +406,9 @@ void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clie
     self->m_leftDownPos[0] = xy[0];
     self->m_leftDownPos[1] = xy[1];
 
+    // 恢复单击即选中（避免出现需要双击才生效）
+    self->pickAt(xy[0], xy[1]);
+
 }
 
 void PickManager::OnMouseMove(vtkObject* caller, unsigned long, void* clientData, void*)
@@ -432,18 +435,7 @@ void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* cl
     self->m_leftDown = false;
 
 
-    // 单击才 pick；拖拽旋转不 pick
-    {
-        const int dx = xy[0] - self->m_leftDownPos[0];
-        const int dy = xy[1] - self->m_leftDownPos[1];
-        const int d2 = dx*dx + dy*dy;
-        const int thr = self->m_clickThresholdPx;
-        const bool isClick = (d2 <= thr * thr);
-
-        if (isClick) {
-            self->pickAt(xy[0], xy[1]);
-        }
-    }
+    // OnLeftButtonPress 已处理点选，这里不再重复 pick，避免双触发
 
 }
 
@@ -1902,4 +1894,3 @@ void PickManager::setSelectedFaceKeys(const QString& domain,
         markDirty(DirtyFace);
     }
 }
-
