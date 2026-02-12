@@ -6,6 +6,7 @@ INCLUDEPATH += $$PWD/../../interfaces
 
 HEADERS += \
     MeshGlobalMeshingWidget.h \
+    MeshGroupingWidget.h \
     MeshModuleController.h \
     MeshProcessor.h \
     MeshGridIO.h \
@@ -13,6 +14,7 @@ HEADERS += \
 
 SOURCES += \
     MeshGlobalMeshingWidget.cpp \
+    MeshGroupingWidget.cpp \
     MeshModuleController.cpp \
     MeshProcessor.cpp \
     MeshGridIO.cpp \
@@ -20,7 +22,8 @@ SOURCES += \
 
 FORMS += \
     MeshGlobalMeshingWidget.ui \
-    GridEditingWidget.ui
+    GridEditingWidget.ui \
+    MeshGroupingWidget.ui
 
 
 
