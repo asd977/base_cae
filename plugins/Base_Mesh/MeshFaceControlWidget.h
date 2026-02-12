@@ -1,4 +1,4 @@
-﻿#ifndef MESHFACECONTROLWIDGET_H
+#ifndef MESHFACECONTROLWIDGET_H
 #define MESHFACECONTROLWIDGET_H
 
 #include <BasePage.h>
@@ -14,8 +14,19 @@ class MeshFaceControlWidget : public BasePage
 public:
     explicit MeshFaceControlWidget(QWidget *parent = nullptr);
     ~MeshFaceControlWidget() override;
-    void beforeLoad(){};
-    void beforeUnload() {};
+
+    void beforeLoad() override;
+    void beforeUnload() override;
+
+private slots:
+    void onAddOrUpdateRule();
+    void onRemoveSelectedRule();
+    void onClearRules();
+    void onResetDefaults();
+
+private:
+    int findRowByFaceId(int faceId) const;
+    void updateSummary();
 
 private:
     Ui::MeshFaceControlWidget *ui;

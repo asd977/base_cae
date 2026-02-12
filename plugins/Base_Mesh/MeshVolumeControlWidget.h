@@ -1,4 +1,4 @@
-﻿#ifndef MESHVOLUMECONTROLWIDGET_H
+#ifndef MESHVOLUMECONTROLWIDGET_H
 #define MESHVOLUMECONTROLWIDGET_H
 
 #include <BasePage.h>
@@ -15,8 +15,18 @@ public:
     explicit MeshVolumeControlWidget(QWidget *parent = nullptr);
     ~MeshVolumeControlWidget() override;
 
-    void beforeLoad();
-    void beforeUnload();
+    void beforeLoad() override;
+    void beforeUnload() override;
+
+private slots:
+    void onAddOrUpdateRule();
+    void onRemoveSelectedRule();
+    void onClearRules();
+    void onResetDefaults();
+
+private:
+    int findRowByVolumeId(int volumeId) const;
+    void updateSummary();
 
 private:
     Ui::MeshVolumeControlWidget *ui;
