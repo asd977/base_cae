@@ -84,6 +84,12 @@
 #include <STEPControl_Writer.hxx>
 #include <TopoDS_Compound.hxx>
 #include <cmath>
+#include <vtkNew.h>
+#include <IVtkTools_DisplayModeFilter.hxx>
+#include <IVtkTools_ShapeDataSource.hxx>
+#include <IVtkOCC_Shape.hxx>
+#include <TopTools_IndexedMapOfShape.hxx>
+#include <TopExp.hxx>
 #include <TopoDS_Shape.hxx>
 
 #include <services/ProjectManagerService.h>
@@ -836,4 +842,93 @@ QString PreProcessing::makeUniqueName(const QString &baseName, const QString &ty
     int count = m_nameCounters.value(key, 0) + 1;
     m_nameCounters.insert(key, count);
     return QStringLiteral("%1(%2)").arg(baseName).arg(count);
+}
+
+
+QStringList PreProcessing::listEntityIds(int dim)
+{
+    QStringList out;
+    auto* mgr = GeomManager::GeomManagerInstance::getInstance();
+    if (!mgr || mgr->isEmpty()) return out;
+
+    auto map = mgr->getShapMap();
+    GeomShapeObject* obj = nullptr;
+    for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
+        if (it.value() && it.value()->getShape()) { obj = it.value(); break; }
+    }
+    if (!obj || !obj->getShape()) return out;
+
+    TopTools_IndexedMapOfShape indexed;
+    TopAbs_ShapeEnum shapeType = TopAbs_EDGE;
+    if (dim == 2) shapeType = TopAbs_FACE;
+    else if (dim == 3) shapeType = TopAbs_SOLID;
+
+    TopExp::MapShapes(*obj->getShape(), shapeType, indexed);
+    for (int i = 1; i <= indexed.Extent(); ++i) out << QString::number(i);
+    return out;
+}
+
+bool PreProcessing::highlightEntity(int dim, int id)
+{
+    clearEntityHighlight();
+    if (id <= 0) return false;
+
+    auto* mgr = GeomManager::GeomManagerInstance::getInstance();
+    if (!mgr || mgr->isEmpty()) return false;
+
+    auto map = mgr->getShapMap();
+    GeomShapeObject* obj = nullptr;
+    for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
+        if (it.value() && it.value()->getShape()) { obj = it.value(); break; }
+    }
+    if (!obj || !obj->getShape()) return false;
+
+    TopTools_IndexedMapOfShape indexed;
+    TopAbs_ShapeEnum shapeType = TopAbs_EDGE;
+    if (dim == 2) shapeType = TopAbs_FACE;
+    else if (dim == 3) shapeType = TopAbs_SOLID;
+
+    TopExp::MapShapes(*obj->getShape(), shapeType, indexed);
+    if (id > indexed.Extent()) return false;
+
+    TopoDS_Shape target = indexed(id);
+    IVtkOCC_Shape::Handle occShape = new IVtkOCC_Shape(target);
+    vtkNew<IVtkTools_ShapeDataSource> src;
+    src->SetShape(occShape);
+
+    vtkNew<IVtkTools_DisplayModeFilter> dm;
+    dm->SetInputConnection(src->GetOutputPort());
+    dm->SetDisplayMode(dim == 1 ? DM_Wireframe : DM_Shading);
+    dm->SetSmoothShading(true);
+    dm->SetFaceBoundaryDraw(true);
+    dm->Update();
+
+    auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    mapper->SetInputData(dm->GetOutput());
+    mapper->ScalarVisibilityOff();
+
+    auto actor = vtkSmartPointer<vtkActor>::New();
+    actor->SetMapper(mapper);
+    if (dim == 1) {
+        actor->GetProperty()->SetColor(1.0, 0.2, 0.2);
+        actor->GetProperty()->SetLineWidth(4.0);
+    } else if (dim == 2) {
+        actor->GetProperty()->SetColor(1.0, 0.85, 0.2);
+        actor->GetProperty()->SetOpacity(0.9);
+    } else {
+        actor->GetProperty()->SetColor(0.3, 0.8, 1.0);
+        actor->GetProperty()->SetOpacity(0.55);
+    }
+
+    auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!vis) return false;
+    vis->addProp("preproc.entity.highlight", actor, "Geometry", "entity.highlight", false, true);
+    return true;
+}
+
+void PreProcessing::clearEntityHighlight()
+{
+    if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>()) {
+        vis->removeProp("preproc.entity.highlight", true);
+    }
 }

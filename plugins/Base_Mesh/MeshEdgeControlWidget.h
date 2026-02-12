@@ -4,8 +4,7 @@
 #include <BasePage.h>
 #include <QMap>
 #include <QVector>
-
-#include <TopoDS_Shape.hxx>
+#include <QStringList>
 
 namespace Ui {
 class MeshEdgeControlWidget;
@@ -58,7 +57,7 @@ private:
 private:
     Ui::MeshEdgeControlWidget *ui;
     QVector<EdgeControlItem> m_items;
-    QMap<int, TopoDS_Shape> m_edgeMap;
+    QStringList m_entityIds;
     QString m_highlightPropId;
 };
 

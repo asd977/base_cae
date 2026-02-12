@@ -4,8 +4,7 @@
 #include <BasePage.h>
 #include <QMap>
 #include <QVector>
-
-#include <TopoDS_Shape.hxx>
+#include <QStringList>
 
 class vtkActor;
 
@@ -61,8 +60,7 @@ private:
 private:
     Ui::MeshFaceControlWidget *ui;
     QVector<FaceControlItem> m_items;
-    QMap<int, TopoDS_Shape> m_faceMap;
-    QString m_activeGeomUuid;
+    QStringList m_entityIds;
     QString m_highlightPropId;
 };
 

@@ -24,6 +24,9 @@ public:
 	void closeProject() override;
 
     void generateStepFile() override;
+    QStringList listEntityIds(int dim) override;
+    bool highlightEntity(int dim, int id) override;
+    void clearEntityHighlight() override;
 
 
 
