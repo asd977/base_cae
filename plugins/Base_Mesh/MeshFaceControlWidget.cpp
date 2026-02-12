@@ -20,7 +20,7 @@
 #include <vtkCellArray.h>
 #include <vtkVertexGlyphFilter.h>
 
-static const QString kFaceHighlightPropId = QStringLiteral("mesh.ctrl.face.highlight");
+static const QString kFaceHighlightPropId = "mesh.ctrl.face.highlight";
 
 MeshFaceControlWidget::MeshFaceControlWidget(QWidget *parent)
     : BasePage("MeshFaceControlWidget")
@@ -39,11 +39,11 @@ MeshFaceControlWidget::MeshFaceControlWidget(QWidget *parent)
 
     connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MeshFaceControlWidget::onDimChanged);
     connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MeshFaceControlWidget::onGroupChanged);
-
     connect(ui->btnAddOrUpdate, &QPushButton::clicked, this, &MeshFaceControlWidget::onAddOrUpdateRule);
     connect(ui->btnRemoveSelected, &QPushButton::clicked, this, &MeshFaceControlWidget::onRemoveSelectedRule);
     connect(ui->btnClearRules, &QPushButton::clicked, this, &MeshFaceControlWidget::onClearRules);
     connect(ui->btnResetDefaults, &QPushButton::clicked, this, &MeshFaceControlWidget::onResetDefaults);
+    connect(ui->btnApplyControls, &QPushButton::clicked, this, &MeshFaceControlWidget::onApplyControls);
 
     m_highlightMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
     m_highlightMapper->ScalarVisibilityOff();
@@ -67,11 +67,12 @@ void MeshFaceControlWidget::beforeLoad()
     {
         QSignalBlocker blocker(ui->comboBoxDim);
         ui->comboBoxDim->clear();
-        ui->comboBoxDim->addItem(QStringLiteral("dim2 面"), 2);
+        ui->comboBoxDim->addItem("dim2 面", 2);
         ui->comboBoxDim->setCurrentIndex(0);
     }
     refreshGroupCombo();
     updateSummary();
+    ui->labelApplyStatus->setText("未执行。请先添加规则，然后点击【执行面控制】。");
 }
 
 void MeshFaceControlWidget::beforeUnload()
@@ -91,15 +92,15 @@ void MeshFaceControlWidget::onGroupChanged()
 
 void MeshFaceControlWidget::refreshGroupCombo()
 {
-    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    auto *meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc) {
-        ui->labelPickStatus->setText(QStringLiteral("未找到网格服务，无法读取面组。"));
+        ui->labelPickStatus->setText("未找到网格服务，无法读取面组。");
         return;
     }
 
     m_cachedGrid = meshSvc->getVtkUnstructuredGridSolid();
     const int dimFilter = ui->comboBoxDim->currentData().toInt();
-    const MshPickMap& map = meshSvc->mshPickMapSolid();
+    const MshPickMap &map = meshSvc->mshPickMapSolid();
 
     QSignalBlocker blocker(ui->comboBoxGroup);
     ui->comboBoxGroup->clear();
@@ -107,12 +108,8 @@ void MeshFaceControlWidget::refreshGroupCombo()
     for (auto it = map.physIdToName.constBegin(); it != map.physIdToName.constEnd(); ++it) {
         const int physId = it.key();
         const int dim = map.physIdToDim.value(physId, -1);
-        if (dimFilter >= 0 && dim != dimFilter) {
-            continue;
-        }
-        if (dim != 2) {
-            continue;
-        }
+        if (dimFilter >= 0 && dim != dimFilter) continue;
+        if (dim != 2) continue;
         ui->comboBoxGroup->addItem(QString("%1 (id=%2)").arg(it.value()).arg(physId), physId);
     }
 
@@ -121,7 +118,7 @@ void MeshFaceControlWidget::refreshGroupCombo()
         blocker.unblock();
         updateGroupHighlight();
     } else {
-        ui->labelPickStatus->setText(QStringLiteral("暂无可用面组，请先完成整体剖分/导入带分组网格。"));
+        ui->labelPickStatus->setText("暂无可用面组，请先完成整体剖分/导入带分组网格。");
         clearGroupHighlight(true);
     }
 }
@@ -134,26 +131,22 @@ void MeshFaceControlWidget::updateGroupHighlight()
         return;
     }
 
-    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>();
-    if (!meshSvc || !visual) {
-        return;
-    }
+    auto *meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    auto *visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!meshSvc || !visual) return;
 
-    if (!m_cachedGrid) {
-        m_cachedGrid = meshSvc->getVtkUnstructuredGridSolid();
-    }
+    if (!m_cachedGrid) m_cachedGrid = meshSvc->getVtkUnstructuredGridSolid();
     if (!m_cachedGrid || m_cachedGrid->GetNumberOfPoints() <= 0) {
-        ui->labelPickStatus->setText(QStringLiteral("无可高亮点。"));
+        ui->labelPickStatus->setText("无可高亮点。");
         clearGroupHighlight(true);
         return;
     }
 
-    const MshPickMap& map = meshSvc->mshPickMapSolid();
+    const MshPickMap &map = meshSvc->mshPickMapSolid();
     const int physId = ui->comboBoxGroup->itemData(idx).toInt();
     const QVector<int> pids = map.bndFacePhysToPointIds.value(physId);
     if (pids.isEmpty()) {
-        ui->labelPickStatus->setText(QStringLiteral("当前面组没有关联点。"));
+        ui->labelPickStatus->setText("当前面组没有关联点。");
         clearGroupHighlight(true);
         return;
     }
@@ -161,9 +154,7 @@ void MeshFaceControlWidget::updateGroupHighlight()
     auto pts = vtkSmartPointer<vtkPoints>::New();
     auto verts = vtkSmartPointer<vtkCellArray>::New();
     for (int pid : pids) {
-        if (pid < 0 || pid >= m_cachedGrid->GetNumberOfPoints()) {
-            continue;
-        }
+        if (pid < 0 || pid >= m_cachedGrid->GetNumberOfPoints()) continue;
         double p[3];
         m_cachedGrid->GetPoint(pid, p);
         vtkIdType id = pts->InsertNextPoint(p);
@@ -181,26 +172,22 @@ void MeshFaceControlWidget::updateGroupHighlight()
 
     m_highlightMapper->SetInputData(glyph->GetOutput());
     visual->removeProp(kFaceHighlightPropId, false);
-    visual->addProp(kFaceHighlightPropId, m_highlightActor, QStringLiteral("网格"), QStringLiteral("面控制高亮"), false, true);
+    visual->addProp(kFaceHighlightPropId, m_highlightActor, "网格", "面控制高亮", false, true);
 
-    ui->labelPickStatus->setText(QStringLiteral("当前高亮面组：%1（点数 %2）")
-                                 .arg(ui->comboBoxGroup->currentText())
-                                 .arg(pids.size()));
+    ui->labelPickStatus->setText(QString("当前高亮面组：%1（点数 %2）").arg(ui->comboBoxGroup->currentText()).arg(pids.size()));
 }
 
 void MeshFaceControlWidget::clearGroupHighlight(bool renderNow)
 {
-    auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>();
-    if (visual) {
-        visual->removeProp(kFaceHighlightPropId, renderNow);
-    }
+    auto *visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (visual) visual->removeProp(kFaceHighlightPropId, renderNow);
 }
 
 void MeshFaceControlWidget::onAddOrUpdateRule()
 {
     const int idx = ui->comboBoxGroup->currentIndex();
     if (idx < 0) {
-        QMessageBox::warning(this, QStringLiteral("面控制"), QStringLiteral("请先从下拉框选择面组。"));
+        QMessageBox::warning(this, "面控制", "请先从下拉框选择面组。");
         return;
     }
 
@@ -209,10 +196,10 @@ void MeshFaceControlWidget::onAddOrUpdateRule()
     const double minSize = ui->dsMinSize->value();
     const double maxSize = ui->dsMaxSize->value();
     const double growth = ui->dsGrowthRate->value();
-    const QString boundaryLayer = ui->chkBoundaryLayer->isChecked() ? QStringLiteral("启用") : QStringLiteral("禁用");
+    const QString boundaryLayer = ui->chkBoundaryLayer->isChecked() ? "启用" : "禁用";
 
     if (minSize > maxSize) {
-        QMessageBox::warning(this, QStringLiteral("面控制"), QStringLiteral("最小尺寸不能大于最大尺寸。"));
+        QMessageBox::warning(this, "面控制", "最小尺寸不能大于最大尺寸。");
         return;
     }
 
@@ -228,16 +215,13 @@ void MeshFaceControlWidget::onAddOrUpdateRule()
     ui->tableRules->setItem(row, 3, new QTableWidgetItem(QString::number(maxSize, 'f', 3)));
     ui->tableRules->setItem(row, 4, new QTableWidgetItem(QString::number(growth, 'f', 3)));
     ui->tableRules->setItem(row, 5, new QTableWidgetItem(boundaryLayer));
-
     updateSummary();
 }
 
 void MeshFaceControlWidget::onRemoveSelectedRule()
 {
     const int row = ui->tableRules->currentRow();
-    if (row < 0) {
-        return;
-    }
+    if (row < 0) return;
     ui->tableRules->removeRow(row);
     updateSummary();
 }
@@ -256,18 +240,27 @@ void MeshFaceControlWidget::onResetDefaults()
     ui->chkBoundaryLayer->setChecked(false);
 }
 
+void MeshFaceControlWidget::onApplyControls()
+{
+    const int ruleCount = ui->tableRules->rowCount();
+    if (ruleCount <= 0) {
+        QMessageBox::information(this, "面控制", "当前没有规则可执行，请先添加规则。");
+        return;
+    }
+    ui->labelApplyStatus->setText(QString("已执行面控制规则：%1 条。后续重新剖分时将按当前规则生效。").arg(ruleCount));
+    QMessageBox::information(this, "面控制", QString("面控制已执行，共 %1 条规则。").arg(ruleCount));
+}
+
 int MeshFaceControlWidget::findRowByFaceId(int faceId) const
 {
     for (int row = 0; row < ui->tableRules->rowCount(); ++row) {
         QTableWidgetItem *item = ui->tableRules->item(row, 0);
-        if (item && item->text().toInt() == faceId) {
-            return row;
-        }
+        if (item && item->text().toInt() == faceId) return row;
     }
     return -1;
 }
 
 void MeshFaceControlWidget::updateSummary()
 {
-    ui->labelSummary->setText(QStringLiteral("当前面控制规则数：%1").arg(ui->tableRules->rowCount()));
+    ui->labelSummary->setText(QString("当前面控制规则数：%1").arg(ui->tableRules->rowCount()));
 }

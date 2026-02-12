@@ -30,6 +30,7 @@ private slots:
     void onRemoveSelectedRule();
     void onClearRules();
     void onResetDefaults();
+    void onApplyControls();
 
 private:
     void refreshGroupCombo();

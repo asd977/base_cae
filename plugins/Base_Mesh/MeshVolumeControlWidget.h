@@ -8,8 +8,6 @@ namespace Ui {
 class MeshVolumeControlWidget;
 }
 
-class vtkActor;
-class vtkDataSetMapper;
 class vtkUnstructuredGrid;
 
 class MeshVolumeControlWidget : public BasePage
@@ -29,18 +27,15 @@ private slots:
     void onRemoveSelectedRule();
     void onClearRules();
     void onResetDefaults();
+    void onApplyControls();
 
 private:
     void refreshGroupCombo();
-    void updateVolumeHighlight();
-    void clearVolumeHighlight(bool renderNow = true);
     int findRowByVolumeId(int volumeId) const;
     void updateSummary();
 
 private:
     Ui::MeshVolumeControlWidget *ui;
-    vtkSmartPointer<vtkDataSetMapper> m_highlightMapper;
-    vtkSmartPointer<vtkActor> m_highlightActor;
     vtkSmartPointer<vtkUnstructuredGrid> m_cachedGrid;
 };
 
