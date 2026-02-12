@@ -17,8 +17,8 @@ public:
     explicit MaterialModelWidget(MaterialManager *manager, QWidget *parent = nullptr);
 
     void setModel(const MaterialModel &model);
-    void beforeLoad() override {}
-    void beforeUnload() override {}
+    void beforeLoad() override;
+    void beforeUnload() override;
 
 private slots:
     void onOpenLibrary();

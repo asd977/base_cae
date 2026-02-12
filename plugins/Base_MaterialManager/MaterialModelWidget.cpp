@@ -28,6 +28,22 @@ void MaterialModelWidget::setModel(const MaterialModel &model)
     m_summaryLabel->setText(QStringLiteral("材料数：%1").arg(model.materials.size()));
 }
 
+void MaterialModelWidget::beforeLoad()
+{
+    if (!m_materialManager) {
+        return;
+    }
+    m_materialManager->clearAllMatypeHighlight();
+}
+
+void MaterialModelWidget::beforeUnload()
+{
+    if (!m_materialManager) {
+        return;
+    }
+    m_materialManager->clearAllMatypeHighlight();
+}
+
 void MaterialModelWidget::onOpenLibrary()
 {
     if (m_modelKey.isEmpty()) {

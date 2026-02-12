@@ -48,6 +48,24 @@ void MaterialManagerWidget::refreshSummary(const QVector<MaterialModel> &models)
     ui->treeWidget->expandAll();
 }
 
+
+void MaterialManagerWidget::beforeLoad()
+{
+    if (!m_materialManager) {
+        return;
+    }
+    // 进入管理页时不应保留来自材料条目的高亮状态
+    m_materialManager->clearAllMatypeHighlight();
+}
+
+void MaterialManagerWidget::beforeUnload()
+{
+    if (!m_materialManager) {
+        return;
+    }
+    // 离开管理页时兜底清空高亮
+    m_materialManager->clearAllMatypeHighlight();
+}
 void MaterialManagerWidget::on_pushButton_2_clicked()
 {
     m_materialManager->openLibrary();

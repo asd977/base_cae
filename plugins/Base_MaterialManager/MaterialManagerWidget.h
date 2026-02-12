@@ -21,8 +21,8 @@ public:
     explicit MaterialManagerWidget(MaterialManager *manager,QWidget *parent = nullptr);
     ~MaterialManagerWidget();
     void refreshSummary(const QVector<MaterialModel> &models);
-    void beforeLoad() override {}
-    void beforeUnload() override {}
+    void beforeLoad() override;
+    void beforeUnload() override;
 
 
 private slots:
