@@ -5,7 +5,7 @@
 #include <QSet>
 #include <QVector>
 #include <QString>
-class MshPickMap;
+struct MshPickMap;
 template <typename T> class vtkSmartPointer;
 class vtkUnstructuredGrid;
 

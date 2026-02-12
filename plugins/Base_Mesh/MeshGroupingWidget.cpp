@@ -316,18 +316,33 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
     }
 
     // 把每个体网格面唯一指派到最匹配的 region，避免重合/交界碎片被单独算一组。
+    // 性能优化：由“遍历全部 region”改为“通过点反查候选 region”，复杂度显著降低。
     QHash<int, QVector<qint64>> regionToFaceKeys;
-    const QList<int> regionIds = regionToPointIds.keys();
+    QHash<int, QVector<int>> pointToRegions;
+    for (auto it = regionToPointIds.constBegin(); it != regionToPointIds.constEnd(); ++it) {
+        const int rid = it.key();
+        for (int pid : it.value()) {
+            pointToRegions[pid].push_back(rid);
+        }
+    }
+
     for (const FaceEntry& f : allFaces) {
+        QHash<int, int> hitCounter;
+        for (int pid : f.pointIds) {
+            auto pit = pointToRegions.constFind(pid);
+            if (pit == pointToRegions.constEnd()) continue;
+            const QVector<int>& candidates = pit.value();
+            for (int rid : candidates) {
+                hitCounter[rid] += 1;
+            }
+        }
+
         int bestRegion = -1;
         int bestHit = -1;
         bool tie = false;
-        for (int rid : regionIds) {
-            const QSet<int>& pts = regionToPointIds[rid];
-            int hit = 0;
-            for (int pid : f.pointIds) {
-                if (pts.contains(pid)) ++hit;
-            }
+        for (auto it = hitCounter.constBegin(); it != hitCounter.constEnd(); ++it) {
+            const int rid = it.key();
+            const int hit = it.value();
             if (hit > bestHit) {
                 bestHit = hit;
                 bestRegion = rid;
@@ -336,6 +351,7 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
                 tie = true;
             }
         }
+
         if (bestRegion < 0 || tie) continue;
         if (bestHit != f.pointIds.size()) continue; // 必须完整覆盖该面
         regionToFaceKeys[bestRegion].push_back(f.key);
@@ -374,10 +390,65 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
 
         while (merged.physIdToName.contains(autoPhysId)) ++autoPhysId;
 
+        const QString baseName = QString("AutoPatch_%1").arg(added + 1, 3, 10, QChar('0'));
+
         merged.bndFacePhysToPointIds[autoPhysId] = pts;
         merged.bndFacePhysToFaceKeys[autoPhysId] = faceKeys;
         merged.physIdToDim[autoPhysId] = 2;
-        merged.physIdToName[autoPhysId] = QString("AutoPatch_%1").arg(added + 1, 3, 10, QChar('0'));
+        merged.physIdToName[autoPhysId] = baseName;
+
+        // 额外生成线/点边界组，便于边界条件页面直接按 dim=1/0 复用。
+        QVector<qint64> edgeKeys;
+        QSet<int> edgePointSet;
+        for (qint64 fk : faceKeys) {
+            const vtkIdType cid = vtkIdType((fk >> 4));
+            const int fi = int(fk & 0xF);
+            vtkCell* volCell = grid->GetCell(cid);
+            if (!volCell || fi < 0 || fi >= volCell->GetNumberOfFaces()) continue;
+            vtkCell* face = volCell->GetFace(fi);
+            if (!face) continue;
+
+            for (int ei = 0; ei < face->GetNumberOfEdges(); ++ei) {
+                vtkCell* fEdge = face->GetEdge(ei);
+                if (!fEdge || fEdge->GetNumberOfPoints() < 2) continue;
+                vtkIdType a = fEdge->GetPointId(0), b = fEdge->GetPointId(1);
+                if (a > b) std::swap(a, b);
+
+                for (int vei = 0; vei < volCell->GetNumberOfEdges(); ++vei) {
+                    vtkCell* vEdge = volCell->GetEdge(vei);
+                    if (!vEdge || vEdge->GetNumberOfPoints() < 2) continue;
+                    vtkIdType va = vEdge->GetPointId(0), vb = vEdge->GetPointId(1);
+                    if (va > vb) std::swap(va, vb);
+                    if (va == a && vb == b) {
+                        edgeKeys.push_back((qint64(cid) << 4) | (qint64(vei) & 0xF));
+                        if (va >= 0 && va <= std::numeric_limits<int>::max()) edgePointSet.insert((int)va);
+                        if (vb >= 0 && vb <= std::numeric_limits<int>::max()) edgePointSet.insert((int)vb);
+                        break;
+                    }
+                }
+            }
+        }
+        std::sort(edgeKeys.begin(), edgeKeys.end());
+        edgeKeys.erase(std::unique(edgeKeys.begin(), edgeKeys.end()), edgeKeys.end());
+
+        int edgePhysId = autoPhysId + 100000;
+        while (merged.physIdToName.contains(edgePhysId)) ++edgePhysId;
+        if (!edgeKeys.isEmpty()) {
+            merged.bndEdgePhysToEdgeKeys[edgePhysId] = edgeKeys;
+            QVector<int> edgePts = edgePointSet.values().toVector();
+            std::sort(edgePts.begin(), edgePts.end());
+            merged.bndEdgePhysToPointIds[edgePhysId] = edgePts;
+            merged.physIdToDim[edgePhysId] = 1;
+            merged.physIdToName[edgePhysId] = baseName + "_Edge";
+        }
+
+        int pointPhysId = autoPhysId + 200000;
+        while (merged.physIdToName.contains(pointPhysId)) ++pointPhysId;
+        if (!pts.isEmpty()) {
+            merged.bndPointPhysToPointIds[pointPhysId] = pts;
+            merged.physIdToDim[pointPhysId] = 0;
+            merged.physIdToName[pointPhysId] = baseName + "_Point";
+        }
 
         ++autoPhysId;
         ++added;
@@ -445,28 +516,22 @@ void MeshGroupingWidget::refreshGroupList()
         return;
     }
 
-    vtkSmartPointer<vtkUnstructuredGrid> grid = meshService->getVtkUnstructuredGridSolid();
-    if (!grid || grid->GetNumberOfCells() <= 0) {
-        grid = meshService->getVtkUnstructuredGrid();
-    }
+    const MshPickMap pick = meshService->mshPickMapSolid();
 
-    auto fillTable = [&](QTableWidget* table, const char* arrayName) {
+    auto fillTableByMap = [&](QTableWidget* table,
+                              const QHash<int, QVector<qint64>>& valueToCells,
+                              const QHash<qint64, QString>& cellToGroupName) {
         table->clearContents();
         table->setRowCount(0);
-        if (!grid || grid->GetNumberOfCells() <= 0) return;
-
-        auto *arr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray(arrayName));
-        auto *groupArr = vtkStringArray::SafeDownCast(grid->GetCellData()->GetAbstractArray("GroupName"));
 
         QMap<QString, int> counter;
-        const vtkIdType nCells = grid->GetNumberOfCells();
-        for (vtkIdType cid = 0; cid < nCells; ++cid) {
-            const int v = arr ? arr->GetValue(cid) : 0;
-            const QString g = (groupArr && cid < groupArr->GetNumberOfValues())
-                                ? QString::fromStdString(groupArr->GetValue(cid)).trimmed()
-                                : QString();
-            const QString key = QString("%1|%2").arg(v).arg(g.isEmpty() ? "(未命名)" : g);
-            counter[key] += 1;
+        for (auto it = valueToCells.begin(); it != valueToCells.end(); ++it) {
+            const int value = it.key();
+            for (qint64 cid : it.value()) {
+                const QString g = cellToGroupName.value(cid).trimmed();
+                const QString key = QString("%1|%2").arg(value).arg(g.isEmpty() ? "(未命名)" : g);
+                counter[key] += 1;
+            }
         }
 
         table->setRowCount(counter.size());
@@ -485,8 +550,8 @@ void MeshGroupingWidget::refreshGroupList()
         table->resizeColumnsToContents();
     };
 
-    fillTable(ui->tblMatypeGroups, "MATYPE");
-    fillTable(ui->tblLayerGroups, "LAYER");
+    fillTableByMap(ui->tblMatypeGroups, pick.matypeToCellIds, pick.cellIdToGroupName);
+    fillTableByMap(ui->tblLayerGroups, pick.layerToCellIds, pick.cellIdToGroupName);
 }
 
 void MeshGroupingWidget::refreshBoundaryGroupList()

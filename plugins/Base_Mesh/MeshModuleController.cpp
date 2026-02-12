@@ -41,6 +41,8 @@
 // #include "MeshEdgeControlWidget.h"
 // #include "MeshQualityStandardWidget.h"
 
+static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid);
+
 MeshModuleController::MeshModuleController(QObject* parent)
     : QObject(parent)
 {
@@ -259,6 +261,7 @@ void MeshModuleController::onImportGrid()
     m_sourceFileName = fileName;
 
     displayCurrentGrid();
+    syncPickMapGroupingFromGrid(m_importedGrid);
 }
 
 void MeshModuleController::importMshGrid(QString path)
@@ -273,6 +276,7 @@ void MeshModuleController::importMshGrid(QString path)
 
     m_visualWidgetService->clearAll();
     displayCurrentGrid();
+    syncPickMapGroupingFromGrid(m_importedGrid);
 }
 
 MshPickMap MeshModuleController::mshPickMapSolid()
@@ -520,6 +524,40 @@ vtkSmartPointer<vtkActor> MeshModuleController::createLineActor(vtkUnstructuredG
     return actor;
 }
 
+
+static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
+{
+    if (!grid) return;
+    MshPickMap pick = MeshGridIO::instance().getMeshMap();
+
+    pick.cellIdToMatype.clear();
+    pick.cellIdToLayer.clear();
+    pick.cellIdToGroupName.clear();
+    pick.matypeToCellIds.clear();
+    pick.layerToCellIds.clear();
+
+    auto *matArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"));
+    auto *layArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"));
+    auto *grpArr = vtkStringArray::SafeDownCast(grid->GetCellData()->GetAbstractArray("GroupName"));
+
+    const vtkIdType nCells = grid->GetNumberOfCells();
+    for (vtkIdType cid = 0; cid < nCells; ++cid) {
+        const int mat = matArr ? matArr->GetValue(cid) : 0;
+        const int lay = layArr ? layArr->GetValue(cid) : 0;
+        const QString g = (grpArr && cid < grpArr->GetNumberOfValues())
+                ? QString::fromStdString(grpArr->GetValue(cid)).trimmed()
+                : QString();
+
+        pick.cellIdToMatype[cid] = mat;
+        pick.cellIdToLayer[cid] = lay;
+        pick.cellIdToGroupName[cid] = g;
+        pick.matypeToCellIds[mat].push_back(cid);
+        pick.layerToCellIds[lay].push_back(cid);
+    }
+
+    MeshGridIO::instance().setMeshMap(pick);
+}
+
 vtkSmartPointer<vtkUnstructuredGrid> MeshModuleController::getVtkUnstructuredGridSolid()
 {
     return m_previewSurfaceGrid;
@@ -631,6 +669,7 @@ bool MeshModuleController::autoGroupingBySpatialBins(int binCount,
 
     m_importedGrid->GetCellData()->Modified();
     m_importedGrid->Modified();
+    syncPickMapGroupingFromGrid(m_importedGrid);
     displayCurrentGrid();
     return true;
 }
@@ -707,6 +746,7 @@ bool MeshModuleController::groupByCoordinateRange(double xmin, double xmax,
 
     m_importedGrid->GetCellData()->Modified();
     m_importedGrid->Modified();
+    syncPickMapGroupingFromGrid(m_importedGrid);
     displayCurrentGrid();
     return true;
 }

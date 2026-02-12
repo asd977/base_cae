@@ -1,6 +1,9 @@
 ﻿#ifndef MESH_H
 #define MESH_H
-#include <QHash.h>
+#include <QHash>
+#include <QVector>
+#include <QString>
+#include <QtGlobal>
 
 struct MshPickMap
 {
@@ -14,6 +17,13 @@ struct MshPickMap
 
     // ----- 体单元分组（下拉框“选体”常用） -----
     QHash<int, QVector<qint64>> volPhysToCellIds; // physicalId(dim=3) -> vtk cellId 列表（qint64存）
+
+    // ----- 网格分组（统一存储） -----
+    QHash<qint64, int> cellIdToMatype;         // vtk cellId -> MATYPE
+    QHash<qint64, int> cellIdToLayer;          // vtk cellId -> LAYER
+    QHash<qint64, QString> cellIdToGroupName;  // vtk cellId -> GroupName
+    QHash<int, QVector<qint64>> matypeToCellIds; // MATYPE -> cellIds
+    QHash<int, QVector<qint64>> layerToCellIds;  // LAYER  -> cellIds
 
     // ----- 边界：用于“选点” -----
     QHash<int, QVector<int>> bndPointPhysToPointIds; // physicalId(dim=0) -> vtk pointId 列表
