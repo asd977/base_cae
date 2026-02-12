@@ -2,7 +2,9 @@
 #define MESHVOLUMECONTROLWIDGET_H
 
 #include <BasePage.h>
+#include <QMap>
 #include <QVector>
+#include <TopoDS_Shape.hxx>
 
 namespace Ui {
 class MeshVolumeControlWidget;
@@ -27,6 +29,10 @@ private slots:
     void onSelectionChanged();
     void onParameterEdited();
 
+    void onRefreshEntities();
+    void onAppendSelectedEntity();
+    void onHighlightSelectedEntity();
+
 private:
     struct VolumeControlItem
     {
@@ -45,10 +51,15 @@ private:
     void appendOrUpdateTableRow(int row, const VolumeControlItem &item);
     void refreshButtons();
     void refreshSummary();
+    void rebuildVolumeCandidates();
+    void clearHighlight();
+    void updateEntityUiState();
 
 private:
     Ui::MeshVolumeControlWidget *ui;
     QVector<VolumeControlItem> m_items;
+    QMap<int, TopoDS_Shape> m_volumeMap;
+    QString m_highlightPropId;
 };
 
 #endif // MESHVOLUMECONTROLWIDGET_H

@@ -44,6 +44,20 @@
         </property>
        </widget>
       </item>
+      <item row="0" column="4">
+       <widget class="QPushButton" name="btnRefreshEntity">
+        <property name="text"><string>刷新实体</string></property>
+       </widget>
+      </item>
+      <item row="1" column="4">
+       <widget class="QComboBox" name="cmbEntity"/>
+      </item>
+      <item row="2" column="4" rowspan="2">
+       <layout class="QVBoxLayout" name="verticalLayoutEntityBtns">
+        <item><widget class="QPushButton" name="btnAppendEntity"><property name="text"><string>追加到 ID</string></property></widget></item>
+        <item><widget class="QPushButton" name="btnHighlightEntity"><property name="text"><string>高亮当前体</string></property></widget></item>
+       </layout>
+      </item>
       <item row="1" column="0">
        <widget class="QLabel" name="labelMinSize">
         <property name="text">
@@ -197,7 +211,7 @@
    <item>
     <widget class="QLabel" name="labelHint">
      <property name="text">
-      <string>交互说明：若用于流体近壁面分析，请开启边界层并设置合理层数；否则建议关闭以减少单元数量。</string>
+      <string>交互说明：请先下拉选择体并高亮确认，再追加到 ID；用于近壁面时再开启边界层。</string>
      </property>
      <property name="wordWrap">
       <bool>true</bool>

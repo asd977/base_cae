@@ -2,7 +2,12 @@
 #define MESHFACECONTROLWIDGET_H
 
 #include <BasePage.h>
+#include <QMap>
 #include <QVector>
+
+#include <TopoDS_Shape.hxx>
+
+class vtkActor;
 
 namespace Ui {
 class MeshFaceControlWidget;
@@ -26,6 +31,10 @@ private slots:
     void onSelectionChanged();
     void onParameterEdited();
 
+    void onRefreshEntities();
+    void onAppendSelectedEntity();
+    void onHighlightSelectedEntity();
+
 private:
     struct FaceControlItem
     {
@@ -44,9 +53,17 @@ private:
     void refreshButtons();
     void refreshSummary();
 
+    void rebuildFaceCandidates();
+    void clearHighlight();
+    void updateEntityUiState();
+    bool appendEntityIdToEdit(int id);
+
 private:
     Ui::MeshFaceControlWidget *ui;
     QVector<FaceControlItem> m_items;
+    QMap<int, TopoDS_Shape> m_faceMap;
+    QString m_activeGeomUuid;
+    QString m_highlightPropId;
 };
 
 #endif // MESHFACECONTROLWIDGET_H

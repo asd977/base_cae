@@ -2,9 +2,10 @@
 #define MESHEDGECONTROLWIDGET_H
 
 #include <BasePage.h>
+#include <QMap>
 #include <QVector>
 
-class QTableWidgetItem;
+#include <TopoDS_Shape.hxx>
 
 namespace Ui {
 class MeshEdgeControlWidget;
@@ -29,6 +30,10 @@ private slots:
     void onSelectionChanged();
     void onParameterEdited();
 
+    void onRefreshEntities();
+    void onAppendSelectedEntity();
+    void onHighlightSelectedEntity();
+
 private:
     struct EdgeControlItem
     {
@@ -46,10 +51,15 @@ private:
     void appendOrUpdateTableRow(int row, const EdgeControlItem &item);
     void refreshButtons();
     void refreshSummary();
+    void rebuildEdgeCandidates();
+    void clearHighlight();
+    void updateEntityUiState();
 
 private:
     Ui::MeshEdgeControlWidget *ui;
     QVector<EdgeControlItem> m_items;
+    QMap<int, TopoDS_Shape> m_edgeMap;
+    QString m_highlightPropId;
 };
 
 #endif // MESHEDGECONTROLWIDGET_H
