@@ -24,6 +24,8 @@ public:
 	void closeProject() override;
 
     void generateStepFile() override;
+    void* createCompoundShapeHandle() override;
+    void releaseCompoundShapeHandle(void* handle) override;
     QStringList listEntityIds(int dim) override;
     bool highlightEntity(int dim, int id) override;
     void clearEntityHighlight() override;
