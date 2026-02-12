@@ -45,7 +45,7 @@ void MeshProcessor::loadOCCFile(const QString & filePath)
         gmsh::model::occ::importShapes(stepName, outDimTags, true);
         // Merge duplicated coincident OCC entities (e.g. doubled interface faces)
         // so multi-domain union keeps a shared interface instead of two copies.
-        gmsh::model::occ::removeAllDuplicates();
+//        gmsh::model::occ::removeAllDuplicates();
 //        gmsh::model::occ::synchronize();
 
         qDebug() << "Successfully loaded occ file:" << QString::fromStdString(stepName);
