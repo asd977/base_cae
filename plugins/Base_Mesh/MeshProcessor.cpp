@@ -47,7 +47,8 @@ void MeshProcessor::loadOCCFile(const QString & filePath)
         gmsh::option::setNumber("Geometry.OCCFixDegenerated", m_fixShape ? 1 : 0); // 修复退化边或面
         gmsh::option::setNumber("Geometry.OCCFixSmallEdges",  m_fixShape ? 1 : 0); // 修复小边
         gmsh::option::setNumber("Geometry.OCCFixSmallFaces",  m_fixShape ? 1 : 0); // 修复小面
-        gmsh::option::setNumber("Geometry.OCCSewFaces",       m_fixShape ? 1 : 0); // 缝合面
+        // OCCSewFaces 在部分 STEP 上会把实体缝成壳，导致 3D 体网格为空；默认关闭以保证体网格稳定性。
+        gmsh::option::setNumber("Geometry.OCCSewFaces", 0);                           // 缝合面
         gmsh::option::setNumber("Geometry.Tolerance", 1e-6);                      // 设置几何容差
 
         gmsh::model::occ::importShapes(stepName, outDimTags, true);

@@ -90,7 +90,8 @@ public slots:
             gmsh::option::setNumber("Geometry.OCCFixDegenerated", m_p.fixShape ? 1 : 0);
             gmsh::option::setNumber("Geometry.OCCFixSmallEdges",  m_p.fixShape ? 1 : 0);
             gmsh::option::setNumber("Geometry.OCCFixSmallFaces",  m_p.fixShape ? 1 : 0);
-            gmsh::option::setNumber("Geometry.OCCSewFaces",       m_p.fixShape ? 1 : 0);
+            // OCCSewFaces 在部分 STEP 场景会导致体被缝成壳，进而无法生成体网格；这里默认关闭。
+            gmsh::option::setNumber("Geometry.OCCSewFaces", 0);
             gmsh::option::setNumber("Geometry.Tolerance", m_p.tolerance);
 
             std::vector<std::pair<int,int>> outDimTags;
