@@ -42,6 +42,14 @@ void MeshProcessor::loadOCCFile(const QString & filePath)
         gmsh::model::add("model");
         std::vector<std::pair<int, int> > outDimTags;
         std::string stepName = filePath.toStdString();
+
+        // 几何修复选项必须在 importShapes 前设置；否则会在后续模型上生效，造成跨次串扰。
+        gmsh::option::setNumber("Geometry.OCCFixDegenerated", m_fixShape ? 1 : 0); // 修复退化边或面
+        gmsh::option::setNumber("Geometry.OCCFixSmallEdges",  m_fixShape ? 1 : 0); // 修复小边
+        gmsh::option::setNumber("Geometry.OCCFixSmallFaces",  m_fixShape ? 1 : 0); // 修复小面
+        gmsh::option::setNumber("Geometry.OCCSewFaces",       m_fixShape ? 1 : 0); // 缝合面
+        gmsh::option::setNumber("Geometry.Tolerance", 1e-6);                      // 设置几何容差
+
         gmsh::model::occ::importShapes(stepName, outDimTags, true);
         // Merge duplicated coincident OCC entities (e.g. doubled interface faces)
         // so multi-domain union keeps a shared interface instead of two copies.
@@ -269,12 +277,6 @@ bool MeshProcessor::createGridByDim()
 {
     try
     {
-        gmsh::option::setNumber("Geometry.OCCFixDegenerated", m_fixShape);// 修复退化边或面
-        gmsh::option::setNumber("Geometry.OCCFixSmallEdges", m_fixShape);// 修复小边
-        gmsh::option::setNumber("Geometry.OCCFixSmallFaces", m_fixShape);// 修复小面
-        gmsh::option::setNumber("Geometry.OCCSewFaces", m_fixShape);// 缝合面
-        gmsh::option::setNumber("Geometry.Tolerance", 1e-6);// 设置几何容差
-
         qDebug()<<"m_dimension "<<m_dimension;
 
         if (m_dimension == 2)
