@@ -899,18 +899,26 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg)
     // 同步 RegionId/RegionName，且将 MATYPE 直接映射到体 physicalId（便于材料批量设置）
     auto* cd = grid->GetCellData();
 
-    auto* matype = vtkIntArray::SafeDownCast(cd->GetArray("MATYPE"));
-    auto* layer = vtkIntArray::SafeDownCast(cd->GetArray("LAYER"));
-    auto* ketype = vtkIntArray::SafeDownCast(cd->GetArray("KETYPE"));
-    if (!matype) {
-        matype = vtkIntArray::New();
-        matype->SetName("MATYPE");
-        matype->SetNumberOfTuples(nCells);
-        for (vtkIdType cid = 0; cid < nCells; ++cid) matype->SetValue(cid, 1);
-        cd->AddArray(matype);
-        matype->Delete();
-        matype = vtkIntArray::SafeDownCast(cd->GetArray("MATYPE"));
-    }
+    auto ensureCellIntArray = [cd, nCells](const char* name, int defaultValue) {
+        auto* arr = vtkIntArray::SafeDownCast(cd->GetArray(name));
+        if (!arr) {
+            auto holder = vtkSmartPointer<vtkIntArray>::New();
+            holder->SetName(name);
+            holder->SetNumberOfComponents(1);
+            holder->SetNumberOfTuples(nCells);
+            holder->FillComponent(0, static_cast<double>(defaultValue));
+            cd->AddArray(holder);
+            arr = vtkIntArray::SafeDownCast(cd->GetArray(name));
+        } else if (arr->GetNumberOfTuples() != nCells) {
+            arr->SetNumberOfTuples(nCells);
+            arr->FillComponent(0, static_cast<double>(defaultValue));
+        }
+        return arr;
+    };
+
+    auto* matype = ensureCellIntArray("MATYPE", 1);
+    auto* layer = ensureCellIntArray("LAYER", 1);
+    auto* ketype = ensureCellIntArray("KETYPE", 0);
 
     auto regionId = vtkSmartPointer<vtkIntArray>::New();
     regionId->SetName("RegionId");
