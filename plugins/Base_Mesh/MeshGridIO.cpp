@@ -213,6 +213,19 @@ static vtkSmartPointer<vtkIntArray> getOrCreatePointIntArray(vtkUnstructuredGrid
     return arr;
 }
 
+static int tetHexKetypeFromCell(vtkCell* cell, int fallback)
+{
+    if (!cell) return fallback;
+    switch (cell->GetCellType()) {
+    case VTK_TETRA:
+        return 35;
+    case VTK_HEXAHEDRON:
+        return 6;
+    default:
+        return fallback;
+    }
+}
+
 } // namespace
 
 vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString &fileName, QString *errMsg)
@@ -233,6 +246,8 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString &fil
     // GroupName 是 vtkStringArray（vtkAbstractArray），不能用 GetArray 取
     auto* groupArr = cd ? vtkStringArray::SafeDownCast(cd->GetAbstractArray("GroupName")) : nullptr;
     auto* matypeArr = cd ? vtkIntArray::SafeDownCast(cd->GetArray("MATYPE")) : nullptr;
+    auto* layerArr = cd ? vtkIntArray::SafeDownCast(cd->GetArray("LAYER")) : nullptr;
+    auto* ketypeArr = cd ? vtkIntArray::SafeDownCast(cd->GetArray("KETYPE")) : nullptr;
     auto* nodeIdArr = grid->GetPointData() ? vtkIntArray::SafeDownCast(grid->GetPointData()->GetArray("node_id")) : nullptr;
 
     QHash<QString, int> groupToPhysId;
@@ -266,6 +281,13 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString &fil
         m_mshPickMap.volPhysToCellIds[physId].push_back(static_cast<qint64>(cid));
         if (matypeArr) {
             matypeArr->SetValue(cid, physId);
+        }
+        if (layerArr) {
+            layerArr->SetValue(cid, physId);
+        }
+        if (ketypeArr) {
+            vtkCell* cell = grid->GetCell(cid);
+            ketypeArr->SetValue(cid, tetHexKetypeFromCell(cell, ketypeArr->GetValue(cid)));
         }
     }
 
@@ -878,6 +900,8 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg)
     auto* cd = grid->GetCellData();
 
     auto* matype = vtkIntArray::SafeDownCast(cd->GetArray("MATYPE"));
+    auto* layer = vtkIntArray::SafeDownCast(cd->GetArray("LAYER"));
+    auto* ketype = vtkIntArray::SafeDownCast(cd->GetArray("KETYPE"));
     if (!matype) {
         matype = vtkIntArray::New();
         matype->SetName("MATYPE");
@@ -909,6 +933,13 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg)
         const int physId = cellToPhys.value(cid, 0);
         const int mappedMatype = (physId > 0 ? physId : 1);
         matype->SetValue(cid, mappedMatype);
+        if (layer) {
+            layer->SetValue(cid, mappedMatype);
+        }
+        if (ketype) {
+            vtkCell* cell = grid->GetCell(cid);
+            ketype->SetValue(cid, tetHexKetypeFromCell(cell, ketype->GetValue(cid)));
+        }
         regionId->SetValue(cid, physId);
         regionName->SetValue(cid, pick.physIdToName.value(physId).toStdString());
     }
