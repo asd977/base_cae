@@ -23,6 +23,13 @@
 #include <vtkPlane.h>
 #include <vtkLine.h>
 #include <QDateTime>
+#include <vtkHardwareSelector.h>
+#include <vtkSelection.h>
+#include <vtkSelectionNode.h>
+#include <vtkIdTypeArray.h>
+#include <vtkInformation.h>
+#include <vtkDataObject.h>
+#include <vtkActor.h>
 
 
 static inline double dist2PointToSegment(const double x[3], const double a[3], const double b[3])
@@ -1338,52 +1345,67 @@ void PickManager::setFaceSelected_NoRefresh(GridKind kind, vtkIdType faceKey, bo
 
 void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
 {
-    if (!m_visual || !m_cellPicker) return;
+    if (!m_visual) return;
     auto* ren = m_visual->renderer();
     if (!ren) return;
+
+    // 官方做法：vtkHardwareSelector（屏幕空间可见像素选择）
+    auto selector = vtkSmartPointer<vtkHardwareSelector>::New();
+    selector->SetRenderer(ren);
+    selector->SetArea(x0, y0, x1, y1);
+    selector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_CELLS);
+
+    vtkSmartPointer<vtkSelection> sel = selector->Select();
+    if (!sel || sel->GetNumberOfNodes() <= 0) return;
+
+    auto mapPickedIdToGridCellId = [](vtkProp* targetProp, vtkIdType pickedId) -> vtkIdType
+    {
+        if (!targetProp) return -1;
+
+        auto* actor = vtkActor::SafeDownCast(targetProp);
+        if (!actor) return pickedId;
+
+        vtkMapper* mapper = actor->GetMapper();
+        if (!mapper) return pickedId;
+
+        vtkDataSet* mappedDs = vtkDataSet::SafeDownCast(mapper->GetInputDataObject(0, 0));
+        if (!mappedDs) return pickedId;
+
+        vtkDataArray* orig = mappedDs->GetCellData()->GetArray("vtkOriginalCellIds");
+        if (!orig) return pickedId;
+
+        if (pickedId < 0 || pickedId >= orig->GetNumberOfTuples()) return -1;
+        return vtkIdType(orig->GetTuple1(pickedId));
+    };
 
     auto extractVisibleCellIds = [&](vtkUnstructuredGrid* grid, vtkProp* targetProp) -> QVector<vtkIdType>
     {
         QVector<vtkIdType> ids;
-        if (!grid || !targetProp || x1 < x0 || y1 < y0) return ids;
+        if (!grid || !targetProp) return ids;
 
-        // 纯屏幕拾取：逐像素（或降采样像素）调用 CellPicker，只记录前景命中的 cell。
-        const int width = x1 - x0 + 1;
-        const int height = y1 - y0 + 1;
-        const int area = width * height;
-
-        int step = 1;
-        if (area > 160000) step = 4;
-        else if (area > 40000) step = 2;
-
-        ids.reserve((width / step + 1) * (height / step + 1));
-
-        auto sampleX = [&](int x, int y)
+        for (unsigned int i = 0; i < sel->GetNumberOfNodes(); ++i)
         {
-            if (!m_cellPicker->Pick(x, y, 0.0, ren)) return;
+            vtkSelectionNode* node = sel->GetNode(i);
+            if (!node) continue;
 
-            vtkProp* pickedProp = m_cellPicker->GetViewProp();
-            if (!pickedProp || pickedProp != targetProp) return;
+            vtkInformation* props = node->GetProperties();
+            if (!props) continue;
 
-            vtkDataSet* ds = m_cellPicker->GetDataSet();
-            auto* pickedGrid = vtkUnstructuredGrid::SafeDownCast(ds);
-            if (!pickedGrid || pickedGrid != grid) return;
+            vtkProp* nodeProp = vtkProp::SafeDownCast(props->Get(vtkSelectionNode::PROP()));
+            if (!nodeProp || nodeProp != targetProp) continue;
 
-            vtkIdType cellId = m_cellPicker->GetCellId();
-            if (cellId < 0 || cellId >= grid->GetNumberOfCells()) return;
+            vtkDataArray* arr = node->GetSelectionList();
+            if (!arr) continue;
 
-            ids.push_back(cellId);
-        };
-
-        for (int y = y0; y <= y1; y += step)
-            for (int x = x0; x <= x1; x += step)
-                sampleX(x, y);
-
-        // 补采样右边界/下边界，避免降采样漏选边缘
-        if (step > 1)
-        {
-            for (int x = x0; x <= x1; ++x) sampleX(x, y1);
-            for (int y = y0; y <= y1; ++y) sampleX(x1, y);
+            const vtkIdType n = arr->GetNumberOfTuples();
+            ids.reserve(ids.size() + int(n));
+            for (vtkIdType k = 0; k < n; ++k)
+            {
+                vtkIdType pickedId = vtkIdType(arr->GetTuple1(k));
+                vtkIdType cellId = mapPickedIdToGridCellId(targetProp, pickedId);
+                if (cellId >= 0 && cellId < grid->GetNumberOfCells())
+                    ids.push_back(cellId);
+            }
         }
 
         std::sort(ids.begin(), ids.end());
