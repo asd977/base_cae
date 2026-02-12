@@ -10,11 +10,19 @@
 #include <cmath>
 #include <QSet>
 #include <algorithm>
+#include <limits>
 #include <QMessageBox>
 #include <QTableWidgetItem>
 
 #include <vtkActor.h>
+#include <vtkCell.h>
 #include <vtkCellData.h>
+#include <vtkIdList.h>
+#include <vtkConnectivityFilter.h>
+#include <vtkDataSetSurfaceFilter.h>
+#include <vtkIdTypeArray.h>
+#include <vtkPointData.h>
+#include <vtkPolyData.h>
 #include <vtkCubeSource.h>
 #include <vtkIntArray.h>
 #include <vtkNew.h>
@@ -44,6 +52,7 @@ MeshGroupingWidget::MeshGroupingWidget(QWidget *parent)
     connect(ui->btnAutoGrouping, &QPushButton::clicked, this, &MeshGroupingWidget::onAutoGrouping);
     connect(ui->btnRangeGrouping, &QPushButton::clicked, this, &MeshGroupingWidget::onRangeGrouping);
     connect(ui->btnRefreshGroups, &QPushButton::clicked, this, &MeshGroupingWidget::onRefreshGroups);
+    connect(ui->btnAutoBoundaryGrouping, &QPushButton::clicked, this, &MeshGroupingWidget::onAutoDetectBoundaries);
     connect(ui->chkShowRangeBox, &QCheckBox::toggled, this, &MeshGroupingWidget::onToggleRangePreview);
     connect(ui->cmbTargetArray, QOverload<int>::of(&QComboBox::currentIndexChanged),
             [this](int idx){ ui->cmbRangeTargetArray->setCurrentIndex(idx); });
@@ -74,6 +83,8 @@ MeshGroupingWidget::~MeshGroupingWidget()
 
 void MeshGroupingWidget::beforeLoad()
 {
+    m_hasAutoBoundaryGroups = false;
+    m_autoBoundaryPickMap = MshPickMap();
     initializeRangeByGridBounds(false);
     refreshGroupList();
     refreshBoundaryGroupList();
@@ -152,6 +163,114 @@ void MeshGroupingWidget::onRefreshGroups()
     initializeRangeByGridBounds(true);
     refreshGroupList();
     refreshBoundaryGroupList();
+}
+
+void MeshGroupingWidget::onAutoDetectBoundaries()
+{
+    detectBoundaryGroupsBySurfacePatches();
+    refreshBoundaryGroupList();
+}
+
+void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
+{
+    auto *meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshService) {
+        QMessageBox::warning(this, "边界自动分组", "MeshModuleControllerService 不可用");
+        return;
+    }
+
+    vtkSmartPointer<vtkUnstructuredGrid> grid = meshService->getVtkUnstructuredGridSolid();
+    if (!grid || grid->GetNumberOfCells() <= 0) {
+        grid = meshService->getVtkUnstructuredGrid();
+    }
+    if (!grid || grid->GetNumberOfCells() <= 0) {
+        QMessageBox::warning(this, "边界自动分组", "当前没有可识别的体网格。");
+        return;
+    }
+
+    vtkNew<vtkDataSetSurfaceFilter> surfaceFilter;
+    surfaceFilter->SetInputData(grid);
+    surfaceFilter->PassThroughPointIdsOn();
+    surfaceFilter->PassThroughCellIdsOn();
+    surfaceFilter->Update();
+
+    vtkNew<vtkConnectivityFilter> conn;
+    conn->SetInputData(surfaceFilter->GetOutput());
+    conn->SetExtractionModeToAllRegions();
+    conn->ColorRegionsOn();
+    conn->Update();
+
+    vtkPolyData *poly = vtkPolyData::SafeDownCast(conn->GetOutput());
+    if (!poly || poly->GetNumberOfCells() <= 0) {
+        QMessageBox::warning(this, "边界自动分组", "未识别到外边界面。\n请确认导入的是体网格。");
+        return;
+    }
+
+    auto *regionArr = vtkIntArray::SafeDownCast(poly->GetCellData()->GetArray("RegionId"));
+    if (!regionArr) {
+        QMessageBox::warning(this, "边界自动分组", "边界连通域识别失败(RegionId 缺失)。");
+        return;
+    }
+
+    auto *origPointIds = vtkIdTypeArray::SafeDownCast(poly->GetPointData()->GetArray("vtkOriginalPointIds"));
+
+    QHash<int, QSet<int>> regionToPointIds;
+    const vtkIdType nCells = poly->GetNumberOfCells();
+    for (vtkIdType cid = 0; cid < nCells; ++cid) {
+        const int region = regionArr->GetValue(cid);
+        vtkCell *cell = poly->GetCell(cid);
+        if (!cell) continue;
+        vtkIdList *ids = cell->GetPointIds();
+        for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i) {
+            const vtkIdType surfPid = ids->GetId(i);
+            int originalPid = static_cast<int>(surfPid);
+            if (origPointIds && surfPid < origPointIds->GetNumberOfValues()) {
+                const vtkIdType oid = origPointIds->GetValue(surfPid);
+                if (oid >= 0 && oid <= std::numeric_limits<int>::max()) {
+                    originalPid = static_cast<int>(oid);
+                }
+            }
+            regionToPointIds[region].insert(originalPid);
+        }
+    }
+
+    if (regionToPointIds.isEmpty()) {
+        QMessageBox::warning(this, "边界自动分组", "未识别到有效边界连通域。");
+        return;
+    }
+
+    MshPickMap merged = meshService->mshPickMapSolid();
+
+    QList<int> regions = regionToPointIds.keys();
+    std::sort(regions.begin(), regions.end());
+
+    int autoPhysId = 910001;
+    int added = 0;
+    for (int r : regions) {
+        QVector<int> pts = regionToPointIds.value(r).values().toVector();
+        if (pts.size() < 3) continue;
+        std::sort(pts.begin(), pts.end());
+
+        while (merged.physIdToName.contains(autoPhysId)) ++autoPhysId;
+
+        merged.bndFacePhysToPointIds[autoPhysId] = pts;
+        merged.physIdToDim[autoPhysId] = 2;
+        merged.physIdToName[autoPhysId] = QString("AutoPatch_%1").arg(added + 1, 3, 10, QChar('0'));
+
+        ++autoPhysId;
+        ++added;
+    }
+
+    if (added == 0) {
+        QMessageBox::warning(this, "边界自动分组", "识别结果为空（可能全是退化面）。");
+        return;
+    }
+
+    m_autoBoundaryPickMap = merged;
+    m_hasAutoBoundaryGroups = true;
+
+    QMessageBox::information(this, "边界自动分组",
+                             QString("已按外表面连通域自动识别 %1 个边界组。\n(CAE 常规做法：先提取外表面，再按连通域/特征角分块)").arg(added));
 }
 
 void MeshGroupingWidget::initializeRangeByGridBounds(bool force)
@@ -254,59 +373,7 @@ void MeshGroupingWidget::refreshBoundaryGroupList()
     ui->tblBoundaryGroups->setRowCount(0);
     if (!meshService) return;
 
-    MshPickMap pick = meshService->mshPickMapSolid();
-
-    auto ensureBoundaryFallback = [&]() {
-        const bool hasBoundary = !pick.bndPointPhysToPointIds.isEmpty()
-                || !pick.bndEdgePhysToPointIds.isEmpty()
-                || !pick.bndFacePhysToPointIds.isEmpty();
-        if (hasBoundary) return;
-
-        vtkSmartPointer<vtkUnstructuredGrid> grid = meshService->getVtkUnstructuredGridSolid();
-        if (!grid || grid->GetNumberOfPoints() <= 0) {
-            grid = meshService->getVtkUnstructuredGrid();
-        }
-        if (!grid || grid->GetNumberOfPoints() <= 0) return;
-
-        double b[6] = {0,0,0,0,0,0};
-        grid->GetBounds(b);
-        const double spanX = std::max(std::abs(b[1] - b[0]), 1e-12);
-        const double spanY = std::max(std::abs(b[3] - b[2]), 1e-12);
-        const double spanZ = std::max(std::abs(b[5] - b[4]), 1e-12);
-        const double tolX = std::max(spanX * 1e-6, 1e-9);
-        const double tolY = std::max(spanY * 1e-6, 1e-9);
-        const double tolZ = std::max(spanZ * 1e-6, 1e-9);
-
-        QHash<int, QSet<int>> physToPts;
-        for (vtkIdType pid = 0; pid < grid->GetNumberOfPoints(); ++pid) {
-            double p[3] = {0,0,0};
-            grid->GetPoint(pid, p);
-            if (std::abs(p[0] - b[0]) <= tolX) physToPts[900001].insert((int)pid);
-            if (std::abs(p[0] - b[1]) <= tolX) physToPts[900002].insert((int)pid);
-            if (std::abs(p[1] - b[2]) <= tolY) physToPts[900003].insert((int)pid);
-            if (std::abs(p[1] - b[3]) <= tolY) physToPts[900004].insert((int)pid);
-            if (std::abs(p[2] - b[4]) <= tolZ) physToPts[900005].insert((int)pid);
-            if (std::abs(p[2] - b[5]) <= tolZ) physToPts[900006].insert((int)pid);
-        }
-
-        const QHash<int, QString> nameMap {
-            {900001, "Auto_XMin"}, {900002, "Auto_XMax"},
-            {900003, "Auto_YMin"}, {900004, "Auto_YMax"},
-            {900005, "Auto_ZMin"}, {900006, "Auto_ZMax"},
-        };
-
-        for (auto it = physToPts.begin(); it != physToPts.end(); ++it) {
-            if (it.value().isEmpty()) continue;
-            QVector<int> pts;
-            pts.reserve(it.value().size());
-            for (int v : it.value()) pts.push_back(v);
-            std::sort(pts.begin(), pts.end());
-            pick.bndFacePhysToPointIds[it.key()] = pts;
-            pick.physIdToDim[it.key()] = 2;
-            pick.physIdToName[it.key()] = nameMap.value(it.key(), QString("Auto_Boundary_%1").arg(it.key()));
-        }
-    };
-    ensureBoundaryFallback();
+    const MshPickMap pick = m_hasAutoBoundaryGroups ? m_autoBoundaryPickMap : meshService->mshPickMapSolid();
     QList<int> physIds = pick.physIdToName.keys();
     std::sort(physIds.begin(), physIds.end());
 

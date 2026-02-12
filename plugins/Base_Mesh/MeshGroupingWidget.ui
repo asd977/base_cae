@@ -74,6 +74,13 @@
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_4">
        <item>
+        <widget class="QPushButton" name="btnAutoBoundaryGrouping">
+         <property name="text">
+          <string>自动识别边界组（外表面连通域）</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <widget class="QTableWidget" name="tblBoundaryGroups">
          <column>
           <property name="text">
