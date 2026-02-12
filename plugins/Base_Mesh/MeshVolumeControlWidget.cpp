@@ -1,4 +1,4 @@
-#include "MeshVolumeControlWidget.h"
+﻿#include "MeshVolumeControlWidget.h"
 #include "ui_MeshVolumeControlWidget.h"
 
 MeshVolumeControlWidget::MeshVolumeControlWidget(QWidget *parent)
@@ -11,4 +11,14 @@ MeshVolumeControlWidget::MeshVolumeControlWidget(QWidget *parent)
 MeshVolumeControlWidget::~MeshVolumeControlWidget()
 {
     delete ui;
+}
+
+void MeshVolumeControlWidget::beforeLoad()
+{
+
+}
+
+void MeshVolumeControlWidget::beforeUnload()
+{
+
 }

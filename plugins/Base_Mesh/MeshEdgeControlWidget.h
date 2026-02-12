@@ -1,4 +1,4 @@
-#ifndef MESHEDGECONTROLWIDGET_H
+﻿#ifndef MESHEDGECONTROLWIDGET_H
 #define MESHEDGECONTROLWIDGET_H
 
 #include <BasePage.h>
@@ -14,6 +14,9 @@ class MeshEdgeControlWidget : public BasePage
 public:
     explicit MeshEdgeControlWidget(QWidget *parent = nullptr);
     ~MeshEdgeControlWidget() override;
+
+    void beforeLoad(){};
+    void beforeUnload() {};
 
 private:
     Ui::MeshEdgeControlWidget *ui;

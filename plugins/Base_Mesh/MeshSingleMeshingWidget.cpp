@@ -1,4 +1,4 @@
-#include "MeshSingleMeshingWidget.h"
+﻿#include "MeshSingleMeshingWidget.h"
 #include "ui_MeshSingleMeshingWidget.h"
 
 MeshSingleMeshingWidget::MeshSingleMeshingWidget(QWidget *parent)
@@ -11,4 +11,14 @@ MeshSingleMeshingWidget::MeshSingleMeshingWidget(QWidget *parent)
 MeshSingleMeshingWidget::~MeshSingleMeshingWidget()
 {
     delete ui;
+}
+
+void MeshSingleMeshingWidget::beforeLoad()
+{
+
+}
+
+void MeshSingleMeshingWidget::beforeUnload()
+{
+
 }

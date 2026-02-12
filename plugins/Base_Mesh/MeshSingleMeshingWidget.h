@@ -1,4 +1,4 @@
-#ifndef MESHSINGLEMESHINGWIDGET_H
+﻿#ifndef MESHSINGLEMESHINGWIDGET_H
 #define MESHSINGLEMESHINGWIDGET_H
 
 #include <BasePage.h>
@@ -14,6 +14,9 @@ class MeshSingleMeshingWidget : public BasePage
 public:
     explicit MeshSingleMeshingWidget(QWidget *parent = nullptr);
     ~MeshSingleMeshingWidget() override;
+
+    void beforeLoad();
+    void beforeUnload();
 
 private:
     Ui::MeshSingleMeshingWidget *ui;

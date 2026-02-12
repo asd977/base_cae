@@ -1,4 +1,4 @@
-#ifndef MESHVOLUMECONTROLWIDGET_H
+﻿#ifndef MESHVOLUMECONTROLWIDGET_H
 #define MESHVOLUMECONTROLWIDGET_H
 
 #include <BasePage.h>
@@ -14,6 +14,9 @@ class MeshVolumeControlWidget : public BasePage
 public:
     explicit MeshVolumeControlWidget(QWidget *parent = nullptr);
     ~MeshVolumeControlWidget() override;
+
+    void beforeLoad();
+    void beforeUnload();
 
 private:
     Ui::MeshVolumeControlWidget *ui;
