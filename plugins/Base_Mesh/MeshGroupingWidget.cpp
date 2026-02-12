@@ -357,6 +357,94 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
         regionToFaceKeys[bestRegion].push_back(f.key);
     }
 
+    // 不规则曲面在网格噪声较大时会出现大量碎片连通域。
+    // 这里增加一次“碎片并组”：优先把小面片并入与其共享点最多的邻组，
+    // 并限制最终边界组数量，避免自动识别结果过碎导致后续边界条件难以配置。
+    auto buildRegionPointSet = [&](const QVector<qint64>& faceKeys) {
+        QSet<int> pointSet;
+        for (qint64 fk : faceKeys) {
+            const vtkIdType cid = vtkIdType((fk >> 4));
+            const int fi = int(fk & 0xF);
+            vtkCell* volCell = grid->GetCell(cid);
+            if (!volCell || fi < 0 || fi >= volCell->GetNumberOfFaces()) continue;
+            vtkCell* face = volCell->GetFace(fi);
+            if (!face) continue;
+            vtkIdList* ids = face->GetPointIds();
+            for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i) {
+                const vtkIdType pid = ids->GetId(i);
+                if (pid >= 0 && pid <= std::numeric_limits<int>::max()) {
+                    pointSet.insert((int)pid);
+                }
+            }
+        }
+        return pointSet;
+    };
+
+    int totalFaceCount = 0;
+    for (auto it = regionToFaceKeys.constBegin(); it != regionToFaceKeys.constEnd(); ++it) {
+        totalFaceCount += it.value().size();
+    }
+    const int minFaceThreshold = std::max(6, totalFaceCount / 200); // 至少约 0.5%
+    const int maxBoundaryGroupCount = 24;
+
+    QHash<int, QSet<int>> regionToPoints;
+    for (auto it = regionToFaceKeys.constBegin(); it != regionToFaceKeys.constEnd(); ++it) {
+        regionToPoints[it.key()] = buildRegionPointSet(it.value());
+    }
+
+    for (int iter = 0; iter < 512; ++iter) {
+        QList<int> regionIds = regionToFaceKeys.keys();
+        if (regionIds.size() <= 1) break;
+
+        int smallRid = -1;
+        int smallSize = std::numeric_limits<int>::max();
+        for (int rid : regionIds) {
+            const int sz = regionToFaceKeys.value(rid).size();
+            const bool mustMerge = (sz < minFaceThreshold) || (regionIds.size() > maxBoundaryGroupCount);
+            if (!mustMerge) continue;
+            if (sz < smallSize) {
+                smallSize = sz;
+                smallRid = rid;
+            }
+        }
+        if (smallRid < 0) break;
+
+        int bestTarget = -1;
+        int bestShare = -1;
+        int bestTargetSize = -1;
+
+        const QSet<int>& smallPts = regionToPoints[smallRid];
+        for (int rid : regionIds) {
+            if (rid == smallRid) continue;
+            int share = 0;
+            const QSet<int>& pts = regionToPoints[rid];
+            if (smallPts.size() < pts.size()) {
+                for (int p : smallPts) if (pts.contains(p)) ++share;
+            } else {
+                for (int p : pts) if (smallPts.contains(p)) ++share;
+            }
+
+            const int targetSize = regionToFaceKeys.value(rid).size();
+            if (share > bestShare || (share == bestShare && targetSize > bestTargetSize)) {
+                bestShare = share;
+                bestTarget = rid;
+                bestTargetSize = targetSize;
+            }
+        }
+
+        if (bestTarget < 0) break;
+
+        QVector<qint64> mergedKeys = regionToFaceKeys.value(bestTarget);
+        mergedKeys += regionToFaceKeys.value(smallRid);
+        std::sort(mergedKeys.begin(), mergedKeys.end());
+        mergedKeys.erase(std::unique(mergedKeys.begin(), mergedKeys.end()), mergedKeys.end());
+        regionToFaceKeys[bestTarget] = mergedKeys;
+        regionToPoints[bestTarget] = buildRegionPointSet(mergedKeys);
+
+        regionToFaceKeys.remove(smallRid);
+        regionToPoints.remove(smallRid);
+    }
+
     MshPickMap merged = meshService->mshPickMapSolid();
 
     QList<int> regions = regionToFaceKeys.keys();
