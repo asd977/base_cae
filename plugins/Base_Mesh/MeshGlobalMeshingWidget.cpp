@@ -181,14 +181,15 @@ void MeshGlobalMeshingWidget::onGenerate()
 
     Params p = collectParams();
 
+    // 目前 Mesh 导入流程只接受 3D 体网格（tet/hex），若用户选择 2D 会在导入时报无体单元。
+    if (p.dimension != 3) {
+        appendLog("当前导入流程仅支持3D体网格，已自动切换为3D划分。");
+        p.dimension = 3;
+    }
+
     const QVector<MeshControlRule> edgeRules = MeshControlRuleStore::instance().edgeRules();
     const QVector<MeshControlRule> faceRules = MeshControlRuleStore::instance().faceRules();
     const QVector<MeshControlRule> volumeRules = MeshControlRuleStore::instance().volumeRules();
-
-    if (!volumeRules.isEmpty() && p.dimension != 3) {
-        appendLog("检测到体控制规则，自动切换为3D划分。");
-        p.dimension = 3;
-    }
 
     double mergedMin = p.lenMin;
     double mergedMax = p.lenMax;
