@@ -9,6 +9,7 @@
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
 #include <struct/MeshMap.h>
+#include "MeshControlRuleStore.h"
 
 #include <vtkUnstructuredGrid.h>
 
@@ -161,8 +162,20 @@ void MeshVolumeControlWidget::onApplyControls()
         QMessageBox::information(this, "体控制", "当前没有规则可执行，请先添加规则。");
         return;
     }
-    ui->labelApplyStatus->setText(QString("已执行体控制规则：%1 条。后续重新剖分时将按当前规则生效。").arg(ruleCount));
-    QMessageBox::information(this, "体控制", QString("体控制已执行，共 %1 条规则。").arg(ruleCount));
+
+    QVector<MeshControlRule> rules;
+    rules.reserve(ruleCount);
+    for (int row = 0; row < ruleCount; ++row) {
+        MeshControlRule rule;
+        rule.physId = ui->tableRules->item(row, 0) ? ui->tableRules->item(row, 0)->text().toInt() : -1;
+        rule.minSize = ui->tableRules->item(row, 2) ? ui->tableRules->item(row, 2)->text().toDouble() : 0.0;
+        rule.maxSize = ui->tableRules->item(row, 3) ? ui->tableRules->item(row, 3)->text().toDouble() : 0.0;
+        rules.push_back(rule);
+    }
+    MeshControlRuleStore::instance().setVolumeRules(rules);
+
+    ui->labelApplyStatus->setText(QString("已执行体控制规则：%1 条。后续整体剖分将读取这些规则并影响尺寸范围。").arg(ruleCount));
+    QMessageBox::information(this, "体控制", QString("体控制已执行，共 %1 条规则。请到整体剖分并使用3D划分。\n否则会出现无体单元导入问题。").arg(ruleCount));
 }
 
 int MeshVolumeControlWidget::findRowByVolumeId(int volumeId) const

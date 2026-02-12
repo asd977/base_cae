@@ -8,6 +8,7 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <QThread>
+#include <QtGlobal>
 #include <vtkUnstructuredGridReader.h>
 
 // ===== 你的几何导出依赖（按你项目实际路径改 include）=====
@@ -34,6 +35,7 @@
 #include <services/PreProcessingService.h>
 #include <services/VisualWidgetService.h>
 #include <vtkUnstructuredGrid.h>
+#include "MeshControlRuleStore.h"
 
 // ---------------- Widget ----------------
 MeshGlobalMeshingWidget::MeshGlobalMeshingWidget(QWidget* parent)
@@ -178,6 +180,36 @@ void MeshGlobalMeshingWidget::onGenerate()
     QString filePath = currentWorPath + "/data/"+fileName;
 
     Params p = collectParams();
+
+    const QVector<MeshControlRule> edgeRules = MeshControlRuleStore::instance().edgeRules();
+    const QVector<MeshControlRule> faceRules = MeshControlRuleStore::instance().faceRules();
+    const QVector<MeshControlRule> volumeRules = MeshControlRuleStore::instance().volumeRules();
+
+    if (!volumeRules.isEmpty() && p.dimension != 3) {
+        appendLog("检测到体控制规则，自动切换为3D划分。");
+        p.dimension = 3;
+    }
+
+    double mergedMin = p.lenMin;
+    double mergedMax = p.lenMax;
+    auto mergeRules = [&](const QVector<MeshControlRule>& rules) {
+        for (const MeshControlRule& r : rules) {
+            if (r.minSize > 0.0) mergedMin = qMin(mergedMin, r.minSize);
+            if (r.maxSize > 0.0) mergedMax = qMin(mergedMax, r.maxSize);
+        }
+    };
+    mergeRules(edgeRules);
+    mergeRules(faceRules);
+    mergeRules(volumeRules);
+    p.lenMin = mergedMin;
+    p.lenMax = mergedMax;
+
+    appendLog(QString("控制规则已载入：边%1 面%2 体%3，尺寸范围调整为 [%4, %5]")
+              .arg(edgeRules.size())
+              .arg(faceRules.size())
+              .arg(volumeRules.size())
+              .arg(p.lenMin)
+              .arg(p.lenMax));
 
     p.inputStepPath = filePath;
 
@@ -343,8 +375,8 @@ void MeshGlobalMeshingWidget::showMeshVtk(const QString& vtkPath)
 //    visual->removeProp("mesh.global.wire", true);
 
     // 加入显示
-    visual->addProp("mesh.global.surf", actorSurf, QStringLiteral("{mesh} 全局网格-表面"));
-    visual->addProp("mesh.global.wire", actorWire, QStringLiteral("{mesh} 全局网格-线框"));
+    visual->addProp("mesh.global.surf", actorSurf, QString("{mesh} 全局网格-表面"));
+    visual->addProp("mesh.global.wire", actorWire, QString("{mesh} 全局网格-线框"));
 
     visual->resetCamera();
     visual->render();

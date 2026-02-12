@@ -13,7 +13,8 @@ HEADERS += \
     MeshModuleController.h \
     MeshProcessor.h \
     MeshGridIO.h \
-    GridEditingWidget.h
+    GridEditingWidget.h \
+    MeshControlRuleStore.h
 
 SOURCES += \
     MeshGlobalMeshingWidget.cpp \
