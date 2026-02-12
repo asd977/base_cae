@@ -478,7 +478,11 @@ void GridEditingWidget::buildOrUpdateViewGrid()
         m_pointPicker->PickFromListOn();
     }
 
-    applyColorMode();
+    // 仅在显式选择颜色模式或存在材料高亮 LUT 时改写 mapper 颜色状态。
+    // 避免进入/重建网格编辑视图时把外部已有着色（例如材料模块高亮）清掉。
+    if (m_matypeLookupTable || m_colorMode != ColorMode::None) {
+        applyColorMode();
+    }
     m_visualWidgetService->render();
 }
 
