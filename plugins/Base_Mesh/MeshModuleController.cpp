@@ -41,6 +41,8 @@
 // #include "MeshEdgeControlWidget.h"
 // #include "MeshQualityStandardWidget.h"
 
+static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid);
+
 MeshModuleController::MeshModuleController(QObject* parent)
     : QObject(parent)
 {

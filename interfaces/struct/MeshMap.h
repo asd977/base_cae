@@ -1,6 +1,9 @@
 ﻿#ifndef MESH_H
 #define MESH_H
-#include <QHash.h>
+#include <QHash>
+#include <QVector>
+#include <QString>
+#include <QtGlobal>
 
 struct MshPickMap
 {
