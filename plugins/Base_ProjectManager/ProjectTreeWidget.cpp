@@ -109,20 +109,20 @@ void ProjectTreeWidget::onCurItemChanged(QTreeWidgetItem* current, QTreeWidgetIt
     if (!current) return;
 
     // 建议使用 dynamic_cast 确保安全，或者确认 ProjectNode 继承自 QTreeWidgetItem
-    ProjectNode* node = static_cast<ProjectNode*>(current);
+    auto *node = dynamic_cast<ProjectNode*>(current);
     if (!node) return;
 
     BasePage* page = node->getPage();
     if (!page) return;
 
     // 1. 处理旧页面的卸载
-    QWidget *currentW = m_stackWidget->currentWidget();
-    if (currentW) {
-        // 假设所有放入 stack 的 widget 都是从 BasePage 获取的
-        // 建议在 BasePage 关联 widget 时建立双向引用
-
-        // 如果无法找回，目前的强转逻辑需确保 currentW 确实是 Page 的 Widget
-        page->beforeUnload();
+    if (previous) {
+        auto *prevNode = dynamic_cast<ProjectNode*>(previous);
+        if (prevNode) {
+            if (BasePage *prevPage = prevNode->getPage()) {
+                prevPage->beforeUnload();
+            }
+        }
     }
 
     // 2. 获取并配置新页面
