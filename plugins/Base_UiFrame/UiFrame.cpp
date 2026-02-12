@@ -643,18 +643,21 @@ void UiFrame::buildRibbonTabs()
         // auto* actFaceCtrl = makeAction(this, ":/resources/menu/surfaceCtrl.png","&面控制");
         // auto* actEdgeCtrl = makeAction(this, ":/resources/menu/edgeCtrl.png",    "&边控制");
         auto* actMeshEdit = makeAction(this, ":/resources/menu/meshEdit.png", "&网格编辑");
+        auto* actMeshGrouping = makeAction(this, ":/resources/menu/meshEdit.png", "&网格分组");
         // auto* actQuality  = makeAction(this, ":/resources/menu/qualityStd.png", "&网格质量标准");
 
         // addActionToPanel(panelCtrl, actVolCtrl, 2);
         // addActionToPanel(panelCtrl, actFaceCtrl,2);
         // addActionToPanel(panelCtrl, actEdgeCtrl, 2);
         addActionToPanel(panelCtrl, actMeshEdit, 2);
+        addActionToPanel(panelCtrl, actMeshGrouping, 2);
         // addActionToPanel(panelCtrl, actQuality, 2);
 
         // bindEvent(this, actVolCtrl,  PublicConstants::kActionPreprocessCtrlVolume);
         // bindEvent(this, actFaceCtrl, PublicConstants::kActionPreprocessCtrlSurface);
         // bindEvent(this, actEdgeCtrl, PublicConstants::kActionPreprocessCtrlEdge);
         bindEvent(this, actMeshEdit, PublicConstants::kActionPreprocessMeshEdit);
+        bindEvent(this, actMeshGrouping, PublicConstants::kActionPreprocessMeshGrouping);
         // bindEvent(this, actQuality,  PublicConstants::kActionPreprocessQualityStd);
     }
 

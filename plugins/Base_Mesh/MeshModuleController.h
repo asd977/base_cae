@@ -14,6 +14,7 @@ class vtkActor;
 class vtkDataSetMapper;
 class vtkUnstructuredGrid;
 class GridEditingWidget;
+class MeshGroupingWidget;
 
 class MeshModuleController : public QObject, public MeshModuleControllerService
 {
@@ -39,6 +40,14 @@ public:
     void importMshGrid(QString path);
 
     MshPickMap mshPickMapSolid();
+    bool autoGroupingBySpatialBins(int binCount, QString* errMsg = nullptr) override;
+    bool groupByCoordinateRange(double xmin, double xmax,
+                                double ymin, double ymax,
+                                double zmin, double zmax,
+                                int matype,
+                                const QString& groupName,
+                                QString* errMsg = nullptr) override;
+
 private:
     void initAction();
 
@@ -55,6 +64,7 @@ private:
     void onCtrlEdge();
     void onQualityStd();
     void onMeshEdit();
+    void onMeshGrouping();
 
     void displayCurrentGrid(); // 只显示 m_importedGrid
 

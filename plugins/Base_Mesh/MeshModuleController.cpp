@@ -7,6 +7,7 @@
 #include <EventManager.h>
 #include <GridEditingWidget.h>
 #include <MeshGlobalMeshingWidget.h>
+#include <MeshGroupingWidget.h>
 #include <PublicConstants.h>
 #include <QMessageBox>
 #include <qfiledialog.h>
@@ -23,6 +24,10 @@
 #include <vtkCellData.h>
 #include <vtkPointData.h>
 #include <vtkExtractCells.h>
+#include <algorithm>
+#include <limits>
+#include <vtkIdList.h>
+#include <vtkStringArray.h>
 
 // === 这些头文件你后面真正实现时再加 ===
 // #include "MeshImportGridWidget.h"
@@ -197,6 +202,7 @@ void MeshModuleController::initAction()
     reg(PublicConstants::kActionPreprocessMeshSweep,  [this]{ onMeshSweep(); });
 
     reg(PublicConstants::kActionPreprocessMeshEdit,  [this]{ onMeshEdit(); });
+    reg(PublicConstants::kActionPreprocessMeshGrouping, [this]{ onMeshGrouping(); });
 
 
     // --- Control & Quality ---
@@ -346,6 +352,13 @@ void MeshModuleController::onQualityStd()
 {
     // auto* w = new MeshQualityStandardWidget();
     QWidget* w = new QWidget();
+}
+
+void MeshModuleController::onMeshGrouping()
+{
+    auto *w = new MeshGroupingWidget();
+    auto *node = new ProjectNode("网格分组", QUuid::createUuid().toString(), w);
+    m_gridNode->addChild(node);
 }
 
 void MeshModuleController::onMeshEdit()
@@ -512,3 +525,160 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshModuleController::getVtkUnstructuredGri
     return m_previewLineGrid;
 }
 
+
+
+bool MeshModuleController::autoGroupingBySpatialBins(int binCount, QString* errMsg)
+{
+    if (!m_importedGrid || m_importedGrid->GetNumberOfCells() <= 0) {
+        if (errMsg) *errMsg = QStringLiteral("当前没有可分组的网格");
+        return false;
+    }
+    if (binCount < 2) {
+        if (errMsg) *errMsg = QStringLiteral("自动分组数至少为 2");
+        return false;
+    }
+
+    const vtkIdType nCells = m_importedGrid->GetNumberOfCells();
+    struct CellCenter { vtkIdType cid; double x; double y; double z; };
+    QVector<CellCenter> centers;
+    centers.reserve((int)nCells);
+
+    double minV[3] = { std::numeric_limits<double>::max(), std::numeric_limits<double>::max(), std::numeric_limits<double>::max() };
+    double maxV[3] = { -std::numeric_limits<double>::max(), -std::numeric_limits<double>::max(), -std::numeric_limits<double>::max() };
+
+    for (vtkIdType cid = 0; cid < nCells; ++cid) {
+        auto *cell = m_importedGrid->GetCell(cid);
+        if (!cell) continue;
+        double b[6] = {0,0,0,0,0,0};
+        cell->GetBounds(b);
+        const double cx = 0.5 * (b[0] + b[1]);
+        const double cy = 0.5 * (b[2] + b[3]);
+        const double cz = 0.5 * (b[4] + b[5]);
+        minV[0] = std::min(minV[0], cx); minV[1] = std::min(minV[1], cy); minV[2] = std::min(minV[2], cz);
+        maxV[0] = std::max(maxV[0], cx); maxV[1] = std::max(maxV[1], cy); maxV[2] = std::max(maxV[2], cz);
+        centers.push_back({cid, cx, cy, cz});
+    }
+
+    if (centers.isEmpty()) {
+        if (errMsg) *errMsg = QStringLiteral("无法读取单元中心，自动分组失败");
+        return false;
+    }
+
+    const double span[3] = { maxV[0] - minV[0], maxV[1] - minV[1], maxV[2] - minV[2] };
+    int axis = 0;
+    if (span[1] > span[axis]) axis = 1;
+    if (span[2] > span[axis]) axis = 2;
+
+    auto *matypeArr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray("MATYPE"));
+    if (!matypeArr) {
+        auto newMatype = vtkSmartPointer<vtkIntArray>::New();
+        newMatype->SetName("MATYPE");
+        newMatype->SetNumberOfComponents(1);
+        newMatype->SetNumberOfTuples(nCells);
+        newMatype->FillComponent(0, 0);
+        m_importedGrid->GetCellData()->AddArray(newMatype);
+        matypeArr = newMatype;
+    }
+
+    auto *groupArr = vtkStringArray::SafeDownCast(m_importedGrid->GetCellData()->GetAbstractArray("GroupName"));
+    if (!groupArr) {
+        auto newGroup = vtkSmartPointer<vtkStringArray>::New();
+        newGroup->SetName("GroupName");
+        newGroup->SetNumberOfValues(nCells);
+        for (vtkIdType i = 0; i < nCells; ++i) newGroup->SetValue(i, "");
+        m_importedGrid->GetCellData()->AddArray(newGroup);
+        groupArr = newGroup;
+    } else if (groupArr->GetNumberOfValues() != nCells) {
+        groupArr->SetNumberOfValues(nCells);
+    }
+
+    const double axisMin = minV[axis];
+    const double axisSpan = std::max(span[axis], 1e-12);
+
+    for (const auto &c : centers) {
+        const double coord = (axis == 0 ? c.x : (axis == 1 ? c.y : c.z));
+        int bin = static_cast<int>(((coord - axisMin) / axisSpan) * binCount);
+        if (bin >= binCount) bin = binCount - 1;
+        if (bin < 0) bin = 0;
+
+        const int matype = bin + 1;
+        matypeArr->SetValue(c.cid, matype);
+        groupArr->SetValue(c.cid, QString("AutoGroup_%1").arg(matype).toStdString());
+    }
+
+    m_importedGrid->GetCellData()->Modified();
+    m_importedGrid->Modified();
+    displayCurrentGrid();
+    return true;
+}
+
+bool MeshModuleController::groupByCoordinateRange(double xmin, double xmax,
+                                                  double ymin, double ymax,
+                                                  double zmin, double zmax,
+                                                  int matype,
+                                                  const QString& groupName,
+                                                  QString* errMsg)
+{
+    if (!m_importedGrid || m_importedGrid->GetNumberOfCells() <= 0) {
+        if (errMsg) *errMsg = QStringLiteral("当前没有可分组的网格");
+        return false;
+    }
+    if (matype <= 0) {
+        if (errMsg) *errMsg = QStringLiteral("分组编号(MATYPE)必须大于 0");
+        return false;
+    }
+
+    if (xmin > xmax) std::swap(xmin, xmax);
+    if (ymin > ymax) std::swap(ymin, ymax);
+    if (zmin > zmax) std::swap(zmin, zmax);
+
+    const vtkIdType nCells = m_importedGrid->GetNumberOfCells();
+    auto *matypeArr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray("MATYPE"));
+    if (!matypeArr) {
+        auto newMatype = vtkSmartPointer<vtkIntArray>::New();
+        newMatype->SetName("MATYPE");
+        newMatype->SetNumberOfComponents(1);
+        newMatype->SetNumberOfTuples(nCells);
+        newMatype->FillComponent(0, 0);
+        m_importedGrid->GetCellData()->AddArray(newMatype);
+        matypeArr = newMatype;
+    }
+
+    auto *groupArr = vtkStringArray::SafeDownCast(m_importedGrid->GetCellData()->GetAbstractArray("GroupName"));
+    if (!groupArr) {
+        auto newGroup = vtkSmartPointer<vtkStringArray>::New();
+        newGroup->SetName("GroupName");
+        newGroup->SetNumberOfValues(nCells);
+        for (vtkIdType i = 0; i < nCells; ++i) newGroup->SetValue(i, "");
+        m_importedGrid->GetCellData()->AddArray(newGroup);
+        groupArr = newGroup;
+    } else if (groupArr->GetNumberOfValues() != nCells) {
+        groupArr->SetNumberOfValues(nCells);
+    }
+
+    int changed = 0;
+    for (vtkIdType cid = 0; cid < nCells; ++cid) {
+        auto *cell = m_importedGrid->GetCell(cid);
+        if (!cell) continue;
+        double b[6] = {0,0,0,0,0,0};
+        cell->GetBounds(b);
+        const double cx = 0.5 * (b[0] + b[1]);
+        const double cy = 0.5 * (b[2] + b[3]);
+        const double cz = 0.5 * (b[4] + b[5]);
+        if (cx >= xmin && cx <= xmax && cy >= ymin && cy <= ymax && cz >= zmin && cz <= zmax) {
+            matypeArr->SetValue(cid, matype);
+            groupArr->SetValue(cid, groupName.toStdString());
+            ++changed;
+        }
+    }
+
+    if (changed == 0) {
+        if (errMsg) *errMsg = QStringLiteral("范围内没有命中任何单元");
+        return false;
+    }
+
+    m_importedGrid->GetCellData()->Modified();
+    m_importedGrid->Modified();
+    displayCurrentGrid();
+    return true;
+}
