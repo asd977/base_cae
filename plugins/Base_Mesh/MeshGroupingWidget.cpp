@@ -316,18 +316,33 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
     }
 
     // 把每个体网格面唯一指派到最匹配的 region，避免重合/交界碎片被单独算一组。
+    // 性能优化：由“遍历全部 region”改为“通过点反查候选 region”，复杂度显著降低。
     QHash<int, QVector<qint64>> regionToFaceKeys;
-    const QList<int> regionIds = regionToPointIds.keys();
+    QHash<int, QVector<int>> pointToRegions;
+    for (auto it = regionToPointIds.constBegin(); it != regionToPointIds.constEnd(); ++it) {
+        const int rid = it.key();
+        for (int pid : it.value()) {
+            pointToRegions[pid].push_back(rid);
+        }
+    }
+
     for (const FaceEntry& f : allFaces) {
+        QHash<int, int> hitCounter;
+        for (int pid : f.pointIds) {
+            auto pit = pointToRegions.constFind(pid);
+            if (pit == pointToRegions.constEnd()) continue;
+            const QVector<int>& candidates = pit.value();
+            for (int rid : candidates) {
+                hitCounter[rid] += 1;
+            }
+        }
+
         int bestRegion = -1;
         int bestHit = -1;
         bool tie = false;
-        for (int rid : regionIds) {
-            const QSet<int>& pts = regionToPointIds[rid];
-            int hit = 0;
-            for (int pid : f.pointIds) {
-                if (pts.contains(pid)) ++hit;
-            }
+        for (auto it = hitCounter.constBegin(); it != hitCounter.constEnd(); ++it) {
+            const int rid = it.key();
+            const int hit = it.value();
             if (hit > bestHit) {
                 bestHit = hit;
                 bestRegion = rid;
@@ -336,6 +351,7 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
                 tie = true;
             }
         }
+
         if (bestRegion < 0 || tie) continue;
         if (bestHit != f.pointIds.size()) continue; // 必须完整覆盖该面
         regionToFaceKeys[bestRegion].push_back(f.key);
