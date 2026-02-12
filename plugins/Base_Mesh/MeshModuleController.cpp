@@ -7,6 +7,10 @@
 #include <EventManager.h>
 #include <GridEditingWidget.h>
 #include <MeshGlobalMeshingWidget.h>
+#include <MeshSingleMeshingWidget.h>
+#include <MeshVolumeControlWidget.h>
+#include <MeshFaceControlWidget.h>
+#include <MeshEdgeControlWidget.h>
 #include <PublicConstants.h>
 #include <QMessageBox>
 #include <qfiledialog.h>
@@ -321,8 +325,9 @@ void MeshModuleController::onMeshGlobal()
 
 void MeshModuleController::onMeshSingle()
 {
-    // auto* w = new MeshSingleMeshingWidget();
-    QWidget* w = new QWidget();
+    auto* w = new MeshSingleMeshingWidget();
+    auto *node = new ProjectNode("单体剖分", QUuid::createUuid().toString(), static_cast<BasePage*>(w));
+    m_gridNode->addChild(node);
 }
 
 void MeshModuleController::onMeshMapped()
@@ -339,20 +344,23 @@ void MeshModuleController::onMeshSweep()
 
 void MeshModuleController::onCtrlVolume()
 {
-    // auto* w = new MeshVolumeControlWidget();
-    QWidget* w = new QWidget();
+    auto* w = new MeshVolumeControlWidget();
+    auto *node = new ProjectNode("体控制", QUuid::createUuid().toString(), static_cast<BasePage*>(w));
+    m_gridNode->addChild(node);
 }
 
 void MeshModuleController::onCtrlSurface()
 {
-    // auto* w = new MeshFaceControlWidget();
-    QWidget* w = new QWidget();
+    auto* w = new MeshFaceControlWidget();
+    auto *node = new ProjectNode("面控制", QUuid::createUuid().toString(), static_cast<BasePage*>(w));
+    m_gridNode->addChild(node);
 }
 
 void MeshModuleController::onCtrlEdge()
 {
-    // auto* w = new MeshEdgeControlWidget();
-    QWidget* w = new QWidget();
+    auto* w = new MeshEdgeControlWidget();
+    auto *node = new ProjectNode("边控制", QUuid::createUuid().toString(), static_cast<BasePage*>(w));
+    m_gridNode->addChild(node);
 }
 
 void MeshModuleController::onQualityStd()

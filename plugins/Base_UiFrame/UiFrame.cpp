@@ -623,39 +623,39 @@ void UiFrame::buildRibbonTabs()
         // // ============ 剖分方式 ============
          auto* panelMesh = cate->addPannel("剖分");
          auto* actGlobal = makeAction(this, ":/resources/menu/meshGlobal.png",  "&整体剖分");
-        // auto* actSingle = makeAction(this, ":/resources/menu/meshSingle.png",  "&单体剖分");
+         auto* actSingle = makeAction(this, ":/resources/menu/meshGlobal.png",  "&单体剖分");
         // auto* actMapped = makeAction(this, ":/resources/menu/meshMapped.png",  "&映射剖分");
         // auto* actSweep  = makeAction(this, ":/resources/menu/meshSweep.png",   "&扫掠剖分");
 
          addActionToPanel(panelMesh, actGlobal, 2);
-        // addActionToPanel(panelMesh, actSingle, 2);
+         addActionToPanel(panelMesh, actSingle, 2);
         // addActionToPanel(panelMesh, actMapped, 2);
         // addActionToPanel(panelMesh, actSweep,  2);
 
          bindEvent(this, actGlobal, PublicConstants::kActionPreprocessMeshGlobal);
-        // bindEvent(this, actSingle, PublicConstants::kActionPreprocessMeshSingle);
+         bindEvent(this, actSingle, PublicConstants::kActionPreprocessMeshSingle);
         // bindEvent(this, actMapped, PublicConstants::kActionPreprocessMeshMapped);
         // bindEvent(this, actSweep,  PublicConstants::kActionPreprocessMeshSweep);
 
         // // ============ 控制与质量 ============
         auto* panelCtrl = cate->addPannel("控制");
-        // auto* actVolCtrl  = makeAction(this, ":/resources/menu/volumeCtrl.png", "&体控制");
-        // auto* actFaceCtrl = makeAction(this, ":/resources/menu/surfaceCtrl.png","&面控制");
-        // auto* actEdgeCtrl = makeAction(this, ":/resources/menu/edgeCtrl.png",    "&边控制");
+        auto* actVolCtrl  = makeAction(this, ":/resources/menu/meshEdit.png", "&体控制");
+        auto* actFaceCtrl = makeAction(this, ":/resources/menu/meshEdit.png","&面控制");
+        auto* actEdgeCtrl = makeAction(this, ":/resources/menu/meshEdit.png",    "&边控制");
         auto* actMeshEdit = makeAction(this, ":/resources/menu/meshEdit.png", "&网格编辑");
         auto* actMeshGrouping = makeAction(this, ":/resources/menu/meshEdit.png", "&网格分组");
         // auto* actQuality  = makeAction(this, ":/resources/menu/qualityStd.png", "&网格质量标准");
 
-        // addActionToPanel(panelCtrl, actVolCtrl, 2);
-        // addActionToPanel(panelCtrl, actFaceCtrl,2);
-        // addActionToPanel(panelCtrl, actEdgeCtrl, 2);
+        addActionToPanel(panelCtrl, actVolCtrl, 2);
+        addActionToPanel(panelCtrl, actFaceCtrl,2);
+        addActionToPanel(panelCtrl, actEdgeCtrl, 2);
         addActionToPanel(panelCtrl, actMeshEdit, 2);
         addActionToPanel(panelCtrl, actMeshGrouping, 2);
         // addActionToPanel(panelCtrl, actQuality, 2);
 
-        // bindEvent(this, actVolCtrl,  PublicConstants::kActionPreprocessCtrlVolume);
-        // bindEvent(this, actFaceCtrl, PublicConstants::kActionPreprocessCtrlSurface);
-        // bindEvent(this, actEdgeCtrl, PublicConstants::kActionPreprocessCtrlEdge);
+        bindEvent(this, actVolCtrl,  PublicConstants::kActionPreprocessCtrlVolume);
+        bindEvent(this, actFaceCtrl, PublicConstants::kActionPreprocessCtrlSurface);
+        bindEvent(this, actEdgeCtrl, PublicConstants::kActionPreprocessCtrlEdge);
         bindEvent(this, actMeshEdit, PublicConstants::kActionPreprocessMeshEdit);
         bindEvent(this, actMeshGrouping, PublicConstants::kActionPreprocessMeshGrouping);
         // bindEvent(this, actQuality,  PublicConstants::kActionPreprocessQualityStd);

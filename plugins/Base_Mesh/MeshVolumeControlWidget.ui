@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MeshVolumeControlWidget</class>
+ <widget class="QWidget" name="MeshVolumeControlWidget">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>420</width><height>240</height></rect>
+  </property>
+  <property name="windowTitle">
+   <string>体控制</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QGroupBox" name="groupBox">
+     <property name="title"><string>体控制</string></property>
+     <layout class="QVBoxLayout" name="verticalLayout_2">
+      <item>
+       <widget class="QLabel" name="labelHint">
+        <property name="text"><string>用于设置体单元尺寸、增长率等体控制参数（预留功能）。</string></property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
