@@ -23,6 +23,7 @@
 #include <vtkIdTypeArray.h>
 #include <vtkPointData.h>
 #include <vtkPolyData.h>
+#include <vtkPolyDataNormals.h>
 #include <vtkCubeSource.h>
 #include <vtkIntArray.h>
 #include <vtkNew.h>
@@ -194,8 +195,20 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
     surfaceFilter->PassThroughCellIdsOn();
     surfaceFilter->Update();
 
+    // CAE 常规做法：先按特征角在锐边处分裂，再做连通域。
+    // 这样立方体不会被识别为“一个外壳”，而是拆成多个边界面片。
+    vtkNew<vtkPolyDataNormals> normals;
+    normals->SetInputConnection(surfaceFilter->GetOutputPort());
+    normals->ComputePointNormalsOff();
+    normals->ComputeCellNormalsOn();
+    normals->SplittingOn();
+    normals->SetFeatureAngle(30.0); // 立方体(90°折角)会被稳定分裂
+    normals->ConsistencyOn();
+    normals->AutoOrientNormalsOn();
+    normals->Update();
+
     vtkNew<vtkConnectivityFilter> conn;
-    conn->SetInputData(surfaceFilter->GetOutput());
+    conn->SetInputConnection(normals->GetOutputPort());
     conn->SetExtractionModeToAllRegions();
     conn->ColorRegionsOn();
     conn->Update();
@@ -256,7 +269,7 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
         const int regionCount = conn->GetNumberOfExtractedRegions();
         for (int r = 0; r < regionCount; ++r) {
             vtkNew<vtkConnectivityFilter> byRegion;
-            byRegion->SetInputData(surfaceFilter->GetOutput());
+            byRegion->SetInputData(vtkPolyData::SafeDownCast(normals->GetOutput()));
             byRegion->SetExtractionModeToSpecifiedRegions();
             byRegion->AddSpecifiedRegion(r);
             byRegion->Update();
