@@ -30,8 +30,10 @@ private slots:
 
 private:
     void refreshGroupList();
+    void refreshBoundaryGroupList();
     void updateRangePreview(bool forceOn = false);
     void clearRangePreview(bool renderNow = true);
+    QString currentTargetArrayName() const;
 
 private:
     Ui::MeshGroupingWidget *ui;

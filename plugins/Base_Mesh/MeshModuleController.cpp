@@ -216,8 +216,8 @@ void MeshModuleController::initAction()
 void MeshModuleController::onImportGrid()
 {
     QString fileName;
-    QFileDialog dialog(nullptr, QStringLiteral("选择网格文件"));
-    dialog.setNameFilter(QStringLiteral("Grid Files (*.nas *.inp *.flac3d *.f3grid *.DAT *.msh)"));
+    QFileDialog dialog(nullptr, QString("选择网格文件"));
+    dialog.setNameFilter(QString("Grid Files (*.nas *.inp *.flac3d *.f3grid *.DAT *.msh)"));
     dialog.setFilter(QDir::Files);
     if (dialog.exec() == QDialog::Accepted) {
         fileName = dialog.selectedFiles().first();
@@ -231,7 +231,7 @@ void MeshModuleController::onImportGrid()
     vtkSmartPointer<vtkUnstructuredGrid> grid;
 
     if (ext == "nas") {
-        QMessageBox::warning(nullptr, QStringLiteral("不支持的格式"), QStringLiteral("当前暂不支持 .nas 格式"));
+        QMessageBox::warning(nullptr, QString("不支持的格式"), QString("当前暂不支持 .nas 格式"));
         return;
     } else if (ext == "flac3d" || ext == "f3grid") {
         grid = MeshGridIO::instance().importFlac3D(fileName, &err);
@@ -243,14 +243,14 @@ void MeshModuleController::onImportGrid()
         grid = MeshGridIO::instance().loadMshFile(fileName, &err);
     }
     else {
-        QMessageBox::warning(nullptr, QStringLiteral("不支持的格式"),
-                             QStringLiteral("当前只支持 .nas / .inp / .flac3d / .f3grid / .dat"));
+        QMessageBox::warning(nullptr, QString("不支持的格式"),
+                             QString("当前只支持 .nas / .inp / .flac3d / .f3grid / .dat"));
         return;
     }
 
     if (!grid || grid->GetNumberOfCells() == 0) {
-        QMessageBox::warning(nullptr, QStringLiteral("导入失败"),
-                             err.isEmpty() ? QStringLiteral("网格导入失败") : err);
+        QMessageBox::warning(nullptr, QString("导入失败"),
+                             err.isEmpty() ? QString("网格导入失败") : err);
         return;
     }
 
@@ -283,24 +283,24 @@ MshPickMap MeshModuleController::mshPickMapSolid()
 void MeshModuleController::onExportGrid()
 {
     if (!m_hasGrid || !m_importedGrid) {
-        QMessageBox::warning(nullptr, QStringLiteral("无可导出的网格"), QStringLiteral("请先导入网格后再导出。"));
+        QMessageBox::warning(nullptr, QString("无可导出的网格"), QString("请先导入网格后再导出。"));
         return;
     }
 
     QString defaultPath = m_sourceFileName.isEmpty()
-        ? QStringLiteral("IIIN.dat")
+        ? QString("IIIN.dat")
         : MeshGridIO::defaultIiinOutputPath(m_sourceFileName);
 
     QString fileName = QFileDialog::getSaveFileName(nullptr,
-                                                    QStringLiteral("导出 IIIN.DAT"),
+                                                    QString("导出 IIIN.DAT"),
                                                     defaultPath,
-                                                    QStringLiteral("IIIN Grid (*.dat)"));
+                                                    QString("IIIN Grid (*.dat)"));
     if (fileName.isEmpty()) return;
 
     QString err;
     if (!MeshGridIO::instance().exportIiinFile(fileName, m_importedGrid, &err)) {
-        QMessageBox::warning(nullptr, QStringLiteral("导出失败"),
-                             err.isEmpty() ? QStringLiteral("IIIN.DAT 导出失败") : err);
+        QMessageBox::warning(nullptr, QString("导出失败"),
+                             err.isEmpty() ? QString("IIIN.DAT 导出失败") : err);
         return;
     }
 }
@@ -382,16 +382,16 @@ void MeshModuleController::displayCurrentGrid()
     vtkSmartPointer<vtkUnstructuredGrid> nonLineGrid;
     splitGridByDim(m_importedGrid, lineGrid, nonLineGrid);
 
-    static const QString kMeshSurfId = QStringLiteral("mesh.imported.surface");
-    static const QString kMeshLineId = QStringLiteral("mesh.imported.line");
+    static const QString kMeshSurfId = QString("mesh.imported.surface");
+    static const QString kMeshLineId = QString("mesh.imported.line");
     m_visualWidgetService->removeProp(kMeshSurfId, false);
     m_visualWidgetService->removeProp(kMeshLineId, false);
 
     if (nonLineGrid && nonLineGrid->GetNumberOfCells() > 0) {
         auto surfActor = createSurfaceActor(nonLineGrid);
         m_visualWidgetService->addProp(kMeshSurfId, surfActor,
-                                       QStringLiteral("网格"),
-                                       QStringLiteral("导入网格-面/体"),
+                                       QString("网格"),
+                                       QString("导入网格-面/体"),
                                        true, true);
         m_previewSurfaceGrid = nonLineGrid;
         m_previewSurfaceActor = surfActor;
@@ -405,8 +405,8 @@ void MeshModuleController::displayCurrentGrid()
     if (lineGrid && lineGrid->GetNumberOfCells() > 0) {
         auto lineActor = createLineActor(lineGrid);
         m_visualWidgetService->addProp(kMeshLineId, lineActor,
-                                       QStringLiteral("网格"),
-                                       QStringLiteral("导入网格-线"),
+                                       QString("网格"),
+                                       QString("导入网格-线"),
                                        true, true);
         m_previewLineGrid = lineGrid;
         m_previewLineActor = lineActor;
@@ -527,14 +527,26 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshModuleController::getVtkUnstructuredGri
 
 
 
-bool MeshModuleController::autoGroupingBySpatialBins(int binCount, QString* errMsg)
+bool MeshModuleController::autoGroupingBySpatialBins(int binCount,
+                                                     const QString& targetArrayName,
+                                                     int startValue,
+                                                     const QString& groupPrefix,
+                                                     QString* errMsg)
 {
     if (!m_importedGrid || m_importedGrid->GetNumberOfCells() <= 0) {
-        if (errMsg) *errMsg = QStringLiteral("当前没有可分组的网格");
+        if (errMsg) *errMsg = QString("当前没有可分组的网格");
         return false;
     }
     if (binCount < 2) {
-        if (errMsg) *errMsg = QStringLiteral("自动分组数至少为 2");
+        if (errMsg) *errMsg = QString("自动分组数至少为 2");
+        return false;
+    }
+    if (startValue <= 0) {
+        if (errMsg) *errMsg = QString("起始编号必须大于 0");
+        return false;
+    }
+    if (targetArrayName.trimmed().isEmpty()) {
+        if (errMsg) *errMsg = QString("目标分组字段不能为空");
         return false;
     }
 
@@ -560,7 +572,7 @@ bool MeshModuleController::autoGroupingBySpatialBins(int binCount, QString* errM
     }
 
     if (centers.isEmpty()) {
-        if (errMsg) *errMsg = QStringLiteral("无法读取单元中心，自动分组失败");
+        if (errMsg) *errMsg = QString("无法读取单元中心，自动分组失败");
         return false;
     }
 
@@ -569,15 +581,15 @@ bool MeshModuleController::autoGroupingBySpatialBins(int binCount, QString* errM
     if (span[1] > span[axis]) axis = 1;
     if (span[2] > span[axis]) axis = 2;
 
-    auto *matypeArr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray("MATYPE"));
-    if (!matypeArr) {
-        auto newMatype = vtkSmartPointer<vtkIntArray>::New();
-        newMatype->SetName("MATYPE");
-        newMatype->SetNumberOfComponents(1);
-        newMatype->SetNumberOfTuples(nCells);
-        newMatype->FillComponent(0, 0);
-        m_importedGrid->GetCellData()->AddArray(newMatype);
-        matypeArr = newMatype;
+    auto *targetArr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray(targetArrayName.toStdString().c_str()));
+    if (!targetArr) {
+        auto newArr = vtkSmartPointer<vtkIntArray>::New();
+        newArr->SetName(targetArrayName.toStdString().c_str());
+        newArr->SetNumberOfComponents(1);
+        newArr->SetNumberOfTuples(nCells);
+        newArr->FillComponent(0, 0);
+        m_importedGrid->GetCellData()->AddArray(newArr);
+        targetArr = newArr;
     }
 
     auto *groupArr = vtkStringArray::SafeDownCast(m_importedGrid->GetCellData()->GetAbstractArray("GroupName"));
@@ -601,9 +613,9 @@ bool MeshModuleController::autoGroupingBySpatialBins(int binCount, QString* errM
         if (bin >= binCount) bin = binCount - 1;
         if (bin < 0) bin = 0;
 
-        const int matype = bin + 1;
-        matypeArr->SetValue(c.cid, matype);
-        groupArr->SetValue(c.cid, QString("AutoGroup_%1").arg(matype).toStdString());
+        const int targetValue = startValue + bin;
+        targetArr->SetValue(c.cid, targetValue);
+        groupArr->SetValue(c.cid, QString("%1_%2").arg(groupPrefix).arg(targetValue).toStdString());
     }
 
     m_importedGrid->GetCellData()->Modified();
@@ -615,16 +627,21 @@ bool MeshModuleController::autoGroupingBySpatialBins(int binCount, QString* errM
 bool MeshModuleController::groupByCoordinateRange(double xmin, double xmax,
                                                   double ymin, double ymax,
                                                   double zmin, double zmax,
-                                                  int matype,
+                                                  const QString& targetArrayName,
+                                                  int value,
                                                   const QString& groupName,
                                                   QString* errMsg)
 {
     if (!m_importedGrid || m_importedGrid->GetNumberOfCells() <= 0) {
-        if (errMsg) *errMsg = QStringLiteral("当前没有可分组的网格");
+        if (errMsg) *errMsg = QString("当前没有可分组的网格");
         return false;
     }
-    if (matype <= 0) {
-        if (errMsg) *errMsg = QStringLiteral("分组编号(MATYPE)必须大于 0");
+    if (value <= 0) {
+        if (errMsg) *errMsg = QString("分组编号必须大于 0");
+        return false;
+    }
+    if (targetArrayName.trimmed().isEmpty()) {
+        if (errMsg) *errMsg = QString("目标分组字段不能为空");
         return false;
     }
 
@@ -633,15 +650,15 @@ bool MeshModuleController::groupByCoordinateRange(double xmin, double xmax,
     if (zmin > zmax) std::swap(zmin, zmax);
 
     const vtkIdType nCells = m_importedGrid->GetNumberOfCells();
-    auto *matypeArr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray("MATYPE"));
-    if (!matypeArr) {
-        auto newMatype = vtkSmartPointer<vtkIntArray>::New();
-        newMatype->SetName("MATYPE");
-        newMatype->SetNumberOfComponents(1);
-        newMatype->SetNumberOfTuples(nCells);
-        newMatype->FillComponent(0, 0);
-        m_importedGrid->GetCellData()->AddArray(newMatype);
-        matypeArr = newMatype;
+    auto *targetArr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray(targetArrayName.toStdString().c_str()));
+    if (!targetArr) {
+        auto newArr = vtkSmartPointer<vtkIntArray>::New();
+        newArr->SetName(targetArrayName.toStdString().c_str());
+        newArr->SetNumberOfComponents(1);
+        newArr->SetNumberOfTuples(nCells);
+        newArr->FillComponent(0, 0);
+        m_importedGrid->GetCellData()->AddArray(newArr);
+        targetArr = newArr;
     }
 
     auto *groupArr = vtkStringArray::SafeDownCast(m_importedGrid->GetCellData()->GetAbstractArray("GroupName"));
@@ -666,14 +683,14 @@ bool MeshModuleController::groupByCoordinateRange(double xmin, double xmax,
         const double cy = 0.5 * (b[2] + b[3]);
         const double cz = 0.5 * (b[4] + b[5]);
         if (cx >= xmin && cx <= xmax && cy >= ymin && cy <= ymax && cz >= zmin && cz <= zmax) {
-            matypeArr->SetValue(cid, matype);
+            targetArr->SetValue(cid, value);
             groupArr->SetValue(cid, groupName.toStdString());
             ++changed;
         }
     }
 
     if (changed == 0) {
-        if (errMsg) *errMsg = QStringLiteral("范围内没有命中任何单元");
+        if (errMsg) *errMsg = QString("范围内没有命中任何单元");
         return false;
     }
 

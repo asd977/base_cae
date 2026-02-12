@@ -40,11 +40,16 @@ public:
     void importMshGrid(QString path);
 
     MshPickMap mshPickMapSolid();
-    bool autoGroupingBySpatialBins(int binCount, QString* errMsg = nullptr) override;
+    bool autoGroupingBySpatialBins(int binCount,
+                                const QString& targetArrayName,
+                                int startValue,
+                                const QString& groupPrefix,
+                                QString* errMsg = nullptr) override;
     bool groupByCoordinateRange(double xmin, double xmax,
                                 double ymin, double ymax,
                                 double zmin, double zmax,
-                                int matype,
+                                const QString& targetArrayName,
+                                int value,
                                 const QString& groupName,
                                 QString* errMsg = nullptr) override;
 

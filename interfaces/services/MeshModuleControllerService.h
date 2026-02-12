@@ -26,11 +26,16 @@ struct MeshModuleControllerService
     virtual vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGridLine() = 0;
     virtual void importMshGrid(QString path) = 0;
     virtual MshPickMap mshPickMapSolid() = 0;
-    virtual bool autoGroupingBySpatialBins(int binCount, QString* errMsg = nullptr) = 0;
+    virtual bool autoGroupingBySpatialBins(int binCount,
+                                        const QString& targetArrayName,
+                                        int startValue,
+                                        const QString& groupPrefix,
+                                        QString* errMsg = nullptr) = 0;
     virtual bool groupByCoordinateRange(double xmin, double xmax,
                                         double ymin, double ymax,
                                         double zmin, double zmax,
-                                        int matype,
+                                        const QString& targetArrayName,
+                                        int value,
                                         const QString& groupName,
                                         QString* errMsg = nullptr) = 0;
 };
