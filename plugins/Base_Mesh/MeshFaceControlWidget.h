@@ -19,12 +19,15 @@ public:
     void beforeUnload() override;
 
 private slots:
+    void onDimChanged();
+    void onGroupChanged();
     void onAddOrUpdateRule();
     void onRemoveSelectedRule();
     void onClearRules();
     void onResetDefaults();
 
 private:
+    void refreshGroupCombo();
     int findRowByFaceId(int faceId) const;
     void updateSummary();
 
