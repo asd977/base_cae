@@ -38,6 +38,7 @@ public:
     static QString defaultIiinOutputPath(const QString &sourceFile);
 
     MshPickMap getMeshMap();
+    void setMeshMap(const MshPickMap& pickMap);
 private:
     vtkSmartPointer<vtkUnstructuredGrid> loadFlac3dGrid(const QString &fileName) const;
     vtkSmartPointer<vtkUnstructuredGrid> loadAbaqusInpGrid(const QString &fileName) const;

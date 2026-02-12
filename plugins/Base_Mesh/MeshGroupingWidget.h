@@ -3,6 +3,7 @@
 
 #include <BasePage.h>
 #include <vtkSmartPointer.h>
+#include <struct/MeshMap.h>
 
 class vtkActor;
 
@@ -27,10 +28,13 @@ private slots:
     void onRefreshGroups();
     void onToggleRangePreview(bool on);
     void onRangeValueChanged();
+    void onAutoDetectBoundaries();
 
 private:
     void refreshGroupList();
     void refreshBoundaryGroupList();
+    void detectBoundaryGroupsBySurfacePatches();
+    void initializeRangeByGridBounds(bool force = false);
     void updateRangePreview(bool forceOn = false);
     void clearRangePreview(bool renderNow = true);
     QString currentTargetArrayName() const;
@@ -38,6 +42,8 @@ private:
 private:
     Ui::MeshGroupingWidget *ui;
     vtkSmartPointer<vtkActor> m_rangePreviewActor;
+    bool m_hasAutoBoundaryGroups = false;
+    MshPickMap m_autoBoundaryPickMap;
 };
 
 #endif // MESHGROUPINGWIDGET_H

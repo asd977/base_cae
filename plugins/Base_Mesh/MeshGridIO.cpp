@@ -971,6 +971,11 @@ MshPickMap MeshGridIO::getMeshMap()
     return m_mshPickMap;
 }
 
+void MeshGridIO::setMeshMap(const MshPickMap& pickMap)
+{
+    m_mshPickMap = pickMap;
+}
+
 void MeshGridIO::clearPickMap()
 {
     m_mshPickMap = MshPickMap{};
