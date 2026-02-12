@@ -52,45 +52,55 @@ double TemperatureLoadPage::dtValue() const
 void TemperatureLoadPage::setupBatchGroupCombo()
 {
     if (!ui) return;
+    ui->comboBoxDim->blockSignals(true);
+    ui->comboBoxDim->clear();
+    ui->comboBoxDim->addItem("全部维度", -1);
+    ui->comboBoxDim->addItem("dim0 点", 0);
+    ui->comboBoxDim->addItem("dim1 线", 1);
+    ui->comboBoxDim->addItem("dim2 面", 2);
+    ui->comboBoxDim->setCurrentIndex(0);
+    ui->comboBoxDim->blockSignals(false);
 
-    if (!m_groupCombo) {
-        auto* layout = qobject_cast<QVBoxLayout*>(this->layout());
-        if (!layout) return;
-        m_groupCombo = new QComboBox(this);
-        layout->insertWidget(0, m_groupCombo);
-    }
+    connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &TemperatureLoadPage::onDimChanged, Qt::UniqueConnection);
+    connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &TemperatureLoadPage::onGroupChanged, Qt::UniqueConnection);
+    refreshGroupCombo();
+}
 
-    m_groupCombo->blockSignals(true);
-    m_groupCombo->clear();
-
+void TemperatureLoadPage::refreshGroupCombo()
+{
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    if (!meshSvc) {
-        m_groupCombo->blockSignals(false);
-        return;
-    }
+    if (!meshSvc) return;
 
     const MshPickMap& map = meshSvc->mshPickMapSolid();
+    const int dimFilter = ui->comboBoxDim->currentData().toInt();
+    ui->comboBoxGroup->blockSignals(true);
+    ui->comboBoxGroup->clear();
     for (auto it = map.physIdToName.constBegin(); it != map.physIdToName.constEnd(); ++it)
     {
         const int physId = it.key();
         const int dim = map.physIdToDim.value(physId, -1);
         if (dim < 0 || dim > 2) continue;
-        m_groupCombo->addItem(QString("%1  (dim=%2, id=%3)").arg(it.value()).arg(dim).arg(physId), physId);
+        if (dimFilter >= 0 && dim != dimFilter) continue;
+        ui->comboBoxGroup->addItem(QString("%1  (dim=%2, id=%3)").arg(it.value()).arg(dim).arg(physId), physId);
     }
+    ui->comboBoxGroup->blockSignals(false);
+}
 
-    m_groupCombo->blockSignals(false);
-    connect(m_groupCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &TemperatureLoadPage::onGroupChanged, Qt::UniqueConnection);
+void TemperatureLoadPage::onDimChanged(int)
+{
+    refreshGroupCombo();
 }
 
 void TemperatureLoadPage::onGroupChanged(int index)
 {
-    if (!m_groupCombo || index < 0) return;
+    if (index < 0) return;
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc) return;
     const MshPickMap& map = meshSvc->mshPickMapSolid();
 
-    const int physId = m_groupCombo->itemData(index).toInt();
+    const int physId = ui->comboBoxGroup->itemData(index).toInt();
     const int dim = map.physIdToDim.value(physId, -1);
     QVector<int> pointIdsInt;
     if (dim == 0) pointIdsInt = map.bndPointPhysToPointIds.value(physId);

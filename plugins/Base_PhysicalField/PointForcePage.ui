@@ -15,6 +15,12 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
+    <widget class="QComboBox" name="comboBoxDim"/>
+   </item>
+   <item>
+    <widget class="QComboBox" name="comboBoxGroup"/>
+   </item>
+   <item>
     <widget class="QGroupBox" name="groupBoxForce">
      <property name="title">
       <string>集中力</string>

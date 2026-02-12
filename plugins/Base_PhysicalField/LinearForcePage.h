@@ -26,9 +26,11 @@ public:
 
 private slots:
     void onGroupChanged(int index);
+    void onDimChanged(int index);
 
 private:
     void setupBatchGroupCombo();
+    void refreshGroupCombo();
 
 private:
     Ui::LinearForcePage *ui;

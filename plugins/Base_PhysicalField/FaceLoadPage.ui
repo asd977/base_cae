@@ -15,6 +15,12 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
+    <widget class="QComboBox" name="comboBoxDim"/>
+   </item>
+   <item>
+    <widget class="QComboBox" name="comboBoxGroup"/>
+   </item>
+   <item>
     <widget class="QGroupBox" name="groupBoxLoad">
      <property name="title">
       <string>面力分量</string>

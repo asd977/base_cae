@@ -86,11 +86,13 @@ void GeoStressFitFacePage::beforeLoad()
     refreshGroupCombo();
 
     // 2) 绑定“下拉框改变” -> 批量设置 keys
-    connect(ui->comboGroup, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &GeoStressFitFacePage::onGroupComboChanged);
+    connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &GeoStressFitFacePage::onDimComboChanged, Qt::UniqueConnection);
+    connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &GeoStressFitFacePage::onGroupComboChanged, Qt::UniqueConnection);
 
     // 3) 进入页面时，默认把当前选中的组应用一次（立刻高亮）
-    onGroupComboChanged(ui->comboGroup->currentIndex());
+    onGroupComboChanged(ui->comboBoxGroup->currentIndex());
 }
 
 
@@ -102,11 +104,20 @@ void GeoStressFitFacePage::refreshGroupCombo()
     const MshPickMap& mapS = meshSvc->mshPickMapSolid();
 //    const MshPickMap& mapL = meshSvc->mshPickMapLine();
 
-    // 想选 Edge 就看 dim=1；想选 Face 就看 dim=2
-    const int wantDim = pickEdge() ? 1 : 2;
+    const int wantDim = ui->comboBoxDim->currentData().toInt() >= 0
+                            ? ui->comboBoxDim->currentData().toInt()
+                            : (pickEdge() ? 1 : 2);
 
-    ui->comboGroup->blockSignals(true);
-    ui->comboGroup->clear();
+    ui->comboBoxDim->blockSignals(true);
+    ui->comboBoxDim->clear();
+    ui->comboBoxDim->addItem("全部维度", -1);
+    ui->comboBoxDim->addItem("dim1 线", 1);
+    ui->comboBoxDim->addItem("dim2 面", 2);
+    ui->comboBoxDim->setCurrentIndex(wantDim == 1 ? 1 : 2);
+    ui->comboBoxDim->blockSignals(false);
+
+    ui->comboBoxGroup->blockSignals(true);
+    ui->comboBoxGroup->clear();
 
     // 合并两份 map 的 physId（避免只在 line 或只在 solid 的组漏掉）
     QSet<int> allPhys;
@@ -126,10 +137,10 @@ void GeoStressFitFacePage::refreshGroupCombo()
         if (name.isEmpty()) name = QString("phys_%1").arg(physId);
 
         // itemData 存 physId，后面取出来查 map
-        ui->comboGroup->addItem(name, physId);
+        ui->comboBoxGroup->addItem(name, physId);
     }
 
-    ui->comboGroup->blockSignals(false);
+    ui->comboBoxGroup->blockSignals(false);
 }
 
 
@@ -141,6 +152,13 @@ static inline QVector<vtkIdType> toVtkIds(const QVector<qint64>& in)
     return out;
 }
 
+
+void GeoStressFitFacePage::onDimComboChanged(int)
+{
+    refreshGroupCombo();
+    onGroupComboChanged(ui->comboBoxGroup->currentIndex());
+}
+
 void GeoStressFitFacePage::onGroupComboChanged(int idx)
 {
     if (idx < 0) return;
@@ -150,7 +168,7 @@ void GeoStressFitFacePage::onGroupComboChanged(int idx)
 
     const MshPickMap& mapS = meshSvc->mshPickMapSolid();
 
-    const int physId = ui->comboGroup->itemData(idx).toInt();
+    const int physId = ui->comboBoxGroup->itemData(idx).toInt();
 
     PickManager& pm = PickManager::instance();
     const QString domain = getPageType();
@@ -202,7 +220,7 @@ void GeoStressFitFacePage::onPickTargetChanged()
     PickManager::instance().activate(getPageType(), m_uuid, m_activeMode);
 
     refreshGroupCombo();
-    onGroupComboChanged(ui->comboGroup->currentIndex());
+    onGroupComboChanged(ui->comboBoxGroup->currentIndex());
 }
 
 

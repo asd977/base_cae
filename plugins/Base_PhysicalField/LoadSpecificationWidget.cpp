@@ -2,6 +2,7 @@
 #include "ui_LoadSpecificationWidget.h"
 
 #include <QDebug>
+#include <QComboBox>
 #include <ServiceRegistry.h>
 
 #include <services/VisualWidgetService.h>
@@ -26,6 +27,9 @@
 #include <vtkIdTypeArray.h>
 #include <vtkExtractCells.h>
 #include <vtkGeometryFilter.h>
+
+#include "PickManager.h"
+#include <struct/MeshMap.h>
 
 static const QString kPickSurfacePropId   = QStringLiteral("loadspec.pick.surface");
 static const QString kPickHighlightPropId = QStringLiteral("loadspec.pick.highlight");
@@ -62,6 +66,8 @@ void LoadSpecificationWidget::beforeLoad()
 
     // 默认不启用，等勾选框触发
     m_pickEnabled = false;
+
+    setupBatchGroupCombo();
 }
 
 void LoadSpecificationWidget::beforeUnload()
@@ -78,6 +84,60 @@ void LoadSpecificationWidget::beforeUnload()
 void LoadSpecificationWidget::on_clickCheckBox_checkStateChanged(const Qt::CheckState &arg1)
 {
     enableFacePick(arg1 == Qt::Checked);
+}
+
+void LoadSpecificationWidget::setupBatchGroupCombo()
+{
+    ui->comboBoxDim->blockSignals(true);
+    ui->comboBoxDim->clear();
+    ui->comboBoxDim->addItem("dim1 线", 1);
+    ui->comboBoxDim->addItem("dim2 面", 2);
+    ui->comboBoxDim->setCurrentIndex(1);
+    ui->comboBoxDim->blockSignals(false);
+
+    connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &LoadSpecificationWidget::onDimChanged, Qt::UniqueConnection);
+    connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &LoadSpecificationWidget::onGroupChanged, Qt::UniqueConnection);
+    refreshGroupCombo();
+}
+
+void LoadSpecificationWidget::refreshGroupCombo()
+{
+    if (!m_meshCtrl) return;
+    const MshPickMap& map = m_meshCtrl->mshPickMapSolid();
+    const int dimFilter = ui->comboBoxDim->currentData().toInt();
+    ui->comboBoxGroup->blockSignals(true);
+    ui->comboBoxGroup->clear();
+    for (auto it = map.physIdToName.constBegin(); it != map.physIdToName.constEnd(); ++it) {
+        const int physId = it.key();
+        if (map.physIdToDim.value(physId, -1) != dimFilter) continue;
+        ui->comboBoxGroup->addItem(QString("%1 (id=%2)").arg(it.value()).arg(physId), physId);
+    }
+    ui->comboBoxGroup->blockSignals(false);
+}
+
+void LoadSpecificationWidget::onDimChanged(int)
+{
+    refreshGroupCombo();
+}
+
+void LoadSpecificationWidget::onGroupChanged(int index)
+{
+    if (index < 0 || !m_meshCtrl) return;
+    const MshPickMap& map = m_meshCtrl->mshPickMapSolid();
+    const int physId = ui->comboBoxGroup->itemData(index).toInt();
+    const int dim = ui->comboBoxDim->currentData().toInt();
+
+    if (dim == 1) {
+        QVector<vtkIdType> edgeKeys;
+        for (qint64 v : map.bndEdgePhysToEdgeKeys.value(physId)) edgeKeys.push_back(vtkIdType(v));
+        PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid, edgeKeys, true);
+    } else if (dim == 2) {
+        QVector<vtkIdType> faceKeys;
+        for (qint64 v : map.bndFacePhysToFaceKeys.value(physId)) faceKeys.push_back(vtkIdType(v));
+        PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, faceKeys, true);
+    }
 }
 
 void LoadSpecificationWidget::enableFacePick(bool on)

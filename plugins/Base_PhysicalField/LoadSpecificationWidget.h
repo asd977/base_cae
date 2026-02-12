@@ -29,9 +29,13 @@ public:
 
 private slots:
     void on_clickCheckBox_checkStateChanged(const Qt::CheckState &arg1);
+    void onDimChanged(int index);
+    void onGroupChanged(int index);
 
 private:
     void enableFacePick(bool on);
+    void setupBatchGroupCombo();
+    void refreshGroupCombo();
 
     void setupSurfaceAndPicker();
     void teardownSurfaceAndPicker();

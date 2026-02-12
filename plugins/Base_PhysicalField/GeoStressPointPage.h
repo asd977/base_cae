@@ -32,6 +32,8 @@ public:
     double syzValue() const;
 
 private slots:
+    void onDimChanged(int index);
+    void onGroupChanged(int index);
 
     // ✅ 注意：这里的参数列表必须和 PickManager::nodePicked(...) 完全一致
     void onNodePicked(const QString& domain,
@@ -43,6 +45,8 @@ private slots:
                       const QString& prevUuid);
 
 private:
+    void setupBatchGroupCombo();
+    void refreshGroupCombo();
     void applyDimensionUi(int dim);
     void refreshPrevOwnerTitle(const QString& prevUuid);
 

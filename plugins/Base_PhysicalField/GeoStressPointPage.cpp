@@ -13,6 +13,9 @@
 #include "PhySicalField.h"
 
 #include <PickManager.h>
+#include <QComboBox>
+#include <services/MeshModuleControllerService.h>
+#include <struct/MeshMap.h>
 
 // VTK
 #include <vtkUnstructuredGrid.h>
@@ -30,6 +33,8 @@ GeoStressPointPage::GeoStressPointPage(QWidget* parent)
     ui->spinSxy->setValue(0.0);
     ui->spinSxz->setValue(0.0);
     ui->spinSyz->setValue(0.0);
+
+    setupBatchGroupCombo();
 
 }
 
@@ -55,6 +60,7 @@ void GeoStressPointPage::beforeLoad()
                      Qt::UniqueConnection);
 
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
+    setupBatchGroupCombo();
 }
 
 void GeoStressPointPage::beforeUnload()
@@ -94,6 +100,70 @@ void GeoStressPointPage::applyDimensionUi(int dim)
         ui->spinSyz->setValue(0.0);
         ui->labelZValue->setText("0");
     }
+}
+
+void GeoStressPointPage::setupBatchGroupCombo()
+{
+    ui->comboBoxDim->blockSignals(true);
+    ui->comboBoxDim->clear();
+    ui->comboBoxDim->addItem("全部维度", -1);
+    ui->comboBoxDim->addItem("dim0 点", 0);
+    ui->comboBoxDim->addItem("dim1 线", 1);
+    ui->comboBoxDim->addItem("dim2 面", 2);
+    ui->comboBoxDim->setCurrentIndex(0);
+    ui->comboBoxDim->blockSignals(false);
+
+    connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &GeoStressPointPage::onDimChanged, Qt::UniqueConnection);
+    connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &GeoStressPointPage::onGroupChanged, Qt::UniqueConnection);
+    refreshGroupCombo();
+}
+
+void GeoStressPointPage::refreshGroupCombo()
+{
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshSvc) return;
+    const int dimFilter = ui->comboBoxDim->currentData().toInt();
+    const MshPickMap& map = meshSvc->mshPickMapSolid();
+
+    ui->comboBoxGroup->blockSignals(true);
+    ui->comboBoxGroup->clear();
+    for (auto it = map.physIdToName.constBegin(); it != map.physIdToName.constEnd(); ++it)
+    {
+        const int physId = it.key();
+        const int dim = map.physIdToDim.value(physId, -1);
+        if (dim < 0 || dim > 2) continue;
+        if (dimFilter >= 0 && dimFilter != dim) continue;
+        ui->comboBoxGroup->addItem(QString("%1  (dim=%2, id=%3)").arg(it.value()).arg(dim).arg(physId), physId);
+    }
+    ui->comboBoxGroup->blockSignals(false);
+}
+
+void GeoStressPointPage::onDimChanged(int)
+{
+    refreshGroupCombo();
+}
+
+void GeoStressPointPage::onGroupChanged(int index)
+{
+    if (index < 0) return;
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshSvc) return;
+    const MshPickMap& map = meshSvc->mshPickMapSolid();
+
+    const int physId = ui->comboBoxGroup->itemData(index).toInt();
+    const int dim = map.physIdToDim.value(physId, -1);
+    QVector<int> pointIdsInt;
+    if (dim == 0) pointIdsInt = map.bndPointPhysToPointIds.value(physId);
+    else if (dim == 1) pointIdsInt = map.bndEdgePhysToPointIds.value(physId);
+    else if (dim == 2) pointIdsInt = map.bndFacePhysToPointIds.value(physId);
+    else return;
+
+    QVector<vtkIdType> pids;
+    pids.reserve(pointIdsInt.size());
+    for (int pid : pointIdsInt) pids.push_back(vtkIdType(pid));
+    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pids, true);
 }
 
 double GeoStressPointPage::sxValue()  const { return ui->spinSx->value();  }

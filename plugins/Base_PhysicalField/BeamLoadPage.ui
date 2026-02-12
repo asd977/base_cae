@@ -15,6 +15,12 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
+    <widget class="QComboBox" name="comboBoxDim"/>
+   </item>
+   <item>
+    <widget class="QComboBox" name="comboBoxGroup"/>
+   </item>
+   <item>
     <widget class="QGroupBox" name="groupBoxParams">
      <property name="title">
       <string>梁单元荷载参数（Part8）</string>

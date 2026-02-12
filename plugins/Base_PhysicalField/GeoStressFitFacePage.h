@@ -31,6 +31,7 @@ public:
     bool exportLeftDatFile();
 protected slots:
     void onGroupComboChanged(int idx);
+    void onDimComboChanged(int idx);
 private slots:
     void onPickTargetChanged();
 

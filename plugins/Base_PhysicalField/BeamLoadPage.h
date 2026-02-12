@@ -20,6 +20,14 @@ public:
     double pValue() const;      // LOAD / P
     int    idirValue() const;   // ACTION_PLANE / IDIR
 
+private slots:
+    void onDimChanged(int index);
+    void onGroupChanged(int index);
+
+private:
+    void setupBatchGroupCombo();
+    void refreshGroupCombo();
+
 
 private:
     Ui::BeamLoadPage *ui = nullptr;

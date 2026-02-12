@@ -6,6 +6,7 @@
 
 class QDoubleSpinBox;
 class QSpinBox;
+namespace Ui { class BodyForcePage; }
 
 class BodyForcePage : public BasePage
 {
@@ -32,6 +33,13 @@ public:
     int ii() const;
 
 private:
+    void setupBatchGroupCombo();
+    void refreshGroupCombo();
+    void onDimChanged(int index);
+    void onGroupChanged(int index);
+
+private:
+    Ui::BodyForcePage* ui = nullptr;
     QDoubleSpinBox* m_fbx = nullptr;
     QDoubleSpinBox* m_fby = nullptr;
     QDoubleSpinBox* m_fbz = nullptr;

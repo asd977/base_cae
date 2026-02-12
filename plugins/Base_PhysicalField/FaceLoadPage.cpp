@@ -49,42 +49,53 @@ double FaceLoadPage::fzValue()  { return ui->lineEditZ->text().toDouble(); }
 
 void FaceLoadPage::setupBatchGroupCombo()
 {
-    if (!m_groupCombo) {
-        auto* layout = qobject_cast<QVBoxLayout*>(this->layout());
-        if (!layout) return;
-        m_groupCombo = new QComboBox(this);
-        layout->insertWidget(0, m_groupCombo);
-    }
+    ui->comboBoxDim->blockSignals(true);
+    ui->comboBoxDim->clear();
+    ui->comboBoxDim->addItem("全部维度", -1);
+    ui->comboBoxDim->addItem("dim2 面", 2);
+    ui->comboBoxDim->setCurrentIndex(1);
+    ui->comboBoxDim->blockSignals(false);
 
-    m_groupCombo->blockSignals(true);
-    m_groupCombo->clear();
+    connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &FaceLoadPage::onDimChanged, Qt::UniqueConnection);
+    connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &FaceLoadPage::onGroupChanged, Qt::UniqueConnection);
 
+    refreshGroupCombo();
+}
+
+void FaceLoadPage::refreshGroupCombo()
+{
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    if (!meshSvc) {
-        m_groupCombo->blockSignals(false);
-        return;
-    }
-
+    if (!meshSvc) return;
+    const int dimFilter = ui->comboBoxDim->currentData().toInt();
     const MshPickMap& map = meshSvc->mshPickMapSolid();
+
+    ui->comboBoxGroup->blockSignals(true);
+    ui->comboBoxGroup->clear();
     for (auto it = map.physIdToName.constBegin(); it != map.physIdToName.constEnd(); ++it)
     {
         const int physId = it.key();
-        if (map.physIdToDim.value(physId, -1) != 2) continue;
-        m_groupCombo->addItem(QString("%1  (dim=2, id=%2)").arg(it.value()).arg(physId), physId);
+        const int dim = map.physIdToDim.value(physId, -1);
+        if (dim != 2) continue;
+        if (dimFilter >= 0 && dim != dimFilter) continue;
+        ui->comboBoxGroup->addItem(QString("%1  (dim=2, id=%2)").arg(it.value()).arg(physId), physId);
     }
+    ui->comboBoxGroup->blockSignals(false);
+}
 
-    m_groupCombo->blockSignals(false);
-    connect(m_groupCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &FaceLoadPage::onGroupChanged, Qt::UniqueConnection);
+void FaceLoadPage::onDimChanged(int)
+{
+    refreshGroupCombo();
 }
 
 void FaceLoadPage::onGroupChanged(int index)
 {
-    if (!m_groupCombo || index < 0) return;
+    if (index < 0) return;
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc) return;
     const MshPickMap& map = meshSvc->mshPickMapSolid();
-    const int physId = m_groupCombo->itemData(index).toInt();
+    const int physId = ui->comboBoxGroup->itemData(index).toInt();
 
     const QVector<qint64> faceKeys64 = map.bndFacePhysToFaceKeys.value(physId);
     QVector<vtkIdType> faceKeys;
