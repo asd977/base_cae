@@ -139,7 +139,17 @@ public slots:
             }
             else
             {
-                // Hex（重组）
+                auto count3dCells = []() -> std::size_t {
+                    std::vector<int> elemTypes3d;
+                    std::vector<std::vector<std::size_t>> elemTags3d;
+                    std::vector<std::vector<std::size_t>> nodeTags3d;
+                    gmsh::model::mesh::getElements(elemTypes3d, elemTags3d, nodeTags3d, 3);
+                    std::size_t total3d = 0;
+                    for (const auto &v : elemTags3d) total3d += v.size();
+                    return total3d;
+                };
+
+                // 首轮：按用户选择（tet/hex）
                 if (m_p.elemType == 4)
                 {
                     gmsh::option::setNumber("Mesh.Recombine3DAll", 1);
@@ -154,19 +164,26 @@ public slots:
                 emit log("开始生成 3D 网格...");
                 gmsh::model::mesh::generate(3);
 
-                // 关键保护：确认确实生成了体单元（tet/hex/wedge/pyramid）
-                std::vector<int> elemTypes3d;
-                std::vector<std::vector<std::size_t>> elemTags3d;
-                std::vector<std::vector<std::size_t>> nodeTags3d;
-                gmsh::model::mesh::getElements(elemTypes3d, elemTags3d, nodeTags3d, 3);
-                std::size_t total3d = 0;
-                for (const auto &v : elemTags3d) total3d += v.size();
+                std::size_t total3d = count3dCells();
+
+                // 回退：若首轮没有3D单元，自动使用稳定tet方案再试一次
                 if (total3d == 0)
                 {
-                    emit finishedFail("3D网格生成后未检测到体单元（tet/hex/wedge/pyramid）。请检查几何是否为封闭体，或尝试调整算法/尺寸。\n"
+                    emit log("首轮3D生成未得到体单元，自动回退到稳定四面体方案重试...");
+                    gmsh::model::mesh::clear();
+                    gmsh::option::setNumber("Mesh.Recombine3DAll", 0);
+                    gmsh::option::setNumber("Mesh.Algorithm3D", 1); // Delaunay
+                    gmsh::model::mesh::generate(3);
+                    total3d = count3dCells();
+                }
+
+                if (total3d == 0)
+                {
+                    emit finishedFail("3D网格生成后仍未检测到体单元（tet/hex/wedge/pyramid）。请检查几何是否为封闭体，或尝试放宽尺寸参数。\n"
                                      "若看到 no volume cells imported，通常就是这里没有生成可识别的体单元。");
                     return;
                 }
+
                 emit log(QString("3D体单元数量：%1").arg((qlonglong)total3d));
             }
 
