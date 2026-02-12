@@ -443,7 +443,7 @@ void GridEditingWidget::buildOrUpdateViewGrid()
     const int prevScalarVisibility = m_meshMapper->GetScalarVisibility();
     const int prevScalarMode = m_meshMapper->GetScalarMode();
     const char* prevArrayName = m_meshMapper->GetArrayName();
-    vtkLookupTable* prevLookupTable = m_meshMapper->GetLookupTable();
+    vtkScalarsToColors* prevLookupTable = m_meshMapper->GetLookupTable();
 
     if (!hasFilter) {
         m_viewGrid = m_fullGrid;
