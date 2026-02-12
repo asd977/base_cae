@@ -6,14 +6,49 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>520</width>
-    <height>360</height>
+    <width>640</width>
+    <height>520</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>网格分组</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QGroupBox" name="groupExisting">
+     <property name="title">
+      <string>已有分组</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout_2">
+      <item>
+       <widget class="QTableWidget" name="tblGroups">
+        <column>
+         <property name="text">
+          <string>MATYPE</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>组名</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>单元数</string>
+         </property>
+        </column>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnRefreshGroups">
+        <property name="text">
+         <string>刷新分组列表</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
    <item>
     <widget class="QGroupBox" name="groupAuto">
      <property name="title">
@@ -171,7 +206,14 @@
         </property>
        </widget>
       </item>
-      <item row="5" column="0" colspan="3">
+      <item row="5" column="0" colspan="2">
+       <widget class="QCheckBox" name="chkShowRangeBox">
+        <property name="text">
+         <string>显示范围框</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="2">
        <widget class="QPushButton" name="btnRangeGrouping">
         <property name="text">
          <string>执行范围分组</string>
@@ -180,19 +222,6 @@
       </item>
      </layout>
     </widget>
-   </item>
-   <item>
-    <spacer name="verticalSpacer">
-     <property name="orientation">
-      <enum>Qt::Vertical</enum>
-     </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>40</height>
-      </size>
-     </property>
-    </spacer>
    </item>
   </layout>
  </widget>
