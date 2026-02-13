@@ -443,16 +443,22 @@ private:
             for (const auto& e : ents)
             {
                 const int tag = e.second;
+                int physicalTag = -1;
                 QString name = physicalTagName(dim, tag);
                 if (dim == 1 && m_edgeUiToTag.values().contains(tag)) {
-                    name = physicalUiName(dim, m_edgeUiToTag.key(tag));
+                    physicalTag = m_edgeUiToTag.key(tag);
+                    name = physicalUiName(dim, physicalTag);
                 } else if (dim == 2 && m_faceUiToTag.values().contains(tag)) {
-                    name = physicalUiName(dim, m_faceUiToTag.key(tag));
+                    physicalTag = m_faceUiToTag.key(tag);
+                    name = physicalUiName(dim, physicalTag);
                 } else if (dim == 3 && m_volumeUiToTag.values().contains(tag)) {
-                    name = physicalUiName(dim, m_volumeUiToTag.key(tag));
+                    physicalTag = m_volumeUiToTag.key(tag);
+                    name = physicalUiName(dim, physicalTag);
                 }
 
-                const int phys = gmsh::model::addPhysicalGroup(dim, std::vector<int>{tag});
+                // 不依赖 OCC entity tag 作为跨步骤稳定 ID：
+                // 对 1/2/3 维实体，优先使用 UI 侧稳定编号作为 Physical Group tag。
+                const int phys = gmsh::model::addPhysicalGroup(dim, std::vector<int>{tag}, physicalTag);
                 gmsh::model::setPhysicalName(dim, phys, name.toStdString());
             }
         }
