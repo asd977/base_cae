@@ -75,7 +75,6 @@ private:
 
     bool m_gmshPreprocessModelReady = false;
     QString m_gmshGeometrySignature;
-    QString m_gmshPreprocessStepPath;
     QHash<QString, int> m_nameCounters;
 };
 

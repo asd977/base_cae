@@ -885,14 +885,18 @@ bool PreProcessing::rebuildGmshPreprocessModel()
     auto* mgr = GeomManager::GeomManagerInstance::getInstance();
     if (!mgr || mgr->isEmpty()) return false;
 
-    if (m_gmshPreprocessStepPath.isEmpty()) {
-        m_gmshPreprocessStepPath = QDir::temp().filePath("base_cae_preprocess_control.step");
-    }
+    TopoDS_Compound compound;
+    BRep_Builder builder;
+    builder.MakeCompound(compound);
 
-    if (!writeMultipleShapesStepFile(m_gmshPreprocessStepPath)) {
-        qWarning() << "[PreProcessing] write STEP failed:" << m_gmshPreprocessStepPath;
-        return false;
+    auto shapeMap = mgr->getShapMap();
+    int shapeCount = 0;
+    for (auto it = shapeMap.constBegin(); it != shapeMap.constEnd(); ++it) {
+        if (!it.value() || !it.value()->getShape()) continue;
+        builder.Add(compound, *it.value()->getShape());
+        ++shapeCount;
     }
+    if (shapeCount == 0) return false;
 
     static bool gmshInited = false;
     if (!gmshInited) {
@@ -906,7 +910,7 @@ bool PreProcessing::rebuildGmshPreprocessModel()
     gmsh::model::add("preprocess_control");
 
     std::vector<std::pair<int,int>> outDimTags;
-    gmsh::model::occ::importShapes(m_gmshPreprocessStepPath.toStdString(), outDimTags, true);
+    gmsh::model::occ::importShapesNativePointer(static_cast<const void*>(&compound), outDimTags, true);
     gmsh::model::occ::synchronize();
 
     return true;
