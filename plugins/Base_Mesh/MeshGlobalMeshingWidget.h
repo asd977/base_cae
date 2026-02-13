@@ -114,21 +114,31 @@ public slots:
         for (const auto& r : m_p.edgeRules) {
             const auto ids = parseIdSet(r.edgeIds);
             for (int id : ids) {
-                try { gmsh::model::mesh::setTransfiniteCurve(id, r.divisions, "Progression", r.bias); } catch (...) {}
-                setPointSizeFromEntity(1, id, r.size);
+                const int tag = resolveEntityTagByUiId(1, id);
+                if (tag <= 0) continue;
+                try { gmsh::model::mesh::setTransfiniteCurve(tag, r.divisions, "Progression", r.bias); } catch (...) {}
+                setPointSizeFromEntity(1, tag, r.size);
             }
         }
 
         for (const auto& r : m_p.faceRules) {
             const auto ids = parseIdSet(r.faceIds);
             const double target = 0.5 * (r.minSize + r.maxSize);
-            for (int id : ids) setPointSizeFromEntity(2, id, target);
+            for (int id : ids) {
+                const int tag = resolveEntityTagByUiId(2, id);
+                if (tag <= 0) continue;
+                setPointSizeFromEntity(2, tag, target);
+            }
         }
 
         for (const auto& r : m_p.volumeRules) {
             const auto ids = parseIdSet(r.volumeIds);
             const double target = 0.5 * (r.minSize + r.maxSize);
-            for (int id : ids) setPointSizeFromEntity(3, id, target);
+            for (int id : ids) {
+                const int tag = resolveEntityTagByUiId(3, id);
+                if (tag <= 0) continue;
+                setPointSizeFromEntity(3, tag, target);
+            }
         }
     }
 
@@ -295,6 +305,30 @@ public:
 
 private:
     Params m_p;
+    mutable QMap<int, QVector<int>> m_dimEntityTagOrder;
+
+    int resolveEntityTagByUiId(int dim, int uiId) const
+    {
+        if (uiId <= 0) return -1;
+
+        auto it = m_dimEntityTagOrder.find(dim);
+        if (it == m_dimEntityTagOrder.end()) {
+            std::vector<std::pair<int,int>> ents;
+            gmsh::model::getEntities(ents, dim);
+
+            QVector<int> ordered;
+            ordered.reserve(static_cast<int>(ents.size()));
+            for (const auto& e : ents) ordered.push_back(e.second);
+            std::sort(ordered.begin(), ordered.end());
+
+            it = m_dimEntityTagOrder.insert(dim, ordered);
+        }
+
+        const QVector<int>& ordered = it.value();
+        const int idx = uiId - 1; // UI 编号从 1 开始（按序号），映射到当前模型实体序列
+        if (idx < 0 || idx >= ordered.size()) return -1;
+        return ordered[idx];
+    }
 
     static void ensureGmshInitialized()
     {
