@@ -31,9 +31,10 @@
 
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
-#include <services/PreProcessingService.h>
 #include <services/VisualWidgetService.h>
 #include <vtkUnstructuredGrid.h>
+#include "../Base_Gemo/GeomManagerInstance.h"
+#include "../Base_Gemo/GeomShapeObject.h"
 
 // ---------------- Widget ----------------
 MeshGlobalMeshingWidget::MeshGlobalMeshingWidget(QWidget* parent)
@@ -169,17 +170,22 @@ QString MeshGlobalMeshingWidget::tempNasPath()  const { return tempDirPath() + "
 
 void MeshGlobalMeshingWidget::onGenerate()
 {
-
-    PreProcessingService *service = ServiceRegistry::instance().getService<PreProcessingService>();
-    service->generateStepFile();
-
-    QString fileName = "ExportedModel.step";
-    QString currentWorPath = QCoreApplication::applicationDirPath();
-    QString filePath = currentWorPath + "/data/"+fileName;
-
     Params p = collectParams();
 
-    p.inputStepPath = filePath;
+    if (auto* gm = GeomManager::GeomManagerInstance::getInstance()) {
+        const auto shapeMap = gm->getShapMap();
+        for (GeomShapeObject* shapeObj : shapeMap) {
+            if (!shapeObj) continue;
+            TopoDS_Shape* shape = shapeObj->getShape();
+            if (!shape || shape->IsNull()) continue;
+            p.occShapePtrs.push_back(reinterpret_cast<qulonglong>(shape));
+        }
+    }
+
+    if (p.occShapePtrs.isEmpty()) {
+        QMessageBox::warning(this, "整体剖分", "当前没有可用于剖分的几何体。");
+        return;
+    }
     if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>()) {
         p.edgeRules = meshSvc->edgeControlRules();
         p.faceRules = meshSvc->faceControlRules();
@@ -195,13 +201,6 @@ void MeshGlobalMeshingWidget::onGenerate()
         QMessageBox::warning(this, "整体剖分", "最小尺寸不能大于最大尺寸。");
         return;
     }
-
-    if (p.inputStepPath.isEmpty() || !QFileInfo::exists(p.inputStepPath))
-    {
-        QMessageBox::warning(this, "整体剖分", "STEP 文件不存在。");
-        return;
-    }
-
 
     // 准备 temp 目录
     QDir dir(tempDirPath());

@@ -3,6 +3,7 @@
 #include <QWidget>
 #include <QMap>
 #include <QString>
+#include <QVector>
 #include <gmsh.h>
 #include <BasePage.h>
 #include <QThread>
@@ -20,7 +21,7 @@ namespace {
 
 struct Params
 {
-    QString inputStepPath = "./tmp/geom.step";           // useCurrentGeometry=false 时使用
+    QVector<qulonglong> occShapePtrs; // TopoDS_Shape* 指针（由 UI 线程采集并在 worker 线程只读）
 
     int dimension = 3;               // 2 or 3
     int elemType = 4;                // 2D: 1 Tri / 2 Quad; 3D: 3 Tet / 4 Hex
@@ -141,27 +142,10 @@ public slots:
 
             ensureGmshInitialized();
 
-            // 1) 准备 STEP 输入
-            QString stepPath = m_p.inputStepPath;
-            // if (m_p.useCurrentGeometry)
-            // {
-            //     stepPath = m_tempStepPath;
-            //     QString err;
-            //     if (!exportCurrentGeometryToStep(stepPath, err))
-            //     {
-            //         emit finishedFail(QString("STEP 导出失败：%1").arg(err));
-            //         return;
-            //     }
-            //     emit log(QString("STEP 已导出：%1").arg(stepPath));
-            // }
-            // else
-            // {
-            //     if (stepPath.isEmpty() || !QFileInfo::exists(stepPath))
-            //     {
-            //         emit finishedFail(QString("STEP 文件不存在：%1").arg(stepPath));
-            //         return;
-            //     }
-            // }
+            if (m_p.occShapePtrs.isEmpty()) {
+                emit finishedFail("当前没有可用于剖分的几何体。");
+                return;
+            }
 
             // 2) 清理/建模
             gmsh::clear();
@@ -177,7 +161,15 @@ public slots:
             gmsh::option::setNumber("Geometry.Tolerance", m_p.tolerance);
 
             std::vector<std::pair<int,int>> outDimTags;
-            gmsh::model::occ::importShapes(stepPath.toStdString(), outDimTags, true);
+            for (const qulonglong ptrValue : m_p.occShapePtrs) {
+                if (ptrValue == 0) continue;
+                gmsh::model::occ::importShapesNativePointer(
+                    reinterpret_cast<void*>(ptrValue), outDimTags, true);
+            }
+            if (outDimTags.empty()) {
+                emit finishedFail("几何导入失败：未导入任何实体。");
+                return;
+            }
             // Ensure touching domains share one interface entity after STEP import.
             // 单体模型在某些 OCC 情况下会抛出 “Boolean fragments failed”，这里容错处理。
             if (outDimTags.size() > 1) {
