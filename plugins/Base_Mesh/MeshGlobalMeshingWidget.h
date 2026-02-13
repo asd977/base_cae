@@ -7,10 +7,8 @@
 #include <BasePage.h>
 #include <QThread>
 #include <QVector3D>
-#include <QSet>
 #include <algorithm>
 #include <set>
-#include <limits>
 #include <services/MeshModuleControllerService.h>
 
 class QThread;
@@ -45,9 +43,6 @@ struct Params
     QVector<FaceControlRule> faceRules;
     QVector<VolumeControlRule> volumeRules;
 
-    QMap<int, QVector3D> edgeCenters;
-    QMap<int, QVector3D> faceCenters;
-    QMap<int, QVector3D> volumeCenters;
 };
 
 }
@@ -316,33 +311,9 @@ public:
 
 private:
     Params m_p;
-    QMap<int, int> m_edgeUiToTag;
-    QMap<int, int> m_faceUiToTag;
-    QMap<int, int> m_volumeUiToTag;
-
     static QString physicalTagName(int dim, int tag)
     {
         return QString("dim%1_tag%2").arg(dim).arg(tag);
-    }
-
-    static QString physicalUiName(int dim, int uiId)
-    {
-        return QString("dim%1_ui%2").arg(dim).arg(uiId);
-    }
-
-    static int findPhysicalGroupByName(int dim, const QString& name)
-    {
-        std::vector<std::pair<int,int>> phys;
-        gmsh::model::getPhysicalGroups(phys, dim);
-        for (const auto& p : phys) {
-            if (p.first != dim) continue;
-            try {
-                std::string n;
-                gmsh::model::getPhysicalName(dim, p.second, n);
-                if (QString::fromStdString(n) == name) return p.second;
-            } catch (...) {}
-        }
-        return -1;
     }
 
     std::vector<int> resolveEntityTagsByPhysicalUiId(int dim, int uiId) const
@@ -359,67 +330,6 @@ private:
             }
         }
         return tags;
-    }
-
-    static double dist2(const QVector3D& a, const QVector3D& b)
-    {
-        const QVector3D d = a - b;
-        return d.lengthSquared();
-    }
-
-    static QVector3D gmshCenter(int dim, int tag)
-    {
-        double x = 0.0, y = 0.0, z = 0.0;
-        gmsh::model::occ::getCenterOfMass(dim, tag, x, y, z);
-        return QVector3D(x, y, z);
-    }
-
-    QMap<int, int> buildUiToTagMap(int dim, const QMap<int, QVector3D>& uiCenters)
-    {
-        QMap<int, int> out;
-        if (uiCenters.isEmpty()) return out;
-
-        std::vector<std::pair<int,int>> ents;
-        gmsh::model::getEntities(ents, dim);
-        if (ents.empty()) return out;
-
-        QVector<int> tags;
-        QMap<int, QVector3D> centers;
-        for (const auto& e : ents) {
-            try {
-                const int tag = e.second;
-                tags.push_back(tag);
-                centers.insert(tag, gmshCenter(dim, tag));
-            } catch (...) {}
-        }
-
-        QSet<int> used;
-        for (auto it = uiCenters.constBegin(); it != uiCenters.constEnd(); ++it) {
-            const int uiId = it.key();
-            const QVector3D uiCenter = it.value();
-            double best = std::numeric_limits<double>::max();
-            int bestTag = -1;
-            for (int tag : tags) {
-                if (used.contains(tag)) continue;
-                const double d2 = dist2(uiCenter, centers.value(tag));
-                if (d2 < best) {
-                    best = d2;
-                    bestTag = tag;
-                }
-            }
-            if (bestTag > 0) {
-                out.insert(uiId, bestTag);
-                used.insert(bestTag);
-            }
-        }
-        return out;
-    }
-
-    void buildUiMappings()
-    {
-        m_edgeUiToTag = buildUiToTagMap(1, m_p.edgeCenters);
-        m_faceUiToTag = buildUiToTagMap(2, m_p.faceCenters);
-        m_volumeUiToTag = buildUiToTagMap(3, m_p.volumeCenters);
     }
 
     static void ensureGmshInitialized()

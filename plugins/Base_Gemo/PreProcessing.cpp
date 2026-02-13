@@ -32,6 +32,8 @@
 #include <vtkCellPicker.h>
 #include <vtkVertexGlyphFilter.h>
 #include <vtkSphereSource.h>
+#include <vtkCubeSource.h>
+#include <vtkAppendPolyData.h>
 #include <set>
 #include <vtkCell.h>
 #include <vtkIdList.h>
@@ -45,7 +47,6 @@
 #include <vtkLine.h>
 #include <vtkCellArray.h>
 #include <vtkLODActor.h>
-#include <vtkAppendPolyData.h>
 #include <vtkGlyph3D.h>
 #include <vtkPointData.h>
 #include <vtkCleanPolyData.h>
@@ -877,14 +878,12 @@ bool PreProcessing::rebuildGmshPreprocessModel()
     gmsh::model::occ::importShapes(m_gmshPreprocessStepPath.toStdString(), outDimTags, true);
     gmsh::model::occ::synchronize();
 
-    m_gmshPreprocessModelReady = true;
     return true;
 }
 
 bool PreProcessing::ensureGmshPreprocessModel()
 {
     // 进入边/面/体控制页后会调用 listEntityIds；这里每次重建，确保几何更新后立即同步。
-    m_gmshPreprocessModelReady = false;
     return rebuildGmshPreprocessModel();
 }
 
@@ -924,17 +923,40 @@ bool PreProcessing::highlightEntity(int dim, int id)
     QVector3D c;
     if (!entityCenter(dim, id, c)) return false;
 
-    vtkNew<vtkSphereSource> sphere;
-    sphere->SetCenter(c.x(), c.y(), c.z());
-    sphere->SetRadius(1.0);
-    sphere->SetThetaResolution(24);
-    sphere->SetPhiResolution(24);
+    double xmin=0.0, ymin=0.0, zmin=0.0, xmax=0.0, ymax=0.0, zmax=0.0;
+    try {
+        gmsh::model::getBoundingBox(dim, id, xmin, ymin, zmin, xmax, ymax, zmax);
+    } catch (...) {
+        return false;
+    }
+
+    const double dx = xmax - xmin;
+    const double dy = ymax - ymin;
+    const double dz = zmax - zmin;
+    const double diag = std::sqrt(dx * dx + dy * dy + dz * dz);
+    const double markerRadius = std::max(1e-3, diag * 0.03);
+
+    vtkNew<vtkSphereSource> marker;
+    marker->SetCenter(c.x(), c.y(), c.z());
+    marker->SetRadius(markerRadius);
+    marker->SetThetaResolution(24);
+    marker->SetPhiResolution(24);
+
+    vtkNew<vtkCubeSource> cube;
+    cube->SetBounds(xmin, xmax, ymin, ymax, zmin, zmax);
+
+    vtkNew<vtkAppendPolyData> append;
+    append->AddInputConnection(marker->GetOutputPort());
+    append->AddInputConnection(cube->GetOutputPort());
+    append->Update();
 
     auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-    mapper->SetInputConnection(sphere->GetOutputPort());
+    mapper->SetInputConnection(append->GetOutputPort());
 
     auto actor = vtkSmartPointer<vtkActor>::New();
     actor->SetMapper(mapper);
+    actor->GetProperty()->SetRepresentationToWireframe();
+    actor->GetProperty()->SetLineWidth(2.5);
     if (dim == 1) {
         actor->GetProperty()->SetColor(1.0, 0.2, 0.2);
     } else if (dim == 2) {
@@ -942,7 +964,6 @@ bool PreProcessing::highlightEntity(int dim, int id)
     } else {
         actor->GetProperty()->SetColor(0.3, 0.8, 1.0);
     }
-    actor->GetProperty()->SetOpacity(0.9);
 
     auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>();
     if (!vis) return false;
