@@ -31,9 +31,6 @@
 #include <QToolButton>
 #include <vtkCellPicker.h>
 #include <vtkVertexGlyphFilter.h>
-#include <vtkSphereSource.h>
-#include <vtkCubeSource.h>
-#include <vtkAppendPolyData.h>
 #include <set>
 #include <vtkCell.h>
 #include <vtkIdList.h>
@@ -88,6 +85,7 @@
 #include <STEPControl_Writer.hxx>
 #include <TopoDS_Compound.hxx>
 #include <cmath>
+#include <limits>
 #include <vtkNew.h>
 #include <IVtkTools_DisplayModeFilter.hxx>
 #include <IVtkTools_ShapeDataSource.hxx>
@@ -920,49 +918,80 @@ bool PreProcessing::entityCenter(int dim, int id, QVector3D& center)
 bool PreProcessing::highlightEntity(int dim, int id)
 {
     clearEntityHighlight();
-    QVector3D c;
-    if (!entityCenter(dim, id, c)) return false;
+    if (id <= 0) return false;
+    if (!ensureGmshPreprocessModel()) return false;
 
-    double xmin=0.0, ymin=0.0, zmin=0.0, xmax=0.0, ymax=0.0, zmax=0.0;
+    double gx = 0.0, gy = 0.0, gz = 0.0;
     try {
-        gmsh::model::getBoundingBox(dim, id, xmin, ymin, zmin, xmax, ymax, zmax);
+        gmsh::model::occ::getCenterOfMass(dim, id, gx, gy, gz);
     } catch (...) {
         return false;
     }
 
-    const double dx = xmax - xmin;
-    const double dy = ymax - ymin;
-    const double dz = zmax - zmin;
-    const double diag = std::sqrt(dx * dx + dy * dy + dz * dz);
-    const double markerRadius = std::max(1e-3, diag * 0.03);
+    auto* mgr = GeomManager::GeomManagerInstance::getInstance();
+    if (!mgr || mgr->isEmpty()) return false;
 
-    vtkNew<vtkSphereSource> marker;
-    marker->SetCenter(c.x(), c.y(), c.z());
-    marker->SetRadius(markerRadius);
-    marker->SetThetaResolution(24);
-    marker->SetPhiResolution(24);
+    auto map = mgr->getShapMap();
+    GeomShapeObject* obj = nullptr;
+    for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
+        if (it.value() && it.value()->getShape()) { obj = it.value(); break; }
+    }
+    if (!obj || !obj->getShape()) return false;
 
-    vtkNew<vtkCubeSource> cube;
-    cube->SetBounds(xmin, xmax, ymin, ymax, zmin, zmax);
+    TopTools_IndexedMapOfShape indexed;
+    TopAbs_ShapeEnum shapeType = TopAbs_EDGE;
+    if (dim == 2) shapeType = TopAbs_FACE;
+    else if (dim == 3) shapeType = TopAbs_SOLID;
+    TopExp::MapShapes(*obj->getShape(), shapeType, indexed);
+    if (indexed.IsEmpty()) return false;
 
-    vtkNew<vtkAppendPolyData> append;
-    append->AddInputConnection(marker->GetOutputPort());
-    append->AddInputConnection(cube->GetOutputPort());
-    append->Update();
+    int bestIdx = -1;
+    double bestD2 = std::numeric_limits<double>::max();
+    for (int i = 1; i <= indexed.Extent(); ++i) {
+        const TopoDS_Shape& s = indexed(i);
+        GProp_GProps props;
+        if (dim == 1) BRepGProp::LinearProperties(s, props);
+        else if (dim == 2) BRepGProp::SurfaceProperties(s, props);
+        else BRepGProp::VolumeProperties(s, props);
+        const gp_Pnt c = props.CentreOfMass();
+        const double dx = c.X() - gx;
+        const double dy = c.Y() - gy;
+        const double dz = c.Z() - gz;
+        const double d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 < bestD2) {
+            bestD2 = d2;
+            bestIdx = i;
+        }
+    }
+    if (bestIdx <= 0) return false;
+
+    TopoDS_Shape target = indexed(bestIdx);
+    IVtkOCC_Shape::Handle occShape = new IVtkOCC_Shape(target);
+    vtkNew<IVtkTools_ShapeDataSource> src;
+    src->SetShape(occShape);
+
+    vtkNew<IVtkTools_DisplayModeFilter> dm;
+    dm->SetInputConnection(src->GetOutputPort());
+    dm->SetDisplayMode(dim == 1 ? DM_Wireframe : DM_Shading);
+    dm->SetSmoothShading(true);
+    dm->SetFaceBoundaryDraw(true);
+    dm->Update();
 
     auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-    mapper->SetInputConnection(append->GetOutputPort());
+    mapper->SetInputData(dm->GetOutput());
+    mapper->ScalarVisibilityOff();
 
     auto actor = vtkSmartPointer<vtkActor>::New();
     actor->SetMapper(mapper);
-    actor->GetProperty()->SetRepresentationToWireframe();
-    actor->GetProperty()->SetLineWidth(2.5);
     if (dim == 1) {
         actor->GetProperty()->SetColor(1.0, 0.2, 0.2);
+        actor->GetProperty()->SetLineWidth(4.0);
     } else if (dim == 2) {
         actor->GetProperty()->SetColor(1.0, 0.85, 0.2);
+        actor->GetProperty()->SetOpacity(0.9);
     } else {
         actor->GetProperty()->SetColor(0.3, 0.8, 1.0);
+        actor->GetProperty()->SetOpacity(0.55);
     }
 
     auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>();
