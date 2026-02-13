@@ -70,6 +70,8 @@
 #include "BaseGeometryDialog\PolygonDialog.h"
 
 #include <BRep_Builder.hxx>
+#include <BRepBndLib.hxx>
+#include <Bnd_Box.hxx>
 #include <BRepGProp.hxx>
 #include <GProp_GProps.hxx>
 #include <ContextMenuHub.h>
@@ -280,6 +282,8 @@ BasePage* PreProcessing::createPageByType(const QString& type, const QString& ti
 
 void PreProcessing::newProject()
 {
+    m_gmshPreprocessModelReady = false;
+    m_gmshGeometrySignature.clear();
 	m_geomNode = new ProjectNode("几何");
 	ProjectManagerService *projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
 	projectManagerService->addTreeItem(m_geomNode);
@@ -334,6 +338,8 @@ bool PreProcessing::saveProject()
 
 bool PreProcessing::loadProject()
 {
+    m_gmshPreprocessModelReady = false;
+    m_gmshGeometrySignature.clear();
 	bool success = false;
 	ProjectManagerService *projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
 	m_geomNode = new ProjectNode("几何");
@@ -373,6 +379,8 @@ bool PreProcessing::loadChildProject(ProjectNode * rootNode,const QString & name
 
 void PreProcessing::closeProject()
 {
+    m_gmshPreprocessModelReady = false;
+    m_gmshGeometrySignature.clear();
 	if (!m_geomNode|| !m_gridNode) return;
 
 	while (m_geomNode->childCount() > 0)
@@ -847,6 +855,31 @@ QString PreProcessing::makeUniqueName(const QString &baseName, const QString &ty
 }
 
 
+
+QString PreProcessing::geometrySignature() const
+{
+    auto* mgr = GeomManager::GeomManagerInstance::getInstance();
+    if (!mgr || mgr->isEmpty()) return QString();
+
+    auto map = mgr->getShapMap();
+    QStringList keys;
+    keys.reserve(map.size());
+    for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
+        if (!it.value() || !it.value()->getShape()) continue;
+        Bnd_Box box;
+        BRepBndLib::Add(*it.value()->getShape(), box, Standard_False);
+        Standard_Real xmin=0.0, ymin=0.0, zmin=0.0, xmax=0.0, ymax=0.0, zmax=0.0;
+        if (!box.IsVoid()) box.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+        keys << QString("%1:%2:%3,%4,%5,%6,%7,%8")
+                    .arg(it.key())
+                    .arg(static_cast<int>(it.value()->getShape()->ShapeType()))
+                    .arg(xmin, 0, 'g', 12).arg(ymin, 0, 'g', 12).arg(zmin, 0, 'g', 12)
+                    .arg(xmax, 0, 'g', 12).arg(ymax, 0, 'g', 12).arg(zmax, 0, 'g', 12);
+    }
+    std::sort(keys.begin(), keys.end());
+    return keys.join("|");
+}
+
 bool PreProcessing::rebuildGmshPreprocessModel()
 {
     auto* mgr = GeomManager::GeomManagerInstance::getInstance();
@@ -881,8 +914,22 @@ bool PreProcessing::rebuildGmshPreprocessModel()
 
 bool PreProcessing::ensureGmshPreprocessModel()
 {
-    // 进入边/面/体控制页后会调用 listEntityIds；这里每次重建，确保几何更新后立即同步。
-    return rebuildGmshPreprocessModel();
+    const QString sig = geometrySignature();
+    if (sig.isEmpty()) {
+        m_gmshPreprocessModelReady = false;
+        m_gmshGeometrySignature.clear();
+        return false;
+    }
+    if (m_gmshPreprocessModelReady && sig == m_gmshGeometrySignature) {
+        return true;
+    }
+    if (!rebuildGmshPreprocessModel()) {
+        m_gmshPreprocessModelReady = false;
+        return false;
+    }
+    m_gmshPreprocessModelReady = true;
+    m_gmshGeometrySignature = sig;
+    return true;
 }
 
 QStringList PreProcessing::listEntityIds(int dim)

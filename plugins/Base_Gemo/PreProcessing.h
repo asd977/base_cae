@@ -71,7 +71,10 @@ private:
     QString makeUniqueName(const QString &baseName, const QString &typeKey);
     bool rebuildGmshPreprocessModel();
     bool ensureGmshPreprocessModel();
+    QString geometrySignature() const;
 
+    bool m_gmshPreprocessModelReady = false;
+    QString m_gmshGeometrySignature;
     QString m_gmshPreprocessStepPath;
     QHash<QString, int> m_nameCounters;
 };
