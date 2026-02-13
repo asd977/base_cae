@@ -319,7 +319,8 @@ private:
             QVector<int> ordered;
             ordered.reserve(static_cast<int>(ents.size()));
             for (const auto& e : ents) ordered.push_back(e.second);
-            std::sort(ordered.begin(), ordered.end());
+            // 保持 gmsh 返回的实体顺序，不做排序。
+            // UI 编号本质是“第 N 个实体”，排序会改变这个语义并导致编号错位。
 
             it = m_dimEntityTagOrder.insert(dim, ordered);
         }
