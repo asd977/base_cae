@@ -114,10 +114,11 @@ public slots:
         for (const auto& r : m_p.edgeRules) {
             const auto ids = parseIdSet(r.edgeIds);
             for (int id : ids) {
-                const int tag = resolveEntityTagByUiId(1, id);
-                if (tag <= 0) continue;
-                try { gmsh::model::mesh::setTransfiniteCurve(tag, r.divisions, "Progression", r.bias); } catch (...) {}
-                setPointSizeFromEntity(1, tag, r.size);
+                const auto tags = resolveEntityTagsByPhysicalUiId(1, id);
+                for (int tag : tags) {
+                    try { gmsh::model::mesh::setTransfiniteCurve(tag, r.divisions, "Progression", r.bias); } catch (...) {}
+                    setPointSizeFromEntity(1, tag, r.size);
+                }
             }
         }
 
@@ -125,9 +126,10 @@ public slots:
             const auto ids = parseIdSet(r.faceIds);
             const double target = 0.5 * (r.minSize + r.maxSize);
             for (int id : ids) {
-                const int tag = resolveEntityTagByUiId(2, id);
-                if (tag <= 0) continue;
-                setPointSizeFromEntity(2, tag, target);
+                const auto tags = resolveEntityTagsByPhysicalUiId(2, id);
+                for (int tag : tags) {
+                    setPointSizeFromEntity(2, tag, target);
+                }
             }
         }
 
@@ -135,12 +137,14 @@ public slots:
             const auto ids = parseIdSet(r.volumeIds);
             const double target = 0.5 * (r.minSize + r.maxSize);
             for (int id : ids) {
-                const int tag = resolveEntityTagByUiId(3, id);
-                if (tag <= 0) continue;
-                setPointSizeFromEntity(3, tag, target);
+                const auto tags = resolveEntityTagsByPhysicalUiId(3, id);
+                for (int tag : tags) {
+                    setPointSizeFromEntity(3, tag, target);
+                }
             }
         }
     }
+
 
 
     void run()
@@ -305,38 +309,38 @@ public:
 
 private:
     Params m_p;
-    mutable QMap<int, QVector<int>> m_dimEntityTagOrder;
 
-    int resolveEntityTagByUiId(int dim, int uiId) const
+    static QString physicalUiName(int dim, int uiId)
     {
-        if (uiId <= 0) return -1;
+        return QString("dim%1_ui%2").arg(dim).arg(uiId);
+    }
 
-        auto it = m_dimEntityTagOrder.find(dim);
-        if (it == m_dimEntityTagOrder.end()) {
-            std::vector<std::pair<int,int>> ents;
-            gmsh::model::getEntities(ents, dim);
-
-            QVector<int> ordered;
-            ordered.reserve(static_cast<int>(ents.size()));
-            for (const auto& e : ents) ordered.push_back(e.second);
-            // 保持 gmsh 返回的实体顺序，不做排序。
-            // UI 编号本质是“第 N 个实体”，排序会改变这个语义并导致编号错位。
-
-            it = m_dimEntityTagOrder.insert(dim, ordered);
+    static int findPhysicalGroupByName(int dim, const QString& name)
+    {
+        std::vector<std::pair<int,int>> phys;
+        gmsh::model::getPhysicalGroups(phys, dim);
+        for (const auto& p : phys) {
+            if (p.first != dim) continue;
+            try {
+                std::string n;
+                gmsh::model::getPhysicalName(dim, p.second, n);
+                if (QString::fromStdString(n) == name) return p.second;
+            } catch (...) {}
         }
+        return -1;
+    }
 
-        const QVector<int>& ordered = it.value();
+    static std::vector<int> resolveEntityTagsByPhysicalUiId(int dim, int uiId)
+    {
+        std::vector<int> tags;
+        if (uiId <= 0) return tags;
 
-        // 优先把输入当作“真实 gmsh tag”使用：如果 tag 存在就直接返回。
-        // 这样兼容“界面显示的就是 tag”与“用户手填 tag”的场景。
-        if (ordered.contains(uiId)) {
-            return uiId;
-        }
+        const QString pName = physicalUiName(dim, uiId);
+        const int physTag = findPhysicalGroupByName(dim, pName);
+        if (physTag <= 0) return tags;
 
-        // 否则再按 UI 序号（第 N 个实体）映射。
-        const int idx = uiId - 1; // UI 编号从 1 开始（按序号），映射到当前模型实体序列
-        if (idx < 0 || idx >= ordered.size()) return -1;
-        return ordered[idx];
+        gmsh::model::getEntitiesForPhysicalGroup(dim, physTag, tags);
+        return tags;
     }
 
     static void ensureGmshInitialized()
@@ -358,12 +362,12 @@ private:
         {
             std::vector<std::pair<int,int>> ents;
             gmsh::model::getEntities(ents, dim);
-            for (auto& e : ents)
+            for (std::size_t i = 0; i < ents.size(); ++i)
             {
-                const int tag = e.second;
+                const int tag = ents[i].second;
                 const int phys = gmsh::model::addPhysicalGroup(dim, std::vector<int>{tag});
                 gmsh::model::setPhysicalName(dim, phys,
-                                             std::string("dim") + std::to_string(dim) + "_tag" + std::to_string(tag));
+                                             physicalUiName(dim, static_cast<int>(i) + 1).toStdString());
             }
         }
     }
