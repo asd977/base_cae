@@ -69,7 +69,11 @@ private:
     void initTreeMenu();
     bool writeMultipleShapesStepFile(const QString &filePath);
     QString makeUniqueName(const QString &baseName, const QString &typeKey);
+    bool rebuildGmshPreprocessModel();
+    bool ensureGmshPreprocessModel();
 
+    bool m_gmshPreprocessModelReady = false;
+    QString m_gmshPreprocessStepPath;
     QHash<QString, int> m_nameCounters;
 };
 

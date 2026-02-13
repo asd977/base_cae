@@ -83,6 +83,7 @@
 #include "OccBooleanCommonWidget.h"
 #include "GeometryImportWidget.h"
 #include <QFileDialog>
+#include <gmsh.h>
 #include <STEPControl_Writer.hxx>
 #include <TopoDS_Compound.hxx>
 #include <cmath>
@@ -847,119 +848,101 @@ QString PreProcessing::makeUniqueName(const QString &baseName, const QString &ty
 }
 
 
+bool PreProcessing::rebuildGmshPreprocessModel()
+{
+    auto* mgr = GeomManager::GeomManagerInstance::getInstance();
+    if (!mgr || mgr->isEmpty()) return false;
+
+    if (m_gmshPreprocessStepPath.isEmpty()) {
+        m_gmshPreprocessStepPath = QDir::temp().filePath("base_cae_preprocess_control.step");
+    }
+
+    if (!writeMultipleShapesStepFile(m_gmshPreprocessStepPath)) {
+        qWarning() << "[PreProcessing] write STEP failed:" << m_gmshPreprocessStepPath;
+        return false;
+    }
+
+    static bool gmshInited = false;
+    if (!gmshInited) {
+        int argc = 0;
+        char** argv = nullptr;
+        gmsh::initialize(argc, argv);
+        gmshInited = true;
+    }
+
+    gmsh::clear();
+    gmsh::model::add("preprocess_control");
+
+    std::vector<std::pair<int,int>> outDimTags;
+    gmsh::model::occ::importShapes(m_gmshPreprocessStepPath.toStdString(), outDimTags, true);
+    gmsh::model::occ::synchronize();
+
+    m_gmshPreprocessModelReady = true;
+    return true;
+}
+
+bool PreProcessing::ensureGmshPreprocessModel()
+{
+    // 进入边/面/体控制页后会调用 listEntityIds；这里每次重建，确保几何更新后立即同步。
+    m_gmshPreprocessModelReady = false;
+    return rebuildGmshPreprocessModel();
+}
+
 QStringList PreProcessing::listEntityIds(int dim)
 {
     QStringList out;
-    auto* mgr = GeomManager::GeomManagerInstance::getInstance();
-    if (!mgr || mgr->isEmpty()) return out;
+    if (dim < 0 || dim > 3) return out;
+    if (!ensureGmshPreprocessModel()) return out;
 
-    auto map = mgr->getShapMap();
-    GeomShapeObject* obj = nullptr;
-    for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
-        if (it.value() && it.value()->getShape()) { obj = it.value(); break; }
+    std::vector<std::pair<int,int>> ents;
+    gmsh::model::getEntities(ents, dim);
+    for (const auto& e : ents) {
+        if (e.first == dim) out << QString::number(e.second);
     }
-    if (!obj || !obj->getShape()) return out;
-
-    TopTools_IndexedMapOfShape indexed;
-    TopAbs_ShapeEnum shapeType = TopAbs_EDGE;
-    if (dim == 2) shapeType = TopAbs_FACE;
-    else if (dim == 3) shapeType = TopAbs_SOLID;
-
-    TopExp::MapShapes(*obj->getShape(), shapeType, indexed);
-    for (int i = 1; i <= indexed.Extent(); ++i) out << QString::number(i);
     return out;
 }
 
 bool PreProcessing::entityCenter(int dim, int id, QVector3D& center)
 {
     center = QVector3D();
-    if (id <= 0) return false;
+    if (id <= 0 || dim < 0 || dim > 3) return false;
+    if (!ensureGmshPreprocessModel()) return false;
 
-    auto* mgr = GeomManager::GeomManagerInstance::getInstance();
-    if (!mgr || mgr->isEmpty()) return false;
-
-    auto map = mgr->getShapMap();
-    GeomShapeObject* obj = nullptr;
-    for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
-        if (it.value() && it.value()->getShape()) { obj = it.value(); break; }
+    double x = 0.0, y = 0.0, z = 0.0;
+    try {
+        gmsh::model::occ::getCenterOfMass(dim, id, x, y, z);
+    } catch (...) {
+        return false;
     }
-    if (!obj || !obj->getShape()) return false;
-
-    TopTools_IndexedMapOfShape indexed;
-    TopAbs_ShapeEnum shapeType = TopAbs_EDGE;
-    if (dim == 2) shapeType = TopAbs_FACE;
-    else if (dim == 3) shapeType = TopAbs_SOLID;
-
-    TopExp::MapShapes(*obj->getShape(), shapeType, indexed);
-    if (id > indexed.Extent()) return false;
-
-    const TopoDS_Shape target = indexed(id);
-    GProp_GProps props;
-    if (dim == 1) {
-        BRepGProp::LinearProperties(target, props);
-    } else if (dim == 2) {
-        BRepGProp::SurfaceProperties(target, props);
-    } else {
-        BRepGProp::VolumeProperties(target, props);
-    }
-
-    const gp_Pnt c = props.CentreOfMass();
-    center = QVector3D(c.X(), c.Y(), c.Z());
+    center = QVector3D(x, y, z);
     return true;
 }
-
 
 bool PreProcessing::highlightEntity(int dim, int id)
 {
     clearEntityHighlight();
-    if (id <= 0) return false;
+    QVector3D c;
+    if (!entityCenter(dim, id, c)) return false;
 
-    auto* mgr = GeomManager::GeomManagerInstance::getInstance();
-    if (!mgr || mgr->isEmpty()) return false;
-
-    auto map = mgr->getShapMap();
-    GeomShapeObject* obj = nullptr;
-    for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
-        if (it.value() && it.value()->getShape()) { obj = it.value(); break; }
-    }
-    if (!obj || !obj->getShape()) return false;
-
-    TopTools_IndexedMapOfShape indexed;
-    TopAbs_ShapeEnum shapeType = TopAbs_EDGE;
-    if (dim == 2) shapeType = TopAbs_FACE;
-    else if (dim == 3) shapeType = TopAbs_SOLID;
-
-    TopExp::MapShapes(*obj->getShape(), shapeType, indexed);
-    if (id > indexed.Extent()) return false;
-
-    TopoDS_Shape target = indexed(id);
-    IVtkOCC_Shape::Handle occShape = new IVtkOCC_Shape(target);
-    vtkNew<IVtkTools_ShapeDataSource> src;
-    src->SetShape(occShape);
-
-    vtkNew<IVtkTools_DisplayModeFilter> dm;
-    dm->SetInputConnection(src->GetOutputPort());
-    dm->SetDisplayMode(dim == 1 ? DM_Wireframe : DM_Shading);
-    dm->SetSmoothShading(true);
-    dm->SetFaceBoundaryDraw(true);
-    dm->Update();
+    vtkNew<vtkSphereSource> sphere;
+    sphere->SetCenter(c.x(), c.y(), c.z());
+    sphere->SetRadius(1.0);
+    sphere->SetThetaResolution(24);
+    sphere->SetPhiResolution(24);
 
     auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-    mapper->SetInputData(dm->GetOutput());
-    mapper->ScalarVisibilityOff();
+    mapper->SetInputConnection(sphere->GetOutputPort());
 
     auto actor = vtkSmartPointer<vtkActor>::New();
     actor->SetMapper(mapper);
     if (dim == 1) {
         actor->GetProperty()->SetColor(1.0, 0.2, 0.2);
-        actor->GetProperty()->SetLineWidth(4.0);
     } else if (dim == 2) {
         actor->GetProperty()->SetColor(1.0, 0.85, 0.2);
-        actor->GetProperty()->SetOpacity(0.9);
     } else {
         actor->GetProperty()->SetColor(0.3, 0.8, 1.0);
-        actor->GetProperty()->SetOpacity(0.55);
     }
+    actor->GetProperty()->SetOpacity(0.9);
 
     auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>();
     if (!vis) return false;

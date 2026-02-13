@@ -220,7 +220,6 @@ public slots:
 
             emit log(QString("导入几何完成，实体数：%1").arg((int)outDimTags.size()));
 
-            buildUiMappings();
             // 3) 物理组（建议：否则你 set SaveAll=0 时会输出为空）
             createPhysicalGroupsAllDims();
 
@@ -351,12 +350,14 @@ private:
         std::vector<int> tags;
         if (uiId <= 0) return tags;
 
-        const QString name = physicalUiName(dim, uiId);
-        const int physTag = findPhysicalGroupByName(dim, name);
-        if (physTag <= 0) return tags;
-
-        gmsh::model::getEntitiesForPhysicalGroup(dim, physTag, tags);
-        if (tags.size() != 1) tags.clear();
+        std::vector<std::pair<int,int>> ents;
+        gmsh::model::getEntities(ents, dim);
+        for (const auto& e : ents) {
+            if (e.first == dim && e.second == uiId) {
+                tags.push_back(uiId);
+                break;
+            }
+        }
         return tags;
     }
 
@@ -443,23 +444,9 @@ private:
             for (const auto& e : ents)
             {
                 const int tag = e.second;
-                int physicalTag = -1;
-                QString name = physicalTagName(dim, tag);
-                if (dim == 1 && m_edgeUiToTag.values().contains(tag)) {
-                    physicalTag = m_edgeUiToTag.key(tag);
-                    name = physicalUiName(dim, physicalTag);
-                } else if (dim == 2 && m_faceUiToTag.values().contains(tag)) {
-                    physicalTag = m_faceUiToTag.key(tag);
-                    name = physicalUiName(dim, physicalTag);
-                } else if (dim == 3 && m_volumeUiToTag.values().contains(tag)) {
-                    physicalTag = m_volumeUiToTag.key(tag);
-                    name = physicalUiName(dim, physicalTag);
-                }
-
-                // 不依赖 OCC entity tag 作为跨步骤稳定 ID：
-                // 对 1/2/3 维实体，优先使用 UI 侧稳定编号作为 Physical Group tag。
-                const int phys = gmsh::model::addPhysicalGroup(dim, std::vector<int>{tag}, physicalTag);
-                gmsh::model::setPhysicalName(dim, phys, name.toStdString());
+                // 界面 ID 直接使用 Gmsh 实体 tag，不做重编号映射。
+                const int phys = gmsh::model::addPhysicalGroup(dim, std::vector<int>{tag}, tag);
+                gmsh::model::setPhysicalName(dim, phys, physicalTagName(dim, tag).toStdString());
             }
         }
     }
