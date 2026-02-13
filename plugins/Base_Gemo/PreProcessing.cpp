@@ -31,7 +31,6 @@
 #include <QToolButton>
 #include <vtkCellPicker.h>
 #include <vtkVertexGlyphFilter.h>
-#include <vtkSphereSource.h>
 #include <set>
 #include <vtkCell.h>
 #include <vtkIdList.h>
@@ -45,7 +44,6 @@
 #include <vtkLine.h>
 #include <vtkCellArray.h>
 #include <vtkLODActor.h>
-#include <vtkAppendPolyData.h>
 #include <vtkGlyph3D.h>
 #include <vtkPointData.h>
 #include <vtkCleanPolyData.h>
@@ -72,6 +70,8 @@
 #include "BaseGeometryDialog\PolygonDialog.h"
 
 #include <BRep_Builder.hxx>
+#include <BRepBndLib.hxx>
+#include <Bnd_Box.hxx>
 #include <BRepGProp.hxx>
 #include <GProp_GProps.hxx>
 #include <ContextMenuHub.h>
@@ -83,9 +83,11 @@
 #include "OccBooleanCommonWidget.h"
 #include "GeometryImportWidget.h"
 #include <QFileDialog>
+#include <gmsh.h>
 #include <STEPControl_Writer.hxx>
 #include <TopoDS_Compound.hxx>
 #include <cmath>
+#include <limits>
 #include <vtkNew.h>
 #include <IVtkTools_DisplayModeFilter.hxx>
 #include <IVtkTools_ShapeDataSource.hxx>
@@ -280,6 +282,8 @@ BasePage* PreProcessing::createPageByType(const QString& type, const QString& ti
 
 void PreProcessing::newProject()
 {
+    m_gmshPreprocessModelReady = false;
+    m_gmshGeometrySignature.clear();
 	m_geomNode = new ProjectNode("几何");
 	ProjectManagerService *projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
 	projectManagerService->addTreeItem(m_geomNode);
@@ -334,6 +338,8 @@ bool PreProcessing::saveProject()
 
 bool PreProcessing::loadProject()
 {
+    m_gmshPreprocessModelReady = false;
+    m_gmshGeometrySignature.clear();
 	bool success = false;
 	ProjectManagerService *projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
 	m_geomNode = new ProjectNode("几何");
@@ -373,6 +379,8 @@ bool PreProcessing::loadChildProject(ProjectNode * rootNode,const QString & name
 
 void PreProcessing::closeProject()
 {
+    m_gmshPreprocessModelReady = false;
+    m_gmshGeometrySignature.clear();
 	if (!m_geomNode|| !m_gridNode) return;
 
 	while (m_geomNode->childCount() > 0)
@@ -847,72 +855,129 @@ QString PreProcessing::makeUniqueName(const QString &baseName, const QString &ty
 }
 
 
+
+QString PreProcessing::geometrySignature() const
+{
+    auto* mgr = GeomManager::GeomManagerInstance::getInstance();
+    if (!mgr || mgr->isEmpty()) return QString();
+
+    auto map = mgr->getShapMap();
+    QStringList keys;
+    keys.reserve(map.size());
+    for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
+        if (!it.value() || !it.value()->getShape()) continue;
+        Bnd_Box box;
+        BRepBndLib::Add(*it.value()->getShape(), box, Standard_False);
+        Standard_Real xmin=0.0, ymin=0.0, zmin=0.0, xmax=0.0, ymax=0.0, zmax=0.0;
+        if (!box.IsVoid()) box.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+        keys << QString("%1:%2:%3,%4,%5,%6,%7,%8")
+                    .arg(it.key())
+                    .arg(static_cast<int>(it.value()->getShape()->ShapeType()))
+                    .arg(xmin, 0, 'g', 12).arg(ymin, 0, 'g', 12).arg(zmin, 0, 'g', 12)
+                    .arg(xmax, 0, 'g', 12).arg(ymax, 0, 'g', 12).arg(zmax, 0, 'g', 12);
+    }
+    std::sort(keys.begin(), keys.end());
+    return keys.join("|");
+}
+
+bool PreProcessing::rebuildGmshPreprocessModel()
+{
+    auto* mgr = GeomManager::GeomManagerInstance::getInstance();
+    if (!mgr || mgr->isEmpty()) return false;
+
+    TopoDS_Compound compound;
+    BRep_Builder builder;
+    builder.MakeCompound(compound);
+
+    auto shapeMap = mgr->getShapMap();
+    int shapeCount = 0;
+    for (auto it = shapeMap.constBegin(); it != shapeMap.constEnd(); ++it) {
+        if (!it.value() || !it.value()->getShape()) continue;
+        builder.Add(compound, *it.value()->getShape());
+        ++shapeCount;
+    }
+    if (shapeCount == 0) return false;
+
+    static bool gmshInited = false;
+    if (!gmshInited) {
+        int argc = 0;
+        char** argv = nullptr;
+        gmsh::initialize(argc, argv);
+        gmshInited = true;
+    }
+
+    gmsh::clear();
+    gmsh::model::add("preprocess_control");
+
+    std::vector<std::pair<int,int>> outDimTags;
+    gmsh::model::occ::importShapesNativePointer(static_cast<const void*>(&compound), outDimTags, true);
+    gmsh::model::occ::synchronize();
+
+    return true;
+}
+
+bool PreProcessing::ensureGmshPreprocessModel()
+{
+    const QString sig = geometrySignature();
+    if (sig.isEmpty()) {
+        m_gmshPreprocessModelReady = false;
+        m_gmshGeometrySignature.clear();
+        return false;
+    }
+    if (m_gmshPreprocessModelReady && sig == m_gmshGeometrySignature) {
+        return true;
+    }
+    if (!rebuildGmshPreprocessModel()) {
+        m_gmshPreprocessModelReady = false;
+        return false;
+    }
+    m_gmshPreprocessModelReady = true;
+    m_gmshGeometrySignature = sig;
+    return true;
+}
+
 QStringList PreProcessing::listEntityIds(int dim)
 {
     QStringList out;
-    auto* mgr = GeomManager::GeomManagerInstance::getInstance();
-    if (!mgr || mgr->isEmpty()) return out;
+    if (dim < 0 || dim > 3) return out;
+    if (!ensureGmshPreprocessModel()) return out;
 
-    auto map = mgr->getShapMap();
-    GeomShapeObject* obj = nullptr;
-    for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
-        if (it.value() && it.value()->getShape()) { obj = it.value(); break; }
+    std::vector<std::pair<int,int>> ents;
+    gmsh::model::getEntities(ents, dim);
+    for (const auto& e : ents) {
+        if (e.first == dim) out << QString::number(e.second);
     }
-    if (!obj || !obj->getShape()) return out;
-
-    TopTools_IndexedMapOfShape indexed;
-    TopAbs_ShapeEnum shapeType = TopAbs_EDGE;
-    if (dim == 2) shapeType = TopAbs_FACE;
-    else if (dim == 3) shapeType = TopAbs_SOLID;
-
-    TopExp::MapShapes(*obj->getShape(), shapeType, indexed);
-    for (int i = 1; i <= indexed.Extent(); ++i) out << QString::number(i);
     return out;
 }
 
 bool PreProcessing::entityCenter(int dim, int id, QVector3D& center)
 {
     center = QVector3D();
-    if (id <= 0) return false;
+    if (id <= 0 || dim < 0 || dim > 3) return false;
+    if (!ensureGmshPreprocessModel()) return false;
 
-    auto* mgr = GeomManager::GeomManagerInstance::getInstance();
-    if (!mgr || mgr->isEmpty()) return false;
-
-    auto map = mgr->getShapMap();
-    GeomShapeObject* obj = nullptr;
-    for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
-        if (it.value() && it.value()->getShape()) { obj = it.value(); break; }
+    double x = 0.0, y = 0.0, z = 0.0;
+    try {
+        gmsh::model::occ::getCenterOfMass(dim, id, x, y, z);
+    } catch (...) {
+        return false;
     }
-    if (!obj || !obj->getShape()) return false;
-
-    TopTools_IndexedMapOfShape indexed;
-    TopAbs_ShapeEnum shapeType = TopAbs_EDGE;
-    if (dim == 2) shapeType = TopAbs_FACE;
-    else if (dim == 3) shapeType = TopAbs_SOLID;
-
-    TopExp::MapShapes(*obj->getShape(), shapeType, indexed);
-    if (id > indexed.Extent()) return false;
-
-    const TopoDS_Shape target = indexed(id);
-    GProp_GProps props;
-    if (dim == 1) {
-        BRepGProp::LinearProperties(target, props);
-    } else if (dim == 2) {
-        BRepGProp::SurfaceProperties(target, props);
-    } else {
-        BRepGProp::VolumeProperties(target, props);
-    }
-
-    const gp_Pnt c = props.CentreOfMass();
-    center = QVector3D(c.X(), c.Y(), c.Z());
+    center = QVector3D(x, y, z);
     return true;
 }
-
 
 bool PreProcessing::highlightEntity(int dim, int id)
 {
     clearEntityHighlight();
     if (id <= 0) return false;
+    if (!ensureGmshPreprocessModel()) return false;
+
+    double gx = 0.0, gy = 0.0, gz = 0.0;
+    try {
+        gmsh::model::occ::getCenterOfMass(dim, id, gx, gy, gz);
+    } catch (...) {
+        return false;
+    }
 
     auto* mgr = GeomManager::GeomManagerInstance::getInstance();
     if (!mgr || mgr->isEmpty()) return false;
@@ -928,11 +993,30 @@ bool PreProcessing::highlightEntity(int dim, int id)
     TopAbs_ShapeEnum shapeType = TopAbs_EDGE;
     if (dim == 2) shapeType = TopAbs_FACE;
     else if (dim == 3) shapeType = TopAbs_SOLID;
-
     TopExp::MapShapes(*obj->getShape(), shapeType, indexed);
-    if (id > indexed.Extent()) return false;
+    if (indexed.IsEmpty()) return false;
 
-    TopoDS_Shape target = indexed(id);
+    int bestIdx = -1;
+    double bestD2 = std::numeric_limits<double>::max();
+    for (int i = 1; i <= indexed.Extent(); ++i) {
+        const TopoDS_Shape& s = indexed(i);
+        GProp_GProps props;
+        if (dim == 1) BRepGProp::LinearProperties(s, props);
+        else if (dim == 2) BRepGProp::SurfaceProperties(s, props);
+        else BRepGProp::VolumeProperties(s, props);
+        const gp_Pnt c = props.CentreOfMass();
+        const double dx = c.X() - gx;
+        const double dy = c.Y() - gy;
+        const double dz = c.Z() - gz;
+        const double d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 < bestD2) {
+            bestD2 = d2;
+            bestIdx = i;
+        }
+    }
+    if (bestIdx <= 0) return false;
+
+    TopoDS_Shape target = indexed(bestIdx);
     IVtkOCC_Shape::Handle occShape = new IVtkOCC_Shape(target);
     vtkNew<IVtkTools_ShapeDataSource> src;
     src->SetShape(occShape);
