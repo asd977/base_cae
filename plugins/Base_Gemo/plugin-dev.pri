@@ -1,5 +1,5 @@
 include($$PWD/../../libs/vtk-9.2/vtk.pri)
-include($$PWD/../../libs/gmsh-4.8.4/gmsh.pri)
+include($$PWD/../../libs/gmsh-4-15/gmsh.pri)
 include($$PWD/../../libs/OCC/occ.pri)
 
 TARGET = Base_PreProcessing
