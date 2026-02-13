@@ -24,7 +24,7 @@ struct Params
     QString inputStepPath = "./tmp/geom.step";           // useCurrentGeometry=false 时使用
     bool useInMemoryGeometry = true;
     bool hasCompound = false;
-    TopoDS_Compound compound;
+    TopoDS_Compound* compoundPtr = nullptr;
 
     int dimension = 3;               // 2 or 3
     int elemType = 4;                // 2D: 1 Tri / 2 Quad; 3D: 3 Tet / 4 Hex
@@ -181,10 +181,10 @@ public slots:
             gmsh::option::setNumber("Geometry.Tolerance", m_p.tolerance);
 
             std::vector<std::pair<int,int>> outDimTags;
-            if (m_p.useInMemoryGeometry && m_p.hasCompound)
+            if (m_p.useInMemoryGeometry && m_p.hasCompound && m_p.compoundPtr)
             {
                 emit log("使用内存几何直接剖分（无 STEP 文件中转）。");
-                gmsh::model::occ::importShapesNativePointer(&m_p.compound, outDimTags, true);
+                gmsh::model::occ::importShapesNativePointer(m_p.compoundPtr, outDimTags, true);
             }
             else
             {
@@ -280,6 +280,11 @@ public slots:
                 gmsh::write(msh.toStdString());
                 emit log(QString("已输出 MSH：%1").arg(msh));
             }
+
+            // 本轮收尾清理，避免下次进入 gmsh::clear() 时触发历史模型释放问题。
+            try { gmsh::clear(); }
+            catch (const std::exception& e) { emit log(QString("收尾 clear 失败：%1").arg(e.what())); }
+            catch (...) { emit log("收尾 clear 失败：unknown error"); }
 
             emit finishedOK(msh, vtk, nas);
         }
@@ -385,6 +390,7 @@ private:
 
 private:
     Ui::MeshGlobalMeshingWidget* ui = nullptr;
+    TopoDS_Compound m_compoundHolder;
     QThread* m_thread = nullptr;
     void showMeshVtk(const QString &vtkPath);
 };

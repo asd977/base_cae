@@ -181,10 +181,10 @@ void MeshGlobalMeshingWidget::onGenerate()
     {
         p.useInMemoryGeometry = true;
         p.hasCompound = false;
+        p.compoundPtr = nullptr;
         if (auto* service = ServiceRegistry::instance().getService<PreProcessingService>()) {
-            TopoDS_Compound compound;
-            if (service->buildGeometryCompound(&compound)) {
-                p.compound = compound;
+            if (service->buildGeometryCompound(&m_compoundHolder)) {
+                p.compoundPtr = &m_compoundHolder;
                 p.hasCompound = true;
                 appendLog("已通过 PreProcessingService 收集内存几何，准备直接传入 Gmsh。");
             }
