@@ -10,6 +10,7 @@
 #include <QThread>
 #include <QDebug>
 #include <cstdlib>
+#include <QApplication>
 #include <vtkUnstructuredGridReader.h>
 
 // ===== 你的几何导出依赖（按你项目实际路径改 include）=====
@@ -264,16 +265,30 @@ void MeshGlobalMeshingWidget::onGenerate()
 #endif
     };
 
-    try {
-        worker->run();
-    } catch (const std::exception& e) {
-        appendLog(QString("剖分线程外异常：%1").arg(e.what()));
-        dumpStack();
-        worker->deleteLater();
-    } catch (...) {
-        appendLog("剖分线程外未知异常。");
-        dumpStack();
-        worker->deleteLater();
+    auto runOnMainThread = [this, worker, dumpStack]() {
+        try {
+            worker->run();
+        } catch (const std::exception& e) {
+            appendLog(QString("剖分线程外异常：%1").arg(e.what()));
+            dumpStack();
+            worker->deleteLater();
+        } catch (...) {
+            appendLog("剖分线程外未知异常。");
+            dumpStack();
+            worker->deleteLater();
+        }
+    };
+
+    if (QThread::currentThread() == qApp->thread()) {
+        appendLog("当前已在主线程，直接执行 Gmsh。" );
+        runOnMainThread();
+    } else {
+        appendLog("切换到主线程执行 Gmsh（BlockingQueuedConnection）。");
+        QMetaObject::invokeMethod(
+            this,
+            [runOnMainThread]() { runOnMainThread(); },
+            Qt::BlockingQueuedConnection
+        );
     }
 }
 
