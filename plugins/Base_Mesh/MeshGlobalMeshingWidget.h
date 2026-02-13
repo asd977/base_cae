@@ -167,9 +167,12 @@ public slots:
             //     }
             // }
 
-            // 2) 清理/建模
-            gmsh::clear();
-            gmsh::model::add("global_mesh");
+            // 2) 建模
+            // 说明：现场反馈在 gmsh::clear() 后仍会崩溃，这里改为不调用 clear，
+            // 每次创建独立模型名，避免触发 clear 的底层释放路径。
+            static int s_modelCounter = 0;
+            const std::string modelName = std::string("global_mesh_") + std::to_string(++s_modelCounter);
+            gmsh::model::add(modelName);
 
             // 几何修复相关选项必须在 importShapes 前设置；
             // 这些选项是全局状态，若放在后面会在“下一次剖分”才生效，导致跨次串扰。
@@ -280,11 +283,6 @@ public slots:
                 gmsh::write(msh.toStdString());
                 emit log(QString("已输出 MSH：%1").arg(msh));
             }
-
-            // 本轮收尾清理，避免下次进入 gmsh::clear() 时触发历史模型释放问题。
-            try { gmsh::clear(); }
-            catch (const std::exception& e) { emit log(QString("收尾 clear 失败：%1").arg(e.what())); }
-            catch (...) { emit log("收尾 clear 失败：unknown error"); }
 
             emit finishedOK(msh, vtk, nas);
         }
