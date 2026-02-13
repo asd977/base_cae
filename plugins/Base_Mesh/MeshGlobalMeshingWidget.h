@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <set>
 #include <services/MeshModuleControllerService.h>
+#include <TopoDS_Compound.hxx>
 
 class QThread;
 
@@ -21,6 +22,9 @@ namespace {
 struct Params
 {
     QString inputStepPath = "./tmp/geom.step";           // useCurrentGeometry=false 时使用
+    bool useInMemoryGeometry = true;
+    bool hasCompound = false;
+    TopoDS_Compound compound;
 
     int dimension = 3;               // 2 or 3
     int elemType = 4;                // 2D: 1 Tri / 2 Quad; 3D: 3 Tet / 4 Hex
@@ -177,7 +181,16 @@ public slots:
             gmsh::option::setNumber("Geometry.Tolerance", m_p.tolerance);
 
             std::vector<std::pair<int,int>> outDimTags;
-            gmsh::model::occ::importShapes(stepPath.toStdString(), outDimTags, true);
+            if (m_p.useInMemoryGeometry && m_p.hasCompound)
+            {
+                emit log("使用内存几何直接剖分（无 STEP 文件中转）。");
+                gmsh::model::occ::importShapesNativePointer(&m_p.compound, outDimTags, true);
+            }
+            else
+            {
+                emit log(QString("回退到 STEP 导入：%1").arg(stepPath));
+                gmsh::model::occ::importShapes(stepPath.toStdString(), outDimTags, true);
+            }
             // Ensure touching domains share one interface entity after STEP import.
             // 单体模型在某些 OCC 情况下会抛出 “Boolean fragments failed”，这里容错处理。
             if (outDimTags.size() > 1) {

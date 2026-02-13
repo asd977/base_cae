@@ -8,6 +8,8 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <QThread>
+#include <QDebug>
+#include <cstdlib>
 #include <vtkUnstructuredGridReader.h>
 
 // ===== 你的几何导出依赖（按你项目实际路径改 include）=====
@@ -15,6 +17,11 @@
 #include <TopoDS_Compound.hxx>
 #include <STEPControl_Writer.hxx>
 #include <IFSelect_ReturnStatus.hxx>
+#include "../Base_Gemo/GeomManagerInstance.h"
+
+#ifdef Q_OS_LINUX
+#include <execinfo.h>
+#endif
 
 // #include <GeomManager/GeomManagerInstance.h>   // <<<<<< 按你工程实际改
 // #include <GeomManager/GeomShapeObject.h>       // <<<<<< 按你工程实际改
@@ -169,17 +176,32 @@ QString MeshGlobalMeshingWidget::tempNasPath()  const { return tempDirPath() + "
 
 void MeshGlobalMeshingWidget::onGenerate()
 {
-
-    PreProcessingService *service = ServiceRegistry::instance().getService<PreProcessingService>();
-    service->generateStepFile();
-
-    QString fileName = "ExportedModel.step";
-    QString currentWorPath = QCoreApplication::applicationDirPath();
-    QString filePath = currentWorPath + "/data/"+fileName;
-
     Params p = collectParams();
 
-    p.inputStepPath = filePath;
+    // 优先走内存几何，避免 STEP 文件中转导致实体编号变化。
+    {
+        TopoDS_Compound compound;
+        BRep_Builder builder;
+        builder.MakeCompound(compound);
+
+        bool hasShape = false;
+        if (auto* mgr = GeomManager::GeomManagerInstance::getInstance()) {
+            const QHash<QString, GeomShapeObject*> map = mgr->getShapMap();
+            for (GeomShapeObject* shapeObj : map.values()) {
+                if (shapeObj && shapeObj->getShape() && !shapeObj->getShape()->IsNull()) {
+                    builder.Add(compound, *(shapeObj->getShape()));
+                    hasShape = true;
+                }
+            }
+        }
+
+        p.useInMemoryGeometry = true;
+        p.hasCompound = hasShape;
+        if (hasShape) {
+            p.compound = compound;
+            appendLog("已收集内存几何，准备直接传入 Gmsh。");
+        }
+    }
     if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>()) {
         p.edgeRules = meshSvc->edgeControlRules();
         p.faceRules = meshSvc->faceControlRules();
@@ -196,9 +218,8 @@ void MeshGlobalMeshingWidget::onGenerate()
         return;
     }
 
-    if (p.inputStepPath.isEmpty() || !QFileInfo::exists(p.inputStepPath))
-    {
-        QMessageBox::warning(this, "整体剖分", "STEP 文件不存在。");
+    if (!p.hasCompound) {
+        QMessageBox::warning(this, "整体剖分", "当前没有可用几何体，无法剖分。");
         return;
     }
 
@@ -209,27 +230,14 @@ void MeshGlobalMeshingWidget::onGenerate()
 
     appendLog("准备临时目录：" + tempDirPath());
 
-    // 如果已有线程，先收掉
-    if (m_thread)
-    {
-        m_thread->quit();
-        m_thread->wait();
-        delete m_thread;
-        m_thread = nullptr;
-    }
-
-    // 启动 worker
-    m_thread = new QThread(this);
-    auto* worker = new MeshGlobalWorker(p);
+    // 单线程执行：避免跨线程 OCC/Gmsh 引起崩溃。
+    auto* worker = new MeshGlobalWorker(p, this);
     worker->m_tempDirPath  = tempDirPath();
     worker->m_tempStepPath = tempStepPath();
     worker->m_tempMshPath  = tempMshPath();
     worker->m_tempVtkPath  = tempVtkPath();
     worker->m_tempNasPath  = tempNasPath();
 
-    worker->moveToThread(m_thread);
-
-    connect(m_thread, &QThread::started, worker, &MeshGlobalWorker::run);
     connect(worker, &MeshGlobalWorker::log, this, [this](const QString& s){ appendLog(s); });
 
     connect(worker, &MeshGlobalWorker::finishedOK, this,
@@ -242,7 +250,7 @@ void MeshGlobalMeshingWidget::onGenerate()
                 MeshModuleControllerService *service = ServiceRegistry::instance().getService<MeshModuleControllerService>();
                 service->importMshGrid(tempMshPath());
 
-                if (m_thread) { m_thread->quit(); }
+                worker->deleteLater();
             });
 
     connect(worker, &MeshGlobalWorker::finishedFail, this,
@@ -250,12 +258,35 @@ void MeshGlobalMeshingWidget::onGenerate()
             {
                 appendLog("整体剖分失败：" + err);
                 QMessageBox::critical(this, "整体剖分", err);
-                if (m_thread) { m_thread->quit(); }
+                worker->deleteLater();
             });
 
-    connect(m_thread, &QThread::finished, worker, &QObject::deleteLater);
+    auto dumpStack = [this]() {
+#ifdef Q_OS_LINUX
+        void* buffer[64] = {nullptr};
+        const int n = ::backtrace(buffer, 64);
+        char** symbols = ::backtrace_symbols(buffer, n);
+        appendLog(QString("调试栈回溯（frames=%1）").arg(n));
+        if (symbols) {
+            for (int i = 0; i < n; ++i) appendLog(QString("  #%1 %2").arg(i).arg(symbols[i]));
+            free(symbols);
+        }
+#else
+        appendLog("当前平台不支持 backtrace_symbols，无法打印调用栈。");
+#endif
+    };
 
-    m_thread->start();
+    try {
+        worker->run();
+    } catch (const std::exception& e) {
+        appendLog(QString("剖分线程外异常：%1").arg(e.what()));
+        dumpStack();
+        worker->deleteLater();
+    } catch (...) {
+        appendLog("剖分线程外未知异常。");
+        dumpStack();
+        worker->deleteLater();
+    }
 }
 
 void MeshGlobalMeshingWidget::onExportAs()
