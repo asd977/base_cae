@@ -212,11 +212,18 @@ void MeshGlobalMeshingWidget::onGenerate()
     }
 
     if (service) {
-        auto collectCenters = [&](int dim, const std::set<int>& ids, QMap<int, QVector3D>& dst) {
+        auto collectCentersAndMeasures = [&](int dim,
+                                             const std::set<int>& ids,
+                                             QMap<int, QVector3D>& centerDst,
+                                             QMap<int, double>& measureDst) {
             for (int id : ids) {
                 QVector3D c;
                 if (service->entityCenter(dim, id, c)) {
-                    dst.insert(id, c);
+                    centerDst.insert(id, c);
+                }
+                double m = 0.0;
+                if (service->entityMeasure(dim, id, m) && m > 0.0) {
+                    measureDst.insert(id, m);
                 }
             }
         };
@@ -235,9 +242,9 @@ void MeshGlobalMeshingWidget::onGenerate()
             volumeIds.insert(ids.begin(), ids.end());
         }
 
-        collectCenters(1, edgeIds, p.edgeCenters);
-        collectCenters(2, faceIds, p.faceCenters);
-        collectCenters(3, volumeIds, p.volumeCenters);
+        collectCentersAndMeasures(1, edgeIds, p.edgeCenters, p.edgeMeasures);
+        collectCentersAndMeasures(2, faceIds, p.faceCenters, p.faceMeasures);
+        collectCentersAndMeasures(3, volumeIds, p.volumeCenters, p.volumeMeasures);
     }
 
     if (p.lenMin > p.lenMax)

@@ -27,6 +27,7 @@ public:
     void generateStepFile() override;
     QStringList listEntityIds(int dim) override;
     bool entityCenter(int dim, int id, QVector3D& center) override;
+    bool entityMeasure(int dim, int id, double& measure) override;
     bool highlightEntity(int dim, int id) override;
     void clearEntityHighlight() override;
 
