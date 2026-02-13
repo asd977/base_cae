@@ -6,8 +6,11 @@
 #include <gmsh.h>
 #include <BasePage.h>
 #include <QThread>
+#include <QVector3D>
+#include <QSet>
 #include <algorithm>
 #include <set>
+#include <limits>
 #include <services/MeshModuleControllerService.h>
 
 class QThread;
@@ -41,6 +44,10 @@ struct Params
     QVector<EdgeControlRule> edgeRules;
     QVector<FaceControlRule> faceRules;
     QVector<VolumeControlRule> volumeRules;
+
+    QMap<int, QVector3D> edgeCenters;
+    QMap<int, QVector3D> faceCenters;
+    QMap<int, QVector3D> volumeCenters;
 };
 
 }
@@ -213,6 +220,7 @@ public slots:
 
             emit log(QString("导入几何完成，实体数：%1").arg((int)outDimTags.size()));
 
+            buildUiMappings();
             // 3) 物理组（建议：否则你 set SaveAll=0 时会输出为空）
             createPhysicalGroupsAllDims();
 
@@ -309,10 +317,18 @@ public:
 
 private:
     Params m_p;
+    QMap<int, int> m_edgeUiToTag;
+    QMap<int, int> m_faceUiToTag;
+    QMap<int, int> m_volumeUiToTag;
 
     static QString physicalTagName(int dim, int tag)
     {
         return QString("dim%1_tag%2").arg(dim).arg(tag);
+    }
+
+    static QString physicalUiName(int dim, int uiId)
+    {
+        return QString("dim%1_ui%2").arg(dim).arg(uiId);
     }
 
     static int findPhysicalGroupByName(int dim, const QString& name)
@@ -330,20 +346,79 @@ private:
         return -1;
     }
 
-    static std::vector<int> resolveEntityTagsByPhysicalUiId(int dim, int uiId)
+    std::vector<int> resolveEntityTagsByPhysicalUiId(int dim, int uiId) const
     {
         std::vector<int> tags;
         if (uiId <= 0) return tags;
 
-        const QString tagName = physicalTagName(dim, uiId);
-        const int physTag = findPhysicalGroupByName(dim, tagName);
+        const QString name = physicalUiName(dim, uiId);
+        const int physTag = findPhysicalGroupByName(dim, name);
         if (physTag <= 0) return tags;
 
         gmsh::model::getEntitiesForPhysicalGroup(dim, physTag, tags);
-        if (tags.size() != 1) {
-            tags.clear();
-        }
+        if (tags.size() != 1) tags.clear();
         return tags;
+    }
+
+    static double dist2(const QVector3D& a, const QVector3D& b)
+    {
+        const QVector3D d = a - b;
+        return d.lengthSquared();
+    }
+
+    static QVector3D gmshCenter(int dim, int tag)
+    {
+        double x = 0.0, y = 0.0, z = 0.0;
+        gmsh::model::occ::getCenterOfMass(dim, tag, x, y, z);
+        return QVector3D(x, y, z);
+    }
+
+    QMap<int, int> buildUiToTagMap(int dim, const QMap<int, QVector3D>& uiCenters)
+    {
+        QMap<int, int> out;
+        if (uiCenters.isEmpty()) return out;
+
+        std::vector<std::pair<int,int>> ents;
+        gmsh::model::getEntities(ents, dim);
+        if (ents.empty()) return out;
+
+        QVector<int> tags;
+        QMap<int, QVector3D> centers;
+        for (const auto& e : ents) {
+            try {
+                const int tag = e.second;
+                tags.push_back(tag);
+                centers.insert(tag, gmshCenter(dim, tag));
+            } catch (...) {}
+        }
+
+        QSet<int> used;
+        for (auto it = uiCenters.constBegin(); it != uiCenters.constEnd(); ++it) {
+            const int uiId = it.key();
+            const QVector3D uiCenter = it.value();
+            double best = std::numeric_limits<double>::max();
+            int bestTag = -1;
+            for (int tag : tags) {
+                if (used.contains(tag)) continue;
+                const double d2 = dist2(uiCenter, centers.value(tag));
+                if (d2 < best) {
+                    best = d2;
+                    bestTag = tag;
+                }
+            }
+            if (bestTag > 0) {
+                out.insert(uiId, bestTag);
+                used.insert(bestTag);
+            }
+        }
+        return out;
+    }
+
+    void buildUiMappings()
+    {
+        m_edgeUiToTag = buildUiToTagMap(1, m_p.edgeCenters);
+        m_faceUiToTag = buildUiToTagMap(2, m_p.faceCenters);
+        m_volumeUiToTag = buildUiToTagMap(3, m_p.volumeCenters);
     }
 
     static void ensureGmshInitialized()
@@ -359,7 +434,7 @@ private:
         }
     }
 
-    static void createPhysicalGroupsAllDims()
+    void createPhysicalGroupsAllDims()
     {
         for (int dim = 0; dim <= 3; ++dim)
         {
@@ -368,12 +443,21 @@ private:
             for (const auto& e : ents)
             {
                 const int tag = e.second;
-                const int physByTag = gmsh::model::addPhysicalGroup(dim, std::vector<int>{tag});
-                gmsh::model::setPhysicalName(dim, physByTag,
-                                             physicalTagName(dim, tag).toStdString());
+                QString name = physicalTagName(dim, tag);
+                if (dim == 1 && m_edgeUiToTag.values().contains(tag)) {
+                    name = physicalUiName(dim, m_edgeUiToTag.key(tag));
+                } else if (dim == 2 && m_faceUiToTag.values().contains(tag)) {
+                    name = physicalUiName(dim, m_faceUiToTag.key(tag));
+                } else if (dim == 3 && m_volumeUiToTag.values().contains(tag)) {
+                    name = physicalUiName(dim, m_volumeUiToTag.key(tag));
+                }
+
+                const int phys = gmsh::model::addPhysicalGroup(dim, std::vector<int>{tag});
+                gmsh::model::setPhysicalName(dim, phys, name.toStdString());
             }
         }
     }
+
 
 };
 

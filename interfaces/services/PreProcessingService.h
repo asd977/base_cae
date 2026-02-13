@@ -2,6 +2,7 @@
 #define PREPROCESSINGSERVICE_H
 
 #include <QStringList>
+#include <QVector3D>
 
 class QString;
 class vtkActor;
@@ -21,6 +22,7 @@ struct PreProcessingService
 
     // dim: 1=edge, 2=face, 3=solid
     virtual QStringList listEntityIds(int dim) = 0;
+    virtual bool entityCenter(int dim, int id, QVector3D& center) = 0;
     virtual bool highlightEntity(int dim, int id) = 0;
     virtual void clearEntityHighlight() = 0;
 };

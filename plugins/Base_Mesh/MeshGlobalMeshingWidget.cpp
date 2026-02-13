@@ -35,6 +35,27 @@
 #include <services/VisualWidgetService.h>
 #include <vtkUnstructuredGrid.h>
 
+
+namespace {
+static std::set<int> parseIdSetForParams(const QString& text)
+{
+    std::set<int> ids;
+    const auto parts = text.split(',', QString::SkipEmptyParts);
+    for (QString p : parts) {
+        p = p.trimmed();
+        if (p.contains('-')) {
+            const auto lr = p.split('-', QString::SkipEmptyParts);
+            if (lr.size() == 2) {
+                bool ok1=false, ok2=false;
+                int a=lr[0].toInt(&ok1), b=lr[1].toInt(&ok2);
+                if (ok1 && ok2) { if (a>b) std::swap(a,b); for (int i=a;i<=b;++i) ids.insert(i); }
+            }
+        } else { bool ok=false; int v=p.toInt(&ok); if (ok) ids.insert(v); }
+    }
+    return ids;
+}
+}
+
 // ---------------- Widget ----------------
 MeshGlobalMeshingWidget::MeshGlobalMeshingWidget(QWidget* parent)
     : BasePage("MeshGlobalMeshingWidget")
@@ -188,6 +209,35 @@ void MeshGlobalMeshingWidget::onGenerate()
                       .arg(p.edgeRules.size())
                       .arg(p.faceRules.size())
                       .arg(p.volumeRules.size()));
+    }
+
+    if (service) {
+        auto collectCenters = [&](int dim, const std::set<int>& ids, QMap<int, QVector3D>& dst) {
+            for (int id : ids) {
+                QVector3D c;
+                if (service->entityCenter(dim, id, c)) {
+                    dst.insert(id, c);
+                }
+            }
+        };
+
+        std::set<int> edgeIds, faceIds, volumeIds;
+        for (const auto& r : p.edgeRules) {
+            const auto ids = parseIdSetForParams(r.edgeIds);
+            edgeIds.insert(ids.begin(), ids.end());
+        }
+        for (const auto& r : p.faceRules) {
+            const auto ids = parseIdSetForParams(r.faceIds);
+            faceIds.insert(ids.begin(), ids.end());
+        }
+        for (const auto& r : p.volumeRules) {
+            const auto ids = parseIdSetForParams(r.volumeIds);
+            volumeIds.insert(ids.begin(), ids.end());
+        }
+
+        collectCenters(1, edgeIds, p.edgeCenters);
+        collectCenters(2, faceIds, p.faceCenters);
+        collectCenters(3, volumeIds, p.volumeCenters);
     }
 
     if (p.lenMin > p.lenMax)
