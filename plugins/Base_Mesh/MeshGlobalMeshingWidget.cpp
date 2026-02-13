@@ -17,7 +17,6 @@
 #include <TopoDS_Compound.hxx>
 #include <STEPControl_Writer.hxx>
 #include <IFSelect_ReturnStatus.hxx>
-#include "../Base_Gemo/GeomManagerInstance.h"
 
 #ifdef Q_OS_LINUX
 #include <execinfo.h>
@@ -180,26 +179,15 @@ void MeshGlobalMeshingWidget::onGenerate()
 
     // 优先走内存几何，避免 STEP 文件中转导致实体编号变化。
     {
-        TopoDS_Compound compound;
-        BRep_Builder builder;
-        builder.MakeCompound(compound);
-
-        bool hasShape = false;
-        if (auto* mgr = GeomManager::GeomManagerInstance::getInstance()) {
-            const QHash<QString, GeomShapeObject*> map = mgr->getShapMap();
-            for (GeomShapeObject* shapeObj : map.values()) {
-                if (shapeObj && shapeObj->getShape() && !shapeObj->getShape()->IsNull()) {
-                    builder.Add(compound, *(shapeObj->getShape()));
-                    hasShape = true;
-                }
-            }
-        }
-
         p.useInMemoryGeometry = true;
-        p.hasCompound = hasShape;
-        if (hasShape) {
-            p.compound = compound;
-            appendLog("已收集内存几何，准备直接传入 Gmsh。");
+        p.hasCompound = false;
+        if (auto* service = ServiceRegistry::instance().getService<PreProcessingService>()) {
+            TopoDS_Compound compound;
+            if (service->buildGeometryCompound(&compound)) {
+                p.compound = compound;
+                p.hasCompound = true;
+                appendLog("已通过 PreProcessingService 收集内存几何，准备直接传入 Gmsh。");
+            }
         }
     }
     if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>()) {
@@ -241,7 +229,7 @@ void MeshGlobalMeshingWidget::onGenerate()
     connect(worker, &MeshGlobalWorker::log, this, [this](const QString& s){ appendLog(s); });
 
     connect(worker, &MeshGlobalWorker::finishedOK, this,
-            [this](const QString& msh, const QString& vtk, const QString& nas)
+            [this, worker](const QString& msh, const QString& vtk, const QString& nas)
             {
                 appendLog("整体剖分成功。");
                 emit meshGenerated(msh, vtk, nas);
@@ -254,7 +242,7 @@ void MeshGlobalMeshingWidget::onGenerate()
             });
 
     connect(worker, &MeshGlobalWorker::finishedFail, this,
-            [this](const QString& err)
+            [this, worker](const QString& err)
             {
                 appendLog("整体剖分失败：" + err);
                 QMessageBox::critical(this, "整体剖分", err);

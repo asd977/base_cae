@@ -3,7 +3,6 @@ include($$PWD/plugin-dev.pri)
 QT += widgets core xml gui
 
 INCLUDEPATH += $$PWD/../../interfaces
-INCLUDEPATH += $$PWD/../Base_Gemo
 
 HEADERS += \
     MeshGlobalMeshingWidget.h \

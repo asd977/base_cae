@@ -16,8 +16,10 @@ struct PreProcessingService
 	virtual void newProject() = 0;
 	virtual bool saveProject() = 0;
 	virtual bool loadProject() = 0;
-	virtual void closeProject() = 0;
+    virtual void closeProject() = 0;
     virtual void generateStepFile() = 0;
+    // 将当前几何构造成 TopoDS_Compound 并写入 compoundOut（TopoDS_Compound*）
+    virtual bool buildGeometryCompound(void* compoundOut) = 0;
 
     // dim: 1=edge, 2=face, 3=solid
     virtual QStringList listEntityIds(int dim) = 0;

@@ -416,31 +416,39 @@ void PreProcessing::closeProject()
     m_gridNode = nullptr;
 }
 
-void PreProcessing::generateStepFile()
+bool PreProcessing::buildGeometryCompound(void* compoundOut)
 {
-    // 1. 初始化容器
+    if (!compoundOut) return false;
+
+    auto* out = static_cast<TopoDS_Compound*>(compoundOut);
+
     TopoDS_Compound compound;
     BRep_Builder builder;
     builder.MakeCompound(compound);
 
-    // 2. 获取单例数据
     GeomManager::GeomManagerInstance* mgr = GeomManager::GeomManagerInstance::getInstance();
-    QHash<QString, GeomShapeObject *> tmp = mgr->getShapMap();
+    if (!mgr) return false;
 
+    const QHash<QString, GeomShapeObject*> tmp = mgr->getShapMap();
     bool hasShape = false;
-
-    // 3. 遍历并添加形状
-    // 使用 QHash 的迭代器或 values() 列表
     for (GeomShapeObject* shapeObj : tmp.values())
     {
-        if (shapeObj && !shapeObj->getShape()->IsNull()) // 假设 getShape() 返回 TopoDS_Shape
+        if (shapeObj && shapeObj->getShape() && !shapeObj->getShape()->IsNull())
         {
             builder.Add(compound, *(shapeObj->getShape()));
             hasShape = true;
         }
     }
 
-    if (!hasShape) {
+    if (!hasShape) return false;
+    *out = compound;
+    return true;
+}
+
+void PreProcessing::generateStepFile()
+{
+    TopoDS_Compound compound;
+    if (!buildGeometryCompound(&compound)) {
         // 如果没有有效形状，直接返回避免生成空文件
         return;
     }
