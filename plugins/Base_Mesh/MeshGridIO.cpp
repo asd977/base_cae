@@ -513,10 +513,8 @@ MeshGridIO::loadCurrentGmshMesh(QString *errMsg)
                     layerArr->InsertNextValue(physId);
                     ketypeArr->InsertNextValue(gmshToKetype(gmshType));
 
-                    if (physId > 0) {
-                        if (dim == 1) m_mshPickMap.linePhysToCellIds[physId].push_back(static_cast<qint64>(cid));
-                        else if (dim == 2) m_mshPickMap.surfPhysToCellIds[physId].push_back(static_cast<qint64>(cid));
-                        else if (dim == 3) m_mshPickMap.volPhysToCellIds[physId].push_back(static_cast<qint64>(cid));
+                    if (physId > 0 && dim == 3) {
+                        m_mshPickMap.volPhysToCellIds[physId].push_back(static_cast<qint64>(cid));
                     }
                 }
             }
