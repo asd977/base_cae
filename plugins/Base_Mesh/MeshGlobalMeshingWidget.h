@@ -315,6 +315,11 @@ private:
         return QString("dim%1_ui%2").arg(dim).arg(uiId);
     }
 
+    static QString physicalTagName(int dim, int tag)
+    {
+        return QString("dim%1_tag%2").arg(dim).arg(tag);
+    }
+
     static int findPhysicalGroupByName(int dim, const QString& name)
     {
         std::vector<std::pair<int,int>> phys;
@@ -335,6 +340,17 @@ private:
         std::vector<int> tags;
         if (uiId <= 0) return tags;
 
+        // 1) 优先按真实实体 tag 命名解析（稳定且与用户输入一致）
+        {
+            const QString tagName = physicalTagName(dim, uiId);
+            const int physTag = findPhysicalGroupByName(dim, tagName);
+            if (physTag > 0) {
+                gmsh::model::getEntitiesForPhysicalGroup(dim, physTag, tags);
+                if (!tags.empty()) return tags;
+            }
+        }
+
+        // 2) 兼容旧逻辑：按 UI 序号命名解析
         const QString pName = physicalUiName(dim, uiId);
         const int physTag = findPhysicalGroupByName(dim, pName);
         if (physTag <= 0) return tags;
@@ -367,7 +383,7 @@ private:
                 const int tag = ents[i].second;
                 const int phys = gmsh::model::addPhysicalGroup(dim, std::vector<int>{tag});
                 gmsh::model::setPhysicalName(dim, phys,
-                                             physicalUiName(dim, static_cast<int>(i) + 1).toStdString());
+                                             physicalTagName(dim, tag).toStdString());
             }
         }
     }
