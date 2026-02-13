@@ -240,7 +240,13 @@ void MeshGlobalMeshingWidget::onGenerate()
                 QMessageBox::information(this, "整体剖分", "生成成功！");
 //                showMeshVtk(tempVtkPath());
                 MeshModuleControllerService *service = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-                service->importMshGrid(tempMshPath());
+                if (service) {
+                    QString err;
+                    if (!service->importCurrentGmshMesh(&err)) {
+                        appendLog(QString("内存导入失败：%1").arg(err));
+                        QMessageBox::warning(this, "整体剖分", QString("网格生成成功，但内存导入失败：%1").arg(err));
+                    }
+                }
 
                 if (m_thread) { m_thread->quit(); }
             });

@@ -283,6 +283,27 @@ void MeshModuleController::importMshGrid(QString path)
     syncPickMapGroupingFromGrid(m_importedGrid);
 }
 
+bool MeshModuleController::importCurrentGmshMesh(QString* errMsg)
+{
+    QString err;
+    auto grid = MeshGridIO::instance().loadCurrentGmshMesh(&err);
+    if (!grid || grid->GetNumberOfCells() == 0) {
+        if (errMsg) *errMsg = err.isEmpty() ? QStringLiteral("Gmsh 当前模型网格为空") : err;
+        return false;
+    }
+
+    m_importedGrid = grid;
+    m_hasGrid = true;
+    m_sourceFileName.clear();
+
+    if (m_visualWidgetService) {
+        m_visualWidgetService->clearAll();
+    }
+    displayCurrentGrid();
+    syncPickMapGroupingFromGrid(m_importedGrid);
+    return true;
+}
+
 MshPickMap MeshModuleController::mshPickMapSolid()
 {
     return MeshGridIO::instance().getMeshMap();

@@ -26,6 +26,7 @@
 #include <vtkCellData.h>
 #include <vtkPointData.h>
 #include <vtkFieldData.h>
+#include <gmsh.h>
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 static constexpr auto kSkipEmptyParts = QString::SkipEmptyParts;
@@ -361,6 +362,177 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importInp(const QString &fileNa
         if (errMsg) *errMsg = QObject::tr("无法解析 Abaqus 网格: %1").arg(fileName);
         return nullptr;
     }
+    ensureDefaultArrays(grid);
+    return grid;
+}
+
+
+vtkSmartPointer<vtkUnstructuredGrid>
+MeshGridIO::loadCurrentGmshMesh(QString *errMsg)
+{
+    auto fail = [&](const QString& s) -> vtkSmartPointer<vtkUnstructuredGrid> {
+        if (errMsg) *errMsg = s;
+        qWarning() << "[loadCurrentGmshMesh]" << s;
+        return nullptr;
+    };
+    if (errMsg) errMsg->clear();
+
+    clearPickMap();
+
+    auto grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    auto pts = vtkSmartPointer<vtkPoints>::New();
+    pts->SetDataTypeToDouble();
+
+    std::vector<std::size_t> nodeTags;
+    std::vector<double> nodeCoords;
+    std::vector<double> nodeParams;
+    gmsh::model::mesh::getNodes(nodeTags, nodeCoords, nodeParams);
+    if (nodeTags.empty()) {
+        return fail(QStringLiteral("Gmsh 当前模型没有节点"));
+    }
+
+    QHash<std::size_t, vtkIdType> nodeIdToPointId;
+    nodeIdToPointId.reserve(static_cast<int>(nodeTags.size()));
+
+    auto nodeIdArr = vtkSmartPointer<vtkIntArray>::New();
+    nodeIdArr->SetName("node_id");
+    nodeIdArr->SetNumberOfComponents(1);
+
+    for (std::size_t i = 0; i < nodeTags.size(); ++i) {
+        const std::size_t nid = nodeTags[i];
+        const double x = nodeCoords[3 * i + 0];
+        const double y = nodeCoords[3 * i + 1];
+        const double z = nodeCoords[3 * i + 2];
+        const vtkIdType pid = pts->InsertNextPoint(x, y, z);
+        nodeIdToPointId.insert(nid, pid);
+
+        const int nodeId = static_cast<int>(nid);
+        nodeIdArr->InsertNextValue(nodeId);
+        m_mshPickMap.pointIdToNodeId.insert(static_cast<int>(pid), nodeId);
+        m_mshPickMap.nodeIdToPointId.insert(nodeId, static_cast<int>(pid));
+    }
+
+    grid->SetPoints(pts);
+    grid->GetPointData()->AddArray(nodeIdArr);
+
+    auto matypeArr = vtkSmartPointer<vtkIntArray>::New();
+    matypeArr->SetName("MATYPE");
+    auto layerArr = vtkSmartPointer<vtkIntArray>::New();
+    layerArr->SetName("LAYER");
+    auto ketypeArr = vtkSmartPointer<vtkIntArray>::New();
+    ketypeArr->SetName("KETYPE");
+    auto elemIdArr = vtkSmartPointer<vtkIntArray>::New();
+    elemIdArr->SetName("elem_id");
+
+    auto gmshToVtkType = [](int gmshType) -> int {
+        switch (gmshType) {
+        case 1: return VTK_LINE;
+        case 2: return VTK_TRIANGLE;
+        case 3: return VTK_QUAD;
+        case 4: return VTK_TETRA;
+        case 5: return VTK_HEXAHEDRON;
+        case 6: return VTK_WEDGE;
+        case 7: return VTK_PYRAMID;
+        default: return -1;
+        }
+    };
+
+    auto gmshToKetype = [](int gmshType) -> int {
+        switch (gmshType) {
+        case 1: return 1;
+        case 2: return 31;
+        case 3: return 3;
+        case 4: return 35;
+        case 5: return 6;
+        case 6: return 17;
+        case 7: return 35;
+        default: return 0;
+        }
+    };
+
+    for (int dim = 0; dim <= 3; ++dim) {
+        std::vector<std::pair<int, int>> entities;
+        gmsh::model::getEntities(entities, dim);
+        for (const auto& ent : entities) {
+            const int entityTag = ent.second;
+
+            std::vector<int> physTags;
+            gmsh::model::getPhysicalGroupsForEntity(dim, entityTag, physTags);
+            int physId = physTags.empty() ? 0 : physTags.front();
+            if (physId > 0) {
+                QString physName;
+                try {
+                    std::string n;
+                    gmsh::model::getPhysicalName(dim, physId, n);
+                    physName = QString::fromStdString(n).trimmed();
+                } catch (...) {}
+                if (physName.isEmpty()) {
+                    physName = QString("dim%1_phys%2").arg(dim).arg(physId);
+                }
+                m_mshPickMap.physIdToName.insert(physId, physName);
+                m_mshPickMap.physIdToDim.insert(physId, dim);
+            }
+
+            std::vector<int> elementTypes;
+            std::vector<std::vector<std::size_t>> elementTags;
+            std::vector<std::vector<std::size_t>> elementNodes;
+            gmsh::model::mesh::getElements(elementTypes, elementTags, elementNodes, dim, entityTag);
+
+            for (std::size_t i = 0; i < elementTypes.size(); ++i) {
+                const int gmshType = elementTypes[i];
+                const int vtkType = gmshToVtkType(gmshType);
+                if (vtkType < 0) continue;
+
+                std::string name;
+                int eDim = 0, order = 0, numNodes = 0;
+                std::vector<double> localNodeCoords;
+                int numPrimaryNodes = 0;
+                gmsh::model::mesh::getElementProperties(gmshType, name, eDim, order, numNodes,
+                                                        localNodeCoords, numPrimaryNodes);
+                if (numNodes <= 0) continue;
+
+                const auto& tags = elementTags[i];
+                const auto& nodes = elementNodes[i];
+                if (nodes.size() != tags.size() * static_cast<std::size_t>(numNodes)) continue;
+
+                for (std::size_t e = 0; e < tags.size(); ++e) {
+                    vtkIdType ids[20];
+                    if (numNodes > 20) continue;
+                    bool ok = true;
+                    for (int k = 0; k < numNodes; ++k) {
+                        const std::size_t nodeId = nodes[e * static_cast<std::size_t>(numNodes) + static_cast<std::size_t>(k)];
+                        auto it = nodeIdToPointId.constFind(nodeId);
+                        if (it == nodeIdToPointId.constEnd()) { ok = false; break; }
+                        ids[k] = it.value();
+                    }
+                    if (!ok) continue;
+
+                    vtkIdType cid = grid->InsertNextCell(vtkType, numNodes, ids);
+                    elemIdArr->InsertNextValue(static_cast<int>(tags[e]));
+                    matypeArr->InsertNextValue(physId);
+                    layerArr->InsertNextValue(physId);
+                    ketypeArr->InsertNextValue(gmshToKetype(gmshType));
+
+                    if (physId > 0) {
+                        if (dim == 1) m_mshPickMap.linePhysToCellIds[physId].push_back(static_cast<qint64>(cid));
+                        else if (dim == 2) m_mshPickMap.surfPhysToCellIds[physId].push_back(static_cast<qint64>(cid));
+                        else if (dim == 3) m_mshPickMap.volPhysToCellIds[physId].push_back(static_cast<qint64>(cid));
+                    }
+                }
+            }
+        }
+    }
+
+    if (grid->GetNumberOfCells() == 0) {
+        return fail(QStringLiteral("Gmsh 当前模型没有可导入单元"));
+    }
+
+    grid->GetCellData()->AddArray(matypeArr);
+    grid->GetCellData()->AddArray(layerArr);
+    grid->GetCellData()->AddArray(ketypeArr);
+    grid->GetCellData()->AddArray(elemIdArr);
+    grid->GetCellData()->SetScalars(matypeArr);
+
     ensureDefaultArrays(grid);
     return grid;
 }

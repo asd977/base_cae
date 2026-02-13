@@ -37,6 +37,7 @@ public:
     vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGridLine();
 
     void importMshGrid(QString path);
+    bool importCurrentGmshMesh(QString* errMsg = nullptr) override;
 
     MshPickMap mshPickMapSolid();
     void setMshPickMapSolid(const MshPickMap& pickMap) override;
