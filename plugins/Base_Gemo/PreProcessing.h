@@ -24,6 +24,7 @@ public:
 	void closeProject() override;
 
     void generateStepFile() override;
+    QVector<qulonglong> occShapePointers() override;
     QStringList listEntityIds(int dim) override;
     bool highlightEntity(int dim, int id) override;
     void clearEntityHighlight() override;

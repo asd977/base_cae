@@ -2,6 +2,7 @@
 #define PREPROCESSINGSERVICE_H
 
 #include <QStringList>
+#include <QVector>
 
 class QString;
 class vtkActor;
@@ -18,6 +19,7 @@ struct PreProcessingService
 	virtual bool loadProject() = 0;
 	virtual void closeProject() = 0;
     virtual void generateStepFile() = 0;
+    virtual QVector<qulonglong> occShapePointers() = 0;
 
     // dim: 1=edge, 2=face, 3=solid
     virtual QStringList listEntityIds(int dim) = 0;

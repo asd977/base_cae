@@ -33,8 +33,7 @@
 #include <services/MeshModuleControllerService.h>
 #include <services/VisualWidgetService.h>
 #include <vtkUnstructuredGrid.h>
-#include "../Base_Gemo/GeomManagerInstance.h"
-#include "../Base_Gemo/GeomShapeObject.h"
+#include <services/PreProcessingService.h>
 
 // ---------------- Widget ----------------
 MeshGlobalMeshingWidget::MeshGlobalMeshingWidget(QWidget* parent)
@@ -172,14 +171,8 @@ void MeshGlobalMeshingWidget::onGenerate()
 {
     Params p = collectParams();
 
-    if (auto* gm = GeomManager::GeomManagerInstance::getInstance()) {
-        const auto shapeMap = gm->getShapMap();
-        for (GeomShapeObject* shapeObj : shapeMap) {
-            if (!shapeObj) continue;
-            TopoDS_Shape* shape = shapeObj->getShape();
-            if (!shape || shape->IsNull()) continue;
-            p.occShapePtrs.push_back(reinterpret_cast<qulonglong>(shape));
-        }
+    if (auto* service = ServiceRegistry::instance().getService<PreProcessingService>()) {
+        p.occShapePtrs = service->occShapePointers();
     }
 
     if (p.occShapePtrs.isEmpty()) {

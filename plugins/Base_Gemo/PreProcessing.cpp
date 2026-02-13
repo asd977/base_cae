@@ -416,6 +416,23 @@ void PreProcessing::closeProject()
     m_gridNode = nullptr;
 }
 
+
+QVector<qulonglong> PreProcessing::occShapePointers()
+{
+    QVector<qulonglong> out;
+    auto* mgr = GeomManager::GeomManagerInstance::getInstance();
+    if (!mgr) return out;
+
+    const auto shapeMap = mgr->getShapMap();
+    for (GeomShapeObject* shapeObj : shapeMap) {
+        if (!shapeObj) continue;
+        TopoDS_Shape* shape = shapeObj->getShape();
+        if (!shape || shape->IsNull()) continue;
+        out.push_back(reinterpret_cast<qulonglong>(shape));
+    }
+    return out;
+}
+
 void PreProcessing::generateStepFile()
 {
     // 1. 初始化容器
