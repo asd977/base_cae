@@ -326,6 +326,14 @@ private:
         }
 
         const QVector<int>& ordered = it.value();
+
+        // 优先把输入当作“真实 gmsh tag”使用：如果 tag 存在就直接返回。
+        // 这样兼容“界面显示的就是 tag”与“用户手填 tag”的场景。
+        if (ordered.contains(uiId)) {
+            return uiId;
+        }
+
+        // 否则再按 UI 序号（第 N 个实体）映射。
         const int idx = uiId - 1; // UI 编号从 1 开始（按序号），映射到当前模型实体序列
         if (idx < 0 || idx >= ordered.size()) return -1;
         return ordered[idx];
