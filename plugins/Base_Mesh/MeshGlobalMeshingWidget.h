@@ -340,6 +340,18 @@ private:
         std::vector<int> tags;
         if (uiId <= 0) return tags;
 
+        // 0) 先按“真实实体 tag”直接匹配（最直观、最稳定）
+        {
+            std::vector<std::pair<int,int>> ents;
+            gmsh::model::getEntities(ents, dim);
+            for (const auto& e : ents) {
+                if (e.second == uiId) {
+                    tags.push_back(uiId);
+                    return tags;
+                }
+            }
+        }
+
         // 1) 优先按真实实体 tag 命名解析（稳定且与用户输入一致）
         {
             const QString tagName = physicalTagName(dim, uiId);
@@ -353,9 +365,21 @@ private:
         // 2) 兼容旧逻辑：按 UI 序号命名解析
         const QString pName = physicalUiName(dim, uiId);
         const int physTag = findPhysicalGroupByName(dim, pName);
-        if (physTag <= 0) return tags;
+        if (physTag > 0) {
+            gmsh::model::getEntitiesForPhysicalGroup(dim, physTag, tags);
+            if (!tags.empty()) return tags;
+        }
 
-        gmsh::model::getEntitiesForPhysicalGroup(dim, physTag, tags);
+        // 3) 最后兜底：按“第 N 个实体”映射（兼容老输入习惯）
+        {
+            std::vector<std::pair<int,int>> ents;
+            gmsh::model::getEntities(ents, dim);
+            const int idx = uiId - 1;
+            if (idx >= 0 && idx < static_cast<int>(ents.size())) {
+                tags.push_back(ents[static_cast<std::size_t>(idx)].second);
+            }
+        }
+
         return tags;
     }
 
@@ -381,9 +405,14 @@ private:
             for (std::size_t i = 0; i < ents.size(); ++i)
             {
                 const int tag = ents[i].second;
-                const int phys = gmsh::model::addPhysicalGroup(dim, std::vector<int>{tag});
-                gmsh::model::setPhysicalName(dim, phys,
+                const int physByTag = gmsh::model::addPhysicalGroup(dim, std::vector<int>{tag});
+                gmsh::model::setPhysicalName(dim, physByTag,
                                              physicalTagName(dim, tag).toStdString());
+
+                // 同时保留 ui 序号命名，兼容旧输入语义（第N个实体）
+                const int physByUi = gmsh::model::addPhysicalGroup(dim, std::vector<int>{tag});
+                gmsh::model::setPhysicalName(dim, physByUi,
+                                             physicalUiName(dim, static_cast<int>(i) + 1).toStdString());
             }
         }
     }
