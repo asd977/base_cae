@@ -3,7 +3,7 @@
 #include <QString>
 #include <QList>
 
-#include <vtkSmartPointer.h>
+template <typename T> class vtkSmartPointer;
 
 class vtkProp;
 class vtkActor;
