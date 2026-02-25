@@ -512,11 +512,14 @@ MeshGridIO::loadCurrentGmshMesh(QString *errMsg)
                     }
                     if (!ok) continue;
 
-                    vtkIdType cid = grid->InsertNextCell(vtkType, numNodes, ids);
-                    elemIdArr->InsertNextValue(static_cast<int>(tags[e]));
-                    matypeArr->InsertNextValue(physId);
-                    layerArr->InsertNextValue(physId);
-                    ketypeArr->InsertNextValue(gmshToKetype(gmshType));
+                    vtkIdType cid = -1;
+                    if (dim == 3) {
+                        cid = grid->InsertNextCell(vtkType, numNodes, ids);
+                        elemIdArr->InsertNextValue(static_cast<int>(tags[e]));
+                        matypeArr->InsertNextValue(physId);
+                        layerArr->InsertNextValue(physId);
+                        ketypeArr->InsertNextValue(gmshToKetype(gmshType));
+                    }
 
                     if (physId > 0)
                     {
@@ -588,7 +591,7 @@ MeshGridIO::loadCurrentGmshMesh(QString *errMsg)
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
         vtkCell* cell = grid->GetCell(cid);
-        if (!cell || cell->GetCellDimension() != 3) continue;
+        if (!cell) continue;
 
         const int nEdges = cell->GetNumberOfEdges();
         for (int ei = 0; ei < nEdges; ++ei)
