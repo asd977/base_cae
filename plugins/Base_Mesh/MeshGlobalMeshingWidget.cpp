@@ -419,6 +419,9 @@ void MeshGlobalMeshingWidget::showMeshVtk(const QString& vtkPath)
     visual->addProp("mesh.global.surf", actorSurf, QStringLiteral("{mesh} 全局网格-表面"));
     visual->addProp("mesh.global.wire", actorWire, QStringLiteral("{mesh} 全局网格-线框"));
 
+    // 网格结果展示时默认隐藏几何；当用户切回几何树节点会自动恢复。
+    visual->setGroupVisible("Geometry", false, false);
+
     visual->resetCamera();
     visual->render();
 

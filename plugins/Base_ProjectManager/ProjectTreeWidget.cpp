@@ -190,7 +190,8 @@ void ProjectTreeWidget::ensureSceneVisibleForCurrentNode(QTreeWidgetItem* curren
     }
     else if (module == "Mesh")
     {
-        // 切到网格节点时确保网格可见，同时保留几何（方便对照）。
+        // 切到网格节点时隐藏几何，仅显示网格结果。
+        vis->setGroupVisible("Geometry", false, false);
         vis->setVisible("mesh.global.surf", true, false);
         vis->setVisible("mesh.global.wire", true, false);
         vis->setVisible("mesh.imported.surface", true, false);

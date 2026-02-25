@@ -471,6 +471,10 @@ void MeshModuleController::displayCurrentGrid()
         m_previewActor = m_previewLineActor;
         m_previewMapper = m_previewLineMapper;
     }
+
+    // 网格导入/预览后默认只显示网格。
+    m_visualWidgetService->setGroupVisible("Geometry", false, false);
+    m_visualWidgetService->render();
 }
 
 
