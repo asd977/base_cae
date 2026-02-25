@@ -356,12 +356,19 @@ private:
         std::vector<int> tags;
         if (uiId <= 0) return tags;
 
-        const QString name = physicalUiName(dim, uiId);
-        const int physTag = findPhysicalGroupByName(dim, name);
-        if (physTag <= 0) return tags;
+        int tag = -1;
+        if (dim == 1) tag = m_edgeUiToTag.value(uiId, -1);
+        else if (dim == 2) tag = m_faceUiToTag.value(uiId, -1);
+        else if (dim == 3) tag = m_volumeUiToTag.value(uiId, -1);
+        if (tag <= 0) return tags;
 
-        gmsh::model::getEntitiesForPhysicalGroup(dim, physTag, tags);
-        if (tags.size() != 1) tags.clear();
+        // 防御性检查：确认该实体当前仍存在。
+        std::vector<std::pair<int,int>> ents;
+        gmsh::model::getEntities(ents, dim);
+        const bool exists = std::any_of(ents.begin(), ents.end(), [tag](const std::pair<int,int>& e){
+            return e.second == tag;
+        });
+        if (exists) tags.push_back(tag);
         return tags;
     }
 
@@ -476,14 +483,7 @@ private:
             for (const auto& e : ents)
             {
                 const int tag = e.second;
-                QString name = physicalTagName(dim, tag);
-                if (dim == 1 && m_edgeUiToTag.values().contains(tag)) {
-                    name = physicalUiName(dim, m_edgeUiToTag.key(tag));
-                } else if (dim == 2 && m_faceUiToTag.values().contains(tag)) {
-                    name = physicalUiName(dim, m_faceUiToTag.key(tag));
-                } else if (dim == 3 && m_volumeUiToTag.values().contains(tag)) {
-                    name = physicalUiName(dim, m_volumeUiToTag.key(tag));
-                }
+                const QString name = physicalTagName(dim, tag);
 
                 const int phys = gmsh::model::addPhysicalGroup(dim, std::vector<int>{tag});
                 gmsh::model::setPhysicalName(dim, phys, name.toStdString());
