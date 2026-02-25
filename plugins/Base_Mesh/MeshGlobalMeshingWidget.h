@@ -462,6 +462,13 @@ private:
 
     void createPhysicalGroupsAllDims()
     {
+        // 先清掉历史 PhysicalGroups，避免重复生成后出现 dim*_ui* / dim*_tag* 并存。
+        std::vector<std::pair<int,int>> oldPhys;
+        gmsh::model::getPhysicalGroups(oldPhys);
+        if (!oldPhys.empty()) {
+            gmsh::model::removePhysicalGroups(oldPhys);
+        }
+
         for (int dim = 0; dim <= 3; ++dim)
         {
             std::vector<std::pair<int,int>> ents;
