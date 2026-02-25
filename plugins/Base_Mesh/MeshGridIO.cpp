@@ -469,8 +469,10 @@ MeshGridIO::loadCurrentGmshMesh(QString *errMsg)
                 if (physName.isEmpty()) {
                     physName = QString("dim%1_phys%2").arg(dim).arg(physId);
                 }
-                m_mshPickMap.physIdToName.insert(physId, physName);
-                m_mshPickMap.physIdToDim.insert(physId, dim);
+                if (!m_mshPickMap.physIdToName.contains(physId))
+                    m_mshPickMap.physIdToName.insert(physId, physName);
+                if (!m_mshPickMap.physIdToDim.contains(physId))
+                    m_mshPickMap.physIdToDim.insert(physId, dim);
             }
 
             std::vector<int> elementTypes;
@@ -513,8 +515,32 @@ MeshGridIO::loadCurrentGmshMesh(QString *errMsg)
                     layerArr->InsertNextValue(physId);
                     ketypeArr->InsertNextValue(gmshToKetype(gmshType));
 
-                    if (physId > 0 && dim == 3) {
-                        m_mshPickMap.volPhysToCellIds[physId].push_back(static_cast<qint64>(cid));
+                    if (physId > 0)
+                    {
+                        if (!m_mshPickMap.physIdToDim.contains(physId)) {
+                            m_mshPickMap.physIdToDim.insert(physId, dim);
+                        }
+
+                        if (dim == 3) {
+                            m_mshPickMap.volPhysToCellIds[physId].push_back(static_cast<qint64>(cid));
+                        } else if (dim == 0) {
+                            if (numNodes >= 1 && ids[0] <= std::numeric_limits<int>::max()) {
+                                m_mshPickMap.bndPointPhysToPointIds[physId].push_back(static_cast<int>(ids[0]));
+                            }
+                        } else if (dim == 1) {
+                            if (numNodes >= 2 && ids[0] <= std::numeric_limits<int>::max() && ids[1] <= std::numeric_limits<int>::max()) {
+                                m_mshPickMap.bndEdgePhysToPointIds[physId].push_back(static_cast<int>(ids[0]));
+                                m_mshPickMap.bndEdgePhysToPointIds[physId].push_back(static_cast<int>(ids[1]));
+                            }
+                        } else if (dim == 2) {
+                            const int cornerN = (numPrimaryNodes >= 3 ? numPrimaryNodes : numNodes);
+                            const int n = std::min(cornerN, 4);
+                            for (int k = 0; k < n; ++k) {
+                                if (ids[k] <= std::numeric_limits<int>::max()) {
+                                    m_mshPickMap.bndFacePhysToPointIds[physId].push_back(static_cast<int>(ids[k]));
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -525,6 +551,18 @@ MeshGridIO::loadCurrentGmshMesh(QString *errMsg)
         return fail(QStringLiteral("Gmsh 当前模型没有可导入单元"));
     }
 
+
+    auto dedupIntVec = [](QVector<int>& v) {
+        std::sort(v.begin(), v.end());
+        v.erase(std::unique(v.begin(), v.end()), v.end());
+    };
+
+    for (auto it = m_mshPickMap.bndPointPhysToPointIds.begin(); it != m_mshPickMap.bndPointPhysToPointIds.end(); ++it)
+        dedupIntVec(it.value());
+    for (auto it = m_mshPickMap.bndEdgePhysToPointIds.begin(); it != m_mshPickMap.bndEdgePhysToPointIds.end(); ++it)
+        dedupIntVec(it.value());
+    for (auto it = m_mshPickMap.bndFacePhysToPointIds.begin(); it != m_mshPickMap.bndFacePhysToPointIds.end(); ++it)
+        dedupIntVec(it.value());
     grid->GetCellData()->AddArray(matypeArr);
     grid->GetCellData()->AddArray(layerArr);
     grid->GetCellData()->AddArray(ketypeArr);
