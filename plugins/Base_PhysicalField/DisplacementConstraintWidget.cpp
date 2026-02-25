@@ -2,6 +2,7 @@
 #include "ui_DisplacementConstraintWidget.h"
 
 #include <QDebug>
+#include <QSet>
 #include <ServiceRegistry.h>
 
 #include <services/MeshModuleControllerService.h>
@@ -103,7 +104,19 @@ void DisplacementConstraintWidget::refreshGroupCombo(int dimFilter)
         if (dim < 0 || dim > 2) continue;
         if (dimFilter >= 0 && dimFilter != dim) continue;
 
-        const QString text = QString("%1  (dim=%2, id=%3)").arg(name).arg(dim).arg(physId);
+        int pointCount = 0;
+        if (dim == 0)      pointCount = map.bndPointPhysToPointIds.value(physId).size();
+        else if (dim == 1) pointCount = map.bndEdgePhysToPointIds.value(physId).size();
+        else if (dim == 2) pointCount = map.bndFacePhysToPointIds.value(physId).size();
+
+        if (pointCount <= 0)
+        {
+            qDebug() << "[DisplacementConstraintWidget] skip empty group"
+                     << "name=" << name << "physId=" << physId << "dim=" << dim;
+            continue;
+        }
+
+        const QString text = QString("%1  (dim=%2, id=%3, n=%4)").arg(name).arg(dim).arg(physId).arg(pointCount);
         ui->comboBoxGroup->addItem(text, physId);
     }
     ui->comboBoxGroup->blockSignals(false);
@@ -152,6 +165,27 @@ void DisplacementConstraintWidget::onGroupChanged(int index)
              << "physId=" << physId
              << "dim=" << dim
              << "pointIds=" << pointIdsInt.size();
+
+    if (pointIdsInt.isEmpty())
+    {
+        // 某些网格物理组可能 dim 标注与边界映射不一致；做一次兜底合并，避免“看起来选中了但不变色”
+        const QVector<int> p0 = map.bndPointPhysToPointIds.value(physId);
+        const QVector<int> p1 = map.bndEdgePhysToPointIds.value(physId);
+        const QVector<int> p2 = map.bndFacePhysToPointIds.value(physId);
+        QSet<int> merged;
+        for (int v : p0) merged.insert(v);
+        for (int v : p1) merged.insert(v);
+        for (int v : p2) merged.insert(v);
+        pointIdsInt = merged.values().toVector();
+
+        qDebug() << "[DisplacementConstraintWidget] fallback merged pointIds"
+                 << "physId=" << physId
+                 << "dim=" << dim
+                 << "point=" << p0.size()
+                 << "edge=" << p1.size()
+                 << "face=" << p2.size()
+                 << "merged=" << pointIdsInt.size();
+    }
 
     QVector<vtkIdType> pids;
     pids.reserve(pointIdsInt.size());
