@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <set>
 #include <limits>
+#include <cmath>
 #include <services/MeshModuleControllerService.h>
 
 class QThread;
@@ -48,6 +49,10 @@ struct Params
     QMap<int, QVector3D> edgeCenters;
     QMap<int, QVector3D> faceCenters;
     QMap<int, QVector3D> volumeCenters;
+
+    QMap<int, double> edgeMeasures;
+    QMap<int, double> faceMeasures;
+    QMap<int, double> volumeMeasures;
 };
 
 }
@@ -373,7 +378,16 @@ private:
         return QVector3D(x, y, z);
     }
 
-    QMap<int, int> buildUiToTagMap(int dim, const QMap<int, QVector3D>& uiCenters)
+    static double gmshMeasure(int dim, int tag)
+    {
+        double m = 0.0;
+        gmsh::model::occ::getMass(dim, tag, m);
+        return m;
+    }
+
+    QMap<int, int> buildUiToTagMap(int dim,
+                                   const QMap<int, QVector3D>& uiCenters,
+                                   const QMap<int, double>& uiMeasures)
     {
         QMap<int, int> out;
         if (uiCenters.isEmpty()) return out;
@@ -384,11 +398,13 @@ private:
 
         QVector<int> tags;
         QMap<int, QVector3D> centers;
+        QMap<int, double> measures;
         for (const auto& e : ents) {
             try {
                 const int tag = e.second;
                 tags.push_back(tag);
                 centers.insert(tag, gmshCenter(dim, tag));
+                measures.insert(tag, gmshMeasure(dim, tag));
             } catch (...) {}
         }
 
@@ -396,13 +412,23 @@ private:
         for (auto it = uiCenters.constBegin(); it != uiCenters.constEnd(); ++it) {
             const int uiId = it.key();
             const QVector3D uiCenter = it.value();
+            const double uiMeasure = uiMeasures.value(uiId, -1.0);
             double best = std::numeric_limits<double>::max();
             int bestTag = -1;
             for (int tag : tags) {
                 if (used.contains(tag)) continue;
                 const double d2 = dist2(uiCenter, centers.value(tag));
-                if (d2 < best) {
-                    best = d2;
+
+                double measurePenalty = 0.0;
+                const double tagMeasure = measures.value(tag, -1.0);
+                if (uiMeasure > 0.0 && tagMeasure > 0.0) {
+                    const double ratio = std::max(uiMeasure, tagMeasure) / std::max(1e-12, std::min(uiMeasure, tagMeasure));
+                    measurePenalty = std::log(ratio + 1.0);
+                }
+
+                const double score = d2 + 0.05 * measurePenalty;
+                if (score < best) {
+                    best = score;
                     bestTag = tag;
                 }
             }
@@ -416,9 +442,9 @@ private:
 
     void buildUiMappings()
     {
-        m_edgeUiToTag = buildUiToTagMap(1, m_p.edgeCenters);
-        m_faceUiToTag = buildUiToTagMap(2, m_p.faceCenters);
-        m_volumeUiToTag = buildUiToTagMap(3, m_p.volumeCenters);
+        m_edgeUiToTag = buildUiToTagMap(1, m_p.edgeCenters, m_p.edgeMeasures);
+        m_faceUiToTag = buildUiToTagMap(2, m_p.faceCenters, m_p.faceMeasures);
+        m_volumeUiToTag = buildUiToTagMap(3, m_p.volumeCenters, m_p.volumeMeasures);
     }
 
     static void ensureGmshInitialized()

@@ -846,26 +846,44 @@ QString PreProcessing::makeUniqueName(const QString &baseName, const QString &ty
     return QStringLiteral("%1(%2)").arg(baseName).arg(count);
 }
 
-
-QStringList PreProcessing::listEntityIds(int dim)
+namespace {
+bool buildIndexedShapesFromAllGeometry(int dim, TopTools_IndexedMapOfShape& indexed)
 {
-    QStringList out;
+    indexed.Clear();
+
     auto* mgr = GeomManager::GeomManagerInstance::getInstance();
-    if (!mgr || mgr->isEmpty()) return out;
+    if (!mgr || mgr->isEmpty()) return false;
 
-    auto map = mgr->getShapMap();
-    GeomShapeObject* obj = nullptr;
+    const auto map = mgr->getShapMap();
+    BRep_Builder builder;
+    TopoDS_Compound compound;
+    builder.MakeCompound(compound);
+
+    bool hasShape = false;
     for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
-        if (it.value() && it.value()->getShape()) { obj = it.value(); break; }
+        GeomShapeObject* obj = it.value();
+        if (!obj || !obj->getShape()) continue;
+        builder.Add(compound, *obj->getShape());
+        hasShape = true;
     }
-    if (!obj || !obj->getShape()) return out;
+    if (!hasShape) return false;
 
-    TopTools_IndexedMapOfShape indexed;
     TopAbs_ShapeEnum shapeType = TopAbs_EDGE;
     if (dim == 2) shapeType = TopAbs_FACE;
     else if (dim == 3) shapeType = TopAbs_SOLID;
 
-    TopExp::MapShapes(*obj->getShape(), shapeType, indexed);
+    TopExp::MapShapes(compound, shapeType, indexed);
+    return indexed.Extent() > 0;
+}
+}
+
+
+QStringList PreProcessing::listEntityIds(int dim)
+{
+    QStringList out;
+    TopTools_IndexedMapOfShape indexed;
+    if (!buildIndexedShapesFromAllGeometry(dim, indexed)) return out;
+
     for (int i = 1; i <= indexed.Extent(); ++i) out << QString::number(i);
     return out;
 }
@@ -875,22 +893,9 @@ bool PreProcessing::entityCenter(int dim, int id, QVector3D& center)
     center = QVector3D();
     if (id <= 0) return false;
 
-    auto* mgr = GeomManager::GeomManagerInstance::getInstance();
-    if (!mgr || mgr->isEmpty()) return false;
-
-    auto map = mgr->getShapMap();
-    GeomShapeObject* obj = nullptr;
-    for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
-        if (it.value() && it.value()->getShape()) { obj = it.value(); break; }
-    }
-    if (!obj || !obj->getShape()) return false;
-
     TopTools_IndexedMapOfShape indexed;
-    TopAbs_ShapeEnum shapeType = TopAbs_EDGE;
-    if (dim == 2) shapeType = TopAbs_FACE;
-    else if (dim == 3) shapeType = TopAbs_SOLID;
+    if (!buildIndexedShapesFromAllGeometry(dim, indexed)) return false;
 
-    TopExp::MapShapes(*obj->getShape(), shapeType, indexed);
     if (id > indexed.Extent()) return false;
 
     const TopoDS_Shape target = indexed(id);
@@ -908,28 +913,40 @@ bool PreProcessing::entityCenter(int dim, int id, QVector3D& center)
     return true;
 }
 
+bool PreProcessing::entityMeasure(int dim, int id, double& measure)
+{
+    measure = 0.0;
+    if (id <= 0) return false;
+
+    TopTools_IndexedMapOfShape indexed;
+    if (!buildIndexedShapesFromAllGeometry(dim, indexed)) return false;
+
+    if (id > indexed.Extent()) return false;
+
+    const TopoDS_Shape target = indexed(id);
+    GProp_GProps props;
+    if (dim == 1) {
+        BRepGProp::LinearProperties(target, props);
+    } else if (dim == 2) {
+        BRepGProp::SurfaceProperties(target, props);
+    } else {
+        BRepGProp::VolumeProperties(target, props);
+    }
+
+    measure = props.Mass();
+    return measure > 0.0;
+}
+
+
 
 bool PreProcessing::highlightEntity(int dim, int id)
 {
     clearEntityHighlight();
     if (id <= 0) return false;
 
-    auto* mgr = GeomManager::GeomManagerInstance::getInstance();
-    if (!mgr || mgr->isEmpty()) return false;
-
-    auto map = mgr->getShapMap();
-    GeomShapeObject* obj = nullptr;
-    for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
-        if (it.value() && it.value()->getShape()) { obj = it.value(); break; }
-    }
-    if (!obj || !obj->getShape()) return false;
-
     TopTools_IndexedMapOfShape indexed;
-    TopAbs_ShapeEnum shapeType = TopAbs_EDGE;
-    if (dim == 2) shapeType = TopAbs_FACE;
-    else if (dim == 3) shapeType = TopAbs_SOLID;
+    if (!buildIndexedShapesFromAllGeometry(dim, indexed)) return false;
 
-    TopExp::MapShapes(*obj->getShape(), shapeType, indexed);
     if (id > indexed.Extent()) return false;
 
     TopoDS_Shape target = indexed(id);
