@@ -190,12 +190,26 @@ void ProjectTreeWidget::ensureSceneVisibleForCurrentNode(QTreeWidgetItem* curren
     }
     else if (module == "Mesh")
     {
-        // 切到网格节点时隐藏几何，仅显示网格结果。
-        vis->setGroupVisible("Geometry", false, false);
-        vis->setVisible("mesh.global.surf", true, false);
-        vis->setVisible("mesh.global.wire", true, false);
-        vis->setVisible("mesh.imported.surface", true, false);
-        vis->setVisible("mesh.imported.line", true, false);
+        const bool hasMeshActors =
+            vis->getProp("mesh.global.surf") != nullptr ||
+            vis->getProp("mesh.global.wire") != nullptr ||
+            vis->getProp("mesh.imported.surface") != nullptr ||
+            vis->getProp("mesh.imported.line") != nullptr;
+
+        if (hasMeshActors)
+        {
+            // 切到网格节点且存在网格结果时：隐藏几何，仅显示网格结果。
+            vis->setGroupVisible("Geometry", false, false);
+            vis->setVisible("mesh.global.surf", true, false);
+            vis->setVisible("mesh.global.wire", true, false);
+            vis->setVisible("mesh.imported.surface", true, false);
+            vis->setVisible("mesh.imported.line", true, false);
+        }
+        else
+        {
+            // 还没有任何网格结果时，保留几何显示，避免“切到网格页面模型消失”。
+            vis->setGroupVisible("Geometry", true, false);
+        }
         vis->render();
     }
 }
