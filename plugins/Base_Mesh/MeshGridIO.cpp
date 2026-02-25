@@ -453,6 +453,33 @@ MeshGridIO::loadCurrentGmshMesh(QString *errMsg)
         }
     };
 
+    auto dimHasImportableElements = [&](int dim) -> bool {
+        std::vector<std::pair<int, int>> entities;
+        gmsh::model::getEntities(entities, dim);
+        for (const auto& ent : entities) {
+            std::vector<int> elementTypes;
+            std::vector<std::vector<std::size_t>> elementTags;
+            std::vector<std::vector<std::size_t>> elementNodes;
+            gmsh::model::mesh::getElements(elementTypes, elementTags, elementNodes, dim, ent.second);
+            for (std::size_t i = 0; i < elementTypes.size(); ++i) {
+                if (gmshToVtkType(elementTypes[i]) < 0) continue;
+                if (i < elementTags.size() && !elementTags[i].empty()) return true;
+            }
+        }
+        return false;
+    };
+
+    int targetCellDim = -1;
+    for (int dim = 3; dim >= 0; --dim) {
+        if (dimHasImportableElements(dim)) {
+            targetCellDim = dim;
+            break;
+        }
+    }
+    if (targetCellDim < 0) {
+        return fail(QStringLiteral("Gmsh 当前模型没有可导入单元"));
+    }
+
     for (int dim = 0; dim <= 3; ++dim) {
         std::vector<std::pair<int, int>> entities;
         gmsh::model::getEntities(entities, dim);
@@ -513,7 +540,7 @@ MeshGridIO::loadCurrentGmshMesh(QString *errMsg)
                     if (!ok) continue;
 
                     vtkIdType cid = -1;
-                    if (dim == 3) {
+                    if (dim == targetCellDim) {
                         cid = grid->InsertNextCell(vtkType, numNodes, ids);
                         elemIdArr->InsertNextValue(static_cast<int>(tags[e]));
                         matypeArr->InsertNextValue(physId);
@@ -527,34 +554,62 @@ MeshGridIO::loadCurrentGmshMesh(QString *errMsg)
                             m_mshPickMap.physIdToDim.insert(physId, dim);
                         }
 
-                        if (dim == 3) {
+                        if (dim == targetCellDim) {
                             m_mshPickMap.volPhysToCellIds[physId].push_back(static_cast<qint64>(cid));
-                        } else if (dim == 0) {
-                            if (numNodes >= 1 && ids[0] <= std::numeric_limits<int>::max()) {
-                                m_mshPickMap.bndPointPhysToPointIds[physId].push_back(static_cast<int>(ids[0]));
-                            }
-                        } else if (dim == 1) {
-                            if (numNodes >= 2 && ids[0] <= std::numeric_limits<int>::max() && ids[1] <= std::numeric_limits<int>::max()) {
-                                const int p0 = static_cast<int>(ids[0]);
-                                const int p1 = static_cast<int>(ids[1]);
-                                m_mshPickMap.bndEdgePhysToPointIds[physId].push_back(p0);
-                                m_mshPickMap.bndEdgePhysToPointIds[physId].push_back(p1);
-                                tmpEdgeElems[physId].push_back(QVector<int>{p0, p1});
-                            }
-                        } else if (dim == 2) {
-                            const int cornerN = (numPrimaryNodes >= 3 ? numPrimaryNodes : numNodes);
-                            const int n = std::min(cornerN, 4);
-                            QVector<int> facePts;
-                            facePts.reserve(n);
-                            for (int k = 0; k < n; ++k) {
-                                if (ids[k] <= std::numeric_limits<int>::max()) {
-                                    const int pk = static_cast<int>(ids[k]);
-                                    m_mshPickMap.bndFacePhysToPointIds[physId].push_back(pk);
-                                    facePts.push_back(pk);
+
+                            // 2D 模型时，域单元本身就是“可选面”；1D 模型时，域单元本身就是“可选线”。
+                            if (targetCellDim == 2) {
+                                const int cornerN = (numPrimaryNodes >= 3 ? numPrimaryNodes : numNodes);
+                                const int n = std::min(cornerN, 4);
+                                QVector<int> facePts;
+                                facePts.reserve(n);
+                                for (int k = 0; k < n; ++k) {
+                                    if (ids[k] <= std::numeric_limits<int>::max()) {
+                                        const int pk = static_cast<int>(ids[k]);
+                                        m_mshPickMap.bndFacePhysToPointIds[physId].push_back(pk);
+                                        facePts.push_back(pk);
+                                    }
+                                }
+                                if (facePts.size() >= 3) {
+                                    tmpFaceElems[physId].push_back(facePts);
+                                }
+                            } else if (targetCellDim == 1) {
+                                if (numNodes >= 2 && ids[0] <= std::numeric_limits<int>::max() && ids[1] <= std::numeric_limits<int>::max()) {
+                                    const int p0 = static_cast<int>(ids[0]);
+                                    const int p1 = static_cast<int>(ids[1]);
+                                    m_mshPickMap.bndEdgePhysToPointIds[physId].push_back(p0);
+                                    m_mshPickMap.bndEdgePhysToPointIds[physId].push_back(p1);
+                                    tmpEdgeElems[physId].push_back(QVector<int>{p0, p1});
                                 }
                             }
-                            if (facePts.size() >= 3) {
-                                tmpFaceElems[physId].push_back(facePts);
+                        } else if (dim < targetCellDim) {
+                            if (dim == 0) {
+                                if (numNodes >= 1 && ids[0] <= std::numeric_limits<int>::max()) {
+                                    m_mshPickMap.bndPointPhysToPointIds[physId].push_back(static_cast<int>(ids[0]));
+                                }
+                            } else if (dim == 1) {
+                                if (numNodes >= 2 && ids[0] <= std::numeric_limits<int>::max() && ids[1] <= std::numeric_limits<int>::max()) {
+                                    const int p0 = static_cast<int>(ids[0]);
+                                    const int p1 = static_cast<int>(ids[1]);
+                                    m_mshPickMap.bndEdgePhysToPointIds[physId].push_back(p0);
+                                    m_mshPickMap.bndEdgePhysToPointIds[physId].push_back(p1);
+                                    tmpEdgeElems[physId].push_back(QVector<int>{p0, p1});
+                                }
+                            } else if (dim == 2) {
+                                const int cornerN = (numPrimaryNodes >= 3 ? numPrimaryNodes : numNodes);
+                                const int n = std::min(cornerN, 4);
+                                QVector<int> facePts;
+                                facePts.reserve(n);
+                                for (int k = 0; k < n; ++k) {
+                                    if (ids[k] <= std::numeric_limits<int>::max()) {
+                                        const int pk = static_cast<int>(ids[k]);
+                                        m_mshPickMap.bndFacePhysToPointIds[physId].push_back(pk);
+                                        facePts.push_back(pk);
+                                    }
+                                }
+                                if (facePts.size() >= 3) {
+                                    tmpFaceElems[physId].push_back(facePts);
+                                }
                             }
                         }
                     }
@@ -564,7 +619,7 @@ MeshGridIO::loadCurrentGmshMesh(QString *errMsg)
     }
 
     if (grid->GetNumberOfCells() == 0) {
-        return fail(QStringLiteral("Gmsh 当前模型没有可导入单元"));
+        return fail(QStringLiteral("Gmsh 当前模型没有可导入的目标维度单元"));
     }
 
 

@@ -55,9 +55,8 @@ void LinearForcePage::setupBatchGroupCombo()
 {
     ui->comboBoxDim->blockSignals(true);
     ui->comboBoxDim->clear();
-    ui->comboBoxDim->addItem("全部维度", -1);
-    ui->comboBoxDim->addItem("dim1 线", 1);
-    ui->comboBoxDim->setCurrentIndex(1);
+    ui->comboBoxDim->addItem("线", 1);
+    ui->comboBoxDim->setCurrentIndex(0);
     ui->comboBoxDim->blockSignals(false);
 
     connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -80,8 +79,8 @@ void LinearForcePage::refreshGroupCombo()
         const int physId = it.key();
         const int dim = map.physIdToDim.value(physId, -1);
         if (dim != 1) continue;
-        if (dimFilter >= 0 && dim != dimFilter) continue;
-        ui->comboBoxGroup->addItem(QString("%1  (dim=1, id=%2)").arg(it.value()).arg(physId), physId);
+        if (dimFilter != 1) continue;
+        ui->comboBoxGroup->addItem(QString("%1  (id=%2)").arg(it.value()).arg(physId), physId);
     }
     ui->comboBoxGroup->blockSignals(false);
 }

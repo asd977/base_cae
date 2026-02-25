@@ -204,22 +204,14 @@ public slots:
 
             std::vector<std::pair<int,int>> outDimTags;
             gmsh::model::occ::importShapes(stepPath.toStdString(), outDimTags, true);
-            // Ensure touching domains share one interface entity after STEP import.
-            // 注意：removeAllDuplicates 可能改变实体 tag；而边/面控制使用的是界面显示的几何编号。
-            // 为避免“显示编号与实际细化位置不一致”，有局部控制时不做该步骤，保证编号稳定。
-            const bool hasLocalControls = !m_p.edgeRules.isEmpty()
-                                          || !m_p.faceRules.isEmpty()
-                                          || !m_p.volumeRules.isEmpty();
-            if (!hasLocalControls && outDimTags.size() > 1) {
-                try {
-                    gmsh::model::occ::removeAllDuplicates();
-                } catch (const std::exception& e) {
-                    emit log(QString("removeAllDuplicates 跳过：%1").arg(e.what()));
-                } catch (...) {
-                    emit log("removeAllDuplicates 跳过：unknown error");
-                }
-            } else if (hasLocalControls) {
-                emit log("检测到边/面/体局部控制：为保持编号与界面一致，已跳过 removeAllDuplicates。");
+            // Ensure touching/overlapping entities are merged after STEP import.
+            // 即使存在局部控制，也需要先去重；后续会通过 buildUiMappings 重新做 UI->tag 对应。
+            try {
+                gmsh::model::occ::removeAllDuplicates();
+            } catch (const std::exception& e) {
+                emit log(QString("removeAllDuplicates 跳过：%1").arg(e.what()));
+            } catch (...) {
+                emit log("removeAllDuplicates 跳过：unknown error");
             }
             gmsh::model::occ::synchronize();
 
@@ -356,12 +348,19 @@ private:
         std::vector<int> tags;
         if (uiId <= 0) return tags;
 
-        const QString name = physicalUiName(dim, uiId);
-        const int physTag = findPhysicalGroupByName(dim, name);
-        if (physTag <= 0) return tags;
+        int tag = -1;
+        if (dim == 1) tag = m_edgeUiToTag.value(uiId, -1);
+        else if (dim == 2) tag = m_faceUiToTag.value(uiId, -1);
+        else if (dim == 3) tag = m_volumeUiToTag.value(uiId, -1);
+        if (tag <= 0) return tags;
 
-        gmsh::model::getEntitiesForPhysicalGroup(dim, physTag, tags);
-        if (tags.size() != 1) tags.clear();
+        // 防御性检查：确认该实体当前仍存在。
+        std::vector<std::pair<int,int>> ents;
+        gmsh::model::getEntities(ents, dim);
+        const bool exists = std::any_of(ents.begin(), ents.end(), [tag](const std::pair<int,int>& e){
+            return e.second == tag;
+        });
+        if (exists) tags.push_back(tag);
         return tags;
     }
 
@@ -462,6 +461,13 @@ private:
 
     void createPhysicalGroupsAllDims()
     {
+        // 先清掉历史 PhysicalGroups，避免重复生成后出现 dim*_ui* / dim*_tag* 并存。
+        std::vector<std::pair<int,int>> oldPhys;
+        gmsh::model::getPhysicalGroups(oldPhys);
+        if (!oldPhys.empty()) {
+            gmsh::model::removePhysicalGroups(oldPhys);
+        }
+
         for (int dim = 0; dim <= 3; ++dim)
         {
             std::vector<std::pair<int,int>> ents;
@@ -469,14 +475,7 @@ private:
             for (const auto& e : ents)
             {
                 const int tag = e.second;
-                QString name = physicalTagName(dim, tag);
-                if (dim == 1 && m_edgeUiToTag.values().contains(tag)) {
-                    name = physicalUiName(dim, m_edgeUiToTag.key(tag));
-                } else if (dim == 2 && m_faceUiToTag.values().contains(tag)) {
-                    name = physicalUiName(dim, m_faceUiToTag.key(tag));
-                } else if (dim == 3 && m_volumeUiToTag.values().contains(tag)) {
-                    name = physicalUiName(dim, m_volumeUiToTag.key(tag));
-                }
+                const QString name = physicalTagName(dim, tag);
 
                 const int phys = gmsh::model::addPhysicalGroup(dim, std::vector<int>{tag});
                 gmsh::model::setPhysicalName(dim, phys, name.toStdString());
