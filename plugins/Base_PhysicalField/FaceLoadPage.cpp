@@ -7,6 +7,7 @@
 #include <QPushButton>
 #include <QMessageBox>
 #include <QDebug>
+#include <algorithm>
 #include <ServiceRegistry.h>
 
 #include "PickManager.h"
@@ -49,11 +50,24 @@ double FaceLoadPage::fzValue()  { return ui->lineEditZ->text().toDouble(); }
 
 void FaceLoadPage::setupBatchGroupCombo()
 {
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    const MshPickMap map = meshSvc ? meshSvc->mshPickMapSolid() : MshPickMap{};
+
     ui->comboBoxDim->blockSignals(true);
     ui->comboBoxDim->clear();
-    ui->comboBoxDim->addItem("全部维度", -1);
-    ui->comboBoxDim->addItem("dim2 面", 2);
-    ui->comboBoxDim->setCurrentIndex(1);
+
+    if (!map.bndEdgePhysToEdgeKeys.isEmpty()) {
+        ui->comboBoxDim->addItem("线", 1);
+    }
+    if (!map.bndFacePhysToFaceKeys.isEmpty()) {
+        ui->comboBoxDim->addItem("面", 2);
+    }
+
+    if (ui->comboBoxDim->count() == 0) {
+        ui->comboBoxDim->addItem("面", 2);
+    }
+
+    ui->comboBoxDim->setCurrentIndex(0);
     ui->comboBoxDim->blockSignals(false);
 
     connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -73,14 +87,21 @@ void FaceLoadPage::refreshGroupCombo()
 
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
-    for (auto it = map.physIdToName.constBegin(); it != map.physIdToName.constEnd(); ++it)
+
+    auto addByMap = [&](const QHash<int, QVector<qint64>>& keyMap)
     {
-        const int physId = it.key();
-        const int dim = map.physIdToDim.value(physId, -1);
-        if (dim != 2) continue;
-        if (dimFilter >= 0 && dim != dimFilter) continue;
-        ui->comboBoxGroup->addItem(QString("%1  (dim=2, id=%2)").arg(it.value()).arg(physId), physId);
-    }
+        QList<int> physIds = keyMap.keys();
+        std::sort(physIds.begin(), physIds.end());
+        for (int physId : physIds)
+        {
+            const QString name = map.physIdToName.value(physId, QString("phys_%1").arg(physId));
+            ui->comboBoxGroup->addItem(QString("%1  (id=%2)").arg(name).arg(physId), physId);
+        }
+    };
+
+    if (dimFilter == 1) addByMap(map.bndEdgePhysToEdgeKeys);
+    else if (dimFilter == 2) addByMap(map.bndFacePhysToFaceKeys);
+
     ui->comboBoxGroup->blockSignals(false);
 }
 
@@ -97,10 +118,21 @@ void FaceLoadPage::onGroupChanged(int index)
     const MshPickMap& map = meshSvc->mshPickMapSolid();
     const int physId = ui->comboBoxGroup->itemData(index).toInt();
 
-    const QVector<qint64> faceKeys64 = map.bndFacePhysToFaceKeys.value(physId);
-    QVector<vtkIdType> faceKeys;
-    faceKeys.reserve(faceKeys64.size());
-    for (qint64 k : faceKeys64) faceKeys.push_back(vtkIdType(k));
-
-    PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, faceKeys, true);
+    const int dim = ui->comboBoxDim->currentData().toInt();
+    if (dim == 1)
+    {
+        const QVector<qint64> edgeKeys64 = map.bndEdgePhysToEdgeKeys.value(physId);
+        QVector<vtkIdType> edgeKeys;
+        edgeKeys.reserve(edgeKeys64.size());
+        for (qint64 k : edgeKeys64) edgeKeys.push_back(vtkIdType(k));
+        PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid, edgeKeys, true);
+    }
+    else
+    {
+        const QVector<qint64> faceKeys64 = map.bndFacePhysToFaceKeys.value(physId);
+        QVector<vtkIdType> faceKeys;
+        faceKeys.reserve(faceKeys64.size());
+        for (qint64 k : faceKeys64) faceKeys.push_back(vtkIdType(k));
+        PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, faceKeys, true);
+    }
 }
