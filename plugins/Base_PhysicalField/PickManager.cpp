@@ -23,7 +23,12 @@
 #include <vtkPlane.h>
 #include <vtkLine.h>
 #include <vtkHardwareSelector.h>
+#include <vtkSelection.h>
 #include <vtkSelectionNode.h>
+#include <vtkIdTypeArray.h>
+#include <vtkInformation.h>
+#include <vtkDataObject.h>
+#include <vtkActor.h>
 
 
 static inline double dist2PointToSegment(const double x[3], const double a[3], const double b[3])
@@ -1249,32 +1254,64 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
     auto* ren = m_visual->renderer();
     if (!ren) return;
 
-    if (!m_areaPicker) m_areaPicker = vtkSmartPointer<vtkAreaPicker>::New();
-    m_areaPicker->AreaPick(x0, y0, x1, y1, ren);
+    // 官方做法：vtkHardwareSelector（屏幕空间可见像素选择）
+    auto selector = vtkSmartPointer<vtkHardwareSelector>::New();
+    selector->SetRenderer(ren);
+    selector->SetArea(x0, y0, x1, y1);
+    selector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_CELLS);
 
-    vtkPlanes* frustum = m_areaPicker->GetFrustum();
-    if (!frustum) return;
+    vtkSmartPointer<vtkSelection> sel = selector->Select();
+    if (!sel || sel->GetNumberOfNodes() <= 0) return;
 
-    auto extractCellIds = [&](vtkUnstructuredGrid* grid) -> QVector<vtkIdType>
+    auto mapPickedIdToGridCellId = [](vtkProp* targetProp, vtkIdType pickedId) -> vtkIdType
+    {
+        if (!targetProp) return -1;
+
+        auto* actor = vtkActor::SafeDownCast(targetProp);
+        if (!actor) return pickedId;
+
+        vtkMapper* mapper = actor->GetMapper();
+        if (!mapper) return pickedId;
+
+        vtkDataSet* mappedDs = vtkDataSet::SafeDownCast(mapper->GetInputDataObject(0, 0));
+        if (!mappedDs) return pickedId;
+
+        vtkDataArray* orig = mappedDs->GetCellData()->GetArray("vtkOriginalCellIds");
+        if (!orig) return pickedId;
+
+        if (pickedId < 0 || pickedId >= orig->GetNumberOfTuples()) return -1;
+        return vtkIdType(orig->GetTuple1(pickedId));
+    };
+
+    auto extractVisibleCellIds = [&](vtkUnstructuredGrid* grid, vtkProp* targetProp) -> QVector<vtkIdType>
     {
         QVector<vtkIdType> ids;
-        if (!grid || grid->GetNumberOfCells() <= 0) return ids;
+        if (!grid || !targetProp) return ids;
 
-        auto ex = vtkSmartPointer<vtkExtractSelectedFrustum>::New();
-        ex->SetFrustum(frustum);
-        ex->PreserveTopologyOff();     // 输出 vtkOriginalCellIds
-        ex->SetInputData(grid);
-        ex->Update();
+        for (unsigned int i = 0; i < sel->GetNumberOfNodes(); ++i)
+        {
+            vtkSelectionNode* node = sel->GetNode(i);
+            if (!node) continue;
 
-        vtkUnstructuredGrid* out = (vtkUnstructuredGrid*)ex->GetOutput();
-        if (!out || out->GetNumberOfCells() <= 0) return ids;
+            vtkInformation* props = node->GetProperties();
+            if (!props) continue;
 
-        vtkDataArray* orig = out->GetCellData()->GetArray("vtkOriginalCellIds");
-        if (!orig) return ids;
+            vtkProp* nodeProp = vtkProp::SafeDownCast(props->Get(vtkSelectionNode::PROP()));
+            if (!nodeProp || nodeProp != targetProp) continue;
 
-        const vtkIdType n = out->GetNumberOfCells();
-        ids.reserve(int(n));
-        for (vtkIdType i = 0; i < n; ++i) ids.push_back(vtkIdType(orig->GetTuple1(i)));
+            vtkDataArray* arr = node->GetSelectionList();
+            if (!arr) continue;
+
+            const vtkIdType n = arr->GetNumberOfTuples();
+            ids.reserve(ids.size() + int(n));
+            for (vtkIdType k = 0; k < n; ++k)
+            {
+                vtkIdType pickedId = vtkIdType(arr->GetTuple1(k));
+                vtkIdType cellId = mapPickedIdToGridCellId(targetProp, pickedId);
+                if (cellId >= 0 && cellId < grid->GetNumberOfCells())
+                    ids.push_back(cellId);
+            }
+        }
 
         std::sort(ids.begin(), ids.end());
         ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
@@ -1288,7 +1325,8 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
     {
         if (!grid) return;
 
-        const auto cellIds = extractCellIds(grid);
+        vtkProp* targetProp = (kind == GridKind::Solid) ? m_solidProp : m_lineProp;
+        const auto cellIds = extractVisibleCellIds(grid, targetProp);
         if (cellIds.isEmpty()) return;
 
         if (m_pickMode == PickMode::Node)
