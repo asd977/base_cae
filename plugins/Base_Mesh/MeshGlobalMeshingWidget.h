@@ -204,22 +204,14 @@ public slots:
 
             std::vector<std::pair<int,int>> outDimTags;
             gmsh::model::occ::importShapes(stepPath.toStdString(), outDimTags, true);
-            // Ensure touching domains share one interface entity after STEP import.
-            // 注意：removeAllDuplicates 可能改变实体 tag；而边/面控制使用的是界面显示的几何编号。
-            // 为避免“显示编号与实际细化位置不一致”，有局部控制时不做该步骤，保证编号稳定。
-            const bool hasLocalControls = !m_p.edgeRules.isEmpty()
-                                          || !m_p.faceRules.isEmpty()
-                                          || !m_p.volumeRules.isEmpty();
-            if (!hasLocalControls && outDimTags.size() > 1) {
-                try {
-                    gmsh::model::occ::removeAllDuplicates();
-                } catch (const std::exception& e) {
-                    emit log(QString("removeAllDuplicates 跳过：%1").arg(e.what()));
-                } catch (...) {
-                    emit log("removeAllDuplicates 跳过：unknown error");
-                }
-            } else if (hasLocalControls) {
-                emit log("检测到边/面/体局部控制：为保持编号与界面一致，已跳过 removeAllDuplicates。");
+            // Ensure touching/overlapping entities are merged after STEP import.
+            // 即使存在局部控制，也需要先去重；后续会通过 buildUiMappings 重新做 UI->tag 对应。
+            try {
+                gmsh::model::occ::removeAllDuplicates();
+            } catch (const std::exception& e) {
+                emit log(QString("removeAllDuplicates 跳过：%1").arg(e.what()));
+            } catch (...) {
+                emit log("removeAllDuplicates 跳过：unknown error");
             }
             gmsh::model::occ::synchronize();
 
