@@ -454,7 +454,9 @@ void PhysicalField::generateIIIDFile()
         return;
     }
 
-    const int MADOF = 3;
+    const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    const bool is3D = (NDIM == 3);
+    const int MADOF = is3D ? 3 : 2;
 
     // 1) 收集所有 node_id（solid + line），去重并排序
     QVector<int> allNodeIds;
@@ -482,7 +484,7 @@ void PhysicalField::generateIIIDFile()
     rowOfNodeId.reserve(int(NUMNP * 1.3));
     for (int r=0;r<NUMNP;++r) rowOfNodeId.insert(allNodeIds[r], r);
 
-    // 3) 默认全自由：1 1 1
+    // 3) 默认全自由：2D => 1 1；3D => 1 1 1
     QVector<std::array<int,3>> flags(NUMNP);
     for (int r=0;r<NUMNP;++r) flags[r] = {1,1,1};
 
@@ -507,7 +509,7 @@ void PhysicalField::generateIIIDFile()
         if (page) {
             ux = page->uxFlag();
             uy = page->uyFlag();
-            uz = page->uzFlag();
+            uz = is3D ? page->uzFlag() : 1;
             qDebug() << "apply bc uuid=" << uuid << " ux,uy,uz=" << ux << uy << uz;
         }
 
@@ -548,7 +550,9 @@ void PhysicalField::generateIIIDFile()
     for (int r=0;r<NUMNP;++r)
     {
         const int nodeId = allNodeIds[r];
-        os << flags[r][0] << "\t" << flags[r][1] << "\t" << flags[r][2] << "\t" << nodeId << "\n";
+        os << flags[r][0] << "\t" << flags[r][1] << "\t";
+        if (is3D) os << flags[r][2] << "\t";
+        os << nodeId << "\n";
     }
 
     f.close();

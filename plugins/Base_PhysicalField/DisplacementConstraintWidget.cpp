@@ -7,6 +7,8 @@
 #include <services/MeshModuleControllerService.h>
 #include <services/PhySicalFieldService.h>
 #include <services/VisualWidgetService.h>
+#include <PublicVariables.h>
+#include <PublicConstants.h>
 
 // VTK
 #include <vtkUnstructuredGrid.h>
@@ -39,6 +41,13 @@ DisplacementConstraintWidget::DisplacementConstraintWidget(QWidget *parent)
     ui->UXLineEdit->setText("1");
     ui->UYLineEdit->setText("1");
     ui->UZLineEdit->setText("1");
+
+    const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    const bool is2D = (NDIM == 2);
+    if (is2D) {
+        ui->UXLineEdit->setEnabled(false);
+        ui->UXLineEdit->setText("1");
+    }
 
 }
 
