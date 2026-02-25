@@ -14,6 +14,7 @@
 #include <qdebug.h>
 #include "QStack"
 #include <services/PreProcessingService.h>
+#include <services/VisualWidgetService.h>
 #include <ServiceRegistry.h>
 #include <QStackedLayout>
 
@@ -72,6 +73,10 @@ protected:
 	* @brief 右键节点弹出的删除事件
 	*/
 	void contextMenuEvent(QContextMenuEvent* event) override;
+
+private:
+    void ensureSceneVisibleForCurrentNode(QTreeWidgetItem* current);
+    QString resolveNodeModule(QTreeWidgetItem* node) const;
 private:
 	/**
 	* @brief 页面初始化

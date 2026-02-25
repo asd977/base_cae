@@ -58,6 +58,8 @@ void MeshModuleController::newProject()
 {
     auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
     m_gridNode = new ProjectNode("网格");
+    m_gridNode->setData(0, ProjectNode::RoleModule, "Mesh");
+    m_gridNode->setData(0, ProjectNode::RoleKind, "MeshRoot");
     projectManagerService->addTreeItem(m_gridNode);
 }
 
@@ -278,7 +280,6 @@ void MeshModuleController::importMshGrid(QString path)
     m_hasGrid = true;
     m_sourceFileName = path;
 
-    m_visualWidgetService->clearAll();
     displayCurrentGrid();
     syncPickMapGroupingFromGrid(m_importedGrid);
 }
@@ -296,9 +297,6 @@ bool MeshModuleController::importCurrentGmshMesh(QString* errMsg)
     m_hasGrid = true;
     m_sourceFileName.clear();
 
-    if (m_visualWidgetService) {
-        m_visualWidgetService->clearAll();
-    }
     displayCurrentGrid();
     syncPickMapGroupingFromGrid(m_importedGrid);
     return true;
@@ -343,6 +341,8 @@ void MeshModuleController::onMeshGlobal()
 {
     MeshGlobalMeshingWidget* w = new MeshGlobalMeshingWidget();
     auto *node = new ProjectNode("网格划分", QUuid::createUuid().toString(), (BasePage*)w);
+    node->setData(0, ProjectNode::RoleModule, "Mesh");
+    node->setData(0, ProjectNode::RoleKind, "GlobalMeshing");
     m_gridNode->addChild(node);
 }
 
@@ -350,6 +350,8 @@ void MeshModuleController::onMeshSingle()
 {
     auto* w = new MeshSingleMeshingWidget();
     auto *node = new ProjectNode("单体剖分", QUuid::createUuid().toString(), static_cast<BasePage*>(w));
+    node->setData(0, ProjectNode::RoleModule, "Mesh");
+    node->setData(0, ProjectNode::RoleKind, "SingleMeshing");
     m_gridNode->addChild(node);
 }
 
@@ -369,6 +371,8 @@ void MeshModuleController::onCtrlVolume()
 {
     auto* w = new MeshVolumeControlWidget();
     auto *node = new ProjectNode("体控制", QUuid::createUuid().toString(), static_cast<BasePage*>(w));
+    node->setData(0, ProjectNode::RoleModule, "Mesh");
+    node->setData(0, ProjectNode::RoleKind, "VolumeControl");
     m_gridNode->addChild(node);
 }
 
@@ -376,6 +380,8 @@ void MeshModuleController::onCtrlSurface()
 {
     auto* w = new MeshFaceControlWidget();
     auto *node = new ProjectNode("面控制", QUuid::createUuid().toString(), static_cast<BasePage*>(w));
+    node->setData(0, ProjectNode::RoleModule, "Mesh");
+    node->setData(0, ProjectNode::RoleKind, "FaceControl");
     m_gridNode->addChild(node);
 }
 
@@ -383,6 +389,8 @@ void MeshModuleController::onCtrlEdge()
 {
     auto* w = new MeshEdgeControlWidget();
     auto *node = new ProjectNode("边控制", QUuid::createUuid().toString(), static_cast<BasePage*>(w));
+    node->setData(0, ProjectNode::RoleModule, "Mesh");
+    node->setData(0, ProjectNode::RoleKind, "EdgeControl");
     m_gridNode->addChild(node);
 }
 
@@ -405,6 +413,8 @@ void MeshModuleController::onMeshEdit()
     }
 
     auto *node = new ProjectNode("网格编辑", QUuid::createUuid().toString(), w);
+    node->setData(0, ProjectNode::RoleModule, "Mesh");
+    node->setData(0, ProjectNode::RoleKind, "MeshEdit");
     m_gridNode->addChild(node);
 }
 

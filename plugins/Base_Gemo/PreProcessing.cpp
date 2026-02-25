@@ -281,6 +281,8 @@ BasePage* PreProcessing::createPageByType(const QString& type, const QString& ti
 void PreProcessing::newProject()
 {
 	m_geomNode = new ProjectNode("几何");
+	m_geomNode->setData(0, ProjectNode::RoleModule, "Geometry");
+	m_geomNode->setData(0, ProjectNode::RoleKind, "GeometryRoot");
 	ProjectManagerService *projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
 	projectManagerService->addTreeItem(m_geomNode);
 }
@@ -337,6 +339,8 @@ bool PreProcessing::loadProject()
 	bool success = false;
 	ProjectManagerService *projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
 	m_geomNode = new ProjectNode("几何");
+	m_geomNode->setData(0, ProjectNode::RoleModule, "Geometry");
+	m_geomNode->setData(0, ProjectNode::RoleKind, "GeometryRoot");
 	projectManagerService->addTreeItem(m_geomNode);
 	success = loadChildProject(m_geomNode, "geom_items");
 

@@ -9,6 +9,7 @@
 #include <QClipboard>
 #include <ContextMenuHub.h>
 #include <QHeaderView.h>
+#include <services/VisualWidgetService.h>
 
 ProjectTreeWidget::ProjectTreeWidget(QWidget *parent) :
     QWidget(parent),
@@ -145,8 +146,57 @@ void ProjectTreeWidget::onCurItemChanged(QTreeWidgetItem* current, QTreeWidgetIt
     }
     m_stackWidget->setCurrentWidget(widget);
 
+    ensureSceneVisibleForCurrentNode(current);
+
     // 3. 强制更新 UI 几何结构
     widget->updateGeometry();
+}
+
+QString ProjectTreeWidget::resolveNodeModule(QTreeWidgetItem* node) const
+{
+    QTreeWidgetItem* cur = node;
+    while (cur)
+    {
+        const QString module = cur->data(0, ProjectNode::RoleModule).toString();
+        if (!module.isEmpty())
+        {
+            return module;
+        }
+        cur = cur->parent();
+    }
+    return QString();
+}
+
+void ProjectTreeWidget::ensureSceneVisibleForCurrentNode(QTreeWidgetItem* current)
+{
+    auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!vis || !current)
+    {
+        return;
+    }
+
+    const QString module = resolveNodeModule(current);
+    if (module == "Geometry")
+    {
+        // 切回几何节点时，自动恢复几何显示，避免网格预览后“看不到几何”。
+        vis->setGroupVisible("Geometry", true, false);
+
+        // 可选聚焦：切几何时弱化网格层，避免遮挡。
+        vis->setVisible("mesh.global.surf", false, false);
+        vis->setVisible("mesh.global.wire", false, false);
+        vis->setVisible("mesh.imported.surface", false, false);
+        vis->setVisible("mesh.imported.line", false, false);
+        vis->render();
+    }
+    else if (module == "Mesh")
+    {
+        // 切到网格节点时确保网格可见，同时保留几何（方便对照）。
+        vis->setVisible("mesh.global.surf", true, false);
+        vis->setVisible("mesh.global.wire", true, false);
+        vis->setVisible("mesh.imported.surface", true, false);
+        vis->setVisible("mesh.imported.line", true, false);
+        vis->render();
+    }
 }
 
 

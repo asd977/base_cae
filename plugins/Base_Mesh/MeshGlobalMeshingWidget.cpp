@@ -409,10 +409,11 @@ void MeshGlobalMeshingWidget::showMeshVtk(const QString& vtkPath)
         p->SetRenderLinesAsTubes(false);
     }
 
-    // 清理旧的显示（你 clearAll 和 removeProp 二选一就行，建议别同时用）
-     visual->clearAll();
-//    visual->removeProp("mesh.global.surf", true);
-//    visual->removeProp("mesh.global.wire", true);
+    // 仅替换网格自身显示，避免把已有几何体从场景里清空。
+    visual->removeProp("mesh.global.surf", false);
+    visual->removeProp("mesh.global.wire", false);
+    visual->removeProp("mesh.imported.surface", false);
+    visual->removeProp("mesh.imported.line", false);
 
     // 加入显示
     visual->addProp("mesh.global.surf", actorSurf, QStringLiteral("{mesh} 全局网格-表面"));
