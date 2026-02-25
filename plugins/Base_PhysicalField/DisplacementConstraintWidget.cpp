@@ -4,8 +4,6 @@
 #include <QDebug>
 #include <ServiceRegistry.h>
 
-#include <algorithm>
-
 #include <services/MeshModuleControllerService.h>
 #include <services/PhySicalFieldService.h>
 #include <services/VisualWidgetService.h>
@@ -63,7 +61,9 @@ void DisplacementConstraintWidget::beforeLoad()
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc) return;
 
-    const MshPickMap map = meshSvc->mshPickMapSolid();
+    // 你需要在 meshSvc 里提供一个 getter：返回最近一次 msh 导入的 MshPickMap
+    // 例如：const MshPickMap& map = meshSvc->mshPickMapSolid();
+    const MshPickMap& map = meshSvc->mshPickMapSolid();
 
     ui->comboBoxDim->blockSignals(true);
     ui->comboBoxDim->clear();
@@ -71,15 +71,7 @@ void DisplacementConstraintWidget::beforeLoad()
     ui->comboBoxDim->addItem("dim0 点", 0);
     ui->comboBoxDim->addItem("dim1 线", 1);
     ui->comboBoxDim->addItem("dim2 面", 2);
-    int preferredDim = -1;
-    if (!map.bndFacePhysToPointIds.isEmpty()) preferredDim = 2;
-    else if (!map.bndEdgePhysToPointIds.isEmpty()) preferredDim = 1;
-    else if (!map.bndPointPhysToPointIds.isEmpty()) preferredDim = 0;
-
-    if (preferredDim == 2) ui->comboBoxDim->setCurrentIndex(3);
-    else if (preferredDim == 1) ui->comboBoxDim->setCurrentIndex(2);
-    else if (preferredDim == 0) ui->comboBoxDim->setCurrentIndex(1);
-    else ui->comboBoxDim->setCurrentIndex(0);
+    ui->comboBoxDim->setCurrentIndex(3);
     ui->comboBoxDim->blockSignals(false);
 
     refreshGroupCombo(ui->comboBoxDim->currentData().toInt());
@@ -97,49 +89,21 @@ void DisplacementConstraintWidget::refreshGroupCombo(int dimFilter)
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc) return;
 
-    const MshPickMap map = meshSvc->mshPickMapSolid();
+    const MshPickMap& map = meshSvc->mshPickMapSolid();
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
 
-    auto packGroupKey = [](int dim, int physId) -> qlonglong {
-        return (static_cast<qlonglong>(dim) << 32) |
-               static_cast<quint32>(physId);
-    };
-
-    auto addGroupsByDim = [&](int dim, const QHash<int, QVector<int>>& groups)
+    for (auto it = map.physIdToName.begin(); it != map.physIdToName.end(); ++it)
     {
-        if (dimFilter >= 0 && dimFilter != dim) return;
+        const int physId = it.key();
+        const QString name = it.value();
+        const int dim = map.physIdToDim.value(physId, -1);
+        if (dim < 0 || dim > 2) continue;
+        if (dimFilter >= 0 && dimFilter != dim) continue;
 
-        QList<int> physIds = groups.keys();
-        std::sort(physIds.begin(), physIds.end());
-        for (int physId : physIds)
-        {
-            const QString name = map.physIdToName.value(physId, QString("phys_%1").arg(physId));
-            const QString text = QString("%1  (dim=%2, id=%3)").arg(name).arg(dim).arg(physId);
-            ui->comboBoxGroup->addItem(text, packGroupKey(dim, physId));
-        }
-    };
-
-    addGroupsByDim(0, map.bndPointPhysToPointIds);
-    addGroupsByDim(1, map.bndEdgePhysToPointIds);
-    addGroupsByDim(2, map.bndFacePhysToPointIds);
-
-    if (ui->comboBoxGroup->count() == 0)
-    {
-        QList<int> physIds = map.physIdToName.keys();
-        std::sort(physIds.begin(), physIds.end());
-        for (int physId : physIds)
-        {
-            const int dim = map.physIdToDim.value(physId, -1);
-            if (dim < 0 || dim > 2) continue;
-            if (dimFilter >= 0 && dimFilter != dim) continue;
-
-            const QString name = map.physIdToName.value(physId, QString("phys_%1").arg(physId));
-            const QString text = QString("%1  (dim=%2, id=%3) [无点映射]").arg(name).arg(dim).arg(physId);
-            ui->comboBoxGroup->addItem(text, packGroupKey(dim, physId));
-        }
+        const QString text = QString("%1  (dim=%2, id=%3)").arg(name).arg(dim).arg(physId);
+        ui->comboBoxGroup->addItem(text, physId);
     }
-
     ui->comboBoxGroup->blockSignals(false);
 }
 
@@ -155,11 +119,10 @@ void DisplacementConstraintWidget::onGroupChanged(int index)
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc) return;
 
-    const MshPickMap map = meshSvc->mshPickMapSolid();
+    const MshPickMap& map = meshSvc->mshPickMapSolid();
 
-    const qlonglong key = ui->comboBoxGroup->itemData(index).toLongLong();
-    const int dim = int((key >> 32) & 0xFFFFFFFF);
-    const int physId = int(key & 0xFFFFFFFF);
+    const int physId = ui->comboBoxGroup->itemData(index).toInt();
+    const int dim = map.physIdToDim.value(physId, -1);
 
     // 取出“vtk pointId 列表”
     QVector<int> pointIdsInt;
