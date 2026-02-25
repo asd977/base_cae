@@ -81,6 +81,11 @@ void DisplacementConstraintWidget::beforeLoad()
                      this, &DisplacementConstraintWidget::onDimChanged, Qt::UniqueConnection);
     QObject::connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged),
                      this, &DisplacementConstraintWidget::onGroupChanged, Qt::UniqueConnection);
+    QObject::connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::activated),
+                     this, &DisplacementConstraintWidget::onGroupChanged, Qt::UniqueConnection);
+
+    // 进入页面后立即同步一次当前组，避免“下拉有值但未应用”导致看起来无响应。
+    onGroupChanged(ui->comboBoxGroup->currentIndex());
 }
 
 
@@ -110,6 +115,7 @@ void DisplacementConstraintWidget::refreshGroupCombo(int dimFilter)
 void DisplacementConstraintWidget::onDimChanged(int)
 {
     refreshGroupCombo(ui->comboBoxDim->currentData().toInt());
+    onGroupChanged(ui->comboBoxGroup->currentIndex());
 }
 
 void DisplacementConstraintWidget::onGroupChanged(int index)
