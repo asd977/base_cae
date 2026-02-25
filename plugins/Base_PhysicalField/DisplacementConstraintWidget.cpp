@@ -4,6 +4,8 @@
 #include <QDebug>
 #include <ServiceRegistry.h>
 
+#include <algorithm>
+
 #include <services/MeshModuleControllerService.h>
 #include <services/PhySicalFieldService.h>
 #include <services/VisualWidgetService.h>
@@ -93,17 +95,29 @@ void DisplacementConstraintWidget::refreshGroupCombo(int dimFilter)
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
 
-    for (auto it = map.physIdToName.begin(); it != map.physIdToName.end(); ++it)
-    {
-        const int physId = it.key();
-        const QString name = it.value();
-        const int dim = map.physIdToDim.value(physId, -1);
-        if (dim < 0 || dim > 2) continue;
-        if (dimFilter >= 0 && dimFilter != dim) continue;
+    auto packGroupKey = [](int dim, int physId) -> qlonglong {
+        return (static_cast<qlonglong>(dim) << 32) |
+               static_cast<quint32>(physId);
+    };
 
-        const QString text = QString("%1  (dim=%2, id=%3)").arg(name).arg(dim).arg(physId);
-        ui->comboBoxGroup->addItem(text, physId);
-    }
+    auto addGroupsByDim = [&](int dim, const QHash<int, QVector<int>>& groups)
+    {
+        if (dimFilter >= 0 && dimFilter != dim) return;
+
+        QList<int> physIds = groups.keys();
+        std::sort(physIds.begin(), physIds.end());
+        for (int physId : physIds)
+        {
+            const QString name = map.physIdToName.value(physId, QString("phys_%1").arg(physId));
+            const QString text = QString("%1  (dim=%2, id=%3)").arg(name).arg(dim).arg(physId);
+            ui->comboBoxGroup->addItem(text, packGroupKey(dim, physId));
+        }
+    };
+
+    addGroupsByDim(0, map.bndPointPhysToPointIds);
+    addGroupsByDim(1, map.bndEdgePhysToPointIds);
+    addGroupsByDim(2, map.bndFacePhysToPointIds);
+
     ui->comboBoxGroup->blockSignals(false);
 }
 
@@ -121,8 +135,9 @@ void DisplacementConstraintWidget::onGroupChanged(int index)
 
     const MshPickMap& map = meshSvc->mshPickMapSolid();
 
-    const int physId = ui->comboBoxGroup->itemData(index).toInt();
-    const int dim = map.physIdToDim.value(physId, -1);
+    const qlonglong key = ui->comboBoxGroup->itemData(index).toLongLong();
+    const int dim = int((key >> 32) & 0xFFFFFFFF);
+    const int physId = int(key & 0xFFFFFFFF);
 
     // 取出“vtk pointId 列表”
     QVector<int> pointIdsInt;
