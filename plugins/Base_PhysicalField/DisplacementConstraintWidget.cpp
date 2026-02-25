@@ -81,6 +81,8 @@ void DisplacementConstraintWidget::beforeLoad()
                      this, &DisplacementConstraintWidget::onDimChanged, Qt::UniqueConnection);
     QObject::connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged),
                      this, &DisplacementConstraintWidget::onGroupChanged, Qt::UniqueConnection);
+    QObject::connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::activated),
+                     this, &DisplacementConstraintWidget::onGroupChanged, Qt::UniqueConnection);
 }
 
 
@@ -105,6 +107,10 @@ void DisplacementConstraintWidget::refreshGroupCombo(int dimFilter)
         ui->comboBoxGroup->addItem(text, physId);
     }
     ui->comboBoxGroup->blockSignals(false);
+
+    qDebug() << "[DisplacementConstraintWidget] refreshGroupCombo"
+             << "dimFilter=" << dimFilter
+             << "count=" << ui->comboBoxGroup->count();
 }
 
 void DisplacementConstraintWidget::onDimChanged(int)
@@ -114,7 +120,11 @@ void DisplacementConstraintWidget::onDimChanged(int)
 
 void DisplacementConstraintWidget::onGroupChanged(int index)
 {
-    if (index < 0) return;
+    if (index < 0)
+    {
+        qDebug() << "[DisplacementConstraintWidget] onGroupChanged ignored: invalid index" << index;
+        return;
+    }
 
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc) return;
@@ -129,7 +139,19 @@ void DisplacementConstraintWidget::onGroupChanged(int index)
     if (dim == 0)      pointIdsInt = map.bndPointPhysToPointIds.value(physId);
     else if (dim == 1) pointIdsInt = map.bndEdgePhysToPointIds.value(physId);
     else if (dim == 2) pointIdsInt = map.bndFacePhysToPointIds.value(physId);
-    else return;
+    else
+    {
+        qDebug() << "[DisplacementConstraintWidget] onGroupChanged ignored: unsupported dim"
+                 << "index=" << index << "physId=" << physId << "dim=" << dim;
+        return;
+    }
+
+    qDebug() << "[DisplacementConstraintWidget] onGroupChanged"
+             << "index=" << index
+             << "text=" << ui->comboBoxGroup->itemText(index)
+             << "physId=" << physId
+             << "dim=" << dim
+             << "pointIds=" << pointIdsInt.size();
 
     QVector<vtkIdType> pids;
     pids.reserve(pointIdsInt.size());
@@ -137,6 +159,11 @@ void DisplacementConstraintWidget::onGroupChanged(int index)
 
     // 传给 PickManager：replace = true（下拉框就是“一键换一组”）
     PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pids, true);
+
+    qDebug() << "[DisplacementConstraintWidget] setSelectedPointIds done"
+             << "uuid=" << m_uuid
+             << "replace=true"
+             << "selectedCount=" << pids.size();
 
     // 如果你希望同步 UI（比如显示数量）
     // ui->SelectedCountLabel->setText(QString::number(pids.size()));
