@@ -131,6 +131,7 @@ void DisplacementConstraintWidget::onGroupChanged(int index)
     else if (dim == 2) pointIdsInt = map.bndFacePhysToPointIds.value(physId);
     else return;
 
+    qDebug()<<"dim "<<dim<<" "<<"pointIdsInt.size() "<<pointIdsInt.size();
     QVector<vtkIdType> pids;
     pids.reserve(pointIdsInt.size());
     for (int pid : pointIdsInt) pids.push_back(vtkIdType(pid));
