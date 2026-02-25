@@ -96,29 +96,40 @@ void DisplacementConstraintWidget::refreshGroupCombo(int dimFilter)
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
 
-    for (auto it = map.physIdToName.begin(); it != map.physIdToName.end(); ++it)
+    auto addGroup = [this, &map](int physId, int dim, const QVector<int>& pointIds)
     {
-        const int physId = it.key();
-        const QString name = it.value();
-        const int dim = map.physIdToDim.value(physId, -1);
-        if (dim < 0 || dim > 2) continue;
-        if (dimFilter >= 0 && dimFilter != dim) continue;
-
-        int pointCount = 0;
-        if (dim == 0)      pointCount = map.bndPointPhysToPointIds.value(physId).size();
-        else if (dim == 1) pointCount = map.bndEdgePhysToPointIds.value(physId).size();
-        else if (dim == 2) pointCount = map.bndFacePhysToPointIds.value(physId).size();
+        const int pointCount = pointIds.size();
 
         if (pointCount <= 0)
         {
+            const QString name = map.physIdToName.value(physId, QString("phys_%1").arg(physId));
             qDebug() << "[DisplacementConstraintWidget] skip empty group"
                      << "name=" << name << "physId=" << physId << "dim=" << dim;
-            continue;
+            return;
         }
 
+        const QString name = map.physIdToName.value(physId, QString("phys_%1").arg(physId));
         const QString text = QString("%1  (dim=%2, id=%3, n=%4)").arg(name).arg(dim).arg(physId).arg(pointCount);
         ui->comboBoxGroup->addItem(text, physId);
+        ui->comboBoxGroup->setItemData(ui->comboBoxGroup->count() - 1, dim, Qt::UserRole + 1);
+    };
+
+    if (dimFilter < 0 || dimFilter == 0)
+    {
+        for (auto it = map.bndPointPhysToPointIds.constBegin(); it != map.bndPointPhysToPointIds.constEnd(); ++it)
+            addGroup(it.key(), 0, it.value());
     }
+    if (dimFilter < 0 || dimFilter == 1)
+    {
+        for (auto it = map.bndEdgePhysToPointIds.constBegin(); it != map.bndEdgePhysToPointIds.constEnd(); ++it)
+            addGroup(it.key(), 1, it.value());
+    }
+    if (dimFilter < 0 || dimFilter == 2)
+    {
+        for (auto it = map.bndFacePhysToPointIds.constBegin(); it != map.bndFacePhysToPointIds.constEnd(); ++it)
+            addGroup(it.key(), 2, it.value());
+    }
+
     ui->comboBoxGroup->blockSignals(false);
 
     qDebug() << "[DisplacementConstraintWidget] refreshGroupCombo"
@@ -145,7 +156,7 @@ void DisplacementConstraintWidget::onGroupChanged(int index)
     const MshPickMap& map = meshSvc->mshPickMapSolid();
 
     const int physId = ui->comboBoxGroup->itemData(index).toInt();
-    const int dim = map.physIdToDim.value(physId, -1);
+    const int dim = ui->comboBoxGroup->itemData(index, Qt::UserRole + 1).toInt();
 
     // 取出“vtk pointId 列表”
     QVector<int> pointIdsInt;
