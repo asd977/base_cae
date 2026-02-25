@@ -424,6 +424,9 @@ MeshGridIO::loadCurrentGmshMesh(QString *errMsg)
     auto elemIdArr = vtkSmartPointer<vtkIntArray>::New();
     elemIdArr->SetName("elem_id");
 
+    QHash<int, QVector<QVector<int>>> tmpEdgeElems;
+    QHash<int, QVector<QVector<int>>> tmpFaceElems;
+
     auto gmshToVtkType = [](int gmshType) -> int {
         switch (gmshType) {
         case 1: return VTK_LINE;
@@ -529,16 +532,26 @@ MeshGridIO::loadCurrentGmshMesh(QString *errMsg)
                             }
                         } else if (dim == 1) {
                             if (numNodes >= 2 && ids[0] <= std::numeric_limits<int>::max() && ids[1] <= std::numeric_limits<int>::max()) {
-                                m_mshPickMap.bndEdgePhysToPointIds[physId].push_back(static_cast<int>(ids[0]));
-                                m_mshPickMap.bndEdgePhysToPointIds[physId].push_back(static_cast<int>(ids[1]));
+                                const int p0 = static_cast<int>(ids[0]);
+                                const int p1 = static_cast<int>(ids[1]);
+                                m_mshPickMap.bndEdgePhysToPointIds[physId].push_back(p0);
+                                m_mshPickMap.bndEdgePhysToPointIds[physId].push_back(p1);
+                                tmpEdgeElems[physId].push_back(QVector<int>{p0, p1});
                             }
                         } else if (dim == 2) {
                             const int cornerN = (numPrimaryNodes >= 3 ? numPrimaryNodes : numNodes);
                             const int n = std::min(cornerN, 4);
+                            QVector<int> facePts;
+                            facePts.reserve(n);
                             for (int k = 0; k < n; ++k) {
                                 if (ids[k] <= std::numeric_limits<int>::max()) {
-                                    m_mshPickMap.bndFacePhysToPointIds[physId].push_back(static_cast<int>(ids[k]));
+                                    const int pk = static_cast<int>(ids[k]);
+                                    m_mshPickMap.bndFacePhysToPointIds[physId].push_back(pk);
+                                    facePts.push_back(pk);
                                 }
+                            }
+                            if (facePts.size() >= 3) {
+                                tmpFaceElems[physId].push_back(facePts);
                             }
                         }
                     }
@@ -551,6 +564,103 @@ MeshGridIO::loadCurrentGmshMesh(QString *errMsg)
         return fail(QStringLiteral("Gmsh 当前模型没有可导入单元"));
     }
 
+
+    auto pack2 = [](int a, int b) -> quint64 {
+        const quint32 x = static_cast<quint32>(qMin(a, b));
+        const quint32 y = static_cast<quint32>(qMax(a, b));
+        return (quint64(x) << 32) | quint64(y);
+    };
+
+    auto packN_sorted = [](QVector<int> v) -> QByteArray {
+        std::sort(v.begin(), v.end());
+        QByteArray ba;
+        ba.reserve(v.size() * int(sizeof(qint32)));
+        for (int x : v) {
+            const qint32 t = qint32(x);
+            ba.append(reinterpret_cast<const char*>(&t), int(sizeof(qint32)));
+        }
+        return ba;
+    };
+
+    QHash<quint64, qint64> edgeIndex;
+    QHash<QByteArray, qint64> faceIndex;
+    const vtkIdType nCells = grid->GetNumberOfCells();
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    {
+        vtkCell* cell = grid->GetCell(cid);
+        if (!cell || cell->GetCellDimension() != 3) continue;
+
+        const int nEdges = cell->GetNumberOfEdges();
+        for (int ei = 0; ei < nEdges; ++ei)
+        {
+            vtkCell* ecell = cell->GetEdge(ei);
+            if (!ecell || ecell->GetNumberOfPoints() < 2) continue;
+            const vtkIdType a = ecell->GetPointId(0);
+            const vtkIdType b = ecell->GetPointId(1);
+            if (a > std::numeric_limits<int>::max() || b > std::numeric_limits<int>::max()) continue;
+
+            const quint64 k = pack2(int(a), int(b));
+            const qint64 edgeKey = (qint64(cid) << 4) | (qint64(ei) & 0xF);
+            if (!edgeIndex.contains(k)) edgeIndex.insert(k, edgeKey);
+        }
+
+        const int nFaces = cell->GetNumberOfFaces();
+        for (int fi = 0; fi < nFaces; ++fi)
+        {
+            vtkCell* fcell = cell->GetFace(fi);
+            if (!fcell) continue;
+            vtkIdList* ids = fcell->GetPointIds();
+            if (!ids || ids->GetNumberOfIds() < 3) continue;
+
+            QVector<int> fpids;
+            fpids.reserve(int(ids->GetNumberOfIds()));
+            bool ok = true;
+            for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i) {
+                const vtkIdType pid64 = ids->GetId(i);
+                if (pid64 > std::numeric_limits<int>::max()) { ok = false; break; }
+                fpids.push_back(int(pid64));
+            }
+            if (!ok) continue;
+
+            const QByteArray k = packN_sorted(fpids);
+            const qint64 faceKey = (qint64(cid) << 4) | (qint64(fi) & 0xF);
+            if (!faceIndex.contains(k)) faceIndex.insert(k, faceKey);
+        }
+    }
+
+    for (auto it = tmpEdgeElems.begin(); it != tmpEdgeElems.end(); ++it)
+    {
+        const int physId = it.key();
+        auto& out = m_mshPickMap.bndEdgePhysToEdgeKeys[physId];
+        for (const auto& e2 : it.value()) {
+            if (e2.size() != 2) continue;
+            const quint64 k = pack2(e2[0], e2[1]);
+            auto hit = edgeIndex.find(k);
+            if (hit != edgeIndex.end()) out.push_back(hit.value());
+        }
+    }
+
+    for (auto it = tmpFaceElems.begin(); it != tmpFaceElems.end(); ++it)
+    {
+        const int physId = it.key();
+        auto& out = m_mshPickMap.bndFacePhysToFaceKeys[physId];
+        for (const auto& fn : it.value()) {
+            if (fn.size() < 3) continue;
+            const QByteArray k = packN_sorted(fn);
+            auto hit = faceIndex.find(k);
+            if (hit != faceIndex.end()) out.push_back(hit.value());
+        }
+    }
+
+    auto dedupI64Vec = [](QVector<qint64>& v) {
+        std::sort(v.begin(), v.end());
+        v.erase(std::unique(v.begin(), v.end()), v.end());
+    };
+
+    for (auto it = m_mshPickMap.bndEdgePhysToEdgeKeys.begin(); it != m_mshPickMap.bndEdgePhysToEdgeKeys.end(); ++it)
+        dedupI64Vec(it.value());
+    for (auto it = m_mshPickMap.bndFacePhysToFaceKeys.begin(); it != m_mshPickMap.bndFacePhysToFaceKeys.end(); ++it)
+        dedupI64Vec(it.value());
 
     auto dedupIntVec = [](QVector<int>& v) {
         std::sort(v.begin(), v.end());
