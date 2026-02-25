@@ -25,6 +25,8 @@ public:
 	void closeProject() override;
 
     void generateStepFile() override;
+    void* createCompoundShapeHandle() override;
+    void releaseCompoundShapeHandle(void* handle) override;
     QStringList listEntityIds(int dim) override;
     bool entityCenter(int dim, int id, QVector3D& center) override;
     bool entityMeasure(int dim, int id, double& measure) override;

@@ -192,15 +192,34 @@ void MeshGlobalMeshingWidget::onGenerate()
 {
 
     PreProcessingService *service = ServiceRegistry::instance().getService<PreProcessingService>();
-    service->generateStepFile();
-
-    QString fileName = "ExportedModel.step";
-    QString currentWorPath = QCoreApplication::applicationDirPath();
-    QString filePath = currentWorPath + "/data/"+fileName;
 
     Params p = collectParams();
 
-    p.inputStepPath = filePath;
+    if (service) {
+        p.occShapeHandle = service->createCompoundShapeHandle();
+    }
+
+    if (!p.occShapeHandle) {
+        if (!service) {
+            QMessageBox::warning(this, "整体剖分", "预处理服务不可用。");
+            return;
+        }
+        service->generateStepFile();
+        QString fileName = "ExportedModel.step";
+        QString currentWorPath = QCoreApplication::applicationDirPath();
+        p.inputStepPath = currentWorPath + "/data/" + fileName;
+        appendLog("内存几何不可用，回退到 STEP 文件流程。");
+    } else {
+        appendLog("直接使用内存几何，不经 STEP 文件中转。");
+    }
+    auto releaseHandleIfNeeded = [&]()
+    {
+        if (service && p.occShapeHandle) {
+            service->releaseCompoundShapeHandle(p.occShapeHandle);
+            p.occShapeHandle = nullptr;
+        }
+    };
+
     if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>()) {
         p.edgeRules = meshSvc->edgeControlRules();
         p.faceRules = meshSvc->faceControlRules();
@@ -250,12 +269,14 @@ void MeshGlobalMeshingWidget::onGenerate()
     if (p.lenMin > p.lenMax)
     {
         QMessageBox::warning(this, "整体剖分", "最小尺寸不能大于最大尺寸。");
+        releaseHandleIfNeeded();
         return;
     }
 
-    if (p.inputStepPath.isEmpty() || !QFileInfo::exists(p.inputStepPath))
+    if (!p.occShapeHandle && (p.inputStepPath.isEmpty() || !QFileInfo::exists(p.inputStepPath)))
     {
         QMessageBox::warning(this, "整体剖分", "STEP 文件不存在。");
+        releaseHandleIfNeeded();
         return;
     }
 
@@ -284,14 +305,22 @@ void MeshGlobalMeshingWidget::onGenerate()
     worker->m_tempVtkPath  = tempVtkPath();
     worker->m_tempNasPath  = tempNasPath();
 
+    auto releaseShapeHandle = [service, worker]()
+    {
+        if (!service || !worker || !worker->m_p.occShapeHandle) return;
+        service->releaseCompoundShapeHandle(worker->m_p.occShapeHandle);
+        worker->m_p.occShapeHandle = nullptr;
+    };
+
     worker->moveToThread(m_thread);
 
     connect(m_thread, &QThread::started, worker, &MeshGlobalWorker::run);
     connect(worker, &MeshGlobalWorker::log, this, [this](const QString& s){ appendLog(s); });
 
     connect(worker, &MeshGlobalWorker::finishedOK, this,
-            [this](const QString& msh, const QString& vtk, const QString& nas)
+            [this, releaseShapeHandle](const QString& msh, const QString& vtk, const QString& nas)
             {
+                releaseShapeHandle();
                 appendLog("整体剖分成功。");
                 emit meshGenerated(msh, vtk, nas);
                 QMessageBox::information(this, "整体剖分", "生成成功！");
@@ -309,8 +338,9 @@ void MeshGlobalMeshingWidget::onGenerate()
             });
 
     connect(worker, &MeshGlobalWorker::finishedFail, this,
-            [this](const QString& err)
+            [this, releaseShapeHandle](const QString& err)
             {
+                releaseShapeHandle();
                 appendLog("整体剖分失败：" + err);
                 QMessageBox::critical(this, "整体剖分", err);
                 if (m_thread) { m_thread->quit(); }

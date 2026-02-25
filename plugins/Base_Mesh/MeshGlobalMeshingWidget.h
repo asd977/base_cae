@@ -24,7 +24,8 @@ namespace {
 
 struct Params
 {
-    QString inputStepPath = "./tmp/geom.step";           // useCurrentGeometry=false 时使用
+    QString inputStepPath = "./tmp/geom.step";           // 兼容文件导入
+    void* occShapeHandle = nullptr;                        // 优先使用内存几何
 
     int dimension = 3;               // 2 or 3
     int elemType = 4;                // 2D: 1 Tri / 2 Quad; 3D: 3 Tet / 4 Hex
@@ -203,7 +204,13 @@ public slots:
             gmsh::option::setNumber("Geometry.Tolerance", m_p.tolerance);
 
             std::vector<std::pair<int,int>> outDimTags;
-            gmsh::model::occ::importShapes(stepPath.toStdString(), outDimTags, true);
+            if (m_p.occShapeHandle) {
+                gmsh::model::occ::importShapesNativePointer(m_p.occShapeHandle, outDimTags, true);
+                emit log("从内存几何导入完成。");
+            } else {
+                gmsh::model::occ::importShapes(stepPath.toStdString(), outDimTags, true);
+                emit log(QString("从 STEP 文件导入：%1").arg(stepPath));
+            }
             // Ensure touching domains share one interface entity after STEP import.
             // 注意：removeAllDuplicates 可能改变实体 tag；而边/面控制使用的是界面显示的几何编号。
             // 为避免“显示编号与实际细化位置不一致”，有局部控制时不做该步骤，保证编号稳定。
