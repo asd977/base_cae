@@ -25,6 +25,7 @@ public:
 	void closeProject() override;
 
     void generateStepFile() override;
+    bool buildGeometryCompound(void* compoundOut) override;
     QStringList listEntityIds(int dim) override;
     bool entityCenter(int dim, int id, QVector3D& center) override;
     bool entityMeasure(int dim, int id, double& measure) override;

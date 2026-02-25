@@ -13,6 +13,7 @@
 #include <limits>
 #include <cmath>
 #include <services/MeshModuleControllerService.h>
+#include <TopoDS_Compound.hxx>
 
 class QThread;
 
@@ -25,6 +26,9 @@ namespace {
 struct Params
 {
     QString inputStepPath = "./tmp/geom.step";           // useCurrentGeometry=false 时使用
+    bool useInMemoryGeometry = true;
+    bool hasCompound = false;
+    TopoDS_Compound* compoundPtr = nullptr;
 
     int dimension = 3;               // 2 or 3
     int elemType = 4;                // 2D: 1 Tri / 2 Quad; 3D: 3 Tet / 4 Hex
@@ -189,9 +193,12 @@ public slots:
             //     }
             // }
 
-            // 2) 清理/建模
-            gmsh::clear();
-            gmsh::model::add("global_mesh");
+            // 2) 建模
+            // 说明：现场反馈在 gmsh::clear() 后仍会崩溃，这里改为不调用 clear，
+            // 每次创建独立模型名，避免触发 clear 的底层释放路径。
+            static int s_modelCounter = 0;
+            const std::string modelName = std::string("global_mesh_") + std::to_string(++s_modelCounter);
+            gmsh::model::add(modelName);
 
             // 几何修复相关选项必须在 importShapes 前设置；
             // 这些选项是全局状态，若放在后面会在“下一次剖分”才生效，导致跨次串扰。
@@ -203,7 +210,16 @@ public slots:
             gmsh::option::setNumber("Geometry.Tolerance", m_p.tolerance);
 
             std::vector<std::pair<int,int>> outDimTags;
-            gmsh::model::occ::importShapes(stepPath.toStdString(), outDimTags, true);
+            if (m_p.useInMemoryGeometry && m_p.hasCompound && m_p.compoundPtr)
+            {
+                emit log("使用内存几何直接剖分（无 STEP 文件中转）。");
+                gmsh::model::occ::importShapesNativePointer(m_p.compoundPtr, outDimTags, true);
+            }
+            else
+            {
+                emit log(QString("回退到 STEP 导入：%1").arg(stepPath));
+                gmsh::model::occ::importShapes(stepPath.toStdString(), outDimTags, true);
+            }
             // Ensure touching domains share one interface entity after STEP import.
             // 注意：removeAllDuplicates 可能改变实体 tag；而边/面控制使用的是界面显示的几何编号。
             // 为避免“显示编号与实际细化位置不一致”，有局部控制时不做该步骤，保证编号稳定。
@@ -538,6 +554,7 @@ private:
 
 private:
     Ui::MeshGlobalMeshingWidget* ui = nullptr;
+    TopoDS_Compound m_compoundHolder;
     QThread* m_thread = nullptr;
     void showMeshVtk(const QString &vtkPath);
 };
