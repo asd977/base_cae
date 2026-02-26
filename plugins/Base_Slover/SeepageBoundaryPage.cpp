@@ -224,7 +224,7 @@ QJsonObject SeepageBoundaryPage::saveJson()
 {
     QJsonObject obj;
     obj["dim_index"] = ui->comboBoxDim->currentIndex();
-    obj["group_phys_id"] = ui->comboBoxGroup->currentData().toInt(-1);
+    obj["group_phys_id"] = ui->comboBoxGroup->currentData().toInt();
 
     auto toJson = [](const QVector<vtkIdType>& ids) {
         QJsonArray arr;
