@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SeepageBoundaryPage</class>
+ <widget class="QWidget" name="SeepageBoundaryPage">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>640</width>
+    <height>420</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>渗流边界</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QGroupBox" name="groupBoxInfo">
+     <property name="title">
+      <string>边界信息</string>
+     </property>
+     <layout class="QGridLayout" name="gridLayoutInfo">
+      <item row="0" column="0">
+       <widget class="QLabel" name="label1">
+        <property name="text"><string>边界名称：</string></property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLabel" name="labelBoundaryTitle">
+        <property name="text"><string>-</string></property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label2">
+        <property name="text"><string>输出文件：</string></property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLabel" name="labelFileNameValue">
+        <property name="text"><string>-</string></property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label3">
+        <property name="text"><string>已选点数量：</string></property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QLabel" name="labelCountValue">
+        <property name="text"><string>0</string></property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTableWidget" name="tableNodes">
+     <property name="columnCount"><number>2</number></property>
+     <attribute name="horizontalHeaderStretchLastSection"><bool>true</bool></attribute>
+     <column>
+      <property name="text"><string>点编号</string></property>
+     </column>
+     <column>
+      <property name="text"><string>序号</string></property>
+     </column>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayoutBtns">
+     <item>
+      <widget class="QPushButton" name="btnRefresh">
+       <property name="text"><string>刷新选点</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnClear">
+       <property name="text"><string>清空选点</string></property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="horizontalSpacer">
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnExport">
+       <property name="text"><string>导出DAT</string></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

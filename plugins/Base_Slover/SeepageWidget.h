@@ -1,19 +1,27 @@
 #ifndef SEEPAGEWIDGET_H
 #define SEEPAGEWIDGET_H
 
-#include <QWidget>
+#include <BasePage.h>
 
 namespace Ui {
 class SeepageWidget;
 }
 
-class SeepageWidget : public QWidget
+class SeepageWidget : public BasePage
 {
     Q_OBJECT
 
 public:
     explicit SeepageWidget(QWidget *parent = nullptr);
-    ~SeepageWidget();
+    ~SeepageWidget() override;
+
+    void beforeLoad() override;
+    void beforeUnload() override;
+
+    double upstreamWaterLevel() const;
+    double downstreamWaterLevel() const;
+    double upstreamFlux() const;
+    double downstreamFlux() const;
 
 private:
     Ui::SeepageWidget *ui;
