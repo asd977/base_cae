@@ -676,29 +676,29 @@ void UiFrame::buildRibbonTabs()
         bindEvent(this, actParam, PublicConstants::kActionSeepageKey);
     }
 
-    // // =========================
-    // // 边界条件（你已有常量，统一改 bindEvent）
-    // // =========================
-    // {
-    //     auto* cate = m_ribbon->addCategoryPage("边界条件");
-    //     cate->setObjectName("boundObj");
+    // =========================
+    // 约束与荷载
+    // =========================
+    {
+        auto* cate = m_ribbon->addCategoryPage("约束与荷载");
+        cate->setObjectName("boundObj");
 
-    //     auto* panel = cate->addPannel("边界条件");
-    //     auto* actSolid = makeAction(this, ":/resources/menu/boundary_solid.png", "&域");
-    //     auto* actFace  = makeAction(this, ":/resources/menu/boundary_face.png",  "&边界");
-    //     auto* actLine  = makeAction(this, ":/resources/menu/boundary_line.png",  "&边");
-    //     auto* actPoint = makeAction(this, ":/resources/menu/boundary_point.png", "&点");
+        auto* panel = cate->addPannel("约束与荷载");
+        auto* actSolid = makeAction(this, ":/resources/menu/boundary_solid.png", "&域");
+        auto* actFace  = makeAction(this, ":/resources/menu/boundary_face.png",  "&边界");
+        auto* actLine  = makeAction(this, ":/resources/menu/boundary_line.png",  "&边");
+        auto* actPoint = makeAction(this, ":/resources/menu/boundary_point.png", "&点");
 
-    //     addActionToPanel(panel, actSolid, 3);
-    //     addActionToPanel(panel, actFace,  3);
-    //     addActionToPanel(panel, actLine,  3);
-    //     addActionToPanel(panel, actPoint, 3);
+        addActionToPanel(panel, actSolid, 3);
+        addActionToPanel(panel, actFace,  3);
+        addActionToPanel(panel, actLine,  3);
+        addActionToPanel(panel, actPoint, 3);
 
-    //     bindEvent(this, actSolid, PublicConstants::kActionBoundarySolid);
-    //     bindEvent(this, actFace,  PublicConstants::kActionBoundaryFace);
-    //     bindEvent(this, actLine,  PublicConstants::kActionBoundaryLine);
-    //     bindEvent(this, actPoint, PublicConstants::kActionBoundaryPoint);
-    // }
+        bindEvent(this, actSolid, PublicConstants::kActionBoundarySolid);
+        bindEvent(this, actFace,  PublicConstants::kActionBoundaryFace);
+        bindEvent(this, actLine,  PublicConstants::kActionBoundaryLine);
+        bindEvent(this, actPoint, PublicConstants::kActionBoundaryPoint);
+    }
 
     // // =========================
     // // 结果（你已有的“标准方式”，这里也统一 bindEvent）
