@@ -201,6 +201,11 @@ constexpr char kPageBoundaryLine[]  = "page_boundary_line";
 constexpr char kPageBoundaryPoint[] = "page_boundary_point";
 
 
+// =========================
+// Solver / 分析类型
+// =========================
+constexpr char kActionSeepageKey[]            = "seepage_analysis";
+
 // =======================================================
 // Other：Key / Value / FileName（不属于 Event/Action/Page）
 // =======================================================

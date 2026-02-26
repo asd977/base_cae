@@ -661,6 +661,20 @@ void UiFrame::buildRibbonTabs()
         // bindEvent(this, actQuality,  PublicConstants::kActionPreprocessQualityStd);
     }
 
+    // =========================
+    // 分析
+    // =========================
+    {
+        auto* cate = m_ribbon->addCategoryPage("分析");
+        cate->setObjectName("analysisObj");
+
+        auto* panel = cate->addPannel("分析");
+        auto* actParam = makeAction(this, ":/resources/menu/Parameter.png", "&渗流分析");
+
+        addActionToPanel(panel, actParam, 3);
+
+        bindEvent(this, actParam, PublicConstants::kActionSeepageKey);
+    }
 
     // // =========================
     // // 边界条件（你已有常量，统一改 bindEvent）
