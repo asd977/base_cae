@@ -1,6 +1,10 @@
 #include "SeepageWidget.h"
 #include "ui_SeepageWidget.h"
 
+#include <QDir>
+#include <QFile>
+#include <QTextStream>
+
 SeepageWidget::SeepageWidget(QWidget *parent) :
     BasePage("SeepageAnalysis"),
     ui(new Ui::SeepageWidget)
@@ -36,6 +40,62 @@ double SeepageWidget::upstreamFlux() const
 double SeepageWidget::downstreamFlux() const
 {
     return ui->spinDownstreamFlux->value();
+}
+
+
+bool SeepageWidget::exportIseepDatFile() const
+{
+    QDir wd(QDir::currentPath());
+    if (!wd.exists("data")) wd.mkpath("data");
+
+    QFile file(wd.filePath("data/ISEEP.DAT"));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        return false;
+    }
+
+    QTextStream os(&file);
+    os.setRealNumberNotation(QTextStream::FixedNotation);
+    os.setRealNumberPrecision(6);
+
+    os << "'./PREP/'\n";
+    os << "'JD_UPSEEP.DAT'\n";
+    os << "'JD_DWSEEP.DAT'\n";
+    os << "'2'\n";
+    os << "'2'\n";
+    os << "'0'\n";
+    os << "'JDFREE.DAT'\n";
+    os << "'FA_UPSEEP.DAT'\n";
+    os << "'FA_DWSEEP.DAT'\n";
+    os << "'0'\n";
+    os << "'JDJING.DAT'\n";
+    os << "'JDTRACE.DAT'\n";
+    os << "'KETRACE.DAT'\n";
+    os << "'TDTRACE.DAT'\n";
+    os << "'------------'\n";
+    os << "'------------'\n";
+    os << "'------------'\n";
+    os << "'------------'\n";
+    os << "'1'\n";
+    os << "'------------'\n";
+
+    os << "0\n";
+    os << "1\n";
+    os << "1 1\n";
+    os << "1\n";
+    os << "1\n";
+    os << "0\n";
+    os << "100 0\n";
+    os << upstreamWaterLevel() << " "
+       << downstreamWaterLevel() << " "
+       << upstreamFlux() << " "
+       << downstreamFlux() << "\n";
+    os << "'./SEEPCASE01/'\n";
+    os << "60.000000 0.000000 3600.000000\n";
+    os << "'HWDROP_UP.DAT' 'HWDROP_DW.DAT'\n";
+
+    file.close();
+    return true;
 }
 
 void SeepageWidget::onComputeClicked()

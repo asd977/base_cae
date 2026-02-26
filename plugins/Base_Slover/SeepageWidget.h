@@ -23,6 +23,8 @@ public:
     double upstreamFlux() const;
     double downstreamFlux() const;
 
+    bool exportIseepDatFile() const;
+
 signals:
     void computeRequested();
 
