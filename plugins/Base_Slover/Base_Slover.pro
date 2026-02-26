@@ -5,14 +5,17 @@ QT += widgets core
 INCLUDEPATH += $$PWD/../../interfaces
 
 HEADERS += \
+    SeepageBoundaryPage.h \
     SeepageWidget.h \
     Solver.h
 
 SOURCES += \
+    SeepageBoundaryPage.cpp \
     SeepageWidget.cpp \
     Solver.cpp
 
-FORMS += \ \
+FORMS += \
+    SeepageBoundaryPage.ui \
     SeepageWidget.ui
 
 RESOURCES += \
