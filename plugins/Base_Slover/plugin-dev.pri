@@ -1,4 +1,3 @@
-include($$PWD/../../libs/mfem-4.8/mfem.pri)
 TARGET = Base_Solver
 TEMPLATE = lib
 QT += widgets core

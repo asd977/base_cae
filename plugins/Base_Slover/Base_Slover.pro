@@ -5,18 +5,15 @@ QT += widgets core
 INCLUDEPATH += $$PWD/../../interfaces
 
 HEADERS += \
-    CurveWidget.h \
-    Solver.h \
-    SolverSettingWidget.h
+    SeepageWidget.h \
+    Solver.h
 
 SOURCES += \
-    CurveWidget.cpp \
-    Solver.cpp \
-    SolverSettingWidget.cpp
+    SeepageWidget.cpp \
+    Solver.cpp
 
-FORMS += \
-    CurveWidget.ui \
-    SolverSettingWidget.ui
+FORMS += \ \
+    SeepageWidget.ui
 
 RESOURCES += \
     ../../res.qrc
