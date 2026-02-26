@@ -11,6 +11,7 @@
 #include <QComboBox>
 #include <QSet>
 #include <QTextStream>
+#include <QJsonArray>
 #include <PublicConstants.h>
 #include <PublicVariables.h>
 
@@ -224,6 +225,14 @@ QJsonObject SeepageBoundaryPage::saveJson()
     QJsonObject obj;
     obj["dim_index"] = ui->comboBoxDim->currentIndex();
     obj["group_phys_id"] = ui->comboBoxGroup->currentData().toInt(-1);
+
+    auto toJson = [](const QVector<vtkIdType>& ids) {
+        QJsonArray arr;
+        for (auto id : ids) arr.append(static_cast<qint64>(id));
+        return arr;
+    };
+    obj["picked_solid"] = toJson(PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Node, GridKind::Solid));
+    obj["picked_line"] = toJson(PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Node, GridKind::Line));
     return obj;
 }
 
@@ -241,5 +250,19 @@ void SeepageBoundaryPage::loadJson(const QJsonObject& obj)
             onGroupChanged(i);
             break;
         }
+    }
+
+    auto fromJson = [](const QJsonArray& arr) {
+        QVector<vtkIdType> out;
+        out.reserve(arr.size());
+        for (const auto& v : arr) out.push_back(static_cast<vtkIdType>(v.toVariant().toLongLong()));
+        return out;
+    };
+    const auto solidIds = fromJson(obj.value("picked_solid").toArray());
+    const auto lineIds = fromJson(obj.value("picked_line").toArray());
+    if (!solidIds.isEmpty() || !lineIds.isEmpty())
+    {
+        PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, solidIds, true);
+        PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Line, lineIds, true);
     }
 }

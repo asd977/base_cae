@@ -46,7 +46,6 @@ GeoStressPointPage::~GeoStressPointPage()
 void GeoStressPointPage::beforeLoad()
 {
     PickManager::instance();
-    PickManager::instance().updateStructure();
 
     m_dim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     if (m_dim != 2) m_dim = 3;

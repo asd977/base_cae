@@ -59,7 +59,6 @@ DisplacementConstraintWidget::~DisplacementConstraintWidget()
 void DisplacementConstraintWidget::beforeLoad()
 {
     PickManager::instance();
-    PickManager::instance().updateStructure();
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
 
     QObject::connect(&PickManager::instance(), &PickManager::nodePicked,

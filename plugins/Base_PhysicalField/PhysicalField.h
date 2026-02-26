@@ -6,6 +6,7 @@
 #include <ProjectNode.h>
 #include <vtkIntArray.h>
 #include <vtkUnstructuredGrid.h>
+#include <QJsonObject>
 #include <services/PhySicalFieldService.h>
 
 class PhysicalField :public QObject, public PhysicalFieldService
@@ -16,6 +17,8 @@ public:
 
     BasePage *getPhysicalFiledSettingWidget();
     void newProject();
+    bool saveProject() override;
+    bool loadProject() override;
 
     //生成约束文件
     void generateIIIDFile();
@@ -54,6 +57,11 @@ private:
     void writeIIWL_Part8_BeamSpecialDistributedLoad(QTextStream &os);
     void writeIIWL_Part9_10_11_Seismic(QTextStream &os);
     void writeIIWL_Part6_FaceLoad(QTextStream &os);
+
+    bool writeJsonFile(const QString& filePath, const QJsonObject& obj) const;
+    bool readJsonFile(const QString& filePath, QJsonObject& out) const;
+    ProjectNode* createNodeByKind(const QString& kind, const QString& title, const QString& uuid);
+    void restoreNodeSelection(ProjectNode* node, const QJsonObject& item);
 };
 
 #endif // PHYSICALFIELD_H

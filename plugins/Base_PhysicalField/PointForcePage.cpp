@@ -30,7 +30,6 @@ PointForcePage::~PointForcePage() = default;
 void PointForcePage::beforeLoad()
 {
     PickManager::instance();
-    PickManager::instance().updateStructure();
 
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
     setupBatchGroupCombo();

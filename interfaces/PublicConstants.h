@@ -227,6 +227,7 @@ constexpr char kProjectDirectoryKey[]            = "project_dir";
 constexpr char kPostProcessingProjectFileName[]  = "postprocessing.json";
 constexpr char kPreProcessingProjectFileName[]   = "preprocessing.json";
 constexpr char kMeshProjectFileName[]            = "mesh.json";
+constexpr char kPhysicalFieldProjectFileName[]   = "physical_field.json";
 constexpr char kMeshSnapshotFileName[]           = "mesh_snapshot.iiin.dat";
 constexpr char kSolverProjectFileName[]          = "solver.json";
 constexpr char kSurrogateProjectFileName[]       = "surrogate_model.json";

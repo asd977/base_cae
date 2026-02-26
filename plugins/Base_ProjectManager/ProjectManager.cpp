@@ -208,7 +208,7 @@ void ProjectManager::openProject()
 	}
     if (auto* physicalFieldService = ServiceRegistry::instance().getService<PhysicalFieldService>())
     {
-        physicalFieldService->newProject();
+        physicalFieldService->loadProject();
     }
 	if (auto* boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>())
 	{
@@ -260,6 +260,11 @@ void ProjectManager::saveProject()
     if (auto* solverService = ServiceRegistry::instance().getService<SolverService>())
     {
         solverService->saveProject();
+    }
+
+    if (auto* physicalFieldService = ServiceRegistry::instance().getService<PhysicalFieldService>())
+    {
+        physicalFieldService->saveProject();
     }
 
     // 代理模型暂不参与工程保存。

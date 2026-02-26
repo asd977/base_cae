@@ -13,6 +13,7 @@
 #include <MeshEdgeControlWidget.h>
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <PickManager.h>
 #include <QMessageBox>
 #include <QDir>
 #include <QFile>
@@ -570,6 +571,7 @@ void MeshModuleController::onMeshEdit()
 
 void MeshModuleController::displayCurrentGrid()
 {
+    PickManager::instance().updateStructure();
     if (!m_visualWidgetService || !m_hasGrid || !m_importedGrid)
         return;
 

@@ -76,7 +76,6 @@ PickMode GeoStressFitFacePage::decidePickMode() const
 
 void GeoStressFitFacePage::beforeLoad()
 {
-    PickManager::instance().updateStructure();
 
     ensureDefaultPickTarget();
     m_activeMode = decidePickMode();
@@ -239,7 +238,6 @@ int GeoStressFitFacePage::idir() const
 bool GeoStressFitFacePage::exportLeftDatFile()
 {
     PickManager& pm = PickManager::instance();
-    pm.updateStructure();
 
     QString domain = this->getPageType();
     const QString uuid   = m_uuid;

@@ -35,7 +35,6 @@ BeamLoadPage::~BeamLoadPage()
 void BeamLoadPage::beforeLoad()
 {
     PickManager::instance();
-    PickManager::instance().updateStructure();
 
     // 2D 时禁用 ZP（写出时固定为 0）
     const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();

@@ -28,6 +28,9 @@
 #include <QSet>
 #include <array>
 #include <algorithm>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QJsonDocument>
 
 // VTK
 #include <vtkUnstructuredGrid.h>
@@ -254,6 +257,150 @@ void PhysicalField::newProject()
     auto *projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
     projectManagerService->addTreeItem(m_node);
 
+}
+
+bool PhysicalField::writeJsonFile(const QString& filePath, const QJsonObject& obj) const
+{
+    QFile f(filePath);
+    if (!f.open(QIODevice::WriteOnly)) return false;
+    f.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
+    return true;
+}
+
+bool PhysicalField::readJsonFile(const QString& filePath, QJsonObject& out) const
+{
+    QFile f(filePath);
+    if (!f.exists()) return false;
+    if (!f.open(QIODevice::ReadOnly)) return false;
+    QJsonParseError err{};
+    const auto doc = QJsonDocument::fromJson(f.readAll(), &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject()) return false;
+    out = doc.object();
+    return true;
+}
+
+bool PhysicalField::saveProject()
+{
+    if (!m_node) return true;
+
+    const QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QString filePath = QDir(projectDir).filePath(PublicConstants::kPhysicalFieldProjectFileName);
+
+    QJsonObject root;
+    root["module"] = "PhysicalField";
+    root["root_title"] = m_node->text(0);
+    root["root_uuid"] = m_node->getUuid();
+
+    QJsonArray items;
+    for (ProjectNode* node : m_node->getChildren())
+    {
+        if (!node || !node->getPage()) continue;
+
+        const QString uuid = node->data(0, ProjectNode::RoleUuid).toString().isEmpty()
+            ? node->getUuid()
+            : node->data(0, ProjectNode::RoleUuid).toString();
+
+        const QString domain = node->getPage()->getPageType();
+        const QString kind = node->data(0, ProjectNode::RoleKind).toString();
+
+        auto toJson = [](const QVector<vtkIdType>& ids) {
+            QJsonArray a;
+            for (auto id : ids) a.append(static_cast<qint64>(id));
+            return a;
+        };
+
+        QJsonObject item;
+        item["uuid"] = uuid;
+        item["title"] = node->text(0);
+        item["kind"] = kind;
+        item["domain"] = domain;
+        item["node_solid"] = toJson(PickManager::instance().getIdList(domain, uuid, PickMode::Node, GridKind::Solid));
+        item["node_line"] = toJson(PickManager::instance().getIdList(domain, uuid, PickMode::Node, GridKind::Line));
+        item["edge_solid"] = toJson(PickManager::instance().getIdList(domain, uuid, PickMode::Edge, GridKind::Solid));
+        item["edge_line"] = toJson(PickManager::instance().getIdList(domain, uuid, PickMode::Edge, GridKind::Line));
+        item["face_solid"] = toJson(PickManager::instance().getIdList(domain, uuid, PickMode::Face, GridKind::Solid));
+        item["face_line"] = toJson(PickManager::instance().getIdList(domain, uuid, PickMode::Face, GridKind::Line));
+        items.append(item);
+    }
+    root["items"] = items;
+    return writeJsonFile(filePath, root);
+}
+
+ProjectNode* PhysicalField::createNodeByKind(const QString& kind, const QString& title, const QString& uuid)
+{
+    if (!m_node) return nullptr;
+
+    BasePage* page = nullptr;
+    QString roleKind = kind;
+
+    if (kind == "DisplacementConstraint") page = new DisplacementConstraintWidget();
+    else if (kind == "GeoStressPointPage") page = new GeoStressPointPage();
+    else if (kind == "GeoStressFitFacePage") page = new GeoStressFitFacePage();
+    else if (kind == "BodyForcePage") page = new BodyForcePage();
+    else if (kind == "PointForcePage") page = new PointForcePage();
+    else if (kind == "LinearForcePage") page = new LinearForcePage();
+    else if (kind == "FaceLoadPage") page = new FaceLoadPage();
+    else if (kind == "TemperatureLoadPage") page = new TemperatureLoadPage();
+    else if (kind == "BeamLoadPage") page = new BeamLoadPage();
+    else if (kind == "SeismicAndAddedMassPage") page = new SeismicAndAddedMassPage();
+    else return nullptr;
+
+    auto* node = new ProjectNode(title, uuid, page);
+    node->setData(0, ProjectNode::RoleUuid, uuid);
+    node->setData(0, ProjectNode::RoleModule, "PhysicalField");
+    node->setData(0, ProjectNode::RoleKind, roleKind);
+    m_node->addChild(node);
+    return node;
+}
+
+void PhysicalField::restoreNodeSelection(ProjectNode* node, const QJsonObject& item)
+{
+    if (!node || !node->getPage()) return;
+
+    const QString domain = node->getPage()->getPageType();
+    const QString uuid = node->data(0, ProjectNode::RoleUuid).toString();
+
+    auto fromJson = [](const QJsonArray& arr) {
+        QVector<vtkIdType> out;
+        out.reserve(arr.size());
+        for (const auto& v : arr) out.push_back(static_cast<vtkIdType>(v.toVariant().toLongLong()));
+        return out;
+    };
+
+    PickManager::instance().setSelectedPointIds(domain, uuid, GridKind::Solid, fromJson(item.value("node_solid").toArray()), true);
+    PickManager::instance().setSelectedPointIds(domain, uuid, GridKind::Line, fromJson(item.value("node_line").toArray()), true);
+    PickManager::instance().setSelectedEdgeKeys(domain, uuid, GridKind::Solid, fromJson(item.value("edge_solid").toArray()), true);
+    PickManager::instance().setSelectedEdgeKeys(domain, uuid, GridKind::Line, fromJson(item.value("edge_line").toArray()), true);
+    PickManager::instance().setSelectedFaceKeys(domain, uuid, GridKind::Solid, fromJson(item.value("face_solid").toArray()), true);
+    PickManager::instance().setSelectedFaceKeys(domain, uuid, GridKind::Line, fromJson(item.value("face_line").toArray()), true);
+}
+
+bool PhysicalField::loadProject()
+{
+    newProject();
+    if (!m_node) return false;
+
+    const QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QString filePath = QDir(projectDir).filePath(PublicConstants::kPhysicalFieldProjectFileName);
+
+    QJsonObject root;
+    if (!readJsonFile(filePath, root))
+    {
+        return true;
+    }
+
+    for (const auto& v : root.value("items").toArray())
+    {
+        const QJsonObject item = v.toObject();
+        const QString kind = item.value("kind").toString();
+        const QString title = item.value("title").toString();
+        const QString uuid = item.value("uuid").toString(QUuid::createUuid().toString());
+        ProjectNode* node = createNodeByKind(kind, title, uuid);
+        if (!node) continue;
+        restoreNodeSelection(node, item);
+    }
+
+    return true;
 }
 
 void PhysicalField::addDisplacementConstraint()

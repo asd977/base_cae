@@ -42,7 +42,6 @@ SeismicAndAddedMassPage::~SeismicAndAddedMassPage()
 void SeismicAndAddedMassPage::beforeLoad()
 {
     PickManager::instance();
-    PickManager::instance().updateStructure();
 
     // 这个页面后面还要做“附加质量面”，用 Face 拾取更合适（先占位）
     qDebug() << "[SeismicAndAddedMassPage] beforeLoad activate Face pick uuid=" << m_uuid;

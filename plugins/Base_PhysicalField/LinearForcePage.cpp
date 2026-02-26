@@ -24,7 +24,6 @@ LinearForcePage::~LinearForcePage()
 void LinearForcePage::beforeLoad()
 {
     PickManager::instance();
-    PickManager::instance().updateStructure();
 
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Edge);
     setupBatchGroupCombo();

@@ -45,7 +45,6 @@ void BodyForcePage::beforeLoad()
 {
     // Part3：体积力按 JD(node_id) -> 用 Node 拾取
     PickManager::instance();
-    PickManager::instance().updateStructure();
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
     setupBatchGroupCombo();
 }
