@@ -1738,6 +1738,16 @@ void PickManager::setSelectedPointIds(const QString& domain,
 {
     if (domain.isEmpty() || uuid.isEmpty()) return;
 
+    qDebug() << "[PickManager] setSelectedPointIds"
+             << "domain=" << domain
+             << "uuid=" << uuid
+             << "kind=" << static_cast<int>(kind)
+             << "replace=" << replace
+             << "inputCount=" << pointIds.size()
+             << "currentDomain=" << m_currentDomain
+             << "currentUuid=" << m_currentUUid
+             << "currentMode=" << static_cast<int>(m_pickMode);
+
     // replace：先清空（不触发 rebuild）
     if (replace)
         clearNodeSelection_NoRefresh(domain, uuid, kind);
@@ -1753,6 +1763,11 @@ void PickManager::setSelectedPointIds(const QString& domain,
         m_pickMode == PickMode::Node)
     {
         markDirty(DirtyNode);
+        qDebug() << "[PickManager] setSelectedPointIds markDirty(DirtyNode)";
+    }
+    else
+    {
+        qDebug() << "[PickManager] setSelectedPointIds skipped markDirty: active page mismatch or mode != Node";
     }
 }
 

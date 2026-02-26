@@ -824,6 +824,28 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg)
         v.erase(std::unique(v.begin(), v.end()), v.end());
     };
 
+    // ------------------ helper：边界单元类型（msh2） ------------------
+    auto boundaryDimOf = [](int elemType) -> int {
+        // 常见 line / triangle / quadrangle（含高阶）
+        switch (elemType)
+        {
+        case 1: case 8: case 26: case 27: case 28: return 1; // line2/3/4/5/6
+        case 2: case 9: case 21: case 23: case 25: return 2; // tri3/6/10/15/21
+        case 3: case 10: case 16: case 36: case 37: case 38: return 2; // quad4/9/8/16/25/36
+        default: return -1;
+        }
+    };
+
+    auto boundaryCornerCountOf = [](int elemType) -> int {
+        switch (elemType)
+        {
+        case 1: case 8: case 26: case 27: case 28: return 2;
+        case 2: case 9: case 21: case 23: case 25: return 3;
+        case 3: case 10: case 16: case 36: case 37: case 38: return 4;
+        default: return 0;
+        }
+    };
+
     // ------------------ 读文件主循环 ------------------
     while (!in.atEnd())
     {
@@ -1035,10 +1057,13 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg)
                         continue;
                     }
 
-                    // 线：line2(1) / line3(8) => 取端点两个角点
-                    if (elemType == 1 || elemType == 8)
+                    const int bdim = boundaryDimOf(elemType);
+                    const int cornerN = boundaryCornerCountOf(elemType);
+
+                    // 线：line2/3/4/5/6 => 取端点两个角点
+                    if (bdim == 1 && cornerN == 2)
                     {
-                        if (nodeIds.size() >= 2)
+                        if (nodeIds.size() >= cornerN)
                         {
                             const int p0 = toVtkPidInt(nodeIds[0]);
                             const int p1 = toVtkPidInt(nodeIds[1]);
@@ -1051,10 +1076,10 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg)
                         continue;
                     }
 
-                    // 三角面：tri3(2) / tri6(9) => 取前三个角点
-                    if (elemType == 2 || elemType == 9)
+                    // 三角面：tri3/6/10/15/21 => 取前三个角点
+                    if (bdim == 2 && cornerN == 3)
                     {
-                        if (nodeIds.size() >= 3)
+                        if (nodeIds.size() >= cornerN)
                         {
                             const int p0 = toVtkPidInt(nodeIds[0]);
                             const int p1 = toVtkPidInt(nodeIds[1]);
@@ -1069,10 +1094,10 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg)
                         continue;
                     }
 
-                    // 四边形面：quad4(3) / quad9(10) => 取前四个角点
-                    if (elemType == 3 || elemType == 10)
+                    // 四边形面：quad4/8/9/16/25/36 => 取前四个角点
+                    if (bdim == 2 && cornerN == 4)
                     {
-                        if (nodeIds.size() >= 4)
+                        if (nodeIds.size() >= cornerN)
                         {
                             const int p0 = toVtkPidInt(nodeIds[0]);
                             const int p1 = toVtkPidInt(nodeIds[1]);
@@ -1274,6 +1299,12 @@ MeshGridIO::loadMshFile(const QString &fileName, QString *errMsg)
         if (!pick.physIdToDim.contains(physId))
             pick.physIdToDim.insert(physId, 2);
     }
+
+    qInfo() << "[loadMshFile] mapping summary"
+            << "volGroups=" << pick.volPhysToCellIds.size()
+            << "pointGroups=" << pick.bndPointPhysToPointIds.size()
+            << "edgeGroups=" << pick.bndEdgePhysToPointIds.size()
+            << "faceGroups=" << pick.bndFacePhysToPointIds.size();
 
     // 写回成员：供外部 DisplacementConstraintWidget / FaceLoadPage 等查询
     m_mshPickMap = pick;

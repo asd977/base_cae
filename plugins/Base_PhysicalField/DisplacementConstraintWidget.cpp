@@ -2,6 +2,7 @@
 #include "ui_DisplacementConstraintWidget.h"
 
 #include <QDebug>
+#include <QSet>
 #include <ServiceRegistry.h>
 
 #include <services/MeshModuleControllerService.h>
@@ -90,6 +91,8 @@ void DisplacementConstraintWidget::beforeLoad()
                      this, &DisplacementConstraintWidget::onDimChanged, Qt::UniqueConnection);
     QObject::connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged),
                      this, &DisplacementConstraintWidget::onGroupChanged, Qt::UniqueConnection);
+    QObject::connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::activated),
+                     this, &DisplacementConstraintWidget::onGroupChanged, Qt::UniqueConnection);
 }
 
 
@@ -102,18 +105,45 @@ void DisplacementConstraintWidget::refreshGroupCombo(int dimFilter)
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
 
-    for (auto it = map.physIdToName.begin(); it != map.physIdToName.end(); ++it)
+    auto addGroup = [this, &map](int physId, int dim, const QVector<int>& pointIds)
     {
-        const int physId = it.key();
-        const QString name = it.value();
-        const int dim = map.physIdToDim.value(physId, -1);
-        if (dim < 0 || dim > 2) continue;
-        if (dimFilter >= 0 && dimFilter != dim) continue;
+        const int pointCount = pointIds.size();
 
-        const QString text = QString("%1  (dim=%2, id=%3)").arg(name).arg(dim).arg(physId);
+        if (pointCount <= 0)
+        {
+            const QString name = map.physIdToName.value(physId, QString("phys_%1").arg(physId));
+            qDebug() << "[DisplacementConstraintWidget] skip empty group"
+                     << "name=" << name << "physId=" << physId << "dim=" << dim;
+            return;
+        }
+
+        const QString name = map.physIdToName.value(physId, QString("phys_%1").arg(physId));
+        const QString text = QString("%1  (dim=%2, id=%3, n=%4)").arg(name).arg(dim).arg(physId).arg(pointCount);
         ui->comboBoxGroup->addItem(text, physId);
+        ui->comboBoxGroup->setItemData(ui->comboBoxGroup->count() - 1, dim, Qt::UserRole + 1);
+    };
+
+    if (dimFilter < 0 || dimFilter == 0)
+    {
+        for (auto it = map.bndPointPhysToPointIds.constBegin(); it != map.bndPointPhysToPointIds.constEnd(); ++it)
+            addGroup(it.key(), 0, it.value());
     }
+    if (dimFilter < 0 || dimFilter == 1)
+    {
+        for (auto it = map.bndEdgePhysToPointIds.constBegin(); it != map.bndEdgePhysToPointIds.constEnd(); ++it)
+            addGroup(it.key(), 1, it.value());
+    }
+    if (dimFilter < 0 || dimFilter == 2)
+    {
+        for (auto it = map.bndFacePhysToPointIds.constBegin(); it != map.bndFacePhysToPointIds.constEnd(); ++it)
+            addGroup(it.key(), 2, it.value());
+    }
+
     ui->comboBoxGroup->blockSignals(false);
+
+    qDebug() << "[DisplacementConstraintWidget] refreshGroupCombo"
+             << "dimFilter=" << dimFilter
+             << "count=" << ui->comboBoxGroup->count();
 }
 
 void DisplacementConstraintWidget::onDimChanged(int)
@@ -123,7 +153,11 @@ void DisplacementConstraintWidget::onDimChanged(int)
 
 void DisplacementConstraintWidget::onGroupChanged(int index)
 {
-    if (index < 0) return;
+    if (index < 0)
+    {
+        qDebug() << "[DisplacementConstraintWidget] onGroupChanged ignored: invalid index" << index;
+        return;
+    }
 
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc) return;
@@ -131,14 +165,47 @@ void DisplacementConstraintWidget::onGroupChanged(int index)
     const MshPickMap& map = meshSvc->mshPickMapSolid();
 
     const int physId = ui->comboBoxGroup->itemData(index).toInt();
-    const int dim = map.physIdToDim.value(physId, -1);
+    const int dim = ui->comboBoxGroup->itemData(index, Qt::UserRole + 1).toInt();
 
     // 取出“vtk pointId 列表”
     QVector<int> pointIdsInt;
     if (dim == 0)      pointIdsInt = map.bndPointPhysToPointIds.value(physId);
     else if (dim == 1) pointIdsInt = map.bndEdgePhysToPointIds.value(physId);
     else if (dim == 2) pointIdsInt = map.bndFacePhysToPointIds.value(physId);
-    else return;
+    else
+    {
+        qDebug() << "[DisplacementConstraintWidget] onGroupChanged ignored: unsupported dim"
+                 << "index=" << index << "physId=" << physId << "dim=" << dim;
+        return;
+    }
+
+    qDebug() << "[DisplacementConstraintWidget] onGroupChanged"
+             << "index=" << index
+             << "text=" << ui->comboBoxGroup->itemText(index)
+             << "physId=" << physId
+             << "dim=" << dim
+             << "pointIds=" << pointIdsInt.size();
+
+    if (pointIdsInt.isEmpty())
+    {
+        // 某些网格物理组可能 dim 标注与边界映射不一致；做一次兜底合并，避免“看起来选中了但不变色”
+        const QVector<int> p0 = map.bndPointPhysToPointIds.value(physId);
+        const QVector<int> p1 = map.bndEdgePhysToPointIds.value(physId);
+        const QVector<int> p2 = map.bndFacePhysToPointIds.value(physId);
+        QSet<int> merged;
+        for (int v : p0) merged.insert(v);
+        for (int v : p1) merged.insert(v);
+        for (int v : p2) merged.insert(v);
+        pointIdsInt = merged.values().toVector();
+
+        qDebug() << "[DisplacementConstraintWidget] fallback merged pointIds"
+                 << "physId=" << physId
+                 << "dim=" << dim
+                 << "point=" << p0.size()
+                 << "edge=" << p1.size()
+                 << "face=" << p2.size()
+                 << "merged=" << pointIdsInt.size();
+    }
 
     qDebug()<<"dim "<<dim<<" "<<"pointIdsInt.size() "<<pointIdsInt.size();
     QVector<vtkIdType> pids;
@@ -147,6 +214,11 @@ void DisplacementConstraintWidget::onGroupChanged(int index)
 
     // 传给 PickManager：replace = true（下拉框就是“一键换一组”）
     PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pids, true);
+
+    qDebug() << "[DisplacementConstraintWidget] setSelectedPointIds done"
+             << "uuid=" << m_uuid
+             << "replace=true"
+             << "selectedCount=" << pids.size();
 
     // 如果你希望同步 UI（比如显示数量）
     // ui->SelectedCountLabel->setText(QString::number(pids.size()));
