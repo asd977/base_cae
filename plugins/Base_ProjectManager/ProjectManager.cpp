@@ -158,7 +158,6 @@ void ProjectManager::openProject()
     }
     if (smprjo_path == "") return;
     QFileInfo fileInfo(smprjo_path);
-    m_projectPath = fileInfo.absolutePath();
     if (!readProjectManifest(smprjo_path))
     {
         m_projectName = fileInfo.baseName();
@@ -167,13 +166,21 @@ void ProjectManager::openProject()
     {
         m_projectName = fileInfo.baseName();
     }
+
+    QDir baseDir = fileInfo.dir();
+    if (baseDir.dirName() == m_projectName)
+    {
+        baseDir.cdUp();
+    }
+    m_projectPath = baseDir.absolutePath();
+
     if (!createProjectFilesFolder(false))
     {
         m_outputService->outputLog("工程文件有误,打开失败");
         return;
     }
     //todo 获取工程文件里面的所有内容 读取各自模块存取的数据 注意:怎么存怎么取!!!
-    m_projectEnginePath = smprjo_path;
+    m_projectEnginePath = QDir(m_projectTempFolder).filePath(m_projectName + ".xml");
     QStringList files /*= JlCompress::extractDir(smprjo_path, m_projectTempFolder)*/;
 
     PublicVariables::instance().set(PublicConstants::kProjectDirectoryKey, m_projectTempFolder,"project_dir");
@@ -259,7 +266,7 @@ void ProjectManager::newProject()
         return;
     }
 
-    m_projectEnginePath = m_projectPath + "/" + m_projectName + ".xml";
+    m_projectEnginePath = QDir(m_projectPath).filePath(m_projectName + "/" + m_projectName + ".xml");
     if (!createProjectFilesFolder(true))
     {
         return;
