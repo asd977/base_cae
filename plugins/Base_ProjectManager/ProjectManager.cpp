@@ -187,32 +187,49 @@ void ProjectManager::openProject()
 
 	m_projectTreeWidget->buildDefaultProjectTree(m_projectName);
 	m_rootNode = m_projectTreeWidget->m_rootNode;
+	m_projectTreeWidget->blockSignal(true);
 
-    PostProcessingService *postProcessingService = ServiceRegistry::instance().getService<PostProcessingService>();
-    postProcessingService->loadProject();
-
-	PreProcessingService *preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>();
-	preProcessingService->loadProject();
-
+    // 按“新建工程”一致的顺序恢复模块，保证树节点顺序稳定。
+    if (auto* globalParameterService = ServiceRegistry::instance().getService<GlobalParameterService>())
+    {
+        globalParameterService->newProject();
+    }
+    if (auto* materialManagerService = ServiceRegistry::instance().getService<MaterialManagerService>())
+    {
+        materialManagerService->newProject();
+    }
+	if (auto* preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>())
+	{
+		preProcessingService->loadProject();
+	}
 	if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
 	{
 		meshService->loadProject();
 	}
-
+    if (auto* physicalFieldService = ServiceRegistry::instance().getService<PhysicalFieldService>())
+    {
+        physicalFieldService->newProject();
+    }
 	if (auto* boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>())
 	{
 		boundaryConditionsService->loadProject();
 	}
-
 	if (auto* solverService = ServiceRegistry::instance().getService<SolverService>())
 	{
 		solverService->loadProject();
 	}
-
-	if (auto* surrogateService = ServiceRegistry::instance().getService<SurrogateModelService>())
+	if (auto* postProcessingService = ServiceRegistry::instance().getService<PostProcessingService>())
 	{
-		surrogateService->loadProject();
+		postProcessingService->loadProject();
 	}
+
+    // 代理模型暂不参与打开恢复。
+    // if (auto* surrogateService = ServiceRegistry::instance().getService<SurrogateModelService>())
+    // {
+    //     surrogateService->loadProject();
+    // }
+
+	m_projectTreeWidget->blockSignal(false);
 
 }
 
@@ -245,10 +262,11 @@ void ProjectManager::saveProject()
         solverService->saveProject();
     }
 
-    if (auto* surrogateService = ServiceRegistry::instance().getService<SurrogateModelService>())
-    {
-        surrogateService->saveProject();
-    }
+    // 代理模型暂不参与工程保存。
+    // if (auto* surrogateService = ServiceRegistry::instance().getService<SurrogateModelService>())
+    // {
+    //     surrogateService->saveProject();
+    // }
 
     writeProjectManifest();
 }
@@ -308,10 +326,11 @@ void ProjectManager::newProject()
     {
         postProcessingService->newProject();
     }
-    if (auto* surrogateModelService = ServiceRegistry::instance().getService<SurrogateModelService>())
-    {
-        surrogateModelService->newProject();
-    }
+    // 代理模型暂不参与新建工程。
+    // if (auto* surrogateModelService = ServiceRegistry::instance().getService<SurrogateModelService>())
+    // {
+    //     surrogateModelService->newProject();
+    // }
 
      m_projectTreeWidget->blockSignal(false);
     QTreeWidget* treeWidget = m_projectTreeWidget->m_treeWidget;
