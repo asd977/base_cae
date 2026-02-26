@@ -2,9 +2,13 @@
 #include "ui_SeepageBoundaryPage.h"
 
 #include <PickManager.h>
+#include <ServiceRegistry.h>
+#include <services/MeshModuleControllerService.h>
+#include <struct/MeshMap.h>
 
 #include <QDir>
 #include <QFile>
+#include <QComboBox>
 #include <QSet>
 #include <QTextStream>
 
@@ -25,6 +29,7 @@ SeepageBoundaryPage::SeepageBoundaryPage(const QString& pageType,
     ui->setupUi(this);
     ui->labelBoundaryTitle->setText(boundaryTitle);
     ui->labelFileNameValue->setText(exportFileName);
+    setupBatchGroupCombo();
 
     connect(ui->btnClear, &QPushButton::clicked, this, &SeepageBoundaryPage::onClearClicked);
     ui->tableNodes->setVisible(false);
@@ -38,6 +43,7 @@ SeepageBoundaryPage::~SeepageBoundaryPage()
 
 void SeepageBoundaryPage::beforeLoad()
 {
+    setupBatchGroupCombo();
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
 }
 
@@ -119,4 +125,92 @@ bool SeepageBoundaryPage::exportDatFile()
 void SeepageBoundaryPage::onClearClicked()
 {
     PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Node);
+}
+
+void SeepageBoundaryPage::setupBatchGroupCombo()
+{
+    if (!ui) return;
+
+    ui->comboBoxDim->blockSignals(true);
+    ui->comboBoxDim->clear();
+    ui->comboBoxDim->addItem(tr("全部维度"), -1);
+    ui->comboBoxDim->addItem(tr("dim0 点"), 0);
+    ui->comboBoxDim->addItem(tr("dim1 线"), 1);
+    ui->comboBoxDim->addItem(tr("dim2 面"), 2);
+    ui->comboBoxDim->setCurrentIndex(0);
+    ui->comboBoxDim->blockSignals(false);
+
+    connect(ui->comboBoxDim,
+            QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this,
+            &SeepageBoundaryPage::onDimChanged,
+            Qt::UniqueConnection);
+    connect(ui->comboBoxGroup,
+            QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this,
+            &SeepageBoundaryPage::onGroupChanged,
+            Qt::UniqueConnection);
+
+    refreshGroupCombo();
+}
+
+void SeepageBoundaryPage::refreshGroupCombo()
+{
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshSvc || !ui) return;
+
+    const MshPickMap& map = meshSvc->mshPickMapSolid();
+    const int dimFilter = ui->comboBoxDim->currentData().toInt();
+
+    ui->comboBoxGroup->blockSignals(true);
+    ui->comboBoxGroup->clear();
+
+    for (auto it = map.physIdToName.constBegin(); it != map.physIdToName.constEnd(); ++it)
+    {
+        const int physId = it.key();
+        const int dim = map.physIdToDim.value(physId, -1);
+        if (dim < 0 || dim > 2) continue;
+        if (dimFilter >= 0 && dim != dimFilter) continue;
+
+        ui->comboBoxGroup->addItem(QString("%1  (dim=%2, id=%3)").arg(it.value()).arg(dim).arg(physId),
+                                   physId);
+    }
+
+    ui->comboBoxGroup->blockSignals(false);
+}
+
+void SeepageBoundaryPage::onDimChanged(int)
+{
+    refreshGroupCombo();
+}
+
+void SeepageBoundaryPage::onGroupChanged(int index)
+{
+    if (index < 0 || !ui) return;
+
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshSvc) return;
+
+    const MshPickMap& map = meshSvc->mshPickMapSolid();
+    const int physId = ui->comboBoxGroup->itemData(index).toInt();
+    const int dim = map.physIdToDim.value(physId, -1);
+
+    QVector<int> pointIdsInt;
+    if (dim == 0)
+        pointIdsInt = map.bndPointPhysToPointIds.value(physId);
+    else if (dim == 1)
+        pointIdsInt = map.bndEdgePhysToPointIds.value(physId);
+    else if (dim == 2)
+        pointIdsInt = map.bndFacePhysToPointIds.value(physId);
+    else
+        return;
+
+    QVector<vtkIdType> pointIds;
+    pointIds.reserve(pointIdsInt.size());
+    for (int pid : pointIdsInt)
+    {
+        pointIds.push_back(vtkIdType(pid));
+    }
+
+    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pointIds, true);
 }

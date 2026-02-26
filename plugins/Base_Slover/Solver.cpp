@@ -100,6 +100,14 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
 
     bool ok = true;
     QStringList failedFiles;
+
+    auto* seepagePage = dynamic_cast<SeepageWidget*>(analysisNode->getPage());
+    if (!seepagePage || !seepagePage->exportIseepDatFile())
+    {
+        ok = false;
+        failedFiles << "ISEEP.DAT";
+    }
+
     for (ProjectNode* child : analysisNode->getChildren())
     {
         auto* boundaryPage = dynamic_cast<SeepageBoundaryPage*>(child->getPage());
@@ -112,13 +120,13 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
 
     if (ok)
     {
-        QMessageBox::information(nullptr, "计算完成", QString("%1 的边界数据已生成到 data 目录。")
+        QMessageBox::information(nullptr, "计算完成", QString("%1 的渗流数据已生成到 data 目录（含 ISEEP.DAT）。")
                                                       .arg(analysisNode->getName()));
     }
     else
     {
         QMessageBox::warning(nullptr, "计算失败",
-                             QString("以下边界数据生成失败：%1").arg(failedFiles.join("、")));
+                             QString("以下数据生成失败：%1").arg(failedFiles.join("、")));
     }
 }
 
