@@ -11,6 +11,8 @@
 #include <QComboBox>
 #include <QSet>
 #include <QTextStream>
+#include <PublicConstants.h>
+#include <PublicVariables.h>
 
 #include <algorithm>
 
@@ -102,10 +104,11 @@ bool SeepageBoundaryPage::exportDatFile()
 {
     const QVector<int> ids = selectedNodeIds();
 
-    QDir wd(QDir::currentPath());
-    if (!wd.exists("data")) wd.mkpath("data");
+    const QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir wd(projectDir);
+    if (!wd.exists("PREP")) wd.mkpath("PREP");
 
-    QFile file(wd.filePath("data/" + m_exportFileName));
+    QFile file(wd.filePath("PREP/" + m_exportFileName));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
     {
         return false;

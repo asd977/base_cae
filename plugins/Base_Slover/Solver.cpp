@@ -206,7 +206,7 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
 
     if (ok)
     {
-        QMessageBox::information(nullptr, "导出成功", "渗流计算输入文件导出成功（data/）。");
+        QMessageBox::information(nullptr, "导出成功", "渗流计算输入文件导出成功（PREP/）。");
     }
     else
     {

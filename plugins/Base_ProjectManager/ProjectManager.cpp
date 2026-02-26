@@ -14,6 +14,7 @@
 #include <QBrush>
 #include <QIcon>
 #include <QVariant>
+#include <QMessageBox>
 
 namespace
 {
@@ -155,7 +156,8 @@ void ProjectManager::openProject()
     if (smprjo_path == "") return;
     QFileInfo fileInfo(smprjo_path);
     m_projectName = fileInfo.baseName();
-    if (!createProjectFilesFolder())
+    m_projectPath = fileInfo.absolutePath();
+    if (!createProjectFilesFolder(false))
     {
         m_outputService->outputLog("工程文件有误,打开失败");
         return;
@@ -246,7 +248,10 @@ void ProjectManager::newProject()
     }
 
     m_projectEnginePath = m_projectPath + "/" + m_projectName + ".smproj";
-    createProjectFilesFolder();
+    if (!createProjectFilesFolder(true))
+    {
+        return;
+    }
     m_projectTreeWidget->buildDefaultProjectTree(m_projectName);
     m_rootNode = m_projectTreeWidget->m_rootNode;
     m_projectTreeWidget->blockSignal(true);
@@ -375,18 +380,57 @@ bool ProjectManager::removeDir(QString dirPath)
 	return dir.rmpath(dir.absolutePath());
 }
 
-bool ProjectManager::createProjectFilesFolder()
+bool ProjectManager::createProjectFilesFolder(bool askOverwrite)
 {
-	QString	exelPath = QCoreApplication::applicationDirPath();
-	const QString tempPath = exelPath + "/../ProjectFolder/";
+    if (m_projectPath.isEmpty() || m_projectName.isEmpty())
+    {
+        return false;
+    }
+
+    const QString tempPath = QDir(m_projectPath).filePath(m_projectName);
     m_projectTempFolder = tempPath;
     PublicVariables::instance().set(PublicConstants::kProjectDirectoryKey, m_projectTempFolder,"project_dir");
-	removeDir(tempPath);
-	QDir dir = QDir(tempPath);
-	if (!dir.exists())
-	{
-		bool flag = dir.mkpath(tempPath);
-	}
+
+    QDir dir(tempPath);
+    if (dir.exists())
+    {
+        if (askOverwrite)
+        {
+            const auto ret = QMessageBox::question(
+                nullptr,
+                tr("项目目录已存在"),
+                tr("目录已存在：%1\n是否覆盖原有项目文件？").arg(tempPath),
+                QMessageBox::Yes | QMessageBox::No,
+                QMessageBox::No);
+            if (ret != QMessageBox::Yes)
+            {
+                return false;
+            }
+            if (!removeDir(tempPath))
+            {
+                return false;
+            }
+        }
+        else
+        {
+            if (!dir.mkpath(dir.filePath("PREP")))
+            {
+                return false;
+            }
+            return true;
+        }
+    }
+
+    if (!dir.mkpath(tempPath))
+    {
+        return false;
+    }
+
+    if (!dir.mkpath(dir.filePath("PREP")))
+    {
+        return false;
+    }
+
 	return true;
 }
 

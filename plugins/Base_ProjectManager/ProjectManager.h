@@ -71,7 +71,7 @@ private:
 	/**
 	 * @brief 创建工程的所有数据文件夹（新建工程）
 	 */
-	bool createProjectFilesFolder();
+	bool createProjectFilesFolder(bool askOverwrite = true);
 	/**
 	 * @brief 保存项目所有模块的数据到.smproj文件
 	 * @param fileName .smproj名称

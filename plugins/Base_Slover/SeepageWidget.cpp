@@ -4,6 +4,8 @@
 #include <QDir>
 #include <QFile>
 #include <QTextStream>
+#include <PublicConstants.h>
+#include <PublicVariables.h>
 
 SeepageWidget::SeepageWidget(QWidget *parent) :
     BasePage("SeepageAnalysis"),
@@ -45,10 +47,11 @@ double SeepageWidget::downstreamFlux() const
 
 bool SeepageWidget::exportIseepDatFile() const
 {
-    QDir wd(QDir::currentPath());
-    if (!wd.exists("data")) wd.mkpath("data");
+    const QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir wd(projectDir);
+    if (!wd.exists("PREP")) wd.mkpath("PREP");
 
-    QFile file(wd.filePath("data/ISEEP.DAT"));
+    QFile file(wd.filePath("PREP/ISEEP.DAT"));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
     {
         return false;

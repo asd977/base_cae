@@ -21,6 +21,8 @@
 #include <QDir>
 #include <QFile>
 #include <QTextStream>
+#include <PublicConstants.h>
+#include <PublicVariables.h>
 #include <QVector>
 #include <QHash>
 #include <QSet>
@@ -571,10 +573,11 @@ void PhysicalField::generateIIIDFile()
         }
     }
 
-    // 6) 写文件到 工作目录/data/IIID.DAT
-    QDir wd(QDir::currentPath());
-    if (!wd.exists("data")) wd.mkpath("data");
-    const QString path = wd.filePath("data/IIID.DAT");
+    // 6) 写文件到 工程目录/PREP/IIID.DAT
+    const QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir wd(projectDir);
+    if (!wd.exists("PREP")) wd.mkpath("PREP");
+    const QString path = wd.filePath("PREP/IIID.DAT");
 
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -1566,9 +1569,10 @@ void PhysicalField::writeIIWL_Part9_10_11_Seismic(QTextStream& os)
 
 void PhysicalField::generateIIWLFile()
 {
-    QDir wd(QDir::currentPath());
-    if (!wd.exists("data")) wd.mkpath("data");
-    const QString path = wd.filePath("data/IIWL.DAT");
+    const QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir wd(projectDir);
+    if (!wd.exists("PREP")) wd.mkpath("PREP");
+    const QString path = wd.filePath("PREP/IIWL.DAT");
 
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text))

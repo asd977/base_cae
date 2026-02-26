@@ -368,11 +368,12 @@ bool GeoStressFitFacePage::exportLeftDatFile()
     consume(gL, nL, keysL, false);
 
     // 写文件
-    QDir wd(QDir::currentPath());
-    if (!wd.exists("data")) wd.mkpath("data");
+    const QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir wd(projectDir);
+    if (!wd.exists("PREP")) wd.mkpath("PREP");
 
     const QString fileName = fnameForExport();
-    const QString path = wd.filePath("data/" + fileName);
+    const QString path = wd.filePath("PREP/" + fileName);
 
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
