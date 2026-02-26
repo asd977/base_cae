@@ -87,8 +87,6 @@ void Solver::onSeepageAction()
 
     addBoundary("上游迎水面", "SeepageBoundaryUpstreamWater", "JD_UPSEEP.DAT");
     addBoundary("下游迎水面", "SeepageBoundaryDownstreamWater", "JD_DWSEEP.DAT");
-    addBoundary("上游给定流量面", "SeepageBoundaryUpstreamFlux", "FA_UPSEEP.DAT");
-    addBoundary("下游给定流量面", "SeepageBoundaryDownstreamFlux", "FA_DWSEEP.DAT");
 
     m_root->addChild(analysisNode);
 }
