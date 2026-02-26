@@ -2,6 +2,7 @@
 
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
+#include <PublicVariables.h>
 #include <services/VisualWidgetService.h>
 
 #include <QDebug>
@@ -294,12 +295,29 @@ void PickManager::updateStructure()
     if (m_gridLine) rebuildLineNodeOverlayAll();
 }
 
+
+void PickManager::refreshStructureIfNeeded()
+{
+    const qint64 rev = PublicVariables::instance().get("pick_structure_revision").toLongLong();
+    const bool needRefresh =
+        (rev != m_structureRevisionSeen) ||
+        (m_gridSolid == nullptr && m_gridLine == nullptr) ||
+        (m_visual && (m_solidProp == nullptr && m_lineProp == nullptr));
+
+    if (needRefresh)
+    {
+        updateStructure();
+        m_structureRevisionSeen = rev;
+    }
+}
+
 void PickManager::activate(const QString& domain, const QString& uuid, PickMode mode)
 {
     m_currentDomain = domain;
     m_currentUUid   = uuid;
     m_pickMode      = mode;
 
+    refreshStructureIfNeeded();
     updateActorVisibility();
 
     // line node hints 仅 node 模式显示

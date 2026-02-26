@@ -136,6 +136,7 @@ private:
                            QVector<vtkIdType>& outFacePids) const;
 
     void updateActorVisibility();
+    void refreshStructureIfNeeded();
 
     // line node overlay
     void rebuildLineNodeOverlayAll();
@@ -163,6 +164,7 @@ private:
     // ============ active ============
     QString  m_currentDomain;
     QString  m_currentUUid;
+    qint64   m_structureRevisionSeen = -1;
     PickMode m_pickMode = PickMode::Node;
 
     VisualWidgetService* m_visual = nullptr;

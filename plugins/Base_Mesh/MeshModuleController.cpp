@@ -571,6 +571,9 @@ void MeshModuleController::onMeshEdit()
 
 void MeshModuleController::displayCurrentGrid()
 {
+    const qint64 rev = PublicVariables::instance().get("pick_structure_revision").toLongLong();
+    PublicVariables::instance().set("pick_structure_revision", rev + 1, "project_dir");
+
     PickManager::instance().updateStructure();
     if (!m_visualWidgetService || !m_hasGrid || !m_importedGrid)
         return;
