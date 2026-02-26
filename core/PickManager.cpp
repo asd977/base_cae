@@ -1495,6 +1495,22 @@ void PickManager::commitFaceExclusive(const QString& domain, const QString& uuid
     }
 }
 
+
+QVector<vtkIdType> PickManager::getSelectedPointIds(const QString& domain,
+                                                   const QString& uuid,
+                                                   GridKind kind) const
+{
+    const QSet<vtkIdType> set = (kind == GridKind::Solid)
+        ? m_pointsSolidByDomainUuid.value(domain).value(uuid)
+        : m_pointsLineByDomainUuid.value(domain).value(uuid);
+
+    QVector<vtkIdType> out;
+    out.reserve(set.size());
+    for (vtkIdType pid : set) out.push_back(pid);
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
 // ===================== getIdList =====================
 QVector<vtkIdType> PickManager::getIdList(const QString& domain, const QString& uuid, PickMode mode) const
 {

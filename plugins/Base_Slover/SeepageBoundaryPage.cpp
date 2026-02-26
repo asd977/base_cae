@@ -231,8 +231,8 @@ QJsonObject SeepageBoundaryPage::saveJson()
         for (auto id : ids) arr.append(static_cast<qint64>(id));
         return arr;
     };
-    obj["picked_solid"] = toJson(PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Node, GridKind::Solid));
-    obj["picked_line"] = toJson(PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Node, GridKind::Line));
+    obj["picked_solid"] = toJson(PickManager::instance().getSelectedPointIds(getPageType(), m_uuid, GridKind::Solid));
+    obj["picked_line"] = toJson(PickManager::instance().getSelectedPointIds(getPageType(), m_uuid, GridKind::Line));
     return obj;
 }
 

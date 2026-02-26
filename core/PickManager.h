@@ -51,6 +51,7 @@ public:
 
     QVector<vtkIdType> getIdList(const QString& domain, const QString& uuid, PickMode mode) const;
     QVector<vtkIdType> getIdList(const QString& domain, const QString& uuid, PickMode mode, GridKind kind) const;
+    QVector<vtkIdType> getSelectedPointIds(const QString& domain, const QString& uuid, GridKind kind) const;
 
     QHash<int, QVector<int>> getEdgeNodesByKe(const QString& domain,
                                               const QString& uuid,

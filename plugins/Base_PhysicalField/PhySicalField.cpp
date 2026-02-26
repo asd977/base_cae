@@ -314,8 +314,8 @@ bool PhysicalField::saveProject()
         item["title"] = node->text(0);
         item["kind"] = kind;
         item["domain"] = domain;
-        item["node_solid"] = toJson(PickManager::instance().getIdList(domain, uuid, PickMode::Node, GridKind::Solid));
-        item["node_line"] = toJson(PickManager::instance().getIdList(domain, uuid, PickMode::Node, GridKind::Line));
+        item["node_solid"] = toJson(PickManager::instance().getSelectedPointIds(domain, uuid, GridKind::Solid));
+        item["node_line"] = toJson(PickManager::instance().getSelectedPointIds(domain, uuid, GridKind::Line));
         item["edge_solid"] = toJson(PickManager::instance().getIdList(domain, uuid, PickMode::Edge, GridKind::Solid));
         item["edge_line"] = toJson(PickManager::instance().getIdList(domain, uuid, PickMode::Edge, GridKind::Line));
         item["face_solid"] = toJson(PickManager::instance().getIdList(domain, uuid, PickMode::Face, GridKind::Solid));
