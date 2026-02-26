@@ -3,6 +3,7 @@
 #include <BasePage.h>
 #include <QString>
 #include <QVector>
+#include <QJsonObject>
 
 namespace Ui {
 class SeepageBoundaryPage;
@@ -22,6 +23,9 @@ public:
     void beforeUnload() override;
 
     bool exportDatFile();
+
+    QJsonObject saveJson() override;
+    void loadJson(const QJsonObject& obj) override;
 
 private slots:
     void onClearClicked();

@@ -289,7 +289,7 @@ void PreProcessing::newProject()
 
 bool PreProcessing::saveProject()
 {
-	if (!m_geomNode || !m_gridNode) return true;
+	if (!m_geomNode) return true;
 	QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
 	const QString filePath = QDir(projectDir).filePath(PublicConstants::kPreProcessingProjectFileName);
 
@@ -314,23 +314,6 @@ bool PreProcessing::saveProject()
 	}
 	root["geom_items"] = geomItems;
 
-
-	QJsonArray gridItems;
-	const int n2 = m_gridNode->childCount();
-	for (int i = 0; i < n2; ++i)
-	{
-		ProjectNode* node = static_cast<ProjectNode*>(m_gridNode->child(i));
-		if (!node) continue;
-		BasePage* page = node->getPage();
-
-		QJsonObject item;
-		item["uuid"] = node->getUuid();
-		item["title"] = node->text(0);
-		item["type"] = page->getPageType();
-		item["state"] = page->saveJson();
-		gridItems.append(item);
-	}
-	root["grid_items"] = gridItems;
 	return writeJsonFile(filePath, root);
 }
 
@@ -354,7 +337,7 @@ bool PreProcessing::loadChildProject(ProjectNode * rootNode,const QString & name
 	QJsonObject root;
 	if (!readJsonFile(filePath, root))
 	{
-		return false;
+		return true;
 	}
 
 	const QJsonArray items = root.value(name).toArray();
@@ -377,9 +360,9 @@ bool PreProcessing::loadChildProject(ProjectNode * rootNode,const QString & name
 
 void PreProcessing::closeProject()
 {
-	if (!m_geomNode|| !m_gridNode) return;
+	if (!m_geomNode && !m_gridNode) return;
 
-	while (m_geomNode->childCount() > 0)
+	while (m_geomNode && m_geomNode->childCount() > 0)
 	{
 		ProjectNode* node = static_cast<ProjectNode*>(m_geomNode->child(0));
 		if (node)
@@ -394,7 +377,7 @@ void PreProcessing::closeProject()
 		}
 	}
 
-	while (m_gridNode->childCount() > 0)
+	while (m_gridNode && m_gridNode->childCount() > 0)
 	{
 		ProjectNode* node = static_cast<ProjectNode*>(m_gridNode->child(0));
 		if (node)
@@ -415,11 +398,15 @@ void PreProcessing::closeProject()
 
 
 	}
-	delete m_geomNode;
-	m_geomNode = nullptr;
+	if (m_geomNode) {
+		delete m_geomNode;
+		m_geomNode = nullptr;
+	}
 
-	delete m_gridNode;
-    m_gridNode = nullptr;
+	if (m_gridNode) {
+		delete m_gridNode;
+		m_gridNode = nullptr;
+	}
 }
 
 void PreProcessing::generateStepFile()

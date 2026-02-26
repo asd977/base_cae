@@ -175,32 +175,61 @@ void ProjectManager::openProject()
 	PreProcessingService *preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>();
 	preProcessingService->loadProject();
 
-	BoundaryConditionsService *boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>();
-	boundaryConditionsService->loadProject();
+	if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+	{
+		meshService->loadProject();
+	}
 
-    //todo 读取其他模块的数据
+	if (auto* boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>())
+	{
+		boundaryConditionsService->loadProject();
+	}
+
+	if (auto* solverService = ServiceRegistry::instance().getService<SolverService>())
+	{
+		solverService->loadProject();
+	}
+
+	if (auto* surrogateService = ServiceRegistry::instance().getService<SurrogateModelService>())
+	{
+		surrogateService->loadProject();
+	}
 
 }
 
 void ProjectManager::saveProject()
 {
-// 	if (m_projectEnginePath =="")return;
-// //	saveAllProModelData(m_projectEnginePath);
+    if (m_projectTempFolder.isEmpty()) return;
 
-//     PostProcessingService *postProcessingService = ServiceRegistry::instance().getService<PostProcessingService>();
-//     postProcessingService->saveProject();
+    if (auto* postProcessingService = ServiceRegistry::instance().getService<PostProcessingService>())
+    {
+        postProcessingService->saveProject();
+    }
 
-// 	PreProcessingService *preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>();
-// 	preProcessingService->saveProject();
+    if (auto* preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>())
+    {
+        preProcessingService->saveProject();
+    }
 
-// 	BoundaryConditionsService *boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>();
-// 	boundaryConditionsService->saveProject();
+    if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+    {
+        meshService->saveProject();
+    }
 
-//     bool isok/* = JlCompress::compressDir(m_projectEnginePath, m_projectTempFolder)*/;
-//     if (!isok)
-//     {
-//         qDebug() << "smproj save failed!!!";
-//     }
+    if (auto* boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>())
+    {
+        boundaryConditionsService->saveProject();
+    }
+
+    if (auto* solverService = ServiceRegistry::instance().getService<SolverService>())
+    {
+        solverService->saveProject();
+    }
+
+    if (auto* surrogateService = ServiceRegistry::instance().getService<SurrogateModelService>())
+    {
+        surrogateService->saveProject();
+    }
 }
 
 void ProjectManager::newProject()

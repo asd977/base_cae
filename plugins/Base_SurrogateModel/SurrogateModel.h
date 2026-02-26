@@ -21,8 +21,9 @@ private slots:
     void newDNNModel();
 
 private:
-    ProjectNode *m_root;
+    ProjectNode *m_root = nullptr;
     void initAction();
+    BasePage* createPageByType(const QString& type);
 };
 
 #endif // SURROGATEMODEL_H

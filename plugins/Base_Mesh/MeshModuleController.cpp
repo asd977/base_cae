@@ -12,7 +12,14 @@
 #include <MeshFaceControlWidget.h>
 #include <MeshEdgeControlWidget.h>
 #include <PublicConstants.h>
+#include <PublicVariables.h>
 #include <QMessageBox>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <qfiledialog.h>
 #include <QVector>
 #include <vtkActor.h>
@@ -65,13 +72,156 @@ void MeshModuleController::newProject()
 
 bool MeshModuleController::saveProject()
 {
-    // TODO: 保存网格模块相关参数（剖分参数、控制参数、质量阈值、导入文件路径等）
+    QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    if (projectDir.isEmpty()) return false;
+
+    QJsonObject root;
+    root["module"] = "Mesh";
+    root["root_title"] = "网格";
+
+    const QString snapshotPath = QDir(projectDir).filePath(PublicConstants::kMeshSnapshotFileName);
+    const bool hasGrid = (m_importedGrid && m_importedGrid->GetNumberOfCells() > 0);
+    root["has_grid"] = hasGrid;
+    root["snapshot_file"] = PublicConstants::kMeshSnapshotFileName;
+    if (hasGrid)
+    {
+        QString err;
+        if (!MeshGridIO::instance().exportIiinFile(snapshotPath, m_importedGrid, &err))
+        {
+            return false;
+        }
+    }
+
+    auto edgeRulesToJson = [this]() {
+        QJsonArray arr;
+        for (const auto& rule : m_edgeRules)
+        {
+            QJsonObject obj;
+            obj["edge_ids"] = rule.edgeIds;
+            obj["size"] = rule.size;
+            obj["divisions"] = rule.divisions;
+            obj["bias"] = rule.bias;
+            obj["hard_constraint"] = rule.hardConstraint;
+            arr.append(obj);
+        }
+        return arr;
+    };
+    auto faceRulesToJson = [this]() {
+        QJsonArray arr;
+        for (const auto& rule : m_faceRules)
+        {
+            QJsonObject obj;
+            obj["face_ids"] = rule.faceIds;
+            obj["min_size"] = rule.minSize;
+            obj["max_size"] = rule.maxSize;
+            obj["curvature_refine"] = rule.curvatureRefine;
+            obj["curvature_level"] = rule.curvatureLevel;
+            arr.append(obj);
+        }
+        return arr;
+    };
+    auto volumeRulesToJson = [this]() {
+        QJsonArray arr;
+        for (const auto& rule : m_volumeRules)
+        {
+            QJsonObject obj;
+            obj["volume_ids"] = rule.volumeIds;
+            obj["min_size"] = rule.minSize;
+            obj["max_size"] = rule.maxSize;
+            obj["growth_rate"] = rule.growthRate;
+            obj["boundary_layer"] = rule.boundaryLayer;
+            obj["layer_count"] = rule.layerCount;
+            arr.append(obj);
+        }
+        return arr;
+    };
+
+    root["edge_rules"] = edgeRulesToJson();
+    root["face_rules"] = faceRulesToJson();
+    root["volume_rules"] = volumeRulesToJson();
+
+    QFile file(QDir(projectDir).filePath(PublicConstants::kMeshProjectFileName));
+    if (!file.open(QIODevice::WriteOnly)) return false;
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     return true;
 }
 
 bool MeshModuleController::loadProject()
 {
-    // TODO: 读取并恢复网格模块相关参数
+    auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
+    m_gridNode = new ProjectNode("网格");
+    m_gridNode->setData(0, ProjectNode::RoleModule, "Mesh");
+    m_gridNode->setData(0, ProjectNode::RoleKind, "MeshRoot");
+    projectManagerService->addTreeItem(m_gridNode);
+
+    QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    if (projectDir.isEmpty()) return false;
+
+    QFile file(QDir(projectDir).filePath(PublicConstants::kMeshProjectFileName));
+    if (!file.open(QIODevice::ReadOnly)) return true;
+
+    const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+
+    const bool hasGrid = root.value("has_grid").toBool(false);
+    if (hasGrid)
+    {
+        const QString snapshotName = root.value("snapshot_file").toString(PublicConstants::kMeshSnapshotFileName);
+        const QString snapshotPath = QDir(projectDir).filePath(snapshotName);
+        if (QFileInfo::exists(snapshotPath))
+        {
+            QString err;
+            auto grid = MeshGridIO::instance().loadIiinFile(snapshotPath, &err);
+            if (grid)
+            {
+                m_importedGrid = grid;
+                m_hasGrid = true;
+                m_sourceFileName.clear();
+                syncPickMapGroupingFromGrid(m_importedGrid);
+                displayCurrentGrid();
+            }
+        }
+    }
+
+    m_edgeRules.clear();
+    for (const auto& v : root.value("edge_rules").toArray())
+    {
+        const QJsonObject obj = v.toObject();
+        EdgeControlRule rule;
+        rule.edgeIds = obj.value("edge_ids").toString();
+        rule.size = obj.value("size").toDouble(1.0);
+        rule.divisions = obj.value("divisions").toInt(10);
+        rule.bias = obj.value("bias").toDouble(1.0);
+        rule.hardConstraint = obj.value("hard_constraint").toBool(false);
+        m_edgeRules.push_back(rule);
+    }
+
+    m_faceRules.clear();
+    for (const auto& v : root.value("face_rules").toArray())
+    {
+        const QJsonObject obj = v.toObject();
+        FaceControlRule rule;
+        rule.faceIds = obj.value("face_ids").toString();
+        rule.minSize = obj.value("min_size").toDouble(0.2);
+        rule.maxSize = obj.value("max_size").toDouble(1.0);
+        rule.curvatureRefine = obj.value("curvature_refine").toBool(true);
+        rule.curvatureLevel = obj.value("curvature_level").toInt(2);
+        m_faceRules.push_back(rule);
+    }
+
+    m_volumeRules.clear();
+    for (const auto& v : root.value("volume_rules").toArray())
+    {
+        const QJsonObject obj = v.toObject();
+        VolumeControlRule rule;
+        rule.volumeIds = obj.value("volume_ids").toString();
+        rule.minSize = obj.value("min_size").toDouble(0.5);
+        rule.maxSize = obj.value("max_size").toDouble(2.0);
+        rule.growthRate = obj.value("growth_rate").toDouble(1.2);
+        rule.boundaryLayer = obj.value("boundary_layer").toBool(false);
+        rule.layerCount = obj.value("layer_count").toInt(3);
+        m_volumeRules.push_back(rule);
+    }
+
     return true;
 }
 

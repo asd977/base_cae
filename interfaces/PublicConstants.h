@@ -226,6 +226,10 @@ constexpr char kActionSeepageKey[]            = "seepage_analysis";
 constexpr char kProjectDirectoryKey[]            = "project_dir";
 constexpr char kPostProcessingProjectFileName[]  = "postprocessing.json";
 constexpr char kPreProcessingProjectFileName[]   = "preprocessing.json";
+constexpr char kMeshProjectFileName[]            = "mesh.json";
+constexpr char kMeshSnapshotFileName[]           = "mesh_snapshot.iiin.dat";
+constexpr char kSolverProjectFileName[]          = "solver.json";
+constexpr char kSurrogateProjectFileName[]       = "surrogate_model.json";
 
 // --- Runtime values ---
 constexpr char kValuePostScalar[] = "post_scalar";
