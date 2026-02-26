@@ -81,9 +81,6 @@ public:
     void clearSelection(const QString& domain, const QString& uuid, PickMode mode);
     void setShowBoxRect(bool on);
 
-    // 页面控制：是否启用批量框选（不使用 Shift）
-    void setBatchSelectEnabled(bool on);
-
     void setSelectedPointIds(const QString& domain,
                              const QString& uuid,
                              GridKind kind,

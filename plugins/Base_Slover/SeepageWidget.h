@@ -23,6 +23,12 @@ public:
     double upstreamFlux() const;
     double downstreamFlux() const;
 
+signals:
+    void computeRequested();
+
+private slots:
+    void onComputeClicked();
+
 private:
     Ui::SeepageWidget *ui;
 };

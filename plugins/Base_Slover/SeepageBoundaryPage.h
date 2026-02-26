@@ -24,13 +24,10 @@ public:
     bool exportDatFile();
 
 private slots:
-    void onRefreshClicked();
     void onClearClicked();
-    void onExportClicked();
 
 private:
     QVector<int> selectedNodeIds();
-    void refreshPreview();
 
 private:
     Ui::SeepageBoundaryPage* ui = nullptr;

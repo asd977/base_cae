@@ -5,10 +5,8 @@
 
 #include <QDir>
 #include <QFile>
-#include <QMessageBox>
 #include <QSet>
 #include <QTextStream>
-#include <QTableWidgetItem>
 
 #include <algorithm>
 
@@ -28,11 +26,9 @@ SeepageBoundaryPage::SeepageBoundaryPage(const QString& pageType,
     ui->labelBoundaryTitle->setText(boundaryTitle);
     ui->labelFileNameValue->setText(exportFileName);
 
-    connect(ui->btnRefresh, &QPushButton::clicked, this, &SeepageBoundaryPage::onRefreshClicked);
     connect(ui->btnClear, &QPushButton::clicked, this, &SeepageBoundaryPage::onClearClicked);
-    connect(ui->btnExport, &QPushButton::clicked, this, &SeepageBoundaryPage::onExportClicked);
-
-    refreshPreview();
+    ui->tableNodes->setVisible(false);
+    ui->labelCountValue->setText(tr("暂不显示"));
 }
 
 SeepageBoundaryPage::~SeepageBoundaryPage()
@@ -43,7 +39,6 @@ SeepageBoundaryPage::~SeepageBoundaryPage()
 void SeepageBoundaryPage::beforeLoad()
 {
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
-    refreshPreview();
 }
 
 void SeepageBoundaryPage::beforeUnload()
@@ -97,20 +92,6 @@ QVector<int> SeepageBoundaryPage::selectedNodeIds()
     return result;
 }
 
-void SeepageBoundaryPage::refreshPreview()
-{
-    const QVector<int> ids = selectedNodeIds();
-
-    ui->tableNodes->setRowCount(ids.size());
-    for (int i = 0; i < ids.size(); ++i)
-    {
-        ui->tableNodes->setItem(i, 0, new QTableWidgetItem(QString::number(ids[i])));
-        ui->tableNodes->setItem(i, 1, new QTableWidgetItem(QString::number(i + 1)));
-    }
-
-    ui->labelCountValue->setText(QString::number(ids.size()));
-}
-
 bool SeepageBoundaryPage::exportDatFile()
 {
     const QVector<int> ids = selectedNodeIds();
@@ -135,25 +116,7 @@ bool SeepageBoundaryPage::exportDatFile()
     return true;
 }
 
-void SeepageBoundaryPage::onRefreshClicked()
-{
-    refreshPreview();
-}
-
 void SeepageBoundaryPage::onClearClicked()
 {
     PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Node);
-    refreshPreview();
-}
-
-void SeepageBoundaryPage::onExportClicked()
-{
-    refreshPreview();
-    if (!exportDatFile())
-    {
-        QMessageBox::warning(this, tr("导出失败"), tr("无法写入文件：%1").arg(m_exportFileName));
-        return;
-    }
-
-    QMessageBox::information(this, tr("导出成功"), tr("已导出到 data/%1").arg(m_exportFileName));
 }
