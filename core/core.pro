@@ -5,6 +5,8 @@ CONFIG += shared
 QT += core widgets
 TARGET = core
 
+INCLUDEPATH += $$PWD/../interfaces
+
 DEFINES += CORE_LIB
 
 CONFIG(debug, debug|release) {
@@ -30,7 +32,8 @@ HEADERS += \
         SMThreading.h \
         SMProcess.h \
     StyleManager.h \
-    EventManager.h
+    EventManager.h \
+    PickManager.h
 
 SOURCES += \
     ContextMenuHub.cpp \
@@ -42,7 +45,8 @@ SOURCES += \
 		BasePage.cpp \
         SMProcess.cpp \
     StyleManager.cpp \
-    EventManager.cpp
+    EventManager.cpp \
+    PickManager.cpp
 
 
 

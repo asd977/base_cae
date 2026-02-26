@@ -2,6 +2,7 @@
 #define PICKMANAGER_H
 
 #include <QObject>
+#include <core_global.h>
 #include <QHash>
 #include <QSet>
 #include <QVector>
@@ -40,7 +41,7 @@
 enum class PickMode { Node, Edge, Face };
 enum class GridKind { Solid, Line };
 
-class PickManager : public QObject
+class CORE_EXPORT PickManager : public QObject
 {
     Q_OBJECT
 public:

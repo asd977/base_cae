@@ -16,7 +16,6 @@ HEADERS += \
     LoadSpecificationWidget.h \
     PhySicalField.h \
     PhysicalFieldSettingWidget.h \
-    PickManager.h \
     PointForcePage.h \
     SeismicAndAddedMassPage.h \
     TemperatureLoadPage.h
@@ -33,7 +32,6 @@ SOURCES += \
     LoadSpecificationWidget.cpp \
     PhySicalField.cpp \
     PhysicalFieldSettingWidget.cpp \
-    PickManager.cpp \
     PointForcePage.cpp \
     SeismicAndAddedMassPage.cpp \
     TemperatureLoadPage.cpp
