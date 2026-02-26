@@ -25,9 +25,13 @@ public:
 
 private slots:
     void onClearClicked();
+    void onDimChanged(int index);
+    void onGroupChanged(int index);
 
 private:
     QVector<int> selectedNodeIds();
+    void setupBatchGroupCombo();
+    void refreshGroupCombo();
 
 private:
     Ui::SeepageBoundaryPage* ui = nullptr;
