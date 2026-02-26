@@ -42,12 +42,12 @@
       </item>
       <item row="2" column="0">
        <widget class="QLabel" name="label3">
-        <property name="text"><string>已选点数量：</string></property>
+        <property name="text"><string>选点预览：</string></property>
        </widget>
       </item>
       <item row="2" column="1">
        <widget class="QLabel" name="labelCountValue">
-        <property name="text"><string>0</string></property>
+        <property name="text"><string>暂不显示</string></property>
        </widget>
       </item>
      </layout>

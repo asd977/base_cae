@@ -7,7 +7,6 @@
 #include <QFile>
 #include <QSet>
 #include <QTextStream>
-#include <QTableWidgetItem>
 
 #include <algorithm>
 
@@ -28,10 +27,8 @@ SeepageBoundaryPage::SeepageBoundaryPage(const QString& pageType,
     ui->labelFileNameValue->setText(exportFileName);
 
     connect(ui->btnClear, &QPushButton::clicked, this, &SeepageBoundaryPage::onClearClicked);
-    connect(&m_realtimeRefreshTimer, &QTimer::timeout, this, &SeepageBoundaryPage::onRealtimeRefresh);
-    m_realtimeRefreshTimer.setInterval(300);
-
-    refreshPreview();
+    ui->tableNodes->setVisible(false);
+    ui->labelCountValue->setText(tr("暂不显示"));
 }
 
 SeepageBoundaryPage::~SeepageBoundaryPage()
@@ -43,13 +40,10 @@ void SeepageBoundaryPage::beforeLoad()
 {
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
     PickManager::instance().setBatchSelectEnabled(true);
-    m_realtimeRefreshTimer.start();
-    refreshPreview();
 }
 
 void SeepageBoundaryPage::beforeUnload()
 {
-    m_realtimeRefreshTimer.stop();
     PickManager::instance().setBatchSelectEnabled(false);
     PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
 }
@@ -100,20 +94,6 @@ QVector<int> SeepageBoundaryPage::selectedNodeIds()
     return result;
 }
 
-void SeepageBoundaryPage::refreshPreview()
-{
-    const QVector<int> ids = selectedNodeIds();
-
-    ui->tableNodes->setRowCount(ids.size());
-    for (int i = 0; i < ids.size(); ++i)
-    {
-        ui->tableNodes->setItem(i, 0, new QTableWidgetItem(QString::number(i + 1)));
-        ui->tableNodes->setItem(i, 1, new QTableWidgetItem(QString::number(ids[i])));
-    }
-
-    ui->labelCountValue->setText(QString::number(ids.size()));
-}
-
 bool SeepageBoundaryPage::exportDatFile()
 {
     const QVector<int> ids = selectedNodeIds();
@@ -141,10 +121,4 @@ bool SeepageBoundaryPage::exportDatFile()
 void SeepageBoundaryPage::onClearClicked()
 {
     PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Node);
-    refreshPreview();
-}
-
-void SeepageBoundaryPage::onRealtimeRefresh()
-{
-    refreshPreview();
 }

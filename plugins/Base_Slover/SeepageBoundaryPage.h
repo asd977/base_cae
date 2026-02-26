@@ -2,7 +2,6 @@
 
 #include <BasePage.h>
 #include <QString>
-#include <QTimer>
 #include <QVector>
 
 namespace Ui {
@@ -26,15 +25,12 @@ public:
 
 private slots:
     void onClearClicked();
-    void onRealtimeRefresh();
 
 private:
     QVector<int> selectedNodeIds();
-    void refreshPreview();
 
 private:
     Ui::SeepageBoundaryPage* ui = nullptr;
     QString m_boundaryTitle;
     QString m_exportFileName;
-    QTimer m_realtimeRefreshTimer;
 };
