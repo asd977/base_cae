@@ -9,8 +9,6 @@
 #include <QString>
 #include <QTimer>
 
-#include "services/VisualWidgetService.h"
-
 // VTK
 #include <vtkSmartPointer.h>
 #include <vtkCallbackCommand.h>
@@ -36,6 +34,7 @@
 #include <vtkActor2D.h>
 #include <vtkProperty2D.h>
 #include <vtkCoordinate.h>
+#include "services/VisualWidgetService.h"
 
 
 enum class PickMode { Node, Edge, Face };

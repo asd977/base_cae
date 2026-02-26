@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <BasePage.h>
 #include <QString>
@@ -21,7 +21,7 @@ public:
     void beforeLoad() override;
     void beforeUnload() override;
 
-    bool exportDatFile() const;
+    bool exportDatFile();
 
 private slots:
     void onRefreshClicked();
@@ -29,7 +29,7 @@ private slots:
     void onExportClicked();
 
 private:
-    QVector<int> selectedNodeIds() const;
+    QVector<int> selectedNodeIds();
     void refreshPreview();
 
 private:

@@ -1,4 +1,4 @@
-#include "SeepageBoundaryPage.h"
+﻿#include "SeepageBoundaryPage.h"
 #include "ui_SeepageBoundaryPage.h"
 
 #include <PickManager.h>
@@ -51,7 +51,7 @@ void SeepageBoundaryPage::beforeUnload()
     PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
 }
 
-QVector<int> SeepageBoundaryPage::selectedNodeIds() const
+QVector<int> SeepageBoundaryPage::selectedNodeIds()
 {
     PickManager& pm = PickManager::instance();
     pm.updateStructure();
@@ -111,7 +111,7 @@ void SeepageBoundaryPage::refreshPreview()
     ui->labelCountValue->setText(QString::number(ids.size()));
 }
 
-bool SeepageBoundaryPage::exportDatFile() const
+bool SeepageBoundaryPage::exportDatFile()
 {
     const QVector<int> ids = selectedNodeIds();
 
