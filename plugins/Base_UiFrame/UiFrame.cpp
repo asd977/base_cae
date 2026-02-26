@@ -352,11 +352,11 @@ void UiFrame::buildRibbonAppButton()
     auto* appBtn = qobject_cast<SARibbonApplicationButton*>(btn);
     appBtn->setMenu(m_applicationMenu);
 
-    auto* actNew    = makeAction(this, ":/resources/menu/NewProject.png", "&新建工程");
-    auto* actOpen   = makeAction(this, ":/resources/menu/OpenProject.png", "&打开工程");
-    auto* actSave   = makeAction(this, ":/resources/menu/Save.png",       "&保存工程");
-    auto* actExport = makeAction(this, ":/resources/menu/ExportDB.png",   "&导出当前数据库");
-    auto* actExit   = makeAction(this, ":/resources/menu/Exit.png",       "&退出");
+    auto* actNew    = makeAction(this, ":/resources/menu/minimal/app-new.svg", "&新建工程");
+    auto* actOpen   = makeAction(this, ":/resources/menu/minimal/app-open.svg", "&打开工程");
+    auto* actSave   = makeAction(this, ":/resources/menu/minimal/app-save.svg",       "&保存工程");
+    auto* actExport = makeAction(this, ":/resources/menu/minimal/app-export.svg",   "&导出当前数据库");
+    auto* actExit   = makeAction(this, ":/resources/menu/minimal/app-exit.svg",       "&退出");
 
     m_applicationMenu->addAction(actNew);
     m_applicationMenu->addAction(actOpen);
@@ -387,8 +387,8 @@ void UiFrame::buildRibbonTabs()
         cate->setObjectName("paramObj");
 
         auto* panel = cate->addPannel("参数");
-        auto* actParam = makeAction(this, ":/resources/menu/Parameter.png", "&参数");
-        auto* actFunc  = makeAction(this, ":/resources/menu/Function.png",  "&函数");
+        auto* actParam = makeAction(this, ":/resources/menu/minimal/param.svg", "&参数");
+        auto* actFunc  = makeAction(this, ":/resources/menu/minimal/function.svg",  "&函数");
 
         addActionToPanel(panel, actParam, 3);
         addActionToPanel(panel, actFunc,  3);
@@ -409,8 +409,8 @@ void UiFrame::buildRibbonTabs()
         // ---------------------------------
         {
             auto* panel = cate->addPannel("导入导出");
-            auto* actImport = makeAction(this, "", "&导入");
-            auto* actExport = makeAction(this, "", "&导出");
+            auto* actImport = makeAction(this, ":/resources/menu/minimal/import.svg", "&导入");
+            auto* actExport = makeAction(this, ":/resources/menu/minimal/export.svg", "&导出");
             addActionToPanel(panel, actImport, 2);
             addActionToPanel(panel, actExport, 2);
             bindEvent(this, actImport, PublicConstants::kActionPreprocessImportGeometry);
@@ -424,11 +424,11 @@ void UiFrame::buildRibbonTabs()
             auto* panel = cate->addPannel("创建");
 
             // ---- 2.1 基本体（你已有的这些保留）----
-            auto* actBox      = makeAction(this, "", "&长方体");
-            auto* actSphere   = makeAction(this, "", "&球体");
-            auto* actCone     = makeAction(this, "", "&圆锥体");
-            auto* actTorus    = makeAction(this, "", "&圆环");
-            auto* actCylinder = makeAction(this, "", "&圆柱体");
+            auto* actBox      = makeAction(this, ":/resources/menu/minimal/cuboid.svg", "&长方体");
+            auto* actSphere   = makeAction(this, ":/resources/menu/minimal/sphere.svg", "&球体");
+            auto* actCone     = makeAction(this, ":/resources/menu/minimal/cone.svg", "&圆锥体");
+            auto* actTorus    = makeAction(this, ":/resources/menu/minimal/torus.svg", "&圆环");
+            auto* actCylinder = makeAction(this, ":/resources/menu/minimal/cylinder.svg", "&圆柱体");
 
             addActionToPanel(panel, actBox,      1);
             addActionToPanel(panel, actSphere,   1);
@@ -443,13 +443,13 @@ void UiFrame::buildRibbonTabs()
             bindEvent(this, actCylinder, PublicConstants::kActionPreprocessCylinder);
 
             // ---- 2.2 2D轮廓(Profile)：替代2D草图（参数化节点）----
-            auto* actProfileMain = makeAction(this, "", "&2D轮廓");
+            auto* actProfileMain = makeAction(this, ":/resources/menu/minimal/profile.svg", "&2D轮廓");
             auto* profileMenu = new SARibbonMenu(this);
 
-            auto* actProfileRect    = makeAction(this, "", "&矩形");
-            auto* actProfileCircle  = makeAction(this, "", "&圆");
-            auto* actProfileRing    = makeAction(this, "", "&环");
-            auto* actProfilePolygon = makeAction(this, "", "&多边形");
+            auto* actProfileRect    = makeAction(this, ":/resources/menu/minimal/rectangle.svg", "&矩形");
+            auto* actProfileCircle  = makeAction(this, ":/resources/menu/minimal/circle.svg", "&圆");
+            auto* actProfileRing    = makeAction(this, ":/resources/menu/minimal/ring.svg", "&环");
+            auto* actProfilePolygon = makeAction(this, ":/resources/menu/minimal/polygon.svg", "&多边形");
 
             profileMenu->addAction(actProfileRect);
             profileMenu->addAction(actProfileCircle);
@@ -495,10 +495,10 @@ void UiFrame::buildRibbonTabs()
         {
             auto* panel = cate->addPannel("布尔");
 
-            auto* actFuse   = makeAction(this, "", "&并集");
-            auto* actUnion  = makeAction(this, "", "联&合体");
-            auto* actCut    = makeAction(this, "", "&差集");
-            auto* actCommon = makeAction(this, "", "&交集");
+            auto* actFuse   = makeAction(this, ":/resources/menu/minimal/boolean-fuse.svg", "&并集");
+            auto* actUnion  = makeAction(this, ":/resources/menu/minimal/boolean-union.svg", "联&合体");
+            auto* actCut    = makeAction(this, ":/resources/menu/minimal/boolean-cut.svg", "&差集");
+            auto* actCommon = makeAction(this, ":/resources/menu/minimal/boolean-common.svg", "&交集");
 
             addActionToPanel(panel, actFuse,   3);
             addActionToPanel(panel, actUnion,  3);
@@ -612,8 +612,8 @@ void UiFrame::buildRibbonTabs()
 
         // ============ 导入导出 ============
         auto* panelIO = cate->addPannel("导入导出");
-        auto* actImport = makeAction(this, ":/resources/menu/importGrid.png", "&导入");
-        auto* actExport = makeAction(this, ":/resources/menu/exportGrid.png", "&导出");
+        auto* actImport = makeAction(this, ":/resources/menu/minimal/import.svg", "&导入");
+        auto* actExport = makeAction(this, ":/resources/menu/minimal/export.svg", "&导出");
         addActionToPanel(panelIO, actImport, 2);
         addActionToPanel(panelIO, actExport, 2);
 
@@ -622,8 +622,8 @@ void UiFrame::buildRibbonTabs()
 
         // // ============ 剖分方式 ============
          auto* panelMesh = cate->addPannel("剖分");
-         auto* actGlobal = makeAction(this, ":/resources/menu/meshGlobal.png",  "&整体剖分");
-         auto* actSingle = makeAction(this, ":/resources/menu/meshGlobal.png",  "&单体剖分");
+         auto* actGlobal = makeAction(this, ":/resources/menu/minimal/mesh-global.svg",  "&整体剖分");
+         auto* actSingle = makeAction(this, ":/resources/menu/minimal/mesh-single.svg",  "&单体剖分");
         // auto* actMapped = makeAction(this, ":/resources/menu/meshMapped.png",  "&映射剖分");
         // auto* actSweep  = makeAction(this, ":/resources/menu/meshSweep.png",   "&扫掠剖分");
 
@@ -639,11 +639,11 @@ void UiFrame::buildRibbonTabs()
 
         // // ============ 控制与质量 ============
         auto* panelCtrl = cate->addPannel("控制");
-        auto* actVolCtrl  = makeAction(this, ":/resources/menu/meshEdit.png", "&体控制");
-        auto* actFaceCtrl = makeAction(this, ":/resources/menu/meshEdit.png","&面控制");
-        auto* actEdgeCtrl = makeAction(this, ":/resources/menu/meshEdit.png",    "&边控制");
-        auto* actMeshEdit = makeAction(this, ":/resources/menu/meshEdit.png", "&网格编辑");
-        auto* actMeshGrouping = makeAction(this, ":/resources/menu/meshEdit.png", "&网格分组");
+        auto* actVolCtrl  = makeAction(this, ":/resources/menu/minimal/mesh-vol.svg", "&体控制");
+        auto* actFaceCtrl = makeAction(this, ":/resources/menu/minimal/mesh-face.svg","&面控制");
+        auto* actEdgeCtrl = makeAction(this, ":/resources/menu/minimal/mesh-edge.svg",    "&边控制");
+        auto* actMeshEdit = makeAction(this, ":/resources/menu/minimal/mesh-edit.svg", "&网格编辑");
+        auto* actMeshGrouping = makeAction(this, ":/resources/menu/minimal/mesh-group.svg", "&网格分组");
         // auto* actQuality  = makeAction(this, ":/resources/menu/qualityStd.png", "&网格质量标准");
 
         addActionToPanel(panelCtrl, actVolCtrl, 2);
@@ -669,7 +669,7 @@ void UiFrame::buildRibbonTabs()
         cate->setObjectName("analysisObj");
 
         auto* panel = cate->addPannel("分析");
-        auto* actParam = makeAction(this, ":/resources/menu/Parameter.png", "&渗流分析");
+        auto* actParam = makeAction(this, ":/resources/menu/minimal/analysis.svg", "&渗流分析");
 
         addActionToPanel(panel, actParam, 3);
 
@@ -684,20 +684,20 @@ void UiFrame::buildRibbonTabs()
         cate->setObjectName("boundObj");
 
         auto* panelConstraint = cate->addPannel("约束");
-        auto* actDisplacement = makeAction(this, ":/resources/menu/Parameter.png", "&位移约束");
+        auto* actDisplacement = makeAction(this, ":/resources/menu/minimal/constraint.svg", "&位移约束");
         addActionToPanel(panelConstraint, actDisplacement, 2);
         bindEvent(this, actDisplacement, PublicConstants::kActionPhysicalDisplacementConstraint);
 
         auto* panelLoad = cate->addPannel("荷载");
-        auto* actGeoStressPoint = makeAction(this, ":/resources/menu/Parameter.png", "&现场地应力信息");
-        auto* actGeoStressFitFace = makeAction(this, ":/resources/menu/Parameter.png", "&梯形边界荷载");
-        auto* actBodyForce = makeAction(this, ":/resources/menu/Parameter.png", "&体积力荷载");
-        auto* actConcentratedForce = makeAction(this, ":/resources/menu/Parameter.png", "&集中力荷载");
-        auto* actLinearForce = makeAction(this, ":/resources/menu/Parameter.png", "&线力荷载");
-        auto* actSurfaceForce = makeAction(this, ":/resources/menu/Parameter.png", "&面力荷载");
-        auto* actTemperatureLoad = makeAction(this, ":/resources/menu/Parameter.png", "&变温荷载");
-        auto* actBeamLoad = makeAction(this, ":/resources/menu/Parameter.png", "&梁单元荷载");
-        auto* actSeismicAndAddedMass = makeAction(this, ":/resources/menu/Parameter.png", "&地震加速度表");
+        auto* actGeoStressPoint = makeAction(this, ":/resources/menu/minimal/load-geostress-point.svg", "&现场地应力信息");
+        auto* actGeoStressFitFace = makeAction(this, ":/resources/menu/minimal/load-geostress-face.svg", "&梯形边界荷载");
+        auto* actBodyForce = makeAction(this, ":/resources/menu/minimal/load-body-force.svg", "&体积力荷载");
+        auto* actConcentratedForce = makeAction(this, ":/resources/menu/minimal/load-concentrated.svg", "&集中力荷载");
+        auto* actLinearForce = makeAction(this, ":/resources/menu/minimal/load-linear.svg", "&线力荷载");
+        auto* actSurfaceForce = makeAction(this, ":/resources/menu/minimal/load-surface.svg", "&面力荷载");
+        auto* actTemperatureLoad = makeAction(this, ":/resources/menu/minimal/load-temperature.svg", "&变温荷载");
+        auto* actBeamLoad = makeAction(this, ":/resources/menu/minimal/load-beam.svg", "&梁单元荷载");
+        auto* actSeismicAndAddedMass = makeAction(this, ":/resources/menu/minimal/load-seismic.svg", "&地震加速度表");
 
         addActionToPanel(panelLoad, actGeoStressPoint, 3);
         addActionToPanel(panelLoad, actGeoStressFitFace, 3);
