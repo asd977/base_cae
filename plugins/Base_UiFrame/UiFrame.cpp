@@ -495,10 +495,10 @@ void UiFrame::buildRibbonTabs()
         {
             auto* panel = cate->addPannel("布尔");
 
-            auto* actFuse   = makeAction(this, ":/resources/menu/minimal/boolean.svg", "&并集");
-            auto* actUnion  = makeAction(this, ":/resources/menu/minimal/boolean.svg", "联&合体");
-            auto* actCut    = makeAction(this, ":/resources/menu/minimal/boolean.svg", "&差集");
-            auto* actCommon = makeAction(this, ":/resources/menu/minimal/boolean.svg", "&交集");
+            auto* actFuse   = makeAction(this, ":/resources/menu/minimal/boolean-fuse.svg", "&并集");
+            auto* actUnion  = makeAction(this, ":/resources/menu/minimal/boolean-union.svg", "联&合体");
+            auto* actCut    = makeAction(this, ":/resources/menu/minimal/boolean-cut.svg", "&差集");
+            auto* actCommon = makeAction(this, ":/resources/menu/minimal/boolean-common.svg", "&交集");
 
             addActionToPanel(panel, actFuse,   3);
             addActionToPanel(panel, actUnion,  3);
@@ -622,8 +622,8 @@ void UiFrame::buildRibbonTabs()
 
         // // ============ 剖分方式 ============
          auto* panelMesh = cate->addPannel("剖分");
-         auto* actGlobal = makeAction(this, ":/resources/menu/minimal/mesh.svg",  "&整体剖分");
-         auto* actSingle = makeAction(this, ":/resources/menu/minimal/mesh.svg",  "&单体剖分");
+         auto* actGlobal = makeAction(this, ":/resources/menu/minimal/mesh-global.svg",  "&整体剖分");
+         auto* actSingle = makeAction(this, ":/resources/menu/minimal/mesh-single.svg",  "&单体剖分");
         // auto* actMapped = makeAction(this, ":/resources/menu/meshMapped.png",  "&映射剖分");
         // auto* actSweep  = makeAction(this, ":/resources/menu/meshSweep.png",   "&扫掠剖分");
 
@@ -639,11 +639,11 @@ void UiFrame::buildRibbonTabs()
 
         // // ============ 控制与质量 ============
         auto* panelCtrl = cate->addPannel("控制");
-        auto* actVolCtrl  = makeAction(this, ":/resources/menu/minimal/mesh.svg", "&体控制");
-        auto* actFaceCtrl = makeAction(this, ":/resources/menu/minimal/mesh.svg","&面控制");
-        auto* actEdgeCtrl = makeAction(this, ":/resources/menu/minimal/mesh.svg",    "&边控制");
-        auto* actMeshEdit = makeAction(this, ":/resources/menu/minimal/mesh.svg", "&网格编辑");
-        auto* actMeshGrouping = makeAction(this, ":/resources/menu/minimal/mesh.svg", "&网格分组");
+        auto* actVolCtrl  = makeAction(this, ":/resources/menu/minimal/mesh-vol.svg", "&体控制");
+        auto* actFaceCtrl = makeAction(this, ":/resources/menu/minimal/mesh-face.svg","&面控制");
+        auto* actEdgeCtrl = makeAction(this, ":/resources/menu/minimal/mesh-edge.svg",    "&边控制");
+        auto* actMeshEdit = makeAction(this, ":/resources/menu/minimal/mesh-edit.svg", "&网格编辑");
+        auto* actMeshGrouping = makeAction(this, ":/resources/menu/minimal/mesh-group.svg", "&网格分组");
         // auto* actQuality  = makeAction(this, ":/resources/menu/qualityStd.png", "&网格质量标准");
 
         addActionToPanel(panelCtrl, actVolCtrl, 2);
@@ -689,15 +689,15 @@ void UiFrame::buildRibbonTabs()
         bindEvent(this, actDisplacement, PublicConstants::kActionPhysicalDisplacementConstraint);
 
         auto* panelLoad = cate->addPannel("荷载");
-        auto* actGeoStressPoint = makeAction(this, ":/resources/menu/minimal/load.svg", "&现场地应力信息");
-        auto* actGeoStressFitFace = makeAction(this, ":/resources/menu/minimal/load.svg", "&梯形边界荷载");
-        auto* actBodyForce = makeAction(this, ":/resources/menu/minimal/load.svg", "&体积力荷载");
-        auto* actConcentratedForce = makeAction(this, ":/resources/menu/minimal/load.svg", "&集中力荷载");
-        auto* actLinearForce = makeAction(this, ":/resources/menu/minimal/load.svg", "&线力荷载");
-        auto* actSurfaceForce = makeAction(this, ":/resources/menu/minimal/load.svg", "&面力荷载");
-        auto* actTemperatureLoad = makeAction(this, ":/resources/menu/minimal/load.svg", "&变温荷载");
-        auto* actBeamLoad = makeAction(this, ":/resources/menu/minimal/load.svg", "&梁单元荷载");
-        auto* actSeismicAndAddedMass = makeAction(this, ":/resources/menu/minimal/load.svg", "&地震加速度表");
+        auto* actGeoStressPoint = makeAction(this, ":/resources/menu/minimal/load-geostress-point.svg", "&现场地应力信息");
+        auto* actGeoStressFitFace = makeAction(this, ":/resources/menu/minimal/load-geostress-face.svg", "&梯形边界荷载");
+        auto* actBodyForce = makeAction(this, ":/resources/menu/minimal/load-body-force.svg", "&体积力荷载");
+        auto* actConcentratedForce = makeAction(this, ":/resources/menu/minimal/load-concentrated.svg", "&集中力荷载");
+        auto* actLinearForce = makeAction(this, ":/resources/menu/minimal/load-linear.svg", "&线力荷载");
+        auto* actSurfaceForce = makeAction(this, ":/resources/menu/minimal/load-surface.svg", "&面力荷载");
+        auto* actTemperatureLoad = makeAction(this, ":/resources/menu/minimal/load-temperature.svg", "&变温荷载");
+        auto* actBeamLoad = makeAction(this, ":/resources/menu/minimal/load-beam.svg", "&梁单元荷载");
+        auto* actSeismicAndAddedMass = makeAction(this, ":/resources/menu/minimal/load-seismic.svg", "&地震加速度表");
 
         addActionToPanel(panelLoad, actGeoStressPoint, 3);
         addActionToPanel(panelLoad, actGeoStressFitFace, 3);

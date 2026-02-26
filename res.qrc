@@ -208,5 +208,25 @@
         <file>resources/menu/minimal/analysis.svg</file>
         <file>resources/menu/minimal/constraint.svg</file>
         <file>resources/menu/minimal/load.svg</file>
+        <file>resources/menu/minimal/boolean-fuse.svg</file>
+        <file>resources/menu/minimal/boolean-union.svg</file>
+        <file>resources/menu/minimal/boolean-cut.svg</file>
+        <file>resources/menu/minimal/boolean-common.svg</file>
+        <file>resources/menu/minimal/mesh-global.svg</file>
+        <file>resources/menu/minimal/mesh-single.svg</file>
+        <file>resources/menu/minimal/mesh-vol.svg</file>
+        <file>resources/menu/minimal/mesh-face.svg</file>
+        <file>resources/menu/minimal/mesh-edge.svg</file>
+        <file>resources/menu/minimal/mesh-edit.svg</file>
+        <file>resources/menu/minimal/mesh-group.svg</file>
+        <file>resources/menu/minimal/load-geostress-point.svg</file>
+        <file>resources/menu/minimal/load-geostress-face.svg</file>
+        <file>resources/menu/minimal/load-body-force.svg</file>
+        <file>resources/menu/minimal/load-concentrated.svg</file>
+        <file>resources/menu/minimal/load-linear.svg</file>
+        <file>resources/menu/minimal/load-surface.svg</file>
+        <file>resources/menu/minimal/load-temperature.svg</file>
+        <file>resources/menu/minimal/load-beam.svg</file>
+        <file>resources/menu/minimal/load-seismic.svg</file>
     </qresource>
 </RCC>
