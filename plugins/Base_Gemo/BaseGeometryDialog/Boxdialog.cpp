@@ -27,6 +27,12 @@ BoxDialog::~BoxDialog()
 QJsonObject BoxDialog::saveJson()
 {
 	QJsonObject state;
+	state["length"] = lengthEdit->text().toDouble();
+	state["width"] = widthEdit->text().toDouble();
+	state["height"] = heightEdit->text().toDouble();
+	state["x"] = xEdit->text().toDouble();
+	state["y"] = yEdit->text().toDouble();
+	state["z"] = zEdit->text().toDouble();
 	return state;
 }
 
@@ -109,7 +115,12 @@ void BoxDialog::initUI()
 
 void BoxDialog::loadJson(const QJsonObject & state)
 {
-
+	if (state.contains("length")) lengthEdit->setText(QString::number(state["length"].toDouble()));
+	if (state.contains("width")) widthEdit->setText(QString::number(state["width"].toDouble()));
+	if (state.contains("height")) heightEdit->setText(QString::number(state["height"].toDouble()));
+	if (state.contains("x")) xEdit->setText(QString::number(state["x"].toDouble()));
+	if (state.contains("y")) yEdit->setText(QString::number(state["y"].toDouble()));
+	if (state.contains("z")) zEdit->setText(QString::number(state["z"].toDouble()));
 }
 
 gp_Pnt BoxDialog::getPosition() const

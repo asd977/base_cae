@@ -238,6 +238,7 @@ void SeepageBoundaryPage::loadJson(const QJsonObject& obj)
         if (ui->comboBoxGroup->itemData(i).toInt() == physId)
         {
             ui->comboBoxGroup->setCurrentIndex(i);
+            onGroupChanged(i);
             break;
         }
     }

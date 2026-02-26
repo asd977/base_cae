@@ -54,6 +54,8 @@ private:
 	bool loadChildProject(ProjectNode * node,const QString & name);
 	void initPageFactory();
 	BasePage* createPageByType(const QString &type ,const QString& title);
+    ProjectNode* createGeometryNodeByType(const QString& type, const QString& kind, const QString& title, const QString& uuid);
+    void applyNodeVisualState(ProjectNode* node, const QJsonObject& itemState) const;
 
     void initRibbonActionConn();
 

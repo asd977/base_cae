@@ -81,7 +81,10 @@ void SphereDialog::initUI()
 QJsonObject SphereDialog::saveJson()
 {
 	QJsonObject state;
-
+	state["radius"] = radiusEdit->text().toDouble();
+	state["x"] = xEdit->text().toDouble();
+	state["y"] = yEdit->text().toDouble();
+	state["z"] = zEdit->text().toDouble();
 	return state;
 }
 

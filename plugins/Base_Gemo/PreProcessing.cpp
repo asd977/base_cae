@@ -100,6 +100,7 @@
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QIcon>
+#include <QMetaObject>
 #include "GeometryCleanup.h"
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -306,9 +307,25 @@ bool PreProcessing::saveProject()
 		BasePage* page = node->getPage();
 
 		QJsonObject item;
-		item["uuid"] = node->getUuid();
+		QString nodeUuid = node->data(0, ProjectNode::RoleUuid).toString();
+		if (nodeUuid.isEmpty()) nodeUuid = node->getUuid();
+		item["uuid"] = nodeUuid;
 		item["title"] = node->text(0);
 		item["type"] = page->getPageType();
+		item["module"] = node->data(0, ProjectNode::RoleModule).toString();
+		item["kind"] = node->data(0, ProjectNode::RoleKind).toString();
+
+		bool isVisible = true;
+		if (auto* mgr = GeomManager::GeomManagerInstance::getInstance())
+		{
+			if (GeomShapeObject* object = mgr->getGeomShapeObject(nodeUuid))
+			{
+				const bool surfVisible = object->getSurfActor() && object->getSurfActor()->GetVisibility() != 0;
+				const bool edgeVisible = object->getEdgeActor() && object->getEdgeActor()->GetVisibility() != 0;
+				isVisible = surfVisible || edgeVisible;
+			}
+		}
+		item["visible"] = isVisible;
 		item["state"] = page->saveJson();
 		geomItems.append(item);
 	}
@@ -347,15 +364,110 @@ bool PreProcessing::loadChildProject(ProjectNode * rootNode,const QString & name
 		const QString id = obj.value("uuid").toString(QUuid::createUuid().toString());
 		const QString title = obj.value("title").toString("未命名");
 		const QString type = obj.value("type").toString();
+		const QString kind = obj.value("kind").toString();
 		const QJsonObject state = obj.value("state").toObject();
 
-		BasePage* page = createPageByType(type, title);
-		//auto* node = new ProjectNode(title, id, page);
-		//rootNode->addChild(node);
+		ProjectNode* node = createGeometryNodeByType(type, kind, title, id);
+		if (!node) {
+			continue;
+		}
 
-		if (page) page->loadJson(state);
+		BasePage* page = node->getPage();
+		if (page) {
+			page->loadJson(state);
+			if (!QMetaObject::invokeMethod(page, "onOkClicked", Qt::DirectConnection)) {
+				QMetaObject::invokeMethod(page, "onImportButtonClicked", Qt::DirectConnection);
+			}
+		}
+
+		applyNodeVisualState(node, obj);
 	}
 	return true;
+}
+
+ProjectNode* PreProcessing::createGeometryNodeByType(const QString& type, const QString& kind, const QString& title, const QString& uuid)
+{
+	if (!m_geomNode) {
+		return nullptr;
+	}
+
+	BasePage* page = nullptr;
+	QString nodeKind = kind;
+
+	if (type == PublicConstants::kPagePreprocessImportGeometry) {
+		page = new GeometryImportWidget();
+		nodeKind = "ImportGeometry";
+	} else if (type == PublicConstants::kPagePreprocessBox) {
+		page = new BoxDialog();
+		nodeKind = "Box";
+	} else if (type == PublicConstants::kPagePreprocessSphere) {
+		page = new SphereDialog();
+		nodeKind = "Sphere";
+	} else if (type == PublicConstants::kPagePreprocessCone) {
+		page = new ConeDialog();
+		nodeKind = "Cone";
+	} else if (type == PublicConstants::kPagePreprocessCylinder) {
+		page = new CylinderDialog();
+		nodeKind = "Cylinder";
+	} else if (type == PublicConstants::kPagePreprocessTorus) {
+		page = new TorusDialog();
+		nodeKind = "Torus";
+	} else if (type == PublicConstants::kPagePreprocessCircle) {
+		page = new CircleDialog();
+		nodeKind = "Circle";
+	} else if (type == PublicConstants::kPagePreprocessEllipse) {
+		page = new EllipseDialog();
+		nodeKind = "Ellipse";
+	} else if (type == PublicConstants::kPagePreprocessPolygon) {
+		page = new PolygonDialog();
+		nodeKind = "Polygon";
+	} else if (type == PublicConstants::kPagePreprocessRectangle) {
+		page = new RectangleDialog();
+		nodeKind = "Rectangle";
+	} else if (type == PublicConstants::kPagePostProcessOccBoolean || type == "occboolen") {
+		if (nodeKind == "BooleanUnion") {
+			page = new OccBooleanUnionWidget();
+		} else if (nodeKind == "BooleanCut") {
+			page = new OccBooleanCutWidget();
+		} else if (nodeKind == "BooleanCommon") {
+			page = new OccBooleanCommonWidget();
+		} else {
+			page = new OccBooleanFuseWidget();
+			nodeKind = "BooleanFuse";
+		}
+		if (kind.isEmpty()) nodeKind = "BooleanFuse";
+	}
+
+	if (!page) {
+		return nullptr;
+	}
+
+	auto* node = new ProjectNode(title, uuid, page);
+	m_geomNode->addChild(node);
+	page->setDisplayName(title);
+	node->setData(0, ProjectNode::RoleUuid, uuid);
+	node->setData(0, ProjectNode::RoleModule, "Geometry");
+	node->setData(0, ProjectNode::RoleKind, nodeKind);
+	node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
+	return node;
+}
+
+void PreProcessing::applyNodeVisualState(ProjectNode* node, const QJsonObject& itemState) const
+{
+	if (!node) {
+		return;
+	}
+
+	const QString uuid = node->data(0, ProjectNode::RoleUuid).toString();
+	const bool isVisible = itemState.value("visible").toBool(true);
+	if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>()) {
+		vis->setVisible(uuid + "_face", isVisible, false);
+		vis->setVisible(uuid + "_edge", isVisible, true);
+	}
+
+	if (auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>()) {
+		projectManagerService->setNodeDimmed(uuid, !isVisible);
+	}
 }
 
 void PreProcessing::closeProject()
@@ -531,8 +643,14 @@ BasePage* PreProcessing::newGeometryImportWidget(QString title)
 {
      if (!m_geomNode) return nullptr;
      auto *w = new GeometryImportWidget();
-     auto *node = new ProjectNode(title, QUuid::createUuid().toString(), (BasePage*)w);
+     const QString uuid = w->getUuid();
+     auto *node = new ProjectNode(title, uuid, (BasePage*)w);
      m_geomNode->addChild(node);
+     w->setDisplayName(title);
+     node->setData(0, ProjectNode::RoleUuid,   uuid);
+     node->setData(0, ProjectNode::RoleModule, "Geometry");
+     node->setData(0, ProjectNode::RoleKind,   "ImportGeometry");
+     node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 
      return w;
     return nullptr;
