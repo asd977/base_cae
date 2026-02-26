@@ -2,6 +2,7 @@
 
 #include <BasePage.h>
 #include <QString>
+#include <QTimer>
 #include <QVector>
 
 namespace Ui {
@@ -24,9 +25,8 @@ public:
     bool exportDatFile();
 
 private slots:
-    void onRefreshClicked();
     void onClearClicked();
-    void onExportClicked();
+    void onRealtimeRefresh();
 
 private:
     QVector<int> selectedNodeIds();
@@ -36,4 +36,5 @@ private:
     Ui::SeepageBoundaryPage* ui = nullptr;
     QString m_boundaryTitle;
     QString m_exportFileName;
+    QTimer m_realtimeRefreshTimer;
 };

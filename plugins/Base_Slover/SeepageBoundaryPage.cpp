@@ -5,7 +5,6 @@
 
 #include <QDir>
 #include <QFile>
-#include <QMessageBox>
 #include <QSet>
 #include <QTextStream>
 #include <QTableWidgetItem>
@@ -28,9 +27,9 @@ SeepageBoundaryPage::SeepageBoundaryPage(const QString& pageType,
     ui->labelBoundaryTitle->setText(boundaryTitle);
     ui->labelFileNameValue->setText(exportFileName);
 
-    connect(ui->btnRefresh, &QPushButton::clicked, this, &SeepageBoundaryPage::onRefreshClicked);
     connect(ui->btnClear, &QPushButton::clicked, this, &SeepageBoundaryPage::onClearClicked);
-    connect(ui->btnExport, &QPushButton::clicked, this, &SeepageBoundaryPage::onExportClicked);
+    connect(&m_realtimeRefreshTimer, &QTimer::timeout, this, &SeepageBoundaryPage::onRealtimeRefresh);
+    m_realtimeRefreshTimer.setInterval(300);
 
     refreshPreview();
 }
@@ -43,11 +42,15 @@ SeepageBoundaryPage::~SeepageBoundaryPage()
 void SeepageBoundaryPage::beforeLoad()
 {
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
+    PickManager::instance().setBatchSelectEnabled(true);
+    m_realtimeRefreshTimer.start();
     refreshPreview();
 }
 
 void SeepageBoundaryPage::beforeUnload()
 {
+    m_realtimeRefreshTimer.stop();
+    PickManager::instance().setBatchSelectEnabled(false);
     PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
 }
 
@@ -104,8 +107,8 @@ void SeepageBoundaryPage::refreshPreview()
     ui->tableNodes->setRowCount(ids.size());
     for (int i = 0; i < ids.size(); ++i)
     {
-        ui->tableNodes->setItem(i, 0, new QTableWidgetItem(QString::number(ids[i])));
-        ui->tableNodes->setItem(i, 1, new QTableWidgetItem(QString::number(i + 1)));
+        ui->tableNodes->setItem(i, 0, new QTableWidgetItem(QString::number(i + 1)));
+        ui->tableNodes->setItem(i, 1, new QTableWidgetItem(QString::number(ids[i])));
     }
 
     ui->labelCountValue->setText(QString::number(ids.size()));
@@ -135,25 +138,13 @@ bool SeepageBoundaryPage::exportDatFile()
     return true;
 }
 
-void SeepageBoundaryPage::onRefreshClicked()
-{
-    refreshPreview();
-}
-
 void SeepageBoundaryPage::onClearClicked()
 {
     PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Node);
     refreshPreview();
 }
 
-void SeepageBoundaryPage::onExportClicked()
+void SeepageBoundaryPage::onRealtimeRefresh()
 {
     refreshPreview();
-    if (!exportDatFile())
-    {
-        QMessageBox::warning(this, tr("导出失败"), tr("无法写入文件：%1").arg(m_exportFileName));
-        return;
-    }
-
-    QMessageBox::information(this, tr("导出成功"), tr("已导出到 data/%1").arg(m_exportFileName));
 }

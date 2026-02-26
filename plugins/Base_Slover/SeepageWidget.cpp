@@ -6,6 +6,7 @@ SeepageWidget::SeepageWidget(QWidget *parent) :
     ui(new Ui::SeepageWidget)
 {
     ui->setupUi(this);
+    connect(ui->btnCompute, &QPushButton::clicked, this, &SeepageWidget::onComputeClicked);
 }
 
 SeepageWidget::~SeepageWidget()
@@ -35,4 +36,9 @@ double SeepageWidget::upstreamFlux() const
 double SeepageWidget::downstreamFlux() const
 {
     return ui->spinDownstreamFlux->value();
+}
+
+void SeepageWidget::onComputeClicked()
+{
+    emit computeRequested();
 }

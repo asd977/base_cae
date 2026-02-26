@@ -16,9 +16,11 @@ public:
 
 private slots:
     void onSeepageAction();
+    void onComputeSeepage(ProjectNode* analysisNode);
 
 private:
     void initAction();
+    int nextSeepageIndex() const;
 
 private:
     ProjectNode* m_root = nullptr;
