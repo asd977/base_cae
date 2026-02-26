@@ -184,5 +184,29 @@
 		<file>resources/menu/gridSize.png</file>
 		<file>resources/menu/showGrid.png</file>
 		
+        <file>resources/menu/minimal/app-new.svg</file>
+        <file>resources/menu/minimal/app-open.svg</file>
+        <file>resources/menu/minimal/app-save.svg</file>
+        <file>resources/menu/minimal/app-export.svg</file>
+        <file>resources/menu/minimal/app-exit.svg</file>
+        <file>resources/menu/minimal/param.svg</file>
+        <file>resources/menu/minimal/function.svg</file>
+        <file>resources/menu/minimal/import.svg</file>
+        <file>resources/menu/minimal/export.svg</file>
+        <file>resources/menu/minimal/cuboid.svg</file>
+        <file>resources/menu/minimal/sphere.svg</file>
+        <file>resources/menu/minimal/cone.svg</file>
+        <file>resources/menu/minimal/torus.svg</file>
+        <file>resources/menu/minimal/cylinder.svg</file>
+        <file>resources/menu/minimal/profile.svg</file>
+        <file>resources/menu/minimal/rectangle.svg</file>
+        <file>resources/menu/minimal/circle.svg</file>
+        <file>resources/menu/minimal/ring.svg</file>
+        <file>resources/menu/minimal/polygon.svg</file>
+        <file>resources/menu/minimal/boolean.svg</file>
+        <file>resources/menu/minimal/mesh.svg</file>
+        <file>resources/menu/minimal/analysis.svg</file>
+        <file>resources/menu/minimal/constraint.svg</file>
+        <file>resources/menu/minimal/load.svg</file>
     </qresource>
 </RCC>
