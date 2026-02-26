@@ -683,21 +683,41 @@ void UiFrame::buildRibbonTabs()
         auto* cate = m_ribbon->addCategoryPage("约束与荷载");
         cate->setObjectName("boundObj");
 
-        auto* panel = cate->addPannel("约束与荷载");
-        auto* actSolid = makeAction(this, ":/resources/menu/boundary_solid.png", "&域");
-        auto* actFace  = makeAction(this, ":/resources/menu/boundary_face.png",  "&边界");
-        auto* actLine  = makeAction(this, ":/resources/menu/boundary_line.png",  "&边");
-        auto* actPoint = makeAction(this, ":/resources/menu/boundary_point.png", "&点");
+        auto* panelConstraint = cate->addPannel("约束");
+        auto* actDisplacement = makeAction(this, ":/resources/menu/Parameter.png", "&位移约束");
+        addActionToPanel(panelConstraint, actDisplacement, 2);
+        bindEvent(this, actDisplacement, PublicConstants::kActionPhysicalDisplacementConstraint);
 
-        addActionToPanel(panel, actSolid, 3);
-        addActionToPanel(panel, actFace,  3);
-        addActionToPanel(panel, actLine,  3);
-        addActionToPanel(panel, actPoint, 3);
+        auto* panelLoad = cate->addPannel("荷载");
+        auto* actGeoStressPoint = makeAction(this, ":/resources/menu/Parameter.png", "&现场地应力信息");
+        auto* actGeoStressFitFace = makeAction(this, ":/resources/menu/Parameter.png", "&梯形边界荷载");
+        auto* actBodyForce = makeAction(this, ":/resources/menu/Parameter.png", "&体积力荷载");
+        auto* actConcentratedForce = makeAction(this, ":/resources/menu/Parameter.png", "&集中力荷载");
+        auto* actLinearForce = makeAction(this, ":/resources/menu/Parameter.png", "&线力荷载");
+        auto* actSurfaceForce = makeAction(this, ":/resources/menu/Parameter.png", "&面力荷载");
+        auto* actTemperatureLoad = makeAction(this, ":/resources/menu/Parameter.png", "&变温荷载");
+        auto* actBeamLoad = makeAction(this, ":/resources/menu/Parameter.png", "&梁单元荷载");
+        auto* actSeismicAndAddedMass = makeAction(this, ":/resources/menu/Parameter.png", "&地震加速度表");
 
-        bindEvent(this, actSolid, PublicConstants::kActionBoundarySolid);
-        bindEvent(this, actFace,  PublicConstants::kActionBoundaryFace);
-        bindEvent(this, actLine,  PublicConstants::kActionBoundaryLine);
-        bindEvent(this, actPoint, PublicConstants::kActionBoundaryPoint);
+        addActionToPanel(panelLoad, actGeoStressPoint, 3);
+        addActionToPanel(panelLoad, actGeoStressFitFace, 3);
+        addActionToPanel(panelLoad, actBodyForce, 3);
+        addActionToPanel(panelLoad, actConcentratedForce, 3);
+        addActionToPanel(panelLoad, actLinearForce, 3);
+        addActionToPanel(panelLoad, actSurfaceForce, 3);
+        addActionToPanel(panelLoad, actTemperatureLoad, 3);
+        addActionToPanel(panelLoad, actBeamLoad, 3);
+        addActionToPanel(panelLoad, actSeismicAndAddedMass, 3);
+
+        bindEvent(this, actGeoStressPoint, PublicConstants::kActionPhysicalGeoStressPoint);
+        bindEvent(this, actGeoStressFitFace, PublicConstants::kActionPhysicalGeoStressFitFace);
+        bindEvent(this, actBodyForce, PublicConstants::kActionPhysicalBodyForce);
+        bindEvent(this, actConcentratedForce, PublicConstants::kActionPhysicalConcentratedForce);
+        bindEvent(this, actLinearForce, PublicConstants::kActionPhysicalLinearForce);
+        bindEvent(this, actSurfaceForce, PublicConstants::kActionPhysicalSurfaceForce);
+        bindEvent(this, actTemperatureLoad, PublicConstants::kActionPhysicalTemperatureLoad);
+        bindEvent(this, actBeamLoad, PublicConstants::kActionPhysicalBeamLoad);
+        bindEvent(this, actSeismicAndAddedMass, PublicConstants::kActionPhysicalSeismicAndAddedMass);
     }
 
     // // =========================

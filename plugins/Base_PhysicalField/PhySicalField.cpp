@@ -36,6 +36,7 @@
 #include <BeamLoadPage.h>
 
 #include <PickManager.h>
+#include <EventManager.h>
 #include <PublicConstants.h>
 #include "DisplacementConstraintWidget.h"
 
@@ -88,7 +89,45 @@ static inline QString quoteIfNeeded(const QString& s)
 PhysicalField::PhysicalField()
 {
     ServiceRegistry::instance().registerService<PhysicalFieldService>(this);
+    initAction();
     intitTreeMenu();
+}
+
+
+void PhysicalField::initAction()
+{
+    auto& em = EventManager::instance();
+
+    em.registerHandler(PublicConstants::kActionPhysicalDisplacementConstraint, [this](const QVariantMap&) {
+        addDisplacementConstraint();
+    });
+    em.registerHandler(PublicConstants::kActionPhysicalGeoStressPoint, [this](const QVariantMap&) {
+        addGeoStressPointPage();
+    });
+    em.registerHandler(PublicConstants::kActionPhysicalGeoStressFitFace, [this](const QVariantMap&) {
+        addGeoStressFitFacePage();
+    });
+    em.registerHandler(PublicConstants::kActionPhysicalBodyForce, [this](const QVariantMap&) {
+        addBodyForcePage();
+    });
+    em.registerHandler(PublicConstants::kActionPhysicalConcentratedForce, [this](const QVariantMap&) {
+        addConcentratedForcePage();
+    });
+    em.registerHandler(PublicConstants::kActionPhysicalLinearForce, [this](const QVariantMap&) {
+        addLinearForcePage();
+    });
+    em.registerHandler(PublicConstants::kActionPhysicalSurfaceForce, [this](const QVariantMap&) {
+        addSurfaceForcePage();
+    });
+    em.registerHandler(PublicConstants::kActionPhysicalTemperatureLoad, [this](const QVariantMap&) {
+        addTemperatureLoadPage();
+    });
+    em.registerHandler(PublicConstants::kActionPhysicalBeamLoad, [this](const QVariantMap&) {
+        addBeamLoadPage();
+    });
+    em.registerHandler(PublicConstants::kActionPhysicalSeismicAndAddedMass, [this](const QVariantMap&) {
+        addSeismicAndAddedMassPage();
+    });
 }
 
 BasePage *PhysicalField::getPhysicalFiledSettingWidget()

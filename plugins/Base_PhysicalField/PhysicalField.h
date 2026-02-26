@@ -39,6 +39,7 @@ private slots:
     void addBeamLoadPage();
 private:
     ProjectNode *m_node;
+    void initAction();
     void intitTreeMenu();
 
     void collectDisplacementNodes(ProjectNode *root, QList<ProjectNode *> &out);

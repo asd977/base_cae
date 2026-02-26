@@ -134,6 +134,18 @@ constexpr char kActionBoundaryFace[]  = "boundary_face";
 constexpr char kActionBoundaryLine[]  = "boundary_line";
 constexpr char kActionBoundaryPoint[] = "boundary_point";
 
+// --- PhysicalField / 约束与荷载 ---
+constexpr char kActionPhysicalDisplacementConstraint[] = "physical_displacement_constraint";
+constexpr char kActionPhysicalGeoStressPoint[]         = "physical_geo_stress_point";
+constexpr char kActionPhysicalGeoStressFitFace[]       = "physical_geo_stress_fit_face";
+constexpr char kActionPhysicalBodyForce[]              = "physical_body_force";
+constexpr char kActionPhysicalConcentratedForce[]      = "physical_concentrated_force";
+constexpr char kActionPhysicalLinearForce[]            = "physical_linear_force";
+constexpr char kActionPhysicalSurfaceForce[]           = "physical_surface_force";
+constexpr char kActionPhysicalTemperatureLoad[]        = "physical_temperature_load";
+constexpr char kActionPhysicalBeamLoad[]               = "physical_beam_load";
+constexpr char kActionPhysicalSeismicAndAddedMass[]    = "physical_seismic_and_added_mass";
+
 // --- View / 显示（你补齐的动作） ---
 constexpr char kActionViewPosX[]            = "view_pos_x";
 constexpr char kActionViewNegX[]            = "view_neg_x";
