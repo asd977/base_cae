@@ -2,6 +2,7 @@
 #define SEEPAGEWIDGET_H
 
 #include <BasePage.h>
+#include <QJsonObject>
 
 namespace Ui {
 class SeepageWidget;
@@ -24,6 +25,9 @@ public:
     double downstreamFlux() const;
 
     bool exportIseepDatFile() const;
+
+    QJsonObject saveJson() override;
+    void loadJson(const QJsonObject& obj) override;
 
 signals:
     void computeRequested();

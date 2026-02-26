@@ -4,6 +4,8 @@
 #include <QDir>
 #include <QFile>
 #include <QTextStream>
+#include <PublicConstants.h>
+#include <PublicVariables.h>
 
 SeepageWidget::SeepageWidget(QWidget *parent) :
     BasePage("SeepageAnalysis"),
@@ -45,10 +47,11 @@ double SeepageWidget::downstreamFlux() const
 
 bool SeepageWidget::exportIseepDatFile() const
 {
-    QDir wd(QDir::currentPath());
-    if (!wd.exists("data")) wd.mkpath("data");
+    const QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir wd(projectDir);
+    if (!wd.exists("PREP")) wd.mkpath("PREP");
 
-    QFile file(wd.filePath("data/ISEEP.DAT"));
+    QFile file(wd.filePath("PREP/ISEEP.DAT"));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
     {
         return false;
@@ -96,6 +99,25 @@ bool SeepageWidget::exportIseepDatFile() const
 
     file.close();
     return true;
+}
+
+
+QJsonObject SeepageWidget::saveJson()
+{
+    QJsonObject obj;
+    obj["upstream_water_level"] = ui->spinUpstreamWaterLevel->value();
+    obj["downstream_water_level"] = ui->spinDownstreamWaterLevel->value();
+    obj["upstream_flux"] = ui->spinUpstreamFlux->value();
+    obj["downstream_flux"] = ui->spinDownstreamFlux->value();
+    return obj;
+}
+
+void SeepageWidget::loadJson(const QJsonObject& obj)
+{
+    ui->spinUpstreamWaterLevel->setValue(obj.value("upstream_water_level").toDouble(ui->spinUpstreamWaterLevel->value()));
+    ui->spinDownstreamWaterLevel->setValue(obj.value("downstream_water_level").toDouble(ui->spinDownstreamWaterLevel->value()));
+    ui->spinUpstreamFlux->setValue(obj.value("upstream_flux").toDouble(ui->spinUpstreamFlux->value()));
+    ui->spinDownstreamFlux->setValue(obj.value("downstream_flux").toDouble(ui->spinDownstreamFlux->value()));
 }
 
 void SeepageWidget::onComputeClicked()

@@ -11,6 +11,8 @@
 #include <QComboBox>
 #include <QSet>
 #include <QTextStream>
+#include <PublicConstants.h>
+#include <PublicVariables.h>
 
 #include <algorithm>
 
@@ -102,10 +104,11 @@ bool SeepageBoundaryPage::exportDatFile()
 {
     const QVector<int> ids = selectedNodeIds();
 
-    QDir wd(QDir::currentPath());
-    if (!wd.exists("data")) wd.mkpath("data");
+    const QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir wd(projectDir);
+    if (!wd.exists("PREP")) wd.mkpath("PREP");
 
-    QFile file(wd.filePath("data/" + m_exportFileName));
+    QFile file(wd.filePath("PREP/" + m_exportFileName));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
     {
         return false;
@@ -213,4 +216,29 @@ void SeepageBoundaryPage::onGroupChanged(int index)
     }
 
     PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pointIds, true);
+}
+
+
+QJsonObject SeepageBoundaryPage::saveJson()
+{
+    QJsonObject obj;
+    obj["dim_index"] = ui->comboBoxDim->currentIndex();
+    obj["group_phys_id"] = ui->comboBoxGroup->currentData().toInt(-1);
+    return obj;
+}
+
+void SeepageBoundaryPage::loadJson(const QJsonObject& obj)
+{
+    const int dimIndex = obj.value("dim_index").toInt(0);
+    ui->comboBoxDim->setCurrentIndex(dimIndex);
+
+    const int physId = obj.value("group_phys_id").toInt(-1);
+    for (int i = 0; i < ui->comboBoxGroup->count(); ++i)
+    {
+        if (ui->comboBoxGroup->itemData(i).toInt() == physId)
+        {
+            ui->comboBoxGroup->setCurrentIndex(i);
+            break;
+        }
+    }
 }

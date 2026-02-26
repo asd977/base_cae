@@ -5,10 +5,17 @@
 
 #include <EventManager.h>
 #include <PublicConstants.h>
+#include <PublicVariables.h>
 #include <ServiceRegistry.h>
 #include <services/ProjectManagerService.h>
 
+#include <QDir>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMessageBox>
+#include <algorithm>
 #include <QRegularExpression>
 #include <QStringList>
 
@@ -31,23 +38,104 @@ bool Solver::saveProject()
 {
     if (!m_root) return true;
 
+    QJsonObject root;
+    root["module"] = "Solver";
+    root["root_title"] = "计算分析";
+
+    QJsonArray analysisItems;
     for (ProjectNode* analysisNode : m_root->getChildren())
     {
+        if (!analysisNode) continue;
+
+        QJsonObject analysisObj;
+        analysisObj["uuid"] = analysisNode->getUuid();
+        analysisObj["title"] = analysisNode->text(0);
+
+        if (auto* analysisPage = analysisNode->getPage())
+        {
+            analysisObj["type"] = analysisPage->getPageType();
+            analysisObj["state"] = analysisPage->saveJson();
+        }
+
+        QJsonArray boundaryItems;
         for (ProjectNode* child : analysisNode->getChildren())
         {
+            if (!child || !child->getPage()) continue;
+
             auto* boundaryPage = dynamic_cast<SeepageBoundaryPage*>(child->getPage());
             if (boundaryPage)
             {
                 boundaryPage->exportDatFile();
             }
+
+            QJsonObject childObj;
+            childObj["uuid"] = child->getUuid();
+            childObj["title"] = child->text(0);
+            childObj["type"] = child->getPage()->getPageType();
+            childObj["state"] = child->getPage()->saveJson();
+            boundaryItems.append(childObj);
         }
+        analysisObj["children"] = boundaryItems;
+        analysisItems.append(analysisObj);
     }
+    root["items"] = analysisItems;
+
+    const QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QFile file(QDir(projectDir).filePath(PublicConstants::kSolverProjectFileName));
+    if (!file.open(QIODevice::WriteOnly)) return false;
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
 
     return true;
 }
 
 bool Solver::loadProject()
 {
+    newProject();
+    if (!m_root) return false;
+
+    const QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QFile file(QDir(projectDir).filePath(PublicConstants::kSolverProjectFileName));
+    if (!file.open(QIODevice::ReadOnly)) return true;
+
+    const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+    for (const auto& item : root.value("items").toArray())
+    {
+        const QJsonObject analysisObj = item.toObject();
+        auto* seepagePage = new SeepageWidget();
+        auto* analysisNode = new ProjectNode(analysisObj.value("title").toString("渗流分析"),
+                                             analysisObj.value("uuid").toString(QUuid::createUuid().toString()),
+                                             seepagePage);
+        seepagePage->loadJson(analysisObj.value("state").toObject());
+        connect(seepagePage, &SeepageWidget::computeRequested, this, [this, analysisNode]() {
+            onComputeSeepage(analysisNode);
+        });
+
+        for (const auto& childV : analysisObj.value("children").toArray())
+        {
+            const QJsonObject childObj = childV.toObject();
+            const QString type = childObj.value("type").toString();
+
+            SeepageBoundaryPage* page = nullptr;
+            if (type == "SeepageBoundaryUpstreamWater")
+            {
+                page = new SeepageBoundaryPage(type, "上游迎水面", "JD_UPSEEP.DAT");
+            }
+            else if (type == "SeepageBoundaryDownstreamWater")
+            {
+                page = new SeepageBoundaryPage(type, "下游迎水面", "JD_DWSEEP.DAT");
+            }
+            if (!page) continue;
+
+            page->loadJson(childObj.value("state").toObject());
+            auto* node = new ProjectNode(childObj.value("title").toString("边界"),
+                                         childObj.value("uuid").toString(QUuid::createUuid().toString()),
+                                         page);
+            analysisNode->addChild(node);
+        }
+
+        m_root->addChild(analysisNode);
+    }
+
     return true;
 }
 
@@ -118,13 +206,13 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
 
     if (ok)
     {
-        QMessageBox::information(nullptr, "计算完成", QString("%1 的渗流数据已生成到 data 目录（含 ISEEP.DAT）。")
-                                                      .arg(analysisNode->getName()));
+        QMessageBox::information(nullptr, "导出成功", "渗流计算输入文件导出成功（PREP/）。");
     }
     else
     {
-        QMessageBox::warning(nullptr, "计算失败",
-                             QString("以下数据生成失败：%1").arg(failedFiles.join("、")));
+        QMessageBox::warning(nullptr,
+                             "导出失败",
+                             QString("以下文件导出失败：\n%1").arg(failedFiles.join("\n")));
     }
 }
 
@@ -132,14 +220,21 @@ int Solver::nextSeepageIndex() const
 {
     if (!m_root) return 1;
 
-    int maxIndex = 0;
-    const QRegularExpression re(R"(^渗流分析\((\d+)\)$)");
-    for (ProjectNode* node : m_root->getChildren())
+    int maxIdx = 0;
+    QRegularExpression re(QStringLiteral(R"(^渗流分析\((\d+)\)$)"));
+
+    for (ProjectNode* child : m_root->getChildren())
     {
-        const QRegularExpressionMatch m = re.match(node->getName());
-        if (!m.hasMatch()) continue;
-        maxIndex = qMax(maxIndex, m.captured(1).toInt());
+        if (!child) continue;
+        const QString name = child->getName();
+        auto m = re.match(name);
+        if (m.hasMatch())
+        {
+            bool ok = false;
+            int idx = m.captured(1).toInt(&ok);
+            if (ok) maxIdx = std::max(maxIdx, idx);
+        }
     }
 
-    return maxIndex + 1;
+    return maxIdx + 1;
 }

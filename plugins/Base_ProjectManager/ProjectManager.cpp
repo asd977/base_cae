@@ -14,6 +14,10 @@
 #include <QBrush>
 #include <QIcon>
 #include <QVariant>
+#include <QXmlStreamReader>
+#include <QXmlStreamWriter>
+#include <QFile>
+#include <QMessageBox>
 
 namespace
 {
@@ -145,7 +149,7 @@ void ProjectManager::openProject()
 {
     // todo 打开工程文件
     QFileDialog dialog(nullptr, "选择工程文件");
-    dialog.setNameFilter("Project Files (*.smproj)");
+    dialog.setNameFilter("Project Files (*.xml)");
     dialog.setFilter(QDir::Files);
     QString smprjo_path = "";
     if (dialog.exec() == QDialog::Accepted)
@@ -154,14 +158,29 @@ void ProjectManager::openProject()
     }
     if (smprjo_path == "") return;
     QFileInfo fileInfo(smprjo_path);
-    m_projectName = fileInfo.baseName();
-    if (!createProjectFilesFolder())
+    if (!readProjectManifest(smprjo_path))
+    {
+        m_projectName = fileInfo.baseName();
+    }
+    if (m_projectName.isEmpty())
+    {
+        m_projectName = fileInfo.baseName();
+    }
+
+    QDir baseDir = fileInfo.dir();
+    if (baseDir.dirName() == m_projectName)
+    {
+        baseDir.cdUp();
+    }
+    m_projectPath = baseDir.absolutePath();
+
+    if (!createProjectFilesFolder(false))
     {
         m_outputService->outputLog("工程文件有误,打开失败");
         return;
     }
     //todo 获取工程文件里面的所有内容 读取各自模块存取的数据 注意:怎么存怎么取!!!
-    m_projectEnginePath = smprjo_path;
+    m_projectEnginePath = QDir(m_projectTempFolder).filePath(m_projectName + ".xml");
     QStringList files /*= JlCompress::extractDir(smprjo_path, m_projectTempFolder)*/;
 
     PublicVariables::instance().set(PublicConstants::kProjectDirectoryKey, m_projectTempFolder,"project_dir");
@@ -175,32 +194,63 @@ void ProjectManager::openProject()
 	PreProcessingService *preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>();
 	preProcessingService->loadProject();
 
-	BoundaryConditionsService *boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>();
-	boundaryConditionsService->loadProject();
+	if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+	{
+		meshService->loadProject();
+	}
 
-    //todo 读取其他模块的数据
+	if (auto* boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>())
+	{
+		boundaryConditionsService->loadProject();
+	}
+
+	if (auto* solverService = ServiceRegistry::instance().getService<SolverService>())
+	{
+		solverService->loadProject();
+	}
+
+	if (auto* surrogateService = ServiceRegistry::instance().getService<SurrogateModelService>())
+	{
+		surrogateService->loadProject();
+	}
 
 }
 
 void ProjectManager::saveProject()
 {
-// 	if (m_projectEnginePath =="")return;
-// //	saveAllProModelData(m_projectEnginePath);
+    if (m_projectTempFolder.isEmpty()) return;
 
-//     PostProcessingService *postProcessingService = ServiceRegistry::instance().getService<PostProcessingService>();
-//     postProcessingService->saveProject();
+    if (auto* postProcessingService = ServiceRegistry::instance().getService<PostProcessingService>())
+    {
+        postProcessingService->saveProject();
+    }
 
-// 	PreProcessingService *preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>();
-// 	preProcessingService->saveProject();
+    if (auto* preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>())
+    {
+        preProcessingService->saveProject();
+    }
 
-// 	BoundaryConditionsService *boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>();
-// 	boundaryConditionsService->saveProject();
+    if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+    {
+        meshService->saveProject();
+    }
 
-//     bool isok/* = JlCompress::compressDir(m_projectEnginePath, m_projectTempFolder)*/;
-//     if (!isok)
-//     {
-//         qDebug() << "smproj save failed!!!";
-//     }
+    if (auto* boundaryConditionsService = ServiceRegistry::instance().getService<BoundaryConditionsService>())
+    {
+        boundaryConditionsService->saveProject();
+    }
+
+    if (auto* solverService = ServiceRegistry::instance().getService<SolverService>())
+    {
+        solverService->saveProject();
+    }
+
+    if (auto* surrogateService = ServiceRegistry::instance().getService<SurrogateModelService>())
+    {
+        surrogateService->saveProject();
+    }
+
+    writeProjectManifest();
 }
 
 void ProjectManager::newProject()
@@ -216,8 +266,11 @@ void ProjectManager::newProject()
         return;
     }
 
-    m_projectEnginePath = m_projectPath + "/" + m_projectName + ".smproj";
-    createProjectFilesFolder();
+    m_projectEnginePath = QDir(m_projectPath).filePath(m_projectName + "/" + m_projectName + ".xml");
+    if (!createProjectFilesFolder(true))
+    {
+        return;
+    }
     m_projectTreeWidget->buildDefaultProjectTree(m_projectName);
     m_rootNode = m_projectTreeWidget->m_rootNode;
     m_projectTreeWidget->blockSignal(true);
@@ -346,19 +399,146 @@ bool ProjectManager::removeDir(QString dirPath)
 	return dir.rmpath(dir.absolutePath());
 }
 
-bool ProjectManager::createProjectFilesFolder()
+bool ProjectManager::createProjectFilesFolder(bool askOverwrite)
 {
-	QString	exelPath = QCoreApplication::applicationDirPath();
-	const QString tempPath = exelPath + "/../ProjectFolder/";
+    if (m_projectPath.isEmpty() || m_projectName.isEmpty())
+    {
+        return false;
+    }
+
+    const QString tempPath = QDir(m_projectPath).filePath(m_projectName);
     m_projectTempFolder = tempPath;
     PublicVariables::instance().set(PublicConstants::kProjectDirectoryKey, m_projectTempFolder,"project_dir");
-	removeDir(tempPath);
-	QDir dir = QDir(tempPath);
-	if (!dir.exists())
-	{
-		bool flag = dir.mkpath(tempPath);
-	}
+
+    QDir dir(tempPath);
+    if (dir.exists())
+    {
+        if (askOverwrite)
+        {
+            const auto ret = QMessageBox::question(
+                nullptr,
+                tr("项目目录已存在"),
+                tr("目录已存在：%1\n是否覆盖原有项目文件？").arg(tempPath),
+                QMessageBox::Yes | QMessageBox::No,
+                QMessageBox::No);
+            if (ret != QMessageBox::Yes)
+            {
+                return false;
+            }
+            if (!removeDir(tempPath))
+            {
+                return false;
+            }
+        }
+        else
+        {
+            if (!dir.mkpath(dir.filePath("PREP")))
+            {
+                return false;
+            }
+            return true;
+        }
+    }
+
+    if (!dir.mkpath(tempPath))
+    {
+        return false;
+    }
+
+    if (!dir.mkpath(dir.filePath("PREP")))
+    {
+        return false;
+    }
+
 	return true;
+}
+
+bool ProjectManager::writeProjectManifest() const
+{
+    if (m_projectEnginePath.isEmpty()) return false;
+
+    QFile file(m_projectEnginePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+
+    QXmlStreamWriter xml(&file);
+    xml.setAutoFormatting(true);
+    xml.writeStartDocument();
+    xml.writeStartElement("SmartCAEProject");
+    xml.writeAttribute("version", "1.0");
+    xml.writeTextElement("Name", m_projectName);
+
+    xml.writeStartElement("ProjectFiles");
+    xml.writeTextElement("PreProcessing", PublicConstants::kPreProcessingProjectFileName);
+    xml.writeTextElement("PostProcessing", PublicConstants::kPostProcessingProjectFileName);
+    xml.writeTextElement("Mesh", PublicConstants::kMeshProjectFileName);
+    xml.writeTextElement("Solver", PublicConstants::kSolverProjectFileName);
+    xml.writeTextElement("Surrogate", PublicConstants::kSurrogateProjectFileName);
+    xml.writeEndElement();
+
+    xml.writeStartElement("GlobalValues");
+    const QVariant meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension);
+    if (meshDim.isValid())
+    {
+        xml.writeStartElement("Value");
+        xml.writeAttribute("key", PublicConstants::kMeshDimension);
+        xml.writeAttribute("type", "int");
+        xml.writeCharacters(meshDim.toString());
+        xml.writeEndElement();
+    }
+    const QVariant postScalar = PublicVariables::instance().get(PublicConstants::kValuePostScalar);
+    if (postScalar.isValid())
+    {
+        xml.writeStartElement("Value");
+        xml.writeAttribute("key", PublicConstants::kValuePostScalar);
+        xml.writeAttribute("type", "string");
+        xml.writeCharacters(postScalar.toString());
+        xml.writeEndElement();
+    }
+    xml.writeEndElement();
+
+    xml.writeEndElement();
+    xml.writeEndDocument();
+    return true;
+}
+
+bool ProjectManager::readProjectManifest(const QString& manifestPath)
+{
+    QFile file(manifestPath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return false;
+
+    QXmlStreamReader xml(&file);
+    while (!xml.atEnd())
+    {
+        xml.readNext();
+        if (xml.isStartElement())
+        {
+            if (xml.name() == "Name")
+            {
+                m_projectName = xml.readElementText().trimmed();
+            }
+            else if (xml.name() == "Value")
+            {
+                const auto attrs = xml.attributes();
+                const QString key = attrs.value("key").toString();
+                const QString type = attrs.value("type").toString();
+                const QString text = xml.readElementText();
+                QVariant val = text;
+                if (type == "int") val = text.toInt();
+                else if (type == "double") val = text.toDouble();
+                const QString owner = PublicVariables::instance().ownerOf(key);
+                if (!owner.isEmpty())
+                {
+                    PublicVariables::instance().set(key, val, owner);
+                }
+                else
+                {
+                    PublicVariables::instance().set(key, val, "project_dir");
+                }
+            }
+        }
+    }
+
+    return !xml.hasError();
 }
 
 bool ProjectManager::saveAllProModelData(const QString& fileName)
