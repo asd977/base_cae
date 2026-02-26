@@ -39,12 +39,10 @@ SeepageBoundaryPage::~SeepageBoundaryPage()
 void SeepageBoundaryPage::beforeLoad()
 {
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
-    PickManager::instance().setBatchSelectEnabled(true);
 }
 
 void SeepageBoundaryPage::beforeUnload()
 {
-    PickManager::instance().setBatchSelectEnabled(false);
     PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
 }
 

@@ -1,11 +1,13 @@
-#ifndef SOLVER_H
+﻿#ifndef SOLVER_H
 #define SOLVER_H
 
 #include <ProjectNode.h>
 #include <services/SolverService.h>
 
-class Solver : public SolverService
+class Solver : public QObject,  public SolverService
 {
+    Q_OBJECT
+
 public:
     Solver();
 
