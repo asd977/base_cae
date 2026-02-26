@@ -14,6 +14,9 @@
 #include <QBrush>
 #include <QIcon>
 #include <QVariant>
+#include <QXmlStreamReader>
+#include <QXmlStreamWriter>
+#include <QFile>
 #include <QMessageBox>
 
 namespace
@@ -146,7 +149,7 @@ void ProjectManager::openProject()
 {
     // todo 打开工程文件
     QFileDialog dialog(nullptr, "选择工程文件");
-    dialog.setNameFilter("Project Files (*.smproj)");
+    dialog.setNameFilter("Project Files (*.xml)");
     dialog.setFilter(QDir::Files);
     QString smprjo_path = "";
     if (dialog.exec() == QDialog::Accepted)
@@ -155,8 +158,15 @@ void ProjectManager::openProject()
     }
     if (smprjo_path == "") return;
     QFileInfo fileInfo(smprjo_path);
-    m_projectName = fileInfo.baseName();
     m_projectPath = fileInfo.absolutePath();
+    if (!readProjectManifest(smprjo_path))
+    {
+        m_projectName = fileInfo.baseName();
+    }
+    if (m_projectName.isEmpty())
+    {
+        m_projectName = fileInfo.baseName();
+    }
     if (!createProjectFilesFolder(false))
     {
         m_outputService->outputLog("工程文件有误,打开失败");
@@ -232,6 +242,8 @@ void ProjectManager::saveProject()
     {
         surrogateService->saveProject();
     }
+
+    writeProjectManifest();
 }
 
 void ProjectManager::newProject()
@@ -247,7 +259,7 @@ void ProjectManager::newProject()
         return;
     }
 
-    m_projectEnginePath = m_projectPath + "/" + m_projectName + ".smproj";
+    m_projectEnginePath = m_projectPath + "/" + m_projectName + ".xml";
     if (!createProjectFilesFolder(true))
     {
         return;
@@ -432,6 +444,94 @@ bool ProjectManager::createProjectFilesFolder(bool askOverwrite)
     }
 
 	return true;
+}
+
+bool ProjectManager::writeProjectManifest() const
+{
+    if (m_projectEnginePath.isEmpty()) return false;
+
+    QFile file(m_projectEnginePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+
+    QXmlStreamWriter xml(&file);
+    xml.setAutoFormatting(true);
+    xml.writeStartDocument();
+    xml.writeStartElement("SmartCAEProject");
+    xml.writeAttribute("version", "1.0");
+    xml.writeTextElement("Name", m_projectName);
+
+    xml.writeStartElement("ProjectFiles");
+    xml.writeTextElement("PreProcessing", PublicConstants::kPreProcessingProjectFileName);
+    xml.writeTextElement("PostProcessing", PublicConstants::kPostProcessingProjectFileName);
+    xml.writeTextElement("Mesh", PublicConstants::kMeshProjectFileName);
+    xml.writeTextElement("Solver", PublicConstants::kSolverProjectFileName);
+    xml.writeTextElement("Surrogate", PublicConstants::kSurrogateProjectFileName);
+    xml.writeEndElement();
+
+    xml.writeStartElement("GlobalValues");
+    const QVariant meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension);
+    if (meshDim.isValid())
+    {
+        xml.writeStartElement("Value");
+        xml.writeAttribute("key", PublicConstants::kMeshDimension);
+        xml.writeAttribute("type", "int");
+        xml.writeCharacters(meshDim.toString());
+        xml.writeEndElement();
+    }
+    const QVariant postScalar = PublicVariables::instance().get(PublicConstants::kValuePostScalar);
+    if (postScalar.isValid())
+    {
+        xml.writeStartElement("Value");
+        xml.writeAttribute("key", PublicConstants::kValuePostScalar);
+        xml.writeAttribute("type", "string");
+        xml.writeCharacters(postScalar.toString());
+        xml.writeEndElement();
+    }
+    xml.writeEndElement();
+
+    xml.writeEndElement();
+    xml.writeEndDocument();
+    return true;
+}
+
+bool ProjectManager::readProjectManifest(const QString& manifestPath)
+{
+    QFile file(manifestPath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return false;
+
+    QXmlStreamReader xml(&file);
+    while (!xml.atEnd())
+    {
+        xml.readNext();
+        if (xml.isStartElement())
+        {
+            if (xml.name() == "Name")
+            {
+                m_projectName = xml.readElementText().trimmed();
+            }
+            else if (xml.name() == "Value")
+            {
+                const auto attrs = xml.attributes();
+                const QString key = attrs.value("key").toString();
+                const QString type = attrs.value("type").toString();
+                const QString text = xml.readElementText();
+                QVariant val = text;
+                if (type == "int") val = text.toInt();
+                else if (type == "double") val = text.toDouble();
+                const QString owner = PublicVariables::instance().ownerOf(key);
+                if (!owner.isEmpty())
+                {
+                    PublicVariables::instance().set(key, val, owner);
+                }
+                else
+                {
+                    PublicVariables::instance().set(key, val, "project_dir");
+                }
+            }
+        }
+    }
+
+    return !xml.hasError();
 }
 
 bool ProjectManager::saveAllProModelData(const QString& fileName)

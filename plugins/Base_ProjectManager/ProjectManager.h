@@ -78,6 +78,9 @@ private:
 	 * @note 所有模块的保存放在此函数进行
 	 */
 	bool saveAllProModelData(const QString& fileName);
+
+	bool writeProjectManifest() const;
+	bool readProjectManifest(const QString& manifestPath);
         /**
          * @brief 保存树节点信息
          */
