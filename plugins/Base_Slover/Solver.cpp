@@ -22,7 +22,7 @@ void Solver::newProject()
 {
     if (m_root) return;
 
-    m_root = new ProjectNode("求解器", QUuid::createUuid().toString(), nullptr);
+    m_root = new ProjectNode("计算分析", QUuid::createUuid().toString(), nullptr);
     ProjectManagerService* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
     projectManagerService->addTreeItem(m_root);
 }
