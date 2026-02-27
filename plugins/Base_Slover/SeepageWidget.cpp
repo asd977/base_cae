@@ -52,7 +52,7 @@ bool SeepageWidget::exportIseepDatFile() const
 
     QDir wd(projectDirAbs);
     if (!wd.exists("PREP")) wd.mkpath("PREP");
-    if (!wd.exists("SEEPCASE01")) wd.mkpath("SEEPCASE01");
+//    if (!wd.exists("SEEPCASE01")) wd.mkpath("SEEPCASE01");
 
     auto ensureTrailingSep = [](const QString& path) {
         QString p = QDir::toNativeSeparators(path);
