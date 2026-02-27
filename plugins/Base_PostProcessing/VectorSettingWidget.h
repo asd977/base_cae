@@ -1,7 +1,7 @@
 ﻿#ifndef VECTORSETTINGWIDGET_H
 #define VECTORSETTINGWIDGET_H
 
-#include "PostProcessingWidget.h"
+#include <services/VisualWidgetService.h>
 
 #include <BasePage.h>
 #include <QWidget>
@@ -17,7 +17,7 @@ class VectorSettingWidget : public BasePage
     Q_OBJECT
 
 public:
-    explicit VectorSettingWidget(PostProcessingWidget *postProcessingWidget,QWidget *parent = nullptr);
+    explicit VectorSettingWidget(VisualWidgetService *postProcessingWidget,QWidget *parent = nullptr);
     ~VectorSettingWidget();
 
     // 生命周期钩子（按你原有接口保留）
@@ -34,7 +34,7 @@ private slots:
     void on_stepComboBox_currentIndexChanged(int index);
 private:
     Ui::VectorSettingWidget *ui{nullptr};
-    PostProcessingWidget* m_postProcessingWidget{nullptr};
+    VisualWidgetService* m_visualService{nullptr};
 
     QString m_fileName;
     vtkSmartPointer<vtkUnstructuredGrid> m_grid;       // 合并后的网格

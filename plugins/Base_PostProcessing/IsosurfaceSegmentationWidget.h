@@ -4,7 +4,7 @@
 #include <vtkSmartPointer.h>
 #include <BasePage.h>
 
-class PostProcessingWidget;
+class VisualWidgetService;
 class vtkUnstructuredGrid;
 class vtkThreshold;
 class vtkContourFilter;
@@ -18,7 +18,7 @@ class IsosurfaceSegmentationWidget : public BasePage
 {
     Q_OBJECT
 public:
-    explicit IsosurfaceSegmentationWidget(PostProcessingWidget* postProcessingWidget,
+    explicit IsosurfaceSegmentationWidget(VisualWidgetService* postProcessingWidget,
                                           QWidget* parent = nullptr);
     ~IsosurfaceSegmentationWidget() override;
     void beforeLoad() override;
@@ -59,7 +59,7 @@ private:
 
 private:
     Ui::IsosurfaceSegmentationWidget* ui {};
-    PostProcessingWidget*             m_postProcessingWidget {};
+    VisualWidgetService*             m_visualService {};
 
     // 生命周期状态
     bool m_loadedOnce {false};

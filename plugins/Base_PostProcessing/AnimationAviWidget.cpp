@@ -1,6 +1,6 @@
 ﻿#include "AnimationAviWidget.h"
 #include "ui_AnimationAviWidget.h"
-#include "PostProcessingWidget.h"
+#include <services/VisualWidgetService.h>
 
 #include <QDir>
 #include <QRegularExpression>
@@ -18,6 +18,7 @@
 #include <vtkLookupTable.h>
 #include <vtkScalarBarActor.h>
 #include <vtkDataSetMapper.h>
+#include "PostVisualUtils.h"
 #include <vtkActor.h>
 #include <vtkRenderWindow.h>
 #include <vtkWindowToImageFilter.h>
@@ -31,11 +32,11 @@
 #include <algorithm>
 #include <cmath>
 
-AnimationAviWidget::AnimationAviWidget(PostProcessingWidget* postProcessingWidget,
+AnimationAviWidget::AnimationAviWidget(VisualWidgetService* postProcessingWidget,
                                        QWidget* parent)
     : ui(new Ui::AnimationAviWidget)
     , BasePage(PublicConstants::kPagePostProcessAnimation)
-    , m_postProcessingWidget(postProcessingWidget)
+    , m_visualService(postProcessingWidget)
 {
     ui->setupUi(this);
 
@@ -70,8 +71,8 @@ AnimationAviWidget::~AnimationAviWidget()
 void AnimationAviWidget::beforeLoad()
 {
     if (m_actor) {
-        m_postProcessingWidget->removeActor(m_actor);
-        m_postProcessingWidget->addActor(m_actor);
+        removeActorByService(m_visualService, m_actor);
+        addActorByService(m_visualService, m_actor);
         renderNow();
     }
 }
@@ -79,7 +80,7 @@ void AnimationAviWidget::beforeLoad()
 void AnimationAviWidget::beforeUnload()
 {
     stopTimer();
-    if (m_actor) m_postProcessingWidget->removeActor(m_actor);
+    if (m_actor) removeActorByService(m_visualService, m_actor);
 }
 
 void AnimationAviWidget::scanFrames()
@@ -195,7 +196,7 @@ bool AnimationAviWidget::computeGlobalRange(const QString& scalar, double outRan
 
 void AnimationAviWidget::applyScalarAndLUT(const QString& scalar, const double range[2])
 {
-    auto scalarBar = m_postProcessingWidget->getScalarBarActor();
+    auto scalarBar = m_visualService->scalarBarActor();
     auto lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable());
     if (!lut) {
         lut = vtkSmartPointer<vtkLookupTable>::New();
@@ -217,7 +218,7 @@ void AnimationAviWidget::buildPipelineIfNeeded()
     m_actor  = vtkSmartPointer<vtkActor>::New();
     m_actor->SetMapper(m_mapper);
     m_actor->GetProperty()->SetRepresentationToSurface();
-    m_postProcessingWidget->addActor(m_actor);
+    addActorByService(m_visualService, m_actor);
 }
 
 void AnimationAviWidget::updateFrameLabel()
@@ -232,7 +233,7 @@ void AnimationAviWidget::updateFrameLabel()
 
 void AnimationAviWidget::renderNow()
 {
-    if (auto rw = m_postProcessingWidget->getRenderWindow())
+    if (auto rw = m_visualService->renderWindow())
         rw->Render();
 }
 
@@ -411,7 +412,7 @@ void AnimationAviWidget::on_fixRangeCheckBox_toggled(bool)
 bool AnimationAviWidget::exportAVI(const QString& fileName, double fps)
 {
 //     if (m_frames.isEmpty()) return false;
-//     auto rw = m_postProcessingWidget->getRenderWindow();
+//     auto rw = m_visualService->renderWindow();
 
 //     // 捕获器
 //     auto w2i = vtkSmartPointer<vtkWindowToImageFilter>::New();

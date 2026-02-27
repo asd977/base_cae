@@ -5,6 +5,7 @@
 #include <QWidget>
 #include <QString>
 #include <QVariantMap>
+#include <QMap>
 
 #include <vtkSmartPointer.h>
 #include <vtkActor.h>
@@ -15,14 +16,14 @@
 #include <vtkInteractorStyleTrackballCamera.h>
 #include <vtkCommand.h>
 
-class PostProcessingWidget;
+class VisualWidgetService;
 namespace Ui { class NephogramSettingWidget; }
 
 class NephogramSettingWidget : public BasePage
 {
     Q_OBJECT
 public:
-    explicit NephogramSettingWidget(PostProcessingWidget *postProcessingWidget, QWidget *parent = nullptr);
+    explicit NephogramSettingWidget(VisualWidgetService *postProcessingWidget, QWidget *parent = nullptr);
     ~NephogramSettingWidget();
 
     void beforeLoad() override;
@@ -58,7 +59,7 @@ private:
     void ensureActorAttached();
     void syncScalarBarFromCurrent();
     void updateNephogram(const QString &selectedScalarName);
-    void loadFileName(QString dataPath);
+    void loadFileName(const QString& dataPath);
     void readTecplot(const QString &fileName);
 
     // 对比辅助
@@ -69,12 +70,14 @@ private:
     void syncScalarBarForCompare(vtkDataArray* leftArr, vtkDataArray* rightArr);
     void fillCompareCombosFromSteps();
     vtkSmartPointer<vtkUnstructuredGrid> loadGridFromTecplot(const QString& fileName);
+    vtkSmartPointer<vtkUnstructuredGrid> loadGridFromFile(const QString& fileName);
+    QString resultDirectory() const;
 
     void test();
 
 private:
     Ui::NephogramSettingWidget *ui{nullptr};
-    PostProcessingWidget *m_postProcessingWidget{nullptr};
+    VisualWidgetService *m_visualService{nullptr};
 
     // —— 单图对象 ——
     vtkSmartPointer<vtkActor>            m_actor;
@@ -104,6 +107,7 @@ private:
     QString m_dataPath;
     QString m_loadedFileName;
     QString m_currentArrayName;   // 仅用于渲染同步（不做持久化）
+    QMap<QString, QString> m_stepFileMap;
     bool m_initialized{false};    // 首次进入才读数据/填 step
     bool m_actorAttached{false};  // 避免重复 addActor
 

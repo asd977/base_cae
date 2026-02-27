@@ -1,6 +1,6 @@
 ﻿#include "IsosurfaceSegmentationWidget.h"
 #include "ui_IsosurfaceSegmentationWidget.h"
-#include "PostProcessingWidget.h"
+#include <services/VisualWidgetService.h>
 
 #include <QDir>
 #include <QRegularExpression>
@@ -18,6 +18,7 @@
 #include <vtkPolyDataMapper.h>
 #include <vtkLookupTable.h>
 #include <vtkScalarBarActor.h>
+#include "PostVisualUtils.h"
 #include <vtkRenderWindow.h>
 #include <vtkProperty.h>
 #include <vtkDataObject.h> // FIELD_ASSOCIATION_*
@@ -28,11 +29,11 @@
 #include <algorithm>
 #include <cmath>
 
-IsosurfaceSegmentationWidget::IsosurfaceSegmentationWidget(PostProcessingWidget* postProcessingWidget,
+IsosurfaceSegmentationWidget::IsosurfaceSegmentationWidget(VisualWidgetService* postProcessingWidget,
                                                            QWidget* parent)
     : ui(new Ui::IsosurfaceSegmentationWidget),
       BasePage(PublicConstants::kPagePostProcessIsosurfaceSegmentation)
-    , m_postProcessingWidget(postProcessingWidget)
+    , m_visualService(postProcessingWidget)
 {
     ui->setupUi(this);
 
@@ -273,9 +274,9 @@ void IsosurfaceSegmentationWidget::buildPipelineIfNeeded()
     m_actorIso->GetProperty()->SetColor(1,1,1); // 纯白界面
 
     // 首次构建时：加入场景，并记挂载标志
-    if (m_actorLow && !m_attachedLow)  { m_postProcessingWidget->addActor(m_actorLow);  m_attachedLow  = true; }
-    if (m_actorHigh && !m_attachedHigh){ m_postProcessingWidget->addActor(m_actorHigh); m_attachedHigh = true; }
-    if (m_actorIso && !m_attachedIso)  { m_postProcessingWidget->addActor(m_actorIso);  m_attachedIso  = true; }
+    if (m_actorLow && !m_attachedLow)  { addActorByService(m_visualService, m_actorLow);  m_attachedLow  = true; }
+    if (m_actorHigh && !m_attachedHigh){ addActorByService(m_visualService, m_actorHigh); m_attachedHigh = true; }
+    if (m_actorIso && !m_attachedIso)  { addActorByService(m_visualService, m_actorIso);  m_attachedIso  = true; }
 }
 
 void IsosurfaceSegmentationWidget::setIsoSpinRangeFromScalar()
@@ -379,10 +380,10 @@ void IsosurfaceSegmentationWidget::updateColoringFromUI()
     double range[2]; arr->GetRange(range);
 
     auto lut = vtkLookupTable::SafeDownCast(
-        m_postProcessingWidget->getScalarBarActor()->GetLookupTable());
+        m_visualService->scalarBarActor()->GetLookupTable());
     if (!lut) {
         lut = vtkSmartPointer<vtkLookupTable>::New();
-        m_postProcessingWidget->getScalarBarActor()->SetLookupTable(lut);
+        m_visualService->scalarBarActor()->SetLookupTable(lut);
     }
     lut->SetTableRange(range);
     lut->Build();
@@ -435,22 +436,22 @@ void IsosurfaceSegmentationWidget::updateVisibilityFromUI()
 
 void IsosurfaceSegmentationWidget::renderNow()
 {
-    if (auto rw = m_postProcessingWidget->getRenderWindow())
+    if (auto rw = m_visualService->renderWindow())
         rw->Render();
 }
 
 void IsosurfaceSegmentationWidget::attachActorsIfNeeded()
 {
     if (m_actorLow && !m_attachedLow) {
-        m_postProcessingWidget->addActor(m_actorLow);
+        addActorByService(m_visualService, m_actorLow);
         m_attachedLow = true;
     }
     if (m_actorHigh && !m_attachedHigh) {
-        m_postProcessingWidget->addActor(m_actorHigh);
+        addActorByService(m_visualService, m_actorHigh);
         m_attachedHigh = true;
     }
     if (m_actorIso && !m_attachedIso) {
-        m_postProcessingWidget->addActor(m_actorIso);
+        addActorByService(m_visualService, m_actorIso);
         m_attachedIso = true;
     }
 }
@@ -458,15 +459,15 @@ void IsosurfaceSegmentationWidget::attachActorsIfNeeded()
 void IsosurfaceSegmentationWidget::detachActorsIfAttached()
 {
     if (m_actorLow && m_attachedLow) {
-        m_postProcessingWidget->removeActor(m_actorLow);
+        removeActorByService(m_visualService, m_actorLow);
         m_attachedLow = false;
     }
     if (m_actorHigh && m_attachedHigh) {
-        m_postProcessingWidget->removeActor(m_actorHigh);
+        removeActorByService(m_visualService, m_actorHigh);
         m_attachedHigh = false;
     }
     if (m_actorIso && m_attachedIso) {
-        m_postProcessingWidget->removeActor(m_actorIso);
+        removeActorByService(m_visualService, m_actorIso);
         m_attachedIso = false;
     }
 }

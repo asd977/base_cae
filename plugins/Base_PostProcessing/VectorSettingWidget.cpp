@@ -18,6 +18,7 @@
 #include <PublicConstants.h>
 #include <PublicVariables.h>
 #include <QDir>
+#include "PostVisualUtils.h"
 #include <vtkRenderWindow.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkScalarBarActor.h>
@@ -29,7 +30,7 @@
 #include <stdio.h>
 #include <vtkXMLUnstructuredGridReader.h>
 
-VectorSettingWidget::VectorSettingWidget(PostProcessingWidget *postProcessingWidget, QWidget *parent) :
+VectorSettingWidget::VectorSettingWidget(VisualWidgetService *postProcessingWidget, QWidget *parent) :
     ui(new Ui::VectorSettingWidget),
     BasePage(PublicConstants::kPagePostProcessVector)
 {
@@ -60,7 +61,7 @@ VectorSettingWidget::VectorSettingWidget(PostProcessingWidget *postProcessingWid
     }
     m_scaleFactor = ui->scaleSlider->value() / 100.0;         // 初始放大系数=中点(比如1.50)
 
-    m_postProcessingWidget = postProcessingWidget;
+    m_visualService = postProcessingWidget;
 }
 VectorSettingWidget::~VectorSettingWidget()
 {
@@ -89,8 +90,8 @@ void VectorSettingWidget::beforeLoad()
         loadFileName(m_dataPath);
     } else {
         // 非首次：恢复之前的显示（如果有箭头 actor，就挂回去）
-        if (m_postProcessingWidget && m_vectorActor) {
-            m_postProcessingWidget->addActor(m_vectorActor);
+        if (m_visualService && m_vectorActor) {
+            addActorByService(m_visualService, m_vectorActor);
             requestRender();
         }
     }
@@ -99,8 +100,8 @@ void VectorSettingWidget::beforeLoad()
 void VectorSettingWidget::beforeUnload()
 {
     // 页面被切换：仅隐藏当前向量箭头，保留对象以便回来后快速恢复
-    if (m_postProcessingWidget && m_vectorActor) {
-        m_postProcessingWidget->removeActor(m_vectorActor);
+    if (m_visualService && m_vectorActor) {
+        removeActorByService(m_visualService, m_vectorActor);
         requestRender();
     }
     // 不要置空 m_vectorActor/m_glyph/m_grid —— 保持状态以用于恢复
@@ -171,8 +172,8 @@ void VectorSettingWidget::on_stepComboBox_currentIndexChanged(int index)
 
 
     // 切文件时，先把旧的箭头从场景移除，避免看到旧结果
-    if (m_postProcessingWidget && m_vectorActor) {
-        m_postProcessingWidget->removeActor(m_vectorActor);
+    if (m_visualService && m_vectorActor) {
+        removeActorByService(m_visualService, m_vectorActor);
         // 不置空指针，等用户点“确认”后再重建新 glyph/actor
     }
 
@@ -379,8 +380,8 @@ void VectorSettingWidget::rebuildPipeline()
 
     // 移除旧 actor
     if (m_vectorActor) {
-        if (m_postProcessingWidget)
-            m_postProcessingWidget->removeActor(m_vectorActor);
+        if (m_visualService)
+            removeActorByService(m_visualService, m_vectorActor);
         m_vectorActor = nullptr;
     }
 
@@ -436,7 +437,7 @@ void VectorSettingWidget::rebuildPipeline()
         magMax = 1.0;
     }
 
-    if (vtkSmartPointer<vtkScalarBarActor> scalarBar = m_postProcessingWidget ? m_postProcessingWidget->getScalarBarActor() : nullptr) {
+    if (vtkSmartPointer<vtkScalarBarActor> scalarBar = m_visualService ? m_visualService->scalarBarActor() : nullptr) {
         vtkLookupTable* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable());
         if (!lut) {
             auto l = vtkSmartPointer<vtkLookupTable>::New();
@@ -459,16 +460,16 @@ void VectorSettingWidget::rebuildPipeline()
     m_vectorActor->SetMapper(mapper);
     m_vectorActor->GetProperty()->SetRepresentationToSurface();
 
-    if (m_postProcessingWidget)
-        m_postProcessingWidget->addActor(m_vectorActor);
+    if (m_visualService)
+        addActorByService(m_visualService, m_vectorActor);
 
     requestRender();
 }
 
 void VectorSettingWidget::requestRender() const
 {
-    if (!m_postProcessingWidget) return;
-    m_postProcessingWidget->getRenderWindow()->Render();
+    if (!m_visualService) return;
+    m_visualService->renderWindow()->Render();
 }
 
 void VectorSettingWidget::on_confirmPushButton_clicked()

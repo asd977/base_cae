@@ -1,6 +1,6 @@
 ﻿#include "SliceSettingsWidget.h"
 #include "ui_SliceSettingsWidget.h"
-#include "PostProcessingWidget.h"
+#include <services/VisualWidgetService.h>
 
 #include <QDir>
 #include <QRegularExpression>
@@ -18,6 +18,7 @@
 #include <vtkScalarBarActor.h>
 #include <vtkProperty.h>
 #include <vtkRenderWindow.h>
+#include "PostVisualUtils.h"
 #include <vtkPlane.h>
 #include <vtkActor.h>
 
@@ -59,11 +60,11 @@ static QVector<double> genUniformTs(int N, bool includeEnds)
     return ts;
 }
 
-SliceSettingsWidget::SliceSettingsWidget(PostProcessingWidget* postProcessingWidget,
+SliceSettingsWidget::SliceSettingsWidget(VisualWidgetService* postProcessingWidget,
                                          QWidget* parent)
     : ui(new Ui::SliceSettingsWidget),
       BasePage(PublicConstants::kPagePostProcessSlice)
-    , m_postProcessingWidget(postProcessingWidget)
+    , m_visualService(postProcessingWidget)
 {
     ui->setupUi(this);
 
@@ -130,14 +131,14 @@ void SliceSettingsWidget::beforeLoad()
     // 切回页面：根据状态挂回
     reattachAccordingToDisplayState();
 
-    if (auto rw = m_postProcessingWidget->getRenderWindow()) rw->Render();
+    if (auto rw = m_visualService->renderWindow()) rw->Render();
 }
 
 void SliceSettingsWidget::beforeUnload()
 {
     // 只移除，不销毁
     detachAllFromScene();
-    m_postProcessingWidget->getRenderWindow()->Render();
+    m_visualService->renderWindow()->Render();
 }
 
 void SliceSettingsWidget::loadFileName(QString dataPath)
@@ -214,8 +215,8 @@ void SliceSettingsWidget::on_stepComboBox_currentIndexChanged(int idx)
     m_multiDisplayed  = false;
 
     // 清理结果显示
-    if (m_sliceActor)      m_postProcessingWidget->removeActor(m_sliceActor);
-    if (m_slicePlaneActor) m_postProcessingWidget->removeActor(m_slicePlaneActor);
+    if (m_sliceActor)      removeActorByService(m_visualService, m_sliceActor);
+    if (m_slicePlaneActor) removeActorByService(m_visualService, m_slicePlaneActor);
     clearMultiSlicesAll();
 
     // 上色整体云图
@@ -223,7 +224,7 @@ void SliceSettingsWidget::on_stepComboBox_currentIndexChanged(int idx)
         on_scalarComboBox_currentIndexChanged(ui->scalarComboBox->currentIndex());
 
     reattachAccordingToDisplayState();
-    if (auto rw = m_postProcessingWidget->getRenderWindow()) rw->Render();
+    if (auto rw = m_visualService->renderWindow()) rw->Render();
 }
 
 void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
@@ -236,10 +237,10 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
     // LUT
     double range[2]; arr->GetRange(range);
     auto lut = vtkLookupTable::SafeDownCast(
-        m_postProcessingWidget->getScalarBarActor()->GetLookupTable());
+        m_visualService->scalarBarActor()->GetLookupTable());
     if (!lut) {
         lut = vtkSmartPointer<vtkLookupTable>::New();
-        m_postProcessingWidget->getScalarBarActor()->SetLookupTable(lut);
+        m_visualService->scalarBarActor()->SetLookupTable(lut);
     }
     lut->SetTableRange(range);
     lut->Build();
@@ -263,18 +264,18 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
 
     // 没有在显示结果时，才把整体云图挂上
     if (!m_singleDisplayed && !m_multiDisplayed)
-        m_postProcessingWidget->addActor(m_actor);
+        addActorByService(m_visualService, m_actor);
 
     // 若已经在显示结果，重建结果以复用新 LUT
     if (m_singleDisplayed) {
-        if (m_sliceActor) m_postProcessingWidget->removeActor(m_sliceActor);
+        if (m_sliceActor) removeActorByService(m_visualService, m_sliceActor);
         buildSingleSliceResult();
     } else if (m_multiDisplayed) {
         hideMultiSlicesFromScene();
         buildMultiSliceResult();
     }
 
-    if (auto rw = m_postProcessingWidget->getRenderWindow()) rw->Render();
+    if (auto rw = m_visualService->renderWindow()) rw->Render();
 }
 
 void SliceSettingsWidget::on_planeComboBox_currentIndexChanged(int)
@@ -341,9 +342,9 @@ void SliceSettingsWidget::showCutPlane(int)
     m_slicePlaneSource->Update();
 
     // 确保挂上（从多切面切回单切面时尤为关键）
-    m_postProcessingWidget->addActor(m_slicePlaneActor);
+    addActorByService(m_visualService, m_slicePlaneActor);
 
-    if (auto rw = m_postProcessingWidget->getRenderWindow()) rw->Render();
+    if (auto rw = m_visualService->renderWindow()) rw->Render();
 }
 
 void SliceSettingsWidget::on_confirmButton_clicked()
@@ -353,9 +354,9 @@ void SliceSettingsWidget::on_confirmButton_clicked()
 
     if (multiMode) {
         // 多切面：隐藏整体和单切面预览/结果，生成多切面结果
-        if (m_actor)           m_postProcessingWidget->removeActor(m_actor);
-        if (m_slicePlaneActor) m_postProcessingWidget->removeActor(m_slicePlaneActor);
-        if (m_sliceActor)      m_postProcessingWidget->removeActor(m_sliceActor);
+        if (m_actor)           removeActorByService(m_visualService, m_actor);
+        if (m_slicePlaneActor) removeActorByService(m_visualService, m_slicePlaneActor);
+        if (m_sliceActor)      removeActorByService(m_visualService, m_sliceActor);
 
         buildMultiSliceResult();
 
@@ -363,8 +364,8 @@ void SliceSettingsWidget::on_confirmButton_clicked()
         m_multiDisplayed  = true;
     } else if (singleMode) {
         // 单切面：隐藏整体和预览，生成单切面结果
-        if (m_actor)           m_postProcessingWidget->removeActor(m_actor);
-        if (m_slicePlaneActor) m_postProcessingWidget->removeActor(m_slicePlaneActor);
+        if (m_actor)           removeActorByService(m_visualService, m_actor);
+        if (m_slicePlaneActor) removeActorByService(m_visualService, m_slicePlaneActor);
 
         buildSingleSliceResult();
 
@@ -377,10 +378,10 @@ void SliceSettingsWidget::on_confirmButton_clicked()
         // 若两个都没勾（理论上不会），回退到整体
         m_singleDisplayed = false;
         m_multiDisplayed  = false;
-        if (m_actor) m_postProcessingWidget->addActor(m_actor);
+        if (m_actor) addActorByService(m_visualService, m_actor);
     }
 
-    if (auto rw = m_postProcessingWidget->getRenderWindow()) rw->Render();
+    if (auto rw = m_visualService->renderWindow()) rw->Render();
 }
 
 void SliceSettingsWidget::on_singleSliceGroupBox_toggled(bool checked)
@@ -397,18 +398,18 @@ void SliceSettingsWidget::on_singleSliceGroupBox_toggled(bool checked)
         hideMultiSlicesFromScene();
         m_multiDisplayed = false;
 
-        if (m_actor) m_postProcessingWidget->addActor(m_actor);
+        if (m_actor) addActorByService(m_visualService, m_actor);
         showCutPlane(); // 创建/更新并挂载预览
     } else {
         // 退出单切面模式：隐藏预览与单切面结果，仅显示整体
-        if (m_slicePlaneActor) m_postProcessingWidget->removeActor(m_slicePlaneActor);
-        if (m_sliceActor)      m_postProcessingWidget->removeActor(m_sliceActor);
+        if (m_slicePlaneActor) removeActorByService(m_visualService, m_slicePlaneActor);
+        if (m_sliceActor)      removeActorByService(m_visualService, m_sliceActor);
         m_singleDisplayed = false;
 
-        if (m_actor) m_postProcessingWidget->addActor(m_actor);
+        if (m_actor) addActorByService(m_visualService, m_actor);
     }
 
-    if (auto rw = m_postProcessingWidget->getRenderWindow()) rw->Render();
+    if (auto rw = m_visualService->renderWindow()) rw->Render();
 }
 
 void SliceSettingsWidget::on_multiSliceGroupBox_toggled(bool checked)
@@ -422,21 +423,21 @@ void SliceSettingsWidget::on_multiSliceGroupBox_toggled(bool checked)
 
     if (checked) {
         // 进入多切面模式：隐藏单切面预览/结果，仅显示整体（不自动出结果）
-        if (m_slicePlaneActor) m_postProcessingWidget->removeActor(m_slicePlaneActor);
-        if (m_sliceActor)      m_postProcessingWidget->removeActor(m_sliceActor);
+        if (m_slicePlaneActor) removeActorByService(m_visualService, m_slicePlaneActor);
+        if (m_sliceActor)      removeActorByService(m_visualService, m_sliceActor);
         m_singleDisplayed = false;
 
-        if (m_actor) m_postProcessingWidget->addActor(m_actor);
+        if (m_actor) addActorByService(m_visualService, m_actor);
     } else {
         // 退出多切面模式：隐藏多切面结果，仅显示整体，允许单切面预览
         hideMultiSlicesFromScene();
         m_multiDisplayed = false;
 
-        if (m_actor) m_postProcessingWidget->addActor(m_actor);
+        if (m_actor) addActorByService(m_visualService, m_actor);
         showCutPlane(); // 恢复预览（如果单切面组处于勾选状态）
     }
 
-    if (auto rw = m_postProcessingWidget->getRenderWindow()) rw->Render();
+    if (auto rw = m_visualService->renderWindow()) rw->Render();
 }
 
 void SliceSettingsWidget::buildSingleSliceResult()
@@ -446,7 +447,7 @@ void SliceSettingsWidget::buildSingleSliceResult()
     if (scalar.isEmpty()) return;
 
     auto lut = vtkLookupTable::SafeDownCast(
-        m_postProcessingWidget->getScalarBarActor()->GetLookupTable());
+        m_visualService->scalarBarActor()->GetLookupTable());
     if (!lut) return;
 
     double range[2]{0,1};
@@ -468,13 +469,13 @@ void SliceSettingsWidget::buildSingleSliceResult()
     mapper->SetScalarRange(range);
 
     if (m_sliceActor)
-        m_postProcessingWidget->removeActor(m_sliceActor);
+        removeActorByService(m_visualService, m_sliceActor);
 
     m_sliceActor = vtkSmartPointer<vtkActor>::New();
     m_sliceActor->SetMapper(mapper);
     m_sliceActor->GetProperty()->SetRepresentationToSurface();
 
-    m_postProcessingWidget->addActor(m_sliceActor);
+    addActorByService(m_visualService, m_sliceActor);
 }
 
 void SliceSettingsWidget::buildMultiSliceResult()
@@ -489,7 +490,7 @@ void SliceSettingsWidget::buildMultiSliceResult()
 
     // LUT/标量
     auto lut = vtkLookupTable::SafeDownCast(
-        m_postProcessingWidget->getScalarBarActor()->GetLookupTable());
+        m_visualService->scalarBarActor()->GetLookupTable());
     const QString scalar = ui->scalarComboBox->currentText();
     double range[2]{0,1};
     if (lut && !scalar.isEmpty()) {
@@ -531,7 +532,7 @@ void SliceSettingsWidget::buildMultiSliceResult()
         auto actor = vtkSmartPointer<vtkActor>::New();
         actor->SetMapper(mapper);
 
-        m_postProcessingWidget->addActor(actor);
+        addActorByService(m_visualService, actor);
 
         m_multiPlanes  << plane;
         m_multiCutters << cutter;
@@ -543,7 +544,7 @@ void SliceSettingsWidget::buildMultiSliceResult()
 void SliceSettingsWidget::hideMultiSlicesFromScene()
 {
     for (auto& a : m_multiActors) {
-        if (a) m_postProcessingWidget->removeActor(a);
+        if (a) removeActorByService(m_visualService, a);
     }
 }
 
@@ -565,22 +566,22 @@ void SliceSettingsWidget::reattachAccordingToDisplayState()
     const bool multiMode  = ui->multiSliceGroupBox  && ui->multiSliceGroupBox->isChecked();
 
     if (m_multiDisplayed && multiMode && !m_multiActors.isEmpty()) {
-        for (auto& a : m_multiActors) if (a) m_postProcessingWidget->addActor(a);
+        for (auto& a : m_multiActors) if (a) addActorByService(m_visualService, a);
         return;
     }
 
     if (m_singleDisplayed && singleMode && m_sliceActor) {
-        m_postProcessingWidget->addActor(m_sliceActor);
+        addActorByService(m_visualService, m_sliceActor);
         return;
     }
 
     // 默认：整体云图
-    if (m_actor) m_postProcessingWidget->addActor(m_actor);
+    if (m_actor) addActorByService(m_visualService, m_actor);
 
     // 单切面模式下，如果没有结果在显示，恢复紫色预览
     if (singleMode && !m_singleDisplayed) {
         if (m_slicePlaneSource && m_slicePlaneActor) {
-            m_postProcessingWidget->addActor(m_slicePlaneActor);
+            addActorByService(m_visualService, m_slicePlaneActor);
         } else {
             showCutPlane(); // 会创建并添加
         }
@@ -589,8 +590,8 @@ void SliceSettingsWidget::reattachAccordingToDisplayState()
 
 void SliceSettingsWidget::detachAllFromScene()
 {
-    if (m_actor)           m_postProcessingWidget->removeActor(m_actor);
-    if (m_slicePlaneActor) m_postProcessingWidget->removeActor(m_slicePlaneActor);
-    if (m_sliceActor)      m_postProcessingWidget->removeActor(m_sliceActor);
+    if (m_actor)           removeActorByService(m_visualService, m_actor);
+    if (m_slicePlaneActor) removeActorByService(m_visualService, m_slicePlaneActor);
+    if (m_sliceActor)      removeActorByService(m_visualService, m_sliceActor);
     hideMultiSlicesFromScene();
 }

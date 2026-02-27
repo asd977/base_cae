@@ -1,4 +1,4 @@
-include($$PWD/plugin-dev.pri)
+﻿include($$PWD/plugin-dev.pri)
 
 QT += widgets core xml
 
@@ -13,7 +13,7 @@ HEADERS += \
     IsosurfaceSettingsWidget.h \
     NephogramSettingWidget.h \
     PostProcessing.h \
-    PostProcessingWidget.h \
+    PostVisualUtils.h \
     ProbeSettingsWidget.h \
     SliceSettingsWidget.h \
     VectorSettingWidget.h
@@ -26,7 +26,6 @@ SOURCES += \
     IsosurfaceSettingsWidget.cpp \
     NephogramSettingWidget.cpp \
     PostProcessing.cpp \
-    PostProcessingWidget.cpp \
     ProbeSettingsWidget.cpp \
     SliceSettingsWidget.cpp \
     VectorSettingWidget.cpp

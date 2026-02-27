@@ -1,6 +1,6 @@
 ﻿#include "IsosurfaceSettingsWidget.h"
 #include "ui_IsosurfaceSettingsWidget.h"
-#include "PostProcessingWidget.h"
+#include <services/VisualWidgetService.h>
 
 #include <QDir>
 #include <QRegularExpression>
@@ -18,6 +18,7 @@
 #include <vtkProperty.h>
 #include <vtkRenderWindow.h>
 #include <vtkDataSetSurfaceFilter.h>
+#include "PostVisualUtils.h"
 #include <vtkDataObject.h>   // for SetInputArrayToProcess
 
 #include <PublicConstants.h>
@@ -60,11 +61,11 @@ static QVector<double> genUniformTs(int N, bool includeEnds)
     return ts;
 }
 
-IsosurfaceSettingsWidget::IsosurfaceSettingsWidget(PostProcessingWidget* ppw,
+IsosurfaceSettingsWidget::IsosurfaceSettingsWidget(VisualWidgetService* ppw,
                                                    QWidget *parent)
     : ui(new Ui::IsosurfaceSettingsWidget),
       BasePage(PublicConstants::kPagePostProcessIsosurface)
-    , m_postProcessingWidget(ppw)
+    , m_visualService(ppw)
 {
     ui->setupUi(this);
 
@@ -259,7 +260,7 @@ void IsosurfaceSettingsWidget::setIsoSpinRangeFromScalar()
 
 vtkLookupTable* IsosurfaceSettingsWidget::ensureLUT()
 {
-    auto scalarBar = m_postProcessingWidget->getScalarBarActor();
+    auto scalarBar = m_visualService->scalarBarActor();
     auto lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable());
     if (!lut) {
         lut = vtkSmartPointer<vtkLookupTable>::New();
@@ -300,7 +301,7 @@ void IsosurfaceSettingsWidget::updateOverallColoring()
 
 void IsosurfaceSettingsWidget::renderNow()
 {
-    if (auto rw = m_postProcessingWidget->getRenderWindow())
+    if (auto rw = m_visualService->renderWindow())
         rw->Render();
 }
 
@@ -383,11 +384,11 @@ void IsosurfaceSettingsWidget::updateSingleIsoRealtime()
     m_contourSingle->Update();
 
     // 隐藏整体 & 多等值面
-    if (m_actorOverall) m_postProcessingWidget->removeActor(m_actorOverall);
+    if (m_actorOverall) removeActorByService(m_visualService, m_actorOverall);
     hideMultiActorsFromScene();
 
     // 挂单等值面
-    m_postProcessingWidget->addActor(m_actorSingle);
+    addActorByService(m_visualService, m_actorSingle);
     m_singleDisplayed = true;
     m_multiDisplayed  = false;
 
@@ -445,7 +446,7 @@ void IsosurfaceSettingsWidget::buildMultiIsoResult()
         actor->SetMapper(mapper);
         actor->GetProperty()->SetRepresentationToSurface();
 
-        m_postProcessingWidget->addActor(actor);
+        addActorByService(m_visualService, actor);
 
         m_multiContours << contour;
         m_multiMappers  << mapper;
@@ -453,8 +454,8 @@ void IsosurfaceSettingsWidget::buildMultiIsoResult()
     }
 
     // 多面模式：隐藏整体、隐藏单等值面
-    if (m_actorOverall) m_postProcessingWidget->removeActor(m_actorOverall);
-    if (m_actorSingle)  m_postProcessingWidget->removeActor(m_actorSingle);
+    if (m_actorOverall) removeActorByService(m_visualService, m_actorOverall);
+    if (m_actorSingle)  removeActorByService(m_visualService, m_actorSingle);
     m_singleDisplayed = false;
     m_multiDisplayed  = true;
 
@@ -463,8 +464,8 @@ void IsosurfaceSettingsWidget::buildMultiIsoResult()
 
 void IsosurfaceSettingsWidget::detachAllFromScene()
 {
-    if (m_actorOverall) m_postProcessingWidget->removeActor(m_actorOverall);
-    if (m_actorSingle)  m_postProcessingWidget->removeActor(m_actorSingle);
+    if (m_actorOverall) removeActorByService(m_visualService, m_actorOverall);
+    if (m_actorSingle)  removeActorByService(m_visualService, m_actorSingle);
     hideMultiActorsFromScene();
 }
 
@@ -477,28 +478,28 @@ void IsosurfaceSettingsWidget::reattachAccordingToState()
     const bool multiMode  = ui->multiIsoGroupBox  && ui->multiIsoGroupBox->isChecked();
 
     if (m_multiDisplayed && multiMode && !m_multiActors.isEmpty()) {
-        for (auto& a : m_multiActors) if (a) m_postProcessingWidget->addActor(a);
+        for (auto& a : m_multiActors) if (a) addActorByService(m_visualService, a);
         return;
     }
 
     if (singleMode) {
         // 单等值面是实时显示：若已有 actor 直接挂回；否则先挂整体
         if (m_actorSingle) {
-            m_postProcessingWidget->addActor(m_actorSingle);
+            addActorByService(m_visualService, m_actorSingle);
             m_singleDisplayed = true;
             return;
         }
-        if (m_actorOverall) m_postProcessingWidget->addActor(m_actorOverall);
+        if (m_actorOverall) addActorByService(m_visualService, m_actorOverall);
         return;
     }
 
     // 其它情况：默认整体
-    if (m_actorOverall) m_postProcessingWidget->addActor(m_actorOverall);
+    if (m_actorOverall) addActorByService(m_visualService, m_actorOverall);
 }
 
 void IsosurfaceSettingsWidget::hideMultiActorsFromScene()
 {
-    for (auto& a : m_multiActors) if (a) m_postProcessingWidget->removeActor(a);
+    for (auto& a : m_multiActors) if (a) removeActorByService(m_visualService, a);
 }
 
 void IsosurfaceSettingsWidget::clearMultiResults()
@@ -522,7 +523,7 @@ void IsosurfaceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
         qWarning() << "Scalar array not found:" << scalar;
         return;
     }
-    if (m_actorOverall) m_postProcessingWidget->removeActor(m_actorOverall);
+    if (m_actorOverall) removeActorByService(m_visualService, m_actorOverall);
     m_actorOverall = nullptr;
     setIsoSpinRangeFromScalar();
     updateOverallColoring();
@@ -537,7 +538,7 @@ void IsosurfaceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
     else if (multiMode)
     {
         hideMultiActorsFromScene();
-        if (m_actorOverall) m_postProcessingWidget->addActor(m_actorOverall);
+        if (m_actorOverall) addActorByService(m_visualService, m_actorOverall);
         renderNow();
 //        buildMultiIsoResult();
     }
@@ -586,9 +587,9 @@ void IsosurfaceSettingsWidget::on_singleIsoGroupBox_toggled(bool checked)
         updateSingleIsoRealtime();
     } else {
         // 退出单等值面：隐藏单面，显示整体
-        if (m_actorSingle) m_postProcessingWidget->removeActor(m_actorSingle);
+        if (m_actorSingle) removeActorByService(m_visualService, m_actorSingle);
         m_singleDisplayed = false;
-        if (m_actorOverall) m_postProcessingWidget->addActor(m_actorOverall);
+        if (m_actorOverall) addActorByService(m_visualService, m_actorOverall);
         renderNow();
     }
 }
@@ -604,13 +605,13 @@ void IsosurfaceSettingsWidget::on_multiIsoGroupBox_toggled(bool checked)
 
     if (checked) {
         // 进入多等值面：暂不自动生成，显示整体；实时单面（若有）需隐藏
-        if (m_actorSingle) m_postProcessingWidget->removeActor(m_actorSingle);
+        if (m_actorSingle) removeActorByService(m_visualService, m_actorSingle);
         m_singleDisplayed = false;
 
         hideMultiActorsFromScene();
         m_multiDisplayed = false;
 
-        if (m_actorOverall) m_postProcessingWidget->addActor(m_actorOverall);
+        if (m_actorOverall) addActorByService(m_visualService, m_actorOverall);
         renderNow();
     } else {
         // 退出多等值面：隐藏多面结果，回到单面实时或整体
@@ -618,7 +619,7 @@ void IsosurfaceSettingsWidget::on_multiIsoGroupBox_toggled(bool checked)
         m_multiDisplayed = false;
 
         if (ui->singleIsoGroupBox->isChecked()) {
-            if (m_actorOverall) m_postProcessingWidget->addActor(m_actorOverall);
+            if (m_actorOverall) addActorByService(m_visualService, m_actorOverall);
             updateSingleIsoRealtime();
         }
     }
@@ -646,10 +647,10 @@ void IsosurfaceSettingsWidget::on_stepComboBox_currentIndexChanged(int index)
     // ——关键重置：把依赖旧 m_grid 的管线/actor 清掉——
     // 1) 单等值面：移除并标记为未显示（确保不会挡住整体云图）
     if (m_actorSingle) {
-        m_postProcessingWidget->removeActor(m_actorSingle);
+        removeActorByService(m_visualService, m_actorSingle);
     }
     if (m_actorOverall) {
-        m_postProcessingWidget->removeActor(m_actorOverall);
+        removeActorByService(m_visualService, m_actorOverall);
     }
     m_contourSingle = nullptr;
     m_mapperSingle  = nullptr;
@@ -676,7 +677,7 @@ void IsosurfaceSettingsWidget::on_stepComboBox_currentIndexChanged(int index)
     }
 
 
-    if (m_actorOverall) m_postProcessingWidget->addActor(m_actorOverall);
+    if (m_actorOverall) addActorByService(m_visualService, m_actorOverall);
 
     renderNow();
 }

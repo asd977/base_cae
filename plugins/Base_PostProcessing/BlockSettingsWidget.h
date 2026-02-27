@@ -11,14 +11,14 @@
 #include <vtkActor.h>
 #include <BasePage.h>
 
-class PostProcessingWidget;
+class VisualWidgetService;
 namespace Ui { class BlockSettingsWidget; }
 
 class BlockSettingsWidget : public BasePage
 {
     Q_OBJECT
 public:
-    explicit BlockSettingsWidget(PostProcessingWidget* postProcessingWidget,
+    explicit BlockSettingsWidget(VisualWidgetService* postProcessingWidget,
                                  QWidget* parent = nullptr);
     ~BlockSettingsWidget() override;
 
@@ -46,7 +46,7 @@ private:
 
 private:
     Ui::BlockSettingsWidget* ui {};
-    PostProcessingWidget*    m_postProcessingWidget {};
+    VisualWidgetService*    m_visualService {};
 
     // 生命周期状态
     bool m_loadedOnce {false};   // 是否已完成首次加载与建管线

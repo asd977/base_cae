@@ -8,6 +8,7 @@
 
 #include <ProjectNode.h>
 #include <QToolButton>
+#include <QDebug>
 #include <QTreeWidgetItem>
 #include <QUuid>
 #include <ServiceRegistry.h>
@@ -34,31 +35,33 @@ VTK_MODULE_INIT(vtkInteractionStyle);
 
 void PostProcessing::initPageFactory() {
     m_pageFactory.clear();
-    m_pageFactory[PublicConstants::kPagePostProcessNephogram]       = [this](PostProcessingWidget* host){ return new NephogramSettingWidget(host); };
-    m_pageFactory[PublicConstants::kPagePostProcessVector]          = [this](PostProcessingWidget* host){ return new VectorSettingWidget(host); };
-    m_pageFactory[PublicConstants::kPagePostProcessSlice]           = [this](PostProcessingWidget* host){ return new SliceSettingsWidget(host); };
-    m_pageFactory[PublicConstants::kPagePostProcessBlock]           = [this](PostProcessingWidget* host){ return new BlockSettingsWidget(host); };
-    m_pageFactory[PublicConstants::kPagePostProcessIsosurface]      = [this](PostProcessingWidget* host){ return new IsosurfaceSettingsWidget(host); };
-    m_pageFactory[PublicConstants::kPagePostProcessIsosurfaceSegmentation]   = [this](PostProcessingWidget* host){ return new IsosurfaceSegmentationWidget(host); };
-    m_pageFactory[PublicConstants::kPagePostProcessAnimation]       = [this](PostProcessingWidget* host){ return new AnimationAviWidget(host); };
-    m_pageFactory[PublicConstants::kPagePostProcessDerivative]         = [this](PostProcessingWidget* /*host*/){ return new DerivedValueSettingWidget(); };
+    m_pageFactory[PublicConstants::kPagePostProcessNephogram]       = [this](VisualWidgetService* host){ return new NephogramSettingWidget(host); };
+    m_pageFactory[PublicConstants::kPagePostProcessVector]          = [this](VisualWidgetService* host){ return new VectorSettingWidget(host); };
+    m_pageFactory[PublicConstants::kPagePostProcessSlice]           = [this](VisualWidgetService* host){ return new SliceSettingsWidget(host); };
+    m_pageFactory[PublicConstants::kPagePostProcessBlock]           = [this](VisualWidgetService* host){ return new BlockSettingsWidget(host); };
+    m_pageFactory[PublicConstants::kPagePostProcessIsosurface]      = [this](VisualWidgetService* host){ return new IsosurfaceSettingsWidget(host); };
+    m_pageFactory[PublicConstants::kPagePostProcessIsosurfaceSegmentation]   = [this](VisualWidgetService* host){ return new IsosurfaceSegmentationWidget(host); };
+    m_pageFactory[PublicConstants::kPagePostProcessAnimation]       = [this](VisualWidgetService* host){ return new AnimationAviWidget(host); };
+    m_pageFactory[PublicConstants::kPagePostProcessDerivative]         = [this](VisualWidgetService* /*host*/){ return new DerivedValueSettingWidget(); };
 }
 
 BasePage* PostProcessing::createPageByType(const QString& type)
 {
     auto it = m_pageFactory.find(type);
-    return it == m_pageFactory.end() ? nullptr : it.value()(m_postProcessingWidget);
+    return it == m_pageFactory.end() ? nullptr : it.value()(m_visualService);
 }
 
 PostProcessing::PostProcessing()
 {
-
-    m_postProcessingWidget = new PostProcessingWidget;
+    m_visualService = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!m_visualService) {
+        qWarning() << "VisualWidgetService is not registered.";
+    }
 
     ServiceRegistry::instance().registerService<PostProcessingService>(this);
     UiFrameService * uiFrameService = ServiceRegistry::instance().getService<UiFrameService>();
 
-    ProbeSettingsWidget *tmp = new ProbeSettingsWidget(m_postProcessingWidget);
+    ProbeSettingsWidget *tmp = new ProbeSettingsWidget(m_visualService);
     if (uiFrameService) uiFrameService->addWidget(tmp,"物理量");
 
     initAction();
@@ -67,7 +70,7 @@ PostProcessing::PostProcessing()
 
 void PostProcessing::newNephogramSettingWidget()
 {
-    NephogramSettingWidget *tmp = new NephogramSettingWidget(m_postProcessingWidget);
+    NephogramSettingWidget *tmp = new NephogramSettingWidget(m_visualService);
     ProjectNode *node = new ProjectNode("云图",QUuid::createUuid().toString(),(BasePage*)tmp);
 
     m_root->addChild(node);
@@ -75,7 +78,7 @@ void PostProcessing::newNephogramSettingWidget()
 
 void PostProcessing::newVectorSettingWidget()
 {
-    VectorSettingWidget *tmp = new VectorSettingWidget(m_postProcessingWidget);
+    VectorSettingWidget *tmp = new VectorSettingWidget(m_visualService);
     ProjectNode *node = new ProjectNode("矢量",QUuid::createUuid().toString(),(BasePage*)tmp);
 
     m_root->addChild(node);
@@ -83,7 +86,7 @@ void PostProcessing::newVectorSettingWidget()
 
 void PostProcessing::newSliceSettingWidget()
 {
-    SliceSettingsWidget *tmp = new SliceSettingsWidget(m_postProcessingWidget);
+    SliceSettingsWidget *tmp = new SliceSettingsWidget(m_visualService);
     ProjectNode *node = new ProjectNode("切面",QUuid::createUuid().toString(),(BasePage*)tmp);
 
     m_root->addChild(node);
@@ -91,7 +94,7 @@ void PostProcessing::newSliceSettingWidget()
 
 void PostProcessing::newBlockSettingsWidget()
 {
-    BlockSettingsWidget *tmp = new BlockSettingsWidget(m_postProcessingWidget);
+    BlockSettingsWidget *tmp = new BlockSettingsWidget(m_visualService);
     ProjectNode *node = new ProjectNode("切块",QUuid::createUuid().toString(),(BasePage*)tmp);
 
     m_root->addChild(node);
@@ -99,7 +102,7 @@ void PostProcessing::newBlockSettingsWidget()
 
 void PostProcessing::newIsosurfaceSettingsWidget()
 {
-    IsosurfaceSettingsWidget *tmp = new IsosurfaceSettingsWidget(m_postProcessingWidget);
+    IsosurfaceSettingsWidget *tmp = new IsosurfaceSettingsWidget(m_visualService);
     ProjectNode *node = new ProjectNode("等值面",QUuid::createUuid().toString(),(BasePage*)tmp);
 
     m_root->addChild(node);
@@ -107,7 +110,7 @@ void PostProcessing::newIsosurfaceSettingsWidget()
 
 void PostProcessing::newIsosurfaceSegmentationWidget()
 {
-    IsosurfaceSegmentationWidget *tmp = new IsosurfaceSegmentationWidget(m_postProcessingWidget);
+    IsosurfaceSegmentationWidget *tmp = new IsosurfaceSegmentationWidget(m_visualService);
     ProjectNode *node = new ProjectNode("等值面分割",QUuid::createUuid().toString(),(BasePage*)tmp);
 
     m_root->addChild(node);
@@ -115,7 +118,7 @@ void PostProcessing::newIsosurfaceSegmentationWidget()
 
 void PostProcessing::newAnimationAviWidget()
 {
-    AnimationAviWidget *tmp = new AnimationAviWidget(m_postProcessingWidget);
+    AnimationAviWidget *tmp = new AnimationAviWidget(m_visualService);
     ProjectNode *node = new ProjectNode("动画",QUuid::createUuid().toString(),(BasePage*)tmp);
 
     m_root->addChild(node);

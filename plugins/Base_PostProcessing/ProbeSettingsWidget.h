@@ -3,7 +3,7 @@
 #include <QString>
 #include <vtkSmartPointer.h>
 #include <BasePage.h>
-class PostProcessingWidget;
+class VisualWidgetService;
 
 class vtkRenderWindowInteractor;
 class vtkRenderer;
@@ -20,7 +20,7 @@ class ProbeSettingsWidget : public BasePage
 {
     Q_OBJECT
 public:
-    explicit ProbeSettingsWidget(PostProcessingWidget* postProcessingWidget,
+    explicit ProbeSettingsWidget(VisualWidgetService* postProcessingWidget,
                                  QWidget *parent = nullptr);
     ~ProbeSettingsWidget() override;
 
@@ -57,7 +57,7 @@ private:
 
 private:
     Ui::ProbeSettingsWidget* ui {};
-    PostProcessingWidget*    m_postProcessingWidget {};
+    VisualWidgetService*    m_visualService {};
 
     // 交互
     vtkSmartPointer<vtkCellPicker>    m_picker;

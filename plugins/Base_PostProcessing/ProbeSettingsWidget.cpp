@@ -1,6 +1,6 @@
 ﻿#include "ProbeSettingsWidget.h"
 #include "ui_ProbeSettingsWidget.h"
-#include "PostProcessingWidget.h"
+#include <services/VisualWidgetService.h>
 
 #include <QTableWidget>
 #include <QHeaderView>
@@ -39,11 +39,11 @@ static inline QString sci(double v, int prec = 6) {
     return QString::number(v, 'e', prec);
 }
 
-ProbeSettingsWidget::ProbeSettingsWidget(PostProcessingWidget* postProcessingWidget,
+ProbeSettingsWidget::ProbeSettingsWidget(VisualWidgetService* postProcessingWidget,
                                          QWidget *parent)
     : ui(new Ui::ProbeSettingsWidget),
       BasePage("Probe")
-    , m_postProcessingWidget(postProcessingWidget)
+    , m_visualService(postProcessingWidget)
 {
     ui->setupUi(this);
 
@@ -84,7 +84,7 @@ void ProbeSettingsWidget::beforeUnload()
 void ProbeSettingsWidget::hookInteractor()
 {
     if (m_hooked) return;
-    auto rw = m_postProcessingWidget ? m_postProcessingWidget->getRenderWindow() : nullptr;
+    auto rw = m_visualService ? m_visualService->renderWindow() : nullptr;
     if (!rw) return;
     auto iren = rw->GetInteractor();
     if (!iren) return;
@@ -114,7 +114,7 @@ void ProbeSettingsWidget::hookInteractor()
 void ProbeSettingsWidget::unhookInteractor()
 {
     if (!m_hooked) return;
-    auto rw = m_postProcessingWidget ? m_postProcessingWidget->getRenderWindow() : nullptr;
+    auto rw = m_visualService ? m_visualService->renderWindow() : nullptr;
     if (rw && m_clickObserver) {
         if (auto iren = rw->GetInteractor()) {
             iren->RemoveObserver(m_clickObserver);
@@ -126,7 +126,7 @@ void ProbeSettingsWidget::unhookInteractor()
 
 void ProbeSettingsWidget::handlePick(int displayX, int displayY)
 {
-    auto rw = m_postProcessingWidget ? m_postProcessingWidget->getRenderWindow() : nullptr;
+    auto rw = m_visualService ? m_visualService->renderWindow() : nullptr;
     if (!rw) return;
     auto rc = rw->GetRenderers();
     if (!rc || rc->GetNumberOfItems() == 0) return;
@@ -226,8 +226,8 @@ int ProbeSettingsWidget::arrayAssociationFromMapper(vtkMapper* mapper) const
 
 QString ProbeSettingsWidget::fallbackArrayNameFromScalarBar() const
 {
-    if (!m_postProcessingWidget) return {};
-    auto sb = m_postProcessingWidget->getScalarBarActor();
+    if (!m_visualService) return {};
+    auto sb = m_visualService->scalarBarActor();
     if (!sb) return {};
     const char* title = sb->GetTitle();
     if (title && *title) return QString::fromUtf8(title);

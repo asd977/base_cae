@@ -18,6 +18,7 @@
 #include <vtkRenderer.h>
 #include <vtkRendererCollection.h>
 #include <vtkScalarBarActor.h>
+#include "PostVisualUtils.h"
 #include <vtkTecplotReader.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkCamera.h>
@@ -25,7 +26,7 @@
 
 #include <PublicVariables.h>
 #include <PublicConstants.h>
-#include <PostProcessingWidget.h>
+#include <services/VisualWidgetService.h>
 #include <vtkSmartPointer.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkPoints.h>
@@ -52,12 +53,12 @@
 #include <vtkPolyDataConnectivityFilter.h>
 #include <vtkPolyDataMapper.h>
 
-NephogramSettingWidget::NephogramSettingWidget(PostProcessingWidget *postProcessingWidget, QWidget *parent)
+NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService *postProcessingWidget, QWidget *parent)
     : BasePage(PublicConstants::kPagePostProcessNephogram),
       ui(new Ui::NephogramSettingWidget)
 {
     ui->setupUi(this);
-    m_postProcessingWidget = postProcessingWidget;
+    m_visualService = postProcessingWidget;
 
     // 单图对象
     m_actor  = vtkSmartPointer<vtkActor>::New();
@@ -97,7 +98,7 @@ void NephogramSettingWidget::ensureActorAttached()
 {
     if (!m_actorAttached)
     {
-        m_postProcessingWidget->addActor(m_actor);
+        addActorByService(m_visualService, m_actor);
         m_actorAttached = true;
     }
 }
@@ -112,7 +113,7 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
     double range[2];
     arr->GetRange(range);
 
-    vtkScalarBarActor* scalarBar = m_postProcessingWidget->getScalarBarActor();
+    vtkScalarBarActor* scalarBar = m_visualService->scalarBarActor();
     if (auto* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable())) {
         lut->SetTableRange(range);
         lut->Build();
@@ -134,16 +135,14 @@ void NephogramSettingWidget::beforeLoad()
     }
     if (!m_initialized)
     {
-        const QString workPath = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-
-        m_dataPath = workPath + "/data";
+        m_dataPath = resultDirectory();
         loadFileName(m_dataPath);
         // fillCompareCombosFromSteps();
         ensureActorAttached();
         m_initialized = true;
 
-        m_postProcessingWidget->getRender()->ResetCamera();
-        m_postProcessingWidget->getRenderWindow()->Render();
+        m_visualService->renderer()->ResetCamera();
+        m_visualService->renderWindow()->Render();
         return;
     }
 
@@ -156,7 +155,7 @@ void NephogramSettingWidget::beforeLoad()
         syncScalarBarFromCurrent();
         m_actor->SetMapper(m_mapper);
     }
-    m_postProcessingWidget->getRenderWindow()->Render();
+    m_visualService->renderWindow()->Render();
 
 }
 
@@ -165,70 +164,51 @@ void NephogramSettingWidget::beforeUnload()
     if (m_compareEnabled) {
         exitCompareMode();
     } else if (m_actorAttached) {
-        m_postProcessingWidget->removeActor(m_actor);
+        removeActorByService(m_visualService, m_actor);
         m_actorAttached = false;
     }
-    m_postProcessingWidget->getRenderWindow()->Render();
+    m_visualService->renderWindow()->Render();
 }
 
 void NephogramSettingWidget::on_stepComboBox_currentIndexChanged(int index)
 {
     if (index < 0) return;
     const QString stepText = ui->stepComboBox->itemText(index);
-
-    QDir dir(m_dataPath);
-
-    // 自动匹配文件名：stress_strain1-1.xxx
-    QString base = QString("stress_strain%1").arg(stepText);
-
-    // 依次检测 .txt / .vtu
-    QString txtFile = dir.filePath(base + ".txt");
-    QString vtuFile = dir.filePath(base + ".vtu");
-
-    if (QFileInfo::exists(txtFile)) {
-        readTecplot(txtFile);   // 已有流程
+    const QString filePath = m_stepFileMap.value(stepText);
+    if (filePath.isEmpty()) {
+        qWarning() << "No data file mapped for step:" << stepText;
+        return;
     }
-    else if (QFileInfo::exists(vtuFile)) {
-        readVtu(vtuFile);       // 新增的 vtu 读取
+
+    if (QFileInfo(filePath).suffix().compare("vtu", Qt::CaseInsensitive) == 0) {
+        readVtu(filePath);
+        return;
     }
-    else {
-        qWarning() << "No data file found for step:" << stepText;
-    }
+
+    readTecplot(filePath);
 }
 
 
-void NephogramSettingWidget::loadFileName(QString dataPath)
+void NephogramSettingWidget::loadFileName(const QString& dataPath)
 {
     ui->stepComboBox->blockSignals(true);
     ui->stepComboBox->clear();
+    m_stepFileMap.clear();
 
-    QMap<int, QVector<int>> numbers;
     QDir directory(dataPath);
     if (!directory.exists()) {
         qWarning() << "Directory not found:" << dataPath;
+        ui->stepComboBox->blockSignals(false);
+        return;
     }
 
-    const QString baseName = "stress_strain";
-    const QString extension = ".txt";
-    // 匹配 stress_strain1-1.txt 或 stress_strain1-1.vtu
-    const QRegularExpression regex(baseName + "(\\d+)-(\\d+)(\\.txt|\\.vtu)");
+    const QStringList filters = {"*.DAT", "*.dat", "*.TEC", "*.tec", "*.PLT", "*.plt", "*.VTU", "*.vtu", "*.txt"};
+    const QFileInfoList files = directory.entryInfoList(filters, QDir::Files, QDir::Name);
 
-
-    const QStringList files = directory.entryList(QDir::Files);
-    for (const QString &filename : files) {
-        const auto match = regex.match(filename);
-        if (match.hasMatch()) {
-            bool ok1=false, ok2=false;
-            const int g = match.captured(1).toInt(&ok1);
-            const int o = match.captured(2).toInt(&ok2);
-            if (ok1 && ok2) numbers[g].append(o);
-        }
-    }
-
-    for (auto it = numbers.begin(); it != numbers.end(); ++it) {
-        auto &vec = it.value();
-        std::sort(vec.begin(), vec.end());
-        for (int num : vec) ui->stepComboBox->addItem(QString::number(it.key()) + "-" + QString::number(num));
+    for (const QFileInfo& fi : files) {
+        const QString stepName = fi.completeBaseName();
+        m_stepFileMap.insert(stepName, fi.absoluteFilePath());
+        ui->stepComboBox->addItem(stepName);
     }
 
     if (ui->stepComboBox->count() > 0)
@@ -316,7 +296,7 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName)
     m_actor->GetProperty()->SetRepresentationToSurface();
     ensureActorAttached();
 
-    m_postProcessingWidget->getRenderWindow()->Render();
+    m_visualService->renderWindow()->Render();
 }
 
 vtkSmartPointer<vtkUnstructuredGrid> NephogramSettingWidget::loadGridFromTecplot(const QString &fileName)
@@ -337,11 +317,30 @@ vtkSmartPointer<vtkUnstructuredGrid> NephogramSettingWidget::loadGridFromTecplot
     return appender->GetOutput();
 }
 
+vtkSmartPointer<vtkUnstructuredGrid> NephogramSettingWidget::loadGridFromFile(const QString& fileName)
+{
+    if (fileName.isEmpty()) return nullptr;
+    if (QFileInfo(fileName).suffix().compare("vtu", Qt::CaseInsensitive) == 0) {
+        auto reader = vtkSmartPointer<vtkXMLUnstructuredGridReader>::New();
+        reader->SetFileName(fileName.toUtf8().constData());
+        reader->Update();
+        return reader->GetOutput();
+    }
+    return loadGridFromTecplot(fileName);
+}
+
+QString NephogramSettingWidget::resultDirectory() const
+{
+    const QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    // 预留：后续若目录或文件命名调整，可仅修改这里。
+    return QDir(projectDir).filePath("SEEPCASE01");
+}
+
 void NephogramSettingWidget::enterCompareMode()
 {
     if (m_leftRen && m_rightRen) return;
 
-    auto* rw = m_postProcessingWidget->getRenderWindow();
+    auto* rw = m_visualService->renderWindow();
     if (!rw) return;
 
     // 1) 获取基础 renderer（持有 ScalarBar），并将其作为顶层 Overlay
@@ -358,7 +357,7 @@ void NephogramSettingWidget::enterCompareMode()
 
     // 2) 移除单图 actor，避免重叠
     if (m_actorAttached) {
-        m_postProcessingWidget->removeActor(m_actor);
+        removeActorByService(m_visualService, m_actor);
         m_actorAttached = false;
     }
 
@@ -397,7 +396,7 @@ void NephogramSettingWidget::enterCompareMode()
 
 void NephogramSettingWidget::exitCompareMode()
 {
-    auto* rw = m_postProcessingWidget->getRenderWindow();
+    auto* rw = m_visualService->renderWindow();
 
     // 先恢复基础 renderer 为普通层，恢复清屏
     if (m_baseRenderer) {
@@ -442,7 +441,7 @@ void NephogramSettingWidget::syncScalarBarForCompare(vtkDataArray* leftArr, vtkD
     const double minV = std::min(rL[0], rR[0]);
     const double maxV = std::max(rL[1], rR[1]);
 
-    vtkScalarBarActor* scalarBar = m_postProcessingWidget->getScalarBarActor();
+    vtkScalarBarActor* scalarBar = m_visualService->scalarBarActor();
     if (auto* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable())) {
         lut->SetTableRange(minV, maxV);
         lut->Build();
@@ -467,17 +466,16 @@ void NephogramSettingWidget::updateCompare()
     if (scalar.isEmpty()) return;
     m_currentArrayName = scalar;
 
-    auto makeFullPath = [&](const QString& stepText)->QString{
-        QDir dir(m_dataPath);
-        return dir.filePath(QString("stress_strain%1.txt").arg(stepText));
+    auto fileByStep = [&](const QString& stepText)->QString{
+        return m_stepFileMap.value(stepText);
     };
 
     const QString leftStep  = ui->leftStepComboBox->currentText();
     const QString rightStep = ui->rightStepComboBox->currentText();
     if (leftStep.isEmpty() || rightStep.isEmpty()) return;
 
-    m_leftGrid  = loadGridFromTecplot(makeFullPath(leftStep));
-    m_rightGrid = loadGridFromTecplot(makeFullPath(rightStep));
+    m_leftGrid  = loadGridFromFile(fileByStep(leftStep));
+    m_rightGrid = loadGridFromFile(fileByStep(rightStep));
     if (!m_leftGrid || !m_rightGrid) return;
 
     auto* leftArr  = m_leftGrid->GetPointData()->GetArray(scalar.toUtf8().constData());
@@ -497,7 +495,7 @@ void NephogramSettingWidget::updateCompare()
     m_leftActor->GetProperty()->SetRepresentationToSurface();
     m_rightActor->GetProperty()->SetRepresentationToSurface();
 
-    m_postProcessingWidget->getRenderWindow()->Render();
+    m_visualService->renderWindow()->Render();
 }
 
 void NephogramSettingWidget::fillCompareCombosFromSteps()
@@ -537,7 +535,7 @@ void NephogramSettingWidget::on_compareEnableCheckBox_toggled(bool checked)
         syncScalarBarFromCurrent();
         m_actor->SetMapper(m_mapper);
         ensureActorAttached();
-        m_postProcessingWidget->getRenderWindow()->Render();
+        m_visualService->renderWindow()->Render();
     }
 }
 
@@ -557,7 +555,7 @@ void NephogramSettingWidget::on_splitSlider_valueChanged(int value)
     m_splitRatio = std::min(std::max(value / 100.0, 0.05), 0.95);
 
     updateViewports(m_splitRatio);
-    m_postProcessingWidget->getRenderWindow()->Render();
+    m_visualService->renderWindow()->Render();
 }
 
 void NephogramSettingWidget::test()
@@ -823,7 +821,7 @@ void NephogramSettingWidget::on_pushButton_4_clicked()
     actor->GetProperty()->EdgeVisibilityOn();
     actor->GetProperty()->SetEdgeColor(0, 0, 0);
 
-    m_postProcessingWidget->addActor(actor); // 确保内部会 Render / ResetCamera
+    addActorByService(m_visualService, actor); // 确保内部会 Render / ResetCamera
 }
 
 void NephogramSettingWidget::readVtu(const QString &fileName)

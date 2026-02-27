@@ -6,7 +6,7 @@
 
 #include <vtkSmartPointer.h>
 
-class PostProcessingWidget;
+class VisualWidgetService;
 class vtkUnstructuredGrid;
 class vtkContourFilter;
 class vtkPolyDataNormals;
@@ -20,7 +20,7 @@ class IsosurfaceSettingsWidget : public BasePage
 {
     Q_OBJECT
 public:
-    explicit IsosurfaceSettingsWidget(PostProcessingWidget* postProcessingWidget,
+    explicit IsosurfaceSettingsWidget(VisualWidgetService* postProcessingWidget,
                                       QWidget *parent = nullptr);
     ~IsosurfaceSettingsWidget() override;
 
@@ -72,7 +72,7 @@ private:
 
 private:
     Ui::IsosurfaceSettingsWidget* ui {};
-    PostProcessingWidget*         m_postProcessingWidget {};
+    VisualWidgetService*         m_visualService {};
 
     bool    m_loadedOnce {false};
     QString m_dataPath;

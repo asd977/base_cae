@@ -3,7 +3,7 @@
 
 #include "BlockSettingsWidget.h"
 #include "NephogramSettingWidget.h"
-#include "PostProcessingWidget.h"
+#include <services/VisualWidgetService.h>
 #include "SliceSettingsWidget.h"
 #include "VectorSettingWidget.h"
 
@@ -35,7 +35,7 @@ private:
     void newDerivedValueSettingWidget();
 
 private:
-    PostProcessingWidget *m_postProcessingWidget;
+    VisualWidgetService *m_visualService;
     NephogramSettingWidget *m_nephogramSettingWidget;
 
     VectorSettingWidget *m_vectorSettingWidget;
@@ -45,7 +45,7 @@ private:
     BlockSettingsWidget *m_blockSettingsWidget;
     ProjectNode *m_root;
 
-    QMap<QString, std::function<BasePage*(PostProcessingWidget*)>> m_pageFactory;
+    QMap<QString, std::function<BasePage*(VisualWidgetService*)>> m_pageFactory;
 
     bool writeJsonFile(const QString &filePath, const QJsonObject &obj);
     bool readJsonFile(const QString &filePath, QJsonObject &out);

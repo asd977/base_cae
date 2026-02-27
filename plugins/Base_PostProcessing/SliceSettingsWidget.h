@@ -7,7 +7,7 @@
 
 #include <vtkSmartPointer.h>
 
-class PostProcessingWidget;
+class VisualWidgetService;
 class vtkUnstructuredGrid;
 class vtkPlane;
 class vtkActor;
@@ -22,7 +22,7 @@ class SliceSettingsWidget : public BasePage
 {
     Q_OBJECT
 public:
-    explicit SliceSettingsWidget(PostProcessingWidget* postProcessingWidget,
+    explicit SliceSettingsWidget(VisualWidgetService* postProcessingWidget,
                                  QWidget* parent = nullptr);
     ~SliceSettingsWidget();
 
@@ -71,7 +71,7 @@ private:
 
 private:
     Ui::SliceSettingsWidget* ui {};
-    PostProcessingWidget*    m_postProcessingWidget {};
+    VisualWidgetService*    m_visualService {};
 
     bool    m_loadedOnce {false};
     QString m_dataPath;

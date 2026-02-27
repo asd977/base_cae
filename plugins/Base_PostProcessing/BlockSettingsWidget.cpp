@@ -1,6 +1,6 @@
 ﻿#include "BlockSettingsWidget.h"
 #include "ui_BlockSettingsWidget.h"
-#include "PostProcessingWidget.h"
+#include <services/VisualWidgetService.h>
 
 #include <QDir>
 #include <QRegularExpression>
@@ -17,14 +17,15 @@
 #include <vtkRenderWindow.h>
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include "PostVisualUtils.h"
 
 #include <cmath>
 
-BlockSettingsWidget::BlockSettingsWidget(PostProcessingWidget* postProcessingWidget,
+BlockSettingsWidget::BlockSettingsWidget(VisualWidgetService* postProcessingWidget,
                                          QWidget* parent)
     : ui(new Ui::BlockSettingsWidget),
       BasePage(PublicConstants::kPagePostProcessBlock)
-    , m_postProcessingWidget(postProcessingWidget)
+    , m_visualService(postProcessingWidget)
 {
     ui->setupUi(this);
 
@@ -73,7 +74,7 @@ void BlockSettingsWidget::beforeLoad()
     } else {
         // 非首次：恢复 actor（如果之前被 beforeUnload 隐藏）
         if (m_actor && !m_isAttached) {
-            m_postProcessingWidget->addActor(m_actor);
+            addActorByService(m_visualService, m_actor);
             m_isAttached = true;
         }
         // 确保 mapper/LUT/plane 与当前 UI 一致
@@ -88,7 +89,7 @@ void BlockSettingsWidget::beforeUnload()
 {
     // 只移除，不销毁；保持状态与对象以便回来恢复
     if (m_actor && m_isAttached) {
-        m_postProcessingWidget->removeActor(m_actor);
+        removeActorByService(m_visualService, m_actor);
         m_isAttached = false;
     }
 }
@@ -227,7 +228,7 @@ void BlockSettingsWidget::buildClipPipelineIfNeeded()
     m_actor->GetProperty()->SetRepresentationToSurface();
 
     // 首次建管线时即挂入场景
-    m_postProcessingWidget->addActor(m_actor);
+    addActorByService(m_visualService, m_actor);
     m_isAttached = true;
 }
 
@@ -277,10 +278,10 @@ void BlockSettingsWidget::updateColoringFromUI()
     double range[2]; arr->GetRange(range);
 
     auto lut = vtkLookupTable::SafeDownCast(
-        m_postProcessingWidget->getScalarBarActor()->GetLookupTable());
+        m_visualService->scalarBarActor()->GetLookupTable());
     if (!lut) {
         lut = vtkSmartPointer<vtkLookupTable>::New();
-        m_postProcessingWidget->getScalarBarActor()->SetLookupTable(lut);
+        m_visualService->scalarBarActor()->SetLookupTable(lut);
     }
     lut->SetTableRange(range);
     lut->Build();
@@ -293,7 +294,7 @@ void BlockSettingsWidget::updateColoringFromUI()
 
 void BlockSettingsWidget::renderNow()
 {
-    if (auto rw = m_postProcessingWidget->getRenderWindow())
+    if (auto rw = m_visualService->renderWindow())
         rw->Render();
 }
 
@@ -350,7 +351,7 @@ void BlockSettingsWidget::on_stepComboBox_currentIndexChanged(int index)
 
     // 确保 actor 已挂
     if (m_actor && !m_isAttached) {
-        m_postProcessingWidget->addActor(m_actor);
+        addActorByService(m_visualService, m_actor);
         m_isAttached = true;
     }
 

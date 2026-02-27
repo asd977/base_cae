@@ -7,7 +7,7 @@
 
 #include <vtkSmartPointer.h>
 
-class PostProcessingWidget;
+class VisualWidgetService;
 class vtkUnstructuredGrid;
 class vtkDataSetMapper;
 class vtkActor;
@@ -18,7 +18,7 @@ class AnimationAviWidget : public BasePage
 {
     Q_OBJECT
 public:
-    explicit AnimationAviWidget(PostProcessingWidget* postProcessingWidget,
+    explicit AnimationAviWidget(VisualWidgetService* postProcessingWidget,
                                 QWidget* parent = nullptr);
     ~AnimationAviWidget();
 
@@ -79,7 +79,7 @@ private:
 
 private:
     Ui::AnimationAviWidget* ui {};
-    PostProcessingWidget*   m_postProcessingWidget {};
+    VisualWidgetService*   m_visualService {};
 
     // 数据
     QString m_dataPath;
