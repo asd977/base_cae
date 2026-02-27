@@ -62,6 +62,7 @@ public:
                         bool renderNow = true) override;
 
     vtkLookupTable* lookupTable() const override;
+    vtkScalarBarActor* scalarBarActor() const override;
 
     void showScalarBar(bool on, bool renderNow = true) override;
     bool isScalarBarVisible() const override;

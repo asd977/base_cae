@@ -57,10 +57,9 @@ PostProcessing::PostProcessing()
 
     ServiceRegistry::instance().registerService<PostProcessingService>(this);
     UiFrameService * uiFrameService = ServiceRegistry::instance().getService<UiFrameService>();
-    uiFrameService->addWidget(m_postProcessingWidget,"后处理");
 
     ProbeSettingsWidget *tmp = new ProbeSettingsWidget(m_postProcessingWidget);
-    uiFrameService->addWidget(tmp,"物理量");
+    if (uiFrameService) uiFrameService->addWidget(tmp,"物理量");
 
     initAction();
     initPageFactory();

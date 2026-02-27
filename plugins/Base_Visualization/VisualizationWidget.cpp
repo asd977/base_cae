@@ -262,6 +262,11 @@ vtkLookupTable* VisualizationWidget::lookupTable() const
     return m_lut;
 }
 
+vtkScalarBarActor* VisualizationWidget::scalarBarActor() const
+{
+    return m_scalarBar;
+}
+
 void VisualizationWidget::showScalarBar(bool on, bool renderNow)
 {
     if (m_scalarBar)
