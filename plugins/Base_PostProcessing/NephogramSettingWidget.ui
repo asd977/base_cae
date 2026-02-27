@@ -38,6 +38,16 @@
     <widget class="QWidget" name="widget_2" native="true">
      <layout class="QGridLayout" name="gridLayout_3">
       <item row="0" column="0">
+       <widget class="QLabel" name="label_result_dir">
+        <property name="text">
+         <string>结果目录</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="resultDirComboBox"/>
+      </item>
+      <item row="1" column="0">
        <widget class="QLabel" name="label_step">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
@@ -50,17 +60,17 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="1">
+      <item row="1" column="1">
        <widget class="QComboBox" name="stepComboBox"/>
       </item>
-      <item row="1" column="0">
+      <item row="2" column="0">
        <widget class="QLabel" name="label_scalar">
         <property name="text">
          <string>物理量</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="1">
+      <item row="2" column="1">
        <widget class="QComboBox" name="scalarComboBox"/>
       </item>
      </layout>

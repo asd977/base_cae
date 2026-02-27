@@ -40,6 +40,7 @@ private slots:
     void on_pushButton_clicked();
     void on_stepComboBox_currentIndexChanged(int index);
     void on_scalarComboBox_currentIndexChanged(int index);
+    void on_resultDirComboBox_currentIndexChanged(int index);
 
     // 对比模式 UI 槽
     void on_compareEnableCheckBox_toggled(bool checked);
@@ -60,6 +61,8 @@ private:
     void syncScalarBarFromCurrent();
     void updateNephogram(const QString &selectedScalarName);
     void loadFileName(const QString& dataPath);
+    void initResultDirectoryOptions();
+    QString selectedResultDirectoryPath() const;
     void readTecplot(const QString &fileName);
 
     // 对比辅助

@@ -53,6 +53,11 @@
 #include <vtkPolyDataConnectivityFilter.h>
 #include <vtkPolyDataMapper.h>
 
+namespace {
+const QStringList kResultDirectories = {"SEEPCASE01"};
+const QStringList kPreferredResultFiles = {"TEC_HP.DAT"};
+}
+
 NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService *postProcessingWidget, QWidget *parent)
     : BasePage(PublicConstants::kPagePostProcessNephogram),
       ui(new Ui::NephogramSettingWidget)
@@ -69,7 +74,8 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService *postProcessi
             this, &NephogramSettingWidget::on_stepComboBox_currentIndexChanged);
     connect(ui->scalarComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &NephogramSettingWidget::on_scalarComboBox_currentIndexChanged);
-
+    connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &NephogramSettingWidget::on_resultDirComboBox_currentIndexChanged);
 
     connect(ui->compareEnableCheckBox, &QCheckBox::toggled,
             this, &NephogramSettingWidget::on_compareEnableCheckBox_toggled);
@@ -87,6 +93,8 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService *postProcessi
         ui->splitSlider->setMaximum(95);
         ui->splitSlider->setValue(50);
     }
+
+    initResultDirectoryOptions();
 }
 
 NephogramSettingWidget::~NephogramSettingWidget()
@@ -113,7 +121,8 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
     double range[2];
     arr->GetRange(range);
 
-    vtkScalarBarActor* scalarBar = m_visualService->scalarBarActor();
+    vtkScalarBarActor* scalarBar = m_visualService ? m_visualService->scalarBarActor() : nullptr;
+    if (!scalarBar) return;
     if (auto* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable())) {
         lut->SetTableRange(range);
         lut->Build();
@@ -129,20 +138,24 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
 
 void NephogramSettingWidget::beforeLoad()
 {
-    if(ui->stepComboBox->currentIndex() == -1)
-    {
+    if (!m_visualService) {
+        qWarning() << "Visual service is null in NephogramSettingWidget.";
+        return;
+    }
+
+    if (ui->stepComboBox->currentIndex() == -1) {
         m_initialized = false;
     }
+
     if (!m_initialized)
     {
-        m_dataPath = resultDirectory();
+        m_dataPath = selectedResultDirectoryPath();
         loadFileName(m_dataPath);
-        // fillCompareCombosFromSteps();
         ensureActorAttached();
         m_initialized = true;
 
-        m_visualService->renderer()->ResetCamera();
-        m_visualService->renderWindow()->Render();
+        if (auto* ren = m_visualService->renderer()) ren->ResetCamera();
+        if (auto* rw = m_visualService->renderWindow()) rw->Render();
         return;
     }
 
@@ -155,19 +168,20 @@ void NephogramSettingWidget::beforeLoad()
         syncScalarBarFromCurrent();
         m_actor->SetMapper(m_mapper);
     }
-    m_visualService->renderWindow()->Render();
 
+    if (auto* rw = m_visualService->renderWindow()) rw->Render();
 }
 
 void NephogramSettingWidget::beforeUnload()
 {
+    if (!m_visualService) return;
     if (m_compareEnabled) {
         exitCompareMode();
     } else if (m_actorAttached) {
         removeActorByService(m_visualService, m_actor);
         m_actorAttached = false;
     }
-    m_visualService->renderWindow()->Render();
+    if (auto* rw = m_visualService->renderWindow()) rw->Render();
 }
 
 void NephogramSettingWidget::on_stepComboBox_currentIndexChanged(int index)
@@ -199,27 +213,37 @@ void NephogramSettingWidget::loadFileName(const QString& dataPath)
     if (!directory.exists()) {
         qWarning() << "Directory not found:" << dataPath;
         ui->stepComboBox->blockSignals(false);
+        fillCompareCombosFromSteps();
         return;
     }
 
-    const QStringList filters = {"*.DAT", "*.dat", "*.TEC", "*.tec", "*.PLT", "*.plt", "*.VTU", "*.vtu", "*.txt"};
-    const QFileInfoList files = directory.entryInfoList(filters, QDir::Files, QDir::Name);
-
-    for (const QFileInfo& fi : files) {
-        const QString stepName = fi.completeBaseName();
-        m_stepFileMap.insert(stepName, fi.absoluteFilePath());
-        ui->stepComboBox->addItem(stepName);
+    // 优先加载指定文件名（后续扩展时只改这里）
+    for (const QString& name : kPreferredResultFiles) {
+        const QString fullPath = directory.filePath(name);
+        if (QFileInfo::exists(fullPath)) {
+            const QString stepName = QFileInfo(fullPath).completeBaseName();
+            m_stepFileMap.insert(stepName, fullPath);
+            ui->stepComboBox->addItem(stepName);
+        }
     }
-
-    if (ui->stepComboBox->count() > 0)
-        ui->stepComboBox->setCurrentIndex(0);
 
     ui->stepComboBox->blockSignals(false);
 
-    if (ui->stepComboBox->count() > 0)
+    if (ui->stepComboBox->count() > 0) {
+        ui->stepComboBox->setCurrentIndex(0);
         on_stepComboBox_currentIndexChanged(ui->stepComboBox->currentIndex());
+    } else {
+        ui->scalarComboBox->clear();
+        qWarning() << "No configured result files found in" << dataPath;
+    }
 
     fillCompareCombosFromSteps();
+}
+
+void NephogramSettingWidget::on_resultDirComboBox_currentIndexChanged(int)
+{
+    m_dataPath = selectedResultDirectoryPath();
+    loadFileName(m_dataPath);
 }
 
 void NephogramSettingWidget::on_scalarComboBox_currentIndexChanged(int)
@@ -238,19 +262,29 @@ void NephogramSettingWidget::readTecplot(const QString &fileName)
     reader->Update();
 
     vtkMultiBlockDataSet* multi = reader->GetOutput();
+    if (!multi || multi->GetNumberOfBlocks() <= 0) {
+        qWarning() << "Tecplot contains no readable blocks:" << fileName;
+        return;
+    }
 
     vtkSmartPointer<vtkAppendFilter> appender = vtkSmartPointer<vtkAppendFilter>::New();
+    int addedBlocks = 0;
     for (int i = 0; i < multi->GetNumberOfBlocks(); ++i) {
         if (auto* block = vtkUnstructuredGrid::SafeDownCast(multi->GetBlock(i))) {
             appender->AddInputData(block);
+            ++addedBlocks;
         }
     }
-    appender->Update();
+    if (addedBlocks == 0) {
+        qWarning() << "Tecplot has no unstructured grid blocks:" << fileName;
+        return;
+    }
 
+    appender->Update();
     m_grid = appender->GetOutput();
     m_loadedFileName = fileName;
 
-    if (!m_grid) {
+    if (!m_grid || m_grid->GetNumberOfPoints() == 0) {
         qWarning() << "Failed to combine blocks for" << fileName;
         return;
     }
@@ -296,7 +330,7 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName)
     m_actor->GetProperty()->SetRepresentationToSurface();
     ensureActorAttached();
 
-    m_visualService->renderWindow()->Render();
+    if (auto* rw = m_visualService ? m_visualService->renderWindow() : nullptr) rw->Render();
 }
 
 vtkSmartPointer<vtkUnstructuredGrid> NephogramSettingWidget::loadGridFromTecplot(const QString &fileName)
@@ -306,13 +340,18 @@ vtkSmartPointer<vtkUnstructuredGrid> NephogramSettingWidget::loadGridFromTecplot
     reader->Update();
 
     auto multi = reader->GetOutput();
+    if (!multi || multi->GetNumberOfBlocks() <= 0) return nullptr;
 
     auto appender = vtkSmartPointer<vtkAppendFilter>::New();
+    int addedBlocks = 0;
     for (int i = 0; i < multi->GetNumberOfBlocks(); ++i) {
         if (auto* block = vtkUnstructuredGrid::SafeDownCast(multi->GetBlock(i))) {
             appender->AddInputData(block);
+            ++addedBlocks;
         }
     }
+    if (addedBlocks == 0) return nullptr;
+
     appender->Update();
     return appender->GetOutput();
 }
@@ -331,9 +370,25 @@ vtkSmartPointer<vtkUnstructuredGrid> NephogramSettingWidget::loadGridFromFile(co
 
 QString NephogramSettingWidget::resultDirectory() const
 {
+    return selectedResultDirectoryPath();
+}
+
+void NephogramSettingWidget::initResultDirectoryOptions()
+{
+    ui->resultDirComboBox->blockSignals(true);
+    ui->resultDirComboBox->clear();
+    ui->resultDirComboBox->addItems(kResultDirectories);
+    if (ui->resultDirComboBox->count() > 0) {
+        ui->resultDirComboBox->setCurrentIndex(0);
+    }
+    ui->resultDirComboBox->blockSignals(false);
+}
+
+QString NephogramSettingWidget::selectedResultDirectoryPath() const
+{
     const QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    // 预留：后续若目录或文件命名调整，可仅修改这里。
-    return QDir(projectDir).filePath("SEEPCASE01");
+    const QString dirName = ui->resultDirComboBox->currentText().isEmpty() ? QString("SEEPCASE01") : ui->resultDirComboBox->currentText();
+    return QDir(projectDir).filePath(dirName);
 }
 
 void NephogramSettingWidget::enterCompareMode()
@@ -441,7 +496,8 @@ void NephogramSettingWidget::syncScalarBarForCompare(vtkDataArray* leftArr, vtkD
     const double minV = std::min(rL[0], rR[0]);
     const double maxV = std::max(rL[1], rR[1]);
 
-    vtkScalarBarActor* scalarBar = m_visualService->scalarBarActor();
+    vtkScalarBarActor* scalarBar = m_visualService ? m_visualService->scalarBarActor() : nullptr;
+    if (!scalarBar) return;
     if (auto* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable())) {
         lut->SetTableRange(minV, maxV);
         lut->Build();
@@ -476,7 +532,10 @@ void NephogramSettingWidget::updateCompare()
 
     m_leftGrid  = loadGridFromFile(fileByStep(leftStep));
     m_rightGrid = loadGridFromFile(fileByStep(rightStep));
-    if (!m_leftGrid || !m_rightGrid) return;
+    if (!m_leftGrid || !m_rightGrid) {
+        qWarning() << "Failed to load compare grids:" << leftStep << rightStep;
+        return;
+    }
 
     auto* leftArr  = m_leftGrid->GetPointData()->GetArray(scalar.toUtf8().constData());
     auto* rightArr = m_rightGrid->GetPointData()->GetArray(scalar.toUtf8().constData());
@@ -495,7 +554,7 @@ void NephogramSettingWidget::updateCompare()
     m_leftActor->GetProperty()->SetRepresentationToSurface();
     m_rightActor->GetProperty()->SetRepresentationToSurface();
 
-    m_visualService->renderWindow()->Render();
+    if (auto* rw = m_visualService ? m_visualService->renderWindow() : nullptr) rw->Render();
 }
 
 void NephogramSettingWidget::fillCompareCombosFromSteps()
@@ -535,7 +594,7 @@ void NephogramSettingWidget::on_compareEnableCheckBox_toggled(bool checked)
         syncScalarBarFromCurrent();
         m_actor->SetMapper(m_mapper);
         ensureActorAttached();
-        m_visualService->renderWindow()->Render();
+        if (auto* rw = m_visualService ? m_visualService->renderWindow() : nullptr) rw->Render();
     }
 }
 
@@ -555,7 +614,7 @@ void NephogramSettingWidget::on_splitSlider_valueChanged(int value)
     m_splitRatio = std::min(std::max(value / 100.0, 0.05), 0.95);
 
     updateViewports(m_splitRatio);
-    m_visualService->renderWindow()->Render();
+    if (auto* rw = m_visualService ? m_visualService->renderWindow() : nullptr) rw->Render();
 }
 
 void NephogramSettingWidget::test()
