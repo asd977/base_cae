@@ -215,8 +215,14 @@ QJsonObject SeepageBoundaryPage::saveJson()
         for (auto id : ids) arr.append(static_cast<qint64>(id));
         return arr;
     };
-    obj["picked_solid"] = toJson(PickManager::instance().getSelectedPointIds(getPageType(), m_uuid, GridKind::Solid));
-    obj["picked_line"] = toJson(PickManager::instance().getSelectedPointIds(getPageType(), m_uuid, GridKind::Line));
+
+    PickManager& pm = PickManager::instance();
+    obj["picked_solid"] = toJson(pm.getSelectedPointIds(getPageType(), m_uuid, GridKind::Solid));
+    obj["picked_line"] = toJson(pm.getSelectedPointIds(getPageType(), m_uuid, GridKind::Line));
+
+    // 同时保存稳定的业务点号，避免工程重开后 vtk pointId 变化导致无法恢复。
+    obj["picked_solid_node_ids"] = toJson(pm.getIdList(getPageType(), m_uuid, PickMode::Node, GridKind::Solid));
+    obj["picked_line_node_ids"] = toJson(pm.getIdList(getPageType(), m_uuid, PickMode::Node, GridKind::Line));
     return obj;
 }
 
@@ -242,11 +248,33 @@ void SeepageBoundaryPage::loadJson(const QJsonObject& obj)
         for (const auto& v : arr) out.push_back(static_cast<vtkIdType>(v.toVariant().toLongLong()));
         return out;
     };
-    const auto solidIds = fromJson(obj.value("picked_solid").toArray());
-    const auto lineIds = fromJson(obj.value("picked_line").toArray());
-    if (!solidIds.isEmpty() || !lineIds.isEmpty())
+
+    auto toPointIds = [](const QVector<vtkIdType>& nodeIds, const MshPickMap& map) {
+        QVector<vtkIdType> out;
+        out.reserve(nodeIds.size());
+        for (vtkIdType nodeId : nodeIds)
+        {
+            const int pointId = map.nodeIdToPointId.value(static_cast<int>(nodeId), -1);
+            if (pointId >= 0) out.push_back(static_cast<vtkIdType>(pointId));
+        }
+        return out;
+    };
+
+    const auto solidPointIdsLegacy = fromJson(obj.value("picked_solid").toArray());
+    const auto linePointIdsLegacy = fromJson(obj.value("picked_line").toArray());
+    const auto solidNodeIds = fromJson(obj.value("picked_solid_node_ids").toArray());
+    const auto lineNodeIds = fromJson(obj.value("picked_line_node_ids").toArray());
+
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    const MshPickMap map = meshSvc ? meshSvc->mshPickMapSolid() : MshPickMap{};
+
+    const auto solidPointIds = !solidNodeIds.isEmpty() ? toPointIds(solidNodeIds, map) : solidPointIdsLegacy;
+    const auto linePointIds = !lineNodeIds.isEmpty() ? toPointIds(lineNodeIds, map) : linePointIdsLegacy;
+
+    if (!solidPointIds.isEmpty() || !linePointIds.isEmpty())
     {
-        PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, solidIds, true);
-        PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Line, lineIds, true);
+        PickManager::instance().updateStructure();
+        PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, solidPointIds, true);
+        PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Line, linePointIds, true);
     }
 }
