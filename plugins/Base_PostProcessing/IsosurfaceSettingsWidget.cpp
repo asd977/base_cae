@@ -117,6 +117,7 @@ IsosurfaceSettingsWidget::~IsosurfaceSettingsWidget()
 
 void IsosurfaceSettingsWidget::beforeLoad()
 {
+    showPostProcessingOnly(m_visualService, false);
     if(ui->stepComboBox->currentIndex() == -1)
     {
         m_loadedOnce = false;

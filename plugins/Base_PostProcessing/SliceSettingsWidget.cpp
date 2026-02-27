@@ -116,6 +116,7 @@ SliceSettingsWidget::~SliceSettingsWidget()
 
 void SliceSettingsWidget::beforeLoad()
 {
+    showPostProcessingOnly(m_visualService, false);
     if (!m_loadedOnce) {
         // 初始化一次
         if (!m_plane) m_plane = vtkSmartPointer<vtkPlane>::New();

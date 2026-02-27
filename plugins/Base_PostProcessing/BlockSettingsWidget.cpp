@@ -57,6 +57,7 @@ BlockSettingsWidget::~BlockSettingsWidget()
 
 void BlockSettingsWidget::beforeLoad()
 {
+    showPostProcessingOnly(m_visualService, false);
     if (m_dataPath.isEmpty()) {
         const QString workPath =
             PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <QString>
 #include <vtkActor.h>
@@ -31,4 +31,13 @@ inline bool removeActorByService(VisualWidgetService* service,
     const bool ok = service->removeProp(postActorId(actor.GetPointer()), false);
     if (renderNow) service->render();
     return ok;
+}
+
+inline void showPostProcessingOnly(VisualWidgetService* service, bool renderNow = true)
+{
+    if (!service) return;
+    service->setGroupVisible("post", true, false);
+    service->setGroupVisible("Geometry", false, false);
+    service->setGroupVisible("网格", false, false);
+    if (renderNow) service->render();
 }

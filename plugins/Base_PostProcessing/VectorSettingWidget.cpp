@@ -82,6 +82,7 @@ double  VectorSettingWidget::computeAutoBaseScale(vtkUnstructuredGrid* grid)
 
 void VectorSettingWidget::beforeLoad()
 {
+    showPostProcessingOnly(m_visualService, false);
     const QString proj = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     m_dataPath = proj + "/data";
 

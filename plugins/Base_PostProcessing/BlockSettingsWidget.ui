@@ -80,7 +80,7 @@
       <item row="0" column="0">
        <widget class="QLabel" name="label_2">
         <property name="text">
-         <string>迭代步</string>
+         <string>结果文件</string>
         </property>
        </widget>
       </item>

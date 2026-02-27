@@ -70,6 +70,7 @@ AnimationAviWidget::~AnimationAviWidget()
 
 void AnimationAviWidget::beforeLoad()
 {
+    showPostProcessingOnly(m_visualService, false);
     if (m_actor) {
         removeActorByService(m_visualService, m_actor);
         addActorByService(m_visualService, m_actor);

@@ -169,7 +169,7 @@ QPushButton#pushButton_vec:pressed{
            </sizepolicy>
           </property>
           <property name="text">
-           <string>迭代步：</string>
+           <string>结果文件：</string>
           </property>
          </widget>
         </item>

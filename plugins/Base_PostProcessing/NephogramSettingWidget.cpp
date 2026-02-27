@@ -139,6 +139,7 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
 
 void NephogramSettingWidget::beforeLoad()
 {
+    showPostProcessingOnly(m_visualService, false);
     if (!m_visualService) {
         m_visualService = ServiceRegistry::instance().getService<VisualWidgetService>();
     }

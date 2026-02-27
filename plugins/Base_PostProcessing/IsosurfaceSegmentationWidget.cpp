@@ -90,6 +90,7 @@ IsosurfaceSegmentationWidget::~IsosurfaceSegmentationWidget()
 
 void IsosurfaceSegmentationWidget::beforeLoad()
 {
+    showPostProcessingOnly(m_visualService, false);
     if (m_dataPath.isEmpty()) {
         m_dataPath = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString() + "/data";
     }
