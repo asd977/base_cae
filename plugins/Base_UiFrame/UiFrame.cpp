@@ -714,10 +714,13 @@ void UiFrame::buildRibbonTabs()
 
         auto* panel = cate->addPannel("分析");
         auto* actParam = makeAction(this, ":/resources/menu/minimal/analysis.svg", "&渗流分析");
+        auto* actStress = makeAction(this, ":/resources/menu/minimal/analysis.svg", "&应力应变分析");
 
         addActionToPanel(panel, actParam, 3);
+        addActionToPanel(panel, actStress, 3);
 
         bindEvent(this, actParam, PublicConstants::kActionSeepageKey);
+        bindEvent(this, actStress, PublicConstants::kActionStressStrainKey);
     }
 
 

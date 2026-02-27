@@ -217,6 +217,7 @@ constexpr char kPageBoundaryPoint[] = "page_boundary_point";
 // Solver / 分析类型
 // =========================
 constexpr char kActionSeepageKey[]            = "seepage_analysis";
+constexpr char kActionStressStrainKey[]       = "stress_strain_analysis";
 
 // =======================================================
 // Other：Key / Value / FileName（不属于 Event/Action/Page）

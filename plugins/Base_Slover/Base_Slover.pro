@@ -7,16 +7,22 @@ INCLUDEPATH += $$PWD/../../interfaces
 HEADERS += \
     SeepageBoundaryPage.h \
     SeepageWidget.h \
-    Solver.h
+    Solver.h \
+    StressBoundaryPage.h \
+    StressStrainWidget.h
 
 SOURCES += \
     SeepageBoundaryPage.cpp \
     SeepageWidget.cpp \
-    Solver.cpp
+    Solver.cpp \
+    StressBoundaryPage.cpp \
+    StressStrainWidget.cpp
 
 FORMS += \
     SeepageBoundaryPage.ui \
-    SeepageWidget.ui
+    SeepageWidget.ui \
+    StressBoundaryPage.ui \
+    StressStrainWidget.ui
 
 RESOURCES += \
     ../../res.qrc

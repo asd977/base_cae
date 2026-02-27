@@ -18,11 +18,14 @@ public:
 
 private slots:
     void onSeepageAction();
+    void onStressStrainAction();
     void onComputeSeepage(ProjectNode* analysisNode);
+    void onComputeStressStrain(ProjectNode* analysisNode);
 
 private:
     void initAction();
     int nextSeepageIndex() const;
+    int nextStressStrainIndex() const;
 
 private:
     ProjectNode* m_root = nullptr;

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>StressBoundaryPage</class>
+ <widget class="QWidget" name="StressBoundaryPage">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>640</width>
+    <height>320</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>应力应变边界</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QLabel" name="labelPickHint">
+     <property name="text">
+      <string>请选择网格线分组：</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QComboBox" name="comboBoxGroup"/>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupBoxInfo">
+     <property name="title">
+      <string>边界信息</string>
+     </property>
+     <layout class="QGridLayout" name="gridLayoutInfo">
+      <item row="0" column="0">
+       <widget class="QLabel" name="label1">
+        <property name="text"><string>边界名称：</string></property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLabel" name="labelBoundaryTitle">
+        <property name="text"><string>-</string></property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label2">
+        <property name="text"><string>输出文件：</string></property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLabel" name="labelFileNameValue">
+        <property name="text"><string>-</string></property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayoutBtns">
+     <item>
+      <widget class="QPushButton" name="btnClear">
+       <property name="text"><string>清空选线</string></property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="horizontalSpacer">
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+      </spacer>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
