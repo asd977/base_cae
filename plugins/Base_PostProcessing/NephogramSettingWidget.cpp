@@ -53,6 +53,7 @@
 #include <vtkDataSetSurfaceFilter.h>
 #include <vtkPolyDataConnectivityFilter.h>
 #include <vtkPolyDataMapper.h>
+#include <vtkXMLUnstructuredGridReader.h>
 
 namespace {
 const QStringList kResultDirectories = {"SEEPCASE01"};
