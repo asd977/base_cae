@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <BasePage.h>
 #include <QJsonObject>
@@ -34,7 +34,7 @@ public:
     struct EdgeRow { int ke1 = 0; int ke2 = 0; int jd1 = 0; int jd2 = 0; };
 
 private:
-    QVector<EdgeRow> selectedEdgeRows() const;
+    QVector<EdgeRow> selectedEdgeRows();
     void setupBatchGroupCombo();
 
 private:

@@ -1,4 +1,4 @@
-#include "StressBoundaryPage.h"
+﻿#include "StressBoundaryPage.h"
 #include "ui_StressBoundaryPage.h"
 
 #include <PickManager.h>
@@ -160,7 +160,7 @@ void StressBoundaryPage::beforeUnload()
     PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Edge);
 }
 
-QVector<StressBoundaryPage::EdgeRow> StressBoundaryPage::selectedEdgeRows() const
+QVector<StressBoundaryPage::EdgeRow> StressBoundaryPage::selectedEdgeRows()
 {
     PickManager::instance().updateStructure();
 
