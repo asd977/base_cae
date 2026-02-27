@@ -17,9 +17,6 @@
 
 #include <algorithm>
 
-#include <vtkPointData.h>
-#include <vtkIntArray.h>
-
 SeepageBoundaryPage::SeepageBoundaryPage(const QString& pageType,
                                          const QString& boundaryTitle,
                                          const QString& exportFileName,
@@ -60,36 +57,23 @@ QVector<int> SeepageBoundaryPage::selectedNodeIds()
     PickManager& pm = PickManager::instance();
     pm.updateStructure();
 
-    auto toNodeIds = [&](GridKind kind) {
+    auto collectPickedIds = [&](GridKind kind) {
         QVector<int> out;
+        // PickManager::getIdList(Node) 返回的是业务点号（point/node id），
+        // 不是 vtk point id。这里直接使用该结果导出 JD_*.DAT。
         const QVector<vtkIdType> picked = pm.getIdList(getPageType(), m_uuid, PickMode::Node, kind);
         if (picked.isEmpty()) return out;
-
-        vtkUnstructuredGrid* g = (kind == GridKind::Solid) ? pm.solidGrid() : pm.lineGrid();
-        vtkIntArray* nodeArr = nullptr;
-        if (g)
-        {
-            nodeArr = vtkIntArray::SafeDownCast(g->GetPointData()->GetArray("node_id"));
-        }
-
         out.reserve(picked.size());
         for (vtkIdType pid : picked)
         {
-            if (nodeArr && pid >= 0 && pid < nodeArr->GetNumberOfValues())
-            {
-                out.push_back(nodeArr->GetValue(int(pid)));
-            }
-            else
-            {
-                out.push_back(int(pid + 1));
-            }
+            out.push_back(static_cast<int>(pid));
         }
         return out;
     };
 
     QSet<int> merged;
-    const QVector<int> solidNodes = toNodeIds(GridKind::Solid);
-    const QVector<int> lineNodes = toNodeIds(GridKind::Line);
+    const QVector<int> solidNodes = collectPickedIds(GridKind::Solid);
+    const QVector<int> lineNodes = collectPickedIds(GridKind::Line);
     for (int id : solidNodes) merged.insert(id);
     for (int id : lineNodes) merged.insert(id);
 
