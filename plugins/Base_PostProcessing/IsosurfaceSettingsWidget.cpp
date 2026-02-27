@@ -22,6 +22,7 @@
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <vtkActor.h>
 
 #include <algorithm>
 #include <cmath>

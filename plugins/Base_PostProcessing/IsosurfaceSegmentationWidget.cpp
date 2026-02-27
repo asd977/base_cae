@@ -21,6 +21,7 @@
 #include <vtkRenderWindow.h>
 #include <vtkProperty.h>
 #include <vtkDataObject.h> // FIELD_ASSOCIATION_*
+#include <vtkActor.h>
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>

@@ -19,6 +19,7 @@
 #include <vtkProperty.h>
 #include <vtkRenderWindow.h>
 #include <vtkPlane.h>
+#include <vtkActor.h>
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>

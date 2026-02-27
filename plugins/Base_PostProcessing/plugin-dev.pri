@@ -1,3 +1,5 @@
+include($$PWD/../../libs/vtk-9.2/vtk.pri)
+
 TARGET = Base_PostProcessing
 TEMPLATE = lib
 QT += widgets core
