@@ -1,4 +1,4 @@
-#include "SeepageWidget.h"
+﻿#include "SeepageWidget.h"
 #include "ui_SeepageWidget.h"
 
 #include <QDir>
@@ -98,6 +98,7 @@ bool SeepageWidget::exportIseepDatFile() const
     os << "1     MCASE\n";
     os << "1 1   JISUAN CASE  II\n";
     os << "1     NCASE\n";
+    os << "'------------'\n";
     os << "1     ICASE\n";
     os << "0     NCHANGE_CASE\n";
     os << "100 0 ITER  ITAG_FREE\n";
