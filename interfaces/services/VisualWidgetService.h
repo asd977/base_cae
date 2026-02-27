@@ -15,6 +15,7 @@ class vtkRenderWindowInteractor;
 class vtkLookupTable;
 class vtkPolyData;
 class vtkMapper;
+class vtkScalarBarActor;
 
 class VisualWidgetService
 {
@@ -55,6 +56,7 @@ public:
                                 bool renderNow = true) = 0;
 
     virtual vtkLookupTable* lookupTable() const = 0;
+    virtual vtkScalarBarActor* scalarBarActor() const = 0;
 
     virtual void showScalarBar(bool on, bool renderNow = true) = 0;
     virtual bool isScalarBarVisible() const = 0;

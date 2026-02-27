@@ -13,6 +13,7 @@ HEADERS += \
     IsosurfaceSettingsWidget.h \
     NephogramSettingWidget.h \
     PostProcessing.h \
+    PostProcessingWidget.h \
     ProbeSettingsWidget.h \
     SliceSettingsWidget.h \
     VectorSettingWidget.h
@@ -25,6 +26,7 @@ SOURCES += \
     IsosurfaceSettingsWidget.cpp \
     NephogramSettingWidget.cpp \
     PostProcessing.cpp \
+    PostProcessingWidget.cpp \
     ProbeSettingsWidget.cpp \
     SliceSettingsWidget.cpp \
     VectorSettingWidget.cpp

@@ -107,22 +107,12 @@
         <file>resources/icon/view_right.png</file>
         <file>resources/icon/view_top.png</file>
         <file>resources/icon/wireframe.png</file>
-        <file>resources/menu/Animation.png</file>
-        <file>resources/menu/Block.png</file>
-        <file>resources/menu/Curve.png</file>
         <file>resources/menu/DerivedValue.png</file>
-        <file>resources/menu/DerivedValue2.png</file>
         <file>resources/menu/Export.png</file>
         <file>resources/menu/File.png</file>
-        <file>resources/menu/Isosurface.png</file>
-        <file>resources/menu/IsosurfaceSegmentation.png</file>
         <file>resources/menu/MaximumValue.png</file>
         <file>resources/menu/MinimumValue.png</file>
-        <file>resources/menu/Nephogram.png</file>
         <file>resources/menu/ParametricCurve.png</file>
-        <file>resources/menu/PickUp.png</file>
-        <file>resources/menu/Slice.png</file>
-        <file>resources/menu/Vector.png</file>
         <file>resources/menu/Exit.png</file>
         <file>resources/menu/ExportDB.png</file>
         <file>resources/menu/Function.png</file>
@@ -228,5 +218,16 @@
         <file>resources/menu/minimal/load-temperature.svg</file>
         <file>resources/menu/minimal/load-beam.svg</file>
         <file>resources/menu/minimal/load-seismic.svg</file>
+        <file>resources/menu/minimal/post-nephogram.svg</file>
+        <file>resources/menu/minimal/post-vector.svg</file>
+        <file>resources/menu/minimal/post-slice.svg</file>
+        <file>resources/menu/minimal/post-block.svg</file>
+        <file>resources/menu/minimal/post-isosurface.svg</file>
+        <file>resources/menu/minimal/post-isosurface-seg.svg</file>
+        <file>resources/menu/minimal/post-curve.svg</file>
+        <file>resources/menu/minimal/post-animation.svg</file>
+        <file>resources/menu/minimal/post-probe.svg</file>
+        <file>resources/menu/minimal/post-derived.svg</file>
+        <file>resources/menu/minimal/post-export.svg</file>
     </qresource>
 </RCC>
