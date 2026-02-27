@@ -190,14 +190,11 @@ void ProjectManager::openProject()
 	m_projectTreeWidget->blockSignal(true);
 
     // 按“新建工程”一致的顺序恢复模块，保证树节点顺序稳定。
-    if (auto* globalParameterService = ServiceRegistry::instance().getService<GlobalParameterService>())
-    {
-        globalParameterService->newProject();
-    }
-    if (auto* materialManagerService = ServiceRegistry::instance().getService<MaterialManagerService>())
-    {
-        materialManagerService->newProject();
-    }
+//    if (auto* globalParameterService = ServiceRegistry::instance().getService<GlobalParameterService>())
+//    {
+//        globalParameterService->newProject();
+//    }
+
 	if (auto* preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>())
 	{
 		preProcessingService->loadProject();
@@ -206,6 +203,10 @@ void ProjectManager::openProject()
 	{
 		meshService->loadProject();
 	}
+    if (auto* materialManagerService = ServiceRegistry::instance().getService<MaterialManagerService>())
+    {
+        materialManagerService->newProject();
+    }
     if (auto* physicalFieldService = ServiceRegistry::instance().getService<PhysicalFieldService>())
     {
         physicalFieldService->loadProject();

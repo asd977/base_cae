@@ -26,7 +26,7 @@
 
 namespace {
 const QStringList kResultDirectoriesCommon = {"SEEPCASE01"};
-const QStringList kPreferredResultFilesCommon = {"TEC_HP.DAT"};
+const QStringList kPreferredResultFilesCommon = {"TEC_HP.DAT","TEC_VELO.DAT"};
 }
 
 #include <vtkActor.h>

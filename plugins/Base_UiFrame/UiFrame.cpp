@@ -382,20 +382,20 @@ void UiFrame::buildRibbonTabs()
     // =========================
     // 自定义参数
     // =========================
-    {
-        auto* cate = m_ribbon->addCategoryPage("自定义参数");
-        cate->setObjectName("paramObj");
+//    {
+//        auto* cate = m_ribbon->addCategoryPage("自定义参数");
+//        cate->setObjectName("paramObj");
 
-        auto* panel = cate->addPannel("参数");
-        auto* actParam = makeAction(this, ":/resources/menu/minimal/param.svg", "&参数");
-        auto* actFunc  = makeAction(this, ":/resources/menu/minimal/function.svg",  "&函数");
+//        auto* panel = cate->addPannel("参数");
+//        auto* actParam = makeAction(this, ":/resources/menu/minimal/param.svg", "&参数");
+//        auto* actFunc  = makeAction(this, ":/resources/menu/minimal/function.svg",  "&函数");
 
-        addActionToPanel(panel, actParam, 3);
-        addActionToPanel(panel, actFunc,  3);
+//        addActionToPanel(panel, actParam, 3);
+//        addActionToPanel(panel, actFunc,  3);
 
-        bindEvent(this, actParam, PublicConstants::kActionCustomParam);
-        bindEvent(this, actFunc,  PublicConstants::kActionCustomFunction);
-    }
+//        bindEvent(this, actParam, PublicConstants::kActionCustomParam);
+//        bindEvent(this, actFunc,  PublicConstants::kActionCustomFunction);
+//    }
 
     // =========================
     // 几何
@@ -662,21 +662,6 @@ void UiFrame::buildRibbonTabs()
     }
 
     // =========================
-    // 分析
-    // =========================
-    {
-        auto* cate = m_ribbon->addCategoryPage("分析");
-        cate->setObjectName("analysisObj");
-
-        auto* panel = cate->addPannel("分析");
-        auto* actParam = makeAction(this, ":/resources/menu/minimal/analysis.svg", "&渗流分析");
-
-        addActionToPanel(panel, actParam, 3);
-
-        bindEvent(this, actParam, PublicConstants::kActionSeepageKey);
-    }
-
-    // =========================
     // 约束与荷载
     // =========================
     {
@@ -719,6 +704,23 @@ void UiFrame::buildRibbonTabs()
         bindEvent(this, actBeamLoad, PublicConstants::kActionPhysicalBeamLoad);
         bindEvent(this, actSeismicAndAddedMass, PublicConstants::kActionPhysicalSeismicAndAddedMass);
     }
+
+    // =========================
+    // 分析
+    // =========================
+    {
+        auto* cate = m_ribbon->addCategoryPage("分析");
+        cate->setObjectName("analysisObj");
+
+        auto* panel = cate->addPannel("分析");
+        auto* actParam = makeAction(this, ":/resources/menu/minimal/analysis.svg", "&渗流分析");
+
+        addActionToPanel(panel, actParam, 3);
+
+        bindEvent(this, actParam, PublicConstants::kActionSeepageKey);
+    }
+
+
 
     // =========================
     // 结果

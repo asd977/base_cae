@@ -65,7 +65,7 @@ int main(int argc, char** argv)
 
     QStringList runOrder = { "UiFrame","ProjectManager", "Output",
                             "MaterialManager","PreProcessing","Solver","PostProcessing",
-                            "GlobalParameter","SurrogateModel","PhySicalField","BoundaryConditions",
+                            /*"GlobalParameter",*/"SurrogateModel","PhySicalField","BoundaryConditions",
                             "Visualization","MeshModuleController" };//
 
     for (const QString& name : runOrder) {

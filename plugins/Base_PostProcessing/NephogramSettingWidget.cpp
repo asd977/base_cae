@@ -57,7 +57,7 @@
 
 namespace {
 const QStringList kResultDirectories = {"SEEPCASE01"};
-const QStringList kPreferredResultFiles = {"TEC_HP.DAT"};
+const QStringList kPreferredResultFiles = {"TEC_HP.DAT","TEC_VELO.DAT"};
 }
 
 NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService *postProcessingWidget, QWidget *parent)
