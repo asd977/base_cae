@@ -31,7 +31,7 @@ private slots:
     void onGroupChanged(int index);
 
 public:
-    struct EdgeRow { int ke1 = 0; int jd1 = 0; int jd2 = 0; };
+    struct EdgeRow { int ke1 = 0; int ke2 = 0; int jd1 = 0; int jd2 = 0; };
 
 private:
     QVector<EdgeRow> selectedEdgeRows() const;

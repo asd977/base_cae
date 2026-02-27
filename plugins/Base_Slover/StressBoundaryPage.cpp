@@ -75,8 +75,36 @@ QVector<StressBoundaryPage::EdgeRow> collectRows(GridKind kind,
 
         if (pidA < 0 || pidB < 0) continue;
 
+        QSet<int> keSet;
+        const int pickedKe = elemIdArr ? int(elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
+        keSet.insert(pickedKe);
+
+        // 通过边的两个端点，反查共享该边的单元，补齐 KE1/KE2。
+        vtkNew<vtkIdList> cellsA;
+        vtkNew<vtkIdList> cellsB;
+        grid->GetPointCells(pidA, cellsA);
+        grid->GetPointCells(pidB, cellsB);
+
+        QSet<vtkIdType> byA;
+        for (vtkIdType i = 0; i < cellsA->GetNumberOfIds(); ++i)
+            byA.insert(cellsA->GetId(i));
+
+        for (vtkIdType i = 0; i < cellsB->GetNumberOfIds(); ++i)
+        {
+            const vtkIdType cid = cellsB->GetId(i);
+            if (!byA.contains(cid)) continue;
+
+            const int ke = elemIdArr ? int(elemIdArr->GetTuple1(cid)) : int(cid + 1);
+            keSet.insert(ke);
+            if (keSet.size() >= 2) break;
+        }
+
+        QVector<int> kes = keSet.values().toVector();
+        std::sort(kes.begin(), kes.end());
+
         StressBoundaryPage::EdgeRow row;
-        row.ke1 = elemIdArr ? int(elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
+        row.ke1 = kes.isEmpty() ? 0 : kes[0];
+        row.ke2 = (kes.size() >= 2) ? kes[1] : 0;
         row.jd1 = int(nodeIdArr->GetTuple1(pidA));
         row.jd2 = int(nodeIdArr->GetTuple1(pidB));
         rows.push_back(row);
@@ -85,6 +113,7 @@ QVector<StressBoundaryPage::EdgeRow> collectRows(GridKind kind,
     std::sort(rows.begin(), rows.end(), [](const StressBoundaryPage::EdgeRow& a,
                                            const StressBoundaryPage::EdgeRow& b) {
         if (a.ke1 != b.ke1) return a.ke1 < b.ke1;
+        if (a.ke2 != b.ke2) return a.ke2 < b.ke2;
         if (a.jd1 != b.jd1) return a.jd1 < b.jd1;
         return a.jd2 < b.jd2;
     });
@@ -161,7 +190,7 @@ bool StressBoundaryPage::exportDatFile()
         os << QString("%1 %2 %3 %4 %5 %6\n")
               .arg(i + 1, 9)
               .arg(row.ke1, 9)
-              .arg(0, 9)
+              .arg(row.ke2, 9)
               .arg(row.jd1, 9)
               .arg(row.jd2, 9)
               .arg(10, 9);
