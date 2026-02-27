@@ -25,6 +25,11 @@ public:
     double downstreamFlux() const;
 
     bool exportIseepDatFile() const;
+    bool exportInouseDatFile() const;
+    bool exportMaMaskDatFile() const;
+    bool exportMaRockDatFile() const;
+    bool exportKetraceDatFile() const;
+    bool exportJdtraceDatFile() const;
 
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;

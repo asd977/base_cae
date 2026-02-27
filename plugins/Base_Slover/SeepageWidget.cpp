@@ -52,7 +52,7 @@ bool SeepageWidget::exportIseepDatFile() const
 
     QDir wd(projectDirAbs);
     if (!wd.exists("PREP")) wd.mkpath("PREP");
-    if (!wd.exists("SEEPCASE01")) wd.mkpath("SEEPCASE01");
+//    if (!wd.exists("SEEPCASE01")) wd.mkpath("SEEPCASE01");
 
     auto ensureTrailingSep = [](const QString& path) {
         QString p = QDir::toNativeSeparators(path);
@@ -63,7 +63,7 @@ bool SeepageWidget::exportIseepDatFile() const
     const QString prepDirAbs = ensureTrailingSep(wd.filePath("PREP"));
     const QString seepCaseDirAbs = ensureTrailingSep(wd.filePath("SEEPCASE01"));
 
-    QFile file(wd.filePath("PREP/ISEEP.DAT"));
+    QFile file(wd.filePath("ISEEP.DAT"));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
     {
         return false;
@@ -111,6 +111,88 @@ bool SeepageWidget::exportIseepDatFile() const
     os << "'HWDROP_UP.DAT'  'HWDROP_DW.DAT'   HWDROP_UP  HWDROP_DW\n";
 
     file.close();
+    return exportInouseDatFile()
+           && exportMaMaskDatFile()
+           && exportMaRockDatFile()
+           && exportKetraceDatFile()
+           && exportJdtraceDatFile();
+}
+
+bool SeepageWidget::exportInouseDatFile() const
+{
+    const QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir wd(QDir(projectDir).absolutePath());
+    if (!wd.exists("PREP") && !wd.mkpath("PREP")) return false;
+
+    QFile file(wd.filePath("PREP/INOUSE.DAT"));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+
+    QTextStream os(&file);
+    os << "           0    NUM OF NO USE NODE\n";
+    os << "           0    NUM OF NO USE ELEMENT\n";
+    os << "       0    杆单元悬浮节点数\n";
+    os << "           0           2    NEBAR  NDIM\n";
+    return true;
+}
+
+bool SeepageWidget::exportMaMaskDatFile() const
+{
+    const QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir wd(QDir(projectDir).absolutePath());
+    if (!wd.exists("PREP") && !wd.mkpath("PREP")) return false;
+
+    QFile file(wd.filePath("PREP/MA_MASK.DAT"));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+
+    QTextStream os(&file);
+    os << "   1   NUM\n";
+    os << "  11     1\n";
+    return true;
+}
+
+bool SeepageWidget::exportMaRockDatFile() const
+{
+    const QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir wd(QDir(projectDir).absolutePath());
+    if (!wd.exists("PREP") && !wd.mkpath("PREP")) return false;
+
+    QFile file(wd.filePath("PREP/MA_ROCK.DAT"));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+
+    QTextStream os(&file);
+    os << "           1  NUM_ROCK\n";
+    os << "  11\n";
+    return true;
+}
+
+bool SeepageWidget::exportKetraceDatFile() const
+{
+    const QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir wd(QDir(projectDir).absolutePath());
+    if (!wd.exists("PREP") && !wd.mkpath("PREP")) return false;
+
+    QFile file(wd.filePath("PREP/KETRACE.DAT"));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+
+    QTextStream os(&file);
+    os << "           1   NUM\n";
+    os << "        1        1\n";
+    return true;
+}
+
+bool SeepageWidget::exportJdtraceDatFile() const
+{
+    const QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir wd(QDir(projectDir).absolutePath());
+    if (!wd.exists("PREP") && !wd.mkpath("PREP")) return false;
+
+    QFile file(wd.filePath("PREP/JDTRACE.DAT"));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+
+    QTextStream os(&file);
+    os << "           2   NUM\n";
+    os << "       951        1\n";
+    os << "       943        2\n";
     return true;
 }
 
