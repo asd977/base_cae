@@ -48,8 +48,20 @@ double SeepageWidget::downstreamFlux() const
 bool SeepageWidget::exportIseepDatFile() const
 {
     const QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(projectDir);
+    const QString projectDirAbs = QDir(projectDir).absolutePath();
+
+    QDir wd(projectDirAbs);
     if (!wd.exists("PREP")) wd.mkpath("PREP");
+    if (!wd.exists("SEEPCASE01")) wd.mkpath("SEEPCASE01");
+
+    auto ensureTrailingSep = [](const QString& path) {
+        QString p = QDir::toNativeSeparators(path);
+        if (!p.endsWith(QDir::separator())) p += QDir::separator();
+        return p;
+    };
+
+    const QString prepDirAbs = ensureTrailingSep(wd.filePath("PREP"));
+    const QString seepCaseDirAbs = ensureTrailingSep(wd.filePath("SEEPCASE01"));
 
     QFile file(wd.filePath("PREP/ISEEP.DAT"));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
@@ -61,7 +73,7 @@ bool SeepageWidget::exportIseepDatFile() const
     os.setRealNumberNotation(QTextStream::FixedNotation);
     os.setRealNumberPrecision(6);
 
-    os << "'./PREP/'\n";
+    os << "'" << prepDirAbs << "'\n";
     os << "'JD_UPSEEP.DAT'\n";
     os << "'JD_DWSEEP.DAT'\n";
     os << "'2'\n";
@@ -82,20 +94,20 @@ bool SeepageWidget::exportIseepDatFile() const
     os << "'1'\n";
     os << "'------------'\n";
 
-    os << "0\n";
-    os << "1\n";
-    os << "1 1\n";
-    os << "1\n";
-    os << "1\n";
-    os << "0\n";
-    os << "100 0\n";
+    os << "0     NCHANGE\n";
+    os << "1     MCASE\n";
+    os << "1 1   JISUAN CASE  II\n";
+    os << "1     NCASE\n";
+    os << "1     ICASE\n";
+    os << "0     NCHANGE_CASE\n";
+    os << "100 0 ITER  ITAG_FREE\n";
     os << upstreamWaterLevel() << " "
        << downstreamWaterLevel() << " "
        << upstreamFlux() << " "
-       << downstreamFlux() << "\n";
-    os << "'./SEEPCASE01/'\n";
-    os << "60.000000 0.000000 3600.000000\n";
-    os << "'HWDROP_UP.DAT' 'HWDROP_DW.DAT'\n";
+       << downstreamFlux() << "    HWUP   HWDW\n";
+    os << "'" << seepCaseDirAbs << "'     DIRDYNA\n";
+    os << "60.000000 0.000000 3600.000000    DT TSTA TEND\n";
+    os << "'HWDROP_UP.DAT'  'HWDROP_DW.DAT'   HWDROP_UP  HWDROP_DW\n";
 
     file.close();
     return true;
