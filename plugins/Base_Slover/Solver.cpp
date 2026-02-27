@@ -126,10 +126,12 @@ bool Solver::loadProject()
             }
             if (!page) continue;
 
-            page->loadJson(childObj.value("state").toObject());
             auto* node = new ProjectNode(childObj.value("title").toString("边界"),
                                          childObj.value("uuid").toString(QUuid::createUuid().toString()),
                                          page);
+            // 先挂到节点上，让 ProjectNode 把 page->m_uuid 同步为工程里的 uuid，
+            // 再恢复选点，确保与 saveJson 使用的是同一 uuid。
+            page->loadJson(childObj.value("state").toObject());
             analysisNode->addChild(node);
         }
 
