@@ -24,6 +24,12 @@
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+
+namespace {
+const QStringList kResultDirectoriesCommon = {"SEEPCASE01"};
+const QStringList kPreferredResultFilesCommon = {"TEC_HP.DAT"};
+}
+
 #include <vtkDataSetSurfaceFilter.h>
 
 #include <algorithm>
@@ -123,7 +129,7 @@ void SliceSettingsWidget::beforeLoad()
 
         const QString workPath =
             PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-        m_dataPath = QDir(workPath).filePath("data");
+        m_dataPath = QDir(workPath).filePath(kResultDirectoriesCommon.first());
         loadFileName(m_dataPath);
 
         m_loadedOnce = true;
@@ -147,34 +153,36 @@ void SliceSettingsWidget::loadFileName(QString dataPath)
     ui->stepComboBox->blockSignals(true);
     ui->stepComboBox->clear();
 
-    QMap<int, QVector<int>> groups;
-    const QDir dir(dataPath);
-    const QRegularExpression re("stress_strain(\\d+)-(\\d+)\\.txt");
+    const QDir directory(dataPath);
+    if (!directory.exists()) {
+        qWarning() << "Directory not found:" << dataPath;
+        ui->stepComboBox->blockSignals(false);
+        return;
+    }
 
-    for (const QString& fname : dir.entryList(QDir::Files)) {
-        const auto m = re.match(fname);
-        if (!m.hasMatch()) continue;
-        const int g = m.captured(1).toInt();
-        const int o = m.captured(2).toInt();
-        groups[g]  << o;
+    for (const QString& name : kPreferredResultFilesCommon) {
+        const QString fullPath = directory.filePath(name);
+        if (!QFileInfo::exists(fullPath)) continue;
+        const QString itemName = QFileInfo(fullPath).completeBaseName();
+        ui->stepComboBox->addItem(itemName, fullPath);
     }
-    for (auto it = groups.cbegin(); it != groups.cend(); ++it) {
-        QVector<int> orders = it.value();
-        std::sort(orders.begin(), orders.end());
-        for (int o : orders)
-            ui->stepComboBox->addItem(QString("%1-%2").arg(it.key()).arg(o));
-    }
+
     ui->stepComboBox->blockSignals(false);
 
-    if (ui->stepComboBox->count())
+    if (ui->stepComboBox->count() > 0) {
+        ui->stepComboBox->setCurrentIndex(0);
         on_stepComboBox_currentIndexChanged(0);
+    } else {
+        qWarning() << "No configured result files found in" << dataPath;
+    }
 }
+
 
 void SliceSettingsWidget::on_stepComboBox_currentIndexChanged(int idx)
 {
     if (idx < 0) return;
-    const QString step = ui->stepComboBox->itemText(idx);
-    const QString file = QDir(m_dataPath).filePath(QString("stress_strain%1.txt").arg(step));
+    const QString file = ui->stepComboBox->currentData().toString();
+    if (file.isEmpty()) return;
 
     // 读网格
     auto reader = vtkSmartPointer<vtkTecplotReader>::New();

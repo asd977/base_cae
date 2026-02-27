@@ -25,6 +25,11 @@
 #include <vtkLookupTable.h>
 #include <vtkDataArray.h>
 
+namespace {
+const QStringList kResultDirectoriesCommon = {"SEEPCASE01"};
+const QStringList kPreferredResultFilesCommon = {"TEC_HP.DAT"};
+}
+
 #include <cmath>
 #include <limits>
 #include <stdio.h>
@@ -84,7 +89,7 @@ void VectorSettingWidget::beforeLoad()
 {
     showPostProcessingOnly(m_visualService, false);
     const QString proj = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    m_dataPath = proj + "/data";
+    m_dataPath = QDir(proj).filePath(kResultDirectoriesCommon.first());
 
     if (ui->stepComboBox->count() == 0) {
         // 首次进入：加载文件列表并默认读第一个
@@ -114,62 +119,41 @@ void VectorSettingWidget::loadFileName(QString dataPath)
     ui->stepComboBox->blockSignals(true);
     ui->stepComboBox->clear();
 
-    QMap<int, QVector<int>> numbers;
-    QDir directory(dataPath);
+    const QDir directory(dataPath);
     if (!directory.exists()) {
         qWarning() << "Directory not found:" << dataPath;
+        ui->stepComboBox->blockSignals(false);
+        return;
     }
 
-    const QString baseName = "stress_strain";
-    const QString extension = ".txt";
-    const QRegularExpression regex(baseName + "(\\d+)-(\\d+)(\\.txt|\\.vtu)");
-
-
-    const QStringList files = directory.entryList(QDir::Files);
-    for (const QString &filename : files) {
-        const auto match = regex.match(filename);
-        if (match.hasMatch()) {
-            bool ok1=false, ok2=false;
-            const int g = match.captured(1).toInt(&ok1);
-            const int o = match.captured(2).toInt(&ok2);
-            if (ok1 && ok2) numbers[g].append(o);
-        }
+    for (const QString& name : kPreferredResultFilesCommon) {
+        const QString fullPath = directory.filePath(name);
+        if (!QFileInfo::exists(fullPath)) continue;
+        const QString itemName = QFileInfo(fullPath).completeBaseName();
+        ui->stepComboBox->addItem(itemName, fullPath);
     }
 
-    for (auto it = numbers.begin(); it != numbers.end(); ++it) {
-        auto vec = it.value();
-        std::sort(vec.begin(), vec.end());
-        for (int num : vec) {
-            ui->stepComboBox->addItem(QString::number(it.key()) + "-" + QString::number(num));
-        }
-    }
+    ui->stepComboBox->blockSignals(false);
 
     if (ui->stepComboBox->count() > 0) {
         ui->stepComboBox->setCurrentIndex(0);
         on_stepComboBox_currentIndexChanged(0);
+    } else {
+        qWarning() << "No configured result files found in" << dataPath;
     }
-    ui->stepComboBox->blockSignals(false);
 }
+
 
 void VectorSettingWidget::on_stepComboBox_currentIndexChanged(int index)
 {
     if (index < 0) return;
 
-    const QString stepText = ui->stepComboBox->itemText(index).trimmed();
-    QDir dir(m_dataPath);
-    QString base = QString("stress_strain%1").arg(stepText);
-    QString txtFile = dir.filePath(base + ".txt");
-    QString vtuFile = dir.filePath(base + ".vtu");
-
-    QString newFile;
-    if (QFileInfo::exists(txtFile)) newFile = txtFile;
-    else if (QFileInfo::exists(vtuFile)) newFile = vtuFile;
-    else {
-        qWarning() << "[Vector] No data file found for step:" << stepText;
+    const QString filePath = ui->stepComboBox->currentData().toString();
+    if (filePath.isEmpty()) {
+        qWarning() << "[Vector] No data file mapped for selection.";
         return;
     }
-
-    setFileName(newFile);
+    setFileName(filePath);
 
 
     // 切文件时，先把旧的箭头从场景移除，避免看到旧结果

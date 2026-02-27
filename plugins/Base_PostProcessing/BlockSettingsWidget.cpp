@@ -19,6 +19,12 @@
 #include <PublicVariables.h>
 #include "PostVisualUtils.h"
 
+namespace {
+const QStringList kResultDirectoriesCommon = {"SEEPCASE01"};
+const QStringList kPreferredResultFilesCommon = {"TEC_HP.DAT"};
+}
+
+
 #include <cmath>
 
 BlockSettingsWidget::BlockSettingsWidget(VisualWidgetService* postProcessingWidget,
@@ -61,7 +67,7 @@ void BlockSettingsWidget::beforeLoad()
     if (m_dataPath.isEmpty()) {
         const QString workPath =
             PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-        m_dataPath = workPath + "/data";
+        m_dataPath = QDir(workPath).filePath(kResultDirectoriesCommon.first());
     }
 
     if (ui->stepComboBox->count() == 0) {
@@ -100,42 +106,30 @@ void BlockSettingsWidget::loadFileName(QString dataPath)
     ui->stepComboBox->blockSignals(true);
     ui->stepComboBox->clear();
 
-    QMap<int, QVector<int>> numbers;
-    QDir directory(dataPath);
+    const QDir directory(dataPath);
     if (!directory.exists()) {
         qWarning() << "Directory not found:" << dataPath;
+        ui->stepComboBox->blockSignals(false);
+        return;
     }
 
-    const QString baseName = "stress_strain";
-    const QString extension = ".txt";
-    const QRegularExpression regex(baseName + "(\\d+)" "-" "(\\d+)" + extension);
-
-    const QStringList files = directory.entryList(QDir::Files);
-    for (const QString &filename : files) {
-        const auto match = regex.match(filename);
-        if (match.hasMatch()) {
-            bool ok1=false, ok2=false;
-            const int g = match.captured(1).toInt(&ok1);
-            const int o = match.captured(2).toInt(&ok2);
-            if (ok1 && ok2) numbers[g].append(o);
-        }
+    for (const QString& name : kPreferredResultFilesCommon) {
+        const QString fullPath = directory.filePath(name);
+        if (!QFileInfo::exists(fullPath)) continue;
+        const QString itemName = QFileInfo(fullPath).completeBaseName();
+        ui->stepComboBox->addItem(itemName, fullPath);
     }
-
-    for (auto it = numbers.begin(); it != numbers.end(); ++it) {
-        auto &vec = it.value();
-        std::sort(vec.begin(), vec.end());
-        for (int num : vec) ui->stepComboBox->addItem(QString::number(it.key()) + "-" + QString::number(num));
-    }
-
-    if (ui->stepComboBox->count() > 0)
-        ui->stepComboBox->setCurrentIndex(0);
 
     ui->stepComboBox->blockSignals(false);
 
-    if (ui->stepComboBox->count() > 0)
-        on_stepComboBox_currentIndexChanged(ui->stepComboBox->currentIndex());
-
+    if (ui->stepComboBox->count() > 0) {
+        ui->stepComboBox->setCurrentIndex(0);
+        on_stepComboBox_currentIndexChanged(0);
+    } else {
+        qWarning() << "No configured result files found in" << dataPath;
+    }
 }
+
 
 void BlockSettingsWidget::loadLatestData()
 {
@@ -331,9 +325,8 @@ void BlockSettingsWidget::on_stepComboBox_currentIndexChanged(int index)
 {
     if (index < 0) return;
 
-    const QString stepText = ui->stepComboBox->itemText(index).trimmed();
-    QDir dir(m_dataPath);
-    const QString file = dir.filePath(QString("stress_strain%1.txt").arg(stepText));
+    const QString file = ui->stepComboBox->currentData().toString();
+    if (file.isEmpty()) return;
 
     // 读取新数据
     readTecplot(file);
