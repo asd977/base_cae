@@ -49,6 +49,7 @@
 #include <vtkCellData.h>
 #include <vtkStringArray.h>
 #include <QFileDialog>
+#include <ServiceRegistry.h>
 #include <vtkDataSetSurfaceFilter.h>
 #include <vtkPolyDataConnectivityFilter.h>
 #include <vtkPolyDataMapper.h>
@@ -138,6 +139,9 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
 
 void NephogramSettingWidget::beforeLoad()
 {
+    if (!m_visualService) {
+        m_visualService = ServiceRegistry::instance().getService<VisualWidgetService>();
+    }
     if (!m_visualService) {
         qWarning() << "Visual service is null in NephogramSettingWidget.";
         return;

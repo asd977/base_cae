@@ -33,9 +33,10 @@ private:
     void newIsosurfaceSegmentationWidget();
     void newAnimationAviWidget();
     void newDerivedValueSettingWidget();
+    VisualWidgetService *visualService();
 
 private:
-    VisualWidgetService *m_visualService;
+    VisualWidgetService *m_visualService{nullptr};
     NephogramSettingWidget *m_nephogramSettingWidget;
 
     VectorSettingWidget *m_vectorSettingWidget;
