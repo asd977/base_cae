@@ -21,6 +21,8 @@
         <file>resources/outputWidgetBtn/btn_emil.png</file>
         <file>resources/btn_up.png</file>
         <file>resources/down_arrow.png</file>
+        <file>resources/arrow_up_drawn.svg</file>
+        <file>resources/arrow_down_drawn.svg</file>
         <file>resources/settingWidgetBtn/btn_clear.png</file>
         <file>resources/settingWidgetBtn/btn_delete.png</file>
         <file>resources/settingWidgetBtn/btn_file.png</file>
