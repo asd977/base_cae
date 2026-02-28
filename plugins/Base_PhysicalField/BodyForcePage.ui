@@ -13,6 +13,64 @@
   <property name="windowTitle">
    <string>体积力荷载</string>
   </property>
+  <property name="styleSheet">
+   <string notr="true">QWidget {
+    font-family: &quot;Microsoft YaHei&quot;, &quot;微软雅黑&quot;;
+    font-size: 14px;
+    color: rgb(51, 51, 51);
+}
+QLabel {
+    color: rgb(51, 51, 51);
+}
+QLabel#pageNameLabel {
+    font-size: 20px;
+    color: rgb(53, 103, 147);
+    padding-left: 9px;
+}
+QPushButton {
+    background-color: rgb(224, 233, 244);
+    border: 1px solid rgb(169, 169, 169);
+    border-radius: 2px;
+    min-height: 30px;
+    padding: 0 10px;
+}
+QPushButton:hover {
+    background-color: rgb(210, 224, 241);
+}
+QPushButton:pressed {
+    background-color: rgb(196, 214, 234);
+}
+QPushButton#pushButton {
+    border-left: none;
+    border-right: none;
+    border-radius: 0;
+    text-align: left;
+    padding-left: 15px;
+    font-size: 17px;
+}
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QDateTimeEdit {
+    border: 1px solid rgb(200, 200, 200);
+    border-radius: 2px;
+    min-height: 28px;
+    padding: 0 6px;
+    background: rgb(255, 255, 255);
+}
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QDateTimeEdit:focus {
+    border: 1px solid rgb(100, 100, 255);
+}
+QGroupBox {
+    border: 1px solid rgb(210, 210, 210);
+    border-radius: 4px;
+    margin-top: 10px;
+    padding-top: 8px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 4px;
+    color: rgb(53, 103, 147);
+}</string>
+  </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
     <widget class="QComboBox" name="comboBoxDim"/>
