@@ -13,7 +13,117 @@
   <property name="windowTitle">
    <string>腐蚀类型选择</string>
   </property>
+  <property name="styleSheet">
+   <string notr="true">QWidget{
+font-family: &quot;Microsoft YaHei&quot;, &quot;微软雅黑&quot;;
+}
+QPushButton#pushButton {
+    background-color: rgb(224, 233, 244);
+    border-width: 1px;
+    border-color: rgb(121, 121, 121);
+    border-style: solid;
+    height: 33px;
+    border-top: 1px solid rgb(169, 169, 169);
+    border-bottom: 1px solid rgb(169, 169, 169);
+    border-left: none;
+    border-right: none;
+    text-align: left;
+	padding-left: 15px;
+	font-size: 17px;
+}
+QLabel {
+    font-family: &quot;Microsoft YaHei&quot;, &quot;微软雅黑&quot;;
+    font-size: 17px;
+    text-align: left;
+    color: rgb(51, 51, 51);
+}
+QLabel#pageNameLabel {
+    font-size: 20px;
+    font-family: &quot;Microsoft YaHei&quot;, 微软雅黑;
+    text-align: left;
+	padding-left:9px;
+    color: rgb(53, 103, 147);
+}
+QLineEdit, QDoubleSpinBox, QSpinBox {
+    border: 1px solid rgb(200, 200, 200);
+    border-radius: 2px;
+	font-size: 17px;
+    min-height: 30px;
+}
+QLineEdit:focus, QDoubleSpinBox:focus, QSpinBox:focus {
+    border-color: rgb(100, 100, 255);
+    outline: none;
+}
+QComboBox {
+    font-family: &quot;Microsoft YaHei&quot;, 微软雅黑;
+    font-size: 17px;
+    text-align: left;
+    color: rgb(51, 51, 51);
+    padding-left:6px;
+    background: rgb(240, 240, 240);
+    border: 1px solid rgb(169, 169, 169);
+    border-radius: 3px;
+    min-height: 30px;
+}
+QComboBox::drop-down {
+    background: rgb(240, 240, 240);
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    border-top-right-radius: 3px;
+    border-bottom-right-radius: 3px;
+}
+QComboBox::down-arrow {
+    image: url(:/resources/down_arrow.png);
+}
+QRadioButton, QCheckBox, QGroupBox {
+    font-size: 17px;
+}
+QTableWidget {
+    font-size: 16px;
+    gridline-color: rgb(210, 210, 210);
+}
+
+</string>
+  </property>
   <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <item>
+    <widget class="QLabel" name="pageNameLabel">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <property name="text">
+      <string>约束与荷载</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="pushButton">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <property name="text">
+      <string>腐蚀类型选择</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QWidget" name="contentWidget" native="true">
+     <layout class="QVBoxLayout" name="contentLayout">
    <item>
     <widget class="QPushButton" name="testPushButton">
      <property name="text">
@@ -22,7 +132,7 @@
     </widget>
    </item>
    <item>
-    <widget class="QPushButton" name="pushButton">
+    <widget class="QPushButton" name="dataPushButton">
      <property name="text">
       <string>test(IIWL.DAT)</string>
      </property>
@@ -52,7 +162,10 @@
       </widget>
      </item>
     </layout>
+   </item>     </layout>
+    </widget>
    </item>
+
    <item>
     <spacer name="verticalSpacer">
      <property name="sizeHint" stdset="0">
