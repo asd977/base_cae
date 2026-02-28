@@ -61,9 +61,9 @@ private:
 
 private:
 	QMap<QString, std::function<BasePage* (QString title)>> m_pageFactory;
-	ProjectNode *m_geomNode;
-	ProjectNode *m_gridNode;
-    UiFrameService *m_uiFrameService;
+	ProjectNode *m_geomNode = nullptr;
+	ProjectNode *m_gridNode = nullptr;
+    UiFrameService *m_uiFrameService = nullptr;
 
     void toggleVisible(const QString& uuid);
     void removeNode(const QString& uuid);

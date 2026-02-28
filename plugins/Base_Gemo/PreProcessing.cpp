@@ -109,11 +109,13 @@
 PreProcessing::PreProcessing()
 {
 	ServiceRegistry::instance().registerService<PreProcessingService>(this);
+
+    // Ribbon 事件绑定依赖 UiFrameService，必须先取服务再注册。
+    m_uiFrameService  = ServiceRegistry::instance().getService<UiFrameService>();
+
 	initPageFactory();
     initRibbonActionConn();
     initTreeMenu();
-
-    m_uiFrameService  = ServiceRegistry::instance().getService<UiFrameService>();
 }
 
 void PreProcessing::initPageFactory() 
