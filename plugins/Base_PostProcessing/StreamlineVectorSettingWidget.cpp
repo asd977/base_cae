@@ -7,6 +7,7 @@
 
 #include <vtkActor.h>
 #include <vtkDataArray.h>
+#include <vtkFloatArray.h>
 #include <vtkLookupTable.h>
 #include <vtkPointData.h>
 #include <vtkPointSource.h>
@@ -20,6 +21,7 @@
 #include <vtkXMLUnstructuredGridReader.h>
 
 #include <cmath>
+#include <QSet>
 
 namespace {
 const QString kFixedVtuPath = QStringLiteral("C:/tool/123/test.vtu");
@@ -92,6 +94,7 @@ bool StreamlineVectorSettingWidget::preparePointVectors(vtkUnstructuredGrid* gri
         return true;
     }
 
+    // 1) 直接使用已有 3 分量数组
     for (int i = 0; i < pd->GetNumberOfArrays(); ++i) {
         auto* arr = pd->GetArray(i);
         if (!arr || arr->GetNumberOfComponents() < 3) continue;
@@ -99,7 +102,97 @@ bool StreamlineVectorSettingWidget::preparePointVectors(vtkUnstructuredGrid* gri
         return true;
     }
 
-    return false;
+    // 2) 从三个标量数组拼接向量（优先 X/Y/Z 命名）
+    struct ScalarArrayInfo {
+        QString name;
+        vtkDataArray* arr{nullptr};
+    };
+
+    QList<ScalarArrayInfo> scalars;
+    for (int i = 0; i < pd->GetNumberOfArrays(); ++i) {
+        auto* arr = pd->GetArray(i);
+        const char* n = pd->GetArrayName(i);
+        if (!arr || arr->GetNumberOfComponents() != 1 || !n || !*n) continue;
+        if (arr->GetNumberOfTuples() != grid->GetNumberOfPoints()) continue;
+        scalars.push_back({QString::fromUtf8(n), arr});
+    }
+    if (scalars.size() < 3) return false;
+
+    auto endsWithAxis = [](const QString& name, const QString& axis)->bool {
+        const QString n = name.toLower();
+        return n.endsWith("_" + axis) || n.endsWith("." + axis) || n.endsWith(axis);
+    };
+
+    auto commonBase = [](const QString& name)->QString {
+        QString n = name;
+        n = n.toLower();
+        if (n.endsWith("_x") || n.endsWith("_y") || n.endsWith("_z") ||
+            n.endsWith(".x") || n.endsWith(".y") || n.endsWith(".z")) {
+            n.chop(2);
+            return n;
+        }
+        if (n.endsWith("x") || n.endsWith("y") || n.endsWith("z")) {
+            n.chop(1);
+            return n;
+        }
+        return QString();
+    };
+
+    vtkDataArray* arrX = nullptr;
+    vtkDataArray* arrY = nullptr;
+    vtkDataArray* arrZ = nullptr;
+
+    // 优先按公共前缀 + XYZ 配对
+    QSet<QString> bases;
+    for (const auto& s : scalars) {
+        const QString b = commonBase(s.name);
+        if (!b.isEmpty()) bases.insert(b);
+    }
+    for (const QString& b : bases) {
+        for (const auto& s : scalars) {
+            const QString lower = s.name.toLower();
+            if (arrX == nullptr && commonBase(lower) == b && endsWithAxis(lower, "x")) arrX = s.arr;
+            if (arrY == nullptr && commonBase(lower) == b && endsWithAxis(lower, "y")) arrY = s.arr;
+            if (arrZ == nullptr && commonBase(lower) == b && endsWithAxis(lower, "z")) arrZ = s.arr;
+        }
+        if (arrX && arrY && arrZ) break;
+        arrX = arrY = arrZ = nullptr;
+    }
+
+    // 回退：尝试名称正好是 x/y/z 或 u/v/w
+    if (!(arrX && arrY && arrZ)) {
+        for (const auto& s : scalars) {
+            const QString n = s.name.toLower();
+            if (!arrX && (n == "x" || n == "u" || n.endsWith("_u"))) arrX = s.arr;
+            if (!arrY && (n == "y" || n == "v" || n.endsWith("_v"))) arrY = s.arr;
+            if (!arrZ && (n == "z" || n == "w" || n.endsWith("_w"))) arrZ = s.arr;
+        }
+    }
+
+    // 最后回退：取前三个标量数组
+    if (!(arrX && arrY && arrZ)) {
+        arrX = scalars[0].arr;
+        arrY = scalars[1].arr;
+        arrZ = scalars[2].arr;
+    }
+
+    if (!(arrX && arrY && arrZ)) return false;
+
+    auto vec = vtkSmartPointer<vtkFloatArray>::New();
+    vec->SetName("AutoVector");
+    vec->SetNumberOfComponents(3);
+    vec->SetNumberOfTuples(grid->GetNumberOfPoints());
+
+    for (vtkIdType i = 0; i < grid->GetNumberOfPoints(); ++i) {
+        const double x = arrX->GetComponent(i, 0);
+        const double y = arrY->GetComponent(i, 0);
+        const double z = arrZ->GetComponent(i, 0);
+        vec->SetTuple3(i, static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
+    }
+
+    pd->AddArray(vec);
+    pd->SetVectors(vec);
+    return true;
 }
 
 void StreamlineVectorSettingWidget::buildStreamline()
