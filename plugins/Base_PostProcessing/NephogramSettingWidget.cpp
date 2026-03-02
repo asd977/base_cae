@@ -58,6 +58,7 @@
 namespace {
 const QStringList kResultDirectories = {"SEEPCASE01"};
 const QStringList kPreferredResultFiles = {"TEC_HP.DAT","TEC_VELO.DAT"};
+const QString kFixedNephogramVtuPath = QStringLiteral("C:/tool/123/test.vtu");
 }
 
 NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService *postProcessingWidget, QWidget *parent)
@@ -216,21 +217,27 @@ void NephogramSettingWidget::loadFileName(const QString& dataPath)
     ui->stepComboBox->clear();
     m_stepFileMap.clear();
 
+    // 固定云图文件：C:/tool/123/test.vtu
+    if (QFileInfo::exists(kFixedNephogramVtuPath)) {
+        const QString stepName = QStringLiteral("test(vtu)");
+        m_stepFileMap.insert(stepName, kFixedNephogramVtuPath);
+        ui->stepComboBox->addItem(stepName);
+    }
+
     QDir directory(dataPath);
     if (!directory.exists()) {
         qWarning() << "Directory not found:" << dataPath;
-        ui->stepComboBox->blockSignals(false);
-        fillCompareCombosFromSteps();
-        return;
-    }
-
-    // 优先加载指定文件名（后续扩展时只改这里）
-    for (const QString& name : kPreferredResultFiles) {
-        const QString fullPath = directory.filePath(name);
-        if (QFileInfo::exists(fullPath)) {
-            const QString stepName = QFileInfo(fullPath).completeBaseName();
-            m_stepFileMap.insert(stepName, fullPath);
-            ui->stepComboBox->addItem(stepName);
+    } else {
+        // 优先加载指定文件名（后续扩展时只改这里）
+        for (const QString& name : kPreferredResultFiles) {
+            const QString fullPath = directory.filePath(name);
+            if (QFileInfo::exists(fullPath)) {
+                const QString stepName = QFileInfo(fullPath).completeBaseName();
+                if (!m_stepFileMap.contains(stepName)) {
+                    m_stepFileMap.insert(stepName, fullPath);
+                    ui->stepComboBox->addItem(stepName);
+                }
+            }
         }
     }
 
@@ -241,7 +248,8 @@ void NephogramSettingWidget::loadFileName(const QString& dataPath)
         on_stepComboBox_currentIndexChanged(ui->stepComboBox->currentIndex());
     } else {
         ui->scalarComboBox->clear();
-        qWarning() << "No configured result files found in" << dataPath;
+        qWarning() << "No configured result files found in" << dataPath
+                   << "and fixed file missing:" << kFixedNephogramVtuPath;
     }
 
     fillCompareCombosFromSteps();
