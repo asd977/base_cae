@@ -126,6 +126,7 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
     vtkScalarBarActor* scalarBar = m_visualService ? m_visualService->scalarBarActor() : nullptr;
     if (!scalarBar) return;
     if (auto* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable())) {
+        scalarBar->SetVisibility(1);
         lut->SetTableRange(range);
         lut->Build();
         scalarBar->SetTitle(m_currentArrayName.toUtf8().constData());
@@ -505,6 +506,7 @@ void NephogramSettingWidget::syncScalarBarForCompare(vtkDataArray* leftArr, vtkD
     vtkScalarBarActor* scalarBar = m_visualService ? m_visualService->scalarBarActor() : nullptr;
     if (!scalarBar) return;
     if (auto* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable())) {
+        scalarBar->SetVisibility(1);
         lut->SetTableRange(minV, maxV);
         lut->Build();
         scalarBar->SetTitle(m_currentArrayName.toUtf8().constData());

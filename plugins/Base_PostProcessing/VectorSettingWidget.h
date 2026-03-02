@@ -32,6 +32,7 @@ private slots:
     void on_scaleSlider_valueChanged(int value);
 
     void on_stepComboBox_currentIndexChanged(int index);
+    void on_streamlinePushButton_clicked();
 private:
     Ui::VectorSettingWidget *ui{nullptr};
     VisualWidgetService* m_visualService{nullptr};
@@ -40,6 +41,7 @@ private:
     vtkSmartPointer<vtkUnstructuredGrid> m_grid;       // 合并后的网格
     vtkSmartPointer<vtkActor>            m_vectorActor; // 当前矢量 actor
     vtkSmartPointer<vtkGlyph3D>          m_glyph;       // 持有以便动态改缩放
+    vtkSmartPointer<vtkActor>            m_streamlineActor; // 流线 actor
 
     double m_scaleFactor{0.5}; // 对应 slider 值 / 100.0
     int    m_maskOnRatio{1};
@@ -59,6 +61,7 @@ private:
     void loadFileName(QString dataPath);
     double computeAutoBaseScale(vtkUnstructuredGrid *grid);
     vtkSmartPointer<vtkUnstructuredGrid> readVtu(const QString &fileName);
+    void buildStreamlineFromFixedFile();
 };
 
 #endif // VECTORSETTINGWIDGET_H
