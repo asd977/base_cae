@@ -89,6 +89,11 @@ void DisplacementConstraintWidget::beforeLoad()
                      this, &DisplacementConstraintWidget::onDimChanged, Qt::UniqueConnection);
     QObject::connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged),
                      this, &DisplacementConstraintWidget::onGroupChanged, Qt::UniqueConnection);
+    QObject::connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::activated),
+                     this, &DisplacementConstraintWidget::onGroupChanged, Qt::UniqueConnection);
+
+    // 进入页面后立即同步一次当前组，避免“下拉有值但未应用”导致看起来无响应。
+    onGroupChanged(ui->comboBoxGroup->currentIndex());
 }
 
 
@@ -118,6 +123,7 @@ void DisplacementConstraintWidget::refreshGroupCombo(int dimFilter)
 void DisplacementConstraintWidget::onDimChanged(int)
 {
     refreshGroupCombo(ui->comboBoxDim->currentData().toInt());
+    onGroupChanged(ui->comboBoxGroup->currentIndex());
 }
 
 void DisplacementConstraintWidget::onGroupChanged(int index)
@@ -145,7 +151,19 @@ void DisplacementConstraintWidget::onGroupChanged(int index)
     for (int pid : pointIdsInt) pids.push_back(vtkIdType(pid));
 
     // 传给 PickManager：replace = true（下拉框就是“一键换一组”）
-    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pids, true);
+    // 兼容仅有 Line 网格可拾取的场景：组选择时同步写入当前存在的网格类型。
+    PickManager& pm = PickManager::instance();
+    const bool hasSolidGrid = (pm.solidGrid() != nullptr);
+    const bool hasLineGrid  = (pm.lineGrid()  != nullptr);
+
+    if (hasSolidGrid)
+        pm.setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pids, true);
+    if (hasLineGrid)
+        pm.setSelectedPointIds(getPageType(), m_uuid, GridKind::Line,  pids, true);
+
+    // 如果两种网格都不存在（极端场景），兜底按 Solid 写入，避免静默无效。
+    if (!hasSolidGrid && !hasLineGrid)
+        pm.setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pids, true);
 
     // 如果你希望同步 UI（比如显示数量）
     // ui->SelectedCountLabel->setText(QString::number(pids.size()));
