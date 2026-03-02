@@ -8,8 +8,10 @@
 #include <vtkActor.h>
 #include <vtkDataArray.h>
 #include <vtkDataSetMapper.h>
+#include <vtkDataSetSurfaceFilter.h>
 #include <vtkLookupTable.h>
 #include <vtkPointData.h>
+#include <vtkPolyDataMapper.h>
 #include <vtkProperty.h>
 #include <vtkScalarBarActor.h>
 #include <vtkUnstructuredGrid.h>
@@ -115,8 +117,12 @@ void StreamlineVectorSettingWidget::buildNephogram()
     double range[2] = {0.0, 1.0};
     arr->GetRange(range);
 
-    auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
-    mapper->SetInputData(grid);
+    auto surface = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+    surface->SetInputData(grid);
+    surface->Update();
+
+    auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    mapper->SetInputConnection(surface->GetOutputPort());
     mapper->SetScalarModeToUsePointFieldData();
     mapper->SelectColorArray(scalarName.toUtf8().constData());
     mapper->SetScalarRange(range);
@@ -129,6 +135,7 @@ void StreamlineVectorSettingWidget::buildNephogram()
     m_nephogramActor = vtkSmartPointer<vtkActor>::New();
     m_nephogramActor->SetMapper(mapper);
     m_nephogramActor->GetProperty()->SetRepresentationToSurface();
+    m_nephogramActor->GetProperty()->EdgeVisibilityOff();
 
     if (m_visualService) {
         auto* sb = m_visualService->scalarBarActor();
