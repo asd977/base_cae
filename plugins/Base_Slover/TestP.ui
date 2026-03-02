@@ -1,0 +1,308 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>TestPage</class>
+ <widget class="QWidget" name="TestPage">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>400</width>
+    <height>736</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QWidget{
+font-family: &quot;Microsoft YaHei&quot;, &quot;微软雅黑&quot;;
+}
+QPushButton {
+    font-size: 17px;
+    min-height: 32px;
+}
+QPushButton#pushButton,
+QPushButton#pushButton_2,
+QPushButton#pushButton_3 {
+    background-color: rgb(224, 233, 244);
+    border-width: 1px;
+    border-color: rgb(121, 121, 121);
+    border-style: solid;
+    min-height: 33px;
+    border-top: 1px solid rgb(169, 169, 169);
+    border-bottom: 1px solid rgb(169, 169, 169);
+    border-left: none;
+    border-right: none;
+    text-align: left;
+    padding-left: 15px;
+    font-size: 17px;
+}
+QLabel {
+    font-size: 17px;
+    color: rgb(51, 51, 51);
+}
+QLabel#pageNameLabel {
+    font-size: 20px;
+    padding-left: 9px;
+    color: rgb(53, 103, 147);
+}
+QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox, QDateTimeEdit {
+    border: 1px solid rgb(200, 200, 200);
+    border-radius: 2px;
+    font-size: 17px;
+    min-height: 30px;
+}
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus,
+QSpinBox:focus, QDoubleSpinBox:focus, QDateTimeEdit:focus {
+    border-color: rgb(100, 100, 255);
+    outline: none;
+}
+QComboBox {
+    font-size: 17px;
+    color: rgb(51, 51, 51);
+    padding-left: 6px;
+    background: rgb(240, 240, 240);
+    border: 1px solid rgb(169, 169, 169);
+    border-radius: 3px;
+    min-height: 30px;
+}
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 20px;
+    background: rgb(240, 240, 240);
+    border-left: 1px solid rgb(190, 190, 190);
+}
+QComboBox::down-arrow {
+    image: url(:/resources/arrow_down_drawn.svg);
+    width: 12px;
+    height: 12px;
+}
+QSpinBox::up-button, QDoubleSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 18px;
+    border-left: 1px solid rgb(190, 190, 190);
+    border-bottom: 1px solid rgb(210, 210, 210);
+    background: rgb(240, 240, 240);
+}
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 18px;
+    border-left: 1px solid rgb(190, 190, 190);
+    background: rgb(240, 240, 240);
+}
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+    image: url(:/resources/arrow_up_drawn.svg);
+    width: 10px;
+    height: 10px;
+}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+    image: url(:/resources/arrow_down_drawn.svg);
+    width: 10px;
+    height: 10px;
+}
+QRadioButton, QCheckBox, QGroupBox {
+    font-size: 17px;
+}
+QTableWidget, QTreeWidget, QListWidget {
+    font-size: 16px;
+    gridline-color: rgb(210, 210, 210);
+}
+
+</string>
+  </property>
+  <layout class="QGridLayout" name="gridLayout">
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
+   <item row="9" column="0" colspan="2">
+    <widget class="QPushButton" name="pushButton_3">
+     <property name="text">
+      <string>上游属性</string>
+     </property>
+    </widget>
+   </item>
+   <item row="10" column="0" colspan="2">
+    <widget class="QWidget" name="widget_2" native="true">
+     <layout class="QHBoxLayout" name="horizontalLayout_2">
+      <item>
+       <widget class="QLabel" name="label_5">
+        <property name="text">
+         <string>上游温度：</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLineEdit" name="lineEdit_2"/>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_6">
+        <property name="text">
+         <string>K</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item row="1" column="0" colspan="2">
+    <widget class="QPushButton" name="pushButton">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <property name="text">
+      <string>边界选择</string>
+     </property>
+    </widget>
+   </item>
+   <item row="8" column="0" colspan="2">
+    <widget class="QWidget" name="widget" native="true">
+     <layout class="QGridLayout" name="gridLayout_2">
+      <item row="0" column="1">
+       <widget class="QRadioButton" name="radioButton_2">
+        <property name="text">
+         <string>流率</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="0">
+       <widget class="QRadioButton" name="radioButton">
+        <property name="text">
+         <string>平均速度</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="2">
+       <widget class="QRadioButton" name="radioButton_3">
+        <property name="text">
+         <string>平均压力</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0" colspan="3">
+       <layout class="QHBoxLayout" name="horizontalLayout">
+        <item>
+         <widget class="QLabel" name="label_3">
+          <property name="text">
+           <string>U&lt;sub&gt;av&lt;/sub&gt;</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="lineEdit">
+          <property name="text">
+           <string>1.5</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_4">
+          <property name="text">
+           <string>m/s</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item row="0" column="0" colspan="2">
+    <widget class="QLabel" name="pageNameLabel">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <property name="text">
+      <string>入口设置</string>
+     </property>
+    </widget>
+   </item>
+   <item row="11" column="1">
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+   <item row="7" column="0" colspan="2">
+    <widget class="QPushButton" name="pushButton_2">
+     <property name="text">
+      <string>充分发展的流动</string>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="0" colspan="2">
+    <widget class="QWidget" name="widget_3" native="true">
+     <layout class="QGridLayout" name="gridLayout_3">
+      <item row="0" column="1">
+       <widget class="QComboBox" name="comboBoxDim">
+        <item>
+         <property name="text">
+          <string>线</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="label">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>分组：</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_2">
+        <property name="text">
+         <string>选择：</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="comboBoxGroup">
+        <item>
+         <property name="text">
+          <string>1</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item row="2" column="0" colspan="2">
+       <widget class="QListView" name="listView"/>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

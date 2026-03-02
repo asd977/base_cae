@@ -664,46 +664,46 @@ void UiFrame::buildRibbonTabs()
     // =========================
     // 约束与荷载
     // =========================
-    {
-        auto* cate = m_ribbon->addCategoryPage("约束与荷载");
-        cate->setObjectName("boundObj");
+//    {
+//        auto* cate = m_ribbon->addCategoryPage("约束与荷载");
+//        cate->setObjectName("boundObj");
 
-        auto* panelConstraint = cate->addPannel("约束");
-        auto* actDisplacement = makeAction(this, ":/resources/menu/minimal/constraint.svg", "&位移约束");
-        addActionToPanel(panelConstraint, actDisplacement, 2);
-        bindEvent(this, actDisplacement, PublicConstants::kActionPhysicalDisplacementConstraint);
+//        auto* panelConstraint = cate->addPannel("约束");
+//        auto* actDisplacement = makeAction(this, ":/resources/menu/minimal/constraint.svg", "&位移约束");
+//        addActionToPanel(panelConstraint, actDisplacement, 2);
+//        bindEvent(this, actDisplacement, PublicConstants::kActionPhysicalDisplacementConstraint);
 
-        auto* panelLoad = cate->addPannel("荷载");
-        auto* actGeoStressPoint = makeAction(this, ":/resources/menu/minimal/load-geostress-point.svg", "&现场地应力信息");
-        auto* actGeoStressFitFace = makeAction(this, ":/resources/menu/minimal/load-geostress-face.svg", "&梯形边界荷载");
-        auto* actBodyForce = makeAction(this, ":/resources/menu/minimal/load-body-force.svg", "&体积力荷载");
-        auto* actConcentratedForce = makeAction(this, ":/resources/menu/minimal/load-concentrated.svg", "&集中力荷载");
-        auto* actLinearForce = makeAction(this, ":/resources/menu/minimal/load-linear.svg", "&线力荷载");
-        auto* actSurfaceForce = makeAction(this, ":/resources/menu/minimal/load-surface.svg", "&面力荷载");
-        auto* actTemperatureLoad = makeAction(this, ":/resources/menu/minimal/load-temperature.svg", "&变温荷载");
-        auto* actBeamLoad = makeAction(this, ":/resources/menu/minimal/load-beam.svg", "&梁单元荷载");
-        auto* actSeismicAndAddedMass = makeAction(this, ":/resources/menu/minimal/load-seismic.svg", "&地震加速度表");
+//        auto* panelLoad = cate->addPannel("荷载");
+//        auto* actGeoStressPoint = makeAction(this, ":/resources/menu/minimal/load-geostress-point.svg", "&现场地应力信息");
+//        auto* actGeoStressFitFace = makeAction(this, ":/resources/menu/minimal/load-geostress-face.svg", "&梯形边界荷载");
+//        auto* actBodyForce = makeAction(this, ":/resources/menu/minimal/load-body-force.svg", "&体积力荷载");
+//        auto* actConcentratedForce = makeAction(this, ":/resources/menu/minimal/load-concentrated.svg", "&集中力荷载");
+//        auto* actLinearForce = makeAction(this, ":/resources/menu/minimal/load-linear.svg", "&线力荷载");
+//        auto* actSurfaceForce = makeAction(this, ":/resources/menu/minimal/load-surface.svg", "&面力荷载");
+//        auto* actTemperatureLoad = makeAction(this, ":/resources/menu/minimal/load-temperature.svg", "&变温荷载");
+//        auto* actBeamLoad = makeAction(this, ":/resources/menu/minimal/load-beam.svg", "&梁单元荷载");
+//        auto* actSeismicAndAddedMass = makeAction(this, ":/resources/menu/minimal/load-seismic.svg", "&地震加速度表");
 
-        addActionToPanel(panelLoad, actGeoStressPoint, 3);
-        addActionToPanel(panelLoad, actGeoStressFitFace, 3);
-        addActionToPanel(panelLoad, actBodyForce, 3);
-        addActionToPanel(panelLoad, actConcentratedForce, 3);
-        addActionToPanel(panelLoad, actLinearForce, 3);
-        addActionToPanel(panelLoad, actSurfaceForce, 3);
-        addActionToPanel(panelLoad, actTemperatureLoad, 3);
-        addActionToPanel(panelLoad, actBeamLoad, 3);
-        addActionToPanel(panelLoad, actSeismicAndAddedMass, 3);
+//        addActionToPanel(panelLoad, actGeoStressPoint, 3);
+//        addActionToPanel(panelLoad, actGeoStressFitFace, 3);
+//        addActionToPanel(panelLoad, actBodyForce, 3);
+//        addActionToPanel(panelLoad, actConcentratedForce, 3);
+//        addActionToPanel(panelLoad, actLinearForce, 3);
+//        addActionToPanel(panelLoad, actSurfaceForce, 3);
+//        addActionToPanel(panelLoad, actTemperatureLoad, 3);
+//        addActionToPanel(panelLoad, actBeamLoad, 3);
+//        addActionToPanel(panelLoad, actSeismicAndAddedMass, 3);
 
-        bindEvent(this, actGeoStressPoint, PublicConstants::kActionPhysicalGeoStressPoint);
-        bindEvent(this, actGeoStressFitFace, PublicConstants::kActionPhysicalGeoStressFitFace);
-        bindEvent(this, actBodyForce, PublicConstants::kActionPhysicalBodyForce);
-        bindEvent(this, actConcentratedForce, PublicConstants::kActionPhysicalConcentratedForce);
-        bindEvent(this, actLinearForce, PublicConstants::kActionPhysicalLinearForce);
-        bindEvent(this, actSurfaceForce, PublicConstants::kActionPhysicalSurfaceForce);
-        bindEvent(this, actTemperatureLoad, PublicConstants::kActionPhysicalTemperatureLoad);
-        bindEvent(this, actBeamLoad, PublicConstants::kActionPhysicalBeamLoad);
-        bindEvent(this, actSeismicAndAddedMass, PublicConstants::kActionPhysicalSeismicAndAddedMass);
-    }
+//        bindEvent(this, actGeoStressPoint, PublicConstants::kActionPhysicalGeoStressPoint);
+//        bindEvent(this, actGeoStressFitFace, PublicConstants::kActionPhysicalGeoStressFitFace);
+//        bindEvent(this, actBodyForce, PublicConstants::kActionPhysicalBodyForce);
+//        bindEvent(this, actConcentratedForce, PublicConstants::kActionPhysicalConcentratedForce);
+//        bindEvent(this, actLinearForce, PublicConstants::kActionPhysicalLinearForce);
+//        bindEvent(this, actSurfaceForce, PublicConstants::kActionPhysicalSurfaceForce);
+//        bindEvent(this, actTemperatureLoad, PublicConstants::kActionPhysicalTemperatureLoad);
+//        bindEvent(this, actBeamLoad, PublicConstants::kActionPhysicalBeamLoad);
+//        bindEvent(this, actSeismicAndAddedMass, PublicConstants::kActionPhysicalSeismicAndAddedMass);
+//    }
 
     // =========================
     // 分析

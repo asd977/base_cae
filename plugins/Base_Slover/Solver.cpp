@@ -1,9 +1,10 @@
-#include "Solver.h"
+﻿#include "Solver.h"
 
 #include "SeepageBoundaryPage.h"
 #include "SeepageWidget.h"
 #include "StressBoundaryPage.h"
 #include "StressStrainWidget.h"
+#include "TestP.h"
 
 #include <EventManager.h>
 #include <PublicConstants.h>
@@ -34,6 +35,28 @@ void Solver::newProject()
     m_root = new ProjectNode("计算分析", QUuid::createUuid().toString(), nullptr);
     ProjectManagerService* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
     projectManagerService->addTreeItem(m_root);
+
+    TestPage *page = new TestPage;
+
+    ProjectNode *node =nullptr;
+    node = new ProjectNode("换热器（1）", QUuid::createUuid().toString(), nullptr);
+    projectManagerService->addTreeItem(m_root);
+
+    node = new ProjectNode("流体和传热属性", QUuid::createUuid().toString(), nullptr);
+    m_root->addChild(node);
+    node = new ProjectNode("入口（1）", QUuid::createUuid().toString(), page);
+    m_root->addChild(node);
+    node = new ProjectNode("入口（2）", QUuid::createUuid().toString(), nullptr);
+    m_root->addChild(node);
+    node = new ProjectNode("出口", QUuid::createUuid().toString(), nullptr);
+    m_root->addChild(node);
+    node = new ProjectNode("对称", QUuid::createUuid().toString(), nullptr);
+    m_root->addChild(node);
+    node = new ProjectNode("流体内壁", QUuid::createUuid().toString(), nullptr);
+    m_root->addChild(node);
+    node = new ProjectNode("热薄层边界", QUuid::createUuid().toString(), nullptr);
+    m_root->addChild(node);
+
 }
 
 bool Solver::saveProject()

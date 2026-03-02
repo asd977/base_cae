@@ -9,20 +9,23 @@ HEADERS += \
     SeepageWidget.h \
     Solver.h \
     StressBoundaryPage.h \
-    StressStrainWidget.h
+    StressStrainWidget.h \
+    TestP.h
 
 SOURCES += \
     SeepageBoundaryPage.cpp \
     SeepageWidget.cpp \
     Solver.cpp \
     StressBoundaryPage.cpp \
-    StressStrainWidget.cpp
+    StressStrainWidget.cpp \
+    TestP.cpp
 
 FORMS += \
     SeepageBoundaryPage.ui \
     SeepageWidget.ui \
     StressBoundaryPage.ui \
-    StressStrainWidget.ui
+    StressStrainWidget.ui \
+    TestP.ui
 
 RESOURCES += \
     ../../res.qrc

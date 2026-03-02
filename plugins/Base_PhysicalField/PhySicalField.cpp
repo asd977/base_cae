@@ -244,18 +244,18 @@ void PhysicalField::intitTreeMenu()
 
 void PhysicalField::newProject()
 {
-    auto *physicalFieldSettingWidget = new PhysicalFieldSettingWidget;
+//    auto *physicalFieldSettingWidget = new PhysicalFieldSettingWidget;
 
-    QString uuid = QUuid::createUuid().toString();
-    m_node = new ProjectNode("约束与荷载", uuid, (BasePage*)physicalFieldSettingWidget);
+//    QString uuid = QUuid::createUuid().toString();
+//    m_node = new ProjectNode("约束与荷载", uuid, (BasePage*)physicalFieldSettingWidget);
 
-    // 关键：把上下文写进 item data
-    m_node->setData(0, ProjectNode::RoleUuid,   m_node->getUuid());
-    m_node->setData(0, ProjectNode::RoleModule, "PhysicalField");
-    m_node->setData(0, ProjectNode::RoleKind,   "PhysicalFieldRoot");
+//    // 关键：把上下文写进 item data
+//    m_node->setData(0, ProjectNode::RoleUuid,   m_node->getUuid());
+//    m_node->setData(0, ProjectNode::RoleModule, "PhysicalField");
+//    m_node->setData(0, ProjectNode::RoleKind,   "PhysicalFieldRoot");
 
-    auto *projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
-    projectManagerService->addTreeItem(m_node);
+//    auto *projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
+//    projectManagerService->addTreeItem(m_node);
 
 }
 
