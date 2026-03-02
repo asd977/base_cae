@@ -7,6 +7,7 @@
 #include <QLabel>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
+#include <QGridLayout>
 #include <QResizeEvent>
 
 #include <cmath>
@@ -44,15 +45,11 @@ VisualizationWidget::VisualizationWidget(QWidget* parent)
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
 
-    qDebug()<<"test1";
     m_vtkWidget = new QVTKOpenGLNativeWidget(this);
-    qDebug()<<"test2";
     layout->addWidget(m_vtkWidget);
 
-    qDebug()<<"test3";
     initVtk();
     initViewToolbar();
-    qDebug()<<"test4";
 
     UiFrameService* uiFrameService = ServiceRegistry::instance().getService<UiFrameService>();
     if (uiFrameService) {
@@ -122,17 +119,22 @@ void VisualizationWidget::initViewToolbar()
         "QToolButton:pressed { background: rgba(64, 158, 255, 75); }"
     );
 
-    auto* layout = new QVBoxLayout(m_toolbar);
+    auto* layout = new QGridLayout(m_toolbar);
     layout->setContentsMargins(8, 8, 8, 8);
     layout->setSpacing(4);
 
-    auto makeBtn = [this, layout](const QString& iconPath, const QString& tip, auto fn) {
+    int index = 0;
+    auto makeBtn = [this, layout, &index](const QString& iconPath, const QString& tip, auto fn) {
         auto* btn = new QToolButton(m_toolbar);
         btn->setIcon(QIcon(iconPath));
         btn->setIconSize(QSize(18, 18));
+        btn->setFixedSize(30, 30);
         btn->setToolTip(tip);
         connect(btn, &QToolButton::clicked, this, fn);
-        layout->addWidget(btn);
+        const int row = index / 3;
+        const int col = index % 3;
+        layout->addWidget(btn, row, col);
+        ++index;
         return btn;
     };
 
@@ -165,7 +167,7 @@ void VisualizationWidget::initViewToolbar()
 
     auto* opacityIcon = new QLabel(opacityWrap);
     opacityIcon->setPixmap(QIcon(":/resources/icon/view_opacity.svg").pixmap(16, 16));
-    opacityLayout->addWidget(opacityIcon);
+    opacityLayout->addWidget(opacityIcon, 0, Qt::AlignVCenter);
 
     m_globalOpacitySlider = new QSlider(Qt::Horizontal, opacityWrap);
     m_globalOpacitySlider->setRange(15, 100);
@@ -174,10 +176,12 @@ void VisualizationWidget::initViewToolbar()
     connect(m_globalOpacitySlider, &QSlider::valueChanged, this, [this](int value) {
         applyGlobalOpacity(static_cast<double>(value) / 100.0);
     });
-    opacityLayout->addWidget(m_globalOpacitySlider, 1);
-    layout->addWidget(opacityWrap);
+    opacityLayout->addWidget(m_globalOpacitySlider, 1, Qt::AlignVCenter);
+    layout->addWidget(opacityWrap, (index / 3) + 1, 0, 1, 3);
 
-    m_toolbar->setMinimumWidth(210);
+    m_toolbar->setFixedSize(m_toolbar->sizeHint());
+    const int margin = 12;
+    m_toolbar->move(width() - m_toolbar->width() - margin, margin);
     m_toolbar->show();
 }
 
