@@ -109,6 +109,12 @@
         <file>resources/icon/view_right.png</file>
         <file>resources/icon/view_top.png</file>
         <file>resources/icon/wireframe.png</file>
+        <file>resources/icon/view_zoom_out.svg</file>
+        <file>resources/icon/view_zoom_in.svg</file>
+        <file>resources/icon/view_rotate_right.svg</file>
+        <file>resources/icon/view_rotate_left.svg</file>
+        <file>resources/icon/view_opacity.svg</file>
+        <file>resources/icon/view_fit.svg</file>
         <file>resources/menu/DerivedValue.png</file>
         <file>resources/menu/Export.png</file>
         <file>resources/menu/File.png</file>

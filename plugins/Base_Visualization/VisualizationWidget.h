@@ -4,6 +4,7 @@
 #include <QHash>
 #include <QString>
 #include <QVBoxLayout>
+#include <QPointer>
 
 #include <services/VisualWidgetService.h>
 
@@ -22,6 +23,10 @@ class vtkProp;
 class vtkMapper;
 class vtkTransform;
 class vtkPolyData;
+class QFrame;
+class QToolButton;
+class QSlider;
+class QResizeEvent;
 
 class VisualizationWidget : public QWidget, public VisualWidgetService
 {
@@ -80,8 +85,17 @@ public:
 
     void showOrientationMarker(bool on);
 
+protected:
+    void resizeEvent(QResizeEvent* event) override;
+
 private:
     void initVtk();
+    void initViewToolbar();
+    void setCameraToAxis(double x, double y, double z);
+    void rotateCamera(double azimuthDeg, double elevationDeg);
+    void zoomCamera(double factor);
+    void updateProjectionButtonIcon();
+    void applyGlobalOpacity(double alpha, bool renderNow = true);
 
     static vtkMapper* actorMapper(vtkProp* prop);
 
@@ -108,5 +122,9 @@ private:
     vtkSmartPointer<vtkOrientationMarkerWidget> m_omw;
 
     QHash<QString, Item> m_registry;
-    void on_horizontalSliderOpacity_valueChanged(int value);
+
+    QPointer<QFrame> m_toolbar;
+    QPointer<QSlider> m_globalOpacitySlider;
+    QPointer<QToolButton> m_projectionButton;
+    bool m_isParallelProjection = false;
 };
