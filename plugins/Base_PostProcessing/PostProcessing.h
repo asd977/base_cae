@@ -28,6 +28,7 @@ private:
     void newNephogramSettingWidget();
     void initAction();
     void newVectorSettingWidget();
+    void newStreamlineVectorSettingWidget();
     void newSliceSettingWidget();
     void newBlockSettingsWidget();
     void newIsosurfaceSettingsWidget();
@@ -40,7 +41,8 @@ private:
     VisualWidgetService *m_visualService{nullptr};
     NephogramSettingWidget *m_nephogramSettingWidget;
 
-    StreamlineVectorSettingWidget *m_vectorSettingWidget;
+    VectorSettingWidget *m_vectorSettingWidget;
+    StreamlineVectorSettingWidget *m_streamlineVectorSettingWidget;
 
     SliceSettingsWidget *m_sliceSettingWidget;
 

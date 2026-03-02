@@ -734,6 +734,7 @@ void UiFrame::buildRibbonTabs()
         auto* panel = cate->addPannel("后处理操作");
         auto* actNeph = makeAction(this, ":/resources/menu/minimal/post-nephogram.svg", "&云图");
         auto* actVec  = makeAction(this, ":/resources/menu/minimal/post-vector.svg", "&矢量");
+        auto* actStreamVec = makeAction(this, ":/resources/menu/minimal/post-vector.svg", "&流线矢量图");
         auto* actSlc  = makeAction(this, ":/resources/menu/minimal/post-slice.svg", "&切面");
         auto* actDice = makeAction(this, ":/resources/menu/minimal/post-block.svg", "&切块");
         auto* actIso  = makeAction(this, ":/resources/menu/minimal/post-isosurface.svg", "&等值面");
@@ -746,6 +747,7 @@ void UiFrame::buildRibbonTabs()
 
         addActionToPanel(panel, actNeph, 2);
         addActionToPanel(panel, actVec,  2);
+        addActionToPanel(panel, actStreamVec, 2);
         addActionToPanel(panel, actSlc,  2);
         addActionToPanel(panel, actDice, 2);
         addActionToPanel(panel, actIso,  2);
@@ -758,6 +760,7 @@ void UiFrame::buildRibbonTabs()
 
         bindEvent(this, actNeph, PublicConstants::kActionPostProcessNephogram);
         bindEvent(this, actVec,  PublicConstants::kActionPostProcessVector);
+        bindEvent(this, actStreamVec, PublicConstants::kActionPostProcessStreamlineVector);
         bindEvent(this, actSlc,  PublicConstants::kActionPostProcessSection);
         bindEvent(this, actDice, PublicConstants::kActionPostProcessDice);
         bindEvent(this, actIso,  PublicConstants::kActionPostProcessIsosurface);

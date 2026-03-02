@@ -49,7 +49,7 @@ VisualWidgetService* PostProcessing::visualService()
 void PostProcessing::initPageFactory() {
     m_pageFactory.clear();
     m_pageFactory[PublicConstants::kPagePostProcessNephogram]       = [this](VisualWidgetService* host){ return new NephogramSettingWidget(host); };
-    m_pageFactory[PublicConstants::kPagePostProcessVector]          = [this](VisualWidgetService* host){ return new StreamlineVectorSettingWidget(host); };
+    m_pageFactory[PublicConstants::kPagePostProcessVector]          = [this](VisualWidgetService* host){ return new VectorSettingWidget(host); };
     m_pageFactory[PublicConstants::kPagePostProcessSlice]           = [this](VisualWidgetService* host){ return new SliceSettingsWidget(host); };
     m_pageFactory[PublicConstants::kPagePostProcessBlock]           = [this](VisualWidgetService* host){ return new BlockSettingsWidget(host); };
     m_pageFactory[PublicConstants::kPagePostProcessIsosurface]      = [this](VisualWidgetService* host){ return new IsosurfaceSettingsWidget(host); };
@@ -87,6 +87,15 @@ void PostProcessing::newNephogramSettingWidget()
 }
 
 void PostProcessing::newVectorSettingWidget()
+{
+    VectorSettingWidget *tmp = new VectorSettingWidget(visualService());
+    ProjectNode *node = new ProjectNode("矢量",QUuid::createUuid().toString(),(BasePage*)tmp);
+
+    m_root->addChild(node);
+}
+
+
+void PostProcessing::newStreamlineVectorSettingWidget()
 {
     StreamlineVectorSettingWidget *tmp = new StreamlineVectorSettingWidget(visualService());
     ProjectNode *node = new ProjectNode("流线矢量图",QUuid::createUuid().toString(),(BasePage*)tmp);
@@ -161,6 +170,9 @@ void PostProcessing::initAction()
     });
     EventManager::instance().registerHandler(PublicConstants::kActionPostProcessVector,this, [this](const QVariantMap &data) {
         this->newVectorSettingWidget();
+    });
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessStreamlineVector,this, [this](const QVariantMap &data) {
+        this->newStreamlineVectorSettingWidget();
     });
     EventManager::instance().registerHandler(PublicConstants::kActionPostProcessSection,this, [this](const QVariantMap &data) {
         this->newSliceSettingWidget();
