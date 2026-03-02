@@ -106,51 +106,71 @@ void VisualizationWidget::initViewToolbar()
     m_toolbar->setObjectName("visualizationViewToolbar");
     m_toolbar->setStyleSheet(
         "QFrame#visualizationViewToolbar {"
-        "background: rgba(255, 255, 255, 215);"
-        "border: 1px solid rgba(120, 120, 120, 120);"
-        "border-radius: 8px;"
+        "background: rgba(255, 255, 255, 232);"
+        "border: 1px solid rgba(80, 95, 120, 80);"
+        "border-radius: 10px;"
         "}"
         "QToolButton {"
-        "min-width: 28px; min-height: 28px;"
-        "border: none; border-radius: 4px;"
-        "padding: 2px;"
+        "min-width: 30px; min-height: 28px;"
+        "color: #2F3A4A;"
+        "border: 1px solid rgba(90, 105, 130, 40);"
+        "border-radius: 6px;"
+        "background: rgba(255, 255, 255, 120);"
+        "padding: 1px;"
         "}"
-        "QToolButton:hover { background: rgba(64, 158, 255, 45); }"
-        "QToolButton:pressed { background: rgba(64, 158, 255, 75); }"
+        "QToolButton:hover { background: rgba(64, 158, 255, 35); border-color: rgba(64, 158, 255, 90); }"
+        "QToolButton:pressed { background: rgba(64, 158, 255, 60); }"
+        "QSlider::groove:horizontal {"
+        "height: 4px;"
+        "background: rgba(120, 130, 150, 70);"
+        "border-radius: 2px;"
+        "}"
+        "QSlider::sub-page:horizontal {"
+        "background: rgba(64, 158, 255, 150);"
+        "border-radius: 2px;"
+        "}"
+        "QSlider::handle:horizontal {"
+        "width: 10px;"
+        "margin: -4px 0;"
+        "border-radius: 5px;"
+        "background: #409EFF;"
+        "}"
     );
 
-    auto* layout = new QGridLayout(m_toolbar);
-    layout->setContentsMargins(8, 8, 8, 8);
-    layout->setSpacing(4);
+    auto* layout = new QVBoxLayout(m_toolbar);
+    layout->setContentsMargins(10, 10, 10, 10);
+    layout->setSpacing(6);
 
-    int index = 0;
-    auto makeBtn = [this, layout, &index](const QString& iconPath, const QString& tip, auto fn) {
+    auto makeIconBtn = [this](const QString& iconPath, const QString& tip, auto fn) {
         auto* btn = new QToolButton(m_toolbar);
         btn->setIcon(QIcon(iconPath));
-        btn->setIconSize(QSize(18, 18));
-        btn->setFixedSize(30, 30);
+        btn->setIconSize(QSize(16, 16));
         btn->setToolTip(tip);
+        btn->setFixedSize(32, 28);
         connect(btn, &QToolButton::clicked, this, fn);
-        const int row = index / 3;
-        const int col = index % 3;
-        layout->addWidget(btn, row, col);
-        ++index;
         return btn;
     };
 
-    makeBtn(":/resources/icon/view_fit.svg", tr("重置并自适应视图"), [this]() { resetCamera(true); });
-    makeBtn(":/resources/icon/view_front.png", tr("前视图"), [this]() { setCameraToAxis(0.0, -1.0, 0.0); });
-    makeBtn(":/resources/icon/view_back.png", tr("后视图"), [this]() { setCameraToAxis(0.0, 1.0, 0.0); });
-    makeBtn(":/resources/icon/view_left.png", tr("左视图"), [this]() { setCameraToAxis(-1.0, 0.0, 0.0); });
-    makeBtn(":/resources/icon/view_right.png", tr("右视图"), [this]() { setCameraToAxis(1.0, 0.0, 0.0); });
-    makeBtn(":/resources/icon/view_top.png", tr("顶视图"), [this]() { setCameraToAxis(0.0, 0.0, 1.0); });
-    makeBtn(":/resources/icon/view_bottom.png", tr("底视图"), [this]() { setCameraToAxis(0.0, 0.0, -1.0); });
-    makeBtn(":/resources/icon/view_rotate_left.svg", tr("逆时针旋转"), [this]() { rotateCamera(-12.0, 0.0); });
-    makeBtn(":/resources/icon/view_rotate_right.svg", tr("顺时针旋转"), [this]() { rotateCamera(12.0, 0.0); });
-    makeBtn(":/resources/icon/view_zoom_in.svg", tr("放大"), [this]() { zoomCamera(1.15); });
-    makeBtn(":/resources/icon/view_zoom_out.svg", tr("缩小"), [this]() { zoomCamera(1.0 / 1.15); });
+    auto makeTextBtn = [this](const QString& text, const QString& tip, auto fn) {
+        auto* btn = new QToolButton(m_toolbar);
+        btn->setText(text);
+        btn->setToolTip(tip);
+        btn->setFixedSize(32, 24);
+        btn->setStyleSheet(btn->styleSheet() + "font: 600 11px 'Microsoft YaHei';");
+        connect(btn, &QToolButton::clicked, this, fn);
+        return btn;
+    };
 
-    m_projectionButton = makeBtn(QString(), tr("切换透视/正交"), [this]() {
+    auto* quickRow = new QHBoxLayout();
+    quickRow->setSpacing(6);
+    quickRow->setContentsMargins(0, 0, 0, 0);
+    quickRow->addWidget(makeIconBtn(":/resources/icon/view_fit.svg", tr("重置并自适应视图"), [this]() { resetCamera(true); }));
+    quickRow->addWidget(makeIconBtn(":/resources/icon/view_rotate_left.svg", tr("逆时针旋转"), [this]() { rotateCamera(-12.0, 0.0); }));
+    quickRow->addWidget(makeIconBtn(":/resources/icon/view_rotate_right.svg", tr("顺时针旋转"), [this]() { rotateCamera(12.0, 0.0); }));
+    quickRow->addWidget(makeIconBtn(":/resources/icon/view_zoom_in.svg", tr("放大"), [this]() { zoomCamera(1.15); }));
+    quickRow->addWidget(makeIconBtn(":/resources/icon/view_zoom_out.svg", tr("缩小"), [this]() { zoomCamera(1.0 / 1.15); }));
+
+    m_projectionButton = makeIconBtn(QString(), tr("切换透视/正交"), [this]() {
         m_isParallelProjection = !m_isParallelProjection;
         if (m_renderer && m_renderer->GetActiveCamera()) {
             m_renderer->GetActiveCamera()->SetParallelProjection(m_isParallelProjection ? 1 : 0);
@@ -159,10 +179,23 @@ void VisualizationWidget::initViewToolbar()
         render();
     });
     updateProjectionButtonIcon();
+    quickRow->addWidget(m_projectionButton);
+    layout->addLayout(quickRow);
+
+    auto* axisGrid = new QGridLayout();
+    axisGrid->setSpacing(4);
+    axisGrid->setContentsMargins(0, 0, 0, 0);
+    axisGrid->addWidget(makeTextBtn(tr("前"), tr("前视图"), [this]() { setCameraToAxis(0.0, -1.0, 0.0); }), 0, 0);
+    axisGrid->addWidget(makeTextBtn(tr("后"), tr("后视图"), [this]() { setCameraToAxis(0.0, 1.0, 0.0); }), 0, 1);
+    axisGrid->addWidget(makeTextBtn(tr("左"), tr("左视图"), [this]() { setCameraToAxis(-1.0, 0.0, 0.0); }), 0, 2);
+    axisGrid->addWidget(makeTextBtn(tr("右"), tr("右视图"), [this]() { setCameraToAxis(1.0, 0.0, 0.0); }), 1, 0);
+    axisGrid->addWidget(makeTextBtn(tr("上"), tr("顶视图"), [this]() { setCameraToAxis(0.0, 0.0, 1.0); }), 1, 1);
+    axisGrid->addWidget(makeTextBtn(tr("下"), tr("底视图"), [this]() { setCameraToAxis(0.0, 0.0, -1.0); }), 1, 2);
+    layout->addLayout(axisGrid);
 
     auto* opacityWrap = new QWidget(m_toolbar);
     auto* opacityLayout = new QHBoxLayout(opacityWrap);
-    opacityLayout->setContentsMargins(0, 4, 0, 0);
+    opacityLayout->setContentsMargins(0, 2, 0, 0);
     opacityLayout->setSpacing(6);
 
     auto* opacityIcon = new QLabel(opacityWrap);
@@ -177,7 +210,7 @@ void VisualizationWidget::initViewToolbar()
         applyGlobalOpacity(static_cast<double>(value) / 100.0);
     });
     opacityLayout->addWidget(m_globalOpacitySlider, 1, Qt::AlignVCenter);
-    layout->addWidget(opacityWrap, (index / 3) + 1, 0, 1, 3);
+    layout->addWidget(opacityWrap);
 
     m_toolbar->setFixedSize(m_toolbar->sizeHint());
     const int margin = 12;
