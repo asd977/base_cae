@@ -14,7 +14,7 @@
    <item>
     <widget class="QLabel" name="titleLabel">
      <property name="text">
-      <string>流线矢量图</string>
+      <string>云图(固定VTU)</string>
      </property>
     </widget>
    </item>
@@ -39,7 +39,7 @@
    <item>
     <widget class="QPushButton" name="buildPushButton">
      <property name="text">
-      <string>生成流线矢量图</string>
+      <string>生成云图(固定VTU)</string>
      </property>
     </widget>
    </item>

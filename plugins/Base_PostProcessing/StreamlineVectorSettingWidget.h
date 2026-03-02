@@ -31,14 +31,14 @@ private slots:
 
 private:
     vtkSmartPointer<vtkUnstructuredGrid> readFixedGrid() const;
-    bool preparePointVectors(vtkUnstructuredGrid* grid) const;
-    void buildStreamline();
+    QString chooseScalarArray(vtkUnstructuredGrid* grid) const;
+    void buildNephogram();
 
 private:
     Ui::StreamlineVectorSettingWidget* ui{nullptr};
     VisualWidgetService* m_visualService{nullptr};
 
-    vtkSmartPointer<vtkActor> m_streamlineActor;
+    vtkSmartPointer<vtkActor> m_nephogramActor;
 };
 
 #endif // STREAMLINEVECTORSETTINGWIDGET_H
