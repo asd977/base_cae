@@ -6,6 +6,7 @@
 #include <services/VisualWidgetService.h>
 #include "SliceSettingsWidget.h"
 #include "VectorSettingWidget.h"
+#include "StreamlineVectorSettingWidget.h"
 
 #include <services/PostProcessingService.h>
 #include <ProjectNode.h>
@@ -39,7 +40,7 @@ private:
     VisualWidgetService *m_visualService{nullptr};
     NephogramSettingWidget *m_nephogramSettingWidget;
 
-    VectorSettingWidget *m_vectorSettingWidget;
+    StreamlineVectorSettingWidget *m_vectorSettingWidget;
 
     SliceSettingsWidget *m_sliceSettingWidget;
 

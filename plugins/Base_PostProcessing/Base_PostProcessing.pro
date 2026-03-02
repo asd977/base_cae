@@ -16,6 +16,7 @@ HEADERS += \
     PostVisualUtils.h \
     ProbeSettingsWidget.h \
     SliceSettingsWidget.h \
+    StreamlineVectorSettingWidget.h \
     VectorSettingWidget.h
 
 SOURCES += \
@@ -28,6 +29,7 @@ SOURCES += \
     PostProcessing.cpp \
     ProbeSettingsWidget.cpp \
     SliceSettingsWidget.cpp \
+    StreamlineVectorSettingWidget.cpp \
     VectorSettingWidget.cpp
 
 FORMS += \
@@ -39,6 +41,7 @@ FORMS += \
     NephogramSettingWidget.ui \
     ProbeSettingsWidget.ui \
     SliceSettingsWidget.ui \
+    StreamlineVectorSettingWidget.ui \
     VectorSettingWidget.ui
 
 
