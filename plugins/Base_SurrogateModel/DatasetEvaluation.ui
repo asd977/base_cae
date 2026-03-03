@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='UTF-8'?>
 <ui version="4.0">
  <class>DatasetEvaluation</class>
  <widget class="QWidget" name="DatasetEvaluation">
@@ -12,104 +12,6 @@
   </property>
   <property name="windowTitle">
    <string>数据集评估</string>
-  </property>
-  <property name="styleSheet">
-   <string notr="true">QWidget{
-font-family: &quot;Microsoft YaHei&quot;, &quot;微软雅黑&quot;;
-}
-QPushButton {
-    font-size: 17px;
-    min-height: 32px;
-}
-QPushButton#pushButton {
-    background-color: rgb(224, 233, 244);
-    border-width: 1px;
-    border-color: rgb(121, 121, 121);
-    border-style: solid;
-    min-height: 33px;
-    border-top: 1px solid rgb(169, 169, 169);
-    border-bottom: 1px solid rgb(169, 169, 169);
-    border-left: none;
-    border-right: none;
-    text-align: left;
-    padding-left: 15px;
-    font-size: 17px;
-}
-QLabel {
-    font-size: 17px;
-    color: rgb(51, 51, 51);
-}
-QLabel#pageNameLabel {
-    font-size: 20px;
-    padding-left: 9px;
-    color: rgb(53, 103, 147);
-}
-QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox, QDateTimeEdit {
-    border: 1px solid rgb(200, 200, 200);
-    border-radius: 2px;
-    font-size: 17px;
-    min-height: 30px;
-}
-QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus,
-QSpinBox:focus, QDoubleSpinBox:focus, QDateTimeEdit:focus {
-    border-color: rgb(100, 100, 255);
-    outline: none;
-}
-QComboBox {
-    font-size: 17px;
-    color: rgb(51, 51, 51);
-    padding-left: 6px;
-    background: rgb(240, 240, 240);
-    border: 1px solid rgb(169, 169, 169);
-    border-radius: 3px;
-    min-height: 30px;
-}
-QComboBox::drop-down {
-    subcontrol-origin: padding;
-    subcontrol-position: top right;
-    width: 20px;
-    background: rgb(240, 240, 240);
-    border-left: 1px solid rgb(190, 190, 190);
-}
-QComboBox::down-arrow {
-    image: url(:/resources/arrow_down_drawn.svg);
-    width: 12px;
-    height: 12px;
-}
-QSpinBox::up-button, QDoubleSpinBox::up-button {
-    subcontrol-origin: border;
-    subcontrol-position: top right;
-    width: 18px;
-    border-left: 1px solid rgb(190, 190, 190);
-    border-bottom: 1px solid rgb(210, 210, 210);
-    background: rgb(240, 240, 240);
-}
-QSpinBox::down-button, QDoubleSpinBox::down-button {
-    subcontrol-origin: border;
-    subcontrol-position: bottom right;
-    width: 18px;
-    border-left: 1px solid rgb(190, 190, 190);
-    background: rgb(240, 240, 240);
-}
-QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
-    image: url(:/resources/arrow_up_drawn.svg);
-    width: 10px;
-    height: 10px;
-}
-QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
-    image: url(:/resources/arrow_down_drawn.svg);
-    width: 10px;
-    height: 10px;
-}
-QRadioButton, QCheckBox, QGroupBox {
-    font-size: 17px;
-}
-QTableWidget, QTreeWidget, QListWidget {
-    font-size: 16px;
-    gridline-color: rgb(210, 210, 210);
-}
-
-</string>
   </property>
   <layout class="QVBoxLayout" name="root">
    <property name="spacing">
@@ -127,7 +29,14 @@ QTableWidget, QTreeWidget, QListWidget {
    <property name="bottomMargin">
     <number>8</number>
    </property>
-   <item>
+      <item>
+    <widget class="QLabel" name="pageNameLabel">
+     <property name="text">
+      <string>数据集评估</string>
+     </property>
+    </widget>
+   </item>
+<item>
     <widget class="QPushButton" name="pushButton">
      <property name="text">
       <string>数据集</string>
@@ -163,7 +72,7 @@ QTableWidget, QTreeWidget, QListWidget {
       </widget>
      </item>
      <item>
-      <widget class="QLineEdit" name="datasetPathEdit"/>
+      <widget class="QLineEdit" name="datasetPathEdit" />
      </item>
      <item>
       <widget class="QPushButton" name="browseDatasetBtn">
@@ -179,7 +88,7 @@ QTableWidget, QTreeWidget, QListWidget {
        </property>
       </widget>
      </item>
-    </layout>
+       </layout>
    </item>
    <item>
     <widget class="QGroupBox" name="paramBox">
@@ -308,7 +217,7 @@ QTableWidget, QTreeWidget, QListWidget {
        </property>
        <layout class="QVBoxLayout" name="testLayout">
         <item>
-         <widget class="QTableWidget" name="testTable"/>
+         <widget class="QTableWidget" name="testTable" />
         </item>
        </layout>
       </widget>
@@ -323,12 +232,12 @@ QTableWidget, QTreeWidget, QListWidget {
     </widget>
    </item>
    <item>
-    <widget class="QTableWidget" name="resultTable"/>
+    <widget class="QTableWidget" name="resultTable" />
    </item>
    <item>
     <widget class="QLabel" name="imageLabel">
      <property name="text">
-      <string/>
+      <string />
      </property>
      <property name="scaledContents">
       <bool>true</bool>
@@ -345,7 +254,7 @@ QTableWidget, QTreeWidget, QListWidget {
       </widget>
      </item>
      <item row="0" column="1">
-      <widget class="QLineEdit" name="pythonExeEdit"/>
+      <widget class="QLineEdit" name="pythonExeEdit" />
      </item>
      <item row="0" column="2">
       <widget class="QPushButton" name="browsePyBtn">
@@ -362,7 +271,7 @@ QTableWidget, QTreeWidget, QListWidget {
       </widget>
      </item>
      <item row="1" column="1">
-      <widget class="QLineEdit" name="scriptPathEdit"/>
+      <widget class="QLineEdit" name="scriptPathEdit" />
      </item>
      <item row="1" column="2">
       <widget class="QPushButton" name="browseScBtn">
@@ -373,8 +282,21 @@ QTableWidget, QTreeWidget, QListWidget {
      </item>
     </layout>
    </item>
-  </layout>
+  <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+</layout>
  </widget>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

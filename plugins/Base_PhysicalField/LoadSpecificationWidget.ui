@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='UTF-8'?>
 <ui version="4.0">
  <class>LoadSpecificationWidget</class>
  <widget class="QWidget" name="LoadSpecificationWidget">
@@ -12,104 +12,6 @@
   </property>
   <property name="windowTitle">
    <string>Form</string>
-  </property>
-  <property name="styleSheet">
-   <string notr="true">QWidget{
-font-family: &quot;Microsoft YaHei&quot;, &quot;微软雅黑&quot;;
-}
-QPushButton {
-    font-size: 17px;
-    min-height: 32px;
-}
-QPushButton#pushButton {
-    background-color: rgb(224, 233, 244);
-    border-width: 1px;
-    border-color: rgb(121, 121, 121);
-    border-style: solid;
-    min-height: 33px;
-    border-top: 1px solid rgb(169, 169, 169);
-    border-bottom: 1px solid rgb(169, 169, 169);
-    border-left: none;
-    border-right: none;
-    text-align: left;
-    padding-left: 15px;
-    font-size: 17px;
-}
-QLabel {
-    font-size: 17px;
-    color: rgb(51, 51, 51);
-}
-QLabel#pageNameLabel {
-    font-size: 20px;
-    padding-left: 9px;
-    color: rgb(53, 103, 147);
-}
-QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox, QDateTimeEdit {
-    border: 1px solid rgb(200, 200, 200);
-    border-radius: 2px;
-    font-size: 17px;
-    min-height: 30px;
-}
-QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus,
-QSpinBox:focus, QDoubleSpinBox:focus, QDateTimeEdit:focus {
-    border-color: rgb(100, 100, 255);
-    outline: none;
-}
-QComboBox {
-    font-size: 17px;
-    color: rgb(51, 51, 51);
-    padding-left: 6px;
-    background: rgb(240, 240, 240);
-    border: 1px solid rgb(169, 169, 169);
-    border-radius: 3px;
-    min-height: 30px;
-}
-QComboBox::drop-down {
-    subcontrol-origin: padding;
-    subcontrol-position: top right;
-    width: 20px;
-    background: rgb(240, 240, 240);
-    border-left: 1px solid rgb(190, 190, 190);
-}
-QComboBox::down-arrow {
-    image: url(:/resources/arrow_down_drawn.svg);
-    width: 12px;
-    height: 12px;
-}
-QSpinBox::up-button, QDoubleSpinBox::up-button {
-    subcontrol-origin: border;
-    subcontrol-position: top right;
-    width: 18px;
-    border-left: 1px solid rgb(190, 190, 190);
-    border-bottom: 1px solid rgb(210, 210, 210);
-    background: rgb(240, 240, 240);
-}
-QSpinBox::down-button, QDoubleSpinBox::down-button {
-    subcontrol-origin: border;
-    subcontrol-position: bottom right;
-    width: 18px;
-    border-left: 1px solid rgb(190, 190, 190);
-    background: rgb(240, 240, 240);
-}
-QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
-    image: url(:/resources/arrow_up_drawn.svg);
-    width: 10px;
-    height: 10px;
-}
-QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
-    image: url(:/resources/arrow_down_drawn.svg);
-    width: 10px;
-    height: 10px;
-}
-QRadioButton, QCheckBox, QGroupBox {
-    font-size: 17px;
-}
-QTableWidget, QTreeWidget, QListWidget {
-    font-size: 16px;
-    gridline-color: rgb(210, 210, 210);
-}
-
-</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="leftMargin">
@@ -151,10 +53,10 @@ QTableWidget, QTreeWidget, QListWidget {
     <widget class="QWidget" name="contentWidget" native="true">
      <layout class="QVBoxLayout" name="contentLayout">
       <item>
-       <widget class="QComboBox" name="comboBoxDim"/>
+       <widget class="QComboBox" name="comboBoxDim" />
       </item>
       <item>
-       <widget class="QComboBox" name="comboBoxGroup"/>
+       <widget class="QComboBox" name="comboBoxGroup" />
       </item>
       <item>
        <widget class="QCheckBox" name="clickCheckBox">
@@ -181,6 +83,6 @@ QTableWidget, QTreeWidget, QListWidget {
    </item>
   </layout>
  </widget>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>
