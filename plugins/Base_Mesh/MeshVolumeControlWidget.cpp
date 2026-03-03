@@ -76,7 +76,7 @@ MeshVolumeControlWidget::MeshVolumeControlWidget(QWidget *parent)
 }
 
 MeshVolumeControlWidget::~MeshVolumeControlWidget(){ beforeUnload(); delete ui; }
-void MeshVolumeControlWidget::beforeLoad(){ rebuildVolumeCandidates(); loadRulesFromService(); }
+void MeshVolumeControlWidget::beforeLoad(){ rebuildVolumeCandidates(); loadRulesFromService(); if (m_items.isEmpty()) onAddControl(); }
 void MeshVolumeControlWidget::beforeUnload(){ if(auto* s=ServiceRegistry::instance().getService<PreProcessingService>()) s->clearEntityHighlight(); }
 
 void MeshVolumeControlWidget::onAddControl(){ VolumeControlItem item; m_items.push_back(item); appendOrUpdateTableRow(ui->tableControls->rowCount(),item); const int row = m_items.size() - 1; ui->tableControls->selectRow(row); fillFormData(item); onSelectionChanged(); refreshButtons(); }

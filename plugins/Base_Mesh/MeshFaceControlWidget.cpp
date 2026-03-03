@@ -75,7 +75,7 @@ MeshFaceControlWidget::MeshFaceControlWidget(QWidget *parent)
 }
 
 MeshFaceControlWidget::~MeshFaceControlWidget(){ beforeUnload(); delete ui; }
-void MeshFaceControlWidget::beforeLoad(){ rebuildFaceCandidates(); loadRulesFromService(); }
+void MeshFaceControlWidget::beforeLoad(){ rebuildFaceCandidates(); loadRulesFromService(); if (m_items.isEmpty()) onAddControl(); }
 void MeshFaceControlWidget::beforeUnload(){ if(auto* s=ServiceRegistry::instance().getService<PreProcessingService>()) s->clearEntityHighlight(); }
 
 void MeshFaceControlWidget::onAddControl(){ FaceControlItem item; m_items.push_back(item); appendOrUpdateTableRow(ui->tableControls->rowCount(),item); const int row = m_items.size() - 1; ui->tableControls->selectRow(row); fillFormData(item); onSelectionChanged(); refreshButtons(); }
