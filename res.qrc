@@ -115,6 +115,8 @@
         <file>resources/icon/view_rotate_left.svg</file>
         <file>resources/icon/view_opacity.svg</file>
         <file>resources/icon/view_fit.svg</file>
+        <file>resources/icon/view_scale_on.svg</file>
+        <file>resources/icon/view_scale_off.svg</file>
         <file>resources/menu/DerivedValue.png</file>
         <file>resources/menu/Export.png</file>
         <file>resources/menu/File.png</file>

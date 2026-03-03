@@ -19,7 +19,7 @@ class vtkLookupTable;
 class vtkScalarBarActor;
 class vtkAxesActor;
 class vtkOrientationMarkerWidget;
-class vtkLegendScaleActor;
+class vtkCubeAxesActor;
 class vtkProp;
 class vtkMapper;
 class vtkTransform;
@@ -135,6 +135,6 @@ private:
     QPointer<QMenu> m_opacityMenu;
     QPointer<QLabel> m_opacityPercentLabel;
     bool m_isParallelProjection = false;
-    vtkSmartPointer<vtkLegendScaleActor> m_legendScaleActor;
+    vtkSmartPointer<vtkCubeAxesActor> m_cubeAxesActor;
     bool m_isScaleVisible = false;
 };

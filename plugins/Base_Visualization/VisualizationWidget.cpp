@@ -24,7 +24,7 @@
 #include <vtkTextProperty.h>
 #include <vtkAxesActor.h>
 #include <vtkOrientationMarkerWidget.h>
-#include <vtkLegendScaleActor.h>
+#include <vtkCubeAxesActor.h>
 #include <vtkRenderWindowInteractor.h>
 #include <vtkProp.h>
 #include <vtkProp3D.h>
@@ -89,10 +89,27 @@ void VisualizationWidget::initVtk()
 
     m_renderer->AddActor2D(m_scalarBar);
 
-    // ---------- Scale actor ----------
-    m_legendScaleActor = vtkSmartPointer<vtkLegendScaleActor>::New();
-    m_legendScaleActor->SetVisibility(0);
-    m_renderer->AddActor(m_legendScaleActor);
+    // ---------- Cube axes (scale ruler around content) ----------
+    m_cubeAxesActor = vtkSmartPointer<vtkCubeAxesActor>::New();
+    m_cubeAxesActor->SetCamera(m_renderer->GetActiveCamera());
+    m_cubeAxesActor->SetFlyModeToOuterEdges();
+    m_cubeAxesActor->DrawXGridlinesOff();
+    m_cubeAxesActor->DrawYGridlinesOff();
+    m_cubeAxesActor->DrawZGridlinesOff();
+    m_cubeAxesActor->SetXTitle("X");
+    m_cubeAxesActor->SetYTitle("Y");
+    m_cubeAxesActor->SetZTitle("Z");
+    m_cubeAxesActor->GetTitleTextProperty(0)->SetColor(0.0, 0.0, 0.0);
+    m_cubeAxesActor->GetTitleTextProperty(1)->SetColor(0.0, 0.0, 0.0);
+    m_cubeAxesActor->GetTitleTextProperty(2)->SetColor(0.0, 0.0, 0.0);
+    m_cubeAxesActor->GetLabelTextProperty(0)->SetColor(0.0, 0.0, 0.0);
+    m_cubeAxesActor->GetLabelTextProperty(1)->SetColor(0.0, 0.0, 0.0);
+    m_cubeAxesActor->GetLabelTextProperty(2)->SetColor(0.0, 0.0, 0.0);
+    m_cubeAxesActor->GetXAxesLinesProperty()->SetColor(0.0, 0.0, 0.0);
+    m_cubeAxesActor->GetYAxesLinesProperty()->SetColor(0.0, 0.0, 0.0);
+    m_cubeAxesActor->GetZAxesLinesProperty()->SetColor(0.0, 0.0, 0.0);
+    m_cubeAxesActor->SetVisibility(0);
+    m_renderer->AddActor(m_cubeAxesActor);
 
     // ---------- Orientation marker ----------
     m_axes = vtkSmartPointer<vtkAxesActor>::New();
@@ -170,8 +187,16 @@ void VisualizationWidget::initViewToolbar()
 
     m_scaleButton = makeIconBtn(QString(), tr("显示/隐藏尺度标尺"), [this]() {
         m_isScaleVisible = !m_isScaleVisible;
-        if (m_legendScaleActor) {
-            m_legendScaleActor->SetVisibility(m_isScaleVisible ? 1 : 0);
+        if (m_cubeAxesActor && m_renderer) {
+            double bounds[6] = {0.0, -1.0, 0.0, -1.0, 0.0, -1.0};
+            m_renderer->ComputeVisiblePropBounds(bounds);
+            const bool hasBounds = bounds[0] <= bounds[1] && bounds[2] <= bounds[3] && bounds[4] <= bounds[5];
+            if (hasBounds) {
+                m_cubeAxesActor->SetBounds(bounds);
+                m_cubeAxesActor->SetVisibility(m_isScaleVisible ? 1 : 0);
+            } else {
+                m_cubeAxesActor->SetVisibility(0);
+            }
         }
         updateScaleButtonIcon();
         render();
@@ -310,6 +335,15 @@ bool VisualizationWidget::addProp(const QString& id,
     m_renderer->AddViewProp(prop.GetPointer());
     m_registry.insert(id, it);
 
+    if (m_cubeAxesActor && m_renderer && m_isScaleVisible)
+    {
+        double bounds[6] = {0.0, -1.0, 0.0, -1.0, 0.0, -1.0};
+        m_renderer->ComputeVisiblePropBounds(bounds);
+        const bool hasBounds = bounds[0] <= bounds[1] && bounds[2] <= bounds[3] && bounds[4] <= bounds[5];
+        m_cubeAxesActor->SetVisibility(hasBounds ? 1 : 0);
+        if (hasBounds) m_cubeAxesActor->SetBounds(bounds);
+    }
+
     if (resetCam) resetCamera(false);
     if (renderNow) render();
     return true;
@@ -325,6 +359,15 @@ bool VisualizationWidget::removeProp(const QString& id, bool renderNow)
 
     m_registry.erase(it);
 
+    if (m_cubeAxesActor && m_renderer)
+    {
+        double bounds[6] = {0.0, -1.0, 0.0, -1.0, 0.0, -1.0};
+        m_renderer->ComputeVisiblePropBounds(bounds);
+        const bool hasBounds = bounds[0] <= bounds[1] && bounds[2] <= bounds[3] && bounds[4] <= bounds[5];
+        m_cubeAxesActor->SetVisibility((m_isScaleVisible && hasBounds) ? 1 : 0);
+        if (hasBounds) m_cubeAxesActor->SetBounds(bounds);
+    }
+
     if (renderNow) render();
     return true;
 }
@@ -337,6 +380,9 @@ void VisualizationWidget::clearAll(bool renderNow)
             m_renderer->RemoveViewProp(it.value().prop);
     }
     m_registry.clear();
+
+    if (m_cubeAxesActor)
+        m_cubeAxesActor->SetVisibility(0);
 
     if (renderNow) render();
 }
@@ -361,6 +407,15 @@ bool VisualizationWidget::setVisible(const QString& id, bool on, bool renderNow)
     if (it.value().prop)
         it.value().prop->SetVisibility(on ? 1 : 0);
 
+    if (m_cubeAxesActor && m_renderer)
+    {
+        double bounds[6] = {0.0, -1.0, 0.0, -1.0, 0.0, -1.0};
+        m_renderer->ComputeVisiblePropBounds(bounds);
+        const bool hasBounds = bounds[0] <= bounds[1] && bounds[2] <= bounds[3] && bounds[4] <= bounds[5];
+        m_cubeAxesActor->SetVisibility((m_isScaleVisible && hasBounds) ? 1 : 0);
+        if (hasBounds) m_cubeAxesActor->SetBounds(bounds);
+    }
+
     if (renderNow) render();
     return true;
 }
@@ -374,6 +429,15 @@ void VisualizationWidget::setGroupVisible(const QString& group, bool on, bool re
             it.value().visible = on;
             it.value().prop->SetVisibility(on ? 1 : 0);
         }
+    }
+
+    if (m_cubeAxesActor && m_renderer)
+    {
+        double bounds[6] = {0.0, -1.0, 0.0, -1.0, 0.0, -1.0};
+        m_renderer->ComputeVisiblePropBounds(bounds);
+        const bool hasBounds = bounds[0] <= bounds[1] && bounds[2] <= bounds[3] && bounds[4] <= bounds[5];
+        m_cubeAxesActor->SetVisibility((m_isScaleVisible && hasBounds) ? 1 : 0);
+        if (hasBounds) m_cubeAxesActor->SetBounds(bounds);
     }
     if (renderNow) render();
 }
@@ -606,8 +670,8 @@ void VisualizationWidget::updateScaleButtonIcon()
 {
     if (!m_scaleButton) return;
     const QString icon = m_isScaleVisible
-        ? QStringLiteral(":/resources/icon/switch-on.png")
-        : QStringLiteral(":/resources/icon/switch-off.png");
+        ? QStringLiteral(":/resources/icon/view_scale_on.svg")
+        : QStringLiteral(":/resources/icon/view_scale_off.svg");
     m_scaleButton->setIcon(QIcon(icon));
     m_scaleButton->setIconSize(QSize(18, 18));
 }
