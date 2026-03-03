@@ -108,13 +108,13 @@ void VisualizationWidget::initViewToolbar()
     m_toolbar->setAttribute(Qt::WA_StyledBackground, true);
     m_toolbar->setStyleSheet(
         "QFrame#visualizationViewToolbar {"
-        "background: rgba(245, 248, 252, 210);"
+        "background: rgba(245, 248, 252, 225);"
         "border: none;"
         "}"
         "QToolButton {"
-        "min-width: 30px; min-height: 28px;"
+        "min-width: 38px; min-height: 34px;"
         "border: none;"
-        "border-radius: 4px;"
+        "border-radius: 6px;"
         "background: transparent;"
         "padding: 2px;"
         "}"
@@ -123,16 +123,16 @@ void VisualizationWidget::initViewToolbar()
     );
 
     auto* root = new QHBoxLayout(m_toolbar);
-    root->setContentsMargins(10, 4, 10, 4);
-    root->setSpacing(2);
+    root->setContentsMargins(12, 6, 12, 6);
+    root->setSpacing(4);
 
     auto makeIconBtn = [this](const QString& iconPath, const QString& tip, auto fn) {
         auto* btn = new QToolButton(m_toolbar);
         btn->setAutoRaise(true);
         btn->setIcon(QIcon(iconPath));
-        btn->setIconSize(QSize(18, 18));
+        btn->setIconSize(QSize(20, 20));
         btn->setToolTip(tip);
-        btn->setFixedSize(32, 30);
+        btn->setFixedSize(40, 36);
         connect(btn, &QToolButton::clicked, this, fn);
         return btn;
     };
@@ -141,7 +141,7 @@ void VisualizationWidget::initViewToolbar()
         auto* sep = new QFrame(m_toolbar);
         sep->setFrameShape(QFrame::VLine);
         sep->setStyleSheet("color: rgba(120, 130, 150, 120);");
-        sep->setFixedHeight(22);
+        sep->setFixedHeight(26);
         root->addWidget(sep);
     };
 
@@ -178,8 +178,8 @@ void VisualizationWidget::initViewToolbar()
     m_opacityButton->setToolTip(tr("整体透明度"));
     m_opacityButton->setText(tr("100% ▾"));
     m_opacityButton->setIcon(QIcon(":/resources/icon/view_opacity.svg"));
-    m_opacityButton->setIconSize(QSize(14, 14));
-    m_opacityButton->setFixedSize(78, 30);
+    m_opacityButton->setIconSize(QSize(16, 16));
+    m_opacityButton->setFixedSize(92, 36);
     m_opacityButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     root->addWidget(m_opacityButton);
 
@@ -196,20 +196,21 @@ void VisualizationWidget::initViewToolbar()
 
     auto* popupWidget = new QWidget(m_opacityMenu);
     auto* popupLayout = new QVBoxLayout(popupWidget);
-    popupLayout->setContentsMargins(6, 4, 6, 4);
-    popupLayout->setSpacing(6);
+    popupLayout->setContentsMargins(10, 8, 10, 8);
+    popupLayout->setSpacing(8);
 
     m_opacityPercentLabel = new QLabel(tr("100%"), popupWidget);
     m_opacityPercentLabel->setAlignment(Qt::AlignCenter);
-    m_opacityPercentLabel->setStyleSheet("font: 600 12px 'Microsoft YaHei'; color: #2F3A4A;");
+    m_opacityPercentLabel->setStyleSheet("font: 600 14px 'Microsoft YaHei'; color: #2F3A4A;");
     popupLayout->addWidget(m_opacityPercentLabel);
 
     m_globalOpacitySlider = new QSlider(Qt::Vertical, popupWidget);
     m_globalOpacitySlider->setRange(15, 100);
+    m_globalOpacitySlider->setFixedHeight(140);
     m_globalOpacitySlider->setValue(100);
     m_globalOpacitySlider->setStyleSheet(
         "QSlider::groove:vertical {"
-        "width: 5px; background: rgba(120,130,150,80); border-radius: 2px;"
+        "width: 6px; background: rgba(120,130,150,80); border-radius: 3px;"
         "}"
         "QSlider::sub-page:vertical {"
         "background: rgba(64, 158, 255, 155); border-radius: 2px;"
@@ -218,7 +219,7 @@ void VisualizationWidget::initViewToolbar()
         "background: rgba(120,130,150,35); border-radius: 2px;"
         "}"
         "QSlider::handle:vertical {"
-        "height: 10px; margin: 0 -4px; border-radius: 5px; background: #409EFF;"
+        "height: 14px; margin: 0 -5px; border-radius: 7px; background: #409EFF;"
         "}"
     );
     popupLayout->addWidget(m_globalOpacitySlider, 1, Qt::AlignHCenter);
@@ -239,7 +240,7 @@ void VisualizationWidget::initViewToolbar()
         m_opacityMenu->popup(p);
     });
 
-    const int toolbarHeight = 38;
+    const int toolbarHeight = 48;
     m_toolbar->setGeometry(0, 0, width(), toolbarHeight);
     m_toolbar->show();
 }
@@ -588,7 +589,7 @@ void VisualizationWidget::resizeEvent(QResizeEvent* event)
 {
     QWidget::resizeEvent(event);
     if (m_toolbar) {
-        const int toolbarHeight = 38;
+        const int toolbarHeight = 48;
         m_toolbar->setGeometry(0, 0, width(), toolbarHeight);
     }
 }
