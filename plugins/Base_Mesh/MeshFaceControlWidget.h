@@ -31,7 +31,6 @@ private slots:
     void onSelectionChanged();
     void onParameterEdited();
 
-    void onRefreshEntities();
     void onAppendSelectedEntity();
 
 private:
@@ -45,7 +44,7 @@ private:
     };
 
     void setupUiState();
-    bool validateInput(QString &err) const;
+    bool validateInput(QString &err, int ignoreRow = -1) const;
     FaceControlItem collectFormData() const;
     void fillFormData(const FaceControlItem &item);
     void appendOrUpdateTableRow(int row, const FaceControlItem &item);

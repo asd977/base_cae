@@ -29,7 +29,6 @@ private slots:
     void onSelectionChanged();
     void onParameterEdited();
 
-    void onRefreshEntities();
     void onAppendSelectedEntity();
 
 private:
@@ -44,7 +43,7 @@ private:
     };
 
     void setupUiState();
-    bool validateInput(QString &err) const;
+    bool validateInput(QString &err, int ignoreRow = -1) const;
     VolumeControlItem collectFormData() const;
     void fillFormData(const VolumeControlItem &item);
     void appendOrUpdateTableRow(int row, const VolumeControlItem &item);

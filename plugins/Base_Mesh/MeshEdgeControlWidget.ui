@@ -132,11 +132,6 @@ QTableWidget, QTreeWidget, QListWidget {
         </property>
        </widget>
       </item>
-      <item row="0" column="4">
-       <widget class="QPushButton" name="btnRefreshEntity">
-        <property name="text"><string>刷新实体</string></property>
-       </widget>
-      </item>
       <item row="1" column="4">
        <widget class="CustomComboBox" name="cmbEntity"/>
       </item>
@@ -244,13 +239,6 @@ QTableWidget, QTreeWidget, QListWidget {
       <widget class="QPushButton" name="btnDelete">
        <property name="text">
         <string>删除选中</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="btnReset">
-       <property name="text">
-        <string>重置输入</string>
        </property>
       </widget>
      </item>
