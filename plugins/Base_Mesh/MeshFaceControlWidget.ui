@@ -113,16 +113,6 @@ QTableWidget, QTreeWidget, QListWidget {
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="QLabel" name="labelSummary">
-     <property name="text">
-      <string>已配置 0 条面控制规则。已开启曲率加密，可提升圆角/小特征处质量。</string>
-     </property>
-     <property name="wordWrap">
-      <bool>true</bool>
-     </property>
-    </widget>
-   </item>
-   <item>
     <widget class="QGroupBox" name="groupBoxInput">
      <property name="title">
       <string>参数设置</string>
@@ -150,7 +140,7 @@ QTableWidget, QTreeWidget, QListWidget {
        </widget>
       </item>
       <item row="1" column="4">
-       <widget class="QComboBox" name="cmbEntity"/>
+       <widget class="CustomComboBox" name="cmbEntity"/>
       </item>
       <item row="2" column="4">
        <layout class="QVBoxLayout" name="verticalLayoutEntityBtns">
@@ -158,13 +148,6 @@ QTableWidget, QTreeWidget, QListWidget {
          <widget class="QPushButton" name="btnAppendEntity">
           <property name="text">
            <string>追加到 ID</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="btnHighlightEntity">
-          <property name="text">
-           <string>高亮当前面</string>
           </property>
          </widget>
         </item>
@@ -297,18 +280,15 @@ QTableWidget, QTreeWidget, QListWidget {
    <item>
     <widget class="QTableWidget" name="tableControls"/>
    </item>
-   <item>
-    <widget class="QLabel" name="labelHint">
-     <property name="text">
-      <string>交互说明：先从下拉框选择面并点“高亮当前面”确认，再点“追加到 ID”建立规则。</string>
-     </property>
-     <property name="wordWrap">
-      <bool>true</bool>
-     </property>
-    </widget>
-   </item>
   </layout>
  </widget>
+ <customwidgets>
+ <customwidget>
+  <class>CustomComboBox</class>
+  <extends>QComboBox</extends>
+  <header>CustomComboBox.h</header>
+ </customwidget>
+</customwidgets>
  <resources/>
  <connections/>
 </ui>

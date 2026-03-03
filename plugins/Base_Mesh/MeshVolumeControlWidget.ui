@@ -113,16 +113,6 @@ QTableWidget, QTreeWidget, QListWidget {
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="QLabel" name="labelSummary">
-     <property name="text">
-      <string>已配置 0 条体控制规则。未启用边界层，网格规模更可控。</string>
-     </property>
-     <property name="wordWrap">
-      <bool>true</bool>
-     </property>
-    </widget>
-   </item>
-   <item>
     <widget class="QGroupBox" name="groupBoxInput">
      <property name="title">
       <string>参数设置</string>
@@ -148,12 +138,11 @@ QTableWidget, QTreeWidget, QListWidget {
        </widget>
       </item>
       <item row="1" column="4">
-       <widget class="QComboBox" name="cmbEntity"/>
+       <widget class="CustomComboBox" name="cmbEntity"/>
       </item>
       <item row="2" column="4" rowspan="2">
        <layout class="QVBoxLayout" name="verticalLayoutEntityBtns">
         <item><widget class="QPushButton" name="btnAppendEntity"><property name="text"><string>追加到 ID</string></property></widget></item>
-        <item><widget class="QPushButton" name="btnHighlightEntity"><property name="text"><string>高亮当前体</string></property></widget></item>
        </layout>
       </item>
       <item row="1" column="0">
@@ -306,18 +295,15 @@ QTableWidget, QTreeWidget, QListWidget {
    <item>
     <widget class="QTableWidget" name="tableControls"/>
    </item>
-   <item>
-    <widget class="QLabel" name="labelHint">
-     <property name="text">
-      <string>交互说明：请先下拉选择体并高亮确认，再追加到 ID；用于近壁面时再开启边界层。</string>
-     </property>
-     <property name="wordWrap">
-      <bool>true</bool>
-     </property>
-    </widget>
-   </item>
   </layout>
  </widget>
+ <customwidgets>
+ <customwidget>
+  <class>CustomComboBox</class>
+  <extends>QComboBox</extends>
+  <header>CustomComboBox.h</header>
+ </customwidget>
+</customwidgets>
  <resources/>
  <connections/>
 </ui>

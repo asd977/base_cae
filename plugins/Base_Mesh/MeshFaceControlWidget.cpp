@@ -6,6 +6,7 @@
 #include <services/MeshModuleControllerService.h>
 #include <QMessageBox>
 #include <QTableWidgetItem>
+#include <CustomComboBox.h>
 
 MeshFaceControlWidget::MeshFaceControlWidget(QWidget *parent)
     : BasePage("MeshFaceControlWidget")
@@ -27,23 +28,30 @@ MeshFaceControlWidget::MeshFaceControlWidget(QWidget *parent)
     connect(ui->spinCurvatureLevel, qOverload<int>(&QSpinBox::valueChanged), this, &MeshFaceControlWidget::onParameterEdited);
     connect(ui->btnRefreshEntity, &QPushButton::clicked, this, &MeshFaceControlWidget::onRefreshEntities);
     connect(ui->btnAppendEntity, &QPushButton::clicked, this, &MeshFaceControlWidget::onAppendSelectedEntity);
-    connect(ui->btnHighlightEntity, &QPushButton::clicked, this, &MeshFaceControlWidget::onHighlightSelectedEntity);
+    auto* entityCombo = qobject_cast<CustomComboBox*>(ui->cmbEntity);
+    if (entityCombo) {
+        connect(entityCombo, &CustomComboBox::itemHovered, this, [this](const int &row){
+            const int id = ui->cmbEntity->itemData(row).toInt();
+            if(id<=0){ clearHighlight(); return; }
+            if(auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) svc->highlightEntity(2,id);
+        });
+        connect(entityCombo, &CustomComboBox::dropdownClosed, this, [this](){ clearHighlight(); });
+    }
 }
 
 MeshFaceControlWidget::~MeshFaceControlWidget(){ beforeUnload(); delete ui; }
-void MeshFaceControlWidget::beforeLoad(){ rebuildFaceCandidates(); loadRulesFromService(); refreshSummary(); }
+void MeshFaceControlWidget::beforeLoad(){ rebuildFaceCandidates(); loadRulesFromService(); }
 void MeshFaceControlWidget::beforeUnload(){ if(auto* s=ServiceRegistry::instance().getService<PreProcessingService>()) s->clearEntityHighlight(); }
 
-void MeshFaceControlWidget::onAddControl(){ QString err; if(!validateInput(err)){ QMessageBox::warning(this,tr("面控制"),err); return;} auto item=collectFormData(); m_items.push_back(item); appendOrUpdateTableRow(ui->tableControls->rowCount(),item); syncRulesToService(); onResetForm(); refreshSummary(); }
-void MeshFaceControlWidget::onUpdateControl(){ int row=ui->tableControls->currentRow(); if(row<0||row>=m_items.size()) return; QString err; if(!validateInput(err)){ QMessageBox::warning(this,tr("面控制"),err); return;} auto item=collectFormData(); m_items[row]=item; appendOrUpdateTableRow(row,item); syncRulesToService(); refreshSummary(); }
+void MeshFaceControlWidget::onAddControl(){ QString err; if(!validateInput(err)){ QMessageBox::warning(this,tr("面控制"),err); return;} auto item=collectFormData(); m_items.push_back(item); appendOrUpdateTableRow(ui->tableControls->rowCount(),item); syncRulesToService(); onResetForm(); }
+void MeshFaceControlWidget::onUpdateControl(){ int row=ui->tableControls->currentRow(); if(row<0||row>=m_items.size()) return; QString err; if(!validateInput(err)){ QMessageBox::warning(this,tr("面控制"),err); return;} auto item=collectFormData(); m_items[row]=item; appendOrUpdateTableRow(row,item); syncRulesToService(); }
 void MeshFaceControlWidget::onDeleteControl(){ int row=ui->tableControls->currentRow(); if(row<0||row>=m_items.size()) return; m_items.removeAt(row); ui->tableControls->removeRow(row); syncRulesToService(); onResetForm(); }
-void MeshFaceControlWidget::onResetForm(){ ui->editFaceIds->clear(); ui->spinMinSize->setValue(0.2); ui->spinMaxSize->setValue(1.0); ui->checkCurvature->setChecked(true); ui->spinCurvatureLevel->setValue(2); ui->tableControls->clearSelection(); refreshButtons(); refreshSummary(); }
+void MeshFaceControlWidget::onResetForm(){ ui->editFaceIds->clear(); ui->spinMinSize->setValue(0.2); ui->spinMaxSize->setValue(1.0); ui->checkCurvature->setChecked(true); ui->spinCurvatureLevel->setValue(2); ui->tableControls->clearSelection(); refreshButtons(); }
 void MeshFaceControlWidget::onSelectionChanged(){ int row=ui->tableControls->currentRow(); if(row>=0&&row<m_items.size()) fillFormData(m_items[row]); refreshButtons(); }
-void MeshFaceControlWidget::onParameterEdited(){ ui->spinCurvatureLevel->setEnabled(ui->checkCurvature->isChecked()); refreshButtons(); refreshSummary(); }
+void MeshFaceControlWidget::onParameterEdited(){ ui->spinCurvatureLevel->setEnabled(ui->checkCurvature->isChecked()); refreshButtons(); }
 
 void MeshFaceControlWidget::onRefreshEntities(){ rebuildFaceCandidates(); }
 void MeshFaceControlWidget::onAppendSelectedEntity(){ int id=ui->cmbEntity->currentData().toInt(); if(id<=0)return; appendEntityIdToEdit(id); }
-void MeshFaceControlWidget::onHighlightSelectedEntity(){ int id=ui->cmbEntity->currentData().toInt(); if(id<=0)return; if(auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) svc->highlightEntity(2,id); }
 
 void MeshFaceControlWidget::setupUiState(){ ui->tableControls->setColumnCount(5); ui->tableControls->setHorizontalHeaderLabels({tr("面 ID"), tr("最小尺寸"), tr("最大尺寸"), tr("曲率加密"), tr("加密等级")}); ui->tableControls->horizontalHeader()->setStretchLastSection(true); ui->tableControls->setSelectionBehavior(QAbstractItemView::SelectRows); ui->tableControls->setSelectionMode(QAbstractItemView::SingleSelection); ui->tableControls->setEditTriggers(QAbstractItemView::NoEditTriggers); onResetForm(); rebuildFaceCandidates(); }
 bool MeshFaceControlWidget::validateInput(QString &err) const{ if (ui->editFaceIds->text().trimmed().isEmpty()) { err = tr("请先输入或选择面 ID。"); return false; } if (ui->spinMinSize->value() > ui->spinMaxSize->value()) { err = tr("最小尺寸不能大于最大尺寸。"); return false; } return true; }
@@ -51,11 +59,10 @@ MeshFaceControlWidget::FaceControlItem MeshFaceControlWidget::collectFormData() 
 void MeshFaceControlWidget::fillFormData(const FaceControlItem &item){ ui->editFaceIds->setText(item.faceIds); ui->spinMinSize->setValue(item.minSize); ui->spinMaxSize->setValue(item.maxSize); ui->checkCurvature->setChecked(item.curvatureRefine); ui->spinCurvatureLevel->setValue(item.curvatureLevel); }
 void MeshFaceControlWidget::appendOrUpdateTableRow(int row, const FaceControlItem &item){ if(row<ui->tableControls->rowCount()){ ui->tableControls->item(row,0)->setText(item.faceIds); ui->tableControls->item(row,1)->setText(QString::number(item.minSize,'f',3)); ui->tableControls->item(row,2)->setText(QString::number(item.maxSize,'f',3)); ui->tableControls->item(row,3)->setText(item.curvatureRefine?tr("启用"):tr("关闭")); ui->tableControls->item(row,4)->setText(item.curvatureRefine?QString::number(item.curvatureLevel):"-"); return;} int r=ui->tableControls->rowCount(); ui->tableControls->insertRow(r); ui->tableControls->setItem(r,0,new QTableWidgetItem(item.faceIds)); ui->tableControls->setItem(r,1,new QTableWidgetItem(QString::number(item.minSize,'f',3))); ui->tableControls->setItem(r,2,new QTableWidgetItem(QString::number(item.maxSize,'f',3))); ui->tableControls->setItem(r,3,new QTableWidgetItem(item.curvatureRefine?tr("启用"):tr("关闭"))); ui->tableControls->setItem(r,4,new QTableWidgetItem(item.curvatureRefine?QString::number(item.curvatureLevel):"-")); }
 void MeshFaceControlWidget::refreshButtons(){ bool hasSelection=ui->tableControls->currentRow()>=0; bool hasInput=!ui->editFaceIds->text().trimmed().isEmpty(); ui->btnAdd->setEnabled(hasInput); ui->btnUpdate->setEnabled(hasSelection&&hasInput); ui->btnDelete->setEnabled(hasSelection); }
-void MeshFaceControlWidget::refreshSummary(){ const QString modeHint = ui->checkCurvature->isChecked()?tr("已开启曲率加密，可提升圆角/小特征处质量。") : tr("已关闭曲率加密，适合追求速度的粗网格。"); ui->labelSummary->setText(tr("已配置 %1 条面控制规则，可选面实体 %2 个。%3").arg(m_items.size()).arg(m_entityIds.size()).arg(modeHint)); }
 
-void MeshFaceControlWidget::rebuildFaceCandidates(){ ui->cmbEntity->clear(); m_entityIds.clear(); if(auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) m_entityIds=svc->listEntityIds(2); for(const auto& id:m_entityIds) ui->cmbEntity->addItem(tr("面 #%1").arg(id), id.toInt()); updateEntityUiState(); refreshSummary(); }
+void MeshFaceControlWidget::rebuildFaceCandidates(){ ui->cmbEntity->clear(); m_entityIds.clear(); if(auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) m_entityIds=svc->listEntityIds(2); for(const auto& id:m_entityIds) ui->cmbEntity->addItem(tr("面 #%1").arg(id), id.toInt()); updateEntityUiState(); }
 void MeshFaceControlWidget::clearHighlight(){ if(auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) svc->clearEntityHighlight(); }
-void MeshFaceControlWidget::updateEntityUiState(){ const bool hasEntities=!m_entityIds.isEmpty(); ui->cmbEntity->setEnabled(hasEntities); ui->btnAppendEntity->setEnabled(hasEntities); ui->btnHighlightEntity->setEnabled(hasEntities); }
+void MeshFaceControlWidget::updateEntityUiState(){ const bool hasEntities=!m_entityIds.isEmpty(); ui->cmbEntity->setEnabled(hasEntities); ui->btnAppendEntity->setEnabled(hasEntities); }
 bool MeshFaceControlWidget::appendEntityIdToEdit(int id){ QStringList parts=ui->editFaceIds->text().trimmed().split(',',QString::SkipEmptyParts); QString idStr=QString::number(id); if(!parts.contains(idStr)){ parts.append(idStr); ui->editFaceIds->setText(parts.join(',')); } return true; }
 
 void MeshFaceControlWidget::syncRulesToService()

@@ -31,7 +31,6 @@ private slots:
 
     void onRefreshEntities();
     void onAppendSelectedEntity();
-    void onHighlightSelectedEntity();
 
 private:
     struct VolumeControlItem
@@ -50,7 +49,6 @@ private:
     void fillFormData(const VolumeControlItem &item);
     void appendOrUpdateTableRow(int row, const VolumeControlItem &item);
     void refreshButtons();
-    void refreshSummary();
     void rebuildVolumeCandidates();
     void clearHighlight();
     void updateEntityUiState();

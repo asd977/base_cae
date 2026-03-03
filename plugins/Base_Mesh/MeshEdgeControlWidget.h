@@ -32,7 +32,6 @@ private slots:
 
     void onRefreshEntities();
     void onAppendSelectedEntity();
-    void onHighlightSelectedEntity();
 
 private:
     struct EdgeControlItem
@@ -50,7 +49,6 @@ private:
     void fillFormData(const EdgeControlItem &item);
     void appendOrUpdateTableRow(int row, const EdgeControlItem &item);
     void refreshButtons();
-    void refreshSummary();
     void rebuildEdgeCandidates();
     void clearHighlight();
     void updateEntityUiState();

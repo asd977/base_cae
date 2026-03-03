@@ -33,7 +33,6 @@ private slots:
 
     void onRefreshEntities();
     void onAppendSelectedEntity();
-    void onHighlightSelectedEntity();
 
 private:
     struct FaceControlItem
@@ -51,7 +50,6 @@ private:
     void fillFormData(const FaceControlItem &item);
     void appendOrUpdateTableRow(int row, const FaceControlItem &item);
     void refreshButtons();
-    void refreshSummary();
 
     void rebuildFaceCandidates();
     void clearHighlight();

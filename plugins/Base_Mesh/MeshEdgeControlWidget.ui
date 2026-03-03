@@ -113,16 +113,6 @@ QTableWidget, QTreeWidget, QListWidget {
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="QLabel" name="labelSummary">
-     <property name="text">
-      <string>已配置 0 条边控制规则。当前为“新增模式”，点击“添加控制”可追加规则。</string>
-     </property>
-     <property name="wordWrap">
-      <bool>true</bool>
-     </property>
-    </widget>
-   </item>
-   <item>
     <widget class="QGroupBox" name="groupBoxInput">
      <property name="title">
       <string>参数设置</string>
@@ -148,12 +138,11 @@ QTableWidget, QTreeWidget, QListWidget {
        </widget>
       </item>
       <item row="1" column="4">
-       <widget class="QComboBox" name="cmbEntity"/>
+       <widget class="CustomComboBox" name="cmbEntity"/>
       </item>
       <item row="2" column="4">
        <layout class="QVBoxLayout" name="verticalLayoutEntityBtns">
         <item><widget class="QPushButton" name="btnAppendEntity"><property name="text"><string>追加到 ID</string></property></widget></item>
-        <item><widget class="QPushButton" name="btnHighlightEntity"><property name="text"><string>高亮当前边</string></property></widget></item>
        </layout>
       </item>
       <item row="1" column="0">
@@ -283,18 +272,15 @@ QTableWidget, QTreeWidget, QListWidget {
    <item>
     <widget class="QTableWidget" name="tableControls"/>
    </item>
-   <item>
-    <widget class="QLabel" name="labelHint">
-     <property name="text">
-      <string>交互说明：请先从下拉框选择边并高亮确认，再“追加到 ID”后保存规则。</string>
-     </property>
-     <property name="wordWrap">
-      <bool>true</bool>
-     </property>
-    </widget>
-   </item>
   </layout>
  </widget>
+ <customwidgets>
+ <customwidget>
+  <class>CustomComboBox</class>
+  <extends>QComboBox</extends>
+  <header>CustomComboBox.h</header>
+ </customwidget>
+</customwidgets>
  <resources/>
  <connections/>
 </ui>
