@@ -55,7 +55,6 @@ private:
     void updateEntityUiState();
     void syncRulesToService();
     void loadRulesFromService();
-    bool appendEntityIdToEdit(int id);
 
 private:
     Ui::MeshFaceControlWidget *ui;
