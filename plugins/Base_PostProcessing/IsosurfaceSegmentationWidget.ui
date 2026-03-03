@@ -125,6 +125,13 @@ QTableWidget, QTreeWidget, QListWidget {
     <number>0</number>
    </property>
    <item>
+    <widget class="QLabel" name="pageNameLabel">
+     <property name="text">
+      <string>Form</string>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="QLabel" name="label">
      <property name="text">
       <string>等值面分割</string>

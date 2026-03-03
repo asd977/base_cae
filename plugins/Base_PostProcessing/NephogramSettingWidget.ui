@@ -119,7 +119,7 @@ QTableWidget, QTreeWidget, QListWidget {
     <number>0</number>
    </property>
    <item>
-    <widget class="QLabel" name="label">
+    <widget class="QLabel" name="pageNameLabel">
      <property name="text">
       <string>云图</string>
      </property>

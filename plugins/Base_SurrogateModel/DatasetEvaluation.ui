@@ -128,6 +128,13 @@ QTableWidget, QTreeWidget, QListWidget {
     <number>8</number>
    </property>
    <item>
+    <widget class="QLabel" name="pageNameLabel">
+     <property name="text">
+      <string>数据集评估</string>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="QPushButton" name="pushButton">
      <property name="text">
       <string>数据集</string>
@@ -372,6 +379,19 @@ QTableWidget, QTreeWidget, QListWidget {
       </widget>
      </item>
     </layout>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
    </item>
   </layout>
  </widget>

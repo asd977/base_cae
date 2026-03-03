@@ -113,6 +113,20 @@ QTableWidget, QTreeWidget, QListWidget {
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
+    <widget class="QLabel" name="pageNameLabel">
+     <property name="text">
+      <string>整体剖分</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="pushButton">
+     <property name="text">
+      <string>整体剖分</string>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="QGroupBox" name="groupParams">
      <property name="title">
       <string>整体剖分参数</string>
