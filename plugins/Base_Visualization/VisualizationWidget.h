@@ -19,6 +19,7 @@ class vtkLookupTable;
 class vtkScalarBarActor;
 class vtkAxesActor;
 class vtkOrientationMarkerWidget;
+class vtkLegendScaleActor;
 class vtkProp;
 class vtkMapper;
 class vtkTransform;
@@ -97,6 +98,7 @@ private:
     void rotateCamera(double azimuthDeg, double elevationDeg);
     void zoomCamera(double factor);
     void updateProjectionButtonIcon();
+    void updateScaleButtonIcon();
     void applyGlobalOpacity(double alpha, bool renderNow = true);
 
     static vtkMapper* actorMapper(vtkProp* prop);
@@ -128,8 +130,11 @@ private:
     QPointer<QFrame> m_toolbar;
     QPointer<QSlider> m_globalOpacitySlider;
     QPointer<QToolButton> m_projectionButton;
+    QPointer<QToolButton> m_scaleButton;
     QPointer<QToolButton> m_opacityButton;
     QPointer<QMenu> m_opacityMenu;
     QPointer<QLabel> m_opacityPercentLabel;
     bool m_isParallelProjection = false;
+    vtkSmartPointer<vtkLegendScaleActor> m_legendScaleActor;
+    bool m_isScaleVisible = false;
 };

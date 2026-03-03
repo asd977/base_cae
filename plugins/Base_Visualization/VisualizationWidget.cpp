@@ -24,6 +24,7 @@
 #include <vtkTextProperty.h>
 #include <vtkAxesActor.h>
 #include <vtkOrientationMarkerWidget.h>
+#include <vtkLegendScaleActor.h>
 #include <vtkRenderWindowInteractor.h>
 #include <vtkProp.h>
 #include <vtkProp3D.h>
@@ -87,6 +88,11 @@ void VisualizationWidget::initVtk()
     m_scalarBar->GetLabelTextProperty()->SetFontSize(12);
 
     m_renderer->AddActor2D(m_scalarBar);
+
+    // ---------- Scale actor ----------
+    m_legendScaleActor = vtkSmartPointer<vtkLegendScaleActor>::New();
+    m_legendScaleActor->SetVisibility(0);
+    m_renderer->AddActor(m_legendScaleActor);
 
     // ---------- Orientation marker ----------
     m_axes = vtkSmartPointer<vtkAxesActor>::New();
@@ -161,6 +167,17 @@ void VisualizationWidget::initViewToolbar()
     });
     updateProjectionButtonIcon();
     root->addWidget(m_projectionButton);
+
+    m_scaleButton = makeIconBtn(QString(), tr("显示/隐藏尺度标尺"), [this]() {
+        m_isScaleVisible = !m_isScaleVisible;
+        if (m_legendScaleActor) {
+            m_legendScaleActor->SetVisibility(m_isScaleVisible ? 1 : 0);
+        }
+        updateScaleButtonIcon();
+        render();
+    });
+    updateScaleButtonIcon();
+    root->addWidget(m_scaleButton);
 
     addSep();
 
@@ -583,6 +600,16 @@ void VisualizationWidget::updateProjectionButtonIcon()
         : QStringLiteral(":/resources/icon/perspective.png");
     m_projectionButton->setIcon(QIcon(icon));
     m_projectionButton->setIconSize(QSize(18, 18));
+}
+
+void VisualizationWidget::updateScaleButtonIcon()
+{
+    if (!m_scaleButton) return;
+    const QString icon = m_isScaleVisible
+        ? QStringLiteral(":/resources/icon/switch-on.png")
+        : QStringLiteral(":/resources/icon/switch-off.png");
+    m_scaleButton->setIcon(QIcon(icon));
+    m_scaleButton->setIconSize(QSize(18, 18));
 }
 
 void VisualizationWidget::resizeEvent(QResizeEvent* event)
