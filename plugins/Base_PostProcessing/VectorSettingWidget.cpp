@@ -50,7 +50,7 @@ VectorSettingWidget::VectorSettingWidget(VisualWidgetService *postProcessingWidg
     // 文本框校验：抽样间隔必须为正整数
     ui->maskSzieTextEdit->setValidator(new QIntValidator(1, 1000000, this));
     if (ui->maskSzieTextEdit->text().isEmpty())
-        ui->maskSzieTextEdit->setText(QStringLiteral("1"));
+        ui->maskSzieTextEdit->setText(QString("1"));
 
     // ——改这里：确保有合理范围，并把默认值设置为“中点”——
     // 如果 .ui 里没设范围，给个兜底 1~300（对应 0.01~3.00）

@@ -304,20 +304,20 @@ ads::DockWidgetArea UiFrame::preferDockArea(const QString& name) const
 {
     const QString lower = name.toLower();
 
-    if (lower.contains(QStringLiteral("模型")) || lower.contains("model")
-        || lower.contains(QStringLiteral("工程")) || lower.contains("tree"))
+    if (lower.contains(QString("模型")) || lower.contains("model")
+        || lower.contains(QString("工程")) || lower.contains("tree"))
         return ads::LeftDockWidgetArea;
 
-    if (lower.contains(QStringLiteral("日志")) || lower.contains("log")
-        || lower.contains(QStringLiteral("输出")) || lower.contains(QStringLiteral("进度"))
+    if (lower.contains(QString("日志")) || lower.contains("log")
+        || lower.contains(QString("输出")) || lower.contains(QString("进度"))
         || lower.contains("console") || lower.contains("message"))
         return ads::BottomDockWidgetArea;
 
-    if (lower.contains(QStringLiteral("图形")) || lower.contains(QStringLiteral("视图"))
+    if (lower.contains(QString("图形")) || lower.contains(QString("视图"))
         || lower.contains("render") || lower.contains("viewer"))
         return ads::CenterDockWidgetArea;
 
-    if (lower.contains(QStringLiteral("属性")) || lower.contains(QStringLiteral("设置"))
+    if (lower.contains(QString("属性")) || lower.contains(QString("设置"))
         || lower.contains("property") || lower.contains("panel"))
         return ads::RightDockWidgetArea;
 

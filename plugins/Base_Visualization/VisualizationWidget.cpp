@@ -625,8 +625,8 @@ void VisualizationWidget::updateProjectionButtonIcon()
 {
     if (!m_projectionButton) return;
     const QString icon = m_isParallelProjection
-        ? QStringLiteral(":/resources/icon/parallel.png")
-        : QStringLiteral(":/resources/icon/perspective.png");
+        ? QString(":/resources/icon/parallel.png")
+        : QString(":/resources/icon/perspective.png");
     m_projectionButton->setIcon(QIcon(icon));
     m_projectionButton->setIconSize(QSize(18, 18));
 }
@@ -635,8 +635,8 @@ void VisualizationWidget::updateScaleButtonIcon()
 {
     if (!m_scaleButton) return;
     const QString icon = m_isScaleVisible
-        ? QStringLiteral(":/resources/icon/view_scale_on.svg")
-        : QStringLiteral(":/resources/icon/view_scale_off.svg");
+        ? QString(":/resources/icon/view_scale_on.svg")
+        : QString(":/resources/icon/view_scale_off.svg");
     m_scaleButton->setIcon(QIcon(icon));
     m_scaleButton->setIconSize(QSize(18, 18));
 }

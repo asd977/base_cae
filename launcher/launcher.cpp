@@ -18,7 +18,7 @@ int main(int argc, char** argv)
     QApplication app(argc, argv);
 
     qDebug()<<"asd";
-     StyleManager::applyStyleSheet(app, QStringLiteral(":/resources/style/app.qss"));
+     StyleManager::applyStyleSheet(app, QString(":/resources/style/app.qss"));
 
     QString exePath = QCoreApplication::applicationDirPath();
 

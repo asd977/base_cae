@@ -96,9 +96,9 @@ void MaterialManager::newProjectForPath(const QString &workPath)
         return;
     }
 
-    m_rootItem = new ProjectNode(QStringLiteral("材料"));
+    m_rootItem = new ProjectNode(QString("材料"));
     m_rootItem->setData(0, ProjectNode::RoleUuid, m_rootItem->getUuid());
-    m_rootItem->setData(0, ProjectNode::RoleModule, QStringLiteral("Material"));
+    m_rootItem->setData(0, ProjectNode::RoleModule, QString("Material"));
     m_rootItem->setPage(m_materialManagerWidget);
     m_projectManagerService->addTreeItem(m_rootItem);
 }
@@ -196,7 +196,7 @@ QVector<QStringList> MaterialManager::getValueStrings()
             for (const QString &column : model.columns) {
                 encoded << (column + QLatin1Char(':') + entry.properties.value(column));
             }
-            row << encoded.join(QStringLiteral("|;|"));
+            row << encoded.join(QString("|;|"));
             QList<int> appliedList = entry.appliedMatypes.values();
             std::sort(appliedList.begin(), appliedList.end());
             QStringList appliedStrings;
@@ -257,7 +257,7 @@ void MaterialManager::setValueStrings(QVector<QStringList> values)
 
         MaterialEntry entry;
         entry.name = name;
-        const QStringList pairs = encoded.split(QStringLiteral("|;|"), QString::SkipEmptyParts);
+        const QStringList pairs = encoded.split(QString("|;|"), QString::SkipEmptyParts);
         for (const QString &pair : pairs) {
             int sep = pair.indexOf(QLatin1Char(':'));
             if (sep <= 0) {
@@ -342,8 +342,8 @@ void MaterialManager::rebuildProjectTree()
             auto *modelWidget = new MaterialModelWidget(this);
             modelItem = new ProjectNode(model->displayName, QUuid::createUuid().toString(), modelWidget);
             modelItem->setData(0, ProjectNode::RoleUuid, modelItem->getUuid());
-            modelItem->setData(0, ProjectNode::RoleModule, QStringLiteral("Material"));
-            modelItem->setData(0, ProjectNode::RoleKind, QStringLiteral("MaterialModel"));
+            modelItem->setData(0, ProjectNode::RoleModule, QString("Material"));
+            modelItem->setData(0, ProjectNode::RoleKind, QString("MaterialModel"));
             m_modelWidgets.insert(model->key, modelWidget);
             m_modelItems.insert(model->key, modelItem);
             m_rootItem->addChild(modelItem);
@@ -361,8 +361,8 @@ void MaterialManager::rebuildProjectTree()
             entryWidget->setEntry(model->key, entryId);
             entryItem = new ProjectNode(entry->name, entryId, entryWidget);
             entryItem->setData(0, ProjectNode::RoleUuid, entryId);
-            entryItem->setData(0, ProjectNode::RoleModule, QStringLiteral("Material"));
-            entryItem->setData(0, ProjectNode::RoleKind, QStringLiteral("MaterialEntry"));
+            entryItem->setData(0, ProjectNode::RoleModule, QString("Material"));
+            entryItem->setData(0, ProjectNode::RoleKind, QString("MaterialEntry"));
             m_entryWidgets.insert(entryId, entryWidget);
             m_entryItems.insert(entryId, entryItem);
             modelItem->addChild(entryItem);
@@ -642,7 +642,7 @@ bool MaterialManager::generateCaculateFile()
     // ===== 3) 输出文件 =====
     QDir workDir(m_workPath);
     if (!workDir.exists("input")) workDir.mkpath("input");
-    const QString filePath = workDir.filePath(QStringLiteral("input/Imat.dat"));
+    const QString filePath = workDir.filePath(QString("input/Imat.dat"));
 
     QFile file(filePath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
@@ -671,7 +671,7 @@ bool MaterialManager::generateCaculateFile()
             if (targetRow <= 0 || targetRow > ncon) continue;
 
             const QString key = cols.at(c);
-            const QString strVal = info.entry->properties.value(key, QStringLiteral("0"));
+            const QString strVal = info.entry->properties.value(key, QString("0"));
 
             bool ok = false;
             const double v = strVal.toDouble(&ok);
@@ -709,9 +709,9 @@ bool MaterialManager::generateCaculateFile()
     auto imatLabel = [](int matype) -> QString
     {
         // 尽量贴近你示例：IMAT= 10 这种（两位数前空一格）
-        if (matype < 10)  return QStringLiteral("IMAT=%1").arg(matype);
-        if (matype < 100) return QStringLiteral("IMAT= %1").arg(matype);
-        return QStringLiteral("IMAT=%1").arg(matype);
+        if (matype < 10)  return QString("IMAT=%1").arg(matype);
+        if (matype < 100) return QString("IMAT= %1").arg(matype);
+        return QString("IMAT=%1").arg(matype);
     };
 
     // ===== 6) 文件头 =====
@@ -725,7 +725,7 @@ bool MaterialManager::generateCaculateFile()
     {
         const int startMat = g * 10;
 
-        out << QStringLiteral(" CONMAT(NMAT,NCON)   GROUP NUM=%1\n").arg(g + 1, 4);
+        out << QString(" CONMAT(NMAT,NCON)   GROUP NUM=%1\n").arg(g + 1, 4);
 
         // 组头 IMAT=...
         QStringList head;
@@ -734,7 +734,7 @@ bool MaterialManager::generateCaculateFile()
         {
             head << imatLabel(startMat + k);
         }
-        out << head.join(QStringLiteral("       ")) << "\n";
+        out << head.join(QString("       ")) << "\n";
 
         // 200 行
         for (int r = 0; r < ncon; ++r)

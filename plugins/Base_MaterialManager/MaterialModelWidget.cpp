@@ -10,7 +10,7 @@ MaterialModelWidget::MaterialModelWidget(MaterialManager *manager, QWidget *pare
     , m_titleLabel(new QLabel(this))
     , m_summaryLabel(new QLabel(this))
 {
-    auto *openButton = new QPushButton(QStringLiteral("打开材料库"), this);
+    auto *openButton = new QPushButton(QString("打开材料库"), this);
     connect(openButton, &QPushButton::clicked, this, &MaterialModelWidget::onOpenLibrary);
 
     auto *layout = new QVBoxLayout(this);
@@ -25,7 +25,7 @@ void MaterialModelWidget::setModel(const MaterialModel &model)
 {
     m_modelKey = model.key;
     m_titleLabel->setText(model.displayName);
-    m_summaryLabel->setText(QStringLiteral("材料数：%1").arg(model.materials.size()));
+    m_summaryLabel->setText(QString("材料数：%1").arg(model.materials.size()));
 }
 
 void MaterialModelWidget::beforeLoad()

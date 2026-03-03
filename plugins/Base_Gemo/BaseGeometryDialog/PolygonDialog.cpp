@@ -33,16 +33,16 @@ PolygonDialog::PolygonDialog(QWidget* parent)
     : BasePage(PublicConstants::kPagePreprocessPolygon)
 {
     QVBoxLayout* layout = new QVBoxLayout(this);
-    auto* pageNameLabel = new QLabel(QStringLiteral("几何模块"), this);
+    auto* pageNameLabel = new QLabel(QString("几何模块"), this);
     pageNameLabel->setObjectName("pageNameLabel");
-    auto* sectionTitleButton = new QPushButton(QStringLiteral("参数设置"), this);
+    auto* sectionTitleButton = new QPushButton(QString("参数设置"), this);
     sectionTitleButton->setObjectName("sectionTitleButton");
     sectionTitleButton->setEnabled(false);
     layout->addWidget(pageNameLabel);
     layout->addWidget(sectionTitleButton);
 
     // ---- 基准面 ----
-    planeLabel = new QLabel(QStringLiteral("基准面："), this);
+    planeLabel = new QLabel(QString("基准面："), this);
     planeCombo = new QComboBox(this);
     planeCombo->addItem("XY", static_cast<int>(PlaneType::XY));
     planeCombo->addItem("XZ", static_cast<int>(PlaneType::XZ));
@@ -54,47 +54,47 @@ PolygonDialog::PolygonDialog(QWidget* parent)
             this, &PolygonDialog::onPlaneChanged);
 
     // ---- 半径 ----
-    QLabel* radiusLabel = new QLabel(QStringLiteral("半径："), this);
+    QLabel* radiusLabel = new QLabel(QString("半径："), this);
     radiusEdit = new QLineEdit(this);
     radiusEdit->setValidator(new QDoubleValidator(0.0, 1e6, 6, this));
     layout->addWidget(radiusLabel);
     layout->addWidget(radiusEdit);
 
     // ---- 边数 ----
-    QLabel* sidesLabel = new QLabel(QStringLiteral("边数："), this);
+    QLabel* sidesLabel = new QLabel(QString("边数："), this);
     sidesEdit = new QLineEdit(this);
     sidesEdit->setValidator(new QIntValidator(3, 100, this));
     layout->addWidget(sidesLabel);
     layout->addWidget(sidesEdit);
 
     // ---- 旋转角（建议加上）----
-    QLabel* rotateLabel = new QLabel(QStringLiteral("旋转角(°)："), this);
+    QLabel* rotateLabel = new QLabel(QString("旋转角(°)："), this);
     rotateDegEdit = new QLineEdit(this);
     rotateDegEdit->setValidator(new QDoubleValidator(-360.0, 360.0, 6, this));
     layout->addWidget(rotateLabel);
     layout->addWidget(rotateDegEdit);
 
     // ---- 中心点 X/Y/Z（与其它 2D 图形一致）----
-    centerXLabel = new QLabel(QStringLiteral("中心X坐标："), this);
+    centerXLabel = new QLabel(QString("中心X坐标："), this);
     centerXEdit  = new QLineEdit(this);
     centerXEdit->setValidator(new QDoubleValidator(-1e6, 1e6, 6, this));
     layout->addWidget(centerXLabel);
     layout->addWidget(centerXEdit);
 
-    centerYLabel = new QLabel(QStringLiteral("中心Y坐标："), this);
+    centerYLabel = new QLabel(QString("中心Y坐标："), this);
     centerYEdit  = new QLineEdit(this);
     centerYEdit->setValidator(new QDoubleValidator(-1e6, 1e6, 6, this));
     layout->addWidget(centerYLabel);
     layout->addWidget(centerYEdit);
 
-    centerZLabel = new QLabel(QStringLiteral("中心Z坐标："), this);
+    centerZLabel = new QLabel(QString("中心Z坐标："), this);
     centerZEdit  = new QLineEdit(this);
     centerZEdit->setValidator(new QDoubleValidator(-1e6, 1e6, 6, this));
     layout->addWidget(centerZLabel);
     layout->addWidget(centerZEdit);
 
     // ---- 按钮 ----
-    QPushButton* okButton = new QPushButton(QStringLiteral("生成几何体"), this);
+    QPushButton* okButton = new QPushButton(QString("生成几何体"), this);
 
     QHBoxLayout* buttonLayout = new QHBoxLayout();
     buttonLayout->addStretch();
@@ -183,19 +183,19 @@ void PolygonDialog::updatePlaneUi()
     switch (currentPlane())
     {
     case PlaneType::XY:
-        centerXLabel->setText(QStringLiteral("中心X坐标："));
-        centerYLabel->setText(QStringLiteral("中心Y坐标："));
-        centerZLabel->setText(QStringLiteral("平面偏移(Z)："));
+        centerXLabel->setText(QString("中心X坐标："));
+        centerYLabel->setText(QString("中心Y坐标："));
+        centerZLabel->setText(QString("平面偏移(Z)："));
         break;
     case PlaneType::XZ:
-        centerXLabel->setText(QStringLiteral("中心X坐标："));
-        centerYLabel->setText(QStringLiteral("平面偏移(Y)："));
-        centerZLabel->setText(QStringLiteral("中心Z坐标："));
+        centerXLabel->setText(QString("中心X坐标："));
+        centerYLabel->setText(QString("平面偏移(Y)："));
+        centerZLabel->setText(QString("中心Z坐标："));
         break;
     case PlaneType::YZ:
-        centerXLabel->setText(QStringLiteral("平面偏移(X)："));
-        centerYLabel->setText(QStringLiteral("中心Y坐标："));
-        centerZLabel->setText(QStringLiteral("中心Z坐标："));
+        centerXLabel->setText(QString("平面偏移(X)："));
+        centerYLabel->setText(QString("中心Y坐标："));
+        centerZLabel->setText(QString("中心Z坐标："));
         break;
     }
 }

@@ -31,8 +31,8 @@
 #include "PickManager.h"
 #include <struct/MeshMap.h>
 
-static const QString kPickSurfacePropId   = QStringLiteral("loadspec.pick.surface");
-static const QString kPickHighlightPropId = QStringLiteral("loadspec.pick.highlight");
+static const QString kPickSurfacePropId   = QString("loadspec.pick.surface");
+static const QString kPickHighlightPropId = QString("loadspec.pick.highlight");
 
 LoadSpecificationWidget::LoadSpecificationWidget(QWidget *parent)
     : BasePage("LoadSpecificationWidget")
@@ -186,7 +186,7 @@ void LoadSpecificationWidget::setupSurfaceAndPicker()
 
     m_visual->removeProp(kPickSurfacePropId, false);
     m_visual->addProp(kPickSurfacePropId, m_surfaceActor,
-                      QStringLiteral("载荷"), QStringLiteral("可选外表面"),
+                      QString("载荷"), QString("可选外表面"),
                       true, true);
 
     // ---------- 3) 高亮 actor：先给一个空输入（关键修复点） ----------
@@ -207,7 +207,7 @@ void LoadSpecificationWidget::setupSurfaceAndPicker()
 
     m_visual->removeProp(kPickHighlightPropId, false);
     m_visual->addProp(kPickHighlightPropId, m_highlightActor,
-                      QStringLiteral("载荷"), QStringLiteral("选中高亮"),
+                      QString("载荷"), QString("选中高亮"),
                       true, true);
 
     // ---------- 4) picker（只 pick surfaceActor） ----------

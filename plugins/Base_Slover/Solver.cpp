@@ -1,4 +1,4 @@
-#include "Solver.h"
+﻿#include "Solver.h"
 
 #include "SeepageBoundaryPage.h"
 #include "SeepageWidget.h"
@@ -314,7 +314,7 @@ int Solver::nextStressStrainIndex() const
     if (!m_root) return 1;
 
     int maxIdx = 0;
-    QRegularExpression re(QStringLiteral(R"(^应力应变分析\((\d+)\)$)"));
+    QRegularExpression re(QString(R"(^应力应变分析\((\d+)\)$)"));
 
     for (ProjectNode* child : m_root->getChildren())
     {
@@ -337,7 +337,7 @@ int Solver::nextSeepageIndex() const
     if (!m_root) return 1;
 
     int maxIdx = 0;
-    QRegularExpression re(QStringLiteral(R"(^渗流分析\((\d+)\)$)"));
+    QRegularExpression re(QString(R"(^渗流分析\((\d+)\)$)"));
 
     for (ProjectNode* child : m_root->getChildren())
     {

@@ -20,8 +20,8 @@ MaterialLibraryWidget::MaterialLibraryWidget(MaterialManager *manager, QWidget *
     ui->setupUi(this);
 
     const QString family = QFontDatabase().hasFamily("Microsoft YaHei")
-        ? QStringLiteral("Microsoft YaHei")
-        : QStringLiteral("微软雅黑");
+        ? QString("Microsoft YaHei")
+        : QString("微软雅黑");
 
     QFont f(family);
     this->setFont(f);
@@ -108,7 +108,7 @@ void MaterialLibraryWidget::populateTable(MaterialModel *model)
     }
 
     QStringList headers;
-    headers << QStringLiteral("材料名称");
+    headers << QString("材料名称");
     headers.append(model->columns);
 
     ui->materialTable->setColumnCount(headers.size());
@@ -140,7 +140,7 @@ void MaterialLibraryWidget::addMaterialAndFocus()
 
     MaterialEntry entry;
     entry.id = QUuid::createUuid().toString();
-    entry.name = QStringLiteral("新材料%1").arg(model->materials.size() + 1);
+    entry.name = QString("新材料%1").arg(model->materials.size() + 1);
     for (const QString &column : model->columns) {
         entry.properties.insert(column, QString());
     }
@@ -168,7 +168,7 @@ void MaterialLibraryWidget::on_modelComboBox_currentIndexChanged(int index)
 void MaterialLibraryWidget::on_addButton_clicked()
 {
     if (ui->modelComboBox->count() == 0) {
-        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("请先选择一个模型。"));
+        QMessageBox::information(this, QString("提示"), QString("请先选择一个模型。"));
         return;
     }
 
@@ -186,7 +186,7 @@ void MaterialLibraryWidget::on_removeButton_clicked()
 
     int row = ui->materialTable->currentRow();
     if (row < 0) {
-        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("请选择要删除的材料行。"));
+        QMessageBox::information(this, QString("提示"), QString("请选择要删除的材料行。"));
         return;
     }
 

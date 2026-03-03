@@ -85,9 +85,9 @@ static QString MakeIndexedTitle(ProjectNode* root, const QString& kind, const QS
 static inline QString quoteIfNeeded(const QString& s)
 {
     QString t = s.trimmed();
-    if (t.isEmpty()) return QStringLiteral("\"\"");
+    if (t.isEmpty()) return QString("\"\"");
     if (t.startsWith("\"") && t.endsWith("\"")) return t;
-    return QStringLiteral("\"%1\"").arg(t);
+    return QString("\"%1\"").arg(t);
 }
 
 

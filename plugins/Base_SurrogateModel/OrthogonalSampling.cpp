@@ -137,7 +137,7 @@ QJsonObject OrthogonalSampling::toJsonParams() const
         if (!arr.isEmpty())
             params.insert(name, arr);
     }
-    root.insert(QStringLiteral("params"), params);
+    root.insert(QString("params"), params);
     return root;
 }
 

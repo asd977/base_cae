@@ -98,8 +98,8 @@ PickManager::PickManager(QObject* parent)
 
     m_visual->removeProp("pick.node", false);
     m_visual->addProp("pick.node", m_selActor,
-                      QStringLiteral("{node} 选中点"),
-                      QStringLiteral("拾取选中点集合"),
+                      QString("{node} 选中点"),
+                      QString("拾取选中点集合"),
                       true, true);
 
     // ================== Edge overlay (polyline) ==================
@@ -122,8 +122,8 @@ PickManager::PickManager(QObject* parent)
 
     m_visual->removeProp("pick.edge", false);
     m_visual->addProp("pick.edge", m_edgeActor,
-                      QStringLiteral("{edge} 选中边"),
-                      QStringLiteral("拾取选中边集合（edgeKey）"),
+                      QString("{edge} 选中边"),
+                      QString("拾取选中边集合（edgeKey）"),
                       true, true);
 
     // ================== Face overlay ==================
@@ -156,8 +156,8 @@ PickManager::PickManager(QObject* parent)
 
     m_visual->removeProp("pick.face", false);
     m_visual->addProp("pick.face", m_faceActor,
-                      QStringLiteral("{face} 选中面"),
-                      QStringLiteral("拾取选中面集合"),
+                      QString("{face} 选中面"),
+                      QString("拾取选中面集合"),
                       true, true);
 
     // ================== Line node hints ==================
@@ -183,8 +183,8 @@ PickManager::PickManager(QObject* parent)
 
     m_visual->removeProp("pick.line.nodes", false);
     m_visual->addProp("pick.line.nodes", m_lineNodeActor,
-                      QStringLiteral("{line} 节点提示"),
-                      QStringLiteral("线网格节点提示"),
+                      QString("{line} 节点提示"),
+                      QString("线网格节点提示"),
                       true, true);
 
 
@@ -223,8 +223,8 @@ PickManager::PickManager(QObject* parent)
     if (m_visual) {
         m_visual->removeProp("pick.box", false);
         m_visual->addProp("pick.box", m_boxActor2D,
-                          QStringLiteral("{box} 框选显示"),
-                          QStringLiteral("橡皮筋框选矩形"),
+                          QString("{box} 框选显示"),
+                          QString("橡皮筋框选矩形"),
                           true, true);
     } else {
         // fallback: 直接加到 renderer

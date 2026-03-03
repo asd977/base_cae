@@ -107,13 +107,13 @@ void MaterialManagerWidget::on_addToTreeButton_clicked()
 {
     QTreeWidgetItem *item = ui->treeWidget->currentItem();
     if (!item) {
-        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("请先选择一个材料。"));
+        QMessageBox::information(this, QString("提示"), QString("请先选择一个材料。"));
         return;
     }
 
     const QString entryId = item->data(0, Qt::UserRole + 1).toString();
     if (entryId.isEmpty()) {
-        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("请选中具体的材料节点。"));
+        QMessageBox::information(this, QString("提示"), QString("请选中具体的材料节点。"));
         return;
     }
 
@@ -124,13 +124,13 @@ void MaterialManagerWidget::on_removeFromTreeButton_clicked()
 {
     QTreeWidgetItem *item = ui->treeWidget->currentItem();
     if (!item) {
-        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("请先选择一个材料。"));
+        QMessageBox::information(this, QString("提示"), QString("请先选择一个材料。"));
         return;
     }
 
     const QString entryId = item->data(0, Qt::UserRole + 1).toString();
     if (entryId.isEmpty()) {
-        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("请选中具体的材料节点。"));
+        QMessageBox::information(this, QString("提示"), QString("请选中具体的材料节点。"));
         return;
     }
 
@@ -140,8 +140,8 @@ void MaterialManagerWidget::on_removeFromTreeButton_clicked()
 void MaterialManagerWidget::on_generateImatButton_clicked()
 {
     if (m_materialManager->generateCaculateFile()) {
-        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("已生成 Imat.dat（测试版）"));
+        QMessageBox::information(this, QString("提示"), QString("已生成 Imat.dat（测试版）"));
     } else {
-        QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("生成失败，请确认材料已添加到工程并选择 MATYPE。"));
+        QMessageBox::warning(this, QString("提示"), QString("生成失败，请确认材料已添加到工程并选择 MATYPE。"));
     }
 }

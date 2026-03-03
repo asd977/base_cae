@@ -141,7 +141,7 @@ void MaterialEntryWidget::rebuildForm(MaterialModel *model, MaterialEntry *entry
     // ===== 名称 =====
     m_nameEdit = new QLineEdit(entry->name, this);
     connect(m_nameEdit, &QLineEdit::textEdited, this, &MaterialEntryWidget::onNameEdited);
-    m_formLayout->addRow(QStringLiteral("材料名称"), m_nameEdit);
+    m_formLayout->addRow(QString("材料名称"), m_nameEdit);
 
     // 先取 appliedList，后面初始化要用
     QList<int> appliedList = entry->appliedMatypes.values();
@@ -153,7 +153,7 @@ void MaterialEntryWidget::rebuildForm(MaterialModel *model, MaterialEntry *entry
     rowLayout->setContentsMargins(0, 0, 0, 0);
 
     m_matypeCombo = new CustomComboBox(matypeRowWidget);
-    m_matypeCombo->addItem(QStringLiteral("未选择"), QVariant());
+    m_matypeCombo->addItem(QString("未选择"), QVariant());
 
     QList<int> matypes = m_materialManager->availableMatypes().values();
     std::sort(matypes.begin(), matypes.end());
@@ -168,14 +168,14 @@ void MaterialEntryWidget::rebuildForm(MaterialModel *model, MaterialEntry *entry
     connect(m_matypeCombo, QOverload<int>::of(&QComboBox::activated),
             this, &MaterialEntryWidget::onMatypeActivated);
 
-    m_applyButton = new QPushButton(QStringLiteral("施加到网格"), matypeRowWidget);
+    m_applyButton = new QPushButton(QString("施加到网格"), matypeRowWidget);
     connect(m_applyButton, &QPushButton::clicked, this, &MaterialEntryWidget::onApplyMatypeClicked);
 
     rowLayout->addWidget(m_matypeCombo);
     rowLayout->addWidget(m_applyButton);
     rowLayout->addStretch();
 
-    m_formLayout->addRow(QStringLiteral("关联MATYPE"), matypeRowWidget);
+    m_formLayout->addRow(QString("关联MATYPE"), matypeRowWidget);
 
     // ===== 已施加 MATYPE 列表 + 移除 =====
     QWidget *appliedRowWidget = new QWidget(this);
@@ -190,13 +190,13 @@ void MaterialEntryWidget::rebuildForm(MaterialModel *model, MaterialEntry *entry
     connect(m_appliedMatypesList, &QListWidget::currentTextChanged,
             this, &MaterialEntryWidget::onAppliedMatypeSelected);
 
-    m_removeButton = new QPushButton(QStringLiteral("移除选中"), appliedRowWidget);
+    m_removeButton = new QPushButton(QString("移除选中"), appliedRowWidget);
     connect(m_removeButton, &QPushButton::clicked, this, &MaterialEntryWidget::onRemoveMatypeClicked);
 
     appliedLayout->addWidget(m_appliedMatypesList);
     appliedLayout->addWidget(m_removeButton);
 
-    m_formLayout->addRow(QStringLiteral("已施加材料单元"), appliedRowWidget);
+    m_formLayout->addRow(QString("已施加材料单元"), appliedRowWidget);
 
     // ===== 动态字段（放在 MATYPE 区域下面）=====
     for (const QString &column : model->columns) {

@@ -36,16 +36,16 @@ EllipseDialog::EllipseDialog(QWidget* parent)
     : BasePage(PublicConstants::kPagePreprocessEllipse)
 {
     QVBoxLayout* layout = new QVBoxLayout(this);
-    auto* pageNameLabel = new QLabel(QStringLiteral("几何模块"), this);
+    auto* pageNameLabel = new QLabel(QString("几何模块"), this);
     pageNameLabel->setObjectName("pageNameLabel");
-    auto* sectionTitleButton = new QPushButton(QStringLiteral("参数设置"), this);
+    auto* sectionTitleButton = new QPushButton(QString("参数设置"), this);
     sectionTitleButton->setObjectName("sectionTitleButton");
     sectionTitleButton->setEnabled(false);
     layout->addWidget(pageNameLabel);
     layout->addWidget(sectionTitleButton);
 
     // ---- 基准面选择 ----
-    planeLabel = new QLabel(QStringLiteral("基准面："), this);
+    planeLabel = new QLabel(QString("基准面："), this);
     planeCombo = new QComboBox(this);
     planeCombo->addItem("XY", static_cast<int>(PlaneType::XY));
     planeCombo->addItem("XZ", static_cast<int>(PlaneType::XZ));
@@ -57,40 +57,40 @@ EllipseDialog::EllipseDialog(QWidget* parent)
             this, &EllipseDialog::onPlaneChanged);
 
     // ---- 长轴半径 ----
-    QLabel* majorRadiusLabel = new QLabel(QStringLiteral("长轴半径："), this);
+    QLabel* majorRadiusLabel = new QLabel(QString("长轴半径："), this);
     majorRadiusEdit = new QLineEdit(this);
     majorRadiusEdit->setValidator(new QDoubleValidator(0.0, 1e6, 6, this));
     layout->addWidget(majorRadiusLabel);
     layout->addWidget(majorRadiusEdit);
 
     // ---- 短轴半径 ----
-    QLabel* minorRadiusLabel = new QLabel(QStringLiteral("短轴半径："), this);
+    QLabel* minorRadiusLabel = new QLabel(QString("短轴半径："), this);
     minorRadiusEdit = new QLineEdit(this);
     minorRadiusEdit->setValidator(new QDoubleValidator(0.0, 1e6, 6, this));
     layout->addWidget(minorRadiusLabel);
     layout->addWidget(minorRadiusEdit);
 
     // ---- 中心点（X/Y/Z，全保留；基准面决定哪个是偏移）----
-    centerXLabel = new QLabel(QStringLiteral("中心X坐标："), this);
+    centerXLabel = new QLabel(QString("中心X坐标："), this);
     centerXEdit  = new QLineEdit(this);
     centerXEdit->setValidator(new QDoubleValidator(-1e6, 1e6, 6, this));
     layout->addWidget(centerXLabel);
     layout->addWidget(centerXEdit);
 
-    centerYLabel = new QLabel(QStringLiteral("中心Y坐标："), this);
+    centerYLabel = new QLabel(QString("中心Y坐标："), this);
     centerYEdit  = new QLineEdit(this);
     centerYEdit->setValidator(new QDoubleValidator(-1e6, 1e6, 6, this));
     layout->addWidget(centerYLabel);
     layout->addWidget(centerYEdit);
 
-    centerZLabel = new QLabel(QStringLiteral("中心Z坐标："), this);
+    centerZLabel = new QLabel(QString("中心Z坐标："), this);
     centerZEdit  = new QLineEdit(this);
     centerZEdit->setValidator(new QDoubleValidator(-1e6, 1e6, 6, this));
     layout->addWidget(centerZLabel);
     layout->addWidget(centerZEdit);
 
     // ---- 创建按钮 ----
-    QPushButton* okButton = new QPushButton(QStringLiteral("生成几何体"), this);
+    QPushButton* okButton = new QPushButton(QString("生成几何体"), this);
 
     QHBoxLayout* buttonLayout = new QHBoxLayout();
     buttonLayout->addStretch();
@@ -180,19 +180,19 @@ void EllipseDialog::updatePlaneUi()
     switch (currentPlane())
     {
     case PlaneType::XY:
-        centerXLabel->setText(QStringLiteral("中心X坐标："));
-        centerYLabel->setText(QStringLiteral("中心Y坐标："));
-        centerZLabel->setText(QStringLiteral("平面偏移(Z)："));
+        centerXLabel->setText(QString("中心X坐标："));
+        centerYLabel->setText(QString("中心Y坐标："));
+        centerZLabel->setText(QString("平面偏移(Z)："));
         break;
     case PlaneType::XZ:
-        centerXLabel->setText(QStringLiteral("中心X坐标："));
-        centerYLabel->setText(QStringLiteral("平面偏移(Y)："));
-        centerZLabel->setText(QStringLiteral("中心Z坐标："));
+        centerXLabel->setText(QString("中心X坐标："));
+        centerYLabel->setText(QString("平面偏移(Y)："));
+        centerZLabel->setText(QString("中心Z坐标："));
         break;
     case PlaneType::YZ:
-        centerXLabel->setText(QStringLiteral("平面偏移(X)："));
-        centerYLabel->setText(QStringLiteral("中心Y坐标："));
-        centerZLabel->setText(QStringLiteral("中心Z坐标："));
+        centerXLabel->setText(QString("平面偏移(X)："));
+        centerYLabel->setText(QString("中心Y坐标："));
+        centerZLabel->setText(QString("中心Z坐标："));
         break;
     }
 }
@@ -254,12 +254,12 @@ void EllipseDialog::validateInput()
     }
     catch (...)
     {
-        QMessageBox::warning(this, QStringLiteral("生成失败"), QStringLiteral("创建椭圆几何失败（OCC 异常）。"));
+        QMessageBox::warning(this, QString("生成失败"), QString("创建椭圆几何失败（OCC 异常）。"));
         return;
     }
 
     if (ellipseShape.IsNull()) {
-        QMessageBox::warning(this, QStringLiteral("生成失败"), QStringLiteral("创建椭圆几何失败（shape 为空）。"));
+        QMessageBox::warning(this, QString("生成失败"), QString("创建椭圆几何失败（shape 为空）。"));
         return;
     }
 
@@ -268,7 +268,7 @@ void EllipseDialog::validateInput()
 
     GeomManager::GeomManagerInstance* mgr = GeomManager::GeomManagerInstance::getInstance();
     if (!mgr) {
-        QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("几何管理器未初始化。"));
+        QMessageBox::warning(this, QString("错误"), QString("几何管理器未初始化。"));
         delete shape;
         return;
     }

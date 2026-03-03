@@ -388,7 +388,7 @@ MeshGridIO::loadCurrentGmshMesh(QString *errMsg)
     std::vector<double> nodeParams;
     gmsh::model::mesh::getNodes(nodeTags, nodeCoords, nodeParams);
     if (nodeTags.empty()) {
-        return fail(QStringLiteral("Gmsh 当前模型没有节点"));
+        return fail(QString("Gmsh 当前模型没有节点"));
     }
 
     QHash<std::size_t, vtkIdType> nodeIdToPointId;
@@ -477,7 +477,7 @@ MeshGridIO::loadCurrentGmshMesh(QString *errMsg)
         }
     }
     if (targetCellDim < 0) {
-        return fail(QStringLiteral("Gmsh 当前模型没有可导入单元"));
+        return fail(QString("Gmsh 当前模型没有可导入单元"));
     }
 
     for (int dim = 0; dim <= 3; ++dim) {
@@ -619,7 +619,7 @@ MeshGridIO::loadCurrentGmshMesh(QString *errMsg)
     }
 
     if (grid->GetNumberOfCells() == 0) {
-        return fail(QStringLiteral("Gmsh 当前模型没有可导入的目标维度单元"));
+        return fail(QString("Gmsh 当前模型没有可导入的目标维度单元"));
     }
 
 
@@ -1914,9 +1914,9 @@ MeshGridIO::loadFlac3dGrid(const QString &fileName) const
                 }
             }
 
-            seenSlots.insert(curSlot.isEmpty() ? QStringLiteral("<none>") : curSlot);
+            seenSlots.insert(curSlot.isEmpty() ? QString("<none>") : curSlot);
 
-            qInfo() << "[Flac3D] parse ZGROUP name=" << curGroupName << " slot=" << (curSlot.isEmpty() ? QStringLiteral("<none>") : curSlot);
+            qInfo() << "[Flac3D] parse ZGROUP name=" << curGroupName << " slot=" << (curSlot.isEmpty() ? QString("<none>") : curSlot);
 
             // 同行如果也带了 zone ids，也顺手解析（容错）
             for (int i = 2; i < tok.size(); ++i) {

@@ -969,7 +969,7 @@ QString PreProcessing::makeUniqueName(const QString &baseName, const QString &ty
     QString key = typeKey.isEmpty() ? baseName : typeKey;
     int count = m_nameCounters.value(key, 0) + 1;
     m_nameCounters.insert(key, count);
-    return QStringLiteral("%1(%2)").arg(baseName).arg(count);
+    return QString("%1(%2)").arg(baseName).arg(count);
 }
 
 namespace {

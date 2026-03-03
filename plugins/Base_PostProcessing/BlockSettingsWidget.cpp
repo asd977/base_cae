@@ -40,7 +40,7 @@ BlockSettingsWidget::BlockSettingsWidget(VisualWidgetService* postProcessingWidg
 
     ui->blockSlider->setRange(0, 100);
     ui->blockSlider->setValue(50);
-    ui->blockLineEdit->setText(QStringLiteral("0.50"));
+    ui->blockLineEdit->setText(QString("0.50"));
     ui->flipCheckBox->setChecked(false);
 
     connect(ui->stepComboBox,  QOverload<int>::of(&QComboBox::currentIndexChanged),
