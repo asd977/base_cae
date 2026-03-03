@@ -105,46 +105,44 @@ void VisualizationWidget::initViewToolbar()
 {
     m_toolbar = new QFrame(this);
     m_toolbar->setObjectName("visualizationViewToolbar");
+    m_toolbar->setAttribute(Qt::WA_StyledBackground, true);
     m_toolbar->setStyleSheet(
         "QFrame#visualizationViewToolbar {"
-        "background: rgba(255, 255, 255, 235);"
-        "border: 1px solid rgba(90, 105, 130, 70);"
-        "border-radius: 10px;"
+        "background: rgba(245, 248, 252, 210);"
+        "border: none;"
         "}"
         "QToolButton {"
-        "min-width: 28px; min-height: 28px;"
-        "color: #2F3A4A;"
-        "border: 1px solid rgba(90, 105, 130, 35);"
-        "border-radius: 6px;"
-        "background: rgba(255, 255, 255, 125);"
-        "padding: 1px;"
-        "font: 500 11px 'Microsoft YaHei';"
+        "min-width: 30px; min-height: 28px;"
+        "border: none;"
+        "border-radius: 4px;"
+        "background: transparent;"
+        "padding: 2px;"
         "}"
-        "QToolButton:hover { background: rgba(64, 158, 255, 35); border-color: rgba(64, 158, 255, 100); }"
-        "QToolButton:pressed { background: rgba(64, 158, 255, 60); }"
+        "QToolButton:hover { background: rgba(64, 158, 255, 40); }"
+        "QToolButton:pressed { background: rgba(64, 158, 255, 72); }"
     );
 
     auto* root = new QHBoxLayout(m_toolbar);
-    root->setContentsMargins(10, 8, 10, 8);
-    root->setSpacing(6);
+    root->setContentsMargins(10, 4, 10, 4);
+    root->setSpacing(2);
 
     auto makeIconBtn = [this](const QString& iconPath, const QString& tip, auto fn) {
         auto* btn = new QToolButton(m_toolbar);
+        btn->setAutoRaise(true);
         btn->setIcon(QIcon(iconPath));
-        btn->setIconSize(QSize(16, 16));
+        btn->setIconSize(QSize(18, 18));
         btn->setToolTip(tip);
-        btn->setFixedSize(30, 28);
+        btn->setFixedSize(32, 30);
         connect(btn, &QToolButton::clicked, this, fn);
         return btn;
     };
 
-    auto makeTextBtn = [this](const QString& text, const QString& tip, auto fn) {
-        auto* btn = new QToolButton(m_toolbar);
-        btn->setText(text);
-        btn->setToolTip(tip);
-        btn->setFixedSize(28, 24);
-        connect(btn, &QToolButton::clicked, this, fn);
-        return btn;
+    auto addSep = [this, root]() {
+        auto* sep = new QFrame(m_toolbar);
+        sep->setFrameShape(QFrame::VLine);
+        sep->setStyleSheet("color: rgba(120, 130, 150, 120);");
+        sep->setFixedHeight(22);
+        root->addWidget(sep);
     };
 
     root->addWidget(makeIconBtn(":/resources/icon/view_fit.svg", tr("重置并自适应视图"), [this]() { resetCamera(true); }));
@@ -164,29 +162,24 @@ void VisualizationWidget::initViewToolbar()
     updateProjectionButtonIcon();
     root->addWidget(m_projectionButton);
 
-    auto addSep = [this, root]() {
-        auto* sep = new QFrame(m_toolbar);
-        sep->setFrameShape(QFrame::VLine);
-        sep->setStyleSheet("color: rgba(90,105,130,70);");
-        root->addWidget(sep);
-    };
     addSep();
 
-    root->addWidget(makeTextBtn(tr("前"), tr("前视图"), [this]() { setCameraToAxis(0.0, -1.0, 0.0); }));
-    root->addWidget(makeTextBtn(tr("后"), tr("后视图"), [this]() { setCameraToAxis(0.0, 1.0, 0.0); }));
-    root->addWidget(makeTextBtn(tr("左"), tr("左视图"), [this]() { setCameraToAxis(-1.0, 0.0, 0.0); }));
-    root->addWidget(makeTextBtn(tr("右"), tr("右视图"), [this]() { setCameraToAxis(1.0, 0.0, 0.0); }));
-    root->addWidget(makeTextBtn(tr("上"), tr("顶视图"), [this]() { setCameraToAxis(0.0, 0.0, 1.0); }));
-    root->addWidget(makeTextBtn(tr("下"), tr("底视图"), [this]() { setCameraToAxis(0.0, 0.0, -1.0); }));
+    root->addWidget(makeIconBtn(":/resources/icon/view_front.png", tr("前视图"), [this]() { setCameraToAxis(0.0, -1.0, 0.0); }));
+    root->addWidget(makeIconBtn(":/resources/icon/view_back.png", tr("后视图"), [this]() { setCameraToAxis(0.0, 1.0, 0.0); }));
+    root->addWidget(makeIconBtn(":/resources/icon/view_left.png", tr("左视图"), [this]() { setCameraToAxis(-1.0, 0.0, 0.0); }));
+    root->addWidget(makeIconBtn(":/resources/icon/view_right.png", tr("右视图"), [this]() { setCameraToAxis(1.0, 0.0, 0.0); }));
+    root->addWidget(makeIconBtn(":/resources/icon/view_top.png", tr("顶视图"), [this]() { setCameraToAxis(0.0, 0.0, 1.0); }));
+    root->addWidget(makeIconBtn(":/resources/icon/view_bottom.png", tr("底视图"), [this]() { setCameraToAxis(0.0, 0.0, -1.0); }));
 
-    addSep();
+    root->addStretch(1);
 
     m_opacityButton = new QToolButton(m_toolbar);
+    m_opacityButton->setAutoRaise(true);
     m_opacityButton->setToolTip(tr("整体透明度"));
     m_opacityButton->setText(tr("100% ▾"));
     m_opacityButton->setIcon(QIcon(":/resources/icon/view_opacity.svg"));
     m_opacityButton->setIconSize(QSize(14, 14));
-    m_opacityButton->setFixedSize(72, 28);
+    m_opacityButton->setFixedSize(78, 30);
     m_opacityButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     root->addWidget(m_opacityButton);
 
@@ -214,7 +207,6 @@ void VisualizationWidget::initViewToolbar()
     m_globalOpacitySlider = new QSlider(Qt::Vertical, popupWidget);
     m_globalOpacitySlider->setRange(15, 100);
     m_globalOpacitySlider->setValue(100);
-    m_globalOpacitySlider->setInvertedAppearance(false);
     m_globalOpacitySlider->setStyleSheet(
         "QSlider::groove:vertical {"
         "width: 5px; background: rgba(120,130,150,80); border-radius: 2px;"
@@ -247,9 +239,8 @@ void VisualizationWidget::initViewToolbar()
         m_opacityMenu->popup(p);
     });
 
-    m_toolbar->setFixedSize(m_toolbar->sizeHint());
-    const int marginTop = 12;
-    m_toolbar->move((width() - m_toolbar->width()) / 2, marginTop);
+    const int toolbarHeight = 38;
+    m_toolbar->setGeometry(0, 0, width(), toolbarHeight);
     m_toolbar->show();
 }
 
@@ -597,7 +588,7 @@ void VisualizationWidget::resizeEvent(QResizeEvent* event)
 {
     QWidget::resizeEvent(event);
     if (m_toolbar) {
-        const int marginTop = 12;
-        m_toolbar->move((width() - m_toolbar->width()) / 2, marginTop);
+        const int toolbarHeight = 38;
+        m_toolbar->setGeometry(0, 0, width(), toolbarHeight);
     }
 }
