@@ -27,6 +27,8 @@ class QFrame;
 class QToolButton;
 class QSlider;
 class QResizeEvent;
+class QMenu;
+class QLabel;
 
 class VisualizationWidget : public QWidget, public VisualWidgetService
 {
@@ -126,5 +128,8 @@ private:
     QPointer<QFrame> m_toolbar;
     QPointer<QSlider> m_globalOpacitySlider;
     QPointer<QToolButton> m_projectionButton;
+    QPointer<QToolButton> m_opacityButton;
+    QPointer<QMenu> m_opacityMenu;
+    QPointer<QLabel> m_opacityPercentLabel;
     bool m_isParallelProjection = false;
 };
