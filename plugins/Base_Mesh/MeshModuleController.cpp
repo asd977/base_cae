@@ -528,6 +528,7 @@ void MeshModuleController::onMeshSingle()
     node->setData(0, ProjectNode::RoleModule, "Mesh");
     node->setData(0, ProjectNode::RoleKind, "SingleMeshing");
     m_gridNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void MeshModuleController::onMeshMapped()
@@ -621,6 +622,7 @@ void MeshModuleController::onMeshEdit()
     node->setData(0, ProjectNode::RoleModule, "Mesh");
     node->setData(0, ProjectNode::RoleKind, "MeshEdit");
     m_gridNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void MeshModuleController::displayCurrentGrid()

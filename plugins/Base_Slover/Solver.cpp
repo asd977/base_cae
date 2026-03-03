@@ -210,6 +210,7 @@ void Solver::onSeepageAction()
     addBoundary("下游迎水面", "SeepageBoundaryDownstreamWater", "JD_DWSEEP.DAT");
 
     m_root->addChild(analysisNode);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(analysisNode);
 }
 
 
@@ -236,6 +237,7 @@ void Solver::onStressStrainAction()
     addBoundary("坝体中心面节点", "StressBoundaryDamMid", "FA_DAMMID.DAT");
 
     m_root->addChild(analysisNode);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(analysisNode);
 }
 
 

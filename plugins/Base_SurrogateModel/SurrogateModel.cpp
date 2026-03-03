@@ -29,6 +29,7 @@ void SurrogateModel::newLatinHypercubeSamplingWidget()
     ProjectNode *node = new ProjectNode("拉丁超立方采样",QUuid::createUuid().toString(),(BasePage*)tmp);
 
     m_root->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void SurrogateModel::newOrthogonalSamplingWidget()
@@ -38,6 +39,7 @@ void SurrogateModel::newOrthogonalSamplingWidget()
     ProjectNode *node = new ProjectNode("正交采样",QUuid::createUuid().toString(),(BasePage*)tmp);
 
     m_root->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 
 }
 
@@ -48,6 +50,7 @@ void SurrogateModel::newDNNModel()
     ProjectNode *node = new ProjectNode("DNN模型",QUuid::createUuid().toString(),(BasePage*)tmp);
 
     m_root->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void SurrogateModel::newDatasetEvaluation()
@@ -57,6 +60,7 @@ void SurrogateModel::newDatasetEvaluation()
     ProjectNode *node = new ProjectNode("数据集评估",QUuid::createUuid().toString(),(BasePage*)tmp);
 
     m_root->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void SurrogateModel::newProject()

@@ -84,6 +84,7 @@ void PostProcessing::newNephogramSettingWidget()
     ProjectNode *node = new ProjectNode("云图",QUuid::createUuid().toString(),(BasePage*)tmp);
 
     m_root->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void PostProcessing::newVectorSettingWidget()
@@ -92,6 +93,7 @@ void PostProcessing::newVectorSettingWidget()
     ProjectNode *node = new ProjectNode("矢量",QUuid::createUuid().toString(),(BasePage*)tmp);
 
     m_root->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void PostProcessing::newSliceSettingWidget()
@@ -100,6 +102,7 @@ void PostProcessing::newSliceSettingWidget()
     ProjectNode *node = new ProjectNode("切面",QUuid::createUuid().toString(),(BasePage*)tmp);
 
     m_root->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void PostProcessing::newBlockSettingsWidget()
@@ -108,6 +111,7 @@ void PostProcessing::newBlockSettingsWidget()
     ProjectNode *node = new ProjectNode("切块",QUuid::createUuid().toString(),(BasePage*)tmp);
 
     m_root->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void PostProcessing::newIsosurfaceSettingsWidget()
@@ -116,6 +120,7 @@ void PostProcessing::newIsosurfaceSettingsWidget()
     ProjectNode *node = new ProjectNode("等值面",QUuid::createUuid().toString(),(BasePage*)tmp);
 
     m_root->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void PostProcessing::newIsosurfaceSegmentationWidget()
@@ -124,6 +129,7 @@ void PostProcessing::newIsosurfaceSegmentationWidget()
     ProjectNode *node = new ProjectNode("等值面分割",QUuid::createUuid().toString(),(BasePage*)tmp);
 
     m_root->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void PostProcessing::newAnimationAviWidget()
@@ -132,6 +138,7 @@ void PostProcessing::newAnimationAviWidget()
     ProjectNode *node = new ProjectNode("动画",QUuid::createUuid().toString(),(BasePage*)tmp);
 
     m_root->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 //void PostProcessing::newProbeSettingsWidget()
@@ -145,6 +152,7 @@ void PostProcessing::newDerivedValueSettingWidget()
     ProjectNode *node = new ProjectNode("派生值",QUuid::createUuid().toString(),(BasePage*)tmp);
 
     m_root->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void PostProcessing::newProject()

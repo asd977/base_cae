@@ -446,6 +446,7 @@ ProjectNode* PreProcessing::createGeometryNodeByType(const QString& type, const 
 
 	auto* node = new ProjectNode(title, uuid, page);
 	m_geomNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 	page->setDisplayName(title);
 	node->setData(0, ProjectNode::RoleUuid, uuid);
 	node->setData(0, ProjectNode::RoleModule, "Geometry");
@@ -648,6 +649,7 @@ BasePage* PreProcessing::newGeometryImportWidget(QString title)
      const QString uuid = w->getUuid();
      auto *node = new ProjectNode(title, uuid, (BasePage*)w);
      m_geomNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
      w->setDisplayName(title);
      node->setData(0, ProjectNode::RoleUuid,   uuid);
      node->setData(0, ProjectNode::RoleModule, "Geometry");
@@ -738,6 +740,7 @@ void PreProcessing::newGeometryBoxWidget(QString title)
     QString displayName = makeUniqueName(title, "Box");
     ProjectNode *node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
     w->setDisplayName(displayName);
     node->setData(0, ProjectNode::RoleUuid,   uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
@@ -753,6 +756,7 @@ void PreProcessing::newGeometrySphereWidget(QString title)
     QString displayName = makeUniqueName(title, "Sphere");
     ProjectNode *node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 
     w->setDisplayName(displayName);
     node->setData(0, ProjectNode::RoleUuid,   uuid);
@@ -769,6 +773,7 @@ void PreProcessing::newGeometryConeWidget(QString title)
     QString displayName = makeUniqueName(title, "Cone");
     ProjectNode *node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 
     w->setDisplayName(displayName);
     node->setData(0, ProjectNode::RoleUuid,   uuid);
@@ -785,6 +790,7 @@ void PreProcessing::newGeometryTorusWidget(QString title)
     QString displayName = makeUniqueName(title, "Torus");
     ProjectNode *node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 
     w->setDisplayName(displayName);
     node->setData(0, ProjectNode::RoleUuid,   uuid);
@@ -801,6 +807,7 @@ void PreProcessing::newGeometryCylinderWidget(QString title)
     QString displayName = makeUniqueName(title, "Cylinder");
     ProjectNode *node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 
     w->setDisplayName(displayName);
     node->setData(0, ProjectNode::RoleUuid,   uuid);
@@ -819,6 +826,7 @@ BasePage* PreProcessing::newGeometryCircleWidget(QString title)
 
     ProjectNode* node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 
     w->setDisplayName(displayName);
     node->setData(0, ProjectNode::RoleUuid,   uuid);
@@ -839,6 +847,7 @@ BasePage* PreProcessing::newGeometryEllipseWidget(QString title)
 
     ProjectNode* node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 
     w->setDisplayName(displayName);
     node->setData(0, ProjectNode::RoleUuid,   uuid);
@@ -859,6 +868,7 @@ BasePage* PreProcessing::newGeometryPolygonWidget(QString title)
 
     ProjectNode* node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 
     w->setDisplayName(displayName);
     node->setData(0, ProjectNode::RoleUuid,   uuid);
@@ -879,6 +889,7 @@ BasePage* PreProcessing::newGeometryRectangleWidget(QString title)
 
     ProjectNode* node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 
     w->setDisplayName(displayName);
     node->setData(0, ProjectNode::RoleUuid,   uuid);
@@ -897,6 +908,7 @@ void PreProcessing::newOccBooleanFuseWidget(QString title)
     QString displayName = makeUniqueName(title, "BooleanFuse");
     auto *node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
     w->setDisplayName(displayName);
     node->setData(0, ProjectNode::RoleUuid,   uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
@@ -912,6 +924,7 @@ void PreProcessing::newOccBooleanCutWidget(QString title)
     QString displayName = makeUniqueName(title, "BooleanCut");
     auto *node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
     w->setDisplayName(displayName);
     node->setData(0, ProjectNode::RoleUuid,   uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
@@ -927,6 +940,7 @@ void PreProcessing::newOccBooleanUnionWidget(QString title)
     QString displayName = makeUniqueName(title, "BooleanUnion");
     auto *node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
     w->setDisplayName(displayName);
     node->setData(0, ProjectNode::RoleUuid,   uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
@@ -942,6 +956,7 @@ void PreProcessing::newOccBooleanCommonWidget(QString title)
     QString displayName = makeUniqueName(title, "BooleanCommon");
     auto *node = new ProjectNode(displayName, uuid, (BasePage*)w);
     m_geomNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
     w->setDisplayName(displayName);
     node->setData(0, ProjectNode::RoleUuid,   uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");

@@ -413,6 +413,7 @@ void PhysicalField::addDisplacementConstraint()
     node2->setData(0, ProjectNode::RoleModule, "PhysicalField");
     node2->setData(0, ProjectNode::RoleKind,   "DisplacementConstraint");
     m_node->addChild(node2);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node2);
 }
 
 void PhysicalField::addGeoStressPointPage()
@@ -425,6 +426,7 @@ void PhysicalField::addGeoStressPointPage()
     node3->setData(0, ProjectNode::RoleModule, "PhysicalField");
     node3->setData(0, ProjectNode::RoleKind,   "GeoStressPointPage");
     m_node->addChild(node3);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node3);
 }
 
 void PhysicalField::addGeoStressFitFacePage()
@@ -436,6 +438,7 @@ void PhysicalField::addGeoStressFitFacePage()
     node3->setData(0, ProjectNode::RoleModule, "PhysicalField");
     node3->setData(0, ProjectNode::RoleKind,   "GeoStressFitFacePage");
     m_node->addChild(node3);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node3);
 }
 
 void PhysicalField::addBodyForcePage()
@@ -449,6 +452,7 @@ void PhysicalField::addBodyForcePage()
     node->setData(0, ProjectNode::RoleModule, "PhysicalField");
     node->setData(0, ProjectNode::RoleKind,   "BodyForcePage");
     m_node->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void PhysicalField::addConcentratedForcePage()
@@ -461,6 +465,7 @@ void PhysicalField::addConcentratedForcePage()
     node->setData(0, ProjectNode::RoleModule, "PhysicalField");
     node->setData(0, ProjectNode::RoleKind,   "PointForcePage");
     m_node->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void PhysicalField::addLinearForcePage()
@@ -473,6 +478,7 @@ void PhysicalField::addLinearForcePage()
     node->setData(0, ProjectNode::RoleModule, "PhysicalField");
     node->setData(0, ProjectNode::RoleKind,   "LinearForcePage");
     m_node->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void PhysicalField::addSurfaceForcePage()
@@ -485,6 +491,7 @@ void PhysicalField::addSurfaceForcePage()
     node->setData(0, ProjectNode::RoleModule, "PhysicalField");
     node->setData(0, ProjectNode::RoleKind,   "FaceLoadPage");
     m_node->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void PhysicalField::addTemperatureLoadPage()
@@ -497,6 +504,7 @@ void PhysicalField::addTemperatureLoadPage()
     node->setData(0, ProjectNode::RoleModule, "PhysicalField");
     node->setData(0, ProjectNode::RoleKind,   "TemperatureLoadPage");
     m_node->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void PhysicalField::addBeamLoadPage()
@@ -509,6 +517,7 @@ void PhysicalField::addBeamLoadPage()
     node->setData(0, ProjectNode::RoleModule, "PhysicalField");
     node->setData(0, ProjectNode::RoleKind,   "BeamLoadPage");
     m_node->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void PhysicalField::addSeismicAndAddedMassPage()
@@ -519,6 +528,7 @@ void PhysicalField::addSeismicAndAddedMassPage()
     node->setData(0, ProjectNode::RoleModule, "PhysicalField");
     node->setData(0, ProjectNode::RoleKind,   "SeismicAndAddedMassPage");
     m_node->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 // -------------------- 普通工具函数：应用选中点到 flags（无 lambda） --------------------
