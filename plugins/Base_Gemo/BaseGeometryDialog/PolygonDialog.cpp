@@ -33,6 +33,13 @@ PolygonDialog::PolygonDialog(QWidget* parent)
     : BasePage(PublicConstants::kPagePreprocessPolygon)
 {
     QVBoxLayout* layout = new QVBoxLayout(this);
+    auto* pageNameLabel = new QLabel(QStringLiteral("几何模块"), this);
+    pageNameLabel->setObjectName("pageNameLabel");
+    auto* sectionTitleButton = new QPushButton(QStringLiteral("参数设置"), this);
+    sectionTitleButton->setObjectName("sectionTitleButton");
+    sectionTitleButton->setEnabled(false);
+    layout->addWidget(pageNameLabel);
+    layout->addWidget(sectionTitleButton);
 
     // ---- 基准面 ----
     planeLabel = new QLabel(QStringLiteral("基准面："), this);

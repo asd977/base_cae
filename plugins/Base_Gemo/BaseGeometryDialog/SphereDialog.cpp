@@ -52,6 +52,13 @@ void SphereDialog::initUI()
     QPushButton *okButton = new QPushButton("生成几何体", this);
     // 布局
     QVBoxLayout *mainLayout = new QVBoxLayout;
+    auto* pageNameLabel = new QLabel(QStringLiteral("几何模块"), this);
+    pageNameLabel->setObjectName("pageNameLabel");
+    auto* sectionTitleButton = new QPushButton(QStringLiteral("参数设置"), this);
+    sectionTitleButton->setObjectName("sectionTitleButton");
+    sectionTitleButton->setEnabled(false);
+    mainLayout->addWidget(pageNameLabel);
+    mainLayout->addWidget(sectionTitleButton);
     QHBoxLayout *radiusLayout = new QHBoxLayout;
     QHBoxLayout *xLayout = new QHBoxLayout;
     QHBoxLayout *yLayout = new QHBoxLayout;

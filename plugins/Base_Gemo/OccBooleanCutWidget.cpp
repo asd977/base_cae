@@ -7,6 +7,7 @@
 #include <QLabel>
 #include <QListView>
 #include <QPushButton>
+#include <QVBoxLayout>
 
 #include <CustomComboBox.h>
 
@@ -48,7 +49,16 @@ OccBooleanCutWidget::OccBooleanCutWidget(QWidget *parent)
 
 void OccBooleanCutWidget::initUi()
 {
-    auto* layout = new QGridLayout(this);
+    auto* rootLayout = new QVBoxLayout(this);
+    auto* pageNameLabel = new QLabel(tr("几何模块"), this);
+    pageNameLabel->setObjectName("pageNameLabel");
+    auto* sectionTitleButton = new QPushButton(tr("布尔运算"), this);
+    sectionTitleButton->setObjectName("sectionTitleButton");
+    sectionTitleButton->setEnabled(false);
+    rootLayout->addWidget(pageNameLabel);
+    rootLayout->addWidget(sectionTitleButton);
+
+    auto* layout = new QGridLayout();
 
     auto* labelA = new QLabel(tr("a:"), this);
     auto* labelB = new QLabel(tr("b:"), this);
@@ -74,6 +84,8 @@ void OccBooleanCutWidget::initUi()
     layout->addWidget(m_applyButton, 4, 1);
     layout->addWidget(m_refreshButton, 5, 1);
     layout->setRowStretch(6, 1);
+    rootLayout->addLayout(layout);
+    rootLayout->addStretch();
 }
 
 void OccBooleanCutWidget::initConnections()
