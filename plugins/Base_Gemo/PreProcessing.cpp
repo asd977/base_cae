@@ -1052,52 +1052,82 @@ bool PreProcessing::entityMeasure(int dim, int id, double& measure)
 
 bool PreProcessing::highlightEntity(int dim, int id)
 {
-    clearEntityHighlight();
-    if (id <= 0) return false;
+    return highlightEntities(dim, QList<int>{id}, false);
+}
+
+bool PreProcessing::highlightEntities(int dim, const QList<int>& ids, bool hoverPreview)
+{
+    if (!hoverPreview) clearEntityHighlight();
+    else clearEntityHoverHighlight();
+
+    QList<int> validIds;
+    for (int id : ids) if (id > 0) validIds.push_back(id);
+    if (validIds.isEmpty()) return false;
 
     TopTools_IndexedMapOfShape indexed;
     if (!buildIndexedShapesFromAllGeometry(dim, indexed)) return false;
 
-    if (id > indexed.Extent()) return false;
+    vtkNew<vtkAppendPolyData> appender;
+    bool anyValid = false;
+    for (int id : validIds) {
+        if (id > indexed.Extent()) continue;
+        TopoDS_Shape target = indexed(id);
+        IVtkOCC_Shape::Handle occShape = new IVtkOCC_Shape(target);
+        vtkNew<IVtkTools_ShapeDataSource> src;
+        src->SetShape(occShape);
 
-    TopoDS_Shape target = indexed(id);
-    IVtkOCC_Shape::Handle occShape = new IVtkOCC_Shape(target);
-    vtkNew<IVtkTools_ShapeDataSource> src;
-    src->SetShape(occShape);
-
-    vtkNew<IVtkTools_DisplayModeFilter> dm;
-    dm->SetInputConnection(src->GetOutputPort());
-    dm->SetDisplayMode(dim == 1 ? DM_Wireframe : DM_Shading);
-    dm->SetSmoothShading(true);
-    dm->SetFaceBoundaryDraw(true);
-    dm->Update();
+        vtkNew<IVtkTools_DisplayModeFilter> dm;
+        dm->SetInputConnection(src->GetOutputPort());
+        dm->SetDisplayMode(dim == 1 ? DM_Wireframe : DM_Shading);
+        dm->SetSmoothShading(true);
+        dm->SetFaceBoundaryDraw(true);
+        dm->Update();
+        appender->AddInputData(dm->GetOutput());
+        anyValid = true;
+    }
+    if (!anyValid) return false;
+    appender->Update();
 
     auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-    mapper->SetInputData(dm->GetOutput());
+    mapper->SetInputData(appender->GetOutput());
     mapper->ScalarVisibilityOff();
 
     auto actor = vtkSmartPointer<vtkActor>::New();
     actor->SetMapper(mapper);
-    if (dim == 1) {
+
+    if (hoverPreview) {
         actor->GetProperty()->SetColor(1.0, 0.2, 0.2);
+        actor->GetProperty()->SetOpacity(1.0);
+        actor->GetProperty()->SetLineWidth(5.0);
+    } else if (dim == 1) {
+        actor->GetProperty()->SetColor(0.15, 0.95, 0.25);
         actor->GetProperty()->SetLineWidth(4.0);
     } else if (dim == 2) {
-        actor->GetProperty()->SetColor(1.0, 0.85, 0.2);
-        actor->GetProperty()->SetOpacity(0.9);
+        actor->GetProperty()->SetColor(0.2, 0.95, 0.35);
+        actor->GetProperty()->SetOpacity(0.85);
     } else {
-        actor->GetProperty()->SetColor(0.3, 0.8, 1.0);
+        actor->GetProperty()->SetColor(0.2, 0.8, 1.0);
         actor->GetProperty()->SetOpacity(0.55);
     }
 
     auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>();
     if (!vis) return false;
-    vis->addProp("preproc.entity.highlight", actor, "Geometry", "entity.highlight", false, true);
+    const QString propId = hoverPreview ? "preproc.entity.highlight.hover" : "preproc.entity.highlight";
+    vis->addProp(propId, actor, "Geometry", "entity.highlight", false, true);
     return true;
+}
+
+void PreProcessing::clearEntityHoverHighlight()
+{
+    if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>()) {
+        vis->removeProp("preproc.entity.highlight.hover", true);
+    }
 }
 
 void PreProcessing::clearEntityHighlight()
 {
     if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>()) {
         vis->removeProp("preproc.entity.highlight", true);
+        vis->removeProp("preproc.entity.highlight.hover", true);
     }
 }

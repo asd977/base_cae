@@ -3,6 +3,7 @@
 
 #include <QStringList>
 #include <QVector3D>
+#include <QList>
 
 class QString;
 class vtkActor;
@@ -26,6 +27,8 @@ struct PreProcessingService
     // dim: 1->长度, 2->面积, 3->体积
     virtual bool entityMeasure(int dim, int id, double& measure) = 0;
     virtual bool highlightEntity(int dim, int id) = 0;
+    virtual bool highlightEntities(int dim, const QList<int>& ids, bool hoverPreview) = 0;
+    virtual void clearEntityHoverHighlight() = 0;
     virtual void clearEntityHighlight() = 0;
 };
 

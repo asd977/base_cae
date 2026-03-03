@@ -65,15 +65,11 @@ MeshEdgeControlWidget::MeshEdgeControlWidget(QWidget *parent)
         connect(entityCombo, &CustomComboBox::itemHovered, this, [this](const int &row){
             const int id = ui->cmbEntity->itemData(row).toInt();
             if(id<=0){ clearHighlight(); return; }
-            if(auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) svc->highlightEntity(1,id);
+            if(auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) svc->highlightEntities(1, QList<int>{id}, true);
         });
         connect(entityCombo, &CustomComboBox::dropdownClosed, this, [this](){
-            int row = ui->tableControls->currentRow();
-            if (row < 0 || row >= m_items.size()) { clearHighlight(); return; }
-            QSet<int> ids; QString err;
-            if (!parseEntityIds(m_items[row].edgeIds, ids, err) || ids.isEmpty()) { clearHighlight(); return; }
-            QList<int> v = ids.values(); std::sort(v.begin(), v.end());
-            if (auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) svc->highlightEntity(1, v.first());
+            if (auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) svc->clearEntityHoverHighlight();
+            onSelectionChanged();
         });
     }
 }
@@ -85,7 +81,7 @@ void MeshEdgeControlWidget::beforeUnload(){ if(auto* s=ServiceRegistry::instance
 void MeshEdgeControlWidget::onAddControl(){ EdgeControlItem item; m_items.push_back(item); appendOrUpdateTableRow(ui->tableControls->rowCount(),item); const int row = m_items.size() - 1; ui->tableControls->selectRow(row); fillFormData(item); refreshButtons(); }
 void MeshEdgeControlWidget::onDeleteControl(){ int row=ui->tableControls->currentRow(); if(row<0||row>=m_items.size())return; m_items.removeAt(row); ui->tableControls->removeRow(row); syncRulesToService(); onResetForm(); }
 void MeshEdgeControlWidget::onResetForm(){ ui->editEdgeIds->clear(); ui->spinSize->setValue(1.0); ui->spinDivisions->setValue(10); ui->spinBias->setValue(1.0); ui->checkHardConstraint->setChecked(false); ui->tableControls->clearSelection(); clearHighlight(); refreshButtons(); }
-void MeshEdgeControlWidget::onSelectionChanged(){ int row=ui->tableControls->currentRow(); if(row>=0&&row<m_items.size()) fillFormData(m_items[row]); QSet<int> selectedIds; QString err; if(row>=0&&row<m_items.size()) parseEntityIds(m_items[row].edgeIds, selectedIds, err); for(int i=0;i<ui->cmbEntity->count();++i){ int id=ui->cmbEntity->itemData(i).toInt(); ui->cmbEntity->setItemData(i, selectedIds.contains(id)?QColor(226,252,233):QVariant(), Qt::BackgroundRole);} if(!selectedIds.isEmpty()){ QList<int> v=selectedIds.values(); std::sort(v.begin(), v.end()); if(auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) svc->highlightEntity(1,v.first()); } else clearHighlight(); refreshButtons(); }
+void MeshEdgeControlWidget::onSelectionChanged(){ int row=ui->tableControls->currentRow(); if(row>=0&&row<m_items.size()) fillFormData(m_items[row]); QSet<int> selectedIds; QString err; if(row>=0&&row<m_items.size()) parseEntityIds(m_items[row].edgeIds, selectedIds, err); if(!selectedIds.isEmpty()){ QList<int> v=selectedIds.values(); std::sort(v.begin(), v.end()); if(auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) svc->highlightEntities(1, v, false); } else clearHighlight(); refreshButtons(); }
 void MeshEdgeControlWidget::onParameterEdited(){ int row=ui->tableControls->currentRow(); if(row>=0&&row<m_items.size()){ QString err; if(validateInput(err,row)){ auto item=collectFormData(); m_items[row]=item; appendOrUpdateTableRow(row,item); syncRulesToService(); } } refreshButtons(); }
 
 void MeshEdgeControlWidget::onAppendSelectedEntity(){ int row=ui->tableControls->currentRow(); if(row<0||row>=m_items.size()){ QMessageBox::information(this,tr("边控制"),tr("请先在表格中选择要编辑的规则行。")); return; } int id=ui->cmbEntity->currentData().toInt(); if(id<=0)return; QStringList p=m_items[row].edgeIds.trimmed().split(',',QString::SkipEmptyParts); const QString s=QString::number(id); if(!p.contains(s)){ const QString oldIds = m_items[row].edgeIds; p<<s; m_items[row].edgeIds=p.join(','); ui->editEdgeIds->setText(m_items[row].edgeIds); QString err; if(!validateInput(err, row)){ m_items[row].edgeIds=oldIds; ui->editEdgeIds->setText(oldIds); QMessageBox::warning(this,tr("边控制"),err); return; } appendOrUpdateTableRow(row,m_items[row]); syncRulesToService(); }}

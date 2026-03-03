@@ -38,6 +38,21 @@
 #include <algorithm>
 #include <limits>
 #include <vtkIdList.h>
+
+namespace {
+
+ProjectNode* findDirectChildByKind(ProjectNode* parent, const QString& kind)
+{
+    if (!parent) return nullptr;
+    for (int i = 0; i < parent->childCount(); ++i) {
+        auto* child = dynamic_cast<ProjectNode*>(parent->child(i));
+        if (!child) continue;
+        if (child->data(0, ProjectNode::RoleKind).toString() == kind) return child;
+    }
+    return nullptr;
+}
+
+}
 #include <vtkStringArray.h>
 
 // === 这些头文件你后面真正实现时再加 ===
@@ -69,6 +84,9 @@ void MeshModuleController::newProject()
     m_gridNode->setData(0, ProjectNode::RoleModule, "Mesh");
     m_gridNode->setData(0, ProjectNode::RoleKind, "MeshRoot");
     projectManagerService->addTreeItem(m_gridNode);
+    m_edgeRules.clear();
+    m_faceRules.clear();
+    m_volumeRules.clear();
 }
 
 bool MeshModuleController::saveProject()
@@ -490,11 +508,17 @@ void MeshModuleController::onExportGrid()
 
 void MeshModuleController::onMeshGlobal()
 {
+    if (auto* existed = findDirectChildByKind(m_gridNode, "GlobalMeshing")) {
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(existed);
+        QMessageBox::information(nullptr, "整体剖分", "整体剖分节点已存在，仅允许添加一次。");
+        return;
+    }
     MeshGlobalMeshingWidget* w = new MeshGlobalMeshingWidget();
     auto *node = new ProjectNode("网格划分", QUuid::createUuid().toString(), (BasePage*)w);
     node->setData(0, ProjectNode::RoleModule, "Mesh");
     node->setData(0, ProjectNode::RoleKind, "GlobalMeshing");
     m_gridNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void MeshModuleController::onMeshSingle()
@@ -520,29 +544,59 @@ void MeshModuleController::onMeshSweep()
 
 void MeshModuleController::onCtrlVolume()
 {
+    auto* globalNode = findDirectChildByKind(m_gridNode, "GlobalMeshing");
+    if (!globalNode) {
+        QMessageBox::warning(nullptr, "体控制", "请先添加“整体剖分(网格划分)”节点，再添加体控制。");
+        return;
+    }
+    if (findDirectChildByKind(globalNode, "VolumeControl")) {
+        QMessageBox::information(nullptr, "体控制", "体控制节点已存在，仅允许添加一次。");
+        return;
+    }
     auto* w = new MeshVolumeControlWidget();
     auto *node = new ProjectNode("体控制", QUuid::createUuid().toString(), static_cast<BasePage*>(w));
     node->setData(0, ProjectNode::RoleModule, "Mesh");
     node->setData(0, ProjectNode::RoleKind, "VolumeControl");
-    m_gridNode->addChild(node);
+    globalNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void MeshModuleController::onCtrlSurface()
 {
+    auto* globalNode = findDirectChildByKind(m_gridNode, "GlobalMeshing");
+    if (!globalNode) {
+        QMessageBox::warning(nullptr, "面控制", "请先添加“整体剖分(网格划分)”节点，再添加面控制。");
+        return;
+    }
+    if (findDirectChildByKind(globalNode, "FaceControl")) {
+        QMessageBox::information(nullptr, "面控制", "面控制节点已存在，仅允许添加一次。");
+        return;
+    }
     auto* w = new MeshFaceControlWidget();
     auto *node = new ProjectNode("面控制", QUuid::createUuid().toString(), static_cast<BasePage*>(w));
     node->setData(0, ProjectNode::RoleModule, "Mesh");
     node->setData(0, ProjectNode::RoleKind, "FaceControl");
-    m_gridNode->addChild(node);
+    globalNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void MeshModuleController::onCtrlEdge()
 {
+    auto* globalNode = findDirectChildByKind(m_gridNode, "GlobalMeshing");
+    if (!globalNode) {
+        QMessageBox::warning(nullptr, "边控制", "请先添加“整体剖分(网格划分)”节点，再添加边控制。");
+        return;
+    }
+    if (findDirectChildByKind(globalNode, "EdgeControl")) {
+        QMessageBox::information(nullptr, "边控制", "边控制节点已存在，仅允许添加一次。");
+        return;
+    }
     auto* w = new MeshEdgeControlWidget();
     auto *node = new ProjectNode("边控制", QUuid::createUuid().toString(), static_cast<BasePage*>(w));
     node->setData(0, ProjectNode::RoleModule, "Mesh");
     node->setData(0, ProjectNode::RoleKind, "EdgeControl");
-    m_gridNode->addChild(node);
+    globalNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
 void MeshModuleController::onQualityStd()

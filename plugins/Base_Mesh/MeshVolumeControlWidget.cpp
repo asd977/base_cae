@@ -66,15 +66,11 @@ MeshVolumeControlWidget::MeshVolumeControlWidget(QWidget *parent)
         connect(entityCombo, &CustomComboBox::itemHovered, this, [this](const int &row){
             const int id = ui->cmbEntity->itemData(row).toInt();
             if(id<=0){ clearHighlight(); return; }
-            if(auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) svc->highlightEntity(3,id);
+            if(auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) svc->highlightEntities(3, QList<int>{id}, true);
         });
         connect(entityCombo, &CustomComboBox::dropdownClosed, this, [this](){
-            int row = ui->tableControls->currentRow();
-            if (row < 0 || row >= m_items.size()) { clearHighlight(); return; }
-            QSet<int> ids; QString err;
-            if (!parseEntityIds(m_items[row].volumeIds, ids, err) || ids.isEmpty()) { clearHighlight(); return; }
-            QList<int> v = ids.values(); std::sort(v.begin(), v.end());
-            if (auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) svc->highlightEntity(3, v.first());
+            if (auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) svc->clearEntityHoverHighlight();
+            onSelectionChanged();
         });
     }
 }
@@ -86,7 +82,7 @@ void MeshVolumeControlWidget::beforeUnload(){ if(auto* s=ServiceRegistry::instan
 void MeshVolumeControlWidget::onAddControl(){ VolumeControlItem item; m_items.push_back(item); appendOrUpdateTableRow(ui->tableControls->rowCount(),item); const int row = m_items.size() - 1; ui->tableControls->selectRow(row); fillFormData(item); refreshButtons(); }
 void MeshVolumeControlWidget::onDeleteControl(){ int row=ui->tableControls->currentRow(); if(row<0||row>=m_items.size())return; m_items.removeAt(row); ui->tableControls->removeRow(row); syncRulesToService(); onResetForm(); }
 void MeshVolumeControlWidget::onResetForm(){ ui->editVolumeIds->clear(); ui->spinMinSize->setValue(0.5); ui->spinMaxSize->setValue(2.0); ui->spinGrowthRate->setValue(1.2); ui->checkBoundaryLayer->setChecked(false); ui->spinLayerCount->setValue(3); ui->tableControls->clearSelection(); clearHighlight(); refreshButtons(); }
-void MeshVolumeControlWidget::onSelectionChanged(){ int row=ui->tableControls->currentRow(); if(row>=0&&row<m_items.size()) fillFormData(m_items[row]); QSet<int> selectedIds; QString err; if(row>=0&&row<m_items.size()) parseEntityIds(m_items[row].volumeIds, selectedIds, err); for(int i=0;i<ui->cmbEntity->count();++i){ int id=ui->cmbEntity->itemData(i).toInt(); ui->cmbEntity->setItemData(i, selectedIds.contains(id)?QColor(226,252,233):QVariant(), Qt::BackgroundRole);} if(!selectedIds.isEmpty()){ QList<int> v=selectedIds.values(); std::sort(v.begin(), v.end()); if(auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) svc->highlightEntity(3,v.first()); } else clearHighlight(); refreshButtons(); }
+void MeshVolumeControlWidget::onSelectionChanged(){ int row=ui->tableControls->currentRow(); if(row>=0&&row<m_items.size()) fillFormData(m_items[row]); QSet<int> selectedIds; QString err; if(row>=0&&row<m_items.size()) parseEntityIds(m_items[row].volumeIds, selectedIds, err); if(!selectedIds.isEmpty()){ QList<int> v=selectedIds.values(); std::sort(v.begin(), v.end()); if(auto* svc=ServiceRegistry::instance().getService<PreProcessingService>()) svc->highlightEntities(3, v, false); } else clearHighlight(); refreshButtons(); }
 void MeshVolumeControlWidget::onParameterEdited(){ ui->spinLayerCount->setEnabled(ui->checkBoundaryLayer->isChecked()); int row=ui->tableControls->currentRow(); if(row>=0&&row<m_items.size()){ QString err; if(validateInput(err,row)){ auto item=collectFormData(); m_items[row]=item; appendOrUpdateTableRow(row,item); syncRulesToService(); } } refreshButtons(); }
 
 void MeshVolumeControlWidget::onAppendSelectedEntity(){ int row=ui->tableControls->currentRow(); if(row<0||row>=m_items.size()){ QMessageBox::information(this,tr("体控制"),tr("请先在表格中选择要编辑的规则行。")); return; } int id=ui->cmbEntity->currentData().toInt(); if(id<=0)return; QStringList p=m_items[row].volumeIds.trimmed().split(',',QString::SkipEmptyParts); QString s=QString::number(id); if(!p.contains(s)){ const QString oldIds = m_items[row].volumeIds; p<<s; m_items[row].volumeIds=p.join(','); ui->editVolumeIds->setText(m_items[row].volumeIds); QString err; if(!validateInput(err, row)){ m_items[row].volumeIds=oldIds; ui->editVolumeIds->setText(oldIds); QMessageBox::warning(this,tr("体控制"),err); return; } appendOrUpdateTableRow(row,m_items[row]); syncRulesToService(); }}

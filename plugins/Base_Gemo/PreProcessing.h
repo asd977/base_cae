@@ -29,6 +29,8 @@ public:
     bool entityCenter(int dim, int id, QVector3D& center) override;
     bool entityMeasure(int dim, int id, double& measure) override;
     bool highlightEntity(int dim, int id) override;
+    bool highlightEntities(int dim, const QList<int>& ids, bool hoverPreview) override;
+    void clearEntityHoverHighlight() override;
     void clearEntityHighlight() override;
 
 
