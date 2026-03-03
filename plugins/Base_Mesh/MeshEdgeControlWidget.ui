@@ -229,13 +229,6 @@ QTableWidget, QTreeWidget, QListWidget {
       </widget>
      </item>
      <item>
-      <widget class="QPushButton" name="btnUpdate">
-       <property name="text">
-        <string>更新选中</string>
-       </property>
-      </widget>
-     </item>
-     <item>
       <widget class="QPushButton" name="btnDelete">
        <property name="text">
         <string>删除选中</string>

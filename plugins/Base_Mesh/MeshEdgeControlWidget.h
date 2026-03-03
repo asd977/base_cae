@@ -24,7 +24,6 @@ public:
 
 private slots:
     void onAddControl();
-    void onUpdateControl();
     void onDeleteControl();
     void onResetForm();
     void onSelectionChanged();
