@@ -44,46 +44,8 @@ void ProjectTreeWidget::applyTreeTheme()
         return;
     }
 
-    // 将树形样式和菜单样式组合在一起
-    // %1 为行高 (20px)，%2 为字体大小 (12px)
     m_treeWidget->setIndentation(20);
-    m_treeWidget->setStyleSheet(QString(
-                                    "QTreeWidget {"
-                                    "    border: none;"
-                                    "    font-family: Microsoft YaHei, 微软雅黑;"
-                                    "}"
-                                    "QTreeView {"
-                                    "    font-size: %2px;"
-                                    "    show-decoration-selected: 1;"
-                                    "    selection-background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,"
-                                    "        stop:0 rgba(255, 255, 255, 255), stop:0.5 rgba(235, 247, 253, 255), stop:1 rgba(213, 237, 250, 255));"
-                                    "    color: black;"
-                                    "    background-color: rgb(255, 255, 255);"
-                                    "}"
-                                    "QTreeView::item {"
-                                    "    height: %1px;"
-                                    "    border: 1px solid transparent;"
-                                    "    color: black;"
-                                    "    background-color: rgb(255, 255, 255);"
-                                    "}"
-                                    "QTreeView::item:selected, QTreeView::branch:selected {"
-                                    "    background-color: rgb(192, 226, 252) !important;"
-                                    "    color: black;"
-                                    "}"
-                                    "QTreeView::item:hover, QTreeView::branch:hover {"
-                                    "    background-color: rgb(226, 242, 254) !important;"
-                                    "    color: black;"
-                                    "}"
-                                    "QTreeView::branch {"
-                                    "    color: black;"
-                                    "}"
-                                    "QTreeView::branch:closed:has-children {"
-                                    "    image: url(:/resources/btn_up.png);"
-                                    "}"
-                                    "QTreeView::branch:open:has-children {"
-                                    "    image: url(:/resources/btn_down.png);"
-                                    "}"
-                                    ).arg(30).arg(16));
+    m_treeWidget->setObjectName("projectTreeWidget");
     m_treeWidget->setColumnCount(1);
     m_treeWidget->header()->setVisible(false);
 //    m_treeWidget->setContextMenuPolicy(Qt::CustomContextMenu);

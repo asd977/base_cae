@@ -5,9 +5,23 @@ QWidget {
 QPushButton {
     font-size: 17px;
     min-height: 32px;
+    color: rgb(51, 51, 51);
+    background-color: rgb(255, 255, 255);
+    border: 1px solid rgb(169, 169, 169);
+    border-radius: 3px;
+    padding: 0 10px;
 }
 
-QPushButton#pushButton {
+QPushButton:hover {
+    background-color: rgb(243, 247, 252);
+    border-color: rgb(120, 150, 190);
+}
+
+QPushButton:pressed {
+    background-color: rgb(224, 233, 244);
+}
+
+QPushButton#sectionTitleButton {
     background-color: rgb(224, 233, 244);
     border-width: 1px;
     border-color: rgb(121, 121, 121);
@@ -123,4 +137,113 @@ QTreeWidget,
 QListWidget {
     font-size: 16px;
     gridline-color: rgb(210, 210, 210);
+}
+
+
+QStackedWidget#projectSettingStackWidget {
+    background-color: white;
+}
+
+QTreeWidget#projectTreeWidget {
+    border: none;
+    font-family: "Microsoft YaHei", "微软雅黑";
+    font-size: 16px;
+    show-decoration-selected: 1;
+    selection-background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(255, 255, 255, 255), stop:0.5 rgba(235, 247, 253, 255), stop:1 rgba(213, 237, 250, 255));
+    color: black;
+    background-color: rgb(255, 255, 255);
+}
+
+QTreeWidget#projectTreeWidget::item {
+    height: 30px;
+    border: 1px solid transparent;
+    color: black;
+    background-color: rgb(255, 255, 255);
+}
+
+QTreeWidget#projectTreeWidget::item:selected,
+QTreeWidget#projectTreeWidget::branch:selected {
+    background-color: rgb(192, 226, 252);
+    color: black;
+}
+
+QTreeWidget#projectTreeWidget::item:hover,
+QTreeWidget#projectTreeWidget::branch:hover {
+    background-color: rgb(226, 242, 254);
+    color: black;
+}
+
+QTreeWidget#projectTreeWidget::branch:closed:has-children {
+    image: url(:/resources/btn_up.png);
+}
+
+QTreeWidget#projectTreeWidget::branch:open:has-children {
+    image: url(:/resources/btn_down.png);
+}
+
+QFrame#visualizationViewToolbar {
+    background: rgba(245, 248, 252, 225);
+    border: none;
+}
+
+QFrame#visualizationViewToolbar QToolButton {
+    min-width: 38px;
+    min-height: 34px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    padding: 2px;
+}
+
+QFrame#visualizationViewToolbar QToolButton:hover {
+    background: rgba(64, 158, 255, 40);
+}
+
+QFrame#visualizationViewToolbar QToolButton:pressed {
+    background: rgba(64, 158, 255, 72);
+}
+
+QFrame#visualizationToolbarSeparator {
+    color: rgba(120, 130, 150, 120);
+}
+
+QMenu#visualizationOpacityMenu {
+    background: rgba(255, 255, 255, 245);
+    border: 1px solid rgba(80, 95, 120, 70);
+    border-radius: 8px;
+    padding: 8px;
+}
+
+QLabel#visualizationOpacityPercentLabel {
+    font: 600 14px "Microsoft YaHei";
+    color: #2F3A4A;
+}
+
+QSlider#visualizationOpacitySlider::groove:vertical {
+    width: 6px;
+    background: rgba(120, 130, 150, 80);
+    border-radius: 3px;
+}
+
+QSlider#visualizationOpacitySlider::sub-page:vertical {
+    background: rgba(64, 158, 255, 155);
+    border-radius: 2px;
+}
+
+QSlider#visualizationOpacitySlider::add-page:vertical {
+    background: rgba(120, 130, 150, 35);
+    border-radius: 2px;
+}
+
+QSlider#visualizationOpacitySlider::handle:vertical {
+    height: 14px;
+    margin: 0 -5px;
+    border-radius: 7px;
+    background: #409EFF;
+}
+
+QWidget[dimDisabled="true"] {
+    color: #A0A0A0;
+    background-color: #F5F5F5;
 }

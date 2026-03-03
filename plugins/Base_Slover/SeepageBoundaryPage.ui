@@ -22,7 +22,7 @@
     </widget>
    </item>
    <item>
-    <widget class="QPushButton" name="pushButton">
+    <widget class="QPushButton" name="sectionTitleButton">
      <property name="text">
       <string>功能设置</string>
      </property>

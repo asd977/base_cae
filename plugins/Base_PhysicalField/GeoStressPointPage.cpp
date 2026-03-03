@@ -1,4 +1,4 @@
-#include "GeoStressPointPage.h"
+﻿#include "GeoStressPointPage.h"
 #include "ui_GeoStressPointPage.h"
 
 #include <QPushButton>
@@ -76,12 +76,12 @@ void GeoStressPointPage::applyDimensionUi(int dim)
 {
     const bool is2D = (dim == 2);
 
-    // 统一定义一个禁用样式
-    QString disabledStyle = is2D ? "color: #A0A0A0; background-color: #F5F5F5;" : "";
-
     auto disableWidget = [&](QWidget* w) {
         w->setEnabled(!is2D);
-        w->setStyleSheet(disabledStyle); // 显式设置样式
+        w->setProperty("dimDisabled", is2D);
+        w->style()->unpolish(w);
+        w->style()->polish(w);
+        w->update();
     };
 
     disableWidget(ui->spinSz);

@@ -129,21 +129,6 @@ void VisualizationWidget::initViewToolbar()
     m_toolbar = new QFrame(this);
     m_toolbar->setObjectName("visualizationViewToolbar");
     m_toolbar->setAttribute(Qt::WA_StyledBackground, true);
-    m_toolbar->setStyleSheet(
-        "QFrame#visualizationViewToolbar {"
-        "background: rgba(245, 248, 252, 225);"
-        "border: none;"
-        "}"
-        "QToolButton {"
-        "min-width: 38px; min-height: 34px;"
-        "border: none;"
-        "border-radius: 6px;"
-        "background: transparent;"
-        "padding: 2px;"
-        "}"
-        "QToolButton:hover { background: rgba(64, 158, 255, 40); }"
-        "QToolButton:pressed { background: rgba(64, 158, 255, 72); }"
-    );
 
     auto* root = new QHBoxLayout(m_toolbar);
     root->setContentsMargins(12, 6, 12, 6);
@@ -163,7 +148,7 @@ void VisualizationWidget::initViewToolbar()
     auto addSep = [this, root]() {
         auto* sep = new QFrame(m_toolbar);
         sep->setFrameShape(QFrame::VLine);
-        sep->setStyleSheet("color: rgba(120, 130, 150, 120);");
+        sep->setObjectName("visualizationToolbarSeparator");
         sep->setFixedHeight(26);
         root->addWidget(sep);
     };
@@ -227,14 +212,7 @@ void VisualizationWidget::initViewToolbar()
 
     m_opacityMenu = new QMenu(m_toolbar);
     m_opacityMenu->setWindowFlags(m_opacityMenu->windowFlags() | Qt::FramelessWindowHint);
-    m_opacityMenu->setStyleSheet(
-        "QMenu {"
-        "background: rgba(255,255,255,245);"
-        "border: 1px solid rgba(80,95,120,70);"
-        "border-radius: 8px;"
-        "padding: 8px;"
-        "}"
-    );
+    m_opacityMenu->setObjectName("visualizationOpacityMenu");
 
     auto* popupWidget = new QWidget(m_opacityMenu);
     auto* popupLayout = new QVBoxLayout(popupWidget);
@@ -243,27 +221,14 @@ void VisualizationWidget::initViewToolbar()
 
     m_opacityPercentLabel = new QLabel(tr("100%"), popupWidget);
     m_opacityPercentLabel->setAlignment(Qt::AlignCenter);
-    m_opacityPercentLabel->setStyleSheet("font: 600 14px 'Microsoft YaHei'; color: #2F3A4A;");
+    m_opacityPercentLabel->setObjectName("visualizationOpacityPercentLabel");
     popupLayout->addWidget(m_opacityPercentLabel);
 
     m_globalOpacitySlider = new QSlider(Qt::Vertical, popupWidget);
     m_globalOpacitySlider->setRange(15, 100);
     m_globalOpacitySlider->setFixedHeight(140);
     m_globalOpacitySlider->setValue(100);
-    m_globalOpacitySlider->setStyleSheet(
-        "QSlider::groove:vertical {"
-        "width: 6px; background: rgba(120,130,150,80); border-radius: 3px;"
-        "}"
-        "QSlider::sub-page:vertical {"
-        "background: rgba(64, 158, 255, 155); border-radius: 2px;"
-        "}"
-        "QSlider::add-page:vertical {"
-        "background: rgba(120,130,150,35); border-radius: 2px;"
-        "}"
-        "QSlider::handle:vertical {"
-        "height: 14px; margin: 0 -5px; border-radius: 7px; background: #409EFF;"
-        "}"
-    );
+    m_globalOpacitySlider->setObjectName("visualizationOpacitySlider");
     popupLayout->addWidget(m_globalOpacitySlider, 1, Qt::AlignHCenter);
 
     connect(m_globalOpacitySlider, &QSlider::valueChanged, this, [this](int value) {
