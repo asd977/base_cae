@@ -132,6 +132,7 @@ bool MeshModuleController::saveProject()
             obj["target_size"] = rule.targetSize;
             obj["curvature_refine"] = rule.curvatureRefine;
             obj["curvature_per_2pi"] = rule.curvatureElementsPer2Pi;
+            obj["extend_to_neighbor"] = rule.extendToNeighbor;
             arr.append(obj);
         }
         return arr;
@@ -228,6 +229,7 @@ bool MeshModuleController::loadProject()
         } else {
             rule.curvatureElementsPer2Pi = obj.value("curvature_level").toInt(20);
         }
+        rule.extendToNeighbor = obj.value("extend_to_neighbor").toBool(false);
         m_faceRules.push_back(rule);
     }
 
