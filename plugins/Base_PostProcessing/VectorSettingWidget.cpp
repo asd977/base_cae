@@ -485,6 +485,7 @@ void VectorSettingWidget::rebuildPipeline()
             lut = l;
             scalarBar->SetLookupTable(lut);
         }
+        applyPostLookupTableStyle(lut);
         lut->SetRange(magMin, magMax);
         mapper->SetLookupTable(lut);
         mapper->UseLookupTableScalarRangeOn();
@@ -500,7 +501,7 @@ void VectorSettingWidget::rebuildPipeline()
     // Actor
     m_vectorActor = vtkSmartPointer<vtkActor>::New();
     m_vectorActor->SetMapper(mapper);
-    m_vectorActor->GetProperty()->SetRepresentationToSurface();
+    applyPostActorStyle(m_vectorActor);
 
     if (m_visualService)
         addActorByService(m_visualService, m_vectorActor);

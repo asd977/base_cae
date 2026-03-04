@@ -145,6 +145,7 @@ bool AnimationAviWidget::loadFrame(int index)
         return false;
 
     m_mapper->SetInputData(m_grid);
+    applyPostMapperStyle(m_mapper);
 
     // 应用色标
     if (ui->scalarComboBox->count() > 0)
@@ -259,7 +260,7 @@ void AnimationAviWidget::buildPipelineIfNeeded()
     m_mapper = vtkSmartPointer<vtkDataSetMapper>::New();
     m_actor = vtkSmartPointer<vtkActor>::New();
     m_actor->SetMapper(m_mapper);
-    m_actor->GetProperty()->SetRepresentationToSurface();
+    applyPostActorStyle(m_actor);
     addActorByService(m_visualService, m_actor);
 }
 
