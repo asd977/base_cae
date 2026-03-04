@@ -129,6 +129,7 @@ bool MeshModuleController::saveProject()
         {
             QJsonObject obj;
             obj["face_ids"] = rule.faceIds;
+            obj["local_size_factor"] = rule.localSizeFactor;
             obj["curvature_refine"] = rule.curvatureRefine;
             obj["curvature_per_2pi"] = rule.curvatureElementsPer2Pi;
             arr.append(obj);
@@ -214,6 +215,11 @@ bool MeshModuleController::loadProject()
         const QJsonObject obj = v.toObject();
         FaceControlRule rule;
         rule.faceIds = obj.value("face_ids").toString();
+        if (obj.contains("local_size_factor")) {
+            rule.localSizeFactor = obj.value("local_size_factor").toDouble(1.0);
+        } else {
+            rule.localSizeFactor = 1.0;
+        }
         // Legacy keys target_size/min_size/max_size are ignored after model simplification.
         rule.curvatureRefine = obj.value("curvature_refine").toBool(true);
         if (obj.contains("curvature_per_2pi")) {

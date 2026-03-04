@@ -19,6 +19,7 @@ struct EdgeControlRule
 struct FaceControlRule
 {
     QString faceIds;
+    double localSizeFactor = 1.0;
     bool curvatureRefine = true;
     int curvatureElementsPer2Pi = 20;
 };
