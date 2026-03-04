@@ -29,6 +29,7 @@
 #include <vtkStringArray.h>
 #include <vtkTecplotReader.h>
 #include <vtkTetra.h>
+#include <vtkTextProperty.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkXMLUnstructuredGridReader.h>
 
@@ -123,6 +124,12 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
 
     if (m_visualService)
         m_visualService->showScalarBar(true, false);
+
+    scalarBar->SetWidth(0.08);
+    scalarBar->SetHeight(0.5);
+    scalarBar->SetPosition(0.90, 0.25);
+    scalarBar->GetTitleTextProperty()->SetColor(0.0, 0.0, 0.0);
+    scalarBar->GetLabelTextProperty()->SetColor(0.0, 0.0, 0.0);
 
     if (auto* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable()))
     {
@@ -570,6 +577,12 @@ void NephogramSettingWidget::syncScalarBarForCompare(vtkDataArray* leftArr, vtkD
 
     if (m_visualService)
         m_visualService->showScalarBar(true, false);
+
+    scalarBar->SetWidth(0.08);
+    scalarBar->SetHeight(0.5);
+    scalarBar->SetPosition(0.90, 0.25);
+    scalarBar->GetTitleTextProperty()->SetColor(0.0, 0.0, 0.0);
+    scalarBar->GetLabelTextProperty()->SetColor(0.0, 0.0, 0.0);
 
     if (auto* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable()))
     {
