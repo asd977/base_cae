@@ -43,9 +43,7 @@ GeometryImportWidget::GeometryImportWidget(QWidget* parent)
     layout->addStretch();
     mainLayout->addLayout(layout);
     mainLayout->addStretch();
-    // 设置按钮大小（可选）
-    browseButton->setIcon(QIcon(":/resources/icon/geomSearch.png"));
-    importButton->setIcon(QIcon(":/resources/icon/geomImport.png"));
+    // 设置按钮大小
     browseButton->setFixedWidth(60);
     importButton->setFixedWidth(60);
 

@@ -131,7 +131,7 @@ void MeshGlobalMeshingWidget::refreshElemCombo(int dim)
     else
     {
         ui->cmbElemType->addItem("四面体（Tet）", 3);
-        ui->cmbElemType->addItem("六面体（Hex，重组）", 4);
+        ui->cmbElemType->addItem("六面体（Hex）", 4);
         ui->cmbElemType->setCurrentIndex(0);
     }
 }
