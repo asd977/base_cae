@@ -440,6 +440,7 @@ void IsosurfaceSegmentationWidget::updateColoringFromUI()
     applyPostLookupTableStyle(lut);
     lut->SetTableRange(range);
     lut->Build();
+    applyPostScalarBarStyle(m_visualService->scalarBarActor(), scalar);
 
     // 低值侧
     m_mapperLow->SetLookupTable(lut);

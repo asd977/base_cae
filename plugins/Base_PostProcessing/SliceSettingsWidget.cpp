@@ -299,6 +299,7 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
     applyPostLookupTableStyle(lut);
     lut->SetTableRange(range);
     lut->Build();
+    applyPostScalarBarStyle(m_visualService->scalarBarActor(), scalar);
 
     // 整体云图
     vtkSmartPointer<vtkDataSetSurfaceFilter> surfaceFilter =
@@ -577,6 +578,7 @@ void SliceSettingsWidget::buildSingleSliceResult()
         arr->GetRange(range);
     lut->SetTableRange(range);
     lut->Build();
+    applyPostScalarBarStyle(m_visualService->scalarBarActor(), scalar);
 
     auto cutter = vtkSmartPointer<vtkCutter>::New();
     cutter->SetCutFunction(m_plane);
@@ -585,7 +587,7 @@ void SliceSettingsWidget::buildSingleSliceResult()
 
     auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
     mapper->SetInputConnection(cutter->GetOutputPort());
-        applyPostMapperStyle(mapper);
+    applyPostMapperStyle(mapper);
     mapper->SetLookupTable(lut);
     mapper->SetScalarModeToUsePointFieldData();
     mapper->SelectColorArray(scalar.toUtf8().data());
@@ -623,6 +625,7 @@ void SliceSettingsWidget::buildMultiSliceResult()
             arr->GetRange(range);
         lut->SetTableRange(range);
         lut->Build();
+        applyPostScalarBarStyle(m_visualService->scalarBarActor(), scalar);
     }
 
     // t 分布：包含端点的话，两个端点都包含（并向内收 eps）

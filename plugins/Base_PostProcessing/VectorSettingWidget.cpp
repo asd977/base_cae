@@ -490,7 +490,7 @@ void VectorSettingWidget::rebuildPipeline()
         mapper->SetLookupTable(lut);
         mapper->UseLookupTableScalarRangeOn();
 
-        scalarBar->SetTitle("‖Vector‖");
+        applyPostScalarBarStyle(scalarBar, QStringLiteral("‖Vector‖"));
         scalarBar->Modified();
     }
     else

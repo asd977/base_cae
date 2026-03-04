@@ -125,7 +125,7 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
         applyPostLookupTableStyle(lut);
         lut->SetTableRange(range);
         lut->Build();
-        scalarBar->SetTitle(m_currentArrayName.toUtf8().constData());
+        applyPostScalarBarStyle(scalarBar, m_currentArrayName);
 
         m_mapper->SetLookupTable(lut);
         m_mapper->SetScalarRange(range);
@@ -567,7 +567,7 @@ void NephogramSettingWidget::syncScalarBarForCompare(vtkDataArray* leftArr, vtkD
     {
         lut->SetTableRange(minV, maxV);
         lut->Build();
-        scalarBar->SetTitle(m_currentArrayName.toUtf8().constData());
+        applyPostScalarBarStyle(scalarBar, m_currentArrayName);
 
         for (auto* m : {m_leftMapper.GetPointer(), m_rightMapper.GetPointer()})
         {

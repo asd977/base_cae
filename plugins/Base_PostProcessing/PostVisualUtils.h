@@ -5,7 +5,9 @@
 #include <vtkLookupTable.h>
 #include <vtkMapper.h>
 #include <vtkProperty.h>
+#include <vtkScalarBarActor.h>
 #include <vtkSmartPointer.h>
+#include <vtkTextProperty.h>
 
 #include <QString>
 
@@ -31,12 +33,12 @@ inline void applyPostActorStyle(vtkActor* actor)
         return;
 
     prop->SetRepresentationToSurface();
-    prop->SetInterpolationToPhong();
+    prop->SetInterpolationToGouraud();
     prop->LightingOn();
-    prop->SetAmbient(0.15);
-    prop->SetDiffuse(0.85);
-    prop->SetSpecular(0.08);
-    prop->SetSpecularPower(20.0);
+    prop->SetAmbient(0.20);
+    prop->SetDiffuse(0.78);
+    prop->SetSpecular(0.04);
+    prop->SetSpecularPower(12.0);
     prop->EdgeVisibilityOff();
 }
 
@@ -49,6 +51,25 @@ inline void applyPostLookupTableStyle(vtkLookupTable* lut)
     lut->SetSaturationRange(1.0, 1.0);
     lut->SetValueRange(1.0, 1.0);
     lut->Build();
+}
+
+inline void applyPostScalarBarStyle(vtkScalarBarActor* scalarBar, const QString& title)
+{
+    if (!scalarBar)
+        return;
+
+    scalarBar->SetVisibility(true);
+    scalarBar->SetTitle(title.toUtf8().constData());
+    scalarBar->SetNumberOfLabels(6);
+    scalarBar->UnconstrainedFontSizeOn();
+    scalarBar->SetPosition(0.88, 0.12);
+    scalarBar->SetWidth(0.10);
+    scalarBar->SetHeight(0.76);
+
+    if (auto* t = scalarBar->GetTitleTextProperty())
+        t->SetColor(0.08, 0.08, 0.08);
+    if (auto* l = scalarBar->GetLabelTextProperty())
+        l->SetColor(0.08, 0.08, 0.08);
 }
 
 inline bool addActorByService(VisualWidgetService* service, const vtkSmartPointer<vtkActor>& actor,

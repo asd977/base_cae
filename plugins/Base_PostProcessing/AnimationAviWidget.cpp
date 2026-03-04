@@ -244,8 +244,10 @@ void AnimationAviWidget::applyScalarAndLUT(const QString& scalar, const double r
         lut = vtkSmartPointer<vtkLookupTable>::New();
         scalarBar->SetLookupTable(lut);
     }
+    applyPostLookupTableStyle(lut);
     lut->SetTableRange(range);
     lut->Build();
+    applyPostScalarBarStyle(scalarBar, scalar);
 
     m_mapper->SetLookupTable(lut);
     m_mapper->SetScalarModeToUsePointFieldData();

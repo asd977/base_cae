@@ -314,6 +314,7 @@ void BlockSettingsWidget::updateColoringFromUI()
     applyPostLookupTableStyle(lut);
     lut->SetTableRange(range);
     lut->Build();
+    applyPostScalarBarStyle(m_visualService->scalarBarActor(), scalar);
 
     m_mapper->SetLookupTable(lut);
     m_mapper->SetScalarModeToUsePointFieldData();

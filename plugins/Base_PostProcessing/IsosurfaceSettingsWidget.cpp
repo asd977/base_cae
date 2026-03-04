@@ -305,8 +305,10 @@ void IsosurfaceSettingsWidget::updateOverallColoring()
     double range[2];
     arr->GetRange(range);
     auto lut = ensureLUT();
+    applyPostLookupTableStyle(lut);
     lut->SetTableRange(range);
     lut->Build();
+    applyPostScalarBarStyle(m_visualService->scalarBarActor(), scalar);
 
     vtkSmartPointer<vtkDataSetSurfaceFilter> surfaceFilter =
         vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
@@ -404,8 +406,10 @@ void IsosurfaceSettingsWidget::ensureSinglePipeline()
     double range[2];
     arr->GetRange(range);
     auto lut = ensureLUT();
+    applyPostLookupTableStyle(lut);
     lut->SetTableRange(range);
     lut->Build();
+    applyPostScalarBarStyle(m_visualService->scalarBarActor(), scalar);
 
     m_mapperSingle->SetLookupTable(lut);
     m_mapperSingle->SetScalarModeToUsePointFieldData();
@@ -466,8 +470,10 @@ void IsosurfaceSettingsWidget::buildMultiIsoResult()
     double range[2];
     arr->GetRange(range);
     auto lut = ensureLUT();
+    applyPostLookupTableStyle(lut);
     lut->SetTableRange(range);
     lut->Build();
+    applyPostScalarBarStyle(m_visualService->scalarBarActor(), scalar);
 
     // 值列表
     const auto values = multiIsoValuesFromUI();
