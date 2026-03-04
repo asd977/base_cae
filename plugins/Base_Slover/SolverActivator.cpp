@@ -1,6 +1,3 @@
 #include "SolverActivator.h"
 
-SolverActivator::SolverActivator()
-{
-
-}
+SolverActivator::SolverActivator() {}

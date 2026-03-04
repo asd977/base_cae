@@ -2,35 +2,35 @@
 #define SPHEREDIALOG_H
 
 #include <QDialog>
-#include <QLineEdit>
+#include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
-#include <QHBoxLayout>
 #include <gp_Pnt.hxx>
+
 #include "BasePage.h"
 
-class SphereDialog : public BasePage
-{
-	Q_OBJECT
+class SphereDialog : public BasePage {
+  Q_OBJECT
 
-public:
-	SphereDialog(QWidget *parent = nullptr);
-	~SphereDialog();
+ public:
+  SphereDialog(QWidget *parent = nullptr);
+  ~SphereDialog();
 
-	void beforeLoad() {};
-	void beforeUnload() {};
-	QJsonObject saveJson() override;
-	void loadJson(const QJsonObject &obj) override;
-private slots:
-	void onOkClicked();
+  void beforeLoad() {};
+  void beforeUnload() {};
+  QJsonObject saveJson() override;
+  void loadJson(const QJsonObject &obj) override;
+ private slots:
+  void onOkClicked();
 
-private:
-	QLineEdit *radiusEdit;
-	QLineEdit *xEdit;
-	QLineEdit *yEdit;
-	QLineEdit *zEdit;
-    void initUI();
+ private:
+  QLineEdit *radiusEdit;
+  QLineEdit *xEdit;
+  QLineEdit *yEdit;
+  QLineEdit *zEdit;
+  void initUI();
 };
 
-#endif // SPHEREDIALOG_H
+#endif  // SPHEREDIALOG_H

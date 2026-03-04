@@ -1,65 +1,69 @@
 ﻿#ifndef PROJECTNODE_H
 #define PROJECTNODE_H
-#include <QTreeWidget>
-#include <QStackedWidget>
-#include <qobject.h>
-#include "BasePage.h"
 #include <qmetatype.h>
+#include <qobject.h>
 
-class CORE_EXPORT ProjectNode :public QTreeWidgetItem
-{
-public:
-    ProjectNode(const QString& n, const QString& id = QUuid::createUuid().toString(), BasePage* p = nullptr);
-    ~ProjectNode() {}
+#include <QStackedWidget>
+#include <QTreeWidget>
 
-    enum DataRole {
-        RoleUuid   = Qt::UserRole + 100,
-        RoleModule = Qt::UserRole + 101, //group
-        RoleKind   = Qt::UserRole + 102  //kind
-    };
+#include "BasePage.h"
 
-    /**
-    * @brief 添加子节点，同时维护内部子节点列表
-    */
-    void addChild(ProjectNode* child);
-    /**
-    * @brief 移除当前节点的子节点
-    * @child 子节点指针
-    */
-    bool removeChild(ProjectNode* child);
-    /**
-    * @brief 获取所有的子节点
-    */
-    const QList<ProjectNode*>& getChildren() const { return children; }
+class CORE_EXPORT ProjectNode : public QTreeWidgetItem {
+ public:
+  ProjectNode(const QString& n,
+              const QString& id = QUuid::createUuid().toString(),
+              BasePage* p = nullptr);
+  ~ProjectNode() {}
 
-    /**
-    * @brief 获取节点名称
-    */
-    QString getName() const { return name; }
-    /**
-    * @brief 获取uuid
-    */
-    QString getUuid() const { return uuid; }
-    /**
-    * @brief 获取节点页面
-    */
-    BasePage* getPage() const { return page; }
-    /**
-    * @brief 获取节点页面
-    */
-    void setPage(BasePage *basePage) { page = basePage; }
+  enum DataRole {
+    RoleUuid = Qt::UserRole + 100,
+    RoleModule = Qt::UserRole + 101,  // group
+    RoleKind = Qt::UserRole + 102     // kind
+  };
 
-    /**
-    * @brief 设置节点名称
-    */
-    void setName(const QString& _name) { name = _name; };
-private:
-    QString name;
-    BasePage* page;
-    QList<ProjectNode*> children;
-    QString uuid;
+  /**
+   * @brief 添加子节点，同时维护内部子节点列表
+   */
+  void addChild(ProjectNode* child);
+  /**
+   * @brief 移除当前节点的子节点
+   * @child 子节点指针
+   */
+  bool removeChild(ProjectNode* child);
+  /**
+   * @brief 获取所有的子节点
+   */
+  const QList<ProjectNode*>& getChildren() const { return children; }
+
+  /**
+   * @brief 获取节点名称
+   */
+  QString getName() const { return name; }
+  /**
+   * @brief 获取uuid
+   */
+  QString getUuid() const { return uuid; }
+  /**
+   * @brief 获取节点页面
+   */
+  BasePage* getPage() const { return page; }
+  /**
+   * @brief 获取节点页面
+   */
+  void setPage(BasePage* basePage) { page = basePage; }
+
+  /**
+   * @brief 设置节点名称
+   */
+  void setName(const QString& _name) { name = _name; };
+
+ private:
+  QString name;
+  BasePage* page;
+  QList<ProjectNode*> children;
+  QString uuid;
 };
 
 Q_DECLARE_METATYPE(ProjectNode*)
 
-#endif // PROJECTNODE_H
+#endif  // PROJECTNODE_H

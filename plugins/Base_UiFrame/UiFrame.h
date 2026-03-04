@@ -1,60 +1,58 @@
 ﻿#ifndef UIFRAME_H
 #define UIFRAME_H
 
-#include "SARibbonMainWindow.h"
-
 #include <DockManager.h>
 #include <DockWidget.h>
+#include <services/UiFrameService.h>
 
-#include <QByteArray>
 #include <QAction>
+#include <QByteArray>
 #include <QCloseEvent>
 
-#include <services/UiFrameService.h>
+#include "SARibbonMainWindow.h"
 
 class SARibbonBar;
 class SARibbonMenu;
 
-class UiFrame : public SARibbonMainWindow, public UiFrameService
-{
-    Q_OBJECT
-public:
-    UiFrame(QWidget* parent = nullptr,
-            SARibbonMainWindowStyles style = {
-                static_cast<int>(SARibbonMainWindowStyleFlag::UseNativeFrame)
-                | static_cast<int>(SARibbonMainWindowStyleFlag::UseRibbonMenuBar)
-            });
-    ~UiFrame() override;
+class UiFrame : public SARibbonMainWindow, public UiFrameService {
+  Q_OBJECT
+ public:
+  UiFrame(QWidget* parent = nullptr,
+          SARibbonMainWindowStyles style = {
+              static_cast<int>(SARibbonMainWindowStyleFlag::UseNativeFrame) |
+              static_cast<int>(SARibbonMainWindowStyleFlag::UseRibbonMenuBar)});
+  ~UiFrame() override;
 
-    QAction* addWidget(QWidget* widget, QString name) override;
-    void restoreUiState();
-    void storeUiState();
+  QAction* addWidget(QWidget* widget, QString name) override;
+  void restoreUiState();
+  void storeUiState();
 
-protected:
-    void closeEvent(QCloseEvent* event) override;
+ protected:
+  void closeEvent(QCloseEvent* event) override;
 
-private:
-    // 如果 UiFrameService 里有这个虚函数，这个 override 不能删（但可以藏到 private）
-    QAction* addWidgetForTabwidget(QWidget* widget, QString name) override;
+ private:
+  // 如果 UiFrameService 里有这个虚函数，这个 override 不能删（但可以藏到
+  // private）
+  QAction* addWidgetForTabwidget(QWidget* widget, QString name) override;
 
-private:
-    void initDockManager();
-    void initSARibbon();
+ private:
+  void initDockManager();
+  void initSARibbon();
 
-    void buildRibbonAppButton(); // 文件菜单
-    void buildRibbonTabs();      // 其它标签页
+  void buildRibbonAppButton();  // 文件菜单
+  void buildRibbonTabs();       // 其它标签页
 
-    void setDockWidgetStyle();
-    ads::DockWidgetArea preferDockArea(const QString& name) const;
-    void captureDefaultDockState();
+  void setDockWidgetStyle();
+  ads::DockWidgetArea preferDockArea(const QString& name) const;
+  void captureDefaultDockState();
 
-private:
-    ads::CDockManager* m_dockManager = nullptr;
-    ads::CDockAreaWidget* m_centerDockArea = nullptr;
-    QByteArray m_defaultDockState;
+ private:
+  ads::CDockManager* m_dockManager = nullptr;
+  ads::CDockAreaWidget* m_centerDockArea = nullptr;
+  QByteArray m_defaultDockState;
 
-    SARibbonBar* m_ribbon = nullptr;
-    SARibbonMenu* m_applicationMenu = nullptr;
+  SARibbonBar* m_ribbon = nullptr;
+  SARibbonMenu* m_applicationMenu = nullptr;
 };
 
-#endif // UIFRAME_H
+#endif  // UIFRAME_H

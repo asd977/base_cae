@@ -1,6 +1,3 @@
 ﻿#include "PostProcessingActivator.h"
 
-PostProcessingActivator::PostProcessingActivator()
-{
-
-}
+PostProcessingActivator::PostProcessingActivator() {}

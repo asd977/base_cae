@@ -1,6 +1,6 @@
-//#include "ProjectTreeItem.h"
+// #include "ProjectTreeItem.h"
 
-//ProjectTreeItem::ProjectTreeItem()
+// ProjectTreeItem::ProjectTreeItem()
 //{
 
 //}

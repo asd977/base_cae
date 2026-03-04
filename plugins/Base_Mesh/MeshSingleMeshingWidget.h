@@ -7,19 +7,18 @@ namespace Ui {
 class MeshSingleMeshingWidget;
 }
 
-class MeshSingleMeshingWidget : public BasePage
-{
-    Q_OBJECT
+class MeshSingleMeshingWidget : public BasePage {
+  Q_OBJECT
 
-public:
-    explicit MeshSingleMeshingWidget(QWidget *parent = nullptr);
-    ~MeshSingleMeshingWidget() override;
+ public:
+  explicit MeshSingleMeshingWidget(QWidget *parent = nullptr);
+  ~MeshSingleMeshingWidget() override;
 
-    void beforeLoad();
-    void beforeUnload();
+  void beforeLoad();
+  void beforeUnload();
 
-private:
-    Ui::MeshSingleMeshingWidget *ui;
+ private:
+  Ui::MeshSingleMeshingWidget *ui;
 };
 
-#endif // MESHSINGLEMESHINGWIDGET_H
+#endif  // MESHSINGLEMESHINGWIDGET_H

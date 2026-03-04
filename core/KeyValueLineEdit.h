@@ -1,45 +1,46 @@
 ﻿#ifndef KEYVALUELINEEDIT_H
 #define KEYVALUELINEEDIT_H
 
-#include <QLineEdit>
-#include <QVariant>
 #include <core_global.h>
 
-class CORE_EXPORT KeyValueLineEdit : public QLineEdit
-{
-    Q_OBJECT
-    // 作为“默认文本/建议键名”的属性；设置后会把文本设为该值
-    Q_PROPERTY(QString paramKey READ paramKey WRITE setParamKey NOTIFY paramKeyChanged)
+#include <QLineEdit>
+#include <QVariant>
 
-public:
-    explicit KeyValueLineEdit(QWidget *parent = nullptr);
+class CORE_EXPORT KeyValueLineEdit : public QLineEdit {
+  Q_OBJECT
+  // 作为“默认文本/建议键名”的属性；设置后会把文本设为该值
+  Q_PROPERTY(
+      QString paramKey READ paramKey WRITE setParamKey NOTIFY paramKeyChanged)
 
-    QString paramKey() const { return m_key; }
-    void setParamKey(const QString& key);
+ public:
+  explicit KeyValueLineEdit(QWidget* parent = nullptr);
 
-    // 解析当前文本：若为已注册键则返回其值；否则返回用户输入的字面量（QString）
-    QVariant resolvedValue(bool *fromKey = nullptr) const;
+  QString paramKey() const { return m_key; }
+  void setParamKey(const QString& key);
 
-    // 便捷：当前文本是否为已注册键
-    bool keyExists() const;
+  // 解析当前文本：若为已注册键则返回其值；否则返回用户输入的字面量（QString）
+  QVariant resolvedValue(bool* fromKey = nullptr) const;
 
-    // 便捷：返回当前文本（去空格）
-    QString currentKeyText() const;
+  // 便捷：当前文本是否为已注册键
+  bool keyExists() const;
 
-signals:
-    void paramKeyChanged(const QString& key);
+  // 便捷：返回当前文本（去空格）
+  QString currentKeyText() const;
 
-protected:
-    void showEvent(QShowEvent *e) override;
+ signals:
+  void paramKeyChanged(const QString& key);
 
-private slots:
-    void onTextEdited(const QString& text);
+ protected:
+  void showEvent(QShowEvent* e) override;
 
-private:
-    void updateTooltip();
+ private slots:
+  void onTextEdited(const QString& text);
 
-private:
-    QString m_key; // 仅作为初始化显示用途；实际以 text() 为准
+ private:
+  void updateTooltip();
+
+ private:
+  QString m_key;  // 仅作为初始化显示用途；实际以 text() 为准
 };
 
-#endif // KEYVALUELINEEDIT_H
+#endif  // KEYVALUELINEEDIT_H

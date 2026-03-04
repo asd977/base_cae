@@ -1,15 +1,17 @@
 ﻿#include "MeshFaceControlWidget.h"
-#include "ui_MeshFaceControlWidget.h"
 
 #include <CustomComboBox.h>
+#include <ServiceRegistry.h>
+#include <services/MeshModuleControllerService.h>
+#include <services/PreProcessingService.h>
+
 #include <QColor>
 #include <QMessageBox>
 #include <QSet>
 #include <QTableWidgetItem>
-#include <ServiceRegistry.h>
 #include <algorithm>
-#include <services/MeshModuleControllerService.h>
-#include <services/PreProcessingService.h>
+
+#include "ui_MeshFaceControlWidget.h"
 
 namespace {
 
@@ -18,8 +20,7 @@ static bool parseEntityIds(const QString &text, QSet<int> &ids, QString &err) {
   const QStringList parts = text.split(',', QString::SkipEmptyParts);
   for (QString part : parts) {
     part = part.trimmed();
-    if (part.isEmpty())
-      continue;
+    if (part.isEmpty()) continue;
     if (part.contains('-')) {
       const QStringList bounds = part.split('-');
       if (bounds.size() != 2) {
@@ -34,8 +35,7 @@ static bool parseEntityIds(const QString &text, QSet<int> &ids, QString &err) {
                   .arg(part);
         return false;
       }
-      for (int id = start; id <= end; ++id)
-        ids.insert(id);
+      for (int id = start; id <= end; ++id) ids.insert(id);
     } else {
       bool ok = false;
       const int id = part.toInt(&ok);
@@ -49,10 +49,11 @@ static bool parseEntityIds(const QString &text, QSet<int> &ids, QString &err) {
   return true;
 }
 
-} // namespace
+}  // namespace
 
 MeshFaceControlWidget::MeshFaceControlWidget(QWidget *parent)
-    : BasePage("MeshFaceControlWidget"), ui(new Ui::MeshFaceControlWidget),
+    : BasePage("MeshFaceControlWidget"),
+      ui(new Ui::MeshFaceControlWidget),
       m_highlightPropId("mesh.face.control.highlight") {
   ui->setupUi(this);
   setupUiState();
@@ -103,8 +104,7 @@ MeshFaceControlWidget::~MeshFaceControlWidget() {
 void MeshFaceControlWidget::beforeLoad() {
   rebuildFaceCandidates();
   loadRulesFromService();
-  if (m_items.isEmpty())
-    onAddControl();
+  if (m_items.isEmpty()) onAddControl();
 }
 void MeshFaceControlWidget::beforeUnload() {
   if (auto *s = ServiceRegistry::instance().getService<PreProcessingService>())
@@ -123,8 +123,7 @@ void MeshFaceControlWidget::onAddControl() {
 }
 void MeshFaceControlWidget::onDeleteControl() {
   int row = ui->tableControls->currentRow();
-  if (row < 0 || row >= m_items.size())
-    return;
+  if (row < 0 || row >= m_items.size()) return;
   m_items.removeAt(row);
   ui->tableControls->removeRow(row);
   syncRulesToService();
@@ -141,8 +140,7 @@ void MeshFaceControlWidget::onResetForm() {
 }
 void MeshFaceControlWidget::onSelectionChanged() {
   int row = ui->tableControls->currentRow();
-  if (row >= 0 && row < m_items.size())
-    fillFormData(m_items[row]);
+  if (row >= 0 && row < m_items.size()) fillFormData(m_items[row]);
   QSet<int> selectedIds;
   QString err;
   if (row >= 0 && row < m_items.size())
@@ -180,8 +178,7 @@ void MeshFaceControlWidget::onAppendSelectedEntity() {
     return;
   }
   int id = ui->cmbEntity->currentData().toInt();
-  if (id <= 0)
-    return;
+  if (id <= 0) return;
   QStringList parts =
       m_items[row].faceIds.trimmed().split(',', QString::SkipEmptyParts);
   QString idStr = QString::number(id);
@@ -222,19 +219,16 @@ bool MeshFaceControlWidget::validateInput(QString &err, int ignoreRow) const {
   if (!parseEntityIds(ui->editFaceIds->text().trimmed(), currentIds, err))
     return false;
   for (int i = 0; i < m_items.size(); ++i) {
-    if (i == ignoreRow)
-      continue;
+    if (i == ignoreRow) continue;
     QSet<int> existingIds;
     QString parseErr;
-    if (!parseEntityIds(m_items[i].faceIds, existingIds, parseErr))
-      continue;
+    if (!parseEntityIds(m_items[i].faceIds, existingIds, parseErr)) continue;
     QSet<int> overlap = currentIds & existingIds;
     if (!overlap.isEmpty()) {
       QList<int> ids = overlap.values();
       std::sort(ids.begin(), ids.end());
       QStringList overlapStr;
-      for (int id : ids)
-        overlapStr << QString::number(id);
+      for (int id : ids) overlapStr << QString::number(id);
       err = tr("面 ID 不能重复配置：与第 %1 条规则冲突（重复 ID：%2）。")
                 .arg(i + 1)
                 .arg(overlapStr.join(','));
@@ -243,8 +237,8 @@ bool MeshFaceControlWidget::validateInput(QString &err, int ignoreRow) const {
   }
   return true;
 }
-MeshFaceControlWidget::FaceControlItem
-MeshFaceControlWidget::collectFormData() const {
+MeshFaceControlWidget::FaceControlItem MeshFaceControlWidget::collectFormData()
+    const {
   FaceControlItem item;
   item.faceIds = ui->editFaceIds->text().trimmed();
   item.localSizeFactor = ui->spinLocalSizeFactor->value();
@@ -305,12 +299,10 @@ void MeshFaceControlWidget::updateEntityUiState() {
 void MeshFaceControlWidget::syncRulesToService() {
   auto *svc =
       ServiceRegistry::instance().getService<MeshModuleControllerService>();
-  if (!svc)
-    return;
+  if (!svc) return;
   QVector<FaceControlRule> rules;
   for (const auto &it : m_items) {
-    if (it.faceIds.trimmed().isEmpty())
-      continue;
+    if (it.faceIds.trimmed().isEmpty()) continue;
     FaceControlRule r;
     r.faceIds = it.faceIds;
     r.localSizeFactor = it.localSizeFactor;
@@ -324,8 +316,7 @@ void MeshFaceControlWidget::syncRulesToService() {
 void MeshFaceControlWidget::loadRulesFromService() {
   auto *svc =
       ServiceRegistry::instance().getService<MeshModuleControllerService>();
-  if (!svc)
-    return;
+  if (!svc) return;
   const auto rules = svc->faceControlRules();
   m_items.clear();
   ui->tableControls->setRowCount(0);

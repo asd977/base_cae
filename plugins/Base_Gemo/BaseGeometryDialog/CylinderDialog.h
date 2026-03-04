@@ -3,47 +3,45 @@
 #define CYLINDERDIALOG_H
 
 #include <QDialog>
-#include <QLineEdit>
+#include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
-#include <QHBoxLayout>
 #include <gp_Pnt.hxx>
+
 #include "BasePage.h"
 
+class CylinderDialog : public BasePage {
+  Q_OBJECT
 
-class CylinderDialog : public BasePage
-{
-	Q_OBJECT
+ public:
+  CylinderDialog(QWidget *parent = nullptr);
+  ~CylinderDialog();
 
-public:
-	CylinderDialog(QWidget *parent = nullptr);
-	~CylinderDialog();
+  void beforeLoad() {};
+  void beforeUnload() {};
+  QJsonObject saveJson() override;
+  void loadJson(const QJsonObject &obj) override;
 
-	void beforeLoad() {};
-	void beforeUnload() {};
-	QJsonObject saveJson() override;
-	void loadJson(const QJsonObject &obj) override;
+  // 获取用户输入的参数
+  double getRadius() const;
+  double getHeight() const;
+  gp_Pnt getBaseCenter() const;
 
-	// 获取用户输入的参数
-	double getRadius() const;
-	double getHeight() const;
-	gp_Pnt getBaseCenter() const;
+ signals:
+  void parametersSubmitted(QString uuid, double radius, double height,
+                           const gp_Pnt &position);
+ private slots:
+  void onOkClicked();
+  void onCancelClicked();
 
-
-signals:
-	void parametersSubmitted(QString uuid, double radius, double height, const gp_Pnt &position);
-private slots:
-	void onOkClicked();
-	void onCancelClicked();
-
-private:
-	QLineEdit *radiusEdit;
-	QLineEdit *heightEdit;
-	QLineEdit *xEdit;
-	QLineEdit *yEdit;
-	QLineEdit *zEdit;
+ private:
+  QLineEdit *radiusEdit;
+  QLineEdit *heightEdit;
+  QLineEdit *xEdit;
+  QLineEdit *yEdit;
+  QLineEdit *zEdit;
 };
 
-#endif // CYLINDERDIALOG_H
-
+#endif  // CYLINDERDIALOG_H

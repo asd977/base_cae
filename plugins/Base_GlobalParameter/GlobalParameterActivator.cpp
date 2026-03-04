@@ -1,6 +1,3 @@
 #include "GlobalParameterActivator.h"
 
-GlobalParameterActivator::GlobalParameterActivator()
-{
-
-}
+GlobalParameterActivator::GlobalParameterActivator() {}

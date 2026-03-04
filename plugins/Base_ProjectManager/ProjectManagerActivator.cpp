@@ -1,6 +1,3 @@
 ﻿#include "ProjectManagerActivator.h"
 
-ProjectManagerActivator::ProjectManagerActivator()
-{
-
-}
+ProjectManagerActivator::ProjectManagerActivator() {}

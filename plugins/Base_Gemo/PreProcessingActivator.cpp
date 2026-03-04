@@ -1,6 +1,3 @@
 ﻿#include "PreProcessingActivator.h"
 
-PreProcessingActivator::PreProcessingActivator()
-{
-
-}
+PreProcessingActivator::PreProcessingActivator() {}

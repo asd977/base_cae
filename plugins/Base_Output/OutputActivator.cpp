@@ -1,6 +1,3 @@
 #include "OutputActivator.h"
 
-OutputActivator::OutputActivator()
-{
-
-}
+OutputActivator::OutputActivator() {}

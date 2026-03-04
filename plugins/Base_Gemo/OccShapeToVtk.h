@@ -5,12 +5,10 @@
 class vtkPolyData;
 class TopoDS_Shape;
 
-namespace OCC
-{
-struct DisplayPolyData
-{
-    vtkSmartPointer<vtkPolyData> surface; // 三角面 + normals（用于光照）
-    vtkSmartPointer<vtkPolyData> edges;   // 仅特征边/边界边（球体一般为空）
+namespace OCC {
+struct DisplayPolyData {
+  vtkSmartPointer<vtkPolyData> surface;  // 三角面 + normals（用于光照）
+  vtkSmartPointer<vtkPolyData> edges;    // 仅特征边/边界边（球体一般为空）
 };
 
 // deviationCoeff：相对显示精度（越小越细，常用 0.0008~0.005）
@@ -20,4 +18,4 @@ DisplayPolyData BuildDisplayPolyData(const TopoDS_Shape& shape,
                                      double deviationCoeff = 0.0015,
                                      double featureAngleDeg = 30.0,
                                      bool smoothShading = true);
-} // namespace OCC
+}  // namespace OCC

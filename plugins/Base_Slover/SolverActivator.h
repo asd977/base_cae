@@ -1,24 +1,26 @@
 ﻿#ifndef SOLVERACTIVATOR_H
 #define SOLVERACTIVATOR_H
 
-#include "Solver.h"
-
 #include <PluginInterface.h>
+
 #include <QObject>
 #include <QtDebug>
 
-class SolverActivator : public QObject, public PluginInterface
-{
-    Q_OBJECT
-    Q_PLUGIN_METADATA(IID PluginInterface_iid)
-    Q_INTERFACES(PluginInterface)
+#include "Solver.h"
 
-public:
-    SolverActivator();
+class SolverActivator : public QObject, public PluginInterface {
+  Q_OBJECT
+  Q_PLUGIN_METADATA(IID PluginInterface_iid)
+  Q_INTERFACES(PluginInterface)
 
-    QString pluginName() const override { return "Solver"; }
-    void start() override { qDebug() << "start Solver"; Solver *solver = new Solver;}
-    void stop() override { qDebug() << "Stopping..."; }
+ public:
+  SolverActivator();
 
+  QString pluginName() const override { return "Solver"; }
+  void start() override {
+    qDebug() << "start Solver";
+    Solver *solver = new Solver;
+  }
+  void stop() override { qDebug() << "Stopping..."; }
 };
-#endif // SOLVERACTIVATOR_H
+#endif  // SOLVERACTIVATOR_H

@@ -1,6 +1,3 @@
 ﻿#include "VisualizationActivator.h"
 
-VisualizationActivator::VisualizationActivator()
-{
-
-}
+VisualizationActivator::VisualizationActivator() {}

@@ -7,31 +7,31 @@ class QSpinBox;
 class QPushButton;
 class QComboBox;
 
-namespace Ui { class TemperatureLoadPage; }
+namespace Ui {
+class TemperatureLoadPage;
+}
 
-class TemperatureLoadPage : public BasePage
-{
-    Q_OBJECT
-public:
-    explicit TemperatureLoadPage(QWidget* parent = nullptr);
-    ~TemperatureLoadPage() override;
+class TemperatureLoadPage : public BasePage {
+  Q_OBJECT
+ public:
+  explicit TemperatureLoadPage(QWidget* parent = nullptr);
+  ~TemperatureLoadPage() override;
 
-    void beforeLoad() override;
-    void beforeUnload() override;
+  void beforeLoad() override;
+  void beforeUnload() override;
 
-    double alfaValue() const;
-    double dtValue() const;
+  double alfaValue() const;
+  double dtValue() const;
 
-private slots:
-    void onGroupChanged(int index);
-    void onDimChanged(int index);
+ private slots:
+  void onGroupChanged(int index);
+  void onDimChanged(int index);
 
-private:
-    void setupBatchGroupCombo();
-    void refreshGroupCombo();
+ private:
+  void setupBatchGroupCombo();
+  void refreshGroupCombo();
 
-private:
-    Ui::TemperatureLoadPage* ui = nullptr;
-    QComboBox* m_groupCombo = nullptr;
-
+ private:
+  Ui::TemperatureLoadPage* ui = nullptr;
+  QComboBox* m_groupCombo = nullptr;
 };
