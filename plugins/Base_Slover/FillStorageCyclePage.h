@@ -2,8 +2,11 @@
 
 #include <BasePage.h>
 
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
+
+class QTableWidget;
 
 namespace Ui
 {
@@ -27,7 +30,14 @@ class FillStorageCyclePage : public BasePage
     void loadJson(const QJsonObject& obj) override;
 
   private:
-    QString defaultSectionText() const;
+    void setupConnections();
+    void ensureTableRows(QTableWidget* table, int rows) const;
+    QJsonArray tableToJson(QTableWidget* table) const;
+    void jsonToTable(const QJsonArray& arr, QTableWidget* table) const;
+    QString tableItemText(QTableWidget* table, int row, int col,
+                          const QString& defaultValue = QString()) const;
+    QString buildSectionText() const;
+    void updatePreview();
 
   private:
     Ui::FillStorageCyclePage* ui = nullptr;
