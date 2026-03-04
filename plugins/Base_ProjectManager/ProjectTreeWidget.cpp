@@ -170,8 +170,9 @@ void ProjectTreeWidget::ensureSceneVisibleForCurrentNode(QTreeWidgetItem* curren
 
         if (hasMeshActors)
         {
-            // 切到网格节点且存在网格结果时：隐藏几何，仅显示网格结果。
-            vis->setGroupVisible("Geometry", false, false);
+            // 切到网格节点且存在网格结果时：保留几何显示，避免用户误以为
+            // “网格生成后几何内部消失”。网格与几何可同时可见，便于对照。
+            vis->setGroupVisible("Geometry", true, false);
             vis->setVisible("mesh.global.surf", true, false);
             vis->setVisible("mesh.global.wire", true, false);
             vis->setVisible("mesh.imported.surface", true, false);
