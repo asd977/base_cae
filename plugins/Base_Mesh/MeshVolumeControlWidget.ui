@@ -59,99 +59,26 @@
       <item row="1" column="0">
        <widget class="QLabel" name="labelMinSize">
         <property name="text">
-         <string>最小尺寸</string>
+         <string>局部尺寸因子</string>
         </property>
        </widget>
       </item>
       <item row="1" column="1">
-       <widget class="QDoubleSpinBox" name="spinMinSize">
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="minimum">
-         <double>0.001000000000000</double>
-        </property>
-        <property name="maximum">
-         <double>1000000.000000000000000</double>
-        </property>
-        <property name="value">
-         <double>0.500000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="2">
-       <widget class="QLabel" name="labelMaxSize">
-        <property name="text">
-         <string>最大尺寸</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="3">
-       <widget class="QDoubleSpinBox" name="spinMaxSize">
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="minimum">
-         <double>0.001000000000000</double>
-        </property>
-        <property name="maximum">
-         <double>1000000.000000000000000</double>
-        </property>
-        <property name="value">
-         <double>2.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="labelGrowthRate">
-        <property name="text">
-         <string>增长率</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <widget class="QDoubleSpinBox" name="spinGrowthRate">
+       <widget class="QDoubleSpinBox" name="spinLocalSizeFactor">
         <property name="decimals">
          <number>2</number>
         </property>
         <property name="minimum">
-         <double>1.000000000000000</double>
+         <double>0.010000000000000</double>
         </property>
         <property name="maximum">
-         <double>5.000000000000000</double>
+         <double>100.000000000000000</double>
         </property>
         <property name="singleStep">
-         <double>0.050000000000000</double>
+         <double>0.100000000000000</double>
         </property>
         <property name="value">
-         <double>1.200000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="2" colspan="2">
-       <widget class="QCheckBox" name="checkBoundaryLayer">
-        <property name="text">
-         <string>启用边界层控制</string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="2">
-       <widget class="QLabel" name="labelLayerCount">
-        <property name="text">
-         <string>边界层层数</string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="3">
-       <widget class="QSpinBox" name="spinLayerCount">
-        <property name="minimum">
-         <number>1</number>
-        </property>
-        <property name="maximum">
-         <number>50</number>
-        </property>
-        <property name="value">
-         <number>3</number>
+         <double>1.000000000000000</double>
         </property>
        </widget>
       </item>

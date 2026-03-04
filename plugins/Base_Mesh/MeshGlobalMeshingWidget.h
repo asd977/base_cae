@@ -156,7 +156,8 @@ public slots:
 
         for (const auto& r : m_p.volumeRules) {
             const auto ids = parseIdSet(r.volumeIds);
-            const double target = 0.5 * (r.minSize + r.maxSize);
+            const double base = m_p.lenMax * m_p.sizeFactor;
+            const double target = std::max(m_p.lenMin, std::min(m_p.lenMax, base * r.localSizeFactor));
             for (int id : ids) {
                 const auto tags = resolveEntityTagsByPhysicalUiId(3, id);
                 for (int tag : tags) {

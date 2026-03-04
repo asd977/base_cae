@@ -142,11 +142,7 @@ bool MeshModuleController::saveProject()
         {
             QJsonObject obj;
             obj["volume_ids"] = rule.volumeIds;
-            obj["min_size"] = rule.minSize;
-            obj["max_size"] = rule.maxSize;
-            obj["growth_rate"] = rule.growthRate;
-            obj["boundary_layer"] = rule.boundaryLayer;
-            obj["layer_count"] = rule.layerCount;
+            obj["local_size_factor"] = rule.localSizeFactor;
             arr.append(obj);
         }
         return arr;
@@ -236,11 +232,11 @@ bool MeshModuleController::loadProject()
         const QJsonObject obj = v.toObject();
         VolumeControlRule rule;
         rule.volumeIds = obj.value("volume_ids").toString();
-        rule.minSize = obj.value("min_size").toDouble(0.5);
-        rule.maxSize = obj.value("max_size").toDouble(2.0);
-        rule.growthRate = obj.value("growth_rate").toDouble(1.2);
-        rule.boundaryLayer = obj.value("boundary_layer").toBool(false);
-        rule.layerCount = obj.value("layer_count").toInt(3);
+        if (obj.contains("local_size_factor")) {
+            rule.localSizeFactor = obj.value("local_size_factor").toDouble(1.0);
+        } else {
+            rule.localSizeFactor = 1.0;
+        }
         m_volumeRules.push_back(rule);
     }
 

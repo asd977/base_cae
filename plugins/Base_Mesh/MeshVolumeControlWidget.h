@@ -34,11 +34,7 @@ private:
     struct VolumeControlItem
     {
         QString volumeIds;
-        double minSize = 0.5;
-        double maxSize = 2.0;
-        double growthRate = 1.2;
-        bool boundaryLayer = false;
-        int layerCount = 3;
+        double localSizeFactor = 1.0;
     };
 
     void setupUiState();
