@@ -24,6 +24,9 @@
 #include <vtkScalarBarActor.h>
 #include <vtkLookupTable.h>
 #include <vtkDataArray.h>
+#include <vtkStreamTracer.h>
+#include <vtkPointSource.h>
+#include <vtkRungeKutta4.h>
 
 namespace {
 const QStringList kResultDirectoriesCommon = {"SEEPCASE01"};
@@ -46,6 +49,8 @@ VectorSettingWidget::VectorSettingWidget(VisualWidgetService *postProcessingWidg
             this, &VectorSettingWidget::on_confirmPushButton_clicked);
     connect(ui->scaleSlider, &QSlider::valueChanged,
             this, &VectorSettingWidget::on_scaleSlider_valueChanged);
+    connect(ui->streamlinePushButton, &QPushButton::clicked,
+            this, &VectorSettingWidget::on_streamlinePushButton_clicked);
 
     // 文本框校验：抽样间隔必须为正整数
     ui->maskSzieTextEdit->setValidator(new QIntValidator(1, 1000000, this));
@@ -100,6 +105,10 @@ void VectorSettingWidget::beforeLoad()
             addActorByService(m_visualService, m_vectorActor);
             requestRender();
         }
+        if (m_visualService && m_streamlineActor) {
+            addActorByService(m_visualService, m_streamlineActor);
+            requestRender();
+        }
     }
 }
 
@@ -108,6 +117,10 @@ void VectorSettingWidget::beforeUnload()
     // 页面被切换：仅隐藏当前向量箭头，保留对象以便回来后快速恢复
     if (m_visualService && m_vectorActor) {
         removeActorByService(m_visualService, m_vectorActor);
+        requestRender();
+    }
+    if (m_visualService && m_streamlineActor) {
+        removeActorByService(m_visualService, m_streamlineActor);
         requestRender();
     }
     // 不要置空 m_vectorActor/m_glyph/m_grid —— 保持状态以用于恢复
@@ -472,6 +485,91 @@ void VectorSettingWidget::on_scaleSlider_valueChanged(int value)
         requestRender();
     }
 }
+
+void VectorSettingWidget::on_streamlinePushButton_clicked()
+{
+    buildStreamlineFromFixedFile();
+}
+
+void VectorSettingWidget::buildStreamlineFromFixedFile()
+{
+    // 按需求写死路径
+    const QString fixedFile = QStringLiteral("C:/tool/123/test.vtu");
+
+    auto grid = readVtu(fixedFile);
+    if (!grid) {
+        qWarning() << "[Vector] Streamline fixed file not found or invalid:" << fixedFile;
+        return;
+    }
+
+    // 若 UI 已选 X/Y/Z 分量，则优先按 UI 组装；否则尝试复用已有向量或自动选第一个 3 分量数组
+    double magMin = 0.0, magMax = 1.0;
+    if (!buildVectorArraysFromSelections(grid, magMin, magMax)) {
+        auto* pd = grid->GetPointData();
+        bool found = false;
+        if (pd && pd->GetVectors()) {
+            found = true;
+        } else if (pd) {
+            for (int i = 0; i < pd->GetNumberOfArrays(); ++i) {
+                auto* arr = pd->GetArray(i);
+                if (arr && arr->GetNumberOfComponents() >= 3) {
+                    pd->SetVectors(arr);
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (!found) {
+            qWarning() << "[Vector] Streamline requires a 3-component point vector array.";
+            return;
+        }
+    }
+
+    auto seeds = vtkSmartPointer<vtkPointSource>::New();
+    double b[6];
+    grid->GetBounds(b);
+    const double dx = b[1] - b[0];
+    const double dy = b[3] - b[2];
+    const double dz = b[5] - b[4];
+    const double diag = std::sqrt(dx*dx + dy*dy + dz*dz);
+    const double radius = (diag > 0.0) ? (diag * 0.08) : 1.0;
+    seeds->SetCenter((b[0] + b[1]) * 0.5, (b[2] + b[3]) * 0.5, (b[4] + b[5]) * 0.5);
+    seeds->SetRadius(radius);
+    seeds->SetNumberOfPoints(200);
+
+    auto rk4 = vtkSmartPointer<vtkRungeKutta4>::New();
+    auto tracer = vtkSmartPointer<vtkStreamTracer>::New();
+    tracer->SetInputData(grid);
+    tracer->SetSourceConnection(seeds->GetOutputPort());
+    tracer->SetIntegrator(rk4);
+    tracer->SetIntegrationDirectionToBoth();
+    tracer->SetMaximumPropagation(diag > 0.0 ? diag * 8.0 : 100.0);
+    tracer->SetInitialIntegrationStep(0.2);
+    tracer->SetComputeVorticity(false);
+    tracer->Update();
+
+    auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    mapper->SetInputConnection(tracer->GetOutputPort());
+    mapper->ScalarVisibilityOn();
+
+    if (m_streamlineActor && m_visualService) {
+        removeActorByService(m_visualService, m_streamlineActor);
+    }
+
+    m_streamlineActor = vtkSmartPointer<vtkActor>::New();
+    m_streamlineActor->SetMapper(mapper);
+    m_streamlineActor->GetProperty()->SetLineWidth(2.0);
+
+    if (m_visualService) {
+        addActorByService(m_visualService, m_streamlineActor);
+        if (auto* scalarBar = m_visualService->scalarBarActor()) {
+            scalarBar->SetVisibility(1);
+            scalarBar->SetTitle("Streamline");
+        }
+    }
+    requestRender();
+}
+
 
 vtkSmartPointer<vtkUnstructuredGrid>
 VectorSettingWidget::readVtu(const QString &fileName)

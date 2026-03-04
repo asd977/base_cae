@@ -96,6 +96,15 @@ void PostProcessing::newVectorSettingWidget()
     if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
 }
 
+
+void PostProcessing::newStreamlineVectorSettingWidget()
+{
+    StreamlineVectorSettingWidget *tmp = new StreamlineVectorSettingWidget(visualService());
+    ProjectNode *node = new ProjectNode("流线矢量图",QUuid::createUuid().toString(),(BasePage*)tmp);
+
+    m_root->addChild(node);
+}
+
 void PostProcessing::newSliceSettingWidget()
 {
     SliceSettingsWidget *tmp = new SliceSettingsWidget(visualService());
@@ -169,6 +178,9 @@ void PostProcessing::initAction()
     });
     EventManager::instance().registerHandler(PublicConstants::kActionPostProcessVector,this, [this](const QVariantMap &data) {
         this->newVectorSettingWidget();
+    });
+    EventManager::instance().registerHandler(PublicConstants::kActionPostProcessStreamlineVector,this, [this](const QVariantMap &data) {
+        this->newStreamlineVectorSettingWidget();
     });
     EventManager::instance().registerHandler(PublicConstants::kActionPostProcessSection,this, [this](const QVariantMap &data) {
         this->newSliceSettingWidget();

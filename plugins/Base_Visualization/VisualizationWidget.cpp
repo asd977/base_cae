@@ -75,6 +75,10 @@ void VisualizationWidget::initVtk()
     // ---------- LUT ----------
     m_lut = vtkSmartPointer<vtkLookupTable>::New();
     m_lut->SetNumberOfTableValues(256);
+    // 常规色带：低值蓝色 -> 高值红色
+    m_lut->SetHueRange(2.0 / 3.0, 0.0);
+    m_lut->SetSaturationRange(1.0, 1.0);
+    m_lut->SetValueRange(1.0, 1.0);
     m_lut->Build();
 
     // ---------- ScalarBar ----------
@@ -83,6 +87,10 @@ void VisualizationWidget::initVtk()
     m_scalarBar->SetTitle(" ");
     m_scalarBar->SetNumberOfLabels(5);
     m_scalarBar->SetVisibility(false);
+    // 缩小色度条尺寸，避免遮挡主视图
+    m_scalarBar->SetWidth(0.06);
+    m_scalarBar->SetHeight(0.45);
+    m_scalarBar->SetPosition(0.91, 0.10);
 
     m_scalarBar->GetTitleTextProperty()->SetFontSize(14);
     m_scalarBar->GetLabelTextProperty()->SetFontSize(12);

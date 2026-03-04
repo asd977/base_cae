@@ -6,6 +6,7 @@
 #include <services/VisualWidgetService.h>
 #include "SliceSettingsWidget.h"
 #include "VectorSettingWidget.h"
+#include "StreamlineVectorSettingWidget.h"
 
 #include <services/PostProcessingService.h>
 #include <ProjectNode.h>
@@ -27,6 +28,7 @@ private:
     void newNephogramSettingWidget();
     void initAction();
     void newVectorSettingWidget();
+    void newStreamlineVectorSettingWidget();
     void newSliceSettingWidget();
     void newBlockSettingsWidget();
     void newIsosurfaceSettingsWidget();
@@ -40,6 +42,7 @@ private:
     NephogramSettingWidget *m_nephogramSettingWidget;
 
     VectorSettingWidget *m_vectorSettingWidget;
+    StreamlineVectorSettingWidget *m_streamlineVectorSettingWidget;
 
     SliceSettingsWidget *m_sliceSettingWidget;
 

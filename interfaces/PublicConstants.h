@@ -39,6 +39,7 @@ constexpr char kActionExportCurrentDatabase[] = "export_current_database";
 constexpr char kActionPostProcessOccBoolean[]            = "new_occboolen";
 constexpr char kActionPostProcessNephogram[]             = "new_nephogram";
 constexpr char kActionPostProcessVector[]                = "new_vector";
+constexpr char kActionPostProcessStreamlineVector[]      = "new_streamline_vector";
 constexpr char kActionPostProcessSection[]               = "new_section";
 constexpr char kActionPostProcessDice[]                  = "new_dice";
 constexpr char kActionPostProcessIsosurface[]            = "new_isosurface";
