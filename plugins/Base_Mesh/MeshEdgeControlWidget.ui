@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='UTF-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>MeshEdgeControlWidget</class>
  <widget class="QWidget" name="MeshEdgeControlWidget">
@@ -14,7 +14,7 @@
    <string>边控制</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
-      <item>
+   <item>
     <widget class="QLabel" name="pageNameLabel">
      <property name="text">
       <string>边控制</string>
@@ -28,42 +28,13 @@
      </property>
     </widget>
    </item>
-<item>
+   <item>
     <widget class="QGroupBox" name="groupBoxInput">
      <property name="title">
       <string>参数设置</string>
      </property>
      <layout class="QGridLayout" name="gridLayout">
-      <item row="0" column="0">
-       <widget class="QLabel" name="labelEdgeIds">
-        <property name="text">
-         <string>边 ID</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1" colspan="3">
-       <widget class="QLineEdit" name="editEdgeIds">
-        <property name="placeholderText">
-         <string>例如：1,3,8-12</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="4">
-       <widget class="CustomComboBox" name="cmbEntity" />
-      </item>
-      <item row="2" column="4">
-       <layout class="QVBoxLayout" name="verticalLayoutEntityBtns">
-        <item><widget class="QPushButton" name="btnAppendEntity"><property name="text"><string>追加到 ID</string></property></widget></item>
-          </layout>
-      </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="labelDivisions">
-        <property name="text">
-         <string>分段数</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
+      <item row="4" column="1">
        <widget class="QSpinBox" name="spinDivisions">
         <property name="minimum">
          <number>1</number>
@@ -76,14 +47,28 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="0">
+      <item row="4" column="0">
+       <widget class="QLabel" name="labelDivisions">
+        <property name="text">
+         <string>分段数</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QLineEdit" name="editEdgeIds">
+        <property name="placeholderText">
+         <string>例如：1,3,8-12</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="0">
        <widget class="QLabel" name="labelBias">
         <property name="text">
          <string>偏置比</string>
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
+      <item row="5" column="1">
        <widget class="QDoubleSpinBox" name="spinBias">
         <property name="decimals">
          <number>2</number>
@@ -102,11 +87,60 @@
         </property>
        </widget>
       </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="labelEdgeIds">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>边 ID</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout">
+        <item>
+         <widget class="CustomComboBox" name="cmbEntity"/>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btnAppendEntity">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="text">
+           <string>追加到 ID</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
      </layout>
     </widget>
    </item>
    <item>
+    <widget class="QTableWidget" name="tableControls"/>
+   </item>
+   <item>
     <layout class="QHBoxLayout" name="horizontalLayoutButtons">
+     <item>
+      <spacer name="horizontalSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
      <item>
       <widget class="QPushButton" name="btnAdd">
        <property name="text">
@@ -121,25 +155,9 @@
        </property>
       </widget>
      </item>
-     <item>
-      <spacer name="horizontalSpacer">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
     </layout>
    </item>
    <item>
-    <widget class="QTableWidget" name="tableControls" />
-   </item>
-  <item>
     <spacer name="verticalSpacer">
      <property name="orientation">
       <enum>Qt::Vertical</enum>
@@ -152,15 +170,15 @@
      </property>
     </spacer>
    </item>
-</layout>
+  </layout>
  </widget>
  <customwidgets>
- <customwidget>
-  <class>CustomComboBox</class>
-  <extends>QComboBox</extends>
-  <header>CustomComboBox.h</header>
- </customwidget>
-</customwidgets>
- <resources />
- <connections />
+  <customwidget>
+   <class>CustomComboBox</class>
+   <extends>QComboBox</extends>
+   <header>CustomComboBox.h</header>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
 </ui>
