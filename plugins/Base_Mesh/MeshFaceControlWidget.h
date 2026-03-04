@@ -39,7 +39,6 @@ private:
         double targetSize = 0.6;
         bool curvatureRefine = true;
         int curvatureElementsPer2Pi = 20;
-        bool extendToNeighbor = false;
     };
 
     void setupUiState();

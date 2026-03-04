@@ -95,13 +95,6 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="2" colspan="2">
-       <widget class="QCheckBox" name="checkExtendNeighbor">
-        <property name="text">
-         <string>向邻域延拓</string>
-        </property>
-       </widget>
-      </item>
       <item row="1" column="2">
        <widget class="QLabel" name="labelCurvatureLevel">
         <property name="text">

@@ -121,20 +121,6 @@ public slots:
         }
     }
 
-    std::set<int> collectNeighborFacesBySharedEdges(int faceTag)
-    {
-        std::set<int> neighbors;
-        std::vector<std::pair<int,int>> edgeDimTags;
-        try { gmsh::model::getBoundary({{2, faceTag}}, edgeDimTags, false, false, false); } catch (...) { return neighbors; }
-        for (const auto& e : edgeDimTags) {
-            if (e.first != 1) continue;
-            std::vector<int> up, down;
-            try { gmsh::model::getAdjacencies(1, e.second, up, down); } catch (...) { continue; }
-            for (int f : up) if (f != faceTag) neighbors.insert(f);
-        }
-        return neighbors;
-    }
-
     void applyLocalControls()
     {
         int curvatureElemsPer2Pi = 0;
@@ -163,10 +149,6 @@ public slots:
                 const auto tags = resolveEntityTagsByPhysicalUiId(2, id);
                 for (int tag : tags) {
                     setPointSizeFromEntity(2, tag, target);
-                    if (r.extendToNeighbor) {
-                        const auto neighbors = collectNeighborFacesBySharedEdges(tag);
-                        for (int nTag : neighbors) setPointSizeFromEntity(2, nTag, target);
-                    }
                 }
             }
         }
