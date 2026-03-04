@@ -332,7 +332,18 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
     QStringList failedFiles;
 
     auto* stressPage = dynamic_cast<StressStrainWidget*>(analysisNode->getPage());
-    if (!stressPage || !stressPage->exportIfillDatFile())
+    QString cycleSectionText;
+    for (ProjectNode* child : analysisNode->getChildren())
+    {
+        auto* fillStorageCyclePage = dynamic_cast<FillStorageCyclePage*>(child->getPage());
+        if (!fillStorageCyclePage)
+            continue;
+
+        cycleSectionText = fillStorageCyclePage->sectionText();
+        break;
+    }
+
+    if (!stressPage || !stressPage->exportIfillDatFile(cycleSectionText))
     {
         ok = false;
         failedFiles << "IFILL.DAT";

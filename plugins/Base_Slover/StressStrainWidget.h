@@ -3,6 +3,7 @@
 #include <BasePage.h>
 
 #include <QJsonObject>
+#include <QString>
 
 namespace Ui
 {
@@ -19,7 +20,7 @@ class StressStrainWidget : public BasePage
     void beforeLoad() override;
     void beforeUnload() override;
 
-    bool exportIfillDatFile() const;
+    bool exportIfillDatFile(const QString& cycleSectionText) const;
 
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;

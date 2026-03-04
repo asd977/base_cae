@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>400</width>
-    <height>300</height>
+    <width>620</width>
+    <height>560</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -17,22 +17,22 @@
    <item>
     <widget class="QLabel" name="titleLabel">
      <property name="text">
-      <string>填筑-蓄水周期</string>
+      <string>填筑-蓄水周期设置（用于生成 IFILL.DAT 中从 NCASE 开始的内容）</string>
      </property>
     </widget>
    </item>
    <item>
-    <spacer name="verticalSpacer">
-     <property name="orientation">
-      <enum>Qt::Vertical</enum>
+    <widget class="QLabel" name="tipLabel">
+     <property name="text">
+      <string>请按 IFILL.DAT 规范编辑以下文本；计算时将替换固定模板中“1 NCASE”及其后续内容。</string>
      </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>40</height>
-      </size>
+     <property name="wordWrap">
+      <bool>true</bool>
      </property>
-    </spacer>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPlainTextEdit" name="plainTextEditSection"/>
    </item>
   </layout>
  </widget>
