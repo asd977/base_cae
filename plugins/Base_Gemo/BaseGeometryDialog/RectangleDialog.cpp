@@ -99,9 +99,9 @@ RectangleDialog::RectangleDialog(QWidget* parent)
     planeCombo->setCurrentIndex(0); // XY
     lengthEdit->setText("2.0");
     widthEdit->setText("1.0");
-    centerXEdit->setText("0.0");
-    centerYEdit->setText("0.0");
-    centerZEdit->setText("0.0");
+    centerXEdit->setText("0");
+    centerYEdit->setText("0");
+    centerZEdit->setText("0");
 
     updatePlaneUi();
 }

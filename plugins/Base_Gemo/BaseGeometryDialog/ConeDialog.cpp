@@ -174,9 +174,9 @@ void ConeDialog::initUI()
     bottomRadiusEdit->setText("30.0");
     topRadiusEdit->setText("10.0");
     heightEdit->setText("50.0");
-    xEdit->setText("-50.0");
-    yEdit->setText("-50.0");
-    zEdit->setText("0.0");
+    xEdit->setText("0");
+    yEdit->setText("0");
+    zEdit->setText("0");
 
     // 创建按钮
     QPushButton* okButton = new QPushButton("生成几何体", this);

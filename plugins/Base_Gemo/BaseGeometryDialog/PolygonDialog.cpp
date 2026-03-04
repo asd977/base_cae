@@ -106,9 +106,9 @@ PolygonDialog::PolygonDialog(QWidget* parent) : BasePage(PublicConstants::kPageP
     radiusEdit->setText("1.0");
     sidesEdit->setText("5");
     rotateDegEdit->setText("0.0");
-    centerXEdit->setText("0.0");
-    centerYEdit->setText("0.0");
-    centerZEdit->setText("0.0");
+    centerXEdit->setText("0");
+    centerYEdit->setText("0");
+    centerZEdit->setText("0");
 
     updatePlaneUi();
 }

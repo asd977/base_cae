@@ -146,9 +146,9 @@ void TorusDialog::initUI()
     // 设置默认值
     majorRadiusEdit->setText("50.0");
     minorRadiusEdit->setText("10.0");
-    xEdit->setText("100.0");
-    yEdit->setText("0.0");
-    zEdit->setText("0.0");
+    xEdit->setText("0");
+    yEdit->setText("0");
+    zEdit->setText("0");
 
     // 创建按钮
     QPushButton* okButton = new QPushButton("生成几何体", this);

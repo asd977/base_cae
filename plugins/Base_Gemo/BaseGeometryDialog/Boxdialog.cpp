@@ -67,8 +67,8 @@ void BoxDialog::initUI()
     lengthEdit->setText("100.0");
     widthEdit->setText("50.0");
     heightEdit->setText("30.0");
-    xEdit->setText("50.0");
-    yEdit->setText("50.0");
+    xEdit->setText("0.0");
+    yEdit->setText("0.0");
     zEdit->setText("0.0");
 
     // 创建按钮
