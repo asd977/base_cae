@@ -62,29 +62,6 @@
         </item>
           </layout>
       </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="labelMinSize">
-        <property name="text">
-         <string>目标尺寸</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="QDoubleSpinBox" name="spinMinSize">
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="minimum">
-         <double>0.001000000000000</double>
-        </property>
-        <property name="maximum">
-         <double>1000000.000000000000000</double>
-        </property>
-        <property name="value">
-         <double>0.600000000000000</double>
-        </property>
-       </widget>
-      </item>
       <item row="2" column="0" colspan="2">
        <widget class="QCheckBox" name="checkCurvature">
         <property name="text">
@@ -95,14 +72,14 @@
         </property>
        </widget>
       </item>
-      <item row="1" column="2">
+      <item row="1" column="0">
        <widget class="QLabel" name="labelCurvatureLevel">
         <property name="text">
          <string>每2π目标单元数</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="3">
+      <item row="1" column="1">
        <widget class="QSpinBox" name="spinCurvatureLevel">
         <property name="minimum">
          <number>1</number>

@@ -36,7 +36,6 @@ private:
     struct FaceControlItem
     {
         QString faceIds;
-        double targetSize = 0.6;
         bool curvatureRefine = true;
         int curvatureElementsPer2Pi = 20;
     };
