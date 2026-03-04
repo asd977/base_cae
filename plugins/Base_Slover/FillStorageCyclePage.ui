@@ -3,7 +3,12 @@
  <class>FillStorageCyclePage</class>
  <widget class="QWidget" name="FillStorageCyclePage">
   <property name="geometry">
-   <rect><x>0</x><y>0</y><width>1000</width><height>760</height></rect>
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1000</width>
+    <height>760</height>
+   </rect>
   </property>
   <property name="windowTitle">
    <string>填筑-蓄水周期</string>
@@ -12,13 +17,15 @@
    <item>
     <widget class="QLabel" name="tipLabel">
      <property name="text">
-      <string>按参数录入后自动生成文本（不再使用 defaultSectionText）。</string>
+      <string>按参数录入后自动生成文本（不再使用 defaultSectionText）。各表支持“添加行/删除行”。</string>
      </property>
     </widget>
    </item>
    <item>
     <widget class="QScrollArea" name="scrollArea">
-     <property name="widgetResizable"><bool>true</bool></property>
+     <property name="widgetResizable">
+      <bool>true</bool>
+     </property>
      <widget class="QWidget" name="scrollAreaWidgetContents">
       <layout class="QVBoxLayout" name="allLayout">
        <item>
@@ -27,64 +34,119 @@
          <item row="0" column="1"><widget class="QSpinBox" name="spinNcase"><property name="minimum"><number>1</number></property><property name="value"><number>1</number></property></widget></item>
          <item row="0" column="2"><widget class="QLabel" name="labelIcase"><property name="text"><string>ICASE</string></property></widget></item>
          <item row="0" column="3"><widget class="QSpinBox" name="spinIcase"><property name="minimum"><number>1</number></property><property name="value"><number>1</number></property></widget></item>
+
          <item row="1" column="0"><widget class="QLabel" name="labelSeep"><property name="text"><string>IFIIWL_SEEP</string></property></widget></item>
          <item row="1" column="1"><widget class="QComboBox" name="comboSeep"/></item>
          <item row="1" column="2"><widget class="QLabel" name="labelBody"><property name="text"><string>IFIIWL_BODY</string></property></widget></item>
          <item row="1" column="3"><widget class="QComboBox" name="comboBody"/></item>
+
          <item row="2" column="0"><widget class="QLabel" name="labelFace"><property name="text"><string>IFIIWL_FACE</string></property></widget></item>
          <item row="2" column="1"><widget class="QComboBox" name="comboFace"/></item>
          <item row="2" column="2"><widget class="QLabel" name="labelIfWet"><property name="text"><string>IFWET</string></property></widget></item>
          <item row="2" column="3"><widget class="QComboBox" name="comboIfWet"/></item>
+
          <item row="3" column="0"><widget class="QLabel" name="labelNumWet"><property name="text"><string>NUM_WET</string></property></widget></item>
          <item row="3" column="1"><widget class="QSpinBox" name="spinNumWet"/></item>
          <item row="3" column="2"><widget class="QLabel" name="labelNumDrop"><property name="text"><string>NUM_DROP</string></property></widget></item>
          <item row="3" column="3"><widget class="QSpinBox" name="spinNumDrop"/></item>
+
          <item row="4" column="0"><widget class="QLabel" name="labelNchange"><property name="text"><string>NCHANGE</string></property></widget></item>
          <item row="4" column="1"><widget class="QSpinBox" name="spinNchange"/></item>
          <item row="4" column="2"><widget class="QLabel" name="labelNcircle"><property name="text"><string>NCIRCLE</string></property></widget></item>
          <item row="4" column="3"><widget class="QSpinBox" name="spinNcircle"><property name="minimum"><number>1</number></property><property name="value"><number>1</number></property></widget></item>
+
          <item row="5" column="0"><widget class="QLabel" name="labelDir"><property name="text"><string>DIRDYNA</string></property></widget></item>
          <item row="5" column="1"><widget class="QLineEdit" name="editDirDyna"><property name="text"><string>CASE01FILL01</string></property></widget></item>
          <item row="5" column="2"><widget class="QLabel" name="labelNumDyna"><property name="text"><string>NUM_DYNA</string></property></widget></item>
          <item row="5" column="3"><widget class="QSpinBox" name="spinNumDyna"/></item>
+
          <item row="6" column="0"><widget class="QLabel" name="labelIfMode"><property name="text"><string>IFMODE</string></property></widget></item>
          <item row="6" column="1"><widget class="QComboBox" name="comboIfMode"/></item>
          <item row="6" column="2"><widget class="QLabel" name="labelIfWave"><property name="text"><string>IFWAVE</string></property></widget></item>
          <item row="6" column="3"><widget class="QComboBox" name="comboIfWave"/></item>
+
          <item row="7" column="0"><widget class="QLabel" name="labelDt"><property name="text"><string>DT</string></property></widget></item>
          <item row="7" column="1"><widget class="QDoubleSpinBox" name="spinDt"><property name="decimals"><number>6</number></property><property name="value"><double>0.020000</double></property></widget></item>
          <item row="7" column="2"><widget class="QLabel" name="labelTsta"><property name="text"><string>TSTA</string></property></widget></item>
          <item row="7" column="3"><widget class="QDoubleSpinBox" name="spinTsta"><property name="decimals"><number>6</number></property></widget></item>
+
          <item row="8" column="0"><widget class="QLabel" name="labelTend"><property name="text"><string>TEND</string></property></widget></item>
          <item row="8" column="1"><widget class="QDoubleSpinBox" name="spinTend"><property name="decimals"><number>6</number></property><property name="value"><double>28.000000</double></property></widget></item>
          <item row="8" column="2"><widget class="QLabel" name="labelAx"><property name="text"><string>AX</string></property></widget></item>
          <item row="8" column="3"><widget class="QLineEdit" name="editWaveAx"><property name="text"><string>WAVE-AX.DAT</string></property></widget></item>
+
          <item row="9" column="0"><widget class="QLabel" name="labelAy"><property name="text"><string>AY</string></property></widget></item>
          <item row="9" column="1"><widget class="QLineEdit" name="editWaveAy"><property name="text"><string>WAVE-AY.DAT</string></property></widget></item>
          <item row="9" column="2"><widget class="QLabel" name="labelAz"><property name="text"><string>AZ</string></property></widget></item>
          <item row="9" column="3"><widget class="QLineEdit" name="editWaveAz"><property name="text"><string>WAVE-AZ.DAT</string></property></widget></item>
         </layout>
        </item>
-       <item><widget class="QLabel" name="wetLabel"><property name="text"><string>湿化材料映射 (M_dry, M_wet)</string></property></widget></item>
+
+       <item>
+        <layout class="QHBoxLayout" name="wetToolbar">
+         <item><widget class="QLabel" name="wetLabel"><property name="text"><string>湿化材料映射 (M_dry, M_wet)</string></property></widget></item>
+         <item><spacer name="wetSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+         <item><widget class="QPushButton" name="btnWetAdd"><property name="text"><string>添加行</string></property></widget></item>
+         <item><widget class="QPushButton" name="btnWetRemove"><property name="text"><string>删除行</string></property></widget></item>
+        </layout>
+       </item>
        <item><widget class="QTableWidget" name="tableWetMap"/></item>
-       <item><widget class="QLabel" name="dropLabel"><property name="text"><string>水位骤降列表 (HW_DROP_STA, HW_DROP_END)</string></property></widget></item>
+
+       <item>
+        <layout class="QHBoxLayout" name="dropToolbar">
+         <item><widget class="QLabel" name="dropLabel"><property name="text"><string>水位骤降列表 (HW_DROP_STA, HW_DROP_END)</string></property></widget></item>
+         <item><spacer name="dropSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+         <item><widget class="QPushButton" name="btnDropAdd"><property name="text"><string>添加行</string></property></widget></item>
+         <item><widget class="QPushButton" name="btnDropRemove"><property name="text"><string>删除行</string></property></widget></item>
+        </layout>
+       </item>
        <item><widget class="QTableWidget" name="tableDrop"/></item>
-       <item><widget class="QLabel" name="changeLabel"><property name="text"><string>材料属性变换 (M_old, M_new)</string></property></widget></item>
+
+       <item>
+        <layout class="QHBoxLayout" name="changeToolbar">
+         <item><widget class="QLabel" name="changeLabel"><property name="text"><string>材料属性变换 (M_old, M_new)</string></property></widget></item>
+         <item><spacer name="changeSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+         <item><widget class="QPushButton" name="btnChangeAdd"><property name="text"><string>添加行</string></property></widget></item>
+         <item><widget class="QPushButton" name="btnChangeRemove"><property name="text"><string>删除行</string></property></widget></item>
+        </layout>
+       </item>
        <item><widget class="QTableWidget" name="tableChange"/></item>
-       <item><widget class="QLabel" name="cycleLabel"><property name="text"><string>周期参数（12列）</string></property></widget></item>
+
+       <item>
+        <layout class="QHBoxLayout" name="cycleToolbar">
+         <item><widget class="QLabel" name="cycleLabel"><property name="text"><string>周期参数（12列）</string></property></widget></item>
+         <item><spacer name="cycleSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+         <item><widget class="QPushButton" name="btnCycleAdd"><property name="text"><string>添加行</string></property></widget></item>
+         <item><widget class="QPushButton" name="btnCycleRemove"><property name="text"><string>删除行</string></property></widget></item>
+        </layout>
+       </item>
        <item><widget class="QTableWidget" name="tableCycle"/></item>
-       <item><widget class="QLabel" name="dynaLabel"><property name="text"><string>静力-动力材料变换 (M_STA, M_DYNA)</string></property></widget></item>
+
+       <item>
+        <layout class="QHBoxLayout" name="dynaToolbar">
+         <item><widget class="QLabel" name="dynaLabel"><property name="text"><string>静力-动力材料变换 (M_STA, M_DYNA)</string></property></widget></item>
+         <item><spacer name="dynaSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+         <item><widget class="QPushButton" name="btnDynaAdd"><property name="text"><string>添加行</string></property></widget></item>
+         <item><widget class="QPushButton" name="btnDynaRemove"><property name="text"><string>删除行</string></property></widget></item>
+        </layout>
+       </item>
        <item><widget class="QTableWidget" name="tableDyna"/></item>
       </layout>
      </widget>
     </widget>
    </item>
    <item>
-    <widget class="QLabel" name="previewLabel"><property name="text"><string>生成预览</string></property></widget>
+    <widget class="QLabel" name="previewLabel">
+     <property name="text">
+      <string>生成预览</string>
+     </property>
+    </widget>
    </item>
    <item>
     <widget class="QPlainTextEdit" name="plainTextPreview">
-     <property name="readOnly"><bool>true</bool></property>
+     <property name="readOnly">
+      <bool>true</bool>
+     </property>
     </widget>
    </item>
   </layout>

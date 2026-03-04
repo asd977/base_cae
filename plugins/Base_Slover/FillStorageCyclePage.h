@@ -6,6 +6,7 @@
 #include <QJsonObject>
 #include <QString>
 
+class QSpinBox;
 class QTableWidget;
 
 namespace Ui
@@ -32,6 +33,9 @@ class FillStorageCyclePage : public BasePage
   private:
     void setupConnections();
     void ensureTableRows(QTableWidget* table, int rows) const;
+    void syncSpinWithTableRows(QSpinBox* spin, QTableWidget* table) const;
+    void addTableRow(QTableWidget* table, QSpinBox* spin);
+    void removeTableRow(QTableWidget* table, QSpinBox* spin);
     QJsonArray tableToJson(QTableWidget* table) const;
     void jsonToTable(const QJsonArray& arr, QTableWidget* table) const;
     QString tableItemText(QTableWidget* table, int row, int col,

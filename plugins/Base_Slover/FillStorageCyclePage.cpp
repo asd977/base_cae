@@ -3,9 +3,12 @@
 #include "ui_FillStorageCyclePage.h"
 
 #include <QComboBox>
+#include <QDoubleSpinBox>
 #include <QHeaderView>
 #include <QJsonArray>
 #include <QLineEdit>
+#include <QPushButton>
+#include <QSignalBlocker>
 #include <QSpinBox>
 #include <QTableWidget>
 
@@ -40,6 +43,8 @@ FillStorageCyclePage::FillStorageCyclePage(QWidget* parent)
         t->setColumnCount(headers.size());
         t->setHorizontalHeaderLabels(headers);
         t->horizontalHeader()->setStretchLastSection(true);
+        t->setSelectionBehavior(QAbstractItemView::SelectRows);
+        t->setSelectionMode(QAbstractItemView::SingleSelection);
     };
 
     initTable(ui->tableWetMap, {"M_dry", "M_wet"});
@@ -189,23 +194,59 @@ void FillStorageCyclePage::setupConnections()
                 onValue();
             });
 
-    connect(ui->spinNcase, QOverload<int>::of(&QSpinBox::valueChanged), this, [onValue](int) { onValue(); });
-    connect(ui->spinIcase, QOverload<int>::of(&QSpinBox::valueChanged), this, [onValue](int) { onValue(); });
-    connect(ui->comboSeep, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [onValue](int) { onValue(); });
-    connect(ui->comboBody, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [onValue](int) { onValue(); });
-    connect(ui->comboFace, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [onValue](int) { onValue(); });
-    connect(ui->comboIfWet, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [onValue](int) { onValue(); });
-    connect(ui->comboIfMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [onValue](int) { onValue(); });
-    connect(ui->comboIfWave, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [onValue](int) { onValue(); });
+    connect(ui->btnWetAdd, &QPushButton::clicked, this,
+            [this]() { addTableRow(ui->tableWetMap, ui->spinNumWet); });
+    connect(ui->btnWetRemove, &QPushButton::clicked, this,
+            [this]() { removeTableRow(ui->tableWetMap, ui->spinNumWet); });
+    connect(ui->btnDropAdd, &QPushButton::clicked, this,
+            [this]() { addTableRow(ui->tableDrop, ui->spinNumDrop); });
+    connect(ui->btnDropRemove, &QPushButton::clicked, this,
+            [this]() { removeTableRow(ui->tableDrop, ui->spinNumDrop); });
+    connect(ui->btnChangeAdd, &QPushButton::clicked, this,
+            [this]() { addTableRow(ui->tableChange, ui->spinNchange); });
+    connect(ui->btnChangeRemove, &QPushButton::clicked, this,
+            [this]() { removeTableRow(ui->tableChange, ui->spinNchange); });
+    connect(ui->btnCycleAdd, &QPushButton::clicked, this,
+            [this]() { addTableRow(ui->tableCycle, ui->spinNcircle); });
+    connect(ui->btnCycleRemove, &QPushButton::clicked, this,
+            [this]() { removeTableRow(ui->tableCycle, ui->spinNcircle); });
+    connect(ui->btnDynaAdd, &QPushButton::clicked, this,
+            [this]() { addTableRow(ui->tableDyna, ui->spinNumDyna); });
+    connect(ui->btnDynaRemove, &QPushButton::clicked, this,
+            [this]() { removeTableRow(ui->tableDyna, ui->spinNumDyna); });
 
-    connect(ui->spinDt, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [onValue](double) { onValue(); });
-    connect(ui->spinTsta, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [onValue](double) { onValue(); });
-    connect(ui->spinTend, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [onValue](double) { onValue(); });
+    connect(ui->spinNcase, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [onValue](int) { onValue(); });
+    connect(ui->spinIcase, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [onValue](int) { onValue(); });
+    connect(ui->comboSeep, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [onValue](int) { onValue(); });
+    connect(ui->comboBody, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [onValue](int) { onValue(); });
+    connect(ui->comboFace, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [onValue](int) { onValue(); });
+    connect(ui->comboIfWet, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [onValue](int) { onValue(); });
+    connect(ui->comboIfMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [onValue](int) { onValue(); });
+    connect(ui->comboIfWave, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [onValue](int) { onValue(); });
 
-    connect(ui->editDirDyna, &QLineEdit::textChanged, this, [onValue](const QString&) { onValue(); });
-    connect(ui->editWaveAx, &QLineEdit::textChanged, this, [onValue](const QString&) { onValue(); });
-    connect(ui->editWaveAy, &QLineEdit::textChanged, this, [onValue](const QString&) { onValue(); });
-    connect(ui->editWaveAz, &QLineEdit::textChanged, this, [onValue](const QString&) { onValue(); });
+    connect(ui->spinDt, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [onValue](double) { onValue(); });
+    connect(ui->spinTsta, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [onValue](double) { onValue(); });
+    connect(ui->spinTend, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [onValue](double) { onValue(); });
+
+    connect(ui->editDirDyna, &QLineEdit::textChanged, this,
+            [onValue](const QString&) { onValue(); });
+    connect(ui->editWaveAx, &QLineEdit::textChanged, this,
+            [onValue](const QString&) { onValue(); });
+    connect(ui->editWaveAy, &QLineEdit::textChanged, this,
+            [onValue](const QString&) { onValue(); });
+    connect(ui->editWaveAz, &QLineEdit::textChanged, this,
+            [onValue](const QString&) { onValue(); });
 
     connect(ui->tableWetMap, &QTableWidget::itemChanged, this, [onValue]() { onValue(); });
     connect(ui->tableDrop, &QTableWidget::itemChanged, this, [onValue]() { onValue(); });
@@ -214,7 +255,36 @@ void FillStorageCyclePage::setupConnections()
     connect(ui->tableDyna, &QTableWidget::itemChanged, this, [onValue]() { onValue(); });
 }
 
-void FillStorageCyclePage::ensureTableRows(QTableWidget* table, int rows) const { table->setRowCount(rows); }
+void FillStorageCyclePage::ensureTableRows(QTableWidget* table, int rows) const
+{
+    table->setRowCount(rows);
+}
+
+void FillStorageCyclePage::syncSpinWithTableRows(QSpinBox* spin, QTableWidget* table) const
+{
+    const QSignalBlocker blocker(spin);
+    spin->setValue(table->rowCount());
+}
+
+void FillStorageCyclePage::addTableRow(QTableWidget* table, QSpinBox* spin)
+{
+    table->insertRow(table->rowCount());
+    syncSpinWithTableRows(spin, table);
+    updatePreview();
+}
+
+void FillStorageCyclePage::removeTableRow(QTableWidget* table, QSpinBox* spin)
+{
+    int row = table->currentRow();
+    if (row < 0)
+        row = table->rowCount() - 1;
+    if (row < 0)
+        return;
+
+    table->removeRow(row);
+    syncSpinWithTableRows(spin, table);
+    updatePreview();
+}
 
 QJsonArray FillStorageCyclePage::tableToJson(QTableWidget* table) const
 {
@@ -260,17 +330,25 @@ QString FillStorageCyclePage::buildSectionText() const
                .arg(ui->comboBody->currentData().toInt())
                .arg(ui->comboFace->currentData().toInt());
 
-    out += QString("%1 %2\n").arg(ui->spinNumWet->value()).arg(ui->comboIfWet->currentData().toInt());
+    out += QString("%1 %2\n").arg(ui->spinNumWet->value()).arg(
+        ui->comboIfWet->currentData().toInt());
     for (int i = 0; i < ui->tableWetMap->rowCount(); ++i)
-        out += QString("%1 %2\n").arg(tableItemText(ui->tableWetMap, i, 0, "1")).arg(tableItemText(ui->tableWetMap, i, 1, "1"));
+        out += QString("%1 %2\n")
+                   .arg(tableItemText(ui->tableWetMap, i, 0, "1"))
+                   .arg(tableItemText(ui->tableWetMap, i, 1, "1"));
 
     out += QString("%1 %1\n").arg(ui->spinNumDrop->value());
     for (int i = 0; i < ui->tableDrop->rowCount(); ++i)
-        out += QString("%1 %2 %3\n").arg(tableItemText(ui->tableDrop, i, 0, "0.0")).arg(tableItemText(ui->tableDrop, i, 1, "0.0")).arg(i + 1);
+        out += QString("%1 %2 %3\n")
+                   .arg(tableItemText(ui->tableDrop, i, 0, "0.0"))
+                   .arg(tableItemText(ui->tableDrop, i, 1, "0.0"))
+                   .arg(i + 1);
 
     out += QString("%1\n").arg(ui->spinNchange->value());
     for (int i = 0; i < ui->tableChange->rowCount(); ++i)
-        out += QString("%1 %2\n").arg(tableItemText(ui->tableChange, i, 0, "1")).arg(tableItemText(ui->tableChange, i, 1, "1"));
+        out += QString("%1 %2\n")
+                   .arg(tableItemText(ui->tableChange, i, 0, "1"))
+                   .arg(tableItemText(ui->tableChange, i, 1, "1"));
 
     out += QString("%1\n").arg(ui->spinNcircle->value());
     for (int i = 0; i < ui->tableCycle->rowCount(); ++i)
@@ -292,11 +370,22 @@ QString FillStorageCyclePage::buildSectionText() const
     out += QString("'%1'\n").arg(ui->editDirDyna->text().trimmed());
     out += QString("%1\n").arg(ui->spinNumDyna->value());
     for (int i = 0; i < ui->tableDyna->rowCount(); ++i)
-        out += QString("%1 %2 %3\n").arg(tableItemText(ui->tableDyna, i, 0, "1")).arg(tableItemText(ui->tableDyna, i, 1, "1")).arg(i + 1);
+        out += QString("%1 %2 %3\n")
+                   .arg(tableItemText(ui->tableDyna, i, 0, "1"))
+                   .arg(tableItemText(ui->tableDyna, i, 1, "1"))
+                   .arg(i + 1);
 
-    out += QString("1 %1 %2\n").arg(ui->comboIfMode->currentData().toInt()).arg(ui->comboIfWave->currentData().toInt());
-    out += QString("%1 %2 %3\n").arg(ui->spinDt->value(), 0, 'f', 6).arg(ui->spinTsta->value(), 0, 'f', 6).arg(ui->spinTend->value(), 0, 'f', 6);
-    out += QString("'%1' '%2' '%3'\n").arg(ui->editWaveAx->text().trimmed()).arg(ui->editWaveAy->text().trimmed()).arg(ui->editWaveAz->text().trimmed());
+    out += QString("1 %1 %2\n")
+               .arg(ui->comboIfMode->currentData().toInt())
+               .arg(ui->comboIfWave->currentData().toInt());
+    out += QString("%1 %2 %3\n")
+               .arg(ui->spinDt->value(), 0, 'f', 6)
+               .arg(ui->spinTsta->value(), 0, 'f', 6)
+               .arg(ui->spinTend->value(), 0, 'f', 6);
+    out += QString("'%1' '%2' '%3'\n")
+               .arg(ui->editWaveAx->text().trimmed())
+               .arg(ui->editWaveAy->text().trimmed())
+               .arg(ui->editWaveAz->text().trimmed());
     return out;
 }
 
