@@ -70,7 +70,7 @@
       <item row="3" column="0">
        <widget class="QLabel" name="labelMinSize">
         <property name="text">
-         <string>局部尺寸因子</string>
+         <string>尺寸因子</string>
         </property>
        </widget>
       </item>

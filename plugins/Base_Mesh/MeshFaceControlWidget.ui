@@ -37,14 +37,14 @@
       <item row="4" column="0">
        <widget class="QLabel" name="labelCurvatureLevel">
         <property name="text">
-         <string>每2π目标单元数</string>
+         <string>2π单元数</string>
         </property>
        </widget>
       </item>
       <item row="2" column="0">
        <widget class="QLabel" name="labelLocalSizeFactor">
         <property name="text">
-         <string>局部尺寸因子</string>
+         <string>尺寸因子</string>
         </property>
        </widget>
       </item>
