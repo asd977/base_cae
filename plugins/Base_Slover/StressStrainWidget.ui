@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>应力应变分析</string>
+   <string>土石坝计算</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="leftMargin">
@@ -29,7 +29,7 @@
    <item>
     <widget class="QLabel" name="pageNameLabel">
      <property name="text">
-      <string>应力应变分析</string>
+      <string>土石坝计算</string>
      </property>
     </widget>
    </item>

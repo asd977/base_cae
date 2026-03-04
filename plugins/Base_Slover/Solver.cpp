@@ -16,6 +16,7 @@
 #include <QStringList>
 #include <algorithm>
 
+#include "FillStorageCyclePage.h"
 #include "SeepageBoundaryPage.h"
 #include "SeepageWidget.h"
 #include "StressBoundaryPage.h"
@@ -139,7 +140,7 @@ bool Solver::loadProject()
         {
             auto* stressPage = new StressStrainWidget();
             analysisNode = new ProjectNode(
-                analysisObj.value("title").toString("应力应变分析"),
+                analysisObj.value("title").toString("土石坝计算"),
                 analysisObj.value("uuid").toString(QUuid::createUuid().toString()), stressPage);
             stressPage->loadJson(analysisObj.value("state").toObject());
             connect(stressPage, &StressStrainWidget::computeRequested, this,
@@ -153,6 +154,7 @@ bool Solver::loadProject()
         if (!analysisNode || !analysisPage)
             continue;
 
+        bool hasFillStorageCycleNode = false;
         for (const auto& childV : analysisObj.value("children").toArray())
         {
             const QJsonObject childObj = childV.toObject();
@@ -167,6 +169,11 @@ bool Solver::loadProject()
                 page = new StressBoundaryPage(type, "上游迎水面", "FA_DAMUP.DAT");
             else if (type == "StressBoundaryDamMid")
                 page = new StressBoundaryPage(type, "坝体中心面节点", "FA_DAMMID.DAT");
+            else if (type == "FillStorageCycle")
+            {
+                page = new FillStorageCyclePage();
+                hasFillStorageCycleNode = true;
+            }
 
             if (!page)
                 continue;
@@ -176,6 +183,14 @@ bool Solver::loadProject()
                 childObj.value("uuid").toString(QUuid::createUuid().toString()), page);
             page->loadJson(childObj.value("state").toObject());
             analysisNode->addChild(node);
+        }
+
+        if (analysisType == "StressStrainAnalysis" && !hasFillStorageCycleNode)
+        {
+            auto* fillStorageCyclePage = new FillStorageCyclePage();
+            auto* fillStorageCycleNode = new ProjectNode(
+                "填筑-蓄水周期", QUuid::createUuid().toString(), fillStorageCyclePage);
+            analysisNode->addChild(fillStorageCycleNode);
         }
 
         m_root->addChild(analysisNode);
@@ -241,7 +256,7 @@ void Solver::onStressStrainAction()
         return;
 
     auto* stressPage = new StressStrainWidget();
-    const QString analysisName = QString("应力应变分析(%1)").arg(nextStressStrainIndex());
+    const QString analysisName = QString("土石坝计算(%1)").arg(nextStressStrainIndex());
     auto* analysisNode = new ProjectNode(analysisName, QUuid::createUuid().toString(), stressPage);
 
     connect(stressPage, &StressStrainWidget::computeRequested, this,
@@ -259,6 +274,11 @@ void Solver::onStressStrainAction()
 
     addBoundary("上游迎水面", "StressBoundaryDamUpstream", "FA_DAMUP.DAT");
     addBoundary("坝体中心面节点", "StressBoundaryDamMid", "FA_DAMMID.DAT");
+
+    auto* fillStorageCyclePage = new FillStorageCyclePage();
+    auto* fillStorageCycleNode =
+        new ProjectNode("填筑-蓄水周期", QUuid::createUuid().toString(), fillStorageCyclePage);
+    analysisNode->addChild(fillStorageCycleNode);
 
     m_root->addChild(analysisNode);
     if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
@@ -332,7 +352,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
 
     if (ok)
         QMessageBox::information(nullptr, "导出成功",
-                                 "应力应变计算输入文件导出成功（IFILL.DAT 与 PREP/）。");
+                                 "土石坝计算输入文件导出成功（IFILL.DAT 与 PREP/）。");
     else
         QMessageBox::warning(nullptr, "导出失败",
                              QString("以下文件导出失败：\n%1").arg(failedFiles.join("\n")));
@@ -344,7 +364,7 @@ int Solver::nextStressStrainIndex() const
         return 1;
 
     int maxIdx = 0;
-    QRegularExpression re(QString(R"(^应力应变分析\((\d+)\)$)"));
+    QRegularExpression re(QString(R"(^(?:土石坝计算|应力应变分析)\((\d+)\)$)"));
 
     for (ProjectNode* child : m_root->getChildren())
     {

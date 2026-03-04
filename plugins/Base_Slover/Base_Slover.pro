@@ -5,6 +5,7 @@ QT += widgets core
 INCLUDEPATH += $$PWD/../../interfaces
 
 HEADERS += \
+    FillStorageCyclePage.h \
     SeepageBoundaryPage.h \
     SeepageWidget.h \
     Solver.h \
@@ -12,6 +13,7 @@ HEADERS += \
     StressStrainWidget.h
 
 SOURCES += \
+    FillStorageCyclePage.cpp \
     SeepageBoundaryPage.cpp \
     SeepageWidget.cpp \
     Solver.cpp \
@@ -19,6 +21,7 @@ SOURCES += \
     StressStrainWidget.cpp
 
 FORMS += \
+    FillStorageCyclePage.ui \
     SeepageBoundaryPage.ui \
     SeepageWidget.ui \
     StressBoundaryPage.ui \
