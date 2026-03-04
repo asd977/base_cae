@@ -4,24 +4,25 @@
 #include <ProjectNode.h>
 #include <services/SurrogateModelService.h>
 
-class SurrogateModel : public SurrogateModelService {
- public:
-  SurrogateModel();
-  void newProject();
-  bool saveProject();
-  bool loadProject();
-  void closeProject();
+class SurrogateModel : public SurrogateModelService
+{
+  public:
+    SurrogateModel();
+    void newProject();
+    bool saveProject();
+    bool loadProject();
+    void closeProject();
 
- private slots:
-  void newDatasetEvaluation();
-  void newLatinHypercubeSamplingWidget();
-  void newOrthogonalSamplingWidget();
-  void newDNNModel();
+  private slots:
+    void newDatasetEvaluation();
+    void newLatinHypercubeSamplingWidget();
+    void newOrthogonalSamplingWidget();
+    void newDNNModel();
 
- private:
-  ProjectNode* m_root = nullptr;
-  void initAction();
-  BasePage* createPageByType(const QString& type);
+  private:
+    ProjectNode* m_root = nullptr;
+    void initAction();
+    BasePage* createPageByType(const QString& type);
 };
 
-#endif  // SURROGATEMODEL_H
+#endif // SURROGATEMODEL_H

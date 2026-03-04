@@ -1,3 +1,5 @@
 #include "PhysicalFieldActivator.h"
 
-PhysicalFieldActivator::PhysicalFieldActivator() {}
+PhysicalFieldActivator::PhysicalFieldActivator()
+{
+}

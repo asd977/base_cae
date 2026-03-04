@@ -32,38 +32,47 @@
  * @date 2025-07-08
  */
 
-class GeomShapeObject : public QObject {
- public:
-  /**
-   * @brief 构造函数
-   */
-  GeomShapeObject(QString uuid, TopoDS_Shape* shape, QString name = QString());
-  /**
-   * @brief 析构函数
-   */
-  ~GeomShapeObject();
-  /**
-   * @brief 获取形状的拓扑
-   * @return TopoDS_Shape* 返回的拓扑
-   */
-  TopoDS_Shape* getShape();
+class GeomShapeObject : public QObject
+{
+  public:
+    /**
+     * @brief 构造函数
+     */
+    GeomShapeObject(QString uuid, TopoDS_Shape* shape, QString name = QString());
+    /**
+     * @brief 析构函数
+     */
+    ~GeomShapeObject();
+    /**
+     * @brief 获取形状的拓扑
+     * @return TopoDS_Shape* 返回的拓扑
+     */
+    TopoDS_Shape* getShape();
 
-  QString getUUid() { return m_uuid; };
-  QString getName() const { return m_name; }
-  void setName(const QString& name) { m_name = name; }
+    QString getUUid()
+    {
+        return m_uuid;
+    };
+    QString getName() const
+    {
+        return m_name;
+    }
+    void setName(const QString& name)
+    {
+        m_name = name;
+    }
 
-  void setActor(vtkSmartPointer<vtkActor> surfActor,
-                vtkSmartPointer<vtkActor> edgeActor);
+    void setActor(vtkSmartPointer<vtkActor> surfActor, vtkSmartPointer<vtkActor> edgeActor);
 
-  vtkSmartPointer<vtkActor> getSurfActor();
+    vtkSmartPointer<vtkActor> getSurfActor();
 
-  vtkSmartPointer<vtkActor> getEdgeActor();
-  void initActor();
+    vtkSmartPointer<vtkActor> getEdgeActor();
+    void initActor();
 
- private:
-  TopoDS_Shape* _shape;  // 当前对象的TopoDS_Shape对象
-  QString m_uuid;        // 唯一索引
-  QString m_name;
-  vtkSmartPointer<vtkActor> m_surfActor;
-  vtkSmartPointer<vtkActor> m_edgeActor;
+  private:
+    TopoDS_Shape* _shape; // 当前对象的TopoDS_Shape对象
+    QString m_uuid;       // 唯一索引
+    QString m_name;
+    vtkSmartPointer<vtkActor> m_surfActor;
+    vtkSmartPointer<vtkActor> m_edgeActor;
 };

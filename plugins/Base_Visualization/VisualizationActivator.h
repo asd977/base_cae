@@ -8,20 +8,28 @@
 
 #include "VisualizationWidget.h"
 
-class VisualizationActivator : public QObject, public PluginInterface {
-  Q_OBJECT
-  Q_PLUGIN_METADATA(IID PluginInterface_iid)
-  Q_INTERFACES(PluginInterface)
+class VisualizationActivator : public QObject, public PluginInterface
+{
+    Q_OBJECT
+    Q_PLUGIN_METADATA(IID PluginInterface_iid)
+    Q_INTERFACES(PluginInterface)
 
- public:
-  VisualizationActivator();
+  public:
+    VisualizationActivator();
 
-  QString pluginName() const override { return "Visualization"; }
-  void start() override {
-    qDebug() << "Start Visualization";
-    VisualizationWidget *visualizationWidget = new VisualizationWidget;
-  }
-  void stop() override { qDebug() << "Stopping..."; }
+    QString pluginName() const override
+    {
+        return "Visualization";
+    }
+    void start() override
+    {
+        qDebug() << "Start Visualization";
+        VisualizationWidget* visualizationWidget = new VisualizationWidget;
+    }
+    void stop() override
+    {
+        qDebug() << "Stopping...";
+    }
 };
 
-#endif  // VISUALIZATIONACTIVATOR_H
+#endif // VISUALIZATIONACTIVATOR_H

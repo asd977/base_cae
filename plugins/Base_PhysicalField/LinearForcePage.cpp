@@ -11,80 +11,103 @@
 #include "ui_LinearForcePage.h"
 
 LinearForcePage::LinearForcePage(QWidget* parent)
-    : BasePage("LinearForcePage"), ui(new Ui::LinearForcePage) {
-  ui->setupUi(this);
-  setupBatchGroupCombo();
+    : BasePage("LinearForcePage"), ui(new Ui::LinearForcePage)
+{
+    ui->setupUi(this);
+    setupBatchGroupCombo();
 }
 
-LinearForcePage::~LinearForcePage() { delete ui; }
-
-void LinearForcePage::beforeLoad() {
-  PickManager::instance();
-
-  PickManager::instance().activate(getPageType(), m_uuid, PickMode::Edge);
-  setupBatchGroupCombo();
+LinearForcePage::~LinearForcePage()
+{
+    delete ui;
 }
 
-void LinearForcePage::beforeUnload() {
-  PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Edge);
+void LinearForcePage::beforeLoad()
+{
+    PickManager::instance();
+
+    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Edge);
+    setupBatchGroupCombo();
 }
 
-double LinearForcePage::fxValue() { return ui->lineEditX->text().toDouble(); }
-
-double LinearForcePage::fyValue() { return ui->lineEditY->text().toDouble(); }
-
-double LinearForcePage::fzValue() { return ui->lineEditZ->text().toDouble(); }
-
-void LinearForcePage::setupBatchGroupCombo() {
-  ui->comboBoxDim->blockSignals(true);
-  ui->comboBoxDim->clear();
-  ui->comboBoxDim->addItem("线", 1);
-  ui->comboBoxDim->setCurrentIndex(0);
-  ui->comboBoxDim->blockSignals(false);
-
-  connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged),
-          this, &LinearForcePage::onDimChanged, Qt::UniqueConnection);
-  connect(ui->comboBoxGroup,
-          QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-          &LinearForcePage::onGroupChanged, Qt::UniqueConnection);
-  refreshGroupCombo();
+void LinearForcePage::beforeUnload()
+{
+    PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Edge);
 }
 
-void LinearForcePage::refreshGroupCombo() {
-  auto* meshSvc =
-      ServiceRegistry::instance().getService<MeshModuleControllerService>();
-  if (!meshSvc) return;
-  const int dimFilter = ui->comboBoxDim->currentData().toInt();
-  const MshPickMap& map = meshSvc->mshPickMapSolid();
-  ui->comboBoxGroup->blockSignals(true);
-  ui->comboBoxGroup->clear();
-  for (auto it = map.physIdToName.constBegin();
-       it != map.physIdToName.constEnd(); ++it) {
-    const int physId = it.key();
-    const int dim = map.physIdToDim.value(physId, -1);
-    if (dim != 1) continue;
-    if (dimFilter != 1) continue;
-    ui->comboBoxGroup->addItem(
-        QString("%1  (id=%2)").arg(it.value()).arg(physId), physId);
-  }
-  ui->comboBoxGroup->blockSignals(false);
+double LinearForcePage::fxValue()
+{
+    return ui->lineEditX->text().toDouble();
 }
 
-void LinearForcePage::onDimChanged(int) { refreshGroupCombo(); }
+double LinearForcePage::fyValue()
+{
+    return ui->lineEditY->text().toDouble();
+}
 
-void LinearForcePage::onGroupChanged(int index) {
-  if (index < 0) return;
-  auto* meshSvc =
-      ServiceRegistry::instance().getService<MeshModuleControllerService>();
-  if (!meshSvc) return;
-  const MshPickMap& map = meshSvc->mshPickMapSolid();
-  const int physId = ui->comboBoxGroup->itemData(index).toInt();
+double LinearForcePage::fzValue()
+{
+    return ui->lineEditZ->text().toDouble();
+}
 
-  const QVector<qint64> edgeKeys64 = map.bndEdgePhysToEdgeKeys.value(physId);
-  QVector<vtkIdType> edgeKeys;
-  edgeKeys.reserve(edgeKeys64.size());
-  for (qint64 k : edgeKeys64) edgeKeys.push_back(vtkIdType(k));
+void LinearForcePage::setupBatchGroupCombo()
+{
+    ui->comboBoxDim->blockSignals(true);
+    ui->comboBoxDim->clear();
+    ui->comboBoxDim->addItem("线", 1);
+    ui->comboBoxDim->setCurrentIndex(0);
+    ui->comboBoxDim->blockSignals(false);
 
-  PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid,
-                                              GridKind::Solid, edgeKeys, true);
+    connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &LinearForcePage::onDimChanged, Qt::UniqueConnection);
+    connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &LinearForcePage::onGroupChanged, Qt::UniqueConnection);
+    refreshGroupCombo();
+}
+
+void LinearForcePage::refreshGroupCombo()
+{
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshSvc)
+        return;
+    const int dimFilter = ui->comboBoxDim->currentData().toInt();
+    const MshPickMap& map = meshSvc->mshPickMapSolid();
+    ui->comboBoxGroup->blockSignals(true);
+    ui->comboBoxGroup->clear();
+    for (auto it = map.physIdToName.constBegin(); it != map.physIdToName.constEnd(); ++it)
+    {
+        const int physId = it.key();
+        const int dim = map.physIdToDim.value(physId, -1);
+        if (dim != 1)
+            continue;
+        if (dimFilter != 1)
+            continue;
+        ui->comboBoxGroup->addItem(QString("%1  (id=%2)").arg(it.value()).arg(physId), physId);
+    }
+    ui->comboBoxGroup->blockSignals(false);
+}
+
+void LinearForcePage::onDimChanged(int)
+{
+    refreshGroupCombo();
+}
+
+void LinearForcePage::onGroupChanged(int index)
+{
+    if (index < 0)
+        return;
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshSvc)
+        return;
+    const MshPickMap& map = meshSvc->mshPickMapSolid();
+    const int physId = ui->comboBoxGroup->itemData(index).toInt();
+
+    const QVector<qint64> edgeKeys64 = map.bndEdgePhysToEdgeKeys.value(physId);
+    QVector<vtkIdType> edgeKeys;
+    edgeKeys.reserve(edgeKeys64.size());
+    for (qint64 k : edgeKeys64)
+        edgeKeys.push_back(vtkIdType(k));
+
+    PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid, edgeKeys,
+                                                true);
 }

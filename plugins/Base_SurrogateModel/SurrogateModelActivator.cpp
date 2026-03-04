@@ -1,3 +1,5 @@
 #include "SurrogateModelActivator.h"
 
-SurrogateModelActivator::SurrogateModelActivator() {}
+SurrogateModelActivator::SurrogateModelActivator()
+{
+}

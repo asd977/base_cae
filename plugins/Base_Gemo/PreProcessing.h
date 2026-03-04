@@ -16,71 +16,68 @@
 
 #include "ProjectNode.h"
 
-class PreProcessing : public QObject, public PreProcessingService {
-  Q_OBJECT
- public:
-  PreProcessing();
-  void newProject() override;
-  bool saveProject() override;
-  bool loadProject() override;
-  void closeProject() override;
+class PreProcessing : public QObject, public PreProcessingService
+{
+    Q_OBJECT
+  public:
+    PreProcessing();
+    void newProject() override;
+    bool saveProject() override;
+    bool loadProject() override;
+    void closeProject() override;
 
-  void generateStepFile() override;
-  QStringList listEntityIds(int dim) override;
-  bool entityCenter(int dim, int id, QVector3D& center) override;
-  bool entityMeasure(int dim, int id, double& measure) override;
-  bool highlightEntity(int dim, int id) override;
-  bool highlightEntities(int dim, const QList<int>& ids,
-                         bool hoverPreview) override;
-  void clearEntityHoverHighlight() override;
-  void clearEntityHighlight() override;
+    void generateStepFile() override;
+    QStringList listEntityIds(int dim) override;
+    bool entityCenter(int dim, int id, QVector3D& center) override;
+    bool entityMeasure(int dim, int id, double& measure) override;
+    bool highlightEntity(int dim, int id) override;
+    bool highlightEntities(int dim, const QList<int>& ids, bool hoverPreview) override;
+    void clearEntityHoverHighlight() override;
+    void clearEntityHighlight() override;
 
-  BasePage* newGeometryImportWidget(QString title = QObject::tr("导入几何体"));
-  void newGeometryBoxWidget(QString title = QObject::tr("长方体"));
-  void newGeometrySphereWidget(QString title = QObject::tr("球体"));
-  void newGeometryConeWidget(QString title = QObject::tr("圆锥体"));
-  void newGeometryTorusWidget(QString title = QObject::tr("圆环体"));
-  void newGeometryCylinderWidget(QString title = QObject::tr("圆柱体"));
-  BasePage* newGeometryCircleWidget(QString title = QObject::tr("圆形"));
-  BasePage* newGeometryEllipseWidget(QString title = QObject::tr("椭圆"));
-  BasePage* newGeometryPolygonWidget(QString title = QObject::tr("多边形"));
-  BasePage* newGeometryRectangleWidget(QString title = QObject::tr("矩形"));
-  void newOccBooleanFuseWidget(QString title = QObject::tr("布尔融合"));
-  void newOccBooleanUnionWidget(QString title = QObject::tr("联合体"));
-  void newOccBooleanCutWidget(QString title = QObject::tr("布尔切割"));
-  void newOccBooleanCommonWidget(QString title = QObject::tr("布尔求交"));
-  bool exportGeom();
+    BasePage* newGeometryImportWidget(QString title = QObject::tr("导入几何体"));
+    void newGeometryBoxWidget(QString title = QObject::tr("长方体"));
+    void newGeometrySphereWidget(QString title = QObject::tr("球体"));
+    void newGeometryConeWidget(QString title = QObject::tr("圆锥体"));
+    void newGeometryTorusWidget(QString title = QObject::tr("圆环体"));
+    void newGeometryCylinderWidget(QString title = QObject::tr("圆柱体"));
+    BasePage* newGeometryCircleWidget(QString title = QObject::tr("圆形"));
+    BasePage* newGeometryEllipseWidget(QString title = QObject::tr("椭圆"));
+    BasePage* newGeometryPolygonWidget(QString title = QObject::tr("多边形"));
+    BasePage* newGeometryRectangleWidget(QString title = QObject::tr("矩形"));
+    void newOccBooleanFuseWidget(QString title = QObject::tr("布尔融合"));
+    void newOccBooleanUnionWidget(QString title = QObject::tr("联合体"));
+    void newOccBooleanCutWidget(QString title = QObject::tr("布尔切割"));
+    void newOccBooleanCommonWidget(QString title = QObject::tr("布尔求交"));
+    bool exportGeom();
 
- private:
-  bool writeJsonFile(const QString& filePath, const QJsonObject& obj);
-  bool readJsonFile(const QString& filePath, QJsonObject& out);
-  bool loadChildProject(ProjectNode* node, const QString& name);
-  void initPageFactory();
-  BasePage* createPageByType(const QString& type, const QString& title);
-  ProjectNode* createGeometryNodeByType(const QString& type,
-                                        const QString& kind,
-                                        const QString& title,
-                                        const QString& uuid);
-  void applyNodeVisualState(ProjectNode* node,
-                            const QJsonObject& itemState) const;
+  private:
+    bool writeJsonFile(const QString& filePath, const QJsonObject& obj);
+    bool readJsonFile(const QString& filePath, QJsonObject& out);
+    bool loadChildProject(ProjectNode* node, const QString& name);
+    void initPageFactory();
+    BasePage* createPageByType(const QString& type, const QString& title);
+    ProjectNode* createGeometryNodeByType(const QString& type, const QString& kind,
+                                          const QString& title, const QString& uuid);
+    void applyNodeVisualState(ProjectNode* node, const QJsonObject& itemState) const;
 
-  void initRibbonActionConn();
+    void initRibbonActionConn();
 
- private:
-  QMap<QString, std::function<BasePage*(QString title)>> m_pageFactory;
-  ProjectNode* m_geomNode = nullptr;
-  ProjectNode* m_gridNode = nullptr;
-  UiFrameService* m_uiFrameService = nullptr;
+  private:
+    QMap<QString, std::function<BasePage*(QString title)>> m_pageFactory;
+    ProjectNode* m_geomNode = nullptr;
+    ProjectNode* m_gridNode = nullptr;
+    UiFrameService* m_uiFrameService = nullptr;
 
-  void toggleVisible(const QString& uuid);
-  void removeNode(const QString& uuid);
-  void renameNode(const QString& uuid);
+    void toggleVisible(const QString& uuid);
+    void removeNode(const QString& uuid);
+    void renameNode(const QString& uuid);
 
-  void initTreeMenu();
-  bool writeMultipleShapesStepFile(const QString& filePath);
-  QString makeUniqueName(const QString& baseName, const QString& typeKey);
+    void initTreeMenu();
+    bool writeMultipleShapesStepFile(const QString& filePath);
+    QString makeUniqueName(const QString& baseName, const QString& typeKey);
 
-  QHash<QString, int> m_nameCounters;
+    QHash<QString, int> m_nameCounters;
 };
 
-#endif  // PREPROCESSING_H
+#endif // PREPROCESSING_H

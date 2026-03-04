@@ -1,7 +1,8 @@
 ﻿#ifndef PUBLICCONSTANT_H
 #define PUBLICCONSTANT_H
 
-namespace PublicConstants {
+namespace PublicConstants
+{
 
 // =======================================================
 // Event：发给 EventManager 的“事件名”（通知/状态变化/请求数据）
@@ -20,9 +21,8 @@ constexpr char kShowGeomSolidModel[] = "show_geom_solid_model";
 
 // --- Request / Command-like event (一般带 data) ---
 constexpr char kSetGeomSelectType[] = "set_geom_select_type";
-constexpr char kGetGridNodeIndex[] = "get_grid_node_index";  // 获取网格节点集合
-constexpr char kClearColorByGeomIndex[] =
-    "clear_color_by_geom_index";  // 清除指定索引颜色
+constexpr char kGetGridNodeIndex[] = "get_grid_node_index";            // 获取网格节点集合
+constexpr char kClearColorByGeomIndex[] = "clear_color_by_geom_index"; // 清除指定索引颜色
 
 // =======================================================
 // Action：用户点击/命令触发的“动作名”（通常由 UI QAction 触发）
@@ -113,18 +113,17 @@ constexpr char kActionGeomAddPattern[] = "geom_pattern";
 constexpr char kActionPreprocessImportGrid[] = "grid_import";
 constexpr char kActionPreprocessExportGrid[] = "grid_export";
 
-constexpr char kActionPreprocessMeshGlobal[] = "grid_mesh_global";  // 整体剖分
-constexpr char kActionPreprocessMeshSingle[] = "grid_mesh_single";  // 单体剖分
-constexpr char kActionPreprocessMeshMapped[] = "grid_mesh_mapped";  // 映射剖分
-constexpr char kActionPreprocessMeshSweep[] = "grid_mesh_sweep";    // 扫掠剖分
+constexpr char kActionPreprocessMeshGlobal[] = "grid_mesh_global"; // 整体剖分
+constexpr char kActionPreprocessMeshSingle[] = "grid_mesh_single"; // 单体剖分
+constexpr char kActionPreprocessMeshMapped[] = "grid_mesh_mapped"; // 映射剖分
+constexpr char kActionPreprocessMeshSweep[] = "grid_mesh_sweep";   // 扫掠剖分
 
-constexpr char kActionPreprocessCtrlVolume[] = "grid_ctrl_volume";    // 体控制
-constexpr char kActionPreprocessCtrlSurface[] = "grid_ctrl_surface";  // 面控制
-constexpr char kActionPreprocessCtrlEdge[] = "mesh_ctrl_edge";        // 边控制
-constexpr char kActionPreprocessMeshEdit[] = "mesh_ctrl_edit";     // 网格编辑
-constexpr char kActionPreprocessMeshGrouping[] = "mesh_grouping";  // 网格分组
-constexpr char kActionPreprocessQualityStd[] =
-    "grid_quality_std";  // 网格质量标准
+constexpr char kActionPreprocessCtrlVolume[] = "grid_ctrl_volume";   // 体控制
+constexpr char kActionPreprocessCtrlSurface[] = "grid_ctrl_surface"; // 面控制
+constexpr char kActionPreprocessCtrlEdge[] = "mesh_ctrl_edge";       // 边控制
+constexpr char kActionPreprocessMeshEdit[] = "mesh_ctrl_edit";       // 网格编辑
+constexpr char kActionPreprocessMeshGrouping[] = "mesh_grouping";    // 网格分组
+constexpr char kActionPreprocessQualityStd[] = "grid_quality_std";   // 网格质量标准
 
 // --- Boundary / 边界条件 ---
 constexpr char kActionBoundarySolid[] = "boundary_solid";
@@ -133,20 +132,16 @@ constexpr char kActionBoundaryLine[] = "boundary_line";
 constexpr char kActionBoundaryPoint[] = "boundary_point";
 
 // --- PhysicalField / 约束与荷载 ---
-constexpr char kActionPhysicalDisplacementConstraint[] =
-    "physical_displacement_constraint";
+constexpr char kActionPhysicalDisplacementConstraint[] = "physical_displacement_constraint";
 constexpr char kActionPhysicalGeoStressPoint[] = "physical_geo_stress_point";
-constexpr char kActionPhysicalGeoStressFitFace[] =
-    "physical_geo_stress_fit_face";
+constexpr char kActionPhysicalGeoStressFitFace[] = "physical_geo_stress_fit_face";
 constexpr char kActionPhysicalBodyForce[] = "physical_body_force";
-constexpr char kActionPhysicalConcentratedForce[] =
-    "physical_concentrated_force";
+constexpr char kActionPhysicalConcentratedForce[] = "physical_concentrated_force";
 constexpr char kActionPhysicalLinearForce[] = "physical_linear_force";
 constexpr char kActionPhysicalSurfaceForce[] = "physical_surface_force";
 constexpr char kActionPhysicalTemperatureLoad[] = "physical_temperature_load";
 constexpr char kActionPhysicalBeamLoad[] = "physical_beam_load";
-constexpr char kActionPhysicalSeismicAndAddedMass[] =
-    "physical_seismic_and_added_mass";
+constexpr char kActionPhysicalSeismicAndAddedMass[] = "physical_seismic_and_added_mass";
 
 // --- View / 显示（你补齐的动作） ---
 constexpr char kActionViewPosX[] = "view_pos_x";
@@ -239,6 +234,6 @@ constexpr char kValuePostScalar[] = "post_scalar";
 // --- 网格类型：几维空间 ---
 constexpr char kMeshDimension[] = "mesh_dimension";
 
-}  // namespace PublicConstants
+} // namespace PublicConstants
 
-#endif  // PUBLICCONSTANT_H
+#endif // PUBLICCONSTANT_H

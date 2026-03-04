@@ -10,44 +10,50 @@
 
 #include "BasePage.h"
 
-class CircleDialog : public BasePage {
-  Q_OBJECT
- public:
-  explicit CircleDialog(QWidget* parent = nullptr);
+class CircleDialog : public BasePage
+{
+    Q_OBJECT
+  public:
+    explicit CircleDialog(QWidget* parent = nullptr);
 
-  double getRadius() const;
-  gp_Pnt getCenter() const;
+    double getRadius() const;
+    gp_Pnt getCenter() const;
 
-  QJsonObject saveJson() override;
-  void loadJson(const QJsonObject& state) override;
-  void beforeLoad();
-  void beforeUnload();
+    QJsonObject saveJson() override;
+    void loadJson(const QJsonObject& state) override;
+    void beforeLoad();
+    void beforeUnload();
 
- private slots:
-  void validateInput();
-  void onPlaneChanged(int);
+  private slots:
+    void validateInput();
+    void onPlaneChanged(int);
 
- private:
-  enum class PlaneType { XY = 0, XZ = 1, YZ = 2 };
+  private:
+    enum class PlaneType
+    {
+        XY = 0,
+        XZ = 1,
+        YZ = 2
+    };
 
-  PlaneType currentPlane() const;
-  void updatePlaneUi();
-  gp_Dir planeNormal(PlaneType p) const;
+    PlaneType currentPlane() const;
+    void updatePlaneUi();
+    gp_Dir planeNormal(PlaneType p) const;
 
- private:
-  QLineEdit* radiusEdit = nullptr;
+  private:
+    QLineEdit* radiusEdit = nullptr;
 
-  QLabel* centerXLabel = nullptr;
-  QLabel* centerYLabel = nullptr;
-  QLabel* centerZLabel = nullptr;
+    QLabel* centerXLabel = nullptr;
+    QLabel* centerYLabel = nullptr;
+    QLabel* centerZLabel = nullptr;
 
-  QLineEdit* centerXEdit = nullptr;
-  QLineEdit* centerYEdit = nullptr;
-  QLineEdit* centerZEdit = nullptr;
+    QLineEdit* centerXEdit = nullptr;
+    QLineEdit* centerYEdit = nullptr;
+    QLineEdit* centerZEdit = nullptr;
 
-  QLabel* planeLabel = nullptr;
-  QComboBox* planeCombo = nullptr;
+    QLabel* planeLabel = nullptr;
+    QComboBox* planeCombo = nullptr;
 
-  double radius = 1.0;
-  gp_Pnt center;
+    double radius = 1.0;
+    gp_Pnt center;
 };

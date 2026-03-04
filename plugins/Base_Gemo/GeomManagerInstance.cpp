@@ -1,49 +1,64 @@
 ﻿#include "GeomManagerInstance.h"
 
-namespace GeomManager {
-GeomManagerInstance *GeomManagerInstance::_instance = nullptr;
-GeomManagerInstance *GeomManager::GeomManagerInstance::getInstance() {
-  if (_instance == nullptr) {
-    _instance = new GeomManagerInstance;
-  }
-  return _instance;
+namespace GeomManager
+{
+GeomManagerInstance* GeomManagerInstance::_instance = nullptr;
+GeomManagerInstance* GeomManager::GeomManagerInstance::getInstance()
+{
+    if (_instance == nullptr)
+    {
+        _instance = new GeomManagerInstance;
+    }
+    return _instance;
 }
 
-GeomManager::GeomManagerInstance::~GeomManagerInstance() {}
-
-void GeomManagerInstance::appendGeomShapeObject(GeomShapeObject *shape) {
-  _geomShapeMap[shape->getUUid()] = shape;
+GeomManager::GeomManagerInstance::~GeomManagerInstance()
+{
 }
 
-void GeomManagerInstance::removeGeomShapeObject(GeomShapeObject *shape) {
-  if (!shape) {
-    return;
-  }
-  _geomShapeMap.remove(shape->getUUid());
-  delete shape;
+void GeomManagerInstance::appendGeomShapeObject(GeomShapeObject* shape)
+{
+    _geomShapeMap[shape->getUUid()] = shape;
 }
 
-bool GeomManagerInstance::removeGeomShapeObject(const QString &uuid) {
-  if (uuid.isEmpty()) {
-    return false;
-  }
-  GeomShapeObject *shape = _geomShapeMap.value(uuid, nullptr);
-  if (!shape) {
-    return false;
-  }
-  _geomShapeMap.remove(uuid);
-  delete shape;
-  return true;
+void GeomManagerInstance::removeGeomShapeObject(GeomShapeObject* shape)
+{
+    if (!shape)
+    {
+        return;
+    }
+    _geomShapeMap.remove(shape->getUUid());
+    delete shape;
 }
 
-GeomShapeObject *GeomManagerInstance::getGeomShapeObject(
-    const QString &uuid) const {
-  if (uuid.isEmpty()) {
-    return nullptr;
-  }
-  return _geomShapeMap.value(uuid, nullptr);
+bool GeomManagerInstance::removeGeomShapeObject(const QString& uuid)
+{
+    if (uuid.isEmpty())
+    {
+        return false;
+    }
+    GeomShapeObject* shape = _geomShapeMap.value(uuid, nullptr);
+    if (!shape)
+    {
+        return false;
+    }
+    _geomShapeMap.remove(uuid);
+    delete shape;
+    return true;
 }
 
-bool GeomManagerInstance::isEmpty() { return _geomShapeMap.isEmpty(); }
+GeomShapeObject* GeomManagerInstance::getGeomShapeObject(const QString& uuid) const
+{
+    if (uuid.isEmpty())
+    {
+        return nullptr;
+    }
+    return _geomShapeMap.value(uuid, nullptr);
+}
 
-}  // namespace GeomManager
+bool GeomManagerInstance::isEmpty()
+{
+    return _geomShapeMap.isEmpty();
+}
+
+} // namespace GeomManager

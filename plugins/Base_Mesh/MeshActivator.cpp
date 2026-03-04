@@ -1,3 +1,5 @@
 ﻿#include "MeshActivator.h"
 
-MeshActivator::MeshActivator() {}
+MeshActivator::MeshActivator()
+{
+}

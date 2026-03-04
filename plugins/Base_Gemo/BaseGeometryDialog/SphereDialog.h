@@ -11,26 +11,27 @@
 
 #include "BasePage.h"
 
-class SphereDialog : public BasePage {
-  Q_OBJECT
+class SphereDialog : public BasePage
+{
+    Q_OBJECT
 
- public:
-  SphereDialog(QWidget *parent = nullptr);
-  ~SphereDialog();
+  public:
+    SphereDialog(QWidget* parent = nullptr);
+    ~SphereDialog();
 
-  void beforeLoad() {};
-  void beforeUnload() {};
-  QJsonObject saveJson() override;
-  void loadJson(const QJsonObject &obj) override;
- private slots:
-  void onOkClicked();
+    void beforeLoad() {};
+    void beforeUnload() {};
+    QJsonObject saveJson() override;
+    void loadJson(const QJsonObject& obj) override;
+  private slots:
+    void onOkClicked();
 
- private:
-  QLineEdit *radiusEdit;
-  QLineEdit *xEdit;
-  QLineEdit *yEdit;
-  QLineEdit *zEdit;
-  void initUI();
+  private:
+    QLineEdit* radiusEdit;
+    QLineEdit* xEdit;
+    QLineEdit* yEdit;
+    QLineEdit* zEdit;
+    void initUI();
 };
 
-#endif  // SPHEREDIALOG_H
+#endif // SPHEREDIALOG_H

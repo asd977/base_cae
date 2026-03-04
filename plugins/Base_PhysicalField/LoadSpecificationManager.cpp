@@ -1,3 +1,5 @@
 #include "LoadSpecificationManager.h"
 
-LoadSpecificationManager::LoadSpecificationManager() {}
+LoadSpecificationManager::LoadSpecificationManager()
+{
+}

@@ -21,31 +21,33 @@
 //	}
 // });
 
-namespace SMProcessTool {
-class CORE_EXPORT SMProcess : public QProcess {
-  Q_OBJECT
- public:
-  explicit SMProcess(const QString& program);
-  SMProcess(const QString& program, const QStringList& args);
-  ~SMProcess();
-  void startProcess(bool async = false);  // async 是否异步启动
+namespace SMProcessTool
+{
+class CORE_EXPORT SMProcess : public QProcess
+{
+    Q_OBJECT
+  public:
+    explicit SMProcess(const QString& program);
+    SMProcess(const QString& program, const QStringList& args);
+    ~SMProcess();
+    void startProcess(bool async = false); // async 是否异步启动
 
- signals:
-  void onCompleted(bool);
-  void onErrorSignal(QString);
+  signals:
+    void onCompleted(bool);
+    void onErrorSignal(QString);
 
- public slots:
-  void onFinished(int code, QProcess::ExitStatus status);
-  void onError(QProcess::ProcessError error);
-  void onOutput();
+  public slots:
+    void onFinished(int code, QProcess::ExitStatus status);
+    void onError(QProcess::ProcessError error);
+    void onOutput();
 
- private:
-  SMProcess() = delete;
-  void initializeConnections();
+  private:
+    SMProcess() = delete;
+    void initializeConnections();
 
-  QString m_programPath;
-  QStringList m_arguments;
+    QString m_programPath;
+    QStringList m_arguments;
 };
-}  // namespace SMProcessTool
+} // namespace SMProcessTool
 
-#endif  // SMPROCESS_H
+#endif // SMPROCESS_H

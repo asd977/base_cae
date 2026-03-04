@@ -5,29 +5,31 @@
 
 #include <QWidget>
 
-namespace Ui {
+namespace Ui
+{
 class PhysicalFieldSettingWidget;
 }
 
-class PhysicalFieldSettingWidget : public BasePage {
-  Q_OBJECT
+class PhysicalFieldSettingWidget : public BasePage
+{
+    Q_OBJECT
 
- public:
-  explicit PhysicalFieldSettingWidget(QWidget *parent = nullptr);
-  ~PhysicalFieldSettingWidget();
+  public:
+    explicit PhysicalFieldSettingWidget(QWidget* parent = nullptr);
+    ~PhysicalFieldSettingWidget();
 
-  void beforeLoad() override;
-  void beforeUnload() override;
+    void beforeLoad() override;
+    void beforeUnload() override;
 
- private slots:
-  void on_testPushButton_clicked();
+  private slots:
+    void on_testPushButton_clicked();
 
-  void on_pushButton_clicked();
+    void on_pushButton_clicked();
 
-  void on_pushButton_2_clicked();
+    void on_pushButton_2_clicked();
 
- private:
-  Ui::PhysicalFieldSettingWidget *ui;
+  private:
+    Ui::PhysicalFieldSettingWidget* ui;
 };
 
-#endif  // PHYSICALFIELDSETTINGWIDGET_H
+#endif // PHYSICALFIELDSETTINGWIDGET_H

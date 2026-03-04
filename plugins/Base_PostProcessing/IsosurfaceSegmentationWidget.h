@@ -13,78 +13,80 @@ class vtkPolyDataMapper;
 class vtkDataSetMapper;
 class vtkActor;
 
-namespace Ui {
+namespace Ui
+{
 class IsosurfaceSegmentationWidget;
 }
 
-class IsosurfaceSegmentationWidget : public BasePage {
-  Q_OBJECT
- public:
-  explicit IsosurfaceSegmentationWidget(
-      VisualWidgetService* postProcessingWidget, QWidget* parent = nullptr);
-  ~IsosurfaceSegmentationWidget() override;
-  void beforeLoad() override;
-  void beforeUnload() override;
+class IsosurfaceSegmentationWidget : public BasePage
+{
+    Q_OBJECT
+  public:
+    explicit IsosurfaceSegmentationWidget(VisualWidgetService* postProcessingWidget,
+                                          QWidget* parent = nullptr);
+    ~IsosurfaceSegmentationWidget() override;
+    void beforeLoad() override;
+    void beforeUnload() override;
 
- private slots:
-  void on_scalarComboBox_currentIndexChanged(int index);
-  void on_percentCheckBox_toggled(bool checked);
-  void on_isoSlider_valueChanged(int v);
-  void on_isoSpin_valueChanged(double v);
-  void on_showLowCheckBox_toggled(bool checked);
-  void on_showHighCheckBox_toggled(bool checked);
-  void on_showInterfaceCheckBox_toggled(bool checked);
-  void on_lowOpacitySlider_valueChanged(int v);
-  void on_highOpacitySlider_valueChanged(int v);
-  void on_ifaceOpacitySlider_valueChanged(int v);
+  private slots:
+    void on_scalarComboBox_currentIndexChanged(int index);
+    void on_percentCheckBox_toggled(bool checked);
+    void on_isoSlider_valueChanged(int v);
+    void on_isoSpin_valueChanged(double v);
+    void on_showLowCheckBox_toggled(bool checked);
+    void on_showHighCheckBox_toggled(bool checked);
+    void on_showInterfaceCheckBox_toggled(bool checked);
+    void on_lowOpacitySlider_valueChanged(int v);
+    void on_highOpacitySlider_valueChanged(int v);
+    void on_ifaceOpacitySlider_valueChanged(int v);
 
-  void on_stepComboBox_currentIndexChanged(int index);
+    void on_stepComboBox_currentIndexChanged(int index);
 
- private:
-  // 数据
-  void readTecplotLatest();
-  void readTecplot(const QString& file);
-  void fillScalarCombo();
-  void setIsoSpinRangeFromScalar();
-  double currentScalarMin() const;
-  double currentScalarMax() const;
+  private:
+    // 数据
+    void readTecplotLatest();
+    void readTecplot(const QString& file);
+    void fillScalarCombo();
+    void setIsoSpinRangeFromScalar();
+    double currentScalarMin() const;
+    double currentScalarMax() const;
 
-  // 管线
-  void buildPipelineIfNeeded();
-  void updateIsoFromUI();         // 更新阈值 & 等值面
-  void updateColoringFromUI();    // 共用 LUT，并设置点/元数组着色
-  void updateVisibilityFromUI();  // 显隐与透明度
-  void renderNow();
+    // 管线
+    void buildPipelineIfNeeded();
+    void updateIsoFromUI();        // 更新阈值 & 等值面
+    void updateColoringFromUI();   // 共用 LUT，并设置点/元数组着色
+    void updateVisibilityFromUI(); // 显隐与透明度
+    void renderNow();
 
-  // 生命周期辅助
-  void attachActorsIfNeeded();    // 根据标志把 actor 挂回场景
-  void detachActorsIfAttached();  // 仅移除，不销毁
+    // 生命周期辅助
+    void attachActorsIfNeeded();   // 根据标志把 actor 挂回场景
+    void detachActorsIfAttached(); // 仅移除，不销毁
 
- private:
-  Ui::IsosurfaceSegmentationWidget* ui{};
-  VisualWidgetService* m_visualService{};
+  private:
+    Ui::IsosurfaceSegmentationWidget* ui{};
+    VisualWidgetService* m_visualService{};
 
-  // 生命周期状态
-  bool m_loadedOnce{false};
-  bool m_attachedLow{false};
-  bool m_attachedHigh{false};
-  bool m_attachedIso{false};
+    // 生命周期状态
+    bool m_loadedOnce{false};
+    bool m_attachedLow{false};
+    bool m_attachedHigh{false};
+    bool m_attachedIso{false};
 
-  // 数据
-  vtkSmartPointer<vtkUnstructuredGrid> m_grid;
-  QString m_dataPath;
-  double m_scalarRange[2]{0.0, 1.0};
+    // 数据
+    vtkSmartPointer<vtkUnstructuredGrid> m_grid;
+    QString m_dataPath;
+    double m_scalarRange[2]{0.0, 1.0};
 
-  // 分割：两侧 + 中间等值面
-  vtkSmartPointer<vtkThreshold> m_threshLow;
-  vtkSmartPointer<vtkThreshold> m_threshHigh;
-  vtkSmartPointer<vtkDataSetMapper> m_mapperLow;
-  vtkSmartPointer<vtkDataSetMapper> m_mapperHigh;
-  vtkSmartPointer<vtkActor> m_actorLow;
-  vtkSmartPointer<vtkActor> m_actorHigh;
+    // 分割：两侧 + 中间等值面
+    vtkSmartPointer<vtkThreshold> m_threshLow;
+    vtkSmartPointer<vtkThreshold> m_threshHigh;
+    vtkSmartPointer<vtkDataSetMapper> m_mapperLow;
+    vtkSmartPointer<vtkDataSetMapper> m_mapperHigh;
+    vtkSmartPointer<vtkActor> m_actorLow;
+    vtkSmartPointer<vtkActor> m_actorHigh;
 
-  vtkSmartPointer<vtkContourFilter> m_contourIso;
-  vtkSmartPointer<vtkPolyDataMapper> m_mapperIso;
-  vtkSmartPointer<vtkActor> m_actorIso;
-  void loadFileName(QString dataPath);
+    vtkSmartPointer<vtkContourFilter> m_contourIso;
+    vtkSmartPointer<vtkPolyDataMapper> m_mapperIso;
+    vtkSmartPointer<vtkActor> m_actorIso;
+    void loadFileName(QString dataPath);
 };

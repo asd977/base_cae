@@ -19,25 +19,27 @@
 // auto thread = new SMThreadingTool::SMThreading(this);;
 // thread->start();
 // thread->postTask([=]() {computeSum(1000000); });
-namespace SMThreadingTool {
-class CORE_EXPORT SMThreading : public QThread {
-  Q_OBJECT
- public:
-  SMThreading(QObject* parent);
-  ~SMThreading();
+namespace SMThreadingTool
+{
+class CORE_EXPORT SMThreading : public QThread
+{
+    Q_OBJECT
+  public:
+    SMThreading(QObject* parent);
+    ~SMThreading();
 
-  void postTask(const std::function<void()>& task);
-  void run() override;
-  void stop();
-  int getTaskCount();
- signals:
-  void allTasksFinished();
+    void postTask(const std::function<void()>& task);
+    void run() override;
+    void stop();
+    int getTaskCount();
+  signals:
+    void allTasksFinished();
 
- private:
-  std::queue<std::function<void()>> m_taskQueue;
-  std::mutex m_mutex;
-  bool m_shouldStop{false};
+  private:
+    std::queue<std::function<void()>> m_taskQueue;
+    std::mutex m_mutex;
+    bool m_shouldStop{false};
 };
-}  // namespace SMThreadingTool
+} // namespace SMThreadingTool
 
-#endif  // SMTHREADING_H
+#endif // SMTHREADING_H

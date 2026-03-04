@@ -5,7 +5,8 @@
 #include <QApplication>
 #include <QString>
 
-class CORE_EXPORT StyleManager {
- public:
-  static bool applyStyleSheet(QApplication &app, const QString &resourcePath);
+class CORE_EXPORT StyleManager
+{
+  public:
+    static bool applyStyleSheet(QApplication& app, const QString& resourcePath);
 };

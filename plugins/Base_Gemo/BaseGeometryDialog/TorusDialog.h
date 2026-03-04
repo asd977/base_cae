@@ -12,35 +12,36 @@
 
 #include "BasePage.h"
 
-class TorusDialog : public BasePage {
-  Q_OBJECT
+class TorusDialog : public BasePage
+{
+    Q_OBJECT
 
- public:
-  TorusDialog(QWidget *parent = nullptr);
-  ~TorusDialog();
+  public:
+    TorusDialog(QWidget* parent = nullptr);
+    ~TorusDialog();
 
-  void beforeLoad() {};
-  void beforeUnload() {};
-  QJsonObject saveJson() override;
-  void loadJson(const QJsonObject &obj) override;
+    void beforeLoad() {};
+    void beforeUnload() {};
+    QJsonObject saveJson() override;
+    void loadJson(const QJsonObject& obj) override;
 
-  // 获取用户输入的参数
-  double getMajorRadius() const;
-  double getMinorRadius() const;
-  gp_Pnt getCenter() const;
- signals:
-  void parametersSubmitted(QString uuid, double majorRadius, double minorRadius,
-                           const gp_Pnt &position);
- private slots:
-  void onOkClicked();
+    // 获取用户输入的参数
+    double getMajorRadius() const;
+    double getMinorRadius() const;
+    gp_Pnt getCenter() const;
+  signals:
+    void parametersSubmitted(QString uuid, double majorRadius, double minorRadius,
+                             const gp_Pnt& position);
+  private slots:
+    void onOkClicked();
 
- private:
-  QLineEdit *majorRadiusEdit;
-  QLineEdit *minorRadiusEdit;
-  QLineEdit *xEdit;
-  QLineEdit *yEdit;
-  QLineEdit *zEdit;
-  void initUI();
+  private:
+    QLineEdit* majorRadiusEdit;
+    QLineEdit* minorRadiusEdit;
+    QLineEdit* xEdit;
+    QLineEdit* yEdit;
+    QLineEdit* zEdit;
+    void initUI();
 };
 
-#endif  // TORUSDIALOG_H
+#endif // TORUSDIALOG_H

@@ -7,20 +7,28 @@
 
 #include "UiFrame.h"
 
-class UiFrameActivator : public QObject, public PluginInterface {
-  Q_OBJECT
-  Q_PLUGIN_METADATA(IID PluginInterface_iid)
-  Q_INTERFACES(PluginInterface)
+class UiFrameActivator : public QObject, public PluginInterface
+{
+    Q_OBJECT
+    Q_PLUGIN_METADATA(IID PluginInterface_iid)
+    Q_INTERFACES(PluginInterface)
 
- public:
-  UiFrameActivator();
+  public:
+    UiFrameActivator();
 
-  QString pluginName() const override { return "UiFrame"; }
-  void start() override {
-    qDebug() << "Start UiFrame";
-    UiFrame *uiFrame = new UiFrame;
-  }
-  void stop() override { qDebug() << "Stopping..."; }
+    QString pluginName() const override
+    {
+        return "UiFrame";
+    }
+    void start() override
+    {
+        qDebug() << "Start UiFrame";
+        UiFrame* uiFrame = new UiFrame;
+    }
+    void stop() override
+    {
+        qDebug() << "Stopping...";
+    }
 };
 
-#endif  // UIFRAMEACTIVATOR_H
+#endif // UIFRAMEACTIVATOR_H

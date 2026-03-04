@@ -11,24 +11,24 @@
 
 class MaterialManager;
 
-class MaterialModelWidget : public BasePage {
-  Q_OBJECT
- public:
-  explicit MaterialModelWidget(MaterialManager *manager,
-                               QWidget *parent = nullptr);
+class MaterialModelWidget : public BasePage
+{
+    Q_OBJECT
+  public:
+    explicit MaterialModelWidget(MaterialManager* manager, QWidget* parent = nullptr);
 
-  void setModel(const MaterialModel &model);
-  void beforeLoad() override;
-  void beforeUnload() override;
+    void setModel(const MaterialModel& model);
+    void beforeLoad() override;
+    void beforeUnload() override;
 
- private slots:
-  void onOpenLibrary();
+  private slots:
+    void onOpenLibrary();
 
- private:
-  MaterialManager *m_materialManager;
-  QString m_modelKey;
-  QLabel *m_titleLabel;
-  QLabel *m_summaryLabel;
+  private:
+    MaterialManager* m_materialManager;
+    QString m_modelKey;
+    QLabel* m_titleLabel;
+    QLabel* m_summaryLabel;
 };
 
-#endif  // MATERIALMODELWIDGET_H
+#endif // MATERIALMODELWIDGET_H

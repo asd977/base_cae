@@ -12,7 +12,8 @@
 #include <QStringList>
 #include <QWidget>
 
-namespace Ui {
+namespace Ui
+{
 class GridEditingWidget;
 }
 
@@ -36,187 +37,209 @@ class vtkPolyDataMapper2D;
 class vtkCoordinate;
 class vtkDataArray;
 
-class GridEditingWidget : public BasePage {
-  Q_OBJECT
- public:
-  enum class LabelSelectionMode { None, SurfaceNode, SurfaceElem, SurfaceBoth };
-  enum class ColorMode { None, Ketype, Matype, Layer };
+class GridEditingWidget : public BasePage
+{
+    Q_OBJECT
+  public:
+    enum class LabelSelectionMode
+    {
+        None,
+        SurfaceNode,
+        SurfaceElem,
+        SurfaceBoth
+    };
+    enum class ColorMode
+    {
+        None,
+        Ketype,
+        Matype,
+        Layer
+    };
 
-  explicit GridEditingWidget(QWidget* parent = nullptr);
-  ~GridEditingWidget() override;
+    explicit GridEditingWidget(QWidget* parent = nullptr);
+    ~GridEditingWidget() override;
 
-  // ===================== 关键：完全不依赖 IiinGridModel =====================
-  // 传入“可编辑网格”（内部 DeepCopy 一份作为 fullGrid）
-  void setEditableGrid(vtkUnstructuredGrid* grid,
-                       const QString& sourceName = QString());
-  void clearGrid();
+    // ===================== 关键：完全不依赖 IiinGridModel =====================
+    // 传入“可编辑网格”（内部 DeepCopy 一份作为 fullGrid）
+    void setEditableGrid(vtkUnstructuredGrid* grid, const QString& sourceName = QString());
+    void clearGrid();
 
-  void highlightMatypes(const QSet<int>& matypes, int selectedMatype,
-                        int previewMatype, int preDeleteMatype);
+    void highlightMatypes(const QSet<int>& matypes, int selectedMatype, int previewMatype,
+                          int preDeleteMatype);
 
-  bool isMousePickingEnabled() const { return m_enableMousePicking; }
-  bool isDraggingNode() const { return m_isDragging; }
-  bool isLabelBoxSelectionActive() const {
-    return m_labelSelectionMode != LabelSelectionMode::None;
-  }
-  bool isBoxSelecting() const { return m_isBoxSelecting; }
+    bool isMousePickingEnabled() const
+    {
+        return m_enableMousePicking;
+    }
+    bool isDraggingNode() const
+    {
+        return m_isDragging;
+    }
+    bool isLabelBoxSelectionActive() const
+    {
+        return m_labelSelectionMode != LabelSelectionMode::None;
+    }
+    bool isBoxSelecting() const
+    {
+        return m_isBoxSelecting;
+    }
 
-  // mouse callback -> widget
-  void onPicked(long long pickedPointId, long long pickedCellId);
+    // mouse callback -> widget
+    void onPicked(long long pickedPointId, long long pickedCellId);
 
-  void beginNodeDragFromCell(long long cellId, int displayX, int displayY);
-  void dragNodeToWorldPosition(const double worldPos[3]);
-  void endNodeDrag();
+    void beginNodeDragFromCell(long long cellId, int displayX, int displayY);
+    void dragNodeToWorldPosition(const double worldPos[3]);
+    void endNodeDrag();
 
-  void startLabelBoxSelection(int x, int y);
-  void updateLabelBoxSelection(int x, int y);
-  void finishLabelBoxSelection(int x, int y);
+    void startLabelBoxSelection(int x, int y);
+    void updateLabelBoxSelection(int x, int y);
+    void finishLabelBoxSelection(int x, int y);
 
-  void beforeLoad();
-  void beforeUnload();
+    void beforeLoad();
+    void beforeUnload();
 
- private slots:
-  void on_pushButtonApplyFilter_clicked();
-  void on_pushButtonResetFilter_clicked();
+  private slots:
+    void on_pushButtonApplyFilter_clicked();
+    void on_pushButtonResetFilter_clicked();
 
-  void on_pushButtonShowNodeLabels_clicked();
-  void on_pushButtonShowElemLabel_clicked();
-  void on_pushButtonShowSurfaceLabels_clicked();
+    void on_pushButtonShowNodeLabels_clicked();
+    void on_pushButtonShowElemLabel_clicked();
+    void on_pushButtonShowSurfaceLabels_clicked();
 
-  void on_pushButtonMoveNode_clicked();
-  void on_pushButtonDeleteElem_clicked();
+    void on_pushButtonMoveNode_clicked();
+    void on_pushButtonDeleteElem_clicked();
 
-  void on_checkBoxEnablePicking_toggled(bool checked);
-  void on_comboBoxColorMode_currentIndexChanged(int index);
+    void on_checkBoxEnablePicking_toggled(bool checked);
+    void on_comboBoxColorMode_currentIndexChanged(int index);
 
-  void on_pushButtonSave_clicked();
+    void on_pushButtonSave_clicked();
 
- private:
-  void clearData();
+  private:
+    void clearData();
 
-  QSet<int> parseIntSetFromString(const QString& text) const;
+    QSet<int> parseIntSetFromString(const QString& text) const;
 
-  // fullGrid -> viewGrid（过滤后的显示数据）
-  void buildOrUpdateViewGrid();
-  void setupInteractor();
+    // fullGrid -> viewGrid（过滤后的显示数据）
+    void buildOrUpdateViewGrid();
+    void setupInteractor();
 
-  void ensureLabelActorsCreated();
-  void applyLabelTextStyles();
+    void ensureLabelActorsCreated();
+    void applyLabelTextStyles();
 
-  // maps
-  void rebuildFullMaps();
-  void rebuildViewMaps();
+    // maps
+    void rebuildFullMaps();
+    void rebuildViewMaps();
 
-  vtkDataArray* pointArray(const char* name) const;
-  vtkDataArray* cellArray(const char* name) const;
+    vtkDataArray* pointArray(const char* name) const;
+    vtkDataArray* cellArray(const char* name) const;
 
-  bool cellMatchesFilter(vtkIdType fullCellId) const;
-  QSet<int> collectUniqueCellInts(const char* arrayName) const;
+    bool cellMatchesFilter(vtkIdType fullCellId) const;
+    QSet<int> collectUniqueCellInts(const char* arrayName) const;
 
-  void updateIdRangeLabels();
-  void updateFilterCombosFromGrid();
-  void updateFilterSummaryLabel();
-  void updateSurfaceLabelSummary(const QString& text);
+    void updateIdRangeLabels();
+    void updateFilterCombosFromGrid();
+    void updateFilterSummaryLabel();
+    void updateSurfaceLabelSummary(const QString& text);
 
-  void showNodeLabelsForElem(int elemId);
-  void showElemLabelForElem(int elemId);
+    void showNodeLabelsForElem(int elemId);
+    void showElemLabelForElem(int elemId);
 
-  void beginNodeDragByPointId(long long viewPointId);
-  void beginLabelBoxSelection(LabelSelectionMode mode);
-  void showSurfaceLabelsInRect(const QRect& rect, LabelSelectionMode mode);
+    void beginNodeDragByPointId(long long viewPointId);
+    void beginLabelBoxSelection(LabelSelectionMode mode);
+    void showSurfaceLabelsInRect(const QRect& rect, LabelSelectionMode mode);
 
-  void ensureSelectionBoxActorCreated();
-  void updateSelectionBoxActor(const QRect& rect);
+    void ensureSelectionBoxActorCreated();
+    void updateSelectionBoxActor(const QRect& rect);
 
-  void applyColorMode();
-  vtkSmartPointer<vtkLookupTable> buildLookupTable(
-      const QSet<int>& values) const;
-  QStringList availableMeshPropIds() const;
+    void applyColorMode();
+    vtkSmartPointer<vtkLookupTable> buildLookupTable(const QSet<int>& values) const;
+    QStringList availableMeshPropIds() const;
 
-  // editing helpers
-  void moveNodeById(int nodeId, const double* newX, const double* newY,
-                    const double* newZ);
-  void deleteElemById(int elemId);
+    // editing helpers
+    void moveNodeById(int nodeId, const double* newX, const double* newY, const double* newZ);
+    void deleteElemById(int elemId);
 
-  bool saveAsVtu(const QString& filePath);
+    bool saveAsVtu(const QString& filePath);
 
-  int maxSurfaceLabelCount() const { return 300; }  // 可改 UI 可配
+    int maxSurfaceLabelCount() const
+    {
+        return 300;
+    } // 可改 UI 可配
 
- private:
-  Ui::GridEditingWidget* ui = nullptr;
+  private:
+    Ui::GridEditingWidget* ui = nullptr;
 
-  VisualWidgetService* m_visualWidgetService = nullptr;
+    VisualWidgetService* m_visualWidgetService = nullptr;
 
-  // ============ 彻底剔除 IiinGridModel：只保留 VTK 网格 ============
-  vtkSmartPointer<vtkUnstructuredGrid> m_fullGrid;  // 权威可编辑数据
-  vtkSmartPointer<vtkUnstructuredGrid>
-      m_viewGrid;  // 过滤后的显示数据（无过滤时 = fullGrid）
+    // ============ 彻底剔除 IiinGridModel：只保留 VTK 网格 ============
+    vtkSmartPointer<vtkUnstructuredGrid> m_fullGrid; // 权威可编辑数据
+    vtkSmartPointer<vtkUnstructuredGrid> m_viewGrid; // 过滤后的显示数据（无过滤时 = fullGrid）
 
-  QString m_sourceName;  // 保存/溯源用
-  bool m_dirty = false;
+    QString m_sourceName; // 保存/溯源用
+    bool m_dirty = false;
 
-  // filter
-  QSet<int> m_filterKetypes;
-  QSet<int> m_filterMatypes;
-  QSet<int> m_filterLayers;
+    // filter
+    QSet<int> m_filterKetypes;
+    QSet<int> m_filterMatypes;
+    QSet<int> m_filterLayers;
 
-  // highlight
-  QSet<int> m_highlightedMatypes;
-  int m_highlightedMatype = -1;
-  vtkSmartPointer<vtkLookupTable> m_matypeLookupTable;
+    // highlight
+    QSet<int> m_highlightedMatypes;
+    int m_highlightedMatype = -1;
+    vtkSmartPointer<vtkLookupTable> m_matypeLookupTable;
 
-  // id ranges
-  int m_minNodeId = 0, m_maxNodeId = 0;
-  int m_minElemId = 0, m_maxElemId = 0;
+    // id ranges
+    int m_minNodeId = 0, m_maxNodeId = 0;
+    int m_minElemId = 0, m_maxElemId = 0;
 
-  // maps
-  QHash<int, vtkIdType> m_fullNodeIdToVtkId;
-  QHash<int, vtkIdType> m_viewNodeIdToVtkId;
-  QHash<int, vtkIdType> m_fullElemIdToCellId;
+    // maps
+    QHash<int, vtkIdType> m_fullNodeIdToVtkId;
+    QHash<int, vtkIdType> m_viewNodeIdToVtkId;
+    QHash<int, vtkIdType> m_fullElemIdToCellId;
 
-  // vtk cached (view)
-  vtkSmartPointer<vtkPoints> m_points;
-  vtkSmartPointer<vtkDataSetMapper> m_meshMapper;
-  vtkSmartPointer<vtkActor> m_meshActor;
+    // vtk cached (view)
+    vtkSmartPointer<vtkPoints> m_points;
+    vtkSmartPointer<vtkDataSetMapper> m_meshMapper;
+    vtkSmartPointer<vtkActor> m_meshActor;
 
-  // labels
-  vtkSmartPointer<vtkLabeledDataMapper> m_nodeLabelMapper;
-  vtkSmartPointer<vtkActor2D> m_nodeLabelActor;
-  vtkSmartPointer<vtkTextProperty> m_nodeLabelTextProperty;
+    // labels
+    vtkSmartPointer<vtkLabeledDataMapper> m_nodeLabelMapper;
+    vtkSmartPointer<vtkActor2D> m_nodeLabelActor;
+    vtkSmartPointer<vtkTextProperty> m_nodeLabelTextProperty;
 
-  vtkSmartPointer<vtkLabeledDataMapper> m_elemLabelMapper;
-  vtkSmartPointer<vtkActor2D> m_elemLabelActor;
-  vtkSmartPointer<vtkTextProperty> m_elemLabelTextProperty;
+    vtkSmartPointer<vtkLabeledDataMapper> m_elemLabelMapper;
+    vtkSmartPointer<vtkActor2D> m_elemLabelActor;
+    vtkSmartPointer<vtkTextProperty> m_elemLabelTextProperty;
 
-  // selection box
-  vtkSmartPointer<vtkPolyData> m_boxSelectionPoly;
-  vtkSmartPointer<vtkPolyDataMapper2D> m_boxSelectionMapper;
-  vtkSmartPointer<vtkCoordinate> m_boxSelectionCoord;
-  vtkSmartPointer<vtkActor2D> m_boxSelectionActor;
+    // selection box
+    vtkSmartPointer<vtkPolyData> m_boxSelectionPoly;
+    vtkSmartPointer<vtkPolyDataMapper2D> m_boxSelectionMapper;
+    vtkSmartPointer<vtkCoordinate> m_boxSelectionCoord;
+    vtkSmartPointer<vtkActor2D> m_boxSelectionActor;
 
-  // picking / interactor
-  vtkRenderWindowInteractor* m_interactor = nullptr;
-  vtkRenderer* m_renderer = nullptr;
+    // picking / interactor
+    vtkRenderWindowInteractor* m_interactor = nullptr;
+    vtkRenderer* m_renderer = nullptr;
 
-  vtkSmartPointer<vtkCellPicker> m_cellPicker;
-  vtkSmartPointer<vtkPointPicker> m_pointPicker;
+    vtkSmartPointer<vtkCellPicker> m_cellPicker;
+    vtkSmartPointer<vtkPointPicker> m_pointPicker;
 
-  vtkSmartPointer<vtkCommand> m_mouseCallback;
+    vtkSmartPointer<vtkCommand> m_mouseCallback;
 
-  bool m_enableMousePicking = false;
+    bool m_enableMousePicking = false;
 
-  // label box selection
-  LabelSelectionMode m_labelSelectionMode = LabelSelectionMode::None;
-  bool m_isBoxSelecting = false;
-  int m_boxStart[2] = {0, 0};
-  int m_boxEnd[2] = {0, 0};
+    // label box selection
+    LabelSelectionMode m_labelSelectionMode = LabelSelectionMode::None;
+    bool m_isBoxSelecting = false;
+    int m_boxStart[2] = {0, 0};
+    int m_boxEnd[2] = {0, 0};
 
-  // color mode
-  ColorMode m_colorMode = ColorMode::None;
+    // color mode
+    ColorMode m_colorMode = ColorMode::None;
 
-  // drag state
-  bool m_isDragging = false;
-  long long m_dragViewPointId = -1;
-  int m_dragNodeId = -1;
-  double m_dragStartX = 0, m_dragStartY = 0, m_dragStartZ = 0;
+    // drag state
+    bool m_isDragging = false;
+    long long m_dragViewPointId = -1;
+    int m_dragNodeId = -1;
+    double m_dragStartX = 0, m_dragStartY = 0, m_dragStartZ = 0;
 };

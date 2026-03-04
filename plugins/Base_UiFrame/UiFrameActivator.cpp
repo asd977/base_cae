@@ -1,3 +1,5 @@
 #include "UiFrameActivator.h"
 
-UiFrameActivator::UiFrameActivator() {}
+UiFrameActivator::UiFrameActivator()
+{
+}

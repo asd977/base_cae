@@ -4,30 +4,31 @@
 #include <ProjectNode.h>
 #include <services/SolverService.h>
 
-class Solver : public QObject, public SolverService {
-  Q_OBJECT
+class Solver : public QObject, public SolverService
+{
+    Q_OBJECT
 
- public:
-  Solver();
+  public:
+    Solver();
 
-  void newProject() override;
-  bool saveProject() override;
-  bool loadProject() override;
-  void closeProject() override;
+    void newProject() override;
+    bool saveProject() override;
+    bool loadProject() override;
+    void closeProject() override;
 
- private slots:
-  void onSeepageAction();
-  void onStressStrainAction();
-  void onComputeSeepage(ProjectNode* analysisNode);
-  void onComputeStressStrain(ProjectNode* analysisNode);
+  private slots:
+    void onSeepageAction();
+    void onStressStrainAction();
+    void onComputeSeepage(ProjectNode* analysisNode);
+    void onComputeStressStrain(ProjectNode* analysisNode);
 
- private:
-  void initAction();
-  int nextSeepageIndex() const;
-  int nextStressStrainIndex() const;
+  private:
+    void initAction();
+    int nextSeepageIndex() const;
+    int nextStressStrainIndex() const;
 
- private:
-  ProjectNode* m_root = nullptr;
+  private:
+    ProjectNode* m_root = nullptr;
 };
 
-#endif  // SOLVER_H
+#endif // SOLVER_H

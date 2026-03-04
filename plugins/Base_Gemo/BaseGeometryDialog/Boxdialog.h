@@ -16,31 +16,32 @@
 
 // 声明 gp_Pnt 为 Qt 元类型
 // Q_DECLARE_METATYPE(gp_Pnt)
-class BoxDialog : public BasePage {
-  Q_OBJECT
+class BoxDialog : public BasePage
+{
+    Q_OBJECT
 
- public:
-  BoxDialog(QWidget *parent = nullptr);
-  ~BoxDialog();
+  public:
+    BoxDialog(QWidget* parent = nullptr);
+    ~BoxDialog();
 
-  void beforeLoad() {};
-  void beforeUnload() {};
-  QJsonObject saveJson() override;
-  void loadJson(const QJsonObject &obj) override;
+    void beforeLoad() {};
+    void beforeUnload() {};
+    QJsonObject saveJson() override;
+    void loadJson(const QJsonObject& obj) override;
 
-  gp_Pnt getPosition() const;
+    gp_Pnt getPosition() const;
 
- private slots:
-  void onOkClicked();
+  private slots:
+    void onOkClicked();
 
- private:
-  QLineEdit *lengthEdit;
-  QLineEdit *widthEdit;
-  QLineEdit *heightEdit;
-  QLineEdit *xEdit;
-  QLineEdit *yEdit;
-  QLineEdit *zEdit;
-  void initUI();
+  private:
+    QLineEdit* lengthEdit;
+    QLineEdit* widthEdit;
+    QLineEdit* heightEdit;
+    QLineEdit* xEdit;
+    QLineEdit* yEdit;
+    QLineEdit* zEdit;
+    void initUI();
 };
 
-#endif  // BOXDIALOG_H
+#endif // BOXDIALOG_H
