@@ -114,7 +114,7 @@
            </sizepolicy>
           </property>
           <property name="text">
-           <string>追加到 ID</string>
+           <string>添加</string>
           </property>
          </widget>
         </item>
