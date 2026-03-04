@@ -668,8 +668,11 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadCurrentGmshMesh(QString* er
                     if (!ok)
                         continue;
 
+                    const bool shouldInsertCell =
+                        (dim == targetCellDim) || (targetCellDim == 3 && dim == 2);
+
                     vtkIdType cid = -1;
-                    if (dim == targetCellDim)
+                    if (shouldInsertCell)
                     {
                         cid = grid->InsertNextCell(vtkType, numNodes, ids);
                         elemIdArr->InsertNextValue(static_cast<int>(tags[e]));
@@ -1222,26 +1225,41 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
                 // ========== 体单元：导入 tet/hex/wedge/pyramid（高阶取角点）==========
                 int vtkType = -1;
                 int needN = 0;
+                bool isVolumeCell = false;
 
                 if (elemType == 4 || elemType == 11)
                 { // tetra4 / tetra10
                     vtkType = VTK_TETRA;
                     needN = 4;
+                    isVolumeCell = true;
                 }
                 else if (elemType == 5 || elemType == 17 || elemType == 12)
                 { // hexa8 / hexa20 / hexa27
                     vtkType = VTK_HEXAHEDRON;
                     needN = 8;
+                    isVolumeCell = true;
                 }
                 else if (elemType == 6 || elemType == 13 || elemType == 18)
                 { // prism6 / prism18 / prism15
                     vtkType = VTK_WEDGE;
                     needN = 6;
+                    isVolumeCell = true;
                 }
                 else if (elemType == 7 || elemType == 14 || elemType == 19)
                 { // pyramid5 / pyramid14 / pyramid13
                     vtkType = VTK_PYRAMID;
                     needN = 5;
+                    isVolumeCell = true;
+                }
+                else if (elemType == 2 || elemType == 9)
+                { // tri3 / tri6
+                    vtkType = VTK_TRIANGLE;
+                    needN = 3;
+                }
+                else if (elemType == 3 || elemType == 10)
+                { // quad4 / quad9
+                    vtkType = VTK_QUAD;
+                    needN = 4;
                 }
 
                 if (vtkType != -1)
@@ -1270,8 +1288,9 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
 
                     const vtkIdType cellId = grid->InsertNextCell(vtkType, needN, ptIds);
 
-                    // 体分组：physicalId -> cellIds
-                    pick.volPhysToCellIds[physicalId].push_back(qint64(cellId));
+                    // 体分组：physicalId -> cellIds（仅体单元进入体分组）
+                    if (isVolumeCell)
+                        pick.volPhysToCellIds[physicalId].push_back(qint64(cellId));
                 }
                 else
                 {
