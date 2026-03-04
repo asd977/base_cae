@@ -123,6 +123,15 @@ public slots:
 
     void applyLocalControls()
     {
+        int curvatureElemsPer2Pi = 0;
+        for (const auto& r : m_p.faceRules) {
+            if (!r.curvatureRefine) continue;
+            curvatureElemsPer2Pi = std::max(curvatureElemsPer2Pi, r.curvatureLevel);
+        }
+        try {
+            gmsh::option::setNumber("Mesh.MeshSizeFromCurvature", curvatureElemsPer2Pi);
+        } catch (...) {}
+
         for (const auto& r : m_p.edgeRules) {
             const auto ids = parseIdSet(r.edgeIds);
             for (int id : ids) {
