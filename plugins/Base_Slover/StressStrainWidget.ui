@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='UTF-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>StressStrainWidget</class>
  <widget class="QWidget" name="StressStrainWidget">
@@ -6,15 +6,27 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>520</width>
-    <height>240</height>
+    <width>366</width>
+    <height>654</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>应力应变分析</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
-      <item>
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
+   <item>
     <widget class="QLabel" name="pageNameLabel">
      <property name="text">
       <string>应力应变分析</string>
@@ -28,31 +40,18 @@
      </property>
     </widget>
    </item>
-<item>
-    <widget class="QGroupBox" name="groupBoxInfo">
-     <property name="title">
-      <string>输出说明</string>
-     </property>
-     <layout class="QVBoxLayout" name="verticalLayout_2">
-      <item>
-       <widget class="QLabel" name="labelDesc">
-        <property name="text">
-         <string>点击“计算”将导出 IFILL.DAT（与 PREP 同层）及各边界文件。</string>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-       </widget>
-      </item>
-        </layout>
-    </widget>
-   </item>
    <item>
     <layout class="QHBoxLayout" name="horizontalLayoutCompute">
      <item>
       <spacer name="horizontalSpacerCompute">
        <property name="orientation">
         <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
        </property>
       </spacer>
      </item>
@@ -65,7 +64,7 @@
      </item>
     </layout>
    </item>
-  <item>
+   <item>
     <spacer name="verticalSpacer">
      <property name="orientation">
       <enum>Qt::Vertical</enum>
@@ -78,8 +77,8 @@
      </property>
     </spacer>
    </item>
-</layout>
+  </layout>
  </widget>
- <resources />
- <connections />
+ <resources/>
+ <connections/>
 </ui>

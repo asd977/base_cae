@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='UTF-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>StressBoundaryPage</class>
  <widget class="QWidget" name="StressBoundaryPage">
@@ -6,15 +6,27 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>640</width>
-    <height>320</height>
+    <width>370</width>
+    <height>657</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>应力应变边界</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
-      <item>
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
+   <item>
     <widget class="QLabel" name="pageNameLabel">
      <property name="text">
       <string>应力应变边界</string>
@@ -28,7 +40,7 @@
      </property>
     </widget>
    </item>
-<item>
+   <item>
     <widget class="QLabel" name="labelPickHint">
      <property name="text">
       <string>请选择网格线分组：</string>
@@ -36,7 +48,7 @@
     </widget>
    </item>
    <item>
-    <widget class="QComboBox" name="comboBoxGroup" />
+    <widget class="QComboBox" name="comboBoxGroup"/>
    </item>
    <item>
     <widget class="QGroupBox" name="groupBoxInfo">
@@ -46,42 +58,60 @@
      <layout class="QGridLayout" name="gridLayoutInfo">
       <item row="0" column="0">
        <widget class="QLabel" name="label1">
-        <property name="text"><string>边界名称：</string></property>
+        <property name="text">
+         <string>边界名称：</string>
+        </property>
        </widget>
       </item>
       <item row="0" column="1">
        <widget class="QLabel" name="labelBoundaryTitle">
-        <property name="text"><string>-</string></property>
+        <property name="text">
+         <string>-</string>
+        </property>
        </widget>
       </item>
       <item row="1" column="0">
        <widget class="QLabel" name="label2">
-        <property name="text"><string>输出文件：</string></property>
+        <property name="text">
+         <string>输出文件：</string>
+        </property>
        </widget>
       </item>
       <item row="1" column="1">
        <widget class="QLabel" name="labelFileNameValue">
-        <property name="text"><string>-</string></property>
+        <property name="text">
+         <string>-</string>
+        </property>
        </widget>
       </item>
-        </layout>
+     </layout>
     </widget>
    </item>
    <item>
     <layout class="QHBoxLayout" name="horizontalLayoutBtns">
      <item>
       <widget class="QPushButton" name="btnClear">
-       <property name="text"><string>清空选线</string></property>
+       <property name="text">
+        <string>清空选线</string>
+       </property>
       </widget>
      </item>
      <item>
       <spacer name="horizontalSpacer">
-       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
       </spacer>
      </item>
     </layout>
    </item>
-  <item>
+   <item>
     <spacer name="verticalSpacer">
      <property name="orientation">
       <enum>Qt::Vertical</enum>
@@ -94,8 +124,8 @@
      </property>
     </spacer>
    </item>
-</layout>
+  </layout>
  </widget>
- <resources />
- <connections />
+ <resources/>
+ <connections/>
 </ui>
