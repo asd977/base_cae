@@ -871,6 +871,18 @@ vtkSmartPointer<vtkActor> MeshModuleController::createSurfaceActor(vtkUnstructur
     if (!grid)
         return nullptr;
 
+    bool hasVolumeCell = false;
+    const vtkIdType nCells = grid->GetNumberOfCells();
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    {
+        vtkCell* c = grid->GetCell(cid);
+        if (c && c->GetCellDimension() == 3)
+        {
+            hasVolumeCell = true;
+            break;
+        }
+    }
+
     auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
     mapper->SetInputData(grid);
     mapper->ScalarVisibilityOff();
@@ -883,6 +895,14 @@ vtkSmartPointer<vtkActor> MeshModuleController::createSurfaceActor(vtkUnstructur
     p->EdgeVisibilityOn();          // 显示边
     p->SetEdgeColor(0.0, 0.0, 0.0); // 黑色边
     p->SetLineWidth(1.0);
+
+    // 体网格使用线框显示，保证内部边界/分区线可见（不依赖透明度）。
+    if (hasVolumeCell)
+    {
+        p->SetRepresentationToWireframe();
+        p->SetColor(0.35, 0.35, 0.35);
+        p->SetLineWidth(1.0);
+    }
 
     return actor;
 }
