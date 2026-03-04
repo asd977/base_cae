@@ -129,7 +129,6 @@ public slots:
                 const auto tags = resolveEntityTagsByPhysicalUiId(1, id);
                 for (int tag : tags) {
                     try { gmsh::model::mesh::setTransfiniteCurve(tag, r.divisions, "Progression", r.bias); } catch (...) {}
-                    setPointSizeFromEntity(1, tag, r.size);
                 }
             }
         }

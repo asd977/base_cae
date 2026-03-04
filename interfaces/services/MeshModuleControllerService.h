@@ -12,10 +12,8 @@ class vtkUnstructuredGrid;
 struct EdgeControlRule
 {
     QString edgeIds;
-    double size = 1.0;
     int divisions = 10;
     double bias = 1.0;
-    bool hardConstraint = false;
 };
 
 struct FaceControlRule

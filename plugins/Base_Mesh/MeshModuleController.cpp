@@ -117,10 +117,8 @@ bool MeshModuleController::saveProject()
         {
             QJsonObject obj;
             obj["edge_ids"] = rule.edgeIds;
-            obj["size"] = rule.size;
             obj["divisions"] = rule.divisions;
             obj["bias"] = rule.bias;
-            obj["hard_constraint"] = rule.hardConstraint;
             arr.append(obj);
         }
         return arr;
@@ -207,10 +205,8 @@ bool MeshModuleController::loadProject()
         const QJsonObject obj = v.toObject();
         EdgeControlRule rule;
         rule.edgeIds = obj.value("edge_ids").toString();
-        rule.size = obj.value("size").toDouble(1.0);
         rule.divisions = obj.value("divisions").toInt(10);
         rule.bias = obj.value("bias").toDouble(1.0);
-        rule.hardConstraint = obj.value("hard_constraint").toBool(false);
         m_edgeRules.push_back(rule);
     }
 

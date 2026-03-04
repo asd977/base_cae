@@ -57,36 +57,13 @@
           </layout>
       </item>
       <item row="1" column="0">
-       <widget class="QLabel" name="labelSize">
-        <property name="text">
-         <string>目标尺寸</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="QDoubleSpinBox" name="spinSize">
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="minimum">
-         <double>0.001000000000000</double>
-        </property>
-        <property name="maximum">
-         <double>1000000.000000000000000</double>
-        </property>
-        <property name="value">
-         <double>1.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="2">
        <widget class="QLabel" name="labelDivisions">
         <property name="text">
          <string>分段数</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="3">
+      <item row="1" column="1">
        <widget class="QSpinBox" name="spinDivisions">
         <property name="minimum">
          <number>1</number>
@@ -122,13 +99,6 @@
         </property>
         <property name="value">
          <double>1.000000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="2" colspan="2">
-       <widget class="QCheckBox" name="checkHardConstraint">
-        <property name="text">
-         <string>硬约束（强制尺寸）</string>
         </property>
        </widget>
       </item>
