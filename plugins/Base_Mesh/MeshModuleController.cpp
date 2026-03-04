@@ -129,10 +129,9 @@ bool MeshModuleController::saveProject()
         {
             QJsonObject obj;
             obj["face_ids"] = rule.faceIds;
-            obj["min_size"] = rule.minSize;
-            obj["max_size"] = rule.maxSize;
+            obj["target_size"] = rule.targetSize;
             obj["curvature_refine"] = rule.curvatureRefine;
-            obj["curvature_level"] = rule.curvatureLevel;
+            obj["curvature_per_2pi"] = rule.curvatureElementsPer2Pi;
             arr.append(obj);
         }
         return arr;
@@ -216,10 +215,19 @@ bool MeshModuleController::loadProject()
         const QJsonObject obj = v.toObject();
         FaceControlRule rule;
         rule.faceIds = obj.value("face_ids").toString();
-        rule.minSize = obj.value("min_size").toDouble(0.2);
-        rule.maxSize = obj.value("max_size").toDouble(1.0);
+        if (obj.contains("target_size")) {
+            rule.targetSize = obj.value("target_size").toDouble(0.6);
+        } else {
+            const double minSize = obj.value("min_size").toDouble(0.2);
+            const double maxSize = obj.value("max_size").toDouble(1.0);
+            rule.targetSize = 0.5 * (minSize + maxSize);
+        }
         rule.curvatureRefine = obj.value("curvature_refine").toBool(true);
-        rule.curvatureLevel = obj.value("curvature_level").toInt(2);
+        if (obj.contains("curvature_per_2pi")) {
+            rule.curvatureElementsPer2Pi = obj.value("curvature_per_2pi").toInt(20);
+        } else {
+            rule.curvatureElementsPer2Pi = obj.value("curvature_level").toInt(20);
+        }
         m_faceRules.push_back(rule);
     }
 

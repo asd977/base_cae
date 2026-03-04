@@ -65,7 +65,7 @@
       <item row="1" column="0">
        <widget class="QLabel" name="labelMinSize">
         <property name="text">
-         <string>最小尺寸</string>
+         <string>目标尺寸</string>
         </property>
        </widget>
       </item>
@@ -81,30 +81,7 @@
          <double>1000000.000000000000000</double>
         </property>
         <property name="value">
-         <double>0.200000000000000</double>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="2">
-       <widget class="QLabel" name="labelMaxSize">
-        <property name="text">
-         <string>最大尺寸</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="3">
-       <widget class="QDoubleSpinBox" name="spinMaxSize">
-        <property name="decimals">
-         <number>3</number>
-        </property>
-        <property name="minimum">
-         <double>0.001000000000000</double>
-        </property>
-        <property name="maximum">
-         <double>1000000.000000000000000</double>
-        </property>
-        <property name="value">
-         <double>1.000000000000000</double>
+         <double>0.600000000000000</double>
         </property>
        </widget>
       </item>
@@ -118,23 +95,23 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="2">
+      <item row="1" column="2">
        <widget class="QLabel" name="labelCurvatureLevel">
         <property name="text">
-         <string>加密等级</string>
+         <string>每2π目标单元数</string>
         </property>
        </widget>
       </item>
-      <item row="2" column="3">
+      <item row="1" column="3">
        <widget class="QSpinBox" name="spinCurvatureLevel">
         <property name="minimum">
          <number>1</number>
         </property>
         <property name="maximum">
-         <number>5</number>
+         <number>200</number>
         </property>
         <property name="value">
-         <number>2</number>
+         <number>20</number>
         </property>
        </widget>
       </item>

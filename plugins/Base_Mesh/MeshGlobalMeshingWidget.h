@@ -126,7 +126,7 @@ public slots:
         int curvatureElemsPer2Pi = 0;
         for (const auto& r : m_p.faceRules) {
             if (!r.curvatureRefine) continue;
-            curvatureElemsPer2Pi = std::max(curvatureElemsPer2Pi, r.curvatureLevel);
+            curvatureElemsPer2Pi = std::max(curvatureElemsPer2Pi, r.curvatureElementsPer2Pi);
         }
         try {
             gmsh::option::setNumber("Mesh.MeshSizeFromCurvature", curvatureElemsPer2Pi);
@@ -144,7 +144,7 @@ public slots:
 
         for (const auto& r : m_p.faceRules) {
             const auto ids = parseIdSet(r.faceIds);
-            const double target = 0.5 * (r.minSize + r.maxSize);
+            const double target = r.targetSize;
             for (int id : ids) {
                 const auto tags = resolveEntityTagsByPhysicalUiId(2, id);
                 for (int tag : tags) {
