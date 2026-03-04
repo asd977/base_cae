@@ -94,8 +94,14 @@
         </item>
         <item>
          <widget class="QPushButton" name="btnAppendEntity">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
           <property name="text">
-           <string>追加到 ID</string>
+           <string>添加</string>
           </property>
          </widget>
         </item>
@@ -127,6 +133,13 @@
          </widget>
         </item>
        </layout>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label">
+        <property name="text">
+         <string>ID组</string>
+        </property>
+       </widget>
       </item>
      </layout>
     </widget>
