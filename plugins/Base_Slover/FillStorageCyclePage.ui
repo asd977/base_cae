@@ -27,7 +27,7 @@
    <item>
     <widget class="QSplitter" name="splitMain">
      <property name="orientation">
-      <enum>Qt::Horizontal</enum>
+      <enum>Qt::Vertical</enum>
      </property>
      <widget class="QScrollArea" name="scrollArea">
       <property name="widgetResizable">
@@ -80,7 +80,11 @@
              <item><widget class="QPushButton" name="btnWetRemove"><property name="text"><string>删除行</string></property></widget></item>
             </layout>
            </item>
-           <item><widget class="QTableWidget" name="tableWetMap"/></item>
+           <item><widget class="QTableWidget" name="tableWetMap">
+             <property name="minimumHeight">
+              <number>120</number>
+             </property>
+            </widget></item>
           </layout>
          </widget>
         </item>
@@ -96,7 +100,11 @@
              <item><widget class="QPushButton" name="btnDropRemove"><property name="text"><string>删除行</string></property></widget></item>
             </layout>
            </item>
-           <item><widget class="QTableWidget" name="tableDrop"/></item>
+           <item><widget class="QTableWidget" name="tableDrop">
+             <property name="minimumHeight">
+              <number>120</number>
+             </property>
+            </widget></item>
           </layout>
          </widget>
         </item>
@@ -112,7 +120,11 @@
              <item><widget class="QPushButton" name="btnChangeRemove"><property name="text"><string>删除行</string></property></widget></item>
             </layout>
            </item>
-           <item><widget class="QTableWidget" name="tableChange"/></item>
+           <item><widget class="QTableWidget" name="tableChange">
+             <property name="minimumHeight">
+              <number>120</number>
+             </property>
+            </widget></item>
           </layout>
          </widget>
         </item>
@@ -128,7 +140,11 @@
              <item><widget class="QPushButton" name="btnCycleRemove"><property name="text"><string>删除行</string></property></widget></item>
             </layout>
            </item>
-           <item><widget class="QTableWidget" name="tableCycle"/></item>
+           <item><widget class="QTableWidget" name="tableCycle">
+             <property name="minimumHeight">
+              <number>180</number>
+             </property>
+            </widget></item>
           </layout>
          </widget>
         </item>
@@ -172,7 +188,11 @@
              <item><widget class="QPushButton" name="btnDynaRemove"><property name="text"><string>删除行</string></property></widget></item>
             </layout>
            </item>
-           <item><widget class="QTableWidget" name="tableDyna"/></item>
+           <item><widget class="QTableWidget" name="tableDyna">
+             <property name="minimumHeight">
+              <number>120</number>
+             </property>
+            </widget></item>
           </layout>
          </widget>
         </item>
@@ -198,6 +218,9 @@
        </item>
        <item>
         <widget class="QPlainTextEdit" name="plainTextPreview">
+         <property name="minimumHeight">
+          <number>220</number>
+         </property>
          <property name="readOnly">
           <bool>true</bool>
          </property>
