@@ -42,7 +42,8 @@ FillStorageCyclePage::FillStorageCyclePage(QWidget* parent)
     {
         t->setColumnCount(headers.size());
         t->setHorizontalHeaderLabels(headers);
-        t->horizontalHeader()->setStretchLastSection(true);
+        t->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+        t->setAlternatingRowColors(true);
         t->setSelectionBehavior(QAbstractItemView::SelectRows);
         t->setSelectionMode(QAbstractItemView::SingleSelection);
     };
@@ -60,6 +61,17 @@ FillStorageCyclePage::FillStorageCyclePage(QWidget* parent)
     ensureTableRows(ui->tableChange, ui->spinNchange->value());
     ensureTableRows(ui->tableCycle, ui->spinNcircle->value());
     ensureTableRows(ui->tableDyna, ui->spinNumDyna->value());
+
+    ui->btnWetAdd->setToolTip("新增一条湿化映射");
+    ui->btnWetRemove->setToolTip("删除选中湿化映射（未选中则删除最后一行）");
+    ui->btnDropAdd->setToolTip("新增一条骤降记录");
+    ui->btnDropRemove->setToolTip("删除选中骤降记录（未选中则删除最后一行）");
+    ui->btnChangeAdd->setToolTip("新增一条材料变换");
+    ui->btnChangeRemove->setToolTip("删除选中材料变换（未选中则删除最后一行）");
+    ui->btnCycleAdd->setToolTip("新增一个填筑-蓄水周期行");
+    ui->btnCycleRemove->setToolTip("删除选中周期行（未选中则删除最后一行）");
+    ui->btnDynaAdd->setToolTip("新增一条静力-动力材料映射");
+    ui->btnDynaRemove->setToolTip("删除选中静力-动力材料映射（未选中则删除最后一行）");
 
     setupConnections();
     updatePreview();
