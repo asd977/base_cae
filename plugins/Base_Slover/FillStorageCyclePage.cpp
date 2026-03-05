@@ -8,9 +8,13 @@
 #include <QJsonArray>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QHBoxLayout>
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QTableWidget>
+#include <QVBoxLayout>
 
 FillStorageCyclePage::FillStorageCyclePage(QWidget* parent)
     : BasePage("FillStorageCycle"), ui(new Ui::FillStorageCyclePage)
@@ -72,6 +76,46 @@ FillStorageCyclePage::FillStorageCyclePage(QWidget* parent)
     ui->btnCycleRemove->setToolTip("删除选中周期行（未选中则删除最后一行）");
     ui->btnDynaAdd->setToolTip("新增一条静力-动力材料映射");
     ui->btnDynaRemove->setToolTip("删除选中静力-动力材料映射（未选中则删除最后一行）");
+
+    ui->tableWetMap->setVisible(false);
+    ui->tableDrop->setVisible(false);
+    ui->tableChange->setVisible(false);
+    ui->tableCycle->setVisible(false);
+    ui->tableDyna->setVisible(false);
+
+    ui->btnWetAdd->setVisible(false);
+    ui->btnWetRemove->setVisible(false);
+    ui->btnDropAdd->setVisible(false);
+    ui->btnDropRemove->setVisible(false);
+    ui->btnChangeAdd->setVisible(false);
+    ui->btnChangeRemove->setVisible(false);
+    ui->btnCycleAdd->setVisible(false);
+    ui->btnCycleRemove->setVisible(false);
+    ui->btnDynaAdd->setVisible(false);
+    ui->btnDynaRemove->setVisible(false);
+
+    auto* btnWetConfig = new QPushButton("设置映射...", this);
+    auto* btnDropConfig = new QPushButton("设置骤降...", this);
+    auto* btnChangeConfig = new QPushButton("设置变换...", this);
+    auto* btnCycleConfig = new QPushButton("设置周期...", this);
+    auto* btnDynaConfig = new QPushButton("设置材料映射...", this);
+
+    ui->wetToolbar->addWidget(btnWetConfig);
+    ui->dropToolbar->addWidget(btnDropConfig);
+    ui->changeToolbar->addWidget(btnChangeConfig);
+    ui->cycleToolbar->addWidget(btnCycleConfig);
+    ui->dynaToolbar->addWidget(btnDynaConfig);
+
+    connect(btnWetConfig, &QPushButton::clicked, this,
+            [this]() { openTableEditor("湿化材料映射", ui->tableWetMap, ui->spinNumWet); });
+    connect(btnDropConfig, &QPushButton::clicked, this,
+            [this]() { openTableEditor("水位骤降", ui->tableDrop, ui->spinNumDrop); });
+    connect(btnChangeConfig, &QPushButton::clicked, this,
+            [this]() { openTableEditor("材料属性变换", ui->tableChange, ui->spinNchange); });
+    connect(btnCycleConfig, &QPushButton::clicked, this,
+            [this]() { openTableEditor("填筑-蓄水周期", ui->tableCycle, ui->spinNcircle); });
+    connect(btnDynaConfig, &QPushButton::clicked, this,
+            [this]() { openTableEditor("静力-动力材料映射", ui->tableDyna, ui->spinNumDyna); });
 
     setupConnections();
     updatePreview();
@@ -294,6 +338,69 @@ void FillStorageCyclePage::removeTableRow(QTableWidget* table, QSpinBox* spin)
         return;
 
     table->removeRow(row);
+    syncSpinWithTableRows(spin, table);
+    updatePreview();
+}
+
+void FillStorageCyclePage::openTableEditor(const QString& title, QTableWidget* table, QSpinBox* spin)
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(title);
+    dialog.resize(900, 480);
+
+    auto* layout = new QVBoxLayout(&dialog);
+    auto* editorTable = new QTableWidget(&dialog);
+    editorTable->setColumnCount(table->columnCount());
+    QStringList headers;
+    for (int c = 0; c < table->columnCount(); ++c)
+        headers << table->horizontalHeaderItem(c)->text();
+    editorTable->setHorizontalHeaderLabels(headers);
+    editorTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    editorTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    editorTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    editorTable->setAlternatingRowColors(true);
+    editorTable->setRowCount(table->rowCount());
+    for (int r = 0; r < table->rowCount(); ++r)
+        for (int c = 0; c < table->columnCount(); ++c)
+            if (auto* src = table->item(r, c))
+                editorTable->setItem(r, c, src->clone());
+
+    auto* tool = new QHBoxLayout();
+    auto* btnAdd = new QPushButton("添加行", &dialog);
+    auto* btnRemove = new QPushButton("删除行", &dialog);
+    tool->addStretch();
+    tool->addWidget(btnAdd);
+    tool->addWidget(btnRemove);
+
+    connect(btnAdd, &QPushButton::clicked, &dialog,
+            [editorTable]() { editorTable->insertRow(editorTable->rowCount()); });
+    connect(btnRemove, &QPushButton::clicked, &dialog,
+            [editorTable]()
+            {
+                int row = editorTable->currentRow();
+                if (row < 0)
+                    row = editorTable->rowCount() - 1;
+                if (row >= 0)
+                    editorTable->removeRow(row);
+            });
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    layout->addLayout(tool);
+    layout->addWidget(editorTable);
+    layout->addWidget(buttons);
+
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    table->setRowCount(editorTable->rowCount());
+    for (int r = 0; r < editorTable->rowCount(); ++r)
+        for (int c = 0; c < editorTable->columnCount(); ++c)
+            if (auto* src = editorTable->item(r, c))
+                table->setItem(r, c, src->clone());
+
     syncSpinWithTableRows(spin, table);
     updatePreview();
 }

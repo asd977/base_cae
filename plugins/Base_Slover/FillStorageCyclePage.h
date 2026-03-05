@@ -36,6 +36,7 @@ class FillStorageCyclePage : public BasePage
     void syncSpinWithTableRows(QSpinBox* spin, QTableWidget* table) const;
     void addTableRow(QTableWidget* table, QSpinBox* spin);
     void removeTableRow(QTableWidget* table, QSpinBox* spin);
+    void openTableEditor(const QString& title, QTableWidget* table, QSpinBox* spin);
     QJsonArray tableToJson(QTableWidget* table) const;
     void jsonToTable(const QJsonArray& arr, QTableWidget* table) const;
     QString tableItemText(QTableWidget* table, int row, int col,
