@@ -52,9 +52,8 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_visual = ServiceRegistry::instance().getService<VisualWidgetService>();
 
     // 全局解决共面闪烁（面/边 overlay）
-    //    vtkMapper::SetResolveCoincidentTopologyToPolygonOffset();
-    //    vtkMapper::SetResolveCoincidentTopologyPolygonOffsetParameters(+1.0,
-    //    +1000.0);
+    vtkMapper::SetResolveCoincidentTopologyToPolygonOffset();
+    vtkMapper::SetResolveCoincidentTopologyPolygonOffsetParameters(+1.0, +1000.0);
 
     // callbacks
     m_cbLeftPress = vtkSmartPointer<vtkCallbackCommand>::New();
