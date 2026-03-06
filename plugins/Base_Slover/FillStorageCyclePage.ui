@@ -8,9 +8,7 @@
    <item><widget class="QLabel" name="titleLabel"><property name="text"><string>填筑-蓄水计算工况设置（4.3.5）</string></property></widget></item>
    <item><widget class="QLabel" name="tipLabel"><property name="text"><string>此节点仅设置单个工况的 4.3.5 参数值；NCASE 与 ICASE 序号自动生成，4.3.4 的 MCASE 由土石坝计算节点统计填筑-蓄水节点数量自动生成。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
    <item>
-    <widget class="QScrollArea" name="scrollArea">
-     <property name="widgetResizable"><bool>true</bool></property>
-     <widget class="QWidget" name="scrollAreaWidgetContents">
+    <widget class="QWidget" name="scrollAreaWidgetContents">
       <layout class="QVBoxLayout" name="verticalLayoutContent">
        <item>
         <layout class="QFormLayout" name="formLayoutMain">
@@ -49,7 +47,6 @@
        <item><widget class="QLabel" name="labelSection"><property name="text"><string>4.3.5 填筑-蓄水计算工况块（预览）</string></property></widget></item>
        <item><widget class="QPlainTextEdit" name="plainTextEditSection"/></item>
       </layout>
-     </widget>
     </widget>
    </item>
   </layout>
