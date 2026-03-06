@@ -20,7 +20,8 @@ class StressStrainWidget : public BasePage
     void beforeLoad() override;
     void beforeUnload() override;
 
-    bool exportIfillDatFile(const QString& cycleSectionText) const;
+    bool exportIfillDatFile(const QString& baseVariablesText, const QString& upliftAndAxisText,
+                            const QString& rockStressText, const QString& cycleSectionText) const;
 
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
@@ -32,5 +33,7 @@ class StressStrainWidget : public BasePage
     void onComputeClicked();
 
   private:
+    int detectCaseCount(const QString& cycleSectionText) const;
+
     Ui::StressStrainWidget* ui;
 };

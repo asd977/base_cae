@@ -5,6 +5,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QRegularExpression>
 #include <QTextStream>
 
 #include "ui_StressStrainWidget.h"
@@ -29,7 +30,10 @@ void StressStrainWidget::beforeUnload()
 {
 }
 
-bool StressStrainWidget::exportIfillDatFile(const QString& cycleSectionText) const
+bool StressStrainWidget::exportIfillDatFile(const QString& baseVariablesText,
+                                            const QString& upliftAndAxisText,
+                                            const QString& rockStressText,
+                                            const QString& cycleSectionText) const
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
@@ -58,45 +62,70 @@ bool StressStrainWidget::exportIfillDatFile(const QString& cycleSectionText) con
     os.setRealNumberNotation(QTextStream::FixedNotation);
     os.setRealNumberPrecision(6);
 
-    os << "'" << prepDirAbs << "'       1\n";
-    os << "'FA_DAMUP.DAT'       2\n";
-    os << "'FA_DAMDW.DAT'       3\n";
-    os << "'FA_DAMBASE.DAT'       4\n";
-    os << "'FA_DAMMID.DAT'       5\n";
-    os << "'MA_ROCK.DAT'       6\n";
-    os << "'MA_DAMUP.DAT'       7\n";
-    os << "'MA_DAMDW.DAT'       8\n";
-    os << "'MA_CORE.DAT'       9\n";
-    os << "'4'      10\n";
-    os << "'MA_PLATE.DAT'      11\n";
-    os << "'JDTRACE.DAT'      12\n";
-    os << "'KETRACE.DAT'      13\n";
-    os << "'TDTRACE.DAT'      14\n";
-    os << "'0'      15\n";
-    os << "'0'      16\n";
-    os << "'0.05'      17\n";
-    os << "'0.0'      18\n";
-    os << "'1'      19\n";
-    os << "'4   10'      20\n";
-    os << "'     0.000'      21\n";
-    os << "'1.962'      22\n";
-    os << "'1.308'      23\n";
-    os << "'0.1'      24\n";
-    os << "'0.2'      25\n";
-    os << "'2.0'      26\n";
-    os << "'0.9'      27\n";
-    os << "'7.0'      28\n";
-    os << "'0'      29\n";
-    os << "'10'      30\n";
-    os << "     0.000000       0.000000       0.000000        X1      X2      "
-          "X3\n";
-    os << "     0.000000       0.000000       0.000000     ALFA1   ALFA2   "
-          "ALFA3\n";
-    os << "   1     3       0.000000       0.000000       0.000000       "
-          "0.000000  IX IPGEN XA  YA  XB YB\n";
-    os << "   1     0    IFROCK   IFISO\n";
-    os << "   1   MCASE\n";
-    os << "   1     1\n";
+    QString baseSection = baseVariablesText.trimmed();
+    if (baseSection.isEmpty())
+    {
+        baseSection =
+            "'" + prepDirAbs + "'      1\n"
+            "'FA_DAMUP.DAT'      2\n"
+            "'FA_DAMDW.DAT'      3\n"
+            "'FA_DAMBASE.DAT'      4\n"
+            "'FA_DAMMID.DAT'      5\n"
+            "'MA_ROCK.DAT'      6\n"
+            "'MA_DAMUP.DAT'      7\n"
+            "'MA_DAMDW.DAT'      8\n"
+            "'MA_CORE.DAT'      9\n"
+            "'4'      10\n"
+            "'MA_PLATE.DAT'      11\n"
+            "'JDTRACE.DAT'      12\n"
+            "'KETRACE.DAT'      13\n"
+            "'TDTRACE.DAT'      14\n"
+            "'0'      15\n"
+            "'0'      16\n"
+            "'0.05'      17\n"
+            "'0.01'      18\n"
+            "'2'      19\n"
+            "'4   10'      20\n"
+            "'0.000'      21\n"
+            "'1.962'      22\n"
+            "'1.308'      23\n"
+            "'0.1'      24\n"
+            "'0.2'      25\n"
+            "'2.0'      26\n"
+            "'0.9'      27\n"
+            "'7.0'      28\n"
+            "'0'      29\n"
+            "'10'      30";
+    }
+    baseSection.replace("F:\\FEMCLASS\\Z03_JUNZ3D\\PREP\\", prepDirAbs);
+    os << baseSection;
+    if (!baseSection.endsWith('\n'))
+        os << "\n";
+
+    QString upliftSection = upliftAndAxisText.trimmed();
+    if (upliftSection.isEmpty())
+    {
+        upliftSection =
+            "0.000000  0.000000  0.000000    X1  X2  X3\n"
+            "0.000000  0.000000  0.000000    ALFA1  ALFA2  ALFA3\n"
+            "1  3  0.000000  0.000000  0.000000  0.000000    IXUPDW XAMID YAMID XBMID "
+            "YBMID";
+    }
+    os << upliftSection;
+    if (!upliftSection.endsWith('\n'))
+        os << "\n";
+
+    QString rockSection = rockStressText.trimmed();
+    if (rockSection.isEmpty())
+        rockSection = "1  0    IFROCK  IFISO";
+    os << rockSection;
+    if (!rockSection.endsWith('\n'))
+        os << "\n";
+
+    const int mcase = detectCaseCount(cycleSectionText);
+    os << QString("%1   MCASE\n").arg(mcase);
+    for (int i = 1; i <= mcase; ++i)
+        os << QString("%1     %1\n").arg(i);
 
     QString dynamicSection = cycleSectionText;
     if (dynamicSection.trimmed().isEmpty())
@@ -128,6 +157,13 @@ bool StressStrainWidget::exportIfillDatFile(const QString& cycleSectionText) con
         os << "\n";
 
     return true;
+}
+
+int StressStrainWidget::detectCaseCount(const QString& cycleSectionText) const
+{
+    const QRegularExpression caseRegex(QStringLiteral("(?m)^\\s*\\d+\\s+ICASE"));
+    const int count = cycleSectionText.count(caseRegex);
+    return count > 0 ? count : 1;
 }
 
 QJsonObject StressStrainWidget::saveJson()

@@ -22,11 +22,17 @@ class FillStorageCyclePage : public BasePage
     void beforeUnload() override;
 
     QString sectionText() const;
+    QString baseVariablesText() const;
+    QString upliftAndAxisText() const;
+    QString rockStressText() const;
 
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
 
   private:
+    QString defaultBaseVariablesText() const;
+    QString defaultUpliftAndAxisText() const;
+    QString defaultRockStressText() const;
     QString defaultSectionText() const;
 
   private:

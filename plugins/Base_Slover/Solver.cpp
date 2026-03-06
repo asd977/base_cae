@@ -333,6 +333,9 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
 
     auto* stressPage = dynamic_cast<StressStrainWidget*>(analysisNode->getPage());
     QString cycleSectionText;
+    QString baseVariablesText;
+    QString upliftAndAxisText;
+    QString rockStressText;
     for (ProjectNode* child : analysisNode->getChildren())
     {
         auto* fillStorageCyclePage = dynamic_cast<FillStorageCyclePage*>(child->getPage());
@@ -340,10 +343,14 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
             continue;
 
         cycleSectionText = fillStorageCyclePage->sectionText();
+        baseVariablesText = fillStorageCyclePage->baseVariablesText();
+        upliftAndAxisText = fillStorageCyclePage->upliftAndAxisText();
+        rockStressText = fillStorageCyclePage->rockStressText();
         break;
     }
 
-    if (!stressPage || !stressPage->exportIfillDatFile(cycleSectionText))
+    if (!stressPage || !stressPage->exportIfillDatFile(baseVariablesText, upliftAndAxisText,
+                                                       rockStressText, cycleSectionText))
     {
         ok = false;
         failedFiles << "IFILL.DAT";
