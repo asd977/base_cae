@@ -51,11 +51,6 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
 {
     m_visual = ServiceRegistry::instance().getService<VisualWidgetService>();
 
-    // 全局解决共面闪烁（面/边 overlay）
-    //    vtkMapper::SetResolveCoincidentTopologyToPolygonOffset();
-    //    vtkMapper::SetResolveCoincidentTopologyPolygonOffsetParameters(+1.0,
-    //    +1000.0);
-
     // callbacks
     m_cbLeftPress = vtkSmartPointer<vtkCallbackCommand>::New();
     m_cbLeftPress->SetClientData(this);
@@ -334,6 +329,17 @@ void PickManager::activate(const QString& domain, const QString& uuid, PickMode 
     if (mode == PickMode::Face)
         markDirty(DirtyFace);
 
+    const bool needPolygonOffset = (mode == PickMode::Edge || mode == PickMode::Face);
+    if (needPolygonOffset)
+    {
+        vtkMapper::SetResolveCoincidentTopologyToPolygonOffset();
+        vtkMapper::SetResolveCoincidentTopologyPolygonOffsetParameters(+1.0, +1000.0);
+    }
+    else
+    {
+        vtkMapper::SetResolveCoincidentTopologyToOff();
+    }
+
     setupPicking();
 }
 
@@ -350,6 +356,8 @@ void PickManager::deactivate(const QString& domain, const QString& uuid, PickMod
         commitFaceExclusive(domain, uuid);
 
     teardownPicking();
+
+    vtkMapper::SetResolveCoincidentTopologyToOff();
 
     m_currentDomain.clear();
     m_currentUUid.clear();

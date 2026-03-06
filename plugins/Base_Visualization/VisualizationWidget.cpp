@@ -62,10 +62,6 @@ VisualizationWidget::~VisualizationWidget() = default;
 
 void VisualizationWidget::initVtk()
 {
-    // 全局解决共面闪烁（面/边 overlay）
-    vtkMapper::SetResolveCoincidentTopologyToPolygonOffset();
-    vtkMapper::SetResolveCoincidentTopologyPolygonOffsetParameters(+1.0, +1000.0);
-
     m_renderWindow = vtkSmartPointer<vtkGenericOpenGLRenderWindow>::New();
     m_vtkWidget->setRenderWindow(m_renderWindow);
 
