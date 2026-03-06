@@ -249,12 +249,12 @@ class CORE_EXPORT PickManager : public QObject
     QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerPointSolidByDomain;
     QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerPointLineByDomain;
 
-    // ============ edge overlay ============
-    vtkSmartPointer<vtkPoints> m_edgePts;
-    vtkSmartPointer<vtkCellArray> m_edgeLines;
-    vtkSmartPointer<vtkPolyData> m_edgePoly;
-    vtkSmartPointer<vtkPolyDataMapper> m_edgeMapper;
-    vtkSmartPointer<vtkActor> m_edgeActor;
+    // ============ face overlay ============
+    vtkSmartPointer<vtkPoints> m_facePts;
+    vtkSmartPointer<vtkCellArray> m_facePolys;
+    vtkSmartPointer<vtkPolyData> m_facePoly;
+    vtkSmartPointer<vtkPolyDataMapper> m_faceMapper;
+    vtkSmartPointer<vtkActor> m_faceActor;
 
     QHash<QString, QHash<vtkIdType, QString>> m_ownerEdgeSolidByDomain;
     QHash<QString, QHash<QString, QSet<vtkIdType>>> m_edgesSolidByDomainUuid;
@@ -264,13 +264,7 @@ class CORE_EXPORT PickManager : public QObject
     QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerEdgeSolidByDomain;
     QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerEdgeLineByDomain;
 
-    // ============ face overlay ============
-    vtkSmartPointer<vtkPoints> m_facePts;
-    vtkSmartPointer<vtkCellArray> m_facePolys;
-    vtkSmartPointer<vtkPolyData> m_facePoly;
-    vtkSmartPointer<vtkPolyDataMapper> m_faceMapper;
-    vtkSmartPointer<vtkActor> m_faceActor;
-
+    // ============ face selection ownership ============
     QHash<QString, QHash<vtkIdType, QString>> m_ownerFaceSolidByDomain;
     QHash<QString, QHash<QString, QSet<vtkIdType>>> m_facesSolidByDomainUuid;
     QHash<QString, QHash<vtkIdType, QString>> m_ownerFaceLineByDomain;

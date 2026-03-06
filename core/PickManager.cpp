@@ -52,9 +52,8 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_visual = ServiceRegistry::instance().getService<VisualWidgetService>();
 
     // 全局解决共面闪烁（面/边 overlay）
-    //    vtkMapper::SetResolveCoincidentTopologyToPolygonOffset();
-    //    vtkMapper::SetResolveCoincidentTopologyPolygonOffsetParameters(+1.0,
-    //    +1000.0);
+    vtkMapper::SetResolveCoincidentTopologyToPolygonOffset();
+    vtkMapper::SetResolveCoincidentTopologyPolygonOffsetParameters(1.0, 1000.0);
 
     // callbacks
     m_cbLeftPress = vtkSmartPointer<vtkCallbackCommand>::New();
@@ -100,59 +99,35 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_visual->addProp("pick.node", m_selActor, QString("{node} 选中点"), QString("拾取选中点集合"),
                       true, true);
 
-    // ================== Edge overlay (polyline) ==================
-    m_edgePts = vtkSmartPointer<vtkPoints>::New();
-    m_edgeLines = vtkSmartPointer<vtkCellArray>::New();
-    m_edgePoly = vtkSmartPointer<vtkPolyData>::New();
-    m_edgePoly->SetPoints(m_edgePts);
-    m_edgePoly->SetLines(m_edgeLines);
-
-    m_edgeMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-    m_edgeMapper->SetInputData(m_edgePoly);
-
-    m_edgeActor = vtkSmartPointer<vtkActor>::New();
-    m_edgeActor->SetMapper(m_edgeMapper);
-    m_edgeActor->GetProperty()->SetColor(1.0, 1.0, 0.1);
-    m_edgeActor->GetProperty()->SetLineWidth(3.0);
-    m_edgeActor->GetProperty()->SetRepresentationToWireframe();
-    m_edgeActor->PickableOff();
-    m_edgeActor->SetVisibility(false);
-
-    m_visual->removeProp("pick.edge", false);
-    m_visual->addProp("pick.edge", m_edgeActor, QString("{edge} 选中边"),
-                      QString("拾取选中边集合（edgeKey）"), true, true);
-
     // ================== Face overlay ==================
-    // --- 数据初始化 ---
     m_facePts = vtkSmartPointer<vtkPoints>::New();
     m_facePolys = vtkSmartPointer<vtkCellArray>::New();
     m_facePoly = vtkSmartPointer<vtkPolyData>::New();
-
     m_facePoly->SetPoints(m_facePts);
     m_facePoly->SetPolys(m_facePolys);
 
-    // --- Mapper 配置 ---
     m_faceMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-    m_faceMapper->SetRelativeCoincidentTopologyPolygonOffsetParameters(-1.0, -20.0);
     m_faceMapper->SetInputData(m_facePoly);
 
-    // --- Actor 属性设置 ---
     m_faceActor = vtkSmartPointer<vtkActor>::New();
-    m_faceActor->GetProperty()->BackfaceCullingOn();
     m_faceActor->SetMapper(m_faceMapper);
-    m_faceActor->GetProperty()->SetColor(0.2, 0.6, 1.0);
-    m_faceActor->GetProperty()->SetOpacity(1);
+    m_faceActor->GetProperty()->BackfaceCullingOn();
     m_faceActor->GetProperty()->SetRepresentationToSurface();
-    m_faceActor->SetVisibility(false);
-
-    // --- 交互控制 (高亮 actor 不参与 pick) ---
-    m_selActor->PickableOff();
-    m_edgeActor->PickableOff();
+    m_faceActor->GetProperty()->SetColor(1.0, 0.55, 0.10);
+    m_faceActor->GetProperty()->SetOpacity(0.38);
+    m_faceActor->GetProperty()->SetEdgeVisibility(true);
+    m_faceActor->GetProperty()->SetEdgeColor(1.0, 0.2, 0.1);
+    m_faceActor->GetProperty()->SetLineWidth(2.0);
+    m_faceActor->GetProperty()->LightingOff();
     m_faceActor->PickableOff();
+    m_faceActor->SetVisibility(false);
 
     m_visual->removeProp("pick.face", false);
     m_visual->addProp("pick.face", m_faceActor, QString("{face} 选中面"), QString("拾取选中面集合"),
                       true, true);
+
+    // --- 交互控制 (高亮 actor 不参与 pick) ---
+    m_selActor->PickableOff();
 
     // ================== Line node hints ==================
     m_lineNodePts = vtkSmartPointer<vtkPoints>::New();
@@ -356,8 +331,6 @@ void PickManager::deactivate(const QString& domain, const QString& uuid, PickMod
 
     if (m_selActor)
         m_selActor->SetVisibility(false);
-    if (m_edgeActor)
-        m_edgeActor->SetVisibility(false);
     if (m_faceActor)
         m_faceActor->SetVisibility(false);
     if (m_lineNodeActor)
@@ -371,19 +344,6 @@ void PickManager::deactivate(const QString& domain, const QString& uuid, PickMod
     }
     if (m_selPoly)
         m_selPoly->Modified();
-
-    if (m_edgePts)
-    {
-        m_edgePts->Reset();
-        m_edgePts->Modified();
-    }
-    if (m_edgeLines)
-    {
-        m_edgeLines->Reset();
-        m_edgeLines->Modified();
-    }
-    if (m_edgePoly)
-        m_edgePoly->Modified();
 
     if (m_facePts)
     {
@@ -404,10 +364,10 @@ void PickManager::deactivate(const QString& domain, const QString& uuid, PickMod
 
 void PickManager::updateActorVisibility()
 {
-    if (!m_selActor || !m_edgeActor || !m_faceActor)
+    if (!m_selActor || !m_faceActor)
         return;
-    m_selActor->SetVisibility(m_pickMode == PickMode::Node);
-    m_edgeActor->SetVisibility(m_pickMode == PickMode::Edge);
+
+    m_selActor->SetVisibility(m_pickMode == PickMode::Node || m_pickMode == PickMode::Edge);
     m_faceActor->SetVisibility(m_pickMode == PickMode::Face);
 }
 
@@ -870,21 +830,19 @@ void PickManager::toggleSelectEdge(GridKind kind, vtkIdType edgeKey)
 
 void PickManager::rebuildEdgePolyForActive()
 {
-    if (!m_edgePts || !m_edgeLines || !m_edgePoly)
+    if (!m_selPts)
         return;
 
-    m_edgePts->Reset();
-    m_edgeLines->Reset();
+    m_selPts->Reset();
 
     const auto setS = m_edgesSolidByDomainUuid.value(m_currentDomain).value(m_currentUUid);
     const auto setL = m_edgesLineByDomainUuid.value(m_currentDomain).value(m_currentUUid);
 
-    // 预估：每条边至少2点
     vtkIdType approxPts = vtkIdType(setS.size() + setL.size()) * 2;
     if (approxPts > 0)
-        m_edgePts->Allocate(approxPts);
+        m_selPts->Allocate(approxPts);
 
-    auto buildOne = [&](vtkUnstructuredGrid* grid, const QSet<vtkIdType>& set)
+    auto appendEdgePoints = [&](vtkUnstructuredGrid* grid, const QSet<vtkIdType>& set)
     {
         if (!grid)
             return;
@@ -901,7 +859,6 @@ void PickManager::rebuildEdgePolyForActive()
                 continue;
 
             QVector<vtkIdType> epids;
-
             if (cell->GetCellDimension() == 1 || edgeLocalId == 15)
             {
                 vtkIdList* ids = cell->GetPointIds();
@@ -924,24 +881,21 @@ void PickManager::rebuildEdgePolyForActive()
                     epids.push_back(ids->GetId(i));
             }
 
-            const vtkIdType n = epids.size();
-            m_edgeLines->InsertNextCell(n);
-            for (vtkIdType k = 0; k < n; ++k)
+            for (vtkIdType k = 0; k < epids.size(); ++k)
             {
                 double p[3];
                 grid->GetPoint(epids[int(k)], p);
-                vtkIdType lpid = m_edgePts->InsertNextPoint(p);
-                m_edgeLines->InsertCellPoint(lpid);
+                m_selPts->InsertNextPoint(p);
             }
         }
     };
 
-    buildOne(m_gridSolid, setS);
-    buildOne(m_gridLine, setL);
+    appendEdgePoints(m_gridSolid, setS);
+    appendEdgePoints(m_gridLine, setL);
 
-    m_edgePts->Modified();
-    m_edgeLines->Modified();
-    m_edgePoly->Modified();
+    m_selPts->Modified();
+    if (m_selPoly)
+        m_selPoly->Modified();
 }
 
 // ===================== Face =====================
@@ -1102,12 +1056,11 @@ void PickManager::rebuildFacePolyForActive()
     const auto setS = m_facesSolidByDomainUuid.value(m_currentDomain).value(m_currentUUid);
     const auto setL = m_facesLineByDomainUuid.value(m_currentDomain).value(m_currentUUid);
 
-    // 粗略预估：每个面至少3点
-    vtkIdType approxPts = vtkIdType(setS.size() + setL.size()) * 3;
+    vtkIdType approxPts = vtkIdType(setS.size() + setL.size()) * 4;
     if (approxPts > 0)
         m_facePts->Allocate(approxPts);
 
-    auto buildOne = [&](vtkUnstructuredGrid* grid, const QSet<vtkIdType>& set)
+    auto appendFaces = [&](vtkUnstructuredGrid* grid, const QSet<vtkIdType>& set)
     {
         if (!grid)
             return;
@@ -1124,7 +1077,6 @@ void PickManager::rebuildFacePolyForActive()
                 continue;
 
             QVector<vtkIdType> fpids;
-
             if (cell->GetCellDimension() == 2 || faceLocalId == 15)
             {
                 vtkIdList* ids = cell->GetPointIds();
@@ -1159,8 +1111,8 @@ void PickManager::rebuildFacePolyForActive()
         }
     };
 
-    buildOne(m_gridSolid, setS);
-    buildOne(m_gridLine, setL);
+    appendFaces(m_gridSolid, setS);
+    appendFaces(m_gridLine, setL);
 
     m_facePts->Modified();
     m_facePolys->Modified();
