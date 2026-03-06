@@ -465,8 +465,9 @@ void MeshGlobalMeshingWidget::showMeshVtk(const QString& vtkPath)
     visual->addProp("mesh.global.surf", actorSurf, QString("{mesh} 全局网格-表面"));
     visual->addProp("mesh.global.wire", actorWire, QString("{mesh} 全局网格-线框"));
 
-    // 网格结果展示时默认隐藏几何；当用户切回几何树节点会自动恢复。
-    visual->setGroupVisible("Geometry", false, false);
+    // 网格结果展示时保留几何可见，避免用户误判“网格后几何内部消失”。
+    // 如需仅看网格，可在树/显示面板手动关闭 Geometry 组。
+    visual->setGroupVisible("Geometry", true, false);
 
     visual->resetCamera();
     visual->render();
