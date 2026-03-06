@@ -17,7 +17,6 @@
 #include <vtkIdList.h>
 #include <vtkLine.h>
 #include <vtkMapper.h>
-#include <vtkDataSetMapper.h>
 #include <vtkMath.h>
 #include <vtkPlane.h>
 #include <vtkPointData.h>
@@ -26,7 +25,6 @@
 #include <vtkRenderWindowInteractor.h>
 #include <vtkRenderer.h>
 #include <vtkSelectionNode.h>
-#include <vtkUnsignedCharArray.h>
 
 static inline double dist2PointToSegment(const double x[3], const double a[3], const double b[3])
 {
@@ -306,8 +304,6 @@ void PickManager::deactivate(const QString& domain, const QString& uuid, PickMod
 
     if (m_selActor)
         m_selActor->SetVisibility(false);
-    clearFaceSelectionColor(m_solidProp);
-    clearFaceSelectionColor(m_lineProp);
     if (m_lineNodeActor)
         m_lineNodeActor->SetVisibility(false);
 
@@ -328,19 +324,8 @@ void PickManager::updateActorVisibility()
 {
     if (!m_selActor)
         return;
-    m_selActor->SetVisibility(m_pickMode == PickMode::Node || m_pickMode == PickMode::Edge);
-    if (m_pickMode == PickMode::Face)
-    {
-        const auto setS = m_facesSolidByDomainUuid.value(m_currentDomain).value(m_currentUUid);
-        const auto setL = m_facesLineByDomainUuid.value(m_currentDomain).value(m_currentUUid);
-        applyFaceSelectionColor(m_gridSolid, m_solidProp, setS);
-        applyFaceSelectionColor(m_gridLine, m_lineProp, setL);
-    }
-    else
-    {
-        clearFaceSelectionColor(m_solidProp);
-        clearFaceSelectionColor(m_lineProp);
-    }
+    m_selActor->SetVisibility(m_pickMode == PickMode::Node || m_pickMode == PickMode::Edge ||
+                              m_pickMode == PickMode::Face);
 }
 
 void PickManager::setupPicking()
@@ -1019,88 +1004,67 @@ void PickManager::toggleSelectFace(GridKind kind, vtkIdType faceKey)
 
 void PickManager::rebuildFacePolyForActive()
 {
+    if (!m_selPts)
+        return;
+
+    m_selPts->Reset();
+
     const auto setS = m_facesSolidByDomainUuid.value(m_currentDomain).value(m_currentUUid);
     const auto setL = m_facesLineByDomainUuid.value(m_currentDomain).value(m_currentUUid);
 
-    applyFaceSelectionColor(m_gridSolid, m_solidProp, setS);
-    applyFaceSelectionColor(m_gridLine, m_lineProp, setL);
-}
+    vtkIdType approxPts = vtkIdType(setS.size() + setL.size()) * 4;
+    if (approxPts > 0)
+        m_selPts->Allocate(approxPts);
 
-void PickManager::applyFaceSelectionColor(vtkUnstructuredGrid* grid, vtkProp* prop,
-                                          const QSet<vtkIdType>& selectedFaceKeys)
-{
-    if (!grid || !prop)
-        return;
-
-    auto* actor = vtkActor::SafeDownCast(prop);
-    if (!actor)
-        return;
-
-    auto* mapper = vtkDataSetMapper::SafeDownCast(actor->GetMapper());
-    if (!mapper)
-        return;
-
-    const vtkIdType nCells = grid->GetNumberOfCells();
-    if (nCells <= 0)
+    auto appendFacePoints = [&](vtkUnstructuredGrid* grid, const QSet<vtkIdType>& set)
     {
-        clearFaceSelectionColor(prop);
-        return;
-    }
+        if (!grid)
+            return;
 
-    auto colors = vtkSmartPointer<vtkUnsignedCharArray>::New();
-    colors->SetName("pick_face_color");
-    colors->SetNumberOfComponents(3);
-    colors->SetNumberOfTuples(nCells);
+        for (vtkIdType faceKey : set)
+        {
+            const vtkIdType cellId = unpackFaceCellId(faceKey);
+            const int faceLocalId = unpackFaceLocalId(faceKey);
+            if (cellId < 0 || cellId >= grid->GetNumberOfCells())
+                continue;
 
-    const unsigned char defaultColor[3] = {179, 179, 179};
-    const unsigned char selectedColor[3] = {242, 140, 26};
+            vtkCell* cell = grid->GetCell(cellId);
+            if (!cell)
+                continue;
 
-    for (vtkIdType cid = 0; cid < nCells; ++cid)
-        colors->SetTypedTuple(cid, defaultColor);
+            vtkIdList* ids = nullptr;
+            if (cell->GetCellDimension() == 2 || faceLocalId == 15)
+            {
+                ids = cell->GetPointIds();
+            }
+            else
+            {
+                if (faceLocalId < 0 || faceLocalId >= cell->GetNumberOfFaces())
+                    continue;
+                vtkCell* f = cell->GetFace(faceLocalId);
+                if (!f)
+                    continue;
+                ids = f->GetPointIds();
+            }
 
-    for (vtkIdType faceKey : selectedFaceKeys)
-    {
-        const vtkIdType cellId = unpackFaceCellId(faceKey);
-        if (cellId < 0 || cellId >= nCells)
-            continue;
-        colors->SetTypedTuple(cellId, selectedColor);
-    }
+            if (!ids || ids->GetNumberOfIds() < 3)
+                continue;
 
-    grid->GetCellData()->AddArray(colors);
-    grid->GetCellData()->SetActiveScalars("pick_face_color");
-    grid->Modified();
+            for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
+            {
+                double p[3];
+                grid->GetPoint(ids->GetId(i), p);
+                m_selPts->InsertNextPoint(p);
+            }
+        }
+    };
 
-    mapper->SetScalarModeToUseCellFieldData();
-    mapper->SelectColorArray("pick_face_color");
-    mapper->SetColorModeToDirectScalars();
-    mapper->ScalarVisibilityOn();
+    appendFacePoints(m_gridSolid, setS);
+    appendFacePoints(m_gridLine, setL);
 
-    auto* p = actor->GetProperty();
-    p->SetOpacity(1.0);
-    p->EdgeVisibilityOn();
-    p->SetEdgeColor(0.0, 0.0, 0.0);
-    p->SetLineWidth(1.0);
-}
-
-void PickManager::clearFaceSelectionColor(vtkProp* prop)
-{
-    auto* actor = vtkActor::SafeDownCast(prop);
-    if (!actor)
-        return;
-
-    auto* mapper = vtkDataSetMapper::SafeDownCast(actor->GetMapper());
-    if (!mapper)
-        return;
-
-    mapper->ScalarVisibilityOff();
-    mapper->SelectColorArray(nullptr);
-
-    auto* p = actor->GetProperty();
-    p->SetColor(0.7, 0.7, 0.7);
-    p->SetOpacity(1.0);
-    p->EdgeVisibilityOn();
-    p->SetEdgeColor(0.0, 0.0, 0.0);
-    p->SetLineWidth(1.0);
+    m_selPts->Modified();
+    if (m_selPoly)
+        m_selPoly->Modified();
 }
 
 // ===================== clearSelection =====================

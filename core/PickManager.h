@@ -20,7 +20,6 @@
 #include <vtkCoordinate.h>
 #include <vtkDataArray.h>
 #include <vtkDataSet.h>
-#include <vtkDataSetMapper.h>
 #include <vtkExtractSelectedFrustum.h>
 #include <vtkIntArray.h>
 #include <vtkPlanes.h>
@@ -32,7 +31,6 @@
 #include <vtkProperty2D.h>
 #include <vtkSmartPointer.h>
 #include <vtkUnstructuredGrid.h>
-#include <vtkUnsignedCharArray.h>
 #include <vtkVertexGlyphFilter.h>
 
 #include "services/VisualWidgetService.h"
@@ -150,9 +148,6 @@ class CORE_EXPORT PickManager : public QObject
     void rebuildFacePolyForActive();
     bool computePickedFace(vtkUnstructuredGrid* grid, vtkIdType cellId, const double pickPos[3],
                            int& outFaceLocalId, QVector<vtkIdType>& outFacePids) const;
-    void applyFaceSelectionColor(vtkUnstructuredGrid* grid, vtkProp* prop,
-                                 const QSet<vtkIdType>& selectedFaceKeys);
-    void clearFaceSelectionColor(vtkProp* prop);
 
     void updateActorVisibility();
     void refreshStructureIfNeeded();
