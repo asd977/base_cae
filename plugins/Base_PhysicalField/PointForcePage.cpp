@@ -2,6 +2,7 @@
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <CustomComboBox.h>
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
 #include <struct/MeshMap.h>
@@ -99,6 +100,22 @@ void PointForcePage::setupBatchGroupCombo()
             &PointForcePage::onDimChanged, Qt::UniqueConnection);
     connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &PointForcePage::onGroupChanged, Qt::UniqueConnection);
+
+    if (auto* combo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
+    {
+        connect(combo, &CustomComboBox::itemHovered, this,
+                [this](int idx)
+                {
+                    onGroupChanged(idx);
+                },
+                Qt::UniqueConnection);
+        connect(combo, &CustomComboBox::dropdownClosed, this,
+                [this]()
+                {
+                    onGroupChanged(ui->comboBoxGroup->currentIndex());
+                },
+                Qt::UniqueConnection);
+    }
 
     refreshGroupCombo();
 }

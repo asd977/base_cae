@@ -2,6 +2,7 @@
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <CustomComboBox.h>
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
 #include <services/PhySicalFieldService.h>
@@ -85,6 +86,22 @@ void DisplacementConstraintWidget::beforeLoad()
                      &DisplacementConstraintWidget::onDimChanged, Qt::UniqueConnection);
     QObject::connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
                      &DisplacementConstraintWidget::onGroupChanged, Qt::UniqueConnection);
+
+    if (auto* combo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
+    {
+        connect(combo, &CustomComboBox::itemHovered, this,
+                [this](int idx)
+                {
+                    onGroupChanged(idx);
+                },
+                Qt::UniqueConnection);
+        connect(combo, &CustomComboBox::dropdownClosed, this,
+                [this]()
+                {
+                    onGroupChanged(ui->comboBoxGroup->currentIndex());
+                },
+                Qt::UniqueConnection);
+    }
 }
 
 void DisplacementConstraintWidget::refreshGroupCombo(int dimFilter)

@@ -1,5 +1,6 @@
 #include "FaceLoadPage.h"
 
+#include <CustomComboBox.h>
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
 #include <struct/MeshMap.h>
@@ -83,6 +84,22 @@ void FaceLoadPage::setupBatchGroupCombo()
             &FaceLoadPage::onDimChanged, Qt::UniqueConnection);
     connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &FaceLoadPage::onGroupChanged, Qt::UniqueConnection);
+
+    if (auto* combo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
+    {
+        connect(combo, &CustomComboBox::itemHovered, this,
+                [this](int idx)
+                {
+                    onGroupChanged(idx);
+                },
+                Qt::UniqueConnection);
+        connect(combo, &CustomComboBox::dropdownClosed, this,
+                [this]()
+                {
+                    onGroupChanged(ui->comboBoxGroup->currentIndex());
+                },
+                Qt::UniqueConnection);
+    }
 
     refreshGroupCombo();
 }

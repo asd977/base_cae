@@ -2,6 +2,7 @@
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <CustomComboBox.h>
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
 #include <struct/MeshMap.h>
@@ -92,6 +93,22 @@ void GeoStressFitFacePage::beforeLoad()
             &GeoStressFitFacePage::onDimComboChanged, Qt::UniqueConnection);
     connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &GeoStressFitFacePage::onGroupComboChanged, Qt::UniqueConnection);
+
+    if (auto* combo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
+    {
+        connect(combo, &CustomComboBox::itemHovered, this,
+                [this](int idx)
+                {
+                    onGroupComboChanged(idx);
+                },
+                Qt::UniqueConnection);
+        connect(combo, &CustomComboBox::dropdownClosed, this,
+                [this]()
+                {
+                    onGroupComboChanged(ui->comboBoxGroup->currentIndex());
+                },
+                Qt::UniqueConnection);
+    }
 
     // 3) 进入页面时，默认把当前选中的组应用一次（立刻高亮）
     onGroupComboChanged(ui->comboBoxGroup->currentIndex());
