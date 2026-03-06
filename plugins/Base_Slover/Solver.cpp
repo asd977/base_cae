@@ -1,5 +1,6 @@
 ﻿#include "Solver.h"
 
+#include <ContextMenuHub.h>
 #include <EventManager.h>
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -12,6 +13,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMessageBox>
+#include <QMenu>
 #include <QRegularExpression>
 #include <QStringList>
 #include <algorithm>
@@ -26,6 +28,7 @@ Solver::Solver()
 {
     ServiceRegistry::instance().registerService<SolverService>(this);
     initAction();
+    initTreeMenu();
 }
 
 void Solver::newProject()
@@ -34,6 +37,7 @@ void Solver::newProject()
         return;
 
     m_root = new ProjectNode("计算分析", QUuid::createUuid().toString(), nullptr);
+    setupNodeRole(m_root, "SolverRoot");
     ProjectManagerService* projectManagerService =
         ServiceRegistry::instance().getService<ProjectManagerService>();
     projectManagerService->addTreeItem(m_root);
@@ -181,17 +185,27 @@ bool Solver::loadProject()
             auto* node = new ProjectNode(
                 childObj.value("title").toString("边界"),
                 childObj.value("uuid").toString(QUuid::createUuid().toString()), page);
+            if (type == "FillStorageCycle")
+                setupNodeRole(node, "FillStorageCycle");
+            else if (type.startsWith("StressBoundary"))
+                setupNodeRole(node, "StressBoundary");
+            else if (type.startsWith("SeepageBoundary"))
+                setupNodeRole(node, "SeepageBoundary");
             page->loadJson(childObj.value("state").toObject());
             analysisNode->addChild(node);
         }
 
         if ((analysisType == "StressStrainAnalysis" || analysisType == "DamAnalysis") && !hasFillStorageCycleNode)
         {
-            auto* fillStorageCyclePage = new FillStorageCyclePage();
-            auto* fillStorageCycleNode = new ProjectNode(
-                "填筑-蓄水周期", QUuid::createUuid().toString(), fillStorageCyclePage);
-            analysisNode->addChild(fillStorageCycleNode);
+            addFillStorageCycleNode(analysisNode, false);
         }
+
+        if (analysisType == "StressStrainAnalysis" || analysisType == "DamAnalysis")
+            setupNodeRole(analysisNode, "DamAnalysis");
+        else if (analysisType == "SeepageAnalysis")
+            setupNodeRole(analysisNode, "SeepageAnalysis");
+
+        syncDamAnalysisMCase(analysisNode);
 
         m_root->addChild(analysisNode);
     }
@@ -220,6 +234,90 @@ void Solver::initAction()
                        });
 }
 
+void Solver::initTreeMenu()
+{
+    ContextMenuHub::instance().registerProvider(
+        "project_tree.node", this,
+        [this](QMenu* menu, const QVariantMap& ctx)
+        {
+            const QString uuid = ctx.value("uuid").toString();
+            const QString kind = ctx.value("kind").toString();
+            if (uuid.isEmpty())
+                return;
+
+            if (kind == "DamAnalysis")
+            {
+                ContextMenuHub::addSeparator(menu);
+                ContextMenuHub::addAction(
+                    menu, this, "新增填筑-蓄水周期",
+                    [this, uuid]()
+                    {
+                        auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+                        auto* analysisNode = pm ? pm->findNodeByUuid(uuid) : nullptr;
+                        if (!analysisNode)
+                            return;
+                        addFillStorageCycleNode(analysisNode, true);
+                        syncDamAnalysisMCase(analysisNode);
+                    });
+            }
+        },
+        0);
+}
+
+void Solver::setupNodeRole(ProjectNode* node, const QString& kind) const
+{
+    if (!node)
+        return;
+    node->setData(0, ProjectNode::RoleUuid, node->getUuid());
+    node->setData(0, ProjectNode::RoleModule, "Solver");
+    node->setData(0, ProjectNode::RoleKind, kind);
+}
+
+int Solver::countFillStorageCycles(ProjectNode* analysisNode) const
+{
+    if (!analysisNode)
+        return 0;
+
+    int count = 0;
+    for (ProjectNode* child : analysisNode->getChildren())
+    {
+        if (dynamic_cast<FillStorageCyclePage*>(child->getPage()))
+            ++count;
+    }
+    return count;
+}
+
+void Solver::syncDamAnalysisMCase(ProjectNode* analysisNode) const
+{
+    if (!analysisNode)
+        return;
+
+    auto* page = dynamic_cast<DamAnalysisWidget*>(analysisNode->getPage());
+    if (!page)
+        return;
+
+    page->setMCaseCount(countFillStorageCycles(analysisNode));
+}
+
+void Solver::addFillStorageCycleNode(ProjectNode* analysisNode, bool setCurrent) const
+{
+    if (!analysisNode)
+        return;
+
+    auto* fillStorageCyclePage = new FillStorageCyclePage();
+    const int nextIdx = countFillStorageCycles(analysisNode) + 1;
+    auto* fillStorageCycleNode = new ProjectNode(
+        QString("填筑-蓄水周期(%1)").arg(nextIdx), QUuid::createUuid().toString(), fillStorageCyclePage);
+    setupNodeRole(fillStorageCycleNode, "FillStorageCycle");
+    analysisNode->addChild(fillStorageCycleNode);
+
+    if (setCurrent)
+    {
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(fillStorageCycleNode);
+    }
+}
+
 void Solver::onSeepageAction()
 {
     if (!m_root)
@@ -228,6 +326,7 @@ void Solver::onSeepageAction()
     auto* seepagePage = new SeepageWidget();
     const QString analysisName = QString("渗流分析(%1)").arg(nextSeepageIndex());
     auto* analysisNode = new ProjectNode(analysisName, QUuid::createUuid().toString(), seepagePage);
+    setupNodeRole(analysisNode, "SeepageAnalysis");
 
     connect(seepagePage, &SeepageWidget::computeRequested, this,
             [this, analysisNode]()
@@ -239,6 +338,7 @@ void Solver::onSeepageAction()
     {
         auto* page = new SeepageBoundaryPage(pageType, name, fileName);
         auto* node = new ProjectNode(name, QUuid::createUuid().toString(), page);
+        setupNodeRole(node, "SeepageBoundary");
         analysisNode->addChild(node);
     };
 
@@ -258,6 +358,7 @@ void Solver::onStressStrainAction()
     auto* stressPage = new DamAnalysisWidget();
     const QString analysisName = QString("土石坝计算(%1)").arg(nextStressStrainIndex());
     auto* analysisNode = new ProjectNode(analysisName, QUuid::createUuid().toString(), stressPage);
+    setupNodeRole(analysisNode, "DamAnalysis");
 
     connect(stressPage, &DamAnalysisWidget::computeRequested, this,
             [this, analysisNode]()
@@ -269,16 +370,15 @@ void Solver::onStressStrainAction()
     {
         auto* page = new StressBoundaryPage(pageType, name, fileName);
         auto* node = new ProjectNode(name, QUuid::createUuid().toString(), page);
+        setupNodeRole(node, "StressBoundary");
         analysisNode->addChild(node);
     };
 
     addBoundary("上游迎水面", "StressBoundaryDamUpstream", "FA_DAMUP.DAT");
     addBoundary("坝体中心面节点", "StressBoundaryDamMid", "FA_DAMMID.DAT");
 
-    auto* fillStorageCyclePage = new FillStorageCyclePage();
-    auto* fillStorageCycleNode =
-        new ProjectNode("填筑-蓄水周期", QUuid::createUuid().toString(), fillStorageCyclePage);
-    analysisNode->addChild(fillStorageCycleNode);
+    addFillStorageCycleNode(analysisNode, false);
+    syncDamAnalysisMCase(analysisNode);
 
     m_root->addChild(analysisNode);
     if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
@@ -341,9 +441,10 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
         if (!fillStorageCyclePage)
             continue;
         ++mcase;
-        cycleSections << fillStorageCyclePage->sectionText();
+        cycleSections << fillStorageCyclePage->sectionText(mcase);
     }
     cycleSectionText = cycleSections.join("\n");
+    stressPage->setMCaseCount(mcase);
 
     if (!stressPage || !stressPage->exportIfillDatFile(mcase, cycleSectionText))
     {

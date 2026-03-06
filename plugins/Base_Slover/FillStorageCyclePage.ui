@@ -24,7 +24,7 @@
    <item>
     <widget class="QLabel" name="tipLabel">
      <property name="text">
-      <string>此节点仅设置 4.3.5 内容（NCASE 及每个 ICASE 工况块）；4.3.4 的 MCASE 由土石坝计算节点统计填筑-蓄水节点数量自动生成。</string>
+      <string>此节点仅设置单个工况的 4.3.5 参数值；NCASE 与 ICASE 序号自动生成，4.3.4 的 MCASE 由土石坝计算节点统计填筑-蓄水节点数量自动生成。</string>
       </property>
      <property name="wordWrap">
       <bool>true</bool>

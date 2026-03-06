@@ -2,6 +2,7 @@
 
 #include <QFormLayout>
 #include <QLineEdit>
+#include <QRegExp>
 
 #include "ui_FillStorageCyclePage.h"
 
@@ -37,8 +38,6 @@ void FillStorageCyclePage::initValueEditors()
         m_edits.insert(key, edit);
     };
 
-    add("NCASE", "NCASE", "1");
-    add("ICASE", "ICASE", "1");
     add("IFIIWL_SEEP", "IFIIWL_SEEP", "0");
     add("IFIIWL_BODY", "IFIIWL_BODY", "0");
     add("IFIIWL_FACE", "IFIIWL_FACE", "1");
@@ -87,10 +86,15 @@ void FillStorageCyclePage::updatePreview()
 
 QString FillStorageCyclePage::sectionText() const
 {
+    return sectionText(1);
+}
+
+QString FillStorageCyclePage::sectionText(int caseIndex) const
+{
     QString text;
-    text += QString("%1    NCASE\n").arg(valueOf("NCASE"));
+    text += "1    NCASE\n";
     text += " ----------------------------------------------\n";
-    text += QString("%1    ICASE--------------------------------------\n").arg(valueOf("ICASE"));
+    text += QString("%1    ICASE--------------------------------------\n").arg(caseIndex);
     text += QString("%1 %2 %3     IFIIWL_SEEP IFIIWL_BODY IFIIWL_FACE\n")
                 .arg(valueOf("IFIIWL_SEEP"), valueOf("IFIIWL_BODY"), valueOf("IFIIWL_FACE"));
     text += QString("%1 %2     NUM_WET IFWET\n").arg(valueOf("NUM_WET"), valueOf("IFWET"));
@@ -149,9 +153,4 @@ void FillStorageCyclePage::loadJson(const QJsonObject& obj)
     for (auto it = m_edits.begin(); it != m_edits.end(); ++it)
         it.value()->setText(values.value(it.key()).toString(it.value()->text()));
     updatePreview();
-}
-
-QString FillStorageCyclePage::defaultSectionText() const
-{
-    return sectionText();
 }

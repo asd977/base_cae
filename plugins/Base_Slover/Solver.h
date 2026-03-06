@@ -24,6 +24,11 @@ class Solver : public QObject, public SolverService
 
   private:
     void initAction();
+    void initTreeMenu();
+    void setupNodeRole(ProjectNode* node, const QString& kind) const;
+    int countFillStorageCycles(ProjectNode* analysisNode) const;
+    void syncDamAnalysisMCase(ProjectNode* analysisNode) const;
+    void addFillStorageCycleNode(ProjectNode* analysisNode, bool setCurrent) const;
     int nextSeepageIndex() const;
     int nextStressStrainIndex() const;
 

@@ -8,6 +8,7 @@
 class QFormLayout;
 class QLineEdit;
 class QTableWidget;
+class QLabel;
 
 namespace Ui
 {
@@ -25,6 +26,7 @@ class DamAnalysisWidget : public BasePage
     void beforeUnload() override;
 
     bool exportIfillDatFile(int mcase, const QString& cycleSectionText) const;
+    void setMCaseCount(int mcase);
 
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
@@ -47,4 +49,5 @@ class DamAnalysisWidget : public BasePage
     QLineEdit* m_editAlfa = nullptr;
     QLineEdit* m_editAxis = nullptr;
     QLineEdit* m_editRock = nullptr;
+    QLineEdit* m_editMCase = nullptr;
 };

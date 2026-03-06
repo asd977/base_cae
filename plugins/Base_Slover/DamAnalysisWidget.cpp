@@ -59,7 +59,10 @@ void DamAnalysisWidget::initValueEditors()
     m_editAlfa = new QLineEdit("0.000000  0.000000  0.000000", this);
     m_editAxis = new QLineEdit("1  3  0.000000  0.000000  0.000000  0.000000", this);
     m_editRock = new QLineEdit("1  0", this);
+    m_editMCase = new QLineEdit("1", this);
+    m_editMCase->setReadOnly(true);
 
+    m_formLayout->addRow("4.3.4 MCASE（自动统计填筑-蓄水节点数）", m_editMCase);
     m_formLayout->addRow("4.3.1 行1~30（土石坝相关文件及变量）", m_baseTable);
     m_formLayout->addRow("4.3.2(1) X1 X2 X3", m_editX);
     m_formLayout->addRow("4.3.2(2) α1 α2 α3", m_editAlfa);
@@ -155,6 +158,12 @@ bool DamAnalysisWidget::exportIfillDatFile(int mcase, const QString& cycleSectio
         os << "\n";
 
     return true;
+}
+
+void DamAnalysisWidget::setMCaseCount(int mcase)
+{
+    if (m_editMCase)
+        m_editMCase->setText(QString::number(qMax(1, mcase)));
 }
 
 QJsonObject DamAnalysisWidget::saveJson()
