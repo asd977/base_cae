@@ -154,8 +154,8 @@ QJsonObject OccBooleanCommonWidget::saveJson()
 
 void OccBooleanCommonWidget::loadJson(const QJsonObject& obj)
 {
-    QString keyA = obj.value("keyA").toString();
-    QString keyB = obj.value("keyB").toString();
+    m_keyA = obj.value("keyA").toString();
+    m_keyB = obj.value("keyB").toString();
 
     auto findIndexByKey = [](QComboBox* combo, const QString& key)
     {
@@ -169,13 +169,13 @@ void OccBooleanCommonWidget::loadJson(const QJsonObject& obj)
         return -1;
     };
 
-    int indexA = findIndexByKey(m_comboBoxA, keyA);
+    const int indexA = findIndexByKey(m_comboBoxA, m_keyA);
     if (indexA >= 0)
     {
         m_comboBoxA->setCurrentIndex(indexA);
     }
 
-    int indexB = findIndexByKey(m_comboBoxB, keyB);
+    const int indexB = findIndexByKey(m_comboBoxB, m_keyB);
     if (indexB >= 0)
     {
         m_comboBoxB->setCurrentIndex(indexB);
@@ -200,17 +200,40 @@ void OccBooleanCommonWidget::fillComboBoxes()
         m_comboBoxB->addItem(displayName, key);
     }
 
-    if (m_comboBoxA->count() > 0)
+    auto findIndexByKey = [](QComboBox* combo, const QString& key)
     {
-        m_comboBoxA->setCurrentIndex(0);
+        for (int i = 0; i < combo->count(); ++i)
+        {
+            if (combo->itemData(i).toString() == key)
+            {
+                return i;
+            }
+        }
+        return -1;
+    };
+
+    int indexA = findIndexByKey(m_comboBoxA, m_keyA);
+    if (indexA < 0 && m_comboBoxA->count() > 0)
+    {
+        indexA = 0;
     }
-    if (m_comboBoxB->count() > 1)
+
+    int indexB = findIndexByKey(m_comboBoxB, m_keyB);
+    if (indexB < 0)
     {
-        m_comboBoxB->setCurrentIndex(1);
+        if (m_comboBoxB->count() > 1)
+            indexB = 1;
+        else if (m_comboBoxB->count() > 0)
+            indexB = 0;
     }
-    else if (m_comboBoxB->count() > 0)
+
+    if (indexA >= 0)
     {
-        m_comboBoxB->setCurrentIndex(0);
+        m_comboBoxA->setCurrentIndex(indexA);
+    }
+    if (indexB >= 0)
+    {
+        m_comboBoxB->setCurrentIndex(indexB);
     }
 
     onComboBoxAChanged(m_comboBoxA->currentIndex());
