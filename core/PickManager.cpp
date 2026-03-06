@@ -4,6 +4,7 @@
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
 #include <services/VisualWidgetService.h>
+#include <struct/MeshMap.h>
 
 #include <QDebug>
 #include <algorithm>
@@ -557,8 +558,35 @@ bool PickManager::pickAt(int x, int y)
     {
         int faceLocalId = 15;
         QVector<vtkIdType> facePids;
-        if (!computePickedFace(grid, cellId, pickPos, faceLocalId, facePids))
+        double pickNormal[3] = {0.0, 0.0, 0.0};
+        m_cellPicker->GetPickNormal(pickNormal);
+        if (!computePickedFace(grid, cellId, pickPos, pickNormal, faceLocalId, facePids))
             return false;
+
+        if (kind == GridKind::Solid)
+        {
+            auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+            const MshPickMap map = meshSvc ? meshSvc->mshPickMapSolid() : MshPickMap{};
+            const bool hasBoundaryFaces = !map.bndFacePhysToFaceKeys.isEmpty();
+
+            auto isBoundaryFace = [&](vtkIdType key)
+            {
+                for (auto it = map.bndFacePhysToFaceKeys.constBegin();
+                     it != map.bndFacePhysToFaceKeys.constEnd(); ++it)
+                {
+                    if (it.value().contains(qint64(key)))
+                        return true;
+                }
+                return false;
+            };
+
+            vtkIdType faceKey = packFaceKey(cellId, faceLocalId);
+            if (hasBoundaryFaces && !isBoundaryFace(faceKey))
+            {
+                qDebug() << "[PickManager] Skip non-boundary solid face:" << faceKey;
+                return false;
+            }
+        }
 
         toggleSelectFace(kind, packFaceKey(cellId, faceLocalId));
         return true;
@@ -945,7 +973,8 @@ void PickManager::rebuildEdgePolyForActive()
 
 // ===================== Face =====================
 bool PickManager::computePickedFace(vtkUnstructuredGrid* grid, vtkIdType cellId,
-                                    const double pickPos[3], int& outFaceLocalId,
+                                    const double pickPos[3], const double pickNormal[3],
+                                    int& outFaceLocalId,
                                     QVector<vtkIdType>& outFacePids) const
 {
     outFacePids.clear();
@@ -1026,7 +1055,25 @@ bool PickManager::computePickedFace(vtkUnstructuredGrid* grid, vtkIdType cellId,
             std::abs(vtkPlane::DistanceToPlane(const_cast<double*>(pickPos), n, p0));
         const int inside =
             vtkPolygon::PointInPolygon(const_cast<double*>(pickPos), npts, pts.data(), bounds, n);
-        const double score = inside ? dist : (dist + 1e3);
+
+        double normalPenalty = 0.0;
+        if (pickNormal)
+        {
+            const double pickNorm = vtkMath::Norm(const_cast<double*>(pickNormal));
+            if (pickNorm > 1e-12)
+            {
+                double nUnit[3] = {n[0], n[1], n[2]};
+                vtkMath::Normalize(nUnit);
+                double pUnit[3] = {pickNormal[0], pickNormal[1], pickNormal[2]};
+                vtkMath::Normalize(pUnit);
+
+                // 越接近 picker 给出的法向，优先级越高，避免点在网格线附近误选到内面
+                const double align = vtkMath::Dot(nUnit, pUnit);
+                normalPenalty = (1.0 - align) * 1e2;
+            }
+        }
+
+        const double score = inside ? (dist + normalPenalty) : (dist + normalPenalty + 1e3);
 
         if (score < bestScore)
         {
