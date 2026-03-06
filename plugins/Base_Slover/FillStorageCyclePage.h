@@ -6,7 +6,6 @@
 #include <QString>
 #include <QMap>
 
-class QFormLayout;
 class QLineEdit;
 class QPlainTextEdit;
 class QTableWidget;
@@ -44,7 +43,6 @@ class FillStorageCyclePage : public BasePage
     void updatePreview();
   private:
     Ui::FillStorageCyclePage* ui = nullptr;
-    QFormLayout* m_formLayout = nullptr;
     QMap<QString, QLineEdit*> m_edits;
     QTableWidget* m_wetTable = nullptr;
     QTableWidget* m_dropTable = nullptr;

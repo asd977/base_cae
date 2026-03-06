@@ -1,6 +1,5 @@
 ﻿#include "FillStorageCyclePage.h"
 
-#include <QFormLayout>
 #include <QHeaderView>
 #include <QJsonArray>
 #include <QLineEdit>
@@ -31,57 +30,50 @@ void FillStorageCyclePage::beforeUnload()
 
 void FillStorageCyclePage::initValueEditors()
 {
-    m_formLayout = new QFormLayout();
-    auto add = [this](const QString& label, const QString& key, const QString& value)
+    auto bind = [this](const QString& key, QLineEdit* edit)
     {
-        auto* edit = new QLineEdit(value, this);
-        connect(edit, &QLineEdit::textChanged, this, [this]() { updatePreview(); });
-        m_formLayout->addRow(label, edit);
         m_edits.insert(key, edit);
+        connect(edit, &QLineEdit::textChanged, this, [this]() { updatePreview(); });
     };
 
-    add("IFIIWL_SEEP", "IFIIWL_SEEP", "0");
-    add("IFIIWL_BODY", "IFIIWL_BODY", "0");
-    add("IFIIWL_FACE", "IFIIWL_FACE", "1");
-    add("IFWET", "IFWET", "0");
-    add("IFDROP", "IFDROP", "0");
-    add("NCHANGE", "NCHANGE", "0");
-    add("DIRDYNA", "DIRDYNA", "'CASE01FILL01'");
-    add("NUM_DYNA", "NUM_DYNA", "0");
-    add("M1_STA M1_DYNA", "M_DYNA_PAIR", "3 23");
-    add("IFMODE IFWAVE IFSETT", "DYN_FLAGS", "0 1 0");
-    add("DT TSTA TEND WOMI_1", "DT_BLOCK", "0.020000 0.000000 28.000000 0.000000");
-    add("AX AY AZ", "WAVE_FILES", "'WAVE-AX.DAT' 'WAVE-AY.DAT' 'WAVE-AZ.DAT'");
+    bind("IFIIWL_SEEP", ui->editIFIIWL_SEEP);
+    bind("IFIIWL_BODY", ui->editIFIIWL_BODY);
+    bind("IFIIWL_FACE", ui->editIFIIWL_FACE);
+    bind("IFWET", ui->editIFWET);
+    bind("IFDROP", ui->editIFDROP);
+    bind("NCHANGE", ui->editNCHANGE);
+    bind("DIRDYNA", ui->editDIRDYNA);
+    bind("NUM_DYNA", ui->editNUM_DYNA);
+    bind("M_DYNA_PAIR", ui->editM_DYNA_PAIR);
+    bind("DYN_FLAGS", ui->editDYN_FLAGS);
+    bind("DT_BLOCK", ui->editDT_BLOCK);
+    bind("WAVE_FILES", ui->editWAVE_FILES);
 
-    m_wetTable = new QTableWidget(1, 2, this);
-    m_wetTable->setHorizontalHeaderLabels({"M_DRY", "M_WET"});
-    m_wetTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    m_wetTable = ui->tableWet;
+    m_dropTable = ui->tableDrop;
+    m_circleTable = ui->tableCircle;
+
+    m_wetTable->setRowCount(1);
     m_wetTable->setItem(0, 0, new QTableWidgetItem("1"));
     m_wetTable->setItem(0, 1, new QTableWidgetItem("1"));
-    m_formLayout->addRow("湿化材料表（Num_wet 行）", m_wetTable);
-    connect(m_wetTable, &QTableWidget::cellChanged, this, [this]() { updatePreview(); });
+    m_wetTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 
-    m_dropTable = new QTableWidget(1, 2, this);
-    m_dropTable->setHorizontalHeaderLabels({"HW_DROP_STA", "HW_DROP_END"});
-    m_dropTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    m_dropTable->setRowCount(1);
     m_dropTable->setItem(0, 0, new QTableWidgetItem("3200.000"));
     m_dropTable->setItem(0, 1, new QTableWidgetItem("3160.000"));
-    m_formLayout->addRow("骤降水位表（NUM_DROP 行）", m_dropTable);
-    connect(m_dropTable, &QTableWidget::cellChanged, this, [this]() { updatePreview(); });
+    m_dropTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 
-    m_circleTable = new QTableWidget(1, 12, this);
-    m_circleTable->setHorizontalHeaderLabels(
-        {"JPACK_STA", "JPACK_END", "TT_PACK", "HWJ_STA", "HWJ_END", "TT_FILL", "IF_PACK",
-         "IF_PLIU", "IF_FILL", "IF_FLIU", "CAHEAD", "CABODY"});
-    m_circleTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_circleTable->setRowCount(1);
     const QStringList defaults = {"2", "9", "0.0000", "0.0000", "28.0000", "0.0000", "1", "0",
                                   "1", "0", "'NONE'", "'NONE'"};
     for (int c = 0; c < defaults.size(); ++c)
         m_circleTable->setItem(0, c, new QTableWidgetItem(defaults.at(c)));
-    m_formLayout->addRow("填筑-蓄水周期表（NCIRCLE 行）", m_circleTable);
+    m_circleTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+
+    connect(m_wetTable, &QTableWidget::cellChanged, this, [this]() { updatePreview(); });
+    connect(m_dropTable, &QTableWidget::cellChanged, this, [this]() { updatePreview(); });
     connect(m_circleTable, &QTableWidget::cellChanged, this, [this]() { updatePreview(); });
 
-    ui->verticalLayout->insertLayout(2, m_formLayout);
     ui->plainTextEditSection->setReadOnly(true);
 }
 

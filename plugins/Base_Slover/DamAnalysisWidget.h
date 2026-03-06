@@ -6,7 +6,6 @@
 #include <QMap>
 #include <QString>
 
-class QFormLayout;
 class QLineEdit;
 class QLabel;
 class QPushButton;
@@ -52,7 +51,6 @@ class DamAnalysisWidget : public BasePage
     void updateConfigSummary();
 
     Ui::DamAnalysisWidget* ui;
-    QFormLayout* m_formLayout = nullptr;
     QMap<int, QWidget*> m_lineEditors;
     QLineEdit* m_editX = nullptr;
     QLineEdit* m_editAlfa = nullptr;

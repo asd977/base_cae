@@ -6,7 +6,6 @@
 #include <QComboBox>
 #include <QDir>
 #include <QFile>
-#include <QFormLayout>
 #include <QJsonArray>
 #include <QLabel>
 #include <QLineEdit>
@@ -43,73 +42,71 @@ void DamAnalysisWidget::beforeUnload()
 
 void DamAnalysisWidget::initValueEditors()
 {
-    m_formLayout = new QFormLayout();
-    m_formLayout->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    m_editX = ui->editX;
+    m_editAlfa = ui->editAlfa;
+    m_editAxis = ui->editAxis;
+    m_editRock = ui->editRock;
+    m_editMCase = ui->editMCase;
+    m_summaryLabel = ui->summaryLabel;
+    m_btnValidation = ui->btnValidation;
 
-    auto addCombo = [this](int lineNo, const QMap<QString, QString>& options) {
-        auto* combo = new QComboBox(this);
-        for (auto it = options.begin(); it != options.end(); ++it)
-            combo->addItem(it.value(), it.key());
-        const QString def = defaultValueByLine(lineNo).trimmed();
-        const int idx = combo->findData(def);
-        if (idx >= 0)
-            combo->setCurrentIndex(idx);
-        connect(combo, &QComboBox::currentTextChanged, this, [this]() { updateConfigSummary(); });
-        m_lineEditors[lineNo] = combo;
-    };
+    m_lineEditors[1] = ui->line1Value;
+    m_lineEditors[2] = ui->line2Value;
+    m_lineEditors[3] = ui->line3Value;
+    m_lineEditors[4] = ui->line4Value;
+    m_lineEditors[5] = ui->line5Value;
+    m_lineEditors[6] = ui->line6Value;
+    m_lineEditors[7] = ui->line7Value;
+    m_lineEditors[8] = ui->line8Value;
+    m_lineEditors[9] = ui->line9Value;
+    m_lineEditors[10] = ui->comboLine10;
+    m_lineEditors[11] = ui->line11Value;
+    m_lineEditors[12] = ui->line12Value;
+    m_lineEditors[13] = ui->line13Value;
+    m_lineEditors[14] = ui->line14Value;
+    m_lineEditors[15] = ui->comboLine15;
+    m_lineEditors[16] = ui->comboLine16;
+    m_lineEditors[17] = ui->editLine17;
+    m_lineEditors[18] = ui->editLine18;
+    m_lineEditors[19] = ui->comboLine19;
+    m_lineEditors[20] = ui->editLine20;
+    m_lineEditors[21] = ui->editLine21;
+    m_lineEditors[22] = ui->editLine22;
+    m_lineEditors[23] = ui->editLine23;
+    m_lineEditors[24] = ui->editLine24;
+    m_lineEditors[25] = ui->editLine25;
+    m_lineEditors[26] = ui->editLine26;
+    m_lineEditors[27] = ui->editLine27;
+    m_lineEditors[28] = ui->editLine28;
+    m_lineEditors[29] = ui->comboLine29;
+    m_lineEditors[30] = ui->editLine30;
 
-    for (int lineNo = 1; lineNo <= 30; ++lineNo)
+    ui->comboLine10->setItemData(0, "1");
+    ui->comboLine10->setItemData(1, "2");
+    ui->comboLine10->setItemData(2, "3");
+    ui->comboLine10->setItemData(3, "4");
+
+    ui->comboLine15->setItemData(0, "0");
+    ui->comboLine15->setItemData(1, "1");
+
+    ui->comboLine16->setItemData(0, "0");
+    ui->comboLine16->setItemData(1, "1");
+
+    ui->comboLine19->setItemData(0, "1");
+    ui->comboLine19->setItemData(1, "2");
+    ui->comboLine19->setItemData(2, "3");
+
+    ui->comboLine29->setItemData(0, "0");
+    ui->comboLine29->setItemData(1, "1");
+
+    for (auto it = m_lineEditors.begin(); it != m_lineEditors.end(); ++it)
     {
-        if (isFixedFileLine(lineNo))
-        {
-            auto* fixedLabel = new QLabel(defaultValueByLine(lineNo), this);
-            fixedLabel->setStyleSheet("QLabel { color: #606060; }");
-            fixedLabel->setToolTip("该文件名按规范固定，不在界面中编辑。");
-            m_lineEditors[lineNo] = fixedLabel;
-        }
-        else if (lineNo == 10)
-        {
-            addCombo(lineNo, {{"1", "1 面板堆石坝"}, {"2", "2 心墙堆石坝"}, {"3", "3 沥青心墙堆石坝"}, {"4", "4 均质坝"}});
-        }
-        else if (lineNo == 15)
-        {
-            addCombo(lineNo, {{"0", "0 系统阻尼"}, {"1", "1 分材料阻尼"}});
-        }
-        else if (lineNo == 16)
-        {
-            addCombo(lineNo, {{"0", "0 非瑞雷阻尼"}, {"1", "1 瑞雷阻尼"}});
-        }
-        else if (lineNo == 19)
-        {
-            addCombo(lineNo, {{"1", "1 静力计算"}, {"2", "2 动力计算"}, {"3", "3 静动力全部计算"}});
-        }
-        else if (lineNo == 29)
-        {
-            addCombo(lineNo, {{"0", "0 不计算特征值特征向量"}, {"1", "1 计算特征值特征向量"}});
-        }
-        else
-        {
-            auto* edit = new QLineEdit(defaultValueByLine(lineNo), this);
-            edit->setPlaceholderText(descriptionByLine(lineNo));
+        if (auto* combo = qobject_cast<QComboBox*>(it.value()))
+            connect(combo, &QComboBox::currentTextChanged, this, [this]() { updateConfigSummary(); });
+        else if (auto* edit = qobject_cast<QLineEdit*>(it.value()))
             connect(edit, &QLineEdit::textChanged, this, [this]() { updateConfigSummary(); });
-            m_lineEditors[lineNo] = edit;
-        }
-
-        m_formLayout->addRow(QString("4.3.1 第%1行：%2").arg(lineNo).arg(descriptionByLine(lineNo)), m_lineEditors.value(lineNo));
     }
 
-    m_editX = new QLineEdit("0.000000  0.000000  0.000000", this);
-    m_editAlfa = new QLineEdit("0.000000  0.000000  0.000000", this);
-    m_editAxis = new QLineEdit("1  3  0.000000  0.000000  0.000000  0.000000", this);
-    m_editRock = new QLineEdit("1  0", this);
-    m_editMCase = new QLineEdit("1", this);
-    m_editMCase->setReadOnly(true);
-
-    m_summaryLabel = new QLabel(this);
-    m_summaryLabel->setWordWrap(true);
-    m_summaryLabel->setStyleSheet("QLabel { color: #404040; }");
-
-    m_btnValidation = new QPushButton("校验配置", this);
     connect(m_btnValidation, &QPushButton::clicked, this, [this]() {
         QString error;
         if (validateInputs(&error))
@@ -120,17 +117,6 @@ void DamAnalysisWidget::initValueEditors()
         QMessageBox::warning(this, "校验失败", error);
     });
 
-    m_formLayout->addRow("4.3.4 MCASE（自动统计填筑-蓄水节点数）", m_editMCase);
-    m_formLayout->addRow("4.3.2(1) X1 X2 X3", m_editX);
-    m_formLayout->addRow("4.3.2(2) α1 α2 α3", m_editAlfa);
-    m_formLayout->addRow("4.3.2(3) IXUPDW XAMID YAMID XBMID YBMID", m_editAxis);
-    m_formLayout->addRow("4.3.3 IFROCK IFISO", m_editRock);
-    m_formLayout->addRow("当前配置摘要", m_summaryLabel);
-    m_formLayout->addRow("配置检查", m_btnValidation);
-
-    connect(m_editRock, &QLineEdit::textChanged, this, [this]() { updateConfigSummary(); });
-
-    ui->verticalLayout->insertLayout(2, m_formLayout);
     updateConfigSummary();
 }
 

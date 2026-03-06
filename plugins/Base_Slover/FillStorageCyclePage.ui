@@ -2,44 +2,55 @@
 <ui version="4.0">
  <class>FillStorageCyclePage</class>
  <widget class="QWidget" name="FillStorageCyclePage">
-  <property name="geometry">
-   <rect>
-    <x>0</x>
-    <y>0</y>
-    <width>620</width>
-    <height>560</height>
-   </rect>
-  </property>
-  <property name="windowTitle">
-   <string>填筑-蓄水周期</string>
-  </property>
+  <property name="geometry"><rect><x>0</x><y>0</y><width>860</width><height>720</height></rect></property>
+  <property name="windowTitle"><string>填筑-蓄水周期</string></property>
   <layout class="QVBoxLayout" name="verticalLayout">
+   <item><widget class="QLabel" name="titleLabel"><property name="text"><string>填筑-蓄水计算工况设置（4.3.5）</string></property></widget></item>
+   <item><widget class="QLabel" name="tipLabel"><property name="text"><string>此节点仅设置单个工况的 4.3.5 参数值；NCASE 与 ICASE 序号自动生成，4.3.4 的 MCASE 由土石坝计算节点统计填筑-蓄水节点数量自动生成。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
    <item>
-    <widget class="QLabel" name="titleLabel">
-     <property name="text">
-      <string>填筑-蓄水计算工况设置（4.3.5）</string>
-     </property>
+    <widget class="QScrollArea" name="scrollArea">
+     <property name="widgetResizable"><bool>true</bool></property>
+     <widget class="QWidget" name="scrollAreaWidgetContents">
+      <layout class="QVBoxLayout" name="verticalLayoutContent">
+       <item>
+        <layout class="QFormLayout" name="formLayoutMain">
+         <item row="0" column="0"><widget class="QLabel" name="labelIFIIWL_SEEP"><property name="text"><string>IFIIWL_SEEP</string></property></widget></item>
+         <item row="0" column="1"><widget class="QLineEdit" name="editIFIIWL_SEEP"><property name="text"><string>0</string></property></widget></item>
+         <item row="1" column="0"><widget class="QLabel" name="labelIFIIWL_BODY"><property name="text"><string>IFIIWL_BODY</string></property></widget></item>
+         <item row="1" column="1"><widget class="QLineEdit" name="editIFIIWL_BODY"><property name="text"><string>0</string></property></widget></item>
+         <item row="2" column="0"><widget class="QLabel" name="labelIFIIWL_FACE"><property name="text"><string>IFIIWL_FACE</string></property></widget></item>
+         <item row="2" column="1"><widget class="QLineEdit" name="editIFIIWL_FACE"><property name="text"><string>1</string></property></widget></item>
+         <item row="3" column="0"><widget class="QLabel" name="labelIFWET"><property name="text"><string>IFWET</string></property></widget></item>
+         <item row="3" column="1"><widget class="QLineEdit" name="editIFWET"><property name="text"><string>0</string></property></widget></item>
+         <item row="4" column="0"><widget class="QLabel" name="labelIFDROP"><property name="text"><string>IFDROP</string></property></widget></item>
+         <item row="4" column="1"><widget class="QLineEdit" name="editIFDROP"><property name="text"><string>0</string></property></widget></item>
+         <item row="5" column="0"><widget class="QLabel" name="labelNCHANGE"><property name="text"><string>NCHANGE</string></property></widget></item>
+         <item row="5" column="1"><widget class="QLineEdit" name="editNCHANGE"><property name="text"><string>0</string></property></widget></item>
+         <item row="6" column="0"><widget class="QLabel" name="labelDIRDYNA"><property name="text"><string>DIRDYNA</string></property></widget></item>
+         <item row="6" column="1"><widget class="QLineEdit" name="editDIRDYNA"><property name="text"><string>'CASE01FILL01'</string></property></widget></item>
+         <item row="7" column="0"><widget class="QLabel" name="labelNUM_DYNA"><property name="text"><string>NUM_DYNA</string></property></widget></item>
+         <item row="7" column="1"><widget class="QLineEdit" name="editNUM_DYNA"><property name="text"><string>0</string></property></widget></item>
+         <item row="8" column="0"><widget class="QLabel" name="labelM_DYNA_PAIR"><property name="text"><string>M_DYNA_PAIR</string></property></widget></item>
+         <item row="8" column="1"><widget class="QLineEdit" name="editM_DYNA_PAIR"><property name="text"><string>1  1</string></property></widget></item>
+         <item row="9" column="0"><widget class="QLabel" name="labelDYN_FLAGS"><property name="text"><string>DYN_FLAGS (IFMODE IFWAVE IFSETT)</string></property></widget></item>
+         <item row="9" column="1"><widget class="QLineEdit" name="editDYN_FLAGS"><property name="text"><string>0 0 0</string></property></widget></item>
+         <item row="10" column="0"><widget class="QLabel" name="labelDT_BLOCK"><property name="text"><string>DT_BLOCK (DT TSTA TEND WOMI_1)</string></property></widget></item>
+         <item row="10" column="1"><widget class="QLineEdit" name="editDT_BLOCK"><property name="text"><string>0.020000 0.000000 0.000000 0.000000</string></property></widget></item>
+         <item row="11" column="0"><widget class="QLabel" name="labelWAVE_FILES"><property name="text"><string>WAVE_FILES (AX AY AZ)</string></property></widget></item>
+         <item row="11" column="1"><widget class="QLineEdit" name="editWAVE_FILES"><property name="text"><string>'WAVE-AX.DAT' 'WAVE-AY.DAT' 'WAVE-AZ.DAT'</string></property></widget></item>
+        </layout>
+       </item>
+       <item><widget class="QLabel" name="labelWet"><property name="text"><string>湿化材料映射表 (Mdry Mwet)</string></property></widget></item>
+       <item><widget class="QTableWidget" name="tableWet"><column><property name="text"><string>Mdry</string></property></column><column><property name="text"><string>Mwet</string></property></column></widget></item>
+       <item><widget class="QLabel" name="labelDrop"><property name="text"><string>水位骤降表 (HW_DROP_STA HW_DROP_END)</string></property></widget></item>
+       <item><widget class="QTableWidget" name="tableDrop"><column><property name="text"><string>HW_DROP_STA</string></property></column><column><property name="text"><string>HW_DROP_END</string></property></column></widget></item>
+       <item><widget class="QLabel" name="labelCircle"><property name="text"><string>填筑-蓄水周期表</string></property></widget></item>
+       <item><widget class="QTableWidget" name="tableCircle"><column><property name="text"><string>JPACK_STA</string></property></column><column><property name="text"><string>JPACK_END</string></property></column><column><property name="text"><string>TT_PACK</string></property></column><column><property name="text"><string>HWJ_STA</string></property></column><column><property name="text"><string>HWJ_END</string></property></column><column><property name="text"><string>TT_FILL</string></property></column><column><property name="text"><string>IF_PACK</string></property></column><column><property name="text"><string>IF_PLIU</string></property></column><column><property name="text"><string>IF_FILL</string></property></column><column><property name="text"><string>IF_FLIU</string></property></column><column><property name="text"><string>CAHEAD</string></property></column><column><property name="text"><string>CABODY</string></property></column></widget></item>
+       <item><widget class="QLabel" name="labelSection"><property name="text"><string>4.3.5 填筑-蓄水计算工况块（预览）</string></property></widget></item>
+       <item><widget class="QPlainTextEdit" name="plainTextEditSection"/></item>
+      </layout>
+     </widget>
     </widget>
-   </item>
-   <item>
-    <widget class="QLabel" name="tipLabel">
-     <property name="text">
-      <string>此节点仅设置单个工况的 4.3.5 参数值；NCASE 与 ICASE 序号自动生成，4.3.4 的 MCASE 由土石坝计算节点统计填筑-蓄水节点数量自动生成。</string>
-      </property>
-     <property name="wordWrap">
-      <bool>true</bool>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QLabel" name="labelSection">
-     <property name="text">
-      <string>4.3.5 填筑-蓄水计算工况块（每个工况包含一条 ICASE）</string>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QPlainTextEdit" name="plainTextEditSection"/>
    </item>
   </layout>
  </widget>
