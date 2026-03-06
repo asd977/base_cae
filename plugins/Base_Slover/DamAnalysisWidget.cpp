@@ -1,4 +1,4 @@
-#include "DamAnalysisWidget.h"
+﻿#include "DamAnalysisWidget.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -217,7 +217,7 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
         }
         if (lineNo == 20)
         {
-            const QStringList parts = text.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+            const QStringList parts = text.split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
             if (parts.size() != 2)
             {
                 setError("第 20 行需包含两个数值：METHOD_ITER 和 ITER，例如：4 10。");
@@ -226,7 +226,7 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
         }
         if (oneTokenLines.contains(lineNo))
         {
-            const QStringList parts = text.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+            const QStringList parts = text.split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
             if (parts.size() != 1)
             {
                 setError(QString("第 %1 行应为单一值，当前输入：%2").arg(lineNo).arg(text));
@@ -236,7 +236,7 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
     }
 
     auto tokenCount = [](const QString& value) {
-        return value.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts).size();
+        return value.split(QRegularExpression("\\s+"), QString::SkipEmptyParts).size();
     };
     if (tokenCount(m_editX->text()) != 3)
     {
