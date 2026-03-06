@@ -10,7 +10,6 @@ class QLineEdit;
 class QPlainTextEdit;
 class QTableWidget;
 class QJsonArray;
-class QPushButton;
 
 namespace Ui
 {
@@ -42,14 +41,10 @@ class FillStorageCyclePage : public BasePage
     QJsonArray tableToJson(QTableWidget* table) const;
     void jsonToTable(const QJsonArray& arr, QTableWidget* table, int minRows);
     void updatePreview();
-    void applyCircleTableColumnMode();
-    void toggleCircleTableColumnMode();
   private:
     Ui::FillStorageCyclePage* ui = nullptr;
     QMap<QString, QLineEdit*> m_edits;
     QTableWidget* m_wetTable = nullptr;
     QTableWidget* m_dropTable = nullptr;
     QTableWidget* m_circleTable = nullptr;
-    QPushButton* m_toggleCircleColumnsButton = nullptr;
-    bool m_circleTableShowAllColumns = false;
 };

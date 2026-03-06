@@ -43,13 +43,6 @@
        <item><widget class="QLabel" name="labelDrop"><property name="text"><string>水位骤降表 (HW_DROP_STA HW_DROP_END)</string></property></widget></item>
        <item><widget class="QTableWidget" name="tableDrop"><column><property name="text"><string>HW_DROP_STA</string></property></column><column><property name="text"><string>HW_DROP_END</string></property></column></widget></item>
        <item><widget class="QLabel" name="labelCircle"><property name="text"><string>填筑-蓄水周期表</string></property></widget></item>
-       <item>
-        <layout class="QHBoxLayout" name="horizontalLayoutCircleToolbar">
-         <item><widget class="QLabel" name="labelCircleTip"><property name="text"><string>默认仅显示关键列，可点击“显示全部列”查看/编辑全部参数</string></property></widget></item>
-         <item><spacer name="horizontalSpacerCircleToolbar"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
-         <item><widget class="QPushButton" name="btnToggleCircleColumns"><property name="text"><string>显示全部列</string></property></widget></item>
-        </layout>
-       </item>
        <item><widget class="QTableWidget" name="tableCircle"><column><property name="text"><string>JPACK_STA</string></property></column><column><property name="text"><string>JPACK_END</string></property></column><column><property name="text"><string>TT_PACK</string></property></column><column><property name="text"><string>HWJ_STA</string></property></column><column><property name="text"><string>HWJ_END</string></property></column><column><property name="text"><string>TT_FILL</string></property></column><column><property name="text"><string>IF_PACK</string></property></column><column><property name="text"><string>IF_PLIU</string></property></column><column><property name="text"><string>IF_FILL</string></property></column><column><property name="text"><string>IF_FLIU</string></property></column><column><property name="text"><string>CAHEAD</string></property></column><column><property name="text"><string>CABODY</string></property></column></widget></item>
        <item><widget class="QLabel" name="labelSection"><property name="text"><string>4.3.5 填筑-蓄水计算工况块（预览）</string></property></widget></item>
        <item><widget class="QPlainTextEdit" name="plainTextEditSection"/></item>

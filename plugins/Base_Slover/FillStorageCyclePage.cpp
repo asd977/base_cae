@@ -3,7 +3,6 @@
 #include <QHeaderView>
 #include <QJsonArray>
 #include <QLineEdit>
-#include <QPushButton>
 #include <QTableWidget>
 
 #include "ui_FillStorageCyclePage.h"
@@ -53,7 +52,6 @@ void FillStorageCyclePage::initValueEditors()
     m_wetTable = ui->tableWet;
     m_dropTable = ui->tableDrop;
     m_circleTable = ui->tableCircle;
-    m_toggleCircleColumnsButton = ui->btnToggleCircleColumns;
 
     m_wetTable->setRowCount(1);
     m_wetTable->setItem(0, 0, new QTableWidgetItem("1"));
@@ -70,16 +68,7 @@ void FillStorageCyclePage::initValueEditors()
                                   "1", "0", "'NONE'", "'NONE'"};
     for (int c = 0; c < defaults.size(); ++c)
         m_circleTable->setItem(0, c, new QTableWidgetItem(defaults.at(c)));
-    m_circleTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
-    m_circleTable->horizontalHeader()->setMinimumSectionSize(80);
-    m_circleTable->horizontalHeader()->setDefaultSectionSize(110);
-
-    applyCircleTableColumnMode();
-    if (m_toggleCircleColumnsButton)
-    {
-        connect(m_toggleCircleColumnsButton, &QPushButton::clicked, this,
-                &FillStorageCyclePage::toggleCircleTableColumnMode);
-    }
+    m_circleTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
 
     connect(m_wetTable, &QTableWidget::cellChanged, this, [this]() { updatePreview(); });
     connect(m_dropTable, &QTableWidget::cellChanged, this, [this]() { updatePreview(); });
@@ -240,24 +229,4 @@ void FillStorageCyclePage::jsonToTable(const QJsonArray& arr, QTableWidget* tabl
                 table->setItem(r, c, new QTableWidgetItem(val));
         }
     }
-}
-
-void FillStorageCyclePage::applyCircleTableColumnMode()
-{
-    if (!m_circleTable)
-        return;
-
-    // 紧凑模式默认隐藏次要列，保留关键时间与水位字段。
-    const QList<int> compactHiddenColumns = {6, 7, 8, 9, 10, 11};
-    for (int col = 0; col < m_circleTable->columnCount(); ++col)
-        m_circleTable->setColumnHidden(col, !m_circleTableShowAllColumns && compactHiddenColumns.contains(col));
-
-    if (m_toggleCircleColumnsButton)
-        m_toggleCircleColumnsButton->setText(m_circleTableShowAllColumns ? "显示关键列" : "显示全部列");
-}
-
-void FillStorageCyclePage::toggleCircleTableColumnMode()
-{
-    m_circleTableShowAllColumns = !m_circleTableShowAllColumns;
-    applyCircleTableColumnMode();
 }
