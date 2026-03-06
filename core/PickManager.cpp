@@ -4,6 +4,7 @@
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
 #include <services/VisualWidgetService.h>
+#include <struct/MeshMap.h>
 
 #include <QDebug>
 #include <algorithm>
@@ -52,9 +53,8 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_visual = ServiceRegistry::instance().getService<VisualWidgetService>();
 
     // 全局解决共面闪烁（面/边 overlay）
-    //    vtkMapper::SetResolveCoincidentTopologyToPolygonOffset();
-    //    vtkMapper::SetResolveCoincidentTopologyPolygonOffsetParameters(+1.0,
-    //    +1000.0);
+    vtkMapper::SetResolveCoincidentTopologyToPolygonOffset();
+    vtkMapper::SetResolveCoincidentTopologyPolygonOffsetParameters(+1.0, +1000.0);
 
     // callbacks
     m_cbLeftPress = vtkSmartPointer<vtkCallbackCommand>::New();
@@ -558,7 +558,39 @@ bool PickManager::pickAt(int x, int y)
     {
         int faceLocalId = 15;
         QVector<vtkIdType> facePids;
-        if (!computePickedFace(grid, cellId, pickPos, faceLocalId, facePids))
+        QSet<int> allowedFaceLocalIds;
+        const QSet<int>* allowedPtr = nullptr;
+
+        if (kind == GridKind::Solid)
+        {
+            auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+            const MshPickMap map = meshSvc ? meshSvc->mshPickMapSolid() : MshPickMap{};
+            const bool hasBoundaryFaces = !map.bndFacePhysToFaceKeys.isEmpty();
+
+            if (hasBoundaryFaces)
+            {
+                for (auto it = map.bndFacePhysToFaceKeys.constBegin();
+                     it != map.bndFacePhysToFaceKeys.constEnd(); ++it)
+                {
+                    const auto& keys = it.value();
+                    for (qint64 key64 : keys)
+                    {
+                        const vtkIdType key = vtkIdType(key64);
+                        if (unpackFaceCellId(key) == cellId)
+                            allowedFaceLocalIds.insert(unpackFaceLocalId(key));
+                    }
+                }
+
+                if (allowedFaceLocalIds.isEmpty())
+                {
+                    qDebug() << "[PickManager] No boundary face in picked solid cell:" << cellId;
+                    return false;
+                }
+                allowedPtr = &allowedFaceLocalIds;
+            }
+        }
+
+        if (!computePickedFace(grid, cellId, pickPos, allowedPtr, faceLocalId, facePids))
             return false;
 
         toggleSelectFace(kind, packFaceKey(cellId, faceLocalId));
@@ -946,7 +978,9 @@ void PickManager::rebuildEdgePolyForActive()
 
 // ===================== Face =====================
 bool PickManager::computePickedFace(vtkUnstructuredGrid* grid, vtkIdType cellId,
-                                    const double pickPos[3], int& outFaceLocalId,
+                                    const double pickPos[3],
+                                    const QSet<int>* allowedFaceLocalIds,
+                                    int& outFaceLocalId,
                                     QVector<vtkIdType>& outFacePids) const
 {
     outFacePids.clear();
@@ -984,6 +1018,9 @@ bool PickManager::computePickedFace(vtkUnstructuredGrid* grid, vtkIdType cellId,
 
     for (int fi = 0; fi < nFaces; ++fi)
     {
+        if (allowedFaceLocalIds && !allowedFaceLocalIds->contains(fi))
+            continue;
+
         vtkCell* face = cell->GetFace(fi);
         if (!face)
             continue;

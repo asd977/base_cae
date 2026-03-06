@@ -7,6 +7,7 @@
 #include <services/PhySicalFieldService.h>
 #include <services/VisualWidgetService.h>
 
+#include <CustomComboBox.h>
 #include <QDebug>
 
 #include "ui_DisplacementConstraintWidget.h"
@@ -85,6 +86,22 @@ void DisplacementConstraintWidget::beforeLoad()
                      &DisplacementConstraintWidget::onDimChanged, Qt::UniqueConnection);
     QObject::connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
                      &DisplacementConstraintWidget::onGroupChanged, Qt::UniqueConnection);
+
+    if (auto* groupCombo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
+    {
+        QObject::connect(groupCombo, &CustomComboBox::itemHovered, this,
+                         [this](const int& row)
+                         {
+                             onGroupChanged(row);
+                         },
+                         Qt::UniqueConnection);
+        QObject::connect(groupCombo, &CustomComboBox::dropdownClosed, this,
+                         [this]()
+                         {
+                             onGroupChanged(ui->comboBoxGroup->currentIndex());
+                         },
+                         Qt::UniqueConnection);
+    }
 }
 
 void DisplacementConstraintWidget::refreshGroupCombo(int dimFilter)

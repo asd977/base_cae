@@ -5,6 +5,7 @@
 #include <struct/MeshMap.h>
 
 #include <QComboBox>
+#include <CustomComboBox.h>
 #include <QDebug>
 #include <QDoubleSpinBox>
 #include <QSpinBox>
@@ -133,6 +134,22 @@ void BodyForcePage::setupBatchGroupCombo()
             onGroupChanged(idx);
         },
         Qt::UniqueConnection);
+
+    if (auto* groupCombo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
+    {
+        QObject::connect(groupCombo, &CustomComboBox::itemHovered, this,
+                         [this](const int& row)
+                         {
+                             onGroupChanged(row);
+                         },
+                         Qt::UniqueConnection);
+        QObject::connect(groupCombo, &CustomComboBox::dropdownClosed, this,
+                         [this]()
+                         {
+                             onGroupChanged(ui->comboBoxGroup->currentIndex());
+                         },
+                         Qt::UniqueConnection);
+    }
     refreshGroupCombo();
 }
 
