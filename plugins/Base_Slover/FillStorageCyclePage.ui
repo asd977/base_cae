@@ -36,6 +36,47 @@
       <widget class="QWidget" name="scrollAreaWidgetContents">
        <layout class="QVBoxLayout" name="allLayout">
         <item>
+         <widget class="QGroupBox" name="groupGlobal">
+          <property name="title">
+           <string>通用参数（4.3.2 / 4.3.3 / 4.3.4）</string>
+          </property>
+          <layout class="QGridLayout" name="globalGrid">
+           <item row="0" column="0"><widget class="QLabel" name="labelX123"><property name="text"><string>扬压力折减位置 X1/X2/X3</string></property></widget></item>
+           <item row="0" column="1"><widget class="QDoubleSpinBox" name="spinX1"><property name="maximum"><double>999999.000000000000000</double></property></widget></item>
+           <item row="0" column="2"><widget class="QDoubleSpinBox" name="spinX2"><property name="maximum"><double>999999.000000000000000</double></property></widget></item>
+           <item row="0" column="3"><widget class="QDoubleSpinBox" name="spinX3"><property name="maximum"><double>999999.000000000000000</double></property></widget></item>
+
+           <item row="1" column="0"><widget class="QLabel" name="labelA123"><property name="text"><string>折减系数 α1/α2/α3</string></property></widget></item>
+           <item row="1" column="1"><widget class="QDoubleSpinBox" name="spinA1"><property name="decimals"><number>6</number></property><property name="maximum"><double>9.999999000000000</double></property><property name="value"><double>1.000000</double></property></widget></item>
+           <item row="1" column="2"><widget class="QDoubleSpinBox" name="spinA2"><property name="decimals"><number>6</number></property><property name="maximum"><double>9.999999000000000</double></property><property name="value"><double>1.000000</double></property></widget></item>
+           <item row="1" column="3"><widget class="QDoubleSpinBox" name="spinA3"><property name="decimals"><number>6</number></property><property name="maximum"><double>9.999999000000000</double></property><property name="value"><double>1.000000</double></property></widget></item>
+
+           <item row="2" column="0"><widget class="QLabel" name="labelIxupdw"><property name="text"><string>IXUPDW（上下游轴指向）</string></property></widget></item>
+           <item row="2" column="1"><widget class="QComboBox" name="comboIxupdw"/></item>
+           <item row="2" column="2"><widget class="QLabel" name="labelPanelDam"><property name="text"><string>面板坝</string></property></widget></item>
+           <item row="2" column="3"><widget class="QCheckBox" name="checkPanelDam"><property name="text"><string>是（不需心墙中心面AB坐标）</string></property></widget></item>
+
+           <item row="3" column="0"><widget class="QLabel" name="labelApoint"><property name="text"><string>心墙中心面A点(XAMID,YAMID)</string></property></widget></item>
+           <item row="3" column="1"><widget class="QDoubleSpinBox" name="spinXamid"><property name="maximum"><double>999999.000000000000000</double></property></widget></item>
+           <item row="3" column="2"><widget class="QDoubleSpinBox" name="spinYamid"><property name="maximum"><double>999999.000000000000000</double></property></widget></item>
+
+           <item row="4" column="0"><widget class="QLabel" name="labelBpoint"><property name="text"><string>心墙中心面B点(XBMID,YBMID)</string></property></widget></item>
+           <item row="4" column="1"><widget class="QDoubleSpinBox" name="spinXbmid"><property name="maximum"><double>999999.000000000000000</double></property></widget></item>
+           <item row="4" column="2"><widget class="QDoubleSpinBox" name="spinYbmid"><property name="maximum"><double>999999.000000000000000</double></property></widget></item>
+
+           <item row="5" column="0"><widget class="QLabel" name="labelIfrock"><property name="text"><string>IFROCK（岩体自重）</string></property></widget></item>
+           <item row="5" column="1"><widget class="QComboBox" name="comboIfrock"/></item>
+           <item row="5" column="2"><widget class="QLabel" name="labelIfiso"><property name="text"><string>IFISO 模式</string></property></widget></item>
+           <item row="5" column="3"><widget class="QComboBox" name="comboIfisoMode"/></item>
+
+           <item row="6" column="0"><widget class="QLabel" name="labelIfisoValue"><property name="text"><string>IFISO 指定材料号（模式=指定材料号时）</string></property></widget></item>
+           <item row="6" column="1"><widget class="QSpinBox" name="spinIfisoValue"/></item>
+           <item row="6" column="2"><widget class="QLabel" name="labelCaseIds"><property name="text"><string>参与计算工况序号(逗号分隔)</string></property></widget></item>
+           <item row="6" column="3"><widget class="QLineEdit" name="editCaseIds"><property name="placeholderText"><string>例如: 1,2,4</string></property></widget></item>
+          </layout>
+         </widget>
+        </item>
+        <item>
          <widget class="QGroupBox" name="groupBase">
           <property name="title">
            <string>基础工况参数</string>

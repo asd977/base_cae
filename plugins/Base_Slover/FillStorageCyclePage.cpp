@@ -2,6 +2,7 @@
 
 #include "ui_FillStorageCyclePage.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QHeaderView>
@@ -41,6 +42,13 @@ FillStorageCyclePage::FillStorageCyclePage(QWidget* parent)
     ui->comboIfWave->addItem("0 不地震波动力", 0);
     ui->comboIfWave->addItem("1 地震波动力", 1);
     ui->comboIfWave->setCurrentIndex(1);
+
+    ui->comboIxupdw->addItem("0: 轴由上游指向下游", 0);
+    ui->comboIxupdw->addItem("1: 轴由下游指向上游", 1);
+    ui->comboIfrock->addItem("0 不计算（已完成）", 0);
+    ui->comboIfrock->addItem("1 进行岩体自重计算", 1);
+    ui->comboIfisoMode->addItem("按建模材料计算(IFISO=0)", 0);
+    ui->comboIfisoMode->addItem("按指定材料号计算(IFISO!=1)", 1);
 
     auto initTable = [](QTableWidget* t, const QStringList& headers)
     {
@@ -117,6 +125,22 @@ FillStorageCyclePage::FillStorageCyclePage(QWidget* parent)
     connect(btnDynaConfig, &QPushButton::clicked, this,
             [this]() { openTableEditor("静力-动力材料映射", ui->tableDyna, ui->spinNumDyna); });
 
+    auto refreshGlobalUi = [this]()
+    {
+        const bool panelDam = ui->checkPanelDam->isChecked();
+        ui->spinXamid->setEnabled(!panelDam);
+        ui->spinYamid->setEnabled(!panelDam);
+        ui->spinXbmid->setEnabled(!panelDam);
+        ui->spinYbmid->setEnabled(!panelDam);
+
+        const bool specifiedIso = ui->comboIfisoMode->currentIndex() == 1;
+        ui->spinIfisoValue->setEnabled(specifiedIso);
+    };
+    connect(ui->checkPanelDam, &QCheckBox::toggled, this, [refreshGlobalUi](bool) { refreshGlobalUi(); });
+    connect(ui->comboIfisoMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [refreshGlobalUi](int) { refreshGlobalUi(); });
+    refreshGlobalUi();
+
     setupConnections();
     updatePreview();
 }
@@ -163,6 +187,23 @@ QJsonObject FillStorageCyclePage::saveJson()
     obj["wave_ax"] = ui->editWaveAx->text();
     obj["wave_ay"] = ui->editWaveAy->text();
     obj["wave_az"] = ui->editWaveAz->text();
+
+    obj["x1"] = ui->spinX1->value();
+    obj["x2"] = ui->spinX2->value();
+    obj["x3"] = ui->spinX3->value();
+    obj["a1"] = ui->spinA1->value();
+    obj["a2"] = ui->spinA2->value();
+    obj["a3"] = ui->spinA3->value();
+    obj["ixupdw"] = ui->comboIxupdw->currentData().toInt();
+    obj["panel_dam"] = ui->checkPanelDam->isChecked();
+    obj["xamid"] = ui->spinXamid->value();
+    obj["yamid"] = ui->spinYamid->value();
+    obj["xbmid"] = ui->spinXbmid->value();
+    obj["ybmid"] = ui->spinYbmid->value();
+    obj["ifrock"] = ui->comboIfrock->currentData().toInt();
+    obj["ifiso_mode"] = ui->comboIfisoMode->currentIndex();
+    obj["ifiso_value"] = ui->spinIfisoValue->value();
+    obj["mcase_ids"] = ui->editCaseIds->text();
     return obj;
 }
 
@@ -211,6 +252,23 @@ void FillStorageCyclePage::loadJson(const QJsonObject& obj)
     ui->editWaveAx->setText(obj.value("wave_ax").toString("WAVE-AX.DAT"));
     ui->editWaveAy->setText(obj.value("wave_ay").toString("WAVE-AY.DAT"));
     ui->editWaveAz->setText(obj.value("wave_az").toString("WAVE-AZ.DAT"));
+
+    setComboByData(ui->comboIxupdw, obj.value("ixupdw").toInt(0));
+    ui->spinX1->setValue(obj.value("x1").toDouble(0.0));
+    ui->spinX2->setValue(obj.value("x2").toDouble(0.0));
+    ui->spinX3->setValue(obj.value("x3").toDouble(0.0));
+    ui->spinA1->setValue(obj.value("a1").toDouble(1.0));
+    ui->spinA2->setValue(obj.value("a2").toDouble(1.0));
+    ui->spinA3->setValue(obj.value("a3").toDouble(1.0));
+    ui->checkPanelDam->setChecked(obj.value("panel_dam").toBool(false));
+    ui->spinXamid->setValue(obj.value("xamid").toDouble(0.0));
+    ui->spinYamid->setValue(obj.value("yamid").toDouble(0.0));
+    ui->spinXbmid->setValue(obj.value("xbmid").toDouble(0.0));
+    ui->spinYbmid->setValue(obj.value("ybmid").toDouble(0.0));
+    setComboByData(ui->comboIfrock, obj.value("ifrock").toInt(1));
+    ui->comboIfisoMode->setCurrentIndex(obj.value("ifiso_mode").toInt(0));
+    ui->spinIfisoValue->setValue(obj.value("ifiso_value").toInt(0));
+    ui->editCaseIds->setText(obj.value("mcase_ids").toString());
 
     updatePreview();
 }
@@ -304,6 +362,38 @@ void FillStorageCyclePage::setupConnections()
     connect(ui->editWaveAz, &QLineEdit::textChanged, this,
             [onValue](const QString&) { onValue(); });
 
+
+    connect(ui->spinX1, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [onValue](double) { onValue(); });
+    connect(ui->spinX2, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [onValue](double) { onValue(); });
+    connect(ui->spinX3, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [onValue](double) { onValue(); });
+    connect(ui->spinA1, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [onValue](double) { onValue(); });
+    connect(ui->spinA2, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [onValue](double) { onValue(); });
+    connect(ui->spinA3, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [onValue](double) { onValue(); });
+    connect(ui->comboIxupdw, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [onValue](int) { onValue(); });
+    connect(ui->checkPanelDam, &QCheckBox::toggled, this, [onValue](bool) { onValue(); });
+    connect(ui->spinXamid, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [onValue](double) { onValue(); });
+    connect(ui->spinYamid, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [onValue](double) { onValue(); });
+    connect(ui->spinXbmid, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [onValue](double) { onValue(); });
+    connect(ui->spinYbmid, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [onValue](double) { onValue(); });
+    connect(ui->comboIfrock, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [onValue](int) { onValue(); });
+    connect(ui->comboIfisoMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [onValue](int) { onValue(); });
+    connect(ui->spinIfisoValue, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [onValue](int) { onValue(); });
+    connect(ui->editCaseIds, &QLineEdit::textChanged, this,
+            [onValue](const QString&) { onValue(); });
     connect(ui->tableWetMap, &QTableWidget::itemChanged, this, [onValue]() { onValue(); });
     connect(ui->tableDrop, &QTableWidget::itemChanged, this, [onValue]() { onValue(); });
     connect(ui->tableChange, &QTableWidget::itemChanged, this, [onValue]() { onValue(); });
