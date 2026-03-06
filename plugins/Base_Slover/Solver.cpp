@@ -20,7 +20,7 @@
 #include "SeepageBoundaryPage.h"
 #include "SeepageWidget.h"
 #include "StressBoundaryPage.h"
-#include "StressStrainWidget.h"
+#include "DamAnalysisWidget.h"
 
 Solver::Solver()
 {

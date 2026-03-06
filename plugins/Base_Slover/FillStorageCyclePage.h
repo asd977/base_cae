@@ -4,6 +4,11 @@
 
 #include <QJsonObject>
 #include <QString>
+#include <QMap>
+
+class QFormLayout;
+class QLineEdit;
+class QPlainTextEdit;
 
 namespace Ui
 {
@@ -27,8 +32,14 @@ class FillStorageCyclePage : public BasePage
     void loadJson(const QJsonObject& obj) override;
 
   private:
+    void initValueEditors();
+    QString valueOf(const QString& key) const;
+    void setValueOf(const QString& key, const QString& value);
+    void updatePreview();
     QString defaultSectionText() const;
 
   private:
     Ui::FillStorageCyclePage* ui = nullptr;
+    QFormLayout* m_formLayout = nullptr;
+    QMap<QString, QLineEdit*> m_edits;
 };

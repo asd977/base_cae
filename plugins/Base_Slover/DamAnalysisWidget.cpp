@@ -1,4 +1,4 @@
-#include "StressStrainWidget.h"
+#include "DamAnalysisWidget.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -9,13 +9,14 @@
 #include <QJsonArray>
 #include <QHeaderView>
 #include <QLineEdit>
+#include <QRegExp>
 #include <QTableWidget>
 #include <QTextStream>
 
-#include "ui_StressStrainWidget.h"
+#include "ui_DamAnalysisWidget.h"
 
 DamAnalysisWidget::DamAnalysisWidget(QWidget* parent)
-    : BasePage("DamAnalysis"), ui(new Ui::StressStrainWidget)
+    : BasePage("DamAnalysis"), ui(new Ui::DamAnalysisWidget)
 {
     ui->setupUi(this);
     initValueEditors();

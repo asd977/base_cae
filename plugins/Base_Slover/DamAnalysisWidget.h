@@ -11,7 +11,7 @@ class QTableWidget;
 
 namespace Ui
 {
-class StressStrainWidget;
+class DamAnalysisWidget;
 }
 
 class DamAnalysisWidget : public BasePage
@@ -40,7 +40,7 @@ class DamAnalysisWidget : public BasePage
     QString quoteValue(const QString& value) const;
     QString defaultValueByLine(int lineNo) const;
 
-    Ui::StressStrainWidget* ui;
+    Ui::DamAnalysisWidget* ui;
     QFormLayout* m_formLayout = nullptr;
     QTableWidget* m_baseTable = nullptr;
     QLineEdit* m_editX = nullptr;

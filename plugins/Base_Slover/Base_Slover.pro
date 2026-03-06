@@ -10,7 +10,7 @@ HEADERS += \
     SeepageWidget.h \
     Solver.h \
     StressBoundaryPage.h \
-    StressStrainWidget.h
+    DamAnalysisWidget.h
 
 SOURCES += \
     FillStorageCyclePage.cpp \
@@ -18,14 +18,14 @@ SOURCES += \
     SeepageWidget.cpp \
     Solver.cpp \
     StressBoundaryPage.cpp \
-    StressStrainWidget.cpp
+    DamAnalysisWidget.cpp
 
 FORMS += \
     FillStorageCyclePage.ui \
     SeepageBoundaryPage.ui \
     SeepageWidget.ui \
     StressBoundaryPage.ui \
-    StressStrainWidget.ui
+    DamAnalysisWidget.ui
 
 RESOURCES += \
     ../../res.qrc
