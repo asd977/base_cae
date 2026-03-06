@@ -71,10 +71,10 @@
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_3">
       <item>
-       <widget class="QComboBox" name="comboBoxDim" />
+       <widget class="CustomComboBox" name="comboBoxDim" />
       </item>
       <item>
-       <widget class="QComboBox" name="comboBoxGroup" />
+       <widget class="CustomComboBox" name="comboBoxGroup" />
       </item>
       <item>
        <widget class="QGroupBox" name="groupBox">
@@ -257,6 +257,13 @@
    </item>
   </layout>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>CustomComboBox</class>
+   <extends>QComboBox</extends>
+   <header>CustomComboBox.h</header>
+  </customwidget>
+ </customwidgets>
  <resources />
  <connections />
 </ui>
