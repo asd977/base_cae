@@ -1,4 +1,4 @@
-#include "FillStorageCyclePage.h"
+﻿#include "FillStorageCyclePage.h"
 
 #include <QFormLayout>
 #include <QHeaderView>
@@ -137,6 +137,7 @@ QString FillStorageCyclePage::sectionText(int caseIndex) const
     for (int i = 0; i < nCircle; ++i)
     {
         text += QString("%1 %2 %3 %4 %5 %6 %7 %8 %9 %10 %11 %12 %13\n")
+                    // 第一组：处理前 9 个占位符
                     .arg(tableItemText(m_circleTable, i, 0, "0"),
                          tableItemText(m_circleTable, i, 1, "0"),
                          tableItemText(m_circleTable, i, 2, "0.0000"),
@@ -145,11 +146,12 @@ QString FillStorageCyclePage::sectionText(int caseIndex) const
                          tableItemText(m_circleTable, i, 5, "0.0000"),
                          tableItemText(m_circleTable, i, 6, "0"),
                          tableItemText(m_circleTable, i, 7, "0"),
-                         tableItemText(m_circleTable, i, 8, "0"),
-                         tableItemText(m_circleTable, i, 9, "0"),
+                         tableItemText(m_circleTable, i, 8, "0"))
+                    // 第二组：处理剩下的 4 个占位符 (%10, %11, %12, %13)
+                    .arg(tableItemText(m_circleTable, i, 9, "0"),
                          tableItemText(m_circleTable, i, 10, "'NONE'"),
-                         tableItemText(m_circleTable, i, 11, "'NONE'"))
-                    .arg(i + 1);
+                         tableItemText(m_circleTable, i, 11, "'NONE'"),
+                         QString::number(i + 1)); // 这里的 i+1 建议显式转为 QString
     }
 
     text += QString("%1     DIRDYNA\n").arg(valueOf("DIRDYNA"));
@@ -220,10 +222,15 @@ void FillStorageCyclePage::jsonToTable(const QJsonArray& arr, QTableWidget* tabl
     table->setRowCount(rows);
     for (int r = 0; r < rows; ++r)
     {
-        const QJsonArray cols = arr.value(r).toArray();
+        // Change .value(r) to .at(r)
+        const QJsonArray cols = arr.at(r).toArray();
+
         for (int c = 0; c < table->columnCount(); ++c)
         {
-            QString val = cols.value(c).toString();
+            // Note: QJsonArray also doesn't have .value(c) here!
+            // Use .at(c).toString() instead.
+            QString val = cols.at(c).toString();
+
             if (table->item(r, c))
                 table->item(r, c)->setText(val);
             else
