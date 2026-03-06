@@ -558,10 +558,8 @@ bool PickManager::pickAt(int x, int y)
     {
         int faceLocalId = 15;
         QVector<vtkIdType> facePids;
-        double pickNormal[3] = {0.0, 0.0, 0.0};
-        m_cellPicker->GetPickNormal(pickNormal);
-        if (!computePickedFace(grid, cellId, pickPos, pickNormal, faceLocalId, facePids))
-            return false;
+        QSet<int> allowedFaceLocalIds;
+        const QSet<int>* allowedPtr = nullptr;
 
         if (kind == GridKind::Solid)
         {
@@ -569,24 +567,31 @@ bool PickManager::pickAt(int x, int y)
             const MshPickMap map = meshSvc ? meshSvc->mshPickMapSolid() : MshPickMap{};
             const bool hasBoundaryFaces = !map.bndFacePhysToFaceKeys.isEmpty();
 
-            auto isBoundaryFace = [&](vtkIdType key)
+            if (hasBoundaryFaces)
             {
                 for (auto it = map.bndFacePhysToFaceKeys.constBegin();
                      it != map.bndFacePhysToFaceKeys.constEnd(); ++it)
                 {
-                    if (it.value().contains(qint64(key)))
-                        return true;
+                    const auto& keys = it.value();
+                    for (qint64 key64 : keys)
+                    {
+                        const vtkIdType key = vtkIdType(key64);
+                        if (unpackFaceCellId(key) == cellId)
+                            allowedFaceLocalIds.insert(unpackFaceLocalId(key));
+                    }
                 }
-                return false;
-            };
 
-            vtkIdType faceKey = packFaceKey(cellId, faceLocalId);
-            if (hasBoundaryFaces && !isBoundaryFace(faceKey))
-            {
-                qDebug() << "[PickManager] Skip non-boundary solid face:" << faceKey;
-                return false;
+                if (allowedFaceLocalIds.isEmpty())
+                {
+                    qDebug() << "[PickManager] No boundary face in picked solid cell:" << cellId;
+                    return false;
+                }
+                allowedPtr = &allowedFaceLocalIds;
             }
         }
+
+        if (!computePickedFace(grid, cellId, pickPos, allowedPtr, faceLocalId, facePids))
+            return false;
 
         toggleSelectFace(kind, packFaceKey(cellId, faceLocalId));
         return true;
@@ -973,7 +978,8 @@ void PickManager::rebuildEdgePolyForActive()
 
 // ===================== Face =====================
 bool PickManager::computePickedFace(vtkUnstructuredGrid* grid, vtkIdType cellId,
-                                    const double pickPos[3], const double pickNormal[3],
+                                    const double pickPos[3],
+                                    const QSet<int>* allowedFaceLocalIds,
                                     int& outFaceLocalId,
                                     QVector<vtkIdType>& outFacePids) const
 {
@@ -1012,6 +1018,9 @@ bool PickManager::computePickedFace(vtkUnstructuredGrid* grid, vtkIdType cellId,
 
     for (int fi = 0; fi < nFaces; ++fi)
     {
+        if (allowedFaceLocalIds && !allowedFaceLocalIds->contains(fi))
+            continue;
+
         vtkCell* face = cell->GetFace(fi);
         if (!face)
             continue;
@@ -1055,25 +1064,7 @@ bool PickManager::computePickedFace(vtkUnstructuredGrid* grid, vtkIdType cellId,
             std::abs(vtkPlane::DistanceToPlane(const_cast<double*>(pickPos), n, p0));
         const int inside =
             vtkPolygon::PointInPolygon(const_cast<double*>(pickPos), npts, pts.data(), bounds, n);
-
-        double normalPenalty = 0.0;
-        if (pickNormal)
-        {
-            const double pickNorm = vtkMath::Norm(const_cast<double*>(pickNormal));
-            if (pickNorm > 1e-12)
-            {
-                double nUnit[3] = {n[0], n[1], n[2]};
-                vtkMath::Normalize(nUnit);
-                double pUnit[3] = {pickNormal[0], pickNormal[1], pickNormal[2]};
-                vtkMath::Normalize(pUnit);
-
-                // 越接近 picker 给出的法向，优先级越高，避免点在网格线附近误选到内面
-                const double align = vtkMath::Dot(nUnit, pUnit);
-                normalPenalty = (1.0 - align) * 1e2;
-            }
-        }
-
-        const double score = inside ? (dist + normalPenalty) : (dist + normalPenalty + 1e3);
+        const double score = inside ? dist : (dist + 1e3);
 
         if (score < bestScore)
         {

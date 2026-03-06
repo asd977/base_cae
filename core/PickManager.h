@@ -147,7 +147,7 @@ class CORE_EXPORT PickManager : public QObject
     void toggleSelectFace(GridKind kind, vtkIdType faceKey);
     void rebuildFacePolyForActive();
     bool computePickedFace(vtkUnstructuredGrid* grid, vtkIdType cellId, const double pickPos[3],
-                           const double pickNormal[3], int& outFaceLocalId,
+                           const QSet<int>* allowedFaceLocalIds, int& outFaceLocalId,
                            QVector<vtkIdType>& outFacePids) const;
 
     void updateActorVisibility();
