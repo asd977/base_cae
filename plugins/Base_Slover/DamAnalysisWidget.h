@@ -9,6 +9,7 @@ class QFormLayout;
 class QLineEdit;
 class QTableWidget;
 class QLabel;
+class QPushButton;
 
 namespace Ui
 {
@@ -41,6 +42,10 @@ class DamAnalysisWidget : public BasePage
     void initValueEditors();
     QString quoteValue(const QString& value) const;
     QString defaultValueByLine(int lineNo) const;
+    QString descriptionByLine(int lineNo) const;
+    QString normalizeEnumValue(const QString& rawValue) const;
+    bool validateInputs(QString* errorMessage) const;
+    void updateConfigSummary();
 
     Ui::DamAnalysisWidget* ui;
     QFormLayout* m_formLayout = nullptr;
@@ -50,4 +55,6 @@ class DamAnalysisWidget : public BasePage
     QLineEdit* m_editAxis = nullptr;
     QLineEdit* m_editRock = nullptr;
     QLineEdit* m_editMCase = nullptr;
+    QLabel* m_summaryLabel = nullptr;
+    QPushButton* m_btnValidation = nullptr;
 };
