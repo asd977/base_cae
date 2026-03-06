@@ -9,6 +9,8 @@
 class QFormLayout;
 class QLineEdit;
 class QPlainTextEdit;
+class QTableWidget;
+class QJsonArray;
 
 namespace Ui
 {
@@ -36,9 +38,15 @@ class FillStorageCyclePage : public BasePage
     void initValueEditors();
     QString valueOf(const QString& key) const;
     void setValueOf(const QString& key, const QString& value);
+    QString tableItemText(QTableWidget* table, int row, int col, const QString& fallback) const;
+    QJsonArray tableToJson(QTableWidget* table) const;
+    void jsonToTable(const QJsonArray& arr, QTableWidget* table, int minRows);
     void updatePreview();
   private:
     Ui::FillStorageCyclePage* ui = nullptr;
     QFormLayout* m_formLayout = nullptr;
     QMap<QString, QLineEdit*> m_edits;
+    QTableWidget* m_wetTable = nullptr;
+    QTableWidget* m_dropTable = nullptr;
+    QTableWidget* m_circleTable = nullptr;
 };
