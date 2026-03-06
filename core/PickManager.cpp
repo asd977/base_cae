@@ -103,6 +103,8 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_edgePoly->SetLines(m_edgeLines);
 
     m_edgeMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    m_edgeMapper->SetResolveCoincidentTopologyToPolygonOffset();
+    m_edgeMapper->SetRelativeCoincidentTopologyLineOffsetParameters(-1.0, -10.0);
     m_edgeMapper->SetInputData(m_edgePoly);
 
     m_edgeActor = vtkSmartPointer<vtkActor>::New();
@@ -128,6 +130,7 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
 
     // --- Mapper 配置 ---
     m_faceMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    m_faceMapper->SetResolveCoincidentTopologyToPolygonOffset();
     m_faceMapper->SetRelativeCoincidentTopologyPolygonOffsetParameters(-1.0, -20.0);
     m_faceMapper->SetInputData(m_facePoly);
 
@@ -329,17 +332,6 @@ void PickManager::activate(const QString& domain, const QString& uuid, PickMode 
     if (mode == PickMode::Face)
         markDirty(DirtyFace);
 
-    const bool needPolygonOffset = (mode == PickMode::Edge || mode == PickMode::Face);
-    if (needPolygonOffset)
-    {
-        vtkMapper::SetResolveCoincidentTopologyToPolygonOffset();
-        vtkMapper::SetResolveCoincidentTopologyPolygonOffsetParameters(+1.0, +1000.0);
-    }
-    else
-    {
-        vtkMapper::SetResolveCoincidentTopologyToOff();
-    }
-
     setupPicking();
 }
 
@@ -357,7 +349,6 @@ void PickManager::deactivate(const QString& domain, const QString& uuid, PickMod
 
     teardownPicking();
 
-    vtkMapper::SetResolveCoincidentTopologyToOff();
 
     m_currentDomain.clear();
     m_currentUUid.clear();
