@@ -3,20 +3,20 @@
 #include <PublicConstants.h>
 #include <PublicVariables.h>
 
+#include <QComboBox>
 #include <QDir>
 #include <QFile>
 #include <QFormLayout>
 #include <QJsonArray>
-#include <QHeaderView>
+#include <QLabel>
 #include <QLineEdit>
-#include <QMessageBox>
-#include <QRegExp>
-#include <QRegularExpression>
-#include <QPushButton>
-#include <QTableWidget>
-#include <QTextStream>
-#include <QSet>
 #include <QMap>
+#include <QMessageBox>
+#include <QPushButton>
+#include <QRegularExpression>
+#include <QSet>
+#include <QTextStream>
+#include <QWidget>
 
 #include "ui_DamAnalysisWidget.h"
 
@@ -46,24 +46,57 @@ void DamAnalysisWidget::initValueEditors()
     m_formLayout = new QFormLayout();
     m_formLayout->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
-    m_baseTable = new QTableWidget(30, 2, this);
-    m_baseTable->setHorizontalHeaderLabels({"行号", "值"});
-    m_baseTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    m_baseTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
-    m_baseTable->verticalHeader()->setVisible(false);
-    for (int i = 0; i < 30; ++i)
+    auto addCombo = [this](int lineNo, const QMap<QString, QString>& options) {
+        auto* combo = new QComboBox(this);
+        for (auto it = options.begin(); it != options.end(); ++it)
+            combo->addItem(it.value(), it.key());
+        const QString def = defaultValueByLine(lineNo).trimmed();
+        const int idx = combo->findData(def);
+        if (idx >= 0)
+            combo->setCurrentIndex(idx);
+        connect(combo, &QComboBox::currentTextChanged, this, [this]() { updateConfigSummary(); });
+        m_lineEditors[lineNo] = combo;
+    };
+
+    for (int lineNo = 1; lineNo <= 30; ++lineNo)
     {
-        auto* lineItem = new QTableWidgetItem(QString::number(i + 1));
-        lineItem->setFlags(lineItem->flags() & ~Qt::ItemIsEditable);
-        m_baseTable->setItem(i, 0, lineItem);
-        auto* valueItem = new QTableWidgetItem(defaultValueByLine(i + 1));
-        const QString desc = descriptionByLine(i + 1);
-        valueItem->setToolTip(desc);
-        lineItem->setToolTip(desc);
-        m_baseTable->setItem(i, 1, valueItem);
+        if (isFixedFileLine(lineNo))
+        {
+            auto* fixedLabel = new QLabel(defaultValueByLine(lineNo), this);
+            fixedLabel->setStyleSheet("QLabel { color: #606060; }");
+            fixedLabel->setToolTip("该文件名按规范固定，不在界面中编辑。");
+            m_lineEditors[lineNo] = fixedLabel;
+        }
+        else if (lineNo == 10)
+        {
+            addCombo(lineNo, {{"1", "1 面板堆石坝"}, {"2", "2 心墙堆石坝"}, {"3", "3 沥青心墙堆石坝"}, {"4", "4 均质坝"}});
+        }
+        else if (lineNo == 15)
+        {
+            addCombo(lineNo, {{"0", "0 系统阻尼"}, {"1", "1 分材料阻尼"}});
+        }
+        else if (lineNo == 16)
+        {
+            addCombo(lineNo, {{"0", "0 非瑞雷阻尼"}, {"1", "1 瑞雷阻尼"}});
+        }
+        else if (lineNo == 19)
+        {
+            addCombo(lineNo, {{"1", "1 静力计算"}, {"2", "2 动力计算"}, {"3", "3 静动力全部计算"}});
+        }
+        else if (lineNo == 29)
+        {
+            addCombo(lineNo, {{"0", "0 不计算特征值特征向量"}, {"1", "1 计算特征值特征向量"}});
+        }
+        else
+        {
+            auto* edit = new QLineEdit(defaultValueByLine(lineNo), this);
+            edit->setPlaceholderText(descriptionByLine(lineNo));
+            connect(edit, &QLineEdit::textChanged, this, [this]() { updateConfigSummary(); });
+            m_lineEditors[lineNo] = edit;
+        }
+
+        m_formLayout->addRow(QString("4.3.1 第%1行：%2").arg(lineNo).arg(descriptionByLine(lineNo)), m_lineEditors.value(lineNo));
     }
-    m_baseTable->setMinimumHeight(280);
-    m_baseTable->setAlternatingRowColors(true);
 
     m_editX = new QLineEdit("0.000000  0.000000  0.000000", this);
     m_editAlfa = new QLineEdit("0.000000  0.000000  0.000000", this);
@@ -88,7 +121,6 @@ void DamAnalysisWidget::initValueEditors()
     });
 
     m_formLayout->addRow("4.3.4 MCASE（自动统计填筑-蓄水节点数）", m_editMCase);
-    m_formLayout->addRow("4.3.1 行1~30（土石坝相关文件及变量）", m_baseTable);
     m_formLayout->addRow("4.3.2(1) X1 X2 X3", m_editX);
     m_formLayout->addRow("4.3.2(2) α1 α2 α3", m_editAlfa);
     m_formLayout->addRow("4.3.2(3) IXUPDW XAMID YAMID XBMID YBMID", m_editAxis);
@@ -96,7 +128,6 @@ void DamAnalysisWidget::initValueEditors()
     m_formLayout->addRow("当前配置摘要", m_summaryLabel);
     m_formLayout->addRow("配置检查", m_btnValidation);
 
-    connect(m_baseTable, &QTableWidget::itemChanged, this, [this](QTableWidgetItem*) { updateConfigSummary(); });
     connect(m_editRock, &QLineEdit::textChanged, this, [this]() { updateConfigSummary(); });
 
     ui->verticalLayout->insertLayout(2, m_formLayout);
@@ -147,6 +178,41 @@ QString DamAnalysisWidget::normalizeEnumValue(const QString& rawValue) const
     return trimmed.mid(quoteStart + 1, quoteEnd - quoteStart - 1).trimmed();
 }
 
+QString DamAnalysisWidget::lineValue(int lineNo) const
+{
+    QWidget* w = m_lineEditors.value(lineNo, nullptr);
+    if (auto* combo = qobject_cast<QComboBox*>(w))
+        return combo->currentData().toString();
+    if (auto* edit = qobject_cast<QLineEdit*>(w))
+        return edit->text().trimmed();
+    if (auto* label = qobject_cast<QLabel*>(w))
+        return label->text().trimmed();
+    return defaultValueByLine(lineNo);
+}
+
+void DamAnalysisWidget::setLineValue(int lineNo, const QString& value)
+{
+    QWidget* w = m_lineEditors.value(lineNo, nullptr);
+    if (auto* combo = qobject_cast<QComboBox*>(w))
+    {
+        const int idx = combo->findData(value.trimmed());
+        if (idx >= 0)
+            combo->setCurrentIndex(idx);
+        return;
+    }
+    if (auto* edit = qobject_cast<QLineEdit*>(w))
+    {
+        edit->setText(value);
+        return;
+    }
+}
+
+bool DamAnalysisWidget::isFixedFileLine(int lineNo) const
+{
+    static const QSet<int> fixedLines = {1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14};
+    return fixedLines.contains(lineNo);
+}
+
 bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
 {
     auto setError = [errorMessage](const QString& message) {
@@ -154,17 +220,10 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
             *errorMessage = message;
     };
 
-    if (!m_baseTable)
-    {
-        setError("参数表未初始化。");
-        return false;
-    }
-
     static const QSet<int> oneTokenLines = {10, 15, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30};
-    for (int i = 0; i < 30; ++i)
+    for (int lineNo = 1; lineNo <= 30; ++lineNo)
     {
-        const int lineNo = i + 1;
-        const QString text = m_baseTable->item(i, 1) ? normalizeEnumValue(m_baseTable->item(i, 1)->text()) : QString();
+        const QString text = normalizeEnumValue(lineValue(lineNo));
         if (text.trimmed().isEmpty())
         {
             setError(QString("第 %1 行为空，请填写：%2").arg(lineNo).arg(descriptionByLine(lineNo)));
@@ -219,17 +278,17 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
 
 void DamAnalysisWidget::updateConfigSummary()
 {
-    const QString fillType = normalizeEnumValue(m_baseTable->item(9, 1) ? m_baseTable->item(9, 1)->text() : QString());
-    const QString calcType = normalizeEnumValue(m_baseTable->item(18, 1) ? m_baseTable->item(18, 1)->text() : QString());
-    const QString dampingType = normalizeEnumValue(m_baseTable->item(14, 1) ? m_baseTable->item(14, 1)->text() : QString());
-    const QString rayleigh = normalizeEnumValue(m_baseTable->item(15, 1) ? m_baseTable->item(15, 1)->text() : QString());
+    const QString fillType = normalizeEnumValue(lineValue(10));
+    const QString calcType = normalizeEnumValue(lineValue(19));
+    const QString dampingType = normalizeEnumValue(lineValue(15));
+    const QString rayleigh = normalizeEnumValue(lineValue(16));
 
     auto mapName = [](const QString& code, const QMap<QString, QString>& map) { return map.value(code, QString("未知(%1)").arg(code)); };
 
-    const QMap<QString, QString> fillMap = { {"1", "面板堆石坝"}, {"2", "心墙堆石坝"}, {"3", "沥青心墙堆石坝"}, {"4", "均质坝"} };
-    const QMap<QString, QString> calcMap = { {"1", "静力"}, {"2", "动力"}, {"3", "静动力全算"} };
-    const QMap<QString, QString> dampingMap = { {"0", "系统阻尼"}, {"1", "分材料阻尼"} };
-    const QMap<QString, QString> rayleighMap = { {"0", "非瑞雷"}, {"1", "瑞雷"} };
+    const QMap<QString, QString> fillMap = {{"1", "面板堆石坝"}, {"2", "心墙堆石坝"}, {"3", "沥青心墙堆石坝"}, {"4", "均质坝"}};
+    const QMap<QString, QString> calcMap = {{"1", "静力"}, {"2", "动力"}, {"3", "静动力全算"}};
+    const QMap<QString, QString> dampingMap = {{"0", "系统阻尼"}, {"1", "分材料阻尼"}};
+    const QMap<QString, QString> rayleighMap = {{"0", "非瑞雷"}, {"1", "瑞雷"}};
 
     m_summaryLabel->setText(QString("坝型：%1；计算类型：%2；阻尼：%3；瑞雷：%4；MCASE：%5")
                                 .arg(mapName(fillType, fillMap))
@@ -273,12 +332,14 @@ bool DamAnalysisWidget::exportIfillDatFile(int mcase, const QString& cycleSectio
 
     QTextStream os(&file);
 
-    for (int i = 0; i < 30; ++i)
+    for (int lineNo = 1; lineNo <= 30; ++lineNo)
     {
-        QString value = m_baseTable->item(i, 1) ? m_baseTable->item(i, 1)->text() : QString();
-        if (i == 0)
+        QString value = lineValue(lineNo);
+        if (lineNo == 1)
             value = prepDirAbs;
-        os << quoteValue(value) << "      " << (i + 1) << "\n";
+        else if (isFixedFileLine(lineNo))
+            value = defaultValueByLine(lineNo);
+        os << quoteValue(value) << "      " << lineNo << "\n";
     }
 
     os << m_editX->text().trimmed() << "    X1  X2  X3\n";
@@ -329,8 +390,8 @@ QJsonObject DamAnalysisWidget::saveJson()
 {
     QJsonObject obj;
     QJsonArray arr;
-    for (int i = 0; i < 30; ++i)
-        arr.append(m_baseTable->item(i, 1) ? m_baseTable->item(i, 1)->text() : QString());
+    for (int lineNo = 1; lineNo <= 30; ++lineNo)
+        arr.append(lineValue(lineNo));
     obj["base_values"] = arr;
     obj["x_values"] = m_editX->text();
     obj["alfa_values"] = m_editAlfa->text();
@@ -342,11 +403,12 @@ QJsonObject DamAnalysisWidget::saveJson()
 void DamAnalysisWidget::loadJson(const QJsonObject& obj)
 {
     const QJsonArray arr = obj.value("base_values").toArray();
-    for (int i = 0; i < 30; ++i)
+    for (int lineNo = 1; lineNo <= 30; ++lineNo)
     {
-        const QString value = (i < arr.size() ? arr.at(i).toString() : defaultValueByLine(i + 1));
-        if (m_baseTable->item(i, 1))
-            m_baseTable->item(i, 1)->setText(value);
+        if (isFixedFileLine(lineNo))
+            continue;
+        const QString value = (lineNo - 1 < arr.size() ? arr.at(lineNo - 1).toString() : defaultValueByLine(lineNo));
+        setLineValue(lineNo, value);
     }
     m_editX->setText(obj.value("x_values").toString(m_editX->text()));
     m_editAlfa->setText(obj.value("alfa_values").toString(m_editAlfa->text()));

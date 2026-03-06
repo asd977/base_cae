@@ -3,13 +3,14 @@
 #include <BasePage.h>
 
 #include <QJsonObject>
+#include <QMap>
 #include <QString>
 
 class QFormLayout;
 class QLineEdit;
-class QTableWidget;
 class QLabel;
 class QPushButton;
+class QWidget;
 
 namespace Ui
 {
@@ -44,12 +45,15 @@ class DamAnalysisWidget : public BasePage
     QString defaultValueByLine(int lineNo) const;
     QString descriptionByLine(int lineNo) const;
     QString normalizeEnumValue(const QString& rawValue) const;
+    QString lineValue(int lineNo) const;
+    void setLineValue(int lineNo, const QString& value);
+    bool isFixedFileLine(int lineNo) const;
     bool validateInputs(QString* errorMessage) const;
     void updateConfigSummary();
 
     Ui::DamAnalysisWidget* ui;
     QFormLayout* m_formLayout = nullptr;
-    QTableWidget* m_baseTable = nullptr;
+    QMap<int, QWidget*> m_lineEditors;
     QLineEdit* m_editX = nullptr;
     QLineEdit* m_editAlfa = nullptr;
     QLineEdit* m_editAxis = nullptr;
