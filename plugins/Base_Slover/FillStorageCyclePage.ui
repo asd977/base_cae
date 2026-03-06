@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>620</width>
-    <height>560</height>
+    <width>1240</width>
+    <height>820</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -15,16 +15,9 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="QLabel" name="titleLabel">
-     <property name="text">
-      <string>填筑-蓄水周期设置（用于生成 IFILL.DAT 中从 NCASE 开始的内容）</string>
-     </property>
-    </widget>
-   </item>
-   <item>
     <widget class="QLabel" name="tipLabel">
      <property name="text">
-      <string>请按 IFILL.DAT 规范编辑以下文本；计算时将替换固定模板中“1 NCASE”及其后续内容。</string>
+      <string>请按分组填写参数；右侧实时生成 IFILL 段文本。每个表格均支持“添加行/删除行”。</string>
      </property>
      <property name="wordWrap">
       <bool>true</bool>
@@ -32,7 +25,251 @@
     </widget>
    </item>
    <item>
-    <widget class="QPlainTextEdit" name="plainTextEditSection"/>
+    <widget class="QSplitter" name="splitMain">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <widget class="QScrollArea" name="scrollArea">
+      <property name="widgetResizable">
+       <bool>true</bool>
+      </property>
+      <widget class="QWidget" name="scrollAreaWidgetContents">
+       <layout class="QVBoxLayout" name="allLayout">
+        <item>
+         <widget class="QGroupBox" name="groupGlobal">
+          <property name="title">
+           <string>通用参数（4.3.2 / 4.3.3 / 4.3.4）</string>
+          </property>
+          <layout class="QGridLayout" name="globalGrid">
+           <item row="0" column="0"><widget class="QLabel" name="labelX123"><property name="text"><string>扬压力折减位置 X1/X2/X3</string></property></widget></item>
+           <item row="0" column="1"><widget class="QDoubleSpinBox" name="spinX1"><property name="maximum"><double>999999.000000000000000</double></property></widget></item>
+           <item row="0" column="2"><widget class="QDoubleSpinBox" name="spinX2"><property name="maximum"><double>999999.000000000000000</double></property></widget></item>
+           <item row="0" column="3"><widget class="QDoubleSpinBox" name="spinX3"><property name="maximum"><double>999999.000000000000000</double></property></widget></item>
+
+           <item row="1" column="0"><widget class="QLabel" name="labelA123"><property name="text"><string>折减系数 α1/α2/α3</string></property></widget></item>
+           <item row="1" column="1"><widget class="QDoubleSpinBox" name="spinA1"><property name="decimals"><number>6</number></property><property name="maximum"><double>9.999999000000000</double></property><property name="value"><double>1.000000</double></property></widget></item>
+           <item row="1" column="2"><widget class="QDoubleSpinBox" name="spinA2"><property name="decimals"><number>6</number></property><property name="maximum"><double>9.999999000000000</double></property><property name="value"><double>1.000000</double></property></widget></item>
+           <item row="1" column="3"><widget class="QDoubleSpinBox" name="spinA3"><property name="decimals"><number>6</number></property><property name="maximum"><double>9.999999000000000</double></property><property name="value"><double>1.000000</double></property></widget></item>
+
+           <item row="2" column="0"><widget class="QLabel" name="labelIxupdw"><property name="text"><string>IXUPDW（上下游轴指向）</string></property></widget></item>
+           <item row="2" column="1"><widget class="QComboBox" name="comboIxupdw"/></item>
+           <item row="2" column="2"><widget class="QLabel" name="labelPanelDam"><property name="text"><string>面板坝</string></property></widget></item>
+           <item row="2" column="3"><widget class="QCheckBox" name="checkPanelDam"><property name="text"><string>是（不需心墙中心面AB坐标）</string></property></widget></item>
+
+           <item row="3" column="0"><widget class="QLabel" name="labelApoint"><property name="text"><string>心墙中心面A点(XAMID,YAMID)</string></property></widget></item>
+           <item row="3" column="1"><widget class="QDoubleSpinBox" name="spinXamid"><property name="maximum"><double>999999.000000000000000</double></property></widget></item>
+           <item row="3" column="2"><widget class="QDoubleSpinBox" name="spinYamid"><property name="maximum"><double>999999.000000000000000</double></property></widget></item>
+
+           <item row="4" column="0"><widget class="QLabel" name="labelBpoint"><property name="text"><string>心墙中心面B点(XBMID,YBMID)</string></property></widget></item>
+           <item row="4" column="1"><widget class="QDoubleSpinBox" name="spinXbmid"><property name="maximum"><double>999999.000000000000000</double></property></widget></item>
+           <item row="4" column="2"><widget class="QDoubleSpinBox" name="spinYbmid"><property name="maximum"><double>999999.000000000000000</double></property></widget></item>
+
+           <item row="5" column="0"><widget class="QLabel" name="labelIfrock"><property name="text"><string>IFROCK（岩体自重）</string></property></widget></item>
+           <item row="5" column="1"><widget class="QComboBox" name="comboIfrock"/></item>
+           <item row="5" column="2"><widget class="QLabel" name="labelIfiso"><property name="text"><string>IFISO 模式</string></property></widget></item>
+           <item row="5" column="3"><widget class="QComboBox" name="comboIfisoMode"/></item>
+
+           <item row="6" column="0"><widget class="QLabel" name="labelIfisoValue"><property name="text"><string>IFISO 指定材料号（模式=指定材料号时）</string></property></widget></item>
+           <item row="6" column="1"><widget class="QSpinBox" name="spinIfisoValue"/></item>
+           <item row="6" column="2"><widget class="QLabel" name="labelCaseIds"><property name="text"><string>参与计算工况序号(逗号分隔)</string></property></widget></item>
+           <item row="6" column="3"><widget class="QLineEdit" name="editCaseIds"><property name="placeholderText"><string>例如: 1,2,4</string></property></widget></item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="groupBase">
+          <property name="title">
+           <string>基础工况参数</string>
+          </property>
+          <layout class="QGridLayout" name="baseGrid">
+           <item row="0" column="0"><widget class="QLabel" name="labelNcase"><property name="text"><string>NCASE</string></property></widget></item>
+           <item row="0" column="1"><widget class="QSpinBox" name="spinNcase"><property name="minimum"><number>1</number></property><property name="value"><number>1</number></property></widget></item>
+           <item row="0" column="2"><widget class="QLabel" name="labelIcase"><property name="text"><string>ICASE</string></property></widget></item>
+           <item row="0" column="3"><widget class="QSpinBox" name="spinIcase"><property name="minimum"><number>1</number></property><property name="value"><number>1</number></property></widget></item>
+
+           <item row="1" column="0"><widget class="QLabel" name="labelSeep"><property name="text"><string>IFIIWL_SEEP</string></property></widget></item>
+           <item row="1" column="1"><widget class="QComboBox" name="comboSeep"/></item>
+           <item row="1" column="2"><widget class="QLabel" name="labelBody"><property name="text"><string>IFIIWL_BODY</string></property></widget></item>
+           <item row="1" column="3"><widget class="QComboBox" name="comboBody"/></item>
+
+           <item row="2" column="0"><widget class="QLabel" name="labelFace"><property name="text"><string>IFIIWL_FACE</string></property></widget></item>
+           <item row="2" column="1"><widget class="QComboBox" name="comboFace"/></item>
+           <item row="2" column="2"><widget class="QLabel" name="labelIfWet"><property name="text"><string>IFWET</string></property></widget></item>
+           <item row="2" column="3"><widget class="QComboBox" name="comboIfWet"/></item>
+
+           <item row="3" column="0"><widget class="QLabel" name="labelNumWet"><property name="text"><string>NUM_WET</string></property></widget></item>
+           <item row="3" column="1"><widget class="QSpinBox" name="spinNumWet"/></item>
+           <item row="3" column="2"><widget class="QLabel" name="labelNumDrop"><property name="text"><string>NUM_DROP</string></property></widget></item>
+           <item row="3" column="3"><widget class="QSpinBox" name="spinNumDrop"/></item>
+
+           <item row="4" column="0"><widget class="QLabel" name="labelNchange"><property name="text"><string>NCHANGE</string></property></widget></item>
+           <item row="4" column="1"><widget class="QSpinBox" name="spinNchange"/></item>
+           <item row="4" column="2"><widget class="QLabel" name="labelNcircle"><property name="text"><string>NCIRCLE</string></property></widget></item>
+           <item row="4" column="3"><widget class="QSpinBox" name="spinNcircle"><property name="minimum"><number>1</number></property><property name="value"><number>1</number></property></widget></item>
+          </layout>
+         </widget>
+        </item>
+
+        <item>
+         <widget class="QGroupBox" name="groupWet">
+          <property name="title"><string>湿化材料映射 (M_dry, M_wet)</string></property>
+          <layout class="QVBoxLayout" name="wetGroupLayout">
+           <item>
+            <layout class="QHBoxLayout" name="wetToolbar">
+             <item><spacer name="wetSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+             <item><widget class="QPushButton" name="btnWetAdd"><property name="text"><string>添加行</string></property></widget></item>
+             <item><widget class="QPushButton" name="btnWetRemove"><property name="text"><string>删除行</string></property></widget></item>
+            </layout>
+           </item>
+           <item><widget class="QTableWidget" name="tableWetMap">
+             <property name="minimumHeight">
+              <number>120</number>
+             </property>
+            </widget></item>
+          </layout>
+         </widget>
+        </item>
+
+        <item>
+         <widget class="QGroupBox" name="groupDrop">
+          <property name="title"><string>水位骤降列表 (HW_DROP_STA, HW_DROP_END)</string></property>
+          <layout class="QVBoxLayout" name="dropGroupLayout">
+           <item>
+            <layout class="QHBoxLayout" name="dropToolbar">
+             <item><spacer name="dropSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+             <item><widget class="QPushButton" name="btnDropAdd"><property name="text"><string>添加行</string></property></widget></item>
+             <item><widget class="QPushButton" name="btnDropRemove"><property name="text"><string>删除行</string></property></widget></item>
+            </layout>
+           </item>
+           <item><widget class="QTableWidget" name="tableDrop">
+             <property name="minimumHeight">
+              <number>120</number>
+             </property>
+            </widget></item>
+          </layout>
+         </widget>
+        </item>
+
+        <item>
+         <widget class="QGroupBox" name="groupChange">
+          <property name="title"><string>材料属性变换 (M_old, M_new)</string></property>
+          <layout class="QVBoxLayout" name="changeGroupLayout">
+           <item>
+            <layout class="QHBoxLayout" name="changeToolbar">
+             <item><spacer name="changeSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+             <item><widget class="QPushButton" name="btnChangeAdd"><property name="text"><string>添加行</string></property></widget></item>
+             <item><widget class="QPushButton" name="btnChangeRemove"><property name="text"><string>删除行</string></property></widget></item>
+            </layout>
+           </item>
+           <item><widget class="QTableWidget" name="tableChange">
+             <property name="minimumHeight">
+              <number>120</number>
+             </property>
+            </widget></item>
+          </layout>
+         </widget>
+        </item>
+
+        <item>
+         <widget class="QGroupBox" name="groupCycle">
+          <property name="title"><string>填筑-蓄水周期参数（12列）</string></property>
+          <layout class="QVBoxLayout" name="cycleGroupLayout">
+           <item>
+            <layout class="QHBoxLayout" name="cycleToolbar">
+             <item><spacer name="cycleSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+             <item><widget class="QPushButton" name="btnCycleAdd"><property name="text"><string>添加行</string></property></widget></item>
+             <item><widget class="QPushButton" name="btnCycleRemove"><property name="text"><string>删除行</string></property></widget></item>
+            </layout>
+           </item>
+           <item><widget class="QTableWidget" name="tableCycle">
+             <property name="minimumHeight">
+              <number>180</number>
+             </property>
+            </widget></item>
+          </layout>
+         </widget>
+        </item>
+
+        <item>
+         <widget class="QGroupBox" name="groupDyna">
+          <property name="title"><string>动力参数</string></property>
+          <layout class="QVBoxLayout" name="dynaGroupLayout">
+           <item>
+            <layout class="QGridLayout" name="dynaBaseGrid">
+             <item row="0" column="0"><widget class="QLabel" name="labelDir"><property name="text"><string>DIRDYNA</string></property></widget></item>
+             <item row="0" column="1"><widget class="QLineEdit" name="editDirDyna"><property name="text"><string>CASE01FILL01</string></property></widget></item>
+             <item row="0" column="2"><widget class="QLabel" name="labelNumDyna"><property name="text"><string>NUM_DYNA</string></property></widget></item>
+             <item row="0" column="3"><widget class="QSpinBox" name="spinNumDyna"/></item>
+
+             <item row="1" column="0"><widget class="QLabel" name="labelIfMode"><property name="text"><string>IFMODE</string></property></widget></item>
+             <item row="1" column="1"><widget class="QComboBox" name="comboIfMode"/></item>
+             <item row="1" column="2"><widget class="QLabel" name="labelIfWave"><property name="text"><string>IFWAVE</string></property></widget></item>
+             <item row="1" column="3"><widget class="QComboBox" name="comboIfWave"/></item>
+
+             <item row="2" column="0"><widget class="QLabel" name="labelDt"><property name="text"><string>DT</string></property></widget></item>
+             <item row="2" column="1"><widget class="QDoubleSpinBox" name="spinDt"><property name="decimals"><number>6</number></property><property name="value"><double>0.020000</double></property></widget></item>
+             <item row="2" column="2"><widget class="QLabel" name="labelTsta"><property name="text"><string>TSTA</string></property></widget></item>
+             <item row="2" column="3"><widget class="QDoubleSpinBox" name="spinTsta"><property name="decimals"><number>6</number></property></widget></item>
+
+             <item row="3" column="0"><widget class="QLabel" name="labelTend"><property name="text"><string>TEND</string></property></widget></item>
+             <item row="3" column="1"><widget class="QDoubleSpinBox" name="spinTend"><property name="decimals"><number>6</number></property><property name="value"><double>28.000000</double></property></widget></item>
+             <item row="3" column="2"><widget class="QLabel" name="labelAx"><property name="text"><string>AX</string></property></widget></item>
+             <item row="3" column="3"><widget class="QLineEdit" name="editWaveAx"><property name="text"><string>WAVE-AX.DAT</string></property></widget></item>
+
+             <item row="4" column="0"><widget class="QLabel" name="labelAy"><property name="text"><string>AY</string></property></widget></item>
+             <item row="4" column="1"><widget class="QLineEdit" name="editWaveAy"><property name="text"><string>WAVE-AY.DAT</string></property></widget></item>
+             <item row="4" column="2"><widget class="QLabel" name="labelAz"><property name="text"><string>AZ</string></property></widget></item>
+             <item row="4" column="3"><widget class="QLineEdit" name="editWaveAz"><property name="text"><string>WAVE-AZ.DAT</string></property></widget></item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="dynaToolbar">
+             <item><spacer name="dynaSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+             <item><widget class="QPushButton" name="btnDynaAdd"><property name="text"><string>添加行</string></property></widget></item>
+             <item><widget class="QPushButton" name="btnDynaRemove"><property name="text"><string>删除行</string></property></widget></item>
+            </layout>
+           </item>
+           <item><widget class="QTableWidget" name="tableDyna">
+             <property name="minimumHeight">
+              <number>120</number>
+             </property>
+            </widget></item>
+          </layout>
+         </widget>
+        </item>
+
+        <item>
+         <spacer name="bottomSpacer">
+          <property name="orientation"><enum>Qt::Vertical</enum></property>
+          <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+
+     <widget class="QWidget" name="previewPane">
+      <layout class="QVBoxLayout" name="previewLayout">
+       <item>
+        <widget class="QLabel" name="previewLabel">
+         <property name="text">
+          <string>生成预览（IFILL.DAT 段）</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPlainTextEdit" name="plainTextPreview">
+         <property name="minimumHeight">
+          <number>220</number>
+         </property>
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
    </item>
   </layout>
  </widget>
