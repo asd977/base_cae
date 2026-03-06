@@ -249,6 +249,13 @@ class CORE_EXPORT PickManager : public QObject
     QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerPointSolidByDomain;
     QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerPointLineByDomain;
 
+    // ============ face overlay ============
+    vtkSmartPointer<vtkPoints> m_facePts;
+    vtkSmartPointer<vtkCellArray> m_facePolys;
+    vtkSmartPointer<vtkPolyData> m_facePoly;
+    vtkSmartPointer<vtkPolyDataMapper> m_faceMapper;
+    vtkSmartPointer<vtkActor> m_faceActor;
+
     QHash<QString, QHash<vtkIdType, QString>> m_ownerEdgeSolidByDomain;
     QHash<QString, QHash<QString, QSet<vtkIdType>>> m_edgesSolidByDomainUuid;
     QHash<QString, QHash<vtkIdType, QString>> m_ownerEdgeLineByDomain;

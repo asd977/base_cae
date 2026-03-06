@@ -99,6 +99,33 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_visual->addProp("pick.node", m_selActor, QString("{node} 选中点"), QString("拾取选中点集合"),
                       true, true);
 
+    // ================== Face overlay ==================
+    m_facePts = vtkSmartPointer<vtkPoints>::New();
+    m_facePolys = vtkSmartPointer<vtkCellArray>::New();
+    m_facePoly = vtkSmartPointer<vtkPolyData>::New();
+    m_facePoly->SetPoints(m_facePts);
+    m_facePoly->SetPolys(m_facePolys);
+
+    m_faceMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    m_faceMapper->SetInputData(m_facePoly);
+
+    m_faceActor = vtkSmartPointer<vtkActor>::New();
+    m_faceActor->SetMapper(m_faceMapper);
+    m_faceActor->GetProperty()->BackfaceCullingOn();
+    m_faceActor->GetProperty()->SetRepresentationToSurface();
+    m_faceActor->GetProperty()->SetColor(1.0, 0.55, 0.10);
+    m_faceActor->GetProperty()->SetOpacity(0.38);
+    m_faceActor->GetProperty()->SetEdgeVisibility(true);
+    m_faceActor->GetProperty()->SetEdgeColor(1.0, 0.2, 0.1);
+    m_faceActor->GetProperty()->SetLineWidth(2.0);
+    m_faceActor->GetProperty()->LightingOff();
+    m_faceActor->PickableOff();
+    m_faceActor->SetVisibility(false);
+
+    m_visual->removeProp("pick.face", false);
+    m_visual->addProp("pick.face", m_faceActor, QString("{face} 选中面"), QString("拾取选中面集合"),
+                      true, true);
+
     // --- 交互控制 (高亮 actor 不参与 pick) ---
     m_selActor->PickableOff();
 
@@ -304,6 +331,8 @@ void PickManager::deactivate(const QString& domain, const QString& uuid, PickMod
 
     if (m_selActor)
         m_selActor->SetVisibility(false);
+    if (m_faceActor)
+        m_faceActor->SetVisibility(false);
     if (m_lineNodeActor)
         m_lineNodeActor->SetVisibility(false);
 
@@ -316,16 +345,30 @@ void PickManager::deactivate(const QString& domain, const QString& uuid, PickMod
     if (m_selPoly)
         m_selPoly->Modified();
 
+    if (m_facePts)
+    {
+        m_facePts->Reset();
+        m_facePts->Modified();
+    }
+    if (m_facePolys)
+    {
+        m_facePolys->Reset();
+        m_facePolys->Modified();
+    }
+    if (m_facePoly)
+        m_facePoly->Modified();
+
     if (m_visual)
         m_visual->render();
 }
 
 void PickManager::updateActorVisibility()
 {
-    if (!m_selActor)
+    if (!m_selActor || !m_faceActor)
         return;
-    m_selActor->SetVisibility(m_pickMode == PickMode::Node || m_pickMode == PickMode::Edge ||
-                              m_pickMode == PickMode::Face);
+
+    m_selActor->SetVisibility(m_pickMode == PickMode::Node || m_pickMode == PickMode::Edge);
+    m_faceActor->SetVisibility(m_pickMode == PickMode::Face);
 }
 
 void PickManager::setupPicking()
@@ -1004,27 +1047,28 @@ void PickManager::toggleSelectFace(GridKind kind, vtkIdType faceKey)
 
 void PickManager::rebuildFacePolyForActive()
 {
-    if (!m_selPts)
+    if (!m_facePts || !m_facePolys || !m_facePoly)
         return;
 
-    m_selPts->Reset();
+    m_facePts->Reset();
+    m_facePolys->Reset();
 
     const auto setS = m_facesSolidByDomainUuid.value(m_currentDomain).value(m_currentUUid);
     const auto setL = m_facesLineByDomainUuid.value(m_currentDomain).value(m_currentUUid);
 
     vtkIdType approxPts = vtkIdType(setS.size() + setL.size()) * 4;
     if (approxPts > 0)
-        m_selPts->Allocate(approxPts);
+        m_facePts->Allocate(approxPts);
 
-    auto appendFacePoints = [&](vtkUnstructuredGrid* grid, const QSet<vtkIdType>& set)
+    auto appendFaces = [&](vtkUnstructuredGrid* grid, const QSet<vtkIdType>& set)
     {
         if (!grid)
             return;
 
         for (vtkIdType faceKey : set)
         {
-            const vtkIdType cellId = unpackFaceCellId(faceKey);
-            const int faceLocalId = unpackFaceLocalId(faceKey);
+            vtkIdType cellId = unpackFaceCellId(faceKey);
+            int faceLocalId = unpackFaceLocalId(faceKey);
             if (cellId < 0 || cellId >= grid->GetNumberOfCells())
                 continue;
 
@@ -1032,10 +1076,14 @@ void PickManager::rebuildFacePolyForActive()
             if (!cell)
                 continue;
 
-            vtkIdList* ids = nullptr;
+            QVector<vtkIdType> fpids;
             if (cell->GetCellDimension() == 2 || faceLocalId == 15)
             {
-                ids = cell->GetPointIds();
+                vtkIdList* ids = cell->GetPointIds();
+                if (!ids || ids->GetNumberOfIds() < 3)
+                    continue;
+                for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
+                    fpids.push_back(ids->GetId(i));
             }
             else
             {
@@ -1044,27 +1092,31 @@ void PickManager::rebuildFacePolyForActive()
                 vtkCell* f = cell->GetFace(faceLocalId);
                 if (!f)
                     continue;
-                ids = f->GetPointIds();
+                vtkIdList* ids = f->GetPointIds();
+                if (!ids || ids->GetNumberOfIds() < 3)
+                    continue;
+                for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
+                    fpids.push_back(ids->GetId(i));
             }
 
-            if (!ids || ids->GetNumberOfIds() < 3)
-                continue;
-
-            for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
+            vtkIdType n = fpids.size();
+            m_facePolys->InsertNextCell(n);
+            for (vtkIdType i = 0; i < n; ++i)
             {
                 double p[3];
-                grid->GetPoint(ids->GetId(i), p);
-                m_selPts->InsertNextPoint(p);
+                grid->GetPoint(fpids[int(i)], p);
+                vtkIdType lpid = m_facePts->InsertNextPoint(p);
+                m_facePolys->InsertCellPoint(lpid);
             }
         }
     };
 
-    appendFacePoints(m_gridSolid, setS);
-    appendFacePoints(m_gridLine, setL);
+    appendFaces(m_gridSolid, setS);
+    appendFaces(m_gridLine, setL);
 
-    m_selPts->Modified();
-    if (m_selPoly)
-        m_selPoly->Modified();
+    m_facePts->Modified();
+    m_facePolys->Modified();
+    m_facePoly->Modified();
 }
 
 // ===================== clearSelection =====================
