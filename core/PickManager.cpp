@@ -4,6 +4,7 @@
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
 #include <services/VisualWidgetService.h>
+#include <struct/MeshMap.h>
 
 #include <QDebug>
 #include <algorithm>
@@ -289,8 +290,107 @@ void PickManager::updateStructure()
     m_solidProp = m_visual ? m_visual->getProp("mesh.imported.surface") : nullptr;
     m_lineProp = m_visual ? m_visual->getProp("mesh.imported.line") : nullptr;
 
+    rebuildBoundaryPickFilters();
+
     if (m_gridLine)
         rebuildLineNodeOverlayAll();
+}
+
+void PickManager::rebuildBoundaryPickFilters()
+{
+    m_allowedNodeSolid.clear();
+    m_allowedEdgeSolid.clear();
+    m_allowedFaceSolid.clear();
+
+    m_hasNodeBoundaryInfoSolid = false;
+    m_hasEdgeBoundaryInfoSolid = false;
+    m_hasFaceBoundaryInfoSolid = false;
+
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshSvc)
+        return;
+
+    const MshPickMap map = meshSvc->mshPickMapSolid();
+
+    for (auto it = map.bndPointPhysToPointIds.constBegin(); it != map.bndPointPhysToPointIds.constEnd();
+         ++it)
+    {
+        const auto& v = it.value();
+        if (v.isEmpty())
+            continue;
+        m_hasNodeBoundaryInfoSolid = true;
+        for (int pid : v)
+            m_allowedNodeSolid.insert(vtkIdType(pid));
+    }
+    for (auto it = map.bndEdgePhysToPointIds.constBegin(); it != map.bndEdgePhysToPointIds.constEnd();
+         ++it)
+    {
+        const auto& v = it.value();
+        if (v.isEmpty())
+            continue;
+        m_hasNodeBoundaryInfoSolid = true;
+        for (int pid : v)
+            m_allowedNodeSolid.insert(vtkIdType(pid));
+    }
+    for (auto it = map.bndFacePhysToPointIds.constBegin(); it != map.bndFacePhysToPointIds.constEnd();
+         ++it)
+    {
+        const auto& v = it.value();
+        if (v.isEmpty())
+            continue;
+        m_hasNodeBoundaryInfoSolid = true;
+        for (int pid : v)
+            m_allowedNodeSolid.insert(vtkIdType(pid));
+    }
+
+    for (auto it = map.bndEdgePhysToEdgeKeys.constBegin();
+         it != map.bndEdgePhysToEdgeKeys.constEnd(); ++it)
+    {
+        const auto& v = it.value();
+        if (v.isEmpty())
+            continue;
+        m_hasEdgeBoundaryInfoSolid = true;
+        for (qint64 edgeKey : v)
+            m_allowedEdgeSolid.insert(vtkIdType(edgeKey));
+    }
+
+    for (auto it = map.bndFacePhysToFaceKeys.constBegin();
+         it != map.bndFacePhysToFaceKeys.constEnd(); ++it)
+    {
+        const auto& v = it.value();
+        if (v.isEmpty())
+            continue;
+        m_hasFaceBoundaryInfoSolid = true;
+        for (qint64 faceKey : v)
+            m_allowedFaceSolid.insert(vtkIdType(faceKey));
+    }
+}
+
+bool PickManager::allowNodePick(GridKind kind, vtkIdType pid) const
+{
+    if (kind != GridKind::Solid)
+        return true;
+    if (!m_hasNodeBoundaryInfoSolid)
+        return true;
+    return m_allowedNodeSolid.contains(pid);
+}
+
+bool PickManager::allowEdgePick(GridKind kind, vtkIdType edgeKey) const
+{
+    if (kind != GridKind::Solid)
+        return true;
+    if (!m_hasEdgeBoundaryInfoSolid)
+        return true;
+    return m_allowedEdgeSolid.contains(edgeKey);
+}
+
+bool PickManager::allowFacePick(GridKind kind, vtkIdType faceKey) const
+{
+    if (kind != GridKind::Solid)
+        return true;
+    if (!m_hasFaceBoundaryInfoSolid)
+        return true;
+    return m_allowedFaceSolid.contains(faceKey);
 }
 
 void PickManager::refreshStructureIfNeeded()
@@ -549,7 +649,11 @@ bool PickManager::pickAt(int x, int y)
         if (!computePickedEdge(grid, cellId, pickPos, edgeLocalId, edgePids))
             return false;
 
-        toggleSelectEdge(kind, packEdgeKey(cellId, edgeLocalId));
+        const vtkIdType edgeKey = packEdgeKey(cellId, edgeLocalId);
+        if (!allowEdgePick(kind, edgeKey))
+            return false;
+
+        toggleSelectEdge(kind, edgeKey);
         return true;
     }
 
@@ -560,7 +664,11 @@ bool PickManager::pickAt(int x, int y)
         if (!computePickedFace(grid, cellId, pickPos, faceLocalId, facePids))
             return false;
 
-        toggleSelectFace(kind, packFaceKey(cellId, faceLocalId));
+        const vtkIdType faceKey = packFaceKey(cellId, faceLocalId);
+        if (!allowFacePick(kind, faceKey))
+            return false;
+
+        toggleSelectFace(kind, faceKey);
         return true;
     }
 
@@ -585,6 +693,8 @@ bool PickManager::pickAt(int x, int y)
         }
     }
     if (bestPid < 0)
+        return false;
+    if (!allowNodePick(kind, bestPid))
         return false;
 
     toggleSelectNode(kind, bestPid);
@@ -1480,6 +1590,9 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
                 for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
                 {
                     vtkIdType pid = ids->GetId(i);
+                    if (!allowNodePick(kind, pid))
+                        continue;
+
                     bool cur = (kind == GridKind::Solid)
                                    ? m_pointsSolidByDomainUuid[dom][uid].contains(pid)
                                    : m_pointsLineByDomainUuid[dom][uid].contains(pid);
@@ -1506,6 +1619,9 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
                 if (cell->GetCellDimension() == 1)
                 {
                     vtkIdType k = packEdgeKey(cellId, 15);
+                    if (!allowEdgePick(kind, k))
+                        continue;
+
                     bool cur = (kind == GridKind::Solid)
                                    ? m_edgesSolidByDomainUuid[dom][uid].contains(k)
                                    : m_edgesLineByDomainUuid[dom][uid].contains(k);
@@ -1523,6 +1639,9 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
                     for (int ei = 0; ei < nEdges; ++ei)
                     {
                         vtkIdType k = packEdgeKey(cellId, ei);
+                        if (!allowEdgePick(kind, k))
+                            continue;
+
                         bool cur = (kind == GridKind::Solid)
                                        ? m_edgesSolidByDomainUuid[dom][uid].contains(k)
                                        : m_edgesLineByDomainUuid[dom][uid].contains(k);
@@ -1551,6 +1670,9 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
                 if (dim == 2)
                 {
                     vtkIdType k = packFaceKey(cellId, 15);
+                    if (!allowFacePick(kind, k))
+                        continue;
+
                     bool cur = (kind == GridKind::Solid)
                                    ? m_facesSolidByDomainUuid[dom][uid].contains(k)
                                    : m_facesLineByDomainUuid[dom][uid].contains(k);
@@ -1568,6 +1690,9 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
                     for (int fi = 0; fi < nFaces; ++fi)
                     {
                         vtkIdType k = packFaceKey(cellId, fi);
+                        if (!allowFacePick(kind, k))
+                            continue;
+
                         bool cur = (kind == GridKind::Solid)
                                        ? m_facesSolidByDomainUuid[dom][uid].contains(k)
                                        : m_facesLineByDomainUuid[dom][uid].contains(k);
