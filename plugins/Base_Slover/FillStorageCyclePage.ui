@@ -17,59 +17,17 @@
    <item>
     <widget class="QLabel" name="titleLabel">
      <property name="text">
-      <string>土石坝 IFILL.DAT 参数设置（4.3.1~4.3.5）</string>
+      <string>填筑-蓄水计算工况设置（4.3.5）</string>
      </property>
     </widget>
    </item>
    <item>
     <widget class="QLabel" name="tipLabel">
      <property name="text">
-      <string>在本页填写 4.3.1/4.3.2/4.3.3 参数；4.3.4 的 MCASE 将按 4.3.5 工况块中的 ICASE 自动统计。</string>
-     </property>
+      <string>此节点仅设置 4.3.5 内容（NCASE 及每个 ICASE 工况块）；4.3.4 的 MCASE 由土石坝计算节点统计填筑-蓄水节点数量自动生成。</string>
+      </property>
      <property name="wordWrap">
       <bool>true</bool>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QLabel" name="labelBaseVariables">
-     <property name="text">
-      <string>4.3.1 土石坝相关文件及变量（行 1~30）</string>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QPlainTextEdit" name="plainTextEditBaseVariables">
-     <property name="maximumHeight">
-      <number>180</number>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QLabel" name="labelUpliftAxis">
-     <property name="text">
-      <string>4.3.2 扬压力折减与轴向参数</string>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QPlainTextEdit" name="plainTextEditUpliftAxis">
-     <property name="maximumHeight">
-      <number>90</number>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QLabel" name="labelRockStress">
-     <property name="text">
-      <string>4.3.3 岩体基础自重应力计算定义（IFROCK IFISO）</string>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QPlainTextEdit" name="plainTextEditRockStress">
-     <property name="maximumHeight">
-      <number>50</number>
      </property>
     </widget>
    </item>

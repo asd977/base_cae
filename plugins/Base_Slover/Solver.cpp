@@ -136,14 +136,14 @@ bool Solver::loadProject()
                     });
             analysisPage = seepagePage;
         }
-        else if (analysisType == "StressStrainAnalysis")
+        else if (analysisType == "StressStrainAnalysis" || analysisType == "DamAnalysis")
         {
-            auto* stressPage = new StressStrainWidget();
+            auto* stressPage = new DamAnalysisWidget();
             analysisNode = new ProjectNode(
                 analysisObj.value("title").toString("土石坝计算"),
                 analysisObj.value("uuid").toString(QUuid::createUuid().toString()), stressPage);
             stressPage->loadJson(analysisObj.value("state").toObject());
-            connect(stressPage, &StressStrainWidget::computeRequested, this,
+            connect(stressPage, &DamAnalysisWidget::computeRequested, this,
                     [this, analysisNode]()
                     {
                         onComputeStressStrain(analysisNode);
@@ -185,7 +185,7 @@ bool Solver::loadProject()
             analysisNode->addChild(node);
         }
 
-        if (analysisType == "StressStrainAnalysis" && !hasFillStorageCycleNode)
+        if ((analysisType == "StressStrainAnalysis" || analysisType == "DamAnalysis") && !hasFillStorageCycleNode)
         {
             auto* fillStorageCyclePage = new FillStorageCyclePage();
             auto* fillStorageCycleNode = new ProjectNode(
@@ -255,11 +255,11 @@ void Solver::onStressStrainAction()
     if (!m_root)
         return;
 
-    auto* stressPage = new StressStrainWidget();
+    auto* stressPage = new DamAnalysisWidget();
     const QString analysisName = QString("土石坝计算(%1)").arg(nextStressStrainIndex());
     auto* analysisNode = new ProjectNode(analysisName, QUuid::createUuid().toString(), stressPage);
 
-    connect(stressPage, &StressStrainWidget::computeRequested, this,
+    connect(stressPage, &DamAnalysisWidget::computeRequested, this,
             [this, analysisNode]()
             {
                 onComputeStressStrain(analysisNode);
@@ -331,26 +331,21 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
     bool ok = true;
     QStringList failedFiles;
 
-    auto* stressPage = dynamic_cast<StressStrainWidget*>(analysisNode->getPage());
+    auto* stressPage = dynamic_cast<DamAnalysisWidget*>(analysisNode->getPage());
     QString cycleSectionText;
-    QString baseVariablesText;
-    QString upliftAndAxisText;
-    QString rockStressText;
+    int mcase = 0;
+    QStringList cycleSections;
     for (ProjectNode* child : analysisNode->getChildren())
     {
         auto* fillStorageCyclePage = dynamic_cast<FillStorageCyclePage*>(child->getPage());
         if (!fillStorageCyclePage)
             continue;
-
-        cycleSectionText = fillStorageCyclePage->sectionText();
-        baseVariablesText = fillStorageCyclePage->baseVariablesText();
-        upliftAndAxisText = fillStorageCyclePage->upliftAndAxisText();
-        rockStressText = fillStorageCyclePage->rockStressText();
-        break;
+        ++mcase;
+        cycleSections << fillStorageCyclePage->sectionText();
     }
+    cycleSectionText = cycleSections.join("\n");
 
-    if (!stressPage || !stressPage->exportIfillDatFile(baseVariablesText, upliftAndAxisText,
-                                                       rockStressText, cycleSectionText))
+    if (!stressPage || !stressPage->exportIfillDatFile(mcase, cycleSectionText))
     {
         ok = false;
         failedFiles << "IFILL.DAT";

@@ -5,35 +5,86 @@
 
 #include <QDir>
 #include <QFile>
-#include <QRegularExpression>
+#include <QFormLayout>
+#include <QJsonArray>
+#include <QHeaderView>
+#include <QLineEdit>
+#include <QTableWidget>
 #include <QTextStream>
 
 #include "ui_StressStrainWidget.h"
 
-StressStrainWidget::StressStrainWidget(QWidget* parent)
-    : BasePage("StressStrainAnalysis"), ui(new Ui::StressStrainWidget)
+DamAnalysisWidget::DamAnalysisWidget(QWidget* parent)
+    : BasePage("DamAnalysis"), ui(new Ui::StressStrainWidget)
 {
     ui->setupUi(this);
-    connect(ui->btnCompute, &QPushButton::clicked, this, &StressStrainWidget::onComputeClicked);
+    initValueEditors();
+    connect(ui->btnCompute, &QPushButton::clicked, this, &DamAnalysisWidget::onComputeClicked);
 }
 
-StressStrainWidget::~StressStrainWidget()
+DamAnalysisWidget::~DamAnalysisWidget()
 {
     delete ui;
 }
 
-void StressStrainWidget::beforeLoad()
+void DamAnalysisWidget::beforeLoad()
 {
 }
 
-void StressStrainWidget::beforeUnload()
+void DamAnalysisWidget::beforeUnload()
 {
 }
 
-bool StressStrainWidget::exportIfillDatFile(const QString& baseVariablesText,
-                                            const QString& upliftAndAxisText,
-                                            const QString& rockStressText,
-                                            const QString& cycleSectionText) const
+void DamAnalysisWidget::initValueEditors()
+{
+    m_formLayout = new QFormLayout();
+    m_formLayout->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+
+    m_baseTable = new QTableWidget(30, 2, this);
+    m_baseTable->setHorizontalHeaderLabels({"行号", "值"});
+    m_baseTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    m_baseTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    m_baseTable->verticalHeader()->setVisible(false);
+    for (int i = 0; i < 30; ++i)
+    {
+        auto* lineItem = new QTableWidgetItem(QString::number(i + 1));
+        lineItem->setFlags(lineItem->flags() & ~Qt::ItemIsEditable);
+        m_baseTable->setItem(i, 0, lineItem);
+        m_baseTable->setItem(i, 1, new QTableWidgetItem(defaultValueByLine(i + 1)));
+    }
+    m_baseTable->setMinimumHeight(280);
+
+    m_editX = new QLineEdit("0.000000  0.000000  0.000000", this);
+    m_editAlfa = new QLineEdit("0.000000  0.000000  0.000000", this);
+    m_editAxis = new QLineEdit("1  3  0.000000  0.000000  0.000000  0.000000", this);
+    m_editRock = new QLineEdit("1  0", this);
+
+    m_formLayout->addRow("4.3.1 行1~30（土石坝相关文件及变量）", m_baseTable);
+    m_formLayout->addRow("4.3.2(1) X1 X2 X3", m_editX);
+    m_formLayout->addRow("4.3.2(2) α1 α2 α3", m_editAlfa);
+    m_formLayout->addRow("4.3.2(3) IXUPDW XAMID YAMID XBMID YBMID", m_editAxis);
+    m_formLayout->addRow("4.3.3 IFROCK IFISO", m_editRock);
+
+    ui->verticalLayout->insertLayout(2, m_formLayout);
+}
+
+QString DamAnalysisWidget::quoteValue(const QString& value) const
+{
+    return "'" + value.trimmed() + "'";
+}
+
+QString DamAnalysisWidget::defaultValueByLine(int lineNo) const
+{
+    static const QStringList defaults = {
+        "F:\\FEMCLASS\\Z03_JUNZ3D\\PREP\\", "FA_DAMUP.DAT", "FA_DAMDW.DAT", "FA_DAMBASE.DAT",
+        "FA_DAMMID.DAT", "MA_ROCK.DAT", "MA_DAMUP.DAT", "MA_DAMDW.DAT", "MA_CORE.DAT", "1",
+        "MA_PLATE.DAT", "JDTRACE.DAT", "KETRACE.DAT", "TDTRACE.DAT", "0", "0", "0.05", "0.01",
+        "2", "4   10", "0.000", "1.962", "1.308", "0.1", "0.2", "2.0", "0.9", "7.0", "0",
+        "10"};
+    return defaults.value(lineNo - 1);
+}
+
+bool DamAnalysisWidget::exportIfillDatFile(int mcase, const QString& cycleSectionText) const
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
@@ -59,98 +110,44 @@ bool StressStrainWidget::exportIfillDatFile(const QString& baseVariablesText,
         return false;
 
     QTextStream os(&file);
-    os.setRealNumberNotation(QTextStream::FixedNotation);
-    os.setRealNumberPrecision(6);
 
-    QString baseSection = baseVariablesText.trimmed();
-    if (baseSection.isEmpty())
+    for (int i = 0; i < 30; ++i)
     {
-        baseSection =
-            "'" + prepDirAbs + "'      1\n"
-            "'FA_DAMUP.DAT'      2\n"
-            "'FA_DAMDW.DAT'      3\n"
-            "'FA_DAMBASE.DAT'      4\n"
-            "'FA_DAMMID.DAT'      5\n"
-            "'MA_ROCK.DAT'      6\n"
-            "'MA_DAMUP.DAT'      7\n"
-            "'MA_DAMDW.DAT'      8\n"
-            "'MA_CORE.DAT'      9\n"
-            "'4'      10\n"
-            "'MA_PLATE.DAT'      11\n"
-            "'JDTRACE.DAT'      12\n"
-            "'KETRACE.DAT'      13\n"
-            "'TDTRACE.DAT'      14\n"
-            "'0'      15\n"
-            "'0'      16\n"
-            "'0.05'      17\n"
-            "'0.01'      18\n"
-            "'2'      19\n"
-            "'4   10'      20\n"
-            "'0.000'      21\n"
-            "'1.962'      22\n"
-            "'1.308'      23\n"
-            "'0.1'      24\n"
-            "'0.2'      25\n"
-            "'2.0'      26\n"
-            "'0.9'      27\n"
-            "'7.0'      28\n"
-            "'0'      29\n"
-            "'10'      30";
+        QString value = m_baseTable->item(i, 1) ? m_baseTable->item(i, 1)->text() : QString();
+        if (i == 0)
+            value = prepDirAbs;
+        os << quoteValue(value) << "      " << (i + 1) << "\n";
     }
-    baseSection.replace("F:\\FEMCLASS\\Z03_JUNZ3D\\PREP\\", prepDirAbs);
-    os << baseSection;
-    if (!baseSection.endsWith('\n'))
-        os << "\n";
 
-    QString upliftSection = upliftAndAxisText.trimmed();
-    if (upliftSection.isEmpty())
-    {
-        upliftSection =
-            "0.000000  0.000000  0.000000    X1  X2  X3\n"
-            "0.000000  0.000000  0.000000    ALFA1  ALFA2  ALFA3\n"
-            "1  3  0.000000  0.000000  0.000000  0.000000    IXUPDW XAMID YAMID XBMID "
-            "YBMID";
-    }
-    os << upliftSection;
-    if (!upliftSection.endsWith('\n'))
-        os << "\n";
+    os << m_editX->text().trimmed() << "    X1  X2  X3\n";
+    os << m_editAlfa->text().trimmed() << "    ALFA1  ALFA2  ALFA3\n";
+    os << m_editAxis->text().trimmed() << "    IXUPDW XAMID YAMID XBMID YBMID\n";
+    os << m_editRock->text().trimmed() << "    IFROCK IFISO\n";
 
-    QString rockSection = rockStressText.trimmed();
-    if (rockSection.isEmpty())
-        rockSection = "1  0    IFROCK  IFISO";
-    os << rockSection;
-    if (!rockSection.endsWith('\n'))
-        os << "\n";
+    const int safeCaseCount = qMax(1, mcase);
+    os << safeCaseCount << "   MCASE\n";
+    for (int i = 1; i <= safeCaseCount; ++i)
+        os << i << "     " << i << "\n";
 
-    const int mcase = detectCaseCount(cycleSectionText);
-    os << QString("%1   MCASE\n").arg(mcase);
-    for (int i = 1; i <= mcase; ++i)
-        os << QString("%1     %1\n").arg(i);
-
-    QString dynamicSection = cycleSectionText;
-    if (dynamicSection.trimmed().isEmpty())
+    QString dynamicSection = cycleSectionText.trimmed();
+    if (dynamicSection.isEmpty())
     {
         dynamicSection =
-            "   1    NCASE\n"
-            " ----------------------------------------------\n"
-            "    1    ICASE--------------------------------------\n"
-            "   0     0     1     IFIIWL_SEEP   IFIIWL_BODY  IFIIWL_FACE\n"
-            "   0     0     NUM_WET        IFWET\n"
-            "   0     0     NUM_DROP       IFDROP\n"
-            "   0     NCHANGE\n"
-            "   1  NCIRCLE\n"
-            "JPACK_STA JPACK_END\tTT_PACK         HWJ_STA\t      HWJ_END\t TT_FILL "
-            "IF_PACK IF_PLIU IF_FILL  IF_FLIU\tCAHEAD CABODY\n"
-            "   0     0           0.0000         0.0000         0.0000         "
-            "0.0000       0     0     0     0  'NONE'  'NONE'     1\n"
+            "1    NCASE\n"
+            "----------------------------------------------\n"
+            "1    ICASE--------------------------------------\n"
+            "0     0     1     IFIIWL_SEEP   IFIIWL_BODY  IFIIWL_FACE\n"
+            "0     0     NUM_WET        IFWET\n"
+            "0     0     NUM_DROP       IFDROP\n"
+            "0     NCHANGE\n"
+            "1  NCIRCLE\n"
+            "0 0 0.0000 0.0000 0.0000 0.0000 0 0 0 0 'NONE' 'NONE' 1\n"
             "'CASE01FILL01'     DIRDYNA\n"
-            "   0   NUM_DYNA\n"
-            "   0     0     0   IFMODE   IFWAVE     IFSETT\n"
-            "  0.020000    0.000000    0.000000    0.000000    DT TSTA TEND "
-            "WOMI_1\n"
-            "'WAVE-AX.DAT'  'WAVE-AY.DAT'  'WAVE-AZ.DAT'   AX  AY  AZ\n";
+            "0   NUM_DYNA\n"
+            "0     0     0   IFMODE   IFWAVE     IFSETT\n"
+            "0.020000    0.000000    0.000000    0.000000    DT TSTA TEND WOMI_1\n"
+            "'WAVE-AX.DAT'  'WAVE-AY.DAT'  'WAVE-AZ.DAT'   AX  AY  AZ";
     }
-
     dynamicSection.replace("'CASE01FILL01'", "'" + caseDirAbs + "'");
     os << dynamicSection;
     if (!dynamicSection.endsWith('\n'))
@@ -159,23 +156,36 @@ bool StressStrainWidget::exportIfillDatFile(const QString& baseVariablesText,
     return true;
 }
 
-int StressStrainWidget::detectCaseCount(const QString& cycleSectionText) const
+QJsonObject DamAnalysisWidget::saveJson()
 {
-    const QRegularExpression caseRegex(QStringLiteral("(?m)^\\s*\\d+\\s+ICASE"));
-    const int count = cycleSectionText.count(caseRegex);
-    return count > 0 ? count : 1;
+    QJsonObject obj;
+    QJsonArray arr;
+    for (int i = 0; i < 30; ++i)
+        arr.append(m_baseTable->item(i, 1) ? m_baseTable->item(i, 1)->text() : QString());
+    obj["base_values"] = arr;
+    obj["x_values"] = m_editX->text();
+    obj["alfa_values"] = m_editAlfa->text();
+    obj["axis_values"] = m_editAxis->text();
+    obj["rock_values"] = m_editRock->text();
+    return obj;
 }
 
-QJsonObject StressStrainWidget::saveJson()
+void DamAnalysisWidget::loadJson(const QJsonObject& obj)
 {
-    return QJsonObject();
+    const QJsonArray arr = obj.value("base_values").toArray();
+    for (int i = 0; i < 30; ++i)
+    {
+        const QString value = (i < arr.size() ? arr.at(i).toString() : defaultValueByLine(i + 1));
+        if (m_baseTable->item(i, 1))
+            m_baseTable->item(i, 1)->setText(value);
+    }
+    m_editX->setText(obj.value("x_values").toString(m_editX->text()));
+    m_editAlfa->setText(obj.value("alfa_values").toString(m_editAlfa->text()));
+    m_editAxis->setText(obj.value("axis_values").toString(m_editAxis->text()));
+    m_editRock->setText(obj.value("rock_values").toString(m_editRock->text()));
 }
 
-void StressStrainWidget::loadJson(const QJsonObject&)
-{
-}
-
-void StressStrainWidget::onComputeClicked()
+void DamAnalysisWidget::onComputeClicked()
 {
     emit computeRequested();
 }
