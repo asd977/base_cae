@@ -24,7 +24,7 @@
    <item>
     <widget class="QLabel" name="tipLabel">
      <property name="text">
-      <string>此节点仅设置单个工况的4.3.5参数。分组对应旧版流程：静力渗透荷载、湿化/骤降、公共材料变换、动力与拟静力。NCASE与ICASE自动生成。</string>
+      <string>此节点仅设置单个工况的4.3.5参数。已按功能分组展示，NCASE与ICASE自动生成。</string>
      </property>
      <property name="wordWrap">
       <bool>true</bool>
@@ -34,146 +34,112 @@
    <item>
     <layout class="QVBoxLayout" name="verticalLayoutContent">
      <item>
-      <widget class="QGroupBox" name="groupBoxFlags">
+      <widget class="QGroupBox" name="groupStaticLoad">
        <property name="title">
-        <string>参数开关分组</string>
+        <string>静力渗透荷载参数</string>
        </property>
-       <layout class="QFormLayout" name="formLayoutMain">
-       <item row="0" column="0">
-        <widget class="QLabel" name="labelIFIIWL_SEEP">
-         <property name="text">
-          <string>[静力] 坝基渗透荷载方式 IFIIWL_SEEP</string>
-         </property>
-        </widget>
-       </item>
-       <item row="0" column="1">
-        <widget class="QComboBox" name="comboIFIIWL_SEEP">
-         <item><property name="text"><string>0 - 不记入坝基渗透荷载</string></property></item>
-         <item><property name="text"><string>1 - 记入并按折减系数线性假设施加面力</string></property></item>
-         <item><property name="text"><string>2 - 由CASEEP读入水头压力并施加面力</string></property></item>
-        </widget>
-       </item>
-       <item row="1" column="0">
-        <widget class="QLabel" name="labelIFIIWL_BODY">
-         <property name="text">
-          <string>[静力] 坝体渗透体力方式 IFIIWL_BODY</string>
-         </property>
-        </widget>
-       </item>
-       <item row="1" column="1">
-        <widget class="QComboBox" name="comboIFIIWL_BODY">
-         <item><property name="text"><string>0 - 不记入坝体渗透体力</string></property></item>
-         <item><property name="text"><string>1 - 按饱和/湿容重差施加向下体力</string></property></item>
-         <item><property name="text"><string>2 - 由CABODY读入节点体力</string></property></item>
-        </widget>
-       </item>
-       <item row="2" column="0">
-        <widget class="QLabel" name="labelIFIIWL_FACE">
-         <property name="text">
-          <string>[静力] 坝体水面压力方式 IFIIWL_FACE</string>
-         </property>
-        </widget>
-       </item>
-       <item row="2" column="1">
-        <widget class="QComboBox" name="comboIFIIWL_FACE">
-         <item><property name="text"><string>0 - 不记入坝体水面压力</string></property></item>
-         <item><property name="text"><string>1 - 记入坝体水面压力</string></property></item>
-        </widget>
-       </item>
-       <item row="3" column="0">
-        <widget class="QLabel" name="labelIFWET">
-         <property name="text">
-          <string>[静力-步骤2] 湿化计算开关 IFWET</string>
-         </property>
-        </widget>
-       </item>
-       <item row="3" column="1">
-        <widget class="QComboBox" name="comboIFWET">
-         <item><property name="text"><string>0 - 不考虑湿化计算</string></property></item>
-         <item><property name="text"><string>1 - 考虑湿化计算</string></property></item>
-        </widget>
-       </item>
-       <item row="4" column="0">
-        <widget class="QLabel" name="labelIFDROP">
-         <property name="text">
-          <string>[静力-步骤3] 水位骤降开关 IF_DROP</string>
-         </property>
-        </widget>
-       </item>
-       <item row="4" column="1">
-        <widget class="QComboBox" name="comboIFDROP">
-         <item><property name="text"><string>0 - 不进行水位骤降计算</string></property></item>
-         <item><property name="text"><string>1 - 进行水位骤降计算</string></property></item>
-        </widget>
-       </item>
-       <item row="5" column="0">
-        <widget class="QLabel" name="labelDIRDYNA">
-         <property name="text"><string>[动力-步骤4] 地震动力计算初始目录 DIRDYNA</string></property>
-        </widget>
-       </item>
-       <item row="5" column="1">
-        <widget class="QLineEdit" name="editDIRDYNA">
-         <property name="text"><string>'CASE01FILL01'</string></property>
-        </widget>
-       </item>
-       <item row="6" column="0">
-        <widget class="QLabel" name="labelIFMODE">
-         <property name="text"><string>[动力] 拟静力计算开关 IFMODE</string></property>
-        </widget>
-       </item>
-       <item row="6" column="1">
-        <widget class="QComboBox" name="comboIFMODE">
-         <item><property name="text"><string>0 - 不进行拟静力计算</string></property></item>
-         <item><property name="text"><string>1 - 进行拟静力计算</string></property></item>
-        </widget>
-       </item>
-       <item row="7" column="0">
-        <widget class="QLabel" name="labelIFWAVE">
-         <property name="text"><string>[动力] 地震波动力计算开关 IFWAVE</string></property>
-        </widget>
-       </item>
-       <item row="7" column="1">
-        <widget class="QComboBox" name="comboIFWAVE">
-         <item><property name="text"><string>0 - 不进行地震波动力计算</string></property></item>
-         <item><property name="text"><string>1 - 进行地震波动力计算</string></property></item>
-        </widget>
-       </item>
-       <item row="8" column="0">
-        <widget class="QLabel" name="labelDT_BLOCK">
-         <property name="text">
-          <string>[动力] 时程参数 DT TSTA TEND WOMI_1</string>
-         </property>
-        </widget>
-       </item>
-       <item row="8" column="1">
-        <widget class="QLineEdit" name="editDT_BLOCK">
-         <property name="text">
-          <string>0.020000 0.000000 0.000000 0.000000</string>
-         </property>
-        </widget>
-       </item>
-       <item row="9" column="0">
-        <widget class="QLabel" name="labelWAVE_FILES">
-         <property name="text">
-          <string>[动力] 地震波文件 AX AY AZ</string>
-         </property>
-        </widget>
-       </item>
-       <item row="9" column="1">
-        <widget class="QLineEdit" name="editWAVE_FILES">
-         <property name="text">
-          <string>'WAVE-AX.DAT' 'WAVE-AY.DAT' 'WAVE-AZ.DAT'</string>
-         </property>
-        </widget>
-       </item>
-      </layout>
+       <layout class="QFormLayout" name="formLayoutStaticLoad">
+        <item row="0" column="0">
+         <widget class="QLabel" name="labelIFIIWL_SEEP">
+          <property name="text">
+           <string>坝基渗透荷载方式 IFIIWL_SEEP</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QComboBox" name="comboIFIIWL_SEEP">
+          <item><property name="text"><string>0 - 不记入坝基渗透荷载</string></property></item>
+          <item><property name="text"><string>1 - 记入并按折减系数线性假设施加面力</string></property></item>
+          <item><property name="text"><string>2 - 由CASEEP读入水头压力并施加面力</string></property></item>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="labelIFIIWL_BODY">
+          <property name="text">
+           <string>坝体渗透体力方式 IFIIWL_BODY</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QComboBox" name="comboIFIIWL_BODY">
+          <item><property name="text"><string>0 - 不记入坝体渗透体力</string></property></item>
+          <item><property name="text"><string>1 - 按饱和/湿容重差施加向下体力</string></property></item>
+          <item><property name="text"><string>2 - 由CABODY读入节点体力</string></property></item>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="labelIFIIWL_FACE">
+          <property name="text">
+           <string>坝体水面压力方式 IFIIWL_FACE</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QComboBox" name="comboIFIIWL_FACE">
+          <item><property name="text"><string>0 - 不记入坝体水面压力</string></property></item>
+          <item><property name="text"><string>1 - 记入坝体水面压力</string></property></item>
+         </widget>
+        </item>
+       </layout>
       </widget>
      </item>
-     <item><widget class="QGroupBox" name="groupWet"><property name="title"><string>[静力-步骤2] 湿化材料映射</string></property><layout class="QHBoxLayout" name="layoutWet"><item><widget class="QPushButton" name="btnEditWet"><property name="text"><string>编辑湿化材料映射表</string></property></widget></item><item><widget class="QLabel" name="labelWetRows"><property name="text"><string>当前行数: 0</string></property></widget></item></layout></widget></item>
-     <item><widget class="QGroupBox" name="groupDrop"><property name="title"><string>[静力-步骤3] 水位骤降</string></property><layout class="QHBoxLayout" name="layoutDrop"><item><widget class="QPushButton" name="btnEditDrop"><property name="text"><string>编辑骤降前后水位表</string></property></widget></item><item><widget class="QLabel" name="labelDropRows"><property name="text"><string>当前行数: 0</string></property></widget></item></layout></widget></item>
-     <item><widget class="QGroupBox" name="groupNChange"><property name="title"><string>[公共材料变化] 材料编号变换</string></property><layout class="QHBoxLayout" name="layoutNChange"><item><widget class="QPushButton" name="btnEditNChange"><property name="text"><string>编辑材料属性号变换表</string></property></widget></item><item><widget class="QLabel" name="labelNChangeRows"><property name="text"><string>当前行数: 0</string></property></widget></item></layout></widget></item>
-     <item><widget class="QGroupBox" name="groupDynaMap"><property name="title"><string>[动力] 静力-动力材料编号变换</string></property><layout class="QHBoxLayout" name="layoutDynaMap"><item><widget class="QPushButton" name="btnEditDynaMap"><property name="text"><string>编辑静力-动力材料编号变换表</string></property></widget></item><item><widget class="QLabel" name="labelDynaMapRows"><property name="text"><string>当前行数: 0</string></property></widget></item></layout></widget></item>
-     <item><widget class="QGroupBox" name="groupCircle"><property name="title"><string>[静力-步骤1] 填筑-蓄水周期</string></property><layout class="QHBoxLayout" name="layoutCircle"><item><widget class="QPushButton" name="btnEditCircle"><property name="text"><string>编辑填筑-蓄水周期表</string></property></widget></item><item><widget class="QLabel" name="labelCircleRows"><property name="text"><string>当前行数: 0</string></property></widget></item></layout></widget></item>
+
+     <item>
+      <widget class="QGroupBox" name="groupWetDrop">
+       <property name="title"><string>湿化与水位骤降</string></property>
+       <layout class="QVBoxLayout" name="layoutWetDropMain">
+        <item>
+         <layout class="QFormLayout" name="formWetDrop">
+          <item row="0" column="0"><widget class="QLabel" name="labelIFWET"><property name="text"><string>湿化计算开关 IFWET</string></property></widget></item>
+          <item row="0" column="1"><widget class="QComboBox" name="comboIFWET"><item><property name="text"><string>0 - 不考虑湿化计算</string></property></item><item><property name="text"><string>1 - 考虑湿化计算</string></property></item></widget></item>
+          <item row="1" column="0"><widget class="QLabel" name="labelIFDROP"><property name="text"><string>水位骤降开关 IF_DROP</string></property></widget></item>
+          <item row="1" column="1"><widget class="QComboBox" name="comboIFDROP"><item><property name="text"><string>0 - 不进行水位骤降计算</string></property></item><item><property name="text"><string>1 - 进行水位骤降计算</string></property></item></widget></item>
+         </layout>
+        </item>
+        <item><layout class="QHBoxLayout" name="layoutWet"><item><widget class="QPushButton" name="btnEditWet"><property name="text"><string>编辑湿化材料映射表</string></property></widget></item><item><widget class="QLabel" name="labelWetRows"><property name="text"><string>当前行数: 0</string></property></widget></item><item><spacer name="spWet"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item></layout></item>
+        <item><layout class="QHBoxLayout" name="layoutDrop"><item><widget class="QPushButton" name="btnEditDrop"><property name="text"><string>编辑骤降前后水位表</string></property></widget></item><item><widget class="QLabel" name="labelDropRows"><property name="text"><string>当前行数: 0</string></property></widget></item><item><spacer name="spDrop"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item></layout></item>
+       </layout>
+      </widget>
+     </item>
+
+     <item>
+      <widget class="QGroupBox" name="groupMaterialChange">
+       <property name="title"><string>材料编号变换</string></property>
+       <layout class="QVBoxLayout" name="layoutMaterialMain">
+        <item><layout class="QHBoxLayout" name="layoutNChange"><item><widget class="QPushButton" name="btnEditNChange"><property name="text"><string>编辑材料属性号变换表</string></property></widget></item><item><widget class="QLabel" name="labelNChangeRows"><property name="text"><string>当前行数: 0</string></property></widget></item><item><spacer name="spNChange"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item></layout></item>
+        <item><layout class="QHBoxLayout" name="layoutDynaMap"><item><widget class="QPushButton" name="btnEditDynaMap"><property name="text"><string>编辑静力-动力材料编号变换表</string></property></widget></item><item><widget class="QLabel" name="labelDynaMapRows"><property name="text"><string>当前行数: 0</string></property></widget></item><item><spacer name="spDyna"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item></layout></item>
+       </layout>
+      </widget>
+     </item>
+
+     <item>
+      <widget class="QGroupBox" name="groupDynamic">
+       <property name="title"><string>动力与拟静力参数</string></property>
+       <layout class="QFormLayout" name="formLayoutDynamic">
+        <item row="0" column="0"><widget class="QLabel" name="labelDIRDYNA"><property name="text"><string>地震动力计算初始目录 DIRDYNA</string></property></widget></item>
+        <item row="0" column="1"><widget class="QLineEdit" name="editDIRDYNA"><property name="text"><string>'CASE01FILL01'</string></property></widget></item>
+        <item row="1" column="0"><widget class="QLabel" name="labelIFMODE"><property name="text"><string>拟静力计算开关 IFMODE</string></property></widget></item>
+        <item row="1" column="1"><widget class="QComboBox" name="comboIFMODE"><item><property name="text"><string>0 - 不进行拟静力计算</string></property></item><item><property name="text"><string>1 - 进行拟静力计算</string></property></item></widget></item>
+        <item row="2" column="0"><widget class="QLabel" name="labelIFWAVE"><property name="text"><string>地震波动力计算开关 IFWAVE</string></property></widget></item>
+        <item row="2" column="1"><widget class="QComboBox" name="comboIFWAVE"><item><property name="text"><string>0 - 不进行地震波动力计算</string></property></item><item><property name="text"><string>1 - 进行地震波动力计算</string></property></item></widget></item>
+        <item row="3" column="0"><widget class="QLabel" name="labelDT_BLOCK"><property name="text"><string>时程参数 DT TSTA TEND WOMI_1</string></property></widget></item>
+        <item row="3" column="1"><widget class="QLineEdit" name="editDT_BLOCK"><property name="text"><string>0.020000 0.000000 0.000000 0.000000</string></property></widget></item>
+        <item row="4" column="0"><widget class="QLabel" name="labelWAVE_FILES"><property name="text"><string>地震波文件 AX AY AZ</string></property></widget></item>
+        <item row="4" column="1"><widget class="QLineEdit" name="editWAVE_FILES"><property name="text"><string>'WAVE-AX.DAT' 'WAVE-AY.DAT' 'WAVE-AZ.DAT'</string></property></widget></item>
+       </layout>
+      </widget>
+     </item>
+
+     <item>
+      <widget class="QGroupBox" name="groupCycle">
+       <property name="title"><string>填筑-蓄水周期</string></property>
+       <layout class="QHBoxLayout" name="layoutCircle">
+        <item><widget class="QPushButton" name="btnEditCircle"><property name="text"><string>编辑填筑-蓄水周期表</string></property></widget></item>
+        <item><widget class="QLabel" name="labelCircleRows"><property name="text"><string>当前行数: 0</string></property></widget></item>
+        <item><spacer name="spCircle"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+       </layout>
+      </widget>
+     </item>
      <item>
       <widget class="QLabel" name="labelSection">
        <property name="text">
