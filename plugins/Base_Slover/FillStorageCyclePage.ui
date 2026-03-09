@@ -24,7 +24,7 @@
    <item>
     <widget class="QLabel" name="tipLabel">
      <property name="text">
-      <string>此节点仅设置单个工况的 4.3.5 参数值；NCASE 与 ICASE 序号自动生成，4.3.4 的 MCASE 由土石坝计算节点统计填筑-蓄水节点数量自动生成。</string>
+      <string>此节点仅设置单个工况的4.3.5参数。分组对应旧版流程：静力渗透荷载、湿化/骤降、公共材料变换、动力与拟静力。NCASE与ICASE自动生成。</string>
      </property>
      <property name="wordWrap">
       <bool>true</bool>
@@ -38,7 +38,7 @@
        <item row="0" column="0">
         <widget class="QLabel" name="labelIFIIWL_SEEP">
          <property name="text">
-          <string>坝基渗透荷载方式 IFIIWL_SEEP</string>
+          <string>[静力] 坝基渗透荷载方式 IFIIWL_SEEP</string>
          </property>
         </widget>
        </item>
@@ -52,7 +52,7 @@
        <item row="1" column="0">
         <widget class="QLabel" name="labelIFIIWL_BODY">
          <property name="text">
-          <string>坝体渗透体力方式 IFIIWL_BODY</string>
+          <string>[静力] 坝体渗透体力方式 IFIIWL_BODY</string>
          </property>
         </widget>
        </item>
@@ -66,7 +66,7 @@
        <item row="2" column="0">
         <widget class="QLabel" name="labelIFIIWL_FACE">
          <property name="text">
-          <string>坝体水面压力方式 IFIIWL_FACE</string>
+          <string>[静力] 坝体水面压力方式 IFIIWL_FACE</string>
          </property>
         </widget>
        </item>
@@ -79,7 +79,7 @@
        <item row="3" column="0">
         <widget class="QLabel" name="labelIFWET">
          <property name="text">
-          <string>湿化计算开关 IFWET</string>
+          <string>[静力-步骤2] 湿化计算开关 IFWET</string>
          </property>
         </widget>
        </item>
@@ -92,7 +92,7 @@
        <item row="4" column="0">
         <widget class="QLabel" name="labelIFDROP">
          <property name="text">
-          <string>水位骤降次数开关 IF_DROP</string>
+          <string>[静力-步骤3] 水位骤降开关 IF_DROP</string>
          </property>
         </widget>
        </item>
@@ -104,7 +104,7 @@
        </item>
        <item row="5" column="0">
         <widget class="QLabel" name="labelDIRDYNA">
-         <property name="text"><string>地震动力计算初始目录 DIRDYNA</string></property>
+         <property name="text"><string>[动力-步骤4] 地震动力计算初始目录 DIRDYNA</string></property>
         </widget>
        </item>
        <item row="5" column="1">
@@ -114,7 +114,7 @@
        </item>
        <item row="6" column="0">
         <widget class="QLabel" name="labelIFMODE">
-         <property name="text"><string>拟静力计算开关 IFMODE</string></property>
+         <property name="text"><string>[动力] 拟静力计算开关 IFMODE</string></property>
         </widget>
        </item>
        <item row="6" column="1">
@@ -125,7 +125,7 @@
        </item>
        <item row="7" column="0">
         <widget class="QLabel" name="labelIFWAVE">
-         <property name="text"><string>地震波动力计算开关 IFWAVE</string></property>
+         <property name="text"><string>[动力] 地震波动力计算开关 IFWAVE</string></property>
         </widget>
        </item>
        <item row="7" column="1">
@@ -137,7 +137,7 @@
        <item row="8" column="0">
         <widget class="QLabel" name="labelDT_BLOCK">
          <property name="text">
-          <string>动力时程参数 DT TSTA TEND WOMI_1</string>
+          <string>[动力] 时程参数 DT TSTA TEND WOMI_1</string>
          </property>
         </widget>
        </item>
@@ -151,7 +151,7 @@
        <item row="9" column="0">
         <widget class="QLabel" name="labelWAVE_FILES">
          <property name="text">
-          <string>地震波文件 AX AY AZ</string>
+          <string>[动力] 地震波文件 AX AY AZ</string>
          </property>
         </widget>
        </item>
@@ -167,7 +167,7 @@
      <item>
       <widget class="QLabel" name="labelWet">
        <property name="text">
-        <string>湿化材料映射表 (Mdry Mwet)</string>
+        <string>[静力-步骤2] 湿化材料映射表 (Mdry Mwet，NUM_WET按行数自动统计)</string>
        </property>
       </widget>
      </item>
@@ -188,7 +188,7 @@
      <item>
       <widget class="QLabel" name="labelDrop">
        <property name="text">
-        <string>水位骤降表 (HW_DROP_STA HW_DROP_END)</string>
+        <string>[静力-步骤3] 水位骤降表 (HW_DROP_STA HW_DROP_END，NUM_DROP按行数自动统计)</string>
        </property>
       </widget>
      </item>
@@ -209,7 +209,7 @@
      <item>
       <widget class="QLabel" name="labelNChange">
        <property name="text">
-        <string>材料属性号变换表 (Mold Mnew) - NCHANGE按行数自动统计</string>
+        <string>[公共材料变化] 材料属性号变换表 (Mold Mnew，NCHANGE按行数自动统计)</string>
        </property>
       </widget>
      </item>
@@ -222,7 +222,7 @@
      <item>
       <widget class="QLabel" name="labelDynaMap">
        <property name="text">
-        <string>静力-动力材料编号变换表 (M_STA M_DYNA) - NUM_DYNA按行数自动统计</string>
+        <string>[动力] 静力-动力材料编号变换表 (M_STA M_DYNA，NUM_DYNA按行数自动统计)</string>
        </property>
       </widget>
      </item>
@@ -235,7 +235,7 @@
      <item>
       <widget class="QLabel" name="labelCircle">
        <property name="text">
-        <string>填筑-蓄水周期表</string>
+        <string>[静力-步骤1] 填筑-蓄水周期表 (NCIRCLE按行数自动统计)</string>
        </property>
       </widget>
      </item>

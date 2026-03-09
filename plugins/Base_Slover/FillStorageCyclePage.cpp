@@ -159,14 +159,17 @@ QString FillStorageCyclePage::sectionText(int caseIndex) const
     text += QString("%1    ICASE--------------------------------------\n").arg(caseIndex);
     text += QString("%1 %2 %3     IFIIWL_SEEP IFIIWL_BODY IFIIWL_FACE\n")
                 .arg(valueOf("IFIIWL_SEEP"), valueOf("IFIIWL_BODY"), valueOf("IFIIWL_FACE"));
-    const int numWet = m_wetTable ? m_wetTable->rowCount() : 0;
+    const bool wetEnabled = valueOf("IFWET") == "1";
+    const int numWet = wetEnabled && m_wetTable ? m_wetTable->rowCount() : 0;
     text += QString("%1 %2     NUM_WET IFWET\n").arg(numWet).arg(valueOf("IFWET"));
     for (int i = 0; i < numWet; ++i)
         text += QString("%1 %2\n").arg(tableItemText(m_wetTable, i, 0, "1"),
                                         tableItemText(m_wetTable, i, 1, "1"));
 
-    const int numDrop = m_dropTable ? m_dropTable->rowCount() : 0;
-    text += QString("%1 %2     NUM_DROP IFDROP\n").arg(numDrop).arg(valueOf("IFDROP"));
+    const bool dropEnabled = valueOf("IFDROP") == "1";
+    const int numDrop = dropEnabled && m_dropTable ? m_dropTable->rowCount() : 0;
+    const QString ifDropOut = dropEnabled ? QString::number(numDrop) : QStringLiteral("0");
+    text += QString("%1 %2     NUM_DROP IFDROP\n").arg(numDrop).arg(ifDropOut);
     for (int i = 0; i < numDrop; ++i)
         text += QString("%1 %2 %3\n")
                     .arg(tableItemText(m_dropTable, i, 0, "0.000"),
