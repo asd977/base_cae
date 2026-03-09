@@ -24,7 +24,7 @@
    <item>
     <widget class="QPushButton" name="sectionTitleButton">
      <property name="text">
-      <string>功能设置</string>
+      <string>分组设置</string>
      </property>
     </widget>
    </item>
@@ -58,7 +58,7 @@
      </widget>
      <widget class="QWidget" name="tabLayer">
       <attribute name="title">
-       <string>填筑层分组</string>
+       <string>层分组</string>
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_3">
        <item>
@@ -84,13 +84,13 @@
      </widget>
      <widget class="QWidget" name="tabBoundary">
       <attribute name="title">
-       <string>边界组(批量选)</string>
+       <string>边界组</string>
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_4">
        <item>
         <widget class="QPushButton" name="btnAutoBoundaryGrouping">
          <property name="text">
-          <string>自动识别边界组（外表面连通域）</string>
+          <string>自动识别边界组</string>
          </property>
         </widget>
        </item>
@@ -125,20 +125,20 @@
    <item>
     <widget class="QPushButton" name="btnRefreshGroups">
      <property name="text">
-      <string>刷新分组与边界列表</string>
+      <string>刷新列表</string>
      </property>
     </widget>
    </item>
    <item>
     <widget class="QGroupBox" name="groupAuto">
      <property name="title">
-      <string>自动分组（按主轴空间分箱）</string>
+      <string>自动分组</string>
      </property>
      <layout class="QGridLayout" name="gridLayoutAuto">
       <item row="0" column="0">
        <widget class="QLabel" name="labelTargetArray">
         <property name="text">
-         <string>目标字段</string>
+         <string>目标</string>
         </property>
        </widget>
       </item>
@@ -148,7 +148,7 @@
       <item row="0" column="2">
        <widget class="QLabel" name="labelAutoCount">
         <property name="text">
-         <string>分组数量</string>
+         <string>数量</string>
         </property>
        </widget>
       </item>
@@ -168,7 +168,7 @@
       <item row="1" column="0">
        <widget class="QLabel" name="labelStartValue">
         <property name="text">
-         <string>起始编号</string>
+         <string>起始值</string>
         </property>
        </widget>
       </item>
@@ -188,7 +188,7 @@
       <item row="1" column="2" colspan="2">
        <widget class="QPushButton" name="btnAutoGrouping">
         <property name="text">
-         <string>执行自动分组</string>
+         <string>开始自动分组</string>
         </property>
        </widget>
       </item>
@@ -198,7 +198,7 @@
    <item>
     <widget class="QGroupBox" name="groupRange">
      <property name="title">
-      <string>坐标范围分组（按单元中心）</string>
+      <string>范围分组</string>
      </property>
      <layout class="QGridLayout" name="gridLayoutRange">
       <item row="0" column="0"><widget class="QLabel" name="labelX"><property name="text"><string>X 范围</string></property></widget></item>
@@ -210,13 +210,13 @@
       <item row="2" column="0"><widget class="QLabel" name="labelZ"><property name="text"><string>Z 范围</string></property></widget></item>
       <item row="2" column="1"><widget class="QDoubleSpinBox" name="dsZMin"><property name="minimum"><double>-1000000000.000000000000000</double></property><property name="maximum"><double>1000000000.000000000000000</double></property></widget></item>
       <item row="2" column="2"><widget class="QDoubleSpinBox" name="dsZMax"><property name="minimum"><double>-1000000000.000000000000000</double></property><property name="maximum"><double>1000000000.000000000000000</double></property></widget></item>
-      <item row="3" column="0"><widget class="QLabel" name="labelRangeTarget"><property name="text"><string>目标字段</string></property></widget></item>
+      <item row="3" column="0"><widget class="QLabel" name="labelRangeTarget"><property name="text"><string>目标</string></property></widget></item>
       <item row="3" column="1"><widget class="QComboBox" name="cmbRangeTargetArray" /></item>
       <item row="3" column="2"><widget class="QSpinBox" name="spTargetValue"><property name="minimum"><number>1</number></property><property name="maximum"><number>1000000</number></property><property name="value"><number>1</number></property></widget></item>
-      <item row="4" column="0"><widget class="QLabel" name="labelName"><property name="text"><string>分组名称</string></property></widget></item>
+      <item row="4" column="0"><widget class="QLabel" name="labelName"><property name="text"><string>名称</string></property></widget></item>
       <item row="4" column="1" colspan="2"><widget class="QLineEdit" name="edtGroupName"><property name="text"><string>CustomGroup</string></property></widget></item>
-      <item row="5" column="0" colspan="2"><widget class="QCheckBox" name="chkShowRangeBox"><property name="text"><string>显示范围框</string></property></widget></item>
-      <item row="5" column="2"><widget class="QPushButton" name="btnRangeGrouping"><property name="text"><string>执行范围分组</string></property></widget></item>
+      <item row="5" column="0" colspan="2"><widget class="QCheckBox" name="chkShowRangeBox"><property name="text"><string>显示范围</string></property></widget></item>
+      <item row="5" column="2"><widget class="QPushButton" name="btnRangeGrouping"><property name="text"><string>开始范围分组</string></property></widget></item>
      </layout>
     </widget>
    </item>
