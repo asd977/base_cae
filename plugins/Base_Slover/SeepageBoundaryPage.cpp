@@ -11,6 +11,7 @@
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
+#include <QPushButton>
 #include <QSet>
 #include <QSignalBlocker>
 #include <QTextStream>
@@ -46,6 +47,7 @@ void SeepageBoundaryPage::beforeLoad()
 
 void SeepageBoundaryPage::beforeUnload()
 {
+    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Node);
     PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
 }
 
@@ -116,6 +118,7 @@ bool SeepageBoundaryPage::exportDatFile()
 
 void SeepageBoundaryPage::onClearClicked()
 {
+    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Node);
     PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Node);
 }
 
@@ -133,10 +136,53 @@ void SeepageBoundaryPage::setupBatchGroupCombo()
     ui->comboBoxDim->setCurrentIndex(0);
     ui->comboBoxDim->blockSignals(false);
 
+    disconnect(ui->comboBoxDim, nullptr, this, nullptr);
+    disconnect(ui->comboBoxGroup, nullptr, this, nullptr);
+    disconnect(ui->btnBatchAdd, nullptr, this, nullptr);
+
     connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &SeepageBoundaryPage::onDimChanged, Qt::UniqueConnection);
     connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &SeepageBoundaryPage::onGroupChanged, Qt::UniqueConnection);
+            [this](int index)
+            {
+                if (index < 0 || !ui)
+                    return;
+
+                auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+                if (!meshSvc)
+                    return;
+
+                const MshPickMap& map = meshSvc->mshPickMapSolid();
+                const int physId = ui->comboBoxGroup->itemData(index).toInt();
+                const int dim = map.physIdToDim.value(physId, -1);
+
+                QVector<int> pointIdsInt;
+                if (dim == 0)
+                    pointIdsInt = map.bndPointPhysToPointIds.value(physId);
+                else if (dim == 1)
+                    pointIdsInt = map.bndEdgePhysToPointIds.value(physId);
+                else if (dim == 2)
+                    pointIdsInt = map.bndFacePhysToPointIds.value(physId);
+                else
+                    return;
+
+                QVector<vtkIdType> pointIds;
+                pointIds.reserve(pointIdsInt.size());
+                for (int pid : pointIdsInt)
+                {
+                    pointIds.push_back(vtkIdType(pid));
+                }
+
+                PickManager::instance().setPreviewPointIds(getPageType(), m_uuid, GridKind::Solid,
+                                                           pointIds);
+            },
+            Qt::UniqueConnection);
+    connect(ui->btnBatchAdd, &QPushButton::clicked, this,
+            [this]()
+            {
+                onGroupChanged(ui->comboBoxGroup->currentIndex());
+            },
+            Qt::UniqueConnection);
 
     refreshGroupCombo();
 }
@@ -205,7 +251,7 @@ void SeepageBoundaryPage::onGroupChanged(int index)
     }
 
     PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pointIds,
-                                                true);
+                                                false);
 }
 
 QJsonObject SeepageBoundaryPage::saveJson()
