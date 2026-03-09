@@ -35,3 +35,9 @@ void PhysicalFieldSettingWidget::on_pushButton_clicked()
     PhysicalFieldService* service = ServiceRegistry::instance().getService<PhysicalFieldService>();
     service->generateIIWLFile();
 }
+
+void PhysicalFieldSettingWidget::on_dataPushButton_clicked()
+{
+    PhysicalFieldService* service = ServiceRegistry::instance().getService<PhysicalFieldService>();
+    service->generateIIWLFile();
+}

@@ -26,7 +26,9 @@ class PhysicalFieldSettingWidget : public BasePage
 
     void on_pushButton_clicked();
 
-  private:
+    void on_dataPushButton_clicked();
+
+private:
     Ui::PhysicalFieldSettingWidget* ui;
 };
 
