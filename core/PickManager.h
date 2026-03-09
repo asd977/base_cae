@@ -113,6 +113,14 @@ class CORE_EXPORT PickManager : public QObject
     void setSelectedFaceKeys(const QString& domain, const QString& uuid, GridKind kind,
                              const QVector<vtkIdType>& faceKeys, bool replace = true);
 
+    void setPreviewPointIds(const QString& domain, const QString& uuid, GridKind kind,
+                           const QVector<vtkIdType>& pointIds);
+    void setPreviewEdgeKeys(const QString& domain, const QString& uuid, GridKind kind,
+                           const QVector<vtkIdType>& edgeKeys);
+    void setPreviewFaceKeys(const QString& domain, const QString& uuid, GridKind kind,
+                           const QVector<vtkIdType>& faceKeys);
+    void clearPreviewSelection(const QString& domain, const QString& uuid, PickMode mode);
+
   private:
     explicit PickManager(QObject* parent = nullptr);
     ~PickManager() override = default;
@@ -224,6 +232,13 @@ class CORE_EXPORT PickManager : public QObject
     vtkSmartPointer<vtkPolyDataMapper> m_selMapper;
     vtkSmartPointer<vtkActor> m_selActor;
 
+    // preview overlays
+    vtkSmartPointer<vtkPoints> m_previewSelPts;
+    vtkSmartPointer<vtkPolyData> m_previewSelPoly;
+    vtkSmartPointer<vtkVertexGlyphFilter> m_previewSelGlyph;
+    vtkSmartPointer<vtkPolyDataMapper> m_previewSelMapper;
+    vtkSmartPointer<vtkActor> m_previewSelActor;
+
     QHash<QString, QHash<vtkIdType, QString>> m_ownerPointSolidByDomain;
     QHash<QString, QHash<QString, QSet<vtkIdType>>> m_pointsSolidByDomainUuid;
     QHash<QString, QHash<vtkIdType, QString>> m_ownerPointLineByDomain;
@@ -239,6 +254,12 @@ class CORE_EXPORT PickManager : public QObject
     vtkSmartPointer<vtkPolyDataMapper> m_edgeMapper;
     vtkSmartPointer<vtkActor> m_edgeActor;
 
+    vtkSmartPointer<vtkPoints> m_previewEdgePts;
+    vtkSmartPointer<vtkCellArray> m_previewEdgeLines;
+    vtkSmartPointer<vtkPolyData> m_previewEdgePoly;
+    vtkSmartPointer<vtkPolyDataMapper> m_previewEdgeMapper;
+    vtkSmartPointer<vtkActor> m_previewEdgeActor;
+
     QHash<QString, QHash<vtkIdType, QString>> m_ownerEdgeSolidByDomain;
     QHash<QString, QHash<QString, QSet<vtkIdType>>> m_edgesSolidByDomainUuid;
     QHash<QString, QHash<vtkIdType, QString>> m_ownerEdgeLineByDomain;
@@ -253,6 +274,19 @@ class CORE_EXPORT PickManager : public QObject
     vtkSmartPointer<vtkPolyData> m_facePoly;
     vtkSmartPointer<vtkPolyDataMapper> m_faceMapper;
     vtkSmartPointer<vtkActor> m_faceActor;
+
+    vtkSmartPointer<vtkPoints> m_previewFacePts;
+    vtkSmartPointer<vtkCellArray> m_previewFacePolys;
+    vtkSmartPointer<vtkPolyData> m_previewFacePoly;
+    vtkSmartPointer<vtkPolyDataMapper> m_previewFaceMapper;
+    vtkSmartPointer<vtkActor> m_previewFaceActor;
+
+    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_previewPointsSolidByDomainUuid;
+    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_previewPointsLineByDomainUuid;
+    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_previewEdgesSolidByDomainUuid;
+    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_previewEdgesLineByDomainUuid;
+    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_previewFacesSolidByDomainUuid;
+    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_previewFacesLineByDomainUuid;
 
     QHash<QString, QHash<vtkIdType, QString>> m_ownerFaceSolidByDomain;
     QHash<QString, QHash<QString, QSet<vtkIdType>>> m_facesSolidByDomainUuid;

@@ -112,6 +112,24 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_visual->addProp("pick.node", m_selActor, QString("{node} 选中点"), QString("拾取选中点集合"),
                       true, true);
 
+    m_previewSelPts = vtkSmartPointer<vtkPoints>::New();
+    m_previewSelPoly = vtkSmartPointer<vtkPolyData>::New();
+    m_previewSelPoly->SetPoints(m_previewSelPts);
+    m_previewSelGlyph = vtkSmartPointer<vtkVertexGlyphFilter>::New();
+    m_previewSelGlyph->SetInputData(m_previewSelPoly);
+    m_previewSelMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    m_previewSelMapper->SetInputConnection(m_previewSelGlyph->GetOutputPort());
+    m_previewSelActor = vtkSmartPointer<vtkActor>::New();
+    m_previewSelActor->SetMapper(m_previewSelMapper);
+    m_previewSelActor->GetProperty()->SetPointSize(10);
+    m_previewSelActor->GetProperty()->SetColor(1.0, 0.6, 0.0);
+    m_previewSelActor->GetProperty()->SetRenderPointsAsSpheres(true);
+    m_previewSelActor->PickableOff();
+    m_previewSelActor->SetVisibility(false);
+    m_visual->removeProp("pick.node.preview", false);
+    m_visual->addProp("pick.node.preview", m_previewSelActor, QString("{node} 预选点"),
+                      QString("拾取预选点集合"), true, true);
+
     // ================== Edge overlay (polyline) ==================
     m_edgePts = vtkSmartPointer<vtkPoints>::New();
     m_edgeLines = vtkSmartPointer<vtkCellArray>::New();
@@ -135,6 +153,26 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_visual->removeProp("pick.edge", false);
     m_visual->addProp("pick.edge", m_edgeActor, QString("{edge} 选中边"),
                       QString("拾取选中边集合（edgeKey）"), true, true);
+
+    m_previewEdgePts = vtkSmartPointer<vtkPoints>::New();
+    m_previewEdgeLines = vtkSmartPointer<vtkCellArray>::New();
+    m_previewEdgePoly = vtkSmartPointer<vtkPolyData>::New();
+    m_previewEdgePoly->SetPoints(m_previewEdgePts);
+    m_previewEdgePoly->SetLines(m_previewEdgeLines);
+    m_previewEdgeMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    m_previewEdgeMapper->SetResolveCoincidentTopologyToPolygonOffset();
+    m_previewEdgeMapper->SetRelativeCoincidentTopologyLineOffsetParameters(-1.0, -10.0);
+    m_previewEdgeMapper->SetInputData(m_previewEdgePoly);
+    m_previewEdgeActor = vtkSmartPointer<vtkActor>::New();
+    m_previewEdgeActor->SetMapper(m_previewEdgeMapper);
+    m_previewEdgeActor->GetProperty()->SetColor(1.0, 0.5, 0.0);
+    m_previewEdgeActor->GetProperty()->SetLineWidth(4.0);
+    m_previewEdgeActor->GetProperty()->SetRepresentationToWireframe();
+    m_previewEdgeActor->PickableOff();
+    m_previewEdgeActor->SetVisibility(false);
+    m_visual->removeProp("pick.edge.preview", false);
+    m_visual->addProp("pick.edge.preview", m_previewEdgeActor, QString("{edge} 预选边"),
+                      QString("拾取预选边集合"), true, true);
 
     // ================== Face overlay ==================
     // --- 数据初始化 ---
@@ -168,6 +206,26 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_visual->removeProp("pick.face", false);
     m_visual->addProp("pick.face", m_faceActor, QString("{face} 选中面"), QString("拾取选中面集合"),
                       true, true);
+
+    m_previewFacePts = vtkSmartPointer<vtkPoints>::New();
+    m_previewFacePolys = vtkSmartPointer<vtkCellArray>::New();
+    m_previewFacePoly = vtkSmartPointer<vtkPolyData>::New();
+    m_previewFacePoly->SetPoints(m_previewFacePts);
+    m_previewFacePoly->SetPolys(m_previewFacePolys);
+    m_previewFaceMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    m_previewFaceMapper->SetResolveCoincidentTopologyToPolygonOffset();
+    m_previewFaceMapper->SetRelativeCoincidentTopologyPolygonOffsetParameters(-1.0, -20.0);
+    m_previewFaceMapper->SetInputData(m_previewFacePoly);
+    m_previewFaceActor = vtkSmartPointer<vtkActor>::New();
+    m_previewFaceActor->GetProperty()->BackfaceCullingOn();
+    m_previewFaceActor->SetMapper(m_previewFaceMapper);
+    m_previewFaceActor->GetProperty()->SetColor(1.0, 0.6, 0.0);
+    m_previewFaceActor->GetProperty()->SetOpacity(1);
+    m_previewFaceActor->GetProperty()->SetRepresentationToSurface();
+    m_previewFaceActor->SetVisibility(false);
+    m_visual->removeProp("pick.face.preview", false);
+    m_visual->addProp("pick.face.preview", m_previewFaceActor, QString("{face} 预选面"),
+                      QString("拾取预选面集合"), true, true);
 
     // ================== Line node hints ==================
     m_lineNodePts = vtkSmartPointer<vtkPoints>::New();
@@ -336,6 +394,16 @@ void PickManager::deactivate(const QString& domain, const QString& uuid, PickMod
         m_faceActor->SetVisibility(false);
     if (m_lineNodeActor)
         m_lineNodeActor->SetVisibility(false);
+    if (m_previewSelActor)
+        m_previewSelActor->SetVisibility(false);
+    if (m_previewEdgeActor)
+        m_previewEdgeActor->SetVisibility(false);
+    if (m_previewFaceActor)
+        m_previewFaceActor->SetVisibility(false);
+
+    clearPreviewSelection(domain, uuid, PickMode::Node);
+    clearPreviewSelection(domain, uuid, PickMode::Edge);
+    clearPreviewSelection(domain, uuid, PickMode::Face);
 
     // 释放 overlay 内容（避免长时间占内存）
     if (m_selPts)
@@ -383,6 +451,12 @@ void PickManager::updateActorVisibility()
     m_selActor->SetVisibility(m_pickMode == PickMode::Node);
     m_edgeActor->SetVisibility(m_pickMode == PickMode::Edge);
     m_faceActor->SetVisibility(m_pickMode == PickMode::Face);
+    if (m_previewSelActor)
+        m_previewSelActor->SetVisibility(m_pickMode == PickMode::Node);
+    if (m_previewEdgeActor)
+        m_previewEdgeActor->SetVisibility(m_pickMode == PickMode::Edge);
+    if (m_previewFaceActor)
+        m_previewFaceActor->SetVisibility(m_pickMode == PickMode::Face);
 }
 
 void PickManager::setupPicking()
@@ -1507,6 +1581,188 @@ void PickManager::setSelectedFaceKeys(const QString& domain, const QString& uuid
 
     if (domain == m_currentDomain && uuid == m_currentUUid && m_pickMode == PickMode::Face)
         markDirty(DirtyFace);
+}
+
+void PickManager::setPreviewPointIds(const QString& domain, const QString& uuid, GridKind kind,
+                                     const QVector<vtkIdType>& pointIds)
+{
+    auto& mp = (kind == GridKind::Solid) ? m_previewPointsSolidByDomainUuid : m_previewPointsLineByDomainUuid;
+    QSet<vtkIdType> s;
+    for (auto id : pointIds)
+        s.insert(id);
+    mp[domain][uuid] = s;
+
+    if (domain != m_currentDomain || uuid != m_currentUUid || m_pickMode != PickMode::Node)
+        return;
+    m_previewSelPts->Reset();
+    const auto setS = m_previewPointsSolidByDomainUuid.value(domain).value(uuid);
+    const auto setL = m_previewPointsLineByDomainUuid.value(domain).value(uuid);
+    for (auto pid : setS)
+    {
+        if (!m_gridSolid)
+            break;
+        double p[3];
+        m_gridSolid->GetPoint(pid, p);
+        m_previewSelPts->InsertNextPoint(p);
+    }
+    for (auto pid : setL)
+    {
+        if (!m_gridLine)
+            break;
+        double p[3];
+        m_gridLine->GetPoint(pid, p);
+        m_previewSelPts->InsertNextPoint(p);
+    }
+    m_previewSelPts->Modified();
+    m_previewSelPoly->Modified();
+    if (m_visual)
+        m_visual->render();
+}
+
+void PickManager::setPreviewEdgeKeys(const QString& domain, const QString& uuid, GridKind kind,
+                                     const QVector<vtkIdType>& edgeKeys)
+{
+    auto& mp = (kind == GridKind::Solid) ? m_previewEdgesSolidByDomainUuid : m_previewEdgesLineByDomainUuid;
+    QSet<vtkIdType> s;
+    for (auto id : edgeKeys)
+        s.insert(id);
+    mp[domain][uuid] = s;
+    if (domain != m_currentDomain || uuid != m_currentUUid || m_pickMode != PickMode::Edge)
+        return;
+
+    m_previewEdgePts->Reset();
+    m_previewEdgeLines->Reset();
+    auto buildOne = [&](vtkUnstructuredGrid* grid, const QSet<vtkIdType>& keys)
+    {
+        if (!grid)
+            return;
+        for (vtkIdType key : keys)
+        {
+            vtkIdType cid = unpackEdgeCellId(key);
+            int ei = unpackEdgeLocalId(key);
+            auto* cell = grid->GetCell(cid);
+            if (!cell)
+                continue;
+            vtkCell* e = (cell->GetCellDimension() >= 3) ? cell->GetEdge(ei) : nullptr;
+            QVector<vtkIdType> epids;
+            if (e)
+            {
+                auto* ids = e->GetPointIds();
+                if (!ids || ids->GetNumberOfIds() < 2)
+                    continue;
+                for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
+                    epids.push_back(ids->GetId(i));
+            }
+            else
+            {
+                auto* ids = cell->GetPointIds();
+                if (!ids || ids->GetNumberOfIds() < 2)
+                    continue;
+                for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
+                    epids.push_back(ids->GetId(i));
+            }
+            const vtkIdType n = epids.size();
+            m_previewEdgeLines->InsertNextCell(n);
+            for (vtkIdType k = 0; k < n; ++k)
+            {
+                double p[3];
+                grid->GetPoint(epids[int(k)], p);
+                vtkIdType lpid = m_previewEdgePts->InsertNextPoint(p);
+                m_previewEdgeLines->InsertCellPoint(lpid);
+            }
+        }
+    };
+    buildOne(m_gridSolid, m_previewEdgesSolidByDomainUuid.value(domain).value(uuid));
+    buildOne(m_gridLine, m_previewEdgesLineByDomainUuid.value(domain).value(uuid));
+    m_previewEdgePts->Modified();
+    m_previewEdgeLines->Modified();
+    m_previewEdgePoly->Modified();
+    if (m_visual)
+        m_visual->render();
+}
+
+void PickManager::setPreviewFaceKeys(const QString& domain, const QString& uuid, GridKind kind,
+                                     const QVector<vtkIdType>& faceKeys)
+{
+    auto& mp = (kind == GridKind::Solid) ? m_previewFacesSolidByDomainUuid : m_previewFacesLineByDomainUuid;
+    QSet<vtkIdType> s;
+    for (auto id : faceKeys)
+        s.insert(id);
+    mp[domain][uuid] = s;
+    if (domain != m_currentDomain || uuid != m_currentUUid || m_pickMode != PickMode::Face)
+        return;
+
+    m_previewFacePts->Reset();
+    m_previewFacePolys->Reset();
+    auto buildOne = [&](vtkUnstructuredGrid* grid, const QSet<vtkIdType>& keys)
+    {
+        if (!grid)
+            return;
+        for (vtkIdType key : keys)
+        {
+            vtkIdType cid = unpackFaceCellId(key);
+            int fi = unpackFaceLocalId(key);
+            auto* cell = grid->GetCell(cid);
+            if (!cell)
+                continue;
+            vtkCell* f = (cell->GetCellDimension() >= 3) ? cell->GetFace(fi) : cell;
+            if (!f)
+                continue;
+            auto* ids = f->GetPointIds();
+            if (!ids || ids->GetNumberOfIds() < 3)
+                continue;
+            const vtkIdType n = ids->GetNumberOfIds();
+            m_previewFacePolys->InsertNextCell(n);
+            for (vtkIdType i = 0; i < n; ++i)
+            {
+                double p[3];
+                grid->GetPoint(ids->GetId(i), p);
+                vtkIdType lpid = m_previewFacePts->InsertNextPoint(p);
+                m_previewFacePolys->InsertCellPoint(lpid);
+            }
+        }
+    };
+    buildOne(m_gridSolid, m_previewFacesSolidByDomainUuid.value(domain).value(uuid));
+    buildOne(m_gridLine, m_previewFacesLineByDomainUuid.value(domain).value(uuid));
+    m_previewFacePts->Modified();
+    m_previewFacePolys->Modified();
+    m_previewFacePoly->Modified();
+    if (m_visual)
+        m_visual->render();
+}
+
+void PickManager::clearPreviewSelection(const QString& domain, const QString& uuid, PickMode mode)
+{
+    if (mode == PickMode::Node)
+    {
+        m_previewPointsSolidByDomainUuid[domain][uuid].clear();
+        m_previewPointsLineByDomainUuid[domain][uuid].clear();
+        m_previewSelPts->Reset();
+        m_previewSelPts->Modified();
+        m_previewSelPoly->Modified();
+    }
+    else if (mode == PickMode::Edge)
+    {
+        m_previewEdgesSolidByDomainUuid[domain][uuid].clear();
+        m_previewEdgesLineByDomainUuid[domain][uuid].clear();
+        m_previewEdgePts->Reset();
+        m_previewEdgeLines->Reset();
+        m_previewEdgePts->Modified();
+        m_previewEdgeLines->Modified();
+        m_previewEdgePoly->Modified();
+    }
+    else
+    {
+        m_previewFacesSolidByDomainUuid[domain][uuid].clear();
+        m_previewFacesLineByDomainUuid[domain][uuid].clear();
+        m_previewFacePts->Reset();
+        m_previewFacePolys->Reset();
+        m_previewFacePts->Modified();
+        m_previewFacePolys->Modified();
+        m_previewFacePoly->Modified();
+    }
+    if (m_visual)
+        m_visual->render();
 }
 
 // ===================== box select (batch) =====================

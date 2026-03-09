@@ -26,7 +26,6 @@
 #include <QComboBox>
 #include <QPushButton>
 #include <QDebug>
-#include <QPushButton>
 
 #include "PickManager.h"
 #include "ui_LoadSpecificationWidget.h"
@@ -121,6 +120,45 @@ void LoadSpecificationWidget::setupBatchGroupCombo()
                 onGroupChanged(ui->comboBoxGroup->currentIndex());
             },
             Qt::UniqueConnection);
+
+    if (auto* groupCombo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
+    {
+        QObject::disconnect(groupCombo, nullptr, this, nullptr);
+        connect(groupCombo, &CustomComboBox::itemHovered, this,
+                [this](const int& row)
+                {
+                    if (row < 0 || !m_meshCtrl)
+                        return;
+                    const MshPickMap& map = m_meshCtrl->mshPickMapSolid();
+                    const int physId = ui->comboBoxGroup->itemData(row).toInt();
+                    const int dim = ui->comboBoxDim->currentData().toInt();
+                    if (dim == 1)
+                    {
+                        QVector<vtkIdType> edgeKeys;
+                        for (qint64 k : map.bndEdgePhysToEdgeKeys.value(physId))
+                            edgeKeys.push_back(vtkIdType(k));
+                        PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
+                                                                   edgeKeys);
+                    }
+                    else
+                    {
+                        QVector<vtkIdType> faceKeys;
+                        for (qint64 k : map.bndFacePhysToFaceKeys.value(physId))
+                            faceKeys.push_back(vtkIdType(k));
+                        PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid, GridKind::Solid,
+                                                                   faceKeys);
+                    }
+                },
+                Qt::UniqueConnection);
+        connect(groupCombo, &CustomComboBox::dropdownClosed, this,
+                [this]()
+                {
+                    const int dim = ui->comboBoxDim->currentData().toInt();
+                    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid,
+                                                                  dim == 1 ? PickMode::Edge : PickMode::Face);
+                },
+                Qt::UniqueConnection);
+    }
     refreshGroupCombo();
 }
 

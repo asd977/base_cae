@@ -114,6 +114,46 @@ void GeoStressFitFacePage::beforeLoad()
             },
             Qt::UniqueConnection);
 
+    if (auto* groupCombo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
+    {
+        QObject::disconnect(groupCombo, nullptr, this, nullptr);
+        connect(groupCombo, &CustomComboBox::itemHovered, this,
+                [this](const int& row)
+                {
+                    if (row < 0)
+                        return;
+                    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+                    if (!meshSvc)
+                        return;
+                    const MshPickMap& mapS = meshSvc->mshPickMapSolid();
+                    const int physId = ui->comboBoxGroup->itemData(row).toInt();
+                    if (pickEdge())
+                    {
+                        QVector<vtkIdType> keys;
+                        for (qint64 k : mapS.bndEdgePhysToEdgeKeys.value(physId))
+                            keys.push_back(vtkIdType(k));
+                        PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
+                                                                   keys);
+                    }
+                    else
+                    {
+                        QVector<vtkIdType> keys;
+                        for (qint64 k : mapS.bndFacePhysToFaceKeys.value(physId))
+                            keys.push_back(vtkIdType(k));
+                        PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid, GridKind::Solid,
+                                                                   keys);
+                    }
+                },
+                Qt::UniqueConnection);
+        connect(groupCombo, &CustomComboBox::dropdownClosed, this,
+                [this]()
+                {
+                    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid,
+                                                                  pickEdge() ? PickMode::Edge : PickMode::Face);
+                },
+                Qt::UniqueConnection);
+    }
+
     // 3) 下拉框只做预览，不自动应用；由“添加”按钮触发
 }
 

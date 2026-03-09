@@ -8,7 +8,6 @@
 #include <QComboBox>
 #include <QPushButton>
 #include <QDebug>
-#include <QPushButton>
 #include <QDoubleSpinBox>
 #include <QSpinBox>
 #include <algorithm>
@@ -151,6 +150,39 @@ void BodyForcePage::setupBatchGroupCombo()
                          onGroupChanged(ui->comboBoxGroup->currentIndex());
                      },
                      Qt::UniqueConnection);
+
+    if (auto* groupCombo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
+    {
+        QObject::disconnect(groupCombo, nullptr, this, nullptr);
+        connect(groupCombo, &CustomComboBox::itemHovered, this,
+                [this](const int& row)
+                {
+                    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+                    if (!meshSvc || row < 0)
+                        return;
+                    const MshPickMap& map = meshSvc->mshPickMapSolid();
+                    const int physId = ui->comboBoxGroup->itemData(row).toInt();
+                    const int dim = map.physIdToDim.value(physId, -1);
+                    QVector<int> pointIdsInt;
+                    if (dim == 0)
+                        pointIdsInt = map.bndPointPhysToPointIds.value(physId);
+                    else if (dim == 1)
+                        pointIdsInt = map.bndEdgePhysToPointIds.value(physId);
+                    else if (dim == 2)
+                        pointIdsInt = map.bndFacePhysToPointIds.value(physId);
+                    QVector<vtkIdType> pids;
+                    for (int pid : pointIdsInt)
+                        pids.push_back(vtkIdType(pid));
+                    PickManager::instance().setPreviewPointIds(getPageType(), m_uuid, GridKind::Solid, pids);
+                },
+                Qt::UniqueConnection);
+        connect(groupCombo, &CustomComboBox::dropdownClosed, this,
+                [this]()
+                {
+                    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Node);
+                },
+                Qt::UniqueConnection);
+    }
     refreshGroupCombo();
 }
 

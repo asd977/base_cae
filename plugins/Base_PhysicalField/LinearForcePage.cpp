@@ -84,6 +84,34 @@ void LinearForcePage::setupBatchGroupCombo()
                 onGroupChanged(ui->comboBoxGroup->currentIndex());
             },
             Qt::UniqueConnection);
+
+    if (auto* groupCombo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
+    {
+        QObject::disconnect(groupCombo, nullptr, this, nullptr);
+        connect(groupCombo, &CustomComboBox::itemHovered, this,
+                [this](const int& row)
+                {
+                    if (row < 0)
+                        return;
+                    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+                    if (!meshSvc)
+                        return;
+                    const MshPickMap& map = meshSvc->mshPickMapSolid();
+                    const int physId = ui->comboBoxGroup->itemData(row).toInt();
+                    QVector<vtkIdType> edgeKeys;
+                    for (qint64 k : map.bndEdgePhysToEdgeKeys.value(physId))
+                        edgeKeys.push_back(vtkIdType(k));
+                    PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
+                                                               edgeKeys);
+                },
+                Qt::UniqueConnection);
+        connect(groupCombo, &CustomComboBox::dropdownClosed, this,
+                [this]()
+                {
+                    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Edge);
+                },
+                Qt::UniqueConnection);
+    }
     refreshGroupCombo();
 }
 
