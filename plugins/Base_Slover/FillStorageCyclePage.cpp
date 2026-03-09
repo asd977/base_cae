@@ -1,7 +1,13 @@
 ﻿#include "FillStorageCyclePage.h"
 
 #include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QHBoxLayout>
+#include <QPushButton>
+#include <QVBoxLayout>
 #include <QHeaderView>
+#include <QItemSelectionModel>
 #include <QJsonArray>
 #include <QLineEdit>
 #include <QTableWidget>
@@ -71,11 +77,20 @@ void FillStorageCyclePage::initValueEditors()
     ui->comboIFWAVE->setItemData(0, "0");
     ui->comboIFWAVE->setItemData(1, "1");
 
-    m_wetTable = ui->tableWet;
-    m_dropTable = ui->tableDrop;
-    m_nChangeTable = ui->tableNChange;
-    m_dynaMapTable = ui->tableDynaMap;
-    m_circleTable = ui->tableCircle;
+    auto mkTable = [this](const QStringList& headers)
+    {
+        auto* t = new QTableWidget(this);
+        t->setColumnCount(headers.size());
+        t->setHorizontalHeaderLabels(headers);
+        return t;
+    };
+
+    m_wetTable = mkTable({"Mdry", "Mwet"});
+    m_dropTable = mkTable({"HW_DROP_STA", "HW_DROP_END"});
+    m_nChangeTable = mkTable({"Mold", "Mnew"});
+    m_dynaMapTable = mkTable({"M_STA", "M_DYNA"});
+    m_circleTable = mkTable({"JPACK_STA", "JPACK_END", "TT_PACK", "HWJ_STA", "HWJ_END", "TT_FILL",
+                             "IF_PACK", "IF_PLIU", "IF_FILL", "IF_FLIU", "CAHEAD", "CABODY"});
 
     m_wetTable->setRowCount(1);
     m_wetTable->setItem(0, 0, new QTableWidgetItem("1"));
@@ -110,6 +125,74 @@ void FillStorageCyclePage::initValueEditors()
     connect(m_dynaMapTable, &QTableWidget::cellChanged, this, [this]() { updatePreview(); });
     connect(m_circleTable, &QTableWidget::cellChanged, this, [this]() { updatePreview(); });
 
+    auto openEditor = [this](QTableWidget* src, const QString& title)
+    {
+        QDialog dlg(this);
+        dlg.setWindowTitle(title);
+        dlg.resize(900, 420);
+        auto* layout = new QVBoxLayout(&dlg);
+        auto* table = new QTableWidget(&dlg);
+        table->setColumnCount(src->columnCount());
+        QStringList headers;
+        for (int c = 0; c < src->columnCount(); ++c)
+            headers << (src->horizontalHeaderItem(c) ? src->horizontalHeaderItem(c)->text() : QString());
+        table->setHorizontalHeaderLabels(headers);
+        table->setRowCount(src->rowCount());
+        for (int r = 0; r < src->rowCount(); ++r)
+            for (int c = 0; c < src->columnCount(); ++c)
+                table->setItem(r, c, new QTableWidgetItem(tableItemText(src, r, c, QString())));
+        table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+        layout->addWidget(table);
+
+        auto* btnRow = new QHBoxLayout();
+        auto* btnAdd = new QPushButton("新增一行", &dlg);
+        auto* btnDel = new QPushButton("删除选中行", &dlg);
+        btnRow->addWidget(btnAdd);
+        btnRow->addWidget(btnDel);
+        btnRow->addStretch();
+        layout->addLayout(btnRow);
+
+        connect(btnAdd, &QPushButton::clicked, &dlg, [table]() { table->insertRow(table->rowCount()); });
+        connect(btnDel, &QPushButton::clicked, &dlg, [table]() {
+            const auto rows = table->selectionModel()->selectedRows();
+            for (int i = rows.size() - 1; i >= 0; --i)
+                table->removeRow(rows.at(i).row());
+        });
+
+        auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+        layout->addWidget(buttons);
+        connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+        if (dlg.exec() != QDialog::Accepted)
+            return;
+
+        src->setRowCount(table->rowCount());
+        for (int r = 0; r < table->rowCount(); ++r)
+        {
+            for (int c = 0; c < table->columnCount(); ++c)
+            {
+                const QString val = tableItemText(table, r, c, QString());
+                if (src->item(r, c))
+                    src->item(r, c)->setText(val);
+                else
+                    src->setItem(r, c, new QTableWidgetItem(val));
+            }
+        }
+        updatePreview();
+    };
+
+    connect(ui->btnEditWet, &QPushButton::clicked, this,
+            [openEditor, this]() { openEditor(m_wetTable, "编辑湿化材料映射表"); });
+    connect(ui->btnEditDrop, &QPushButton::clicked, this,
+            [openEditor, this]() { openEditor(m_dropTable, "编辑骤降前后水位表"); });
+    connect(ui->btnEditNChange, &QPushButton::clicked, this,
+            [openEditor, this]() { openEditor(m_nChangeTable, "编辑材料属性号变换表"); });
+    connect(ui->btnEditDynaMap, &QPushButton::clicked, this,
+            [openEditor, this]() { openEditor(m_dynaMapTable, "编辑静力-动力材料编号变换表"); });
+    connect(ui->btnEditCircle, &QPushButton::clicked, this,
+            [openEditor, this]() { openEditor(m_circleTable, "编辑填筑-蓄水周期表"); });
+
     ui->plainTextEditSection->setReadOnly(true);
 }
 
@@ -143,6 +226,13 @@ void FillStorageCyclePage::setValueOf(const QString& key, const QString& value)
 
 void FillStorageCyclePage::updatePreview()
 {
+    ui->labelWetRows->setText(QString("当前行数: %1").arg(m_wetTable ? m_wetTable->rowCount() : 0));
+    ui->labelDropRows->setText(QString("当前行数: %1").arg(m_dropTable ? m_dropTable->rowCount() : 0));
+    ui->labelNChangeRows->setText(
+        QString("当前行数: %1").arg(m_nChangeTable ? m_nChangeTable->rowCount() : 0));
+    ui->labelDynaMapRows->setText(
+        QString("当前行数: %1").arg(m_dynaMapTable ? m_dynaMapTable->rowCount() : 0));
+    ui->labelCircleRows->setText(QString("当前行数: %1").arg(m_circleTable ? m_circleTable->rowCount() : 0));
     ui->plainTextEditSection->setPlainText(sectionText());
 }
 

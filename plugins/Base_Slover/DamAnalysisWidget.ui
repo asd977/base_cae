@@ -41,7 +41,11 @@
     </widget>
    </item>
    <item>
-    <layout class="QFormLayout" name="formLayoutIfill">
+    <widget class="QGroupBox" name="groupBoxIfill">
+     <property name="title">
+      <string>全局参数分组</string>
+     </property>
+     <layout class="QFormLayout" name="formLayoutIfill">
      <item row="0" column="0">
       <widget class="QLabel" name="labelLine1">
        <property name="text">
@@ -613,7 +617,8 @@
        </property>
       </widget>
      </item>
-    </layout>
+     </layout>
+    </widget>
    </item>
    <item>
     <layout class="QHBoxLayout" name="horizontalLayoutCompute">

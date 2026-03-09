@@ -34,7 +34,11 @@
    <item>
     <layout class="QVBoxLayout" name="verticalLayoutContent">
      <item>
-      <layout class="QFormLayout" name="formLayoutMain">
+      <widget class="QGroupBox" name="groupBoxFlags">
+       <property name="title">
+        <string>参数开关分组</string>
+       </property>
+       <layout class="QFormLayout" name="formLayoutMain">
        <item row="0" column="0">
         <widget class="QLabel" name="labelIFIIWL_SEEP">
          <property name="text">
@@ -163,146 +167,13 @@
         </widget>
        </item>
       </layout>
-     </item>
-     <item>
-      <widget class="QLabel" name="labelWet">
-       <property name="text">
-        <string>[静力-步骤2] 湿化材料映射表 (Mdry Mwet，NUM_WET按行数自动统计)</string>
-       </property>
       </widget>
      </item>
-     <item>
-      <widget class="QTableWidget" name="tableWet">
-       <column>
-        <property name="text">
-         <string>Mdry</string>
-        </property>
-       </column>
-       <column>
-        <property name="text">
-         <string>Mwet</string>
-        </property>
-       </column>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="labelDrop">
-       <property name="text">
-        <string>[静力-步骤3] 水位骤降表 (HW_DROP_STA HW_DROP_END，NUM_DROP按行数自动统计)</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QTableWidget" name="tableDrop">
-       <column>
-        <property name="text">
-         <string>HW_DROP_STA</string>
-        </property>
-       </column>
-       <column>
-        <property name="text">
-         <string>HW_DROP_END</string>
-        </property>
-       </column>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="labelNChange">
-       <property name="text">
-        <string>[公共材料变化] 材料属性号变换表 (Mold Mnew，NCHANGE按行数自动统计)</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QTableWidget" name="tableNChange">
-       <column><property name="text"><string>Mold</string></property></column>
-       <column><property name="text"><string>Mnew</string></property></column>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="labelDynaMap">
-       <property name="text">
-        <string>[动力] 静力-动力材料编号变换表 (M_STA M_DYNA，NUM_DYNA按行数自动统计)</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QTableWidget" name="tableDynaMap">
-       <column><property name="text"><string>M_STA</string></property></column>
-       <column><property name="text"><string>M_DYNA</string></property></column>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="labelCircle">
-       <property name="text">
-        <string>[静力-步骤1] 填筑-蓄水周期表 (NCIRCLE按行数自动统计)</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QTableWidget" name="tableCircle">
-       <column>
-        <property name="text">
-         <string>JPACK_STA</string>
-        </property>
-       </column>
-       <column>
-        <property name="text">
-         <string>JPACK_END</string>
-        </property>
-       </column>
-       <column>
-        <property name="text">
-         <string>TT_PACK</string>
-        </property>
-       </column>
-       <column>
-        <property name="text">
-         <string>HWJ_STA</string>
-        </property>
-       </column>
-       <column>
-        <property name="text">
-         <string>HWJ_END</string>
-        </property>
-       </column>
-       <column>
-        <property name="text">
-         <string>TT_FILL</string>
-        </property>
-       </column>
-       <column>
-        <property name="text">
-         <string>IF_PACK</string>
-        </property>
-       </column>
-       <column>
-        <property name="text">
-         <string>IF_PLIU</string>
-        </property>
-       </column>
-       <column>
-        <property name="text">
-         <string>IF_FILL</string>
-        </property>
-       </column>
-       <column>
-        <property name="text">
-         <string>IF_FLIU</string>
-        </property>
-       </column>
-       <column>
-        <property name="text">
-         <string>CAHEAD</string>
-        </property>
-       </column>
-       <column>
-        <property name="text">
-         <string>CABODY</string>
-        </property>
-       </column>
-      </widget>
-     </item>
+     <item><widget class="QGroupBox" name="groupWet"><property name="title"><string>[静力-步骤2] 湿化材料映射</string></property><layout class="QHBoxLayout" name="layoutWet"><item><widget class="QPushButton" name="btnEditWet"><property name="text"><string>编辑湿化材料映射表</string></property></widget></item><item><widget class="QLabel" name="labelWetRows"><property name="text"><string>当前行数: 0</string></property></widget></item></layout></widget></item>
+     <item><widget class="QGroupBox" name="groupDrop"><property name="title"><string>[静力-步骤3] 水位骤降</string></property><layout class="QHBoxLayout" name="layoutDrop"><item><widget class="QPushButton" name="btnEditDrop"><property name="text"><string>编辑骤降前后水位表</string></property></widget></item><item><widget class="QLabel" name="labelDropRows"><property name="text"><string>当前行数: 0</string></property></widget></item></layout></widget></item>
+     <item><widget class="QGroupBox" name="groupNChange"><property name="title"><string>[公共材料变化] 材料编号变换</string></property><layout class="QHBoxLayout" name="layoutNChange"><item><widget class="QPushButton" name="btnEditNChange"><property name="text"><string>编辑材料属性号变换表</string></property></widget></item><item><widget class="QLabel" name="labelNChangeRows"><property name="text"><string>当前行数: 0</string></property></widget></item></layout></widget></item>
+     <item><widget class="QGroupBox" name="groupDynaMap"><property name="title"><string>[动力] 静力-动力材料编号变换</string></property><layout class="QHBoxLayout" name="layoutDynaMap"><item><widget class="QPushButton" name="btnEditDynaMap"><property name="text"><string>编辑静力-动力材料编号变换表</string></property></widget></item><item><widget class="QLabel" name="labelDynaMapRows"><property name="text"><string>当前行数: 0</string></property></widget></item></layout></widget></item>
+     <item><widget class="QGroupBox" name="groupCircle"><property name="title"><string>[静力-步骤1] 填筑-蓄水周期</string></property><layout class="QHBoxLayout" name="layoutCircle"><item><widget class="QPushButton" name="btnEditCircle"><property name="text"><string>编辑填筑-蓄水周期表</string></property></widget></item><item><widget class="QLabel" name="labelCircleRows"><property name="text"><string>当前行数: 0</string></property></widget></item></layout></widget></item>
      <item>
       <widget class="QLabel" name="labelSection">
        <property name="text">
