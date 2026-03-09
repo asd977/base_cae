@@ -24,7 +24,6 @@
 #include <vtkDataSetSurfaceFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
-#include <vtkIdTypeArray.h>
 #include <vtkIntArray.h>
 #include <vtkLookupTable.h>
 #include <vtkPolyData.h>

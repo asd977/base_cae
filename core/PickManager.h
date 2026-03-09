@@ -20,9 +20,7 @@
 #include <vtkCoordinate.h>
 #include <vtkDataArray.h>
 #include <vtkDataSet.h>
-#include <vtkExtractSelectedFrustum.h>
 #include <vtkIntArray.h>
-#include <vtkPlanes.h>
 #include <vtkPoints.h>
 #include <vtkPolyData.h>
 #include <vtkPolyDataMapper.h>

@@ -5,7 +5,6 @@
 #include <services/MeshModuleControllerService.h>
 #include <services/VisualWidgetService.h>
 
-#include <QDebug>
 #include <algorithm>
 #include <limits>
 
@@ -13,7 +12,6 @@
 #include <vtkCell.h>
 #include <vtkCellData.h>
 #include <vtkCommand.h>
-#include <vtkHardwareSelector.h>
 #include <vtkIdList.h>
 #include <vtkLine.h>
 #include <vtkMapper.h>
@@ -26,7 +24,6 @@
 #include <vtkProperty.h>
 #include <vtkRenderWindowInteractor.h>
 #include <vtkRenderer.h>
-#include <vtkSelectionNode.h>
 
 namespace
 {
@@ -908,10 +905,13 @@ bool PickManager::computePickedEdgeFromBoundary(vtkDataSet* pickedDs, vtkIdType 
     vtkIdType a = -1;
     vtkIdType b = -1;
     double best = std::numeric_limits<double>::max();
-    for (vtkIdType i = 0; i + 1 < pids->GetNumberOfIds(); ++i)
+    const vtkIdType nIds = pids->GetNumberOfIds();
+    const bool closedLoop = (pickedCell->GetCellDimension() > 1);
+    const vtkIdType nSegs = closedLoop ? nIds : (nIds - 1);
+    for (vtkIdType i = 0; i < nSegs; ++i)
     {
         vtkIdType pa = pids->GetId(i);
-        vtkIdType pb = pids->GetId(i + 1);
+        vtkIdType pb = pids->GetId((i + 1) % nIds);
         double p0[3], p1[3];
         pickedDs->GetPoint(pa, p0);
         pickedDs->GetPoint(pb, p1);
