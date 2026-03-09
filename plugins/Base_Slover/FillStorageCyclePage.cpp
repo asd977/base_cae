@@ -82,6 +82,7 @@ void FillStorageCyclePage::initValueEditors()
         auto* t = new QTableWidget(this);
         t->setColumnCount(headers.size());
         t->setHorizontalHeaderLabels(headers);
+        t->hide(); // 仅作为后台数据容器，避免显示在页面左上角
         return t;
     };
 
