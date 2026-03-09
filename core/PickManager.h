@@ -142,12 +142,17 @@ class CORE_EXPORT PickManager : public QObject
     void rebuildEdgePolyForActive();
     bool computePickedEdge(vtkUnstructuredGrid* grid, vtkIdType cellId, const double pickPos[3],
                            int& outEdgeLocalId, QVector<vtkIdType>& outEdgePids) const;
+    bool computePickedEdgeFromBoundary(vtkDataSet* pickedDs, vtkIdType pickedCellId,
+                                       const double pickPos[3], vtkIdType& outOrigCellId,
+                                       int& outOrigEdgeLocalId) const;
 
     // ---- face ----
     void toggleSelectFace(GridKind kind, vtkIdType faceKey);
     void rebuildFacePolyForActive();
     bool computePickedFace(vtkUnstructuredGrid* grid, vtkIdType cellId, const double pickPos[3],
                            int& outFaceLocalId, QVector<vtkIdType>& outFacePids) const;
+    bool computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType pickedCellId,
+                                       vtkIdType& outOrigCellId, int& outOrigFaceLocalId) const;
 
     void updateActorVisibility();
     void refreshStructureIfNeeded();
@@ -225,6 +230,8 @@ class CORE_EXPORT PickManager : public QObject
 
     vtkProp* m_solidProp = nullptr;
     vtkProp* m_lineProp = nullptr;
+    vtkDataSet* m_solidPickDataSet = nullptr;
+    vtkDataSet* m_linePickDataSet = nullptr;
 
     // ============ line node hints ============
     vtkSmartPointer<vtkPoints> m_lineNodePts;

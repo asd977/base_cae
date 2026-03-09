@@ -12,6 +12,7 @@ class ProjectNode;
 class VisualWidgetService;
 class vtkActor;
 class vtkDataSetMapper;
+class vtkDataSet;
 class vtkUnstructuredGrid;
 class GridEditingWidget;
 
@@ -75,7 +76,7 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     void splitGridByDim(vtkUnstructuredGrid* src, vtkSmartPointer<vtkUnstructuredGrid>& outLine,
                         vtkSmartPointer<vtkUnstructuredGrid>& outNonLine) const;
 
-    vtkSmartPointer<vtkActor> createSurfaceActor(vtkUnstructuredGrid* grid) const;
+    vtkSmartPointer<vtkActor> createSurfaceActor(vtkDataSet* grid) const;
     vtkSmartPointer<vtkActor> createLineActor(vtkUnstructuredGrid* grid) const;
 
   private:

@@ -21,10 +21,13 @@
 #include <vtkCellData.h>
 #include <vtkCellType.h>
 #include <vtkDataSetMapper.h>
+#include <vtkDataSetSurfaceFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
+#include <vtkIdTypeArray.h>
 #include <vtkIntArray.h>
 #include <vtkLookupTable.h>
+#include <vtkPolyData.h>
 #include <vtkPointData.h>
 #include <vtkPoints.h>
 #include <vtkProperty.h>
@@ -789,7 +792,16 @@ void MeshModuleController::displayCurrentGrid()
 
     if (nonLineGrid && nonLineGrid->GetNumberOfCells() > 0)
     {
-        auto surfActor = createSurfaceActor(nonLineGrid);
+        auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+        surf->SetInputData(nonLineGrid);
+        surf->PassThroughCellIdsOn();
+        surf->PassThroughPointIdsOn();
+        surf->Update();
+
+        auto boundary = vtkSmartPointer<vtkPolyData>::New();
+        boundary->ShallowCopy(surf->GetOutput());
+
+        auto surfActor = createSurfaceActor(boundary);
         m_visualWidgetService->addProp(kMeshSurfId, surfActor, QString("网格"),
                                        QString("导入网格-面/体"), true, true);
         m_previewSurfaceGrid = nonLineGrid;
@@ -887,7 +899,7 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
     }
 }
 
-vtkSmartPointer<vtkActor> MeshModuleController::createSurfaceActor(vtkUnstructuredGrid* grid) const
+vtkSmartPointer<vtkActor> MeshModuleController::createSurfaceActor(vtkDataSet* grid) const
 {
     if (!grid)
         return nullptr;
