@@ -12,21 +12,16 @@
 
 // VTK
 #include <vtkActor.h>
-#include <vtkActor2D.h>
-#include <vtkAreaPicker.h>
 #include <vtkCallbackCommand.h>
 #include <vtkCellArray.h>
 #include <vtkCellPicker.h>
-#include <vtkCoordinate.h>
 #include <vtkDataArray.h>
 #include <vtkDataSet.h>
 #include <vtkIntArray.h>
 #include <vtkPoints.h>
 #include <vtkPolyData.h>
 #include <vtkPolyDataMapper.h>
-#include <vtkPolyDataMapper2D.h>
 #include <vtkProp.h>
-#include <vtkProperty2D.h>
 #include <vtkSmartPointer.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkVertexGlyphFilter.h>
@@ -109,8 +104,6 @@ class CORE_EXPORT PickManager : public QObject
     }
 
     void clearSelection(const QString& domain, const QString& uuid, PickMode mode);
-    void setShowBoxRect(bool on);
-
     void setSelectedPointIds(const QString& domain, const QString& uuid, GridKind kind,
                              const QVector<vtkIdType>& pointIds, bool replace = true);
 
@@ -163,15 +156,6 @@ class CORE_EXPORT PickManager : public QObject
     void commitEdgeExclusive(const QString& domain, const QString& uuid);
     void commitFaceExclusive(const QString& domain, const QString& uuid);
 
-    // ====== box selection ======
-    enum class BoxOp
-    {
-        Add,
-        Toggle,
-        Remove
-    };
-    void boxSelect(int x0, int y0, int x1, int y1, BoxOp op);
-
     // batch modify helpers (NO rebuild / NO render)
     void setNodeSelected_NoRefresh(GridKind kind, vtkIdType pid, bool selected);
     void setEdgeSelected_NoRefresh(GridKind kind, vtkIdType edgeKey, bool selected);
@@ -203,15 +187,9 @@ class CORE_EXPORT PickManager : public QObject
     vtkSmartPointer<vtkCallbackCommand> m_cbMouseMove;
 
     vtkSmartPointer<vtkCellPicker> m_cellPicker;
-    vtkSmartPointer<vtkAreaPicker> m_areaPicker;
-
     unsigned long m_leftPressTag = 0;
     unsigned long m_leftReleaseTag = 0;
     unsigned long m_mouseMoveTag = 0;
-
-    bool m_boxing = false;
-    int m_boxStart[2] = {0, 0};
-    int m_boxEnd[2] = {0, 0};
 
     // coalesce
     int m_dirtyBits = DirtyNone;
@@ -283,27 +261,6 @@ class CORE_EXPORT PickManager : public QObject
 
     QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerFaceSolidByDomain;
     QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerFaceLineByDomain;
-
-    // ====== rubber band rect (2D) ======
-    vtkSmartPointer<vtkPoints> m_boxPts;
-    vtkSmartPointer<vtkCellArray> m_boxLines;
-    vtkSmartPointer<vtkPolyData> m_boxPoly;
-    vtkSmartPointer<vtkPolyDataMapper2D> m_boxMapper2D;
-    vtkSmartPointer<vtkActor2D> m_boxActor2D;
-    vtkSmartPointer<vtkCoordinate> m_boxCoord;
-
-    bool m_showBoxRect = true;
-    qint64 m_lastBoxRenderMs = 0;
-    bool m_mouseDown = false;  // 左键按下
-    bool m_dragging = false;   // 是否已进入拖拽框选
-    int m_dragThresholdPx = 4; // 超过这个像素才认为在拖拽（可调）
-
-    bool m_leftDown = false;
-    int m_leftDownPos[2] = {0, 0};
-    int m_clickThresholdPx = 4; // 2~6 之间自行调
-
-    void updateBoxRectActor(int x0, int y0, int x1, int y1);
-    void setBoxRectVisible(bool on);
 
   signals:
     void nodePicked(const QString& domain, const QString& activeUuid, GridKind kind, vtkIdType pid,
