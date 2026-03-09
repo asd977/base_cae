@@ -3,100 +3,640 @@
  <class>DamAnalysisWidget</class>
  <widget class="QWidget" name="DamAnalysisWidget">
   <property name="geometry">
-   <rect><x>0</x><y>0</y><width>780</width><height>900</height></rect>
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>780</width>
+    <height>1275</height>
+   </rect>
   </property>
-  <property name="windowTitle"><string>土石坝计算</string></property>
+  <property name="windowTitle">
+   <string>土石坝计算</string>
+  </property>
   <layout class="QVBoxLayout" name="verticalLayout">
-   <property name="leftMargin"><number>0</number></property>
-   <property name="topMargin"><number>0</number></property>
-   <property name="rightMargin"><number>0</number></property>
-   <property name="bottomMargin"><number>0</number></property>
-   <item><widget class="QLabel" name="pageNameLabel"><property name="text"><string>土石坝计算</string></property></widget></item>
-   <item><widget class="QPushButton" name="sectionTitleButton"><property name="text"><string>功能设置</string></property></widget></item>
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
    <item>
-    <widget class="QWidget" name="scrollAreaWidgetContents">
-      <layout class="QFormLayout" name="formLayoutIfill">
-       <item row="0" column="0"><widget class="QLabel" name="labelLine1"><property name="text"><string>计算默认文件目录</string></property></widget></item>
-       <item row="0" column="1"><widget class="QLabel" name="line1Value"><property name="text"><string>F:\FEMCLASS\Z03_JUNZ3D\PREP\</string></property></widget></item>
-       <item row="1" column="0"><widget class="QLabel" name="labelLine2"><property name="text"><string>上游迎水面集文件</string></property></widget></item>
-       <item row="1" column="1"><widget class="QLabel" name="line2Value"><property name="text"><string>FA_DAMUP.DAT</string></property></widget></item>
-       <item row="2" column="0"><widget class="QLabel" name="labelLine3"><property name="text"><string>下游迎水面集文件</string></property></widget></item>
-       <item row="2" column="1"><widget class="QLabel" name="line3Value"><property name="text"><string>FA_DAMDW.DAT</string></property></widget></item>
-       <item row="3" column="0"><widget class="QLabel" name="labelLine4"><property name="text"><string>心墙建基面文件</string></property></widget></item>
-       <item row="3" column="1"><widget class="QLabel" name="line4Value"><property name="text"><string>FA_DAMBASE.DAT</string></property></widget></item>
-       <item row="4" column="0"><widget class="QLabel" name="labelLine5"><property name="text"><string>心墙中心面面集文件</string></property></widget></item>
-       <item row="4" column="1"><widget class="QLabel" name="line5Value"><property name="text"><string>FA_DAMMID.DAT</string></property></widget></item>
-       <item row="5" column="0"><widget class="QLabel" name="labelLine6"><property name="text"><string>基岩材料集</string></property></widget></item>
-       <item row="5" column="1"><widget class="QLabel" name="line6Value"><property name="text"><string>MA_ROCK.DAT</string></property></widget></item>
-       <item row="6" column="0"><widget class="QLabel" name="labelLine7"><property name="text"><string>上游材料集</string></property></widget></item>
-       <item row="6" column="1"><widget class="QLabel" name="line7Value"><property name="text"><string>MA_DAMUP.DAT</string></property></widget></item>
-       <item row="7" column="0"><widget class="QLabel" name="labelLine8"><property name="text"><string>下游材料集</string></property></widget></item>
-       <item row="7" column="1"><widget class="QLabel" name="line8Value"><property name="text"><string>MA_DAMDW.DAT</string></property></widget></item>
-       <item row="8" column="0"><widget class="QLabel" name="labelLine9"><property name="text"><string>心墙材料集</string></property></widget></item>
-       <item row="8" column="1"><widget class="QLabel" name="line9Value"><property name="text"><string>MA_CORE.DAT</string></property></widget></item>
-       <item row="9" column="0"><widget class="QLabel" name="labelLine10"><property name="text"><string>坝型 IFILLTYPE</string></property></widget></item>
-       <item row="9" column="1"><widget class="QComboBox" name="comboLine10"><item><property name="text"><string>1 面板堆石坝</string></property></item><item><property name="text"><string>2 心墙堆石坝</string></property></item><item><property name="text"><string>3 沥青心墙堆石坝</string></property></item><item><property name="text"><string>4 均质坝</string></property></item></widget></item>
-       <item row="10" column="0"><widget class="QLabel" name="labelLine11"><property name="text"><string>面板材料集文件</string></property></widget></item>
-       <item row="10" column="1"><widget class="QLabel" name="line11Value"><property name="text"><string>MA_PLATE.DAT</string></property></widget></item>
-       <item row="11" column="0"><widget class="QLabel" name="labelLine12"><property name="text"><string>特征节点集文件</string></property></widget></item>
-       <item row="11" column="1"><widget class="QLabel" name="line12Value"><property name="text"><string>JDTRACE.DAT</string></property></widget></item>
-       <item row="12" column="0"><widget class="QLabel" name="labelLine13"><property name="text"><string>特征单元集文件</string></property></widget></item>
-       <item row="12" column="1"><widget class="QLabel" name="line13Value"><property name="text"><string>KETRACE.DAT</string></property></widget></item>
-       <item row="13" column="0"><widget class="QLabel" name="labelLine14"><property name="text"><string>特征时刻文件</string></property></widget></item>
-       <item row="13" column="1"><widget class="QLabel" name="line14Value"><property name="text"><string>TDTRACE.DAT</string></property></widget></item>
-       <item row="14" column="0"><widget class="QLabel" name="labelLine15"><property name="text"><string>阻尼类型</string></property></widget></item>
-       <item row="14" column="1"><widget class="QComboBox" name="comboLine15"><item><property name="text"><string>0 系统阻尼</string></property></item><item><property name="text"><string>1 分材料阻尼</string></property></item></widget></item>
-       <item row="15" column="0"><widget class="QLabel" name="labelLine16"><property name="text"><string>瑞雷阻尼</string></property></widget></item>
-       <item row="15" column="1"><widget class="QComboBox" name="comboLine16"><item><property name="text"><string>0 非瑞雷阻尼</string></property></item><item><property name="text"><string>1 瑞雷阻尼</string></property></item></widget></item>
-       <item row="16" column="0"><widget class="QLabel" name="labelLine17"><property name="text"><string>ALFAP</string></property></widget></item>
-       <item row="16" column="1"><widget class="QLineEdit" name="editLine17"><property name="text"><string>0.05</string></property></widget></item>
-       <item row="17" column="0"><widget class="QLabel" name="labelLine18"><property name="text"><string>BETAP</string></property></widget></item>
-       <item row="17" column="1"><widget class="QLineEdit" name="editLine18"><property name="text"><string>0.01</string></property></widget></item>
-       <item row="18" column="0"><widget class="QLabel" name="labelLine19"><property name="text"><string>计算类型</string></property></widget></item>
-       <item row="18" column="1"><widget class="QComboBox" name="comboLine19"><item><property name="text"><string>1 静力计算</string></property></item><item><property name="text"><string>2 动力计算</string></property></item><item><property name="text"><string>3 静动力全部计算</string></property></item></widget></item>
-       <item row="19" column="0"><widget class="QLabel" name="labelLine20"><property name="text"><string>METHOD_ITER ITER</string></property></widget></item>
-       <item row="19" column="1"><widget class="QLineEdit" name="editLine20"><property name="text"><string>4   10</string></property></widget></item>
-       <item row="20" column="0"><widget class="QLabel" name="labelLine21"><property name="text"><string>DT_CREEP</string></property></widget></item>
-       <item row="20" column="1"><widget class="QLineEdit" name="editLine21"><property name="text"><string>0.000</string></property></widget></item>
-       <item row="21" column="0"><widget class="QLabel" name="labelLine22"><property name="text"><string>AHMAX</string></property></widget></item>
-       <item row="21" column="1"><widget class="QLineEdit" name="editLine22"><property name="text"><string>1.962</string></property></widget></item>
-       <item row="22" column="0"><widget class="QLabel" name="labelLine23"><property name="text"><string>AVMAX</string></property></widget></item>
-       <item row="22" column="1"><widget class="QLineEdit" name="editLine23"><property name="text"><string>1.308</string></property></widget></item>
-       <item row="23" column="0"><widget class="QLabel" name="labelLine24"><property name="text"><string>TG1</string></property></widget></item>
-       <item row="23" column="1"><widget class="QLineEdit" name="editLine24"><property name="text"><string>0.1</string></property></widget></item>
-       <item row="24" column="0"><widget class="QLabel" name="labelLine25"><property name="text"><string>TG2</string></property></widget></item>
-       <item row="24" column="1"><widget class="QLineEdit" name="editLine25"><property name="text"><string>0.2</string></property></widget></item>
-       <item row="25" column="0"><widget class="QLabel" name="labelLine26"><property name="text"><string>BETAMAX</string></property></widget></item>
-       <item row="25" column="1"><widget class="QLineEdit" name="editLine26"><property name="text"><string>2.0</string></property></widget></item>
-       <item row="26" column="0"><widget class="QLabel" name="labelLine27"><property name="text"><string>EXPN</string></property></widget></item>
-       <item row="26" column="1"><widget class="QLineEdit" name="editLine27"><property name="text"><string>0.9</string></property></widget></item>
-       <item row="27" column="0"><widget class="QLabel" name="labelLine28"><property name="text"><string>QUAKE_LEVEL</string></property></widget></item>
-       <item row="27" column="1"><widget class="QLineEdit" name="editLine28"><property name="text"><string>7.0</string></property></widget></item>
-       <item row="28" column="0"><widget class="QLabel" name="labelLine29"><property name="text"><string>是否计算特征值</string></property></widget></item>
-       <item row="28" column="1"><widget class="QComboBox" name="comboLine29"><item><property name="text"><string>0 不计算</string></property></item><item><property name="text"><string>1 计算</string></property></item></widget></item>
-       <item row="29" column="0"><widget class="QLabel" name="labelLine30"><property name="text"><string>特征值数</string></property></widget></item>
-       <item row="29" column="1"><widget class="QLineEdit" name="editLine30"><property name="text"><string>10</string></property></widget></item>
-       <item row="30" column="0"><widget class="QLabel" name="labelMCase"><property name="text"><string>MCASE（自动统计）</string></property></widget></item>
-       <item row="30" column="1"><widget class="QLineEdit" name="editMCase"><property name="readOnly"><bool>true</bool></property><property name="text"><string>1</string></property></widget></item>
-       <item row="31" column="0"><widget class="QLabel" name="labelX"><property name="text"><string>X1 X2 X3</string></property></widget></item>
-       <item row="31" column="1"><widget class="QLineEdit" name="editX"><property name="text"><string>0.000000  0.000000  0.000000</string></property></widget></item>
-       <item row="32" column="0"><widget class="QLabel" name="labelAlfa"><property name="text"><string>α1 α2 α3</string></property></widget></item>
-       <item row="32" column="1"><widget class="QLineEdit" name="editAlfa"><property name="text"><string>0.000000  0.000000  0.000000</string></property></widget></item>
-       <item row="33" column="0"><widget class="QLabel" name="labelAxis"><property name="text"><string>IXUPDW XAMID YAMID XBMID YBMID</string></property></widget></item>
-       <item row="33" column="1"><widget class="QLineEdit" name="editAxis"><property name="text"><string>1  3  0.000000  0.000000  0.000000  0.000000</string></property></widget></item>
-       <item row="34" column="0"><widget class="QLabel" name="labelRock"><property name="text"><string>IFROCK IFISO</string></property></widget></item>
-       <item row="34" column="1"><widget class="QLineEdit" name="editRock"><property name="text"><string>1  0</string></property></widget></item>
-       <item row="35" column="0"><widget class="QLabel" name="labelSummary"><property name="text"><string>当前配置摘要</string></property></widget></item>
-       <item row="35" column="1"><widget class="QLabel" name="summaryLabel"><property name="wordWrap"><bool>true</bool></property></widget></item>
-       <item row="36" column="0"><widget class="QLabel" name="labelValidate"><property name="text"><string>配置检查</string></property></widget></item>
-       <item row="36" column="1"><widget class="QPushButton" name="btnValidation"><property name="text"><string>校验配置</string></property></widget></item>
-      </layout>
+    <widget class="QLabel" name="pageNameLabel">
+     <property name="text">
+      <string>土石坝计算</string>
+     </property>
     </widget>
    </item>
    <item>
+    <widget class="QPushButton" name="sectionTitleButton">
+     <property name="text">
+      <string>功能设置</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QFormLayout" name="formLayoutIfill">
+     <item row="0" column="0">
+      <widget class="QLabel" name="labelLine1">
+       <property name="text">
+        <string>计算默认文件目录</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="QLabel" name="line1Value">
+       <property name="text">
+        <string>F:\FEMCLASS\Z03_JUNZ3D\PREP\</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="0">
+      <widget class="QLabel" name="labelLine2">
+       <property name="text">
+        <string>上游迎水面集文件</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="1">
+      <widget class="QLabel" name="line2Value">
+       <property name="text">
+        <string>FA_DAMUP.DAT</string>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="0">
+      <widget class="QLabel" name="labelLine3">
+       <property name="text">
+        <string>下游迎水面集文件</string>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="1">
+      <widget class="QLabel" name="line3Value">
+       <property name="text">
+        <string>FA_DAMDW.DAT</string>
+       </property>
+      </widget>
+     </item>
+     <item row="3" column="0">
+      <widget class="QLabel" name="labelLine4">
+       <property name="text">
+        <string>心墙建基面文件</string>
+       </property>
+      </widget>
+     </item>
+     <item row="3" column="1">
+      <widget class="QLabel" name="line4Value">
+       <property name="text">
+        <string>FA_DAMBASE.DAT</string>
+       </property>
+      </widget>
+     </item>
+     <item row="4" column="0">
+      <widget class="QLabel" name="labelLine5">
+       <property name="text">
+        <string>心墙中心面面集文件</string>
+       </property>
+      </widget>
+     </item>
+     <item row="4" column="1">
+      <widget class="QLabel" name="line5Value">
+       <property name="text">
+        <string>FA_DAMMID.DAT</string>
+       </property>
+      </widget>
+     </item>
+     <item row="5" column="0">
+      <widget class="QLabel" name="labelLine6">
+       <property name="text">
+        <string>基岩材料集</string>
+       </property>
+      </widget>
+     </item>
+     <item row="5" column="1">
+      <widget class="QLabel" name="line6Value">
+       <property name="text">
+        <string>MA_ROCK.DAT</string>
+       </property>
+      </widget>
+     </item>
+     <item row="6" column="0">
+      <widget class="QLabel" name="labelLine7">
+       <property name="text">
+        <string>上游材料集</string>
+       </property>
+      </widget>
+     </item>
+     <item row="6" column="1">
+      <widget class="QLabel" name="line7Value">
+       <property name="text">
+        <string>MA_DAMUP.DAT</string>
+       </property>
+      </widget>
+     </item>
+     <item row="7" column="0">
+      <widget class="QLabel" name="labelLine8">
+       <property name="text">
+        <string>下游材料集</string>
+       </property>
+      </widget>
+     </item>
+     <item row="7" column="1">
+      <widget class="QLabel" name="line8Value">
+       <property name="text">
+        <string>MA_DAMDW.DAT</string>
+       </property>
+      </widget>
+     </item>
+     <item row="8" column="0">
+      <widget class="QLabel" name="labelLine9">
+       <property name="text">
+        <string>心墙材料集</string>
+       </property>
+      </widget>
+     </item>
+     <item row="8" column="1">
+      <widget class="QLabel" name="line9Value">
+       <property name="text">
+        <string>MA_CORE.DAT</string>
+       </property>
+      </widget>
+     </item>
+     <item row="9" column="0">
+      <widget class="QLabel" name="labelLine10">
+       <property name="text">
+        <string>坝型 IFILLTYPE</string>
+       </property>
+      </widget>
+     </item>
+     <item row="9" column="1">
+      <widget class="QComboBox" name="comboLine10">
+       <item>
+        <property name="text">
+         <string>1 面板堆石坝</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>2 心墙堆石坝</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>3 沥青心墙堆石坝</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>4 均质坝</string>
+        </property>
+       </item>
+      </widget>
+     </item>
+     <item row="10" column="0">
+      <widget class="QLabel" name="labelLine11">
+       <property name="text">
+        <string>面板材料集文件</string>
+       </property>
+      </widget>
+     </item>
+     <item row="10" column="1">
+      <widget class="QLabel" name="line11Value">
+       <property name="text">
+        <string>MA_PLATE.DAT</string>
+       </property>
+      </widget>
+     </item>
+     <item row="11" column="0">
+      <widget class="QLabel" name="labelLine12">
+       <property name="text">
+        <string>特征节点集文件</string>
+       </property>
+      </widget>
+     </item>
+     <item row="11" column="1">
+      <widget class="QLabel" name="line12Value">
+       <property name="text">
+        <string>JDTRACE.DAT</string>
+       </property>
+      </widget>
+     </item>
+     <item row="12" column="0">
+      <widget class="QLabel" name="labelLine13">
+       <property name="text">
+        <string>特征单元集文件</string>
+       </property>
+      </widget>
+     </item>
+     <item row="12" column="1">
+      <widget class="QLabel" name="line13Value">
+       <property name="text">
+        <string>KETRACE.DAT</string>
+       </property>
+      </widget>
+     </item>
+     <item row="13" column="0">
+      <widget class="QLabel" name="labelLine14">
+       <property name="text">
+        <string>特征时刻文件</string>
+       </property>
+      </widget>
+     </item>
+     <item row="13" column="1">
+      <widget class="QLabel" name="line14Value">
+       <property name="text">
+        <string>TDTRACE.DAT</string>
+       </property>
+      </widget>
+     </item>
+     <item row="14" column="0">
+      <widget class="QLabel" name="labelLine15">
+       <property name="text">
+        <string>阻尼类型</string>
+       </property>
+      </widget>
+     </item>
+     <item row="14" column="1">
+      <widget class="QComboBox" name="comboLine15">
+       <item>
+        <property name="text">
+         <string>0 系统阻尼</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>1 分材料阻尼</string>
+        </property>
+       </item>
+      </widget>
+     </item>
+     <item row="15" column="0">
+      <widget class="QLabel" name="labelLine16">
+       <property name="text">
+        <string>瑞雷阻尼</string>
+       </property>
+      </widget>
+     </item>
+     <item row="15" column="1">
+      <widget class="QComboBox" name="comboLine16">
+       <item>
+        <property name="text">
+         <string>0 非瑞雷阻尼</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>1 瑞雷阻尼</string>
+        </property>
+       </item>
+      </widget>
+     </item>
+     <item row="16" column="0">
+      <widget class="QLabel" name="labelLine17">
+       <property name="text">
+        <string>质量阻尼系数ALFAP</string>
+       </property>
+      </widget>
+     </item>
+     <item row="16" column="1">
+      <widget class="QLineEdit" name="editLine17">
+       <property name="text">
+        <string>0.05</string>
+       </property>
+      </widget>
+     </item>
+     <item row="17" column="0">
+      <widget class="QLabel" name="labelLine18">
+       <property name="text">
+        <string>刚度阻尼系数BETAP</string>
+       </property>
+      </widget>
+     </item>
+     <item row="17" column="1">
+      <widget class="QLineEdit" name="editLine18">
+       <property name="text">
+        <string>0.01</string>
+       </property>
+      </widget>
+     </item>
+     <item row="18" column="0">
+      <widget class="QLabel" name="labelLine19">
+       <property name="text">
+        <string>计算类型</string>
+       </property>
+      </widget>
+     </item>
+     <item row="18" column="1">
+      <widget class="QComboBox" name="comboLine19">
+       <item>
+        <property name="text">
+         <string>1 静力计算</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>2 动力计算</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>3 静动力全部计算</string>
+        </property>
+       </item>
+      </widget>
+     </item>
+     <item row="19" column="0">
+      <widget class="QLabel" name="labelLine20">
+       <property name="text">
+        <string>METHOD_ITER ITER</string>
+       </property>
+      </widget>
+     </item>
+     <item row="19" column="1">
+      <widget class="QLineEdit" name="editLine20">
+       <property name="text">
+        <string>4   10</string>
+       </property>
+      </widget>
+     </item>
+     <item row="20" column="0">
+      <widget class="QLabel" name="labelLine21">
+       <property name="text">
+        <string>蠕变计算时间步长DT_CREEP</string>
+       </property>
+      </widget>
+     </item>
+     <item row="20" column="1">
+      <widget class="QLineEdit" name="editLine21">
+       <property name="text">
+        <string>0.000</string>
+       </property>
+      </widget>
+     </item>
+     <item row="21" column="0">
+      <widget class="QLabel" name="labelLine22">
+       <property name="text">
+        <string>水平最大地震加速度AHMAX</string>
+       </property>
+      </widget>
+     </item>
+     <item row="21" column="1">
+      <widget class="QLineEdit" name="editLine22">
+       <property name="text">
+        <string>1.962</string>
+       </property>
+      </widget>
+     </item>
+     <item row="22" column="0">
+      <widget class="QLabel" name="labelLine23">
+       <property name="text">
+        <string>竖向最大地震加速度AVMAX</string>
+       </property>
+      </widget>
+     </item>
+     <item row="22" column="1">
+      <widget class="QLineEdit" name="editLine23">
+       <property name="text">
+        <string>1.308</string>
+       </property>
+      </widget>
+     </item>
+     <item row="23" column="0">
+      <widget class="QLabel" name="labelLine24">
+       <property name="text">
+        <string>反应谱特征周期TG1</string>
+       </property>
+      </widget>
+     </item>
+     <item row="23" column="1">
+      <widget class="QLineEdit" name="editLine24">
+       <property name="text">
+        <string>0.1</string>
+       </property>
+      </widget>
+     </item>
+     <item row="24" column="0">
+      <widget class="QLabel" name="labelLine25">
+       <property name="text">
+        <string>反应谱特征周期TG2</string>
+       </property>
+      </widget>
+     </item>
+     <item row="24" column="1">
+      <widget class="QLineEdit" name="editLine25">
+       <property name="text">
+        <string>0.2</string>
+       </property>
+      </widget>
+     </item>
+     <item row="25" column="0">
+      <widget class="QLabel" name="labelLine26">
+       <property name="text">
+        <string>反应谱BETAMAX</string>
+       </property>
+      </widget>
+     </item>
+     <item row="25" column="1">
+      <widget class="QLineEdit" name="editLine26">
+       <property name="text">
+        <string>2.0</string>
+       </property>
+      </widget>
+     </item>
+     <item row="26" column="0">
+      <widget class="QLabel" name="labelLine27">
+       <property name="text">
+        <string>反应谱指数EXPN</string>
+       </property>
+      </widget>
+     </item>
+     <item row="26" column="1">
+      <widget class="QLineEdit" name="editLine27">
+       <property name="text">
+        <string>0.9</string>
+       </property>
+      </widget>
+     </item>
+     <item row="27" column="0">
+      <widget class="QLabel" name="labelLine28">
+       <property name="text">
+        <string>地震震级QUAKE_LEVEL</string>
+       </property>
+      </widget>
+     </item>
+     <item row="27" column="1">
+      <widget class="QLineEdit" name="editLine28">
+       <property name="text">
+        <string>7.0</string>
+       </property>
+      </widget>
+     </item>
+     <item row="28" column="0">
+      <widget class="QLabel" name="labelLine29">
+       <property name="text">
+        <string>是否计算特征值</string>
+       </property>
+      </widget>
+     </item>
+     <item row="28" column="1">
+      <widget class="QComboBox" name="comboLine29">
+       <item>
+        <property name="text">
+         <string>0 不计算</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>1 计算</string>
+        </property>
+       </item>
+      </widget>
+     </item>
+     <item row="29" column="0">
+      <widget class="QLabel" name="labelLine30">
+       <property name="text">
+        <string>特征值数</string>
+       </property>
+      </widget>
+     </item>
+     <item row="29" column="1">
+      <widget class="QLineEdit" name="editLine30">
+       <property name="text">
+        <string>10</string>
+       </property>
+      </widget>
+     </item>
+     <item row="30" column="0">
+      <widget class="QLabel" name="labelMCase">
+       <property name="text">
+        <string>MCASE（自动统计）</string>
+       </property>
+      </widget>
+     </item>
+     <item row="30" column="1">
+      <widget class="QLineEdit" name="editMCase">
+       <property name="text">
+        <string>1</string>
+       </property>
+       <property name="readOnly">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item row="31" column="0">
+      <widget class="QLabel" name="labelX">
+       <property name="text">
+        <string>X1 X2 X3</string>
+       </property>
+      </widget>
+     </item>
+     <item row="31" column="1">
+      <widget class="QLineEdit" name="editX">
+       <property name="text">
+        <string>0.000000  0.000000  0.000000</string>
+       </property>
+      </widget>
+     </item>
+     <item row="32" column="0">
+      <widget class="QLabel" name="labelAlfa">
+       <property name="text">
+        <string>α1 α2 α3</string>
+       </property>
+      </widget>
+     </item>
+     <item row="32" column="1">
+      <widget class="QLineEdit" name="editAlfa">
+       <property name="text">
+        <string>0.000000  0.000000  0.000000</string>
+       </property>
+      </widget>
+     </item>
+     <item row="33" column="0">
+      <widget class="QLabel" name="labelAxis">
+       <property name="text">
+        <string>IXUPDW XAMID YAMID XBMID YBMID</string>
+       </property>
+      </widget>
+     </item>
+     <item row="33" column="1">
+      <widget class="QLineEdit" name="editAxis">
+       <property name="text">
+        <string>1  3  0.000000  0.000000  0.000000  0.000000</string>
+       </property>
+      </widget>
+     </item>
+     <item row="34" column="0">
+      <widget class="QLabel" name="labelRock">
+       <property name="text">
+        <string>IFROCK IFISO</string>
+       </property>
+      </widget>
+     </item>
+     <item row="34" column="1">
+      <widget class="QLineEdit" name="editRock">
+       <property name="text">
+        <string>1  0</string>
+       </property>
+      </widget>
+     </item>
+     <item row="35" column="0">
+      <widget class="QLabel" name="labelSummary">
+       <property name="text">
+        <string>当前配置摘要</string>
+       </property>
+      </widget>
+     </item>
+     <item row="35" column="1">
+      <widget class="QLabel" name="summaryLabel">
+       <property name="wordWrap">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item row="36" column="0">
+      <widget class="QLabel" name="labelValidate">
+       <property name="text">
+        <string>配置检查</string>
+       </property>
+      </widget>
+     </item>
+     <item row="36" column="1">
+      <widget class="QPushButton" name="btnValidation">
+       <property name="text">
+        <string>校验配置</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
     <layout class="QHBoxLayout" name="horizontalLayoutCompute">
-     <item><spacer name="horizontalSpacerCompute"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>0</width><height>0</height></size></property></spacer></item>
-     <item><widget class="QPushButton" name="btnCompute"><property name="text"><string>计算</string></property></widget></item>
+     <item>
+      <spacer name="horizontalSpacerCompute">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>0</width>
+         <height>0</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnCompute">
+       <property name="text">
+        <string>计算</string>
+       </property>
+      </widget>
+     </item>
     </layout>
    </item>
   </layout>
