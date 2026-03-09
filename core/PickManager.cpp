@@ -1385,6 +1385,130 @@ void PickManager::clearSelection(const QString& domain, const QString& uuid, Pic
     }
 }
 
+void PickManager::setSelectedPointIds(const QString& domain, const QString& uuid, GridKind kind,
+                                      const QVector<vtkIdType>& pointIds, bool replace)
+{
+    if (replace)
+        clearNodeSelection_NoRefresh(domain, uuid, kind);
+
+    auto& owners =
+        (kind == GridKind::Solid) ? m_ownerPointSolidByDomain[domain] : m_ownerPointLineByDomain[domain];
+    auto& uuid2set = (kind == GridKind::Solid) ? m_pointsSolidByDomainUuid[domain]
+                                               : m_pointsLineByDomainUuid[domain];
+    auto& prevOwners = (kind == GridKind::Solid) ? m_prevOwnerPointSolidByDomain[domain]
+                                                 : m_prevOwnerPointLineByDomain[domain];
+
+    QSet<vtkIdType>& mySet = uuid2set[uuid];
+    for (vtkIdType pid : pointIds)
+    {
+        if (mySet.contains(pid))
+            continue;
+        const QString oldUid = owners.value(pid);
+        if (!oldUid.isEmpty() && oldUid != uuid)
+        {
+            prevOwners[pid] = oldUid;
+            uuid2set[oldUid].remove(pid);
+        }
+        owners[pid] = uuid;
+        mySet.insert(pid);
+    }
+
+    if (domain == m_currentDomain && uuid == m_currentUUid && m_pickMode == PickMode::Node)
+        markDirty(DirtyNode);
+}
+
+void PickManager::setSelectedEdgeKeys(const QString& domain, const QString& uuid, GridKind kind,
+                                      const QVector<vtkIdType>& edgeKeys, bool replace)
+{
+    auto& owners =
+        (kind == GridKind::Solid) ? m_ownerEdgeSolidByDomain[domain] : m_ownerEdgeLineByDomain[domain];
+    auto& uuid2set =
+        (kind == GridKind::Solid) ? m_edgesSolidByDomainUuid[domain] : m_edgesLineByDomainUuid[domain];
+    auto& prevOwners = (kind == GridKind::Solid) ? m_prevOwnerEdgeSolidByDomain[domain]
+                                                 : m_prevOwnerEdgeLineByDomain[domain];
+
+    QSet<vtkIdType>& mySet = uuid2set[uuid];
+    if (replace)
+    {
+        const auto oldKeys = mySet.values();
+        for (vtkIdType k : oldKeys)
+        {
+            mySet.remove(k);
+            if (owners.value(k) == uuid)
+                owners.remove(k);
+            const QString oldUid = prevOwners.take(k);
+            if (!oldUid.isEmpty())
+            {
+                owners[k] = oldUid;
+                uuid2set[oldUid].insert(k);
+            }
+        }
+    }
+
+    for (vtkIdType edgeKey : edgeKeys)
+    {
+        if (mySet.contains(edgeKey))
+            continue;
+        const QString oldUid = owners.value(edgeKey);
+        if (!oldUid.isEmpty() && oldUid != uuid)
+        {
+            prevOwners[edgeKey] = oldUid;
+            uuid2set[oldUid].remove(edgeKey);
+        }
+        owners[edgeKey] = uuid;
+        mySet.insert(edgeKey);
+    }
+
+    if (domain == m_currentDomain && uuid == m_currentUUid && m_pickMode == PickMode::Edge)
+        markDirty(DirtyEdge);
+}
+
+void PickManager::setSelectedFaceKeys(const QString& domain, const QString& uuid, GridKind kind,
+                                      const QVector<vtkIdType>& faceKeys, bool replace)
+{
+    auto& owners =
+        (kind == GridKind::Solid) ? m_ownerFaceSolidByDomain[domain] : m_ownerFaceLineByDomain[domain];
+    auto& uuid2set =
+        (kind == GridKind::Solid) ? m_facesSolidByDomainUuid[domain] : m_facesLineByDomainUuid[domain];
+    auto& prevOwners = (kind == GridKind::Solid) ? m_prevOwnerFaceSolidByDomain[domain]
+                                                 : m_prevOwnerFaceLineByDomain[domain];
+
+    QSet<vtkIdType>& mySet = uuid2set[uuid];
+    if (replace)
+    {
+        const auto oldKeys = mySet.values();
+        for (vtkIdType k : oldKeys)
+        {
+            mySet.remove(k);
+            if (owners.value(k) == uuid)
+                owners.remove(k);
+            const QString oldUid = prevOwners.take(k);
+            if (!oldUid.isEmpty())
+            {
+                owners[k] = oldUid;
+                uuid2set[oldUid].insert(k);
+            }
+        }
+    }
+
+    for (vtkIdType faceKey : faceKeys)
+    {
+        if (mySet.contains(faceKey))
+            continue;
+        const QString oldUid = owners.value(faceKey);
+        if (!oldUid.isEmpty() && oldUid != uuid)
+        {
+            prevOwners[faceKey] = oldUid;
+            uuid2set[oldUid].remove(faceKey);
+        }
+        owners[faceKey] = uuid;
+        mySet.insert(faceKey);
+    }
+
+    if (domain == m_currentDomain && uuid == m_currentUUid && m_pickMode == PickMode::Face)
+        markDirty(DirtyFace);
+}
+
 // ===================== box select (batch) =====================
 void PickManager::setNodeSelected_NoRefresh(GridKind kind, vtkIdType pid, bool selected)
 {
