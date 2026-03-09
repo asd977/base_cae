@@ -24,7 +24,9 @@
 #include <vtkUnstructuredGrid.h>
 
 #include <QComboBox>
+#include <QPushButton>
 #include <QDebug>
+#include <QPushButton>
 
 #include "PickManager.h"
 #include "ui_LoadSpecificationWidget.h"
@@ -101,25 +103,24 @@ void LoadSpecificationWidget::setupBatchGroupCombo()
 
     connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &LoadSpecificationWidget::onDimChanged, Qt::UniqueConnection);
-    connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &LoadSpecificationWidget::onGroupChanged, Qt::UniqueConnection);
-
-    if (auto* groupCombo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
+    auto* batchAddBtn = findChild<QPushButton*>("btnBatchAdd");
+    if (!batchAddBtn)
     {
-        QObject::disconnect(groupCombo, nullptr, this, nullptr);
-        connect(groupCombo, &CustomComboBox::itemHovered, this,
-                [this](const int& row)
-                {
-                    onGroupChanged(row);
-                },
-                Qt::UniqueConnection);
-        connect(groupCombo, &CustomComboBox::dropdownClosed, this,
-                [this]()
-                {
-                    onGroupChanged(ui->comboBoxGroup->currentIndex());
-                },
-                Qt::UniqueConnection);
+        batchAddBtn = new QPushButton(tr("添加"), this);
+        batchAddBtn->setObjectName("btnBatchAdd");
+        if (auto* host = ui->comboBoxGroup->parentWidget())
+        {
+            if (auto* lay = host->layout())
+                lay->addWidget(batchAddBtn);
+        }
     }
+    QObject::disconnect(batchAddBtn, nullptr, this, nullptr);
+    connect(batchAddBtn, &QPushButton::clicked, this,
+            [this]()
+            {
+                onGroupChanged(ui->comboBoxGroup->currentIndex());
+            },
+            Qt::UniqueConnection);
     refreshGroupCombo();
 }
 
@@ -160,7 +161,7 @@ void LoadSpecificationWidget::onGroupChanged(int index)
         for (qint64 v : map.bndEdgePhysToEdgeKeys.value(physId))
             edgeKeys.push_back(vtkIdType(v));
         PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                    edgeKeys, true);
+                                                    edgeKeys, false);
     }
     else if (dim == 2)
     {
@@ -168,7 +169,7 @@ void LoadSpecificationWidget::onGroupChanged(int index)
         for (qint64 v : map.bndFacePhysToFaceKeys.value(physId))
             faceKeys.push_back(vtkIdType(v));
         PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                    faceKeys, true);
+                                                    faceKeys, false);
     }
 }
 

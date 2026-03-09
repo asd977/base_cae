@@ -95,28 +95,26 @@ void GeoStressFitFacePage::beforeLoad()
     // 2) 绑定“下拉框改变” -> 批量设置 keys
     connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &GeoStressFitFacePage::onDimComboChanged, Qt::UniqueConnection);
-    connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &GeoStressFitFacePage::onGroupComboChanged, Qt::UniqueConnection);
-
-    if (auto* groupCombo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
+    auto* batchAddBtn = findChild<QPushButton*>("btnBatchAdd");
+    if (!batchAddBtn)
     {
-        QObject::disconnect(groupCombo, nullptr, this, nullptr);
-        connect(groupCombo, &CustomComboBox::itemHovered, this,
-                [this](const int& row)
-                {
-                    onGroupComboChanged(row);
-                },
-                Qt::UniqueConnection);
-        connect(groupCombo, &CustomComboBox::dropdownClosed, this,
-                [this]()
-                {
-                    onGroupComboChanged(ui->comboBoxGroup->currentIndex());
-                },
-                Qt::UniqueConnection);
+        batchAddBtn = new QPushButton(tr("添加"), this);
+        batchAddBtn->setObjectName("btnBatchAdd");
+        if (auto* host = ui->comboBoxGroup->parentWidget())
+        {
+            if (auto* lay = host->layout())
+                lay->addWidget(batchAddBtn);
+        }
     }
+    QObject::disconnect(batchAddBtn, nullptr, this, nullptr);
+    connect(batchAddBtn, &QPushButton::clicked, this,
+            [this]()
+            {
+                onGroupComboChanged(ui->comboBoxGroup->currentIndex());
+            },
+            Qt::UniqueConnection);
 
-    // 3) 进入页面时，默认把当前选中的组应用一次（立刻高亮）
-    onGroupComboChanged(ui->comboBoxGroup->currentIndex());
+    // 3) 下拉框只做预览，不自动应用；由“添加”按钮触发
 }
 
 void GeoStressFitFacePage::refreshGroupCombo()
@@ -202,7 +200,7 @@ void GeoStressFitFacePage::onGroupComboChanged(int idx)
     const QString domain = getPageType();
     const QString uuid = m_uuid;
 
-    const bool replace = true; // 下拉框切组：替换当前选择
+    const bool replace = false; // 点击添加：并入当前选择
 
     if (pickEdge())
     {

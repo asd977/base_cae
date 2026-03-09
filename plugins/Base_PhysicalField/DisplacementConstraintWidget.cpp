@@ -9,6 +9,7 @@
 #include <services/VisualWidgetService.h>
 
 #include <QDebug>
+#include <QPushButton>
 
 #include "ui_DisplacementConstraintWidget.h"
 
@@ -85,28 +86,28 @@ void DisplacementConstraintWidget::beforeLoad()
     QObject::disconnect(ui->comboBoxDim, nullptr, this, nullptr);
     QObject::disconnect(ui->comboBoxGroup, nullptr, this, nullptr);
 
-    // 下拉框改变 -> 批量选
+    // 维度变化时仅刷新候选组
     QObject::connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
                      &DisplacementConstraintWidget::onDimChanged, Qt::UniqueConnection);
-    QObject::connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-                     &DisplacementConstraintWidget::onGroupChanged, Qt::UniqueConnection);
 
-    if (auto* groupCombo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
+    auto* batchAddBtn = findChild<QPushButton*>("btnBatchAdd");
+    if (!batchAddBtn)
     {
-        QObject::disconnect(groupCombo, nullptr, this, nullptr);
-        connect(groupCombo, &CustomComboBox::itemHovered, this,
-                [this](const int& row)
-                {
-                    onGroupChanged(row);
-                },
-                Qt::UniqueConnection);
-        connect(groupCombo, &CustomComboBox::dropdownClosed, this,
-                [this]()
-                {
-                    onGroupChanged(ui->comboBoxGroup->currentIndex());
-                },
-                Qt::UniqueConnection);
+        batchAddBtn = new QPushButton(tr("添加"), this);
+        batchAddBtn->setObjectName("btnBatchAdd");
+        if (auto* host = ui->comboBoxGroup->parentWidget())
+        {
+            if (auto* lay = host->layout())
+                lay->addWidget(batchAddBtn);
+        }
     }
+    QObject::disconnect(batchAddBtn, nullptr, this, nullptr);
+    connect(batchAddBtn, &QPushButton::clicked, this,
+            [this]()
+            {
+                onGroupChanged(ui->comboBoxGroup->currentIndex());
+            },
+            Qt::UniqueConnection);
 }
 
 void DisplacementConstraintWidget::refreshGroupCombo(int dimFilter)
@@ -171,8 +172,8 @@ void DisplacementConstraintWidget::onGroupChanged(int index)
     for (int pid : pointIdsInt)
         pids.push_back(vtkIdType(pid));
 
-    // 传给 PickManager：replace = true（下拉框就是“一键换一组”）
-    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pids, true);
+    // 传给 PickManager：replace = false（通过“添加”并入当前选择）
+    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pids, false);
 
     // 如果你希望同步 UI（比如显示数量）
     // ui->SelectedCountLabel->setText(QString::number(pids.size()));

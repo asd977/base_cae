@@ -67,25 +67,24 @@ void TemperatureLoadPage::setupBatchGroupCombo()
 
     connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &TemperatureLoadPage::onDimChanged, Qt::UniqueConnection);
-    connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &TemperatureLoadPage::onGroupChanged, Qt::UniqueConnection);
-
-    if (auto* groupCombo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
+    auto* batchAddBtn = findChild<QPushButton*>("btnBatchAdd");
+    if (!batchAddBtn)
     {
-        QObject::disconnect(groupCombo, nullptr, this, nullptr);
-        connect(groupCombo, &CustomComboBox::itemHovered, this,
-                [this](const int& row)
-                {
-                    onGroupChanged(row);
-                },
-                Qt::UniqueConnection);
-        connect(groupCombo, &CustomComboBox::dropdownClosed, this,
-                [this]()
-                {
-                    onGroupChanged(ui->comboBoxGroup->currentIndex());
-                },
-                Qt::UniqueConnection);
+        batchAddBtn = new QPushButton(tr("添加"), this);
+        batchAddBtn->setObjectName("btnBatchAdd");
+        if (auto* host = ui->comboBoxGroup->parentWidget())
+        {
+            if (auto* lay = host->layout())
+                lay->addWidget(batchAddBtn);
+        }
     }
+    QObject::disconnect(batchAddBtn, nullptr, this, nullptr);
+    connect(batchAddBtn, &QPushButton::clicked, this,
+            [this]()
+            {
+                onGroupChanged(ui->comboBoxGroup->currentIndex());
+            },
+            Qt::UniqueConnection);
     refreshGroupCombo();
 }
 
@@ -143,5 +142,5 @@ void TemperatureLoadPage::onGroupChanged(int index)
     pids.reserve(pointIdsInt.size());
     for (int pid : pointIdsInt)
         pids.push_back(vtkIdType(pid));
-    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pids, true);
+    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pids, false);
 }
