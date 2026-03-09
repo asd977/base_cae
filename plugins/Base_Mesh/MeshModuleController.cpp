@@ -5,6 +5,7 @@
 #include <MeshEdgeControlWidget.h>
 #include <MeshFaceControlWidget.h>
 #include <MeshGlobalMeshingWidget.h>
+#include <MeshGroupingWidget.h>
 #include <MeshSingleMeshingWidget.h>
 #include <MeshVolumeControlWidget.h>
 #include <PickManager.h>
@@ -453,6 +454,11 @@ void MeshModuleController::initAction()
         {
             onMeshEdit();
         });
+    reg(PublicConstants::kActionPreprocessMeshGrouping,
+        [this]
+        {
+            onMeshGrouping();
+        });
 
     // --- Control & Quality ---
     reg(PublicConstants::kActionPreprocessCtrlVolume,
@@ -729,6 +735,21 @@ void MeshModuleController::onQualityStd()
 
 void MeshModuleController::onMeshGrouping()
 {
+    if (auto* existed = findDirectChildByKind(m_gridNode, "MeshGrouping"))
+    {
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(existed);
+        QMessageBox::information(nullptr, "网格分组", "网格分组节点已存在。", QMessageBox::Ok);
+        return;
+    }
+
+    auto* w = new MeshGroupingWidget();
+    auto* node = new ProjectNode("网格分组", QUuid::createUuid().toString(), w);
+    node->setData(0, ProjectNode::RoleModule, "Mesh");
+    node->setData(0, ProjectNode::RoleKind, "MeshGrouping");
+    m_gridNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(node);
 }
 
 void MeshModuleController::onMeshEdit()
