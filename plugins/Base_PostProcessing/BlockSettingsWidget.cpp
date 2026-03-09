@@ -243,7 +243,7 @@ void BlockSettingsWidget::buildClipPipelineIfNeeded()
     // 3) Actor
     m_actor = vtkSmartPointer<vtkActor>::New();
     m_actor->SetMapper(m_mapper);
-    m_actor->GetProperty()->SetRepresentationToSurface();
+    applyPostActorStyle(m_actor);
 
     // 首次建管线时即挂入场景
     addActorByService(m_visualService, m_actor);
@@ -311,8 +311,10 @@ void BlockSettingsWidget::updateColoringFromUI()
         lut = vtkSmartPointer<vtkLookupTable>::New();
         m_visualService->scalarBarActor()->SetLookupTable(lut);
     }
+    applyPostLookupTableStyle(lut);
     lut->SetTableRange(range);
     lut->Build();
+    applyPostScalarBarStyle(m_visualService->scalarBarActor(), scalar);
 
     m_mapper->SetLookupTable(lut);
     m_mapper->SetScalarModeToUsePointFieldData();

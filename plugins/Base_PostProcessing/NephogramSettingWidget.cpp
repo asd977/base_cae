@@ -133,9 +133,10 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
 
     if (auto* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable()))
     {
+        applyPostLookupTableStyle(lut);
         lut->SetTableRange(range);
         lut->Build();
-        scalarBar->SetTitle(m_currentArrayName.toUtf8().constData());
+        applyPostScalarBarStyle(scalarBar, m_currentArrayName);
 
         m_mapper->SetLookupTable(lut);
         m_mapper->SetScalarRange(range);
@@ -376,8 +377,9 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName)
     syncScalarBarFromCurrent();
 
     m_mapper->SetInputData(m_grid);
+    applyPostMapperStyle(m_mapper);
     m_actor->SetMapper(m_mapper);
-    m_actor->GetProperty()->SetRepresentationToSurface();
+    applyPostActorStyle(m_actor);
     ensureActorAttached();
 
     if (auto* rw = m_visualService ? m_visualService->renderWindow() : nullptr)
@@ -588,7 +590,7 @@ void NephogramSettingWidget::syncScalarBarForCompare(vtkDataArray* leftArr, vtkD
     {
         lut->SetTableRange(minV, maxV);
         lut->Build();
-        scalarBar->SetTitle(m_currentArrayName.toUtf8().constData());
+        applyPostScalarBarStyle(scalarBar, m_currentArrayName);
 
         for (auto* m : {m_leftMapper.GetPointer(), m_rightMapper.GetPointer()})
         {
@@ -645,9 +647,11 @@ void NephogramSettingWidget::updateCompare()
     // 绑输入
     m_leftMapper->SetInputData(m_leftGrid);
     m_rightMapper->SetInputData(m_rightGrid);
+    applyPostMapperStyle(m_leftMapper);
+    applyPostMapperStyle(m_rightMapper);
 
-    m_leftActor->GetProperty()->SetRepresentationToSurface();
-    m_rightActor->GetProperty()->SetRepresentationToSurface();
+    applyPostActorStyle(m_leftActor);
+    applyPostActorStyle(m_rightActor);
 
     if (auto* rw = m_visualService ? m_visualService->renderWindow() : nullptr)
         rw->Render();

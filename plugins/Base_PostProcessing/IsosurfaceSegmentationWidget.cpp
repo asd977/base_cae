@@ -267,6 +267,7 @@ void IsosurfaceSegmentationWidget::buildPipelineIfNeeded()
 
     m_actorLow = vtkSmartPointer<vtkActor>::New();
     m_actorLow->SetMapper(m_mapperLow);
+    applyPostActorStyle(m_actorLow);
     m_actorLow->GetProperty()->SetOpacity(0.6);
 
     // 高值侧
@@ -278,6 +279,7 @@ void IsosurfaceSegmentationWidget::buildPipelineIfNeeded()
 
     m_actorHigh = vtkSmartPointer<vtkActor>::New();
     m_actorHigh->SetMapper(m_mapperHigh);
+    applyPostActorStyle(m_actorHigh);
     m_actorHigh->GetProperty()->SetOpacity(0.6);
 
     // 等值面（中间界面）
@@ -289,6 +291,7 @@ void IsosurfaceSegmentationWidget::buildPipelineIfNeeded()
 
     m_actorIso = vtkSmartPointer<vtkActor>::New();
     m_actorIso->SetMapper(m_mapperIso);
+    applyPostActorStyle(m_actorIso);
     m_actorIso->GetProperty()->SetOpacity(1.0);
     m_actorIso->GetProperty()->SetColor(1, 1, 1); // 纯白界面
 
@@ -434,8 +437,10 @@ void IsosurfaceSegmentationWidget::updateColoringFromUI()
         lut = vtkSmartPointer<vtkLookupTable>::New();
         m_visualService->scalarBarActor()->SetLookupTable(lut);
     }
+    applyPostLookupTableStyle(lut);
     lut->SetTableRange(range);
     lut->Build();
+    applyPostScalarBarStyle(m_visualService->scalarBarActor(), scalar);
 
     // 低值侧
     m_mapperLow->SetLookupTable(lut);

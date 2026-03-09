@@ -63,12 +63,17 @@ VisualizationWidget::~VisualizationWidget() = default;
 void VisualizationWidget::initVtk()
 {
     m_renderWindow = vtkSmartPointer<vtkGenericOpenGLRenderWindow>::New();
+    m_renderWindow->SetMultiSamples(8);
     m_vtkWidget->setRenderWindow(m_renderWindow);
 
     m_renderer = vtkSmartPointer<vtkRenderer>::New();
     m_renderer->SetBackground(231.0 / 255.0, 242.0 / 255.0, 255.0 / 255.0);
     m_renderer->SetBackground2(1.0, 1.0, 1.0);
     m_renderer->SetGradientBackground(true);
+    m_renderer->UseFXAAOn();
+    m_renderer->UseDepthPeelingOn();
+    m_renderer->SetMaximumNumberOfPeels(8);
+    m_renderer->SetOcclusionRatio(0.1);
     m_renderWindow->AddRenderer(m_renderer);
 
     // ---------- LUT ----------

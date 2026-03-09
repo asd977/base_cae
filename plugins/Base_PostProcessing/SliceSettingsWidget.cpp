@@ -296,8 +296,10 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
         lut = vtkSmartPointer<vtkLookupTable>::New();
         m_visualService->scalarBarActor()->SetLookupTable(lut);
     }
+    applyPostLookupTableStyle(lut);
     lut->SetTableRange(range);
     lut->Build();
+    applyPostScalarBarStyle(m_visualService->scalarBarActor(), scalar);
 
     // 整体云图
     vtkSmartPointer<vtkDataSetSurfaceFilter> surfaceFilter =
@@ -316,7 +318,7 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
     if (!m_actor)
         m_actor = vtkSmartPointer<vtkActor>::New();
     m_actor->SetMapper(mapper);
-    m_actor->GetProperty()->SetRepresentationToSurface();
+    applyPostActorStyle(m_actor);
 
     // 没有在显示结果时，才把整体云图挂上
     if (!m_singleDisplayed && !m_multiDisplayed)
@@ -576,6 +578,7 @@ void SliceSettingsWidget::buildSingleSliceResult()
         arr->GetRange(range);
     lut->SetTableRange(range);
     lut->Build();
+    applyPostScalarBarStyle(m_visualService->scalarBarActor(), scalar);
 
     auto cutter = vtkSmartPointer<vtkCutter>::New();
     cutter->SetCutFunction(m_plane);
@@ -584,6 +587,7 @@ void SliceSettingsWidget::buildSingleSliceResult()
 
     auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
     mapper->SetInputConnection(cutter->GetOutputPort());
+    applyPostMapperStyle(mapper);
     mapper->SetLookupTable(lut);
     mapper->SetScalarModeToUsePointFieldData();
     mapper->SelectColorArray(scalar.toUtf8().data());
@@ -594,7 +598,7 @@ void SliceSettingsWidget::buildSingleSliceResult()
 
     m_sliceActor = vtkSmartPointer<vtkActor>::New();
     m_sliceActor->SetMapper(mapper);
-    m_sliceActor->GetProperty()->SetRepresentationToSurface();
+    applyPostActorStyle(m_sliceActor);
 
     addActorByService(m_visualService, m_sliceActor);
 }
@@ -621,6 +625,7 @@ void SliceSettingsWidget::buildMultiSliceResult()
             arr->GetRange(range);
         lut->SetTableRange(range);
         lut->Build();
+        applyPostScalarBarStyle(m_visualService->scalarBarActor(), scalar);
     }
 
     // t 分布：包含端点的话，两个端点都包含（并向内收 eps）
@@ -659,6 +664,7 @@ void SliceSettingsWidget::buildMultiSliceResult()
 
         auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
         mapper->SetInputConnection(cutter->GetOutputPort());
+        applyPostMapperStyle(mapper);
         if (lut && !scalar.isEmpty())
         {
             mapper->SetLookupTable(lut);
@@ -669,6 +675,7 @@ void SliceSettingsWidget::buildMultiSliceResult()
 
         auto actor = vtkSmartPointer<vtkActor>::New();
         actor->SetMapper(mapper);
+        applyPostActorStyle(actor);
 
         addActorByService(m_visualService, actor);
 

@@ -305,8 +305,10 @@ void IsosurfaceSettingsWidget::updateOverallColoring()
     double range[2];
     arr->GetRange(range);
     auto lut = ensureLUT();
+    applyPostLookupTableStyle(lut);
     lut->SetTableRange(range);
     lut->Build();
+    applyPostScalarBarStyle(m_visualService->scalarBarActor(), scalar);
 
     vtkSmartPointer<vtkDataSetSurfaceFilter> surfaceFilter =
         vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
@@ -323,7 +325,7 @@ void IsosurfaceSettingsWidget::updateOverallColoring()
 
     m_actorOverall = vtkSmartPointer<vtkActor>::New();
     m_actorOverall->SetMapper(mapper);
-    m_actorOverall->GetProperty()->SetRepresentationToSurface();
+    applyPostActorStyle(m_actorOverall);
 }
 
 void IsosurfaceSettingsWidget::renderNow()
@@ -396,7 +398,7 @@ void IsosurfaceSettingsWidget::ensureSinglePipeline()
     {
         m_actorSingle = vtkSmartPointer<vtkActor>::New();
         m_actorSingle->SetMapper(m_mapperSingle);
-        m_actorSingle->GetProperty()->SetRepresentationToSurface();
+        applyPostActorStyle(m_actorSingle);
     }
 
     // LUT/着色
@@ -404,8 +406,10 @@ void IsosurfaceSettingsWidget::ensureSinglePipeline()
     double range[2];
     arr->GetRange(range);
     auto lut = ensureLUT();
+    applyPostLookupTableStyle(lut);
     lut->SetTableRange(range);
     lut->Build();
+    applyPostScalarBarStyle(m_visualService->scalarBarActor(), scalar);
 
     m_mapperSingle->SetLookupTable(lut);
     m_mapperSingle->SetScalarModeToUsePointFieldData();
@@ -466,8 +470,10 @@ void IsosurfaceSettingsWidget::buildMultiIsoResult()
     double range[2];
     arr->GetRange(range);
     auto lut = ensureLUT();
+    applyPostLookupTableStyle(lut);
     lut->SetTableRange(range);
     lut->Build();
+    applyPostScalarBarStyle(m_visualService->scalarBarActor(), scalar);
 
     // 值列表
     const auto values = multiIsoValuesFromUI();
@@ -493,7 +499,7 @@ void IsosurfaceSettingsWidget::buildMultiIsoResult()
 
         auto actor = vtkSmartPointer<vtkActor>::New();
         actor->SetMapper(mapper);
-        actor->GetProperty()->SetRepresentationToSurface();
+        applyPostActorStyle(actor);
 
         addActorByService(m_visualService, actor);
 
