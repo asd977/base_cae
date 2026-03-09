@@ -1,4 +1,4 @@
-﻿#include "GeoStressFitFacePage.h"
+#include "GeoStressFitFacePage.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -88,6 +88,10 @@ void GeoStressFitFacePage::beforeLoad()
     // 1) 先刷新下拉框内容（按当前模式：Edge / Face）
     refreshGroupCombo();
 
+    // 防止页面切换后重复连接导致槽函数被触发多次
+    QObject::disconnect(ui->comboBoxDim, nullptr, this, nullptr);
+    QObject::disconnect(ui->comboBoxGroup, nullptr, this, nullptr);
+
     // 2) 绑定“下拉框改变” -> 批量设置 keys
     connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &GeoStressFitFacePage::onDimComboChanged, Qt::UniqueConnection);
@@ -96,6 +100,7 @@ void GeoStressFitFacePage::beforeLoad()
 
     if (auto* groupCombo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
     {
+        QObject::disconnect(groupCombo, nullptr, this, nullptr);
         connect(groupCombo, &CustomComboBox::itemHovered, this,
                 [this](const int& row)
                 {

@@ -1,4 +1,4 @@
-﻿#include "DisplacementConstraintWidget.h"
+#include "DisplacementConstraintWidget.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -81,6 +81,10 @@ void DisplacementConstraintWidget::beforeLoad()
 
     refreshGroupCombo(ui->comboBoxDim->currentData().toInt());
 
+    // 防止页面来回切换后重复连接，造成批量选逻辑多次触发
+    QObject::disconnect(ui->comboBoxDim, nullptr, this, nullptr);
+    QObject::disconnect(ui->comboBoxGroup, nullptr, this, nullptr);
+
     // 下拉框改变 -> 批量选
     QObject::connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
                      &DisplacementConstraintWidget::onDimChanged, Qt::UniqueConnection);
@@ -89,6 +93,7 @@ void DisplacementConstraintWidget::beforeLoad()
 
     if (auto* groupCombo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
     {
+        QObject::disconnect(groupCombo, nullptr, this, nullptr);
         connect(groupCombo, &CustomComboBox::itemHovered, this,
                 [this](const int& row)
                 {

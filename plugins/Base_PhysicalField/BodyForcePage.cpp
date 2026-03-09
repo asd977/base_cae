@@ -1,4 +1,4 @@
-﻿#include "BodyForcePage.h"
+#include "BodyForcePage.h"
 
 #include <CustomComboBox.h>
 #include <ServiceRegistry.h>
@@ -120,6 +120,10 @@ void BodyForcePage::setupBatchGroupCombo()
     ui->comboBoxDim->setCurrentIndex(0);
     ui->comboBoxDim->blockSignals(false);
 
+    // 防止页面切换后重复连接导致槽函数被多次触发
+    QObject::disconnect(ui->comboBoxDim, nullptr, this, nullptr);
+    QObject::disconnect(ui->comboBoxGroup, nullptr, this, nullptr);
+
     QObject::connect(
         ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
         [this](int idx)
@@ -137,6 +141,7 @@ void BodyForcePage::setupBatchGroupCombo()
 
     if (auto* groupCombo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
     {
+        QObject::disconnect(groupCombo, nullptr, this, nullptr);
         connect(groupCombo, &CustomComboBox::itemHovered, this,
                 [this](const int& row)
                 {

@@ -95,6 +95,10 @@ void LoadSpecificationWidget::setupBatchGroupCombo()
     ui->comboBoxDim->setCurrentIndex(1);
     ui->comboBoxDim->blockSignals(false);
 
+    // 防止页面切换后重复连接导致槽函数被多次触发
+    QObject::disconnect(ui->comboBoxDim, nullptr, this, nullptr);
+    QObject::disconnect(ui->comboBoxGroup, nullptr, this, nullptr);
+
     connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &LoadSpecificationWidget::onDimChanged, Qt::UniqueConnection);
     connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
@@ -102,6 +106,7 @@ void LoadSpecificationWidget::setupBatchGroupCombo()
 
     if (auto* groupCombo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
     {
+        QObject::disconnect(groupCombo, nullptr, this, nullptr);
         connect(groupCombo, &CustomComboBox::itemHovered, this,
                 [this](const int& row)
                 {
