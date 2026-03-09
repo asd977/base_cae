@@ -291,6 +291,70 @@ void PickManager::updateStructure()
 
     if (m_gridLine)
         rebuildLineNodeOverlayAll();
+
+    m_hasBoundaryFilterSolid = false;
+    m_boundaryPointIdsSolid.clear();
+    m_boundaryEdgeKeysSolid.clear();
+    m_boundaryFaceKeysSolid.clear();
+
+    if (meshSvc)
+    {
+        const MshPickMap pickMap = meshSvc->mshPickMapSolid();
+
+        for (auto it = pickMap.bndPointPhysToPointIds.begin(); it != pickMap.bndPointPhysToPointIds.end();
+             ++it)
+        {
+            const QVector<int>& pids = it.value();
+            for (int pid : pids)
+                m_boundaryPointIdsSolid.insert(vtkIdType(pid));
+        }
+
+        for (auto it = pickMap.bndEdgePhysToEdgeKeys.begin(); it != pickMap.bndEdgePhysToEdgeKeys.end();
+             ++it)
+        {
+            const QVector<qint64>& keys = it.value();
+            for (qint64 k : keys)
+                m_boundaryEdgeKeysSolid.insert(vtkIdType(k));
+        }
+
+        for (auto it = pickMap.bndFacePhysToFaceKeys.begin(); it != pickMap.bndFacePhysToFaceKeys.end();
+             ++it)
+        {
+            const QVector<qint64>& keys = it.value();
+            for (qint64 k : keys)
+                m_boundaryFaceKeysSolid.insert(vtkIdType(k));
+        }
+
+        m_hasBoundaryFilterSolid = !m_boundaryPointIdsSolid.isEmpty() ||
+                                   !m_boundaryEdgeKeysSolid.isEmpty() ||
+                                   !m_boundaryFaceKeysSolid.isEmpty();
+    }
+}
+
+bool PickManager::hasBoundaryFilterForSolid() const
+{
+    return m_hasBoundaryFilterSolid;
+}
+
+bool PickManager::isBoundaryPointSelectable(GridKind kind, vtkIdType pid) const
+{
+    if (kind != GridKind::Solid || !hasBoundaryFilterForSolid())
+        return true;
+    return m_boundaryPointIdsSolid.contains(pid);
+}
+
+bool PickManager::isBoundaryEdgeSelectable(GridKind kind, vtkIdType edgeKey) const
+{
+    if (kind != GridKind::Solid || !hasBoundaryFilterForSolid())
+        return true;
+    return m_boundaryEdgeKeysSolid.contains(edgeKey);
+}
+
+bool PickManager::isBoundaryFaceSelectable(GridKind kind, vtkIdType faceKey) const
+{
+    if (kind != GridKind::Solid || !hasBoundaryFilterForSolid())
+        return true;
+    return m_boundaryFaceKeysSolid.contains(faceKey);
 }
 
 void PickManager::refreshStructureIfNeeded()
@@ -549,7 +613,11 @@ bool PickManager::pickAt(int x, int y)
         if (!computePickedEdge(grid, cellId, pickPos, edgeLocalId, edgePids))
             return false;
 
-        toggleSelectEdge(kind, packEdgeKey(cellId, edgeLocalId));
+        const vtkIdType edgeKey = packEdgeKey(cellId, edgeLocalId);
+        if (!isBoundaryEdgeSelectable(kind, edgeKey))
+            return false;
+
+        toggleSelectEdge(kind, edgeKey);
         return true;
     }
 
@@ -560,7 +628,11 @@ bool PickManager::pickAt(int x, int y)
         if (!computePickedFace(grid, cellId, pickPos, faceLocalId, facePids))
             return false;
 
-        toggleSelectFace(kind, packFaceKey(cellId, faceLocalId));
+        const vtkIdType faceKey = packFaceKey(cellId, faceLocalId);
+        if (!isBoundaryFaceSelectable(kind, faceKey))
+            return false;
+
+        toggleSelectFace(kind, faceKey);
         return true;
     }
 
@@ -585,6 +657,9 @@ bool PickManager::pickAt(int x, int y)
         }
     }
     if (bestPid < 0)
+        return false;
+
+    if (!isBoundaryPointSelectable(kind, bestPid))
         return false;
 
     toggleSelectNode(kind, bestPid);
@@ -1485,11 +1560,19 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
                                    : m_pointsLineByDomainUuid[dom][uid].contains(pid);
 
                     if (op == BoxOp::Add)
+                    {
+                        if (!isBoundaryPointSelectable(kind, pid))
+                            continue;
                         setNodeSelected_NoRefresh(kind, pid, true);
+                    }
                     else if (op == BoxOp::Remove)
                         setNodeSelected_NoRefresh(kind, pid, false);
                     else
+                    {
+                        if (!cur && !isBoundaryPointSelectable(kind, pid))
+                            continue;
                         setNodeSelected_NoRefresh(kind, pid, !cur);
+                    }
                 }
             }
             return;
@@ -1511,11 +1594,19 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
                                    : m_edgesLineByDomainUuid[dom][uid].contains(k);
 
                     if (op == BoxOp::Add)
+                    {
+                        if (!isBoundaryEdgeSelectable(kind, k))
+                            continue;
                         setEdgeSelected_NoRefresh(kind, k, true);
+                    }
                     else if (op == BoxOp::Remove)
                         setEdgeSelected_NoRefresh(kind, k, false);
                     else
+                    {
+                        if (!cur && !isBoundaryEdgeSelectable(kind, k))
+                            continue;
                         setEdgeSelected_NoRefresh(kind, k, !cur);
+                    }
                 }
                 else
                 {
@@ -1528,11 +1619,19 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
                                        : m_edgesLineByDomainUuid[dom][uid].contains(k);
 
                         if (op == BoxOp::Add)
+                        {
+                            if (!isBoundaryEdgeSelectable(kind, k))
+                                continue;
                             setEdgeSelected_NoRefresh(kind, k, true);
+                        }
                         else if (op == BoxOp::Remove)
                             setEdgeSelected_NoRefresh(kind, k, false);
                         else
+                        {
+                            if (!cur && !isBoundaryEdgeSelectable(kind, k))
+                                continue;
                             setEdgeSelected_NoRefresh(kind, k, !cur);
+                        }
                     }
                 }
             }
@@ -1556,11 +1655,19 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
                                    : m_facesLineByDomainUuid[dom][uid].contains(k);
 
                     if (op == BoxOp::Add)
+                    {
+                        if (!isBoundaryFaceSelectable(kind, k))
+                            continue;
                         setFaceSelected_NoRefresh(kind, k, true);
+                    }
                     else if (op == BoxOp::Remove)
                         setFaceSelected_NoRefresh(kind, k, false);
                     else
+                    {
+                        if (!cur && !isBoundaryFaceSelectable(kind, k))
+                            continue;
                         setFaceSelected_NoRefresh(kind, k, !cur);
+                    }
                 }
                 else if (dim == 3)
                 {
@@ -1573,11 +1680,19 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
                                        : m_facesLineByDomainUuid[dom][uid].contains(k);
 
                         if (op == BoxOp::Add)
+                        {
+                            if (!isBoundaryFaceSelectable(kind, k))
+                                continue;
                             setFaceSelected_NoRefresh(kind, k, true);
+                        }
                         else if (op == BoxOp::Remove)
                             setFaceSelected_NoRefresh(kind, k, false);
                         else
+                        {
+                            if (!cur && !isBoundaryFaceSelectable(kind, k))
+                                continue;
                             setFaceSelected_NoRefresh(kind, k, !cur);
+                        }
                     }
                 }
             }

@@ -152,6 +152,11 @@ class CORE_EXPORT PickManager : public QObject
     void updateActorVisibility();
     void refreshStructureIfNeeded();
 
+    bool hasBoundaryFilterForSolid() const;
+    bool isBoundaryPointSelectable(GridKind kind, vtkIdType pid) const;
+    bool isBoundaryEdgeSelectable(GridKind kind, vtkIdType edgeKey) const;
+    bool isBoundaryFaceSelectable(GridKind kind, vtkIdType faceKey) const;
+
     // line node overlay
     void rebuildLineNodeOverlayAll();
 
@@ -225,6 +230,11 @@ class CORE_EXPORT PickManager : public QObject
 
     vtkProp* m_solidProp = nullptr;
     vtkProp* m_lineProp = nullptr;
+
+    bool m_hasBoundaryFilterSolid = false;
+    QSet<vtkIdType> m_boundaryPointIdsSolid;
+    QSet<vtkIdType> m_boundaryEdgeKeysSolid;
+    QSet<vtkIdType> m_boundaryFaceKeysSolid;
 
     // ============ line node hints ============
     vtkSmartPointer<vtkPoints> m_lineNodePts;
