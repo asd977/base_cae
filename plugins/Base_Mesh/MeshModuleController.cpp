@@ -2,6 +2,7 @@
 
 #include <EventManager.h>
 #include <GridEditingWidget.h>
+#include <MeshGroupingWidget.h>
 #include <MeshEdgeControlWidget.h>
 #include <MeshFaceControlWidget.h>
 #include <MeshGlobalMeshingWidget.h>
@@ -453,6 +454,11 @@ void MeshModuleController::initAction()
         {
             onMeshEdit();
         });
+    reg(PublicConstants::kActionPreprocessMeshGrouping,
+        [this]
+        {
+            onMeshGrouping();
+        });
 
     // --- Control & Quality ---
     reg(PublicConstants::kActionPreprocessCtrlVolume,
@@ -729,6 +735,14 @@ void MeshModuleController::onQualityStd()
 
 void MeshModuleController::onMeshGrouping()
 {
+    auto* w = new MeshGroupingWidget();
+    auto* node =
+        new ProjectNode("网格分组", QUuid::createUuid().toString(), static_cast<BasePage*>(w));
+    node->setData(0, ProjectNode::RoleModule, "Mesh");
+    node->setData(0, ProjectNode::RoleKind, "MeshGrouping");
+    m_gridNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(node);
 }
 
 void MeshModuleController::onMeshEdit()
