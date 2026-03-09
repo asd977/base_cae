@@ -38,165 +38,124 @@
        <item row="0" column="0">
         <widget class="QLabel" name="labelIFIIWL_SEEP">
          <property name="text">
-          <string>IFIIWL_SEEP</string>
+          <string>坝基渗透荷载方式 IFIIWL_SEEP</string>
          </property>
         </widget>
        </item>
        <item row="0" column="1">
-        <widget class="QLineEdit" name="editIFIIWL_SEEP">
-         <property name="text">
-          <string>0</string>
-         </property>
+        <widget class="QComboBox" name="comboIFIIWL_SEEP">
+         <item><property name="text"><string>0 - 不记入坝基渗透荷载</string></property></item>
+         <item><property name="text"><string>1 - 记入并按折减系数线性假设施加面力</string></property></item>
+         <item><property name="text"><string>2 - 由CASEEP读入水头压力并施加面力</string></property></item>
         </widget>
        </item>
        <item row="1" column="0">
         <widget class="QLabel" name="labelIFIIWL_BODY">
          <property name="text">
-          <string>IFIIWL_BODY</string>
+          <string>坝体渗透体力方式 IFIIWL_BODY</string>
          </property>
         </widget>
        </item>
        <item row="1" column="1">
-        <widget class="QLineEdit" name="editIFIIWL_BODY">
-         <property name="text">
-          <string>0</string>
-         </property>
+        <widget class="QComboBox" name="comboIFIIWL_BODY">
+         <item><property name="text"><string>0 - 不记入坝体渗透体力</string></property></item>
+         <item><property name="text"><string>1 - 按饱和/湿容重差施加向下体力</string></property></item>
+         <item><property name="text"><string>2 - 由CABODY读入节点体力</string></property></item>
         </widget>
        </item>
        <item row="2" column="0">
         <widget class="QLabel" name="labelIFIIWL_FACE">
          <property name="text">
-          <string>IFIIWL_FACE</string>
+          <string>坝体水面压力方式 IFIIWL_FACE</string>
          </property>
         </widget>
        </item>
        <item row="2" column="1">
-        <widget class="QLineEdit" name="editIFIIWL_FACE">
-         <property name="text">
-          <string>1</string>
-         </property>
+        <widget class="QComboBox" name="comboIFIIWL_FACE">
+         <item><property name="text"><string>0 - 不记入坝体水面压力</string></property></item>
+         <item><property name="text"><string>1 - 记入坝体水面压力</string></property></item>
         </widget>
        </item>
        <item row="3" column="0">
         <widget class="QLabel" name="labelIFWET">
          <property name="text">
-          <string>是否湿化计算IFWET</string>
+          <string>湿化计算开关 IFWET</string>
          </property>
         </widget>
        </item>
        <item row="3" column="1">
-        <widget class="QLineEdit" name="editIFWET">
-         <property name="text">
-          <string>0</string>
-         </property>
+        <widget class="QComboBox" name="comboIFWET">
+         <item><property name="text"><string>0 - 不考虑湿化计算</string></property></item>
+         <item><property name="text"><string>1 - 考虑湿化计算</string></property></item>
         </widget>
        </item>
        <item row="4" column="0">
         <widget class="QLabel" name="labelIFDROP">
          <property name="text">
-          <string>IFDROP</string>
+          <string>水位骤降次数开关 IF_DROP</string>
          </property>
         </widget>
        </item>
        <item row="4" column="1">
-        <widget class="QLineEdit" name="editIFDROP">
-         <property name="text">
-          <string>0</string>
-         </property>
+        <widget class="QComboBox" name="comboIFDROP">
+         <item><property name="text"><string>0 - 不进行水位骤降计算</string></property></item>
+         <item><property name="text"><string>1 - 进行水位骤降计算</string></property></item>
         </widget>
        </item>
        <item row="5" column="0">
-        <widget class="QLabel" name="labelNCHANGE">
-         <property name="text">
-          <string>NCHANGE</string>
-         </property>
+        <widget class="QLabel" name="labelDIRDYNA">
+         <property name="text"><string>地震动力计算初始目录 DIRDYNA</string></property>
         </widget>
        </item>
        <item row="5" column="1">
-        <widget class="QLineEdit" name="editNCHANGE">
-         <property name="text">
-          <string>0</string>
-         </property>
+        <widget class="QLineEdit" name="editDIRDYNA">
+         <property name="text"><string>'CASE01FILL01'</string></property>
         </widget>
        </item>
        <item row="6" column="0">
-        <widget class="QLabel" name="labelDIRDYNA">
-         <property name="text">
-          <string>DIRDYNA</string>
-         </property>
+        <widget class="QLabel" name="labelIFMODE">
+         <property name="text"><string>拟静力计算开关 IFMODE</string></property>
         </widget>
        </item>
        <item row="6" column="1">
-        <widget class="QLineEdit" name="editDIRDYNA">
-         <property name="text">
-          <string>'CASE01FILL01'</string>
-         </property>
+        <widget class="QComboBox" name="comboIFMODE">
+         <item><property name="text"><string>0 - 不进行拟静力计算</string></property></item>
+         <item><property name="text"><string>1 - 进行拟静力计算</string></property></item>
         </widget>
        </item>
        <item row="7" column="0">
-        <widget class="QLabel" name="labelNUM_DYNA">
-         <property name="text">
-          <string>NUM_DYNA</string>
-         </property>
+        <widget class="QLabel" name="labelIFWAVE">
+         <property name="text"><string>地震波动力计算开关 IFWAVE</string></property>
         </widget>
        </item>
        <item row="7" column="1">
-        <widget class="QLineEdit" name="editNUM_DYNA">
-         <property name="text">
-          <string>0</string>
-         </property>
+        <widget class="QComboBox" name="comboIFWAVE">
+         <item><property name="text"><string>0 - 不进行地震波动力计算</string></property></item>
+         <item><property name="text"><string>1 - 进行地震波动力计算</string></property></item>
         </widget>
        </item>
        <item row="8" column="0">
-        <widget class="QLabel" name="labelM_DYNA_PAIR">
+        <widget class="QLabel" name="labelDT_BLOCK">
          <property name="text">
-          <string>M_DYNA_PAIR</string>
+          <string>动力时程参数 DT TSTA TEND WOMI_1</string>
          </property>
         </widget>
        </item>
        <item row="8" column="1">
-        <widget class="QLineEdit" name="editM_DYNA_PAIR">
-         <property name="text">
-          <string>1  1</string>
-         </property>
-        </widget>
-       </item>
-       <item row="9" column="0">
-        <widget class="QLabel" name="labelDYN_FLAGS">
-         <property name="text">
-          <string>DYN_FLAGS (IFMODE IFWAVE IFSETT)</string>
-         </property>
-        </widget>
-       </item>
-       <item row="9" column="1">
-        <widget class="QLineEdit" name="editDYN_FLAGS">
-         <property name="text">
-          <string>0 0 0</string>
-         </property>
-        </widget>
-       </item>
-       <item row="10" column="0">
-        <widget class="QLabel" name="labelDT_BLOCK">
-         <property name="text">
-          <string>DT_BLOCK (DT TSTA TEND WOMI_1)</string>
-         </property>
-        </widget>
-       </item>
-       <item row="10" column="1">
         <widget class="QLineEdit" name="editDT_BLOCK">
          <property name="text">
           <string>0.020000 0.000000 0.000000 0.000000</string>
          </property>
         </widget>
        </item>
-       <item row="11" column="0">
+       <item row="9" column="0">
         <widget class="QLabel" name="labelWAVE_FILES">
          <property name="text">
-          <string>WAVE_FILES (AX AY AZ)</string>
+          <string>地震波文件 AX AY AZ</string>
          </property>
         </widget>
        </item>
-       <item row="11" column="1">
+       <item row="9" column="1">
         <widget class="QLineEdit" name="editWAVE_FILES">
          <property name="text">
           <string>'WAVE-AX.DAT' 'WAVE-AY.DAT' 'WAVE-AZ.DAT'</string>
@@ -245,6 +204,32 @@
          <string>HW_DROP_END</string>
         </property>
        </column>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="labelNChange">
+       <property name="text">
+        <string>材料属性号变换表 (Mold Mnew) - NCHANGE按行数自动统计</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QTableWidget" name="tableNChange">
+       <column><property name="text"><string>Mold</string></property></column>
+       <column><property name="text"><string>Mnew</string></property></column>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="labelDynaMap">
+       <property name="text">
+        <string>静力-动力材料编号变换表 (M_STA M_DYNA) - NUM_DYNA按行数自动统计</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QTableWidget" name="tableDynaMap">
+       <column><property name="text"><string>M_STA</string></property></column>
+       <column><property name="text"><string>M_DYNA</string></property></column>
       </widget>
      </item>
      <item>

@@ -7,6 +7,7 @@
 #include <QMap>
 
 class QLineEdit;
+class QWidget;
 class QPlainTextEdit;
 class QTableWidget;
 class QJsonArray;
@@ -43,8 +44,10 @@ class FillStorageCyclePage : public BasePage
     void updatePreview();
   private:
     Ui::FillStorageCyclePage* ui = nullptr;
-    QMap<QString, QLineEdit*> m_edits;
+    QMap<QString, QWidget*> m_editors;
     QTableWidget* m_wetTable = nullptr;
     QTableWidget* m_dropTable = nullptr;
+    QTableWidget* m_nChangeTable = nullptr;
+    QTableWidget* m_dynaMapTable = nullptr;
     QTableWidget* m_circleTable = nullptr;
 };
