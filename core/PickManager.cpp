@@ -1620,7 +1620,7 @@ void PickManager::boxSelect(int x0, int y0, int x1, int y1, BoxOp op)
         ex->SetInputData(grid);
         ex->Update();
 
-        vtkDataSet* out = ex->GetOutput();
+        vtkDataSet* out = vtkDataSet::SafeDownCast(ex->GetOutput());
         if (!out || out->GetNumberOfCells() <= 0)
             return ids;
 
