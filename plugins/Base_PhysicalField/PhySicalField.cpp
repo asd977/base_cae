@@ -762,6 +762,7 @@ void PhysicalField::generateIIIDFile()
     }
 
     const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    qDebug()<<"NDIM "<<NDIM;
     const bool is3D = (NDIM == 3);
     const int MADOF = is3D ? 3 : 2;
 

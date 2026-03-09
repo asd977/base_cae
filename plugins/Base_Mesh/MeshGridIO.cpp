@@ -27,6 +27,8 @@
 #include <algorithm>
 #include <cmath>
 #include <vector>
+#include <PublicVariables.h>
+#include <PublicConstants.h>
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 static constexpr auto kSkipEmptyParts = QString::SkipEmptyParts;
@@ -1689,6 +1691,8 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
     double am = 1.0, d1 = 0.0, d2 = 0.0, d3 = 0.0;
 
     in >> numnp >> madim >> nelem >> manod >> extra >> am >> d1 >> d2 >> d3;
+    PublicVariables::instance().set(PublicConstants::kMeshDimension,madim,"mesh");
+    qDebug()<<"dim "<<madim;
     if (in.status() != QTextStream::Ok)
     {
         if (errMsg)
