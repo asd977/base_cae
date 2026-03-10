@@ -703,6 +703,7 @@ bool PickManager::boxSelectNodes(int x0, int y0, int x1, int y1)
         return false;
 
     bool changed = false;
+    QSet<quint64> globalVisited;
     for (unsigned int i = 0; i < selection->GetNumberOfNodes(); ++i)
     {
         auto* node = selection->GetNode(i);
@@ -714,20 +715,31 @@ bool PickManager::boxSelectNodes(int x0, int y0, int x1, int y1)
             continue;
 
         auto* prop = vtkProp::SafeDownCast(node->GetProperties()->Get(vtkSelectionNode::PROP()));
-        auto* ds = dataSetFromProp(prop);
-        if (!ds)
-            continue;
 
         GridKind kind;
+        vtkDataSet* ds = nullptr;
         if (prop && prop == m_lineProp)
+        {
             kind = GridKind::Line;
+            ds = m_linePickDataSet ? m_linePickDataSet : dataSetFromProp(prop);
+        }
         else if (prop && prop == m_solidProp)
+        {
             kind = GridKind::Solid;
-        else if (m_gridLine && ds == m_gridLine)
-            kind = GridKind::Line;
-        else if (m_gridSolid && ds == m_gridSolid)
-            kind = GridKind::Solid;
+            ds = m_solidPickDataSet ? m_solidPickDataSet : dataSetFromProp(prop);
+        }
         else
+        {
+            ds = dataSetFromProp(prop);
+            if (m_gridLine && ds == m_gridLine)
+                kind = GridKind::Line;
+            else if (m_gridSolid && ds == m_gridSolid)
+                kind = GridKind::Solid;
+            else
+                continue;
+        }
+
+        if (!ds)
             continue;
 
         vtkDataArray* origPointArr = nullptr;
@@ -757,7 +769,14 @@ bool PickManager::boxSelectNodes(int x0, int y0, int x1, int y1)
 
         for (auto it = uniquePids.begin(); it != uniquePids.end(); ++it)
         {
-            toggleSelectNode(kind, *it);
+            const vtkIdType pid = *it;
+            const quint64 key = (quint64(kind == GridKind::Solid ? 1 : 0) << 63) |
+                                quint64(static_cast<unsigned long long>(pid));
+            if (globalVisited.contains(key))
+                continue;
+            globalVisited.insert(key);
+
+            toggleSelectNode(kind, pid);
             changed = true;
         }
     }
