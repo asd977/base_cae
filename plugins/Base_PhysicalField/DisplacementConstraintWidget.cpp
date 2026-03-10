@@ -1,4 +1,4 @@
-#include "DisplacementConstraintWidget.h"
+﻿#include "DisplacementConstraintWidget.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -43,11 +43,6 @@ DisplacementConstraintWidget::DisplacementConstraintWidget(QWidget* parent)
 
     const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     const bool is2D = (NDIM == 2);
-    if (is2D)
-    {
-        ui->UXLineEdit->setEnabled(false);
-        ui->UXLineEdit->setText("1");
-    }
 }
 
 DisplacementConstraintWidget::~DisplacementConstraintWidget()
