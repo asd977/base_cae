@@ -9,7 +9,6 @@
 #include <vtkCellData.h>
 #include <vtkConnectivityFilter.h>
 #include <vtkCubeSource.h>
-#include <vtkDataArray.h>
 #include <vtkDataSetSurfaceFilter.h>
 #include <vtkIdList.h>
 #include <vtkIdTypeArray.h>
@@ -28,7 +27,6 @@
 #include <QMessageBox>
 #include <QSet>
 #include <QTableWidgetItem>
-#include <QVector3D>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -311,16 +309,7 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
         }
     }
 
-    struct RegionGeom
-    {
-        QVector3D normalSum;
-        QVector3D centroidSum;
-        int sampleCount = 0;
-    };
-
     QHash<int, QSet<int>> regionToPointIds;
-    QHash<int, RegionGeom> regionGeom;
-    vtkDataArray* normalArr = poly->GetCellData()->GetNormals();
     if (regionArr)
     {
         const vtkIdType nCells = poly->GetNumberOfCells();
@@ -345,36 +334,6 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
                 }
                 regionToPointIds[region].insert(originalPid);
             }
-
-            double c[3] = {0.0, 0.0, 0.0};
-            const vtkIdType npts = ids->GetNumberOfIds();
-            if (npts > 0)
-            {
-                for (vtkIdType i = 0; i < npts; ++i)
-                {
-                    double p[3] = {0.0, 0.0, 0.0};
-                    poly->GetPoint(ids->GetId(i), p);
-                    c[0] += p[0];
-                    c[1] += p[1];
-                    c[2] += p[2];
-                }
-                c[0] /= double(npts);
-                c[1] /= double(npts);
-                c[2] /= double(npts);
-            }
-
-            QVector3D n(0.0f, 0.0f, 0.0f);
-            if (normalArr && cid < normalArr->GetNumberOfTuples() && normalArr->GetNumberOfComponents() >= 3)
-            {
-                double nv[3] = {0.0, 0.0, 0.0};
-                normalArr->GetTuple(cid, nv);
-                n = QVector3D(float(nv[0]), float(nv[1]), float(nv[2]));
-            }
-
-            RegionGeom& g = regionGeom[region];
-            g.normalSum += n;
-            g.centroidSum += QVector3D(float(c[0]), float(c[1]), float(c[2]));
-            ++g.sampleCount;
         }
     }
     else
@@ -452,78 +411,6 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
             continue; // 必须完整覆盖该面
         regionToFaceKeys[bestRegion].push_back(f.key);
     }
-
-    // 将几何上共面的碎片 region 合并，避免边界组过碎（例如同一平面被多块识别）。
-    double gb[6] = {0, 0, 0, 0, 0, 0};
-    grid->GetBounds(gb);
-    const double diag = std::sqrt((gb[1] - gb[0]) * (gb[1] - gb[0]) +
-                                  (gb[3] - gb[2]) * (gb[3] - gb[2]) +
-                                  (gb[5] - gb[4]) * (gb[5] - gb[4]));
-    const double distTol = std::max(1e-6, diag * 1e-3);
-    const float normalCosTol = 0.995f; // 约 5.7°
-
-    QList<int> regionIds = regionToFaceKeys.keys();
-    QHash<int, int> parent;
-    for (int rid : regionIds)
-        parent[rid] = rid;
-
-    auto findRoot = [&](int x)
-    {
-        int r = x;
-        while (parent.value(r, r) != r)
-            r = parent.value(r, r);
-        while (parent.value(x, x) != x)
-        {
-            int p = parent.value(x, x);
-            parent[x] = r;
-            x = p;
-        }
-        return r;
-    };
-    auto unite = [&](int a, int b)
-    {
-        const int ra = findRoot(a);
-        const int rb = findRoot(b);
-        if (ra != rb)
-            parent[rb] = ra;
-    };
-
-    for (int i = 0; i < regionIds.size(); ++i)
-    {
-        for (int j = i + 1; j < regionIds.size(); ++j)
-        {
-            const int ri = regionIds[i];
-            const int rj = regionIds[j];
-            const RegionGeom gi = regionGeom.value(ri);
-            const RegionGeom gj = regionGeom.value(rj);
-            if (gi.sampleCount <= 0 || gj.sampleCount <= 0)
-                continue;
-
-            QVector3D ni = gi.normalSum.normalized();
-            QVector3D nj = gj.normalSum.normalized();
-            if (ni.lengthSquared() < 1e-12f || nj.lengthSquared() < 1e-12f)
-                continue;
-            if (QVector3D::dotProduct(ni, nj) < normalCosTol)
-                continue;
-
-            const QVector3D ci = gi.centroidSum / float(gi.sampleCount);
-            const QVector3D cj = gj.centroidSum / float(gj.sampleCount);
-            const double planeOffset = std::abs(double(QVector3D::dotProduct(ni, cj - ci)));
-            if (planeOffset <= distTol)
-            {
-                unite(ri, rj);
-            }
-        }
-    }
-
-    QHash<int, QVector<qint64>> mergedRegionToFaceKeys;
-    for (auto it = regionToFaceKeys.constBegin(); it != regionToFaceKeys.constEnd(); ++it)
-    {
-        const int root = findRoot(it.key());
-        auto& out = mergedRegionToFaceKeys[root];
-        out += it.value();
-    }
-    regionToFaceKeys = mergedRegionToFaceKeys;
 
     MshPickMap merged = meshService->mshPickMapSolid();
 
