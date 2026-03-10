@@ -22,8 +22,12 @@
 #include <vtkPointData.h>
 #include <vtkPolygon.h>
 #include <vtkProperty.h>
+#include <vtkRenderWindow.h>
 #include <vtkRenderWindowInteractor.h>
 #include <vtkRenderer.h>
+#include <vtkSelection.h>
+#include <vtkSelectionNode.h>
+#include <vtkUnsignedIntArray.h>
 
 namespace
 {
@@ -85,6 +89,7 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
 
     m_cellPicker = vtkSmartPointer<vtkCellPicker>::New();
     m_cellPicker->SetTolerance(0.01);
+    m_hwSelector = vtkSmartPointer<vtkHardwareSelector>::New();
 
     if (!m_visual)
         return;
@@ -129,6 +134,23 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_visual->removeProp("pick.node.preview", false);
     m_visual->addProp("pick.node.preview", m_previewSelActor, QString("{node} 预选点"),
                       QString("拾取预选点集合"), true, true);
+
+    // ================== drag rectangle overlay ==================
+    m_dragRectPts = vtkSmartPointer<vtkPoints>::New();
+    m_dragRectLines = vtkSmartPointer<vtkCellArray>::New();
+    m_dragRectPoly = vtkSmartPointer<vtkPolyData>::New();
+    m_dragRectPoly->SetPoints(m_dragRectPts);
+    m_dragRectPoly->SetLines(m_dragRectLines);
+    m_dragRectMapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
+    m_dragRectMapper->SetInputData(m_dragRectPoly);
+    m_dragRectActor = vtkSmartPointer<vtkActor2D>::New();
+    m_dragRectActor->SetMapper(m_dragRectMapper);
+    m_dragRectActor->GetProperty()->SetColor(0.1, 0.8, 1.0);
+    m_dragRectActor->GetProperty()->SetLineWidth(2.0);
+    m_dragRectActor->SetVisibility(false);
+    m_visual->removeProp("pick.drag.rect", false);
+    m_visual->addProp("pick.drag.rect", m_dragRectActor, QString("{pick} 框选框"),
+                      QString("拾取框选框"), true, true);
 
     // ================== Edge overlay (polyline) ==================
     m_edgePts = vtkSmartPointer<vtkPoints>::New();
@@ -511,21 +533,40 @@ void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clie
     int xy[2];
     iren->GetEventPosition(xy);
 
-    // 恢复单击即选中（避免出现需要双击才生效）
-    self->pickAt(xy[0], xy[1]);
+    self->m_leftDown = true;
+    self->m_dragMoved = false;
+    self->m_dragStart[0] = xy[0];
+    self->m_dragStart[1] = xy[1];
+    self->m_dragEnd[0] = xy[0];
+    self->m_dragEnd[1] = xy[1];
+
+    if (!self->isBoxSelectEnabledForActive())
+    {
+        self->pickAt(xy[0], xy[1]);
+        return;
+    }
+
+    self->updateDragRect(xy[0], xy[1], xy[0], xy[1], false);
 }
 
 void PickManager::OnMouseMove(vtkObject* caller, unsigned long, void* clientData, void*)
 {
     auto* self = static_cast<PickManager*>(clientData);
     auto iren = vtkRenderWindowInteractor::SafeDownCast(caller);
-    if (!self || !iren)
+    if (!self || !iren || !self->m_leftDown)
         return;
 
     int xy[2];
     iren->GetEventPosition(xy);
+    self->m_dragEnd[0] = xy[0];
+    self->m_dragEnd[1] = xy[1];
 
-    Q_UNUSED(xy);
+    const int dx = std::abs(self->m_dragEnd[0] - self->m_dragStart[0]);
+    const int dy = std::abs(self->m_dragEnd[1] - self->m_dragStart[1]);
+    self->m_dragMoved = self->m_dragMoved || (dx >= 3 || dy >= 3);
+
+    if (self->isBoxSelectEnabledForActive() && self->m_dragMoved)
+        self->updateDragRect(self->m_dragStart[0], self->m_dragStart[1], self->m_dragEnd[0], self->m_dragEnd[1], true);
 }
 
 void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* clientData, void*)
@@ -537,8 +578,23 @@ void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* cl
 
     int xy[2];
     iren->GetEventPosition(xy);
+    self->m_dragEnd[0] = xy[0];
+    self->m_dragEnd[1] = xy[1];
 
-    // OnLeftButtonPress 已处理点选，这里不再重复 pick，避免双触发
+    const bool useBox = self->isBoxSelectEnabledForActive();
+    const bool dragged = self->m_dragMoved || (std::abs(self->m_dragEnd[0]-self->m_dragStart[0])>=3) ||
+                         (std::abs(self->m_dragEnd[1]-self->m_dragStart[1])>=3);
+
+    if (useBox && dragged)
+        self->hardwareBoxSelect(self->m_dragStart[0], self->m_dragStart[1], self->m_dragEnd[0], self->m_dragEnd[1]);
+    else if (!useBox)
+        ;
+    else
+        self->pickAt(xy[0], xy[1]);
+
+    self->m_leftDown = false;
+    self->m_dragMoved = false;
+    self->updateDragRect(0,0,0,0,false);
 }
 
 bool PickManager::pickAt(int x, int y)
@@ -1763,6 +1819,134 @@ void PickManager::clearPreviewSelection(const QString& domain, const QString& uu
     }
     if (m_visual)
         m_visual->render();
+}
+
+void PickManager::setBoxSelectEnabled(const QString& domain, const QString& uuid, bool enabled)
+{
+    m_boxSelectEnabledByDomainUuid[domain][uuid] = enabled;
+    if (domain == m_currentDomain && uuid == m_currentUUid && !enabled)
+        updateDragRect(0, 0, 0, 0, false);
+}
+
+bool PickManager::isBoxSelectEnabledForActive() const
+{
+    if (m_currentDomain.isEmpty() || m_currentUUid.isEmpty())
+        return false;
+    return m_boxSelectEnabledByDomainUuid.value(m_currentDomain).value(m_currentUUid, false);
+}
+
+void PickManager::updateDragRect(int x0, int y0, int x1, int y1, bool visible)
+{
+    if (!m_dragRectActor || !m_visual || !m_visual->renderer())
+        return;
+
+    if (!visible)
+    {
+        m_dragRectActor->SetVisibility(false);
+        if (m_visual)
+            m_visual->render();
+        return;
+    }
+
+    auto* ren = m_visual->renderer();
+    auto* rw = ren->GetRenderWindow();
+    if (!rw)
+        return;
+    const int* sz = rw->GetSize();
+    const double w = (sz && sz[0] > 0) ? double(sz[0]) : 1.0;
+    const double h = (sz && sz[1] > 0) ? double(sz[1]) : 1.0;
+
+    auto toNdc = [&](int x, int y, double p[3])
+    {
+        p[0] = 2.0 * double(x) / w - 1.0;
+        p[1] = 2.0 * double(y) / h - 1.0;
+        p[2] = 0.0;
+    };
+
+    double p0[3], p1[3], p2[3], p3[3];
+    toNdc(x0, y0, p0);
+    toNdc(x1, y0, p1);
+    toNdc(x1, y1, p2);
+    toNdc(x0, y1, p3);
+
+    m_dragRectPts->Reset();
+    vtkIdType id0 = m_dragRectPts->InsertNextPoint(p0);
+    vtkIdType id1 = m_dragRectPts->InsertNextPoint(p1);
+    vtkIdType id2 = m_dragRectPts->InsertNextPoint(p2);
+    vtkIdType id3 = m_dragRectPts->InsertNextPoint(p3);
+
+    m_dragRectLines->Reset();
+    auto addSeg = [&](vtkIdType a, vtkIdType b)
+    {
+        vtkIdType ids[2] = {a, b};
+        m_dragRectLines->InsertNextCell(2, ids);
+    };
+    addSeg(id0, id1);
+    addSeg(id1, id2);
+    addSeg(id2, id3);
+    addSeg(id3, id0);
+
+    m_dragRectPts->Modified();
+    m_dragRectLines->Modified();
+    m_dragRectPoly->Modified();
+    m_dragRectActor->SetVisibility(true);
+    m_visual->render();
+}
+
+bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
+{
+    if (!m_visual || !m_visual->renderer() || !m_hwSelector || m_pickMode != PickMode::Node)
+        return false;
+
+    auto* ren = m_visual->renderer();
+    const int xmin = std::min(x0, x1);
+    const int xmax = std::max(x0, x1);
+    const int ymin = std::min(y0, y1);
+    const int ymax = std::max(y0, y1);
+    if (xmax - xmin < 2 || ymax - ymin < 2)
+        return false;
+
+    m_hwSelector->SetRenderer(ren);
+    m_hwSelector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_POINTS);
+    m_hwSelector->SetArea(xmin, ymin, xmax, ymax);
+
+    vtkSmartPointer<vtkSelection> sel = m_hwSelector->Select();
+    if (!sel || sel->GetNumberOfNodes() <= 0)
+        return false;
+
+    bool changed = false;
+    for (unsigned int i = 0; i < sel->GetNumberOfNodes(); ++i)
+    {
+        auto* node = sel->GetNode(i);
+        if (!node)
+            continue;
+        auto* prop = vtkProp::SafeDownCast(node->GetProperties()->Get(vtkSelectionNode::PROP()));
+        if (!prop)
+            continue;
+
+        GridKind kind;
+        if (prop == m_solidProp)
+            kind = GridKind::Solid;
+        else if (prop == m_lineProp)
+            kind = GridKind::Line;
+        else
+            continue;
+
+        auto* ids = vtkUnsignedIntArray::SafeDownCast(node->GetSelectionList());
+        if (!ids)
+            continue;
+
+        for (vtkIdType j = 0; j < ids->GetNumberOfTuples(); ++j)
+        {
+            const vtkIdType pid = vtkIdType(ids->GetValue(j));
+            setNodeSelected_NoRefresh(kind, pid, true);
+            changed = true;
+        }
+    }
+
+    if (changed)
+        markDirty(DirtyNode);
+    return changed;
 }
 
 // ===================== box select (batch) =====================
