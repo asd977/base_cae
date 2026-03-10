@@ -6,6 +6,7 @@
 #include <services/VisualWidgetService.h>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 // VTK
@@ -16,6 +17,8 @@
 #include <vtkLine.h>
 #include <vtkMapper.h>
 #include <vtkDataSetMapper.h>
+#include <vtkDataObject.h>
+#include <vtkInformation.h>
 #include <vtkFieldData.h>
 #include <vtkMath.h>
 #include <vtkPlane.h>
@@ -24,6 +27,10 @@
 #include <vtkProperty.h>
 #include <vtkRenderWindowInteractor.h>
 #include <vtkRenderer.h>
+#include <vtkHardwareSelector.h>
+#include <vtkSelection.h>
+#include <vtkSelectionNode.h>
+#include <vtkIdTypeArray.h>
 
 namespace
 {
@@ -511,8 +518,14 @@ void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clie
     int xy[2];
     iren->GetEventPosition(xy);
 
-    // 恢复单击即选中（避免出现需要双击才生效）
-    self->pickAt(xy[0], xy[1]);
+    self->m_dragStartX = xy[0];
+    self->m_dragStartY = xy[1];
+    self->m_dragMoved = false;
+    self->m_shiftSelecting = (self->m_pickMode == PickMode::Node && iren->GetShiftKey());
+
+    // Shift + 拖拽：框选；普通左键：保持单击点选
+    if (!self->m_shiftSelecting)
+        self->pickAt(xy[0], xy[1]);
 }
 
 void PickManager::OnMouseMove(vtkObject* caller, unsigned long, void* clientData, void*)
@@ -525,7 +538,15 @@ void PickManager::OnMouseMove(vtkObject* caller, unsigned long, void* clientData
     int xy[2];
     iren->GetEventPosition(xy);
 
-    Q_UNUSED(xy);
+    if (!self->m_shiftSelecting)
+        return;
+
+    constexpr int kDragThreshold = 3;
+    if (std::abs(xy[0] - self->m_dragStartX) >= kDragThreshold ||
+        std::abs(xy[1] - self->m_dragStartY) >= kDragThreshold)
+    {
+        self->m_dragMoved = true;
+    }
 }
 
 void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* clientData, void*)
@@ -538,7 +559,16 @@ void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* cl
     int xy[2];
     iren->GetEventPosition(xy);
 
-    // OnLeftButtonPress 已处理点选，这里不再重复 pick，避免双触发
+    if (self->m_shiftSelecting)
+    {
+        if (self->m_dragMoved)
+            self->boxSelectNodes(self->m_dragStartX, self->m_dragStartY, xy[0], xy[1]);
+        else
+            self->pickAt(xy[0], xy[1]);
+    }
+
+    self->m_shiftSelecting = false;
+    self->m_dragMoved = false;
 }
 
 bool PickManager::pickAt(int x, int y)
@@ -650,6 +680,111 @@ bool PickManager::pickAt(int x, int y)
     toggleSelectNode(kind, bestPid);
     return true;
 }
+
+bool PickManager::boxSelectNodes(int x0, int y0, int x1, int y1)
+{
+    if (!m_visual || m_pickMode != PickMode::Node)
+        return false;
+
+    auto* ren = m_visual->renderer();
+    if (!ren)
+        return false;
+
+    auto selector = vtkSmartPointer<vtkHardwareSelector>::New();
+    selector->SetRenderer(ren);
+    // 网格通常以面/线元渲染，直接做 POINT 关联在很多场景下拿不到结果；
+    // 这里改为先框选 CELL，再汇总 cell 的 point ids。
+    selector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_CELLS);
+    selector->SetArea(std::min(x0, x1), std::min(y0, y1), std::max(x0, x1), std::max(y0, y1));
+
+    vtkSmartPointer<vtkSelection> selection;
+    selection.TakeReference(selector->Select());
+    if (!selection)
+        return false;
+
+    bool changed = false;
+    QSet<quint64> globalVisited;
+    for (unsigned int i = 0; i < selection->GetNumberOfNodes(); ++i)
+    {
+        auto* node = selection->GetNode(i);
+        if (!node)
+            continue;
+
+        auto* ids = vtkIdTypeArray::SafeDownCast(node->GetSelectionList());
+        if (!ids || ids->GetNumberOfTuples() <= 0)
+            continue;
+
+        auto* prop = vtkProp::SafeDownCast(node->GetProperties()->Get(vtkSelectionNode::PROP()));
+
+        GridKind kind;
+        vtkDataSet* ds = nullptr;
+        if (prop && prop == m_lineProp)
+        {
+            kind = GridKind::Line;
+            ds = m_linePickDataSet ? m_linePickDataSet : dataSetFromProp(prop);
+        }
+        else if (prop && prop == m_solidProp)
+        {
+            kind = GridKind::Solid;
+            ds = m_solidPickDataSet ? m_solidPickDataSet : dataSetFromProp(prop);
+        }
+        else
+        {
+            ds = dataSetFromProp(prop);
+            if (m_gridLine && ds == m_gridLine)
+                kind = GridKind::Line;
+            else if (m_gridSolid && ds == m_gridSolid)
+                kind = GridKind::Solid;
+            else
+                continue;
+        }
+
+        if (!ds)
+            continue;
+
+        vtkDataArray* origPointArr = nullptr;
+        if (kind == GridKind::Solid)
+            origPointArr = findArray(ds->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
+
+        QSet<vtkIdType> uniquePids;
+        for (vtkIdType j = 0; j < ids->GetNumberOfTuples(); ++j)
+        {
+            const vtkIdType cellId = ids->GetValue(j);
+            vtkCell* cell = ds->GetCell(cellId);
+            if (!cell)
+                continue;
+
+            vtkIdList* ptIds = cell->GetPointIds();
+            if (!ptIds)
+                continue;
+
+            for (vtkIdType k = 0; k < ptIds->GetNumberOfIds(); ++k)
+            {
+                vtkIdType pid = ptIds->GetId(k);
+                if (origPointArr && pid >= 0 && pid < origPointArr->GetNumberOfTuples())
+                    pid = vtkIdType(origPointArr->GetTuple1(pid));
+                uniquePids.insert(pid);
+            }
+        }
+
+        for (auto it = uniquePids.begin(); it != uniquePids.end(); ++it)
+        {
+            const vtkIdType pid = *it;
+            const quint64 key = (quint64(kind == GridKind::Solid ? 1 : 0) << 63) |
+                                quint64(static_cast<unsigned long long>(pid));
+            if (globalVisited.contains(key))
+                continue;
+            globalVisited.insert(key);
+
+            toggleSelectNode(kind, pid);
+            changed = true;
+        }
+    }
+
+
+    return changed;
+}
+
 
 // ===================== coalesced rebuild/render =====================
 void PickManager::markDirty(int bits)
