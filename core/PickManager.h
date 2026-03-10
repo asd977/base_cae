@@ -131,6 +131,7 @@ class CORE_EXPORT PickManager : public QObject
     void setupPicking();
     void teardownPicking();
     bool pickAt(int x, int y);
+    bool boxSelectNodes(int x0, int y0, int x1, int y1);
 
     // ---- node ----
     void toggleSelectNode(GridKind kind, vtkIdType pid);
@@ -198,6 +199,10 @@ class CORE_EXPORT PickManager : public QObject
     unsigned long m_leftPressTag = 0;
     unsigned long m_leftReleaseTag = 0;
     unsigned long m_mouseMoveTag = 0;
+    bool m_shiftSelecting = false;
+    bool m_dragMoved = false;
+    int m_dragStartX = 0;
+    int m_dragStartY = 0;
 
     // coalesce
     int m_dirtyBits = DirtyNone;
