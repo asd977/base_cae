@@ -210,6 +210,7 @@ class CORE_EXPORT PickManager : public QObject
 
     bool m_leftDown = false;
     bool m_dragMoved = false;
+    bool m_styleDisabledByBoxSelect = false;
     int m_dragStart[2] = {0, 0};
     int m_dragEnd[2] = {0, 0};
     QHash<QString, QHash<QString, bool>> m_boxSelectEnabledByDomainUuid;

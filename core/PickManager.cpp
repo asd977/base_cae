@@ -24,6 +24,7 @@
 #include <vtkProperty.h>
 #include <vtkRenderWindow.h>
 #include <vtkRenderWindowInteractor.h>
+#include <vtkInteractorStyle.h>
 #include <vtkRenderer.h>
 #include <vtkSelection.h>
 #include <vtkSelectionNode.h>
@@ -546,6 +547,12 @@ void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clie
         return;
     }
 
+    if (auto* style = iren->GetInteractorStyle())
+    {
+        style->SetEnabled(0);
+        self->m_styleDisabledByBoxSelect = true;
+    }
+
     self->updateDragRect(xy[0], xy[1], xy[0], xy[1], false);
 }
 
@@ -591,6 +598,13 @@ void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* cl
         ;
     else
         self->pickAt(xy[0], xy[1]);
+
+    if (self->m_styleDisabledByBoxSelect)
+    {
+        if (auto* style = iren->GetInteractorStyle())
+            style->SetEnabled(1);
+        self->m_styleDisabledByBoxSelect = false;
+    }
 
     self->m_leftDown = false;
     self->m_dragMoved = false;
