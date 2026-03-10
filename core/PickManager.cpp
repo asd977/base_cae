@@ -1962,6 +1962,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
             continue;
 
         GridKind kind;
+        vtkDataSet* pickedDs = dataSetFromProp(prop);
         if (prop == m_solidProp)
             kind = GridKind::Solid;
         else if (prop == m_lineProp)
@@ -1969,13 +1970,20 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
         else
             continue;
 
+        vtkDataArray* origPointArr = nullptr;
+        if (kind == GridKind::Solid && pickedDs)
+            origPointArr = findArray(pickedDs->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
+
         vtkDataArray* selIds = vtkDataArray::SafeDownCast(node->GetSelectionList());
         if (!selIds)
             continue;
 
         for (vtkIdType j = 0; j < selIds->GetNumberOfTuples(); ++j)
         {
-            const vtkIdType pid = vtkIdType(selIds->GetComponent(j, 0));
+            const vtkIdType localPid = vtkIdType(selIds->GetComponent(j, 0));
+            vtkIdType pid = localPid;
+            if (origPointArr && localPid >= 0 && localPid < origPointArr->GetNumberOfTuples())
+                pid = vtkIdType(origPointArr->GetTuple1(localPid));
             setNodeSelected_NoRefresh(kind, pid, true);
             changed = true;
         }
