@@ -1893,10 +1893,10 @@ void PickManager::updateDragRect(int x0, int y0, int x1, int y1, bool visible)
     if (!sz || sz[0] <= 0 || sz[1] <= 0)
         return;
 
-    x0 = std::clamp(x0, 0, sz[0] - 1);
-    x1 = std::clamp(x1, 0, sz[0] - 1);
-    y0 = std::clamp(y0, 0, sz[1] - 1);
-    y1 = std::clamp(y1, 0, sz[1] - 1);
+    x0 = std::max(0, std::min(x0, sz[0] - 1));
+    x1 = std::max(0, std::min(x1, sz[0] - 1));
+    y0 = std::max(0, std::min(y0, sz[1] - 1));
+    y1 = std::max(0, std::min(y1, sz[1] - 1));
 
     double p0[3] = {double(x0), double(y0), 0.0};
     double p1[3] = {double(x1), double(y0), 0.0};
