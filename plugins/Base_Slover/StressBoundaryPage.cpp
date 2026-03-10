@@ -1,6 +1,7 @@
 ﻿#include "StressBoundaryPage.h"
 
 #include <PickManager.h>
+#include <CustomComboBox.h>
 #include <PublicConstants.h>
 #include <PublicVariables.h>
 #include <ServiceRegistry.h>
@@ -10,6 +11,7 @@
 #include <vtkCellData.h>
 #include <vtkDataArray.h>
 #include <vtkIdList.h>
+#include <vtkNew.h>
 #include <vtkPointData.h>
 #include <vtkUnstructuredGrid.h>
 
@@ -17,6 +19,8 @@
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
+#include <QPushButton>
+#include <QSet>
 #include <QSignalBlocker>
 #include <QTextStream>
 #include <algorithm>
@@ -26,11 +30,61 @@
 namespace
 {
 
-QVector<StressBoundaryPage::EdgeRow> collectRows(GridKind kind, const QString& domain,
-                                                 const QString& uuid)
+bool lessRow(const StressBoundaryPage::EdgeRow& a, const StressBoundaryPage::EdgeRow& b)
+{
+    if (a.ke1 != b.ke1)
+        return a.ke1 < b.ke1;
+    if (a.ke2 != b.ke2)
+        return a.ke2 < b.ke2;
+    if (a.jd1 != b.jd1)
+        return a.jd1 < b.jd1;
+    return a.jd2 < b.jd2;
+}
+
+StressBoundaryPage::EdgeRow makeRow(vtkUnstructuredGrid* grid, vtkDataArray* elemIdArr,
+                                    vtkDataArray* nodeIdArr, vtkIdType cellId, vtkIdType pidA,
+                                    vtkIdType pidB)
+{
+    StressBoundaryPage::EdgeRow row;
+    QSet<int> keSet;
+    const int pickedKe = elemIdArr ? int(elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
+    keSet.insert(pickedKe);
+
+    vtkNew<vtkIdList> cellsA;
+    vtkNew<vtkIdList> cellsB;
+    grid->GetPointCells(pidA, cellsA);
+    grid->GetPointCells(pidB, cellsB);
+
+    QSet<vtkIdType> byA;
+    for (vtkIdType i = 0; i < cellsA->GetNumberOfIds(); ++i)
+        byA.insert(cellsA->GetId(i));
+
+    for (vtkIdType i = 0; i < cellsB->GetNumberOfIds(); ++i)
+    {
+        const vtkIdType cid = cellsB->GetId(i);
+        if (!byA.contains(cid))
+            continue;
+        const int ke = elemIdArr ? int(elemIdArr->GetTuple1(cid)) : int(cid + 1);
+        keSet.insert(ke);
+        if (keSet.size() >= 2)
+            break;
+    }
+
+    QVector<int> kes = keSet.values().toVector();
+    std::sort(kes.begin(), kes.end());
+    row.ke1 = kes.isEmpty() ? 0 : kes[0];
+    row.ke2 = (kes.size() >= 2) ? kes[1] : 0;
+    row.jd1 = int(nodeIdArr->GetTuple1(pidA));
+    row.jd2 = int(nodeIdArr->GetTuple1(pidB));
+    if (row.jd1 > row.jd2)
+        std::swap(row.jd1, row.jd2);
+    return row;
+}
+
+QVector<StressBoundaryPage::EdgeRow> collectRowsFromEdges(GridKind kind, const QString& domain,
+                                                          const QString& uuid)
 {
     QVector<StressBoundaryPage::EdgeRow> rows;
-
     PickManager& pm = PickManager::instance();
     vtkUnstructuredGrid* grid = (kind == GridKind::Solid) ? pm.solidGrid() : pm.lineGrid();
     if (!grid)
@@ -57,7 +111,6 @@ QVector<StressBoundaryPage::EdgeRow> collectRows(GridKind kind, const QString& d
 
         vtkIdType pidA = -1;
         vtkIdType pidB = -1;
-
         if (cell->GetCellDimension() == 1 || edgeLocalId == 15)
         {
             vtkIdList* ids = cell->GetPointIds();
@@ -82,55 +135,76 @@ QVector<StressBoundaryPage::EdgeRow> collectRows(GridKind kind, const QString& d
 
         if (pidA < 0 || pidB < 0)
             continue;
-
-        QSet<int> keSet;
-        const int pickedKe = elemIdArr ? int(elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
-        keSet.insert(pickedKe);
-
-        // 通过边的两个端点，反查共享该边的单元，补齐 KE1/KE2。
-        vtkNew<vtkIdList> cellsA;
-        vtkNew<vtkIdList> cellsB;
-        grid->GetPointCells(pidA, cellsA);
-        grid->GetPointCells(pidB, cellsB);
-
-        QSet<vtkIdType> byA;
-        for (vtkIdType i = 0; i < cellsA->GetNumberOfIds(); ++i)
-            byA.insert(cellsA->GetId(i));
-
-        for (vtkIdType i = 0; i < cellsB->GetNumberOfIds(); ++i)
-        {
-            const vtkIdType cid = cellsB->GetId(i);
-            if (!byA.contains(cid))
-                continue;
-
-            const int ke = elemIdArr ? int(elemIdArr->GetTuple1(cid)) : int(cid + 1);
-            keSet.insert(ke);
-            if (keSet.size() >= 2)
-                break;
-        }
-
-        QVector<int> kes = keSet.values().toVector();
-        std::sort(kes.begin(), kes.end());
-
-        StressBoundaryPage::EdgeRow row;
-        row.ke1 = kes.isEmpty() ? 0 : kes[0];
-        row.ke2 = (kes.size() >= 2) ? kes[1] : 0;
-        row.jd1 = int(nodeIdArr->GetTuple1(pidA));
-        row.jd2 = int(nodeIdArr->GetTuple1(pidB));
-        rows.push_back(row);
+        rows.push_back(makeRow(grid, elemIdArr, nodeIdArr, cellId, pidA, pidB));
     }
 
-    std::sort(rows.begin(), rows.end(),
-              [](const StressBoundaryPage::EdgeRow& a, const StressBoundaryPage::EdgeRow& b)
-              {
-                  if (a.ke1 != b.ke1)
-                      return a.ke1 < b.ke1;
-                  if (a.ke2 != b.ke2)
-                      return a.ke2 < b.ke2;
-                  if (a.jd1 != b.jd1)
-                      return a.jd1 < b.jd1;
-                  return a.jd2 < b.jd2;
-              });
+    std::sort(rows.begin(), rows.end(), lessRow);
+    rows.erase(std::unique(rows.begin(), rows.end(),
+                           [](const StressBoundaryPage::EdgeRow& a,
+                              const StressBoundaryPage::EdgeRow& b)
+                           { return a.ke1 == b.ke1 && a.ke2 == b.ke2 && a.jd1 == b.jd1 && a.jd2 == b.jd2; }),
+               rows.end());
+    return rows;
+}
+
+QVector<StressBoundaryPage::EdgeRow> collectRowsFromFaces(GridKind kind, const QString& domain,
+                                                          const QString& uuid)
+{
+    QVector<StressBoundaryPage::EdgeRow> rows;
+    PickManager& pm = PickManager::instance();
+    vtkUnstructuredGrid* grid = (kind == GridKind::Solid) ? pm.solidGrid() : pm.lineGrid();
+    if (!grid)
+        return rows;
+
+    vtkDataArray* nodeIdArr = vtkDataArray::SafeDownCast(grid->GetPointData()->GetArray("node_id"));
+    vtkDataArray* elemIdArr = vtkDataArray::SafeDownCast(grid->GetCellData()->GetArray("elem_id"));
+    if (!nodeIdArr)
+        return rows;
+
+    const auto faceKeys = pm.getIdList(domain, uuid, PickMode::Face, kind);
+    for (vtkIdType faceKey : faceKeys)
+    {
+        const vtkIdType cellId = pm.unpackFaceCellId(faceKey);
+        const int faceLocalId = pm.unpackFaceLocalId(faceKey);
+        if (cellId < 0 || cellId >= grid->GetNumberOfCells())
+            continue;
+
+        vtkCell* cell = grid->GetCell(cellId);
+        if (!cell)
+            continue;
+
+        vtkIdList* ids = nullptr;
+        if (cell->GetCellDimension() == 2)
+            ids = cell->GetPointIds();
+        else
+        {
+            if (faceLocalId < 0 || faceLocalId >= cell->GetNumberOfFaces())
+                continue;
+            vtkCell* face = cell->GetFace(faceLocalId);
+            if (!face)
+                continue;
+            ids = face->GetPointIds();
+        }
+        if (!ids || ids->GetNumberOfIds() < 2)
+            continue;
+
+        const vtkIdType n = ids->GetNumberOfIds();
+        for (vtkIdType i = 0; i < n; ++i)
+        {
+            const vtkIdType pidA = ids->GetId(i);
+            const vtkIdType pidB = ids->GetId((i + 1) % n);
+            if (pidA < 0 || pidB < 0 || pidA == pidB)
+                continue;
+            rows.push_back(makeRow(grid, elemIdArr, nodeIdArr, cellId, pidA, pidB));
+        }
+    }
+
+    std::sort(rows.begin(), rows.end(), lessRow);
+    rows.erase(std::unique(rows.begin(), rows.end(),
+                           [](const StressBoundaryPage::EdgeRow& a,
+                              const StressBoundaryPage::EdgeRow& b)
+                           { return a.ke1 == b.ke1 && a.ke2 == b.ke2 && a.jd1 == b.jd1 && a.jd2 == b.jd2; }),
+               rows.end());
     return rows;
 }
 
@@ -147,8 +221,6 @@ StressBoundaryPage::StressBoundaryPage(const QString& pageType, const QString& b
     setupBatchGroupCombo();
 
     connect(ui->btnClear, &QPushButton::clicked, this, &StressBoundaryPage::onClearClicked);
-    connect(ui->comboBoxGroup, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &StressBoundaryPage::onGroupChanged, Qt::UniqueConnection);
 }
 
 StressBoundaryPage::~StressBoundaryPage()
@@ -159,21 +231,30 @@ StressBoundaryPage::~StressBoundaryPage()
 void StressBoundaryPage::beforeLoad()
 {
     setupBatchGroupCombo();
-    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Edge);
+    PickManager::instance().activate(getPageType(), m_uuid, currentPickMode());
 }
 
 void StressBoundaryPage::beforeUnload()
 {
-    PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Edge);
+    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().deactivate(getPageType(), m_uuid, currentPickMode());
 }
 
 QVector<StressBoundaryPage::EdgeRow> StressBoundaryPage::selectedEdgeRows()
 {
     PickManager::instance().updateStructure();
 
-    QVector<EdgeRow> rows = collectRows(GridKind::Line, getPageType(), m_uuid);
+    if (currentPickMode() == PickMode::Face)
+    {
+        QVector<EdgeRow> rows = collectRowsFromFaces(GridKind::Solid, getPageType(), m_uuid);
+        if (rows.isEmpty())
+            rows = collectRowsFromFaces(GridKind::Line, getPageType(), m_uuid);
+        return rows;
+    }
+
+    QVector<EdgeRow> rows = collectRowsFromEdges(GridKind::Line, getPageType(), m_uuid);
     if (rows.isEmpty())
-        rows = collectRows(GridKind::Solid, getPageType(), m_uuid);
+        rows = collectRowsFromEdges(GridKind::Solid, getPageType(), m_uuid);
     return rows;
 }
 
@@ -212,7 +293,8 @@ bool StressBoundaryPage::exportDatFile()
 
 void StressBoundaryPage::onClearClicked()
 {
-    PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Edge);
+    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().clearSelection(getPageType(), m_uuid, currentPickMode());
 }
 
 void StressBoundaryPage::setupBatchGroupCombo()
@@ -225,6 +307,7 @@ void StressBoundaryPage::setupBatchGroupCombo()
         return;
 
     const MshPickMap& map = meshSvc->mshPickMapSolid();
+    const int targetDim = (currentPickMode() == PickMode::Face) ? 2 : 1;
 
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
@@ -233,13 +316,67 @@ void StressBoundaryPage::setupBatchGroupCombo()
     {
         const int physId = it.key();
         const int dim = map.physIdToDim.value(physId, -1);
-        if (dim != 1)
+        if (dim != targetDim)
             continue;
         ui->comboBoxGroup->addItem(
             QString("%1  (dim=%2, id=%3)").arg(it.value()).arg(dim).arg(physId), physId);
     }
 
     ui->comboBoxGroup->blockSignals(false);
+
+    disconnect(ui->comboBoxGroup, nullptr, this, nullptr);
+    disconnect(ui->btnBatchAdd, nullptr, this, nullptr);
+
+    if (auto* groupCombo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
+    {
+        connect(groupCombo, &CustomComboBox::itemHovered, this,
+                [this](const int& row)
+                {
+                    if (row < 0 || !ui)
+                        return;
+
+                    auto* meshSvc =
+                        ServiceRegistry::instance().getService<MeshModuleControllerService>();
+                    if (!meshSvc)
+                        return;
+
+                    const MshPickMap& map = meshSvc->mshPickMapSolid();
+                    const int physId = ui->comboBoxGroup->itemData(row).toInt();
+
+                    if (currentPickMode() == PickMode::Face)
+                    {
+                        QVector<vtkIdType> faceKeys;
+                        for (qint64 k : map.bndFacePhysToFaceKeys.value(physId))
+                            faceKeys.push_back(vtkIdType(k));
+                        PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid,
+                                                                   GridKind::Solid, faceKeys);
+                    }
+                    else
+                    {
+                        QVector<vtkIdType> edgeKeys;
+                        for (qint64 k : map.bndEdgePhysToEdgeKeys.value(physId))
+                            edgeKeys.push_back(vtkIdType(k));
+                        PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid,
+                                                                   GridKind::Solid, edgeKeys);
+                    }
+                },
+                Qt::UniqueConnection);
+
+        connect(groupCombo, &CustomComboBox::dropdownClosed, this,
+                [this]()
+                {
+                    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid,
+                                                                  currentPickMode());
+                },
+                Qt::UniqueConnection);
+    }
+
+    connect(ui->btnBatchAdd, &QPushButton::clicked, this,
+            [this]()
+            {
+                onGroupChanged(ui->comboBoxGroup->currentIndex());
+            },
+            Qt::UniqueConnection);
 }
 
 void StressBoundaryPage::onGroupChanged(int index)
@@ -254,14 +391,30 @@ void StressBoundaryPage::onGroupChanged(int index)
     const MshPickMap& map = meshSvc->mshPickMapSolid();
     const int physId = ui->comboBoxGroup->itemData(index).toInt();
 
-    QVector<vtkIdType> edgeKeys;
-    const auto edgeKeysInt = map.bndEdgePhysToEdgeKeys.value(physId);
-    edgeKeys.reserve(edgeKeysInt.size());
-    for (qint64 k : edgeKeysInt)
-        edgeKeys.push_back(static_cast<vtkIdType>(k));
+    if (currentPickMode() == PickMode::Face)
+    {
+        QVector<vtkIdType> faceKeys;
+        const auto faceKeysInt = map.bndFacePhysToFaceKeys.value(physId);
+        faceKeys.reserve(faceKeysInt.size());
+        for (qint64 k : faceKeysInt)
+            faceKeys.push_back(static_cast<vtkIdType>(k));
 
-    PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid, edgeKeys,
-                                                true);
+        PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
+                                                    faceKeys, false);
+    }
+    else
+    {
+        QVector<vtkIdType> edgeKeys;
+        const auto edgeKeysInt = map.bndEdgePhysToEdgeKeys.value(physId);
+        edgeKeys.reserve(edgeKeysInt.size());
+        for (qint64 k : edgeKeysInt)
+            edgeKeys.push_back(static_cast<vtkIdType>(k));
+
+        PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
+                                                    edgeKeys, false);
+    }
+
+    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
 }
 
 QJsonObject StressBoundaryPage::saveJson()
@@ -276,10 +429,15 @@ QJsonObject StressBoundaryPage::saveJson()
             arr.append(static_cast<qint64>(id));
         return arr;
     };
+    obj["pick_mode"] = (currentPickMode() == PickMode::Face) ? "face" : "edge";
     obj["edge_solid"] = toJson(
         PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Edge, GridKind::Solid));
     obj["edge_line"] = toJson(
         PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Edge, GridKind::Line));
+    obj["face_solid"] = toJson(
+        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid));
+    obj["face_line"] = toJson(
+        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Line));
     return obj;
 }
 
@@ -309,4 +467,14 @@ void StressBoundaryPage::loadJson(const QJsonObject& obj)
                                                 fromJson(obj.value("edge_solid").toArray()), true);
     PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Line,
                                                 fromJson(obj.value("edge_line").toArray()), true);
+    PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
+                                                fromJson(obj.value("face_solid").toArray()), true);
+    PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Line,
+                                                fromJson(obj.value("face_line").toArray()), true);
+}
+
+PickMode StressBoundaryPage::currentPickMode() const
+{
+    const int dim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    return dim == 3 ? PickMode::Face : PickMode::Edge;
 }

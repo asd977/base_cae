@@ -48,7 +48,14 @@
     </widget>
    </item>
    <item>
-    <widget class="QComboBox" name="comboBoxGroup"/>
+    <widget class="CustomComboBox" name="comboBoxGroup"/>
+   </item>
+   <item>
+    <widget class="QPushButton" name="btnBatchAdd">
+     <property name="text">
+      <string>添加</string>
+     </property>
+    </widget>
    </item>
    <item>
     <widget class="QGroupBox" name="groupBoxInfo">
@@ -126,6 +133,13 @@
    </item>
   </layout>
  </widget>
+ <customwidgets>
+ <customwidget>
+  <class>CustomComboBox</class>
+  <extends>QComboBox</extends>
+  <header>CustomComboBox.h</header>
+ </customwidget>
+</customwidgets>
  <resources/>
  <connections/>
 </ui>

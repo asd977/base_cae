@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <BasePage.h>
+#include <PickManager.h>
 
 #include <QJsonObject>
 #include <QString>
@@ -42,6 +43,7 @@ class StressBoundaryPage : public BasePage
   private:
     QVector<EdgeRow> selectedEdgeRows();
     void setupBatchGroupCombo();
+    PickMode currentPickMode() const;
 
   private:
     Ui::StressBoundaryPage* ui = nullptr;
