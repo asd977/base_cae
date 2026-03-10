@@ -31,7 +31,6 @@
 #include <vtkRenderer.h>
 #include <vtkSelection.h>
 #include <vtkSelectionNode.h>
-#include <vtkUnsignedIntArray.h>
 
 namespace
 {
@@ -147,6 +146,8 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_dragRectPoly->SetLines(m_dragRectLines);
     m_dragRectMapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
     m_dragRectMapper->SetInputData(m_dragRectPoly);
+    if (auto* tcoord = m_dragRectMapper->GetTransformCoordinate())
+        tcoord->SetCoordinateSystemToDisplay();
     m_dragRectActor = vtkSmartPointer<vtkActor2D>::New();
     m_dragRectActor->SetMapper(m_dragRectMapper);
     m_dragRectActor->GetProperty()->SetColor(0.1, 0.8, 1.0);
@@ -1889,21 +1890,18 @@ void PickManager::updateDragRect(int x0, int y0, int x1, int y1, bool visible)
     if (!rw)
         return;
     const int* sz = rw->GetSize();
-    const double w = (sz && sz[0] > 0) ? double(sz[0]) : 1.0;
-    const double h = (sz && sz[1] > 0) ? double(sz[1]) : 1.0;
+    if (!sz || sz[0] <= 0 || sz[1] <= 0)
+        return;
 
-    auto toNdc = [&](int x, int y, double p[3])
-    {
-        p[0] = 2.0 * double(x) / w - 1.0;
-        p[1] = 2.0 * double(y) / h - 1.0;
-        p[2] = 0.0;
-    };
+    x0 = std::clamp(x0, 0, sz[0] - 1);
+    x1 = std::clamp(x1, 0, sz[0] - 1);
+    y0 = std::clamp(y0, 0, sz[1] - 1);
+    y1 = std::clamp(y1, 0, sz[1] - 1);
 
-    double p0[3], p1[3], p2[3], p3[3];
-    toNdc(x0, y0, p0);
-    toNdc(x1, y0, p1);
-    toNdc(x1, y1, p2);
-    toNdc(x0, y1, p3);
+    double p0[3] = {double(x0), double(y0), 0.0};
+    double p1[3] = {double(x1), double(y0), 0.0};
+    double p2[3] = {double(x1), double(y1), 0.0};
+    double p3[3] = {double(x0), double(y1), 0.0};
 
     m_dragRectPts->Reset();
     vtkIdType id0 = m_dragRectPts->InsertNextPoint(p0);
@@ -1942,6 +1940,9 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
     if (xmax - xmin < 2 || ymax - ymin < 2)
         return false;
 
+    if (auto* rw = ren->GetRenderWindow())
+        rw->Render();
+
     m_hwSelector->SetRenderer(ren);
     m_hwSelector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_POINTS);
     m_hwSelector->SetArea(xmin, ymin, xmax, ymax);
@@ -1968,13 +1969,13 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
         else
             continue;
 
-        auto* ids = vtkUnsignedIntArray::SafeDownCast(node->GetSelectionList());
-        if (!ids)
+        vtkDataArray* selIds = vtkDataArray::SafeDownCast(node->GetSelectionList());
+        if (!selIds)
             continue;
 
-        for (vtkIdType j = 0; j < ids->GetNumberOfTuples(); ++j)
+        for (vtkIdType j = 0; j < selIds->GetNumberOfTuples(); ++j)
         {
-            const vtkIdType pid = vtkIdType(ids->GetValue(j));
+            const vtkIdType pid = vtkIdType(selIds->GetComponent(j, 0));
             setNodeSelected_NoRefresh(kind, pid, true);
             changed = true;
         }
