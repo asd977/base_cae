@@ -692,7 +692,9 @@ bool PickManager::boxSelectNodes(int x0, int y0, int x1, int y1)
 
     auto selector = vtkSmartPointer<vtkHardwareSelector>::New();
     selector->SetRenderer(ren);
-    selector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_POINTS);
+    // 网格通常以面/线元渲染，直接做 POINT 关联在很多场景下拿不到结果；
+    // 这里改为先框选 CELL，再汇总 cell 的 point ids。
+    selector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_CELLS);
     selector->SetArea(std::min(x0, x1), std::min(y0, y1), std::max(x0, x1), std::max(y0, y1));
 
     vtkSmartPointer<vtkSelection> selection;
@@ -713,32 +715,53 @@ bool PickManager::boxSelectNodes(int x0, int y0, int x1, int y1)
 
         auto* prop = vtkProp::SafeDownCast(node->GetProperties()->Get(vtkSelectionNode::PROP()));
         auto* ds = dataSetFromProp(prop);
+        if (!ds)
+            continue;
 
         GridKind kind;
         if (prop && prop == m_lineProp)
             kind = GridKind::Line;
         else if (prop && prop == m_solidProp)
             kind = GridKind::Solid;
-        else if (ds && m_gridLine && ds == m_gridLine)
+        else if (m_gridLine && ds == m_gridLine)
             kind = GridKind::Line;
-        else if (ds && m_gridSolid && ds == m_gridSolid)
+        else if (m_gridSolid && ds == m_gridSolid)
             kind = GridKind::Solid;
         else
             continue;
 
         vtkDataArray* origPointArr = nullptr;
-        if (kind == GridKind::Solid && ds)
+        if (kind == GridKind::Solid)
             origPointArr = findArray(ds->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
 
+        QSet<vtkIdType> uniquePids;
         for (vtkIdType j = 0; j < ids->GetNumberOfTuples(); ++j)
         {
-            vtkIdType pid = ids->GetValue(j);
-            if (origPointArr && pid >= 0 && pid < origPointArr->GetNumberOfTuples())
-                pid = vtkIdType(origPointArr->GetTuple1(pid));
-            toggleSelectNode(kind, pid);
+            const vtkIdType cellId = ids->GetValue(j);
+            vtkCell* cell = ds->GetCell(cellId);
+            if (!cell)
+                continue;
+
+            vtkIdList* ptIds = cell->GetPointIds();
+            if (!ptIds)
+                continue;
+
+            for (vtkIdType k = 0; k < ptIds->GetNumberOfIds(); ++k)
+            {
+                vtkIdType pid = ptIds->GetId(k);
+                if (origPointArr && pid >= 0 && pid < origPointArr->GetNumberOfTuples())
+                    pid = vtkIdType(origPointArr->GetTuple1(pid));
+                uniquePids.insert(pid);
+            }
+        }
+
+        for (auto it = uniquePids.begin(); it != uniquePids.end(); ++it)
+        {
+            toggleSelectNode(kind, *it);
             changed = true;
         }
     }
+
 
     return changed;
 }
