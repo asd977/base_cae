@@ -1063,6 +1063,15 @@ bool MeshModuleController::autoGroupingBySpatialBins(int binCount, const QString
     if (span[2] > span[axis])
         axis = 2;
 
+    // 业务上「填筑层」更关注高程分层：优先按 Z 方向划分。
+    // 若 Z 跨度近乎为 0（例如二维工况），再回退到最大跨度方向。
+    if (targetArrayName.compare("LAYER", Qt::CaseInsensitive) == 0)
+    {
+        constexpr double kEps = 1e-12;
+        if (span[2] > kEps)
+            axis = 2;
+    }
+
     auto* targetArr = vtkIntArray::SafeDownCast(
         m_importedGrid->GetCellData()->GetArray(targetArrayName.toStdString().c_str()));
     if (!targetArr)
