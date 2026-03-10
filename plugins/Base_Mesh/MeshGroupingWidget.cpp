@@ -217,7 +217,9 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
     normals->ComputePointNormalsOff();
     normals->ComputeCellNormalsOn();
     normals->SplittingOn();
-    normals->SetFeatureAngle(30.0); // 立方体(90°折角)会被稳定分裂
+    // 收紧特征角，避免明显不共面的面片被归到同一边界组。
+    // 仍是常规做法：按特征角分裂 + 连通域。
+    normals->SetFeatureAngle(12.0);
     normals->ConsistencyOn();
     normals->AutoOrientNormalsOn();
     normals->Update();
