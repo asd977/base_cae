@@ -25,6 +25,9 @@
 #include <vtkRenderWindow.h>
 #include <vtkRenderWindowInteractor.h>
 #include <vtkInteractorStyle.h>
+#include <vtkInteractorObserver.h>
+#include <vtkInformation.h>
+#include <vtkProperty2D.h>
 #include <vtkRenderer.h>
 #include <vtkSelection.h>
 #include <vtkSelectionNode.h>
@@ -405,6 +408,15 @@ void PickManager::deactivate(const QString& domain, const QString& uuid, PickMod
 
     teardownPicking();
 
+    if (m_styleDisabledByBoxSelect && m_visual)
+    {
+        if (auto* iren = m_visual->interactor())
+        {
+            if (auto* style = iren->GetInteractorStyle())
+                style->SetEnabled(1);
+        }
+        m_styleDisabledByBoxSelect = false;
+    }
 
     m_currentDomain.clear();
     m_currentUUid.clear();
@@ -547,6 +559,8 @@ void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clie
         return;
     }
 
+    self->m_cbLeftPress->AbortFlagOn();
+
     if (auto* style = iren->GetInteractorStyle())
     {
         style->SetEnabled(0);
@@ -573,7 +587,11 @@ void PickManager::OnMouseMove(vtkObject* caller, unsigned long, void* clientData
     self->m_dragMoved = self->m_dragMoved || (dx >= 3 || dy >= 3);
 
     if (self->isBoxSelectEnabledForActive() && self->m_dragMoved)
-        self->updateDragRect(self->m_dragStart[0], self->m_dragStart[1], self->m_dragEnd[0], self->m_dragEnd[1], true);
+    {
+        self->m_cbMouseMove->AbortFlagOn();
+        self->updateDragRect(self->m_dragStart[0], self->m_dragStart[1], self->m_dragEnd[0],
+                             self->m_dragEnd[1], true);
+    }
 }
 
 void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* clientData, void*)
@@ -593,7 +611,11 @@ void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* cl
                          (std::abs(self->m_dragEnd[1]-self->m_dragStart[1])>=3);
 
     if (useBox && dragged)
-        self->hardwareBoxSelect(self->m_dragStart[0], self->m_dragStart[1], self->m_dragEnd[0], self->m_dragEnd[1]);
+    {
+        self->m_cbLeftRelease->AbortFlagOn();
+        self->hardwareBoxSelect(self->m_dragStart[0], self->m_dragStart[1], self->m_dragEnd[0],
+                                self->m_dragEnd[1]);
+    }
     else if (!useBox)
         ;
     else
