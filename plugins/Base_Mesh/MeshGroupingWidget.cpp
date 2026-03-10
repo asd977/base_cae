@@ -137,8 +137,7 @@ void MeshGroupingWidget::onAutoGrouping()
     }
 
     refreshGroupList();
-    QMessageBox::information(
-        this, "自动分组", "自动分组完成。目标字段已更新。\n如需边界批量选，请查看“边界组”页签。");
+    QMessageBox::information(this, "自动分组", "划分完成");
 }
 
 void MeshGroupingWidget::onRangeGrouping()
@@ -168,7 +167,7 @@ void MeshGroupingWidget::onRangeGrouping()
     }
 
     refreshGroupList();
-    QMessageBox::information(this, "范围分组", "范围分组完成，命中单元已更新。");
+    QMessageBox::information(this, "范围分组", "划分完成");
 }
 
 void MeshGroupingWidget::onRefreshGroups()
@@ -546,10 +545,7 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
     m_hasAutoBoundaryGroups = true;
     meshService->setMshPickMapSolid(merged);
 
-    QMessageBox::information(this, "边界自动分组",
-                             QString("已按外表面连通域自动识别 %1 个边界组。\n(CAE "
-                                     "常规做法：先提取外表面，再按连通域/特征角分块)")
-                                 .arg(added));
+    QMessageBox::information(this, "边界自动分组", "划分完成");
 }
 
 void MeshGroupingWidget::initializeRangeByGridBounds(bool force)
