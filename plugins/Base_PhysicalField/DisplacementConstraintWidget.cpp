@@ -8,7 +8,6 @@
 #include <services/PhySicalFieldService.h>
 #include <services/VisualWidgetService.h>
 
-#include <QCheckBox>
 #include <QDebug>
 #include <QPushButton>
 
@@ -46,8 +45,6 @@ DisplacementConstraintWidget::DisplacementConstraintWidget(QWidget* parent)
     const bool is2D = (NDIM == 2);
     Q_UNUSED(NDIM);
     Q_UNUSED(is2D);
-    if (ui->checkBoxBoxSelect)
-        ui->checkBoxBoxSelect->setChecked(false);
 }
 
 DisplacementConstraintWidget::~DisplacementConstraintWidget()
@@ -58,19 +55,8 @@ void DisplacementConstraintWidget::beforeLoad()
 {
     PickManager::instance();
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
-    PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid,
-                                                ui->checkBoxBoxSelect && ui->checkBoxBoxSelect->isChecked());
-
     QObject::connect(&PickManager::instance(), &PickManager::nodePicked, this,
                      &DisplacementConstraintWidget::onNodePicked, Qt::UniqueConnection);
-
-    QObject::disconnect(ui->checkBoxBoxSelect, nullptr, this, nullptr);
-    QObject::connect(ui->checkBoxBoxSelect, &QCheckBox::toggled, this,
-                     [this](bool on)
-                     {
-                         PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, on);
-                     },
-                     Qt::UniqueConnection);
 
     // ===== 1) 从某处拿到映射（示例：meshSvc 提供 pick map）=====
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
@@ -226,7 +212,6 @@ void DisplacementConstraintWidget::beforeUnload()
 {
     QObject::disconnect(&PickManager::instance(), &PickManager::nodePicked, this,
                         &DisplacementConstraintWidget::onNodePicked);
-    PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, false);
     PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
 }
 

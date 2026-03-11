@@ -77,13 +77,6 @@
        <widget class="CustomComboBox" name="comboBoxGroup" />
       </item>
       <item>
-       <widget class="QCheckBox" name="checkBoxBoxSelect">
-        <property name="text">
-         <string>开启框选</string>
-        </property>
-       </widget>
-      </item>
-      <item>
        <widget class="QGroupBox" name="groupBox">
         <property name="title">
          <string>约束</string>

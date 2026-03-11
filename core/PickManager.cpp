@@ -554,7 +554,8 @@ void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clie
     self->m_dragEnd[0] = xy[0];
     self->m_dragEnd[1] = xy[1];
 
-    if (!self->isBoxSelectEnabledForActive())
+    self->m_dragUseBox = (self->m_pickMode == PickMode::Node && iren->GetShiftKey() != 0);
+    if (!self->m_dragUseBox)
     {
         self->pickAt(xy[0], xy[1]);
         return;
@@ -587,7 +588,7 @@ void PickManager::OnMouseMove(vtkObject* caller, unsigned long, void* clientData
     const int dy = std::abs(self->m_dragEnd[1] - self->m_dragStart[1]);
     self->m_dragMoved = self->m_dragMoved || (dx >= 3 || dy >= 3);
 
-    if (self->isBoxSelectEnabledForActive() && self->m_dragMoved)
+    if (self->m_dragUseBox && self->m_dragMoved)
     {
         self->m_cbMouseMove->AbortFlagOn();
         self->updateDragRect(self->m_dragStart[0], self->m_dragStart[1], self->m_dragEnd[0],
@@ -607,7 +608,7 @@ void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* cl
     self->m_dragEnd[0] = xy[0];
     self->m_dragEnd[1] = xy[1];
 
-    const bool useBox = self->isBoxSelectEnabledForActive();
+    const bool useBox = self->m_dragUseBox;
     const bool dragged = self->m_dragMoved || (std::abs(self->m_dragEnd[0]-self->m_dragStart[0])>=3) ||
                          (std::abs(self->m_dragEnd[1]-self->m_dragStart[1])>=3);
 
@@ -631,6 +632,7 @@ void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* cl
 
     self->m_leftDown = false;
     self->m_dragMoved = false;
+    self->m_dragUseBox = false;
     self->updateDragRect(0,0,0,0,false);
 }
 
