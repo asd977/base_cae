@@ -43,6 +43,8 @@ DisplacementConstraintWidget::DisplacementConstraintWidget(QWidget* parent)
 
     const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     const bool is2D = (NDIM == 2);
+    Q_UNUSED(NDIM);
+    Q_UNUSED(is2D);
 }
 
 DisplacementConstraintWidget::~DisplacementConstraintWidget()
@@ -53,7 +55,6 @@ void DisplacementConstraintWidget::beforeLoad()
 {
     PickManager::instance();
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
-
     QObject::connect(&PickManager::instance(), &PickManager::nodePicked, this,
                      &DisplacementConstraintWidget::onNodePicked, Qt::UniqueConnection);
 
