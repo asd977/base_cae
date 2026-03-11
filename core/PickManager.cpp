@@ -1051,9 +1051,15 @@ bool PickManager::computePickedEdgeFromBoundary(vtkDataSet* pickedDs, vtkIdType 
         vtkIdList* eids = e->GetPointIds();
         if (!eids || eids->GetNumberOfIds() < 2)
             continue;
-        const vtkIdType e0 = eids->GetId(0);
-        const vtkIdType e1 = eids->GetId(1);
-        if ((e0 == a && e1 == b) || (e0 == b && e1 == a))
+
+        bool hasA = false, hasB = false;
+        for (vtkIdType k = 0; k < eids->GetNumberOfIds(); ++k)
+        {
+            const vtkIdType ep = eids->GetId(k);
+            hasA = hasA || (ep == a);
+            hasB = hasB || (ep == b);
+        }
+        if (hasA && hasB)
         {
             outOrigEdgeLocalId = ei;
             return true;
@@ -1331,30 +1337,43 @@ bool PickManager::computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType 
     }
 
     const int nFaces = origCell->GetNumberOfFaces();
+    int bestFace = -1;
+    int bestOverlap = -1;
     for (int fi = 0; fi < nFaces; ++fi)
     {
         vtkCell* face = origCell->GetFace(fi);
         if (!face)
             continue;
         vtkIdList* fids = face->GetPointIds();
-        if (!fids || fids->GetNumberOfIds() != ids->GetNumberOfIds())
+        if (!fids || fids->GetNumberOfIds() < 3)
             continue;
 
-        bool same = true;
+        int overlap = 0;
         for (vtkIdType i = 0; i < fids->GetNumberOfIds(); ++i)
         {
-            if (!pickedOrigPids.contains(fids->GetId(i)))
-            {
-                same = false;
-                break;
-            }
+            if (pickedOrigPids.contains(fids->GetId(i)))
+                ++overlap;
         }
-        if (same)
+
+        if (overlap > bestOverlap)
+        {
+            bestOverlap = overlap;
+            bestFace = fi;
+        }
+
+        if (overlap == fids->GetNumberOfIds())
         {
             outOrigFaceLocalId = fi;
             return true;
         }
     }
+
+    if (bestFace >= 0 && bestOverlap >= 2)
+    {
+        outOrigFaceLocalId = bestFace;
+        return true;
+    }
+
     return false;
 }
 
@@ -2042,9 +2061,12 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
                 }
                 else
                 {
-                    if (!m_gridLine || localId < 0 || localId >= m_gridLine->GetNumberOfCells())
+                    vtkIdType lineCellId = localId;
+                    if (origCellArr && localId >= 0 && localId < origCellArr->GetNumberOfTuples())
+                        lineCellId = vtkIdType(origCellArr->GetTuple1(localId));
+                    if (!m_gridLine || lineCellId < 0 || lineCellId >= m_gridLine->GetNumberOfCells())
                         continue;
-                    setFaceSelected_NoRefresh(kind, packFaceKey(localId, 15), true);
+                    setFaceSelected_NoRefresh(kind, packFaceKey(lineCellId, 15), true);
                 }
                 changed = true;
                 dirtyBits |= DirtyFace;
@@ -2094,9 +2116,12 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
                 }
                 else
                 {
-                    if (!m_gridLine || localId < 0 || localId >= m_gridLine->GetNumberOfCells())
+                    vtkIdType lineCellId = localId;
+                    if (origCellArr && localId >= 0 && localId < origCellArr->GetNumberOfTuples())
+                        lineCellId = vtkIdType(origCellArr->GetTuple1(localId));
+                    if (!m_gridLine || lineCellId < 0 || lineCellId >= m_gridLine->GetNumberOfCells())
                         continue;
-                    setEdgeSelected_NoRefresh(kind, packEdgeKey(localId, 15), true);
+                    setEdgeSelected_NoRefresh(kind, packEdgeKey(lineCellId, 15), true);
                     changed = true;
                     dirtyBits |= DirtyEdge;
                 }
