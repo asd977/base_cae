@@ -554,7 +554,7 @@ void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clie
     self->m_dragEnd[0] = xy[0];
     self->m_dragEnd[1] = xy[1];
 
-    self->m_dragUseBox = (iren->GetShiftKey() != 0);
+    self->m_dragUseBox = (self->m_pickMode == PickMode::Node && iren->GetShiftKey() != 0);
     if (!self->m_dragUseBox)
     {
         self->pickAt(xy[0], xy[1]);
@@ -993,20 +993,11 @@ bool PickManager::computePickedEdgeFromBoundary(vtkDataSet* pickedDs, vtkIdType 
     if (!origCellArr || !origPointArr)
         return false;
 
-    const vtkIdType nPickedCells = pickedDs->GetNumberOfCells();
-    if (pickedCellId < 0 || pickedCellId >= nPickedCells)
-        return false;
-
     vtkCell* pickedCell = pickedDs->GetCell(pickedCellId);
     if (!pickedCell)
         return false;
 
-    if (pickedCellId < 0 || pickedCellId >= origCellArr->GetNumberOfTuples())
-        return false;
-
     outOrigCellId = vtkIdType(origCellArr->GetTuple1(pickedCellId));
-    if (outOrigCellId < 0 || !m_gridSolid || outOrigCellId >= m_gridSolid->GetNumberOfCells())
-        return false;
     vtkCell* origCell = m_gridSolid->GetCell(outOrigCellId);
     if (!origCell)
         return false;
@@ -1032,9 +1023,6 @@ bool PickManager::computePickedEdgeFromBoundary(vtkDataSet* pickedDs, vtkIdType 
         if (d2 < best)
         {
             best = d2;
-            if (pa < 0 || pb < 0 || pa >= origPointArr->GetNumberOfTuples() ||
-                pb >= origPointArr->GetNumberOfTuples())
-                continue;
             a = vtkIdType(origPointArr->GetTuple1(pa));
             b = vtkIdType(origPointArr->GetTuple1(pb));
         }
@@ -1051,15 +1039,9 @@ bool PickManager::computePickedEdgeFromBoundary(vtkDataSet* pickedDs, vtkIdType 
         vtkIdList* eids = e->GetPointIds();
         if (!eids || eids->GetNumberOfIds() < 2)
             continue;
-
-        bool hasA = false, hasB = false;
-        for (vtkIdType k = 0; k < eids->GetNumberOfIds(); ++k)
-        {
-            const vtkIdType ep = eids->GetId(k);
-            hasA = hasA || (ep == a);
-            hasB = hasB || (ep == b);
-        }
-        if (hasA && hasB)
+        const vtkIdType e0 = eids->GetId(0);
+        const vtkIdType e1 = eids->GetId(1);
+        if ((e0 == a && e1 == b) || (e0 == b && e1 == a))
         {
             outOrigEdgeLocalId = ei;
             return true;
@@ -1306,20 +1288,11 @@ bool PickManager::computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType 
     if (!origCellArr || !origPointArr)
         return false;
 
-    const vtkIdType nPickedCells = pickedDs->GetNumberOfCells();
-    if (pickedCellId < 0 || pickedCellId >= nPickedCells)
-        return false;
-
     vtkCell* pickedCell = pickedDs->GetCell(pickedCellId);
     if (!pickedCell)
         return false;
 
-    if (pickedCellId < 0 || pickedCellId >= origCellArr->GetNumberOfTuples())
-        return false;
-
     outOrigCellId = vtkIdType(origCellArr->GetTuple1(pickedCellId));
-    if (outOrigCellId < 0 || !m_gridSolid || outOrigCellId >= m_gridSolid->GetNumberOfCells())
-        return false;
     vtkCell* origCell = m_gridSolid->GetCell(outOrigCellId);
     if (!origCell)
         return false;
@@ -1329,51 +1302,33 @@ bool PickManager::computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType 
     if (!ids || ids->GetNumberOfIds() < 3)
         return false;
     for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
-    {
-        const vtkIdType lp = ids->GetId(i);
-        if (lp < 0 || lp >= origPointArr->GetNumberOfTuples())
-            continue;
-        pickedOrigPids.insert(vtkIdType(origPointArr->GetTuple1(lp)));
-    }
+        pickedOrigPids.insert(vtkIdType(origPointArr->GetTuple1(ids->GetId(i))));
 
     const int nFaces = origCell->GetNumberOfFaces();
-    int bestFace = -1;
-    int bestOverlap = -1;
     for (int fi = 0; fi < nFaces; ++fi)
     {
         vtkCell* face = origCell->GetFace(fi);
         if (!face)
             continue;
         vtkIdList* fids = face->GetPointIds();
-        if (!fids || fids->GetNumberOfIds() < 3)
+        if (!fids || fids->GetNumberOfIds() != ids->GetNumberOfIds())
             continue;
 
-        int overlap = 0;
+        bool same = true;
         for (vtkIdType i = 0; i < fids->GetNumberOfIds(); ++i)
         {
-            if (pickedOrigPids.contains(fids->GetId(i)))
-                ++overlap;
+            if (!pickedOrigPids.contains(fids->GetId(i)))
+            {
+                same = false;
+                break;
+            }
         }
-
-        if (overlap > bestOverlap)
-        {
-            bestOverlap = overlap;
-            bestFace = fi;
-        }
-
-        if (overlap == fids->GetNumberOfIds())
+        if (same)
         {
             outOrigFaceLocalId = fi;
             return true;
         }
     }
-
-    if (bestFace >= 0 && bestOverlap >= 2)
-    {
-        outOrigFaceLocalId = bestFace;
-        return true;
-    }
-
     return false;
 }
 
@@ -1976,7 +1931,7 @@ void PickManager::updateDragRect(int x0, int y0, int x1, int y1, bool visible)
 
 bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
 {
-    if (!m_visual || !m_visual->renderer() || !m_hwSelector)
+    if (!m_visual || !m_visual->renderer() || !m_hwSelector || m_pickMode != PickMode::Node)
         return false;
 
     auto* ren = m_visual->renderer();
@@ -1991,9 +1946,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
         rw->Render();
 
     m_hwSelector->SetRenderer(ren);
-    m_hwSelector->SetFieldAssociation((m_pickMode == PickMode::Node)
-                                          ? vtkDataObject::FIELD_ASSOCIATION_POINTS
-                                          : vtkDataObject::FIELD_ASSOCIATION_CELLS);
+    m_hwSelector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_POINTS);
     m_hwSelector->SetArea(xmin, ymin, xmax, ymax);
 
     vtkSmartPointer<vtkSelection> sel = m_hwSelector->Select();
@@ -2001,14 +1954,11 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
         return false;
 
     bool changed = false;
-    int dirtyBits = DirtyNone;
-
     for (unsigned int i = 0; i < sel->GetNumberOfNodes(); ++i)
     {
         auto* node = sel->GetNode(i);
         if (!node)
             continue;
-
         auto* prop = vtkProp::SafeDownCast(node->GetProperties()->Get(vtkSelectionNode::PROP()));
         if (!prop)
             continue;
@@ -2022,162 +1972,27 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
         else
             continue;
 
+        vtkDataArray* origPointArr = nullptr;
+        if (kind == GridKind::Solid && pickedDs)
+            origPointArr = findArray(pickedDs->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
+
         vtkDataArray* selIds = vtkDataArray::SafeDownCast(node->GetSelectionList());
         if (!selIds)
             continue;
 
-        vtkDataArray* origPointArr = nullptr;
-        vtkDataArray* origCellArr = nullptr;
-        if (kind == GridKind::Solid && pickedDs)
-        {
-            origPointArr = findArray(pickedDs->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
-            origCellArr = findArray(pickedDs->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
-        }
-
         for (vtkIdType j = 0; j < selIds->GetNumberOfTuples(); ++j)
         {
-            const vtkIdType localId = vtkIdType(selIds->GetComponent(j, 0));
-
-            if (m_pickMode == PickMode::Node)
-            {
-                vtkIdType pid = localId;
-                if (origPointArr && localId >= 0 && localId < origPointArr->GetNumberOfTuples())
-                    pid = vtkIdType(origPointArr->GetTuple1(localId));
-                setNodeSelected_NoRefresh(kind, pid, true);
-                changed = true;
-                dirtyBits |= DirtyNode;
-                continue;
-            }
-
-            if (m_pickMode == PickMode::Face)
-            {
-                if (kind == GridKind::Solid)
-                {
-                    if (!pickedDs || !origCellArr || localId < 0 || localId >= origCellArr->GetNumberOfTuples())
-                        continue;
-
-                    const vtkIdType origCellId = vtkIdType(origCellArr->GetTuple1(localId));
-                    if (!m_gridSolid || origCellId < 0 || origCellId >= m_gridSolid->GetNumberOfCells())
-                        continue;
-
-                    vtkCell* pickedCell = pickedDs->GetCell(localId);
-                    vtkIdList* ids = pickedCell ? pickedCell->GetPointIds() : nullptr;
-                    if (!ids || ids->GetNumberOfIds() < 3)
-                        continue;
-
-                    double pickPos[3] = {0.0, 0.0, 0.0};
-                    for (vtkIdType kk = 0; kk < ids->GetNumberOfIds(); ++kk)
-                    {
-                        double p[3] = {0.0, 0.0, 0.0};
-                        pickedDs->GetPoint(ids->GetId(kk), p);
-                        pickPos[0] += p[0];
-                        pickPos[1] += p[1];
-                        pickPos[2] += p[2];
-                    }
-                    const double invN = 1.0 / double(ids->GetNumberOfIds());
-                    pickPos[0] *= invN;
-                    pickPos[1] *= invN;
-                    pickPos[2] *= invN;
-
-                    int faceLocalId = 15;
-                    QVector<vtkIdType> facePids;
-                    if (!computePickedFace(m_gridSolid, origCellId, pickPos, faceLocalId, facePids))
-                        continue;
-
-                    setFaceSelected_NoRefresh(kind, packFaceKey(origCellId, faceLocalId), true);
-                }
-                else
-                {
-                    vtkIdType lineCellId = localId;
-                    if (origCellArr && localId >= 0 && localId < origCellArr->GetNumberOfTuples())
-                        lineCellId = vtkIdType(origCellArr->GetTuple1(localId));
-                    if (!m_gridLine || lineCellId < 0 || lineCellId >= m_gridLine->GetNumberOfCells())
-                        continue;
-                    setFaceSelected_NoRefresh(kind, packFaceKey(lineCellId, 15), true);
-                }
-                changed = true;
-                dirtyBits |= DirtyFace;
-                continue;
-            }
-
-            if (m_pickMode == PickMode::Edge)
-            {
-                if (kind == GridKind::Solid)
-                {
-                    if (!pickedDs || !origCellArr || !origPointArr)
-                        continue;
-                    if (localId < 0 || localId >= pickedDs->GetNumberOfCells() ||
-                        localId >= origCellArr->GetNumberOfTuples())
-                        continue;
-
-                    const vtkIdType origCellId = vtkIdType(origCellArr->GetTuple1(localId));
-                    if (!m_gridSolid || origCellId < 0 || origCellId >= m_gridSolid->GetNumberOfCells())
-                        continue;
-
-                    vtkCell* pickedCell = pickedDs->GetCell(localId);
-                    vtkCell* origCell = m_gridSolid->GetCell(origCellId);
-                    if (!pickedCell || !origCell)
-                        continue;
-
-                    vtkIdList* ids = pickedCell->GetPointIds();
-                    if (!ids || ids->GetNumberOfIds() < 2)
-                        continue;
-
-                    const vtkIdType nIds = ids->GetNumberOfIds();
-                    const bool closedLoop = (pickedCell->GetCellDimension() > 1);
-                    const vtkIdType nSegs = closedLoop ? nIds : (nIds - 1);
-                    for (vtkIdType si = 0; si < nSegs; ++si)
-                    {
-                        const vtkIdType pa = ids->GetId(si);
-                        const vtkIdType pb = ids->GetId((si + 1) % nIds);
-                        if (pa < 0 || pb < 0 || pa >= origPointArr->GetNumberOfTuples() ||
-                            pb >= origPointArr->GetNumberOfTuples())
-                            continue;
-
-                        const vtkIdType a = vtkIdType(origPointArr->GetTuple1(pa));
-                        const vtkIdType b = vtkIdType(origPointArr->GetTuple1(pb));
-
-                        const int nEdges = origCell->GetNumberOfEdges();
-                        for (int ei = 0; ei < nEdges; ++ei)
-                        {
-                            vtkCell* e = origCell->GetEdge(ei);
-                            vtkIdList* eids = e ? e->GetPointIds() : nullptr;
-                            if (!eids || eids->GetNumberOfIds() < 2)
-                                continue;
-
-                            bool hasA = false, hasB = false;
-                            for (vtkIdType k = 0; k < eids->GetNumberOfIds(); ++k)
-                            {
-                                const vtkIdType ep = eids->GetId(k);
-                                hasA = hasA || (ep == a);
-                                hasB = hasB || (ep == b);
-                            }
-                            if (!hasA || !hasB)
-                                continue;
-
-                            setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, ei), true);
-                            changed = true;
-                            dirtyBits |= DirtyEdge;
-                        }
-                    }
-                }
-                else
-                {
-                    vtkIdType lineCellId = localId;
-                    if (origCellArr && localId >= 0 && localId < origCellArr->GetNumberOfTuples())
-                        lineCellId = vtkIdType(origCellArr->GetTuple1(localId));
-                    if (!m_gridLine || lineCellId < 0 || lineCellId >= m_gridLine->GetNumberOfCells())
-                        continue;
-                    setEdgeSelected_NoRefresh(kind, packEdgeKey(lineCellId, 15), true);
-                    changed = true;
-                    dirtyBits |= DirtyEdge;
-                }
-            }
+            const vtkIdType localPid = vtkIdType(selIds->GetComponent(j, 0));
+            vtkIdType pid = localPid;
+            if (origPointArr && localPid >= 0 && localPid < origPointArr->GetNumberOfTuples())
+                pid = vtkIdType(origPointArr->GetTuple1(localPid));
+            setNodeSelected_NoRefresh(kind, pid, true);
+            changed = true;
         }
     }
 
     if (changed)
-        markDirty(dirtyBits);
+        markDirty(DirtyNode);
     return changed;
 }
 
