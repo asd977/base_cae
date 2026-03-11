@@ -15,13 +15,17 @@
 #include <vtkCallbackCommand.h>
 #include <vtkCellArray.h>
 #include <vtkCellPicker.h>
+#include <vtkCoordinate.h>
 #include <vtkDataArray.h>
 #include <vtkDataSet.h>
+#include <vtkHardwareSelector.h>
 #include <vtkIntArray.h>
+#include <vtkPolyDataMapper2D.h>
 #include <vtkPoints.h>
 #include <vtkPolyData.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkProp.h>
+#include <vtkActor2D.h>
 #include <vtkSmartPointer.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkVertexGlyphFilter.h>
@@ -120,6 +124,7 @@ class CORE_EXPORT PickManager : public QObject
     void setPreviewFaceKeys(const QString& domain, const QString& uuid, GridKind kind,
                            const QVector<vtkIdType>& faceKeys);
     void clearPreviewSelection(const QString& domain, const QString& uuid, PickMode mode);
+    void setBoxSelectEnabled(const QString& domain, const QString& uuid, bool enabled);
 
   private:
     explicit PickManager(QObject* parent = nullptr);
@@ -131,6 +136,9 @@ class CORE_EXPORT PickManager : public QObject
     void setupPicking();
     void teardownPicking();
     bool pickAt(int x, int y);
+    bool hardwareBoxSelect(int x0, int y0, int x1, int y1);
+    void updateDragRect(int x0, int y0, int x1, int y1, bool visible);
+    bool isBoxSelectEnabledForActive() const;
 
     // ---- node ----
     void toggleSelectNode(GridKind kind, vtkIdType pid);
@@ -195,9 +203,24 @@ class CORE_EXPORT PickManager : public QObject
     vtkSmartPointer<vtkCallbackCommand> m_cbMouseMove;
 
     vtkSmartPointer<vtkCellPicker> m_cellPicker;
+    vtkSmartPointer<vtkHardwareSelector> m_hwSelector;
     unsigned long m_leftPressTag = 0;
     unsigned long m_leftReleaseTag = 0;
     unsigned long m_mouseMoveTag = 0;
+
+    bool m_leftDown = false;
+    bool m_dragMoved = false;
+    bool m_dragUseBox = false;
+    bool m_styleDisabledByBoxSelect = false;
+    int m_dragStart[2] = {0, 0};
+    int m_dragEnd[2] = {0, 0};
+    QHash<QString, QHash<QString, bool>> m_boxSelectEnabledByDomainUuid;
+
+    vtkSmartPointer<vtkPoints> m_dragRectPts;
+    vtkSmartPointer<vtkCellArray> m_dragRectLines;
+    vtkSmartPointer<vtkPolyData> m_dragRectPoly;
+    vtkSmartPointer<vtkPolyDataMapper2D> m_dragRectMapper;
+    vtkSmartPointer<vtkActor2D> m_dragRectActor;
 
     // coalesce
     int m_dirtyBits = DirtyNone;
