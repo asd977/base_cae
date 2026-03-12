@@ -2015,21 +2015,25 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
         };
 
         bool changedByRaster = false;
-        const int step = 4;
-        for (int y = ymin; y <= ymax; y += step)
-            for (int x = xmin; x <= xmax; x += step)
-                changedByRaster = pickAndAccumulate(x, y) || changedByRaster;
+        const int width = xmax - xmin + 1;
+        const int height = ymax - ymin + 1;
+        const int targetSamples = 6000;
+        const int step = std::max(2, int(std::sqrt(double(width * height) / double(targetSamples))));
 
+        QVector<int> xs;
+        QVector<int> ys;
         for (int x = xmin; x <= xmax; x += step)
-        {
-            changedByRaster = pickAndAccumulate(x, ymin) || changedByRaster;
-            changedByRaster = pickAndAccumulate(x, ymax) || changedByRaster;
-        }
+            xs.push_back(x);
         for (int y = ymin; y <= ymax; y += step)
-        {
-            changedByRaster = pickAndAccumulate(xmin, y) || changedByRaster;
-            changedByRaster = pickAndAccumulate(xmax, y) || changedByRaster;
-        }
+            ys.push_back(y);
+        if (xs.isEmpty() || xs.back() != xmax)
+            xs.push_back(xmax);
+        if (ys.isEmpty() || ys.back() != ymax)
+            ys.push_back(ymax);
+
+        for (int y : ys)
+            for (int x : xs)
+                changedByRaster = pickAndAccumulate(x, y) || changedByRaster;
 
         if (changedByRaster)
         {
