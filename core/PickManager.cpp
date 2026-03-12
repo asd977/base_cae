@@ -1957,8 +1957,29 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
     m_hwSelector->SetArea(xmin, ymin, xmax, ymax);
 
     vtkSmartPointer<vtkSelection> sel = m_hwSelector->Select();
-    if (!sel || sel->GetNumberOfNodes() <= 0)
+
+    auto hasAnyActiveSelection = [&]() -> bool
+    {
+        if (m_currentDomain.isEmpty() || m_currentUUid.isEmpty())
+            return false;
+        if (m_pickMode == PickMode::Node)
+            return !m_pointsSolidByDomainUuid.value(m_currentDomain).value(m_currentUUid).isEmpty() ||
+                   !m_pointsLineByDomainUuid.value(m_currentDomain).value(m_currentUUid).isEmpty();
+        if (m_pickMode == PickMode::Edge)
+            return !m_edgesSolidByDomainUuid.value(m_currentDomain).value(m_currentUUid).isEmpty() ||
+                   !m_edgesLineByDomainUuid.value(m_currentDomain).value(m_currentUUid).isEmpty();
+        if (m_pickMode == PickMode::Face)
+            return !m_facesSolidByDomainUuid.value(m_currentDomain).value(m_currentUUid).isEmpty() ||
+                   !m_facesLineByDomainUuid.value(m_currentDomain).value(m_currentUUid).isEmpty();
         return false;
+    };
+
+    const bool hadSelectionBefore = hasAnyActiveSelection();
+    if (hadSelectionBefore && !m_currentDomain.isEmpty() && !m_currentUUid.isEmpty())
+        clearSelection(m_currentDomain, m_currentUUid, m_pickMode);
+
+    if (!sel || sel->GetNumberOfNodes() <= 0)
+        return hadSelectionBefore;
 
     bool changed = false;
     for (unsigned int i = 0; i < sel->GetNumberOfNodes(); ++i)
