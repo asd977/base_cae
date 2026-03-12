@@ -1948,6 +1948,111 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
     if (auto* rw = ren->GetRenderWindow())
         rw->Render();
 
+    if (m_pickMode == PickMode::Edge || m_pickMode == PickMode::Face)
+    {
+        if (!m_cellPicker)
+            return false;
+
+        if (!m_currentDomain.isEmpty() && !m_currentUUid.isEmpty())
+            clearSelection(m_currentDomain, m_currentUUid, m_pickMode);
+
+        QSet<quint64> seenHits;
+        auto pickAndAccumulate = [&](int sx, int sy) -> bool
+        {
+            if (!m_cellPicker->Pick(sx, sy, 0.0, ren))
+                return false;
+
+            vtkIdType cellId = m_cellPicker->GetCellId();
+            if (cellId < 0)
+                return false;
+
+            vtkProp* pickedProp = m_cellPicker->GetViewProp();
+            const bool isLine = (pickedProp && pickedProp == m_lineProp);
+            const bool isSolid = (pickedProp && pickedProp == m_solidProp);
+
+            GridKind kind;
+            if (isLine)
+                kind = GridKind::Line;
+            else if (isSolid)
+                kind = GridKind::Solid;
+            else
+                return false;
+
+            const quint64 kindTag = (kind == GridKind::Solid) ? 1ULL : 2ULL;
+            const quint64 hitKey = (kindTag << 56) | quint64(cellId & 0x00FFFFFFFFFFFFFFLL);
+            if (seenHits.contains(hitKey))
+                return false;
+            seenHits.insert(hitKey);
+
+            vtkDataSet* ds = m_cellPicker->GetDataSet();
+            vtkCell* cell = ds ? ds->GetCell(cellId) : nullptr;
+            if (!cell)
+                return false;
+
+            double pickPos[3] = {0.0, 0.0, 0.0};
+            m_cellPicker->GetPickPosition(pickPos);
+
+            if (m_pickMode == PickMode::Face)
+            {
+                if (kind != GridKind::Solid)
+                    return false;
+                vtkIdType origCellId = -1;
+                int origFaceLocalId = 15;
+                if (!computePickedFaceFromBoundary(ds, cellId, origCellId, origFaceLocalId))
+                    return false;
+                setFaceSelected_NoRefresh(kind, packFaceKey(origCellId, origFaceLocalId), true);
+                return true;
+            }
+
+            if (kind == GridKind::Solid)
+            {
+                vtkIdType origCellId = -1;
+                int origEdgeLocalId = 15;
+                if (!computePickedEdgeFromBoundary(ds, cellId, pickPos, origCellId, origEdgeLocalId))
+                    return false;
+                setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, origEdgeLocalId), true);
+                return true;
+            }
+
+            auto* grid = vtkUnstructuredGrid::SafeDownCast(ds);
+            int edgeLocalId = 15;
+            QVector<vtkIdType> edgePids;
+            if (!grid || !computePickedEdge(grid, cellId, pickPos, edgeLocalId, edgePids))
+                return false;
+            setEdgeSelected_NoRefresh(kind, packEdgeKey(cellId, edgeLocalId), true);
+            return true;
+        };
+
+        bool changedByRaster = false;
+        const int width = xmax - xmin + 1;
+        const int height = ymax - ymin + 1;
+        const int targetSamples = 1800;
+        const int step = std::max(3, int(std::sqrt(double(width * height) / double(targetSamples))));
+
+        QVector<int> xs;
+        QVector<int> ys;
+        for (int x = xmin; x <= xmax; x += step)
+            xs.push_back(x);
+        for (int y = ymin; y <= ymax; y += step)
+            ys.push_back(y);
+        if (xs.isEmpty() || xs.back() != xmax)
+            xs.push_back(xmax);
+        if (ys.isEmpty() || ys.back() != ymax)
+            ys.push_back(ymax);
+
+        for (int y : ys)
+            for (int x : xs)
+                changedByRaster = pickAndAccumulate(x, y) || changedByRaster;
+
+        if (changedByRaster)
+        {
+            if (m_pickMode == PickMode::Edge)
+                markDirty(DirtyEdge);
+            else
+                markDirty(DirtyFace);
+        }
+        return changedByRaster;
+    }
 
     m_hwSelector->SetRenderer(ren);
     const int fieldAssociation = (m_pickMode == PickMode::Node)
