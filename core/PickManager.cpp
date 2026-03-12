@@ -2057,7 +2057,9 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
                 vtkIdType cellIdForKey = -1;
                 int faceLocalIdForKey = 15;
 
-                if (origCellArr && m_gridSolid)
+                const bool useBoundaryMapping =
+                    (pickedDs && pickedDs != m_gridSolid && origPointArr && origCellArr && m_gridSolid);
+                if (useBoundaryMapping)
                 {
                     vtkIdType origCellId = -1;
                     int origFaceLocalId = 15;
@@ -2090,7 +2092,9 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
                 if (!ren)
                     continue;
 
-                if (!origPointArr || !origCellArr || !m_gridSolid)
+                const bool useBoundaryMapping =
+                    (pickedDs && pickedDs != m_gridSolid && origPointArr && origCellArr && m_gridSolid);
+                if (!useBoundaryMapping)
                 {
                     auto* solidGrid = vtkUnstructuredGrid::SafeDownCast(pickedDs);
                     if (!solidGrid || solidGrid != m_gridSolid)
