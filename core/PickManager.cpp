@@ -6,6 +6,7 @@
 #include <services/VisualWidgetService.h>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 // VTK
@@ -2046,7 +2047,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
 
             if (kind == GridKind::Solid)
             {
-                if (!origPointArr || !origCellArr || !m_gridSolid)
+                if (!origPointArr || !origCellArr || !m_gridSolid || !ren)
                     continue;
 
                 vtkIdType origCellId = vtkIdType(origCellArr->GetTuple1(localCellId));
@@ -2054,6 +2055,17 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
                 vtkCell* origCell = m_gridSolid->GetCell(origCellId);
                 if (!boundaryCell || !origCell)
                     continue;
+
+                auto isDisplayPointInRect = [&](const double wp[3]) -> bool
+                {
+                    ren->SetWorldPoint(wp[0], wp[1], wp[2], 1.0);
+                    ren->WorldToDisplay();
+                    double dp[3] = {0.0, 0.0, 0.0};
+                    ren->GetDisplayPoint(dp);
+                    const int sx = int(std::lround(dp[0]));
+                    const int sy = int(std::lround(dp[1]));
+                    return sx >= xmin && sx <= xmax && sy >= ymin && sy <= ymax;
+                };
 
                 auto mapLocalEdgeByEndpoints = [&](vtkIdType a, vtkIdType b) -> int
                 {
@@ -2086,6 +2098,16 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
                     const vtkIdType pbLocal = ids->GetId((si + 1) % nIds);
                     if (paLocal < 0 || pbLocal < 0 || paLocal >= origPointArr->GetNumberOfTuples() ||
                         pbLocal >= origPointArr->GetNumberOfTuples())
+                        continue;
+
+                    double p0[3] = {0.0, 0.0, 0.0};
+                    double p1[3] = {0.0, 0.0, 0.0};
+                    pickedDs->GetPoint(paLocal, p0);
+                    pickedDs->GetPoint(pbLocal, p1);
+                    const double pm[3] = {(p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5,
+                                          (p0[2] + p1[2]) * 0.5};
+                    if (!isDisplayPointInRect(p0) && !isDisplayPointInRect(p1) &&
+                        !isDisplayPointInRect(pm))
                         continue;
 
                     const vtkIdType pa = vtkIdType(origPointArr->GetTuple1(paLocal));
