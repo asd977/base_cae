@@ -1954,6 +1954,8 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
         if (!m_cellPicker)
             return false;
 
+        QSet<quint64> seenHits;
+
         auto pickAndAccumulate = [&](int sx, int sy) -> bool
         {
             if (!m_cellPicker->Pick(sx, sy, 0.0, ren))
@@ -1974,6 +1976,12 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
                 kind = GridKind::Solid;
             else
                 return false;
+
+            const quint64 kindTag = (kind == GridKind::Solid) ? 1ULL : 2ULL;
+            const quint64 hitKey = (kindTag << 56) | quint64(cellId & 0x00FFFFFFFFFFFFFFLL);
+            if (seenHits.contains(hitKey))
+                return false;
+            seenHits.insert(hitKey);
 
             vtkDataSet* ds = m_cellPicker->GetDataSet();
             vtkCell* cell = ds ? ds->GetCell(cellId) : nullptr;
@@ -2017,8 +2025,8 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
         bool changedByRaster = false;
         const int width = xmax - xmin + 1;
         const int height = ymax - ymin + 1;
-        const int targetSamples = 6000;
-        const int step = std::max(2, int(std::sqrt(double(width * height) / double(targetSamples))));
+        const int targetSamples = 1800;
+        const int step = std::max(3, int(std::sqrt(double(width * height) / double(targetSamples))));
 
         QVector<int> xs;
         QVector<int> ys;
