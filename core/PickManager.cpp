@@ -2083,10 +2083,8 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
                     continue;
                 }
 
-                vtkIdType origCellId = vtkIdType(origCellArr->GetTuple1(localCellId));
                 vtkCell* boundaryCell = pickedDs->GetCell(localCellId);
-                vtkCell* origCell = m_gridSolid->GetCell(origCellId);
-                if (!boundaryCell || !origCell)
+                if (!boundaryCell)
                     continue;
 
                 auto worldToDisplay2D = [&](const double wp[3], double& sx, double& sy)
@@ -2161,25 +2159,6 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
                     return false;
                 };
 
-                auto mapLocalEdgeByEndpoints = [&](vtkIdType a, vtkIdType b) -> int
-                {
-                    const int nEdges = origCell->GetNumberOfEdges();
-                    for (int ei = 0; ei < nEdges; ++ei)
-                    {
-                        vtkCell* e = origCell->GetEdge(ei);
-                        if (!e)
-                            continue;
-                        vtkIdList* eids = e->GetPointIds();
-                        if (!eids || eids->GetNumberOfIds() < 2)
-                            continue;
-                        const vtkIdType e0 = eids->GetId(0);
-                        const vtkIdType e1 = eids->GetId(1);
-                        if ((e0 == a && e1 == b) || (e0 == b && e1 == a))
-                            return ei;
-                    }
-                    return -1;
-                };
-
                 vtkIdList* ids = boundaryCell->GetPointIds();
                 if (!ids || ids->GetNumberOfIds() < 2)
                     continue;
@@ -2190,8 +2169,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
                 {
                     const vtkIdType paLocal = ids->GetId(si);
                     const vtkIdType pbLocal = ids->GetId((si + 1) % nIds);
-                    if (paLocal < 0 || pbLocal < 0 || paLocal >= origPointArr->GetNumberOfTuples() ||
-                        pbLocal >= origPointArr->GetNumberOfTuples())
+                    if (paLocal < 0 || pbLocal < 0)
                         continue;
 
                     double p0[3] = {0.0, 0.0, 0.0};
@@ -2205,12 +2183,14 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
                     if (!segIntersectsRect(sx0, sy0, sx1, sy1))
                         continue;
 
-                    const vtkIdType pa = vtkIdType(origPointArr->GetTuple1(paLocal));
-                    const vtkIdType pb = vtkIdType(origPointArr->GetTuple1(pbLocal));
-                    const int edgeLocalId = mapLocalEdgeByEndpoints(pa, pb);
-                    if (edgeLocalId < 0)
+                    const double segMid[3] = {(p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5,
+                                              (p0[2] + p1[2]) * 0.5};
+                    vtkIdType mappedCellId = -1;
+                    int mappedEdgeLocalId = 15;
+                    if (!computePickedEdgeFromBoundary(pickedDs, localCellId, segMid, mappedCellId,
+                                                       mappedEdgeLocalId))
                         continue;
-                    setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, edgeLocalId), true);
+                    setEdgeSelected_NoRefresh(kind, packEdgeKey(mappedCellId, mappedEdgeLocalId), true);
                     changed = true;
                 }
                 continue;
