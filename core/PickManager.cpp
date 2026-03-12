@@ -6,6 +6,7 @@
 #include <services/VisualWidgetService.h>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 // VTK
@@ -554,7 +555,9 @@ void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clie
     self->m_dragEnd[0] = xy[0];
     self->m_dragEnd[1] = xy[1];
 
-    self->m_dragUseBox = (self->m_pickMode == PickMode::Node && iren->GetShiftKey() != 0);
+    self->m_dragUseBox = (iren->GetShiftKey() != 0) &&
+                         (self->m_pickMode == PickMode::Node || self->m_pickMode == PickMode::Edge ||
+                          self->m_pickMode == PickMode::Face);
     if (!self->m_dragUseBox)
     {
         self->pickAt(xy[0], xy[1]);
@@ -1931,7 +1934,7 @@ void PickManager::updateDragRect(int x0, int y0, int x1, int y1, bool visible)
 
 bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
 {
-    if (!m_visual || !m_visual->renderer() || !m_hwSelector || m_pickMode != PickMode::Node)
+    if (!m_visual || !m_visual->renderer() || !m_hwSelector)
         return false;
 
     auto* ren = m_visual->renderer();
@@ -1945,8 +1948,104 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
     if (auto* rw = ren->GetRenderWindow())
         rw->Render();
 
+    // Edge/Face 改用“栅格化单点拾取”策略，复用与点选一致的映射路径，避免框选ID空间失配
+    if (m_pickMode == PickMode::Edge || m_pickMode == PickMode::Face)
+    {
+        if (!m_cellPicker)
+            return false;
+
+        auto pickAndAccumulate = [&](int sx, int sy) -> bool
+        {
+            if (!m_cellPicker->Pick(sx, sy, 0.0, ren))
+                return false;
+
+            vtkIdType cellId = m_cellPicker->GetCellId();
+            if (cellId < 0)
+                return false;
+
+            vtkProp* pickedProp = m_cellPicker->GetViewProp();
+            const bool isLine = (pickedProp && pickedProp == m_lineProp);
+            const bool isSolid = (pickedProp && pickedProp == m_solidProp);
+
+            GridKind kind;
+            if (isLine)
+                kind = GridKind::Line;
+            else if (isSolid)
+                kind = GridKind::Solid;
+            else
+                return false;
+
+            vtkDataSet* ds = m_cellPicker->GetDataSet();
+            vtkCell* cell = ds ? ds->GetCell(cellId) : nullptr;
+            if (!cell)
+                return false;
+
+            double pickPos[3] = {0.0, 0.0, 0.0};
+            m_cellPicker->GetPickPosition(pickPos);
+
+            if (m_pickMode == PickMode::Face)
+            {
+                if (kind != GridKind::Solid)
+                    return false;
+                vtkIdType origCellId = -1;
+                int origFaceLocalId = 15;
+                if (!computePickedFaceFromBoundary(ds, cellId, origCellId, origFaceLocalId))
+                    return false;
+                setFaceSelected_NoRefresh(kind, packFaceKey(origCellId, origFaceLocalId), true);
+                return true;
+            }
+
+            if (kind == GridKind::Solid)
+            {
+                vtkIdType origCellId = -1;
+                int origEdgeLocalId = 15;
+                if (!computePickedEdgeFromBoundary(ds, cellId, pickPos, origCellId, origEdgeLocalId))
+                    return false;
+                setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, origEdgeLocalId), true);
+                return true;
+            }
+
+            auto* grid = vtkUnstructuredGrid::SafeDownCast(ds);
+            int edgeLocalId = 15;
+            QVector<vtkIdType> edgePids;
+            if (!grid || !computePickedEdge(grid, cellId, pickPos, edgeLocalId, edgePids))
+                return false;
+            setEdgeSelected_NoRefresh(kind, packEdgeKey(cellId, edgeLocalId), true);
+            return true;
+        };
+
+        bool changedByRaster = false;
+        const int step = 4;
+        for (int y = ymin; y <= ymax; y += step)
+            for (int x = xmin; x <= xmax; x += step)
+                changedByRaster = pickAndAccumulate(x, y) || changedByRaster;
+
+        for (int x = xmin; x <= xmax; x += step)
+        {
+            changedByRaster = pickAndAccumulate(x, ymin) || changedByRaster;
+            changedByRaster = pickAndAccumulate(x, ymax) || changedByRaster;
+        }
+        for (int y = ymin; y <= ymax; y += step)
+        {
+            changedByRaster = pickAndAccumulate(xmin, y) || changedByRaster;
+            changedByRaster = pickAndAccumulate(xmax, y) || changedByRaster;
+        }
+
+        if (changedByRaster)
+        {
+            if (m_pickMode == PickMode::Edge)
+                markDirty(DirtyEdge);
+            else
+                markDirty(DirtyFace);
+        }
+        return changedByRaster;
+    }
+
     m_hwSelector->SetRenderer(ren);
-    m_hwSelector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_POINTS);
+    const int fieldAssociation = (m_pickMode == PickMode::Node)
+                                     ? vtkDataObject::FIELD_ASSOCIATION_POINTS
+                                     : vtkDataObject::FIELD_ASSOCIATION_CELLS;
+    m_hwSelector->SetFieldAssociation(fieldAssociation);
     m_hwSelector->SetArea(xmin, ymin, xmax, ymax);
 
     vtkSmartPointer<vtkSelection> sel = m_hwSelector->Select();
@@ -1972,27 +2071,138 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
         else
             continue;
 
-        vtkDataArray* origPointArr = nullptr;
-        if (kind == GridKind::Solid && pickedDs)
-            origPointArr = findArray(pickedDs->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
-
         vtkDataArray* selIds = vtkDataArray::SafeDownCast(node->GetSelectionList());
         if (!selIds)
             continue;
 
+        vtkDataArray* origPointArr = nullptr;
+        vtkDataArray* origCellArr = nullptr;
+        if (kind == GridKind::Solid && pickedDs)
+        {
+            origPointArr = findArray(pickedDs->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
+            origCellArr = findArray(pickedDs->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
+        }
+
         for (vtkIdType j = 0; j < selIds->GetNumberOfTuples(); ++j)
         {
-            const vtkIdType localPid = vtkIdType(selIds->GetComponent(j, 0));
-            vtkIdType pid = localPid;
-            if (origPointArr && localPid >= 0 && localPid < origPointArr->GetNumberOfTuples())
-                pid = vtkIdType(origPointArr->GetTuple1(localPid));
-            setNodeSelected_NoRefresh(kind, pid, true);
+            if (m_pickMode == PickMode::Node)
+            {
+                const vtkIdType localPid = vtkIdType(selIds->GetComponent(j, 0));
+                vtkIdType pid = localPid;
+                if (origPointArr && localPid >= 0 && localPid < origPointArr->GetNumberOfTuples())
+                    pid = vtkIdType(origPointArr->GetTuple1(localPid));
+                setNodeSelected_NoRefresh(kind, pid, true);
+                changed = true;
+                continue;
+            }
+
+            const vtkIdType localCellId = vtkIdType(selIds->GetComponent(j, 0));
+            if (!pickedDs || localCellId < 0 || localCellId >= pickedDs->GetNumberOfCells())
+                continue;
+
+            double pickPos[3] = {0.0, 0.0, 0.0};
+            if (vtkCell* pickedCell = pickedDs->GetCell(localCellId))
+            {
+                vtkIdList* ids = pickedCell->GetPointIds();
+                if (ids && ids->GetNumberOfIds() > 0)
+                {
+                    for (vtkIdType pi = 0; pi < ids->GetNumberOfIds(); ++pi)
+                    {
+                        double p[3];
+                        pickedDs->GetPoint(ids->GetId(pi), p);
+                        pickPos[0] += p[0];
+                        pickPos[1] += p[1];
+                        pickPos[2] += p[2];
+                    }
+                    const double invN = 1.0 / double(ids->GetNumberOfIds());
+                    pickPos[0] *= invN;
+                    pickPos[1] *= invN;
+                    pickPos[2] *= invN;
+                }
+            }
+
+            if (m_pickMode == PickMode::Face)
+            {
+                if (kind != GridKind::Solid)
+                    continue;
+
+                if (!origCellArr || !m_gridSolid)
+                    continue;
+
+                vtkIdType origCellId = -1;
+                int origFaceLocalId = 15;
+                if (!computePickedFaceFromBoundary(pickedDs, localCellId, origCellId, origFaceLocalId))
+                    continue;
+
+                setFaceSelected_NoRefresh(kind, packFaceKey(origCellId, origFaceLocalId), true);
+                changed = true;
+                continue;
+            }
+
+            if (m_pickMode != PickMode::Edge)
+                continue;
+
+            if (kind == GridKind::Solid)
+            {
+                if (!ren)
+                    continue;
+
+                if (!origPointArr || !origCellArr || !m_gridSolid)
+                    continue;
+
+                vtkCell* boundaryCell = pickedDs->GetCell(localCellId);
+                if (!boundaryCell)
+                    continue;
+
+                vtkIdList* ids = boundaryCell->GetPointIds();
+                if (!ids || ids->GetNumberOfIds() < 2)
+                    continue;
+
+                const vtkIdType nIds = ids->GetNumberOfIds();
+                const vtkIdType nSegs = (boundaryCell->GetCellDimension() > 1) ? nIds : (nIds - 1);
+                for (vtkIdType si = 0; si < nSegs; ++si)
+                {
+                    const vtkIdType paLocal = ids->GetId(si);
+                    const vtkIdType pbLocal = ids->GetId((si + 1) % nIds);
+                    if (paLocal < 0 || pbLocal < 0)
+                        continue;
+
+                    double p0[3] = {0.0, 0.0, 0.0};
+                    double p1[3] = {0.0, 0.0, 0.0};
+                    pickedDs->GetPoint(paLocal, p0);
+                    pickedDs->GetPoint(pbLocal, p1);
+                    const double segMid[3] = {(p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5,
+                                              (p0[2] + p1[2]) * 0.5};
+                    vtkIdType mappedCellId = -1;
+                    int mappedEdgeLocalId = 15;
+                    if (!computePickedEdgeFromBoundary(pickedDs, localCellId, segMid, mappedCellId,
+                                                       mappedEdgeLocalId))
+                        continue;
+                    setEdgeSelected_NoRefresh(kind, packEdgeKey(mappedCellId, mappedEdgeLocalId), true);
+                    changed = true;
+                }
+                continue;
+            }
+
+            auto* lineGrid = vtkUnstructuredGrid::SafeDownCast(pickedDs);
+            int edgeLocalId = 15;
+            QVector<vtkIdType> edgePids;
+            if (!lineGrid || !computePickedEdge(lineGrid, localCellId, pickPos, edgeLocalId, edgePids))
+                continue;
+            setEdgeSelected_NoRefresh(kind, packEdgeKey(localCellId, edgeLocalId), true);
             changed = true;
         }
     }
 
     if (changed)
-        markDirty(DirtyNode);
+    {
+        if (m_pickMode == PickMode::Node)
+            markDirty(DirtyNode);
+        else if (m_pickMode == PickMode::Edge)
+            markDirty(DirtyEdge);
+        else if (m_pickMode == PickMode::Face)
+            markDirty(DirtyFace);
+    }
     return changed;
 }
 
