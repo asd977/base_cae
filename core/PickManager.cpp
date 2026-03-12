@@ -6,6 +6,7 @@
 #include <services/VisualWidgetService.h>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 // VTK
@@ -2065,6 +2066,66 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
                 if (!ids || ids->GetNumberOfIds() < 2)
                     continue;
 
+                auto worldToDisplay2D = [&](const double wp[3], double& sx, double& sy)
+                {
+                    ren->SetWorldPoint(wp[0], wp[1], wp[2], 1.0);
+                    ren->WorldToDisplay();
+                    double dp[3] = {0.0, 0.0, 0.0};
+                    ren->GetDisplayPoint(dp);
+                    sx = dp[0];
+                    sy = dp[1];
+                };
+
+                auto insideRect = [&](double sx, double sy) -> bool
+                {
+                    return sx >= xmin && sx <= xmax && sy >= ymin && sy <= ymax;
+                };
+
+                auto cross = [](double ax, double ay, double bx, double by, double cx, double cy) -> double
+                {
+                    return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+                };
+
+                auto onSeg = [](double ax, double ay, double bx, double by, double px, double py) -> bool
+                {
+                    const double eps = 1e-9;
+                    return px >= std::min(ax, bx) - eps && px <= std::max(ax, bx) + eps &&
+                           py >= std::min(ay, by) - eps && py <= std::max(ay, by) + eps;
+                };
+
+                auto segIntersects = [&](double ax, double ay, double bx, double by, double cx, double cy,
+                                         double dx, double dy) -> bool
+                {
+                    const double o1 = cross(ax, ay, bx, by, cx, cy);
+                    const double o2 = cross(ax, ay, bx, by, dx, dy);
+                    const double o3 = cross(cx, cy, dx, dy, ax, ay);
+                    const double o4 = cross(cx, cy, dx, dy, bx, by);
+                    const double eps = 1e-9;
+                    if (((o1 > eps && o2 < -eps) || (o1 < -eps && o2 > eps)) &&
+                        ((o3 > eps && o4 < -eps) || (o3 < -eps && o4 > eps)))
+                        return true;
+                    if (std::abs(o1) <= eps && onSeg(ax, ay, bx, by, cx, cy))
+                        return true;
+                    if (std::abs(o2) <= eps && onSeg(ax, ay, bx, by, dx, dy))
+                        return true;
+                    if (std::abs(o3) <= eps && onSeg(cx, cy, dx, dy, ax, ay))
+                        return true;
+                    if (std::abs(o4) <= eps && onSeg(cx, cy, dx, dy, bx, by))
+                        return true;
+                    return false;
+                };
+
+                auto segmentInRect = [&](double x0, double y0, double x1, double y1) -> bool
+                {
+                    if (insideRect(x0, y0) || insideRect(x1, y1))
+                        return true;
+                    const double rx0 = xmin, ry0 = ymin, rx1 = xmax, ry1 = ymax;
+                    return segIntersects(x0, y0, x1, y1, rx0, ry0, rx1, ry0) ||
+                           segIntersects(x0, y0, x1, y1, rx1, ry0, rx1, ry1) ||
+                           segIntersects(x0, y0, x1, y1, rx1, ry1, rx0, ry1) ||
+                           segIntersects(x0, y0, x1, y1, rx0, ry1, rx0, ry0);
+                };
+
                 const vtkIdType nIds = ids->GetNumberOfIds();
                 const vtkIdType nSegs = (boundaryCell->GetCellDimension() > 1) ? nIds : (nIds - 1);
                 for (vtkIdType si = 0; si < nSegs; ++si)
@@ -2078,6 +2139,13 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
                     double p1[3] = {0.0, 0.0, 0.0};
                     pickedDs->GetPoint(paLocal, p0);
                     pickedDs->GetPoint(pbLocal, p1);
+
+                    double sx0 = 0.0, sy0 = 0.0, sx1 = 0.0, sy1 = 0.0;
+                    worldToDisplay2D(p0, sx0, sy0);
+                    worldToDisplay2D(p1, sx1, sy1);
+                    if (!segmentInRect(sx0, sy0, sx1, sy1))
+                        continue;
+
                     const double segMid[3] = {(p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5,
                                               (p0[2] + p1[2]) * 0.5};
                     vtkIdType mappedCellId = -1;
