@@ -2030,12 +2030,13 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
 
             if (m_pickMode == PickMode::Face)
             {
-                if (kind != GridKind::Solid)
+                if (kind != GridKind::Solid || !origCellArr || !m_gridSolid)
                     continue;
 
-                vtkIdType origCellId = -1;
+                vtkIdType origCellId = vtkIdType(origCellArr->GetTuple1(localCellId));
                 int origFaceLocalId = 15;
-                if (!computePickedFaceFromBoundary(pickedDs, localCellId, origCellId, origFaceLocalId))
+                QVector<vtkIdType> facePids;
+                if (!computePickedFace(m_gridSolid, origCellId, pickPos, origFaceLocalId, facePids))
                     continue;
                 setFaceSelected_NoRefresh(kind, packFaceKey(origCellId, origFaceLocalId), true);
                 changed = true;
@@ -2056,15 +2057,76 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
                 if (!boundaryCell || !origCell)
                     continue;
 
-                auto isDisplayPointInRect = [&](const double wp[3]) -> bool
+                auto worldToDisplay2D = [&](const double wp[3], double& sx, double& sy)
                 {
                     ren->SetWorldPoint(wp[0], wp[1], wp[2], 1.0);
                     ren->WorldToDisplay();
                     double dp[3] = {0.0, 0.0, 0.0};
                     ren->GetDisplayPoint(dp);
-                    const int sx = int(std::lround(dp[0]));
-                    const int sy = int(std::lround(dp[1]));
+                    sx = dp[0];
+                    sy = dp[1];
+                };
+
+                auto isDisplayPointInRect = [&](double sx, double sy) -> bool
+                {
                     return sx >= xmin && sx <= xmax && sy >= ymin && sy <= ymax;
+                };
+
+                auto orient = [](double ax, double ay, double bx, double by, double cx, double cy) -> double
+                {
+                    return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+                };
+
+                auto onSeg = [](double ax, double ay, double bx, double by, double px, double py) -> bool
+                {
+                    const double eps = 1e-9;
+                    return px >= std::min(ax, bx) - eps && px <= std::max(ax, bx) + eps &&
+                           py >= std::min(ay, by) - eps && py <= std::max(ay, by) + eps;
+                };
+
+                auto segIntersect = [&](double ax, double ay, double bx, double by, double cx, double cy,
+                                        double dx, double dy) -> bool
+                {
+                    const double o1 = orient(ax, ay, bx, by, cx, cy);
+                    const double o2 = orient(ax, ay, bx, by, dx, dy);
+                    const double o3 = orient(cx, cy, dx, dy, ax, ay);
+                    const double o4 = orient(cx, cy, dx, dy, bx, by);
+                    const double eps = 1e-9;
+
+                    if ((o1 > eps && o2 < -eps || o1 < -eps && o2 > eps) &&
+                        (o3 > eps && o4 < -eps || o3 < -eps && o4 > eps))
+                        return true;
+
+                    if (std::abs(o1) <= eps && onSeg(ax, ay, bx, by, cx, cy))
+                        return true;
+                    if (std::abs(o2) <= eps && onSeg(ax, ay, bx, by, dx, dy))
+                        return true;
+                    if (std::abs(o3) <= eps && onSeg(cx, cy, dx, dy, ax, ay))
+                        return true;
+                    if (std::abs(o4) <= eps && onSeg(cx, cy, dx, dy, bx, by))
+                        return true;
+                    return false;
+                };
+
+                auto segIntersectsRect = [&](double x0, double y0, double x1, double y1) -> bool
+                {
+                    if (isDisplayPointInRect(x0, y0) || isDisplayPointInRect(x1, y1))
+                        return true;
+
+                    const double rx0 = xmin;
+                    const double ry0 = ymin;
+                    const double rx1 = xmax;
+                    const double ry1 = ymax;
+
+                    if (segIntersect(x0, y0, x1, y1, rx0, ry0, rx1, ry0))
+                        return true;
+                    if (segIntersect(x0, y0, x1, y1, rx1, ry0, rx1, ry1))
+                        return true;
+                    if (segIntersect(x0, y0, x1, y1, rx1, ry1, rx0, ry1))
+                        return true;
+                    if (segIntersect(x0, y0, x1, y1, rx0, ry1, rx0, ry0))
+                        return true;
+                    return false;
                 };
 
                 auto mapLocalEdgeByEndpoints = [&](vtkIdType a, vtkIdType b) -> int
@@ -2104,10 +2166,11 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
                     double p1[3] = {0.0, 0.0, 0.0};
                     pickedDs->GetPoint(paLocal, p0);
                     pickedDs->GetPoint(pbLocal, p1);
-                    const double pm[3] = {(p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5,
-                                          (p0[2] + p1[2]) * 0.5};
-                    if (!isDisplayPointInRect(p0) && !isDisplayPointInRect(p1) &&
-                        !isDisplayPointInRect(pm))
+                    double sx0 = 0.0, sy0 = 0.0;
+                    double sx1 = 0.0, sy1 = 0.0;
+                    worldToDisplay2D(p0, sx0, sy0);
+                    worldToDisplay2D(p1, sx1, sy1);
+                    if (!segIntersectsRect(sx0, sy0, sx1, sy1))
                         continue;
 
                     const vtkIdType pa = vtkIdType(origPointArr->GetTuple1(paLocal));
