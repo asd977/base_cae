@@ -2055,15 +2055,30 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
                 if (kind != GridKind::Solid)
                     continue;
 
-                if (!origCellArr || !m_gridSolid)
-                    continue;
+                vtkIdType cellIdForKey = -1;
+                int faceLocalIdForKey = 15;
 
-                vtkIdType origCellId = -1;
-                int origFaceLocalId = 15;
-                if (!computePickedFaceFromBoundary(pickedDs, localCellId, origCellId, origFaceLocalId))
-                    continue;
+                if (origCellArr && m_gridSolid)
+                {
+                    vtkIdType origCellId = -1;
+                    int origFaceLocalId = 15;
+                    if (!computePickedFaceFromBoundary(pickedDs, localCellId, origCellId, origFaceLocalId))
+                        continue;
+                    cellIdForKey = origCellId;
+                    faceLocalIdForKey = origFaceLocalId;
+                }
+                else
+                {
+                    auto* solidGrid = vtkUnstructuredGrid::SafeDownCast(pickedDs);
+                    if (!solidGrid || solidGrid != m_gridSolid)
+                        continue;
+                    QVector<vtkIdType> facePids;
+                    if (!computePickedFace(solidGrid, localCellId, pickPos, faceLocalIdForKey, facePids))
+                        continue;
+                    cellIdForKey = localCellId;
+                }
 
-                setFaceSelected_NoRefresh(kind, packFaceKey(origCellId, origFaceLocalId), true);
+                setFaceSelected_NoRefresh(kind, packFaceKey(cellIdForKey, faceLocalIdForKey), true);
                 changed = true;
                 continue;
             }
@@ -2077,7 +2092,18 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
                     continue;
 
                 if (!origPointArr || !origCellArr || !m_gridSolid)
+                {
+                    auto* solidGrid = vtkUnstructuredGrid::SafeDownCast(pickedDs);
+                    if (!solidGrid || solidGrid != m_gridSolid)
+                        continue;
+                    int edgeLocalId = 15;
+                    QVector<vtkIdType> edgePids;
+                    if (!computePickedEdge(solidGrid, localCellId, pickPos, edgeLocalId, edgePids))
+                        continue;
+                    setEdgeSelected_NoRefresh(kind, packEdgeKey(localCellId, edgeLocalId), true);
+                    changed = true;
                     continue;
+                }
 
                 vtkCell* boundaryCell = pickedDs->GetCell(localCellId);
                 if (!boundaryCell)
