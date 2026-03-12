@@ -2048,9 +2048,10 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
                 else
                 {
                     auto* solidGrid = vtkUnstructuredGrid::SafeDownCast(pickedDs);
+                    if (!solidGrid || solidGrid != m_gridSolid)
+                        continue;
                     QVector<vtkIdType> facePids;
-                    if (!solidGrid || !computePickedFace(solidGrid, localCellId, pickPos, faceLocalIdForKey,
-                                                         facePids))
+                    if (!computePickedFace(solidGrid, localCellId, pickPos, faceLocalIdForKey, facePids))
                         continue;
                     cellIdForKey = localCellId;
                 }
@@ -2071,10 +2072,11 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
                 if (!origPointArr || !origCellArr || !m_gridSolid)
                 {
                     auto* solidGrid = vtkUnstructuredGrid::SafeDownCast(pickedDs);
+                    if (!solidGrid || solidGrid != m_gridSolid)
+                        continue;
                     int edgeLocalId = 15;
                     QVector<vtkIdType> edgePids;
-                    if (!solidGrid || !computePickedEdge(solidGrid, localCellId, pickPos, edgeLocalId,
-                                                         edgePids))
+                    if (!computePickedEdge(solidGrid, localCellId, pickPos, edgeLocalId, edgePids))
                         continue;
                     setEdgeSelected_NoRefresh(kind, packEdgeKey(localCellId, edgeLocalId), true);
                     changed = true;
