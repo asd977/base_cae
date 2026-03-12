@@ -2023,26 +2023,36 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
             return true;
         };
 
-        bool changedByRaster = false;
         const int width = xmax - xmin + 1;
         const int height = ymax - ymin + 1;
-        const int targetSamples = 1800;
-        const int step = std::max(3, int(std::sqrt(double(width * height) / double(targetSamples))));
 
-        QVector<int> xs;
-        QVector<int> ys;
-        for (int x = xmin; x <= xmax; x += step)
-            xs.push_back(x);
-        for (int y = ymin; y <= ymax; y += step)
-            ys.push_back(y);
-        if (xs.isEmpty() || xs.back() != xmax)
-            xs.push_back(xmax);
-        if (ys.isEmpty() || ys.back() != ymax)
-            ys.push_back(ymax);
+        auto sampleWithBudget = [&](int targetSamples, int minStep) -> bool
+        {
+            const int step = std::max(minStep,
+                                      int(std::sqrt(double(width * height) / double(targetSamples))));
 
-        for (int y : ys)
-            for (int x : xs)
-                changedByRaster = pickAndAccumulate(x, y) || changedByRaster;
+            QVector<int> xs;
+            QVector<int> ys;
+            for (int x = xmin; x <= xmax; x += step)
+                xs.push_back(x);
+            for (int y = ymin; y <= ymax; y += step)
+                ys.push_back(y);
+            if (xs.isEmpty() || xs.back() != xmax)
+                xs.push_back(xmax);
+            if (ys.isEmpty() || ys.back() != ymax)
+                ys.push_back(ymax);
+
+            bool changedLocal = false;
+            for (int y : ys)
+                for (int x : xs)
+                    changedLocal = pickAndAccumulate(x, y) || changedLocal;
+            return changedLocal;
+        };
+
+        // 两阶段：先粗采样保证流畅，未命中时再细采样补偿
+        bool changedByRaster = sampleWithBudget(700, 5);
+        if (!changedByRaster)
+            changedByRaster = sampleWithBudget(1700, 3);
 
         if (changedByRaster)
         {
