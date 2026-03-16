@@ -378,6 +378,7 @@ bool PhysicalField::saveProject()
             PickManager::instance().getIdList(domain, uuid, PickMode::Face, GridKind::Solid));
         item["face_line"] =
             toJson(PickManager::instance().getIdList(domain, uuid, PickMode::Face, GridKind::Line));
+        item["page_data"] = node->getPage()->saveJson();
         items.append(item);
     }
     root["items"] = items;
@@ -481,6 +482,7 @@ bool PhysicalField::loadProject()
         ProjectNode* node = createNodeByKind(kind, title, uuid);
         if (!node)
             continue;
+        node->getPage()->loadJson(item.value("page_data").toObject());
         restoreNodeSelection(node, item);
     }
 
