@@ -42,6 +42,8 @@ class DisplacementConstraintWidget : public BasePage
 
     void beforeLoad() override;
     void beforeUnload() override;
+    QJsonObject saveJson() override;
+    void loadJson(const QJsonObject& obj) override;
 
     int uxFlag();
     int uyFlag();

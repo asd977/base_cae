@@ -208,6 +208,23 @@ void DisplacementConstraintWidget::onGroupChanged(int index)
     // ui->SelectedCountLabel->setText(QString::number(pids.size()));
 }
 
+
+QJsonObject DisplacementConstraintWidget::saveJson()
+{
+    QJsonObject obj;
+    obj["ux"] = ui->UXLineEdit->text();
+    obj["uy"] = ui->UYLineEdit->text();
+    obj["uz"] = ui->UZLineEdit->text();
+    return obj;
+}
+
+void DisplacementConstraintWidget::loadJson(const QJsonObject& obj)
+{
+    ui->UXLineEdit->setText(obj.value("ux").toString(ui->UXLineEdit->text()));
+    ui->UYLineEdit->setText(obj.value("uy").toString(ui->UYLineEdit->text()));
+    ui->UZLineEdit->setText(obj.value("uz").toString(ui->UZLineEdit->text()));
+}
+
 void DisplacementConstraintWidget::beforeUnload()
 {
     QObject::disconnect(&PickManager::instance(), &PickManager::nodePicked, this,
