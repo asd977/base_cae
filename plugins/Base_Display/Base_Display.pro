@@ -4,17 +4,11 @@ QT += widgets core
 
 INCLUDEPATH += $$PWD/../../interfaces
 
-HEADERS += \
-
-SOURCES += \
-
-
 FORMS += \
-    SolidMechanicsDisplay.ui \
+    SolidMechanicsDisplay.ui
 
 RESOURCES += \
     ../../res.qrc
-
 
 msvc
 {
