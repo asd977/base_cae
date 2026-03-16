@@ -12,7 +12,8 @@ SUBDIRS += \
     Base_Slover \
     Base_GlobalParameter \
     Base_SurrogateModel \
-    Base_PhysicalField
+    Base_PhysicalField \
+    Base_Display
 
 msvc {
     QMAKE_CFLAGS += /utf-8
