@@ -4,76 +4,44 @@
  <widget class="QWidget" name="SolidBoundaryConditionPage">
   <property name="geometry"><rect><x>0</x><y>0</y><width>1360</width><height>860</height></rect></property>
   <layout class="QVBoxLayout" name="rootLayout">
+   <item><widget class="QLabel" name="titleLabel"><property name="styleSheet"><string notr="true">font-size:20px;font-weight:700;padding:6px 0;</string></property><property name="text"><string>固体力学场边界条件设置页</string></property></widget></item>
    <item>
-    <widget class="QLabel" name="titleLabel">
-     <property name="styleSheet"><string notr="true">font-size:20px;font-weight:700;padding:6px 0;</string></property>
-     <property name="text"><string>固体力学场边界条件设置页</string></property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QGroupBox" name="listGroup">
-     <property name="title"><string>边界条件列表（上）</string></property>
+    <widget class="QGroupBox" name="listGroup"><property name="title"><string>边界条件列表（上）</string></property>
      <layout class="QVBoxLayout" name="listLayout">
-      <item>
-       <widget class="QTableWidget" name="configTable">
-        <property name="rowCount"><number>2</number></property>
-        <property name="columnCount"><number>4</number></property>
+      <item><widget class="QTableWidget" name="configTable"><property name="rowCount"><number>2</number></property><property name="columnCount"><number>4</number></property>
         <column><property name="text"><string>序号</string></property></column>
         <column><property name="text"><string>边界名称</string></property></column>
         <column><property name="text"><string>内容</string></property></column>
         <column><property name="text"><string>备注</string></property></column>
-        <item row="0" column="0"><property name="text"><string>1</string></property></item>
-        <item row="0" column="1"><property name="text"><string>辊支撑</string></property></item>
-        <item row="0" column="2"><property name="text"><string>法向位移约束，切向滑移允许</string></property></item>
-        <item row="0" column="3"><property name="text"><string>用于滚轮接触或导轨约束</string></property></item>
-        <item row="1" column="0"><property name="text"><string>2</string></property></item>
-        <item row="1" column="1"><property name="text"><string>周期性条件</string></property></item>
-        <item row="1" column="2"><property name="text"><string>主/从边界位移映射，保证周期连续</string></property></item>
-        <item row="1" column="3"><property name="text"><string>用于阵列/重复结构</string></property></item>
-       </widget>
-      </item>
+      </widget></item>
      </layout>
     </widget>
    </item>
    <item>
-    <widget class="QGroupBox" name="propertyGroup">
-     <property name="title"><string>属性设置区（下）</string></property>
+    <widget class="QGroupBox" name="propertyGroup"><property name="title"><string>属性设置区（下）</string></property>
      <layout class="QGridLayout" name="propertyLayout">
       <item row="0" column="0"><widget class="QLabel" name="toolbarLabel"><property name="text"><string>边界条件管理</string></property></widget></item>
       <item row="0" column="1" colspan="3"><widget class="QWidget" name="toolbarWidget"><layout class="QHBoxLayout" name="toolbarLayout"><item><widget class="QPushButton" name="newButton"><property name="text"><string>新建</string></property></widget></item><item><widget class="QPushButton" name="editButton"><property name="text"><string>编辑</string></property></widget></item><item><widget class="QPushButton" name="deleteButton"><property name="text"><string>删除</string></property></widget></item><item><widget class="QPushButton" name="pickButton"><property name="text"><string>目标边界选择</string></property></widget></item><item><widget class="QCheckBox" name="highlightCheck"><property name="text"><string>边界高亮</string></property><property name="checked"><bool>true</bool></property></widget></item></layout></widget></item>
-
       <item row="1" column="0"><widget class="QLabel" name="typeLabel"><property name="text"><string>边界条件类型</string></property></widget></item>
       <item row="1" column="1"><widget class="QComboBox" name="typeCombo"><item><property name="text"><string>辊支撑</string></property></item><item><property name="text"><string>周期性条件</string></property></item></widget></item>
-
-      <item row="2" column="0"><widget class="QLabel" name="rollerConditionLabel"><property name="text"><string>辊支撑适用条件</string></property></widget></item>
-      <item row="2" column="1"><widget class="QLineEdit" name="rollerConditionLine"><property name="text"><string>边界法向位移=0，切向自由</string></property></widget></item>
-
-      <item row="3" column="0"><widget class="QLabel" name="rollerParamLabel"><property name="text"><string>辊支撑参数</string></property></widget></item>
+      <item row="2" column="0"><widget class="QLabel" name="rollerCondLabel"><property name="text"><string>辊支撑适用条件</string></property></widget></item>
+      <item row="2" column="1"><widget class="QLineEdit" name="rollerCondLine"><property name="text"><string>法向位移约束, 切向自由</string></property></widget></item>
+      <item row="3" column="0"><widget class="QLabel" name="rollerParamLabel"><property name="text"><string>辊支撑参数区</string></property></widget></item>
       <item row="3" column="1"><widget class="QPlainTextEdit" name="rollerParamText"><property name="plainText"><string>作用边界: Boundary 12,13
-法向: 自动法向
-切向滑移: 允许</string></property><property name="maximumHeight"><number>80</number></property></widget></item>
-
-      <item row="4" column="0"><widget class="QLabel" name="periodicConditionLabel"><property name="text"><string>周期性条件适用条件</string></property></widget></item>
-      <item row="4" column="1"><widget class="QLineEdit" name="periodicConditionLine"><property name="text"><string>几何重复单元，载荷/位移满足周期映射</string></property></widget></item>
-
+法向: 自动法向</string></property><property name="maximumHeight"><number>80</number></property></widget></item>
+      <item row="4" column="0"><widget class="QLabel" name="periodicCondLabel"><property name="text"><string>周期性条件适用条件</string></property></widget></item>
+      <item row="4" column="1"><widget class="QLineEdit" name="periodicCondLine"><property name="text"><string>重复单元结构且满足位移映射</string></property></widget></item>
       <item row="5" column="0"><widget class="QLabel" name="masterLabel"><property name="text"><string>主边界选择</string></property></widget></item>
       <item row="5" column="1"><widget class="QLineEdit" name="masterLine"><property name="text"><string>Boundary 21</string></property></widget></item>
-
       <item row="6" column="0"><widget class="QLabel" name="slaveLabel"><property name="text"><string>从边界选择</string></property></widget></item>
       <item row="6" column="1"><widget class="QLineEdit" name="slaveLine"><property name="text"><string>Boundary 34</string></property></widget></item>
-
       <item row="7" column="0"><widget class="QLabel" name="mapLabel"><property name="text"><string>周期方向或映射关系</string></property></widget></item>
-      <item row="7" column="1"><widget class="QPlainTextEdit" name="mapText"><property name="plainText"><string>X 方向平移映射: u_master(x)=u_slave(x+L)
+      <item row="7" column="1"><widget class="QPlainTextEdit" name="mapText"><property name="plainText"><string>X方向平移映射: u_master(x)=u_slave(x+L)
 容差: 1e-6</string></property><property name="maximumHeight"><number>80</number></property></widget></item>
      </layout>
     </widget>
    </item>
-   <item>
-    <spacer name="verticalSpacer">
-     <property name="orientation"><enum>Qt::Vertical</enum></property>
-     <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
-    </spacer>
-   </item>
+   <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
   </layout>
  </widget>
  <resources/>
