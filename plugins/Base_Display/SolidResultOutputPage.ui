@@ -6,30 +6,20 @@
   <layout class="QVBoxLayout" name="rootLayout">
    <item><widget class="QLabel" name="titleLabel"><property name="styleSheet"><string notr="true">font-size:20px;font-weight:700;padding:6px 0;</string></property><property name="text"><string>固体力学场结果输出设置页</string></property></widget></item>
    <item>
-    <widget class="QSplitter" name="mainSplitter">
-     <property name="orientation"><enum>Qt::Horizontal</enum></property>
-     <widget class="QWidget" name="leftPanel">
-      <layout class="QVBoxLayout" name="leftLayout">
-       <item><widget class="QLabel" name="navTitle"><property name="text"><string>工程树 / 页面导航</string></property></widget></item>
-       <item><widget class="QTreeWidget" name="navTree"><column><property name="text"><string>模块</string></property></column></widget></item>
-      </layout>
-     </widget>
-     <widget class="QWidget" name="rightPanel">
-      <layout class="QVBoxLayout" name="rightLayout">
-       <item>
-        <widget class="QGroupBox" name="listGroup"><property name="title"><string>配置列表（上）</string></property>
-         <layout class="QVBoxLayout" name="listLayout">
-          <item><widget class="QTableWidget" name="configTable">              <column><property name="text"><string>输出项</string></property></column>
-              <column><property name="text"><string>类型</string></property></column>
-              <column><property name="text"><string>目标区域</string></property></column>
-              <column><property name="text"><string>默认显示</string></property></column>
-            </widget></item>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="propertyGroup"><property name="title"><string>属性设置区（下）</string></property>
-         <layout class="QGridLayout" name="propertyLayout">
+    <widget class="QGroupBox" name="listGroup"><property name="title"><string>配置列表（上）</string></property>
+     <layout class="QVBoxLayout" name="listLayout">
+      <item><widget class="QTableWidget" name="configTable">
+          <column><property name="text"><string>输出项</string></property></column>
+          <column><property name="text"><string>类型</string></property></column>
+          <column><property name="text"><string>目标区域</string></property></column>
+          <column><property name="text"><string>默认显示</string></property></column>
+      </widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="propertyGroup"><property name="title"><string>属性设置区（下）</string></property>
+     <layout class="QGridLayout" name="propertyLayout">
             <item row="0" column="0"><widget class="QLabel" name="f1Label"><property name="text"><string>输出变量选择</string></property></widget></item>
             <item row="0" column="1"><widget class="QComboBox" name="f1Combo1"/></item>
             <item row="1" column="0"><widget class="QLabel" name="f2Label"><property name="text"><string>位移</string></property></widget></item>
@@ -48,12 +38,14 @@
             <item row="7" column="1"><widget class="QComboBox" name="f8Combo8"/></item>
             <item row="8" column="0"><widget class="QLabel" name="f9Label"><property name="text"><string>输出文件组织方式</string></property></widget></item>
             <item row="8" column="1"><widget class="QComboBox" name="f9Combo9"/></item>
-         </layout>
-        </widget>
-       </item>
-      </layout>
-     </widget>
+     </layout>
     </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation"><enum>Qt::Vertical</enum></property>
+     <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
+    </spacer>
    </item>
   </layout>
  </widget>

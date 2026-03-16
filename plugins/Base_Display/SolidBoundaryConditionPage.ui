@@ -6,30 +6,20 @@
   <layout class="QVBoxLayout" name="rootLayout">
    <item><widget class="QLabel" name="titleLabel"><property name="styleSheet"><string notr="true">font-size:20px;font-weight:700;padding:6px 0;</string></property><property name="text"><string>固体力学场边界条件设置页</string></property></widget></item>
    <item>
-    <widget class="QSplitter" name="mainSplitter">
-     <property name="orientation"><enum>Qt::Horizontal</enum></property>
-     <widget class="QWidget" name="leftPanel">
-      <layout class="QVBoxLayout" name="leftLayout">
-       <item><widget class="QLabel" name="navTitle"><property name="text"><string>工程树 / 页面导航</string></property></widget></item>
-       <item><widget class="QTreeWidget" name="navTree"><column><property name="text"><string>模块</string></property></column></widget></item>
-      </layout>
-     </widget>
-     <widget class="QWidget" name="rightPanel">
-      <layout class="QVBoxLayout" name="rightLayout">
-       <item>
-        <widget class="QGroupBox" name="listGroup"><property name="title"><string>配置列表（上）</string></property>
-         <layout class="QVBoxLayout" name="listLayout">
-          <item><widget class="QTableWidget" name="configTable">              <column><property name="text"><string>边界条件名称</string></property></column>
-              <column><property name="text"><string>类型</string></property></column>
-              <column><property name="text"><string>目标边界</string></property></column>
-              <column><property name="text"><string>备注</string></property></column>
-            </widget></item>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="propertyGroup"><property name="title"><string>属性设置区（下）</string></property>
-         <layout class="QGridLayout" name="propertyLayout">
+    <widget class="QGroupBox" name="listGroup"><property name="title"><string>配置列表（上）</string></property>
+     <layout class="QVBoxLayout" name="listLayout">
+      <item><widget class="QTableWidget" name="configTable">
+          <column><property name="text"><string>边界条件名称</string></property></column>
+          <column><property name="text"><string>类型</string></property></column>
+          <column><property name="text"><string>目标边界</string></property></column>
+          <column><property name="text"><string>备注</string></property></column>
+      </widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="propertyGroup"><property name="title"><string>属性设置区（下）</string></property>
+     <layout class="QGridLayout" name="propertyLayout">
             <item row="0" column="0"><widget class="QLabel" name="f1Label"><property name="text"><string>新建/编辑/删除边界条件</string></property></widget></item>
             <item row="0" column="1" colspan="3"><widget class="QWidget" name="toolbarWidget"><layout class="QHBoxLayout" name="toolbarLayout"><item><widget class="QPushButton" name="newButton"><property name="text"><string>新建</string></property></widget></item><item><widget class="QPushButton" name="editButton"><property name="text"><string>编辑</string></property></widget></item><item><widget class="QPushButton" name="deleteButton"><property name="text"><string>删除</string></property></widget></item><item><widget class="QPushButton" name="pickButton"><property name="text"><string>对象选择</string></property></widget></item><item><widget class="QCheckBox" name="highlightCheck"><property name="text"><string>边界高亮</string></property></widget></item></layout></widget></item>
             <item row="1" column="0"><widget class="QLabel" name="f2Label"><property name="text"><string>目标边界选择</string></property></widget></item>
@@ -52,12 +42,14 @@
             <item row="9" column="1"><widget class="QLineEdit" name="f10Line10"/></item>
             <item row="10" column="0"><widget class="QLabel" name="f11Label"><property name="text"><string>周期方向或映射关系</string></property></widget></item>
             <item row="10" column="1"><widget class="QPlainTextEdit" name="f11Text11"><property name="maximumHeight"><number>70</number></property></widget></item>
-         </layout>
-        </widget>
-       </item>
-      </layout>
-     </widget>
+     </layout>
     </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation"><enum>Qt::Vertical</enum></property>
+     <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
+    </spacer>
    </item>
   </layout>
  </widget>
