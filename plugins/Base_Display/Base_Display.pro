@@ -10,6 +10,7 @@ SOURCES += \
 
 
 FORMS += \
+    SolidMechanicsDisplay.ui \
 
 RESOURCES += \
     ../../res.qrc
