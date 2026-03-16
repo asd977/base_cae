@@ -2,70 +2,84 @@
 <ui version="4.0">
  <class>AcousticBoundaryConditionPage</class>
  <widget class="QWidget" name="AcousticBoundaryConditionPage">
-  <property name="geometry"><rect><x>0</x><y>0</y><width>1180</width><height>760</height></rect></property>
+  <property name="geometry"><rect><x>0</x><y>0</y><width>1360</width><height>860</height></rect></property>
   <layout class="QVBoxLayout" name="rootLayout">
+   <item><widget class="QLabel" name="titleLabel"><property name="styleSheet"><string notr="true">font-size:20px;font-weight:700;padding:6px 0;</string></property><property name="text"><string>声学场边界条件设置页</string></property></widget></item>
    <item>
-    <widget class="QLabel" name="titleLabel">
-     <property name="styleSheet"><string notr="true">font-size:20px;font-weight:700;padding:4px 0;</string></property>
-     <property name="text"><string>声学场边界条件设置页</string></property>
+    <widget class="QGroupBox" name="listGroup"><property name="title"><string>配置列表（上）</string></property>
+     <layout class="QVBoxLayout" name="listLayout">
+      <item><widget class="QTableWidget" name="configTable"><property name="rowCount"><number>3</number></property><property name="columnCount"><number>4</number></property>
+          <column><property name="text"><string>边界条件名称</string></property></column>
+          <column><property name="text"><string>类型</string></property></column>
+          <column><property name="text"><string>边界对象</string></property></column>
+          <column><property name="text"><string>状态</string></property></column>
+      </widget></item>
+     </layout>
     </widget>
    </item>
    <item>
-    <widget class="QSplitter" name="mainSplitter">
-     <property name="orientation"><enum>Qt::Horizontal</enum></property>
-     <widget class="QWidget" name="leftPanel">
-      <layout class="QVBoxLayout" name="leftLayout">
-       <item><widget class="QLabel" name="leftLabel"><property name="text"><string>工程树/页面导航</string></property></widget></item>
-       <item><widget class="QListWidget" name="navListWidget"/></item>
-      </layout>
-     </widget>
-     <widget class="QWidget" name="rightPanel">
-      <layout class="QVBoxLayout" name="rightLayout">
-       <item>
-        <widget class="QGroupBox" name="toolbarGroup">
-         <property name="title"><string>对象与条件管理</string></property>
-         <layout class="QHBoxLayout" name="toolbarLayout">
-          <item><widget class="QPushButton" name="addButton"><property name="text"><string>新建</string></property></widget></item>
-          <item><widget class="QPushButton" name="editButton"><property name="text"><string>编辑</string></property></widget></item>
-          <item><widget class="QPushButton" name="removeButton"><property name="text"><string>删除</string></property></widget></item>
-          <item><widget class="QPushButton" name="pickButton"><property name="text"><string>对象选择</string></property></widget></item>
-          <item><widget class="QCheckBox" name="highlightCheckBox"><property name="text"><string>高亮显示</string></property></widget></item>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="QTableWidget" name="topTableWidget">
-         <column><property name="text"><string>名称</string></property></column>
-         <column><property name="text"><string>类型</string></property></column>
-         <column><property name="text"><string>作用域/对象</string></property></column>
-         <column><property name="text"><string>备注</string></property></column>
-        </widget>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="paramGroup">
-         <property name="title"><string>参数设置区</string></property>
-         <layout class="QGridLayout" name="paramLayout">
-          <item row="0" column="0"><widget class="QLabel" name="label1"><property name="text"><string>边界条件列表</string></property></widget></item>
-          <item row="0" column="1"><widget class="QComboBox" name="combo1"/></item>
-          <item row="0" column="2"><widget class="QLabel" name="label2"><property name="text"><string>平面波辐射参数</string></property></widget></item>
-          <item row="0" column="3"><widget class="QLineEdit" name="line2"/></item>
-          <item row="1" column="0"><widget class="QLabel" name="label3"><property name="text"><string>周期性条件参数</string></property></widget></item>
-          <item row="1" column="1"><widget class="QDoubleSpinBox" name="double3"/></item>
-          <item row="1" column="2"><widget class="QLabel" name="label4"><property name="text"><string>背景压力场参数</string></property></widget></item>
-          <item row="1" column="3"><widget class="QSpinBox" name="spin4"/></item>
-          <item row="2" column="0"><widget class="QLabel" name="label5"><property name="text"><string>作用域选择</string></property></widget></item>
-          <item row="2" column="1"><widget class="QComboBox" name="combo5"/></item>
-          <item row="2" column="2"><widget class="QLabel" name="label6"><property name="text"><string>配置项6</string></property></widget></item>
-          <item row="2" column="3"><widget class="QLineEdit" name="line6"/></item>
-          <item row="3" column="0"><widget class="QCheckBox" name="check7"><property name="text"><string>配置项7</string></property></widget></item>
-          <item row="3" column="1"><widget class="QRadioButton" name="radio8"><property name="text"><string>配置项8</string></property></widget></item>
-          <item row="3" column="2" colspan="2"><widget class="QTextEdit" name="memoTextEdit"/></item>
-         </layout>
-        </widget>
-       </item>
-      </layout>
-     </widget>
+    <widget class="QGroupBox" name="propertyGroup"><property name="title"><string>属性设置区（下）</string></property>
+     <layout class="QGridLayout" name="propertyLayout">
+            <item row="0" column="0"><widget class="QLabel" name="f1Label"><property name="text"><string>新建/编辑/删除边界条件</string></property></widget></item>
+            <item row="0" column="1" colspan="3"><widget class="QWidget" name="toolbarWidget"><layout class="QHBoxLayout" name="toolbarLayout"><item><widget class="QPushButton" name="newButton"><property name="text"><string>新建</string></property></widget></item><item><widget class="QPushButton" name="editButton"><property name="text"><string>编辑</string></property></widget></item><item><widget class="QPushButton" name="deleteButton"><property name="text"><string>删除</string></property></widget></item><item><widget class="QPushButton" name="pickButton"><property name="text"><string>对象选择</string></property></widget></item><item><widget class="QCheckBox" name="highlightCheck"><property name="text"><string>边界高亮</string></property><property name="checked"><bool>true</bool></property></widget></item></layout></widget></item>
+            <item row="1" column="0"><widget class="QLabel" name="f2Label"><property name="text"><string>边界对象选择</string></property></widget></item>
+            <item row="1" column="1"><widget class="QLineEdit" name="f2Line2"><property name="text"><string>示例值</string></property></widget></item>
+            <item row="2" column="0"><widget class="QLabel" name="f3Label"><property name="text"><string>边界高亮显示</string></property></widget></item>
+            <item row="2" column="1"><widget class="QCheckBox" name="f3Check3"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
+            <item row="3" column="0"><widget class="QLabel" name="f4Label"><property name="text"><string>边界条件类型</string></property></widget></item>
+            <item row="3" column="1"><widget class="QComboBox" name="f4Combo4">
+                  <item><property name="text"><string>默认选项</string></property></item>
+                  <item><property name="text"><string>方案 A</string></property></item>
+                  <item><property name="text"><string>方案 B</string></property></item>
+                 </widget></item>
+            <item row="4" column="0"><widget class="QLabel" name="f5Label"><property name="text"><string>平面波辐射</string></property></widget></item>
+            <item row="4" column="1"><widget class="QRadioButton" name="f5Radio5"><property name="text"><string>选择</string></property></widget></item>
+            <item row="5" column="0"><widget class="QLabel" name="f6Label"><property name="text"><string>周期性条件</string></property></widget></item>
+            <item row="5" column="1"><widget class="QRadioButton" name="f6Radio6"><property name="text"><string>选择</string></property></widget></item>
+            <item row="6" column="0"><widget class="QLabel" name="f7Label"><property name="text"><string>背景压力场</string></property></widget></item>
+            <item row="6" column="1"><widget class="QRadioButton" name="f7Radio7"><property name="text"><string>选择</string></property></widget></item>
+            <item row="7" column="0"><widget class="QLabel" name="f8Label"><property name="text"><string>作用边界选择</string></property></widget></item>
+            <item row="7" column="1"><widget class="QLineEdit" name="f8Line8"><property name="text"><string>示例值</string></property></widget></item>
+            <item row="8" column="0"><widget class="QLabel" name="f9Label"><property name="text"><string>入射方向</string></property></widget></item>
+            <item row="8" column="1"><widget class="QLineEdit" name="f9Line9"><property name="text"><string>示例值</string></property></widget></item>
+            <item row="9" column="0"><widget class="QLabel" name="f10Label"><property name="text"><string>幅值</string></property></widget></item>
+            <item row="9" column="1"><widget class="QDoubleSpinBox" name="f10Double10"><property name="decimals"><number>6</number></property><property name="maximum"><double>1000000000.000000</double></property><property name="value"><double>1.000000</double></property></widget></item>
+            <item row="10" column="0"><widget class="QLabel" name="f11Label"><property name="text"><string>相位</string></property></widget></item>
+            <item row="10" column="1"><widget class="QDoubleSpinBox" name="f11Double11"><property name="decimals"><number>6</number></property><property name="maximum"><double>1000000000.000000</double></property><property name="value"><double>1.000000</double></property></widget></item>
+            <item row="11" column="0"><widget class="QLabel" name="f12Label"><property name="text"><string>连续性</string></property></widget></item>
+            <item row="11" column="1"><widget class="QCheckBox" name="f12Check12"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
+            <item row="12" column="0"><widget class="QLabel" name="f13Label"><property name="text"><string>反周期性</string></property></widget></item>
+            <item row="12" column="1"><widget class="QCheckBox" name="f13Check13"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
+            <item row="13" column="0"><widget class="QLabel" name="f14Label"><property name="text"><string>Floquet 周期</string></property></widget></item>
+            <item row="13" column="1"><widget class="QCheckBox" name="f14Check14"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
+            <item row="14" column="0"><widget class="QLabel" name="f15Label"><property name="text"><string>循环对称</string></property></widget></item>
+            <item row="14" column="1"><widget class="QCheckBox" name="f15Check15"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
+            <item row="15" column="0"><widget class="QLabel" name="f16Label"><property name="text"><string>主边界/从边界</string></property></widget></item>
+            <item row="15" column="1"><widget class="QLineEdit" name="f16Line16"><property name="text"><string>示例值</string></property></widget></item>
+            <item row="16" column="0"><widget class="QLabel" name="f17Label"><property name="text"><string>周期方向</string></property></widget></item>
+            <item row="16" column="1"><widget class="QLineEdit" name="f17Line17"><property name="text"><string>示例值</string></property></widget></item>
+            <item row="17" column="0"><widget class="QLabel" name="f18Label"><property name="text"><string>压力场类型</string></property></widget></item>
+            <item row="17" column="1"><widget class="QComboBox" name="f18Combo18">
+                  <item><property name="text"><string>默认选项</string></property></item>
+                  <item><property name="text"><string>方案 A</string></property></item>
+                  <item><property name="text"><string>方案 B</string></property></item>
+                 </widget></item>
+            <item row="18" column="0"><widget class="QLabel" name="f19Label"><property name="text"><string>压力幅值</string></property></widget></item>
+            <item row="18" column="1"><widget class="QDoubleSpinBox" name="f19Double19"><property name="decimals"><number>6</number></property><property name="maximum"><double>1000000000.000000</double></property><property name="value"><double>1.000000</double></property></widget></item>
+            <item row="19" column="0"><widget class="QLabel" name="f20Label"><property name="text"><string>声速(背景场)</string></property></widget></item>
+            <item row="19" column="1"><widget class="QDoubleSpinBox" name="f20Double20"><property name="decimals"><number>6</number></property><property name="maximum"><double>1000000000.000000</double></property><property name="value"><double>1.000000</double></property></widget></item>
+            <item row="20" column="0"><widget class="QLabel" name="f21Label"><property name="text"><string>波方向</string></property></widget></item>
+            <item row="20" column="1"><widget class="QLineEdit" name="f21Line21"><property name="text"><string>示例值</string></property></widget></item>
+            <item row="21" column="0"><widget class="QLabel" name="f22Label"><property name="text"><string>作用域选择</string></property></widget></item>
+            <item row="21" column="1"><widget class="QLineEdit" name="f22Line22"><property name="text"><string>示例值</string></property></widget></item>
+     </layout>
     </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation"><enum>Qt::Vertical</enum></property>
+     <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
+    </spacer>
    </item>
   </layout>
  </widget>
