@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>640</width>
-    <height>420</height>
+    <width>760</width>
+    <height>560</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -22,14 +22,34 @@
     </widget>
    </item>
    <item>
+    <widget class="QLabel" name="introLabel">
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+     <property name="text">
+      <string>界面展示说明</string>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="QLabel" name="descLabel">
      <property name="text">
-      <string>展示内容（仅页面展示，不包含功能逻辑）：</string>
+      <string>配置项：</string>
      </property>
     </widget>
    </item>
    <item>
     <widget class="QListWidget" name="detailListWidget"/>
+   </item>
+   <item>
+    <widget class="QLabel" name="tableTitleLabel">
+     <property name="text">
+      <string>边界/条件表：</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTableWidget" name="tableWidget"/>
    </item>
   </layout>
  </widget>
