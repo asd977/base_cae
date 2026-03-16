@@ -8,7 +8,7 @@
    <item>
     <widget class="QGroupBox" name="listGroup"><property name="title"><string>配置列表（上）</string></property>
      <layout class="QVBoxLayout" name="listLayout">
-      <item><widget class="QTableWidget" name="configTable">
+      <item><widget class="QTableWidget" name="configTable"><property name="rowCount"><number>3</number></property><property name="columnCount"><number>4</number></property>
           <column><property name="text"><string>配置名称</string></property></column>
           <column><property name="text"><string>类型</string></property></column>
           <column><property name="text"><string>作用域</string></property></column>
@@ -21,11 +21,19 @@
     <widget class="QGroupBox" name="propertyGroup"><property name="title"><string>属性设置区（下）</string></property>
      <layout class="QGridLayout" name="propertyLayout">
             <item row="0" column="0"><widget class="QLabel" name="f1Label"><property name="text"><string>分析对象选择</string></property></widget></item>
-            <item row="0" column="1"><widget class="QComboBox" name="f1Combo1"/></item>
+            <item row="0" column="1"><widget class="QComboBox" name="f1Combo1">
+                  <item><property name="text"><string>默认选项</string></property></item>
+                  <item><property name="text"><string>方案 A</string></property></item>
+                  <item><property name="text"><string>方案 B</string></property></item>
+                 </widget></item>
             <item row="1" column="0"><widget class="QLabel" name="f2Label"><property name="text"><string>作用域选择</string></property></widget></item>
-            <item row="1" column="1"><widget class="QLineEdit" name="f2Line2"/></item>
+            <item row="1" column="1"><widget class="QLineEdit" name="f2Line2"><property name="text"><string>示例值</string></property></widget></item>
             <item row="2" column="0"><widget class="QLabel" name="f3Label"><property name="text"><string>材料模型类型</string></property></widget></item>
-            <item row="2" column="1"><widget class="QComboBox" name="f3Combo3"/></item>
+            <item row="2" column="1"><widget class="QComboBox" name="f3Combo3">
+                  <item><property name="text"><string>默认选项</string></property></item>
+                  <item><property name="text"><string>方案 A</string></property></item>
+                  <item><property name="text"><string>方案 B</string></property></item>
+                 </widget></item>
             <item row="3" column="0"><widget class="QLabel" name="f4Label"><property name="text"><string>线弹性</string></property></widget></item>
             <item row="3" column="1"><widget class="QRadioButton" name="f4Radio4"><property name="text"><string>选择</string></property></widget></item>
             <item row="4" column="0"><widget class="QLabel" name="f5Label"><property name="text"><string>超弹性</string></property></widget></item>
@@ -35,45 +43,61 @@
             <item row="6" column="0"><widget class="QLabel" name="f7Label"><property name="text"><string>弹塑性</string></property></widget></item>
             <item row="6" column="1"><widget class="QRadioButton" name="f7Radio7"><property name="text"><string>选择</string></property></widget></item>
             <item row="7" column="0"><widget class="QLabel" name="f8Label"><property name="text"><string>杨氏模量</string></property></widget></item>
-            <item row="7" column="1"><widget class="QDoubleSpinBox" name="f8Double8"><property name="decimals"><number>6</number></property><property name="maximum"><double>1000000000.000000</double></property></widget></item>
+            <item row="7" column="1"><widget class="QDoubleSpinBox" name="f8Double8"><property name="decimals"><number>6</number></property><property name="maximum"><double>1000000000.000000</double></property><property name="value"><double>1.000000</double></property></widget></item>
             <item row="8" column="0"><widget class="QLabel" name="f9Label"><property name="text"><string>泊松比</string></property></widget></item>
-            <item row="8" column="1"><widget class="QDoubleSpinBox" name="f9Double9"><property name="decimals"><number>6</number></property><property name="maximum"><double>1000000000.000000</double></property></widget></item>
+            <item row="8" column="1"><widget class="QDoubleSpinBox" name="f9Double9"><property name="decimals"><number>6</number></property><property name="maximum"><double>1000000000.000000</double></property><property name="value"><double>1.000000</double></property></widget></item>
             <item row="9" column="0"><widget class="QLabel" name="f10Label"><property name="text"><string>密度</string></property></widget></item>
-            <item row="9" column="1"><widget class="QDoubleSpinBox" name="f10Double10"><property name="decimals"><number>6</number></property><property name="maximum"><double>1000000000.000000</double></property></widget></item>
+            <item row="9" column="1"><widget class="QDoubleSpinBox" name="f10Double10"><property name="decimals"><number>6</number></property><property name="maximum"><double>1000000000.000000</double></property><property name="value"><double>1.000000</double></property></widget></item>
             <item row="10" column="0"><widget class="QLabel" name="f11Label"><property name="text"><string>以波速描述材料性能</string></property></widget></item>
-            <item row="10" column="1"><widget class="QCheckBox" name="f11Check11"><property name="text"><string>启用</string></property></widget></item>
+            <item row="10" column="1"><widget class="QCheckBox" name="f11Check11"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
             <item row="11" column="0"><widget class="QLabel" name="f12Label"><property name="text"><string>超弹性模型</string></property></widget></item>
-            <item row="11" column="1"><widget class="QComboBox" name="f12Combo12"/></item>
+            <item row="11" column="1"><widget class="QComboBox" name="f12Combo12">
+                  <item><property name="text"><string>默认选项</string></property></item>
+                  <item><property name="text"><string>方案 A</string></property></item>
+                  <item><property name="text"><string>方案 B</string></property></item>
+                 </widget></item>
             <item row="12" column="0"><widget class="QLabel" name="f13Label"><property name="text"><string>Mooney-Rivlin 双参数</string></property></widget></item>
-            <item row="12" column="1"><widget class="QCheckBox" name="f13Check13"><property name="text"><string>启用</string></property></widget></item>
+            <item row="12" column="1"><widget class="QCheckBox" name="f13Check13"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
             <item row="13" column="0"><widget class="QLabel" name="f14Label"><property name="text"><string>Yeoh</string></property></widget></item>
-            <item row="13" column="1"><widget class="QCheckBox" name="f14Check14"><property name="text"><string>启用</string></property></widget></item>
+            <item row="13" column="1"><widget class="QCheckBox" name="f14Check14"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
             <item row="14" column="0"><widget class="QLabel" name="f15Label"><property name="text"><string>Ogden</string></property></widget></item>
-            <item row="14" column="1"><widget class="QCheckBox" name="f15Check15"><property name="text"><string>启用</string></property></widget></item>
+            <item row="14" column="1"><widget class="QCheckBox" name="f15Check15"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
             <item row="15" column="0"><widget class="QLabel" name="f16Label"><property name="text"><string>超弹性参数输入区</string></property></widget></item>
-            <item row="15" column="1"><widget class="QPlainTextEdit" name="f16Text16"><property name="maximumHeight"><number>70</number></property></widget></item>
+            <item row="15" column="1"><widget class="QPlainTextEdit" name="f16Text16"><property name="plainText"><string>示例参数说明</string></property><property name="maximumHeight"><number>70</number></property></widget></item>
             <item row="16" column="0"><widget class="QLabel" name="f17Label"><property name="text"><string>复模量输入方式</string></property></widget></item>
-            <item row="16" column="1"><widget class="QComboBox" name="f17Combo17"/></item>
+            <item row="16" column="1"><widget class="QComboBox" name="f17Combo17">
+                  <item><property name="text"><string>默认选项</string></property></item>
+                  <item><property name="text"><string>方案 A</string></property></item>
+                  <item><property name="text"><string>方案 B</string></property></item>
+                 </widget></item>
             <item row="17" column="0"><widget class="QLabel" name="f18Label"><property name="text"><string>插值函数</string></property></widget></item>
             <item row="17" column="1"><widget class="QRadioButton" name="f18Radio18"><property name="text"><string>选择</string></property></widget></item>
             <item row="18" column="0"><widget class="QLabel" name="f19Label"><property name="text"><string>拟合函数</string></property></widget></item>
             <item row="18" column="1"><widget class="QRadioButton" name="f19Radio19"><property name="text"><string>选择</string></property></widget></item>
             <item row="19" column="0"><widget class="QLabel" name="f20Label"><property name="text"><string>频率相关参数输入区</string></property></widget></item>
-            <item row="19" column="1"><widget class="QPlainTextEdit" name="f20Text20"><property name="maximumHeight"><number>70</number></property></widget></item>
+            <item row="19" column="1"><widget class="QPlainTextEdit" name="f20Text20"><property name="plainText"><string>示例参数说明</string></property><property name="maximumHeight"><number>70</number></property></widget></item>
             <item row="20" column="0"><widget class="QLabel" name="f21Label"><property name="text"><string>屈服准则</string></property></widget></item>
-            <item row="20" column="1"><widget class="QComboBox" name="f21Combo21"/></item>
+            <item row="20" column="1"><widget class="QComboBox" name="f21Combo21">
+                  <item><property name="text"><string>默认选项</string></property></item>
+                  <item><property name="text"><string>方案 A</string></property></item>
+                  <item><property name="text"><string>方案 B</string></property></item>
+                 </widget></item>
             <item row="21" column="0"><widget class="QLabel" name="f22Label"><property name="text"><string>屈服应力</string></property></widget></item>
-            <item row="21" column="1"><widget class="QDoubleSpinBox" name="f22Double22"><property name="decimals"><number>6</number></property><property name="maximum"><double>1000000000.000000</double></property></widget></item>
+            <item row="21" column="1"><widget class="QDoubleSpinBox" name="f22Double22"><property name="decimals"><number>6</number></property><property name="maximum"><double>1000000000.000000</double></property><property name="value"><double>1.000000</double></property></widget></item>
             <item row="22" column="0"><widget class="QLabel" name="f23Label"><property name="text"><string>硬化模型</string></property></widget></item>
-            <item row="22" column="1"><widget class="QComboBox" name="f23Combo23"/></item>
+            <item row="22" column="1"><widget class="QComboBox" name="f23Combo23">
+                  <item><property name="text"><string>默认选项</string></property></item>
+                  <item><property name="text"><string>方案 A</string></property></item>
+                  <item><property name="text"><string>方案 B</string></property></item>
+                 </widget></item>
             <item row="23" column="0"><widget class="QLabel" name="f24Label"><property name="text"><string>硬化参数</string></property></widget></item>
-            <item row="23" column="1"><widget class="QPlainTextEdit" name="f24Text24"><property name="maximumHeight"><number>70</number></property></widget></item>
+            <item row="23" column="1"><widget class="QPlainTextEdit" name="f24Text24"><property name="plainText"><string>示例参数说明</string></property><property name="maximumHeight"><number>70</number></property></widget></item>
             <item row="24" column="0"><widget class="QLabel" name="f25Label"><property name="text"><string>初始值设置</string></property></widget></item>
-            <item row="24" column="1"><widget class="QPlainTextEdit" name="f25Text25"><property name="maximumHeight"><number>70</number></property></widget></item>
+            <item row="24" column="1"><widget class="QPlainTextEdit" name="f25Text25"><property name="plainText"><string>示例参数说明</string></property><property name="maximumHeight"><number>70</number></property></widget></item>
             <item row="25" column="0"><widget class="QLabel" name="f26Label"><property name="text"><string>位移场</string></property></widget></item>
-            <item row="25" column="1"><widget class="QPlainTextEdit" name="f26Text26"><property name="maximumHeight"><number>70</number></property></widget></item>
+            <item row="25" column="1"><widget class="QPlainTextEdit" name="f26Text26"><property name="plainText"><string>示例参数说明</string></property><property name="maximumHeight"><number>70</number></property></widget></item>
             <item row="26" column="0"><widget class="QLabel" name="f27Label"><property name="text"><string>结构速度场</string></property></widget></item>
-            <item row="26" column="1"><widget class="QPlainTextEdit" name="f27Text27"><property name="maximumHeight"><number>70</number></property></widget></item>
+            <item row="26" column="1"><widget class="QPlainTextEdit" name="f27Text27"><property name="plainText"><string>示例参数说明</string></property><property name="maximumHeight"><number>70</number></property></widget></item>
      </layout>
     </widget>
    </item>

@@ -8,7 +8,7 @@
    <item>
     <widget class="QGroupBox" name="listGroup"><property name="title"><string>配置列表（上）</string></property>
      <layout class="QVBoxLayout" name="listLayout">
-      <item><widget class="QTableWidget" name="configTable">
+      <item><widget class="QTableWidget" name="configTable"><property name="rowCount"><number>3</number></property><property name="columnCount"><number>4</number></property>
           <column><property name="text"><string>参数项</string></property></column>
           <column><property name="text"><string>类别</string></property></column>
           <column><property name="text"><string>范围/值</string></property></column>
@@ -21,27 +21,31 @@
     <widget class="QGroupBox" name="propertyGroup"><property name="title"><string>属性设置区（下）</string></property>
      <layout class="QGridLayout" name="propertyLayout">
             <item row="0" column="0"><widget class="QLabel" name="f1Label"><property name="text"><string>分析对象选择</string></property></widget></item>
-            <item row="0" column="1"><widget class="QComboBox" name="f1Combo1"/></item>
+            <item row="0" column="1"><widget class="QComboBox" name="f1Combo1">
+                  <item><property name="text"><string>默认选项</string></property></item>
+                  <item><property name="text"><string>方案 A</string></property></item>
+                  <item><property name="text"><string>方案 B</string></property></item>
+                 </widget></item>
             <item row="1" column="0"><widget class="QLabel" name="f2Label"><property name="text"><string>设计变量设置</string></property></widget></item>
-            <item row="1" column="1"><widget class="QPlainTextEdit" name="f2Text2"><property name="maximumHeight"><number>70</number></property></widget></item>
+            <item row="1" column="1"><widget class="QPlainTextEdit" name="f2Text2"><property name="plainText"><string>示例参数说明</string></property><property name="maximumHeight"><number>70</number></property></widget></item>
             <item row="2" column="0"><widget class="QLabel" name="f3Label"><property name="text"><string>几何参数</string></property></widget></item>
-            <item row="2" column="1"><widget class="QLineEdit" name="f3Line3"/></item>
+            <item row="2" column="1"><widget class="QLineEdit" name="f3Line3"><property name="text"><string>示例值</string></property></widget></item>
             <item row="3" column="0"><widget class="QLabel" name="f4Label"><property name="text"><string>材料参数</string></property></widget></item>
-            <item row="3" column="1"><widget class="QLineEdit" name="f4Line4"/></item>
+            <item row="3" column="1"><widget class="QLineEdit" name="f4Line4"><property name="text"><string>示例值</string></property></widget></item>
             <item row="4" column="0"><widget class="QLabel" name="f5Label"><property name="text"><string>分析参数</string></property></widget></item>
-            <item row="4" column="1"><widget class="QLineEdit" name="f5Line5"/></item>
+            <item row="4" column="1"><widget class="QLineEdit" name="f5Line5"><property name="text"><string>示例值</string></property></widget></item>
             <item row="5" column="0"><widget class="QLabel" name="f6Label"><property name="text"><string>变量范围</string></property></widget></item>
-            <item row="5" column="1"><widget class="QLineEdit" name="f6Line6"/></item>
+            <item row="5" column="1"><widget class="QLineEdit" name="f6Line6"><property name="text"><string>示例值</string></property></widget></item>
             <item row="6" column="0"><widget class="QLabel" name="f7Label"><property name="text"><string>目标函数设置</string></property></widget></item>
-            <item row="6" column="1"><widget class="QLineEdit" name="f7Line7"/></item>
+            <item row="6" column="1"><widget class="QLineEdit" name="f7Line7"><property name="text"><string>示例值</string></property></widget></item>
             <item row="7" column="0"><widget class="QLabel" name="f8Label"><property name="text"><string>约束条件设置</string></property></widget></item>
-            <item row="7" column="1"><widget class="QLineEdit" name="f8Line8"/></item>
+            <item row="7" column="1"><widget class="QLineEdit" name="f8Line8"><property name="text"><string>示例值</string></property></widget></item>
             <item row="8" column="0"><widget class="QLabel" name="f9Label"><property name="text"><string>迭代次数</string></property></widget></item>
-            <item row="8" column="1"><widget class="QSpinBox" name="f9Spin9"><property name="maximum"><number>1000000</number></property></widget></item>
+            <item row="8" column="1"><widget class="QSpinBox" name="f9Spin9"><property name="maximum"><number>1000000</number></property><property name="value"><number>10</number></property></widget></item>
             <item row="9" column="0"><widget class="QLabel" name="f10Label"><property name="text"><string>收敛条件</string></property></widget></item>
-            <item row="9" column="1"><widget class="QLineEdit" name="f10Line10"/></item>
+            <item row="9" column="1"><widget class="QLineEdit" name="f10Line10"><property name="text"><string>示例值</string></property></widget></item>
             <item row="10" column="0"><widget class="QLabel" name="f11Label"><property name="text"><string>终止条件</string></property></widget></item>
-            <item row="10" column="1"><widget class="QLineEdit" name="f11Line11"/></item>
+            <item row="10" column="1"><widget class="QLineEdit" name="f11Line11"><property name="text"><string>示例值</string></property></widget></item>
      </layout>
     </widget>
    </item>

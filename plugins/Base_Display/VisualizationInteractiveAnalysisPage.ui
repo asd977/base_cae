@@ -8,7 +8,7 @@
    <item>
     <widget class="QGroupBox" name="listGroup"><property name="title"><string>配置列表（上）</string></property>
      <layout class="QVBoxLayout" name="listLayout">
-      <item><widget class="QTableWidget" name="configTable">
+      <item><widget class="QTableWidget" name="configTable"><property name="rowCount"><number>3</number></property><property name="columnCount"><number>4</number></property>
           <column><property name="text"><string>交互功能</string></property></column>
           <column><property name="text"><string>快捷键</string></property></column>
           <column><property name="text"><string>启用</string></property></column>
@@ -21,17 +21,17 @@
     <widget class="QGroupBox" name="propertyGroup"><property name="title"><string>属性设置区（下）</string></property>
      <layout class="QGridLayout" name="propertyLayout">
             <item row="0" column="0"><widget class="QLabel" name="f1Label"><property name="text"><string>旋转</string></property></widget></item>
-            <item row="0" column="1"><widget class="QCheckBox" name="f1Check1"><property name="text"><string>启用</string></property></widget></item>
+            <item row="0" column="1"><widget class="QCheckBox" name="f1Check1"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
             <item row="1" column="0"><widget class="QLabel" name="f2Label"><property name="text"><string>平移</string></property></widget></item>
-            <item row="1" column="1"><widget class="QCheckBox" name="f2Check2"><property name="text"><string>启用</string></property></widget></item>
+            <item row="1" column="1"><widget class="QCheckBox" name="f2Check2"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
             <item row="2" column="0"><widget class="QLabel" name="f3Label"><property name="text"><string>缩放</string></property></widget></item>
-            <item row="2" column="1"><widget class="QCheckBox" name="f3Check3"><property name="text"><string>启用</string></property></widget></item>
+            <item row="2" column="1"><widget class="QCheckBox" name="f3Check3"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
             <item row="3" column="0"><widget class="QLabel" name="f4Label"><property name="text"><string>框选</string></property></widget></item>
-            <item row="3" column="1"><widget class="QCheckBox" name="f4Check4"><property name="text"><string>启用</string></property></widget></item>
+            <item row="3" column="1"><widget class="QCheckBox" name="f4Check4"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
             <item row="4" column="0"><widget class="QLabel" name="f5Label"><property name="text"><string>局部查看</string></property></widget></item>
-            <item row="4" column="1"><widget class="QCheckBox" name="f5Check5"><property name="text"><string>启用</string></property></widget></item>
+            <item row="4" column="1"><widget class="QCheckBox" name="f5Check5"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
             <item row="5" column="0"><widget class="QLabel" name="f6Label"><property name="text"><string>结果探针拾取</string></property></widget></item>
-            <item row="5" column="1"><widget class="QCheckBox" name="f6Check6"><property name="text"><string>启用</string></property></widget></item>
+            <item row="5" column="1"><widget class="QCheckBox" name="f6Check6"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
      </layout>
     </widget>
    </item>

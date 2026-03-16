@@ -8,7 +8,7 @@
    <item>
     <widget class="QGroupBox" name="listGroup"><property name="title"><string>配置列表（上）</string></property>
      <layout class="QVBoxLayout" name="listLayout">
-      <item><widget class="QTableWidget" name="configTable">
+      <item><widget class="QTableWidget" name="configTable"><property name="rowCount"><number>3</number></property><property name="columnCount"><number>4</number></property>
           <column><property name="text"><string>求解设置</string></property></column>
           <column><property name="text"><string>值</string></property></column>
           <column><property name="text"><string>单位</string></property></column>
@@ -21,29 +21,37 @@
     <widget class="QGroupBox" name="propertyGroup"><property name="title"><string>属性设置区（下）</string></property>
      <layout class="QGridLayout" name="propertyLayout">
             <item row="0" column="0"><widget class="QLabel" name="f1Label"><property name="text"><string>分析类型选择</string></property></widget></item>
-            <item row="0" column="1"><widget class="QComboBox" name="f1Combo1"/></item>
+            <item row="0" column="1"><widget class="QComboBox" name="f1Combo1">
+                  <item><property name="text"><string>默认选项</string></property></item>
+                  <item><property name="text"><string>方案 A</string></property></item>
+                  <item><property name="text"><string>方案 B</string></property></item>
+                 </widget></item>
             <item row="1" column="0"><widget class="QLabel" name="f2Label"><property name="text"><string>起始频率</string></property></widget></item>
-            <item row="1" column="1"><widget class="QDoubleSpinBox" name="f2Double2"><property name="decimals"><number>6</number></property><property name="maximum"><double>1000000000.000000</double></property></widget></item>
+            <item row="1" column="1"><widget class="QDoubleSpinBox" name="f2Double2"><property name="decimals"><number>6</number></property><property name="maximum"><double>1000000000.000000</double></property><property name="value"><double>1.000000</double></property></widget></item>
             <item row="2" column="0"><widget class="QLabel" name="f3Label"><property name="text"><string>终止频率</string></property></widget></item>
-            <item row="2" column="1"><widget class="QDoubleSpinBox" name="f3Double3"><property name="decimals"><number>6</number></property><property name="maximum"><double>1000000000.000000</double></property></widget></item>
+            <item row="2" column="1"><widget class="QDoubleSpinBox" name="f3Double3"><property name="decimals"><number>6</number></property><property name="maximum"><double>1000000000.000000</double></property><property name="value"><double>1.000000</double></property></widget></item>
             <item row="3" column="0"><widget class="QLabel" name="f4Label"><property name="text"><string>频率步长</string></property></widget></item>
-            <item row="3" column="1"><widget class="QDoubleSpinBox" name="f4Double4"><property name="decimals"><number>6</number></property><property name="maximum"><double>1000000000.000000</double></property></widget></item>
+            <item row="3" column="1"><widget class="QDoubleSpinBox" name="f4Double4"><property name="decimals"><number>6</number></property><property name="maximum"><double>1000000000.000000</double></property><property name="value"><double>1.000000</double></property></widget></item>
             <item row="4" column="0"><widget class="QLabel" name="f5Label"><property name="text"><string>频率点数</string></property></widget></item>
-            <item row="4" column="1"><widget class="QSpinBox" name="f5Spin5"><property name="maximum"><number>1000000</number></property></widget></item>
+            <item row="4" column="1"><widget class="QSpinBox" name="f5Spin5"><property name="maximum"><number>1000000</number></property><property name="value"><number>10</number></property></widget></item>
             <item row="5" column="0"><widget class="QLabel" name="f6Label"><property name="text"><string>输出控制</string></property></widget></item>
-            <item row="5" column="1"><widget class="QPlainTextEdit" name="f6Text6"><property name="maximumHeight"><number>70</number></property></widget></item>
+            <item row="5" column="1"><widget class="QPlainTextEdit" name="f6Text6"><property name="plainText"><string>示例参数说明</string></property><property name="maximumHeight"><number>70</number></property></widget></item>
             <item row="6" column="0"><widget class="QLabel" name="f7Label"><property name="text"><string>收敛控制</string></property></widget></item>
-            <item row="6" column="1"><widget class="QPlainTextEdit" name="f7Text7"><property name="maximumHeight"><number>70</number></property></widget></item>
+            <item row="6" column="1"><widget class="QPlainTextEdit" name="f7Text7"><property name="plainText"><string>示例参数说明</string></property><property name="maximumHeight"><number>70</number></property></widget></item>
             <item row="7" column="0"><widget class="QLabel" name="f8Label"><property name="text"><string>最大迭代次数</string></property></widget></item>
-            <item row="7" column="1"><widget class="QSpinBox" name="f8Spin8"><property name="maximum"><number>1000000</number></property></widget></item>
+            <item row="7" column="1"><widget class="QSpinBox" name="f8Spin8"><property name="maximum"><number>1000000</number></property><property name="value"><number>10</number></property></widget></item>
             <item row="8" column="0"><widget class="QLabel" name="f9Label"><property name="text"><string>关联物理场选择</string></property></widget></item>
-            <item row="8" column="1"><widget class="QComboBox" name="f9Combo9"/></item>
+            <item row="8" column="1"><widget class="QComboBox" name="f9Combo9">
+                  <item><property name="text"><string>默认选项</string></property></item>
+                  <item><property name="text"><string>方案 A</string></property></item>
+                  <item><property name="text"><string>方案 B</string></property></item>
+                 </widget></item>
             <item row="9" column="0"><widget class="QLabel" name="f10Label"><property name="text"><string>固体力学场</string></property></widget></item>
-            <item row="9" column="1"><widget class="QCheckBox" name="f10Check10"><property name="text"><string>启用</string></property></widget></item>
+            <item row="9" column="1"><widget class="QCheckBox" name="f10Check10"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
             <item row="10" column="0"><widget class="QLabel" name="f11Label"><property name="text"><string>声学场</string></property></widget></item>
-            <item row="10" column="1"><widget class="QCheckBox" name="f11Check11"><property name="text"><string>启用</string></property></widget></item>
+            <item row="10" column="1"><widget class="QCheckBox" name="f11Check11"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
             <item row="11" column="0"><widget class="QLabel" name="f12Label"><property name="text"><string>耦合分析</string></property></widget></item>
-            <item row="11" column="1"><widget class="QCheckBox" name="f12Check12"><property name="text"><string>启用</string></property></widget></item>
+            <item row="11" column="1"><widget class="QCheckBox" name="f12Check12"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
      </layout>
     </widget>
    </item>

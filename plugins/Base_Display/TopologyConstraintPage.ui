@@ -8,7 +8,7 @@
    <item>
     <widget class="QGroupBox" name="listGroup"><property name="title"><string>配置列表（上）</string></property>
      <layout class="QVBoxLayout" name="listLayout">
-      <item><widget class="QTableWidget" name="configTable">
+      <item><widget class="QTableWidget" name="configTable"><property name="rowCount"><number>3</number></property><property name="columnCount"><number>4</number></property>
           <column><property name="text"><string>约束名称</string></property></column>
           <column><property name="text"><string>约束类型</string></property></column>
           <column><property name="text"><string>约束值</string></property></column>
@@ -21,17 +21,17 @@
     <widget class="QGroupBox" name="propertyGroup"><property name="title"><string>属性设置区（下）</string></property>
      <layout class="QGridLayout" name="propertyLayout">
             <item row="0" column="0"><widget class="QLabel" name="f1Label"><property name="text"><string>体积分数约束</string></property></widget></item>
-            <item row="0" column="1"><widget class="QCheckBox" name="f1Check1"><property name="text"><string>启用</string></property></widget></item>
+            <item row="0" column="1"><widget class="QCheckBox" name="f1Check1"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
             <item row="1" column="0"><widget class="QLabel" name="f2Label"><property name="text"><string>边界保留约束</string></property></widget></item>
-            <item row="1" column="1"><widget class="QCheckBox" name="f2Check2"><property name="text"><string>启用</string></property></widget></item>
+            <item row="1" column="1"><widget class="QCheckBox" name="f2Check2"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
             <item row="2" column="0"><widget class="QLabel" name="f3Label"><property name="text"><string>最小特征尺寸约束</string></property></widget></item>
-            <item row="2" column="1"><widget class="QCheckBox" name="f3Check3"><property name="text"><string>启用</string></property></widget></item>
+            <item row="2" column="1"><widget class="QCheckBox" name="f3Check3"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
             <item row="3" column="0"><widget class="QLabel" name="f4Label"><property name="text"><string>性能阈值约束</string></property></widget></item>
-            <item row="3" column="1"><widget class="QCheckBox" name="f4Check4"><property name="text"><string>启用</string></property></widget></item>
+            <item row="3" column="1"><widget class="QCheckBox" name="f4Check4"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
             <item row="4" column="0"><widget class="QLabel" name="f5Label"><property name="text"><string>约束值输入</string></property></widget></item>
-            <item row="4" column="1"><widget class="QLineEdit" name="f5Line5"/></item>
+            <item row="4" column="1"><widget class="QLineEdit" name="f5Line5"><property name="text"><string>示例值</string></property></widget></item>
             <item row="5" column="0"><widget class="QLabel" name="f6Label"><property name="text"><string>约束列表</string></property></widget></item>
-            <item row="5" column="1"><widget class="QPlainTextEdit" name="f6Text6"><property name="maximumHeight"><number>70</number></property></widget></item>
+            <item row="5" column="1"><widget class="QPlainTextEdit" name="f6Text6"><property name="plainText"><string>示例参数说明</string></property><property name="maximumHeight"><number>70</number></property></widget></item>
      </layout>
     </widget>
    </item>

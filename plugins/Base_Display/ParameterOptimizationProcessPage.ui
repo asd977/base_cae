@@ -8,7 +8,7 @@
    <item>
     <widget class="QGroupBox" name="listGroup"><property name="title"><string>配置列表（上）</string></property>
      <layout class="QVBoxLayout" name="listLayout">
-      <item><widget class="QTableWidget" name="configTable">
+      <item><widget class="QTableWidget" name="configTable"><property name="rowCount"><number>3</number></property><property name="columnCount"><number>4</number></property>
           <column><property name="text"><string>流程节点</string></property></column>
           <column><property name="text"><string>策略</string></property></column>
           <column><property name="text"><string>启用</string></property></column>
@@ -21,15 +21,23 @@
     <widget class="QGroupBox" name="propertyGroup"><property name="title"><string>属性设置区（下）</string></property>
      <layout class="QGridLayout" name="propertyLayout">
             <item row="0" column="0"><widget class="QLabel" name="f1Label"><property name="text"><string>参数自动更新策略</string></property></widget></item>
-            <item row="0" column="1"><widget class="QComboBox" name="f1Combo1"/></item>
+            <item row="0" column="1"><widget class="QComboBox" name="f1Combo1">
+                  <item><property name="text"><string>默认选项</string></property></item>
+                  <item><property name="text"><string>方案 A</string></property></item>
+                  <item><property name="text"><string>方案 B</string></property></item>
+                 </widget></item>
             <item row="1" column="0"><widget class="QLabel" name="f2Label"><property name="text"><string>分析流程调用顺序</string></property></widget></item>
-            <item row="1" column="1"><widget class="QPlainTextEdit" name="f2Text2"><property name="maximumHeight"><number>70</number></property></widget></item>
+            <item row="1" column="1"><widget class="QPlainTextEdit" name="f2Text2"><property name="plainText"><string>示例参数说明</string></property><property name="maximumHeight"><number>70</number></property></widget></item>
             <item row="2" column="0"><widget class="QLabel" name="f3Label"><property name="text"><string>中间结果保存策略</string></property></widget></item>
-            <item row="2" column="1"><widget class="QComboBox" name="f3Combo3"/></item>
+            <item row="2" column="1"><widget class="QComboBox" name="f3Combo3">
+                  <item><property name="text"><string>默认选项</string></property></item>
+                  <item><property name="text"><string>方案 A</string></property></item>
+                  <item><property name="text"><string>方案 B</string></property></item>
+                 </widget></item>
             <item row="3" column="0"><widget class="QLabel" name="f4Label"><property name="text"><string>异常中断处理</string></property></widget></item>
-            <item row="3" column="1"><widget class="QPlainTextEdit" name="f4Text4"><property name="maximumHeight"><number>70</number></property></widget></item>
+            <item row="3" column="1"><widget class="QPlainTextEdit" name="f4Text4"><property name="plainText"><string>示例参数说明</string></property><property name="maximumHeight"><number>70</number></property></widget></item>
             <item row="4" column="0"><widget class="QLabel" name="f5Label"><property name="text"><string>恢复执行设置</string></property></widget></item>
-            <item row="4" column="1"><widget class="QCheckBox" name="f5Check5"><property name="text"><string>启用</string></property></widget></item>
+            <item row="4" column="1"><widget class="QCheckBox" name="f5Check5"><property name="text"><string>启用</string></property><property name="checked"><bool>true</bool></property></widget></item>
      </layout>
     </widget>
    </item>

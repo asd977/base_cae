@@ -8,7 +8,7 @@
    <item>
     <widget class="QGroupBox" name="listGroup"><property name="title"><string>配置列表（上）</string></property>
      <layout class="QVBoxLayout" name="listLayout">
-      <item><widget class="QTableWidget" name="configTable">
+      <item><widget class="QTableWidget" name="configTable"><property name="rowCount"><number>3</number></property><property name="columnCount"><number>4</number></property>
           <column><property name="text"><string>变量名称</string></property></column>
           <column><property name="text"><string>表达式</string></property></column>
           <column><property name="text"><string>单位</string></property></column>
@@ -21,17 +21,17 @@
     <widget class="QGroupBox" name="propertyGroup"><property name="title"><string>属性设置区（下）</string></property>
      <layout class="QGridLayout" name="propertyLayout">
             <item row="0" column="0"><widget class="QLabel" name="f1Label"><property name="text"><string>新建/编辑/删除变量</string></property></widget></item>
-            <item row="0" column="1" colspan="3"><widget class="QWidget" name="toolbarWidget"><layout class="QHBoxLayout" name="toolbarLayout"><item><widget class="QPushButton" name="newButton"><property name="text"><string>新建</string></property></widget></item><item><widget class="QPushButton" name="editButton"><property name="text"><string>编辑</string></property></widget></item><item><widget class="QPushButton" name="deleteButton"><property name="text"><string>删除</string></property></widget></item><item><widget class="QPushButton" name="pickButton"><property name="text"><string>对象选择</string></property></widget></item><item><widget class="QCheckBox" name="highlightCheck"><property name="text"><string>边界高亮</string></property></widget></item></layout></widget></item>
+            <item row="0" column="1" colspan="3"><widget class="QWidget" name="toolbarWidget"><layout class="QHBoxLayout" name="toolbarLayout"><item><widget class="QPushButton" name="newButton"><property name="text"><string>新建</string></property></widget></item><item><widget class="QPushButton" name="editButton"><property name="text"><string>编辑</string></property></widget></item><item><widget class="QPushButton" name="deleteButton"><property name="text"><string>删除</string></property></widget></item><item><widget class="QPushButton" name="pickButton"><property name="text"><string>对象选择</string></property></widget></item><item><widget class="QCheckBox" name="highlightCheck"><property name="text"><string>边界高亮</string></property><property name="checked"><bool>true</bool></property></widget></item></layout></widget></item>
             <item row="1" column="0"><widget class="QLabel" name="f2Label"><property name="text"><string>变量名称</string></property></widget></item>
-            <item row="1" column="1"><widget class="QLineEdit" name="f2Line2"/></item>
+            <item row="1" column="1"><widget class="QLineEdit" name="f2Line2"><property name="text"><string>示例值</string></property></widget></item>
             <item row="2" column="0"><widget class="QLabel" name="f3Label"><property name="text"><string>表达式</string></property></widget></item>
-            <item row="2" column="1"><widget class="QLineEdit" name="f3Line3"/></item>
+            <item row="2" column="1"><widget class="QLineEdit" name="f3Line3"><property name="text"><string>示例值</string></property></widget></item>
             <item row="3" column="0"><widget class="QLabel" name="f4Label"><property name="text"><string>单位</string></property></widget></item>
-            <item row="3" column="1"><widget class="QLineEdit" name="f4Line4"/></item>
+            <item row="3" column="1"><widget class="QLineEdit" name="f4Line4"><property name="text"><string>示例值</string></property></widget></item>
             <item row="4" column="0"><widget class="QLabel" name="f5Label"><property name="text"><string>作用域</string></property></widget></item>
-            <item row="4" column="1"><widget class="QLineEdit" name="f5Line5"/></item>
+            <item row="4" column="1"><widget class="QLineEdit" name="f5Line5"><property name="text"><string>示例值</string></property></widget></item>
             <item row="5" column="0"><widget class="QLabel" name="f6Label"><property name="text"><string>变量列表</string></property></widget></item>
-            <item row="5" column="1"><widget class="QPlainTextEdit" name="f6Text6"><property name="maximumHeight"><number>70</number></property></widget></item>
+            <item row="5" column="1"><widget class="QPlainTextEdit" name="f6Text6"><property name="plainText"><string>示例参数说明</string></property><property name="maximumHeight"><number>70</number></property></widget></item>
      </layout>
     </widget>
    </item>
