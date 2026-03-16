@@ -4,16 +4,11 @@ QT += widgets core
 
 INCLUDEPATH += $$PWD/../../interfaces
 
-HEADERS += \
-
-SOURCES += \
-
-
 FORMS += \
+    $$PWD/DisplayInfoPage.ui
 
 RESOURCES += \
     ../../res.qrc
-
 
 msvc
 {
