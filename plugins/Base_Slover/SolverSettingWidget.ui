@@ -40,7 +40,7 @@
        <item>
         <widget class="QTabWidget" name="tabWidgetMaterials">
          <property name="currentIndex">
-          <number>3</number>
+          <number>0</number>
          </property>
          <widget class="QWidget" name="tabLinearElastic">
           <attribute name="title">
@@ -55,7 +55,11 @@
             </widget>
            </item>
            <item row="0" column="1">
-            <widget class="QLineEdit" name="lineEditE"/>
+            <widget class="QLineEdit" name="lineEditE">
+             <property name="text">
+              <string>2.10e11</string>
+             </property>
+            </widget>
            </item>
            <item row="1" column="0">
             <widget class="QLabel" name="labelNu">
@@ -65,7 +69,11 @@
             </widget>
            </item>
            <item row="1" column="1">
-            <widget class="QLineEdit" name="lineEditNu"/>
+            <widget class="QLineEdit" name="lineEditNu">
+             <property name="text">
+              <string>0.30</string>
+             </property>
+            </widget>
            </item>
            <item row="2" column="0">
             <widget class="QLabel" name="labelRho">
@@ -75,7 +83,11 @@
             </widget>
            </item>
            <item row="2" column="1">
-            <widget class="QLineEdit" name="lineEditRho"/>
+            <widget class="QLineEdit" name="lineEditRho">
+             <property name="text">
+              <string>7850</string>
+             </property>
+            </widget>
            </item>
            <item row="3" column="0">
             <widget class="QLabel" name="labelWaveSpeed">
@@ -88,6 +100,9 @@
             <widget class="QLineEdit" name="lineEditWaveSpeed">
              <property name="placeholderText">
               <string>纵波/横波速度表达式</string>
+             </property>
+             <property name="text">
+              <string>cL=sqrt((lambda+2*mu)/rho), cT=sqrt(mu/rho)</string>
              </property>
             </widget>
            </item>
@@ -195,7 +210,11 @@
                 </widget>
                </item>
                <item row="0" column="1">
-                <widget class="QLineEdit" name="lineEditC10"/>
+                <widget class="QLineEdit" name="lineEditC10">
+                 <property name="text">
+                  <string>0.60e6</string>
+                 </property>
+                </widget>
                </item>
                <item row="1" column="0">
                 <widget class="QLabel" name="labelC01">
@@ -205,7 +224,11 @@
                 </widget>
                </item>
                <item row="1" column="1">
-                <widget class="QLineEdit" name="lineEditC01"/>
+                <widget class="QLineEdit" name="lineEditC01">
+                 <property name="text">
+                  <string>0.15e6</string>
+                 </property>
+                </widget>
                </item>
                <item row="2" column="0">
                 <widget class="QLabel" name="labelKappaMR">
@@ -229,7 +252,11 @@
                 </widget>
                </item>
                <item row="3" column="1">
-                <widget class="QLineEdit" name="lineEditDensityMR"/>
+                <widget class="QLineEdit" name="lineEditDensityMR">
+                 <property name="text">
+                  <string>1100</string>
+                 </property>
+                </widget>
                </item>
               </layout>
              </widget>
@@ -243,7 +270,11 @@
                 </widget>
                </item>
                <item row="0" column="1">
-                <widget class="QLineEdit" name="lineEditC1"/>
+                <widget class="QLineEdit" name="lineEditC1">
+                 <property name="text">
+                  <string>0.55e6</string>
+                 </property>
+                </widget>
                </item>
                <item row="1" column="0">
                 <widget class="QLabel" name="labelC2">
@@ -253,7 +284,11 @@
                 </widget>
                </item>
                <item row="1" column="1">
-                <widget class="QLineEdit" name="lineEditC2"/>
+                <widget class="QLineEdit" name="lineEditC2">
+                 <property name="text">
+                  <string>-0.08e6</string>
+                 </property>
+                </widget>
                </item>
                <item row="2" column="0">
                 <widget class="QLabel" name="labelC3">
@@ -263,7 +298,11 @@
                 </widget>
                </item>
                <item row="2" column="1">
-                <widget class="QLineEdit" name="lineEditC3"/>
+                <widget class="QLineEdit" name="lineEditC3">
+                 <property name="text">
+                  <string>0.02e6</string>
+                 </property>
+                </widget>
                </item>
               </layout>
              </widget>
@@ -365,6 +404,9 @@
              <property name="text">
               <string>使用分数阶导数</string>
              </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
             </widget>
            </item>
            <item>
@@ -378,6 +420,9 @@
             <widget class="QPlainTextEdit" name="plainTextComplexMod">
              <property name="placeholderText">
               <string>G*(f), K*(f) 或等效表达式</string>
+             </property>
+             <property name="plainText">
+              <string>G*(f)=G0*(1+0.08*i*log10(f+1)); K*(f)=2.1e9</string>
              </property>
             </widget>
            </item>
@@ -448,7 +493,11 @@
               </widget>
              </item>
              <item row="1" column="1">
-              <widget class="QLineEdit" name="lineEditYield0"/>
+              <widget class="QLineEdit" name="lineEditYield0">
+               <property name="text">
+                <string>355e6</string>
+               </property>
+              </widget>
              </item>
              <item row="2" column="0">
               <widget class="QLabel" name="labelPlasticPotential">
