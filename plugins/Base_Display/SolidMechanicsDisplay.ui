@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SolidMechanicsDisplay</class>
+ <widget class="QWidget" name="SolidMechanicsDisplay">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>960</width>
+    <height>840</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>固体力学场展示界面</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayoutRoot">
+   <item>
+    <widget class="QScrollArea" name="scrollArea">
+     <property name="widgetResizable">
+      <bool>true</bool>
+     </property>
+     <widget class="QWidget" name="scrollAreaWidgetContents">
+      <property name="geometry">
+       <rect>
+        <x>0</x>
+        <y>0</y>
+        <width>936</width>
+        <height>1500</height>
+       </rect>
+      </property>
+      <layout class="QVBoxLayout" name="verticalLayoutContent">
+       <item>
+        <widget class="QGroupBox" name="groupBoxOverview">
+         <property name="title">
+          <string>固体力学场</string>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayoutOverview">
+          <item>
+           <widget class="QLabel" name="labelOverview">
+            <property name="text">
+             <string>材料模型：线弹性、超弹性、粘弹性、弹塑性（仅展示界面，无功能逻辑）</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QTabWidget" name="tabWidgetMaterials">
+         <property name="currentIndex">
+          <number>0</number>
+         </property>
+         <widget class="QWidget" name="tabLinearElastic">
+          <attribute name="title">
+           <string>线弹性</string>
+          </attribute>
+          <layout class="QFormLayout" name="formLayoutLinear">
+           <item row="0" column="0">
+            <widget class="QLabel" name="labelE">
+             <property name="text"><string>杨氏模量 E</string></property>
+            </widget>
+           </item>
+           <item row="0" column="1"><widget class="QLineEdit" name="lineEditE"/></item>
+           <item row="1" column="0"><widget class="QLabel" name="labelNu"><property name="text"><string>泊松比 ν</string></property></widget></item>
+           <item row="1" column="1"><widget class="QLineEdit" name="lineEditNu"/></item>
+           <item row="2" column="0"><widget class="QLabel" name="labelRho"><property name="text"><string>密度 ρ</string></property></widget></item>
+           <item row="2" column="1"><widget class="QLineEdit" name="lineEditRho"/></item>
+           <item row="3" column="0"><widget class="QLabel" name="labelWaveSpeed"><property name="text"><string>波速描述（补充）</string></property></widget></item>
+           <item row="3" column="1"><widget class="QLineEdit" name="lineEditWaveSpeed"><property name="placeholderText"><string>纵波/横波速度表达式</string></property></widget></item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="tabHyperElastic">
+          <attribute name="title"><string>超弹性</string></attribute>
+          <layout class="QVBoxLayout" name="verticalLayoutHyper">
+           <item>
+            <layout class="QFormLayout" name="formLayoutHyperBase">
+             <item row="0" column="0"><widget class="QLabel" name="labelHyperModel"><property name="text"><string>材料模型</string></property></widget></item>
+             <item row="0" column="1">
+              <widget class="QComboBox" name="comboHyperModel">
+               <item><property name="text"><string>Mooney-Rivlin 两参数（默认）</string></property></item>
+               <item><property name="text"><string>Yeoh</string></property></item>
+               <item><property name="text"><string>Ogden</string></property></item>
+              </widget>
+             </item>
+             <item row="1" column="0"><widget class="QLabel" name="labelCompressibility"><property name="text"><string>可压缩性</string></property></widget></item>
+             <item row="1" column="1"><widget class="QComboBox" name="comboCompressibility"><item><property name="text"><string>几乎不可压缩</string></property></item><item><property name="text"><string>不可压缩</string></property></item><item><property name="text"><string>可压缩，解耦</string></property></item></widget></item>
+             <item row="2" column="0"><widget class="QLabel" name="labelVolEnergy"><property name="text"><string>体积应变能</string></property></widget></item>
+             <item row="2" column="1"><widget class="QComboBox" name="comboVolEnergy"><item><property name="text"><string>二次</string></property></item><item><property name="text"><string>多项式</string></property></item><item><property name="text"><string>对数</string></property></item></widget></item>
+            </layout>
+           </item>
+           <item>
+            <widget class="QStackedWidget" name="stackedHyperParams">
+             <property name="currentIndex"><number>0</number></property>
+             <widget class="QWidget" name="pageMooney2">
+              <layout class="QFormLayout" name="formLayoutMooney2">
+               <item row="0" column="0"><widget class="QLabel" name="labelC10"><property name="text"><string>C10</string></property></widget></item>
+               <item row="0" column="1"><widget class="QLineEdit" name="lineEditC10"/></item>
+               <item row="1" column="0"><widget class="QLabel" name="labelC01"><property name="text"><string>C01</string></property></widget></item>
+               <item row="1" column="1"><widget class="QLineEdit" name="lineEditC01"/></item>
+               <item row="2" column="0"><widget class="QLabel" name="labelKappaMR"><property name="text"><string>体积模量 κ</string></property></widget></item>
+               <item row="2" column="1"><widget class="QLineEdit" name="lineEditKappaMR"><property name="text"><string>100*solid.Gequ</string></property></widget></item>
+               <item row="3" column="0"><widget class="QLabel" name="labelDensityMR"><property name="text"><string>密度 ρ</string></property></widget></item>
+               <item row="3" column="1"><widget class="QLineEdit" name="lineEditDensityMR"/></item>
+              </layout>
+             </widget>
+             <widget class="QWidget" name="pageYeoh">
+              <layout class="QFormLayout" name="formLayoutYeoh">
+               <item row="0" column="0"><widget class="QLabel" name="labelC1"><property name="text"><string>c1</string></property></widget></item>
+               <item row="0" column="1"><widget class="QLineEdit" name="lineEditC1"/></item>
+               <item row="1" column="0"><widget class="QLabel" name="labelC2"><property name="text"><string>c2</string></property></widget></item>
+               <item row="1" column="1"><widget class="QLineEdit" name="lineEditC2"/></item>
+               <item row="2" column="0"><widget class="QLabel" name="labelC3"><property name="text"><string>c3</string></property></widget></item>
+               <item row="2" column="1"><widget class="QLineEdit" name="lineEditC3"/></item>
+              </layout>
+             </widget>
+             <widget class="QWidget" name="pageOgden">
+              <layout class="QVBoxLayout" name="verticalLayoutOgden">
+               <item>
+                <widget class="QTableWidget" name="tableOgden">
+                 <column>
+                  <property name="text"><string>p</string></property>
+                 </column>
+                 <column>
+                  <property name="text"><string>剪切模量 (Pa)</string></property>
+                 </column>
+                 <column>
+                  <property name="text"><string>α 参数 (1)</string></property>
+                 </column>
+                 <row>
+                  <property name="text"><string>1</string></property>
+                 </row>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="tabViscoElastic">
+          <attribute name="title"><string>粘弹性</string></attribute>
+          <layout class="QVBoxLayout" name="verticalLayoutVisco">
+           <item>
+            <layout class="QFormLayout" name="formLayoutViscoBase">
+             <item row="0" column="0"><widget class="QLabel" name="labelViscoModel"><property name="text"><string>材料模型</string></property></widget></item>
+             <item row="0" column="1"><widget class="QComboBox" name="comboViscoModel"><item><property name="text"><string>广义麦克斯韦</string></property></item><item><property name="text"><string>广义 Kelvin-Voigt</string></property></item><item><property name="text"><string>Kelvin-Voigt</string></property></item></widget></item>
+             <item row="1" column="0"><widget class="QLabel" name="labelViscoStrain"><property name="text"><string>粘弹性应变</string></property></widget></item>
+             <item row="1" column="1"><widget class="QComboBox" name="comboViscoStrain"><item><property name="text"><string>偏量</string></property></item><item><property name="text"><string>体积</string></property></item><item><property name="text"><string>体积和偏量</string></property></item></widget></item>
+            </layout>
+           </item>
+           <item><widget class="QCheckBox" name="checkFractional"><property name="text"><string>使用分数阶导数</string></property></widget></item>
+           <item><widget class="QLabel" name="labelComplexMod"><property name="text"><string>频率相关复模量函数（支持插值函数/二阶拟合函数）</string></property></widget></item>
+           <item><widget class="QPlainTextEdit" name="plainTextComplexMod"><property name="placeholderText"><string>G*(f), K*(f) 或等效表达式</string></property></widget></item>
+           <item><widget class="QTableWidget" name="tableViscoBranches"><column><property name="text"><string>分支</string></property></column><column><property name="text"><string>剪切模量 (Pa)</string></property></column><column><property name="text"><string>弛豫时间 (s)</string></property></column><row><property name="text"><string>1</string></property></row></widget></item>
+          </layout>
+         </widget>
+         <widget class="QWidget" name="tabPlastic">
+          <attribute name="title"><string>弹塑性</string></attribute>
+          <layout class="QVBoxLayout" name="verticalLayoutPlastic">
+           <item>
+            <layout class="QFormLayout" name="formLayoutPlastic">
+             <item row="0" column="0"><widget class="QLabel" name="labelEqStress"><property name="text"><string>等效应力</string></property></widget></item>
+             <item row="0" column="1"><widget class="QComboBox" name="comboEqStress"><item><property name="text"><string>von Mises</string></property></item><item><property name="text"><string>Tresca 准则</string></property></item><item><property name="text"><string>Hill 正交各向异性</string></property></item></widget></item>
+             <item row="1" column="0"><widget class="QLabel" name="labelYield0"><property name="text"><string>初始屈服应力 σys0</string></property></widget></item>
+             <item row="1" column="1"><widget class="QLineEdit" name="lineEditYield0"/></item>
+             <item row="2" column="0"><widget class="QLabel" name="labelPlasticPotential"><property name="text"><string>塑性势 Qp</string></property></widget></item>
+             <item row="2" column="1"><widget class="QComboBox" name="comboPlasticPotential"><item><property name="text"><string>关联</string></property></item><item><property name="text"><string>von Mises</string></property></item><item><property name="text"><string>用户定义</string></property></item></widget></item>
+             <item row="3" column="0"><widget class="QLabel" name="labelPe"><property name="text"><string>等效塑性应变 εpe</string></property></widget></item>
+             <item row="3" column="1"><widget class="QComboBox" name="comboPe"><item><property name="text"><string>关联</string></property></item><item><property name="text"><string>von Mises</string></property></item><item><property name="text"><string>用户定义</string></property></item></widget></item>
+             <item row="4" column="0"><widget class="QLabel" name="labelIsoHard"><property name="text"><string>各向同性硬化模型</string></property></widget></item>
+             <item row="4" column="1"><widget class="QComboBox" name="comboIsoHard"><item><property name="text"><string>理想塑性</string></property></item><item><property name="text"><string>线性</string></property></item><item><property name="text"><string>Ludwik</string></property></item><item><property name="text"><string>Johnson-Cook</string></property></item></widget></item>
+             <item row="5" column="0"><widget class="QLabel" name="labelKinematic"><property name="text"><string>运动硬化模型</string></property></widget></item>
+             <item row="5" column="1"><widget class="QComboBox" name="comboKinematic"><item><property name="text"><string>无运动硬化</string></property></item><item><property name="text"><string>线性</string></property></item><item><property name="text"><string>Armstrong-Frederick</string></property></item><item><property name="text"><string>Chaboche</string></property></item></widget></item>
+            </layout>
+           </item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupBoxInitialValues">
+         <property name="title"><string>初始值设置</string></property>
+         <layout class="QGridLayout" name="gridLayoutInitial">
+          <item row="0" column="0"><widget class="QLabel" name="labelDisp"><property name="text"><string>位移场 u</string></property></widget></item>
+          <item row="0" column="1"><widget class="QLineEdit" name="lineEditUx"><property name="text"><string>0</string></property></widget></item>
+          <item row="0" column="2"><widget class="QLineEdit" name="lineEditUy"><property name="text"><string>0</string></property></widget></item>
+          <item row="0" column="3"><widget class="QLineEdit" name="lineEditUz"><property name="text"><string>0</string></property></widget></item>
+          <item row="1" column="0"><widget class="QLabel" name="labelVel"><property name="text"><string>结构速度场 ∂u/∂t</string></property></widget></item>
+          <item row="1" column="1"><widget class="QLineEdit" name="lineEditVx"><property name="text"><string>0</string></property></widget></item>
+          <item row="1" column="2"><widget class="QLineEdit" name="lineEditVy"><property name="text"><string>0</string></property></widget></item>
+          <item row="1" column="3"><widget class="QLineEdit" name="lineEditVz"><property name="text"><string>0</string></property></widget></item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupBoxBoundary">
+         <property name="title"><string>边界条件</string></property>
+         <layout class="QVBoxLayout" name="verticalLayoutBoundary">
+          <item>
+           <widget class="QTableWidget" name="tableBoundaryConditions">
+            <column><property name="text"><string>序号</string></property></column>
+            <column><property name="text"><string>边界名称</string></property></column>
+            <column><property name="text"><string>内容</string></property></column>
+            <column><property name="text"><string>备注</string></property></column>
+            <row><property name="text"><string>1</string></property></row>
+            <row><property name="text"><string>2</string></property></row>
+           </widget>
+          </item>
+          <item><widget class="QLabel" name="labelBoundaryTips"><property name="text"><string>说明：需要区分辊支撑和周期性条件的适用场景（展示占位）。</string></property></widget></item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
