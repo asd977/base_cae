@@ -23,6 +23,7 @@
 #include "SeepageWidget.h"
 #include "StressBoundaryPage.h"
 #include "DamAnalysisWidget.h"
+#include "SolverSettingWidget.h"
 
 Solver::Solver()
 {
@@ -35,8 +36,9 @@ void Solver::newProject()
 {
     if (m_root)
         return;
+    SolverSettingWidget *tmp = new SolverSettingWidget;
 
-    m_root = new ProjectNode("计算分析", QUuid::createUuid().toString(), nullptr);
+    m_root = new ProjectNode("计算分析", QUuid::createUuid().toString(), tmp);
     setupNodeRole(m_root, "SolverRoot");
     ProjectManagerService* projectManagerService =
         ServiceRegistry::instance().getService<ProjectManagerService>();

@@ -9,6 +9,7 @@ HEADERS += \
     SeepageBoundaryPage.h \
     SeepageWidget.h \
     Solver.h \
+    SolverSettingWidget.h \
     StressBoundaryPage.h \
     DamAnalysisWidget.h
 
@@ -17,6 +18,7 @@ SOURCES += \
     SeepageBoundaryPage.cpp \
     SeepageWidget.cpp \
     Solver.cpp \
+    SolverSettingWidget.cpp \
     StressBoundaryPage.cpp \
     DamAnalysisWidget.cpp
 
@@ -24,6 +26,7 @@ FORMS += \
     FillStorageCyclePage.ui \
     SeepageBoundaryPage.ui \
     SeepageWidget.ui \
+    SolverSettingWidget.ui \
     StressBoundaryPage.ui \
     DamAnalysisWidget.ui
 
