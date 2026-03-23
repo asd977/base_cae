@@ -56,6 +56,65 @@ void MaterialManager::newProject()
     newProjectForPath(workPath);
 }
 
+void MaterialManager::addMaterialFromMenu(const QString& modelKey)
+{
+    const QString entryId = addMaterialToModel(modelKey, true);
+    if (!entryId.isEmpty())
+    {
+        focusOnMaterial(entryId);
+    }
+}
+
+QString MaterialManager::addMaterialToModel(const QString& modelKey, bool addToProjectTree)
+{
+    MaterialModel* model = findModel(modelKey);
+    if (!model)
+    {
+        return QString();
+    }
+
+    int maxIndex = 0;
+    for (const auto& entry : model->materials)
+    {
+        if (!entry.name.startsWith(QStringLiteral("材料")))
+        {
+            continue;
+        }
+        bool ok = false;
+        const int index = entry.name.mid(QStringLiteral("材料").size()).toInt(&ok);
+        if (ok)
+        {
+            maxIndex = qMax(maxIndex, index);
+        }
+    }
+
+    MaterialEntry entry;
+    entry.id = QUuid::createUuid().toString();
+    entry.name = QString("材料%1").arg(maxIndex + 1);
+    for (const QString& column : model->columns)
+    {
+        entry.properties.insert(column, QStringLiteral("0"));
+    }
+
+    model->materials.append(entry);
+
+    if (addToProjectTree)
+    {
+        m_addedEntryIds.insert(entry.id);
+        rebuildProjectTree();
+    }
+    if (m_materialManagerWidget)
+    {
+        m_materialManagerWidget->refreshSummary(m_models);
+    }
+    if (m_materialLibraryWidget)
+    {
+        m_materialLibraryWidget->refreshModels();
+    }
+
+    return entry.id;
+}
+
 void MaterialManager::setupTreeWidget()
 {
 }

@@ -3,6 +3,7 @@
 #include <EventManager.h>
 #include <PublicConstants.h>
 #include <ServiceRegistry.h>
+#include <services/MaterialManagerService.h>
 
 #include <QAbstractButton>
 #include <QComboBox>
@@ -695,6 +696,30 @@ void UiFrame::buildRibbonTabs()
         bindEvent(this, actMeshGrouping, PublicConstants::kActionPreprocessMeshGrouping);
         // bindEvent(this, actQuality,
         // PublicConstants::kActionPreprocessQualityStd);
+    }
+
+    // =========================
+    // 材料
+    // =========================
+    {
+        auto* cate = m_ribbon->addCategoryPage("材料");
+        cate->setObjectName("materialObj");
+
+        auto* panel = cate->addPannel("材料模型");
+        auto* actHjp = makeAction(this, ":/resources/menu/minimal/analysis.svg", "黄金坪地下厂房模型");
+        addActionToPanel(panel, actHjp, 3);
+
+        connect(actHjp, &QAction::triggered, this,
+                []()
+                {
+                    auto* materialService =
+                        ServiceRegistry::instance().getService<MaterialManagerService>();
+                    if (materialService)
+                    {
+                        materialService->addMaterialFromMenu(
+                            QStringLiteral("huangjinping_underground_plant"));
+                    }
+                });
     }
 
     // =========================

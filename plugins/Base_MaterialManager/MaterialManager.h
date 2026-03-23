@@ -28,6 +28,9 @@ class MaterialManager : public QObject, public MaterialManagerService
 
     BasePage* getMaterialManagerWidget() override;
     void newProject() override;
+    void addMaterialFromMenu(const QString& modelKey) override;
+
+    QString addMaterialToModel(const QString& modelKey, bool addToProjectTree = true);
 
     const QVector<MaterialModel>& models() const;
     QVector<MaterialModel>& models();
