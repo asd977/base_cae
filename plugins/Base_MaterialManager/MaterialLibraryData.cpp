@@ -78,6 +78,24 @@ MaterialModel createSoilEmuModel()
     return model;
 }
 
+
+MaterialModel createHuangjinpingBarModel()
+{
+    MaterialModel model;
+    model.key = QStringLiteral("huangjinping_bar_element");
+    model.displayName = QStringLiteral("杆单元参数（黄金坪地下厂房）");
+    model.ib = 0;
+
+    model.columns << QStringLiteral("序号") << QStringLiteral("变模E1,E2（GPa）")
+                  << QStringLiteral("容重t/m3") << QStringLiteral("杆面积（m2）")
+                  << QStringLiteral("抗拉（压）强度ft（MPa）") << QStringLiteral("间距(m)")
+                  << QStringLiteral("排距(m)") << QStringLiteral("预应力T（KN）")
+                  << QStringLiteral("预应系数");
+
+    model.columnOutputRows = QVector<int>(model.columns.size(), -1);
+    return model;
+}
+
 MaterialModel createSoilEbModel()
 {
     MaterialModel model;
@@ -100,5 +118,5 @@ MaterialModel createSoilEbModel()
 QVector<MaterialModel> createDefaultMaterialModels()
 {
     return {createHuangjinpingModel(), createSoilEbModel(), createSoilEmuModel(),
-            createDamDynamicModel(), createSeepageModel()};
+            createDamDynamicModel(), createSeepageModel(), createHuangjinpingBarModel()};
 }

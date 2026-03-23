@@ -712,11 +712,14 @@ void UiFrame::buildRibbonTabs()
         auto* actSoilEmu = makeAction(this, ":/resources/menu/minimal/analysis.svg", "土体E-μ模型");
         auto* actSeepage = makeAction(this, ":/resources/menu/minimal/analysis.svg",
                                       "剑科心墙堆石坝各向同性稳态渗流参数");
+        auto* actBar = makeAction(this, ":/resources/menu/minimal/analysis.svg",
+                                  "杆单元参数（黄金坪地下厂房）");
         addActionToPanel(panel, actHjp, 3);
         addActionToPanel(panel, actSoilEb, 3);
         addActionToPanel(panel, actDynamic, 3);
         addActionToPanel(panel, actSoilEmu, 3);
         addActionToPanel(panel, actSeepage, 3);
+        addActionToPanel(panel, actBar, 3);
 
         connect(actHjp, &QAction::triggered, this,
                 []()
@@ -772,6 +775,18 @@ void UiFrame::buildRibbonTabs()
                     {
                         materialService->addMaterialFromMenu(
                             QStringLiteral("jk_corewall_steady_seepage"));
+                    }
+                });
+
+        connect(actBar, &QAction::triggered, this,
+                []()
+                {
+                    auto* materialService =
+                        ServiceRegistry::instance().getService<MaterialManagerService>();
+                    if (materialService)
+                    {
+                        materialService->addMaterialFromMenu(
+                            QStringLiteral("huangjinping_bar_element"));
                     }
                 });
     }

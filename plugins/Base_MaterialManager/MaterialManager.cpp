@@ -1105,6 +1105,44 @@ bool MaterialManager::generateCaculateFile()
             continue;
         }
 
+        if (info.model->key == QStringLiteral("huangjinping_bar_element"))
+        {
+            const double ee1 = valueOf(info.entry, QStringLiteral("变模E1,E2（GPa）"));
+            const double dryRou = valueOf(info.entry, QStringLiteral("容重t/m3"));
+            const double area = valueOf(info.entry, QStringLiteral("杆面积（m2）"));
+            const double dryRt = valueOf(info.entry, QStringLiteral("抗拉（压）强度ft（MPa）"));
+            const double ba = valueOf(info.entry, QStringLiteral("间距(m)"));
+            const double bb = valueOf(info.entry, QStringLiteral("排距(m)"));
+            const double fbar = valueOf(info.entry, QStringLiteral("预应力T（KN）"));
+            const double alfaFbar = valueOf(info.entry, QStringLiteral("预应系数"));
+
+            auto setRow = [&](int row, double value)
+            {
+                if (row >= 1 && row <= ncon)
+                {
+                    values[row - 1][matIndex] = value;
+                }
+            };
+
+            setRow(1, 1.0);
+            setRow(13, 2.0);
+            setRow(12, dryRt * 1.0e6 * 0.512);
+            setRow(2, ee1 * 1.0e9);
+            setRow(3, ee1 * 1.0e9);
+            setRow(7, dryRou * 1.0e3);
+            setRow(8, area);
+            setRow(10, dryRt * 1.0e6);
+            setRow(92, dryRt * 1.0e6);
+            setRow(9, dryRt * 1.0e6);
+            setRow(91, dryRt * 1.0e6);
+            setRow(93, fbar * 1.0e3);
+            setRow(38, ba);
+            setRow(37, bb);
+            setRow(39, 1.0);
+            setRow(89, alfaFbar);
+            continue;
+        }
+
         const auto& cols = info.model->columns;
         const auto& lineMap = info.model->columnOutputRows;
         const int count = qMin(cols.size(), lineMap.size());
