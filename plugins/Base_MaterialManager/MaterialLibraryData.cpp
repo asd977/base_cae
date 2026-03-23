@@ -22,9 +22,27 @@ MaterialModel createHuangjinpingModel()
     model.columnOutputRows = QVector<int>(model.columns.size(), -1);
     return model;
 }
+
+MaterialModel createSoilEbModel()
+{
+    MaterialModel model;
+    model.key = QStringLiteral("soil_eb");
+    model.displayName = QStringLiteral("土体E-B模型");
+    model.ib = -1;
+
+    model.columns << QStringLiteral("材料编号") << QStringLiteral("干容重(t/m3)")
+                  << QStringLiteral("天然容重(t/m3)") << QStringLiteral("饱和容重(t/m3)")
+                  << QStringLiteral("φ0(°)") << QStringLiteral("Δφ(°)")
+                  << QStringLiteral("c(KPa)") << QStringLiteral("Rf") << QStringLiteral("K")
+                  << QStringLiteral("n") << QStringLiteral("Kur") << QStringLiteral("Kb")
+                  << QStringLiteral("m");
+
+    model.columnOutputRows = QVector<int>(model.columns.size(), -1);
+    return model;
+}
 } // namespace
 
 QVector<MaterialModel> createDefaultMaterialModels()
 {
-    return {createHuangjinpingModel()};
+    return {createHuangjinpingModel(), createSoilEbModel()};
 }

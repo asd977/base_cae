@@ -707,7 +707,9 @@ void UiFrame::buildRibbonTabs()
 
         auto* panel = cate->addPannel("材料模型");
         auto* actHjp = makeAction(this, ":/resources/menu/minimal/analysis.svg", "黄金坪地下厂房模型");
+        auto* actSoilEb = makeAction(this, ":/resources/menu/minimal/analysis.svg", "土体E-B模型");
         addActionToPanel(panel, actHjp, 3);
+        addActionToPanel(panel, actSoilEb, 3);
 
         connect(actHjp, &QAction::triggered, this,
                 []()
@@ -718,6 +720,17 @@ void UiFrame::buildRibbonTabs()
                     {
                         materialService->addMaterialFromMenu(
                             QStringLiteral("huangjinping_underground_plant"));
+                    }
+                });
+
+        connect(actSoilEb, &QAction::triggered, this,
+                []()
+                {
+                    auto* materialService =
+                        ServiceRegistry::instance().getService<MaterialManagerService>();
+                    if (materialService)
+                    {
+                        materialService->addMaterialFromMenu(QStringLiteral("soil_eb"));
                     }
                 });
     }
