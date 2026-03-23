@@ -709,24 +709,26 @@ void UiFrame::buildRibbonTabs()
         auto* panelCreep = cate->addPannel("流变模型");
         auto* panelSpecial = cate->addPannel("专项模型");
 
-        auto* actHjp = makeAction(this, ":/resources/menu/minimal/analysis.svg", "黄金坪厂房");
-        auto* actSoilEb = makeAction(this, ":/resources/menu/minimal/analysis.svg", "土体E-B模型");
-        auto* actDynamic = makeAction(this, ":/resources/menu/minimal/analysis.svg", "坝料动力");
-        auto* actSoilEmu = makeAction(this, ":/resources/menu/minimal/analysis.svg", "土体E-μ模型");
+        auto* actHjp = makeAction(this, ":/resources/menu/minimal/mat-special.svg", "黄金坪厂房");
+        auto* actSoilEb = makeAction(this, ":/resources/menu/minimal/mat-soil.svg", "土体E-B模型");
+        auto* actDynamic = makeAction(this, ":/resources/menu/minimal/mat-special.svg", "坝料动力");
+        auto* actSoilEmu = makeAction(this, ":/resources/menu/minimal/mat-soil.svg", "土体E-μ模型");
         auto* actSoilEmuCrush =
-            makeAction(this, ":/resources/menu/minimal/analysis.svg", "土体E-μ破碎模型");
+            makeAction(this, ":/resources/menu/minimal/mat-soil.svg", "土体E-μ破碎模型");
         auto* actSeepage =
-            makeAction(this, ":/resources/menu/minimal/analysis.svg", "剑科稳态渗流");
-        auto* actBar = makeAction(this, ":/resources/menu/minimal/analysis.svg", "黄金坪杆单元");
-        auto* actDagangshan = makeAction(this, ":/resources/menu/minimal/analysis.svg",
+            makeAction(this, ":/resources/menu/minimal/mat-special.svg", "剑科稳态渗流");
+        auto* actBar =
+            makeAction(this, ":/resources/menu/minimal/mat-special.svg", "黄金坪杆单元");
+        auto* actDagangshan = makeAction(this, ":/resources/menu/minimal/mat-special.svg",
                                          "大岗山各向同性");
-        auto* actNanshui = makeAction(this, ":/resources/menu/minimal/analysis.svg", "南水模型");
-        auto* actKg = makeAction(this, ":/resources/menu/minimal/analysis.svg", "土体K-G模型");
-        auto* actCreep = makeAction(this, ":/resources/menu/minimal/analysis.svg", "沈珠江三参数");
-        auto* actLiguoying = makeAction(this, ":/resources/menu/minimal/analysis.svg",
+        auto* actNanshui = makeAction(this, ":/resources/menu/minimal/mat-soil.svg", "南水模型");
+        auto* actKg = makeAction(this, ":/resources/menu/minimal/mat-soil.svg", "土体K-G模型");
+        auto* actCreep = makeAction(this, ":/resources/menu/minimal/mat-creep.svg", "沈珠江三参数");
+        auto* actLiguoying = makeAction(this, ":/resources/menu/minimal/mat-creep.svg",
                                         "李国英七参数");
-        auto* actNineParam = makeAction(this, ":/resources/menu/minimal/analysis.svg", "九参数流变");
-        auto* actXiyuan = makeAction(this, ":/resources/menu/minimal/analysis.svg", "西源流变");
+        auto* actNineParam =
+            makeAction(this, ":/resources/menu/minimal/mat-creep.svg", "九参数流变");
+        auto* actXiyuan = makeAction(this, ":/resources/menu/minimal/mat-creep.svg", "西源流变");
 
         // 材料类型较多，统一改为 small action，减少 Ribbon 占位并避免文字截断。
         addActionToPanel(panelSoil, actSoilEb, 1);

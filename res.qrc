@@ -206,6 +206,9 @@
         <file>resources/menu/minimal/boolean.svg</file>
         <file>resources/menu/minimal/mesh.svg</file>
         <file>resources/menu/minimal/analysis.svg</file>
+        <file>resources/menu/minimal/mat-soil.svg</file>
+        <file>resources/menu/minimal/mat-creep.svg</file>
+        <file>resources/menu/minimal/mat-special.svg</file>
         <file>resources/menu/minimal/constraint.svg</file>
         <file>resources/menu/minimal/load.svg</file>
         <file>resources/menu/minimal/boolean-fuse.svg</file>
