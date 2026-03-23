@@ -936,6 +936,87 @@ bool MaterialManager::generateCaculateFile()
             continue;
         }
 
+        if (info.model->key == QStringLiteral("dam_dynamic"))
+        {
+            const double maori = valueOf(info.entry, QStringLiteral("静力计算编号"));
+            const double ifliqd = valueOf(info.entry, QStringLiteral("是否液化"));
+            const double dryk1 = valueOf(info.entry, QStringLiteral("DRYK1(KPa)"));
+            const double dryn1 = valueOf(info.entry, QStringLiteral("DRYN1"));
+            const double fai = valueOf(info.entry, QStringLiteral("FAI(°)"));
+            const double coKpa = valueOf(info.entry, QStringLiteral("CO(KPa)"));
+            const double pu = valueOf(info.entry, QStringLiteral("PU"));
+            const double drydam = valueOf(info.entry, QStringLiteral("DRYDAM"));
+            const double ratiao1 = valueOf(info.entry, QStringLiteral("RATIAO1(0.1)"));
+            const double ratiao2 = valueOf(info.entry, QStringLiteral("RATIAO2(0.3)"));
+            const double ratiao3 = valueOf(info.entry, QStringLiteral("RATIAO3(0.5)"));
+
+            double ckv = valueOf(info.entry, QStringLiteral("Kv"));
+            double ckp = valueOf(info.entry, QStringLiteral("Kp"));
+            double cnv = valueOf(info.entry, QStringLiteral("nv"));
+            double cnp = valueOf(info.entry, QStringLiteral("np"));
+
+            if (ckv < 0.0001)
+                ckv = dryk1 * 1.1;
+            if (ckp < 0.0001)
+                ckp = ckv * 0.8;
+            if (cnv < 0.0001)
+                cnv = dryn1;
+            if (cnp < 0.0001)
+                cnp = dryn1 * 1.5;
+            if (cnp > 0.9)
+                cnp = 0.9;
+
+            const double co = coKpa * 1.0e3;
+
+            const int maoriInt = qRound64(maori);
+            if (maoriInt > 0 && maoriInt <= nmat)
+            {
+                const int maoriIndex = maoriInt - 1;
+                for (int row = 0; row < ncon; ++row)
+                {
+                    values[row][matIndex] = values[row][maoriIndex];
+                }
+            }
+
+            auto setRow = [&](int row, double value)
+            {
+                if (row >= 1 && row <= ncon)
+                {
+                    values[row - 1][matIndex] = value;
+                }
+            };
+
+            setRow(1, -4.0);
+            setRow(13, ifliqd);
+            setRow(35, 1.0);
+            setRow(4, pu);
+            setRow(5, pu);
+            setRow(58, 0.1);
+            setRow(59, 0.3);
+            setRow(60, 0.5);
+            setRow(61, ratiao1);
+            setRow(62, ratiao2);
+            setRow(63, ratiao3);
+            setRow(80, dryk1);
+            setRow(81, dryn1);
+            setRow(82, drydam);
+            setRow(83, co);
+            setRow(84, maori);
+            setRow(85, ratiao1);
+            setRow(86, ratiao2);
+            setRow(87, ratiao3);
+            setRow(88, fai);
+            setRow(11, fai);
+            setRow(12, co);
+            setRow(94, fai);
+            setRow(95, co);
+            setRow(105, ckv);
+            setRow(106, ckp);
+            setRow(107, cnv);
+            setRow(108, cnp);
+            continue;
+        }
+
         const auto& cols = info.model->columns;
         const auto& lineMap = info.model->columnOutputRows;
         const int count = qMin(cols.size(), lineMap.size());
@@ -951,7 +1032,7 @@ bool MaterialManager::generateCaculateFile()
 
             bool ok = false;
             const double v = strVal.toDouble(&ok);
-            values[targetRow - 1][matype] = ok ? v : 0.0;
+            values[targetRow - 1][matIndex] = ok ? v : 0.0;
         }
     }
 

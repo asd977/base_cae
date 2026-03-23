@@ -23,6 +23,27 @@ MaterialModel createHuangjinpingModel()
     return model;
 }
 
+
+MaterialModel createDamDynamicModel()
+{
+    MaterialModel model;
+    model.key = QStringLiteral("dam_dynamic");
+    model.displayName = QStringLiteral("坝料动力参数");
+    model.ib = -4;
+
+    model.columns << QStringLiteral("编号") << QStringLiteral("静力计算编号")
+                  << QStringLiteral("是否液化") << QStringLiteral("DRYK1(KPa)")
+                  << QStringLiteral("DRYN1") << QStringLiteral("FAI(°)")
+                  << QStringLiteral("CO(KPa)") << QStringLiteral("PU")
+                  << QStringLiteral("DRYDAM") << QStringLiteral("RATIAO1(0.1)")
+                  << QStringLiteral("RATIAO2(0.3)") << QStringLiteral("RATIAO3(0.5)")
+                  << QStringLiteral("Kv")
+                  << QStringLiteral("Kp") << QStringLiteral("nv") << QStringLiteral("np");
+
+    model.columnOutputRows = QVector<int>(model.columns.size(), -1);
+    return model;
+}
+
 MaterialModel createSoilEbModel()
 {
     MaterialModel model;
@@ -44,5 +65,5 @@ MaterialModel createSoilEbModel()
 
 QVector<MaterialModel> createDefaultMaterialModels()
 {
-    return {createHuangjinpingModel(), createSoilEbModel()};
+    return {createHuangjinpingModel(), createSoilEbModel(), createDamDynamicModel()};
 }
