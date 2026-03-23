@@ -705,42 +705,45 @@ void UiFrame::buildRibbonTabs()
         auto* cate = m_ribbon->addCategoryPage("材料");
         cate->setObjectName("materialObj");
 
-        auto* panel = cate->addPannel("材料模型");
-        auto* actHjp = makeAction(this, ":/resources/menu/minimal/analysis.svg", "黄金坪地下厂房模型");
+        auto* panelSoil = cate->addPannel("土体模型");
+        auto* panelCreep = cate->addPannel("流变模型");
+        auto* panelSpecial = cate->addPannel("专项模型");
+
+        auto* actHjp = makeAction(this, ":/resources/menu/minimal/analysis.svg", "黄金坪厂房");
         auto* actSoilEb = makeAction(this, ":/resources/menu/minimal/analysis.svg", "土体E-B模型");
-        auto* actDynamic = makeAction(this, ":/resources/menu/minimal/analysis.svg", "坝料动力参数");
+        auto* actDynamic = makeAction(this, ":/resources/menu/minimal/analysis.svg", "坝料动力");
         auto* actSoilEmu = makeAction(this, ":/resources/menu/minimal/analysis.svg", "土体E-μ模型");
         auto* actSoilEmuCrush =
             makeAction(this, ":/resources/menu/minimal/analysis.svg", "土体E-μ破碎模型");
-        auto* actSeepage = makeAction(this, ":/resources/menu/minimal/analysis.svg",
-                                      "剑科心墙堆石坝各向同性稳态渗流参数");
-        auto* actBar = makeAction(this, ":/resources/menu/minimal/analysis.svg",
-                                  "杆单元参数（黄金坪地下厂房）");
+        auto* actSeepage =
+            makeAction(this, ":/resources/menu/minimal/analysis.svg", "剑科稳态渗流");
+        auto* actBar = makeAction(this, ":/resources/menu/minimal/analysis.svg", "黄金坪杆单元");
         auto* actDagangshan = makeAction(this, ":/resources/menu/minimal/analysis.svg",
-                                         "大岗山高拱坝各向同性岩体参数");
-        auto* actNanshui = makeAction(this, ":/resources/menu/minimal/analysis.svg", "南水模型参数");
-        auto* actKg = makeAction(this, ":/resources/menu/minimal/analysis.svg", "土体科大K-G模型参数");
-        auto* actCreep = makeAction(this, ":/resources/menu/minimal/analysis.svg",
-                                    "沈珠江三参数流变模型参数");
+                                         "大岗山各向同性");
+        auto* actNanshui = makeAction(this, ":/resources/menu/minimal/analysis.svg", "南水模型");
+        auto* actKg = makeAction(this, ":/resources/menu/minimal/analysis.svg", "土体K-G模型");
+        auto* actCreep = makeAction(this, ":/resources/menu/minimal/analysis.svg", "沈珠江三参数");
         auto* actLiguoying = makeAction(this, ":/resources/menu/minimal/analysis.svg",
-                                        "李国英七参数流变模型参数");
-        auto* actNineParam = makeAction(this, ":/resources/menu/minimal/analysis.svg",
-                                        "九参数流变模型参数");
-        auto* actXiyuan = makeAction(this, ":/resources/menu/minimal/analysis.svg", "西源流变模型参数");
-        addActionToPanel(panel, actHjp, 3);
-        addActionToPanel(panel, actSoilEb, 3);
-        addActionToPanel(panel, actDynamic, 3);
-        addActionToPanel(panel, actSoilEmu, 3);
-        addActionToPanel(panel, actSoilEmuCrush, 3);
-        addActionToPanel(panel, actSeepage, 3);
-        addActionToPanel(panel, actBar, 3);
-        addActionToPanel(panel, actDagangshan, 3);
-        addActionToPanel(panel, actNanshui, 3);
-        addActionToPanel(panel, actKg, 3);
-        addActionToPanel(panel, actCreep, 3);
-        addActionToPanel(panel, actLiguoying, 3);
-        addActionToPanel(panel, actNineParam, 3);
-        addActionToPanel(panel, actXiyuan, 3);
+                                        "李国英七参数");
+        auto* actNineParam = makeAction(this, ":/resources/menu/minimal/analysis.svg", "九参数流变");
+        auto* actXiyuan = makeAction(this, ":/resources/menu/minimal/analysis.svg", "西源流变");
+
+        addActionToPanel(panelSoil, actSoilEb, 3);
+        addActionToPanel(panelSoil, actSoilEmu, 3);
+        addActionToPanel(panelSoil, actSoilEmuCrush, 3);
+        addActionToPanel(panelSoil, actNanshui, 3);
+        addActionToPanel(panelSoil, actKg, 3);
+
+        addActionToPanel(panelCreep, actCreep, 3);
+        addActionToPanel(panelCreep, actLiguoying, 3);
+        addActionToPanel(panelCreep, actNineParam, 3);
+        addActionToPanel(panelCreep, actXiyuan, 3);
+
+        addActionToPanel(panelSpecial, actHjp, 3);
+        addActionToPanel(panelSpecial, actDynamic, 3);
+        addActionToPanel(panelSpecial, actSeepage, 3);
+        addActionToPanel(panelSpecial, actBar, 3);
+        addActionToPanel(panelSpecial, actDagangshan, 3);
 
         connect(actHjp, &QAction::triggered, this,
                 []()
