@@ -6,7 +6,7 @@ MaterialModel createHuangjinpingModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("huangjinping_underground_plant");
-    model.displayName = QStringLiteral("黄金坪地下厂房模型");
+    model.displayName = QStringLiteral("黄金坪厂房");
     model.ib = 0;
 
     model.columns << QStringLiteral("编号") << QStringLiteral("岩类分区")
@@ -28,7 +28,7 @@ MaterialModel createDamDynamicModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("dam_dynamic");
-    model.displayName = QStringLiteral("坝料动力参数");
+    model.displayName = QStringLiteral("坝料动力");
     model.ib = -4;
 
     model.columns << QStringLiteral("编号") << QStringLiteral("静力计算编号")
@@ -49,7 +49,7 @@ MaterialModel createSeepageModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("jk_corewall_steady_seepage");
-    model.displayName = QStringLiteral("剑科心墙堆石坝各向同性稳态渗流参数");
+    model.displayName = QStringLiteral("剑科稳态渗流");
     model.ib = -2;
 
     model.columns << QStringLiteral("材料编号") << QStringLiteral("渗透系数K(Lu)")
@@ -102,7 +102,7 @@ MaterialModel createHuangjinpingBarModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("huangjinping_bar_element");
-    model.displayName = QStringLiteral("杆单元参数（黄金坪地下厂房）");
+    model.displayName = QStringLiteral("黄金坪杆单元");
     model.ib = 0;
 
     model.columns << QStringLiteral("序号") << QStringLiteral("变模E1,E2（GPa）")
@@ -120,7 +120,7 @@ MaterialModel createDagangshanIsotropicModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("dagangshan_isotropic");
-    model.displayName = QStringLiteral("大岗山高拱坝各向同性岩体参数");
+    model.displayName = QStringLiteral("大岗山各向同性");
     model.ib = 0;
 
     model.columns << QStringLiteral("序号") << QStringLiteral("变形模量E（GPa）")
@@ -137,7 +137,7 @@ MaterialModel createNanshuiModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("soil_nanshui");
-    model.displayName = QStringLiteral("南水模型参数");
+    model.displayName = QStringLiteral("南水模型");
     model.ib = -5;
 
     model.columns << QStringLiteral("材料编号") << QStringLiteral("干容重(t/m3)")
@@ -156,7 +156,7 @@ MaterialModel createSoilKgModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("soil_kg");
-    model.displayName = QStringLiteral("土体科大K-G模型参数");
+    model.displayName = QStringLiteral("土体K-G模型");
     model.ib = -2;
 
     model.columns << QStringLiteral("材料编号") << QStringLiteral("干容重(t/m3)")
@@ -175,7 +175,7 @@ MaterialModel createShenzhujiangCreepModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("shenzhujiang_creep");
-    model.displayName = QStringLiteral("沈珠江三参数流变模型参数");
+    model.displayName = QStringLiteral("沈珠江三参数");
     model.ib = 0;
 
     model.columns << QStringLiteral("序号") << QStringLiteral("应变速率系数α")
@@ -190,7 +190,7 @@ MaterialModel createLiguoyingCreepModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("liguoying_creep");
-    model.displayName = QStringLiteral("李国英七参数流变模型参数");
+    model.displayName = QStringLiteral("李国英七参数");
     model.ib = 0;
 
     model.columns << QStringLiteral("序号") << QStringLiteral("应变速率系数α")
@@ -207,7 +207,7 @@ MaterialModel createNineParamCreepModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("nine_param_creep");
-    model.displayName = QStringLiteral("九参数流变模型参数");
+    model.displayName = QStringLiteral("九参数流变");
     model.ib = 0;
 
     model.columns << QStringLiteral("序号") << QStringLiteral("应变速率系数λv")
@@ -225,7 +225,7 @@ MaterialModel createXiyuanCreepModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("xiyuan_creep");
-    model.displayName = QStringLiteral("西源流变模型参数");
+    model.displayName = QStringLiteral("西源流变");
     model.ib = 0;
 
     model.columns << QStringLiteral("序号") << QStringLiteral("瞬时弹性模量E1（GPa）")
