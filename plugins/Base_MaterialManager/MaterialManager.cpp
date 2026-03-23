@@ -1124,6 +1124,50 @@ bool MaterialManager::generateCaculateFile()
             continue;
         }
 
+        if (info.model->key == QStringLiteral("soil_kg"))
+        {
+            const double dryRouTm3 = valueOf(info.entry, QStringLiteral("干容重(t/m3)"));
+            const double pacRouTm3 = valueOf(info.entry, QStringLiteral("天然容重(t/m3)"));
+            const double wetRouTm3 = valueOf(info.entry, QStringLiteral("饱和容重(t/m3)"));
+            const double aki = valueOf(info.entry, QStringLiteral("Ki,Kie(10^5Pa)"));
+            const double alfak = valueOf(info.entry, QStringLiteral("αk,αke"));
+            const double agi = valueOf(info.entry, QStringLiteral("Gi,Gie(10^5Pa)"));
+            const double alfag = valueOf(info.entry, QStringLiteral("αG,αGe"));
+            const double betag = valueOf(info.entry, QStringLiteral("βG"));
+            const double akg = valueOf(info.entry, QStringLiteral("a(10^5Pa)"));
+            const double bkg = valueOf(info.entry, QStringLiteral("b"));
+
+            const double dryRou = dryRouTm3 * 1.0e3;
+            const double pacRou = pacRouTm3 * 1.0e3;
+            const double wetRou = wetRouTm3 * 1.0e3;
+
+            auto setRow = [&](int row, double value)
+            {
+                if (row >= 1 && row <= ncon)
+                {
+                    values[row - 1][matIndex] = value;
+                }
+            };
+
+            setRow(1, -2.0);
+            setRow(8, 1.0);
+            setRow(7, dryRou);
+            setRow(90, pacRou);
+            setRow(89, wetRou);
+            setRow(69, aki);
+            setRow(70, alfak);
+            setRow(74, agi);
+            setRow(71, alfag);
+            setRow(75, betag);
+            setRow(72, akg);
+            setRow(73, bkg);
+            setRow(76, aki);
+            setRow(78, alfak);
+            setRow(77, agi);
+            setRow(79, alfag);
+            continue;
+        }
+
         if (info.model->key == QStringLiteral("dam_dynamic"))
         {
             const double maori = valueOf(info.entry, QStringLiteral("静力计算编号"));

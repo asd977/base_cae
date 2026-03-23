@@ -132,6 +132,25 @@ MaterialModel createNanshuiModel()
     return model;
 }
 
+
+MaterialModel createSoilKgModel()
+{
+    MaterialModel model;
+    model.key = QStringLiteral("soil_kg");
+    model.displayName = QStringLiteral("土体科大K-G模型参数");
+    model.ib = -2;
+
+    model.columns << QStringLiteral("材料编号") << QStringLiteral("干容重(t/m3)")
+                  << QStringLiteral("天然容重(t/m3)") << QStringLiteral("饱和容重(t/m3)")
+                  << QStringLiteral("Ki,Kie(10^5Pa)") << QStringLiteral("αk,αke")
+                  << QStringLiteral("Gi,Gie(10^5Pa)") << QStringLiteral("αG,αGe")
+                  << QStringLiteral("βG") << QStringLiteral("a(10^5Pa)")
+                  << QStringLiteral("b");
+
+    model.columnOutputRows = QVector<int>(model.columns.size(), -1);
+    return model;
+}
+
 MaterialModel createSoilEbModel()
 {
     MaterialModel model;
@@ -155,5 +174,5 @@ QVector<MaterialModel> createDefaultMaterialModels()
 {
     return {createHuangjinpingModel(), createSoilEbModel(), createSoilEmuModel(),
             createDamDynamicModel(), createSeepageModel(), createHuangjinpingBarModel(),
-            createDagangshanIsotropicModel(), createNanshuiModel()};
+            createDagangshanIsotropicModel(), createNanshuiModel(), createSoilKgModel()};
 }

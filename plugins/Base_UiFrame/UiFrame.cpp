@@ -717,6 +717,7 @@ void UiFrame::buildRibbonTabs()
         auto* actDagangshan = makeAction(this, ":/resources/menu/minimal/analysis.svg",
                                          "大岗山高拱坝各向同性岩体参数");
         auto* actNanshui = makeAction(this, ":/resources/menu/minimal/analysis.svg", "南水模型参数");
+        auto* actKg = makeAction(this, ":/resources/menu/minimal/analysis.svg", "土体科大K-G模型参数");
         addActionToPanel(panel, actHjp, 3);
         addActionToPanel(panel, actSoilEb, 3);
         addActionToPanel(panel, actDynamic, 3);
@@ -725,6 +726,7 @@ void UiFrame::buildRibbonTabs()
         addActionToPanel(panel, actBar, 3);
         addActionToPanel(panel, actDagangshan, 3);
         addActionToPanel(panel, actNanshui, 3);
+        addActionToPanel(panel, actKg, 3);
 
         connect(actHjp, &QAction::triggered, this,
                 []()
@@ -815,6 +817,17 @@ void UiFrame::buildRibbonTabs()
                     if (materialService)
                     {
                         materialService->addMaterialFromMenu(QStringLiteral("soil_nanshui"));
+                    }
+                });
+
+        connect(actKg, &QAction::triggered, this,
+                []()
+                {
+                    auto* materialService =
+                        ServiceRegistry::instance().getService<MaterialManagerService>();
+                    if (materialService)
+                    {
+                        materialService->addMaterialFromMenu(QStringLiteral("soil_kg"));
                     }
                 });
     }
