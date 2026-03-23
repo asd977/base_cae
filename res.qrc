@@ -209,6 +209,20 @@
         <file>resources/menu/minimal/mat-soil.svg</file>
         <file>resources/menu/minimal/mat-creep.svg</file>
         <file>resources/menu/minimal/mat-special.svg</file>
+        <file>resources/menu/minimal/mat-hjp.svg</file>
+        <file>resources/menu/minimal/mat-soil-eb.svg</file>
+        <file>resources/menu/minimal/mat-dynamic.svg</file>
+        <file>resources/menu/minimal/mat-soil-emu.svg</file>
+        <file>resources/menu/minimal/mat-soil-emu-crush.svg</file>
+        <file>resources/menu/minimal/mat-seepage.svg</file>
+        <file>resources/menu/minimal/mat-bar.svg</file>
+        <file>resources/menu/minimal/mat-dagangshan.svg</file>
+        <file>resources/menu/minimal/mat-nanshui.svg</file>
+        <file>resources/menu/minimal/mat-kg.svg</file>
+        <file>resources/menu/minimal/mat-shenzhujiang.svg</file>
+        <file>resources/menu/minimal/mat-liguoying.svg</file>
+        <file>resources/menu/minimal/mat-nine-param.svg</file>
+        <file>resources/menu/minimal/mat-xiyuan.svg</file>
         <file>resources/menu/minimal/constraint.svg</file>
         <file>resources/menu/minimal/load.svg</file>
         <file>resources/menu/minimal/boolean-fuse.svg</file>
