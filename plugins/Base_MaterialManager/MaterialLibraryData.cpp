@@ -96,6 +96,23 @@ MaterialModel createHuangjinpingBarModel()
     return model;
 }
 
+
+MaterialModel createDagangshanIsotropicModel()
+{
+    MaterialModel model;
+    model.key = QStringLiteral("dagangshan_isotropic");
+    model.displayName = QStringLiteral("大岗山高拱坝各向同性岩体参数");
+    model.ib = 0;
+
+    model.columns << QStringLiteral("序号") << QStringLiteral("变形模量E（GPa）")
+                  << QStringLiteral("泊松比μ") << QStringLiteral("容重t/m3")
+                  << QStringLiteral("抗剪断强度内摩擦系数")
+                  << QStringLiteral("凝聚力C‘（MPa）");
+
+    model.columnOutputRows = QVector<int>(model.columns.size(), -1);
+    return model;
+}
+
 MaterialModel createSoilEbModel()
 {
     MaterialModel model;
@@ -118,5 +135,6 @@ MaterialModel createSoilEbModel()
 QVector<MaterialModel> createDefaultMaterialModels()
 {
     return {createHuangjinpingModel(), createSoilEbModel(), createSoilEmuModel(),
-            createDamDynamicModel(), createSeepageModel(), createHuangjinpingBarModel()};
+            createDamDynamicModel(), createSeepageModel(), createHuangjinpingBarModel(),
+            createDagangshanIsotropicModel()};
 }

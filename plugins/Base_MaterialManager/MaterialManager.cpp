@@ -887,6 +887,96 @@ bool MaterialManager::generateCaculateFile()
             continue;
         }
 
+        if (info.model->key == QStringLiteral("dagangshan_isotropic"))
+        {
+            const double eeGpa = valueOf(info.entry, QStringLiteral("变形模量E（GPa）"));
+            const double pu = valueOf(info.entry, QStringLiteral("泊松比μ"));
+            const double rouTm3 = valueOf(info.entry, QStringLiteral("容重t/m3"));
+            const double ff = valueOf(info.entry, QStringLiteral("抗剪断强度内摩擦系数"));
+            const double coMpa = valueOf(info.entry, QStringLiteral("凝聚力C‘（MPa）"));
+
+            const double ibuck = 2.0;
+            const double matypeOri = static_cast<double>(matype);
+            const double itagEx = 0.0;
+            const double alfaBa = 0.0;
+            const double laReborn = 0.0;
+
+            const double ee = eeGpa * 1.0e9;
+            const double rou = rouTm3 * 1.0e3;
+            const double co = coMpa * 1.0e6;
+            const double fai = std::atan(ff) * 180.0 / 3.141592653589793;
+            const double gg = (std::fabs(1.0 + pu) > 1.0e-12) ? (ee / 2.0 / (1.0 + pu)) : 0.0;
+
+            // 默认替代：用 Mohr-Coulomb 近似计算 RC/RT（原 DEFAULT_RTRC 未给出）
+            static bool loggedApproximation = false;
+            if (!loggedApproximation)
+            {
+                qWarning() << "MaterialManager: DEFAULT_RTRC 未提供，RC/RT 当前使用 Mohr-Coulomb 近似公式。";
+                loggedApproximation = true;
+            }
+            const double faiRad = fai * 3.141592653589793 / 180.0;
+            const double sinF = std::sin(faiRad);
+            const double cosF = std::cos(faiRad);
+            const double denRc = 1.0 - sinF;
+            const double denRt = 1.0 + sinF;
+            const double rc = (std::fabs(denRc) > 1.0e-12) ? (2.0 * co * cosF / denRc) : 0.0;
+            const double rt = (std::fabs(denRt) > 1.0e-12) ? (2.0 * co * cosF / denRt) : 0.0;
+
+            auto setRow = [&](int row, double value)
+            {
+                if (row >= 1 && row <= ncon)
+                {
+                    values[row - 1][matIndex] = value;
+                }
+            };
+
+            setRow(1, ibuck);
+            setRow(2, ee);
+            setRow(3, ee);
+            setRow(4, pu);
+            setRow(5, pu);
+            setRow(6, gg);
+            setRow(7, rou);
+            setRow(8, 1.0);
+            setRow(9, rc);
+            setRow(10, rt);
+            setRow(11, fai);
+            setRow(12, co);
+            setRow(13, 0.0);
+            setRow(14, 1.0);
+            setRow(15, 0.0);
+            setRow(16, 0.0);
+            setRow(17, 0.0);
+            setRow(18, 1.0);
+            setRow(19, 0.0);
+            setRow(20, 0.0);
+            setRow(21, 0.0);
+            setRow(22, 1.0);
+            setRow(23, 0.0);
+            setRow(35, 0.0);
+            setRow(64, 0.0);
+            setRow(65, 1.3);
+            setRow(66, 1.0);
+            setRow(67, 0.05);
+            setRow(84, matypeOri);
+            setRow(91, rc);
+            setRow(92, rt);
+            setRow(94, fai);
+            setRow(95, co);
+            setRow(99, fai);
+            setRow(100, itagEx);
+
+            if (qRound64(itagEx) == -1)
+            {
+                setRow(58, alfaBa);
+            }
+            if (qRound64(itagEx) == 1)
+            {
+                setRow(59, laReborn);
+            }
+            continue;
+        }
+
         if (info.model->key == QStringLiteral("soil_eb"))
         {
             const double dryRouTm3 = valueOf(info.entry, QStringLiteral("干容重(t/m3)"));

@@ -714,12 +714,15 @@ void UiFrame::buildRibbonTabs()
                                       "剑科心墙堆石坝各向同性稳态渗流参数");
         auto* actBar = makeAction(this, ":/resources/menu/minimal/analysis.svg",
                                   "杆单元参数（黄金坪地下厂房）");
+        auto* actDagangshan = makeAction(this, ":/resources/menu/minimal/analysis.svg",
+                                         "大岗山高拱坝各向同性岩体参数");
         addActionToPanel(panel, actHjp, 3);
         addActionToPanel(panel, actSoilEb, 3);
         addActionToPanel(panel, actDynamic, 3);
         addActionToPanel(panel, actSoilEmu, 3);
         addActionToPanel(panel, actSeepage, 3);
         addActionToPanel(panel, actBar, 3);
+        addActionToPanel(panel, actDagangshan, 3);
 
         connect(actHjp, &QAction::triggered, this,
                 []()
@@ -787,6 +790,18 @@ void UiFrame::buildRibbonTabs()
                     {
                         materialService->addMaterialFromMenu(
                             QStringLiteral("huangjinping_bar_element"));
+                    }
+                });
+
+        connect(actDagangshan, &QAction::triggered, this,
+                []()
+                {
+                    auto* materialService =
+                        ServiceRegistry::instance().getService<MaterialManagerService>();
+                    if (materialService)
+                    {
+                        materialService->addMaterialFromMenu(
+                            QStringLiteral("dagangshan_isotropic"));
                     }
                 });
     }
