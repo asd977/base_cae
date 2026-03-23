@@ -24,6 +24,7 @@
 #include <QUuid>
 #include <QtGlobal>
 #include <tuple>
+#include <cmath>
 
 #include "MaterialEntryWidget.h"
 #include "MaterialLibraryWidget.h"
@@ -807,7 +808,18 @@ bool MaterialManager::generateCaculateFile()
     // ===== 4) 预先构造数值表：values[row(0..199)][matype(0..nmat-1)] =====
     QVector<QVector<double>> values(ncon, QVector<double>(nmat, 0.0));
 
-    // 填值：按 model->columnOutputRows 写入对应行
+    auto valueOf = [](const MaterialEntry* entry, const QString& key) -> double
+    {
+        if (!entry)
+        {
+            return 0.0;
+        }
+        bool ok = false;
+        const double value = entry->properties.value(key, QStringLiteral("0")).toDouble(&ok);
+        return ok ? value : 0.0;
+    };
+
+    // 填值：黄金坪地下厂房模型按 CONMAT 行号写入，其他模型仍走 columnOutputRows
     for (auto it = matypeMap.constBegin(); it != matypeMap.constEnd(); ++it)
     {
         const int matype = it.key();
@@ -816,6 +828,106 @@ bool MaterialManager::generateCaculateFile()
             continue;
         if (matype < 0 || matype >= nmat)
             continue;
+
+        // MATYPE=0 在原 Fortran 逻辑中直接跳过
+        if (matype == 0)
+            continue;
+
+        if (info.model->key == QStringLiteral("huangjinping_underground_plant"))
+        {
+            const double matypeOri = valueOf(info.entry, QStringLiteral("编号"));
+            const double itagEx = valueOf(info.entry, QStringLiteral("岩类分区"));
+            const double alfaBa = valueOf(info.entry, QStringLiteral("半开挖区荷载释放系数"));
+            const double laReborn = valueOf(info.entry, QStringLiteral("再生时对应开挖级"));
+            const double eeGpa = valueOf(info.entry, QStringLiteral("变形模量E（GPa）"));
+            const double pu = valueOf(info.entry, QStringLiteral("泊松比μ"));
+            const double rouTm3 = valueOf(info.entry, QStringLiteral("容重t/m3"));
+            const double ff = valueOf(info.entry, QStringLiteral("抗剪断强度内摩擦系数"));
+            const double coMpa = valueOf(info.entry, QStringLiteral("凝聚力C‘（MPa）"));
+            const double alfa0 = valueOf(info.entry, QStringLiteral("洞室边缘松弛系数α0"));
+            const double d0 = valueOf(info.entry, QStringLiteral("松弛距离d0"));
+
+            const double ibuck = 2.0;
+            const double alfa1 = 1.0;
+
+            const double ee = eeGpa * 1.0e9;
+            const double rou = rouTm3 * 1.0e3;
+            const double fai = std::atan(ff) * 180.0 / 3.141592653589793;
+            const double co = coMpa * 1.0e6;
+
+            // 默认替代：用 Mohr-Coulomb 近似计算 RC/RT（原 DEFAULT_RTRC 未给出）
+            static bool loggedApproximation = false;
+            if (!loggedApproximation)
+            {
+                qWarning() << "MaterialManager: DEFAULT_RTRC 未提供，RC/RT 当前使用 Mohr-Coulomb 近似公式。";
+                loggedApproximation = true;
+            }
+            const double faiRad = fai * 3.141592653589793 / 180.0;
+            const double sinF = std::sin(faiRad);
+            const double cosF = std::cos(faiRad);
+            const double denRc = 1.0 - sinF;
+            const double denRt = 1.0 + sinF;
+            const double rc = (std::fabs(denRc) > 1.0e-12) ? (2.0 * co * cosF / denRc) : 0.0;
+            const double rt = (std::fabs(denRt) > 1.0e-12) ? (2.0 * co * cosF / denRt) : 0.0;
+            const double gg = (std::fabs(1.0 + pu) > 1.0e-12) ? (ee / 2.0 / (1.0 + pu)) : 0.0;
+
+            auto setRow = [&](int row, double value)
+            {
+                if (row >= 1 && row <= ncon)
+                {
+                    values[row - 1][matype] = value;
+                }
+            };
+
+            setRow(1, ibuck);
+            setRow(2, ee);
+            setRow(3, ee);
+            setRow(4, pu);
+            setRow(5, pu);
+            setRow(6, gg);
+            setRow(7, rou);
+            setRow(8, 1.0);
+            setRow(9, rc);
+            setRow(10, rt);
+            setRow(11, fai);
+            setRow(12, co);
+            setRow(13, 0.0);
+            setRow(14, 1.0);
+            setRow(15, 0.0);
+            setRow(16, 0.0);
+            setRow(17, 0.0);
+            setRow(18, 1.0);
+            setRow(19, 0.0);
+            setRow(20, 0.0);
+            setRow(21, 0.0);
+            setRow(22, 1.0);
+            setRow(23, 0.0);
+            setRow(35, 0.0);
+            setRow(64, 0.0);
+            setRow(65, 1.3);
+            setRow(66, 1.0);
+            setRow(67, 0.05);
+            setRow(77, alfa0);
+            setRow(78, d0);
+            setRow(79, alfa1);
+            setRow(84, matypeOri);
+            setRow(91, rc);
+            setRow(92, rt);
+            setRow(94, fai);
+            setRow(95, co);
+            setRow(99, fai);
+            setRow(100, itagEx);
+
+            if (qRound64(itagEx) == -1)
+            {
+                setRow(58, alfaBa);
+            }
+            if (qRound64(itagEx) == 1)
+            {
+                setRow(59, laReborn);
+            }
+            continue;
+        }
 
         const auto& cols = info.model->columns;
         const auto& lineMap = info.model->columnOutputRows;
