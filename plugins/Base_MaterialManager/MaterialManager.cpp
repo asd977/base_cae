@@ -1017,6 +1017,46 @@ bool MaterialManager::generateCaculateFile()
             continue;
         }
 
+        if (info.model->key == QStringLiteral("jk_corewall_steady_seepage"))
+        {
+            const double tol = 1.0e-3;
+            const double akLu = valueOf(info.entry, QStringLiteral("渗透系数K(Lu)"));
+            const double rip = valueOf(info.entry, QStringLiteral("允许比降"));
+            const double ak = akLu * 1.0e-7;
+
+            auto setRow = [&](int row, double value)
+            {
+                if (row >= 1 && row <= ncon)
+                {
+                    values[row - 1][matIndex] = value;
+                }
+            };
+
+            setRow(96, ak);
+            setRow(97, ak);
+            setRow(98, ak);
+            setRow(60, rip);
+            setRow(14, 1.0);
+            setRow(15, 0.0);
+            setRow(16, 0.0);
+            setRow(17, 0.0);
+            setRow(18, 1.0);
+            setRow(19, 0.0);
+            setRow(20, 0.0);
+            setRow(21, 0.0);
+            setRow(22, 1.0);
+
+            if (values[7 - 1][matIndex] < tol)
+                setRow(7, 2.0e3);
+            if (values[89 - 1][matIndex] < tol)
+                setRow(89, 2.0e3);
+            if (values[90 - 1][matIndex] < tol)
+                setRow(90, 2.0e3);
+            if (values[99 - 1][matIndex] < tol)
+                setRow(99, 1.0);
+            continue;
+        }
+
         const auto& cols = info.model->columns;
         const auto& lineMap = info.model->columnOutputRows;
         const int count = qMin(cols.size(), lineMap.size());

@@ -44,6 +44,21 @@ MaterialModel createDamDynamicModel()
     return model;
 }
 
+
+MaterialModel createSeepageModel()
+{
+    MaterialModel model;
+    model.key = QStringLiteral("jk_corewall_steady_seepage");
+    model.displayName = QStringLiteral("剑科心墙堆石坝各向同性稳态渗流参数");
+    model.ib = -2;
+
+    model.columns << QStringLiteral("材料编号") << QStringLiteral("渗透系数K(Lu)")
+                  << QStringLiteral("允许比降");
+
+    model.columnOutputRows = QVector<int>(model.columns.size(), -1);
+    return model;
+}
+
 MaterialModel createSoilEbModel()
 {
     MaterialModel model;
@@ -65,5 +80,6 @@ MaterialModel createSoilEbModel()
 
 QVector<MaterialModel> createDefaultMaterialModels()
 {
-    return {createHuangjinpingModel(), createSoilEbModel(), createDamDynamicModel()};
+    return {createHuangjinpingModel(), createSoilEbModel(), createDamDynamicModel(),
+            createSeepageModel()};
 }
