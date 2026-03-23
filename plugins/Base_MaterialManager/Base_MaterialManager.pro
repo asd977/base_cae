@@ -7,8 +7,7 @@ HEADERS += \
     MaterialManagerWidget.h \
     MaterialLibraryData.h \
     MaterialEntryWidget.h \
-    MaterialModelWidget.h \
-    MaterialLibraryWidget.h
+    MaterialModelWidget.h
 
 
 SOURCES += \
@@ -16,13 +15,11 @@ SOURCES += \
     MaterialManagerWidget.cpp \
     MaterialLibraryData.cpp \
     MaterialEntryWidget.cpp \
-    MaterialModelWidget.cpp \
-    MaterialLibraryWidget.cpp
+    MaterialModelWidget.cpp
 
 
 FORMS += \
-    MaterialManagerWidget.ui \
-    MaterialLibraryWidget.ui
+    MaterialManagerWidget.ui
 
 
 msvc

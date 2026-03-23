@@ -69,7 +69,7 @@ void MaterialManagerWidget::beforeUnload()
 }
 void MaterialManagerWidget::on_pushButton_2_clicked()
 {
-    m_materialManager->openLibrary();
+    on_pushButton_3_clicked();
 }
 
 // 新建材料，直接添加
@@ -90,7 +90,11 @@ void MaterialManagerWidget::on_pushButton_3_clicked()
         targetKey = m_materialManager->models().first().key;
     }
 
-    m_materialManager->openLibrary(targetKey, true);
+    const QString entryId = m_materialManager->addMaterialToModel(targetKey, true);
+    if (!entryId.isEmpty())
+    {
+        m_materialManager->focusOnMaterial(entryId);
+    }
 }
 
 void MaterialManagerWidget::on_treeWidget_itemDoubleClicked(QTreeWidgetItem* item, int)
