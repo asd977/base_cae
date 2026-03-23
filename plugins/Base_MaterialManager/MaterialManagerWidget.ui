@@ -53,7 +53,7 @@
    <item>
     <widget class="QPushButton" name="pushButton_2">
      <property name="text">
-      <string>材料库</string>
+      <string>新增材料</string>
      </property>
     </widget>
    </item>

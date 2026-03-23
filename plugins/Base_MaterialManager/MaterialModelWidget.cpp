@@ -8,7 +8,7 @@ MaterialModelWidget::MaterialModelWidget(MaterialManager* manager, QWidget* pare
     : BasePage("MaterialModelWidget"), m_materialManager(manager), m_titleLabel(new QLabel(this)),
       m_summaryLabel(new QLabel(this))
 {
-    auto* openButton = new QPushButton(QString("打开材料库"), this);
+    auto* openButton = new QPushButton(QString("新增材料"), this);
     connect(openButton, &QPushButton::clicked, this, &MaterialModelWidget::onOpenLibrary);
 
     auto* layout = new QVBoxLayout(this);
@@ -50,5 +50,9 @@ void MaterialModelWidget::onOpenLibrary()
     {
         return;
     }
-    m_materialManager->openLibrary(m_modelKey, false);
+    const QString entryId = m_materialManager->addMaterialToModel(m_modelKey, true);
+    if (!entryId.isEmpty())
+    {
+        m_materialManager->focusOnMaterial(entryId);
+    }
 }

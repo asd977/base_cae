@@ -5,35 +5,25 @@
 #include <PublicVariables.h>
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
-#include <services/PhysicalFieldService.h>
 
 #include <QDebug>
+#include <algorithm>
 #include <QDir>
 #include <QFile>
-#include <QMessageBox>
-#include <QPair>
-#include <QPluginLoader>
 #include <QSet>
-#include <QSqlDatabase>
-#include <QSqlDriverPlugin>
-#include <QSqlError>
-#include <QSqlQuery>
 #include <QString>
 #include <QTextStream>
-#include <QToolButton>
 #include <QUuid>
 #include <QtGlobal>
-#include <tuple>
+#include <cmath>
 
 #include "MaterialEntryWidget.h"
-#include "MaterialLibraryWidget.h"
 #include "MaterialModelWidget.h"
 
 MaterialManager::MaterialManager()
-    : m_materialLibraryWidget(nullptr), m_materialManagerWidget(nullptr), m_rootItem(nullptr)
+    : m_materialManagerWidget(nullptr), m_rootItem(nullptr)
 {
     m_projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
-    m_uiFrameService = ServiceRegistry::instance().getService<UiFrameService>();
     ServiceRegistry::instance().registerService<MaterialManagerService>(this);
     setupTreeWidget();
     loadDefaultLibrary();
@@ -54,6 +44,61 @@ void MaterialManager::newProject()
     const QString workPath =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     newProjectForPath(workPath);
+}
+
+void MaterialManager::addMaterialFromMenu(const QString& modelKey)
+{
+    const QString entryId = addMaterialToModel(modelKey, true);
+    if (!entryId.isEmpty())
+    {
+        focusOnMaterial(entryId);
+    }
+}
+
+QString MaterialManager::addMaterialToModel(const QString& modelKey, bool addToProjectTree)
+{
+    MaterialModel* model = findModel(modelKey);
+    if (!model)
+    {
+        return QString();
+    }
+
+    int maxIndex = 0;
+    for (const auto& entry : model->materials)
+    {
+        if (!entry.name.startsWith(QStringLiteral("材料")))
+        {
+            continue;
+        }
+        bool ok = false;
+        const int index = entry.name.mid(QStringLiteral("材料").size()).toInt(&ok);
+        if (ok)
+        {
+            maxIndex = qMax(maxIndex, index);
+        }
+    }
+
+    MaterialEntry entry;
+    entry.id = QUuid::createUuid().toString();
+    entry.name = QString("材料%1").arg(maxIndex + 1);
+    for (const QString& column : model->columns)
+    {
+        entry.properties.insert(column, QStringLiteral("0"));
+    }
+
+    model->materials.append(entry);
+
+    if (addToProjectTree)
+    {
+        m_addedEntryIds.insert(entry.id);
+        rebuildProjectTree();
+    }
+    if (m_materialManagerWidget)
+    {
+        m_materialManagerWidget->refreshSummary(m_models);
+    }
+
+    return entry.id;
 }
 
 void MaterialManager::setupTreeWidget()
@@ -159,10 +204,6 @@ void MaterialManager::notifyLibraryChanged(bool refreshProjectTree)
     {
         m_materialManagerWidget->refreshSummary(m_models);
     }
-    if (m_materialLibraryWidget)
-    {
-        m_materialLibraryWidget->refreshModels();
-    }
 }
 
 void MaterialManager::notifyEntryUpdated(const QString& entryId, bool nameChanged)
@@ -175,28 +216,6 @@ void MaterialManager::notifyEntryUpdated(const QString& entryId, bool nameChange
         {
             item->setText(0, entry->name);
         }
-    }
-}
-
-void MaterialManager::openLibrary(const QString& key, bool addNew)
-{
-    if (!m_materialLibraryWidget)
-    {
-        m_materialLibraryWidget = new MaterialLibraryWidget(this);
-    }
-
-    if (!key.isEmpty())
-    {
-        m_materialLibraryWidget->setCurrentModelKey(key);
-    }
-    m_materialLibraryWidget->refreshModels();
-    m_materialLibraryWidget->show();
-    m_materialLibraryWidget->raise();
-    m_materialLibraryWidget->activateWindow();
-
-    if (addNew)
-    {
-        m_materialLibraryWidget->addMaterialAndFocus();
     }
 }
 
@@ -730,7 +749,7 @@ bool MaterialManager::generateCaculateFile()
 
     // ===== 2) NMAT / NCON =====
     const int ncon = 200;
-    const int nmatReal = maxMatype + 1;                    // 0..maxMatype
+    const int nmatReal = maxMatype;                        // 1..maxMatype
     const int nmat = qMax(10, ((nmatReal + 9) / 10) * 10); // 补齐到 10 的倍数（每组 10 列）
 
     // ===== 3) 输出文件 =====
@@ -745,18 +764,568 @@ bool MaterialManager::generateCaculateFile()
 
     QTextStream out(&file);
 
-    // ===== 4) 预先构造数值表：values[row(0..199)][matype(0..nmat-1)] =====
+    // ===== 4) 预先构造数值表：values[row(0..199)][matIndex(0..nmat-1)] =====
     QVector<QVector<double>> values(ncon, QVector<double>(nmat, 0.0));
 
-    // 填值：按 model->columnOutputRows 写入对应行
+    auto valueOf = [](const MaterialEntry* entry, const QString& key) -> double
+    {
+        if (!entry)
+        {
+            return 0.0;
+        }
+        bool ok = false;
+        const double value = entry->properties.value(key, QStringLiteral("0")).toDouble(&ok);
+        return ok ? value : 0.0;
+    };
+
+    // 填值：黄金坪地下厂房模型按 CONMAT 行号写入，其他模型仍走 columnOutputRows
     for (auto it = matypeMap.constBegin(); it != matypeMap.constEnd(); ++it)
     {
         const int matype = it.key();
         const MatInfo& info = it.value();
         if (!info.model || !info.entry)
             continue;
-        if (matype < 0 || matype >= nmat)
+        // IMAT.DAT 的编号从 1 开始，0 号无效
+        if (matype <= 0 || matype > nmat)
             continue;
+
+        const int matIndex = matype - 1;
+
+        if (info.model->key == QStringLiteral("huangjinping_underground_plant"))
+        {
+            const double matypeOri = valueOf(info.entry, QStringLiteral("编号"));
+            const double itagEx = valueOf(info.entry, QStringLiteral("岩类分区"));
+            const double alfaBa = valueOf(info.entry, QStringLiteral("半开挖区荷载释放系数"));
+            const double laReborn = valueOf(info.entry, QStringLiteral("再生时对应开挖级"));
+            const double eeGpa = valueOf(info.entry, QStringLiteral("变形模量E（GPa）"));
+            const double pu = valueOf(info.entry, QStringLiteral("泊松比μ"));
+            const double rouTm3 = valueOf(info.entry, QStringLiteral("容重t/m3"));
+            const double ff = valueOf(info.entry, QStringLiteral("抗剪断强度内摩擦系数"));
+            const double coMpa = valueOf(info.entry, QStringLiteral("凝聚力C‘（MPa）"));
+            const double alfa0 = valueOf(info.entry, QStringLiteral("洞室边缘松弛系数α0"));
+            const double d0 = valueOf(info.entry, QStringLiteral("松弛距离d0"));
+
+            const double ibuck = 2.0;
+            const double alfa1 = 1.0;
+
+            const double ee = eeGpa * 1.0e9;
+            const double rou = rouTm3 * 1.0e3;
+            const double fai = std::atan(ff) * 180.0 / 3.141592653589793;
+            const double co = coMpa * 1.0e6;
+
+            // 默认替代：用 Mohr-Coulomb 近似计算 RC/RT（原 DEFAULT_RTRC 未给出）
+            static bool loggedApproximation = false;
+            if (!loggedApproximation)
+            {
+                qWarning() << "MaterialManager: DEFAULT_RTRC 未提供，RC/RT 当前使用 Mohr-Coulomb 近似公式。";
+                loggedApproximation = true;
+            }
+            const double faiRad = fai * 3.141592653589793 / 180.0;
+            const double sinF = std::sin(faiRad);
+            const double cosF = std::cos(faiRad);
+            const double denRc = 1.0 - sinF;
+            const double denRt = 1.0 + sinF;
+            const double rc = (std::fabs(denRc) > 1.0e-12) ? (2.0 * co * cosF / denRc) : 0.0;
+            const double rt = (std::fabs(denRt) > 1.0e-12) ? (2.0 * co * cosF / denRt) : 0.0;
+            const double gg = (std::fabs(1.0 + pu) > 1.0e-12) ? (ee / 2.0 / (1.0 + pu)) : 0.0;
+
+            auto setRow = [&](int row, double value)
+            {
+                if (row >= 1 && row <= ncon)
+                {
+                    values[row - 1][matIndex] = value;
+                }
+            };
+
+            setRow(1, ibuck);
+            setRow(2, ee);
+            setRow(3, ee);
+            setRow(4, pu);
+            setRow(5, pu);
+            setRow(6, gg);
+            setRow(7, rou);
+            setRow(8, 1.0);
+            setRow(9, rc);
+            setRow(10, rt);
+            setRow(11, fai);
+            setRow(12, co);
+            setRow(13, 0.0);
+            setRow(14, 1.0);
+            setRow(15, 0.0);
+            setRow(16, 0.0);
+            setRow(17, 0.0);
+            setRow(18, 1.0);
+            setRow(19, 0.0);
+            setRow(20, 0.0);
+            setRow(21, 0.0);
+            setRow(22, 1.0);
+            setRow(23, 0.0);
+            setRow(35, 0.0);
+            setRow(64, 0.0);
+            setRow(65, 1.3);
+            setRow(66, 1.0);
+            setRow(67, 0.05);
+            setRow(77, alfa0);
+            setRow(78, d0);
+            setRow(79, alfa1);
+            setRow(84, matypeOri);
+            setRow(91, rc);
+            setRow(92, rt);
+            setRow(94, fai);
+            setRow(95, co);
+            setRow(99, fai);
+            setRow(100, itagEx);
+
+            if (qRound64(itagEx) == -1)
+            {
+                setRow(58, alfaBa);
+            }
+            if (qRound64(itagEx) == 1)
+            {
+                setRow(59, laReborn);
+            }
+            continue;
+        }
+
+        if (info.model->key == QStringLiteral("dagangshan_isotropic"))
+        {
+            const double eeGpa = valueOf(info.entry, QStringLiteral("变形模量E（GPa）"));
+            const double pu = valueOf(info.entry, QStringLiteral("泊松比μ"));
+            const double rouTm3 = valueOf(info.entry, QStringLiteral("容重t/m3"));
+            const double ff = valueOf(info.entry, QStringLiteral("抗剪断强度内摩擦系数"));
+            const double coMpa = valueOf(info.entry, QStringLiteral("凝聚力C‘（MPa）"));
+
+            const double ibuck = 2.0;
+            const double matypeOri = static_cast<double>(matype);
+            const double itagEx = 0.0;
+            const double alfaBa = 0.0;
+            const double laReborn = 0.0;
+
+            const double ee = eeGpa * 1.0e9;
+            const double rou = rouTm3 * 1.0e3;
+            const double co = coMpa * 1.0e6;
+            const double fai = std::atan(ff) * 180.0 / 3.141592653589793;
+            const double gg = (std::fabs(1.0 + pu) > 1.0e-12) ? (ee / 2.0 / (1.0 + pu)) : 0.0;
+
+            // 默认替代：用 Mohr-Coulomb 近似计算 RC/RT（原 DEFAULT_RTRC 未给出）
+            static bool loggedApproximation = false;
+            if (!loggedApproximation)
+            {
+                qWarning() << "MaterialManager: DEFAULT_RTRC 未提供，RC/RT 当前使用 Mohr-Coulomb 近似公式。";
+                loggedApproximation = true;
+            }
+            const double faiRad = fai * 3.141592653589793 / 180.0;
+            const double sinF = std::sin(faiRad);
+            const double cosF = std::cos(faiRad);
+            const double denRc = 1.0 - sinF;
+            const double denRt = 1.0 + sinF;
+            const double rc = (std::fabs(denRc) > 1.0e-12) ? (2.0 * co * cosF / denRc) : 0.0;
+            const double rt = (std::fabs(denRt) > 1.0e-12) ? (2.0 * co * cosF / denRt) : 0.0;
+
+            auto setRow = [&](int row, double value)
+            {
+                if (row >= 1 && row <= ncon)
+                {
+                    values[row - 1][matIndex] = value;
+                }
+            };
+
+            setRow(1, ibuck);
+            setRow(2, ee);
+            setRow(3, ee);
+            setRow(4, pu);
+            setRow(5, pu);
+            setRow(6, gg);
+            setRow(7, rou);
+            setRow(8, 1.0);
+            setRow(9, rc);
+            setRow(10, rt);
+            setRow(11, fai);
+            setRow(12, co);
+            setRow(13, 0.0);
+            setRow(14, 1.0);
+            setRow(15, 0.0);
+            setRow(16, 0.0);
+            setRow(17, 0.0);
+            setRow(18, 1.0);
+            setRow(19, 0.0);
+            setRow(20, 0.0);
+            setRow(21, 0.0);
+            setRow(22, 1.0);
+            setRow(23, 0.0);
+            setRow(35, 0.0);
+            setRow(64, 0.0);
+            setRow(65, 1.3);
+            setRow(66, 1.0);
+            setRow(67, 0.05);
+            setRow(84, matypeOri);
+            setRow(91, rc);
+            setRow(92, rt);
+            setRow(94, fai);
+            setRow(95, co);
+            setRow(99, fai);
+            setRow(100, itagEx);
+
+            if (qRound64(itagEx) == -1)
+            {
+                setRow(58, alfaBa);
+            }
+            if (qRound64(itagEx) == 1)
+            {
+                setRow(59, laReborn);
+            }
+            continue;
+        }
+
+        if (info.model->key == QStringLiteral("soil_eb"))
+        {
+            const double dryRouTm3 = valueOf(info.entry, QStringLiteral("干容重(t/m3)"));
+            const double pacRouTm3 = valueOf(info.entry, QStringLiteral("天然容重(t/m3)"));
+            const double wetRouTm3 = valueOf(info.entry, QStringLiteral("饱和容重(t/m3)"));
+            const double fai = valueOf(info.entry, QStringLiteral("φ0(°)"));
+            const double dFai = valueOf(info.entry, QStringLiteral("Δφ(°)"));
+            const double coKpa = valueOf(info.entry, QStringLiteral("c(KPa)"));
+            const double rf = valueOf(info.entry, QStringLiteral("Rf"));
+            const double dryK = valueOf(info.entry, QStringLiteral("K"));
+            const double dryN = valueOf(info.entry, QStringLiteral("n"));
+            const double dryKur = valueOf(info.entry, QStringLiteral("Kur"));
+            const double dryKb = valueOf(info.entry, QStringLiteral("Kb"));
+            const double dryM = valueOf(info.entry, QStringLiteral("m"));
+
+            const double dryRou = dryRouTm3 * 1.0e3;
+            const double pacRou = pacRouTm3 * 1.0e3;
+            const double wetRou = wetRouTm3 * 1.0e3;
+            const double co = coKpa * 1.0e3;
+
+            auto setRow = [&](int row, double value)
+            {
+                if (row >= 1 && row <= ncon)
+                {
+                    values[row - 1][matIndex] = value;
+                }
+            };
+
+            setRow(1, -1.0);
+            setRow(7, dryRou);
+            setRow(8, 1.0);
+            setRow(89, wetRou);
+            setRow(90, pacRou);
+            setRow(69, dryK);
+            setRow(70, dryN);
+            setRow(71, rf);
+            setRow(72, dryKur);
+            setRow(73, dryN);
+            setRow(74, dryKb);
+            setRow(75, dryM);
+            setRow(76, dFai);
+            setRow(11, fai);
+            setRow(12, co);
+            setRow(94, fai);
+            setRow(95, co);
+            setRow(99, fai);
+            continue;
+        }
+
+        if (info.model->key == QStringLiteral("soil_emu"))
+        {
+            const double dryRouTm3 = valueOf(info.entry, QStringLiteral("干容重(t/m3)"));
+            const double pacRouTm3 = valueOf(info.entry, QStringLiteral("天然容重(t/m3)"));
+            const double wetRouTm3 = valueOf(info.entry, QStringLiteral("饱和容重(t/m3)"));
+            const double fai = valueOf(info.entry, QStringLiteral("φ0(°)"));
+            const double dFai = valueOf(info.entry, QStringLiteral("Δφ(°)"));
+            const double coKpa = valueOf(info.entry, QStringLiteral("c(KPa)"));
+            const double rf = valueOf(info.entry, QStringLiteral("Rf"));
+            const double dryK = valueOf(info.entry, QStringLiteral("K"));
+            const double dryN = valueOf(info.entry, QStringLiteral("n"));
+            const double g = valueOf(info.entry, QStringLiteral("G"));
+            const double d = valueOf(info.entry, QStringLiteral("D"));
+            const double f = valueOf(info.entry, QStringLiteral("F"));
+
+            const double dryRou = dryRouTm3 * 1.0e3;
+            const double pacRou = pacRouTm3 * 1.0e3;
+            const double wetRou = wetRouTm3 * 1.0e3;
+            const double co = coKpa * 1.0e3;
+
+            auto setRow = [&](int row, double value)
+            {
+                if (row >= 1 && row <= ncon)
+                {
+                    values[row - 1][matIndex] = value;
+                }
+            };
+
+            setRow(1, -3.0);
+            setRow(7, dryRou);
+            setRow(8, 1.0);
+            setRow(89, wetRou);
+            setRow(90, pacRou);
+            setRow(69, dryK);
+            setRow(70, dryN);
+            setRow(71, rf);
+            setRow(76, dFai);
+            setRow(77, g);
+            setRow(78, d);
+            setRow(79, f);
+            setRow(11, fai);
+            setRow(12, co);
+            setRow(94, fai);
+            setRow(95, co);
+            setRow(99, fai);
+            continue;
+        }
+
+        if (info.model->key == QStringLiteral("soil_nanshui"))
+        {
+            const double dryRouTm3 = valueOf(info.entry, QStringLiteral("干容重(t/m3)"));
+            const double pacRouTm3 = valueOf(info.entry, QStringLiteral("天然容重(t/m3)"));
+            const double wetRouTm3 = valueOf(info.entry, QStringLiteral("饱和容重(t/m3)"));
+            const double fai = valueOf(info.entry, QStringLiteral("φ0"));
+            const double dFai = valueOf(info.entry, QStringLiteral("Δφ"));
+            const double coKpa = valueOf(info.entry, QStringLiteral("c(KPa)"));
+            const double rf = valueOf(info.entry, QStringLiteral("Rf"));
+            const double dryK = valueOf(info.entry, QStringLiteral("K"));
+            const double dryKur = valueOf(info.entry, QStringLiteral("Kur"));
+            const double dryN = valueOf(info.entry, QStringLiteral("n"));
+            const double dryCd = valueOf(info.entry, QStringLiteral("cd"));
+            const double dryNd = valueOf(info.entry, QStringLiteral("nd"));
+            const double dryRd = valueOf(info.entry, QStringLiteral("Rd"));
+
+            const double dryRou = dryRouTm3 * 1.0e3;
+            const double pacRou = pacRouTm3 * 1.0e3;
+            const double wetRou = wetRouTm3 * 1.0e3;
+            const double co = coKpa * 1.0e3;
+
+            auto setRow = [&](int row, double value)
+            {
+                if (row >= 1 && row <= ncon)
+                {
+                    values[row - 1][matIndex] = value;
+                }
+            };
+
+            setRow(1, -5.0);
+            setRow(7, dryRou);
+            setRow(8, 1.0);
+            setRow(89, wetRou);
+            setRow(90, pacRou);
+            setRow(69, dryK);
+            setRow(70, dryN);
+            setRow(71, rf);
+            setRow(72, dryKur);
+            setRow(73, dryN);
+            setRow(77, dryCd);
+            setRow(78, dryNd);
+            setRow(79, dryRd);
+            setRow(76, dFai);
+            setRow(11, fai);
+            setRow(12, co);
+            setRow(94, fai);
+            setRow(95, co);
+            continue;
+        }
+
+        if (info.model->key == QStringLiteral("soil_kg"))
+        {
+            const double dryRouTm3 = valueOf(info.entry, QStringLiteral("干容重(t/m3)"));
+            const double pacRouTm3 = valueOf(info.entry, QStringLiteral("天然容重(t/m3)"));
+            const double wetRouTm3 = valueOf(info.entry, QStringLiteral("饱和容重(t/m3)"));
+            const double aki = valueOf(info.entry, QStringLiteral("Ki,Kie(10^5Pa)"));
+            const double alfak = valueOf(info.entry, QStringLiteral("αk,αke"));
+            const double agi = valueOf(info.entry, QStringLiteral("Gi,Gie(10^5Pa)"));
+            const double alfag = valueOf(info.entry, QStringLiteral("αG,αGe"));
+            const double betag = valueOf(info.entry, QStringLiteral("βG"));
+            const double akg = valueOf(info.entry, QStringLiteral("a(10^5Pa)"));
+            const double bkg = valueOf(info.entry, QStringLiteral("b"));
+
+            const double dryRou = dryRouTm3 * 1.0e3;
+            const double pacRou = pacRouTm3 * 1.0e3;
+            const double wetRou = wetRouTm3 * 1.0e3;
+
+            auto setRow = [&](int row, double value)
+            {
+                if (row >= 1 && row <= ncon)
+                {
+                    values[row - 1][matIndex] = value;
+                }
+            };
+
+            setRow(1, -2.0);
+            setRow(8, 1.0);
+            setRow(7, dryRou);
+            setRow(90, pacRou);
+            setRow(89, wetRou);
+            setRow(69, aki);
+            setRow(70, alfak);
+            setRow(74, agi);
+            setRow(71, alfag);
+            setRow(75, betag);
+            setRow(72, akg);
+            setRow(73, bkg);
+            setRow(76, aki);
+            setRow(78, alfak);
+            setRow(77, agi);
+            setRow(79, alfag);
+            continue;
+        }
+
+        if (info.model->key == QStringLiteral("dam_dynamic"))
+        {
+            const double maori = valueOf(info.entry, QStringLiteral("静力计算编号"));
+            const double ifliqd = valueOf(info.entry, QStringLiteral("是否液化"));
+            const double dryk1 = valueOf(info.entry, QStringLiteral("DRYK1(KPa)"));
+            const double dryn1 = valueOf(info.entry, QStringLiteral("DRYN1"));
+            const double fai = valueOf(info.entry, QStringLiteral("FAI(°)"));
+            const double coKpa = valueOf(info.entry, QStringLiteral("CO(KPa)"));
+            const double pu = valueOf(info.entry, QStringLiteral("PU"));
+            const double drydam = valueOf(info.entry, QStringLiteral("DRYDAM"));
+            const double ratiao1 = valueOf(info.entry, QStringLiteral("RATIAO1(0.1)"));
+            const double ratiao2 = valueOf(info.entry, QStringLiteral("RATIAO2(0.3)"));
+            const double ratiao3 = valueOf(info.entry, QStringLiteral("RATIAO3(0.5)"));
+
+            double ckv = valueOf(info.entry, QStringLiteral("Kv"));
+            double ckp = valueOf(info.entry, QStringLiteral("Kp"));
+            double cnv = valueOf(info.entry, QStringLiteral("nv"));
+            double cnp = valueOf(info.entry, QStringLiteral("np"));
+
+            if (ckv < 0.0001)
+                ckv = dryk1 * 1.1;
+            if (ckp < 0.0001)
+                ckp = ckv * 0.8;
+            if (cnv < 0.0001)
+                cnv = dryn1;
+            if (cnp < 0.0001)
+                cnp = dryn1 * 1.5;
+            if (cnp > 0.9)
+                cnp = 0.9;
+
+            const double co = coKpa * 1.0e3;
+
+            const int maoriInt = qRound64(maori);
+            if (maoriInt > 0 && maoriInt <= nmat)
+            {
+                const int maoriIndex = maoriInt - 1;
+                for (int row = 0; row < ncon; ++row)
+                {
+                    values[row][matIndex] = values[row][maoriIndex];
+                }
+            }
+
+            auto setRow = [&](int row, double value)
+            {
+                if (row >= 1 && row <= ncon)
+                {
+                    values[row - 1][matIndex] = value;
+                }
+            };
+
+            setRow(1, -4.0);
+            setRow(13, ifliqd);
+            setRow(35, 1.0);
+            setRow(4, pu);
+            setRow(5, pu);
+            setRow(58, 0.1);
+            setRow(59, 0.3);
+            setRow(60, 0.5);
+            setRow(61, ratiao1);
+            setRow(62, ratiao2);
+            setRow(63, ratiao3);
+            setRow(80, dryk1);
+            setRow(81, dryn1);
+            setRow(82, drydam);
+            setRow(83, co);
+            setRow(84, maori);
+            setRow(85, ratiao1);
+            setRow(86, ratiao2);
+            setRow(87, ratiao3);
+            setRow(88, fai);
+            setRow(11, fai);
+            setRow(12, co);
+            setRow(94, fai);
+            setRow(95, co);
+            setRow(105, ckv);
+            setRow(106, ckp);
+            setRow(107, cnv);
+            setRow(108, cnp);
+            continue;
+        }
+
+        if (info.model->key == QStringLiteral("jk_corewall_steady_seepage"))
+        {
+            const double tol = 1.0e-3;
+            const double akLu = valueOf(info.entry, QStringLiteral("渗透系数K(Lu)"));
+            const double rip = valueOf(info.entry, QStringLiteral("允许比降"));
+            const double ak = akLu * 1.0e-7;
+
+            auto setRow = [&](int row, double value)
+            {
+                if (row >= 1 && row <= ncon)
+                {
+                    values[row - 1][matIndex] = value;
+                }
+            };
+
+            setRow(96, ak);
+            setRow(97, ak);
+            setRow(98, ak);
+            setRow(60, rip);
+            setRow(14, 1.0);
+            setRow(15, 0.0);
+            setRow(16, 0.0);
+            setRow(17, 0.0);
+            setRow(18, 1.0);
+            setRow(19, 0.0);
+            setRow(20, 0.0);
+            setRow(21, 0.0);
+            setRow(22, 1.0);
+
+            if (values[7 - 1][matIndex] < tol)
+                setRow(7, 2.0e3);
+            if (values[89 - 1][matIndex] < tol)
+                setRow(89, 2.0e3);
+            if (values[90 - 1][matIndex] < tol)
+                setRow(90, 2.0e3);
+            if (values[99 - 1][matIndex] < tol)
+                setRow(99, 1.0);
+            continue;
+        }
+
+        if (info.model->key == QStringLiteral("huangjinping_bar_element"))
+        {
+            const double ee1 = valueOf(info.entry, QStringLiteral("变模E1,E2（GPa）"));
+            const double dryRou = valueOf(info.entry, QStringLiteral("容重t/m3"));
+            const double area = valueOf(info.entry, QStringLiteral("杆面积（m2）"));
+            const double dryRt = valueOf(info.entry, QStringLiteral("抗拉（压）强度ft（MPa）"));
+            const double ba = valueOf(info.entry, QStringLiteral("间距(m)"));
+            const double bb = valueOf(info.entry, QStringLiteral("排距(m)"));
+            const double fbar = valueOf(info.entry, QStringLiteral("预应力T（KN）"));
+            const double alfaFbar = valueOf(info.entry, QStringLiteral("预应系数"));
+
+            auto setRow = [&](int row, double value)
+            {
+                if (row >= 1 && row <= ncon)
+                {
+                    values[row - 1][matIndex] = value;
+                }
+            };
+
+            setRow(1, 1.0);
+            setRow(13, 2.0);
+            setRow(12, dryRt * 1.0e6 * 0.512);
+            setRow(2, ee1 * 1.0e9);
+            setRow(3, ee1 * 1.0e9);
+            setRow(7, dryRou * 1.0e3);
+            setRow(8, area);
+            setRow(10, dryRt * 1.0e6);
+            setRow(92, dryRt * 1.0e6);
+            setRow(9, dryRt * 1.0e6);
+            setRow(91, dryRt * 1.0e6);
+            setRow(93, fbar * 1.0e3);
+            setRow(38, ba);
+            setRow(37, bb);
+            setRow(39, 1.0);
+            setRow(89, alfaFbar);
+            continue;
+        }
 
         const auto& cols = info.model->columns;
         const auto& lineMap = info.model->columnOutputRows;
@@ -773,7 +1342,7 @@ bool MaterialManager::generateCaculateFile()
 
             bool ok = false;
             const double v = strVal.toDouble(&ok);
-            values[targetRow - 1][matype] = ok ? v : 0.0;
+            values[targetRow - 1][matIndex] = ok ? v : 0.0;
         }
     }
 
@@ -823,7 +1392,7 @@ bool MaterialManager::generateCaculateFile()
 
     for (int g = 0; g < groupCount; ++g)
     {
-        const int startMat = g * 10;
+        const int startMat = g * 10 + 1;
 
         out << QString(" CONMAT(NMAT,NCON)   GROUP NUM=%1\n").arg(g + 1, 4);
 
@@ -845,7 +1414,8 @@ bool MaterialManager::generateCaculateFile()
             for (int k = 0; k < 10; ++k)
             {
                 const int matype = startMat + k;
-                const double v = (matype >= 0 && matype < nmat) ? values[r][matype] : 0.0;
+                const int matIndex = matype - 1;
+                const double v = (matIndex >= 0 && matIndex < nmat) ? values[r][matIndex] : 0.0;
                 line += fmt1P(v);
             }
 

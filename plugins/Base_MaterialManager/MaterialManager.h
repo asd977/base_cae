@@ -4,7 +4,6 @@
 #include <services/MaterialManagerService.h>
 #include <services/MeshModuleControllerService.h>
 #include <services/ProjectManagerService.h>
-#include <services/UiFrameService.h>
 
 #include <QHash>
 #include <QMap>
@@ -15,7 +14,6 @@
 #include "MaterialManagerWidget.h"
 
 class MaterialManagerWidget;
-class MaterialLibraryWidget;
 class MaterialEntryWidget;
 class MaterialModelWidget;
 class ProjectNode;
@@ -28,6 +26,9 @@ class MaterialManager : public QObject, public MaterialManagerService
 
     BasePage* getMaterialManagerWidget() override;
     void newProject() override;
+    void addMaterialFromMenu(const QString& modelKey) override;
+
+    QString addMaterialToModel(const QString& modelKey, bool addToProjectTree = true);
 
     const QVector<MaterialModel>& models() const;
     QVector<MaterialModel>& models();
@@ -37,8 +38,6 @@ class MaterialManager : public QObject, public MaterialManagerService
 
     void notifyLibraryChanged(bool refreshProjectTree = true);
     void notifyEntryUpdated(const QString& entryId, bool nameChanged);
-
-    void openLibrary(const QString& key = QString(), bool addNew = false);
 
     void focusOnMaterial(const QString& entryId);
     void focusOnModel(const QString& modelKey);
@@ -87,7 +86,6 @@ class MaterialManager : public QObject, public MaterialManagerService
                           int preDeleteMatype);
 
   private:
-    MaterialLibraryWidget* m_materialLibraryWidget;
     MaterialManagerWidget* m_materialManagerWidget;
 
     // project tree
@@ -108,8 +106,6 @@ class MaterialManager : public QObject, public MaterialManagerService
 
     // services
     ProjectManagerService* m_projectManagerService = nullptr;
-    UiFrameService* m_uiFrameService = nullptr;
-
     QString m_workPath;
 };
 
