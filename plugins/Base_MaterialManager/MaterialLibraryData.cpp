@@ -59,6 +59,25 @@ MaterialModel createSeepageModel()
     return model;
 }
 
+
+MaterialModel createSoilEmuModel()
+{
+    MaterialModel model;
+    model.key = QStringLiteral("soil_emu");
+    model.displayName = QStringLiteral("土体E-μ模型");
+    model.ib = -3;
+
+    model.columns << QStringLiteral("材料编号") << QStringLiteral("干容重(t/m3)")
+                  << QStringLiteral("天然容重(t/m3)") << QStringLiteral("饱和容重(t/m3)")
+                  << QStringLiteral("φ0(°)") << QStringLiteral("Δφ(°)")
+                  << QStringLiteral("c(KPa)") << QStringLiteral("Rf") << QStringLiteral("K")
+                  << QStringLiteral("n") << QStringLiteral("G") << QStringLiteral("D")
+                  << QStringLiteral("F");
+
+    model.columnOutputRows = QVector<int>(model.columns.size(), -1);
+    return model;
+}
+
 MaterialModel createSoilEbModel()
 {
     MaterialModel model;
@@ -80,6 +99,6 @@ MaterialModel createSoilEbModel()
 
 QVector<MaterialModel> createDefaultMaterialModels()
 {
-    return {createHuangjinpingModel(), createSoilEbModel(), createDamDynamicModel(),
-            createSeepageModel()};
+    return {createHuangjinpingModel(), createSoilEbModel(), createSoilEmuModel(),
+            createDamDynamicModel(), createSeepageModel()};
 }

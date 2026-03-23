@@ -709,11 +709,13 @@ void UiFrame::buildRibbonTabs()
         auto* actHjp = makeAction(this, ":/resources/menu/minimal/analysis.svg", "黄金坪地下厂房模型");
         auto* actSoilEb = makeAction(this, ":/resources/menu/minimal/analysis.svg", "土体E-B模型");
         auto* actDynamic = makeAction(this, ":/resources/menu/minimal/analysis.svg", "坝料动力参数");
+        auto* actSoilEmu = makeAction(this, ":/resources/menu/minimal/analysis.svg", "土体E-μ模型");
         auto* actSeepage = makeAction(this, ":/resources/menu/minimal/analysis.svg",
                                       "剑科心墙堆石坝各向同性稳态渗流参数");
         addActionToPanel(panel, actHjp, 3);
         addActionToPanel(panel, actSoilEb, 3);
         addActionToPanel(panel, actDynamic, 3);
+        addActionToPanel(panel, actSoilEmu, 3);
         addActionToPanel(panel, actSeepage, 3);
 
         connect(actHjp, &QAction::triggered, this,
@@ -747,6 +749,17 @@ void UiFrame::buildRibbonTabs()
                     if (materialService)
                     {
                         materialService->addMaterialFromMenu(QStringLiteral("dam_dynamic"));
+                    }
+                });
+
+        connect(actSoilEmu, &QAction::triggered, this,
+                []()
+                {
+                    auto* materialService =
+                        ServiceRegistry::instance().getService<MaterialManagerService>();
+                    if (materialService)
+                    {
+                        materialService->addMaterialFromMenu(QStringLiteral("soil_emu"));
                     }
                 });
 

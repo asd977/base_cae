@@ -936,6 +936,54 @@ bool MaterialManager::generateCaculateFile()
             continue;
         }
 
+        if (info.model->key == QStringLiteral("soil_emu"))
+        {
+            const double dryRouTm3 = valueOf(info.entry, QStringLiteral("干容重(t/m3)"));
+            const double pacRouTm3 = valueOf(info.entry, QStringLiteral("天然容重(t/m3)"));
+            const double wetRouTm3 = valueOf(info.entry, QStringLiteral("饱和容重(t/m3)"));
+            const double fai = valueOf(info.entry, QStringLiteral("φ0(°)"));
+            const double dFai = valueOf(info.entry, QStringLiteral("Δφ(°)"));
+            const double coKpa = valueOf(info.entry, QStringLiteral("c(KPa)"));
+            const double rf = valueOf(info.entry, QStringLiteral("Rf"));
+            const double dryK = valueOf(info.entry, QStringLiteral("K"));
+            const double dryN = valueOf(info.entry, QStringLiteral("n"));
+            const double g = valueOf(info.entry, QStringLiteral("G"));
+            const double d = valueOf(info.entry, QStringLiteral("D"));
+            const double f = valueOf(info.entry, QStringLiteral("F"));
+
+            const double dryRou = dryRouTm3 * 1.0e3;
+            const double pacRou = pacRouTm3 * 1.0e3;
+            const double wetRou = wetRouTm3 * 1.0e3;
+            const double co = coKpa * 1.0e3;
+
+            auto setRow = [&](int row, double value)
+            {
+                if (row >= 1 && row <= ncon)
+                {
+                    values[row - 1][matIndex] = value;
+                }
+            };
+
+            setRow(1, -3.0);
+            setRow(7, dryRou);
+            setRow(8, 1.0);
+            setRow(89, wetRou);
+            setRow(90, pacRou);
+            setRow(69, dryK);
+            setRow(70, dryN);
+            setRow(71, rf);
+            setRow(76, dFai);
+            setRow(77, g);
+            setRow(78, d);
+            setRow(79, f);
+            setRow(11, fai);
+            setRow(12, co);
+            setRow(94, fai);
+            setRow(95, co);
+            setRow(99, fai);
+            continue;
+        }
+
         if (info.model->key == QStringLiteral("dam_dynamic"))
         {
             const double maori = valueOf(info.entry, QStringLiteral("静力计算编号"));
