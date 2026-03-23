@@ -113,6 +113,25 @@ MaterialModel createDagangshanIsotropicModel()
     return model;
 }
 
+
+MaterialModel createNanshuiModel()
+{
+    MaterialModel model;
+    model.key = QStringLiteral("soil_nanshui");
+    model.displayName = QStringLiteral("南水模型参数");
+    model.ib = -5;
+
+    model.columns << QStringLiteral("材料编号") << QStringLiteral("干容重(t/m3)")
+                  << QStringLiteral("天然容重(t/m3)") << QStringLiteral("饱和容重(t/m3)")
+                  << QStringLiteral("φ0") << QStringLiteral("Δφ") << QStringLiteral("c(KPa)")
+                  << QStringLiteral("Rf") << QStringLiteral("K") << QStringLiteral("Kur")
+                  << QStringLiteral("n") << QStringLiteral("cd") << QStringLiteral("nd")
+                  << QStringLiteral("Rd");
+
+    model.columnOutputRows = QVector<int>(model.columns.size(), -1);
+    return model;
+}
+
 MaterialModel createSoilEbModel()
 {
     MaterialModel model;
@@ -136,5 +155,5 @@ QVector<MaterialModel> createDefaultMaterialModels()
 {
     return {createHuangjinpingModel(), createSoilEbModel(), createSoilEmuModel(),
             createDamDynamicModel(), createSeepageModel(), createHuangjinpingBarModel(),
-            createDagangshanIsotropicModel()};
+            createDagangshanIsotropicModel(), createNanshuiModel()};
 }
