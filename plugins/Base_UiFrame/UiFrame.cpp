@@ -728,22 +728,23 @@ void UiFrame::buildRibbonTabs()
         auto* actNineParam = makeAction(this, ":/resources/menu/minimal/analysis.svg", "九参数流变");
         auto* actXiyuan = makeAction(this, ":/resources/menu/minimal/analysis.svg", "西源流变");
 
-        addActionToPanel(panelSoil, actSoilEb, 3);
-        addActionToPanel(panelSoil, actSoilEmu, 3);
-        addActionToPanel(panelSoil, actSoilEmuCrush, 3);
-        addActionToPanel(panelSoil, actNanshui, 3);
-        addActionToPanel(panelSoil, actKg, 3);
+        // 材料类型较多，统一改为 small action，减少 Ribbon 占位并避免文字截断。
+        addActionToPanel(panelSoil, actSoilEb, 1);
+        addActionToPanel(panelSoil, actSoilEmu, 1);
+        addActionToPanel(panelSoil, actSoilEmuCrush, 1);
+        addActionToPanel(panelSoil, actNanshui, 1);
+        addActionToPanel(panelSoil, actKg, 1);
 
-        addActionToPanel(panelCreep, actCreep, 3);
-        addActionToPanel(panelCreep, actLiguoying, 3);
-        addActionToPanel(panelCreep, actNineParam, 3);
-        addActionToPanel(panelCreep, actXiyuan, 3);
+        addActionToPanel(panelCreep, actCreep, 1);
+        addActionToPanel(panelCreep, actLiguoying, 1);
+        addActionToPanel(panelCreep, actNineParam, 1);
+        addActionToPanel(panelCreep, actXiyuan, 1);
 
-        addActionToPanel(panelSpecial, actHjp, 3);
-        addActionToPanel(panelSpecial, actDynamic, 3);
-        addActionToPanel(panelSpecial, actSeepage, 3);
-        addActionToPanel(panelSpecial, actBar, 3);
-        addActionToPanel(panelSpecial, actDagangshan, 3);
+        addActionToPanel(panelSpecial, actHjp, 1);
+        addActionToPanel(panelSpecial, actDynamic, 1);
+        addActionToPanel(panelSpecial, actSeepage, 1);
+        addActionToPanel(panelSpecial, actBar, 1);
+        addActionToPanel(panelSpecial, actDagangshan, 1);
 
         connect(actHjp, &QAction::triggered, this,
                 []()
