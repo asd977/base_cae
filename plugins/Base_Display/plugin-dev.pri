@@ -17,7 +17,7 @@ DESTDIR = $$APP_PLUGIN_OUTPUT_DIR
 INCLUDEPATH += $$PWD/../../core
 
 HEADERS += \
-    $$PWD/SolverActivator.h
+    # $$PWD/SolverActivator.h
 
 SOURCES += \
-    $$PWD/SolverActivator.cpp
+    # $$PWD/SolverActivator.cpp

@@ -295,7 +295,7 @@ void MeshProcessor::loadOCCFile(const QString& filePath)
     catch (const std::string& error)
     {
         qDebug() << "Failed to load OCC file";
-        throw std::runtime_error("Failed to load OCC file");
+        // throw std::runtime_error("Failed to load OCC file");
     }
 }
 
