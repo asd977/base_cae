@@ -5,36 +5,25 @@
 #include <PublicVariables.h>
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
-#include <services/PhysicalFieldService.h>
 
 #include <QDebug>
+#include <algorithm>
 #include <QDir>
 #include <QFile>
-#include <QMessageBox>
-#include <QPair>
-#include <QPluginLoader>
 #include <QSet>
-#include <QSqlDatabase>
-#include <QSqlDriverPlugin>
-#include <QSqlError>
-#include <QSqlQuery>
 #include <QString>
 #include <QTextStream>
-#include <QToolButton>
 #include <QUuid>
 #include <QtGlobal>
-#include <tuple>
 #include <cmath>
 
 #include "MaterialEntryWidget.h"
-#include "MaterialLibraryWidget.h"
 #include "MaterialModelWidget.h"
 
 MaterialManager::MaterialManager()
-    : m_materialLibraryWidget(nullptr), m_materialManagerWidget(nullptr), m_rootItem(nullptr)
+    : m_materialManagerWidget(nullptr), m_rootItem(nullptr)
 {
     m_projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
-    m_uiFrameService = ServiceRegistry::instance().getService<UiFrameService>();
     ServiceRegistry::instance().registerService<MaterialManagerService>(this);
     setupTreeWidget();
     loadDefaultLibrary();
@@ -107,10 +96,6 @@ QString MaterialManager::addMaterialToModel(const QString& modelKey, bool addToP
     if (m_materialManagerWidget)
     {
         m_materialManagerWidget->refreshSummary(m_models);
-    }
-    if (m_materialLibraryWidget)
-    {
-        m_materialLibraryWidget->refreshModels();
     }
 
     return entry.id;
@@ -219,10 +204,6 @@ void MaterialManager::notifyLibraryChanged(bool refreshProjectTree)
     {
         m_materialManagerWidget->refreshSummary(m_models);
     }
-    if (m_materialLibraryWidget)
-    {
-        m_materialLibraryWidget->refreshModels();
-    }
 }
 
 void MaterialManager::notifyEntryUpdated(const QString& entryId, bool nameChanged)
@@ -235,28 +216,6 @@ void MaterialManager::notifyEntryUpdated(const QString& entryId, bool nameChange
         {
             item->setText(0, entry->name);
         }
-    }
-}
-
-void MaterialManager::openLibrary(const QString& key, bool addNew)
-{
-    if (!m_materialLibraryWidget)
-    {
-        m_materialLibraryWidget = new MaterialLibraryWidget(this);
-    }
-
-    if (!key.isEmpty())
-    {
-        m_materialLibraryWidget->setCurrentModelKey(key);
-    }
-    m_materialLibraryWidget->refreshModels();
-    m_materialLibraryWidget->show();
-    m_materialLibraryWidget->raise();
-    m_materialLibraryWidget->activateWindow();
-
-    if (addNew)
-    {
-        m_materialLibraryWidget->addMaterialAndFocus();
     }
 }
 
@@ -790,7 +749,7 @@ bool MaterialManager::generateCaculateFile()
 
     // ===== 2) NMAT / NCON =====
     const int ncon = 200;
-    const int nmatReal = maxMatype + 1;                    // 0..maxMatype
+    const int nmatReal = maxMatype;                        // 1..maxMatype
     const int nmat = qMax(10, ((nmatReal + 9) / 10) * 10); // 补齐到 10 的倍数（每组 10 列）
 
     // ===== 3) 输出文件 =====
@@ -805,7 +764,7 @@ bool MaterialManager::generateCaculateFile()
 
     QTextStream out(&file);
 
-    // ===== 4) 预先构造数值表：values[row(0..199)][matype(0..nmat-1)] =====
+    // ===== 4) 预先构造数值表：values[row(0..199)][matIndex(0..nmat-1)] =====
     QVector<QVector<double>> values(ncon, QVector<double>(nmat, 0.0));
 
     auto valueOf = [](const MaterialEntry* entry, const QString& key) -> double
@@ -826,12 +785,11 @@ bool MaterialManager::generateCaculateFile()
         const MatInfo& info = it.value();
         if (!info.model || !info.entry)
             continue;
-        if (matype < 0 || matype >= nmat)
+        // IMAT.DAT 的编号从 1 开始，0 号无效
+        if (matype <= 0 || matype > nmat)
             continue;
 
-        // MATYPE=0 在原 Fortran 逻辑中直接跳过
-        if (matype == 0)
-            continue;
+        const int matIndex = matype - 1;
 
         if (info.model->key == QStringLiteral("huangjinping_underground_plant"))
         {
@@ -875,7 +833,7 @@ bool MaterialManager::generateCaculateFile()
             {
                 if (row >= 1 && row <= ncon)
                 {
-                    values[row - 1][matype] = value;
+                    values[row - 1][matIndex] = value;
                 }
             };
 
@@ -953,7 +911,7 @@ bool MaterialManager::generateCaculateFile()
             {
                 if (row >= 1 && row <= ncon)
                 {
-                    values[row - 1][matype] = value;
+                    values[row - 1][matIndex] = value;
                 }
             };
 
@@ -1043,7 +1001,7 @@ bool MaterialManager::generateCaculateFile()
 
     for (int g = 0; g < groupCount; ++g)
     {
-        const int startMat = g * 10;
+        const int startMat = g * 10 + 1;
 
         out << QString(" CONMAT(NMAT,NCON)   GROUP NUM=%1\n").arg(g + 1, 4);
 
@@ -1065,7 +1023,8 @@ bool MaterialManager::generateCaculateFile()
             for (int k = 0; k < 10; ++k)
             {
                 const int matype = startMat + k;
-                const double v = (matype >= 0 && matype < nmat) ? values[r][matype] : 0.0;
+                const int matIndex = matype - 1;
+                const double v = (matIndex >= 0 && matIndex < nmat) ? values[r][matIndex] : 0.0;
                 line += fmt1P(v);
             }
 
