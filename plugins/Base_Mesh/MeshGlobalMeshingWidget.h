@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <stdexcept>
 #include <set>
 
 class QThread;
@@ -410,29 +411,66 @@ class MeshGlobalWorker : public QObject
                     }
                 }
                 emit log("开始生成 3D 网格...");
-                bool generated = false;
-                try
+                auto tryGenerate3D = [this](const QString& stage) -> bool
                 {
-                    gmsh::option::setNumber("Mesh.IgnorePeriodicity", 0);
-                    gmsh::model::mesh::generate(3);
-                    generated = true;
-                }
-                catch (const std::exception& e)
-                {
-                    const QString err = QString::fromStdString(e.what());
-                    if (useRectHexAlgo && err.contains("Impossible to mesh periodic surface"))
+                    try
                     {
-                        emit log(QString("检测到周期面网格失败：%1").arg(err));
-                        emit log("自动切换 Mesh.IgnorePeriodicity=1 后重试...");
-                        gmsh::model::mesh::clear();
-                        gmsh::option::setNumber("Mesh.IgnorePeriodicity", 1);
                         gmsh::model::mesh::generate(3);
-                        generated = true;
+                        return true;
                     }
-                    else
+                    catch (const std::exception& e)
                     {
-                        throw;
+                        emit log(QString("%1失败：%2").arg(stage, QString::fromStdString(e.what())));
+                        return false;
                     }
+                    catch (...)
+                    {
+                        emit log(QString("%1失败：未知异常").arg(stage));
+                        return false;
+                    }
+                };
+
+                bool generated = false;
+                gmsh::option::setNumber("Mesh.IgnorePeriodicity", 0);
+                generated = tryGenerate3D("主算法");
+
+                if (!generated && useRectHexAlgo)
+                {
+                    emit log("主算法失败，尝试忽略周期约束后重试...");
+                    gmsh::model::mesh::clear();
+                    gmsh::option::setNumber("Mesh.IgnorePeriodicity", 1);
+                    generated = tryGenerate3D("忽略周期重试");
+                }
+
+                if (!generated && m_p.elemType == 4)
+                {
+                    emit log("忽略周期后仍失败，尝试稳健 Hex(HXT) 重试...");
+                    gmsh::model::mesh::clear();
+                    gmsh::option::setNumber("Mesh.Algorithm3D", 10);
+                    gmsh::option::setNumber("Mesh.Recombine3DAll", 1);
+                    gmsh::option::setNumber("Mesh.SubdivisionAlgorithm", 2);
+                    gmsh::option::setNumber("Mesh.Optimize", 0);
+                    gmsh::option::setNumber("Mesh.OptimizeNetgen", 0);
+                    gmsh::option::setNumber("Mesh.RecombineAll", 0);
+                    gmsh::option::setNumber("Mesh.IgnorePeriodicity", 1);
+                    gmsh::option::setNumber("Mesh.Smoothing", std::max(m_p.smoothing, 8));
+                    generated = tryGenerate3D("稳健Hex重试");
+                }
+
+                if (!generated)
+                {
+                    emit log("稳健 Hex 仍失败，尝试 Tet 兜底重试...");
+                    gmsh::model::mesh::clear();
+                    gmsh::option::setNumber("Mesh.Algorithm3D", 10);
+                    gmsh::option::setNumber("Mesh.Recombine3DAll", 0);
+                    gmsh::option::setNumber("Mesh.RecombineAll", 0);
+                    gmsh::option::setNumber("Mesh.IgnorePeriodicity", 1);
+                    generated = tryGenerate3D("Tet兜底重试");
+                }
+
+                if (!generated)
+                {
+                    throw std::runtime_error("3D 网格生成失败：所有重试策略均未成功。");
                 }
 
                 std::vector<std::size_t> nodeTags;
@@ -450,7 +488,19 @@ class MeshGlobalWorker : public QObject
                     gmsh::option::setNumber("Mesh.RecombineAll", 0);
                     gmsh::option::setNumber("Mesh.IgnorePeriodicity", 1);
                     gmsh::option::setNumber("Mesh.Smoothing", std::max(m_p.smoothing, 8));
-                    gmsh::model::mesh::generate(3);
+                    generated = tryGenerate3D("空节点-稳健Hex重试");
+                    if (!generated)
+                    {
+                        gmsh::model::mesh::clear();
+                        gmsh::option::setNumber("Mesh.Algorithm3D", 10);
+                        gmsh::option::setNumber("Mesh.Recombine3DAll", 0);
+                        gmsh::option::setNumber("Mesh.RecombineAll", 0);
+                        generated = tryGenerate3D("空节点-Tet兜底重试");
+                    }
+                    if (!generated)
+                    {
+                        throw std::runtime_error("3D 网格生成失败：空节点重试后仍失败。");
+                    }
                 }
             }
 
