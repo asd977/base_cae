@@ -348,16 +348,34 @@ class MeshGlobalWorker : public QObject
             {
                 // Hex（重组）
                 const bool useRectHexAlgo = (m_p.elemType == 4 && m_p.algorithm == 1001);
+                bool enableSweepHex = useRectHexAlgo;
+                if (useRectHexAlgo)
+                {
+                    std::vector<std::pair<int, int>> vols, faces, edges;
+                    gmsh::model::getEntities(vols, 3);
+                    gmsh::model::getEntities(faces, 2);
+                    gmsh::model::getEntities(edges, 1);
+                    const bool tooComplex =
+                        (vols.size() > 20 || faces.size() > 200 || edges.size() > 800);
+                    if (tooComplex)
+                    {
+                        enableSweepHex = false;
+                        emit log(QString("检测到复杂几何(体%1 面%2 边%3)，跳过 Sweep-六面体，自动回退到稳健 Hex 模式")
+                                     .arg(vols.size())
+                                     .arg(faces.size())
+                                     .arg(edges.size()));
+                    }
+                }
                 if (m_p.elemType == 4)
                 {
                     gmsh::option::setNumber("Mesh.Recombine3DAll", 1);
-                    gmsh::option::setNumber("Mesh.SubdivisionAlgorithm", useRectHexAlgo ? 1 : 2);
-                    gmsh::option::setNumber("Mesh.Optimize", useRectHexAlgo ? 1 : 0);
-                    gmsh::option::setNumber("Mesh.OptimizeNetgen", useRectHexAlgo ? 1 : 0);
+                    gmsh::option::setNumber("Mesh.SubdivisionAlgorithm", enableSweepHex ? 1 : 2);
+                    gmsh::option::setNumber("Mesh.Optimize", enableSweepHex ? 1 : 0);
+                    gmsh::option::setNumber("Mesh.OptimizeNetgen", enableSweepHex ? 1 : 0);
                     gmsh::option::setNumber("Mesh.Smoothing",
-                                            useRectHexAlgo ? std::max(m_p.smoothing, 30)
-                                                           : m_p.smoothing);
-                    gmsh::option::setNumber("Mesh.RecombineAll", useRectHexAlgo ? 1 : 0);
+                                            enableSweepHex ? std::max(m_p.smoothing, 30)
+                                                           : std::max(m_p.smoothing, 8));
+                    gmsh::option::setNumber("Mesh.RecombineAll", enableSweepHex ? 1 : 0);
                 }
                 else
                 {
@@ -367,8 +385,8 @@ class MeshGlobalWorker : public QObject
                     gmsh::option::setNumber("Mesh.RecombineAll", 0);
                 }
 
-                gmsh::option::setNumber("Mesh.Algorithm3D", useRectHexAlgo ? 4 : m_p.algorithm);
-                if (useRectHexAlgo)
+                gmsh::option::setNumber("Mesh.Algorithm3D", enableSweepHex ? 4 : m_p.algorithm);
+                if (enableSweepHex)
                 {
                     try
                     {
@@ -382,6 +400,23 @@ class MeshGlobalWorker : public QObject
                 }
                 emit log("开始生成 3D 网格...");
                 gmsh::model::mesh::generate(3);
+
+                std::vector<std::size_t> nodeTags;
+                std::vector<double> nodeCoords, nodeParams;
+                gmsh::model::mesh::getNodes(nodeTags, nodeCoords, nodeParams);
+                if (nodeTags.empty() && useRectHexAlgo)
+                {
+                    emit log("Sweep-六面体结果为空，自动重试稳健 Hex 模式...");
+                    gmsh::model::mesh::clear();
+                    gmsh::option::setNumber("Mesh.Algorithm3D", 10); // HXT
+                    gmsh::option::setNumber("Mesh.Recombine3DAll", m_p.elemType == 4 ? 1 : 0);
+                    gmsh::option::setNumber("Mesh.SubdivisionAlgorithm", 2);
+                    gmsh::option::setNumber("Mesh.Optimize", 0);
+                    gmsh::option::setNumber("Mesh.OptimizeNetgen", 0);
+                    gmsh::option::setNumber("Mesh.RecombineAll", 0);
+                    gmsh::option::setNumber("Mesh.Smoothing", std::max(m_p.smoothing, 8));
+                    gmsh::model::mesh::generate(3);
+                }
             }
 
             emit log("网格生成完成。");
