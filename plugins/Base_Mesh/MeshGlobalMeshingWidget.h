@@ -37,7 +37,6 @@ struct Params
     int elementOrder = 1; // 1 or 2
     int algorithm = 1;    // 2D/3D算法号（gmsh option）
     int smoothing = 5;
-    double hexRectangularity = 0.0; // 仅 Hex 生效：0~1，越大越趋向规则矩形
 
     bool fixShape = true;
     double tolerance = 1e-6;
@@ -348,16 +347,16 @@ class MeshGlobalWorker : public QObject
             else
             {
                 // Hex（重组）
+                const bool useRectHexAlgo = (m_p.elemType == 4 && m_p.algorithm == 1001);
                 if (m_p.elemType == 4)
                 {
                     gmsh::option::setNumber("Mesh.Recombine3DAll", 1);
                     gmsh::option::setNumber("Mesh.SubdivisionAlgorithm", 2);
-                    gmsh::option::setNumber("Mesh.Optimize", m_p.hexRectangularity > 0.0 ? 1 : 0);
-                    gmsh::option::setNumber("Mesh.OptimizeNetgen",
-                                            m_p.hexRectangularity >= 0.35 ? 1 : 0);
-                    const int hexSmoothBoost =
-                        static_cast<int>(std::lround(m_p.hexRectangularity * 30.0));
-                    gmsh::option::setNumber("Mesh.Smoothing", m_p.smoothing + hexSmoothBoost);
+                    gmsh::option::setNumber("Mesh.Optimize", useRectHexAlgo ? 1 : 0);
+                    gmsh::option::setNumber("Mesh.OptimizeNetgen", useRectHexAlgo ? 1 : 0);
+                    gmsh::option::setNumber("Mesh.Smoothing",
+                                            useRectHexAlgo ? std::max(m_p.smoothing, 30)
+                                                           : m_p.smoothing);
                 }
                 else
                 {
@@ -366,14 +365,17 @@ class MeshGlobalWorker : public QObject
                     gmsh::option::setNumber("Mesh.OptimizeNetgen", 0);
                 }
 
-                gmsh::option::setNumber("Mesh.Algorithm3D", m_p.algorithm);
+                gmsh::option::setNumber("Mesh.Algorithm3D", useRectHexAlgo ? 10 : m_p.algorithm);
+                if (useRectHexAlgo)
+                {
+                    emit log("已启用 Hex-规整算法（类COMSOL）：HXT + 重组 + 多轮优化");
+                }
                 emit log("开始生成 3D 网格...");
                 gmsh::model::mesh::generate(3);
 
-                if (m_p.elemType == 4 && m_p.hexRectangularity > 0.0)
+                if (useRectHexAlgo)
                 {
-                    const int optimizePasses =
-                        std::max(1, static_cast<int>(std::lround(m_p.hexRectangularity * 4.0)));
+                    const int optimizePasses = 4;
                     for (int i = 0; i < optimizePasses; ++i)
                     {
                         try
@@ -387,16 +389,13 @@ class MeshGlobalWorker : public QObject
                         }
                     }
 
-                    if (m_p.hexRectangularity >= 0.5)
+                    try
                     {
-                        try
-                        {
-                            gmsh::model::mesh::optimize("Netgen");
-                        }
-                        catch (...)
-                        {
-                            emit log("Netgen 优化跳过：当前网格不支持该优化。");
-                        }
+                        gmsh::model::mesh::optimize("Netgen");
+                    }
+                    catch (...)
+                    {
+                        emit log("Netgen 优化跳过：当前网格不支持该优化。");
                     }
                 }
             }
@@ -685,7 +684,6 @@ class MeshGlobalMeshingWidget : public BasePage
     void initCombos();
     void refreshAlgoCombo(int dim);
     void refreshElemCombo(int dim);
-    void refreshHexRectOption();
     Params collectParams() const;
 
     QString tempDirPath() const;

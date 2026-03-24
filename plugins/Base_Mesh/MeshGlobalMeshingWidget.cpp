@@ -115,7 +115,6 @@ void MeshGlobalMeshingWidget::initCombos()
     ui->dsFactor->setValue(1.0);
     ui->spOrder->setValue(1);
     ui->spSmooth->setValue(5);
-    ui->dsHexRect->setValue(0.6);
     ui->chkFix->setChecked(true);
     ui->dsTol->setValue(1e-6);
 }
@@ -139,6 +138,8 @@ void MeshGlobalMeshingWidget::refreshElemCombo(int dim)
 
 void MeshGlobalMeshingWidget::refreshAlgoCombo(int dim)
 {
+    const int elemType = ui->cmbElemType->currentData().toInt();
+
     ui->cmbAlgo->clear();
     if (dim == 2)
     {
@@ -153,6 +154,10 @@ void MeshGlobalMeshingWidget::refreshAlgoCombo(int dim)
         ui->cmbAlgo->addItem("Delaunay (1)", 1);
         ui->cmbAlgo->addItem("Frontal (4)", 4);
         ui->cmbAlgo->addItem("HXT (10)", 10);
+        if (elemType == 4)
+        {
+            ui->cmbAlgo->addItem("Hex-规整(类COMSOL)", 1001);
+        }
         ui->cmbAlgo->setCurrentIndex(0);
     }
 }
@@ -162,23 +167,11 @@ void MeshGlobalMeshingWidget::onDimChanged(int)
     const int dim = ui->cmbDim->currentData().toInt();
     refreshElemCombo(dim);
     refreshAlgoCombo(dim);
-    refreshHexRectOption();
 }
 
 void MeshGlobalMeshingWidget::onElemTypeChanged(int)
 {
-    refreshHexRectOption();
-}
-
-void MeshGlobalMeshingWidget::refreshHexRectOption()
-{
-    const bool isHex3D = (ui->cmbDim->currentData().toInt() == 3 &&
-                          ui->cmbElemType->currentData().toInt() == 4);
-
-    ui->labelHexRect->setEnabled(isHex3D);
-    ui->dsHexRect->setEnabled(isHex3D);
-    ui->labelHexRect->setVisible(true);
-    ui->dsHexRect->setVisible(true);
+    refreshAlgoCombo(ui->cmbDim->currentData().toInt());
 }
 
 Params MeshGlobalMeshingWidget::collectParams() const
@@ -193,7 +186,6 @@ Params MeshGlobalMeshingWidget::collectParams() const
     p.elementOrder = ui->spOrder->value();
     p.algorithm = ui->cmbAlgo->currentData().toInt();
     p.smoothing = ui->spSmooth->value();
-    p.hexRectangularity = ui->dsHexRect->value();
     p.fixShape = ui->chkFix->isChecked();
     p.tolerance = ui->dsTol->value();
 
