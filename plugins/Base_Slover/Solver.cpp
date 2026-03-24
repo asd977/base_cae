@@ -23,6 +23,7 @@
 #include "SeepageWidget.h"
 #include "StressBoundaryPage.h"
 #include "DamAnalysisWidget.h"
+#include "SlopeStabilityWidget.h"
 #include "SolverSettingWidget.h"
 
 Solver::Solver()
@@ -156,6 +157,20 @@ bool Solver::loadProject()
                     });
             analysisPage = stressPage;
         }
+        else if (analysisType == "SlopeStabilityAnalysis")
+        {
+            auto* slopePage = new SlopeStabilityWidget();
+            analysisNode = new ProjectNode(
+                analysisObj.value("title").toString("边坡稳定分析"),
+                analysisObj.value("uuid").toString(QUuid::createUuid().toString()), slopePage);
+            slopePage->loadJson(analysisObj.value("state").toObject());
+            connect(slopePage, &SlopeStabilityWidget::computeRequested, this,
+                    [this, analysisNode]()
+                    {
+                        onComputeSlopeStability(analysisNode);
+                    });
+            analysisPage = slopePage;
+        }
 
         if (!analysisNode || !analysisPage)
             continue;
@@ -206,6 +221,8 @@ bool Solver::loadProject()
             setupNodeRole(analysisNode, "DamAnalysis");
         else if (analysisType == "SeepageAnalysis")
             setupNodeRole(analysisNode, "SeepageAnalysis");
+        else if (analysisType == "SlopeStabilityAnalysis")
+            setupNodeRole(analysisNode, "SlopeStabilityAnalysis");
 
         syncDamAnalysisMCase(analysisNode);
 
@@ -233,6 +250,11 @@ void Solver::initAction()
                        [this](const QVariantMap&)
                        {
                            onStressStrainAction();
+                       });
+    em.registerHandler(PublicConstants::kActionSlopeStabilityKey,
+                       [this](const QVariantMap&)
+                       {
+                           onSlopeStabilityAction();
                        });
 }
 
@@ -387,6 +409,27 @@ void Solver::onStressStrainAction()
         pm->setCurrentItem(analysisNode);
 }
 
+void Solver::onSlopeStabilityAction()
+{
+    if (!m_root)
+        return;
+
+    auto* slopePage = new SlopeStabilityWidget();
+    const QString analysisName = QString("边坡稳定分析(%1)").arg(nextSlopeStabilityIndex());
+    auto* analysisNode = new ProjectNode(analysisName, QUuid::createUuid().toString(), slopePage);
+    setupNodeRole(analysisNode, "SlopeStabilityAnalysis");
+
+    connect(slopePage, &SlopeStabilityWidget::computeRequested, this,
+            [this, analysisNode]()
+            {
+                onComputeSlopeStability(analysisNode);
+            });
+
+    m_root->addChild(analysisNode);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(analysisNode);
+}
+
 void Solver::onComputeSeepage(ProjectNode* analysisNode)
 {
     if (!analysisNode)
@@ -474,6 +517,19 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
                              QString("以下文件导出失败：\n%1").arg(failedFiles.join("\n")));
 }
 
+
+void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
+{
+    if (!analysisNode)
+        return;
+
+    auto* slopePage = dynamic_cast<SlopeStabilityWidget*>(analysisNode->getPage());
+    if (slopePage && slopePage->exportIslopDatFile())
+        QMessageBox::information(nullptr, "导出成功", "边坡稳定分析输入文件导出成功（ISLOP.DAT）。");
+    else
+        QMessageBox::warning(nullptr, "导出失败", "ISLOP.DAT 导出失败。");
+}
+
 int Solver::nextStressStrainIndex() const
 {
     if (!m_root)
@@ -481,6 +537,32 @@ int Solver::nextStressStrainIndex() const
 
     int maxIdx = 0;
     QRegularExpression re(QString(R"(^(?:土石坝计算|应力应变分析)\((\d+)\)$)"));
+
+    for (ProjectNode* child : m_root->getChildren())
+    {
+        if (!child)
+            continue;
+        const QString name = child->getName();
+        auto m = re.match(name);
+        if (m.hasMatch())
+        {
+            bool ok = false;
+            int idx = m.captured(1).toInt(&ok);
+            if (ok)
+                maxIdx = std::max(maxIdx, idx);
+        }
+    }
+
+    return maxIdx + 1;
+}
+
+int Solver::nextSlopeStabilityIndex() const
+{
+    if (!m_root)
+        return 1;
+
+    int maxIdx = 0;
+    QRegularExpression re(QString(R"(^边坡稳定分析\((\d+)\)$)"));
 
     for (ProjectNode* child : m_root->getChildren())
     {
