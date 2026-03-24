@@ -563,8 +563,8 @@ void GridEditingWidget::buildOrUpdateViewGrid()
         !m_filterKetypes.isEmpty() || !m_filterMatypes.isEmpty() || !m_filterLayers.isEmpty();
 
     // 记录 mapper 原有着色状态：避免仅因重建 viewGrid 就丢失当前颜色。
-    const int prevScalarVisibility = m_meshMapper->GetScalarVisibility();
-    const int prevScalarMode = m_meshMapper->GetScalarMode();
+    int prevScalarVisibility = m_meshMapper->GetScalarVisibility();
+    int prevScalarMode = m_meshMapper->GetScalarMode();
     const char* prevArrayName = m_meshMapper->GetArrayName();
     vtkScalarsToColors* prevLookupTable = m_meshMapper->GetLookupTable();
 
@@ -604,6 +604,47 @@ void GridEditingWidget::buildOrUpdateViewGrid()
             if (!cell)
                 continue;
             maxCellDim = std::max(maxCellDim, cell->GetCellDimension());
+        }
+
+        // 根据过滤结果维度切换显示 actor：
+        // 1D 优先使用线 actor，2D/3D 优先使用面 actor。
+        if (m_visualWidgetService)
+        {
+            vtkActor* preferredActor = nullptr;
+            if (maxCellDim <= 1)
+            {
+                preferredActor =
+                    vtkActor::SafeDownCast(m_visualWidgetService->getProp(kImportedMeshLinePropId));
+                if (!preferredActor)
+                {
+                    preferredActor = vtkActor::SafeDownCast(
+                        m_visualWidgetService->getProp(kImportedMeshSurfacePropId));
+                }
+            }
+            else
+            {
+                preferredActor = vtkActor::SafeDownCast(
+                    m_visualWidgetService->getProp(kImportedMeshSurfacePropId));
+                if (!preferredActor)
+                {
+                    preferredActor =
+                        vtkActor::SafeDownCast(m_visualWidgetService->getProp(kImportedMeshLinePropId));
+                }
+            }
+
+            if (preferredActor)
+            {
+                auto* preferredMapper = vtkDataSetMapper::SafeDownCast(preferredActor->GetMapper());
+                if (preferredMapper)
+                {
+                    m_meshActor = preferredActor;
+                    m_meshMapper = preferredMapper;
+                    prevScalarVisibility = m_meshMapper->GetScalarVisibility();
+                    prevScalarMode = m_meshMapper->GetScalarMode();
+                    prevArrayName = m_meshMapper->GetArrayName();
+                    prevLookupTable = m_meshMapper->GetLookupTable();
+                }
+            }
         }
 
         // 仅对体单元(3D)做表面提取。2D 网格若再做 SurfaceFilter 可能退化为边界线，导致显示异常。
