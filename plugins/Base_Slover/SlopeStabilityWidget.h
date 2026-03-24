@@ -5,8 +5,12 @@
 
 #include <QJsonObject>
 
+#include <QString>
+#include <QVector>
+
 class QPushButton;
 class QLabel;
+class QTableWidget;
 
 class SlopeStabilityWidget : public BasePage
 {
@@ -27,6 +31,20 @@ class SlopeStabilityWidget : public BasePage
     void computeRequested();
 
   private:
+    struct DatItem
+    {
+        int lineNo = 0;
+        QString key;
+        QString value;
+        QString description;
+    };
+
+    void initDefaultItems();
+    void refreshTable();
+
+  private:
+    QVector<DatItem> m_items;
+    QTableWidget* m_table = nullptr;
     QLabel* m_summaryLabel = nullptr;
     QPushButton* m_computeButton = nullptr;
 };
