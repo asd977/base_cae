@@ -156,7 +156,7 @@ void MeshGlobalMeshingWidget::refreshAlgoCombo(int dim)
         ui->cmbAlgo->addItem("HXT (10)", 10);
         if (elemType == 4)
         {
-            ui->cmbAlgo->addItem("Sweep-六面体(类COMSOL)", 1001);
+            ui->cmbAlgo->addItem("Sweep-六面体(实验)", 1001);
         }
         ui->cmbAlgo->setCurrentIndex(0);
     }

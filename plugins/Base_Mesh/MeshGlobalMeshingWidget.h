@@ -370,14 +370,43 @@ class MeshGlobalWorker : public QObject
                 gmsh::option::setNumber("Mesh.Algorithm3D", useRectHexAlgo ? 4 : m_p.algorithm);
                 if (useRectHexAlgo)
                 {
-                    try
+                    std::vector<std::pair<int, int>> vols;
+                    gmsh::model::getEntities(vols, 3);
+                    std::vector<std::pair<int, int>> sweepCandidates;
+                    for (const auto& v : vols)
                     {
-                        gmsh::model::mesh::setTransfiniteAutomatic({}, 2.35, true);
-                        emit log("已启用 Sweep-六面体算法（类COMSOL）：自动识别可扫掠体并施加结构化约束");
+                        std::vector<std::pair<int, int>> b;
+                        gmsh::model::getBoundary({v}, b, false, false, false);
+                        int faceCount = 0;
+                        for (const auto& x : b)
+                            if (x.first == 2)
+                                ++faceCount;
+                        if (faceCount == 6)
+                            sweepCandidates.push_back(v);
                     }
-                    catch (...)
+
+                    if (!sweepCandidates.empty())
                     {
-                        emit log("TransfiniteAutomatic 未完全生效：几何可能不满足扫掠条件，将回退为重组+优化");
+                        try
+                        {
+                            gmsh::model::mesh::setTransfiniteAutomatic(sweepCandidates, 2.35,
+                                                                       true);
+                            emit log(QString("Sweep-六面体：识别到 %1 个可扫掠体并施加结构化约束")
+                                         .arg(sweepCandidates.size()));
+                        }
+                        catch (...)
+                        {
+                            emit log("TransfiniteAutomatic 设置失败，将回退为重组+优化");
+                        }
+                    }
+                    else
+                    {
+                        emit log("Sweep-六面体：未识别到可扫掠体（通常需要近似六面体拓扑），将回退稳健模式");
+                        gmsh::option::setNumber("Mesh.Algorithm3D", 10);
+                        gmsh::option::setNumber("Mesh.SubdivisionAlgorithm", 2);
+                        gmsh::option::setNumber("Mesh.Optimize", 0);
+                        gmsh::option::setNumber("Mesh.OptimizeNetgen", 0);
+                        gmsh::option::setNumber("Mesh.RecombineAll", 0);
                     }
                 }
                 emit log("开始生成 3D 网格...");
