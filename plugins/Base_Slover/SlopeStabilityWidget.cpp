@@ -181,7 +181,7 @@ QString SlopeStabilityWidget::defaultValueByLine(int lineNo) const
     static const QStringList defaults = {"F:\\FEMCLASS\\Z08_SLOP3D\\PREP\\", "MACB.DAT", "3",
                                          "0.0   -9.81   0.0", "1", "500", "0.0001", "1", "IIWL.DAT",
                                          "--------------", "--------------", "JDTRACE.DAT", "KETRACE.DAT",
-                                         "TDTRACE.DAT", "0", "0", "0.05", "0.0", "1", "------------"};
+                                         "TDTRACE.DAT", "0", "0", "0.05", "0.0", "1", "MACHAN.DAT"};
     return defaults.value(lineNo - 1);
 }
 
@@ -267,6 +267,24 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
     os << quoteValue(m_accXEdit->text()) << "  " << quoteValue(m_accYEdit->text()) << "  "
        << quoteValue(m_accZEdit->text()) << "    ACCEX ACCEY ACCEZ\n";
 
+    exportTdtraceDatFile();
+    return true;
+}
+
+bool SlopeStabilityWidget::exportTdtraceDatFile() const
+{
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir wd(QDir(projectDir).absolutePath());
+    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+        return false;
+
+    QFile file(wd.filePath("PREP/TDTRACE.DAT"));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        return false;
+
+    QTextStream os(&file);
+    os << "           0   NUM\n";
     return true;
 }
 

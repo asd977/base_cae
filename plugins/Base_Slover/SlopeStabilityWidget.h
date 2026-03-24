@@ -54,6 +54,7 @@ class SlopeStabilityWidget : public BasePage
     QLineEdit* m_accXEdit = nullptr;
     QLineEdit* m_accYEdit = nullptr;
     QLineEdit* m_accZEdit = nullptr;
-};
+    bool exportTdtraceDatFile() const;
+ };
 
 #endif // SLOPESTABILITYWIDGET_H
