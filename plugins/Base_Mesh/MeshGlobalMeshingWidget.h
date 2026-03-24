@@ -348,34 +348,16 @@ class MeshGlobalWorker : public QObject
             {
                 // Hex（重组）
                 const bool useRectHexAlgo = (m_p.elemType == 4 && m_p.algorithm == 1001);
-                bool enableSweepHex = useRectHexAlgo;
-                if (useRectHexAlgo)
-                {
-                    std::vector<std::pair<int, int>> vols, faces, edges;
-                    gmsh::model::getEntities(vols, 3);
-                    gmsh::model::getEntities(faces, 2);
-                    gmsh::model::getEntities(edges, 1);
-                    const bool tooComplex =
-                        (vols.size() > 20 || faces.size() > 200 || edges.size() > 800);
-                    if (tooComplex)
-                    {
-                        enableSweepHex = false;
-                        emit log(QString("检测到复杂几何(体%1 面%2 边%3)，跳过 Sweep-六面体，自动回退到稳健 Hex 模式")
-                                     .arg(vols.size())
-                                     .arg(faces.size())
-                                     .arg(edges.size()));
-                    }
-                }
                 if (m_p.elemType == 4)
                 {
                     gmsh::option::setNumber("Mesh.Recombine3DAll", 1);
-                    gmsh::option::setNumber("Mesh.SubdivisionAlgorithm", enableSweepHex ? 1 : 2);
-                    gmsh::option::setNumber("Mesh.Optimize", enableSweepHex ? 1 : 0);
-                    gmsh::option::setNumber("Mesh.OptimizeNetgen", enableSweepHex ? 1 : 0);
+                    gmsh::option::setNumber("Mesh.SubdivisionAlgorithm", useRectHexAlgo ? 1 : 2);
+                    gmsh::option::setNumber("Mesh.Optimize", useRectHexAlgo ? 1 : 0);
+                    gmsh::option::setNumber("Mesh.OptimizeNetgen", useRectHexAlgo ? 1 : 0);
                     gmsh::option::setNumber("Mesh.Smoothing",
-                                            enableSweepHex ? std::max(m_p.smoothing, 30)
+                                            useRectHexAlgo ? std::max(m_p.smoothing, 30)
                                                            : std::max(m_p.smoothing, 8));
-                    gmsh::option::setNumber("Mesh.RecombineAll", enableSweepHex ? 1 : 0);
+                    gmsh::option::setNumber("Mesh.RecombineAll", useRectHexAlgo ? 1 : 0);
                 }
                 else
                 {
@@ -385,8 +367,8 @@ class MeshGlobalWorker : public QObject
                     gmsh::option::setNumber("Mesh.RecombineAll", 0);
                 }
 
-                gmsh::option::setNumber("Mesh.Algorithm3D", enableSweepHex ? 4 : m_p.algorithm);
-                if (enableSweepHex)
+                gmsh::option::setNumber("Mesh.Algorithm3D", useRectHexAlgo ? 4 : m_p.algorithm);
+                if (useRectHexAlgo)
                 {
                     try
                     {
@@ -399,12 +381,35 @@ class MeshGlobalWorker : public QObject
                     }
                 }
                 emit log("开始生成 3D 网格...");
-                gmsh::model::mesh::generate(3);
+                bool generated = false;
+                try
+                {
+                    gmsh::option::setNumber("Mesh.IgnorePeriodicity", 0);
+                    gmsh::model::mesh::generate(3);
+                    generated = true;
+                }
+                catch (const std::exception& e)
+                {
+                    const QString err = QString::fromStdString(e.what());
+                    if (useRectHexAlgo && err.contains("Impossible to mesh periodic surface"))
+                    {
+                        emit log(QString("检测到周期面网格失败：%1").arg(err));
+                        emit log("自动切换 Mesh.IgnorePeriodicity=1 后重试...");
+                        gmsh::model::mesh::clear();
+                        gmsh::option::setNumber("Mesh.IgnorePeriodicity", 1);
+                        gmsh::model::mesh::generate(3);
+                        generated = true;
+                    }
+                    else
+                    {
+                        throw;
+                    }
+                }
 
                 std::vector<std::size_t> nodeTags;
                 std::vector<double> nodeCoords, nodeParams;
                 gmsh::model::mesh::getNodes(nodeTags, nodeCoords, nodeParams);
-                if (nodeTags.empty() && useRectHexAlgo)
+                if (generated && nodeTags.empty() && useRectHexAlgo)
                 {
                     emit log("Sweep-六面体结果为空，自动重试稳健 Hex 模式...");
                     gmsh::model::mesh::clear();
@@ -414,6 +419,7 @@ class MeshGlobalWorker : public QObject
                     gmsh::option::setNumber("Mesh.Optimize", 0);
                     gmsh::option::setNumber("Mesh.OptimizeNetgen", 0);
                     gmsh::option::setNumber("Mesh.RecombineAll", 0);
+                    gmsh::option::setNumber("Mesh.IgnorePeriodicity", 1);
                     gmsh::option::setNumber("Mesh.Smoothing", std::max(m_p.smoothing, 8));
                     gmsh::model::mesh::generate(3);
                 }
