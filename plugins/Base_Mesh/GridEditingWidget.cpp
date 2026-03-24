@@ -27,7 +27,9 @@
 #include <vtkCommand.h>
 #include <vtkCoordinate.h>
 #include <vtkDataArray.h>
+#include <vtkDataSet.h>
 #include <vtkDataSetMapper.h>
+#include <vtkDataSetSurfaceFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
 #include <vtkIdTypeArray.h>
@@ -252,6 +254,8 @@ void GridEditingWidget::clearData()
     m_fullGrid = nullptr;
     m_viewGrid = nullptr;
     m_points = nullptr;
+    m_originalDisplayData = nullptr;
+    m_filteredDisplayData = nullptr;
 
     m_sourceName.clear();
     m_dirty = false;
@@ -304,13 +308,35 @@ void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString
     {
         auto* pd = m_fullGrid->GetPointData();
         auto nodeId = vtkIntArray::SafeDownCast(pd ? pd->GetArray("NodeId") : nullptr);
+        auto legacyNodeId = vtkIntArray::SafeDownCast(pd ? pd->GetArray("node_id") : nullptr);
         if (!nodeId || nodeId->GetNumberOfTuples() != m_fullGrid->GetNumberOfPoints())
         {
             nodeId = ensureIntArray(pd, "NodeId", m_fullGrid->GetNumberOfPoints());
-            for (vtkIdType i = 0; i < m_fullGrid->GetNumberOfPoints(); ++i)
+            if (legacyNodeId &&
+                legacyNodeId->GetNumberOfTuples() == m_fullGrid->GetNumberOfPoints())
             {
-                nodeId->SetValue(i, static_cast<int>(i + 1));
+                for (vtkIdType i = 0; i < m_fullGrid->GetNumberOfPoints(); ++i)
+                {
+                    nodeId->SetValue(i, legacyNodeId->GetValue(i));
+                }
             }
+            else
+            {
+                for (vtkIdType i = 0; i < m_fullGrid->GetNumberOfPoints(); ++i)
+                {
+                    nodeId->SetValue(i, static_cast<int>(i + 1));
+                }
+            }
+        }
+
+        // 与导入网格常用命名保持一致，避免后续流程读到不同数组名导致映射错位。
+        if (!legacyNodeId || legacyNodeId->GetNumberOfTuples() != m_fullGrid->GetNumberOfPoints())
+        {
+            legacyNodeId = ensureIntArray(pd, "node_id", m_fullGrid->GetNumberOfPoints());
+        }
+        for (vtkIdType i = 0; i < m_fullGrid->GetNumberOfPoints(); ++i)
+        {
+            legacyNodeId->SetValue(i, nodeId->GetValue(i));
         }
     }
 
@@ -318,14 +344,37 @@ void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString
     {
         auto* cd = m_fullGrid->GetCellData();
         auto elemId = vtkIntArray::SafeDownCast(cd ? cd->GetArray("ElemId") : nullptr);
+        auto legacyElemId = vtkIntArray::SafeDownCast(cd ? cd->GetArray("elem_id") : nullptr);
         if (!elemId || elemId->GetNumberOfTuples() != m_fullGrid->GetNumberOfCells())
         {
             elemId = ensureIntArray(cd, "ElemId", m_fullGrid->GetNumberOfCells());
-            for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
+            if (legacyElemId &&
+                legacyElemId->GetNumberOfTuples() == m_fullGrid->GetNumberOfCells())
             {
-                elemId->SetValue(c, static_cast<int>(c + 1));
+                for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
+                {
+                    elemId->SetValue(c, legacyElemId->GetValue(c));
+                }
+            }
+            else
+            {
+                for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
+                {
+                    elemId->SetValue(c, static_cast<int>(c + 1));
+                }
             }
         }
+
+        // 同步旧字段命名，保证导出/显示流程中的 ID 一致。
+        if (!legacyElemId || legacyElemId->GetNumberOfTuples() != m_fullGrid->GetNumberOfCells())
+        {
+            legacyElemId = ensureIntArray(cd, "elem_id", m_fullGrid->GetNumberOfCells());
+        }
+        for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
+        {
+            legacyElemId->SetValue(c, elemId->GetValue(c));
+        }
+
         ensureIntArray(cd, "KETYPE", m_fullGrid->GetNumberOfCells());
         ensureIntArray(cd, "MATYPE", m_fullGrid->GetNumberOfCells());
         ensureIntArray(cd, "LAYER", m_fullGrid->GetNumberOfCells());
@@ -505,20 +554,29 @@ void GridEditingWidget::buildOrUpdateViewGrid()
     }
     if (!m_meshMapper)
         return;
+    if (!m_originalDisplayData)
+    {
+        m_originalDisplayData = vtkDataSet::SafeDownCast(m_meshMapper->GetInput());
+    }
 
     const bool hasFilter =
         !m_filterKetypes.isEmpty() || !m_filterMatypes.isEmpty() || !m_filterLayers.isEmpty();
 
     // 记录 mapper 原有着色状态：避免仅因重建 viewGrid 就丢失当前颜色。
-    const int prevScalarVisibility = m_meshMapper->GetScalarVisibility();
-    const int prevScalarMode = m_meshMapper->GetScalarMode();
+    int prevScalarVisibility = m_meshMapper->GetScalarVisibility();
+    int prevScalarMode = m_meshMapper->GetScalarMode();
     const char* prevArrayName = m_meshMapper->GetArrayName();
     vtkScalarsToColors* prevLookupTable = m_meshMapper->GetLookupTable();
 
     if (!hasFilter)
     {
         m_viewGrid = m_fullGrid;
-        m_meshMapper->SetInputData(m_viewGrid);
+        m_filteredDisplayData = nullptr;
+        if (m_originalDisplayData)
+        {
+            // 保持与导入预览一致的显示数据，避免首次进入编辑页面时网格外观突变。
+            m_meshMapper->SetInputData(m_originalDisplayData);
+        }
         m_points = m_viewGrid->GetPoints();
         rebuildViewMaps();
     }
@@ -539,7 +597,75 @@ void GridEditingWidget::buildOrUpdateViewGrid()
         m_viewGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
         m_viewGrid->ShallowCopy(ex->GetOutput());
 
-        m_meshMapper->SetInputData(m_viewGrid);
+        int maxCellDim = 0;
+        for (vtkIdType c = 0; c < m_viewGrid->GetNumberOfCells(); ++c)
+        {
+            auto* cell = m_viewGrid->GetCell(c);
+            if (!cell)
+                continue;
+            maxCellDim = std::max(maxCellDim, cell->GetCellDimension());
+        }
+
+        // 根据过滤结果维度切换显示 actor：
+        // 1D 优先使用线 actor，2D/3D 优先使用面 actor。
+        if (m_visualWidgetService)
+        {
+            vtkActor* preferredActor = nullptr;
+            if (maxCellDim <= 1)
+            {
+                preferredActor =
+                    vtkActor::SafeDownCast(m_visualWidgetService->getProp(kImportedMeshLinePropId));
+                if (!preferredActor)
+                {
+                    preferredActor = vtkActor::SafeDownCast(
+                        m_visualWidgetService->getProp(kImportedMeshSurfacePropId));
+                }
+            }
+            else
+            {
+                preferredActor = vtkActor::SafeDownCast(
+                    m_visualWidgetService->getProp(kImportedMeshSurfacePropId));
+                if (!preferredActor)
+                {
+                    preferredActor =
+                        vtkActor::SafeDownCast(m_visualWidgetService->getProp(kImportedMeshLinePropId));
+                }
+            }
+
+            if (preferredActor)
+            {
+                auto* preferredMapper = vtkDataSetMapper::SafeDownCast(preferredActor->GetMapper());
+                if (preferredMapper)
+                {
+                    m_meshActor = preferredActor;
+                    m_meshMapper = preferredMapper;
+                    prevScalarVisibility = m_meshMapper->GetScalarVisibility();
+                    prevScalarMode = m_meshMapper->GetScalarMode();
+                    prevArrayName = m_meshMapper->GetArrayName();
+                    prevLookupTable = m_meshMapper->GetLookupTable();
+                }
+            }
+        }
+
+        // 仅对体单元(3D)做表面提取。2D 网格若再做 SurfaceFilter 可能退化为边界线，导致显示异常。
+        if (maxCellDim >= 3 && m_originalDisplayData && m_originalDisplayData->IsA("vtkPolyData"))
+        {
+            auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+            surf->SetInputData(m_viewGrid);
+            surf->PassThroughCellIdsOn();
+            surf->PassThroughPointIdsOn();
+            surf->Update();
+
+            auto filteredSurface = vtkSmartPointer<vtkPolyData>::New();
+            filteredSurface->ShallowCopy(surf->GetOutput());
+            m_filteredDisplayData = filteredSurface;
+            m_meshMapper->SetInputData(m_filteredDisplayData);
+        }
+        else
+        {
+            m_filteredDisplayData = m_viewGrid;
+            m_meshMapper->SetInputData(m_filteredDisplayData);
+        }
         m_points = m_viewGrid->GetPoints();
         rebuildViewMaps();
     }
