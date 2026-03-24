@@ -976,12 +976,16 @@ void UiFrame::buildRibbonTabs()
         auto* actParam = makeAction(this, ":/resources/menu/minimal/analysis.svg", "&渗流分析");
         auto* actStress =
             makeAction(this, ":/resources/menu/minimal/analysis.svg", "&土石坝计算");
+        auto* actSlope =
+            makeAction(this, ":/resources/menu/minimal/analysis.svg", "&边坡稳定分析");
 
         addActionToPanel(panel, actParam, 3);
         addActionToPanel(panel, actStress, 3);
+        addActionToPanel(panel, actSlope, 3);
 
         bindEvent(this, actParam, PublicConstants::kActionSeepageKey);
         bindEvent(this, actStress, PublicConstants::kActionStressStrainKey);
+        bindEvent(this, actSlope, PublicConstants::kActionSlopeStabilityKey);
     }
 
     // =========================

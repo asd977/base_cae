@@ -19,8 +19,10 @@ class Solver : public QObject, public SolverService
   private slots:
     void onSeepageAction();
     void onStressStrainAction();
+    void onSlopeStabilityAction();
     void onComputeSeepage(ProjectNode* analysisNode);
     void onComputeStressStrain(ProjectNode* analysisNode);
+    void onComputeSlopeStability(ProjectNode* analysisNode);
 
   private:
     void initAction();
@@ -31,6 +33,7 @@ class Solver : public QObject, public SolverService
     void addFillStorageCycleNode(ProjectNode* analysisNode, bool setCurrent) const;
     int nextSeepageIndex() const;
     int nextStressStrainIndex() const;
+    int nextSlopeStabilityIndex() const;
 
   private:
     ProjectNode* m_root = nullptr;

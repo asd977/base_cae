@@ -11,7 +11,8 @@ HEADERS += \
     Solver.h \
     SolverSettingWidget.h \
     StressBoundaryPage.h \
-    DamAnalysisWidget.h
+    DamAnalysisWidget.h \
+    SlopeStabilityWidget.h
 
 SOURCES += \
     FillStorageCyclePage.cpp \
@@ -20,7 +21,8 @@ SOURCES += \
     Solver.cpp \
     SolverSettingWidget.cpp \
     StressBoundaryPage.cpp \
-    DamAnalysisWidget.cpp
+    DamAnalysisWidget.cpp \
+    SlopeStabilityWidget.cpp
 
 FORMS += \
     FillStorageCyclePage.ui \

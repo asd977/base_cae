@@ -213,6 +213,7 @@ constexpr char kPageBoundaryPoint[] = "page_boundary_point";
 // =========================
 constexpr char kActionSeepageKey[] = "seepage_analysis";
 constexpr char kActionStressStrainKey[] = "stress_strain_analysis";
+constexpr char kActionSlopeStabilityKey[] = "slope_stability_analysis";
 
 // =======================================================
 // Other：Key / Value / FileName（不属于 Event/Action/Page）
