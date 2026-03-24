@@ -6,12 +6,12 @@
 #include <QJsonObject>
 #include <QMap>
 
-class QLineEdit;
-class QComboBox;
-class QPushButton;
-class QTableWidget;
-class QLabel;
 class QWidget;
+
+namespace Ui
+{
+class SlopeStabilityWidget;
+}
 
 class SlopeStabilityWidget : public BasePage
 {
@@ -19,7 +19,7 @@ class SlopeStabilityWidget : public BasePage
 
   public:
     explicit SlopeStabilityWidget(QWidget* parent = nullptr);
-    ~SlopeStabilityWidget() override = default;
+    ~SlopeStabilityWidget() override;
 
     void beforeLoad() override;
     void beforeUnload() override;
@@ -43,18 +43,9 @@ class SlopeStabilityWidget : public BasePage
     void initStrengthReserveTable();
 
   private:
+    Ui::SlopeStabilityWidget* ui;
     QMap<int, QWidget*> m_lineEditors;
-    QTableWidget* m_strengthReserveTable = nullptr;
-    QLabel* m_caseDirLabel = nullptr;
-    QLineEdit* m_dtEdit = nullptr;
-    QLineEdit* m_tstaEdit = nullptr;
-    QLineEdit* m_tendEdit = nullptr;
-    QLineEdit* m_ifModeEdit = nullptr;
-    QLineEdit* m_ifWaveEdit = nullptr;
-    QLineEdit* m_accXEdit = nullptr;
-    QLineEdit* m_accYEdit = nullptr;
-    QLineEdit* m_accZEdit = nullptr;
     bool exportTdtraceDatFile() const;
- };
+};
 
 #endif // SLOPESTABILITYWIDGET_H

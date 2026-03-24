@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SlopeStabilityWidget</class>
+ <widget class="QWidget" name="SlopeStabilityWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>840</width>
+    <height>1200</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>边坡稳定分析</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="leftMargin"><number>0</number></property>
+   <property name="topMargin"><number>0</number></property>
+   <property name="rightMargin"><number>0</number></property>
+   <property name="bottomMargin"><number>0</number></property>
+   <item><widget class="QLabel" name="titleLabel"><property name="text"><string>边坡稳定分析</string></property></widget></item>
+   <item><widget class="QPushButton" name="sectionTitleButton"><property name="enabled"><bool>false</bool></property><property name="text"><string>功能设置</string></property></widget></item>
+   <item>
+    <widget class="QGroupBox" name="islopGroup">
+     <property name="title"><string>ISLOP.DAT 参数</string></property>
+     <layout class="QFormLayout" name="formLayout">
+      <item row="0" column="0"><widget class="QLabel" name="label1"><property name="text"><string>1. 计算默认文件目录</string></property></widget></item>
+      <item row="0" column="1"><widget class="QLineEdit" name="line1Edit"><property name="readOnly"><bool>true</bool></property></widget></item>
+      <item row="1" column="0"><widget class="QLabel" name="label2"><property name="text"><string>2. 材料集文件</string></property></widget></item>
+      <item row="1" column="1"><widget class="QLineEdit" name="line2Edit"><property name="text"><string>MACB.DAT</string></property></widget></item>
+      <item row="2" column="0"><widget class="QLabel" name="label3"><property name="text"><string>3. 求解方法</string></property></widget></item>
+      <item row="2" column="1"><widget class="QComboBox" name="line3Combo"><item><property name="text"><string>0 荷载增量法</string></property></item><item><property name="text"><string>1 强度储备法(降C)</string></property></item><item><property name="text"><string>2 强度储备法(降F)</string></property></item><item><property name="text"><string>3 强度储备法(同时降C/F)</string></property></item><item><property name="text"><string>4 强度储备法(同时降E/C/F)</string></property></item></widget></item>
+      <item row="3" column="0"><widget class="QLabel" name="label4"><property name="text"><string>4. 三方向重力加速度</string></property></widget></item>
+      <item row="3" column="1"><widget class="QLineEdit" name="line4Edit"><property name="text"><string>0.0   -9.81   0.0</string></property></widget></item>
+      <item row="4" column="0"><widget class="QLabel" name="label5"><property name="text"><string>5. 弹塑性分析迭代方法</string></property></widget></item>
+      <item row="4" column="1"><widget class="QComboBox" name="line5Combo"><item><property name="text"><string>1 初应变法</string></property></item><item><property name="text"><string>2 初应力法</string></property></item><item><property name="text"><string>3 变刚度法</string></property></item></widget></item>
+      <item row="5" column="0"><widget class="QLabel" name="label6"><property name="text"><string>6. 最大迭代次数</string></property></widget></item>
+      <item row="5" column="1"><widget class="QLineEdit" name="line6Edit"><property name="text"><string>500</string></property></widget></item>
+      <item row="6" column="0"><widget class="QLabel" name="label7"><property name="text"><string>7. 迭代误差阈值</string></property></widget></item>
+      <item row="6" column="1"><widget class="QLineEdit" name="line7Edit"><property name="text"><string>0.0001</string></property></widget></item>
+      <item row="7" column="0"><widget class="QLabel" name="label8"><property name="text"><string>8. 施加荷载方式</string></property></widget></item>
+      <item row="7" column="1"><widget class="QComboBox" name="line8Combo"><item><property name="text"><string>1 仅施加重力</string></property></item><item><property name="text"><string>2 按 IIWL.DAT 施加</string></property></item></widget></item>
+      <item row="8" column="0"><widget class="QLabel" name="label9"><property name="text"><string>9. 荷载文件名</string></property></widget></item>
+      <item row="8" column="1"><widget class="QLineEdit" name="line9Edit"><property name="text"><string>IIWL.DAT</string></property></widget></item>
+      <item row="9" column="0"><widget class="QLabel" name="label10"><property name="text"><string>10. 备用</string></property></widget></item>
+      <item row="9" column="1"><widget class="QLineEdit" name="line10Edit"><property name="text"><string>--------------</string></property></widget></item>
+      <item row="10" column="0"><widget class="QLabel" name="label11"><property name="text"><string>11. 备用</string></property></widget></item>
+      <item row="10" column="1"><widget class="QLineEdit" name="line11Edit"><property name="text"><string>--------------</string></property></widget></item>
+      <item row="11" column="0"><widget class="QLabel" name="label12"><property name="text"><string>12. 特征节点集文件</string></property></widget></item>
+      <item row="11" column="1"><widget class="QLineEdit" name="line12Edit"><property name="text"><string>JDTRACE.DAT</string></property></widget></item>
+      <item row="12" column="0"><widget class="QLabel" name="label13"><property name="text"><string>13. 特征单元集文件</string></property></widget></item>
+      <item row="12" column="1"><widget class="QLineEdit" name="line13Edit"><property name="text"><string>KETRACE.DAT</string></property></widget></item>
+      <item row="13" column="0"><widget class="QLabel" name="label14"><property name="text"><string>14. 特征时刻文件</string></property></widget></item>
+      <item row="13" column="1"><widget class="QLineEdit" name="line14Edit"><property name="text"><string>TDTRACE.DAT</string></property></widget></item>
+      <item row="14" column="0"><widget class="QLabel" name="label15"><property name="text"><string>15. 系统阻尼/分材料阻尼</string></property></widget></item>
+      <item row="14" column="1"><widget class="QComboBox" name="line15Combo"><item><property name="text"><string>0 系统阻尼</string></property></item><item><property name="text"><string>1 分材料阻尼</string></property></item></widget></item>
+      <item row="15" column="0"><widget class="QLabel" name="label16"><property name="text"><string>16. 瑞雷阻尼</string></property></widget></item>
+      <item row="15" column="1"><widget class="QComboBox" name="line16Combo"><item><property name="text"><string>0 非瑞雷</string></property></item><item><property name="text"><string>1 瑞雷</string></property></item></widget></item>
+      <item row="16" column="0"><widget class="QLabel" name="label17"><property name="text"><string>17. 阻尼比或质量阻尼系数 fm</string></property></widget></item>
+      <item row="16" column="1"><widget class="QLineEdit" name="line17Edit"><property name="text"><string>0.05</string></property></widget></item>
+      <item row="17" column="0"><widget class="QLabel" name="label18"><property name="text"><string>18. 刚度阻尼系数 fk</string></property></widget></item>
+      <item row="17" column="1"><widget class="QLineEdit" name="line18Edit"><property name="text"><string>0.0</string></property></widget></item>
+      <item row="18" column="0"><widget class="QLabel" name="label19"><property name="text"><string>19. 计算类型</string></property></widget></item>
+      <item row="18" column="1"><widget class="QComboBox" name="line19Combo"><item><property name="text"><string>1 仅静力</string></property></item><item><property name="text"><string>2 仅动力</string></property></item><item><property name="text"><string>3 静力+动力</string></property></item></widget></item>
+      <item row="19" column="0"><widget class="QLabel" name="label20"><property name="text"><string>20. 备用</string></property></widget></item>
+      <item row="19" column="1"><widget class="QLineEdit" name="line20Edit"><property name="text"><string>MACHAN.DAT</string></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="dynamicGroup">
+     <property name="title"><string>动力计算参数定义</string></property>
+     <layout class="QFormLayout" name="dynamicForm">
+      <item row="0" column="0"><widget class="QLabel" name="d1"><property name="text"><string>动力计算初始目录</string></property></widget></item>
+      <item row="0" column="1"><widget class="QLabel" name="caseDirLabel"><property name="text"><string/></property></widget></item>
+      <item row="1" column="0"><widget class="QLabel" name="d2"><property name="text"><string>时程计算步长 DT (s)</string></property></widget></item>
+      <item row="1" column="1"><widget class="QLineEdit" name="dtEdit"><property name="text"><string>0.010000</string></property></widget></item>
+      <item row="2" column="0"><widget class="QLabel" name="d3"><property name="text"><string>计算起始时刻 TSTA (s)</string></property></widget></item>
+      <item row="2" column="1"><widget class="QLineEdit" name="tstaEdit"><property name="text"><string>0.000000</string></property></widget></item>
+      <item row="3" column="0"><widget class="QLabel" name="d4"><property name="text"><string>计算终止时刻 TEND (s)</string></property></widget></item>
+      <item row="3" column="1"><widget class="QLineEdit" name="tendEdit"><property name="text"><string>30.000000</string></property></widget></item>
+      <item row="4" column="0"><widget class="QLabel" name="d5"><property name="text"><string>是否计算振动模态 IFMODE</string></property></widget></item>
+      <item row="4" column="1"><widget class="QLineEdit" name="ifModeEdit"><property name="text"><string>1</string></property></widget></item>
+      <item row="5" column="0"><widget class="QLabel" name="d6"><property name="text"><string>是否进行时程计算 IFWAVE</string></property></widget></item>
+      <item row="5" column="1"><widget class="QLineEdit" name="ifWaveEdit"><property name="text"><string>1</string></property></widget></item>
+      <item row="6" column="0"><widget class="QLabel" name="d7"><property name="text"><string>X方向地震波文件</string></property></widget></item>
+      <item row="6" column="1"><widget class="QLineEdit" name="accXEdit"><property name="text"><string>ACCEX.DAT</string></property></widget></item>
+      <item row="7" column="0"><widget class="QLabel" name="d8"><property name="text"><string>Y方向地震波文件</string></property></widget></item>
+      <item row="7" column="1"><widget class="QLineEdit" name="accYEdit"><property name="text"><string>ACCEY.DAT</string></property></widget></item>
+      <item row="8" column="0"><widget class="QLabel" name="d9"><property name="text"><string>Z方向地震波文件</string></property></widget></item>
+      <item row="8" column="1"><widget class="QLineEdit" name="accZEdit"><property name="text"><string>ACCEZ.DAT</string></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="reserveGroup">
+     <property name="title"><string>强度储备系数</string></property>
+     <layout class="QVBoxLayout" name="reserveLayout">
+      <item><widget class="QTableWidget" name="strengthReserveTable"><property name="minimumSize"><size><width>0</width><height>280</height></size></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="btnLayout">
+     <item><spacer name="horizontalSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+     <item><widget class="QPushButton" name="btnCompute"><property name="text"><string>计算</string></property></widget></item>
+    </layout>
+   </item>
+   <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

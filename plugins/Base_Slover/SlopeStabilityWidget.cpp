@@ -6,123 +6,63 @@
 #include <QComboBox>
 #include <QDir>
 #include <QFile>
-#include <QFormLayout>
-#include <QGroupBox>
-#include <QHBoxLayout>
 #include <QHeaderView>
 #include <QJsonArray>
-#include <QLabel>
 #include <QLineEdit>
-#include <QListView>
-#include <QPushButton>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTextStream>
 #include <QStringList>
-#include <QVBoxLayout>
+
+#include "ui_SlopeStabilityWidget.h"
 
 SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
-    : BasePage("SlopeStabilityAnalysis")
+    : BasePage("SlopeStabilityAnalysis"), ui(new Ui::SlopeStabilityWidget)
 {
     Q_UNUSED(parent);
-    auto* root = new QVBoxLayout(this);
-    root->setContentsMargins(0, 0, 0, 0);
+    ui->setupUi(this);
 
-    auto* titleLabel = new QLabel("边坡稳定分析", this);
-    root->addWidget(titleLabel);
+    m_lineEditors[1] = ui->line1Edit;
+    m_lineEditors[2] = ui->line2Edit;
+    m_lineEditors[3] = ui->line3Combo;
+    m_lineEditors[4] = ui->line4Edit;
+    m_lineEditors[5] = ui->line5Combo;
+    m_lineEditors[6] = ui->line6Edit;
+    m_lineEditors[7] = ui->line7Edit;
+    m_lineEditors[8] = ui->line8Combo;
+    m_lineEditors[9] = ui->line9Edit;
+    m_lineEditors[10] = ui->line10Edit;
+    m_lineEditors[11] = ui->line11Edit;
+    m_lineEditors[12] = ui->line12Edit;
+    m_lineEditors[13] = ui->line13Edit;
+    m_lineEditors[14] = ui->line14Edit;
+    m_lineEditors[15] = ui->line15Combo;
+    m_lineEditors[16] = ui->line16Combo;
+    m_lineEditors[17] = ui->line17Edit;
+    m_lineEditors[18] = ui->line18Edit;
+    m_lineEditors[19] = ui->line19Combo;
+    m_lineEditors[20] = ui->line20Edit;
 
-    auto* sectionTitleButton = new QPushButton("功能设置", this);
-    sectionTitleButton->setEnabled(false);
-    root->addWidget(sectionTitleButton);
+    ui->line3Combo->setItemData(0, "0");
+    ui->line3Combo->setItemData(1, "1");
+    ui->line3Combo->setItemData(2, "2");
+    ui->line3Combo->setItemData(3, "3");
+    ui->line3Combo->setItemData(4, "4");
+    ui->line5Combo->setItemData(0, "1");
+    ui->line5Combo->setItemData(1, "2");
+    ui->line5Combo->setItemData(2, "3");
+    ui->line8Combo->setItemData(0, "1");
+    ui->line8Combo->setItemData(1, "2");
+    ui->line15Combo->setItemData(0, "0");
+    ui->line15Combo->setItemData(1, "1");
+    ui->line16Combo->setItemData(0, "0");
+    ui->line16Combo->setItemData(1, "1");
+    ui->line19Combo->setItemData(0, "1");
+    ui->line19Combo->setItemData(1, "2");
+    ui->line19Combo->setItemData(2, "3");
 
-    auto* group = new QGroupBox("ISLOP.DAT 参数", this);
-    auto* form = new QFormLayout(group);
-
-    auto addLineEdit = [this, form](int lineNo, const QString& labelText, bool readOnly = false)
-    {
-        auto* edit = new QLineEdit(defaultValueByLine(lineNo), this);
-        edit->setReadOnly(readOnly);
-        m_lineEditors[lineNo] = edit;
-        form->addRow(labelText, edit);
-    };
-    auto addCombo = [this, form](int lineNo, const QString& labelText, const QList<QPair<QString, QString>>& items)
-    {
-        auto* combo = new QComboBox(this);
-        combo->setEditable(false);
-        combo->setView(new QListView(combo));
-        for (const auto& item : items)
-            combo->addItem(item.second, item.first);
-        const int idx = combo->findData(defaultValueByLine(lineNo));
-        if (idx >= 0)
-            combo->setCurrentIndex(idx);
-        m_lineEditors[lineNo] = combo;
-        form->addRow(labelText, combo);
-    };
-
-    addLineEdit(1, "1. 计算默认文件目录", true);
-    addLineEdit(2, "2. 材料集文件");
-    addCombo(3, "3. 求解方法", {{"0", "0 荷载增量法"},
-                                {"1", "1 强度储备法(降C)"},
-                                {"2", "2 强度储备法(降F)"},
-                                {"3", "3 强度储备法(同时降C/F)"},
-                                {"4", "4 强度储备法(同时降E/C/F)"}});
-    addLineEdit(4, "4. 三方向重力加速度");
-    addCombo(5, "5. 弹塑性分析迭代方法", {{"1", "1 初应变法"}, {"2", "2 初应力法"}, {"3", "3 变刚度法"}});
-    addLineEdit(6, "6. 最大迭代次数");
-    addLineEdit(7, "7. 迭代误差阈值");
-    addCombo(8, "8. 施加荷载方式", {{"1", "1 仅施加重力"}, {"2", "2 按 IIWL.DAT 施加"}});
-    addLineEdit(9, "9. 荷载文件名");
-    addLineEdit(10, "10. 备用");
-    addLineEdit(11, "11. 备用");
-    addLineEdit(12, "12. 特征节点集文件");
-    addLineEdit(13, "13. 特征单元集文件");
-    addLineEdit(14, "14. 特征时刻文件");
-    addCombo(15, "15. 系统阻尼/分材料阻尼", {{"0", "0 系统阻尼"}, {"1", "1 分材料阻尼"}});
-    addCombo(16, "16. 瑞雷阻尼", {{"0", "0 非瑞雷"}, {"1", "1 瑞雷"}});
-    addLineEdit(17, "17. 阻尼比或质量阻尼系数 fm");
-    addLineEdit(18, "18. 刚度阻尼系数 fk");
-    addCombo(19, "19. 计算类型", {{"1", "1 仅静力"}, {"2", "2 仅动力"}, {"3", "3 静力+动力"}});
-    addLineEdit(20, "20. 备用");
-
-    root->addWidget(group);
-
-    auto* dynamicGroup = new QGroupBox("动力计算参数定义", this);
-    auto* dynamicForm = new QFormLayout(dynamicGroup);
-    m_caseDirLabel = new QLabel(this);
-    m_dtEdit = new QLineEdit("0.010000", this);
-    m_tstaEdit = new QLineEdit("0.000000", this);
-    m_tendEdit = new QLineEdit("30.000000", this);
-    m_ifModeEdit = new QLineEdit("1", this);
-    m_ifWaveEdit = new QLineEdit("1", this);
-    m_accXEdit = new QLineEdit("ACCEX.DAT", this);
-    m_accYEdit = new QLineEdit("ACCEY.DAT", this);
-    m_accZEdit = new QLineEdit("ACCEZ.DAT", this);
-    dynamicForm->addRow("动力计算初始目录", m_caseDirLabel);
-    dynamicForm->addRow("时程计算步长 DT (s)", m_dtEdit);
-    dynamicForm->addRow("计算起始时刻 TSTA (s)", m_tstaEdit);
-    dynamicForm->addRow("计算终止时刻 TEND (s)", m_tendEdit);
-    dynamicForm->addRow("是否计算振动模态 IFMODE", m_ifModeEdit);
-    dynamicForm->addRow("是否进行时程计算 IFWAVE", m_ifWaveEdit);
-    dynamicForm->addRow("X方向地震波文件", m_accXEdit);
-    dynamicForm->addRow("Y方向地震波文件", m_accYEdit);
-    dynamicForm->addRow("Z方向地震波文件", m_accZEdit);
-    root->addWidget(dynamicGroup);
-
-    auto* reserveGroup = new QGroupBox("强度储备系数", this);
-    auto* reserveLayout = new QVBoxLayout(reserveGroup);
-    m_strengthReserveTable = new QTableWidget(this);
-    m_strengthReserveTable->setMinimumHeight(280);
     initStrengthReserveTable();
-    reserveLayout->addWidget(m_strengthReserveTable);
-    root->addWidget(reserveGroup);
-
-    auto* btnRow = new QHBoxLayout;
-    btnRow->addStretch();
-    auto* btnCompute = new QPushButton("计算", this);
-    connect(btnCompute, &QPushButton::clicked, this, &SlopeStabilityWidget::onComputeClicked);
-    btnRow->addWidget(btnCompute);
-    root->addLayout(btnRow);
-    root->addStretch();
+    connect(ui->btnCompute, &QPushButton::clicked, this, &SlopeStabilityWidget::onComputeClicked);
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
@@ -134,9 +74,13 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
             p += QDir::separator();
         return p;
     };
-    if (auto* line1 = qobject_cast<QLineEdit*>(m_lineEditors.value(1)))
-        line1->setText(ensureTrailingSep(wd.filePath("PREP")));
-    m_caseDirLabel->setText(ensureTrailingSep(wd.filePath("CASE01")));
+    ui->line1Edit->setText(ensureTrailingSep(wd.filePath("PREP")));
+    ui->caseDirLabel->setText(ensureTrailingSep(wd.filePath("CASE01")));
+}
+
+SlopeStabilityWidget::~SlopeStabilityWidget()
+{
+    delete ui;
 }
 
 void SlopeStabilityWidget::beforeLoad()
@@ -187,22 +131,20 @@ QString SlopeStabilityWidget::defaultValueByLine(int lineNo) const
 
 void SlopeStabilityWidget::initStrengthReserveTable()
 {
-    if (!m_strengthReserveTable)
-        return;
-
-    m_strengthReserveTable->setColumnCount(2);
-    m_strengthReserveTable->setHorizontalHeaderLabels({"强储倍数", "是否输出"});
-    m_strengthReserveTable->setRowCount(12);
+    ui->strengthReserveTable->setColumnCount(2);
+    ui->strengthReserveTable->setHorizontalHeaderLabels({"强储倍数", "是否输出"});
+    ui->strengthReserveTable->setRowCount(12);
 
     const QStringList factors = {"1.0000", "1.2000", "1.4000", "1.5000", "1.5500", "1.6000",
                                  "1.6200", "1.6400", "1.6600", "1.6800", "1.7000", "1.7200"};
-    const QStringList ifpr = {"1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "0"};
+    const QStringList ifpr = {"1.0000", "1.0000", "1.0000", "1.0000", "1.0000", "1.0000",
+                              "1.0000", "1.0000", "1.0000", "1.0000", "1.0000", "1.0000"};
     for (int row = 0; row < factors.size(); ++row)
     {
-        m_strengthReserveTable->setItem(row, 0, new QTableWidgetItem(factors.at(row)));
-        m_strengthReserveTable->setItem(row, 1, new QTableWidgetItem(ifpr.at(row)));
+        ui->strengthReserveTable->setItem(row, 0, new QTableWidgetItem(factors.at(row)));
+        ui->strengthReserveTable->setItem(row, 1, new QTableWidgetItem(ifpr.at(row)));
     }
-    m_strengthReserveTable->horizontalHeader()->setStretchLastSection(true);
+    ui->strengthReserveTable->horizontalHeader()->setStretchLastSection(true);
 }
 
 bool SlopeStabilityWidget::exportIslopDatFile() const
@@ -240,32 +182,46 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
     }
 
     int nsrf = 0;
-    for (int row = 0; row < m_strengthReserveTable->rowCount(); ++row)
+    for (int row = 0; row < ui->strengthReserveTable->rowCount(); ++row)
     {
-        const auto* factorItem = m_strengthReserveTable->item(row, 0);
+        const auto* factorItem = ui->strengthReserveTable->item(row, 0);
         if (factorItem && !factorItem->text().trimmed().isEmpty())
             ++nsrf;
     }
     os << nsrf << "    NSRF\n";
-    for (int row = 0; row < m_strengthReserveTable->rowCount(); ++row)
+    for (int row = 0; row < ui->strengthReserveTable->rowCount(); ++row)
     {
-        const auto* factorItem = m_strengthReserveTable->item(row, 0);
+        const auto* factorItem = ui->strengthReserveTable->item(row, 0);
         if (!factorItem)
             continue;
         const QString factor = factorItem->text().trimmed();
         if (factor.isEmpty())
             continue;
-        const auto* ifprItem = m_strengthReserveTable->item(row, 1);
-        const QString ifpr = ifprItem ? ifprItem->text().trimmed() : "1";
-        os << factor << " " << (ifpr.isEmpty() ? "1" : ifpr) << "\n";
+
+        const auto* ifprItem = ui->strengthReserveTable->item(row, 1);
+        QString ifpr = ifprItem ? ifprItem->text().trimmed() : "1.0000";
+        if (ifpr.isEmpty())
+            ifpr = "1.0000";
+
+        bool factorOk = false;
+        bool ifprOk = false;
+        const double factorVal = factor.toDouble(&factorOk);
+        const double ifprVal = ifpr.toDouble(&ifprOk);
+
+        const QString formattedFactor =
+            factorOk ? QString::asprintf("%11.4f", factorVal) : factor.rightJustified(11, ' ');
+        const QString formattedIfpr =
+            ifprOk ? QString::asprintf("%11.4f", ifprVal) : ifpr.rightJustified(11, ' ');
+        os << formattedFactor << " " << formattedIfpr << QString("%6d").arg(row + 1)
+           << " SRF    IFPR   II\n";
     }
 
     os << quoteValue(caseDirAbs) << "\n";
-    os << m_dtEdit->text().trimmed() << " " << m_tstaEdit->text().trimmed() << " "
-       << m_tendEdit->text().trimmed() << " " << m_ifModeEdit->text().trimmed() << " "
-       << m_ifWaveEdit->text().trimmed() << "    DT TSTA TEND IFMODE IFWAVE\n";
-    os << quoteValue(m_accXEdit->text()) << "  " << quoteValue(m_accYEdit->text()) << "  "
-       << quoteValue(m_accZEdit->text()) << "    ACCEX ACCEY ACCEZ\n";
+    os << ui->dtEdit->text().trimmed() << " " << ui->tstaEdit->text().trimmed() << " "
+       << ui->tendEdit->text().trimmed() << " " << ui->ifModeEdit->text().trimmed() << " "
+       << ui->ifWaveEdit->text().trimmed() << "    DT TSTA TEND IFMODE IFWAVE\n";
+    os << quoteValue(ui->accXEdit->text()) << "  " << quoteValue(ui->accYEdit->text()) << "  "
+       << quoteValue(ui->accZEdit->text()) << "    ACCEX ACCEY ACCEZ\n";
 
     exportTdtraceDatFile();
     return true;
@@ -296,24 +252,24 @@ QJsonObject SlopeStabilityWidget::saveJson()
         arr.append(lineValue(lineNo));
     obj["base_values"] = arr;
     QJsonArray reserve;
-    for (int row = 0; row < m_strengthReserveTable->rowCount(); ++row)
+    for (int row = 0; row < ui->strengthReserveTable->rowCount(); ++row)
     {
         QJsonObject one;
-        const auto* factorItem = m_strengthReserveTable->item(row, 0);
-        const auto* ifprItem = m_strengthReserveTable->item(row, 1);
+        const auto* factorItem = ui->strengthReserveTable->item(row, 0);
+        const auto* ifprItem = ui->strengthReserveTable->item(row, 1);
         one["factor"] = factorItem ? factorItem->text().trimmed() : "";
         one["ifpr"] = ifprItem ? ifprItem->text().trimmed() : "";
         reserve.append(one);
     }
     obj["strength_reserve"] = reserve;
-    obj["dt"] = m_dtEdit->text().trimmed();
-    obj["tsta"] = m_tstaEdit->text().trimmed();
-    obj["tend"] = m_tendEdit->text().trimmed();
-    obj["ifmode"] = m_ifModeEdit->text().trimmed();
-    obj["ifwave"] = m_ifWaveEdit->text().trimmed();
-    obj["acc_x"] = m_accXEdit->text().trimmed();
-    obj["acc_y"] = m_accYEdit->text().trimmed();
-    obj["acc_z"] = m_accZEdit->text().trimmed();
+    obj["dt"] = ui->dtEdit->text().trimmed();
+    obj["tsta"] = ui->tstaEdit->text().trimmed();
+    obj["tend"] = ui->tendEdit->text().trimmed();
+    obj["ifmode"] = ui->ifModeEdit->text().trimmed();
+    obj["ifwave"] = ui->ifWaveEdit->text().trimmed();
+    obj["acc_x"] = ui->accXEdit->text().trimmed();
+    obj["acc_y"] = ui->accYEdit->text().trimmed();
+    obj["acc_z"] = ui->accZEdit->text().trimmed();
     return obj;
 }
 
@@ -329,9 +285,8 @@ void SlopeStabilityWidget::loadJson(const QJsonObject& obj)
             p += QDir::separator();
         return p;
     };
-    if (auto* line1 = qobject_cast<QLineEdit*>(m_lineEditors.value(1)))
-        line1->setText(ensureTrailingSep(wd.filePath("PREP")));
-    m_caseDirLabel->setText(ensureTrailingSep(wd.filePath("CASE01")));
+    ui->line1Edit->setText(ensureTrailingSep(wd.filePath("PREP")));
+    ui->caseDirLabel->setText(ensureTrailingSep(wd.filePath("CASE01")));
 
     const QJsonArray arr = obj.value("base_values").toArray();
     for (int lineNo = 1; lineNo <= 20; ++lineNo)
@@ -344,8 +299,8 @@ void SlopeStabilityWidget::loadJson(const QJsonObject& obj)
     }
 
     const QJsonArray reserve = obj.value("strength_reserve").toArray();
-    const int rowCount = qMax(m_strengthReserveTable->rowCount(), reserve.size());
-    m_strengthReserveTable->setRowCount(rowCount);
+    const int rowCount = qMax(ui->strengthReserveTable->rowCount(), reserve.size());
+    ui->strengthReserveTable->setRowCount(rowCount);
     for (int row = 0; row < rowCount; ++row)
     {
         QString factor;
@@ -356,20 +311,20 @@ void SlopeStabilityWidget::loadJson(const QJsonObject& obj)
             factor = one.value("factor").toString();
             ifpr = one.value("ifpr").toString();
         }
-        m_strengthReserveTable->setItem(
+        ui->strengthReserveTable->setItem(
             row, 0, new QTableWidgetItem(factor.isEmpty() ? QString() : factor));
-        m_strengthReserveTable->setItem(
-            row, 1, new QTableWidgetItem(ifpr.isEmpty() ? QString("1") : ifpr));
+        ui->strengthReserveTable->setItem(
+            row, 1, new QTableWidgetItem(ifpr.isEmpty() ? QString("1.0000") : ifpr));
     }
 
-    m_dtEdit->setText(obj.value("dt").toString(m_dtEdit->text()));
-    m_tstaEdit->setText(obj.value("tsta").toString(m_tstaEdit->text()));
-    m_tendEdit->setText(obj.value("tend").toString(m_tendEdit->text()));
-    m_ifModeEdit->setText(obj.value("ifmode").toString(m_ifModeEdit->text()));
-    m_ifWaveEdit->setText(obj.value("ifwave").toString(m_ifWaveEdit->text()));
-    m_accXEdit->setText(obj.value("acc_x").toString(m_accXEdit->text()));
-    m_accYEdit->setText(obj.value("acc_y").toString(m_accYEdit->text()));
-    m_accZEdit->setText(obj.value("acc_z").toString(m_accZEdit->text()));
+    ui->dtEdit->setText(obj.value("dt").toString(ui->dtEdit->text()));
+    ui->tstaEdit->setText(obj.value("tsta").toString(ui->tstaEdit->text()));
+    ui->tendEdit->setText(obj.value("tend").toString(ui->tendEdit->text()));
+    ui->ifModeEdit->setText(obj.value("ifmode").toString(ui->ifModeEdit->text()));
+    ui->ifWaveEdit->setText(obj.value("ifwave").toString(ui->ifWaveEdit->text()));
+    ui->accXEdit->setText(obj.value("acc_x").toString(ui->accXEdit->text()));
+    ui->accYEdit->setText(obj.value("acc_y").toString(ui->accYEdit->text()));
+    ui->accZEdit->setText(obj.value("acc_z").toString(ui->accZEdit->text()));
 }
 
 void SlopeStabilityWidget::onComputeClicked()

@@ -30,7 +30,8 @@ FORMS += \
     SeepageWidget.ui \
     SolverSettingWidget.ui \
     StressBoundaryPage.ui \
-    DamAnalysisWidget.ui
+    DamAnalysisWidget.ui \
+    SlopeStabilityWidget.ui
 
 RESOURCES += \
     ../../res.qrc
