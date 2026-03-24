@@ -404,51 +404,101 @@ class MeshGlobalWorker : public QObject
                                 if (faces.size() != 6)
                                     continue;
 
-                                int sourceFace = faces.front();
-                                int targetFace = faces.back();
-                                double bestDist2 = -1.0;
+                                QMap<int, QSet<int>> faceEdges;
+                                for (int f : faces)
+                                {
+                                    std::vector<std::pair<int, int>> eb;
+                                    gmsh::model::getBoundary({{2, f}}, eb, false, false, false);
+                                    QSet<int> es;
+                                    for (const auto& e : eb)
+                                        if (e.first == 1)
+                                            es.insert(e.second);
+                                    faceEdges.insert(f, es);
+                                }
+
+                                QVector<QPair<int, int>> oppositePairs;
                                 for (int i = 0; i < static_cast<int>(faces.size()); ++i)
                                 {
                                     for (int j = i + 1; j < static_cast<int>(faces.size()); ++j)
                                     {
-                                        QVector3D ci = gmshCenter(2, faces[i]);
-                                        QVector3D cj = gmshCenter(2, faces[j]);
-                                        const double d2 = dist2(ci, cj);
-                                        if (d2 > bestDist2)
+                                        QSet<int> inter = faceEdges.value(faces[i]);
+                                        inter.intersect(faceEdges.value(faces[j]));
+                                        if (inter.isEmpty())
                                         {
-                                            bestDist2 = d2;
-                                            sourceFace = faces[i];
-                                            targetFace = faces[j];
+                                            oppositePairs.push_back(qMakePair(faces[i], faces[j]));
                                         }
                                     }
                                 }
+                                if (oppositePairs.isEmpty())
+                                    continue;
 
-                                std::vector<std::pair<int, int>> curveBnd;
-                                gmsh::model::getBoundary({vol}, curveBnd, false, false, false);
-                                for (const auto& c : curveBnd)
+                                int sourceFace = oppositePairs.front().first;
+                                int targetFace = oppositePairs.front().second;
+                                double bestAreaDiff = std::numeric_limits<double>::max();
+                                for (const auto& p : oppositePairs)
                                 {
-                                    if (c.first != 1)
+                                    const double a = gmshMeasure(2, p.first);
+                                    const double b = gmshMeasure(2, p.second);
+                                    const double d = std::abs(a - b);
+                                    if (d < bestAreaDiff)
+                                    {
+                                        bestAreaDiff = d;
+                                        sourceFace = (a >= b ? p.first : p.second);
+                                        targetFace = (a >= b ? p.second : p.first);
+                                    }
+                                }
+
+                                QSet<int> sectionEdges = faceEdges.value(sourceFace);
+                                sectionEdges.unite(faceEdges.value(targetFace));
+                                QSet<int> linkingEdges;
+                                QVector<int> linkingFaces;
+                                for (int f : faces)
+                                {
+                                    if (f == sourceFace || f == targetFace)
                                         continue;
-                                    const int edgeTag = c.second;
+                                    linkingFaces.push_back(f);
+                                    const QSet<int> es = faceEdges.value(f);
+                                    for (int e : es)
+                                    {
+                                        if (!sectionEdges.contains(e))
+                                            linkingEdges.insert(e);
+                                    }
+                                }
+
+                                for (int edgeTag : sectionEdges)
+                                {
                                     const double len = std::max(1e-9, gmshMeasure(1, edgeTag));
                                     const int divisions =
                                         std::max(2, static_cast<int>(std::round(len / targetEdge)));
                                     gmsh::model::mesh::setTransfiniteCurve(edgeTag, divisions,
                                                                            "Progression", 1.0);
                                 }
-
-                                for (int f : faces)
+                                for (int edgeTag : linkingEdges)
                                 {
-                                    gmsh::model::mesh::setTransfiniteSurface(f);
-                                    gmsh::model::mesh::setRecombine(2, f, 45.0);
+                                    const double len = std::max(1e-9, gmshMeasure(1, edgeTag));
+                                    const int layers =
+                                        std::max(2, static_cast<int>(std::round(len / targetEdge)));
+                                    gmsh::model::mesh::setTransfiniteCurve(edgeTag, layers, "Progression",
+                                                                           1.0);
+                                }
+
+                                gmsh::model::mesh::setTransfiniteSurface(sourceFace);
+                                gmsh::model::mesh::setTransfiniteSurface(targetFace);
+                                gmsh::model::mesh::setRecombine(2, sourceFace, 45.0);
+                                gmsh::model::mesh::setRecombine(2, targetFace, 45.0);
+                                for (int lf : linkingFaces)
+                                {
+                                    gmsh::model::mesh::setTransfiniteSurface(lf);
+                                    gmsh::model::mesh::setRecombine(2, lf, 45.0);
                                 }
                                 gmsh::model::mesh::setTransfiniteVolume(vol.second);
                                 gmsh::model::mesh::setRecombine(3, vol.second, 120.0);
 
-                                emit log(QString("Sweep-六面体：体%1 选取源面%2 目标面%3")
+                                emit log(QString("Sweep-六面体：体%1 分类完成，源面%2 目标面%3 Linking面%4")
                                              .arg(vol.second)
                                              .arg(sourceFace)
-                                             .arg(targetFace));
+                                             .arg(targetFace)
+                                             .arg(linkingFaces.size()));
                                 sweepSourceFaces.push_back(sourceFace);
                                 ++constrainedVols;
                             }
