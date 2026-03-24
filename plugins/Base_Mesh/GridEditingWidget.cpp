@@ -38,6 +38,7 @@
 #include <vtkPointPicker.h>
 #include <vtkPoints.h>
 #include <vtkPolyData.h>
+#include <vtkPolyDataMapper.h>
 #include <vtkPolyDataMapper2D.h>
 #include <vtkPolyLine.h>
 #include <vtkProperty.h>
@@ -60,6 +61,7 @@ static const QString kImportedMeshLinePropId = QString("mesh.imported.line");
 static const QString kNodeLblPropId = QString("iiin.node_labels");
 static const QString kElemLblPropId = QString("iiin.elem_labels");
 static const QString kSelectBoxPropId = QString("iiin.box_selection");
+static const QString kUnusedPointPropId = QString("iiin.unused_points");
 } // namespace
 
 static inline int tuple1i(vtkDataArray* a, vtkIdType id, int def = -1)
@@ -352,6 +354,7 @@ void GridEditingWidget::clearGrid()
     {
         m_visualWidgetService->removeProp(kNodeLblPropId, false);
         m_visualWidgetService->removeProp(kElemLblPropId, false);
+        m_visualWidgetService->removeProp(kUnusedPointPropId, false);
         m_visualWidgetService->setVisible(kSelectBoxPropId, false, false);
         m_visualWidgetService->render();
     }
@@ -515,34 +518,24 @@ void GridEditingWidget::buildOrUpdateViewGrid()
     const char* prevArrayName = m_meshMapper->GetArrayName();
     vtkScalarsToColors* prevLookupTable = m_meshMapper->GetLookupTable();
 
-    if (!hasFilter)
+    auto ids = vtkSmartPointer<vtkIdList>::New();
+    for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
     {
-        m_viewGrid = m_fullGrid;
-        m_meshMapper->SetInputData(m_viewGrid);
-        m_points = m_viewGrid->GetPoints();
-        rebuildViewMaps();
+        if (!hasFilter || cellMatchesFilter(c))
+            ids->InsertNextId(c);
     }
-    else
-    {
-        auto ids = vtkSmartPointer<vtkIdList>::New();
 
-        for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
-        {
-            if (cellMatchesFilter(c))
-                ids->InsertNextId(c);
-        }
+    auto ex = vtkSmartPointer<vtkExtractCells>::New();
+    ex->SetInputData(m_fullGrid);
+    ex->SetCellList(ids);
+    ex->Update();
 
-        auto ex = vtkSmartPointer<vtkExtractCells>::New();
-        ex->SetInputData(m_fullGrid);
-        ex->SetCellList(ids);
-        ex->Update();
-        m_viewGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
-        m_viewGrid->ShallowCopy(ex->GetOutput());
+    m_viewGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    m_viewGrid->ShallowCopy(ex->GetOutput());
 
-        m_meshMapper->SetInputData(m_viewGrid);
-        m_points = m_viewGrid->GetPoints();
-        rebuildViewMaps();
-    }
+    m_meshMapper->SetInputData(m_viewGrid);
+    m_points = m_viewGrid->GetPoints();
+    rebuildViewMaps();
 
     ensureLabelActorsCreated();
 
@@ -561,6 +554,8 @@ void GridEditingWidget::buildOrUpdateViewGrid()
         m_pointPicker->AddPickList(m_meshActor);
         m_pointPicker->PickFromListOn();
     }
+
+    updateUnusedPointActor();
 
     // 仅在显式选择颜色模式或存在材料高亮 LUT 时改写 mapper 颜色状态。
     // 否则恢复 mapper 原有着色配置，避免创建/重建网格编辑时颜色丢失。
@@ -586,6 +581,74 @@ void GridEditingWidget::buildOrUpdateViewGrid()
             m_meshMapper->ScalarVisibilityOff();
     }
     m_visualWidgetService->render();
+}
+
+void GridEditingWidget::updateUnusedPointActor()
+{
+    if (!m_visualWidgetService || !m_fullGrid)
+        return;
+
+    QSet<int> visibleNodeIds;
+    if (m_viewGrid)
+    {
+        auto* nodeIdArr =
+            m_viewGrid->GetPointData() ? m_viewGrid->GetPointData()->GetArray("NodeId") : nullptr;
+        if (nodeIdArr)
+        {
+            for (vtkIdType pid = 0; pid < m_viewGrid->GetNumberOfPoints(); ++pid)
+            {
+                int nid = tuple1i(nodeIdArr, pid, -1);
+                if (nid >= 0)
+                    visibleNodeIds.insert(nid);
+            }
+        }
+    }
+
+    auto* fullNodeIdArr =
+        m_fullGrid->GetPointData() ? m_fullGrid->GetPointData()->GetArray("NodeId") : nullptr;
+    if (!fullNodeIdArr)
+    {
+        m_visualWidgetService->setVisible(kUnusedPointPropId, false, false);
+        return;
+    }
+
+    auto poly = vtkSmartPointer<vtkPolyData>::New();
+    auto pts = vtkSmartPointer<vtkPoints>::New();
+    auto verts = vtkSmartPointer<vtkCellArray>::New();
+
+    for (vtkIdType pid = 0; pid < m_fullGrid->GetNumberOfPoints(); ++pid)
+    {
+        const int nid = tuple1i(fullNodeIdArr, pid, -1);
+        if (nid < 0 || visibleNodeIds.contains(nid))
+            continue;
+
+        double p[3];
+        m_fullGrid->GetPoint(pid, p);
+        vtkIdType newPid = pts->InsertNextPoint(p);
+        verts->InsertNextCell(1);
+        verts->InsertCellPoint(newPid);
+    }
+
+    poly->SetPoints(pts);
+    poly->SetVerts(verts);
+
+    if (!m_unusedPointMapper)
+        m_unusedPointMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    if (!m_unusedPointActor)
+        m_unusedPointActor = vtkSmartPointer<vtkActor>::New();
+
+    m_unusedPointMapper->SetInputData(poly);
+    m_unusedPointActor->SetMapper(m_unusedPointMapper);
+    m_unusedPointActor->GetProperty()->SetRepresentationToPoints();
+    m_unusedPointActor->GetProperty()->SetColor(1.0, 0.1, 0.1);
+    m_unusedPointActor->GetProperty()->SetPointSize(7.0);
+
+    if (!m_visualWidgetService->getProp(kUnusedPointPropId))
+    {
+        m_visualWidgetService->addProp(kUnusedPointPropId, m_unusedPointActor, QString("网格"),
+                                       QString("未被单元使用节点"), true, false);
+    }
+    m_visualWidgetService->setVisible(kUnusedPointPropId, pts->GetNumberOfPoints() > 0, false);
 }
 
 // ===================== Labels actors =====================
@@ -1489,6 +1552,8 @@ void GridEditingWidget::moveNodeById(int nodeId, const double* newX, const doubl
             m_viewGrid->Modified();
         }
     }
+
+    updateUnusedPointActor();
 
     if (m_visualWidgetService)
         m_visualWidgetService->render();

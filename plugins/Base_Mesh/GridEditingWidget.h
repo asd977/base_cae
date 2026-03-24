@@ -34,6 +34,7 @@ class vtkRenderWindowInteractor;
 class vtkCommand;
 class vtkPolyData;
 class vtkPolyDataMapper2D;
+class vtkPolyDataMapper;
 class vtkCoordinate;
 class vtkDataArray;
 
@@ -150,6 +151,7 @@ class GridEditingWidget : public BasePage
 
     void ensureSelectionBoxActorCreated();
     void updateSelectionBoxActor(const QRect& rect);
+    void updateUnusedPointActor();
 
     void applyColorMode();
     vtkSmartPointer<vtkLookupTable> buildLookupTable(const QSet<int>& values) const;
@@ -201,6 +203,8 @@ class GridEditingWidget : public BasePage
     vtkSmartPointer<vtkPoints> m_points;
     vtkSmartPointer<vtkDataSetMapper> m_meshMapper;
     vtkSmartPointer<vtkActor> m_meshActor;
+    vtkSmartPointer<vtkPolyDataMapper> m_unusedPointMapper;
+    vtkSmartPointer<vtkActor> m_unusedPointActor;
 
     // labels
     vtkSmartPointer<vtkLabeledDataMapper> m_nodeLabelMapper;
