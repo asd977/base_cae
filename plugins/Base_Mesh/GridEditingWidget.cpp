@@ -304,13 +304,35 @@ void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString
     {
         auto* pd = m_fullGrid->GetPointData();
         auto nodeId = vtkIntArray::SafeDownCast(pd ? pd->GetArray("NodeId") : nullptr);
+        auto legacyNodeId = vtkIntArray::SafeDownCast(pd ? pd->GetArray("node_id") : nullptr);
         if (!nodeId || nodeId->GetNumberOfTuples() != m_fullGrid->GetNumberOfPoints())
         {
             nodeId = ensureIntArray(pd, "NodeId", m_fullGrid->GetNumberOfPoints());
-            for (vtkIdType i = 0; i < m_fullGrid->GetNumberOfPoints(); ++i)
+            if (legacyNodeId &&
+                legacyNodeId->GetNumberOfTuples() == m_fullGrid->GetNumberOfPoints())
             {
-                nodeId->SetValue(i, static_cast<int>(i + 1));
+                for (vtkIdType i = 0; i < m_fullGrid->GetNumberOfPoints(); ++i)
+                {
+                    nodeId->SetValue(i, legacyNodeId->GetValue(i));
+                }
             }
+            else
+            {
+                for (vtkIdType i = 0; i < m_fullGrid->GetNumberOfPoints(); ++i)
+                {
+                    nodeId->SetValue(i, static_cast<int>(i + 1));
+                }
+            }
+        }
+
+        // 与导入网格常用命名保持一致，避免后续流程读到不同数组名导致映射错位。
+        if (!legacyNodeId || legacyNodeId->GetNumberOfTuples() != m_fullGrid->GetNumberOfPoints())
+        {
+            legacyNodeId = ensureIntArray(pd, "node_id", m_fullGrid->GetNumberOfPoints());
+        }
+        for (vtkIdType i = 0; i < m_fullGrid->GetNumberOfPoints(); ++i)
+        {
+            legacyNodeId->SetValue(i, nodeId->GetValue(i));
         }
     }
 
@@ -318,14 +340,37 @@ void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString
     {
         auto* cd = m_fullGrid->GetCellData();
         auto elemId = vtkIntArray::SafeDownCast(cd ? cd->GetArray("ElemId") : nullptr);
+        auto legacyElemId = vtkIntArray::SafeDownCast(cd ? cd->GetArray("elem_id") : nullptr);
         if (!elemId || elemId->GetNumberOfTuples() != m_fullGrid->GetNumberOfCells())
         {
             elemId = ensureIntArray(cd, "ElemId", m_fullGrid->GetNumberOfCells());
-            for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
+            if (legacyElemId &&
+                legacyElemId->GetNumberOfTuples() == m_fullGrid->GetNumberOfCells())
             {
-                elemId->SetValue(c, static_cast<int>(c + 1));
+                for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
+                {
+                    elemId->SetValue(c, legacyElemId->GetValue(c));
+                }
+            }
+            else
+            {
+                for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
+                {
+                    elemId->SetValue(c, static_cast<int>(c + 1));
+                }
             }
         }
+
+        // 同步旧字段命名，保证导出/显示流程中的 ID 一致。
+        if (!legacyElemId || legacyElemId->GetNumberOfTuples() != m_fullGrid->GetNumberOfCells())
+        {
+            legacyElemId = ensureIntArray(cd, "elem_id", m_fullGrid->GetNumberOfCells());
+        }
+        for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
+        {
+            legacyElemId->SetValue(c, elemId->GetValue(c));
+        }
+
         ensureIntArray(cd, "KETYPE", m_fullGrid->GetNumberOfCells());
         ensureIntArray(cd, "MATYPE", m_fullGrid->GetNumberOfCells());
         ensureIntArray(cd, "LAYER", m_fullGrid->GetNumberOfCells());
