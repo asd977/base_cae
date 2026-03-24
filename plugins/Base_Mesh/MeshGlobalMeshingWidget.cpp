@@ -115,6 +115,7 @@ void MeshGlobalMeshingWidget::initCombos()
     ui->dsFactor->setValue(1.0);
     ui->spOrder->setValue(1);
     ui->spSmooth->setValue(5);
+    ui->dsHexRect->setValue(0.6);
     ui->chkFix->setChecked(true);
     ui->dsTol->setValue(1e-6);
 }
@@ -161,11 +162,23 @@ void MeshGlobalMeshingWidget::onDimChanged(int)
     const int dim = ui->cmbDim->currentData().toInt();
     refreshElemCombo(dim);
     refreshAlgoCombo(dim);
+    refreshHexRectOption();
 }
 
 void MeshGlobalMeshingWidget::onElemTypeChanged(int)
 {
-    // 这里目前不需要特殊处理，保留扩展点
+    refreshHexRectOption();
+}
+
+void MeshGlobalMeshingWidget::refreshHexRectOption()
+{
+    const bool isHex3D = (ui->cmbDim->currentData().toInt() == 3 &&
+                          ui->cmbElemType->currentData().toInt() == 4);
+
+    ui->labelHexRect->setEnabled(isHex3D);
+    ui->dsHexRect->setEnabled(isHex3D);
+    ui->labelHexRect->setVisible(true);
+    ui->dsHexRect->setVisible(true);
 }
 
 Params MeshGlobalMeshingWidget::collectParams() const
@@ -180,6 +193,7 @@ Params MeshGlobalMeshingWidget::collectParams() const
     p.elementOrder = ui->spOrder->value();
     p.algorithm = ui->cmbAlgo->currentData().toInt();
     p.smoothing = ui->spSmooth->value();
+    p.hexRectangularity = ui->dsHexRect->value();
     p.fixShape = ui->chkFix->isChecked();
     p.tolerance = ui->dsTol->value();
 

@@ -37,6 +37,7 @@ struct Params
     int elementOrder = 1; // 1 or 2
     int algorithm = 1;    // 2D/3D算法号（gmsh option）
     int smoothing = 5;
+    double hexRectangularity = 0.0; // 仅 Hex 生效：0~1，越大越趋向规则矩形
 
     bool fixShape = true;
     double tolerance = 1e-6;
@@ -351,15 +352,53 @@ class MeshGlobalWorker : public QObject
                 {
                     gmsh::option::setNumber("Mesh.Recombine3DAll", 1);
                     gmsh::option::setNumber("Mesh.SubdivisionAlgorithm", 2);
+                    gmsh::option::setNumber("Mesh.Optimize", m_p.hexRectangularity > 0.0 ? 1 : 0);
+                    gmsh::option::setNumber("Mesh.OptimizeNetgen",
+                                            m_p.hexRectangularity >= 0.35 ? 1 : 0);
+                    const int hexSmoothBoost =
+                        static_cast<int>(std::lround(m_p.hexRectangularity * 30.0));
+                    gmsh::option::setNumber("Mesh.Smoothing", m_p.smoothing + hexSmoothBoost);
                 }
                 else
                 {
                     gmsh::option::setNumber("Mesh.Recombine3DAll", 0);
+                    gmsh::option::setNumber("Mesh.Optimize", 0);
+                    gmsh::option::setNumber("Mesh.OptimizeNetgen", 0);
                 }
 
                 gmsh::option::setNumber("Mesh.Algorithm3D", m_p.algorithm);
                 emit log("开始生成 3D 网格...");
                 gmsh::model::mesh::generate(3);
+
+                if (m_p.elemType == 4 && m_p.hexRectangularity > 0.0)
+                {
+                    const int optimizePasses =
+                        std::max(1, static_cast<int>(std::lround(m_p.hexRectangularity * 4.0)));
+                    for (int i = 0; i < optimizePasses; ++i)
+                    {
+                        try
+                        {
+                            gmsh::model::mesh::optimize("Relocate3D");
+                        }
+                        catch (...)
+                        {
+                            emit log("Relocate3D 优化跳过：当前网格不支持该优化。");
+                            break;
+                        }
+                    }
+
+                    if (m_p.hexRectangularity >= 0.5)
+                    {
+                        try
+                        {
+                            gmsh::model::mesh::optimize("Netgen");
+                        }
+                        catch (...)
+                        {
+                            emit log("Netgen 优化跳过：当前网格不支持该优化。");
+                        }
+                    }
+                }
             }
 
             emit log("网格生成完成。");
@@ -646,6 +685,7 @@ class MeshGlobalMeshingWidget : public BasePage
     void initCombos();
     void refreshAlgoCombo(int dim);
     void refreshElemCombo(int dim);
+    void refreshHexRectOption();
     Params collectParams() const;
 
     QString tempDirPath() const;
