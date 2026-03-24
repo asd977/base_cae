@@ -369,6 +369,7 @@ class MeshGlobalWorker : public QObject
                 }
 
                 bool sweepApplied = useRectHexAlgo;
+                std::vector<int> sweepSourceFaces;
                 if (useRectHexAlgo)
                 {
                     std::vector<std::pair<int, int>> vols;
@@ -390,14 +391,73 @@ class MeshGlobalWorker : public QObject
                     {
                         try
                         {
-                            gmsh::model::mesh::setTransfiniteAutomatic(sweepCandidates, 2.35,
-                                                                       true);
-                            emit log(QString("Sweep-六面体：识别到 %1 个可扫掠体并施加结构化约束")
-                                         .arg(sweepCandidates.size()));
+                            const double targetEdge = std::max(1e-9, m_p.lenMax * m_p.sizeFactor);
+                            int constrainedVols = 0;
+                            for (const auto& vol : sweepCandidates)
+                            {
+                                std::vector<std::pair<int, int>> faceBnd;
+                                gmsh::model::getBoundary({vol}, faceBnd, false, false, false);
+                                std::vector<int> faces;
+                                for (const auto& f : faceBnd)
+                                    if (f.first == 2)
+                                        faces.push_back(f.second);
+                                if (faces.size() != 6)
+                                    continue;
+
+                                int sourceFace = faces.front();
+                                int targetFace = faces.back();
+                                double bestDist2 = -1.0;
+                                for (int i = 0; i < static_cast<int>(faces.size()); ++i)
+                                {
+                                    for (int j = i + 1; j < static_cast<int>(faces.size()); ++j)
+                                    {
+                                        QVector3D ci = gmshCenter(2, faces[i]);
+                                        QVector3D cj = gmshCenter(2, faces[j]);
+                                        const double d2 = dist2(ci, cj);
+                                        if (d2 > bestDist2)
+                                        {
+                                            bestDist2 = d2;
+                                            sourceFace = faces[i];
+                                            targetFace = faces[j];
+                                        }
+                                    }
+                                }
+
+                                std::vector<std::pair<int, int>> curveBnd;
+                                gmsh::model::getBoundary({vol}, curveBnd, false, false, false);
+                                for (const auto& c : curveBnd)
+                                {
+                                    if (c.first != 1)
+                                        continue;
+                                    const int edgeTag = c.second;
+                                    const double len = std::max(1e-9, gmshMeasure(1, edgeTag));
+                                    const int divisions =
+                                        std::max(2, static_cast<int>(std::round(len / targetEdge)));
+                                    gmsh::model::mesh::setTransfiniteCurve(edgeTag, divisions,
+                                                                           "Progression", 1.0);
+                                }
+
+                                for (int f : faces)
+                                {
+                                    gmsh::model::mesh::setTransfiniteSurface(f);
+                                    gmsh::model::mesh::setRecombine(2, f, 45.0);
+                                }
+                                gmsh::model::mesh::setTransfiniteVolume(vol.second);
+                                gmsh::model::mesh::setRecombine(3, vol.second, 120.0);
+
+                                emit log(QString("Sweep-六面体：体%1 选取源面%2 目标面%3")
+                                             .arg(vol.second)
+                                             .arg(sourceFace)
+                                             .arg(targetFace));
+                                sweepSourceFaces.push_back(sourceFace);
+                                ++constrainedVols;
+                            }
+                            emit log(QString("Sweep-六面体：共对 %1 个体施加结构化扫掠约束")
+                                         .arg(constrainedVols));
                         }
                         catch (...)
                         {
-                            emit log("TransfiniteAutomatic 设置失败，将自动回退到稳健 Hex 模式");
+                            emit log("Sweep 结构化约束施加失败，将自动回退到稳健 Hex 模式");
                             sweepApplied = false;
                         }
                     }
@@ -414,6 +474,12 @@ class MeshGlobalWorker : public QObject
                     try
                     {
                         gmsh::option::setNumber("Mesh.IgnorePeriodicity", 0);
+                        // 参考 COMSOL Swept 的流程：先在源面生成面网格，再沿体扫掠到目标面。
+                        if (!sweepSourceFaces.empty())
+                        {
+                            emit log(QString("Sweep-六面体：预网格化源面数量 %1").arg(sweepSourceFaces.size()));
+                            gmsh::model::mesh::generate(2);
+                        }
                         gmsh::model::mesh::generate(3);
                     }
                     catch (const std::exception& e)
