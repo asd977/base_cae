@@ -382,32 +382,6 @@ class MeshGlobalWorker : public QObject
                 }
                 emit log("开始生成 3D 网格...");
                 gmsh::model::mesh::generate(3);
-
-                if (useRectHexAlgo)
-                {
-                    const int optimizePasses = 4;
-                    for (int i = 0; i < optimizePasses; ++i)
-                    {
-                        try
-                        {
-                            gmsh::model::mesh::optimize("Relocate3D");
-                        }
-                        catch (...)
-                        {
-                            emit log("Relocate3D 优化跳过：当前网格不支持该优化。");
-                            break;
-                        }
-                    }
-
-                    try
-                    {
-                        gmsh::model::mesh::optimize("Netgen");
-                    }
-                    catch (...)
-                    {
-                        emit log("Netgen 优化跳过：当前网格不支持该优化。");
-                    }
-                }
             }
 
             emit log("网格生成完成。");
