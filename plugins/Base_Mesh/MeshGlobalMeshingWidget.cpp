@@ -138,6 +138,8 @@ void MeshGlobalMeshingWidget::refreshElemCombo(int dim)
 
 void MeshGlobalMeshingWidget::refreshAlgoCombo(int dim)
 {
+    const int elemType = ui->cmbElemType->currentData().toInt();
+
     ui->cmbAlgo->clear();
     if (dim == 2)
     {
@@ -152,6 +154,10 @@ void MeshGlobalMeshingWidget::refreshAlgoCombo(int dim)
         ui->cmbAlgo->addItem("Delaunay (1)", 1);
         ui->cmbAlgo->addItem("Frontal (4)", 4);
         ui->cmbAlgo->addItem("HXT (10)", 10);
+        if (elemType == 4)
+        {
+            ui->cmbAlgo->addItem("Sweep-六面体(实验)", 1001);
+        }
         ui->cmbAlgo->setCurrentIndex(0);
     }
 }
@@ -165,7 +171,7 @@ void MeshGlobalMeshingWidget::onDimChanged(int)
 
 void MeshGlobalMeshingWidget::onElemTypeChanged(int)
 {
-    // 这里目前不需要特殊处理，保留扩展点
+    refreshAlgoCombo(ui->cmbDim->currentData().toInt());
 }
 
 Params MeshGlobalMeshingWidget::collectParams() const
