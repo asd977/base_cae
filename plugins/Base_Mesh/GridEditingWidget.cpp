@@ -27,6 +27,7 @@
 #include <vtkCommand.h>
 #include <vtkCoordinate.h>
 #include <vtkDataArray.h>
+#include <vtkDataSet.h>
 #include <vtkDataSetMapper.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
@@ -252,6 +253,7 @@ void GridEditingWidget::clearData()
     m_fullGrid = nullptr;
     m_viewGrid = nullptr;
     m_points = nullptr;
+    m_originalDisplayData = nullptr;
 
     m_sourceName.clear();
     m_dirty = false;
@@ -550,6 +552,10 @@ void GridEditingWidget::buildOrUpdateViewGrid()
     }
     if (!m_meshMapper)
         return;
+    if (!m_originalDisplayData)
+    {
+        m_originalDisplayData = vtkDataSet::SafeDownCast(m_meshMapper->GetInput());
+    }
 
     const bool hasFilter =
         !m_filterKetypes.isEmpty() || !m_filterMatypes.isEmpty() || !m_filterLayers.isEmpty();
@@ -563,7 +569,11 @@ void GridEditingWidget::buildOrUpdateViewGrid()
     if (!hasFilter)
     {
         m_viewGrid = m_fullGrid;
-        m_meshMapper->SetInputData(m_viewGrid);
+        if (m_originalDisplayData)
+        {
+            // 保持与导入预览一致的显示数据，避免首次进入编辑页面时网格外观突变。
+            m_meshMapper->SetInputData(m_originalDisplayData);
+        }
         m_points = m_viewGrid->GetPoints();
         rebuildViewMaps();
     }
