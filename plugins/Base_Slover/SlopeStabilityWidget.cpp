@@ -260,7 +260,7 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
         os << factor << " " << (ifpr.isEmpty() ? "1" : ifpr) << "\n";
     }
 
-    os << quoteValue(caseDirAbs) << "    动力计算初始目录\n";
+    os << quoteValue(caseDirAbs) << "\n";
     os << m_dtEdit->text().trimmed() << " " << m_tstaEdit->text().trimmed() << " "
        << m_tendEdit->text().trimmed() << " " << m_ifModeEdit->text().trimmed() << " "
        << m_ifWaveEdit->text().trimmed() << "    DT TSTA TEND IFMODE IFWAVE\n";
@@ -341,7 +341,7 @@ void SlopeStabilityWidget::loadJson(const QJsonObject& obj)
         m_strengthReserveTable->setItem(
             row, 0, new QTableWidgetItem(factor.isEmpty() ? QString() : factor));
         m_strengthReserveTable->setItem(
-            row, 1, new QTableWidgetItem(ifpr.isEmpty() ? QStringLiteral("1") : ifpr));
+            row, 1, new QTableWidgetItem(ifpr.isEmpty() ? QString("1") : ifpr));
     }
 
     m_dtEdit->setText(obj.value("dt").toString(m_dtEdit->text()));

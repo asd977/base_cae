@@ -190,8 +190,7 @@ bool SeepageWidget::exportKetraceDatFile() const
         return false;
 
     QTextStream os(&file);
-    os << "           1   NUM\n";
-    os << "        1        1\n";
+    os << "           0   NUM\n";
     return true;
 }
 
@@ -208,9 +207,7 @@ bool SeepageWidget::exportJdtraceDatFile() const
         return false;
 
     QTextStream os(&file);
-    os << "           2   NUM\n";
-    os << "       951        1\n";
-    os << "       943        2\n";
+    os << "           0   NUM\n";
     return true;
 }
 
