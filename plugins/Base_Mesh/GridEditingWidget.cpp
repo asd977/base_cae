@@ -597,8 +597,17 @@ void GridEditingWidget::buildOrUpdateViewGrid()
         m_viewGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
         m_viewGrid->ShallowCopy(ex->GetOutput());
 
-        // 若导入预览是表面显示（polydata），过滤后也保持表面显示，避免过滤时外观异常。
-        if (m_originalDisplayData && m_originalDisplayData->IsA("vtkPolyData"))
+        int maxCellDim = 0;
+        for (vtkIdType c = 0; c < m_viewGrid->GetNumberOfCells(); ++c)
+        {
+            auto* cell = m_viewGrid->GetCell(c);
+            if (!cell)
+                continue;
+            maxCellDim = std::max(maxCellDim, cell->GetCellDimension());
+        }
+
+        // 仅对体单元(3D)做表面提取。2D 网格若再做 SurfaceFilter 可能退化为边界线，导致显示异常。
+        if (maxCellDim >= 3 && m_originalDisplayData && m_originalDisplayData->IsA("vtkPolyData"))
         {
             auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
             surf->SetInputData(m_viewGrid);
