@@ -29,6 +29,7 @@
 #include <vtkDataArray.h>
 #include <vtkDataSet.h>
 #include <vtkDataSetMapper.h>
+#include <vtkDataSetSurfaceFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
 #include <vtkIdTypeArray.h>
@@ -254,6 +255,7 @@ void GridEditingWidget::clearData()
     m_viewGrid = nullptr;
     m_points = nullptr;
     m_originalDisplayData = nullptr;
+    m_filteredDisplayData = nullptr;
 
     m_sourceName.clear();
     m_dirty = false;
@@ -569,6 +571,7 @@ void GridEditingWidget::buildOrUpdateViewGrid()
     if (!hasFilter)
     {
         m_viewGrid = m_fullGrid;
+        m_filteredDisplayData = nullptr;
         if (m_originalDisplayData)
         {
             // 保持与导入预览一致的显示数据，避免首次进入编辑页面时网格外观突变。
@@ -594,7 +597,25 @@ void GridEditingWidget::buildOrUpdateViewGrid()
         m_viewGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
         m_viewGrid->ShallowCopy(ex->GetOutput());
 
-        m_meshMapper->SetInputData(m_viewGrid);
+        // 若导入预览是表面显示（polydata），过滤后也保持表面显示，避免过滤时外观异常。
+        if (m_originalDisplayData && m_originalDisplayData->IsA("vtkPolyData"))
+        {
+            auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+            surf->SetInputData(m_viewGrid);
+            surf->PassThroughCellIdsOn();
+            surf->PassThroughPointIdsOn();
+            surf->Update();
+
+            auto filteredSurface = vtkSmartPointer<vtkPolyData>::New();
+            filteredSurface->ShallowCopy(surf->GetOutput());
+            m_filteredDisplayData = filteredSurface;
+            m_meshMapper->SetInputData(m_filteredDisplayData);
+        }
+        else
+        {
+            m_filteredDisplayData = m_viewGrid;
+            m_meshMapper->SetInputData(m_filteredDisplayData);
+        }
         m_points = m_viewGrid->GetPoints();
         rebuildViewMaps();
     }

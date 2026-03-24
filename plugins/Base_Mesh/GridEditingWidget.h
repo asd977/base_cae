@@ -201,6 +201,7 @@ class GridEditingWidget : public BasePage
     // vtk cached (view)
     vtkSmartPointer<vtkPoints> m_points;
     vtkSmartPointer<vtkDataSet> m_originalDisplayData;
+    vtkSmartPointer<vtkDataSet> m_filteredDisplayData;
     vtkSmartPointer<vtkDataSetMapper> m_meshMapper;
     vtkSmartPointer<vtkActor> m_meshActor;
 
