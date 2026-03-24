@@ -368,7 +368,7 @@ class MeshGlobalWorker : public QObject
                     gmsh::option::setNumber("Mesh.RecombineAll", 0);
                 }
 
-                gmsh::option::setNumber("Mesh.Algorithm3D", useRectHexAlgo ? 4 : m_p.algorithm);
+                bool sweepApplied = useRectHexAlgo;
                 if (useRectHexAlgo)
                 {
                     std::vector<std::pair<int, int>> vols;
@@ -397,17 +397,19 @@ class MeshGlobalWorker : public QObject
                         }
                         catch (...)
                         {
-                            emit log("TransfiniteAutomatic 设置失败，将回退为重组+优化");
+                            emit log("TransfiniteAutomatic 设置失败，将自动回退到稳健 Hex 模式");
+                            sweepApplied = false;
                         }
                     }
                     else
                     {
-                        throw std::runtime_error(
-                            "Sweep-六面体失败：未识别到可扫掠体（通常需要先分块，形成源面/目标面拓扑）。");
+                        emit log("Sweep-六面体：未识别到可扫掠体，自动回退到稳健 Hex 模式");
+                        sweepApplied = false;
                     }
                 }
+                gmsh::option::setNumber("Mesh.Algorithm3D", sweepApplied ? 4 : m_p.algorithm);
                 emit log("开始生成 3D 网格...");
-                if (useRectHexAlgo)
+                if (sweepApplied)
                 {
                     try
                     {
@@ -416,10 +418,16 @@ class MeshGlobalWorker : public QObject
                     }
                     catch (const std::exception& e)
                     {
-                        throw std::runtime_error(
-                            QString("Sweep-六面体失败：%1。请先在几何阶段分块，并确保源面/目标面可映射。")
-                                .arg(QString::fromStdString(e.what()))
-                                .toStdString());
+                        emit log(QString("Sweep-六面体失败：%1，自动回退到稳健 Hex 模式")
+                                     .arg(QString::fromStdString(e.what())));
+                        gmsh::model::mesh::clear();
+                        gmsh::option::setNumber("Mesh.Algorithm3D", 10); // HXT
+                        gmsh::option::setNumber("Mesh.SubdivisionAlgorithm", 2);
+                        gmsh::option::setNumber("Mesh.Optimize", 0);
+                        gmsh::option::setNumber("Mesh.OptimizeNetgen", 0);
+                        gmsh::option::setNumber("Mesh.RecombineAll", 0);
+                        gmsh::option::setNumber("Mesh.IgnorePeriodicity", 1);
+                        gmsh::model::mesh::generate(3);
                     }
                 }
                 else
@@ -433,7 +441,25 @@ class MeshGlobalWorker : public QObject
                 gmsh::model::mesh::getNodes(nodeTags, nodeCoords, nodeParams);
                 if (nodeTags.empty())
                 {
-                    throw std::runtime_error("3D 网格生成失败：生成结果为空节点。");
+                    emit log("3D 网格为空，自动尝试稳健 Hex(HXT) 重试...");
+                    gmsh::model::mesh::clear();
+                    gmsh::option::setNumber("Mesh.Algorithm3D", 10);
+                    gmsh::option::setNumber("Mesh.Recombine3DAll", 1);
+                    gmsh::option::setNumber("Mesh.SubdivisionAlgorithm", 2);
+                    gmsh::option::setNumber("Mesh.Optimize", 0);
+                    gmsh::option::setNumber("Mesh.OptimizeNetgen", 0);
+                    gmsh::option::setNumber("Mesh.RecombineAll", 0);
+                    gmsh::option::setNumber("Mesh.IgnorePeriodicity", 1);
+                    gmsh::model::mesh::generate(3);
+
+                    nodeTags.clear();
+                    nodeCoords.clear();
+                    nodeParams.clear();
+                    gmsh::model::mesh::getNodes(nodeTags, nodeCoords, nodeParams);
+                    if (nodeTags.empty())
+                    {
+                        throw std::runtime_error("3D 网格生成失败：稳健重试后仍为空节点。");
+                    }
                 }
             }
 
