@@ -1,0 +1,46 @@
+#ifndef SLOPESTABILITYWIDGET_H
+#define SLOPESTABILITYWIDGET_H
+
+#include <BasePage.h>
+
+#include <QJsonObject>
+#include <QMap>
+
+class QLineEdit;
+class QComboBox;
+class QPushButton;
+class QWidget;
+
+class SlopeStabilityWidget : public BasePage
+{
+    Q_OBJECT
+
+  public:
+    explicit SlopeStabilityWidget(QWidget* parent = nullptr);
+    ~SlopeStabilityWidget() override = default;
+
+    void beforeLoad() override;
+    void beforeUnload() override;
+
+    bool exportIslopDatFile() const;
+
+    QJsonObject saveJson() override;
+    void loadJson(const QJsonObject& obj) override;
+
+  signals:
+    void computeRequested();
+
+  private slots:
+    void onComputeClicked();
+
+  private:
+    QString quoteValue(const QString& value) const;
+    QString lineValue(int lineNo) const;
+    void setLineValue(int lineNo, const QString& value);
+    QString defaultValueByLine(int lineNo) const;
+
+  private:
+    QMap<int, QWidget*> m_lineEditors;
+};
+
+#endif // SLOPESTABILITYWIDGET_H

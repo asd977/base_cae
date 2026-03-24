@@ -8,6 +8,7 @@ HEADERS += \
     FillStorageCyclePage.h \
     SeepageBoundaryPage.h \
     SeepageWidget.h \
+    SlopeStabilityWidget.h \
     Solver.h \
     SolverSettingWidget.h \
     StressBoundaryPage.h \
@@ -17,6 +18,7 @@ SOURCES += \
     FillStorageCyclePage.cpp \
     SeepageBoundaryPage.cpp \
     SeepageWidget.cpp \
+    SlopeStabilityWidget.cpp \
     Solver.cpp \
     SolverSettingWidget.cpp \
     StressBoundaryPage.cpp \
