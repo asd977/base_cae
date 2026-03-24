@@ -212,7 +212,7 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
             factorOk ? QString::asprintf("%11.4f", factorVal) : factor.rightJustified(11, ' ');
         const QString formattedIfpr =
             ifprOk ? QString::asprintf("%11.4f", ifprVal) : ifpr.rightJustified(11, ' ');
-        os << formattedFactor << " " << formattedIfpr << QString("%6d").arg(row + 1)
+        os << formattedFactor << " " << formattedIfpr <<" "<< QString("%1").arg(row + 1)
            << " SRF    IFPR   II\n";
     }
 
