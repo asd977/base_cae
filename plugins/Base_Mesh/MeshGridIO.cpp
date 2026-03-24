@@ -3051,9 +3051,15 @@ void MeshGridIO::ensureDefaultArrays(vtkUnstructuredGrid* grid) const
     // point: node_id
     {
         auto nodeId = getOrCreatePointIntArray(grid, "node_id");
+        const bool hasExactTupleCount = (nodeId && nodeId->GetNumberOfTuples() == nPts);
         nodeId->SetNumberOfTuples(nPts);
-        for (vtkIdType i = 0; i < nPts; ++i)
-            nodeId->SetValue(i, static_cast<int>(i) + 1);
+
+        // 已有 node_id（且长度匹配）时保留原始编号，避免导入后点号错位。
+        if (!hasExactTupleCount)
+        {
+            for (vtkIdType i = 0; i < nPts; ++i)
+                nodeId->SetValue(i, static_cast<int>(i) + 1);
+        }
     }
 
     // cell arrays
