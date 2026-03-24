@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <stdexcept>
 #include <set>
 
 class QThread;
@@ -347,19 +348,93 @@ class MeshGlobalWorker : public QObject
             else
             {
                 // Hex（重组）
+                const bool useRectHexAlgo = (m_p.elemType == 4 && m_p.algorithm == 1001);
                 if (m_p.elemType == 4)
                 {
                     gmsh::option::setNumber("Mesh.Recombine3DAll", 1);
-                    gmsh::option::setNumber("Mesh.SubdivisionAlgorithm", 2);
+                    gmsh::option::setNumber("Mesh.SubdivisionAlgorithm", useRectHexAlgo ? 1 : 2);
+                    gmsh::option::setNumber("Mesh.Optimize", useRectHexAlgo ? 1 : 0);
+                    gmsh::option::setNumber("Mesh.OptimizeNetgen", useRectHexAlgo ? 1 : 0);
+                    gmsh::option::setNumber("Mesh.Smoothing",
+                                            useRectHexAlgo ? std::max(m_p.smoothing, 30)
+                                                           : std::max(m_p.smoothing, 8));
+                    gmsh::option::setNumber("Mesh.RecombineAll", useRectHexAlgo ? 1 : 0);
                 }
                 else
                 {
                     gmsh::option::setNumber("Mesh.Recombine3DAll", 0);
+                    gmsh::option::setNumber("Mesh.Optimize", 0);
+                    gmsh::option::setNumber("Mesh.OptimizeNetgen", 0);
+                    gmsh::option::setNumber("Mesh.RecombineAll", 0);
                 }
 
-                gmsh::option::setNumber("Mesh.Algorithm3D", m_p.algorithm);
+                gmsh::option::setNumber("Mesh.Algorithm3D", useRectHexAlgo ? 4 : m_p.algorithm);
+                if (useRectHexAlgo)
+                {
+                    std::vector<std::pair<int, int>> vols;
+                    gmsh::model::getEntities(vols, 3);
+                    std::vector<std::pair<int, int>> sweepCandidates;
+                    for (const auto& v : vols)
+                    {
+                        std::vector<std::pair<int, int>> b;
+                        gmsh::model::getBoundary({v}, b, false, false, false);
+                        int faceCount = 0;
+                        for (const auto& x : b)
+                            if (x.first == 2)
+                                ++faceCount;
+                        if (faceCount == 6)
+                            sweepCandidates.push_back(v);
+                    }
+
+                    if (!sweepCandidates.empty())
+                    {
+                        try
+                        {
+                            gmsh::model::mesh::setTransfiniteAutomatic(sweepCandidates, 2.35,
+                                                                       true);
+                            emit log(QString("Sweep-六面体：识别到 %1 个可扫掠体并施加结构化约束")
+                                         .arg(sweepCandidates.size()));
+                        }
+                        catch (...)
+                        {
+                            emit log("TransfiniteAutomatic 设置失败，将回退为重组+优化");
+                        }
+                    }
+                    else
+                    {
+                        throw std::runtime_error(
+                            "Sweep-六面体失败：未识别到可扫掠体（通常需要先分块，形成源面/目标面拓扑）。");
+                    }
+                }
                 emit log("开始生成 3D 网格...");
-                gmsh::model::mesh::generate(3);
+                if (useRectHexAlgo)
+                {
+                    try
+                    {
+                        gmsh::option::setNumber("Mesh.IgnorePeriodicity", 0);
+                        gmsh::model::mesh::generate(3);
+                    }
+                    catch (const std::exception& e)
+                    {
+                        throw std::runtime_error(
+                            QString("Sweep-六面体失败：%1。请先在几何阶段分块，并确保源面/目标面可映射。")
+                                .arg(QString::fromStdString(e.what()))
+                                .toStdString());
+                    }
+                }
+                else
+                {
+                    gmsh::option::setNumber("Mesh.IgnorePeriodicity", 1);
+                    gmsh::model::mesh::generate(3);
+                }
+
+                std::vector<std::size_t> nodeTags;
+                std::vector<double> nodeCoords, nodeParams;
+                gmsh::model::mesh::getNodes(nodeTags, nodeCoords, nodeParams);
+                if (nodeTags.empty())
+                {
+                    throw std::runtime_error("3D 网格生成失败：生成结果为空节点。");
+                }
             }
 
             emit log("网格生成完成。");
