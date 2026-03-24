@@ -10,6 +10,7 @@ class QLineEdit;
 class QComboBox;
 class QPushButton;
 class QTableWidget;
+class QLabel;
 class QWidget;
 
 class SlopeStabilityWidget : public BasePage
@@ -44,8 +45,12 @@ class SlopeStabilityWidget : public BasePage
   private:
     QMap<int, QWidget*> m_lineEditors;
     QTableWidget* m_strengthReserveTable = nullptr;
-    QLineEdit* m_caseDirEdit = nullptr;
-    QLineEdit* m_dynamicArgsEdit = nullptr;
+    QLabel* m_caseDirLabel = nullptr;
+    QLineEdit* m_dtEdit = nullptr;
+    QLineEdit* m_tstaEdit = nullptr;
+    QLineEdit* m_tendEdit = nullptr;
+    QLineEdit* m_ifModeEdit = nullptr;
+    QLineEdit* m_ifWaveEdit = nullptr;
     QLineEdit* m_accXEdit = nullptr;
     QLineEdit* m_accYEdit = nullptr;
     QLineEdit* m_accZEdit = nullptr;
