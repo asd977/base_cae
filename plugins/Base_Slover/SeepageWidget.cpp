@@ -247,6 +247,34 @@ bool SeepageWidget::exportInouseDatFile() const
 
     auto pickRelatedSolid = [&](vtkIdType pid, const double xyzSelf[3], const double xyzOther[3]) -> int
     {
+        auto pickByDistance = [&](const QVector<int>& cand, const double xyz[3]) -> int
+        {
+            if (cand.isEmpty())
+                return 0;
+            double bestDist2 = std::numeric_limits<double>::max();
+            int bestKe = cand.front();
+            for (int ke : cand)
+            {
+                vtkCell* solid = grid->GetCell(static_cast<vtkIdType>(ke - 1));
+                if (!solid)
+                    continue;
+                std::array<double, 3> closestPt{0.0, 0.0, 0.0};
+                std::array<double, 3> pcoords{0.0, 0.0, 0.0};
+                int subId = 0;
+                double dist2 = 0.0;
+                const vtkIdType wn = (solid->GetNumberOfPoints() > 0) ? solid->GetNumberOfPoints() : 1;
+                std::vector<double> weights(static_cast<size_t>(wn), 0.0);
+                solid->EvaluatePosition(const_cast<double*>(xyz), closestPt.data(), subId, pcoords.data(), dist2,
+                                        weights.data());
+                if (dist2 < bestDist2)
+                {
+                    bestDist2 = dist2;
+                    bestKe = ke;
+                }
+            }
+            return bestKe;
+        };
+
         QVector<int> candidates;
         if (pid >= 0 && pid < nPts)
             candidates = pointToSolidElems[static_cast<int>(pid)];
@@ -259,31 +287,8 @@ bool SeepageWidget::exportInouseDatFile() const
         if (selfInside.size() == 1)
             return selfInside.front();
         if (!selfInside.isEmpty())
-        {
-            double bestDist2 = std::numeric_limits<double>::max();
-            int bestKe = selfInside.front();
-            for (int ke : selfInside)
-            {
-                vtkCell* solid = grid->GetCell(static_cast<vtkIdType>(ke - 1));
-                if (!solid)
-                    continue;
-                std::array<double, 3> closestPt{0.0, 0.0, 0.0};
-                std::array<double, 3> pcoords{0.0, 0.0, 0.0};
-                int subId = 0;
-                double dist2 = 0.0;
-                const vtkIdType wn = (solid->GetNumberOfPoints() > 0) ? solid->GetNumberOfPoints() : 1;
-                std::vector<double> weights(static_cast<size_t>(wn), 0.0);
-                solid->EvaluatePosition(const_cast<double*>(xyzOther), closestPt.data(), subId, pcoords.data(),
-                                        dist2, weights.data());
-                if (dist2 < bestDist2)
-                {
-                    bestDist2 = dist2;
-                    bestKe = ke;
-                }
-            }
-            return bestKe;
-        }
-        return 0;
+            return pickByDistance(selfInside, xyzOther);
+        return pickByDistance(candidates, xyzSelf);
     };
 
     auto evaluateRst = [&](int ke, const double xyz[3], QVector<double>& rst)
