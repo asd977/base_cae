@@ -1928,6 +1928,27 @@ void GridEditingWidget::beforeLoad()
 {
     // 这里不再从 IiinGridModel 拉数据
     // 你可以在外部调用 setEditableGrid(...) 注入当前网格
+    if (!m_visualWidgetService)
+        return;
+
+    // 首次进入网格编辑页时，复用的 mesh actor 可能残留了其它页面设置的几何变换，
+    // 导致显示“变形”。进入页面时显式清掉 actor 变换，保证原始网格形状。
+    vtkActor* meshActor =
+        vtkActor::SafeDownCast(m_visualWidgetService->getProp(kImportedMeshSurfacePropId));
+    if (!meshActor)
+        meshActor = vtkActor::SafeDownCast(m_visualWidgetService->getProp(kImportedMeshLinePropId));
+    if (meshActor)
+    {
+        meshActor->SetUserTransform(nullptr);
+        meshActor->SetUserMatrix(nullptr);
+        meshActor->SetPosition(0.0, 0.0, 0.0);
+        meshActor->SetScale(1.0, 1.0, 1.0);
+        meshActor->SetOrientation(0.0, 0.0, 0.0);
+    }
+
+    // 首次进入时再同步一次显示网格，避免页面切换早期时序导致 mapper 输入未稳定。
+    if (m_fullGrid && m_fullGrid->GetNumberOfCells() > 0)
+        buildOrUpdateViewGrid();
 }
 
 void GridEditingWidget::beforeUnload()

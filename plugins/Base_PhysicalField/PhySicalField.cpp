@@ -11,6 +11,7 @@
 #include <PublicVariables.h>
 #include <ServiceRegistry.h>
 #include <services/ProjectManagerService.h>
+#include <services/MeshModuleControllerService.h>
 
 #include <QDir>
 #include <QFile>
@@ -742,6 +743,9 @@ void PhysicalField::generateIIIDFile()
 
     vtkUnstructuredGrid* gSolid = PickManager::instance().solidGrid();
     vtkUnstructuredGrid* gLine = PickManager::instance().lineGrid();
+    vtkUnstructuredGrid* gAll = nullptr;
+    if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+        gAll = meshSvc->getVtkUnstructuredGrid();
 
     if (!gSolid && !gLine)
     {
@@ -751,13 +755,16 @@ void PhysicalField::generateIIIDFile()
 
     vtkIntArray* idSolid = nullptr;
     vtkIntArray* idLine = nullptr;
+    vtkIntArray* idAll = nullptr;
 
     if (gSolid)
         idSolid = vtkIntArray::SafeDownCast(gSolid->GetPointData()->GetArray("node_id"));
     if (gLine)
         idLine = vtkIntArray::SafeDownCast(gLine->GetPointData()->GetArray("node_id"));
+    if (gAll)
+        idAll = vtkIntArray::SafeDownCast(gAll->GetPointData()->GetArray("node_id"));
 
-    if ((gSolid && !idSolid) || (gLine && !idLine))
+    if ((gSolid && !idSolid) || (gLine && !idLine) || (gAll && !idAll))
     {
         qWarning() << "generateIIIDFile: node_id array missing on some grid";
         return;
@@ -771,7 +778,8 @@ void PhysicalField::generateIIIDFile()
     // 1) 收集所有 node_id（solid + line），去重并排序
     QVector<int> allNodeIds;
     allNodeIds.reserve((gSolid ? int(gSolid->GetNumberOfPoints()) : 0) +
-                       (gLine ? int(gLine->GetNumberOfPoints()) : 0));
+                       (gLine ? int(gLine->GetNumberOfPoints()) : 0) +
+                       (gAll ? int(gAll->GetNumberOfPoints()) : 0));
 
     if (gSolid)
     {
@@ -784,6 +792,13 @@ void PhysicalField::generateIIIDFile()
         const int n = int(gLine->GetNumberOfPoints());
         for (int i = 0; i < n; ++i)
             allNodeIds.push_back(idLine->GetValue(i));
+    }
+    // 补充完整网格点集：确保“未被任何 cell 使用”的点也能输出（其约束默认保持自由）
+    if (gAll)
+    {
+        const int n = int(gAll->GetNumberOfPoints());
+        for (int i = 0; i < n; ++i)
+            allNodeIds.push_back(idAll->GetValue(i));
     }
 
     std::sort(allNodeIds.begin(), allNodeIds.end());
