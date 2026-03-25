@@ -134,14 +134,20 @@ bool SeepageWidget::exportIseepDatFile() const
     file.close();
 
     const QString snapshotPath = wd.filePath(QString::fromLatin1(PublicConstants::kMeshSnapshotFileName));
+    const QString projectIiinPath = wd.filePath("IIIN.DAT");
     const QString iiinPath = wd.filePath("PREP/IIIN.DAT");
+    QString iiinSourcePath;
     if (QFile::exists(snapshotPath))
-    {
-        if (QFile::exists(iiinPath))
-            QFile::remove(iiinPath);
-        if (!QFile::copy(snapshotPath, iiinPath))
-            return false;
-    }
+        iiinSourcePath = snapshotPath;
+    else if (QFile::exists(projectIiinPath))
+        iiinSourcePath = projectIiinPath;
+    else
+        return false;
+
+    if (QFile::exists(iiinPath))
+        QFile::remove(iiinPath);
+    if (!QFile::copy(iiinSourcePath, iiinPath))
+        return false;
 
     return exportInouseDatFile() && exportMaMaskDatFile() && exportMaRockDatFile() &&
            exportKetraceDatFile() && exportJdtraceDatFile();
@@ -307,8 +313,6 @@ bool SeepageWidget::exportInouseDatFile() const
         const auto& rel1 = pointToSolidElems[static_cast<int>(p1)];
         const bool s0 = rel0.isEmpty();
         const bool s1 = rel1.isEmpty();
-        if (!s0 && !s1)
-            continue;
 
         double xyz0[3] = {0.0, 0.0, 0.0};
         double xyz1[3] = {0.0, 0.0, 0.0};
