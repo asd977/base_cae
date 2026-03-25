@@ -29,6 +29,7 @@
 #include <vtkDataArray.h>
 #include <vtkDataSet.h>
 #include <vtkDataSetMapper.h>
+#include <vtkDataSetSurfaceFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
 #include <vtkIdTypeArray.h>
@@ -254,6 +255,7 @@ void GridEditingWidget::clearData()
     m_fullGrid = nullptr;
     m_viewGrid = nullptr;
     m_viewSurface = nullptr;
+    m_originalRenderInput = nullptr;
     m_points = nullptr;
 
     m_sourceName.clear();
@@ -514,6 +516,8 @@ void GridEditingWidget::buildOrUpdateViewGrid()
     }
     if (!m_meshMapper)
         return;
+    if (!m_originalRenderInput)
+        m_originalRenderInput = m_meshMapper->GetInput();
 
     const bool hasFilter =
         !m_filterKetypes.isEmpty() || !m_filterMatypes.isEmpty() || !m_filterLayers.isEmpty();
@@ -524,6 +528,7 @@ void GridEditingWidget::buildOrUpdateViewGrid()
     const char* prevArrayName = m_meshMapper->GetArrayName();
     vtkScalarsToColors* prevLookupTable = m_meshMapper->GetLookupTable();
 
+    bool usedLineFallback = false;
     {
         auto ids = vtkSmartPointer<vtkIdList>::New();
         auto lineIdsFallback = vtkSmartPointer<vtkIdList>::New();
@@ -558,7 +563,10 @@ void GridEditingWidget::buildOrUpdateViewGrid()
 
         vtkIdList* targetIds = ids;
         if (ids->GetNumberOfIds() == 0 && lineIdsFallback->GetNumberOfIds() > 0)
+        {
             targetIds = lineIdsFallback;
+            usedLineFallback = true;
+        }
 
         auto ex = vtkSmartPointer<vtkExtractCells>::New();
         ex->SetInputData(m_fullGrid);
@@ -570,9 +578,32 @@ void GridEditingWidget::buildOrUpdateViewGrid()
         rebuildViewMaps();
     }
 
-    // 不在网格编辑页独立改写渲染输入：沿用 MeshModuleController 已经准备好的显示数据。
-    // 这里仅更新编辑逻辑所需的 m_viewGrid 与映射，不单独重建渲染管线。
-    m_viewSurface = nullptr;
+    // 默认复用原始渲染输入；当存在过滤条件时，临时切换到过滤后的显示数据。
+    if (hasFilter)
+    {
+        if (usedLineFallback)
+        {
+            m_meshMapper->SetInputData(m_viewGrid);
+        }
+        else
+        {
+            auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+            surf->SetInputData(m_viewGrid);
+            surf->PassThroughPointIdsOn();
+            surf->PassThroughCellIdsOn();
+            surf->Update();
+            m_viewSurface = vtkSmartPointer<vtkPolyData>::New();
+            m_viewSurface->ShallowCopy(surf->GetOutput());
+            m_meshMapper->SetInputData(m_viewSurface);
+        }
+    }
+    else if (m_originalRenderInput)
+    {
+        m_meshMapper->SetInputData(m_originalRenderInput);
+    }
+
+    if (!hasFilter || usedLineFallback)
+        m_viewSurface = nullptr;
     m_viewSurfaceNodeIdToVtkId.clear();
     vtkDataSet* pickDs = m_meshMapper ? m_meshMapper->GetInput() : nullptr;
     vtkPointSet* pickPointSet = pickDs ? vtkPointSet::SafeDownCast(pickDs) : nullptr;

@@ -177,6 +177,7 @@ class GridEditingWidget : public BasePage
     vtkSmartPointer<vtkUnstructuredGrid> m_fullGrid; // 权威可编辑数据
     vtkSmartPointer<vtkUnstructuredGrid> m_viewGrid; // 过滤后的显示数据（无过滤时 = fullGrid）
     vtkSmartPointer<vtkPolyData> m_viewSurface;      // 仅外表面渲染/拾取数据
+    vtkSmartPointer<vtkDataSet> m_originalRenderInput; // 进入编辑时的原始渲染输入
 
     QString m_sourceName; // 保存/溯源用
     bool m_dirty = false;
