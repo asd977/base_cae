@@ -15,6 +15,7 @@
 #include <vtkIdList.h>
 #include <vtkPoints.h>
 #include <vtkSmartPointer.h>
+#include <vtkStaticCellLocator.h>
 #include <vtkUnstructuredGrid.h>
 
 #include <algorithm>
@@ -133,16 +134,6 @@ bool SeepageWidget::exportIseepDatFile() const
 
     file.close();
 
-    const QString snapshotPath = wd.filePath(QString::fromLatin1(PublicConstants::kMeshSnapshotFileName));
-    const QString iiinPath = wd.filePath("PREP/IIIN.DAT");
-    if (QFile::exists(snapshotPath))
-    {
-        if (QFile::exists(iiinPath))
-            QFile::remove(iiinPath);
-        if (!QFile::copy(snapshotPath, iiinPath))
-            return false;
-    }
-
     return exportInouseDatFile() && exportMaMaskDatFile() && exportMaRockDatFile() &&
            exportKetraceDatFile() && exportJdtraceDatFile();
 }
@@ -160,7 +151,8 @@ bool SeepageWidget::exportInouseDatFile() const
         return false;
 
     QTextStream os(&file);
-    const int ndim = qMax(2, PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt());
+    const int configuredNdim =
+        qMax(2, PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt());
 
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     auto grid = meshSvc ? meshSvc->getVtkUnstructuredGrid() : vtkSmartPointer<vtkUnstructuredGrid>{};
@@ -169,12 +161,21 @@ bool SeepageWidget::exportInouseDatFile() const
         os << "           0    NUM OF NO USE NODE\n";
         os << "           0    NUM OF NO USE ELEMENT\n";
         os << "       0    杆单元悬浮节点数\n";
-        os << QString("%1%2    NEBAR  NDIM\n").arg(0, 12).arg(ndim, 12);
+        os << QString("%1%2    NEBAR  NDIM\n").arg(0, 12).arg(configuredNdim, 12);
         return true;
     }
 
     const vtkIdType nPts = grid->GetNumberOfPoints();
     const vtkIdType nCells = grid->GetNumberOfCells();
+    int meshMaxDim = 0;
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    {
+        vtkCell* cell = grid->GetCell(cid);
+        if (!cell)
+            continue;
+        meshMaxDim = qMax(meshMaxDim, cell->GetCellDimension());
+    }
+    const int ndim = qMax(2, qMin(configuredNdim, meshMaxDim > 0 ? meshMaxDim : configuredNdim));
 
     QSet<vtkIdType> usedPointIds;
     usedPointIds.reserve(static_cast<int>(nPts));
@@ -198,7 +199,7 @@ bool SeepageWidget::exportInouseDatFile() const
             continue;
         }
 
-        const bool isSolid = (cell->GetCellDimension() >= 3);
+        const bool isSolid = (cell->GetCellDimension() >= ndim);
         if (isSolid)
             solidCellIds.push_back(static_cast<int>(cid + 1));
         for (vtkIdType i = 0; i < np; ++i)
@@ -210,6 +211,25 @@ bool SeepageWidget::exportInouseDatFile() const
                 pointToSolidElems[static_cast<int>(pid)].push_back(static_cast<int>(cid + 1));
             }
         }
+    }
+
+    vtkSmartPointer<vtkUnstructuredGrid> solidGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    solidGrid->SetPoints(grid->GetPoints());
+    QVector<int> solidLocalToGlobal;
+    solidLocalToGlobal.reserve(solidCellIds.size());
+    for (int ke : std::as_const(solidCellIds))
+    {
+        vtkCell* solid = grid->GetCell(static_cast<vtkIdType>(ke - 1));
+        if (!solid || !solid->GetPointIds())
+            continue;
+        solidGrid->InsertNextCell(solid->GetCellType(), solid->GetPointIds());
+        solidLocalToGlobal.push_back(ke);
+    }
+    auto solidLocator = vtkSmartPointer<vtkStaticCellLocator>::New();
+    if (solidGrid->GetNumberOfCells() > 0)
+    {
+        solidLocator->SetDataSet(solidGrid);
+        solidLocator->BuildLocator();
     }
 
     QVector<int> noUseNodes;
@@ -232,36 +252,82 @@ bool SeepageWidget::exportInouseDatFile() const
     QVector<BarRow> barRows;
     QVector<int> suspendNodeIds;
 
-    auto pickRelatedSolid = [&](vtkIdType pid, const double xyz[3]) -> int
+    auto findContainingSolid = [&](const QVector<int>& candidates, const double xyz[3]) -> QVector<int>
     {
-        if (pid >= 0 && pid < nPts)
-        {
-            const auto& related = pointToSolidElems[static_cast<int>(pid)];
-            if (!related.isEmpty())
-                return related.front();
-        }
-        if (solidCellIds.isEmpty())
-            return 0;
-
-        double bestDist2 = std::numeric_limits<double>::max();
-        int bestKe = 0;
-        for (int ke : solidCellIds)
+        QVector<int> inside;
+        inside.reserve(candidates.size());
+        for (int ke : candidates)
         {
             vtkCell* solid = grid->GetCell(static_cast<vtkIdType>(ke - 1));
             if (!solid)
                 continue;
-            double b[6];
-            solid->GetBounds(b);
-            const double cx = 0.5 * (b[0] + b[1]);
-            const double cy = 0.5 * (b[2] + b[3]);
-            const double cz = 0.5 * (b[4] + b[5]);
-            const double dx = xyz[0] - cx;
-            const double dy = xyz[1] - cy;
-            const double dz = xyz[2] - cz;
-            const double d2 = dx * dx + dy * dy + dz * dz;
-            if (d2 < bestDist2)
+            std::array<double, 3> closestPt{0.0, 0.0, 0.0};
+            std::array<double, 3> pcoords{0.0, 0.0, 0.0};
+            int subId = 0;
+            double dist2 = 0.0;
+            const vtkIdType wn = (solid->GetNumberOfPoints() > 0) ? solid->GetNumberOfPoints() : 1;
+            std::vector<double> weights(static_cast<size_t>(wn), 0.0);
+            const int evalOk = solid->EvaluatePosition(const_cast<double*>(xyz), closestPt.data(), subId,
+                                                       pcoords.data(), dist2, weights.data());
+            constexpr double kInsideTol2 = 1.0e-14;
+            if (evalOk == 1 || dist2 <= kInsideTol2)
+                inside.push_back(ke);
+        }
+        return inside;
+    };
+
+    auto pickRelatedSolid = [&](vtkIdType pid, const double xyzSelf[3], const double xyzOther[3]) -> int
+    {
+        auto distanceToCell = [&](int ke, const double xyz[3]) -> double
+        {
+            vtkCell* solid = grid->GetCell(static_cast<vtkIdType>(ke - 1));
+            if (!solid)
+                return std::numeric_limits<double>::max();
+            std::array<double, 3> closestPt{0.0, 0.0, 0.0};
+            std::array<double, 3> pcoords{0.0, 0.0, 0.0};
+            int subId = 0;
+            double dist2 = std::numeric_limits<double>::max();
+            const vtkIdType wn = (solid->GetNumberOfPoints() > 0) ? solid->GetNumberOfPoints() : 1;
+            std::vector<double> weights(static_cast<size_t>(wn), 0.0);
+            solid->EvaluatePosition(const_cast<double*>(xyz), closestPt.data(), subId, pcoords.data(), dist2,
+                                    weights.data());
+            return dist2;
+        };
+
+        QVector<int> candidates;
+        QVector<int> related;
+        if (pid >= 0 && pid < nPts)
+            related = pointToSolidElems[static_cast<int>(pid)];
+        candidates = related;
+        if (candidates.isEmpty())
+        {
+            if (solidLocator && solidGrid->GetNumberOfCells() > 0)
             {
-                bestDist2 = d2;
+                const vtkIdType localCell = solidLocator->FindCell(const_cast<double*>(xyzSelf));
+                if (localCell >= 0 && localCell < solidLocalToGlobal.size())
+                    return solidLocalToGlobal[static_cast<int>(localCell)];
+            }
+            return 0;
+        }
+        if (candidates.isEmpty())
+            return 0;
+
+        QVector<int> selfInside = findContainingSolid(candidates, xyzSelf);
+        if (selfInside.isEmpty() && !related.isEmpty())
+            selfInside = related;
+        if (selfInside.isEmpty())
+            return 0;
+        if (selfInside.size() == 1)
+            return selfInside.front();
+
+        double bestDist2 = std::numeric_limits<double>::max();
+        int bestKe = selfInside.front();
+        for (int ke : selfInside)
+        {
+            const double dist2 = distanceToCell(ke, xyzOther);
+            if (dist2 < bestDist2)
+            {
+                bestDist2 = dist2;
                 bestKe = ke;
             }
         }
@@ -286,7 +352,7 @@ bool SeepageWidget::exportInouseDatFile() const
         solid->EvaluatePosition(const_cast<double*>(xyz), closestPt.data(), subId, pcoords.data(), dist2,
                                 weights.data());
         for (int d = 0; d < ndim && d < 3; ++d)
-            rst[d] = pcoords[d];
+            rst[d] = 2.0 * pcoords[d] - 1.0;
     };
 
     for (vtkIdType cid = 0; cid < nCells; ++cid)
@@ -307,8 +373,6 @@ bool SeepageWidget::exportInouseDatFile() const
         const auto& rel1 = pointToSolidElems[static_cast<int>(p1)];
         const bool s0 = rel0.isEmpty();
         const bool s1 = rel1.isEmpty();
-        if (!s0 && !s1)
-            continue;
 
         double xyz0[3] = {0.0, 0.0, 0.0};
         double xyz1[3] = {0.0, 0.0, 0.0};
@@ -317,8 +381,8 @@ bool SeepageWidget::exportInouseDatFile() const
 
         BarRow row;
         row.ke = static_cast<int>(cid + 1);
-        row.ke1 = pickRelatedSolid(p0, xyz0);
-        row.ke2 = pickRelatedSolid(p1, xyz1);
+        row.ke1 = pickRelatedSolid(p0, xyz0, xyz1);
+        row.ke2 = pickRelatedSolid(p1, xyz1, xyz0);
         if (!s0 && !s1)
             row.lx = 1;
         else if (s0 && !s1)
