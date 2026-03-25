@@ -16,6 +16,7 @@
 #include <QPushButton>
 #include <QSpinBox>
 #include <QVBoxLayout>
+#include <algorithm>
 
 namespace
 {
@@ -33,6 +34,35 @@ QString stepExportPath()
 {
     const QString appDir = QCoreApplication::applicationDirPath();
     return appDir + "/data/ExportedModel.step";
+}
+
+std::vector<int> boundaryEntityTags(int dim, int tag, int boundaryDim)
+{
+    std::vector<int> ret;
+    std::vector<std::pair<int, int>> bnd;
+    gmsh::model::getBoundary({{dim, tag}}, bnd, false, false, false);
+    for (const auto& dt : bnd)
+    {
+        if (dt.first == boundaryDim)
+            ret.push_back(dt.second);
+    }
+    std::sort(ret.begin(), ret.end());
+    ret.erase(std::unique(ret.begin(), ret.end()), ret.end());
+    return ret;
+}
+
+bool canUseMappedSurface(int surfaceTag)
+{
+    const auto curves = boundaryEntityTags(2, surfaceTag, 1);
+    // Gmsh transfinite surface稳定工作在 3/4 边界曲线情形
+    return curves.size() == 3 || curves.size() == 4;
+}
+
+bool canUseSweepVolume(int volumeTag)
+{
+    const auto faces = boundaryEntityTags(3, volumeTag, 2);
+    // Gmsh transfinite volume 通常要求 5/6 面拓扑（楔体/六面体逻辑）
+    return faces.size() == 5 || faces.size() == 6;
 }
 
 } // namespace
@@ -164,16 +194,38 @@ bool MeshSweepMeshingWidget::runMapped(const QString& stepPath, QString* errMsg)
         for (const auto& c : curves)
             gmsh::model::mesh::setTransfiniteCurve(c.second, divs, "Progression", bias);
 
+        int mappedCount = 0;
+        int skippedCount = 0;
         for (const auto& s : faces)
         {
-            gmsh::model::mesh::setTransfiniteSurface(s.second);
-            if (m_recombineFaces->isChecked())
-                gmsh::model::mesh::setRecombine(2, s.second);
+            if (!canUseMappedSurface(s.second))
+            {
+                ++skippedCount;
+                continue;
+            }
+            try
+            {
+                gmsh::model::mesh::setTransfiniteSurface(s.second);
+                if (m_recombineFaces->isChecked())
+                    gmsh::model::mesh::setRecombine(2, s.second);
+                ++mappedCount;
+            }
+            catch (...)
+            {
+                ++skippedCount;
+            }
+        }
+
+        if (mappedCount == 0)
+        {
+            if (errMsg)
+                *errMsg = "没有可映射的面（需要 3/4 边拓扑）。请先在几何里分块后再试。";
+            return false;
         }
 
         gmsh::option::setNumber("Mesh.RecombineAll", m_recombineFaces->isChecked() ? 1 : 0);
         gmsh::model::mesh::generate(2);
-        appendLog("映射剖分生成完成（2D）。");
+        appendLog(QString("映射剖分生成完成（2D）：成功 %1，跳过 %2").arg(mappedCount).arg(skippedCount));
         return true;
     }
     catch (const std::exception& e)
@@ -204,25 +256,64 @@ bool MeshSweepMeshingWidget::runSweep(const QString& stepPath, QString* errMsg)
         for (const auto& c : curves)
             gmsh::model::mesh::setTransfiniteCurve(c.second, divs, "Progression", bias);
 
+        int mappedFaceCount = 0;
+        int skippedFaceCount = 0;
         for (const auto& s : faces)
         {
-            gmsh::model::mesh::setTransfiniteSurface(s.second);
-            if (m_recombineFaces->isChecked())
-                gmsh::model::mesh::setRecombine(2, s.second);
+            if (!canUseMappedSurface(s.second))
+            {
+                ++skippedFaceCount;
+                continue;
+            }
+            try
+            {
+                gmsh::model::mesh::setTransfiniteSurface(s.second);
+                if (m_recombineFaces->isChecked())
+                    gmsh::model::mesh::setRecombine(2, s.second);
+                ++mappedFaceCount;
+            }
+            catch (...)
+            {
+                ++skippedFaceCount;
+            }
         }
 
+        int sweepVolumeCount = 0;
+        int skippedVolumeCount = 0;
         for (const auto& v : volumes)
         {
-            gmsh::model::mesh::setTransfiniteVolume(v.second);
-            if (m_recombineVolumes->isChecked())
-                gmsh::model::mesh::setRecombine(3, v.second);
+            if (!canUseSweepVolume(v.second))
+            {
+                ++skippedVolumeCount;
+                continue;
+            }
+            try
+            {
+                gmsh::model::mesh::setTransfiniteVolume(v.second);
+                ++sweepVolumeCount;
+            }
+            catch (...)
+            {
+                ++skippedVolumeCount;
+            }
+        }
+
+        if (sweepVolumeCount == 0)
+        {
+            if (errMsg)
+                *errMsg = "没有可扫掠的体（需要 5/6 面拓扑且源/目标面可对应）。请先分块。";
+            return false;
         }
 
         gmsh::option::setNumber("Mesh.RecombineAll", m_recombineFaces->isChecked() ? 1 : 0);
         gmsh::option::setNumber("Mesh.Recombine3DAll", m_recombineVolumes->isChecked() ? 1 : 0);
 
         gmsh::model::mesh::generate(3);
-        appendLog("扫掠剖分生成完成（3D）。");
+        appendLog(QString("扫掠剖分生成完成（3D）：体成功 %1，体跳过 %2，面映射 %3，面跳过 %4")
+                      .arg(sweepVolumeCount)
+                      .arg(skippedVolumeCount)
+                      .arg(mappedFaceCount)
+                      .arg(skippedFaceCount));
         return true;
     }
     catch (const std::exception& e)
