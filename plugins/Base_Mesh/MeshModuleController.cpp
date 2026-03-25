@@ -7,6 +7,7 @@
 #include <MeshGlobalMeshingWidget.h>
 #include <MeshGroupingWidget.h>
 #include <MeshSingleMeshingWidget.h>
+#include <MeshSweepMeshingWidget.h>
 #include <MeshVolumeControlWidget.h>
 #include <PickManager.h>
 #include <ProjectNode.h>
@@ -70,7 +71,6 @@ ProjectNode* findDirectChildByKind(ProjectNode* parent, const QString& kind)
 // #include "MeshGlobalMeshingWidget.h"
 // #include "MeshSingleMeshingWidget.h"
 // #include "MeshMappedMeshingWidget.h"
-// #include "MeshSweepMeshingWidget.h"
 // #include "MeshVolumeControlWidget.h"
 // #include "MeshFaceControlWidget.h"
 // #include "MeshEdgeControlWidget.h"
@@ -650,14 +650,26 @@ void MeshModuleController::onMeshSingle()
 
 void MeshModuleController::onMeshMapped()
 {
-    // auto* w = new MeshMappedMeshingWidget();
-    QWidget* w = new QWidget();
+    auto* w = new MeshSweepMeshingWidget(MeshSweepMeshingWidget::WorkMode::Mapped2D);
+    auto* node =
+        new ProjectNode("映射剖分", QUuid::createUuid().toString(), static_cast<BasePage*>(w));
+    node->setData(0, ProjectNode::RoleModule, "Mesh");
+    node->setData(0, ProjectNode::RoleKind, "MappedMeshing");
+    m_gridNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(node);
 }
 
 void MeshModuleController::onMeshSweep()
 {
-    // auto* w = new MeshSweepMeshingWidget();
-    QWidget* w = new QWidget();
+    auto* w = new MeshSweepMeshingWidget(MeshSweepMeshingWidget::WorkMode::Sweep3D);
+    auto* node =
+        new ProjectNode("扫掠剖分", QUuid::createUuid().toString(), static_cast<BasePage*>(w));
+    node->setData(0, ProjectNode::RoleModule, "Mesh");
+    node->setData(0, ProjectNode::RoleKind, "SweepMeshing");
+    m_gridNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(node);
 }
 
 void MeshModuleController::onCtrlVolume()
