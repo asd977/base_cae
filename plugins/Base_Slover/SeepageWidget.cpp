@@ -15,6 +15,7 @@
 #include <vtkIdList.h>
 #include <vtkPoints.h>
 #include <vtkSmartPointer.h>
+#include <vtkStaticCellLocator.h>
 #include <vtkUnstructuredGrid.h>
 
 #include <algorithm>
@@ -212,6 +213,25 @@ bool SeepageWidget::exportInouseDatFile() const
         }
     }
 
+    vtkSmartPointer<vtkUnstructuredGrid> solidGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    solidGrid->SetPoints(grid->GetPoints());
+    QVector<int> solidLocalToGlobal;
+    solidLocalToGlobal.reserve(solidCellIds.size());
+    for (int ke : std::as_const(solidCellIds))
+    {
+        vtkCell* solid = grid->GetCell(static_cast<vtkIdType>(ke - 1));
+        if (!solid || !solid->GetPointIds())
+            continue;
+        solidGrid->InsertNextCell(solid->GetCellType(), solid->GetPointIds());
+        solidLocalToGlobal.push_back(ke);
+    }
+    auto solidLocator = vtkSmartPointer<vtkStaticCellLocator>::New();
+    if (solidGrid->GetNumberOfCells() > 0)
+    {
+        solidLocator->SetDataSet(solidGrid);
+        solidLocator->BuildLocator();
+    }
+
     QVector<int> noUseNodes;
     noUseNodes.reserve(static_cast<int>(nPts / 10 + 1));
     for (vtkIdType pid = 0; pid < nPts; ++pid)
@@ -280,7 +300,15 @@ bool SeepageWidget::exportInouseDatFile() const
             related = pointToSolidElems[static_cast<int>(pid)];
         candidates = related;
         if (candidates.isEmpty())
-            candidates = solidCellIds;
+        {
+            if (solidLocator && solidGrid->GetNumberOfCells() > 0)
+            {
+                const vtkIdType localCell = solidLocator->FindCell(const_cast<double*>(xyzSelf));
+                if (localCell >= 0 && localCell < solidLocalToGlobal.size())
+                    return solidLocalToGlobal[static_cast<int>(localCell)];
+            }
+            return 0;
+        }
         if (candidates.isEmpty())
             return 0;
 
