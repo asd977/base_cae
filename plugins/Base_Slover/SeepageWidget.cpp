@@ -239,7 +239,8 @@ bool SeepageWidget::exportInouseDatFile() const
             std::vector<double> weights(static_cast<size_t>(wn), 0.0);
             const int evalOk = solid->EvaluatePosition(const_cast<double*>(xyz), closestPt.data(), subId,
                                                        pcoords.data(), dist2, weights.data());
-            if (evalOk == 1)
+            constexpr double kInsideTol2 = 1.0e-20;
+            if (evalOk == 1 || dist2 <= kInsideTol2)
                 inside.push_back(ke);
         }
         return inside;
@@ -288,7 +289,7 @@ bool SeepageWidget::exportInouseDatFile() const
             return selfInside.front();
         if (!selfInside.isEmpty())
             return pickByDistance(selfInside, xyzOther);
-        return pickByDistance(candidates, xyzSelf);
+        return 0;
     };
 
     auto evaluateRst = [&](int ke, const double xyz[3], QVector<double>& rst)
