@@ -21,6 +21,7 @@
 #include <QFileInfo>
 #include <QMap>
 #include <QObject>
+#include <QSet>
 #include <QRegularExpression>
 #include <QTextStream>
 #include <QVector3D>
@@ -1965,6 +1966,31 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
             ok = tryParse(false, e);
         if (!ok)
             continue;
+
+        // 兼容退化四边形面片：
+        // 一些网格会把三角形面写成 KETYPE=3(quad4)，但4个节点里有重复点。
+        // 例如: n1 n2 n3 n3，这里应按三角形处理。
+        if (e.ketype == 3)
+        {
+            QVector<int> uniq;
+            uniq.reserve(4);
+            QSet<int> seen;
+            for (int i = 0; i < e.nodeIds.size(); ++i)
+            {
+                const int nid = e.nodeIds[i];
+                if (nid == 0 || seen.contains(nid))
+                    continue;
+                seen.insert(nid);
+                uniq.push_back(nid);
+            }
+            if (uniq.size() == 3)
+            {
+                e.ketype = 31; // tri3
+                e.nodeIds.fill(0);
+                for (int i = 0; i < 3; ++i)
+                    e.nodeIds[i] = uniq[i];
+            }
+        }
 
         auto pieces = proxyPieces(e.ketype);
         if (pieces.isEmpty())
