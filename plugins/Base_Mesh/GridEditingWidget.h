@@ -36,6 +36,7 @@ class vtkPolyData;
 class vtkPolyDataMapper2D;
 class vtkCoordinate;
 class vtkDataArray;
+class vtkDataSet;
 
 class GridEditingWidget : public BasePage
 {
@@ -145,6 +146,7 @@ class GridEditingWidget : public BasePage
     void showElemLabelForElem(int elemId);
 
     void beginNodeDragByPointId(long long viewPointId);
+    void beginNodeDragByNodeId(int nodeId);
     void beginLabelBoxSelection(LabelSelectionMode mode);
     void showSurfaceLabelsInRect(const QRect& rect, LabelSelectionMode mode);
 
@@ -174,6 +176,7 @@ class GridEditingWidget : public BasePage
     // ============ 彻底剔除 IiinGridModel：只保留 VTK 网格 ============
     vtkSmartPointer<vtkUnstructuredGrid> m_fullGrid; // 权威可编辑数据
     vtkSmartPointer<vtkUnstructuredGrid> m_viewGrid; // 过滤后的显示数据（无过滤时 = fullGrid）
+    vtkSmartPointer<vtkPolyData> m_viewSurface;      // 仅外表面渲染/拾取数据
 
     QString m_sourceName; // 保存/溯源用
     bool m_dirty = false;
@@ -195,6 +198,7 @@ class GridEditingWidget : public BasePage
     // maps
     QHash<int, vtkIdType> m_fullNodeIdToVtkId;
     QHash<int, vtkIdType> m_viewNodeIdToVtkId;
+    QHash<int, vtkIdType> m_viewSurfaceNodeIdToVtkId;
     QHash<int, vtkIdType> m_fullElemIdToCellId;
 
     // vtk cached (view)
