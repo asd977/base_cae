@@ -754,9 +754,9 @@ bool MaterialManager::generateCaculateFile()
 
     // ===== 3) 输出文件 =====
     QDir workDir(m_workPath);
-    if (!workDir.exists("input"))
-        workDir.mkpath("input");
-    const QString filePath = workDir.filePath(QString("input/Imat.dat"));
+    if (!workDir.exists("PREP"))
+        workDir.mkpath("PREP");
+    const QString filePath = workDir.filePath(QString("PREP/IMAT.DAT"));
 
     QFile file(filePath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
@@ -1596,6 +1596,28 @@ bool MaterialManager::generateCaculateFile()
     }
 
     file.close();
+
+    // 导入流程会先在项目根目录生成网格快照，这里同步复制到 PREP/IIIN.DAT 便于测试导入链路。
+    const QString snapshotPath =
+        QDir(m_workPath).filePath(QString::fromLatin1(PublicConstants::kMeshSnapshotFileName));
+    const QString iiinPath = workDir.filePath(QString("PREP/IIIN.DAT"));
+    if (QFile::exists(snapshotPath))
+    {
+        if (QFile::exists(iiinPath))
+        {
+            QFile::remove(iiinPath);
+        }
+        if (!QFile::copy(snapshotPath, iiinPath))
+        {
+            qWarning() << "MaterialManager: 复制 IIIN.DAT 失败，source=" << snapshotPath
+                       << "target=" << iiinPath;
+        }
+    }
+    else
+    {
+        qWarning() << "MaterialManager: 未找到网格快照，跳过 IIIN.DAT 复制，source=" << snapshotPath;
+    }
+
     return true;
 }
 
