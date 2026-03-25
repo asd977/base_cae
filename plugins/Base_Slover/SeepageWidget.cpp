@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <array>
+#include <limits>
 #include <vector>
 
 #include "ui_SeepageWidget.h"
@@ -254,29 +255,34 @@ bool SeepageWidget::exportInouseDatFile() const
         if (candidates.isEmpty())
             return 0;
 
-        const double dx = xyzOther[0] - xyzSelf[0];
-        const double dy = xyzOther[1] - xyzSelf[1];
-        const double dz = xyzOther[2] - xyzSelf[2];
-        const double len2 = dx * dx + dy * dy + dz * dz;
-        if (len2 > 0.0)
-        {
-            const std::array<double, 3> probeTs{1.0e-3, 1.0e-2, 5.0e-2};
-            for (double t : probeTs)
-            {
-                double probe[3] = {xyzSelf[0] + dx * t, xyzSelf[1] + dy * t, xyzSelf[2] + dz * t};
-                const QVector<int> probeInside = findContainingSolid(candidates, probe);
-                if (probeInside.size() == 1)
-                    return probeInside.front();
-                if (!probeInside.isEmpty())
-                    candidates = probeInside;
-            }
-        }
-
         const QVector<int> selfInside = findContainingSolid(candidates, xyzSelf);
         if (selfInside.size() == 1)
             return selfInside.front();
         if (!selfInside.isEmpty())
-            return selfInside.back();
+        {
+            double bestDist2 = std::numeric_limits<double>::max();
+            int bestKe = selfInside.front();
+            for (int ke : selfInside)
+            {
+                vtkCell* solid = grid->GetCell(static_cast<vtkIdType>(ke - 1));
+                if (!solid)
+                    continue;
+                std::array<double, 3> closestPt{0.0, 0.0, 0.0};
+                std::array<double, 3> pcoords{0.0, 0.0, 0.0};
+                int subId = 0;
+                double dist2 = 0.0;
+                const vtkIdType wn = (solid->GetNumberOfPoints() > 0) ? solid->GetNumberOfPoints() : 1;
+                std::vector<double> weights(static_cast<size_t>(wn), 0.0);
+                solid->EvaluatePosition(const_cast<double*>(xyzOther), closestPt.data(), subId, pcoords.data(),
+                                        dist2, weights.data());
+                if (dist2 < bestDist2)
+                {
+                    bestDist2 = dist2;
+                    bestKe = ke;
+                }
+            }
+            return bestKe;
+        }
         return 0;
     };
 
