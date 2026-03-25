@@ -19,7 +19,6 @@
 
 #include <algorithm>
 #include <array>
-#include <limits>
 #include <vector>
 
 #include "ui_SeepageWidget.h"
@@ -222,20 +221,11 @@ bool SeepageWidget::exportInouseDatFile() const
     QVector<BarRow> barRows;
     QVector<int> suspendNodeIds;
 
-    auto pickRelatedSolid = [&](vtkIdType pid, const double xyz[3]) -> int
+    auto findContainingSolid = [&](const QVector<int>& candidates, const double xyz[3]) -> QVector<int>
     {
-        if (pid >= 0 && pid < nPts)
-        {
-            const auto& related = pointToSolidElems[static_cast<int>(pid)];
-            if (!related.isEmpty())
-                return related.front();
-        }
-        if (solidCellIds.isEmpty())
-            return 0;
-
-        double bestDist2 = std::numeric_limits<double>::max();
-        int bestKe = 0;
-        for (int ke : solidCellIds)
+        QVector<int> inside;
+        inside.reserve(candidates.size());
+        for (int ke : candidates)
         {
             vtkCell* solid = grid->GetCell(static_cast<vtkIdType>(ke - 1));
             if (!solid)
@@ -249,14 +239,41 @@ bool SeepageWidget::exportInouseDatFile() const
             const int evalOk = solid->EvaluatePosition(const_cast<double*>(xyz), closestPt.data(), subId,
                                                        pcoords.data(), dist2, weights.data());
             if (evalOk == 1)
-                return ke;
-            if (dist2 < bestDist2)
-            {
-                bestDist2 = dist2;
-                bestKe = ke;
-            }
+                inside.push_back(ke);
         }
-        return bestKe;
+        return inside;
+    };
+
+    auto pickRelatedSolid = [&](vtkIdType pid, const double xyzSelf[3], const double xyzOther[3]) -> int
+    {
+        QVector<int> candidates;
+        if (pid >= 0 && pid < nPts)
+            candidates = pointToSolidElems[static_cast<int>(pid)];
+        if (candidates.isEmpty())
+            candidates = solidCellIds;
+        if (candidates.isEmpty())
+            return 0;
+
+        double probe[3] = {xyzSelf[0], xyzSelf[1], xyzSelf[2]};
+        const double dx = xyzOther[0] - xyzSelf[0];
+        const double dy = xyzOther[1] - xyzSelf[1];
+        const double dz = xyzOther[2] - xyzSelf[2];
+        const double len2 = dx * dx + dy * dy + dz * dz;
+        if (len2 > 0.0)
+        {
+            const double t = 1.0e-6;
+            probe[0] += dx * t;
+            probe[1] += dy * t;
+            probe[2] += dz * t;
+            const QVector<int> probeInside = findContainingSolid(candidates, probe);
+            if (!probeInside.isEmpty())
+                return probeInside.front();
+        }
+
+        const QVector<int> selfInside = findContainingSolid(candidates, xyzSelf);
+        if (!selfInside.isEmpty())
+            return selfInside.front();
+        return 0;
     };
 
     auto evaluateRst = [&](int ke, const double xyz[3], QVector<double>& rst)
@@ -306,8 +323,8 @@ bool SeepageWidget::exportInouseDatFile() const
 
         BarRow row;
         row.ke = static_cast<int>(cid + 1);
-        row.ke1 = pickRelatedSolid(p0, xyz0);
-        row.ke2 = pickRelatedSolid(p1, xyz1);
+        row.ke1 = pickRelatedSolid(p0, xyz0, xyz1);
+        row.ke2 = pickRelatedSolid(p1, xyz1, xyz0);
         if (!s0 && !s1)
             row.lx = 1;
         else if (s0 && !s1)
