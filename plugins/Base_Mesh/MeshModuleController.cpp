@@ -850,7 +850,7 @@ void MeshModuleController::displayCurrentGrid()
 
 vtkSmartPointer<vtkUnstructuredGrid> MeshModuleController::getVtkUnstructuredGrid()
 {
-    return m_previewSurfaceGrid;
+    return m_importedGrid;
 }
 
 void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,

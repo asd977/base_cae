@@ -27,7 +27,9 @@
 #include <vtkCommand.h>
 #include <vtkCoordinate.h>
 #include <vtkDataArray.h>
+#include <vtkDataSet.h>
 #include <vtkDataSetMapper.h>
+#include <vtkDataSetSurfaceFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
 #include <vtkIdTypeArray.h>
@@ -251,6 +253,7 @@ void GridEditingWidget::clearData()
 {
     m_fullGrid = nullptr;
     m_viewGrid = nullptr;
+    m_viewSurface = nullptr;
     m_points = nullptr;
 
     m_sourceName.clear();
@@ -269,6 +272,7 @@ void GridEditingWidget::clearData()
 
     m_fullNodeIdToVtkId.clear();
     m_viewNodeIdToVtkId.clear();
+    m_viewSurfaceNodeIdToVtkId.clear();
     m_fullElemIdToCellId.clear();
 
     m_labelSelectionMode = LabelSelectionMode::None;
@@ -518,8 +522,6 @@ void GridEditingWidget::buildOrUpdateViewGrid()
     if (!hasFilter)
     {
         m_viewGrid = m_fullGrid;
-        m_meshMapper->SetInputData(m_viewGrid);
-        m_points = m_viewGrid->GetPoints();
         rebuildViewMaps();
     }
     else
@@ -539,9 +541,32 @@ void GridEditingWidget::buildOrUpdateViewGrid()
         m_viewGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
         m_viewGrid->ShallowCopy(ex->GetOutput());
 
-        m_meshMapper->SetInputData(m_viewGrid);
-        m_points = m_viewGrid->GetPoints();
         rebuildViewMaps();
+    }
+
+    auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+    surf->SetInputData(m_viewGrid);
+    surf->PassThroughPointIdsOn();
+    surf->PassThroughCellIdsOn();
+    surf->Update();
+    m_viewSurface = vtkSmartPointer<vtkPolyData>::New();
+    m_viewSurface->ShallowCopy(surf->GetOutput());
+
+    m_meshMapper->SetInputData(m_viewSurface);
+    m_points = m_viewSurface ? m_viewSurface->GetPoints() : nullptr;
+
+    m_viewSurfaceNodeIdToVtkId.clear();
+    if (m_viewSurface)
+    {
+        auto* nodeIdArr = m_viewSurface->GetPointData()
+                              ? m_viewSurface->GetPointData()->GetArray("NodeId")
+                              : nullptr;
+        for (vtkIdType p = 0; p < m_viewSurface->GetNumberOfPoints(); ++p)
+        {
+            const int nid = tuple1i(nodeIdArr, p, -1);
+            if (nid >= 0)
+                m_viewSurfaceNodeIdToVtkId.insert(nid, p);
+        }
     }
 
     ensureLabelActorsCreated();
@@ -1259,11 +1284,14 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
 
 void GridEditingWidget::onPicked(long long pickedPointId, long long pickedCellId)
 {
-    if (!m_viewGrid || !ui)
+    if (!ui)
         return;
-
-    auto* pointData = m_viewGrid->GetPointData();
-    auto* cellData = m_viewGrid->GetCellData();
+    vtkDataSet* pickDs = m_viewSurface ? vtkDataSet::SafeDownCast(m_viewSurface.GetPointer())
+                                       : vtkDataSet::SafeDownCast(m_viewGrid.GetPointer());
+    if (!pickDs)
+        return;
+    auto* pointData = pickDs->GetPointData();
+    auto* cellData = pickDs->GetCellData();
 
     if (pickedPointId >= 0 && pointData)
     {
@@ -1302,7 +1330,13 @@ void GridEditingWidget::beginNodeDragByPointId(long long viewPointId)
     int nodeId = tuple1i(nodeIdArr, static_cast<vtkIdType>(viewPointId), -1);
     if (nodeId < 0)
         return;
+    beginNodeDragByNodeId(nodeId);
+}
 
+void GridEditingWidget::beginNodeDragByNodeId(int nodeId)
+{
+    if (!m_fullGrid || nodeId < 0)
+        return;
     auto itFull = m_fullNodeIdToVtkId.find(nodeId);
     if (itFull == m_fullNodeIdToVtkId.end())
         return;
@@ -1311,7 +1345,7 @@ void GridEditingWidget::beginNodeDragByPointId(long long viewPointId)
     m_fullGrid->GetPoints()->GetPoint(itFull.value(), p0);
 
     m_isDragging = true;
-    m_dragViewPointId = viewPointId;
+    m_dragViewPointId = -1;
     m_dragNodeId = nodeId;
 
     m_dragStartX = p0[0];
@@ -1340,11 +1374,13 @@ void GridEditingWidget::beginNodeDragByPointId(long long viewPointId)
 
 void GridEditingWidget::beginNodeDragFromCell(long long cellId, int displayX, int displayY)
 {
-    if (!m_viewGrid || !m_points || !m_renderer || cellId < 0)
+    vtkDataSet* pickDs = m_viewSurface ? vtkDataSet::SafeDownCast(m_viewSurface.GetPointer())
+                                       : vtkDataSet::SafeDownCast(m_viewGrid.GetPointer());
+    if (!pickDs || !m_points || !m_renderer || cellId < 0)
         return;
 
     vtkIdType cid = static_cast<vtkIdType>(cellId);
-    vtkCell* cell = m_viewGrid->GetCell(cid);
+    vtkCell* cell = pickDs->GetCell(cid);
     if (!cell)
         return;
 
@@ -1382,10 +1418,12 @@ void GridEditingWidget::beginNodeDragFromCell(long long cellId, int displayX, in
         }
     }
 
-    if (bestPid >= 0)
-    {
-        beginNodeDragByPointId(static_cast<long long>(bestPid));
-    }
+    if (bestPid < 0)
+        return;
+
+    auto* nodeIdArr = pickDs->GetPointData() ? pickDs->GetPointData()->GetArray("NodeId") : nullptr;
+    const int nodeId = tuple1i(nodeIdArr, bestPid, -1);
+    beginNodeDragByNodeId(nodeId);
 }
 
 void GridEditingWidget::dragNodeToWorldPosition(const double worldPos[3])
@@ -1418,6 +1456,18 @@ void GridEditingWidget::dragNodeToWorldPosition(const double worldPos[3])
                 viewPts->Modified();
                 m_viewGrid->Modified();
             }
+        }
+    }
+
+    if (m_viewSurface)
+    {
+        auto itSurface = m_viewSurfaceNodeIdToVtkId.find(m_dragNodeId);
+        if (itSurface != m_viewSurfaceNodeIdToVtkId.end() && m_viewSurface->GetPoints())
+        {
+            m_viewSurface->GetPoints()->SetPoint(itSurface.value(), worldPos[0], worldPos[1],
+                                                 worldPos[2]);
+            m_viewSurface->GetPoints()->Modified();
+            m_viewSurface->Modified();
         }
     }
 
@@ -1487,6 +1537,16 @@ void GridEditingWidget::moveNodeById(int nodeId, const double* newX, const doubl
             m_viewGrid->GetPoints()->SetPoint(itView.value(), p);
             m_viewGrid->GetPoints()->Modified();
             m_viewGrid->Modified();
+        }
+    }
+    if (m_viewSurface)
+    {
+        auto itSurface = m_viewSurfaceNodeIdToVtkId.find(nodeId);
+        if (itSurface != m_viewSurfaceNodeIdToVtkId.end() && m_viewSurface->GetPoints())
+        {
+            m_viewSurface->GetPoints()->SetPoint(itSurface.value(), p);
+            m_viewSurface->GetPoints()->Modified();
+            m_viewSurface->Modified();
         }
     }
 

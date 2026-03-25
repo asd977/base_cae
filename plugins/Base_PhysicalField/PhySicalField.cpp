@@ -10,6 +10,7 @@
 #include <PublicConstants.h>
 #include <PublicVariables.h>
 #include <ServiceRegistry.h>
+#include <services/MeshModuleControllerService.h>
 #include <services/ProjectManagerService.h>
 
 #include <QDir>
@@ -39,6 +40,8 @@
 #include <PublicConstants.h>
 #include <PublicVariables.h>
 #include <vtkIntArray.h>
+#include <vtkNew.h>
+#include <vtkIdList.h>
 #include <vtkPointData.h>
 #include <vtkUnstructuredGrid.h>
 
@@ -739,27 +742,34 @@ void PhysicalField::writeIIWL_Part3_BodyForce(QTextStream& os)
 void PhysicalField::generateIIIDFile()
 {
     PickManager::instance().updateStructure();
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
 
     vtkUnstructuredGrid* gSolid = PickManager::instance().solidGrid();
     vtkUnstructuredGrid* gLine = PickManager::instance().lineGrid();
+    vtkUnstructuredGrid* gAll = meshSvc ? meshSvc->getVtkUnstructuredGrid() : nullptr;
 
-    if (!gSolid && !gLine)
+    if (!gSolid && !gLine && !gAll)
     {
-        qWarning() << "generateIIIDFile: both solidGrid and lineGrid are null";
+        qWarning() << "generateIIIDFile: no available grid (solid/line/all are null)";
         return;
     }
 
-    vtkIntArray* idSolid = nullptr;
-    vtkIntArray* idLine = nullptr;
-
-    if (gSolid)
-        idSolid = vtkIntArray::SafeDownCast(gSolid->GetPointData()->GetArray("node_id"));
-    if (gLine)
-        idLine = vtkIntArray::SafeDownCast(gLine->GetPointData()->GetArray("node_id"));
-
-    if ((gSolid && !idSolid) || (gLine && !idLine))
+    auto findNodeIdArray = [](vtkUnstructuredGrid* g) -> vtkIntArray*
     {
-        qWarning() << "generateIIIDFile: node_id array missing on some grid";
+        if (!g || !g->GetPointData())
+            return nullptr;
+        if (auto* a = vtkIntArray::SafeDownCast(g->GetPointData()->GetArray("node_id")))
+            return a;
+        return vtkIntArray::SafeDownCast(g->GetPointData()->GetArray("NodeId"));
+    };
+
+    vtkIntArray* idSolid = findNodeIdArray(gSolid);
+    vtkIntArray* idLine = findNodeIdArray(gLine);
+    vtkIntArray* idAll = findNodeIdArray(gAll);
+
+    if ((gSolid && !idSolid) || (gLine && !idLine) || (gAll && !idAll))
+    {
+        qWarning() << "generateIIIDFile: node id array missing on some grid";
         return;
     }
 
@@ -768,10 +778,18 @@ void PhysicalField::generateIIIDFile()
     const bool is3D = (NDIM == 3);
     const int MADOF = is3D ? 3 : 2;
 
-    // 1) 收集所有 node_id（solid + line），去重并排序
+    // 1) 收集所有 node_id（all + solid + line），去重并排序
     QVector<int> allNodeIds;
-    allNodeIds.reserve((gSolid ? int(gSolid->GetNumberOfPoints()) : 0) +
+    allNodeIds.reserve((gAll ? int(gAll->GetNumberOfPoints()) : 0) +
+                       (gSolid ? int(gSolid->GetNumberOfPoints()) : 0) +
                        (gLine ? int(gLine->GetNumberOfPoints()) : 0));
+
+    if (gAll)
+    {
+        const int n = int(gAll->GetNumberOfPoints());
+        for (int i = 0; i < n; ++i)
+            allNodeIds.push_back(idAll->GetValue(i));
+    }
 
     if (gSolid)
     {
@@ -845,6 +863,27 @@ void PhysicalField::generateIIIDFile()
 
             qDebug() << uuid << " pickedLine(node_id) " << pickedLine;
             ApplyPickedNodeIdsToFlags(pickedLine, ux, uy, uz, rowOfNodeId, flags);
+        }
+    }
+
+    // 5.5) 孤立点（未被任何 cell 使用）强制输出全 0 约束
+    if (gAll && idAll)
+    {
+        vtkNew<vtkIdList> cellIds;
+        const vtkIdType nPts = gAll->GetNumberOfPoints();
+        for (vtkIdType pid = 0; pid < nPts; ++pid)
+        {
+            cellIds->Reset();
+            gAll->GetPointCells(pid, cellIds);
+            if (cellIds->GetNumberOfIds() > 0)
+                continue;
+
+            const int nodeId = idAll->GetValue(int(pid));
+            auto it = rowOfNodeId.find(nodeId);
+            if (it == rowOfNodeId.end())
+                continue;
+
+            flags[it.value()] = {0, 0, 0};
         }
     }
 
