@@ -27,6 +27,7 @@
 #include <vtkCommand.h>
 #include <vtkCoordinate.h>
 #include <vtkDataArray.h>
+#include <vtkDataSet.h>
 #include <vtkDataSetMapper.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
@@ -251,6 +252,7 @@ void GridEditingWidget::clearData()
 {
     m_fullGrid = nullptr;
     m_viewGrid = nullptr;
+    m_viewSurface = nullptr;
     m_points = nullptr;
 
     m_sourceName.clear();
@@ -269,6 +271,7 @@ void GridEditingWidget::clearData()
 
     m_fullNodeIdToVtkId.clear();
     m_viewNodeIdToVtkId.clear();
+    m_viewSurfaceNodeIdToVtkId.clear();
     m_fullElemIdToCellId.clear();
 
     m_labelSelectionMode = LabelSelectionMode::None;
@@ -458,6 +461,11 @@ bool GridEditingWidget::cellMatchesFilter(vtkIdType fullCellId) const
 {
     if (!m_fullGrid)
         return false;
+    vtkCell* cell = m_fullGrid->GetCell(fullCellId);
+    if (!cell)
+        return false;
+    if (cell->GetCellDimension() < 2)
+        return false;
     auto* cd = m_fullGrid->GetCellData();
     if (!cd)
         return true;
@@ -515,33 +523,70 @@ void GridEditingWidget::buildOrUpdateViewGrid()
     const char* prevArrayName = m_meshMapper->GetArrayName();
     vtkScalarsToColors* prevLookupTable = m_meshMapper->GetLookupTable();
 
-    if (!hasFilter)
-    {
-        m_viewGrid = m_fullGrid;
-        m_meshMapper->SetInputData(m_viewGrid);
-        m_points = m_viewGrid->GetPoints();
-        rebuildViewMaps();
-    }
-    else
     {
         auto ids = vtkSmartPointer<vtkIdList>::New();
+        auto lineIdsFallback = vtkSmartPointer<vtkIdList>::New();
 
         for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
         {
-            if (cellMatchesFilter(c))
-                ids->InsertNextId(c);
+            vtkCell* cell = m_fullGrid->GetCell(c);
+            if (!cell)
+                continue;
+
+            if (cell->GetCellDimension() >= 2)
+            {
+                if (!hasFilter || cellMatchesFilter(c))
+                    ids->InsertNextId(c);
+                continue;
+            }
+
+            // 兜底：当网格仅包含线单元时，允许显示线网格，避免视图为空。
+            auto* cd = m_fullGrid->GetCellData();
+            auto* aK = cd ? cd->GetArray("KETYPE") : nullptr;
+            auto* aM = cd ? cd->GetArray("MATYPE") : nullptr;
+            auto* aL = cd ? cd->GetArray("LAYER") : nullptr;
+            const int k = tuple1i(aK, c, 0);
+            const int m = tuple1i(aM, c, 0);
+            const int l = tuple1i(aL, c, 0);
+            const bool okK = m_filterKetypes.isEmpty() || m_filterKetypes.contains(k);
+            const bool okM = m_filterMatypes.isEmpty() || m_filterMatypes.contains(m);
+            const bool okL = m_filterLayers.isEmpty() || m_filterLayers.contains(l);
+            if (okK && okM && okL)
+                lineIdsFallback->InsertNextId(c);
         }
+
+        vtkIdList* targetIds = ids;
+        if (ids->GetNumberOfIds() == 0 && lineIdsFallback->GetNumberOfIds() > 0)
+            targetIds = lineIdsFallback;
 
         auto ex = vtkSmartPointer<vtkExtractCells>::New();
         ex->SetInputData(m_fullGrid);
-        ex->SetCellList(ids);
+        ex->SetCellList(targetIds);
         ex->Update();
         m_viewGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
         m_viewGrid->ShallowCopy(ex->GetOutput());
 
-        m_meshMapper->SetInputData(m_viewGrid);
-        m_points = m_viewGrid->GetPoints();
         rebuildViewMaps();
+    }
+
+    // 不在网格编辑页独立改写渲染输入：沿用 MeshModuleController 已经准备好的显示数据。
+    // 这里仅更新编辑逻辑所需的 m_viewGrid 与映射，不单独重建渲染管线。
+    m_viewSurface = nullptr;
+    m_viewSurfaceNodeIdToVtkId.clear();
+    vtkDataSet* pickDs = m_meshMapper ? m_meshMapper->GetInput() : nullptr;
+    m_points = pickDs ? pickDs->GetPoints() : (m_viewGrid ? m_viewGrid->GetPoints() : nullptr);
+    if (pickDs)
+    {
+        auto* nodeIdArr = pickDs->GetPointData() ? pickDs->GetPointData()->GetArray("NodeId")
+                         : nullptr;
+        if (!nodeIdArr && pickDs->GetPointData())
+            nodeIdArr = pickDs->GetPointData()->GetArray("node_id");
+        for (vtkIdType p = 0; p < pickDs->GetNumberOfPoints(); ++p)
+        {
+            const int nid = tuple1i(nodeIdArr, p, -1);
+            if (nid >= 0)
+                m_viewSurfaceNodeIdToVtkId.insert(nid, p);
+        }
     }
 
     ensureLabelActorsCreated();
@@ -1259,15 +1304,21 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
 
 void GridEditingWidget::onPicked(long long pickedPointId, long long pickedCellId)
 {
-    if (!m_viewGrid || !ui)
+    if (!ui)
         return;
-
-    auto* pointData = m_viewGrid->GetPointData();
-    auto* cellData = m_viewGrid->GetCellData();
+    vtkDataSet* pickDs = m_meshMapper ? m_meshMapper->GetInput() : nullptr;
+    if (!pickDs)
+        pickDs = vtkDataSet::SafeDownCast(m_viewGrid.GetPointer());
+    if (!pickDs)
+        return;
+    auto* pointData = pickDs->GetPointData();
+    auto* cellData = pickDs->GetCellData();
 
     if (pickedPointId >= 0 && pointData)
     {
         auto* nodeIdArr = vtkIntArray::SafeDownCast(pointData->GetArray("NodeId"));
+        if (!nodeIdArr)
+            nodeIdArr = vtkIntArray::SafeDownCast(pointData->GetArray("node_id"));
         if (nodeIdArr && pickedPointId < nodeIdArr->GetNumberOfTuples())
         {
             int nodeId = nodeIdArr->GetValue(static_cast<vtkIdType>(pickedPointId));
@@ -1302,7 +1353,13 @@ void GridEditingWidget::beginNodeDragByPointId(long long viewPointId)
     int nodeId = tuple1i(nodeIdArr, static_cast<vtkIdType>(viewPointId), -1);
     if (nodeId < 0)
         return;
+    beginNodeDragByNodeId(nodeId);
+}
 
+void GridEditingWidget::beginNodeDragByNodeId(int nodeId)
+{
+    if (!m_fullGrid || nodeId < 0)
+        return;
     auto itFull = m_fullNodeIdToVtkId.find(nodeId);
     if (itFull == m_fullNodeIdToVtkId.end())
         return;
@@ -1311,7 +1368,7 @@ void GridEditingWidget::beginNodeDragByPointId(long long viewPointId)
     m_fullGrid->GetPoints()->GetPoint(itFull.value(), p0);
 
     m_isDragging = true;
-    m_dragViewPointId = viewPointId;
+    m_dragViewPointId = -1;
     m_dragNodeId = nodeId;
 
     m_dragStartX = p0[0];
@@ -1340,11 +1397,14 @@ void GridEditingWidget::beginNodeDragByPointId(long long viewPointId)
 
 void GridEditingWidget::beginNodeDragFromCell(long long cellId, int displayX, int displayY)
 {
-    if (!m_viewGrid || !m_points || !m_renderer || cellId < 0)
+    vtkDataSet* pickDs = m_meshMapper ? m_meshMapper->GetInput() : nullptr;
+    if (!pickDs)
+        pickDs = vtkDataSet::SafeDownCast(m_viewGrid.GetPointer());
+    if (!pickDs || !m_points || !m_renderer || cellId < 0)
         return;
 
     vtkIdType cid = static_cast<vtkIdType>(cellId);
-    vtkCell* cell = m_viewGrid->GetCell(cid);
+    vtkCell* cell = pickDs->GetCell(cid);
     if (!cell)
         return;
 
@@ -1382,10 +1442,14 @@ void GridEditingWidget::beginNodeDragFromCell(long long cellId, int displayX, in
         }
     }
 
-    if (bestPid >= 0)
-    {
-        beginNodeDragByPointId(static_cast<long long>(bestPid));
-    }
+    if (bestPid < 0)
+        return;
+
+    auto* nodeIdArr = pickDs->GetPointData() ? pickDs->GetPointData()->GetArray("NodeId") : nullptr;
+    if (!nodeIdArr && pickDs->GetPointData())
+        nodeIdArr = pickDs->GetPointData()->GetArray("node_id");
+    const int nodeId = tuple1i(nodeIdArr, bestPid, -1);
+    beginNodeDragByNodeId(nodeId);
 }
 
 void GridEditingWidget::dragNodeToWorldPosition(const double worldPos[3])
@@ -1417,6 +1481,21 @@ void GridEditingWidget::dragNodeToWorldPosition(const double worldPos[3])
                 viewPts->SetPoint(itView.value(), worldPos[0], worldPos[1], worldPos[2]);
                 viewPts->Modified();
                 m_viewGrid->Modified();
+            }
+        }
+    }
+    if (m_meshMapper)
+    {
+        vtkDataSet* renderDs = m_meshMapper->GetInput();
+        if (renderDs && renderDs->GetPoints())
+        {
+            auto itRender = m_viewSurfaceNodeIdToVtkId.find(m_dragNodeId);
+            if (itRender != m_viewSurfaceNodeIdToVtkId.end())
+            {
+                renderDs->GetPoints()->SetPoint(itRender.value(), worldPos[0], worldPos[1],
+                                                worldPos[2]);
+                renderDs->GetPoints()->Modified();
+                renderDs->Modified();
             }
         }
     }
@@ -1489,7 +1568,20 @@ void GridEditingWidget::moveNodeById(int nodeId, const double* newX, const doubl
             m_viewGrid->Modified();
         }
     }
-
+    if (m_meshMapper)
+    {
+        vtkDataSet* renderDs = m_meshMapper->GetInput();
+        if (renderDs && renderDs->GetPoints())
+        {
+            auto itRender = m_viewSurfaceNodeIdToVtkId.find(nodeId);
+            if (itRender != m_viewSurfaceNodeIdToVtkId.end())
+            {
+                renderDs->GetPoints()->SetPoint(itRender.value(), p);
+                renderDs->GetPoints()->Modified();
+                renderDs->Modified();
+            }
+        }
+    }
     if (m_visualWidgetService)
         m_visualWidgetService->render();
 }
