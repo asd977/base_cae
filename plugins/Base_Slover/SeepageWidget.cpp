@@ -254,25 +254,29 @@ bool SeepageWidget::exportInouseDatFile() const
         if (candidates.isEmpty())
             return 0;
 
-        double probe[3] = {xyzSelf[0], xyzSelf[1], xyzSelf[2]};
         const double dx = xyzOther[0] - xyzSelf[0];
         const double dy = xyzOther[1] - xyzSelf[1];
         const double dz = xyzOther[2] - xyzSelf[2];
         const double len2 = dx * dx + dy * dy + dz * dz;
         if (len2 > 0.0)
         {
-            const double t = 1.0e-6;
-            probe[0] += dx * t;
-            probe[1] += dy * t;
-            probe[2] += dz * t;
-            const QVector<int> probeInside = findContainingSolid(candidates, probe);
-            if (!probeInside.isEmpty())
-                return probeInside.front();
+            const std::array<double, 3> probeTs{1.0e-3, 1.0e-2, 5.0e-2};
+            for (double t : probeTs)
+            {
+                double probe[3] = {xyzSelf[0] + dx * t, xyzSelf[1] + dy * t, xyzSelf[2] + dz * t};
+                const QVector<int> probeInside = findContainingSolid(candidates, probe);
+                if (probeInside.size() == 1)
+                    return probeInside.front();
+                if (!probeInside.isEmpty())
+                    candidates = probeInside;
+            }
         }
 
         const QVector<int> selfInside = findContainingSolid(candidates, xyzSelf);
-        if (!selfInside.isEmpty())
+        if (selfInside.size() == 1)
             return selfInside.front();
+        if (!selfInside.isEmpty())
+            return selfInside.back();
         return 0;
     };
 
