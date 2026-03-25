@@ -233,6 +233,8 @@ bool SeepageWidget::exportInouseDatFile() const
         if (solidCellIds.isEmpty())
             return 0;
 
+        int bestInsideKe = 0;
+        double bestInsideDist2 = std::numeric_limits<double>::max();
         double bestDist2 = std::numeric_limits<double>::max();
         int bestKe = 0;
         for (int ke : solidCellIds)
@@ -240,22 +242,26 @@ bool SeepageWidget::exportInouseDatFile() const
             vtkCell* solid = grid->GetCell(static_cast<vtkIdType>(ke - 1));
             if (!solid)
                 continue;
-            double b[6];
-            solid->GetBounds(b);
-            const double cx = 0.5 * (b[0] + b[1]);
-            const double cy = 0.5 * (b[2] + b[3]);
-            const double cz = 0.5 * (b[4] + b[5]);
-            const double dx = xyz[0] - cx;
-            const double dy = xyz[1] - cy;
-            const double dz = xyz[2] - cz;
-            const double d2 = dx * dx + dy * dy + dz * dz;
-            if (d2 < bestDist2)
+            std::array<double, 3> closestPt{0.0, 0.0, 0.0};
+            std::array<double, 3> pcoords{0.0, 0.0, 0.0};
+            int subId = 0;
+            double dist2 = 0.0;
+            const vtkIdType wn = (solid->GetNumberOfPoints() > 0) ? solid->GetNumberOfPoints() : 1;
+            std::vector<double> weights(static_cast<size_t>(wn), 0.0);
+            const int evalOk = solid->EvaluatePosition(const_cast<double*>(xyz), closestPt.data(), subId,
+                                                       pcoords.data(), dist2, weights.data());
+            if (evalOk == 1 && dist2 < bestInsideDist2)
             {
-                bestDist2 = d2;
+                bestInsideDist2 = dist2;
+                bestInsideKe = ke;
+            }
+            if (dist2 < bestDist2)
+            {
+                bestDist2 = dist2;
                 bestKe = ke;
             }
         }
-        return bestKe;
+        return (bestInsideKe > 0) ? bestInsideKe : bestKe;
     };
 
     auto evaluateRst = [&](int ke, const double xyz[3], QVector<double>& rst)
@@ -273,10 +279,8 @@ bool SeepageWidget::exportInouseDatFile() const
         double dist2 = 0.0;
         const vtkIdType wn = (solid->GetNumberOfPoints() > 0) ? solid->GetNumberOfPoints() : 1;
         std::vector<double> weights(static_cast<size_t>(wn), 0.0);
-        const int evalOk = solid->EvaluatePosition(const_cast<double*>(xyz), closestPt.data(), subId,
-                                                   pcoords.data(), dist2, weights.data());
-        if (evalOk != 1)
-            return;
+        solid->EvaluatePosition(const_cast<double*>(xyz), closestPt.data(), subId, pcoords.data(), dist2,
+                                weights.data());
         for (int d = 0; d < ndim && d < 3; ++d)
             rst[d] = 2.0 * pcoords[d] - 1.0;
     };
