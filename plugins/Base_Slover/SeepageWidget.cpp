@@ -18,6 +18,9 @@
 #include <vtkUnstructuredGrid.h>
 
 #include <algorithm>
+#include <array>
+#include <limits>
+#include <vector>
 
 #include "ui_SeepageWidget.h"
 
@@ -129,6 +132,17 @@ bool SeepageWidget::exportIseepDatFile() const
     os << "'HWDROP_UP.DAT'  'HWDROP_DW.DAT'   HWDROP_UP  HWDROP_DW\n";
 
     file.close();
+
+    const QString snapshotPath = wd.filePath(QString::fromLatin1(PublicConstants::kMeshSnapshotFileName));
+    const QString iiinPath = wd.filePath("PREP/IIIN.DAT");
+    if (QFile::exists(snapshotPath))
+    {
+        if (QFile::exists(iiinPath))
+            QFile::remove(iiinPath);
+        if (!QFile::copy(snapshotPath, iiinPath))
+            return false;
+    }
+
     return exportInouseDatFile() && exportMaMaskDatFile() && exportMaRockDatFile() &&
            exportKetraceDatFile() && exportJdtraceDatFile();
 }
@@ -168,6 +182,8 @@ bool SeepageWidget::exportInouseDatFile() const
     noUseElems.reserve(static_cast<int>(nCells / 10 + 1));
 
     QVector<QVector<int>> pointToSolidElems(static_cast<int>(nPts));
+    QVector<int> solidCellIds;
+    solidCellIds.reserve(static_cast<int>(nCells));
 
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
@@ -183,6 +199,8 @@ bool SeepageWidget::exportInouseDatFile() const
         }
 
         const bool isSolid = (cell->GetCellDimension() >= 3);
+        if (isSolid)
+            solidCellIds.push_back(static_cast<int>(cid + 1));
         for (vtkIdType i = 0; i < np; ++i)
         {
             const vtkIdType pid = ptIds->GetId(i);
@@ -214,6 +232,63 @@ bool SeepageWidget::exportInouseDatFile() const
     QVector<BarRow> barRows;
     QVector<int> suspendNodeIds;
 
+    auto pickRelatedSolid = [&](vtkIdType pid, const double xyz[3]) -> int
+    {
+        if (pid >= 0 && pid < nPts)
+        {
+            const auto& related = pointToSolidElems[static_cast<int>(pid)];
+            if (!related.isEmpty())
+                return related.front();
+        }
+        if (solidCellIds.isEmpty())
+            return 0;
+
+        double bestDist2 = std::numeric_limits<double>::max();
+        int bestKe = 0;
+        for (int ke : solidCellIds)
+        {
+            vtkCell* solid = grid->GetCell(static_cast<vtkIdType>(ke - 1));
+            if (!solid)
+                continue;
+            double b[6];
+            solid->GetBounds(b);
+            const double cx = 0.5 * (b[0] + b[1]);
+            const double cy = 0.5 * (b[2] + b[3]);
+            const double cz = 0.5 * (b[4] + b[5]);
+            const double dx = xyz[0] - cx;
+            const double dy = xyz[1] - cy;
+            const double dz = xyz[2] - cz;
+            const double d2 = dx * dx + dy * dy + dz * dz;
+            if (d2 < bestDist2)
+            {
+                bestDist2 = d2;
+                bestKe = ke;
+            }
+        }
+        return bestKe;
+    };
+
+    auto evaluateRst = [&](int ke, const double xyz[3], QVector<double>& rst)
+    {
+        rst.fill(0.0, ndim);
+        if (ke <= 0)
+            return;
+        vtkCell* solid = grid->GetCell(static_cast<vtkIdType>(ke - 1));
+        if (!solid)
+            return;
+
+        std::array<double, 3> closestPt{0.0, 0.0, 0.0};
+        std::array<double, 3> pcoords{0.0, 0.0, 0.0};
+        int subId = 0;
+        double dist2 = 0.0;
+        const vtkIdType wn = (solid->GetNumberOfPoints() > 0) ? solid->GetNumberOfPoints() : 1;
+        std::vector<double> weights(static_cast<size_t>(wn), 0.0);
+        solid->EvaluatePosition(const_cast<double*>(xyz), closestPt.data(), subId, pcoords.data(), dist2,
+                                weights.data());
+        for (int d = 0; d < ndim && d < 3; ++d)
+            rst[d] = pcoords[d];
+    };
+
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
         vtkCell* cell = grid->GetCell(cid);
@@ -235,10 +310,15 @@ bool SeepageWidget::exportInouseDatFile() const
         if (!s0 && !s1)
             continue;
 
+        double xyz0[3] = {0.0, 0.0, 0.0};
+        double xyz1[3] = {0.0, 0.0, 0.0};
+        grid->GetPoint(p0, xyz0);
+        grid->GetPoint(p1, xyz1);
+
         BarRow row;
         row.ke = static_cast<int>(cid + 1);
-        row.ke1 = s0 ? 0 : rel0.front();
-        row.ke2 = s1 ? 0 : rel1.front();
+        row.ke1 = pickRelatedSolid(p0, xyz0);
+        row.ke2 = pickRelatedSolid(p1, xyz1);
         if (!s0 && !s1)
             row.lx = 1;
         else if (s0 && !s1)
@@ -247,8 +327,8 @@ bool SeepageWidget::exportInouseDatFile() const
             row.lx = 3;
         else
             row.lx = 4;
-        row.rst1.fill(0.0, ndim);
-        row.rst2.fill(0.0, ndim);
+        evaluateRst(row.ke1, xyz0, row.rst1);
+        evaluateRst(row.ke2, xyz1, row.rst2);
         barRows.push_back(row);
 
         if (s0)
