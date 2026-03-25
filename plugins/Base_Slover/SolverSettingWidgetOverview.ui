@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SolverSettingWidget</class>
+ <widget class="QWidget" name="SolverSettingWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>980</width>
+    <height>760</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>求解器定义说明</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayoutRoot">
+   <item>
+    <widget class="QGroupBox" name="groupBoxTitle">
+     <property name="title">
+      <string>求解器定义</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayoutTitle">
+      <item>
+       <widget class="QLabel" name="labelDescription">
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="text">
+         <string>求解器定义用于组织固体力学场形变分析所需的分析类型、求解步参数及相关控制条件，是实现结构响应自动求解调用的重要组成部分。该部分主要面向频域分析和时域分析两类典型计算场景，对分析步、时间或频率参数、输出控制参数以及其他求解控制信息进行统一组织。
+结合项目需求，求解器定义支持频域和时域两类求解方式。对于频域分析，可设置频率范围、频率步长或频率点数等参数，用于分析结构在不同频率激励条件下的响应特征；对于时域分析，可设置总分析时长、时间步长及输出步控制参数，用于分析结构在时间变化工况下的动态响应过程。与此同时，平台还可结合网格设置、变量定义和结果关注项设置，对求解输入进行完整组织，并通过脚本方式调用 Abaqus 求解器完成自动化分析。</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupBoxFeatures">
+     <property name="title">
+      <string>功能内容</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayoutFeatures">
+      <item>
+       <widget class="QLabel" name="labelFeature1">
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="text">
+         <string>• 频域求解定义：支持频率范围、频率点数或频率步长等参数设置；</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelFeature2">
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="text">
+         <string>• 时域求解定义：支持分析总时间、时间步长和输出控制参数设置；</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelFeature3">
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="text">
+         <string>• 变量与参数组织：支持与求解相关的变量定义、工况参数及求解控制参数整理；</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelFeature4">
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="text">
+         <string>• 求解任务生成：支持将平台设置内容转换为 Abaqus 求解脚本或输入文件所需格式；</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelFeature5">
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="text">
+         <string>• 求解调用：支持以无图形界面方式自动执行 Abaqus 求解流程。</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="labelConclusion">
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+     <property name="text">
+      <string>通过求解器定义功能，可形成标准化的结构分析任务组织能力，提高形变计算流程的自动化程度和执行效率。</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

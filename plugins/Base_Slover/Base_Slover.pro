@@ -29,6 +29,7 @@ FORMS += \
     SeepageBoundaryPage.ui \
     SeepageWidget.ui \
     SolverSettingWidget.ui \
+    SolverSettingWidgetOverview.ui \
     StressBoundaryPage.ui \
     DamAnalysisWidget.ui \
     SlopeStabilityWidget.ui
