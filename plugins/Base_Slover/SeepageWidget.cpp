@@ -133,22 +133,6 @@ bool SeepageWidget::exportIseepDatFile() const
 
     file.close();
 
-    const QString snapshotPath = wd.filePath(QString::fromLatin1(PublicConstants::kMeshSnapshotFileName));
-    const QString projectIiinPath = wd.filePath("IIIN.DAT");
-    const QString iiinPath = wd.filePath("PREP/IIIN.DAT");
-    QString iiinSourcePath;
-    if (QFile::exists(snapshotPath))
-        iiinSourcePath = snapshotPath;
-    else if (QFile::exists(projectIiinPath))
-        iiinSourcePath = projectIiinPath;
-    else
-        return false;
-
-    if (QFile::exists(iiinPath))
-        QFile::remove(iiinPath);
-    if (!QFile::copy(iiinSourcePath, iiinPath))
-        return false;
-
     return exportInouseDatFile() && exportMaMaskDatFile() && exportMaRockDatFile() &&
            exportKetraceDatFile() && exportJdtraceDatFile();
 }
@@ -204,7 +188,7 @@ bool SeepageWidget::exportInouseDatFile() const
             continue;
         }
 
-        const bool isSolid = (cell->GetCellDimension() >= 3);
+        const bool isSolid = (cell->GetCellDimension() >= ndim);
         if (isSolid)
             solidCellIds.push_back(static_cast<int>(cid + 1));
         for (vtkIdType i = 0; i < np; ++i)
@@ -289,10 +273,12 @@ bool SeepageWidget::exportInouseDatFile() const
         double dist2 = 0.0;
         const vtkIdType wn = (solid->GetNumberOfPoints() > 0) ? solid->GetNumberOfPoints() : 1;
         std::vector<double> weights(static_cast<size_t>(wn), 0.0);
-        solid->EvaluatePosition(const_cast<double*>(xyz), closestPt.data(), subId, pcoords.data(), dist2,
-                                weights.data());
+        const int evalOk = solid->EvaluatePosition(const_cast<double*>(xyz), closestPt.data(), subId,
+                                                   pcoords.data(), dist2, weights.data());
+        if (evalOk != 1)
+            return;
         for (int d = 0; d < ndim && d < 3; ++d)
-            rst[d] = pcoords[d];
+            rst[d] = 2.0 * pcoords[d] - 1.0;
     };
 
     for (vtkIdType cid = 0; cid < nCells; ++cid)
