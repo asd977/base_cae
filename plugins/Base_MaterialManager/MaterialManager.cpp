@@ -754,9 +754,9 @@ bool MaterialManager::generateCaculateFile()
 
     // ===== 3) 输出文件 =====
     QDir workDir(m_workPath);
-    if (!workDir.exists("input"))
-        workDir.mkpath("input");
-    const QString filePath = workDir.filePath(QString("input/Imat.dat"));
+    if (!workDir.exists("PREP"))
+        workDir.mkpath("PREP");
+    const QString filePath = workDir.filePath(QString("PREP/IMAT.DAT"));
 
     QFile file(filePath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))

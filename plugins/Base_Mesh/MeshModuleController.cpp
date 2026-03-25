@@ -119,6 +119,18 @@ bool MeshModuleController::saveProject()
         {
             return false;
         }
+
+        QDir projectQDir(projectDir);
+        if (!projectQDir.exists("PREP") && !projectQDir.mkpath("PREP"))
+        {
+            return false;
+        }
+
+        const QString iiinPath = projectQDir.filePath("PREP/IIIN.DAT");
+        if (!MeshGridIO::instance().exportIiinFile(iiinPath, m_importedGrid, &err))
+        {
+            return false;
+        }
     }
 
     auto edgeRulesToJson = [this]()
