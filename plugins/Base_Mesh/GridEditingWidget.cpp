@@ -36,6 +36,7 @@
 #include <vtkLabeledDataMapper.h>
 #include <vtkLookupTable.h>
 #include <vtkPointData.h>
+#include <vtkPointSet.h>
 #include <vtkPointPicker.h>
 #include <vtkPoints.h>
 #include <vtkPolyData.h>
@@ -574,7 +575,9 @@ void GridEditingWidget::buildOrUpdateViewGrid()
     m_viewSurface = nullptr;
     m_viewSurfaceNodeIdToVtkId.clear();
     vtkDataSet* pickDs = m_meshMapper ? m_meshMapper->GetInput() : nullptr;
-    m_points = pickDs ? pickDs->GetPoints() : (m_viewGrid ? m_viewGrid->GetPoints() : nullptr);
+    vtkPointSet* pickPointSet = pickDs ? vtkPointSet::SafeDownCast(pickDs) : nullptr;
+    m_points = pickPointSet ? pickPointSet->GetPoints()
+                            : (m_viewGrid ? m_viewGrid->GetPoints() : nullptr);
     if (pickDs)
     {
         auto* nodeIdArr = pickDs->GetPointData() ? pickDs->GetPointData()->GetArray("NodeId")
@@ -1487,14 +1490,15 @@ void GridEditingWidget::dragNodeToWorldPosition(const double worldPos[3])
     if (m_meshMapper)
     {
         vtkDataSet* renderDs = m_meshMapper->GetInput();
-        if (renderDs && renderDs->GetPoints())
+        vtkPointSet* renderPointSet = renderDs ? vtkPointSet::SafeDownCast(renderDs) : nullptr;
+        if (renderPointSet && renderPointSet->GetPoints())
         {
             auto itRender = m_viewSurfaceNodeIdToVtkId.find(m_dragNodeId);
             if (itRender != m_viewSurfaceNodeIdToVtkId.end())
             {
-                renderDs->GetPoints()->SetPoint(itRender.value(), worldPos[0], worldPos[1],
-                                                worldPos[2]);
-                renderDs->GetPoints()->Modified();
+                renderPointSet->GetPoints()->SetPoint(itRender.value(), worldPos[0], worldPos[1],
+                                                      worldPos[2]);
+                renderPointSet->GetPoints()->Modified();
                 renderDs->Modified();
             }
         }
@@ -1571,13 +1575,14 @@ void GridEditingWidget::moveNodeById(int nodeId, const double* newX, const doubl
     if (m_meshMapper)
     {
         vtkDataSet* renderDs = m_meshMapper->GetInput();
-        if (renderDs && renderDs->GetPoints())
+        vtkPointSet* renderPointSet = renderDs ? vtkPointSet::SafeDownCast(renderDs) : nullptr;
+        if (renderPointSet && renderPointSet->GetPoints())
         {
             auto itRender = m_viewSurfaceNodeIdToVtkId.find(nodeId);
             if (itRender != m_viewSurfaceNodeIdToVtkId.end())
             {
-                renderDs->GetPoints()->SetPoint(itRender.value(), p);
-                renderDs->GetPoints()->Modified();
+                renderPointSet->GetPoints()->SetPoint(itRender.value(), p);
+                renderPointSet->GetPoints()->Modified();
                 renderDs->Modified();
             }
         }
