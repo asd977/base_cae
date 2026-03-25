@@ -150,7 +150,8 @@ bool SeepageWidget::exportInouseDatFile() const
         return false;
 
     QTextStream os(&file);
-    const int ndim = qMax(2, PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt());
+    const int configuredNdim =
+        qMax(2, PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt());
 
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     auto grid = meshSvc ? meshSvc->getVtkUnstructuredGrid() : vtkSmartPointer<vtkUnstructuredGrid>{};
@@ -159,12 +160,21 @@ bool SeepageWidget::exportInouseDatFile() const
         os << "           0    NUM OF NO USE NODE\n";
         os << "           0    NUM OF NO USE ELEMENT\n";
         os << "       0    杆单元悬浮节点数\n";
-        os << QString("%1%2    NEBAR  NDIM\n").arg(0, 12).arg(ndim, 12);
+        os << QString("%1%2    NEBAR  NDIM\n").arg(0, 12).arg(configuredNdim, 12);
         return true;
     }
 
     const vtkIdType nPts = grid->GetNumberOfPoints();
     const vtkIdType nCells = grid->GetNumberOfCells();
+    int meshMaxDim = 0;
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    {
+        vtkCell* cell = grid->GetCell(cid);
+        if (!cell)
+            continue;
+        meshMaxDim = qMax(meshMaxDim, cell->GetCellDimension());
+    }
+    const int ndim = qMax(2, qMin(configuredNdim, meshMaxDim > 0 ? meshMaxDim : configuredNdim));
 
     QSet<vtkIdType> usedPointIds;
     usedPointIds.reserve(static_cast<int>(nPts));
