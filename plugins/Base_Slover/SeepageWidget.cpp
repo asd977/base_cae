@@ -239,7 +239,7 @@ bool SeepageWidget::exportInouseDatFile() const
             std::vector<double> weights(static_cast<size_t>(wn), 0.0);
             const int evalOk = solid->EvaluatePosition(const_cast<double*>(xyz), closestPt.data(), subId,
                                                        pcoords.data(), dist2, weights.data());
-            constexpr double kInsideTol2 = 1.0e-20;
+            constexpr double kInsideTol2 = 1.0e-14;
             if (evalOk == 1 || dist2 <= kInsideTol2)
                 inside.push_back(ke);
         }
@@ -248,48 +248,52 @@ bool SeepageWidget::exportInouseDatFile() const
 
     auto pickRelatedSolid = [&](vtkIdType pid, const double xyzSelf[3], const double xyzOther[3]) -> int
     {
-        auto pickByDistance = [&](const QVector<int>& cand, const double xyz[3]) -> int
+        auto distanceToCell = [&](int ke, const double xyz[3]) -> double
         {
-            if (cand.isEmpty())
-                return 0;
-            double bestDist2 = std::numeric_limits<double>::max();
-            int bestKe = cand.front();
-            for (int ke : cand)
-            {
-                vtkCell* solid = grid->GetCell(static_cast<vtkIdType>(ke - 1));
-                if (!solid)
-                    continue;
-                std::array<double, 3> closestPt{0.0, 0.0, 0.0};
-                std::array<double, 3> pcoords{0.0, 0.0, 0.0};
-                int subId = 0;
-                double dist2 = 0.0;
-                const vtkIdType wn = (solid->GetNumberOfPoints() > 0) ? solid->GetNumberOfPoints() : 1;
-                std::vector<double> weights(static_cast<size_t>(wn), 0.0);
-                solid->EvaluatePosition(const_cast<double*>(xyz), closestPt.data(), subId, pcoords.data(), dist2,
-                                        weights.data());
-                if (dist2 < bestDist2)
-                {
-                    bestDist2 = dist2;
-                    bestKe = ke;
-                }
-            }
-            return bestKe;
+            vtkCell* solid = grid->GetCell(static_cast<vtkIdType>(ke - 1));
+            if (!solid)
+                return std::numeric_limits<double>::max();
+            std::array<double, 3> closestPt{0.0, 0.0, 0.0};
+            std::array<double, 3> pcoords{0.0, 0.0, 0.0};
+            int subId = 0;
+            double dist2 = std::numeric_limits<double>::max();
+            const vtkIdType wn = (solid->GetNumberOfPoints() > 0) ? solid->GetNumberOfPoints() : 1;
+            std::vector<double> weights(static_cast<size_t>(wn), 0.0);
+            solid->EvaluatePosition(const_cast<double*>(xyz), closestPt.data(), subId, pcoords.data(), dist2,
+                                    weights.data());
+            return dist2;
         };
 
         QVector<int> candidates;
+        QVector<int> related;
         if (pid >= 0 && pid < nPts)
-            candidates = pointToSolidElems[static_cast<int>(pid)];
+            related = pointToSolidElems[static_cast<int>(pid)];
+        candidates = related;
         if (candidates.isEmpty())
             candidates = solidCellIds;
         if (candidates.isEmpty())
             return 0;
 
-        const QVector<int> selfInside = findContainingSolid(candidates, xyzSelf);
+        QVector<int> selfInside = findContainingSolid(candidates, xyzSelf);
+        if (selfInside.isEmpty() && !related.isEmpty())
+            selfInside = related;
+        if (selfInside.isEmpty())
+            return 0;
         if (selfInside.size() == 1)
             return selfInside.front();
-        if (!selfInside.isEmpty())
-            return pickByDistance(selfInside, xyzOther);
-        return 0;
+
+        double bestDist2 = std::numeric_limits<double>::max();
+        int bestKe = selfInside.front();
+        for (int ke : selfInside)
+        {
+            const double dist2 = distanceToCell(ke, xyzOther);
+            if (dist2 < bestDist2)
+            {
+                bestDist2 = dist2;
+                bestKe = ke;
+            }
+        }
+        return bestKe;
     };
 
     auto evaluateRst = [&](int ke, const double xyz[3], QVector<double>& rst)
