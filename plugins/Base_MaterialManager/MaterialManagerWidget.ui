@@ -100,7 +100,7 @@
    <item>
     <widget class="QPushButton" name="generateImatButton">
      <property name="text">
-      <string>生成 Imat.dat（测试）</string>
+      <string>生成 IMAT.DAT（测试）</string>
      </property>
     </widget>
    </item>
