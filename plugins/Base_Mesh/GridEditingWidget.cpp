@@ -462,6 +462,11 @@ bool GridEditingWidget::cellMatchesFilter(vtkIdType fullCellId) const
 {
     if (!m_fullGrid)
         return false;
+    vtkCell* cell = m_fullGrid->GetCell(fullCellId);
+    if (!cell)
+        return false;
+    if (cell->GetCellDimension() < 2)
+        return false;
     auto* cd = m_fullGrid->GetCellData();
     if (!cd)
         return true;
@@ -519,24 +524,45 @@ void GridEditingWidget::buildOrUpdateViewGrid()
     const char* prevArrayName = m_meshMapper->GetArrayName();
     vtkScalarsToColors* prevLookupTable = m_meshMapper->GetLookupTable();
 
-    if (!hasFilter)
-    {
-        m_viewGrid = m_fullGrid;
-        rebuildViewMaps();
-    }
-    else
     {
         auto ids = vtkSmartPointer<vtkIdList>::New();
+        auto lineIdsFallback = vtkSmartPointer<vtkIdList>::New();
 
         for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
         {
-            if (cellMatchesFilter(c))
-                ids->InsertNextId(c);
+            vtkCell* cell = m_fullGrid->GetCell(c);
+            if (!cell)
+                continue;
+
+            if (cell->GetCellDimension() >= 2)
+            {
+                if (!hasFilter || cellMatchesFilter(c))
+                    ids->InsertNextId(c);
+                continue;
+            }
+
+            // 兜底：当网格仅包含线单元时，允许显示线网格，避免视图为空。
+            auto* cd = m_fullGrid->GetCellData();
+            auto* aK = cd ? cd->GetArray("KETYPE") : nullptr;
+            auto* aM = cd ? cd->GetArray("MATYPE") : nullptr;
+            auto* aL = cd ? cd->GetArray("LAYER") : nullptr;
+            const int k = tuple1i(aK, c, 0);
+            const int m = tuple1i(aM, c, 0);
+            const int l = tuple1i(aL, c, 0);
+            const bool okK = m_filterKetypes.isEmpty() || m_filterKetypes.contains(k);
+            const bool okM = m_filterMatypes.isEmpty() || m_filterMatypes.contains(m);
+            const bool okL = m_filterLayers.isEmpty() || m_filterLayers.contains(l);
+            if (okK && okM && okL)
+                lineIdsFallback->InsertNextId(c);
         }
+
+        vtkIdList* targetIds = ids;
+        if (ids->GetNumberOfIds() == 0 && lineIdsFallback->GetNumberOfIds() > 0)
+            targetIds = lineIdsFallback;
 
         auto ex = vtkSmartPointer<vtkExtractCells>::New();
         ex->SetInputData(m_fullGrid);
-        ex->SetCellList(ids);
+        ex->SetCellList(targetIds);
         ex->Update();
         m_viewGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
         m_viewGrid->ShallowCopy(ex->GetOutput());
