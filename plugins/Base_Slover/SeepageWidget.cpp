@@ -233,8 +233,6 @@ bool SeepageWidget::exportInouseDatFile() const
         if (solidCellIds.isEmpty())
             return 0;
 
-        int bestInsideKe = 0;
-        double bestInsideDist2 = std::numeric_limits<double>::max();
         double bestDist2 = std::numeric_limits<double>::max();
         int bestKe = 0;
         for (int ke : solidCellIds)
@@ -250,18 +248,15 @@ bool SeepageWidget::exportInouseDatFile() const
             std::vector<double> weights(static_cast<size_t>(wn), 0.0);
             const int evalOk = solid->EvaluatePosition(const_cast<double*>(xyz), closestPt.data(), subId,
                                                        pcoords.data(), dist2, weights.data());
-            if (evalOk == 1 && dist2 < bestInsideDist2)
-            {
-                bestInsideDist2 = dist2;
-                bestInsideKe = ke;
-            }
+            if (evalOk == 1)
+                return ke;
             if (dist2 < bestDist2)
             {
                 bestDist2 = dist2;
                 bestKe = ke;
             }
         }
-        return (bestInsideKe > 0) ? bestInsideKe : bestKe;
+        return bestKe;
     };
 
     auto evaluateRst = [&](int ke, const double xyz[3], QVector<double>& rst)
