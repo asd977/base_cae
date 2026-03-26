@@ -228,7 +228,7 @@ void SeismicAndAddedMassPage::on_btnImportCsv_clicked()
         if (line.isEmpty())
             continue;
 
-        const QStringList cols = line.split(',', Qt::KeepEmptyParts);
+        const QStringList cols = line.split(',', QString::KeepEmptyParts);
         if (cols.size() < 4)
             continue;
 
@@ -260,7 +260,7 @@ void SeismicAndAddedMassPage::on_btnImportCsv_clicked()
     if (rows.isEmpty())
     {
         QMessageBox::information(this, tr("导入结果"),
-                                 tr("未读取到有效数据，请确认 CSV 列顺序为：时间, X, Y, Z。"));
+                                 tr("未读取到有效数据，请确认 CSV 列顺序为：Time, X, Y, Z。"));
         return;
     }
 
