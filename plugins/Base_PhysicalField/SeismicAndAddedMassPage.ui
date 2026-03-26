@@ -137,6 +137,13 @@
       </widget>
      </item>
      <item>
+      <widget class="QPushButton" name="btnImportCsv">
+       <property name="text">
+        <string>导入CSV(时间,X,Y,Z)</string>
+       </property>
+      </widget>
+     </item>
+     <item>
       <widget class="QPushButton" name="btnDeleteRow">
        <property name="text">
         <string>删除选中行</string>
