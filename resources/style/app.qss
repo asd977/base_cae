@@ -139,6 +139,36 @@ QListWidget {
     gridline-color: rgb(210, 210, 210);
 }
 
+QScrollBar:vertical {
+    width: 14px;
+    background: rgb(245, 245, 245);
+}
+
+QScrollBar:horizontal {
+    height: 14px;
+    background: rgb(245, 245, 245);
+}
+
+QScrollBar::handle:vertical {
+    min-height: 40px;
+    background: rgb(154, 164, 178);
+    border-radius: 6px;
+}
+
+QScrollBar::handle:horizontal {
+    min-width: 40px;
+    background: rgb(154, 164, 178);
+    border-radius: 6px;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical,
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+    width: 0px;
+    height: 0px;
+}
+
 
 QStackedWidget#projectSettingStackWidget {
     background-color: white;

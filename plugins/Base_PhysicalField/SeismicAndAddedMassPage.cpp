@@ -30,10 +30,6 @@ SeismicAndAddedMassPage::SeismicAndAddedMassPage(QWidget* parent)
     ui->tableSeismic->setSelectionMode(QAbstractItemView::ExtendedSelection);
     ui->tableSeismic->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     ui->tableSeismic->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-    ui->tableSeismic->setStyleSheet(
-        "QScrollBar:vertical{width:14px;}"
-        "QScrollBar::handle:vertical{min-height:40px;background:#9AA4B2;border-radius:6px;}"
-        "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0px;}");
 
     ui->doubleSpinAmpX->setValue(0.0);
     ui->doubleSpinAmpY->setValue(0.0);
