@@ -266,6 +266,6 @@ QVector<MaterialModel> createDefaultMaterialModels()
 
 QVector<MaterialModel> createSeepageSubModels()
 {
-    return {createSeepageModel(), createShenzhujiangCreepModel(), createLiguoyingCreepModel(),
-            createNineParamCreepModel(), createXiyuanCreepModel()};
+    return {createSeepageModel(), createShenzhujiangCreepModel(), createNineParamCreepModel(),
+            createLiguoyingCreepModel(), createXiyuanCreepModel()};
 }

@@ -150,7 +150,13 @@ void MaterialEntryWidget::onSeepageModelChanged(int)
 
     entry->seepageModelKey = m_seepageCombo->currentData().toString();
     m_materialManager->notifyEntryUpdated(m_entryId, false);
-    rebuildForm(model, entry);
+    QTimer::singleShot(0, this,
+                       [this]()
+                       {
+                           MaterialModel* refreshModel = nullptr;
+                           MaterialEntry* refreshEntry = lookupEntry(&refreshModel);
+                           rebuildForm(refreshModel, refreshEntry);
+                       });
 }
 
 void MaterialEntryWidget::onSeepageValueEdited(const QString& text)
@@ -247,6 +253,21 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
 
     m_formLayout->addRow(QString("已施加材料单元"), appliedRowWidget);
 
+    // ===== 动态字段（放在 MATYPE 区域下面）=====
+    for (const QString& column : model->columns)
+    {
+        if (MaterialManager::isAutoNumberColumn(column))
+        {
+            continue;
+        }
+        auto* valueEdit = new QLineEdit(entry->properties.value(column), this);
+        valueEdit->setProperty("columnName", column);
+        connect(valueEdit, &QLineEdit::textEdited, this, &MaterialEntryWidget::onValueEdited);
+        m_formLayout->addRow(column, valueEdit);
+        m_valueEdits.insert(column, valueEdit);
+    }
+
+    // ===== 渗流/流变模型（放到最下方）=====
     m_seepageCombo = new CustomComboBox(this);
     m_seepageCombo->addItem(QStringLiteral("无"), QString());
     const auto& seepageModels = m_materialManager->seepageModels();
@@ -270,7 +291,6 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
             break;
         }
     }
-
     if (selectedSeepageModel)
     {
         for (const QString& column : selectedSeepageModel->columns)
@@ -287,20 +307,6 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
             m_formLayout->addRow(QStringLiteral("渗流-") + column, seepageValueEdit);
             m_seepageValueEdits.insert(column, seepageValueEdit);
         }
-    }
-
-    // ===== 动态字段（放在 MATYPE 区域下面）=====
-    for (const QString& column : model->columns)
-    {
-        if (MaterialManager::isAutoNumberColumn(column))
-        {
-            continue;
-        }
-        auto* valueEdit = new QLineEdit(entry->properties.value(column), this);
-        valueEdit->setProperty("columnName", column);
-        connect(valueEdit, &QLineEdit::textEdited, this, &MaterialEntryWidget::onValueEdited);
-        m_formLayout->addRow(column, valueEdit);
-        m_valueEdits.insert(column, valueEdit);
     }
 
     // ===== 初始化选中 MATYPE =====

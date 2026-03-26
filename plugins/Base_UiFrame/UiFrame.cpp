@@ -706,7 +706,6 @@ void UiFrame::buildRibbonTabs()
         cate->setObjectName("materialObj");
 
         auto* panelSoil = cate->addPannel("土体模型");
-        auto* panelCreep = cate->addPannel("流变模型");
         auto* panelSpecial = cate->addPannel("专项模型");
 
         auto* actHjp = makeAction(this, ":/resources/menu/minimal/mat-hjp.svg", "黄金坪厂房");
@@ -715,20 +714,12 @@ void UiFrame::buildRibbonTabs()
         auto* actSoilEmu = makeAction(this, ":/resources/menu/minimal/mat-soil-emu.svg", "土体E-μ模型");
         auto* actSoilEmuCrush =
             makeAction(this, ":/resources/menu/minimal/mat-soil-emu-crush.svg", "土体E-μ破碎模型");
-        auto* actSeepage =
-            makeAction(this, ":/resources/menu/minimal/mat-seepage.svg", "剑科稳态渗流");
         auto* actBar =
             makeAction(this, ":/resources/menu/minimal/mat-bar.svg", "黄金坪杆单元");
         auto* actDagangshan = makeAction(this, ":/resources/menu/minimal/mat-dagangshan.svg",
                                          "大岗山各向同性");
         auto* actNanshui = makeAction(this, ":/resources/menu/minimal/mat-nanshui.svg", "南水模型");
         auto* actKg = makeAction(this, ":/resources/menu/minimal/mat-kg.svg", "土体K-G模型");
-        auto* actCreep = makeAction(this, ":/resources/menu/minimal/mat-shenzhujiang.svg", "沈珠江三参数");
-        auto* actLiguoying = makeAction(this, ":/resources/menu/minimal/mat-liguoying.svg",
-                                        "李国英七参数");
-        auto* actNineParam =
-            makeAction(this, ":/resources/menu/minimal/mat-nine-param.svg", "九参数流变");
-        auto* actXiyuan = makeAction(this, ":/resources/menu/minimal/mat-xiyuan.svg", "西源流变");
 
         // 材料类型较多，统一改为 small action，减少 Ribbon 占位并避免文字截断。
         addActionToPanel(panelSoil, actSoilEb, 1);
@@ -737,14 +728,8 @@ void UiFrame::buildRibbonTabs()
         addActionToPanel(panelSoil, actNanshui, 1);
         addActionToPanel(panelSoil, actKg, 1);
 
-        addActionToPanel(panelCreep, actCreep, 1);
-        addActionToPanel(panelCreep, actLiguoying, 1);
-        addActionToPanel(panelCreep, actNineParam, 1);
-        addActionToPanel(panelCreep, actXiyuan, 1);
-
         addActionToPanel(panelSpecial, actHjp, 1);
         addActionToPanel(panelSpecial, actDynamic, 1);
-        addActionToPanel(panelSpecial, actSeepage, 1);
         addActionToPanel(panelSpecial, actBar, 1);
         addActionToPanel(panelSpecial, actDagangshan, 1);
 
@@ -804,18 +789,6 @@ void UiFrame::buildRibbonTabs()
                     }
                 });
 
-        connect(actSeepage, &QAction::triggered, this,
-                []()
-                {
-                    auto* materialService =
-                        ServiceRegistry::instance().getService<MaterialManagerService>();
-                    if (materialService)
-                    {
-                        materialService->addMaterialFromMenu(
-                            QStringLiteral("jk_corewall_steady_seepage"));
-                    }
-                });
-
         connect(actBar, &QAction::triggered, this,
                 []()
                 {
@@ -862,52 +835,6 @@ void UiFrame::buildRibbonTabs()
                     }
                 });
 
-        connect(actCreep, &QAction::triggered, this,
-                []()
-                {
-                    auto* materialService =
-                        ServiceRegistry::instance().getService<MaterialManagerService>();
-                    if (materialService)
-                    {
-                        materialService->addMaterialFromMenu(
-                            QStringLiteral("shenzhujiang_creep"));
-                    }
-                });
-
-        connect(actLiguoying, &QAction::triggered, this,
-                []()
-                {
-                    auto* materialService =
-                        ServiceRegistry::instance().getService<MaterialManagerService>();
-                    if (materialService)
-                    {
-                        materialService->addMaterialFromMenu(
-                            QStringLiteral("liguoying_creep"));
-                    }
-                });
-
-        connect(actNineParam, &QAction::triggered, this,
-                []()
-                {
-                    auto* materialService =
-                        ServiceRegistry::instance().getService<MaterialManagerService>();
-                    if (materialService)
-                    {
-                        materialService->addMaterialFromMenu(
-                            QStringLiteral("nine_param_creep"));
-                    }
-                });
-
-        connect(actXiyuan, &QAction::triggered, this,
-                []()
-                {
-                    auto* materialService =
-                        ServiceRegistry::instance().getService<MaterialManagerService>();
-                    if (materialService)
-                    {
-                        materialService->addMaterialFromMenu(QStringLiteral("xiyuan_creep"));
-                    }
-                });
     }
 
     // =========================
