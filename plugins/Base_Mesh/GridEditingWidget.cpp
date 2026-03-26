@@ -1142,7 +1142,10 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
     applyLabelTextStyles();
 
     vtkRenderer* renderer = m_visualWidgetService->renderer();
-    if (!renderer || !m_viewGrid)
+    vtkDataSet* labelDs = m_meshMapper ? m_meshMapper->GetInput() : nullptr;
+    if (!labelDs)
+        labelDs = vtkDataSet::SafeDownCast(m_viewGrid.GetPointer());
+    if (!renderer || !labelDs)
     {
         updateSurfaceLabelSummary(QString("外表面编号：缺少渲染器或网格"));
         return;
@@ -1175,7 +1178,7 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
     };
 
     double bounds[6];
-    m_viewGrid->GetBounds(bounds);
+    labelDs->GetBounds(bounds);
     const double xmin = bounds[0], xmax = bounds[1];
     const double ymin = bounds[2], ymax = bounds[3];
     const double zmin = bounds[4], zmax = bounds[5];
@@ -1189,7 +1192,7 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
                (std::abs(p[2] - zmin) <= eps) || (std::abs(p[2] - zmax) <= eps);
     };
 
-    if (!m_viewGrid->GetPointData() || !m_viewGrid->GetCellData())
+    if ((showNodes && !labelDs->GetPointData()) || (showElems && !labelDs->GetCellData()))
     {
         updateSurfaceLabelSummary(QString("外表面编号：缺少 NodeId 或 ElemId 数组"));
         m_visualWidgetService->setVisible(kNodeLblPropId, false, false);
@@ -1223,11 +1226,12 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
     {
         QMap<QPair<int, int>, Cand> nodeBuckets;
 
-        for (vtkIdType pid = 0; pid < m_viewGrid->GetNumberOfPoints(); ++pid)
+        const bool isSurfaceDataset = vtkPolyData::SafeDownCast(labelDs) != nullptr;
+        for (vtkIdType pid = 0; pid < labelDs->GetNumberOfPoints(); ++pid)
         {
             double p[3];
-            m_viewGrid->GetPoint(pid, p);
-            if (!isBoundaryPoint(p))
+            labelDs->GetPoint(pid, p);
+            if (!isSurfaceDataset && !isBoundaryPoint(p))
                 continue;
 
             double sx = 0, sy = 0, sz = 0;
@@ -1236,7 +1240,7 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
             if (!inRect(sx, sy))
                 continue;
 
-            int nid = resolvePointDisplayId(m_viewGrid, pid);
+            int nid = resolvePointDisplayId(labelDs, pid);
             if (nid < 0)
                 continue;
 
@@ -1291,9 +1295,10 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
     {
         QMap<QPair<int, int>, Cand> elemBuckets;
 
-        for (vtkIdType cid = 0; cid < m_viewGrid->GetNumberOfCells(); ++cid)
+        const bool isSurfaceDataset = vtkPolyData::SafeDownCast(labelDs) != nullptr;
+        for (vtkIdType cid = 0; cid < labelDs->GetNumberOfCells(); ++cid)
         {
-            vtkCell* cell = m_viewGrid->GetCell(cid);
+            vtkCell* cell = labelDs->GetCell(cid);
             if (!cell)
                 continue;
 
@@ -1308,12 +1313,12 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
             for (vtkIdType i = 0; i < pids->GetNumberOfIds(); ++i)
             {
                 double p[3];
-                m_viewGrid->GetPoint(pids->GetId(i), p);
+                labelDs->GetPoint(pids->GetId(i), p);
                 cx += p[0];
                 cy += p[1];
                 cz += p[2];
                 ++cnt;
-                if (isBoundaryPoint(p))
+                if (isSurfaceDataset || isBoundaryPoint(p))
                     onSurface = true;
             }
             if (!onSurface || cnt == 0)
@@ -1326,7 +1331,7 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
             if (!inRect(sx, sy))
                 continue;
 
-            int eid = resolveCellDisplayId(m_viewGrid, cid);
+            int eid = resolveCellDisplayId(labelDs, cid);
             if (eid < 0)
                 continue;
 
