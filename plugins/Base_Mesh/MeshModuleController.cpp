@@ -1167,6 +1167,25 @@ bool MeshModuleController::groupByCoordinateRange(double xmin, double xmax, doub
     if (zmin > zmax)
         std::swap(zmin, zmax);
 
+    double gridBounds[6] = {0, 0, 0, 0, 0, 0};
+    m_importedGrid->GetBounds(gridBounds);
+    const double gridSpanX = std::abs(gridBounds[1] - gridBounds[0]);
+    const double gridSpanY = std::abs(gridBounds[3] - gridBounds[2]);
+    const double gridSpanZ = std::abs(gridBounds[5] - gridBounds[4]);
+    const bool useX = gridSpanX > 1e-12;
+    const bool useY = gridSpanY > 1e-12;
+    const bool useZ = gridSpanZ > 1e-12;
+
+    // 兼容二维工况：对退化维度不做硬过滤；其余维度加入容差，避免浮点误差导致“命中为 0”。
+    const auto axisTol = [](double a, double b, double span) -> double
+    {
+        const double mag = std::max({std::abs(a), std::abs(b), span, 1.0});
+        return mag * 1e-9;
+    };
+    const double tolX = axisTol(xmin, xmax, gridSpanX);
+    const double tolY = axisTol(ymin, ymax, gridSpanY);
+    const double tolZ = axisTol(zmin, zmax, gridSpanZ);
+
     const vtkIdType nCells = m_importedGrid->GetNumberOfCells();
     auto* targetArr = vtkIntArray::SafeDownCast(
         m_importedGrid->GetCellData()->GetArray(targetArrayName.toStdString().c_str()));
@@ -1209,7 +1228,10 @@ bool MeshModuleController::groupByCoordinateRange(double xmin, double xmax, doub
         const double cx = 0.5 * (b[0] + b[1]);
         const double cy = 0.5 * (b[2] + b[3]);
         const double cz = 0.5 * (b[4] + b[5]);
-        if (cx >= xmin && cx <= xmax && cy >= ymin && cy <= ymax && cz >= zmin && cz <= zmax)
+        const bool inX = !useX || (cx >= xmin - tolX && cx <= xmax + tolX);
+        const bool inY = !useY || (cy >= ymin - tolY && cy <= ymax + tolY);
+        const bool inZ = !useZ || (cz >= zmin - tolZ && cz <= zmax + tolZ);
+        if (inX && inY && inZ)
         {
             targetArr->SetValue(cid, value);
             groupArr->SetValue(cid, groupName.toStdString());
