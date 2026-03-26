@@ -15,6 +15,15 @@
 
 #include "MaterialManager.h"
 
+namespace
+{
+bool isAutoNumberColumn(const QString& column)
+{
+    return column.contains(QStringLiteral("序号")) || column.contains(QStringLiteral("材料编号"))
+           || column == QStringLiteral("编号");
+}
+} // namespace
+
 MaterialEntryWidget::MaterialEntryWidget(MaterialManager* manager, QWidget* parent)
     : BasePage("MaterialEntryWidget"), m_materialManager(manager), m_isUpdating(false),
       m_formLayout(new QFormLayout), m_nameEdit(nullptr)
@@ -220,6 +229,11 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
         auto* valueEdit = new QLineEdit(entry->properties.value(column), this);
         valueEdit->setProperty("columnName", column);
         connect(valueEdit, &QLineEdit::textEdited, this, &MaterialEntryWidget::onValueEdited);
+        if (isAutoNumberColumn(column))
+        {
+            valueEdit->setReadOnly(true);
+            valueEdit->setPlaceholderText(QStringLiteral("由关联MATYPE自动填充"));
+        }
         m_formLayout->addRow(column, valueEdit);
         m_valueEdits.insert(column, valueEdit);
     }
@@ -235,6 +249,7 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     m_matypeCombo->setCurrentIndex(comboIndex >= 0 ? comboIndex : 0);
 
     m_materialManager->setSelectedMatypeForEntry(m_entryId, initialMatype);
+    syncAutoNumberColumns(initialMatype);
 
     // 初始化：清空 preview / predelete
     m_previewMatype = -1;
@@ -333,6 +348,7 @@ void MaterialEntryWidget::onMatypeChanged(int)
 
     const QVariant data = m_matypeCombo->currentData();
     const int matype = data.isValid() ? data.toInt() : -1;
+    syncAutoNumberColumns(matype);
 
     // 仅在非下拉预览阶段同步 Selected，覆盖键盘/滚轮等非 activated 路径。
     m_materialManager->setSelectedMatypeForEntry(m_entryId, matype);
@@ -348,6 +364,7 @@ void MaterialEntryWidget::onMatypeActivated(int)
 
     QVariant data = m_matypeCombo->currentData();
     int matype = data.isValid() ? data.toInt() : -1;
+    syncAutoNumberColumns(matype);
 
     // 选中态：写入 Selected
     m_materialManager->setSelectedMatypeForEntry(m_entryId, matype);
@@ -522,4 +539,32 @@ void MaterialEntryWidget::updateAppliedListColors()
             it->setBackground(QBrush());
         }
     }
+}
+
+void MaterialEntryWidget::syncAutoNumberColumns(int matype)
+{
+    MaterialModel* model = nullptr;
+    MaterialEntry* entry = lookupEntry(&model);
+    if (!entry || !model)
+        return;
+
+    const QString value = (matype >= 0) ? QString::number(matype) : QStringLiteral("0");
+    bool updated = false;
+    for (const QString& column : model->columns)
+    {
+        if (!isAutoNumberColumn(column))
+            continue;
+
+        entry->properties.insert(column, value);
+        QMap<QString, QLineEdit*>::iterator it = m_valueEdits.find(column);
+        if (it != m_valueEdits.end() && it.value())
+        {
+            QSignalBlocker blocker(it.value());
+            it.value()->setText(value);
+        }
+        updated = true;
+    }
+
+    if (updated)
+        m_materialManager->notifyEntryUpdated(m_entryId, false);
 }

@@ -45,6 +45,7 @@ class MaterialEntryWidget : public BasePage
     void rebuildForm(MaterialModel* model, MaterialEntry* entry);
     void clearForm();
     MaterialEntry* lookupEntry(MaterialModel** model = nullptr) const;
+    void syncAutoNumberColumns(int matype);
 
     void updateAppliedListColors(); // ★ list 里“预删除/选中”两色
 
