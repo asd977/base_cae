@@ -1176,6 +1176,18 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
     {
         return sx >= minX && sx <= maxX && sy >= minY && sy <= maxY;
     };
+    auto isFrontVisible = [&](double sx, double sy, double sz)
+    {
+        if (!renderer)
+            return false;
+        int ix = static_cast<int>(std::lround(sx));
+        int iy = static_cast<int>(std::lround(sy));
+        const double zbuf = renderer->GetZ(ix, iy);
+        if (!std::isfinite(zbuf))
+            return false;
+        // 越小越靠前；允许一点深度误差，避免边缘闪烁造成漏选
+        return sz <= zbuf + 1e-4;
+    };
 
     double bounds[6];
     labelDs->GetBounds(bounds);
@@ -1202,6 +1214,10 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
 
     const double binSize = 60.0; // 分桶像素，避免过密
     const int maxLabels = maxSurfaceLabelCount();
+
+    // 保证深度缓存可用，用于过滤被遮挡的背面点/单元（3D 场景尤为重要）
+    if (auto* rw = renderer->GetRenderWindow())
+        rw->Render();
 
     struct Cand
     {
@@ -1238,6 +1254,8 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
             if (!projectToDisplay(p, sx, sy, sz))
                 continue;
             if (!inRect(sx, sy))
+                continue;
+            if (!isFrontVisible(sx, sy, sz))
                 continue;
 
             int nid = resolvePointDisplayId(labelDs, pid);
@@ -1329,6 +1347,8 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
             if (!projectToDisplay(center, sx, sy, sz))
                 continue;
             if (!inRect(sx, sy))
+                continue;
+            if (!isFrontVisible(sx, sy, sz))
                 continue;
 
             int eid = resolveCellDisplayId(labelDs, cid);
