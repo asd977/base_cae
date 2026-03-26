@@ -74,6 +74,7 @@ class MaterialManager : public QObject, public MaterialManagerService
 
     QVector<QStringList> getValueStrings();
     void setValueStrings(QVector<QStringList> values);
+    static bool isAutoNumberColumn(const QString& columnName);
 
   private:
     void newProjectForPath(const QString& workPath);
@@ -82,8 +83,6 @@ class MaterialManager : public QObject, public MaterialManagerService
     void ensureEntryIds();
     void rebuildProjectTree();
     void clearProjectTree();
-    static bool isAutoNumberColumn(const QString& columnName);
-
     // 原 highlightMatypes 扩展为 3 态输入（Selected / Preview / PreDelete）
     void highlightMatypes(const QSet<int>& matypes, int selectedMatype, int previewMatype,
                           int preDeleteMatype);
