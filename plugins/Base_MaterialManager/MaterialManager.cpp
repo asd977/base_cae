@@ -250,6 +250,8 @@ bool MaterialManager::loadProject()
 
     ensureEntryIds();
     notifyLibraryChanged();
+    // 工程打开时会在后台重建条目页面，避免把条目高亮残留到初始状态。
+    clearAllMatypeHighlight();
     return true;
 }
 
