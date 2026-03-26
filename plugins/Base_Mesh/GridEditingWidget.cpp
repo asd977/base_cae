@@ -309,29 +309,65 @@ void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString
     if (m_fullGrid->GetNumberOfPoints() > 0)
     {
         auto* pd = m_fullGrid->GetPointData();
-        auto nodeId = vtkIntArray::SafeDownCast(pd ? pd->GetArray("NodeId") : nullptr);
-        if (!nodeId || nodeId->GetNumberOfTuples() != m_fullGrid->GetNumberOfPoints())
+        auto nodeIdLegacy = vtkIntArray::SafeDownCast(pd ? pd->GetArray("node_id") : nullptr);
+        auto nodeIdPrimary = vtkIntArray::SafeDownCast(pd ? pd->GetArray("NodeId") : nullptr);
+        vtkIntArray* source = nullptr;
+        if (nodeIdLegacy && nodeIdLegacy->GetNumberOfTuples() == m_fullGrid->GetNumberOfPoints())
+            source = nodeIdLegacy;
+        else if (nodeIdPrimary && nodeIdPrimary->GetNumberOfTuples() == m_fullGrid->GetNumberOfPoints())
+            source = nodeIdPrimary;
+
+        auto nodeIdLower = ensureIntArray(pd, "node_id", m_fullGrid->GetNumberOfPoints());
+        if (source)
         {
-            nodeId = ensureIntArray(pd, "NodeId", m_fullGrid->GetNumberOfPoints());
             for (vtkIdType i = 0; i < m_fullGrid->GetNumberOfPoints(); ++i)
             {
-                nodeId->SetValue(i, static_cast<int>(i + 1));
+                const int v = source->GetValue(i);
+                nodeIdLower->SetValue(i, v);
             }
         }
+        else
+        {
+            for (vtkIdType i = 0; i < m_fullGrid->GetNumberOfPoints(); ++i)
+            {
+                const int v = static_cast<int>(i + 1);
+                nodeIdLower->SetValue(i, v);
+            }
+        }
+        if (pd && pd->GetArray("NodeId"))
+            pd->RemoveArray("NodeId");
     }
 
     if (m_fullGrid->GetNumberOfCells() > 0)
     {
         auto* cd = m_fullGrid->GetCellData();
-        auto elemId = vtkIntArray::SafeDownCast(cd ? cd->GetArray("ElemId") : nullptr);
-        if (!elemId || elemId->GetNumberOfTuples() != m_fullGrid->GetNumberOfCells())
+        auto elemIdLegacy = vtkIntArray::SafeDownCast(cd ? cd->GetArray("elem_id") : nullptr);
+        auto elemIdPrimary = vtkIntArray::SafeDownCast(cd ? cd->GetArray("ElemId") : nullptr);
+        vtkIntArray* source = nullptr;
+        if (elemIdLegacy && elemIdLegacy->GetNumberOfTuples() == m_fullGrid->GetNumberOfCells())
+            source = elemIdLegacy;
+        else if (elemIdPrimary && elemIdPrimary->GetNumberOfTuples() == m_fullGrid->GetNumberOfCells())
+            source = elemIdPrimary;
+
+        auto elemIdLower = ensureIntArray(cd, "elem_id", m_fullGrid->GetNumberOfCells());
+        if (source)
         {
-            elemId = ensureIntArray(cd, "ElemId", m_fullGrid->GetNumberOfCells());
             for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
             {
-                elemId->SetValue(c, static_cast<int>(c + 1));
+                const int v = source->GetValue(c);
+                elemIdLower->SetValue(c, v);
             }
         }
+        else
+        {
+            for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
+            {
+                const int v = static_cast<int>(c + 1);
+                elemIdLower->SetValue(c, v);
+            }
+        }
+        if (cd && cd->GetArray("ElemId"))
+            cd->RemoveArray("ElemId");
         ensureIntArray(cd, "KETYPE", m_fullGrid->GetNumberOfCells());
         ensureIntArray(cd, "MATYPE", m_fullGrid->GetNumberOfCells());
         ensureIntArray(cd, "LAYER", m_fullGrid->GetNumberOfCells());
@@ -407,7 +443,7 @@ void GridEditingWidget::rebuildFullMaps()
         return;
 
     auto* nodeIdArr =
-        m_fullGrid->GetPointData() ? m_fullGrid->GetPointData()->GetArray("NodeId") : nullptr;
+        m_fullGrid->GetPointData() ? m_fullGrid->GetPointData()->GetArray("node_id") : nullptr;
     for (vtkIdType p = 0; p < m_fullGrid->GetNumberOfPoints(); ++p)
     {
         int nid = tuple1i(nodeIdArr, p, -1);
@@ -416,7 +452,7 @@ void GridEditingWidget::rebuildFullMaps()
     }
 
     auto* elemIdArr =
-        m_fullGrid->GetCellData() ? m_fullGrid->GetCellData()->GetArray("ElemId") : nullptr;
+        m_fullGrid->GetCellData() ? m_fullGrid->GetCellData()->GetArray("elem_id") : nullptr;
     for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
     {
         int eid = tuple1i(elemIdArr, c, -1);
@@ -432,7 +468,7 @@ void GridEditingWidget::rebuildViewMaps()
         return;
 
     auto* nodeIdArr =
-        m_viewGrid->GetPointData() ? m_viewGrid->GetPointData()->GetArray("NodeId") : nullptr;
+        m_viewGrid->GetPointData() ? m_viewGrid->GetPointData()->GetArray("node_id") : nullptr;
     for (vtkIdType p = 0; p < m_viewGrid->GetNumberOfPoints(); ++p)
     {
         int nid = tuple1i(nodeIdArr, p, -1);
@@ -611,10 +647,8 @@ void GridEditingWidget::buildOrUpdateViewGrid()
                             : (m_viewGrid ? m_viewGrid->GetPoints() : nullptr);
     if (pickDs)
     {
-        auto* nodeIdArr = pickDs->GetPointData() ? pickDs->GetPointData()->GetArray("NodeId")
-                         : nullptr;
-        if (!nodeIdArr && pickDs->GetPointData())
-            nodeIdArr = pickDs->GetPointData()->GetArray("node_id");
+        auto* nodeIdArr = pickDs->GetPointData() ? pickDs->GetPointData()->GetArray("node_id")
+                                                 : nullptr;
         for (vtkIdType p = 0; p < pickDs->GetNumberOfPoints(); ++p)
         {
             const int nid = tuple1i(nodeIdArr, p, -1);
@@ -1136,9 +1170,9 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
     };
 
     auto* nodeIdArr =
-        m_viewGrid->GetPointData() ? m_viewGrid->GetPointData()->GetArray("NodeId") : nullptr;
+        m_viewGrid->GetPointData() ? m_viewGrid->GetPointData()->GetArray("node_id") : nullptr;
     auto* elemIdArr =
-        m_viewGrid->GetCellData() ? m_viewGrid->GetCellData()->GetArray("ElemId") : nullptr;
+        m_viewGrid->GetCellData() ? m_viewGrid->GetCellData()->GetArray("elem_id") : nullptr;
 
     if (!nodeIdArr || !elemIdArr)
     {
@@ -1350,9 +1384,7 @@ void GridEditingWidget::onPicked(long long pickedPointId, long long pickedCellId
 
     if (pickedPointId >= 0 && pointData)
     {
-        auto* nodeIdArr = vtkIntArray::SafeDownCast(pointData->GetArray("NodeId"));
-        if (!nodeIdArr)
-            nodeIdArr = vtkIntArray::SafeDownCast(pointData->GetArray("node_id"));
+        auto* nodeIdArr = vtkIntArray::SafeDownCast(pointData->GetArray("node_id"));
         if (nodeIdArr && pickedPointId < nodeIdArr->GetNumberOfTuples())
         {
             int nodeId = nodeIdArr->GetValue(static_cast<vtkIdType>(pickedPointId));
@@ -1363,7 +1395,7 @@ void GridEditingWidget::onPicked(long long pickedPointId, long long pickedCellId
 
     if (pickedCellId >= 0 && cellData)
     {
-        auto* elemIdArr = vtkIntArray::SafeDownCast(cellData->GetArray("ElemId"));
+        auto* elemIdArr = vtkIntArray::SafeDownCast(cellData->GetArray("elem_id"));
         if (elemIdArr && pickedCellId < elemIdArr->GetNumberOfTuples())
         {
             int elemId = elemIdArr->GetValue(static_cast<vtkIdType>(pickedCellId));
@@ -1383,7 +1415,7 @@ void GridEditingWidget::beginNodeDragByPointId(long long viewPointId)
         return;
 
     auto* nodeIdArr =
-        m_viewGrid->GetPointData() ? m_viewGrid->GetPointData()->GetArray("NodeId") : nullptr;
+        m_viewGrid->GetPointData() ? m_viewGrid->GetPointData()->GetArray("node_id") : nullptr;
     int nodeId = tuple1i(nodeIdArr, static_cast<vtkIdType>(viewPointId), -1);
     if (nodeId < 0)
         return;
@@ -1479,9 +1511,8 @@ void GridEditingWidget::beginNodeDragFromCell(long long cellId, int displayX, in
     if (bestPid < 0)
         return;
 
-    auto* nodeIdArr = pickDs->GetPointData() ? pickDs->GetPointData()->GetArray("NodeId") : nullptr;
-    if (!nodeIdArr && pickDs->GetPointData())
-        nodeIdArr = pickDs->GetPointData()->GetArray("node_id");
+    auto* nodeIdArr = pickDs->GetPointData() ? pickDs->GetPointData()->GetArray("node_id")
+                                             : nullptr;
     const int nodeId = tuple1i(nodeIdArr, bestPid, -1);
     beginNodeDragByNodeId(nodeId);
 }
@@ -1722,11 +1753,10 @@ void GridEditingWidget::updateIdRangeLabels()
     if (!ui || !m_fullGrid)
         return;
 
-    auto* pd = m_fullGrid->GetPointData();
-    auto* cd = m_fullGrid->GetCellData();
-
-    auto* nodeIdArr = pd ? pd->GetArray("NodeId") : nullptr;
-    auto* elemIdArr = cd ? cd->GetArray("ElemId") : nullptr;
+    auto* nodeIdArr =
+        m_fullGrid->GetPointData() ? m_fullGrid->GetPointData()->GetArray("node_id") : nullptr;
+    auto* elemIdArr =
+        m_fullGrid->GetCellData() ? m_fullGrid->GetCellData()->GetArray("elem_id") : nullptr;
 
     if (!nodeIdArr || nodeIdArr->GetNumberOfTuples() == 0)
     {
@@ -2083,7 +2113,7 @@ void GridEditingWidget::showNodeLabelsForElem(int elemId)
         return;
 
     auto* nodeIdArr =
-        m_fullGrid->GetPointData() ? m_fullGrid->GetPointData()->GetArray("NodeId") : nullptr;
+        m_fullGrid->GetPointData() ? m_fullGrid->GetPointData()->GetArray("node_id") : nullptr;
     if (!nodeIdArr)
         return;
 

@@ -2043,6 +2043,8 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
     auto* layerArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"));
     auto* tail1Arr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("TAIL1"));
     auto* tail2Arr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("TAIL2"));
+    auto* nodeIdArr = vtkIntArray::SafeDownCast(grid->GetPointData()->GetArray("node_id"));
+    auto* elemIdArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("elem_id"));
 
     const vtkIdType numnp = grid->GetNumberOfPoints();
     const vtkIdType ncell = grid->GetNumberOfCells();
@@ -2104,15 +2106,18 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
     out << iobject << " " << ivertical << " " << xmin << " " << xmax << " " << ymin << " " << ymax
         << " " << zmin << " " << zmax << "\n";
 
-    // nodes: 这里统一按点序号写 nodeId=idx+1（最稳，不依赖 pointData node_id）
+    // nodes: 优先保留原 node_id，缺失时回退到 idx+1
     for (vtkIdType i = 0; i < numnp; ++i)
     {
         double p[3];
         grid->GetPoint(i, p);
-        out << p[0] << " " << p[1] << " " << p[2] << " " << (static_cast<int>(i) + 1) << "\n";
+        const int outNodeId =
+            (nodeIdArr && i < nodeIdArr->GetNumberOfTuples()) ? nodeIdArr->GetValue(i)
+                                                               : (static_cast<int>(i) + 1);
+        out << p[0] << " " << p[1] << " " << p[2] << " " << outNodeId << "\n";
     }
 
-    // elems: elemId=cid+1；nodeId=pointId+1（必要时按 ketype 做重排）
+    // elems: 优先保留原 elem_id 与 node_id（必要时按 ketype 做重排）
     for (vtkIdType cid = 0; cid < ncell; ++cid)
     {
         vtkCell* c = grid->GetCell(cid);
@@ -2131,7 +2136,11 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
         for (int i = 0; i < c->GetNumberOfPoints(); ++i)
         {
             vtkIdType pid = c->GetPointId(i);
-            vtkNodeIds.push_back(static_cast<int>(pid) + 1);
+            const int outNodeId =
+                (nodeIdArr && pid >= 0 && pid < nodeIdArr->GetNumberOfTuples())
+                    ? nodeIdArr->GetValue(pid)
+                    : (static_cast<int>(pid) + 1);
+            vtkNodeIds.push_back(outNodeId);
         }
 
         // 如果 expN > 实际点数（一般不会），补 0
@@ -2154,7 +2163,10 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
         }
 
         // 写出：id + manod 个节点(不足补0) + ketype matype layer tail1 tail2
-        out << (static_cast<int>(cid) + 1);
+        const int outElemId =
+            (elemIdArr && cid < elemIdArr->GetNumberOfTuples()) ? elemIdArr->GetValue(cid)
+                                                                 : (static_cast<int>(cid) + 1);
+        out << outElemId;
 
         for (int j = 0; j < manod; ++j)
         {
