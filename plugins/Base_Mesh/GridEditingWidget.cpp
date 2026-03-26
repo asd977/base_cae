@@ -310,12 +310,25 @@ void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString
     {
         auto* pd = m_fullGrid->GetPointData();
         auto nodeId = vtkIntArray::SafeDownCast(pd ? pd->GetArray("NodeId") : nullptr);
-        if (!nodeId || nodeId->GetNumberOfTuples() != m_fullGrid->GetNumberOfPoints())
+        auto* legacyNodeId = vtkIntArray::SafeDownCast(pd ? pd->GetArray("node_id") : nullptr);
+        const vtkIdType nPts = m_fullGrid->GetNumberOfPoints();
+
+        if (!nodeId || nodeId->GetNumberOfTuples() != nPts)
         {
-            nodeId = ensureIntArray(pd, "NodeId", m_fullGrid->GetNumberOfPoints());
-            for (vtkIdType i = 0; i < m_fullGrid->GetNumberOfPoints(); ++i)
+            nodeId = ensureIntArray(pd, "NodeId", nPts);
+            if (legacyNodeId && legacyNodeId->GetNumberOfTuples() == nPts)
             {
-                nodeId->SetValue(i, static_cast<int>(i + 1));
+                for (vtkIdType i = 0; i < nPts; ++i)
+                {
+                    nodeId->SetValue(i, legacyNodeId->GetValue(i));
+                }
+            }
+            else
+            {
+                for (vtkIdType i = 0; i < nPts; ++i)
+                {
+                    nodeId->SetValue(i, static_cast<int>(i + 1));
+                }
             }
         }
     }
@@ -324,17 +337,30 @@ void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString
     {
         auto* cd = m_fullGrid->GetCellData();
         auto elemId = vtkIntArray::SafeDownCast(cd ? cd->GetArray("ElemId") : nullptr);
-        if (!elemId || elemId->GetNumberOfTuples() != m_fullGrid->GetNumberOfCells())
+        auto* legacyElemId = vtkIntArray::SafeDownCast(cd ? cd->GetArray("elem_id") : nullptr);
+        const vtkIdType nCells = m_fullGrid->GetNumberOfCells();
+
+        if (!elemId || elemId->GetNumberOfTuples() != nCells)
         {
-            elemId = ensureIntArray(cd, "ElemId", m_fullGrid->GetNumberOfCells());
-            for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
+            elemId = ensureIntArray(cd, "ElemId", nCells);
+            if (legacyElemId && legacyElemId->GetNumberOfTuples() == nCells)
             {
-                elemId->SetValue(c, static_cast<int>(c + 1));
+                for (vtkIdType c = 0; c < nCells; ++c)
+                {
+                    elemId->SetValue(c, legacyElemId->GetValue(c));
+                }
+            }
+            else
+            {
+                for (vtkIdType c = 0; c < nCells; ++c)
+                {
+                    elemId->SetValue(c, static_cast<int>(c + 1));
+                }
             }
         }
-        ensureIntArray(cd, "KETYPE", m_fullGrid->GetNumberOfCells());
-        ensureIntArray(cd, "MATYPE", m_fullGrid->GetNumberOfCells());
-        ensureIntArray(cd, "LAYER", m_fullGrid->GetNumberOfCells());
+        ensureIntArray(cd, "KETYPE", nCells);
+        ensureIntArray(cd, "MATYPE", nCells);
+        ensureIntArray(cd, "LAYER", nCells);
     }
 
     rebuildFullMaps();
