@@ -30,6 +30,8 @@ class MaterialEntryWidget : public BasePage
   private slots:
     void onNameEdited(const QString& text);
     void onValueEdited(const QString& text);
+    void onSeepageModelChanged(int index);
+    void onSeepageValueEdited(const QString& text);
 
     void onMatypeChanged(int index);
     void onMatypeActivated(int index);
@@ -60,6 +62,8 @@ class MaterialEntryWidget : public BasePage
 
     QLineEdit* m_nameEdit;
     QMap<QString, QLineEdit*> m_valueEdits;
+    CustomComboBox* m_seepageCombo = nullptr;
+    QMap<QString, QLineEdit*> m_seepageValueEdits;
 
     CustomComboBox* m_matypeCombo = nullptr;
     QPushButton* m_applyButton = nullptr;

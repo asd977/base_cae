@@ -13,6 +13,8 @@ struct MaterialEntry
     QString name;
     QMap<QString, QString> properties;
     QSet<int> appliedMatypes;
+    QString seepageModelKey;
+    QMap<QString, QString> seepageProperties;
 };
 
 struct MaterialModel
@@ -30,5 +32,6 @@ struct MaterialModel
 };
 
 QVector<MaterialModel> createDefaultMaterialModels();
+QVector<MaterialModel> createSeepageSubModels();
 
 #endif // MATERIALLIBRARYDATA_H

@@ -260,8 +260,12 @@ QVector<MaterialModel> createDefaultMaterialModels()
 {
     return {createHuangjinpingModel(), createSoilEbModel(), createSoilEmuModel(),
             createSoilEmuCrushModel(),
-            createDamDynamicModel(), createSeepageModel(), createHuangjinpingBarModel(),
-            createDagangshanIsotropicModel(), createNanshuiModel(), createSoilKgModel(),
-            createShenzhujiangCreepModel(), createLiguoyingCreepModel(),
+            createDamDynamicModel(), createHuangjinpingBarModel(), createDagangshanIsotropicModel(),
+            createNanshuiModel(), createSoilKgModel()};
+}
+
+QVector<MaterialModel> createSeepageSubModels()
+{
+    return {createSeepageModel(), createShenzhujiangCreepModel(), createLiguoyingCreepModel(),
             createNineParamCreepModel(), createXiyuanCreepModel()};
 }

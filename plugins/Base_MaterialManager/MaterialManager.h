@@ -75,6 +75,8 @@ class MaterialManager : public QObject, public MaterialManagerService
     QVector<QStringList> getValueStrings();
     void setValueStrings(QVector<QStringList> values);
     static bool isAutoNumberColumn(const QString& columnName);
+    bool isSeepageModelKey(const QString& modelKey) const;
+    const QVector<MaterialModel>& seepageModels() const;
 
   private:
     void newProjectForPath(const QString& workPath);
@@ -100,6 +102,7 @@ class MaterialManager : public QObject, public MaterialManagerService
 
     QVector<MaterialModel> m_models;
     QSet<QString> m_addedEntryIds;
+    QVector<MaterialModel> m_seepageModels;
 
     // ===== 3态：Selected / Preview / PreDelete =====
     QHash<QString, int> m_selectedMatypes;

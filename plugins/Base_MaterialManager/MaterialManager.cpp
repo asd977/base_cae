@@ -61,6 +61,7 @@ MaterialManager::MaterialManager()
     m_projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
     ServiceRegistry::instance().registerService<MaterialManagerService>(this);
     setupTreeWidget();
+    m_seepageModels = createSeepageSubModels();
     loadDefaultLibrary();
     ensureEntryIds();
 }
@@ -120,6 +121,15 @@ bool MaterialManager::saveProject()
                 appliedArray.append(matype);
             }
             entryObj.insert(QStringLiteral("applied_matypes"), appliedArray);
+
+            entryObj.insert(QStringLiteral("seepage_model_key"), entry.seepageModelKey);
+            QJsonObject seepagePropertiesObj;
+            for (auto it = entry.seepageProperties.constBegin();
+                 it != entry.seepageProperties.constEnd(); ++it)
+            {
+                seepagePropertiesObj.insert(it.key(), it.value());
+            }
+            entryObj.insert(QStringLiteral("seepage_properties"), seepagePropertiesObj);
             entryArray.append(entryObj);
         }
 
@@ -229,6 +239,14 @@ bool MaterialManager::loadProject()
             for (const auto& matypeValue : applied)
             {
                 entry.appliedMatypes.insert(matypeValue.toInt(-1));
+            }
+
+            entry.seepageModelKey = entryObj.value(QStringLiteral("seepage_model_key")).toString();
+            const QJsonObject seepageProperties =
+                entryObj.value(QStringLiteral("seepage_properties")).toObject();
+            for (auto it = seepageProperties.constBegin(); it != seepageProperties.constEnd(); ++it)
+            {
+                entry.seepageProperties.insert(it.key(), it.value().toString());
             }
 
             syncAutoNumberProperties(&m_models[modelIndex], &entry);
@@ -556,6 +574,23 @@ bool MaterialManager::isAutoNumberColumn(const QString& columnName)
 {
     return columnName == QStringLiteral("序号") || columnName == QStringLiteral("编号") ||
            columnName == QStringLiteral("材料编号");
+}
+
+bool MaterialManager::isSeepageModelKey(const QString& modelKey) const
+{
+    for (const auto& model : m_seepageModels)
+    {
+        if (model.key == modelKey)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+const QVector<MaterialModel>& MaterialManager::seepageModels() const
+{
+    return m_seepageModels;
 }
 
 void MaterialManager::focusOnMaterial(const QString& entryId)
@@ -1004,6 +1039,103 @@ bool MaterialManager::generateCaculateFile()
         return ok ? value : 0.0;
     };
 
+    auto seepageValueOf = [](const MaterialEntry* entry, const QString& key) -> double
+    {
+        if (!entry)
+        {
+            return 0.0;
+        }
+        bool ok = false;
+        const double value = entry->seepageProperties.value(key, QStringLiteral("0")).toDouble(&ok);
+        return ok ? value : 0.0;
+    };
+
+    auto applySeepageModel = [&](const QString& seepageModelKey, const MaterialEntry* entry,
+                                 int matIndex)
+    {
+        auto setRow = [&](int row, double value)
+        {
+            if (row >= 1 && row <= ncon)
+            {
+                values[row - 1][matIndex] = value;
+            }
+        };
+
+        if (seepageModelKey == QStringLiteral("jk_corewall_steady_seepage"))
+        {
+            const double tol = 1.0e-3;
+            const double akLu = seepageValueOf(entry, QStringLiteral("渗透系数K(Lu)"));
+            const double rip = seepageValueOf(entry, QStringLiteral("允许比降"));
+            const double ak = akLu * 1.0e-7;
+            setRow(96, ak);
+            setRow(97, ak);
+            setRow(98, ak);
+            setRow(60, rip);
+            setRow(14, 1.0);
+            setRow(15, 0.0);
+            setRow(16, 0.0);
+            setRow(17, 0.0);
+            setRow(18, 1.0);
+            setRow(19, 0.0);
+            setRow(20, 0.0);
+            setRow(21, 0.0);
+            setRow(22, 1.0);
+            if (values[7 - 1][matIndex] < tol)
+                setRow(7, 2.0e3);
+            if (values[89 - 1][matIndex] < tol)
+                setRow(89, 2.0e3);
+            if (values[90 - 1][matIndex] < tol)
+                setRow(90, 2.0e3);
+            if (values[99 - 1][matIndex] < tol)
+                setRow(99, 1.0);
+            return;
+        }
+        if (seepageModelKey == QStringLiteral("shenzhujiang_creep"))
+        {
+            setRow(14, seepageValueOf(entry, QStringLiteral("应变速率系数α")));
+            setRow(15, seepageValueOf(entry, QStringLiteral("体积流变系数b")));
+            setRow(16, seepageValueOf(entry, QStringLiteral("剪切流变系数d")));
+            setRow(102, 1.0);
+            return;
+        }
+        if (seepageModelKey == QStringLiteral("liguoying_creep"))
+        {
+            setRow(14, seepageValueOf(entry, QStringLiteral("应变速率系数α")));
+            setRow(15, seepageValueOf(entry, QStringLiteral("体积流变系数b")));
+            setRow(16, seepageValueOf(entry, QStringLiteral("体积流变系数c")));
+            setRow(17, seepageValueOf(entry, QStringLiteral("剪切流变系数d")));
+            setRow(18, seepageValueOf(entry, QStringLiteral("体积流变指数m1")));
+            setRow(19, seepageValueOf(entry, QStringLiteral("体积流变指数m2")));
+            setRow(20, seepageValueOf(entry, QStringLiteral("剪切流变指数m3")));
+            setRow(102, 2.0);
+            return;
+        }
+        if (seepageModelKey == QStringLiteral("nine_param_creep"))
+        {
+            setRow(14, seepageValueOf(entry, QStringLiteral("应变速率系数λv")));
+            setRow(15, seepageValueOf(entry, QStringLiteral("体积流变系数Cα")));
+            setRow(16, seepageValueOf(entry, QStringLiteral("体积流变系数Cβ")));
+            setRow(17, seepageValueOf(entry, QStringLiteral("体积流变指数dα")));
+            setRow(18, seepageValueOf(entry, QStringLiteral("体积流变指数dβ")));
+            setRow(19, seepageValueOf(entry, QStringLiteral("主应变系数c")));
+            setRow(20, seepageValueOf(entry, QStringLiteral("主应变系数d")));
+            setRow(21, seepageValueOf(entry, QStringLiteral("主应变流变系数η")));
+            setRow(22, seepageValueOf(entry, QStringLiteral("主应变流变系数m")));
+            setRow(102, 3.0);
+            return;
+        }
+        if (seepageModelKey == QStringLiteral("xiyuan_creep"))
+        {
+            setRow(2, seepageValueOf(entry, QStringLiteral("瞬时弹性模量E1（GPa）")));
+            setRow(3, seepageValueOf(entry, QStringLiteral("粘塑性模量E2（GPa）")));
+            setRow(4, seepageValueOf(entry, QStringLiteral("泊松比μ1")));
+            setRow(5, seepageValueOf(entry, QStringLiteral("泊松比μ2")));
+            setRow(103, seepageValueOf(entry, QStringLiteral("粘弹性系数η1")));
+            setRow(104, seepageValueOf(entry, QStringLiteral("粘塑性系数η2")));
+            setRow(102, 4.0);
+        }
+    };
+
     // 填值：黄金坪地下厂房模型按 CONMAT 行号写入，其他模型仍走 columnOutputRows
     for (auto it = matypeMap.constBegin(); it != matypeMap.constEnd(); ++it)
     {
@@ -1017,7 +1149,7 @@ bool MaterialManager::generateCaculateFile()
 
         const int matIndex = matype - 1;
 
-        if (info.model->key == QStringLiteral("huangjinping_underground_plant"))
+        if (info.model->key == QStringLiteral("huangjinping_underground_plant")) // 黄金坪厂房
         {
             const double matypeOri = static_cast<double>(matype);
             const double itagEx = valueOf(info.entry, QStringLiteral("岩类分区"));
@@ -1110,10 +1242,11 @@ bool MaterialManager::generateCaculateFile()
             {
                 setRow(59, laReborn);
             }
+            applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
             continue;
         }
 
-        if (info.model->key == QStringLiteral("dagangshan_isotropic"))
+        if (info.model->key == QStringLiteral("dagangshan_isotropic")) // 大岗山各向同性
         {
             const double eeGpa = valueOf(info.entry, QStringLiteral("变形模量E（GPa）"));
             const double pu = valueOf(info.entry, QStringLiteral("泊松比μ"));
@@ -1200,10 +1333,11 @@ bool MaterialManager::generateCaculateFile()
             {
                 setRow(59, laReborn);
             }
+            applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
             continue;
         }
 
-        if (info.model->key == QStringLiteral("soil_eb"))
+        if (info.model->key == QStringLiteral("soil_eb")) // 土体E-B模型
         {
             const double dryRouTm3 = valueOf(info.entry, QStringLiteral("干容重(t/m3)"));
             const double pacRouTm3 = valueOf(info.entry, QStringLiteral("天然容重(t/m3)"));
@@ -1249,10 +1383,11 @@ bool MaterialManager::generateCaculateFile()
             setRow(94, fai);
             setRow(95, co);
             setRow(99, fai);
+            applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
             continue;
         }
 
-        if (info.model->key == QStringLiteral("soil_emu"))
+        if (info.model->key == QStringLiteral("soil_emu")) // 土体E-μ模型
         {
             const double dryRouTm3 = valueOf(info.entry, QStringLiteral("干容重(t/m3)"));
             const double pacRouTm3 = valueOf(info.entry, QStringLiteral("天然容重(t/m3)"));
@@ -1297,10 +1432,11 @@ bool MaterialManager::generateCaculateFile()
             setRow(94, fai);
             setRow(95, co);
             setRow(99, fai);
+            applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
             continue;
         }
 
-        if (info.model->key == QStringLiteral("soil_emu_crush"))
+        if (info.model->key == QStringLiteral("soil_emu_crush")) // 土体E-μ破碎模型
         {
             const double dryRouTm3 = valueOf(info.entry, QStringLiteral("干容重(t/m3)"));
             const double pacRouTm3 = valueOf(info.entry, QStringLiteral("天然容重(t/m3)"));
@@ -1353,10 +1489,11 @@ bool MaterialManager::generateCaculateFile()
             setRow(112, cn2);
             setRow(113, cbk3);
             setRow(114, cn3);
+            applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
             continue;
         }
 
-        if (info.model->key == QStringLiteral("soil_nanshui"))
+        if (info.model->key == QStringLiteral("soil_nanshui")) // 南水模型
         {
             const double dryRouTm3 = valueOf(info.entry, QStringLiteral("干容重(t/m3)"));
             const double pacRouTm3 = valueOf(info.entry, QStringLiteral("天然容重(t/m3)"));
@@ -1403,10 +1540,11 @@ bool MaterialManager::generateCaculateFile()
             setRow(12, co);
             setRow(94, fai);
             setRow(95, co);
+            applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
             continue;
         }
 
-        if (info.model->key == QStringLiteral("soil_kg"))
+        if (info.model->key == QStringLiteral("soil_kg")) // 土体K-G模型
         {
             const double dryRouTm3 = valueOf(info.entry, QStringLiteral("干容重(t/m3)"));
             const double pacRouTm3 = valueOf(info.entry, QStringLiteral("天然容重(t/m3)"));
@@ -1447,10 +1585,11 @@ bool MaterialManager::generateCaculateFile()
             setRow(78, alfak);
             setRow(77, agi);
             setRow(79, alfag);
+            applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
             continue;
         }
 
-        if (info.model->key == QStringLiteral("shenzhujiang_creep"))
+        if (info.model->key == QStringLiteral("shenzhujiang_creep")) // 沈珠江三参数流变
         {
             const double a1 = valueOf(info.entry, QStringLiteral("应变速率系数α"));
             const double b1 = valueOf(info.entry, QStringLiteral("体积流变系数b"));
@@ -1472,7 +1611,7 @@ bool MaterialManager::generateCaculateFile()
             continue;
         }
 
-        if (info.model->key == QStringLiteral("liguoying_creep"))
+        if (info.model->key == QStringLiteral("liguoying_creep")) // 李国英七参数流变
         {
             const double a1 = valueOf(info.entry, QStringLiteral("应变速率系数α"));
             const double b1 = valueOf(info.entry, QStringLiteral("体积流变系数b"));
@@ -1502,7 +1641,7 @@ bool MaterialManager::generateCaculateFile()
             continue;
         }
 
-        if (info.model->key == QStringLiteral("nine_param_creep"))
+        if (info.model->key == QStringLiteral("nine_param_creep")) // 九参数流变
         {
             const double almdV = valueOf(info.entry, QStringLiteral("应变速率系数λv"));
             const double cAlfa = valueOf(info.entry, QStringLiteral("体积流变系数Cα"));
@@ -1536,7 +1675,7 @@ bool MaterialManager::generateCaculateFile()
             continue;
         }
 
-        if (info.model->key == QStringLiteral("xiyuan_creep"))
+        if (info.model->key == QStringLiteral("xiyuan_creep")) // 西源流变
         {
             const double ee1 = valueOf(info.entry, QStringLiteral("瞬时弹性模量E1（GPa）"));
             const double ee2 = valueOf(info.entry, QStringLiteral("粘塑性模量E2（GPa）"));
@@ -1564,7 +1703,7 @@ bool MaterialManager::generateCaculateFile()
             continue;
         }
 
-        if (info.model->key == QStringLiteral("dam_dynamic"))
+        if (info.model->key == QStringLiteral("dam_dynamic")) // 坝料动力
         {
             const double maori = valueOf(info.entry, QStringLiteral("静力计算编号"));
             const double ifliqd = valueOf(info.entry, QStringLiteral("是否液化"));
@@ -1642,10 +1781,11 @@ bool MaterialManager::generateCaculateFile()
             setRow(106, ckp);
             setRow(107, cnv);
             setRow(108, cnp);
+            applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
             continue;
         }
 
-        if (info.model->key == QStringLiteral("jk_corewall_steady_seepage"))
+        if (info.model->key == QStringLiteral("jk_corewall_steady_seepage")) // 各向同性稳定渗流场参数
         {
             const double tol = 1.0e-3;
             const double akLu = valueOf(info.entry, QStringLiteral("渗透系数K(Lu)"));
@@ -1685,7 +1825,7 @@ bool MaterialManager::generateCaculateFile()
             continue;
         }
 
-        if (info.model->key == QStringLiteral("huangjinping_bar_element"))
+        if (info.model->key == QStringLiteral("huangjinping_bar_element")) // 黄金坪杆单元
         {
             const double ee1 = valueOf(info.entry, QStringLiteral("变模E1,E2（GPa）"));
             const double dryRou = valueOf(info.entry, QStringLiteral("容重t/m3"));
@@ -1720,6 +1860,7 @@ bool MaterialManager::generateCaculateFile()
             setRow(37, bb);
             setRow(39, 1.0);
             setRow(89, alfaFbar);
+            applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
             continue;
         }
 
@@ -1740,6 +1881,8 @@ bool MaterialManager::generateCaculateFile()
             const double v = strVal.toDouble(&ok);
             values[targetRow - 1][matIndex] = ok ? v : 0.0;
         }
+
+        applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
     }
 
     // ===== 5) 按你示例的 1P 科学计数格式输出：0.2000E+01 这种 =====
