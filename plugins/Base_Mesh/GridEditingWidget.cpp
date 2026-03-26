@@ -74,6 +74,64 @@ static inline int tuple1i(vtkDataArray* a, vtkIdType id, int def = -1)
     return static_cast<int>(a->GetTuple1(id));
 }
 
+static int resolvePointDisplayId(vtkDataSet* ds, vtkIdType pointId)
+{
+    if (!ds || pointId < 0)
+        return -1;
+
+    auto* pd = ds->GetPointData();
+    if (!pd)
+        return -1;
+
+    vtkDataArray* nodeId = pd->GetArray("NodeId");
+    if (!nodeId)
+        nodeId = pd->GetArray("node_id");
+    if (nodeId)
+    {
+        const int nid = tuple1i(nodeId, pointId, -1);
+        if (nid >= 0)
+            return nid;
+    }
+
+    vtkDataArray* originalPid = pd->GetArray("vtkOriginalPointIds");
+    if (originalPid)
+    {
+        const int oid = tuple1i(originalPid, pointId, -1);
+        if (oid >= 0)
+            return oid + 1;
+    }
+
+    return static_cast<int>(pointId) + 1;
+}
+
+static int resolveCellDisplayId(vtkDataSet* ds, vtkIdType cellId)
+{
+    if (!ds || cellId < 0)
+        return -1;
+
+    auto* cd = ds->GetCellData();
+    if (!cd)
+        return -1;
+
+    vtkDataArray* elemId = cd->GetArray("ElemId");
+    if (elemId)
+    {
+        const int eid = tuple1i(elemId, cellId, -1);
+        if (eid >= 0)
+            return eid;
+    }
+
+    vtkDataArray* originalCid = cd->GetArray("vtkOriginalCellIds");
+    if (originalCid)
+    {
+        const int oid = tuple1i(originalCid, cellId, -1);
+        if (oid >= 0)
+            return oid + 1;
+    }
+
+    return static_cast<int>(cellId) + 1;
+}
+
 static vtkSmartPointer<vtkIntArray> ensureIntArray(vtkFieldData* fd, const char* name,
                                                    vtkIdType nTuples)
 {
@@ -611,13 +669,9 @@ void GridEditingWidget::buildOrUpdateViewGrid()
                             : (m_viewGrid ? m_viewGrid->GetPoints() : nullptr);
     if (pickDs)
     {
-        auto* nodeIdArr = pickDs->GetPointData() ? pickDs->GetPointData()->GetArray("NodeId")
-                         : nullptr;
-        if (!nodeIdArr && pickDs->GetPointData())
-            nodeIdArr = pickDs->GetPointData()->GetArray("node_id");
         for (vtkIdType p = 0; p < pickDs->GetNumberOfPoints(); ++p)
         {
-            const int nid = tuple1i(nodeIdArr, p, -1);
+            const int nid = resolvePointDisplayId(pickDs, p);
             if (nid >= 0)
                 m_viewSurfaceNodeIdToVtkId.insert(nid, p);
         }
@@ -1135,12 +1189,7 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
                (std::abs(p[2] - zmin) <= eps) || (std::abs(p[2] - zmax) <= eps);
     };
 
-    auto* nodeIdArr =
-        m_viewGrid->GetPointData() ? m_viewGrid->GetPointData()->GetArray("NodeId") : nullptr;
-    auto* elemIdArr =
-        m_viewGrid->GetCellData() ? m_viewGrid->GetCellData()->GetArray("ElemId") : nullptr;
-
-    if (!nodeIdArr || !elemIdArr)
+    if (!m_viewGrid->GetPointData() || !m_viewGrid->GetCellData())
     {
         updateSurfaceLabelSummary(QString("外表面编号：缺少 NodeId 或 ElemId 数组"));
         m_visualWidgetService->setVisible(kNodeLblPropId, false, false);
@@ -1187,7 +1236,7 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
             if (!inRect(sx, sy))
                 continue;
 
-            int nid = tuple1i(nodeIdArr, pid, -1);
+            int nid = resolvePointDisplayId(m_viewGrid, pid);
             if (nid < 0)
                 continue;
 
@@ -1277,7 +1326,7 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
             if (!inRect(sx, sy))
                 continue;
 
-            int eid = tuple1i(elemIdArr, cid, -1);
+            int eid = resolveCellDisplayId(m_viewGrid, cid);
             if (eid < 0)
                 continue;
 
@@ -1345,28 +1394,21 @@ void GridEditingWidget::onPicked(long long pickedPointId, long long pickedCellId
         pickDs = vtkDataSet::SafeDownCast(m_viewGrid.GetPointer());
     if (!pickDs)
         return;
-    auto* pointData = pickDs->GetPointData();
-    auto* cellData = pickDs->GetCellData();
-
-    if (pickedPointId >= 0 && pointData)
+    if (pickedPointId >= 0)
     {
-        auto* nodeIdArr = vtkIntArray::SafeDownCast(pointData->GetArray("NodeId"));
-        if (!nodeIdArr)
-            nodeIdArr = vtkIntArray::SafeDownCast(pointData->GetArray("node_id"));
-        if (nodeIdArr && pickedPointId < nodeIdArr->GetNumberOfTuples())
+        const int nodeId = resolvePointDisplayId(pickDs, static_cast<vtkIdType>(pickedPointId));
+        if (nodeId >= 0)
         {
-            int nodeId = nodeIdArr->GetValue(static_cast<vtkIdType>(pickedPointId));
             if (ui->lineEditMoveNodeId)
                 ui->lineEditMoveNodeId->setText(QString::number(nodeId));
         }
     }
 
-    if (pickedCellId >= 0 && cellData)
+    if (pickedCellId >= 0)
     {
-        auto* elemIdArr = vtkIntArray::SafeDownCast(cellData->GetArray("ElemId"));
-        if (elemIdArr && pickedCellId < elemIdArr->GetNumberOfTuples())
+        const int elemId = resolveCellDisplayId(pickDs, static_cast<vtkIdType>(pickedCellId));
+        if (elemId >= 0)
         {
-            int elemId = elemIdArr->GetValue(static_cast<vtkIdType>(pickedCellId));
             if (ui->lineEditElemIdForLabels)
                 ui->lineEditElemIdForLabels->setText(QString::number(elemId));
             if (ui->lineEditDeleteElemId)
@@ -1479,10 +1521,7 @@ void GridEditingWidget::beginNodeDragFromCell(long long cellId, int displayX, in
     if (bestPid < 0)
         return;
 
-    auto* nodeIdArr = pickDs->GetPointData() ? pickDs->GetPointData()->GetArray("NodeId") : nullptr;
-    if (!nodeIdArr && pickDs->GetPointData())
-        nodeIdArr = pickDs->GetPointData()->GetArray("node_id");
-    const int nodeId = tuple1i(nodeIdArr, bestPid, -1);
+    const int nodeId = resolvePointDisplayId(pickDs, bestPid);
     beginNodeDragByNodeId(nodeId);
 }
 
