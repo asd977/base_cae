@@ -74,7 +74,7 @@ static inline int tuple1i(vtkDataArray* a, vtkIdType id, int def = -1)
     return static_cast<int>(a->GetTuple1(id));
 }
 
-static int resolvePointDisplayId(vtkDataSet* ds, vtkIdType pointId)
+static int resolvePointDisplayId(vtkDataSet* ds, vtkIdType pointId, vtkDataSet* sourceDs = nullptr)
 {
     if (!ds || pointId < 0)
         return -1;
@@ -98,13 +98,24 @@ static int resolvePointDisplayId(vtkDataSet* ds, vtkIdType pointId)
     {
         const int oid = tuple1i(originalPid, pointId, -1);
         if (oid >= 0)
+        {
+            if (sourceDs && sourceDs->GetPointData())
+            {
+                vtkDataArray* srcNodeId = sourceDs->GetPointData()->GetArray("NodeId");
+                if (!srcNodeId)
+                    srcNodeId = sourceDs->GetPointData()->GetArray("node_id");
+                const int srcNid = tuple1i(srcNodeId, oid, -1);
+                if (srcNid >= 0)
+                    return srcNid;
+            }
             return oid + 1;
+        }
     }
 
     return static_cast<int>(pointId) + 1;
 }
 
-static int resolveCellDisplayId(vtkDataSet* ds, vtkIdType cellId)
+static int resolveCellDisplayId(vtkDataSet* ds, vtkIdType cellId, vtkDataSet* sourceDs = nullptr)
 {
     if (!ds || cellId < 0)
         return -1;
@@ -126,7 +137,16 @@ static int resolveCellDisplayId(vtkDataSet* ds, vtkIdType cellId)
     {
         const int oid = tuple1i(originalCid, cellId, -1);
         if (oid >= 0)
+        {
+            if (sourceDs && sourceDs->GetCellData())
+            {
+                vtkDataArray* srcElemId = sourceDs->GetCellData()->GetArray("ElemId");
+                const int srcEid = tuple1i(srcElemId, oid, -1);
+                if (srcEid >= 0)
+                    return srcEid;
+            }
             return oid + 1;
+        }
     }
 
     return static_cast<int>(cellId) + 1;
@@ -671,7 +691,7 @@ void GridEditingWidget::buildOrUpdateViewGrid()
     {
         for (vtkIdType p = 0; p < pickDs->GetNumberOfPoints(); ++p)
         {
-            const int nid = resolvePointDisplayId(pickDs, p);
+            const int nid = resolvePointDisplayId(pickDs, p, m_viewGrid);
             if (nid >= 0)
                 m_viewSurfaceNodeIdToVtkId.insert(nid, p);
         }
@@ -1176,18 +1196,6 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
     {
         return sx >= minX && sx <= maxX && sy >= minY && sy <= maxY;
     };
-    auto isFrontVisible = [&](double sx, double sy, double sz)
-    {
-        if (!renderer)
-            return false;
-        int ix = static_cast<int>(std::lround(sx));
-        int iy = static_cast<int>(std::lround(sy));
-        const double zbuf = renderer->GetZ(ix, iy);
-        if (!std::isfinite(zbuf))
-            return false;
-        // 越小越靠前；允许一点深度误差，避免边缘闪烁造成漏选
-        return sz <= zbuf + 1e-4;
-    };
 
     double bounds[6];
     labelDs->GetBounds(bounds);
@@ -1214,10 +1222,6 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
 
     const double binSize = 60.0; // 分桶像素，避免过密
     const int maxLabels = maxSurfaceLabelCount();
-
-    // 保证深度缓存可用，用于过滤被遮挡的背面点/单元（3D 场景尤为重要）
-    if (auto* rw = renderer->GetRenderWindow())
-        rw->Render();
 
     struct Cand
     {
@@ -1255,10 +1259,8 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
                 continue;
             if (!inRect(sx, sy))
                 continue;
-            if (!isFrontVisible(sx, sy, sz))
-                continue;
 
-            int nid = resolvePointDisplayId(labelDs, pid);
+            int nid = resolvePointDisplayId(labelDs, pid, m_viewGrid);
             if (nid < 0)
                 continue;
 
@@ -1348,10 +1350,8 @@ void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectio
                 continue;
             if (!inRect(sx, sy))
                 continue;
-            if (!isFrontVisible(sx, sy, sz))
-                continue;
 
-            int eid = resolveCellDisplayId(labelDs, cid);
+            int eid = resolveCellDisplayId(labelDs, cid, m_viewGrid);
             if (eid < 0)
                 continue;
 
@@ -1421,7 +1421,8 @@ void GridEditingWidget::onPicked(long long pickedPointId, long long pickedCellId
         return;
     if (pickedPointId >= 0)
     {
-        const int nodeId = resolvePointDisplayId(pickDs, static_cast<vtkIdType>(pickedPointId));
+        const int nodeId =
+            resolvePointDisplayId(pickDs, static_cast<vtkIdType>(pickedPointId), m_viewGrid);
         if (nodeId >= 0)
         {
             if (ui->lineEditMoveNodeId)
@@ -1431,7 +1432,8 @@ void GridEditingWidget::onPicked(long long pickedPointId, long long pickedCellId
 
     if (pickedCellId >= 0)
     {
-        const int elemId = resolveCellDisplayId(pickDs, static_cast<vtkIdType>(pickedCellId));
+        const int elemId =
+            resolveCellDisplayId(pickDs, static_cast<vtkIdType>(pickedCellId), m_viewGrid);
         if (elemId >= 0)
         {
             if (ui->lineEditElemIdForLabels)
@@ -1546,7 +1548,7 @@ void GridEditingWidget::beginNodeDragFromCell(long long cellId, int displayX, in
     if (bestPid < 0)
         return;
 
-    const int nodeId = resolvePointDisplayId(pickDs, bestPid);
+    const int nodeId = resolvePointDisplayId(pickDs, bestPid, m_viewGrid);
     beginNodeDragByNodeId(nodeId);
 }
 
