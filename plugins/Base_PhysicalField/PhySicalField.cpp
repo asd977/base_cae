@@ -1900,13 +1900,17 @@ void PhysicalField::writeIIWL_Part8_BeamSpecialDistributedLoad(QTextStream& os)
     }
 }
 
-void PhysicalField::writeIIWL_Part9_10_11_Seismic(QTextStream& os)
+void PhysicalField::generateWaveFiles()
 {
-    const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir wd(projectDir);
+    if (!wd.exists("PREP"))
+        wd.mkpath("PREP");
 
     QList<ProjectNode*> pages;
     CollectNodesByKind(m_node, "SeismicAndAddedMassPage", pages);
-    qDebug() << "IIWL Part9-11 pages.size=" << pages.size() << "NDIM=" << NDIM;
+    qDebug() << "WAVE pages.size=" << pages.size();
 
     SeismicAndAddedMassPage* page = nullptr;
     if (!pages.isEmpty())
@@ -1916,72 +1920,60 @@ void PhysicalField::writeIIWL_Part9_10_11_Seismic(QTextStream& os)
     {
         return QString::number(v, 'f', 6);
     };
-    auto f3 = [](double v)
+    auto f4 = [](double v)
     {
-        return QString::number(v, 'f', 3);
+        return QString::number(v, 'f', 4);
     };
 
-    auto writeOne = [&](const QVector<QPair<double, double>>& series, double amp,
-                        const QString& tagN,   // NTBX/NTBY/NTBZ
-                        const QString& colA,   // AX/AY/AZ
-                        const QString& dirTag) // X-DIR/Y-DIR/Z-DIR
+    auto writeOneFile = [&](const QString& fileName, const QVector<QPair<double, double>>& series,
+                            double amp, const QString& axisLabel)
     {
-        const int N = series.size();
-
-        // 头行
-        os << QString("%1\t%2\t%3\tAMP_%4\n").arg(N).arg(f3(amp)).arg(tagN).arg(colA);
-
-        if (N > 0)
+        const QString path = wd.filePath(QString("PREP/%1").arg(fileName));
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         {
-            // 只保留 1 个空行（不要“空二行/段尾空行”）
-            os << "\n";
-            os << QString("T\t%1\tII\t%2\n").arg(colA).arg(dirTag);
-
-            for (int i = 0; i < N; ++i)
-            {
-                os << f6(series[i].first) << "\t" << f6(series[i].second) << "\t" << (i + 1)
-                   << "\n";
-            }
+            qWarning() << "generateWaveFiles: open failed:" << path;
+            return;
         }
+
+        QTextStream out(&file);
+        const int N = series.size();
+        out << QString("%1      %2 NUM  AM\n").arg(N, 6).arg(f4(amp), 10);
+        out << QString("   T(S)           %1(m/S^2)       II\n").arg(axisLabel);
+
+        for (int i = 0; i < N; ++i)
+        {
+            out << QString("%1       %2%3\n")
+                       .arg(f6(series[i].first), 13)
+                       .arg(f6(series[i].second), 15)
+                       .arg(i + 1, 10);
+        }
+
+        file.close();
+        qDebug() << "WAVE generated :" << path << "N=" << N << "AMP=" << amp;
     };
 
     QVector<QPair<double, double>> sx, sy, sz;
-    double axAmp = 0.0, ayAmp = 0.0, azAmp = 0.0;
-
+    double axAmp = 0.0;
+    double ayAmp = 0.0;
+    double azAmp = 0.0;
     if (page)
     {
         sx = page->seriesX();
         axAmp = page->ampX();
         sy = page->seriesY();
         ayAmp = page->ampY();
-        if (NDIM == 3)
-        {
-            sz = page->seriesZ();
-            azAmp = page->ampZ();
-        }
+        sz = page->seriesZ();
+        azAmp = page->ampZ();
     }
     else
     {
-        qDebug() << "IIWL Part9-11: no page, output zeros";
+        qDebug() << "WAVE: no seismic page, output empty files";
     }
 
-    // ✅ 不要在这里额外插入空行（否则又变“多空行”）
-    qDebug() << "Part9 NTBX=" << sx.size() << "ampX=" << axAmp;
-    writeOne(sx, axAmp, "NTBX", "AX", "X-DIR");
-
-    qDebug() << "Part10 NTBY=" << sy.size() << "ampY=" << ayAmp;
-    writeOne(sy, ayAmp, "NTBY", "AY", "Y-DIR");
-
-    if (NDIM == 3)
-    {
-        qDebug() << "Part11 NTBZ=" << sz.size() << "ampZ=" << azAmp;
-        writeOne(sz, azAmp, "NTBZ", "AZ", "Z-DIR");
-    }
-    else
-    {
-        qDebug() << "Part11 NDIM=2 -> NTBZ=0";
-        writeOne({}, 0.0, "NTBZ", "AZ", "Z-DIR");
-    }
+    writeOneFile("WAVE-AX.DAT", sx, axAmp, "AX");
+    writeOneFile("WAVE-AY.DAT", sy, ayAmp, "AY");
+    writeOneFile("WAVE-AZ.DAT", sz, azAmp, "AZ");
 }
 
 void PhysicalField::generateIIWLFile()
@@ -2010,8 +2002,9 @@ void PhysicalField::generateIIWLFile()
     writeIIWL_Part6_FaceLoad(os);
     writeIIWL_Part7_TemperatureLoad(os);
     writeIIWL_Part8_BeamSpecialDistributedLoad(os);
-    writeIIWL_Part9_10_11_Seismic(os);
 
     f.close();
     qDebug() << "IIWL generated :" << path;
+
+    generateWaveFiles();
 }

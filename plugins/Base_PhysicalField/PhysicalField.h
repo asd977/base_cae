@@ -56,8 +56,8 @@ class PhysicalField : public QObject, public PhysicalFieldService
 
     void writeIIWL_Part7_TemperatureLoad(QTextStream& os);
     void writeIIWL_Part8_BeamSpecialDistributedLoad(QTextStream& os);
-    void writeIIWL_Part9_10_11_Seismic(QTextStream& os);
     void writeIIWL_Part6_FaceLoad(QTextStream& os);
+    void generateWaveFiles();
 
     bool writeJsonFile(const QString& filePath, const QJsonObject& obj) const;
     bool readJsonFile(const QString& filePath, QJsonObject& out) const;

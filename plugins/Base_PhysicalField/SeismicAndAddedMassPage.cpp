@@ -6,7 +6,11 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QDebug>
+#include <QFile>
+#include <QFileDialog>
 #include <QHeaderView>
+#include <QMessageBox>
+#include <QTextStream>
 
 #include "PickManager.h"
 #include "ui_SeismicAndAddedMassPage.h"
@@ -197,4 +201,78 @@ void SeismicAndAddedMassPage::on_btnClear_clicked()
     qDebug() << "[SeismicTable] clear all";
     ui->tableSeismic->setRowCount(0);
     ensureAtLeastOneRow();
+}
+
+void SeismicAndAddedMassPage::on_btnImportCsv_clicked()
+{
+    const QString filePath = QFileDialog::getOpenFileName(
+        this, tr("导入地震波 CSV"), QString(), tr("CSV Files (*.csv);;All Files (*)"));
+    if (filePath.isEmpty())
+        return;
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        QMessageBox::warning(this, tr("导入失败"), tr("无法打开文件：%1").arg(filePath));
+        return;
+    }
+
+    QVector<QVector<double>> rows;
+    QTextStream in(&file);
+    int lineNo = 0;
+
+    while (!in.atEnd())
+    {
+        const QString line = in.readLine().trimmed();
+        ++lineNo;
+        if (line.isEmpty())
+            continue;
+
+        const QStringList cols = line.split(',', QString::KeepEmptyParts);
+        if (cols.size() < 4)
+            continue;
+
+        double t = 0.0, x = 0.0, y = 0.0, z = 0.0;
+        auto parseValue = [](QString s, double& out)
+        {
+            s = s.trimmed();
+            if (s.startsWith('"') && s.endsWith('"') && s.size() >= 2)
+                s = s.mid(1, s.size() - 2);
+            bool ok = false;
+            out = s.toDouble(&ok);
+            return ok;
+        };
+
+        const bool okT = parseValue(cols[0], t);
+        const bool okX = parseValue(cols[1], x);
+        const bool okY = parseValue(cols[2], y);
+        const bool okZ = parseValue(cols[3], z);
+        if (!okT || !okX || !okY || !okZ)
+        {
+            if (lineNo == 1)
+                continue; // 兼容标题行: 时间,x,y,z
+            continue;
+        }
+
+        rows.push_back({t, x, y, z});
+    }
+
+    if (rows.isEmpty())
+    {
+        QMessageBox::information(this, tr("导入结果"),
+                                 tr("未读取到有效数据，请确认 CSV 列顺序为：Time, X, Y, Z。"));
+        return;
+    }
+
+    ui->tableSeismic->setRowCount(rows.size());
+    for (int r = 0; r < rows.size(); ++r)
+    {
+        for (int c = 0; c < 4; ++c)
+        {
+            auto* item = new QTableWidgetItem(QString::number(rows[r][c], 'f', 6));
+            ui->tableSeismic->setItem(r, c, item);
+        }
+    }
+
+    qDebug() << "[SeismicTable] import csv rows=" << rows.size() << "file=" << filePath;
 }

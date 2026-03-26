@@ -34,6 +34,7 @@ class SeismicAndAddedMassPage : public BasePage
     void on_btnAddRow_clicked();
     void on_btnDeleteRow_clicked();
     void on_btnClear_clicked();
+    void on_btnImportCsv_clicked();
 
   private:
     bool cellToDouble(int row, int col, double& out) const;
