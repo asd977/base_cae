@@ -10,6 +10,9 @@
 #include <algorithm>
 #include <QDir>
 #include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSet>
 #include <QString>
 #include <QTextStream>
@@ -19,6 +22,38 @@
 
 #include "MaterialEntryWidget.h"
 #include "MaterialModelWidget.h"
+
+namespace
+{
+void syncAutoNumberProperties(MaterialModel* model, MaterialEntry* entry)
+{
+    if (!model || !entry)
+    {
+        return;
+    }
+
+    QList<int> matypes = entry->appliedMatypes.values();
+    std::sort(matypes.begin(), matypes.end());
+
+    QStringList tokens;
+    for (int matype : matypes)
+    {
+        if (matype >= 0)
+        {
+            tokens.append(QString::number(matype));
+        }
+    }
+    const QString value = tokens.join(QLatin1Char(','));
+
+    for (const QString& column : model->columns)
+    {
+        if (MaterialManager::isAutoNumberColumn(column))
+        {
+            entry->properties.insert(column, value);
+        }
+    }
+}
+} // namespace
 
 MaterialManager::MaterialManager()
     : m_materialManagerWidget(nullptr), m_rootItem(nullptr)
@@ -44,6 +79,178 @@ void MaterialManager::newProject()
     const QString workPath =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     newProjectForPath(workPath);
+}
+
+bool MaterialManager::saveProject()
+{
+    if (m_workPath.isEmpty())
+    {
+        return false;
+    }
+
+    QJsonObject root;
+    root.insert(QStringLiteral("module"), QStringLiteral("Material"));
+
+    QJsonArray modelArray;
+    for (const auto& model : m_models)
+    {
+        QJsonObject modelObj;
+        modelObj.insert(QStringLiteral("key"), model.key);
+        modelObj.insert(QStringLiteral("display_name"), model.displayName);
+
+        QJsonArray entryArray;
+        for (const auto& entry : model.materials)
+        {
+            QJsonObject entryObj;
+            entryObj.insert(QStringLiteral("id"), entry.id);
+            entryObj.insert(QStringLiteral("name"), entry.name);
+
+            QJsonObject propertiesObj;
+            for (auto it = entry.properties.constBegin(); it != entry.properties.constEnd(); ++it)
+            {
+                propertiesObj.insert(it.key(), it.value());
+            }
+            entryObj.insert(QStringLiteral("properties"), propertiesObj);
+
+            QList<int> matypes = entry.appliedMatypes.values();
+            std::sort(matypes.begin(), matypes.end());
+            QJsonArray appliedArray;
+            for (int matype : matypes)
+            {
+                appliedArray.append(matype);
+            }
+            entryObj.insert(QStringLiteral("applied_matypes"), appliedArray);
+            entryArray.append(entryObj);
+        }
+
+        modelObj.insert(QStringLiteral("entries"), entryArray);
+        modelArray.append(modelObj);
+    }
+    root.insert(QStringLiteral("models"), modelArray);
+
+    QJsonArray addedEntryArray;
+    const QList<QString> addedIds = m_addedEntryIds.values();
+    for (const QString& id : addedIds)
+    {
+        addedEntryArray.append(id);
+    }
+    root.insert(QStringLiteral("added_entry_ids"), addedEntryArray);
+
+    QFile file(QDir(m_workPath).filePath(PublicConstants::kMaterialProjectFileName));
+    if (!file.open(QIODevice::WriteOnly))
+    {
+        return false;
+    }
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    return true;
+}
+
+bool MaterialManager::loadProject()
+{
+    const QString workPath =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    newProjectForPath(workPath);
+
+    if (m_workPath.isEmpty())
+    {
+        return false;
+    }
+
+    QFile file(QDir(m_workPath).filePath(PublicConstants::kMaterialProjectFileName));
+    if (!file.open(QIODevice::ReadOnly))
+    {
+        return true;
+    }
+
+    const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+    if (!root.contains(QStringLiteral("models")))
+    {
+        return true;
+    }
+
+    const QVector<MaterialModel> defaults = createDefaultMaterialModels();
+    m_models.clear();
+    m_models.reserve(defaults.size());
+    for (const auto& model : defaults)
+    {
+        MaterialModel copy = model;
+        copy.materials.clear();
+        m_models.append(copy);
+    }
+
+    auto findModelIndex = [this](const QString& key) -> int
+    {
+        for (int i = 0; i < m_models.size(); ++i)
+        {
+            if (m_models[i].key == key)
+            {
+                return i;
+            }
+        }
+        return -1;
+    };
+
+    const QJsonArray modelArray = root.value(QStringLiteral("models")).toArray();
+    for (const auto& modelValue : modelArray)
+    {
+        const QJsonObject modelObj = modelValue.toObject();
+        const QString key = modelObj.value(QStringLiteral("key")).toString();
+        const QString displayName = modelObj.value(QStringLiteral("display_name")).toString();
+
+        int modelIndex = findModelIndex(key);
+        if (modelIndex < 0)
+        {
+            MaterialModel extra;
+            extra.key = key;
+            extra.displayName = displayName;
+            modelIndex = m_models.size();
+            m_models.append(extra);
+        }
+
+        const QJsonArray entries = modelObj.value(QStringLiteral("entries")).toArray();
+        for (const auto& entryValue : entries)
+        {
+            const QJsonObject entryObj = entryValue.toObject();
+            MaterialEntry entry;
+            entry.id = entryObj.value(QStringLiteral("id")).toString();
+            entry.name = entryObj.value(QStringLiteral("name")).toString();
+
+            const QJsonObject properties = entryObj.value(QStringLiteral("properties")).toObject();
+            for (auto it = properties.constBegin(); it != properties.constEnd(); ++it)
+            {
+                entry.properties.insert(it.key(), it.value().toString());
+                if (!m_models[modelIndex].columns.contains(it.key()))
+                {
+                    m_models[modelIndex].columns.append(it.key());
+                }
+            }
+
+            const QJsonArray applied = entryObj.value(QStringLiteral("applied_matypes")).toArray();
+            for (const auto& matypeValue : applied)
+            {
+                entry.appliedMatypes.insert(matypeValue.toInt(-1));
+            }
+
+            syncAutoNumberProperties(&m_models[modelIndex], &entry);
+
+            m_models[modelIndex].materials.append(entry);
+        }
+    }
+
+    m_addedEntryIds.clear();
+    const QJsonArray addedArray = root.value(QStringLiteral("added_entry_ids")).toArray();
+    for (const auto& idValue : addedArray)
+    {
+        const QString id = idValue.toString();
+        if (!id.isEmpty())
+        {
+            m_addedEntryIds.insert(id);
+        }
+    }
+
+    ensureEntryIds();
+    notifyLibraryChanged();
+    return true;
 }
 
 void MaterialManager::addMaterialFromMenu(const QString& modelKey)
@@ -83,7 +290,7 @@ QString MaterialManager::addMaterialToModel(const QString& modelKey, bool addToP
     entry.name = QString("材料%1").arg(maxIndex + 1);
     for (const QString& column : model->columns)
     {
-        entry.properties.insert(column, QStringLiteral("0"));
+        entry.properties.insert(column, isAutoNumberColumn(column) ? QString() : QStringLiteral("0"));
     }
 
     model->materials.append(entry);
@@ -108,6 +315,8 @@ void MaterialManager::setupTreeWidget()
 void MaterialManager::loadDefaultLibrary()
 {
     m_selectedMatypes.clear();
+    m_previewMatypes.clear();
+    m_preDeleteMatypes.clear();
     m_models = createDefaultMaterialModels();
     notifyLibraryChanged();
 }
@@ -251,6 +460,8 @@ QVector<QStringList> MaterialManager::getValueStrings()
 void MaterialManager::setValueStrings(QVector<QStringList> values)
 {
     m_selectedMatypes.clear();
+    m_previewMatypes.clear();
+    m_preDeleteMatypes.clear();
     if (values.isEmpty())
     {
         loadDefaultLibrary();
@@ -332,10 +543,17 @@ void MaterialManager::setValueStrings(QVector<QStringList> values)
                 m_models[index].materials.last().appliedMatypes.insert(value);
             }
         }
+        syncAutoNumberProperties(&m_models[index], &m_models[index].materials.last());
     }
 
     ensureEntryIds();
     notifyLibraryChanged();
+}
+
+bool MaterialManager::isAutoNumberColumn(const QString& columnName)
+{
+    return columnName == QStringLiteral("序号") || columnName == QStringLiteral("编号") ||
+           columnName == QStringLiteral("材料编号");
 }
 
 void MaterialManager::focusOnMaterial(const QString& entryId)
@@ -650,6 +868,7 @@ void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
                     m_preDeleteMatypes.remove(otherEntry.id);
                 }
 
+                syncAutoNumberProperties(&model, &otherEntry);
                 refreshEntryWidgetMatypes(otherEntry.id, otherEntry.appliedMatypes,
                                           m_selectedMatypes.value(otherEntry.id, -1));
             }
@@ -658,6 +877,9 @@ void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
 
     setSelectedMatypeForEntry(entryId, matype);
     entry->appliedMatypes.insert(matype);
+    MaterialModel* model = nullptr;
+    findEntry(entryId, &model);
+    syncAutoNumberProperties(model, entry);
 
     // 施加后通常清掉 predelete/preview
     setPreviewMatypeForEntry(entryId, -1);
@@ -673,7 +895,8 @@ void MaterialManager::removeMatypeFromEntry(const QString& entryId, int matype)
     if (matype < 0)
         return;
 
-    MaterialEntry* entry = findEntry(entryId);
+    MaterialModel* model = nullptr;
+    MaterialEntry* entry = findEntry(entryId, &model);
     if (!entry)
         return;
 
@@ -692,6 +915,7 @@ void MaterialManager::removeMatypeFromEntry(const QString& entryId, int matype)
             m_preDeleteMatypes.remove(entryId);
         }
 
+        syncAutoNumberProperties(model, entry);
         refreshEntryWidgetMatypes(entryId, entry->appliedMatypes,
                                   m_selectedMatypes.value(entryId, -1));
         notifyEntryUpdated(entryId, false);
@@ -793,7 +1017,7 @@ bool MaterialManager::generateCaculateFile()
 
         if (info.model->key == QStringLiteral("huangjinping_underground_plant"))
         {
-            const double matypeOri = valueOf(info.entry, QStringLiteral("编号"));
+            const double matypeOri = static_cast<double>(matype);
             const double itagEx = valueOf(info.entry, QStringLiteral("岩类分区"));
             const double alfaBa = valueOf(info.entry, QStringLiteral("半开挖区荷载释放系数"));
             const double laReborn = valueOf(info.entry, QStringLiteral("再生时对应开挖级"));

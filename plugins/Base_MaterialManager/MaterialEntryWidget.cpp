@@ -217,6 +217,10 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     // ===== 动态字段（放在 MATYPE 区域下面）=====
     for (const QString& column : model->columns)
     {
+        if (MaterialManager::isAutoNumberColumn(column))
+        {
+            continue;
+        }
         auto* valueEdit = new QLineEdit(entry->properties.value(column), this);
         valueEdit->setProperty("columnName", column);
         connect(valueEdit, &QLineEdit::textEdited, this, &MaterialEntryWidget::onValueEdited);

@@ -234,7 +234,7 @@ void ProjectManager::openProject()
     if (auto* materialManagerService =
             ServiceRegistry::instance().getService<MaterialManagerService>())
     {
-        materialManagerService->newProject();
+        materialManagerService->loadProject();
     }
     if (auto* physicalFieldService = ServiceRegistry::instance().getService<PhysicalFieldService>())
     {
@@ -284,6 +284,12 @@ void ProjectManager::saveProject()
     if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
     {
         meshService->saveProject();
+    }
+
+    if (auto* materialManagerService =
+            ServiceRegistry::instance().getService<MaterialManagerService>())
+    {
+        materialManagerService->saveProject();
     }
 
     if (auto* boundaryConditionsService =
@@ -542,6 +548,7 @@ bool ProjectManager::writeProjectManifest() const
     xml.writeTextElement("PreProcessing", PublicConstants::kPreProcessingProjectFileName);
     xml.writeTextElement("PostProcessing", PublicConstants::kPostProcessingProjectFileName);
     xml.writeTextElement("Mesh", PublicConstants::kMeshProjectFileName);
+    xml.writeTextElement("Material", PublicConstants::kMaterialProjectFileName);
     xml.writeTextElement("Solver", PublicConstants::kSolverProjectFileName);
     xml.writeTextElement("Surrogate", PublicConstants::kSurrogateProjectFileName);
     xml.writeEndElement();

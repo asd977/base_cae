@@ -26,6 +26,8 @@ class MaterialManager : public QObject, public MaterialManagerService
 
     BasePage* getMaterialManagerWidget() override;
     void newProject() override;
+    bool saveProject() override;
+    bool loadProject() override;
     void addMaterialFromMenu(const QString& modelKey) override;
 
     QString addMaterialToModel(const QString& modelKey, bool addToProjectTree = true);
@@ -80,6 +82,7 @@ class MaterialManager : public QObject, public MaterialManagerService
     void ensureEntryIds();
     void rebuildProjectTree();
     void clearProjectTree();
+    static bool isAutoNumberColumn(const QString& columnName);
 
     // 原 highlightMatypes 扩展为 3 态输入（Selected / Preview / PreDelete）
     void highlightMatypes(const QSet<int>& matypes, int selectedMatype, int previewMatype,
