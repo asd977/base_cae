@@ -1823,6 +1823,36 @@ bool MaterialManager::generateCaculateFile()
 
     file.close();
 
+    // ===== 8) 同步生成 MACB.DAT / MACHAN.DAT =====
+    const QList<int> macbMatypes = matypeMap.keys(); // QMap keys 默认升序
+
+    auto writeNumDat = [&](const QString& fileName, const QList<int>& ids) -> bool
+    {
+        QFile outFile(workDir.filePath(QString("PREP/%1").arg(fileName)));
+        if (!outFile.open(QIODevice::WriteOnly | QIODevice::Text))
+        {
+            return false;
+        }
+
+        QTextStream ts(&outFile);
+        ts << QString("%1   NUM\n").arg(ids.size(), 12);
+        for (int id : ids)
+        {
+            ts << QString("%1\n").arg(id, 8);
+        }
+        outFile.close();
+        return true;
+    };
+
+    if (!writeNumDat(QStringLiteral("MACB.DAT"), macbMatypes))
+    {
+        return false;
+    }
+    if (!writeNumDat(QStringLiteral("MACHAN.DAT"), QList<int>{}))
+    {
+        return false;
+    }
+
     return true;
 }
 
