@@ -150,13 +150,7 @@ void MaterialEntryWidget::onSeepageModelChanged(int)
 
     entry->seepageModelKey = m_seepageCombo->currentData().toString();
     m_materialManager->notifyEntryUpdated(m_entryId, false);
-    QTimer::singleShot(0, this,
-                       [this]()
-                       {
-                           MaterialModel* refreshModel = nullptr;
-                           MaterialEntry* refreshEntry = lookupEntry(&refreshModel);
-                           rebuildForm(refreshModel, refreshEntry);
-                       });
+    rebuildSeepageFields(entry);
 }
 
 void MaterialEntryWidget::onSeepageValueEdited(const QString& text)
@@ -175,6 +169,56 @@ void MaterialEntryWidget::onSeepageValueEdited(const QString& text)
     const QString column = lineEdit->property("columnName").toString();
     entry->seepageProperties.insert(column, text);
     m_materialManager->notifyEntryUpdated(m_entryId, false);
+}
+
+void MaterialEntryWidget::rebuildSeepageFields(MaterialEntry* entry)
+{
+    if (!m_seepageFieldsLayout || !entry)
+        return;
+
+    while (m_seepageFieldsLayout->rowCount() > 0)
+    {
+        QLayoutItem* labelItem = m_seepageFieldsLayout->itemAt(0, QFormLayout::LabelRole);
+        QLayoutItem* fieldItem = m_seepageFieldsLayout->itemAt(0, QFormLayout::FieldRole);
+        if (labelItem)
+            delete labelItem->widget();
+        if (fieldItem)
+            delete fieldItem->widget();
+        m_seepageFieldsLayout->removeRow(0);
+    }
+    m_seepageValueEdits.clear();
+
+    const QString seepageModelKey = m_seepageCombo ? m_seepageCombo->currentData().toString()
+                                                    : entry->seepageModelKey;
+    const auto& seepageModels = m_materialManager->seepageModels();
+    const MaterialModel* selectedSeepageModel = nullptr;
+    for (const auto& seepageModel : seepageModels)
+    {
+        if (seepageModel.key == seepageModelKey)
+        {
+            selectedSeepageModel = &seepageModel;
+            break;
+        }
+    }
+    if (!selectedSeepageModel)
+    {
+        return;
+    }
+
+    for (const QString& column : selectedSeepageModel->columns)
+    {
+        if (MaterialManager::isAutoNumberColumn(column))
+        {
+            continue;
+        }
+        auto* seepageValueEdit =
+            new QLineEdit(entry->seepageProperties.value(column, QStringLiteral("0")), this);
+        seepageValueEdit->setProperty("columnName", column);
+        connect(seepageValueEdit, &QLineEdit::textEdited, this,
+                &MaterialEntryWidget::onSeepageValueEdited);
+        m_seepageFieldsLayout->addRow(column, seepageValueEdit);
+        m_seepageValueEdits.insert(column, seepageValueEdit);
+    }
 }
 
 void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry)
@@ -280,34 +324,11 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     connect(m_seepageCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &MaterialEntryWidget::onSeepageModelChanged);
     m_formLayout->addRow(QStringLiteral("渗流/流变模型"), m_seepageCombo);
-
-    const QString seepageModelKey = m_seepageCombo->currentData().toString();
-    const MaterialModel* selectedSeepageModel = nullptr;
-    for (const auto& seepageModel : seepageModels)
-    {
-        if (seepageModel.key == seepageModelKey)
-        {
-            selectedSeepageModel = &seepageModel;
-            break;
-        }
-    }
-    if (selectedSeepageModel)
-    {
-        for (const QString& column : selectedSeepageModel->columns)
-        {
-            if (MaterialManager::isAutoNumberColumn(column))
-            {
-                continue;
-            }
-            auto* seepageValueEdit =
-                new QLineEdit(entry->seepageProperties.value(column, QStringLiteral("0")), this);
-            seepageValueEdit->setProperty("columnName", column);
-            connect(seepageValueEdit, &QLineEdit::textEdited, this,
-                    &MaterialEntryWidget::onSeepageValueEdited);
-            m_formLayout->addRow(QStringLiteral("渗流-") + column, seepageValueEdit);
-            m_seepageValueEdits.insert(column, seepageValueEdit);
-        }
-    }
+    auto* seepageFieldsWidget = new QWidget(this);
+    m_seepageFieldsLayout = new QFormLayout(seepageFieldsWidget);
+    m_seepageFieldsLayout->setContentsMargins(0, 0, 0, 0);
+    m_formLayout->addRow(QStringLiteral("渗流参数"), seepageFieldsWidget);
+    rebuildSeepageFields(entry);
 
     // ===== 初始化选中 MATYPE =====
     int initialMatype = m_materialManager->selectedMatypeForEntry(m_entryId);
@@ -349,6 +370,7 @@ void MaterialEntryWidget::clearForm()
     m_nameEdit = nullptr;
     m_valueEdits.clear();
     m_seepageCombo = nullptr;
+    m_seepageFieldsLayout = nullptr;
     m_seepageValueEdits.clear();
 
     m_matypeCombo = nullptr;

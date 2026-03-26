@@ -45,6 +45,7 @@ class MaterialEntryWidget : public BasePage
 
   private:
     void rebuildForm(MaterialModel* model, MaterialEntry* entry);
+    void rebuildSeepageFields(MaterialEntry* entry);
     void clearForm();
     MaterialEntry* lookupEntry(MaterialModel** model = nullptr) const;
 
@@ -63,6 +64,7 @@ class MaterialEntryWidget : public BasePage
     QLineEdit* m_nameEdit;
     QMap<QString, QLineEdit*> m_valueEdits;
     CustomComboBox* m_seepageCombo = nullptr;
+    QFormLayout* m_seepageFieldsLayout = nullptr;
     QMap<QString, QLineEdit*> m_seepageValueEdits;
 
     CustomComboBox* m_matypeCombo = nullptr;
