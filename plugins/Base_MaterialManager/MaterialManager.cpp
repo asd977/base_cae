@@ -1423,15 +1423,19 @@ bool MaterialManager::generateCaculateFile()
             setRow(69, dryK);
             setRow(70, dryN);
             setRow(71, rf);
+            setRow(72, dryK * 1.5);   // 对应 DRYK * 1.5 (公式中提到的 KUR)
+            setRow(73, dryN);          // 对应 DRYN (公式中提到的 NUR)
+            setRow(77, g);             // 对应 DRYG
+            setRow(78, d);             // 对应 DRYD
+            setRow(79, f);             // 对应 DRYF
+            setRow(75, g);             // 找不到
             setRow(76, dFai);
-            setRow(77, g);
             setRow(78, d);
             setRow(79, f);
             setRow(11, fai);
             setRow(12, co);
             setRow(94, fai);
             setRow(95, co);
-            setRow(99, fai);
             applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
             continue;
         }
