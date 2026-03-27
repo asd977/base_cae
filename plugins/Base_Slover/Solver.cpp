@@ -183,11 +183,11 @@ bool Solver::loadProject()
 
             BasePage* page = nullptr;
             if (type == "SeepageBoundaryUpstreamWater")
-                page = new SeepageBoundaryPage(type, "上游迎水面", "JD_UPSEEP.DAT");
+                page = new SeepageBoundaryPage(type, "上游水头边界", "JD_UPSEEP.DAT");
             else if (type == "SeepageBoundaryDownstreamWater")
-                page = new SeepageBoundaryPage(type, "下游迎水面", "JD_DWSEEP.DAT");
+                page = new SeepageBoundaryPage(type, "下游水头边界", "JD_DWSEEP.DAT");
             else if (type == "StressBoundaryDamUpstream")
-                page = new StressBoundaryPage(type, "上游迎水面", "FA_DAMUP.DAT");
+                page = new StressBoundaryPage(type, "上游水头边界", "FA_DAMUP.DAT");
             else if (type == "StressBoundaryDamMid")
                 page = new StressBoundaryPage(type, "坝体中心面节点", "FA_DAMMID.DAT");
             else if (type == "FillStorageCycle")
@@ -366,8 +366,8 @@ void Solver::onSeepageAction()
         analysisNode->addChild(node);
     };
 
-    addBoundary("上游迎水面", "SeepageBoundaryUpstreamWater", "JD_UPSEEP.DAT");
-    addBoundary("下游迎水面", "SeepageBoundaryDownstreamWater", "JD_DWSEEP.DAT");
+    addBoundary("上游水头边界", "SeepageBoundaryUpstreamWater", "JD_UPSEEP.DAT");
+    addBoundary("下游水头边界", "SeepageBoundaryDownstreamWater", "JD_DWSEEP.DAT");
 
     m_root->addChild(analysisNode);
     if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
@@ -398,7 +398,7 @@ void Solver::onStressStrainAction()
         analysisNode->addChild(node);
     };
 
-    addBoundary("上游迎水面", "StressBoundaryDamUpstream", "FA_DAMUP.DAT");
+    addBoundary("上游水头边界", "StressBoundaryDamUpstream", "FA_DAMUP.DAT");
     addBoundary("坝体中心面节点", "StressBoundaryDamMid", "FA_DAMMID.DAT");
 
     addFillStorageCycleNode(analysisNode, false);

@@ -63,7 +63,7 @@
      <item row="1" column="0">
       <widget class="QLabel" name="labelLine2">
        <property name="text">
-        <string>上游迎水面集文件</string>
+        <string>上游水头边界集文件</string>
        </property>
       </widget>
      </item>
@@ -77,7 +77,7 @@
      <item row="2" column="0">
       <widget class="QLabel" name="labelLine3">
        <property name="text">
-        <string>下游迎水面集文件</string>
+        <string>下游水头边界集文件</string>
        </property>
       </widget>
      </item>

@@ -139,7 +139,7 @@ QString DamAnalysisWidget::defaultValueByLine(int lineNo) const
 QString DamAnalysisWidget::descriptionByLine(int lineNo) const
 {
     static const QStringList descriptions = {
-        "计算默认文件目录", "上游迎水面集文件", "下游迎水面集文件", "心墙建基面文件",
+        "计算默认文件目录", "上游水头边界集文件", "下游水头边界集文件", "心墙建基面文件",
         "心墙中心面面集文件（面板坝不需要）", "基岩材料集（层号为1）", "上游材料集（面板坝不需要）",
         "下游材料集", "心墙材料集（面板坝不需要）",
         "坝型：1面板堆石坝 / 2心墙堆石坝 / 3沥青心墙堆石坝 / 4均质坝",
