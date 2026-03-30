@@ -1149,7 +1149,7 @@ bool MaterialManager::generateCaculateFile()
 
         const int matIndex = matype - 1;
 
-        if (info.model->key == QStringLiteral("huangjinping_underground_plant")) // 黄金坪厂房
+        if (info.model->key == QStringLiteral("huangjinping_underground_plant")) // 黄金坪厂房(样表1 2)
         {
             const double matypeOri = static_cast<double>(matype);
             const double itagEx = valueOf(info.entry, QStringLiteral("岩类分区"));
@@ -1765,9 +1765,9 @@ bool MaterialManager::generateCaculateFile()
             setRow(58, 0.1);
             setRow(59, 0.3);
             setRow(60, 0.5);
-            setRow(61, ratiao1);
-            setRow(62, ratiao2);
-            setRow(63, ratiao3);
+            setRow(61, 0.1);
+            setRow(62, 0.3);
+            setRow(63, 0.5);
             setRow(80, dryk1);
             setRow(81, dryn1);
             setRow(82, drydam);
