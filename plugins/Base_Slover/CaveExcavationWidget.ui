@@ -2,67 +2,179 @@
 <ui version="4.0">
  <class>CaveExcavationWidget</class>
  <widget class="QWidget" name="CaveExcavationWidget">
-  <property name="geometry"><rect><x>0</x><y>0</y><width>900</width><height>700</height></rect></property>
+  <property name="geometry"><rect><x>0</x><y>0</y><width>900</width><height>760</height></rect></property>
   <property name="windowTitle"><string>洞室开挖</string></property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item><widget class="QLabel" name="titleLabel"><property name="text"><string>洞室开挖支护计算（ICAVE.DAT）</string></property></widget></item>
-   <item><widget class="QScrollArea" name="scrollArea"><property name="widgetResizable"><bool>true</bool></property><widget class="QWidget" name="scrollAreaWidgetContents"><layout class="QVBoxLayout" name="verticalLayout_2"><item><layout class="QFormLayout" name="formLayout">     <item row="0" column="0"><widget class="QLabel" name="label1"><property name="text"><string>1. 洞室默认目录</string></property></widget></item>
-     <item row="0" column="1"><widget class="QLineEdit" name="line1Edit"><property name="text"><string></string></property></widget></item>
-     <item row="1" column="0"><widget class="QLabel" name="label2"><property name="text"><string>2. MAFACTOR.DAT</string></property></widget></item>
-     <item row="1" column="1"><widget class="QLineEdit" name="line2Edit"><property name="text"><string>MAFACTOR.DAT</string></property></widget></item>
-     <item row="2" column="0"><widget class="QLabel" name="label3"><property name="text"><string>3. IFSEEP</string></property></widget></item>
-     <item row="2" column="1"><widget class="QLineEdit" name="line3Edit"><property name="text"><string>0</string></property></widget></item>
-     <item row="3" column="0"><widget class="QLabel" name="label4"><property name="text"><string>4. SHUIMX.DAT</string></property></widget></item>
-     <item row="3" column="1"><widget class="QLineEdit" name="line4Edit"><property name="text"><string>SHUIMX.DAT</string></property></widget></item>
-     <item row="4" column="0"><widget class="QLabel" name="label5"><property name="text"><string>5. HW_NEI</string></property></widget></item>
-     <item row="4" column="1"><widget class="QLineEdit" name="line5Edit"><property name="text"><string>0.0</string></property></widget></item>
-     <item row="5" column="0"><widget class="QLabel" name="label6"><property name="text"><string>6. IIJX_CHEN.DAT</string></property></widget></item>
-     <item row="5" column="1"><widget class="QLineEdit" name="line6Edit"><property name="text"><string>IIJX_CHEN.DAT</string></property></widget></item>
-     <item row="6" column="0"><widget class="QLabel" name="label7"><property name="text"><string>7. HW_WAI</string></property></widget></item>
-     <item row="6" column="1"><widget class="QLineEdit" name="line7Edit"><property name="text"><string>0.0</string></property></widget></item>
-     <item row="7" column="0"><widget class="QLabel" name="label8"><property name="text"><string>8. IIJX_T01-01.DAT</string></property></widget></item>
-     <item row="7" column="1"><widget class="QLineEdit" name="line8Edit"><property name="text"><string>IIJX_T01-01.DAT</string></property></widget></item>
-     <item row="8" column="0"><widget class="QLabel" name="label9"><property name="text"><string>9. MASET_DCL.DAT</string></property></widget></item>
-     <item row="8" column="1"><widget class="QLineEdit" name="line9Edit"><property name="text"><string>MASET_DCL.DAT</string></property></widget></item>
-     <item row="9" column="0"><widget class="QLabel" name="label10"><property name="text"><string>10. 吊车梁安装级</string></property></widget></item>
-     <item row="9" column="1"><widget class="QLineEdit" name="line10Edit"><property name="text"><string>-4</string></property></widget></item>
-     <item row="10" column="0"><widget class="QLabel" name="label11"><property name="text"><string>11. 围岩已释放荷载α</string></property></widget></item>
-     <item row="10" column="1"><widget class="QLineEdit" name="line11Edit"><property name="text"><string>1.0</string></property></widget></item>
-     <item row="11" column="0"><widget class="QLabel" name="label12"><property name="text"><string>12. IIJX_T11.DAT</string></property></widget></item>
-     <item row="11" column="1"><widget class="QLineEdit" name="line12Edit"><property name="text"><string>IIJX_T11.DAT</string></property></widget></item>
-     <item row="12" column="0"><widget class="QLabel" name="label13"><property name="text"><string>13. IISEEP.DAT</string></property></widget></item>
-     <item row="12" column="1"><widget class="QLineEdit" name="line13Edit"><property name="text"><string>IISEEP.DAT</string></property></widget></item>
-     <item row="13" column="0"><widget class="QLabel" name="label14"><property name="text"><string>14. DIR_GEOSTR</string></property></widget></item>
-     <item row="13" column="1"><widget class="QLineEdit" name="line14Edit"><property name="text"><string></string></property></widget></item>
-     <item row="14" column="0"><widget class="QLabel" name="label15"><property name="text"><string>15. JDTRACE.DAT</string></property></widget></item>
-     <item row="14" column="1"><widget class="QLineEdit" name="line15Edit"><property name="text"><string>JDTRACE.DAT</string></property></widget></item>
-     <item row="15" column="0"><widget class="QLabel" name="label16"><property name="text"><string>16. KETRACE.DAT</string></property></widget></item>
-     <item row="15" column="1"><widget class="QLineEdit" name="line16Edit"><property name="text"><string>KETRACE.DAT</string></property></widget></item>
-     <item row="16" column="0"><widget class="QLabel" name="label17"><property name="text"><string>17. TDTRACE.DAT</string></property></widget></item>
-     <item row="16" column="1"><widget class="QLineEdit" name="line17Edit"><property name="text"><string>TDTRACE.DAT</string></property></widget></item>
-     <item row="17" column="0"><widget class="QLabel" name="label18"><property name="text"><string>18. IF_BOP</string></property></widget></item>
-     <item row="17" column="1"><widget class="QLineEdit" name="line18Edit"><property name="text"><string>0</string></property></widget></item>
-     <item row="18" column="0"><widget class="QLabel" name="label19"><property name="text"><string>19. IDAMP</string></property></widget></item>
-     <item row="18" column="1"><widget class="QLineEdit" name="line19Edit"><property name="text"><string>0</string></property></widget></item>
-     <item row="19" column="0"><widget class="QLabel" name="label20"><property name="text"><string>20. ALFAP</string></property></widget></item>
-     <item row="19" column="1"><widget class="QLineEdit" name="line20Edit"><property name="text"><string>0.05</string></property></widget></item>
-     <item row="20" column="0"><widget class="QLabel" name="label21"><property name="text"><string>21. BBETAP</string></property></widget></item>
-     <item row="20" column="1"><widget class="QLineEdit" name="line21Edit"><property name="text"><string>0.0</string></property></widget></item>
-     <item row="21" column="0"><widget class="QLabel" name="label22"><property name="text"><string>22. ITYPE_JISUAN</string></property></widget></item>
-     <item row="21" column="1"><widget class="QLineEdit" name="line22Edit"><property name="text"><string>1</string></property></widget></item>
-     <item row="22" column="0"><widget class="QLabel" name="label23"><property name="text"><string>23. 开挖荷载方式</string></property></widget></item>
-     <item row="22" column="1"><widget class="QLineEdit" name="line23Edit"><property name="text"><string>2</string></property></widget></item>
-     <item row="23" column="0"><widget class="QLabel" name="label24"><property name="text"><string>24. METHOD_ITER ITER</string></property></widget></item>
-     <item row="23" column="1"><widget class="QLineEdit" name="line24Edit"><property name="text"><string>1 100</string></property></widget></item>
-     <item row="24" column="0"><widget class="QLabel" name="label25"><property name="text"><string>25. 加固对应荷载分级</string></property></widget></item>
-     <item row="24" column="1"><widget class="QLineEdit" name="line25Edit"><property name="text"><string>4</string></property></widget></item></layout></item><item><widget class="QLabel" name="tailLabel"><property name="text"><string>工况段（NCASE及以下内容）</string></property></widget></item><item><widget class="QPlainTextEdit" name="tailEdit"><property name="plainText"><string>   1     IEXCA_MAX
+   <item>
+    <widget class="QScrollArea" name="scrollArea">
+     <property name="widgetResizable"><bool>true</bool></property>
+     <widget class="QWidget" name="scrollAreaWidgetContents">
+      <layout class="QVBoxLayout" name="verticalLayout_2">
+       <item>
+        <layout class="QFormLayout" name="formLayout">
+     <item row="0" column="0">
+      <widget class="QLabel" name="label1"><property name="text"><string>1. 洞室默认目录</string></property></widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="QLineEdit" name="line1Edit"><property name="text"><string></string></property></widget>
+     </item>
+     <item row="1" column="0">
+      <widget class="QLabel" name="label2"><property name="text"><string>2. MAFACTOR.DAT</string></property></widget>
+     </item>
+     <item row="1" column="1">
+      <widget class="QLineEdit" name="line2Edit"><property name="text"><string>MAFACTOR.DAT</string></property></widget>
+     </item>
+     <item row="2" column="0">
+      <widget class="QLabel" name="label3"><property name="text"><string>3. IFSEEP</string></property></widget>
+     </item>
+     <item row="2" column="1">
+      <widget class="QLineEdit" name="line3Edit"><property name="text"><string>0</string></property></widget>
+     </item>
+     <item row="3" column="0">
+      <widget class="QLabel" name="label4"><property name="text"><string>4. SHUIMX.DAT</string></property></widget>
+     </item>
+     <item row="3" column="1">
+      <widget class="QLineEdit" name="line4Edit"><property name="text"><string>SHUIMX.DAT</string></property></widget>
+     </item>
+     <item row="4" column="0">
+      <widget class="QLabel" name="label5"><property name="text"><string>5. HW_NEI</string></property></widget>
+     </item>
+     <item row="4" column="1">
+      <widget class="QLineEdit" name="line5Edit"><property name="text"><string>0.0</string></property></widget>
+     </item>
+     <item row="5" column="0">
+      <widget class="QLabel" name="label6"><property name="text"><string>6. IIJX_CHEN.DAT</string></property></widget>
+     </item>
+     <item row="5" column="1">
+      <widget class="QLineEdit" name="line6Edit"><property name="text"><string>IIJX_CHEN.DAT</string></property></widget>
+     </item>
+     <item row="6" column="0">
+      <widget class="QLabel" name="label7"><property name="text"><string>7. HW_WAI</string></property></widget>
+     </item>
+     <item row="6" column="1">
+      <widget class="QLineEdit" name="line7Edit"><property name="text"><string>0.0</string></property></widget>
+     </item>
+     <item row="7" column="0">
+      <widget class="QLabel" name="label8"><property name="text"><string>8. IIJX_T01-01.DAT</string></property></widget>
+     </item>
+     <item row="7" column="1">
+      <widget class="QLineEdit" name="line8Edit"><property name="text"><string>IIJX_T01-01.DAT</string></property></widget>
+     </item>
+     <item row="8" column="0">
+      <widget class="QLabel" name="label9"><property name="text"><string>9. MASET_DCL.DAT</string></property></widget>
+     </item>
+     <item row="8" column="1">
+      <widget class="QLineEdit" name="line9Edit"><property name="text"><string>MASET_DCL.DAT</string></property></widget>
+     </item>
+     <item row="9" column="0">
+      <widget class="QLabel" name="label10"><property name="text"><string>10. 吊车梁安装级</string></property></widget>
+     </item>
+     <item row="9" column="1">
+      <widget class="QLineEdit" name="line10Edit"><property name="text"><string>-4</string></property></widget>
+     </item>
+     <item row="10" column="0">
+      <widget class="QLabel" name="label11"><property name="text"><string>11. 围岩已释放荷载α</string></property></widget>
+     </item>
+     <item row="10" column="1">
+      <widget class="QLineEdit" name="line11Edit"><property name="text"><string>1.0</string></property></widget>
+     </item>
+     <item row="11" column="0">
+      <widget class="QLabel" name="label12"><property name="text"><string>12. IIJX_T11.DAT</string></property></widget>
+     </item>
+     <item row="11" column="1">
+      <widget class="QLineEdit" name="line12Edit"><property name="text"><string>IIJX_T11.DAT</string></property></widget>
+     </item>
+     <item row="12" column="0">
+      <widget class="QLabel" name="label13"><property name="text"><string>13. IISEEP.DAT</string></property></widget>
+     </item>
+     <item row="12" column="1">
+      <widget class="QLineEdit" name="line13Edit"><property name="text"><string>IISEEP.DAT</string></property></widget>
+     </item>
+     <item row="13" column="0">
+      <widget class="QLabel" name="label14"><property name="text"><string>14. DIR_GEOSTR</string></property></widget>
+     </item>
+     <item row="13" column="1">
+      <widget class="QLineEdit" name="line14Edit"><property name="text"><string></string></property></widget>
+     </item>
+     <item row="14" column="0">
+      <widget class="QLabel" name="label15"><property name="text"><string>15. JDTRACE.DAT</string></property></widget>
+     </item>
+     <item row="14" column="1">
+      <widget class="QLineEdit" name="line15Edit"><property name="text"><string>JDTRACE.DAT</string></property></widget>
+     </item>
+     <item row="15" column="0">
+      <widget class="QLabel" name="label16"><property name="text"><string>16. KETRACE.DAT</string></property></widget>
+     </item>
+     <item row="15" column="1">
+      <widget class="QLineEdit" name="line16Edit"><property name="text"><string>KETRACE.DAT</string></property></widget>
+     </item>
+     <item row="16" column="0">
+      <widget class="QLabel" name="label17"><property name="text"><string>17. TDTRACE.DAT</string></property></widget>
+     </item>
+     <item row="16" column="1">
+      <widget class="QLineEdit" name="line17Edit"><property name="text"><string>TDTRACE.DAT</string></property></widget>
+     </item>
+     <item row="17" column="0">
+      <widget class="QLabel" name="label18"><property name="text"><string>18. IF_BOP</string></property></widget>
+     </item>
+     <item row="17" column="1">
+      <widget class="QLineEdit" name="line18Edit"><property name="text"><string>0</string></property></widget>
+     </item>
+     <item row="18" column="0">
+      <widget class="QLabel" name="label19"><property name="text"><string>19. IDAMP</string></property></widget>
+     </item>
+     <item row="18" column="1">
+      <widget class="QLineEdit" name="line19Edit"><property name="text"><string>0</string></property></widget>
+     </item>
+     <item row="19" column="0">
+      <widget class="QLabel" name="label20"><property name="text"><string>20. ALFAP</string></property></widget>
+     </item>
+     <item row="19" column="1">
+      <widget class="QLineEdit" name="line20Edit"><property name="text"><string>0.05</string></property></widget>
+     </item>
+     <item row="20" column="0">
+      <widget class="QLabel" name="label21"><property name="text"><string>21. BBETAP</string></property></widget>
+     </item>
+     <item row="20" column="1">
+      <widget class="QLineEdit" name="line21Edit"><property name="text"><string>0.0</string></property></widget>
+     </item>
+     <item row="21" column="0">
+      <widget class="QLabel" name="label22"><property name="text"><string>22. ITYPE_JISUAN</string></property></widget>
+     </item>
+     <item row="21" column="1">
+      <widget class="QLineEdit" name="line22Edit"><property name="text"><string>1</string></property></widget>
+     </item>
+     <item row="22" column="0">
+      <widget class="QLabel" name="label23"><property name="text"><string>23. 开挖荷载方式</string></property></widget>
+     </item>
+     <item row="22" column="1">
+      <widget class="QLineEdit" name="line23Edit"><property name="text"><string>2</string></property></widget>
+     </item>
+     <item row="23" column="0">
+      <widget class="QLabel" name="label24"><property name="text"><string>24. METHOD_ITER ITER</string></property></widget>
+     </item>
+     <item row="23" column="1">
+      <widget class="QLineEdit" name="line24Edit"><property name="text"><string>1 100</string></property></widget>
+     </item>
+     <item row="24" column="0">
+      <widget class="QLabel" name="label25"><property name="text"><string>25. 加固对应荷载分级</string></property></widget>
+     </item>
+     <item row="24" column="1">
+      <widget class="QLineEdit" name="line25Edit"><property name="text"><string>4</string></property></widget>
+     </item>
+        </layout>
+       </item>
+       <item><widget class="QLabel" name="globalCaseLabel"><property name="text"><string>工况头段（可编辑，例如 IEXCA_MAX / NCHANGE / MCASE / NCASE）</string></property></widget></item>
+       <item><widget class="QPlainTextEdit" name="tailEdit"><property name="plainText"><string>   1     IEXCA_MAX
        0         1    EXCA DATE  II 
    1     NCHANGE
    1     1     1    MACHAN    MACHAN  II 
    1    MCASE
        1        1   JISUAN CASE  II
-   1    NCASE
---------------------------------------------------------------------
+   1    NCASE</string></property></widget></item>
+       <item><widget class="QLabel" name="caseBlocksLabel"><property name="text"><string>各工况循环段（可编辑，支持多工况）</string></property></widget></item>
+       <item><widget class="QPlainTextEdit" name="caseBlocksEdit"><property name="plainText"><string>--------------------------------------------------------------------
    1  ICASE
     0  NCHANGE_CASE
   -1    -3    IEXCA_STA    IEXCA_END
@@ -72,7 +184,11 @@
 'F:\FEMCLASS\Z05_CAVE2D\CASE01\'     DIRDYNA
    1     1   IFMODE   IFWAVE  
   0.005000    0.000000   30.000000    DT TSTA TEND
-'ACCEX.DAT'  'ACCEY.DAT'  'ACCEZ.DAT'   AX  AY  AZ</string></property></widget></item></layout></widget></widget></item>
+'ACCEX.DAT'  'ACCEY.DAT'  'ACCEZ.DAT'   AX  AY  AZ</string></property></widget></item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
    <item><widget class="QPushButton" name="btnCompute"><property name="text"><string>导出 ICAVE.DAT</string></property></widget></item>
   </layout>
  </widget>

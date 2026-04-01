@@ -60,6 +60,7 @@ bool CaveExcavationWidget::exportICaveDatFile() const
     }
 
     os << ui->tailEdit->toPlainText().trimmed() << "\n";
+    os << ui->caseBlocksEdit->toPlainText().trimmed() << "\n";
     return true;
 }
 
@@ -72,6 +73,7 @@ QJsonObject CaveExcavationWidget::saveJson()
         obj[QString("line_%1").arg(i)] = edit ? edit->text().trimmed() : "";
     }
     obj["tail"] = ui->tailEdit->toPlainText();
+    obj["case_blocks"] = ui->caseBlocksEdit->toPlainText();
     return obj;
 }
 
@@ -85,6 +87,8 @@ void CaveExcavationWidget::loadJson(const QJsonObject& obj)
         edit->setText(obj.value(QString("line_%1").arg(i)).toString(edit->text()));
     }
     ui->tailEdit->setPlainText(obj.value("tail").toString(ui->tailEdit->toPlainText()));
+    ui->caseBlocksEdit->setPlainText(
+        obj.value("case_blocks").toString(ui->caseBlocksEdit->toPlainText()));
 }
 
 void CaveExcavationWidget::onComputeClicked()
