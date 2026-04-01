@@ -22,9 +22,15 @@
     </widget>
    </item>
    <item>
-    <widget class="QFormLayout" name="formLayout">
-     <item row="0" column="0"><widget class="QLabel" name="label0"><property name="text"><string>PREP目录</string></property></widget></item>
-     <item row="0" column="1"><widget class="QLineEdit" name="prepDirEdit"/></item>
+    <layout class="QFormLayout" name="formLayout">
+     <item row="0" column="0">
+      <widget class="QLabel" name="label0">
+       <property name="text"><string>PREP目录</string></property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="QLineEdit" name="prepDirEdit"/>
+     </item>
      <item row="1" column="0"><widget class="QLabel" name="label1"><property name="text"><string>地表面文件</string></property></widget></item>
      <item row="1" column="1"><widget class="QLineEdit" name="roofEdit"><property name="text"><string>ROOF.DAT</string></property></widget></item>
      <item row="2" column="0"><widget class="QLabel" name="label2"><property name="text"><string>左侧面文件</string></property></widget></item>
@@ -41,7 +47,7 @@
      <item row="7" column="1"><widget class="QLineEdit" name="heightEdit"><property name="text"><string>1680.0000</string></property></widget></item>
      <item row="8" column="0"><widget class="QLabel" name="label8"><property name="text"><string>GAMA (kg/m3)</string></property></widget></item>
      <item row="8" column="1"><widget class="QLineEdit" name="gamaEdit"><property name="text"><string>2650.0000</string></property></widget></item>
-    </widget>
+    </layout>
    </item>
    <item>
     <widget class="QPushButton" name="btnCompute">

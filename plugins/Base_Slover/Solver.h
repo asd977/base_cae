@@ -20,7 +20,6 @@ class Solver : public QObject, public SolverService
     void onSeepageAction();
     void onStressStrainAction();
     void onSlopeStabilityAction();
-    void onGeoStressRegressionAction();
     void onComputeSeepage(ProjectNode* analysisNode);
     void onComputeStressStrain(ProjectNode* analysisNode);
     void onComputeSlopeStability(ProjectNode* analysisNode);
@@ -33,10 +32,10 @@ class Solver : public QObject, public SolverService
     int countFillStorageCycles(ProjectNode* analysisNode) const;
     void syncDamAnalysisMCase(ProjectNode* analysisNode) const;
     void addFillStorageCycleNode(ProjectNode* analysisNode, bool setCurrent) const;
+    void addGeoStressRegressionNode(ProjectNode* analysisNode, bool setCurrent);
     int nextSeepageIndex() const;
     int nextStressStrainIndex() const;
     int nextSlopeIndex() const;
-    int nextGeoStressRegressionIndex() const;
 
   private:
     ProjectNode* m_root = nullptr;

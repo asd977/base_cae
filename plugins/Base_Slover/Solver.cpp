@@ -148,7 +148,7 @@ bool Solver::loadProject()
         {
             auto* stressPage = new DamAnalysisWidget();
             analysisNode = new ProjectNode(
-                analysisObj.value("title").toString("土石坝计算"),
+                analysisObj.value("title").toString("洞室开挖"),
                 analysisObj.value("uuid").toString(QUuid::createUuid().toString()), stressPage);
             stressPage->loadJson(analysisObj.value("state").toObject());
             connect(stressPage, &DamAnalysisWidget::computeRequested, this,
@@ -172,25 +172,12 @@ bool Solver::loadProject()
                     });
             analysisPage = slopePage;
         }
-        else if (analysisType == "GeoStressRegressionAnalysis")
-        {
-            auto* geoStressPage = new GeoStressRegressionWidget();
-            analysisNode = new ProjectNode(
-                analysisObj.value("title").toString("地应力回归计算"),
-                analysisObj.value("uuid").toString(QUuid::createUuid().toString()), geoStressPage);
-            geoStressPage->loadJson(analysisObj.value("state").toObject());
-            connect(geoStressPage, &GeoStressRegressionWidget::computeRequested, this,
-                    [this, analysisNode]()
-                    {
-                        onComputeGeoStressRegression(analysisNode);
-                    });
-            analysisPage = geoStressPage;
-        }
 
         if (!analysisNode || !analysisPage)
             continue;
 
         bool hasFillStorageCycleNode = false;
+        bool hasGeoStressRegressionNode = false;
         for (const auto& childV : analysisObj.value("children").toArray())
         {
             const QJsonObject childObj = childV.toObject();
@@ -210,6 +197,11 @@ bool Solver::loadProject()
                 page = new FillStorageCyclePage();
                 hasFillStorageCycleNode = true;
             }
+            else if (type == "GeoStressRegressionAnalysis")
+            {
+                page = new GeoStressRegressionWidget();
+                hasGeoStressRegressionNode = true;
+            }
 
             if (!page)
                 continue;
@@ -219,10 +211,21 @@ bool Solver::loadProject()
                 childObj.value("uuid").toString(QUuid::createUuid().toString()), page);
             if (type == "FillStorageCycle")
                 setupNodeRole(node, "FillStorageCycle");
+            else if (type == "GeoStressRegressionAnalysis")
+                setupNodeRole(node, "GeoStressRegression");
             else if (type.startsWith("StressBoundary"))
                 setupNodeRole(node, "StressBoundary");
             else if (type.startsWith("SeepageBoundary"))
                 setupNodeRole(node, "SeepageBoundary");
+
+            if (auto* geoPage = dynamic_cast<GeoStressRegressionWidget*>(page))
+            {
+                connect(geoPage, &GeoStressRegressionWidget::computeRequested, this,
+                        [this, node]()
+                        {
+                            onComputeGeoStressRegression(node);
+                        });
+            }
             page->loadJson(childObj.value("state").toObject());
             analysisNode->addChild(node);
         }
@@ -231,6 +234,11 @@ bool Solver::loadProject()
         {
             addFillStorageCycleNode(analysisNode, false);
         }
+        if ((analysisType == "StressStrainAnalysis" || analysisType == "DamAnalysis")
+            && !hasGeoStressRegressionNode)
+        {
+            addGeoStressRegressionNode(analysisNode, false);
+        }
 
         if (analysisType == "StressStrainAnalysis" || analysisType == "DamAnalysis")
             setupNodeRole(analysisNode, "DamAnalysis");
@@ -238,8 +246,6 @@ bool Solver::loadProject()
             setupNodeRole(analysisNode, "SeepageAnalysis");
         else if (analysisType == "SlopeStabilityAnalysis")
             setupNodeRole(analysisNode, "SlopeStabilityAnalysis");
-        else if (analysisType == "GeoStressRegressionAnalysis")
-            setupNodeRole(analysisNode, "GeoStressRegressionAnalysis");
 
         syncDamAnalysisMCase(analysisNode);
 
@@ -273,11 +279,6 @@ void Solver::initAction()
                        {
                            onSlopeStabilityAction();
                        });
-    em.registerHandler(PublicConstants::kActionGeoStressRegressionKey,
-                       [this](const QVariantMap&)
-                       {
-                           onGeoStressRegressionAction();
-                       });
 }
 
 void Solver::initTreeMenu()
@@ -304,6 +305,16 @@ void Solver::initTreeMenu()
                             return;
                         addFillStorageCycleNode(analysisNode, true);
                         syncDamAnalysisMCase(analysisNode);
+                    });
+                ContextMenuHub::addAction(
+                    menu, this, "新增地应力回归计算",
+                    [this, uuid]()
+                    {
+                        auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+                        auto* analysisNode = pm ? pm->findNodeByUuid(uuid) : nullptr;
+                        if (!analysisNode)
+                            return;
+                        addGeoStressRegressionNode(analysisNode, true);
                     });
             }
         },
@@ -364,6 +375,29 @@ void Solver::addFillStorageCycleNode(ProjectNode* analysisNode, bool setCurrent)
     }
 }
 
+void Solver::addGeoStressRegressionNode(ProjectNode* analysisNode, bool setCurrent)
+{
+    if (!analysisNode)
+        return;
+
+    auto* page = new GeoStressRegressionWidget();
+    auto* node = new ProjectNode("地应力回归计算", QUuid::createUuid().toString(), page);
+    setupNodeRole(node, "GeoStressRegression");
+    analysisNode->addChild(node);
+
+    connect(page, &GeoStressRegressionWidget::computeRequested, this,
+            [this, node]()
+            {
+                onComputeGeoStressRegression(node);
+            });
+
+    if (setCurrent)
+    {
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(node);
+    }
+}
+
 void Solver::onSeepageAction()
 {
     if (!m_root)
@@ -402,7 +436,7 @@ void Solver::onStressStrainAction()
         return;
 
     auto* stressPage = new DamAnalysisWidget();
-    const QString analysisName = QString("土石坝计算(%1)").arg(nextStressStrainIndex());
+    const QString analysisName = QString("洞室开挖(%1)").arg(nextStressStrainIndex());
     auto* analysisNode = new ProjectNode(analysisName, QUuid::createUuid().toString(), stressPage);
     setupNodeRole(analysisNode, "DamAnalysis");
 
@@ -422,6 +456,7 @@ void Solver::onStressStrainAction()
 
     addBoundary("上游水头边界", "StressBoundaryDamUpstream", "FA_DAMUP.DAT");
     addBoundary("坝体中心面节点", "StressBoundaryDamMid", "FA_DAMMID.DAT");
+    addGeoStressRegressionNode(analysisNode, false);
 
     addFillStorageCycleNode(analysisNode, false);
     syncDamAnalysisMCase(analysisNode);
@@ -445,27 +480,6 @@ void Solver::onSlopeStabilityAction()
             [this, analysisNode]()
             {
                 onComputeSlopeStability(analysisNode);
-            });
-
-    m_root->addChild(analysisNode);
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-        pm->setCurrentItem(analysisNode);
-}
-
-void Solver::onGeoStressRegressionAction()
-{
-    if (!m_root)
-        return;
-
-    auto* page = new GeoStressRegressionWidget();
-    const QString analysisName = QString("地应力回归计算(%1)").arg(nextGeoStressRegressionIndex());
-    auto* analysisNode = new ProjectNode(analysisName, QUuid::createUuid().toString(), page);
-    setupNodeRole(analysisNode, "GeoStressRegressionAnalysis");
-
-    connect(page, &GeoStressRegressionWidget::computeRequested, this,
-            [this, analysisNode]()
-            {
-                onComputeGeoStressRegression(analysisNode);
             });
 
     m_root->addChild(analysisNode);
@@ -554,7 +568,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
 
     if (ok)
         QMessageBox::information(nullptr, "导出成功",
-                                 "土石坝计算输入文件导出成功（IFILL.DAT 与 PREP/）。");
+                                 "洞室开挖输入文件导出成功（IFILL.DAT 与 PREP/）。");
     else
         QMessageBox::warning(nullptr, "导出失败",
                              QString("以下文件导出失败：\n%1").arg(failedFiles.join("\n")));
@@ -590,7 +604,7 @@ int Solver::nextStressStrainIndex() const
         return 1;
 
     int maxIdx = 0;
-    QRegularExpression re(QString(R"(^(?:土石坝计算|应力应变分析)\((\d+)\)$)"));
+    QRegularExpression re(QString(R"(^(?:土石坝计算|应力应变分析|洞室开挖)\((\d+)\)$)"));
 
     for (ProjectNode* child : m_root->getChildren())
     {
@@ -643,32 +657,6 @@ int Solver::nextSlopeIndex() const
 
     int maxIdx = 0;
     QRegularExpression re(QString(R"(^边坡稳定分析\((\d+)\)$)"));
-
-    for (ProjectNode* child : m_root->getChildren())
-    {
-        if (!child)
-            continue;
-        const QString name = child->getName();
-        auto m = re.match(name);
-        if (m.hasMatch())
-        {
-            bool ok = false;
-            int idx = m.captured(1).toInt(&ok);
-            if (ok)
-                maxIdx = std::max(maxIdx, idx);
-        }
-    }
-
-    return maxIdx + 1;
-}
-
-int Solver::nextGeoStressRegressionIndex() const
-{
-    if (!m_root)
-        return 1;
-
-    int maxIdx = 0;
-    QRegularExpression re(QString(R"(^地应力回归计算\((\d+)\)$)"));
 
     for (ProjectNode* child : m_root->getChildren())
     {
