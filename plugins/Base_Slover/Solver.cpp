@@ -23,6 +23,7 @@
 #include "SeepageWidget.h"
 #include "StressBoundaryPage.h"
 #include "DamAnalysisWidget.h"
+#include "GeoStressRegressionWidget.h"
 #include "SlopeStabilityWidget.h"
 #include "SolverSettingWidget.h"
 
@@ -171,6 +172,20 @@ bool Solver::loadProject()
                     });
             analysisPage = slopePage;
         }
+        else if (analysisType == "GeoStressRegressionAnalysis")
+        {
+            auto* geoStressPage = new GeoStressRegressionWidget();
+            analysisNode = new ProjectNode(
+                analysisObj.value("title").toString("地应力回归计算"),
+                analysisObj.value("uuid").toString(QUuid::createUuid().toString()), geoStressPage);
+            geoStressPage->loadJson(analysisObj.value("state").toObject());
+            connect(geoStressPage, &GeoStressRegressionWidget::computeRequested, this,
+                    [this, analysisNode]()
+                    {
+                        onComputeGeoStressRegression(analysisNode);
+                    });
+            analysisPage = geoStressPage;
+        }
 
         if (!analysisNode || !analysisPage)
             continue;
@@ -223,6 +238,8 @@ bool Solver::loadProject()
             setupNodeRole(analysisNode, "SeepageAnalysis");
         else if (analysisType == "SlopeStabilityAnalysis")
             setupNodeRole(analysisNode, "SlopeStabilityAnalysis");
+        else if (analysisType == "GeoStressRegressionAnalysis")
+            setupNodeRole(analysisNode, "GeoStressRegressionAnalysis");
 
         syncDamAnalysisMCase(analysisNode);
 
@@ -255,6 +272,11 @@ void Solver::initAction()
                        [this](const QVariantMap&)
                        {
                            onSlopeStabilityAction();
+                       });
+    em.registerHandler(PublicConstants::kActionGeoStressRegressionKey,
+                       [this](const QVariantMap&)
+                       {
+                           onGeoStressRegressionAction();
                        });
 }
 
@@ -430,6 +452,27 @@ void Solver::onSlopeStabilityAction()
         pm->setCurrentItem(analysisNode);
 }
 
+void Solver::onGeoStressRegressionAction()
+{
+    if (!m_root)
+        return;
+
+    auto* page = new GeoStressRegressionWidget();
+    const QString analysisName = QString("地应力回归计算(%1)").arg(nextGeoStressRegressionIndex());
+    auto* analysisNode = new ProjectNode(analysisName, QUuid::createUuid().toString(), page);
+    setupNodeRole(analysisNode, "GeoStressRegressionAnalysis");
+
+    connect(page, &GeoStressRegressionWidget::computeRequested, this,
+            [this, analysisNode]()
+            {
+                onComputeGeoStressRegression(analysisNode);
+            });
+
+    m_root->addChild(analysisNode);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(analysisNode);
+}
+
 void Solver::onComputeSeepage(ProjectNode* analysisNode)
 {
     if (!analysisNode)
@@ -529,6 +572,18 @@ void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
         QMessageBox::warning(nullptr, "导出失败", "ISLOP.DAT 导出失败。");
 }
 
+void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
+{
+    if (!analysisNode)
+        return;
+
+    auto* page = dynamic_cast<GeoStressRegressionWidget*>(analysisNode->getPage());
+    if (page && page->exportIGEOSDatFile())
+        QMessageBox::information(nullptr, "导出成功", "地应力回归计算输入文件导出成功（IGEOS.DAT）。");
+    else
+        QMessageBox::warning(nullptr, "导出失败", "IGEOS.DAT 导出失败。");
+}
+
 int Solver::nextStressStrainIndex() const
 {
     if (!m_root)
@@ -588,6 +643,32 @@ int Solver::nextSlopeIndex() const
 
     int maxIdx = 0;
     QRegularExpression re(QString(R"(^边坡稳定分析\((\d+)\)$)"));
+
+    for (ProjectNode* child : m_root->getChildren())
+    {
+        if (!child)
+            continue;
+        const QString name = child->getName();
+        auto m = re.match(name);
+        if (m.hasMatch())
+        {
+            bool ok = false;
+            int idx = m.captured(1).toInt(&ok);
+            if (ok)
+                maxIdx = std::max(maxIdx, idx);
+        }
+    }
+
+    return maxIdx + 1;
+}
+
+int Solver::nextGeoStressRegressionIndex() const
+{
+    if (!m_root)
+        return 1;
+
+    int maxIdx = 0;
+    QRegularExpression re(QString(R"(^地应力回归计算\((\d+)\)$)"));
 
     for (ProjectNode* child : m_root->getChildren())
     {

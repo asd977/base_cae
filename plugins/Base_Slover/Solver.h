@@ -20,9 +20,11 @@ class Solver : public QObject, public SolverService
     void onSeepageAction();
     void onStressStrainAction();
     void onSlopeStabilityAction();
+    void onGeoStressRegressionAction();
     void onComputeSeepage(ProjectNode* analysisNode);
     void onComputeStressStrain(ProjectNode* analysisNode);
     void onComputeSlopeStability(ProjectNode* analysisNode);
+    void onComputeGeoStressRegression(ProjectNode* analysisNode);
 
   private:
     void initAction();
@@ -34,6 +36,7 @@ class Solver : public QObject, public SolverService
     int nextSeepageIndex() const;
     int nextStressStrainIndex() const;
     int nextSlopeIndex() const;
+    int nextGeoStressRegressionIndex() const;
 
   private:
     ProjectNode* m_root = nullptr;
