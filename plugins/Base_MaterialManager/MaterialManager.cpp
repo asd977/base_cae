@@ -1172,19 +1172,27 @@ bool MaterialManager::generateCaculateFile()
             const double co = coMpa * 1.0e6;
 
             // 默认替代：用 Mohr-Coulomb 近似计算 RC/RT（原 DEFAULT_RTRC 未给出）
-            static bool loggedApproximation = false;
-            if (!loggedApproximation)
+            double rt = 0.0;
+            double rc = 0.0;
+
+            if (co > 1.0e-1)
             {
-                qWarning() << "MaterialManager: DEFAULT_RTRC 未提供，RC/RT 当前使用 Mohr-Coulomb 近似公式。";
-                loggedApproximation = true;
+                const double faiRad = fai * 3.141592653589793 / 180.0;
+                const double sinF = std::sin(faiRad);
+                const double cosF = std::cos(faiRad);
+
+                rt = 2.0 * co * cosF / (1.0 + sinF);
+                rc = 2.0 * co * cosF / (1.0 - sinF);
+
+                if (rt < co)
+                    rt = co;
             }
-            const double faiRad = fai * 3.141592653589793 / 180.0;
-            const double sinF = std::sin(faiRad);
-            const double cosF = std::cos(faiRad);
-            const double denRc = 1.0 - sinF;
-            const double denRt = 1.0 + sinF;
-            const double rc = (std::fabs(denRc) > 1.0e-12) ? (2.0 * co * cosF / denRc) : 0.0;
-            const double rt = (std::fabs(denRt) > 1.0e-12) ? (2.0 * co * cosF / denRt) : 0.0;
+            else
+            {
+                rt = 1.0;
+                rc = 2.0;
+            }
+
             const double gg = (std::fabs(1.0 + pu) > 1.0e-12) ? (ee / 2.0 / (1.0 + pu)) : 0.0;
 
             auto setRow = [&](int row, double value)
@@ -1267,19 +1275,26 @@ bool MaterialManager::generateCaculateFile()
             const double gg = (std::fabs(1.0 + pu) > 1.0e-12) ? (ee / 2.0 / (1.0 + pu)) : 0.0;
 
             // 默认替代：用 Mohr-Coulomb 近似计算 RC/RT（原 DEFAULT_RTRC 未给出）
-            static bool loggedApproximation = false;
-            if (!loggedApproximation)
+            double rt = 0.0;
+            double rc = 0.0;
+
+            if (co > 1.0e-1)
             {
-                qWarning() << "MaterialManager: DEFAULT_RTRC 未提供，RC/RT 当前使用 Mohr-Coulomb 近似公式。";
-                loggedApproximation = true;
+                const double faiRad = fai * 3.141592653589793 / 180.0;
+                const double sinF = std::sin(faiRad);
+                const double cosF = std::cos(faiRad);
+
+                rt = 2.0 * co * cosF / (1.0 + sinF);
+                rc = 2.0 * co * cosF / (1.0 - sinF);
+
+                if (rt < co)
+                    rt = co;
             }
-            const double faiRad = fai * 3.141592653589793 / 180.0;
-            const double sinF = std::sin(faiRad);
-            const double cosF = std::cos(faiRad);
-            const double denRc = 1.0 - sinF;
-            const double denRt = 1.0 + sinF;
-            const double rc = (std::fabs(denRc) > 1.0e-12) ? (2.0 * co * cosF / denRc) : 0.0;
-            const double rt = (std::fabs(denRt) > 1.0e-12) ? (2.0 * co * cosF / denRt) : 0.0;
+            else
+            {
+                rt = 1.0;
+                rc = 2.0;
+            }
 
             auto setRow = [&](int row, double value)
             {
