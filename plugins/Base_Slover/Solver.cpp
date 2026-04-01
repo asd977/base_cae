@@ -19,6 +19,7 @@
 #include <algorithm>
 
 #include "FillStorageCyclePage.h"
+#include "CaveExcavationWidget.h"
 #include "SeepageBoundaryPage.h"
 #include "SeepageWidget.h"
 #include "StressBoundaryPage.h"
@@ -148,7 +149,7 @@ bool Solver::loadProject()
         {
             auto* stressPage = new DamAnalysisWidget();
             analysisNode = new ProjectNode(
-                analysisObj.value("title").toString("洞室开挖"),
+                analysisObj.value("title").toString("土石坝计算"),
                 analysisObj.value("uuid").toString(QUuid::createUuid().toString()), stressPage);
             stressPage->loadJson(analysisObj.value("state").toObject());
             connect(stressPage, &DamAnalysisWidget::computeRequested, this,
@@ -171,6 +172,20 @@ bool Solver::loadProject()
                         onComputeSlopeStability(analysisNode);
                     });
             analysisPage = slopePage;
+        }
+        else if (analysisType == "CaveExcavationAnalysis")
+        {
+            auto* cavePage = new CaveExcavationWidget();
+            analysisNode = new ProjectNode(
+                analysisObj.value("title").toString("洞室开挖"),
+                analysisObj.value("uuid").toString(QUuid::createUuid().toString()), cavePage);
+            cavePage->loadJson(analysisObj.value("state").toObject());
+            connect(cavePage, &CaveExcavationWidget::computeRequested, this,
+                    [this, analysisNode]()
+                    {
+                        onComputeCaveExcavation(analysisNode);
+                    });
+            analysisPage = cavePage;
         }
 
         if (!analysisNode || !analysisPage)
@@ -234,7 +249,7 @@ bool Solver::loadProject()
         {
             addFillStorageCycleNode(analysisNode, false);
         }
-        if ((analysisType == "StressStrainAnalysis" || analysisType == "DamAnalysis")
+        if ((analysisType == "CaveExcavationAnalysis")
             && !hasGeoStressRegressionNode)
         {
             addGeoStressRegressionNode(analysisNode, false);
@@ -246,6 +261,8 @@ bool Solver::loadProject()
             setupNodeRole(analysisNode, "SeepageAnalysis");
         else if (analysisType == "SlopeStabilityAnalysis")
             setupNodeRole(analysisNode, "SlopeStabilityAnalysis");
+        else if (analysisType == "CaveExcavationAnalysis")
+            setupNodeRole(analysisNode, "CaveExcavationAnalysis");
 
         syncDamAnalysisMCase(analysisNode);
 
@@ -273,6 +290,11 @@ void Solver::initAction()
                        [this](const QVariantMap&)
                        {
                            onStressStrainAction();
+                       });
+    em.registerHandler(PublicConstants::kActionCaveExcavationKey,
+                       [this](const QVariantMap&)
+                       {
+                           onCaveExcavationAction();
                        });
     em.registerHandler(PublicConstants::kActionSlopeStabilityKey,
                        [this](const QVariantMap&)
@@ -306,6 +328,10 @@ void Solver::initTreeMenu()
                         addFillStorageCycleNode(analysisNode, true);
                         syncDamAnalysisMCase(analysisNode);
                     });
+            }
+            else if (kind == "CaveExcavationAnalysis")
+            {
+                ContextMenuHub::addSeparator(menu);
                 ContextMenuHub::addAction(
                     menu, this, "新增地应力回归计算",
                     [this, uuid]()
@@ -436,7 +462,7 @@ void Solver::onStressStrainAction()
         return;
 
     auto* stressPage = new DamAnalysisWidget();
-    const QString analysisName = QString("洞室开挖(%1)").arg(nextStressStrainIndex());
+    const QString analysisName = QString("土石坝计算(%1)").arg(nextStressStrainIndex());
     auto* analysisNode = new ProjectNode(analysisName, QUuid::createUuid().toString(), stressPage);
     setupNodeRole(analysisNode, "DamAnalysis");
 
@@ -456,10 +482,32 @@ void Solver::onStressStrainAction()
 
     addBoundary("上游水头边界", "StressBoundaryDamUpstream", "FA_DAMUP.DAT");
     addBoundary("坝体中心面节点", "StressBoundaryDamMid", "FA_DAMMID.DAT");
-    addGeoStressRegressionNode(analysisNode, false);
 
     addFillStorageCycleNode(analysisNode, false);
     syncDamAnalysisMCase(analysisNode);
+
+    m_root->addChild(analysisNode);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(analysisNode);
+}
+
+void Solver::onCaveExcavationAction()
+{
+    if (!m_root)
+        return;
+
+    auto* cavePage = new CaveExcavationWidget();
+    const QString analysisName = QString("洞室开挖(%1)").arg(nextCaveExcavationIndex());
+    auto* analysisNode = new ProjectNode(analysisName, QUuid::createUuid().toString(), cavePage);
+    setupNodeRole(analysisNode, "CaveExcavationAnalysis");
+
+    connect(cavePage, &CaveExcavationWidget::computeRequested, this,
+            [this, analysisNode]()
+            {
+                onComputeCaveExcavation(analysisNode);
+            });
+
+    addGeoStressRegressionNode(analysisNode, false);
 
     m_root->addChild(analysisNode);
     if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
@@ -568,7 +616,42 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
 
     if (ok)
         QMessageBox::information(nullptr, "导出成功",
-                                 "洞室开挖输入文件导出成功（IFILL.DAT 与 PREP/）。");
+                                 "土石坝计算输入文件导出成功（IFILL.DAT 与 PREP/）。");
+    else
+        QMessageBox::warning(nullptr, "导出失败",
+                             QString("以下文件导出失败：\n%1").arg(failedFiles.join("\n")));
+}
+
+void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
+{
+    if (!analysisNode)
+        return;
+
+    bool ok = true;
+    QStringList failedFiles;
+
+    auto* cavePage = dynamic_cast<CaveExcavationWidget*>(analysisNode->getPage());
+    if (!cavePage || !cavePage->exportICaveDatFile())
+    {
+        ok = false;
+        failedFiles << "ICAVE.DAT";
+    }
+
+    for (ProjectNode* child : analysisNode->getChildren())
+    {
+        auto* geoPage = dynamic_cast<GeoStressRegressionWidget*>(child->getPage());
+        if (!geoPage)
+            continue;
+
+        const bool oneOk = geoPage->exportIGEOSDatFile();
+        ok = ok && oneOk;
+        if (!oneOk)
+            failedFiles << "IGEOS.DAT";
+    }
+
+    if (ok)
+        QMessageBox::information(nullptr, "导出成功",
+                                 "洞室开挖输入文件导出成功（ICAVE.DAT 与 IGEOS.DAT）。");
     else
         QMessageBox::warning(nullptr, "导出失败",
                              QString("以下文件导出失败：\n%1").arg(failedFiles.join("\n")));
@@ -604,7 +687,33 @@ int Solver::nextStressStrainIndex() const
         return 1;
 
     int maxIdx = 0;
-    QRegularExpression re(QString(R"(^(?:土石坝计算|应力应变分析|洞室开挖)\((\d+)\)$)"));
+    QRegularExpression re(QString(R"(^(?:土石坝计算|应力应变分析)\((\d+)\)$)"));
+
+    for (ProjectNode* child : m_root->getChildren())
+    {
+        if (!child)
+            continue;
+        const QString name = child->getName();
+        auto m = re.match(name);
+        if (m.hasMatch())
+        {
+            bool ok = false;
+            int idx = m.captured(1).toInt(&ok);
+            if (ok)
+                maxIdx = std::max(maxIdx, idx);
+        }
+    }
+
+    return maxIdx + 1;
+}
+
+int Solver::nextCaveExcavationIndex() const
+{
+    if (!m_root)
+        return 1;
+
+    int maxIdx = 0;
+    QRegularExpression re(QString(R"(^洞室开挖\((\d+)\)$)"));
 
     for (ProjectNode* child : m_root->getChildren())
     {

@@ -5,6 +5,7 @@ QT += widgets core
 INCLUDEPATH += $$PWD/../../interfaces
 
 HEADERS += \
+    CaveExcavationWidget.h \
     GeoStressRegressionWidget.h \
     FillStorageCyclePage.h \
     SeepageBoundaryPage.h \
@@ -16,6 +17,7 @@ HEADERS += \
     DamAnalysisWidget.h
 
 SOURCES += \
+    CaveExcavationWidget.cpp \
     GeoStressRegressionWidget.cpp \
     FillStorageCyclePage.cpp \
     SeepageBoundaryPage.cpp \
@@ -27,6 +29,7 @@ SOURCES += \
     DamAnalysisWidget.cpp
 
 FORMS += \
+    CaveExcavationWidget.ui \
     GeoStressRegressionWidget.ui \
     FillStorageCyclePage.ui \
     SeepageBoundaryPage.ui \
