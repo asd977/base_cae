@@ -17,7 +17,7 @@ class CaveExcavationBodyPage : public BasePage
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
 
-    QVector<int> selectedElementIds() const;
+    QVector<int> selectedElementIds();
 
   private slots:
     void onClearClicked();

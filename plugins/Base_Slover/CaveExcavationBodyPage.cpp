@@ -6,6 +6,7 @@
 #include <PickManager.h>
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
+#include <struct/MeshMap.h>
 
 #include <vtkCellData.h>
 #include <vtkDataArray.h>
@@ -98,7 +99,7 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
                                                 true);
 }
 
-QVector<int> CaveExcavationBodyPage::selectedElementIds() const
+QVector<int> CaveExcavationBodyPage::selectedElementIds()
 {
     QVector<int> out;
 
