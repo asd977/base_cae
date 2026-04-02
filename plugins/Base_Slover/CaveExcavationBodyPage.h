@@ -1,6 +1,7 @@
 #pragma once
 
 #include <BasePage.h>
+#include <PickManager.h>
 
 class QComboBox;
 class QPushButton;
@@ -25,6 +26,7 @@ class CaveExcavationBodyPage : public BasePage
 
   private:
     void setupBatchGroupCombo();
+    PickMode currentPickMode() const;
 
   private:
     QComboBox* m_groupCombo = nullptr;
