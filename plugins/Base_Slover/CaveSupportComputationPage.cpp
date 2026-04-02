@@ -2,6 +2,8 @@
 
 #include <QComboBox>
 #include <QHeaderView>
+#include <QFormLayout>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -24,34 +26,33 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     title->setWordWrap(true);
     root->addWidget(title);
 
-    auto* rowTop = new QHBoxLayout();
-    rowTop->addWidget(new QLabel("NCASE（计算工况数）", this));
+    auto* baseGroup = new QGroupBox("工况管理", this);
+    auto* baseLayout = new QHBoxLayout(baseGroup);
+    baseLayout->addWidget(new QLabel("NCASE（计算工况数）", this));
     m_ncaseSpin = new QSpinBox(this);
     m_ncaseSpin->setRange(1, 999);
     m_ncaseSpin->setValue(1);
-    rowTop->addWidget(m_ncaseSpin);
-
-    rowTop->addSpacing(20);
-    rowTop->addWidget(new QLabel("当前工况", this));
+    baseLayout->addWidget(m_ncaseSpin);
+    baseLayout->addSpacing(20);
+    baseLayout->addWidget(new QLabel("当前工况", this));
     m_caseSelector = new QComboBox(this);
-    rowTop->addWidget(m_caseSelector);
-    rowTop->addStretch();
-    root->addLayout(rowTop);
-
-    auto* rowIcase = new QHBoxLayout();
-    rowIcase->addWidget(new QLabel("ICASE（局部工况序号）", this));
+    baseLayout->addWidget(m_caseSelector);
+    baseLayout->addSpacing(20);
+    baseLayout->addWidget(new QLabel("ICASE", this));
     m_icaseEdit = new QLineEdit(this);
     m_icaseEdit->setReadOnly(true);
-    rowIcase->addWidget(m_icaseEdit);
-    rowIcase->addStretch();
-    root->addLayout(rowIcase);
+    baseLayout->addWidget(m_icaseEdit);
+    baseLayout->addStretch();
+    root->addWidget(baseGroup);
 
-    root->addWidget(new QLabel("NCHANGE 材料属性变换表（Mold -> Mnew）", this));
+    auto* matGroup = new QGroupBox("NCHANGE 材料属性变换", this);
+    auto* matLayout = new QVBoxLayout(matGroup);
+    matLayout->addWidget(new QLabel("需变换材料属性号的材料总数由下表行数自动确定（Mold -> Mnew）", this));
     m_materialTable = new QTableWidget(this);
     m_materialTable->setColumnCount(2);
     m_materialTable->setHorizontalHeaderLabels({"Mold", "Mnew"});
     m_materialTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    root->addWidget(m_materialTable);
+    matLayout->addWidget(m_materialTable);
 
     auto* rowMatBtn = new QHBoxLayout();
     auto* btnAdd = new QPushButton("新增材料变换", this);
@@ -59,45 +60,54 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     rowMatBtn->addWidget(btnAdd);
     rowMatBtn->addWidget(btnDel);
     rowMatBtn->addStretch();
-    root->addLayout(rowMatBtn);
+    matLayout->addLayout(rowMatBtn);
+    root->addWidget(matGroup);
 
-    auto* rowExc = new QHBoxLayout();
-    rowExc->addWidget(new QLabel("IEXCA_STA（起始开挖级，负值）", this));
+    auto* paramGroup = new QGroupBox("工况参数", this);
+    auto* form = new QFormLayout(paramGroup);
+
+    auto* rowExc = new QWidget(this);
+    auto* rowExcLayout = new QHBoxLayout(rowExc);
+    rowExcLayout->setContentsMargins(0, 0, 0, 0);
     m_iexcaStaEdit = new QLineEdit(this);
-    rowExc->addWidget(m_iexcaStaEdit);
-    rowExc->addWidget(new QLabel("IEXCA_END（终了开挖级，负值）", this));
     m_iexcaEndEdit = new QLineEdit(this);
-    rowExc->addWidget(m_iexcaEndEdit);
-    root->addLayout(rowExc);
+    rowExcLayout->addWidget(new QLabel("IEXCA_STA（负值，且 >= IEXCA_END）", this));
+    rowExcLayout->addWidget(m_iexcaStaEdit);
+    rowExcLayout->addWidget(new QLabel("IEXCA_END（负值）", this));
+    rowExcLayout->addWidget(m_iexcaEndEdit);
+    form->addRow("开挖级范围", rowExc);
 
-    auto mk01 = [this, root](const QString& labelText)
+    auto mkBoolCombo = [this](const QString& enableText, const QString& disableText)
     {
-        auto* row = new QHBoxLayout();
-        row->addWidget(new QLabel(labelText, this));
         auto* combo = new QComboBox(this);
-        combo->addItem("0");
-        combo->addItem("1");
-        row->addWidget(combo);
-        row->addStretch();
-        root->addLayout(row);
+        combo->addItem(QString("1 - %1").arg(enableText), "1");
+        combo->addItem(QString("0 - %1").arg(disableText), "0");
         return combo;
     };
 
-    m_ifEallCombo = mk01("IF_EALL（不加固一次开挖）");
-    m_ifJallCombo = mk01("IF_JALL（加固一次开挖）");
-    m_ifE1toaCombo = mk01("IF_E1TOA（不加固逐级开挖）");
-    m_ifJ1toaCombo = mk01("IF_J1TOA（加固逐级开挖）");
+    m_ifEallCombo = mkBoolCombo("计算不加固条件下一次开挖成洞",
+                                "不进行不加固条件下一次开挖成洞计算");
+    m_ifJallCombo = mkBoolCombo("计算加固条件下一次开挖成洞",
+                                "不进行加固条件下一次开挖成洞计算");
+    m_ifE1toaCombo = mkBoolCombo("计算不加固条件下逐级开挖成洞",
+                                 "不进行不加固条件下逐级开挖成洞计算");
+    m_ifJ1toaCombo = mkBoolCombo("计算加固条件下逐级开挖成洞",
+                                 "不进行加固条件下逐级开挖成洞计算");
+    m_ifChenCombo = mkBoolCombo("计算衬砌内力", "不需计算衬砌内力");
 
-    auto* rowMethod = new QHBoxLayout();
-    rowMethod->addWidget(new QLabel("JA_METHOD（加固方法）", this));
+    form->addRow("IF_EALL", m_ifEallCombo);
+    form->addRow("IF_JALL", m_ifJallCombo);
+    form->addRow("IF_E1TOA", m_ifE1toaCombo);
+    form->addRow("IF_J1TOA", m_ifJ1toaCombo);
+
     m_jaMethodCombo = new QComboBox(this);
-    m_jaMethodCombo->addItem("1 - 锚杆/锚索，不含衬砌", "1");
-    m_jaMethodCombo->addItem("2 - 锚杆/锚索+衬砌", "2");
-    rowMethod->addWidget(m_jaMethodCombo);
-    rowMethod->addStretch();
-    root->addLayout(rowMethod);
+    m_jaMethodCombo->addItem("1 - 锚杆/锚索加固，不考虑衬砌", "1");
+    m_jaMethodCombo->addItem("2 - 同时考虑锚杆/锚索和衬砌加固", "2");
+    form->addRow("JA_METHOD", m_jaMethodCombo);
+    form->addRow("IF_CHEN", m_ifChenCombo);
 
-    m_ifChenCombo = mk01("IF_CHEN（是否计算衬砌内力）");
+    root->addWidget(paramGroup);
+    root->addStretch();
 
     connect(m_caseSelector, qOverload<int>(&QComboBox::currentIndexChanged), this,
             &CaveSupportComputationPage::onCaseChanged);
@@ -274,12 +284,12 @@ void CaveSupportComputationPage::saveCurrentCase()
     c.icase = m_currentCaseIndex + 1;
     c.iexcaSta = m_iexcaStaEdit->text().trimmed();
     c.iexcaEnd = m_iexcaEndEdit->text().trimmed();
-    c.ifEall = m_ifEallCombo->currentText().trimmed();
-    c.ifJall = m_ifJallCombo->currentText().trimmed();
-    c.ifE1toa = m_ifE1toaCombo->currentText().trimmed();
-    c.ifJ1toa = m_ifJ1toaCombo->currentText().trimmed();
+    c.ifEall = m_ifEallCombo->currentData().toString().trimmed();
+    c.ifJall = m_ifJallCombo->currentData().toString().trimmed();
+    c.ifE1toa = m_ifE1toaCombo->currentData().toString().trimmed();
+    c.ifJ1toa = m_ifJ1toaCombo->currentData().toString().trimmed();
     c.jaMethod = m_jaMethodCombo->currentData().toString().trimmed();
-    c.ifChen = m_ifChenCombo->currentText().trimmed();
+    c.ifChen = m_ifChenCombo->currentData().toString().trimmed();
 
     c.materialChanges.clear();
     for (int r = 0; r < m_materialTable->rowCount(); ++r)
@@ -304,11 +314,16 @@ void CaveSupportComputationPage::loadCaseToUi(int index)
     m_iexcaStaEdit->setText(c.iexcaSta);
     m_iexcaEndEdit->setText(c.iexcaEnd);
 
-    m_ifEallCombo->setCurrentText(c.ifEall);
-    m_ifJallCombo->setCurrentText(c.ifJall);
-    m_ifE1toaCombo->setCurrentText(c.ifE1toa);
-    m_ifJ1toaCombo->setCurrentText(c.ifJ1toa);
-    m_ifChenCombo->setCurrentText(c.ifChen);
+    const int eallIdx = m_ifEallCombo->findData(c.ifEall);
+    m_ifEallCombo->setCurrentIndex(eallIdx >= 0 ? eallIdx : 0);
+    const int jallIdx = m_ifJallCombo->findData(c.ifJall);
+    m_ifJallCombo->setCurrentIndex(jallIdx >= 0 ? jallIdx : 0);
+    const int e1toaIdx = m_ifE1toaCombo->findData(c.ifE1toa);
+    m_ifE1toaCombo->setCurrentIndex(e1toaIdx >= 0 ? e1toaIdx : 0);
+    const int j1toaIdx = m_ifJ1toaCombo->findData(c.ifJ1toa);
+    m_ifJ1toaCombo->setCurrentIndex(j1toaIdx >= 0 ? j1toaIdx : 0);
+    const int chenIdx = m_ifChenCombo->findData(c.ifChen);
+    m_ifChenCombo->setCurrentIndex(chenIdx >= 0 ? chenIdx : 0);
     const int jaIdx = m_jaMethodCombo->findData(c.jaMethod);
     m_jaMethodCombo->setCurrentIndex(jaIdx >= 0 ? jaIdx : 0);
 
