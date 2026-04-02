@@ -1326,6 +1326,21 @@ bool PickManager::computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType 
     for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
         pickedOrigPids.insert(vtkIdType(origPointArr->GetTuple1(ids->GetId(i))));
 
+    // 2D 原单元没有 faces：整片即一个“face”(localId=15)
+    if (origCell->GetCellDimension() == 2)
+    {
+        vtkIdList* cids = origCell->GetPointIds();
+        if (!cids || cids->GetNumberOfIds() != ids->GetNumberOfIds())
+            return false;
+        for (vtkIdType i = 0; i < cids->GetNumberOfIds(); ++i)
+        {
+            if (!pickedOrigPids.contains(cids->GetId(i)))
+                return false;
+        }
+        outOrigFaceLocalId = 15;
+        return true;
+    }
+
     const int nFaces = origCell->GetNumberOfFaces();
     for (int fi = 0; fi < nFaces; ++fi)
     {
