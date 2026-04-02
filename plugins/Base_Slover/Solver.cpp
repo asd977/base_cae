@@ -974,6 +974,13 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         break;
     }
 
+    if (excavationBodies.isEmpty())
+    {
+        ok = false;
+        failedFiles << "IIKE_E**-**.DAT";
+        failedFiles << "IIKE_T01-**.DAT";
+    }
+
     auto* cavePage = dynamic_cast<CaveExcavationWidget*>(analysisNode->getPage());
     if (!cavePage || !cavePage->exportICaveDatFile(supportCaseSection))
     {
@@ -1050,7 +1057,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 
     if (ok)
         QMessageBox::information(nullptr, "导出成功",
-                                 "洞室开挖输入文件导出成功（ICAVE.DAT 与 IGEOS.DAT）。");
+                                 "洞室开挖输入文件导出成功（ICAVE.DAT、IGEOS.DAT、IIKE_E**-**.DAT、IIKE_T01-**.DAT）。");
     else
         QMessageBox::warning(nullptr, "导出失败",
                              QString("以下文件导出失败：\n%1").arg(failedFiles.join("\n")));
