@@ -266,4 +266,3 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
 PickMode CaveExcavationBodyPage::currentPickMode() const
 {
     return PickMode::Face;
-}
