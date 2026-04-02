@@ -2,14 +2,7 @@
 <ui version="4.0">
  <class>GeoStressRegressionWidget</class>
  <widget class="QWidget" name="GeoStressRegressionWidget">
-  <property name="geometry">
-   <rect>
-    <x>0</x>
-    <y>0</y>
-    <width>760</width>
-    <height>520</height>
-   </rect>
-  </property>
+  <property name="geometry"><rect><x>0</x><y>0</y><width>980</width><height>760</height></rect></property>
   <property name="windowTitle">
    <string>地应力回归计算</string>
   </property>
@@ -21,34 +14,34 @@
      </property>
     </widget>
    </item>
-   <item>
-    <layout class="QFormLayout" name="formLayout">
-     <item row="0" column="0">
-      <widget class="QLabel" name="label0">
-       <property name="text"><string>PREP目录</string></property>
-      </widget>
-     </item>
-     <item row="0" column="1">
-      <widget class="QLineEdit" name="prepDirEdit"/>
-     </item>
-     <item row="1" column="0"><widget class="QLabel" name="label1"><property name="text"><string>地表面文件</string></property></widget></item>
-     <item row="1" column="1"><widget class="QLineEdit" name="roofEdit"><property name="text"><string>ROOF.DAT</string></property></widget></item>
-     <item row="2" column="0"><widget class="QLabel" name="label2"><property name="text"><string>左侧面文件</string></property></widget></item>
-     <item row="2" column="1"><widget class="QLineEdit" name="leftEdit"><property name="text"><string>FA_LEFT.DAT</string></property></widget></item>
-     <item row="3" column="0"><widget class="QLabel" name="label3"><property name="text"><string>右侧面文件</string></property></widget></item>
-     <item row="3" column="1"><widget class="QLineEdit" name="rightEdit"><property name="text"><string>FA_RIGHT.DAT</string></property></widget></item>
-     <item row="4" column="0"><widget class="QLabel" name="label4"><property name="text"><string>前侧面文件</string></property></widget></item>
-     <item row="4" column="1"><widget class="QLineEdit" name="frontEdit"><property name="text"><string>FA_FRONT.DAT</string></property></widget></item>
-     <item row="5" column="0"><widget class="QLabel" name="label5"><property name="text"><string>后侧面文件</string></property></widget></item>
-     <item row="5" column="1"><widget class="QLineEdit" name="backEdit"><property name="text"><string>FA_BACK.DAT</string></property></widget></item>
-     <item row="6" column="0"><widget class="QLabel" name="label6"><property name="text"><string>参与系数FACTOR</string></property></widget></item>
+   <item><layout class="QFormLayout" name="formLayout">
+     <item row="0" column="0"><widget class="QLabel" name="label0"><property name="text"><string>PREP目录</string></property></widget></item>
+     <item row="0" column="1"><widget class="QLineEdit" name="prepDirEdit"/></item>
+     <item row="1" column="0"><widget class="QLabel" name="label1"><property name="text"><string>地表面文件(固定)</string></property></widget></item>
+     <item row="1" column="1"><widget class="QLineEdit" name="roofEdit"><property name="text"><string>FAROOF.DAT</string></property></widget></item>
+     <item row="2" column="0"><widget class="QLabel" name="label2"><property name="text"><string>侧立面1</string></property></widget></item>
+     <item row="2" column="1"><widget class="QLineEdit" name="leftEdit"><property name="text"><string>FA_SIDE1</string></property></widget></item>
+     <item row="3" column="0"><widget class="QLabel" name="label3"><property name="text"><string>侧立面2</string></property></widget></item>
+     <item row="3" column="1"><widget class="QLineEdit" name="rightEdit"><property name="text"><string>FA_SIDE2</string></property></widget></item>
+     <item row="4" column="0"><widget class="QLabel" name="label4"><property name="text"><string>侧立面3</string></property></widget></item>
+     <item row="4" column="1"><widget class="QLineEdit" name="frontEdit"><property name="text"><string>FA_SIDE3</string></property></widget></item>
+     <item row="5" column="0"><widget class="QLabel" name="label5"><property name="text"><string>侧立面4</string></property></widget></item>
+     <item row="5" column="1"><widget class="QLineEdit" name="backEdit"><property name="text"><string>FA_SIDE4</string></property></widget></item>
+     <item row="6" column="0"><widget class="QLabel" name="label6"><property name="text"><string>虚拟自重应力场参与系数</string></property></widget></item>
      <item row="6" column="1"><widget class="QLineEdit" name="factorEdit"><property name="text"><string>0.95</string></property></widget></item>
-     <item row="7" column="0"><widget class="QLabel" name="label7"><property name="text"><string>HEIGHT</string></property></widget></item>
-     <item row="7" column="1"><widget class="QLineEdit" name="heightEdit"><property name="text"><string>1680.0000</string></property></widget></item>
-     <item row="8" column="0"><widget class="QLabel" name="label8"><property name="text"><string>GAMA (kg/m3)</string></property></widget></item>
-     <item row="8" column="1"><widget class="QLineEdit" name="gamaEdit"><property name="text"><string>2650.0000</string></property></widget></item>
-    </layout>
-   </item>
+     <item row="7" column="0"><widget class="QLabel" name="label7"><property name="text"><string>地应力计算方式</string></property></widget></item>
+     <item row="7" column="1"><widget class="QComboBox" name="calcModeCombo"><item><property name="text"><string>0 - 仅计算自重应力</string></property></item><item><property name="text"><string>1 - 按实测地应力多元回归</string></property></item></widget></item>
+     <item row="8" column="0"><widget class="QLabel" name="label8"><property name="text"><string>预留字段</string></property></widget></item>
+     <item row="8" column="1"><widget class="QLineEdit" name="reservedEdit"><property name="text"><string>0</string></property></widget></item>
+     <item row="9" column="0"><widget class="QLabel" name="label9"><property name="text"><string>外面力文件(固定)</string></property></widget></item>
+     <item row="9" column="1"><widget class="QLineEdit" name="forceFileEdit"><property name="text"><string>FTLOAD.DAT</string></property></widget></item>
+     <item row="10" column="0"><widget class="QLabel" name="label10"><property name="text"><string>是否考虑外面力</string></property></widget></item>
+     <item row="10" column="1"><widget class="QComboBox" name="forceEnabledCombo"><item><property name="text"><string>0 - 不考虑</string></property></item><item><property name="text"><string>1 - 考虑</string></property></item></widget></item>
+     <item row="11" column="0"><widget class="QLabel" name="label11"><property name="text"><string>侧压力系数（拉姆达）</string></property></widget></item>
+     <item row="11" column="1"><widget class="QLineEdit" name="lambdaEdit"><property name="text"><string>0.00000</string></property></widget></item>
+   </layout></item>
+   <item><widget class="QGroupBox" name="measureGroup"><property name="title"><string>实测地应力（X,Y,SGX,SGY,TXY,序号）</string></property><layout class="QVBoxLayout" name="verticalLayoutMeasure"><item><widget class="QTableWidget" name="measureTable"/></item><item><layout class="QHBoxLayout" name="measureBtnLayout"><item><widget class="QPushButton" name="addMeasureBtn"><property name="text"><string>新增实测行</string></property></widget></item><item><widget class="QPushButton" name="removeMeasureBtn"><property name="text"><string>删除实测行</string></property></widget></item><item><spacer name="horizontalSpacer1"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item></layout></item></layout></widget></item>
+   <item><widget class="QGroupBox" name="faceAttrGroup"><property name="title"><string>测力面属性（IDIR,HEIGHT,GAMA,PGROUT）</string></property><layout class="QVBoxLayout" name="verticalLayoutFace"><item><widget class="QTableWidget" name="faceAttrTable"/></item><item><layout class="QHBoxLayout" name="faceBtnLayout"><item><widget class="QPushButton" name="addFaceBtn"><property name="text"><string>新增面属性行</string></property></widget></item><item><widget class="QPushButton" name="removeFaceBtn"><property name="text"><string>删除面属性行</string></property></widget></item><item><spacer name="horizontalSpacer2"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item></layout></item></layout></widget></item>
    <item>
     <widget class="QPushButton" name="btnCompute">
      <property name="text"><string>导出 IGEOS.DAT</string></property>
