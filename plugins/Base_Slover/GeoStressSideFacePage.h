@@ -1,9 +1,11 @@
 #pragma once
 
 #include <BasePage.h>
+#include <PickManager.h>
 
 class QComboBox;
 class QLineEdit;
+class QPushButton;
 
 class GeoStressSideFacePage : public BasePage
 {
@@ -20,20 +22,29 @@ class GeoStressSideFacePage : public BasePage
 
     explicit GeoStressSideFacePage(QWidget* parent = nullptr);
 
-    void beforeLoad() override {}
-    void beforeUnload() override {}
+    void beforeLoad() override;
+    void beforeUnload() override;
 
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
 
     QString faceFile() const;
     FaceAttr attr() const;
+    bool exportDatFile() const;
+
+  private slots:
+    void onClearClicked();
+
+  private:
+    PickMode currentPickMode() const;
 
   private:
     QLineEdit* m_faceFileEdit = nullptr;
-    QComboBox* m_idirCombo = nullptr;
+    QComboBox* m_pickModeCombo = nullptr;
+    QLineEdit* m_idirEdit = nullptr;
     QLineEdit* m_heightEdit = nullptr;
     QLineEdit* m_gamaEdit = nullptr;
     QLineEdit* m_pgroutEdit = nullptr;
     QLineEdit* m_iiEdit = nullptr;
+    QPushButton* m_clearBtn = nullptr;
 };

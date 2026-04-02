@@ -34,8 +34,6 @@ GeoStressRegressionWidget::GeoStressRegressionWidget(QWidget* parent)
     ui->forceFileEdit->setReadOnly(true);
     ui->reservedEdit->setText("0");
 
-    ui->measureGroup->hide();
-    ui->faceAttrGroup->hide();
 
     connect(ui->btnCompute, &QPushButton::clicked, this, &GeoStressRegressionWidget::onComputeClicked);
 }
