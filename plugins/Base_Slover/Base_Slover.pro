@@ -5,6 +5,7 @@ QT += widgets core
 INCLUDEPATH += $$PWD/../../interfaces
 
 HEADERS += \
+    CaveExcavationBodyPage.h \
     CaveExcavationWidget.h \
     GeoStressMeasurePointPage.h \
     GeoStressOuterForcePage.h \
@@ -21,6 +22,7 @@ HEADERS += \
     CaveSupportComputationPage.h
 
 SOURCES += \
+    CaveExcavationBodyPage.cpp \
     CaveExcavationWidget.cpp \
     GeoStressMeasurePointPage.cpp \
     GeoStressOuterForcePage.cpp \

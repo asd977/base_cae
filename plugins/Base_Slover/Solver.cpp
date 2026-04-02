@@ -15,10 +15,12 @@
 #include <QMessageBox>
 #include <QMenu>
 #include <QRegularExpression>
+#include <QSet>
 #include <QStringList>
 #include <algorithm>
 
 #include "FillStorageCyclePage.h"
+#include "CaveExcavationBodyPage.h"
 #include "CaveExcavationWidget.h"
 #include "CaveSupportComputationPage.h"
 #include "SeepageBoundaryPage.h"
@@ -97,6 +99,19 @@ bool Solver::saveProject()
             childObj["title"] = child->text(0);
             childObj["type"] = child->getPage()->getPageType();
             childObj["state"] = child->getPage()->saveJson();
+            QJsonArray childItems;
+            for (ProjectNode* gc : child->getChildren())
+            {
+                if (!gc || !gc->getPage())
+                    continue;
+                QJsonObject gcObj;
+                gcObj["uuid"] = gc->getUuid();
+                gcObj["title"] = gc->text(0);
+                gcObj["type"] = gc->getPage()->getPageType();
+                gcObj["state"] = gc->getPage()->saveJson();
+                childItems.append(gcObj);
+            }
+            childObj["children"] = childItems;
             boundaryItems.append(childObj);
         }
         analysisObj["children"] = boundaryItems;
@@ -239,6 +254,10 @@ bool Solver::loadProject()
                 page = new CaveSupportComputationPage();
                 hasCaveSupportComputationNode = true;
             }
+            else if (type == "CaveExcavationBody")
+            {
+                page = new CaveExcavationBodyPage();
+            }
 
             if (!page)
                 continue;
@@ -258,6 +277,8 @@ bool Solver::loadProject()
                 setupNodeRole(node, "GeoStressRegressionOuterForce");
             else if (type == "CaveSupportComputation")
                 setupNodeRole(node, "CaveSupportComputation");
+            else if (type == "CaveExcavationBody")
+                setupNodeRole(node, "CaveExcavationBody");
             else if (type.startsWith("StressBoundary"))
                 setupNodeRole(node, "StressBoundary");
             else if (type.startsWith("SeepageBoundary"))
@@ -273,6 +294,41 @@ bool Solver::loadProject()
             }
             page->loadJson(childObj.value("state").toObject());
             analysisNode->addChild(node);
+
+            if (type == "GeoStressRegressionAnalysis" || type == "CaveSupportComputation")
+            {
+                for (const auto& gcV : childObj.value("children").toArray())
+                {
+                    const QJsonObject gcObj = gcV.toObject();
+                    const QString gcType = gcObj.value("type").toString();
+                    BasePage* gcPage = nullptr;
+                    if (gcType == "GeoStressRegressionSideFace")
+                        gcPage = new GeoStressSideFacePage();
+                    else if (gcType == "GeoStressRegressionMeasurePoint")
+                        gcPage = new GeoStressMeasurePointPage();
+                    else if (gcType == "GeoStressRegressionOuterForce")
+                        gcPage = new GeoStressOuterForcePage();
+                    else if (gcType == "CaveExcavationBody")
+                        gcPage = new CaveExcavationBodyPage();
+                    if (!gcPage)
+                        continue;
+
+                    auto* gcNode = new ProjectNode(
+                        gcObj.value("title").toString("子项"),
+                        gcObj.value("uuid").toString(QUuid::createUuid().toString()), gcPage);
+                    if (gcType == "GeoStressRegressionSideFace")
+                        setupNodeRole(gcNode, "GeoStressRegressionSideFace");
+                    else if (gcType == "GeoStressRegressionMeasurePoint")
+                        setupNodeRole(gcNode, "GeoStressRegressionMeasurePoint");
+                    else if (gcType == "GeoStressRegressionOuterForce")
+                        setupNodeRole(gcNode, "GeoStressRegressionOuterForce");
+                    else if (gcType == "CaveExcavationBody")
+                        setupNodeRole(gcNode, "CaveExcavationBody");
+
+                    gcPage->loadJson(gcObj.value("state").toObject());
+                    node->addChild(gcNode);
+                }
+            }
         }
 
         if ((analysisType == "StressStrainAnalysis" || analysisType == "DamAnalysis") && !hasFillStorageCycleNode)
@@ -305,6 +361,17 @@ bool Solver::loadProject()
         if (analysisType == "CaveExcavationAnalysis" && !hasCaveSupportComputationNode)
         {
             addCaveSupportComputationNode(analysisNode, false);
+        }
+        else if (analysisType == "CaveExcavationAnalysis")
+        {
+            for (ProjectNode* child : analysisNode->getChildren())
+            {
+                if (!child || !child->getPage()
+                    || child->getPage()->getPageType() != "CaveSupportComputation")
+                    continue;
+                if (countGeoStressChildren(child, "CaveExcavationBody") == 0)
+                    addCaveExcavationBodyNode(child, false);
+            }
         }
 
         if (analysisType == "StressStrainAnalysis" || analysisType == "DamAnalysis")
@@ -403,6 +470,20 @@ void Solver::initTreeMenu()
                         if (!analysisNode)
                             return;
                         addCaveSupportComputationNode(analysisNode, true);
+                    });
+            }
+            else if (kind == "CaveSupportComputation")
+            {
+                ContextMenuHub::addSeparator(menu);
+                ContextMenuHub::addAction(
+                    menu, this, "新增开挖体",
+                    [this, uuid]()
+                    {
+                        auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+                        auto* node = pm ? pm->findNodeByUuid(uuid) : nullptr;
+                        if (!node)
+                            return;
+                        addCaveExcavationBodyNode(node, true);
                     });
             }
             else if (kind == "GeoStressRegression")
@@ -642,6 +723,26 @@ void Solver::addCaveSupportComputationNode(ProjectNode* analysisNode, bool setCu
     auto* node = new ProjectNode("开挖和加固计算", QUuid::createUuid().toString(), page);
     setupNodeRole(node, "CaveSupportComputation");
     analysisNode->addChild(node);
+    addCaveExcavationBodyNode(node, false);
+
+    if (setCurrent)
+    {
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(node);
+    }
+}
+
+void Solver::addCaveExcavationBodyNode(ProjectNode* supportNode, bool setCurrent) const
+{
+    if (!supportNode)
+        return;
+
+    const int idx = countGeoStressChildren(supportNode, "CaveExcavationBody") + 1;
+    auto* page = new CaveExcavationBodyPage();
+    auto* node =
+        new ProjectNode(QString("开挖体(%1)").arg(idx), QUuid::createUuid().toString(), page);
+    setupNodeRole(node, "CaveExcavationBody");
+    supportNode->addChild(node);
 
     if (setCurrent)
     {
@@ -858,12 +959,18 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     QStringList failedFiles;
 
     QString supportCaseSection;
+    QVector<CaveExcavationBodyPage*> excavationBodies;
     for (ProjectNode* child : analysisNode->getChildren())
     {
         auto* supportPage = dynamic_cast<CaveSupportComputationPage*>(child->getPage());
         if (!supportPage)
             continue;
         supportCaseSection = supportPage->sectionText();
+        for (ProjectNode* bodyNode : child->getChildren())
+        {
+            if (auto* bodyPage = dynamic_cast<CaveExcavationBodyPage*>(bodyNode->getPage()))
+                excavationBodies.push_back(bodyPage);
+        }
         break;
     }
 
@@ -884,6 +991,61 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         ok = ok && oneOk;
         if (!oneOk)
             failedFiles << "IGEOS.DAT";
+    }
+
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir wd(QDir(projectDir).absolutePath());
+    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+    {
+        ok = false;
+        failedFiles << "PREP";
+    }
+    else
+    {
+        const QString prepDir =
+            QDir::toNativeSeparators(QDir(wd.filePath("PREP")).absolutePath()) + QDir::separator();
+        auto writeIike = [&](const QString& fileName, const QVector<int>& kes, int iex1,
+                             int iex2) -> bool
+        {
+            QFile f(wd.filePath("PREP/" + fileName));
+            if (!f.open(QIODevice::WriteOnly | QIODevice::Text))
+                return false;
+
+            QTextStream os(&f);
+            os << QString("%1  NUMKE\n").arg(kes.size(), 12);
+            for (int i = 0; i < kes.size(); ++i)
+                os << QString("%1%2\n").arg(kes[i], 8).arg(i + 1, 10);
+            os << QString("    DIR=%1                                                    \n").arg(prepDir);
+            os << " ISHIFT=       1\n";
+            os << "   NJX=       0\n";
+            os << QString(" IEX1=%1  IEX2=%2  \n").arg(iex1, 4).arg(iex2, 4);
+            return true;
+        };
+
+        QSet<int> cumulative;
+        for (int i = 0; i < excavationBodies.size(); ++i)
+        {
+            QVector<int> e = excavationBodies[i]->selectedElementIds();
+            const QString idx = QString("%1").arg(i + 1, 2, 10, QLatin1Char('0'));
+            const QString eFile = QString("IIKE_E%1-%1.DAT").arg(idx);
+            if (!writeIike(eFile, e, -(i + 1), -(i + 1)))
+            {
+                ok = false;
+                failedFiles << eFile;
+            }
+
+            for (int ke : e)
+                cumulative.insert(ke);
+            QVector<int> t = cumulative.values().toVector();
+            std::sort(t.begin(), t.end());
+            const QString tFile = QString("IIKE_T01-%1.DAT").arg(idx);
+            if (!writeIike(tFile, t, -1, -(i + 1)))
+            {
+                ok = false;
+                failedFiles << tFile;
+            }
+        }
     }
 
     if (ok)
