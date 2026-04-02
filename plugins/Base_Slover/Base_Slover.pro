@@ -6,7 +6,10 @@ INCLUDEPATH += $$PWD/../../interfaces
 
 HEADERS += \
     CaveExcavationWidget.h \
+    GeoStressMeasurePointPage.h \
+    GeoStressOuterForcePage.h \
     GeoStressRegressionWidget.h \
+    GeoStressSideFacePage.h \
     FillStorageCyclePage.h \
     SeepageBoundaryPage.h \
     SeepageWidget.h \
@@ -18,7 +21,10 @@ HEADERS += \
 
 SOURCES += \
     CaveExcavationWidget.cpp \
+    GeoStressMeasurePointPage.cpp \
+    GeoStressOuterForcePage.cpp \
     GeoStressRegressionWidget.cpp \
+    GeoStressSideFacePage.cpp \
     FillStorageCyclePage.cpp \
     SeepageBoundaryPage.cpp \
     SeepageWidget.cpp \

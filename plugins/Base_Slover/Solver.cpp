@@ -25,6 +25,9 @@
 #include "StressBoundaryPage.h"
 #include "DamAnalysisWidget.h"
 #include "GeoStressRegressionWidget.h"
+#include "GeoStressMeasurePointPage.h"
+#include "GeoStressOuterForcePage.h"
+#include "GeoStressSideFacePage.h"
 #include "SlopeStabilityWidget.h"
 #include "SolverSettingWidget.h"
 
@@ -217,6 +220,18 @@ bool Solver::loadProject()
                 page = new GeoStressRegressionWidget();
                 hasGeoStressRegressionNode = true;
             }
+            else if (type == "GeoStressRegressionSideFace")
+            {
+                page = new GeoStressSideFacePage();
+            }
+            else if (type == "GeoStressRegressionMeasurePoint")
+            {
+                page = new GeoStressMeasurePointPage();
+            }
+            else if (type == "GeoStressRegressionOuterForce")
+            {
+                page = new GeoStressOuterForcePage();
+            }
 
             if (!page)
                 continue;
@@ -228,6 +243,12 @@ bool Solver::loadProject()
                 setupNodeRole(node, "FillStorageCycle");
             else if (type == "GeoStressRegressionAnalysis")
                 setupNodeRole(node, "GeoStressRegression");
+            else if (type == "GeoStressRegressionSideFace")
+                setupNodeRole(node, "GeoStressRegressionSideFace");
+            else if (type == "GeoStressRegressionMeasurePoint")
+                setupNodeRole(node, "GeoStressRegressionMeasurePoint");
+            else if (type == "GeoStressRegressionOuterForce")
+                setupNodeRole(node, "GeoStressRegressionOuterForce");
             else if (type.startsWith("StressBoundary"))
                 setupNodeRole(node, "StressBoundary");
             else if (type.startsWith("SeepageBoundary"))
@@ -253,6 +274,26 @@ bool Solver::loadProject()
             && !hasGeoStressRegressionNode)
         {
             addGeoStressRegressionNode(analysisNode, false);
+        }
+        else if (analysisType == "CaveExcavationAnalysis")
+        {
+            for (ProjectNode* child : analysisNode->getChildren())
+            {
+                if (!child || !child->getPage()
+                    || child->getPage()->getPageType() != "GeoStressRegressionAnalysis")
+                    continue;
+                if (countGeoStressChildren(child, "GeoStressRegressionSideFace") == 0)
+                {
+                    addGeoStressSideFaceNode(child, false);
+                    addGeoStressSideFaceNode(child, false);
+                    addGeoStressSideFaceNode(child, false);
+                    addGeoStressSideFaceNode(child, false);
+                }
+                if (countGeoStressChildren(child, "GeoStressRegressionMeasurePoint") == 0)
+                    addGeoStressMeasurePointNode(child, false);
+                if (countGeoStressChildren(child, "GeoStressRegressionOuterForce") == 0)
+                    addGeoStressOuterForceNode(child, false);
+            }
         }
 
         if (analysisType == "StressStrainAnalysis" || analysisType == "DamAnalysis")
@@ -343,6 +384,40 @@ void Solver::initTreeMenu()
                         addGeoStressRegressionNode(analysisNode, true);
                     });
             }
+            else if (kind == "GeoStressRegression")
+            {
+                ContextMenuHub::addSeparator(menu);
+                ContextMenuHub::addAction(
+                    menu, this, "新增侧立面",
+                    [this, uuid]()
+                    {
+                        auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+                        auto* node = pm ? pm->findNodeByUuid(uuid) : nullptr;
+                        if (!node)
+                            return;
+                        addGeoStressSideFaceNode(node, true);
+                    });
+                ContextMenuHub::addAction(
+                    menu, this, "新增实测地应力点",
+                    [this, uuid]()
+                    {
+                        auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+                        auto* node = pm ? pm->findNodeByUuid(uuid) : nullptr;
+                        if (!node)
+                            return;
+                        addGeoStressMeasurePointNode(node, true);
+                    });
+                ContextMenuHub::addAction(
+                    menu, this, "新增外面力",
+                    [this, uuid]()
+                    {
+                        auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+                        auto* node = pm ? pm->findNodeByUuid(uuid) : nullptr;
+                        if (!node)
+                            return;
+                        addGeoStressOuterForceNode(node, true);
+                    });
+            }
         },
         0);
 }
@@ -382,6 +457,19 @@ void Solver::syncDamAnalysisMCase(ProjectNode* analysisNode) const
     page->setMCaseCount(countFillStorageCycles(analysisNode));
 }
 
+int Solver::countGeoStressChildren(ProjectNode* geostressNode, const QString& pageType) const
+{
+    if (!geostressNode)
+        return 0;
+    int count = 0;
+    for (ProjectNode* child : geostressNode->getChildren())
+    {
+        if (child && child->getPage() && child->getPage()->getPageType() == pageType)
+            ++count;
+    }
+    return count;
+}
+
 void Solver::addFillStorageCycleNode(ProjectNode* analysisNode, bool setCurrent) const
 {
     if (!analysisNode)
@@ -417,11 +505,97 @@ void Solver::addGeoStressRegressionNode(ProjectNode* analysisNode, bool setCurre
                 onComputeGeoStressRegression(node);
             });
 
+    addGeoStressSideFaceNode(node, false);
+    addGeoStressSideFaceNode(node, false);
+    addGeoStressSideFaceNode(node, false);
+    addGeoStressSideFaceNode(node, false);
+    addGeoStressMeasurePointNode(node, false);
+    addGeoStressOuterForceNode(node, false);
+
     if (setCurrent)
     {
         if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
             pm->setCurrentItem(node);
     }
+}
+
+void Solver::addGeoStressSideFaceNode(ProjectNode* geostressNode, bool setCurrent) const
+{
+    if (!geostressNode)
+        return;
+    const int idx = countGeoStressChildren(geostressNode, "GeoStressRegressionSideFace") + 1;
+    auto* page = new GeoStressSideFacePage();
+    auto* node = new ProjectNode(QString("侧立面(%1)").arg(idx), QUuid::createUuid().toString(), page);
+    setupNodeRole(node, "GeoStressRegressionSideFace");
+    geostressNode->addChild(node);
+    if (setCurrent)
+    {
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(node);
+    }
+}
+
+void Solver::addGeoStressMeasurePointNode(ProjectNode* geostressNode, bool setCurrent) const
+{
+    if (!geostressNode)
+        return;
+    const int idx = countGeoStressChildren(geostressNode, "GeoStressRegressionMeasurePoint") + 1;
+    auto* page = new GeoStressMeasurePointPage();
+    auto* node = new ProjectNode(QString("实测地应力点(%1)").arg(idx), QUuid::createUuid().toString(), page);
+    setupNodeRole(node, "GeoStressRegressionMeasurePoint");
+    geostressNode->addChild(node);
+    if (setCurrent)
+    {
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(node);
+    }
+}
+
+void Solver::addGeoStressOuterForceNode(ProjectNode* geostressNode, bool setCurrent) const
+{
+    if (!geostressNode)
+        return;
+    const int idx = countGeoStressChildren(geostressNode, "GeoStressRegressionOuterForce") + 1;
+    auto* page = new GeoStressOuterForcePage();
+    auto* node = new ProjectNode(QString("外面力(%1)").arg(idx), QUuid::createUuid().toString(), page);
+    setupNodeRole(node, "GeoStressRegressionOuterForce");
+    geostressNode->addChild(node);
+    if (setCurrent)
+    {
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(node);
+    }
+}
+
+GeoStressRegressionWidget::ExportPayload Solver::buildGeoStressPayload(ProjectNode* geostressNode) const
+{
+    GeoStressRegressionWidget::ExportPayload payload;
+    if (!geostressNode)
+        return payload;
+
+    for (ProjectNode* child : geostressNode->getChildren())
+    {
+        if (!child || !child->getPage())
+            continue;
+        if (auto* side = dynamic_cast<GeoStressSideFacePage*>(child->getPage()))
+        {
+            payload.sideFaceFiles.push_back(side->faceFile());
+            const auto attr = side->attr();
+            payload.faceRows.push_back({attr.idir, attr.height, attr.gama, attr.pgrout, attr.ii});
+        }
+        else if (auto* p = dynamic_cast<GeoStressMeasurePointPage*>(child->getPage()))
+        {
+            const auto point = p->point();
+            payload.measureRows.push_back({point.x, point.y, point.sgx, point.sgy, point.txy, point.ii});
+        }
+        else if (auto* f = dynamic_cast<GeoStressOuterForcePage*>(child->getPage()))
+        {
+            if (payload.forceFile.isEmpty())
+                payload.forceFile = f->forceFile();
+            payload.forceEnabled = f->forceEnabled();
+        }
+    }
+    return payload;
 }
 
 void Solver::onSeepageAction()
@@ -643,7 +817,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         if (!geoPage)
             continue;
 
-        const bool oneOk = geoPage->exportIGEOSDatFile();
+        const bool oneOk = geoPage->exportIGEOSDatFile(buildGeoStressPayload(child));
         ok = ok && oneOk;
         if (!oneOk)
             failedFiles << "IGEOS.DAT";
@@ -675,7 +849,7 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
         return;
 
     auto* page = dynamic_cast<GeoStressRegressionWidget*>(analysisNode->getPage());
-    if (page && page->exportIGEOSDatFile())
+    if (page && page->exportIGEOSDatFile(buildGeoStressPayload(analysisNode)))
         QMessageBox::information(nullptr, "导出成功", "地应力回归计算输入文件导出成功（IGEOS.DAT）。");
     else
         QMessageBox::warning(nullptr, "导出失败", "IGEOS.DAT 导出失败。");

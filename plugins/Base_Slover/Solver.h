@@ -3,6 +3,7 @@
 
 #include <ProjectNode.h>
 #include <services/SolverService.h>
+#include "GeoStressRegressionWidget.h"
 
 class Solver : public QObject, public SolverService
 {
@@ -32,9 +33,14 @@ class Solver : public QObject, public SolverService
     void initTreeMenu();
     void setupNodeRole(ProjectNode* node, const QString& kind) const;
     int countFillStorageCycles(ProjectNode* analysisNode) const;
+    int countGeoStressChildren(ProjectNode* geostressNode, const QString& pageType) const;
     void syncDamAnalysisMCase(ProjectNode* analysisNode) const;
     void addFillStorageCycleNode(ProjectNode* analysisNode, bool setCurrent) const;
     void addGeoStressRegressionNode(ProjectNode* analysisNode, bool setCurrent);
+    void addGeoStressSideFaceNode(ProjectNode* geostressNode, bool setCurrent) const;
+    void addGeoStressMeasurePointNode(ProjectNode* geostressNode, bool setCurrent) const;
+    void addGeoStressOuterForceNode(ProjectNode* geostressNode, bool setCurrent) const;
+    GeoStressRegressionWidget::ExportPayload buildGeoStressPayload(ProjectNode* geostressNode) const;
     int nextSeepageIndex() const;
     int nextStressStrainIndex() const;
     int nextCaveExcavationIndex() const;
