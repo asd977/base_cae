@@ -277,6 +277,5 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
 
 PickMode CaveExcavationBodyPage::currentPickMode() const
 {
-    const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
-    return (meshDim == 3) ? PickMode::Face : PickMode::Edge;
+    return PickMode::Face;
 }
