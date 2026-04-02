@@ -50,9 +50,7 @@ CaveExcavationBodyPage::CaveExcavationBodyPage(QWidget* parent)
 void CaveExcavationBodyPage::beforeLoad()
 {
     setupBatchGroupCombo();
-    const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
-    if (meshDim != 3)
-        PickManager::instance().activate(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().activate(getPageType(), m_uuid, currentPickMode());
 }
 
 void CaveExcavationBodyPage::beforeUnload()
@@ -69,10 +67,10 @@ QJsonObject CaveExcavationBodyPage::saveJson()
     QJsonArray faceArr, edgeArr;
     const auto faceKeys =
         PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid);
-    for (vtkIdType key : faceKeys)
-        faceArr.append(static_cast<qint64>(key));
     const auto edgeKeys =
         PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Edge, GridKind::Solid);
+    for (vtkIdType key : faceKeys)
+        faceArr.append(static_cast<qint64>(key));
     for (vtkIdType key : edgeKeys)
         edgeArr.append(static_cast<qint64>(key));
     obj["face_solid"] = faceArr;
@@ -122,21 +120,11 @@ QVector<int> CaveExcavationBodyPage::selectedElementIds()
     vtkDataArray* elemIdArr = vtkDataArray::SafeDownCast(grid->GetCellData()->GetArray("elem_id"));
     const auto faceKeys =
         PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid);
-    const auto edgeKeys =
-        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Edge, GridKind::Solid);
 
     std::set<int> uniq;
     for (vtkIdType key : faceKeys)
     {
         const vtkIdType cellId = PickManager::instance().unpackFaceCellId(key);
-        if (cellId < 0 || cellId >= grid->GetNumberOfCells())
-            continue;
-        const int ke = elemIdArr ? int(elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
-        uniq.insert(ke);
-    }
-    for (vtkIdType key : edgeKeys)
-    {
-        const vtkIdType cellId = PickManager::instance().unpackEdgeCellId(key);
         if (cellId < 0 || cellId >= grid->GetNumberOfCells())
             continue;
         const int ke = elemIdArr ? int(elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
