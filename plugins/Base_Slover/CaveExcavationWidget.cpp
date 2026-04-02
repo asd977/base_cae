@@ -33,7 +33,7 @@ CaveExcavationWidget::~CaveExcavationWidget()
 void CaveExcavationWidget::beforeLoad() {}
 void CaveExcavationWidget::beforeUnload() {}
 
-bool CaveExcavationWidget::exportICaveDatFile() const
+bool CaveExcavationWidget::exportICaveDatFile(const QString& supportCaseSection) const
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
@@ -59,8 +59,8 @@ bool CaveExcavationWidget::exportICaveDatFile() const
         os << "'" << edits.at(i)->text().trimmed() << "'      " << (i + 1) << "\n";
     }
 
-    os << ui->tailEdit->toPlainText().trimmed() << "\n";
-    os << ui->caseBlocksEdit->toPlainText().trimmed() << "\n";
+    if (!supportCaseSection.trimmed().isEmpty())
+        os << supportCaseSection.trimmed() << "\n";
     return true;
 }
 
@@ -72,8 +72,6 @@ QJsonObject CaveExcavationWidget::saveJson()
         auto* edit = findChild<QLineEdit*>(QString("line%1Edit").arg(i));
         obj[QString("line_%1").arg(i)] = edit ? edit->text().trimmed() : "";
     }
-    obj["tail"] = ui->tailEdit->toPlainText();
-    obj["case_blocks"] = ui->caseBlocksEdit->toPlainText();
     return obj;
 }
 
@@ -86,9 +84,6 @@ void CaveExcavationWidget::loadJson(const QJsonObject& obj)
             continue;
         edit->setText(obj.value(QString("line_%1").arg(i)).toString(edit->text()));
     }
-    ui->tailEdit->setPlainText(obj.value("tail").toString(ui->tailEdit->toPlainText()));
-    ui->caseBlocksEdit->setPlainText(
-        obj.value("case_blocks").toString(ui->caseBlocksEdit->toPlainText()));
 }
 
 void CaveExcavationWidget::onComputeClicked()

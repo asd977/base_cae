@@ -165,27 +165,7 @@
      </item>
         </layout>
        </item>
-       <item><widget class="QLabel" name="globalCaseLabel"><property name="text"><string>工况头段（可编辑，例如 IEXCA_MAX / NCHANGE / MCASE / NCASE）</string></property></widget></item>
-       <item><widget class="QPlainTextEdit" name="tailEdit"><property name="plainText"><string>   1     IEXCA_MAX
-       0         1    EXCA DATE  II 
-   1     NCHANGE
-   1     1     1    MACHAN    MACHAN  II 
-   1    MCASE
-       1        1   JISUAN CASE  II
-   1    NCASE</string></property></widget></item>
-       <item><widget class="QLabel" name="caseBlocksLabel"><property name="text"><string>各工况循环段（可编辑，支持多工况）</string></property></widget></item>
-       <item><widget class="QPlainTextEdit" name="caseBlocksEdit"><property name="plainText"><string>--------------------------------------------------------------------
-   1  ICASE
-    0  NCHANGE_CASE
-  -1    -3    IEXCA_STA    IEXCA_END
-   1     1    IF_EALL      IF_JALL
-   1     1     1    IF_E1TOA   IF_J1TOA   JA_METHOD
-   0         0  IF_CHEN    IDAY_CASE
-'F:\FEMCLASS\Z05_CAVE2D\CASE01\'     DIRDYNA
-   1     1   IFMODE   IFWAVE  
-  0.005000    0.000000   30.000000    DT TSTA TEND
-'ACCEX.DAT'  'ACCEY.DAT'  'ACCEZ.DAT'   AX  AY  AZ</string></property></widget></item>
-      </layout>
+             </layout>
      </widget>
     </widget>
    </item>

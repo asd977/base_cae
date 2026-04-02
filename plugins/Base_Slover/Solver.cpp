@@ -20,6 +20,7 @@
 
 #include "FillStorageCyclePage.h"
 #include "CaveExcavationWidget.h"
+#include "CaveSupportComputationPage.h"
 #include "SeepageBoundaryPage.h"
 #include "SeepageWidget.h"
 #include "StressBoundaryPage.h"
@@ -196,6 +197,7 @@ bool Solver::loadProject()
 
         bool hasFillStorageCycleNode = false;
         bool hasGeoStressRegressionNode = false;
+        bool hasCaveSupportComputationNode = false;
         for (const auto& childV : analysisObj.value("children").toArray())
         {
             const QJsonObject childObj = childV.toObject();
@@ -232,6 +234,11 @@ bool Solver::loadProject()
             {
                 page = new GeoStressOuterForcePage();
             }
+            else if (type == "CaveSupportComputation")
+            {
+                page = new CaveSupportComputationPage();
+                hasCaveSupportComputationNode = true;
+            }
 
             if (!page)
                 continue;
@@ -249,6 +256,8 @@ bool Solver::loadProject()
                 setupNodeRole(node, "GeoStressRegressionMeasurePoint");
             else if (type == "GeoStressRegressionOuterForce")
                 setupNodeRole(node, "GeoStressRegressionOuterForce");
+            else if (type == "CaveSupportComputation")
+                setupNodeRole(node, "CaveSupportComputation");
             else if (type.startsWith("StressBoundary"))
                 setupNodeRole(node, "StressBoundary");
             else if (type.startsWith("SeepageBoundary"))
@@ -291,6 +300,11 @@ bool Solver::loadProject()
                 if (countGeoStressChildren(child, "GeoStressRegressionOuterForce") == 0)
                     addGeoStressOuterForceNode(child, false);
             }
+        }
+
+        if (analysisType == "CaveExcavationAnalysis" && !hasCaveSupportComputationNode)
+        {
+            addCaveSupportComputationNode(analysisNode, false);
         }
 
         if (analysisType == "StressStrainAnalysis" || analysisType == "DamAnalysis")
@@ -379,6 +393,16 @@ void Solver::initTreeMenu()
                         if (!analysisNode)
                             return;
                         addGeoStressRegressionNode(analysisNode, true);
+                    });
+                ContextMenuHub::addAction(
+                    menu, this, "新增开挖和加固计算",
+                    [this, uuid]()
+                    {
+                        auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+                        auto* analysisNode = pm ? pm->findNodeByUuid(uuid) : nullptr;
+                        if (!analysisNode)
+                            return;
+                        addCaveSupportComputationNode(analysisNode, true);
                     });
             }
             else if (kind == "GeoStressRegression")
@@ -594,6 +618,38 @@ GeoStressRegressionWidget::ExportPayload Solver::buildGeoStressPayload(ProjectNo
     return payload;
 }
 
+
+void Solver::addCaveSupportComputationNode(ProjectNode* analysisNode, bool setCurrent) const
+{
+    if (!analysisNode)
+        return;
+
+    for (ProjectNode* child : analysisNode->getChildren())
+    {
+        if (child && child->getPage()
+            && child->getPage()->getPageType() == "CaveSupportComputation")
+        {
+            if (setCurrent)
+            {
+                if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+                    pm->setCurrentItem(child);
+            }
+            return;
+        }
+    }
+
+    auto* page = new CaveSupportComputationPage();
+    auto* node = new ProjectNode("开挖和加固计算", QUuid::createUuid().toString(), page);
+    setupNodeRole(node, "CaveSupportComputation");
+    analysisNode->addChild(node);
+
+    if (setCurrent)
+    {
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(node);
+    }
+}
+
 void Solver::onSeepageAction()
 {
     if (!m_root)
@@ -678,6 +734,7 @@ void Solver::onCaveExcavationAction()
             });
 
     addGeoStressRegressionNode(analysisNode, false);
+    addCaveSupportComputationNode(analysisNode, false);
 
     m_root->addChild(analysisNode);
     if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
@@ -800,8 +857,18 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     bool ok = true;
     QStringList failedFiles;
 
+    QString supportCaseSection;
+    for (ProjectNode* child : analysisNode->getChildren())
+    {
+        auto* supportPage = dynamic_cast<CaveSupportComputationPage*>(child->getPage());
+        if (!supportPage)
+            continue;
+        supportCaseSection = supportPage->sectionText();
+        break;
+    }
+
     auto* cavePage = dynamic_cast<CaveExcavationWidget*>(analysisNode->getPage());
-    if (!cavePage || !cavePage->exportICaveDatFile())
+    if (!cavePage || !cavePage->exportICaveDatFile(supportCaseSection))
     {
         ok = false;
         failedFiles << "ICAVE.DAT";

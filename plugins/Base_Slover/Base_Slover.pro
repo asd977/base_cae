@@ -17,7 +17,8 @@ HEADERS += \
     Solver.h \
     SolverSettingWidget.h \
     StressBoundaryPage.h \
-    DamAnalysisWidget.h
+    DamAnalysisWidget.h \
+    CaveSupportComputationPage.h
 
 SOURCES += \
     CaveExcavationWidget.cpp \
@@ -32,7 +33,8 @@ SOURCES += \
     Solver.cpp \
     SolverSettingWidget.cpp \
     StressBoundaryPage.cpp \
-    DamAnalysisWidget.cpp
+    DamAnalysisWidget.cpp \
+    CaveSupportComputationPage.cpp
 
 FORMS += \
     CaveExcavationWidget.ui \
