@@ -26,6 +26,7 @@ class CaveExcavationBodyPage : public BasePage
 
   private:
     void setupBatchGroupCombo();
+    PickMode currentPickMode() const;
 
   private:
     QComboBox* m_groupCombo = nullptr;

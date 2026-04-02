@@ -52,13 +52,13 @@ void CaveExcavationBodyPage::beforeLoad()
     setupBatchGroupCombo();
     const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     if (meshDim != 3)
-        PickManager::instance().activate(getPageType(), m_uuid, PickMode::Face);
+        PickManager::instance().activate(getPageType(), m_uuid, currentPickMode());
 }
 
 void CaveExcavationBodyPage::beforeUnload()
 {
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Face);
-    PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Face);
+    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().deactivate(getPageType(), m_uuid, currentPickMode());
 }
 
 QJsonObject CaveExcavationBodyPage::saveJson()
@@ -66,12 +66,17 @@ QJsonObject CaveExcavationBodyPage::saveJson()
     QJsonObject obj;
     obj["group_phys_id"] = m_groupCombo ? m_groupCombo->currentData().toInt() : -1;
 
-    QJsonArray faceArr;
+    QJsonArray faceArr, edgeArr;
     const auto faceKeys =
         PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid);
     for (vtkIdType key : faceKeys)
         faceArr.append(static_cast<qint64>(key));
+    const auto edgeKeys =
+        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Edge, GridKind::Solid);
+    for (vtkIdType key : edgeKeys)
+        edgeArr.append(static_cast<qint64>(key));
     obj["face_solid"] = faceArr;
+    obj["edge_solid"] = edgeArr;
     return obj;
 }
 
@@ -91,13 +96,18 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
         }
     }
 
-    QVector<vtkIdType> faceKeys;
+    QVector<vtkIdType> faceKeys, edgeKeys;
     const auto faceArr = obj.value("face_solid").toArray();
     faceKeys.reserve(faceArr.size());
     for (const auto& v : faceArr)
         faceKeys.push_back(static_cast<vtkIdType>(v.toVariant().toLongLong()));
+    const auto edgeArr = obj.value("edge_solid").toArray();
+    edgeKeys.reserve(edgeArr.size());
+    for (const auto& v : edgeArr)
+        edgeKeys.push_back(static_cast<vtkIdType>(v.toVariant().toLongLong()));
 
     PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, faceKeys, true);
+    PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid, edgeKeys, true);
 }
 
 QVector<int> CaveExcavationBodyPage::selectedElementIds()
@@ -112,11 +122,21 @@ QVector<int> CaveExcavationBodyPage::selectedElementIds()
     vtkDataArray* elemIdArr = vtkDataArray::SafeDownCast(grid->GetCellData()->GetArray("elem_id"));
     const auto faceKeys =
         PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid);
+    const auto edgeKeys =
+        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Edge, GridKind::Solid);
 
     std::set<int> uniq;
     for (vtkIdType key : faceKeys)
     {
         const vtkIdType cellId = PickManager::instance().unpackFaceCellId(key);
+        if (cellId < 0 || cellId >= grid->GetNumberOfCells())
+            continue;
+        const int ke = elemIdArr ? int(elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
+        uniq.insert(ke);
+    }
+    for (vtkIdType key : edgeKeys)
+    {
+        const vtkIdType cellId = PickManager::instance().unpackEdgeCellId(key);
         if (cellId < 0 || cellId >= grid->GetNumberOfCells())
             continue;
         const int ke = elemIdArr ? int(elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
@@ -130,8 +150,8 @@ QVector<int> CaveExcavationBodyPage::selectedElementIds()
 
 void CaveExcavationBodyPage::onClearClicked()
 {
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Face);
-    PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Face);
+    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().clearSelection(getPageType(), m_uuid, currentPickMode());
 }
 
 void CaveExcavationBodyPage::onGroupChanged(int index)
@@ -148,12 +168,20 @@ void CaveExcavationBodyPage::onGroupChanged(int index)
     const int dim = map.physIdToDim.value(physId, -1);
 
     QVector<vtkIdType> faceKeys;
+    QVector<vtkIdType> edgeKeys;
     if (dim == 2)
     {
         const auto src = map.bndFacePhysToFaceKeys.value(physId);
         faceKeys.reserve(src.size());
+        edgeKeys.reserve(src.size());
         for (qint64 k : src)
-            faceKeys.push_back(static_cast<vtkIdType>(k));
+        {
+            const vtkIdType fk = static_cast<vtkIdType>(k);
+            faceKeys.push_back(fk);
+            const vtkIdType cid = PickManager::instance().unpackFaceCellId(fk);
+            const int lid = PickManager::instance().unpackFaceLocalId(fk);
+            edgeKeys.push_back(PickManager::instance().packEdgeKey(cid, lid));
+        }
     }
     else if (dim == 3)
     {
@@ -163,8 +191,11 @@ void CaveExcavationBodyPage::onGroupChanged(int index)
             faceKeys.push_back(PickManager::instance().packFaceKey(static_cast<vtkIdType>(cid), 15));
     }
 
-    PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, faceKeys, false);
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Face);
+    if (currentPickMode() == PickMode::Face)
+        PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, faceKeys, false);
+    else
+        PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid, edgeKeys, false);
+    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
 }
 
 void CaveExcavationBodyPage::setupBatchGroupCombo()
@@ -208,18 +239,29 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
                     const MshPickMap& map = meshSvc->mshPickMapSolid();
                     const int physId = m_groupCombo->itemData(row).toInt();
                     QVector<vtkIdType> faceKeys;
+                    QVector<vtkIdType> edgeKeys;
                     if (targetDim == 2)
                     {
                         for (qint64 k : map.bndFacePhysToFaceKeys.value(physId))
-                            faceKeys.push_back(static_cast<vtkIdType>(k));
+                        {
+                            const vtkIdType fk = static_cast<vtkIdType>(k);
+                            faceKeys.push_back(fk);
+                            const vtkIdType cid = PickManager::instance().unpackFaceCellId(fk);
+                            const int lid = PickManager::instance().unpackFaceLocalId(fk);
+                            edgeKeys.push_back(PickManager::instance().packEdgeKey(cid, lid));
+                        }
                     }
                     else
                     {
                         for (qint64 cid : map.volPhysToCellIds.value(physId))
                             faceKeys.push_back(PickManager::instance().packFaceKey(static_cast<vtkIdType>(cid), 15));
                     }
-                    PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                               faceKeys);
+                    if (currentPickMode() == PickMode::Face)
+                        PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid, GridKind::Solid,
+                                                                   faceKeys);
+                    else
+                        PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
+                                                                   edgeKeys);
                 },
                 Qt::UniqueConnection);
 
@@ -227,8 +269,14 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
                 [this]()
                 {
                     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid,
-                                                                  PickMode::Face);
+                                                                  currentPickMode());
                 },
                 Qt::UniqueConnection);
     }
+}
+
+PickMode CaveExcavationBodyPage::currentPickMode() const
+{
+    const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    return (meshDim == 3) ? PickMode::Face : PickMode::Edge;
 }
