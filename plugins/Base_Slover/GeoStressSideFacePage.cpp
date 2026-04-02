@@ -228,7 +228,8 @@ bool GeoStressSideFacePage::exportDatFile() const
     if (!grid)
         return false;
 
-    const QVector<EdgeRow> rows = collectRows(grid, getPageType(), m_uuid, currentPickMode());
+    const QString domain = "GeoStressRegressionSideFace";
+    const QVector<EdgeRow> rows = collectRows(grid, domain, m_uuid, currentPickMode());
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();

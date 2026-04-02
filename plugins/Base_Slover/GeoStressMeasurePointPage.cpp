@@ -83,7 +83,8 @@ GeoStressMeasurePointPage::MeasurePoint GeoStressMeasurePointPage::point() const
     p.txy = m_txyEdit->text().trimmed();
     p.ii = m_iiEdit->text().trimmed();
 
-    const auto ids = PickManager::instance().getSelectedPointIds(getPageType(), m_uuid, GridKind::Solid);
+    const QString domain = "GeoStressRegressionMeasurePoint";
+    const auto ids = PickManager::instance().getSelectedPointIds(domain, m_uuid, GridKind::Solid);
     vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
     if (!ids.isEmpty() && grid)
     {
