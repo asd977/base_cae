@@ -349,7 +349,8 @@ void UiFrame::initSARibbon()
     setWindowTitle("POWERCHINA-GEOCAE");
 
     m_ribbon = ribbonBar();
-    m_ribbon->setRibbonStyle(SARibbonBar::RibbonStyleCompactTwoRow);
+    // 使用非紧凑样式，避免 Ribbon 菜单文字被省略显示为“...”
+    m_ribbon->setRibbonStyle(SARibbonBar::RibbonStyleOfficeStyleTwoRow);
     setRibbonTheme(SARibbonTheme::RibbonThemeOffice2021Blue);
 
     buildRibbonAppButton();
@@ -708,22 +709,22 @@ void UiFrame::buildRibbonTabs()
         auto* panelSoil = cate->addPannel("模型");
         auto* panelBuiltin = cate->addPannel("内置数据");
 
-        auto* actHjp = makeAction(this, ":/resources/menu/minimal/mat-hjp.svg", "围岩开挖模型");
-        auto* actSoilEb = makeAction(this, ":/resources/menu/minimal/mat-soil-eb.svg", "E-B模型");
-        auto* actDynamic = makeAction(this, ":/resources/menu/minimal/mat-dynamic.svg", "坝料动力本构");
-        auto* actSoilEmu = makeAction(this, ":/resources/menu/minimal/mat-soil-emu.svg", "E-μ模型");
+        auto* actHjp = makeAction(this, ":/resources/menu/minimal/mat-hjp.svg", "围岩开挖");
+        auto* actSoilEb = makeAction(this, ":/resources/menu/minimal/mat-soil-eb.svg", "E-B");
+        auto* actDynamic = makeAction(this, ":/resources/menu/minimal/mat-dynamic.svg", "坝料动力");
+        auto* actSoilEmu = makeAction(this, ":/resources/menu/minimal/mat-soil-emu.svg", "E-μ");
         auto* actSoilEmuCrush =
-            makeAction(this, ":/resources/menu/minimal/mat-soil-emu-crush.svg", "E-μ破碎模型");
+            makeAction(this, ":/resources/menu/minimal/mat-soil-emu-crush.svg", "E-μ破碎");
         auto* actBar =
-            makeAction(this, ":/resources/menu/minimal/mat-bar.svg", "锚杆单元模型");
+            makeAction(this, ":/resources/menu/minimal/mat-bar.svg", "锚杆单元");
         auto* actDagangshan = makeAction(this, ":/resources/menu/minimal/mat-dagangshan.svg",
                                          "各向同性本构");
-        auto* actNanshui = makeAction(this, ":/resources/menu/minimal/mat-nanshui.svg", "非线性土体模型");
-        auto* actKg = makeAction(this, ":/resources/menu/minimal/mat-kg.svg", "K-G模型");
+        auto* actNanshui = makeAction(this, ":/resources/menu/minimal/mat-nanshui.svg", "非线性土体");
+        auto* actKg = makeAction(this, ":/resources/menu/minimal/mat-kg.svg", "K-G");
         auto* actBuiltinMaterial = makeAction(this, ":/resources/menu/minimal/mat-hjp.svg",
-                                              "展示材料列表");
+                                              "材料列表");
         auto* actBuiltinSeepage = makeAction(this, ":/resources/menu/minimal/mat-dynamic.svg",
-                                             "展示渗流参数列表");
+                                             "渗流参数列表");
 
         // 材料类型较多，统一改为 small action，减少 Ribbon 占位并避免文字截断。
         addActionToPanel(panelSoil, actSoilEb, 1);
