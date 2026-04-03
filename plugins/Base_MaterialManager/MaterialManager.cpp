@@ -7,7 +7,9 @@
 #include <services/MeshModuleControllerService.h>
 
 #include <QDebug>
+#include <QGuiApplication>
 #include <algorithm>
+#include <QClipboard>
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
@@ -23,6 +25,7 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QListWidget>
+#include <QShortcut>
 #include <QSplitter>
 #include <QTableWidget>
 #include <QVBoxLayout>
@@ -359,11 +362,51 @@ void showReferenceListDialog(const QString& title, const QVector<ReferenceTableD
     auto* viewer = new QTableWidget(right);
     viewer->setEditTriggers(QAbstractItemView::NoEditTriggers);
     viewer->setSelectionBehavior(QAbstractItemView::SelectRows);
-    viewer->setSelectionMode(QAbstractItemView::SingleSelection);
+    viewer->setSelectionMode(QAbstractItemView::ExtendedSelection);
     viewer->verticalHeader()->setVisible(false);
-    viewer->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    viewer->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     rightLayout->addWidget(tableName);
     rightLayout->addWidget(viewer);
+
+    auto* copyShortcut = new QShortcut(QKeySequence::Copy, viewer);
+    QObject::connect(copyShortcut, &QShortcut::activated, viewer,
+                     [viewer]()
+                     {
+                         const QModelIndexList selected = viewer->selectionModel()->selectedIndexes();
+                         if (selected.isEmpty())
+                         {
+                             return;
+                         }
+
+                         int minRow = selected.first().row();
+                         int maxRow = selected.first().row();
+                         int minCol = selected.first().column();
+                         int maxCol = selected.first().column();
+                         for (const QModelIndex& index : selected)
+                         {
+                             minRow = qMin(minRow, index.row());
+                             maxRow = qMax(maxRow, index.row());
+                             minCol = qMin(minCol, index.column());
+                             maxCol = qMax(maxCol, index.column());
+                         }
+
+                         QString text;
+                         for (int r = minRow; r <= maxRow; ++r)
+                         {
+                             QStringList line;
+                             for (int c = minCol; c <= maxCol; ++c)
+                             {
+                                 QTableWidgetItem* item = viewer->item(r, c);
+                                 line << (item ? item->text() : QString());
+                             }
+                             text += line.join('\t');
+                             if (r < maxRow)
+                             {
+                                 text += '\n';
+                             }
+                         }
+                         QGuiApplication::clipboard()->setText(text);
+                     });
 
     for (const auto& item : items)
     {
@@ -394,7 +437,7 @@ void showReferenceListDialog(const QString& title, const QVector<ReferenceTableD
                      });
 
     splitter->setStretchFactor(0, 1);
-    splitter->setStretchFactor(1, 4);
+    splitter->setStretchFactor(1, 9);
     layout->addWidget(splitter);
 
     if (!items.isEmpty())
@@ -664,13 +707,13 @@ void MaterialManager::addMaterialFromMenu(const QString& modelKey)
 
 void MaterialManager::showBuiltinMaterialListDialog()
 {
-    showReferenceListDialog(QStringLiteral("内置材料参数参考（9种模型）"),
+    showReferenceListDialog(QStringLiteral("内置材料参数参考"),
                             buildMaterialReferenceTables(), m_materialManagerWidget);
 }
 
 void MaterialManager::showBuiltinSeepageListDialog()
 {
-    showReferenceListDialog(QStringLiteral("内置渗流参数参考（5种模型）"),
+    showReferenceListDialog(QStringLiteral("内置渗流参数参考"),
                             buildSeepageReferenceTables(), m_materialManagerWidget);
 }
 
