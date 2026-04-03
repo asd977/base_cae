@@ -39,6 +39,7 @@
 #include <QMap>
 #include <QRegularExpression>
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <set>
 #include <sstream>
@@ -111,7 +112,8 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
     if (!m_grid || m_currentArrayName.isEmpty())
         return;
 
-    vtkDataArray* arr = m_grid->GetPointData()->GetArray(m_currentArrayName.toUtf8().constData());
+    bool usePointData = true;
+    vtkDataArray* arr = findScalarArray(m_grid, m_currentArrayName, usePointData);
     if (!arr)
         return;
 
@@ -133,15 +135,9 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
 
     if (auto* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable()))
     {
-        lut->SetTableRange(range);
-        lut->Build();
+        applyParaViewLikeLut(lut, range[0], range[1]);
         scalarBar->SetTitle(m_currentArrayName.toUtf8().constData());
-
-        m_mapper->SetLookupTable(lut);
-        m_mapper->SetScalarRange(range);
-        m_mapper->SetScalarModeToUsePointFieldData();
-        m_mapper->SelectColorArray(m_currentArrayName.toUtf8().constData());
-        m_mapper->SetUseLookupTableScalarRange(false);
+        configureMapper(m_mapper, m_currentArrayName, usePointData, range[0], range[1], lut);
     }
 }
 
@@ -364,8 +360,8 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName)
         return;
     }
 
-    vtkDataArray* scalarArray =
-        m_grid->GetPointData()->GetArray(selectedScalarName.toUtf8().constData());
+    bool usePointData = true;
+    vtkDataArray* scalarArray = findScalarArray(m_grid, selectedScalarName, usePointData);
     if (!scalarArray)
     {
         qWarning() << "Scalar array not found:" << selectedScalarName;
@@ -378,6 +374,7 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName)
     m_mapper->SetInputData(m_grid);
     m_actor->SetMapper(m_mapper);
     m_actor->GetProperty()->SetRepresentationToSurface();
+    applyActorVisualStyle(m_actor);
     ensureActorAttached();
 
     if (auto* rw = m_visualService ? m_visualService->renderWindow() : nullptr)
@@ -586,20 +583,15 @@ void NephogramSettingWidget::syncScalarBarForCompare(vtkDataArray* leftArr, vtkD
 
     if (auto* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable()))
     {
-        lut->SetTableRange(minV, maxV);
-        lut->Build();
+        applyParaViewLikeLut(lut, minV, maxV);
         scalarBar->SetTitle(m_currentArrayName.toUtf8().constData());
 
-        for (auto* m : {m_leftMapper.GetPointer(), m_rightMapper.GetPointer()})
-        {
-            if (!m)
-                continue;
-            m->SetLookupTable(lut);
-            m->SetScalarRange(minV, maxV);
-            m->SetScalarModeToUsePointFieldData();
-            m->SelectColorArray(m_currentArrayName.toUtf8().constData());
-            m->SetUseLookupTableScalarRange(false);
-        }
+        bool usePointLeft = true;
+        bool usePointRight = true;
+        findScalarArray(m_leftGrid, m_currentArrayName, usePointLeft);
+        findScalarArray(m_rightGrid, m_currentArrayName, usePointRight);
+        configureMapper(m_leftMapper, m_currentArrayName, usePointLeft, minV, maxV, lut);
+        configureMapper(m_rightMapper, m_currentArrayName, usePointRight, minV, maxV, lut);
     }
 }
 
@@ -631,8 +623,10 @@ void NephogramSettingWidget::updateCompare()
         return;
     }
 
-    auto* leftArr = m_leftGrid->GetPointData()->GetArray(scalar.toUtf8().constData());
-    auto* rightArr = m_rightGrid->GetPointData()->GetArray(scalar.toUtf8().constData());
+    bool usePointLeft = true;
+    bool usePointRight = true;
+    auto* leftArr = findScalarArray(m_leftGrid, scalar, usePointLeft);
+    auto* rightArr = findScalarArray(m_rightGrid, scalar, usePointRight);
     if (!leftArr || !rightArr)
     {
         qWarning() << "Scalar not found in left/right:" << scalar;
@@ -648,6 +642,8 @@ void NephogramSettingWidget::updateCompare()
 
     m_leftActor->GetProperty()->SetRepresentationToSurface();
     m_rightActor->GetProperty()->SetRepresentationToSurface();
+    applyActorVisualStyle(m_leftActor);
+    applyActorVisualStyle(m_rightActor);
 
     if (auto* rw = m_visualService ? m_visualService->renderWindow() : nullptr)
         rw->Render();
@@ -727,6 +723,100 @@ void NephogramSettingWidget::on_splitSlider_valueChanged(int value)
 void NephogramSettingWidget::test()
 {
     qDebug() << "test";
+}
+
+vtkDataArray* NephogramSettingWidget::findScalarArray(vtkUnstructuredGrid* grid,
+                                                      const QString& scalarName,
+                                                      bool& usePointData) const
+{
+    usePointData = true;
+    if (!grid || scalarName.isEmpty())
+        return nullptr;
+
+    vtkDataArray* arr = nullptr;
+    if (auto* pointData = grid->GetPointData())
+    {
+        arr = pointData->GetArray(scalarName.toUtf8().constData());
+    }
+    if (arr)
+    {
+        usePointData = true;
+        return arr;
+    }
+
+    if (auto* cellData = grid->GetCellData())
+    {
+        arr = cellData->GetArray(scalarName.toUtf8().constData());
+        if (arr)
+        {
+            usePointData = false;
+            return arr;
+        }
+    }
+    return nullptr;
+}
+
+void NephogramSettingWidget::applyActorVisualStyle(vtkActor* actor) const
+{
+    if (!actor || !actor->GetProperty())
+        return;
+    auto* prop = actor->GetProperty();
+    prop->SetInterpolationToPhong();
+    prop->SetAmbient(0.15);
+    prop->SetDiffuse(0.85);
+    prop->SetSpecular(0.0);
+    prop->SetSpecularPower(1.0);
+}
+
+void NephogramSettingWidget::applyParaViewLikeLut(vtkLookupTable* lut, double minV,
+                                                  double maxV) const
+{
+    if (!lut)
+        return;
+
+    if (std::abs(maxV - minV) < 1e-12)
+    {
+        maxV = minV + 1.0;
+    }
+
+    lut->SetNumberOfTableValues(256);
+    lut->SetTableRange(minV, maxV);
+    lut->Build();
+
+    // 蓝->灰白->红，接近 ParaView 常用 Cool to Warm 观感
+    for (int i = 0; i < 256; ++i)
+    {
+        const double t = static_cast<double>(i) / 255.0;
+        double r = 0.231 + (0.865 - 0.231) * t;
+        double g = 0.298 + (0.865 - 0.298) * t;
+        double b = 0.753 + (0.865 - 0.753) * t;
+        if (t > 0.5)
+        {
+            const double k = (t - 0.5) * 2.0;
+            r = 0.865 + (0.706 - 0.865) * k;
+            g = 0.865 + (0.016 - 0.865) * k;
+            b = 0.865 + (0.149 - 0.865) * k;
+        }
+        lut->SetTableValue(i, r, g, b, 1.0);
+    }
+}
+
+void NephogramSettingWidget::configureMapper(vtkDataSetMapper* mapper, const QString& scalarName,
+                                             bool usePointData, double minV, double maxV,
+                                             vtkLookupTable* lut) const
+{
+    if (!mapper)
+        return;
+    mapper->SetLookupTable(lut);
+    mapper->SetScalarRange(minV, maxV);
+    mapper->SelectColorArray(scalarName.toUtf8().constData());
+    mapper->SetUseLookupTableScalarRange(false);
+    mapper->ScalarVisibilityOn();
+    if (usePointData)
+        mapper->SetScalarModeToUsePointFieldData();
+    else
+        mapper->SetScalarModeToUseCellFieldData();
+    mapper->InterpolateScalarsBeforeMappingOn();
 }
 
 void NephogramSettingWidget::on_pushButton_clicked()
