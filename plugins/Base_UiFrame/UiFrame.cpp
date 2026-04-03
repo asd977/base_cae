@@ -736,8 +736,8 @@ void UiFrame::buildRibbonTabs()
         addActionToPanel(panelSoil, actDynamic, 1);
         addActionToPanel(panelSoil, actBar, 1);
         addActionToPanel(panelSoil, actDagangshan, 1);
-        addActionToPanel(panelBuiltin, actBuiltinMaterial, 1);
-        addActionToPanel(panelBuiltin, actBuiltinSeepage, 1);
+        addActionToPanel(panelBuiltin, actBuiltinMaterial, 3);
+        addActionToPanel(panelBuiltin, actBuiltinSeepage, 3);
 
         connect(actHjp, &QAction::triggered, this,
                 []()
