@@ -708,17 +708,17 @@ void UiFrame::buildRibbonTabs()
         auto* panelSoil = cate->addPannel("土体模型");
         auto* panelSpecial = cate->addPannel("专项模型");
 
-        auto* actHjp = makeAction(this, ":/resources/menu/minimal/mat-hjp.svg", "地下厂房模型");
+        auto* actHjp = makeAction(this, ":/resources/menu/minimal/mat-hjp.svg", "围岩开挖模型");
         auto* actSoilEb = makeAction(this, ":/resources/menu/minimal/mat-soil-eb.svg", "E-B模型");
-        auto* actDynamic = makeAction(this, ":/resources/menu/minimal/mat-dynamic.svg", "坝料动力模型");
+        auto* actDynamic = makeAction(this, ":/resources/menu/minimal/mat-dynamic.svg", "坝料动力本构");
         auto* actSoilEmu = makeAction(this, ":/resources/menu/minimal/mat-soil-emu.svg", "E-μ模型");
         auto* actSoilEmuCrush =
             makeAction(this, ":/resources/menu/minimal/mat-soil-emu-crush.svg", "E-μ破碎模型");
         auto* actBar =
-            makeAction(this, ":/resources/menu/minimal/mat-bar.svg", "杆单元模型");
+            makeAction(this, ":/resources/menu/minimal/mat-bar.svg", "锚杆单元模型");
         auto* actDagangshan = makeAction(this, ":/resources/menu/minimal/mat-dagangshan.svg",
-                                         "各向同性模型");
-        auto* actNanshui = makeAction(this, ":/resources/menu/minimal/mat-nanshui.svg", "N-S模型");
+                                         "各向同性本构");
+        auto* actNanshui = makeAction(this, ":/resources/menu/minimal/mat-nanshui.svg", "非线性土体模型");
         auto* actKg = makeAction(this, ":/resources/menu/minimal/mat-kg.svg", "K-G模型");
 
         // 材料类型较多，统一改为 small action，减少 Ribbon 占位并避免文字截断。

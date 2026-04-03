@@ -6,7 +6,7 @@ MaterialModel createHuangjinpingModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("huangjinping_underground_plant");
-    model.displayName = QStringLiteral("地下厂房模型");
+    model.displayName = QStringLiteral("围岩开挖模型");
     model.ib = 0;
 
     model.columns << QStringLiteral("编号") << QStringLiteral("岩类分区")
@@ -28,7 +28,7 @@ MaterialModel createDamDynamicModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("dam_dynamic");
-    model.displayName = QStringLiteral("坝料动力模型");
+    model.displayName = QStringLiteral("坝料动力本构");
     model.ib = -4;
 
     model.columns << QStringLiteral("编号") << QStringLiteral("静力计算编号")
@@ -102,7 +102,7 @@ MaterialModel createHuangjinpingBarModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("huangjinping_bar_element");
-    model.displayName = QStringLiteral("杆单元模型");
+    model.displayName = QStringLiteral("锚杆单元模型");
     model.ib = 0;
 
     model.columns << QStringLiteral("序号") << QStringLiteral("变模E1,E2（GPa）")
@@ -120,7 +120,7 @@ MaterialModel createDagangshanIsotropicModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("dagangshan_isotropic");
-    model.displayName = QStringLiteral("各向同性模型");
+    model.displayName = QStringLiteral("各向同性本构");
     model.ib = 0;
 
     model.columns << QStringLiteral("序号") << QStringLiteral("变形模量E（GPa）")
@@ -137,7 +137,7 @@ MaterialModel createNanshuiModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("soil_nanshui");
-    model.displayName = QStringLiteral("N-S模型");
+    model.displayName = QStringLiteral("非线性土体模型");
     model.ib = -5;
 
     model.columns << QStringLiteral("材料编号") << QStringLiteral("干容重(t/m3)")
