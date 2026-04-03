@@ -49,7 +49,7 @@ MaterialModel createSeepageModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("jk_corewall_steady_seepage");
-    model.displayName = QStringLiteral("剑科稳态渗流");
+    model.displayName = QStringLiteral("稳态渗流");
     model.ib = -2;
 
     model.columns << QStringLiteral("材料编号") << QStringLiteral("渗透系数K(Lu)")
@@ -64,7 +64,7 @@ MaterialModel createSoilEmuModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("soil_emu");
-    model.displayName = QStringLiteral("土体E-μ模型");
+    model.displayName = QStringLiteral("E-μ模型");
     model.ib = -3;
 
     model.columns << QStringLiteral("材料编号") << QStringLiteral("干容重(t/m3)")
@@ -82,7 +82,7 @@ MaterialModel createSoilEmuCrushModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("soil_emu_crush");
-    model.displayName = QStringLiteral("土体E-μ破碎模型");
+    model.displayName = QStringLiteral("E-μ破碎模型");
     model.ib = -6;
 
     model.columns << QStringLiteral("材料编号") << QStringLiteral("干容重(t/m3)")
@@ -156,7 +156,7 @@ MaterialModel createSoilKgModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("soil_kg");
-    model.displayName = QStringLiteral("土体K-G模型");
+    model.displayName = QStringLiteral("K-G模型");
     model.ib = -2;
 
     model.columns << QStringLiteral("材料编号") << QStringLiteral("干容重(t/m3)")
@@ -175,7 +175,7 @@ MaterialModel createShenzhujiangCreepModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("shenzhujiang_creep");
-    model.displayName = QStringLiteral("沈珠江三参数");
+    model.displayName = QStringLiteral("三参数流变");
     model.ib = 0;
 
     model.columns << QStringLiteral("序号") << QStringLiteral("应变速率系数α")
@@ -190,7 +190,7 @@ MaterialModel createLiguoyingCreepModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("liguoying_creep");
-    model.displayName = QStringLiteral("李国英七参数");
+    model.displayName = QStringLiteral("七参数流变");
     model.ib = 0;
 
     model.columns << QStringLiteral("序号") << QStringLiteral("应变速率系数α")
@@ -225,7 +225,7 @@ MaterialModel createXiyuanCreepModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("xiyuan_creep");
-    model.displayName = QStringLiteral("西源流变");
+    model.displayName = QStringLiteral("六参数流变");
     model.ib = 0;
 
     model.columns << QStringLiteral("序号") << QStringLiteral("瞬时弹性模量E1（GPa）")
@@ -241,7 +241,7 @@ MaterialModel createSoilEbModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("soil_eb");
-    model.displayName = QStringLiteral("土体E-B模型");
+    model.displayName = QStringLiteral("E-B模型");
     model.ib = -1;
 
     model.columns << QStringLiteral("材料编号") << QStringLiteral("干容重(t/m3)")

@@ -709,17 +709,17 @@ void UiFrame::buildRibbonTabs()
         auto* panelSpecial = cate->addPannel("专项模型");
 
         auto* actHjp = makeAction(this, ":/resources/menu/minimal/mat-hjp.svg", "黄金坪厂房");
-        auto* actSoilEb = makeAction(this, ":/resources/menu/minimal/mat-soil-eb.svg", "土体E-B模型");
+        auto* actSoilEb = makeAction(this, ":/resources/menu/minimal/mat-soil-eb.svg", "E-B模型");
         auto* actDynamic = makeAction(this, ":/resources/menu/minimal/mat-dynamic.svg", "坝料动力");
-        auto* actSoilEmu = makeAction(this, ":/resources/menu/minimal/mat-soil-emu.svg", "土体E-μ模型");
+        auto* actSoilEmu = makeAction(this, ":/resources/menu/minimal/mat-soil-emu.svg", "E-μ模型");
         auto* actSoilEmuCrush =
-            makeAction(this, ":/resources/menu/minimal/mat-soil-emu-crush.svg", "土体E-μ破碎模型");
+            makeAction(this, ":/resources/menu/minimal/mat-soil-emu-crush.svg", "E-μ破碎模型");
         auto* actBar =
             makeAction(this, ":/resources/menu/minimal/mat-bar.svg", "黄金坪杆单元");
         auto* actDagangshan = makeAction(this, ":/resources/menu/minimal/mat-dagangshan.svg",
                                          "大岗山各向同性");
         auto* actNanshui = makeAction(this, ":/resources/menu/minimal/mat-nanshui.svg", "南水模型");
-        auto* actKg = makeAction(this, ":/resources/menu/minimal/mat-kg.svg", "土体K-G模型");
+        auto* actKg = makeAction(this, ":/resources/menu/minimal/mat-kg.svg", "K-G模型");
 
         // 材料类型较多，统一改为 small action，减少 Ribbon 占位并避免文字截断。
         addActionToPanel(panelSoil, actSoilEb, 1);
