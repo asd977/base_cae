@@ -15,13 +15,14 @@
 #include <QJsonObject>
 #include <QSet>
 #include <QString>
-#include <QTableWidget>
 #include <QTextStream>
 #include <QUuid>
 #include <QtGlobal>
 #include <cmath>
 #include <QDialog>
-#include <QHeaderView>
+#include <QListWidget>
+#include <QPlainTextEdit>
+#include <QSplitter>
 #include <QVBoxLayout>
 
 #include "MaterialEntryWidget.h"
@@ -29,102 +30,129 @@
 
 namespace
 {
-struct ReferenceTableData
-{
-    QString title;
-    QStringList columns;
-    QVector<QStringList> rows;
-};
+using ReferenceItem = QPair<QString, QString>;
 
-void showReferenceTableDialog(const ReferenceTableData& data, QWidget* parent)
+QVector<ReferenceItem> buildMaterialReferenceItems()
+{
+    QVector<ReferenceItem> items;
+    items.append({QStringLiteral("围岩开挖模型"),
+                  QStringLiteral("样表1 黄金坪地下厂房各向同性岩体物理力学参数表（参考）\n"
+                                 "II 3 3 0 0 0 16.25 0.23 2.7 1.23 1.58 1.0 3.0\n"
+                                 "III 4 4 0 0 0 9.00 0.25 2.65 1.05 1.13 1.0 5.0\n"
+                                 "IV 5 5 0 0 0 5.75 0.30 2.65 0.85 0.78 1.0 7.0\n"
+                                 "V 6 6 0 0 0 2.00 0.35 2.60 0.613 0.35 1.0 9.0\n"
+                                 "......（含开挖区/半开挖区/再生区参数）")});
+    items.append({QStringLiteral("E-B模型"),
+                  QStringLiteral("样表2 土体E-B模型参数(IB=-1)\n"
+                                 "2A垫层 7 2.209 2.29 2.397 51.6 5.7 231.4 0.69 1082 0.27 2164 545 0.25\n"
+                                 "3A过渡料 8 2.13 2.22 2.334 53.8 8.8 236.6 0.75 968 0.23 1936 328 0.17\n"
+                                 "......")});
+    items.append({QStringLiteral("坝料动力本构"),
+                  QStringLiteral("样表3 坝料动力参数(IB=-4)\n"
+                                 "2A垫层 81 7 0 970 0.43 51.5 100 0.35 0.25 150 150 150 1000 800 0.5 0.8\n"
+                                 "3A过渡料 82 8 1 1000 0.45 52 200 0.34 0.22 180 180 180 1000 800 0.5 0.8\n"
+                                 "......")});
+    items.append({QStringLiteral("E-μ模型"),
+                  QStringLiteral("样表5 土体E-μ模型参数(IB=-3)\n"
+                                 "上游铺盖 4 1.8 2.0 2.2 35 0 0.0 0.75 500 0.4 0.38 2.7 0.15\n"
+                                 "上游堆石料 5 2.0 2.1 2.2 35 0 0.0 0.8 1000 0.3 0.37 11 0.1\n"
+                                 "......")});
+    items.append({QStringLiteral("E-μ破碎模型"),
+                  QStringLiteral("样表15 土体E-μ破碎模型参数(IB=-6)\n"
+                                 "上游铺盖 4 1.8 2.0 2.2 35 0 0.0 0.75 500 0.4 0.38 2.7 0.38 2.7 0.38 2.7\n"
+                                 "上游堆石料 5 2.0 2.1 2.2 35 0 0.0 0.8 1000 0.3 0.37 11 0.37 11 0.37 11\n"
+                                 "......")});
+    items.append({QStringLiteral("锚杆单元模型"),
+                  QStringLiteral("样表6 杆单元参数（黄金坪地下厂房）\n"
+                                 "15m预应力锚索1500KN 20 206 7.80 0.002 1800 4.5 4.5 1500.0 1.0\n"
+                                 "8m/9m普通锚杆φ32 21 206 7.80 0.000804 390 1.8 1.8 0.0 1.0\n"
+                                 "......")});
+    items.append({QStringLiteral("各向同性本构"),
+                  QStringLiteral("样表7 大岗山高拱坝各向同性岩体物理力学参数表\n"
+                                 "空化 1 0.001 0.3 0.0 1.7 200.0\n"
+                                 "alQ 2 0.5 0.4 1.5 0.8 0.05\n"
+                                 "......")});
+    items.append({QStringLiteral("非线性土体模型"),
+                  QStringLiteral("样表9 土体南水模型参数(IB=-5)\n"
+                                 "垫层料 7 2.10 2.15 2.20 46.0 6.0 0.0 0.79 867 1133 0.39 0.0043 0.62 0.72\n"
+                                 "过渡料 8 2.10 2.15 2.20 50.0 8.0 0.0 0.75 683 1000 0.31 0.0060 0.78 0.70\n"
+                                 "......")});
+    items.append({QStringLiteral("K-G模型"),
+                  QStringLiteral("样表10 土体科大K-G模型参数(IB=-2)\n"
+                                 "覆盖层3 4 1.8 2.0 2.2 168 68 114 115 -60 190 1.92\n"
+                                 "覆盖层2 5 2.0 2.1 2.2 33 70 22 64 -35 63 1.83\n"
+                                 "......")});
+    return items;
+}
+
+QVector<ReferenceItem> buildSeepageReferenceItems()
+{
+    QVector<ReferenceItem> items;
+    items.append({QStringLiteral("稳态渗流"),
+                  QStringLiteral("样表4 剑科心墙堆石坝各向同性稳态渗流参数\n"
+                                 "alQ3 3 35000.0 0.09\n"
+                                 "alQ4 4 35000.0 0.09\n"
+                                 "Col+dlQ4 5 4500.0 0.14\n"
+                                 "垫层料 6 720.0 0.12\n"
+                                 "......")});
+    items.append({QStringLiteral("三参数流变"),
+                  QStringLiteral("样表11 沈珠江三参数流变模型参数\n"
+                                 "垫层料 7 0.004 0.0009 0.007\n"
+                                 "过渡料 8 0.004 0.0009 0.007\n"
+                                 "......")});
+    items.append({QStringLiteral("九参数流变"),
+                  QStringLiteral("样表13 九参数流变模型参数\n"
+                                 "主堆石3B-II 10 0.0678 0.4445 0.4360 2.0827 1.6383 0.2892 0.8465 0.0831 0.3899\n"
+                                 "次堆石3C 11 0.0851 0.3808 0.1936 0.6521 1.0061 1.4296 0.2852 0.1116 1.0384")});
+    items.append({QStringLiteral("七参数流变"),
+                  QStringLiteral("样表12 李国英七参数流变模型参数\n"
+                                 "主堆石3B-I 7 0.006 0.0006 0.0002 0.004 0.769 0.635 0.550\n"
+                                 "主堆石3B-II 8 0.007 0.003 0.0001 0.0025 0.770 0.631 0.530\n"
+                                 "......")});
+    items.append({QStringLiteral("六参数流变"),
+                  QStringLiteral("样表14 西源流变模型参数\n"
+                                 "主堆石3B-II 12 1.5 2.0 0.3 0.4 0.5 0.6\n"
+                                 "次堆石3C 13 1.5 2.0 0.3 0.4 0.5 0.6")});
+    return items;
+}
+
+void showReferenceListDialog(const QString& title, const QVector<ReferenceItem>& items, QWidget* parent)
 {
     auto* dialog = new QDialog(parent);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
-    dialog->setWindowTitle(data.title);
-    dialog->resize(1200, 640);
+    dialog->setWindowTitle(title);
+    dialog->resize(1100, 680);
 
     auto* layout = new QVBoxLayout(dialog);
-    auto* table = new QTableWidget(dialog);
-    table->setColumnCount(data.columns.size());
-    table->setHorizontalHeaderLabels(data.columns);
-    table->setRowCount(data.rows.size());
-    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    table->setSelectionBehavior(QAbstractItemView::SelectRows);
-    table->setSelectionMode(QAbstractItemView::SingleSelection);
-    table->verticalHeader()->setVisible(false);
-    table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    auto* splitter = new QSplitter(Qt::Horizontal, dialog);
+    auto* list = new QListWidget(splitter);
+    auto* viewer = new QPlainTextEdit(splitter);
+    viewer->setReadOnly(true);
 
-    for (int row = 0; row < data.rows.size(); ++row)
+    for (const auto& item : items)
     {
-        const QStringList& values = data.rows[row];
-        for (int col = 0; col < data.columns.size(); ++col)
-        {
-            table->setItem(row, col, new QTableWidgetItem(col < values.size() ? values[col] : QString()));
-        }
+        list->addItem(item.first);
     }
 
-    layout->addWidget(table);
+    QObject::connect(list, &QListWidget::currentRowChanged, dialog,
+                     [viewer, items](int row)
+                     {
+                         if (row >= 0 && row < items.size())
+                         {
+                             viewer->setPlainText(items[row].second);
+                         }
+                     });
+
+    splitter->setStretchFactor(0, 1);
+    splitter->setStretchFactor(1, 4);
+    layout->addWidget(splitter);
+
+    if (!items.isEmpty())
+    {
+        list->setCurrentRow(0);
+    }
+
     dialog->show();
-}
-
-ReferenceTableData buildMaterialSample1()
-{
-    ReferenceTableData data;
-    data.title = QStringLiteral("样表1 黄金坪地下厂房各向同性岩体物理力学参数表（参考）");
-    data.columns = {QStringLiteral("岩体代号"), QStringLiteral("序号"), QStringLiteral("母岩编号"),
-                    QStringLiteral("ITAG_EX"), QStringLiteral("半开挖区荷载释放系数"),
-                    QStringLiteral("再生时对应开挖级"), QStringLiteral("E(GPa)"),
-                    QStringLiteral("μ"), QStringLiteral("容重(t/m3)"),
-                    QStringLiteral("内摩擦系数"), QStringLiteral("凝聚力C'(MPa)"),
-                    QStringLiteral("α0"), QStringLiteral("d0")};
-
-    data.rows = {
-        {"II", "3", "3", "0", "0", "0", "16.25", "0.23", "2.7", "1.23", "1.58", "1.0", "3.0"},
-        {"III", "4", "4", "0", "0", "0", "9.00", "0.25", "2.65", "1.05", "1.13", "1.0", "5.0"},
-        {"IV", "5", "5", "0", "0", "0", "5.75", "0.30", "2.65", "0.85", "0.78", "1.0", "7.0"},
-        {"V", "6", "6", "0", "0", "0", "2.00", "0.35", "2.60", "0.613", "0.35", "1.0", "9.0"},
-        {"f10-14", "7", "7", "0", "0", "0", "0.2", "0.35", "2.23", "0.35", "0.05", "1.0", "9.0"},
-        {"裂隙", "8", "8", "0", "0", "0", "3.0", "0.38", "1.5", "0.50", "0.30", "1.0", "9.0"},
-        {"裂隙密集带", "10", "10", "0", "0", "0", "2.00", "0.35", "2.60", "0.613", "0.35", "1.0", "9.0"},
-        {"II", "13", "3", "-1", "0", "0", "16.25", "0.23", "2.7", "1.23", "1.58", "0.0", "0.0"},
-        {"III", "14", "4", "-1", "0", "0", "9.00", "0.25", "2.65", "1.05", "1.13", "0.0", "0.0"},
-        {"IV", "15", "5", "-1", "0", "0", "5.75", "0.30", "2.65", "0.85", "0.78", "0.0", "0.0"},
-        {"V", "16", "6", "-1", "0", "0", "2.00", "0.35", "2.60", "0.613", "0.35", "0.0", "0.0"},
-        {"f10-14", "17", "7", "-1", "0", "0", "0.2", "0.35", "2.23", "0.35", "0.05", "0.0", "0.0"},
-        {"裂隙", "18", "8", "-1", "0", "0", "3.0", "0.38", "1.5", "0.50", "0.30", "0.0", "0.0"},
-        {"裂隙密集带", "19", "9", "-1", "0", "0", "5.75", "0.30", "2.65", "0.85", "0.78", "0.0", "0.0"},
-        {"尾水连接管（III）", "23", "4", "-2", "0.3213", "0", "9.00", "0.25", "2.65", "1.05", "1.13", "1.0", "5.0"},
-        {"母线洞（III）", "24", "4", "-2", "0.3213", "0", "9.00", "0.25", "2.65", "1.05", "1.13", "1.0", "5.0"},
-        {"f10-14过尾水连接管", "27", "7", "-2", "0.3213", "0", "0.2", "0.35", "2.23", "0.35", "0.05", "1.0", "9.0"},
-        {"裂隙过母线洞", "28", "8", "-2", "0.3213", "0", "5.75", "0.30", "2.65", "0.85", "0.78", "1.0", "7.0"},
-        {"裂隙过尾水连接管", "29", "9", "-2", "0.3213", "0", "5.75", "0.30", "2.65", "0.85", "0.78", "1.0", "7.0"},
-        {"吊车梁岩体（母岩为III）", "43", "4", "2", "0", "-4", "22.4", "0.167", "2.4", "1.4", "3.9", "0.0", "0.0"},
-        {"喷C25砼", "44", "4", "2", "0", "0", "22.4", "0.167", "2.4", "1.4", "3.9", "0.0", "0.0"},
-        {"母线洞喷C25砼", "45", "4", "2", "0", "0", "22.4", "0.167", "2.4", "1.4", "3.9", "0.0", "0.0"},
-        {"裂隙过吊车梁", "46", "8", "2", "0", "-4", "22.4", "0.167", "2.4", "1.4", "3.9", "0.0", "0.0"},
-        {"f10-14过喷C25砼", "47", "7", "2", "0", "0", "22.4", "0.167", "2.4", "1.4", "3.9", "0.0", "0.0"},
-        {"裂隙过喷C25砼", "48", "8", "2", "0", "0", "22.4", "0.167", "2.4", "1.4", "3.9", "0.0", "0.0"},
-    };
-    return data;
-}
-
-ReferenceTableData buildSeepageSample4()
-{
-    ReferenceTableData data;
-    data.title = QStringLiteral("样表4 剑科心墙堆石坝各向同性稳态渗流参数（参考）");
-    data.columns = {QStringLiteral("材料"), QStringLiteral("材料编号"),
-                    QStringLiteral("渗透系数K(Lu)"), QStringLiteral("允许比降")};
-    data.rows = {
-        {"alQ3", "3", "35000.0", "0.09"},        {"alQ4", "4", "35000.0", "0.09"},
-        {"Col+dlQ4", "5", "4500.0", "0.14"},     {"垫层料", "6", "720.0", "0.12"},
-        {"坝顶填筑", "7", "10.0", "0.13"},       {"花岗岩堆石料(基准)", "8", "400.0", "0.38"},
-        {"防渗土料(基准)", "9", "3.0", "50"},    {"反滤层1(基准)", "10", "543.0", "0.15"},
-        {"反滤层2(基准)", "11", "543.0", "0.15"}, {"过渡料(基准)", "12", "400.0", "0.38"},
-        {"大块石护坡", "18", "400.0", "0.38"},   {"大块石填筑", "19", "400.0", "0.38"},
-        {"弃渣盖重", "22", "400.0", "0.38"},     {"高塑性粘土", "24", "1.0", "50"},
-        {"粘土/砼接触面泥皮", "25", "1.0", "50"}, {"帷幕", "26", "3.00", "18"},
-    };
-    return data;
 }
 
 void syncAutoNumberProperties(MaterialModel* model, MaterialEntry* entry)
@@ -386,12 +414,14 @@ void MaterialManager::addMaterialFromMenu(const QString& modelKey)
 
 void MaterialManager::showBuiltinMaterialListDialog()
 {
-    showReferenceTableDialog(buildMaterialSample1(), m_materialManagerWidget);
+    showReferenceListDialog(QStringLiteral("内置材料参数参考（9种模型）"),
+                            buildMaterialReferenceItems(), m_materialManagerWidget);
 }
 
 void MaterialManager::showBuiltinSeepageListDialog()
 {
-    showReferenceTableDialog(buildSeepageSample4(), m_materialManagerWidget);
+    showReferenceListDialog(QStringLiteral("内置渗流参数参考（5种模型）"),
+                            buildSeepageReferenceItems(), m_materialManagerWidget);
 }
 
 QString MaterialManager::addMaterialToModel(const QString& modelKey, bool addToProjectTree)
