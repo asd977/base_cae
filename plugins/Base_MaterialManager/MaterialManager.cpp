@@ -1365,7 +1365,7 @@ bool MaterialManager::generateCaculateFile()
             const double dryN = valueOf(info.entry, QStringLiteral("n"));
             const double dryKur = valueOf(info.entry, QStringLiteral("Kur"));
             const double dryKb = valueOf(info.entry, QStringLiteral("Kb"));
-            const double dryM = valueOf(info.entry, QStringLiteral("m"));
+
 
             const double dryRou = dryRouTm3 * 1.0e3;
             const double pacRou = pacRouTm3 * 1.0e3;
@@ -1391,7 +1391,7 @@ bool MaterialManager::generateCaculateFile()
             setRow(72, dryKur);
             setRow(73, dryN);
             setRow(74, dryKb);
-            setRow(75, dryM);
+            setRow(75, dryN);
             setRow(76, dFai);
             setRow(11, fai);
             setRow(12, co);
@@ -1496,7 +1496,7 @@ bool MaterialManager::generateCaculateFile()
             setRow(71, rf);
             setRow(72, dryK * 1.5);
             setRow(73, dryN);
-            setRow(75, cbk1);
+            setRow(75, dryN);
             setRow(76, dFai);
             setRow(11, fai);
             setRow(12, co);
