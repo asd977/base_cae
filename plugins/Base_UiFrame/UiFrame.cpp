@@ -705,8 +705,7 @@ void UiFrame::buildRibbonTabs()
         auto* cate = m_ribbon->addCategoryPage("材料");
         cate->setObjectName("materialObj");
 
-        auto* panelSoil = cate->addPannel("土体模型");
-        auto* panelSpecial = cate->addPannel("专项模型");
+        auto* panelSoil = cate->addPannel("模型");
 
         auto* actHjp = makeAction(this, ":/resources/menu/minimal/mat-hjp.svg", "围岩开挖模型");
         auto* actSoilEb = makeAction(this, ":/resources/menu/minimal/mat-soil-eb.svg", "E-B模型");
@@ -728,10 +727,10 @@ void UiFrame::buildRibbonTabs()
         addActionToPanel(panelSoil, actNanshui, 1);
         addActionToPanel(panelSoil, actKg, 1);
 
-        addActionToPanel(panelSpecial, actHjp, 1);
-        addActionToPanel(panelSpecial, actDynamic, 1);
-        addActionToPanel(panelSpecial, actBar, 1);
-        addActionToPanel(panelSpecial, actDagangshan, 1);
+        addActionToPanel(panelSoil, actHjp, 1);
+        addActionToPanel(panelSoil, actDynamic, 1);
+        addActionToPanel(panelSoil, actBar, 1);
+        addActionToPanel(panelSoil, actDagangshan, 1);
 
         connect(actHjp, &QAction::triggered, this,
                 []()
