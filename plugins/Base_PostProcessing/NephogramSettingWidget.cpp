@@ -764,8 +764,44 @@ void NephogramSettingWidget::updateLookupTableRange(vtkLookupTable* lut, double 
         maxV = minV + 1.0;
     }
 
+    lut->SetNumberOfTableValues(64);
     lut->SetTableRange(minV, maxV);
     lut->Build();
+
+    // 贴近 ParaView 的冷暖色趋势：低值蓝，高值红；压缩中间亮色带，避免“过亮发白”。
+    const double low[3] = {0.231, 0.298, 0.753};
+    const double mid[3] = {0.760, 0.760, 0.760};
+    const double high[3] = {0.706, 0.016, 0.149};
+
+    const int tableSize = lut->GetNumberOfTableValues();
+    for (int i = 0; i < tableSize; ++i)
+    {
+        const double t = tableSize > 1 ? static_cast<double>(i) / static_cast<double>(tableSize - 1)
+                                       : 0.0;
+
+        // 让中间过渡带更窄：视觉上不会在中值区域“分出太多颜色”。
+        const double warped = (t < 0.5) ? 0.5 * std::pow(t * 2.0, 1.35)
+                                        : 1.0 - 0.5 * std::pow((1.0 - t) * 2.0, 1.35);
+
+        double r = 0.0;
+        double g = 0.0;
+        double b = 0.0;
+        if (warped < 0.5)
+        {
+            const double a = warped / 0.5;
+            r = low[0] + (mid[0] - low[0]) * a;
+            g = low[1] + (mid[1] - low[1]) * a;
+            b = low[2] + (mid[2] - low[2]) * a;
+        }
+        else
+        {
+            const double a = (warped - 0.5) / 0.5;
+            r = mid[0] + (high[0] - mid[0]) * a;
+            g = mid[1] + (high[1] - mid[1]) * a;
+            b = mid[2] + (high[2] - mid[2]) * a;
+        }
+        lut->SetTableValue(i, r, g, b, 1.0);
+    }
 }
 
 void NephogramSettingWidget::configureMapper(vtkDataSetMapper* mapper, const QString& scalarName,
