@@ -135,7 +135,7 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
 
     if (auto* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable()))
     {
-        applyParaViewLikeLut(lut, range[0], range[1]);
+        updateLookupTableRange(lut, range[0], range[1]);
         scalarBar->SetTitle(m_currentArrayName.toUtf8().constData());
         configureMapper(m_mapper, m_currentArrayName, usePointData, range[0], range[1], lut);
     }
@@ -374,7 +374,6 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName)
     m_mapper->SetInputData(m_grid);
     m_actor->SetMapper(m_mapper);
     m_actor->GetProperty()->SetRepresentationToSurface();
-    applyActorVisualStyle(m_actor);
     ensureActorAttached();
 
     if (auto* rw = m_visualService ? m_visualService->renderWindow() : nullptr)
@@ -583,7 +582,7 @@ void NephogramSettingWidget::syncScalarBarForCompare(vtkDataArray* leftArr, vtkD
 
     if (auto* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable()))
     {
-        applyParaViewLikeLut(lut, minV, maxV);
+        updateLookupTableRange(lut, minV, maxV);
         scalarBar->SetTitle(m_currentArrayName.toUtf8().constData());
 
         bool usePointLeft = true;
@@ -642,8 +641,6 @@ void NephogramSettingWidget::updateCompare()
 
     m_leftActor->GetProperty()->SetRepresentationToSurface();
     m_rightActor->GetProperty()->SetRepresentationToSurface();
-    applyActorVisualStyle(m_leftActor);
-    applyActorVisualStyle(m_rightActor);
 
     if (auto* rw = m_visualService ? m_visualService->renderWindow() : nullptr)
         rw->Render();
@@ -756,20 +753,8 @@ vtkDataArray* NephogramSettingWidget::findScalarArray(vtkUnstructuredGrid* grid,
     return nullptr;
 }
 
-void NephogramSettingWidget::applyActorVisualStyle(vtkActor* actor) const
-{
-    if (!actor || !actor->GetProperty())
-        return;
-    auto* prop = actor->GetProperty();
-    prop->SetInterpolationToPhong();
-    prop->SetAmbient(0.15);
-    prop->SetDiffuse(0.85);
-    prop->SetSpecular(0.0);
-    prop->SetSpecularPower(1.0);
-}
-
-void NephogramSettingWidget::applyParaViewLikeLut(vtkLookupTable* lut, double minV,
-                                                  double maxV) const
+void NephogramSettingWidget::updateLookupTableRange(vtkLookupTable* lut, double minV,
+                                                    double maxV) const
 {
     if (!lut)
         return;
@@ -779,26 +764,8 @@ void NephogramSettingWidget::applyParaViewLikeLut(vtkLookupTable* lut, double mi
         maxV = minV + 1.0;
     }
 
-    lut->SetNumberOfTableValues(256);
     lut->SetTableRange(minV, maxV);
     lut->Build();
-
-    // 蓝->灰白->红，接近 ParaView 常用 Cool to Warm 观感
-    for (int i = 0; i < 256; ++i)
-    {
-        const double t = static_cast<double>(i) / 255.0;
-        double r = 0.231 + (0.865 - 0.231) * t;
-        double g = 0.298 + (0.865 - 0.298) * t;
-        double b = 0.753 + (0.865 - 0.753) * t;
-        if (t > 0.5)
-        {
-            const double k = (t - 0.5) * 2.0;
-            r = 0.865 + (0.706 - 0.865) * k;
-            g = 0.865 + (0.016 - 0.865) * k;
-            b = 0.865 + (0.149 - 0.865) * k;
-        }
-        lut->SetTableValue(i, r, g, b, 1.0);
-    }
 }
 
 void NephogramSettingWidget::configureMapper(vtkDataSetMapper* mapper, const QString& scalarName,

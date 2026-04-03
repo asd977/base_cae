@@ -79,8 +79,7 @@ class NephogramSettingWidget : public BasePage
     QString resultDirectory() const;
     vtkDataArray* findScalarArray(vtkUnstructuredGrid* grid, const QString& scalarName,
                                   bool& usePointData) const;
-    void applyActorVisualStyle(vtkActor* actor) const;
-    void applyParaViewLikeLut(vtkLookupTable* lut, double minV, double maxV) const;
+    void updateLookupTableRange(vtkLookupTable* lut, double minV, double maxV) const;
     void configureMapper(vtkDataSetMapper* mapper, const QString& scalarName, bool usePointData,
                          double minV, double maxV, vtkLookupTable* lut) const;
 
