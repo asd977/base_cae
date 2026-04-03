@@ -20,9 +20,11 @@
 #include <QtGlobal>
 #include <cmath>
 #include <QDialog>
+#include <QHeaderView>
+#include <QLabel>
 #include <QListWidget>
-#include <QPlainTextEdit>
 #include <QSplitter>
+#include <QTableWidget>
 #include <QVBoxLayout>
 
 #include "MaterialEntryWidget.h"
@@ -30,93 +32,318 @@
 
 namespace
 {
-using ReferenceItem = QPair<QString, QString>;
-
-QVector<ReferenceItem> buildMaterialReferenceItems()
+struct ReferenceTableData
 {
-    QVector<ReferenceItem> items;
-    items.append({QStringLiteral("围岩开挖模型"),
-                  QStringLiteral("样表1 黄金坪地下厂房各向同性岩体物理力学参数表（参考）\n"
-                                 "II 3 3 0 0 0 16.25 0.23 2.7 1.23 1.58 1.0 3.0\n"
-                                 "III 4 4 0 0 0 9.00 0.25 2.65 1.05 1.13 1.0 5.0\n"
-                                 "IV 5 5 0 0 0 5.75 0.30 2.65 0.85 0.78 1.0 7.0\n"
-                                 "V 6 6 0 0 0 2.00 0.35 2.60 0.613 0.35 1.0 9.0\n"
-                                 "......（含开挖区/半开挖区/再生区参数）")});
-    items.append({QStringLiteral("E-B模型"),
-                  QStringLiteral("样表2 土体E-B模型参数(IB=-1)\n"
-                                 "2A垫层 7 2.209 2.29 2.397 51.6 5.7 231.4 0.69 1082 0.27 2164 545 0.25\n"
-                                 "3A过渡料 8 2.13 2.22 2.334 53.8 8.8 236.6 0.75 968 0.23 1936 328 0.17\n"
-                                 "......")});
-    items.append({QStringLiteral("坝料动力本构"),
-                  QStringLiteral("样表3 坝料动力参数(IB=-4)\n"
-                                 "2A垫层 81 7 0 970 0.43 51.5 100 0.35 0.25 150 150 150 1000 800 0.5 0.8\n"
-                                 "3A过渡料 82 8 1 1000 0.45 52 200 0.34 0.22 180 180 180 1000 800 0.5 0.8\n"
-                                 "......")});
-    items.append({QStringLiteral("E-μ模型"),
-                  QStringLiteral("样表5 土体E-μ模型参数(IB=-3)\n"
-                                 "上游铺盖 4 1.8 2.0 2.2 35 0 0.0 0.75 500 0.4 0.38 2.7 0.15\n"
-                                 "上游堆石料 5 2.0 2.1 2.2 35 0 0.0 0.8 1000 0.3 0.37 11 0.1\n"
-                                 "......")});
-    items.append({QStringLiteral("E-μ破碎模型"),
-                  QStringLiteral("样表15 土体E-μ破碎模型参数(IB=-6)\n"
-                                 "上游铺盖 4 1.8 2.0 2.2 35 0 0.0 0.75 500 0.4 0.38 2.7 0.38 2.7 0.38 2.7\n"
-                                 "上游堆石料 5 2.0 2.1 2.2 35 0 0.0 0.8 1000 0.3 0.37 11 0.37 11 0.37 11\n"
-                                 "......")});
-    items.append({QStringLiteral("锚杆单元模型"),
-                  QStringLiteral("样表6 杆单元参数（黄金坪地下厂房）\n"
-                                 "15m预应力锚索1500KN 20 206 7.80 0.002 1800 4.5 4.5 1500.0 1.0\n"
-                                 "8m/9m普通锚杆φ32 21 206 7.80 0.000804 390 1.8 1.8 0.0 1.0\n"
-                                 "......")});
-    items.append({QStringLiteral("各向同性本构"),
-                  QStringLiteral("样表7 大岗山高拱坝各向同性岩体物理力学参数表\n"
-                                 "空化 1 0.001 0.3 0.0 1.7 200.0\n"
-                                 "alQ 2 0.5 0.4 1.5 0.8 0.05\n"
-                                 "......")});
-    items.append({QStringLiteral("非线性土体模型"),
-                  QStringLiteral("样表9 土体南水模型参数(IB=-5)\n"
-                                 "垫层料 7 2.10 2.15 2.20 46.0 6.0 0.0 0.79 867 1133 0.39 0.0043 0.62 0.72\n"
-                                 "过渡料 8 2.10 2.15 2.20 50.0 8.0 0.0 0.75 683 1000 0.31 0.0060 0.78 0.70\n"
-                                 "......")});
-    items.append({QStringLiteral("K-G模型"),
-                  QStringLiteral("样表10 土体科大K-G模型参数(IB=-2)\n"
-                                 "覆盖层3 4 1.8 2.0 2.2 168 68 114 115 -60 190 1.92\n"
-                                 "覆盖层2 5 2.0 2.1 2.2 33 70 22 64 -35 63 1.83\n"
-                                 "......")});
-    return items;
+    QString modelName;
+    QString tableName;
+    QStringList columns;
+    QVector<QStringList> rows;
+};
+
+QVector<ReferenceTableData> buildMaterialReferenceTables()
+{
+    QVector<ReferenceTableData> tables;
+    ReferenceTableData t;
+
+    t = {};
+    t.modelName = QStringLiteral("围岩开挖模型");
+    t.tableName = QStringLiteral("样表1 黄金坪地下厂房各向同性岩体物理力学参数表");
+    t.columns << "岩体代号"
+              << "序号"
+              << "母岩编号"
+              << "ITAG_EX"
+              << "半开挖区荷载释放系数"
+              << "再生时对应开挖级"
+              << "E(GPa)"
+              << "μ"
+              << "容重"
+              << "内摩擦系数"
+              << "凝聚力C'"
+              << "α0"
+              << "d0";
+    t.rows.append(QStringList() << "II" << "3" << "3" << "0" << "0" << "0" << "16.25" << "0.23" << "2.7" << "1.23" << "1.58" << "1.0" << "3.0");
+    t.rows.append(QStringList() << "III" << "4" << "4" << "0" << "0" << "0" << "9.00" << "0.25" << "2.65" << "1.05" << "1.13" << "1.0" << "5.0");
+    t.rows.append(QStringList() << "IV" << "5" << "5" << "0" << "0" << "0" << "5.75" << "0.30" << "2.65" << "0.85" << "0.78" << "1.0" << "7.0");
+    t.rows.append(QStringList() << "V" << "6" << "6" << "0" << "0" << "0" << "2.00" << "0.35" << "2.60" << "0.613" << "0.35" << "1.0" << "9.0");
+    t.rows.append(QStringList() << "f10-14" << "7" << "7" << "0" << "0" << "0" << "0.2" << "0.35" << "2.23" << "0.35" << "0.05" << "1.0" << "9.0");
+    t.rows.append(QStringList() << "裂隙" << "8" << "8" << "0" << "0" << "0" << "3.0" << "0.38" << "1.5" << "0.50" << "0.30" << "1.0" << "9.0");
+    t.rows.append(QStringList() << "裂隙密集带" << "10" << "10" << "0" << "0" << "0" << "2.00" << "0.35" << "2.60" << "0.613" << "0.35" << "1.0" << "9.0");
+    t.rows.append(QStringList() << "II" << "13" << "3" << "-1" << "0" << "0" << "16.25" << "0.23" << "2.7" << "1.23" << "1.58" << "0.0" << "0.0");
+    t.rows.append(QStringList() << "III" << "14" << "4" << "-1" << "0" << "0" << "9.00" << "0.25" << "2.65" << "1.05" << "1.13" << "0.0" << "0.0");
+    t.rows.append(QStringList() << "IV" << "15" << "5" << "-1" << "0" << "0" << "5.75" << "0.30" << "2.65" << "0.85" << "0.78" << "0.0" << "0.0");
+    t.rows.append(QStringList() << "V" << "16" << "6" << "-1" << "0" << "0" << "2.00" << "0.35" << "2.60" << "0.613" << "0.35" << "0.0" << "0.0");
+    t.rows.append(QStringList() << "f10-14" << "17" << "7" << "-1" << "0" << "0" << "0.2" << "0.35" << "2.23" << "0.35" << "0.05" << "0.0" << "0.0");
+    t.rows.append(QStringList() << "裂隙" << "18" << "8" << "-1" << "0" << "0" << "3.0" << "0.38" << "1.5" << "0.50" << "0.30" << "0.0" << "0.0");
+    t.rows.append(QStringList() << "裂隙密集带" << "19" << "9" << "-1" << "0" << "0" << "5.75" << "0.30" << "2.65" << "0.85" << "0.78" << "0.0" << "0.0");
+    t.rows.append(QStringList() << "尾水连接管（III）" << "23" << "4" << "-2" << "0.3213" << "0" << "9.00" << "0.25" << "2.65" << "1.05" << "1.13" << "1.0" << "5.0");
+    t.rows.append(QStringList() << "母线洞（III）" << "24" << "4" << "-2" << "0.3213" << "0" << "9.00" << "0.25" << "2.65" << "1.05" << "1.13" << "1.0" << "5.0");
+    t.rows.append(QStringList() << "f10-14过尾水连接管" << "27" << "7" << "-2" << "0.3213" << "0" << "0.2" << "0.35" << "2.23" << "0.35" << "0.05" << "1.0" << "9.0");
+    t.rows.append(QStringList() << "裂隙过母线洞" << "28" << "8" << "-2" << "0.3213" << "0" << "5.75" << "0.30" << "2.65" << "0.85" << "0.78" << "1.0" << "7.0");
+    t.rows.append(QStringList() << "裂隙过尾水连接管" << "29" << "9" << "-2" << "0.3213" << "0" << "5.75" << "0.30" << "2.65" << "0.85" << "0.78" << "1.0" << "7.0");
+    t.rows.append(QStringList() << "吊车梁岩体（母岩为III）" << "43" << "4" << "2" << "0" << "-4" << "22.4" << "0.167" << "2.4" << "1.4" << "3.9" << "0.0" << "0.0");
+    t.rows.append(QStringList() << "喷C25砼" << "44" << "4" << "2" << "0" << "0" << "22.4" << "0.167" << "2.4" << "1.4" << "3.9" << "0.0" << "0.0");
+    t.rows.append(QStringList() << "母线洞喷C25砼" << "45" << "4" << "2" << "0" << "0" << "22.4" << "0.167" << "2.4" << "1.4" << "3.9" << "0.0" << "0.0");
+    t.rows.append(QStringList() << "裂隙过吊车梁" << "46" << "8" << "2" << "0" << "-4" << "22.4" << "0.167" << "2.4" << "1.4" << "3.9" << "0.0" << "0.0");
+    t.rows.append(QStringList() << "f10-14过喷C25砼" << "47" << "7" << "2" << "0" << "0" << "22.4" << "0.167" << "2.4" << "1.4" << "3.9" << "0.0" << "0.0");
+    t.rows.append(QStringList() << "裂隙过喷C25砼" << "48" << "8" << "2" << "0" << "0" << "22.4" << "0.167" << "2.4" << "1.4" << "3.9" << "0.0" << "0.0");
+    tables.append(t);
+
+    t = {};
+    t.modelName = QStringLiteral("E-B模型");
+    t.tableName = QStringLiteral("样表2 土体E-B模型参数(IB=-1)");
+    t.columns << "材料" << "编号" << "干容重" << "天然容重" << "饱和容重" << "φ0" << "Δφ" << "c(KPa)"
+              << "Rf"
+              << "K"
+              << "N"
+              << "Kur"
+              << "Kb"
+              << "m";
+    t.rows.append(QStringList() << "2A垫层" << "7" << "2.209" << "2.29" << "2.397" << "51.6" << "5.7" << "231.4" << "0.69" << "1082" << "0.27" << "2164" << "545" << "0.25");
+    t.rows.append(QStringList() << "3A过渡料" << "8" << "2.13" << "2.22" << "2.334" << "53.8" << "8.8" << "236.6" << "0.75" << "968" << "0.23" << "1936" << "328" << "0.17");
+    t.rows.append(QStringList() << "3B堆石" << "9" << "2.077" << "2.14" << "2.284" << "52.9" << "9.3" << "196.6" << "0.76" << "985" << "0.28" << "1722" << "238" << "0.21");
+    t.rows.append(QStringList() << "1B弃渣盖重" << "10" << "2.08" << "2.19" << "2.3" << "38.3" << "3.5" << "0.0" << "0.75" << "695" << "0.29" << "1390" << "352" << "0.29");
+    t.rows.append(QStringList() << "1A铺盖" << "12" << "1.42" << "1.71" << "2.3" << "31.0" << "0.0" << "0.0" << "0.72" << "350" << "0.43" << "700" << "350" << "0.18");
+    t.rows.append(QStringList() << "2B特殊垫层" << "13" << "2.218" << "2.30" << "2.396" << "42.6" << "4.5" << "85" << "0.71" << "832" << "0.35" << "1664" << "470" << "0.39");
+    t.rows.append(QStringList() << "3C反滤料" << "16" << "2.12" << "2.17" << "2.20" << "48" << "8.0" << "0.0" << "0.68" << "1035" << "0.33" << "2070" << "526" << "0.24");
+    t.rows.append(QStringList() << "P下游砌石" << "17" << "2.01" << "2.07" << "2.17" << "51.8" << "9.8" << "0.0" << "0.78" << "850" << "0.53" << "1700" << "325" << "0.33");
+    t.rows.append(QStringList() << "①gl+fglQ3" << "21" << "2.09" << "2.119" << "2.3" << "42.6" << "4.5" << "85" << "0.7" << "752" << "0.29" << "1504" << "276" << "0.29");
+    t.rows.append(QStringList() << "④ColQ4" << "22" << "2.1" << "2.19" << "2.3" << "38.3" << "3.5" << "0.0" << "0.75" << "695" << "0.29" << "1390" << "352" << "0.29");
+    t.rows.append(QStringList() << "③Col+dlQ4" << "23" << "1.42" << "1.71" << "1.9" << "31.0" << "0" << "0.0" << "0.72" << "350" << "0.43" << "700" << "350" << "0.18");
+    t.rows.append(QStringList() << "④alQ4" << "24" << "2.09" << "2.119" << "2.3" << "42.6" << "4.5" << "85" << "0.7" << "752" << "0.29" << "1504" << "276" << "0.29");
+    t.rows.append(QStringList() << "泥皮" << "26" << "1.67" << "1.67" << "1.67" << "10.0" << "0.0" << "50" << "0.86" << "1400" << "0.66" << "2000" << "600" << "0.26");
+    t.rows.append(QStringList() << "el+dlQ4" << "28" << "2.12" << "2.22" << "2.3" << "40.2" << "4.0" << "0.0" << "0.73" << "760" << "0.27" << "1520" << "405" << "0.23");
+    tables.append(t);
+
+    t = {};
+    t.modelName = QStringLiteral("坝料动力本构");
+    t.tableName = QStringLiteral("样表3 坝料动力参数(IB=-4)");
+    t.columns << "材料"
+              << "编号"
+              << "静力编号"
+              << "液化"
+              << "DRYK1"
+              << "DRYN1"
+              << "FAI"
+              << "CO"
+              << "PU"
+              << "DRYDAM"
+              << "R1(0.1)"
+              << "R2(0.3)"
+              << "R3(0.5)"
+              << "Kv"
+              << "Kp"
+              << "nv"
+              << "np";
+    t.rows.append(QStringList() << "2A垫层" << "81" << "7" << "0" << "970" << "0.43" << "51.5" << "100" << "0.35" << "0.25" << "150" << "150" << "150" << "1000" << "800" << "0.5" << "0.8");
+    t.rows.append(QStringList() << "3A过渡料" << "82" << "8" << "1" << "1000" << "0.45" << "52" << "200" << "0.34" << "0.22" << "180" << "180" << "180" << "1000" << "800" << "0.5" << "0.8");
+    t.rows.append(QStringList() << "3B堆石" << "83" << "9" << "0" << "830" << "0.46" << "48" << "300" << "0.32" << "0.22" << "170" << "170" << "170" << "1000" << "800" << "0.5" << "0.8");
+    t.rows.append(QStringList() << "1B弃渣盖重" << "84" << "10" << "0" << "750" << "0.40" << "38.3" << "100" << "0.36" << "0.26" << "170" << "170" << "170" << "1000" << "800" << "0.5" << "0.8");
+    t.rows.append(QStringList() << "1A铺盖" << "85" << "12" << "0" << "750" << "0.40" << "31.0" << "200" << "0.36" << "0.26" << "170" << "170" << "170" << "1000" << "800" << "0.5" << "0.8");
+    t.rows.append(QStringList() << "2B特殊垫层" << "86" << "13" << "0" << "970" << "0.43" << "49" << "300" << "0.35" << "0.25" << "150" << "150" << "150" << "1000" << "800" << "0.5" << "0.8");
+    t.rows.append(QStringList() << "3C反滤料" << "87" << "16" << "0" << "820" << "0.45" << "48" << "100" << "0.35" << "0.24" << "160" << "160" << "160" << "1000" << "800" << "0.5" << "0.8");
+    t.rows.append(QStringList() << "P下游砌石" << "88" << "17" << "0" << "800" << "0.46" << "51.8" << "200" << "0.32" << "0.24" << "190" << "190" << "190" << "1000" << "800" << "0.5" << "0.8");
+    t.rows.append(QStringList() << "gl+fglQ3" << "89" << "21" << "0" << "850" << "0.44" << "43.5" << "300" << "0.33" << "0.24" << "160" << "160" << "160" << "1000" << "800" << "0.5" << "0.8");
+    t.rows.append(QStringList() << "col+dlQ4(⑤-2)" << "90" << "22" << "0" << "450" << "0.41" << "38.3" << "100" << "0.42" << "0.27" << "140" << "140" << "140" << "1000" << "800" << "0.5" << "0.8");
+    t.rows.append(QStringList() << "lQ4" << "91" << "23" << "1" << "740" << "0.43" << "31.0" << "200" << "0.38" << "0.25" << "150" << "150" << "150" << "1000" << "800" << "0.5" << "0.8");
+    t.rows.append(QStringList() << "colQ3" << "92" << "24" << "1" << "850" << "0.44" << "43.5" << "300" << "0.33" << "0.24" << "160" << "160" << "160" << "1000" << "800" << "0.5" << "0.8");
+    t.rows.append(QStringList() << "泥皮" << "93" << "26" << "0" << "380" << "0.43" << "10.0" << "50" << "0.44" << "0.31" << "180" << "180" << "180" << "1000" << "800" << "0.5" << "0.8");
+    t.rows.append(QStringList() << "el+dlQ4" << "94" << "28" << "0" << "450" << "0.41" << "40.2" << "80" << "0.42" << "0.27" << "140" << "140" << "140" << "1000" << "800" << "0.5" << "0.8");
+    tables.append(t);
+
+    t = {};
+    t.modelName = QStringLiteral("E-μ模型");
+    t.tableName = QStringLiteral("样表5 土体E-μ模型参数(IB=-3)");
+    t.columns << "材料" << "编号" << "干容重" << "天然容重" << "饱和容重" << "φ0" << "Δφ" << "c" << "Rf" << "K" << "n" << "G" << "D" << "F";
+    t.rows.append(QStringList() << "上游铺盖（回填石渣料）" << "4" << "1.8" << "2.0" << "2.2" << "35" << "0" << "0.0" << "0.75" << "500" << "0.4" << "0.38" << "2.7" << "0.15");
+    t.rows.append(QStringList() << "上游堆石料" << "5" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "0.37" << "11" << "0.1");
+    t.rows.append(QStringList() << "上游过渡层" << "6" << "2.10" << "2.15" << "2.20" << "33" << "0" << "0" << "0.78" << "900" << "0.3" << "0.42" << "11" << "0.08");
+    t.rows.append(QStringList() << "沥青砼心墙" << "7" << "2.10" << "2.35" << "2.40" << "24" << "0" << "120" << "0.82" << "600" << "0.4" << "0.42" << "7" << "0.08");
+    t.rows.append(QStringList() << "下游过渡层" << "9" << "2.10" << "2.15" << "2.20" << "33" << "0" << "0" << "0.78" << "900" << "0.3" << "0.42" << "11" << "0.08");
+    t.rows.append(QStringList() << "下游堆石料" << "10" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "0.37" << "11" << "0.1");
+    t.rows.append(QStringList() << "上游1级找平堆石" << "15" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "0.37" << "11" << "0.1");
+    t.rows.append(QStringList() << "下游1级找平堆石" << "16" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "0.37" << "11" << "0.1");
+    t.rows.append(QStringList() << "K5沉积粘土" << "42" << "1.85" << "1.90" << "2.00" << "16.4" << "0.0" << "21.8" << "0.87" << "270" << "0.47" << "0.46" << "0.05" << "0.58");
+    tables.append(t);
+
+    t = {};
+    t.modelName = QStringLiteral("E-μ破碎模型");
+    t.tableName = QStringLiteral("样表15 土体E-μ破碎模型参数(IB=-6)");
+    t.columns << "材料" << "编号" << "干容重" << "天然容重" << "饱和容重" << "φ0" << "Δφ" << "c" << "Rf" << "K" << "n" << "C1" << "n1" << "C2" << "n2" << "C3" << "n3";
+    t.rows.append(QStringList() << "上游铺盖（回填石渣料）" << "4" << "1.8" << "2.0" << "2.2" << "35" << "0" << "0.0" << "0.75" << "500" << "0.4" << "0.38" << "2.7" << "0.38" << "2.7" << "0.38" << "2.7");
+    t.rows.append(QStringList() << "上游堆石料" << "5" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "0.37" << "11" << "0.37" << "11" << "0.37" << "11");
+    t.rows.append(QStringList() << "上游过渡层" << "6" << "2.10" << "2.15" << "2.20" << "33" << "0" << "0" << "0.78" << "900" << "0.3" << "0.42" << "11" << "0.42" << "11" << "0.42" << "11");
+    t.rows.append(QStringList() << "沥青砼心墙" << "7" << "2.10" << "2.35" << "2.40" << "24" << "0" << "120" << "0.82" << "600" << "0.4" << "0.42" << "7" << "0.42" << "7" << "0.42" << "7");
+    t.rows.append(QStringList() << "下游过渡层" << "9" << "2.10" << "2.15" << "2.20" << "33" << "0" << "0" << "0.78" << "900" << "0.3" << "0.42" << "11" << "0.42" << "11" << "0.42" << "11");
+    t.rows.append(QStringList() << "下游堆石料" << "10" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "0.37" << "11" << "0.37" << "11" << "0.37" << "11");
+    t.rows.append(QStringList() << "上游1级找平堆石" << "15" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "0.37" << "11" << "0.37" << "11" << "0.37" << "11");
+    t.rows.append(QStringList() << "下游1级找平堆石" << "16" << "2.0" << "2.1" << "2.2" << "35" << "0" << "0.0" << "0.8" << "1000" << "0.3" << "0.37" << "11" << "0.37" << "11" << "0.37" << "11");
+    t.rows.append(QStringList() << "K5沉积粘土" << "42" << "1.85" << "1.90" << "2.00" << "16.4" << "0.0" << "21.8" << "0.87" << "270" << "0.47" << "0.46" << "0.05" << "0.46" << "0.05" << "0.46" << "0.05");
+    tables.append(t);
+
+    t = {};
+    t.modelName = QStringLiteral("锚杆单元模型");
+    t.tableName = QStringLiteral("样表6 杆单元参数（黄金坪地下厂房）");
+    t.columns << "杆单元类型" << "序号" << "E1,E2" << "容重" << "面积" << "ft" << "间距" << "排距" << "预应力T" << "预应系数";
+    t.rows.append(QStringList() << "15m预应力锚索1500KN虚拟杆面积" << "20" << "206" << "7.80" << "0.002" << "1800" << "4.5" << "4.5" << "1500.0" << "1.0");
+    t.rows.append(QStringList() << "8m/9m普通锚杆φ32" << "21" << "206" << "7.80" << "0.000804" << "390" << "1.8" << "1.8" << "0.0" << "1.0");
+    t.rows.append(QStringList() << "6m/7m普通锚杆φ28" << "22" << "206" << "7.80" << "0.000616" << "390" << "1.8" << "1.8" << "0.0" << "0.85");
+    t.rows.append(QStringList() << "8m/9m普通锚杆φ32" << "23" << "206" << "7.80" << "0.000804" << "390" << "1.5" << "1.5" << "0.0" << "0.85");
+    t.rows.append(QStringList() << "15m预应力锚索1500KN虚拟杆面积" << "24" << "206" << "7.80" << "0.002" << "1800" << "4.0" << "4.0" << "1500" << "0.70");
+    t.rows.append(QStringList() << "20m预应力锚索1750KN虚拟杆面积" << "25" << "206" << "7.80" << "0.002" << "1800" << "4.0" << "4.0" << "1750" << "0.9");
+    t.rows.append(QStringList() << "45m对穿预应力锚索1750KN虚拟杆面积" << "26" << "206" << "7.80" << "0.002" << "1800" << "4.0" << "4.0" << "1750" << "0.9");
+    t.rows.append(QStringList() << "6m/7m普通锚杆φ28间排距1.5m" << "27" << "206" << "7.80" << "0.000616" << "390" << "1.5" << "1.5" << "0.0" << "0.9");
+    t.rows.append(QStringList() << "4.5m/5m普通锚杆φ25" << "28" << "206" << "7.80" << "0.000491" << "390" << "1.5" << "1.5" << "0.0" << "0.0");
+    t.rows.append(QStringList() << "20m预应力锚索1750KN虚拟杆面积" << "29" << "206" << "7.80" << "0.002" << "1800" << "4.5" << "4.5" << "1750" << "1.0");
+    tables.append(t);
+
+    t = {};
+    t.modelName = QStringLiteral("各向同性本构");
+    t.tableName = QStringLiteral("样表7 大岗山高拱坝各向同性岩体物理力学参数表");
+    t.columns << "岩体代号" << "序号" << "E" << "μ" << "容重" << "内摩擦系数" << "凝聚力C'";
+    t.rows.append(QStringList() << "空化" << "1" << "0.001" << "0.3" << "0.0" << "1.7" << "200.0");
+    t.rows.append(QStringList() << "alQ" << "2" << "0.5" << "0.4" << "1.5" << "0.8" << "0.05");
+    t.rows.append(QStringList() << "坝砼" << "3" << "24.0" << "0.167" << "2.4" << "1.4" << "2.0");
+    t.rows.append(QStringList() << "置换混凝土" << "4" << "24.0" << "0.167" << "2.4" << "1.4" << "2.0");
+    t.rows.append(QStringList() << "垫座" << "5" << "24.0" << "0.167" << "2.4" << "1.4" << "2.0");
+    t.rows.append(QStringList() << "β5（F1）" << "6" << "7.5" << "0.3" << "2.62" << "1.0" << "1.0");
+    t.rows.append(QStringList() << "β6" << "7" << "21.5" << "0.25" << "2.65" << "1.3" << "2.0");
+    t.rows.append(QStringList() << "β9" << "8" << "7.5" << "0.3" << "2.62" << "1.0" << "1.0");
+    t.rows.append(QStringList() << "β11" << "9" << "7.5" << "0.3" << "2.62" << "1.0" << "1.0");
+    t.rows.append(QStringList() << "γL5" << "11" << "7.5" << "0.3" << "2.62" << "1.0" << "1.0");
+    t.rows.append(QStringList() << "左侧坝身孔口与坝体连接单元" << "17" << "24.0" << "0.167" << "2.4" << "1.4" << "2.0");
+    t.rows.append(QStringList() << "右侧坝身孔口与坝体连接单元" << "18" << "24.0" << "0.167" << "2.4" << "1.4" << "2.0");
+    t.rows.append(QStringList() << "拱坝/基础退化砼" << "19" << "24.0" << "0.167" << "2.4" << "1.4" << "2.0");
+    t.rows.append(QStringList() << "Ⅱ" << "20" << "21.5" << "0.25" << "2.65" << "1.3" << "2.0");
+    t.rows.append(QStringList() << "Ⅲ1" << "21" << "10" << "0.27" << "2.62" << "1.2" << "1.5");
+    t.rows.append(QStringList() << "Ⅲ2" << "22" << "7.5" << "0.3" << "2.62" << "1.0" << "1.0");
+    t.rows.append(QStringList() << "Ⅳ" << "23" << "3.0" << "0.35" << "2.58" << "0.8" << "0.7");
+    t.rows.append(QStringList() << "Ⅴ" << "24" << "0.38" << "0.35" << "2.45" << "0.5" << "0.2");
+    t.rows.append(QStringList() << "β21" << "25" << "3.0" << "0.35" << "2.58" << "0.5" << "0.08");
+    t.rows.append(QStringList() << "β28" << "26" << "7.5" << "0.3" << "2.62" << "0.4" << "0.03");
+    t.rows.append(QStringList() << "β4(f5)" << "27" << "7.5" << "0.3" << "2.62" << "0.35" << "0.05");
+    tables.append(t);
+
+    t = {};
+    t.modelName = QStringLiteral("非线性土体模型");
+    t.tableName = QStringLiteral("样表9 土体南水模型参数（IB=-5）");
+    t.columns << "材料" << "编号" << "干容重" << "天然容重" << "饱和容重" << "φ0" << "Δφ" << "c" << "Rf" << "K" << "Kur" << "n" << "cd" << "nd" << "Rd";
+    t.rows.append(QStringList() << "垫层料" << "7" << "2.10" << "2.15" << "2.20" << "46.0" << "6.0" << "0.0" << "0.79" << "867" << "1133" << "0.39" << "0.0043" << "0.62" << "0.72");
+    t.rows.append(QStringList() << "过渡料" << "8" << "2.10" << "2.15" << "2.20" << "50.0" << "8.0" << "0.0" << "0.75" << "683" << "1000" << "0.31" << "0.0060" << "0.78" << "0.70");
+    t.rows.append(QStringList() << "堆石料" << "9" << "2.00" << "2.10" << "2.20" << "48.0" << "9.0" << "0.0" << "0.77" << "500" << "750" << "0.20" << "0.0100" << "0.75" << "0.75");
+    t.rows.append(QStringList() << "弱风化料" << "10" << "1.90" << "2.05" << "2.20" << "48.0" << "12.0" << "0.0" << "0.80" << "320" << "480" << "0.20" << "0.0150" << "0.56" << "0.80");
+    t.rows.append(QStringList() << "强风化料" << "11" << "1.80" << "2.00" << "2.20" << "43.0" << "11.0" << "0.0" << "0.63" << "120" << "180" << "0.37" << "0.0200" << "0.25" << "0.63");
+    t.rows.append(QStringList() << "超径石" << "12" << "2.00" << "2.10" << "2.20" << "48.0" << "9.0" << "0.0" << "0.77" << "500" << "750" << "0.20" << "0.0100" << "0.75" << "0.75");
+    tables.append(t);
+
+    t = {};
+    t.modelName = QStringLiteral("K-G模型");
+    t.tableName = QStringLiteral("样表10 土体科大K-G模型参数(IB=-2)");
+    t.columns << "材料" << "编号" << "干容重" << "天然容重" << "饱和容重" << "Ki,Kie" << "αk,αke" << "Gi,Gie" << "αG,αGe" << "βG" << "a" << "b";
+    t.rows.append(QStringList() << "覆盖层3" << "4" << "1.8" << "2.0" << "2.2" << "168" << "68" << "114" << "115" << "-60" << "190" << "1.92");
+    t.rows.append(QStringList() << "覆盖层2" << "5" << "2.0" << "2.1" << "2.2" << "33" << "70" << "22" << "64" << "-35" << "63" << "1.83");
+    t.rows.append(QStringList() << "心墙掺砾料" << "6" << "2.10" << "2.15" << "2.20" << "80" << "94" << "106" << "112" << "-80" << "132" << "1.40");
+    t.rows.append(QStringList() << "反滤层1" << "7" << "2.10" << "2.35" << "2.40" << "168" << "110" << "114" << "194" << "-97" << "118" << "2.00");
+    t.rows.append(QStringList() << "反滤层2" << "9" << "2.10" << "2.15" << "2.20" << "170" << "110" << "104" << "187" << "-90" << "116" << "2.08");
+    t.rows.append(QStringList() << "过渡层" << "10" << "2.0" << "2.1" << "2.2" << "230" << "75" << "100" << "133" << "-70" << "140" << "1.90");
+    t.rows.append(QStringList() << "主堆石" << "15" << "2.0" << "2.1" << "2.2" << "300" << "41" << "120" << "108" << "-60" << "200" << "1.80");
+    tables.append(t);
+
+    return tables;
 }
 
-QVector<ReferenceItem> buildSeepageReferenceItems()
+QVector<ReferenceTableData> buildSeepageReferenceTables()
 {
-    QVector<ReferenceItem> items;
-    items.append({QStringLiteral("稳态渗流"),
-                  QStringLiteral("样表4 剑科心墙堆石坝各向同性稳态渗流参数\n"
-                                 "alQ3 3 35000.0 0.09\n"
-                                 "alQ4 4 35000.0 0.09\n"
-                                 "Col+dlQ4 5 4500.0 0.14\n"
-                                 "垫层料 6 720.0 0.12\n"
-                                 "......")});
-    items.append({QStringLiteral("三参数流变"),
-                  QStringLiteral("样表11 沈珠江三参数流变模型参数\n"
-                                 "垫层料 7 0.004 0.0009 0.007\n"
-                                 "过渡料 8 0.004 0.0009 0.007\n"
-                                 "......")});
-    items.append({QStringLiteral("九参数流变"),
-                  QStringLiteral("样表13 九参数流变模型参数\n"
-                                 "主堆石3B-II 10 0.0678 0.4445 0.4360 2.0827 1.6383 0.2892 0.8465 0.0831 0.3899\n"
-                                 "次堆石3C 11 0.0851 0.3808 0.1936 0.6521 1.0061 1.4296 0.2852 0.1116 1.0384")});
-    items.append({QStringLiteral("七参数流变"),
-                  QStringLiteral("样表12 李国英七参数流变模型参数\n"
-                                 "主堆石3B-I 7 0.006 0.0006 0.0002 0.004 0.769 0.635 0.550\n"
-                                 "主堆石3B-II 8 0.007 0.003 0.0001 0.0025 0.770 0.631 0.530\n"
-                                 "......")});
-    items.append({QStringLiteral("六参数流变"),
-                  QStringLiteral("样表14 西源流变模型参数\n"
-                                 "主堆石3B-II 12 1.5 2.0 0.3 0.4 0.5 0.6\n"
-                                 "次堆石3C 13 1.5 2.0 0.3 0.4 0.5 0.6")});
-    return items;
+    QVector<ReferenceTableData> tables;
+    ReferenceTableData t;
+    t.modelName = QStringLiteral("稳态渗流");
+    t.tableName = QStringLiteral("样表4 剑科心墙堆石坝各向同性稳态渗流参数");
+    t.columns << "材料" << "编号" << "K(Lu)" << "允许比降";
+    t.rows.append(QStringList() << "alQ3" << "3" << "35000.0" << "0.09");
+    t.rows.append(QStringList() << "alQ4" << "4" << "35000.0" << "0.09");
+    t.rows.append(QStringList() << "Col+dlQ4" << "5" << "4500.0" << "0.14");
+    t.rows.append(QStringList() << "垫层料" << "6" << "720.0" << "0.12");
+    t.rows.append(QStringList() << "坝顶填筑" << "7" << "10.0" << "0.13");
+    t.rows.append(QStringList() << "花岗岩堆石料(基准)" << "8" << "400.0" << "0.38");
+    t.rows.append(QStringList() << "花岗岩堆石料(基准湿化)" << "27" << "400.0" << "0.38");
+    t.rows.append(QStringList() << "防渗土料(基准)" << "9" << "3.0" << "50");
+    t.rows.append(QStringList() << "防渗土料(基准湿化)" << "28" << "3.0" << "50");
+    t.rows.append(QStringList() << "防渗土料(比较方案二)" << "62" << "3.0" << "50");
+    t.rows.append(QStringList() << "反滤层1(基准)" << "10" << "543.0" << "0.15");
+    t.rows.append(QStringList() << "反滤层1(基准湿化)" << "29" << "543.0" << "0.15");
+    t.rows.append(QStringList() << "反滤层2(基准)" << "11" << "543.0" << "0.15");
+    t.rows.append(QStringList() << "反滤层2(基准湿化)" << "30" << "543.0" << "0.15");
+    t.rows.append(QStringList() << "过渡料(基准)" << "12" << "400.0" << "0.38");
+    t.rows.append(QStringList() << "过渡料(基准湿化)" << "31" << "400.0" << "0.38");
+    t.rows.append(QStringList() << "过渡料(比较方案一)" << "60" << "400.0" << "0.38");
+    t.rows.append(QStringList() << "过渡料(比较方案二)" << "61" << "400.0" << "0.38");
+    t.rows.append(QStringList() << "大块石护坡" << "18" << "400.0" << "0.38");
+    t.rows.append(QStringList() << "大块石填筑" << "19" << "400.0" << "0.38");
+    t.rows.append(QStringList() << "弃渣盖重" << "22" << "400.0" << "0.38");
+    t.rows.append(QStringList() << "高塑性粘土" << "24" << "1.0" << "50");
+    t.rows.append(QStringList() << "粘土/砼接触面泥皮" << "25" << "1.0" << "50");
+    t.rows.append(QStringList() << "T3x新鲜" << "13" << "3.0" << "50");
+    t.rows.append(QStringList() << "T3x弱卸荷" << "14" << "10.0" << "0.13");
+    t.rows.append(QStringList() << "T3x强卸荷" << "15" << "40.0" << "0.13");
+    t.rows.append(QStringList() << "γδ53新鲜" << "16" << "3.0" << "50");
+    t.rows.append(QStringList() << "γδ53弱卸荷" << "17" << "10.0" << "0.13");
+    t.rows.append(QStringList() << "砼" << "20" << "0.01" << "180");
+    t.rows.append(QStringList() << "帷幕/基岩接触面" << "21" << "3.0" << "50");
+    t.rows.append(QStringList() << "挤压带" << "23" << "50" << "40");
+    t.rows.append(QStringList() << "帷幕" << "26" << "3.00" << "18");
+    tables.append(t);
+
+    t = {};
+    t.modelName = QStringLiteral("三参数流变");
+    t.tableName = QStringLiteral("样表11 沈珠江三参数流变模型参数表");
+    t.columns << "岩体代号" << "序号" << "α" << "b" << "d";
+    t.rows.append(QStringList() << "垫层料" << "7" << "0.004" << "0.0009" << "0.007");
+    t.rows.append(QStringList() << "过渡料" << "8" << "0.004" << "0.0009" << "0.007");
+    t.rows.append(QStringList() << "堆石料" << "9" << "0.004" << "0.0009" << "0.007");
+    t.rows.append(QStringList() << "弱风化料" << "10" << "0.005" << "0.0012" << "0.008");
+    t.rows.append(QStringList() << "强风化料" << "11" << "0.006" << "0.0015" << "0.009");
+    t.rows.append(QStringList() << "超径石" << "12" << "0.004" << "0.0009" << "0.007");
+    tables.append(t);
+
+    t = {};
+    t.modelName = QStringLiteral("七参数流变");
+    t.tableName = QStringLiteral("样表12 李国英七参数流变模型参数表");
+    t.columns << "岩体代号" << "序号" << "α" << "b" << "c" << "d" << "m1" << "m2" << "m3";
+    t.rows.append(QStringList() << "主堆石3B-I" << "7" << "0.006" << "0.0006" << "0.0002" << "0.004" << "0.769" << "0.635" << "0.550");
+    t.rows.append(QStringList() << "主堆石3B-II" << "8" << "0.007" << "0.003" << "0.0001" << "0.0025" << "0.770" << "0.631" << "0.530");
+    t.rows.append(QStringList() << "次堆石3C" << "9" << "0.005" << "0.0007" << "0.0004" << "0.0043" << "0.802" << "0.664" << "0.717");
+    tables.append(t);
+
+    t = {};
+    t.modelName = QStringLiteral("九参数流变");
+    t.tableName = QStringLiteral("样表13 九参数流变模型参数表");
+    t.columns << "岩体代号"
+              << "序号"
+              << "λv"
+              << "Cα"
+              << "Cβ"
+              << "dα"
+              << "dβ"
+              << "c"
+              << "d"
+              << "η"
+              << "m";
+    t.rows.append(QStringList() << "主堆石3B-II" << "10" << "0.0678" << "0.4445" << "0.4360" << "2.0827" << "1.6383" << "0.2892" << "0.8465" << "0.0831" << "0.3899");
+    t.rows.append(QStringList() << "次堆石3C" << "11" << "0.0851" << "0.3808" << "0.1936" << "0.6521" << "1.0061" << "1.4296" << "0.2852" << "0.1116" << "1.0384");
+    tables.append(t);
+
+    t = {};
+    t.modelName = QStringLiteral("六参数流变");
+    t.tableName = QStringLiteral("样表14 西源流变模型参数表");
+    t.columns << "岩体代号" << "序号" << "E1" << "E2" << "μ1" << "μ2" << "η1" << "η2";
+    t.rows.append(QStringList() << "主堆石3B-II" << "12" << "1.5" << "2.0" << "0.3" << "0.4" << "0.5" << "0.6");
+    t.rows.append(QStringList() << "次堆石3C" << "13" << "1.5" << "2.0" << "0.3" << "0.4" << "0.5" << "0.6");
+    tables.append(t);
+
+    return tables;
 }
 
-void showReferenceListDialog(const QString& title, const QVector<ReferenceItem>& items, QWidget* parent)
+void showReferenceListDialog(const QString& title, const QVector<ReferenceTableData>& items,
+                             QWidget* parent)
 {
     auto* dialog = new QDialog(parent);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
@@ -126,20 +353,43 @@ void showReferenceListDialog(const QString& title, const QVector<ReferenceItem>&
     auto* layout = new QVBoxLayout(dialog);
     auto* splitter = new QSplitter(Qt::Horizontal, dialog);
     auto* list = new QListWidget(splitter);
-    auto* viewer = new QPlainTextEdit(splitter);
-    viewer->setReadOnly(true);
+    auto* right = new QWidget(splitter);
+    auto* rightLayout = new QVBoxLayout(right);
+    auto* tableName = new QLabel(right);
+    auto* viewer = new QTableWidget(right);
+    viewer->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    viewer->setSelectionBehavior(QAbstractItemView::SelectRows);
+    viewer->setSelectionMode(QAbstractItemView::SingleSelection);
+    viewer->verticalHeader()->setVisible(false);
+    viewer->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    rightLayout->addWidget(tableName);
+    rightLayout->addWidget(viewer);
 
     for (const auto& item : items)
     {
-        list->addItem(item.first);
+        list->addItem(item.modelName);
     }
 
     QObject::connect(list, &QListWidget::currentRowChanged, dialog,
-                     [viewer, items](int row)
+                     [viewer, tableName, items](int row)
                      {
                          if (row >= 0 && row < items.size())
                          {
-                             viewer->setPlainText(items[row].second);
+                             const auto& data = items[row];
+                             tableName->setText(data.tableName);
+                             viewer->setColumnCount(data.columns.size());
+                             viewer->setHorizontalHeaderLabels(data.columns);
+                             viewer->setRowCount(data.rows.size());
+                             for (int r = 0; r < data.rows.size(); ++r)
+                             {
+                                 const QStringList& vals = data.rows[r];
+                                 for (int c = 0; c < data.columns.size(); ++c)
+                                 {
+                                     viewer->setItem(
+                                         r, c,
+                                         new QTableWidgetItem(c < vals.size() ? vals[c] : QString()));
+                                 }
+                             }
                          }
                      });
 
@@ -415,13 +665,13 @@ void MaterialManager::addMaterialFromMenu(const QString& modelKey)
 void MaterialManager::showBuiltinMaterialListDialog()
 {
     showReferenceListDialog(QStringLiteral("内置材料参数参考（9种模型）"),
-                            buildMaterialReferenceItems(), m_materialManagerWidget);
+                            buildMaterialReferenceTables(), m_materialManagerWidget);
 }
 
 void MaterialManager::showBuiltinSeepageListDialog()
 {
     showReferenceListDialog(QStringLiteral("内置渗流参数参考（5种模型）"),
-                            buildSeepageReferenceItems(), m_materialManagerWidget);
+                            buildSeepageReferenceTables(), m_materialManagerWidget);
 }
 
 QString MaterialManager::addMaterialToModel(const QString& modelKey, bool addToProjectTree)
