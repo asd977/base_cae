@@ -16,6 +16,8 @@ struct MaterialManagerService
     virtual bool saveProject() = 0;
     virtual bool loadProject() = 0;
     virtual void addMaterialFromMenu(const QString& modelKey) = 0;
+    virtual void showBuiltinMaterialListDialog() = 0;
+    virtual void showBuiltinSeepageListDialog() = 0;
 };
 
 #endif // MATERIALMANAGERSERVICE_H

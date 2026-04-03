@@ -706,6 +706,7 @@ void UiFrame::buildRibbonTabs()
         cate->setObjectName("materialObj");
 
         auto* panelSoil = cate->addPannel("模型");
+        auto* panelBuiltin = cate->addPannel("内置数据");
 
         auto* actHjp = makeAction(this, ":/resources/menu/minimal/mat-hjp.svg", "围岩开挖模型");
         auto* actSoilEb = makeAction(this, ":/resources/menu/minimal/mat-soil-eb.svg", "E-B模型");
@@ -719,6 +720,10 @@ void UiFrame::buildRibbonTabs()
                                          "各向同性本构");
         auto* actNanshui = makeAction(this, ":/resources/menu/minimal/mat-nanshui.svg", "非线性土体模型");
         auto* actKg = makeAction(this, ":/resources/menu/minimal/mat-kg.svg", "K-G模型");
+        auto* actBuiltinMaterial = makeAction(this, ":/resources/menu/minimal/mat-hjp.svg",
+                                              "展示材料列表");
+        auto* actBuiltinSeepage = makeAction(this, ":/resources/menu/minimal/mat-dynamic.svg",
+                                             "展示渗流参数列表");
 
         // 材料类型较多，统一改为 small action，减少 Ribbon 占位并避免文字截断。
         addActionToPanel(panelSoil, actSoilEb, 1);
@@ -731,6 +736,8 @@ void UiFrame::buildRibbonTabs()
         addActionToPanel(panelSoil, actDynamic, 1);
         addActionToPanel(panelSoil, actBar, 1);
         addActionToPanel(panelSoil, actDagangshan, 1);
+        addActionToPanel(panelBuiltin, actBuiltinMaterial, 1);
+        addActionToPanel(panelBuiltin, actBuiltinSeepage, 1);
 
         connect(actHjp, &QAction::triggered, this,
                 []()
@@ -831,6 +838,28 @@ void UiFrame::buildRibbonTabs()
                     if (materialService)
                     {
                         materialService->addMaterialFromMenu(QStringLiteral("soil_kg"));
+                    }
+                });
+
+        connect(actBuiltinMaterial, &QAction::triggered, this,
+                []()
+                {
+                    auto* materialService =
+                        ServiceRegistry::instance().getService<MaterialManagerService>();
+                    if (materialService)
+                    {
+                        materialService->showBuiltinMaterialListDialog();
+                    }
+                });
+
+        connect(actBuiltinSeepage, &QAction::triggered, this,
+                []()
+                {
+                    auto* materialService =
+                        ServiceRegistry::instance().getService<MaterialManagerService>();
+                    if (materialService)
+                    {
+                        materialService->showBuiltinSeepageListDialog();
                     }
                 });
 

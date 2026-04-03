@@ -15,16 +15,55 @@
 #include <QJsonObject>
 #include <QSet>
 #include <QString>
+#include <QTableWidget>
 #include <QTextStream>
 #include <QUuid>
 #include <QtGlobal>
 #include <cmath>
+#include <QDialog>
+#include <QHeaderView>
+#include <QVBoxLayout>
 
 #include "MaterialEntryWidget.h"
 #include "MaterialModelWidget.h"
 
 namespace
 {
+void showBuiltInModelDialog(const QString& title, const QVector<MaterialModel>& models, QWidget* parent)
+{
+    auto* dialog = new QDialog(parent);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setWindowTitle(title);
+    dialog->resize(900, 520);
+
+    auto* layout = new QVBoxLayout(dialog);
+    auto* table = new QTableWidget(dialog);
+    table->setColumnCount(5);
+    table->setHorizontalHeaderLabels(
+        {QStringLiteral("序号"), QStringLiteral("模型名称"), QStringLiteral("模型Key"),
+         QStringLiteral("IB"), QStringLiteral("字段数")});
+    table->setRowCount(models.size());
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table->setSelectionMode(QAbstractItemView::SingleSelection);
+    table->verticalHeader()->setVisible(false);
+    table->horizontalHeader()->setStretchLastSection(true);
+
+    for (int row = 0; row < models.size(); ++row)
+    {
+        const auto& model = models[row];
+        table->setItem(row, 0, new QTableWidgetItem(QString::number(row + 1)));
+        table->setItem(row, 1, new QTableWidgetItem(model.displayName));
+        table->setItem(row, 2, new QTableWidgetItem(model.key));
+        table->setItem(row, 3, new QTableWidgetItem(QString::number(model.ib)));
+        table->setItem(row, 4, new QTableWidgetItem(QString::number(model.columns.size())));
+    }
+
+    table->resizeColumnsToContents();
+    layout->addWidget(table);
+    dialog->show();
+}
+
 void syncAutoNumberProperties(MaterialModel* model, MaterialEntry* entry)
 {
     if (!model || !entry)
@@ -280,6 +319,18 @@ void MaterialManager::addMaterialFromMenu(const QString& modelKey)
     {
         focusOnMaterial(entryId);
     }
+}
+
+void MaterialManager::showBuiltinMaterialListDialog()
+{
+    showBuiltInModelDialog(QStringLiteral("内置材料模型列表（9种）"), createDefaultMaterialModels(),
+                           m_materialManagerWidget);
+}
+
+void MaterialManager::showBuiltinSeepageListDialog()
+{
+    showBuiltInModelDialog(QStringLiteral("内置渗流参数模型列表（5种）"), createSeepageSubModels(),
+                           m_materialManagerWidget);
 }
 
 QString MaterialManager::addMaterialToModel(const QString& modelKey, bool addToProjectTree)

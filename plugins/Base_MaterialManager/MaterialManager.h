@@ -29,6 +29,8 @@ class MaterialManager : public QObject, public MaterialManagerService
     bool saveProject() override;
     bool loadProject() override;
     void addMaterialFromMenu(const QString& modelKey) override;
+    void showBuiltinMaterialListDialog() override;
+    void showBuiltinSeepageListDialog() override;
 
     QString addMaterialToModel(const QString& modelKey, bool addToProjectTree = true);
 
