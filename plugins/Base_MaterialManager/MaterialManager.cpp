@@ -360,7 +360,7 @@ void showReferenceListDialog(const QString& title, const QVector<ReferenceTableD
     auto* rightLayout = new QVBoxLayout(right);
     auto* tableName = new QLabel(right);
     auto* viewer = new QTableWidget(right);
-    viewer->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    viewer->setEditTriggers(QAbstractItemView::AllEditTriggers);
     viewer->setSelectionBehavior(QAbstractItemView::SelectRows);
     viewer->setSelectionMode(QAbstractItemView::ExtendedSelection);
     viewer->verticalHeader()->setVisible(false);
