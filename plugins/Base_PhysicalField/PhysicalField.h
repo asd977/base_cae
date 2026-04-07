@@ -48,6 +48,7 @@ class PhysicalField : public QObject, public PhysicalFieldService
 
     void collectDisplacementNodes(ProjectNode* root, QList<ProjectNode*>& out);
     ProjectNode* findNodeByUuid(ProjectNode* root, const QString& uuid) const;
+    void removeNodeByUuid(const QString& uuid);
     void writeIIWL_Part1_GeoStressPoint(QTextStream& os);
     void writeIIWL_Part2_GeoStressFitFace(QTextStream& os);
     void writeIIWL_Part3_BodyForce(QTextStream& os);

@@ -184,6 +184,12 @@ void ProjectTreeWidget::ensureSceneVisibleForCurrentNode(QTreeWidgetItem* curren
         }
         vis->render();
     }
+    else
+    {
+        // 从后处理等模块切回其他界面时，保证至少几何可见，避免模型“消失”。
+        vis->setGroupVisible("Geometry", true, false);
+        vis->render();
+    }
 }
 
 void ProjectTreeWidget::deletePage(QTreeWidgetItem* item)
@@ -233,21 +239,6 @@ void ProjectTreeWidget::contextMenuEvent(QContextMenuEvent* event)
 
     QMenu menu(this);
 
-    // 你想通用的也可以直接绑本类函数
-    ContextMenuHub::addAction(&menu, this, "重命名",
-                              [this, uuid = ctx["uuid"].toString()]
-                              {
-                                  // 直接调用你自己的函数，不走 event
-                                  // this->renameNode(uuid);
-                              });
-
-    ContextMenuHub::addAction(&menu, this, "删除",
-                              [this, uuid = ctx["uuid"].toString()]
-                              {
-                                  // this->deleteNode(uuid);
-                              });
-
-    ContextMenuHub::addSeparator(&menu);
     static const QString kScope_ProjectTreeNode = "project_tree.node";
     // 模块扩展：同步往菜单里塞 action
     ContextMenuHub::instance().buildMenu(kScope_ProjectTreeNode, &menu, ctx);

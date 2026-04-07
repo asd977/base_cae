@@ -520,8 +520,64 @@ void Solver::initTreeMenu()
                         addGeoStressOuterForceNode(node, true);
                     });
             }
+
+            if (kind != "SolverRoot")
+            {
+                ContextMenuHub::addSeparator(menu);
+                ContextMenuHub::addAction(
+                    menu, this, "删除",
+                    [this, uuid]()
+                    {
+                        removeNodeByUuid(uuid);
+                    });
+            }
         },
-        0);
+        0,
+        [](const QVariantMap& ctx) -> bool
+        {
+            return ctx.value("module").toString() == "Solver";
+        });
+}
+
+void Solver::deleteNodeRecursively(ProjectNode* node) const
+{
+    if (!node)
+        return;
+
+    const auto children = node->getChildren();
+    for (ProjectNode* child : children)
+    {
+        deleteNodeRecursively(child);
+    }
+
+    if (node->getPage())
+        delete node->getPage();
+
+    delete node;
+}
+
+void Solver::removeNodeByUuid(const QString& uuid)
+{
+    if (!m_root || uuid.isEmpty())
+        return;
+
+    auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+    ProjectNode* node = pm ? pm->findNodeByUuid(uuid) : nullptr;
+    if (!node || node == m_root)
+        return;
+
+    if (node->data(0, ProjectNode::RoleModule).toString() != "Solver")
+        return;
+
+    auto* parent = dynamic_cast<ProjectNode*>(node->parent());
+    if (!parent)
+        return;
+
+    parent->removeChild(node);
+    deleteNodeRecursively(node);
+
+    if (parent->data(0, ProjectNode::RoleKind).toString() == "DamAnalysis")
+        syncDamAnalysisMCase(parent);
 }
 
 void Solver::setupNodeRole(ProjectNode* node, const QString& kind) const
