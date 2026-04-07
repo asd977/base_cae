@@ -137,6 +137,7 @@ class CORE_EXPORT PickManager : public QObject
     void teardownPicking();
     bool pickAt(int x, int y);
     bool hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselect = false);
+    bool boxDeselectSelectedByRect(int x0, int y0, int x1, int y1);
     void updateDragRect(int x0, int y0, int x1, int y1, bool visible);
     bool isBoxSelectEnabledForActive() const;
 

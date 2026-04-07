@@ -6,6 +6,7 @@
 #include <services/VisualWidgetService.h>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 
@@ -17,6 +18,7 @@
 #include <vtkLine.h>
 #include <vtkMapper.h>
 #include <vtkDataSetMapper.h>
+#include <vtkNew.h>
 #include <vtkFieldData.h>
 #include <vtkMath.h>
 #include <vtkPlane.h>
@@ -619,8 +621,12 @@ void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* cl
     if (useBox && dragged)
     {
         self->m_cbLeftRelease->AbortFlagOn();
-        self->hardwareBoxSelect(self->m_dragStart[0], self->m_dragStart[1], self->m_dragEnd[0],
-                                self->m_dragEnd[1], self->m_dragBoxDeselect);
+        if (self->m_dragBoxDeselect)
+            self->boxDeselectSelectedByRect(self->m_dragStart[0], self->m_dragStart[1],
+                                            self->m_dragEnd[0], self->m_dragEnd[1]);
+        else
+            self->hardwareBoxSelect(self->m_dragStart[0], self->m_dragStart[1],
+                                    self->m_dragEnd[0], self->m_dragEnd[1], false);
     }
     else if (!useBox)
         ;
@@ -2032,6 +2038,66 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
             changed = true;
         }
     }
+
+    if (changed)
+        markDirty(DirtyNode);
+    return changed;
+}
+
+bool PickManager::boxDeselectSelectedByRect(int x0, int y0, int x1, int y1)
+{
+    if (!m_visual || !m_visual->renderer() || m_pickMode != PickMode::Node ||
+        m_currentDomain.isEmpty() || m_currentUUid.isEmpty())
+        return false;
+
+    const int xmin = std::min(x0, x1);
+    const int xmax = std::max(x0, x1);
+    const int ymin = std::min(y0, y1);
+    const int ymax = std::max(y0, y1);
+    if (xmax - xmin < 2 || ymax - ymin < 2)
+        return false;
+
+    auto* ren = m_visual->renderer();
+    if (auto* rw = ren->GetRenderWindow())
+        rw->Render();
+
+    bool changed = false;
+    const QString dom = m_currentDomain;
+    const QString uid = m_currentUUid;
+
+    auto deselectByRect = [&](GridKind kind, vtkUnstructuredGrid* grid, QSet<vtkIdType>& pickedSet)
+    {
+        if (!grid || pickedSet.isEmpty())
+            return;
+
+        const auto ids = pickedSet.values();
+        for (vtkIdType pid : ids)
+        {
+            if (pid < 0 || pid >= grid->GetNumberOfPoints())
+                continue;
+
+            double wp[3];
+            grid->GetPoint(pid, wp);
+
+            vtkNew<vtkCoordinate> c;
+            c->SetCoordinateSystemToWorld();
+            c->SetValue(wp);
+            double* dp = c->GetComputedDoubleDisplayValue(ren);
+            if (!dp)
+                continue;
+
+            const int sx = int(std::lround(dp[0]));
+            const int sy = int(std::lround(dp[1]));
+            if (sx < xmin || sx > xmax || sy < ymin || sy > ymax)
+                continue;
+
+            setNodeSelected_NoRefresh(kind, pid, false);
+            changed = true;
+        }
+    };
+
+    deselectByRect(GridKind::Solid, m_gridSolid, m_pointsSolidByDomainUuid[dom][uid]);
+    deselectByRect(GridKind::Line, m_gridLine, m_pointsLineByDomainUuid[dom][uid]);
 
     if (changed)
         markDirty(DirtyNode);

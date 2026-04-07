@@ -184,6 +184,15 @@ void ProjectTreeWidget::ensureSceneVisibleForCurrentNode(QTreeWidgetItem* curren
         }
         vis->render();
     }
+    else if (module == "PostProcessing")
+    {
+        // 后处理页面不强制显示网格，避免遮挡后处理结果。
+        vis->setVisible("mesh.global.surf", false, false);
+        vis->setVisible("mesh.global.wire", false, false);
+        vis->setVisible("mesh.imported.surface", false, false);
+        vis->setVisible("mesh.imported.line", false, false);
+        vis->render();
+    }
     else
     {
         // 非几何模块默认优先显示网格（若有网格），否则回退显示几何。

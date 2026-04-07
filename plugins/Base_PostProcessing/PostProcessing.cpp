@@ -193,6 +193,7 @@ void PostProcessing::newDerivedValueSettingWidget()
 void PostProcessing::newProject()
 {
     m_root = new ProjectNode("后处理");
+    m_root->setData(0, ProjectNode::RoleModule, "PostProcessing");
     ProjectManagerService* projectManagerService =
         ServiceRegistry::instance().getService<ProjectManagerService>();
     projectManagerService->addTreeItem(m_root);
@@ -294,6 +295,7 @@ bool PostProcessing::saveProject()
 bool PostProcessing::loadProject()
 {
     m_root = new ProjectNode("后处理");
+    m_root->setData(0, ProjectNode::RoleModule, "PostProcessing");
     QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
