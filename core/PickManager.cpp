@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <limits>
 
-#include <QGuiApplication>
 
 // VTK
 #include <vtkCell.h>
@@ -556,11 +555,8 @@ void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clie
     self->m_dragEnd[0] = xy[0];
     self->m_dragEnd[1] = xy[1];
 
-    bool shiftBox = iren->GetShiftKey() != 0;
-    bool ctrlBox = iren->GetControlKey() != 0;
-    const auto mods = QGuiApplication::keyboardModifiers();
-    shiftBox = shiftBox || (mods & Qt::ShiftModifier);
-    ctrlBox = ctrlBox || (mods & Qt::ControlModifier);
+    const bool shiftBox = iren->GetShiftKey() != 0;
+    const bool ctrlBox = iren->GetControlKey() != 0;
     self->m_dragUseBox = (self->m_pickMode == PickMode::Node && (shiftBox || ctrlBox));
     self->m_dragBoxDeselect = ctrlBox;
     if (!self->m_dragUseBox)
@@ -2019,7 +2015,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
             continue;
 
         vtkDataArray* origPointArr = nullptr;
-        if (kind == GridKind::Solid && pickedDs)
+        if (kind == GridKind::Solid && pickedDs && pickedDs != m_gridSolid)
             origPointArr = findArray(pickedDs->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
 
         vtkDataArray* selIds = vtkDataArray::SafeDownCast(node->GetSelectionList());
