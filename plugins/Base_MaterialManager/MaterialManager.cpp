@@ -3,6 +3,7 @@
 #include <ProjectNode.h>
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <ContextMenuHub.h>
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
 
@@ -765,6 +766,60 @@ QString MaterialManager::addMaterialToModel(const QString& modelKey, bool addToP
 
 void MaterialManager::setupTreeWidget()
 {
+    ContextMenuHub::instance().registerProvider(
+        "project_tree.node", this,
+        [this](QMenu* menu, const QVariantMap& ctx)
+        {
+            const QString uuid = ctx.value("uuid").toString();
+            const QString kind = ctx.value("kind").toString();
+            if (uuid.isEmpty())
+                return;
+
+            if (kind == "MaterialEntry")
+            {
+                ContextMenuHub::addSeparator(menu);
+                ContextMenuHub::addAction(menu, this, "删除",
+                                          [this, uuid]
+                                          {
+                                              removeEntryFromProjectTree(uuid);
+                                          });
+                return;
+            }
+
+            if (kind == "MaterialModel")
+            {
+                QString modelKey;
+                for (auto it = m_modelItems.constBegin(); it != m_modelItems.constEnd(); ++it)
+                {
+                    if (it.value() && it.value()->data(0, ProjectNode::RoleUuid).toString() == uuid)
+                    {
+                        modelKey = it.key();
+                        break;
+                    }
+                }
+                if (modelKey.isEmpty())
+                    return;
+
+                ContextMenuHub::addSeparator(menu);
+                ContextMenuHub::addAction(menu, this, "删除",
+                                          [this, modelKey]
+                                          {
+                                              const auto model = findModel(modelKey);
+                                              if (!model)
+                                                  return;
+
+                                              for (const auto& entry : model->materials)
+                                                  m_addedEntryIds.remove(entry.id);
+
+                                              rebuildProjectTree();
+                                          });
+            }
+        },
+        100,
+        [](const QVariantMap& ctx) -> bool
+        {
+            return ctx.value("module").toString() == "Material";
+        });
 }
 
 void MaterialManager::loadDefaultLibrary()

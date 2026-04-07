@@ -50,6 +50,8 @@ class Solver : public QObject, public SolverService
     int nextStressStrainIndex() const;
     int nextCaveExcavationIndex() const;
     int nextSlopeIndex() const;
+    void removeNodeByUuid(const QString& uuid);
+    void deleteNodeRecursively(ProjectNode* node) const;
 
   private:
     ProjectNode* m_root = nullptr;

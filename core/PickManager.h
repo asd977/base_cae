@@ -136,7 +136,7 @@ class CORE_EXPORT PickManager : public QObject
     void setupPicking();
     void teardownPicking();
     bool pickAt(int x, int y);
-    bool hardwareBoxSelect(int x0, int y0, int x1, int y1);
+    bool hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselect = false);
     void updateDragRect(int x0, int y0, int x1, int y1, bool visible);
     bool isBoxSelectEnabledForActive() const;
 
@@ -211,6 +211,7 @@ class CORE_EXPORT PickManager : public QObject
     bool m_leftDown = false;
     bool m_dragMoved = false;
     bool m_dragUseBox = false;
+    bool m_dragBoxDeselect = false;
     bool m_styleDisabledByBoxSelect = false;
     int m_dragStart[2] = {0, 0};
     int m_dragEnd[2] = {0, 0};
