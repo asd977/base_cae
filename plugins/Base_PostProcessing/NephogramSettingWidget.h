@@ -77,6 +77,11 @@ class NephogramSettingWidget : public BasePage
     vtkSmartPointer<vtkUnstructuredGrid> loadGridFromTecplot(const QString& fileName);
     vtkSmartPointer<vtkUnstructuredGrid> loadGridFromFile(const QString& fileName);
     QString resultDirectory() const;
+    vtkDataArray* findScalarArray(vtkUnstructuredGrid* grid, const QString& scalarName,
+                                  bool& usePointData) const;
+    void updateLookupTableRange(vtkLookupTable* lut, double minV, double maxV) const;
+    void configureMapper(vtkDataSetMapper* mapper, const QString& scalarName, bool usePointData,
+                         double minV, double maxV, vtkLookupTable* lut) const;
 
     void test();
 
