@@ -344,9 +344,13 @@ void PickManager::updateStructure()
         (m_gridLine) ? vtkIntArray::SafeDownCast(m_gridLine->GetCellData()->GetArray("elem_id"))
                      : nullptr;
 
-    // 你项目里导入网格 prop 的 key（如不同请改这里）
+    // 优先采用当前常用网格 prop；若没有导入网格则回退到全局网格 prop
     m_solidProp = m_visual ? m_visual->getProp("mesh.imported.surface") : nullptr;
+    if (!m_solidProp && m_visual)
+        m_solidProp = m_visual->getProp("mesh.global.surf");
     m_lineProp = m_visual ? m_visual->getProp("mesh.imported.line") : nullptr;
+    if (!m_lineProp && m_visual)
+        m_lineProp = m_visual->getProp("mesh.global.wire");
     m_solidPickDataSet = dataSetFromProp(m_solidProp);
     m_linePickDataSet = dataSetFromProp(m_lineProp);
 
@@ -657,8 +661,23 @@ bool PickManager::pickAt(int x, int y)
         return false;
 
     vtkProp* pickedProp = m_cellPicker->GetViewProp();
-    const bool isLine = (pickedProp && pickedProp == m_lineProp);
-    const bool isSolid = (pickedProp && pickedProp == m_solidProp);
+    auto isLineProp = [&](vtkProp* p) -> bool
+    {
+        if (!p || !m_visual)
+            return false;
+        return p == m_lineProp || p == m_visual->getProp("mesh.imported.line") ||
+               p == m_visual->getProp("mesh.global.wire");
+    };
+    auto isSolidProp = [&](vtkProp* p) -> bool
+    {
+        if (!p || !m_visual)
+            return false;
+        return p == m_solidProp || p == m_visual->getProp("mesh.imported.surface") ||
+               p == m_visual->getProp("mesh.global.surf");
+    };
+
+    const bool isLine = isLineProp(pickedProp);
+    const bool isSolid = isSolidProp(pickedProp);
 
     GridKind kind;
     if (isLine)
@@ -2042,9 +2061,16 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
 
         GridKind kind;
         vtkDataSet* pickedDs = dataSetFromProp(prop);
-        if (prop == m_solidProp)
+        const bool solidProp = (m_visual &&
+                                (prop == m_solidProp || prop == m_visual->getProp("mesh.imported.surface") ||
+                                 prop == m_visual->getProp("mesh.global.surf")));
+        const bool lineProp = (m_visual &&
+                               (prop == m_lineProp || prop == m_visual->getProp("mesh.imported.line") ||
+                                prop == m_visual->getProp("mesh.global.wire")));
+
+        if (solidProp)
             kind = GridKind::Solid;
-        else if (prop == m_lineProp)
+        else if (lineProp)
             kind = GridKind::Line;
         else
             continue;
@@ -2119,7 +2145,14 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                     int origEdgeLocalId = 15;
                     if (!computePickedEdgeFromBoundary(pickedDs, cellId, pickPos, origCellId,
                                                        origEdgeLocalId))
+                    {
+                        vtkCell* c = pickedDs->GetCell(cellId);
+                        if (!c || c->GetCellDimension() != 1)
+                            continue;
+                        setEdgeSelected_NoRefresh(kind, packEdgeKey(cellId, 15), !deselect);
+                        changed = true;
                         continue;
+                    }
 
                     setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, origEdgeLocalId),
                                               !deselect);
@@ -2140,7 +2173,14 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
             vtkIdType origCellId = -1;
             int origFaceLocalId = 15;
             if (!computePickedFaceFromBoundary(pickedDs, pickedCellId, origCellId, origFaceLocalId))
+            {
+                vtkCell* c = pickedDs->GetCell(pickedCellId);
+                if (!c || c->GetCellDimension() != 2)
+                    continue;
+                setFaceSelected_NoRefresh(kind, packFaceKey(pickedCellId, 15), !deselect);
+                changed = true;
                 continue;
+            }
 
             setFaceSelected_NoRefresh(kind, packFaceKey(origCellId, origFaceLocalId), !deselect);
             changed = true;
