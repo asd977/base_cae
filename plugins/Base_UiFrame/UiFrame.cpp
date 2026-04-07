@@ -935,12 +935,12 @@ void UiFrame::buildRibbonTabs()
         auto* actCave =
             makeAction(this, ":/resources/menu/minimal/analysis.svg", "&洞室开挖");
         auto* actSlope =
-            makeAction(this, ":/resources/menu/minimal/analysis.svg", "&边坡稳定分析");
+            makeAction(this, ":/resources/menu/minimal/analysis.svg", "&边坡分析");
 
-        addActionToPanel(panel, actParam, 2);
-        addActionToPanel(panel, actStress, 2);
-        addActionToPanel(panel, actCave, 2);
-        addActionToPanel(panel, actSlope, 2);
+        addActionToPanel(panel, actParam, 3);
+        addActionToPanel(panel, actStress, 3);
+        addActionToPanel(panel, actCave, 3);
+        addActionToPanel(panel, actSlope, 3);
 
         bindEvent(this, actParam, PublicConstants::kActionSeepageKey);
         bindEvent(this, actStress, PublicConstants::kActionStressStrainKey);
