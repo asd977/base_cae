@@ -2091,6 +2091,40 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                     setEdgeSelected_NoRefresh(kind, packEdgeKey(cellId, 0), !deselect);
                     changed = true;
                 }
+                else if (kind == GridKind::Solid && pickedDs)
+                {
+                    vtkCell* pickedCell = pickedDs->GetCell(cellId);
+                    if (!pickedCell)
+                        continue;
+
+                    vtkIdList* pids = pickedCell->GetPointIds();
+                    if (!pids || pids->GetNumberOfIds() < 2)
+                        continue;
+
+                    double pickPos[3] = {0.0, 0.0, 0.0};
+                    for (vtkIdType pi = 0; pi < pids->GetNumberOfIds(); ++pi)
+                    {
+                        double p[3] = {0.0, 0.0, 0.0};
+                        pickedDs->GetPoint(pids->GetId(pi), p);
+                        pickPos[0] += p[0];
+                        pickPos[1] += p[1];
+                        pickPos[2] += p[2];
+                    }
+                    const double denom = double(pids->GetNumberOfIds());
+                    pickPos[0] /= denom;
+                    pickPos[1] /= denom;
+                    pickPos[2] /= denom;
+
+                    vtkIdType origCellId = -1;
+                    int origEdgeLocalId = 15;
+                    if (!computePickedEdgeFromBoundary(pickedDs, cellId, pickPos, origCellId,
+                                                       origEdgeLocalId))
+                        continue;
+
+                    setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, origEdgeLocalId),
+                                              !deselect);
+                    changed = true;
+                }
             }
             dirtyBits |= DirtyEdge;
             continue;
