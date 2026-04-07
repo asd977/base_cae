@@ -1984,6 +1984,31 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
     if (xmax - xmin < 2 || ymax - ymin < 2)
         return false;
 
+    QVector<QPair<vtkActor*, int>> actorVisBackup;
+    auto hideActorForSelect = [&](vtkActor* actor)
+    {
+        if (!actor)
+            return;
+        actorVisBackup.append({actor, actor->GetVisibility()});
+        actor->SetVisibility(false);
+    };
+    hideActorForSelect(m_selActor);
+    hideActorForSelect(m_previewSelActor);
+    hideActorForSelect(m_edgeActor);
+    hideActorForSelect(m_previewEdgeActor);
+    hideActorForSelect(m_faceActor);
+    hideActorForSelect(m_previewFaceActor);
+
+    QVector<QPair<vtkActor2D*, int>> actor2DVisBackup;
+    auto hideActor2DForSelect = [&](vtkActor2D* actor)
+    {
+        if (!actor)
+            return;
+        actor2DVisBackup.append({actor, actor->GetVisibility()});
+        actor->SetVisibility(false);
+    };
+    hideActor2DForSelect(m_dragRectActor);
+
     if (auto* rw = ren->GetRenderWindow())
         rw->Render();
 
@@ -1992,6 +2017,12 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
     m_hwSelector->SetArea(xmin, ymin, xmax, ymax);
 
     vtkSmartPointer<vtkSelection> sel = m_hwSelector->Select();
+
+    for (auto& it : actorVisBackup)
+        it.first->SetVisibility(it.second);
+    for (auto& it : actor2DVisBackup)
+        it.first->SetVisibility(it.second);
+
     if (!sel || sel->GetNumberOfNodes() <= 0)
         return false;
 
