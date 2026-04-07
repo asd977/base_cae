@@ -768,10 +768,12 @@ void NephogramSettingWidget::updateLookupTableRange(vtkLookupTable* lut, double 
     lut->SetTableRange(minV, maxV);
     lut->Build();
 
-    // 贴近 ParaView 的冷暖色趋势：低值蓝，高值红；压缩中间亮色带，避免“过亮发白”。
-    const double low[3] = {0.231, 0.298, 0.753};
-    const double mid[3] = {0.760, 0.760, 0.760};
-    const double high[3] = {0.706, 0.016, 0.149};
+    // 自定义配色（不与 ParaView 默认完全一致）：
+    // 深蓝 -> 青绿 -> 黄橙 -> 深红。保持高值为红色，同时避免中间过亮发白。
+    const double c0[3] = {0.086, 0.180, 0.553}; // deep blue
+    const double c1[3] = {0.118, 0.545, 0.545}; // cyan-green
+    const double c2[3] = {0.930, 0.670, 0.170}; // yellow-orange
+    const double c3[3] = {0.690, 0.090, 0.120}; // deep red
 
     const int tableSize = lut->GetNumberOfTableValues();
     for (int i = 0; i < tableSize; ++i)
@@ -786,19 +788,26 @@ void NephogramSettingWidget::updateLookupTableRange(vtkLookupTable* lut, double 
         double r = 0.0;
         double g = 0.0;
         double b = 0.0;
-        if (warped < 0.5)
+        if (warped < 0.35)
         {
-            const double a = warped / 0.5;
-            r = low[0] + (mid[0] - low[0]) * a;
-            g = low[1] + (mid[1] - low[1]) * a;
-            b = low[2] + (mid[2] - low[2]) * a;
+            const double a = warped / 0.35;
+            r = c0[0] + (c1[0] - c0[0]) * a;
+            g = c0[1] + (c1[1] - c0[1]) * a;
+            b = c0[2] + (c1[2] - c0[2]) * a;
+        }
+        else if (warped < 0.72)
+        {
+            const double a = (warped - 0.35) / (0.72 - 0.35);
+            r = c1[0] + (c2[0] - c1[0]) * a;
+            g = c1[1] + (c2[1] - c1[1]) * a;
+            b = c1[2] + (c2[2] - c1[2]) * a;
         }
         else
         {
-            const double a = (warped - 0.5) / 0.5;
-            r = mid[0] + (high[0] - mid[0]) * a;
-            g = mid[1] + (high[1] - mid[1]) * a;
-            b = mid[2] + (high[2] - mid[2]) * a;
+            const double a = (warped - 0.72) / (1.0 - 0.72);
+            r = c2[0] + (c3[0] - c2[0]) * a;
+            g = c2[1] + (c3[1] - c2[1]) * a;
+            b = c2[2] + (c3[2] - c2[2]) * a;
         }
         lut->SetTableValue(i, r, g, b, 1.0);
     }
