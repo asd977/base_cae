@@ -300,6 +300,9 @@ void PhysicalField::removeNodeByUuid(const QString& uuid)
     if (parent)
         parent->removeChild(node);
 
+    if (node->getPage())
+        delete node->getPage();
+
     delete node;
 }
 

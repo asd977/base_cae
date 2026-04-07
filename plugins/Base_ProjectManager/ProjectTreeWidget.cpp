@@ -184,6 +184,12 @@ void ProjectTreeWidget::ensureSceneVisibleForCurrentNode(QTreeWidgetItem* curren
         }
         vis->render();
     }
+    else
+    {
+        // 从后处理等模块切回其他界面时，保证至少几何可见，避免模型“消失”。
+        vis->setGroupVisible("Geometry", true, false);
+        vis->render();
+    }
 }
 
 void ProjectTreeWidget::deletePage(QTreeWidgetItem* item)

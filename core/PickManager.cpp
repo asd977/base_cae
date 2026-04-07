@@ -554,7 +554,10 @@ void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clie
     self->m_dragEnd[0] = xy[0];
     self->m_dragEnd[1] = xy[1];
 
-    self->m_dragUseBox = (self->m_pickMode == PickMode::Node && iren->GetShiftKey() != 0);
+    const bool shiftBox = iren->GetShiftKey() != 0;
+    const bool ctrlBox = iren->GetControlKey() != 0;
+    self->m_dragUseBox = (self->m_pickMode == PickMode::Node && (shiftBox || ctrlBox));
+    self->m_dragBoxDeselect = ctrlBox;
     if (!self->m_dragUseBox)
     {
         self->pickAt(xy[0], xy[1]);
@@ -616,7 +619,7 @@ void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* cl
     {
         self->m_cbLeftRelease->AbortFlagOn();
         self->hardwareBoxSelect(self->m_dragStart[0], self->m_dragStart[1], self->m_dragEnd[0],
-                                self->m_dragEnd[1]);
+                                self->m_dragEnd[1], self->m_dragBoxDeselect);
     }
     else if (!useBox)
         ;
@@ -633,6 +636,7 @@ void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* cl
     self->m_leftDown = false;
     self->m_dragMoved = false;
     self->m_dragUseBox = false;
+    self->m_dragBoxDeselect = false;
     self->updateDragRect(0,0,0,0,false);
 }
 
@@ -1966,7 +1970,7 @@ void PickManager::updateDragRect(int x0, int y0, int x1, int y1, bool visible)
     m_visual->render();
 }
 
-bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
+bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselect)
 {
     if (!m_visual || !m_visual->renderer() || !m_hwSelector || m_pickMode != PickMode::Node)
         return false;
@@ -2023,7 +2027,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1)
             vtkIdType pid = localPid;
             if (origPointArr && localPid >= 0 && localPid < origPointArr->GetNumberOfTuples())
                 pid = vtkIdType(origPointArr->GetTuple1(localPid));
-            setNodeSelected_NoRefresh(kind, pid, true);
+            setNodeSelected_NoRefresh(kind, pid, !deselect);
             changed = true;
         }
     }
