@@ -967,41 +967,41 @@ void UiFrame::buildRibbonTabs()
 
         auto* panel = cate->addPannel("后处理操作");
         auto* actNeph = makeAction(this, ":/resources/menu/minimal/post-nephogram.svg", "&云图");
-//        auto* actVec = makeAction(this, ":/resources/menu/minimal/post-vector.svg", "&矢量");
-//        auto* actSlc = makeAction(this, ":/resources/menu/minimal/post-slice.svg", "&切面");
-//        auto* actDice = makeAction(this, ":/resources/menu/minimal/post-block.svg", "&切块");
-//        auto* actIso = makeAction(this, ":/resources/menu/minimal/post-isosurface.svg", "&等值面");
-//        auto* actIsoS =
-//            makeAction(this, ":/resources/menu/minimal/post-isosurface-seg.svg", "&等值面分割");
-//        auto* actXY = makeAction(this, ":/resources/menu/minimal/post-curve.svg", "&曲线");
-//        auto* actAnim = makeAction(this, ":/resources/menu/minimal/post-animation.svg", "&动画");
-//        auto* actPick = makeAction(this, ":/resources/menu/minimal/post-probe.svg", "&拾取物理量");
-//        auto* actDer = makeAction(this, ":/resources/menu/minimal/post-derived.svg", "&派生值");
-//        auto* actExp = makeAction(this, ":/resources/menu/minimal/post-export.svg", "&数据导出");
+       auto* actVec = makeAction(this, ":/resources/menu/minimal/post-vector.svg", "&矢量");
+       auto* actSlc = makeAction(this, ":/resources/menu/minimal/post-slice.svg", "&切面");
+       auto* actDice = makeAction(this, ":/resources/menu/minimal/post-block.svg", "&切块");
+       auto* actIso = makeAction(this, ":/resources/menu/minimal/post-isosurface.svg", "&等值面");
+       auto* actIsoS =
+           makeAction(this, ":/resources/menu/minimal/post-isosurface-seg.svg", "&等值面分割");
+       auto* actXY = makeAction(this, ":/resources/menu/minimal/post-curve.svg", "&曲线");
+       auto* actAnim = makeAction(this, ":/resources/menu/minimal/post-animation.svg", "&动画");
+       auto* actPick = makeAction(this, ":/resources/menu/minimal/post-probe.svg", "&拾取物理量");
+       auto* actDer = makeAction(this, ":/resources/menu/minimal/post-derived.svg", "&派生值");
+       auto* actExp = makeAction(this, ":/resources/menu/minimal/post-export.svg", "&数据导出");
 
         addActionToPanel(panel, actNeph, 2);
-//        addActionToPanel(panel, actVec, 2);
-//        addActionToPanel(panel, actSlc, 2);
-//        addActionToPanel(panel, actDice, 2);
-//        addActionToPanel(panel, actIso, 2);
-//        addActionToPanel(panel, actIsoS, 2);
-//        addActionToPanel(panel, actXY, 3);
-//        addActionToPanel(panel, actAnim, 3);
-//        addActionToPanel(panel, actPick, 3);
-//        addActionToPanel(panel, actDer, 2);
-//        addActionToPanel(panel, actExp, 2);
+       addActionToPanel(panel, actVec, 2);
+       addActionToPanel(panel, actSlc, 2);
+       addActionToPanel(panel, actDice, 2);
+       addActionToPanel(panel, actIso, 2);
+       addActionToPanel(panel, actIsoS, 2);
+       addActionToPanel(panel, actXY, 3);
+       addActionToPanel(panel, actAnim, 3);
+       addActionToPanel(panel, actPick, 3);
+       addActionToPanel(panel, actDer, 2);
+       addActionToPanel(panel, actExp, 2);
 
         bindEvent(this, actNeph, PublicConstants::kActionPostProcessNephogram);
-//        bindEvent(this, actVec, PublicConstants::kActionPostProcessVector);
-//        bindEvent(this, actSlc, PublicConstants::kActionPostProcessSection);
-//        bindEvent(this, actDice, PublicConstants::kActionPostProcessDice);
-//        bindEvent(this, actIso, PublicConstants::kActionPostProcessIsosurface);
-//        bindEvent(this, actIsoS, PublicConstants::kActionPostProcessIsosurfaceSegmentation);
-//        bindEvent(this, actXY, PublicConstants::kActionPostProcessXyPlot);
-//        bindEvent(this, actAnim, PublicConstants::kActionPostProcessAnimation);
-//        bindEvent(this, actPick, PublicConstants::kActionPostProcessPickPhysical);
-//        bindEvent(this, actDer, PublicConstants::kActionPostProcessDerivative);
-//        bindEvent(this, actExp, PublicConstants::kActionPostProcessDataExport);
+       bindEvent(this, actVec, PublicConstants::kActionPostProcessVector);
+       bindEvent(this, actSlc, PublicConstants::kActionPostProcessSection);
+       bindEvent(this, actDice, PublicConstants::kActionPostProcessDice);
+       bindEvent(this, actIso, PublicConstants::kActionPostProcessIsosurface);
+       bindEvent(this, actIsoS, PublicConstants::kActionPostProcessIsosurfaceSegmentation);
+       bindEvent(this, actXY, PublicConstants::kActionPostProcessXyPlot);
+       bindEvent(this, actAnim, PublicConstants::kActionPostProcessAnimation);
+       bindEvent(this, actPick, PublicConstants::kActionPostProcessPickPhysical);
+       bindEvent(this, actDer, PublicConstants::kActionPostProcessDerivative);
+       bindEvent(this, actExp, PublicConstants::kActionPostProcessDataExport);
     }
 
     // // =========================
