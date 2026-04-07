@@ -26,6 +26,7 @@
 #include "SARibbonComboBox.h"
 #include "SARibbonMenu.h"
 #include "SARibbonPannel.h"
+#include "SARibbonElementFactory.h"
 
 namespace
 {
@@ -350,7 +351,7 @@ void UiFrame::initSARibbon()
 
     m_ribbon = ribbonBar();
     m_ribbon->setRibbonStyle(SARibbonBar::RibbonStyleCompactTwoRow);
-    setRibbonTheme(SARibbonTheme::RibbonThemeOffice2021Blue);
+    setRibbonTheme(SARibbonTheme::RibbonThemeOffice2013);
 
     buildRibbonAppButton();
     buildRibbonTabs();
@@ -721,9 +722,9 @@ void UiFrame::buildRibbonTabs()
         auto* actNanshui = makeAction(this, ":/resources/menu/minimal/mat-nanshui.svg", "非线性土体模型");
         auto* actKg = makeAction(this, ":/resources/menu/minimal/mat-kg.svg", "K-G模型");
         auto* actBuiltinMaterial = makeAction(this, ":/resources/menu/minimal/mat-hjp.svg",
-                                              "展示材料列表");
+                                              "材料示例");
         auto* actBuiltinSeepage = makeAction(this, ":/resources/menu/minimal/mat-dynamic.svg",
-                                             "展示渗流参数列表");
+                                             "渗流示例");
 
         // 材料类型较多，统一改为 small action，减少 Ribbon 占位并避免文字截断。
         addActionToPanel(panelSoil, actSoilEb, 1);
@@ -936,10 +937,10 @@ void UiFrame::buildRibbonTabs()
         auto* actSlope =
             makeAction(this, ":/resources/menu/minimal/analysis.svg", "&边坡稳定分析");
 
-        addActionToPanel(panel, actParam, 3);
-        addActionToPanel(panel, actStress, 3);
-        addActionToPanel(panel, actCave, 3);
-        addActionToPanel(panel, actSlope, 3);
+        addActionToPanel(panel, actParam, 2);
+        addActionToPanel(panel, actStress, 2);
+        addActionToPanel(panel, actCave, 2);
+        addActionToPanel(panel, actSlope, 2);
 
         bindEvent(this, actParam, PublicConstants::kActionSeepageKey);
         bindEvent(this, actStress, PublicConstants::kActionStressStrainKey);
