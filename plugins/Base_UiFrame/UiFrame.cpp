@@ -352,6 +352,11 @@ void UiFrame::initSARibbon()
     m_ribbon = ribbonBar();
     m_ribbon->setRibbonStyle(SARibbonBar::RibbonStyleCompactTwoRow);
     setRibbonTheme(SARibbonTheme::RibbonThemeOffice2013);
+    // 仅覆写顶部标签（如几何/网格/材料）的文字与选中边框，不修改背景色。
+    m_ribbon->setStyleSheet(
+        "SARibbonBar QTabBar::tab { color: #111111; border: 1px solid transparent; }"
+        "SARibbonBar QTabBar::tab:selected { color: #111111; border: 1px solid #111111; }"
+        "SARibbonBar QTabBar::tab:hover { border: 1px solid #111111; }");
 
     buildRibbonAppButton();
     buildRibbonTabs();
