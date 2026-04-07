@@ -267,17 +267,13 @@ void PhysicalField::intitTreeMenu()
                                           // toggle(uuid);
                                       });
 
-            // 允许删除的 kind（你可以继续加）
-            if (kind == "DisplacementConstraint" || kind == "GeoStressPointPage" ||
-                kind == "GeoStressFitFacePage" || kind == "BodyForcePage" ||
-                kind == "ConcentratedForcePage" || kind == "SurfaceForcePage" ||
-                kind == "TemperatureLoadPage" || kind == "SeismicAndAddedMassPage" ||
-                kind == "LoadSpecification")
+            // 约束与荷载子节点支持删除
+            if (kind != "PhysicalFieldRoot")
             {
                 ContextMenuHub::addAction(menu, this, "删除",
                                           [this, uuid]
                                           {
-                                              // removeNode(uuid);
+                                              removeNodeByUuid(uuid);
                                           });
             }
         },
@@ -286,6 +282,25 @@ void PhysicalField::intitTreeMenu()
         {
             return ctx.value("module").toString() == "PhysicalField";
         });
+}
+
+void PhysicalField::removeNodeByUuid(const QString& uuid)
+{
+    if (uuid.isEmpty() || !m_node)
+        return;
+
+    ProjectNode* node = findNodeByUuid(m_node, uuid);
+    if (!node || node == m_node)
+        return;
+
+    if (!node->getChildren().isEmpty())
+        return;
+
+    auto* parent = dynamic_cast<ProjectNode*>(node->parent());
+    if (parent)
+        parent->removeChild(node);
+
+    delete node;
 }
 
 void PhysicalField::newProject()
