@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <limits>
 
+#include <QGuiApplication>
+
 // VTK
 #include <vtkCell.h>
 #include <vtkCellData.h>
@@ -554,8 +556,11 @@ void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clie
     self->m_dragEnd[0] = xy[0];
     self->m_dragEnd[1] = xy[1];
 
-    const bool shiftBox = iren->GetShiftKey() != 0;
-    const bool ctrlBox = iren->GetControlKey() != 0;
+    bool shiftBox = iren->GetShiftKey() != 0;
+    bool ctrlBox = iren->GetControlKey() != 0;
+    const auto mods = QGuiApplication::keyboardModifiers();
+    shiftBox = shiftBox || (mods & Qt::ShiftModifier);
+    ctrlBox = ctrlBox || (mods & Qt::ControlModifier);
     self->m_dragUseBox = (self->m_pickMode == PickMode::Node && (shiftBox || ctrlBox));
     self->m_dragBoxDeselect = ctrlBox;
     if (!self->m_dragUseBox)

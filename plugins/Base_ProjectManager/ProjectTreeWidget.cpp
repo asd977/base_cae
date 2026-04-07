@@ -186,8 +186,23 @@ void ProjectTreeWidget::ensureSceneVisibleForCurrentNode(QTreeWidgetItem* curren
     }
     else
     {
-        // 从后处理等模块切回其他界面时，保证至少几何可见，避免模型“消失”。
-        vis->setGroupVisible("Geometry", true, false);
+        // 非几何模块默认优先显示网格（若有网格），否则回退显示几何。
+        const bool hasMeshActors = vis->getProp("mesh.global.surf") != nullptr ||
+                                   vis->getProp("mesh.global.wire") != nullptr ||
+                                   vis->getProp("mesh.imported.surface") != nullptr ||
+                                   vis->getProp("mesh.imported.line") != nullptr;
+        if (hasMeshActors)
+        {
+            vis->setGroupVisible("Geometry", false, false);
+            vis->setVisible("mesh.global.surf", true, false);
+            vis->setVisible("mesh.global.wire", true, false);
+            vis->setVisible("mesh.imported.surface", true, false);
+            vis->setVisible("mesh.imported.line", true, false);
+        }
+        else
+        {
+            vis->setGroupVisible("Geometry", true, false);
+        }
         vis->render();
     }
 }
