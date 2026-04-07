@@ -353,6 +353,17 @@ void UiFrame::initSARibbon()
     m_ribbon->setRibbonStyle(SARibbonBar::RibbonStyleCompactTwoRow);
     setRibbonTheme(SARibbonTheme::RibbonThemeOffice2013);
 
+    // 在 Office2013 主题基础上覆写深色样式，使 Ribbon 视觉接近黑色主题。
+    // 仅覆写文字和边框颜色为黑色，不修改背景色。
+    m_ribbon->setStyleSheet(
+        "SARibbonBar QTabBar::tab { color: #111111;}");
+
+    // m_ribbon->setStyleSheet(
+    //     "SARibbonBar QTabBar::tab { color: #111111; border: 1px solid transparent; }"
+    //     "SARibbonBar QTabBar::tab:selected { color: #111111; border: 1px solid #111111; }"
+    //     "SARibbonBar QTabBar::tab:hover { border: 1px solid #111111; }"
+    //     "SARibbonBar QStackedWidget { border-top: 1px solid #111111; }");
+
     buildRibbonAppButton();
     buildRibbonTabs();
 }
