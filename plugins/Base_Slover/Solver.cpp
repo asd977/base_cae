@@ -532,7 +532,11 @@ void Solver::initTreeMenu()
                     });
             }
         },
-        0);
+        0,
+        [](const QVariantMap& ctx) -> bool
+        {
+            return ctx.value("module").toString() == "Solver";
+        });
 }
 
 void Solver::deleteNodeRecursively(ProjectNode* node) const
