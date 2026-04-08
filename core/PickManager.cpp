@@ -562,7 +562,7 @@ void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clie
 
     const bool shiftBox = iren->GetShiftKey() != 0;
     const bool ctrlBox = iren->GetControlKey() != 0;
-    self->m_dragUseBox = (shiftBox || ctrlBox);
+    self->m_dragUseBox = (self->m_pickMode == PickMode::Node && (shiftBox || ctrlBox));
     self->m_dragBoxDeselect = ctrlBox;
     if (!self->m_dragUseBox)
     {
@@ -1993,7 +1993,7 @@ void PickManager::updateDragRect(int x0, int y0, int x1, int y1, bool visible)
 
 bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselect)
 {
-    if (!m_visual || !m_visual->renderer() || !m_hwSelector)
+    if (!m_visual || !m_visual->renderer() || !m_hwSelector || m_pickMode != PickMode::Node)
         return false;
 
     auto* ren = m_visual->renderer();
@@ -2033,10 +2033,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
         rw->Render();
 
     m_hwSelector->SetRenderer(ren);
-    if (m_pickMode == PickMode::Node)
-        m_hwSelector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_POINTS);
-    else
-        m_hwSelector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_CELLS);
+    m_hwSelector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_POINTS);
     m_hwSelector->SetArea(xmin, ymin, xmax, ymax);
 
     vtkSmartPointer<vtkSelection> sel = m_hwSelector->Select();
