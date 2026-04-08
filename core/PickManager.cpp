@@ -2145,14 +2145,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                     int origEdgeLocalId = 15;
                     if (!computePickedEdgeFromBoundary(pickedDs, cellId, pickPos, origCellId,
                                                        origEdgeLocalId))
-                    {
-                        vtkCell* c = pickedDs->GetCell(cellId);
-                        if (!c || c->GetCellDimension() != 1)
-                            continue;
-                        setEdgeSelected_NoRefresh(kind, packEdgeKey(cellId, 15), !deselect);
-                        changed = true;
                         continue;
-                    }
 
                     setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, origEdgeLocalId),
                                               !deselect);
@@ -2173,14 +2166,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
             vtkIdType origCellId = -1;
             int origFaceLocalId = 15;
             if (!computePickedFaceFromBoundary(pickedDs, pickedCellId, origCellId, origFaceLocalId))
-            {
-                vtkCell* c = pickedDs->GetCell(pickedCellId);
-                if (!c || c->GetCellDimension() != 2)
-                    continue;
-                setFaceSelected_NoRefresh(kind, packFaceKey(pickedCellId, 15), !deselect);
-                changed = true;
                 continue;
-            }
 
             setFaceSelected_NoRefresh(kind, packFaceKey(origCellId, origFaceLocalId), !deselect);
             changed = true;
