@@ -6,6 +6,7 @@
 #include <services/VisualWidgetService.h>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 
@@ -17,6 +18,8 @@
 #include <vtkLine.h>
 #include <vtkMapper.h>
 #include <vtkDataSetMapper.h>
+#include <vtkCoordinate.h>
+#include <vtkNew.h>
 #include <vtkFieldData.h>
 #include <vtkMath.h>
 #include <vtkPlane.h>
@@ -2048,6 +2051,42 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
 
     bool changed = false;
     int dirtyBits = DirtyNone;
+    auto cellCenterInRect = [&](vtkDataSet* ds, vtkIdType cid) -> bool
+    {
+        if (!ds)
+            return false;
+        vtkCell* c = ds->GetCell(cid);
+        if (!c)
+            return false;
+        vtkIdList* ids = c->GetPointIds();
+        if (!ids || ids->GetNumberOfIds() <= 0)
+            return false;
+
+        double center[3] = {0.0, 0.0, 0.0};
+        for (vtkIdType pi = 0; pi < ids->GetNumberOfIds(); ++pi)
+        {
+            double p[3] = {0.0, 0.0, 0.0};
+            ds->GetPoint(ids->GetId(pi), p);
+            center[0] += p[0];
+            center[1] += p[1];
+            center[2] += p[2];
+        }
+        const double denom = double(ids->GetNumberOfIds());
+        center[0] /= denom;
+        center[1] /= denom;
+        center[2] /= denom;
+
+        vtkNew<vtkCoordinate> coord;
+        coord->SetCoordinateSystemToWorld();
+        coord->SetValue(center);
+        double* dp = coord->GetComputedDoubleDisplayValue(ren);
+        if (!dp)
+            return false;
+        const int sx = int(std::lround(dp[0]));
+        const int sy = int(std::lround(dp[1]));
+        return sx >= xmin && sx <= xmax && sy >= ymin && sy <= ymax;
+    };
+
     for (unsigned int i = 0; i < sel->GetNumberOfNodes(); ++i)
     {
         auto* node = sel->GetNode(i);
@@ -2107,6 +2146,8 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
             for (vtkIdType j = 0; j < selIds->GetNumberOfTuples(); ++j)
             {
                 vtkIdType cellId = vtkIdType(selIds->GetComponent(j, 0));
+                if (!cellCenterInRect(pickedDs, cellId))
+                    continue;
                 if (origCellArr && cellId >= 0 && cellId < origCellArr->GetNumberOfTuples())
                     cellId = vtkIdType(origCellArr->GetTuple1(cellId));
 
@@ -2158,6 +2199,8 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
         for (vtkIdType j = 0; j < selIds->GetNumberOfTuples(); ++j)
         {
             const vtkIdType pickedCellId = vtkIdType(selIds->GetComponent(j, 0));
+            if (!cellCenterInRect(pickedDs, pickedCellId))
+                continue;
             if (kind != GridKind::Solid || !pickedDs)
                 continue;
 
