@@ -36,6 +36,7 @@
 #include <vtkIntArray.h>
 #include <vtkLabeledDataMapper.h>
 #include <vtkLookupTable.h>
+#include <vtkMapper.h>
 #include <vtkPointData.h>
 #include <vtkPointSet.h>
 #include <vtkPointPicker.h>
@@ -549,6 +550,27 @@ void GridEditingWidget::buildOrUpdateViewGrid()
     {
         m_meshActor = existingActor;
         m_meshMapper = vtkDataSetMapper::SafeDownCast(existingActor->GetMapper());
+
+        // 兼容 displayCurrentGrid 可能设置的其他 mapper（如 vtkPolyDataMapper）。
+        // 网格编辑流程后续依赖 vtkDataSetMapper 接口，这里做一次适配替换。
+        if (!m_meshMapper)
+        {
+            vtkMapper* rawMapper = existingActor->GetMapper();
+            vtkDataSet* mapperInput = rawMapper ? vtkDataSet::SafeDownCast(rawMapper->GetInput()) : nullptr;
+            if (mapperInput)
+            {
+                auto dsMapper = vtkSmartPointer<vtkDataSetMapper>::New();
+                dsMapper->SetInputData(mapperInput);
+                dsMapper->SetScalarVisibility(rawMapper->GetScalarVisibility());
+                dsMapper->SetScalarMode(rawMapper->GetScalarMode());
+                if (rawMapper->GetArrayName() && rawMapper->GetArrayName()[0] != '\0')
+                    dsMapper->SelectColorArray(rawMapper->GetArrayName());
+                if (rawMapper->GetLookupTable())
+                    dsMapper->SetLookupTable(rawMapper->GetLookupTable());
+                existingActor->SetMapper(dsMapper);
+                m_meshMapper = dsMapper;
+            }
+        }
     }
     if (!m_meshMapper)
         return;
