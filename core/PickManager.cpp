@@ -43,10 +43,12 @@ vtkDataSet* dataSetFromProp(vtkProp* prop)
     auto* actor = vtkActor::SafeDownCast(prop);
     if (!actor)
         return nullptr;
-    auto* mapper = vtkDataSetMapper::SafeDownCast(actor->GetMapper());
+
+    auto* mapper = actor->GetMapper();
     if (!mapper)
         return nullptr;
-    return mapper->GetInput();
+
+    return vtkDataSet::SafeDownCast(mapper->GetInput());
 }
 
 vtkDataArray* findArray(vtkFieldData* fd, const char* a, const char* b = nullptr)
@@ -689,6 +691,7 @@ bool PickManager::pickAt(int x, int y)
         return false;
 
     vtkDataSet* ds = m_cellPicker->GetDataSet();
+    qDebug()<<ds;
     vtkCell* cell = ds ? ds->GetCell(cellId) : nullptr;
     if (!cell)
         return false;
@@ -2249,6 +2252,10 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
             int origFaceLocalId = 15;
             if (computePickedFaceFromBoundary(pickedDs, pickedCellId, origCellId, origFaceLocalId))
             {
+                vtkCell* solidCell = m_gridSolid->GetCell(pickedCellId);
+
+                auto* mapper = vtkMapper::SafeDownCast(vtkActor::SafeDownCast(prop)->GetMapper());
+
                 if (faceCenterInRect(m_gridSolid, origCellId, origFaceLocalId))
                 {
                     setFaceSelected_NoRefresh(kind, packFaceKey(origCellId, origFaceLocalId),
