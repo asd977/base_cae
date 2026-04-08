@@ -83,7 +83,7 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
 {
     m_visual = ServiceRegistry::instance().getService<VisualWidgetService>();
 
-    // callbacks
+           // callbacks
     m_cbLeftPress = vtkSmartPointer<vtkCallbackCommand>::New();
     m_cbLeftPress->SetClientData(this);
     m_cbLeftPress->SetCallback(&PickManager::OnLeftButtonPress);
@@ -103,7 +103,7 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     if (!m_visual)
         return;
 
-    // ================== Node overlay ==================
+           // ================== Node overlay ==================
     m_selPts = vtkSmartPointer<vtkPoints>::New();
     m_selPoly = vtkSmartPointer<vtkPolyData>::New();
     m_selPoly->SetPoints(m_selPts);
@@ -144,7 +144,7 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_visual->addProp("pick.node.preview", m_previewSelActor, QString("{node} 预选点"),
                       QString("拾取预选点集合"), true, true);
 
-    // ================== drag rectangle overlay ==================
+           // ================== drag rectangle overlay ==================
     m_dragRectPts = vtkSmartPointer<vtkPoints>::New();
     m_dragRectLines = vtkSmartPointer<vtkCellArray>::New();
     m_dragRectPoly = vtkSmartPointer<vtkPolyData>::New();
@@ -163,7 +163,7 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_visual->addProp("pick.drag.rect", m_dragRectActor, QString("{pick} 框选框"),
                       QString("拾取框选框"), true, true);
 
-    // ================== Edge overlay (polyline) ==================
+           // ================== Edge overlay (polyline) ==================
     m_edgePts = vtkSmartPointer<vtkPoints>::New();
     m_edgeLines = vtkSmartPointer<vtkCellArray>::New();
     m_edgePoly = vtkSmartPointer<vtkPolyData>::New();
@@ -207,8 +207,8 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_visual->addProp("pick.edge.preview", m_previewEdgeActor, QString("{edge} 预选边"),
                       QString("拾取预选边集合"), true, true);
 
-    // ================== Face overlay ==================
-    // --- 数据初始化 ---
+           // ================== Face overlay ==================
+           // --- 数据初始化 ---
     m_facePts = vtkSmartPointer<vtkPoints>::New();
     m_facePolys = vtkSmartPointer<vtkCellArray>::New();
     m_facePoly = vtkSmartPointer<vtkPolyData>::New();
@@ -216,13 +216,13 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_facePoly->SetPoints(m_facePts);
     m_facePoly->SetPolys(m_facePolys);
 
-    // --- Mapper 配置 ---
+           // --- Mapper 配置 ---
     m_faceMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
     m_faceMapper->SetResolveCoincidentTopologyToPolygonOffset();
     m_faceMapper->SetRelativeCoincidentTopologyPolygonOffsetParameters(-1.0, -20.0);
     m_faceMapper->SetInputData(m_facePoly);
 
-    // --- Actor 属性设置 ---
+           // --- Actor 属性设置 ---
     m_faceActor = vtkSmartPointer<vtkActor>::New();
     m_faceActor->GetProperty()->BackfaceCullingOn();
     m_faceActor->SetMapper(m_faceMapper);
@@ -231,7 +231,7 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_faceActor->GetProperty()->SetRepresentationToSurface();
     m_faceActor->SetVisibility(false);
 
-    // --- 交互控制 (高亮 actor 不参与 pick) ---
+           // --- 交互控制 (高亮 actor 不参与 pick) ---
     m_selActor->PickableOff();
     m_edgeActor->PickableOff();
     m_faceActor->PickableOff();
@@ -260,7 +260,7 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_visual->addProp("pick.face.preview", m_previewFaceActor, QString("{face} 预选面"),
                       QString("拾取预选面集合"), true, true);
 
-    // ================== Line node hints ==================
+           // ================== Line node hints ==================
     m_lineNodePts = vtkSmartPointer<vtkPoints>::New();
     m_lineNodePoly = vtkSmartPointer<vtkPolyData>::New();
     m_lineNodePoly->SetPoints(m_lineNodePts);
@@ -312,11 +312,11 @@ void PickManager::clearNodeSelection_NoRefresh(const QString& domain, const QStr
     {
         mySet.remove(pid);
 
-        // 如果当前 owner 就是我，先移除 owner
+               // 如果当前 owner 就是我，先移除 owner
         if (owners.value(pid) == uuid)
             owners.remove(pid);
 
-        // 尝试恢复之前 owner（如果存在）
+               // 尝试恢复之前 owner（如果存在）
         const QString oldUid = prevOwners.take(pid);
         if (!oldUid.isEmpty())
         {
@@ -349,7 +349,7 @@ void PickManager::updateStructure()
         (m_gridLine) ? vtkIntArray::SafeDownCast(m_gridLine->GetCellData()->GetArray("elem_id"))
                      : nullptr;
 
-    // 优先采用当前常用网格 prop；若没有导入网格则回退到全局网格 prop
+           // 优先采用当前常用网格 prop；若没有导入网格则回退到全局网格 prop
     m_solidProp = m_visual ? m_visual->getProp("mesh.imported.surface") : nullptr;
     if (!m_solidProp && m_visual)
         m_solidProp = m_visual->getProp("mesh.global.surf");
@@ -384,7 +384,7 @@ void PickManager::activate(const QString& domain, const QString& uuid, PickMode 
     refreshStructureIfNeeded();
     updateActorVisibility();
 
-    // line node hints 仅 node 模式显示
+           // line node hints 仅 node 模式显示
     if (m_lineNodeActor)
     {
         const bool hasLine = (m_gridLine && m_gridLine->GetNumberOfPoints() > 0);
@@ -392,7 +392,7 @@ void PickManager::activate(const QString& domain, const QString& uuid, PickMode 
         m_lineNodeActor->SetVisibility(show);
     }
 
-    // 只标脏一次，统一 rebuild/render
+           // 只标脏一次，统一 rebuild/render
     if (mode == PickMode::Node)
         markDirty(DirtyNode);
     if (mode == PickMode::Edge)
@@ -449,7 +449,7 @@ void PickManager::deactivate(const QString& domain, const QString& uuid, PickMod
     clearPreviewSelection(domain, uuid, PickMode::Edge);
     clearPreviewSelection(domain, uuid, PickMode::Face);
 
-    // 释放 overlay 内容（避免长时间占内存）
+           // 释放 overlay 内容（避免长时间占内存）
     if (m_selPts)
     {
         m_selPts->Reset();
@@ -513,7 +513,7 @@ void PickManager::setupPicking()
 
     teardownPicking();
 
-    // 全装，逻辑在回调里分流：不按Shift拖拽=相机；Shift拖拽=框选
+           // 全装，逻辑在回调里分流：不按Shift拖拽=相机；Shift拖拽=框选
     m_leftPressTag = iren->AddObserver(vtkCommand::LeftButtonPressEvent, m_cbLeftPress, 1.0);
     m_leftReleaseTag = iren->AddObserver(vtkCommand::LeftButtonReleaseEvent, m_cbLeftRelease, 1.0);
     m_mouseMoveTag = iren->AddObserver(vtkCommand::MouseMoveEvent, m_cbMouseMove, 1.0);
@@ -760,7 +760,7 @@ bool PickManager::pickAt(int x, int y)
         return true;
     }
 
-    // Node：在 cell 顶点里找最近 pid
+           // Node：在 cell 顶点里找最近 pid
     vtkIdList* ids = cell->GetPointIds();
     if (!ids || ids->GetNumberOfIds() <= 0)
         return false;
@@ -874,7 +874,7 @@ void PickManager::toggleSelectNode(GridKind kind, vtkIdType pid)
         mySet.insert(pid);
     }
 
-    // 发信号（单点选）
+           // 发信号（单点选）
     vtkUnstructuredGrid* grid = (kind == GridKind::Solid) ? m_gridSolid : m_gridLine;
     vtkIntArray* nodeIdArr = (kind == GridKind::Solid) ? m_nodeIdArrSolid : m_nodeIdArrLine;
     if (!nodeIdArr && grid)
@@ -902,7 +902,7 @@ void PickManager::rebuildPointsForActive()
 
     m_selPts->Reset();
 
-    // 预估点数，减少内部扩容
+           // 预估点数，减少内部扩容
     vtkIdType approx = 0;
     if (m_gridSolid)
         approx += m_pointsSolidByDomainUuid.value(m_currentDomain).value(m_currentUUid).size();
@@ -957,7 +957,7 @@ bool PickManager::computePickedEdge(vtkUnstructuredGrid* grid, vtkIdType cellId,
 
     const int dim = cell->GetCellDimension();
 
-    // 1D：整条线就是 edge
+           // 1D：整条线就是 edge
     if (dim == 1)
     {
         vtkIdList* ids = cell->GetPointIds();
@@ -1151,7 +1151,7 @@ void PickManager::rebuildEdgePolyForActive()
     const auto setS = m_edgesSolidByDomainUuid.value(m_currentDomain).value(m_currentUUid);
     const auto setL = m_edgesLineByDomainUuid.value(m_currentDomain).value(m_currentUUid);
 
-    // 预估：每条边至少2点
+           // 预估：每条边至少2点
     vtkIdType approxPts = vtkIdType(setS.size() + setL.size()) * 2;
     if (approxPts > 0)
         m_edgePts->Allocate(approxPts);
@@ -1231,7 +1231,7 @@ bool PickManager::computePickedFace(vtkUnstructuredGrid* grid, vtkIdType cellId,
 
     const int dim = cell->GetCellDimension();
 
-    // 2D：整片就是 face
+           // 2D：整片就是 face
     if (dim == 2)
     {
         vtkIdList* ids = cell->GetPointIds();
@@ -1268,9 +1268,9 @@ bool PickManager::computePickedFace(vtkUnstructuredGrid* grid, vtkIdType cellId,
         QVector<double> pts(npts * 3);
 
         double bounds[6] = {
-            +std::numeric_limits<double>::max(), -std::numeric_limits<double>::max(),
-            +std::numeric_limits<double>::max(), -std::numeric_limits<double>::max(),
-            +std::numeric_limits<double>::max(), -std::numeric_limits<double>::max()};
+                            +std::numeric_limits<double>::max(), -std::numeric_limits<double>::max(),
+                            +std::numeric_limits<double>::max(), -std::numeric_limits<double>::max(),
+                            +std::numeric_limits<double>::max(), -std::numeric_limits<double>::max()};
 
         for (int i = 0; i < npts; ++i)
         {
@@ -1349,7 +1349,7 @@ bool PickManager::computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType 
     for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
         pickedOrigPids.insert(vtkIdType(origPointArr->GetTuple1(ids->GetId(i))));
 
-    // 2D 原单元没有 faces：整片即一个“face”(localId=15)
+           // 2D 原单元没有 faces：整片即一个“face”(localId=15)
     if (origCell->GetCellDimension() == 2)
     {
         vtkIdList* cids = origCell->GetPointIds();
@@ -1448,7 +1448,7 @@ void PickManager::rebuildFacePolyForActive()
     const auto setS = m_facesSolidByDomainUuid.value(m_currentDomain).value(m_currentUUid);
     const auto setL = m_facesLineByDomainUuid.value(m_currentDomain).value(m_currentUUid);
 
-    // 粗略预估：每个面至少3点
+           // 粗略预估：每个面至少3点
     vtkIdType approxPts = vtkIdType(setS.size() + setL.size()) * 3;
     if (approxPts > 0)
         m_facePts->Allocate(approxPts);
@@ -1994,7 +1994,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
     if (!m_visual || !m_visual->renderer() || !m_hwSelector)
         return false;
 
-    // 目前只支持节点/面的框选；线(Edge)框选关闭，避免误选。
+           // 目前只支持节点/面的框选；线(Edge)框选关闭，避免误选。
     if (m_pickMode == PickMode::Edge)
         return false;
 
@@ -2065,62 +2065,6 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
         const int sy = int(std::lround(dp[1]));
         return sx >= xmin && sx <= xmax && sy >= ymin && sy <= ymax;
     };
-    auto edgeMidpointInRect = [&](vtkUnstructuredGrid* grid, vtkIdType cellId, int edgeLocalId) -> bool
-    {
-        if (!grid || cellId < 0 || cellId >= grid->GetNumberOfCells())
-            return false;
-        vtkCell* cell = grid->GetCell(cellId);
-        if (!cell)
-            return false;
-        vtkCell* e = nullptr;
-        if (cell->GetCellDimension() == 1 || edgeLocalId == 15)
-            e = cell;
-        else if (edgeLocalId >= 0 && edgeLocalId < cell->GetNumberOfEdges())
-            e = cell->GetEdge(edgeLocalId);
-        if (!e)
-            return false;
-        vtkIdList* ids = e->GetPointIds();
-        if (!ids || ids->GetNumberOfIds() < 2)
-            return false;
-        double p0[3] = {0, 0, 0};
-        double p1[3] = {0, 0, 0};
-        grid->GetPoint(ids->GetId(0), p0);
-        grid->GetPoint(ids->GetId(1), p1);
-        double mid[3] = {(p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5, (p0[2] + p1[2]) * 0.5};
-        return worldPointInRect(mid);
-    };
-    auto faceCenterInRect = [&](vtkUnstructuredGrid* grid, vtkIdType cellId, int faceLocalId) -> bool
-    {
-        if (!grid || cellId < 0 || cellId >= grid->GetNumberOfCells())
-            return false;
-        vtkCell* cell = grid->GetCell(cellId);
-        if (!cell)
-            return false;
-        vtkCell* f = nullptr;
-        if (cell->GetCellDimension() == 2 || faceLocalId == 15)
-            f = cell;
-        else if (faceLocalId >= 0 && faceLocalId < cell->GetNumberOfFaces())
-            f = cell->GetFace(faceLocalId);
-        if (!f)
-            return false;
-        vtkIdList* ids = f->GetPointIds();
-        if (!ids || ids->GetNumberOfIds() <= 0)
-            return false;
-        double c[3] = {0, 0, 0};
-        for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
-        {
-            double p[3] = {0, 0, 0};
-            grid->GetPoint(ids->GetId(i), p);
-            c[0] += p[0];
-            c[1] += p[1];
-            c[2] += p[2];
-        }
-        const double denom = double(ids->GetNumberOfIds());
-        c[0] /= denom;
-        c[1] /= denom;
-        c[2] /= denom;
-        return worldPointInRect(c);
-    };
 
     for (unsigned int i = 0; i < sel->GetNumberOfNodes(); ++i)
     {
@@ -2169,79 +2113,10 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
 
         if (m_pickMode == PickMode::Edge)
         {
-            vtkDataArray* origCellArr = nullptr;
-            if (kind == GridKind::Line && pickedDs && pickedDs != m_gridLine)
-                origCellArr =
-                    findArray(pickedDs->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
 
-            for (vtkIdType j = 0; j < selIds->GetNumberOfTuples(); ++j)
-            {
-                vtkIdType cellId = vtkIdType(selIds->GetComponent(j, 0));
-                if (origCellArr && cellId >= 0 && cellId < origCellArr->GetNumberOfTuples())
-                    cellId = vtkIdType(origCellArr->GetTuple1(cellId));
-
-                if (kind == GridKind::Line)
-                {
-                    setEdgeSelected_NoRefresh(kind, packEdgeKey(cellId, 0), !deselect);
-                    changed = true;
-                }
-                else if (kind == GridKind::Solid && pickedDs)
-                {
-                    vtkCell* pickedCell = pickedDs->GetCell(cellId);
-                    if (!pickedCell)
-                        continue;
-
-                    vtkIdList* pids = pickedCell->GetPointIds();
-                    if (!pids || pids->GetNumberOfIds() < 2)
-                        continue;
-
-                    double pickPos[3] = {0.0, 0.0, 0.0};
-                    for (vtkIdType pi = 0; pi < pids->GetNumberOfIds(); ++pi)
-                    {
-                        double p[3] = {0.0, 0.0, 0.0};
-                        pickedDs->GetPoint(pids->GetId(pi), p);
-                        pickPos[0] += p[0];
-                        pickPos[1] += p[1];
-                        pickPos[2] += p[2];
-                    }
-                    const double denom = double(pids->GetNumberOfIds());
-                    pickPos[0] /= denom;
-                    pickPos[1] /= denom;
-                    pickPos[2] /= denom;
-
-                    vtkIdType origCellId = -1;
-                    int origEdgeLocalId = 15;
-                    if (computePickedEdgeFromBoundary(pickedDs, cellId, pickPos, origCellId,
-                                                      origEdgeLocalId))
-                    {
-                        if (edgeMidpointInRect(m_gridSolid, origCellId, origEdgeLocalId))
-                        {
-                            setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, origEdgeLocalId),
-                                                      !deselect);
-                            changed = true;
-                        }
-                    }
-                    else if (pickedDs == m_gridSolid)
-                    {
-                        vtkCell* solidCell = m_gridSolid->GetCell(cellId);
-                        if (!solidCell)
-                            continue;
-                        const int nEdges = solidCell->GetNumberOfEdges();
-                        for (int ei = 0; ei < nEdges; ++ei)
-                        {
-                            if (!edgeMidpointInRect(m_gridSolid, cellId, ei))
-                                continue;
-                            setEdgeSelected_NoRefresh(kind, packEdgeKey(cellId, ei), !deselect);
-                            changed = true;
-                        }
-                    }
-                }
-            }
-            dirtyBits |= DirtyEdge;
-            continue;
         }
 
-        // PickMode::Face：仅支持 Solid（显示来自 surface filter），排除 lineGrid
+               // PickMode::Face：仅支持 Solid（显示来自 surface filter），排除 lineGrid
         for (vtkIdType j = 0; j < selIds->GetNumberOfTuples(); ++j)
         {
             const vtkIdType pickedCellId = vtkIdType(selIds->GetComponent(j, 0));
@@ -2256,12 +2131,10 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
 
                 auto* mapper = vtkMapper::SafeDownCast(vtkActor::SafeDownCast(prop)->GetMapper());
 
-                if (faceCenterInRect(m_gridSolid, origCellId, origFaceLocalId))
-                {
-                    setFaceSelected_NoRefresh(kind, packFaceKey(origCellId, origFaceLocalId),
-                                              !deselect);
-                    changed = true;
-                }
+                setFaceSelected_NoRefresh(kind, packFaceKey(origCellId, origFaceLocalId),
+                                          !deselect);
+                changed = true;
+
             }
             else if (pickedDs == m_gridSolid)
             {
@@ -2270,19 +2143,14 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                     continue;
                 if (solidCell->GetCellDimension() == 2)
                 {
-                    if (faceCenterInRect(m_gridSolid, pickedCellId, 15))
-                    {
-                        setFaceSelected_NoRefresh(kind, packFaceKey(pickedCellId, 15), !deselect);
-                        changed = true;
-                    }
+                    setFaceSelected_NoRefresh(kind, packFaceKey(pickedCellId, 15), !deselect);
+                    changed = true;
                     continue;
                 }
 
                 const int nFaces = solidCell->GetNumberOfFaces();
                 for (int fi = 0; fi < nFaces; ++fi)
                 {
-                    if (!faceCenterInRect(m_gridSolid, pickedCellId, fi))
-                        continue;
                     setFaceSelected_NoRefresh(kind, packFaceKey(pickedCellId, fi), !deselect);
                     changed = true;
                 }
@@ -2450,7 +2318,7 @@ void PickManager::rebuildLineNodeOverlayAll()
         return;
     }
 
-    // 直接引用 points（不复制）
+           // 直接引用 points（不复制）
     m_lineNodePoly->SetPoints(m_gridLine->GetPoints());
     m_lineNodePoly->Modified();
 
@@ -2528,8 +2396,8 @@ QVector<vtkIdType> PickManager::getSelectedPointIds(const QString& domain, const
                                                     GridKind kind) const
 {
     const QSet<vtkIdType> set = (kind == GridKind::Solid)
-                                    ? m_pointsSolidByDomainUuid.value(domain).value(uuid)
-                                    : m_pointsLineByDomainUuid.value(domain).value(uuid);
+    ? m_pointsSolidByDomainUuid.value(domain).value(uuid)
+    : m_pointsLineByDomainUuid.value(domain).value(uuid);
 
     QVector<vtkIdType> out;
     out.reserve(set.size());
@@ -2554,8 +2422,8 @@ QVector<vtkIdType> PickManager::getIdList(const QString& domain, const QString& 
     if (mode == PickMode::Node)
     {
         const QSet<vtkIdType> set = (kind == GridKind::Solid)
-                                        ? m_pointsSolidByDomainUuid.value(domain).value(uuid)
-                                        : m_pointsLineByDomainUuid.value(domain).value(uuid);
+        ? m_pointsSolidByDomainUuid.value(domain).value(uuid)
+        : m_pointsLineByDomainUuid.value(domain).value(uuid);
 
         out.reserve(set.size());
 
@@ -2580,8 +2448,8 @@ QVector<vtkIdType> PickManager::getIdList(const QString& domain, const QString& 
     if (mode == PickMode::Edge)
     {
         const QSet<vtkIdType> set = (kind == GridKind::Solid)
-                                        ? m_edgesSolidByDomainUuid.value(domain).value(uuid)
-                                        : m_edgesLineByDomainUuid.value(domain).value(uuid);
+        ? m_edgesSolidByDomainUuid.value(domain).value(uuid)
+        : m_edgesLineByDomainUuid.value(domain).value(uuid);
 
         out.reserve(set.size());
         for (vtkIdType k : set)
@@ -2592,8 +2460,8 @@ QVector<vtkIdType> PickManager::getIdList(const QString& domain, const QString& 
     if (mode == PickMode::Face)
     {
         const QSet<vtkIdType> set = (kind == GridKind::Solid)
-                                        ? m_facesSolidByDomainUuid.value(domain).value(uuid)
-                                        : m_facesLineByDomainUuid.value(domain).value(uuid);
+        ? m_facesSolidByDomainUuid.value(domain).value(uuid)
+        : m_facesLineByDomainUuid.value(domain).value(uuid);
 
         out.reserve(set.size());
         for (vtkIdType k : set)
