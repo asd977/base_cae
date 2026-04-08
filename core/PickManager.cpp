@@ -349,8 +349,6 @@ void PickManager::updateStructure()
     if (!m_solidProp && m_visual)
         m_solidProp = m_visual->getProp("mesh.global.surf");
     m_lineProp = m_visual ? m_visual->getProp("mesh.imported.line") : nullptr;
-    if (!m_lineProp && m_visual)
-        m_lineProp = m_visual->getProp("mesh.global.wire");
     m_solidPickDataSet = dataSetFromProp(m_solidProp);
     m_linePickDataSet = dataSetFromProp(m_lineProp);
 
@@ -665,15 +663,15 @@ bool PickManager::pickAt(int x, int y)
     {
         if (!p || !m_visual)
             return false;
-        return p == m_lineProp || p == m_visual->getProp("mesh.imported.line") ||
-               p == m_visual->getProp("mesh.global.wire");
+        return p == m_lineProp || p == m_visual->getProp("mesh.imported.line");
     };
     auto isSolidProp = [&](vtkProp* p) -> bool
     {
         if (!p || !m_visual)
             return false;
         return p == m_solidProp || p == m_visual->getProp("mesh.imported.surface") ||
-               p == m_visual->getProp("mesh.global.surf");
+               p == m_visual->getProp("mesh.global.surf") ||
+               p == m_visual->getProp("mesh.global.wire");
     };
 
     const bool isLine = isLineProp(pickedProp);
@@ -2063,10 +2061,10 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
         vtkDataSet* pickedDs = dataSetFromProp(prop);
         const bool solidProp = (m_visual &&
                                 (prop == m_solidProp || prop == m_visual->getProp("mesh.imported.surface") ||
-                                 prop == m_visual->getProp("mesh.global.surf")));
+                                 prop == m_visual->getProp("mesh.global.surf") ||
+                                 prop == m_visual->getProp("mesh.global.wire")));
         const bool lineProp = (m_visual &&
-                               (prop == m_lineProp || prop == m_visual->getProp("mesh.imported.line") ||
-                                prop == m_visual->getProp("mesh.global.wire")));
+                               (prop == m_lineProp || prop == m_visual->getProp("mesh.imported.line")));
 
         if (solidProp)
             kind = GridKind::Solid;
