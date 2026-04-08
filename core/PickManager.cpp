@@ -573,8 +573,9 @@ void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clie
     const bool shiftBox = iren->GetShiftKey() != 0;
     const bool ctrlBox = iren->GetControlKey() != 0;
     self->m_dragUseBox =
-        ((self->m_pickMode == PickMode::Node || self->m_pickMode == PickMode::Face) &&
-         (shiftBox || ctrlBox));
+        ((self->m_pickMode == PickMode::Node || self->m_pickMode == PickMode::Edge ||
+          self->m_pickMode == PickMode::Face) &&
+         self->isBoxSelectEnabledForActive() && (shiftBox || ctrlBox));
     self->m_dragBoxDeselect = ctrlBox;
     if (!self->m_dragUseBox)
     {
@@ -2040,7 +2041,7 @@ bool PickManager::isBoxSelectEnabledForActive() const
 {
     if (m_currentDomain.isEmpty() || m_currentUUid.isEmpty())
         return false;
-    return m_boxSelectEnabledByDomainUuid.value(m_currentDomain).value(m_currentUUid, false);
+    return m_boxSelectEnabledByDomainUuid.value(m_currentDomain).value(m_currentUUid, true);
 }
 
 void PickManager::updateDragRect(int x0, int y0, int x1, int y1, bool visible)
@@ -2140,7 +2141,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
         rw->Render();
 
     m_hwSelector->SetRenderer(ren);
-    if (m_pickMode == PickMode::Face)
+    if (m_pickMode == PickMode::Face || m_pickMode == PickMode::Edge)
         m_hwSelector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_CELLS);
     else
         m_hwSelector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_POINTS);
