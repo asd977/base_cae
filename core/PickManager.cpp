@@ -73,6 +73,13 @@ static inline double dist2PointToSegment(const double x[3], const double a[3], c
     return vtkMath::Distance2BetweenPoints(x, closest);
 }
 
+static inline quint64 makeEdgePairKey(vtkIdType a, vtkIdType b)
+{
+    const quint32 lo = quint32(std::min(a, b));
+    const quint32 hi = quint32(std::max(a, b));
+    return (quint64(hi) << 32) | quint64(lo);
+}
+
 PickManager& PickManager::instance()
 {
     static PickManager s;
@@ -356,6 +363,7 @@ void PickManager::updateStructure()
     m_lineProp = m_visual ? m_visual->getProp("mesh.imported.line") : nullptr;
     m_solidPickDataSet = dataSetFromProp(m_solidProp);
     m_linePickDataSet = dataSetFromProp(m_lineProp);
+    rebuildEdgeCanonicalCache();
 
     if (m_gridLine)
         rebuildLineNodeOverlayAll();
@@ -1022,6 +1030,102 @@ bool PickManager::computePickedEdge(vtkUnstructuredGrid* grid, vtkIdType cellId,
     return true;
 }
 
+void PickManager::rebuildEdgeCanonicalCache()
+{
+    m_solidCanonicalEdgeByPointPair.clear();
+    m_lineCanonicalEdgeByPointPair.clear();
+
+    auto buildOne = [this](vtkUnstructuredGrid* grid, QHash<quint64, vtkIdType>& outMap)
+    {
+        if (!grid)
+            return;
+        for (vtkIdType cid = 0; cid < grid->GetNumberOfCells(); ++cid)
+        {
+            vtkCell* cell = grid->GetCell(cid);
+            if (!cell)
+                continue;
+
+            const int dim = cell->GetCellDimension();
+            if (dim == 1)
+            {
+                auto* ids = cell->GetPointIds();
+                if (!ids || ids->GetNumberOfIds() < 2)
+                    continue;
+                const vtkIdType edgeKey = packEdgeKey(cid, 15);
+                const quint64 pairKey = makeEdgePairKey(ids->GetId(0), ids->GetId(ids->GetNumberOfIds() - 1));
+                auto it = outMap.find(pairKey);
+                if (it == outMap.end() || edgeKey < it.value())
+                    outMap[pairKey] = edgeKey;
+                continue;
+            }
+
+            const int nEdges = cell->GetNumberOfEdges();
+            for (int ei = 0; ei < nEdges; ++ei)
+            {
+                vtkCell* e = cell->GetEdge(ei);
+                if (!e)
+                    continue;
+                auto* ids = e->GetPointIds();
+                if (!ids || ids->GetNumberOfIds() < 2)
+                    continue;
+                const vtkIdType edgeKey = packEdgeKey(cid, ei);
+                const quint64 pairKey = makeEdgePairKey(ids->GetId(0), ids->GetId(ids->GetNumberOfIds() - 1));
+                auto it = outMap.find(pairKey);
+                if (it == outMap.end() || edgeKey < it.value())
+                    outMap[pairKey] = edgeKey;
+            }
+        }
+    };
+
+    buildOne(m_gridSolid, m_solidCanonicalEdgeByPointPair);
+    buildOne(m_gridLine, m_lineCanonicalEdgeByPointPair);
+}
+
+vtkIdType PickManager::canonicalizeEdgeKey(GridKind kind, vtkIdType edgeKey) const
+{
+    vtkUnstructuredGrid* grid = (kind == GridKind::Solid) ? m_gridSolid : m_gridLine;
+    const auto& canonicalMap =
+        (kind == GridKind::Solid) ? m_solidCanonicalEdgeByPointPair : m_lineCanonicalEdgeByPointPair;
+    if (!grid || canonicalMap.isEmpty())
+        return edgeKey;
+
+    const vtkIdType cid = unpackEdgeCellId(edgeKey);
+    const int ei = unpackEdgeLocalId(edgeKey);
+    if (cid < 0 || cid >= grid->GetNumberOfCells())
+        return edgeKey;
+
+    vtkCell* cell = grid->GetCell(cid);
+    if (!cell)
+        return edgeKey;
+
+    vtkIdType a = -1;
+    vtkIdType b = -1;
+    if (cell->GetCellDimension() == 1 || ei == 15)
+    {
+        auto* ids = cell->GetPointIds();
+        if (!ids || ids->GetNumberOfIds() < 2)
+            return edgeKey;
+        a = ids->GetId(0);
+        b = ids->GetId(ids->GetNumberOfIds() - 1);
+    }
+    else
+    {
+        if (ei < 0 || ei >= cell->GetNumberOfEdges())
+            return edgeKey;
+        vtkCell* e = cell->GetEdge(ei);
+        if (!e)
+            return edgeKey;
+        auto* ids = e->GetPointIds();
+        if (!ids || ids->GetNumberOfIds() < 2)
+            return edgeKey;
+        a = ids->GetId(0);
+        b = ids->GetId(ids->GetNumberOfIds() - 1);
+    }
+
+    const quint64 pairKey = makeEdgePairKey(a, b);
+    return canonicalMap.value(pairKey, edgeKey);
+}
+
 bool PickManager::computePickedEdgeFromBoundary(vtkDataSet* pickedDs, vtkIdType pickedCellId,
                                                 const double pickPos[3],
                                                 vtkIdType& outOrigCellId,
@@ -1103,6 +1207,7 @@ void PickManager::toggleSelectEdge(GridKind kind, vtkIdType edgeKey)
     const QString dom = m_currentDomain;
     const QString uid = m_currentUUid;
 
+    edgeKey = canonicalizeEdgeKey(kind, edgeKey);
     auto& owners =
         (kind == GridKind::Solid) ? m_ownerEdgeSolidByDomain[dom] : m_ownerEdgeLineByDomain[dom];
     auto& uuid2set =
@@ -1676,6 +1781,7 @@ void PickManager::setSelectedEdgeKeys(const QString& domain, const QString& uuid
 
     for (vtkIdType edgeKey : edgeKeys)
     {
+        edgeKey = canonicalizeEdgeKey(kind, edgeKey);
         if (mySet.contains(edgeKey))
             continue;
         const QString oldUid = owners.value(edgeKey);
@@ -1780,7 +1886,10 @@ void PickManager::setPreviewEdgeKeys(const QString& domain, const QString& uuid,
     auto& mp = (kind == GridKind::Solid) ? m_previewEdgesSolidByDomainUuid : m_previewEdgesLineByDomainUuid;
     QSet<vtkIdType> s;
     for (auto id : edgeKeys)
+    {
+        id = canonicalizeEdgeKey(kind, id);
         s.insert(id);
+    }
     mp[domain][uuid] = s;
     if (domain != m_currentDomain || uuid != m_currentUUid || m_pickMode != PickMode::Edge)
         return;
@@ -1994,10 +2103,6 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
     if (!m_visual || !m_visual->renderer() || !m_hwSelector)
         return false;
 
-           // 目前只支持节点/面的框选；线(Edge)框选关闭，避免误选。
-    if (m_pickMode == PickMode::Edge)
-        return false;
-
     auto* ren = m_visual->renderer();
     const int xmin = std::min(x0, x1);
     const int xmax = std::max(x0, x1);
@@ -2113,7 +2218,133 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
 
         if (m_pickMode == PickMode::Edge)
         {
+            if (!pickedDs)
+                continue;
 
+            auto edgeInRect = [&](const QVector<vtkIdType>& pids) -> bool
+            {
+                if (pids.size() < 2)
+                    return false;
+
+                for (vtkIdType pid : pids)
+                {
+                    double p[3];
+                    pickedDs->GetPoint(pid, p);
+                    if (worldPointInRect(p))
+                        return true;
+                }
+
+                for (int si = 0; si + 1 < pids.size(); ++si)
+                {
+                    double p0[3], p1[3], pm[3];
+                    pickedDs->GetPoint(pids[si], p0);
+                    pickedDs->GetPoint(pids[si + 1], p1);
+                    pm[0] = 0.5 * (p0[0] + p1[0]);
+                    pm[1] = 0.5 * (p0[1] + p1[1]);
+                    pm[2] = 0.5 * (p0[2] + p1[2]);
+                    if (worldPointInRect(pm))
+                        return true;
+                }
+                return false;
+            };
+
+            for (vtkIdType j = 0; j < selIds->GetNumberOfTuples(); ++j)
+            {
+                const vtkIdType pickedCellId = vtkIdType(selIds->GetComponent(j, 0));
+                vtkCell* cell = pickedDs->GetCell(pickedCellId);
+                if (!cell)
+                    continue;
+
+                // Solid surface pick dataset（来自 boundary filter）：需要映射回原始体单元 edgeLocalId。
+                if (kind == GridKind::Solid && pickedDs != m_gridSolid)
+                {
+                    auto* origCellArr = findArray(pickedDs->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
+                    auto* origPointArr =
+                        findArray(pickedDs->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
+                    if (!origCellArr || !origPointArr)
+                        continue;
+
+                    const vtkIdType origCellId = vtkIdType(origCellArr->GetTuple1(pickedCellId));
+                    vtkCell* origCell = m_gridSolid ? m_gridSolid->GetCell(origCellId) : nullptr;
+                    if (!origCell)
+                        continue;
+
+                    vtkIdList* ids = cell->GetPointIds();
+                    if (!ids || ids->GetNumberOfIds() < 2)
+                        continue;
+                    const vtkIdType nIds = ids->GetNumberOfIds();
+                    const bool closedLoop = (cell->GetCellDimension() > 1);
+                    const vtkIdType nSegs = closedLoop ? nIds : (nIds - 1);
+                    for (vtkIdType si = 0; si < nSegs; ++si)
+                    {
+                        const vtkIdType pa = ids->GetId(si);
+                        const vtkIdType pb = ids->GetId((si + 1) % nIds);
+
+                        QVector<vtkIdType> segPids;
+                        segPids << pa << pb;
+                        if (!edgeInRect(segPids))
+                            continue;
+
+                        const vtkIdType a = vtkIdType(origPointArr->GetTuple1(pa));
+                        const vtkIdType b = vtkIdType(origPointArr->GetTuple1(pb));
+                        const int nEdges = origCell->GetNumberOfEdges();
+                        for (int ei = 0; ei < nEdges; ++ei)
+                        {
+                            vtkCell* e = origCell->GetEdge(ei);
+                            if (!e)
+                                continue;
+                            vtkIdList* eids = e->GetPointIds();
+                            if (!eids || eids->GetNumberOfIds() < 2)
+                                continue;
+                            const vtkIdType e0 = eids->GetId(0);
+                            const vtkIdType e1 = eids->GetId(eids->GetNumberOfIds() - 1);
+                            if ((e0 == a && e1 == b) || (e0 == b && e1 == a))
+                            {
+                                setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, ei),
+                                                          !deselect);
+                                changed = true;
+                                break;
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                if (cell->GetCellDimension() == 1)
+                {
+                    QVector<vtkIdType> pids;
+                    vtkIdList* ids = cell->GetPointIds();
+                    if (!ids || ids->GetNumberOfIds() < 2)
+                        continue;
+                    for (vtkIdType k = 0; k < ids->GetNumberOfIds(); ++k)
+                        pids.push_back(ids->GetId(k));
+                    if (!edgeInRect(pids))
+                        continue;
+                    setEdgeSelected_NoRefresh(kind, packEdgeKey(pickedCellId, 15), !deselect);
+                    changed = true;
+                    continue;
+                }
+
+                const int nEdges = cell->GetNumberOfEdges();
+                for (int ei = 0; ei < nEdges; ++ei)
+                {
+                    vtkCell* e = cell->GetEdge(ei);
+                    if (!e)
+                        continue;
+                    vtkIdList* eids = e->GetPointIds();
+                    if (!eids || eids->GetNumberOfIds() < 2)
+                        continue;
+                    QVector<vtkIdType> pids;
+                    for (vtkIdType k = 0; k < eids->GetNumberOfIds(); ++k)
+                        pids.push_back(eids->GetId(k));
+                    if (!edgeInRect(pids))
+                        continue;
+                    setEdgeSelected_NoRefresh(kind, packEdgeKey(pickedCellId, ei), !deselect);
+                    changed = true;
+                }
+            }
+            dirtyBits |= DirtyEdge;
+            continue;
         }
 
                // PickMode::Face：仅支持 Solid（显示来自 surface filter），排除 lineGrid
@@ -2220,6 +2451,7 @@ void PickManager::setEdgeSelected_NoRefresh(GridKind kind, vtkIdType edgeKey, bo
     const QString dom = m_currentDomain;
     const QString uid = m_currentUUid;
 
+    edgeKey = canonicalizeEdgeKey(kind, edgeKey);
     auto& owners =
         (kind == GridKind::Solid) ? m_ownerEdgeSolidByDomain[dom] : m_ownerEdgeLineByDomain[dom];
     auto& uuid2set =

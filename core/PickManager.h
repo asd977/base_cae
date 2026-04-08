@@ -146,6 +146,8 @@ class CORE_EXPORT PickManager : public QObject
     // ---- edge ----
     void toggleSelectEdge(GridKind kind, vtkIdType edgeKey);
     void rebuildEdgePolyForActive();
+    void rebuildEdgeCanonicalCache();
+    vtkIdType canonicalizeEdgeKey(GridKind kind, vtkIdType edgeKey) const;
     bool computePickedEdge(vtkUnstructuredGrid* grid, vtkIdType cellId, const double pickPos[3],
                            int& outEdgeLocalId, QVector<vtkIdType>& outEdgePids) const;
     bool computePickedEdgeFromBoundary(vtkDataSet* pickedDs, vtkIdType pickedCellId,
@@ -229,6 +231,8 @@ class CORE_EXPORT PickManager : public QObject
     // ============ mesh cache ============
     vtkUnstructuredGrid* m_gridSolid = nullptr;
     vtkUnstructuredGrid* m_gridLine = nullptr;
+    QHash<quint64, vtkIdType> m_solidCanonicalEdgeByPointPair;
+    QHash<quint64, vtkIdType> m_lineCanonicalEdgeByPointPair;
 
     vtkIntArray* m_nodeIdArrSolid = nullptr;
     vtkIntArray* m_elemIdArrSolid = nullptr;
