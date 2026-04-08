@@ -666,17 +666,15 @@ bool PickManager::pickAt(int x, int y)
     vtkProp* pickedProp = m_cellPicker->GetViewProp();
     auto isLineProp = [&](vtkProp* p) -> bool
     {
-        if (!p || !m_visual)
+        if (!p)
             return false;
-        return p == m_lineProp || p == m_visual->getProp("mesh.imported.line");
+        return p == m_lineProp;
     };
     auto isSolidProp = [&](vtkProp* p) -> bool
     {
-        if (!p || !m_visual)
+        if (!p)
             return false;
-        return p == m_solidProp || p == m_visual->getProp("mesh.imported.surface") ||
-               p == m_visual->getProp("mesh.global.surf") ||
-               p == m_visual->getProp("mesh.global.wire");
+        return p == m_solidProp;
     };
 
     const bool isLine = isLineProp(pickedProp);
@@ -2132,12 +2130,8 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
 
         GridKind kind;
         vtkDataSet* pickedDs = dataSetFromProp(prop);
-        const bool solidProp = (m_visual &&
-                                (prop == m_solidProp || prop == m_visual->getProp("mesh.imported.surface") ||
-                                 prop == m_visual->getProp("mesh.global.surf") ||
-                                 prop == m_visual->getProp("mesh.global.wire")));
-        const bool lineProp = (m_visual &&
-                               (prop == m_lineProp || prop == m_visual->getProp("mesh.imported.line")));
+        const bool solidProp = (prop == m_solidProp);
+        const bool lineProp = (prop == m_lineProp);
 
         if (solidProp)
             kind = GridKind::Solid;
