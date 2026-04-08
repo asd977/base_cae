@@ -10,6 +10,7 @@
 #include <vtkCell.h>
 #include <vtkCellPicker.h>
 #include <vtkDataSetMapper.h>
+#include <vtkDataSet.h>
 #include <vtkDataSetSurfaceFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkGeometryFilter.h>
@@ -233,13 +234,45 @@ void LoadSpecificationWidget::setupSurfaceAndPicker()
     if (!m_visual || !m_volumeGrid || !m_renderer || !m_interactor)
         return;
 
-    // ---------- 1) 生成外表面，并拷贝到持久对象里（关键修复点） ----------
-    auto surfFilter = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-    surfFilter->SetInputData(m_volumeGrid);
-    surfFilter->Update();
+    // ---------- 1) 优先复用当前可视化里正在显示的表面数据 ----------
+    vtkActor* sourceSurfaceActor = nullptr;
+    vtkDataSet* sourceSurfaceDataSet = nullptr;
+    const QStringList surfacePropIds = {QStringLiteral("mesh.imported.surface"),
+                                        QStringLiteral("mesh.global.surf")};
+    for (const QString& propId : surfacePropIds)
+    {
+        vtkProp* prop = m_visual->getProp(propId);
+        auto* actor = vtkActor::SafeDownCast(prop);
+        if (!actor)
+            continue;
+        auto* mapper = vtkDataSetMapper::SafeDownCast(actor->GetMapper());
+        if (!mapper || !mapper->GetInput())
+            continue;
+        sourceSurfaceActor = actor;
+        sourceSurfaceDataSet = mapper->GetInput();
+        break;
+    }
 
     m_surface = vtkSmartPointer<vtkPolyData>::New();
-    m_surface->ShallowCopy(surfFilter->GetOutput()); // 关键：脱离 filter 生命周期
+    if (auto* poly = vtkPolyData::SafeDownCast(sourceSurfaceDataSet))
+    {
+        m_surface->ShallowCopy(poly);
+    }
+    else if (sourceSurfaceDataSet)
+    {
+        auto surfFilter = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+        surfFilter->SetInputData(sourceSurfaceDataSet);
+        surfFilter->Update();
+        m_surface->ShallowCopy(surfFilter->GetOutput());
+    }
+    else
+    {
+        // 回退：没有现成表面 actor 时，从体网格提取表面
+        auto surfFilter = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+        surfFilter->SetInputData(m_volumeGrid);
+        surfFilter->Update();
+        m_surface->ShallowCopy(surfFilter->GetOutput());
+    }
 
     if (!m_surface || m_surface->GetNumberOfCells() == 0)
     {
@@ -247,21 +280,30 @@ void LoadSpecificationWidget::setupSurfaceAndPicker()
         return;
     }
 
-    // ---------- 2) 外表面显示 ----------
-    m_surfaceMapper = vtkSmartPointer<vtkDataSetMapper>::New();
-    m_surfaceMapper->SetInputData(m_surface); // 确保 mapper 有输入
-    m_surfaceMapper->ScalarVisibilityOff();
+    // ---------- 2) pick actor：优先复用现有外表面 actor，避免重复生成外表面 ----------
+    m_ownsSurfaceActor = false;
+    if (sourceSurfaceActor)
+    {
+        m_surfaceActor = sourceSurfaceActor;
+    }
+    else
+    {
+        m_surfaceMapper = vtkSmartPointer<vtkDataSetMapper>::New();
+        m_surfaceMapper->SetInputData(m_surface); // 确保 mapper 有输入
+        m_surfaceMapper->ScalarVisibilityOff();
 
-    m_surfaceActor = vtkSmartPointer<vtkActor>::New();
-    m_surfaceActor->SetMapper(m_surfaceMapper);
-    m_surfaceActor->PickableOn();
-    m_surfaceActor->GetProperty()->SetOpacity(0.25);
-    m_surfaceActor->GetProperty()->EdgeVisibilityOn();
-    m_surfaceActor->GetProperty()->SetLineWidth(1.0);
+        m_surfaceActor = vtkSmartPointer<vtkActor>::New();
+        m_surfaceActor->SetMapper(m_surfaceMapper);
+        m_surfaceActor->PickableOn();
+        m_surfaceActor->GetProperty()->SetOpacity(0.25);
+        m_surfaceActor->GetProperty()->EdgeVisibilityOn();
+        m_surfaceActor->GetProperty()->SetLineWidth(1.0);
 
-    m_visual->removeProp(kPickSurfacePropId, false);
-    m_visual->addProp(kPickSurfacePropId, m_surfaceActor, QString("载荷"), QString("可选外表面"),
-                      true, true);
+        m_visual->removeProp(kPickSurfacePropId, false);
+        m_visual->addProp(kPickSurfacePropId, m_surfaceActor, QString("载荷"), QString("可选外表面"),
+                          true, true);
+        m_ownsSurfaceActor = true;
+    }
 
     // ---------- 3) 高亮 actor：先给一个空输入（关键修复点） ----------
     auto emptyPoly = vtkSmartPointer<vtkPolyData>::New();
@@ -319,13 +361,15 @@ void LoadSpecificationWidget::teardownSurfaceAndPicker()
     if (m_visual)
     {
         m_visual->removeProp(kPickHighlightPropId, false);
-        m_visual->removeProp(kPickSurfacePropId, false);
+        if (m_ownsSurfaceActor)
+            m_visual->removeProp(kPickSurfacePropId, false);
         m_visual->render();
     }
 
     m_surface = nullptr;
     m_surfaceMapper = nullptr;
     m_surfaceActor = nullptr;
+    m_ownsSurfaceActor = false;
 
     m_highlightMapper = nullptr;
     m_highlightActor = nullptr;

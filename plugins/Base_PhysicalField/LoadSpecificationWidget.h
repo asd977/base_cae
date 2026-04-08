@@ -68,6 +68,7 @@ class LoadSpecificationWidget : public BasePage
     vtkSmartPointer<vtkPolyData> m_surface;
     vtkSmartPointer<vtkDataSetMapper> m_surfaceMapper;
     vtkSmartPointer<vtkActor> m_surfaceActor;
+    bool m_ownsSurfaceActor = false;
 
     // highlight (选中面片集合 -> 一个 actor)
     QSet<vtkIdType> m_selectedSurfaceCellIds;
