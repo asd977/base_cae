@@ -810,7 +810,7 @@ void MeshModuleController::displayCurrentGrid()
         auto* prop = surfActor->GetProperty();
         prop->SetRepresentationToSurface();
         prop->SetColor(0.85, 0.85, 0.85);
-        // prop->SetSpecular(0.0);
+        prop->SetSpecular(0.0);
         prop->EdgeVisibilityOn();
         prop->SetEdgeColor(0.0, 0.0, 0.0);
         prop->SetLineWidth(1.0);
