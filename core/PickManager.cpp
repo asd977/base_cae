@@ -745,6 +745,9 @@ bool PickManager::pickAt(int x, int y)
 
     vtkIdType bestPid = -1;
     double bestD2 = std::numeric_limits<double>::max();
+    vtkDataArray* origPointArr = nullptr;
+    if (kind == GridKind::Solid && ds && ds != m_gridSolid)
+        origPointArr = findArray(ds->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
 
     for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
     {
@@ -755,7 +758,9 @@ bool PickManager::pickAt(int x, int y)
         if (d2 < bestD2)
         {
             bestD2 = d2;
-            bestPid = pid;
+            bestPid = (origPointArr && pid >= 0 && pid < origPointArr->GetNumberOfTuples())
+                          ? vtkIdType(origPointArr->GetTuple1(pid))
+                          : pid;
         }
     }
     if (bestPid < 0)
@@ -1973,10 +1978,18 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
 
         if (m_pickMode == PickMode::Node)
         {
+            vtkDataArray* origPointArr = nullptr;
+            if (kind == GridKind::Solid && pickedDs && pickedDs != m_gridSolid)
+                origPointArr =
+                    findArray(pickedDs->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
+
             for (vtkIdType j = 0; j < selIds->GetNumberOfTuples(); ++j)
             {
                 const vtkIdType localPid = vtkIdType(selIds->GetComponent(j, 0));
-                setNodeSelected_NoRefresh(kind, localPid, !deselect);
+                vtkIdType pid = localPid;
+                if (origPointArr && localPid >= 0 && localPid < origPointArr->GetNumberOfTuples())
+                    pid = vtkIdType(origPointArr->GetTuple1(localPid));
+                setNodeSelected_NoRefresh(kind, pid, !deselect);
                 changed = true;
             }
             dirtyBits |= DirtyNode;
