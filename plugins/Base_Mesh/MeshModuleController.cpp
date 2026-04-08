@@ -807,8 +807,13 @@ void MeshModuleController::displayCurrentGrid()
 
         auto surfActor = vtkSmartPointer<vtkActor>::New();
         surfActor->SetMapper(mapper);
-        surfActor->GetProperty()->SetRepresentationToSurface();
-        surfActor->GetProperty()->EdgeVisibilityOn();
+        auto* prop = surfActor->GetProperty();
+        prop->SetRepresentationToSurface();
+        prop->SetColor(0.85, 0.85, 0.85);
+        prop->SetSpecular(0.0);
+        prop->EdgeVisibilityOn();
+        prop->SetEdgeColor(0.0, 0.0, 0.0);
+        prop->SetLineWidth(1.0);
 
         m_visualWidgetService->addProp(kMeshSurfId, surfActor, QString("网格"),
                                        QString("导入网格-面/体"), true, true);
@@ -920,7 +925,8 @@ vtkSmartPointer<vtkActor> MeshModuleController::createSurfaceActor(vtkDataSet* g
     actor->SetMapper(mapper);
 
     auto* p = actor->GetProperty();
-    p->SetColor(0.7, 0.7, 0.7);     // 灰色面
+    p->SetColor(0.85, 0.85, 0.85);  // 与几何默认色一致
+    p->SetSpecular(0.0);            // 避免高光导致“发亮”
     p->EdgeVisibilityOn();          // 显示边
     p->SetEdgeColor(0.0, 0.0, 0.0); // 黑色边
     p->SetLineWidth(1.0);
