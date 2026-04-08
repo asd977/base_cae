@@ -11,7 +11,7 @@
 class ProjectNode;
 class VisualWidgetService;
 class vtkActor;
-class vtkDataSetMapper;
+class vtkMapper;
 class vtkDataSet;
 class vtkUnstructuredGrid;
 class GridEditingWidget;
@@ -90,15 +90,15 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     VisualWidgetService* m_visualWidgetService = nullptr;
     GridEditingWidget* m_gridEditingWidget = nullptr;
 
-    vtkSmartPointer<vtkDataSetMapper> m_previewSurfaceMapper;
+    vtkSmartPointer<vtkMapper> m_previewSurfaceMapper;
     vtkSmartPointer<vtkActor> m_previewSurfaceActor;
     vtkSmartPointer<vtkUnstructuredGrid> m_previewSurfaceGrid;
 
-    vtkSmartPointer<vtkDataSetMapper> m_previewLineMapper;
+    vtkSmartPointer<vtkMapper> m_previewLineMapper;
     vtkSmartPointer<vtkActor> m_previewLineActor;
     vtkSmartPointer<vtkUnstructuredGrid> m_previewLineGrid;
 
-    vtkSmartPointer<vtkDataSetMapper> m_previewMapper;
+    vtkSmartPointer<vtkMapper> m_previewMapper;
     QVector<EdgeControlRule> m_edgeRules;
     QVector<FaceControlRule> m_faceRules;
     QVector<VolumeControlRule> m_volumeRules;
