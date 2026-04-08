@@ -26,6 +26,7 @@
 #include <vtkIdList.h>
 #include <vtkIntArray.h>
 #include <vtkLookupTable.h>
+#include <vtkMapper.h>
 #include <vtkPolyData.h>
 #include <vtkPointData.h>
 #include <vtkPoints.h>
@@ -304,7 +305,7 @@ void MeshModuleController::highlightMatypes(const QSet<int>& matypes, int select
             return;
         }
 
-        QList<vtkDataSetMapper*> targetMappers;
+        QList<vtkMapper*> targetMappers;
         if (m_previewSurfaceMapper)
             targetMappers.push_back(m_previewSurfaceMapper);
         if (m_previewLineMapper)
@@ -812,7 +813,7 @@ void MeshModuleController::displayCurrentGrid()
                                        QString("导入网格-面/体"), true, true);
         m_previewSurfaceGrid = nonLineGrid;
         m_previewSurfaceActor = surfActor;
-        m_previewSurfaceMapper = vtkDataSetMapper::SafeDownCast(surfActor->GetMapper());
+        m_previewSurfaceMapper = vtkMapper::SafeDownCast(surfActor->GetMapper());
     }
     else
     {
@@ -828,7 +829,7 @@ void MeshModuleController::displayCurrentGrid()
                                        QString("导入网格-线"), true, true);
         m_previewLineGrid = lineGrid;
         m_previewLineActor = lineActor;
-        m_previewLineMapper = vtkDataSetMapper::SafeDownCast(lineActor->GetMapper());
+        m_previewLineMapper = vtkMapper::SafeDownCast(lineActor->GetMapper());
     }
     else
     {
