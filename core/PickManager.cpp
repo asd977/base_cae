@@ -6,7 +6,6 @@
 #include <services/VisualWidgetService.h>
 
 #include <algorithm>
-#include <cmath>
 #include <limits>
 
 
@@ -18,8 +17,6 @@
 #include <vtkLine.h>
 #include <vtkMapper.h>
 #include <vtkDataSetMapper.h>
-#include <vtkCoordinate.h>
-#include <vtkNew.h>
 #include <vtkFieldData.h>
 #include <vtkMath.h>
 #include <vtkPlane.h>
@@ -2051,41 +2048,6 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
 
     bool changed = false;
     int dirtyBits = DirtyNone;
-    auto cellCenterInRect = [&](vtkDataSet* ds, vtkIdType cid) -> bool
-    {
-        if (!ds)
-            return false;
-        vtkCell* c = ds->GetCell(cid);
-        if (!c)
-            return false;
-        vtkIdList* ids = c->GetPointIds();
-        if (!ids || ids->GetNumberOfIds() <= 0)
-            return false;
-
-        double center[3] = {0.0, 0.0, 0.0};
-        for (vtkIdType pi = 0; pi < ids->GetNumberOfIds(); ++pi)
-        {
-            double p[3] = {0.0, 0.0, 0.0};
-            ds->GetPoint(ids->GetId(pi), p);
-            center[0] += p[0];
-            center[1] += p[1];
-            center[2] += p[2];
-        }
-        const double denom = double(ids->GetNumberOfIds());
-        center[0] /= denom;
-        center[1] /= denom;
-        center[2] /= denom;
-
-        vtkNew<vtkCoordinate> coord;
-        coord->SetCoordinateSystemToWorld();
-        coord->SetValue(center);
-        double* dp = coord->GetComputedDoubleDisplayValue(ren);
-        if (!dp)
-            return false;
-        const int sx = int(std::lround(dp[0]));
-        const int sy = int(std::lround(dp[1]));
-        return sx >= xmin && sx <= xmax && sy >= ymin && sy <= ymax;
-    };
 
     for (unsigned int i = 0; i < sel->GetNumberOfNodes(); ++i)
     {
@@ -2146,8 +2108,6 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
             for (vtkIdType j = 0; j < selIds->GetNumberOfTuples(); ++j)
             {
                 vtkIdType cellId = vtkIdType(selIds->GetComponent(j, 0));
-                if (!cellCenterInRect(pickedDs, cellId))
-                    continue;
                 if (origCellArr && cellId >= 0 && cellId < origCellArr->GetNumberOfTuples())
                     cellId = vtkIdType(origCellArr->GetTuple1(cellId));
 
@@ -2158,37 +2118,66 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                 }
                 else if (kind == GridKind::Solid && pickedDs)
                 {
+                    auto* origCellArrSolid =
+                        findArray(pickedDs->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
+                    auto* origPointArrSolid =
+                        findArray(pickedDs->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
+                    if (!origCellArrSolid || !origPointArrSolid)
+                        continue;
+
+                    if (cellId < 0 || cellId >= origCellArrSolid->GetNumberOfTuples())
+                        continue;
+
+                    const vtkIdType origCellId = vtkIdType(origCellArrSolid->GetTuple1(cellId));
+                    vtkCell* origCell = m_gridSolid ? m_gridSolid->GetCell(origCellId) : nullptr;
                     vtkCell* pickedCell = pickedDs->GetCell(cellId);
-                    if (!pickedCell)
+                    if (!pickedCell || !origCell)
                         continue;
 
                     vtkIdList* pids = pickedCell->GetPointIds();
                     if (!pids || pids->GetNumberOfIds() < 2)
                         continue;
 
-                    double pickPos[3] = {0.0, 0.0, 0.0};
-                    for (vtkIdType pi = 0; pi < pids->GetNumberOfIds(); ++pi)
+                    QSet<int> matchedLocalEdges;
+                    const vtkIdType nIds = pids->GetNumberOfIds();
+                    const bool closedLoop = (pickedCell->GetCellDimension() > 1);
+                    const vtkIdType nSegs = closedLoop ? nIds : (nIds - 1);
+                    for (vtkIdType si = 0; si < nSegs; ++si)
                     {
-                        double p[3] = {0.0, 0.0, 0.0};
-                        pickedDs->GetPoint(pids->GetId(pi), p);
-                        pickPos[0] += p[0];
-                        pickPos[1] += p[1];
-                        pickPos[2] += p[2];
+                        const vtkIdType pa = pids->GetId(si);
+                        const vtkIdType pb = pids->GetId((si + 1) % nIds);
+                        if (pa < 0 || pb < 0 || pa >= origPointArrSolid->GetNumberOfTuples() ||
+                            pb >= origPointArrSolid->GetNumberOfTuples())
+                            continue;
+
+                        const vtkIdType a = vtkIdType(origPointArrSolid->GetTuple1(pa));
+                        const vtkIdType b = vtkIdType(origPointArrSolid->GetTuple1(pb));
+
+                        const int nEdges = origCell->GetNumberOfEdges();
+                        for (int ei = 0; ei < nEdges; ++ei)
+                        {
+                            vtkCell* e = origCell->GetEdge(ei);
+                            if (!e)
+                                continue;
+                            vtkIdList* eids = e->GetPointIds();
+                            if (!eids || eids->GetNumberOfIds() < 2)
+                                continue;
+
+                            const vtkIdType e0 = eids->GetId(0);
+                            const vtkIdType e1 = eids->GetId(1);
+                            if ((e0 == a && e1 == b) || (e0 == b && e1 == a))
+                            {
+                                matchedLocalEdges.insert(ei);
+                                break;
+                            }
+                        }
                     }
-                    const double denom = double(pids->GetNumberOfIds());
-                    pickPos[0] /= denom;
-                    pickPos[1] /= denom;
-                    pickPos[2] /= denom;
 
-                    vtkIdType origCellId = -1;
-                    int origEdgeLocalId = 15;
-                    if (!computePickedEdgeFromBoundary(pickedDs, cellId, pickPos, origCellId,
-                                                       origEdgeLocalId))
-                        continue;
-
-                    setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, origEdgeLocalId),
-                                              !deselect);
-                    changed = true;
+                    for (int ei : matchedLocalEdges)
+                    {
+                        setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, ei), !deselect);
+                        changed = true;
+                    }
                 }
             }
             dirtyBits |= DirtyEdge;
@@ -2199,8 +2188,6 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
         for (vtkIdType j = 0; j < selIds->GetNumberOfTuples(); ++j)
         {
             const vtkIdType pickedCellId = vtkIdType(selIds->GetComponent(j, 0));
-            if (!cellCenterInRect(pickedDs, pickedCellId))
-                continue;
             if (kind != GridKind::Solid || !pickedDs)
                 continue;
 
