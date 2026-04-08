@@ -11,7 +11,6 @@
 #include <vtkCellPicker.h>
 #include <vtkDataSetMapper.h>
 #include <vtkDataSet.h>
-#include <vtkDataSetSurfaceFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkGeometryFilter.h>
 #include <vtkIdList.h>
@@ -231,7 +230,7 @@ void LoadSpecificationWidget::enableFacePick(bool on)
 
 void LoadSpecificationWidget::setupSurfaceAndPicker()
 {
-    if (!m_visual || !m_volumeGrid || !m_renderer || !m_interactor)
+    if (!m_visual || !m_renderer || !m_interactor)
         return;
 
     // ---------- 1) 优先复用当前可视化里正在显示的表面数据 ----------
@@ -253,26 +252,20 @@ void LoadSpecificationWidget::setupSurfaceAndPicker()
         break;
     }
 
+    if (!sourceSurfaceDataSet)
+    {
+        qWarning() << "[LoadSpecificationWidget] no visible mesh surface actor for picking.";
+        return;
+    }
+    auto* poly = vtkPolyData::SafeDownCast(sourceSurfaceDataSet);
+    if (!poly)
+    {
+        qWarning() << "[LoadSpecificationWidget] visible surface dataset is not vtkPolyData.";
+        return;
+    }
+
     m_surface = vtkSmartPointer<vtkPolyData>::New();
-    if (auto* poly = vtkPolyData::SafeDownCast(sourceSurfaceDataSet))
-    {
-        m_surface->ShallowCopy(poly);
-    }
-    else if (sourceSurfaceDataSet)
-    {
-        auto surfFilter = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-        surfFilter->SetInputData(sourceSurfaceDataSet);
-        surfFilter->Update();
-        m_surface->ShallowCopy(surfFilter->GetOutput());
-    }
-    else
-    {
-        // 回退：没有现成表面 actor 时，从体网格提取表面
-        auto surfFilter = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-        surfFilter->SetInputData(m_volumeGrid);
-        surfFilter->Update();
-        m_surface->ShallowCopy(surfFilter->GetOutput());
-    }
+    m_surface->ShallowCopy(poly);
 
     if (!m_surface || m_surface->GetNumberOfCells() == 0)
     {
@@ -288,21 +281,9 @@ void LoadSpecificationWidget::setupSurfaceAndPicker()
     }
     else
     {
-        m_surfaceMapper = vtkSmartPointer<vtkDataSetMapper>::New();
-        m_surfaceMapper->SetInputData(m_surface); // 确保 mapper 有输入
-        m_surfaceMapper->ScalarVisibilityOff();
-
-        m_surfaceActor = vtkSmartPointer<vtkActor>::New();
-        m_surfaceActor->SetMapper(m_surfaceMapper);
-        m_surfaceActor->PickableOn();
-        m_surfaceActor->GetProperty()->SetOpacity(0.25);
-        m_surfaceActor->GetProperty()->EdgeVisibilityOn();
-        m_surfaceActor->GetProperty()->SetLineWidth(1.0);
-
-        m_visual->removeProp(kPickSurfacePropId, false);
-        m_visual->addProp(kPickSurfacePropId, m_surfaceActor, QString("载荷"), QString("可选外表面"),
-                          true, true);
-        m_ownsSurfaceActor = true;
+        // 不再额外创建“可选外表面”结构，直接终止。
+        qWarning() << "[LoadSpecificationWidget] missing source surface actor.";
+        return;
     }
 
     // ---------- 3) 高亮 actor：先给一个空输入（关键修复点） ----------
