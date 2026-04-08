@@ -731,34 +731,29 @@ bool PickManager::pickAt(int x, int y)
 
     if (m_pickMode == PickMode::Face)
     {
+        // 面拾取只针对 Solid；lineGrid 不参与面拾取。
+        if (kind != GridKind::Solid)
+            return false;
+
         int faceLocalId = 15;
         QVector<vtkIdType> facePids;
-        if (kind == GridKind::Solid)
+        if (auto* ug = vtkUnstructuredGrid::SafeDownCast(ds))
         {
-            if (auto* ug = vtkUnstructuredGrid::SafeDownCast(ds))
+            vtkCell* pickedCell = ug->GetCell(cellId);
+            if (pickedCell && pickedCell->GetCellDimension() == 2)
             {
-                vtkCell* pickedCell = ug->GetCell(cellId);
-                if (pickedCell && pickedCell->GetCellDimension() == 2)
-                {
-                    if (!computePickedFace(ug, cellId, pickPos, faceLocalId, facePids))
-                        return false;
-                    toggleSelectFace(kind, packFaceKey(cellId, faceLocalId));
-                    return true;
-                }
+                if (!computePickedFace(ug, cellId, pickPos, faceLocalId, facePids))
+                    return false;
+                toggleSelectFace(kind, packFaceKey(cellId, faceLocalId));
+                return true;
             }
-            vtkIdType origCellId = -1;
-            int origFaceLocalId = 15;
-            if (!computePickedFaceFromBoundary(ds, cellId, origCellId, origFaceLocalId))
-                return false;
-            toggleSelectFace(kind, packFaceKey(origCellId, origFaceLocalId));
         }
-        else
-        {
-            auto* grid = vtkUnstructuredGrid::SafeDownCast(ds);
-            if (!grid || !computePickedFace(grid, cellId, pickPos, faceLocalId, facePids))
-                return false;
-            toggleSelectFace(kind, packFaceKey(cellId, faceLocalId));
-        }
+
+        vtkIdType origCellId = -1;
+        int origFaceLocalId = 15;
+        if (!computePickedFaceFromBoundary(ds, cellId, origCellId, origFaceLocalId))
+            return false;
+        toggleSelectFace(kind, packFaceKey(origCellId, origFaceLocalId));
         return true;
     }
 
@@ -1993,7 +1988,11 @@ void PickManager::updateDragRect(int x0, int y0, int x1, int y1, bool visible)
 
 bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselect)
 {
-    if (!m_visual || !m_visual->renderer() || !m_hwSelector || m_pickMode != PickMode::Node)
+    if (!m_visual || !m_visual->renderer() || !m_hwSelector)
+        return false;
+
+    // 目前只支持节点/面的框选；线(Edge)框选关闭，避免误选。
+    if (m_pickMode == PickMode::Edge)
         return false;
 
     auto* ren = m_visual->renderer();
@@ -2033,7 +2032,10 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
         rw->Render();
 
     m_hwSelector->SetRenderer(ren);
-    m_hwSelector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_POINTS);
+    if (m_pickMode == PickMode::Face)
+        m_hwSelector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_CELLS);
+    else
+        m_hwSelector->SetFieldAssociation(vtkDataObject::FIELD_ASSOCIATION_POINTS);
     m_hwSelector->SetArea(xmin, ymin, xmax, ymax);
 
     vtkSmartPointer<vtkSelection> sel = m_hwSelector->Select();
@@ -2240,7 +2242,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
             continue;
         }
 
-        // PickMode::Face
+        // PickMode::Face：仅支持 Solid（显示来自 surface filter），排除 lineGrid
         for (vtkIdType j = 0; j < selIds->GetNumberOfTuples(); ++j)
         {
             const vtkIdType pickedCellId = vtkIdType(selIds->GetComponent(j, 0));
