@@ -1477,16 +1477,19 @@ void PickManager::setSelectedPointIds(const QString& domain, const QString& uuid
     QSet<vtkIdType>& mySet = uuid2set[uuid];
     for (vtkIdType pid : pointIds)
     {
-        if (mySet.contains(pid))
+        const vtkIdType localPid = normalizePointId(kind, pid);
+        if (localPid < 0)
             continue;
-        const QString oldUid = owners.value(pid);
+        if (mySet.contains(localPid))
+            continue;
+        const QString oldUid = owners.value(localPid);
         if (!oldUid.isEmpty() && oldUid != uuid)
         {
-            prevOwners[pid] = oldUid;
-            uuid2set[oldUid].remove(pid);
+            prevOwners[localPid] = oldUid;
+            uuid2set[oldUid].remove(localPid);
         }
-        owners[pid] = uuid;
-        mySet.insert(pid);
+        owners[localPid] = uuid;
+        mySet.insert(localPid);
     }
 
     if (domain == m_currentDomain && uuid == m_currentUUid && m_pickMode == PickMode::Node)
@@ -1591,7 +1594,11 @@ void PickManager::setPreviewPointIds(const QString& domain, const QString& uuid,
     auto& mp = (kind == GridKind::Solid) ? m_previewPointsSolidByDomainUuid : m_previewPointsLineByDomainUuid;
     QSet<vtkIdType> s;
     for (auto id : pointIds)
-        s.insert(id);
+    {
+        const vtkIdType localPid = normalizePointId(kind, id);
+        if (localPid >= 0)
+            s.insert(localPid);
+    }
     mp[domain][uuid] = s;
 
     if (domain != m_currentDomain || uuid != m_currentUUid || m_pickMode != PickMode::Node)
@@ -1603,6 +1610,8 @@ void PickManager::setPreviewPointIds(const QString& domain, const QString& uuid,
     {
         if (!m_gridSolid)
             break;
+        if (pid < 0 || pid >= m_gridSolid->GetNumberOfPoints())
+            continue;
         double p[3];
         m_gridSolid->GetPoint(pid, p);
         m_previewSelPts->InsertNextPoint(p);
@@ -1611,6 +1620,8 @@ void PickManager::setPreviewPointIds(const QString& domain, const QString& uuid,
     {
         if (!m_gridLine)
             break;
+        if (pid < 0 || pid >= m_gridLine->GetNumberOfPoints())
+            continue;
         double p[3];
         m_gridLine->GetPoint(pid, p);
         m_previewSelPts->InsertNextPoint(p);
