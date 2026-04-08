@@ -800,7 +800,14 @@ void MeshModuleController::displayCurrentGrid()
         auto boundary = vtkSmartPointer<vtkPolyData>::New();
         boundary->ShallowCopy(surf->GetOutput());
 
-        auto surfActor = createSurfaceActor(boundary);
+        auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        mapper->SetInputData(boundary);
+
+        auto surfActor = vtkSmartPointer<vtkActor>::New();
+        surfActor->SetMapper(mapper);
+        surfActor->GetProperty()->SetRepresentationToSurface();
+        surfActor->GetProperty()->EdgeVisibilityOn();
+
         m_visualWidgetService->addProp(kMeshSurfId, surfActor, QString("网格"),
                                        QString("导入网格-面/体"), true, true);
         m_previewSurfaceGrid = nonLineGrid;
