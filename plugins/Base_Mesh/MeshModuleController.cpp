@@ -796,7 +796,7 @@ void MeshModuleController::displayCurrentGrid()
         // 这里必须以完整导入网格作为 surface filter 输入，保证 vtkOriginalCellIds
         // 与 m_importedGrid 的 cellId 一致，避免网格编辑时编号错位。
         auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-        surf->SetInputData(m_importedGrid);
+        surf->SetInputData(nonLineGrid);
         surf->PassThroughCellIdsOn();
         surf->PassThroughPointIdsOn();
         surf->Update();
@@ -804,7 +804,7 @@ void MeshModuleController::displayCurrentGrid()
         auto boundary = vtkSmartPointer<vtkPolyData>::New();
         boundary->ShallowCopy(surf->GetOutput());
 
-        auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
+        auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
         mapper->SetInputData(boundary);
         mapper->ScalarVisibilityOff();
 
@@ -812,8 +812,8 @@ void MeshModuleController::displayCurrentGrid()
         surfActor->SetMapper(mapper);
         auto* prop = surfActor->GetProperty();
         prop->SetRepresentationToSurface();
-        prop->SetColor(0.85, 0.85, 0.85);
-        prop->SetSpecular(0.0);
+        prop->SetColor(0.7, 0.7, 0.7);
+        // prop->SetSpecular(0.0);
         prop->EdgeVisibilityOn();
         prop->SetEdgeColor(0.0, 0.0, 0.0);
         prop->SetLineWidth(1.0);
@@ -821,7 +821,7 @@ void MeshModuleController::displayCurrentGrid()
         m_visualWidgetService->addProp(kMeshSurfId, surfActor, QString("网格"),
                                        QString("导入网格-面/体"), true, true);
         // m_previewSurfaceGrid 需要保持完整网格，供拾取结果回写到编辑数据。
-        m_previewSurfaceGrid = m_importedGrid;
+        m_previewSurfaceGrid = nonLineGrid;
         m_previewSurfaceActor = surfActor;
         m_previewSurfaceMapper = surfActor->GetMapper();
     }
