@@ -2118,66 +2118,37 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                 }
                 else if (kind == GridKind::Solid && pickedDs)
                 {
-                    auto* origCellArrSolid =
-                        findArray(pickedDs->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
-                    auto* origPointArrSolid =
-                        findArray(pickedDs->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
-                    if (!origCellArrSolid || !origPointArrSolid)
-                        continue;
-
-                    if (cellId < 0 || cellId >= origCellArrSolid->GetNumberOfTuples())
-                        continue;
-
-                    const vtkIdType origCellId = vtkIdType(origCellArrSolid->GetTuple1(cellId));
-                    vtkCell* origCell = m_gridSolid ? m_gridSolid->GetCell(origCellId) : nullptr;
                     vtkCell* pickedCell = pickedDs->GetCell(cellId);
-                    if (!pickedCell || !origCell)
+                    if (!pickedCell)
                         continue;
 
                     vtkIdList* pids = pickedCell->GetPointIds();
                     if (!pids || pids->GetNumberOfIds() < 2)
                         continue;
 
-                    QSet<int> matchedLocalEdges;
-                    const vtkIdType nIds = pids->GetNumberOfIds();
-                    const bool closedLoop = (pickedCell->GetCellDimension() > 1);
-                    const vtkIdType nSegs = closedLoop ? nIds : (nIds - 1);
-                    for (vtkIdType si = 0; si < nSegs; ++si)
+                    double pickPos[3] = {0.0, 0.0, 0.0};
+                    for (vtkIdType pi = 0; pi < pids->GetNumberOfIds(); ++pi)
                     {
-                        const vtkIdType pa = pids->GetId(si);
-                        const vtkIdType pb = pids->GetId((si + 1) % nIds);
-                        if (pa < 0 || pb < 0 || pa >= origPointArrSolid->GetNumberOfTuples() ||
-                            pb >= origPointArrSolid->GetNumberOfTuples())
-                            continue;
-
-                        const vtkIdType a = vtkIdType(origPointArrSolid->GetTuple1(pa));
-                        const vtkIdType b = vtkIdType(origPointArrSolid->GetTuple1(pb));
-
-                        const int nEdges = origCell->GetNumberOfEdges();
-                        for (int ei = 0; ei < nEdges; ++ei)
-                        {
-                            vtkCell* e = origCell->GetEdge(ei);
-                            if (!e)
-                                continue;
-                            vtkIdList* eids = e->GetPointIds();
-                            if (!eids || eids->GetNumberOfIds() < 2)
-                                continue;
-
-                            const vtkIdType e0 = eids->GetId(0);
-                            const vtkIdType e1 = eids->GetId(1);
-                            if ((e0 == a && e1 == b) || (e0 == b && e1 == a))
-                            {
-                                matchedLocalEdges.insert(ei);
-                                break;
-                            }
-                        }
+                        double p[3] = {0.0, 0.0, 0.0};
+                        pickedDs->GetPoint(pids->GetId(pi), p);
+                        pickPos[0] += p[0];
+                        pickPos[1] += p[1];
+                        pickPos[2] += p[2];
                     }
+                    const double denom = double(pids->GetNumberOfIds());
+                    pickPos[0] /= denom;
+                    pickPos[1] /= denom;
+                    pickPos[2] /= denom;
 
-                    for (int ei : matchedLocalEdges)
-                    {
-                        setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, ei), !deselect);
-                        changed = true;
-                    }
+                    vtkIdType origCellId = -1;
+                    int origEdgeLocalId = 15;
+                    if (!computePickedEdgeFromBoundary(pickedDs, cellId, pickPos, origCellId,
+                                                       origEdgeLocalId))
+                        continue;
+
+                    setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, origEdgeLocalId),
+                                              !deselect);
+                    changed = true;
                 }
             }
             dirtyBits |= DirtyEdge;
