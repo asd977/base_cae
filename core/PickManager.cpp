@@ -6,6 +6,7 @@
 #include <services/VisualWidgetService.h>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 
@@ -17,6 +18,8 @@
 #include <vtkLine.h>
 #include <vtkMapper.h>
 #include <vtkDataSetMapper.h>
+#include <vtkCoordinate.h>
+#include <vtkNew.h>
 #include <vtkFieldData.h>
 #include <vtkMath.h>
 #include <vtkPlane.h>
@@ -2048,6 +2051,74 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
 
     bool changed = false;
     int dirtyBits = DirtyNone;
+    auto worldPointInRect = [&](const double p[3]) -> bool
+    {
+        vtkNew<vtkCoordinate> coord;
+        coord->SetCoordinateSystemToWorld();
+        coord->SetValue(p);
+        double* dp = coord->GetComputedDoubleDisplayValue(ren);
+        if (!dp)
+            return false;
+        const int sx = int(std::lround(dp[0]));
+        const int sy = int(std::lround(dp[1]));
+        return sx >= xmin && sx <= xmax && sy >= ymin && sy <= ymax;
+    };
+    auto edgeMidpointInRect = [&](vtkUnstructuredGrid* grid, vtkIdType cellId, int edgeLocalId) -> bool
+    {
+        if (!grid || cellId < 0 || cellId >= grid->GetNumberOfCells())
+            return false;
+        vtkCell* cell = grid->GetCell(cellId);
+        if (!cell)
+            return false;
+        vtkCell* e = nullptr;
+        if (cell->GetCellDimension() == 1 || edgeLocalId == 15)
+            e = cell;
+        else if (edgeLocalId >= 0 && edgeLocalId < cell->GetNumberOfEdges())
+            e = cell->GetEdge(edgeLocalId);
+        if (!e)
+            return false;
+        vtkIdList* ids = e->GetPointIds();
+        if (!ids || ids->GetNumberOfIds() < 2)
+            return false;
+        double p0[3] = {0, 0, 0};
+        double p1[3] = {0, 0, 0};
+        grid->GetPoint(ids->GetId(0), p0);
+        grid->GetPoint(ids->GetId(1), p1);
+        double mid[3] = {(p0[0] + p1[0]) * 0.5, (p0[1] + p1[1]) * 0.5, (p0[2] + p1[2]) * 0.5};
+        return worldPointInRect(mid);
+    };
+    auto faceCenterInRect = [&](vtkUnstructuredGrid* grid, vtkIdType cellId, int faceLocalId) -> bool
+    {
+        if (!grid || cellId < 0 || cellId >= grid->GetNumberOfCells())
+            return false;
+        vtkCell* cell = grid->GetCell(cellId);
+        if (!cell)
+            return false;
+        vtkCell* f = nullptr;
+        if (cell->GetCellDimension() == 2 || faceLocalId == 15)
+            f = cell;
+        else if (faceLocalId >= 0 && faceLocalId < cell->GetNumberOfFaces())
+            f = cell->GetFace(faceLocalId);
+        if (!f)
+            return false;
+        vtkIdList* ids = f->GetPointIds();
+        if (!ids || ids->GetNumberOfIds() <= 0)
+            return false;
+        double c[3] = {0, 0, 0};
+        for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
+        {
+            double p[3] = {0, 0, 0};
+            grid->GetPoint(ids->GetId(i), p);
+            c[0] += p[0];
+            c[1] += p[1];
+            c[2] += p[2];
+        }
+        const double denom = double(ids->GetNumberOfIds());
+        c[0] /= denom;
+        c[1] /= denom;
+        c[2] /= denom;
+        return worldPointInRect(c);
+    };
 
     for (unsigned int i = 0; i < sel->GetNumberOfNodes(); ++i)
     {
@@ -2142,13 +2213,30 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
 
                     vtkIdType origCellId = -1;
                     int origEdgeLocalId = 15;
-                    if (!computePickedEdgeFromBoundary(pickedDs, cellId, pickPos, origCellId,
-                                                       origEdgeLocalId))
-                        continue;
-
-                    setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, origEdgeLocalId),
-                                              !deselect);
-                    changed = true;
+                    if (computePickedEdgeFromBoundary(pickedDs, cellId, pickPos, origCellId,
+                                                      origEdgeLocalId))
+                    {
+                        if (edgeMidpointInRect(m_gridSolid, origCellId, origEdgeLocalId))
+                        {
+                            setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, origEdgeLocalId),
+                                                      !deselect);
+                            changed = true;
+                        }
+                    }
+                    else if (pickedDs == m_gridSolid)
+                    {
+                        vtkCell* solidCell = m_gridSolid->GetCell(cellId);
+                        if (!solidCell)
+                            continue;
+                        const int nEdges = solidCell->GetNumberOfEdges();
+                        for (int ei = 0; ei < nEdges; ++ei)
+                        {
+                            if (!edgeMidpointInRect(m_gridSolid, cellId, ei))
+                                continue;
+                            setEdgeSelected_NoRefresh(kind, packEdgeKey(cellId, ei), !deselect);
+                            changed = true;
+                        }
+                    }
                 }
             }
             dirtyBits |= DirtyEdge;
@@ -2164,11 +2252,39 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
 
             vtkIdType origCellId = -1;
             int origFaceLocalId = 15;
-            if (!computePickedFaceFromBoundary(pickedDs, pickedCellId, origCellId, origFaceLocalId))
-                continue;
+            if (computePickedFaceFromBoundary(pickedDs, pickedCellId, origCellId, origFaceLocalId))
+            {
+                if (faceCenterInRect(m_gridSolid, origCellId, origFaceLocalId))
+                {
+                    setFaceSelected_NoRefresh(kind, packFaceKey(origCellId, origFaceLocalId),
+                                              !deselect);
+                    changed = true;
+                }
+            }
+            else if (pickedDs == m_gridSolid)
+            {
+                vtkCell* solidCell = m_gridSolid->GetCell(pickedCellId);
+                if (!solidCell)
+                    continue;
+                if (solidCell->GetCellDimension() == 2)
+                {
+                    if (faceCenterInRect(m_gridSolid, pickedCellId, 15))
+                    {
+                        setFaceSelected_NoRefresh(kind, packFaceKey(pickedCellId, 15), !deselect);
+                        changed = true;
+                    }
+                    continue;
+                }
 
-            setFaceSelected_NoRefresh(kind, packFaceKey(origCellId, origFaceLocalId), !deselect);
-            changed = true;
+                const int nFaces = solidCell->GetNumberOfFaces();
+                for (int fi = 0; fi < nFaces; ++fi)
+                {
+                    if (!faceCenterInRect(m_gridSolid, pickedCellId, fi))
+                        continue;
+                    setFaceSelected_NoRefresh(kind, packFaceKey(pickedCellId, fi), !deselect);
+                    changed = true;
+                }
+            }
         }
         dirtyBits |= DirtyFace;
     }
