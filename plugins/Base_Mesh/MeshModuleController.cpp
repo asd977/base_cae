@@ -804,7 +804,7 @@ void MeshModuleController::displayCurrentGrid()
         auto boundary = vtkSmartPointer<vtkPolyData>::New();
         boundary->ShallowCopy(surf->GetOutput());
 
-        auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
         mapper->SetInputData(boundary);
         mapper->ScalarVisibilityOff();
 
