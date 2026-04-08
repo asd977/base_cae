@@ -792,9 +792,6 @@ void MeshModuleController::displayCurrentGrid()
 
     if (nonLineGrid && nonLineGrid->GetNumberOfCells() > 0)
     {
-        // 注意：PickManager 后续会把表面拾取结果映射回 m_gridSolid 的单元编号。
-        // 这里必须以完整导入网格作为 surface filter 输入，保证 vtkOriginalCellIds
-        // 与 m_importedGrid 的 cellId 一致，避免网格编辑时编号错位。
         auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
         surf->SetInputData(nonLineGrid);
         surf->PassThroughCellIdsOn();
@@ -820,7 +817,7 @@ void MeshModuleController::displayCurrentGrid()
 
         m_visualWidgetService->addProp(kMeshSurfId, surfActor, QString("网格"),
                                        QString("导入网格-面/体"), true, true);
-        // m_previewSurfaceGrid 需要保持完整网格，供拾取结果回写到编辑数据。
+
         m_previewSurfaceGrid = nonLineGrid;
         m_previewSurfaceActor = surfActor;
         m_previewSurfaceMapper = surfActor->GetMapper();
