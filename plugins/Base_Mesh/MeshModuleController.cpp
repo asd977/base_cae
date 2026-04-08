@@ -854,6 +854,28 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
     auto lineIds = vtkSmartPointer<vtkIdList>::New();
     auto nonLineIds = vtkSmartPointer<vtkIdList>::New();
 
+    // 为后续子网格保留“原始点/单元ID”映射（供拾取与回写使用）
+    if (!src->GetPointData()->GetArray("orig_point_id"))
+    {
+        auto origPoint = vtkSmartPointer<vtkIntArray>::New();
+        origPoint->SetName("orig_point_id");
+        const vtkIdType nPts = src->GetNumberOfPoints();
+        origPoint->SetNumberOfTuples(nPts);
+        for (vtkIdType pid = 0; pid < nPts; ++pid)
+            origPoint->SetValue(pid, int(pid));
+        src->GetPointData()->AddArray(origPoint);
+    }
+    if (!src->GetCellData()->GetArray("orig_cell_id"))
+    {
+        auto origCell = vtkSmartPointer<vtkIntArray>::New();
+        origCell->SetName("orig_cell_id");
+        const vtkIdType nAllCells = src->GetNumberOfCells();
+        origCell->SetNumberOfTuples(nAllCells);
+        for (vtkIdType cid = 0; cid < nAllCells; ++cid)
+            origCell->SetValue(cid, int(cid));
+        src->GetCellData()->AddArray(origCell);
+    }
+
     const vtkIdType nCells = src->GetNumberOfCells();
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {

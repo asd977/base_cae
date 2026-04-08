@@ -169,6 +169,8 @@ class CORE_EXPORT PickManager : public QObject
     void setNodeSelected_NoRefresh(GridKind kind, vtkIdType pid, bool selected);
     void setEdgeSelected_NoRefresh(GridKind kind, vtkIdType edgeKey, bool selected);
     void setFaceSelected_NoRefresh(GridKind kind, vtkIdType faceKey, bool selected);
+    vtkIdType normalizePointId(GridKind kind, vtkIdType pid) const;
+    vtkIdType originalPointId(GridKind kind, vtkIdType localPid) const;
 
     // ====== coalesced rebuild/render ======
     enum DirtyBits : int
@@ -233,6 +235,8 @@ class CORE_EXPORT PickManager : public QObject
     vtkProp* m_lineProp = nullptr;
     vtkDataSet* m_solidPickDataSet = nullptr;
     vtkDataSet* m_linePickDataSet = nullptr;
+    QHash<vtkIdType, vtkIdType> m_solidOrigPointIdToLocal;
+    QHash<vtkIdType, vtkIdType> m_lineOrigPointIdToLocal;
 
     // ============ line node hints ============
     vtkSmartPointer<vtkPoints> m_lineNodePts;
