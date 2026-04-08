@@ -21,12 +21,10 @@
 #include <vtkCellData.h>
 #include <vtkCellType.h>
 #include <vtkDataSetMapper.h>
-#include <vtkDataSetSurfaceFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
 #include <vtkIntArray.h>
 #include <vtkLookupTable.h>
-#include <vtkPolyData.h>
 #include <vtkPointData.h>
 #include <vtkPoints.h>
 #include <vtkProperty.h>
@@ -791,16 +789,7 @@ void MeshModuleController::displayCurrentGrid()
 
     if (nonLineGrid && nonLineGrid->GetNumberOfCells() > 0)
     {
-        auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-        surf->SetInputData(nonLineGrid);
-        surf->PassThroughCellIdsOn();
-        surf->PassThroughPointIdsOn();
-        surf->Update();
-
-        auto boundary = vtkSmartPointer<vtkPolyData>::New();
-        boundary->ShallowCopy(surf->GetOutput());
-
-        auto surfActor = createSurfaceActor(boundary);
+        auto surfActor = createSurfaceActor(nonLineGrid);
         m_visualWidgetService->addProp(kMeshSurfId, surfActor, QString("网格"),
                                        QString("导入网格-面/体"), true, true);
         m_previewSurfaceGrid = nonLineGrid;
