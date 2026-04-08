@@ -562,7 +562,9 @@ void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clie
 
     const bool shiftBox = iren->GetShiftKey() != 0;
     const bool ctrlBox = iren->GetControlKey() != 0;
-    self->m_dragUseBox = (self->m_pickMode == PickMode::Node && (shiftBox || ctrlBox));
+    self->m_dragUseBox =
+        ((self->m_pickMode == PickMode::Node || self->m_pickMode == PickMode::Face) &&
+         (shiftBox || ctrlBox));
     self->m_dragBoxDeselect = ctrlBox;
     if (!self->m_dragUseBox)
     {
