@@ -32,7 +32,6 @@ SeepageBoundaryPage::SeepageBoundaryPage(const QString& pageType, const QString&
 
     connect(ui->btnClear, &QPushButton::clicked, this, &SeepageBoundaryPage::onClearClicked);
     ui->tableNodes->setVisible(false);
-    ui->labelCountValue->setText(tr("暂不显示"));
 }
 
 SeepageBoundaryPage::~SeepageBoundaryPage()
