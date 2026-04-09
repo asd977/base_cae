@@ -389,7 +389,7 @@
       <item row="20" column="0">
        <widget class="QLabel" name="labelDtTstaTend">
         <property name="text">
-         <string>非稳定渗流计算时步：</string>
+         <string/>
         </property>
        </widget>
       </item>

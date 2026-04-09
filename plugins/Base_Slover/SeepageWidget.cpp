@@ -67,6 +67,9 @@ SeepageWidget::SeepageWidget(QWidget* parent)
     ui->labelCaseNchange->hide();
     ui->plainCaseMappings->hide();
     ui->labelCaseMappings->hide();
+    ui->editSeepCaseDir->hide();
+    ui->labelSeepCaseDir->hide();
+    ui->labelDtTstaTend->hide();
 }
 
 SeepageWidget::~SeepageWidget()
@@ -122,9 +125,7 @@ bool SeepageWidget::exportIseepDatFile() const
     };
 
     const QString prepDirAbs = ensureTrailingSep(wd.filePath("PREP"));
-    const QString seepCaseDirInput = ui->editSeepCaseDir->text().trimmed();
-    const QString seepCaseDirName = seepCaseDirInput.isEmpty() ? QStringLiteral("SEEPCASE01")
-                                                               : seepCaseDirInput;
+    const QString seepCaseDirName = QStringLiteral("SEEPCASE01");
     const QString seepCaseDirAbs = ensureTrailingSep(wd.filePath(seepCaseDirName));
 
     QVector<std::pair<int, int>> globalMappings;
@@ -758,7 +759,7 @@ QJsonObject SeepageWidget::saveJson()
     obj["ncase"] = ui->spinNCase->value();
     obj["iter"] = ui->spinIter->value();
     obj["itag_free"] = ui->comboItagFree->currentData().toInt();
-    obj["seep_case_dir"] = ui->editSeepCaseDir->text();
+    obj["seep_case_dir"] = QStringLiteral("SEEPCASE01");
     obj["dt"] = ui->spinDt->value();
     obj["tsta"] = ui->spinTsta->value();
     obj["tend"] = ui->spinTend->value();
@@ -815,8 +816,7 @@ void SeepageWidget::loadJson(const QJsonObject& obj)
     if (itagIndex < 0)
         itagIndex = 0;
     ui->comboItagFree->setCurrentIndex(itagIndex);
-    ui->editSeepCaseDir->setText(
-        obj.value("seep_case_dir").toString(ui->editSeepCaseDir->text()));
+    ui->editSeepCaseDir->setText(QStringLiteral("SEEPCASE01"));
     ui->spinDt->setValue(obj.value("dt").toDouble(ui->spinDt->value()));
     ui->spinTsta->setValue(obj.value("tsta").toDouble(ui->spinTsta->value()));
     ui->spinTend->setValue(obj.value("tend").toDouble(ui->spinTend->value()));
