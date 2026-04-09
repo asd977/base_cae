@@ -51,6 +51,7 @@ class CaveSupportComputationPage : public BasePage
     void refreshCaseSelector();
     void ensureCaseCount(int count);
     CaseData defaultCase(int index) const;
+    QVector<QPair<QString, QString>> transitionsFromLibrary() const;
 
   private:
     QSpinBox* m_ncaseSpin = nullptr;

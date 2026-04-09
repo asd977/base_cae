@@ -113,16 +113,21 @@ bool SeepageWidget::exportIseepDatFile() const
     const QString seepCaseDirAbs = ensureTrailingSep(wd.filePath(seepCaseDirName));
 
     QVector<std::pair<int, int>> globalMappings;
-    if (!globalMappings_.isEmpty())
+    bool usedServiceMappings = false;
+    if (auto* materialService = ServiceRegistry::instance().getService<MaterialManagerService>())
+    {
+        const auto transitions = materialService->materialTransitions();
+        if (!transitions.isEmpty())
+        {
+            usedServiceMappings = true;
+            for (const auto& row : transitions)
+                globalMappings.push_back({row.first, row.second});
+        }
+    }
+    if (!usedServiceMappings)
     {
         for (const auto& mapping : globalMappings_)
             globalMappings.push_back({mapping.oldMaterial, mapping.newMaterial});
-    }
-    else if (auto* materialService = ServiceRegistry::instance().getService<MaterialManagerService>())
-    {
-        const auto transitions = materialService->materialTransitions();
-        for (const auto& row : transitions)
-            globalMappings.push_back({row.first, row.second});
     }
     const int globalNchange = globalMappings.size();
 
@@ -610,11 +615,23 @@ void SeepageWidget::onEditGlobalMappingsClicked()
     table->setHorizontalHeaderLabels(QStringList() << "原材料号"
                                                    << "变化后材料号");
     table->horizontalHeader()->setStretchLastSection(true);
-    table->setRowCount(qMax(1, globalMappings_.size()));
-    for (int i = 0; i < globalMappings_.size(); ++i)
+    QVector<MaterialMapping> mappingsForDialog = globalMappings_;
+    if (auto* materialService = ServiceRegistry::instance().getService<MaterialManagerService>())
     {
-        table->setItem(i, 0, new QTableWidgetItem(QString::number(globalMappings_[i].oldMaterial)));
-        table->setItem(i, 1, new QTableWidgetItem(QString::number(globalMappings_[i].newMaterial)));
+        const auto transitions = materialService->materialTransitions();
+        if (!transitions.isEmpty())
+        {
+            mappingsForDialog.clear();
+            for (const auto& row : transitions)
+                mappingsForDialog.push_back({row.first, row.second});
+        }
+    }
+
+    table->setRowCount(qMax(1, mappingsForDialog.size()));
+    for (int i = 0; i < mappingsForDialog.size(); ++i)
+    {
+        table->setItem(i, 0, new QTableWidgetItem(QString::number(mappingsForDialog[i].oldMaterial)));
+        table->setItem(i, 1, new QTableWidgetItem(QString::number(mappingsForDialog[i].newMaterial)));
     }
     layout->addWidget(table);
 

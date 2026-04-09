@@ -79,11 +79,15 @@ void MaterialTransitionPage::reloadFromManager()
     if (mappings.isEmpty())
     {
         addRow(-1, -1);
+        if (m_table->rowCount() > 0)
+            m_table->setCurrentCell(0, 1);
         m_loading = false;
         return;
     }
     for (const auto& p : mappings)
         addRow(p.first, p.second);
+    if (m_table->rowCount() > 0)
+        m_table->setCurrentCell(0, 1);
     m_loading = false;
 }
 
@@ -144,6 +148,8 @@ void MaterialTransitionPage::addRow(int oldMatype, int newMatype)
                 }
             });
     refreshRowHighlight(row);
+    if (m_table->currentRow() < 0)
+        m_table->setCurrentCell(row, 1);
     refreshCurrentRowMarker(m_table->currentRow());
 }
 
@@ -223,6 +229,6 @@ void MaterialTransitionPage::refreshCurrentRowMarker(int currentRow)
         auto* item = m_table->item(r, 0);
         if (!item)
             continue;
-        item->setText(r == currentRow ? QStringLiteral("▶ 当前") : QString());
+        item->setText(r == currentRow ? QStringLiteral("▶") : QString());
     }
 }
