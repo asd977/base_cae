@@ -761,8 +761,6 @@ QVector<QPair<int, int>> MaterialManager::materialTransitions() const
 void MaterialManager::setMaterialTransitions(const QVector<QPair<int, int>>& transitions)
 {
     m_materialTransitions = transitions;
-    if (m_transitionPage)
-        m_transitionPage->reloadFromManager();
 }
 
 QString MaterialManager::addMaterialToModel(const QString& modelKey, bool addToProjectTree)
@@ -1199,7 +1197,9 @@ QMap<int, QString> MaterialManager::transitionSourceLabels() const
             {
                 if (matype <= 0 || labels.contains(matype))
                     continue;
-                labels.insert(matype, QStringLiteral("%1 [#%2]").arg(entry.name, QString::number(matype)));
+                labels.insert(matype, QStringLiteral("%1/%2 [#%3]")
+                                          .arg(model.displayName, entry.name,
+                                               QString::number(matype)));
             }
         }
     }
@@ -1219,14 +1219,17 @@ QMap<int, QString> MaterialManager::transitionTargetLabels() const
             {
                 if (matype <= 0 || labels.contains(matype))
                     continue;
-                labels.insert(matype, QStringLiteral("%1 [#%2]").arg(entry.name, QString::number(matype)));
+                labels.insert(matype, QStringLiteral("%1/%2 [#%3]")
+                                          .arg(model.displayName, entry.name,
+                                               QString::number(matype)));
             }
             if (entry.transitionOnly && entry.transitionMatype > 0 &&
                 !labels.contains(entry.transitionMatype))
             {
                 labels.insert(entry.transitionMatype,
-                              QStringLiteral("%1 [T#%2]")
-                                  .arg(entry.name, QString::number(entry.transitionMatype)));
+                              QStringLiteral("%1/%2 [T#%3]")
+                                  .arg(model.displayName, entry.name,
+                                       QString::number(entry.transitionMatype)));
             }
         }
     }

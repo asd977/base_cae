@@ -85,7 +85,6 @@ void MaterialTransitionPage::reloadFromManager()
     for (const auto& p : mappings)
         addRow(p.first, p.second);
     m_loading = false;
-    syncMappingsToManager();
 }
 
 void MaterialTransitionPage::addRow(int oldMatype, int newMatype)
