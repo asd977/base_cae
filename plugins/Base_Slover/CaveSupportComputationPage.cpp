@@ -60,11 +60,9 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     auto* rowMatBtn = new QHBoxLayout();
     auto* btnAdd = new QPushButton("新增材料变换", this);
     auto* btnDel = new QPushButton("删除选中行", this);
-    auto* btnImport = new QPushButton("从材料变换库导入", this);
     auto* btnEditLibrary = new QPushButton("编辑材料变换库", this);
     rowMatBtn->addWidget(btnAdd);
     rowMatBtn->addWidget(btnDel);
-    rowMatBtn->addWidget(btnImport);
     rowMatBtn->addWidget(btnEditLibrary);
     rowMatBtn->addStretch();
     matLayout->addLayout(rowMatBtn);
@@ -122,22 +120,6 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
             &CaveSupportComputationPage::onCaseCountChanged);
     connect(btnAdd, &QPushButton::clicked, this, &CaveSupportComputationPage::onAddMaterialRow);
     connect(btnDel, &QPushButton::clicked, this, &CaveSupportComputationPage::onDeleteMaterialRow);
-    connect(btnImport, &QPushButton::clicked, this,
-            [this]()
-            {
-                auto* materialService = ServiceRegistry::instance().getService<MaterialManagerService>();
-                if (!materialService || !m_materialTable)
-                    return;
-                const auto transitions = materialService->materialTransitions();
-                m_materialTable->setRowCount(qMax(1, transitions.size()));
-                for (int i = 0; i < transitions.size(); ++i)
-                {
-                    m_materialTable->setItem(i, 0,
-                                             new QTableWidgetItem(QString::number(transitions[i].first)));
-                    m_materialTable->setItem(i, 1,
-                                             new QTableWidgetItem(QString::number(transitions[i].second)));
-                }
-            });
     connect(btnEditLibrary, &QPushButton::clicked, this,
             []()
             {

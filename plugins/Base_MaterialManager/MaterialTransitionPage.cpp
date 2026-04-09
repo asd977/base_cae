@@ -7,7 +7,6 @@
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QMessageBox>
 #include <QPushButton>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -33,24 +32,23 @@ MaterialTransitionPage::MaterialTransitionPage(MaterialManager* manager, QWidget
     root->addWidget(new QLabel(QStringLiteral("材料变化：明确选择“原材料/区域”到“变更后材料”。"), this));
 
     m_table = new QTableWidget(this);
-    m_table->setColumnCount(2);
-    m_table->setHorizontalHeaderLabels({QStringLiteral("原材料"), QStringLiteral("变更后材料")});
+    m_table->setColumnCount(3);
+    m_table->setHorizontalHeaderLabels(
+        {QStringLiteral("选中"), QStringLiteral("原材料"), QStringLiteral("变更后材料")});
     m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     root->addWidget(m_table);
 
     auto* row = new QHBoxLayout();
     auto* addBtn = new QPushButton(QStringLiteral("添加映射"), this);
     auto* delBtn = new QPushButton(QStringLiteral("删除选中"), this);
-    auto* saveBtn = new QPushButton(QStringLiteral("保存映射"), this);
     row->addWidget(addBtn);
     row->addWidget(delBtn);
     row->addStretch();
-    row->addWidget(saveBtn);
     root->addLayout(row);
 
     connect(addBtn, &QPushButton::clicked, this, &MaterialTransitionPage::onAddRow);
     connect(delBtn, &QPushButton::clicked, this, &MaterialTransitionPage::onDeleteRow);
-    connect(saveBtn, &QPushButton::clicked, this, &MaterialTransitionPage::onSave);
     connect(m_table, &QTableWidget::currentCellChanged, this,
             &MaterialTransitionPage::onCurrentRowChanged);
 }
@@ -72,6 +70,7 @@ void MaterialTransitionPage::reloadFromManager()
 {
     if (!m_manager || !m_table)
         return;
+    m_loading = true;
     m_oldOptions = m_manager->transitionSourceLabels();
     m_newOptions = m_manager->transitionTargetLabels();
     const auto mappings = m_manager->materialTransitions();
@@ -80,10 +79,13 @@ void MaterialTransitionPage::reloadFromManager()
     if (mappings.isEmpty())
     {
         addRow(-1, -1);
+        m_loading = false;
         return;
     }
     for (const auto& p : mappings)
         addRow(p.first, p.second);
+    m_loading = false;
+    syncMappingsToManager();
 }
 
 void MaterialTransitionPage::addRow(int oldMatype, int newMatype)
@@ -99,7 +101,10 @@ void MaterialTransitionPage::addRow(int oldMatype, int newMatype)
     int oldIndex = oldBox->findData(oldMatype);
     if (oldIndex >= 0)
         oldBox->setCurrentIndex(oldIndex);
-    m_table->setCellWidget(row, 0, oldBox);
+    auto* markerItem = new QTableWidgetItem(QString());
+    markerItem->setFlags(markerItem->flags() & ~Qt::ItemIsEditable);
+    m_table->setItem(row, 0, markerItem);
+    m_table->setCellWidget(row, 1, oldBox);
 
     auto* newBox = new QComboBox(m_table);
     for (auto it = m_newOptions.constBegin(); it != m_newOptions.constEnd(); ++it)
@@ -107,7 +112,7 @@ void MaterialTransitionPage::addRow(int oldMatype, int newMatype)
     int newIndex = newBox->findData(newMatype);
     if (newIndex >= 0)
         newBox->setCurrentIndex(newIndex);
-    m_table->setCellWidget(row, 1, newBox);
+    m_table->setCellWidget(row, 2, newBox);
 
     connect(oldBox, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this, oldBox](int)
@@ -116,9 +121,10 @@ void MaterialTransitionPage::addRow(int oldMatype, int newMatype)
                     return;
                 for (int r = 0; r < m_table->rowCount(); ++r)
                 {
-                    if (m_table->cellWidget(r, 0) == oldBox)
+                    if (m_table->cellWidget(r, 1) == oldBox)
                     {
                         refreshRowHighlight(r);
+                        syncMappingsToManager();
                         break;
                     }
                 }
@@ -130,22 +136,24 @@ void MaterialTransitionPage::addRow(int oldMatype, int newMatype)
                     return;
                 for (int r = 0; r < m_table->rowCount(); ++r)
                 {
-                    if (m_table->cellWidget(r, 1) == newBox)
+                    if (m_table->cellWidget(r, 2) == newBox)
                     {
                         refreshRowHighlight(r);
+                        syncMappingsToManager();
                         break;
                     }
                 }
             });
     refreshRowHighlight(row);
+    refreshCurrentRowMarker(m_table->currentRow());
 }
 
 void MaterialTransitionPage::refreshRowHighlight(int row)
 {
     if (!m_table || row < 0 || row >= m_table->rowCount())
         return;
-    auto* oldBox = qobject_cast<QComboBox*>(m_table->cellWidget(row, 0));
-    auto* newBox = qobject_cast<QComboBox*>(m_table->cellWidget(row, 1));
+    auto* oldBox = qobject_cast<QComboBox*>(m_table->cellWidget(row, 1));
+    auto* newBox = qobject_cast<QComboBox*>(m_table->cellWidget(row, 2));
     auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshService)
         return;
@@ -162,6 +170,7 @@ void MaterialTransitionPage::refreshRowHighlight(int row)
 void MaterialTransitionPage::onAddRow()
 {
     addRow(-1, -1);
+    syncMappingsToManager();
 }
 
 void MaterialTransitionPage::onDeleteRow()
@@ -173,36 +182,7 @@ void MaterialTransitionPage::onDeleteRow()
         m_table->removeRow(row);
     if (m_table->rowCount() <= 0)
         addRow(-1, -1);
-}
-
-void MaterialTransitionPage::onSave()
-{
-    if (!m_manager || !m_table)
-        return;
-    QVector<QPair<int, int>> mappings;
-    QStringList badRows;
-    for (int r = 0; r < m_table->rowCount(); ++r)
-    {
-        auto* oldBox = qobject_cast<QComboBox*>(m_table->cellWidget(r, 0));
-        auto* newBox = qobject_cast<QComboBox*>(m_table->cellWidget(r, 1));
-        const int oldV = currentMatype(oldBox);
-        const int newV = currentMatype(newBox);
-        if (oldV <= 0 || newV <= 0)
-        {
-            badRows.append(QString::number(r + 1));
-            continue;
-        }
-        mappings.push_back({oldV, newV});
-    }
-    if (!badRows.isEmpty())
-    {
-        QMessageBox::warning(this, QStringLiteral("提示"),
-                             QStringLiteral("第 %1 行映射不完整，请重新选择。")
-                                 .arg(badRows.join(QStringLiteral(", "))));
-        return;
-    }
-    m_manager->setMaterialTransitions(mappings);
-    QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("材料变化映射已保存。"));
+    syncMappingsToManager();
 }
 
 void MaterialTransitionPage::onCurrentRowChanged(int currentRow, int, int, int)
@@ -211,7 +191,39 @@ void MaterialTransitionPage::onCurrentRowChanged(int currentRow, int, int, int)
     {
         if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
             meshService->highlightMatypes({}, -1, -1, -1);
+        refreshCurrentRowMarker(-1);
         return;
     }
+    refreshCurrentRowMarker(currentRow);
     refreshRowHighlight(currentRow);
+}
+
+void MaterialTransitionPage::syncMappingsToManager()
+{
+    if (m_loading || !m_manager || !m_table)
+        return;
+    QVector<QPair<int, int>> mappings;
+    for (int r = 0; r < m_table->rowCount(); ++r)
+    {
+        auto* oldBox = qobject_cast<QComboBox*>(m_table->cellWidget(r, 1));
+        auto* newBox = qobject_cast<QComboBox*>(m_table->cellWidget(r, 2));
+        const int oldV = currentMatype(oldBox);
+        const int newV = currentMatype(newBox);
+        if (oldV > 0 && newV > 0)
+            mappings.push_back({oldV, newV});
+    }
+    m_manager->setMaterialTransitions(mappings);
+}
+
+void MaterialTransitionPage::refreshCurrentRowMarker(int currentRow)
+{
+    if (!m_table)
+        return;
+    for (int r = 0; r < m_table->rowCount(); ++r)
+    {
+        auto* item = m_table->item(r, 0);
+        if (!item)
+            continue;
+        item->setText(r == currentRow ? QStringLiteral("▶ 当前") : QString());
+    }
 }

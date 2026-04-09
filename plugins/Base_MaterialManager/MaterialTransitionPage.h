@@ -23,16 +23,18 @@ class MaterialTransitionPage : public BasePage
   private slots:
     void onAddRow();
     void onDeleteRow();
-    void onSave();
     void onCurrentRowChanged(int currentRow, int currentColumn, int previousRow, int previousColumn);
 
   private:
     void addRow(int oldMatype, int newMatype);
     void refreshRowHighlight(int row);
+    void syncMappingsToManager();
+    void refreshCurrentRowMarker(int currentRow);
 
   private:
     MaterialManager* m_manager = nullptr;
     QTableWidget* m_table = nullptr;
     QMap<int, QString> m_oldOptions;
     QMap<int, QString> m_newOptions;
+    bool m_loading = false;
 };

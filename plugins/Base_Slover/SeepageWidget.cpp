@@ -621,11 +621,9 @@ void SeepageWidget::onEditGlobalMappingsClicked()
     auto* buttonRow = new QHBoxLayout();
     auto* btnAdd = new QPushButton("添加行", &dlg);
     auto* btnRemove = new QPushButton("删除选中行", &dlg);
-    auto* btnImport = new QPushButton("从材料变换库导入", &dlg);
     auto* btnEditLibrary = new QPushButton("编辑材料变换库", &dlg);
     buttonRow->addWidget(btnAdd);
     buttonRow->addWidget(btnRemove);
-    buttonRow->addWidget(btnImport);
     buttonRow->addWidget(btnEditLibrary);
     buttonRow->addStretch();
     layout->addLayout(buttonRow);
@@ -635,19 +633,6 @@ void SeepageWidget::onEditGlobalMappingsClicked()
                 const int row = table->currentRow();
                 if (row >= 0)
                     table->removeRow(row);
-            });
-    connect(btnImport, &QPushButton::clicked, &dlg, [table]()
-            {
-                auto* materialService = ServiceRegistry::instance().getService<MaterialManagerService>();
-                if (!materialService)
-                    return;
-                const auto transitions = materialService->materialTransitions();
-                table->setRowCount(qMax(1, transitions.size()));
-                for (int i = 0; i < transitions.size(); ++i)
-                {
-                    table->setItem(i, 0, new QTableWidgetItem(QString::number(transitions[i].first)));
-                    table->setItem(i, 1, new QTableWidgetItem(QString::number(transitions[i].second)));
-                }
             });
     connect(btnEditLibrary, &QPushButton::clicked, &dlg, [table]()
             {
