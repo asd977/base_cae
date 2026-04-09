@@ -394,7 +394,7 @@
        </widget>
       </item>
       <item row="20" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayoutTimeSteps">
+       <layout class="QVBoxLayout" name="verticalLayoutTimeSteps">
         <item>
          <widget class="QDoubleSpinBox" name="spinDt">
           <property name="decimals">
@@ -408,6 +408,9 @@
           </property>
           <property name="value">
            <double>60.000000000000000</double>
+          </property>
+          <property name="prefix">
+           <string>时步 </string>
           </property>
          </widget>
         </item>
@@ -425,6 +428,9 @@
           <property name="value">
            <double>0.000000000000000</double>
           </property>
+          <property name="prefix">
+           <string>起始时间 </string>
+          </property>
          </widget>
         </item>
         <item>
@@ -440,6 +446,9 @@
           </property>
           <property name="value">
            <double>3600.000000000000000</double>
+          </property>
+          <property name="prefix">
+           <string>终止时间 </string>
           </property>
          </widget>
         </item>

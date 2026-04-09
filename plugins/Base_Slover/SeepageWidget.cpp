@@ -188,9 +188,8 @@ bool SeepageWidget::exportIseepDatFile() const
     os << upstreamWaterLevel() << " " << downstreamWaterLevel() << " " << upstreamFlux() << " "
        << downstreamFlux() << "    HWUP   HWDW\n";
     os << "'" << seepCaseDirAbs << "'     DIRDYNA\n";
-    os << ui->spinDt->value() << "    DT\n";
-    os << ui->spinTsta->value() << "    TSTA\n";
-    os << ui->spinTend->value() << "    TEND\n";
+    os << ui->spinDt->value() << " " << ui->spinTsta->value() << " " << ui->spinTend->value()
+       << "    DT TSTA TEND\n";
     const QString hwDropUp = QStringLiteral("HWDROP_UP.DAT");
     const QString hwDropDw = QStringLiteral("HWDROP_DW.DAT");
     os << "'" << hwDropUp << "'  '" << hwDropDw << "'   HWDROP_UP  HWDROP_DW\n";
@@ -576,15 +575,16 @@ bool SeepageWidget::exportJdtraceDatFile() const
 
 bool SeepageWidget::exportHwDropDatFiles(const QString& seepCaseDirName) const
 {
+    Q_UNUSED(seepCaseDirName);
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     QDir wd(QDir(projectDir).absolutePath());
-    if (!wd.exists(seepCaseDirName) && !wd.mkpath(seepCaseDirName))
+    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
         return false;
 
     auto writeCurve = [&](const QString& fileName, bool isUpstream)
     {
-        QFile file(wd.filePath(seepCaseDirName + "/" + fileName));
+        QFile file(wd.filePath("PREP/" + fileName));
         if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
             return false;
 
