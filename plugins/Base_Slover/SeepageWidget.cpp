@@ -7,6 +7,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QRegularExpression>
 #include <QSet>
 #include <QTextStream>
 #include <QVector>
@@ -21,6 +22,7 @@
 #include <algorithm>
 #include <array>
 #include <limits>
+#include <utility>
 #include <vector>
 
 #include "ui_SeepageWidget.h"
@@ -85,7 +87,59 @@ bool SeepageWidget::exportIseepDatFile() const
     };
 
     const QString prepDirAbs = ensureTrailingSep(wd.filePath("PREP"));
-    const QString seepCaseDirAbs = ensureTrailingSep(wd.filePath("SEEPCASE01"));
+    const QString seepCaseDirInput = ui->editSeepCaseDir->text().trimmed();
+    const QString seepCaseDirName = seepCaseDirInput.isEmpty() ? QStringLiteral("SEEPCASE01")
+                                                               : seepCaseDirInput;
+    const QString seepCaseDirAbs = ensureTrailingSep(wd.filePath(seepCaseDirName));
+
+    auto parseIntList = [](const QString& text)
+    {
+        QVector<int> values;
+        const QString normalized = text.trimmed();
+        const QStringList tokens = normalized.split(QRegularExpression("[,;\\s]+"),
+                                                    Qt::SkipEmptyParts);
+        for (const QString& token : tokens)
+        {
+            bool ok = false;
+            const int value = token.toInt(&ok);
+            if (ok)
+                values.push_back(value);
+        }
+        return values;
+    };
+
+    auto parseMappingLines = [](const QString& text)
+    {
+        QVector<std::pair<int, int>> mappings;
+        const QStringList lines = text.split('\n');
+        for (const QString& line : lines)
+        {
+            const QString trimmed = line.trimmed();
+            if (trimmed.isEmpty())
+                continue;
+            const QStringList tokens =
+                trimmed.split(QRegularExpression("[,;\\s:>\\-]+"), Qt::SkipEmptyParts);
+            if (tokens.size() < 2)
+                continue;
+            bool oldOk = false;
+            bool newOk = false;
+            const int oldVal = tokens[0].toInt(&oldOk);
+            const int newVal = tokens[1].toInt(&newOk);
+            if (oldOk && newOk)
+                mappings.push_back({oldVal, newVal});
+        }
+        return mappings;
+    };
+
+    const QVector<std::pair<int, int>> globalMappings =
+        parseMappingLines(ui->plainGlobalMappings->toPlainText());
+    const QVector<std::pair<int, int>> caseMappings =
+        parseMappingLines(ui->plainCaseMappings->toPlainText());
+    const int globalNchange = qMax(0, ui->spinGlobalNchange->value());
+    const int caseNchange = qMax(0, ui->spinCaseNchange->value());
+    const QVector<int> caseIndices = parseIntList(ui->editCaseIndices->text());
+    const int mcase = qMax(1, ui->spinMCase->value());
+    const int ncase = qMax(1, ui->spinNCase->value());
 
     QFile file(wd.filePath("ISEEP.DAT"));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
@@ -100,13 +154,13 @@ bool SeepageWidget::exportIseepDatFile() const
     os << "'" << prepDirAbs << "'\n";
     os << "'JD_UPSEEP.DAT'\n";
     os << "'JD_DWSEEP.DAT'\n";
-    os << "'2'\n";
-    os << "'2'\n";
-    os << "'0'\n";
+    os << "'" << ui->spinMainPropertyNo->value() << "'\n";
+    os << "'" << ui->spinControlledPropertyNo->value() << "'\n";
+    os << "'" << (ui->checkNaturalFreeSurface->isChecked() ? 1 : 0) << "'\n";
     os << "'JDFREE.DAT'\n";
     os << "'FA_UPSEEP.DAT'\n";
     os << "'FA_DWSEEP.DAT'\n";
-    os << "'0'\n";
+    os << "'" << (ui->checkDrainWell->isChecked() ? 1 : 0) << "'\n";
     os << "'JDJING.DAT'\n";
     os << "'JDTRACE.DAT'\n";
     os << "'KETRACE.DAT'\n";
@@ -115,22 +169,59 @@ bool SeepageWidget::exportIseepDatFile() const
     os << "'------------'\n";
     os << "'------------'\n";
     os << "'------------'\n";
-    os << "'1'\n";
+    os << "'" << ui->spinComputeType->value() << "'\n";
     os << "'------------'\n";
 
-    os << "0     NCHANGE\n";
-    os << "1     MCASE\n";
-    os << "1 1   JISUAN CASE  II\n";
-    os << "1     NCASE\n";
+    os << globalNchange << "     NCHANGE\n";
+    for (int i = 0; i < globalNchange; ++i)
+    {
+        if (i < globalMappings.size())
+        {
+            os << globalMappings[i].first << " " << globalMappings[i].second
+               << "   MOLD MNEW\n";
+        }
+        else
+        {
+            os << "0 0   MOLD MNEW\n";
+        }
+    }
+
+    os << mcase << "     MCASE\n";
+    for (int i = 0; i < mcase; ++i)
+    {
+        const int caseNo = (i < caseIndices.size()) ? caseIndices[i] : (i + 1);
+        os << (i + 1) << " " << caseNo << "   JISUAN CASE  II\n";
+    }
+
+    os << ncase << "     NCASE\n";
     os << "'------------'\n";
-    os << "1     ICASE\n";
-    os << "0     NCHANGE_CASE\n";
-    os << "100 0 ITER  ITAG_FREE\n";
+    os << ui->spinICase->value() << "     ICASE\n";
+    os << caseNchange << "     NCHANGE_CASE\n";
+    for (int i = 0; i < caseNchange; ++i)
+    {
+        if (i < caseMappings.size())
+        {
+            os << caseMappings[i].first << " " << caseMappings[i].second
+               << "   MOLD_CASE MNEW_CASE\n";
+        }
+        else
+        {
+            os << "0 0   MOLD_CASE MNEW_CASE\n";
+        }
+    }
+    os << ui->spinIter->value() << " " << ui->spinItagFree->value() << " ITER  ITAG_FREE\n";
     os << upstreamWaterLevel() << " " << downstreamWaterLevel() << " " << upstreamFlux() << " "
        << downstreamFlux() << "    HWUP   HWDW\n";
     os << "'" << seepCaseDirAbs << "'     DIRDYNA\n";
-    os << "60.000000 0.000000 3600.000000    DT TSTA TEND\n";
-    os << "'HWDROP_UP.DAT'  'HWDROP_DW.DAT'   HWDROP_UP  HWDROP_DW\n";
+    os << ui->spinDt->value() << " " << ui->spinTsta->value() << " " << ui->spinTend->value()
+       << "    DT TSTA TEND\n";
+    const QString hwDropUp =
+        ui->editHwDropUpFile->text().trimmed().isEmpty() ? QStringLiteral("HWDROP_UP.DAT")
+                                                         : ui->editHwDropUpFile->text().trimmed();
+    const QString hwDropDw =
+        ui->editHwDropDwFile->text().trimmed().isEmpty() ? QStringLiteral("HWDROP_DW.DAT")
+                                                         : ui->editHwDropDwFile->text().trimmed();
+    os << "'" << hwDropUp << "'  '" << hwDropDw << "'   HWDROP_UP  HWDROP_DW\n";
 
     file.close();
 
@@ -515,6 +606,27 @@ QJsonObject SeepageWidget::saveJson()
     obj["downstream_water_level"] = ui->spinDownstreamWaterLevel->value();
     obj["upstream_flux"] = ui->spinUpstreamFlux->value();
     obj["downstream_flux"] = ui->spinDownstreamFlux->value();
+    obj["main_property_no"] = ui->spinMainPropertyNo->value();
+    obj["controlled_property_no"] = ui->spinControlledPropertyNo->value();
+    obj["natural_free_surface"] = ui->checkNaturalFreeSurface->isChecked();
+    obj["drain_well"] = ui->checkDrainWell->isChecked();
+    obj["compute_type"] = ui->spinComputeType->value();
+    obj["global_nchange"] = ui->spinGlobalNchange->value();
+    obj["global_mappings"] = ui->plainGlobalMappings->toPlainText();
+    obj["mcase"] = ui->spinMCase->value();
+    obj["case_indices"] = ui->editCaseIndices->text();
+    obj["ncase"] = ui->spinNCase->value();
+    obj["icase"] = ui->spinICase->value();
+    obj["case_nchange"] = ui->spinCaseNchange->value();
+    obj["case_mappings"] = ui->plainCaseMappings->toPlainText();
+    obj["iter"] = ui->spinIter->value();
+    obj["itag_free"] = ui->spinItagFree->value();
+    obj["seep_case_dir"] = ui->editSeepCaseDir->text();
+    obj["dt"] = ui->spinDt->value();
+    obj["tsta"] = ui->spinTsta->value();
+    obj["tend"] = ui->spinTend->value();
+    obj["hwdrop_up_file"] = ui->editHwDropUpFile->text();
+    obj["hwdrop_dw_file"] = ui->editHwDropDwFile->text();
     return obj;
 }
 
@@ -528,6 +640,37 @@ void SeepageWidget::loadJson(const QJsonObject& obj)
         obj.value("upstream_flux").toDouble(ui->spinUpstreamFlux->value()));
     ui->spinDownstreamFlux->setValue(
         obj.value("downstream_flux").toDouble(ui->spinDownstreamFlux->value()));
+    ui->spinMainPropertyNo->setValue(
+        obj.value("main_property_no").toInt(ui->spinMainPropertyNo->value()));
+    ui->spinControlledPropertyNo->setValue(
+        obj.value("controlled_property_no").toInt(ui->spinControlledPropertyNo->value()));
+    ui->checkNaturalFreeSurface->setChecked(
+        obj.value("natural_free_surface").toBool(ui->checkNaturalFreeSurface->isChecked()));
+    ui->checkDrainWell->setChecked(obj.value("drain_well").toBool(ui->checkDrainWell->isChecked()));
+    ui->spinComputeType->setValue(obj.value("compute_type").toInt(ui->spinComputeType->value()));
+    ui->spinGlobalNchange->setValue(
+        obj.value("global_nchange").toInt(ui->spinGlobalNchange->value()));
+    ui->plainGlobalMappings->setPlainText(
+        obj.value("global_mappings").toString(ui->plainGlobalMappings->toPlainText()));
+    ui->spinMCase->setValue(obj.value("mcase").toInt(ui->spinMCase->value()));
+    ui->editCaseIndices->setText(
+        obj.value("case_indices").toString(ui->editCaseIndices->text()));
+    ui->spinNCase->setValue(obj.value("ncase").toInt(ui->spinNCase->value()));
+    ui->spinICase->setValue(obj.value("icase").toInt(ui->spinICase->value()));
+    ui->spinCaseNchange->setValue(obj.value("case_nchange").toInt(ui->spinCaseNchange->value()));
+    ui->plainCaseMappings->setPlainText(
+        obj.value("case_mappings").toString(ui->plainCaseMappings->toPlainText()));
+    ui->spinIter->setValue(obj.value("iter").toInt(ui->spinIter->value()));
+    ui->spinItagFree->setValue(obj.value("itag_free").toInt(ui->spinItagFree->value()));
+    ui->editSeepCaseDir->setText(
+        obj.value("seep_case_dir").toString(ui->editSeepCaseDir->text()));
+    ui->spinDt->setValue(obj.value("dt").toDouble(ui->spinDt->value()));
+    ui->spinTsta->setValue(obj.value("tsta").toDouble(ui->spinTsta->value()));
+    ui->spinTend->setValue(obj.value("tend").toDouble(ui->spinTend->value()));
+    ui->editHwDropUpFile->setText(
+        obj.value("hwdrop_up_file").toString(ui->editHwDropUpFile->text()));
+    ui->editHwDropDwFile->setText(
+        obj.value("hwdrop_dw_file").toString(ui->editHwDropDwFile->text()));
 }
 
 void SeepageWidget::onComputeClicked()
