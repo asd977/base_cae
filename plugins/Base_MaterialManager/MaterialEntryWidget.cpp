@@ -318,6 +318,17 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     connect(m_transitionMatypeSpin, qOverload<int>(&QSpinBox::valueChanged), this,
             &MaterialEntryWidget::onTransitionMatypeChanged);
     m_formLayout->addRow(QStringLiteral("后续变换"), transitionRowWidget);
+    if (entry->transitionOnly)
+    {
+        if (m_matypeCombo)
+            m_matypeCombo->setEnabled(false);
+        if (m_applyButton)
+            m_applyButton->setEnabled(false);
+        if (m_appliedMatypesList)
+            m_appliedMatypesList->setEnabled(false);
+        if (m_removeButton)
+            m_removeButton->setEnabled(false);
+    }
 
     // ===== 动态字段（放在 MATYPE 区域下面）=====
     for (const QString& column : model->columns)
@@ -542,6 +553,14 @@ void MaterialEntryWidget::onTransitionModeChanged(int state)
     {
         entry->transitionOnly = false;
         entry->transitionMatype = -1;
+        if (m_matypeCombo)
+            m_matypeCombo->setEnabled(true);
+        if (m_applyButton)
+            m_applyButton->setEnabled(true);
+        if (m_appliedMatypesList)
+            m_appliedMatypesList->setEnabled(true);
+        if (m_removeButton)
+            m_removeButton->setEnabled(true);
         return;
     }
     QString error;
@@ -558,6 +577,17 @@ void MaterialEntryWidget::onTransitionModeChanged(int state)
     }
     entry->transitionOnly = true;
     entry->transitionMatype = matype;
+    entry->appliedMatypes.clear();
+    m_materialManager->refreshEntryWidgetMatypes(entry->id, entry->appliedMatypes, -1);
+    if (m_matypeCombo)
+        m_matypeCombo->setEnabled(false);
+    if (m_applyButton)
+        m_applyButton->setEnabled(false);
+    if (m_appliedMatypesList)
+        m_appliedMatypesList->setEnabled(false);
+    if (m_removeButton)
+        m_removeButton->setEnabled(false);
+    m_materialManager->notifyEntryUpdated(entry->id, false);
 }
 
 void MaterialEntryWidget::onTransitionMatypeChanged(int value)

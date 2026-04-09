@@ -16,6 +16,7 @@
 class MaterialManagerWidget;
 class MaterialEntryWidget;
 class MaterialModelWidget;
+class MaterialTransitionPage;
 class ProjectNode;
 
 class MaterialManager : public QObject, public MaterialManagerService
@@ -83,6 +84,8 @@ class MaterialManager : public QObject, public MaterialManagerService
     bool isSeepageModelKey(const QString& modelKey) const;
     const QVector<MaterialModel>& seepageModels() const;
     bool validateTransitionMatype(const QString& entryId, int matype, QString* error) const;
+    QMap<int, QString> transitionSourceLabels() const;
+    QMap<int, QString> transitionTargetLabels() const;
 
   private:
     void newProjectForPath(const QString& workPath);
@@ -105,6 +108,8 @@ class MaterialManager : public QObject, public MaterialManagerService
 
     QHash<QString, MaterialModelWidget*> m_modelWidgets;
     QHash<QString, MaterialEntryWidget*> m_entryWidgets;
+    MaterialTransitionPage* m_transitionPage = nullptr;
+    ProjectNode* m_transitionNode = nullptr;
 
     QVector<MaterialModel> m_models;
     QSet<QString> m_addedEntryIds;

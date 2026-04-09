@@ -36,6 +36,7 @@
 
 #include "MaterialEntryWidget.h"
 #include "MaterialModelWidget.h"
+#include "MaterialTransitionPage.h"
 
 namespace
 {
@@ -746,108 +747,10 @@ void MaterialManager::showBuiltinSeepageListDialog()
 
 void MaterialManager::showMaterialTransitionDialog()
 {
-    QDialog dlg(m_materialManagerWidget);
-    dlg.setWindowTitle(QStringLiteral("材料变换库"));
-    auto* layout = new QVBoxLayout(&dlg);
-    layout->addWidget(
-        new QLabel(QStringLiteral("每行填写：旧材料号 -> 新材料号。旧材料号需在当前网格中可用；"
-                                  "新材料号必须已绑定到“已添加到工程”的材料，"
-                                  "以确保 IMAT.DAT 可生成对应编号列。"),
-                   &dlg));
-
-    auto* table = new QTableWidget(&dlg);
-    table->setColumnCount(2);
-    table->setHorizontalHeaderLabels({QStringLiteral("旧材料号"), QStringLiteral("新材料号")});
-    table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    table->setRowCount(qMax(1, m_materialTransitions.size()));
-    for (int i = 0; i < m_materialTransitions.size(); ++i)
-    {
-        table->setItem(i, 0, new QTableWidgetItem(QString::number(m_materialTransitions[i].first)));
-        table->setItem(i, 1, new QTableWidgetItem(QString::number(m_materialTransitions[i].second)));
-    }
-    layout->addWidget(table);
-
-    auto* rowButtons = new QHBoxLayout();
-    auto* btnAdd = new QPushButton(QStringLiteral("添加行"), &dlg);
-    auto* btnDel = new QPushButton(QStringLiteral("删除选中行"), &dlg);
-    rowButtons->addWidget(btnAdd);
-    rowButtons->addWidget(btnDel);
-    rowButtons->addStretch();
-    layout->addLayout(rowButtons);
-
-    connect(btnAdd, &QPushButton::clicked, &dlg, [table]() { table->insertRow(table->rowCount()); });
-    connect(btnDel, &QPushButton::clicked, &dlg, [table]()
-            {
-                const int row = table->currentRow();
-                if (row >= 0)
-                    table->removeRow(row);
-            });
-
-    auto* box = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
-    layout->addWidget(box);
-    connect(box, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
-    connect(box, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
-
-    if (dlg.exec() != QDialog::Accepted)
-        return;
-
-    QVector<QPair<int, int>> parsed;
-    QStringList invalidRows;
-    const QSet<int> available = availableMatypes();
-    QSet<int> configuredMatypes;
-    for (const auto& model : m_models)
-    {
-        for (const auto& entry : model.materials)
-        {
-            if (!m_addedEntryIds.contains(entry.id))
-                continue;
-            for (int matype : entry.appliedMatypes)
-            {
-                if (matype > 0)
-                    configuredMatypes.insert(matype);
-            }
-            if (entry.transitionOnly && entry.transitionMatype > 0)
-                configuredMatypes.insert(entry.transitionMatype);
-        }
-    }
-
-    for (int r = 0; r < table->rowCount(); ++r)
-    {
-        const auto* oldItem = table->item(r, 0);
-        const auto* newItem = table->item(r, 1);
-        if (!oldItem || !newItem)
-            continue;
-        bool oldOk = false;
-        bool newOk = false;
-        const int oldVal = oldItem->text().trimmed().toInt(&oldOk);
-        const int newVal = newItem->text().trimmed().toInt(&newOk);
-        if (!oldOk || !newOk)
-        {
-            invalidRows.append(QString::number(r + 1));
-            continue;
-        }
-        if (!available.isEmpty() && !available.contains(oldVal))
-        {
-            invalidRows.append(QString::number(r + 1));
-            continue;
-        }
-        if (!configuredMatypes.contains(newVal))
-        {
-            invalidRows.append(QString::number(r + 1));
-            continue;
-        }
-        parsed.push_back({oldVal, newVal});
-    }
-
-    if (!invalidRows.isEmpty())
-    {
-        QMessageBox::warning(
-            &dlg, QStringLiteral("提示"),
-            QStringLiteral("第 %1 行存在非法映射：旧材料号需在网格可用，新材料号需已绑定到工程材料（可导出 IMAT）。")
-                .arg(invalidRows.join(QStringLiteral(", "))));
-        return;
-    }
-    m_materialTransitions = parsed;
+    if (m_transitionPage)
+        m_transitionPage->reloadFromManager();
+    if (m_projectManagerService && m_transitionNode)
+        m_projectManagerService->setCurrentItem(m_transitionNode);
 }
 
 QVector<QPair<int, int>> MaterialManager::materialTransitions() const
@@ -858,6 +761,8 @@ QVector<QPair<int, int>> MaterialManager::materialTransitions() const
 void MaterialManager::setMaterialTransitions(const QVector<QPair<int, int>>& transitions)
 {
     m_materialTransitions = transitions;
+    if (m_transitionPage)
+        m_transitionPage->reloadFromManager();
 }
 
 QString MaterialManager::addMaterialToModel(const QString& modelKey, bool addToProjectTree)
@@ -984,6 +889,8 @@ void MaterialManager::newProjectForPath(const QString& workPath)
 
     delete m_materialManagerWidget;
     m_materialManagerWidget = nullptr;
+    m_transitionPage = nullptr;
+    m_transitionNode = nullptr;
 
     m_rootItem = nullptr;
     m_modelItems.clear();
@@ -1008,6 +915,14 @@ void MaterialManager::newProjectForPath(const QString& workPath)
     m_rootItem->setData(0, ProjectNode::RoleModule, QString("Material"));
     m_rootItem->setPage(m_materialManagerWidget);
     m_projectManagerService->addTreeItem(m_rootItem);
+
+    m_transitionPage = new MaterialTransitionPage(this);
+    m_transitionNode = new ProjectNode(QStringLiteral("材料变化"), QUuid::createUuid().toString(),
+                                       m_transitionPage);
+    m_transitionNode->setData(0, ProjectNode::RoleUuid, m_transitionNode->getUuid());
+    m_transitionNode->setData(0, ProjectNode::RoleModule, QString("Material"));
+    m_transitionNode->setData(0, ProjectNode::RoleKind, QString("MaterialTransition"));
+    m_rootItem->addChild(m_transitionNode);
 }
 
 const QVector<MaterialModel>& MaterialManager::models() const
@@ -1269,6 +1184,66 @@ bool MaterialManager::validateTransitionMatype(const QString& entryId, int matyp
         }
     }
     return true;
+}
+
+QMap<int, QString> MaterialManager::transitionSourceLabels() const
+{
+    QMap<int, QString> labels;
+    for (const auto& model : m_models)
+    {
+        for (const auto& entry : model.materials)
+        {
+            if (!m_addedEntryIds.contains(entry.id))
+                continue;
+            for (int matype : entry.appliedMatypes)
+            {
+                if (matype <= 0 || labels.contains(matype))
+                    continue;
+                labels.insert(
+                    matype, QStringLiteral("%1 / %2（区域 MATYPE=%3）")
+                                .arg(model.displayName, entry.name, QString::number(matype)));
+            }
+        }
+    }
+    const QSet<int> meshSet = availableMatypes();
+    for (int matype : meshSet)
+    {
+        if (matype > 0 && !labels.contains(matype))
+        {
+            labels.insert(matype, QStringLiteral("网格区域（MATYPE=%1）").arg(matype));
+        }
+    }
+    return labels;
+}
+
+QMap<int, QString> MaterialManager::transitionTargetLabels() const
+{
+    QMap<int, QString> labels;
+    for (const auto& model : m_models)
+    {
+        for (const auto& entry : model.materials)
+        {
+            if (!m_addedEntryIds.contains(entry.id))
+                continue;
+            for (int matype : entry.appliedMatypes)
+            {
+                if (matype <= 0 || labels.contains(matype))
+                    continue;
+                labels.insert(matype, QStringLiteral("%1 / %2（已施加 MATYPE=%3）")
+                                          .arg(model.displayName, entry.name,
+                                               QString::number(matype)));
+            }
+            if (entry.transitionOnly && entry.transitionMatype > 0 &&
+                !labels.contains(entry.transitionMatype))
+            {
+                labels.insert(entry.transitionMatype,
+                              QStringLiteral("%1 / %2（后续变换编号=%3）")
+                                  .arg(model.displayName, entry.name,
+                                       QString::number(entry.transitionMatype)));
+            }
+        }
+    }
+    return labels;
 }
 
 void MaterialManager::focusOnMaterial(const QString& entryId)
