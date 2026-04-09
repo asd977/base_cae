@@ -197,7 +197,7 @@
       <item row="8" column="0">
        <widget class="QLabel" name="labelComputeType">
         <property name="text">
-         <string>计算类型(1稳定/2非稳/3全流程)：</string>
+         <string>计算类型：</string>
         </property>
        </widget>
       </item>
@@ -224,7 +224,7 @@
       <item row="10" column="0">
        <widget class="QLabel" name="labelGlobalMappings">
         <property name="text">
-         <string>公共变化属性映射(旧 新/行)：</string>
+         <string>材料变化：</string>
         </property>
        </widget>
       </item>
@@ -345,7 +345,7 @@
       <item row="17" column="0">
        <widget class="QLabel" name="labelIter">
         <property name="text">
-         <string>迭代次数ITER：</string>
+         <string>迭代次数：</string>
         </property>
        </widget>
       </item>
@@ -365,7 +365,7 @@
       <item row="18" column="0">
        <widget class="QLabel" name="labelItagFree">
         <property name="text">
-         <string>ITAG_FREE(0不计入/1计入)：</string>
+         <string>天然渗流场计入方式：</string>
         </property>
        </widget>
       </item>
@@ -389,7 +389,7 @@
       <item row="20" column="0">
        <widget class="QLabel" name="labelDtTstaTend">
         <property name="text">
-         <string>DT / TSTA / TEND：</string>
+         <string>非稳定渗流计算时步：</string>
         </property>
        </widget>
       </item>
@@ -448,7 +448,7 @@
       <item row="21" column="0">
        <widget class="QLabel" name="labelHwDropFiles">
         <property name="text">
-         <string>水位变化过程文件：</string>
+         <string>水位变化过程：</string>
         </property>
        </widget>
       </item>

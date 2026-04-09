@@ -3,7 +3,6 @@
 
 #include <BasePage.h>
 
-#include <QPair>
 #include <QJsonObject>
 #include <QVector>
 
@@ -53,18 +52,18 @@ class SeepageWidget : public BasePage
         int newMaterial = 0;
     };
 
-    struct TimeHeadPoint
+    struct WaterLevelPoint
     {
         double time = 0.0;
-        double head = 0.0;
+        double upHead = 0.0;
+        double dwHead = 0.0;
     };
 
     bool exportHwDropDatFiles(const QString& seepCaseDirName) const;
 
     Ui::SeepageWidget* ui;
     QVector<MaterialMapping> globalMappings_;
-    QVector<TimeHeadPoint> hwDropUpPoints_;
-    QVector<TimeHeadPoint> hwDropDwPoints_;
+    QVector<WaterLevelPoint> waterLevelPoints_;
 };
 
 #endif // SEEPAGEWIDGET_H
