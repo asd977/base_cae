@@ -7,8 +7,10 @@
 
 #include <QDir>
 #include <QFile>
+#include <QJsonArray>
 #include <QRegularExpression>
 #include <QSet>
+#include <QTableWidgetItem>
 #include <QTextStream>
 #include <QVector>
 
@@ -92,22 +94,6 @@ bool SeepageWidget::exportIseepDatFile() const
                                                                : seepCaseDirInput;
     const QString seepCaseDirAbs = ensureTrailingSep(wd.filePath(seepCaseDirName));
 
-    auto parseIntList = [](const QString& text)
-    {
-        QVector<int> values;
-        const QString normalized = text.trimmed();
-        const QStringList tokens = normalized.split(QRegularExpression("[,;\\s]+"),
-                                                    Qt::SkipEmptyParts);
-        for (const QString& token : tokens)
-        {
-            bool ok = false;
-            const int value = token.toInt(&ok);
-            if (ok)
-                values.push_back(value);
-        }
-        return values;
-    };
-
     auto parseMappingLines = [](const QString& text)
     {
         QVector<std::pair<int, int>> mappings;
@@ -118,7 +104,7 @@ bool SeepageWidget::exportIseepDatFile() const
             if (trimmed.isEmpty())
                 continue;
             const QStringList tokens =
-                trimmed.split(QRegularExpression("[,;\\s:>\\-]+"), Qt::SkipEmptyParts);
+                trimmed.split(QRegularExpression("[,;\\s:>\\-]+"), QString::SkipEmptyParts);
             if (tokens.size() < 2)
                 continue;
             bool oldOk = false;
@@ -131,15 +117,27 @@ bool SeepageWidget::exportIseepDatFile() const
         return mappings;
     };
 
-    const QVector<std::pair<int, int>> globalMappings =
-        parseMappingLines(ui->plainGlobalMappings->toPlainText());
+    QVector<std::pair<int, int>> globalMappings;
+    if (ui->tableGlobalMappings)
+    {
+        for (int r = 0; r < ui->tableGlobalMappings->rowCount(); ++r)
+        {
+            const auto* oldItem = ui->tableGlobalMappings->item(r, 0);
+            const auto* newItem = ui->tableGlobalMappings->item(r, 1);
+            if (!oldItem || !newItem)
+                continue;
+            bool oldOk = false;
+            bool newOk = false;
+            const int oldVal = oldItem->text().trimmed().toInt(&oldOk);
+            const int newVal = newItem->text().trimmed().toInt(&newOk);
+            if (oldOk && newOk)
+                globalMappings.push_back({oldVal, newVal});
+        }
+    }
     const QVector<std::pair<int, int>> caseMappings =
         parseMappingLines(ui->plainCaseMappings->toPlainText());
-    const int globalNchange = qMax(0, ui->spinGlobalNchange->value());
+    const int globalNchange = globalMappings.size();
     const int caseNchange = qMax(0, ui->spinCaseNchange->value());
-    const QVector<int> caseIndices = parseIntList(ui->editCaseIndices->text());
-    const int mcase = qMax(1, ui->spinMCase->value());
-    const int ncase = qMax(1, ui->spinNCase->value());
 
     QFile file(wd.filePath("ISEEP.DAT"));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
@@ -186,14 +184,9 @@ bool SeepageWidget::exportIseepDatFile() const
         }
     }
 
-    os << mcase << "     MCASE\n";
-    for (int i = 0; i < mcase; ++i)
-    {
-        const int caseNo = (i < caseIndices.size()) ? caseIndices[i] : (i + 1);
-        os << (i + 1) << " " << caseNo << "   JISUAN CASE  II\n";
-    }
-
-    os << ncase << "     NCASE\n";
+    os << "1     MCASE\n";
+    os << "1 1   JISUAN CASE  II\n";
+    os << "1     NCASE\n";
     os << "'------------'\n";
     os << ui->spinICase->value() << "     ICASE\n";
     os << caseNchange << "     NCHANGE_CASE\n";
@@ -611,8 +604,19 @@ QJsonObject SeepageWidget::saveJson()
     obj["natural_free_surface"] = ui->checkNaturalFreeSurface->isChecked();
     obj["drain_well"] = ui->checkDrainWell->isChecked();
     obj["compute_type"] = ui->spinComputeType->value();
-    obj["global_nchange"] = ui->spinGlobalNchange->value();
-    obj["global_mappings"] = ui->plainGlobalMappings->toPlainText();
+    const int globalRowCount = ui->tableGlobalMappings->rowCount();
+    ui->spinGlobalNchange->setValue(globalRowCount);
+    QJsonArray globalMappingsArray;
+    for (int r = 0; r < ui->tableGlobalMappings->rowCount(); ++r)
+    {
+        const auto* oldItem = ui->tableGlobalMappings->item(r, 0);
+        const auto* newItem = ui->tableGlobalMappings->item(r, 1);
+        QJsonObject rowObj;
+        rowObj["old"] = oldItem ? oldItem->text().trimmed() : QString();
+        rowObj["new"] = newItem ? newItem->text().trimmed() : QString();
+        globalMappingsArray.append(rowObj);
+    }
+    obj["global_mappings_table"] = globalMappingsArray;
     obj["mcase"] = ui->spinMCase->value();
     obj["case_indices"] = ui->editCaseIndices->text();
     obj["ncase"] = ui->spinNCase->value();
@@ -648,10 +652,20 @@ void SeepageWidget::loadJson(const QJsonObject& obj)
         obj.value("natural_free_surface").toBool(ui->checkNaturalFreeSurface->isChecked()));
     ui->checkDrainWell->setChecked(obj.value("drain_well").toBool(ui->checkDrainWell->isChecked()));
     ui->spinComputeType->setValue(obj.value("compute_type").toInt(ui->spinComputeType->value()));
-    ui->spinGlobalNchange->setValue(
-        obj.value("global_nchange").toInt(ui->spinGlobalNchange->value()));
-    ui->plainGlobalMappings->setPlainText(
-        obj.value("global_mappings").toString(ui->plainGlobalMappings->toPlainText()));
+    const QJsonArray globalMappingsArray = obj.value("global_mappings_table").toArray();
+    if (!globalMappingsArray.isEmpty())
+    {
+        ui->tableGlobalMappings->setRowCount(globalMappingsArray.size());
+        for (int r = 0; r < globalMappingsArray.size(); ++r)
+        {
+            const QJsonObject rowObj = globalMappingsArray.at(r).toObject();
+            ui->tableGlobalMappings->setItem(
+                r, 0, new QTableWidgetItem(rowObj.value("old").toString()));
+            ui->tableGlobalMappings->setItem(
+                r, 1, new QTableWidgetItem(rowObj.value("new").toString()));
+        }
+        ui->spinGlobalNchange->setValue(globalMappingsArray.size());
+    }
     ui->spinMCase->setValue(obj.value("mcase").toInt(ui->spinMCase->value()));
     ui->editCaseIndices->setText(
         obj.value("case_indices").toString(ui->editCaseIndices->text()));
