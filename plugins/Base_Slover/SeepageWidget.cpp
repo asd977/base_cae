@@ -209,7 +209,7 @@ bool SeepageWidget::exportInouseDatFile() const
     {
         os << "           0    NUM OF NO USE NODE\n";
         os << "           0    NUM OF NO USE ELEMENT\n";
-        os << "       0    杆单元悬浮节点数\n";
+        os << "       0    rod-num\n";
         os << QString("%1%2    NEBAR  NDIM\n").arg(0, 12).arg(configuredNdim, 12);
         return true;
     }
