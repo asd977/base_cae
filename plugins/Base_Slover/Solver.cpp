@@ -223,6 +223,8 @@ bool Solver::loadProject()
                 page = new SeepageBoundaryPage(type, "上游水头边界", "JD_UPSEEP.DAT");
             else if (type == "SeepageBoundaryDownstreamWater")
                 page = new SeepageBoundaryPage(type, "下游水头边界", "JD_DWSEEP.DAT");
+            else if (type == "SeepageBoundaryNaturalSeepage")
+                page = new SeepageBoundaryPage(type, "天然渗流水头边界", "JDFREE.DAT");
             else if (type == "StressBoundaryDamUpstream")
                 page = new StressBoundaryPage(type, "上游水头边界", "FA_DAMUP.DAT");
             else if (type == "StressBoundaryDamMid")
@@ -833,6 +835,7 @@ void Solver::onSeepageAction()
 
     addBoundary("上游水头边界", "SeepageBoundaryUpstreamWater", "JD_UPSEEP.DAT");
     addBoundary("下游水头边界", "SeepageBoundaryDownstreamWater", "JD_DWSEEP.DAT");
+    addBoundary("天然渗流水头边界", "SeepageBoundaryNaturalSeepage", "JDFREE.DAT");
 
     m_root->addChild(analysisNode);
     if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
