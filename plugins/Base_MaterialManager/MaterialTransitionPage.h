@@ -24,10 +24,11 @@ class MaterialTransitionPage : public BasePage
     void onAddRow();
     void onDeleteRow();
     void onSave();
+    void onCurrentRowChanged(int currentRow, int currentColumn, int previousRow, int previousColumn);
 
   private:
     void addRow(int oldMatype, int newMatype);
-    void refreshRowNumbers(int row);
+    void refreshRowHighlight(int row);
 
   private:
     MaterialManager* m_manager = nullptr;
@@ -35,4 +36,3 @@ class MaterialTransitionPage : public BasePage
     QMap<int, QString> m_oldOptions;
     QMap<int, QString> m_newOptions;
 };
-

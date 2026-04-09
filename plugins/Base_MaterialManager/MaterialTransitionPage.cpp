@@ -1,5 +1,8 @@
 #include "MaterialTransitionPage.h"
 
+#include <ServiceRegistry.h>
+#include <services/MeshModuleControllerService.h>
+
 #include <QComboBox>
 #include <QHeaderView>
 #include <QHBoxLayout>
@@ -30,9 +33,8 @@ MaterialTransitionPage::MaterialTransitionPage(MaterialManager* manager, QWidget
     root->addWidget(new QLabel(QStringLiteral("材料变化：明确选择“原材料/区域”到“变更后材料”。"), this));
 
     m_table = new QTableWidget(this);
-    m_table->setColumnCount(4);
-    m_table->setHorizontalHeaderLabels({QStringLiteral("原材料/区域"), QStringLiteral("原编号"),
-                                        QStringLiteral("变更后材料"), QStringLiteral("新编号")});
+    m_table->setColumnCount(2);
+    m_table->setHorizontalHeaderLabels({QStringLiteral("原材料"), QStringLiteral("变更后材料")});
     m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     root->addWidget(m_table);
 
@@ -49,6 +51,8 @@ MaterialTransitionPage::MaterialTransitionPage(MaterialManager* manager, QWidget
     connect(addBtn, &QPushButton::clicked, this, &MaterialTransitionPage::onAddRow);
     connect(delBtn, &QPushButton::clicked, this, &MaterialTransitionPage::onDeleteRow);
     connect(saveBtn, &QPushButton::clicked, this, &MaterialTransitionPage::onSave);
+    connect(m_table, &QTableWidget::currentCellChanged, this,
+            &MaterialTransitionPage::onCurrentRowChanged);
 }
 
 void MaterialTransitionPage::beforeLoad()
@@ -56,7 +60,13 @@ void MaterialTransitionPage::beforeLoad()
     reloadFromManager();
 }
 
-void MaterialTransitionPage::beforeUnload() {}
+void MaterialTransitionPage::beforeUnload()
+{
+    if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+    {
+        meshService->highlightMatypes({}, -1, -1, -1);
+    }
+}
 
 void MaterialTransitionPage::reloadFromManager()
 {
@@ -90,7 +100,6 @@ void MaterialTransitionPage::addRow(int oldMatype, int newMatype)
     if (oldIndex >= 0)
         oldBox->setCurrentIndex(oldIndex);
     m_table->setCellWidget(row, 0, oldBox);
-    m_table->setItem(row, 1, new QTableWidgetItem(QString()));
 
     auto* newBox = new QComboBox(m_table);
     for (auto it = m_newOptions.constBegin(); it != m_newOptions.constEnd(); ++it)
@@ -98,26 +107,56 @@ void MaterialTransitionPage::addRow(int oldMatype, int newMatype)
     int newIndex = newBox->findData(newMatype);
     if (newIndex >= 0)
         newBox->setCurrentIndex(newIndex);
-    m_table->setCellWidget(row, 2, newBox);
-    m_table->setItem(row, 3, new QTableWidgetItem(QString()));
+    m_table->setCellWidget(row, 1, newBox);
 
     connect(oldBox, qOverload<int>(&QComboBox::currentIndexChanged), this,
-            [this, row](int) { refreshRowNumbers(row); });
+            [this, oldBox](int)
+            {
+                if (!m_table)
+                    return;
+                for (int r = 0; r < m_table->rowCount(); ++r)
+                {
+                    if (m_table->cellWidget(r, 0) == oldBox)
+                    {
+                        refreshRowHighlight(r);
+                        break;
+                    }
+                }
+            });
     connect(newBox, qOverload<int>(&QComboBox::currentIndexChanged), this,
-            [this, row](int) { refreshRowNumbers(row); });
-    refreshRowNumbers(row);
+            [this, newBox](int)
+            {
+                if (!m_table)
+                    return;
+                for (int r = 0; r < m_table->rowCount(); ++r)
+                {
+                    if (m_table->cellWidget(r, 1) == newBox)
+                    {
+                        refreshRowHighlight(r);
+                        break;
+                    }
+                }
+            });
+    refreshRowHighlight(row);
 }
 
-void MaterialTransitionPage::refreshRowNumbers(int row)
+void MaterialTransitionPage::refreshRowHighlight(int row)
 {
     if (!m_table || row < 0 || row >= m_table->rowCount())
         return;
     auto* oldBox = qobject_cast<QComboBox*>(m_table->cellWidget(row, 0));
-    auto* newBox = qobject_cast<QComboBox*>(m_table->cellWidget(row, 2));
-    if (m_table->item(row, 1))
-        m_table->item(row, 1)->setText(QString::number(currentMatype(oldBox)));
-    if (m_table->item(row, 3))
-        m_table->item(row, 3)->setText(QString::number(currentMatype(newBox)));
+    auto* newBox = qobject_cast<QComboBox*>(m_table->cellWidget(row, 1));
+    auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshService)
+        return;
+    QSet<int> matypes;
+    const int oldMat = currentMatype(oldBox);
+    const int newMat = currentMatype(newBox);
+    if (oldMat > 0)
+        matypes.insert(oldMat);
+    if (newMat > 0)
+        matypes.insert(newMat);
+    meshService->highlightMatypes(matypes, oldMat, newMat, -1);
 }
 
 void MaterialTransitionPage::onAddRow()
@@ -145,7 +184,7 @@ void MaterialTransitionPage::onSave()
     for (int r = 0; r < m_table->rowCount(); ++r)
     {
         auto* oldBox = qobject_cast<QComboBox*>(m_table->cellWidget(r, 0));
-        auto* newBox = qobject_cast<QComboBox*>(m_table->cellWidget(r, 2));
+        auto* newBox = qobject_cast<QComboBox*>(m_table->cellWidget(r, 1));
         const int oldV = currentMatype(oldBox);
         const int newV = currentMatype(newBox);
         if (oldV <= 0 || newV <= 0)
@@ -166,3 +205,13 @@ void MaterialTransitionPage::onSave()
     QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("材料变化映射已保存。"));
 }
 
+void MaterialTransitionPage::onCurrentRowChanged(int currentRow, int, int, int)
+{
+    if (currentRow < 0)
+    {
+        if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+            meshService->highlightMatypes({}, -1, -1, -1);
+        return;
+    }
+    refreshRowHighlight(currentRow);
+}

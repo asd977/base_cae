@@ -1199,18 +1199,8 @@ QMap<int, QString> MaterialManager::transitionSourceLabels() const
             {
                 if (matype <= 0 || labels.contains(matype))
                     continue;
-                labels.insert(
-                    matype, QStringLiteral("%1 / %2（区域 MATYPE=%3）")
-                                .arg(model.displayName, entry.name, QString::number(matype)));
+                labels.insert(matype, QStringLiteral("%1 [#%2]").arg(entry.name, QString::number(matype)));
             }
-        }
-    }
-    const QSet<int> meshSet = availableMatypes();
-    for (int matype : meshSet)
-    {
-        if (matype > 0 && !labels.contains(matype))
-        {
-            labels.insert(matype, QStringLiteral("网格区域（MATYPE=%1）").arg(matype));
         }
     }
     return labels;
@@ -1229,17 +1219,14 @@ QMap<int, QString> MaterialManager::transitionTargetLabels() const
             {
                 if (matype <= 0 || labels.contains(matype))
                     continue;
-                labels.insert(matype, QStringLiteral("%1 / %2（已施加 MATYPE=%3）")
-                                          .arg(model.displayName, entry.name,
-                                               QString::number(matype)));
+                labels.insert(matype, QStringLiteral("%1 [#%2]").arg(entry.name, QString::number(matype)));
             }
             if (entry.transitionOnly && entry.transitionMatype > 0 &&
                 !labels.contains(entry.transitionMatype))
             {
                 labels.insert(entry.transitionMatype,
-                              QStringLiteral("%1 / %2（后续变换编号=%3）")
-                                  .arg(model.displayName, entry.name,
-                                       QString::number(entry.transitionMatype)));
+                              QStringLiteral("%1 [T#%2]")
+                                  .arg(entry.name, QString::number(entry.transitionMatype)));
             }
         }
     }
