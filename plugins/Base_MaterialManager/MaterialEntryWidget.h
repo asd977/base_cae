@@ -12,6 +12,8 @@ class MaterialManager;
 class MaterialModel;
 class MaterialEntry;
 class CustomComboBox;
+class QCheckBox;
+class QSpinBox;
 
 class MaterialEntryWidget : public BasePage
 {
@@ -42,6 +44,8 @@ class MaterialEntryWidget : public BasePage
 
     void onMatypeHovered(int index);
     void onDropdownClosed();
+    void onTransitionModeChanged(int state);
+    void onTransitionMatypeChanged(int value);
 
   private:
     void rebuildForm(MaterialModel* model, MaterialEntry* entry);
@@ -72,6 +76,8 @@ class MaterialEntryWidget : public BasePage
 
     QListWidget* m_appliedMatypesList = nullptr;
     QPushButton* m_removeButton = nullptr;
+    QCheckBox* m_transitionOnlyCheck = nullptr;
+    QSpinBox* m_transitionMatypeSpin = nullptr;
 
     int m_lastHoveredIndex = -1;
 

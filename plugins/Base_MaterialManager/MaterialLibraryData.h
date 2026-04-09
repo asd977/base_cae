@@ -13,6 +13,8 @@ struct MaterialEntry
     QString name;
     QMap<QString, QString> properties;
     QSet<int> appliedMatypes;
+    bool transitionOnly = false;
+    int transitionMatype = -1;
     QString seepageModelKey;
     QMap<QString, QString> seepageProperties;
 };

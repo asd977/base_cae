@@ -548,6 +548,8 @@ bool MaterialManager::saveProject()
                 appliedArray.append(matype);
             }
             entryObj.insert(QStringLiteral("applied_matypes"), appliedArray);
+            entryObj.insert(QStringLiteral("transition_only"), entry.transitionOnly);
+            entryObj.insert(QStringLiteral("transition_matype"), entry.transitionMatype);
 
             entryObj.insert(QStringLiteral("seepage_model_key"), entry.seepageModelKey);
             QJsonObject seepagePropertiesObj;
@@ -677,6 +679,8 @@ bool MaterialManager::loadProject()
             {
                 entry.appliedMatypes.insert(matypeValue.toInt(-1));
             }
+            entry.transitionOnly = entryObj.value(QStringLiteral("transition_only")).toBool(false);
+            entry.transitionMatype = entryObj.value(QStringLiteral("transition_matype")).toInt(-1);
 
             entry.seepageModelKey = entryObj.value(QStringLiteral("seepage_model_key")).toString();
             const QJsonObject seepageProperties =
@@ -802,6 +806,8 @@ void MaterialManager::showMaterialTransitionDialog()
                 if (matype > 0)
                     configuredMatypes.insert(matype);
             }
+            if (entry.transitionOnly && entry.transitionMatype > 0)
+                configuredMatypes.insert(entry.transitionMatype);
         }
     }
 
@@ -1098,6 +1104,8 @@ QVector<QStringList> MaterialManager::getValueStrings()
                 appliedStrings << QString::number(value);
             }
             row << appliedStrings.join(QLatin1Char(','));
+            row << (entry.transitionOnly ? QStringLiteral("1") : QStringLiteral("0"));
+            row << QString::number(entry.transitionMatype);
             results.append(row);
         }
     }
@@ -1148,6 +1156,8 @@ void MaterialManager::setValueStrings(QVector<QStringList> values)
         const QString name = list.at(2);
         const QString encoded = list.at(3);
         const QString appliedMatypes = (list.size() > 4) ? list.at(4) : QString();
+        const bool transitionOnly = (list.size() > 5) ? (list.at(5) == QStringLiteral("1")) : false;
+        const int transitionMatype = (list.size() > 6) ? list.at(6).toInt() : -1;
 
         int index = findIndex(key);
         if (index < 0)
@@ -1190,6 +1200,8 @@ void MaterialManager::setValueStrings(QVector<QStringList> values)
                 m_models[index].materials.last().appliedMatypes.insert(value);
             }
         }
+        m_models[index].materials.last().transitionOnly = transitionOnly;
+        m_models[index].materials.last().transitionMatype = transitionMatype;
         syncAutoNumberProperties(&m_models[index], &m_models[index].materials.last());
     }
 
@@ -1218,6 +1230,45 @@ bool MaterialManager::isSeepageModelKey(const QString& modelKey) const
 const QVector<MaterialModel>& MaterialManager::seepageModels() const
 {
     return m_seepageModels;
+}
+
+bool MaterialManager::validateTransitionMatype(const QString& entryId, int matype, QString* error) const
+{
+    if (matype <= 0)
+    {
+        if (error)
+            *error = QStringLiteral("编号必须为正整数。");
+        return false;
+    }
+    const QSet<int> meshMatypes = availableMatypes();
+    if (meshMatypes.contains(matype))
+    {
+        if (error)
+            *error = QStringLiteral("该编号已存在于网格 MATYPE 中。");
+        return false;
+    }
+
+    for (const auto& model : m_models)
+    {
+        for (const auto& entry : model.materials)
+        {
+            if (entry.id == entryId)
+                continue;
+            if (entry.appliedMatypes.contains(matype))
+            {
+                if (error)
+                    *error = QStringLiteral("该编号已被其他材料施加到网格。");
+                return false;
+            }
+            if (entry.transitionOnly && entry.transitionMatype == matype)
+            {
+                if (error)
+                    *error = QStringLiteral("该编号已被其他“后续变换材料”占用。");
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 void MaterialManager::focusOnMaterial(const QString& entryId)
@@ -1615,14 +1666,18 @@ bool MaterialManager::generateCaculateFile()
     {
         for (auto& entry : model.materials)
         {
-            if (entry.appliedMatypes.isEmpty())
-                continue;
             if (!m_addedEntryIds.contains(entry.id))
                 continue;
 
-            for (int matype : entry.appliedMatypes)
+            QSet<int> exportMatypes = entry.appliedMatypes;
+            if (entry.transitionOnly && entry.transitionMatype > 0)
+                exportMatypes.insert(entry.transitionMatype);
+            if (exportMatypes.isEmpty())
+                continue;
+
+            for (int matype : exportMatypes)
             {
-                if (matype < 0)
+                if (matype <= 0)
                     continue;
                 maxMatype = qMax(maxMatype, matype);
 

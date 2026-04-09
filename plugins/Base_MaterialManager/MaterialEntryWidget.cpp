@@ -4,11 +4,14 @@
 
 #include <QAbstractItemView>
 #include <QBrush>
+#include <QCheckBox>
 #include <QColor>
 #include <QFontDatabase>
 #include <QHBoxLayout>
+#include <QMessageBox>
 #include <QScrollArea>
 #include <QSignalBlocker>
+#include <QSpinBox>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -297,6 +300,25 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
 
     m_formLayout->addRow(QString("已施加材料单元"), appliedRowWidget);
 
+    QWidget* transitionRowWidget = new QWidget(this);
+    auto* transitionLayout = new QHBoxLayout(transitionRowWidget);
+    transitionLayout->setContentsMargins(0, 0, 0, 0);
+    m_transitionOnlyCheck = new QCheckBox(QStringLiteral("仅用于后续变换"), transitionRowWidget);
+    m_transitionOnlyCheck->setChecked(entry->transitionOnly);
+    m_transitionMatypeSpin = new QSpinBox(transitionRowWidget);
+    m_transitionMatypeSpin->setRange(1, 1000000);
+    m_transitionMatypeSpin->setValue(entry->transitionMatype > 0 ? entry->transitionMatype : 1);
+    m_transitionMatypeSpin->setEnabled(entry->transitionOnly);
+    transitionLayout->addWidget(m_transitionOnlyCheck);
+    transitionLayout->addWidget(new QLabel(QStringLiteral("编号"), transitionRowWidget));
+    transitionLayout->addWidget(m_transitionMatypeSpin);
+    transitionLayout->addStretch();
+    connect(m_transitionOnlyCheck, &QCheckBox::stateChanged, this,
+            &MaterialEntryWidget::onTransitionModeChanged);
+    connect(m_transitionMatypeSpin, qOverload<int>(&QSpinBox::valueChanged), this,
+            &MaterialEntryWidget::onTransitionMatypeChanged);
+    m_formLayout->addRow(QStringLiteral("后续变换"), transitionRowWidget);
+
     // ===== 动态字段（放在 MATYPE 区域下面）=====
     for (const QString& column : model->columns)
     {
@@ -378,6 +400,8 @@ void MaterialEntryWidget::clearForm()
 
     m_appliedMatypesList = nullptr;
     m_removeButton = nullptr;
+    m_transitionOnlyCheck = nullptr;
+    m_transitionMatypeSpin = nullptr;
 
     m_lastHoveredIndex = -1;
 }
@@ -505,6 +529,52 @@ void MaterialEntryWidget::onAppliedMatypeSelected(const QString& text)
 
     updateAppliedListColors();
     m_materialManager->refreshMatypeHighlight(m_entryId);
+}
+
+void MaterialEntryWidget::onTransitionModeChanged(int state)
+{
+    MaterialEntry* entry = lookupEntry();
+    if (!entry || !m_transitionMatypeSpin)
+        return;
+    const bool enabled = (state == Qt::Checked);
+    m_transitionMatypeSpin->setEnabled(enabled);
+    if (!enabled)
+    {
+        entry->transitionOnly = false;
+        entry->transitionMatype = -1;
+        return;
+    }
+    QString error;
+    const int matype = m_transitionMatypeSpin->value();
+    if (!m_materialManager->validateTransitionMatype(m_entryId, matype, &error))
+    {
+        QMessageBox::warning(this, QStringLiteral("提示"), error);
+        QSignalBlocker blocker(m_transitionOnlyCheck);
+        m_transitionOnlyCheck->setChecked(false);
+        m_transitionMatypeSpin->setEnabled(false);
+        entry->transitionOnly = false;
+        entry->transitionMatype = -1;
+        return;
+    }
+    entry->transitionOnly = true;
+    entry->transitionMatype = matype;
+}
+
+void MaterialEntryWidget::onTransitionMatypeChanged(int value)
+{
+    MaterialEntry* entry = lookupEntry();
+    if (!entry || !m_transitionOnlyCheck || !m_transitionOnlyCheck->isChecked())
+        return;
+    QString error;
+    if (!m_materialManager->validateTransitionMatype(m_entryId, value, &error))
+    {
+        QMessageBox::warning(this, QStringLiteral("提示"), error);
+        QSignalBlocker blocker(m_transitionMatypeSpin);
+        m_transitionMatypeSpin->setValue(entry->transitionMatype > 0 ? entry->transitionMatype : 1);
+        return;
+    }
+    entry->transitionOnly = true;
+    entry->transitionMatype = value;
 }
 
 void MaterialEntryWidget::onMatypeHovered(int index)

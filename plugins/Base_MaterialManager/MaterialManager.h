@@ -82,6 +82,7 @@ class MaterialManager : public QObject, public MaterialManagerService
     static bool isAutoNumberColumn(const QString& columnName);
     bool isSeepageModelKey(const QString& modelKey) const;
     const QVector<MaterialModel>& seepageModels() const;
+    bool validateTransitionMatype(const QString& entryId, int matype, QString* error) const;
 
   private:
     void newProjectForPath(const QString& workPath);
