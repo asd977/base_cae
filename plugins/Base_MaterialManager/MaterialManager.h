@@ -31,6 +31,9 @@ class MaterialManager : public QObject, public MaterialManagerService
     void addMaterialFromMenu(const QString& modelKey) override;
     void showBuiltinMaterialListDialog() override;
     void showBuiltinSeepageListDialog() override;
+    void showMaterialTransitionDialog() override;
+    QVector<QPair<int, int>> materialTransitions() const override;
+    void setMaterialTransitions(const QVector<QPair<int, int>>& transitions) override;
 
     QString addMaterialToModel(const QString& modelKey, bool addToProjectTree = true);
 
@@ -105,6 +108,7 @@ class MaterialManager : public QObject, public MaterialManagerService
     QVector<MaterialModel> m_models;
     QSet<QString> m_addedEntryIds;
     QVector<MaterialModel> m_seepageModels;
+    QVector<QPair<int, int>> m_materialTransitions;
 
     // ===== 3态：Selected / Preview / PreDelete =====
     QHash<QString, int> m_selectedMatypes;

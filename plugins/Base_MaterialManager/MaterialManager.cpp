@@ -26,6 +26,9 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QListWidget>
+#include <QMessageBox>
+#include <QPushButton>
+#include <QDialogButtonBox>
 #include <QShortcut>
 #include <QSplitter>
 #include <QTableWidget>
@@ -570,6 +573,16 @@ bool MaterialManager::saveProject()
     }
     root.insert(QStringLiteral("added_entry_ids"), addedEntryArray);
 
+    QJsonArray transitionArray;
+    for (const auto& pair : std::as_const(m_materialTransitions))
+    {
+        QJsonObject row;
+        row.insert(QStringLiteral("old"), pair.first);
+        row.insert(QStringLiteral("new"), pair.second);
+        transitionArray.append(row);
+    }
+    root.insert(QStringLiteral("material_transitions"), transitionArray);
+
     QFile file(QDir(m_workPath).filePath(PublicConstants::kMaterialProjectFileName));
     if (!file.open(QIODevice::WriteOnly))
     {
@@ -690,6 +703,15 @@ bool MaterialManager::loadProject()
         }
     }
 
+    m_materialTransitions.clear();
+    const QJsonArray transitionArray = root.value(QStringLiteral("material_transitions")).toArray();
+    for (const auto& val : transitionArray)
+    {
+        const QJsonObject row = val.toObject();
+        m_materialTransitions.push_back(
+            {row.value(QStringLiteral("old")).toInt(), row.value(QStringLiteral("new")).toInt()});
+    }
+
     ensureEntryIds();
     notifyLibraryChanged();
     // 工程打开时会在后台重建条目页面，避免把条目高亮残留到初始状态。
@@ -716,6 +738,97 @@ void MaterialManager::showBuiltinSeepageListDialog()
 {
     showReferenceListDialog(QStringLiteral("内置渗流参数参考"),
                             buildSeepageReferenceTables(), m_materialManagerWidget);
+}
+
+void MaterialManager::showMaterialTransitionDialog()
+{
+    QDialog dlg(m_materialManagerWidget);
+    dlg.setWindowTitle(QStringLiteral("材料变换库"));
+    auto* layout = new QVBoxLayout(&dlg);
+    layout->addWidget(new QLabel(QStringLiteral("每行填写：旧材料号 -> 新材料号（均需为当前可用 MATYPE）"),
+                                 &dlg));
+
+    auto* table = new QTableWidget(&dlg);
+    table->setColumnCount(2);
+    table->setHorizontalHeaderLabels({QStringLiteral("旧材料号"), QStringLiteral("新材料号")});
+    table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    table->setRowCount(qMax(1, m_materialTransitions.size()));
+    for (int i = 0; i < m_materialTransitions.size(); ++i)
+    {
+        table->setItem(i, 0, new QTableWidgetItem(QString::number(m_materialTransitions[i].first)));
+        table->setItem(i, 1, new QTableWidgetItem(QString::number(m_materialTransitions[i].second)));
+    }
+    layout->addWidget(table);
+
+    auto* rowButtons = new QHBoxLayout();
+    auto* btnAdd = new QPushButton(QStringLiteral("添加行"), &dlg);
+    auto* btnDel = new QPushButton(QStringLiteral("删除选中行"), &dlg);
+    rowButtons->addWidget(btnAdd);
+    rowButtons->addWidget(btnDel);
+    rowButtons->addStretch();
+    layout->addLayout(rowButtons);
+
+    connect(btnAdd, &QPushButton::clicked, &dlg, [table]() { table->insertRow(table->rowCount()); });
+    connect(btnDel, &QPushButton::clicked, &dlg, [table]()
+            {
+                const int row = table->currentRow();
+                if (row >= 0)
+                    table->removeRow(row);
+            });
+
+    auto* box = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    layout->addWidget(box);
+    connect(box, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(box, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+
+    QVector<QPair<int, int>> parsed;
+    QStringList invalidRows;
+    const QSet<int> available = availableMatypes();
+    for (int r = 0; r < table->rowCount(); ++r)
+    {
+        const auto* oldItem = table->item(r, 0);
+        const auto* newItem = table->item(r, 1);
+        if (!oldItem || !newItem)
+            continue;
+        bool oldOk = false;
+        bool newOk = false;
+        const int oldVal = oldItem->text().trimmed().toInt(&oldOk);
+        const int newVal = newItem->text().trimmed().toInt(&newOk);
+        if (!oldOk || !newOk)
+        {
+            invalidRows.append(QString::number(r + 1));
+            continue;
+        }
+        if (!available.isEmpty() && (!available.contains(oldVal) || !available.contains(newVal)))
+        {
+            invalidRows.append(QString::number(r + 1));
+            continue;
+        }
+        parsed.push_back({oldVal, newVal});
+    }
+
+    if (!invalidRows.isEmpty())
+    {
+        QMessageBox::warning(
+            &dlg, QStringLiteral("提示"),
+            QStringLiteral("第 %1 行存在非法编号（必须是当前可用 MATYPE）。")
+                .arg(invalidRows.join(QStringLiteral(", "))));
+        return;
+    }
+    m_materialTransitions = parsed;
+}
+
+QVector<QPair<int, int>> MaterialManager::materialTransitions() const
+{
+    return m_materialTransitions;
+}
+
+void MaterialManager::setMaterialTransitions(const QVector<QPair<int, int>>& transitions)
+{
+    m_materialTransitions = transitions;
 }
 
 QString MaterialManager::addMaterialToModel(const QString& modelKey, bool addToProjectTree)
@@ -847,6 +960,7 @@ void MaterialManager::newProjectForPath(const QString& workPath)
     m_modelItems.clear();
     m_entryItems.clear();
     m_addedEntryIds.clear();
+    m_materialTransitions.clear();
     m_selectedMatypes.clear();
     m_previewMatypes.clear();
     m_preDeleteMatypes.clear();

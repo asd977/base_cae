@@ -719,6 +719,7 @@ void UiFrame::buildRibbonTabs()
 
         auto* panelSoil = cate->addPannel("模型");
         auto* panelBuiltin = cate->addPannel("内置数据");
+        auto* panelTransition = cate->addPannel("变换");
 
         auto* actHjp = makeAction(this, ":/resources/menu/minimal/mat-hjp.svg", "围岩开挖模型");
         auto* actSoilEb = makeAction(this, ":/resources/menu/minimal/mat-soil-eb.svg", "E-B模型");
@@ -736,6 +737,8 @@ void UiFrame::buildRibbonTabs()
                                               "材料示例");
         auto* actBuiltinSeepage = makeAction(this, ":/resources/menu/minimal/mat-dynamic.svg",
                                              "渗流示例");
+        auto* actMaterialTransition = makeAction(this, ":/resources/menu/minimal/mat-special.svg",
+                                                 "材料变换");
 
         // 材料类型较多，统一改为 small action，减少 Ribbon 占位并避免文字截断。
         addActionToPanel(panelSoil, actSoilEb, 1);
@@ -750,6 +753,7 @@ void UiFrame::buildRibbonTabs()
         addActionToPanel(panelSoil, actDagangshan, 1);
         addActionToPanel(panelBuiltin, actBuiltinMaterial, 3);
         addActionToPanel(panelBuiltin, actBuiltinSeepage, 3);
+        addActionToPanel(panelTransition, actMaterialTransition, 2);
 
         connect(actHjp, &QAction::triggered, this,
                 []()
@@ -872,6 +876,17 @@ void UiFrame::buildRibbonTabs()
                     if (materialService)
                     {
                         materialService->showBuiltinSeepageListDialog();
+                    }
+                });
+
+        connect(actMaterialTransition, &QAction::triggered, this,
+                []()
+                {
+                    auto* materialService =
+                        ServiceRegistry::instance().getService<MaterialManagerService>();
+                    if (materialService)
+                    {
+                        materialService->showMaterialTransitionDialog();
                     }
                 });
 
