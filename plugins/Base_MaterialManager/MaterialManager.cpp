@@ -745,8 +745,11 @@ void MaterialManager::showMaterialTransitionDialog()
     QDialog dlg(m_materialManagerWidget);
     dlg.setWindowTitle(QStringLiteral("材料变换库"));
     auto* layout = new QVBoxLayout(&dlg);
-    layout->addWidget(new QLabel(QStringLiteral("每行填写：旧材料号 -> 新材料号（均需为当前可用 MATYPE）"),
-                                 &dlg));
+    layout->addWidget(
+        new QLabel(QStringLiteral("每行填写：旧材料号 -> 新材料号。旧材料号需在当前网格中可用；"
+                                  "新材料号必须已绑定到“已添加到工程”的材料，"
+                                  "以确保 IMAT.DAT 可生成对应编号列。"),
+                   &dlg));
 
     auto* table = new QTableWidget(&dlg);
     table->setColumnCount(2);
@@ -787,6 +790,21 @@ void MaterialManager::showMaterialTransitionDialog()
     QVector<QPair<int, int>> parsed;
     QStringList invalidRows;
     const QSet<int> available = availableMatypes();
+    QSet<int> configuredMatypes;
+    for (const auto& model : m_models)
+    {
+        for (const auto& entry : model.materials)
+        {
+            if (!m_addedEntryIds.contains(entry.id))
+                continue;
+            for (int matype : entry.appliedMatypes)
+            {
+                if (matype > 0)
+                    configuredMatypes.insert(matype);
+            }
+        }
+    }
+
     for (int r = 0; r < table->rowCount(); ++r)
     {
         const auto* oldItem = table->item(r, 0);
@@ -802,7 +820,12 @@ void MaterialManager::showMaterialTransitionDialog()
             invalidRows.append(QString::number(r + 1));
             continue;
         }
-        if (!available.isEmpty() && (!available.contains(oldVal) || !available.contains(newVal)))
+        if (!available.isEmpty() && !available.contains(oldVal))
+        {
+            invalidRows.append(QString::number(r + 1));
+            continue;
+        }
+        if (!configuredMatypes.contains(newVal))
         {
             invalidRows.append(QString::number(r + 1));
             continue;
@@ -814,7 +837,7 @@ void MaterialManager::showMaterialTransitionDialog()
     {
         QMessageBox::warning(
             &dlg, QStringLiteral("提示"),
-            QStringLiteral("第 %1 行存在非法编号（必须是当前可用 MATYPE）。")
+            QStringLiteral("第 %1 行存在非法映射：旧材料号需在网格可用，新材料号需已绑定到工程材料（可导出 IMAT）。")
                 .arg(invalidRows.join(QStringLiteral(", "))));
         return;
     }
