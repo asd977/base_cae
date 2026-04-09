@@ -8,6 +8,7 @@
 #include <QColor>
 #include <QFontDatabase>
 #include <QHBoxLayout>
+#include <QLabel>
 #include <QMessageBox>
 #include <QScrollArea>
 #include <QSignalBlocker>
