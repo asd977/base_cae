@@ -53,23 +53,6 @@ SeepageWidget::SeepageWidget(QWidget* parent)
     ui->comboItagFree->addItem("0 - 不计入", 0);
     ui->comboItagFree->addItem("1 - 计入", 1);
 
-    ui->spinMCase->hide();
-    ui->labelMCase->hide();
-    ui->editCaseIndices->hide();
-    ui->labelCaseIndices->hide();
-    ui->spinNCase->hide();
-    ui->labelNCase->hide();
-    ui->spinGlobalNchange->hide();
-    ui->labelGlobalNchange->hide();
-    ui->spinICase->hide();
-    ui->labelICase->hide();
-    ui->spinCaseNchange->hide();
-    ui->labelCaseNchange->hide();
-    ui->plainCaseMappings->hide();
-    ui->labelCaseMappings->hide();
-    ui->editSeepCaseDir->hide();
-    ui->labelSeepCaseDir->hide();
-    ui->labelDtTstaTend->hide();
 }
 
 SeepageWidget::~SeepageWidget()
@@ -754,9 +737,6 @@ QJsonObject SeepageWidget::saveJson()
         globalMappingsArray.append(rowObj);
     }
     obj["global_mappings_table"] = globalMappingsArray;
-    obj["mcase"] = ui->spinMCase->value();
-    obj["case_indices"] = ui->editCaseIndices->text();
-    obj["ncase"] = ui->spinNCase->value();
     obj["iter"] = ui->spinIter->value();
     obj["itag_free"] = ui->comboItagFree->currentData().toInt();
     obj["seep_case_dir"] = QStringLiteral("SEEPCASE01");
@@ -806,17 +786,12 @@ void SeepageWidget::loadJson(const QJsonObject& obj)
         globalMappings_.push_back(
             {rowObj.value("old").toInt(), rowObj.value("new").toInt()});
     }
-    ui->spinMCase->setValue(obj.value("mcase").toInt(ui->spinMCase->value()));
-    ui->editCaseIndices->setText(
-        obj.value("case_indices").toString(ui->editCaseIndices->text()));
-    ui->spinNCase->setValue(obj.value("ncase").toInt(ui->spinNCase->value()));
     ui->spinIter->setValue(obj.value("iter").toInt(ui->spinIter->value()));
     const int itagFree = obj.value("itag_free").toInt(ui->comboItagFree->currentData().toInt());
     int itagIndex = ui->comboItagFree->findData(itagFree);
     if (itagIndex < 0)
         itagIndex = 0;
     ui->comboItagFree->setCurrentIndex(itagIndex);
-    ui->editSeepCaseDir->setText(QStringLiteral("SEEPCASE01"));
     ui->spinDt->setValue(obj.value("dt").toDouble(ui->spinDt->value()));
     ui->spinTsta->setValue(obj.value("tsta").toDouble(ui->spinTsta->value()));
     ui->spinTend->setValue(obj.value("tend").toDouble(ui->spinTend->value()));
