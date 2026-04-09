@@ -3,7 +3,9 @@
 
 #include <BasePage.h>
 
+#include <QPair>
 #include <QJsonObject>
+#include <QVector>
 
 namespace Ui
 {
@@ -41,9 +43,28 @@ class SeepageWidget : public BasePage
 
   private slots:
     void onComputeClicked();
+    void onEditGlobalMappingsClicked();
+    void onEditHwDropCurvesClicked();
 
   private:
+    struct MaterialMapping
+    {
+        int oldMaterial = 0;
+        int newMaterial = 0;
+    };
+
+    struct TimeHeadPoint
+    {
+        double time = 0.0;
+        double head = 0.0;
+    };
+
+    bool exportHwDropDatFiles(const QString& seepCaseDirName) const;
+
     Ui::SeepageWidget* ui;
+    QVector<MaterialMapping> globalMappings_;
+    QVector<TimeHeadPoint> hwDropUpPoints_;
+    QVector<TimeHeadPoint> hwDropDwPoints_;
 };
 
 #endif // SEEPAGEWIDGET_H

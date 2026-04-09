@@ -202,20 +202,7 @@
        </widget>
       </item>
       <item row="8" column="1">
-       <widget class="QSpinBox" name="spinComputeType">
-        <property name="minimum">
-         <number>1</number>
-        </property>
-        <property name="maximum">
-         <number>3</number>
-        </property>
-        <property name="value">
-         <number>1</number>
-        </property>
-        <property name="toolTip">
-         <string>1-仅稳定，2-仅非稳定，3-全流程</string>
-        </property>
-       </widget>
+       <widget class="QComboBox" name="comboComputeType"/>
       </item>
       <item row="9" column="0">
        <widget class="QLabel" name="labelGlobalNchange">
@@ -242,23 +229,10 @@
        </widget>
       </item>
       <item row="10" column="1">
-       <widget class="QTableWidget" name="tableGlobalMappings">
-        <property name="columnCount">
-         <number>2</number>
+       <widget class="QPushButton" name="btnGlobalMappings">
+        <property name="text">
+         <string>设置材料变换...</string>
         </property>
-        <property name="rowCount">
-         <number>3</number>
-        </property>
-        <column>
-         <property name="text">
-          <string>原材料号</string>
-         </property>
-        </column>
-        <column>
-         <property name="text">
-          <string>变化后材料号</string>
-         </property>
-        </column>
        </widget>
       </item>
       <item row="11" column="0">
@@ -396,17 +370,7 @@
        </widget>
       </item>
       <item row="18" column="1">
-       <widget class="QSpinBox" name="spinItagFree">
-        <property name="minimum">
-         <number>0</number>
-        </property>
-        <property name="maximum">
-         <number>1</number>
-        </property>
-        <property name="toolTip">
-         <string>0-不计入，1-计入</string>
-        </property>
-       </widget>
+       <widget class="QComboBox" name="comboItagFree"/>
       </item>
       <item row="19" column="0">
        <widget class="QLabel" name="labelSeepCaseDir">
@@ -489,22 +453,11 @@
        </widget>
       </item>
       <item row="21" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayoutHwDropFiles">
-        <item>
-         <widget class="QLineEdit" name="editHwDropUpFile">
-          <property name="text">
-           <string>HWDROP_UP.DAT</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLineEdit" name="editHwDropDwFile">
-          <property name="text">
-           <string>HWDROP_DW.DAT</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
+       <widget class="QPushButton" name="btnHwDropCurves">
+        <property name="text">
+         <string>设置水位变化过程...</string>
+        </property>
+       </widget>
       </item>
      </layout>
     </widget>

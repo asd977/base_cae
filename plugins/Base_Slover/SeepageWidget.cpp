@@ -6,12 +6,20 @@
 #include <services/MeshModuleControllerService.h>
 
 #include <QDir>
+#include <QDialog>
 #include <QFile>
 #include <QJsonArray>
+#include <QJsonObject>
+#include <QLabel>
+#include <QDialogButtonBox>
+#include <QHBoxLayout>
+#include <QHeaderView>
+#include <QPushButton>
 #include <QRegularExpression>
 #include <QSet>
 #include <QTableWidgetItem>
 #include <QTextStream>
+#include <QVBoxLayout>
 #include <QVector>
 
 #include <vtkCell.h>
@@ -34,6 +42,26 @@ SeepageWidget::SeepageWidget(QWidget* parent)
 {
     ui->setupUi(this);
     connect(ui->btnCompute, &QPushButton::clicked, this, &SeepageWidget::onComputeClicked);
+    connect(ui->btnGlobalMappings, &QPushButton::clicked, this,
+            &SeepageWidget::onEditGlobalMappingsClicked);
+    connect(ui->btnHwDropCurves, &QPushButton::clicked, this,
+            &SeepageWidget::onEditHwDropCurvesClicked);
+
+    ui->comboComputeType->addItem("1 - 仅进行稳定渗流计算", 1);
+    ui->comboComputeType->addItem("2 - 仅进行非稳定渗流计算", 2);
+    ui->comboComputeType->addItem("3 - 按流程全部进行计算", 3);
+
+    ui->comboItagFree->addItem("0 - 不计入", 0);
+    ui->comboItagFree->addItem("1 - 计入", 1);
+
+    ui->spinMCase->hide();
+    ui->labelMCase->hide();
+    ui->editCaseIndices->hide();
+    ui->labelCaseIndices->hide();
+    ui->spinNCase->hide();
+    ui->labelNCase->hide();
+    ui->spinGlobalNchange->hide();
+    ui->labelGlobalNchange->hide();
 }
 
 SeepageWidget::~SeepageWidget()
@@ -118,22 +146,8 @@ bool SeepageWidget::exportIseepDatFile() const
     };
 
     QVector<std::pair<int, int>> globalMappings;
-    if (ui->tableGlobalMappings)
-    {
-        for (int r = 0; r < ui->tableGlobalMappings->rowCount(); ++r)
-        {
-            const auto* oldItem = ui->tableGlobalMappings->item(r, 0);
-            const auto* newItem = ui->tableGlobalMappings->item(r, 1);
-            if (!oldItem || !newItem)
-                continue;
-            bool oldOk = false;
-            bool newOk = false;
-            const int oldVal = oldItem->text().trimmed().toInt(&oldOk);
-            const int newVal = newItem->text().trimmed().toInt(&newOk);
-            if (oldOk && newOk)
-                globalMappings.push_back({oldVal, newVal});
-        }
-    }
+    for (const auto& mapping : globalMappings_)
+        globalMappings.push_back({mapping.oldMaterial, mapping.newMaterial});
     const QVector<std::pair<int, int>> caseMappings =
         parseMappingLines(ui->plainCaseMappings->toPlainText());
     const int globalNchange = globalMappings.size();
@@ -167,7 +181,7 @@ bool SeepageWidget::exportIseepDatFile() const
     os << "'------------'\n";
     os << "'------------'\n";
     os << "'------------'\n";
-    os << "'" << ui->spinComputeType->value() << "'\n";
+    os << "'" << ui->comboComputeType->currentData().toInt() << "'\n";
     os << "'------------'\n";
 
     os << globalNchange << "     NCHANGE\n";
@@ -202,21 +216,21 @@ bool SeepageWidget::exportIseepDatFile() const
             os << "0 0   MOLD_CASE MNEW_CASE\n";
         }
     }
-    os << ui->spinIter->value() << " " << ui->spinItagFree->value() << " ITER  ITAG_FREE\n";
+    os << ui->spinIter->value() << " " << ui->comboItagFree->currentData().toInt()
+       << " ITER  ITAG_FREE\n";
     os << upstreamWaterLevel() << " " << downstreamWaterLevel() << " " << upstreamFlux() << " "
        << downstreamFlux() << "    HWUP   HWDW\n";
     os << "'" << seepCaseDirAbs << "'     DIRDYNA\n";
     os << ui->spinDt->value() << " " << ui->spinTsta->value() << " " << ui->spinTend->value()
        << "    DT TSTA TEND\n";
-    const QString hwDropUp =
-        ui->editHwDropUpFile->text().trimmed().isEmpty() ? QStringLiteral("HWDROP_UP.DAT")
-                                                         : ui->editHwDropUpFile->text().trimmed();
-    const QString hwDropDw =
-        ui->editHwDropDwFile->text().trimmed().isEmpty() ? QStringLiteral("HWDROP_DW.DAT")
-                                                         : ui->editHwDropDwFile->text().trimmed();
+    const QString hwDropUp = QStringLiteral("HWDROP_UP.DAT");
+    const QString hwDropDw = QStringLiteral("HWDROP_DW.DAT");
     os << "'" << hwDropUp << "'  '" << hwDropDw << "'   HWDROP_UP  HWDROP_DW\n";
 
     file.close();
+
+    if (!exportHwDropDatFiles(seepCaseDirName))
+        return false;
 
     return exportInouseDatFile() && exportMaMaskDatFile() && exportMaRockDatFile() &&
            exportKetraceDatFile() && exportJdtraceDatFile();
@@ -592,6 +606,165 @@ bool SeepageWidget::exportJdtraceDatFile() const
     return true;
 }
 
+bool SeepageWidget::exportHwDropDatFiles(const QString& seepCaseDirName) const
+{
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir wd(QDir(projectDir).absolutePath());
+    if (!wd.exists(seepCaseDirName) && !wd.mkpath(seepCaseDirName))
+        return false;
+
+    auto writeCurve = [&](const QString& fileName, const QVector<TimeHeadPoint>& points)
+    {
+        QFile file(wd.filePath(seepCaseDirName + "/" + fileName));
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+            return false;
+
+        QTextStream os(&file);
+        os.setRealNumberNotation(QTextStream::FixedNotation);
+        os.setRealNumberPrecision(6);
+        os << points.size() << "\n";
+        os << "'TDT(day)   HEAD(m)'\n";
+        for (const auto& point : points)
+            os << point.time << " " << point.head << "\n";
+        return true;
+    };
+
+    return writeCurve(QStringLiteral("HWDROP_UP.DAT"), hwDropUpPoints_) &&
+           writeCurve(QStringLiteral("HWDROP_DW.DAT"), hwDropDwPoints_);
+}
+
+void SeepageWidget::onEditGlobalMappingsClicked()
+{
+    QDialog dlg(this);
+    dlg.setWindowTitle("公共变化属性映射");
+    auto* layout = new QVBoxLayout(&dlg);
+
+    auto* tips = new QLabel("每行设置：原材料号 -> 变化后材料号", &dlg);
+    layout->addWidget(tips);
+
+    auto* table = new QTableWidget(&dlg);
+    table->setColumnCount(2);
+    table->setHorizontalHeaderLabels(QStringList() << "原材料号"
+                                                   << "变化后材料号");
+    table->horizontalHeader()->setStretchLastSection(true);
+    table->setRowCount(qMax(1, globalMappings_.size()));
+    for (int i = 0; i < globalMappings_.size(); ++i)
+    {
+        table->setItem(i, 0, new QTableWidgetItem(QString::number(globalMappings_[i].oldMaterial)));
+        table->setItem(i, 1, new QTableWidgetItem(QString::number(globalMappings_[i].newMaterial)));
+    }
+    layout->addWidget(table);
+
+    auto* buttonRow = new QHBoxLayout();
+    auto* btnAdd = new QPushButton("添加行", &dlg);
+    auto* btnRemove = new QPushButton("删除选中行", &dlg);
+    buttonRow->addWidget(btnAdd);
+    buttonRow->addWidget(btnRemove);
+    buttonRow->addStretch();
+    layout->addLayout(buttonRow);
+    connect(btnAdd, &QPushButton::clicked, &dlg, [table]() { table->insertRow(table->rowCount()); });
+    connect(btnRemove, &QPushButton::clicked, &dlg, [table]()
+            {
+                const int row = table->currentRow();
+                if (row >= 0)
+                    table->removeRow(row);
+            });
+
+    auto* box = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    connect(box, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(box, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    layout->addWidget(box);
+
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+
+    globalMappings_.clear();
+    for (int r = 0; r < table->rowCount(); ++r)
+    {
+        const auto* oldItem = table->item(r, 0);
+        const auto* newItem = table->item(r, 1);
+        if (!oldItem || !newItem)
+            continue;
+        bool oldOk = false;
+        bool newOk = false;
+        const int oldVal = oldItem->text().trimmed().toInt(&oldOk);
+        const int newVal = newItem->text().trimmed().toInt(&newOk);
+        if (oldOk && newOk)
+            globalMappings_.push_back({oldVal, newVal});
+    }
+}
+
+void SeepageWidget::onEditHwDropCurvesClicked()
+{
+    QDialog dlg(this);
+    dlg.setWindowTitle("水位变化过程");
+    auto* layout = new QVBoxLayout(&dlg);
+    layout->addWidget(new QLabel("文件格式：第一行 NTBX；第二行 'TDT(day)   HEAD(m)'；后续每行 time head。", &dlg));
+
+    auto buildTable = [&](const QVector<TimeHeadPoint>& src)
+    {
+        auto* table = new QTableWidget(&dlg);
+        table->setColumnCount(2);
+        table->setHorizontalHeaderLabels(QStringList() << "TDT(day)"
+                                                       << "HEAD(m)");
+        table->horizontalHeader()->setStretchLastSection(true);
+        table->setRowCount(qMax(1, src.size()));
+        for (int i = 0; i < src.size(); ++i)
+        {
+            table->setItem(i, 0, new QTableWidgetItem(QString::number(src[i].time)));
+            table->setItem(i, 1, new QTableWidgetItem(QString::number(src[i].head)));
+        }
+        return table;
+    };
+
+    layout->addWidget(new QLabel("上游 HWDROP_UP.DAT", &dlg));
+    auto* upTable = buildTable(hwDropUpPoints_);
+    layout->addWidget(upTable);
+    layout->addWidget(new QLabel("下游 HWDROP_DW.DAT", &dlg));
+    auto* dwTable = buildTable(hwDropDwPoints_);
+    layout->addWidget(dwTable);
+
+    auto* buttonRow = new QHBoxLayout();
+    auto* btnAddUp = new QPushButton("上游添加行", &dlg);
+    auto* btnAddDw = new QPushButton("下游添加行", &dlg);
+    buttonRow->addWidget(btnAddUp);
+    buttonRow->addWidget(btnAddDw);
+    buttonRow->addStretch();
+    layout->addLayout(buttonRow);
+    connect(btnAddUp, &QPushButton::clicked, &dlg, [upTable]() { upTable->insertRow(upTable->rowCount()); });
+    connect(btnAddDw, &QPushButton::clicked, &dlg, [dwTable]() { dwTable->insertRow(dwTable->rowCount()); });
+
+    auto* box = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    connect(box, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(box, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    layout->addWidget(box);
+
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+
+    auto parseTable = [](QTableWidget* table)
+    {
+        QVector<TimeHeadPoint> points;
+        for (int r = 0; r < table->rowCount(); ++r)
+        {
+            const auto* tItem = table->item(r, 0);
+            const auto* hItem = table->item(r, 1);
+            if (!tItem || !hItem)
+                continue;
+            bool tOk = false;
+            bool hOk = false;
+            const double t = tItem->text().trimmed().toDouble(&tOk);
+            const double h = hItem->text().trimmed().toDouble(&hOk);
+            if (tOk && hOk)
+                points.push_back({t, h});
+        }
+        return points;
+    };
+    hwDropUpPoints_ = parseTable(upTable);
+    hwDropDwPoints_ = parseTable(dwTable);
+}
+
 QJsonObject SeepageWidget::saveJson()
 {
     QJsonObject obj;
@@ -603,17 +776,13 @@ QJsonObject SeepageWidget::saveJson()
     obj["controlled_property_no"] = ui->spinControlledPropertyNo->value();
     obj["natural_free_surface"] = ui->checkNaturalFreeSurface->isChecked();
     obj["drain_well"] = ui->checkDrainWell->isChecked();
-    obj["compute_type"] = ui->spinComputeType->value();
-    const int globalRowCount = ui->tableGlobalMappings->rowCount();
-    ui->spinGlobalNchange->setValue(globalRowCount);
+    obj["compute_type"] = ui->comboComputeType->currentData().toInt();
     QJsonArray globalMappingsArray;
-    for (int r = 0; r < ui->tableGlobalMappings->rowCount(); ++r)
+    for (const auto& mapping : std::as_const(globalMappings_))
     {
-        const auto* oldItem = ui->tableGlobalMappings->item(r, 0);
-        const auto* newItem = ui->tableGlobalMappings->item(r, 1);
         QJsonObject rowObj;
-        rowObj["old"] = oldItem ? oldItem->text().trimmed() : QString();
-        rowObj["new"] = newItem ? newItem->text().trimmed() : QString();
+        rowObj["old"] = mapping.oldMaterial;
+        rowObj["new"] = mapping.newMaterial;
         globalMappingsArray.append(rowObj);
     }
     obj["global_mappings_table"] = globalMappingsArray;
@@ -624,13 +793,29 @@ QJsonObject SeepageWidget::saveJson()
     obj["case_nchange"] = ui->spinCaseNchange->value();
     obj["case_mappings"] = ui->plainCaseMappings->toPlainText();
     obj["iter"] = ui->spinIter->value();
-    obj["itag_free"] = ui->spinItagFree->value();
+    obj["itag_free"] = ui->comboItagFree->currentData().toInt();
     obj["seep_case_dir"] = ui->editSeepCaseDir->text();
     obj["dt"] = ui->spinDt->value();
     obj["tsta"] = ui->spinTsta->value();
     obj["tend"] = ui->spinTend->value();
-    obj["hwdrop_up_file"] = ui->editHwDropUpFile->text();
-    obj["hwdrop_dw_file"] = ui->editHwDropDwFile->text();
+    QJsonArray hwUpArray;
+    for (const auto& point : std::as_const(hwDropUpPoints_))
+    {
+        QJsonObject row;
+        row["time"] = point.time;
+        row["head"] = point.head;
+        hwUpArray.append(row);
+    }
+    QJsonArray hwDwArray;
+    for (const auto& point : std::as_const(hwDropDwPoints_))
+    {
+        QJsonObject row;
+        row["time"] = point.time;
+        row["head"] = point.head;
+        hwDwArray.append(row);
+    }
+    obj["hwdrop_up_points"] = hwUpArray;
+    obj["hwdrop_dw_points"] = hwDwArray;
     return obj;
 }
 
@@ -651,20 +836,18 @@ void SeepageWidget::loadJson(const QJsonObject& obj)
     ui->checkNaturalFreeSurface->setChecked(
         obj.value("natural_free_surface").toBool(ui->checkNaturalFreeSurface->isChecked()));
     ui->checkDrainWell->setChecked(obj.value("drain_well").toBool(ui->checkDrainWell->isChecked()));
-    ui->spinComputeType->setValue(obj.value("compute_type").toInt(ui->spinComputeType->value()));
+    const int computeType = obj.value("compute_type").toInt(ui->comboComputeType->currentData().toInt());
+    int computeTypeIndex = ui->comboComputeType->findData(computeType);
+    if (computeTypeIndex < 0)
+        computeTypeIndex = 0;
+    ui->comboComputeType->setCurrentIndex(computeTypeIndex);
     const QJsonArray globalMappingsArray = obj.value("global_mappings_table").toArray();
-    if (!globalMappingsArray.isEmpty())
+    globalMappings_.clear();
+    for (int r = 0; r < globalMappingsArray.size(); ++r)
     {
-        ui->tableGlobalMappings->setRowCount(globalMappingsArray.size());
-        for (int r = 0; r < globalMappingsArray.size(); ++r)
-        {
-            const QJsonObject rowObj = globalMappingsArray.at(r).toObject();
-            ui->tableGlobalMappings->setItem(
-                r, 0, new QTableWidgetItem(rowObj.value("old").toString()));
-            ui->tableGlobalMappings->setItem(
-                r, 1, new QTableWidgetItem(rowObj.value("new").toString()));
-        }
-        ui->spinGlobalNchange->setValue(globalMappingsArray.size());
+        const QJsonObject rowObj = globalMappingsArray.at(r).toObject();
+        globalMappings_.push_back(
+            {rowObj.value("old").toInt(), rowObj.value("new").toInt()});
     }
     ui->spinMCase->setValue(obj.value("mcase").toInt(ui->spinMCase->value()));
     ui->editCaseIndices->setText(
@@ -675,16 +858,29 @@ void SeepageWidget::loadJson(const QJsonObject& obj)
     ui->plainCaseMappings->setPlainText(
         obj.value("case_mappings").toString(ui->plainCaseMappings->toPlainText()));
     ui->spinIter->setValue(obj.value("iter").toInt(ui->spinIter->value()));
-    ui->spinItagFree->setValue(obj.value("itag_free").toInt(ui->spinItagFree->value()));
+    const int itagFree = obj.value("itag_free").toInt(ui->comboItagFree->currentData().toInt());
+    int itagIndex = ui->comboItagFree->findData(itagFree);
+    if (itagIndex < 0)
+        itagIndex = 0;
+    ui->comboItagFree->setCurrentIndex(itagIndex);
     ui->editSeepCaseDir->setText(
         obj.value("seep_case_dir").toString(ui->editSeepCaseDir->text()));
     ui->spinDt->setValue(obj.value("dt").toDouble(ui->spinDt->value()));
     ui->spinTsta->setValue(obj.value("tsta").toDouble(ui->spinTsta->value()));
     ui->spinTend->setValue(obj.value("tend").toDouble(ui->spinTend->value()));
-    ui->editHwDropUpFile->setText(
-        obj.value("hwdrop_up_file").toString(ui->editHwDropUpFile->text()));
-    ui->editHwDropDwFile->setText(
-        obj.value("hwdrop_dw_file").toString(ui->editHwDropDwFile->text()));
+    auto loadPoints = [](const QJsonArray& array)
+    {
+        QVector<TimeHeadPoint> points;
+        points.reserve(array.size());
+        for (const auto& v : array)
+        {
+            const QJsonObject row = v.toObject();
+            points.push_back({row.value("time").toDouble(), row.value("head").toDouble()});
+        }
+        return points;
+    };
+    hwDropUpPoints_ = loadPoints(obj.value("hwdrop_up_points").toArray());
+    hwDropDwPoints_ = loadPoints(obj.value("hwdrop_dw_points").toArray());
 }
 
 void SeepageWidget::onComputeClicked()
