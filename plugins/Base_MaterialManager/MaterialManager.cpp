@@ -747,9 +747,31 @@ void MaterialManager::showBuiltinSeepageListDialog()
 
 void MaterialManager::showMaterialTransitionDialog()
 {
-    if (m_transitionPage)
-        m_transitionPage->reloadFromManager();
-    if (m_projectManagerService && m_transitionNode)
+    if (!m_rootItem)
+    {
+        return;
+    }
+
+    if (!m_transitionPage)
+    {
+        m_transitionPage = new MaterialTransitionPage(this);
+    }
+    if (!m_transitionNode)
+    {
+        m_transitionNode = new ProjectNode(QStringLiteral("材料变换"), QUuid::createUuid().toString(),
+                                           m_transitionPage);
+        m_transitionNode->setData(0, ProjectNode::RoleUuid, m_transitionNode->getUuid());
+        m_transitionNode->setData(0, ProjectNode::RoleModule, QString("Material"));
+        m_transitionNode->setData(0, ProjectNode::RoleKind, QString("MaterialTransition"));
+        m_rootItem->addChild(m_transitionNode);
+    }
+    else
+    {
+        m_transitionNode->setText(0, QStringLiteral("材料变换"));
+    }
+
+    m_transitionPage->reloadFromManager();
+    if (m_projectManagerService)
         m_projectManagerService->setCurrentItem(m_transitionNode);
 }
 
@@ -914,13 +936,6 @@ void MaterialManager::newProjectForPath(const QString& workPath)
     m_rootItem->setPage(m_materialManagerWidget);
     m_projectManagerService->addTreeItem(m_rootItem);
 
-    m_transitionPage = new MaterialTransitionPage(this);
-    m_transitionNode = new ProjectNode(QStringLiteral("材料变化"), QUuid::createUuid().toString(),
-                                       m_transitionPage);
-    m_transitionNode->setData(0, ProjectNode::RoleUuid, m_transitionNode->getUuid());
-    m_transitionNode->setData(0, ProjectNode::RoleModule, QString("Material"));
-    m_transitionNode->setData(0, ProjectNode::RoleKind, QString("MaterialTransition"));
-    m_rootItem->addChild(m_transitionNode);
 }
 
 const QVector<MaterialModel>& MaterialManager::models() const

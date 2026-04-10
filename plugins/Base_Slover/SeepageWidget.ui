@@ -322,7 +322,7 @@
       <item row="10" column="0">
        <widget class="QLabel" name="labelGlobalMappings">
         <property name="text">
-         <string>材料变化：</string>
+         <string>材料变换：</string>
         </property>
        </widget>
       </item>

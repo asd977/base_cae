@@ -182,7 +182,7 @@ bool Solver::loadProject()
         {
             auto* slopePage = new SlopeStabilityWidget();
             analysisNode = new ProjectNode(
-                analysisObj.value("title").toString("边坡稳定分析"),
+                analysisObj.value("title").toString("边坡分析"),
                 analysisObj.value("uuid").toString(QUuid::createUuid().toString()), slopePage);
             slopePage->loadJson(analysisObj.value("state").toObject());
             connect(slopePage, &SlopeStabilityWidget::computeRequested, this,
@@ -907,7 +907,7 @@ void Solver::onSlopeStabilityAction()
         return;
 
     auto* slopePage = new SlopeStabilityWidget();
-    const QString analysisName = QString("边坡稳定分析(%1)").arg(nextSlopeIndex());
+    const QString analysisName = QString("边坡分析(%1)").arg(nextSlopeIndex());
     auto* analysisNode = new ProjectNode(analysisName, QUuid::createUuid().toString(), slopePage);
     setupNodeRole(analysisNode, "SlopeStabilityAnalysis");
 
@@ -1129,7 +1129,7 @@ void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
 
     auto* slopePage = dynamic_cast<SlopeStabilityWidget*>(analysisNode->getPage());
     if (slopePage && slopePage->exportIslopDatFile())
-        QMessageBox::information(nullptr, "导出成功", "边坡稳定分析输入文件导出成功（ISLOP.DAT）。");
+        QMessageBox::information(nullptr, "导出成功", "边坡分析输入文件导出成功（ISLOP.DAT）。");
     else
         QMessageBox::warning(nullptr, "导出失败", "ISLOP.DAT 导出失败。");
 }
@@ -1230,7 +1230,7 @@ int Solver::nextSlopeIndex() const
         return 1;
 
     int maxIdx = 0;
-    QRegularExpression re(QString(R"(^边坡稳定分析\((\d+)\)$)"));
+    QRegularExpression re(QString(R"(^(?:边坡分析|边坡稳定分析)\((\d+)\)$)"));
 
     for (ProjectNode* child : m_root->getChildren())
     {

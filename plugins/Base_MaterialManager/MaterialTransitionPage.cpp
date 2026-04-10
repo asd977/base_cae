@@ -29,7 +29,7 @@ MaterialTransitionPage::MaterialTransitionPage(MaterialManager* manager, QWidget
     : BasePage("MaterialTransitionPage"), m_manager(manager)
 {
     auto* root = new QVBoxLayout(this);
-    root->addWidget(new QLabel(QStringLiteral("材料变化：明确选择“原材料/区域”到“变更后材料”。"), this));
+    root->addWidget(new QLabel(QStringLiteral("材料变换：明确选择“原材料/区域”到“变更后材料”。"), this));
 
     m_table = new QTableWidget(this);
     m_table->setColumnCount(3);

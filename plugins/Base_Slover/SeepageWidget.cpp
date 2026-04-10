@@ -604,7 +604,7 @@ bool SeepageWidget::exportHwDropDatFiles(const QString& seepCaseDirName) const
 void SeepageWidget::onEditGlobalMappingsClicked()
 {
     QDialog dlg(this);
-    dlg.setWindowTitle("材料变化");
+    dlg.setWindowTitle("材料变换");
     auto* layout = new QVBoxLayout(&dlg);
 
     auto* tips = new QLabel("每行设置：原材料号 -> 变化后材料号", &dlg);
