@@ -613,87 +613,85 @@ bool MaterialManager::loadProject()
     }
 
     const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
-    if (!root.contains(QStringLiteral("models")))
+    if (root.contains(QStringLiteral("models")))
     {
-        return true;
-    }
-
-    const QVector<MaterialModel> defaults = createDefaultMaterialModels();
-    m_models.clear();
-    m_models.reserve(defaults.size());
-    for (const auto& model : defaults)
-    {
-        MaterialModel copy = model;
-        copy.materials.clear();
-        m_models.append(copy);
-    }
-
-    auto findModelIndex = [this](const QString& key) -> int
-    {
-        for (int i = 0; i < m_models.size(); ++i)
+        const QVector<MaterialModel> defaults = createDefaultMaterialModels();
+        m_models.clear();
+        m_models.reserve(defaults.size());
+        for (const auto& model : defaults)
         {
-            if (m_models[i].key == key)
-            {
-                return i;
-            }
-        }
-        return -1;
-    };
-
-    const QJsonArray modelArray = root.value(QStringLiteral("models")).toArray();
-    for (const auto& modelValue : modelArray)
-    {
-        const QJsonObject modelObj = modelValue.toObject();
-        const QString key = modelObj.value(QStringLiteral("key")).toString();
-        const QString displayName = modelObj.value(QStringLiteral("display_name")).toString();
-
-        int modelIndex = findModelIndex(key);
-        if (modelIndex < 0)
-        {
-            MaterialModel extra;
-            extra.key = key;
-            extra.displayName = displayName;
-            modelIndex = m_models.size();
-            m_models.append(extra);
+            MaterialModel copy = model;
+            copy.materials.clear();
+            m_models.append(copy);
         }
 
-        const QJsonArray entries = modelObj.value(QStringLiteral("entries")).toArray();
-        for (const auto& entryValue : entries)
+        auto findModelIndex = [this](const QString& key) -> int
         {
-            const QJsonObject entryObj = entryValue.toObject();
-            MaterialEntry entry;
-            entry.id = entryObj.value(QStringLiteral("id")).toString();
-            entry.name = entryObj.value(QStringLiteral("name")).toString();
-
-            const QJsonObject properties = entryObj.value(QStringLiteral("properties")).toObject();
-            for (auto it = properties.constBegin(); it != properties.constEnd(); ++it)
+            for (int i = 0; i < m_models.size(); ++i)
             {
-                entry.properties.insert(it.key(), it.value().toString());
-                if (!m_models[modelIndex].columns.contains(it.key()))
+                if (m_models[i].key == key)
                 {
-                    m_models[modelIndex].columns.append(it.key());
+                    return i;
                 }
             }
+            return -1;
+        };
 
-            const QJsonArray applied = entryObj.value(QStringLiteral("applied_matypes")).toArray();
-            for (const auto& matypeValue : applied)
+        const QJsonArray modelArray = root.value(QStringLiteral("models")).toArray();
+        for (const auto& modelValue : modelArray)
+        {
+            const QJsonObject modelObj = modelValue.toObject();
+            const QString key = modelObj.value(QStringLiteral("key")).toString();
+            const QString displayName = modelObj.value(QStringLiteral("display_name")).toString();
+
+            int modelIndex = findModelIndex(key);
+            if (modelIndex < 0)
             {
-                entry.appliedMatypes.insert(matypeValue.toInt(-1));
+                MaterialModel extra;
+                extra.key = key;
+                extra.displayName = displayName;
+                modelIndex = m_models.size();
+                m_models.append(extra);
             }
-            entry.transitionOnly = entryObj.value(QStringLiteral("transition_only")).toBool(false);
-            entry.transitionMatype = entryObj.value(QStringLiteral("transition_matype")).toInt(-1);
 
-            entry.seepageModelKey = entryObj.value(QStringLiteral("seepage_model_key")).toString();
-            const QJsonObject seepageProperties =
-                entryObj.value(QStringLiteral("seepage_properties")).toObject();
-            for (auto it = seepageProperties.constBegin(); it != seepageProperties.constEnd(); ++it)
+            const QJsonArray entries = modelObj.value(QStringLiteral("entries")).toArray();
+            for (const auto& entryValue : entries)
             {
-                entry.seepageProperties.insert(it.key(), it.value().toString());
+                const QJsonObject entryObj = entryValue.toObject();
+                MaterialEntry entry;
+                entry.id = entryObj.value(QStringLiteral("id")).toString();
+                entry.name = entryObj.value(QStringLiteral("name")).toString();
+
+                const QJsonObject properties = entryObj.value(QStringLiteral("properties")).toObject();
+                for (auto it = properties.constBegin(); it != properties.constEnd(); ++it)
+                {
+                    entry.properties.insert(it.key(), it.value().toString());
+                    if (!m_models[modelIndex].columns.contains(it.key()))
+                    {
+                        m_models[modelIndex].columns.append(it.key());
+                    }
+                }
+
+                const QJsonArray applied = entryObj.value(QStringLiteral("applied_matypes")).toArray();
+                for (const auto& matypeValue : applied)
+                {
+                    entry.appliedMatypes.insert(matypeValue.toInt(-1));
+                }
+                entry.transitionOnly = entryObj.value(QStringLiteral("transition_only")).toBool(false);
+                entry.transitionMatype = entryObj.value(QStringLiteral("transition_matype")).toInt(-1);
+
+                entry.seepageModelKey = entryObj.value(QStringLiteral("seepage_model_key")).toString();
+                const QJsonObject seepageProperties =
+                    entryObj.value(QStringLiteral("seepage_properties")).toObject();
+                for (auto it = seepageProperties.constBegin(); it != seepageProperties.constEnd(); ++it)
+                {
+                    entry.seepageProperties.insert(it.key(), it.value().toString());
+                }
+
+                syncAutoNumberProperties(&m_models[modelIndex], &entry);
+
+                m_models[modelIndex].materials.append(entry);
             }
-
-            syncAutoNumberProperties(&m_models[modelIndex], &entry);
-
-            m_models[modelIndex].materials.append(entry);
         }
     }
 
