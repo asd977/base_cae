@@ -88,6 +88,7 @@ class MaterialManager : public QObject, public MaterialManagerService
     QMap<int, QString> transitionTargetLabels() const;
 
   private:
+    void ensureTransitionNode();
     void newProjectForPath(const QString& workPath);
     void setupTreeWidget();
     void loadDefaultLibrary();

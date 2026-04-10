@@ -585,6 +585,8 @@ bool MaterialManager::saveProject()
         transitionArray.append(row);
     }
     root.insert(QStringLiteral("material_transitions"), transitionArray);
+    root.insert(QStringLiteral("show_transition_node"),
+                (m_transitionNode != nullptr) || !m_materialTransitions.isEmpty());
 
     QFile file(QDir(m_workPath).filePath(PublicConstants::kMaterialProjectFileName));
     if (!file.open(QIODevice::WriteOnly))
@@ -714,6 +716,12 @@ bool MaterialManager::loadProject()
         m_materialTransitions.push_back(
             {row.value(QStringLiteral("old")).toInt(), row.value(QStringLiteral("new")).toInt()});
     }
+    const bool showTransitionNode =
+        root.value(QStringLiteral("show_transition_node")).toBool(!m_materialTransitions.isEmpty());
+    if (showTransitionNode)
+    {
+        ensureTransitionNode();
+    }
 
     ensureEntryIds();
     notifyLibraryChanged();
@@ -750,6 +758,19 @@ void MaterialManager::showMaterialTransitionDialog()
         return;
     }
 
+    ensureTransitionNode();
+
+    m_transitionPage->reloadFromManager();
+    if (m_projectManagerService)
+        m_projectManagerService->setCurrentItem(m_transitionNode);
+}
+
+void MaterialManager::ensureTransitionNode()
+{
+    if (!m_rootItem)
+    {
+        return;
+    }
     if (!m_transitionPage)
     {
         m_transitionPage = new MaterialTransitionPage(this);
@@ -767,10 +788,6 @@ void MaterialManager::showMaterialTransitionDialog()
     {
         m_transitionNode->setText(0, QStringLiteral("材料变换"));
     }
-
-    m_transitionPage->reloadFromManager();
-    if (m_projectManagerService)
-        m_projectManagerService->setCurrentItem(m_transitionNode);
 }
 
 QVector<QPair<int, int>> MaterialManager::materialTransitions() const
