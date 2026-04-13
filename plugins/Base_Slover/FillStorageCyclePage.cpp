@@ -56,7 +56,9 @@ void FillStorageCyclePage::initValueEditors()
     bindCombo("IFDROP", ui->comboIFDROP);
     bindCombo("IFMODE", ui->comboIFMODE);
     bindCombo("IFWAVE", ui->comboIFWAVE);
-    bindLine("DT_BLOCK", ui->editDT_BLOCK);
+    bindLine("DT", ui->editDT);
+    bindLine("TSTA", ui->editTSTA);
+    bindLine("TEND", ui->editTEND);
 
     ui->comboIFIIWL_SEEP->setItemData(0, "0");
     ui->comboIFIIWL_SEEP->setItemData(1, "1");
@@ -90,10 +92,11 @@ void FillStorageCyclePage::initValueEditors()
         return t;
     };
 
-    m_wetTable = mkTable({"Mdry", "Mwet"});
-    m_dropTable = mkTable({"HW_DROP_STA", "HW_DROP_END"});
-    m_circleTable = mkTable({"JPACK_STA", "JPACK_END", "TT_PACK", "HWJ_STA", "HWJ_END", "TT_FILL",
-                             "IF_PACK", "IF_PLIU", "IF_FILL", "IF_FLIU", "CAHEAD", "CABODY"});
+    m_wetTable = mkTable({"原材料号", "湿化后材料号"});
+    m_dropTable = mkTable({"骤降前水位", "骤降后水位"});
+    m_circleTable = mkTable({"填筑开始级", "填筑结束级", "填筑结束后流变时间", "初始蓄水高程", "本级蓄水高程",
+                             "蓄水结束后流变时间", "是否填筑", "是否填筑期流变", "是否蓄水",
+                             "是否蓄水期流变", "节点水头文件", "节点体力文件"});
 
     m_wetTable->setRowCount(1);
     m_wetTable->setItem(0, 0, new QTableWidgetItem("1"));
@@ -133,6 +136,26 @@ void FillStorageCyclePage::initValueEditors()
             for (int c = 0; c < src->columnCount(); ++c)
                 table->setItem(r, c, new QTableWidgetItem(tableItemText(src, r, c, QString())));
         table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+
+        const bool isCircleTable = (src == m_circleTable);
+        auto setCircleCombo = [table](int row, int col, const QString& val)
+        {
+            auto* cb = new QComboBox(table);
+            cb->addItem("0 - 否", "0");
+            cb->addItem("1 - 是", "1");
+            const int idx = cb->findData(val.trimmed());
+            cb->setCurrentIndex(idx >= 0 ? idx : 0);
+            table->setCellWidget(row, col, cb);
+        };
+
+        if (isCircleTable)
+        {
+            for (int r = 0; r < table->rowCount(); ++r)
+            {
+                for (int c : {6, 7, 8, 9})
+                    setCircleCombo(r, c, tableItemText(src, r, c, "0"));
+            }
+        }
         layout->addWidget(table);
 
         auto* btnRow = new QHBoxLayout();
@@ -143,7 +166,15 @@ void FillStorageCyclePage::initValueEditors()
         btnRow->addStretch();
         layout->addLayout(btnRow);
 
-        connect(btnAdd, &QPushButton::clicked, &dlg, [table]() { table->insertRow(table->rowCount()); });
+        connect(btnAdd, &QPushButton::clicked, &dlg, [table, isCircleTable, setCircleCombo]() {
+            const int row = table->rowCount();
+            table->insertRow(row);
+            if (isCircleTable)
+            {
+                for (int c : {6, 7, 8, 9})
+                    setCircleCombo(row, c, "0");
+            }
+        });
         connect(btnDel, &QPushButton::clicked, &dlg, [table]() {
             const auto rows = table->selectionModel()->selectedRows();
             for (int i = rows.size() - 1; i >= 0; --i)
@@ -174,7 +205,7 @@ void FillStorageCyclePage::initValueEditors()
     };
 
     connect(ui->btnEditWet, &QPushButton::clicked, this,
-            [openEditor, this]() { openEditor(m_wetTable, "编辑湿化材料映射表"); });
+            [openEditor, this]() { openEditor(m_wetTable, "编辑湿化材料变换表（与渗流材料变换一致）"); });
     connect(ui->btnEditDrop, &QPushButton::clicked, this,
             [openEditor, this]() { openEditor(m_dropTable, "编辑骤降前后水位表"); });
     connect(ui->btnEditCircle, &QPushButton::clicked, this,
@@ -277,7 +308,8 @@ QString FillStorageCyclePage::sectionText(int caseIndex) const
     text += "0   NUM_DYNA\n";
 
     text += QString("%1 %2   IFMODE IFWAVE\n").arg(valueOf("IFMODE"), valueOf("IFWAVE"));
-    text += QString("%1    DT TSTA TEND WOMI_1\n").arg(valueOf("DT_BLOCK"));
+    text += QString("%1 %2 %3    DT TSTA TEND\n")
+                .arg(valueOf("DT"), valueOf("TSTA"), valueOf("TEND"));
     text += "'WAVE-AX.DAT'  'WAVE-AY.DAT'  'WAVE-AZ.DAT'   AX  AY  AZ\n";
     return text;
 }
@@ -323,6 +355,8 @@ QString FillStorageCyclePage::tableItemText(QTableWidget* table, int row, int co
 {
     if (!table)
         return fallback;
+    if (auto* combo = qobject_cast<QComboBox*>(table->cellWidget(row, col)))
+        return combo->currentData().toString().trimmed();
     auto* item = table->item(row, col);
     const QString t = item ? item->text().trimmed() : QString();
     return t.isEmpty() ? fallback : t;
