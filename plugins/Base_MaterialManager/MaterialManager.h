@@ -93,6 +93,7 @@ class MaterialManager : public QObject, public MaterialManagerService
     void loadDefaultLibrary();
     void ensureEntryIds();
     void rebuildProjectTree();
+    void ensureTransitionNode();
     void clearProjectTree();
     // 原 highlightMatypes 扩展为 3 态输入（Selected / Preview / PreDelete）
     void highlightMatypes(const QSet<int>& matypes, int selectedMatype, int previewMatype,
