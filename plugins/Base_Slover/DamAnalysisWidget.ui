@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='UTF-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>DamAnalysisWidget</class>
  <widget class="QWidget" name="DamAnalysisWidget">
@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>780</width>
-    <height>1275</height>
+    <width>518</width>
+    <height>668</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -24,7 +24,7 @@
     <number>0</number>
    </property>
    <property name="bottomMargin">
-    <number>0</number>
+    <number>4</number>
    </property>
    <item>
     <widget class="QGroupBox" name="groupBoxIfill">
@@ -494,67 +494,48 @@
        </layout>
       </item>
       <item row="34" column="0">
-       <widget class="QLabel" name="labelRock">
+       <widget class="QLabel" name="labelIfRock">
         <property name="text">
-         <string>岩体自重与地基材料</string>
+         <string>是否进行岩体自重计算(IFROCK)</string>
         </property>
        </widget>
       </item>
-      <item row="34" column="1">
-       <layout class="QVBoxLayout" name="layoutRock">
-        <item>
-         <layout class="QHBoxLayout" name="layoutIfrock">
-          <item>
-           <widget class="QLabel" name="labelIfRock">
-            <property name="text">
-             <string>是否进行岩体自重计算(IFROCK)</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QComboBox" name="comboIfRock">
-            <item>
-             <property name="text">
-              <string>0 否（已计算过）</string>
-             </property>
-            </item>
-            <item>
-             <property name="text">
-              <string>1 是（本次计算）</string>
-             </property>
-            </item>
-           </widget>
-          </item>
-         </layout>
-        </item>
-        <item>
-         <layout class="QHBoxLayout" name="layoutIfiso">
-          <item>
-           <widget class="QLabel" name="labelIfIso">
-            <property name="text">
-             <string>地基是否按均质材料计算(IFISO)</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QComboBox" name="comboIfIso">
-            <item>
-             <property name="text">
-              <string>0 按建模材料计算</string>
-             </property>
-            </item>
-            <item>
-             <property name="text">
-              <string>1 按IFISO材料计算</string>
-             </property>
-            </item>
-           </widget>
-          </item>
-         </layout>
-        </item>
-       </layout>
+      <item row="35" column="0">
+       <widget class="QLabel" name="labelIfIso">
+        <property name="text">
+         <string>地基是否按均质材料计算(IFISO)</string>
+        </property>
+       </widget>
       </item>
-      <item row="37" column="1">
+      <item row="35" column="1">
+       <widget class="QComboBox" name="comboIfIso">
+        <item>
+         <property name="text">
+          <string>0 按建模材料计算</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>1 按IFISO材料计算</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item row="34" column="1">
+       <widget class="QComboBox" name="comboIfRock">
+        <item>
+         <property name="text">
+          <string>0 否（已计算过）</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>1 是（本次计算）</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item row="36" column="1">
        <widget class="QPushButton" name="btnCompute">
         <property name="text">
          <string>计算</string>
@@ -565,24 +546,20 @@
     </widget>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="horizontalLayoutCompute">
-     <item>
-      <spacer name="horizontalSpacerCompute">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>0</width>
-         <height>0</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-    </layout>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
    </item>
   </layout>
  </widget>
- <resources />
- <connections />
+ <resources/>
+ <connections/>
 </ui>

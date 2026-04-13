@@ -216,8 +216,6 @@ void FillStorageCyclePage::initValueEditors()
     connect(ui->btnEditCircle, &QPushButton::clicked, this,
             [openEditor, this]() { openEditor(m_circleTable, "编辑填筑-蓄水周期表"); });
 
-    removeWidget(ui->labelSection);
-    removeWidget(ui->plainTextEditSection);
 }
 
 void FillStorageCyclePage::loadWetMappingsFromService()

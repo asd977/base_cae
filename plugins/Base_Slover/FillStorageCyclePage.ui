@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='UTF-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>FillStorageCyclePage</class>
  <widget class="QWidget" name="FillStorageCyclePage">
@@ -355,16 +355,6 @@
        </layout>
       </widget>
      </item>
-     <item>
-      <widget class="QLabel" name="labelSection">
-       <property name="text">
-        <string>4.3.5 填筑-蓄水计算工况块（预览）</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPlainTextEdit" name="plainTextEditSection" />
-     </item>
     </layout>
    </item>
    <item>
@@ -382,6 +372,6 @@
    </item>
   </layout>
  </widget>
- <resources />
- <connections />
+ <resources/>
+ <connections/>
 </ui>
