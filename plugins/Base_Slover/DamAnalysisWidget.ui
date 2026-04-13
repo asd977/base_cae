@@ -27,26 +27,6 @@
     <number>0</number>
    </property>
    <item>
-    <widget class="QLabel" name="pageNameLabel">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
-     <property name="text">
-      <string>土石坝计算</string>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QPushButton" name="sectionTitleButton">
-     <property name="text">
-      <string>功能设置</string>
-     </property>
-    </widget>
-   </item>
-   <item>
     <widget class="QGroupBox" name="groupBoxIfill">
      <property name="title">
       <string>全局参数分组</string>
@@ -832,6 +812,13 @@
         </property>
        </widget>
       </item>
+      <item row="37" column="1">
+       <widget class="QPushButton" name="btnCompute">
+        <property name="text">
+         <string>计算</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
@@ -849,13 +836,6 @@
         </size>
        </property>
       </spacer>
-     </item>
-     <item>
-      <widget class="QPushButton" name="btnCompute">
-       <property name="text">
-        <string>计算</string>
-       </property>
-      </widget>
      </item>
     </layout>
    </item>
