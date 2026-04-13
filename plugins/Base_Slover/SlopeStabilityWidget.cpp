@@ -22,7 +22,7 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
     Q_UNUSED(parent);
     ui->setupUi(this);
 
-    m_lineEditors[1] = ui->line1Edit;
+    m_lineEditors[1] = nullptr;
     m_lineEditors[3] = ui->line3Combo;
     m_lineEditors[4] = ui->line4Edit;
     m_lineEditors[5] = ui->line5Combo;
@@ -59,22 +59,28 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
     ui->line19Combo->setItemData(0, "1");
     ui->line19Combo->setItemData(1, "2");
     ui->line19Combo->setItemData(2, "3");
+    ui->ifModeCombo->setItemData(0, "0");
+    ui->ifModeCombo->setItemData(1, "1");
+    ui->ifWaveCombo->setItemData(0, "0");
+    ui->ifWaveCombo->setItemData(1, "1");
+    ui->ifModeCombo->setCurrentIndex(1);
+    ui->ifWaveCombo->setCurrentIndex(1);
 
     initStrengthReserveTable();
     connect(ui->btnCompute, &QPushButton::clicked, this, &SlopeStabilityWidget::onComputeClicked);
-
-    const QString projectDir =
-        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(QDir(projectDir).absolutePath());
-    auto ensureTrailingSep = [](const QString& path)
+    connect(ui->addReserveRowBtn, &QPushButton::clicked, this, [this]()
     {
-        QString p = QDir::toNativeSeparators(path);
-        if (!p.endsWith(QDir::separator()))
-            p += QDir::separator();
-        return p;
-    };
-    ui->line1Edit->setText(ensureTrailingSep(wd.filePath("PREP")));
-    ui->caseDirLabel->setText(ensureTrailingSep(wd.filePath("CASE01")));
+        const int row = ui->strengthReserveTable->rowCount();
+        ui->strengthReserveTable->insertRow(row);
+        ui->strengthReserveTable->setItem(row, 0, new QTableWidgetItem("1.0000"));
+        ui->strengthReserveTable->setItem(row, 1, new QTableWidgetItem("1.0000"));
+    });
+    connect(ui->removeReserveRowBtn, &QPushButton::clicked, this, [this]()
+    {
+        const int row = ui->strengthReserveTable->currentRow();
+        if (row >= 0)
+            ui->strengthReserveTable->removeRow(row);
+    });
 }
 
 SlopeStabilityWidget::~SlopeStabilityWidget()
@@ -224,8 +230,8 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
 
     os << quoteValue(caseDirAbs) << "\n";
     os << ui->dtEdit->text().trimmed() << " " << ui->tstaEdit->text().trimmed() << " "
-       << ui->tendEdit->text().trimmed() << " " << ui->ifModeEdit->text().trimmed() << " "
-       << ui->ifWaveEdit->text().trimmed() << "    DT TSTA TEND IFMODE IFWAVE\n";
+       << ui->tendEdit->text().trimmed() << " " << ui->ifModeCombo->currentData().toString()
+       << " " << ui->ifWaveCombo->currentData().toString() << "    DT TSTA TEND IFMODE IFWAVE\n";
     os << quoteValue(QString::fromLatin1(kAccXFileName)) << "  "
        << quoteValue(QString::fromLatin1(kAccYFileName)) << "  "
        << quoteValue(QString::fromLatin1(kAccZFileName)) << "    ACCEX ACCEY ACCEZ\n";
@@ -272,8 +278,8 @@ QJsonObject SlopeStabilityWidget::saveJson()
     obj["dt"] = ui->dtEdit->text().trimmed();
     obj["tsta"] = ui->tstaEdit->text().trimmed();
     obj["tend"] = ui->tendEdit->text().trimmed();
-    obj["ifmode"] = ui->ifModeEdit->text().trimmed();
-    obj["ifwave"] = ui->ifWaveEdit->text().trimmed();
+    obj["ifmode"] = ui->ifModeCombo->currentData().toString();
+    obj["ifwave"] = ui->ifWaveCombo->currentData().toString();
     obj["acc_x"] = QString::fromLatin1(kAccXFileName);
     obj["acc_y"] = QString::fromLatin1(kAccYFileName);
     obj["acc_z"] = QString::fromLatin1(kAccZFileName);
@@ -282,19 +288,6 @@ QJsonObject SlopeStabilityWidget::saveJson()
 
 void SlopeStabilityWidget::loadJson(const QJsonObject& obj)
 {
-    const QString projectDir =
-        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(QDir(projectDir).absolutePath());
-    auto ensureTrailingSep = [](const QString& path)
-    {
-        QString p = QDir::toNativeSeparators(path);
-        if (!p.endsWith(QDir::separator()))
-            p += QDir::separator();
-        return p;
-    };
-    ui->line1Edit->setText(ensureTrailingSep(wd.filePath("PREP")));
-    ui->caseDirLabel->setText(ensureTrailingSep(wd.filePath("CASE01")));
-
     const QJsonArray arr = obj.value("base_values").toArray();
     for (int lineNo = 1; lineNo <= 20; ++lineNo)
     {
@@ -327,8 +320,12 @@ void SlopeStabilityWidget::loadJson(const QJsonObject& obj)
     ui->dtEdit->setText(obj.value("dt").toString(ui->dtEdit->text()));
     ui->tstaEdit->setText(obj.value("tsta").toString(ui->tstaEdit->text()));
     ui->tendEdit->setText(obj.value("tend").toString(ui->tendEdit->text()));
-    ui->ifModeEdit->setText(obj.value("ifmode").toString(ui->ifModeEdit->text()));
-    ui->ifWaveEdit->setText(obj.value("ifwave").toString(ui->ifWaveEdit->text()));
+    const QString ifMode = obj.value("ifmode").toString(ui->ifModeCombo->currentData().toString());
+    const QString ifWave = obj.value("ifwave").toString(ui->ifWaveCombo->currentData().toString());
+    const int ifModeIndex = ui->ifModeCombo->findData(ifMode);
+    const int ifWaveIndex = ui->ifWaveCombo->findData(ifWave);
+    ui->ifModeCombo->setCurrentIndex(ifModeIndex >= 0 ? ifModeIndex : 1);
+    ui->ifWaveCombo->setCurrentIndex(ifWaveIndex >= 0 ? ifWaveIndex : 1);
 }
 
 void SlopeStabilityWidget::onComputeClicked()
