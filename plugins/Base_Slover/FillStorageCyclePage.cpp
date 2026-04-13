@@ -13,7 +13,6 @@
 #include <QItemSelectionModel>
 #include <QJsonArray>
 #include <QLayout>
-#include <QLabel>
 #include <QLineEdit>
 #include <QTableWidget>
 #include <QWidget>
@@ -222,79 +221,13 @@ void FillStorageCyclePage::initValueEditors()
         updatePreview();
     };
 
-    connect(ui->btnEditWet, &QPushButton::clicked, this,
-            [this]()
+    connect(ui->btnEditWet, &QPushButton::clicked, this, [this]()
             {
-                QDialog dlg(this);
-                dlg.setWindowTitle("材料变换");
-                auto* layout = new QVBoxLayout(&dlg);
-                layout->addWidget(new QLabel("每行设置：原材料号 -> 变化后材料号", &dlg));
-
-                auto* table = new QTableWidget(&dlg);
-                table->setColumnCount(2);
-                table->setHorizontalHeaderLabels(QStringList() << "原材料号"
-                                                               << "变化后材料号");
-                table->horizontalHeader()->setStretchLastSection(true);
-                table->setRowCount(qMax(1, m_wetTable->rowCount()));
-                for (int r = 0; r < m_wetTable->rowCount(); ++r)
-                {
-                    table->setItem(r, 0, new QTableWidgetItem(tableItemText(m_wetTable, r, 0, QString())));
-                    table->setItem(r, 1, new QTableWidgetItem(tableItemText(m_wetTable, r, 1, QString())));
-                }
-                layout->addWidget(table);
-
-                auto* buttonRow = new QHBoxLayout();
-                auto* btnAdd = new QPushButton("添加行", &dlg);
-                auto* btnRemove = new QPushButton("删除选中行", &dlg);
-                auto* btnEditLibrary = new QPushButton("编辑材料变换库", &dlg);
-                buttonRow->addWidget(btnAdd);
-                buttonRow->addWidget(btnRemove);
-                buttonRow->addWidget(btnEditLibrary);
-                buttonRow->addStretch();
-                layout->addLayout(buttonRow);
-                connect(btnAdd, &QPushButton::clicked, &dlg,
-                        [table]() { table->insertRow(table->rowCount()); });
-                connect(btnRemove, &QPushButton::clicked, &dlg, [table]()
-                        {
-                            const int row = table->currentRow();
-                            if (row >= 0)
-                                table->removeRow(row);
-                        });
-                connect(btnEditLibrary, &QPushButton::clicked, &dlg, [table]()
-                        {
-                            auto* materialService = ServiceRegistry::instance().getService<MaterialManagerService>();
-                            if (!materialService)
-                                return;
-                            materialService->showMaterialTransitionDialog();
-                            const auto transitions = materialService->materialTransitions();
-                            table->setRowCount(qMax(1, transitions.size()));
-                            for (int i = 0; i < transitions.size(); ++i)
-                            {
-                                table->setItem(i, 0, new QTableWidgetItem(QString::number(transitions[i].first)));
-                                table->setItem(i, 1, new QTableWidgetItem(QString::number(transitions[i].second)));
-                            }
-                        });
-
-                auto* box = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
-                connect(box, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
-                connect(box, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
-                layout->addWidget(box);
-
-                if (dlg.exec() != QDialog::Accepted)
+                auto* materialService = ServiceRegistry::instance().getService<MaterialManagerService>();
+                if (!materialService)
                     return;
-
-                m_wetTable->setRowCount(table->rowCount());
-                for (int r = 0; r < table->rowCount(); ++r)
-                {
-                    for (int c = 0; c < table->columnCount(); ++c)
-                    {
-                        const QString val = tableItemText(table, r, c, QString());
-                        if (m_wetTable->item(r, c))
-                            m_wetTable->item(r, c)->setText(val);
-                        else
-                            m_wetTable->setItem(r, c, new QTableWidgetItem(val));
-                    }
-                }
+                materialService->showMaterialTransitionDialog();
+                loadWetMappingsFromService();
                 updatePreview();
             });
     connect(ui->btnEditDrop, &QPushButton::clicked, this,

@@ -603,91 +603,10 @@ bool SeepageWidget::exportHwDropDatFiles(const QString& seepCaseDirName) const
 
 void SeepageWidget::onEditGlobalMappingsClicked()
 {
-    QDialog dlg(this);
-    dlg.setWindowTitle("材料变换");
-    auto* layout = new QVBoxLayout(&dlg);
-
-    auto* tips = new QLabel("每行设置：原材料号 -> 变化后材料号", &dlg);
-    layout->addWidget(tips);
-
-    auto* table = new QTableWidget(&dlg);
-    table->setColumnCount(2);
-    table->setHorizontalHeaderLabels(QStringList() << "原材料号"
-                                                   << "变化后材料号");
-    table->horizontalHeader()->setStretchLastSection(true);
-    QVector<MaterialMapping> mappingsForDialog = globalMappings_;
-    if (auto* materialService = ServiceRegistry::instance().getService<MaterialManagerService>())
-    {
-        const auto transitions = materialService->materialTransitions();
-        if (!transitions.isEmpty())
-        {
-            mappingsForDialog.clear();
-            for (const auto& row : transitions)
-                mappingsForDialog.push_back({row.first, row.second});
-        }
-    }
-
-    table->setRowCount(qMax(1, mappingsForDialog.size()));
-    for (int i = 0; i < mappingsForDialog.size(); ++i)
-    {
-        table->setItem(i, 0, new QTableWidgetItem(QString::number(mappingsForDialog[i].oldMaterial)));
-        table->setItem(i, 1, new QTableWidgetItem(QString::number(mappingsForDialog[i].newMaterial)));
-    }
-    layout->addWidget(table);
-
-    auto* buttonRow = new QHBoxLayout();
-    auto* btnAdd = new QPushButton("添加行", &dlg);
-    auto* btnRemove = new QPushButton("删除选中行", &dlg);
-    auto* btnEditLibrary = new QPushButton("编辑材料变换库", &dlg);
-    buttonRow->addWidget(btnAdd);
-    buttonRow->addWidget(btnRemove);
-    buttonRow->addWidget(btnEditLibrary);
-    buttonRow->addStretch();
-    layout->addLayout(buttonRow);
-    connect(btnAdd, &QPushButton::clicked, &dlg, [table]() { table->insertRow(table->rowCount()); });
-    connect(btnRemove, &QPushButton::clicked, &dlg, [table]()
-            {
-                const int row = table->currentRow();
-                if (row >= 0)
-                    table->removeRow(row);
-            });
-    connect(btnEditLibrary, &QPushButton::clicked, &dlg, [table]()
-            {
-                auto* materialService = ServiceRegistry::instance().getService<MaterialManagerService>();
-                if (!materialService)
-                    return;
-                materialService->showMaterialTransitionDialog();
-                const auto transitions = materialService->materialTransitions();
-                table->setRowCount(qMax(1, transitions.size()));
-                for (int i = 0; i < transitions.size(); ++i)
-                {
-                    table->setItem(i, 0, new QTableWidgetItem(QString::number(transitions[i].first)));
-                    table->setItem(i, 1, new QTableWidgetItem(QString::number(transitions[i].second)));
-                }
-            });
-
-    auto* box = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
-    connect(box, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
-    connect(box, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
-    layout->addWidget(box);
-
-    if (dlg.exec() != QDialog::Accepted)
+    auto* materialService = ServiceRegistry::instance().getService<MaterialManagerService>();
+    if (!materialService)
         return;
-
-    globalMappings_.clear();
-    for (int r = 0; r < table->rowCount(); ++r)
-    {
-        const auto* oldItem = table->item(r, 0);
-        const auto* newItem = table->item(r, 1);
-        if (!oldItem || !newItem)
-            continue;
-        bool oldOk = false;
-        bool newOk = false;
-        const int oldVal = oldItem->text().trimmed().toInt(&oldOk);
-        const int newVal = newItem->text().trimmed().toInt(&newOk);
-        if (oldOk && newOk)
-            globalMappings_.push_back({oldVal, newVal});
-    }
+    materialService->showMaterialTransitionDialog();
 }
 
 void SeepageWidget::onEditHwDropCurvesClicked()
