@@ -54,11 +54,9 @@ void FillStorageCyclePage::initValueEditors()
     bindCombo("IFIIWL_FACE", ui->comboIFIIWL_FACE);
     bindCombo("IFWET", ui->comboIFWET);
     bindCombo("IFDROP", ui->comboIFDROP);
-    bindLine("DIRDYNA", ui->editDIRDYNA);
     bindCombo("IFMODE", ui->comboIFMODE);
     bindCombo("IFWAVE", ui->comboIFWAVE);
     bindLine("DT_BLOCK", ui->editDT_BLOCK);
-    bindLine("WAVE_FILES", ui->editWAVE_FILES);
 
     ui->comboIFIIWL_SEEP->setItemData(0, "0");
     ui->comboIFIIWL_SEEP->setItemData(1, "1");
@@ -77,6 +75,12 @@ void FillStorageCyclePage::initValueEditors()
     ui->comboIFWAVE->setItemData(0, "0");
     ui->comboIFWAVE->setItemData(1, "1");
 
+    ui->groupMaterialChange->setVisible(false);
+    ui->labelDIRDYNA->setVisible(false);
+    ui->editDIRDYNA->setVisible(false);
+    ui->labelWAVE_FILES->setVisible(false);
+    ui->editWAVE_FILES->setVisible(false);
+
     auto mkTable = [this](const QStringList& headers)
     {
         auto* t = new QTableWidget(this);
@@ -88,8 +92,6 @@ void FillStorageCyclePage::initValueEditors()
 
     m_wetTable = mkTable({"Mdry", "Mwet"});
     m_dropTable = mkTable({"HW_DROP_STA", "HW_DROP_END"});
-    m_nChangeTable = mkTable({"Mold", "Mnew"});
-    m_dynaMapTable = mkTable({"M_STA", "M_DYNA"});
     m_circleTable = mkTable({"JPACK_STA", "JPACK_END", "TT_PACK", "HWJ_STA", "HWJ_END", "TT_FILL",
                              "IF_PACK", "IF_PLIU", "IF_FILL", "IF_FLIU", "CAHEAD", "CABODY"});
 
@@ -103,16 +105,6 @@ void FillStorageCyclePage::initValueEditors()
     m_dropTable->setItem(0, 1, new QTableWidgetItem("3160.000"));
     m_dropTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 
-    m_nChangeTable->setRowCount(1);
-    m_nChangeTable->setItem(0, 0, new QTableWidgetItem("1"));
-    m_nChangeTable->setItem(0, 1, new QTableWidgetItem("1"));
-    m_nChangeTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-
-    m_dynaMapTable->setRowCount(1);
-    m_dynaMapTable->setItem(0, 0, new QTableWidgetItem("1"));
-    m_dynaMapTable->setItem(0, 1, new QTableWidgetItem("1"));
-    m_dynaMapTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-
     m_circleTable->setRowCount(1);
     const QStringList defaults = {"2", "9", "0.0000", "0.0000", "28.0000", "0.0000", "1", "0",
                                   "1", "0", "'NONE'", "'NONE'"};
@@ -122,8 +114,6 @@ void FillStorageCyclePage::initValueEditors()
 
     connect(m_wetTable, &QTableWidget::cellChanged, this, [this]() { updatePreview(); });
     connect(m_dropTable, &QTableWidget::cellChanged, this, [this]() { updatePreview(); });
-    connect(m_nChangeTable, &QTableWidget::cellChanged, this, [this]() { updatePreview(); });
-    connect(m_dynaMapTable, &QTableWidget::cellChanged, this, [this]() { updatePreview(); });
     connect(m_circleTable, &QTableWidget::cellChanged, this, [this]() { updatePreview(); });
 
     auto openEditor = [this](QTableWidget* src, const QString& title)
@@ -187,14 +177,11 @@ void FillStorageCyclePage::initValueEditors()
             [openEditor, this]() { openEditor(m_wetTable, "编辑湿化材料映射表"); });
     connect(ui->btnEditDrop, &QPushButton::clicked, this,
             [openEditor, this]() { openEditor(m_dropTable, "编辑骤降前后水位表"); });
-    connect(ui->btnEditNChange, &QPushButton::clicked, this,
-            [openEditor, this]() { openEditor(m_nChangeTable, "编辑材料属性号变换表"); });
-    connect(ui->btnEditDynaMap, &QPushButton::clicked, this,
-            [openEditor, this]() { openEditor(m_dynaMapTable, "编辑静力-动力材料编号变换表"); });
     connect(ui->btnEditCircle, &QPushButton::clicked, this,
             [openEditor, this]() { openEditor(m_circleTable, "编辑填筑-蓄水周期表"); });
 
-    ui->plainTextEditSection->setReadOnly(true);
+    ui->labelSection->setVisible(false);
+    ui->plainTextEditSection->setVisible(false);
 }
 
 QString FillStorageCyclePage::valueOf(const QString& key) const
@@ -229,12 +216,7 @@ void FillStorageCyclePage::updatePreview()
 {
     ui->labelWetRows->setText(QString("当前行数: %1").arg(m_wetTable ? m_wetTable->rowCount() : 0));
     ui->labelDropRows->setText(QString("当前行数: %1").arg(m_dropTable ? m_dropTable->rowCount() : 0));
-    ui->labelNChangeRows->setText(
-        QString("当前行数: %1").arg(m_nChangeTable ? m_nChangeTable->rowCount() : 0));
-    ui->labelDynaMapRows->setText(
-        QString("当前行数: %1").arg(m_dynaMapTable ? m_dynaMapTable->rowCount() : 0));
     ui->labelCircleRows->setText(QString("当前行数: %1").arg(m_circleTable ? m_circleTable->rowCount() : 0));
-    ui->plainTextEditSection->setPlainText(sectionText());
 }
 
 QString FillStorageCyclePage::sectionText() const
@@ -267,13 +249,7 @@ QString FillStorageCyclePage::sectionText(int caseIndex) const
                          tableItemText(m_dropTable, i, 1, "0.000"))
                     .arg(i + 1);
 
-    const int nChange = m_nChangeTable ? m_nChangeTable->rowCount() : 0;
-    text += QString("%1     NCHANGE\n").arg(nChange);
-    for (int i = 0; i < nChange; ++i)
-        text += QString("%1 %2 %3\n")
-                    .arg(tableItemText(m_nChangeTable, i, 0, "1"),
-                         tableItemText(m_nChangeTable, i, 1, "1"))
-                    .arg(i + 1);
+    text += "0     NCHANGE\n";
     const int nCircle = m_circleTable ? m_circleTable->rowCount() : 0;
     text += QString("%1  NCIRCLE\n").arg(nCircle);
     text += "JPACK_STA JPACK_END TT_PACK HWJ_STA HWJ_END TT_FILL IF_PACK IF_PLIU IF_FILL IF_FLIU CAHEAD CABODY\n";
@@ -297,18 +273,12 @@ QString FillStorageCyclePage::sectionText(int caseIndex) const
                          QString::number(i + 1)); // 这里的 i+1 建议显式转为 QString
     }
 
-    text += QString("%1     DIRDYNA\n").arg(valueOf("DIRDYNA"));
-    const int numDyna = m_dynaMapTable ? m_dynaMapTable->rowCount() : 0;
-    text += QString("%1   NUM_DYNA\n").arg(numDyna);
-    for (int i = 0; i < numDyna; ++i)
-        text += QString("%1 %2 %3\n")
-                    .arg(tableItemText(m_dynaMapTable, i, 0, "1"),
-                         tableItemText(m_dynaMapTable, i, 1, "1"))
-                    .arg(i + 1);
+    text += "'CASE01FILL01'     DIRDYNA\n";
+    text += "0   NUM_DYNA\n";
 
     text += QString("%1 %2   IFMODE IFWAVE\n").arg(valueOf("IFMODE"), valueOf("IFWAVE"));
     text += QString("%1    DT TSTA TEND WOMI_1\n").arg(valueOf("DT_BLOCK"));
-    text += QString("%1   AX AY AZ\n").arg(valueOf("WAVE_FILES"));
+    text += "'WAVE-AX.DAT'  'WAVE-AY.DAT'  'WAVE-AZ.DAT'   AX  AY  AZ\n";
     return text;
 }
 
@@ -326,8 +296,6 @@ QJsonObject FillStorageCyclePage::saveJson()
     obj["values"] = values;
     obj["wet_table"] = tableToJson(m_wetTable);
     obj["drop_table"] = tableToJson(m_dropTable);
-    obj["nchange_table"] = tableToJson(m_nChangeTable);
-    obj["dyna_map_table"] = tableToJson(m_dynaMapTable);
     obj["circle_table"] = tableToJson(m_circleTable);
     return obj;
 }
@@ -346,8 +314,6 @@ void FillStorageCyclePage::loadJson(const QJsonObject& obj)
     }
     jsonToTable(obj.value("wet_table").toArray(), m_wetTable, 1);
     jsonToTable(obj.value("drop_table").toArray(), m_dropTable, 1);
-    jsonToTable(obj.value("nchange_table").toArray(), m_nChangeTable, 1);
-    jsonToTable(obj.value("dyna_map_table").toArray(), m_dynaMapTable, 1);
     jsonToTable(obj.value("circle_table").toArray(), m_circleTable, 1);
     updatePreview();
 }
