@@ -764,41 +764,13 @@ void NephogramSettingWidget::updateLookupTableRange(vtkLookupTable* lut, double 
         maxV = minV + 1.0;
     }
 
-    lut->SetNumberOfTableValues(64);
+    lut->SetNumberOfTableValues(256);
     lut->SetTableRange(minV, maxV);
+    lut->SetHueRange(2.0 / 3.0, 0.0); // 常规云图：蓝 -> 青 -> 绿 -> 黄 -> 红
+    lut->SetSaturationRange(1.0, 1.0);
+    lut->SetValueRange(1.0, 1.0);
+    lut->SetRampToLinear();
     lut->Build();
-
-    // 简单自定义配色（不与 ParaView 默认完全一致）：
-    // 深蓝 -> 黄橙 -> 深红。高值保持红色，不做复杂非线性处理。
-    const double c0[3] = {0.086, 0.180, 0.553}; // deep blue
-    const double c1[3] = {0.930, 0.670, 0.170}; // yellow-orange
-    const double c2[3] = {0.690, 0.090, 0.120}; // deep red
-
-    const int tableSize = lut->GetNumberOfTableValues();
-    for (int i = 0; i < tableSize; ++i)
-    {
-        const double t = tableSize > 1 ? static_cast<double>(i) / static_cast<double>(tableSize - 1)
-                                       : 0.0;
-
-        double r = 0.0;
-        double g = 0.0;
-        double b = 0.0;
-        if (t < 0.5)
-        {
-            const double a = t / 0.5;
-            r = c0[0] + (c1[0] - c0[0]) * a;
-            g = c0[1] + (c1[1] - c0[1]) * a;
-            b = c0[2] + (c1[2] - c0[2]) * a;
-        }
-        else
-        {
-            const double a = (t - 0.5) / 0.5;
-            r = c1[0] + (c2[0] - c1[0]) * a;
-            g = c1[1] + (c2[1] - c1[1]) * a;
-            b = c1[2] + (c2[2] - c1[2]) * a;
-        }
-        lut->SetTableValue(i, r, g, b, 1.0);
-    }
 }
 
 void NephogramSettingWidget::configureMapper(vtkDataSetMapper* mapper, const QString& scalarName,
