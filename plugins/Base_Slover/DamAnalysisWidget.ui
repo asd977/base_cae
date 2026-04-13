@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='UTF-8'?>
 <ui version="4.0">
  <class>DamAnalysisWidget</class>
  <widget class="QWidget" name="DamAnalysisWidget">
@@ -32,219 +32,6 @@
       <string>全局参数分组</string>
      </property>
      <layout class="QFormLayout" name="formLayoutIfill">
-      <item row="0" column="0">
-       <widget class="QLabel" name="labelLine1">
-        <property name="text">
-         <string>计算默认文件目录</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <widget class="QLabel" name="line1Value">
-        <property name="text">
-         <string>F:\FEMCLASS\Z03_JUNZ3D\PREP\</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="labelLine2">
-        <property name="text">
-         <string>上游水头边界集文件</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="QLabel" name="line2Value">
-        <property name="text">
-         <string>FA_DAMUP.DAT</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="labelLine3">
-        <property name="text">
-         <string>下游水头边界集文件</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <widget class="QLabel" name="line3Value">
-        <property name="text">
-         <string>FA_DAMDW.DAT</string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="0">
-       <widget class="QLabel" name="labelLine4">
-        <property name="text">
-         <string>心墙建基面文件</string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="1">
-       <widget class="QLabel" name="line4Value">
-        <property name="text">
-         <string>FA_DAMBASE.DAT</string>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="0">
-       <widget class="QLabel" name="labelLine5">
-        <property name="text">
-         <string>坝体中心面文件（已停用）</string>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="1">
-       <widget class="QLabel" name="line5Value">
-        <property name="text">
-         <string>NONE</string>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="0">
-       <widget class="QLabel" name="labelLine6">
-        <property name="text">
-         <string>基岩材料集</string>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="1">
-       <widget class="QLabel" name="line6Value">
-        <property name="text">
-         <string>MA_ROCK.DAT</string>
-        </property>
-       </widget>
-      </item>
-      <item row="6" column="0">
-       <widget class="QLabel" name="labelLine7">
-        <property name="text">
-         <string>上游材料集</string>
-        </property>
-       </widget>
-      </item>
-      <item row="6" column="1">
-       <widget class="QLabel" name="line7Value">
-        <property name="text">
-         <string>MA_DAMUP.DAT</string>
-        </property>
-       </widget>
-      </item>
-      <item row="7" column="0">
-       <widget class="QLabel" name="labelLine8">
-        <property name="text">
-         <string>下游材料集</string>
-        </property>
-       </widget>
-      </item>
-      <item row="7" column="1">
-       <widget class="QLabel" name="line8Value">
-        <property name="text">
-         <string>MA_DAMDW.DAT</string>
-        </property>
-       </widget>
-      </item>
-      <item row="8" column="0">
-       <widget class="QLabel" name="labelLine9">
-        <property name="text">
-         <string>心墙材料集</string>
-        </property>
-       </widget>
-      </item>
-      <item row="8" column="1">
-       <widget class="QLabel" name="line9Value">
-        <property name="text">
-         <string>MA_CORE.DAT</string>
-        </property>
-       </widget>
-      </item>
-      <item row="9" column="0">
-       <widget class="QLabel" name="labelLine10">
-        <property name="text">
-         <string>坝型</string>
-        </property>
-       </widget>
-      </item>
-      <item row="9" column="1">
-       <widget class="QComboBox" name="comboLine10">
-        <item>
-         <property name="text">
-          <string>1 面板堆石坝</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>2 心墙堆石坝</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>3 沥青心墙堆石坝</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>4 均质坝</string>
-         </property>
-        </item>
-       </widget>
-      </item>
-      <item row="10" column="0">
-       <widget class="QLabel" name="labelLine11">
-        <property name="text">
-         <string>面板材料集文件</string>
-        </property>
-       </widget>
-      </item>
-      <item row="10" column="1">
-       <widget class="QLabel" name="line11Value">
-        <property name="text">
-         <string>MA_PLATE.DAT</string>
-        </property>
-       </widget>
-      </item>
-      <item row="11" column="0">
-       <widget class="QLabel" name="labelLine12">
-        <property name="text">
-         <string>特征节点集文件</string>
-        </property>
-       </widget>
-      </item>
-      <item row="11" column="1">
-       <widget class="QLabel" name="line12Value">
-        <property name="text">
-         <string>JDTRACE.DAT</string>
-        </property>
-       </widget>
-      </item>
-      <item row="12" column="0">
-       <widget class="QLabel" name="labelLine13">
-        <property name="text">
-         <string>特征单元集文件</string>
-        </property>
-       </widget>
-      </item>
-      <item row="12" column="1">
-       <widget class="QLabel" name="line13Value">
-        <property name="text">
-         <string>KETRACE.DAT</string>
-        </property>
-       </widget>
-      </item>
-      <item row="13" column="0">
-       <widget class="QLabel" name="labelLine14">
-        <property name="text">
-         <string>特征时刻文件</string>
-        </property>
-       </widget>
-      </item>
-      <item row="13" column="1">
-       <widget class="QLabel" name="line14Value">
-        <property name="text">
-         <string>TDTRACE.DAT</string>
-        </property>
-       </widget>
-      </item>
       <item row="14" column="0">
        <widget class="QLabel" name="labelLine15">
         <property name="text">
@@ -537,23 +324,6 @@
         </property>
        </widget>
       </item>
-      <item row="30" column="0">
-       <widget class="QLabel" name="labelMCase">
-        <property name="text">
-         <string>MCASE（自动统计）</string>
-        </property>
-       </widget>
-      </item>
-      <item row="30" column="1">
-       <widget class="QLineEdit" name="editMCase">
-        <property name="text">
-         <string>1</string>
-        </property>
-        <property name="readOnly">
-         <bool>true</bool>
-        </property>
-       </widget>
-      </item>
       <item row="31" column="0">
        <widget class="QLabel" name="labelX">
         <property name="text">
@@ -784,34 +554,6 @@
         </item>
        </layout>
       </item>
-      <item row="35" column="0">
-       <widget class="QLabel" name="labelSummary">
-        <property name="text">
-         <string>当前配置摘要</string>
-        </property>
-       </widget>
-      </item>
-      <item row="35" column="1">
-       <widget class="QLabel" name="summaryLabel">
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-       </widget>
-      </item>
-      <item row="36" column="0">
-       <widget class="QLabel" name="labelValidate">
-        <property name="text">
-         <string>配置检查</string>
-        </property>
-       </widget>
-      </item>
-      <item row="36" column="1">
-       <widget class="QPushButton" name="btnValidation">
-        <property name="text">
-         <string>校验配置</string>
-        </property>
-       </widget>
-      </item>
       <item row="37" column="1">
        <widget class="QPushButton" name="btnCompute">
         <property name="text">
@@ -841,6 +583,6 @@
    </item>
   </layout>
  </widget>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

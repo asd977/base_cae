@@ -12,7 +12,6 @@
 #include <QHeaderView>
 #include <QItemSelectionModel>
 #include <QJsonArray>
-#include <QLayout>
 #include <QLineEdit>
 #include <QTableWidget>
 #include <QWidget>
@@ -80,24 +79,6 @@ void FillStorageCyclePage::initValueEditors()
     ui->comboIFMODE->setItemData(1, "1");
     ui->comboIFWAVE->setItemData(0, "0");
     ui->comboIFWAVE->setItemData(1, "1");
-
-    auto removeWidget = [](QWidget* w)
-    {
-        if (!w)
-            return;
-        if (auto* parent = w->parentWidget())
-        {
-            if (auto* layout = parent->layout())
-                layout->removeWidget(w);
-        }
-        w->deleteLater();
-    };
-
-    removeWidget(ui->groupMaterialChange);
-    removeWidget(ui->labelDIRDYNA);
-    removeWidget(ui->editDIRDYNA);
-    removeWidget(ui->labelWAVE_FILES);
-    removeWidget(ui->editWAVE_FILES);
 
     auto mkTable = [this](const QStringList& headers)
     {

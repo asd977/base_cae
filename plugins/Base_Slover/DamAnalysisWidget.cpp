@@ -8,7 +8,6 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QLabel>
-#include <QLayout>
 #include <QLineEdit>
 #include <QMap>
 #include <QMessageBox>
@@ -87,9 +86,6 @@ void DamAnalysisWidget::initValueEditors()
     m_lineEditors[29] = ui->comboLine29;
     m_lineEditors[30] = ui->editLine30;
 
-    ui->comboLine10->clear();
-    ui->comboLine10->addItem("4 均质坝", "4");
-
     ui->comboLine15->setItemData(0, "0");
     ui->comboLine15->setItemData(1, "1");
 
@@ -123,27 +119,6 @@ void DamAnalysisWidget::initValueEditors()
     m_comboIfIso->setItemData(0, "0");
     m_comboIfIso->setItemData(1, "1");
 
-    auto removeWidget = [](QWidget* w)
-    {
-        if (!w)
-            return;
-        if (auto* parent = w->parentWidget())
-        {
-            if (auto* layout = parent->layout())
-                layout->removeWidget(w);
-        }
-        w->deleteLater();
-    };
-
-    const QList<QWidget*> hidden = {
-        ui->labelLine1, ui->line1Value, ui->labelLine2, ui->line2Value, ui->labelLine3, ui->line3Value,
-        ui->labelLine4, ui->line4Value, ui->labelLine5, ui->line5Value, ui->labelLine6, ui->line6Value,
-        ui->labelLine7, ui->line7Value, ui->labelLine8, ui->line8Value, ui->labelLine9, ui->line9Value,
-        ui->labelLine10, ui->comboLine10, ui->labelLine11, ui->line11Value, ui->labelLine12, ui->line12Value,
-        ui->labelLine13, ui->line13Value, ui->labelLine14, ui->line14Value, ui->labelMCase, ui->editMCase,
-        ui->labelSummary, ui->summaryLabel, ui->labelValidate, ui->btnValidation};
-    for (QWidget* w : hidden)
-        removeWidget(w);
 }
 
 QString DamAnalysisWidget::quoteValue(const QString& value) const
