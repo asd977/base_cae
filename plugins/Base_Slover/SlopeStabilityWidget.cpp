@@ -23,25 +23,24 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
     ui->setupUi(this);
 
     m_lineEditors[1] = ui->line1Edit;
-    m_lineEditors[2] = ui->line2Edit;
     m_lineEditors[3] = ui->line3Combo;
     m_lineEditors[4] = ui->line4Edit;
     m_lineEditors[5] = ui->line5Combo;
     m_lineEditors[6] = ui->line6Edit;
     m_lineEditors[7] = ui->line7Edit;
     m_lineEditors[8] = ui->line8Combo;
-    m_lineEditors[9] = ui->line9Edit;
-    m_lineEditors[10] = ui->line10Edit;
-    m_lineEditors[11] = ui->line11Edit;
-    m_lineEditors[12] = ui->line12Edit;
-    m_lineEditors[13] = ui->line13Edit;
-    m_lineEditors[14] = ui->line14Edit;
+    m_lineEditors[9] = nullptr;
+    m_lineEditors[10] = nullptr;
+    m_lineEditors[11] = nullptr;
+    m_lineEditors[12] = nullptr;
+    m_lineEditors[13] = nullptr;
+    m_lineEditors[14] = nullptr;
     m_lineEditors[15] = ui->line15Combo;
     m_lineEditors[16] = ui->line16Combo;
     m_lineEditors[17] = ui->line17Edit;
     m_lineEditors[18] = ui->line18Edit;
     m_lineEditors[19] = ui->line19Combo;
-    m_lineEditors[20] = ui->line20Edit;
+    m_lineEditors[20] = nullptr;
 
     ui->line3Combo->setItemData(0, "0");
     ui->line3Combo->setItemData(1, "1");
@@ -127,6 +126,13 @@ QString SlopeStabilityWidget::defaultValueByLine(int lineNo) const
                                          "--------------", "--------------", "JDTRACE.DAT", "KETRACE.DAT",
                                          "TDTRACE.DAT", "0", "0", "0.05", "0.0", "1", "MACHAN.DAT"};
     return defaults.value(lineNo - 1);
+}
+
+namespace
+{
+constexpr char kAccXFileName[] = "ACCEX.DAT";
+constexpr char kAccYFileName[] = "ACCEY.DAT";
+constexpr char kAccZFileName[] = "ACCEZ.DAT";
 }
 
 void SlopeStabilityWidget::initStrengthReserveTable()
@@ -220,8 +226,9 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
     os << ui->dtEdit->text().trimmed() << " " << ui->tstaEdit->text().trimmed() << " "
        << ui->tendEdit->text().trimmed() << " " << ui->ifModeEdit->text().trimmed() << " "
        << ui->ifWaveEdit->text().trimmed() << "    DT TSTA TEND IFMODE IFWAVE\n";
-    os << quoteValue(ui->accXEdit->text()) << "  " << quoteValue(ui->accYEdit->text()) << "  "
-       << quoteValue(ui->accZEdit->text()) << "    ACCEX ACCEY ACCEZ\n";
+    os << quoteValue(QString::fromLatin1(kAccXFileName)) << "  "
+       << quoteValue(QString::fromLatin1(kAccYFileName)) << "  "
+       << quoteValue(QString::fromLatin1(kAccZFileName)) << "    ACCEX ACCEY ACCEZ\n";
 
     exportTdtraceDatFile();
     return true;
@@ -267,9 +274,9 @@ QJsonObject SlopeStabilityWidget::saveJson()
     obj["tend"] = ui->tendEdit->text().trimmed();
     obj["ifmode"] = ui->ifModeEdit->text().trimmed();
     obj["ifwave"] = ui->ifWaveEdit->text().trimmed();
-    obj["acc_x"] = ui->accXEdit->text().trimmed();
-    obj["acc_y"] = ui->accYEdit->text().trimmed();
-    obj["acc_z"] = ui->accZEdit->text().trimmed();
+    obj["acc_x"] = QString::fromLatin1(kAccXFileName);
+    obj["acc_y"] = QString::fromLatin1(kAccYFileName);
+    obj["acc_z"] = QString::fromLatin1(kAccZFileName);
     return obj;
 }
 
@@ -322,9 +329,6 @@ void SlopeStabilityWidget::loadJson(const QJsonObject& obj)
     ui->tendEdit->setText(obj.value("tend").toString(ui->tendEdit->text()));
     ui->ifModeEdit->setText(obj.value("ifmode").toString(ui->ifModeEdit->text()));
     ui->ifWaveEdit->setText(obj.value("ifwave").toString(ui->ifWaveEdit->text()));
-    ui->accXEdit->setText(obj.value("acc_x").toString(ui->accXEdit->text()));
-    ui->accYEdit->setText(obj.value("acc_y").toString(ui->accYEdit->text()));
-    ui->accZEdit->setText(obj.value("acc_z").toString(ui->accZEdit->text()));
 }
 
 void SlopeStabilityWidget::onComputeClicked()
