@@ -80,6 +80,41 @@ static inline quint64 makeEdgePairKey(vtkIdType a, vtkIdType b)
     return (quint64(hi) << 32) | quint64(lo);
 }
 
+static bool edgeEndpointPair(vtkDataSet* ds, vtkIdList* ids, vtkIdType& a, vtkIdType& b)
+{
+    a = -1;
+    b = -1;
+    if (!ds || !ids || ids->GetNumberOfIds() < 2)
+        return false;
+
+    if (ids->GetNumberOfIds() == 2)
+    {
+        a = ids->GetId(0);
+        b = ids->GetId(1);
+        return true;
+    }
+
+    double bestD2 = -1.0;
+    for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
+    {
+        double pi[3];
+        ds->GetPoint(ids->GetId(i), pi);
+        for (vtkIdType j = i + 1; j < ids->GetNumberOfIds(); ++j)
+        {
+            double pj[3];
+            ds->GetPoint(ids->GetId(j), pj);
+            const double d2 = vtkMath::Distance2BetweenPoints(pi, pj);
+            if (d2 > bestD2)
+            {
+                bestD2 = d2;
+                a = ids->GetId(i);
+                b = ids->GetId(j);
+            }
+        }
+    }
+    return a >= 0 && b >= 0;
+}
+
 PickManager& PickManager::instance()
 {
     static PickManager s;
@@ -1050,10 +1085,11 @@ void PickManager::rebuildEdgeCanonicalCache()
             if (dim == 1)
             {
                 auto* ids = cell->GetPointIds();
-                if (!ids || ids->GetNumberOfIds() < 2)
+                vtkIdType a = -1, b = -1;
+                if (!edgeEndpointPair(grid, ids, a, b))
                     continue;
                 const vtkIdType edgeKey = packEdgeKey(cid, 15);
-                const quint64 pairKey = makeEdgePairKey(ids->GetId(0), ids->GetId(ids->GetNumberOfIds() - 1));
+                const quint64 pairKey = makeEdgePairKey(a, b);
                 auto it = outMap.find(pairKey);
                 if (it == outMap.end() || edgeKey < it.value())
                     outMap[pairKey] = edgeKey;
@@ -1067,10 +1103,11 @@ void PickManager::rebuildEdgeCanonicalCache()
                 if (!e)
                     continue;
                 auto* ids = e->GetPointIds();
-                if (!ids || ids->GetNumberOfIds() < 2)
+                vtkIdType a = -1, b = -1;
+                if (!edgeEndpointPair(grid, ids, a, b))
                     continue;
                 const vtkIdType edgeKey = packEdgeKey(cid, ei);
-                const quint64 pairKey = makeEdgePairKey(ids->GetId(0), ids->GetId(ids->GetNumberOfIds() - 1));
+                const quint64 pairKey = makeEdgePairKey(a, b);
                 auto it = outMap.find(pairKey);
                 if (it == outMap.end() || edgeKey < it.value())
                     outMap[pairKey] = edgeKey;
@@ -1104,10 +1141,8 @@ vtkIdType PickManager::canonicalizeEdgeKey(GridKind kind, vtkIdType edgeKey) con
     if (cell->GetCellDimension() == 1 || ei == 15)
     {
         auto* ids = cell->GetPointIds();
-        if (!ids || ids->GetNumberOfIds() < 2)
+        if (!edgeEndpointPair(grid, ids, a, b))
             return edgeKey;
-        a = ids->GetId(0);
-        b = ids->GetId(ids->GetNumberOfIds() - 1);
     }
     else
     {
@@ -1117,10 +1152,8 @@ vtkIdType PickManager::canonicalizeEdgeKey(GridKind kind, vtkIdType edgeKey) con
         if (!e)
             return edgeKey;
         auto* ids = e->GetPointIds();
-        if (!ids || ids->GetNumberOfIds() < 2)
+        if (!edgeEndpointPair(grid, ids, a, b))
             return edgeKey;
-        a = ids->GetId(0);
-        b = ids->GetId(ids->GetNumberOfIds() - 1);
     }
 
     const quint64 pairKey = makeEdgePairKey(a, b);
