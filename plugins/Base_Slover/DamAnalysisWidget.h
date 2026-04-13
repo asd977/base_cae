@@ -10,6 +10,7 @@ class QLineEdit;
 class QLabel;
 class QPushButton;
 class QWidget;
+class QComboBox;
 
 namespace Ui
 {
@@ -48,15 +49,19 @@ class DamAnalysisWidget : public BasePage
     void setLineValue(int lineNo, const QString& value);
     bool isFixedFileLine(int lineNo) const;
     bool validateInputs(QString* errorMessage) const;
-    void updateConfigSummary();
 
     Ui::DamAnalysisWidget* ui;
     QMap<int, QWidget*> m_lineEditors;
-    QLineEdit* m_editX = nullptr;
-    QLineEdit* m_editAlfa = nullptr;
-    QLineEdit* m_editAxis = nullptr;
-    QLineEdit* m_editRock = nullptr;
-    QLineEdit* m_editMCase = nullptr;
-    QLabel* m_summaryLabel = nullptr;
-    QPushButton* m_btnValidation = nullptr;
+    QComboBox* m_comboMethodIter = nullptr;
+    QLineEdit* m_editIter = nullptr;
+    QLineEdit* m_editX1 = nullptr;
+    QLineEdit* m_editX2 = nullptr;
+    QLineEdit* m_editX3 = nullptr;
+    QLineEdit* m_editAlfa1 = nullptr;
+    QLineEdit* m_editAlfa2 = nullptr;
+    QLineEdit* m_editAlfa3 = nullptr;
+    QComboBox* m_comboAxisUp = nullptr;
+    QComboBox* m_comboAxisDown = nullptr;
+    QComboBox* m_comboIfRock = nullptr;
+    QComboBox* m_comboIfIso = nullptr;
 };

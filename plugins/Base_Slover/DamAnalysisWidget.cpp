@@ -42,13 +42,18 @@ void DamAnalysisWidget::beforeUnload()
 
 void DamAnalysisWidget::initValueEditors()
 {
-    m_editX = ui->editX;
-    m_editAlfa = ui->editAlfa;
-    m_editAxis = ui->editAxis;
-    m_editRock = ui->editRock;
-    m_editMCase = ui->editMCase;
-    m_summaryLabel = ui->summaryLabel;
-    m_btnValidation = ui->btnValidation;
+    m_comboMethodIter = ui->comboMethodIter;
+    m_editIter = ui->editIter;
+    m_editX1 = ui->editX1;
+    m_editX2 = ui->editX2;
+    m_editX3 = ui->editX3;
+    m_editAlfa1 = ui->editAlfa1;
+    m_editAlfa2 = ui->editAlfa2;
+    m_editAlfa3 = ui->editAlfa3;
+    m_comboAxisUp = ui->comboAxisUp;
+    m_comboAxisDown = ui->comboAxisDown;
+    m_comboIfRock = ui->comboIfRock;
+    m_comboIfIso = ui->comboIfIso;
 
     m_lineEditors[1] = ui->line1Value;
     m_lineEditors[2] = ui->line2Value;
@@ -69,7 +74,7 @@ void DamAnalysisWidget::initValueEditors()
     m_lineEditors[17] = ui->editLine17;
     m_lineEditors[18] = ui->editLine18;
     m_lineEditors[19] = ui->comboLine19;
-    m_lineEditors[20] = ui->editLine20;
+    m_lineEditors[20] = nullptr;
     m_lineEditors[21] = ui->editLine21;
     m_lineEditors[22] = ui->editLine22;
     m_lineEditors[23] = ui->editLine23;
@@ -81,10 +86,8 @@ void DamAnalysisWidget::initValueEditors()
     m_lineEditors[29] = ui->comboLine29;
     m_lineEditors[30] = ui->editLine30;
 
-    ui->comboLine10->setItemData(0, "1");
-    ui->comboLine10->setItemData(1, "2");
-    ui->comboLine10->setItemData(2, "3");
-    ui->comboLine10->setItemData(3, "4");
+    ui->comboLine10->clear();
+    ui->comboLine10->addItem("4 均质坝", "4");
 
     ui->comboLine15->setItemData(0, "0");
     ui->comboLine15->setItemData(1, "1");
@@ -99,25 +102,36 @@ void DamAnalysisWidget::initValueEditors()
     ui->comboLine29->setItemData(0, "0");
     ui->comboLine29->setItemData(1, "1");
 
-    for (auto it = m_lineEditors.begin(); it != m_lineEditors.end(); ++it)
-    {
-        if (auto* combo = qobject_cast<QComboBox*>(it.value()))
-            connect(combo, &QComboBox::currentTextChanged, this, [this]() { updateConfigSummary(); });
-        else if (auto* edit = qobject_cast<QLineEdit*>(it.value()))
-            connect(edit, &QLineEdit::textChanged, this, [this]() { updateConfigSummary(); });
-    }
+    m_comboMethodIter->setItemData(0, "1");
+    m_comboMethodIter->setItemData(1, "2");
+    m_comboMethodIter->setItemData(2, "3");
+    m_comboMethodIter->setItemData(3, "4");
+    m_comboMethodIter->setCurrentIndex(3);
 
-    connect(m_btnValidation, &QPushButton::clicked, this, [this]() {
-        QString error;
-        if (validateInputs(&error))
-        {
-            QMessageBox::information(this, "校验通过", "IFILL.DAT 参数格式校验通过。");
-            return;
-        }
-        QMessageBox::warning(this, "校验失败", error);
-    });
+    m_comboAxisUp->setItemData(0, "1");
+    m_comboAxisUp->setItemData(1, "2");
+    m_comboAxisUp->setItemData(2, "3");
+    m_comboAxisDown->setItemData(0, "1");
+    m_comboAxisDown->setItemData(1, "2");
+    m_comboAxisDown->setItemData(2, "3");
+    m_comboAxisUp->setCurrentIndex(0);
+    m_comboAxisDown->setCurrentIndex(2);
 
-    updateConfigSummary();
+    m_comboIfRock->setItemData(0, "0");
+    m_comboIfRock->setItemData(1, "1");
+    m_comboIfIso->setItemData(0, "0");
+    m_comboIfIso->setItemData(1, "1");
+
+    const QList<QWidget*> hidden = {
+        ui->labelLine1, ui->line1Value, ui->labelLine2, ui->line2Value, ui->labelLine3, ui->line3Value,
+        ui->labelLine4, ui->line4Value, ui->labelLine5, ui->line5Value, ui->labelLine6, ui->line6Value,
+        ui->labelLine7, ui->line7Value, ui->labelLine8, ui->line8Value, ui->labelLine9, ui->line9Value,
+        ui->labelLine10, ui->comboLine10, ui->labelLine11, ui->line11Value, ui->labelLine12, ui->line12Value,
+        ui->labelLine13, ui->line13Value, ui->labelLine14, ui->line14Value, ui->labelMCase, ui->editMCase,
+        ui->labelSummary, ui->summaryLabel, ui->labelValidate, ui->btnValidation};
+    for (QWidget* w : hidden)
+        if (w)
+            w->setVisible(false);
 }
 
 QString DamAnalysisWidget::quoteValue(const QString& value) const
@@ -129,7 +143,7 @@ QString DamAnalysisWidget::defaultValueByLine(int lineNo) const
 {
     static const QStringList defaults = {
         "F:\\FEMCLASS\\Z03_JUNZ3D\\PREP\\", "FA_DAMUP.DAT", "FA_DAMDW.DAT", "FA_DAMBASE.DAT",
-        "NONE", "MA_ROCK.DAT", "MA_DAMUP.DAT", "MA_DAMDW.DAT", "MA_CORE.DAT", "1",
+        "NONE", "MA_ROCK.DAT", "MA_DAMUP.DAT", "MA_DAMDW.DAT", "MA_CORE.DAT", "4",
         "MA_PLATE.DAT", "JDTRACE.DAT", "KETRACE.DAT", "TDTRACE.DAT", "0", "0", "0.05", "0.01",
         "2", "4   10", "0.000", "1.962", "1.308", "0.1", "0.2", "2.0", "0.9", "7.0", "0",
         "10"};
@@ -144,8 +158,8 @@ QString DamAnalysisWidget::descriptionByLine(int lineNo) const
         "下游材料集", "心墙材料集（面板坝不需要）",
         "坝型：1面板堆石坝 / 2心墙堆石坝 / 3沥青心墙堆石坝 / 4均质坝",
         "面板材料集文件", "特征节点集文件", "特征单元集文件", "特征时刻文件",
-        "阻尼：0系统阻尼 / 1分材料阻尼", "瑞雷阻尼：0否 / 1是", "质量阻尼系数 ALFAP",
-        "刚度阻尼系数 BETAP", "计算类型：1静力 / 2动力 / 3静动力", "METHOD_ITER ITER",
+        "阻尼：0系统阻尼 / 1分材料阻尼", "瑞雷阻尼：0否 / 1是", "质量阻尼系数",
+        "刚度阻尼系数", "计算类型：1静力 / 2动力 / 3静动力", "迭代方法与迭代次数",
         "蠕变计算时间步长 DT_CREEP", "水平最大地震加速度 AHMAX", "竖向最大地震加速度 AVMAX",
         "反应谱特征周期 TG1", "反应谱特征周期 TG2", "反应谱 BETAMAX", "反应谱指数 EXPN",
         "地震震级 QUAKE_LEVEL", "是否计算特征值特征向量：0否 / 1是", "特征值数"};
@@ -166,6 +180,10 @@ QString DamAnalysisWidget::normalizeEnumValue(const QString& rawValue) const
 
 QString DamAnalysisWidget::lineValue(int lineNo) const
 {
+    if (lineNo == 20)
+        return QString("%1 %2").arg(m_comboMethodIter->currentData().toString(),
+                                    m_editIter->text().trimmed());
+
     QWidget* w = m_lineEditors.value(lineNo, nullptr);
     if (auto* combo = qobject_cast<QComboBox*>(w))
         return combo->currentData().toString();
@@ -178,6 +196,19 @@ QString DamAnalysisWidget::lineValue(int lineNo) const
 
 void DamAnalysisWidget::setLineValue(int lineNo, const QString& value)
 {
+    if (lineNo == 20)
+    {
+        const QStringList parts =
+            value.trimmed().split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
+        const QString method = parts.value(0, "4");
+        const QString iter = parts.value(1, "10");
+        const int idx = m_comboMethodIter->findData(method);
+        if (idx >= 0)
+            m_comboMethodIter->setCurrentIndex(idx);
+        m_editIter->setText(iter);
+        return;
+    }
+
     QWidget* w = m_lineEditors.value(lineNo, nullptr);
     if (auto* combo = qobject_cast<QComboBox*>(w))
     {
@@ -195,7 +226,7 @@ void DamAnalysisWidget::setLineValue(int lineNo, const QString& value)
 
 bool DamAnalysisWidget::isFixedFileLine(int lineNo) const
 {
-    static const QSet<int> fixedLines = {1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14};
+    static const QSet<int> fixedLines = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14};
     return fixedLines.contains(lineNo);
 }
 
@@ -215,15 +246,6 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
             setError(QString("第 %1 行为空，请填写：%2").arg(lineNo).arg(descriptionByLine(lineNo)));
             return false;
         }
-        if (lineNo == 20)
-        {
-            const QStringList parts = text.split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
-            if (parts.size() != 2)
-            {
-                setError("第 20 行需包含两个数值：METHOD_ITER 和 ITER，例如：4 10。");
-                return false;
-            }
-        }
         if (oneTokenLines.contains(lineNo))
         {
             const QStringList parts = text.split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
@@ -235,53 +257,24 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
         }
     }
 
-    auto tokenCount = [](const QString& value) {
-        return value.split(QRegularExpression("\\s+"), QString::SkipEmptyParts).size();
-    };
-    if (tokenCount(m_editX->text()) != 3)
+    if (m_editIter->text().trimmed().isEmpty())
     {
-        setError("X1 X2 X3 需要 3 个值。");
+        setError("迭代次数不能为空。");
         return false;
     }
-    if (tokenCount(m_editAlfa->text()) != 3)
+    if (m_editX1->text().trimmed().isEmpty() || m_editX2->text().trimmed().isEmpty() ||
+        m_editX3->text().trimmed().isEmpty())
     {
-        setError("α1 α2 α3 需要 3 个值。");
+        setError("请填写 X1、X2、X3。");
         return false;
     }
-    if (tokenCount(m_editAxis->text()) != 6)
+    if (m_editAlfa1->text().trimmed().isEmpty() || m_editAlfa2->text().trimmed().isEmpty() ||
+        m_editAlfa3->text().trimmed().isEmpty())
     {
-        setError("IXUPDW XAMID YAMID XBMID YBMID 配置需 6 个值。");
+        setError("请填写 α1、α2、α3。");
         return false;
     }
-    if (tokenCount(m_editRock->text()) != 2)
-    {
-        setError("IFROCK IFISO 需要 2 个值。");
-        return false;
-    }
-
     return true;
-}
-
-void DamAnalysisWidget::updateConfigSummary()
-{
-    const QString fillType = normalizeEnumValue(lineValue(10));
-    const QString calcType = normalizeEnumValue(lineValue(19));
-    const QString dampingType = normalizeEnumValue(lineValue(15));
-    const QString rayleigh = normalizeEnumValue(lineValue(16));
-
-    auto mapName = [](const QString& code, const QMap<QString, QString>& map) { return map.value(code, QString("未知(%1)").arg(code)); };
-
-    const QMap<QString, QString> fillMap = {{"1", "面板堆石坝"}, {"2", "心墙堆石坝"}, {"3", "沥青心墙堆石坝"}, {"4", "均质坝"}};
-    const QMap<QString, QString> calcMap = {{"1", "静力"}, {"2", "动力"}, {"3", "静动力全算"}};
-    const QMap<QString, QString> dampingMap = {{"0", "系统阻尼"}, {"1", "分材料阻尼"}};
-    const QMap<QString, QString> rayleighMap = {{"0", "非瑞雷"}, {"1", "瑞雷"}};
-
-    m_summaryLabel->setText(QString("坝型：%1；计算类型：%2；阻尼：%3；瑞雷：%4；MCASE：%5")
-                                .arg(mapName(fillType, fillMap))
-                                .arg(mapName(calcType, calcMap))
-                                .arg(mapName(dampingType, dampingMap))
-                                .arg(mapName(rayleigh, rayleighMap))
-                                .arg(m_editMCase ? m_editMCase->text() : "1"));
 }
 
 bool DamAnalysisWidget::exportIfillDatFile(int mcase, const QString& cycleSectionText) const
@@ -328,10 +321,23 @@ bool DamAnalysisWidget::exportIfillDatFile(int mcase, const QString& cycleSectio
         os << quoteValue(value) << "      " << lineNo << "\n";
     }
 
-    os << m_editX->text().trimmed() << "    X1  X2  X3\n";
-    os << m_editAlfa->text().trimmed() << "    ALFA1  ALFA2  ALFA3\n";
-    os << m_editAxis->text().trimmed() << "    IXUPDW XAMID YAMID XBMID YBMID\n";
-    os << m_editRock->text().trimmed() << "    IFROCK IFISO\n";
+    os << QString("%1 %2 %3")
+              .arg(m_editX1->text().trimmed())
+              .arg(m_editX2->text().trimmed())
+              .arg(m_editX3->text().trimmed())
+              << "    X1  X2  X3\n";
+    os << QString("%1 %2 %3")
+              .arg(m_editAlfa1->text().trimmed())
+              .arg(m_editAlfa2->text().trimmed())
+              .arg(m_editAlfa3->text().trimmed())
+              << "    ALFA1  ALFA2  ALFA3\n";
+    os << QString("%1 %2 0.000000 0.000000 0.000000 0.000000")
+              .arg(m_comboAxisUp->currentData().toString(),
+                   m_comboAxisDown->currentData().toString())
+              << "    IXUPDW IYUPDW XAMID YAMID XBMID YBMID\n";
+    os << QString("%1 %2").arg(m_comboIfRock->currentData().toString(),
+                               m_comboIfIso->currentData().toString())
+              << "    IFROCK IFISO\n";
 
     const int safeCaseCount = qMax(1, mcase);
     os << safeCaseCount << "   MCASE\n";
@@ -367,9 +373,8 @@ bool DamAnalysisWidget::exportIfillDatFile(int mcase, const QString& cycleSectio
 
 void DamAnalysisWidget::setMCaseCount(int mcase)
 {
-    if (m_editMCase)
-        m_editMCase->setText(QString::number(qMax(1, mcase)));
-    updateConfigSummary();
+    if (ui->editMCase)
+        ui->editMCase->setText(QString::number(qMax(1, mcase)));
 }
 
 QJsonObject DamAnalysisWidget::saveJson()
@@ -379,10 +384,12 @@ QJsonObject DamAnalysisWidget::saveJson()
     for (int lineNo = 1; lineNo <= 30; ++lineNo)
         arr.append(lineValue(lineNo));
     obj["base_values"] = arr;
-    obj["x_values"] = m_editX->text();
-    obj["alfa_values"] = m_editAlfa->text();
-    obj["axis_values"] = m_editAxis->text();
-    obj["rock_values"] = m_editRock->text();
+    obj["x_values"] = QJsonArray {m_editX1->text(), m_editX2->text(), m_editX3->text()};
+    obj["alfa_values"] = QJsonArray {m_editAlfa1->text(), m_editAlfa2->text(), m_editAlfa3->text()};
+    obj["axis_values"] = QJsonArray {m_comboAxisUp->currentData().toString(),
+                                     m_comboAxisDown->currentData().toString()};
+    obj["rock_values"] = QJsonArray {m_comboIfRock->currentData().toString(),
+                                     m_comboIfIso->currentData().toString()};
     return obj;
 }
 
@@ -396,11 +403,85 @@ void DamAnalysisWidget::loadJson(const QJsonObject& obj)
         const QString value = (lineNo - 1 < arr.size() ? arr.at(lineNo - 1).toString() : defaultValueByLine(lineNo));
         setLineValue(lineNo, value);
     }
-    m_editX->setText(obj.value("x_values").toString(m_editX->text()));
-    m_editAlfa->setText(obj.value("alfa_values").toString(m_editAlfa->text()));
-    m_editAxis->setText(obj.value("axis_values").toString(m_editAxis->text()));
-    m_editRock->setText(obj.value("rock_values").toString(m_editRock->text()));
-    updateConfigSummary();
+    const QJsonValue xVal = obj.value("x_values");
+    const QJsonArray xArr = xVal.toArray();
+    if (!xArr.isEmpty())
+    {
+        m_editX1->setText(xArr.value(0).toString(m_editX1->text()));
+        m_editX2->setText(xArr.value(1).toString(m_editX2->text()));
+        m_editX3->setText(xArr.value(2).toString(m_editX3->text()));
+    }
+    else if (xVal.isString())
+    {
+        const QStringList parts =
+            xVal.toString().split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
+        m_editX1->setText(parts.value(0, m_editX1->text()));
+        m_editX2->setText(parts.value(1, m_editX2->text()));
+        m_editX3->setText(parts.value(2, m_editX3->text()));
+    }
+
+    const QJsonValue alfaVal = obj.value("alfa_values");
+    const QJsonArray alfaArr = alfaVal.toArray();
+    if (!alfaArr.isEmpty())
+    {
+        m_editAlfa1->setText(alfaArr.value(0).toString(m_editAlfa1->text()));
+        m_editAlfa2->setText(alfaArr.value(1).toString(m_editAlfa2->text()));
+        m_editAlfa3->setText(alfaArr.value(2).toString(m_editAlfa3->text()));
+    }
+    else if (alfaVal.isString())
+    {
+        const QStringList parts =
+            alfaVal.toString().split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
+        m_editAlfa1->setText(parts.value(0, m_editAlfa1->text()));
+        m_editAlfa2->setText(parts.value(1, m_editAlfa2->text()));
+        m_editAlfa3->setText(parts.value(2, m_editAlfa3->text()));
+    }
+
+    const QJsonValue axisVal = obj.value("axis_values");
+    const QJsonArray axisArr = axisVal.toArray();
+    if (!axisArr.isEmpty())
+    {
+        const int upIdx = m_comboAxisUp->findData(axisArr.value(0).toString());
+        const int downIdx = m_comboAxisDown->findData(axisArr.value(1).toString());
+        if (upIdx >= 0)
+            m_comboAxisUp->setCurrentIndex(upIdx);
+        if (downIdx >= 0)
+            m_comboAxisDown->setCurrentIndex(downIdx);
+    }
+    else if (axisVal.isString())
+    {
+        const QStringList parts =
+            axisVal.toString().split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
+        const int upIdx = m_comboAxisUp->findData(parts.value(0));
+        const int downIdx = m_comboAxisDown->findData(parts.value(1));
+        if (upIdx >= 0)
+            m_comboAxisUp->setCurrentIndex(upIdx);
+        if (downIdx >= 0)
+            m_comboAxisDown->setCurrentIndex(downIdx);
+    }
+
+    const QJsonValue rockVal = obj.value("rock_values");
+    const QJsonArray rockArr = rockVal.toArray();
+    if (!rockArr.isEmpty())
+    {
+        const int rockIdx = m_comboIfRock->findData(rockArr.value(0).toString());
+        const int isoIdx = m_comboIfIso->findData(rockArr.value(1).toString());
+        if (rockIdx >= 0)
+            m_comboIfRock->setCurrentIndex(rockIdx);
+        if (isoIdx >= 0)
+            m_comboIfIso->setCurrentIndex(isoIdx);
+    }
+    else if (rockVal.isString())
+    {
+        const QStringList parts =
+            rockVal.toString().split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
+        const int rockIdx = m_comboIfRock->findData(parts.value(0));
+        const int isoIdx = m_comboIfIso->findData(parts.value(1));
+        if (rockIdx >= 0)
+            m_comboIfRock->setCurrentIndex(rockIdx);
+        if (isoIdx >= 0)
+            m_comboIfIso->setCurrentIndex(isoIdx);
+    }
 }
 
 void DamAnalysisWidget::onComputeClicked()

@@ -173,9 +173,9 @@
       </widget>
      </item>
      <item row="9" column="0">
-      <widget class="QLabel" name="labelLine10">
+     <widget class="QLabel" name="labelLine10">
        <property name="text">
-        <string>坝型 IFILLTYPE</string>
+        <string>坝型</string>
        </property>
       </widget>
      </item>
@@ -302,9 +302,9 @@
       </widget>
      </item>
      <item row="16" column="0">
-      <widget class="QLabel" name="labelLine17">
+     <widget class="QLabel" name="labelLine17">
        <property name="text">
-        <string>质量阻尼系数ALFAP</string>
+        <string>质量阻尼系数</string>
        </property>
       </widget>
      </item>
@@ -316,9 +316,9 @@
       </widget>
      </item>
      <item row="17" column="0">
-      <widget class="QLabel" name="labelLine18">
+     <widget class="QLabel" name="labelLine18">
        <property name="text">
-        <string>刚度阻尼系数BETAP</string>
+        <string>刚度阻尼系数</string>
        </property>
       </widget>
      </item>
@@ -356,23 +356,36 @@
       </widget>
      </item>
      <item row="19" column="0">
-      <widget class="QLabel" name="labelLine20">
+     <widget class="QLabel" name="labelLine20">
        <property name="text">
-        <string>METHOD_ITER ITER</string>
+        <string>迭代方法与次数</string>
        </property>
       </widget>
      </item>
      <item row="19" column="1">
-      <widget class="QLineEdit" name="editLine20">
-       <property name="text">
-        <string>4   10</string>
-       </property>
-      </widget>
+      <layout class="QHBoxLayout" name="layoutMethodIter">
+       <item>
+        <widget class="QComboBox" name="comboMethodIter">
+         <item><property name="text"><string>1 常刚度法（初应变法）</string></property></item>
+         <item><property name="text"><string>2 常刚度法（初应力法）</string></property></item>
+         <item><property name="text"><string>3 变刚度法（切线刚度法）</string></property></item>
+         <item><property name="text"><string>4 中点增量法（土坝填筑）</string></property></item>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="labelIter"><property name="text"><string>迭代次数</string></property></widget>
+       </item>
+       <item>
+        <widget class="QLineEdit" name="editIter">
+         <property name="text"><string>10</string></property>
+        </widget>
+       </item>
+      </layout>
      </item>
      <item row="20" column="0">
-      <widget class="QLabel" name="labelLine21">
+     <widget class="QLabel" name="labelLine21">
        <property name="text">
-        <string>蠕变计算时间步长DT_CREEP</string>
+        <string>蠕变计算时间步长</string>
        </property>
       </widget>
      </item>
@@ -384,9 +397,9 @@
       </widget>
      </item>
      <item row="21" column="0">
-      <widget class="QLabel" name="labelLine22">
+     <widget class="QLabel" name="labelLine22">
        <property name="text">
-        <string>水平最大地震加速度AHMAX</string>
+        <string>水平最大地震加速度</string>
        </property>
       </widget>
      </item>
@@ -398,9 +411,9 @@
       </widget>
      </item>
      <item row="22" column="0">
-      <widget class="QLabel" name="labelLine23">
+     <widget class="QLabel" name="labelLine23">
        <property name="text">
-        <string>竖向最大地震加速度AVMAX</string>
+        <string>竖向最大地震加速度</string>
        </property>
       </widget>
      </item>
@@ -440,9 +453,9 @@
       </widget>
      </item>
      <item row="25" column="0">
-      <widget class="QLabel" name="labelLine26">
+     <widget class="QLabel" name="labelLine26">
        <property name="text">
-        <string>反应谱BETAMAX</string>
+        <string>反应谱最大放大系数</string>
        </property>
       </widget>
      </item>
@@ -454,9 +467,9 @@
       </widget>
      </item>
      <item row="26" column="0">
-      <widget class="QLabel" name="labelLine27">
+     <widget class="QLabel" name="labelLine27">
        <property name="text">
-        <string>反应谱指数EXPN</string>
+        <string>反应谱指数</string>
        </property>
       </widget>
      </item>
@@ -468,9 +481,9 @@
       </widget>
      </item>
      <item row="27" column="0">
-      <widget class="QLabel" name="labelLine28">
+     <widget class="QLabel" name="labelLine28">
        <property name="text">
-        <string>地震震级QUAKE_LEVEL</string>
+        <string>地震震级</string>
        </property>
       </widget>
      </item>
@@ -517,7 +530,7 @@
       </widget>
      </item>
      <item row="30" column="0">
-      <widget class="QLabel" name="labelMCase">
+     <widget class="QLabel" name="labelMCase">
        <property name="text">
         <string>MCASE（自动统计）</string>
        </property>
@@ -536,58 +549,74 @@
      <item row="31" column="0">
       <widget class="QLabel" name="labelX">
        <property name="text">
-        <string>X1 X2 X3</string>
+        <string>扬压力折减位置</string>
        </property>
       </widget>
      </item>
      <item row="31" column="1">
-      <widget class="QLineEdit" name="editX">
-       <property name="text">
-        <string>0.000000  0.000000  0.000000</string>
-       </property>
-      </widget>
+      <layout class="QHBoxLayout" name="layoutX">
+       <item><widget class="QLabel" name="labelX1"><property name="text"><string>X1</string></property></widget></item>
+       <item><widget class="QLineEdit" name="editX1"><property name="text"><string>0.000000</string></property></widget></item>
+       <item><widget class="QLabel" name="labelX2"><property name="text"><string>X2</string></property></widget></item>
+       <item><widget class="QLineEdit" name="editX2"><property name="text"><string>0.000000</string></property></widget></item>
+       <item><widget class="QLabel" name="labelX3"><property name="text"><string>X3</string></property></widget></item>
+       <item><widget class="QLineEdit" name="editX3"><property name="text"><string>0.000000</string></property></widget></item>
+      </layout>
      </item>
      <item row="32" column="0">
       <widget class="QLabel" name="labelAlfa">
        <property name="text">
-        <string>α1 α2 α3</string>
+        <string>折减系数</string>
        </property>
       </widget>
      </item>
      <item row="32" column="1">
-      <widget class="QLineEdit" name="editAlfa">
-       <property name="text">
-        <string>0.000000  0.000000  0.000000</string>
-       </property>
-      </widget>
+      <layout class="QHBoxLayout" name="layoutAlfa">
+       <item><widget class="QLabel" name="labelAlfa1"><property name="text"><string>α1</string></property></widget></item>
+       <item><widget class="QLineEdit" name="editAlfa1"><property name="text"><string>0.000000</string></property></widget></item>
+       <item><widget class="QLabel" name="labelAlfa2"><property name="text"><string>α2</string></property></widget></item>
+       <item><widget class="QLineEdit" name="editAlfa2"><property name="text"><string>0.000000</string></property></widget></item>
+       <item><widget class="QLabel" name="labelAlfa3"><property name="text"><string>α3</string></property></widget></item>
+       <item><widget class="QLineEdit" name="editAlfa3"><property name="text"><string>0.000000</string></property></widget></item>
+      </layout>
      </item>
      <item row="33" column="0">
       <widget class="QLabel" name="labelAxis">
        <property name="text">
-        <string>IXUPDW XAMID YAMID XBMID YBMID</string>
+        <string>上下游轴指向</string>
        </property>
       </widget>
      </item>
      <item row="33" column="1">
-      <widget class="QLineEdit" name="editAxis">
-       <property name="text">
-        <string>1  3  0.000000  0.000000  0.000000  0.000000</string>
-       </property>
-      </widget>
+      <layout class="QHBoxLayout" name="layoutAxis">
+       <item><widget class="QLabel" name="labelAxisUp"><property name="text"><string>上游轴</string></property></widget></item>
+       <item><widget class="QComboBox" name="comboAxisUp"><item><property name="text"><string>1 X轴</string></property></item><item><property name="text"><string>2 Y轴</string></property></item><item><property name="text"><string>3 Z轴</string></property></item></widget></item>
+       <item><widget class="QLabel" name="labelAxisDown"><property name="text"><string>下游轴</string></property></widget></item>
+       <item><widget class="QComboBox" name="comboAxisDown"><item><property name="text"><string>1 X轴</string></property></item><item><property name="text"><string>2 Y轴</string></property></item><item><property name="text"><string>3 Z轴</string></property></item></widget></item>
+      </layout>
      </item>
      <item row="34" column="0">
       <widget class="QLabel" name="labelRock">
        <property name="text">
-        <string>IFROCK IFISO</string>
+        <string>岩体自重与地基材料</string>
        </property>
       </widget>
      </item>
      <item row="34" column="1">
-      <widget class="QLineEdit" name="editRock">
-       <property name="text">
-        <string>1  0</string>
-       </property>
-      </widget>
+      <layout class="QVBoxLayout" name="layoutRock">
+       <item>
+        <layout class="QHBoxLayout" name="layoutIfrock">
+         <item><widget class="QLabel" name="labelIfRock"><property name="text"><string>是否进行岩体自重计算(IFROCK)</string></property></widget></item>
+         <item><widget class="QComboBox" name="comboIfRock"><item><property name="text"><string>0 否（已计算过）</string></property></item><item><property name="text"><string>1 是（本次计算）</string></property></item></widget></item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="layoutIfiso">
+         <item><widget class="QLabel" name="labelIfIso"><property name="text"><string>地基是否按均质材料计算(IFISO)</string></property></widget></item>
+         <item><widget class="QComboBox" name="comboIfIso"><item><property name="text"><string>0 按建模材料计算</string></property></item><item><property name="text"><string>1 按IFISO材料计算</string></property></item></widget></item>
+        </layout>
+       </item>
+      </layout>
      </item>
      <item row="35" column="0">
       <widget class="QLabel" name="labelSummary">
