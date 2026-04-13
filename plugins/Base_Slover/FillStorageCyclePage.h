@@ -36,6 +36,7 @@ class FillStorageCyclePage : public BasePage
 
   private:
     void initValueEditors();
+    void loadWetMappingsFromService();
     QString valueOf(const QString& key) const;
     void setValueOf(const QString& key, const QString& value);
     QString tableItemText(QTableWidget* table, int row, int col, const QString& fallback) const;
