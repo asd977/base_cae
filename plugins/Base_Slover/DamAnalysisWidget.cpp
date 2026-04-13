@@ -129,7 +129,7 @@ QString DamAnalysisWidget::defaultValueByLine(int lineNo) const
 {
     static const QStringList defaults = {
         "F:\\FEMCLASS\\Z03_JUNZ3D\\PREP\\", "FA_DAMUP.DAT", "FA_DAMDW.DAT", "FA_DAMBASE.DAT",
-        "FA_DAMMID.DAT", "MA_ROCK.DAT", "MA_DAMUP.DAT", "MA_DAMDW.DAT", "MA_CORE.DAT", "1",
+        "NONE", "MA_ROCK.DAT", "MA_DAMUP.DAT", "MA_DAMDW.DAT", "MA_CORE.DAT", "1",
         "MA_PLATE.DAT", "JDTRACE.DAT", "KETRACE.DAT", "TDTRACE.DAT", "0", "0", "0.05", "0.01",
         "2", "4   10", "0.000", "1.962", "1.308", "0.1", "0.2", "2.0", "0.9", "7.0", "0",
         "10"};
@@ -140,7 +140,7 @@ QString DamAnalysisWidget::descriptionByLine(int lineNo) const
 {
     static const QStringList descriptions = {
         "计算默认文件目录", "上游水头边界集文件", "下游水头边界集文件", "心墙建基面文件",
-        "心墙中心面面集文件（面板坝不需要）", "基岩材料集（层号为1）", "上游材料集（面板坝不需要）",
+        "坝体中心面文件（已停用，占位参数）", "基岩材料集（层号为1）", "上游材料集（面板坝不需要）",
         "下游材料集", "心墙材料集（面板坝不需要）",
         "坝型：1面板堆石坝 / 2心墙堆石坝 / 3沥青心墙堆石坝 / 4均质坝",
         "面板材料集文件", "特征节点集文件", "特征单元集文件", "特征时刻文件",

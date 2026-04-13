@@ -103,16 +103,16 @@
       </widget>
      </item>
      <item row="4" column="0">
-      <widget class="QLabel" name="labelLine5">
+     <widget class="QLabel" name="labelLine5">
        <property name="text">
-        <string>心墙中心面面集文件</string>
+        <string>坝体中心面文件（已停用）</string>
        </property>
       </widget>
      </item>
      <item row="4" column="1">
-      <widget class="QLabel" name="line5Value">
+     <widget class="QLabel" name="line5Value">
        <property name="text">
-        <string>FA_DAMMID.DAT</string>
+        <string>NONE</string>
        </property>
       </widget>
      </item>

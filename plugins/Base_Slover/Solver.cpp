@@ -227,8 +227,6 @@ bool Solver::loadProject()
                 page = new SeepageBoundaryPage(type, "天然渗流水头边界", "JDFREE.DAT");
             else if (type == "StressBoundaryDamUpstream")
                 page = new StressBoundaryPage(type, "上游水头边界", "FA_DAMUP.DAT");
-            else if (type == "StressBoundaryDamMid")
-                page = new StressBoundaryPage(type, "坝体中心面节点", "FA_DAMMID.DAT");
             else if (type == "FillStorageCycle")
             {
                 page = new FillStorageCyclePage();
@@ -867,7 +865,6 @@ void Solver::onStressStrainAction()
     };
 
     addBoundary("上游水头边界", "StressBoundaryDamUpstream", "FA_DAMUP.DAT");
-    addBoundary("坝体中心面节点", "StressBoundaryDamMid", "FA_DAMMID.DAT");
 
     addFillStorageCycleNode(analysisNode, false);
     syncDamAnalysisMCase(analysisNode);
