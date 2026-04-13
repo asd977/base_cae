@@ -38,7 +38,11 @@ bool lessRow(const StressBoundaryPage::EdgeRow& a, const StressBoundaryPage::Edg
         return a.ke2 < b.ke2;
     if (a.jd1 != b.jd1)
         return a.jd1 < b.jd1;
-    return a.jd2 < b.jd2;
+    if (a.jd2 != b.jd2)
+        return a.jd2 < b.jd2;
+    if (a.jd3 != b.jd3)
+        return a.jd3 < b.jd3;
+    return a.jd4 < b.jd4;
 }
 
 StressBoundaryPage::EdgeRow makeRow(vtkUnstructuredGrid* grid, vtkDataArray* elemIdArr,
@@ -162,6 +166,8 @@ QVector<StressBoundaryPage::EdgeRow> collectRowsFromFaces(GridKind kind, const Q
         return rows;
 
     const auto faceKeys = pm.getIdList(domain, uuid, PickMode::Face, kind);
+    rows.reserve(faceKeys.size());
+
     for (vtkIdType faceKey : faceKeys)
     {
         const vtkIdType cellId = pm.unpackFaceCellId(faceKey);
@@ -185,25 +191,32 @@ QVector<StressBoundaryPage::EdgeRow> collectRowsFromFaces(GridKind kind, const Q
                 continue;
             ids = face->GetPointIds();
         }
-        if (!ids || ids->GetNumberOfIds() < 2)
+        if (!ids || ids->GetNumberOfIds() < 3)
             continue;
 
-        const vtkIdType n = ids->GetNumberOfIds();
-        for (vtkIdType i = 0; i < n; ++i)
-        {
-            const vtkIdType pidA = ids->GetId(i);
-            const vtkIdType pidB = ids->GetId((i + 1) % n);
-            if (pidA < 0 || pidB < 0 || pidA == pidB)
-                continue;
-            rows.push_back(makeRow(grid, elemIdArr, nodeIdArr, cellId, pidA, pidB));
-        }
+        StressBoundaryPage::EdgeRow row;
+        row.ke1 = elemIdArr ? int(elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
+        row.ke2 = 0;
+        const int cornerCount = std::min<int>(ids->GetNumberOfIds(), 4);
+        if (cornerCount >= 1)
+            row.jd1 = int(nodeIdArr->GetTuple1(ids->GetId(0)));
+        if (cornerCount >= 2)
+            row.jd2 = int(nodeIdArr->GetTuple1(ids->GetId(1)));
+        if (cornerCount >= 3)
+            row.jd3 = int(nodeIdArr->GetTuple1(ids->GetId(2)));
+        if (cornerCount >= 4)
+            row.jd4 = int(nodeIdArr->GetTuple1(ids->GetId(3)));
+        rows.push_back(row);
     }
 
     std::sort(rows.begin(), rows.end(), lessRow);
     rows.erase(std::unique(rows.begin(), rows.end(),
                            [](const StressBoundaryPage::EdgeRow& a,
                               const StressBoundaryPage::EdgeRow& b)
-                           { return a.ke1 == b.ke1 && a.ke2 == b.ke2 && a.jd1 == b.jd1 && a.jd2 == b.jd2; }),
+                           {
+                               return a.ke1 == b.ke1 && a.ke2 == b.ke2 && a.jd1 == b.jd1 &&
+                                      a.jd2 == b.jd2 && a.jd3 == b.jd3 && a.jd4 == b.jd4;
+                           }),
                rows.end());
     return rows;
 }
@@ -261,6 +274,7 @@ QVector<StressBoundaryPage::EdgeRow> StressBoundaryPage::selectedEdgeRows()
 bool StressBoundaryPage::exportDatFile()
 {
     const QVector<EdgeRow> rows = selectedEdgeRows();
+    const bool isFaceMode = (currentPickMode() == PickMode::Face);
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
@@ -273,19 +287,42 @@ bool StressBoundaryPage::exportDatFile()
         return false;
 
     QTextStream os(&file);
-    os << QString("%1        4     NJX   MAKOD\n").arg(rows.size());
-    os << "    KJX     KE1     KE2     JD1     JD2  JAT\n";
+    if (isFaceMode)
+    {
+        os << QString("%1        6     NJX   MAKOD\n").arg(rows.size());
+        os << "    KJX     KE1     KE2     JD1     JD2     JD3     JD4  JAT\n";
+    }
+    else
+    {
+        os << QString("%1        4     NJX   MAKOD\n").arg(rows.size());
+        os << "    KJX     KE1     KE2     JD1     JD2  JAT\n";
+    }
 
     for (int i = 0; i < rows.size(); ++i)
     {
         const EdgeRow& row = rows[i];
-        os << QString("%1 %2 %3 %4 %5 %6\n")
-                  .arg(i + 1, 9)
-                  .arg(row.ke1, 9)
-                  .arg(row.ke2, 9)
-                  .arg(row.jd1, 9)
-                  .arg(row.jd2, 9)
-                  .arg(10, 9);
+        if (isFaceMode)
+        {
+            os << QString("%1 %2 %3 %4 %5 %6 %7 %8\n")
+                      .arg(i + 1, 9)
+                      .arg(row.ke1, 9)
+                      .arg(0, 9)
+                      .arg(row.jd1, 9)
+                      .arg(row.jd2, 9)
+                      .arg(row.jd3, 9)
+                      .arg(row.jd4, 9)
+                      .arg(6, 9);
+        }
+        else
+        {
+            os << QString("%1 %2 %3 %4 %5 %6\n")
+                      .arg(i + 1, 9)
+                      .arg(row.ke1, 9)
+                      .arg(row.ke2, 9)
+                      .arg(row.jd1, 9)
+                      .arg(row.jd2, 9)
+                      .arg(10, 9);
+        }
     }
 
     return true;
