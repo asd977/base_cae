@@ -2297,9 +2297,18 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                             vtkIdList* eids = e->GetPointIds();
                             if (!eids || eids->GetNumberOfIds() < 2)
                                 continue;
-                            const vtkIdType e0 = eids->GetId(0);
-                            const vtkIdType e1 = eids->GetId(eids->GetNumberOfIds() - 1);
-                            if ((e0 == a && e1 == b) || (e0 == b && e1 == a))
+
+                            bool hasA = false;
+                            bool hasB = false;
+                            for (vtkIdType eki = 0; eki < eids->GetNumberOfIds(); ++eki)
+                            {
+                                const vtkIdType ep = eids->GetId(eki);
+                                if (ep == a)
+                                    hasA = true;
+                                else if (ep == b)
+                                    hasB = true;
+                            }
+                            if (hasA && hasB)
                             {
                                 setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, ei),
                                                           !deselect);
