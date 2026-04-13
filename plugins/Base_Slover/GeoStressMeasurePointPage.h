@@ -17,7 +17,6 @@ class GeoStressMeasurePointPage : public BasePage
         QString sgx;
         QString sgy;
         QString txy;
-        QString ii;
     };
 
     explicit GeoStressMeasurePointPage(QWidget* parent = nullptr);
@@ -38,6 +37,5 @@ class GeoStressMeasurePointPage : public BasePage
     QLineEdit* m_sgxEdit = nullptr;
     QLineEdit* m_sgyEdit = nullptr;
     QLineEdit* m_txyEdit = nullptr;
-    QLineEdit* m_iiEdit = nullptr;
     QPushButton* m_clearBtn = nullptr;
 };

@@ -31,6 +31,7 @@ class GeoStressSideFacePage : public BasePage
     QString faceFile() const;
     FaceAttr attr() const;
     bool exportDatFile() const;
+    void setFaceIndex(int index);
 
   private slots:
     void onClearClicked();
@@ -39,12 +40,11 @@ class GeoStressSideFacePage : public BasePage
     PickMode currentPickMode() const;
 
   private:
-    QLineEdit* m_faceFileEdit = nullptr;
+    int m_faceIndex = 1;
     QComboBox* m_pickModeCombo = nullptr;
     QLineEdit* m_idirEdit = nullptr;
     QLineEdit* m_heightEdit = nullptr;
     QLineEdit* m_gamaEdit = nullptr;
     QLineEdit* m_pgroutEdit = nullptr;
-    QLineEdit* m_iiEdit = nullptr;
     QPushButton* m_clearBtn = nullptr;
 };

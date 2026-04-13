@@ -679,8 +679,11 @@ void Solver::addGeoStressSideFaceNode(ProjectNode* geostressNode, bool setCurren
     if (!geostressNode)
         return;
     const int idx = countGeoStressChildren(geostressNode, "GeoStressRegressionSideFace") + 1;
+    if (idx > 4)
+        return;
     auto* page = new GeoStressSideFacePage();
-    auto* node = new ProjectNode(idx == 1 ? QString("侧立面") : QString("侧立面(%1)").arg(idx), QUuid::createUuid().toString(), page);
+    page->setFaceIndex(idx);
+    auto* node = new ProjectNode(QString("侧立面(%1)").arg(idx), QUuid::createUuid().toString(), page);
     setupNodeRole(node, "GeoStressRegressionSideFace");
     geostressNode->addChild(node);
     if (setCurrent)
@@ -696,7 +699,7 @@ void Solver::addGeoStressMeasurePointNode(ProjectNode* geostressNode, bool setCu
         return;
     const int idx = countGeoStressChildren(geostressNode, "GeoStressRegressionMeasurePoint") + 1;
     auto* page = new GeoStressMeasurePointPage();
-    auto* node = new ProjectNode(idx == 1 ? QString("实测地应力") : QString("实测地应力(%1)").arg(idx), QUuid::createUuid().toString(), page);
+    auto* node = new ProjectNode(QString("实测地应力(%1)").arg(idx), QUuid::createUuid().toString(), page);
     setupNodeRole(node, "GeoStressRegressionMeasurePoint");
     geostressNode->addChild(node);
     if (setCurrent)
@@ -712,7 +715,7 @@ void Solver::addGeoStressOuterForceNode(ProjectNode* geostressNode, bool setCurr
         return;
     const int idx = countGeoStressChildren(geostressNode, "GeoStressRegressionOuterForce") + 1;
     auto* page = new GeoStressOuterForcePage();
-    auto* node = new ProjectNode(idx == 1 ? QString("外面力") : QString("外面力(%1)").arg(idx), QUuid::createUuid().toString(), page);
+    auto* node = new ProjectNode(QString("外立面(%1)").arg(idx), QUuid::createUuid().toString(), page);
     setupNodeRole(node, "GeoStressRegressionOuterForce");
     geostressNode->addChild(node);
     if (setCurrent)
@@ -728,6 +731,7 @@ GeoStressRegressionWidget::ExportPayload Solver::buildGeoStressPayload(ProjectNo
     if (!geostressNode)
         return payload;
 
+    int measureIndex = 0;
     for (ProjectNode* child : geostressNode->getChildren())
     {
         if (!child || !child->getPage())
@@ -742,7 +746,8 @@ GeoStressRegressionWidget::ExportPayload Solver::buildGeoStressPayload(ProjectNo
         else if (auto* p = dynamic_cast<GeoStressMeasurePointPage*>(child->getPage()))
         {
             const auto point = p->point();
-            payload.measureRows.push_back({point.x, point.y, point.sgx, point.sgy, point.txy, point.ii});
+            ++measureIndex;
+            payload.measureRows.push_back({point.x, point.y, point.sgx, point.sgy, point.txy, QString::number(measureIndex)});
         }
         else if (auto* f = dynamic_cast<GeoStressOuterForcePage*>(child->getPage()))
         {

@@ -20,6 +20,9 @@
 
 namespace
 {
+const QString kRoofFileName = "FAROOF.DAT";
+const QString kForceFileName = "FTLOAD.DAT";
+
 struct EdgeRow
 {
     int ke1 = 0;
@@ -111,10 +114,6 @@ GeoStressOuterForcePage::GeoStressOuterForcePage(QWidget* parent)
 {
     Q_UNUSED(parent);
     auto* form = new QFormLayout(this);
-    m_roofFileEdit = new QLineEdit("FAROOF.DAT", this);
-    m_roofFileEdit->setReadOnly(true);
-    m_forceFileEdit = new QLineEdit("FTLOAD.DAT", this);
-    m_forceFileEdit->setReadOnly(true);
     m_pickModeCombo = new QComboBox(this);
     m_pickModeCombo->addItem("2D选线", "edge");
     m_pickModeCombo->addItem("3D选面", "face");
@@ -126,8 +125,6 @@ GeoStressOuterForcePage::GeoStressOuterForcePage(QWidget* parent)
     m_fyEdit = new QLineEdit("0", this);
     m_fzEdit = new QLineEdit("0", this);
 
-    form->addRow("FAROOF文件", m_roofFileEdit);
-    form->addRow("外面力文件", m_forceFileEdit);
     form->addRow("拾取模式", m_pickModeCombo);
     form->addRow("", m_clearBtn);
     form->addRow("是否考虑外面力", m_forceEnabledCombo);
@@ -202,7 +199,7 @@ void GeoStressOuterForcePage::loadJson(const QJsonObject& obj)
 
 QString GeoStressOuterForcePage::forceFile() const
 {
-    return m_forceFileEdit->text().trimmed();
+    return kForceFileName;
 }
 
 int GeoStressOuterForcePage::forceEnabled() const
@@ -226,7 +223,7 @@ bool GeoStressOuterForcePage::exportDatFiles() const
     if (!wd.exists("PREP") && !wd.mkpath("PREP"))
         return false;
 
-    QFile roofFile(wd.filePath("PREP/" + m_roofFileEdit->text().trimmed()));
+    QFile roofFile(wd.filePath("PREP/" + kRoofFileName));
     if (!roofFile.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
 

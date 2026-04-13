@@ -30,8 +30,6 @@ class GeoStressOuterForcePage : public BasePage
     PickMode currentPickMode() const;
 
   private:
-    QLineEdit* m_roofFileEdit = nullptr;
-    QLineEdit* m_forceFileEdit = nullptr;
     QComboBox* m_pickModeCombo = nullptr;
     QComboBox* m_forceEnabledCombo = nullptr;
     QLineEdit* m_fxEdit = nullptr;

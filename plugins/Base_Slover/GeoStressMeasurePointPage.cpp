@@ -21,14 +21,12 @@ GeoStressMeasurePointPage::GeoStressMeasurePointPage(QWidget* parent)
     m_sgxEdit = new QLineEdit("0", this);
     m_sgyEdit = new QLineEdit("0", this);
     m_txyEdit = new QLineEdit("0", this);
-    m_iiEdit = new QLineEdit("1", this);
 
     form->addRow("实测点(通过PickManager选点)", m_pointIdEdit);
     form->addRow("", m_clearBtn);
     form->addRow("SGX", m_sgxEdit);
     form->addRow("SGY", m_sgyEdit);
     form->addRow("TXY", m_txyEdit);
-    form->addRow("序号", m_iiEdit);
 
     connect(m_clearBtn, &QPushButton::clicked, this, &GeoStressMeasurePointPage::onClearClicked);
 }
@@ -50,7 +48,6 @@ QJsonObject GeoStressMeasurePointPage::saveJson()
     obj["sgx"] = m_sgxEdit->text().trimmed();
     obj["sgy"] = m_sgyEdit->text().trimmed();
     obj["txy"] = m_txyEdit->text().trimmed();
-    obj["ii"] = m_iiEdit->text().trimmed();
 
     QJsonArray arr;
     for (vtkIdType id : PickManager::instance().getSelectedPointIds(getPageType(), m_uuid, GridKind::Solid))
@@ -65,7 +62,6 @@ void GeoStressMeasurePointPage::loadJson(const QJsonObject& obj)
     m_sgxEdit->setText(obj.value("sgx").toString(m_sgxEdit->text()));
     m_sgyEdit->setText(obj.value("sgy").toString(m_sgyEdit->text()));
     m_txyEdit->setText(obj.value("txy").toString(m_txyEdit->text()));
-    m_iiEdit->setText(obj.value("ii").toString(m_iiEdit->text()));
 
     QVector<vtkIdType> ids;
     for (const auto& v : obj.value("picked_points").toArray())
@@ -81,7 +77,6 @@ GeoStressMeasurePointPage::MeasurePoint GeoStressMeasurePointPage::point() const
     p.sgx = m_sgxEdit->text().trimmed();
     p.sgy = m_sgyEdit->text().trimmed();
     p.txy = m_txyEdit->text().trimmed();
-    p.ii = m_iiEdit->text().trimmed();
 
     const QString domain = "GeoStressRegressionMeasurePoint";
     const auto ids = PickManager::instance().getSelectedPointIds(domain, m_uuid, GridKind::Solid);

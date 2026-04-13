@@ -119,7 +119,6 @@ GeoStressSideFacePage::GeoStressSideFacePage(QWidget* parent)
     Q_UNUSED(parent);
     auto* form = new QFormLayout(this);
 
-    m_faceFileEdit = new QLineEdit("FASIDE.DAT", this);
     m_pickModeCombo = new QComboBox(this);
     m_pickModeCombo->addItem("2D选线", "edge");
     m_pickModeCombo->addItem("3D选面", "face");
@@ -129,16 +128,12 @@ GeoStressSideFacePage::GeoStressSideFacePage(QWidget* parent)
     m_heightEdit = new QLineEdit("2000.0000", this);
     m_gamaEdit = new QLineEdit("2650.0000", this);
     m_pgroutEdit = new QLineEdit("0", this);
-    m_iiEdit = new QLineEdit("1", this);
-
-    form->addRow("侧立面文件", m_faceFileEdit);
     form->addRow("拾取模式", m_pickModeCombo);
     form->addRow("", m_clearBtn);
     form->addRow("剖切方向(IDIR)", m_idirEdit);
     form->addRow("侧压高程(m)", m_heightEdit);
     form->addRow("测压容重(kg/m3)", m_gamaEdit);
     form->addRow("附加矩形常压(Pa)", m_pgroutEdit);
-    form->addRow("序号", m_iiEdit);
 
     connect(m_clearBtn, &QPushButton::clicked, this, &GeoStressSideFacePage::onClearClicked);
 }
@@ -157,13 +152,12 @@ void GeoStressSideFacePage::beforeUnload()
 QJsonObject GeoStressSideFacePage::saveJson()
 {
     QJsonObject obj;
-    obj["face_file"] = m_faceFileEdit->text().trimmed();
+    obj["face_index"] = m_faceIndex;
     obj["pick_mode"] = m_pickModeCombo->currentData().toString();
     obj["idir"] = m_idirEdit->text().trimmed();
     obj["height"] = m_heightEdit->text().trimmed();
     obj["gama"] = m_gamaEdit->text().trimmed();
     obj["pgrout"] = m_pgroutEdit->text().trimmed();
-    obj["ii"] = m_iiEdit->text().trimmed();
 
     auto toJson = [](const QVector<vtkIdType>& ids)
     {
@@ -180,7 +174,7 @@ QJsonObject GeoStressSideFacePage::saveJson()
 
 void GeoStressSideFacePage::loadJson(const QJsonObject& obj)
 {
-    m_faceFileEdit->setText(obj.value("face_file").toString(m_faceFileEdit->text()));
+    setFaceIndex(obj.value("face_index").toInt(m_faceIndex));
     const int modeIdx = m_pickModeCombo->findData(obj.value("pick_mode").toString("edge"));
     if (modeIdx >= 0)
         m_pickModeCombo->setCurrentIndex(modeIdx);
@@ -188,7 +182,6 @@ void GeoStressSideFacePage::loadJson(const QJsonObject& obj)
     m_heightEdit->setText(obj.value("height").toString(m_heightEdit->text()));
     m_gamaEdit->setText(obj.value("gama").toString(m_gamaEdit->text()));
     m_pgroutEdit->setText(obj.value("pgrout").toString(m_pgroutEdit->text()));
-    m_iiEdit->setText(obj.value("ii").toString(m_iiEdit->text()));
 
     auto fromJson = [](const QJsonArray& arr)
     {
@@ -207,7 +200,7 @@ void GeoStressSideFacePage::loadJson(const QJsonObject& obj)
 
 QString GeoStressSideFacePage::faceFile() const
 {
-    return m_faceFileEdit->text().trimmed();
+    return QString("FA_SIDE%1.DAT").arg(m_faceIndex);
 }
 
 GeoStressSideFacePage::FaceAttr GeoStressSideFacePage::attr() const
@@ -217,8 +210,17 @@ GeoStressSideFacePage::FaceAttr GeoStressSideFacePage::attr() const
     a.height = m_heightEdit->text().trimmed();
     a.gama = m_gamaEdit->text().trimmed();
     a.pgrout = m_pgroutEdit->text().trimmed();
-    a.ii = m_iiEdit->text().trimmed();
+    a.ii = QString::number(m_faceIndex);
     return a;
+}
+
+void GeoStressSideFacePage::setFaceIndex(int index)
+{
+    if (index < 1)
+        index = 1;
+    if (index > 4)
+        index = 4;
+    m_faceIndex = index;
 }
 
 bool GeoStressSideFacePage::exportDatFile() const

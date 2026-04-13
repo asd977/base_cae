@@ -10,6 +10,12 @@
 
 #include "ui_GeoStressRegressionWidget.h"
 
+namespace
+{
+const QString kRoofFileName = "FAROOF.DAT";
+const QString kForceFileName = "FTLOAD.DAT";
+}
+
 GeoStressRegressionWidget::GeoStressRegressionWidget(QWidget* parent)
     : BasePage("GeoStressRegressionAnalysis"), ui(new Ui::GeoStressRegressionWidget)
 {
@@ -31,7 +37,7 @@ GeoStressRegressionWidget::GeoStressRegressionWidget(QWidget* parent)
     ui->prepDirEdit->setText(ensureTrailingSep(wd.filePath("PREP")));
     ui->prepDirEdit->setReadOnly(true);
     ui->roofEdit->setReadOnly(true);
-    ui->forceFileEdit->setReadOnly(true);
+    ui->roofEdit->setText(kRoofFileName);
     ui->reservedEdit->setText("0");
 
 
@@ -76,14 +82,14 @@ bool GeoStressRegressionWidget::exportIGEOSDatFile(const ExportPayload& payload)
 
     os << "'" << prepDir << "'       1\n";
     os << "'" << ui->roofEdit->text().trimmed() << "'       2\n";
-    os << "'" << payload.sideFaceFiles.value(0, ui->leftEdit->text().trimmed()) << "'       3\n";
-    os << "'" << payload.sideFaceFiles.value(1, ui->rightEdit->text().trimmed()) << "'       4\n";
-    os << "'" << payload.sideFaceFiles.value(2, ui->frontEdit->text().trimmed()) << "'       5\n";
-    os << "'" << payload.sideFaceFiles.value(3, ui->backEdit->text().trimmed()) << "'       6\n";
+    os << "'" << payload.sideFaceFiles.value(0, "FA_SIDE1.DAT") << "'       3\n";
+    os << "'" << payload.sideFaceFiles.value(1, "FA_SIDE2.DAT") << "'       4\n";
+    os << "'" << payload.sideFaceFiles.value(2, "FA_SIDE3.DAT") << "'       5\n";
+    os << "'" << payload.sideFaceFiles.value(3, "FA_SIDE4.DAT") << "'       6\n";
     os << "'" << ui->factorEdit->text().trimmed() << "'       7\n";
     os << "'" << QString::number(ui->calcModeCombo->currentIndex()) << "'       8\n";
     os << "'" << ui->reservedEdit->text().trimmed() << "'       9\n";
-    os << "'" << (payload.forceFile.isEmpty() ? ui->forceFileEdit->text().trimmed() : payload.forceFile) << "'      10\n";
+    os << "'" << (payload.forceFile.isEmpty() ? kForceFileName : payload.forceFile) << "'      10\n";
     os << "'" << QString::number(payload.forceEnabled) << "'      11\n";
     os << "'" << ui->lambdaEdit->text().trimmed() << "'      12\n";
 
@@ -111,14 +117,9 @@ QJsonObject GeoStressRegressionWidget::saveJson()
     QJsonObject obj;
     obj["prep_dir"] = ui->prepDirEdit->text().trimmed();
     obj["roof"] = ui->roofEdit->text().trimmed();
-    obj["fa_left"] = ui->leftEdit->text().trimmed();
-    obj["fa_right"] = ui->rightEdit->text().trimmed();
-    obj["fa_front"] = ui->frontEdit->text().trimmed();
-    obj["fa_back"] = ui->backEdit->text().trimmed();
     obj["factor"] = ui->factorEdit->text().trimmed();
     obj["calc_mode"] = ui->calcModeCombo->currentIndex();
     obj["reserved"] = ui->reservedEdit->text().trimmed();
-    obj["force_file"] = ui->forceFileEdit->text().trimmed();
     obj["force_enabled"] = ui->forceEnabledCombo->currentIndex();
     obj["lambda"] = ui->lambdaEdit->text().trimmed();
 
@@ -129,14 +130,9 @@ void GeoStressRegressionWidget::loadJson(const QJsonObject& obj)
 {
     ui->prepDirEdit->setText(obj.value("prep_dir").toString(ui->prepDirEdit->text()));
     ui->roofEdit->setText(obj.value("roof").toString(ui->roofEdit->text()));
-    ui->leftEdit->setText(obj.value("fa_left").toString(ui->leftEdit->text()));
-    ui->rightEdit->setText(obj.value("fa_right").toString(ui->rightEdit->text()));
-    ui->frontEdit->setText(obj.value("fa_front").toString(ui->frontEdit->text()));
-    ui->backEdit->setText(obj.value("fa_back").toString(ui->backEdit->text()));
     ui->factorEdit->setText(obj.value("factor").toString(ui->factorEdit->text()));
     ui->calcModeCombo->setCurrentIndex(obj.value("calc_mode").toInt(ui->calcModeCombo->currentIndex()));
     ui->reservedEdit->setText(obj.value("reserved").toString(ui->reservedEdit->text()));
-    ui->forceFileEdit->setText(obj.value("force_file").toString(ui->forceFileEdit->text()));
     ui->forceEnabledCombo->setCurrentIndex(
         obj.value("force_enabled").toInt(ui->forceEnabledCombo->currentIndex()));
     ui->lambdaEdit->setText(obj.value("lambda").toString(ui->lambdaEdit->text()));
