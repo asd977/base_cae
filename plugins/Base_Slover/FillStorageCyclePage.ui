@@ -264,13 +264,34 @@
          </widget>
         </item>
         <item row="3" column="0">
-         <widget class="QLabel" name="labelDT_BLOCK">
+         <widget class="QLabel" name="labelIFSETT">
           <property name="text">
-           <string>动力计算时步、起始时间、终止时间</string>
+           <string>流变计算开关</string>
           </property>
          </widget>
         </item>
         <item row="3" column="1">
+         <widget class="QComboBox" name="comboIFSETT">
+          <item>
+           <property name="text">
+            <string>0 - 不进行流变计算</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>1 - 进行流变计算</string>
+           </property>
+          </item>
+         </widget>
+        </item>
+        <item row="4" column="0">
+         <widget class="QLabel" name="labelDT_BLOCK">
+          <property name="text">
+           <string>动力计算时步、起始时间、终止时间、WOMI_1</string>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="1">
          <layout class="QHBoxLayout" name="layoutDT">
           <item>
            <widget class="QLabel" name="labelDT">
@@ -309,6 +330,20 @@
           </item>
           <item>
            <widget class="QLineEdit" name="editTEND">
+            <property name="text">
+             <string>30.000000</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="labelWOMI1">
+            <property name="text">
+             <string>WOMI_1</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="editWOMI1">
             <property name="text">
              <string>0.000000</string>
             </property>

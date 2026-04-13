@@ -59,9 +59,11 @@ void FillStorageCyclePage::initValueEditors()
     bindCombo("IFDROP", ui->comboIFDROP);
     bindCombo("IFMODE", ui->comboIFMODE);
     bindCombo("IFWAVE", ui->comboIFWAVE);
+    bindCombo("IFSETT", ui->comboIFSETT);
     bindLine("DT", ui->editDT);
     bindLine("TSTA", ui->editTSTA);
     bindLine("TEND", ui->editTEND);
+    bindLine("WOMI_1", ui->editWOMI1);
 
     ui->comboIFIIWL_SEEP->setItemData(0, "0");
     ui->comboIFIIWL_SEEP->setItemData(1, "1");
@@ -79,6 +81,8 @@ void FillStorageCyclePage::initValueEditors()
     ui->comboIFMODE->setItemData(1, "1");
     ui->comboIFWAVE->setItemData(0, "0");
     ui->comboIFWAVE->setItemData(1, "1");
+    ui->comboIFSETT->setItemData(0, "0");
+    ui->comboIFSETT->setItemData(1, "1");
 
     auto mkTable = [this](const QStringList& headers)
     {
@@ -333,9 +337,10 @@ QString FillStorageCyclePage::sectionText(int caseIndex) const
     text += "'CASE01FILL01'     DIRDYNA\n";
     text += "0   NUM_DYNA\n";
 
-    text += QString("%1 %2   IFMODE IFWAVE\n").arg(valueOf("IFMODE"), valueOf("IFWAVE"));
-    text += QString("%1 %2 %3    DT TSTA TEND\n")
-                .arg(valueOf("DT"), valueOf("TSTA"), valueOf("TEND"));
+    text += QString("%1 %2 %3   IFMODE   IFWAVE     IFSETT\n")
+                .arg(valueOf("IFMODE"), valueOf("IFWAVE"), valueOf("IFSETT"));
+    text += QString("%1 %2 %3 %4    DT TSTA TEND WOMI_1\n")
+                .arg(valueOf("DT"), valueOf("TSTA"), valueOf("TEND"), valueOf("WOMI_1"));
     text += "'WAVE-AX.DAT'  'WAVE-AY.DAT'  'WAVE-AZ.DAT'   AX  AY  AZ\n";
     return text;
 }
