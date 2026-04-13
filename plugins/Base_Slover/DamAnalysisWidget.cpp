@@ -407,9 +407,12 @@ void DamAnalysisWidget::loadJson(const QJsonObject& obj)
     const QJsonArray xArr = xVal.toArray();
     if (!xArr.isEmpty())
     {
-        m_editX1->setText(xArr.value(0).toString(m_editX1->text()));
-        m_editX2->setText(xArr.value(1).toString(m_editX2->text()));
-        m_editX3->setText(xArr.value(2).toString(m_editX3->text()));
+        if (xArr.size() > 0)
+            m_editX1->setText(xArr.at(0).toString(m_editX1->text()));
+        if (xArr.size() > 1)
+            m_editX2->setText(xArr.at(1).toString(m_editX2->text()));
+        if (xArr.size() > 2)
+            m_editX3->setText(xArr.at(2).toString(m_editX3->text()));
     }
     else if (xVal.isString())
     {
@@ -424,9 +427,12 @@ void DamAnalysisWidget::loadJson(const QJsonObject& obj)
     const QJsonArray alfaArr = alfaVal.toArray();
     if (!alfaArr.isEmpty())
     {
-        m_editAlfa1->setText(alfaArr.value(0).toString(m_editAlfa1->text()));
-        m_editAlfa2->setText(alfaArr.value(1).toString(m_editAlfa2->text()));
-        m_editAlfa3->setText(alfaArr.value(2).toString(m_editAlfa3->text()));
+        if (alfaArr.size() > 0)
+            m_editAlfa1->setText(alfaArr.at(0).toString(m_editAlfa1->text()));
+        if (alfaArr.size() > 1)
+            m_editAlfa2->setText(alfaArr.at(1).toString(m_editAlfa2->text()));
+        if (alfaArr.size() > 2)
+            m_editAlfa3->setText(alfaArr.at(2).toString(m_editAlfa3->text()));
     }
     else if (alfaVal.isString())
     {
@@ -441,8 +447,9 @@ void DamAnalysisWidget::loadJson(const QJsonObject& obj)
     const QJsonArray axisArr = axisVal.toArray();
     if (!axisArr.isEmpty())
     {
-        const int upIdx = m_comboAxisUp->findData(axisArr.value(0).toString());
-        const int downIdx = m_comboAxisDown->findData(axisArr.value(1).toString());
+        const int upIdx = m_comboAxisUp->findData(axisArr.size() > 0 ? axisArr.at(0).toString() : "");
+        const int downIdx =
+            m_comboAxisDown->findData(axisArr.size() > 1 ? axisArr.at(1).toString() : "");
         if (upIdx >= 0)
             m_comboAxisUp->setCurrentIndex(upIdx);
         if (downIdx >= 0)
@@ -464,8 +471,8 @@ void DamAnalysisWidget::loadJson(const QJsonObject& obj)
     const QJsonArray rockArr = rockVal.toArray();
     if (!rockArr.isEmpty())
     {
-        const int rockIdx = m_comboIfRock->findData(rockArr.value(0).toString());
-        const int isoIdx = m_comboIfIso->findData(rockArr.value(1).toString());
+        const int rockIdx = m_comboIfRock->findData(rockArr.size() > 0 ? rockArr.at(0).toString() : "");
+        const int isoIdx = m_comboIfIso->findData(rockArr.size() > 1 ? rockArr.at(1).toString() : "");
         if (rockIdx >= 0)
             m_comboIfRock->setCurrentIndex(rockIdx);
         if (isoIdx >= 0)
