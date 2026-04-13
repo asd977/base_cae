@@ -47,7 +47,5 @@ class FillStorageCyclePage : public BasePage
     QMap<QString, QWidget*> m_editors;
     QTableWidget* m_wetTable = nullptr;
     QTableWidget* m_dropTable = nullptr;
-    QTableWidget* m_nChangeTable = nullptr;
-    QTableWidget* m_dynaMapTable = nullptr;
     QTableWidget* m_circleTable = nullptr;
 };

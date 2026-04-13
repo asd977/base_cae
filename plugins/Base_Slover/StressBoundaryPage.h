@@ -38,6 +38,8 @@ class StressBoundaryPage : public BasePage
         int ke2 = 0;
         int jd1 = 0;
         int jd2 = 0;
+        int jd3 = 0;
+        int jd4 = 0;
     };
 
   private:

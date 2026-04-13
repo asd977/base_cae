@@ -90,13 +90,13 @@
        <layout class="QVBoxLayout" name="layoutWetDropMain">
         <item>
          <layout class="QFormLayout" name="formWetDrop">
-          <item row="0" column="0"><widget class="QLabel" name="labelIFWET"><property name="text"><string>湿化计算开关 IFWET</string></property></widget></item>
+          <item row="0" column="0"><widget class="QLabel" name="labelIFWET"><property name="text"><string>湿化计算开关</string></property></widget></item>
           <item row="0" column="1"><widget class="QComboBox" name="comboIFWET"><item><property name="text"><string>0 - 不考虑湿化计算</string></property></item><item><property name="text"><string>1 - 考虑湿化计算</string></property></item></widget></item>
-          <item row="1" column="0"><widget class="QLabel" name="labelIFDROP"><property name="text"><string>水位骤降开关 IF_DROP</string></property></widget></item>
+          <item row="1" column="0"><widget class="QLabel" name="labelIFDROP"><property name="text"><string>水位骤降开关</string></property></widget></item>
           <item row="1" column="1"><widget class="QComboBox" name="comboIFDROP"><item><property name="text"><string>0 - 不进行水位骤降计算</string></property></item><item><property name="text"><string>1 - 进行水位骤降计算</string></property></item></widget></item>
          </layout>
         </item>
-        <item><layout class="QHBoxLayout" name="layoutWet"><item><widget class="QPushButton" name="btnEditWet"><property name="text"><string>编辑湿化材料映射表</string></property></widget></item><item><widget class="QLabel" name="labelWetRows"><property name="text"><string>当前行数: 0</string></property></widget></item><item><spacer name="spWet"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item></layout></item>
+        <item><layout class="QHBoxLayout" name="layoutWet"><item><widget class="QPushButton" name="btnEditWet"><property name="text"><string>编辑湿化材料映射</string></property></widget></item><item><widget class="QLabel" name="labelWetRows"><property name="text"><string>当前行数: 0</string></property></widget></item><item><spacer name="spWet"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item></layout></item>
         <item><layout class="QHBoxLayout" name="layoutDrop"><item><widget class="QPushButton" name="btnEditDrop"><property name="text"><string>编辑骤降前后水位表</string></property></widget></item><item><widget class="QLabel" name="labelDropRows"><property name="text"><string>当前行数: 0</string></property></widget></item><item><spacer name="spDrop"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item></layout></item>
        </layout>
       </widget>
@@ -116,15 +116,24 @@
       <widget class="QGroupBox" name="groupDynamic">
        <property name="title"><string>动力与拟静力参数</string></property>
        <layout class="QFormLayout" name="formLayoutDynamic">
-        <item row="0" column="0"><widget class="QLabel" name="labelDIRDYNA"><property name="text"><string>地震动力计算初始目录 DIRDYNA</string></property></widget></item>
+        <item row="0" column="0"><widget class="QLabel" name="labelDIRDYNA"><property name="text"><string>地震动力计算初始目录</string></property></widget></item>
         <item row="0" column="1"><widget class="QLineEdit" name="editDIRDYNA"><property name="text"><string>'CASE01FILL01'</string></property></widget></item>
-        <item row="1" column="0"><widget class="QLabel" name="labelIFMODE"><property name="text"><string>拟静力计算开关 IFMODE</string></property></widget></item>
+        <item row="1" column="0"><widget class="QLabel" name="labelIFMODE"><property name="text"><string>拟静力计算开关</string></property></widget></item>
         <item row="1" column="1"><widget class="QComboBox" name="comboIFMODE"><item><property name="text"><string>0 - 不进行拟静力计算</string></property></item><item><property name="text"><string>1 - 进行拟静力计算</string></property></item></widget></item>
-        <item row="2" column="0"><widget class="QLabel" name="labelIFWAVE"><property name="text"><string>地震波动力计算开关 IFWAVE</string></property></widget></item>
+        <item row="2" column="0"><widget class="QLabel" name="labelIFWAVE"><property name="text"><string>地震波动力计算开关</string></property></widget></item>
         <item row="2" column="1"><widget class="QComboBox" name="comboIFWAVE"><item><property name="text"><string>0 - 不进行地震波动力计算</string></property></item><item><property name="text"><string>1 - 进行地震波动力计算</string></property></item></widget></item>
-        <item row="3" column="0"><widget class="QLabel" name="labelDT_BLOCK"><property name="text"><string>时程参数 DT TSTA TEND WOMI_1</string></property></widget></item>
-        <item row="3" column="1"><widget class="QLineEdit" name="editDT_BLOCK"><property name="text"><string>0.020000 0.000000 0.000000 0.000000</string></property></widget></item>
-        <item row="4" column="0"><widget class="QLabel" name="labelWAVE_FILES"><property name="text"><string>地震波文件 AX AY AZ</string></property></widget></item>
+        <item row="3" column="0"><widget class="QLabel" name="labelDT_BLOCK"><property name="text"><string>动力计算时步、起始时间、终止时间</string></property></widget></item>
+        <item row="3" column="1">
+         <layout class="QHBoxLayout" name="layoutDT">
+          <item><widget class="QLabel" name="labelDT"><property name="text"><string>DT</string></property></widget></item>
+          <item><widget class="QLineEdit" name="editDT"><property name="text"><string>0.020000</string></property></widget></item>
+          <item><widget class="QLabel" name="labelTSTA"><property name="text"><string>TSTA</string></property></widget></item>
+          <item><widget class="QLineEdit" name="editTSTA"><property name="text"><string>0.000000</string></property></widget></item>
+          <item><widget class="QLabel" name="labelTEND"><property name="text"><string>TEND</string></property></widget></item>
+          <item><widget class="QLineEdit" name="editTEND"><property name="text"><string>0.000000</string></property></widget></item>
+         </layout>
+        </item>
+        <item row="4" column="0"><widget class="QLabel" name="labelWAVE_FILES"><property name="text"><string>X/Y/Z 方向地震波文件（固定）</string></property></widget></item>
         <item row="4" column="1"><widget class="QLineEdit" name="editWAVE_FILES"><property name="text"><string>'WAVE-AX.DAT' 'WAVE-AY.DAT' 'WAVE-AZ.DAT'</string></property></widget></item>
        </layout>
       </widget>
