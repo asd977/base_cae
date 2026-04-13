@@ -30,7 +30,6 @@ class SeepageWidget : public BasePage
     bool exportIseepDatFile() const;
     bool exportInouseDatFile() const;
     bool exportMaMaskDatFile() const;
-    bool exportMaRockDatFile() const;
     bool exportKetraceDatFile() const;
     bool exportJdtraceDatFile() const;
 

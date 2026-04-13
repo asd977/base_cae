@@ -198,7 +198,7 @@ bool SeepageWidget::exportIseepDatFile() const
     if (!exportHwDropDatFiles(seepCaseDirName))
         return false;
 
-    return exportInouseDatFile() && exportMaMaskDatFile() && exportMaRockDatFile() &&
+    return exportInouseDatFile() && exportMaMaskDatFile()  &&
            exportKetraceDatFile() && exportJdtraceDatFile();
 }
 
@@ -517,24 +517,6 @@ bool SeepageWidget::exportMaMaskDatFile() const
     QTextStream os(&file);
     os << "   1   NUM\n";
     os << "  11     1\n";
-    return true;
-}
-
-bool SeepageWidget::exportMaRockDatFile() const
-{
-    const QString projectDir =
-        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(QDir(projectDir).absolutePath());
-    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
-        return false;
-
-    QFile file(wd.filePath("PREP/MA_ROCK.DAT"));
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
-        return false;
-
-    QTextStream os(&file);
-    os << "           1  NUM_ROCK\n";
-    os << "  11\n";
     return true;
 }
 
