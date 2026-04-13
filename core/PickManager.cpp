@@ -1497,15 +1497,18 @@ bool PickManager::computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType 
     for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
         pickedOrigPids.insert(vtkIdType(origPointArr->GetTuple1(ids->GetId(i))));
 
-           // 2D 原单元没有 faces：整片即一个“face”(localId=15)
+    // 2D 原单元没有 faces：只要 picked 点都属于该单元即可视作命中整片(localId=15)
     if (origCell->GetCellDimension() == 2)
     {
         vtkIdList* cids = origCell->GetPointIds();
-        if (!cids || cids->GetNumberOfIds() != ids->GetNumberOfIds())
+        if (!cids || cids->GetNumberOfIds() < 3)
             return false;
+        QSet<vtkIdType> cellPids;
         for (vtkIdType i = 0; i < cids->GetNumberOfIds(); ++i)
+            cellPids.insert(cids->GetId(i));
+        for (auto it = pickedOrigPids.constBegin(); it != pickedOrigPids.constEnd(); ++it)
         {
-            if (!pickedOrigPids.contains(cids->GetId(i)))
+            if (!cellPids.contains(*it))
                 return false;
         }
         outOrigFaceLocalId = 15;
@@ -1513,29 +1516,42 @@ bool PickManager::computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType 
     }
 
     const int nFaces = origCell->GetNumberOfFaces();
+    int bestFace = -1;
+    int bestScore = -1;
     for (int fi = 0; fi < nFaces; ++fi)
     {
         vtkCell* face = origCell->GetFace(fi);
         if (!face)
             continue;
         vtkIdList* fids = face->GetPointIds();
-        if (!fids || fids->GetNumberOfIds() != ids->GetNumberOfIds())
+        if (!fids || fids->GetNumberOfIds() < 3)
             continue;
 
-        bool same = true;
+        QSet<vtkIdType> facePids;
         for (vtkIdType i = 0; i < fids->GetNumberOfIds(); ++i)
+            facePids.insert(fids->GetId(i));
+
+        bool subset = true;
+        int score = 0;
+        for (auto it = pickedOrigPids.constBegin(); it != pickedOrigPids.constEnd(); ++it)
         {
-            if (!pickedOrigPids.contains(fids->GetId(i)))
+            if (!facePids.contains(*it))
             {
-                same = false;
+                subset = false;
                 break;
             }
+            ++score;
         }
-        if (same)
+        if (subset && score > bestScore)
         {
-            outOrigFaceLocalId = fi;
-            return true;
+            bestScore = score;
+            bestFace = fi;
         }
+    }
+    if (bestFace >= 0)
+    {
+        outOrigFaceLocalId = bestFace;
+        return true;
     }
     return false;
 }
