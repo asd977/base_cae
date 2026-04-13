@@ -285,71 +285,60 @@
          </widget>
         </item>
         <item row="4" column="0">
-         <widget class="QLabel" name="labelDT_BLOCK">
+         <widget class="QLabel" name="labelDT">
           <property name="text">
-           <string>动力计算时步、起始时间、终止时间、WOMI_1</string>
+           <string>计算时步</string>
           </property>
          </widget>
         </item>
         <item row="4" column="1">
-         <layout class="QHBoxLayout" name="layoutDT">
-          <item>
-           <widget class="QLabel" name="labelDT">
-            <property name="text">
-             <string>DT</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QLineEdit" name="editDT">
-            <property name="text">
-             <string>0.020000</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QLabel" name="labelTSTA">
-            <property name="text">
-             <string>TSTA</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QLineEdit" name="editTSTA">
-            <property name="text">
-             <string>0.000000</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QLabel" name="labelTEND">
-            <property name="text">
-             <string>TEND</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QLineEdit" name="editTEND">
-            <property name="text">
-             <string>30.000000</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QLabel" name="labelWOMI1">
-            <property name="text">
-             <string>WOMI_1</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QLineEdit" name="editWOMI1">
-            <property name="text">
-             <string>0.000000</string>
-            </property>
-           </widget>
-          </item>
-         </layout>
+         <widget class="QLineEdit" name="editDT">
+          <property name="text">
+           <string>0.020000</string>
+          </property>
+         </widget>
+        </item>
+        <item row="5" column="0">
+         <widget class="QLabel" name="labelTSTA">
+          <property name="text">
+           <string>起始时间</string>
+          </property>
+         </widget>
+        </item>
+        <item row="5" column="1">
+         <widget class="QLineEdit" name="editTSTA">
+          <property name="text">
+           <string>0.000000</string>
+          </property>
+         </widget>
+        </item>
+        <item row="6" column="0">
+         <widget class="QLabel" name="labelTEND">
+          <property name="text">
+           <string>终止时间</string>
+          </property>
+         </widget>
+        </item>
+        <item row="6" column="1">
+         <widget class="QLineEdit" name="editTEND">
+          <property name="text">
+           <string>30.000000</string>
+          </property>
+         </widget>
+        </item>
+        <item row="7" column="0">
+         <widget class="QLabel" name="labelWOMI1">
+          <property name="text">
+           <string>WOMI_1</string>
+          </property>
+         </widget>
+        </item>
+        <item row="7" column="1">
+         <widget class="QLineEdit" name="editWOMI1">
+          <property name="text">
+           <string>0.000000</string>
+          </property>
+         </widget>
         </item>
        </layout>
       </widget>
