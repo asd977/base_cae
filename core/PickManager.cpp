@@ -64,6 +64,15 @@ vtkDataArray* findArray(vtkFieldData* fd, const char* a, const char* b = nullptr
         return fd->GetArray(b);
     return nullptr;
 }
+
+bool hasOriginalIdMapping(vtkDataSet* ds)
+{
+    if (!ds)
+        return false;
+    auto* c = findArray(ds->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
+    auto* p = findArray(ds->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
+    return c && p;
+}
 } // namespace
 
 static inline double dist2PointToSegment(const double x[3], const double a[3], const double b[3])
@@ -713,9 +722,10 @@ bool PickManager::pickAt(int x, int y)
         QVector<vtkIdType> edgePids;
         if (kind == GridKind::Solid)
         {
-            if (ds == m_gridSolid)
+            const bool fromBoundary = hasOriginalIdMapping(ds);
+            if (!fromBoundary)
             {
-                auto* ug = vtkUnstructuredGrid::SafeDownCast(ds);
+                auto* ug = vtkUnstructuredGrid::SafeDownCast(m_gridSolid);
                 if (!ug || !computePickedEdge(ug, cellId, pickPos, edgeLocalId, edgePids))
                     return false;
                 toggleSelectEdge(kind, packEdgeKey(cellId, edgeLocalId));
@@ -744,11 +754,12 @@ bool PickManager::pickAt(int x, int y)
         if (kind != GridKind::Solid)
             return false;
 
-        if (ds == m_gridSolid)
+        const bool fromBoundary = hasOriginalIdMapping(ds);
+        if (!fromBoundary)
         {
             int faceLocalId = 15;
             QVector<vtkIdType> facePids;
-            auto* ug = vtkUnstructuredGrid::SafeDownCast(ds);
+            auto* ug = vtkUnstructuredGrid::SafeDownCast(m_gridSolid);
             if (!ug || !computePickedFace(ug, cellId, pickPos, faceLocalId, facePids))
                 return false;
             toggleSelectFace(kind, packFaceKey(cellId, faceLocalId));
@@ -2272,7 +2283,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                     continue;
 
                 // Solid surface pick dataset（来自 geometry filter）：需要映射回原始体单元 edgeLocalId。
-                if (kind == GridKind::Solid && pickedDs != m_gridSolid)
+                if (kind == GridKind::Solid && hasOriginalIdMapping(pickedDs))
                 {
                     auto* origCellArr = findArray(pickedDs->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
                     auto* origPointArr =
@@ -2378,7 +2389,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
             if (pickedCellId < 0 || pickedCellId >= pickedDs->GetNumberOfCells())
                 continue;
 
-            if (pickedDs == m_gridSolid)
+            if (!hasOriginalIdMapping(pickedDs))
             {
                 vtkCell* solidCell = m_gridSolid->GetCell(pickedCellId);
                 if (!solidCell)
