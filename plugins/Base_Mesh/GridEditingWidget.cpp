@@ -665,15 +665,24 @@ void GridEditingWidget::buildOrUpdateViewGrid()
                 // 一些网格会携带 ghost 标记；默认 ghost clipping 可能导致几何被全部裁掉。
                 surf->DuplicateGhostCellClippingOff();
 #endif
+                // UGGeometryFilter 默认会合并重复点；对部分网格会导致面连接关系异常。
+                surf->MergingOff();
                 surf->PassThroughPointIdsOn();
                 surf->PassThroughCellIdsOn();
                 surf->Update();
-                vtkPolyData* surface = surf->GetOutput();
-                if (surface && surface->GetNumberOfCells() > 0)
+                vtkDataSet* surface = vtkDataSet::SafeDownCast(surf->GetOutputDataObject(0));
+                if (surface)
                 {
-                    m_viewSurface = vtkSmartPointer<vtkPolyData>::New();
-                    m_viewSurface->ShallowCopy(surface);
-                    m_meshMapper->SetInputData(m_viewSurface);
+                    if (auto* polySurface = vtkPolyData::SafeDownCast(surface))
+                    {
+                        m_viewSurface = vtkSmartPointer<vtkPolyData>::New();
+                        m_viewSurface->ShallowCopy(polySurface);
+                    }
+                    else
+                    {
+                        m_viewSurface = nullptr;
+                    }
+                    m_meshMapper->SetInputData(surface);
                 }
                 else
                 {

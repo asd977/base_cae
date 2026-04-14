@@ -813,18 +813,19 @@ void MeshModuleController::displayCurrentGrid()
             // 一些网格会携带 ghost 标记；默认 ghost clipping 可能导致几何被全部裁掉。
             surf->DuplicateGhostCellClippingOff();
 #endif
+            // UGGeometryFilter 默认会合并重复点；对部分网格会导致面连接关系异常。
+            surf->MergingOff();
             surf->PassThroughCellIdsOn();
             surf->PassThroughPointIdsOn();
             surf->Update();
 
-            vtkPolyData* boundary = surf->GetOutput();
-            if (boundary && boundary->GetNumberOfCells() > 0)
+            vtkDataSet* boundary = vtkDataSet::SafeDownCast(surf->GetOutputDataObject(0));
+            if (boundary)
             {
                 mapper->SetInputData(boundary);
             }
             else
             {
-                // 体网格在少数情况下会得到空表面输出，直接渲染原始网格避免“看不见”。
                 mapper->SetInputData(nonLineGrid);
             }
         }
