@@ -2466,13 +2466,58 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                     continue;
                 if (solidCell->GetCellDimension() == 2)
                 {
-                    setFaceSelected_NoRefresh(kind, packFaceKey(origCellId, 15), !deselect);
-                    changed = true;
+                    vtkIdList* ids = solidCell->GetPointIds();
+                    if (!ids || ids->GetNumberOfIds() < 3)
+                        continue;
+                    bool hit = false;
+                    for (vtkIdType pi = 0; pi < ids->GetNumberOfIds(); ++pi)
+                    {
+                        double p[3];
+                        m_gridSolid->GetPoint(ids->GetId(pi), p);
+                        if (worldPointInRect(p))
+                        {
+                            hit = true;
+                            break;
+                        }
+                    }
+                    if (hit)
+                    {
+                        setFaceSelected_NoRefresh(kind, packFaceKey(origCellId, 15), !deselect);
+                        changed = true;
+                    }
                     continue;
                 }
                 const int nFaces = solidCell->GetNumberOfFaces();
                 for (int fi = 0; fi < nFaces; ++fi)
                 {
+                    vtkCell* face = solidCell->GetFace(fi);
+                    if (!face)
+                        continue;
+                    vtkIdList* ids = face->GetPointIds();
+                    if (!ids || ids->GetNumberOfIds() < 3)
+                        continue;
+                    bool hit = false;
+                    double c[3] = {0.0, 0.0, 0.0};
+                    for (vtkIdType pi = 0; pi < ids->GetNumberOfIds(); ++pi)
+                    {
+                        double p[3];
+                        m_gridSolid->GetPoint(ids->GetId(pi), p);
+                        c[0] += p[0];
+                        c[1] += p[1];
+                        c[2] += p[2];
+                        if (worldPointInRect(p))
+                            hit = true;
+                    }
+                    if (!hit && ids->GetNumberOfIds() > 0)
+                    {
+                        const double inv = 1.0 / double(ids->GetNumberOfIds());
+                        c[0] *= inv;
+                        c[1] *= inv;
+                        c[2] *= inv;
+                        hit = worldPointInRect(c);
+                    }
+                    if (!hit)
+                        continue;
                     setFaceSelected_NoRefresh(kind, packFaceKey(origCellId, fi), !deselect);
                     changed = true;
                 }
