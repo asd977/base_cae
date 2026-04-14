@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <stdexcept>
 #include <set>
 
 class QThread;
@@ -347,19 +348,235 @@ class MeshGlobalWorker : public QObject
             else
             {
                 // Hex（重组）
+                const bool useRectHexAlgo = (m_p.elemType == 4 && m_p.algorithm == 1001);
                 if (m_p.elemType == 4)
                 {
                     gmsh::option::setNumber("Mesh.Recombine3DAll", 1);
-                    gmsh::option::setNumber("Mesh.SubdivisionAlgorithm", 2);
+                    gmsh::option::setNumber("Mesh.SubdivisionAlgorithm", useRectHexAlgo ? 1 : 2);
+                    gmsh::option::setNumber("Mesh.Optimize", useRectHexAlgo ? 1 : 0);
+                    gmsh::option::setNumber("Mesh.OptimizeNetgen", useRectHexAlgo ? 1 : 0);
+                    gmsh::option::setNumber("Mesh.Smoothing",
+                                            useRectHexAlgo ? std::max(m_p.smoothing, 30)
+                                                           : std::max(m_p.smoothing, 8));
+                    gmsh::option::setNumber("Mesh.RecombineAll", useRectHexAlgo ? 1 : 0);
                 }
                 else
                 {
                     gmsh::option::setNumber("Mesh.Recombine3DAll", 0);
+                    gmsh::option::setNumber("Mesh.Optimize", 0);
+                    gmsh::option::setNumber("Mesh.OptimizeNetgen", 0);
+                    gmsh::option::setNumber("Mesh.RecombineAll", 0);
                 }
 
-                gmsh::option::setNumber("Mesh.Algorithm3D", m_p.algorithm);
+                bool sweepApplied = useRectHexAlgo;
+                std::vector<int> sweepSourceFaces;
+                if (useRectHexAlgo)
+                {
+                    std::vector<std::pair<int, int>> vols;
+                    gmsh::model::getEntities(vols, 3);
+                    std::vector<std::pair<int, int>> sweepCandidates;
+                    for (const auto& v : vols)
+                    {
+                        std::vector<std::pair<int, int>> b;
+                        gmsh::model::getBoundary({v}, b, false, false, false);
+                        int faceCount = 0;
+                        for (const auto& x : b)
+                            if (x.first == 2)
+                                ++faceCount;
+                        if (faceCount == 6)
+                            sweepCandidates.push_back(v);
+                    }
+
+                    if (!sweepCandidates.empty())
+                    {
+                        try
+                        {
+                            const double targetEdge = std::max(1e-9, m_p.lenMax * m_p.sizeFactor);
+                            int constrainedVols = 0;
+                            for (const auto& vol : sweepCandidates)
+                            {
+                                std::vector<std::pair<int, int>> faceBnd;
+                                gmsh::model::getBoundary({vol}, faceBnd, false, false, false);
+                                std::vector<int> faces;
+                                for (const auto& f : faceBnd)
+                                    if (f.first == 2)
+                                        faces.push_back(f.second);
+                                if (faces.size() != 6)
+                                    continue;
+
+                                QMap<int, QSet<int>> faceEdges;
+                                for (int f : faces)
+                                {
+                                    std::vector<std::pair<int, int>> eb;
+                                    gmsh::model::getBoundary({{2, f}}, eb, false, false, false);
+                                    QSet<int> es;
+                                    for (const auto& e : eb)
+                                        if (e.first == 1)
+                                            es.insert(e.second);
+                                    faceEdges.insert(f, es);
+                                }
+
+                                QVector<QPair<int, int>> oppositePairs;
+                                for (int i = 0; i < static_cast<int>(faces.size()); ++i)
+                                {
+                                    for (int j = i + 1; j < static_cast<int>(faces.size()); ++j)
+                                    {
+                                        QSet<int> inter = faceEdges.value(faces[i]);
+                                        inter.intersect(faceEdges.value(faces[j]));
+                                        if (inter.isEmpty())
+                                        {
+                                            oppositePairs.push_back(qMakePair(faces[i], faces[j]));
+                                        }
+                                    }
+                                }
+                                if (oppositePairs.isEmpty())
+                                    continue;
+
+                                int sourceFace = oppositePairs.front().first;
+                                int targetFace = oppositePairs.front().second;
+                                double bestAreaDiff = std::numeric_limits<double>::max();
+                                for (const auto& p : oppositePairs)
+                                {
+                                    const double a = gmshMeasure(2, p.first);
+                                    const double b = gmshMeasure(2, p.second);
+                                    const double d = std::abs(a - b);
+                                    if (d < bestAreaDiff)
+                                    {
+                                        bestAreaDiff = d;
+                                        sourceFace = (a >= b ? p.first : p.second);
+                                        targetFace = (a >= b ? p.second : p.first);
+                                    }
+                                }
+
+                                QSet<int> sectionEdges = faceEdges.value(sourceFace);
+                                sectionEdges.unite(faceEdges.value(targetFace));
+                                QSet<int> linkingEdges;
+                                QVector<int> linkingFaces;
+                                for (int f : faces)
+                                {
+                                    if (f == sourceFace || f == targetFace)
+                                        continue;
+                                    linkingFaces.push_back(f);
+                                    const QSet<int> es = faceEdges.value(f);
+                                    for (int e : es)
+                                    {
+                                        if (!sectionEdges.contains(e))
+                                            linkingEdges.insert(e);
+                                    }
+                                }
+
+                                for (int edgeTag : sectionEdges)
+                                {
+                                    const double len = std::max(1e-9, gmshMeasure(1, edgeTag));
+                                    const int divisions =
+                                        std::max(2, static_cast<int>(std::round(len / targetEdge)));
+                                    gmsh::model::mesh::setTransfiniteCurve(edgeTag, divisions,
+                                                                           "Progression", 1.0);
+                                }
+                                for (int edgeTag : linkingEdges)
+                                {
+                                    const double len = std::max(1e-9, gmshMeasure(1, edgeTag));
+                                    const int layers =
+                                        std::max(2, static_cast<int>(std::round(len / targetEdge)));
+                                    gmsh::model::mesh::setTransfiniteCurve(edgeTag, layers, "Progression",
+                                                                           1.0);
+                                }
+
+                                gmsh::model::mesh::setTransfiniteSurface(sourceFace);
+                                gmsh::model::mesh::setTransfiniteSurface(targetFace);
+                                gmsh::model::mesh::setRecombine(2, sourceFace, 45.0);
+                                gmsh::model::mesh::setRecombine(2, targetFace, 45.0);
+                                for (int lf : linkingFaces)
+                                {
+                                    gmsh::model::mesh::setTransfiniteSurface(lf);
+                                    gmsh::model::mesh::setRecombine(2, lf, 45.0);
+                                }
+                                gmsh::model::mesh::setTransfiniteVolume(vol.second);
+                                gmsh::model::mesh::setRecombine(3, vol.second, 120.0);
+
+                                emit log(QString("Sweep-六面体：体%1 分类完成，源面%2 目标面%3 Linking面%4")
+                                             .arg(vol.second)
+                                             .arg(sourceFace)
+                                             .arg(targetFace)
+                                             .arg(linkingFaces.size()));
+                                sweepSourceFaces.push_back(sourceFace);
+                                ++constrainedVols;
+                            }
+                            emit log(QString("Sweep-六面体：共对 %1 个体施加结构化扫掠约束")
+                                         .arg(constrainedVols));
+                        }
+                        catch (...)
+                        {
+                            emit log("Sweep 结构化约束施加失败，将自动回退到稳健 Hex 模式");
+                            sweepApplied = false;
+                        }
+                    }
+                    else
+                    {
+                        emit log("Sweep-六面体：未识别到可扫掠体，自动回退到稳健 Hex 模式");
+                        sweepApplied = false;
+                    }
+                }
+                gmsh::option::setNumber("Mesh.Algorithm3D", sweepApplied ? 4 : m_p.algorithm);
                 emit log("开始生成 3D 网格...");
-                gmsh::model::mesh::generate(3);
+                if (sweepApplied)
+                {
+                    try
+                    {
+                        gmsh::option::setNumber("Mesh.IgnorePeriodicity", 0);
+                        // 参考 COMSOL Swept 的流程：先在源面生成面网格，再沿体扫掠到目标面。
+                        if (!sweepSourceFaces.empty())
+                        {
+                            emit log(QString("Sweep-六面体：预网格化源面数量 %1").arg(sweepSourceFaces.size()));
+                            gmsh::model::mesh::generate(2);
+                        }
+                        gmsh::model::mesh::generate(3);
+                    }
+                    catch (const std::exception& e)
+                    {
+                        emit log(QString("Sweep-六面体失败：%1，自动回退到稳健 Hex 模式")
+                                     .arg(QString::fromStdString(e.what())));
+                        gmsh::model::mesh::clear();
+                        gmsh::option::setNumber("Mesh.Algorithm3D", 10); // HXT
+                        gmsh::option::setNumber("Mesh.SubdivisionAlgorithm", 2);
+                        gmsh::option::setNumber("Mesh.Optimize", 0);
+                        gmsh::option::setNumber("Mesh.OptimizeNetgen", 0);
+                        gmsh::option::setNumber("Mesh.RecombineAll", 0);
+                        gmsh::option::setNumber("Mesh.IgnorePeriodicity", 1);
+                        gmsh::model::mesh::generate(3);
+                    }
+                }
+                else
+                {
+                    gmsh::option::setNumber("Mesh.IgnorePeriodicity", 1);
+                    gmsh::model::mesh::generate(3);
+                }
+
+                std::vector<std::size_t> nodeTags;
+                std::vector<double> nodeCoords, nodeParams;
+                gmsh::model::mesh::getNodes(nodeTags, nodeCoords, nodeParams);
+                if (nodeTags.empty())
+                {
+                    emit log("3D 网格为空，自动尝试稳健 Hex(HXT) 重试...");
+                    gmsh::model::mesh::clear();
+                    gmsh::option::setNumber("Mesh.Algorithm3D", 10);
+                    gmsh::option::setNumber("Mesh.Recombine3DAll", 1);
+                    gmsh::option::setNumber("Mesh.SubdivisionAlgorithm", 2);
+                    gmsh::option::setNumber("Mesh.Optimize", 0);
+                    gmsh::option::setNumber("Mesh.OptimizeNetgen", 0);
+                    gmsh::option::setNumber("Mesh.RecombineAll", 0);
+                    gmsh::option::setNumber("Mesh.IgnorePeriodicity", 1);
+                    gmsh::model::mesh::generate(3);
+
+                    nodeTags.clear();
+                    nodeCoords.clear();
+                    nodeParams.clear();
+                    gmsh::model::mesh::getNodes(nodeTags, nodeCoords, nodeParams);
+                    if (nodeTags.empty())
+                    {
+                        throw std::runtime_error("3D 网格生成失败：稳健重试后仍为空节点。");
+                    }
+                }
             }
 
             emit log("网格生成完成。");
