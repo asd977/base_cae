@@ -793,7 +793,6 @@ void MeshModuleController::displayCurrentGrid()
     {
         auto surf = vtkSmartPointer<vtkUnstructuredGridGeometryFilter>::New();
         surf->SetInputData(nonLineGrid);
-        surf->SetNonlinearSubdivisionLevel(0);
         surf->PassThroughCellIdsOn();
         surf->PassThroughPointIdsOn();
         surf->Update();
