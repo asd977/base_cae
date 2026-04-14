@@ -32,6 +32,7 @@
 #include <vtkPoints.h>
 #include <vtkProperty.h>
 #include <vtkUnstructuredGrid.h>
+#include <vtkVersion.h>
 
 #include <QDir>
 #include <QFile>
@@ -808,6 +809,10 @@ void MeshModuleController::displayCurrentGrid()
         {
             auto surf = vtkSmartPointer<vtkUnstructuredGridGeometryFilter>::New();
             surf->SetInputData(nonLineGrid);
+#if VTK_MAJOR_VERSION >= 9
+            // 一些网格会携带 ghost 标记；默认 ghost clipping 可能导致几何被全部裁掉。
+            surf->DuplicateGhostCellClippingOff();
+#endif
             surf->PassThroughCellIdsOn();
             surf->PassThroughPointIdsOn();
             surf->Update();
