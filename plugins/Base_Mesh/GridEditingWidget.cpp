@@ -551,7 +551,7 @@ void GridEditingWidget::buildOrUpdateViewGrid()
         m_meshActor = existingActor;
         m_meshMapper = vtkDataSetMapper::SafeDownCast(existingActor->GetMapper());
 
-        // 兼容 displayCurrentGrid 可能设置的其他 mapper（如 vtkPolyDataMapper）。
+        // 兼容其他流程可能设置的非 vtkDataSetMapper。
         // 网格编辑流程后续依赖 vtkDataSetMapper 接口，这里做一次适配替换。
         if (!m_meshMapper)
         {
