@@ -4,6 +4,7 @@
 #include <core_global.h>
 
 #include <QHash>
+#include <QMultiHash>
 #include <QObject>
 #include <QSet>
 #include <QString>
@@ -153,6 +154,9 @@ class CORE_EXPORT PickManager : public QObject
     bool computePickedEdgeFromBoundary(vtkDataSet* pickedDs, vtkIdType pickedCellId,
                                        const double pickPos[3], vtkIdType& outOrigCellId,
                                        int& outOrigEdgeLocalId) const;
+    void rebuildSolidPickMappings();
+    vtkIdType mapSolidPickedPointId(vtkDataSet* pickedDs, vtkIdType pickedPointId) const;
+    vtkIdType mapSolidPickedCellId(vtkDataSet* pickedDs, vtkIdType pickedCellId) const;
 
     // ---- face ----
     void toggleSelectFace(GridKind kind, vtkIdType faceKey);
@@ -243,6 +247,8 @@ class CORE_EXPORT PickManager : public QObject
     vtkProp* m_lineProp = nullptr;
     vtkDataSet* m_solidPickDataSet = nullptr;
     vtkDataSet* m_linePickDataSet = nullptr;
+    QVector<vtkIdType> m_solidPickPointToOrigPoint;
+    QVector<vtkIdType> m_solidPickCellToOrigCell;
 
     // ============ line node hints ============
     vtkSmartPointer<vtkPoints> m_lineNodePts;
