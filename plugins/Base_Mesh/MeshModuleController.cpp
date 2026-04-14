@@ -26,9 +26,13 @@
 #include <vtkIdList.h>
 #include <vtkIntArray.h>
 #include <vtkLookupTable.h>
+#include <vtkMath.h>
 #include <vtkMapper.h>
 #include <vtkPolyData.h>
+#include <vtkPolygon.h>
+#include <vtkIdTypeArray.h>
 #include <vtkPointData.h>
+#include <vtkPlane.h>
 #include <vtkPoints.h>
 #include <vtkProperty.h>
 #include <vtkUnstructuredGrid.h>
@@ -46,6 +50,118 @@
 
 namespace
 {
+
+int findClosestFaceLocalId(vtkUnstructuredGrid* solidGrid, vtkIdType origCellId, const double probe[3])
+{
+    if (!solidGrid || origCellId < 0 || origCellId >= solidGrid->GetNumberOfCells())
+        return 15;
+
+    vtkCell* cell = solidGrid->GetCell(origCellId);
+    if (!cell)
+        return 15;
+
+    if (cell->GetCellDimension() == 2)
+        return 15;
+
+    const int nFaces = cell->GetNumberOfFaces();
+    if (nFaces <= 0)
+        return 15;
+
+    int bestFace = 15;
+    double bestScore = std::numeric_limits<double>::max();
+    for (int fi = 0; fi < nFaces; ++fi)
+    {
+        vtkCell* face = cell->GetFace(fi);
+        if (!face)
+            continue;
+        vtkIdList* fids = face->GetPointIds();
+        if (!fids || fids->GetNumberOfIds() < 3)
+            continue;
+
+        const int npts = int(fids->GetNumberOfIds());
+        QVector<double> pts(npts * 3);
+        double bounds[6] = {
+            +std::numeric_limits<double>::max(), -std::numeric_limits<double>::max(),
+            +std::numeric_limits<double>::max(), -std::numeric_limits<double>::max(),
+            +std::numeric_limits<double>::max(), -std::numeric_limits<double>::max()};
+
+        for (int i = 0; i < npts; ++i)
+        {
+            double p[3];
+            solidGrid->GetPoint(fids->GetId(i), p);
+            pts[i * 3 + 0] = p[0];
+            pts[i * 3 + 1] = p[1];
+            pts[i * 3 + 2] = p[2];
+            bounds[0] = std::min(bounds[0], p[0]);
+            bounds[1] = std::max(bounds[1], p[0]);
+            bounds[2] = std::min(bounds[2], p[1]);
+            bounds[3] = std::max(bounds[3], p[1]);
+            bounds[4] = std::min(bounds[4], p[2]);
+            bounds[5] = std::max(bounds[5], p[2]);
+        }
+
+        double n[3] = {0.0, 0.0, 0.0};
+        vtkPolygon::ComputeNormal(npts, pts.data(), n);
+        if (vtkMath::Norm(n) < 1e-12)
+            continue;
+
+        const double p0[3] = {pts[0], pts[1], pts[2]};
+        const double dist = std::abs(vtkPlane::DistanceToPlane(const_cast<double*>(probe), n,
+                                                               const_cast<double*>(p0)));
+        const int inside = vtkPolygon::PointInPolygon(const_cast<double*>(probe), npts, pts.data(),
+                                                      bounds, n);
+        const double score = inside ? dist : (dist + 1e3);
+        if (score < bestScore)
+        {
+            bestScore = score;
+            bestFace = fi;
+        }
+    }
+    return bestFace;
+}
+
+void annotateBoundaryPickArrays(vtkUnstructuredGrid* solidGrid, vtkPolyData* boundary)
+{
+    if (!solidGrid || !boundary || boundary->GetNumberOfCells() <= 0)
+        return;
+
+    auto* srcOrigCell = boundary->GetCellData()
+                            ? boundary->GetCellData()->GetArray("vtkOriginalCellIds")
+                            : nullptr;
+    if (!srcOrigCell)
+        return;
+
+    auto outOrigCell = vtkSmartPointer<vtkIdTypeArray>::New();
+    outOrigCell->SetName("orig_cell_id");
+    outOrigCell->SetNumberOfComponents(1);
+    outOrigCell->SetNumberOfTuples(boundary->GetNumberOfCells());
+
+    auto outOrigFace = vtkSmartPointer<vtkIntArray>::New();
+    outOrigFace->SetName("orig_face_local_id");
+    outOrigFace->SetNumberOfComponents(1);
+    outOrigFace->SetNumberOfTuples(boundary->GetNumberOfCells());
+
+    for (vtkIdType cid = 0; cid < boundary->GetNumberOfCells(); ++cid)
+    {
+        const vtkIdType origCellId = vtkIdType(srcOrigCell->GetTuple1(cid));
+        outOrigCell->SetValue(cid, origCellId);
+
+        vtkCell* bc = boundary->GetCell(cid);
+        double c[3] = {0.0, 0.0, 0.0};
+        if (bc)
+        {
+            double bounds[6];
+            bc->GetBounds(bounds);
+            c[0] = 0.5 * (bounds[0] + bounds[1]);
+            c[1] = 0.5 * (bounds[2] + bounds[3]);
+            c[2] = 0.5 * (bounds[4] + bounds[5]);
+        }
+        outOrigFace->SetValue(cid, findClosestFaceLocalId(solidGrid, origCellId, c));
+    }
+
+    boundary->GetCellData()->AddArray(outOrigCell);
+    boundary->GetCellData()->AddArray(outOrigFace);
+}
 
 ProjectNode* findDirectChildByKind(ProjectNode* parent, const QString& kind)
 {
@@ -800,6 +916,7 @@ void MeshModuleController::displayCurrentGrid()
 
         auto boundary = vtkSmartPointer<vtkPolyData>::New();
         boundary->ShallowCopy(surf->GetOutput());
+        annotateBoundaryPickArrays(nonLineGrid, boundary);
 
         auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
         mapper->SetInputData(boundary);
