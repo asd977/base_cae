@@ -80,6 +80,41 @@ static inline quint64 makeEdgePairKey(vtkIdType a, vtkIdType b)
     return (quint64(hi) << 32) | quint64(lo);
 }
 
+static bool edgeEndpointPair(vtkDataSet* ds, vtkIdList* ids, vtkIdType& a, vtkIdType& b)
+{
+    a = -1;
+    b = -1;
+    if (!ds || !ids || ids->GetNumberOfIds() < 2)
+        return false;
+
+    if (ids->GetNumberOfIds() == 2)
+    {
+        a = ids->GetId(0);
+        b = ids->GetId(1);
+        return true;
+    }
+
+    double bestD2 = -1.0;
+    for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
+    {
+        double pi[3];
+        ds->GetPoint(ids->GetId(i), pi);
+        for (vtkIdType j = i + 1; j < ids->GetNumberOfIds(); ++j)
+        {
+            double pj[3];
+            ds->GetPoint(ids->GetId(j), pj);
+            const double d2 = vtkMath::Distance2BetweenPoints(pi, pj);
+            if (d2 > bestD2)
+            {
+                bestD2 = d2;
+                a = ids->GetId(i);
+                b = ids->GetId(j);
+            }
+        }
+    }
+    return a >= 0 && b >= 0;
+}
+
 PickManager& PickManager::instance()
 {
     static PickManager s;
@@ -1050,10 +1085,11 @@ void PickManager::rebuildEdgeCanonicalCache()
             if (dim == 1)
             {
                 auto* ids = cell->GetPointIds();
-                if (!ids || ids->GetNumberOfIds() < 2)
+                vtkIdType a = -1, b = -1;
+                if (!edgeEndpointPair(grid, ids, a, b))
                     continue;
                 const vtkIdType edgeKey = packEdgeKey(cid, 15);
-                const quint64 pairKey = makeEdgePairKey(ids->GetId(0), ids->GetId(ids->GetNumberOfIds() - 1));
+                const quint64 pairKey = makeEdgePairKey(a, b);
                 auto it = outMap.find(pairKey);
                 if (it == outMap.end() || edgeKey < it.value())
                     outMap[pairKey] = edgeKey;
@@ -1067,10 +1103,11 @@ void PickManager::rebuildEdgeCanonicalCache()
                 if (!e)
                     continue;
                 auto* ids = e->GetPointIds();
-                if (!ids || ids->GetNumberOfIds() < 2)
+                vtkIdType a = -1, b = -1;
+                if (!edgeEndpointPair(grid, ids, a, b))
                     continue;
                 const vtkIdType edgeKey = packEdgeKey(cid, ei);
-                const quint64 pairKey = makeEdgePairKey(ids->GetId(0), ids->GetId(ids->GetNumberOfIds() - 1));
+                const quint64 pairKey = makeEdgePairKey(a, b);
                 auto it = outMap.find(pairKey);
                 if (it == outMap.end() || edgeKey < it.value())
                     outMap[pairKey] = edgeKey;
@@ -1104,10 +1141,8 @@ vtkIdType PickManager::canonicalizeEdgeKey(GridKind kind, vtkIdType edgeKey) con
     if (cell->GetCellDimension() == 1 || ei == 15)
     {
         auto* ids = cell->GetPointIds();
-        if (!ids || ids->GetNumberOfIds() < 2)
+        if (!edgeEndpointPair(grid, ids, a, b))
             return edgeKey;
-        a = ids->GetId(0);
-        b = ids->GetId(ids->GetNumberOfIds() - 1);
     }
     else
     {
@@ -1117,10 +1152,8 @@ vtkIdType PickManager::canonicalizeEdgeKey(GridKind kind, vtkIdType edgeKey) con
         if (!e)
             return edgeKey;
         auto* ids = e->GetPointIds();
-        if (!ids || ids->GetNumberOfIds() < 2)
+        if (!edgeEndpointPair(grid, ids, a, b))
             return edgeKey;
-        a = ids->GetId(0);
-        b = ids->GetId(ids->GetNumberOfIds() - 1);
     }
 
     const quint64 pairKey = makeEdgePairKey(a, b);
@@ -1189,9 +1222,18 @@ bool PickManager::computePickedEdgeFromBoundary(vtkDataSet* pickedDs, vtkIdType 
         vtkIdList* eids = e->GetPointIds();
         if (!eids || eids->GetNumberOfIds() < 2)
             continue;
-        const vtkIdType e0 = eids->GetId(0);
-        const vtkIdType e1 = eids->GetId(1);
-        if ((e0 == a && e1 == b) || (e0 == b && e1 == a))
+
+        bool hasA = false;
+        bool hasB = false;
+        for (vtkIdType eki = 0; eki < eids->GetNumberOfIds(); ++eki)
+        {
+            const vtkIdType ep = eids->GetId(eki);
+            if (ep == a)
+                hasA = true;
+            else if (ep == b)
+                hasB = true;
+        }
+        if (hasA && hasB)
         {
             outOrigEdgeLocalId = ei;
             return true;
@@ -1455,15 +1497,18 @@ bool PickManager::computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType 
     for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
         pickedOrigPids.insert(vtkIdType(origPointArr->GetTuple1(ids->GetId(i))));
 
-           // 2D 原单元没有 faces：整片即一个“face”(localId=15)
+    // 2D 原单元没有 faces：只要 picked 点都属于该单元即可视作命中整片(localId=15)
     if (origCell->GetCellDimension() == 2)
     {
         vtkIdList* cids = origCell->GetPointIds();
-        if (!cids || cids->GetNumberOfIds() != ids->GetNumberOfIds())
+        if (!cids || cids->GetNumberOfIds() < 3)
             return false;
+        QSet<vtkIdType> cellPids;
         for (vtkIdType i = 0; i < cids->GetNumberOfIds(); ++i)
+            cellPids.insert(cids->GetId(i));
+        for (auto it = pickedOrigPids.constBegin(); it != pickedOrigPids.constEnd(); ++it)
         {
-            if (!pickedOrigPids.contains(cids->GetId(i)))
+            if (!cellPids.contains(*it))
                 return false;
         }
         outOrigFaceLocalId = 15;
@@ -1471,29 +1516,42 @@ bool PickManager::computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType 
     }
 
     const int nFaces = origCell->GetNumberOfFaces();
+    int bestFace = -1;
+    int bestScore = -1;
     for (int fi = 0; fi < nFaces; ++fi)
     {
         vtkCell* face = origCell->GetFace(fi);
         if (!face)
             continue;
         vtkIdList* fids = face->GetPointIds();
-        if (!fids || fids->GetNumberOfIds() != ids->GetNumberOfIds())
+        if (!fids || fids->GetNumberOfIds() < 3)
             continue;
 
-        bool same = true;
+        QSet<vtkIdType> facePids;
         for (vtkIdType i = 0; i < fids->GetNumberOfIds(); ++i)
+            facePids.insert(fids->GetId(i));
+
+        bool subset = true;
+        int score = 0;
+        for (auto it = pickedOrigPids.constBegin(); it != pickedOrigPids.constEnd(); ++it)
         {
-            if (!pickedOrigPids.contains(fids->GetId(i)))
+            if (!facePids.contains(*it))
             {
-                same = false;
+                subset = false;
                 break;
             }
+            ++score;
         }
-        if (same)
+        if (subset && score > bestScore)
         {
-            outOrigFaceLocalId = fi;
-            return true;
+            bestScore = score;
+            bestFace = fi;
         }
+    }
+    if (bestFace >= 0)
+    {
+        outOrigFaceLocalId = bestFace;
+        return true;
     }
     return false;
 }
@@ -2297,9 +2355,18 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                             vtkIdList* eids = e->GetPointIds();
                             if (!eids || eids->GetNumberOfIds() < 2)
                                 continue;
-                            const vtkIdType e0 = eids->GetId(0);
-                            const vtkIdType e1 = eids->GetId(eids->GetNumberOfIds() - 1);
-                            if ((e0 == a && e1 == b) || (e0 == b && e1 == a))
+
+                            bool hasA = false;
+                            bool hasB = false;
+                            for (vtkIdType eki = 0; eki < eids->GetNumberOfIds(); ++eki)
+                            {
+                                const vtkIdType ep = eids->GetId(eki);
+                                if (ep == a)
+                                    hasA = true;
+                                else if (ep == b)
+                                    hasB = true;
+                            }
+                            if (hasA && hasB)
                             {
                                 setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, ei),
                                                           !deselect);
