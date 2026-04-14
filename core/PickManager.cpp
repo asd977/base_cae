@@ -714,10 +714,11 @@ bool PickManager::pickAt(int x, int y)
         QVector<vtkIdType> edgePids;
         if (kind == GridKind::Solid)
         {
+            auto* origCellArr = findArray(ds->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
             if (auto* ug = vtkUnstructuredGrid::SafeDownCast(ds))
             {
                 vtkCell* pickedCell = ug->GetCell(cellId);
-                if (pickedCell && pickedCell->GetCellDimension() <= 2)
+                if (pickedCell && pickedCell->GetCellDimension() <= 2 && !origCellArr)
                 {
                     if (!computePickedEdge(ug, cellId, pickPos, edgeLocalId, edgePids))
                         return false;
@@ -749,10 +750,11 @@ bool PickManager::pickAt(int x, int y)
 
         int faceLocalId = 15;
         QVector<vtkIdType> facePids;
+        auto* origCellArr = findArray(ds->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
         if (auto* ug = vtkUnstructuredGrid::SafeDownCast(ds))
         {
             vtkCell* pickedCell = ug->GetCell(cellId);
-            if (pickedCell && pickedCell->GetCellDimension() == 2)
+            if (pickedCell && pickedCell->GetCellDimension() == 2 && !origCellArr)
             {
                 if (!computePickedFace(ug, cellId, pickPos, faceLocalId, facePids))
                     return false;
