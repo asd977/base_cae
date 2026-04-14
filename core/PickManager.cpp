@@ -1144,12 +1144,16 @@ bool PickManager::computePickedEdgeFromBoundary(vtkDataSet* pickedDs, vtkIdType 
         findArray(pickedDs->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
     if (!origCellArr || !origPointArr)
         return false;
+    if (pickedCellId < 0 || pickedCellId >= origCellArr->GetNumberOfTuples())
+        return false;
 
     vtkCell* pickedCell = pickedDs->GetCell(pickedCellId);
     if (!pickedCell)
         return false;
 
     outOrigCellId = vtkIdType(origCellArr->GetTuple1(pickedCellId));
+    if (outOrigCellId < 0 || outOrigCellId >= m_gridSolid->GetNumberOfCells())
+        return false;
     vtkCell* origCell = m_gridSolid->GetCell(outOrigCellId);
     if (!origCell)
         return false;
@@ -1175,6 +1179,9 @@ bool PickManager::computePickedEdgeFromBoundary(vtkDataSet* pickedDs, vtkIdType 
         if (d2 < best)
         {
             best = d2;
+            if (pa < 0 || pb < 0 || pa >= origPointArr->GetNumberOfTuples() ||
+                pb >= origPointArr->GetNumberOfTuples())
+                continue;
             a = vtkIdType(origPointArr->GetTuple1(pa));
             b = vtkIdType(origPointArr->GetTuple1(pb));
         }
@@ -1440,12 +1447,16 @@ bool PickManager::computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType 
         findArray(pickedDs->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
     if (!origCellArr || !origPointArr)
         return false;
+    if (pickedCellId < 0 || pickedCellId >= origCellArr->GetNumberOfTuples())
+        return false;
 
     vtkCell* pickedCell = pickedDs->GetCell(pickedCellId);
     if (!pickedCell)
         return false;
 
     outOrigCellId = vtkIdType(origCellArr->GetTuple1(pickedCellId));
+    if (outOrigCellId < 0 || outOrigCellId >= m_gridSolid->GetNumberOfCells())
+        return false;
     vtkCell* origCell = m_gridSolid->GetCell(outOrigCellId);
     if (!origCell)
         return false;
@@ -1455,7 +1466,14 @@ bool PickManager::computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType 
     if (!ids || ids->GetNumberOfIds() < 3)
         return false;
     for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
-        pickedOrigPids.insert(vtkIdType(origPointArr->GetTuple1(ids->GetId(i))));
+    {
+        const vtkIdType pid = ids->GetId(i);
+        if (pid < 0 || pid >= origPointArr->GetNumberOfTuples())
+            continue;
+        pickedOrigPids.insert(vtkIdType(origPointArr->GetTuple1(pid)));
+    }
+    if (pickedOrigPids.isEmpty())
+        return false;
 
            // 2D 原单元没有 faces：整片即一个“face”(localId=15)
     if (origCell->GetCellDimension() == 2)
@@ -2210,8 +2228,12 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
             {
                 const vtkIdType localPid = vtkIdType(selIds->GetComponent(j, 0));
                 vtkIdType pid = localPid;
-                if (origPointArr && localPid >= 0 && localPid < origPointArr->GetNumberOfTuples())
+                if (origPointArr)
+                {
+                    if (localPid < 0 || localPid >= origPointArr->GetNumberOfTuples())
+                        continue;
                     pid = vtkIdType(origPointArr->GetTuple1(localPid));
+                }
                 setNodeSelected_NoRefresh(kind, pid, !deselect);
                 changed = true;
             }
@@ -2266,8 +2288,12 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                         findArray(pickedDs->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
                     if (!origCellArr || !origPointArr)
                         continue;
+                    if (pickedCellId < 0 || pickedCellId >= origCellArr->GetNumberOfTuples())
+                        continue;
 
                     const vtkIdType origCellId = vtkIdType(origCellArr->GetTuple1(pickedCellId));
+                    if (!m_gridSolid || origCellId < 0 || origCellId >= m_gridSolid->GetNumberOfCells())
+                        continue;
                     vtkCell* origCell = m_gridSolid ? m_gridSolid->GetCell(origCellId) : nullptr;
                     if (!origCell)
                         continue;
@@ -2288,6 +2314,9 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                         if (!edgeInRect(segPids))
                             continue;
 
+                        if (pa < 0 || pb < 0 || pa >= origPointArr->GetNumberOfTuples() ||
+                            pb >= origPointArr->GetNumberOfTuples())
+                            continue;
                         const vtkIdType a = vtkIdType(origPointArr->GetTuple1(pa));
                         const vtkIdType b = vtkIdType(origPointArr->GetTuple1(pb));
                         const int nEdges = origCell->GetNumberOfEdges();
