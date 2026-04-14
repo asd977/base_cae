@@ -21,7 +21,6 @@
 #include <vtkCellData.h>
 #include <vtkCellType.h>
 #include <vtkDataSetMapper.h>
-#include <vtkDataSetSurfaceFilter.h>
 #include <vtkUnstructuredGridGeometryFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
@@ -793,29 +792,34 @@ void MeshModuleController::displayCurrentGrid()
 
     if (nonLineGrid && nonLineGrid->GetNumberOfCells() > 0)
     {
-        auto surf = vtkSmartPointer<vtkUnstructuredGridGeometryFilter>::New();
-        surf->SetInputData(nonLineGrid);
-        surf->PassThroughCellIdsOn();
-        surf->PassThroughPointIdsOn();
-        surf->Update();
-
-        auto boundary = vtkSmartPointer<vtkPolyData>::New();
-        if (surf->GetOutput() && surf->GetOutput()->GetNumberOfCells() > 0)
+        bool hasVolumeCell = false;
+        for (vtkIdType c = 0; c < nonLineGrid->GetNumberOfCells(); ++c)
         {
+            vtkCell* cell = nonLineGrid->GetCell(c);
+            if (cell && cell->GetCellDimension() == 3)
+            {
+                hasVolumeCell = true;
+                break;
+            }
+        }
+
+        auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
+        if (hasVolumeCell)
+        {
+            auto surf = vtkSmartPointer<vtkUnstructuredGridGeometryFilter>::New();
+            surf->SetInputData(nonLineGrid);
+            surf->PassThroughCellIdsOn();
+            surf->PassThroughPointIdsOn();
+            surf->Update();
+
+            auto boundary = vtkSmartPointer<vtkPolyData>::New();
             boundary->ShallowCopy(surf->GetOutput());
+            mapper->SetInputData(boundary);
         }
         else
         {
-            auto surfFallback = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-            surfFallback->SetInputData(nonLineGrid);
-            surfFallback->PassThroughCellIdsOn();
-            surfFallback->PassThroughPointIdsOn();
-            surfFallback->Update();
-            boundary->ShallowCopy(surfFallback->GetOutput());
+            mapper->SetInputData(nonLineGrid);
         }
-
-        auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-        mapper->SetInputData(boundary);
         mapper->ScalarVisibilityOff();
 
         auto surfActor = vtkSmartPointer<vtkActor>::New();

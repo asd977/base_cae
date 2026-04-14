@@ -29,7 +29,6 @@
 #include <vtkDataArray.h>
 #include <vtkDataSet.h>
 #include <vtkDataSetMapper.h>
-#include <vtkDataSetSurfaceFilter.h>
 #include <vtkUnstructuredGridGeometryFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
@@ -646,26 +645,33 @@ void GridEditingWidget::buildOrUpdateViewGrid()
         }
         else
         {
-            auto surf = vtkSmartPointer<vtkUnstructuredGridGeometryFilter>::New();
-            surf->SetInputData(m_viewGrid);
-            surf->PassThroughPointIdsOn();
-            surf->PassThroughCellIdsOn();
-            surf->Update();
-            m_viewSurface = vtkSmartPointer<vtkPolyData>::New();
-            if (surf->GetOutput() && surf->GetOutput()->GetNumberOfCells() > 0)
+            bool hasVolumeCell = false;
+            for (vtkIdType c = 0; c < m_viewGrid->GetNumberOfCells(); ++c)
             {
+                vtkCell* cell = m_viewGrid->GetCell(c);
+                if (cell && cell->GetCellDimension() == 3)
+                {
+                    hasVolumeCell = true;
+                    break;
+                }
+            }
+
+            if (hasVolumeCell)
+            {
+                auto surf = vtkSmartPointer<vtkUnstructuredGridGeometryFilter>::New();
+                surf->SetInputData(m_viewGrid);
+                surf->PassThroughPointIdsOn();
+                surf->PassThroughCellIdsOn();
+                surf->Update();
+                m_viewSurface = vtkSmartPointer<vtkPolyData>::New();
                 m_viewSurface->ShallowCopy(surf->GetOutput());
+                m_meshMapper->SetInputData(m_viewSurface);
             }
             else
             {
-                auto surfFallback = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-                surfFallback->SetInputData(m_viewGrid);
-                surfFallback->PassThroughPointIdsOn();
-                surfFallback->PassThroughCellIdsOn();
-                surfFallback->Update();
-                m_viewSurface->ShallowCopy(surfFallback->GetOutput());
+                m_viewSurface = nullptr;
+                m_meshMapper->SetInputData(m_viewGrid);
             }
-            m_meshMapper->SetInputData(m_viewSurface);
         }
     }
     else if (m_originalRenderInput)
