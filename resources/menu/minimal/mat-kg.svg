@@ -1,10 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-  <rect x="8" y="8" width="112" height="112" rx="18" fill="#FFFFFF" stroke="#1F2937" stroke-width="4"/>
-  <rect x="20" y="20" width="88" height="88" rx="16" fill="#F3F4F6" stroke="#111827" stroke-width="3"/>
-  <circle cx="64" cy="64" r="30" fill="none" stroke="#111827" stroke-opacity="0.35" stroke-width="4"/>
-  <rect x="34" y="38" width="16" height="50" rx="4" fill="#111827"/>
-  <rect x="56" y="50" width="16" height="38" rx="4" fill="#111827" fill-opacity="0.75"/>
-  <rect x="78" y="62" width="16" height="26" rx="4" fill="#111827" fill-opacity="0.5"/>
-  <circle cx="71" cy="39" r="3" fill="#111827"/>
-  <circle cx="87" cy="88" r="3" fill="#111827" fill-opacity="0.65"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+<rect width="128" height="128" rx="20" fill="#EDE9FE"/>
+<circle cx="64" cy="64" r="32" fill="#C4B5FD" stroke="#5B21B6" stroke-width="6"/>
+<path d="M64 32 V96 M32 64 H96" stroke="#6D28D9" stroke-width="6"/>
+<path d="M42 42 L86 86 M86 42 L42 86" stroke="#7C3AED" stroke-width="4"/>
 </svg>
