@@ -14,7 +14,8 @@ HEADERS += \
     MeshProcessor.h \
     MeshGridIO.h \
     GridEditingWidget.h \
-    MeshGroupingWidget.h
+    MeshGroupingWidget.h \
+    MeshSweepMeshingWidget.h
 
 SOURCES += \
     MeshGlobalMeshingWidget.cpp \
@@ -26,7 +27,8 @@ SOURCES += \
     MeshProcessor.cpp \
     MeshGridIO.cpp \
     GridEditingWidget.cpp \
-    MeshGroupingWidget.cpp
+    MeshGroupingWidget.cpp \
+    MeshSweepMeshingWidget.cpp
 
 FORMS += \
     MeshGlobalMeshingWidget.ui \
