@@ -161,6 +161,7 @@ class CORE_EXPORT PickManager : public QObject
                            int& outFaceLocalId, QVector<vtkIdType>& outFacePids) const;
     bool computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType pickedCellId,
                                        vtkIdType& outOrigCellId, int& outOrigFaceLocalId) const;
+    vtkIdType resolveSolidPointId(vtkIdType rawId) const;
 
     void updateActorVisibility();
     void refreshStructureIfNeeded();
@@ -238,6 +239,7 @@ class CORE_EXPORT PickManager : public QObject
     vtkIntArray* m_elemIdArrSolid = nullptr;
     vtkIntArray* m_nodeIdArrLine = nullptr;
     vtkIntArray* m_elemIdArrLine = nullptr;
+    QHash<vtkIdType, vtkIdType> m_solidNodeIdToPid;
 
     vtkProp* m_solidProp = nullptr;
     vtkProp* m_lineProp = nullptr;
