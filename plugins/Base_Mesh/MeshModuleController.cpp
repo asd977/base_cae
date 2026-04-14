@@ -817,9 +817,16 @@ void MeshModuleController::displayCurrentGrid()
             surf->PassThroughPointIdsOn();
             surf->Update();
 
-            auto boundary = vtkSmartPointer<vtkPolyData>::New();
-            boundary->ShallowCopy(surf->GetOutput());
-            mapper->SetInputData(boundary);
+            vtkPolyData* boundary = surf->GetOutput();
+            if (boundary && boundary->GetNumberOfCells() > 0)
+            {
+                mapper->SetInputData(boundary);
+            }
+            else
+            {
+                // 体网格在少数情况下会得到空表面输出，直接渲染原始网格避免“看不见”。
+                mapper->SetInputData(nonLineGrid);
+            }
         }
         else
         {

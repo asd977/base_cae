@@ -668,9 +668,18 @@ void GridEditingWidget::buildOrUpdateViewGrid()
                 surf->PassThroughPointIdsOn();
                 surf->PassThroughCellIdsOn();
                 surf->Update();
-                m_viewSurface = vtkSmartPointer<vtkPolyData>::New();
-                m_viewSurface->ShallowCopy(surf->GetOutput());
-                m_meshMapper->SetInputData(m_viewSurface);
+                vtkPolyData* surface = surf->GetOutput();
+                if (surface && surface->GetNumberOfCells() > 0)
+                {
+                    m_viewSurface = vtkSmartPointer<vtkPolyData>::New();
+                    m_viewSurface->ShallowCopy(surface);
+                    m_meshMapper->SetInputData(m_viewSurface);
+                }
+                else
+                {
+                    m_viewSurface = nullptr;
+                    m_meshMapper->SetInputData(m_viewGrid);
+                }
             }
             else
             {
