@@ -700,7 +700,6 @@ bool PickManager::pickAt(int x, int y)
         return false;
 
     vtkDataSet* ds = m_cellPicker->GetDataSet();
-    qDebug()<<ds;
     vtkCell* cell = ds ? ds->GetCell(cellId) : nullptr;
     if (!cell)
         return false;
@@ -714,10 +713,11 @@ bool PickManager::pickAt(int x, int y)
         QVector<vtkIdType> edgePids;
         if (kind == GridKind::Solid)
         {
+            const bool pickedFromSolidGrid = (ds == m_gridSolid);
             if (auto* ug = vtkUnstructuredGrid::SafeDownCast(ds))
             {
                 vtkCell* pickedCell = ug->GetCell(cellId);
-                if (pickedCell && pickedCell->GetCellDimension() <= 2)
+                if (pickedFromSolidGrid && pickedCell && pickedCell->GetCellDimension() <= 2)
                 {
                     if (!computePickedEdge(ug, cellId, pickPos, edgeLocalId, edgePids))
                         return false;
@@ -751,8 +751,9 @@ bool PickManager::pickAt(int x, int y)
         QVector<vtkIdType> facePids;
         if (auto* ug = vtkUnstructuredGrid::SafeDownCast(ds))
         {
+            const bool pickedFromSolidGrid = (ds == m_gridSolid);
             vtkCell* pickedCell = ug->GetCell(cellId);
-            if (pickedCell && pickedCell->GetCellDimension() == 2)
+            if (pickedFromSolidGrid && pickedCell && pickedCell->GetCellDimension() == 2)
             {
                 if (!computePickedFace(ug, cellId, pickPos, faceLocalId, facePids))
                     return false;
