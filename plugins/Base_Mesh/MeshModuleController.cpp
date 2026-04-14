@@ -21,7 +21,7 @@
 #include <vtkCellData.h>
 #include <vtkCellType.h>
 #include <vtkDataSetMapper.h>
-#include <vtkDataSetSurfaceFilter.h>
+#include <vtkUnstructuredGridGeometryFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
 #include <vtkIntArray.h>
@@ -32,6 +32,7 @@
 #include <vtkPoints.h>
 #include <vtkProperty.h>
 #include <vtkUnstructuredGrid.h>
+#include <vtkVersion.h>
 
 #include <QDir>
 #include <QFile>
@@ -792,17 +793,46 @@ void MeshModuleController::displayCurrentGrid()
 
     if (nonLineGrid && nonLineGrid->GetNumberOfCells() > 0)
     {
-        auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-        surf->SetInputData(nonLineGrid);
-        surf->PassThroughCellIdsOn();
-        surf->PassThroughPointIdsOn();
-        surf->Update();
+        bool hasVolumeCell = false;
+        for (vtkIdType c = 0; c < nonLineGrid->GetNumberOfCells(); ++c)
+        {
+            vtkCell* cell = nonLineGrid->GetCell(c);
+            if (cell && cell->GetCellDimension() == 3)
+            {
+                hasVolumeCell = true;
+                break;
+            }
+        }
 
-        auto boundary = vtkSmartPointer<vtkPolyData>::New();
-        boundary->ShallowCopy(surf->GetOutput());
+        auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
+        if (hasVolumeCell)
+        {
+            auto surf = vtkSmartPointer<vtkUnstructuredGridGeometryFilter>::New();
+            surf->SetInputData(nonLineGrid);
+#if VTK_MAJOR_VERSION >= 9
+            // 一些网格会携带 ghost 标记；默认 ghost clipping 可能导致几何被全部裁掉。
+            surf->DuplicateGhostCellClippingOff();
+#endif
+            // UGGeometryFilter 默认会合并重复点；对部分网格会导致面连接关系异常。
+            surf->MergingOff();
+            surf->PassThroughCellIdsOn();
+            surf->PassThroughPointIdsOn();
+            surf->Update();
 
-        auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-        mapper->SetInputData(boundary);
+            vtkDataSet* boundary = vtkDataSet::SafeDownCast(surf->GetOutputDataObject(0));
+            if (boundary)
+            {
+                mapper->SetInputData(boundary);
+            }
+            else
+            {
+                mapper->SetInputData(nonLineGrid);
+            }
+        }
+        else
+        {
+            mapper->SetInputData(nonLineGrid);
+        }
         mapper->ScalarVisibilityOff();
 
         auto surfActor = vtkSmartPointer<vtkActor>::New();

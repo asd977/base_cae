@@ -29,7 +29,7 @@
 #include <vtkDataArray.h>
 #include <vtkDataSet.h>
 #include <vtkDataSetMapper.h>
-#include <vtkDataSetSurfaceFilter.h>
+#include <vtkUnstructuredGridGeometryFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
 #include <vtkIdTypeArray.h>
@@ -53,6 +53,7 @@
 #include <vtkSmartPointer.h>
 #include <vtkTextProperty.h>
 #include <vtkUnstructuredGrid.h>
+#include <vtkVersion.h>
 #include <vtkXMLUnstructuredGridWriter.h>
 
 namespace
@@ -645,14 +646,55 @@ void GridEditingWidget::buildOrUpdateViewGrid()
         }
         else
         {
-            auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-            surf->SetInputData(m_viewGrid);
-            surf->PassThroughPointIdsOn();
-            surf->PassThroughCellIdsOn();
-            surf->Update();
-            m_viewSurface = vtkSmartPointer<vtkPolyData>::New();
-            m_viewSurface->ShallowCopy(surf->GetOutput());
-            m_meshMapper->SetInputData(m_viewSurface);
+            bool hasVolumeCell = false;
+            for (vtkIdType c = 0; c < m_viewGrid->GetNumberOfCells(); ++c)
+            {
+                vtkCell* cell = m_viewGrid->GetCell(c);
+                if (cell && cell->GetCellDimension() == 3)
+                {
+                    hasVolumeCell = true;
+                    break;
+                }
+            }
+
+            if (hasVolumeCell)
+            {
+                auto surf = vtkSmartPointer<vtkUnstructuredGridGeometryFilter>::New();
+                surf->SetInputData(m_viewGrid);
+#if VTK_MAJOR_VERSION >= 9
+                // 一些网格会携带 ghost 标记；默认 ghost clipping 可能导致几何被全部裁掉。
+                surf->DuplicateGhostCellClippingOff();
+#endif
+                // UGGeometryFilter 默认会合并重复点；对部分网格会导致面连接关系异常。
+                surf->MergingOff();
+                surf->PassThroughPointIdsOn();
+                surf->PassThroughCellIdsOn();
+                surf->Update();
+                vtkDataSet* surface = vtkDataSet::SafeDownCast(surf->GetOutputDataObject(0));
+                if (surface)
+                {
+                    if (auto* polySurface = vtkPolyData::SafeDownCast(surface))
+                    {
+                        m_viewSurface = vtkSmartPointer<vtkPolyData>::New();
+                        m_viewSurface->ShallowCopy(polySurface);
+                    }
+                    else
+                    {
+                        m_viewSurface = nullptr;
+                    }
+                    m_meshMapper->SetInputData(surface);
+                }
+                else
+                {
+                    m_viewSurface = nullptr;
+                    m_meshMapper->SetInputData(m_viewGrid);
+                }
+            }
+            else
+            {
+                m_viewSurface = nullptr;
+                m_meshMapper->SetInputData(m_viewGrid);
+            }
         }
     }
     else if (m_originalRenderInput)
