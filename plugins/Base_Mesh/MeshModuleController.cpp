@@ -21,7 +21,7 @@
 #include <vtkCellData.h>
 #include <vtkCellType.h>
 #include <vtkDataSetMapper.h>
-#include <vtkDataSetSurfaceFilter.h>
+#include <vtkUnstructuredGridGeometryFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
 #include <vtkIntArray.h>
@@ -792,7 +792,7 @@ void MeshModuleController::displayCurrentGrid()
 
     if (nonLineGrid && nonLineGrid->GetNumberOfCells() > 0)
     {
-        auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+        auto surf = vtkSmartPointer<vtkUnstructuredGridGeometryFilter>::New();
         surf->SetInputData(nonLineGrid);
         surf->PassThroughCellIdsOn();
         surf->PassThroughPointIdsOn();

@@ -29,7 +29,7 @@
 #include <vtkDataArray.h>
 #include <vtkDataSet.h>
 #include <vtkDataSetMapper.h>
-#include <vtkDataSetSurfaceFilter.h>
+#include <vtkUnstructuredGridGeometryFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
 #include <vtkIdTypeArray.h>
@@ -645,7 +645,7 @@ void GridEditingWidget::buildOrUpdateViewGrid()
         }
         else
         {
-            auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+            auto surf = vtkSmartPointer<vtkUnstructuredGridGeometryFilter>::New();
             surf->SetInputData(m_viewGrid);
             surf->PassThroughPointIdsOn();
             surf->PassThroughCellIdsOn();
