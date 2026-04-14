@@ -355,6 +355,14 @@ void PickManager::updateStructure()
     m_elemIdArrLine =
         (m_gridLine) ? vtkIntArray::SafeDownCast(m_gridLine->GetCellData()->GetArray("elem_id"))
                      : nullptr;
+    m_solidNodeIdToPid.clear();
+    if (m_gridSolid && m_nodeIdArrSolid)
+    {
+        const vtkIdType nPts = m_gridSolid->GetNumberOfPoints();
+        m_solidNodeIdToPid.reserve(int(nPts));
+        for (vtkIdType pid = 0; pid < nPts; ++pid)
+            m_solidNodeIdToPid.insert(vtkIdType(m_nodeIdArrSolid->GetValue(int(pid))), pid);
+    }
 
            // 优先采用当前常用网格 prop；若没有导入网格则回退到全局网格 prop
     m_solidProp = m_visual ? m_visual->getProp("mesh.imported.surface") : nullptr;
@@ -367,6 +375,21 @@ void PickManager::updateStructure()
 
     if (m_gridLine)
         rebuildLineNodeOverlayAll();
+}
+
+vtkIdType PickManager::resolveSolidPointId(vtkIdType rawId) const
+{
+    if (rawId < 0 || !m_gridSolid)
+        return -1;
+
+    const auto it = m_solidNodeIdToPid.constFind(rawId);
+    if (it != m_solidNodeIdToPid.constEnd())
+        return it.value();
+
+    const vtkIdType nPts = m_gridSolid->GetNumberOfPoints();
+    if (rawId < nPts)
+        return rawId;
+    return -1;
 }
 
 void PickManager::refreshStructureIfNeeded()
@@ -790,7 +813,10 @@ bool PickManager::pickAt(int x, int y)
         if (d2 < bestD2)
         {
             bestD2 = d2;
-            bestPid = (origPointArr ? vtkIdType(origPointArr->GetTuple1(pid)) : pid);
+            if (origPointArr)
+                bestPid = resolveSolidPointId(vtkIdType(origPointArr->GetTuple1(pid)));
+            else
+                bestPid = pid;
         }
     }
     if (bestPid < 0)
@@ -1173,8 +1199,8 @@ bool PickManager::computePickedEdgeFromBoundary(vtkDataSet* pickedDs, vtkIdType 
         if (d2 < best)
         {
             best = d2;
-            a = vtkIdType(origPointArr->GetTuple1(pa));
-            b = vtkIdType(origPointArr->GetTuple1(pb));
+            a = resolveSolidPointId(vtkIdType(origPointArr->GetTuple1(pa)));
+            b = resolveSolidPointId(vtkIdType(origPointArr->GetTuple1(pb)));
         }
     }
     if (a < 0 || b < 0)
@@ -1453,7 +1479,12 @@ bool PickManager::computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType 
     if (!ids || ids->GetNumberOfIds() < 3)
         return false;
     for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
-        pickedOrigPids.insert(vtkIdType(origPointArr->GetTuple1(ids->GetId(i))));
+    {
+        const vtkIdType pid = resolveSolidPointId(vtkIdType(origPointArr->GetTuple1(ids->GetId(i))));
+        if (pid < 0)
+            return false;
+        pickedOrigPids.insert(pid);
+    }
 
            // 2D 原单元没有 faces：整片即一个“face”(localId=15)
     if (origCell->GetCellDimension() == 2)
@@ -2209,7 +2240,9 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                 const vtkIdType localPid = vtkIdType(selIds->GetComponent(j, 0));
                 vtkIdType pid = localPid;
                 if (origPointArr && localPid >= 0 && localPid < origPointArr->GetNumberOfTuples())
-                    pid = vtkIdType(origPointArr->GetTuple1(localPid));
+                    pid = resolveSolidPointId(vtkIdType(origPointArr->GetTuple1(localPid)));
+                if (pid < 0)
+                    continue;
                 setNodeSelected_NoRefresh(kind, pid, !deselect);
                 changed = true;
             }
@@ -2288,6 +2321,10 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
 
                         const vtkIdType a = vtkIdType(origPointArr->GetTuple1(pa));
                         const vtkIdType b = vtkIdType(origPointArr->GetTuple1(pb));
+                        const vtkIdType aPid = resolveSolidPointId(a);
+                        const vtkIdType bPid = resolveSolidPointId(b);
+                        if (aPid < 0 || bPid < 0)
+                            continue;
                         const int nEdges = origCell->GetNumberOfEdges();
                         for (int ei = 0; ei < nEdges; ++ei)
                         {
@@ -2299,7 +2336,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                                 continue;
                             const vtkIdType e0 = eids->GetId(0);
                             const vtkIdType e1 = eids->GetId(eids->GetNumberOfIds() - 1);
-                            if ((e0 == a && e1 == b) || (e0 == b && e1 == a))
+                            if ((e0 == aPid && e1 == bPid) || (e0 == bPid && e1 == aPid))
                             {
                                 setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, ei),
                                                           !deselect);
