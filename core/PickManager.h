@@ -160,6 +160,7 @@ class CORE_EXPORT PickManager : public QObject
     bool computePickedFace(vtkUnstructuredGrid* grid, vtkIdType cellId, const double pickPos[3],
                            int& outFaceLocalId, QVector<vtkIdType>& outFacePids) const;
     bool computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType pickedCellId,
+                                       const double pickPos[3],
                                        vtkIdType& outOrigCellId, int& outOrigFaceLocalId) const;
 
     void updateActorVisibility();
