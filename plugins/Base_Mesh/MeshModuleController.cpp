@@ -21,6 +21,7 @@
 #include <vtkCellData.h>
 #include <vtkCellType.h>
 #include <vtkDataSetMapper.h>
+#include <vtkDataSetSurfaceFilter.h>
 #include <vtkUnstructuredGridGeometryFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
@@ -799,7 +800,19 @@ void MeshModuleController::displayCurrentGrid()
         surf->Update();
 
         auto boundary = vtkSmartPointer<vtkPolyData>::New();
-        boundary->ShallowCopy(surf->GetOutput());
+        if (surf->GetOutput() && surf->GetOutput()->GetNumberOfCells() > 0)
+        {
+            boundary->ShallowCopy(surf->GetOutput());
+        }
+        else
+        {
+            auto surfFallback = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+            surfFallback->SetInputData(nonLineGrid);
+            surfFallback->PassThroughCellIdsOn();
+            surfFallback->PassThroughPointIdsOn();
+            surfFallback->Update();
+            boundary->ShallowCopy(surfFallback->GetOutput());
+        }
 
         auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
         mapper->SetInputData(boundary);

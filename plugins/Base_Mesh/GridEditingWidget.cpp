@@ -29,6 +29,7 @@
 #include <vtkDataArray.h>
 #include <vtkDataSet.h>
 #include <vtkDataSetMapper.h>
+#include <vtkDataSetSurfaceFilter.h>
 #include <vtkUnstructuredGridGeometryFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
@@ -651,7 +652,19 @@ void GridEditingWidget::buildOrUpdateViewGrid()
             surf->PassThroughCellIdsOn();
             surf->Update();
             m_viewSurface = vtkSmartPointer<vtkPolyData>::New();
-            m_viewSurface->ShallowCopy(surf->GetOutput());
+            if (surf->GetOutput() && surf->GetOutput()->GetNumberOfCells() > 0)
+            {
+                m_viewSurface->ShallowCopy(surf->GetOutput());
+            }
+            else
+            {
+                auto surfFallback = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+                surfFallback->SetInputData(m_viewGrid);
+                surfFallback->PassThroughPointIdsOn();
+                surfFallback->PassThroughCellIdsOn();
+                surfFallback->Update();
+                m_viewSurface->ShallowCopy(surfFallback->GetOutput());
+            }
             m_meshMapper->SetInputData(m_viewSurface);
         }
     }
