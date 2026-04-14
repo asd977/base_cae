@@ -150,11 +150,10 @@ void annotateBoundaryPickArrays(vtkUnstructuredGrid* solidGrid, vtkPolyData* bou
         double c[3] = {0.0, 0.0, 0.0};
         if (bc)
         {
-            double bounds[6];
-            bc->GetBounds(bounds);
-            c[0] = 0.5 * (bounds[0] + bounds[1]);
-            c[1] = 0.5 * (bounds[2] + bounds[3]);
-            c[2] = 0.5 * (bounds[4] + bounds[5]);
+            double pcoords[3] = {0.0, 0.0, 0.0};
+            const int subId = bc->GetParametricCenter(pcoords);
+            QVector<double> weights(int(bc->GetNumberOfPoints()), 0.0);
+            bc->EvaluateLocation(subId, pcoords, c, weights.data());
         }
         outOrigFace->SetValue(cid, findClosestFaceLocalId(solidGrid, origCellId, c));
     }

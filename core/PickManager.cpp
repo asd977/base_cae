@@ -1141,15 +1141,87 @@ bool PickManager::computePickedEdgeFromBoundary(vtkDataSet* pickedDs, vtkIdType 
     if (!origCellArr)
         return false;
 
-    vtkCell* pickedCell = pickedDs->GetCell(pickedCellId);
-    if (!pickedCell)
-        return false;
-
     outOrigCellId = vtkIdType(origCellArr->GetTuple1(pickedCellId));
     vtkCell* origCell = m_gridSolid->GetCell(outOrigCellId);
     if (!origCell)
         return false;
 
+    int mappedFaceLocalId = 15;
+    auto* origFaceArr = findArray(pickedDs->GetCellData(), "orig_face_local_id", nullptr);
+    if (origFaceArr && pickedCellId >= 0 && pickedCellId < origFaceArr->GetNumberOfTuples())
+        mappedFaceLocalId = int(origFaceArr->GetTuple1(pickedCellId));
+    else
+    {
+        QVector<vtkIdType> facePids;
+        if (!computePickedFace(m_gridSolid, outOrigCellId, pickPos, mappedFaceLocalId, facePids))
+            mappedFaceLocalId = 15;
+    }
+
+    auto findCellEdgeByPair = [&](vtkIdType a, vtkIdType b) -> int
+    {
+        const int nCellEdges = origCell->GetNumberOfEdges();
+        for (int ei = 0; ei < nCellEdges; ++ei)
+        {
+            vtkCell* e = origCell->GetEdge(ei);
+            if (!e)
+                continue;
+            vtkIdList* eids = e->GetPointIds();
+            if (!eids || eids->GetNumberOfIds() < 2)
+                continue;
+            const vtkIdType e0 = eids->GetId(0);
+            const vtkIdType e1 = eids->GetId(eids->GetNumberOfIds() - 1);
+            if ((e0 == a && e1 == b) || (e0 == b && e1 == a))
+                return ei;
+        }
+        return -1;
+    };
+
+    auto dist2ToEdge = [&](vtkIdType p0, vtkIdType p1) -> double
+    {
+        double a[3], b[3];
+        m_gridSolid->GetPoint(p0, a);
+        m_gridSolid->GetPoint(p1, b);
+        return dist2PointToSegment(pickPos, a, b);
+    };
+
+    // 优先约束到“已映射的原始面”的边，避免落到同单元其它边
+    if (mappedFaceLocalId >= 0 && mappedFaceLocalId < origCell->GetNumberOfFaces())
+    {
+        vtkCell* face = origCell->GetFace(mappedFaceLocalId);
+        if (face)
+        {
+            double bestD2 = std::numeric_limits<double>::max();
+            int bestEdge = -1;
+            const int nFaceEdges = face->GetNumberOfEdges();
+            for (int fe = 0; fe < nFaceEdges; ++fe)
+            {
+                vtkCell* e = face->GetEdge(fe);
+                if (!e)
+                    continue;
+                vtkIdList* eids = e->GetPointIds();
+                if (!eids || eids->GetNumberOfIds() < 2)
+                    continue;
+                const vtkIdType a = eids->GetId(0);
+                const vtkIdType b = eids->GetId(eids->GetNumberOfIds() - 1);
+                const int cellEi = findCellEdgeByPair(a, b);
+                if (cellEi < 0)
+                    continue;
+                const double d2 = dist2ToEdge(a, b);
+                if (d2 < bestD2)
+                {
+                    bestD2 = d2;
+                    bestEdge = cellEi;
+                }
+            }
+            if (bestEdge >= 0)
+            {
+                outOrigEdgeLocalId = bestEdge;
+                return true;
+            }
+        }
+    }
+
+    // 回退：在整个原始单元边集合里找最近边
     QVector<vtkIdType> edgePids;
     return computePickedEdge(m_gridSolid, outOrigCellId, pickPos, outOrigEdgeLocalId, edgePids);
 }
@@ -2204,12 +2276,13 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                         pm[0] = 0.5 * (p0[0] + p1[0]);
                         pm[1] = 0.5 * (p0[1] + p1[1]);
                         pm[2] = 0.5 * (p0[2] + p1[2]);
+                        vtkIdType mappedOrigCellId = -1;
                         int origEdgeLocalId = 15;
-                        QVector<vtkIdType> edgePids;
-                        if (computePickedEdge(m_gridSolid, origCellId, pm, origEdgeLocalId, edgePids))
+                        if (computePickedEdgeFromBoundary(pickedDs, pickedCellId, pm,
+                                                          mappedOrigCellId, origEdgeLocalId))
                         {
-                            setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, origEdgeLocalId),
-                                                      !deselect);
+                            setEdgeSelected_NoRefresh(
+                                kind, packEdgeKey(mappedOrigCellId, origEdgeLocalId), !deselect);
                             changed = true;
                         }
                     }
