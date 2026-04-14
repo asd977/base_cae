@@ -2310,8 +2310,63 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                 if (kind == GridKind::Solid && pickedDs != m_gridSolid)
                 {
                     auto* origCellArr = findArray(pickedDs->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
+                    auto* origPointArr =
+                        findArray(pickedDs->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
                     if (!m_gridSolid)
                         continue;
+                    if (cell && origCellArr && origPointArr && pickedCellId >= 0 &&
+                        pickedCellId < origCellArr->GetNumberOfTuples())
+                    {
+                        const vtkIdType origCellId = vtkIdType(origCellArr->GetTuple1(pickedCellId));
+                        if (origCellId < 0 || origCellId >= m_gridSolid->GetNumberOfCells())
+                            continue;
+                        vtkCell* origCell = m_gridSolid->GetCell(origCellId);
+                        if (!origCell)
+                            continue;
+
+                        vtkIdList* ids = cell->GetPointIds();
+                        if (!ids || ids->GetNumberOfIds() < 2)
+                            continue;
+                        const vtkIdType nIds = ids->GetNumberOfIds();
+                        const bool closedLoop = (cell->GetCellDimension() > 1);
+                        const vtkIdType nSegs = closedLoop ? nIds : (nIds - 1);
+                        for (vtkIdType si = 0; si < nSegs; ++si)
+                        {
+                            const vtkIdType pa = ids->GetId(si);
+                            const vtkIdType pb = ids->GetId((si + 1) % nIds);
+
+                            QVector<vtkIdType> segPids;
+                            segPids << pa << pb;
+                            if (!edgeInRect(segPids))
+                                continue;
+
+                            if (pa < 0 || pb < 0 || pa >= origPointArr->GetNumberOfTuples() ||
+                                pb >= origPointArr->GetNumberOfTuples())
+                                continue;
+                            const vtkIdType a = vtkIdType(origPointArr->GetTuple1(pa));
+                            const vtkIdType b = vtkIdType(origPointArr->GetTuple1(pb));
+                            const int nEdges = origCell->GetNumberOfEdges();
+                            for (int ei = 0; ei < nEdges; ++ei)
+                            {
+                                vtkCell* e = origCell->GetEdge(ei);
+                                if (!e)
+                                    continue;
+                                vtkIdList* eids = e->GetPointIds();
+                                if (!eids || eids->GetNumberOfIds() < 2)
+                                    continue;
+                                const vtkIdType e0 = eids->GetId(0);
+                                const vtkIdType e1 = eids->GetId(eids->GetNumberOfIds() - 1);
+                                if ((e0 == a && e1 == b) || (e0 == b && e1 == a))
+                                {
+                                    setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, ei),
+                                                              !deselect);
+                                    changed = true;
+                                    break;
+                                }
+                            }
+                        }
+                        continue;
+                    }
                     vtkIdType origCellId = pickedCellId;
                     if (origCellArr && pickedCellId >= 0 && pickedCellId < origCellArr->GetNumberOfTuples())
                         origCellId = vtkIdType(origCellArr->GetTuple1(pickedCellId));
@@ -2389,10 +2444,19 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
 
             if (pickedDs != m_gridSolid)
             {
+                vtkIdType origCellId = -1;
+                int origFaceLocalId = 15;
+                if (computePickedFaceFromBoundary(pickedDs, pickedCellId, origCellId, origFaceLocalId))
+                {
+                    setFaceSelected_NoRefresh(kind, packFaceKey(origCellId, origFaceLocalId),
+                                              !deselect);
+                    changed = true;
+                    continue;
+                }
                 if (!m_gridSolid)
                     continue;
                 auto* origCellArr = findArray(pickedDs->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
-                vtkIdType origCellId = pickedCellId;
+                origCellId = pickedCellId;
                 if (origCellArr && pickedCellId >= 0 && pickedCellId < origCellArr->GetNumberOfTuples())
                     origCellId = vtkIdType(origCellArr->GetTuple1(pickedCellId));
                 if (origCellId < 0 || origCellId >= m_gridSolid->GetNumberOfCells())
