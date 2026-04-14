@@ -725,7 +725,7 @@ bool PickManager::pickAt(int x, int y)
             const bool fromBoundary = hasOriginalIdMapping(ds);
             if (!fromBoundary)
             {
-                auto* ug = vtkUnstructuredGrid::SafeDownCast(m_gridSolid);
+                auto* ug = vtkUnstructuredGrid::SafeDownCast(ds);
                 if (!ug || !computePickedEdge(ug, cellId, pickPos, edgeLocalId, edgePids))
                     return false;
                 toggleSelectEdge(kind, packEdgeKey(cellId, edgeLocalId));
@@ -759,7 +759,7 @@ bool PickManager::pickAt(int x, int y)
         {
             int faceLocalId = 15;
             QVector<vtkIdType> facePids;
-            auto* ug = vtkUnstructuredGrid::SafeDownCast(m_gridSolid);
+            auto* ug = vtkUnstructuredGrid::SafeDownCast(ds);
             if (!ug || !computePickedFace(ug, cellId, pickPos, faceLocalId, facePids))
                 return false;
             toggleSelectFace(kind, packFaceKey(cellId, faceLocalId));
@@ -2391,7 +2391,10 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
 
             if (!hasOriginalIdMapping(pickedDs))
             {
-                vtkCell* solidCell = m_gridSolid->GetCell(pickedCellId);
+                auto* solidDs = vtkUnstructuredGrid::SafeDownCast(pickedDs);
+                if (!solidDs)
+                    continue;
+                vtkCell* solidCell = solidDs->GetCell(pickedCellId);
                 if (!solidCell)
                     continue;
                 if (solidCell->GetCellDimension() == 2)
