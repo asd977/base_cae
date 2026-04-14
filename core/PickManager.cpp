@@ -700,7 +700,6 @@ bool PickManager::pickAt(int x, int y)
         return false;
 
     vtkDataSet* ds = m_cellPicker->GetDataSet();
-    qDebug()<<ds;
     vtkCell* cell = ds ? ds->GetCell(cellId) : nullptr;
     if (!cell)
         return false;
@@ -714,17 +713,15 @@ bool PickManager::pickAt(int x, int y)
         QVector<vtkIdType> edgePids;
         if (kind == GridKind::Solid)
         {
-            if (auto* ug = vtkUnstructuredGrid::SafeDownCast(ds))
+            if (ds == m_gridSolid)
             {
-                vtkCell* pickedCell = ug->GetCell(cellId);
-                if (pickedCell && pickedCell->GetCellDimension() <= 2)
-                {
-                    if (!computePickedEdge(ug, cellId, pickPos, edgeLocalId, edgePids))
-                        return false;
-                    toggleSelectEdge(kind, packEdgeKey(cellId, edgeLocalId));
-                    return true;
-                }
+                auto* ug = vtkUnstructuredGrid::SafeDownCast(ds);
+                if (!ug || !computePickedEdge(ug, cellId, pickPos, edgeLocalId, edgePids))
+                    return false;
+                toggleSelectEdge(kind, packEdgeKey(cellId, edgeLocalId));
+                return true;
             }
+
             vtkIdType origCellId = -1;
             int origEdgeLocalId = 15;
             if (!computePickedEdgeFromBoundary(ds, cellId, pickPos, origCellId, origEdgeLocalId))
@@ -747,18 +744,15 @@ bool PickManager::pickAt(int x, int y)
         if (kind != GridKind::Solid)
             return false;
 
-        int faceLocalId = 15;
-        QVector<vtkIdType> facePids;
-        if (auto* ug = vtkUnstructuredGrid::SafeDownCast(ds))
+        if (ds == m_gridSolid)
         {
-            vtkCell* pickedCell = ug->GetCell(cellId);
-            if (pickedCell && pickedCell->GetCellDimension() == 2)
-            {
-                if (!computePickedFace(ug, cellId, pickPos, faceLocalId, facePids))
-                    return false;
-                toggleSelectFace(kind, packFaceKey(cellId, faceLocalId));
-                return true;
-            }
+            int faceLocalId = 15;
+            QVector<vtkIdType> facePids;
+            auto* ug = vtkUnstructuredGrid::SafeDownCast(ds);
+            if (!ug || !computePickedFace(ug, cellId, pickPos, faceLocalId, facePids))
+                return false;
+            toggleSelectFace(kind, packFaceKey(cellId, faceLocalId));
+            return true;
         }
 
         vtkIdType origCellId = -1;
@@ -2359,10 +2353,6 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
             int origFaceLocalId = 15;
             if (computePickedFaceFromBoundary(pickedDs, pickedCellId, origCellId, origFaceLocalId))
             {
-                vtkCell* solidCell = m_gridSolid->GetCell(pickedCellId);
-
-                auto* mapper = vtkMapper::SafeDownCast(vtkActor::SafeDownCast(prop)->GetMapper());
-
                 setFaceSelected_NoRefresh(kind, packFaceKey(origCellId, origFaceLocalId),
                                           !deselect);
                 changed = true;
