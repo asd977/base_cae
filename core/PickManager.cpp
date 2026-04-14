@@ -2256,7 +2256,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                 if (!cell)
                     continue;
 
-                // Solid surface pick dataset（来自 boundary filter）：需要映射回原始体单元 edgeLocalId。
+                // Solid surface pick dataset（来自 geometry filter）：需要映射回原始体单元 edgeLocalId。
                 if (kind == GridKind::Solid && pickedDs != m_gridSolid)
                 {
                     auto* origCellArr = findArray(pickedDs->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");

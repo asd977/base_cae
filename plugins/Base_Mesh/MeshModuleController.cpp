@@ -21,13 +21,12 @@
 #include <vtkCellData.h>
 #include <vtkCellType.h>
 #include <vtkDataSetMapper.h>
-#include <vtkDataSetSurfaceFilter.h>
+#include <vtkUnstructuredGridGeometryFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
 #include <vtkIntArray.h>
 #include <vtkLookupTable.h>
 #include <vtkMapper.h>
-#include <vtkPolyData.h>
 #include <vtkPointData.h>
 #include <vtkPoints.h>
 #include <vtkProperty.h>
@@ -792,16 +791,16 @@ void MeshModuleController::displayCurrentGrid()
 
     if (nonLineGrid && nonLineGrid->GetNumberOfCells() > 0)
     {
-        auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+        auto surf = vtkSmartPointer<vtkUnstructuredGridGeometryFilter>::New();
         surf->SetInputData(nonLineGrid);
         surf->PassThroughCellIdsOn();
         surf->PassThroughPointIdsOn();
         surf->Update();
 
-        auto boundary = vtkSmartPointer<vtkPolyData>::New();
+        auto boundary = vtkSmartPointer<vtkUnstructuredGrid>::New();
         boundary->ShallowCopy(surf->GetOutput());
 
-        auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
         mapper->SetInputData(boundary);
         mapper->ScalarVisibilityOff();
 
