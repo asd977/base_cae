@@ -380,14 +380,11 @@ void UiFrame::buildRibbonAppButton()
     auto* actNew = makeAction(this, ":/resources/menu/minimal/app-new.svg", "&新建工程");
     auto* actOpen = makeAction(this, ":/resources/menu/minimal/app-open.svg", "&打开工程");
     auto* actSave = makeAction(this, ":/resources/menu/minimal/app-save.svg", "&保存工程");
-    auto* actExport =
-        makeAction(this, ":/resources/menu/minimal/app-export.svg", "&导出当前数据库");
     auto* actExit = makeAction(this, ":/resources/menu/minimal/app-exit.svg", "&退出");
 
     m_applicationMenu->addAction(actNew);
     m_applicationMenu->addAction(actOpen);
     m_applicationMenu->addAction(actSave);
-    m_applicationMenu->addAction(actExport);
     m_applicationMenu->addSeparator();
     m_applicationMenu->addAction(actExit);
 
@@ -395,7 +392,6 @@ void UiFrame::buildRibbonAppButton()
     // 如果你有 open/save/export 对应事件，在 PublicConstants 里补上即可
     bindEvent(this, actOpen, PublicConstants::kActionOpenProject);
     bindEvent(this, actSave, PublicConstants::kActionSaveProject);
-    bindEvent(this, actExport, PublicConstants::kActionExportCurrentDatabase);
 
     connect(actExit, &QAction::triggered, this,
             [this]()
