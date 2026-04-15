@@ -65,27 +65,6 @@ ProjectNode* findDirectChildByKind(ProjectNode* parent, const QString& kind)
     return nullptr;
 }
 
-bool cellContainsAllPoints(vtkCell* cell, const QVector<vtkIdType>& pointIds)
-{
-    if (!cell || pointIds.isEmpty())
-        return false;
-
-    auto* ids = cell->GetPointIds();
-    if (!ids || ids->GetNumberOfIds() <= 0)
-        return false;
-
-    QSet<vtkIdType> cellPointSet;
-    for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
-        cellPointSet.insert(ids->GetId(i));
-
-    for (vtkIdType pid : pointIds)
-    {
-        if (!cellPointSet.contains(pid))
-            return false;
-    }
-    return true;
-}
-
 void rebuildOriginalIdArrays(vtkUnstructuredGrid* sourceGrid, vtkPolyData* poly)
 {
     if (!poly)
@@ -112,6 +91,38 @@ void rebuildOriginalIdArrays(vtkUnstructuredGrid* sourceGrid, vtkPolyData* poly)
         pointLocator->SetDataSet(sourceGrid);
         pointLocator->BuildLocator();
 
+        const vtkIdType nSourceCells = sourceGrid->GetNumberOfCells();
+        QVector<QSet<vtkIdType>> sourceCellPointSets((int)nSourceCells);
+        QVector<char> sourceCellPointSetBuilt((int)nSourceCells, 0);
+        auto containsAllMappedPoints = [&](vtkIdType sourceCellId,
+                                           const QVector<vtkIdType>& mappedPointIds) -> bool
+        {
+            if (sourceCellId < 0 || sourceCellId >= nSourceCells || mappedPointIds.isEmpty())
+                return false;
+
+            if (!sourceCellPointSetBuilt[(int)sourceCellId])
+            {
+                vtkCell* sourceCell = sourceGrid->GetCell(sourceCellId);
+                if (!sourceCell)
+                    return false;
+                vtkIdList* sourceIds = sourceCell->GetPointIds();
+                if (!sourceIds || sourceIds->GetNumberOfIds() <= 0)
+                    return false;
+                auto& pointSet = sourceCellPointSets[(int)sourceCellId];
+                for (vtkIdType i = 0; i < sourceIds->GetNumberOfIds(); ++i)
+                    pointSet.insert(sourceIds->GetId(i));
+                sourceCellPointSetBuilt[(int)sourceCellId] = 1;
+            }
+
+            const auto& pointSet = sourceCellPointSets[(int)sourceCellId];
+            for (vtkIdType pid : mappedPointIds)
+            {
+                if (!pointSet.contains(pid))
+                    return false;
+            }
+            return true;
+        };
+
         // 通过几何位置回映射到 sourceGrid 点 id。
         for (vtkIdType pid = 0; pid < poly->GetNumberOfPoints(); ++pid)
         {
@@ -135,6 +146,7 @@ void rebuildOriginalIdArrays(vtkUnstructuredGrid* sourceGrid, vtkPolyData* poly)
 
             QVector<vtkIdType> mappedPointIds;
             mappedPointIds.reserve((int)surfPids->GetNumberOfIds());
+            QSet<vtkIdType> mappedPointSet;
             bool hasInvalidPid = false;
             for (vtkIdType i = 0; i < surfPids->GetNumberOfIds(); ++i)
             {
@@ -150,7 +162,11 @@ void rebuildOriginalIdArrays(vtkUnstructuredGrid* sourceGrid, vtkPolyData* poly)
                     hasInvalidPid = true;
                     break;
                 }
-                mappedPointIds.push_back(mappedPid);
+                if (!mappedPointSet.contains(mappedPid))
+                {
+                    mappedPointSet.insert(mappedPid);
+                    mappedPointIds.push_back(mappedPid);
+                }
             }
             if (hasInvalidPid || mappedPointIds.isEmpty())
                 continue;
@@ -165,7 +181,7 @@ void rebuildOriginalIdArrays(vtkUnstructuredGrid* sourceGrid, vtkPolyData* poly)
                 vtkCell* sourceCell = sourceGrid->GetCell(sourceCellId);
                 if (!sourceCell)
                     continue;
-                if (!cellContainsAllPoints(sourceCell, mappedPointIds))
+                if (!containsAllMappedPoints(sourceCellId, mappedPointIds))
                     continue;
 
                 const int dim = sourceCell->GetCellDimension();
