@@ -1179,7 +1179,7 @@ bool PickManager::computePickedEdgeFromBoundary(vtkDataSet* pickedDs, vtkIdType 
             b = vtkIdType(origPointArr->GetTuple1(pb));
         }
     }
-    if (a < 0 || b < 0 || a == b)
+    if (a < 0 || b < 0)
         return false;
 
     const int nEdges = origCell->GetNumberOfEdges();
@@ -1205,6 +1205,39 @@ bool PickManager::computePickedEdgeFromBoundary(vtkDataSet* pickedDs, vtkIdType 
         }
         if (hasA && hasB)
         {
+            double edgeBestD2 = std::numeric_limits<double>::max();
+            for (vtkIdType k = 0; k + 1 < eids->GetNumberOfIds(); ++k)
+            {
+                const vtkIdType p0id = eids->GetId(k);
+                const vtkIdType p1id = eids->GetId(k + 1);
+                if (p0id < 0 || p1id < 0)
+                    continue;
+                double p0[3], p1[3];
+                m_gridSolid->GetPoint(p0id, p0);
+                m_gridSolid->GetPoint(p1id, p1);
+                edgeBestD2 = std::min(edgeBestD2, dist2PointToSegment(pickPos, p0, p1));
+            }
+
+            if (edgeBestD2 < bestEdgeD2)
+            {
+                bestEdgeD2 = edgeBestD2;
+                bestEdge = ei;
+            }
+        }
+    }
+    if (bestEdge < 0)
+    {
+        // 回退：当边界点映射到同一原始点（或高阶细分导致 a/b 不稳定）时，
+        // 直接按几何距离在原单元所有边中选最近边，提升“可选中性”。
+        for (int ei = 0; ei < nEdges; ++ei)
+        {
+            vtkCell* e = origCell->GetEdge(ei);
+            if (!e)
+                continue;
+            vtkIdList* eids = e->GetPointIds();
+            if (!eids || eids->GetNumberOfIds() < 2)
+                continue;
+
             double edgeBestD2 = std::numeric_limits<double>::max();
             for (vtkIdType k = 0; k + 1 < eids->GetNumberOfIds(); ++k)
             {
