@@ -3,20 +3,18 @@
 #include <PublicConstants.h>
 #include <PublicVariables.h>
 
+#include <services/VisualWidgetService.h>
+
 #include <QDir>
 #include <QFile>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QPlainTextEdit>
 #include <QPushButton>
-#include <QRegularExpression>
 #include <QVBoxLayout>
 
-#include <algorithm>
-
-#include "qcustomplot.h"
-
-CurveSettingsWidget::CurveSettingsWidget(QWidget* parent)
-    : BasePage(PublicConstants::kPagePostProcessCurve)
+CurveSettingsWidget::CurveSettingsWidget(VisualWidgetService* visualService, QWidget* parent)
+    : BasePage(PublicConstants::kPagePostProcessCurve), m_visualService(visualService)
 {
     if (parent)
         setParent(parent);
@@ -24,31 +22,29 @@ CurveSettingsWidget::CurveSettingsWidget(QWidget* parent)
     auto* mainLayout = new QVBoxLayout(this);
     auto* topLayout = new QHBoxLayout();
 
-    m_reloadBtn = new QPushButton("刷新曲线", this);
-    m_statusLabel = new QLabel("等待加载 TRACE.TXT", this);
+    m_reloadBtn = new QPushButton("加载并显示TRACE曲线", this);
+    m_backTo3dBtn = new QPushButton("返回三维可视化", this);
+    m_statusLabel = new QLabel("等待加载 CASE01/TRACE.TXT", this);
     m_statusLabel->setWordWrap(true);
 
     topLayout->addWidget(m_reloadBtn);
+    topLayout->addWidget(m_backTo3dBtn);
     topLayout->addWidget(m_statusLabel, 1);
 
-    m_plot = new QCustomPlot(this);
-    m_plot->addGraph();
-    m_plot->xAxis->setLabel("ISTEP");
-    m_plot->yAxis->setLabel("MAX UR");
-    m_plot->legend->setVisible(true);
-    m_plot->graph(0)->setName("MAX UR - ISTEP");
-    m_plot->graph(0)->setLineStyle(QCPGraph::lsLine);
-    m_plot->graph(0)->setScatterStyle(QCPScatterStyle(QCPScatterStyle::ssCircle, 6));
+    m_logEdit = new QPlainTextEdit(this);
+    m_logEdit->setReadOnly(true);
+    m_logEdit->setPlaceholderText("TRACE.TXT 打印输出");
 
     mainLayout->addLayout(topLayout);
-    mainLayout->addWidget(m_plot, 1);
+    mainLayout->addWidget(m_logEdit, 1);
 
-    connect(m_reloadBtn, &QPushButton::clicked, this, &CurveSettingsWidget::reloadFromDefaultPath);
+    connect(m_reloadBtn, &QPushButton::clicked, this, &CurveSettingsWidget::reloadAndShowCurve);
+    connect(m_backTo3dBtn, &QPushButton::clicked, this, &CurveSettingsWidget::switchBackTo3d);
 }
 
 void CurveSettingsWidget::beforeLoad()
 {
-    reloadFromDefaultPath();
+    reloadAndShowCurve();
 }
 
 void CurveSettingsWidget::beforeUnload()
@@ -66,96 +62,84 @@ void CurveSettingsWidget::loadJson(const QJsonObject& obj)
 {
     m_tracePath = obj.value("tracePath").toString();
     if (!m_tracePath.isEmpty())
-    {
-        loadTraceFile(m_tracePath);
-        renderPlot();
-    }
+        reloadAndShowCurve();
 }
 
-void CurveSettingsWidget::reloadFromDefaultPath()
+void CurveSettingsWidget::reloadAndShowCurve()
+{
+    QString path = m_tracePath;
+    if (path.isEmpty() || !QFile::exists(path))
+        path = resolveDefaultTracePath();
+
+    if (path.isEmpty())
+    {
+        m_statusLabel->setText("未找到 TRACE.TXT（已尝试：项目目录/CASE01 与当前目录/CASE01）");
+        m_logEdit->clear();
+        return;
+    }
+
+    QString printErr;
+    if (!printTraceFile(path, &printErr))
+    {
+        m_statusLabel->setText(printErr);
+        return;
+    }
+
+    if (!m_visualService)
+    {
+        m_statusLabel->setText("VisualWidgetService 不可用");
+        return;
+    }
+
+    QString curveErr;
+    if (!m_visualService->showTraceCurveFromFile(path, &curveErr))
+    {
+        m_statusLabel->setText(curveErr.isEmpty() ? QString("曲线显示失败：%1").arg(path) : curveErr);
+        return;
+    }
+
+    m_tracePath = path;
+    m_statusLabel->setText(QString("已显示曲线并打印 TRACE：%1").arg(path));
+}
+
+void CurveSettingsWidget::switchBackTo3d()
+{
+    if (m_visualService)
+        m_visualService->showVisualizationView();
+}
+
+QString CurveSettingsWidget::resolveDefaultTracePath() const
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
 
     QStringList candidates;
     if (!projectDir.isEmpty())
-    {
         candidates << QDir(projectDir).filePath("CASE01/TRACE.TXT");
-    }
     candidates << QDir::current().filePath("CASE01/TRACE.TXT");
 
     for (const QString& candidate : candidates)
     {
         if (QFile::exists(candidate))
-        {
-            loadTraceFile(candidate);
-            renderPlot();
-            return;
-        }
+            return candidate;
     }
-
-    m_points.clear();
-    renderPlot();
-    m_statusLabel->setText("未找到 TRACE.TXT（已尝试：项目目录/CASE01 与当前目录/CASE01）");
+    return QString();
 }
 
-bool CurveSettingsWidget::loadTraceFile(const QString& filePath)
+bool CurveSettingsWidget::printTraceFile(const QString& filePath, QString* errMsg)
 {
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
     {
-        m_statusLabel->setText(QString("打开失败：%1").arg(filePath));
+        const QString msg = QString("TRACE 文件打开失败：%1").arg(filePath);
+        if (errMsg)
+            *errMsg = msg;
         return false;
     }
 
-    const QRegularExpression pattern(
-        "ISTEP=\\s*(\\d+)\\s+FOS=\\s*([+-]?\\d*\\.?\\d+(?:[Ee][+-]?\\d+)?)\\s+ptot=.*?MAX\\s+UR=\\s*([+-]?\\d*\\.?\\d+(?:[Ee][+-]?\\d+)?)");
-
-    QVector<TracePoint> parsed;
-    while (!file.atEnd())
-    {
-        const QString line = QString::fromLocal8Bit(file.readLine());
-        const QRegularExpressionMatch match = pattern.match(line);
-        if (!match.hasMatch())
-            continue;
-
-        TracePoint point;
-        point.istep = match.captured(1).toInt();
-        point.fos = match.captured(2).toDouble();
-        point.maxUr = match.captured(3).toDouble();
-        parsed.push_back(point);
-    }
-
-    m_tracePath = filePath;
-    m_points = parsed;
-    m_statusLabel->setText(QString("已加载 %1 个点：%2").arg(m_points.size()).arg(filePath));
-    return !m_points.isEmpty();
-}
-
-void CurveSettingsWidget::renderPlot()
-{
-    QVector<double> x;
-    QVector<double> y;
-    x.reserve(m_points.size());
-    y.reserve(m_points.size());
-
-    for (const TracePoint& point : qAsConst(m_points))
-    {
-        x.push_back(point.istep);
-        y.push_back(point.maxUr);
-    }
-
-    m_plot->graph(0)->setData(x, y);
-    if (!x.isEmpty())
-    {
-        m_plot->xAxis->setRange(*std::min_element(x.constBegin(), x.constEnd()),
-                                *std::max_element(x.constBegin(), x.constEnd()));
-        m_plot->yAxis->rescale();
-    }
-    else
-    {
-        m_plot->xAxis->setRange(0, 1);
-        m_plot->yAxis->setRange(0, 1);
-    }
-    m_plot->replot();
+    const QString content = QString::fromLocal8Bit(file.readAll());
+    m_logEdit->setPlainText(content);
+    if (errMsg)
+        errMsg->clear();
+    return true;
 }

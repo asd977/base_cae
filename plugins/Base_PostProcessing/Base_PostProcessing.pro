@@ -17,8 +17,7 @@ HEADERS += \
     PostVisualUtils.h \
     ProbeSettingsWidget.h \
     SliceSettingsWidget.h \
-    VectorSettingWidget.h \
-    qcustomplot.h
+    VectorSettingWidget.h
 
 SOURCES += \
     AnimationAviWidget.cpp \
@@ -31,8 +30,7 @@ SOURCES += \
     PostProcessing.cpp \
     ProbeSettingsWidget.cpp \
     SliceSettingsWidget.cpp \
-    VectorSettingWidget.cpp \
-    qcustomplot.cpp
+    VectorSettingWidget.cpp
 
 FORMS += \
     AnimationAviWidget.ui \

@@ -9,10 +9,13 @@
 #include <QMenu>
 #include <QResizeEvent>
 #include <QSlider>
+#include <QStackedWidget>
 #include <QSurfaceFormat>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QWidgetAction>
+
+#include "TraceCurveWidget.h"
 #include <cmath>
 
 // VTK
@@ -45,8 +48,15 @@ VisualizationWidget::VisualizationWidget(QWidget* parent) : QWidget(parent)
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
 
+    m_stack = new QStackedWidget(this);
+    layout->addWidget(m_stack);
+
     m_vtkWidget = new QVTKOpenGLNativeWidget(this);
-    layout->addWidget(m_vtkWidget);
+    m_stack->addWidget(m_vtkWidget);
+
+    m_traceCurveWidget = new TraceCurveWidget(this);
+    m_stack->addWidget(m_traceCurveWidget);
+    m_stack->setCurrentWidget(m_vtkWidget);
 
     initVtk();
     initViewToolbar();
@@ -354,6 +364,8 @@ bool VisualizationWidget::addProp(const QString& id, vtkSmartPointer<vtkProp> pr
 {
     if (id.isEmpty() || !prop)
         return false;
+
+    showVisualizationView();
     if (m_registry.contains(id))
         return false;
 
@@ -666,6 +678,23 @@ bool VisualizationWidget::updateActorPolyData(const QString& id, vtkPolyData* po
     if (renderNow)
         render();
     return true;
+}
+
+bool VisualizationWidget::showTraceCurveFromFile(const QString& traceFilePath, QString* errMsg)
+{
+    if (!m_traceCurveWidget || traceFilePath.isEmpty())
+        return false;
+
+    const bool ok = m_traceCurveWidget->loadTraceFile(traceFilePath, errMsg);
+    if (ok && m_stack)
+        m_stack->setCurrentWidget(m_traceCurveWidget);
+    return ok;
+}
+
+void VisualizationWidget::showVisualizationView()
+{
+    if (m_stack && m_vtkWidget)
+        m_stack->setCurrentWidget(m_vtkWidget);
 }
 
 // ---------------- Orientation marker ----------------

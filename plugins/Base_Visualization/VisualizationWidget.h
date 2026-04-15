@@ -29,6 +29,8 @@ class QSlider;
 class QResizeEvent;
 class QMenu;
 class QLabel;
+class QStackedWidget;
+class TraceCurveWidget;
 
 class VisualizationWidget : public QWidget, public VisualWidgetService
 {
@@ -76,6 +78,8 @@ class VisualizationWidget : public QWidget, public VisualWidgetService
                                  double rangeMax, bool useRange, bool renderNow = true) override;
 
     bool updateActorPolyData(const QString& id, vtkPolyData* poly, bool renderNow = true) override;
+    bool showTraceCurveFromFile(const QString& traceFilePath, QString* errMsg = nullptr) override;
+    void showVisualizationView() override;
 
     void showOrientationMarker(bool on);
 
@@ -105,7 +109,9 @@ class VisualizationWidget : public QWidget, public VisualWidgetService
     };
 
   private:
+    QStackedWidget* m_stack = nullptr;
     QVTKOpenGLNativeWidget* m_vtkWidget = nullptr;
+    TraceCurveWidget* m_traceCurveWidget = nullptr;
 
     vtkSmartPointer<vtkGenericOpenGLRenderWindow> m_renderWindow;
     vtkSmartPointer<vtkRenderer> m_renderer;

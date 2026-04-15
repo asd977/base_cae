@@ -83,9 +83,9 @@ void PostProcessing::initPageFactory()
         return new DerivedValueSettingWidget();
     };
     m_pageFactory[PublicConstants::kPagePostProcessCurve] =
-        [this](VisualWidgetService* /*host*/)
+        [this](VisualWidgetService* host)
     {
-        return new CurveSettingsWidget();
+        return new CurveSettingsWidget(host);
     };
 }
 
@@ -198,7 +198,7 @@ void PostProcessing::newDerivedValueSettingWidget()
 
 void PostProcessing::newCurveSettingWidget()
 {
-    CurveSettingsWidget* tmp = new CurveSettingsWidget;
+    CurveSettingsWidget* tmp = new CurveSettingsWidget(visualService());
     ProjectNode* node = new ProjectNode("曲线", QUuid::createUuid().toString(), (BasePage*)tmp);
 
     m_root->addChild(node);

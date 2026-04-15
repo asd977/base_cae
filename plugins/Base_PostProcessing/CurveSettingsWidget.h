@@ -2,18 +2,16 @@
 
 #include <BasePage.h>
 
-#include <QString>
-#include <QVector>
-
-class QCustomPlot;
-class QPushButton;
 class QLabel;
+class QPushButton;
+class QPlainTextEdit;
+class VisualWidgetService;
 
 class CurveSettingsWidget : public BasePage
 {
     Q_OBJECT
   public:
-    explicit CurveSettingsWidget(QWidget* parent = nullptr);
+    explicit CurveSettingsWidget(VisualWidgetService* visualService, QWidget* parent = nullptr);
     ~CurveSettingsWidget() override = default;
 
     void beforeLoad() override;
@@ -23,24 +21,18 @@ class CurveSettingsWidget : public BasePage
     void loadJson(const QJsonObject& obj) override;
 
   private slots:
-    void reloadFromDefaultPath();
+    void reloadAndShowCurve();
+    void switchBackTo3d();
 
   private:
-    struct TracePoint
-    {
-        int istep = 0;
-        double fos = 0.0;
-        double maxUr = 0.0;
-    };
-
-    bool loadTraceFile(const QString& filePath);
-    void renderPlot();
+    QString resolveDefaultTracePath() const;
+    bool printTraceFile(const QString& filePath, QString* errMsg = nullptr);
 
   private:
-    QCustomPlot* m_plot = nullptr;
+    VisualWidgetService* m_visualService = nullptr;
     QPushButton* m_reloadBtn = nullptr;
+    QPushButton* m_backTo3dBtn = nullptr;
     QLabel* m_statusLabel = nullptr;
-
+    QPlainTextEdit* m_logEdit = nullptr;
     QString m_tracePath;
-    QVector<TracePoint> m_points;
 };

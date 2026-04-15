@@ -66,4 +66,8 @@ class VisualWidgetService
 
     virtual bool updateActorPolyData(const QString& id, vtkPolyData* poly,
                                      bool renderNow = true) = 0;
+
+    // ---- view switch / curve ----
+    virtual bool showTraceCurveFromFile(const QString& traceFilePath, QString* errMsg = nullptr) = 0;
+    virtual void showVisualizationView() = 0;
 };
