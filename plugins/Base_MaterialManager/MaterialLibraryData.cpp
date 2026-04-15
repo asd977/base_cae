@@ -126,7 +126,8 @@ MaterialModel createDagangshanIsotropicModel()
     model.columns << QStringLiteral("序号") << QStringLiteral("变形模量E（GPa）")
                   << QStringLiteral("泊松比μ") << QStringLiteral("容重t/m3")
                   << QStringLiteral("抗剪断强度内摩擦系数")
-                  << QStringLiteral("凝聚力C‘（MPa）");
+                  << QStringLiteral("凝聚力C‘（MPa）")
+                  << QStringLiteral("剪胀角(°)");
 
     model.columnOutputRows = QVector<int>(model.columns.size(), -1);
     return model;
