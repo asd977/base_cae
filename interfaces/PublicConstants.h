@@ -170,6 +170,7 @@ constexpr char kPagePostProcessIsosurface[] = "isosurface";
 constexpr char kPagePostProcessIsosurfaceSegmentation[] = "isosurfaceseg";
 constexpr char kPagePostProcessAnimation[] = "animation";
 constexpr char kPagePostProcessDerivative[] = "derivative";
+constexpr char kPagePostProcessCurve[] = "curve";
 constexpr char kPagePostProcessOccBoolean[] = "occboolen";
 
 // --- PreProcess pages ---

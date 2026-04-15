@@ -23,6 +23,7 @@
 #include <QUuid>
 
 #include "AnimationAviWidget.h"
+#include "CurveSettingsWidget.h"
 #include "DerivedValueSettingWidget.h"
 #include "IsosurfaceSegmentationWidget.h"
 #include "IsosurfaceSettingsWidget.h"
@@ -80,6 +81,11 @@ void PostProcessing::initPageFactory()
         [this](VisualWidgetService* /*host*/)
     {
         return new DerivedValueSettingWidget();
+    };
+    m_pageFactory[PublicConstants::kPagePostProcessCurve] =
+        [this](VisualWidgetService* /*host*/)
+    {
+        return new CurveSettingsWidget();
     };
 }
 
@@ -190,6 +196,16 @@ void PostProcessing::newDerivedValueSettingWidget()
         pm->setCurrentItem(node);
 }
 
+void PostProcessing::newCurveSettingWidget()
+{
+    CurveSettingsWidget* tmp = new CurveSettingsWidget;
+    ProjectNode* node = new ProjectNode("曲线", QUuid::createUuid().toString(), (BasePage*)tmp);
+
+    m_root->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(node);
+}
+
 void PostProcessing::newProject()
 {
     m_root = new ProjectNode("后处理");
@@ -235,7 +251,7 @@ void PostProcessing::initAction()
     EventManager::instance().registerHandler(PublicConstants::kActionPostProcessXyPlot, this,
                                              [this](const QVariantMap& data)
                                              {
-                                                 //        this->new();
+                                                 this->newCurveSettingWidget();
                                              });
     EventManager::instance().registerHandler(PublicConstants::kActionPostProcessAnimation, this,
                                              [this](const QVariantMap& data)

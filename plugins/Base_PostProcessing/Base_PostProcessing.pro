@@ -1,4 +1,4 @@
-include($$PWD/plugin-dev.pri)
+﻿include($$PWD/plugin-dev.pri)
 
 QT += widgets core xml
 
@@ -8,6 +8,7 @@ INCLUDEPATH += $$PWD/../../interfaces
 HEADERS += \
     AnimationAviWidget.h \
     BlockSettingsWidget.h \
+    CurveSettingsWidget.h \
     DerivedValueSettingWidget.h \
     IsosurfaceSegmentationWidget.h \
     IsosurfaceSettingsWidget.h \
@@ -16,11 +17,13 @@ HEADERS += \
     PostVisualUtils.h \
     ProbeSettingsWidget.h \
     SliceSettingsWidget.h \
-    VectorSettingWidget.h
+    VectorSettingWidget.h \
+    qcustomplot.h
 
 SOURCES += \
     AnimationAviWidget.cpp \
     BlockSettingsWidget.cpp \
+    CurveSettingsWidget.cpp \
     DerivedValueSettingWidget.cpp \
     IsosurfaceSegmentationWidget.cpp \
     IsosurfaceSettingsWidget.cpp \
@@ -28,7 +31,8 @@ SOURCES += \
     PostProcessing.cpp \
     ProbeSettingsWidget.cpp \
     SliceSettingsWidget.cpp \
-    VectorSettingWidget.cpp
+    VectorSettingWidget.cpp \
+    qcustomplot.cpp
 
 FORMS += \
     AnimationAviWidget.ui \

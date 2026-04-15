@@ -34,6 +34,7 @@ class PostProcessing : public QObject, public PostProcessingService
     void newIsosurfaceSegmentationWidget();
     void newAnimationAviWidget();
     void newDerivedValueSettingWidget();
+    void newCurveSettingWidget();
     VisualWidgetService* visualService();
 
   private:
