@@ -28,6 +28,7 @@
 #include <vtkIntArray.h>
 #include <vtkLookupTable.h>
 #include <vtkMapper.h>
+#include <vtkPointLocator.h>
 #include <vtkPolyData.h>
 #include <vtkPointData.h>
 #include <vtkPoints.h>
@@ -41,6 +42,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMessageBox>
+#include <QSet>
 #include <QVector>
 #include <algorithm>
 #include <limits>
@@ -63,7 +65,28 @@ ProjectNode* findDirectChildByKind(ProjectNode* parent, const QString& kind)
     return nullptr;
 }
 
-void rebuildOriginalIdArrays(vtkPolyData* poly)
+bool cellContainsAllPoints(vtkCell* cell, const QVector<vtkIdType>& pointIds)
+{
+    if (!cell || pointIds.isEmpty())
+        return false;
+
+    auto* ids = cell->GetPointIds();
+    if (!ids || ids->GetNumberOfIds() <= 0)
+        return false;
+
+    QSet<vtkIdType> cellPointSet;
+    for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
+        cellPointSet.insert(ids->GetId(i));
+
+    for (vtkIdType pid : pointIds)
+    {
+        if (!cellPointSet.contains(pid))
+            return false;
+    }
+    return true;
+}
+
+void rebuildOriginalIdArrays(vtkUnstructuredGrid* sourceGrid, vtkPolyData* poly)
 {
     if (!poly)
         return;
@@ -72,15 +95,92 @@ void rebuildOriginalIdArrays(vtkPolyData* poly)
     pointIds->SetName("vtkOriginalPointIds");
     pointIds->SetNumberOfComponents(1);
     pointIds->SetNumberOfTuples(poly->GetNumberOfPoints());
-    for (vtkIdType pid = 0; pid < poly->GetNumberOfPoints(); ++pid)
-        pointIds->SetValue(pid, pid);
 
     auto cellIds = vtkSmartPointer<vtkIdTypeArray>::New();
     cellIds->SetName("vtkOriginalCellIds");
     cellIds->SetNumberOfComponents(1);
     cellIds->SetNumberOfTuples(poly->GetNumberOfCells());
+
+    for (vtkIdType pid = 0; pid < poly->GetNumberOfPoints(); ++pid)
+        pointIds->SetValue(pid, -1);
     for (vtkIdType cid = 0; cid < poly->GetNumberOfCells(); ++cid)
-        cellIds->SetValue(cid, cid);
+        cellIds->SetValue(cid, -1);
+
+    if (sourceGrid)
+    {
+        auto pointLocator = vtkSmartPointer<vtkPointLocator>::New();
+        pointLocator->SetDataSet(sourceGrid);
+        pointLocator->BuildLocator();
+
+        // 通过几何位置回映射到 sourceGrid 点 id。
+        for (vtkIdType pid = 0; pid < poly->GetNumberOfPoints(); ++pid)
+        {
+            double p[3] = {0.0, 0.0, 0.0};
+            poly->GetPoint(pid, p);
+            const vtkIdType sid = pointLocator->FindClosestPoint(p);
+            if (sid >= 0)
+                pointIds->SetValue(pid, sid);
+        }
+
+        auto candidateCells = vtkSmartPointer<vtkIdList>::New();
+        for (vtkIdType cid = 0; cid < poly->GetNumberOfCells(); ++cid)
+        {
+            vtkCell* surfCell = poly->GetCell(cid);
+            if (!surfCell)
+                continue;
+
+            vtkIdList* surfPids = surfCell->GetPointIds();
+            if (!surfPids || surfPids->GetNumberOfIds() <= 0)
+                continue;
+
+            QVector<vtkIdType> mappedPointIds;
+            mappedPointIds.reserve((int)surfPids->GetNumberOfIds());
+            bool hasInvalidPid = false;
+            for (vtkIdType i = 0; i < surfPids->GetNumberOfIds(); ++i)
+            {
+                const vtkIdType spid = surfPids->GetId(i);
+                if (spid < 0 || spid >= pointIds->GetNumberOfValues())
+                {
+                    hasInvalidPid = true;
+                    break;
+                }
+                const vtkIdType mappedPid = pointIds->GetValue(spid);
+                if (mappedPid < 0)
+                {
+                    hasInvalidPid = true;
+                    break;
+                }
+                mappedPointIds.push_back(mappedPid);
+            }
+            if (hasInvalidPid || mappedPointIds.isEmpty())
+                continue;
+
+            sourceGrid->GetPointCells(mappedPointIds.front(), candidateCells);
+            vtkIdType bestSourceCellId = -1;
+            int bestDim = -1;
+
+            for (vtkIdType i = 0; i < candidateCells->GetNumberOfIds(); ++i)
+            {
+                const vtkIdType sourceCellId = candidateCells->GetId(i);
+                vtkCell* sourceCell = sourceGrid->GetCell(sourceCellId);
+                if (!sourceCell)
+                    continue;
+                if (!cellContainsAllPoints(sourceCell, mappedPointIds))
+                    continue;
+
+                const int dim = sourceCell->GetCellDimension();
+                // 优先匹配体单元，其次面单元。
+                if (dim > bestDim)
+                {
+                    bestDim = dim;
+                    bestSourceCellId = sourceCellId;
+                }
+            }
+
+            if (bestSourceCellId >= 0)
+                cellIds->SetValue(cid, bestSourceCellId);
+        }
+    }
 
     if (auto* pd = poly->GetPointData())
     {
@@ -830,7 +930,7 @@ void MeshModuleController::displayCurrentGrid()
 
         auto boundary = vtkSmartPointer<vtkPolyData>::New();
         boundary->ShallowCopy(surf->GetOutput());
-        rebuildOriginalIdArrays(boundary);
+        rebuildOriginalIdArrays(nonLineGrid, boundary);
 
         auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
         mapper->SetInputData(boundary);
