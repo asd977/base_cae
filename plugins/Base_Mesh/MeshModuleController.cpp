@@ -24,6 +24,7 @@
 #include <vtkDataSetSurfaceFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
+#include <vtkIdTypeArray.h>
 #include <vtkIntArray.h>
 #include <vtkLookupTable.h>
 #include <vtkMapper.h>
@@ -60,6 +61,37 @@ ProjectNode* findDirectChildByKind(ProjectNode* parent, const QString& kind)
             return child;
     }
     return nullptr;
+}
+
+void rebuildOriginalIdArrays(vtkPolyData* poly)
+{
+    if (!poly)
+        return;
+
+    auto pointIds = vtkSmartPointer<vtkIdTypeArray>::New();
+    pointIds->SetName("vtkOriginalPointIds");
+    pointIds->SetNumberOfComponents(1);
+    pointIds->SetNumberOfTuples(poly->GetNumberOfPoints());
+    for (vtkIdType pid = 0; pid < poly->GetNumberOfPoints(); ++pid)
+        pointIds->SetValue(pid, pid);
+
+    auto cellIds = vtkSmartPointer<vtkIdTypeArray>::New();
+    cellIds->SetName("vtkOriginalCellIds");
+    cellIds->SetNumberOfComponents(1);
+    cellIds->SetNumberOfTuples(poly->GetNumberOfCells());
+    for (vtkIdType cid = 0; cid < poly->GetNumberOfCells(); ++cid)
+        cellIds->SetValue(cid, cid);
+
+    if (auto* pd = poly->GetPointData())
+    {
+        pd->RemoveArray("vtkOriginalPointIds");
+        pd->AddArray(pointIds);
+    }
+    if (auto* cd = poly->GetCellData())
+    {
+        cd->RemoveArray("vtkOriginalCellIds");
+        cd->AddArray(cellIds);
+    }
 }
 
 } // namespace
@@ -794,12 +826,11 @@ void MeshModuleController::displayCurrentGrid()
     {
         auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
         surf->SetInputData(nonLineGrid);
-        surf->PassThroughCellIdsOn();
-        surf->PassThroughPointIdsOn();
         surf->Update();
 
         auto boundary = vtkSmartPointer<vtkPolyData>::New();
         boundary->ShallowCopy(surf->GetOutput());
+        rebuildOriginalIdArrays(boundary);
 
         auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
         mapper->SetInputData(boundary);
