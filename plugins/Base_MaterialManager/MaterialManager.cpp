@@ -1903,6 +1903,7 @@ bool MaterialManager::generateCaculateFile()
             const double rouTm3 = valueOf(info.entry, QStringLiteral("容重t/m3"));
             const double ff = valueOf(info.entry, QStringLiteral("抗剪断强度内摩擦系数"));
             const double coMpa = valueOf(info.entry, QStringLiteral("凝聚力C‘（MPa）"));
+            const double dilationAngleInput = valueOf(info.entry, QStringLiteral("剪胀角(°)"));
             const double alfa0 = valueOf(info.entry, QStringLiteral("洞室边缘松弛系数α0"));
             const double d0 = valueOf(info.entry, QStringLiteral("松弛距离d0"));
 
@@ -1912,6 +1913,7 @@ bool MaterialManager::generateCaculateFile()
             const double ee = eeGpa * 1.0e9;
             const double rou = rouTm3 * 1.0e3;
             const double fai = std::atan(ff) * 180.0 / 3.141592653589793;
+            const double dilationAngle = dilationAngleInput ;
             const double co = coMpa * 1.0e6;
 
             // 默认替代：用 Mohr-Coulomb 近似计算 RC/RT（原 DEFAULT_RTRC 未给出）
@@ -1982,7 +1984,7 @@ bool MaterialManager::generateCaculateFile()
             setRow(92, rt);
             setRow(94, fai);
             setRow(95, co);
-            setRow(99, fai);
+            setRow(99, dilationAngle);
             setRow(100, itagEx);
 
             if (qRound64(itagEx) == -1)
