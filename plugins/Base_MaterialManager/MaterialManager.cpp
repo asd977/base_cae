@@ -1705,6 +1705,72 @@ bool MaterialManager::generateCaculateFile()
     // ===== 4) 预先构造数值表：values[row(0..199)][matIndex(0..nmat-1)] =====
     QVector<QVector<double>> values(ncon, QVector<double>(nmat, 0.0));
 
+    // Fortran: CONMAT=0.0 后，再补全局默认值 + 材料1默认模板
+    auto setValue = [&](int row, int matIndex, double value)
+    {
+        if (row >= 1 && row <= ncon && matIndex >= 0 && matIndex < nmat)
+        {
+            values[row - 1][matIndex] = value;
+        }
+    };
+
+    auto setAllMatRow = [&](int row, double value)
+    {
+        if (row < 1 || row > ncon)
+            return;
+        for (int matIndex = 0; matIndex < nmat; ++matIndex)
+        {
+            values[row - 1][matIndex] = value;
+        }
+    };
+
+    // ===== 4.1) 对应 Fortran 里的全体材料默认值 =====
+    // CONMAT(:,65)=1.3   !! RATIO_E
+    // CONMAT(:,66)=1.0   !! RATIO_C
+    // CONMAT(:,75)=1.0   !! DRYM
+    // CONMAT(:,14)=1.0   !! Q(1,1)
+    // CONMAT(:,18)=1.0   !! Q(2,2)
+    // CONMAT(:,22)=1.0   !! Q(3,3)
+    // CONMAT(:,89)=1.0   !! ALFA_FBAR
+    setAllMatRow(65, 1.3);
+    setAllMatRow(66, 1.0);
+    setAllMatRow(75, 1.0);
+    setAllMatRow(14, 1.0);
+    setAllMatRow(18, 1.0);
+    setAllMatRow(22, 1.0);
+    setAllMatRow(89, 1.0);
+
+    // ===== 4.2) 对应 Fortran 里的材料1默认值（VOID M1）=====
+    // 注意：这里是 IMAT=1，对应 matIndex=0
+    if (nmat >= 1)
+    {
+        const int m1 = 0;
+
+        setValue(2,   m1, 100.0);       // E//
+        setValue(3,   m1, 100.0);       // E-|
+        setValue(4,   m1, 0.30);        // POU
+        setValue(5,   m1, 100.0);       // jcr
+        setValue(7,   m1, 0.0);         // ROU
+        setValue(8,   m1, 1.0);         // TE
+
+        setValue(9,   m1, 2000.0e6);    // RC
+        setValue(10,  m1, 200.0e6);     // RT
+        setValue(11,  m1, 78.0);        // FAI
+        setValue(12,  m1, 200.0e6);     // CO
+
+        setValue(60,  m1, 100.0);       // Rip
+
+        setValue(91,  m1, 2000.0e6);    // RC
+        setValue(92,  m1, 200.0e6);     // RT
+        setValue(94,  m1, 78.0);        // FAIP
+        setValue(95,  m1, 200.0e6);     // COP
+
+        setValue(96,  m1, 0.0001e-7);   // K1
+        setValue(97,  m1, 0.0001e-7);   // K2
+        setValue(98,  m1, 0.0001e-7);   // K3
+        setValue(101, m1, 1.0);         // SPECIFIC STORAGE S
+    }
+
     auto valueOf = [](const MaterialEntry* entry, const QString& key) -> double
     {
         if (!entry)
