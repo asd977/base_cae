@@ -1179,10 +1179,12 @@ bool PickManager::computePickedEdgeFromBoundary(vtkDataSet* pickedDs, vtkIdType 
             b = vtkIdType(origPointArr->GetTuple1(pb));
         }
     }
-    if (a < 0 || b < 0)
+    if (a < 0 || b < 0 || a == b)
         return false;
 
     const int nEdges = origCell->GetNumberOfEdges();
+    int bestEdge = -1;
+    double bestEdgeD2 = std::numeric_limits<double>::max();
     for (int ei = 0; ei < nEdges; ++ei)
     {
         vtkCell* e = origCell->GetEdge(ei);
@@ -1203,11 +1205,30 @@ bool PickManager::computePickedEdgeFromBoundary(vtkDataSet* pickedDs, vtkIdType 
         }
         if (hasA && hasB)
         {
-            outOrigEdgeLocalId = ei;
-            return true;
+            double edgeBestD2 = std::numeric_limits<double>::max();
+            for (vtkIdType k = 0; k + 1 < eids->GetNumberOfIds(); ++k)
+            {
+                const vtkIdType p0id = eids->GetId(k);
+                const vtkIdType p1id = eids->GetId(k + 1);
+                if (p0id < 0 || p1id < 0)
+                    continue;
+                double p0[3], p1[3];
+                m_gridSolid->GetPoint(p0id, p0);
+                m_gridSolid->GetPoint(p1id, p1);
+                edgeBestD2 = std::min(edgeBestD2, dist2PointToSegment(pickPos, p0, p1));
+            }
+
+            if (edgeBestD2 < bestEdgeD2)
+            {
+                bestEdgeD2 = edgeBestD2;
+                bestEdge = ei;
+            }
         }
     }
-    return false;
+    if (bestEdge < 0)
+        return false;
+    outOrigEdgeLocalId = bestEdge;
+    return true;
 }
 
 void PickManager::toggleSelectEdge(GridKind kind, vtkIdType edgeKey)
