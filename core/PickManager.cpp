@@ -1189,9 +1189,17 @@ bool PickManager::computePickedEdgeFromBoundary(vtkDataSet* pickedDs, vtkIdType 
         vtkIdList* eids = e->GetPointIds();
         if (!eids || eids->GetNumberOfIds() < 2)
             continue;
-        const vtkIdType e0 = eids->GetId(0);
-        const vtkIdType e1 = eids->GetId(1);
-        if ((e0 == a && e1 == b) || (e0 == b && e1 == a))
+        bool hasA = false;
+        bool hasB = false;
+        for (vtkIdType k = 0; k < eids->GetNumberOfIds(); ++k)
+        {
+            const vtkIdType epid = eids->GetId(k);
+            if (epid == a)
+                hasA = true;
+            if (epid == b)
+                hasB = true;
+        }
+        if (hasA && hasB)
         {
             outOrigEdgeLocalId = ei;
             return true;
@@ -1453,49 +1461,71 @@ bool PickManager::computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType 
     if (!ids || ids->GetNumberOfIds() < 3)
         return false;
     for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
-        pickedOrigPids.insert(vtkIdType(origPointArr->GetTuple1(ids->GetId(i))));
+    {
+        const vtkIdType opid = vtkIdType(origPointArr->GetTuple1(ids->GetId(i)));
+        if (opid >= 0)
+            pickedOrigPids.insert(opid);
+    }
+    if (pickedOrigPids.size() < 3)
+        return false;
 
            // 2D 原单元没有 faces：整片即一个“face”(localId=15)
     if (origCell->GetCellDimension() == 2)
     {
         vtkIdList* cids = origCell->GetPointIds();
-        if (!cids || cids->GetNumberOfIds() != ids->GetNumberOfIds())
+        if (!cids || cids->GetNumberOfIds() < 3)
             return false;
+        QSet<vtkIdType> cellPids;
         for (vtkIdType i = 0; i < cids->GetNumberOfIds(); ++i)
+            cellPids.insert(cids->GetId(i));
+        for (vtkIdType pid : pickedOrigPids)
         {
-            if (!pickedOrigPids.contains(cids->GetId(i)))
+            if (!cellPids.contains(pid))
                 return false;
         }
+        // 高阶单元经 surface filter 后，picked cell 可能是细分后的子面（点数与原面不同）。
+        // 这里采用“picked 点集是原面点集子集”判定，而非点数完全一致。
         outOrigFaceLocalId = 15;
         return true;
     }
 
     const int nFaces = origCell->GetNumberOfFaces();
+    int bestFace = -1;
+    int bestHit = -1;
     for (int fi = 0; fi < nFaces; ++fi)
     {
         vtkCell* face = origCell->GetFace(fi);
         if (!face)
             continue;
         vtkIdList* fids = face->GetPointIds();
-        if (!fids || fids->GetNumberOfIds() != ids->GetNumberOfIds())
+        if (!fids || fids->GetNumberOfIds() < 3)
             continue;
 
-        bool same = true;
+        QSet<vtkIdType> facePids;
         for (vtkIdType i = 0; i < fids->GetNumberOfIds(); ++i)
+            facePids.insert(fids->GetId(i));
+
+        bool subset = true;
+        int hitCount = 0;
+        for (vtkIdType pid : pickedOrigPids)
         {
-            if (!pickedOrigPids.contains(fids->GetId(i)))
+            if (!facePids.contains(pid))
             {
-                same = false;
+                subset = false;
                 break;
             }
+            ++hitCount;
         }
-        if (same)
+        if (subset && hitCount > bestHit)
         {
-            outOrigFaceLocalId = fi;
-            return true;
+            bestHit = hitCount;
+            bestFace = fi;
         }
     }
-    return false;
+    if (bestFace < 0)
+        return false;
+    outOrigFaceLocalId = bestFace;
+    return true;
 }
 
 void PickManager::toggleSelectFace(GridKind kind, vtkIdType faceKey)
@@ -2288,6 +2318,8 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
 
                         const vtkIdType a = vtkIdType(origPointArr->GetTuple1(pa));
                         const vtkIdType b = vtkIdType(origPointArr->GetTuple1(pb));
+                        if (a < 0 || b < 0)
+                            continue;
                         const int nEdges = origCell->GetNumberOfEdges();
                         for (int ei = 0; ei < nEdges; ++ei)
                         {
@@ -2297,9 +2329,17 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                             vtkIdList* eids = e->GetPointIds();
                             if (!eids || eids->GetNumberOfIds() < 2)
                                 continue;
-                            const vtkIdType e0 = eids->GetId(0);
-                            const vtkIdType e1 = eids->GetId(eids->GetNumberOfIds() - 1);
-                            if ((e0 == a && e1 == b) || (e0 == b && e1 == a))
+                            bool hasA = false;
+                            bool hasB = false;
+                            for (vtkIdType ek = 0; ek < eids->GetNumberOfIds(); ++ek)
+                            {
+                                const vtkIdType epid = eids->GetId(ek);
+                                if (epid == a)
+                                    hasA = true;
+                                if (epid == b)
+                                    hasB = true;
+                            }
+                            if (hasA && hasB)
                             {
                                 setEdgeSelected_NoRefresh(kind, packEdgeKey(origCellId, ei),
                                                           !deselect);
