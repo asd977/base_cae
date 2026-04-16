@@ -1,4 +1,4 @@
-﻿include($$PWD/plugin-dev.pri)
+include($$PWD/plugin-dev.pri)
 
 QT += widgets core printsupport
 
