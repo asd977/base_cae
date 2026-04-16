@@ -12,19 +12,9 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayoutRoot">
    <item>
-    <widget class="QLabel" name="labelTitle">
-     <property name="text">
-      <string>开挖和加固计算设置（固定 1 个工况）</string>
-     </property>
-     <property name="wordWrap">
-      <bool>true</bool>
-     </property>
-    </widget>
-   </item>
-   <item>
     <widget class="QGroupBox" name="groupExcavationTime">
      <property name="title">
-      <string>4.5.2 洞室开挖时间定义</string>
+      <string> 洞室开挖时间定义</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayoutExcavation">
       <item>

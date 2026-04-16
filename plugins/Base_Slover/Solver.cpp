@@ -1118,7 +1118,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 
     if (ok)
         QMessageBox::information(nullptr, "导出成功",
-                                 "洞室开挖输入文件导出成功（ICAVE.DAT、IGEOS.DAT、IIKE_E**-**.DAT、IIKE_T01-**.DAT）。");
+                                 "洞室开挖输入文件导出成功。");
     else
         QMessageBox::warning(nullptr, "导出失败",
                              QString("以下文件导出失败：\n%1").arg(failedFiles.join("\n")));
@@ -1131,7 +1131,7 @@ void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
 
     auto* slopePage = dynamic_cast<SlopeStabilityWidget*>(analysisNode->getPage());
     if (slopePage && slopePage->exportIslopDatFile())
-        QMessageBox::information(nullptr, "导出成功", "边坡分析输入文件导出成功（ISLOP.DAT）。");
+        QMessageBox::information(nullptr, "导出成功", "边坡分析输入文件导出成功。");
     else
         QMessageBox::warning(nullptr, "导出失败", "ISLOP.DAT 导出失败。");
 }
@@ -1143,7 +1143,7 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
 
     auto* page = dynamic_cast<GeoStressRegressionWidget*>(analysisNode->getPage());
     if (page && page->exportIGEOSDatFile(buildGeoStressPayload(analysisNode)))
-        QMessageBox::information(nullptr, "导出成功", "地应力回归计算输入文件导出成功（IGEOS.DAT）。");
+        QMessageBox::information(nullptr, "导出成功", "地应力回归计算输入文件导出成功。");
     else
         QMessageBox::warning(nullptr, "导出失败", "IGEOS.DAT 导出失败。");
 }
