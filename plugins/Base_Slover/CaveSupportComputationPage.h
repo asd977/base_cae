@@ -44,6 +44,7 @@ class CaveSupportComputationPage : public BasePage
         QString ifJ1toa = "1";
         QString jaMethod = "1";
         QString ifChen = "0";
+        QString idayCase = "0";
     };
 
     void saveCurrentCase();
@@ -66,6 +67,7 @@ class CaveSupportComputationPage : public BasePage
     QComboBox* m_ifJ1toaCombo = nullptr;
     QComboBox* m_jaMethodCombo = nullptr;
     QComboBox* m_ifChenCombo = nullptr;
+    QLineEdit* m_idayCaseEdit = nullptr;
 
     QVector<CaseData> m_cases;
     int m_currentCaseIndex = 0;

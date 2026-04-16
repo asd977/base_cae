@@ -110,6 +110,9 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     m_jaMethodCombo->addItem("2 - 同时考虑锚杆/锚索和衬砌加固", "2");
     form->addRow("JA_METHOD", m_jaMethodCombo);
     form->addRow("IF_CHEN", m_ifChenCombo);
+    m_idayCaseEdit = new QLineEdit(this);
+    m_idayCaseEdit->setText("0");
+    form->addRow("IDAY_CASE（长期稳定性对应日期）", m_idayCaseEdit);
 
     root->addWidget(paramGroup);
     root->addStretch();
@@ -157,7 +160,7 @@ QString CaveSupportComputationPage::sectionText()
         text += QString("%1    %2    IF_EALL    IF_JALL\n").arg(c.ifEall, c.ifJall);
         text += QString("%1    %2    %3    IF_E1TOA    IF_J1TOA    JA_METHOD\n")
                     .arg(c.ifE1toa, c.ifJ1toa, c.jaMethod);
-        text += QString("%1    IF_CHEN\n").arg(c.ifChen);
+        text += QString("%1    %2    IF_CHEN    IDAY_CASE\n").arg(c.ifChen, c.idayCase);
         if (i != m_cases.size() - 1)
             text += "\n";
     }
@@ -187,6 +190,7 @@ QJsonObject CaveSupportComputationPage::saveJson()
         one["if_j1toa"] = c.ifJ1toa;
         one["ja_method"] = c.jaMethod;
         one["if_chen"] = c.ifChen;
+        one["iday_case"] = c.idayCase;
 
         QJsonArray mats;
         for (const auto& row : matsRef)
@@ -224,6 +228,7 @@ void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
         c.ifJ1toa = one.value("if_j1toa").toString(c.ifJ1toa);
         c.jaMethod = one.value("ja_method").toString(c.jaMethod);
         c.ifChen = one.value("if_chen").toString(c.ifChen);
+        c.idayCase = one.value("iday_case").toString(c.idayCase);
 
         c.materialChanges.clear();
         const QJsonArray mats = one.value("materials").toArray();
@@ -307,6 +312,9 @@ void CaveSupportComputationPage::saveCurrentCase()
     c.ifJ1toa = m_ifJ1toaCombo->currentData().toString().trimmed();
     c.jaMethod = m_jaMethodCombo->currentData().toString().trimmed();
     c.ifChen = m_ifChenCombo->currentData().toString().trimmed();
+    c.idayCase = m_idayCaseEdit->text().trimmed();
+    if (c.idayCase.isEmpty())
+        c.idayCase = "0";
 
     c.materialChanges.clear();
     for (int r = 0; r < m_materialTable->rowCount(); ++r)
@@ -343,6 +351,7 @@ void CaveSupportComputationPage::loadCaseToUi(int index)
     m_ifChenCombo->setCurrentIndex(chenIdx >= 0 ? chenIdx : 0);
     const int jaIdx = m_jaMethodCombo->findData(c.jaMethod);
     m_jaMethodCombo->setCurrentIndex(jaIdx >= 0 ? jaIdx : 0);
+    m_idayCaseEdit->setText(c.idayCase);
 
     const auto libTransitions = transitionsFromLibrary();
     const auto& matsRef = libTransitions.isEmpty() ? c.materialChanges : libTransitions;
