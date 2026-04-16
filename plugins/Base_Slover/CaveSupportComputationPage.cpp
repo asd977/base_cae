@@ -1,9 +1,7 @@
 #include "CaveSupportComputationPage.h"
 
-#include <ServiceRegistry.h>
 #include <PublicConstants.h>
 #include <PublicVariables.h>
-#include <services/MaterialManagerService.h>
 
 #include <QComboBox>
 #include <QDir>
@@ -16,7 +14,6 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
-#include <QPushButton>
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -69,26 +66,6 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     m_excavationDaysTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     excavationTimeLayout->addWidget(m_excavationDaysTable);
     root->addWidget(excavationTimeGroup);
-
-    auto* matGroup = new QGroupBox("NCHANGE 材料属性变换", this);
-    auto* matLayout = new QVBoxLayout(matGroup);
-    matLayout->addWidget(new QLabel("需变换材料属性号的材料总数由下表行数自动确定（Mold -> Mnew）", this));
-    m_materialTable = new QTableWidget(this);
-    m_materialTable->setColumnCount(2);
-    m_materialTable->setHorizontalHeaderLabels({"Mold", "Mnew"});
-    m_materialTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    matLayout->addWidget(m_materialTable);
-
-    auto* rowMatBtn = new QHBoxLayout();
-    auto* btnAdd = new QPushButton("新增材料变换", this);
-    auto* btnDel = new QPushButton("删除选中行", this);
-    auto* btnEditLibrary = new QPushButton("编辑材料变换库", this);
-    rowMatBtn->addWidget(btnAdd);
-    rowMatBtn->addWidget(btnDel);
-    rowMatBtn->addWidget(btnEditLibrary);
-    rowMatBtn->addStretch();
-    matLayout->addLayout(rowMatBtn);
-    root->addWidget(matGroup);
 
     auto* paramGroup = new QGroupBox("工况参数", this);
     auto* form = new QFormLayout(paramGroup);
@@ -194,18 +171,8 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
             &CaveSupportComputationPage::onCaseChanged);
     connect(m_ncaseSpin, qOverload<int>(&QSpinBox::valueChanged), this,
             &CaveSupportComputationPage::onCaseCountChanged);
-    connect(btnAdd, &QPushButton::clicked, this, &CaveSupportComputationPage::onAddMaterialRow);
-    connect(btnDel, &QPushButton::clicked, this, &CaveSupportComputationPage::onDeleteMaterialRow);
     connect(m_iexcaMaxSpin, qOverload<int>(&QSpinBox::valueChanged), this,
             &CaveSupportComputationPage::onExcavationLevelCountChanged);
-    connect(btnEditLibrary, &QPushButton::clicked, this,
-            []()
-            {
-                auto* materialService = ServiceRegistry::instance().getService<MaterialManagerService>();
-                if (!materialService)
-                    return;
-                materialService->showMaterialTransitionDialog();
-            });
 
     ensureCaseCount(1);
     onExcavationLevelCountChanged(m_iexcaMaxSpin->value());
@@ -219,8 +186,6 @@ void CaveSupportComputationPage::beforeUnload() {}
 QString CaveSupportComputationPage::sectionText()
 {
     saveCurrentCase();
-    const auto libTransitions = transitionsFromLibrary();
-
     QString text;
     const int iexcaMax = m_iexcaMaxSpin ? m_iexcaMaxSpin->value() : 1;
     text += QString("%1     IEXCA_MAX\n").arg(iexcaMax, 4);
@@ -238,11 +203,8 @@ QString CaveSupportComputationPage::sectionText()
     for (int i = 0; i < m_cases.size(); ++i)
     {
         const CaseData& c = m_cases.at(i);
-        const auto& mats = libTransitions.isEmpty() ? c.materialChanges : libTransitions;
         text += QString("%1    ICASE\n").arg(c.icase);
-        text += QString("%1    NCHANGE\n").arg(mats.size());
-        for (const auto& row : mats)
-            text += QString("%1    %2\n").arg(row.first, row.second);
+        text += "0    NCHANGE\n";
         text += QString("%1    %2    IEXCA_STA    IEXCA_END\n").arg(c.iexcaSta, c.iexcaEnd);
         text += QString("%1    %2    IF_EALL    IF_JALL\n").arg(c.ifEall, c.ifJall);
         text += QString("%1    %2    %3    IF_E1TOA    IF_J1TOA    JA_METHOD\n")
@@ -273,8 +235,6 @@ QString CaveSupportComputationPage::sectionText()
 QJsonObject CaveSupportComputationPage::saveJson()
 {
     saveCurrentCase();
-    const auto libTransitions = transitionsFromLibrary();
-
     QJsonObject obj;
     obj["ncase"] = m_cases.size();
     obj["current_case"] = m_caseSelector ? m_caseSelector->currentIndex() : 0;
@@ -302,7 +262,6 @@ QJsonObject CaveSupportComputationPage::saveJson()
     QJsonArray cases;
     for (const CaseData& c : m_cases)
     {
-        const auto& matsRef = libTransitions.isEmpty() ? c.materialChanges : libTransitions;
         QJsonObject one;
         one["icase"] = c.icase;
         one["iexca_sta"] = c.iexcaSta;
@@ -315,15 +274,6 @@ QJsonObject CaveSupportComputationPage::saveJson()
         one["if_chen"] = c.ifChen;
         one["iday_case"] = c.idayCase;
 
-        QJsonArray mats;
-        for (const auto& row : matsRef)
-        {
-            QJsonObject m;
-            m["old"] = row.first;
-            m["new"] = row.second;
-            mats.append(m);
-        }
-        one["materials"] = mats;
         cases.append(one);
     }
     obj["cases"] = cases;
@@ -386,16 +336,6 @@ void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
         c.ifChen = one.value("if_chen").toString(c.ifChen);
         c.idayCase = one.value("iday_case").toString(c.idayCase);
 
-        c.materialChanges.clear();
-        const QJsonArray mats = one.value("materials").toArray();
-        for (const QJsonValue& mv : mats)
-        {
-            const QJsonObject mo = mv.toObject();
-            c.materialChanges.push_back({mo.value("old").toString("1"), mo.value("new").toString("1")});
-        }
-        if (c.materialChanges.isEmpty())
-            c.materialChanges.push_back({"1", "1"});
-
         m_cases[i] = c;
     }
 
@@ -434,23 +374,6 @@ void CaveSupportComputationPage::onCaseCountChanged(int count)
 
     m_currentCaseIndex = m_caseSelector->currentIndex();
     loadCaseToUi(m_currentCaseIndex);
-}
-
-void CaveSupportComputationPage::onAddMaterialRow()
-{
-    const int row = m_materialTable->rowCount();
-    m_materialTable->insertRow(row);
-    m_materialTable->setItem(row, 0, new QTableWidgetItem("1"));
-    m_materialTable->setItem(row, 1, new QTableWidgetItem("1"));
-}
-
-void CaveSupportComputationPage::onDeleteMaterialRow()
-{
-    const auto rows = m_materialTable->selectionModel()->selectedRows();
-    for (int i = rows.size() - 1; i >= 0; --i)
-        m_materialTable->removeRow(rows.at(i).row());
-    if (m_materialTable->rowCount() == 0)
-        onAddMaterialRow();
 }
 
 void CaveSupportComputationPage::onExcavationLevelCountChanged(int count)
@@ -493,15 +416,6 @@ void CaveSupportComputationPage::saveCurrentCase()
     if (c.idayCase.isEmpty())
         c.idayCase = "0";
 
-    c.materialChanges.clear();
-    for (int r = 0; r < m_materialTable->rowCount(); ++r)
-    {
-        const QString oldVal = m_materialTable->item(r, 0) ? m_materialTable->item(r, 0)->text().trimmed() : "1";
-        const QString newVal = m_materialTable->item(r, 1) ? m_materialTable->item(r, 1)->text().trimmed() : "1";
-        c.materialChanges.push_back({oldVal.isEmpty() ? "1" : oldVal, newVal.isEmpty() ? "1" : newVal});
-    }
-    if (c.materialChanges.isEmpty())
-        c.materialChanges.push_back({"1", "1"});
 }
 
 void CaveSupportComputationPage::loadCaseToUi(int index)
@@ -529,15 +443,6 @@ void CaveSupportComputationPage::loadCaseToUi(int index)
     const int jaIdx = m_jaMethodCombo->findData(c.jaMethod);
     m_jaMethodCombo->setCurrentIndex(jaIdx >= 0 ? jaIdx : 0);
     m_idayCaseEdit->setText(c.idayCase);
-
-    const auto libTransitions = transitionsFromLibrary();
-    const auto& matsRef = libTransitions.isEmpty() ? c.materialChanges : libTransitions;
-    m_materialTable->setRowCount(matsRef.size());
-    for (int r = 0; r < matsRef.size(); ++r)
-    {
-        m_materialTable->setItem(r, 0, new QTableWidgetItem(matsRef[r].first));
-        m_materialTable->setItem(r, 1, new QTableWidgetItem(matsRef[r].second));
-    }
 
     m_isUpdatingUi = false;
 }
@@ -570,22 +475,9 @@ void CaveSupportComputationPage::ensureCaseCount(int count)
         m_currentCaseIndex = m_cases.size() - 1;
 }
 
-QVector<QPair<QString, QString>> CaveSupportComputationPage::transitionsFromLibrary() const
-{
-    QVector<QPair<QString, QString>> result;
-    auto* materialService = ServiceRegistry::instance().getService<MaterialManagerService>();
-    if (!materialService)
-        return result;
-    const auto rows = materialService->materialTransitions();
-    for (const auto& row : rows)
-        result.push_back({QString::number(row.first), QString::number(row.second)});
-    return result;
-}
-
 CaveSupportComputationPage::CaseData CaveSupportComputationPage::defaultCase(int index) const
 {
     CaseData c;
     c.icase = index + 1;
-    c.materialChanges.push_back({"1", "1"});
     return c;
 }

@@ -29,15 +29,12 @@ class CaveSupportComputationPage : public BasePage
   private slots:
     void onCaseChanged(int index);
     void onCaseCountChanged(int count);
-    void onAddMaterialRow();
-    void onDeleteMaterialRow();
     void onExcavationLevelCountChanged(int count);
 
   private:
     struct CaseData
     {
         int icase = 1;
-        QVector<QPair<QString, QString>> materialChanges;
         QString iexcaSta = "-1";
         QString iexcaEnd = "-3";
         QString ifEall = "1";
@@ -54,7 +51,6 @@ class CaveSupportComputationPage : public BasePage
     void refreshCaseSelector();
     void ensureCaseCount(int count);
     CaseData defaultCase(int index) const;
-    QVector<QPair<QString, QString>> transitionsFromLibrary() const;
 
   private:
     QSpinBox* m_ncaseSpin = nullptr;
@@ -62,7 +58,6 @@ class CaveSupportComputationPage : public BasePage
     QTableWidget* m_excavationDaysTable = nullptr;
     QComboBox* m_caseSelector = nullptr;
     QLineEdit* m_icaseEdit = nullptr;
-    QTableWidget* m_materialTable = nullptr;
     QLineEdit* m_iexcaStaEdit = nullptr;
     QLineEdit* m_iexcaEndEdit = nullptr;
     QComboBox* m_ifEallCombo = nullptr;
