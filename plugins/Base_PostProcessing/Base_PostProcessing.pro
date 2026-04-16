@@ -35,6 +35,7 @@ SOURCES += \
 FORMS += \
     AnimationAviWidget.ui \
     BlockSettingsWidget.ui \
+    CurveSettingsWidget.ui \
     DerivedValueSettingWidget.ui \
     IsosurfaceSegmentationWidget.ui \
     IsosurfaceSettingsWidget.ui \

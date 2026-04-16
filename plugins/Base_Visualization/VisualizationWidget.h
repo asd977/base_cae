@@ -82,6 +82,7 @@ class VisualizationWidget : public QWidget, public VisualWidgetService
                                 const QStringList& yFields,
                                 QString* errMsg = nullptr) override;
     void showVisualizationView() override;
+    void setViewToolbarVisible(bool visible) override;
 
     void showOrientationMarker(bool on);
 

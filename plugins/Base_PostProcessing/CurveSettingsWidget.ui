@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>CurveSettingsWidget</class>
+ <widget class="QWidget" name="CurveSettingsWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>520</width>
+    <height>360</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>曲线设置</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QGroupBox" name="groupBoxData">
+     <property name="title">
+      <string>数据选择</string>
+     </property>
+     <layout class="QFormLayout" name="formLayoutData">
+      <item row="0" column="0">
+       <widget class="QLabel" name="labelResultDir">
+        <property name="text"><string>结果目录</string></property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="resultDirComboBox"/>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="labelFile">
+        <property name="text"><string>结果文件</string></property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="fileComboBox"/>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="labelXField">
+        <property name="text"><string>X轴字段</string></property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QComboBox" name="xFieldComboBox"/>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupBoxSeries">
+     <property name="title">
+      <string>曲线设置</string>
+     </property>
+     <layout class="QHBoxLayout" name="horizontalLayoutSeries">
+      <item><widget class="QCheckBox" name="fosCheckBox"><property name="text"><string>FOS</string></property></widget></item>
+      <item><widget class="QCheckBox" name="ptotCheckBox"><property name="text"><string>PTOT</string></property></widget></item>
+      <item><widget class="QCheckBox" name="maxUrCheckBox"><property name="text"><string>MAX UR</string></property></widget></item>
+      <item><widget class="QCheckBox" name="loopCheckBox"><property name="text"><string>LOOP</string></property></widget></item>
+      <item><spacer name="horizontalSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayoutAction">
+     <item>
+      <widget class="QPushButton" name="applyButton">
+       <property name="text"><string>加载并显示曲线</string></property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="horizontalSpacer2">
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+      </spacer>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

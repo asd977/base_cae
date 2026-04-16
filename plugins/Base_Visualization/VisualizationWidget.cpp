@@ -700,6 +700,12 @@ void VisualizationWidget::showVisualizationView()
         m_stack->setCurrentWidget(m_vtkWidget);
 }
 
+void VisualizationWidget::setViewToolbarVisible(bool visible)
+{
+    if (m_toolbar)
+        m_toolbar->setVisible(visible);
+}
+
 // ---------------- Orientation marker ----------------
 
 void VisualizationWidget::showOrientationMarker(bool on)

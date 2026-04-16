@@ -72,4 +72,5 @@ class VisualWidgetService
                                         const QStringList& yFields,
                                         QString* errMsg = nullptr) = 0;
     virtual void showVisualizationView() = 0;
+    virtual void setViewToolbarVisible(bool visible) = 0;
 };
