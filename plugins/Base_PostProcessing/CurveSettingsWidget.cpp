@@ -1,14 +1,15 @@
-#include "CurveSettingsWidget.h"
+﻿#include "CurveSettingsWidget.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
 
 #include <services/VisualWidgetService.h>
 
+#include <QCheckBox>
+#include <QComboBox>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QMessageBox>
 
 #include "ui_CurveSettingsWidget.h"
 
@@ -28,7 +29,14 @@ CurveSettingsWidget::CurveSettingsWidget(VisualWidgetService* visualService, QWi
 
     connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &CurveSettingsWidget::onResultDirChanged);
-    connect(ui->applyButton, &QPushButton::clicked, this, &CurveSettingsWidget::reloadAndShowCurve);
+    connect(ui->fileComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &CurveSettingsWidget::reloadAndShowCurve);
+    connect(ui->xFieldComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &CurveSettingsWidget::reloadAndShowCurve);
+    connect(ui->fosCheckBox, &QCheckBox::toggled, this, &CurveSettingsWidget::reloadAndShowCurve);
+    connect(ui->ptotCheckBox, &QCheckBox::toggled, this, &CurveSettingsWidget::reloadAndShowCurve);
+    connect(ui->maxUrCheckBox, &QCheckBox::toggled, this, &CurveSettingsWidget::reloadAndShowCurve);
+    connect(ui->loopCheckBox, &QCheckBox::toggled, this, &CurveSettingsWidget::reloadAndShowCurve);
 }
 
 CurveSettingsWidget::~CurveSettingsWidget()
@@ -48,6 +56,8 @@ void CurveSettingsWidget::beforeLoad()
         initResultDirectoryOptions();
         m_initialized = true;
     }
+
+    reloadAndShowCurve();
 }
 
 void CurveSettingsWidget::beforeUnload()
@@ -115,13 +125,11 @@ void CurveSettingsWidget::reloadAndShowCurve()
     const QString traceFile = selectedTraceFilePath();
     if (traceFile.isEmpty())
     {
-        QMessageBox::warning(this, "曲线", "未找到可用 TRACE 文件");
         return;
     }
 
     if (!m_visualService)
     {
-        QMessageBox::warning(this, "曲线", "VisualWidgetService 不可用");
         return;
     }
 
@@ -131,15 +139,14 @@ void CurveSettingsWidget::reloadAndShowCurve()
     QString curveErr;
     if (!m_visualService->showCurveFromTraceFile(traceFile, xField, yFields, &curveErr))
     {
-        QMessageBox::warning(this, "曲线",
-                             curveErr.isEmpty() ? QString("曲线显示失败：%1").arg(traceFile)
-                                                : curveErr);
+        Q_UNUSED(curveErr);
     }
 }
 
 void CurveSettingsWidget::onResultDirChanged()
 {
     refreshFilesForCurrentDir();
+    reloadAndShowCurve();
 }
 
 void CurveSettingsWidget::initResultDirectoryOptions()
