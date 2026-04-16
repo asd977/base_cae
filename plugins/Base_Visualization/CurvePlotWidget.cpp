@@ -14,9 +14,6 @@ CurvePlotWidget::CurvePlotWidget(QWidget* parent) : QWidget(parent)
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
 
-    m_statusLabel = new QLabel("等待加载曲线数据", this);
-    m_statusLabel->setWordWrap(true);
-    layout->addWidget(m_statusLabel);
 
     m_plot = new QCustomPlot(this);
     m_plot->legend->setVisible(true);
@@ -50,7 +47,6 @@ bool CurvePlotWidget::loadDataFromTraceFile(const QString& filePath, const QStri
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
     {
         const QString msg = QString("打开 TRACE 文件失败：%1").arg(filePath);
-        m_statusLabel->setText(msg);
         if (errMsg)
             *errMsg = msg;
         return false;
@@ -82,7 +78,6 @@ bool CurvePlotWidget::loadDataFromTraceFile(const QString& filePath, const QStri
     if (parsed.isEmpty())
     {
         const QString msg = QString("TRACE 文件没有可解析数据：%1").arg(filePath);
-        m_statusLabel->setText(msg);
         if (errMsg)
             *errMsg = msg;
         return false;
@@ -91,7 +86,6 @@ bool CurvePlotWidget::loadDataFromTraceFile(const QString& filePath, const QStri
     if (yFields.isEmpty())
     {
         const QString msg = "至少选择一条Y曲线";
-        m_statusLabel->setText(msg);
         if (errMsg)
             *errMsg = msg;
         return false;
@@ -102,7 +96,6 @@ bool CurvePlotWidget::loadDataFromTraceFile(const QString& filePath, const QStri
     renderPlot(xField, yFields);
 
     const QString ok = QString("已加载 %1 条记录：%2").arg(m_points.size()).arg(filePath);
-    m_statusLabel->setText(ok);
     if (errMsg)
         errMsg->clear();
     return true;

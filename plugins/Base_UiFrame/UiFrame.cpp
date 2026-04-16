@@ -526,19 +526,19 @@ void UiFrame::buildRibbonTabs()
             auto* panel = cate->addPannel("布尔");
 
             auto* actFuse = makeAction(this, ":/resources/menu/minimal/boolean-fuse.svg", "&并集");
-            auto* actUnion =
-                makeAction(this, ":/resources/menu/minimal/boolean-union.svg", "联&合体");
+            // auto* actUnion =
+            //     makeAction(this, ":/resources/menu/minimal/boolean-union.svg", "联&合体");
             auto* actCut = makeAction(this, ":/resources/menu/minimal/boolean-cut.svg", "&差集");
             auto* actCommon =
                 makeAction(this, ":/resources/menu/minimal/boolean-common.svg", "&交集");
 
             addActionToPanel(panel, actFuse, 3);
-            addActionToPanel(panel, actUnion, 3);
+            // addActionToPanel(panel, actUnion, 3);
             addActionToPanel(panel, actCut, 3);
             addActionToPanel(panel, actCommon, 3);
 
             bindEvent(this, actFuse, PublicConstants::kActionGeomFuse);
-            bindEvent(this, actUnion, PublicConstants::kActionGeomUnion);
+            // bindEvent(this, actUnion, PublicConstants::kActionGeomUnion);
             bindEvent(this, actCut, PublicConstants::kActionGeomCut);
             bindEvent(this, actCommon, PublicConstants::kActionGeomCommon);
         }
@@ -985,10 +985,10 @@ void UiFrame::buildRibbonTabs()
        auto* actIsoS =
            makeAction(this, ":/resources/menu/minimal/post-isosurface-seg.svg", "&等值面分割");
        auto* actXY = makeAction(this, ":/resources/menu/minimal/post-curve.svg", "&曲线");
-       auto* actAnim = makeAction(this, ":/resources/menu/minimal/post-animation.svg", "&动画");
-       auto* actPick = makeAction(this, ":/resources/menu/minimal/post-probe.svg", "&拾取物理量");
-       auto* actDer = makeAction(this, ":/resources/menu/minimal/post-derived.svg", "&派生值");
-       auto* actExp = makeAction(this, ":/resources/menu/minimal/post-export.svg", "&数据导出");
+       // auto* actAnim = makeAction(this, ":/resources/menu/minimal/post-animation.svg", "&动画");
+       // auto* actPick = makeAction(this, ":/resources/menu/minimal/post-probe.svg", "&拾取物理量");
+       // auto* actDer = makeAction(this, ":/resources/menu/minimal/post-derived.svg", "&派生值");
+       // auto* actExp = makeAction(this, ":/resources/menu/minimal/post-export.svg", "&数据导出");
 
         addActionToPanel(panel, actNeph, 2);
        addActionToPanel(panel, actVec, 2);
@@ -997,10 +997,10 @@ void UiFrame::buildRibbonTabs()
        addActionToPanel(panel, actIso, 2);
        addActionToPanel(panel, actIsoS, 2);
        addActionToPanel(panel, actXY, 3);
-       addActionToPanel(panel, actAnim, 3);
-       addActionToPanel(panel, actPick, 3);
-       addActionToPanel(panel, actDer, 2);
-       addActionToPanel(panel, actExp, 2);
+       // addActionToPanel(panel, actAnim, 3);
+       // addActionToPanel(panel, actPick, 3);
+       // addActionToPanel(panel, actDer, 2);
+       // addActionToPanel(panel, actExp, 2);
 
         bindEvent(this, actNeph, PublicConstants::kActionPostProcessNephogram);
        bindEvent(this, actVec, PublicConstants::kActionPostProcessVector);
@@ -1009,10 +1009,10 @@ void UiFrame::buildRibbonTabs()
        bindEvent(this, actIso, PublicConstants::kActionPostProcessIsosurface);
        bindEvent(this, actIsoS, PublicConstants::kActionPostProcessIsosurfaceSegmentation);
        bindEvent(this, actXY, PublicConstants::kActionPostProcessXyPlot);
-       bindEvent(this, actAnim, PublicConstants::kActionPostProcessAnimation);
-       bindEvent(this, actPick, PublicConstants::kActionPostProcessPickPhysical);
-       bindEvent(this, actDer, PublicConstants::kActionPostProcessDerivative);
-       bindEvent(this, actExp, PublicConstants::kActionPostProcessDataExport);
+       // bindEvent(this, actAnim, PublicConstants::kActionPostProcessAnimation);
+       // bindEvent(this, actPick, PublicConstants::kActionPostProcessPickPhysical);
+       // bindEvent(this, actDer, PublicConstants::kActionPostProcessDerivative);
+       // bindEvent(this, actExp, PublicConstants::kActionPostProcessDataExport);
     }
 
     // // =========================
