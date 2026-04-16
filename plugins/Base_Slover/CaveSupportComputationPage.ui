@@ -1,0 +1,396 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>CaveSupportComputationPage</class>
+ <widget class="QWidget" name="CaveSupportComputationPage">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>980</width>
+    <height>760</height>
+   </rect>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayoutRoot">
+   <item>
+    <widget class="QLabel" name="labelTitle">
+     <property name="text">
+      <string>开挖和加固计算设置（固定 1 个工况）</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupExcavationTime">
+     <property name="title">
+      <string>4.5.2 洞室开挖时间定义</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayoutExcavation">
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayoutIexcaMax">
+        <item>
+         <widget class="QLabel" name="labelIexcaMax">
+          <property name="text">
+           <string>最大开挖级（IEXCA_MAX）</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="spinIexcaMax">
+          <property name="minimum">
+           <number>1</number>
+          </property>
+          <property name="maximum">
+           <number>999</number>
+          </property>
+          <property name="value">
+           <number>1</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="horizontalSpacerIexca">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QTableWidget" name="tableExcavationDays"/>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupParams">
+     <property name="title">
+      <string>开挖与加固参数（工况1）</string>
+     </property>
+     <layout class="QFormLayout" name="formLayoutParams">
+      <item row="0" column="0">
+       <widget class="QLabel" name="labelExcRange">
+        <property name="text">
+         <string>开挖级范围</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QWidget" name="widgetExcRange" native="true">
+        <layout class="QHBoxLayout" name="horizontalLayoutExcRange">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QLabel" name="labelIexcaSta">
+           <property name="text">
+            <string>起始开挖级（IEXCA_STA，负值）</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="editIexcaSta"/>
+         </item>
+         <item>
+          <widget class="QLabel" name="labelIexcaEnd">
+           <property name="text">
+            <string>终了开挖级（IEXCA_END，负值）</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="editIexcaEnd"/>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="labelIfEall">
+        <property name="text">
+         <string>一次成洞（不加固）</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="comboIfEall"/>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="labelIfJall">
+        <property name="text">
+         <string>一次成洞（加固）</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QComboBox" name="comboIfJall"/>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="labelIfE1toa">
+        <property name="text">
+         <string>逐级开挖（不加固）</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QComboBox" name="comboIfE1toa"/>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="labelIfJ1toa">
+        <property name="text">
+         <string>逐级开挖（加固）</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QComboBox" name="comboIfJ1toa"/>
+      </item>
+      <item row="5" column="0">
+       <widget class="QLabel" name="labelJaMethod">
+        <property name="text">
+         <string>加固方式（JA_METHOD）</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="1">
+       <widget class="QComboBox" name="comboJaMethod"/>
+      </item>
+      <item row="6" column="0">
+       <widget class="QLabel" name="labelIfChen">
+        <property name="text">
+         <string>衬砌内力计算（IF_CHEN）</string>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="1">
+       <widget class="QComboBox" name="comboIfChen"/>
+      </item>
+      <item row="7" column="0">
+       <widget class="QLabel" name="labelIdayCase">
+        <property name="text">
+         <string>长期稳定日期（IDAY_CASE）</string>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="1">
+       <widget class="QLineEdit" name="editIdayCase">
+        <property name="text">
+         <string>0</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupDyna">
+     <property name="title">
+      <string>4.5.6 洞室地震动力计算相关定义</string>
+     </property>
+     <layout class="QFormLayout" name="formLayoutDyna">
+      <item row="0" column="0">
+       <widget class="QLabel" name="labelIfMode">
+        <property name="text">
+         <string>模态分析开关（IFMODE）</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="comboIfMode"/>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="labelIfWave">
+        <property name="text">
+         <string>时程分析开关（IFWAVE）</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="comboIfWave"/>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="labelTimeParams">
+        <property name="text">
+         <string>时间参数</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QWidget" name="widgetTimeParams" native="true">
+        <layout class="QHBoxLayout" name="horizontalLayoutTimeParams">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QLabel" name="labelDt">
+           <property name="text">
+            <string>DT</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QDoubleSpinBox" name="spinDt">
+           <property name="decimals">
+            <number>6</number>
+           </property>
+           <property name="maximum">
+            <double>999999.000000000000000</double>
+           </property>
+           <property name="value">
+            <double>0.005000000000000</double>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="labelTsta">
+           <property name="text">
+            <string>TSTA</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QDoubleSpinBox" name="spinTsta">
+           <property name="decimals">
+            <number>6</number>
+           </property>
+           <property name="maximum">
+            <double>999999.000000000000000</double>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="labelTend">
+           <property name="text">
+            <string>TEND</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QDoubleSpinBox" name="spinTend">
+           <property name="decimals">
+            <number>6</number>
+           </property>
+           <property name="maximum">
+            <double>999999.000000000000000</double>
+           </property>
+           <property name="value">
+            <double>30.000000000000000</double>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="labelWaveFiles">
+        <property name="text">
+         <string>地震波文件</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QWidget" name="widgetWaveFiles" native="true">
+        <layout class="QHBoxLayout" name="horizontalLayoutWaveFiles">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <item>
+          <widget class="QLabel" name="labelAx">
+           <property name="text">
+            <string>AX</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="editAccX">
+           <property name="text">
+            <string>ACCEX.DAT</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="labelAy">
+           <property name="text">
+            <string>AY</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="editAccY">
+           <property name="text">
+            <string>ACCEY.DAT</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="labelAz">
+           <property name="text">
+            <string>AZ</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="editAccZ">
+           <property name="text">
+            <string>ACCEZ.DAT</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacerBottom">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

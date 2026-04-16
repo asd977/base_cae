@@ -7,146 +7,75 @@
 #include <QDir>
 #include <QDoubleSpinBox>
 #include <QHeaderView>
-#include <QFormLayout>
-#include <QGroupBox>
-#include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonObject>
-#include <QLabel>
 #include <QLineEdit>
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QTableWidgetItem>
-#include <QVBoxLayout>
+
+#include "ui_CaveSupportComputationPage.h"
 
 CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
-    : BasePage("CaveSupportComputation")
+    : BasePage("CaveSupportComputation"), ui(new Ui::CaveSupportComputationPage)
 {
+    ui->setupUi(this);
     Q_UNUSED(parent);
 
-    auto* root = new QVBoxLayout(this);
+    m_iexcaMaxSpin = ui->spinIexcaMax;
+    m_excavationDaysTable = ui->tableExcavationDays;
+    m_iexcaStaEdit = ui->editIexcaSta;
+    m_iexcaEndEdit = ui->editIexcaEnd;
+    m_ifEallCombo = ui->comboIfEall;
+    m_ifJallCombo = ui->comboIfJall;
+    m_ifE1toaCombo = ui->comboIfE1toa;
+    m_ifJ1toaCombo = ui->comboIfJ1toa;
+    m_jaMethodCombo = ui->comboJaMethod;
+    m_ifChenCombo = ui->comboIfChen;
+    m_idayCaseEdit = ui->editIdayCase;
+    m_ifModeCombo = ui->comboIfMode;
+    m_ifWaveCombo = ui->comboIfWave;
+    m_dtSpin = ui->spinDt;
+    m_tstaSpin = ui->spinTsta;
+    m_tendSpin = ui->spinTend;
+    m_accXEdit = ui->editAccX;
+    m_accYEdit = ui->editAccY;
+    m_accZEdit = ui->editAccZ;
 
-    auto* title = new QLabel("开挖和加固计算设置（固定 1 个工况）", this);
-    title->setWordWrap(true);
-    root->addWidget(title);
-
-    auto* excavationTimeGroup = new QGroupBox("4.5.2 洞室开挖时间定义", this);
-    auto* excavationTimeLayout = new QVBoxLayout(excavationTimeGroup);
-    auto* rowIexcaMax = new QHBoxLayout();
-    rowIexcaMax->addWidget(new QLabel("最大开挖级（IEXCA_MAX）", this));
-    m_iexcaMaxSpin = new QSpinBox(this);
-    m_iexcaMaxSpin->setRange(1, 999);
-    m_iexcaMaxSpin->setValue(1);
-    rowIexcaMax->addWidget(m_iexcaMaxSpin);
-    rowIexcaMax->addStretch();
-    excavationTimeLayout->addLayout(rowIexcaMax);
-
-    m_excavationDaysTable = new QTableWidget(this);
     m_excavationDaysTable->setColumnCount(2);
     m_excavationDaysTable->setHorizontalHeaderLabels({"开挖级", "用时（天）"});
     m_excavationDaysTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    excavationTimeLayout->addWidget(m_excavationDaysTable);
-    root->addWidget(excavationTimeGroup);
 
-    auto* paramGroup = new QGroupBox("开挖与加固参数（工况1）", this);
-    auto* form = new QFormLayout(paramGroup);
-
-    auto* rowExc = new QWidget(this);
-    auto* rowExcLayout = new QHBoxLayout(rowExc);
-    rowExcLayout->setContentsMargins(0, 0, 0, 0);
-    m_iexcaStaEdit = new QLineEdit(this);
-    m_iexcaEndEdit = new QLineEdit(this);
-    rowExcLayout->addWidget(new QLabel("起始开挖级（IEXCA_STA，负值）", this));
-    rowExcLayout->addWidget(m_iexcaStaEdit);
-    rowExcLayout->addWidget(new QLabel("终了开挖级（IEXCA_END，负值）", this));
-    rowExcLayout->addWidget(m_iexcaEndEdit);
-    form->addRow("开挖级范围", rowExc);
-
-    auto mkBoolCombo = [this](const QString& enableText, const QString& disableText)
+    auto setupBoolCombo = [](QComboBox* combo, const QString& enableText, const QString& disableText)
     {
-        auto* combo = new QComboBox(this);
+        if (!combo)
+            return;
+        combo->clear();
         combo->addItem(QString("1 - %1").arg(enableText), "1");
         combo->addItem(QString("0 - %1").arg(disableText), "0");
-        return combo;
     };
 
-    m_ifEallCombo = mkBoolCombo("计算不加固条件下一次开挖成洞",
-                                "不进行不加固条件下一次开挖成洞计算");
-    m_ifJallCombo = mkBoolCombo("计算加固条件下一次开挖成洞",
-                                "不进行加固条件下一次开挖成洞计算");
-    m_ifE1toaCombo = mkBoolCombo("计算不加固条件下逐级开挖成洞",
-                                 "不进行不加固条件下逐级开挖成洞计算");
-    m_ifJ1toaCombo = mkBoolCombo("计算加固条件下逐级开挖成洞",
-                                 "不进行加固条件下逐级开挖成洞计算");
-    m_ifChenCombo = mkBoolCombo("计算衬砌内力", "不需计算衬砌内力");
+    setupBoolCombo(m_ifEallCombo, "计算不加固条件下一次开挖成洞",
+                   "不进行不加固条件下一次开挖成洞计算");
+    setupBoolCombo(m_ifJallCombo, "计算加固条件下一次开挖成洞",
+                   "不进行加固条件下一次开挖成洞计算");
+    setupBoolCombo(m_ifE1toaCombo, "计算不加固条件下逐级开挖成洞",
+                   "不进行不加固条件下逐级开挖成洞计算");
+    setupBoolCombo(m_ifJ1toaCombo, "计算加固条件下逐级开挖成洞",
+                   "不进行加固条件下逐级开挖成洞计算");
+    setupBoolCombo(m_ifChenCombo, "计算衬砌内力", "不需计算衬砌内力");
 
-    form->addRow("一次成洞（不加固）", m_ifEallCombo);
-    form->addRow("一次成洞（加固）", m_ifJallCombo);
-    form->addRow("逐级开挖（不加固）", m_ifE1toaCombo);
-    form->addRow("逐级开挖（加固）", m_ifJ1toaCombo);
-
-    m_jaMethodCombo = new QComboBox(this);
+    m_jaMethodCombo->clear();
     m_jaMethodCombo->addItem("1 - 锚杆/锚索加固，不考虑衬砌", "1");
     m_jaMethodCombo->addItem("2 - 同时考虑锚杆/锚索和衬砌加固", "2");
-    form->addRow("加固方式（JA_METHOD）", m_jaMethodCombo);
-    form->addRow("衬砌内力计算（IF_CHEN）", m_ifChenCombo);
-    m_idayCaseEdit = new QLineEdit(this);
     m_idayCaseEdit->setText("0");
-    form->addRow("长期稳定日期（IDAY_CASE）", m_idayCaseEdit);
 
-    root->addWidget(paramGroup);
-
-    auto* dynaGroup = new QGroupBox("4.5.6 洞室地震动力计算相关定义", this);
-    auto* dynaForm = new QFormLayout(dynaGroup);
-    m_ifModeCombo = new QComboBox(this);
+    m_ifModeCombo->clear();
     m_ifModeCombo->addItem("1 - 进行模态分析", "1");
     m_ifModeCombo->addItem("0 - 不进行模态分析", "0");
-    m_ifWaveCombo = new QComboBox(this);
+    m_ifWaveCombo->clear();
     m_ifWaveCombo->addItem("1 - 进行时域分析", "1");
     m_ifWaveCombo->addItem("0 - 不进行时域分析", "0");
-    dynaForm->addRow("模态分析开关（IFMODE）", m_ifModeCombo);
-    dynaForm->addRow("时程分析开关（IFWAVE）", m_ifWaveCombo);
-
-    m_dtSpin = new QDoubleSpinBox(this);
-    m_dtSpin->setDecimals(6);
-    m_dtSpin->setRange(0.0, 999999.0);
-    m_dtSpin->setValue(0.005);
-    m_tstaSpin = new QDoubleSpinBox(this);
-    m_tstaSpin->setDecimals(6);
-    m_tstaSpin->setRange(0.0, 999999.0);
-    m_tstaSpin->setValue(0.0);
-    m_tendSpin = new QDoubleSpinBox(this);
-    m_tendSpin->setDecimals(6);
-    m_tendSpin->setRange(0.0, 999999.0);
-    m_tendSpin->setValue(30.0);
-
-    auto* dtRow = new QWidget(this);
-    auto* dtLayout = new QHBoxLayout(dtRow);
-    dtLayout->setContentsMargins(0, 0, 0, 0);
-    dtLayout->addWidget(new QLabel("DT", this));
-    dtLayout->addWidget(m_dtSpin);
-    dtLayout->addWidget(new QLabel("TSTA", this));
-    dtLayout->addWidget(m_tstaSpin);
-    dtLayout->addWidget(new QLabel("TEND", this));
-    dtLayout->addWidget(m_tendSpin);
-    dynaForm->addRow("时间参数", dtRow);
-
-    m_accXEdit = new QLineEdit("ACCEX.DAT", this);
-    m_accYEdit = new QLineEdit("ACCEY.DAT", this);
-    m_accZEdit = new QLineEdit("ACCEZ.DAT", this);
-    auto* accRow = new QWidget(this);
-    auto* accLayout = new QHBoxLayout(accRow);
-    accLayout->setContentsMargins(0, 0, 0, 0);
-    accLayout->addWidget(new QLabel("AX", this));
-    accLayout->addWidget(m_accXEdit);
-    accLayout->addWidget(new QLabel("AY", this));
-    accLayout->addWidget(m_accYEdit);
-    accLayout->addWidget(new QLabel("AZ", this));
-    accLayout->addWidget(m_accZEdit);
-    dynaForm->addRow("地震波文件", accRow);
-    root->addWidget(dynaGroup);
-
-    root->addStretch();
 
     connect(m_iexcaMaxSpin, qOverload<int>(&QSpinBox::valueChanged), this,
             &CaveSupportComputationPage::onExcavationLevelCountChanged);
@@ -154,6 +83,11 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     m_caseData = CaseData();
     onExcavationLevelCountChanged(m_iexcaMaxSpin->value());
     loadCaseToUi();
+}
+
+CaveSupportComputationPage::~CaveSupportComputationPage()
+{
+    delete ui;
 }
 
 void CaveSupportComputationPage::beforeLoad() {}

@@ -40,6 +40,7 @@ SOURCES += \
 
 FORMS += \
     CaveExcavationWidget.ui \
+    CaveSupportComputationPage.ui \
     GeoStressRegressionWidget.ui \
     FillStorageCyclePage.ui \
     SeepageBoundaryPage.ui \

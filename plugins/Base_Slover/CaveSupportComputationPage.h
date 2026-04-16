@@ -10,6 +10,10 @@ class QSpinBox;
 class QTableWidget;
 class QWidget;
 class QDoubleSpinBox;
+namespace Ui
+{
+class CaveSupportComputationPage;
+}
 
 class CaveSupportComputationPage : public BasePage
 {
@@ -17,6 +21,7 @@ class CaveSupportComputationPage : public BasePage
 
   public:
     explicit CaveSupportComputationPage(QWidget* parent = nullptr);
+    ~CaveSupportComputationPage() override;
 
     void beforeLoad() override;
     void beforeUnload() override;
@@ -48,6 +53,8 @@ class CaveSupportComputationPage : public BasePage
     void loadCaseToUi();
 
   private:
+    Ui::CaveSupportComputationPage* ui = nullptr;
+
     QSpinBox* m_iexcaMaxSpin = nullptr;
     QTableWidget* m_excavationDaysTable = nullptr;
     QLineEdit* m_iexcaStaEdit = nullptr;
