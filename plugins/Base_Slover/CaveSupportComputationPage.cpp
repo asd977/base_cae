@@ -173,8 +173,11 @@ QString CaveSupportComputationPage::sectionText()
                 : "0";
         text += QString("%1    %2    EXCA DATE  II \n").arg(dayValue.isEmpty() ? "0" : dayValue, 8).arg(i + 1, 8);
     }
-
+    text += "0     NCHANGE\n\n";
+    text += "1    MCASE\n\n";
+    text += "1        1   JISUAN CASE  II\n\n";
     text += "1    NCASE\n\n";
+    text += "--------------------------------------------------------------------\n\n";
 
     const CaseData& c = m_caseData;
     text += QString("%1    ICASE\n").arg(c.icase);
