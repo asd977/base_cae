@@ -16,6 +16,10 @@ CaveExcavationWidget::CaveExcavationWidget(QWidget* parent)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
+    setAttribute(Qt::WA_StyledBackground, true);
+    setStyleSheet(
+        "QWidget#CaveExcavationWidget, QWidget#scrollAreaWidgetContents { background: white; }");
+    ui->scrollArea->setStyleSheet("QScrollArea { background: white; border: 0; }");
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();

@@ -26,33 +26,14 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
 
     auto* root = new QVBoxLayout(this);
 
-    auto* title = new QLabel("开挖和加固计算设置（NCASE + 每工况参数）", this);
+    auto* title = new QLabel("开挖和加固计算设置（固定 1 个工况）", this);
     title->setWordWrap(true);
     root->addWidget(title);
-
-    auto* baseGroup = new QGroupBox("工况管理", this);
-    auto* baseLayout = new QHBoxLayout(baseGroup);
-    baseLayout->addWidget(new QLabel("NCASE（计算工况数）", this));
-    m_ncaseSpin = new QSpinBox(this);
-    m_ncaseSpin->setRange(1, 999);
-    m_ncaseSpin->setValue(1);
-    baseLayout->addWidget(m_ncaseSpin);
-    baseLayout->addSpacing(20);
-    baseLayout->addWidget(new QLabel("当前工况", this));
-    m_caseSelector = new QComboBox(this);
-    baseLayout->addWidget(m_caseSelector);
-    baseLayout->addSpacing(20);
-    baseLayout->addWidget(new QLabel("ICASE", this));
-    m_icaseEdit = new QLineEdit(this);
-    m_icaseEdit->setReadOnly(true);
-    baseLayout->addWidget(m_icaseEdit);
-    baseLayout->addStretch();
-    root->addWidget(baseGroup);
 
     auto* excavationTimeGroup = new QGroupBox("4.5.2 洞室开挖时间定义", this);
     auto* excavationTimeLayout = new QVBoxLayout(excavationTimeGroup);
     auto* rowIexcaMax = new QHBoxLayout();
-    rowIexcaMax->addWidget(new QLabel("IEXCA_MAX（最大开挖级）", this));
+    rowIexcaMax->addWidget(new QLabel("最大开挖级（IEXCA_MAX）", this));
     m_iexcaMaxSpin = new QSpinBox(this);
     m_iexcaMaxSpin->setRange(1, 999);
     m_iexcaMaxSpin->setValue(1);
@@ -67,7 +48,7 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     excavationTimeLayout->addWidget(m_excavationDaysTable);
     root->addWidget(excavationTimeGroup);
 
-    auto* paramGroup = new QGroupBox("工况参数", this);
+    auto* paramGroup = new QGroupBox("开挖与加固参数（工况1）", this);
     auto* form = new QFormLayout(paramGroup);
 
     auto* rowExc = new QWidget(this);
@@ -75,9 +56,9 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     rowExcLayout->setContentsMargins(0, 0, 0, 0);
     m_iexcaStaEdit = new QLineEdit(this);
     m_iexcaEndEdit = new QLineEdit(this);
-    rowExcLayout->addWidget(new QLabel("IEXCA_STA（负值，且 >= IEXCA_END）", this));
+    rowExcLayout->addWidget(new QLabel("起始开挖级（IEXCA_STA，负值）", this));
     rowExcLayout->addWidget(m_iexcaStaEdit);
-    rowExcLayout->addWidget(new QLabel("IEXCA_END（负值）", this));
+    rowExcLayout->addWidget(new QLabel("终了开挖级（IEXCA_END，负值）", this));
     rowExcLayout->addWidget(m_iexcaEndEdit);
     form->addRow("开挖级范围", rowExc);
 
@@ -99,19 +80,19 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
                                  "不进行加固条件下逐级开挖成洞计算");
     m_ifChenCombo = mkBoolCombo("计算衬砌内力", "不需计算衬砌内力");
 
-    form->addRow("IF_EALL", m_ifEallCombo);
-    form->addRow("IF_JALL", m_ifJallCombo);
-    form->addRow("IF_E1TOA", m_ifE1toaCombo);
-    form->addRow("IF_J1TOA", m_ifJ1toaCombo);
+    form->addRow("一次成洞（不加固）", m_ifEallCombo);
+    form->addRow("一次成洞（加固）", m_ifJallCombo);
+    form->addRow("逐级开挖（不加固）", m_ifE1toaCombo);
+    form->addRow("逐级开挖（加固）", m_ifJ1toaCombo);
 
     m_jaMethodCombo = new QComboBox(this);
     m_jaMethodCombo->addItem("1 - 锚杆/锚索加固，不考虑衬砌", "1");
     m_jaMethodCombo->addItem("2 - 同时考虑锚杆/锚索和衬砌加固", "2");
-    form->addRow("JA_METHOD", m_jaMethodCombo);
-    form->addRow("IF_CHEN", m_ifChenCombo);
+    form->addRow("加固方式（JA_METHOD）", m_jaMethodCombo);
+    form->addRow("衬砌内力计算（IF_CHEN）", m_ifChenCombo);
     m_idayCaseEdit = new QLineEdit(this);
     m_idayCaseEdit->setText("0");
-    form->addRow("IDAY_CASE（长期稳定性对应日期）", m_idayCaseEdit);
+    form->addRow("长期稳定日期（IDAY_CASE）", m_idayCaseEdit);
 
     root->addWidget(paramGroup);
 
@@ -123,8 +104,8 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     m_ifWaveCombo = new QComboBox(this);
     m_ifWaveCombo->addItem("1 - 进行时域分析", "1");
     m_ifWaveCombo->addItem("0 - 不进行时域分析", "0");
-    dynaForm->addRow("IFMODE", m_ifModeCombo);
-    dynaForm->addRow("IFWAVE", m_ifWaveCombo);
+    dynaForm->addRow("模态分析开关（IFMODE）", m_ifModeCombo);
+    dynaForm->addRow("时程分析开关（IFWAVE）", m_ifWaveCombo);
 
     m_dtSpin = new QDoubleSpinBox(this);
     m_dtSpin->setDecimals(6);
@@ -167,17 +148,12 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
 
     root->addStretch();
 
-    connect(m_caseSelector, qOverload<int>(&QComboBox::currentIndexChanged), this,
-            &CaveSupportComputationPage::onCaseChanged);
-    connect(m_ncaseSpin, qOverload<int>(&QSpinBox::valueChanged), this,
-            &CaveSupportComputationPage::onCaseCountChanged);
     connect(m_iexcaMaxSpin, qOverload<int>(&QSpinBox::valueChanged), this,
             &CaveSupportComputationPage::onExcavationLevelCountChanged);
 
-    ensureCaseCount(1);
+    m_caseData = CaseData();
     onExcavationLevelCountChanged(m_iexcaMaxSpin->value());
-    refreshCaseSelector();
-    loadCaseToUi(0);
+    loadCaseToUi();
 }
 
 void CaveSupportComputationPage::beforeLoad() {}
@@ -198,37 +174,32 @@ QString CaveSupportComputationPage::sectionText()
         text += QString("%1    %2    EXCA DATE  II \n").arg(dayValue.isEmpty() ? "0" : dayValue, 8).arg(i + 1, 8);
     }
 
-    text += QString("%1    NCASE\n\n").arg(m_cases.size());
+    text += "1    NCASE\n\n";
 
-    for (int i = 0; i < m_cases.size(); ++i)
-    {
-        const CaseData& c = m_cases.at(i);
-        text += QString("%1    ICASE\n").arg(c.icase);
-        text += "0    NCHANGE\n";
-        text += QString("%1    %2    IEXCA_STA    IEXCA_END\n").arg(c.iexcaSta, c.iexcaEnd);
-        text += QString("%1    %2    IF_EALL    IF_JALL\n").arg(c.ifEall, c.ifJall);
-        text += QString("%1    %2    %3    IF_E1TOA    IF_J1TOA    JA_METHOD\n")
-                    .arg(c.ifE1toa, c.ifJ1toa, c.jaMethod);
-        text += QString("%1    %2    IF_CHEN    IDAY_CASE\n").arg(c.ifChen, c.idayCase);
-        const QString projectDir =
-            PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-        QString caseDir = QDir(QDir(projectDir).absolutePath()).filePath("CASE01");
-        caseDir = QDir::toNativeSeparators(caseDir) + QDir::separator();
-        text += QString("'%1'     DIRDYNA\n").arg(caseDir);
-        text += QString("%1     %2   IFMODE   IFWAVE\n")
-                    .arg(m_ifModeCombo ? m_ifModeCombo->currentData().toString() : "1",
-                         m_ifWaveCombo ? m_ifWaveCombo->currentData().toString() : "1");
-        text += QString("%1    %2   %3    DT TSTA TEND\n")
-                    .arg(m_dtSpin ? m_dtSpin->value() : 0.005, 0, 'f', 6)
-                    .arg(m_tstaSpin ? m_tstaSpin->value() : 0.0, 0, 'f', 6)
-                    .arg(m_tendSpin ? m_tendSpin->value() : 30.0, 0, 'f', 6);
-        text += QString("'%1'  '%2'  '%3'   AX  AY  AZ\n")
-                    .arg(m_accXEdit ? m_accXEdit->text().trimmed() : "ACCEX.DAT",
-                         m_accYEdit ? m_accYEdit->text().trimmed() : "ACCEY.DAT",
-                         m_accZEdit ? m_accZEdit->text().trimmed() : "ACCEZ.DAT");
-        if (i != m_cases.size() - 1)
-            text += "\n";
-    }
+    const CaseData& c = m_caseData;
+    text += QString("%1    ICASE\n").arg(c.icase);
+    text += "0    NCHANGE\n";
+    text += QString("%1    %2    IEXCA_STA    IEXCA_END\n").arg(c.iexcaSta, c.iexcaEnd);
+    text += QString("%1    %2    IF_EALL    IF_JALL\n").arg(c.ifEall, c.ifJall);
+    text += QString("%1    %2    %3    IF_E1TOA    IF_J1TOA    JA_METHOD\n")
+                .arg(c.ifE1toa, c.ifJ1toa, c.jaMethod);
+    text += QString("%1    %2    IF_CHEN    IDAY_CASE\n").arg(c.ifChen, c.idayCase);
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QString caseDir = QDir(QDir(projectDir).absolutePath()).filePath("CASE01");
+    caseDir = QDir::toNativeSeparators(caseDir) + QDir::separator();
+    text += QString("'%1'     DIRDYNA\n").arg(caseDir);
+    text += QString("%1     %2   IFMODE   IFWAVE\n")
+                .arg(m_ifModeCombo ? m_ifModeCombo->currentData().toString() : "1",
+                     m_ifWaveCombo ? m_ifWaveCombo->currentData().toString() : "1");
+    text += QString("%1    %2   %3    DT TSTA TEND\n")
+                .arg(m_dtSpin ? m_dtSpin->value() : 0.005, 0, 'f', 6)
+                .arg(m_tstaSpin ? m_tstaSpin->value() : 0.0, 0, 'f', 6)
+                .arg(m_tendSpin ? m_tendSpin->value() : 30.0, 0, 'f', 6);
+    text += QString("'%1'  '%2'  '%3'   AX  AY  AZ\n")
+                .arg(m_accXEdit ? m_accXEdit->text().trimmed() : "ACCEX.DAT",
+                     m_accYEdit ? m_accYEdit->text().trimmed() : "ACCEY.DAT",
+                     m_accZEdit ? m_accZEdit->text().trimmed() : "ACCEZ.DAT");
     return text;
 }
 
@@ -236,8 +207,8 @@ QJsonObject CaveSupportComputationPage::saveJson()
 {
     saveCurrentCase();
     QJsonObject obj;
-    obj["ncase"] = m_cases.size();
-    obj["current_case"] = m_caseSelector ? m_caseSelector->currentIndex() : 0;
+    obj["ncase"] = 1;
+    obj["current_case"] = 0;
     obj["iexca_max"] = m_iexcaMaxSpin ? m_iexcaMaxSpin->value() : 1;
     QJsonArray excavationDays;
     const int iexcaMax = m_iexcaMaxSpin ? m_iexcaMaxSpin->value() : 1;
@@ -260,22 +231,18 @@ QJsonObject CaveSupportComputationPage::saveJson()
     obj["acc_z"] = m_accZEdit ? m_accZEdit->text().trimmed() : "ACCEZ.DAT";
 
     QJsonArray cases;
-    for (const CaseData& c : m_cases)
-    {
-        QJsonObject one;
-        one["icase"] = c.icase;
-        one["iexca_sta"] = c.iexcaSta;
-        one["iexca_end"] = c.iexcaEnd;
-        one["if_eall"] = c.ifEall;
-        one["if_jall"] = c.ifJall;
-        one["if_e1toa"] = c.ifE1toa;
-        one["if_j1toa"] = c.ifJ1toa;
-        one["ja_method"] = c.jaMethod;
-        one["if_chen"] = c.ifChen;
-        one["iday_case"] = c.idayCase;
-
-        cases.append(one);
-    }
+    QJsonObject one;
+    one["icase"] = m_caseData.icase;
+    one["iexca_sta"] = m_caseData.iexcaSta;
+    one["iexca_end"] = m_caseData.iexcaEnd;
+    one["if_eall"] = m_caseData.ifEall;
+    one["if_jall"] = m_caseData.ifJall;
+    one["if_e1toa"] = m_caseData.ifE1toa;
+    one["if_j1toa"] = m_caseData.ifJ1toa;
+    one["ja_method"] = m_caseData.jaMethod;
+    one["if_chen"] = m_caseData.ifChen;
+    one["iday_case"] = m_caseData.idayCase;
+    cases.append(one);
     obj["cases"] = cases;
     return obj;
 }
@@ -284,8 +251,7 @@ void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
 {
     m_isUpdatingUi = true;
 
-    const int ncase = qMax(1, obj.value("ncase").toInt(1));
-    ensureCaseCount(ncase);
+    m_caseData = CaseData();
     const int iexcaMax = qMax(1, obj.value("iexca_max").toInt(1));
     if (m_iexcaMaxSpin)
         m_iexcaMaxSpin->setValue(iexcaMax);
@@ -321,59 +287,23 @@ void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
         m_accZEdit->setText(obj.value("acc_z").toString("ACCEZ.DAT"));
 
     const QJsonArray cases = obj.value("cases").toArray();
-    for (int i = 0; i < cases.size() && i < m_cases.size(); ++i)
+    if (!cases.isEmpty())
     {
-        const QJsonObject one = cases.at(i).toObject();
-        CaseData c = defaultCase(i);
-        c.icase = one.value("icase").toInt(i + 1);
-        c.iexcaSta = one.value("iexca_sta").toString(c.iexcaSta);
-        c.iexcaEnd = one.value("iexca_end").toString(c.iexcaEnd);
-        c.ifEall = one.value("if_eall").toString(c.ifEall);
-        c.ifJall = one.value("if_jall").toString(c.ifJall);
-        c.ifE1toa = one.value("if_e1toa").toString(c.ifE1toa);
-        c.ifJ1toa = one.value("if_j1toa").toString(c.ifJ1toa);
-        c.jaMethod = one.value("ja_method").toString(c.jaMethod);
-        c.ifChen = one.value("if_chen").toString(c.ifChen);
-        c.idayCase = one.value("iday_case").toString(c.idayCase);
-
-        m_cases[i] = c;
+        const QJsonObject one = cases.at(0).toObject();
+        m_caseData.icase = 1;
+        m_caseData.iexcaSta = one.value("iexca_sta").toString(m_caseData.iexcaSta);
+        m_caseData.iexcaEnd = one.value("iexca_end").toString(m_caseData.iexcaEnd);
+        m_caseData.ifEall = one.value("if_eall").toString(m_caseData.ifEall);
+        m_caseData.ifJall = one.value("if_jall").toString(m_caseData.ifJall);
+        m_caseData.ifE1toa = one.value("if_e1toa").toString(m_caseData.ifE1toa);
+        m_caseData.ifJ1toa = one.value("if_j1toa").toString(m_caseData.ifJ1toa);
+        m_caseData.jaMethod = one.value("ja_method").toString(m_caseData.jaMethod);
+        m_caseData.ifChen = one.value("if_chen").toString(m_caseData.ifChen);
+        m_caseData.idayCase = one.value("iday_case").toString(m_caseData.idayCase);
     }
 
-    refreshCaseSelector();
-    const int current = qBound(0, obj.value("current_case").toInt(0), m_cases.size() - 1);
-    m_caseSelector->setCurrentIndex(current);
-    m_currentCaseIndex = current;
-    m_ncaseSpin->setValue(m_cases.size());
-
     m_isUpdatingUi = false;
-    loadCaseToUi(m_currentCaseIndex);
-}
-
-void CaveSupportComputationPage::onCaseChanged(int index)
-{
-    if (m_isUpdatingUi || index < 0 || index >= m_cases.size())
-        return;
-
-    saveCurrentCase();
-    m_currentCaseIndex = index;
-    loadCaseToUi(index);
-}
-
-void CaveSupportComputationPage::onCaseCountChanged(int count)
-{
-    if (m_isUpdatingUi)
-        return;
-
-    saveCurrentCase();
-    ensureCaseCount(count);
-
-    m_isUpdatingUi = true;
-    refreshCaseSelector();
-    m_caseSelector->setCurrentIndex(qMin(m_currentCaseIndex, m_cases.size() - 1));
-    m_isUpdatingUi = false;
-
-    m_currentCaseIndex = m_caseSelector->currentIndex();
-    loadCaseToUi(m_currentCaseIndex);
+    loadCaseToUi();
 }
 
 void CaveSupportComputationPage::onExcavationLevelCountChanged(int count)
@@ -399,11 +329,8 @@ void CaveSupportComputationPage::onExcavationLevelCountChanged(int count)
 
 void CaveSupportComputationPage::saveCurrentCase()
 {
-    if (m_currentCaseIndex < 0 || m_currentCaseIndex >= m_cases.size())
-        return;
-
-    CaseData& c = m_cases[m_currentCaseIndex];
-    c.icase = m_currentCaseIndex + 1;
+    CaseData& c = m_caseData;
+    c.icase = 1;
     c.iexcaSta = m_iexcaStaEdit->text().trimmed();
     c.iexcaEnd = m_iexcaEndEdit->text().trimmed();
     c.ifEall = m_ifEallCombo->currentData().toString().trimmed();
@@ -418,15 +345,11 @@ void CaveSupportComputationPage::saveCurrentCase()
 
 }
 
-void CaveSupportComputationPage::loadCaseToUi(int index)
+void CaveSupportComputationPage::loadCaseToUi()
 {
-    if (index < 0 || index >= m_cases.size())
-        return;
-
     m_isUpdatingUi = true;
 
-    const CaseData& c = m_cases.at(index);
-    m_icaseEdit->setText(QString::number(c.icase));
+    const CaseData& c = m_caseData;
     m_iexcaStaEdit->setText(c.iexcaSta);
     m_iexcaEndEdit->setText(c.iexcaEnd);
 
@@ -445,39 +368,4 @@ void CaveSupportComputationPage::loadCaseToUi(int index)
     m_idayCaseEdit->setText(c.idayCase);
 
     m_isUpdatingUi = false;
-}
-
-void CaveSupportComputationPage::refreshCaseSelector()
-{
-    m_caseSelector->clear();
-    for (int i = 0; i < m_cases.size(); ++i)
-        m_caseSelector->addItem(QString("工况 %1").arg(i + 1));
-}
-
-void CaveSupportComputationPage::ensureCaseCount(int count)
-{
-    const int target = qMax(1, count);
-    const int oldSize = m_cases.size();
-    if (oldSize < target)
-    {
-        for (int i = oldSize; i < target; ++i)
-            m_cases.push_back(defaultCase(i));
-    }
-    else if (oldSize > target)
-    {
-        m_cases.resize(target);
-    }
-
-    for (int i = 0; i < m_cases.size(); ++i)
-        m_cases[i].icase = i + 1;
-
-    if (m_currentCaseIndex >= m_cases.size())
-        m_currentCaseIndex = m_cases.size() - 1;
-}
-
-CaveSupportComputationPage::CaseData CaveSupportComputationPage::defaultCase(int index) const
-{
-    CaseData c;
-    c.icase = index + 1;
-    return c;
 }

@@ -27,8 +27,6 @@ class CaveSupportComputationPage : public BasePage
     void loadJson(const QJsonObject& obj) override;
 
   private slots:
-    void onCaseChanged(int index);
-    void onCaseCountChanged(int count);
     void onExcavationLevelCountChanged(int count);
 
   private:
@@ -47,17 +45,11 @@ class CaveSupportComputationPage : public BasePage
     };
 
     void saveCurrentCase();
-    void loadCaseToUi(int index);
-    void refreshCaseSelector();
-    void ensureCaseCount(int count);
-    CaseData defaultCase(int index) const;
+    void loadCaseToUi();
 
   private:
-    QSpinBox* m_ncaseSpin = nullptr;
     QSpinBox* m_iexcaMaxSpin = nullptr;
     QTableWidget* m_excavationDaysTable = nullptr;
-    QComboBox* m_caseSelector = nullptr;
-    QLineEdit* m_icaseEdit = nullptr;
     QLineEdit* m_iexcaStaEdit = nullptr;
     QLineEdit* m_iexcaEndEdit = nullptr;
     QComboBox* m_ifEallCombo = nullptr;
@@ -76,7 +68,6 @@ class CaveSupportComputationPage : public BasePage
     QLineEdit* m_accYEdit = nullptr;
     QLineEdit* m_accZEdit = nullptr;
 
-    QVector<CaseData> m_cases;
-    int m_currentCaseIndex = 0;
+    CaseData m_caseData;
     bool m_isUpdatingUi = false;
 };
