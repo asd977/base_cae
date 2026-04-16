@@ -9,6 +9,7 @@ class QLineEdit;
 class QSpinBox;
 class QTableWidget;
 class QWidget;
+class QDoubleSpinBox;
 
 class CaveSupportComputationPage : public BasePage
 {
@@ -26,16 +27,12 @@ class CaveSupportComputationPage : public BasePage
     void loadJson(const QJsonObject& obj) override;
 
   private slots:
-    void onCaseChanged(int index);
-    void onCaseCountChanged(int count);
-    void onAddMaterialRow();
-    void onDeleteMaterialRow();
+    void onExcavationLevelCountChanged(int count);
 
   private:
     struct CaseData
     {
         int icase = 1;
-        QVector<QPair<QString, QString>> materialChanges;
         QString iexcaSta = "-1";
         QString iexcaEnd = "-3";
         QString ifEall = "1";
@@ -44,20 +41,15 @@ class CaveSupportComputationPage : public BasePage
         QString ifJ1toa = "1";
         QString jaMethod = "1";
         QString ifChen = "0";
+        QString idayCase = "0";
     };
 
     void saveCurrentCase();
-    void loadCaseToUi(int index);
-    void refreshCaseSelector();
-    void ensureCaseCount(int count);
-    CaseData defaultCase(int index) const;
-    QVector<QPair<QString, QString>> transitionsFromLibrary() const;
+    void loadCaseToUi();
 
   private:
-    QSpinBox* m_ncaseSpin = nullptr;
-    QComboBox* m_caseSelector = nullptr;
-    QLineEdit* m_icaseEdit = nullptr;
-    QTableWidget* m_materialTable = nullptr;
+    QSpinBox* m_iexcaMaxSpin = nullptr;
+    QTableWidget* m_excavationDaysTable = nullptr;
     QLineEdit* m_iexcaStaEdit = nullptr;
     QLineEdit* m_iexcaEndEdit = nullptr;
     QComboBox* m_ifEallCombo = nullptr;
@@ -66,8 +58,16 @@ class CaveSupportComputationPage : public BasePage
     QComboBox* m_ifJ1toaCombo = nullptr;
     QComboBox* m_jaMethodCombo = nullptr;
     QComboBox* m_ifChenCombo = nullptr;
+    QLineEdit* m_idayCaseEdit = nullptr;
+    QComboBox* m_ifModeCombo = nullptr;
+    QComboBox* m_ifWaveCombo = nullptr;
+    QDoubleSpinBox* m_dtSpin = nullptr;
+    QDoubleSpinBox* m_tstaSpin = nullptr;
+    QDoubleSpinBox* m_tendSpin = nullptr;
+    QLineEdit* m_accXEdit = nullptr;
+    QLineEdit* m_accYEdit = nullptr;
+    QLineEdit* m_accZEdit = nullptr;
 
-    QVector<CaseData> m_cases;
-    int m_currentCaseIndex = 0;
+    CaseData m_caseData;
     bool m_isUpdatingUi = false;
 };

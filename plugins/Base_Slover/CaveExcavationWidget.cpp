@@ -6,6 +6,7 @@
 #include <QDir>
 #include <QFile>
 #include <QJsonObject>
+#include <QSet>
 #include <QTextStream>
 
 #include "ui_CaveExcavationWidget.h"
@@ -15,6 +16,10 @@ CaveExcavationWidget::CaveExcavationWidget(QWidget* parent)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
+    setAttribute(Qt::WA_StyledBackground, true);
+    setStyleSheet(
+        "QWidget#CaveExcavationWidget, QWidget#scrollAreaWidgetContents { background: white; }");
+    ui->scrollArea->setStyleSheet("QScrollArea { background: white; border: 0; }");
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
@@ -54,9 +59,15 @@ bool CaveExcavationWidget::exportICaveDatFile(const QString& supportCaseSection)
         ui->line21Edit, ui->line22Edit, ui->line23Edit, ui->line24Edit, ui->line25Edit,
     };
 
+    const QSet<int> quotedFields = {1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25};
     for (int i = 0; i < edits.size(); ++i)
     {
-        os << "'" << edits.at(i)->text().trimmed() << "'      " << (i + 1) << "\n";
+        const int fieldNo = i + 1;
+        const QString value = edits.at(i)->text().trimmed();
+        if (quotedFields.contains(fieldNo))
+            os << "'" << value << "'      " << fieldNo << "\n";
+        else
+            os << " " << value << "      " << fieldNo << "\n";
     }
 
     if (!supportCaseSection.trimmed().isEmpty())
