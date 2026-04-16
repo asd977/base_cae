@@ -30,6 +30,7 @@ class CaveSupportComputationPage : public BasePage
     void onCaseCountChanged(int count);
     void onAddMaterialRow();
     void onDeleteMaterialRow();
+    void onExcavationLevelCountChanged(int count);
 
   private:
     struct CaseData
@@ -56,6 +57,8 @@ class CaveSupportComputationPage : public BasePage
 
   private:
     QSpinBox* m_ncaseSpin = nullptr;
+    QSpinBox* m_iexcaMaxSpin = nullptr;
+    QTableWidget* m_excavationDaysTable = nullptr;
     QComboBox* m_caseSelector = nullptr;
     QLineEdit* m_icaseEdit = nullptr;
     QTableWidget* m_materialTable = nullptr;

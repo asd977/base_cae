@@ -48,6 +48,24 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     baseLayout->addStretch();
     root->addWidget(baseGroup);
 
+    auto* excavationTimeGroup = new QGroupBox("4.5.2 洞室开挖时间定义", this);
+    auto* excavationTimeLayout = new QVBoxLayout(excavationTimeGroup);
+    auto* rowIexcaMax = new QHBoxLayout();
+    rowIexcaMax->addWidget(new QLabel("IEXCA_MAX（最大开挖级）", this));
+    m_iexcaMaxSpin = new QSpinBox(this);
+    m_iexcaMaxSpin->setRange(1, 999);
+    m_iexcaMaxSpin->setValue(1);
+    rowIexcaMax->addWidget(m_iexcaMaxSpin);
+    rowIexcaMax->addStretch();
+    excavationTimeLayout->addLayout(rowIexcaMax);
+
+    m_excavationDaysTable = new QTableWidget(this);
+    m_excavationDaysTable->setColumnCount(2);
+    m_excavationDaysTable->setHorizontalHeaderLabels({"开挖级", "用时（天）"});
+    m_excavationDaysTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    excavationTimeLayout->addWidget(m_excavationDaysTable);
+    root->addWidget(excavationTimeGroup);
+
     auto* matGroup = new QGroupBox("NCHANGE 材料属性变换", this);
     auto* matLayout = new QVBoxLayout(matGroup);
     matLayout->addWidget(new QLabel("需变换材料属性号的材料总数由下表行数自动确定（Mold -> Mnew）", this));
@@ -123,6 +141,8 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
             &CaveSupportComputationPage::onCaseCountChanged);
     connect(btnAdd, &QPushButton::clicked, this, &CaveSupportComputationPage::onAddMaterialRow);
     connect(btnDel, &QPushButton::clicked, this, &CaveSupportComputationPage::onDeleteMaterialRow);
+    connect(m_iexcaMaxSpin, qOverload<int>(&QSpinBox::valueChanged), this,
+            &CaveSupportComputationPage::onExcavationLevelCountChanged);
     connect(btnEditLibrary, &QPushButton::clicked, this,
             []()
             {
@@ -133,6 +153,7 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
             });
 
     ensureCaseCount(1);
+    onExcavationLevelCountChanged(m_iexcaMaxSpin->value());
     refreshCaseSelector();
     loadCaseToUi(0);
 }
@@ -146,6 +167,17 @@ QString CaveSupportComputationPage::sectionText()
     const auto libTransitions = transitionsFromLibrary();
 
     QString text;
+    const int iexcaMax = m_iexcaMaxSpin ? m_iexcaMaxSpin->value() : 1;
+    text += QString("%1     IEXCA_MAX\n").arg(iexcaMax, 4);
+    for (int i = 0; i < iexcaMax; ++i)
+    {
+        const QString dayValue =
+            m_excavationDaysTable && m_excavationDaysTable->item(i, 1)
+                ? m_excavationDaysTable->item(i, 1)->text().trimmed()
+                : "0";
+        text += QString("%1    %2    EXCA DATE  II \n").arg(dayValue.isEmpty() ? "0" : dayValue, 8).arg(i + 1, 8);
+    }
+
     text += QString("%1    NCASE\n\n").arg(m_cases.size());
 
     for (int i = 0; i < m_cases.size(); ++i)
@@ -175,6 +207,18 @@ QJsonObject CaveSupportComputationPage::saveJson()
     QJsonObject obj;
     obj["ncase"] = m_cases.size();
     obj["current_case"] = m_caseSelector ? m_caseSelector->currentIndex() : 0;
+    obj["iexca_max"] = m_iexcaMaxSpin ? m_iexcaMaxSpin->value() : 1;
+    QJsonArray excavationDays;
+    const int iexcaMax = m_iexcaMaxSpin ? m_iexcaMaxSpin->value() : 1;
+    for (int i = 0; i < iexcaMax; ++i)
+    {
+        const QString dayValue =
+            m_excavationDaysTable && m_excavationDaysTable->item(i, 1)
+                ? m_excavationDaysTable->item(i, 1)->text().trimmed()
+                : "0";
+        excavationDays.append(dayValue.isEmpty() ? "0" : dayValue);
+    }
+    obj["excavation_days"] = excavationDays;
 
     QJsonArray cases;
     for (const CaseData& c : m_cases)
@@ -213,6 +257,17 @@ void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
 
     const int ncase = qMax(1, obj.value("ncase").toInt(1));
     ensureCaseCount(ncase);
+    const int iexcaMax = qMax(1, obj.value("iexca_max").toInt(1));
+    if (m_iexcaMaxSpin)
+        m_iexcaMaxSpin->setValue(iexcaMax);
+    onExcavationLevelCountChanged(iexcaMax);
+    const QJsonArray excavationDays = obj.value("excavation_days").toArray();
+    for (int i = 0; i < excavationDays.size() && i < iexcaMax; ++i)
+    {
+        if (!m_excavationDaysTable->item(i, 1))
+            m_excavationDaysTable->setItem(i, 1, new QTableWidgetItem("0"));
+        m_excavationDaysTable->item(i, 1)->setText(excavationDays.at(i).toString("0"));
+    }
 
     const QJsonArray cases = obj.value("cases").toArray();
     for (int i = 0; i < cases.size() && i < m_cases.size(); ++i)
@@ -295,6 +350,27 @@ void CaveSupportComputationPage::onDeleteMaterialRow()
         m_materialTable->removeRow(rows.at(i).row());
     if (m_materialTable->rowCount() == 0)
         onAddMaterialRow();
+}
+
+void CaveSupportComputationPage::onExcavationLevelCountChanged(int count)
+{
+    if (!m_excavationDaysTable)
+        return;
+
+    const int target = qMax(1, count);
+    const int oldRows = m_excavationDaysTable->rowCount();
+    m_excavationDaysTable->setRowCount(target);
+    for (int r = 0; r < target; ++r)
+    {
+        if (!m_excavationDaysTable->item(r, 0))
+            m_excavationDaysTable->setItem(r, 0, new QTableWidgetItem(QString::number(r + 1)));
+        else
+            m_excavationDaysTable->item(r, 0)->setText(QString::number(r + 1));
+        m_excavationDaysTable->item(r, 0)->setFlags(m_excavationDaysTable->item(r, 0)->flags() & ~Qt::ItemIsEditable);
+
+        if (!m_excavationDaysTable->item(r, 1))
+            m_excavationDaysTable->setItem(r, 1, new QTableWidgetItem(r < oldRows ? "0" : "0"));
+    }
 }
 
 void CaveSupportComputationPage::saveCurrentCase()
