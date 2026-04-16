@@ -50,13 +50,6 @@ class NephogramSettingWidget : public BasePage
     void on_rightStepComboBox_currentIndexChanged(int index);
     void on_splitSlider_valueChanged(int value);
 
-    void on_pushButton_4_clicked();
-
-  private:
-    void buildDimPhysIndex();
-    void resetCellColors();
-    void highlightDimPhys(int dimFilter, int physIdFilter);
-
   private:
     // 单图辅助
     void ensureActorAttached();
@@ -82,8 +75,6 @@ class NephogramSettingWidget : public BasePage
     void updateLookupTableRange(vtkLookupTable* lut, double minV, double maxV) const;
     void configureMapper(vtkDataSetMapper* mapper, const QString& scalarName, bool usePointData,
                          double minV, double maxV, vtkLookupTable* lut) const;
-
-    void test();
 
   private:
     Ui::NephogramSettingWidget* ui{nullptr};
