@@ -9,6 +9,7 @@ class QLineEdit;
 class QSpinBox;
 class QTableWidget;
 class QWidget;
+class QDoubleSpinBox;
 
 class CaveSupportComputationPage : public BasePage
 {
@@ -71,6 +72,14 @@ class CaveSupportComputationPage : public BasePage
     QComboBox* m_jaMethodCombo = nullptr;
     QComboBox* m_ifChenCombo = nullptr;
     QLineEdit* m_idayCaseEdit = nullptr;
+    QComboBox* m_ifModeCombo = nullptr;
+    QComboBox* m_ifWaveCombo = nullptr;
+    QDoubleSpinBox* m_dtSpin = nullptr;
+    QDoubleSpinBox* m_tstaSpin = nullptr;
+    QDoubleSpinBox* m_tendSpin = nullptr;
+    QLineEdit* m_accXEdit = nullptr;
+    QLineEdit* m_accYEdit = nullptr;
+    QLineEdit* m_accZEdit = nullptr;
 
     QVector<CaseData> m_cases;
     int m_currentCaseIndex = 0;

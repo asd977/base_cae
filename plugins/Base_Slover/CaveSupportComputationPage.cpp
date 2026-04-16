@@ -1,9 +1,13 @@
 #include "CaveSupportComputationPage.h"
 
 #include <ServiceRegistry.h>
+#include <PublicConstants.h>
+#include <PublicVariables.h>
 #include <services/MaterialManagerService.h>
 
 #include <QComboBox>
+#include <QDir>
+#include <QDoubleSpinBox>
 #include <QHeaderView>
 #include <QFormLayout>
 #include <QGroupBox>
@@ -133,6 +137,57 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     form->addRow("IDAY_CASE（长期稳定性对应日期）", m_idayCaseEdit);
 
     root->addWidget(paramGroup);
+
+    auto* dynaGroup = new QGroupBox("4.5.6 洞室地震动力计算相关定义", this);
+    auto* dynaForm = new QFormLayout(dynaGroup);
+    m_ifModeCombo = new QComboBox(this);
+    m_ifModeCombo->addItem("1 - 进行模态分析", "1");
+    m_ifModeCombo->addItem("0 - 不进行模态分析", "0");
+    m_ifWaveCombo = new QComboBox(this);
+    m_ifWaveCombo->addItem("1 - 进行时域分析", "1");
+    m_ifWaveCombo->addItem("0 - 不进行时域分析", "0");
+    dynaForm->addRow("IFMODE", m_ifModeCombo);
+    dynaForm->addRow("IFWAVE", m_ifWaveCombo);
+
+    m_dtSpin = new QDoubleSpinBox(this);
+    m_dtSpin->setDecimals(6);
+    m_dtSpin->setRange(0.0, 999999.0);
+    m_dtSpin->setValue(0.005);
+    m_tstaSpin = new QDoubleSpinBox(this);
+    m_tstaSpin->setDecimals(6);
+    m_tstaSpin->setRange(0.0, 999999.0);
+    m_tstaSpin->setValue(0.0);
+    m_tendSpin = new QDoubleSpinBox(this);
+    m_tendSpin->setDecimals(6);
+    m_tendSpin->setRange(0.0, 999999.0);
+    m_tendSpin->setValue(30.0);
+
+    auto* dtRow = new QWidget(this);
+    auto* dtLayout = new QHBoxLayout(dtRow);
+    dtLayout->setContentsMargins(0, 0, 0, 0);
+    dtLayout->addWidget(new QLabel("DT", this));
+    dtLayout->addWidget(m_dtSpin);
+    dtLayout->addWidget(new QLabel("TSTA", this));
+    dtLayout->addWidget(m_tstaSpin);
+    dtLayout->addWidget(new QLabel("TEND", this));
+    dtLayout->addWidget(m_tendSpin);
+    dynaForm->addRow("时间参数", dtRow);
+
+    m_accXEdit = new QLineEdit("ACCEX.DAT", this);
+    m_accYEdit = new QLineEdit("ACCEY.DAT", this);
+    m_accZEdit = new QLineEdit("ACCEZ.DAT", this);
+    auto* accRow = new QWidget(this);
+    auto* accLayout = new QHBoxLayout(accRow);
+    accLayout->setContentsMargins(0, 0, 0, 0);
+    accLayout->addWidget(new QLabel("AX", this));
+    accLayout->addWidget(m_accXEdit);
+    accLayout->addWidget(new QLabel("AY", this));
+    accLayout->addWidget(m_accYEdit);
+    accLayout->addWidget(new QLabel("AZ", this));
+    accLayout->addWidget(m_accZEdit);
+    dynaForm->addRow("地震波文件", accRow);
+    root->addWidget(dynaGroup);
+
     root->addStretch();
 
     connect(m_caseSelector, qOverload<int>(&QComboBox::currentIndexChanged), this,
@@ -193,6 +248,22 @@ QString CaveSupportComputationPage::sectionText()
         text += QString("%1    %2    %3    IF_E1TOA    IF_J1TOA    JA_METHOD\n")
                     .arg(c.ifE1toa, c.ifJ1toa, c.jaMethod);
         text += QString("%1    %2    IF_CHEN    IDAY_CASE\n").arg(c.ifChen, c.idayCase);
+        const QString projectDir =
+            PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+        QString caseDir = QDir(QDir(projectDir).absolutePath()).filePath("CASE01");
+        caseDir = QDir::toNativeSeparators(caseDir) + QDir::separator();
+        text += QString("'%1'     DIRDYNA\n").arg(caseDir);
+        text += QString("%1     %2   IFMODE   IFWAVE\n")
+                    .arg(m_ifModeCombo ? m_ifModeCombo->currentData().toString() : "1",
+                         m_ifWaveCombo ? m_ifWaveCombo->currentData().toString() : "1");
+        text += QString("%1    %2   %3    DT TSTA TEND\n")
+                    .arg(m_dtSpin ? m_dtSpin->value() : 0.005, 0, 'f', 6)
+                    .arg(m_tstaSpin ? m_tstaSpin->value() : 0.0, 0, 'f', 6)
+                    .arg(m_tendSpin ? m_tendSpin->value() : 30.0, 0, 'f', 6);
+        text += QString("'%1'  '%2'  '%3'   AX  AY  AZ\n")
+                    .arg(m_accXEdit ? m_accXEdit->text().trimmed() : "ACCEX.DAT",
+                         m_accYEdit ? m_accYEdit->text().trimmed() : "ACCEY.DAT",
+                         m_accZEdit ? m_accZEdit->text().trimmed() : "ACCEZ.DAT");
         if (i != m_cases.size() - 1)
             text += "\n";
     }
@@ -219,6 +290,14 @@ QJsonObject CaveSupportComputationPage::saveJson()
         excavationDays.append(dayValue.isEmpty() ? "0" : dayValue);
     }
     obj["excavation_days"] = excavationDays;
+    obj["ifmode"] = m_ifModeCombo ? m_ifModeCombo->currentData().toString() : "1";
+    obj["ifwave"] = m_ifWaveCombo ? m_ifWaveCombo->currentData().toString() : "1";
+    obj["dt"] = m_dtSpin ? m_dtSpin->value() : 0.005;
+    obj["tsta"] = m_tstaSpin ? m_tstaSpin->value() : 0.0;
+    obj["tend"] = m_tendSpin ? m_tendSpin->value() : 30.0;
+    obj["acc_x"] = m_accXEdit ? m_accXEdit->text().trimmed() : "ACCEX.DAT";
+    obj["acc_y"] = m_accYEdit ? m_accYEdit->text().trimmed() : "ACCEY.DAT";
+    obj["acc_z"] = m_accZEdit ? m_accZEdit->text().trimmed() : "ACCEZ.DAT";
 
     QJsonArray cases;
     for (const CaseData& c : m_cases)
@@ -268,6 +347,28 @@ void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
             m_excavationDaysTable->setItem(i, 1, new QTableWidgetItem("0"));
         m_excavationDaysTable->item(i, 1)->setText(excavationDays.at(i).toString("0"));
     }
+    if (m_ifModeCombo)
+    {
+        const int idx = m_ifModeCombo->findData(obj.value("ifmode").toString("1"));
+        m_ifModeCombo->setCurrentIndex(idx >= 0 ? idx : 0);
+    }
+    if (m_ifWaveCombo)
+    {
+        const int idx = m_ifWaveCombo->findData(obj.value("ifwave").toString("1"));
+        m_ifWaveCombo->setCurrentIndex(idx >= 0 ? idx : 0);
+    }
+    if (m_dtSpin)
+        m_dtSpin->setValue(obj.value("dt").toDouble(0.005));
+    if (m_tstaSpin)
+        m_tstaSpin->setValue(obj.value("tsta").toDouble(0.0));
+    if (m_tendSpin)
+        m_tendSpin->setValue(obj.value("tend").toDouble(30.0));
+    if (m_accXEdit)
+        m_accXEdit->setText(obj.value("acc_x").toString("ACCEX.DAT"));
+    if (m_accYEdit)
+        m_accYEdit->setText(obj.value("acc_y").toString("ACCEY.DAT"));
+    if (m_accZEdit)
+        m_accZEdit->setText(obj.value("acc_z").toString("ACCEZ.DAT"));
 
     const QJsonArray cases = obj.value("cases").toArray();
     for (int i = 0; i < cases.size() && i < m_cases.size(); ++i)
