@@ -23,7 +23,12 @@ MaterialEntryWidget::MaterialEntryWidget(MaterialManager* manager, QWidget* pare
     : BasePage("MaterialEntryWidget"), m_materialManager(manager), m_isUpdating(false),
       m_formLayout(new QFormLayout), m_nameEdit(nullptr)
 {
+    setAttribute(Qt::WA_StyledBackground, true);
+    setStyleSheet(QStringLiteral("background-color: white;"));
+
     auto* container = new QWidget(this);
+    container->setAttribute(Qt::WA_StyledBackground, true);
+    container->setStyleSheet(QStringLiteral("background-color: white;"));
     container->setLayout(m_formLayout);
 
     auto* scrollArea = new QScrollArea(this);

@@ -8,6 +8,9 @@ MaterialModelWidget::MaterialModelWidget(MaterialManager* manager, QWidget* pare
     : BasePage("MaterialModelWidget"), m_materialManager(manager), m_titleLabel(new QLabel(this)),
       m_summaryLabel(new QLabel(this))
 {
+    setAttribute(Qt::WA_StyledBackground, true);
+    setStyleSheet(QStringLiteral("background-color: white;"));
+
     auto* openButton = new QPushButton(QString("新增材料"), this);
     connect(openButton, &QPushButton::clicked, this, &MaterialModelWidget::onOpenLibrary);
 
