@@ -5,10 +5,12 @@
 #include <PublicConstants.h>
 #include <PublicVariables.h>
 #include <ServiceRegistry.h>
+#include <services/MeshModuleControllerService.h>
 #include <services/ProjectManagerService.h>
 
 #include <QDir>
 #include <QFile>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -18,6 +20,12 @@
 #include <QSet>
 #include <QStringList>
 #include <algorithm>
+
+#include <vtkCell.h>
+#include <vtkCellData.h>
+#include <vtkDataArray.h>
+#include <vtkIdList.h>
+#include <vtkUnstructuredGrid.h>
 
 #include "FillStorageCyclePage.h"
 #include "CaveExcavationBodyPage.h"
@@ -1071,6 +1079,111 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     }
     else
     {
+        auto writeReleKetoke = [&]() -> bool
+        {
+            auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+            if (!meshSvc)
+                return false;
+
+            vtkSmartPointer<vtkUnstructuredGrid> grid = meshSvc->getVtkUnstructuredGridSolid();
+            if (!grid || grid->GetNumberOfCells() <= 0)
+                grid = meshSvc->getVtkUnstructuredGrid();
+            if (!grid || grid->GetNumberOfCells() <= 0)
+                return false;
+
+            vtkDataArray* elemIdArr =
+                vtkDataArray::SafeDownCast(grid->GetCellData()->GetArray("elem_id"));
+
+            struct ElemCellPair
+            {
+                int elemId = 0;
+                vtkIdType cellId = -1;
+            };
+
+            QVector<ElemCellPair> elemCells;
+            elemCells.reserve(int(grid->GetNumberOfCells()));
+            for (vtkIdType cellId = 0; cellId < grid->GetNumberOfCells(); ++cellId)
+            {
+                const int elemId =
+                    elemIdArr ? int(elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
+                elemCells.push_back({elemId, cellId});
+            }
+            std::sort(elemCells.begin(), elemCells.end(),
+                      [](const ElemCellPair& a, const ElemCellPair& b)
+                      { return a.elemId < b.elemId; });
+
+            QHash<vtkIdType, QVector<int>> pointToElemIds;
+            pointToElemIds.reserve(int(grid->GetNumberOfPoints() * 1.3));
+            for (const ElemCellPair& ec : elemCells)
+            {
+                vtkCell* cell = grid->GetCell(ec.cellId);
+                vtkIdList* pids = cell ? cell->GetPointIds() : nullptr;
+                if (!pids)
+                    continue;
+                for (vtkIdType i = 0; i < pids->GetNumberOfIds(); ++i)
+                    pointToElemIds[pids->GetId(i)].push_back(ec.elemId);
+            }
+
+            QVector<QVector<int>> neighborsByElem(elemCells.size());
+            int maxRelated = 0;
+            for (int i = 0; i < elemCells.size(); ++i)
+            {
+                const int selfElemId = elemCells[i].elemId;
+                vtkCell* cell = grid->GetCell(elemCells[i].cellId);
+                vtkIdList* pids = cell ? cell->GetPointIds() : nullptr;
+                if (!pids)
+                    continue;
+
+                QSet<int> related;
+                for (vtkIdType j = 0; j < pids->GetNumberOfIds(); ++j)
+                {
+                    const auto list = pointToElemIds.value(pids->GetId(j));
+                    for (int elemId : list)
+                    {
+                        if (elemId != selfElemId)
+                            related.insert(elemId);
+                    }
+                }
+
+                QVector<int> rel = related.values().toVector();
+                std::sort(rel.begin(), rel.end());
+                maxRelated = qMax(maxRelated, rel.size());
+                neighborsByElem[i] = std::move(rel);
+            }
+
+            QFile file(wd.filePath("PREP/RELE_KETOKE.DAT"));
+            if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+                return false;
+
+            QTextStream os(&file);
+            const int nelem = elemCells.size();
+            os << QString("%1%2%3%4   NUMNP   MALIA  NLIA_MAX   IP\n")
+                      .arg(nelem, 12)
+                      .arg(maxRelated, 10)
+                      .arg(maxRelated, 10)
+                      .arg(nelem, 10);
+            os << "NJM   LJM(1)    LJM(2)   LJM(3)  .........LJM(N)\n";
+
+            for (int i = 0; i < elemCells.size(); ++i)
+            {
+                const QVector<int>& rel = neighborsByElem[i];
+                os << QString("%1").arg(rel.size(), 4);
+                for (int j = 0; j < maxRelated; ++j)
+                {
+                    const int v = (j < rel.size()) ? rel[j] : 0;
+                    os << QString("%1").arg(v, 8);
+                }
+                os << QString("%1\n").arg(elemCells[i].elemId, 9);
+            }
+            return true;
+        };
+
+        if (!writeReleKetoke())
+        {
+            ok = false;
+            failedFiles << "PREP/RELE_KETOKE.DAT";
+        }
+
         const QString prepDir =
             QDir::toNativeSeparators(QDir(wd.filePath("PREP")).absolutePath()) + QDir::separator();
         auto writeIike = [&](const QString& fileName, const QVector<int>& kes, int iex1,
