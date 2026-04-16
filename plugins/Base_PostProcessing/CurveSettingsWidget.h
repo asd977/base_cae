@@ -2,6 +2,8 @@
 
 #include <BasePage.h>
 
+class QCheckBox;
+class QComboBox;
 class QLabel;
 class QPushButton;
 class QPlainTextEdit;
@@ -23,16 +25,31 @@ class CurveSettingsWidget : public BasePage
   private slots:
     void reloadAndShowCurve();
     void switchBackTo3d();
+    void onResultDirChanged();
 
   private:
-    QString resolveDefaultTracePath() const;
+    void initResultDirectoryOptions();
+    void refreshFilesForCurrentDir();
+    QString selectedResultDirectoryPath() const;
+    QString selectedTraceFilePath() const;
     bool printTraceFile(const QString& filePath, QString* errMsg = nullptr);
+    QStringList selectedYFields() const;
 
   private:
     VisualWidgetService* m_visualService = nullptr;
+
+    QComboBox* m_resultDirCombo = nullptr;
+    QComboBox* m_fileCombo = nullptr;
+    QComboBox* m_xFieldCombo = nullptr;
+    QCheckBox* m_fosCheck = nullptr;
+    QCheckBox* m_ptotCheck = nullptr;
+    QCheckBox* m_maxUrCheck = nullptr;
+    QCheckBox* m_loopCheck = nullptr;
+
     QPushButton* m_reloadBtn = nullptr;
     QPushButton* m_backTo3dBtn = nullptr;
     QLabel* m_statusLabel = nullptr;
     QPlainTextEdit* m_logEdit = nullptr;
-    QString m_tracePath;
+
+    bool m_initialized = false;
 };

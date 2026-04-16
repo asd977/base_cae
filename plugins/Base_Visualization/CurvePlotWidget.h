@@ -2,19 +2,20 @@
 
 #include <QWidget>
 
+#include <QSet>
 #include <QVector>
 
 class QLabel;
 class QCustomPlot;
 
-class TraceCurveWidget : public QWidget
+class CurvePlotWidget : public QWidget
 {
     Q_OBJECT
   public:
-    explicit TraceCurveWidget(QWidget* parent = nullptr);
+    explicit CurvePlotWidget(QWidget* parent = nullptr);
 
-    bool loadTraceFile(const QString& filePath, QString* errMsg = nullptr);
-    QString currentTraceFile() const;
+    bool loadDataFromTraceFile(const QString& filePath, const QString& xField,
+                               const QSet<QString>& yFields, QString* errMsg = nullptr);
 
   private:
     struct TracePoint
@@ -26,7 +27,7 @@ class TraceCurveWidget : public QWidget
         double loop = 0.0;
     };
 
-    void renderPlot();
+    void renderPlot(const QString& xField, const QSet<QString>& yFields);
 
   private:
     QCustomPlot* m_plot = nullptr;

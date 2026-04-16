@@ -8,6 +8,7 @@
 #include <QLabel>
 #include <QMenu>
 #include <QResizeEvent>
+#include <QSet>
 #include <QSlider>
 #include <QStackedWidget>
 #include <QSurfaceFormat>
@@ -15,7 +16,7 @@
 #include <QVBoxLayout>
 #include <QWidgetAction>
 
-#include "TraceCurveWidget.h"
+#include "CurvePlotWidget.h"
 #include <cmath>
 
 // VTK
@@ -54,8 +55,8 @@ VisualizationWidget::VisualizationWidget(QWidget* parent) : QWidget(parent)
     m_vtkWidget = new QVTKOpenGLNativeWidget(this);
     m_stack->addWidget(m_vtkWidget);
 
-    m_traceCurveWidget = new TraceCurveWidget(this);
-    m_stack->addWidget(m_traceCurveWidget);
+    m_curvePlotWidget = new CurvePlotWidget(this);
+    m_stack->addWidget(m_curvePlotWidget);
     m_stack->setCurrentWidget(m_vtkWidget);
 
     initVtk();
@@ -680,14 +681,16 @@ bool VisualizationWidget::updateActorPolyData(const QString& id, vtkPolyData* po
     return true;
 }
 
-bool VisualizationWidget::showTraceCurveFromFile(const QString& traceFilePath, QString* errMsg)
+bool VisualizationWidget::showCurveFromTraceFile(const QString& traceFilePath, const QString& xField,
+                                              const QStringList& yFields, QString* errMsg)
 {
-    if (!m_traceCurveWidget || traceFilePath.isEmpty())
+    if (!m_curvePlotWidget || traceFilePath.isEmpty())
         return false;
 
-    const bool ok = m_traceCurveWidget->loadTraceFile(traceFilePath, errMsg);
+    const QSet<QString> yFieldSet(yFields.begin(), yFields.end());
+    const bool ok = m_curvePlotWidget->loadDataFromTraceFile(traceFilePath, xField, yFieldSet, errMsg);
     if (ok && m_stack)
-        m_stack->setCurrentWidget(m_traceCurveWidget);
+        m_stack->setCurrentWidget(m_curvePlotWidget);
     return ok;
 }
 

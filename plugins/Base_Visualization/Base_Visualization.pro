@@ -1,16 +1,16 @@
 ﻿include($$PWD/plugin-dev.pri)
 
-QT += widgets core
+QT += widgets core printsupport
 
 INCLUDEPATH += $$PWD/../../interfaces
 
 HEADERS += \
-    TraceCurveWidget.h \
+    CurvePlotWidget.h \
     VisualizationWidget.h \
     qcustomplot.h
 
 SOURCES += \
-    TraceCurveWidget.cpp \
+    CurvePlotWidget.cpp \
     VisualizationWidget.cpp \
     qcustomplot.cpp
 

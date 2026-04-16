@@ -68,6 +68,8 @@ class VisualWidgetService
                                      bool renderNow = true) = 0;
 
     // ---- view switch / curve ----
-    virtual bool showTraceCurveFromFile(const QString& traceFilePath, QString* errMsg = nullptr) = 0;
+    virtual bool showCurveFromTraceFile(const QString& traceFilePath, const QString& xField,
+                                        const QStringList& yFields,
+                                        QString* errMsg = nullptr) = 0;
     virtual void showVisualizationView() = 0;
 };
