@@ -20,7 +20,7 @@
 - 体分组（Volume Group）
 - 边界分组（Boundary Group：点/线/面）
 - 材料分组（Material Region）
-- 分层分组（Layer Region）
+- 分层编号（Layer No.，与体分组/域分组一一对应）
 
 UI 功能（批量边界、材料设置、网格编辑）全部只依赖这套语义模型，不直接依赖源文件类型。
 
@@ -41,7 +41,7 @@ UI 功能（批量边界、材料设置、网格编辑）全部只依赖这套�
 ### 4.1 CellData（每个单元）
 
 - `MATYPE`：材料号（int，默认 1）
-- `LAYER`：层号（int，默认 1）
+- `LAYER`：层号（int，默认 1；填筑层场景下该编号即体分组/域分组编号）
 - `KETYPE`：单元类型编码（int）
 - `RegionId`：体域编号（int，导入器生成）
 - `RegionName`：体域名（string，优先源分组名）
@@ -67,7 +67,8 @@ UI 功能（批量边界、材料设置、网格编辑）全部只依赖这套�
 ## 5.1 iin
 
 - 直接读取 `MATYPE/LAYER/KETYPE`。
-- 将现有网格类型分组、材料类型分组、填筑层分组映射到 `RegionName/MatGroup/Layer`。
+- 将现有网格类型分组、材料类型分组映射到 `RegionName/MatGroup`；
+- 填筑层分层编号直接作为体分组（域分组）编号写入 `RegionId`，并同步到 `LAYER`（保持两者一致）。
 
 ## 5.2 msh
 
