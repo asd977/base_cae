@@ -93,7 +93,6 @@
 #include "OccBooleanCommonWidget.h"
 #include "OccBooleanCutWidget.h"
 #include "OccBooleanFuseWidget.h"
-#include "OccBooleanUnionWidget.h"
 #include "vtkActor.h"
 #include "vtkCamera.h"
 #include "vtkRenderer.h"
@@ -368,7 +367,7 @@ bool PreProcessing::saveProject()
         item["module"] = node->data(0, ProjectNode::RoleModule).toString();
         item["kind"] = node->data(0, ProjectNode::RoleKind).toString();
 
-        bool isVisible = true;
+        bool isVisible = false;
         if (auto* mgr = GeomManager::GeomManagerInstance::getInstance())
         {
             if (GeomShapeObject* object = mgr->getGeomShapeObject(nodeUuid))
@@ -435,7 +434,17 @@ bool PreProcessing::loadChildProject(ProjectNode* rootNode, const QString& name)
         if (page)
         {
             page->loadJson(state);
-            if (!QMetaObject::invokeMethod(page, "onOkClicked", Qt::DirectConnection))
+            const bool isBooleanPage =
+                (type == PublicConstants::kPagePostProcessOccBoolean || type == "occboolen");
+            if (isBooleanPage)
+            {
+                const QString resultBrep = state.value("resultBrep").toString();
+                if (!resultBrep.isEmpty())
+                {
+                    QMetaObject::invokeMethod(page, "restoreSavedResult", Qt::DirectConnection);
+                }
+            }
+            else if (!QMetaObject::invokeMethod(page, "onOkClicked", Qt::DirectConnection))
             {
                 QMetaObject::invokeMethod(page, "onImportButtonClicked", Qt::DirectConnection);
             }
@@ -511,7 +520,8 @@ ProjectNode* PreProcessing::createGeometryNodeByType(const QString& type, const 
     {
         if (nodeKind == "BooleanUnion")
         {
-            page = new OccBooleanUnionWidget();
+            page = new OccBooleanFuseWidget();
+            nodeKind = "BooleanFuse";
         }
         else if (nodeKind == "BooleanCut")
         {
@@ -795,7 +805,7 @@ void PreProcessing::initRibbonActionConn()
     reg(PublicConstants::kActionGeomUnion,
         [this]
         {
-            newOccBooleanUnionWidget();
+            newOccBooleanFuseWidget(QObject::tr("联合体"));
         }); // union keep domains
     reg(PublicConstants::kActionGeomCut,
         [this]
@@ -1124,24 +1134,6 @@ void PreProcessing::newOccBooleanCutWidget(QString title)
     node->setData(0, ProjectNode::RoleUuid, uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
     node->setData(0, ProjectNode::RoleKind, "BooleanCut");
-    node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
-}
-
-void PreProcessing::newOccBooleanUnionWidget(QString title)
-{
-    if (!m_geomNode)
-        return;
-    auto* w = new OccBooleanUnionWidget();
-    QString uuid = w->getUuid();
-    QString displayName = makeUniqueName(title, "BooleanUnion");
-    auto* node = new ProjectNode(displayName, uuid, (BasePage*)w);
-    m_geomNode->addChild(node);
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-        pm->setCurrentItem(node);
-    w->setDisplayName(displayName);
-    node->setData(0, ProjectNode::RoleUuid, uuid);
-    node->setData(0, ProjectNode::RoleModule, "Geometry");
-    node->setData(0, ProjectNode::RoleKind, "BooleanUnion");
     node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 

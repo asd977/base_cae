@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>980</width>
-    <height>760</height>
+    <width>491</width>
+    <height>622</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayoutRoot">
@@ -66,13 +66,6 @@
       <string>开挖与加固参数（工况1）</string>
      </property>
      <layout class="QFormLayout" name="formLayoutParams">
-      <item row="0" column="0">
-       <widget class="QLabel" name="labelExcRange">
-        <property name="text">
-         <string>开挖级范围</string>
-        </property>
-       </widget>
-      </item>
       <item row="0" column="1">
        <widget class="QWidget" name="widgetExcRange" native="true">
         <layout class="QHBoxLayout" name="horizontalLayoutExcRange">
@@ -89,19 +82,12 @@
           <number>0</number>
          </property>
          <item>
-          <widget class="QLabel" name="labelIexcaSta">
-           <property name="text">
-            <string>起始开挖级（IEXCA_STA，负值）</string>
-           </property>
-          </widget>
-         </item>
-         <item>
           <widget class="QLineEdit" name="editIexcaSta"/>
          </item>
          <item>
           <widget class="QLabel" name="labelIexcaEnd">
            <property name="text">
-            <string>终了开挖级（IEXCA_END，负值）</string>
+            <string>终止开挖级（负值）</string>
            </property>
           </widget>
          </item>
@@ -154,7 +140,7 @@
       <item row="5" column="0">
        <widget class="QLabel" name="labelJaMethod">
         <property name="text">
-         <string>加固方式（JA_METHOD）</string>
+         <string>加固方式</string>
         </property>
        </widget>
       </item>
@@ -164,7 +150,7 @@
       <item row="6" column="0">
        <widget class="QLabel" name="labelIfChen">
         <property name="text">
-         <string>衬砌内力计算（IF_CHEN）</string>
+         <string>衬砌内力计算</string>
         </property>
        </widget>
       </item>
@@ -174,7 +160,7 @@
       <item row="7" column="0">
        <widget class="QLabel" name="labelIdayCase">
         <property name="text">
-         <string>长期稳定日期（IDAY_CASE）</string>
+         <string>长期稳定日期</string>
         </property>
        </widget>
       </item>
@@ -182,6 +168,13 @@
        <widget class="QLineEdit" name="editIdayCase">
         <property name="text">
          <string>0</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="labelIexcaSta">
+        <property name="text">
+         <string>起始开挖级（负值）</string>
         </property>
        </widget>
       </item>
@@ -197,7 +190,7 @@
       <item row="0" column="0">
        <widget class="QLabel" name="labelIfMode">
         <property name="text">
-         <string>模态分析开关（IFMODE）</string>
+         <string>模态分析开关</string>
         </property>
        </widget>
       </item>
@@ -207,19 +200,12 @@
       <item row="1" column="0">
        <widget class="QLabel" name="labelIfWave">
         <property name="text">
-         <string>时程分析开关（IFWAVE）</string>
+         <string>时程分析开关</string>
         </property>
        </widget>
       </item>
       <item row="1" column="1">
        <widget class="QComboBox" name="comboIfWave"/>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="labelTimeParams">
-        <property name="text">
-         <string>时间参数</string>
-        </property>
-       </widget>
       </item>
       <item row="2" column="1">
        <widget class="QWidget" name="widgetTimeParams" native="true">
@@ -237,13 +223,6 @@
           <number>0</number>
          </property>
          <item>
-          <widget class="QLabel" name="labelDt">
-           <property name="text">
-            <string>DT</string>
-           </property>
-          </widget>
-         </item>
-         <item>
           <widget class="QDoubleSpinBox" name="spinDt">
            <property name="decimals">
             <number>6</number>
@@ -256,54 +235,17 @@
            </property>
           </widget>
          </item>
-         <item>
-          <widget class="QLabel" name="labelTsta">
-           <property name="text">
-            <string>TSTA</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QDoubleSpinBox" name="spinTsta">
-           <property name="decimals">
-            <number>6</number>
-           </property>
-           <property name="maximum">
-            <double>999999.000000000000000</double>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLabel" name="labelTend">
-           <property name="text">
-            <string>TEND</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QDoubleSpinBox" name="spinTend">
-           <property name="decimals">
-            <number>6</number>
-           </property>
-           <property name="maximum">
-            <double>999999.000000000000000</double>
-           </property>
-           <property name="value">
-            <double>30.000000000000000</double>
-           </property>
-          </widget>
-         </item>
         </layout>
        </widget>
       </item>
-      <item row="3" column="0">
+      <item row="5" column="0">
        <widget class="QLabel" name="labelWaveFiles">
         <property name="text">
          <string>地震波文件</string>
         </property>
        </widget>
       </item>
-      <item row="3" column="1">
+      <item row="5" column="1">
        <widget class="QWidget" name="widgetWaveFiles" native="true">
         <layout class="QHBoxLayout" name="horizontalLayoutWaveFiles">
          <property name="leftMargin">
@@ -361,6 +303,50 @@
           </widget>
          </item>
         </layout>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="labelDt">
+        <property name="text">
+         <string>时间步</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="labelTsta">
+        <property name="text">
+         <string>起始时刻</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QDoubleSpinBox" name="spinTsta">
+        <property name="decimals">
+         <number>6</number>
+        </property>
+        <property name="maximum">
+         <double>999999.000000000000000</double>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="labelTend">
+        <property name="text">
+         <string>终止时刻</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QDoubleSpinBox" name="spinTend">
+        <property name="decimals">
+         <number>6</number>
+        </property>
+        <property name="maximum">
+         <double>999999.000000000000000</double>
+        </property>
+        <property name="value">
+         <double>30.000000000000000</double>
+        </property>
        </widget>
       </item>
      </layout>

@@ -46,7 +46,6 @@ class PreProcessing : public QObject, public PreProcessingService
     BasePage* newGeometryPolygonWidget(QString title = QObject::tr("多边形"));
     BasePage* newGeometryRectangleWidget(QString title = QObject::tr("矩形"));
     void newOccBooleanFuseWidget(QString title = QObject::tr("布尔融合"));
-    void newOccBooleanUnionWidget(QString title = QObject::tr("联合体"));
     void newOccBooleanCutWidget(QString title = QObject::tr("布尔切割"));
     void newOccBooleanCommonWidget(QString title = QObject::tr("布尔求交"));
     bool exportGeom();

@@ -1,22 +1,19 @@
-﻿#include "OccBooleanCommonWidget.h"
+#include "OccBooleanCommonWidget.h"
 
-#include <CustomComboBox.h>
 #include <GeometryCleanup.h>
 #include <ServiceRegistry.h>
 #include <services/ProjectManagerService.h>
 #include <services/VisualWidgetService.h>
-#include <vtkActor.h>
-#include <vtkProperty.h>
 
 #include <BRepAlgoAPI_Common.hxx>
-#include <QColor>
-#include <QComboBox>
-#include <QDebug>
-#include <QGridLayout>
-#include <QLabel>
-#include <QListView>
-#include <QPushButton>
-#include <QVBoxLayout>
+#include <BRepTools.hxx>
+#include <BRep_Builder.hxx>
+#include <QJsonArray>
+#include <QListWidgetItem>
+#include <QMessageBox>
+#include <sstream>
+
+#include "ui_OccBooleanCommonWidget.h"
 
 namespace
 {
@@ -33,160 +30,318 @@ TopoDS_Shape commonShapes(const TopoDS_Shape& a, const TopoDS_Shape& b)
     {
         return TopoDS_Shape();
     }
-
     return op.Shape();
 }
 } // namespace
 
 OccBooleanCommonWidget::OccBooleanCommonWidget(QWidget* parent)
-    : BasePage(PublicConstants::kPagePostProcessOccBoolean)
+    : BasePage(PublicConstants::kPagePostProcessOccBoolean), ui(new Ui::OccBooleanCommonWidget)
 {
-    Q_UNUSED(parent);
-    initUi();
-    initConnections();
+    ui->setupUi(this);
+    if (parent)
+    {
+        setParent(parent);
+    }
+
+    connect(ui->addButton, &QPushButton::clicked, this, &OccBooleanCommonWidget::onAddClicked);
+    connect(ui->removeButton, &QPushButton::clicked, this,
+            &OccBooleanCommonWidget::onRemoveSelectedClicked);
+    connect(ui->applyButton, &QPushButton::clicked, this, &OccBooleanCommonWidget::onApplyClicked);
 }
 
-void OccBooleanCommonWidget::initUi()
+OccBooleanCommonWidget::~OccBooleanCommonWidget()
 {
-    auto* rootLayout = new QVBoxLayout(this);
-    auto* pageNameLabel = new QLabel(tr("几何模块"), this);
-    pageNameLabel->setObjectName("pageNameLabel");
-    auto* sectionTitleButton = new QPushButton(tr("布尔运算"), this);
-    sectionTitleButton->setObjectName("sectionTitleButton");
-    sectionTitleButton->setEnabled(false);
-    rootLayout->addWidget(pageNameLabel);
-    rootLayout->addWidget(sectionTitleButton);
-
-    auto* layout = new QGridLayout();
-
-    auto* labelA = new QLabel(tr("a:"), this);
-    auto* labelB = new QLabel(tr("b:"), this);
-
-    m_comboBoxA = new CustomComboBox(this);
-    m_comboBoxB = new CustomComboBox(this);
-    m_comboBoxOp = new QComboBox(this);
-    m_comboBoxOp->addItem(tr("Common (A ∩ B)"));
-    m_comboBoxOp->setCurrentIndex(0);
-    m_comboBoxOp->setEnabled(false);
-    m_comboBoxOp->setVisible(false);
-
-    m_listView = new QListView(this);
-    m_applyButton = new QPushButton(tr("应用"), this);
-    m_refreshButton = new QPushButton(tr("test-生成文件"), this);
-
-    layout->addWidget(labelA, 0, 0);
-    layout->addWidget(m_comboBoxA, 0, 1);
-    layout->addWidget(labelB, 1, 0);
-    layout->addWidget(m_comboBoxB, 1, 1);
-    layout->addWidget(m_comboBoxOp, 2, 0, 1, 2);
-    layout->addWidget(m_listView, 3, 0, 1, 2);
-    layout->addWidget(m_applyButton, 4, 1);
-    layout->addWidget(m_refreshButton, 5, 1);
-    layout->setRowStretch(6, 1);
-    rootLayout->addLayout(layout);
-    rootLayout->addStretch();
-}
-
-void OccBooleanCommonWidget::initConnections()
-{
-    connect(m_comboBoxA, SIGNAL(currentIndexChanged(int)), this, SLOT(onComboBoxAChanged(int)));
-    connect(m_comboBoxB, SIGNAL(currentIndexChanged(int)), this, SLOT(onComboBoxBChanged(int)));
-    connect(m_comboBoxA, SIGNAL(itemHovered(int)), this, SLOT(onComboBoxHovered(int)));
-    connect(m_comboBoxB, SIGNAL(itemHovered(int)), this, SLOT(onComboBoxHovered(int)));
-    connect(m_comboBoxA, SIGNAL(dropdownClosed()), this, SLOT(onComboBoxDropdownClosed()));
-    connect(m_comboBoxB, SIGNAL(dropdownClosed()), this, SLOT(onComboBoxDropdownClosed()));
-    connect(m_applyButton, SIGNAL(clicked()), this, SLOT(onApplyClicked()));
-    connect(m_refreshButton, SIGNAL(clicked()), this, SLOT(onRefreshClicked()));
+    delete ui;
 }
 
 void OccBooleanCommonWidget::beforeLoad()
 {
-    m_geomMgr = GeomManager::GeomManagerInstance::getInstance();
-    if (!m_geomMgr)
-    {
-        qWarning() << "[OccBooleanCommonWidget] GeomManagerInstance is null";
-        return;
-    }
-
-    m_colorBackup.clear();
-    m_geomMap = m_geomMgr->getShapMap();
-    fillComboBoxes();
+    refreshGeometryMap();
+    refreshSourceCombo();
+    refreshSelectedList();
 }
 
 void OccBooleanCommonWidget::beforeUnload()
 {
-    for (auto it = m_colorBackup.constBegin(); it != m_colorBackup.constEnd(); ++it)
-    {
-        const QString& key = it.key();
-        GeomShapeObject* obj = m_geomMap.value(key, nullptr);
-        if (!obj)
-        {
-            continue;
-        }
-
-        vtkActor* actor = obj->getSurfActor();
-        if (!actor)
-        {
-            continue;
-        }
-
-        if (m_dimmedBackup.contains(key))
-        {
-            continue;
-        }
-        const ColorBackup& cb = it.value();
-        actor->GetProperty()->SetColor(cb.r, cb.g, cb.b);
-        actor->GetProperty()->SetOpacity(cb.opacity);
-    }
-
-    m_hoveredKey.clear();
-    m_colorBackup.clear();
     requestRender();
 }
 
 QJsonObject OccBooleanCommonWidget::saveJson()
 {
+    refreshGeometryMap();
     QJsonObject obj;
-    obj["keyA"] = m_keyA;
-    obj["keyB"] = m_keyB;
+    QJsonArray selectedKeys;
+    for (QStringList::const_iterator it = m_selectedKeys.constBegin(); it != m_selectedKeys.constEnd();
+         ++it)
+    {
+        selectedKeys.append(*it);
+    }
+    obj["selectedKeys"] = selectedKeys;
+
+    QJsonArray operationKeys;
+    const QStringList keysToSave = m_operationKeys.isEmpty() ? m_selectedKeys : m_operationKeys;
+    for (QStringList::const_iterator it = keysToSave.constBegin(); it != keysToSave.constEnd(); ++it)
+    {
+        operationKeys.append(*it);
+    }
+    obj["operationKeys"] = operationKeys;
+
+    obj["resultBrep"] = QString();
+    if (m_geomMgr)
+    {
+        if (GeomShapeObject* resultObj = m_geomMgr->getGeomShapeObject(getUuid()))
+        {
+            TopoDS_Shape* shape = resultObj->getShape();
+            if (shape && !shape->IsNull())
+            {
+                std::ostringstream oss;
+                BRepTools::Write(*shape, oss);
+                obj["resultBrep"] = QString::fromStdString(oss.str());
+            }
+        }
+    }
     return obj;
 }
 
 void OccBooleanCommonWidget::loadJson(const QJsonObject& obj)
 {
-    QString keyA = obj.value("keyA").toString();
-    QString keyB = obj.value("keyB").toString();
-
-    auto findIndexByKey = [](QComboBox* combo, const QString& key)
+    m_selectedKeys.clear();
+    const QJsonArray selectedKeys = obj.value("selectedKeys").toArray();
+    for (int i = 0; i < selectedKeys.size(); ++i)
     {
-        for (int i = 0; i < combo->count(); ++i)
+        const QString key = selectedKeys.at(i).toString();
+        if (!key.isEmpty())
         {
-            if (combo->itemData(i).toString() == key)
-            {
-                return i;
-            }
+            m_selectedKeys.append(key);
         }
-        return -1;
-    };
-
-    int indexA = findIndexByKey(m_comboBoxA, keyA);
-    if (indexA >= 0)
-    {
-        m_comboBoxA->setCurrentIndex(indexA);
     }
 
-    int indexB = findIndexByKey(m_comboBoxB, keyB);
-    if (indexB >= 0)
+    if (m_selectedKeys.isEmpty())
     {
-        m_comboBoxB->setCurrentIndex(indexB);
+        const QString keyA = obj.value("keyA").toString();
+        const QString keyB = obj.value("keyB").toString();
+        if (!keyA.isEmpty())
+        {
+            m_selectedKeys.append(keyA);
+        }
+        if (!keyB.isEmpty() && keyB != keyA)
+        {
+            m_selectedKeys.append(keyB);
+        }
     }
+
+    m_operationKeys.clear();
+    const QJsonArray operationKeys = obj.value("operationKeys").toArray();
+    for (int i = 0; i < operationKeys.size(); ++i)
+    {
+        const QString key = operationKeys.at(i).toString();
+        if (!key.isEmpty())
+        {
+            m_operationKeys.append(key);
+        }
+    }
+    if (m_operationKeys.isEmpty())
+    {
+        m_operationKeys = m_selectedKeys;
+    }
+    if (m_selectedKeys.isEmpty())
+    {
+        m_selectedKeys = m_operationKeys;
+    }
+
+    m_savedResultBrep = obj.value("resultBrep").toString();
+
+    refreshGeometryMap();
+    refreshSourceCombo();
+    refreshSelectedList();
 }
 
-void OccBooleanCommonWidget::fillComboBoxes()
+void OccBooleanCommonWidget::onAddClicked()
 {
-    m_comboBoxA->clear();
-    m_comboBoxB->clear();
+    const QString key = ui->sourceComboBox->currentData().toString();
+    if (key.isEmpty() || m_selectedKeys.contains(key))
+    {
+        return;
+    }
+    m_selectedKeys.append(key);
+    m_operationKeys.clear();
+    refreshSelectedList();
+}
 
+void OccBooleanCommonWidget::onRemoveSelectedClicked()
+{
+    const QList<QListWidgetItem*> items = ui->selectedListWidget->selectedItems();
+    for (QList<QListWidgetItem*>::const_iterator it = items.constBegin(); it != items.constEnd(); ++it)
+    {
+        m_selectedKeys.removeAll((*it)->data(Qt::UserRole).toString());
+    }
+    m_operationKeys.clear();
+    refreshSelectedList();
+}
+
+void OccBooleanCommonWidget::onApplyClicked()
+{
+    if (m_selectedKeys.size() < 2)
+    {
+        QMessageBox::warning(this, tr("提示"), tr("交集至少需要选择两个几何体。"));
+        return;
+    }
+
+    refreshGeometryMap();
+    QList<QString> sourceKeys;
+    for (QStringList::const_iterator it = m_selectedKeys.constBegin(); it != m_selectedKeys.constEnd(); ++it)
+    {
+        if (m_geomMap.contains(*it))
+        {
+            sourceKeys.append(*it);
+        }
+    }
+
+    if (sourceKeys.size() < 2)
+    {
+        QMessageBox::warning(this, tr("提示"), tr("有效几何体数量不足，无法执行交集。"));
+        return;
+    }
+
+    GeomShapeObject* firstObj = m_geomMap.value(sourceKeys.front(), nullptr);
+    if (!firstObj || !firstObj->getShape() || firstObj->getShape()->IsNull())
+    {
+        QMessageBox::warning(this, tr("提示"), tr("第一个几何体无效。"));
+        return;
+    }
+
+    TopoDS_Shape resultShape = *(firstObj->getShape());
+    for (int i = 1; i < sourceKeys.size(); ++i)
+    {
+        GeomShapeObject* toolObj = m_geomMap.value(sourceKeys.at(i), nullptr);
+        TopoDS_Shape* toolShape = toolObj ? toolObj->getShape() : nullptr;
+        if (!toolShape || toolShape->IsNull())
+        {
+            QMessageBox::warning(this, tr("提示"), tr("存在无效几何体，已终止交集。"));
+            return;
+        }
+        resultShape = commonShapes(resultShape, *toolShape);
+        if (resultShape.IsNull())
+        {
+            QMessageBox::warning(this, tr("提示"), tr("交集失败，请检查几何体是否可布尔运算。"));
+            return;
+        }
+    }
+
+    if (!m_geomMgr)
+    {
+        return;
+    }
+
+    const QString resultUuid = getUuid();
+    const QString resultName = getDisplayName().isEmpty() ? tr("布尔求交") : getDisplayName();
+    GeometryCleanup::removeExistingGeometry(resultUuid);
+
+    TopoDS_Shape* newShape = new TopoDS_Shape(resultShape);
+    GeomShapeObject* resultObj = new GeomShapeObject(resultUuid, newShape, resultName);
+    m_geomMgr->appendGeomShapeObject(resultObj);
+    m_geomMap.insert(resultUuid, resultObj);
+
+    if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>())
+    {
+        if (resultObj->getSurfActor())
+        {
+            vis->addProp(resultUuid + "_face", resultObj->getSurfActor(), "Geometry", resultUuid + "_face");
+        }
+        if (resultObj->getEdgeActor())
+        {
+            vis->addProp(resultUuid + "_edge", resultObj->getEdgeActor(), "Geometry", resultUuid + "_edge");
+        }
+    }
+
+    for (QList<QString>::const_iterator keyIt = sourceKeys.constBegin(); keyIt != sourceKeys.constEnd(); ++keyIt)
+    {
+        if (*keyIt == resultUuid)
+        {
+            continue;
+        }
+        removeGeometryAndDimNode(*keyIt);
+    }
+
+    if (auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>())
+    {
+        projectManagerService->setNodeDimmed(resultUuid, false);
+    }
+
+    m_operationKeys.clear();
+    for (QList<QString>::const_iterator keyIt = sourceKeys.constBegin(); keyIt != sourceKeys.constEnd();
+         ++keyIt)
+    {
+        m_operationKeys.append(*keyIt);
+    }
+    m_selectedKeys.clear();
+    m_selectedKeys.append(resultUuid);
+    refreshGeometryMap();
+    refreshSourceCombo();
+    refreshSelectedList();
+    requestRender();
+}
+
+void OccBooleanCommonWidget::restoreSavedResult()
+{
+    if (m_savedResultBrep.isEmpty())
+    {
+        return;
+    }
+    refreshGeometryMap();
+    if (!m_geomMgr || m_geomMap.contains(getUuid()))
+    {
+        return;
+    }
+
+    std::istringstream iss(m_savedResultBrep.toStdString());
+    BRep_Builder builder;
+    TopoDS_Shape resultShape;
+    BRepTools::Read(resultShape, iss, builder);
+    if (resultShape.IsNull())
+    {
+        return;
+    }
+
+    TopoDS_Shape* newShape = new TopoDS_Shape(resultShape);
+    GeomShapeObject* resultObj = new GeomShapeObject(getUuid(), newShape, getDisplayName());
+    m_geomMgr->appendGeomShapeObject(resultObj);
+    m_geomMap.insert(getUuid(), resultObj);
+
+    if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>())
+    {
+        if (resultObj->getSurfActor())
+        {
+            vis->addProp(getUuid() + "_face", resultObj->getSurfActor(), "Geometry",
+                         getUuid() + "_face");
+        }
+        if (resultObj->getEdgeActor())
+        {
+            vis->addProp(getUuid() + "_edge", resultObj->getEdgeActor(), "Geometry",
+                         getUuid() + "_edge");
+        }
+    }
+    if (auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>())
+    {
+        projectManagerService->setNodeDimmed(getUuid(), false);
+    }
+    requestRender();
+}
+
+void OccBooleanCommonWidget::refreshGeometryMap()
+{
+    m_geomMgr = GeomManager::GeomManagerInstance::getInstance();
+    if (!m_geomMgr)
+    {
+        m_geomMap.clear();
+        return;
+    }
+    m_geomMap = m_geomMgr->getShapMap();
+}
+
+void OccBooleanCommonWidget::refreshSourceCombo()
+{
+    ui->sourceComboBox->clear();
     for (auto it = m_geomMap.constBegin(); it != m_geomMap.constEnd(); ++it)
     {
         const QString& key = it.key();
@@ -196,129 +351,31 @@ void OccBooleanCommonWidget::fillComboBoxes()
         {
             displayName = key;
         }
-        m_comboBoxA->addItem(displayName, key);
-        m_comboBoxB->addItem(displayName, key);
+        ui->sourceComboBox->addItem(displayName, key);
     }
-
-    if (m_comboBoxA->count() > 0)
-    {
-        m_comboBoxA->setCurrentIndex(0);
-    }
-    if (m_comboBoxB->count() > 1)
-    {
-        m_comboBoxB->setCurrentIndex(1);
-    }
-    else if (m_comboBoxB->count() > 0)
-    {
-        m_comboBoxB->setCurrentIndex(0);
-    }
-
-    onComboBoxAChanged(m_comboBoxA->currentIndex());
-    onComboBoxBChanged(m_comboBoxB->currentIndex());
 }
 
-void OccBooleanCommonWidget::setHighlight(const QString& key, const QColor& color, bool on)
+void OccBooleanCommonWidget::refreshSelectedList()
 {
-    GeomShapeObject* obj = m_geomMap.value(key, nullptr);
-    if (!obj)
+    ui->selectedListWidget->clear();
+    QStringList validKeys;
+    for (QStringList::const_iterator it = m_selectedKeys.constBegin(); it != m_selectedKeys.constEnd(); ++it)
     {
-        return;
-    }
-
-    vtkActor* actor = obj->getSurfActor();
-    if (!actor)
-    {
-        return;
-    }
-
-    vtkProperty* prop = actor->GetProperty();
-    if (!prop)
-    {
-        return;
-    }
-
-    if (m_dimmedBackup.contains(key))
-    {
-        return;
-    }
-
-    if (on)
-    {
-        if (!m_colorBackup.contains(key))
+        if (!m_geomMap.contains(*it))
         {
-            ColorBackup cb;
-            double rgb[3] = {0.8, 0.8, 0.8};
-            prop->GetColor(rgb);
-            cb.r = rgb[0];
-            cb.g = rgb[1];
-            cb.b = rgb[2];
-            cb.opacity = prop->GetOpacity();
-            m_colorBackup.insert(key, cb);
+            continue;
         }
-
-        prop->SetColor(color.redF(), color.greenF(), color.blueF());
-    }
-    else
-    {
-        if (m_colorBackup.contains(key))
+        validKeys.append(*it);
+        GeomShapeObject* obj = m_geomMap.value(*it, nullptr);
+        QString displayName = obj ? obj->getName() : *it;
+        if (displayName.isEmpty())
         {
-            const ColorBackup& cb = m_colorBackup.value(key);
-            prop->SetColor(cb.r, cb.g, cb.b);
-            prop->SetOpacity(cb.opacity);
+            displayName = *it;
         }
+        auto* item = new QListWidgetItem(displayName, ui->selectedListWidget);
+        item->setData(Qt::UserRole, *it);
     }
-
-    requestRender();
-}
-
-void OccBooleanCommonWidget::setDimmed(const QString& key, bool on)
-{
-    GeomShapeObject* obj = m_geomMap.value(key, nullptr);
-    if (!obj)
-    {
-        return;
-    }
-
-    vtkActor* actor = obj->getSurfActor();
-    if (!actor)
-    {
-        return;
-    }
-
-    vtkProperty* prop = actor->GetProperty();
-    if (!prop)
-    {
-        return;
-    }
-
-    if (on)
-    {
-        if (!m_dimmedBackup.contains(key))
-        {
-            ColorBackup cb;
-            double rgb[3] = {0.8, 0.8, 0.8};
-            prop->GetColor(rgb);
-            cb.r = rgb[0];
-            cb.g = rgb[1];
-            cb.b = rgb[2];
-            cb.opacity = prop->GetOpacity();
-            m_dimmedBackup.insert(key, cb);
-        }
-        prop->SetColor(0.6, 0.6, 0.6);
-        prop->SetOpacity(0.25);
-    }
-    else
-    {
-        if (m_dimmedBackup.contains(key))
-        {
-            const ColorBackup& cb = m_dimmedBackup.value(key);
-            prop->SetColor(cb.r, cb.g, cb.b);
-            prop->SetOpacity(cb.opacity);
-            m_dimmedBackup.remove(key);
-        }
-    }
-
-    requestRender();
+    m_selectedKeys = validKeys;
 }
 
 void OccBooleanCommonWidget::requestRender()
@@ -326,19 +383,6 @@ void OccBooleanCommonWidget::requestRender()
     if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>())
     {
         vis->render();
-    }
-}
-
-void OccBooleanCommonWidget::removeComboItem(QComboBox* combo, const QString& key)
-{
-    if (!combo)
-    {
-        return;
-    }
-    int index = combo->findData(key);
-    if (index >= 0)
-    {
-        combo->removeItem(index);
     }
 }
 
@@ -358,218 +402,9 @@ void OccBooleanCommonWidget::removeGeometryAndDimNode(const QString& key)
         m_geomMgr->removeGeomShapeObject(key);
     }
     m_geomMap.remove(key);
-    m_colorBackup.remove(key);
-    m_dimmedBackup.remove(key);
 
-    if (auto* projectManagerService =
-            ServiceRegistry::instance().getService<ProjectManagerService>())
+    if (auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>())
     {
         projectManagerService->setNodeDimmed(key, true);
     }
-    removeComboItem(m_comboBoxA, key);
-    removeComboItem(m_comboBoxB, key);
-}
-
-void OccBooleanCommonWidget::onComboBoxAChanged(int index)
-{
-    if (index < 0 || index >= m_comboBoxA->count())
-    {
-        return;
-    }
-
-    QString newKey = m_comboBoxA->itemData(index).toString();
-    if (newKey.isEmpty())
-    {
-        newKey = m_comboBoxA->itemText(index);
-    }
-
-    m_keyA = newKey;
-}
-
-void OccBooleanCommonWidget::onComboBoxBChanged(int index)
-{
-    if (index < 0 || index >= m_comboBoxB->count())
-    {
-        return;
-    }
-
-    QString newKey = m_comboBoxB->itemData(index).toString();
-    if (newKey.isEmpty())
-    {
-        newKey = m_comboBoxB->itemText(index);
-    }
-
-    m_keyB = newKey;
-}
-
-void OccBooleanCommonWidget::onComboBoxHovered(int index)
-{
-    auto* combo = qobject_cast<CustomComboBox*>(sender());
-    if (!combo || index < 0 || index >= combo->count())
-    {
-        return;
-    }
-
-    QString key = combo->itemData(index).toString();
-    if (key.isEmpty())
-    {
-        key = combo->itemText(index);
-    }
-    if (key.isEmpty() || key == m_hoveredKey)
-    {
-        return;
-    }
-
-    if (!m_hoveredKey.isEmpty())
-    {
-        setHighlight(m_hoveredKey, QColor(), false);
-    }
-
-    m_hoveredKey = key;
-    setHighlight(m_hoveredKey, QColor(255, 243, 191), true);
-}
-
-void OccBooleanCommonWidget::onComboBoxDropdownClosed()
-{
-    if (m_hoveredKey.isEmpty())
-    {
-        return;
-    }
-
-    setHighlight(m_hoveredKey, QColor(), false);
-    m_hoveredKey.clear();
-}
-
-void OccBooleanCommonWidget::onApplyClicked()
-{
-    if (m_keyA.isEmpty() || m_keyB.isEmpty())
-    {
-        qWarning() << "[OccBooleanCommonWidget] A or B key is empty.";
-        return;
-    }
-
-    if (m_keyA == m_keyB)
-    {
-        qWarning() << "[OccBooleanCommonWidget] A and B are the same object.";
-        return;
-    }
-
-    const QString sourceKeyA = m_keyA;
-    const QString sourceKeyB = m_keyB;
-    GeomShapeObject* objA = m_geomMap.value(m_keyA, nullptr);
-    GeomShapeObject* objB = m_geomMap.value(m_keyB, nullptr);
-    if (!objA || !objB)
-    {
-        qWarning() << "[OccBooleanCommonWidget] invalid GeomShapeObject for A or B.";
-        return;
-    }
-
-    TopoDS_Shape* shapeA = objA->getShape();
-    TopoDS_Shape* shapeB = objB->getShape();
-    if (!shapeA || !shapeB || shapeA->IsNull() || shapeB->IsNull())
-    {
-        qWarning() << "[OccBooleanCommonWidget] A or B shape is null.";
-        return;
-    }
-
-    TopoDS_Shape resultShape = commonShapes(*shapeA, *shapeB);
-    if (resultShape.IsNull())
-    {
-        qWarning() << "[OccBooleanCommonWidget] Boolean result is null.";
-        return;
-    }
-
-    const QString resultUuid = getUuid();
-    const QString resultName = getDisplayName().isEmpty() ? tr("求交") : getDisplayName();
-    GeometryCleanup::removeExistingGeometry(resultUuid);
-
-    TopoDS_Shape* newShape = new TopoDS_Shape(resultShape);
-    GeomShapeObject* resultObj = new GeomShapeObject(resultUuid, newShape, resultName);
-
-    m_geomMgr->appendGeomShapeObject(resultObj);
-    m_geomMap.insert(resultUuid, resultObj);
-
-    if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>())
-    {
-        if (resultObj->getSurfActor())
-        {
-            vis->addProp(resultUuid + "_face", resultObj->getSurfActor(), "Geometry",
-                         resultUuid + "_face");
-        }
-        if (resultObj->getEdgeActor())
-        {
-            vis->addProp(resultUuid + "_edge", resultObj->getEdgeActor(), "Geometry",
-                         resultUuid + "_edge");
-        }
-    }
-
-    removeComboItem(m_comboBoxA, resultUuid);
-    removeComboItem(m_comboBoxB, resultUuid);
-    m_comboBoxA->addItem(resultName, resultUuid);
-    m_comboBoxB->addItem(resultName, resultUuid);
-
-    int idxA = m_comboBoxA->findData(resultUuid);
-    if (idxA >= 0)
-    {
-        m_comboBoxA->setCurrentIndex(idxA);
-    }
-    int idxB = m_comboBoxB->findData(resultUuid);
-    if (idxB >= 0)
-    {
-        m_comboBoxB->setCurrentIndex(idxB);
-    }
-
-    setHighlight(sourceKeyA, QColor(), false);
-    setHighlight(sourceKeyB, QColor(), false);
-    removeGeometryAndDimNode(sourceKeyA);
-    removeGeometryAndDimNode(sourceKeyB);
-    if (auto* projectManagerService =
-            ServiceRegistry::instance().getService<ProjectManagerService>())
-    {
-        projectManagerService->setNodeDimmed(resultUuid, false);
-    }
-
-    m_hoveredKey.clear();
-    requestRender();
-}
-
-void OccBooleanCommonWidget::onRefreshClicked()
-{
-    if (!m_geomMgr)
-    {
-        m_geomMgr = GeomManager::GeomManagerInstance::getInstance();
-        if (!m_geomMgr)
-        {
-            qWarning() << "[OccBooleanCommonWidget] GeomManagerInstance is null (refresh).";
-            return;
-        }
-    }
-
-    for (auto it = m_colorBackup.constBegin(); it != m_colorBackup.constEnd(); ++it)
-    {
-        const QString& key = it.key();
-        GeomShapeObject* obj = m_geomMap.value(key, nullptr);
-        if (!obj)
-        {
-            continue;
-        }
-
-        if (vtkSmartPointer<vtkActor> actor = obj->getSurfActor())
-        {
-            if (m_dimmedBackup.contains(key))
-            {
-                continue;
-            }
-            const ColorBackup& cb = it.value();
-            actor->GetProperty()->SetColor(cb.r, cb.g, cb.b);
-            actor->GetProperty()->SetOpacity(cb.opacity);
-        }
-    }
-    m_hoveredKey.clear();
-    m_colorBackup.clear();
-
-    m_geomMap = m_geomMgr->getShapMap();
-    m_keyA.clear();
-    m_keyB.clear();
-    fillComboBoxes();
 }

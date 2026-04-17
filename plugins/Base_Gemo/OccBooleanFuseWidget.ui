@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>OccBooleanFuseWidget</class>
+ <widget class="QWidget" name="OccBooleanFuseWidget">
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QLabel" name="pageNameLabel">
+     <property name="text"><string>几何模块</string></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="sectionTitleButton">
+     <property name="enabled"><bool>false</bool></property>
+     <property name="text"><string>布尔运算-并集</string></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="tipLabel">
+     <property name="text"><string>从下拉框添加对象；可在列表删除。并集将按列表顺序依次执行。</string></property>
+     <property name="wordWrap"><bool>true</bool></property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="addLayout">
+     <item><widget class="QComboBox" name="sourceComboBox"/></item>
+     <item><widget class="QPushButton" name="addButton"><property name="text"><string>添加</string></property></widget></item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QListWidget" name="selectedListWidget">
+     <property name="selectionMode"><enum>QAbstractItemView::ExtendedSelection</enum></property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="actionLayout">
+     <item><widget class="QPushButton" name="removeButton"><property name="text"><string>删除选中</string></property></widget></item>
+     <item><widget class="QPushButton" name="applyButton"><property name="text"><string>应用</string></property></widget></item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
