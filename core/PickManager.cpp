@@ -2095,7 +2095,18 @@ void PickManager::setPreviewFaceKeys(const QString& domain, const QString& uuid,
                 continue;
             }
 
-            vtkCell* f = (cell->GetCellDimension() >= 3) ? cell->GetFace(fi) : cell;
+            vtkCell* f = nullptr;
+            if (cell->GetCellDimension() >= 3)
+            {
+                const int nFaces = cell->GetNumberOfFaces();
+                if (fi < 0 || fi >= nFaces)
+                    continue;
+                f = cell->GetFace(fi);
+            }
+            else
+            {
+                f = cell;
+            }
             if (!f)
                 continue;
             appendFaceByIds(f->GetPointIds());

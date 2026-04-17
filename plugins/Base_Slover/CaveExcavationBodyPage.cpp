@@ -21,10 +21,13 @@
 #include <QSignalBlocker>
 #include <QStringList>
 #include <QVBoxLayout>
+#include <QtGlobal>
 #include <set>
 
 namespace
 {
+constexpr int kMaxPreviewCells = 1200;
+
 QString makePhysGroupKey(int physId)
 {
     return QString("phys:%1").arg(physId);
@@ -61,6 +64,22 @@ bool parseGroupKey(const QString& key, QString* type, int* id)
     if (id)
         *id = value;
     return true;
+}
+
+QVector<qint64> sampleCellsForPreview(const QVector<qint64>& src)
+{
+    if (src.size() <= kMaxPreviewCells)
+        return src;
+
+    QVector<qint64> out;
+    out.reserve(kMaxPreviewCells);
+    const double step = static_cast<double>(src.size()) / static_cast<double>(kMaxPreviewCells);
+    for (int i = 0; i < kMaxPreviewCells; ++i)
+    {
+        const int idx = qBound(0, static_cast<int>(i * step), src.size() - 1);
+        out.push_back(src[idx]);
+    }
+    return out;
 }
 } // namespace
 
@@ -345,7 +364,9 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
                     QVector<vtkIdType> edgeKeys;
                     if (groupType == "layer")
                     {
-                        for (qint64 cid : map.layerToCellIds.value(groupId))
+                        const auto previewCells =
+                            sampleCellsForPreview(map.layerToCellIds.value(groupId));
+                        for (qint64 cid : previewCells)
                             faceKeys.push_back(PickManager::instance().packFaceKey(static_cast<vtkIdType>(cid), 15));
                     }
                     else if (targetDim == 2)
@@ -361,7 +382,9 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
                     }
                     else
                     {
-                        for (qint64 cid : map.volPhysToCellIds.value(groupId))
+                        const auto previewCells =
+                            sampleCellsForPreview(map.volPhysToCellIds.value(groupId));
+                        for (qint64 cid : previewCells)
                             faceKeys.push_back(PickManager::instance().packFaceKey(static_cast<vtkIdType>(cid), 15));
                     }
                     if (currentPickMode() == PickMode::Face)
