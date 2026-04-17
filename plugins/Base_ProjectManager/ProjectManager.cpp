@@ -167,6 +167,7 @@ void ProjectManager::setNodeDimmed(const QString& uuid, bool dimmed)
     const QIcon icon = dimmed ? QIcon(":/resources/icon/geom-unused.svg")
                               : QIcon(":/resources/icon/geom-used.svg");
     node->setIcon(0, icon);
+    node->setData(0, ProjectNode::RoleDimmed, dimmed);
     node->setForeground(0, QBrush(Qt::black));
 }
 

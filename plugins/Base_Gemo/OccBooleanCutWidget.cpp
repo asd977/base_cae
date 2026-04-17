@@ -323,6 +323,22 @@ void OccBooleanCutWidget::restoreSavedResult()
     {
         projectManagerService->setNodeDimmed(getUuid(), false);
     }
+
+    for (QStringList::const_iterator it = m_operationKeys.constBegin(); it != m_operationKeys.constEnd();
+         ++it)
+    {
+        if (it->isEmpty() || *it == getUuid())
+        {
+            continue;
+        }
+        removeGeometryAndDimNode(*it);
+    }
+
+    m_selectedKeys.clear();
+    m_selectedKeys.append(getUuid());
+    refreshGeometryMap();
+    refreshSourceCombo();
+    refreshSelectedList();
     requestRender();
 }
 

@@ -21,7 +21,8 @@ class CORE_EXPORT ProjectNode : public QTreeWidgetItem
     {
         RoleUuid = Qt::UserRole + 100,
         RoleModule = Qt::UserRole + 101, // group
-        RoleKind = Qt::UserRole + 102    // kind
+        RoleKind = Qt::UserRole + 102,   // kind
+        RoleDimmed = Qt::UserRole + 103  // 几何节点显示/灰置状态
     };
 
     /**

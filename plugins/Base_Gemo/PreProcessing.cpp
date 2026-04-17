@@ -368,7 +368,12 @@ bool PreProcessing::saveProject()
         item["kind"] = node->data(0, ProjectNode::RoleKind).toString();
 
         bool isVisible = false;
-        if (auto* mgr = GeomManager::GeomManagerInstance::getInstance())
+        const QVariant dimmedRole = node->data(0, ProjectNode::RoleDimmed);
+        if (dimmedRole.isValid())
+        {
+            isVisible = !dimmedRole.toBool();
+        }
+        else if (auto* mgr = GeomManager::GeomManagerInstance::getInstance())
         {
             if (GeomShapeObject* object = mgr->getGeomShapeObject(nodeUuid))
             {
@@ -553,6 +558,7 @@ ProjectNode* PreProcessing::createGeometryNodeByType(const QString& type, const 
     node->setData(0, ProjectNode::RoleUuid, uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
     node->setData(0, ProjectNode::RoleKind, nodeKind);
+    node->setData(0, ProjectNode::RoleDimmed, true);
     node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
     return node;
 }
