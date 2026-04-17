@@ -2058,21 +2058,47 @@ void PickManager::setPreviewFaceKeys(const QString& domain, const QString& uuid,
             auto* cell = grid->GetCell(cid);
             if (!cell)
                 continue;
+
+            auto appendFaceByIds = [&](vtkIdList* ids)
+            {
+                if (!ids || ids->GetNumberOfIds() < 3)
+                    return;
+                const vtkIdType n = ids->GetNumberOfIds();
+                m_previewFacePolys->InsertNextCell(n);
+                for (vtkIdType i = 0; i < n; ++i)
+                {
+                    double p[3];
+                    grid->GetPoint(ids->GetId(i), p);
+                    vtkIdType lpid = m_previewFacePts->InsertNextPoint(p);
+                    m_previewFacePolys->InsertCellPoint(lpid);
+                }
+            };
+
+            // fi == 15: 整个单元（2D整片 / 3D整胞）
+            if (fi == 15)
+            {
+                if (cell->GetCellDimension() >= 3)
+                {
+                    const int nFaces = cell->GetNumberOfFaces();
+                    for (int faceIdx = 0; faceIdx < nFaces; ++faceIdx)
+                    {
+                        vtkCell* f = cell->GetFace(faceIdx);
+                        if (!f)
+                            continue;
+                        appendFaceByIds(f->GetPointIds());
+                    }
+                }
+                else
+                {
+                    appendFaceByIds(cell->GetPointIds());
+                }
+                continue;
+            }
+
             vtkCell* f = (cell->GetCellDimension() >= 3) ? cell->GetFace(fi) : cell;
             if (!f)
                 continue;
-            auto* ids = f->GetPointIds();
-            if (!ids || ids->GetNumberOfIds() < 3)
-                continue;
-            const vtkIdType n = ids->GetNumberOfIds();
-            m_previewFacePolys->InsertNextCell(n);
-            for (vtkIdType i = 0; i < n; ++i)
-            {
-                double p[3];
-                grid->GetPoint(ids->GetId(i), p);
-                vtkIdType lpid = m_previewFacePts->InsertNextPoint(p);
-                m_previewFacePolys->InsertCellPoint(lpid);
-            }
+            appendFaceByIds(f->GetPointIds());
         }
     };
     buildOne(m_gridSolid, m_previewFacesSolidByDomainUuid.value(domain).value(uuid));
