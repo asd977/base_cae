@@ -81,6 +81,27 @@ QVector<qint64> sampleCellsForPreview(const QVector<qint64>& src)
     }
     return out;
 }
+
+int resolveTargetDim(const MshPickMap& map)
+{
+    const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    if (meshDim == 2 || meshDim == 3)
+        return meshDim;
+
+    // 兜底推断：优先看 Physical 维度，再看是否有体单元分组
+    bool hasDim3 = false;
+    bool hasDim2 = false;
+    for (auto it = map.physIdToDim.constBegin(); it != map.physIdToDim.constEnd(); ++it)
+    {
+        hasDim3 = hasDim3 || (it.value() == 3);
+        hasDim2 = hasDim2 || (it.value() == 2);
+    }
+    if (hasDim3 || !map.volPhysToCellIds.isEmpty())
+        return 3;
+    if (hasDim2)
+        return 2;
+    return 3;
+}
 } // namespace
 
 CaveExcavationBodyPage::CaveExcavationBodyPage(QWidget* parent)
@@ -299,9 +320,7 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
         return;
 
     const MshPickMap& map = meshSvc->mshPickMapSolid();
-    const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
-    const bool hasVolumeLikeGroups = !map.layerToCellIds.isEmpty() || !map.volPhysToCellIds.isEmpty();
-    const int targetDim = (meshDim == 3 || hasVolumeLikeGroups) ? 3 : 2;
+    const int targetDim = resolveTargetDim(map);
 
     m_groupCombo->blockSignals(true);
     m_groupCombo->clear();
