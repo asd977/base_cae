@@ -38,14 +38,26 @@ QString makeLayerGroupKey(int layerId)
 bool parseGroupKey(const QString& key, QString* type, int* id)
 {
     const QStringList parts = key.split(':');
-    if (parts.size() != 2)
-        return false;
+    if (parts.size() == 2)
+    {
+        bool ok = false;
+        const int value = parts[1].toInt(&ok);
+        if (!ok)
+            return false;
+        if (type)
+            *type = parts[0].trimmed();
+        if (id)
+            *id = value;
+        return true;
+    }
+
+    // 兼容旧值：纯数字 itemData 按 phys 处理
     bool ok = false;
-    const int value = parts[1].toInt(&ok);
+    const int value = key.toInt(&ok);
     if (!ok)
         return false;
     if (type)
-        *type = parts[0].trimmed();
+        *type = "phys";
     if (id)
         *id = value;
     return true;
@@ -269,7 +281,8 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
 
     const MshPickMap& map = meshSvc->mshPickMapSolid();
     const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
-    const int targetDim = (meshDim == 3) ? 3 : 2;
+    const bool hasVolumeLikeGroups = !map.layerToCellIds.isEmpty() || !map.volPhysToCellIds.isEmpty();
+    const int targetDim = (meshDim == 3 || hasVolumeLikeGroups) ? 3 : 2;
 
     m_groupCombo->blockSignals(true);
     m_groupCombo->clear();
