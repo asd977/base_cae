@@ -45,6 +45,7 @@
 #include <QSet>
 #include <QVector>
 #include <algorithm>
+#include <functional>
 #include <limits>
 
 namespace
@@ -314,6 +315,41 @@ bool MeshModuleController::saveProject()
     root["face_rules"] = faceRulesToJson();
     root["volume_rules"] = volumeRulesToJson();
 
+    QJsonArray nodeItems;
+    std::function<QJsonObject(ProjectNode*)> saveNode = [&](ProjectNode* node) -> QJsonObject
+    {
+        QJsonObject obj;
+        if (!node)
+            return obj;
+
+        obj["uuid"] = node->data(0, ProjectNode::RoleUuid).toString();
+        obj["title"] = node->text(0);
+        obj["module"] = node->data(0, ProjectNode::RoleModule).toString();
+        obj["kind"] = node->data(0, ProjectNode::RoleKind).toString();
+
+        QJsonArray children;
+        for (int i = 0; i < node->childCount(); ++i)
+        {
+            auto* child = dynamic_cast<ProjectNode*>(node->child(i));
+            if (!child)
+                continue;
+            children.append(saveNode(child));
+        }
+        obj["children"] = children;
+        return obj;
+    };
+    if (m_gridNode)
+    {
+        for (int i = 0; i < m_gridNode->childCount(); ++i)
+        {
+            auto* child = dynamic_cast<ProjectNode*>(m_gridNode->child(i));
+            if (!child)
+                continue;
+            nodeItems.append(saveNode(child));
+        }
+    }
+    root["nodes"] = nodeItems;
+
     QFile file(QDir(projectDir).filePath(PublicConstants::kMeshProjectFileName));
     if (!file.open(QIODevice::WriteOnly))
         return false;
@@ -415,6 +451,65 @@ bool MeshModuleController::loadProject()
             rule.localSizeFactor = 1.0;
         }
         m_volumeRules.push_back(rule);
+    }
+
+    auto createPageByKind = [this](const QString& kind) -> BasePage*
+    {
+        if (kind == "GlobalMeshing")
+            return new MeshGlobalMeshingWidget();
+        if (kind == "SingleMeshing")
+            return new MeshSingleMeshingWidget();
+        if (kind == "VolumeControl")
+            return new MeshVolumeControlWidget();
+        if (kind == "FaceControl")
+            return new MeshFaceControlWidget();
+        if (kind == "EdgeControl")
+            return new MeshEdgeControlWidget();
+        if (kind == "MeshGrouping")
+            return new MeshGroupingWidget();
+        if (kind == "MeshEdit")
+        {
+            auto* w = new GridEditingWidget();
+            m_gridEditingWidget = w;
+            if (m_importedGrid && m_importedGrid->GetNumberOfCells() > 0)
+            {
+                w->setEditableGrid(m_importedGrid, m_sourceFileName);
+            }
+            return w;
+        }
+        return nullptr;
+    };
+
+    std::function<void(ProjectNode*, const QJsonObject&)> loadNode =
+        [&](ProjectNode* parent, const QJsonObject& obj)
+    {
+        if (!parent)
+            return;
+
+        const QString kind = obj.value("kind").toString();
+        BasePage* page = createPageByKind(kind);
+        if (!page)
+            return;
+
+        const QString title = obj.value("title").toString(kind);
+        const QString uuid = obj.value("uuid").toString(QUuid::createUuid().toString());
+        auto* node = new ProjectNode(title, uuid, page);
+        node->setData(0, ProjectNode::RoleModule, "Mesh");
+        node->setData(0, ProjectNode::RoleKind, kind);
+        node->setData(0, ProjectNode::RoleUuid, uuid);
+        parent->addChild(node);
+
+        const QJsonArray children = obj.value("children").toArray();
+        for (const auto& childVal : children)
+        {
+            loadNode(node, childVal.toObject());
+        }
+    };
+
+    const QJsonArray nodes = root.value("nodes").toArray();
+    for (const auto& n : nodes)
+    {
+        loadNode(m_gridNode, n.toObject());
     }
 
     return true;
