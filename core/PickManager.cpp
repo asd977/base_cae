@@ -35,6 +35,7 @@
 #include <vtkRenderer.h>
 #include <vtkSelection.h>
 #include <vtkSelectionNode.h>
+#include <vtkUnsignedCharArray.h>
 
 namespace
 {
@@ -335,6 +336,8 @@ void PickManager::clearNodeSelection_NoRefresh(const QString& domain, const QStr
 
 void PickManager::updateStructure()
 {
+    restoreFaceColoring();
+
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
         return;
@@ -385,6 +388,9 @@ void PickManager::refreshStructureIfNeeded()
 
 void PickManager::activate(const QString& domain, const QString& uuid, PickMode mode)
 {
+    if (mode != PickMode::Face)
+        restoreFaceColoring();
+
     m_currentDomain = domain;
     m_currentUUid = uuid;
     m_pickMode = mode;
@@ -437,6 +443,7 @@ void PickManager::deactivate(const QString& domain, const QString& uuid, PickMod
 
     m_currentDomain.clear();
     m_currentUUid.clear();
+    restoreFaceColoring();
 
     if (m_selActor)
         m_selActor->SetVisibility(false);
@@ -502,13 +509,13 @@ void PickManager::updateActorVisibility()
         return;
     m_selActor->SetVisibility(m_pickMode == PickMode::Node);
     m_edgeActor->SetVisibility(m_pickMode == PickMode::Edge);
-    m_faceActor->SetVisibility(m_pickMode == PickMode::Face);
+    m_faceActor->SetVisibility(false);
     if (m_previewSelActor)
         m_previewSelActor->SetVisibility(m_pickMode == PickMode::Node);
     if (m_previewEdgeActor)
         m_previewEdgeActor->SetVisibility(m_pickMode == PickMode::Edge);
     if (m_previewFaceActor)
-        m_previewFaceActor->SetVisibility(m_pickMode == PickMode::Face);
+        m_previewFaceActor->SetVisibility(false);
 }
 
 void PickManager::setupPicking()
@@ -832,7 +839,13 @@ void PickManager::flushRebuild()
     if (m_dirtyBits & DirtyEdge)
         rebuildEdgePolyForActive();
     if (m_dirtyBits & DirtyFace)
+    {
         rebuildFacePolyForActive();
+        rebuildFaceColorForActive();
+    }
+
+    if (!(m_dirtyBits & DirtyFace) && m_pickMode != PickMode::Face)
+        restoreFaceColoring();
 
     m_dirtyBits = DirtyNone;
     m_visual->render();
@@ -1707,6 +1720,182 @@ void PickManager::rebuildFacePolyForActive()
     m_facePoly->Modified();
 }
 
+bool PickManager::faceKeyMatchesBoundaryCell(vtkDataSet* pickedDs, vtkUnstructuredGrid* sourceGrid,
+                                             vtkIdType pickedCellId, vtkIdType faceKey) const
+{
+    if (!pickedDs || !sourceGrid || pickedCellId < 0 || pickedCellId >= pickedDs->GetNumberOfCells())
+        return false;
+
+    auto* origCellArr = findArray(pickedDs->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
+    auto* origPointArr =
+        findArray(pickedDs->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
+    if (!origCellArr || !origPointArr)
+        return false;
+
+    const vtkIdType srcCellId = vtkIdType(origCellArr->GetTuple1(pickedCellId));
+    const int faceLocalId = unpackFaceLocalId(faceKey);
+    if (srcCellId != unpackFaceCellId(faceKey))
+        return false;
+
+    vtkCell* pickedCell = pickedDs->GetCell(pickedCellId);
+    vtkCell* srcCell = sourceGrid->GetCell(srcCellId);
+    if (!pickedCell || !srcCell)
+        return false;
+
+    QSet<vtkIdType> pickedOrigPids;
+    if (vtkIdList* pickedIds = pickedCell->GetPointIds())
+    {
+        for (vtkIdType i = 0; i < pickedIds->GetNumberOfIds(); ++i)
+        {
+            const vtkIdType pickedPid = pickedIds->GetId(i);
+            if (pickedPid < 0 || pickedPid >= pickedDs->GetNumberOfPoints())
+                continue;
+            pickedOrigPids.insert(vtkIdType(origPointArr->GetTuple1(pickedPid)));
+        }
+    }
+    if (pickedOrigPids.size() < 3)
+        return false;
+
+    QSet<vtkIdType> targetFacePids;
+    if (srcCell->GetCellDimension() == 2 || faceLocalId == 15)
+    {
+        vtkIdList* ids = srcCell->GetPointIds();
+        if (!ids || ids->GetNumberOfIds() < 3)
+            return false;
+        for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
+            targetFacePids.insert(ids->GetId(i));
+    }
+    else
+    {
+        if (faceLocalId < 0 || faceLocalId >= srcCell->GetNumberOfFaces())
+            return false;
+        vtkCell* face = srcCell->GetFace(faceLocalId);
+        if (!face)
+            return false;
+        vtkIdList* ids = face->GetPointIds();
+        if (!ids || ids->GetNumberOfIds() < 3)
+            return false;
+        for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
+            targetFacePids.insert(ids->GetId(i));
+    }
+
+    for (vtkIdType opid : pickedOrigPids)
+    {
+        if (!targetFacePids.contains(opid))
+            return false;
+    }
+    return true;
+}
+
+void PickManager::rebuildFaceColorForActive()
+{
+    if (!m_visual || m_currentDomain.isEmpty() || m_currentUUid.isEmpty())
+        return;
+
+    auto applyOne = [&](vtkDataSet* pickedDs, vtkUnstructuredGrid* sourceGrid,
+                        const QSet<vtkIdType>& selected, const QSet<vtkIdType>& preview,
+                        vtkSmartPointer<vtkDataArray>& savedScalars)
+    {
+        if (!pickedDs || !sourceGrid || pickedDs->GetNumberOfCells() <= 0)
+            return;
+
+        auto* cellData = pickedDs->GetCellData();
+        if (!cellData)
+            return;
+
+        if (!m_faceColoringActive)
+            savedScalars = cellData->GetScalars();
+
+        auto colors = vtkSmartPointer<vtkUnsignedCharArray>::New();
+        colors->SetName("pick_face_colors");
+        colors->SetNumberOfComponents(3);
+        colors->SetNumberOfTuples(pickedDs->GetNumberOfCells());
+
+        const unsigned char normal[3] = {179, 179, 179};
+        const unsigned char selectedColor[3] = {51, 153, 255};
+        const unsigned char previewColor[3] = {255, 153, 0};
+
+        for (vtkIdType cid = 0; cid < pickedDs->GetNumberOfCells(); ++cid)
+        {
+            bool matchedPreview = false;
+            for (vtkIdType fk : preview)
+            {
+                if (faceKeyMatchesBoundaryCell(pickedDs, sourceGrid, cid, fk))
+                {
+                    matchedPreview = true;
+                    break;
+                }
+            }
+            if (matchedPreview)
+            {
+                colors->SetTypedTuple(cid, previewColor);
+                continue;
+            }
+
+            bool matchedSelected = false;
+            for (vtkIdType fk : selected)
+            {
+                if (faceKeyMatchesBoundaryCell(pickedDs, sourceGrid, cid, fk))
+                {
+                    matchedSelected = true;
+                    break;
+                }
+            }
+            colors->SetTypedTuple(cid, matchedSelected ? selectedColor : normal);
+        }
+
+        cellData->SetScalars(colors);
+        pickedDs->Modified();
+
+        if (auto* actor = vtkActor::SafeDownCast(pickedDs == m_solidPickDataSet ? m_solidProp : m_lineProp))
+        {
+            if (auto* mapper = actor->GetMapper())
+            {
+                mapper->SetScalarModeToUseCellData();
+                mapper->SetColorModeToDirectScalars();
+                mapper->ScalarVisibilityOn();
+            }
+        }
+    };
+
+    const auto selectedSolid = m_facesSolidByDomainUuid.value(m_currentDomain).value(m_currentUUid);
+    const auto selectedLine = m_facesLineByDomainUuid.value(m_currentDomain).value(m_currentUUid);
+    const auto previewSolid = m_previewFacesSolidByDomainUuid.value(m_currentDomain).value(m_currentUUid);
+    const auto previewLine = m_previewFacesLineByDomainUuid.value(m_currentDomain).value(m_currentUUid);
+
+    applyOne(m_solidPickDataSet, m_gridSolid, selectedSolid, previewSolid, m_savedSolidCellScalars);
+    applyOne(m_linePickDataSet, m_gridLine, selectedLine, previewLine, m_savedLineCellScalars);
+
+    m_faceColoringActive = true;
+}
+
+void PickManager::restoreFaceColoring()
+{
+    if (!m_faceColoringActive)
+        return;
+
+    auto restoreOne = [&](vtkDataSet* ds, vtkProp* prop, vtkSmartPointer<vtkDataArray>& savedScalars)
+    {
+        if (!ds)
+            return;
+        if (auto* cellData = ds->GetCellData())
+        {
+            cellData->SetScalars(savedScalars);
+            ds->Modified();
+        }
+        if (auto* actor = vtkActor::SafeDownCast(prop))
+        {
+            if (auto* mapper = actor->GetMapper())
+                mapper->ScalarVisibilityOff();
+        }
+        savedScalars = nullptr;
+    };
+
+    restoreOne(m_solidPickDataSet, m_solidProp, m_savedSolidCellScalars);
+    restoreOne(m_linePickDataSet, m_lineProp, m_savedLineCellScalars);
+    m_faceColoringActive = false;
+}
+
 // ===================== clearSelection =====================
 void PickManager::clearSelection(const QString& domain, const QString& uuid, PickMode mode)
 {
@@ -2045,6 +2234,8 @@ void PickManager::setPreviewFaceKeys(const QString& domain, const QString& uuid,
     if (domain != m_currentDomain || uuid != m_currentUUid || m_pickMode != PickMode::Face)
         return;
 
+    markDirty(DirtyFace);
+
     m_previewFacePts->Reset();
     m_previewFacePolys->Reset();
     auto buildOne = [&](vtkUnstructuredGrid* grid, const QSet<vtkIdType>& keys)
@@ -2113,6 +2304,8 @@ void PickManager::clearPreviewSelection(const QString& domain, const QString& uu
         m_previewFacePts->Modified();
         m_previewFacePolys->Modified();
         m_previewFacePoly->Modified();
+        if (domain == m_currentDomain && uuid == m_currentUUid && m_pickMode == PickMode::Face)
+            markDirty(DirtyFace);
     }
     if (m_visual)
         m_visual->render();

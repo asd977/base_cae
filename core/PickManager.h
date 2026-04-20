@@ -157,6 +157,10 @@ class CORE_EXPORT PickManager : public QObject
     // ---- face ----
     void toggleSelectFace(GridKind kind, vtkIdType faceKey);
     void rebuildFacePolyForActive();
+    void rebuildFaceColorForActive();
+    void restoreFaceColoring();
+    bool faceKeyMatchesBoundaryCell(vtkDataSet* pickedDs, vtkUnstructuredGrid* sourceGrid,
+                                    vtkIdType pickedCellId, vtkIdType faceKey) const;
     bool computePickedFace(vtkUnstructuredGrid* grid, vtkIdType cellId, const double pickPos[3],
                            int& outFaceLocalId, QVector<vtkIdType>& outFacePids) const;
     bool computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType pickedCellId,
@@ -307,6 +311,9 @@ class CORE_EXPORT PickManager : public QObject
     vtkSmartPointer<vtkPolyData> m_previewFacePoly;
     vtkSmartPointer<vtkPolyDataMapper> m_previewFaceMapper;
     vtkSmartPointer<vtkActor> m_previewFaceActor;
+    vtkSmartPointer<vtkDataArray> m_savedSolidCellScalars;
+    vtkSmartPointer<vtkDataArray> m_savedLineCellScalars;
+    bool m_faceColoringActive = false;
 
     QHash<QString, QHash<QString, QSet<vtkIdType>>> m_previewPointsSolidByDomainUuid;
     QHash<QString, QHash<QString, QSet<vtkIdType>>> m_previewPointsLineByDomainUuid;
