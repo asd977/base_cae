@@ -70,6 +70,13 @@
     </layout>
    </item>
    <item>
+    <widget class="QCheckBox" name="pickEnableCheckBox">
+     <property name="text">
+      <string>开启点选</string>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="QGroupBox" name="groupBoxParams">
      <property name="title">
       <string>统一参数（应用到选中节点）</string>
@@ -101,6 +108,25 @@
     </widget>
    </item>
 
+   <item>
+    <widget class="QGroupBox" name="groupBoxPick">
+     <property name="title">
+      <string>拾取信息</string>
+     </property>
+     <layout class="QGridLayout" name="gridLayoutPick">
+      <item row="0" column="0"><widget class="QLabel" name="labelNodeId"><property name="text"><string>node_id</string></property></widget></item>
+      <item row="0" column="1"><widget class="QLabel" name="labelNodeIdValue"><property name="text"><string/></property></widget></item>
+      <item row="1" column="0"><widget class="QLabel" name="labelX"><property name="text"><string>X</string></property></widget></item>
+      <item row="1" column="1"><widget class="QLabel" name="labelXValue"><property name="text"><string/></property></widget></item>
+      <item row="2" column="0"><widget class="QLabel" name="labelY"><property name="text"><string>Y</string></property></widget></item>
+      <item row="2" column="1"><widget class="QLabel" name="labelYValue"><property name="text"><string/></property></widget></item>
+      <item row="3" column="0"><widget class="QLabel" name="labelZ"><property name="text"><string>Z</string></property></widget></item>
+      <item row="3" column="1"><widget class="QLabel" name="labelZValue"><property name="text"><string/></property></widget></item>
+      <item row="4" column="0"><widget class="QLabel" name="labelPrevOwner"><property name="text"><string>移除</string></property></widget></item>
+      <item row="4" column="1"><widget class="QLabel" name="labelPrevOwnerValue"><property name="text"><string/></property></widget></item>
+     </layout>
+    </widget>
+   </item>
    <item>
     <spacer name="verticalSpacer">
      <property name="orientation">

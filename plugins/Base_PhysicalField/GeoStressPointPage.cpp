@@ -9,6 +9,7 @@
 #include <struct/MeshMap.h>
 
 #include <QComboBox>
+#include <QCheckBox>
 #include <QDebug>
 #include <QMessageBox>
 #include <QPushButton>
@@ -52,9 +53,21 @@ void GeoStressPointPage::beforeLoad()
 
     QObject::connect(&PickManager::instance(), &PickManager::nodePicked, this,
                      &GeoStressPointPage::onNodePicked, Qt::UniqueConnection);
-
-    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
     setupBatchGroupCombo();
+
+    QObject::disconnect(ui->pickEnableCheckBox, nullptr, this, nullptr);
+    connect(ui->pickEnableCheckBox, &QCheckBox::toggled, this,
+            [this](bool on)
+            {
+                if (on)
+                    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
+                else
+                    PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
+            },
+            Qt::UniqueConnection);
+
+    ui->pickEnableCheckBox->setChecked(false);
+    PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
 }
 
 void GeoStressPointPage::beforeUnload()

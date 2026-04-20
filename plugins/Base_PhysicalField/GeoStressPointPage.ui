@@ -70,6 +70,13 @@
     </layout>
    </item>
    <item>
+    <widget class="QCheckBox" name="pickEnableCheckBox">
+     <property name="text">
+      <string>开启点选</string>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="QGroupBox" name="groupBoxParams">
      <property name="title">
       <string>地应力参数</string>

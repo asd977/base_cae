@@ -8,6 +8,7 @@
 #include <struct/MeshMap.h>
 
 #include <QComboBox>
+#include <QCheckBox>
 #include <QDebug>
 #include <QDoubleSpinBox>
 #include <QMessageBox>
@@ -30,9 +31,34 @@ PointForcePage::~PointForcePage() = default;
 void PointForcePage::beforeLoad()
 {
     PickManager::instance();
-
-    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
     setupBatchGroupCombo();
+
+    QObject::disconnect(&PickManager::instance(), &PickManager::nodePicked, this, nullptr);
+    QObject::connect(&PickManager::instance(), &PickManager::nodePicked, this,
+                     [this](const QString& domain, const QString& activeUuid, GridKind, vtkIdType,
+                            int nodeId, double x, double y, double z, const QString& prevUuid)
+                     {
+                         if (domain != getPageType() || activeUuid != m_uuid)
+                             return;
+                         ui->labelNodeIdValue->setText(QString::number(nodeId));
+                         ui->labelXValue->setText(QString::number(x, 'g', 12));
+                         ui->labelYValue->setText(QString::number(y, 'g', 12));
+                         ui->labelZValue->setText(QString::number(z, 'g', 12));
+                         ui->labelPrevOwnerValue->setText(prevUuid);
+                     },
+                     Qt::UniqueConnection);
+    QObject::disconnect(ui->pickEnableCheckBox, nullptr, this, nullptr);
+    QObject::connect(ui->pickEnableCheckBox, &QCheckBox::toggled, this,
+                     [this](bool on)
+                     {
+                         if (on)
+                             PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
+                         else
+                             PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
+                     },
+                     Qt::UniqueConnection);
+    ui->pickEnableCheckBox->setChecked(false);
+    PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
 
     const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     const bool is3D = (NDIM == 3);
@@ -54,6 +80,7 @@ void PointForcePage::beforeLoad()
 
 void PointForcePage::beforeUnload()
 {
+    QObject::disconnect(&PickManager::instance(), &PickManager::nodePicked, this, nullptr);
     PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
 }
 

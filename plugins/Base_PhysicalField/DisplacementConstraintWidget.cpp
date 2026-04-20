@@ -9,6 +9,7 @@
 #include <services/VisualWidgetService.h>
 
 #include <QDebug>
+#include <QCheckBox>
 #include <QPushButton>
 
 #include "ui_DisplacementConstraintWidget.h"
@@ -54,7 +55,6 @@ DisplacementConstraintWidget::~DisplacementConstraintWidget()
 void DisplacementConstraintWidget::beforeLoad()
 {
     PickManager::instance();
-    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
     QObject::connect(&PickManager::instance(), &PickManager::nodePicked, this,
                      &DisplacementConstraintWidget::onNodePicked, Qt::UniqueConnection);
 
@@ -126,6 +126,24 @@ void DisplacementConstraintWidget::beforeLoad()
                 },
                 Qt::UniqueConnection);
     }
+
+    QObject::disconnect(ui->pickEnableCheckBox, nullptr, this, nullptr);
+    connect(ui->pickEnableCheckBox, &QCheckBox::toggled, this,
+            [this](bool on)
+            {
+                if (on)
+                {
+                    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
+                }
+                else
+                {
+                    PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
+                }
+            },
+            Qt::UniqueConnection);
+
+    ui->pickEnableCheckBox->setChecked(false);
+    PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
 }
 
 void DisplacementConstraintWidget::refreshGroupCombo(int dimFilter)
