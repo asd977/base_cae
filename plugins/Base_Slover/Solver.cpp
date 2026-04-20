@@ -53,10 +53,20 @@ void Solver::newProject()
 {
     if (m_root)
         return;
-    SolverSettingWidget *tmp = new SolverSettingWidget;
+    SolverSettingWidget* tmp = new SolverSettingWidget;
 
-    m_root = new ProjectNode("计算分析", QUuid::createUuid().toString(), tmp);
+    m_root = new ProjectNode("固体力学", QUuid::createUuid().toString(), tmp);
     setupNodeRole(m_root, "SolverRoot");
+
+    auto* fatigueNode = new ProjectNode("疲劳", QUuid::createUuid().toString(), nullptr);
+    setupNodeRole(fatigueNode, "FatigueAnalysis");
+    m_root->addChild(fatigueNode);
+
+    auto* fatigueNormalStressNode =
+        new ProjectNode("疲劳正应力", QUuid::createUuid().toString(), nullptr);
+    setupNodeRole(fatigueNormalStressNode, "FatigueNormalStress");
+    m_root->addChild(fatigueNormalStressNode);
+
     ProjectManagerService* projectManagerService =
         ServiceRegistry::instance().getService<ProjectManagerService>();
     projectManagerService->addTreeItem(m_root);
@@ -69,7 +79,7 @@ bool Solver::saveProject()
 
     QJsonObject root;
     root["module"] = "Solver";
-    root["root_title"] = "计算分析";
+    root["root_title"] = "固体力学";
 
     QJsonArray analysisItems;
     for (ProjectNode* analysisNode : m_root->getChildren())
