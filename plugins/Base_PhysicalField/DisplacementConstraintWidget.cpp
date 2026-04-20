@@ -55,6 +55,7 @@ DisplacementConstraintWidget::~DisplacementConstraintWidget()
 void DisplacementConstraintWidget::beforeLoad()
 {
     PickManager::instance();
+    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
     QObject::connect(&PickManager::instance(), &PickManager::nodePicked, this,
                      &DisplacementConstraintWidget::onNodePicked, Qt::UniqueConnection);
 
@@ -131,19 +132,12 @@ void DisplacementConstraintWidget::beforeLoad()
     connect(ui->pickEnableCheckBox, &QCheckBox::toggled, this,
             [this](bool on)
             {
-                if (on)
-                {
-                    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
-                }
-                else
-                {
-                    PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
-                }
+                PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, on);
             },
             Qt::UniqueConnection);
 
     ui->pickEnableCheckBox->setChecked(false);
-    PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
+    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
 }
 
 void DisplacementConstraintWidget::refreshGroupCombo(int dimFilter)
@@ -236,6 +230,7 @@ void DisplacementConstraintWidget::beforeUnload()
 {
     QObject::disconnect(&PickManager::instance(), &PickManager::nodePicked, this,
                         &DisplacementConstraintWidget::onNodePicked);
+    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
     PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
 }
 

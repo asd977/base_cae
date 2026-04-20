@@ -518,6 +518,8 @@ void PickManager::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clie
     self->m_dragBoxDeselect = ctrlBox;
     if (!self->m_dragUseBox)
     {
+        if (!self->isClickPickEnabledForActive())
+            return;
         self->pickAt(xy[0], xy[1]);
         return;
     }
@@ -582,7 +584,11 @@ void PickManager::OnLeftButtonRelease(vtkObject* caller, unsigned long, void* cl
     else if (!useBox)
         ;
     else
+    {
+        if (!self->isClickPickEnabledForActive())
+            return;
         self->pickAt(xy[0], xy[1]);
+    }
 
     if (self->m_styleDisabledByBoxSelect)
     {
@@ -2073,11 +2079,23 @@ void PickManager::setBoxSelectEnabled(const QString& domain, const QString& uuid
         updateDragRect(0, 0, 0, 0, false);
 }
 
+void PickManager::setClickPickEnabled(const QString& domain, const QString& uuid, bool enabled)
+{
+    m_clickPickEnabledByDomainUuid[domain][uuid] = enabled;
+}
+
 bool PickManager::isBoxSelectEnabledForActive() const
 {
     if (m_currentDomain.isEmpty() || m_currentUUid.isEmpty())
         return false;
     return m_boxSelectEnabledByDomainUuid.value(m_currentDomain).value(m_currentUUid, true);
+}
+
+bool PickManager::isClickPickEnabledForActive() const
+{
+    if (m_currentDomain.isEmpty() || m_currentUUid.isEmpty())
+        return true;
+    return m_clickPickEnabledByDomainUuid.value(m_currentDomain).value(m_currentUUid, true);
 }
 
 void PickManager::updateDragRect(int x0, int y0, int x1, int y1, bool visible)

@@ -42,6 +42,7 @@ void BeamLoadPage::beforeLoad()
     const bool is2D = (NDIM == 2);
 
     qDebug() << "[BeamLoadPage] beforeLoad node pick checkbox init, uuid=" << m_uuid;
+    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
     setupBatchGroupCombo();
 
     QObject::disconnect(&PickManager::instance(), &PickManager::nodePicked, this, nullptr);
@@ -62,20 +63,18 @@ void BeamLoadPage::beforeLoad()
     QObject::connect(ui->pickEnableCheckBox, &QCheckBox::toggled, this,
                      [this](bool on)
                      {
-                         if (on)
-                             PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
-                         else
-                             PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
+                         PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, on);
                      },
                      Qt::UniqueConnection);
     ui->pickEnableCheckBox->setChecked(false);
-    PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
+    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
 }
 
 void BeamLoadPage::beforeUnload()
 {
     QObject::disconnect(&PickManager::instance(), &PickManager::nodePicked, this, nullptr);
     qDebug() << "[BeamLoadPage] beforeUnload deactivate node pick, uuid=" << m_uuid;
+    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
     PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
 }
 

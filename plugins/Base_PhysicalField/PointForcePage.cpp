@@ -31,6 +31,7 @@ PointForcePage::~PointForcePage() = default;
 void PointForcePage::beforeLoad()
 {
     PickManager::instance();
+    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
     setupBatchGroupCombo();
 
     QObject::disconnect(&PickManager::instance(), &PickManager::nodePicked, this, nullptr);
@@ -51,14 +52,11 @@ void PointForcePage::beforeLoad()
     QObject::connect(ui->pickEnableCheckBox, &QCheckBox::toggled, this,
                      [this](bool on)
                      {
-                         if (on)
-                             PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
-                         else
-                             PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
+                         PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, on);
                      },
                      Qt::UniqueConnection);
     ui->pickEnableCheckBox->setChecked(false);
-    PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
+    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
 
     const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     const bool is3D = (NDIM == 3);
@@ -81,6 +79,7 @@ void PointForcePage::beforeLoad()
 void PointForcePage::beforeUnload()
 {
     QObject::disconnect(&PickManager::instance(), &PickManager::nodePicked, this, nullptr);
+    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
     PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
 }
 

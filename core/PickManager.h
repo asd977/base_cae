@@ -124,6 +124,7 @@ class CORE_EXPORT PickManager : public QObject
                            const QVector<vtkIdType>& faceKeys);
     void clearPreviewSelection(const QString& domain, const QString& uuid, PickMode mode);
     void setBoxSelectEnabled(const QString& domain, const QString& uuid, bool enabled);
+    void setClickPickEnabled(const QString& domain, const QString& uuid, bool enabled);
 
   private:
     explicit PickManager(QObject* parent = nullptr);
@@ -138,6 +139,7 @@ class CORE_EXPORT PickManager : public QObject
     bool hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselect = false);
     void updateDragRect(int x0, int y0, int x1, int y1, bool visible);
     bool isBoxSelectEnabledForActive() const;
+    bool isClickPickEnabledForActive() const;
 
     // ---- node ----
     void toggleSelectNode(GridKind kind, vtkIdType pid);
@@ -219,6 +221,7 @@ class CORE_EXPORT PickManager : public QObject
     int m_dragStart[2] = {0, 0};
     int m_dragEnd[2] = {0, 0};
     QHash<QString, QHash<QString, bool>> m_boxSelectEnabledByDomainUuid;
+    QHash<QString, QHash<QString, bool>> m_clickPickEnabledByDomainUuid;
 
     vtkSmartPointer<vtkPoints> m_dragRectPts;
     vtkSmartPointer<vtkCellArray> m_dragRectLines;
