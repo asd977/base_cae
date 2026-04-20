@@ -299,9 +299,7 @@ class CORE_EXPORT PickManager : public QObject
 
     // ============ face coloring cache ============
     QHash<vtkIdType, QVector<vtkIdType>> m_solidBoundaryCellsByFaceKey;
-    QHash<vtkIdType, QVector<vtkIdType>> m_lineBoundaryCellsByFaceKey;
     vtkSmartPointer<vtkDataArray> m_savedSolidCellScalars;
-    vtkSmartPointer<vtkDataArray> m_savedLineCellScalars;
     bool m_faceColoringActive = false;
 
     QHash<QString, QHash<QString, QSet<vtkIdType>>> m_previewPointsSolidByDomainUuid;

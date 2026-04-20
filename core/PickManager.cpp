@@ -1578,7 +1578,6 @@ void PickManager::toggleSelectFace(GridKind kind, vtkIdType faceKey)
 void PickManager::rebuildBoundaryFaceCellIndex()
 {
     m_solidBoundaryCellsByFaceKey.clear();
-    m_lineBoundaryCellsByFaceKey.clear();
 
     auto buildOne = [&](vtkDataSet* pickedDs, vtkUnstructuredGrid* sourceGrid,
                         QHash<vtkIdType, QVector<vtkIdType>>& out)
@@ -1661,14 +1660,10 @@ void PickManager::rebuildFaceColorForActive()
     };
 
     const auto selectedSolid = m_facesSolidByDomainUuid.value(m_currentDomain).value(m_currentUUid);
-    const auto selectedLine = m_facesLineByDomainUuid.value(m_currentDomain).value(m_currentUUid);
     const auto previewSolid = m_previewFacesSolidByDomainUuid.value(m_currentDomain).value(m_currentUUid);
-    const auto previewLine = m_previewFacesLineByDomainUuid.value(m_currentDomain).value(m_currentUUid);
 
     applyOne(m_solidPickDataSet, selectedSolid, previewSolid, m_solidBoundaryCellsByFaceKey,
              m_savedSolidCellScalars);
-    applyOne(m_linePickDataSet, selectedLine, previewLine, m_lineBoundaryCellsByFaceKey,
-             m_savedLineCellScalars);
 
     m_faceColoringActive = true;
 }
@@ -1696,7 +1691,6 @@ void PickManager::restoreFaceColoring()
     };
 
     restoreOne(m_solidPickDataSet, m_solidProp, m_savedSolidCellScalars);
-    restoreOne(m_linePickDataSet, m_lineProp, m_savedLineCellScalars);
     m_faceColoringActive = false;
 }
 
