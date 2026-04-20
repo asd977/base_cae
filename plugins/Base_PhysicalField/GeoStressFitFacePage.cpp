@@ -95,17 +95,7 @@ void GeoStressFitFacePage::beforeLoad()
     // 2) 绑定“下拉框改变” -> 批量设置 keys
     connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &GeoStressFitFacePage::onDimComboChanged, Qt::UniqueConnection);
-    auto* batchAddBtn = findChild<QPushButton*>("btnBatchAdd");
-    if (!batchAddBtn)
-    {
-        batchAddBtn = new QPushButton(tr("添加"), this);
-        batchAddBtn->setObjectName("btnBatchAdd");
-        if (auto* host = ui->comboBoxGroup->parentWidget())
-        {
-            if (auto* lay = host->layout())
-                lay->addWidget(batchAddBtn);
-        }
-    }
+    auto* batchAddBtn = ui->btnBatchAdd;
     QObject::disconnect(batchAddBtn, nullptr, this, nullptr);
     connect(batchAddBtn, &QPushButton::clicked, this,
             [this]()

@@ -86,7 +86,18 @@
        <widget class="CustomComboBox" name="comboBoxDim" />
       </item>
       <item row="4" column="0" colspan="2">
-       <widget class="CustomComboBox" name="comboBoxGroup" />
+              <layout class="QHBoxLayout" name="horizontalLayoutGroupSelect">
+        <item>
+         <widget class="CustomComboBox" name="comboBoxGroup" />
+        </item>
+        <item>
+         <widget class="QPushButton" name="btnBatchAdd">
+          <property name="text">
+           <string>添加</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
      </layout>
     </widget>

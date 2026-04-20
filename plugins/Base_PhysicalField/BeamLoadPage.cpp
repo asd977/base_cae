@@ -85,17 +85,7 @@ void BeamLoadPage::setupBatchGroupCombo()
 
     connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &BeamLoadPage::onDimChanged, Qt::UniqueConnection);
-    auto* batchAddBtn = findChild<QPushButton*>("btnBatchAdd");
-    if (!batchAddBtn)
-    {
-        batchAddBtn = new QPushButton(tr("添加"), this);
-        batchAddBtn->setObjectName("btnBatchAdd");
-        if (auto* host = ui->comboBoxGroup->parentWidget())
-        {
-            if (auto* lay = host->layout())
-                lay->addWidget(batchAddBtn);
-        }
-    }
+    auto* batchAddBtn = ui->btnBatchAdd;
     QObject::disconnect(batchAddBtn, nullptr, this, nullptr);
     connect(batchAddBtn, &QPushButton::clicked, this,
             [this]()
