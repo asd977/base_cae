@@ -156,7 +156,9 @@ class CORE_EXPORT PickManager : public QObject
 
     // ---- face ----
     void toggleSelectFace(GridKind kind, vtkIdType faceKey);
-    void rebuildFacePolyForActive();
+    void rebuildFaceColorForActive();
+    void restoreFaceColoring();
+    void rebuildBoundaryFaceCellIndex();
     bool computePickedFace(vtkUnstructuredGrid* grid, vtkIdType cellId, const double pickPos[3],
                            int& outFaceLocalId, QVector<vtkIdType>& outFacePids) const;
     bool computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType pickedCellId,
@@ -295,18 +297,10 @@ class CORE_EXPORT PickManager : public QObject
     QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerEdgeSolidByDomain;
     QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerEdgeLineByDomain;
 
-    // ============ face overlay ============
-    vtkSmartPointer<vtkPoints> m_facePts;
-    vtkSmartPointer<vtkCellArray> m_facePolys;
-    vtkSmartPointer<vtkPolyData> m_facePoly;
-    vtkSmartPointer<vtkPolyDataMapper> m_faceMapper;
-    vtkSmartPointer<vtkActor> m_faceActor;
-
-    vtkSmartPointer<vtkPoints> m_previewFacePts;
-    vtkSmartPointer<vtkCellArray> m_previewFacePolys;
-    vtkSmartPointer<vtkPolyData> m_previewFacePoly;
-    vtkSmartPointer<vtkPolyDataMapper> m_previewFaceMapper;
-    vtkSmartPointer<vtkActor> m_previewFaceActor;
+    // ============ face coloring cache ============
+    QHash<vtkIdType, QVector<vtkIdType>> m_solidBoundaryCellsByFaceKey;
+    vtkSmartPointer<vtkDataArray> m_savedSolidCellScalars;
+    bool m_faceColoringActive = false;
 
     QHash<QString, QHash<QString, QSet<vtkIdType>>> m_previewPointsSolidByDomainUuid;
     QHash<QString, QHash<QString, QSet<vtkIdType>>> m_previewPointsLineByDomainUuid;
