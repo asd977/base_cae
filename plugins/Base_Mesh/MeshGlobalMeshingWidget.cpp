@@ -2,6 +2,7 @@
 
 #include <vtkUnstructuredGridReader.h>
 
+#include <PublicVariables.h>
 #include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDir>
@@ -32,6 +33,7 @@
 #include <vtkDataSetMapper.h>
 #include <vtkProperty.h>
 #include <vtkUnstructuredGrid.h>
+#include <PublicConstants.h>
 
 #include "MeshGlobalMeshingWidget.h"
 #include "ui_MeshGlobalMeshingWidget.h"
@@ -219,6 +221,7 @@ void MeshGlobalMeshingWidget::onGenerate()
     QString filePath = currentWorPath + "/data/" + fileName;
 
     Params p = collectParams();
+    PublicVariables::instance().set(PublicConstants::kMeshDimension,p.dimension,"mesh");
 
     p.inputStepPath = filePath;
     if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
