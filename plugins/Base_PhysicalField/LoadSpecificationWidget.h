@@ -15,6 +15,7 @@ class vtkCellPicker;
 class vtkCallbackCommand;
 class vtkRenderer;
 class vtkRenderWindowInteractor;
+class vtkMapper;
 
 namespace Ui
 {
@@ -64,16 +65,14 @@ class LoadSpecificationWidget : public BasePage
     vtkRenderer* m_renderer = nullptr;
     vtkRenderWindowInteractor* m_interactor = nullptr;
 
-    // surface actor (可选的外表面显示，方便点选)
+    // surface actor（复用现有外表面 actor，通过改颜色高亮）
     vtkSmartPointer<vtkPolyData> m_surface;
     vtkSmartPointer<vtkDataSetMapper> m_surfaceMapper;
     vtkSmartPointer<vtkActor> m_surfaceActor;
-    bool m_ownsSurfaceActor = false;
+    vtkSmartPointer<vtkMapper> m_originalSurfaceMapper;
 
-    // highlight (选中面片集合 -> 一个 actor)
+    // 选中面片集合（通过 m_surface 的 CellData 颜色显示）
     QSet<vtkIdType> m_selectedSurfaceCellIds;
-    vtkSmartPointer<vtkDataSetMapper> m_highlightMapper;
-    vtkSmartPointer<vtkActor> m_highlightActor;
 
     // picker + callback
     vtkSmartPointer<vtkCellPicker> m_picker;

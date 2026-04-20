@@ -11,17 +11,18 @@
 #include <vtkCellPicker.h>
 #include <vtkDataSetMapper.h>
 #include <vtkDataSet.h>
-#include <vtkExtractCells.h>
-#include <vtkGeometryFilter.h>
+#include <vtkCellData.h>
 #include <vtkIdList.h>
 #include <vtkIdTypeArray.h>
 #include <vtkIntArray.h>
+#include <vtkMapper.h>
 #include <vtkPointData.h>
 #include <vtkPolyData.h>
 #include <vtkProperty.h>
 #include <vtkRenderWindowInteractor.h>
 #include <vtkRenderer.h>
 #include <vtkUnstructuredGrid.h>
+#include <vtkUnsignedCharArray.h>
 
 #include <QComboBox>
 #include <QPushButton>
@@ -31,7 +32,6 @@
 #include "ui_LoadSpecificationWidget.h"
 
 static const QString kPickSurfacePropId = QString("loadspec.pick.surface");
-static const QString kPickHighlightPropId = QString("loadspec.pick.highlight");
 
 LoadSpecificationWidget::LoadSpecificationWidget(QWidget* parent)
     : BasePage("LoadSpecificationWidget"), ui(new Ui::LoadSpecificationWidget)
@@ -273,8 +273,7 @@ void LoadSpecificationWidget::setupSurfaceAndPicker()
         return;
     }
 
-    // ---------- 2) pick actor：优先复用现有外表面 actor，避免重复生成外表面 ----------
-    m_ownsSurfaceActor = false;
+    // ---------- 2) pick actor：复用现有外表面 actor ----------
     if (sourceSurfaceActor)
     {
         m_surfaceActor = sourceSurfaceActor;
@@ -286,25 +285,28 @@ void LoadSpecificationWidget::setupSurfaceAndPicker()
         return;
     }
 
-    // ---------- 3) 高亮 actor：先给一个空输入（关键修复点） ----------
-    auto emptyPoly = vtkSmartPointer<vtkPolyData>::New();
+    // ---------- 3) 直接在表面 cell 上染色，不再叠加 face overlay actor ----------
+    const vtkIdType nCells = m_surface->GetNumberOfCells();
+    auto cellColors = vtkSmartPointer<vtkUnsignedCharArray>::New();
+    cellColors->SetName("PickCellColors");
+    cellColors->SetNumberOfComponents(3);
+    cellColors->SetNumberOfTuples(nCells);
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    {
+        const unsigned char normalColor[3] = {179, 179, 179};
+        cellColors->SetTypedTuple(cid, normalColor);
+    }
+    m_surface->GetCellData()->SetScalars(cellColors);
 
-    m_highlightMapper = vtkSmartPointer<vtkDataSetMapper>::New();
-    m_highlightMapper->SetInputData(emptyPoly); // 关键：避免 0 connections
-    m_highlightMapper->ScalarVisibilityOff();
+    m_surfaceMapper = vtkSmartPointer<vtkDataSetMapper>::New();
+    m_surfaceMapper->SetInputData(m_surface);
+    m_surfaceMapper->ScalarVisibilityOn();
+    m_surfaceMapper->SetScalarModeToUseCellData();
+    m_surfaceMapper->SetColorModeToDirectScalars();
 
-    m_highlightActor = vtkSmartPointer<vtkActor>::New();
-    m_highlightActor->SetMapper(m_highlightMapper);
-    m_highlightActor->PickableOff();
-    m_highlightActor->GetProperty()->SetOpacity(1.0);
-    m_highlightActor->GetProperty()->EdgeVisibilityOn();
-    m_highlightActor->GetProperty()->SetLineWidth(2.5);
-    m_highlightActor->GetProperty()->SetColor(1.0, 0.2, 0.1);
-    m_highlightActor->GetProperty()->SetRenderLinesAsTubes(true);
-
-    m_visual->removeProp(kPickHighlightPropId, false);
-    m_visual->addProp(kPickHighlightPropId, m_highlightActor, QString("载荷"), QString("选中高亮"),
-                      true, true);
+    m_originalSurfaceMapper = m_surfaceActor->GetMapper();
+    m_surfaceActor->SetMapper(m_surfaceMapper);
+    m_surfaceActor->GetProperty()->SetColor(1.0, 1.0, 1.0);
 
     // ---------- 4) picker（只 pick surfaceActor） ----------
     m_picker = vtkSmartPointer<vtkCellPicker>::New();
@@ -341,19 +343,16 @@ void LoadSpecificationWidget::teardownSurfaceAndPicker()
 
     if (m_visual)
     {
-        m_visual->removeProp(kPickHighlightPropId, false);
-        if (m_ownsSurfaceActor)
-            m_visual->removeProp(kPickSurfacePropId, false);
+        if (m_surfaceActor && m_originalSurfaceMapper)
+            m_surfaceActor->SetMapper(m_originalSurfaceMapper);
+        m_visual->removeProp(kPickSurfacePropId, false);
         m_visual->render();
     }
 
     m_surface = nullptr;
     m_surfaceMapper = nullptr;
     m_surfaceActor = nullptr;
-    m_ownsSurfaceActor = false;
-
-    m_highlightMapper = nullptr;
-    m_highlightActor = nullptr;
+    m_originalSurfaceMapper = nullptr;
 
     qDebug() << "[LoadSpecificationWidget] Face picking disabled.";
 }
@@ -437,32 +436,23 @@ void LoadSpecificationWidget::handlePick(int displayX, int displayY)
 
 void LoadSpecificationWidget::rebuildHighlight()
 {
-    if (!m_surface || !m_highlightMapper)
+    if (!m_surface)
         return;
 
-    if (m_selectedSurfaceCellIds.isEmpty())
+    auto* cellColors =
+        vtkUnsignedCharArray::SafeDownCast(m_surface->GetCellData()->GetScalars("PickCellColors"));
+    if (!cellColors)
+        return;
+
+    const vtkIdType nCells = m_surface->GetNumberOfCells();
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
-        auto empty = vtkSmartPointer<vtkPolyData>::New();
-        m_highlightMapper->SetInputData(empty);
-        return;
+        const bool selected = m_selectedSurfaceCellIds.contains(cid);
+        const unsigned char selectedColor[3] = {255, 51, 26};
+        const unsigned char normalColor[3] = {179, 179, 179};
+        cellColors->SetTypedTuple(cid, selected ? selectedColor : normalColor);
     }
-
-    auto idList = vtkSmartPointer<vtkIdList>::New();
-    idList->SetNumberOfIds(m_selectedSurfaceCellIds.size());
-
-    int k = 0;
-    for (vtkIdType cid : m_selectedSurfaceCellIds)
-        idList->SetId(k++, cid);
-
-    auto extract = vtkSmartPointer<vtkExtractCells>::New();
-    extract->SetInputData(m_surface);
-    extract->SetCellList(idList);
-    extract->Update();
-
-    // vtkExtractCells 输出是 unstructured grid，这里转成 polydata 来渲染轮廓/面片
-    auto geom = vtkSmartPointer<vtkGeometryFilter>::New();
-    geom->SetInputConnection(extract->GetOutputPort());
-    geom->Update();
-
-    m_highlightMapper->SetInputData(geom->GetOutput());
+    cellColors->Modified();
+    m_surface->GetCellData()->Modified();
+    m_surface->Modified();
 }
