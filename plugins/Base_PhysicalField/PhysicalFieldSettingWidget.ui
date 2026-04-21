@@ -45,7 +45,7 @@
       </sizepolicy>
      </property>
      <property name="text">
-      <string>腐蚀类型选择</string>
+      <string>文件生成</string>
      </property>
     </widget>
    </item>

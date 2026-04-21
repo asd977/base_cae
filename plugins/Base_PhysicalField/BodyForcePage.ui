@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='UTF-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>BodyForcePage</class>
  <widget class="QWidget" name="BodyForcePage">
@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>205</width>
-    <height>332</height>
+    <width>220</width>
+    <height>468</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -52,128 +52,194 @@
    <item>
     <widget class="QWidget" name="contentWidget" native="true">
      <layout class="QVBoxLayout" name="contentLayout">
-   <item>
-    <widget class="CustomComboBox" name="comboBoxDim" />
-   </item>
-   <item>
-        <layout class="QHBoxLayout" name="horizontalLayoutGroupSelect">
-     <item>
-      <widget class="CustomComboBox" name="comboBoxGroup" />
-     </item>
-     <item>
-      <widget class="QPushButton" name="btnBatchAdd">
-       <property name="text">
-        <string>添加</string>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <widget class="QCheckBox" name="pickEnableCheckBox">
-     <property name="text">
-      <string>开启点选</string>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QGroupBox" name="groupBox">
-     <property name="title">
-      <string>体积力分量</string>
-     </property>
-     <layout class="QGridLayout" name="gridLayout">
-      <item row="0" column="1">
-       <widget class="QDoubleSpinBox" name="spinFbx">
-        <property name="decimals">
-         <number>6</number>
-        </property>
-        <property name="minimum">
-         <double>-1000000000000.000000000000000</double>
-        </property>
-        <property name="maximum">
-         <double>1000000000000.000000000000000</double>
-        </property>
-       </widget>
+      <item>
+       <widget class="CustomComboBox" name="comboBoxDim"/>
       </item>
-      <item row="2" column="1">
-       <widget class="QDoubleSpinBox" name="spinFbz">
-        <property name="decimals">
-         <number>6</number>
-        </property>
-        <property name="minimum">
-         <double>-1000000000000.000000000000000</double>
-        </property>
-        <property name="maximum">
-         <double>1000000000000.000000000000000</double>
-        </property>
-        <property name="value">
-         <double>-9.810000000000000</double>
-        </property>
-       </widget>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayoutGroupSelect">
+        <item>
+         <widget class="CustomComboBox" name="comboBoxGroup"/>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btnBatchAdd">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="text">
+           <string>添加</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="labelFby">
+      <item>
+       <widget class="QCheckBox" name="pickEnableCheckBox">
         <property name="text">
-         <string>FBY</string>
+         <string>开启点选</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="1">
-       <widget class="QDoubleSpinBox" name="spinFby">
-        <property name="decimals">
-         <number>6</number>
+      <item>
+       <widget class="QGroupBox" name="groupBox">
+        <property name="title">
+         <string>体积力分量</string>
         </property>
-        <property name="minimum">
-         <double>-1000000000000.000000000000000</double>
-        </property>
-        <property name="maximum">
-         <double>1000000000000.000000000000000</double>
-        </property>
+        <layout class="QGridLayout" name="gridLayout">
+         <item row="0" column="1">
+          <widget class="QDoubleSpinBox" name="spinFbx">
+           <property name="decimals">
+            <number>6</number>
+           </property>
+           <property name="minimum">
+            <double>-1000000000000.000000000000000</double>
+           </property>
+           <property name="maximum">
+            <double>1000000000000.000000000000000</double>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="1">
+          <widget class="QDoubleSpinBox" name="spinFbz">
+           <property name="decimals">
+            <number>6</number>
+           </property>
+           <property name="minimum">
+            <double>-1000000000000.000000000000000</double>
+           </property>
+           <property name="maximum">
+            <double>1000000000000.000000000000000</double>
+           </property>
+           <property name="value">
+            <double>-9.810000000000000</double>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="labelFby">
+           <property name="text">
+            <string>FBY</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="1">
+          <widget class="QDoubleSpinBox" name="spinFby">
+           <property name="decimals">
+            <number>6</number>
+           </property>
+           <property name="minimum">
+            <double>-1000000000000.000000000000000</double>
+           </property>
+           <property name="maximum">
+            <double>1000000000000.000000000000000</double>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelFbx">
+           <property name="text">
+            <string>FBX</string>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="0">
+          <widget class="QLabel" name="labelFbz">
+           <property name="text">
+            <string>FBZ</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </widget>
       </item>
-      <item row="0" column="0">
-       <widget class="QLabel" name="labelFbx">
-        <property name="text">
-         <string>FBX</string>
+      <item>
+       <widget class="QGroupBox" name="groupBoxPick">
+        <property name="title">
+         <string>拾取信息</string>
         </property>
+        <layout class="QGridLayout" name="gridLayoutPick">
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelNodeId">
+           <property name="text">
+            <string>node_id</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QLabel" name="labelNodeIdValue">
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="labelX">
+           <property name="text">
+            <string>X</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="1">
+          <widget class="QLabel" name="labelXValue">
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="0">
+          <widget class="QLabel" name="labelY">
+           <property name="text">
+            <string>Y</string>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="1">
+          <widget class="QLabel" name="labelYValue">
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+         <item row="3" column="0">
+          <widget class="QLabel" name="labelZ">
+           <property name="text">
+            <string>Z</string>
+           </property>
+          </widget>
+         </item>
+         <item row="3" column="1">
+          <widget class="QLabel" name="labelZValue">
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="0">
+          <widget class="QLabel" name="labelPrevOwner">
+           <property name="text">
+            <string>移除</string>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="1">
+          <widget class="QLabel" name="labelPrevOwnerValue">
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </widget>
       </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="labelFbz">
-        <property name="text">
-         <string>FBZ</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>     </layout>
-    </widget>
-   </item>
-
-   <item>
-    <widget class="QGroupBox" name="groupBoxPick">
-     <property name="title">
-      <string>拾取信息</string>
-     </property>
-     <layout class="QGridLayout" name="gridLayoutPick">
-      <item row="0" column="0"><widget class="QLabel" name="labelNodeId"><property name="text"><string>node_id</string></property></widget></item>
-      <item row="0" column="1"><widget class="QLabel" name="labelNodeIdValue"><property name="text"><string/></property></widget></item>
-      <item row="1" column="0"><widget class="QLabel" name="labelX"><property name="text"><string>X</string></property></widget></item>
-      <item row="1" column="1"><widget class="QLabel" name="labelXValue"><property name="text"><string/></property></widget></item>
-      <item row="2" column="0"><widget class="QLabel" name="labelY"><property name="text"><string>Y</string></property></widget></item>
-      <item row="2" column="1"><widget class="QLabel" name="labelYValue"><property name="text"><string/></property></widget></item>
-      <item row="3" column="0"><widget class="QLabel" name="labelZ"><property name="text"><string>Z</string></property></widget></item>
-      <item row="3" column="1"><widget class="QLabel" name="labelZValue"><property name="text"><string/></property></widget></item>
-      <item row="4" column="0"><widget class="QLabel" name="labelPrevOwner"><property name="text"><string>移除</string></property></widget></item>
-      <item row="4" column="1"><widget class="QLabel" name="labelPrevOwnerValue"><property name="text"><string/></property></widget></item>
      </layout>
     </widget>
    </item>
    <item>
     <spacer name="verticalSpacer">
      <property name="orientation">
-      <enum>Qt::Orientation::Vertical</enum>
+      <enum>Qt::Vertical</enum>
      </property>
      <property name="sizeHint" stdset="0">
       <size>
@@ -192,6 +258,6 @@
    <header>CustomComboBox.h</header>
   </customwidget>
  </customwidgets>
- <resources />
- <connections />
+ <resources/>
+ <connections/>
 </ui>

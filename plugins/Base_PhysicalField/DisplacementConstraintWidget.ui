@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='UTF-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>DisplacementConstraintWidget</class>
  <widget class="QWidget" name="DisplacementConstraintWidget">
@@ -71,15 +71,21 @@
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_3">
       <item>
-       <widget class="CustomComboBox" name="comboBoxDim" />
+       <widget class="CustomComboBox" name="comboBoxDim"/>
       </item>
       <item>
        <layout class="QHBoxLayout" name="horizontalLayoutGroupSelect">
         <item>
-         <widget class="CustomComboBox" name="comboBoxGroup" />
+         <widget class="CustomComboBox" name="comboBoxGroup"/>
         </item>
         <item>
          <widget class="QPushButton" name="btnBatchAdd">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
           <property name="text">
            <string>添加</string>
           </property>
@@ -108,7 +114,7 @@
           </widget>
          </item>
          <item row="0" column="1">
-          <widget class="QLineEdit" name="UXLineEdit" />
+          <widget class="QLineEdit" name="UXLineEdit"/>
          </item>
          <item row="1" column="0">
           <widget class="QLabel" name="label_4">
@@ -118,7 +124,7 @@
           </widget>
          </item>
          <item row="1" column="1">
-          <widget class="QLineEdit" name="UYLineEdit" />
+          <widget class="QLineEdit" name="UYLineEdit"/>
          </item>
          <item row="2" column="0">
           <widget class="QLabel" name="label_5">
@@ -128,7 +134,7 @@
           </widget>
          </item>
          <item row="2" column="1">
-          <widget class="QLineEdit" name="UZLineEdit" />
+          <widget class="QLineEdit" name="UZLineEdit"/>
          </item>
         </layout>
        </widget>
@@ -224,7 +230,7 @@
          <item row="0" column="1">
           <widget class="QLabel" name="IDLabel">
            <property name="text">
-            <string />
+            <string/>
            </property>
           </widget>
          </item>
@@ -282,6 +288,6 @@
    <header>CustomComboBox.h</header>
   </customwidget>
  </customwidgets>
- <resources />
- <connections />
+ <resources/>
+ <connections/>
 </ui>
