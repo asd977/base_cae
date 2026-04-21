@@ -8,6 +8,7 @@
 
 class QComboBox;
 class QPushButton;
+class QListWidget;
 
 class CaveExcavationBodyPage : public BasePage
 {
@@ -26,6 +27,7 @@ class CaveExcavationBodyPage : public BasePage
   private slots:
     void onClearClicked();
     void onGroupChanged(int index);
+    void onRemoveSelectedClicked();
 
   private:
     struct GroupOption
@@ -45,6 +47,7 @@ class CaveExcavationBodyPage : public BasePage
     QVector<vtkIdType> resolveCellIdsForIndex(int index) const;
     QVector<vtkIdType> visibleFaceKeysForCellIds(const QVector<vtkIdType>& cellIds) const;
     QVector<int> toElementIds(const QVector<vtkIdType>& cellIds) const;
+    void refreshElementListWidget();
     QString groupKeyForIndex(int index) const;
     bool setCurrentGroupByKey(const QString& key);
     static QString makeGroupKey(const GroupOption& option);
@@ -55,6 +58,8 @@ class CaveExcavationBodyPage : public BasePage
     QComboBox* m_groupCombo = nullptr;
     QPushButton* m_batchAddBtn = nullptr;
     QPushButton* m_clearBtn = nullptr;
+    QListWidget* m_elemList = nullptr;
+    QPushButton* m_removeSelectedBtn = nullptr;
     int m_lastHoveredIndex = -1;
     QSet<int> m_batchElementIds;
 };
