@@ -2,6 +2,7 @@
 
 #include <BasePage.h>
 #include <PickManager.h>
+#include <QSet>
 #include <QString>
 #include <vtkType.h>
 
@@ -42,6 +43,7 @@ class CaveExcavationBodyPage : public BasePage
 
     void setupBatchGroupCombo();
     QVector<vtkIdType> resolveCellIdsForIndex(int index) const;
+    QVector<int> toElementIds(const QVector<vtkIdType>& cellIds) const;
     QString groupKeyForIndex(int index) const;
     bool setCurrentGroupByKey(const QString& key);
     static QString makeGroupKey(const GroupOption& option);
@@ -53,4 +55,5 @@ class CaveExcavationBodyPage : public BasePage
     QPushButton* m_batchAddBtn = nullptr;
     QPushButton* m_clearBtn = nullptr;
     int m_lastHoveredIndex = -1;
+    QSet<int> m_batchElementIds;
 };
