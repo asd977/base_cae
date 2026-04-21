@@ -1731,18 +1731,12 @@ void PickManager::restoreFaceColoring()
 
     restoreOne(m_solidPickDataSet, m_solidProp, m_savedSolidCellScalars);
     m_faceColoringActive = false;
-
-    // 若材料域高亮处于开启状态，则在恢复面着色后立即回放 MATYPE 着色，
-    // 避免从“约束/荷载”回到“材料”时出现黑色/异常颜色。
-    if (m_domainHighlightActive)
-    {
-        rebuildDomainHighlightActors();
-    }
+    rebuildDomainHighlightActors();
 }
 
 void PickManager::rebuildDomainHighlightActors()
 {
-    if (!m_visual || !m_gridSolid)
+    if (!m_visual || !m_gridSolid || !m_solidPickDataSet)
         return;
 
     auto* actor = vtkActor::SafeDownCast(m_solidProp);
@@ -1755,22 +1749,19 @@ void PickManager::rebuildDomainHighlightActors()
     if (!hasSelection)
     {
         mapper->ScalarVisibilityOff();
-        m_domainHighlightActive = false;
         m_visual->render();
         return;
     }
 
-    auto* matArr = vtkIntArray::SafeDownCast(m_gridSolid->GetCellData()->GetArray("MATYPE"));
+    auto* matArr = vtkIntArray::SafeDownCast(m_solidPickDataSet->GetCellData()->GetArray("MATYPE"));
     if (!matArr)
         return;
 
     int maxMatype = -1;
-    const vtkIdType nCells = std::min(m_gridSolid->GetNumberOfCells(), matArr->GetNumberOfTuples());
+    const vtkIdType nCells =
+        std::min(m_solidPickDataSet->GetNumberOfCells(), matArr->GetNumberOfTuples());
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
-        vtkCell* c = m_gridSolid->GetCell(cid);
-        if (!c || c->GetCellDimension() != 3)
-            continue;
         maxMatype = qMax(maxMatype, matArr->GetValue(cid));
     }
     for (int v : m_domainMatypes)
@@ -1797,12 +1788,11 @@ void PickManager::rebuildDomainHighlightActors()
     if (m_domainPreDeleteMatype >= 0 && m_domainPreDeleteMatype <= maxMatype)
         lut->SetTableValue(m_domainPreDeleteMatype, 0.90, 0.55, 0.20, 1.0);
 
-    mapper->SetScalarModeToUseCellFieldData();
-    mapper->SelectColorArray("MATYPE");
+    m_solidPickDataSet->GetCellData()->SetScalars(matArr);
+    mapper->SetScalarModeToUseCellData();
     mapper->SetLookupTable(lut);
     mapper->UseLookupTableScalarRangeOn();
     mapper->ScalarVisibilityOn();
-    m_domainHighlightActive = true;
     m_visual->render();
 }
 
