@@ -2,7 +2,7 @@
 
 #include <BasePage.h>
 #include <PickManager.h>
-#include <QHash>
+
 #include <QSet>
 #include <QString>
 #include <vtkType.h>
@@ -27,43 +27,38 @@ class CaveExcavationBodyPage : public BasePage
 
   private slots:
     void onClearClicked();
-    void onGroupChanged(int index);
-    void onRemoveSelectedClicked();
+    void onAddGroupClicked();
+    void onRemoveSelectedGroupsClicked();
+    void onGroupHovered(int index);
+    void onGroupDropdownClosed();
 
   private:
-    struct GroupOption
+    enum class GroupSource
     {
-        enum class Source
-        {
-            Physical = 0,
-            Layer = 1,
-            Matype = 2
-        };
-        Source source = Source::Physical;
-        int id = -1;
-        QString label;
+        Physical,
+        Layer,
+        Matype
     };
 
-    void setupBatchGroupCombo();
-    QVector<vtkIdType> resolveCellIdsForIndex(int index) const;
-    QVector<vtkIdType> resolveCellIdsForGroupKey(const QString& key) const;
-    QVector<vtkIdType> visibleFaceKeysForCellIds(const QVector<vtkIdType>& cellIds) const;
-    QVector<int> toElementIds(const QVector<vtkIdType>& cellIds) const;
-    void refreshElementListWidget();
-    void rebuildBatchElementIdsFromGroups();
-    QString groupKeyForIndex(int index) const;
-    bool setCurrentGroupByKey(const QString& key);
-    static QString makeGroupKey(const GroupOption& option);
-    static GroupOption parseGroupKey(const QString& key, bool* ok = nullptr);
+    void setupGroupCombo();
+    QVector<int> availableGroupIds() const;
+    QVector<vtkIdType> groupCellIds(int groupId) const;
+    QVector<vtkIdType> visibleBoundaryFaceKeys(const QVector<vtkIdType>& cellIds) const;
+    QVector<int> elementIdsFromCells(const QVector<vtkIdType>& cellIds) const;
+    void refreshSelectedGroupList();
+    void updatePersistentSelectionFaces();
+    QString sourceToString(GroupSource s) const;
+    GroupSource sourceFromString(const QString& s) const;
     PickMode currentPickMode() const;
 
   private:
-    QComboBox* m_groupCombo = nullptr;
-    QPushButton* m_batchAddBtn = nullptr;
-    QPushButton* m_clearBtn = nullptr;
-    QListWidget* m_elemList = nullptr;
-    QPushButton* m_removeSelectedBtn = nullptr;
+    GroupSource m_source = GroupSource::Physical;
+    QSet<int> m_selectedGroups;
     int m_lastHoveredIndex = -1;
-    QSet<int> m_batchElementIds;
-    QHash<QString, QSet<int>> m_selectedGroupElemIds;
+
+    QComboBox* m_groupCombo = nullptr;
+    QPushButton* m_addGroupBtn = nullptr;
+    QPushButton* m_removeGroupBtn = nullptr;
+    QPushButton* m_clearBtn = nullptr;
+    QListWidget* m_groupList = nullptr;
 };
