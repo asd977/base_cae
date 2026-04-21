@@ -2095,16 +2095,24 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
     }
 
     QTextStream out(&f);
-    out.setRealNumberNotation(QTextStream::FixedNotation);
-    out.setRealNumberPrecision(6);
+    auto iField = [](long long v, int w) -> QString
+    {
+        return QString("%1").arg(v, w);
+    };
+    auto rField = [](double v, int w, int p) -> QString
+    {
+        return QString::asprintf("%*.*f", w, p, v);
+    };
 
     // header line 1
-    out << numnp << " " << madim << " " << ncell << " " << manod << " " << extra << " " << am << " "
-        << d1 << " " << d2 << " " << d3 << "\n";
+    out << iField(numnp, 10) << iField(madim, 10) << iField(ncell, 10) << iField(manod, 10)
+        << iField(extra, 10) << rField(am, 16, 4) << rField(d1, 16, 4) << rField(d2, 16, 4)
+        << rField(d3, 16, 4) << "\n";
 
     // header line 2
-    out << iobject << " " << ivertical << " " << xmin << " " << xmax << " " << ymin << " " << ymax
-        << " " << zmin << " " << zmax << "\n";
+    out << iField(iobject, 8) << iField(ivertical, 8) << rField(xmin, 14, 4) << rField(xmax, 14, 4)
+        << rField(ymin, 14, 4) << rField(ymax, 14, 4) << rField(zmin, 14, 4)
+        << rField(zmax, 14, 4) << "\n";
 
     // nodes: 优先保留原 node_id，缺失时回退到 idx+1
     for (vtkIdType i = 0; i < numnp; ++i)
@@ -2114,7 +2122,8 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
         const int outNodeId =
             (nodeIdArr && i < nodeIdArr->GetNumberOfTuples()) ? nodeIdArr->GetValue(i)
                                                                : (static_cast<int>(i) + 1);
-        out << p[0] << " " << p[1] << " " << p[2] << " " << outNodeId << "\n";
+        out << rField(p[0], 15, 5) << rField(p[1], 15, 5) << rField(p[2], 15, 5)
+            << iField(outNodeId, 10) << "\n";
     }
 
     // elems: 优先保留原 elem_id 与 node_id（必要时按 ketype 做重排）
@@ -2166,15 +2175,16 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
         const int outElemId =
             (elemIdArr && cid < elemIdArr->GetNumberOfTuples()) ? elemIdArr->GetValue(cid)
                                                                  : (static_cast<int>(cid) + 1);
-        out << outElemId;
+        out << iField(outElemId, 8);
 
         for (int j = 0; j < manod; ++j)
         {
             int nid = (j < outConn.size()) ? outConn[j] : 0;
-            out << " " << nid;
+            out << iField(nid, 9);
         }
 
-        out << " " << k << " " << mat << " " << lay << " " << t1 << " " << t2 << "\n";
+        out << iField(k, 5) << iField(mat, 4) << iField(lay, 4) << iField(t1, 4) << iField(t2, 4)
+            << "\n";
     }
 
     out.flush();
