@@ -16,7 +16,6 @@
 #include <vtkCommand.h>
 #include <vtkIdList.h>
 #include <vtkLine.h>
-#include <vtkLookupTable.h>
 #include <vtkMapper.h>
 #include <vtkDataSetMapper.h>
 #include <vtkCoordinate.h>
@@ -1757,41 +1756,37 @@ void PickManager::rebuildDomainHighlightActors()
     if (!matArr)
         return;
 
-    int maxMatype = -1;
     const vtkIdType nCells =
         std::min(m_solidPickDataSet->GetNumberOfCells(), matArr->GetNumberOfTuples());
+    auto colors = vtkSmartPointer<vtkUnsignedCharArray>::New();
+    colors->SetName("pick_domain_colors");
+    colors->SetNumberOfComponents(3);
+    colors->SetNumberOfTuples(nCells);
+
+    const unsigned char normal[3] = {179, 179, 179};
+    const unsigned char appliedColor[3] = {64, 191, 64};
+    const unsigned char selectedColor[3] = {230, 51, 51};
+    const unsigned char previewColor[3] = {51, 102, 230};
+    const unsigned char preDeleteColor[3] = {230, 140, 51};
+
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
-        maxMatype = qMax(maxMatype, matArr->GetValue(cid));
+        const int matype = matArr->GetValue(cid);
+        const unsigned char* c = normal;
+        if (m_domainMatypes.contains(matype))
+            c = appliedColor;
+        if (m_domainSelectedMatype >= 0 && matype == m_domainSelectedMatype)
+            c = selectedColor;
+        if (m_domainPreviewMatype >= 0 && matype == m_domainPreviewMatype)
+            c = previewColor;
+        if (m_domainPreDeleteMatype >= 0 && matype == m_domainPreDeleteMatype)
+            c = preDeleteColor;
+        colors->SetTypedTuple(cid, c);
     }
-    for (int v : m_domainMatypes)
-        maxMatype = qMax(maxMatype, v);
-    maxMatype = qMax(maxMatype, m_domainSelectedMatype);
-    maxMatype = qMax(maxMatype, m_domainPreviewMatype);
-    maxMatype = qMax(maxMatype, m_domainPreDeleteMatype);
-    if (maxMatype < 0)
-        return;
 
-    auto lut = vtkSmartPointer<vtkLookupTable>::New();
-    lut->SetNumberOfTableValues(maxMatype + 1);
-    lut->SetTableRange(0.0, maxMatype);
-    lut->Build();
-    for (int i = 0; i <= maxMatype; ++i)
-        lut->SetTableValue(i, 0.75, 0.75, 0.75, 1.0);
-    for (int v : m_domainMatypes)
-        if (v >= 0 && v <= maxMatype)
-            lut->SetTableValue(v, 0.25, 0.75, 0.25, 1.0);
-    if (m_domainSelectedMatype >= 0 && m_domainSelectedMatype <= maxMatype)
-        lut->SetTableValue(m_domainSelectedMatype, 0.90, 0.20, 0.20, 1.0);
-    if (m_domainPreviewMatype >= 0 && m_domainPreviewMatype <= maxMatype)
-        lut->SetTableValue(m_domainPreviewMatype, 0.20, 0.40, 0.90, 1.0);
-    if (m_domainPreDeleteMatype >= 0 && m_domainPreDeleteMatype <= maxMatype)
-        lut->SetTableValue(m_domainPreDeleteMatype, 0.90, 0.55, 0.20, 1.0);
-
-    m_solidPickDataSet->GetCellData()->SetScalars(matArr);
+    m_solidPickDataSet->GetCellData()->SetScalars(colors);
     mapper->SetScalarModeToUseCellData();
-    mapper->SetLookupTable(lut);
-    mapper->UseLookupTableScalarRangeOn();
+    mapper->SetColorModeToDirectScalars();
     mapper->ScalarVisibilityOn();
     m_visual->render();
 }
