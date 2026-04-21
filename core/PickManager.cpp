@@ -1731,6 +1731,13 @@ void PickManager::restoreFaceColoring()
 
     restoreOne(m_solidPickDataSet, m_solidProp, m_savedSolidCellScalars);
     m_faceColoringActive = false;
+
+    // 若材料域高亮处于开启状态，则在恢复面着色后立即回放 MATYPE 着色，
+    // 避免从“约束/荷载”回到“材料”时出现黑色/异常颜色。
+    if (m_domainHighlightActive)
+    {
+        rebuildDomainHighlightActors();
+    }
 }
 
 void PickManager::rebuildDomainHighlightActors()
