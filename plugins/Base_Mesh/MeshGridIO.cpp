@@ -2044,7 +2044,6 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
     auto* tail1Arr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("TAIL1"));
     auto* tail2Arr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("TAIL2"));
     auto* nodeIdArr = vtkIntArray::SafeDownCast(grid->GetPointData()->GetArray("node_id"));
-    auto* elemIdArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("elem_id"));
 
     const vtkIdType numnp = grid->GetNumberOfPoints();
     const vtkIdType ncell = grid->GetNumberOfCells();
@@ -2171,10 +2170,8 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
             outConn = vtkNodeIds; // 线性或无需重排
         }
 
-        // 写出：id + manod 个节点(不足补0) + ketype matype layer tail1 tail2
-        const int outElemId =
-            (elemIdArr && cid < elemIdArr->GetNumberOfTuples()) ? elemIdArr->GetValue(cid)
-                                                                 : (static_cast<int>(cid) + 1);
+        // IIIN.DAT 单元号按导出顺序从 1 开始连续编号
+        const int outElemId = static_cast<int>(cid) + 1;
         out << iField(outElemId, 8);
 
         for (int j = 0; j < manod; ++j)
