@@ -2,6 +2,8 @@
 
 #include <BasePage.h>
 #include <PickManager.h>
+#include <QString>
+#include <vtkType.h>
 
 class QComboBox;
 class QPushButton;
@@ -25,7 +27,24 @@ class CaveExcavationBodyPage : public BasePage
     void onGroupChanged(int index);
 
   private:
+    struct GroupOption
+    {
+        enum class Source
+        {
+            Physical = 0,
+            Layer = 1
+        };
+        Source source = Source::Physical;
+        int id = -1;
+        QString label;
+    };
+
     void setupBatchGroupCombo();
+    QVector<vtkIdType> resolveCellIdsForIndex(int index) const;
+    QString groupKeyForIndex(int index) const;
+    bool setCurrentGroupByKey(const QString& key);
+    static QString makeGroupKey(const GroupOption& option);
+    static GroupOption parseGroupKey(const QString& key, bool* ok = nullptr);
     PickMode currentPickMode() const;
 
   private:

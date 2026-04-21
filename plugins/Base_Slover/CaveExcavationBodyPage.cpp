@@ -20,6 +20,7 @@
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <set>
 
 CaveExcavationBodyPage::CaveExcavationBodyPage(QWidget* parent)
@@ -62,7 +63,8 @@ void CaveExcavationBodyPage::beforeUnload()
 QJsonObject CaveExcavationBodyPage::saveJson()
 {
     QJsonObject obj;
-    obj["group_phys_id"] = m_groupCombo ? m_groupCombo->currentData().toInt() : -1;
+    obj["group_key"] = groupKeyForIndex(m_groupCombo ? m_groupCombo->currentIndex() : -1);
+    obj["group_phys_id"] = m_groupCombo ? m_groupCombo->currentData().toInt() : -1; // 兼容旧存档
 
     QJsonArray faceArr, edgeArr;
     const auto faceKeys =
@@ -82,11 +84,18 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
 {
     if (m_groupCombo)
     {
-        const int physId = obj.value("group_phys_id").toInt(-1);
-        for (int i = 0; i < m_groupCombo->count(); ++i)
+        const QString groupKey = obj.value("group_key").toString();
+        if (!groupKey.trimmed().isEmpty() && setCurrentGroupByKey(groupKey))
         {
-            if (m_groupCombo->itemData(i).toInt() == physId)
+            // 已按新字段恢复
+        }
+        else
+        {
+            const int legacyId = obj.value("group_phys_id").toInt(-1);
+            for (int i = 0; i < m_groupCombo->count(); ++i)
             {
+                if (m_groupCombo->itemData(i).toInt() != legacyId)
+                    continue;
                 const QSignalBlocker blocker(m_groupCombo);
                 m_groupCombo->setCurrentIndex(i);
                 break;
@@ -147,36 +156,13 @@ void CaveExcavationBodyPage::onGroupChanged(int index)
     if (index < 0 || !m_groupCombo)
         return;
 
-    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    if (!meshSvc)
-        return;
-
-    const MshPickMap& map = meshSvc->mshPickMapSolid();
-    const int physId = m_groupCombo->itemData(index).toInt();
-    const int dim = map.physIdToDim.value(physId, -1);
-
+    const QVector<vtkIdType> cellIds = resolveCellIdsForIndex(index);
     QVector<vtkIdType> faceKeys;
     QVector<vtkIdType> edgeKeys;
-    if (dim == 2)
+    faceKeys.reserve(cellIds.size());
+    for (vtkIdType cid : cellIds)
     {
-        const auto src = map.bndFacePhysToFaceKeys.value(physId);
-        faceKeys.reserve(src.size());
-        edgeKeys.reserve(src.size());
-        for (qint64 k : src)
-        {
-            const vtkIdType fk = static_cast<vtkIdType>(k);
-            faceKeys.push_back(fk);
-            const vtkIdType cid = PickManager::instance().unpackFaceCellId(fk);
-            const int lid = PickManager::instance().unpackFaceLocalId(fk);
-            edgeKeys.push_back(PickManager::instance().packEdgeKey(cid, lid));
-        }
-    }
-    else if (dim == 3)
-    {
-        const auto src = map.volPhysToCellIds.value(physId);
-        faceKeys.reserve(src.size());
-        for (qint64 cid : src)
-            faceKeys.push_back(PickManager::instance().packFaceKey(static_cast<vtkIdType>(cid), 15));
+        faceKeys.push_back(PickManager::instance().packFaceKey(cid, 15));
     }
 
     if (currentPickMode() == PickMode::Face)
@@ -199,17 +185,68 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
     const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     const int targetDim = (meshDim == 3) ? 3 : 2;
 
+    QVector<GroupOption> options;
+    if (targetDim == 3)
+    {
+        const bool preferLayer = map.layerToCellIds.size() > 1;
+        const auto appendLayerOptions = [&]()
+        {
+            QList<int> layerIds = map.layerToCellIds.keys();
+            std::sort(layerIds.begin(), layerIds.end());
+            for (int layerId : layerIds)
+            {
+                const auto cells = map.layerToCellIds.value(layerId);
+                if (cells.isEmpty())
+                    continue;
+                GroupOption o;
+                o.source = GroupOption::Source::Layer;
+                o.id = layerId;
+                o.label = QString("填筑分层 #%1  (cells=%2)").arg(layerId).arg(cells.size());
+                options.push_back(o);
+            }
+        };
+
+        const auto appendPhysicalOptions = [&]()
+        {
+            for (auto it = map.physIdToName.constBegin(); it != map.physIdToName.constEnd(); ++it)
+            {
+                const int physId = it.key();
+                const int dim = map.physIdToDim.value(physId, -1);
+                if (dim != 3)
+                    continue;
+                GroupOption o;
+                o.source = GroupOption::Source::Physical;
+                o.id = physId;
+                o.label = QString("%1  (dim=%2, id=%3)").arg(it.value()).arg(dim).arg(physId);
+                options.push_back(o);
+            }
+        };
+
+        if (preferLayer)
+            appendLayerOptions();
+        else
+            appendPhysicalOptions();
+    }
+    else
+    {
+        for (auto it = map.physIdToName.constBegin(); it != map.physIdToName.constEnd(); ++it)
+        {
+            const int physId = it.key();
+            const int dim = map.physIdToDim.value(physId, -1);
+            if (dim != targetDim)
+                continue;
+            GroupOption o;
+            o.source = GroupOption::Source::Physical;
+            o.id = physId;
+            o.label = QString("%1  (dim=%2, id=%3)").arg(it.value()).arg(dim).arg(physId);
+            options.push_back(o);
+        }
+    }
+
     m_groupCombo->blockSignals(true);
     m_groupCombo->clear();
-    for (auto it = map.physIdToName.constBegin(); it != map.physIdToName.constEnd(); ++it)
-    {
-        const int physId = it.key();
-        const int dim = map.physIdToDim.value(physId, -1);
-        if (dim != targetDim)
-            continue;
-        m_groupCombo->addItem(QString("%1  (dim=%2, id=%3)").arg(it.value()).arg(dim).arg(physId),
-                              physId);
-    }
+    for (const GroupOption& o : options)
+        m_groupCombo->addItem(o.label, makeGroupKey(o));
     m_groupCombo->blockSignals(false);
 
     disconnect(m_groupCombo, nullptr, this, nullptr);
@@ -225,10 +262,16 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
                         return;
 
                     const MshPickMap& map = meshSvc->mshPickMapSolid();
-                    const int physId = m_groupCombo->itemData(row).toInt();
+                    bool parseOk = false;
+                    const GroupOption option =
+                        parseGroupKey(m_groupCombo->itemData(row).toString(), &parseOk);
+                    if (!parseOk)
+                        return;
+
+                    const int physId = option.id;
                     QVector<vtkIdType> faceKeys;
                     QVector<vtkIdType> edgeKeys;
-                    if (targetDim == 2)
+                    if (targetDim == 2 && option.source == GroupOption::Source::Physical)
                     {
                         for (qint64 k : map.bndFacePhysToFaceKeys.value(physId))
                         {
@@ -241,7 +284,23 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
                     }
                     else
                     {
-                        for (qint64 cid : map.volPhysToCellIds.value(physId))
+                        QVector<vtkIdType> cids;
+                        if (option.source == GroupOption::Source::Layer)
+                        {
+                            const auto src = map.layerToCellIds.value(physId);
+                            cids.reserve(src.size());
+                            for (qint64 cid : src)
+                                cids.push_back(static_cast<vtkIdType>(cid));
+                        }
+                        else
+                        {
+                            const auto src = map.volPhysToCellIds.value(physId);
+                            cids.reserve(src.size());
+                            for (qint64 cid : src)
+                                cids.push_back(static_cast<vtkIdType>(cid));
+                        }
+
+                        for (vtkIdType cid : cids)
                             faceKeys.push_back(PickManager::instance().packFaceKey(static_cast<vtkIdType>(cid), 15));
                     }
                     if (currentPickMode() == PickMode::Face)
@@ -266,4 +325,93 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
 PickMode CaveExcavationBodyPage::currentPickMode() const
 {
     return PickMode::Face;
+}
+
+QVector<vtkIdType> CaveExcavationBodyPage::resolveCellIdsForIndex(int index) const
+{
+    QVector<vtkIdType> out;
+    if (index < 0 || !m_groupCombo)
+        return out;
+
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshSvc)
+        return out;
+
+    const MshPickMap& map = meshSvc->mshPickMapSolid();
+    bool ok = false;
+    const GroupOption option = parseGroupKey(m_groupCombo->itemData(index).toString(), &ok);
+    if (!ok)
+        return out;
+
+    if (option.source == GroupOption::Source::Layer)
+    {
+        const auto src = map.layerToCellIds.value(option.id);
+        out.reserve(src.size());
+        for (qint64 cid : src)
+            out.push_back(static_cast<vtkIdType>(cid));
+        return out;
+    }
+
+    const int dim = map.physIdToDim.value(option.id, -1);
+    if (dim == 3)
+    {
+        const auto src = map.volPhysToCellIds.value(option.id);
+        out.reserve(src.size());
+        for (qint64 cid : src)
+            out.push_back(static_cast<vtkIdType>(cid));
+    }
+    return out;
+}
+
+QString CaveExcavationBodyPage::groupKeyForIndex(int index) const
+{
+    if (!m_groupCombo || index < 0 || index >= m_groupCombo->count())
+        return QString();
+    return m_groupCombo->itemData(index).toString();
+}
+
+bool CaveExcavationBodyPage::setCurrentGroupByKey(const QString& key)
+{
+    if (!m_groupCombo || key.trimmed().isEmpty())
+        return false;
+    for (int i = 0; i < m_groupCombo->count(); ++i)
+    {
+        if (m_groupCombo->itemData(i).toString() != key)
+            continue;
+        const QSignalBlocker blocker(m_groupCombo);
+        m_groupCombo->setCurrentIndex(i);
+        return true;
+    }
+    return false;
+}
+
+QString CaveExcavationBodyPage::makeGroupKey(const GroupOption& option)
+{
+    const QString source = (option.source == GroupOption::Source::Layer) ? "layer" : "physical";
+    return QString("%1:%2").arg(source).arg(option.id);
+}
+
+CaveExcavationBodyPage::GroupOption CaveExcavationBodyPage::parseGroupKey(const QString& key, bool* ok)
+{
+    GroupOption option;
+    if (ok)
+        *ok = false;
+    const QString trimmed = key.trimmed();
+    if (trimmed.isEmpty())
+        return option;
+
+    const QStringList parts = trimmed.split(':');
+    if (parts.size() != 2)
+        return option;
+
+    bool idOk = false;
+    const int id = parts[1].toInt(&idOk);
+    if (!idOk)
+        return option;
+
+    option.id = id;
+    option.source = (parts[0] == "layer") ? GroupOption::Source::Layer : GroupOption::Source::Physical;
+    if (ok)
+        *ok = true;
+    return option;
 }
