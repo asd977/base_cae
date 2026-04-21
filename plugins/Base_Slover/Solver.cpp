@@ -1296,16 +1296,11 @@ bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analys
 
         if (sourceIsDat)
         {
-            if (QFile::exists(targetIiin) && !QFile::remove(targetIiin))
+            // DAT 在导入时已经备份到 PREP/IIIN.DAT，这里只在缺失时做一次兜底复制。
+            if (!QFile::exists(targetIiin) && !QFile::copy(sourceMeshPath, targetIiin))
             {
                 QMessageBox::warning(nullptr, "计算失败",
-                                     QString("%1无法覆盖 PREP/IIIN.DAT。").arg(analysisType));
-                return false;
-            }
-            if (!QFile::copy(sourceMeshPath, targetIiin))
-            {
-                QMessageBox::warning(nullptr, "计算失败",
-                                     QString("%1复制 DAT 网格到 PREP/IIIN.DAT 失败。")
+                                     QString("%1缺少 PREP/IIIN.DAT，且兜底复制 DAT 网格失败。")
                                          .arg(analysisType));
                 return false;
             }
