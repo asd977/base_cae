@@ -17,6 +17,7 @@
 #include <services/ProjectManagerService.h>
 #include <services/VisualWidgetService.h>
 #include <vtkActor.h>
+#include <vtkAppendPolyData.h>
 #include <vtkCell.h>
 #include <vtkCellData.h>
 #include <vtkCellType.h>
@@ -1085,8 +1086,54 @@ void MeshModuleController::displayCurrentGrid()
         surf->SetInputData(nonLineGrid);
         surf->Update();
 
+        auto append = vtkSmartPointer<vtkAppendPolyData>::New();
+        append->AddInputData(surf->GetOutput());
+
+        const MshPickMap pickMap = mshPickMapSolid();
+        const auto appendGroupSurfaces = [&](const QHash<int, QVector<qint64>>& groupToCells)
+        {
+            for (auto it = groupToCells.constBegin(); it != groupToCells.constEnd(); ++it)
+            {
+                const auto& cids = it.value();
+                if (cids.isEmpty())
+                    continue;
+
+                auto idList = vtkSmartPointer<vtkIdList>::New();
+                idList->Allocate(cids.size());
+                for (qint64 rawCid : cids)
+                {
+                    const vtkIdType cid = static_cast<vtkIdType>(rawCid);
+                    if (cid < 0 || cid >= nonLineGrid->GetNumberOfCells())
+                        continue;
+                    idList->InsertNextId(cid);
+                }
+                if (idList->GetNumberOfIds() <= 0)
+                    continue;
+
+                auto ex = vtkSmartPointer<vtkExtractCells>::New();
+                ex->SetInputData(nonLineGrid);
+                ex->SetCellList(idList);
+                ex->Update();
+
+                auto subGrid = vtkUnstructuredGrid::SafeDownCast(ex->GetOutput());
+                if (!subGrid || subGrid->GetNumberOfCells() <= 0)
+                    continue;
+
+                auto subSurf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+                subSurf->SetInputData(subGrid);
+                subSurf->Update();
+                if (subSurf->GetOutput() && subSurf->GetOutput()->GetNumberOfCells() > 0)
+                    append->AddInputData(subSurf->GetOutput());
+            }
+        };
+
+        appendGroupSurfaces(pickMap.matypeToCellIds);
+        appendGroupSurfaces(pickMap.layerToCellIds);
+        appendGroupSurfaces(pickMap.volPhysToCellIds);
+        append->Update();
+
         auto boundary = vtkSmartPointer<vtkPolyData>::New();
-        boundary->ShallowCopy(surf->GetOutput());
+        boundary->ShallowCopy(append->GetOutput());
         rebuildOriginalIdArrays(nonLineGrid, boundary);
 
         auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
