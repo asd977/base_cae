@@ -125,6 +125,10 @@ class CORE_EXPORT PickManager : public QObject
     void clearPreviewSelection(const QString& domain, const QString& uuid, PickMode mode);
     void setBoxSelectEnabled(const QString& domain, const QString& uuid, bool enabled);
     void setClickPickEnabled(const QString& domain, const QString& uuid, bool enabled);
+    void highlightDomainsByMatype(const QString& domain, const QString& uuid,
+                                  const QSet<int>& matypes, int selectedMatype, int previewMatype,
+                                  int preDeleteMatype);
+    void clearDomainHighlight(const QString& domain, const QString& uuid = QString());
 
   private:
     explicit PickManager(QObject* parent = nullptr);
@@ -168,6 +172,7 @@ class CORE_EXPORT PickManager : public QObject
 
     void updateActorVisibility();
     void refreshStructureIfNeeded();
+    void rebuildDomainHighlightActors();
 
     // line node overlay
     void rebuildLineNodeOverlayAll();
@@ -319,6 +324,18 @@ class CORE_EXPORT PickManager : public QObject
 
     QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerFaceSolidByDomain;
     QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerFaceLineByDomain;
+
+    // ============ domain (MATYPE) highlight overlay ============
+    QString m_domainHighlightDomain;
+    QString m_domainHighlightUuid;
+    QSet<int> m_domainMatypes;
+    int m_domainSelectedMatype = -1;
+    int m_domainPreviewMatype = -1;
+    int m_domainPreDeleteMatype = -1;
+    vtkSmartPointer<vtkActor> m_domainAppliedActor;
+    vtkSmartPointer<vtkActor> m_domainSelectedActor;
+    vtkSmartPointer<vtkActor> m_domainPreviewActor;
+    vtkSmartPointer<vtkActor> m_domainPreDeleteActor;
 
   signals:
     void nodePicked(const QString& domain, const QString& activeUuid, GridKind kind, vtkIdType pid,

@@ -3,6 +3,7 @@
 #include <ProjectNode.h>
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <PickManager.h>
 #include <ContextMenuHub.h>
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
@@ -1504,15 +1505,17 @@ QSet<int> MaterialManager::availableMatypes() const
     return service->getAvailableMatypes();
 }
 
-void MaterialManager::highlightMatypes(const QSet<int>& matypes, int selectedMatype,
+void MaterialManager::highlightMatypes(const QString& entryId, const QSet<int>& matypes,
+                                       int selectedMatype,
                                        int previewMatype, int preDeleteMatype)
 {
-    auto* service = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    if (!service)
+    if (entryId.isEmpty())
     {
         return;
     }
-    service->highlightMatypes(matypes, selectedMatype, previewMatype, preDeleteMatype);
+    PickManager::instance().highlightDomainsByMatype(QStringLiteral("MaterialManager"), entryId,
+                                                     matypes, selectedMatype, previewMatype,
+                                                     preDeleteMatype);
 }
 
 void MaterialManager::refreshMatypeHighlight(const QString& entryId)
@@ -1524,7 +1527,7 @@ void MaterialManager::refreshMatypeHighlight(const QString& entryId)
     const int preview = m_previewMatypes.value(entryId, -1);
     const int preDelete = m_preDeleteMatypes.value(entryId, -1);
     // 不再使用 Selected 高亮，仅保留 Applied / Preview / PreDelete。
-    highlightMatypes(entry->appliedMatypes, -1, preview, preDelete);
+    highlightMatypes(entryId, entry->appliedMatypes, -1, preview, preDelete);
 }
 
 int MaterialManager::selectedMatypeForEntry(const QString& entryId) const
@@ -2775,14 +2778,14 @@ void MaterialManager::clearMatypeHighlight(const QString& entryId)
 
     // 注意：selected 不一定清掉（否则回到页面无法恢复“选中颜色”）
     // 只清显示即可：
-    highlightMatypes(QSet<int>{}, -1, -1, -1);
+    PickManager::instance().clearDomainHighlight(QStringLiteral("MaterialManager"), entryId);
 }
 
 void MaterialManager::clearAllMatypeHighlight()
 {
     m_previewMatypes.clear();
     m_preDeleteMatypes.clear();
-    highlightMatypes(QSet<int>{}, -1, -1, -1);
+    PickManager::instance().clearDomainHighlight(QStringLiteral("MaterialManager"));
 }
 
 int MaterialManager::previewMatypeForEntry(const QString& entryId) const
