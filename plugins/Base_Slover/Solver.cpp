@@ -934,7 +934,7 @@ void Solver::onSlopeStabilityAction()
 
 void Solver::onComputeSeepage(ProjectNode* analysisNode)
 {
-    if (!analysisNode)
+    if (!beginCommonCompute(analysisNode, "渗流分析"))
         return;
 
     bool ok = true;
@@ -972,7 +972,7 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
 
 void Solver::onComputeStressStrain(ProjectNode* analysisNode)
 {
-    if (!analysisNode)
+    if (!beginCommonCompute(analysisNode, "土石坝计算"))
         return;
 
     bool ok = true;
@@ -1021,7 +1021,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
 
 void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 {
-    if (!analysisNode)
+    if (!beginCommonCompute(analysisNode, "洞室开挖"))
         return;
 
     bool ok = true;
@@ -1239,7 +1239,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 
 void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
 {
-    if (!analysisNode)
+    if (!beginCommonCompute(analysisNode, "边坡分析"))
         return;
 
     auto* slopePage = dynamic_cast<SlopeStabilityWidget*>(analysisNode->getPage());
@@ -1251,7 +1251,7 @@ void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
 
 void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
 {
-    if (!analysisNode)
+    if (!beginCommonCompute(analysisNode, "地应力回归计算"))
         return;
 
     auto* page = dynamic_cast<GeoStressRegressionWidget*>(analysisNode->getPage());
@@ -1259,6 +1259,20 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
         QMessageBox::information(nullptr, "导出成功", "地应力回归计算输入文件导出成功。");
     else
         QMessageBox::warning(nullptr, "导出失败", "IGEOS.DAT 导出失败。");
+}
+
+bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analysisType) const
+{
+    if (!analysisNode)
+        return false;
+
+    if (!analysisNode->getPage())
+    {
+        QMessageBox::warning(nullptr, "计算失败",
+                             QString("%1页面不存在，无法执行计算。").arg(analysisType));
+        return false;
+    }
+    return true;
 }
 
 int Solver::nextStressStrainIndex() const

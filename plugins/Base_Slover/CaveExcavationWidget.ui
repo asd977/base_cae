@@ -169,7 +169,7 @@
      </widget>
     </widget>
    </item>
-   <item><widget class="QPushButton" name="btnCompute"><property name="text"><string>导出洞室流程文件（ICAVE.DAT）</string></property></widget></item>
+   <item><widget class="QPushButton" name="btnCompute"><property name="text"><string>计算</string></property></widget></item>
   </layout>
  </widget>
  <resources/>

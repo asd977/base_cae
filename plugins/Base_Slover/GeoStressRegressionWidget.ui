@@ -32,7 +32,7 @@
    </layout></item>
    <item>
     <widget class="QPushButton" name="btnCompute">
-     <property name="text"><string>导出 IGEOS.DAT</string></property>
+    <property name="text"><string>计算</string></property>
     </widget>
    </item>
    <item>
