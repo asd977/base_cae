@@ -1139,18 +1139,7 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
     auto lineIds = vtkSmartPointer<vtkIdList>::New();
     auto nonLineIds = vtkSmartPointer<vtkIdList>::New();
 
-    bool hasVolumeCells = false;
     const vtkIdType nCells = src->GetNumberOfCells();
-    for (vtkIdType cid = 0; cid < nCells; ++cid)
-    {
-        vtkCell* c = src->GetCell(cid);
-        if (c && c->GetCellDimension() == 3)
-        {
-            hasVolumeCells = true;
-            break;
-        }
-    }
-
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
         vtkCell* c = src->GetCell(cid);
@@ -1162,7 +1151,7 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
         {
             lineIds->InsertNextId(cid);
         }
-        else if (!hasVolumeCells || dim == 3)
+        else
         {
             nonLineIds->InsertNextId(cid);
         }
