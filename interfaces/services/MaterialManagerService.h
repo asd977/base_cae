@@ -23,6 +23,7 @@ struct MaterialManagerService
     virtual void showMaterialTransitionDialog() = 0;
     virtual QVector<QPair<int, int>> materialTransitions() const = 0;
     virtual void setMaterialTransitions(const QVector<QPair<int, int>>& transitions) = 0;
+    virtual bool generateIMATFile() = 0;
 };
 
 #endif // MATERIALMANAGERSERVICE_H
