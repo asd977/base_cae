@@ -1750,8 +1750,7 @@ bool Solver::exportMaMaskDatFile()
         return false;
 
     QTextStream os(&file);
-    os << "   1   NUM\n";
-    os << "  11     1\n";
+    os << "   0   NUM\n";
     return true;
 }
 

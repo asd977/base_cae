@@ -2055,7 +2055,7 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
 
     const int madim = (std::abs(zmax - zmin) < 1e-12) ? 2 : 3;
     const double am = 1.0;
-    const int extra = 0;
+    const int extra = 5;
     const double d1 = 0.0, d2 = 0.0, d3 = 0.0;
     const int iobject = 0, ivertical = 2;
 
