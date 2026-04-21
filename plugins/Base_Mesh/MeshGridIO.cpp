@@ -2046,7 +2046,7 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
     auto* nodeIdArr = vtkIntArray::SafeDownCast(grid->GetPointData()->GetArray("node_id"));
 
     const vtkIdType numnp = grid->GetNumberOfPoints();
-    const vtkIdType ncell = grid->GetNumberOfCells();
+    const vtkIdType totalCells = grid->GetNumberOfCells();
 
     double bounds[6];
     grid->GetBounds(bounds);
@@ -2059,14 +2059,39 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
     const double d1 = 0.0, d2 = 0.0, d3 = 0.0;
     const int iobject = 0, ivertical = 2;
 
-    // 统计 manod（全局最大节点数）
+    // 仅导出目标维度单元：
+    // - 3D 模型导出体单元（dim=3）
+    // - 2D 模型导出面单元（dim=2）
+    const int exportCellDim = (madim >= 3) ? 3 : 2;
+    QVector<vtkIdType> exportCellIds;
+    exportCellIds.reserve(static_cast<int>(totalCells));
+    for (vtkIdType cid = 0; cid < totalCells; ++cid)
+    {
+        vtkCell* c = grid->GetCell(cid);
+        if (!c)
+            continue;
+        if (c->GetCellDimension() == exportCellDim)
+            exportCellIds.push_back(cid);
+    }
+    if (exportCellIds.isEmpty())
+    {
+        if (errMsg)
+            *errMsg = QObject::tr("未找到可导出的%1D单元").arg(exportCellDim);
+        f.close();
+        return false;
+    }
+
+    const vtkIdType ncell = static_cast<vtkIdType>(exportCellIds.size());
+
+    // 统计 manod（导出单元中的最大节点数）
     int manod = 0;
-    QVector<int> cellKetype(ncell, 0);
-    QVector<int> cellExpN(ncell, 0);
+    QVector<int> cellKetype(static_cast<int>(ncell), 0);
+    QVector<int> cellExpN(static_cast<int>(ncell), 0);
 
     int unsupported = 0;
-    for (vtkIdType cid = 0; cid < ncell; ++cid)
+    for (int oi = 0; oi < exportCellIds.size(); ++oi)
     {
+        const vtkIdType cid = exportCellIds[oi];
         vtkCell* c = grid->GetCell(cid);
         if (!c)
         {
@@ -2080,8 +2105,8 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
             unsupported++;
             continue;
         }
-        cellKetype[cid] = k;
-        cellExpN[cid] = expN;
+        cellKetype[oi] = k;
+        cellExpN[oi] = expN;
         manod = std::max(manod, expN);
     }
 
@@ -2126,11 +2151,12 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
     }
 
     // elems: 优先保留原 elem_id 与 node_id（必要时按 ketype 做重排）
-    for (vtkIdType cid = 0; cid < ncell; ++cid)
+    for (int oi = 0; oi < exportCellIds.size(); ++oi)
     {
+        const vtkIdType cid = exportCellIds[oi];
         vtkCell* c = grid->GetCell(cid);
-        const int k = cellKetype[cid];
-        const int expN = cellExpN[cid];
+        const int k = cellKetype[oi];
+        const int expN = cellExpN[oi];
 
         int mat = matypeArr ? matypeArr->GetValue(cid) : 1;
         int lay = layerArr ? layerArr->GetValue(cid) : 1;
@@ -2171,7 +2197,7 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
         }
 
         // IIIN.DAT 单元号按导出顺序从 1 开始连续编号
-        const int outElemId = static_cast<int>(cid) + 1;
+        const int outElemId = oi + 1;
         out << iField(outElemId, 8);
 
         for (int j = 0; j < manod; ++j)
