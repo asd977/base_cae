@@ -39,10 +39,10 @@ CaveExcavationBodyPage::CaveExcavationBodyPage(QWidget* parent)
     m_batchAddBtn = new QPushButton("添加分组", this);
     m_clearBtn = new QPushButton("清空所选", this);
     m_elemList = new QListWidget(this);
-    m_removeSelectedBtn = new QPushButton("删除选中单元", this);
+    m_removeSelectedBtn = new QPushButton("删除选中组", this);
     form->addRow("选组", m_groupCombo);
     form->addRow("", m_batchAddBtn);
-    form->addRow("已选单元", m_elemList);
+    form->addRow("已选组", m_elemList);
     form->addRow("", m_removeSelectedBtn);
     form->addRow("", m_clearBtn);
     root->addLayout(form);
@@ -94,6 +94,10 @@ QJsonObject CaveExcavationBodyPage::saveJson()
     for (int ke : m_batchElementIds)
         batchElemArr.append(ke);
     obj["batch_elem_ids"] = batchElemArr;
+    QJsonArray groupKeysArr;
+    for (auto it = m_selectedGroupElemIds.constBegin(); it != m_selectedGroupElemIds.constEnd(); ++it)
+        groupKeysArr.append(it.key());
+    obj["batch_group_keys"] = groupKeysArr;
     return obj;
 }
 
@@ -135,10 +139,29 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
     PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, faceKeys, true);
     PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid, edgeKeys, true);
 
-    m_batchElementIds.clear();
-    const auto batchElemArr = obj.value("batch_elem_ids").toArray();
-    for (const auto& v : batchElemArr)
-        m_batchElementIds.insert(v.toInt());
+    m_selectedGroupElemIds.clear();
+    const auto groupKeysArr = obj.value("batch_group_keys").toArray();
+    for (const auto& v : groupKeysArr)
+    {
+        const QString key = v.toString().trimmed();
+        if (key.isEmpty())
+            continue;
+        const QVector<vtkIdType> cids = resolveCellIdsForGroupKey(key);
+        const QVector<int> elemIds = toElementIds(cids);
+        QSet<int> elemSet;
+        for (int ke : elemIds)
+            elemSet.insert(ke);
+        if (!elemSet.isEmpty())
+            m_selectedGroupElemIds.insert(key, elemSet);
+    }
+
+    rebuildBatchElementIdsFromGroups();
+    if (m_batchElementIds.isEmpty())
+    {
+        const auto batchElemArr = obj.value("batch_elem_ids").toArray();
+        for (const auto& v : batchElemArr)
+            m_batchElementIds.insert(v.toInt());
+    }
     refreshElementListWidget();
 }
 
@@ -174,6 +197,7 @@ QVector<int> CaveExcavationBodyPage::selectedElementIds()
 
 void CaveExcavationBodyPage::onClearClicked()
 {
+    m_selectedGroupElemIds.clear();
     m_batchElementIds.clear();
     refreshElementListWidget();
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
@@ -185,10 +209,18 @@ void CaveExcavationBodyPage::onGroupChanged(int index)
     if (index < 0 || !m_groupCombo)
         return;
 
-    const QVector<vtkIdType> cellIds = resolveCellIdsForIndex(index);
+    const QString key = groupKeyForIndex(index);
+    if (key.trimmed().isEmpty())
+        return;
+
+    const QVector<vtkIdType> cellIds = resolveCellIdsForGroupKey(key);
     const QVector<int> elemIds = toElementIds(cellIds);
+    QSet<int> elemSet;
     for (int ke : elemIds)
-        m_batchElementIds.insert(ke);
+        elemSet.insert(ke);
+    if (!elemSet.isEmpty())
+        m_selectedGroupElemIds.insert(key, elemSet);
+    rebuildBatchElementIdsFromGroups();
     refreshElementListWidget();
 
     QVector<vtkIdType> faceKeys;
@@ -216,10 +248,17 @@ void CaveExcavationBodyPage::onRemoveSelectedClicked()
         if (!item)
             continue;
         bool ok = false;
-        const int elemId = item->text().toInt(&ok);
-        if (ok)
-            m_batchElementIds.remove(elemId);
+        const QString key = item->data(Qt::UserRole).toString();
+        if (!key.trimmed().isEmpty())
+            m_selectedGroupElemIds.remove(key);
+        else
+        {
+            const int elemId = item->text().toInt(&ok);
+            if (ok)
+                m_batchElementIds.remove(elemId);
+        }
     }
+    rebuildBatchElementIdsFromGroups();
     refreshElementListWidget();
 }
 
@@ -429,6 +468,7 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
                 },
                 Qt::UniqueConnection);
     }
+    refreshElementListWidget();
 }
 
 PickMode CaveExcavationBodyPage::currentPickMode() const
@@ -438,24 +478,26 @@ PickMode CaveExcavationBodyPage::currentPickMode() const
 
 QVector<vtkIdType> CaveExcavationBodyPage::resolveCellIdsForIndex(int index) const
 {
-    QVector<vtkIdType> out;
     if (index < 0 || !m_groupCombo)
-        return out;
+        return {};
+    return resolveCellIdsForGroupKey(m_groupCombo->itemData(index).toString());
+}
 
+QVector<vtkIdType> CaveExcavationBodyPage::resolveCellIdsForGroupKey(const QString& key) const
+{
+    QVector<vtkIdType> out;
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
         return out;
-
     const MshPickMap& map = meshSvc->mshPickMapSolid();
     vtkUnstructuredGrid* grid = nullptr;
     const auto gridHolder = meshSvc->getVtkUnstructuredGridSolid();
     if (gridHolder)
         grid = gridHolder;
     bool ok = false;
-    const GroupOption option = parseGroupKey(m_groupCombo->itemData(index).toString(), &ok);
+    const GroupOption option = parseGroupKey(key, &ok);
     if (!ok)
         return out;
-
     if (option.source == GroupOption::Source::Layer)
     {
         const auto src = map.layerToCellIds.value(option.id);
@@ -540,7 +582,16 @@ QVector<vtkIdType> CaveExcavationBodyPage::visibleFaceKeysForCellIds(const QVect
 QVector<int> CaveExcavationBodyPage::toElementIds(const QVector<vtkIdType>& cellIds) const
 {
     QVector<int> out;
-    vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
+    vtkUnstructuredGrid* grid = nullptr;
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (meshSvc)
+    {
+        const auto gridHolder = meshSvc->getVtkUnstructuredGridSolid();
+        if (gridHolder)
+            grid = gridHolder;
+    }
+    if (!grid)
+        grid = PickManager::instance().solidGrid();
     if (!grid)
         return out;
 
@@ -560,12 +611,36 @@ void CaveExcavationBodyPage::refreshElementListWidget()
     if (!m_elemList)
         return;
 
-    QList<int> ids = m_batchElementIds.values();
-    std::sort(ids.begin(), ids.end());
-
     m_elemList->clear();
-    for (int id : ids)
-        m_elemList->addItem(QString::number(id));
+    QStringList keys = m_selectedGroupElemIds.keys();
+    std::sort(keys.begin(), keys.end());
+    for (const QString& key : keys)
+    {
+        QString text = key;
+        if (m_groupCombo)
+        {
+            for (int i = 0; i < m_groupCombo->count(); ++i)
+            {
+                if (m_groupCombo->itemData(i).toString() == key)
+                {
+                    text = m_groupCombo->itemText(i);
+                    break;
+                }
+            }
+        }
+        auto* item = new QListWidgetItem(text, m_elemList);
+        item->setData(Qt::UserRole, key);
+    }
+}
+
+void CaveExcavationBodyPage::rebuildBatchElementIdsFromGroups()
+{
+    m_batchElementIds.clear();
+    for (auto it = m_selectedGroupElemIds.constBegin(); it != m_selectedGroupElemIds.constEnd(); ++it)
+    {
+        for (int ke : it.value())
+            m_batchElementIds.insert(ke);
+    }
 }
 
 QString CaveExcavationBodyPage::groupKeyForIndex(int index) const
