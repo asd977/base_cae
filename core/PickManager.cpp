@@ -1986,14 +1986,16 @@ void PickManager::setPreviewEdgeKeys(const QString& domain, const QString& uuid,
         {
             vtkIdType cid = unpackEdgeCellId(key);
             int ei = unpackEdgeLocalId(key);
+            if (cid < 0 || cid >= grid->GetNumberOfCells())
+                continue;
             auto* cell = grid->GetCell(cid);
             if (!cell)
                 continue;
-            vtkCell* e = (cell->GetCellDimension() >= 3) ? cell->GetEdge(ei) : nullptr;
             QVector<vtkIdType> epids;
-            if (e)
+
+            if (cell->GetCellDimension() == 1 || ei == 15)
             {
-                auto* ids = e->GetPointIds();
+                auto* ids = cell->GetPointIds();
                 if (!ids || ids->GetNumberOfIds() < 2)
                     continue;
                 for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
@@ -2001,7 +2003,12 @@ void PickManager::setPreviewEdgeKeys(const QString& domain, const QString& uuid,
             }
             else
             {
-                auto* ids = cell->GetPointIds();
+                if (ei < 0 || ei >= cell->GetNumberOfEdges())
+                    continue;
+                vtkCell* e = cell->GetEdge(ei);
+                if (!e)
+                    continue;
+                auto* ids = e->GetPointIds();
                 if (!ids || ids->GetNumberOfIds() < 2)
                     continue;
                 for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
