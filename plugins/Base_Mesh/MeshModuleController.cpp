@@ -805,6 +805,35 @@ void MeshModuleController::onImportGrid()
     m_hasGrid = true;
     m_sourceFileName = fileName;
 
+    if (ext == "dat")
+    {
+        const QString projectDir =
+            PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+        if (!projectDir.trimmed().isEmpty())
+        {
+            QDir wd(QDir(projectDir).absolutePath());
+            if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+            {
+                QMessageBox::warning(nullptr, QString("DAT 备份失败"),
+                                     QString("无法创建 PREP 目录，未能备份 IIIN.DAT。"));
+            }
+            else
+            {
+                const QString targetIiin = wd.filePath("PREP/IIIN.DAT");
+                if (QFile::exists(targetIiin) && !QFile::remove(targetIiin))
+                {
+                    QMessageBox::warning(nullptr, QString("DAT 备份失败"),
+                                         QString("无法覆盖 PREP/IIIN.DAT。"));
+                }
+                else if (!QFile::copy(fileName, targetIiin))
+                {
+                    QMessageBox::warning(nullptr, QString("DAT 备份失败"),
+                                         QString("导入 DAT 后备份到 PREP/IIIN.DAT 失败。"));
+                }
+            }
+        }
+    }
+
     displayCurrentGrid();
     syncPickMapGroupingFromGrid(m_importedGrid);
 }
