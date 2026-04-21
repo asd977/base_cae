@@ -16,9 +16,9 @@
 #include <vtkCommand.h>
 #include <vtkIdList.h>
 #include <vtkLine.h>
+#include <vtkLookupTable.h>
 #include <vtkMapper.h>
 #include <vtkDataSetMapper.h>
-#include <vtkExtractCells.h>
 #include <vtkCoordinate.h>
 #include <vtkNew.h>
 #include <vtkFieldData.h>
@@ -36,7 +36,6 @@
 #include <vtkRenderer.h>
 #include <vtkSelection.h>
 #include <vtkSelectionNode.h>
-#include <vtkDataSetSurfaceFilter.h>
 #include <vtkUnsignedCharArray.h>
 
 namespace
@@ -245,37 +244,6 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_visual->removeProp("pick.line.nodes", false);
     m_visual->addProp("pick.line.nodes", m_lineNodeActor, QString("{line} 节点提示"),
                       QString("线网格节点提示"), true, true);
-
-    auto makeDomainActor = [&](const QString& propId, const QString& title, const double rgb[3],
-                               double opacity) -> vtkSmartPointer<vtkActor>
-    {
-        auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-        auto actor = vtkSmartPointer<vtkActor>::New();
-        actor->SetMapper(mapper);
-        actor->GetProperty()->SetColor(rgb[0], rgb[1], rgb[2]);
-        actor->GetProperty()->SetOpacity(opacity);
-        actor->GetProperty()->SetEdgeVisibilityOn();
-        actor->GetProperty()->SetEdgeColor(0.0, 0.0, 0.0);
-        actor->GetProperty()->SetLineWidth(1.5);
-        actor->GetProperty()->SetRepresentationToSurface();
-        actor->PickableOff();
-        actor->SetVisibility(false);
-        m_visual->removeProp(propId, false);
-        m_visual->addProp(propId, actor, title, QString("材料域高亮"), true, true);
-        return actor;
-    };
-    const double appliedC[3] = {0.25, 0.75, 0.25};
-    const double selectedC[3] = {0.90, 0.20, 0.20};
-    const double previewC[3] = {0.20, 0.40, 0.90};
-    const double preDeleteC[3] = {0.90, 0.55, 0.20};
-    m_domainAppliedActor =
-        makeDomainActor("pick.domain.applied", QString("{domain} 已施加"), appliedC, 0.45);
-    m_domainSelectedActor =
-        makeDomainActor("pick.domain.selected", QString("{domain} 已选中"), selectedC, 0.6);
-    m_domainPreviewActor =
-        makeDomainActor("pick.domain.preview", QString("{domain} 预览"), previewC, 0.55);
-    m_domainPreDeleteActor =
-        makeDomainActor("pick.domain.predelete", QString("{domain} 待移除"), preDeleteC, 0.55);
 
     m_visual->render();
 }
@@ -1770,75 +1738,64 @@ void PickManager::rebuildDomainHighlightActors()
     if (!m_visual || !m_gridSolid)
         return;
 
-    auto applyActorCells = [&](vtkActor* actor, const QSet<int>& targetMatypes)
+    auto* actor = vtkActor::SafeDownCast(m_solidProp);
+    if (!actor || !actor->GetMapper())
+        return;
+    auto* mapper = actor->GetMapper();
+
+    const bool hasSelection = !m_domainMatypes.isEmpty() || m_domainSelectedMatype >= 0 ||
+                              m_domainPreviewMatype >= 0 || m_domainPreDeleteMatype >= 0;
+    if (!hasSelection)
     {
-        if (!actor)
-            return;
-        auto* mapper = vtkPolyDataMapper::SafeDownCast(actor->GetMapper());
-        if (!mapper)
-            return;
-        if (targetMatypes.isEmpty())
-        {
-            actor->SetVisibility(false);
-            return;
-        }
-
-        auto* matArr = vtkIntArray::SafeDownCast(m_gridSolid->GetCellData()->GetArray("MATYPE"));
-        if (!matArr)
-        {
-            actor->SetVisibility(false);
-            return;
-        }
-
-        auto ids = vtkSmartPointer<vtkIdList>::New();
-        const vtkIdType nCells =
-            std::min(m_gridSolid->GetNumberOfCells(), matArr->GetNumberOfTuples());
-        for (vtkIdType cid = 0; cid < nCells; ++cid)
-        {
-            vtkCell* c = m_gridSolid->GetCell(cid);
-            if (!c || c->GetCellDimension() != 3)
-                continue;
-            const int m = matArr->GetValue(cid);
-            if (targetMatypes.contains(m))
-                ids->InsertNextId(cid);
-        }
-
-        if (ids->GetNumberOfIds() <= 0)
-        {
-            actor->SetVisibility(false);
-            return;
-        }
-
-        auto ex = vtkSmartPointer<vtkExtractCells>::New();
-        ex->SetInputData(m_gridSolid);
-        ex->SetCellList(ids);
-        ex->Update();
-        auto* extracted = vtkUnstructuredGrid::SafeDownCast(ex->GetOutput());
-        if (!extracted || extracted->GetNumberOfCells() <= 0)
-        {
-            actor->SetVisibility(false);
-            return;
-        }
-
-        auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-        surf->SetInputData(extracted);
-        surf->Update();
-        auto poly = vtkSmartPointer<vtkPolyData>::New();
-        poly->ShallowCopy(surf->GetOutput());
-        mapper->SetInputData(poly);
         mapper->ScalarVisibilityOff();
-        actor->SetVisibility(true);
-    };
+        m_domainHighlightActive = false;
+        m_visual->render();
+        return;
+    }
 
-    applyActorCells(m_domainAppliedActor, m_domainMatypes);
-    applyActorCells(m_domainSelectedActor,
-                    (m_domainSelectedMatype >= 0) ? QSet<int>{m_domainSelectedMatype} : QSet<int>{});
-    applyActorCells(m_domainPreviewActor,
-                    (m_domainPreviewMatype >= 0) ? QSet<int>{m_domainPreviewMatype} : QSet<int>{});
-    applyActorCells(
-        m_domainPreDeleteActor,
-        (m_domainPreDeleteMatype >= 0) ? QSet<int>{m_domainPreDeleteMatype} : QSet<int>{});
+    auto* matArr = vtkIntArray::SafeDownCast(m_gridSolid->GetCellData()->GetArray("MATYPE"));
+    if (!matArr)
+        return;
 
+    int maxMatype = -1;
+    const vtkIdType nCells = std::min(m_gridSolid->GetNumberOfCells(), matArr->GetNumberOfTuples());
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    {
+        vtkCell* c = m_gridSolid->GetCell(cid);
+        if (!c || c->GetCellDimension() != 3)
+            continue;
+        maxMatype = qMax(maxMatype, matArr->GetValue(cid));
+    }
+    for (int v : m_domainMatypes)
+        maxMatype = qMax(maxMatype, v);
+    maxMatype = qMax(maxMatype, m_domainSelectedMatype);
+    maxMatype = qMax(maxMatype, m_domainPreviewMatype);
+    maxMatype = qMax(maxMatype, m_domainPreDeleteMatype);
+    if (maxMatype < 0)
+        return;
+
+    auto lut = vtkSmartPointer<vtkLookupTable>::New();
+    lut->SetNumberOfTableValues(maxMatype + 1);
+    lut->SetTableRange(0.0, maxMatype);
+    lut->Build();
+    for (int i = 0; i <= maxMatype; ++i)
+        lut->SetTableValue(i, 0.75, 0.75, 0.75, 1.0);
+    for (int v : m_domainMatypes)
+        if (v >= 0 && v <= maxMatype)
+            lut->SetTableValue(v, 0.25, 0.75, 0.25, 1.0);
+    if (m_domainSelectedMatype >= 0 && m_domainSelectedMatype <= maxMatype)
+        lut->SetTableValue(m_domainSelectedMatype, 0.90, 0.20, 0.20, 1.0);
+    if (m_domainPreviewMatype >= 0 && m_domainPreviewMatype <= maxMatype)
+        lut->SetTableValue(m_domainPreviewMatype, 0.20, 0.40, 0.90, 1.0);
+    if (m_domainPreDeleteMatype >= 0 && m_domainPreDeleteMatype <= maxMatype)
+        lut->SetTableValue(m_domainPreDeleteMatype, 0.90, 0.55, 0.20, 1.0);
+
+    mapper->SetScalarModeToUseCellFieldData();
+    mapper->SelectColorArray("MATYPE");
+    mapper->SetLookupTable(lut);
+    mapper->UseLookupTableScalarRangeOn();
+    mapper->ScalarVisibilityOn();
+    m_domainHighlightActive = true;
     m_visual->render();
 }
 

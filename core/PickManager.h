@@ -332,10 +332,7 @@ class CORE_EXPORT PickManager : public QObject
     int m_domainSelectedMatype = -1;
     int m_domainPreviewMatype = -1;
     int m_domainPreDeleteMatype = -1;
-    vtkSmartPointer<vtkActor> m_domainAppliedActor;
-    vtkSmartPointer<vtkActor> m_domainSelectedActor;
-    vtkSmartPointer<vtkActor> m_domainPreviewActor;
-    vtkSmartPointer<vtkActor> m_domainPreDeleteActor;
+    bool m_domainHighlightActive = false;
 
   signals:
     void nodePicked(const QString& domain, const QString& activeUuid, GridKind kind, vtkIdType pid,
