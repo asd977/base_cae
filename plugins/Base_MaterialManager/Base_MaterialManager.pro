@@ -1,5 +1,5 @@
 include($$PWD/plugin-dev.pri)
-
+include($$PWD/../../libs/vtk-9.2/vtk.pri)
 INCLUDEPATH += $$PWD/../../interfaces
 
 HEADERS += \
