@@ -17,7 +17,7 @@
 #include <services/ProjectManagerService.h>
 #include <services/VisualWidgetService.h>
 #include <vtkActor.h>
-#include <vtkAppendPolyData.h>
+#include <vtkAppendFilter.h>
 #include <vtkCell.h>
 #include <vtkCellData.h>
 #include <vtkCellType.h>
@@ -1086,54 +1086,8 @@ void MeshModuleController::displayCurrentGrid()
         surf->SetInputData(nonLineGrid);
         surf->Update();
 
-        auto append = vtkSmartPointer<vtkAppendPolyData>::New();
-        append->AddInputData(surf->GetOutput());
-
-        const MshPickMap pickMap = mshPickMapSolid();
-        const auto appendGroupSurfaces = [&](const QHash<int, QVector<qint64>>& groupToCells)
-        {
-            for (auto it = groupToCells.constBegin(); it != groupToCells.constEnd(); ++it)
-            {
-                const auto& cids = it.value();
-                if (cids.isEmpty())
-                    continue;
-
-                auto idList = vtkSmartPointer<vtkIdList>::New();
-                idList->Allocate(cids.size());
-                for (qint64 rawCid : cids)
-                {
-                    const vtkIdType cid = static_cast<vtkIdType>(rawCid);
-                    if (cid < 0 || cid >= nonLineGrid->GetNumberOfCells())
-                        continue;
-                    idList->InsertNextId(cid);
-                }
-                if (idList->GetNumberOfIds() <= 0)
-                    continue;
-
-                auto ex = vtkSmartPointer<vtkExtractCells>::New();
-                ex->SetInputData(nonLineGrid);
-                ex->SetCellList(idList);
-                ex->Update();
-
-                auto subGrid = vtkUnstructuredGrid::SafeDownCast(ex->GetOutput());
-                if (!subGrid || subGrid->GetNumberOfCells() <= 0)
-                    continue;
-
-                auto subSurf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-                subSurf->SetInputData(subGrid);
-                subSurf->Update();
-                if (subSurf->GetOutput() && subSurf->GetOutput()->GetNumberOfCells() > 0)
-                    append->AddInputData(subSurf->GetOutput());
-            }
-        };
-
-        appendGroupSurfaces(pickMap.matypeToCellIds);
-        appendGroupSurfaces(pickMap.layerToCellIds);
-        appendGroupSurfaces(pickMap.volPhysToCellIds);
-        append->Update();
-
         auto boundary = vtkSmartPointer<vtkPolyData>::New();
-        boundary->ShallowCopy(append->GetOutput());
+        boundary->ShallowCopy(surf->GetOutput());
         rebuildOriginalIdArrays(nonLineGrid, boundary);
 
         auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
@@ -1266,6 +1220,64 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
         ex->Update();
         outNonLine = vtkUnstructuredGrid::SafeDownCast(ex->GetOutput());
     }
+
+    if (!outNonLine || outNonLine->GetNumberOfCells() <= 0)
+        return;
+
+    const MshPickMap pickMap = MeshGridIO::instance().getMeshMap();
+    auto appendFilter = vtkSmartPointer<vtkAppendFilter>::New();
+    appendFilter->AddInputData(outNonLine);
+
+    const auto appendGroupSurfaceCells = [&](const QHash<int, QVector<qint64>>& groupToCells)
+    {
+        for (auto it = groupToCells.constBegin(); it != groupToCells.constEnd(); ++it)
+        {
+            const auto& cells = it.value();
+            if (cells.isEmpty())
+                continue;
+
+            auto idList = vtkSmartPointer<vtkIdList>::New();
+            idList->Allocate(cells.size());
+            for (qint64 rawCid : cells)
+            {
+                const vtkIdType cid = static_cast<vtkIdType>(rawCid);
+                if (cid < 0 || cid >= src->GetNumberOfCells())
+                    continue;
+                vtkCell* c = src->GetCell(cid);
+                if (!c || c->GetCellDimension() != 3)
+                    continue;
+                idList->InsertNextId(cid);
+            }
+            if (idList->GetNumberOfIds() <= 0)
+                continue;
+
+            auto ex = vtkSmartPointer<vtkExtractCells>::New();
+            ex->SetInputData(src);
+            ex->SetCellList(idList);
+            ex->Update();
+
+            auto groupGrid = vtkUnstructuredGrid::SafeDownCast(ex->GetOutput());
+            if (!groupGrid || groupGrid->GetNumberOfCells() <= 0)
+                continue;
+
+            auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+            surf->SetInputData(groupGrid);
+            surf->Update();
+            if (!surf->GetOutput() || surf->GetOutput()->GetNumberOfCells() <= 0)
+                continue;
+
+            appendFilter->AddInputData(surf->GetOutput());
+        }
+    };
+
+    appendGroupSurfaceCells(pickMap.matypeToCellIds);
+    appendGroupSurfaceCells(pickMap.layerToCellIds);
+    appendGroupSurfaceCells(pickMap.volPhysToCellIds);
+    appendFilter->Update();
+
+    auto merged = vtkUnstructuredGrid::SafeDownCast(appendFilter->GetOutput());
+    if (merged && merged->GetNumberOfCells() > 0)
+        outNonLine = merged;
 }
 
 vtkSmartPointer<vtkActor> MeshModuleController::createSurfaceActor(vtkDataSet* grid) const
