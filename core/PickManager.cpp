@@ -329,6 +329,7 @@ void PickManager::highlightDomainsByMatype(const QString& domain, const QString&
                                            const QSet<int>& matypes, int selectedMatype,
                                            int previewMatype, int preDeleteMatype)
 {
+    // 仅保存状态，实际着色统一在 rebuildDomainHighlightActors 里完成。
     m_domainHighlightDomain = domain;
     m_domainHighlightUuid = uuid;
     m_domainMatypes = matypes;
@@ -341,6 +342,7 @@ void PickManager::highlightDomainsByMatype(const QString& domain, const QString&
 
 void PickManager::clearDomainHighlight(const QString& domain, const QString& uuid)
 {
+    // domain 不一致时不做跨域清理；uuid 非空时只清理目标条目。
     if (m_domainHighlightDomain != domain)
         return;
     if (!uuid.isEmpty() && m_domainHighlightUuid != uuid)
@@ -1735,6 +1737,7 @@ void PickManager::restoreFaceColoring()
 
 void PickManager::rebuildDomainHighlightActors()
 {
+    // 统一颜色写回：使用一套 direct scalar 数组，不再在不同流程切换多种着色结构。
     if (!m_visual || !m_gridSolid || !m_solidPickDataSet)
         return;
 
@@ -1771,25 +1774,29 @@ void PickManager::rebuildDomainHighlightActors()
     const unsigned char previewColor[3] = {51, 102, 230};
     const unsigned char preDeleteColor[3] = {230, 140, 51};
 
-    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    auto resolveMatype = [&](vtkIdType cid, int& outMatype) -> bool
     {
-        int matype = -1;
-        bool hasMatype = false;
         if (matArr && cid < matArr->GetNumberOfTuples())
         {
-            matype = matArr->GetValue(cid);
-            hasMatype = true;
+            outMatype = matArr->GetValue(cid);
+            return true;
         }
-        else if (origCellIds && sourceMatArr && cid < origCellIds->GetNumberOfTuples())
+        if (origCellIds && sourceMatArr && cid < origCellIds->GetNumberOfTuples())
         {
             const vtkIdType srcCid = origCellIds->GetValue(cid);
             if (srcCid >= 0 && srcCid < sourceMatArr->GetNumberOfTuples())
             {
-                matype = sourceMatArr->GetValue(srcCid);
-                hasMatype = true;
+                outMatype = sourceMatArr->GetValue(srcCid);
+                return true;
             }
         }
+        return false;
+    };
 
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    {
+        int matype = -1;
+        const bool hasMatype = resolveMatype(cid, matype);
         const unsigned char* c = normal;
         if (hasMatype && m_domainMatypes.contains(matype))
             c = appliedColor;

@@ -125,9 +125,15 @@ class CORE_EXPORT PickManager : public QObject
     void clearPreviewSelection(const QString& domain, const QString& uuid, PickMode mode);
     void setBoxSelectEnabled(const QString& domain, const QString& uuid, bool enabled);
     void setClickPickEnabled(const QString& domain, const QString& uuid, bool enabled);
+    // 材料域(MATYPE)高亮：
+    // - matypes: 已施加集合（绿色）
+    // - selectedMatype: 当前选中（红色）
+    // - previewMatype: 下拉悬浮预览（蓝色）
+    // - preDeleteMatype: 待删除预览（橙色）
     void highlightDomainsByMatype(const QString& domain, const QString& uuid,
                                   const QSet<int>& matypes, int selectedMatype, int previewMatype,
                                   int preDeleteMatype);
+    // 清理材料域高亮。uuid 为空时清理该 domain 的当前高亮态。
     void clearDomainHighlight(const QString& domain, const QString& uuid = QString());
 
   private:
@@ -172,6 +178,7 @@ class CORE_EXPORT PickManager : public QObject
 
     void updateActorVisibility();
     void refreshStructureIfNeeded();
+    // 将材料域高亮状态写入一套统一的 cell 颜色数组并刷新显示。
     void rebuildDomainHighlightActors();
 
     // line node overlay
