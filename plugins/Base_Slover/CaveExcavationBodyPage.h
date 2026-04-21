@@ -43,6 +43,7 @@ class CaveExcavationBodyPage : public BasePage
 
     void setupBatchGroupCombo();
     QVector<vtkIdType> resolveCellIdsForIndex(int index) const;
+    QVector<vtkIdType> visibleFaceKeysForCellIds(const QVector<vtkIdType>& cellIds) const;
     QVector<int> toElementIds(const QVector<vtkIdType>& cellIds) const;
     QString groupKeyForIndex(int index) const;
     bool setCurrentGroupByKey(const QString& key);

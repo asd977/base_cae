@@ -182,11 +182,7 @@ void CaveExcavationBodyPage::onGroupChanged(int index)
 
     QVector<vtkIdType> faceKeys;
     QVector<vtkIdType> edgeKeys;
-    faceKeys.reserve(cellIds.size());
-    for (vtkIdType cid : cellIds)
-    {
-        faceKeys.push_back(PickManager::instance().packFaceKey(cid, 0));
-    }
+    faceKeys = visibleFaceKeysForCellIds(cellIds);
 
     if (currentPickMode() == PickMode::Face)
         PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, faceKeys, false);
@@ -207,7 +203,10 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
     const MshPickMap& map = meshSvc->mshPickMapSolid();
     const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     const int targetDim = (meshDim == 3) ? 3 : 2;
-    vtkUnstructuredGrid* solidGrid = PickManager::instance().solidGrid();
+    vtkUnstructuredGrid* solidGrid = nullptr;
+    const auto gridHolder = meshSvc->getVtkUnstructuredGridSolid();
+    if (gridHolder)
+        solidGrid = gridHolder;
     const auto hasVolumeCell = [solidGrid](const QVector<qint64>& cells) -> bool
     {
         if (!solidGrid)
@@ -373,8 +372,7 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
                                 cids.push_back(static_cast<vtkIdType>(cid));
                         }
 
-                        for (vtkIdType cid : cids)
-                            faceKeys.push_back(PickManager::instance().packFaceKey(static_cast<vtkIdType>(cid), 0));
+                        faceKeys = visibleFaceKeysForCellIds(cids);
                     }
                     if (currentPickMode() == PickMode::Face)
                         PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid, GridKind::Solid,
@@ -417,6 +415,10 @@ QVector<vtkIdType> CaveExcavationBodyPage::resolveCellIdsForIndex(int index) con
         return out;
 
     const MshPickMap& map = meshSvc->mshPickMapSolid();
+    vtkUnstructuredGrid* grid = nullptr;
+    const auto gridHolder = meshSvc->getVtkUnstructuredGridSolid();
+    if (gridHolder)
+        grid = gridHolder;
     bool ok = false;
     const GroupOption option = parseGroupKey(m_groupCombo->itemData(index).toString(), &ok);
     if (!ok)
@@ -429,7 +431,6 @@ QVector<vtkIdType> CaveExcavationBodyPage::resolveCellIdsForIndex(int index) con
         for (qint64 cid : src)
         {
             const vtkIdType vtkCid = static_cast<vtkIdType>(cid);
-            vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
             if (!grid || vtkCid < 0 || vtkCid >= grid->GetNumberOfCells() ||
                 grid->GetCell(vtkCid)->GetCellDimension() != 3)
                 continue;
@@ -444,7 +445,6 @@ QVector<vtkIdType> CaveExcavationBodyPage::resolveCellIdsForIndex(int index) con
         for (qint64 cid : src)
         {
             const vtkIdType vtkCid = static_cast<vtkIdType>(cid);
-            vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
             if (!grid || vtkCid < 0 || vtkCid >= grid->GetNumberOfCells() ||
                 grid->GetCell(vtkCid)->GetCellDimension() != 3)
                 continue;
@@ -461,13 +461,47 @@ QVector<vtkIdType> CaveExcavationBodyPage::resolveCellIdsForIndex(int index) con
         for (qint64 cid : src)
         {
             const vtkIdType vtkCid = static_cast<vtkIdType>(cid);
-            vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
             if (!grid || vtkCid < 0 || vtkCid >= grid->GetNumberOfCells() ||
                 grid->GetCell(vtkCid)->GetCellDimension() != 3)
                 continue;
             out.push_back(vtkCid);
         }
     }
+    return out;
+}
+
+QVector<vtkIdType> CaveExcavationBodyPage::visibleFaceKeysForCellIds(const QVector<vtkIdType>& cellIds) const
+{
+    QVector<vtkIdType> out;
+    if (cellIds.isEmpty())
+        return out;
+
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshSvc)
+        return out;
+    const MshPickMap map = meshSvc->mshPickMapSolid();
+
+    QSet<vtkIdType> cellIdSet;
+    cellIdSet.reserve(cellIds.size());
+    for (vtkIdType cid : cellIds)
+        cellIdSet.insert(cid);
+
+    QSet<vtkIdType> uniq;
+    for (auto it = map.bndFacePhysToFaceKeys.constBegin(); it != map.bndFacePhysToFaceKeys.constEnd(); ++it)
+    {
+        const auto& keys = it.value();
+        for (qint64 k : keys)
+        {
+            const vtkIdType fk = static_cast<vtkIdType>(k);
+            const vtkIdType cid = PickManager::instance().unpackFaceCellId(fk);
+            if (cellIdSet.contains(cid))
+                uniq.insert(fk);
+        }
+    }
+
+    out.reserve(uniq.size());
+    for (vtkIdType fk : uniq)
+        out.push_back(fk);
     return out;
 }
 
