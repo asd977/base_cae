@@ -1753,11 +1753,13 @@ void PickManager::rebuildDomainHighlightActors()
     }
 
     auto* matArr = vtkIntArray::SafeDownCast(m_solidPickDataSet->GetCellData()->GetArray("MATYPE"));
-    if (!matArr)
+    auto* origCellIds =
+        vtkIdTypeArray::SafeDownCast(m_solidPickDataSet->GetCellData()->GetArray("vtkOriginalCellIds"));
+    auto* sourceMatArr = vtkIntArray::SafeDownCast(m_gridSolid->GetCellData()->GetArray("MATYPE"));
+    if (!matArr && (!origCellIds || !sourceMatArr))
         return;
 
-    const vtkIdType nCells =
-        std::min(m_solidPickDataSet->GetNumberOfCells(), matArr->GetNumberOfTuples());
+    const vtkIdType nCells = m_solidPickDataSet->GetNumberOfCells();
     auto colors = vtkSmartPointer<vtkUnsignedCharArray>::New();
     colors->SetName("pick_domain_colors");
     colors->SetNumberOfComponents(3);
@@ -1771,15 +1773,31 @@ void PickManager::rebuildDomainHighlightActors()
 
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
-        const int matype = matArr->GetValue(cid);
+        int matype = -1;
+        bool hasMatype = false;
+        if (matArr && cid < matArr->GetNumberOfTuples())
+        {
+            matype = matArr->GetValue(cid);
+            hasMatype = true;
+        }
+        else if (origCellIds && sourceMatArr && cid < origCellIds->GetNumberOfTuples())
+        {
+            const vtkIdType srcCid = origCellIds->GetValue(cid);
+            if (srcCid >= 0 && srcCid < sourceMatArr->GetNumberOfTuples())
+            {
+                matype = sourceMatArr->GetValue(srcCid);
+                hasMatype = true;
+            }
+        }
+
         const unsigned char* c = normal;
-        if (m_domainMatypes.contains(matype))
+        if (hasMatype && m_domainMatypes.contains(matype))
             c = appliedColor;
-        if (m_domainSelectedMatype >= 0 && matype == m_domainSelectedMatype)
+        if (hasMatype && m_domainSelectedMatype >= 0 && matype == m_domainSelectedMatype)
             c = selectedColor;
-        if (m_domainPreviewMatype >= 0 && matype == m_domainPreviewMatype)
+        if (hasMatype && m_domainPreviewMatype >= 0 && matype == m_domainPreviewMatype)
             c = previewColor;
-        if (m_domainPreDeleteMatype >= 0 && matype == m_domainPreDeleteMatype)
+        if (hasMatype && m_domainPreDeleteMatype >= 0 && matype == m_domainPreDeleteMatype)
             c = preDeleteColor;
         colors->SetTypedTuple(cid, c);
     }
