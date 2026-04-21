@@ -46,7 +46,7 @@ class Solver : public QObject, public SolverService
     void addGeoStressMeasurePointNode(ProjectNode* geostressNode, bool setCurrent) const;
     void addGeoStressOuterForceNode(ProjectNode* geostressNode, bool setCurrent) const;
     GeoStressRegressionWidget::ExportPayload buildGeoStressPayload(ProjectNode* geostressNode) const;
-    bool beginCommonCompute(ProjectNode* analysisNode, const QString& analysisType) const;
+    bool beginCommonCompute(ProjectNode* analysisNode, const QString& analysisType);
     int nextSeepageIndex() const;
     int nextStressStrainIndex() const;
     int nextCaveExcavationIndex() const;
@@ -56,6 +56,10 @@ class Solver : public QObject, public SolverService
 
   private:
     ProjectNode* m_root = nullptr;
+    bool exportInouseDatFile();
+    bool exportMaMaskDatFile();
+    bool exportKetraceDatFile();
+    bool exportJdtraceDatFile();
 };
 
 #endif // SOLVER_H
