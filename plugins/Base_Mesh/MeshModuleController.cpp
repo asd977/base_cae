@@ -532,9 +532,26 @@ QSet<int> MeshModuleController::getAvailableMatypes() const
     if (!arr)
         return ret;
 
-    const vtkIdType n = arr->GetNumberOfTuples();
+    int maxDim = -1;
+    const vtkIdType nCells = m_importedGrid->GetNumberOfCells();
+    for (vtkIdType i = 0; i < nCells; ++i)
+    {
+        vtkCell* c = m_importedGrid->GetCell(i);
+        if (!c)
+            continue;
+        maxDim = qMax(maxDim, c->GetCellDimension());
+    }
+    if (maxDim < 0)
+        return ret;
+
+    const vtkIdType n = qMin(arr->GetNumberOfTuples(), nCells);
     for (vtkIdType i = 0; i < n; ++i)
+    {
+        vtkCell* c = m_importedGrid->GetCell(i);
+        if (!c || c->GetCellDimension() != maxDim)
+            continue;
         ret.insert(arr->GetValue(i));
+    }
     return ret;
 }
 
@@ -1122,7 +1139,18 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
     auto lineIds = vtkSmartPointer<vtkIdList>::New();
     auto nonLineIds = vtkSmartPointer<vtkIdList>::New();
 
+    bool hasVolumeCells = false;
     const vtkIdType nCells = src->GetNumberOfCells();
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    {
+        vtkCell* c = src->GetCell(cid);
+        if (c && c->GetCellDimension() == 3)
+        {
+            hasVolumeCells = true;
+            break;
+        }
+    }
+
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
         vtkCell* c = src->GetCell(cid);
@@ -1131,9 +1159,13 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
 
         const int dim = c->GetCellDimension(); // 1=线,2=面,3=体
         if (dim == 1)
+        {
             lineIds->InsertNextId(cid);
-        else
+        }
+        else if (!hasVolumeCells || dim == 3)
+        {
             nonLineIds->InsertNextId(cid);
+        }
     }
 
     if (lineIds->GetNumberOfIds() > 0)
