@@ -1276,6 +1276,53 @@ bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analys
         return false;
     }
 
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir wd(QDir(projectDir).absolutePath());
+    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+    {
+        QMessageBox::warning(nullptr, "计算失败",
+                             QString("%1无法创建 PREP 目录，无法执行计算。").arg(analysisType));
+        return false;
+    }
+
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (meshSvc)
+    {
+        const QString targetIiin = wd.filePath("PREP/IIIN.DAT");
+        const QString sourceMeshPath = meshSvc->sourceMeshFilePath();
+        const QFileInfo sourceInfo(sourceMeshPath);
+        const bool sourceIsDat = sourceInfo.exists() && sourceInfo.suffix().compare("dat", Qt::CaseInsensitive) == 0;
+
+        if (sourceIsDat)
+        {
+            if (QFile::exists(targetIiin) && !QFile::remove(targetIiin))
+            {
+                QMessageBox::warning(nullptr, "计算失败",
+                                     QString("%1无法覆盖 PREP/IIIN.DAT。").arg(analysisType));
+                return false;
+            }
+            if (!QFile::copy(sourceMeshPath, targetIiin))
+            {
+                QMessageBox::warning(nullptr, "计算失败",
+                                     QString("%1复制 DAT 网格到 PREP/IIIN.DAT 失败。")
+                                         .arg(analysisType));
+                return false;
+            }
+        }
+        else
+        {
+            QString iiinErr;
+            if (!meshSvc->exportIiinDatFile(targetIiin, &iiinErr))
+            {
+                QMessageBox::warning(nullptr, "计算失败",
+                                     QString("%1生成 PREP/IIIN.DAT 失败：%2")
+                                         .arg(analysisType, iiinErr));
+                return false;
+            }
+        }
+    }
+
     auto* physicalFieldService = ServiceRegistry::instance().getService<PhysicalFieldService>();
     if (physicalFieldService)
     {

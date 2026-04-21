@@ -1127,6 +1127,22 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshModuleController::getVtkUnstructuredGri
     return m_importedGrid;
 }
 
+QString MeshModuleController::sourceMeshFilePath() const
+{
+    return m_sourceFileName;
+}
+
+bool MeshModuleController::exportIiinDatFile(const QString& filePath, QString* errMsg)
+{
+    if (!m_hasGrid || !m_importedGrid)
+    {
+        if (errMsg)
+            *errMsg = QStringLiteral("当前无可导出的网格数据");
+        return false;
+    }
+    return MeshGridIO::instance().exportIiinFile(filePath, m_importedGrid, errMsg);
+}
+
 void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
                                           vtkSmartPointer<vtkUnstructuredGrid>& outLine,
                                           vtkSmartPointer<vtkUnstructuredGrid>& outNonLine) const

@@ -34,6 +34,8 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGrid();
     vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGridSolid();
     vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGridLine();
+    QString sourceMeshFilePath() const override;
+    bool exportIiinDatFile(const QString& filePath, QString* errMsg = nullptr) override;
 
     void importMshGrid(QString path);
     bool importCurrentGmshMesh(QString* errMsg = nullptr) override;
