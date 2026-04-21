@@ -2098,13 +2098,20 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
     out.setRealNumberNotation(QTextStream::FixedNotation);
     out.setRealNumberPrecision(6);
 
+    const auto i8 = [](int v) { return QString("%1").arg(v, 8); };
+    const auto i9 = [](int v) { return QString("%1").arg(v, 9); };
+    const auto i10 = [](int v) { return QString("%1").arg(v, 10); };
+    const auto i4 = [](int v) { return QString("%1").arg(v, 4); };
+    const auto f15p4 = [](double v) { return QString("%1").arg(v, 15, 'f', 4); };
+    const auto f15p5 = [](double v) { return QString("%1").arg(v, 15, 'f', 5); };
+
     // header line 1
-    out << numnp << " " << madim << " " << ncell << " " << manod << " " << extra << " " << am << " "
-        << d1 << " " << d2 << " " << d3 << "\n";
+    out << i9(static_cast<int>(numnp)) << i9(madim) << i9(static_cast<int>(ncell)) << i9(manod)
+        << i9(extra) << f15p4(am) << f15p4(d1) << f15p4(d2) << f15p4(d3) << "\n";
 
     // header line 2
-    out << iobject << " " << ivertical << " " << xmin << " " << xmax << " " << ymin << " " << ymax
-        << " " << zmin << " " << zmax << "\n";
+    out << i8(iobject) << i8(ivertical) << f15p4(xmin) << f15p4(xmax) << f15p4(ymin) << f15p4(ymax)
+        << f15p4(zmin) << f15p4(zmax) << "\n";
 
     // nodes: 优先保留原 node_id，缺失时回退到 idx+1
     for (vtkIdType i = 0; i < numnp; ++i)
@@ -2114,7 +2121,7 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
         const int outNodeId =
             (nodeIdArr && i < nodeIdArr->GetNumberOfTuples()) ? nodeIdArr->GetValue(i)
                                                                : (static_cast<int>(i) + 1);
-        out << p[0] << " " << p[1] << " " << p[2] << " " << outNodeId << "\n";
+        out << f15p5(p[0]) << f15p5(p[1]) << f15p5(p[2]) << i10(outNodeId) << "\n";
     }
 
     // elems: 优先保留原 elem_id 与 node_id（必要时按 ketype 做重排）
@@ -2166,15 +2173,15 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
         const int outElemId =
             (elemIdArr && cid < elemIdArr->GetNumberOfTuples()) ? elemIdArr->GetValue(cid)
                                                                  : (static_cast<int>(cid) + 1);
-        out << outElemId;
+        out << i8(outElemId);
 
         for (int j = 0; j < manod; ++j)
         {
             int nid = (j < outConn.size()) ? outConn[j] : 0;
-            out << " " << nid;
+            out << i10(nid);
         }
 
-        out << " " << k << " " << mat << " " << lay << " " << t1 << " " << t2 << "\n";
+        out << i4(k) << i4(mat) << i4(lay) << i4(t1) << i4(t2) << "\n";
     }
 
     out.flush();
