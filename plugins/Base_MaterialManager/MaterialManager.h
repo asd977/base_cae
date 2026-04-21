@@ -35,6 +35,7 @@ class MaterialManager : public QObject, public MaterialManagerService
     void showMaterialTransitionDialog() override;
     QVector<QPair<int, int>> materialTransitions() const override;
     void setMaterialTransitions(const QVector<QPair<int, int>>& transitions) override;
+    bool generateIMATFile() override;
 
     QString addMaterialToModel(const QString& modelKey, bool addToProjectTree = true);
 

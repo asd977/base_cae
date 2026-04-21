@@ -2766,6 +2766,11 @@ bool MaterialManager::generateCaculateFile()
     return true;
 }
 
+bool MaterialManager::generateIMATFile()
+{
+    return generateCaculateFile();
+}
+
 void MaterialManager::clearMatypeHighlight(const QString& entryId)
 {
     if (entryId.isEmpty())

@@ -5,7 +5,9 @@
 #include <PublicConstants.h>
 #include <PublicVariables.h>
 #include <ServiceRegistry.h>
+#include <services/MaterialManagerService.h>
 #include <services/MeshModuleControllerService.h>
+#include <services/PhysicalFieldService.h>
 #include <services/ProjectManagerService.h>
 
 #include <QDir>
@@ -1274,7 +1276,19 @@ bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analys
         return false;
     }
 
-    return exportInouseDatFile()&&exportMaMaskDatFile()&&exportKetraceDatFile()&&exportJdtraceDatFile();
+    auto* physicalFieldService = ServiceRegistry::instance().getService<PhysicalFieldService>();
+    if (physicalFieldService)
+    {
+        physicalFieldService->generateIIIDFile();
+        physicalFieldService->generateIIWLFile();
+    }
+
+    auto* materialManagerService = ServiceRegistry::instance().getService<MaterialManagerService>();
+    if (materialManagerService && !materialManagerService->generateIMATFile())
+        return false;
+
+    return exportInouseDatFile() && exportMaMaskDatFile() && exportKetraceDatFile() &&
+           exportJdtraceDatFile();
 }
 
 int Solver::nextStressStrainIndex() const
