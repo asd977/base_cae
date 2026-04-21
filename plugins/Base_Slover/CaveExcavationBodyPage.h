@@ -32,7 +32,8 @@ class CaveExcavationBodyPage : public BasePage
         enum class Source
         {
             Physical = 0,
-            Layer = 1
+            Layer = 1,
+            Matype = 2
         };
         Source source = Source::Physical;
         int id = -1;
@@ -51,4 +52,5 @@ class CaveExcavationBodyPage : public BasePage
     QComboBox* m_groupCombo = nullptr;
     QPushButton* m_batchAddBtn = nullptr;
     QPushButton* m_clearBtn = nullptr;
+    int m_lastHoveredIndex = -1;
 };

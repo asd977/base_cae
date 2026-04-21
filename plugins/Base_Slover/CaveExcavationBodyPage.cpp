@@ -13,6 +13,7 @@
 #include <vtkUnstructuredGrid.h>
 
 #include <QComboBox>
+#include <QColor>
 #include <QFormLayout>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -63,8 +64,11 @@ void CaveExcavationBodyPage::beforeUnload()
 QJsonObject CaveExcavationBodyPage::saveJson()
 {
     QJsonObject obj;
-    obj["group_key"] = groupKeyForIndex(m_groupCombo ? m_groupCombo->currentIndex() : -1);
-    obj["group_phys_id"] = m_groupCombo ? m_groupCombo->currentData().toInt() : -1; // 兼容旧存档
+    const QString key = groupKeyForIndex(m_groupCombo ? m_groupCombo->currentIndex() : -1);
+    bool ok = false;
+    const GroupOption option = parseGroupKey(key, &ok);
+    obj["group_key"] = key;
+    obj["group_phys_id"] = ok ? option.id : -1; // 兼容旧存档（仅保存编号）
 
     QJsonArray faceArr, edgeArr;
     const auto faceKeys =
@@ -94,7 +98,9 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
             const int legacyId = obj.value("group_phys_id").toInt(-1);
             for (int i = 0; i < m_groupCombo->count(); ++i)
             {
-                if (m_groupCombo->itemData(i).toInt() != legacyId)
+                bool ok = false;
+                const GroupOption option = parseGroupKey(m_groupCombo->itemData(i).toString(), &ok);
+                if (!ok || option.id != legacyId)
                     continue;
                 const QSignalBlocker blocker(m_groupCombo);
                 m_groupCombo->setCurrentIndex(i);
@@ -188,7 +194,6 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
     QVector<GroupOption> options;
     if (targetDim == 3)
     {
-        const bool preferLayer = map.layerToCellIds.size() > 1;
         const auto appendLayerOptions = [&]()
         {
             QList<int> layerIds = map.layerToCellIds.keys();
@@ -201,7 +206,7 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
                 GroupOption o;
                 o.source = GroupOption::Source::Layer;
                 o.id = layerId;
-                o.label = QString("填筑分层 #%1  (cells=%2)").arg(layerId).arg(cells.size());
+                o.label = QString::number(layerId);
                 options.push_back(o);
             }
         };
@@ -217,15 +222,34 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
                 GroupOption o;
                 o.source = GroupOption::Source::Physical;
                 o.id = physId;
-                o.label = QString("%1  (dim=%2, id=%3)").arg(it.value()).arg(dim).arg(physId);
+                o.label = QString::number(physId);
                 options.push_back(o);
             }
         };
 
+        const bool preferLayer = map.layerToCellIds.size() > 1;
         if (preferLayer)
             appendLayerOptions();
-        else
+        else if (!map.volPhysToCellIds.isEmpty())
             appendPhysicalOptions();
+        else if (!map.layerToCellIds.isEmpty())
+            appendLayerOptions();
+        else if (!map.matypeToCellIds.isEmpty())
+        {
+            QList<int> matypeIds = map.matypeToCellIds.keys();
+            std::sort(matypeIds.begin(), matypeIds.end());
+            for (int matypeId : matypeIds)
+            {
+                const auto cells = map.matypeToCellIds.value(matypeId);
+                if (cells.isEmpty())
+                    continue;
+                GroupOption o;
+                o.source = GroupOption::Source::Matype;
+                o.id = matypeId;
+                o.label = QString::number(matypeId);
+                options.push_back(o);
+            }
+        }
     }
     else
     {
@@ -238,7 +262,7 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
             GroupOption o;
             o.source = GroupOption::Source::Physical;
             o.id = physId;
-            o.label = QString("%1  (dim=%2, id=%3)").arg(it.value()).arg(dim).arg(physId);
+            o.label = QString::number(physId);
             options.push_back(o);
         }
     }
@@ -257,6 +281,13 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
                 {
                     if (row < 0 || !m_groupCombo)
                         return;
+                    if (m_lastHoveredIndex >= 0 && m_lastHoveredIndex < m_groupCombo->count())
+                    {
+                        m_groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
+                    }
+                    m_groupCombo->setItemData(row, QColor(230, 247, 255), Qt::BackgroundRole);
+                    m_lastHoveredIndex = row;
+
                     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
                     if (!meshSvc)
                         return;
@@ -292,6 +323,13 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
                             for (qint64 cid : src)
                                 cids.push_back(static_cast<vtkIdType>(cid));
                         }
+                        else if (option.source == GroupOption::Source::Matype)
+                        {
+                            const auto src = map.matypeToCellIds.value(physId);
+                            cids.reserve(src.size());
+                            for (qint64 cid : src)
+                                cids.push_back(static_cast<vtkIdType>(cid));
+                        }
                         else
                         {
                             const auto src = map.volPhysToCellIds.value(physId);
@@ -315,6 +353,12 @@ void CaveExcavationBodyPage::setupBatchGroupCombo()
         connect(groupCombo, &CustomComboBox::dropdownClosed, this,
                 [this]()
                 {
+                    if (m_groupCombo && m_lastHoveredIndex >= 0 &&
+                        m_lastHoveredIndex < m_groupCombo->count())
+                    {
+                        m_groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
+                    }
+                    m_lastHoveredIndex = -1;
                     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid,
                                                                   currentPickMode());
                 },
@@ -346,6 +390,14 @@ QVector<vtkIdType> CaveExcavationBodyPage::resolveCellIdsForIndex(int index) con
     if (option.source == GroupOption::Source::Layer)
     {
         const auto src = map.layerToCellIds.value(option.id);
+        out.reserve(src.size());
+        for (qint64 cid : src)
+            out.push_back(static_cast<vtkIdType>(cid));
+        return out;
+    }
+    if (option.source == GroupOption::Source::Matype)
+    {
+        const auto src = map.matypeToCellIds.value(option.id);
         out.reserve(src.size());
         for (qint64 cid : src)
             out.push_back(static_cast<vtkIdType>(cid));
@@ -387,7 +439,11 @@ bool CaveExcavationBodyPage::setCurrentGroupByKey(const QString& key)
 
 QString CaveExcavationBodyPage::makeGroupKey(const GroupOption& option)
 {
-    const QString source = (option.source == GroupOption::Source::Layer) ? "layer" : "physical";
+    QString source = "physical";
+    if (option.source == GroupOption::Source::Layer)
+        source = "layer";
+    else if (option.source == GroupOption::Source::Matype)
+        source = "matype";
     return QString("%1:%2").arg(source).arg(option.id);
 }
 
@@ -410,7 +466,12 @@ CaveExcavationBodyPage::GroupOption CaveExcavationBodyPage::parseGroupKey(const 
         return option;
 
     option.id = id;
-    option.source = (parts[0] == "layer") ? GroupOption::Source::Layer : GroupOption::Source::Physical;
+    if (parts[0] == "layer")
+        option.source = GroupOption::Source::Layer;
+    else if (parts[0] == "matype")
+        option.source = GroupOption::Source::Matype;
+    else
+        option.source = GroupOption::Source::Physical;
     if (ok)
         *ok = true;
     return option;
