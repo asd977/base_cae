@@ -250,6 +250,12 @@ void CaveExcavationBodyPage::onGroupCurrentChanged(int index)
         updateGroupDomainHighlight();
         return;
     }
+    if (m_lastHoveredIndex < 0 && !m_selectedGroups.isEmpty())
+    {
+        // 下拉关闭后，优先保持“已添加分组”的持久高亮，不用当前项覆盖为预览态。
+        updateGroupDomainHighlight();
+        return;
+    }
     const int gid = m_groupCombo->itemData(index).toInt();
     updateGroupDomainHighlight(gid);
 }
@@ -261,6 +267,11 @@ void CaveExcavationBodyPage::onGroupDropdownClosed()
     m_lastHoveredIndex = -1;
     refreshGroupComboMarks();
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
+    if (!m_selectedGroups.isEmpty())
+    {
+        updateGroupDomainHighlight();
+        return;
+    }
     onGroupCurrentChanged(m_groupCombo ? m_groupCombo->currentIndex() : -1);
 }
 
