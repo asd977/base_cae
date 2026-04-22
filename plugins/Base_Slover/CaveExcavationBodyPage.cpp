@@ -437,10 +437,18 @@ void CaveExcavationBodyPage::refreshGroupComboMarks()
     for (int i = 0; i < m_groupCombo->count(); ++i)
     {
         const int gid = m_groupCombo->itemData(i).toInt();
+        m_groupCombo->setItemText(i, m_selectedGroups.contains(gid) ? QString("✓ %1").arg(gid)
+                                                                    : QString::number(gid));
         if (m_selectedGroups.contains(gid))
+        {
             m_groupCombo->setItemData(i, QColor(225, 255, 225), Qt::BackgroundRole);
+            m_groupCombo->setItemData(i, QColor(40, 120, 40), Qt::ForegroundRole);
+        }
         else
+        {
             m_groupCombo->setItemData(i, QVariant(), Qt::BackgroundRole);
+            m_groupCombo->setItemData(i, QVariant(), Qt::ForegroundRole);
+        }
     }
 }
 
