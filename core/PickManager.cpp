@@ -362,14 +362,14 @@ void PickManager::highlightDomainsByLayer(const QString& domain, const QString& 
 
 void PickManager::clearDomainHighlight(const QString& domain, const QString& uuid)
 {
+    // 清理动作本身也切换当前域上下文，避免页面切换时保留上一域高亮可见。
+    m_activeHighlightDomain = domain;
+    m_activeHighlightUuid = uuid;
+
     if (uuid.isEmpty())
     {
         m_domainHighlightStates.remove(domain);
-        if (m_activeHighlightDomain == domain)
-        {
-            m_activeHighlightDomain.clear();
-            m_activeHighlightUuid.clear();
-        }
+        m_activeHighlightUuid.clear();
     }
     else
     {
@@ -379,11 +379,6 @@ void PickManager::clearDomainHighlight(const QString& domain, const QString& uui
             dit->remove(uuid);
             if (dit->isEmpty())
                 m_domainHighlightStates.erase(dit);
-        }
-        if (m_activeHighlightDomain == domain && m_activeHighlightUuid == uuid)
-        {
-            m_activeHighlightDomain.clear();
-            m_activeHighlightUuid.clear();
         }
     }
 
@@ -1817,7 +1812,14 @@ void PickManager::rebuildDomainHighlightActors()
     auto* origCellIds =
         vtkIdTypeArray::SafeDownCast(m_solidPickDataSet->GetCellData()->GetArray("vtkOriginalCellIds"));
     auto* sourceScalarArr = vtkIntArray::SafeDownCast(m_gridSolid->GetCellData()->GetArray(scalarName));
-    if (!scalarArr && (!origCellIds || !sourceScalarArr))
+    QHash<qint64, int> layerByCellId;
+    if (useLayer)
+    {
+        if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+            layerByCellId = meshSvc->mshPickMapSolid().cellIdToLayer;
+    }
+
+    if (!scalarArr && (!origCellIds || !sourceScalarArr) && (!useLayer || layerByCellId.isEmpty()))
         return;
 
     const vtkIdType nCells = m_solidPickDataSet->GetNumberOfCells();
@@ -1855,7 +1857,19 @@ void PickManager::rebuildDomainHighlightActors()
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
         int value = -1;
-        const bool hasValue = resolveScalar(cid, scalarArr, sourceScalarArr, value);
+        bool hasValue = resolveScalar(cid, scalarArr, sourceScalarArr, value);
+        if (!hasValue && useLayer && !layerByCellId.isEmpty())
+        {
+            vtkIdType srcCid = cid;
+            if (origCellIds && cid < origCellIds->GetNumberOfTuples())
+                srcCid = origCellIds->GetValue(cid);
+            const auto it = layerByCellId.constFind(static_cast<qint64>(srcCid));
+            if (it != layerByCellId.constEnd())
+            {
+                value = *it;
+                hasValue = true;
+            }
+        }
         const unsigned char* c = normal;
         if (hasValue && activeState.ids.contains(value))
             c = appliedColor;
