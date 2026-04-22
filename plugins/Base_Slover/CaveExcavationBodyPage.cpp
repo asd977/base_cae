@@ -223,8 +223,21 @@ void CaveExcavationBodyPage::onGroupHovered(int index)
         return;
 
     if (m_lastHoveredIndex >= 0 && m_lastHoveredIndex < m_groupCombo->count())
-        m_groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
+    {
+        const int prevGid = m_groupCombo->itemData(m_lastHoveredIndex).toInt();
+        if (m_selectedGroups.contains(prevGid))
+        {
+            m_groupCombo->setItemData(m_lastHoveredIndex, QColor(225, 255, 225), Qt::BackgroundRole);
+            m_groupCombo->setItemData(m_lastHoveredIndex, QColor(40, 120, 40), Qt::ForegroundRole);
+        }
+        else
+        {
+            m_groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
+            m_groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::ForegroundRole);
+        }
+    }
     m_groupCombo->setItemData(index, QColor(230, 247, 255), Qt::BackgroundRole);
+    m_groupCombo->setItemData(index, QColor(20, 70, 160), Qt::ForegroundRole);
     m_lastHoveredIndex = index;
 
     const int gid = m_groupCombo->itemData(index).toInt();
@@ -437,8 +450,7 @@ void CaveExcavationBodyPage::refreshGroupComboMarks()
     for (int i = 0; i < m_groupCombo->count(); ++i)
     {
         const int gid = m_groupCombo->itemData(i).toInt();
-        m_groupCombo->setItemText(i, m_selectedGroups.contains(gid) ? QString("✓ %1").arg(gid)
-                                                                    : QString::number(gid));
+        m_groupCombo->setItemText(i, QString::number(gid));
         if (m_selectedGroups.contains(gid))
         {
             m_groupCombo->setItemData(i, QColor(225, 255, 225), Qt::BackgroundRole);
