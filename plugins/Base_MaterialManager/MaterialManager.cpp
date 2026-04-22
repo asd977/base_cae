@@ -1513,9 +1513,9 @@ void MaterialManager::highlightMatypes(const QString& entryId, const QSet<int>& 
     {
         return;
     }
-    PickManager::instance().highlightDomainsByMatype(QStringLiteral("MaterialManager"), entryId,
-                                                     matypes, selectedMatype, previewMatype,
-                                                     preDeleteMatype);
+    PickManager::instance().highlightDomainsByCellIntArray(
+        QStringLiteral("MaterialManager"), entryId, QStringLiteral("MATYPE"), matypes,
+        selectedMatype, previewMatype, preDeleteMatype);
 }
 
 void MaterialManager::refreshMatypeHighlight(const QString& entryId)

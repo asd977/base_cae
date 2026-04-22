@@ -488,14 +488,14 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
         return;
     }
 
-    auto* matypeArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"));
-    if (!matypeArr)
+    auto* layerArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"));
+    if (!layerArr)
     {
         PickManager::instance().clearDomainHighlight(getPageType(), m_uuid);
         return;
     }
 
-    const auto collectGroupMatypes = [&](int gid) -> QSet<int>
+    const auto collectGroupLayers = [&](int gid) -> QSet<int>
     {
         QSet<int> out;
         const auto cids = groupCellIds(gid);
@@ -503,27 +503,27 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
         {
             if (cid < 0 || cid >= grid->GetNumberOfCells())
                 continue;
-            out.insert(matypeArr->GetValue(cid));
+            out.insert(layerArr->GetValue(cid));
         }
         return out;
     };
 
-    QSet<int> selectedMatypes;
+    QSet<int> selectedLayers;
     for (int gid : m_selectedGroups)
-        selectedMatypes.unite(collectGroupMatypes(gid));
+        selectedLayers.unite(collectGroupLayers(gid));
 
-    int previewMatype = -1;
+    int previewLayer = -1;
     if (previewGroup >= 0)
     {
-        const QSet<int> previewMatypes = collectGroupMatypes(previewGroup);
-        if (previewMatypes.size() == 1)
-            previewMatype = *previewMatypes.constBegin();
+        const QSet<int> previewLayers = collectGroupLayers(previewGroup);
+        if (previewLayers.size() == 1)
+            previewLayer = *previewLayers.constBegin();
         else
-            selectedMatypes.unite(previewMatypes);
+            selectedLayers.unite(previewLayers);
     }
 
-    PickManager::instance().highlightDomainsByMatype(getPageType(), m_uuid, selectedMatypes, -1,
-                                                     previewMatype, -1);
+    PickManager::instance().highlightDomainsByCellIntArray(
+        getPageType(), m_uuid, QStringLiteral("LAYER"), selectedLayers, -1, previewLayer, -1);
 }
 
 QString CaveExcavationBodyPage::sourceToString(GroupSource s) const

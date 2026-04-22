@@ -329,31 +329,59 @@ void PickManager::highlightDomainsByMatype(const QString& domain, const QString&
                                            const QSet<int>& matypes, int selectedMatype,
                                            int previewMatype, int preDeleteMatype)
 {
-    // 仅保存状态，实际着色统一在 rebuildDomainHighlightActors 里完成。
-    m_domainHighlightDomain = domain;
-    m_domainHighlightUuid = uuid;
-    m_domainMatypes = matypes;
-    m_domainSelectedMatype = selectedMatype;
-    m_domainPreviewMatype = previewMatype;
-    m_domainPreDeleteMatype = preDeleteMatype;
+    highlightDomainsByCellIntArray(domain, uuid, QStringLiteral("MATYPE"), matypes, selectedMatype,
+                                   previewMatype, preDeleteMatype);
+}
+
+void PickManager::highlightDomainsByCellIntArray(const QString& domain, const QString& uuid,
+                                                 const QString& arrayName, const QSet<int>& values,
+                                                 int selectedValue, int previewValue,
+                                                 int preDeleteValue)
+{
+    if (domain.isEmpty() || uuid.isEmpty())
+        return;
+
+    auto& st = m_domainHighlightsByDomainUuid[domain][uuid];
+    st.arrayName = arrayName.trimmed();
+    st.values = values;
+    st.selectedValue = selectedValue;
+    st.previewValue = previewValue;
+    st.preDeleteValue = preDeleteValue;
+    m_lastDomainHighlightDomain = domain;
+    m_lastDomainHighlightUuid = uuid;
     refreshStructureIfNeeded();
     rebuildDomainHighlightActors();
 }
 
 void PickManager::clearDomainHighlight(const QString& domain, const QString& uuid)
 {
-    // domain 不一致时不做跨域清理；uuid 非空时只清理目标条目。
-    if (m_domainHighlightDomain != domain)
-        return;
-    if (!uuid.isEmpty() && m_domainHighlightUuid != uuid)
+    if (domain.isEmpty())
         return;
 
-    m_domainMatypes.clear();
-    m_domainSelectedMatype = -1;
-    m_domainPreviewMatype = -1;
-    m_domainPreDeleteMatype = -1;
     if (uuid.isEmpty())
-        m_domainHighlightUuid.clear();
+    {
+        m_domainHighlightsByDomainUuid.remove(domain);
+        if (m_lastDomainHighlightDomain == domain)
+        {
+            m_lastDomainHighlightDomain.clear();
+            m_lastDomainHighlightUuid.clear();
+        }
+    }
+    else
+    {
+        auto itDomain = m_domainHighlightsByDomainUuid.find(domain);
+        if (itDomain != m_domainHighlightsByDomainUuid.end())
+        {
+            itDomain->remove(uuid);
+            if (itDomain->isEmpty())
+                m_domainHighlightsByDomainUuid.erase(itDomain);
+        }
+        if (m_lastDomainHighlightDomain == domain && m_lastDomainHighlightUuid == uuid)
+        {
+            m_lastDomainHighlightDomain.clear();
+            m_lastDomainHighlightUuid.clear();
+        }
+    }
 
     rebuildDomainHighlightActors();
 }
@@ -1746,8 +1774,39 @@ void PickManager::rebuildDomainHighlightActors()
         return;
     auto* mapper = actor->GetMapper();
 
-    const bool hasSelection = !m_domainMatypes.isEmpty() || m_domainSelectedMatype >= 0 ||
-                              m_domainPreviewMatype >= 0 || m_domainPreDeleteMatype >= 0;
+    QString activeDomain = m_currentDomain;
+    QString activeUuid = m_currentUUid;
+    auto itDomain = m_domainHighlightsByDomainUuid.constFind(activeDomain);
+    if (itDomain == m_domainHighlightsByDomainUuid.constEnd())
+    {
+        activeDomain = m_lastDomainHighlightDomain;
+        activeUuid = m_lastDomainHighlightUuid;
+        itDomain = m_domainHighlightsByDomainUuid.constFind(activeDomain);
+        if (itDomain == m_domainHighlightsByDomainUuid.constEnd())
+        {
+            mapper->ScalarVisibilityOff();
+            m_visual->render();
+            return;
+        }
+    }
+
+    const auto itUuid = itDomain->constFind(activeUuid);
+    if (itUuid == itDomain->constEnd())
+    {
+        mapper->ScalarVisibilityOff();
+        m_visual->render();
+        return;
+    }
+    const DomainHighlightState& st = itUuid.value();
+    if (st.arrayName.isEmpty())
+    {
+        mapper->ScalarVisibilityOff();
+        m_visual->render();
+        return;
+    }
+
+    const bool hasSelection = !st.values.isEmpty() || st.selectedValue >= 0 || st.previewValue >= 0 ||
+                              st.preDeleteValue >= 0;
     if (!hasSelection)
     {
         mapper->ScalarVisibilityOff();
@@ -1755,10 +1814,12 @@ void PickManager::rebuildDomainHighlightActors()
         return;
     }
 
-    auto* matArr = vtkIntArray::SafeDownCast(m_solidPickDataSet->GetCellData()->GetArray("MATYPE"));
+    auto* matArr =
+        vtkIntArray::SafeDownCast(m_solidPickDataSet->GetCellData()->GetArray(st.arrayName.toUtf8().constData()));
     auto* origCellIds =
         vtkIdTypeArray::SafeDownCast(m_solidPickDataSet->GetCellData()->GetArray("vtkOriginalCellIds"));
-    auto* sourceMatArr = vtkIntArray::SafeDownCast(m_gridSolid->GetCellData()->GetArray("MATYPE"));
+    auto* sourceMatArr =
+        vtkIntArray::SafeDownCast(m_gridSolid->GetCellData()->GetArray(st.arrayName.toUtf8().constData()));
     if (!matArr && (!origCellIds || !sourceMatArr))
         return;
 
@@ -1798,13 +1859,13 @@ void PickManager::rebuildDomainHighlightActors()
         int matype = -1;
         const bool hasMatype = resolveMatype(cid, matype);
         const unsigned char* c = normal;
-        if (hasMatype && m_domainMatypes.contains(matype))
+        if (hasMatype && st.values.contains(matype))
             c = appliedColor;
-        if (hasMatype && m_domainSelectedMatype >= 0 && matype == m_domainSelectedMatype)
+        if (hasMatype && st.selectedValue >= 0 && matype == st.selectedValue)
             c = selectedColor;
-        if (hasMatype && m_domainPreviewMatype >= 0 && matype == m_domainPreviewMatype)
+        if (hasMatype && st.previewValue >= 0 && matype == st.previewValue)
             c = previewColor;
-        if (hasMatype && m_domainPreDeleteMatype >= 0 && matype == m_domainPreDeleteMatype)
+        if (hasMatype && st.preDeleteValue >= 0 && matype == st.preDeleteValue)
             c = preDeleteColor;
         colors->SetTypedTuple(cid, c);
     }
