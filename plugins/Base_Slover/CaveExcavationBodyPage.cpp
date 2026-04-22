@@ -329,7 +329,7 @@ QVector<int> CaveExcavationBodyPage::availableGroupIds() const
     {
         for (auto it = map.physIdToDim.constBegin(); it != map.physIdToDim.constEnd(); ++it)
         {
-            if (it.value() == 3 || it.value() == 2)
+            if (it.value() == 3)
                 keys.push_back(it.key());
         }
     }
