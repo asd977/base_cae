@@ -76,7 +76,7 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     void displayCurrentGrid(); // 只显示 m_importedGrid
 
     void splitGridByDim(vtkUnstructuredGrid* src, vtkSmartPointer<vtkUnstructuredGrid>& outLine,
-                        vtkSmartPointer<vtkUnstructuredGrid>& outNonLine) const;
+                        vtkSmartPointer<vtkUnstructuredGrid>& outNonLine);
 
     vtkSmartPointer<vtkActor> createSurfaceActor(vtkDataSet* grid) const;
     vtkSmartPointer<vtkActor> createLineActor(vtkUnstructuredGrid* grid) const;
@@ -101,6 +101,9 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     vtkSmartPointer<vtkUnstructuredGrid> m_previewLineGrid;
 
     vtkSmartPointer<vtkMapper> m_previewMapper;
+    vtkSmartPointer<vtkUnstructuredGrid> m_splitCacheSource;
+    vtkSmartPointer<vtkUnstructuredGrid> m_splitCacheLine;
+    vtkSmartPointer<vtkUnstructuredGrid> m_splitCacheNonLine;
     QVector<EdgeControlRule> m_edgeRules;
     QVector<FaceControlRule> m_faceRules;
     QVector<VolumeControlRule> m_volumeRules;

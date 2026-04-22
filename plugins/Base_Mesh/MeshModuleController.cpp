@@ -1107,7 +1107,7 @@ void MeshModuleController::displayCurrentGrid()
         m_visualWidgetService->addProp(kMeshSurfId, surfActor, QString("网格"),
                                        QString("导入网格-面/体"), true, true);
 
-        m_previewSurfaceGrid = nonLineGrid;
+        m_previewSurfaceGrid = m_importedGrid;
         m_previewSurfaceActor = surfActor;
         m_previewSurfaceMapper = surfActor->GetMapper();
     }
@@ -1175,12 +1175,19 @@ bool MeshModuleController::exportIiinDatFile(const QString& filePath, QString* e
 
 void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
                                           vtkSmartPointer<vtkUnstructuredGrid>& outLine,
-                                          vtkSmartPointer<vtkUnstructuredGrid>& outNonLine) const
+                                          vtkSmartPointer<vtkUnstructuredGrid>& outNonLine)
 {
     outLine = nullptr;
     outNonLine = nullptr;
     if (!src)
         return;
+
+    if (m_splitCacheSource == src && m_splitCacheNonLine)
+    {
+        outLine = m_splitCacheLine;
+        outNonLine = m_splitCacheNonLine;
+        return;
+    }
 
     auto lineIds = vtkSmartPointer<vtkIdList>::New();
     auto nonLineIds = vtkSmartPointer<vtkIdList>::New();
@@ -1315,6 +1322,10 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
     auto merged = vtkUnstructuredGrid::SafeDownCast(appendFilter->GetOutput());
     if (merged && merged->GetNumberOfCells() > 0)
         outNonLine = merged;
+
+    m_splitCacheSource = src;
+    m_splitCacheLine = outLine;
+    m_splitCacheNonLine = outNonLine;
 }
 
 vtkSmartPointer<vtkActor> MeshModuleController::createSurfaceActor(vtkDataSet* grid) const

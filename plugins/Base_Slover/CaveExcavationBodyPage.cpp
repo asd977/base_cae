@@ -175,6 +175,9 @@ void CaveExcavationBodyPage::onClearClicked()
 
 void CaveExcavationBodyPage::onAddGroupClicked()
 {
+    const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    if (meshDim != 3)
+        return;
     if (!m_groupCombo || m_groupCombo->currentIndex() < 0)
         return;
     const int gid = m_groupCombo->currentData().toInt();
@@ -185,6 +188,9 @@ void CaveExcavationBodyPage::onAddGroupClicked()
 
 void CaveExcavationBodyPage::onRemoveSelectedGroupsClicked()
 {
+    const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    if (meshDim != 3)
+        return;
     if (!m_groupList)
         return;
     const auto items = m_groupList->selectedItems();
@@ -233,7 +239,23 @@ void CaveExcavationBodyPage::setupGroupCombo()
     const MshPickMap map = meshSvc->mshPickMapSolid();
 
     const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
-    if (meshDim == 3)
+    const bool is3d = (meshDim == 3);
+    if (!is3d)
+    {
+        if (m_groupCombo)
+            m_groupCombo->clear();
+        if (m_addGroupBtn)
+            m_addGroupBtn->setEnabled(false);
+        if (m_removeGroupBtn)
+            m_removeGroupBtn->setEnabled(false);
+        if (m_groupList)
+            m_groupList->setEnabled(false);
+        m_selectedGroups.clear();
+        refreshSelectedGroupList();
+        return;
+    }
+
+    if (is3d)
     {
         if (map.layerToCellIds.size() > 1)
             m_source = GroupSource::Layer;
@@ -253,6 +275,13 @@ void CaveExcavationBodyPage::setupGroupCombo()
     for (int id : ids)
         m_groupCombo->addItem(QString::number(id), id);
     m_groupCombo->blockSignals(false);
+
+    if (m_addGroupBtn)
+        m_addGroupBtn->setEnabled(true);
+    if (m_removeGroupBtn)
+        m_removeGroupBtn->setEnabled(true);
+    if (m_groupList)
+        m_groupList->setEnabled(true);
 }
 
 QVector<int> CaveExcavationBodyPage::availableGroupIds() const
