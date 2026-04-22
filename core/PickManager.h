@@ -133,11 +133,6 @@ class CORE_EXPORT PickManager : public QObject
     void highlightDomainsByMatype(const QString& domain, const QString& uuid,
                                   const QSet<int>& matypes, int selectedMatype, int previewMatype,
                                   int preDeleteMatype);
-    // 分层域(LAYER)高亮：
-    // 参数语义与 MATYPE 一致，只是按 LAYER 数组着色。
-    void highlightDomainsByLayer(const QString& domain, const QString& uuid,
-                                 const QSet<int>& layers, int selectedLayer, int previewLayer,
-                                 int preDeleteLayer);
     // 清理材料域高亮。uuid 为空时清理该 domain 的当前高亮态。
     void clearDomainHighlight(const QString& domain, const QString& uuid = QString());
 
@@ -344,7 +339,6 @@ class CORE_EXPORT PickManager : public QObject
     int m_domainSelectedMatype = -1;
     int m_domainPreviewMatype = -1;
     int m_domainPreDeleteMatype = -1;
-    bool m_domainHighlightByLayer = false;
 
   signals:
     void nodePicked(const QString& domain, const QString& activeUuid, GridKind kind, vtkIdType pid,

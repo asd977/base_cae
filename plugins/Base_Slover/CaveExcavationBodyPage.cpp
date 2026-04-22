@@ -477,11 +477,12 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
     vtkUnstructuredGrid* grid = meshSvc->getVtkUnstructuredGridSolid();
     if (!grid)
         grid = PickManager::instance().solidGrid();
-    const bool useLayer = (m_source == GroupSource::Layer);
-    vtkDataArray* groupArr = (grid && grid->GetCellData())
-                                 ? vtkDataArray::SafeDownCast(
-                                       grid->GetCellData()->GetArray(useLayer ? "LAYER" : "MATYPE"))
-                                 : nullptr;
+    vtkDataArray* matypeArr =
+        (grid && grid->GetCellData()) ? vtkDataArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"))
+                                      : nullptr;
+    vtkDataArray* layerArr =
+        (grid && grid->GetCellData()) ? vtkDataArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"))
+                                      : nullptr;
 
     const auto collectGroupValues = [&](int gid) -> QSet<int>
     {
@@ -489,16 +490,18 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
         const auto cids = groupCellIds(gid);
         for (vtkIdType cid : cids)
         {
-            // LAYER 分组选 LAYER，其他分组选 MATYPE；缺失时回退 VTK 对应数组。
-            const auto it = useLayer ? map.cellIdToLayer.constFind(static_cast<qint64>(cid))
-                                     : map.cellIdToMatype.constFind(static_cast<qint64>(cid));
-            if (it != (useLayer ? map.cellIdToLayer.constEnd() : map.cellIdToMatype.constEnd()))
-            {
-                out.insert(*it);
-                continue;
-            }
-            if (groupArr && cid >= 0 && cid < groupArr->GetNumberOfTuples())
-                out.insert(static_cast<int>(groupArr->GetTuple1(cid)));
+            // 不区分来源，LAYER / MATYPE 的值域不重叠，统一放入同一高亮集合。
+            const auto itLayer = map.cellIdToLayer.constFind(static_cast<qint64>(cid));
+            if (itLayer != map.cellIdToLayer.constEnd())
+                out.insert(*itLayer);
+            const auto itMatype = map.cellIdToMatype.constFind(static_cast<qint64>(cid));
+            if (itMatype != map.cellIdToMatype.constEnd())
+                out.insert(*itMatype);
+
+            if (layerArr && cid >= 0 && cid < layerArr->GetNumberOfTuples())
+                out.insert(static_cast<int>(layerArr->GetTuple1(cid)));
+            if (matypeArr && cid >= 0 && cid < matypeArr->GetNumberOfTuples())
+                out.insert(static_cast<int>(matypeArr->GetTuple1(cid)));
         }
         return out;
     };
@@ -517,16 +520,8 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
             selectedValues.unite(previewValues);
     }
 
-    if (useLayer)
-    {
-        PickManager::instance().highlightDomainsByLayer(getPageType(), m_uuid, selectedValues, -1,
-                                                        previewValue, -1);
-    }
-    else
-    {
-        PickManager::instance().highlightDomainsByMatype(getPageType(), m_uuid, selectedValues, -1,
-                                                         previewValue, -1);
-    }
+    PickManager::instance().highlightDomainsByMatype(getPageType(), m_uuid, selectedValues, -1,
+                                                     previewValue, -1);
 }
 
 QString CaveExcavationBodyPage::sourceToString(GroupSource s) const

@@ -336,22 +336,6 @@ void PickManager::highlightDomainsByMatype(const QString& domain, const QString&
     m_domainSelectedMatype = selectedMatype;
     m_domainPreviewMatype = previewMatype;
     m_domainPreDeleteMatype = preDeleteMatype;
-    m_domainHighlightByLayer = false;
-    refreshStructureIfNeeded();
-    rebuildDomainHighlightActors();
-}
-
-void PickManager::highlightDomainsByLayer(const QString& domain, const QString& uuid,
-                                          const QSet<int>& layers, int selectedLayer,
-                                          int previewLayer, int preDeleteLayer)
-{
-    m_domainHighlightDomain = domain;
-    m_domainHighlightUuid = uuid;
-    m_domainMatypes = layers;
-    m_domainSelectedMatype = selectedLayer;
-    m_domainPreviewMatype = previewLayer;
-    m_domainPreDeleteMatype = preDeleteLayer;
-    m_domainHighlightByLayer = true;
     refreshStructureIfNeeded();
     rebuildDomainHighlightActors();
 }
@@ -368,7 +352,6 @@ void PickManager::clearDomainHighlight(const QString& domain, const QString& uui
     m_domainSelectedMatype = -1;
     m_domainPreviewMatype = -1;
     m_domainPreDeleteMatype = -1;
-    m_domainHighlightByLayer = false;
     if (uuid.isEmpty())
         m_domainHighlightUuid.clear();
 
@@ -1772,12 +1755,13 @@ void PickManager::rebuildDomainHighlightActors()
         return;
     }
 
-    const char* scalarName = m_domainHighlightByLayer ? "LAYER" : "MATYPE";
-    auto* matArr = vtkIntArray::SafeDownCast(m_solidPickDataSet->GetCellData()->GetArray(scalarName));
+    auto* matypeArr = vtkIntArray::SafeDownCast(m_solidPickDataSet->GetCellData()->GetArray("MATYPE"));
+    auto* layerArr = vtkIntArray::SafeDownCast(m_solidPickDataSet->GetCellData()->GetArray("LAYER"));
     auto* origCellIds =
         vtkIdTypeArray::SafeDownCast(m_solidPickDataSet->GetCellData()->GetArray("vtkOriginalCellIds"));
-    auto* sourceMatArr = vtkIntArray::SafeDownCast(m_gridSolid->GetCellData()->GetArray(scalarName));
-    if (!matArr && (!origCellIds || !sourceMatArr))
+    auto* sourceMatypeArr = vtkIntArray::SafeDownCast(m_gridSolid->GetCellData()->GetArray("MATYPE"));
+    auto* sourceLayerArr = vtkIntArray::SafeDownCast(m_gridSolid->GetCellData()->GetArray("LAYER"));
+    if (!matypeArr && !layerArr && (!origCellIds || (!sourceMatypeArr && !sourceLayerArr)))
         return;
 
     const vtkIdType nCells = m_solidPickDataSet->GetNumberOfCells();
@@ -1792,19 +1776,20 @@ void PickManager::rebuildDomainHighlightActors()
     const unsigned char previewColor[3] = {51, 102, 230};
     const unsigned char preDeleteColor[3] = {230, 140, 51};
 
-    auto resolveMatype = [&](vtkIdType cid, int& outMatype) -> bool
+    auto resolveScalar = [&](vtkIdType cid, vtkIntArray* pickArr, vtkIntArray* srcArr,
+                             int& outValue) -> bool
     {
-        if (matArr && cid < matArr->GetNumberOfTuples())
+        if (pickArr && cid < pickArr->GetNumberOfTuples())
         {
-            outMatype = matArr->GetValue(cid);
+            outValue = pickArr->GetValue(cid);
             return true;
         }
-        if (origCellIds && sourceMatArr && cid < origCellIds->GetNumberOfTuples())
+        if (origCellIds && srcArr && cid < origCellIds->GetNumberOfTuples())
         {
             const vtkIdType srcCid = origCellIds->GetValue(cid);
-            if (srcCid >= 0 && srcCid < sourceMatArr->GetNumberOfTuples())
+            if (srcCid >= 0 && srcCid < srcArr->GetNumberOfTuples())
             {
-                outMatype = sourceMatArr->GetValue(srcCid);
+                outValue = srcArr->GetValue(srcCid);
                 return true;
             }
         }
@@ -1813,16 +1798,21 @@ void PickManager::rebuildDomainHighlightActors()
 
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
-        int matype = -1;
-        const bool hasMatype = resolveMatype(cid, matype);
+        int matype = -1, layer = -1;
+        const bool hasMatype = resolveScalar(cid, matypeArr, sourceMatypeArr, matype);
+        const bool hasLayer = resolveScalar(cid, layerArr, sourceLayerArr, layer);
         const unsigned char* c = normal;
-        if (hasMatype && m_domainMatypes.contains(matype))
+        if ((hasMatype && m_domainMatypes.contains(matype)) ||
+            (hasLayer && m_domainMatypes.contains(layer)))
             c = appliedColor;
-        if (hasMatype && m_domainSelectedMatype >= 0 && matype == m_domainSelectedMatype)
+        if ((hasMatype && m_domainSelectedMatype >= 0 && matype == m_domainSelectedMatype) ||
+            (hasLayer && m_domainSelectedMatype >= 0 && layer == m_domainSelectedMatype))
             c = selectedColor;
-        if (hasMatype && m_domainPreviewMatype >= 0 && matype == m_domainPreviewMatype)
+        if ((hasMatype && m_domainPreviewMatype >= 0 && matype == m_domainPreviewMatype) ||
+            (hasLayer && m_domainPreviewMatype >= 0 && layer == m_domainPreviewMatype))
             c = previewColor;
-        if (hasMatype && m_domainPreDeleteMatype >= 0 && matype == m_domainPreDeleteMatype)
+        if ((hasMatype && m_domainPreDeleteMatype >= 0 && matype == m_domainPreDeleteMatype) ||
+            (hasLayer && m_domainPreDeleteMatype >= 0 && layer == m_domainPreDeleteMatype))
             c = preDeleteColor;
         colors->SetTypedTuple(cid, c);
     }
