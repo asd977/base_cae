@@ -262,24 +262,13 @@ void CaveExcavationBodyPage::onGroupCurrentChanged(int index)
 
 void CaveExcavationBodyPage::onGroupDropdownClosed()
 {
-    const int hoveredIndex = m_lastHoveredIndex;
     if (m_groupCombo && m_lastHoveredIndex >= 0 && m_lastHoveredIndex < m_groupCombo->count())
         m_groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
     m_lastHoveredIndex = -1;
     refreshGroupComboMarks();
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
-    if (!m_selectedGroups.isEmpty())
-    {
-        updateGroupDomainHighlight();
-        return;
-    }
-    if (m_groupCombo && hoveredIndex >= 0 && hoveredIndex < m_groupCombo->count())
-    {
-        const int gid = m_groupCombo->itemData(hoveredIndex).toInt();
-        updateGroupDomainHighlight(gid);
-        return;
-    }
-    onGroupCurrentChanged(m_groupCombo ? m_groupCombo->currentIndex() : -1);
+    // 关闭下拉后取消 hover 预览，仅保留“已选分组”的持久高亮。
+    updateGroupDomainHighlight();
 }
 
 void CaveExcavationBodyPage::setupGroupCombo()
