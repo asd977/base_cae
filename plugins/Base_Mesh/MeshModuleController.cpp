@@ -1236,8 +1236,28 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
         if (!arr)
             return rst;
         const vtkIdType n = src->GetNumberOfCells();
+        vtkIdType n3d = 0;
         for (vtkIdType cid = 0; cid < n; ++cid)
+        {
+            vtkCell* c = src->GetCell(cid);
+            if (!c || c->GetCellDimension() != 3)
+                continue;
+            ++n3d;
             rst[arr->GetValue(cid)].push_back(static_cast<qint64>(cid));
+        }
+        if (n3d <= 0)
+            return QHash<int, QVector<qint64>>{};
+
+        // 只有一个组或整个体域都在同一组时，追加其表面没有增益，跳过以降低卡顿。
+        if (rst.size() <= 1)
+            return QHash<int, QVector<qint64>>{};
+        for (auto it = rst.begin(); it != rst.end();)
+        {
+            if (it.value().size() >= n3d)
+                it = rst.erase(it);
+            else
+                ++it;
+        }
         return rst;
     };
 

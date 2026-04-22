@@ -580,6 +580,11 @@ void GridEditingWidget::buildOrUpdateViewGrid()
     const bool hasFilter =
         !m_filterKetypes.isEmpty() || !m_filterMatypes.isEmpty() || !m_filterLayers.isEmpty();
 
+    // 过滤显示时，隐藏导入线网格，避免“只筛体/面但线还在”的错觉；
+    // 当没有过滤或仅线兜底时再恢复。
+    if (m_visualWidgetService)
+        m_visualWidgetService->setVisible("mesh.imported.line", !hasFilter, false);
+
     // 记录 mapper 原有着色状态：避免仅因重建 viewGrid 就丢失当前颜色。
     const int prevScalarVisibility = m_meshMapper->GetScalarVisibility();
     const int prevScalarMode = m_meshMapper->GetScalarMode();
@@ -662,6 +667,8 @@ void GridEditingWidget::buildOrUpdateViewGrid()
 
     if (!hasFilter || usedLineFallback)
         m_viewSurface = nullptr;
+    if (m_visualWidgetService && usedLineFallback)
+        m_visualWidgetService->setVisible("mesh.imported.line", true, false);
     m_viewSurfaceNodeIdToVtkId.clear();
     vtkDataSet* pickDs = m_meshMapper ? m_meshMapper->GetInput() : nullptr;
     vtkPointSet* pickPointSet = pickDs ? vtkPointSet::SafeDownCast(pickDs) : nullptr;
