@@ -68,7 +68,10 @@ void CaveExcavationBodyPage::beforeLoad()
 {
     setupGroupCombo();
     updatePersistentSelectionFaces();
-    updateGroupDomainHighlight();
+    const int currentGroup = (m_groupCombo && m_groupCombo->currentIndex() >= 0)
+                                 ? m_groupCombo->currentData().toInt()
+                                 : -1;
+    updateGroupDomainHighlight(currentGroup);
     PickManager::instance().activate(getPageType(), m_uuid, currentPickMode());
     const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     const bool allowFacePick = (meshDim == 2);
@@ -133,9 +136,12 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
     PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid, edgeKeys, true);
 
     updatePersistentSelectionFaces();
-    updateGroupDomainHighlight();
     refreshSelectedGroupList();
     refreshGroupComboMarks();
+    const int currentGroup = (m_groupCombo && m_groupCombo->currentIndex() >= 0)
+                                 ? m_groupCombo->currentData().toInt()
+                                 : -1;
+    updateGroupDomainHighlight(currentGroup);
 }
 
 QVector<int> CaveExcavationBodyPage::selectedElementIds()
@@ -184,7 +190,10 @@ void CaveExcavationBodyPage::onClearClicked()
     refreshGroupComboMarks();
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
     PickManager::instance().clearSelection(getPageType(), m_uuid, currentPickMode());
-    updateGroupDomainHighlight();
+    const int currentGroup = (m_groupCombo && m_groupCombo->currentIndex() >= 0)
+                                 ? m_groupCombo->currentData().toInt()
+                                 : -1;
+    updateGroupDomainHighlight(currentGroup);
 }
 
 void CaveExcavationBodyPage::onAddGroupClicked()
@@ -199,7 +208,10 @@ void CaveExcavationBodyPage::onAddGroupClicked()
     refreshSelectedGroupList();
     refreshGroupComboMarks();
     updatePersistentSelectionFaces();
-    updateGroupDomainHighlight();
+    const int currentGroup = (m_groupCombo && m_groupCombo->currentIndex() >= 0)
+                                 ? m_groupCombo->currentData().toInt()
+                                 : -1;
+    updateGroupDomainHighlight(currentGroup);
 }
 
 void CaveExcavationBodyPage::onRemoveSelectedGroupsClicked()
@@ -220,7 +232,10 @@ void CaveExcavationBodyPage::onRemoveSelectedGroupsClicked()
     refreshSelectedGroupList();
     refreshGroupComboMarks();
     updatePersistentSelectionFaces();
-    updateGroupDomainHighlight();
+    const int currentGroup = (m_groupCombo && m_groupCombo->currentIndex() >= 0)
+                                 ? m_groupCombo->currentData().toInt()
+                                 : -1;
+    updateGroupDomainHighlight(currentGroup);
 }
 
 void CaveExcavationBodyPage::onGroupHovered(int index)
@@ -248,8 +263,11 @@ void CaveExcavationBodyPage::onGroupDropdownClosed()
     m_lastHoveredIndex = -1;
     refreshGroupComboMarks();
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
-    // 关闭下拉后取消 hover 预览，仅保留“已选分组”的持久高亮。
-    updateGroupDomainHighlight();
+    // 关闭下拉后取消 hover 预览，回退到当前下拉选中组的高亮。
+    const int currentGroup = (m_groupCombo && m_groupCombo->currentIndex() >= 0)
+                                 ? m_groupCombo->currentData().toInt()
+                                 : -1;
+    updateGroupDomainHighlight(currentGroup);
 }
 
 void CaveExcavationBodyPage::setupGroupCombo()
@@ -294,11 +312,17 @@ void CaveExcavationBodyPage::setupGroupCombo()
         m_source = GroupSource::Physical;
     }
 
+    const int previousGroup = (m_groupCombo->currentIndex() >= 0) ? m_groupCombo->currentData().toInt() : -1;
     const QVector<int> ids = availableGroupIds();
     m_groupCombo->blockSignals(true);
     m_groupCombo->clear();
     for (int id : ids)
         m_groupCombo->addItem(QString::number(id), id);
+    if (m_groupCombo->count() > 0)
+    {
+        const int restoreIndex = previousGroup >= 0 ? m_groupCombo->findData(previousGroup) : -1;
+        m_groupCombo->setCurrentIndex(restoreIndex >= 0 ? restoreIndex : 0);
+    }
     m_groupCombo->blockSignals(false);
 
     if (m_addGroupBtn)
@@ -308,6 +332,10 @@ void CaveExcavationBodyPage::setupGroupCombo()
     if (m_groupList)
         m_groupList->setEnabled(true);
     refreshGroupComboMarks();
+    const int currentGroup = (m_groupCombo && m_groupCombo->currentIndex() >= 0)
+                                 ? m_groupCombo->currentData().toInt()
+                                 : -1;
+    updateGroupDomainHighlight(currentGroup);
 }
 
 QVector<int> CaveExcavationBodyPage::availableGroupIds() const
