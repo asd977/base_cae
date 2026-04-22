@@ -392,6 +392,11 @@ bool MeshModuleController::loadProject()
                 m_importedGrid = grid;
                 m_hasGrid = true;
                 m_sourceFileName.clear();
+                {
+                    vtkSmartPointer<vtkUnstructuredGrid> tmpLine;
+                    vtkSmartPointer<vtkUnstructuredGrid> tmpNonLine;
+                    splitGridByDim(m_importedGrid, tmpLine, tmpNonLine);
+                }
                 syncPickMapGroupingFromGrid(m_importedGrid);
                 displayCurrentGrid();
             }
@@ -805,6 +810,11 @@ void MeshModuleController::onImportGrid()
     m_importedGrid = grid;
     m_hasGrid = true;
     m_sourceFileName = fileName;
+    {
+        vtkSmartPointer<vtkUnstructuredGrid> tmpLine;
+        vtkSmartPointer<vtkUnstructuredGrid> tmpNonLine;
+        splitGridByDim(m_importedGrid, tmpLine, tmpNonLine);
+    }
 
     if (ext == "dat")
     {
@@ -848,6 +858,11 @@ void MeshModuleController::importMshGrid(QString path)
     m_importedGrid = grid;
     m_hasGrid = true;
     m_sourceFileName = path;
+    {
+        vtkSmartPointer<vtkUnstructuredGrid> tmpLine;
+        vtkSmartPointer<vtkUnstructuredGrid> tmpNonLine;
+        splitGridByDim(m_importedGrid, tmpLine, tmpNonLine);
+    }
 
     displayCurrentGrid();
     syncPickMapGroupingFromGrid(m_importedGrid);
@@ -867,6 +882,11 @@ bool MeshModuleController::importCurrentGmshMesh(QString* errMsg)
     m_importedGrid = grid;
     m_hasGrid = true;
     m_sourceFileName.clear();
+    {
+        vtkSmartPointer<vtkUnstructuredGrid> tmpLine;
+        vtkSmartPointer<vtkUnstructuredGrid> tmpNonLine;
+        splitGridByDim(m_importedGrid, tmpLine, tmpNonLine);
+    }
 
     displayCurrentGrid();
     syncPickMapGroupingFromGrid(m_importedGrid);

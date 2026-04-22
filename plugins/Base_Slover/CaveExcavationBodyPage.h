@@ -46,6 +46,7 @@ class CaveExcavationBodyPage : public BasePage
     QVector<vtkIdType> visibleBoundaryFaceKeys(const QVector<vtkIdType>& cellIds) const;
     QVector<int> elementIdsFromCells(const QVector<vtkIdType>& cellIds) const;
     void refreshSelectedGroupList();
+    void refreshGroupComboMarks();
     void updatePersistentSelectionFaces();
     QString sourceToString(GroupSource s) const;
     GroupSource sourceFromString(const QString& s) const;

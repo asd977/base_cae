@@ -69,6 +69,10 @@ void CaveExcavationBodyPage::beforeLoad()
     setupGroupCombo();
     updatePersistentSelectionFaces();
     PickManager::instance().activate(getPageType(), m_uuid, currentPickMode());
+    const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    const bool allowFacePick = (meshDim == 2);
+    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, allowFacePick);
+    PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, allowFacePick);
 }
 
 void CaveExcavationBodyPage::beforeUnload()
@@ -128,6 +132,7 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
 
     updatePersistentSelectionFaces();
     refreshSelectedGroupList();
+    refreshGroupComboMarks();
 }
 
 QVector<int> CaveExcavationBodyPage::selectedElementIds()
@@ -145,16 +150,20 @@ QVector<int> CaveExcavationBodyPage::selectedElementIds()
     vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
     if (grid)
     {
-        vtkDataArray* elemIdArr = vtkDataArray::SafeDownCast(grid->GetCellData()->GetArray("elem_id"));
-        const auto faceKeys =
-            PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid);
-        for (vtkIdType key : faceKeys)
+        const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+        if (meshDim == 2)
         {
-            const vtkIdType cellId = PickManager::instance().unpackFaceCellId(key);
-            if (cellId < 0 || cellId >= grid->GetNumberOfCells())
-                continue;
-            const int ke = elemIdArr ? int(elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
-            uniq.insert(ke);
+            vtkDataArray* elemIdArr = vtkDataArray::SafeDownCast(grid->GetCellData()->GetArray("elem_id"));
+            const auto faceKeys =
+                PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid);
+            for (vtkIdType key : faceKeys)
+            {
+                const vtkIdType cellId = PickManager::instance().unpackFaceCellId(key);
+                if (cellId < 0 || cellId >= grid->GetNumberOfCells())
+                    continue;
+                const int ke = elemIdArr ? int(elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
+                uniq.insert(ke);
+            }
         }
     }
 
@@ -169,6 +178,7 @@ void CaveExcavationBodyPage::onClearClicked()
 {
     m_selectedGroups.clear();
     refreshSelectedGroupList();
+    refreshGroupComboMarks();
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
     PickManager::instance().clearSelection(getPageType(), m_uuid, currentPickMode());
 }
@@ -183,6 +193,7 @@ void CaveExcavationBodyPage::onAddGroupClicked()
     const int gid = m_groupCombo->currentData().toInt();
     m_selectedGroups.insert(gid);
     refreshSelectedGroupList();
+    refreshGroupComboMarks();
     updatePersistentSelectionFaces();
 }
 
@@ -202,6 +213,7 @@ void CaveExcavationBodyPage::onRemoveSelectedGroupsClicked()
             m_selectedGroups.remove(gid);
     }
     refreshSelectedGroupList();
+    refreshGroupComboMarks();
     updatePersistentSelectionFaces();
 }
 
@@ -225,6 +237,7 @@ void CaveExcavationBodyPage::onGroupDropdownClosed()
     if (m_groupCombo && m_lastHoveredIndex >= 0 && m_lastHoveredIndex < m_groupCombo->count())
         m_groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
     m_lastHoveredIndex = -1;
+    refreshGroupComboMarks();
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
 }
 
@@ -252,6 +265,7 @@ void CaveExcavationBodyPage::setupGroupCombo()
             m_groupList->setEnabled(false);
         m_selectedGroups.clear();
         refreshSelectedGroupList();
+        refreshGroupComboMarks();
         return;
     }
 
@@ -282,6 +296,7 @@ void CaveExcavationBodyPage::setupGroupCombo()
         m_removeGroupBtn->setEnabled(true);
     if (m_groupList)
         m_groupList->setEnabled(true);
+    refreshGroupComboMarks();
 }
 
 QVector<int> CaveExcavationBodyPage::availableGroupIds() const
@@ -412,6 +427,20 @@ void CaveExcavationBodyPage::refreshSelectedGroupList()
     {
         auto* item = new QListWidgetItem(QString::number(id), m_groupList);
         item->setData(Qt::UserRole, id);
+    }
+}
+
+void CaveExcavationBodyPage::refreshGroupComboMarks()
+{
+    if (!m_groupCombo)
+        return;
+    for (int i = 0; i < m_groupCombo->count(); ++i)
+    {
+        const int gid = m_groupCombo->itemData(i).toInt();
+        if (m_selectedGroups.contains(gid))
+            m_groupCombo->setItemData(i, QColor(225, 255, 225), Qt::BackgroundRole);
+        else
+            m_groupCombo->setItemData(i, QVariant(), Qt::BackgroundRole);
     }
 }
 
