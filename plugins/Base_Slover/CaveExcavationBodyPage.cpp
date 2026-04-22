@@ -405,6 +405,15 @@ QVector<vtkIdType> CaveExcavationBodyPage::visibleBoundaryFaceKeys(const QVector
     out.reserve(uniq.size());
     for (vtkIdType fk : uniq)
         out.push_back(fk);
+
+    // 某些导入链路可能没有填充 bndFacePhysToFaceKeys，此时兜底到“按单元取一个可见面”
+    // 的 faceKey，保证下拉高亮/选中至少有可见反馈。
+    if (out.isEmpty())
+    {
+        out.reserve(cellIds.size());
+        for (vtkIdType cid : cellIds)
+            out.push_back(PickManager::instance().packFaceKey(cid, 0));
+    }
     return out;
 }
 
