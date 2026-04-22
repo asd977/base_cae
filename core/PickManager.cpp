@@ -329,31 +329,45 @@ void PickManager::highlightDomainsByMatype(const QString& domain, const QString&
                                            const QSet<int>& matypes, int selectedMatype,
                                            int previewMatype, int preDeleteMatype)
 {
-    // 仅保存状态，实际着色统一在 rebuildDomainHighlightActors 里完成。
-    m_domainHighlightDomain = domain;
-    m_domainHighlightUuid = uuid;
-    m_domainMatypes = matypes;
-    m_domainSelectedMatype = selectedMatype;
-    m_domainPreviewMatype = previewMatype;
-    m_domainPreDeleteMatype = preDeleteMatype;
+    // 按 domain+uuid 保存状态；渲染时只显示当前 active 的那一条（类似点/面选择的归属管理）。
+    DomainHighlightState st;
+    st.ids = matypes;
+    st.selectedId = selectedMatype;
+    st.previewId = previewMatype;
+    st.preDeleteId = preDeleteMatype;
+    m_domainHighlightStates[domain][uuid] = st;
+    m_activeHighlightDomain = domain;
+    m_activeHighlightUuid = uuid;
     refreshStructureIfNeeded();
     rebuildDomainHighlightActors();
 }
 
 void PickManager::clearDomainHighlight(const QString& domain, const QString& uuid)
 {
-    // domain 不一致时不做跨域清理；uuid 非空时只清理目标条目。
-    if (m_domainHighlightDomain != domain)
-        return;
-    if (!uuid.isEmpty() && m_domainHighlightUuid != uuid)
-        return;
-
-    m_domainMatypes.clear();
-    m_domainSelectedMatype = -1;
-    m_domainPreviewMatype = -1;
-    m_domainPreDeleteMatype = -1;
     if (uuid.isEmpty())
-        m_domainHighlightUuid.clear();
+    {
+        m_domainHighlightStates.remove(domain);
+        if (m_activeHighlightDomain == domain)
+        {
+            m_activeHighlightDomain.clear();
+            m_activeHighlightUuid.clear();
+        }
+    }
+    else
+    {
+        auto dit = m_domainHighlightStates.find(domain);
+        if (dit != m_domainHighlightStates.end())
+        {
+            dit->remove(uuid);
+            if (dit->isEmpty())
+                m_domainHighlightStates.erase(dit);
+        }
+        if (m_activeHighlightDomain == domain && m_activeHighlightUuid == uuid)
+        {
+            m_activeHighlightDomain.clear();
+            m_activeHighlightUuid.clear();
+        }
+    }
 
     rebuildDomainHighlightActors();
 }
@@ -380,8 +394,11 @@ void PickManager::activate(const QString& domain, const QString& uuid, PickMode 
     m_currentDomain = domain;
     m_currentUUid = uuid;
     m_pickMode = mode;
+    m_activeHighlightDomain = domain;
+    m_activeHighlightUuid = uuid;
 
     refreshStructureIfNeeded();
+    rebuildDomainHighlightActors();
     updateActorVisibility();
 
            // line node hints 仅 node 模式显示
@@ -416,6 +433,13 @@ void PickManager::deactivate(const QString& domain, const QString& uuid, PickMod
         commitFaceExclusive(domain, uuid);
 
     teardownPicking();
+
+    if (m_activeHighlightDomain == domain && m_activeHighlightUuid == uuid)
+    {
+        m_activeHighlightDomain.clear();
+        m_activeHighlightUuid.clear();
+        rebuildDomainHighlightActors();
+    }
 
     if (m_styleDisabledByBoxSelect && m_visual)
     {
@@ -1746,8 +1770,22 @@ void PickManager::rebuildDomainHighlightActors()
         return;
     auto* mapper = actor->GetMapper();
 
-    const bool hasSelection = !m_domainMatypes.isEmpty() || m_domainSelectedMatype >= 0 ||
-                              m_domainPreviewMatype >= 0 || m_domainPreDeleteMatype >= 0;
+    DomainHighlightState activeState;
+    bool hasActiveState = false;
+    const auto dit = m_domainHighlightStates.constFind(m_activeHighlightDomain);
+    if (dit != m_domainHighlightStates.constEnd())
+    {
+        const auto uit = dit->constFind(m_activeHighlightUuid);
+        if (uit != dit->constEnd())
+        {
+            activeState = uit.value();
+            hasActiveState = true;
+        }
+    }
+
+    const bool hasSelection = hasActiveState && (!activeState.ids.isEmpty() || activeState.selectedId >= 0 ||
+                                                  activeState.previewId >= 0 ||
+                                                  activeState.preDeleteId >= 0);
     if (!hasSelection)
     {
         mapper->ScalarVisibilityOff();
@@ -1802,17 +1840,17 @@ void PickManager::rebuildDomainHighlightActors()
         const bool hasMatype = resolveScalar(cid, matypeArr, sourceMatypeArr, matype);
         const bool hasLayer = resolveScalar(cid, layerArr, sourceLayerArr, layer);
         const unsigned char* c = normal;
-        if ((hasMatype && m_domainMatypes.contains(matype)) ||
-            (hasLayer && m_domainMatypes.contains(layer)))
+        if ((hasMatype && activeState.ids.contains(matype)) ||
+            (hasLayer && activeState.ids.contains(layer)))
             c = appliedColor;
-        if ((hasMatype && m_domainSelectedMatype >= 0 && matype == m_domainSelectedMatype) ||
-            (hasLayer && m_domainSelectedMatype >= 0 && layer == m_domainSelectedMatype))
+        if ((hasMatype && activeState.selectedId >= 0 && matype == activeState.selectedId) ||
+            (hasLayer && activeState.selectedId >= 0 && layer == activeState.selectedId))
             c = selectedColor;
-        if ((hasMatype && m_domainPreviewMatype >= 0 && matype == m_domainPreviewMatype) ||
-            (hasLayer && m_domainPreviewMatype >= 0 && layer == m_domainPreviewMatype))
+        if ((hasMatype && activeState.previewId >= 0 && matype == activeState.previewId) ||
+            (hasLayer && activeState.previewId >= 0 && layer == activeState.previewId))
             c = previewColor;
-        if ((hasMatype && m_domainPreDeleteMatype >= 0 && matype == m_domainPreDeleteMatype) ||
-            (hasLayer && m_domainPreDeleteMatype >= 0 && layer == m_domainPreDeleteMatype))
+        if ((hasMatype && activeState.preDeleteId >= 0 && matype == activeState.preDeleteId) ||
+            (hasLayer && activeState.preDeleteId >= 0 && layer == activeState.preDeleteId))
             c = preDeleteColor;
         colors->SetTypedTuple(cid, c);
     }
