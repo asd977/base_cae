@@ -52,8 +52,6 @@ CaveExcavationBodyPage::CaveExcavationBodyPage(QWidget* parent)
     connect(m_removeGroupBtn, &QPushButton::clicked, this,
             &CaveExcavationBodyPage::onRemoveSelectedGroupsClicked);
     connect(m_clearBtn, &QPushButton::clicked, this, &CaveExcavationBodyPage::onClearClicked);
-    connect(m_groupCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
-            &CaveExcavationBodyPage::onGroupCurrentChanged);
 
     if (auto* combo = qobject_cast<CustomComboBox*>(m_groupCombo))
     {
@@ -239,23 +237,6 @@ void CaveExcavationBodyPage::onGroupHovered(int index)
     m_groupCombo->setItemData(index, QColor(20, 70, 160), Qt::ForegroundRole);
     m_lastHoveredIndex = index;
 
-    const int gid = m_groupCombo->itemData(index).toInt();
-    updateGroupDomainHighlight(gid);
-}
-
-void CaveExcavationBodyPage::onGroupCurrentChanged(int index)
-{
-    if (!m_groupCombo || index < 0 || index >= m_groupCombo->count())
-    {
-        updateGroupDomainHighlight();
-        return;
-    }
-    if (m_lastHoveredIndex < 0 && !m_selectedGroups.isEmpty())
-    {
-        // 下拉关闭后，优先保持“已添加分组”的持久高亮，不用当前项覆盖为预览态。
-        updateGroupDomainHighlight();
-        return;
-    }
     const int gid = m_groupCombo->itemData(index).toInt();
     updateGroupDomainHighlight(gid);
 }
