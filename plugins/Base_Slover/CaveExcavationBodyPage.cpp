@@ -80,8 +80,7 @@ void CaveExcavationBodyPage::beforeUnload()
 {
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
     PickManager::instance().deactivate(getPageType(), m_uuid, currentPickMode());
-    if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
-        meshSvc->highlightDomainMatypes({}, -1, -1, -1);
+    PickManager::instance().clearDomainHighlight(getPageType(), m_uuid);
 }
 
 QJsonObject CaveExcavationBodyPage::saveJson()
@@ -501,16 +500,14 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
         grid = PickManager::instance().solidGrid();
     if (!grid || !grid->GetCellData())
     {
-        if (meshSvc)
-            meshSvc->highlightDomainMatypes({}, -1, -1, -1);
+        PickManager::instance().clearDomainHighlight(getPageType(), m_uuid);
         return;
     }
 
     auto* matypeArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"));
     if (!matypeArr)
     {
-        if (meshSvc)
-            meshSvc->highlightDomainMatypes({}, -1, -1, -1);
+        PickManager::instance().clearDomainHighlight(getPageType(), m_uuid);
         return;
     }
 
@@ -541,8 +538,8 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
             selectedMatypes.unite(previewMatypes);
     }
 
-    if (meshSvc)
-        meshSvc->highlightDomainMatypes(selectedMatypes, -1, previewMatype, -1);
+    PickManager::instance().highlightDomainsByMatype(getPageType(), m_uuid, selectedMatypes, -1,
+                                                     previewMatype, -1);
 }
 
 QString CaveExcavationBodyPage::sourceToString(GroupSource s) const
