@@ -133,6 +133,10 @@ class CORE_EXPORT PickManager : public QObject
     void highlightDomainsByMatype(const QString& domain, const QString& uuid,
                                   const QSet<int>& matypes, int selectedMatype, int previewMatype,
                                   int preDeleteMatype);
+    // 分层域(LAYER)高亮，参数语义同上。
+    void highlightDomainsByLayer(const QString& domain, const QString& uuid,
+                                 const QSet<int>& layers, int selectedLayer, int previewLayer,
+                                 int preDeleteLayer);
     // 清理材料域高亮。uuid 为空时清理该 domain 的当前高亮态。
     void clearDomainHighlight(const QString& domain, const QString& uuid = QString());
 
@@ -334,10 +338,16 @@ class CORE_EXPORT PickManager : public QObject
 
     struct DomainHighlightState
     {
+        enum class ScalarKind
+        {
+            Matype,
+            Layer
+        };
         QSet<int> ids;
         int selectedId = -1;
         int previewId = -1;
         int preDeleteId = -1;
+        ScalarKind scalarKind = ScalarKind::Matype;
     };
     // ============ domain highlight overlay（按 domain+uuid 管理） ============
     QHash<QString, QHash<QString, DomainHighlightState>> m_domainHighlightStates;

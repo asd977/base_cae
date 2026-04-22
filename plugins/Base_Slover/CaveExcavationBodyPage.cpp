@@ -272,19 +272,8 @@ void CaveExcavationBodyPage::setupGroupCombo()
         return;
     }
 
-    if (is3d)
-    {
-        if (map.layerToCellIds.size() > 1)
-            m_source = GroupSource::Layer;
-        else if (!map.volPhysToCellIds.isEmpty())
-            m_source = GroupSource::Physical;
-        else
-            m_source = GroupSource::Matype;
-    }
-    else
-    {
-        m_source = GroupSource::Physical;
-    }
+    // 开挖体只使用 LAYER 域分组。
+    m_source = GroupSource::Layer;
 
     const QVector<int> ids = availableGroupIds();
     ui->groupCombo->blockSignals(true);
@@ -307,19 +296,7 @@ QVector<int> CaveExcavationBodyPage::availableGroupIds() const
         return out;
     const MshPickMap map = meshSvc->mshPickMapSolid();
 
-    QList<int> keys;
-    if (m_source == GroupSource::Layer)
-        keys = map.layerToCellIds.keys();
-    else if (m_source == GroupSource::Matype)
-        keys = map.matypeToCellIds.keys();
-    else
-    {
-        for (auto it = map.physIdToDim.constBegin(); it != map.physIdToDim.constEnd(); ++it)
-        {
-            if (it.value() == 3)
-                keys.push_back(it.key());
-        }
-    }
+    QList<int> keys = map.layerToCellIds.keys();
 
     std::sort(keys.begin(), keys.end());
     for (int id : keys)
@@ -341,13 +318,7 @@ QVector<vtkIdType> CaveExcavationBodyPage::groupCellIds(int groupId) const
     if (!grid)
         return out;
 
-    QVector<qint64> src;
-    if (m_source == GroupSource::Layer)
-        src = map.layerToCellIds.value(groupId);
-    else if (m_source == GroupSource::Matype)
-        src = map.matypeToCellIds.value(groupId);
-    else
-        src = map.volPhysToCellIds.value(groupId);
+    QVector<qint64> src = map.layerToCellIds.value(groupId);
 
     out.reserve(src.size());
     for (qint64 c : src)
@@ -477,9 +448,6 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
     vtkUnstructuredGrid* grid = meshSvc->getVtkUnstructuredGridSolid();
     if (!grid)
         grid = PickManager::instance().solidGrid();
-    vtkDataArray* matypeArr =
-        (grid && grid->GetCellData()) ? vtkDataArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"))
-                                      : nullptr;
     vtkDataArray* layerArr =
         (grid && grid->GetCellData()) ? vtkDataArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"))
                                       : nullptr;
@@ -490,18 +458,13 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
         const auto cids = groupCellIds(gid);
         for (vtkIdType cid : cids)
         {
-            // 不区分来源，LAYER / MATYPE 的值域不重叠，统一放入同一高亮集合。
+            // 开挖体仅按 LAYER 高亮。
             const auto itLayer = map.cellIdToLayer.constFind(static_cast<qint64>(cid));
             if (itLayer != map.cellIdToLayer.constEnd())
                 out.insert(*itLayer);
-            const auto itMatype = map.cellIdToMatype.constFind(static_cast<qint64>(cid));
-            if (itMatype != map.cellIdToMatype.constEnd())
-                out.insert(*itMatype);
 
             if (layerArr && cid >= 0 && cid < layerArr->GetNumberOfTuples())
                 out.insert(static_cast<int>(layerArr->GetTuple1(cid)));
-            if (matypeArr && cid >= 0 && cid < matypeArr->GetNumberOfTuples())
-                out.insert(static_cast<int>(matypeArr->GetTuple1(cid)));
         }
         return out;
     };
@@ -520,8 +483,8 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
             selectedValues.unite(previewValues);
     }
 
-    PickManager::instance().highlightDomainsByMatype(getPageType(), m_uuid, selectedValues, -1,
-                                                     previewValue, -1);
+    PickManager::instance().highlightDomainsByLayer(getPageType(), m_uuid, selectedValues, -1,
+                                                    previewValue, -1);
 }
 
 QString CaveExcavationBodyPage::sourceToString(GroupSource s) const
