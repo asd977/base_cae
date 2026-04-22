@@ -474,6 +474,12 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
         return;
     }
     const MshPickMap map = meshSvc->mshPickMapSolid();
+    vtkUnstructuredGrid* grid = meshSvc->getVtkUnstructuredGridSolid();
+    if (!grid)
+        grid = PickManager::instance().solidGrid();
+    vtkDataArray* matypeArr =
+        (grid && grid->GetCellData()) ? vtkDataArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"))
+                                      : nullptr;
 
     const auto collectGroupMatypes = [&](int gid) -> QSet<int>
     {
@@ -481,11 +487,15 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
         const auto cids = groupCellIds(gid);
         for (vtkIdType cid : cids)
         {
-            // 优先使用 mshPickMap 的 cellId->MATYPE 映射，避免依赖 VTK 网格上是否挂了 MATYPE
-            // 数组（该数组在部分流程中可能不存在，导致本页不着色）。
+            // 优先使用 mshPickMap 的 cellId->MATYPE 映射；若该映射缺失则回退到 VTK MATYPE 数组。
             const auto it = map.cellIdToMatype.constFind(static_cast<qint64>(cid));
             if (it != map.cellIdToMatype.constEnd())
+            {
                 out.insert(*it);
+                continue;
+            }
+            if (matypeArr && cid >= 0 && cid < matypeArr->GetNumberOfTuples())
+                out.insert(static_cast<int>(matypeArr->GetTuple1(cid)));
         }
         return out;
     };
