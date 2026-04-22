@@ -468,21 +468,12 @@ void CaveExcavationBodyPage::updatePersistentSelectionFaces()
 void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
 {
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    vtkUnstructuredGrid* grid = meshSvc ? meshSvc->getVtkUnstructuredGridSolid() : nullptr;
-    if (!grid)
-        grid = PickManager::instance().solidGrid();
-    if (!grid || !grid->GetCellData())
+    if (!meshSvc)
     {
         PickManager::instance().clearDomainHighlight(getPageType(), m_uuid);
         return;
     }
-
-    auto* matypeArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"));
-    if (!matypeArr)
-    {
-        PickManager::instance().clearDomainHighlight(getPageType(), m_uuid);
-        return;
-    }
+    const MshPickMap map = meshSvc->mshPickMapSolid();
 
     const auto collectGroupMatypes = [&](int gid) -> QSet<int>
     {
@@ -490,9 +481,11 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
         const auto cids = groupCellIds(gid);
         for (vtkIdType cid : cids)
         {
-            if (cid < 0 || cid >= grid->GetNumberOfCells())
-                continue;
-            out.insert(matypeArr->GetValue(cid));
+            // 优先使用 mshPickMap 的 cellId->MATYPE 映射，避免依赖 VTK 网格上是否挂了 MATYPE
+            // 数组（该数组在部分流程中可能不存在，导致本页不着色）。
+            const auto it = map.cellIdToMatype.constFind(static_cast<qint64>(cid));
+            if (it != map.cellIdToMatype.constEnd())
+                out.insert(*it);
         }
         return out;
     };
