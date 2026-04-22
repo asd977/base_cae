@@ -344,7 +344,10 @@ QVector<int> CaveExcavationBodyPage::availableGroupIds() const
 
     std::sort(keys.begin(), keys.end());
     for (int id : keys)
-        out.push_back(id);
+    {
+        if (!groupCellIds(id).isEmpty())
+            out.push_back(id);
+    }
     return out;
 }
 
@@ -486,13 +489,50 @@ void CaveExcavationBodyPage::updatePersistentSelectionFaces()
 
 void CaveExcavationBodyPage::updateMaterialStyleDomainHighlight(int previewGroup)
 {
-    if (m_source != GroupSource::Matype)
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    vtkUnstructuredGrid* grid = meshSvc ? meshSvc->getVtkUnstructuredGridSolid() : nullptr;
+    if (!grid)
+        grid = PickManager::instance().solidGrid();
+    if (!grid || !grid->GetCellData())
     {
         PickManager::instance().clearDomainHighlight(getPageType(), m_uuid);
         return;
     }
-    PickManager::instance().highlightDomainsByMatype(getPageType(), m_uuid, m_selectedGroups, -1,
-                                                     previewGroup, -1);
+
+    auto* matypeArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"));
+    if (!matypeArr)
+    {
+        PickManager::instance().clearDomainHighlight(getPageType(), m_uuid);
+        return;
+    }
+
+    QSet<int> selectedMatypes;
+    for (int gid : m_selectedGroups)
+    {
+        const auto cids = groupCellIds(gid);
+        for (vtkIdType cid : cids)
+        {
+            if (cid < 0 || cid >= grid->GetNumberOfCells())
+                continue;
+            selectedMatypes.insert(matypeArr->GetValue(cid));
+        }
+    }
+
+    int previewMatype = -1;
+    if (previewGroup >= 0)
+    {
+        const auto cids = groupCellIds(previewGroup);
+        for (vtkIdType cid : cids)
+        {
+            if (cid < 0 || cid >= grid->GetNumberOfCells())
+                continue;
+            previewMatype = matypeArr->GetValue(cid);
+            break;
+        }
+    }
+
+    PickManager::instance().highlightDomainsByMatype(getPageType(), m_uuid, selectedMatypes, -1,
+                                                     previewMatype, -1);
 }
 
 QString CaveExcavationBodyPage::sourceToString(GroupSource s) const
