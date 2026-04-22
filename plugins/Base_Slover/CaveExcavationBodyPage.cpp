@@ -506,29 +506,31 @@ void CaveExcavationBodyPage::updateMaterialStyleDomainHighlight(int previewGroup
         return;
     }
 
-    QSet<int> selectedMatypes;
-    for (int gid : m_selectedGroups)
+    const auto collectGroupMatypes = [&](int gid) -> QSet<int>
     {
+        QSet<int> out;
         const auto cids = groupCellIds(gid);
         for (vtkIdType cid : cids)
         {
             if (cid < 0 || cid >= grid->GetNumberOfCells())
                 continue;
-            selectedMatypes.insert(matypeArr->GetValue(cid));
+            out.insert(matypeArr->GetValue(cid));
         }
-    }
+        return out;
+    };
+
+    QSet<int> selectedMatypes;
+    for (int gid : m_selectedGroups)
+        selectedMatypes.unite(collectGroupMatypes(gid));
 
     int previewMatype = -1;
     if (previewGroup >= 0)
     {
-        const auto cids = groupCellIds(previewGroup);
-        for (vtkIdType cid : cids)
-        {
-            if (cid < 0 || cid >= grid->GetNumberOfCells())
-                continue;
-            previewMatype = matypeArr->GetValue(cid);
-            break;
-        }
+        const QSet<int> previewMatypes = collectGroupMatypes(previewGroup);
+        if (previewMatypes.size() == 1)
+            previewMatype = *previewMatypes.constBegin();
+        else
+            selectedMatypes.unite(previewMatypes);
     }
 
     PickManager::instance().highlightDomainsByMatype(getPageType(), m_uuid, selectedMatypes, -1,
