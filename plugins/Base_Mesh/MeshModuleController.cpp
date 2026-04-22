@@ -1224,9 +1224,22 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
     if (!outNonLine || outNonLine->GetNumberOfCells() <= 0)
         return;
 
-    const MshPickMap pickMap = MeshGridIO::instance().getMeshMap();
     auto appendFilter = vtkSmartPointer<vtkAppendFilter>::New();
     appendFilter->AddInputData(outNonLine);
+
+    auto buildGroupsFromCellArray = [src](const char* arrayName)
+    {
+        QHash<int, QVector<qint64>> rst;
+        if (!src || !src->GetCellData())
+            return rst;
+        auto* arr = vtkIntArray::SafeDownCast(src->GetCellData()->GetArray(arrayName));
+        if (!arr)
+            return rst;
+        const vtkIdType n = src->GetNumberOfCells();
+        for (vtkIdType cid = 0; cid < n; ++cid)
+            rst[arr->GetValue(cid)].push_back(static_cast<qint64>(cid));
+        return rst;
+    };
 
     const auto appendGroupSurfaceCells = [&](const QHash<int, QVector<qint64>>& groupToCells)
     {
@@ -1270,8 +1283,12 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
         }
     };
 
-    appendGroupSurfaceCells(pickMap.matypeToCellIds);
-    appendGroupSurfaceCells(pickMap.layerToCellIds);
+    const auto matypeGroups = buildGroupsFromCellArray("MATYPE");
+    const auto layerGroups = buildGroupsFromCellArray("LAYER");
+    appendGroupSurfaceCells(matypeGroups);
+    appendGroupSurfaceCells(layerGroups);
+
+    const MshPickMap pickMap = MeshGridIO::instance().getMeshMap();
     appendGroupSurfaceCells(pickMap.volPhysToCellIds);
     appendFilter->Update();
 
