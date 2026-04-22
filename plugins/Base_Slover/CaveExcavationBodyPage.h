@@ -48,7 +48,7 @@ class CaveExcavationBodyPage : public BasePage
     void refreshSelectedGroupList();
     void refreshGroupComboMarks();
     void updatePersistentSelectionFaces();
-    void updateMaterialStyleDomainHighlight(int previewGroup = -1);
+    void updateGroupDomainHighlight(int previewGroup = -1);
     QString sourceToString(GroupSource s) const;
     GroupSource sourceFromString(const QString& s) const;
     PickMode currentPickMode() const;

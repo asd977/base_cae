@@ -62,7 +62,7 @@ void MaterialTransitionPage::beforeUnload()
 {
     if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
     {
-        meshService->highlightMatypes({}, -1, -1, -1);
+        meshService->highlightDomainMatypes({}, -1, -1, -1);
     }
 }
 
@@ -169,7 +169,7 @@ void MaterialTransitionPage::refreshRowHighlight(int row)
         matypes.insert(oldMat);
     if (newMat > 0)
         matypes.insert(newMat);
-    meshService->highlightMatypes(matypes, oldMat, newMat, -1);
+    meshService->highlightDomainMatypes(matypes, oldMat, newMat, -1);
 }
 
 void MaterialTransitionPage::onAddRow()
@@ -195,7 +195,7 @@ void MaterialTransitionPage::onCurrentRowChanged(int currentRow, int, int, int)
     if (currentRow < 0)
     {
         if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
-            meshService->highlightMatypes({}, -1, -1, -1);
+            meshService->highlightDomainMatypes({}, -1, -1, -1);
         refreshCurrentRowMarker(-1);
         return;
     }

@@ -565,7 +565,7 @@ QSet<int> MeshModuleController::getAvailableMatypes() const
     return ret;
 }
 
-void MeshModuleController::highlightMatypes(const QSet<int>& matypes, int selectedMatype,
+void MeshModuleController::highlightDomainMatypes(const QSet<int>& matypes, int selectedMatype,
                                             int previewMatype, int preDeleteMatype)
 {
     if (!m_gridEditingWidget)

@@ -40,7 +40,7 @@ struct MeshModuleControllerService
     virtual bool loadProject() = 0;
     virtual void closeProject() = 0;
     virtual QSet<int> getAvailableMatypes() const = 0;
-    virtual void highlightMatypes(const QSet<int>& matypes, int selectedMatype, int previewMatype,
+    virtual void highlightDomainMatypes(const QSet<int>& matypes, int selectedMatype, int previewMatype,
                                   int preDeleteMatype) = 0;
     virtual vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGrid() = 0;
     virtual vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGridSolid() = 0;

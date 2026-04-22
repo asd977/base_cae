@@ -28,7 +28,7 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     void closeProject();
 
     QSet<int> getAvailableMatypes() const override;
-    void highlightMatypes(const QSet<int>& matypes, int selectedMatype, int previewMatype,
+    void highlightDomainMatypes(const QSet<int>& matypes, int selectedMatype, int previewMatype,
                           int preDeleteMatype) override;
 
     vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGrid();
