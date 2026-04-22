@@ -477,45 +477,56 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
     vtkUnstructuredGrid* grid = meshSvc->getVtkUnstructuredGridSolid();
     if (!grid)
         grid = PickManager::instance().solidGrid();
-    vtkDataArray* matypeArr =
-        (grid && grid->GetCellData()) ? vtkDataArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"))
-                                      : nullptr;
+    const bool useLayer = (m_source == GroupSource::Layer);
+    vtkDataArray* groupArr = (grid && grid->GetCellData())
+                                 ? vtkDataArray::SafeDownCast(
+                                       grid->GetCellData()->GetArray(useLayer ? "LAYER" : "MATYPE"))
+                                 : nullptr;
 
-    const auto collectGroupMatypes = [&](int gid) -> QSet<int>
+    const auto collectGroupValues = [&](int gid) -> QSet<int>
     {
         QSet<int> out;
         const auto cids = groupCellIds(gid);
         for (vtkIdType cid : cids)
         {
-            // 优先使用 mshPickMap 的 cellId->MATYPE 映射；若该映射缺失则回退到 VTK MATYPE 数组。
-            const auto it = map.cellIdToMatype.constFind(static_cast<qint64>(cid));
-            if (it != map.cellIdToMatype.constEnd())
+            // LAYER 分组选 LAYER，其他分组选 MATYPE；缺失时回退 VTK 对应数组。
+            const auto it = useLayer ? map.cellIdToLayer.constFind(static_cast<qint64>(cid))
+                                     : map.cellIdToMatype.constFind(static_cast<qint64>(cid));
+            if (it != (useLayer ? map.cellIdToLayer.constEnd() : map.cellIdToMatype.constEnd()))
             {
                 out.insert(*it);
                 continue;
             }
-            if (matypeArr && cid >= 0 && cid < matypeArr->GetNumberOfTuples())
-                out.insert(static_cast<int>(matypeArr->GetTuple1(cid)));
+            if (groupArr && cid >= 0 && cid < groupArr->GetNumberOfTuples())
+                out.insert(static_cast<int>(groupArr->GetTuple1(cid)));
         }
         return out;
     };
 
-    QSet<int> selectedMatypes;
+    QSet<int> selectedValues;
     for (int gid : m_selectedGroups)
-        selectedMatypes.unite(collectGroupMatypes(gid));
+        selectedValues.unite(collectGroupValues(gid));
 
-    int previewMatype = -1;
+    int previewValue = -1;
     if (previewGroup >= 0)
     {
-        const QSet<int> previewMatypes = collectGroupMatypes(previewGroup);
-        if (previewMatypes.size() == 1)
-            previewMatype = *previewMatypes.constBegin();
+        const QSet<int> previewValues = collectGroupValues(previewGroup);
+        if (previewValues.size() == 1)
+            previewValue = *previewValues.constBegin();
         else
-            selectedMatypes.unite(previewMatypes);
+            selectedValues.unite(previewValues);
     }
 
-    PickManager::instance().highlightDomainsByMatype(getPageType(), m_uuid, selectedMatypes, -1,
-                                                     previewMatype, -1);
+    if (useLayer)
+    {
+        PickManager::instance().highlightDomainsByLayer(getPageType(), m_uuid, selectedValues, -1,
+                                                        previewValue, -1);
+    }
+    else
+    {
+        PickManager::instance().highlightDomainsByMatype(getPageType(), m_uuid, selectedValues, -1,
+                                                         previewValue, -1);
+    }
 }
 
 QString CaveExcavationBodyPage::sourceToString(GroupSource s) const

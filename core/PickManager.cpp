@@ -336,6 +336,22 @@ void PickManager::highlightDomainsByMatype(const QString& domain, const QString&
     m_domainSelectedMatype = selectedMatype;
     m_domainPreviewMatype = previewMatype;
     m_domainPreDeleteMatype = preDeleteMatype;
+    m_domainHighlightByLayer = false;
+    refreshStructureIfNeeded();
+    rebuildDomainHighlightActors();
+}
+
+void PickManager::highlightDomainsByLayer(const QString& domain, const QString& uuid,
+                                          const QSet<int>& layers, int selectedLayer,
+                                          int previewLayer, int preDeleteLayer)
+{
+    m_domainHighlightDomain = domain;
+    m_domainHighlightUuid = uuid;
+    m_domainMatypes = layers;
+    m_domainSelectedMatype = selectedLayer;
+    m_domainPreviewMatype = previewLayer;
+    m_domainPreDeleteMatype = preDeleteLayer;
+    m_domainHighlightByLayer = true;
     refreshStructureIfNeeded();
     rebuildDomainHighlightActors();
 }
@@ -352,6 +368,7 @@ void PickManager::clearDomainHighlight(const QString& domain, const QString& uui
     m_domainSelectedMatype = -1;
     m_domainPreviewMatype = -1;
     m_domainPreDeleteMatype = -1;
+    m_domainHighlightByLayer = false;
     if (uuid.isEmpty())
         m_domainHighlightUuid.clear();
 
@@ -1755,10 +1772,11 @@ void PickManager::rebuildDomainHighlightActors()
         return;
     }
 
-    auto* matArr = vtkIntArray::SafeDownCast(m_solidPickDataSet->GetCellData()->GetArray("MATYPE"));
+    const char* scalarName = m_domainHighlightByLayer ? "LAYER" : "MATYPE";
+    auto* matArr = vtkIntArray::SafeDownCast(m_solidPickDataSet->GetCellData()->GetArray(scalarName));
     auto* origCellIds =
         vtkIdTypeArray::SafeDownCast(m_solidPickDataSet->GetCellData()->GetArray("vtkOriginalCellIds"));
-    auto* sourceMatArr = vtkIntArray::SafeDownCast(m_gridSolid->GetCellData()->GetArray("MATYPE"));
+    auto* sourceMatArr = vtkIntArray::SafeDownCast(m_gridSolid->GetCellData()->GetArray(scalarName));
     if (!matArr && (!origCellIds || !sourceMatArr))
         return;
 
