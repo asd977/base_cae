@@ -212,7 +212,7 @@ void CaveExcavationBodyPage::onRemoveSelectedGroupsClicked()
 
 void CaveExcavationBodyPage::onGroupHovered(int index)
 {
-    if (!ui || !ui->groupCombo || index < 0 || index >= ui->groupCombo->count())
+    if (!ui || !ui->groupCombo)
         return;
 
     if (m_lastHoveredIndex >= 0 && m_lastHoveredIndex < ui->groupCombo->count())
@@ -220,6 +220,15 @@ void CaveExcavationBodyPage::onGroupHovered(int index)
         ui->groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
         ui->groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::ForegroundRole);
     }
+
+    if (index < 0 || index >= ui->groupCombo->count())
+    {
+        m_lastHoveredIndex = -1;
+        // 参考 MaterialEntryWidget：hover 失效时立即取消 preview，仅保留已选组高亮。
+        updateGroupDomainHighlight();
+        return;
+    }
+
     ui->groupCombo->setItemData(index, QColor(230, 247, 255), Qt::BackgroundRole);
     ui->groupCombo->setItemData(index, QColor(20, 70, 160), Qt::ForegroundRole);
     m_lastHoveredIndex = index;
