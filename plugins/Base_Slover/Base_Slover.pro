@@ -39,6 +39,7 @@ SOURCES += \
     CaveSupportComputationPage.cpp
 
 FORMS += \
+    CaveExcavationBodyPage.ui \
     CaveExcavationWidget.ui \
     CaveSupportComputationPage.ui \
     GeoStressRegressionWidget.ui \

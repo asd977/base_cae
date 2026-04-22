@@ -15,45 +15,27 @@
 
 #include <QColor>
 #include <QComboBox>
-#include <QFormLayout>
 #include <QJsonArray>
 #include <QJsonObject>
-#include <QLabel>
 #include <QListWidget>
-#include <QPushButton>
-#include <QSignalBlocker>
-#include <QVBoxLayout>
 #include <algorithm>
 #include <set>
 
+#include "ui_CaveExcavationBodyPage.h"
+
 CaveExcavationBodyPage::CaveExcavationBodyPage(QWidget* parent)
-    : BasePage("CaveExcavationBody")
+    : BasePage("CaveExcavationBody"), ui(new Ui::CaveExcavationBodyPage)
 {
     Q_UNUSED(parent);
 
-    auto* root = new QVBoxLayout(this);
-    root->addWidget(new QLabel("开挖体（2D选面，3D选体）", this));
+    ui->setupUi(this);
 
-    auto* form = new QFormLayout();
-    m_groupCombo = new CustomComboBox(this);
-    m_addGroupBtn = new QPushButton("添加分组", this);
-    m_removeGroupBtn = new QPushButton("删除选中组", this);
-    m_clearBtn = new QPushButton("清空所选", this);
-    m_groupList = new QListWidget(this);
-    form->addRow("选组", m_groupCombo);
-    form->addRow("", m_addGroupBtn);
-    form->addRow("已选组", m_groupList);
-    form->addRow("", m_removeGroupBtn);
-    form->addRow("", m_clearBtn);
-    root->addLayout(form);
-    root->addStretch();
-
-    connect(m_addGroupBtn, &QPushButton::clicked, this, &CaveExcavationBodyPage::onAddGroupClicked);
-    connect(m_removeGroupBtn, &QPushButton::clicked, this,
+    connect(ui->addGroupBtn, &QPushButton::clicked, this, &CaveExcavationBodyPage::onAddGroupClicked);
+    connect(ui->removeGroupBtn, &QPushButton::clicked, this,
             &CaveExcavationBodyPage::onRemoveSelectedGroupsClicked);
-    connect(m_clearBtn, &QPushButton::clicked, this, &CaveExcavationBodyPage::onClearClicked);
+    connect(ui->clearBtn, &QPushButton::clicked, this, &CaveExcavationBodyPage::onClearClicked);
 
-    if (auto* combo = qobject_cast<CustomComboBox*>(m_groupCombo))
+    if (auto* combo = qobject_cast<CustomComboBox*>(ui->groupCombo))
     {
         connect(combo, &CustomComboBox::itemHovered, this, &CaveExcavationBodyPage::onGroupHovered);
         connect(combo, &CustomComboBox::dropdownClosed, this,
@@ -62,6 +44,11 @@ CaveExcavationBodyPage::CaveExcavationBodyPage(QWidget* parent)
 
     setupGroupCombo();
     refreshSelectedGroupList();
+}
+
+CaveExcavationBodyPage::~CaveExcavationBodyPage()
+{
+    delete ui;
 }
 
 void CaveExcavationBodyPage::beforeLoad()
@@ -192,9 +179,9 @@ void CaveExcavationBodyPage::onAddGroupClicked()
     const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     if (meshDim != 3)
         return;
-    if (!m_groupCombo || m_groupCombo->currentIndex() < 0)
+    if (!ui || !ui->groupCombo || ui->groupCombo->currentIndex() < 0)
         return;
-    const int gid = m_groupCombo->currentData().toInt();
+    const int gid = ui->groupCombo->currentData().toInt();
     m_selectedGroups.insert(gid);
     refreshSelectedGroupList();
     refreshGroupComboMarks();
@@ -207,9 +194,9 @@ void CaveExcavationBodyPage::onRemoveSelectedGroupsClicked()
     const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     if (meshDim != 3)
         return;
-    if (!m_groupList)
+    if (!ui || !ui->groupList)
         return;
-    const auto items = m_groupList->selectedItems();
+    const auto items = ui->groupList->selectedItems();
     for (QListWidgetItem* item : items)
     {
         bool ok = false;
@@ -225,26 +212,26 @@ void CaveExcavationBodyPage::onRemoveSelectedGroupsClicked()
 
 void CaveExcavationBodyPage::onGroupHovered(int index)
 {
-    if (!m_groupCombo || index < 0 || index >= m_groupCombo->count())
+    if (!ui || !ui->groupCombo || index < 0 || index >= ui->groupCombo->count())
         return;
 
-    if (m_lastHoveredIndex >= 0 && m_lastHoveredIndex < m_groupCombo->count())
+    if (m_lastHoveredIndex >= 0 && m_lastHoveredIndex < ui->groupCombo->count())
     {
-        m_groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
-        m_groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::ForegroundRole);
+        ui->groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
+        ui->groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::ForegroundRole);
     }
-    m_groupCombo->setItemData(index, QColor(230, 247, 255), Qt::BackgroundRole);
-    m_groupCombo->setItemData(index, QColor(20, 70, 160), Qt::ForegroundRole);
+    ui->groupCombo->setItemData(index, QColor(230, 247, 255), Qt::BackgroundRole);
+    ui->groupCombo->setItemData(index, QColor(20, 70, 160), Qt::ForegroundRole);
     m_lastHoveredIndex = index;
 
-    const int gid = m_groupCombo->itemData(index).toInt();
+    const int gid = ui->groupCombo->itemData(index).toInt();
     updateGroupDomainHighlight(gid);
 }
 
 void CaveExcavationBodyPage::onGroupDropdownClosed()
 {
-    if (m_groupCombo && m_lastHoveredIndex >= 0 && m_lastHoveredIndex < m_groupCombo->count())
-        m_groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
+    if (ui && ui->groupCombo && m_lastHoveredIndex >= 0 && m_lastHoveredIndex < ui->groupCombo->count())
+        ui->groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
     m_lastHoveredIndex = -1;
     refreshGroupComboMarks();
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
@@ -254,7 +241,7 @@ void CaveExcavationBodyPage::onGroupDropdownClosed()
 
 void CaveExcavationBodyPage::setupGroupCombo()
 {
-    if (!m_groupCombo)
+    if (!ui || !ui->groupCombo)
         return;
 
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
@@ -266,14 +253,10 @@ void CaveExcavationBodyPage::setupGroupCombo()
     const bool is3d = (meshDim == 3);
     if (!is3d)
     {
-        if (m_groupCombo)
-            m_groupCombo->clear();
-        if (m_addGroupBtn)
-            m_addGroupBtn->setEnabled(false);
-        if (m_removeGroupBtn)
-            m_removeGroupBtn->setEnabled(false);
-        if (m_groupList)
-            m_groupList->setEnabled(false);
+        ui->groupCombo->clear();
+        ui->addGroupBtn->setEnabled(false);
+        ui->removeGroupBtn->setEnabled(false);
+        ui->groupList->setEnabled(false);
         m_selectedGroups.clear();
         refreshSelectedGroupList();
         refreshGroupComboMarks();
@@ -295,18 +278,15 @@ void CaveExcavationBodyPage::setupGroupCombo()
     }
 
     const QVector<int> ids = availableGroupIds();
-    m_groupCombo->blockSignals(true);
-    m_groupCombo->clear();
+    ui->groupCombo->blockSignals(true);
+    ui->groupCombo->clear();
     for (int id : ids)
-        m_groupCombo->addItem(QString::number(id), id);
-    m_groupCombo->blockSignals(false);
+        ui->groupCombo->addItem(QString::number(id), id);
+    ui->groupCombo->blockSignals(false);
 
-    if (m_addGroupBtn)
-        m_addGroupBtn->setEnabled(true);
-    if (m_removeGroupBtn)
-        m_removeGroupBtn->setEnabled(true);
-    if (m_groupList)
-        m_groupList->setEnabled(true);
+    ui->addGroupBtn->setEnabled(true);
+    ui->removeGroupBtn->setEnabled(true);
+    ui->groupList->setEnabled(true);
     refreshGroupComboMarks();
 }
 
@@ -433,28 +413,28 @@ QVector<int> CaveExcavationBodyPage::elementIdsFromCells(const QVector<vtkIdType
 
 void CaveExcavationBodyPage::refreshSelectedGroupList()
 {
-    if (!m_groupList)
+    if (!ui || !ui->groupList)
         return;
-    m_groupList->clear();
+    ui->groupList->clear();
     QList<int> ids = m_selectedGroups.values();
     std::sort(ids.begin(), ids.end());
     for (int id : ids)
     {
-        auto* item = new QListWidgetItem(QString::number(id), m_groupList);
+        auto* item = new QListWidgetItem(QString::number(id), ui->groupList);
         item->setData(Qt::UserRole, id);
     }
 }
 
 void CaveExcavationBodyPage::refreshGroupComboMarks()
 {
-    if (!m_groupCombo)
+    if (!ui || !ui->groupCombo)
         return;
-    for (int i = 0; i < m_groupCombo->count(); ++i)
+    for (int i = 0; i < ui->groupCombo->count(); ++i)
     {
-        const int gid = m_groupCombo->itemData(i).toInt();
-        m_groupCombo->setItemText(i, QString::number(gid));
-        m_groupCombo->setItemData(i, QVariant(), Qt::BackgroundRole);
-        m_groupCombo->setItemData(i, QVariant(), Qt::ForegroundRole);
+        const int gid = ui->groupCombo->itemData(i).toInt();
+        ui->groupCombo->setItemText(i, QString::number(gid));
+        ui->groupCombo->setItemData(i, QVariant(), Qt::BackgroundRole);
+        ui->groupCombo->setItemData(i, QVariant(), Qt::ForegroundRole);
     }
 }
 
