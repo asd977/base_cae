@@ -52,6 +52,8 @@ CaveExcavationBodyPage::CaveExcavationBodyPage(QWidget* parent)
     connect(m_removeGroupBtn, &QPushButton::clicked, this,
             &CaveExcavationBodyPage::onRemoveSelectedGroupsClicked);
     connect(m_clearBtn, &QPushButton::clicked, this, &CaveExcavationBodyPage::onClearClicked);
+    connect(m_groupCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            &CaveExcavationBodyPage::onGroupCurrentChanged);
 
     if (auto* combo = qobject_cast<CustomComboBox*>(m_groupCombo))
     {
@@ -230,22 +232,24 @@ void CaveExcavationBodyPage::onGroupHovered(int index)
 
     if (m_lastHoveredIndex >= 0 && m_lastHoveredIndex < m_groupCombo->count())
     {
-        const int prevGid = m_groupCombo->itemData(m_lastHoveredIndex).toInt();
-        if (m_selectedGroups.contains(prevGid))
-        {
-            m_groupCombo->setItemData(m_lastHoveredIndex, QColor(225, 255, 225), Qt::BackgroundRole);
-            m_groupCombo->setItemData(m_lastHoveredIndex, QColor(40, 120, 40), Qt::ForegroundRole);
-        }
-        else
-        {
-            m_groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
-            m_groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::ForegroundRole);
-        }
+        m_groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
+        m_groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::ForegroundRole);
     }
     m_groupCombo->setItemData(index, QColor(230, 247, 255), Qt::BackgroundRole);
     m_groupCombo->setItemData(index, QColor(20, 70, 160), Qt::ForegroundRole);
     m_lastHoveredIndex = index;
 
+    const int gid = m_groupCombo->itemData(index).toInt();
+    updateGroupDomainHighlight(gid);
+}
+
+void CaveExcavationBodyPage::onGroupCurrentChanged(int index)
+{
+    if (!m_groupCombo || index < 0 || index >= m_groupCombo->count())
+    {
+        updateGroupDomainHighlight();
+        return;
+    }
     const int gid = m_groupCombo->itemData(index).toInt();
     updateGroupDomainHighlight(gid);
 }
@@ -257,7 +261,7 @@ void CaveExcavationBodyPage::onGroupDropdownClosed()
     m_lastHoveredIndex = -1;
     refreshGroupComboMarks();
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
-    updateGroupDomainHighlight();
+    onGroupCurrentChanged(m_groupCombo ? m_groupCombo->currentIndex() : -1);
 }
 
 void CaveExcavationBodyPage::setupGroupCombo()
@@ -461,16 +465,8 @@ void CaveExcavationBodyPage::refreshGroupComboMarks()
     {
         const int gid = m_groupCombo->itemData(i).toInt();
         m_groupCombo->setItemText(i, QString::number(gid));
-        if (m_selectedGroups.contains(gid))
-        {
-            m_groupCombo->setItemData(i, QColor(225, 255, 225), Qt::BackgroundRole);
-            m_groupCombo->setItemData(i, QColor(40, 120, 40), Qt::ForegroundRole);
-        }
-        else
-        {
-            m_groupCombo->setItemData(i, QVariant(), Qt::BackgroundRole);
-            m_groupCombo->setItemData(i, QVariant(), Qt::ForegroundRole);
-        }
+        m_groupCombo->setItemData(i, QVariant(), Qt::BackgroundRole);
+        m_groupCombo->setItemData(i, QVariant(), Qt::ForegroundRole);
     }
 }
 

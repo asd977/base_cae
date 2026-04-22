@@ -29,6 +29,7 @@ class CaveExcavationBodyPage : public BasePage
     void onClearClicked();
     void onAddGroupClicked();
     void onRemoveSelectedGroupsClicked();
+    void onGroupCurrentChanged(int index);
     void onGroupHovered(int index);
     void onGroupDropdownClosed();
 
