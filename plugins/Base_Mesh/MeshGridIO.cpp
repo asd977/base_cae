@@ -442,6 +442,41 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importInp(const QString& fileNa
         return nullptr;
     }
     ensureDefaultArrays(grid);
+
+    auto* cd = grid->GetCellData();
+    auto* groupArr = cd ? vtkStringArray::SafeDownCast(cd->GetAbstractArray("GroupName")) : nullptr;
+    auto* matypeArr = cd ? vtkIntArray::SafeDownCast(cd->GetArray("MATYPE")) : nullptr;
+    auto* layerArr = cd ? vtkIntArray::SafeDownCast(cd->GetArray("LAYER")) : nullptr;
+
+    if (groupArr && matypeArr && layerArr)
+    {
+        QHash<QString, int> groupToPhysId;
+        int nextPhysId = 1;
+        const vtkIdType nCells = grid->GetNumberOfCells();
+        for (vtkIdType cid = 0; cid < nCells; ++cid)
+        {
+            if (cid >= groupArr->GetNumberOfValues())
+                break;
+
+            const QString g = QString::fromStdString(groupArr->GetValue(cid)).trimmed();
+            if (g.isEmpty())
+                continue;
+
+            int physId = groupToPhysId.value(g, 0);
+            if (physId == 0)
+            {
+                physId = nextPhysId++;
+                groupToPhysId.insert(g, physId);
+                m_mshPickMap.physIdToName.insert(physId, g);
+                m_mshPickMap.physIdToDim.insert(physId, 3);
+            }
+
+            matypeArr->SetValue(cid, physId);
+            layerArr->SetValue(cid, physId);
+            m_mshPickMap.volPhysToCellIds[physId].push_back(static_cast<qint64>(cid));
+        }
+    }
+
     return grid;
 }
 
