@@ -1513,8 +1513,9 @@ void MaterialManager::highlightMatypes(const QString& entryId, const QSet<int>& 
     {
         return;
     }
-    PickManager::instance().highlightDomainsByMatype(QStringLiteral("MaterialManager"), entryId,
-                                                     matypes, selectedMatype, previewMatype,
+    const QString domain = m_pickDomain.isEmpty() ? QStringLiteral("MaterialManager") : m_pickDomain;
+    const QString uuid = m_pickUuid.isEmpty() ? entryId : m_pickUuid;
+    PickManager::instance().highlightDomainsByMatype(domain, uuid, matypes, selectedMatype, previewMatype,
                                                      preDeleteMatype);
 }
 
@@ -2781,16 +2782,32 @@ void MaterialManager::clearMatypeHighlight(const QString& entryId)
     m_previewMatypes.remove(entryId);
     m_preDeleteMatypes.remove(entryId);
 
-    // 注意：selected 不一定清掉（否则回到页面无法恢复“选中颜色”）
-    // 只清显示即可：
-    PickManager::instance().clearDomainHighlight(QStringLiteral("MaterialManager"), entryId);
+    const QString domain = m_pickDomain.isEmpty() ? QStringLiteral("MaterialManager") : m_pickDomain;
+    const QString uuid = m_pickUuid.isEmpty() ? entryId : m_pickUuid;
+    PickManager::instance().clearDomainHighlight(domain, uuid);
 }
 
 void MaterialManager::clearAllMatypeHighlight()
 {
     m_previewMatypes.clear();
     m_preDeleteMatypes.clear();
-    PickManager::instance().clearDomainHighlight(QStringLiteral("MaterialManager"));
+    const QString domain = m_pickDomain.isEmpty() ? QStringLiteral("MaterialManager") : m_pickDomain;
+    if (m_pickUuid.isEmpty())
+        PickManager::instance().clearDomainHighlight(domain);
+    else
+        PickManager::instance().clearDomainHighlight(domain, m_pickUuid);
+}
+
+void MaterialManager::setPickContext(const QString& domain, const QString& uuid)
+{
+    m_pickDomain = domain;
+    m_pickUuid = uuid;
+}
+
+void MaterialManager::clearPickContext()
+{
+    m_pickDomain.clear();
+    m_pickUuid.clear();
 }
 
 int MaterialManager::previewMatypeForEntry(const QString& entryId) const

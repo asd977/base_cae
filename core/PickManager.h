@@ -334,12 +334,10 @@ class CORE_EXPORT PickManager : public QObject
     QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerFaceLineByDomain;
 
     // ============ domain (MATYPE) highlight overlay ============
-    QString m_domainHighlightDomain;
-    QString m_domainHighlightUuid;
-    QSet<int> m_domainMatypes;
-    int m_domainSelectedMatype = -1;
-    int m_domainPreviewMatype = -1;
-    int m_domainPreDeleteMatype = -1;
+    QHash<QString, QHash<QString, QSet<int>>> m_domainMatypesByDomainUuid;
+    QHash<QString, QHash<QString, int>> m_domainSelectedMatypeByDomainUuid;
+    QHash<QString, QHash<QString, int>> m_domainPreviewMatypeByDomainUuid;
+    QHash<QString, QHash<QString, int>> m_domainPreDeleteMatypeByDomainUuid;
 
   signals:
     void nodePicked(const QString& domain, const QString& activeUuid, GridKind kind, vtkIdType pid,

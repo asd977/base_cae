@@ -82,8 +82,6 @@ void CaveExcavationBodyPage::beforeUnload()
     if (mode == PickMode::Face)
         PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, mode);
     PickManager::instance().deactivate(getPageType(), m_uuid, mode);
-    if (mode != PickMode::Domain)
-        PickManager::instance().clearDomainHighlight(getPageType(), m_uuid);
 }
 
 QJsonObject CaveExcavationBodyPage::saveJson()

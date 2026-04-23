@@ -87,6 +87,8 @@ class MaterialManager : public QObject, public MaterialManagerService
     bool validateTransitionMatype(const QString& entryId, int matype, QString* error) const;
     QMap<int, QString> transitionSourceLabels() const;
     QMap<int, QString> transitionTargetLabels() const;
+    void setPickContext(const QString& domain, const QString& uuid);
+    void clearPickContext();
 
   private:
     void ensureTransitionNode();
@@ -126,6 +128,8 @@ class MaterialManager : public QObject, public MaterialManagerService
     // services
     ProjectManagerService* m_projectManagerService = nullptr;
     QString m_workPath;
+    QString m_pickDomain;
+    QString m_pickUuid;
 };
 
 #endif // MATERIALMANAGER_H

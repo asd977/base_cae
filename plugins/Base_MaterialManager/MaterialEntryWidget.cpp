@@ -46,12 +46,14 @@ void MaterialEntryWidget::beforeLoad()
     m_beforeUnloadHandled = false;
     if (m_materialManager)
     {
-        PickManager::instance().activate(QStringLiteral("MaterialManager"), m_entryId,
-                                         PickMode::Domain);
-        PickManager::instance().setClickPickEnabled(QStringLiteral("MaterialManager"), m_entryId,
+        m_materialManager->setPickContext(getPageType(), m_uuid);
+        PickManager::instance().activate(getPageType(), m_uuid, PickMode::Domain);
+        PickManager::instance().setClickPickEnabled(getPageType(), m_uuid,
                                                     false);
-        PickManager::instance().setBoxSelectEnabled(QStringLiteral("MaterialManager"), m_entryId,
+        PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid,
                                                     false);
+        if (!m_entryId.isEmpty())
+            m_materialManager->refreshMatypeHighlight(m_entryId);
     }
 }
 
@@ -67,8 +69,8 @@ void MaterialEntryWidget::beforeUnload()
 
     if (m_materialManager)
     {
-        PickManager::instance().deactivate(QStringLiteral("MaterialManager"), m_entryId,
-                                           PickMode::Domain);
+        PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Domain);
+        m_materialManager->clearPickContext();
     }
 
     // 仅清理 UI hover，不调用 onDropdownClosed（其末尾会 refresh 高亮）

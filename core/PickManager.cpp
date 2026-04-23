@@ -329,31 +329,30 @@ void PickManager::highlightDomainsByMatype(const QString& domain, const QString&
                                            const QSet<int>& matypes, int selectedMatype,
                                            int previewMatype, int preDeleteMatype)
 {
-    // 仅保存状态，实际着色统一在 rebuildDomainHighlightActors 里完成。
-    m_domainHighlightDomain = domain;
-    m_domainHighlightUuid = uuid;
-    m_domainMatypes = matypes;
-    m_domainSelectedMatype = selectedMatype;
-    m_domainPreviewMatype = previewMatype;
-    m_domainPreDeleteMatype = preDeleteMatype;
+    m_domainMatypesByDomainUuid[domain][uuid] = matypes;
+    m_domainSelectedMatypeByDomainUuid[domain][uuid] = selectedMatype;
+    m_domainPreviewMatypeByDomainUuid[domain][uuid] = previewMatype;
+    m_domainPreDeleteMatypeByDomainUuid[domain][uuid] = preDeleteMatype;
     refreshStructureIfNeeded();
     rebuildDomainHighlightActors();
 }
 
 void PickManager::clearDomainHighlight(const QString& domain, const QString& uuid)
 {
-    // domain 不一致时不做跨域清理；uuid 非空时只清理目标条目。
-    if (m_domainHighlightDomain != domain)
-        return;
-    if (!uuid.isEmpty() && m_domainHighlightUuid != uuid)
-        return;
-
-    m_domainMatypes.clear();
-    m_domainSelectedMatype = -1;
-    m_domainPreviewMatype = -1;
-    m_domainPreDeleteMatype = -1;
     if (uuid.isEmpty())
-        m_domainHighlightUuid.clear();
+    {
+        m_domainMatypesByDomainUuid.remove(domain);
+        m_domainSelectedMatypeByDomainUuid.remove(domain);
+        m_domainPreviewMatypeByDomainUuid.remove(domain);
+        m_domainPreDeleteMatypeByDomainUuid.remove(domain);
+    }
+    else
+    {
+        m_domainMatypesByDomainUuid[domain].remove(uuid);
+        m_domainSelectedMatypeByDomainUuid[domain].remove(uuid);
+        m_domainPreviewMatypeByDomainUuid[domain].remove(uuid);
+        m_domainPreDeleteMatypeByDomainUuid[domain].remove(uuid);
+    }
 
     rebuildDomainHighlightActors();
 }
@@ -1754,8 +1753,15 @@ void PickManager::rebuildDomainHighlightActors()
         return;
     auto* mapper = actor->GetMapper();
 
-    const bool hasSelection = !m_domainMatypes.isEmpty() || m_domainSelectedMatype >= 0 ||
-                              m_domainPreviewMatype >= 0 || m_domainPreDeleteMatype >= 0;
+    const QSet<int> matypes = m_domainMatypesByDomainUuid.value(m_currentDomain).value(m_currentUUid);
+    const int selectedMatype =
+        m_domainSelectedMatypeByDomainUuid.value(m_currentDomain).value(m_currentUUid, -1);
+    const int previewMatype =
+        m_domainPreviewMatypeByDomainUuid.value(m_currentDomain).value(m_currentUUid, -1);
+    const int preDeleteMatype =
+        m_domainPreDeleteMatypeByDomainUuid.value(m_currentDomain).value(m_currentUUid, -1);
+    const bool hasSelection = !matypes.isEmpty() || selectedMatype >= 0 || previewMatype >= 0 ||
+                              preDeleteMatype >= 0;
     if (!hasSelection)
     {
         mapper->ScalarVisibilityOff();
@@ -1806,13 +1812,13 @@ void PickManager::rebuildDomainHighlightActors()
         int matype = -1;
         const bool hasMatype = resolveMatype(cid, matype);
         const unsigned char* c = normal;
-        if (hasMatype && m_domainMatypes.contains(matype))
+        if (hasMatype && matypes.contains(matype))
             c = appliedColor;
-        if (hasMatype && m_domainSelectedMatype >= 0 && matype == m_domainSelectedMatype)
+        if (hasMatype && selectedMatype >= 0 && matype == selectedMatype)
             c = selectedColor;
-        if (hasMatype && m_domainPreviewMatype >= 0 && matype == m_domainPreviewMatype)
+        if (hasMatype && previewMatype >= 0 && matype == previewMatype)
             c = previewColor;
-        if (hasMatype && m_domainPreDeleteMatype >= 0 && matype == m_domainPreDeleteMatype)
+        if (hasMatype && preDeleteMatype >= 0 && matype == preDeleteMatype)
             c = preDeleteColor;
         colors->SetTypedTuple(cid, c);
     }
@@ -1827,6 +1833,12 @@ void PickManager::rebuildDomainHighlightActors()
 // ===================== clearSelection =====================
 void PickManager::clearSelection(const QString& domain, const QString& uuid, PickMode mode)
 {
+    if (mode == PickMode::Domain)
+    {
+        clearDomainHighlight(domain, uuid);
+        return;
+    }
+
     auto clearOneKind = [&](GridKind kind)
     {
         if (mode == PickMode::Node)
