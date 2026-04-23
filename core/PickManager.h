@@ -338,6 +338,8 @@ class CORE_EXPORT PickManager : public QObject
     QHash<QString, QHash<QString, int>> m_domainSelectedMatypeByDomainUuid;
     QHash<QString, QHash<QString, int>> m_domainPreviewMatypeByDomainUuid;
     QHash<QString, QHash<QString, int>> m_domainPreDeleteMatypeByDomainUuid;
+    QHash<QString, QHash<int, QString>> m_ownerDomainIdByDomain;
+    QHash<QString, QHash<int, QString>> m_prevOwnerDomainIdByDomain;
 
   signals:
     void nodePicked(const QString& domain, const QString& activeUuid, GridKind kind, vtkIdType pid,
