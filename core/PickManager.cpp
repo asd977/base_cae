@@ -353,7 +353,8 @@ void PickManager::highlightDomainsByMatype(const QString& domain, const QString&
     m_domainHighlightStates[domain][uuid] = st;
     m_activeHighlightDomain = domain;
     m_activeHighlightUuid = uuid;
-    refreshStructureIfNeeded();
+    // 选域高亮强依赖当前显示数据集映射，直接刷新结构避免“切页后才高亮”的滞后问题。
+    updateStructure();
     rebuildDomainHighlightActors();
 }
 
@@ -384,7 +385,8 @@ void PickManager::highlightDomainsByLayer(const QString& domain, const QString& 
     m_domainHighlightStates[domain][uuid] = st;
     m_activeHighlightDomain = domain;
     m_activeHighlightUuid = uuid;
-    refreshStructureIfNeeded();
+    // 选域高亮强依赖当前显示数据集映射，直接刷新结构避免“切页后才高亮”的滞后问题。
+    updateStructure();
     rebuildDomainHighlightActors();
 }
 
