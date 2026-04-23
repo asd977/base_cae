@@ -451,8 +451,12 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
     if (previewGroup >= 0)
         previewValue = previewGroup;
 
-    PickManager::instance().highlightDomainsByLayer(getPageType(), effectiveUuid(), selectedValues, -1,
-                                                    previewValue, -1);
+    QSet<int> previewValues;
+    if (previewValue >= 0)
+        previewValues.insert(previewValue);
+    PickManager::instance().setDomainHighlightIds(getPageType(), effectiveUuid(),
+                                                  PickManager::DomainScalarKind::Layer,
+                                                  selectedValues, previewValues);
 }
 
 QString CaveExcavationBodyPage::effectiveUuid() const

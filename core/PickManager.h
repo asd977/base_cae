@@ -47,6 +47,12 @@ class CORE_EXPORT PickManager : public QObject
 {
     Q_OBJECT
   public:
+    enum class DomainScalarKind
+    {
+        Matype,
+        Layer
+    };
+
     static PickManager& instance();
 
     void activate(const QString& domain, const QString& uuid, PickMode mode);
@@ -137,6 +143,8 @@ class CORE_EXPORT PickManager : public QObject
     void highlightDomainsByLayer(const QString& domain, const QString& uuid,
                                  const QSet<int>& layers, int selectedLayer, int previewLayer,
                                  int preDeleteLayer);
+    void setDomainHighlightIds(const QString& domain, const QString& uuid, DomainScalarKind kind,
+                               const QSet<int>& selectedIds, const QSet<int>& previewIds = {});
     // 清理材料域高亮。uuid 为空时清理该 domain 的当前高亮态。
     void clearDomainHighlight(const QString& domain, const QString& uuid = QString());
 

@@ -330,38 +330,42 @@ void PickManager::highlightDomainsByMatype(const QString& domain, const QString&
                                            const QSet<int>& matypes, int selectedMatype,
                                            int previewMatype, int preDeleteMatype)
 {
-    DomainHighlightState st;
-    st.scalarKind = DomainHighlightState::ScalarKind::Matype;
-    st.selectedIds = matypes;
+    QSet<int> selectedIds = matypes;
+    QSet<int> previewIds;
     if (selectedMatype >= 0)
-        st.selectedIds.insert(selectedMatype);
+        selectedIds.insert(selectedMatype);
     if (previewMatype >= 0)
-        st.previewIds.insert(previewMatype);
+        previewIds.insert(previewMatype);
     if (preDeleteMatype >= 0)
-        st.previewIds.insert(preDeleteMatype);
-
-    m_domainHighlightStates[domain][uuid] = st;
-    m_activeHighlightDomain = domain;
-    m_activeHighlightUuid = uuid;
-    // 选域高亮强依赖当前显示数据集映射，直接刷新结构避免“切页后才高亮”的滞后问题。
-    updateStructure();
-    rebuildDomainHighlightActors();
+        previewIds.insert(preDeleteMatype);
+    setDomainHighlightIds(domain, uuid, DomainScalarKind::Matype, selectedIds, previewIds);
 }
 
 void PickManager::highlightDomainsByLayer(const QString& domain, const QString& uuid,
                                           const QSet<int>& layers, int selectedLayer,
                                           int previewLayer, int preDeleteLayer)
 {
-    DomainHighlightState st;
-    st.scalarKind = DomainHighlightState::ScalarKind::Layer;
-    st.selectedIds = layers;
+    QSet<int> selectedIds = layers;
+    QSet<int> previewIds;
     if (selectedLayer >= 0)
-        st.selectedIds.insert(selectedLayer);
+        selectedIds.insert(selectedLayer);
     if (previewLayer >= 0)
-        st.previewIds.insert(previewLayer);
+        previewIds.insert(previewLayer);
     if (preDeleteLayer >= 0)
-        st.previewIds.insert(preDeleteLayer);
+        previewIds.insert(preDeleteLayer);
 
+    setDomainHighlightIds(domain, uuid, DomainScalarKind::Layer, selectedIds, previewIds);
+}
+
+void PickManager::setDomainHighlightIds(const QString& domain, const QString& uuid,
+                                        DomainScalarKind kind, const QSet<int>& selectedIds,
+                                        const QSet<int>& previewIds)
+{
+    DomainHighlightState st;
+    st.scalarKind = (kind == DomainScalarKind::Layer) ? DomainHighlightState::ScalarKind::Layer
+                                                       : DomainHighlightState::ScalarKind::Matype;
+    st.selectedIds = selectedIds;
+    st.previewIds = previewIds;
     m_domainHighlightStates[domain][uuid] = st;
     m_activeHighlightDomain = domain;
     m_activeHighlightUuid = uuid;
