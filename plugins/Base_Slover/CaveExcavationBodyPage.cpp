@@ -284,12 +284,8 @@ void CaveExcavationBodyPage::onGroupHovered(int index)
         return;
 
     if (m_lastHoveredIndex >= 0 && m_lastHoveredIndex < m_groupCombo->count())
-    {
-        m_groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
-        m_groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::ForegroundRole);
-    }
-    m_groupCombo->setItemData(index, QColor(230, 247, 255), Qt::BackgroundRole);
-    m_groupCombo->setItemData(index, QColor(20, 70, 160), Qt::ForegroundRole);
+        applyGroupComboItemStyle(m_lastHoveredIndex, false);
+    applyGroupComboItemStyle(index, true);
     m_lastHoveredIndex = index;
 
     const int gid = m_groupCombo->itemData(index).toInt();
@@ -299,7 +295,7 @@ void CaveExcavationBodyPage::onGroupHovered(int index)
 void CaveExcavationBodyPage::onGroupDropdownClosed()
 {
     if (m_groupCombo && m_lastHoveredIndex >= 0 && m_lastHoveredIndex < m_groupCombo->count())
-        m_groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
+        applyGroupComboItemStyle(m_lastHoveredIndex, false);
     m_lastHoveredIndex = -1;
     refreshGroupComboMarks();
     if (currentPickMode() == PickMode::Face)
@@ -481,17 +477,37 @@ void CaveExcavationBodyPage::refreshSelectedGroupList()
     }
 }
 
+void CaveExcavationBodyPage::applyGroupComboItemStyle(int index, bool hovered)
+{
+    if (!m_groupCombo || index < 0 || index >= m_groupCombo->count())
+        return;
+    const int gid = m_groupCombo->itemData(index).toInt();
+    const bool selected = m_selectedGroups.contains(gid);
+    if (hovered)
+    {
+        m_groupCombo->setItemData(index, QColor(230, 247, 255), Qt::BackgroundRole);
+        m_groupCombo->setItemData(index, QColor(20, 70, 160), Qt::ForegroundRole);
+        m_groupCombo->setItemText(index, QString("▶ %1").arg(gid));
+        return;
+    }
+    if (selected)
+    {
+        m_groupCombo->setItemData(index, QColor(232, 250, 236), Qt::BackgroundRole);
+        m_groupCombo->setItemData(index, QColor(33, 110, 57), Qt::ForegroundRole);
+        m_groupCombo->setItemText(index, QString("✓ %1").arg(gid));
+        return;
+    }
+    m_groupCombo->setItemData(index, QVariant(), Qt::BackgroundRole);
+    m_groupCombo->setItemData(index, QVariant(), Qt::ForegroundRole);
+    m_groupCombo->setItemText(index, QString::number(gid));
+}
+
 void CaveExcavationBodyPage::refreshGroupComboMarks()
 {
     if (!m_groupCombo)
         return;
     for (int i = 0; i < m_groupCombo->count(); ++i)
-    {
-        const int gid = m_groupCombo->itemData(i).toInt();
-        m_groupCombo->setItemText(i, QString::number(gid));
-        m_groupCombo->setItemData(i, QVariant(), Qt::BackgroundRole);
-        m_groupCombo->setItemData(i, QVariant(), Qt::ForegroundRole);
-    }
+        applyGroupComboItemStyle(i, i == m_lastHoveredIndex);
 }
 
 void CaveExcavationBodyPage::updatePersistentSelectionFaces()

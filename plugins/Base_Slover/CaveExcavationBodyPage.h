@@ -40,6 +40,7 @@ class CaveExcavationBodyPage : public BasePage
     QVector<vtkIdType> visibleBoundaryFaceKeys(const QVector<vtkIdType>& cellIds) const;
     QVector<int> elementIdsFromCells(const QVector<vtkIdType>& cellIds) const;
     void refreshSelectedGroupList();
+    void applyGroupComboItemStyle(int index, bool hovered);
     void refreshGroupComboMarks();
     void updatePersistentSelectionFaces();
     void updateGroupDomainHighlight(int previewGroup = -1);
