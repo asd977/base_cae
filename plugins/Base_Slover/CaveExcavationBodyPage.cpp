@@ -56,18 +56,18 @@ void CaveExcavationBodyPage::beforeLoad()
     setupGroupCombo();
     updatePersistentSelectionFaces();
     updateGroupDomainHighlight();
-    PickManager::instance().activate(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().activate(getPageType(), effectiveUuid(), currentPickMode());
     const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     const bool allowFacePick = (meshDim == 2);
-    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, allowFacePick);
-    PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, allowFacePick);
+    PickManager::instance().setClickPickEnabled(getPageType(), effectiveUuid(), allowFacePick);
+    PickManager::instance().setBoxSelectEnabled(getPageType(), effectiveUuid(), allowFacePick);
 }
 
 void CaveExcavationBodyPage::beforeUnload()
 {
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
-    PickManager::instance().deactivate(getPageType(), m_uuid, currentPickMode());
-    PickManager::instance().clearDomainHighlight(getPageType(), m_uuid);
+    PickManager::instance().clearPreviewSelection(getPageType(), effectiveUuid(), currentPickMode());
+    PickManager::instance().deactivate(getPageType(), effectiveUuid(), currentPickMode());
+    PickManager::instance().clearDomainHighlight(getPageType(), effectiveUuid());
 }
 
 QJsonObject CaveExcavationBodyPage::saveJson()
@@ -84,9 +84,9 @@ QJsonObject CaveExcavationBodyPage::saveJson()
 
     QJsonArray faceArr, edgeArr;
     const auto faceKeys =
-        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid);
+        PickManager::instance().getIdList(getPageType(), effectiveUuid(), PickMode::Face, GridKind::Solid);
     const auto edgeKeys =
-        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Edge, GridKind::Solid);
+        PickManager::instance().getIdList(getPageType(), effectiveUuid(), PickMode::Edge, GridKind::Solid);
     for (vtkIdType key : faceKeys)
         faceArr.append(static_cast<qint64>(key));
     for (vtkIdType key : edgeKeys)
@@ -116,8 +116,10 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
     for (const auto& v : edgeArr)
         edgeKeys.push_back(static_cast<vtkIdType>(v.toVariant().toLongLong()));
 
-    PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, faceKeys, true);
-    PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid, edgeKeys, true);
+    PickManager::instance().setSelectedFaceKeys(getPageType(), effectiveUuid(), GridKind::Solid, faceKeys,
+                                                true);
+    PickManager::instance().setSelectedEdgeKeys(getPageType(), effectiveUuid(), GridKind::Solid, edgeKeys,
+                                                true);
 
     updatePersistentSelectionFaces();
     updateGroupDomainHighlight();
@@ -145,7 +147,8 @@ QVector<int> CaveExcavationBodyPage::selectedElementIds()
         {
             vtkDataArray* elemIdArr = vtkDataArray::SafeDownCast(grid->GetCellData()->GetArray("elem_id"));
             const auto faceKeys =
-                PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid);
+                PickManager::instance().getIdList(getPageType(), effectiveUuid(), PickMode::Face,
+                                                  GridKind::Solid);
             for (vtkIdType key : faceKeys)
             {
                 const vtkIdType cellId = PickManager::instance().unpackFaceCellId(key);
@@ -169,8 +172,8 @@ void CaveExcavationBodyPage::onClearClicked()
     m_selectedGroups.clear();
     refreshSelectedGroupList();
     refreshGroupComboMarks();
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
-    PickManager::instance().clearSelection(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().clearPreviewSelection(getPageType(), effectiveUuid(), currentPickMode());
+    PickManager::instance().clearSelection(getPageType(), effectiveUuid(), currentPickMode());
     updateGroupDomainHighlight();
 }
 
@@ -243,7 +246,7 @@ void CaveExcavationBodyPage::onGroupDropdownClosed()
         ui->groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
     m_lastHoveredIndex = -1;
     refreshGroupComboMarks();
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().clearPreviewSelection(getPageType(), effectiveUuid(), currentPickMode());
     // 关闭下拉后取消 hover 预览，仅保留“已选分组”的持久高亮。
     updateGroupDomainHighlight();
 }
@@ -423,7 +426,8 @@ void CaveExcavationBodyPage::updatePersistentSelectionFaces()
     const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     if (meshDim == 3)
     {
-        PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, {}, true);
+        PickManager::instance().setSelectedFaceKeys(getPageType(), effectiveUuid(), GridKind::Solid, {},
+                                                    true);
         return;
     }
 
@@ -433,7 +437,8 @@ void CaveExcavationBodyPage::updatePersistentSelectionFaces()
         const auto faces = visibleBoundaryFaceKeys(groupCellIds(g));
         allFaces += faces;
     }
-    PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, allFaces, true);
+    PickManager::instance().setSelectedFaceKeys(getPageType(), effectiveUuid(), GridKind::Solid, allFaces,
+                                                true);
 }
 
 void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
@@ -446,8 +451,13 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
     if (previewGroup >= 0)
         previewValue = previewGroup;
 
-    PickManager::instance().highlightDomainsByLayer(getPageType(), m_uuid, selectedValues, -1,
+    PickManager::instance().highlightDomainsByLayer(getPageType(), effectiveUuid(), selectedValues, -1,
                                                     previewValue, -1);
+}
+
+QString CaveExcavationBodyPage::effectiveUuid() const
+{
+    return m_uuid.isEmpty() ? QStringLiteral("CaveExcavationBody.Default") : m_uuid;
 }
 
 QString CaveExcavationBodyPage::sourceToString(GroupSource s) const

@@ -1804,16 +1804,6 @@ void PickManager::rebuildDomainHighlightActors()
             activeState = uit.value();
             hasActiveState = true;
         }
-        else
-        {
-            // 兼容未绑定 uuid 的条目（部分页面在 uuid 建立前会先发高亮状态）。
-            const auto fallbackIt = dit->constFind(QString());
-            if (fallbackIt != dit->constEnd())
-            {
-                activeState = fallbackIt.value();
-                hasActiveState = true;
-            }
-        }
     }
 
     const bool hasSelection =
