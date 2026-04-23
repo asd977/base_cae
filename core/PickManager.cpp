@@ -332,35 +332,13 @@ void PickManager::highlightDomainsByMatype(const QString& domain, const QString&
 {
     DomainHighlightState st;
     st.scalarKind = DomainHighlightState::ScalarKind::Matype;
-    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    const MshPickMap map = meshSvc ? meshSvc->mshPickMapSolid() : MshPickMap{};
-    auto hasCellsForMatype = [&map](int id)
-    {
-        if (!map.matypeToCellIds.value(id).isEmpty())
-            return true;
-        for (auto it = map.cellIdToMatype.constBegin(); it != map.cellIdToMatype.constEnd(); ++it)
-            if (it.value() == id)
-                return true;
-        return false;
-    };
-    for (int id : matypes)
-        if (hasCellsForMatype(id))
-            st.selectedIds.insert(id);
+    st.selectedIds = matypes;
     if (selectedMatype >= 0)
-    {
-        if (hasCellsForMatype(selectedMatype))
-            st.selectedIds.insert(selectedMatype);
-    }
+        st.selectedIds.insert(selectedMatype);
     if (previewMatype >= 0)
-    {
-        if (hasCellsForMatype(previewMatype))
-            st.previewIds.insert(previewMatype);
-    }
+        st.previewIds.insert(previewMatype);
     if (preDeleteMatype >= 0)
-    {
-        if (hasCellsForMatype(preDeleteMatype))
-            st.previewIds.insert(preDeleteMatype);
-    }
+        st.previewIds.insert(preDeleteMatype);
 
     m_domainHighlightStates[domain][uuid] = st;
     m_activeHighlightDomain = domain;
@@ -376,35 +354,13 @@ void PickManager::highlightDomainsByLayer(const QString& domain, const QString& 
 {
     DomainHighlightState st;
     st.scalarKind = DomainHighlightState::ScalarKind::Layer;
-    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    const MshPickMap map = meshSvc ? meshSvc->mshPickMapSolid() : MshPickMap{};
-    auto hasCellsForLayer = [&map](int id)
-    {
-        if (!map.layerToCellIds.value(id).isEmpty())
-            return true;
-        for (auto it = map.cellIdToLayer.constBegin(); it != map.cellIdToLayer.constEnd(); ++it)
-            if (it.value() == id)
-                return true;
-        return false;
-    };
-    for (int id : layers)
-        if (hasCellsForLayer(id))
-            st.selectedIds.insert(id);
+    st.selectedIds = layers;
     if (selectedLayer >= 0)
-    {
-        if (hasCellsForLayer(selectedLayer))
-            st.selectedIds.insert(selectedLayer);
-    }
+        st.selectedIds.insert(selectedLayer);
     if (previewLayer >= 0)
-    {
-        if (hasCellsForLayer(previewLayer))
-            st.previewIds.insert(previewLayer);
-    }
+        st.previewIds.insert(previewLayer);
     if (preDeleteLayer >= 0)
-    {
-        if (hasCellsForLayer(preDeleteLayer))
-            st.previewIds.insert(preDeleteLayer);
-    }
+        st.previewIds.insert(preDeleteLayer);
 
     m_domainHighlightStates[domain][uuid] = st;
     m_activeHighlightDomain = domain;
@@ -1848,6 +1804,16 @@ void PickManager::rebuildDomainHighlightActors()
             activeState = uit.value();
             hasActiveState = true;
         }
+        else
+        {
+            // 兼容未绑定 uuid 的条目（部分页面在 uuid 建立前会先发高亮状态）。
+            const auto fallbackIt = dit->constFind(QString());
+            if (fallbackIt != dit->constEnd())
+            {
+                activeState = fallbackIt.value();
+                hasActiveState = true;
+            }
+        }
     }
 
     const bool hasSelection =
@@ -1873,24 +1839,8 @@ void PickManager::rebuildDomainHighlightActors()
         {
             const QVector<qint64> cids =
                 useLayer ? map.layerToCellIds.value(id) : map.matypeToCellIds.value(id);
-            if (!cids.isEmpty())
-            {
-                for (qint64 c : cids)
-                    out.insert(static_cast<vtkIdType>(c));
-                continue;
-            }
-            if (useLayer)
-            {
-                for (auto it = map.cellIdToLayer.constBegin(); it != map.cellIdToLayer.constEnd(); ++it)
-                    if (it.value() == id)
-                        out.insert(static_cast<vtkIdType>(it.key()));
-            }
-            else
-            {
-                for (auto it = map.cellIdToMatype.constBegin(); it != map.cellIdToMatype.constEnd(); ++it)
-                    if (it.value() == id)
-                        out.insert(static_cast<vtkIdType>(it.key()));
-            }
+            for (qint64 c : cids)
+                out.insert(static_cast<vtkIdType>(c));
         }
     };
     fillCells(activeState.selectedIds, selectedCellIds);
