@@ -4,6 +4,7 @@
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
 #include <services/VisualWidgetService.h>
+#include <struct/MeshMap.h>
 
 #include <algorithm>
 #include <cmath>
