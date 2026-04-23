@@ -361,15 +361,47 @@ void PickManager::setDomainHighlightIds(const QString& domain, const QString& uu
                                         DomainScalarKind kind, const QSet<int>& selectedIds,
                                         const QSet<int>& previewIds)
 {
-    DomainHighlightState st;
-    st.scalarKind = (kind == DomainScalarKind::Layer) ? DomainHighlightState::ScalarKind::Layer
-                                                       : DomainHighlightState::ScalarKind::Matype;
-    st.selectedIds = selectedIds;
-    st.previewIds = previewIds;
-    m_domainHighlightStates[domain][uuid] = st;
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    const MshPickMap map = meshSvc ? meshSvc->mshPickMapSolid() : MshPickMap{};
+
+    auto idsToCells = [&](const QSet<int>& ids) -> QSet<vtkIdType>
+    {
+        QSet<vtkIdType> out;
+        for (int id : ids)
+        {
+            const QVector<qint64> src = (kind == DomainScalarKind::Layer)
+                                            ? map.layerToCellIds.value(id)
+                                            : map.matypeToCellIds.value(id);
+            for (qint64 c : src)
+                out.insert(static_cast<vtkIdType>(c));
+        }
+        return out;
+    };
+
+    auto& owners = m_ownerDomainCellByDomain[domain];
+    auto& selectedByUuid = m_domainCellsByDomainUuid[domain];
+    auto& previewByUuid = m_previewDomainCellsByDomainUuid[domain];
+
+    // 清理该 uuid 旧选中归属
+    QSet<vtkIdType>& oldSel = selectedByUuid[uuid];
+    for (vtkIdType cid : oldSel)
+        if (owners.value(cid) == uuid)
+            owners.remove(cid);
+    oldSel.clear();
+
+    // 写入新选中归属
+    const QSet<vtkIdType> newSel = idsToCells(selectedIds);
+    for (vtkIdType cid : newSel)
+    {
+        owners[cid] = uuid;
+        oldSel.insert(cid);
+    }
+
+    // 预览集合不参与 ownership，直接覆盖
+    previewByUuid[uuid] = idsToCells(previewIds);
+
     m_activeHighlightDomain = domain;
     m_activeHighlightUuid = uuid;
-    // 选域高亮强依赖当前显示数据集映射，直接刷新结构避免“切页后才高亮”的滞后问题。
     updateStructure();
     rebuildDomainHighlightActors();
 }
@@ -382,17 +414,36 @@ void PickManager::clearDomainHighlight(const QString& domain, const QString& uui
 
     if (uuid.isEmpty())
     {
-        m_domainHighlightStates.remove(domain);
+        m_ownerDomainCellByDomain.remove(domain);
+        m_domainCellsByDomainUuid.remove(domain);
+        m_previewDomainCellsByDomainUuid.remove(domain);
         m_activeHighlightUuid.clear();
     }
     else
     {
-        auto dit = m_domainHighlightStates.find(domain);
-        if (dit != m_domainHighlightStates.end())
+        auto selectedDit = m_domainCellsByDomainUuid.find(domain);
+        auto ownerDit = m_ownerDomainCellByDomain.find(domain);
+        if (selectedDit != m_domainCellsByDomainUuid.end())
         {
-            dit->remove(uuid);
-            if (dit->isEmpty())
-                m_domainHighlightStates.erase(dit);
+            QSet<vtkIdType> old = selectedDit->value(uuid);
+            if (ownerDit != m_ownerDomainCellByDomain.end())
+            {
+                for (vtkIdType cid : old)
+                    if (ownerDit->value(cid) == uuid)
+                        ownerDit->remove(cid);
+                if (ownerDit->isEmpty())
+                    m_ownerDomainCellByDomain.erase(ownerDit);
+            }
+            selectedDit->remove(uuid);
+            if (selectedDit->isEmpty())
+                m_domainCellsByDomainUuid.erase(selectedDit);
+        }
+        auto previewDit = m_previewDomainCellsByDomainUuid.find(domain);
+        if (previewDit != m_previewDomainCellsByDomainUuid.end())
+        {
+            previewDit->remove(uuid);
+            if (previewDit->isEmpty())
+                m_previewDomainCellsByDomainUuid.erase(previewDit);
         }
     }
 
@@ -1797,21 +1848,11 @@ void PickManager::rebuildDomainHighlightActors()
         return;
     auto* mapper = actor->GetMapper();
 
-    DomainHighlightState activeState;
-    bool hasActiveState = false;
-    const auto dit = m_domainHighlightStates.constFind(m_activeHighlightDomain);
-    if (dit != m_domainHighlightStates.constEnd())
-    {
-        const auto uit = dit->constFind(m_activeHighlightUuid);
-        if (uit != dit->constEnd())
-        {
-            activeState = uit.value();
-            hasActiveState = true;
-        }
-    }
-
-    const bool hasSelection =
-        hasActiveState && (!activeState.selectedIds.isEmpty() || !activeState.previewIds.isEmpty());
+    const QSet<vtkIdType> selectedCellIds =
+        m_domainCellsByDomainUuid.value(m_activeHighlightDomain).value(m_activeHighlightUuid);
+    const QSet<vtkIdType> previewCellIds =
+        m_previewDomainCellsByDomainUuid.value(m_activeHighlightDomain).value(m_activeHighlightUuid);
+    const bool hasSelection = !selectedCellIds.isEmpty() || !previewCellIds.isEmpty();
     if (!hasSelection)
     {
         mapper->ScalarVisibilityOff();
@@ -1821,24 +1862,6 @@ void PickManager::rebuildDomainHighlightActors()
 
     auto* origCellIds =
         vtkIdTypeArray::SafeDownCast(m_solidPickDataSet->GetCellData()->GetArray("vtkOriginalCellIds"));
-    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    const MshPickMap map = meshSvc ? meshSvc->mshPickMapSolid() : MshPickMap{};
-    const bool useLayer = (activeState.scalarKind == DomainHighlightState::ScalarKind::Layer);
-
-    QSet<vtkIdType> selectedCellIds;
-    QSet<vtkIdType> previewCellIds;
-    auto fillCells = [&](const QSet<int>& ids, QSet<vtkIdType>& out)
-    {
-        for (int id : ids)
-        {
-            const QVector<qint64> cids =
-                useLayer ? map.layerToCellIds.value(id) : map.matypeToCellIds.value(id);
-            for (qint64 c : cids)
-                out.insert(static_cast<vtkIdType>(c));
-        }
-    };
-    fillCells(activeState.selectedIds, selectedCellIds);
-    fillCells(activeState.previewIds, previewCellIds);
 
     const vtkIdType nCells = m_solidPickDataSet->GetNumberOfCells();
     auto colors = vtkSmartPointer<vtkUnsignedCharArray>::New();

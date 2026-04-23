@@ -344,19 +344,10 @@ class CORE_EXPORT PickManager : public QObject
     QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerFaceSolidByDomain;
     QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerFaceLineByDomain;
 
-    struct DomainHighlightState
-    {
-        enum class ScalarKind
-        {
-            Matype,
-            Layer
-        };
-        QSet<int> selectedIds;
-        QSet<int> previewIds;
-        ScalarKind scalarKind = ScalarKind::Matype;
-    };
-    // ============ domain highlight overlay（按 domain+uuid 管理） ============
-    QHash<QString, QHash<QString, DomainHighlightState>> m_domainHighlightStates;
+    // ============ domain highlight overlay（按 domain+uuid，类似点/线/面管理） ============
+    QHash<QString, QHash<vtkIdType, QString>> m_ownerDomainCellByDomain;
+    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_domainCellsByDomainUuid;
+    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_previewDomainCellsByDomainUuid;
     QString m_activeHighlightDomain;
     QString m_activeHighlightUuid;
 
