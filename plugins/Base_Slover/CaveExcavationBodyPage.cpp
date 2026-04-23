@@ -68,7 +68,6 @@ void CaveExcavationBodyPage::beforeLoad()
 {
     setupGroupCombo();
     updatePersistentSelectionFaces();
-    updateGroupDomainHighlight();
     const PickMode mode = currentPickMode();
     PickManager::instance().activate(getPageType(), m_uuid, mode);
     const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
@@ -137,7 +136,6 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
     PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid, edgeKeys, true);
 
     updatePersistentSelectionFaces();
-    updateGroupDomainHighlight();
     refreshSelectedGroupList();
     refreshGroupComboMarks();
 }
@@ -191,7 +189,6 @@ void CaveExcavationBodyPage::onClearClicked()
         PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Face);
         PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Face);
     }
-    updateGroupDomainHighlight();
 }
 
 void CaveExcavationBodyPage::onAddGroupClicked()
@@ -206,7 +203,6 @@ void CaveExcavationBodyPage::onAddGroupClicked()
     refreshSelectedGroupList();
     refreshGroupComboMarks();
     updatePersistentSelectionFaces();
-    updateGroupDomainHighlight();
 }
 
 void CaveExcavationBodyPage::onRemoveSelectedGroupsClicked()
@@ -227,7 +223,6 @@ void CaveExcavationBodyPage::onRemoveSelectedGroupsClicked()
     refreshSelectedGroupList();
     refreshGroupComboMarks();
     updatePersistentSelectionFaces();
-    updateGroupDomainHighlight();
 }
 
 void CaveExcavationBodyPage::onGroupHovered(int index)
@@ -243,9 +238,6 @@ void CaveExcavationBodyPage::onGroupHovered(int index)
     m_groupCombo->setItemData(index, QColor(230, 247, 255), Qt::BackgroundRole);
     m_groupCombo->setItemData(index, QColor(20, 70, 160), Qt::ForegroundRole);
     m_lastHoveredIndex = index;
-
-    const int gid = m_groupCombo->itemData(index).toInt();
-    updateGroupDomainHighlight(gid);
 }
 
 void CaveExcavationBodyPage::onGroupDropdownClosed()
@@ -256,8 +248,6 @@ void CaveExcavationBodyPage::onGroupDropdownClosed()
     refreshGroupComboMarks();
     if (currentPickMode() == PickMode::Face)
         PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Face);
-    // 关闭下拉后取消 hover 预览，仅保留“已选分组”的持久高亮。
-    updateGroupDomainHighlight();
 }
 
 void CaveExcavationBodyPage::setupGroupCombo()
@@ -482,56 +472,6 @@ void CaveExcavationBodyPage::updatePersistentSelectionFaces()
         allFaces += faces;
     }
     PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, allFaces, true);
-}
-
-void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
-{
-    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    vtkUnstructuredGrid* grid = meshSvc ? meshSvc->getVtkUnstructuredGridSolid() : nullptr;
-    if (!grid)
-        grid = PickManager::instance().solidGrid();
-    if (!grid || !grid->GetCellData())
-    {
-        PickManager::instance().clearDomainHighlight(getPageType(), m_uuid);
-        return;
-    }
-
-    auto* matypeArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"));
-    if (!matypeArr)
-    {
-        PickManager::instance().clearDomainHighlight(getPageType(), m_uuid);
-        return;
-    }
-
-    const auto collectGroupMatypes = [&](int gid) -> QSet<int>
-    {
-        QSet<int> out;
-        const auto cids = groupCellIds(gid);
-        for (vtkIdType cid : cids)
-        {
-            if (cid < 0 || cid >= grid->GetNumberOfCells())
-                continue;
-            out.insert(matypeArr->GetValue(cid));
-        }
-        return out;
-    };
-
-    QSet<int> selectedMatypes;
-    for (int gid : m_selectedGroups)
-        selectedMatypes.unite(collectGroupMatypes(gid));
-
-    int previewMatype = -1;
-    if (previewGroup >= 0)
-    {
-        const QSet<int> previewMatypes = collectGroupMatypes(previewGroup);
-        if (previewMatypes.size() == 1)
-            previewMatype = *previewMatypes.constBegin();
-        else
-            selectedMatypes.unite(previewMatypes);
-    }
-
-    PickManager::instance().highlightDomainsByMatype(getPageType(), m_uuid, selectedMatypes, -1,
-                                                     previewMatype, -1);
 }
 
 QString CaveExcavationBodyPage::sourceToString(GroupSource s) const
