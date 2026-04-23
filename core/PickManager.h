@@ -145,6 +145,11 @@ class CORE_EXPORT PickManager : public QObject
                                  int preDeleteLayer);
     void setDomainHighlightIds(const QString& domain, const QString& uuid, DomainScalarKind kind,
                                const QSet<int>& selectedIds, const QSet<int>& previewIds = {});
+    void setDomainIdSelectionState(const QString& domain, const QString& uuid, int selectedId,
+                                   int previewId, int preDeleteId);
+    int domainSelectedId(const QString& domain, const QString& uuid) const;
+    int domainPreviewId(const QString& domain, const QString& uuid) const;
+    int domainPreDeleteId(const QString& domain, const QString& uuid) const;
     // 清理材料域高亮。uuid 为空时清理该 domain 的当前高亮态。
     void clearDomainHighlight(const QString& domain, const QString& uuid = QString());
 
@@ -348,6 +353,13 @@ class CORE_EXPORT PickManager : public QObject
     QHash<QString, QHash<vtkIdType, QString>> m_ownerDomainCellByDomain;
     QHash<QString, QHash<QString, QSet<vtkIdType>>> m_domainCellsByDomainUuid;
     QHash<QString, QHash<QString, QSet<vtkIdType>>> m_previewDomainCellsByDomainUuid;
+    struct DomainIdSelectionState
+    {
+        int selectedId = -1;
+        int previewId = -1;
+        int preDeleteId = -1;
+    };
+    QHash<QString, QHash<QString, DomainIdSelectionState>> m_domainIdSelectionStateByDomainUuid;
     QString m_activeHighlightDomain;
     QString m_activeHighlightUuid;
 

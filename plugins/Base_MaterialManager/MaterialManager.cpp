@@ -907,9 +907,7 @@ void MaterialManager::setupTreeWidget()
 
 void MaterialManager::loadDefaultLibrary()
 {
-    m_selectedMatypes.clear();
-    m_previewMatypes.clear();
-    m_preDeleteMatypes.clear();
+    PickManager::instance().clearDomainHighlight(QStringLiteral("MaterialManager"));
     m_models = createDefaultMaterialModels();
     notifyLibraryChanged();
 }
@@ -933,9 +931,7 @@ void MaterialManager::newProjectForPath(const QString& workPath)
     m_entryItems.clear();
     m_addedEntryIds.clear();
     m_materialTransitions.clear();
-    m_selectedMatypes.clear();
-    m_previewMatypes.clear();
-    m_preDeleteMatypes.clear();
+    PickManager::instance().clearDomainHighlight(QStringLiteral("MaterialManager"));
 
     m_materialManagerWidget = new MaterialManagerWidget(this);
     loadDefaultLibrary();
@@ -1058,9 +1054,7 @@ QVector<QStringList> MaterialManager::getValueStrings()
 
 void MaterialManager::setValueStrings(QVector<QStringList> values)
 {
-    m_selectedMatypes.clear();
-    m_previewMatypes.clear();
-    m_preDeleteMatypes.clear();
+    PickManager::instance().clearDomainHighlight(QStringLiteral("MaterialManager"));
     if (values.isEmpty())
     {
         loadDefaultLibrary();
@@ -1521,6 +1515,9 @@ void MaterialManager::highlightMatypes(const QString& entryId, const QSet<int>& 
         previewIds.insert(previewMatype);
     if (preDeleteMatype >= 0)
         previewIds.insert(preDeleteMatype);
+    PickManager::instance().setDomainIdSelectionState(QStringLiteral("MaterialManager"), entryId,
+                                                      selectedMatype, previewMatype,
+                                                      preDeleteMatype);
     PickManager::instance().setDomainHighlightIds(QStringLiteral("MaterialManager"), entryId,
                                                   PickManager::DomainScalarKind::Matype, selectedIds,
                                                   previewIds);
@@ -1532,15 +1529,17 @@ void MaterialManager::refreshMatypeHighlight(const QString& entryId)
     if (!entry)
         return;
 
-    const int preview = m_previewMatypes.value(entryId, -1);
-    const int preDelete = m_preDeleteMatypes.value(entryId, -1);
+    const int preview =
+        PickManager::instance().domainPreviewId(QStringLiteral("MaterialManager"), entryId);
+    const int preDelete =
+        PickManager::instance().domainPreDeleteId(QStringLiteral("MaterialManager"), entryId);
     // 不再使用 Selected 高亮，仅保留 Applied / Preview / PreDelete。
     highlightMatypes(entryId, entry->appliedMatypes, -1, preview, preDelete);
 }
 
 int MaterialManager::selectedMatypeForEntry(const QString& entryId) const
 {
-    return m_selectedMatypes.value(entryId, -1);
+    return PickManager::instance().domainSelectedId(QStringLiteral("MaterialManager"), entryId);
 }
 
 void MaterialManager::setSelectedMatypeForEntry(const QString& entryId, int matype)
@@ -1549,12 +1548,10 @@ void MaterialManager::setSelectedMatypeForEntry(const QString& entryId, int maty
     {
         return;
     }
-    if (matype < 0)
-    {
-        m_selectedMatypes.remove(entryId);
-        return;
-    }
-    m_selectedMatypes.insert(entryId, matype);
+    PickManager::instance().setDomainIdSelectionState(
+        QStringLiteral("MaterialManager"), entryId, matype,
+        PickManager::instance().domainPreviewId(QStringLiteral("MaterialManager"), entryId),
+        PickManager::instance().domainPreDeleteId(QStringLiteral("MaterialManager"), entryId));
 }
 
 void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
@@ -1576,22 +1573,22 @@ void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
 
             if (otherEntry.appliedMatypes.remove(matype))
             {
-                if (m_selectedMatypes.value(otherEntry.id, -1) == matype)
+                if (selectedMatypeForEntry(otherEntry.id) == matype)
                 {
-                    m_selectedMatypes.remove(otherEntry.id);
+                    setSelectedMatypeForEntry(otherEntry.id, -1);
                 }
-                if (m_previewMatypes.value(otherEntry.id, -1) == matype)
+                if (previewMatypeForEntry(otherEntry.id) == matype)
                 {
-                    m_previewMatypes.remove(otherEntry.id);
+                    setPreviewMatypeForEntry(otherEntry.id, -1);
                 }
-                if (m_preDeleteMatypes.value(otherEntry.id, -1) == matype)
+                if (preDeleteMatypeForEntry(otherEntry.id) == matype)
                 {
-                    m_preDeleteMatypes.remove(otherEntry.id);
+                    setPreDeleteMatypeForEntry(otherEntry.id, -1);
                 }
 
                 syncAutoNumberProperties(&model, &otherEntry);
                 refreshEntryWidgetMatypes(otherEntry.id, otherEntry.appliedMatypes,
-                                          m_selectedMatypes.value(otherEntry.id, -1));
+                                          selectedMatypeForEntry(otherEntry.id));
             }
         }
     }
@@ -1623,22 +1620,22 @@ void MaterialManager::removeMatypeFromEntry(const QString& entryId, int matype)
 
     if (entry->appliedMatypes.remove(matype))
     {
-        if (m_selectedMatypes.value(entryId, -1) == matype)
+        if (selectedMatypeForEntry(entryId) == matype)
         {
-            m_selectedMatypes.remove(entryId);
+            setSelectedMatypeForEntry(entryId, -1);
         }
-        if (m_previewMatypes.value(entryId, -1) == matype)
+        if (previewMatypeForEntry(entryId) == matype)
         {
-            m_previewMatypes.remove(entryId);
+            setPreviewMatypeForEntry(entryId, -1);
         }
-        if (m_preDeleteMatypes.value(entryId, -1) == matype)
+        if (preDeleteMatypeForEntry(entryId) == matype)
         {
-            m_preDeleteMatypes.remove(entryId);
+            setPreDeleteMatypeForEntry(entryId, -1);
         }
 
         syncAutoNumberProperties(model, entry);
         refreshEntryWidgetMatypes(entryId, entry->appliedMatypes,
-                                  m_selectedMatypes.value(entryId, -1));
+                                  selectedMatypeForEntry(entryId));
         notifyEntryUpdated(entryId, false);
         refreshMatypeHighlight(entryId);
     }
@@ -2786,8 +2783,8 @@ void MaterialManager::clearMatypeHighlight(const QString& entryId)
         return;
     }
 
-    m_previewMatypes.remove(entryId);
-    m_preDeleteMatypes.remove(entryId);
+    setPreviewMatypeForEntry(entryId, -1);
+    setPreDeleteMatypeForEntry(entryId, -1);
 
     // 注意：selected 不一定清掉（否则回到页面无法恢复“选中颜色”）
     // 只清显示即可：
@@ -2796,45 +2793,37 @@ void MaterialManager::clearMatypeHighlight(const QString& entryId)
 
 void MaterialManager::clearAllMatypeHighlight()
 {
-    m_previewMatypes.clear();
-    m_preDeleteMatypes.clear();
     PickManager::instance().clearDomainHighlight(QStringLiteral("MaterialManager"));
 }
 
 int MaterialManager::previewMatypeForEntry(const QString& entryId) const
 {
-    return m_previewMatypes.value(entryId, -1);
+    return PickManager::instance().domainPreviewId(QStringLiteral("MaterialManager"), entryId);
 }
 
 void MaterialManager::setPreviewMatypeForEntry(const QString& entryId, int matype)
 {
     if (entryId.isEmpty())
         return;
-    if (matype < 0)
-    {
-        m_previewMatypes.remove(entryId);
-    }
-    else
-    {
-        m_previewMatypes.insert(entryId, matype);
-    }
+    PickManager::instance().setDomainIdSelectionState(
+        QStringLiteral("MaterialManager"), entryId,
+        PickManager::instance().domainSelectedId(QStringLiteral("MaterialManager"), entryId),
+        matype,
+        PickManager::instance().domainPreDeleteId(QStringLiteral("MaterialManager"), entryId));
 }
 
 int MaterialManager::preDeleteMatypeForEntry(const QString& entryId) const
 {
-    return m_preDeleteMatypes.value(entryId, -1);
+    return PickManager::instance().domainPreDeleteId(QStringLiteral("MaterialManager"), entryId);
 }
 
 void MaterialManager::setPreDeleteMatypeForEntry(const QString& entryId, int matype)
 {
     if (entryId.isEmpty())
         return;
-    if (matype < 0)
-    {
-        m_preDeleteMatypes.remove(entryId);
-    }
-    else
-    {
-        m_preDeleteMatypes.insert(entryId, matype);
-    }
+    PickManager::instance().setDomainIdSelectionState(
+        QStringLiteral("MaterialManager"), entryId,
+        PickManager::instance().domainSelectedId(QStringLiteral("MaterialManager"), entryId),
+        PickManager::instance().domainPreviewId(QStringLiteral("MaterialManager"), entryId),
+        matype);
 }

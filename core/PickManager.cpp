@@ -406,6 +406,30 @@ void PickManager::setDomainHighlightIds(const QString& domain, const QString& uu
     rebuildDomainHighlightActors();
 }
 
+void PickManager::setDomainIdSelectionState(const QString& domain, const QString& uuid, int selectedId,
+                                            int previewId, int preDeleteId)
+{
+    DomainIdSelectionState& state = m_domainIdSelectionStateByDomainUuid[domain][uuid];
+    state.selectedId = selectedId;
+    state.previewId = previewId;
+    state.preDeleteId = preDeleteId;
+}
+
+int PickManager::domainSelectedId(const QString& domain, const QString& uuid) const
+{
+    return m_domainIdSelectionStateByDomainUuid.value(domain).value(uuid).selectedId;
+}
+
+int PickManager::domainPreviewId(const QString& domain, const QString& uuid) const
+{
+    return m_domainIdSelectionStateByDomainUuid.value(domain).value(uuid).previewId;
+}
+
+int PickManager::domainPreDeleteId(const QString& domain, const QString& uuid) const
+{
+    return m_domainIdSelectionStateByDomainUuid.value(domain).value(uuid).preDeleteId;
+}
+
 void PickManager::clearDomainHighlight(const QString& domain, const QString& uuid)
 {
     // 清理动作本身也切换当前域上下文，避免页面切换时保留上一域高亮可见。
@@ -417,6 +441,7 @@ void PickManager::clearDomainHighlight(const QString& domain, const QString& uui
         m_ownerDomainCellByDomain.remove(domain);
         m_domainCellsByDomainUuid.remove(domain);
         m_previewDomainCellsByDomainUuid.remove(domain);
+        m_domainIdSelectionStateByDomainUuid.remove(domain);
         m_activeHighlightUuid.clear();
     }
     else
@@ -444,6 +469,13 @@ void PickManager::clearDomainHighlight(const QString& domain, const QString& uui
             previewDit->remove(uuid);
             if (previewDit->isEmpty())
                 m_previewDomainCellsByDomainUuid.erase(previewDit);
+        }
+        auto idStateDit = m_domainIdSelectionStateByDomainUuid.find(domain);
+        if (idStateDit != m_domainIdSelectionStateByDomainUuid.end())
+        {
+            idStateDit->remove(uuid);
+            if (idStateDit->isEmpty())
+                m_domainIdSelectionStateByDomainUuid.erase(idStateDit);
         }
     }
 
