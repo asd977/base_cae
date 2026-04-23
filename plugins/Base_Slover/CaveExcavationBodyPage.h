@@ -44,6 +44,7 @@ class CaveExcavationBodyPage : public BasePage
     void updatePersistentSelectionFaces();
     void updateGroupDomainHighlight(int previewGroup = -1);
     PickMode currentPickMode() const;
+    void syncGroupsFromPickManager();
 
   private:
     QSet<int> m_selectedGroups;

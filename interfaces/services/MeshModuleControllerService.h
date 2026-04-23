@@ -5,7 +5,7 @@
 #include <QSet>
 #include <QString>
 #include <QVector>
-#include <vtkType.h>
+
 
 enum class DomainType : qint8
 {
@@ -77,8 +77,8 @@ struct MeshModuleControllerService
     virtual void highlightDomainMatypes(const QSet<int>& matypes, int selectedMatype, int previewMatype,
                                   int preDeleteMatype) = 0;
     virtual QVector<DomainKey> availableDomains(DomainType type) const = 0;
-    virtual QSet<vtkIdType> domainCells(const DomainKey& key) const = 0;
-    virtual QSet<DomainKey> domainsOfCell(vtkIdType cid) const = 0;
+    virtual QSet<long long> domainCells(const DomainKey& key) const = 0;
+    virtual QSet<DomainKey> domainsOfCell(long long cid) const = 0;
     virtual QString domainDisplayText(const DomainKey& key) const = 0;
     virtual vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGrid() = 0;
     virtual vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGridSolid() = 0;

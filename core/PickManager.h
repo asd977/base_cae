@@ -29,8 +29,9 @@
 #include <vtkUnstructuredGrid.h>
 #include <vtkVertexGlyphFilter.h>
 
-#include "services/VisualWidgetService.h"
 #include <services/MeshModuleControllerService.h>
+
+#include "services/VisualWidgetService.h"
 
 enum class PickMode
 {

@@ -565,13 +565,46 @@ QSet<int> MeshModuleController::getAvailableMatypes() const
 QVector<DomainKey> MeshModuleController::availableDomains(DomainType type) const
 {
     QVector<DomainKey> out;
-    if (type != DomainType::Matype)
+    if (!m_importedGrid)
         return out;
 
-    const QSet<int> matypes = getAvailableMatypes();
-    out.reserve(matypes.size());
-    for (int id : matypes)
-        out.push_back(DomainKey{DomainType::Matype, id});
+    const char* arrayName = nullptr;
+    if (type == DomainType::Matype)
+        arrayName = "MATYPE";
+    else if (type == DomainType::Layer)
+        arrayName = "LAYER";
+    else
+        return out;
+
+    auto* arr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray(arrayName));
+    if (!arr)
+        return out;
+
+    QSet<int> ids;
+    const vtkIdType nCells = m_importedGrid->GetNumberOfCells();
+
+    int maxDim = -1;
+    for (vtkIdType i = 0; i < nCells; ++i)
+    {
+        vtkCell* c = m_importedGrid->GetCell(i);
+        if (!c)
+            continue;
+        maxDim = qMax(maxDim, c->GetCellDimension());
+    }
+
+    const vtkIdType n = qMin(arr->GetNumberOfTuples(), nCells);
+    for (vtkIdType i = 0; i < n; ++i)
+    {
+        vtkCell* c = m_importedGrid->GetCell(i);
+        if (!c || c->GetCellDimension() != maxDim)
+            continue;
+        ids.insert(arr->GetValue(i));
+    }
+
+    out.reserve(ids.size());
+    for (int id : ids)
+        out.push_back(DomainKey{type, id});
+
     std::sort(out.begin(), out.end(), [](const DomainKey& a, const DomainKey& b)
               {
                   return a.id < b.id;
@@ -582,10 +615,18 @@ QVector<DomainKey> MeshModuleController::availableDomains(DomainType type) const
 QSet<vtkIdType> MeshModuleController::domainCells(const DomainKey& key) const
 {
     QSet<vtkIdType> out;
-    if (!m_importedGrid || !key.isValid() || key.type != DomainType::Matype)
+    if (!m_importedGrid || !key.isValid())
         return out;
 
-    auto* arr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray("MATYPE"));
+    const char* arrayName = nullptr;
+    if (key.type == DomainType::Matype)
+        arrayName = "MATYPE";
+    else if (key.type == DomainType::Layer)
+        arrayName = "LAYER";
+    else
+        return out;
+
+    auto* arr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray(arrayName));
     if (!arr)
         return out;
 
@@ -604,11 +645,18 @@ QSet<DomainKey> MeshModuleController::domainsOfCell(vtkIdType cid) const
     if (!m_importedGrid || cid < 0 || cid >= m_importedGrid->GetNumberOfCells())
         return out;
 
-    auto* arr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray("MATYPE"));
-    if (!arr || cid >= arr->GetNumberOfTuples())
-        return out;
+    if (auto* matArr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray("MATYPE")))
+    {
+        if (cid < matArr->GetNumberOfTuples())
+            out.insert(DomainKey{DomainType::Matype, matArr->GetValue(cid)});
+    }
 
-    out.insert(DomainKey{DomainType::Matype, arr->GetValue(cid)});
+    if (auto* layArr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray("LAYER")))
+    {
+        if (cid < layArr->GetNumberOfTuples())
+            out.insert(DomainKey{DomainType::Layer, layArr->GetValue(cid)});
+    }
+
     return out;
 }
 
