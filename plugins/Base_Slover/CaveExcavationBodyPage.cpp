@@ -438,50 +438,13 @@ void CaveExcavationBodyPage::updatePersistentSelectionFaces()
 
 void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
 {
-    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    if (!meshSvc)
-    {
-        PickManager::instance().clearDomainHighlight(getPageType(), m_uuid);
-        return;
-    }
-    const MshPickMap map = meshSvc->mshPickMapSolid();
-    vtkUnstructuredGrid* grid = meshSvc->getVtkUnstructuredGridSolid();
-    if (!grid)
-        grid = PickManager::instance().solidGrid();
-    vtkDataArray* layerArr =
-        (grid && grid->GetCellData()) ? vtkDataArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"))
-                                      : nullptr;
-
-    const auto collectGroupValues = [&](int gid) -> QSet<int>
-    {
-        QSet<int> out;
-        const auto cids = groupCellIds(gid);
-        for (vtkIdType cid : cids)
-        {
-            // 开挖体仅按 LAYER 高亮。
-            const auto itLayer = map.cellIdToLayer.constFind(static_cast<qint64>(cid));
-            if (itLayer != map.cellIdToLayer.constEnd())
-                out.insert(*itLayer);
-
-            if (layerArr && cid >= 0 && cid < layerArr->GetNumberOfTuples())
-                out.insert(static_cast<int>(layerArr->GetTuple1(cid)));
-        }
-        return out;
-    };
-
     QSet<int> selectedValues;
     for (int gid : m_selectedGroups)
-        selectedValues.unite(collectGroupValues(gid));
+        selectedValues.insert(gid);
 
     int previewValue = -1;
     if (previewGroup >= 0)
-    {
-        const QSet<int> previewValues = collectGroupValues(previewGroup);
-        if (previewValues.size() == 1)
-            previewValue = *previewValues.constBegin();
-        else
-            selectedValues.unite(previewValues);
-    }
+        previewValue = previewGroup;
 
     PickManager::instance().highlightDomainsByLayer(getPageType(), m_uuid, selectedValues, -1,
                                                     previewValue, -1);
