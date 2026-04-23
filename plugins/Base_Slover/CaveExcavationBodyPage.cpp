@@ -357,7 +357,7 @@ QVector<int> CaveExcavationBodyPage::availableGroupIds() const
         return out;
     const MshPickMap map = meshSvc->mshPickMapSolid();
 
-    QList<int> keys = map.matypeToCellIds.keys();
+    QList<int> keys = map.layerToCellIds.keys();
 
     std::sort(keys.begin(), keys.end());
     for (int id : keys)
@@ -379,7 +379,7 @@ QVector<vtkIdType> CaveExcavationBodyPage::groupCellIds(int groupId) const
     if (!grid)
         return out;
 
-    QVector<qint64> src = map.matypeToCellIds.value(groupId);
+    QVector<qint64> src = map.layerToCellIds.value(groupId);
 
     out.reserve(src.size());
     for (qint64 c : src)
