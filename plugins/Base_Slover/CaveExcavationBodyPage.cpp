@@ -121,6 +121,23 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
     const auto selectedGroupsArr = obj.value("selected_groups").toArray();
     for (const auto& v : selectedGroupsArr)
         m_selectedGroups.insert(v.toInt());
+    {
+        QSet<int> keep;
+        QSet<int> ownedDomainIds;
+        QList<int> ordered = m_selectedGroups.values();
+        std::sort(ordered.begin(), ordered.end());
+        for (int gid : ordered)
+        {
+            const QSet<int> ids = groupDomainIds(gid);
+            QSet<int> inter = ids;
+            inter.intersect(ownedDomainIds);
+            if (!inter.isEmpty())
+                continue;
+            keep.insert(gid);
+            ownedDomainIds.unite(ids);
+        }
+        m_selectedGroups = keep;
+    }
 
     QVector<vtkIdType> faceKeys, edgeKeys;
     const auto faceArr = obj.value("face_solid").toArray();
@@ -201,6 +218,17 @@ void CaveExcavationBodyPage::onAddGroupClicked()
     if (!m_groupCombo || m_groupCombo->currentIndex() < 0)
         return;
     const int gid = m_groupCombo->currentData().toInt();
+    const QSet<int> newIds = groupDomainIds(gid);
+    QList<int> existing = m_selectedGroups.values();
+    for (int oldGid : existing)
+    {
+        if (oldGid == gid)
+            continue;
+        QSet<int> inter = groupDomainIds(oldGid);
+        inter.intersect(newIds);
+        if (!inter.isEmpty())
+            m_selectedGroups.remove(oldGid);
+    }
     m_selectedGroups.insert(gid);
     refreshSelectedGroupList();
     refreshGroupComboMarks();
@@ -379,6 +407,30 @@ QVector<vtkIdType> CaveExcavationBodyPage::groupCellIds(int groupId) const
             cell->GetCellDimension() != 3)
             continue;
         out.push_back(cid);
+    }
+    return out;
+}
+
+QSet<int> CaveExcavationBodyPage::groupDomainIds(int groupId) const
+{
+    QSet<int> out;
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    vtkUnstructuredGrid* grid = meshSvc ? meshSvc->getVtkUnstructuredGridSolid() : nullptr;
+    if (!grid)
+        grid = PickManager::instance().solidGrid();
+    if (!grid || !grid->GetCellData())
+        return out;
+
+    auto* matypeArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"));
+    if (!matypeArr)
+        return out;
+
+    const auto cids = groupCellIds(groupId);
+    for (vtkIdType cid : cids)
+    {
+        if (cid < 0 || cid >= matypeArr->GetNumberOfTuples())
+            continue;
+        out.insert(matypeArr->GetValue(cid));
     }
     return out;
 }

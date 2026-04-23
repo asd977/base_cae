@@ -1559,36 +1559,6 @@ void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
     if (!entry)
         return;
 
-    // 移除其他材料上的相同 MATYPE（你原逻辑不变）
-    for (auto& model : m_models)
-    {
-        for (auto& otherEntry : model.materials)
-        {
-            if (otherEntry.id == entryId)
-                continue;
-
-            if (otherEntry.appliedMatypes.remove(matype))
-            {
-                if (m_selectedMatypes.value(otherEntry.id, -1) == matype)
-                {
-                    m_selectedMatypes.remove(otherEntry.id);
-                }
-                if (m_previewMatypes.value(otherEntry.id, -1) == matype)
-                {
-                    m_previewMatypes.remove(otherEntry.id);
-                }
-                if (m_preDeleteMatypes.value(otherEntry.id, -1) == matype)
-                {
-                    m_preDeleteMatypes.remove(otherEntry.id);
-                }
-
-                syncAutoNumberProperties(&model, &otherEntry);
-                refreshEntryWidgetMatypes(otherEntry.id, otherEntry.appliedMatypes,
-                                          m_selectedMatypes.value(otherEntry.id, -1));
-            }
-        }
-    }
-
     setSelectedMatypeForEntry(entryId, matype);
     entry->appliedMatypes.insert(matype);
     MaterialModel* model = nullptr;
