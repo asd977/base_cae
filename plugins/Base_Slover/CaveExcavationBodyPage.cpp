@@ -70,20 +70,13 @@ void CaveExcavationBodyPage::beforeLoad()
     setupGroupCombo();
     if (currentPickMode() == PickMode::Domain)
     {
-        const QSet<vtkIdType> owned = PickManager::instance().getDomainSelectionCellIds(getPageType(), m_uuid);
+        const QSet<DomainKey> owned = PickManager::instance().appliedDomains(getPageType(), m_uuid);
         if (!m_selectedGroups.isEmpty())
         {
             QSet<int> keep;
             for (int gid : m_selectedGroups)
             {
-                const QVector<vtkIdType> idsVec = groupCellIds(gid);
-                if (idsVec.isEmpty())
-                    continue;
-                QSet<vtkIdType> missing;
-                for (vtkIdType cid : idsVec)
-                    if (!owned.contains(cid))
-                        missing.insert(cid);
-                if (missing.isEmpty())
+                if (owned.contains(DomainKey{DomainType::Layer, gid}))
                     keep.insert(gid);
             }
             m_selectedGroups = keep;
@@ -516,27 +509,20 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
 {
     if (currentPickMode() != PickMode::Domain)
     {
-        PickManager::instance().clearDomainHighlight(getPageType(), m_uuid);
+        PickManager::instance().clearDomainSelection(getPageType(), m_uuid);
         return;
     }
 
-    QSet<vtkIdType> selectedCells;
+    QSet<DomainKey> selectedDomains;
     for (int gid : m_selectedGroups)
-    {
-        const auto cids = groupCellIds(gid);
-        for (vtkIdType cid : cids)
-            selectedCells.insert(cid);
-    }
-    QSet<vtkIdType> previewCells;
-    if (previewGroup >= 0)
-    {
-        const auto cids = groupCellIds(previewGroup);
-        for (vtkIdType cid : cids)
-            previewCells.insert(cid);
-    }
+        selectedDomains.insert(DomainKey{DomainType::Layer, gid});
 
-    PickManager::instance().setDomainSelectionCellState(getPageType(), m_uuid, selectedCells, {}, previewCells,
-                                                        {});
+    PickManager::instance().setAppliedDomains(getPageType(), m_uuid, selectedDomains);
+    PickManager::instance().setSelectedDomain(getPageType(), m_uuid, DomainKey{});
+    PickManager::instance().setPreviewDomain(
+        getPageType(), m_uuid,
+        previewGroup >= 0 ? DomainKey{DomainType::Layer, previewGroup} : DomainKey{});
+    PickManager::instance().setPreDeleteDomain(getPageType(), m_uuid, DomainKey{});
 }
 
 PickMode CaveExcavationBodyPage::currentPickMode() const

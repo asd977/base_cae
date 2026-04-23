@@ -30,6 +30,7 @@
 #include <vtkVertexGlyphFilter.h>
 
 #include "services/VisualWidgetService.h"
+#include <services/MeshModuleControllerService.h>
 
 enum class PickMode
 {
@@ -58,8 +59,10 @@ class CORE_EXPORT PickManager : public QObject
                                  GridKind kind) const;
     QVector<vtkIdType> getSelectedPointIds(const QString& domain, const QString& uuid,
                                            GridKind kind) const;
-    QSet<int> getDomainSelectionIds(const QString& domain, const QString& uuid) const;
-    QSet<vtkIdType> getDomainSelectionCellIds(const QString& domain, const QString& uuid) const;
+    QSet<DomainKey> appliedDomains(const QString& domain, const QString& uuid) const;
+    DomainKey selectedDomain(const QString& domain, const QString& uuid) const;
+    DomainKey previewDomain(const QString& domain, const QString& uuid) const;
+    DomainKey preDeleteDomain(const QString& domain, const QString& uuid) const;
 
     QHash<int, QVector<int>> getEdgeNodesByKe(const QString& domain, const QString& uuid,
                                               GridKind kind) const;
@@ -128,21 +131,12 @@ class CORE_EXPORT PickManager : public QObject
     void clearPreviewSelection(const QString& domain, const QString& uuid, PickMode mode);
     void setBoxSelectEnabled(const QString& domain, const QString& uuid, bool enabled);
     void setClickPickEnabled(const QString& domain, const QString& uuid, bool enabled);
-    // 通用 Domain 高亮状态：
-    // - domainIds: 已应用集合（绿色）
-    // - selectedDomainId: 当前选中（红色）
-    // - previewDomainId: 预览（蓝色）
-    // - preDeleteDomainId: 待删除预览（橙色）
-    void setDomainSelectionState(const QString& domain, const QString& uuid,
-                                 const QSet<int>& domainIds, int selectedDomainId,
-                                 int previewDomainId, int preDeleteDomainId);
-    void setDomainSelectionCellState(const QString& domain, const QString& uuid,
-                                     const QSet<vtkIdType>& cellIds,
-                                     const QSet<vtkIdType>& selectedCellIds,
-                                     const QSet<vtkIdType>& previewCellIds,
-                                     const QSet<vtkIdType>& preDeleteCellIds);
-    // 清理材料域高亮。uuid 为空时清理该 domain 的当前高亮态。
-    void clearDomainHighlight(const QString& domain, const QString& uuid = QString());
+    void setAppliedDomains(const QString& domain, const QString& uuid,
+                           const QSet<DomainKey>& keys);
+    void setSelectedDomain(const QString& domain, const QString& uuid, const DomainKey& key);
+    void setPreviewDomain(const QString& domain, const QString& uuid, const DomainKey& key);
+    void setPreDeleteDomain(const QString& domain, const QString& uuid, const DomainKey& key);
+    void clearDomainSelection(const QString& domain, const QString& uuid = QString());
 
   private:
     explicit PickManager(QObject* parent = nullptr);
@@ -188,6 +182,9 @@ class CORE_EXPORT PickManager : public QObject
     void refreshStructureIfNeeded();
     // 将材料域高亮状态写入一套统一的 cell 颜色数组并刷新显示。
     void rebuildDomainHighlightActors();
+    QSet<vtkIdType> cellsOfDomain(const DomainKey& key) const;
+    QSet<DomainKey> domainsOfCell(vtkIdType cid) const;
+    QString domainOwner(const QString& domain, const DomainKey& key) const;
 
     // line node overlay
     void rebuildLineNodeOverlayAll();
@@ -340,17 +337,13 @@ class CORE_EXPORT PickManager : public QObject
     QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerFaceSolidByDomain;
     QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerFaceLineByDomain;
 
-    // ============ domain (MATYPE) highlight overlay ============
-    QHash<QString, QHash<QString, QSet<int>>> m_domainMatypesByDomainUuid;
-    QHash<QString, QHash<QString, int>> m_domainSelectedMatypeByDomainUuid;
-    QHash<QString, QHash<QString, int>> m_domainPreviewMatypeByDomainUuid;
-    QHash<QString, QHash<QString, int>> m_domainPreDeleteMatypeByDomainUuid;
-    QHash<QString, QHash<int, QString>> m_ownerDomainIdByDomain;
-    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_domainCellIdsByDomainUuid;
-    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_domainSelectedCellIdsByDomainUuid;
-    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_domainPreviewCellIdsByDomainUuid;
-    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_domainPreDeleteCellIdsByDomainUuid;
-    QHash<QString, QHash<vtkIdType, QString>> m_ownerDomainCellByDomain;
+    // ============ domain highlight overlay ============
+    QHash<QString, QHash<QString, QSet<DomainKey>>> m_domainsByDomainUuid;
+    QHash<QString, QHash<DomainKey, QString>> m_ownerDomainByDomain;
+    QHash<QString, QHash<DomainKey, QString>> m_prevOwnerDomainByDomain;
+    QHash<QString, QHash<QString, DomainKey>> m_selectedDomainByDomainUuid;
+    QHash<QString, QHash<QString, DomainKey>> m_previewDomainByDomainUuid;
+    QHash<QString, QHash<QString, DomainKey>> m_preDeleteDomainByDomainUuid;
     vtkSmartPointer<vtkDataArray> m_savedDomainCellScalars;
     bool m_domainColoringActive = false;
     bool m_savedDomainScalarVisibility = false;

@@ -399,10 +399,7 @@ bool MeshModuleController::loadProject()
                 }
                 syncPickMapGroupingFromGrid(m_importedGrid);
                 displayCurrentGrid();
-                PickManager::instance().setDomainSelectionState(QStringLiteral("MaterialManager"),
-                                                                 QStringLiteral("__warmup__"),
-                                                                 QSet<int>{}, -1, -1, -1);
-                PickManager::instance().clearDomainHighlight(QStringLiteral("MaterialManager"));
+                PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
             }
         }
     }
@@ -563,6 +560,65 @@ QSet<int> MeshModuleController::getAvailableMatypes() const
         ret.insert(arr->GetValue(i));
     }
     return ret;
+}
+
+QVector<DomainKey> MeshModuleController::availableDomains(DomainType type) const
+{
+    QVector<DomainKey> out;
+    if (type != DomainType::Matype)
+        return out;
+
+    const QSet<int> matypes = getAvailableMatypes();
+    out.reserve(matypes.size());
+    for (int id : matypes)
+        out.push_back(DomainKey{DomainType::Matype, id});
+    std::sort(out.begin(), out.end(), [](const DomainKey& a, const DomainKey& b)
+              {
+                  return a.id < b.id;
+              });
+    return out;
+}
+
+QSet<vtkIdType> MeshModuleController::domainCells(const DomainKey& key) const
+{
+    QSet<vtkIdType> out;
+    if (!m_importedGrid || !key.isValid() || key.type != DomainType::Matype)
+        return out;
+
+    auto* arr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray("MATYPE"));
+    if (!arr)
+        return out;
+
+    const vtkIdType n = qMin(arr->GetNumberOfTuples(), m_importedGrid->GetNumberOfCells());
+    for (vtkIdType cid = 0; cid < n; ++cid)
+    {
+        if (arr->GetValue(cid) == key.id)
+            out.insert(cid);
+    }
+    return out;
+}
+
+QSet<DomainKey> MeshModuleController::domainsOfCell(vtkIdType cid) const
+{
+    QSet<DomainKey> out;
+    if (!m_importedGrid || cid < 0 || cid >= m_importedGrid->GetNumberOfCells())
+        return out;
+
+    auto* arr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray("MATYPE"));
+    if (!arr || cid >= arr->GetNumberOfTuples())
+        return out;
+
+    out.insert(DomainKey{DomainType::Matype, arr->GetValue(cid)});
+    return out;
+}
+
+QString MeshModuleController::domainDisplayText(const DomainKey& key) const
+{
+    if (!key.isValid())
+        return QString();
+    if (key.type == DomainType::Matype)
+        return QStringLiteral("MATYPE %1").arg(key.id);
+    return QStringLiteral("LAYER %1").arg(key.id);
 }
 
 void MeshModuleController::highlightDomainMatypes(const QSet<int>& matypes, int selectedMatype,
@@ -851,10 +907,7 @@ void MeshModuleController::onImportGrid()
 
     displayCurrentGrid();
     syncPickMapGroupingFromGrid(m_importedGrid);
-    PickManager::instance().setDomainSelectionState(QStringLiteral("MaterialManager"),
-                                                     QStringLiteral("__warmup__"), QSet<int>{}, -1,
-                                                     -1, -1);
-    PickManager::instance().clearDomainHighlight(QStringLiteral("MaterialManager"));
+    PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
 }
 
 void MeshModuleController::importMshGrid(QString path)
@@ -874,10 +927,7 @@ void MeshModuleController::importMshGrid(QString path)
 
     displayCurrentGrid();
     syncPickMapGroupingFromGrid(m_importedGrid);
-    PickManager::instance().setDomainSelectionState(QStringLiteral("MaterialManager"),
-                                                     QStringLiteral("__warmup__"), QSet<int>{}, -1,
-                                                     -1, -1);
-    PickManager::instance().clearDomainHighlight(QStringLiteral("MaterialManager"));
+    PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
 }
 
 bool MeshModuleController::importCurrentGmshMesh(QString* errMsg)
@@ -902,10 +952,7 @@ bool MeshModuleController::importCurrentGmshMesh(QString* errMsg)
 
     displayCurrentGrid();
     syncPickMapGroupingFromGrid(m_importedGrid);
-    PickManager::instance().setDomainSelectionState(QStringLiteral("MaterialManager"),
-                                                     QStringLiteral("__warmup__"), QSet<int>{}, -1,
-                                                     -1, -1);
-    PickManager::instance().clearDomainHighlight(QStringLiteral("MaterialManager"));
+    PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
     return true;
 }
 
