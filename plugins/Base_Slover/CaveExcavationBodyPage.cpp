@@ -11,7 +11,6 @@
 #include <vtkCell.h>
 #include <vtkCellData.h>
 #include <vtkDataArray.h>
-#include <vtkIntArray.h>
 #include <vtkUnstructuredGrid.h>
 
 #include <QColor>
@@ -25,6 +24,7 @@
 #include <QSignalBlocker>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <limits>
 #include <set>
 
 CaveExcavationBodyPage::CaveExcavationBodyPage(QWidget* parent)
@@ -70,17 +70,19 @@ void CaveExcavationBodyPage::beforeLoad()
     setupGroupCombo();
     if (currentPickMode() == PickMode::Domain)
     {
-        const QSet<int> owned = PickManager::instance().getDomainSelectionIds(getPageType(), m_uuid);
+        const QSet<vtkIdType> owned = PickManager::instance().getDomainSelectionCellIds(getPageType(), m_uuid);
         if (!m_selectedGroups.isEmpty())
         {
             QSet<int> keep;
             for (int gid : m_selectedGroups)
             {
-                const QSet<int> ids = groupDomainIds(gid);
-                if (ids.isEmpty())
+                const QVector<vtkIdType> idsVec = groupCellIds(gid);
+                if (idsVec.isEmpty())
                     continue;
-                QSet<int> missing = ids;
-                missing.subtract(owned);
+                QSet<vtkIdType> missing;
+                for (vtkIdType cid : idsVec)
+                    if (!owned.contains(cid))
+                        missing.insert(cid);
                 if (missing.isEmpty())
                     keep.insert(gid);
             }
@@ -357,7 +359,7 @@ QVector<int> CaveExcavationBodyPage::availableGroupIds() const
         return out;
     const MshPickMap map = meshSvc->mshPickMapSolid();
 
-    QList<int> keys = map.matypeToCellIds.keys();
+    QList<int> keys = map.layerToCellIds.keys();
 
     std::sort(keys.begin(), keys.end());
     for (int id : keys)
@@ -379,7 +381,7 @@ QVector<vtkIdType> CaveExcavationBodyPage::groupCellIds(int groupId) const
     if (!grid)
         return out;
 
-    QVector<qint64> src = map.matypeToCellIds.value(groupId);
+    QVector<qint64> src = map.layerToCellIds.value(groupId);
 
     out.reserve(src.size());
     for (qint64 c : src)
@@ -401,23 +403,12 @@ QVector<vtkIdType> CaveExcavationBodyPage::groupCellIds(int groupId) const
 QSet<int> CaveExcavationBodyPage::groupDomainIds(int groupId) const
 {
     QSet<int> out;
-    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    vtkUnstructuredGrid* grid = meshSvc ? meshSvc->getVtkUnstructuredGridSolid() : nullptr;
-    if (!grid)
-        grid = PickManager::instance().solidGrid();
-    if (!grid || !grid->GetCellData())
-        return out;
-
-    auto* matypeArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"));
-    if (!matypeArr)
-        return out;
-
     const auto cids = groupCellIds(groupId);
     for (vtkIdType cid : cids)
     {
-        if (cid < 0 || cid >= matypeArr->GetNumberOfTuples())
+        if (cid < 0 || cid > std::numeric_limits<int>::max())
             continue;
-        out.insert(matypeArr->GetValue(cid));
+        out.insert(int(cid));
     }
     return out;
 }
@@ -529,52 +520,23 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
         return;
     }
 
-    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    vtkUnstructuredGrid* grid = meshSvc ? meshSvc->getVtkUnstructuredGridSolid() : nullptr;
-    if (!grid)
-        grid = PickManager::instance().solidGrid();
-    if (!grid || !grid->GetCellData())
+    QSet<vtkIdType> selectedCells;
+    for (int gid : m_selectedGroups)
     {
-        PickManager::instance().clearDomainHighlight(getPageType(), m_uuid);
-        return;
-    }
-
-    auto* matypeArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"));
-    if (!matypeArr)
-    {
-        PickManager::instance().clearDomainHighlight(getPageType(), m_uuid);
-        return;
-    }
-
-    const auto collectGroupMatypes = [&](int gid) -> QSet<int>
-    {
-        QSet<int> out;
         const auto cids = groupCellIds(gid);
         for (vtkIdType cid : cids)
-        {
-            if (cid < 0 || cid >= grid->GetNumberOfCells())
-                continue;
-            out.insert(matypeArr->GetValue(cid));
-        }
-        return out;
-    };
-
-    QSet<int> selectedMatypes;
-    for (int gid : m_selectedGroups)
-        selectedMatypes.unite(collectGroupMatypes(gid));
-
-    int previewMatype = -1;
+            selectedCells.insert(cid);
+    }
+    QSet<vtkIdType> previewCells;
     if (previewGroup >= 0)
     {
-        const QSet<int> previewMatypes = collectGroupMatypes(previewGroup);
-        if (previewMatypes.size() == 1)
-            previewMatype = *previewMatypes.constBegin();
-        else
-            selectedMatypes.unite(previewMatypes);
+        const auto cids = groupCellIds(previewGroup);
+        for (vtkIdType cid : cids)
+            previewCells.insert(cid);
     }
 
-    PickManager::instance().setDomainSelectionState(getPageType(), m_uuid, selectedMatypes, -1,
-                                                     previewMatype, -1);
+    PickManager::instance().setDomainSelectionCellState(getPageType(), m_uuid, selectedCells, {}, previewCells,
+                                                        {});
 }
 
 PickMode CaveExcavationBodyPage::currentPickMode() const

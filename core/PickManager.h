@@ -59,6 +59,7 @@ class CORE_EXPORT PickManager : public QObject
     QVector<vtkIdType> getSelectedPointIds(const QString& domain, const QString& uuid,
                                            GridKind kind) const;
     QSet<int> getDomainSelectionIds(const QString& domain, const QString& uuid) const;
+    QSet<vtkIdType> getDomainSelectionCellIds(const QString& domain, const QString& uuid) const;
 
     QHash<int, QVector<int>> getEdgeNodesByKe(const QString& domain, const QString& uuid,
                                               GridKind kind) const;
@@ -135,6 +136,11 @@ class CORE_EXPORT PickManager : public QObject
     void setDomainSelectionState(const QString& domain, const QString& uuid,
                                  const QSet<int>& domainIds, int selectedDomainId,
                                  int previewDomainId, int preDeleteDomainId);
+    void setDomainSelectionCellState(const QString& domain, const QString& uuid,
+                                     const QSet<vtkIdType>& cellIds,
+                                     const QSet<vtkIdType>& selectedCellIds,
+                                     const QSet<vtkIdType>& previewCellIds,
+                                     const QSet<vtkIdType>& preDeleteCellIds);
     // 清理材料域高亮。uuid 为空时清理该 domain 的当前高亮态。
     void clearDomainHighlight(const QString& domain, const QString& uuid = QString());
 
@@ -340,6 +346,10 @@ class CORE_EXPORT PickManager : public QObject
     QHash<QString, QHash<QString, int>> m_domainPreviewMatypeByDomainUuid;
     QHash<QString, QHash<QString, int>> m_domainPreDeleteMatypeByDomainUuid;
     QHash<QString, QHash<int, QString>> m_ownerDomainIdByDomain;
+    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_domainCellIdsByDomainUuid;
+    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_domainSelectedCellIdsByDomainUuid;
+    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_domainPreviewCellIdsByDomainUuid;
+    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_domainPreDeleteCellIdsByDomainUuid;
 
   signals:
     void nodePicked(const QString& domain, const QString& activeUuid, GridKind kind, vtkIdType pid,

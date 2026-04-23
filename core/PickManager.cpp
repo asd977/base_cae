@@ -360,6 +360,20 @@ void PickManager::setDomainSelectionState(const QString& domain, const QString& 
     rebuildDomainHighlightActors();
 }
 
+void PickManager::setDomainSelectionCellState(const QString& domain, const QString& uuid,
+                                              const QSet<vtkIdType>& cellIds,
+                                              const QSet<vtkIdType>& selectedCellIds,
+                                              const QSet<vtkIdType>& previewCellIds,
+                                              const QSet<vtkIdType>& preDeleteCellIds)
+{
+    m_domainCellIdsByDomainUuid[domain][uuid] = cellIds;
+    m_domainSelectedCellIdsByDomainUuid[domain][uuid] = selectedCellIds;
+    m_domainPreviewCellIdsByDomainUuid[domain][uuid] = previewCellIds;
+    m_domainPreDeleteCellIdsByDomainUuid[domain][uuid] = preDeleteCellIds;
+    refreshStructureIfNeeded();
+    rebuildDomainHighlightActors();
+}
+
 void PickManager::clearDomainHighlight(const QString& domain, const QString& uuid)
 {
     if (uuid.isEmpty())
@@ -369,6 +383,10 @@ void PickManager::clearDomainHighlight(const QString& domain, const QString& uui
         m_domainPreviewMatypeByDomainUuid.remove(domain);
         m_domainPreDeleteMatypeByDomainUuid.remove(domain);
         m_ownerDomainIdByDomain.remove(domain);
+        m_domainCellIdsByDomainUuid.remove(domain);
+        m_domainSelectedCellIdsByDomainUuid.remove(domain);
+        m_domainPreviewCellIdsByDomainUuid.remove(domain);
+        m_domainPreDeleteCellIdsByDomainUuid.remove(domain);
     }
     else
     {
@@ -384,6 +402,10 @@ void PickManager::clearDomainHighlight(const QString& domain, const QString& uui
         m_domainSelectedMatypeByDomainUuid[domain].remove(uuid);
         m_domainPreviewMatypeByDomainUuid[domain].remove(uuid);
         m_domainPreDeleteMatypeByDomainUuid[domain].remove(uuid);
+        m_domainCellIdsByDomainUuid[domain].remove(uuid);
+        m_domainSelectedCellIdsByDomainUuid[domain].remove(uuid);
+        m_domainPreviewCellIdsByDomainUuid[domain].remove(uuid);
+        m_domainPreDeleteCellIdsByDomainUuid[domain].remove(uuid);
     }
 
     rebuildDomainHighlightActors();
@@ -1794,7 +1816,16 @@ void PickManager::rebuildDomainHighlightActors()
         m_domainPreDeleteMatypeByDomainUuid.value(m_currentDomain).value(m_currentUUid, -1);
     const bool hasSelection = !matypes.isEmpty() || selectedMatype >= 0 || previewMatype >= 0 ||
                               preDeleteMatype >= 0;
-    if (!hasSelection)
+    const QSet<vtkIdType> cellIds = m_domainCellIdsByDomainUuid.value(m_currentDomain).value(m_currentUUid);
+    const QSet<vtkIdType> selectedCellIds =
+        m_domainSelectedCellIdsByDomainUuid.value(m_currentDomain).value(m_currentUUid);
+    const QSet<vtkIdType> previewCellIds =
+        m_domainPreviewCellIdsByDomainUuid.value(m_currentDomain).value(m_currentUUid);
+    const QSet<vtkIdType> preDeleteCellIds =
+        m_domainPreDeleteCellIdsByDomainUuid.value(m_currentDomain).value(m_currentUUid);
+    const bool hasCellSelection = !cellIds.isEmpty() || !selectedCellIds.isEmpty() ||
+                                  !previewCellIds.isEmpty() || !preDeleteCellIds.isEmpty();
+    if (!hasSelection && !hasCellSelection)
     {
         mapper->ScalarVisibilityOff();
         m_visual->render();
@@ -1843,15 +1874,32 @@ void PickManager::rebuildDomainHighlightActors()
     {
         int matype = -1;
         const bool hasMatype = resolveMatype(cid, matype);
+        vtkIdType srcCid = cid;
+        if (origCellIds && cid < origCellIds->GetNumberOfTuples())
+            srcCid = origCellIds->GetValue(cid);
         const unsigned char* c = normal;
-        if (hasMatype && matypes.contains(matype))
-            c = appliedColor;
-        if (hasMatype && selectedMatype >= 0 && matype == selectedMatype)
-            c = selectedColor;
-        if (hasMatype && previewMatype >= 0 && matype == previewMatype)
-            c = previewColor;
-        if (hasMatype && preDeleteMatype >= 0 && matype == preDeleteMatype)
-            c = preDeleteColor;
+        if (hasCellSelection)
+        {
+            if (cellIds.contains(srcCid))
+                c = appliedColor;
+            if (selectedCellIds.contains(srcCid))
+                c = selectedColor;
+            if (previewCellIds.contains(srcCid))
+                c = previewColor;
+            if (preDeleteCellIds.contains(srcCid))
+                c = preDeleteColor;
+        }
+        else
+        {
+            if (hasMatype && matypes.contains(matype))
+                c = appliedColor;
+            if (hasMatype && selectedMatype >= 0 && matype == selectedMatype)
+                c = selectedColor;
+            if (hasMatype && previewMatype >= 0 && matype == previewMatype)
+                c = previewColor;
+            if (hasMatype && preDeleteMatype >= 0 && matype == preDeleteMatype)
+                c = preDeleteColor;
+        }
         colors->SetTypedTuple(cid, c);
     }
 
@@ -2876,6 +2924,11 @@ QVector<vtkIdType> PickManager::getSelectedPointIds(const QString& domain, const
 QSet<int> PickManager::getDomainSelectionIds(const QString& domain, const QString& uuid) const
 {
     return m_domainMatypesByDomainUuid.value(domain).value(uuid);
+}
+
+QSet<vtkIdType> PickManager::getDomainSelectionCellIds(const QString& domain, const QString& uuid) const
+{
+    return m_domainCellIdsByDomainUuid.value(domain).value(uuid);
 }
 
 // ===================== getIdList =====================
