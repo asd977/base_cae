@@ -366,7 +366,29 @@ void PickManager::setDomainSelectionCellState(const QString& domain, const QStri
                                               const QSet<vtkIdType>& previewCellIds,
                                               const QSet<vtkIdType>& preDeleteCellIds)
 {
-    m_domainCellIdsByDomainUuid[domain][uuid] = cellIds;
+    auto& uuid2set = m_domainCellIdsByDomainUuid[domain];
+    auto& owners = m_ownerDomainCellByDomain[domain];
+
+    const QSet<vtkIdType> oldSet = uuid2set.value(uuid);
+    const QSet<vtkIdType> removed = oldSet - cellIds;
+    for (vtkIdType cid : removed)
+    {
+        if (owners.value(cid) == uuid)
+            owners.remove(cid);
+    }
+
+    for (auto it = uuid2set.begin(); it != uuid2set.end(); ++it)
+    {
+        if (it.key() == uuid)
+            continue;
+        for (vtkIdType cid : cellIds)
+            it.value().remove(cid);
+    }
+
+    for (vtkIdType cid : cellIds)
+        owners[cid] = uuid;
+    uuid2set[uuid] = cellIds;
+
     m_domainSelectedCellIdsByDomainUuid[domain][uuid] = selectedCellIds;
     m_domainPreviewCellIdsByDomainUuid[domain][uuid] = previewCellIds;
     m_domainPreDeleteCellIdsByDomainUuid[domain][uuid] = preDeleteCellIds;
@@ -387,6 +409,7 @@ void PickManager::clearDomainHighlight(const QString& domain, const QString& uui
         m_domainSelectedCellIdsByDomainUuid.remove(domain);
         m_domainPreviewCellIdsByDomainUuid.remove(domain);
         m_domainPreDeleteCellIdsByDomainUuid.remove(domain);
+        m_ownerDomainCellByDomain.remove(domain);
     }
     else
     {
@@ -402,10 +425,17 @@ void PickManager::clearDomainHighlight(const QString& domain, const QString& uui
         m_domainSelectedMatypeByDomainUuid[domain].remove(uuid);
         m_domainPreviewMatypeByDomainUuid[domain].remove(uuid);
         m_domainPreDeleteMatypeByDomainUuid[domain].remove(uuid);
+        const QSet<vtkIdType> myCells = m_domainCellIdsByDomainUuid.value(domain).value(uuid);
         m_domainCellIdsByDomainUuid[domain].remove(uuid);
         m_domainSelectedCellIdsByDomainUuid[domain].remove(uuid);
         m_domainPreviewCellIdsByDomainUuid[domain].remove(uuid);
         m_domainPreDeleteCellIdsByDomainUuid[domain].remove(uuid);
+        auto& cellOwners = m_ownerDomainCellByDomain[domain];
+        for (vtkIdType cid : myCells)
+        {
+            if (cellOwners.value(cid) == uuid)
+                cellOwners.remove(cid);
+        }
     }
 
     rebuildDomainHighlightActors();
@@ -1798,6 +1828,9 @@ void PickManager::restoreFaceColoring()
 
 void PickManager::rebuildDomainHighlightActors()
 {
+    if (m_pickMode != PickMode::Domain)
+        return;
+
     // 统一颜色写回：使用一套 direct scalar 数组，不再在不同流程切换多种着色结构。
     if (!m_visual || !m_gridSolid || !m_solidPickDataSet)
         return;
