@@ -1847,7 +1847,9 @@ void PickManager::rebuildDomainHighlightActors()
             m_savedDomainCellScalars = nullptr;
             m_domainColoringActive = false;
             m_solidPickDataSet->Modified();
-            mapper->ScalarVisibilityOff();
+            mapper->SetScalarMode(m_savedDomainScalarMode);
+            mapper->SetColorMode(m_savedDomainColorMode);
+            mapper->SetScalarVisibility(m_savedDomainScalarVisibility ? 1 : 0);
             m_visual->render();
         }
         return;
@@ -1880,8 +1882,10 @@ void PickManager::rebuildDomainHighlightActors()
             m_savedDomainCellScalars = nullptr;
             m_domainColoringActive = false;
             m_solidPickDataSet->Modified();
+            mapper->SetScalarMode(m_savedDomainScalarMode);
+            mapper->SetColorMode(m_savedDomainColorMode);
+            mapper->SetScalarVisibility(m_savedDomainScalarVisibility ? 1 : 0);
         }
-        mapper->ScalarVisibilityOff();
         m_visual->render();
         return;
     }
@@ -1961,6 +1965,9 @@ void PickManager::rebuildDomainHighlightActors()
     {
         if (auto* cellData = m_solidPickDataSet->GetCellData())
             m_savedDomainCellScalars = cellData->GetScalars();
+        m_savedDomainScalarVisibility = mapper->GetScalarVisibility() != 0;
+        m_savedDomainScalarMode = mapper->GetScalarMode();
+        m_savedDomainColorMode = mapper->GetColorMode();
         m_domainColoringActive = true;
     }
     m_solidPickDataSet->GetCellData()->SetScalars(colors);

@@ -353,6 +353,9 @@ class CORE_EXPORT PickManager : public QObject
     QHash<QString, QHash<vtkIdType, QString>> m_ownerDomainCellByDomain;
     vtkSmartPointer<vtkDataArray> m_savedDomainCellScalars;
     bool m_domainColoringActive = false;
+    bool m_savedDomainScalarVisibility = false;
+    int m_savedDomainScalarMode = 0;
+    int m_savedDomainColorMode = 0;
 
   signals:
     void nodePicked(const QString& domain, const QString& activeUuid, GridKind kind, vtkIdType pid,
