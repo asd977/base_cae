@@ -520,6 +520,7 @@ void PickManager::deactivate(const QString& domain, const QString& uuid, PickMod
 
     m_currentDomain.clear();
     m_currentUUid.clear();
+    m_pickMode = PickMode::Node;
     restoreFaceColoring();
 
     if (m_selActor)
