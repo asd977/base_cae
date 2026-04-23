@@ -17,8 +17,28 @@
 #include <QVBoxLayout>
 #include <algorithm>
 #include <PickManager.h>
+#include <ServiceRegistry.h>
+#include <services/MeshModuleControllerService.h>
+#include <struct/MeshMap.h>
 
 #include "MaterialManager.h"
+
+namespace
+{
+QString matypeDisplayText(int matype)
+{
+    if (matype <= 0)
+        return QString();
+    if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+    {
+        const MshPickMap pick = meshService->mshPickMapSolid();
+        const QString name = pick.physIdToName.value(matype).trimmed();
+        if (!name.isEmpty())
+            return name;
+    }
+    return QString::number(matype);
+}
+}
 
 MaterialEntryWidget::MaterialEntryWidget(MaterialManager* manager, QWidget* parent)
     : BasePage("MaterialEntryWidget"), m_materialManager(manager), m_isUpdating(false),
@@ -247,7 +267,7 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     std::sort(matypes.begin(), matypes.end());
     for (int value : matypes)
     {
-        m_matypeCombo->addItem(QString::number(value), value);
+        m_matypeCombo->addItem(matypeDisplayText(value), value);
     }
 
     connect(m_matypeCombo, &CustomComboBox::itemHovered, this,
@@ -276,7 +296,8 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     m_appliedMatypesList = new QListWidget(appliedRowWidget);
     for (int value : appliedList)
     {
-        m_appliedMatypesList->addItem(QString::number(value));
+        auto* item = new QListWidgetItem(matypeDisplayText(value), m_appliedMatypesList);
+        item->setData(Qt::UserRole, value);
     }
 
     connect(m_appliedMatypesList, &QListWidget::currentTextChanged, this,
@@ -425,7 +446,8 @@ void MaterialEntryWidget::refreshAppliedMatypes(const QSet<int>& appliedMatypes,
     std::sort(appliedList.begin(), appliedList.end());
     for (int value : appliedList)
     {
-        m_appliedMatypesList->addItem(QString::number(value));
+        auto* item = new QListWidgetItem(matypeDisplayText(value), m_appliedMatypesList);
+        item->setData(Qt::UserRole, value);
     }
 
     int comboIndex = (selectedMatype >= 0) ? m_matypeCombo->findData(selectedMatype) : 0;
@@ -510,12 +532,12 @@ void MaterialEntryWidget::onApplyMatypeClicked()
 
 void MaterialEntryWidget::onAppliedMatypeSelected(const QString& text)
 {
+    Q_UNUSED(text);
     if (m_isUpdating)
         return;
 
-    bool ok = false;
-    int matype = text.toInt(&ok);
-    if (!ok)
+    auto* item = m_appliedMatypesList ? m_appliedMatypesList->currentItem() : nullptr;
+    if (!item)
     {
         // 清选择 => 取消预删除
         m_preDeleteMatype = -1;
@@ -524,6 +546,9 @@ void MaterialEntryWidget::onAppliedMatypeSelected(const QString& text)
         m_materialManager->refreshMatypeHighlight(m_entryId);
         return;
     }
+    const int matype = item->data(Qt::UserRole).toInt();
+    if (matype <= 0)
+        return;
 
     // ★ 只设置“预删除”，不改变 Selected
     m_preDeleteMatype = matype;
@@ -681,7 +706,7 @@ void MaterialEntryWidget::onRemoveMatypeClicked()
         return;
 
     bool ok = false;
-    int matype = item->text().toInt(&ok);
+    int matype = item->data(Qt::UserRole).toInt(&ok);
     if (!ok)
         return;
 
@@ -706,7 +731,7 @@ void MaterialEntryWidget::updateAppliedListColors()
     {
         auto* it = m_appliedMatypesList->item(i);
         bool ok = false;
-        int v = it->text().toInt(&ok);
+        int v = it->data(Qt::UserRole).toInt(&ok);
         if (!ok)
         {
             it->setBackground(QBrush());
