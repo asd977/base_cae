@@ -325,14 +325,14 @@ void PickManager::updateStructure()
         rebuildLineNodeOverlayAll();
 }
 
-void PickManager::highlightDomainsByMatype(const QString& domain, const QString& uuid,
-                                           const QSet<int>& matypes, int selectedMatype,
-                                           int previewMatype, int preDeleteMatype)
+void PickManager::setDomainSelectionState(const QString& domain, const QString& uuid,
+                                          const QSet<int>& domainIds, int selectedDomainId,
+                                          int previewDomainId, int preDeleteDomainId)
 {
-    m_domainMatypesByDomainUuid[domain][uuid] = matypes;
-    m_domainSelectedMatypeByDomainUuid[domain][uuid] = selectedMatype;
-    m_domainPreviewMatypeByDomainUuid[domain][uuid] = previewMatype;
-    m_domainPreDeleteMatypeByDomainUuid[domain][uuid] = preDeleteMatype;
+    m_domainMatypesByDomainUuid[domain][uuid] = domainIds;
+    m_domainSelectedMatypeByDomainUuid[domain][uuid] = selectedDomainId;
+    m_domainPreviewMatypeByDomainUuid[domain][uuid] = previewDomainId;
+    m_domainPreDeleteMatypeByDomainUuid[domain][uuid] = preDeleteDomainId;
     refreshStructureIfNeeded();
     rebuildDomainHighlightActors();
 }

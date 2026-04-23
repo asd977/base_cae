@@ -399,7 +399,7 @@ bool MeshModuleController::loadProject()
                 }
                 syncPickMapGroupingFromGrid(m_importedGrid);
                 displayCurrentGrid();
-                PickManager::instance().highlightDomainsByMatype(QStringLiteral("MaterialManager"),
+                PickManager::instance().setDomainSelectionState(QStringLiteral("MaterialManager"),
                                                                  QStringLiteral("__warmup__"),
                                                                  QSet<int>{}, -1, -1, -1);
                 PickManager::instance().clearDomainHighlight(QStringLiteral("MaterialManager"));
@@ -851,7 +851,7 @@ void MeshModuleController::onImportGrid()
 
     displayCurrentGrid();
     syncPickMapGroupingFromGrid(m_importedGrid);
-    PickManager::instance().highlightDomainsByMatype(QStringLiteral("MaterialManager"),
+    PickManager::instance().setDomainSelectionState(QStringLiteral("MaterialManager"),
                                                      QStringLiteral("__warmup__"), QSet<int>{}, -1,
                                                      -1, -1);
     PickManager::instance().clearDomainHighlight(QStringLiteral("MaterialManager"));
@@ -874,7 +874,7 @@ void MeshModuleController::importMshGrid(QString path)
 
     displayCurrentGrid();
     syncPickMapGroupingFromGrid(m_importedGrid);
-    PickManager::instance().highlightDomainsByMatype(QStringLiteral("MaterialManager"),
+    PickManager::instance().setDomainSelectionState(QStringLiteral("MaterialManager"),
                                                      QStringLiteral("__warmup__"), QSet<int>{}, -1,
                                                      -1, -1);
     PickManager::instance().clearDomainHighlight(QStringLiteral("MaterialManager"));
@@ -902,7 +902,7 @@ bool MeshModuleController::importCurrentGmshMesh(QString* errMsg)
 
     displayCurrentGrid();
     syncPickMapGroupingFromGrid(m_importedGrid);
-    PickManager::instance().highlightDomainsByMatype(QStringLiteral("MaterialManager"),
+    PickManager::instance().setDomainSelectionState(QStringLiteral("MaterialManager"),
                                                      QStringLiteral("__warmup__"), QSet<int>{}, -1,
                                                      -1, -1);
     PickManager::instance().clearDomainHighlight(QStringLiteral("MaterialManager"));

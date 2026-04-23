@@ -534,7 +534,7 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
             selectedMatypes.unite(previewMatypes);
     }
 
-    PickManager::instance().highlightDomainsByMatype(getPageType(), m_uuid, selectedMatypes, -1,
+    PickManager::instance().setDomainSelectionState(getPageType(), m_uuid, selectedMatypes, -1,
                                                      previewMatype, -1);
 }
 

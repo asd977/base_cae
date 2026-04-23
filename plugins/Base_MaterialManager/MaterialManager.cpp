@@ -1515,7 +1515,7 @@ void MaterialManager::highlightMatypes(const QString& entryId, const QSet<int>& 
     }
     const QString domain = m_pickDomain.isEmpty() ? QStringLiteral("MaterialManager") : m_pickDomain;
     const QString uuid = m_pickUuid.isEmpty() ? entryId : m_pickUuid;
-    PickManager::instance().highlightDomainsByMatype(domain, uuid, matypes, selectedMatype, previewMatype,
+    PickManager::instance().setDomainSelectionState(domain, uuid, matypes, selectedMatype, previewMatype,
                                                      preDeleteMatype);
 }
 
