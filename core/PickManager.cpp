@@ -331,7 +331,6 @@ void PickManager::setDomainSelectionState(const QString& domain, const QString& 
 {
     auto& uuid2set = m_domainMatypesByDomainUuid[domain];
     auto& owners = m_ownerDomainIdByDomain[domain];
-    auto& prevOwners = m_prevOwnerDomainIdByDomain[domain];
 
     const QSet<int> oldSet = uuid2set.value(uuid);
 
@@ -340,27 +339,19 @@ void PickManager::setDomainSelectionState(const QString& domain, const QString& 
     {
         if (owners.value(id) == uuid)
             owners.remove(id);
-
-        const QString oldUid = prevOwners.take(id);
-        if (!oldUid.isEmpty())
-        {
-            owners[id] = oldUid;
-            uuid2set[oldUid].insert(id);
-        }
     }
 
-    QSet<int> newOwned = domainIds;
-    for (int id : domainIds)
+    for (auto it = uuid2set.begin(); it != uuid2set.end(); ++it)
     {
-        const QString currentOwner = owners.value(id);
-        if (!currentOwner.isEmpty() && currentOwner != uuid)
-        {
-            prevOwners[id] = currentOwner;
-            uuid2set[currentOwner].remove(id);
-        }
-        owners[id] = uuid;
+        if (it.key() == uuid)
+            continue;
+        for (int id : domainIds)
+            it.value().remove(id);
     }
-    uuid2set[uuid] = newOwned;
+
+    for (int id : domainIds)
+        owners[id] = uuid;
+    uuid2set[uuid] = domainIds;
 
     m_domainSelectedMatypeByDomainUuid[domain][uuid] = selectedDomainId;
     m_domainPreviewMatypeByDomainUuid[domain][uuid] = previewDomainId;
@@ -378,24 +369,16 @@ void PickManager::clearDomainHighlight(const QString& domain, const QString& uui
         m_domainPreviewMatypeByDomainUuid.remove(domain);
         m_domainPreDeleteMatypeByDomainUuid.remove(domain);
         m_ownerDomainIdByDomain.remove(domain);
-        m_prevOwnerDomainIdByDomain.remove(domain);
     }
     else
     {
         auto& uuid2set = m_domainMatypesByDomainUuid[domain];
         auto& owners = m_ownerDomainIdByDomain[domain];
-        auto& prevOwners = m_prevOwnerDomainIdByDomain[domain];
         const QSet<int> mySet = uuid2set.value(uuid);
         for (int id : mySet)
         {
             if (owners.value(id) == uuid)
                 owners.remove(id);
-            const QString oldUid = prevOwners.take(id);
-            if (!oldUid.isEmpty())
-            {
-                owners[id] = oldUid;
-                uuid2set[oldUid].insert(id);
-            }
         }
         uuid2set.remove(uuid);
         m_domainSelectedMatypeByDomainUuid[domain].remove(uuid);
