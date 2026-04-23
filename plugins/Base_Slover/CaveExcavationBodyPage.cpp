@@ -69,18 +69,22 @@ void CaveExcavationBodyPage::beforeLoad()
     setupGroupCombo();
     updatePersistentSelectionFaces();
     updateGroupDomainHighlight();
-    PickManager::instance().activate(getPageType(), m_uuid, currentPickMode());
+    const PickMode mode = currentPickMode();
+    PickManager::instance().activate(getPageType(), m_uuid, mode);
     const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
-    const bool allowFacePick = (meshDim == 2);
+    const bool allowFacePick = (meshDim == 2 && mode == PickMode::Face);
     PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, allowFacePick);
     PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, allowFacePick);
 }
 
 void CaveExcavationBodyPage::beforeUnload()
 {
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
-    PickManager::instance().deactivate(getPageType(), m_uuid, currentPickMode());
-    PickManager::instance().clearDomainHighlight(getPageType(), m_uuid);
+    const PickMode mode = currentPickMode();
+    if (mode == PickMode::Face)
+        PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, mode);
+    PickManager::instance().deactivate(getPageType(), m_uuid, mode);
+    if (mode != PickMode::Domain)
+        PickManager::instance().clearDomainHighlight(getPageType(), m_uuid);
 }
 
 QJsonObject CaveExcavationBodyPage::saveJson()
@@ -182,8 +186,11 @@ void CaveExcavationBodyPage::onClearClicked()
     m_selectedGroups.clear();
     refreshSelectedGroupList();
     refreshGroupComboMarks();
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
-    PickManager::instance().clearSelection(getPageType(), m_uuid, currentPickMode());
+    if (currentPickMode() == PickMode::Face)
+    {
+        PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Face);
+        PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Face);
+    }
     updateGroupDomainHighlight();
 }
 
@@ -247,7 +254,8 @@ void CaveExcavationBodyPage::onGroupDropdownClosed()
         m_groupCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
     m_lastHoveredIndex = -1;
     refreshGroupComboMarks();
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
+    if (currentPickMode() == PickMode::Face)
+        PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Face);
     // 关闭下拉后取消 hover 预览，仅保留“已选分组”的持久高亮。
     updateGroupDomainHighlight();
 }
@@ -546,5 +554,6 @@ CaveExcavationBodyPage::GroupSource CaveExcavationBodyPage::sourceFromString(con
 
 PickMode CaveExcavationBodyPage::currentPickMode() const
 {
-    return PickMode::Face;
+    const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    return (meshDim == 2) ? PickMode::Face : PickMode::Domain;
 }
