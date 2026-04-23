@@ -330,13 +330,26 @@ void PickManager::highlightDomainsByMatype(const QString& domain, const QString&
                                            const QSet<int>& matypes, int selectedMatype,
                                            int previewMatype, int preDeleteMatype)
 {
-    // 按 domain+uuid 保存状态；渲染时只显示当前 active 的那一条（类似点/面选择的归属管理）。
     DomainHighlightState st;
-    st.ids = matypes;
-    st.selectedId = selectedMatype;
-    st.previewId = previewMatype;
-    st.preDeleteId = preDeleteMatype;
-    st.scalarKind = DomainHighlightState::ScalarKind::Matype;
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    const MshPickMap map = meshSvc ? meshSvc->mshPickMapSolid() : MshPickMap{};
+    auto appendCells = [&st](const QVector<qint64>& cids, bool preview)
+    {
+        for (qint64 c : cids)
+        {
+            const vtkIdType cid = static_cast<vtkIdType>(c);
+            (preview ? st.previewCellIds : st.cellIds).insert(cid);
+        }
+    };
+    for (int id : matypes)
+        appendCells(map.matypeToCellIds.value(id), false);
+    if (selectedMatype >= 0)
+        appendCells(map.matypeToCellIds.value(selectedMatype), false);
+    if (previewMatype >= 0)
+        appendCells(map.matypeToCellIds.value(previewMatype), true);
+    if (preDeleteMatype >= 0)
+        appendCells(map.matypeToCellIds.value(preDeleteMatype), true);
+
     m_domainHighlightStates[domain][uuid] = st;
     m_activeHighlightDomain = domain;
     m_activeHighlightUuid = uuid;
@@ -349,11 +362,25 @@ void PickManager::highlightDomainsByLayer(const QString& domain, const QString& 
                                           int previewLayer, int preDeleteLayer)
 {
     DomainHighlightState st;
-    st.ids = layers;
-    st.selectedId = selectedLayer;
-    st.previewId = previewLayer;
-    st.preDeleteId = preDeleteLayer;
-    st.scalarKind = DomainHighlightState::ScalarKind::Layer;
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    const MshPickMap map = meshSvc ? meshSvc->mshPickMapSolid() : MshPickMap{};
+    auto appendCells = [&st](const QVector<qint64>& cids, bool preview)
+    {
+        for (qint64 c : cids)
+        {
+            const vtkIdType cid = static_cast<vtkIdType>(c);
+            (preview ? st.previewCellIds : st.cellIds).insert(cid);
+        }
+    };
+    for (int id : layers)
+        appendCells(map.layerToCellIds.value(id), false);
+    if (selectedLayer >= 0)
+        appendCells(map.layerToCellIds.value(selectedLayer), false);
+    if (previewLayer >= 0)
+        appendCells(map.layerToCellIds.value(previewLayer), true);
+    if (preDeleteLayer >= 0)
+        appendCells(map.layerToCellIds.value(preDeleteLayer), true);
+
     m_domainHighlightStates[domain][uuid] = st;
     m_activeHighlightDomain = domain;
     m_activeHighlightUuid = uuid;
@@ -1797,9 +1824,8 @@ void PickManager::rebuildDomainHighlightActors()
         }
     }
 
-    const bool hasSelection = hasActiveState && (!activeState.ids.isEmpty() || activeState.selectedId >= 0 ||
-                                                  activeState.previewId >= 0 ||
-                                                  activeState.preDeleteId >= 0);
+    const bool hasSelection =
+        hasActiveState && (!activeState.cellIds.isEmpty() || !activeState.previewCellIds.isEmpty());
     if (!hasSelection)
     {
         mapper->ScalarVisibilityOff();
@@ -1807,21 +1833,8 @@ void PickManager::rebuildDomainHighlightActors()
         return;
     }
 
-    const bool useLayer = (activeState.scalarKind == DomainHighlightState::ScalarKind::Layer);
-    const char* scalarName = useLayer ? "LAYER" : "MATYPE";
-    auto* scalarArr = vtkIntArray::SafeDownCast(m_solidPickDataSet->GetCellData()->GetArray(scalarName));
     auto* origCellIds =
         vtkIdTypeArray::SafeDownCast(m_solidPickDataSet->GetCellData()->GetArray("vtkOriginalCellIds"));
-    auto* sourceScalarArr = vtkIntArray::SafeDownCast(m_gridSolid->GetCellData()->GetArray(scalarName));
-    QHash<qint64, int> layerByCellId;
-    if (useLayer)
-    {
-        if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
-            layerByCellId = meshSvc->mshPickMapSolid().cellIdToLayer;
-    }
-
-    if (!scalarArr && (!origCellIds || !sourceScalarArr) && (!useLayer || layerByCellId.isEmpty()))
-        return;
 
     const vtkIdType nCells = m_solidPickDataSet->GetNumberOfCells();
     auto colors = vtkSmartPointer<vtkUnsignedCharArray>::New();
@@ -1831,55 +1844,18 @@ void PickManager::rebuildDomainHighlightActors()
 
     const unsigned char normal[3] = {179, 179, 179};
     const unsigned char appliedColor[3] = {64, 191, 64};
-    const unsigned char selectedColor[3] = {230, 51, 51};
     const unsigned char previewColor[3] = {51, 102, 230};
-    const unsigned char preDeleteColor[3] = {230, 140, 51};
-
-    auto resolveScalar = [&](vtkIdType cid, vtkIntArray* pickArr, vtkIntArray* srcArr,
-                             int& outValue) -> bool
-    {
-        if (pickArr && cid < pickArr->GetNumberOfTuples())
-        {
-            outValue = pickArr->GetValue(cid);
-            return true;
-        }
-        if (origCellIds && srcArr && cid < origCellIds->GetNumberOfTuples())
-        {
-            const vtkIdType srcCid = origCellIds->GetValue(cid);
-            if (srcCid >= 0 && srcCid < srcArr->GetNumberOfTuples())
-            {
-                outValue = srcArr->GetValue(srcCid);
-                return true;
-            }
-        }
-        return false;
-    };
 
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
-        int value = -1;
-        bool hasValue = resolveScalar(cid, scalarArr, sourceScalarArr, value);
-        if (!hasValue && useLayer && !layerByCellId.isEmpty())
-        {
-            vtkIdType srcCid = cid;
-            if (origCellIds && cid < origCellIds->GetNumberOfTuples())
-                srcCid = origCellIds->GetValue(cid);
-            const auto it = layerByCellId.constFind(static_cast<qint64>(srcCid));
-            if (it != layerByCellId.constEnd())
-            {
-                value = *it;
-                hasValue = true;
-            }
-        }
+        vtkIdType srcCid = cid;
+        if (origCellIds && cid < origCellIds->GetNumberOfTuples())
+            srcCid = origCellIds->GetValue(cid);
         const unsigned char* c = normal;
-        if (hasValue && activeState.ids.contains(value))
+        if (activeState.cellIds.contains(srcCid))
             c = appliedColor;
-        if (hasValue && activeState.selectedId >= 0 && value == activeState.selectedId)
-            c = selectedColor;
-        if (hasValue && activeState.previewId >= 0 && value == activeState.previewId)
+        if (activeState.previewCellIds.contains(srcCid))
             c = previewColor;
-        if (hasValue && activeState.preDeleteId >= 0 && value == activeState.preDeleteId)
-            c = preDeleteColor;
         colors->SetTypedTuple(cid, c);
     }
 
