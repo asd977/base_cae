@@ -612,26 +612,37 @@ void MeshGroupingWidget::refreshGroupList()
         table->clearContents();
         table->setRowCount(0);
 
-        QMap<QString, int> counter;
+        struct RowInfo
+        {
+            QString valueText;
+            QString nameText;
+            int count = 0;
+        };
+        QMap<QString, RowInfo> rows;
         for (auto it = valueToCells.begin(); it != valueToCells.end(); ++it)
         {
             const int value = it.key();
             for (qint64 cid : it.value())
             {
                 const QString g = cellToGroupName.value(cid).trimmed();
-                const QString key = QString("%1|%2").arg(value).arg(g.isEmpty() ? "(未命名)" : g);
-                counter[key] += 1;
+                const QString displayName = g.isEmpty() ? QString("(未命名)") : g;
+                // 如果有字符串分组名（如 INP/ELSET），优先直接显示名称，而不是数字编号
+                const QString displayValue = g.isEmpty() ? QString::number(value) : g;
+                const QString key = displayValue + "|" + displayName;
+                auto& r = rows[key];
+                r.valueText = displayValue;
+                r.nameText = displayName;
+                r.count += 1;
             }
         }
 
-        table->setRowCount(counter.size());
+        table->setRowCount(rows.size());
         int row = 0;
-        for (auto it = counter.begin(); it != counter.end(); ++it, ++row)
+        for (auto it = rows.begin(); it != rows.end(); ++it, ++row)
         {
-            const QStringList parts = it.key().split('|');
-            auto* itemVal = new QTableWidgetItem(parts.value(0));
-            auto* itemName = new QTableWidgetItem(parts.value(1));
-            auto* itemCount = new QTableWidgetItem(QString::number(it.value()));
+            auto* itemVal = new QTableWidgetItem(it.value().valueText);
+            auto* itemName = new QTableWidgetItem(it.value().nameText);
+            auto* itemCount = new QTableWidgetItem(QString::number(it.value().count));
             itemVal->setTextAlignment(Qt::AlignCenter);
             itemCount->setTextAlignment(Qt::AlignCenter);
             table->setItem(row, 0, itemVal);
