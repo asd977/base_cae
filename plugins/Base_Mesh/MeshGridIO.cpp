@@ -442,6 +442,27 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importInp(const QString& fileNa
         return nullptr;
     }
     ensureDefaultArrays(grid);
+
+    auto* cd = grid->GetCellData();
+    auto* matype = cd ? vtkIntArray::SafeDownCast(cd->GetArray("MATYPE")) : nullptr;
+    auto* layer = cd ? vtkIntArray::SafeDownCast(cd->GetArray("LAYER")) : nullptr;
+    if (matype && layer)
+    {
+        for (auto it = m_mshPickMap.volPhysToCellIds.constBegin();
+             it != m_mshPickMap.volPhysToCellIds.constEnd(); ++it)
+        {
+            const int physId = it.key();
+            for (qint64 rawCid : it.value())
+            {
+                const vtkIdType cid = static_cast<vtkIdType>(rawCid);
+                if (cid < 0 || cid >= grid->GetNumberOfCells())
+                    continue;
+                matype->SetValue(cid, physId);
+                layer->SetValue(cid, physId);
+            }
+        }
+        grid->GetCellData()->SetScalars(matype);
+    }
     return grid;
 }
 
@@ -2059,9 +2080,9 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
     const double d1 = 0.0, d2 = 0.0, d3 = 0.0;
     const int iobject = 0, ivertical = 2;
 
-    // 仅导出目标维度单元：
-    // - 3D 模型导出体单元（dim=3）
-    // - 2D 模型导出面单元（dim=2）
+    // 导出目标维度单元：
+    // - 3D 模型导出体单元 + 线单元（锚杆/杆单元保留）
+    // - 2D 模型导出面单元 + 线单元
     const int exportCellDim = (madim >= 3) ? 3 : 2;
     QVector<vtkIdType> exportCellIds;
     exportCellIds.reserve(static_cast<int>(totalCells));
@@ -2070,7 +2091,8 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
         vtkCell* c = grid->GetCell(cid);
         if (!c)
             continue;
-        if (c->GetCellDimension() == exportCellDim)
+        const int dim = c->GetCellDimension();
+        if (dim == exportCellDim || dim == 1)
             exportCellIds.push_back(cid);
     }
     if (exportCellIds.isEmpty())
@@ -2885,7 +2907,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadFlac3dGrid(const QString& f
     return grid;
 }
 
-vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString& fileName) const
+vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString& fileName)
 {
     QFile file(fileName);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -2905,10 +2927,14 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
 
     struct ElemBlock
     {
+        int id = 0;
         QString type;
+        QString elset;
         QVector<int> conn;
     };
     QVector<ElemBlock> elems;
+    QHash<QString, QSet<int>> elsetToElemIds;
+    QHash<QString, QSet<int>> nsetToNodeIds;
 
     auto nodesPerType = [](const QString& tUpper) -> int
     {
@@ -2920,6 +2946,10 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
             return 6;
         if (tUpper.startsWith("C3D5"))
             return 5;
+        if (tUpper.startsWith("T3D2") || tUpper.startsWith("B31"))
+            return 2;
+        if (tUpper.startsWith("T3D3"))
+            return 3;
         return -1;
     };
 
@@ -2930,15 +2960,21 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
 
     bool inNode = false;
     bool inElem = false;
+    bool inElset = false;
+    bool inNset = false;
     QString curElemTypeUpper;
+    QString curElemElset;
+    QString curSetName;
     int expectedConn = -1;
 
     bool elemContinuing = false;
+    int curElemId = 0;
     QVector<int> curConn;
 
     while (!in.atEnd())
     {
-        QString line = in.readLine().trimmed();
+        const QString rawLine = in.readLine();
+        QString line = rawLine.trimmed();
         if (line.isEmpty())
             continue;
 
@@ -2949,12 +2985,27 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
         {
             inNode = false;
             inElem = false;
+            inElset = false;
+            inNset = false;
             elemContinuing = false;
+            curElemId = 0;
             curConn.clear();
             expectedConn = -1;
             curElemTypeUpper.clear();
+            curElemElset.clear();
+            curSetName.clear();
 
             QString upper = line.toUpper();
+            auto parseHeaderValue = [&](const QString& keyUpper) -> QString
+            {
+                QRegularExpression re(QString(",\\s*%1\\s*=\\s*([^,\\r\\n]+)")
+                                          .arg(QRegularExpression::escape(keyUpper)),
+                                      QRegularExpression::CaseInsensitiveOption);
+                auto m = re.match(rawLine);
+                if (!m.hasMatch())
+                    return QString();
+                return m.captured(1).trimmed();
+            };
 
             if (upper.startsWith("*NODE"))
             {
@@ -2963,6 +3014,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
             else if (upper.startsWith("*ELEMENT"))
             {
                 inElem = true;
+                curElemElset = parseHeaderValue("ELSET");
 
                 int pos = upper.indexOf("TYPE=");
                 if (pos != -1)
@@ -2977,6 +3029,16 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
                         qWarning() << "Unsupported element type:" << curElemTypeUpper;
                     }
                 }
+            }
+            else if (upper.startsWith("*ELSET"))
+            {
+                inElset = true;
+                curSetName = parseHeaderValue("ELSET");
+            }
+            else if (upper.startsWith("*NSET"))
+            {
+                inNset = true;
+                curSetName = parseHeaderValue("NSET");
             }
             continue;
         }
@@ -3006,6 +3068,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
             {
                 if (tok.size() < 2)
                     continue;
+                curElemId = tok[0].toInt();
                 start = 1;
             }
 
@@ -3029,12 +3092,43 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
             }
 
             ElemBlock e;
+            e.id = curElemId;
             e.type = curElemTypeUpper;
+            e.elset = curElemElset.trimmed();
             e.conn = curConn;
             elems.push_back(e);
+            if (!e.elset.isEmpty())
+                elsetToElemIds[e.elset].insert(e.id);
 
             elemContinuing = false;
+            curElemId = 0;
             curConn.clear();
+            continue;
+        }
+
+        if (inElset && !curSetName.isEmpty())
+        {
+            QStringList tok = splitCsv(line);
+            for (const QString& t : tok)
+            {
+                bool ok = false;
+                const int id = t.trimmed().toInt(&ok);
+                if (ok)
+                    elsetToElemIds[curSetName].insert(id);
+            }
+            continue;
+        }
+
+        if (inNset && !curSetName.isEmpty())
+        {
+            QStringList tok = splitCsv(line);
+            for (const QString& t : tok)
+            {
+                bool ok = false;
+                const int id = t.trimmed().toInt(&ok);
+                if (ok)
+                    nsetToNodeIds[curSetName].insert(id);
+            }
             continue;
         }
     }
@@ -3057,11 +3151,14 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
         const QVector3D& p = it.value();
         pts->InsertNextPoint(p.x(), p.y(), p.z());
         idMap[it.key()] = idx++;
+        m_mshPickMap.nodeIdToPointId[it.key()] = static_cast<int>(idx - 1);
+        m_mshPickMap.pointIdToNodeId[static_cast<int>(idx - 1)] = it.key();
     }
 
     vtkNew<vtkUnstructuredGrid> grid;
     grid->SetPoints(pts);
 
+    QHash<int, QVector<vtkIdType>> elemIdToCellIds;
     auto allIdsValid = [&](const QVector<int>& conn) -> bool
     {
         for (int nid : conn)
@@ -3083,29 +3180,127 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
             vtkIdType ids[8];
             for (int i = 0; i < 8; ++i)
                 ids[i] = idMap.value(e.conn[i]);
-            grid->InsertNextCell(VTK_HEXAHEDRON, 8, ids);
+            const vtkIdType cid = grid->InsertNextCell(VTK_HEXAHEDRON, 8, ids);
+            elemIdToCellIds[e.id].push_back(cid);
         }
         else if (e.type.startsWith("C3D4") && e.conn.size() == 4)
         {
             vtkIdType ids[4];
             for (int i = 0; i < 4; ++i)
                 ids[i] = idMap.value(e.conn[i]);
-            grid->InsertNextCell(VTK_TETRA, 4, ids);
+            const vtkIdType cid = grid->InsertNextCell(VTK_TETRA, 4, ids);
+            elemIdToCellIds[e.id].push_back(cid);
         }
         else if (e.type.startsWith("C3D6") && e.conn.size() == 6)
         {
             vtkIdType ids[6];
             for (int i = 0; i < 6; ++i)
                 ids[i] = idMap.value(e.conn[i]);
-            grid->InsertNextCell(VTK_WEDGE, 6, ids);
+            const vtkIdType cid = grid->InsertNextCell(VTK_WEDGE, 6, ids);
+            elemIdToCellIds[e.id].push_back(cid);
         }
         else if (e.type.startsWith("C3D5") && e.conn.size() == 5)
         {
             vtkIdType ids[5];
             for (int i = 0; i < 5; ++i)
                 ids[i] = idMap.value(e.conn[i]);
-            grid->InsertNextCell(VTK_PYRAMID, 5, ids);
+            const vtkIdType cid = grid->InsertNextCell(VTK_PYRAMID, 5, ids);
+            elemIdToCellIds[e.id].push_back(cid);
         }
+        else if ((e.type.startsWith("T3D2") || e.type.startsWith("B31")) && e.conn.size() == 2)
+        {
+            vtkIdType ids[2];
+            for (int i = 0; i < 2; ++i)
+                ids[i] = idMap.value(e.conn[i]);
+            const vtkIdType cid = grid->InsertNextCell(VTK_LINE, 2, ids);
+            elemIdToCellIds[e.id].push_back(cid);
+        }
+        else if (e.type.startsWith("T3D3") && e.conn.size() == 3)
+        {
+            vtkIdType ids[3];
+            for (int i = 0; i < 3; ++i)
+                ids[i] = idMap.value(e.conn[i]);
+            const vtkIdType cid = grid->InsertNextCell(VTK_QUADRATIC_EDGE, 3, ids);
+            elemIdToCellIds[e.id].push_back(cid);
+        }
+    }
+
+    int nextPhysId = 1;
+    QHash<QString, int> groupToPhysId;
+    auto ensurePhysId = [&](const QString& groupName, int dim) -> int
+    {
+        const QString g = groupName.trimmed();
+        if (g.isEmpty())
+            return 0;
+        if (groupToPhysId.contains(g))
+            return groupToPhysId.value(g);
+        while (m_mshPickMap.physIdToName.contains(nextPhysId))
+            ++nextPhysId;
+        const int physId = nextPhysId++;
+        groupToPhysId.insert(g, physId);
+        m_mshPickMap.physIdToName.insert(physId, g);
+        m_mshPickMap.physIdToDim.insert(physId, dim);
+        return physId;
+    };
+
+    for (auto it = elsetToElemIds.constBegin(); it != elsetToElemIds.constEnd(); ++it)
+    {
+        const QString& setName = it.key();
+        QSet<int> allPointIds;
+        QSet<qint64> allCellIds;
+        int dim = 3;
+
+        for (int elemId : it.value())
+        {
+            const auto cids = elemIdToCellIds.value(elemId);
+            for (vtkIdType cid : cids)
+            {
+                if (cid < 0 || cid >= grid->GetNumberOfCells())
+                    continue;
+                allCellIds.insert(static_cast<qint64>(cid));
+                if (auto* c = grid->GetCell(cid))
+                    dim = c->GetCellDimension();
+                vtkCell* c = grid->GetCell(cid);
+                if (!c)
+                    continue;
+                for (vtkIdType k = 0; k < c->GetNumberOfPoints(); ++k)
+                {
+                    allPointIds.insert(static_cast<int>(c->GetPointId(k)));
+                }
+            }
+        }
+        if (allCellIds.isEmpty() && allPointIds.isEmpty())
+            continue;
+
+        const int physId = ensurePhysId(setName, dim);
+        if (physId <= 0)
+            continue;
+
+        if (dim >= 3)
+            m_mshPickMap.volPhysToCellIds[physId] = allCellIds.values().toVector();
+        else if (dim == 2)
+            m_mshPickMap.bndFacePhysToPointIds[physId] = allPointIds.values().toVector();
+        else
+            m_mshPickMap.bndEdgePhysToPointIds[physId] = allPointIds.values().toVector();
+    }
+
+    for (auto it = nsetToNodeIds.constBegin(); it != nsetToNodeIds.constEnd(); ++it)
+    {
+        QVector<int> pids;
+        pids.reserve(it.value().size());
+        for (int nodeId : it.value())
+        {
+            auto pidIt = idMap.constFind(nodeId);
+            if (pidIt == idMap.constEnd())
+                continue;
+            pids.push_back(static_cast<int>(pidIt.value()));
+        }
+        if (pids.isEmpty())
+            continue;
+        const int physId = ensurePhysId(it.key(), 0);
+        if (physId <= 0)
+            continue;
+        m_mshPickMap.bndPointPhysToPointIds[physId] = pids;
     }
 
     return grid;
