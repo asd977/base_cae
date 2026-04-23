@@ -351,6 +351,8 @@ class CORE_EXPORT PickManager : public QObject
     QHash<QString, QHash<QString, QSet<vtkIdType>>> m_domainPreviewCellIdsByDomainUuid;
     QHash<QString, QHash<QString, QSet<vtkIdType>>> m_domainPreDeleteCellIdsByDomainUuid;
     QHash<QString, QHash<vtkIdType, QString>> m_ownerDomainCellByDomain;
+    vtkSmartPointer<vtkDataArray> m_savedDomainCellScalars;
+    bool m_domainColoringActive = false;
 
   signals:
     void nodePicked(const QString& domain, const QString& activeUuid, GridKind kind, vtkIdType pid,

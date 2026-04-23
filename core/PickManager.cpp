@@ -1828,9 +1828,6 @@ void PickManager::restoreFaceColoring()
 
 void PickManager::rebuildDomainHighlightActors()
 {
-    if (m_pickMode != PickMode::Domain)
-        return;
-
     // 统一颜色写回：使用一套 direct scalar 数组，不再在不同流程切换多种着色结构。
     if (!m_visual || !m_gridSolid || !m_solidPickDataSet)
         return;
@@ -1839,6 +1836,21 @@ void PickManager::rebuildDomainHighlightActors()
     if (!actor || !actor->GetMapper())
         return;
     auto* mapper = actor->GetMapper();
+
+    if (m_pickMode != PickMode::Domain)
+    {
+        if (m_domainColoringActive)
+        {
+            if (auto* cellData = m_solidPickDataSet->GetCellData())
+                cellData->SetScalars(m_savedDomainCellScalars);
+            m_savedDomainCellScalars = nullptr;
+            m_domainColoringActive = false;
+            m_solidPickDataSet->Modified();
+            mapper->ScalarVisibilityOff();
+            m_visual->render();
+        }
+        return;
+    }
 
     const QSet<int> matypes = m_domainMatypesByDomainUuid.value(m_currentDomain).value(m_currentUUid);
     const int selectedMatype =
@@ -1860,6 +1872,14 @@ void PickManager::rebuildDomainHighlightActors()
                                   !previewCellIds.isEmpty() || !preDeleteCellIds.isEmpty();
     if (!hasSelection && !hasCellSelection)
     {
+        if (m_domainColoringActive)
+        {
+            if (auto* cellData = m_solidPickDataSet->GetCellData())
+                cellData->SetScalars(m_savedDomainCellScalars);
+            m_savedDomainCellScalars = nullptr;
+            m_domainColoringActive = false;
+            m_solidPickDataSet->Modified();
+        }
         mapper->ScalarVisibilityOff();
         m_visual->render();
         return;
@@ -1936,6 +1956,12 @@ void PickManager::rebuildDomainHighlightActors()
         colors->SetTypedTuple(cid, c);
     }
 
+    if (!m_domainColoringActive)
+    {
+        if (auto* cellData = m_solidPickDataSet->GetCellData())
+            m_savedDomainCellScalars = cellData->GetScalars();
+        m_domainColoringActive = true;
+    }
     m_solidPickDataSet->GetCellData()->SetScalars(colors);
     mapper->SetScalarModeToUseCellData();
     mapper->SetColorModeToDirectScalars();
