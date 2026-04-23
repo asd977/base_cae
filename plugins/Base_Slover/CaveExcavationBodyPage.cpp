@@ -78,12 +78,17 @@ void CaveExcavationBodyPage::beforeLoad()
     PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, allowFacePick);
 
     if (mode == PickMode::Domain)
+    {
         syncGroupsFromPickManager();
-
-    refreshSelectedGroupList();
-    refreshGroupComboMarks();
-    updatePersistentSelectionFaces();
-    updateGroupDomainHighlight();
+        refreshSelectedGroupList();
+        refreshGroupComboMarks();
+        updateGroupDomainHighlight();
+    }
+    else
+    {
+        refreshSelectedGroupList();
+        refreshGroupComboMarks();
+    }
 }
 
 void CaveExcavationBodyPage::beforeUnload()
@@ -514,21 +519,14 @@ void CaveExcavationBodyPage::refreshGroupComboMarks()
 void CaveExcavationBodyPage::updatePersistentSelectionFaces()
 {
     const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
-    if (meshDim == 3)
-    {
-        PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, {}, true);
+
+           // 2D：面选择由 PickManager 的 Face 模式直接管理，这里不要覆盖
+    if (meshDim == 2)
         return;
-    }
 
-    QVector<vtkIdType> allFaces;
-    for (int g : m_selectedGroups)
-    {
-        const auto faces = visibleBoundaryFaceKeys(groupCellIds(g));
-        allFaces += faces;
-    }
-    PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, allFaces, true);
+           // 3D：当前不使用 face 持久高亮
+    PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, {}, true);
 }
-
 void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
 {
     if (currentPickMode() != PickMode::Domain)
