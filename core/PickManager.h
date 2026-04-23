@@ -58,6 +58,7 @@ class CORE_EXPORT PickManager : public QObject
                                  GridKind kind) const;
     QVector<vtkIdType> getSelectedPointIds(const QString& domain, const QString& uuid,
                                            GridKind kind) const;
+    QSet<int> getDomainSelectionIds(const QString& domain, const QString& uuid) const;
 
     QHash<int, QVector<int>> getEdgeNodesByKe(const QString& domain, const QString& uuid,
                                               GridKind kind) const;

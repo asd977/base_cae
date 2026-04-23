@@ -68,8 +68,29 @@ CaveExcavationBodyPage::CaveExcavationBodyPage(QWidget* parent)
 void CaveExcavationBodyPage::beforeLoad()
 {
     setupGroupCombo();
+    if (currentPickMode() == PickMode::Domain)
+    {
+        const QSet<int> owned = PickManager::instance().getDomainSelectionIds(getPageType(), m_uuid);
+        if (!m_selectedGroups.isEmpty())
+        {
+            QSet<int> keep;
+            for (int gid : m_selectedGroups)
+            {
+                const QSet<int> ids = groupDomainIds(gid);
+                if (ids.isEmpty())
+                    continue;
+                QSet<int> missing = ids;
+                missing.subtract(owned);
+                if (missing.isEmpty())
+                    keep.insert(gid);
+            }
+            m_selectedGroups = keep;
+        }
+    }
     updatePersistentSelectionFaces();
     updateGroupDomainHighlight();
+    refreshSelectedGroupList();
+    refreshGroupComboMarks();
     const PickMode mode = currentPickMode();
     PickManager::instance().activate(getPageType(), m_uuid, mode);
     const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
@@ -89,7 +110,6 @@ void CaveExcavationBodyPage::beforeUnload()
 QJsonObject CaveExcavationBodyPage::saveJson()
 {
     QJsonObject obj;
-    obj["group_source"] = sourceToString(m_source);
 
     QJsonArray selectedGroupsArr;
     QList<int> selected = m_selectedGroups.values();
@@ -114,7 +134,6 @@ QJsonObject CaveExcavationBodyPage::saveJson()
 
 void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
 {
-    m_source = sourceFromString(obj.value("group_source").toString());
     setupGroupCombo();
 
     m_selectedGroups.clear();
@@ -314,20 +333,6 @@ void CaveExcavationBodyPage::setupGroupCombo()
         return;
     }
 
-    if (is3d)
-    {
-        if (map.layerToCellIds.size() > 1)
-            m_source = GroupSource::Layer;
-        else if (!map.volPhysToCellIds.isEmpty())
-            m_source = GroupSource::Physical;
-        else
-            m_source = GroupSource::Matype;
-    }
-    else
-    {
-        m_source = GroupSource::Physical;
-    }
-
     const QVector<int> ids = availableGroupIds();
     m_groupCombo->blockSignals(true);
     m_groupCombo->clear();
@@ -352,19 +357,7 @@ QVector<int> CaveExcavationBodyPage::availableGroupIds() const
         return out;
     const MshPickMap map = meshSvc->mshPickMapSolid();
 
-    QList<int> keys;
-    if (m_source == GroupSource::Layer)
-        keys = map.layerToCellIds.keys();
-    else if (m_source == GroupSource::Matype)
-        keys = map.matypeToCellIds.keys();
-    else
-    {
-        for (auto it = map.physIdToDim.constBegin(); it != map.physIdToDim.constEnd(); ++it)
-        {
-            if (it.value() == 3)
-                keys.push_back(it.key());
-        }
-    }
+    QList<int> keys = map.matypeToCellIds.keys();
 
     std::sort(keys.begin(), keys.end());
     for (int id : keys)
@@ -386,13 +379,7 @@ QVector<vtkIdType> CaveExcavationBodyPage::groupCellIds(int groupId) const
     if (!grid)
         return out;
 
-    QVector<qint64> src;
-    if (m_source == GroupSource::Layer)
-        src = map.layerToCellIds.value(groupId);
-    else if (m_source == GroupSource::Matype)
-        src = map.matypeToCellIds.value(groupId);
-    else
-        src = map.volPhysToCellIds.value(groupId);
+    QVector<qint64> src = map.matypeToCellIds.value(groupId);
 
     out.reserve(src.size());
     for (qint64 c : src)
@@ -588,24 +575,6 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
 
     PickManager::instance().setDomainSelectionState(getPageType(), m_uuid, selectedMatypes, -1,
                                                      previewMatype, -1);
-}
-
-QString CaveExcavationBodyPage::sourceToString(GroupSource s) const
-{
-    if (s == GroupSource::Layer)
-        return "layer";
-    if (s == GroupSource::Matype)
-        return "matype";
-    return "physical";
-}
-
-CaveExcavationBodyPage::GroupSource CaveExcavationBodyPage::sourceFromString(const QString& s) const
-{
-    if (s == "layer")
-        return GroupSource::Layer;
-    if (s == "matype")
-        return GroupSource::Matype;
-    return GroupSource::Physical;
 }
 
 PickMode CaveExcavationBodyPage::currentPickMode() const

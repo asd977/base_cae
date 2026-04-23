@@ -33,13 +33,6 @@ class CaveExcavationBodyPage : public BasePage
     void onGroupDropdownClosed();
 
   private:
-    enum class GroupSource
-    {
-        Physical,
-        Layer,
-        Matype
-    };
-
     void setupGroupCombo();
     QVector<int> availableGroupIds() const;
     QVector<vtkIdType> groupCellIds(int groupId) const;
@@ -50,12 +43,9 @@ class CaveExcavationBodyPage : public BasePage
     void refreshGroupComboMarks();
     void updatePersistentSelectionFaces();
     void updateGroupDomainHighlight(int previewGroup = -1);
-    QString sourceToString(GroupSource s) const;
-    GroupSource sourceFromString(const QString& s) const;
     PickMode currentPickMode() const;
 
   private:
-    GroupSource m_source = GroupSource::Physical;
     QSet<int> m_selectedGroups;
     int m_lastHoveredIndex = -1;
 

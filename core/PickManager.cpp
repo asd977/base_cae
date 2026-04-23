@@ -2873,6 +2873,11 @@ QVector<vtkIdType> PickManager::getSelectedPointIds(const QString& domain, const
     return out;
 }
 
+QSet<int> PickManager::getDomainSelectionIds(const QString& domain, const QString& uuid) const
+{
+    return m_domainMatypesByDomainUuid.value(domain).value(uuid);
+}
+
 // ===================== getIdList =====================
 QVector<vtkIdType> PickManager::getIdList(const QString& domain, const QString& uuid,
                                           PickMode mode) const
