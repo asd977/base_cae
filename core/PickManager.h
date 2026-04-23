@@ -338,8 +338,14 @@ class CORE_EXPORT PickManager : public QObject
 
     struct DomainHighlightState
     {
-        QSet<vtkIdType> cellIds;
-        QSet<vtkIdType> previewCellIds;
+        enum class ScalarKind
+        {
+            Matype,
+            Layer
+        };
+        QSet<int> selectedIds;
+        QSet<int> previewIds;
+        ScalarKind scalarKind = ScalarKind::Matype;
     };
     // ============ domain highlight overlay（按 domain+uuid 管理） ============
     QHash<QString, QHash<QString, DomainHighlightState>> m_domainHighlightStates;
