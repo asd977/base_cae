@@ -1518,9 +1518,10 @@ void MaterialManager::highlightMatypes(const QString& entryId, const QSet<int>& 
     PickManager::instance().setDomainIdSelectionState(QStringLiteral("MaterialManager"), entryId,
                                                       selectedMatype, previewMatype,
                                                       preDeleteMatype);
-    PickManager::instance().setDomainHighlightIds(QStringLiteral("MaterialManager"), entryId,
-                                                  PickManager::DomainScalarKind::Matype, selectedIds,
-                                                  previewIds);
+    PickManager::instance().setSelectedDomainIds(QStringLiteral("MaterialManager"), entryId,
+                                                 selectedIds);
+    PickManager::instance().setPreviewDomainIds(QStringLiteral("MaterialManager"), entryId,
+                                                previewIds);
 }
 
 void MaterialManager::refreshMatypeHighlight(const QString& entryId)

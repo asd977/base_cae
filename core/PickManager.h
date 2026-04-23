@@ -35,7 +35,8 @@ enum class PickMode
 {
     Node,
     Edge,
-    Face
+    Face,
+    Domain
 };
 enum class GridKind
 {
@@ -47,12 +48,6 @@ class CORE_EXPORT PickManager : public QObject
 {
     Q_OBJECT
   public:
-    enum class DomainScalarKind
-    {
-        Matype,
-        Layer
-    };
-
     static PickManager& instance();
 
     void activate(const QString& domain, const QString& uuid, PickMode mode);
@@ -131,20 +126,10 @@ class CORE_EXPORT PickManager : public QObject
     void clearPreviewSelection(const QString& domain, const QString& uuid, PickMode mode);
     void setBoxSelectEnabled(const QString& domain, const QString& uuid, bool enabled);
     void setClickPickEnabled(const QString& domain, const QString& uuid, bool enabled);
-    // 材料域(MATYPE)高亮：
-    // - matypes: 已施加集合（绿色）
-    // - selectedMatype: 当前选中（红色）
-    // - previewMatype: 下拉悬浮预览（蓝色）
-    // - preDeleteMatype: 待删除预览（橙色）
-    void highlightDomainsByMatype(const QString& domain, const QString& uuid,
-                                  const QSet<int>& matypes, int selectedMatype, int previewMatype,
-                                  int preDeleteMatype);
-    // 分层域(LAYER)高亮，参数语义同上。
-    void highlightDomainsByLayer(const QString& domain, const QString& uuid,
-                                 const QSet<int>& layers, int selectedLayer, int previewLayer,
-                                 int preDeleteLayer);
-    void setDomainHighlightIds(const QString& domain, const QString& uuid, DomainScalarKind kind,
-                               const QSet<int>& selectedIds, const QSet<int>& previewIds = {});
+    void setSelectedDomainIds(const QString& domain, const QString& uuid, const QSet<int>& ids);
+    void setPreviewDomainIds(const QString& domain, const QString& uuid, const QSet<int>& ids);
+    QSet<int> selectedDomainIds(const QString& domain, const QString& uuid) const;
+    QSet<int> previewDomainIds(const QString& domain, const QString& uuid) const;
     void setDomainIdSelectionState(const QString& domain, const QString& uuid, int selectedId,
                                    int previewId, int preDeleteId);
     int domainSelectedId(const QString& domain, const QString& uuid) const;
@@ -353,6 +338,8 @@ class CORE_EXPORT PickManager : public QObject
     QHash<QString, QHash<vtkIdType, QString>> m_ownerDomainCellByDomain;
     QHash<QString, QHash<QString, QSet<vtkIdType>>> m_domainCellsByDomainUuid;
     QHash<QString, QHash<QString, QSet<vtkIdType>>> m_previewDomainCellsByDomainUuid;
+    QHash<QString, QHash<QString, QSet<int>>> m_domainIdsByDomainUuid;
+    QHash<QString, QHash<QString, QSet<int>>> m_previewDomainIdsByDomainUuid;
     struct DomainIdSelectionState
     {
         int selectedId = -1;

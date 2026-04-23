@@ -326,53 +326,19 @@ void PickManager::updateStructure()
         rebuildLineNodeOverlayAll();
 }
 
-void PickManager::highlightDomainsByMatype(const QString& domain, const QString& uuid,
-                                           const QSet<int>& matypes, int selectedMatype,
-                                           int previewMatype, int preDeleteMatype)
-{
-    QSet<int> selectedIds = matypes;
-    QSet<int> previewIds;
-    if (selectedMatype >= 0)
-        selectedIds.insert(selectedMatype);
-    if (previewMatype >= 0)
-        previewIds.insert(previewMatype);
-    if (preDeleteMatype >= 0)
-        previewIds.insert(preDeleteMatype);
-    setDomainHighlightIds(domain, uuid, DomainScalarKind::Matype, selectedIds, previewIds);
-}
-
-void PickManager::highlightDomainsByLayer(const QString& domain, const QString& uuid,
-                                          const QSet<int>& layers, int selectedLayer,
-                                          int previewLayer, int preDeleteLayer)
-{
-    QSet<int> selectedIds = layers;
-    QSet<int> previewIds;
-    if (selectedLayer >= 0)
-        selectedIds.insert(selectedLayer);
-    if (previewLayer >= 0)
-        previewIds.insert(previewLayer);
-    if (preDeleteLayer >= 0)
-        previewIds.insert(preDeleteLayer);
-
-    setDomainHighlightIds(domain, uuid, DomainScalarKind::Layer, selectedIds, previewIds);
-}
-
-void PickManager::setDomainHighlightIds(const QString& domain, const QString& uuid,
-                                        DomainScalarKind kind, const QSet<int>& selectedIds,
-                                        const QSet<int>& previewIds)
+void PickManager::setSelectedDomainIds(const QString& domain, const QString& uuid,
+                                       const QSet<int>& ids)
 {
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     const MshPickMap map = meshSvc ? meshSvc->mshPickMapSolid() : MshPickMap{};
-
-    auto idsToCells = [&](const QSet<int>& ids) -> QSet<vtkIdType>
+    auto idsToCells = [&](const QSet<int>& domainIds) -> QSet<vtkIdType>
     {
         QSet<vtkIdType> out;
-        for (int id : ids)
+        for (int id : domainIds)
         {
-            const QVector<qint64> src = (kind == DomainScalarKind::Layer)
-                                            ? map.layerToCellIds.value(id)
-                                            : map.matypeToCellIds.value(id);
-            for (qint64 c : src)
+            for (qint64 c : map.layerToCellIds.value(id))
+                out.insert(static_cast<vtkIdType>(c));
+            for (qint64 c : map.matypeToCellIds.value(id))
                 out.insert(static_cast<vtkIdType>(c));
         }
         return out;
@@ -380,7 +346,7 @@ void PickManager::setDomainHighlightIds(const QString& domain, const QString& uu
 
     auto& owners = m_ownerDomainCellByDomain[domain];
     auto& selectedByUuid = m_domainCellsByDomainUuid[domain];
-    auto& previewByUuid = m_previewDomainCellsByDomainUuid[domain];
+    m_domainIdsByDomainUuid[domain][uuid] = ids;
 
     // 清理该 uuid 旧选中归属
     QSet<vtkIdType>& oldSel = selectedByUuid[uuid];
@@ -390,20 +356,47 @@ void PickManager::setDomainHighlightIds(const QString& domain, const QString& uu
     oldSel.clear();
 
     // 写入新选中归属
-    const QSet<vtkIdType> newSel = idsToCells(selectedIds);
+    const QSet<vtkIdType> newSel = idsToCells(ids);
     for (vtkIdType cid : newSel)
     {
         owners[cid] = uuid;
         oldSel.insert(cid);
     }
 
-    // 预览集合不参与 ownership，直接覆盖
-    previewByUuid[uuid] = idsToCells(previewIds);
-
     m_activeHighlightDomain = domain;
     m_activeHighlightUuid = uuid;
     updateStructure();
     rebuildDomainHighlightActors();
+}
+
+void PickManager::setPreviewDomainIds(const QString& domain, const QString& uuid, const QSet<int>& ids)
+{
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    const MshPickMap map = meshSvc ? meshSvc->mshPickMapSolid() : MshPickMap{};
+    QSet<vtkIdType> previewCells;
+    for (int id : ids)
+    {
+        for (qint64 c : map.layerToCellIds.value(id))
+            previewCells.insert(static_cast<vtkIdType>(c));
+        for (qint64 c : map.matypeToCellIds.value(id))
+            previewCells.insert(static_cast<vtkIdType>(c));
+    }
+    m_previewDomainIdsByDomainUuid[domain][uuid] = ids;
+    m_previewDomainCellsByDomainUuid[domain][uuid] = previewCells;
+    m_activeHighlightDomain = domain;
+    m_activeHighlightUuid = uuid;
+    updateStructure();
+    rebuildDomainHighlightActors();
+}
+
+QSet<int> PickManager::selectedDomainIds(const QString& domain, const QString& uuid) const
+{
+    return m_domainIdsByDomainUuid.value(domain).value(uuid);
+}
+
+QSet<int> PickManager::previewDomainIds(const QString& domain, const QString& uuid) const
+{
+    return m_previewDomainIdsByDomainUuid.value(domain).value(uuid);
 }
 
 void PickManager::setDomainIdSelectionState(const QString& domain, const QString& uuid, int selectedId,
@@ -441,6 +434,8 @@ void PickManager::clearDomainHighlight(const QString& domain, const QString& uui
         m_ownerDomainCellByDomain.remove(domain);
         m_domainCellsByDomainUuid.remove(domain);
         m_previewDomainCellsByDomainUuid.remove(domain);
+        m_domainIdsByDomainUuid.remove(domain);
+        m_previewDomainIdsByDomainUuid.remove(domain);
         m_domainIdSelectionStateByDomainUuid.remove(domain);
         m_activeHighlightUuid.clear();
     }
@@ -469,6 +464,20 @@ void PickManager::clearDomainHighlight(const QString& domain, const QString& uui
             previewDit->remove(uuid);
             if (previewDit->isEmpty())
                 m_previewDomainCellsByDomainUuid.erase(previewDit);
+        }
+        auto idDit = m_domainIdsByDomainUuid.find(domain);
+        if (idDit != m_domainIdsByDomainUuid.end())
+        {
+            idDit->remove(uuid);
+            if (idDit->isEmpty())
+                m_domainIdsByDomainUuid.erase(idDit);
+        }
+        auto previewIdDit = m_previewDomainIdsByDomainUuid.find(domain);
+        if (previewIdDit != m_previewDomainIdsByDomainUuid.end())
+        {
+            previewIdDit->remove(uuid);
+            if (previewIdDit->isEmpty())
+                m_previewDomainIdsByDomainUuid.erase(previewIdDit);
         }
         auto idStateDit = m_domainIdSelectionStateByDomainUuid.find(domain);
         if (idStateDit != m_domainIdSelectionStateByDomainUuid.end())
@@ -527,7 +536,8 @@ void PickManager::activate(const QString& domain, const QString& uuid, PickMode 
     if (mode == PickMode::Face)
         markDirty(DirtyFace);
 
-    setupPicking();
+    if (mode != PickMode::Domain)
+        setupPicking();
 }
 
 void PickManager::deactivate(const QString& domain, const QString& uuid, PickMode mode)
@@ -579,6 +589,7 @@ void PickManager::deactivate(const QString& domain, const QString& uuid, PickMod
     clearPreviewSelection(domain, uuid, PickMode::Node);
     clearPreviewSelection(domain, uuid, PickMode::Edge);
     clearPreviewSelection(domain, uuid, PickMode::Face);
+    clearPreviewSelection(domain, uuid, PickMode::Domain);
 
            // 释放 overlay 内容（避免长时间占内存）
     if (m_selPts)
@@ -1928,6 +1939,14 @@ void PickManager::rebuildDomainHighlightActors()
 // ===================== clearSelection =====================
 void PickManager::clearSelection(const QString& domain, const QString& uuid, PickMode mode)
 {
+    if (mode == PickMode::Domain)
+    {
+        setSelectedDomainIds(domain, uuid, {});
+        setPreviewDomainIds(domain, uuid, {});
+        setDomainIdSelectionState(domain, uuid, -1, -1, -1);
+        return;
+    }
+
     auto clearOneKind = [&](GridKind kind)
     {
         if (mode == PickMode::Node)
@@ -2293,12 +2312,17 @@ void PickManager::clearPreviewSelection(const QString& domain, const QString& uu
         m_previewEdgeLines->Modified();
         m_previewEdgePoly->Modified();
     }
-    else
+    else if (mode == PickMode::Face)
     {
         m_previewFacesSolidByDomainUuid[domain][uuid].clear();
         m_previewFacesLineByDomainUuid[domain][uuid].clear();
         if (domain == m_currentDomain && uuid == m_currentUUid && m_pickMode == PickMode::Face)
             markDirty(DirtyFace);
+    }
+    else
+    {
+        setPreviewDomainIds(domain, uuid, {});
+        return;
     }
     if (m_visual)
         m_visual->render();
@@ -2989,6 +3013,16 @@ QVector<vtkIdType> PickManager::getIdList(const QString& domain, const QString& 
         out.reserve(set.size());
         for (vtkIdType k : set)
             out.push_back(k); // faceKey
+        return out;
+    }
+
+    if (mode == PickMode::Domain)
+    {
+        const QSet<int> set = m_domainIdsByDomainUuid.value(domain).value(uuid);
+        out.reserve(set.size());
+        for (int v : set)
+            out.push_back(static_cast<vtkIdType>(v));
+        std::sort(out.begin(), out.end());
         return out;
     }
 
