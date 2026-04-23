@@ -53,23 +53,6 @@ void MaterialEntryWidget::beforeLoad()
         PickManager::instance().setBoxSelectEnabled(QStringLiteral("MaterialManager"), m_entryId,
                                                     false);
     }
-
-    // 先兜底清空全局高亮，避免上一页面残留状态带入
-    if (m_materialManager)
-    {
-        m_materialManager->clearAllMatypeHighlight();
-    }
-
-    // 回到页面：只恢复该条目的 Applied（预选中/预删除不恢复）
-    m_previewMatype = -1;
-    m_preDeleteMatype = -1;
-    if (!m_entryId.isEmpty())
-    {
-        m_materialManager->setPreviewMatypeForEntry(m_entryId, -1);
-        m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
-        m_materialManager->refreshMatypeHighlight(m_entryId);
-    }
-    updateAppliedListColors();
 }
 
 void MaterialEntryWidget::beforeUnload()
@@ -82,15 +65,8 @@ void MaterialEntryWidget::beforeUnload()
     m_previewMatype = -1;
     m_preDeleteMatype = -1;
 
-    if (!m_entryId.isEmpty() && m_materialManager)
-    {
-        m_materialManager->setPreviewMatypeForEntry(m_entryId, -1);
-        m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
-    }
     if (m_materialManager)
     {
-        // 即使 entryId 为空也兜底清空全局高亮
-        m_materialManager->clearAllMatypeHighlight();
         PickManager::instance().deactivate(QStringLiteral("MaterialManager"), m_entryId,
                                            PickMode::Domain);
     }

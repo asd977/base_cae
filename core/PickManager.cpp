@@ -413,6 +413,9 @@ void PickManager::deactivate(const QString& domain, const QString& uuid, PickMod
     if (domain != m_currentDomain || uuid != m_currentUUid)
         return;
 
+    if (mode == PickMode::Domain)
+        clearDomainHighlight(domain, uuid);
+
     if (mode == PickMode::Node)
         commitNodeExclusive(domain, uuid);
     if (mode == PickMode::Edge)
