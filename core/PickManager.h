@@ -35,7 +35,8 @@ enum class PickMode
 {
     Node,
     Edge,
-    Face
+    Face,
+    Domain
 };
 enum class GridKind
 {
@@ -125,14 +126,15 @@ class CORE_EXPORT PickManager : public QObject
     void clearPreviewSelection(const QString& domain, const QString& uuid, PickMode mode);
     void setBoxSelectEnabled(const QString& domain, const QString& uuid, bool enabled);
     void setClickPickEnabled(const QString& domain, const QString& uuid, bool enabled);
-    // 材料域(MATYPE)高亮：
-    // - matypes: 已施加集合（绿色）
-    // - selectedMatype: 当前选中（红色）
-    // - previewMatype: 下拉悬浮预览（蓝色）
-    // - preDeleteMatype: 待删除预览（橙色）
-    void highlightDomainsByMatype(const QString& domain, const QString& uuid,
-                                  const QSet<int>& matypes, int selectedMatype, int previewMatype,
-                                  int preDeleteMatype);
+    void setSelectedDomainIds(const QString& domain, const QString& uuid, const QSet<int>& ids);
+    void setPreviewDomainIds(const QString& domain, const QString& uuid, const QSet<int>& ids);
+    QSet<int> selectedDomainIds(const QString& domain, const QString& uuid) const;
+    QSet<int> previewDomainIds(const QString& domain, const QString& uuid) const;
+    void setDomainIdSelectionState(const QString& domain, const QString& uuid, int selectedId,
+                                   int previewId, int preDeleteId);
+    int domainSelectedId(const QString& domain, const QString& uuid) const;
+    int domainPreviewId(const QString& domain, const QString& uuid) const;
+    int domainPreDeleteId(const QString& domain, const QString& uuid) const;
     // 清理材料域高亮。uuid 为空时清理该 domain 的当前高亮态。
     void clearDomainHighlight(const QString& domain, const QString& uuid = QString());
 
@@ -332,13 +334,20 @@ class CORE_EXPORT PickManager : public QObject
     QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerFaceSolidByDomain;
     QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerFaceLineByDomain;
 
-    // ============ domain (MATYPE) highlight overlay ============
-    QString m_domainHighlightDomain;
-    QString m_domainHighlightUuid;
-    QSet<int> m_domainMatypes;
-    int m_domainSelectedMatype = -1;
-    int m_domainPreviewMatype = -1;
-    int m_domainPreDeleteMatype = -1;
+    // ============ domain highlight overlay（按 domain+uuid，类似点/线/面管理） ============
+    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_domainCellsByDomainUuid;
+    QHash<QString, QHash<QString, QSet<vtkIdType>>> m_previewDomainCellsByDomainUuid;
+    QHash<QString, QHash<QString, QSet<int>>> m_domainIdsByDomainUuid;
+    QHash<QString, QHash<QString, QSet<int>>> m_previewDomainIdsByDomainUuid;
+    struct DomainIdSelectionState
+    {
+        int selectedId = -1;
+        int previewId = -1;
+        int preDeleteId = -1;
+    };
+    QHash<QString, QHash<QString, DomainIdSelectionState>> m_domainIdSelectionStateByDomainUuid;
+    QString m_activeHighlightDomain;
+    QString m_activeHighlightUuid;
 
   signals:
     void nodePicked(const QString& domain, const QString& activeUuid, GridKind kind, vtkIdType pid,

@@ -118,11 +118,6 @@ class MaterialManager : public QObject, public MaterialManagerService
     QVector<MaterialModel> m_seepageModels;
     QVector<QPair<int, int>> m_materialTransitions;
 
-    // ===== 3态：Selected / Preview / PreDelete =====
-    QHash<QString, int> m_selectedMatypes;
-    QHash<QString, int> m_previewMatypes;
-    QHash<QString, int> m_preDeleteMatypes;
-
     // services
     ProjectManagerService* m_projectManagerService = nullptr;
     QString m_workPath;
