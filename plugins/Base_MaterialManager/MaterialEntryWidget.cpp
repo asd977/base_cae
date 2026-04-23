@@ -16,6 +16,7 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <PickManager.h>
 
 #include "MaterialManager.h"
 
@@ -43,6 +44,15 @@ MaterialEntryWidget::~MaterialEntryWidget()
 void MaterialEntryWidget::beforeLoad()
 {
     m_beforeUnloadHandled = false;
+    if (m_materialManager)
+    {
+        PickManager::instance().activate(QStringLiteral("MaterialManager"), m_entryId,
+                                         PickMode::Domain);
+        PickManager::instance().setClickPickEnabled(QStringLiteral("MaterialManager"), m_entryId,
+                                                    false);
+        PickManager::instance().setBoxSelectEnabled(QStringLiteral("MaterialManager"), m_entryId,
+                                                    false);
+    }
 
     // 先兜底清空全局高亮，避免上一页面残留状态带入
     if (m_materialManager)
@@ -81,6 +91,8 @@ void MaterialEntryWidget::beforeUnload()
     {
         // 即使 entryId 为空也兜底清空全局高亮
         m_materialManager->clearAllMatypeHighlight();
+        PickManager::instance().deactivate(QStringLiteral("MaterialManager"), m_entryId,
+                                           PickMode::Domain);
     }
 
     // 仅清理 UI hover，不调用 onDropdownClosed（其末尾会 refresh 高亮）

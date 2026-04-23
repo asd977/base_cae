@@ -35,7 +35,8 @@ enum class PickMode
 {
     Node,
     Edge,
-    Face
+    Face,
+    Domain
 };
 enum class GridKind
 {

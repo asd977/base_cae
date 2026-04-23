@@ -399,8 +399,13 @@ void PickManager::activate(const QString& domain, const QString& uuid, PickMode 
         markDirty(DirtyEdge);
     if (mode == PickMode::Face)
         markDirty(DirtyFace);
+    if (mode == PickMode::Domain)
+        rebuildDomainHighlightActors();
 
-    setupPicking();
+    if (mode == PickMode::Domain)
+        teardownPicking();
+    else
+        setupPicking();
 }
 
 void PickManager::deactivate(const QString& domain, const QString& uuid, PickMode mode)
