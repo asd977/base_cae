@@ -55,6 +55,8 @@
 #include <vtkUnstructuredGrid.h>
 #include <vtkXMLUnstructuredGridWriter.h>
 
+#include "MeshGridIO.h"
+
 namespace
 {
 // registry ids
@@ -923,7 +925,20 @@ void GridEditingWidget::updateFilterCombosFromGrid()
     };
 
     fillCombo(ui->comboBoxKetype, collectUniqueCellInts("KETYPE"));
-    fillCombo(ui->comboBoxMatype, collectUniqueCellInts("MATYPE"));
+    if (ui->comboBoxMatype)
+    {
+        ui->comboBoxMatype->clear();
+        ui->comboBoxMatype->addItem(QString("全部"), QVariant());
+        QList<int> list = collectUniqueCellInts("MATYPE").values();
+        std::sort(list.begin(), list.end());
+        const MshPickMap pick = MeshGridIO::instance().getMeshMap();
+        for (int v : list)
+        {
+            const QString name = pick.physIdToName.value(v).trimmed();
+            ui->comboBoxMatype->addItem(name.isEmpty() ? QString::number(v) : name, v);
+        }
+        ui->comboBoxMatype->setCurrentIndex(0);
+    }
     fillCombo(ui->comboBoxLayer, collectUniqueCellInts("LAYER"));
 }
 

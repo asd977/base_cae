@@ -13,6 +13,7 @@
 #include <limits>
 
 #include "GridEditingWidget.h"
+#include "MeshGridIO.h"
 #include "ui_GridEditingWidget.h"
 
 // VTK
@@ -1004,7 +1005,20 @@ void GridEditingWidget::updateFilterCombosFromModel()
     };
 
     fillCombo(ui->comboBoxKetype, m_model.allKetypes());
-    fillCombo(ui->comboBoxMatype, m_model.allMatypes());
+    if (ui->comboBoxMatype)
+    {
+        ui->comboBoxMatype->clear();
+        ui->comboBoxMatype->addItem(QString("全部"), QVariant());
+        QList<int> list = m_model.allMatypes().values();
+        std::sort(list.begin(), list.end());
+        const MshPickMap pick = MeshGridIO::instance().getMeshMap();
+        for (int v : list)
+        {
+            const QString name = pick.physIdToName.value(v).trimmed();
+            ui->comboBoxMatype->addItem(name.isEmpty() ? QString::number(v) : name, v);
+        }
+        ui->comboBoxMatype->setCurrentIndex(0);
+    }
     fillCombo(ui->comboBoxLayer, m_model.allLayers());
 }
 
