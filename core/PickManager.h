@@ -335,7 +335,6 @@ class CORE_EXPORT PickManager : public QObject
     QHash<QString, QHash<vtkIdType, QString>> m_prevOwnerFaceLineByDomain;
 
     // ============ domain highlight overlay（按 domain+uuid，类似点/线/面管理） ============
-    QHash<QString, QHash<vtkIdType, QString>> m_ownerDomainCellByDomain;
     QHash<QString, QHash<QString, QSet<vtkIdType>>> m_domainCellsByDomainUuid;
     QHash<QString, QHash<QString, QSet<vtkIdType>>> m_previewDomainCellsByDomainUuid;
     QHash<QString, QHash<QString, QSet<int>>> m_domainIdsByDomainUuid;
