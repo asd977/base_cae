@@ -678,7 +678,7 @@ bool MaterialManager::loadProject()
                 const QJsonArray applied = entryObj.value(QStringLiteral("applied_matypes")).toArray();
                 for (const auto& groupIdValue : applied)
                 {
-                    entry.appliedDomainGroupIds.insert(matypeValue.toInt(-1));
+                    entry.appliedDomainGroupIds.insert(groupIdValue.toInt(-1));
                 }
                 entry.transitionOnly = entryObj.value(QStringLiteral("transition_only")).toBool(false);
                 entry.transitionMatype = entryObj.value(QStringLiteral("transition_matype")).toInt(-1);
