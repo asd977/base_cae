@@ -420,11 +420,6 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString& fil
         }
     }
 
-    if (matypeArr)
-    {
-        grid->GetCellData()->SetScalars(matypeArr);
-    }
-
     qInfo() << "[Flac3D] unique group->MATYPE count=" << groupToPhysId.size();
 
     return grid;
@@ -461,7 +456,8 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importInp(const QString& fileNa
                 layer->SetValue(cid, physId);
             }
         }
-        grid->GetCellData()->SetScalars(matype);
+        grid->GetCellData()->AddArray(matype);
+        grid->GetCellData()->AddArray(layer);
     }
     return grid;
 }
@@ -949,7 +945,6 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadCurrentGmshMesh(QString* er
     grid->GetCellData()->AddArray(layerArr);
     grid->GetCellData()->AddArray(ketypeArr);
     grid->GetCellData()->AddArray(elemIdArr);
-    grid->GetCellData()->SetScalars(matypeArr);
 
     ensureDefaultArrays(grid);
     return grid;
@@ -1667,7 +1662,6 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
 
     cd->AddArray(regionId);
     cd->AddArray(regionName);
-    cd->SetScalars(matype);
 
     grid->Squeeze();
     return grid;
@@ -2026,7 +2020,6 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
     }
 
     grid->GetCellData()->AddArray(matypeArr);
-    grid->GetCellData()->SetScalars(matypeArr);
 
     grid->GetCellData()->AddArray(elemIdArr);
     grid->GetCellData()->AddArray(ketypeArr);
@@ -3382,6 +3375,4 @@ void MeshGridIO::ensureDefaultArrays(vtkUnstructuredGrid* grid) const
         // part->GetValue(cid) == 0 ok
     }
 
-    // 默认把 MATYPE 作为 scalars（你高亮逻辑用到）
-    grid->GetCellData()->SetScalars(matype);
 }
