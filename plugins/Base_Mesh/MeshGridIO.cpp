@@ -55,6 +55,73 @@ static inline bool parseDouble(const QString& s, double& v)
     return ok;
 }
 
+static void buildIiinDomainGroups(vtkUnstructuredGrid* grid, MshPickMap& pick)
+{
+    if (!grid)
+        return;
+
+    auto* cd = grid->GetCellData();
+    auto* matypeArr = cd ? vtkIntArray::SafeDownCast(cd->GetArray("MATYPE")) : nullptr;
+    auto* layerArr  = cd ? vtkIntArray::SafeDownCast(cd->GetArray("LAYER")) : nullptr;
+
+    const int domainDim = maxCellDimension(grid);
+    if (domainDim < 0)
+        return;
+
+    QHash<int, QVector<qint64>> matypeGroups;
+    QHash<int, QVector<qint64>> layerGroups;
+
+    const vtkIdType nCells = grid->GetNumberOfCells();
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    {
+        vtkCell* cell = grid->GetCell(cid);
+        if (!cell || cell->GetCellDimension() != domainDim)
+            continue;
+
+        if (matypeArr && cid < matypeArr->GetNumberOfTuples())
+        {
+            const int matype = matypeArr->GetValue(cid);
+            if (matype > 0)
+                matypeGroups[matype].push_back(static_cast<qint64>(cid));
+        }
+
+        if (layerArr && cid < layerArr->GetNumberOfTuples())
+        {
+            const int layer = layerArr->GetValue(cid);
+            if (layer > 0)
+                layerGroups[layer].push_back(static_cast<qint64>(cid));
+        }
+    }
+
+    for (auto it = matypeGroups.constBegin(); it != matypeGroups.constEnd(); ++it)
+    {
+        const int matype = it.key();
+        const int groupId = iiinMatypeGroupId(matype);
+
+        addDomainGroup(pick,
+                       groupId,
+                       QStringLiteral("MATYPE %1").arg(matype),
+                       domainDim,
+                       MeshGroupSource::IiinMatype,
+                       matype,
+                       it.value());
+    }
+
+    for (auto it = layerGroups.constBegin(); it != layerGroups.constEnd(); ++it)
+    {
+        const int layer = it.key();
+        const int groupId = iiinLayerGroupId(layer);
+
+        addDomainGroup(pick,
+                       groupId,
+                       QStringLiteral("LAYER %1").arg(layer),
+                       domainDim,
+                       MeshGroupSource::IiinLayer,
+                       layer,
+                       it.value());
+    }
+}
+
 // 你的“显示代理策略”搬到 IO 层：ketype -> (vtkCellType, localNodeLids) 若干片
 static QVector<QPair<int, QVector<int>>> proxyPieces(int ketype)
 {
@@ -302,57 +369,68 @@ static int maxCellDimension(vtkUnstructuredGrid* grid)
     return maxDim;
 }
 
-static void addDomainGroup(MshPickMap& pick, int id, const QString& name, int dim,
-                           const QVector<qint64>& cellIds, const QString& source)
+static void addDomainGroup(MshPickMap& pick,
+                           int groupId,
+                           const QString& name,
+                           int dim,
+                           MeshGroupSource source,
+                           int sourceId,
+                           const QVector<qint64>& cellIds)
 {
-    if (id <= 0 || cellIds.isEmpty())
+    if (groupId <= 0 || cellIds.isEmpty())
         return;
+
     MeshGroupInfo info;
-    info.id = id;
+    info.id = groupId;
     info.name = name;
     info.kind = MeshGroupKind::Domain;
     info.source = source;
-    info.sourceId = id;
+    info.sourceId = sourceId;
     info.dim = dim;
-    pick.groupInfos[id] = info;
-    pick.domainGroupToCellIds[id] = cellIds;
-    pick.physIdToName[id] = name;
-    pick.physIdToDim[id] = dim;
-    pick.volPhysToCellIds[id] = cellIds;
+
+    pick.groups[groupId] = info;
+    pick.domainGroups[groupId] = cellIds;
 }
 
-static void addBoundaryGroup(MshPickMap& pick, int id, MeshGroupKind kind, const QString& name,
-                             const QVector<int>& pointIds, const QString& source)
+static void addBoundaryGroup(MshPickMap& pick,
+                             int groupId,
+                             const QString& name,
+                             MeshGroupKind kind,
+                             MeshGroupSource source,
+                             int sourceId,
+                             const QVector<int>& pointIds)
 {
-    if (id <= 0 || pointIds.isEmpty())
+    if (groupId <= 0 || pointIds.isEmpty())
         return;
+
     MeshGroupInfo info;
-    info.id = id;
+    info.id = groupId;
     info.name = name;
     info.kind = kind;
     info.source = source;
-    info.sourceId = id;
+    info.sourceId = sourceId;
+
     if (kind == MeshGroupKind::BoundaryPoint)
     {
         info.dim = 0;
-        pick.pointGroupToPointIds[id] = pointIds;
-        pick.bndPointPhysToPointIds[id] = pointIds;
+        pick.pointBoundaryGroups[groupId] = pointIds;
     }
     else if (kind == MeshGroupKind::BoundaryEdge)
     {
         info.dim = 1;
-        pick.edgeGroupToPointIds[id] = pointIds;
-        pick.bndEdgePhysToPointIds[id] = pointIds;
+        pick.edgeBoundaryPointGroups[groupId] = pointIds;
     }
     else if (kind == MeshGroupKind::BoundaryFace)
     {
         info.dim = 2;
-        pick.faceGroupToPointIds[id] = pointIds;
-        pick.bndFacePhysToPointIds[id] = pointIds;
+        pick.faceBoundaryPointGroups[groupId] = pointIds;
     }
-    pick.groupInfos[id] = info;
-    pick.physIdToName[id] = name;
-    pick.physIdToDim[id] = info.dim;
+    else
+    {
+        return;
+    }
+
+    pick.groups[groupId] = info;
 }
 
 static QVector<qint64> allCellsOfDim(vtkUnstructuredGrid* grid, int dim)
@@ -423,47 +501,90 @@ static void dedupPickMap(MshPickMap& pick)
         dedupInt(it.value());
 }
 
-static void normalizeImportedPickMap(vtkUnstructuredGrid* grid, MshPickMap& pick, const QString& source)
+static void normalizeImportedPickMap(vtkUnstructuredGrid* grid,
+                                     MshPickMap& pick,
+                                     const QString& source)
 {
     if (!grid)
         return;
+
     const int domainDim = maxCellDimension(grid);
     if (domainDim < 0)
         return;
-    if (pick.volPhysToCellIds.isEmpty() && pick.domainGroupToCellIds.isEmpty())
-        addDomainGroup(pick, kDefaultDomainGroupId, QStringLiteral("全部域"), domainDim,
-                       allCellsOfDim(grid, domainDim), source);
-    for (auto it = pick.volPhysToCellIds.constBegin(); it != pick.volPhysToCellIds.constEnd(); ++it)
-        addDomainGroup(pick, it.key(), pick.physIdToName.value(it.key(), QStringLiteral("域_%1").arg(it.key())),
-                       pick.physIdToDim.value(it.key(), domainDim), it.value(), source);
-    for (auto it = pick.bndPointPhysToPointIds.constBegin(); it != pick.bndPointPhysToPointIds.constEnd(); ++it)
-        addBoundaryGroup(pick, it.key(), MeshGroupKind::BoundaryPoint,
-                         pick.physIdToName.value(it.key(), QStringLiteral("点边界_%1").arg(it.key())),
-                         it.value(), source);
-    for (auto it = pick.bndEdgePhysToPointIds.constBegin(); it != pick.bndEdgePhysToPointIds.constEnd(); ++it)
-        addBoundaryGroup(pick, it.key(), MeshGroupKind::BoundaryEdge,
-                         pick.physIdToName.value(it.key(), QStringLiteral("线边界_%1").arg(it.key())),
-                         it.value(), source);
-    for (auto it = pick.bndFacePhysToPointIds.constBegin(); it != pick.bndFacePhysToPointIds.constEnd(); ++it)
-        addBoundaryGroup(pick, it.key(), MeshGroupKind::BoundaryFace,
-                         pick.physIdToName.value(it.key(), QStringLiteral("面边界_%1").arg(it.key())),
-                         it.value(), source);
 
-    const bool hasBoundary = !pick.pointGroupToPointIds.isEmpty() || !pick.edgeGroupToPointIds.isEmpty() ||
-                             !pick.faceGroupToPointIds.isEmpty();
-    if (!hasBoundary && source != QStringLiteral("IIIN"))
+           // 关键：先拷贝，后面不要边遍历边改原 QHash
+    const auto oldVolGroups   = pick.volPhysToCellIds;
+    const auto oldPointGroups = pick.bndPointPhysToPointIds;
+    const auto oldEdgeGroups  = pick.bndEdgePhysToPointIds;
+    const auto oldFaceGroups  = pick.bndFacePhysToPointIds;
+
+    const auto oldEdgeKeys = pick.bndEdgePhysToEdgeKeys;
+    const auto oldFaceKeys = pick.bndFacePhysToFaceKeys;
+
+    if (oldVolGroups.isEmpty() && pick.domainGroupToCellIds.isEmpty())
     {
-        const QVector<int> pointIds = collectPointIdsFromCells(grid, allCellsOfDim(grid, domainDim));
-        if (domainDim >= 2)
-            addBoundaryGroup(pick, kDefaultBoundaryFaceGroupId, MeshGroupKind::BoundaryFace,
-                             QStringLiteral("默认边界"), pointIds, source);
-        else if (domainDim == 1)
-            addBoundaryGroup(pick, kDefaultBoundaryEdgeGroupId, MeshGroupKind::BoundaryEdge,
-                             QStringLiteral("默认边界"), pointIds, source);
-        else if (domainDim == 0)
-            addBoundaryGroup(pick, kDefaultBoundaryPointGroupId, MeshGroupKind::BoundaryPoint,
-                             QStringLiteral("默认边界"), pointIds, source);
+        addDomainGroup(pick,
+                       kDefaultDomainGroupId,
+                       QStringLiteral("全部域"),
+                       domainDim,
+                       allCellsOfDim(grid, domainDim),
+                       source);
     }
+
+    for (auto it = oldVolGroups.constBegin(); it != oldVolGroups.constEnd(); ++it)
+    {
+        const int id = it.key();
+        const QString name = pick.physIdToName.value(id, QStringLiteral("域_%1").arg(id));
+
+        addDomainGroup(pick,
+                       id,
+                       name,
+                       domainDim,   // 这里先不要用 physIdToDim，下面解释
+                       it.value(),
+                       source);
+    }
+
+    for (auto it = oldPointGroups.constBegin(); it != oldPointGroups.constEnd(); ++it)
+    {
+        const int id = it.key();
+        addBoundaryGroup(pick,
+                         id,
+                         MeshGroupKind::BoundaryPoint,
+                         pick.physIdToName.value(id, QStringLiteral("点边界_%1").arg(id)),
+                         it.value(),
+                         source);
+    }
+
+    for (auto it = oldEdgeGroups.constBegin(); it != oldEdgeGroups.constEnd(); ++it)
+    {
+        const int id = it.key();
+        addBoundaryGroup(pick,
+                         id,
+                         MeshGroupKind::BoundaryEdge,
+                         pick.physIdToName.value(id, QStringLiteral("线边界_%1").arg(id)),
+                         it.value(),
+                         source);
+    }
+
+    for (auto it = oldFaceGroups.constBegin(); it != oldFaceGroups.constEnd(); ++it)
+    {
+        const int id = it.key();
+        addBoundaryGroup(pick,
+                         id,
+                         MeshGroupKind::BoundaryFace,
+                         pick.physIdToName.value(id, QStringLiteral("面边界_%1").arg(id)),
+                         it.value(),
+                         source);
+    }
+
+           // 新旧 key 也要同步，否则新字段为空
+    pick.edgeGroupToEdgeKeys = oldEdgeKeys;
+    pick.faceGroupToFaceKeys = oldFaceKeys;
+
+           // 旧字段保留
+    pick.bndEdgePhysToEdgeKeys = oldEdgeKeys;
+    pick.bndFacePhysToFaceKeys = oldFaceKeys;
+
     dedupPickMap(pick);
 }
 
@@ -2230,9 +2351,9 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
     grid->GetCellData()->AddArray(tail1Arr);
     grid->GetCellData()->AddArray(tail2Arr);
 
-    ensureDefaultArrays(grid);
-    m_mshPickMap = MshPickMap{};
-    buildIiinLegacyTags(grid, m_mshPickMap);
+    m_mshPickMap.clear();
+    buildIiinDomainGroups(grid, m_mshPickMap);
+
     grid->Squeeze();
     return grid;
 }

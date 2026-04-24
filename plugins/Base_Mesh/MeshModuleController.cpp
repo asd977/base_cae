@@ -963,13 +963,16 @@ bool MeshModuleController::importCurrentGmshMesh(QString* errMsg)
     if (!grid || grid->GetNumberOfCells() == 0)
     {
         if (errMsg)
-            *errMsg = err.isEmpty() ? QString("Gmsh 当前模型网格为空") : err;
+            *errMsg = err.isEmpty() ? QStringLiteral("Gmsh 当前模型网格为空") : err;
         return false;
     }
 
     m_importedGrid = grid;
     m_hasGrid = true;
     m_sourceFileName.clear();
+
+    syncPickMapGroupingFromGrid(m_importedGrid);
+
     {
         vtkSmartPointer<vtkUnstructuredGrid> tmpLine;
         vtkSmartPointer<vtkUnstructuredGrid> tmpNonLine;
@@ -977,7 +980,6 @@ bool MeshModuleController::importCurrentGmshMesh(QString* errMsg)
     }
 
     displayCurrentGrid();
-    syncPickMapGroupingFromGrid(m_importedGrid);
     PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
     return true;
 }
@@ -1480,55 +1482,7 @@ vtkSmartPointer<vtkActor> MeshModuleController::createLineActor(vtkUnstructuredG
 
 static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
 {
-    if (!grid)
-        return;
-    MshPickMap pick = MeshGridIO::instance().getMeshMap();
-
-    pick.iiin = IiinLegacyTags{};
-    pick.matypeToCellIds.clear();
-    pick.layerToCellIds.clear();
-    pick.cellIdToMatype.clear();
-    pick.cellIdToLayer.clear();
-
-    auto* matArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"));
-    auto* layArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"));
-
-    int maxDim = -1;
-    const vtkIdType nCells = grid->GetNumberOfCells();
-    for (vtkIdType cid = 0; cid < nCells; ++cid)
-    {
-        vtkCell* c = grid->GetCell(cid);
-        if (c)
-            maxDim = qMax(maxDim, c->GetCellDimension());
-    }
-
-    for (vtkIdType cid = 0; cid < nCells; ++cid)
-    {
-        vtkCell* c = grid->GetCell(cid);
-        if (!c || c->GetCellDimension() != maxDim)
-            continue;
-        if (matArr && cid < matArr->GetNumberOfTuples())
-        {
-            const int mat = matArr->GetValue(cid);
-            pick.iiin.matypeValues.insert(mat);
-            pick.iiin.cellIdToMatype[cid] = mat;
-            pick.iiin.matypeToCellIds[mat].push_back(cid);
-            pick.cellIdToMatype[cid] = mat;
-            pick.matypeToCellIds[mat].push_back(cid);
-        }
-        if (layArr && cid < layArr->GetNumberOfTuples())
-        {
-            const int lay = layArr->GetValue(cid);
-            pick.iiin.layerValues.insert(lay);
-            pick.iiin.cellIdToLayer[cid] = lay;
-            pick.iiin.layerToCellIds[lay].push_back(cid);
-            pick.cellIdToLayer[cid] = lay;
-            pick.layerToCellIds[lay].push_back(cid);
-        }
-    }
-    pick.iiin.valid = (matArr || layArr);
-
-    MeshGridIO::instance().setMeshMap(pick);
+    Q_UNUSED(grid);
 }
 
 vtkSmartPointer<vtkUnstructuredGrid> MeshModuleController::getVtkUnstructuredGridSolid()

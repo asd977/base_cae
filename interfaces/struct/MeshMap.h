@@ -16,16 +16,40 @@ enum class MeshGroupKind
     BoundaryFace = 3
 };
 
+enum class MeshGroupSource
+{
+    Unknown = 0,
+
+    IiinMatype,
+    IiinLayer,
+
+    GmshPhysicalVolume,
+    GmshPhysicalSurface,
+    GmshPhysicalCurve,
+    GmshPhysicalPoint,
+
+    AbaqusElset,
+    AbaqusNset,
+
+    FlacZoneGroup,
+
+    User
+};
+
 struct MeshGroupInfo
 {
     int id = 0;
     QString name;
-    MeshGroupKind kind = MeshGroupKind::Domain;
-    QString source;
-    int sourceId = 0;
-    int dim = -1;
-};
 
+    MeshGroupKind kind = MeshGroupKind::Domain;
+    MeshGroupSource source = MeshGroupSource::Unknown;
+
+           // 点0、线1、面2、体3
+    int dim = -1;
+
+           // 原始编号，例如 MATYPE=3、LAYER=2、Gmsh PhysicalId=5
+    int sourceId = 0;
+};
 struct IiinLegacyTags
 {
     bool valid = false;
@@ -37,41 +61,41 @@ struct IiinLegacyTags
     QHash<int, QVector<qint64>> layerToCellIds;
 };
 
+
 struct MshPickMap
 {
-    QHash<int, MeshGroupInfo> groupInfos;
+    // 所有组的元信息
+    QHash<int, MeshGroupInfo> groups;
 
-    QHash<int, QVector<qint64>> domainGroupToCellIds;
+           // 域分组：材料、开挖、体控制都读这个
+    QHash<int, QVector<qint64>> domainGroups;
 
-    QHash<int, QVector<int>> pointGroupToPointIds;
-    QHash<int, QVector<int>> edgeGroupToPointIds;
-    QHash<int, QVector<int>> faceGroupToPointIds;
+           // 边界分组：约束、荷载读这些
+    QHash<int, QVector<int>> pointBoundaryGroups;
+    QHash<int, QVector<int>> edgeBoundaryPointGroups;
+    QHash<int, QVector<int>> faceBoundaryPointGroups;
 
-    QHash<int, QVector<qint64>> edgeGroupToEdgeKeys;
-    QHash<int, QVector<qint64>> faceGroupToFaceKeys;
+    QHash<int, QVector<qint64>> edgeBoundaryKeys;
+    QHash<int, QVector<qint64>> faceBoundaryKeys;
 
-    QHash<int, int> nodeIdToPointId;
+           // 节点映射
     QHash<int, int> pointIdToNodeId;
+    QHash<int, int> nodeIdToPointId;
 
-    IiinLegacyTags iiin;
+    void clear()
+    {
+        groups.clear();
+        domainGroups.clear();
 
-    QHash<int, QString> physIdToName;
-    QHash<int, int> physIdToDim;
+        pointBoundaryGroups.clear();
+        edgeBoundaryPointGroups.clear();
+        faceBoundaryPointGroups.clear();
 
-    QHash<int, QVector<qint64>> volPhysToCellIds;
+        edgeBoundaryKeys.clear();
+        faceBoundaryKeys.clear();
 
-    QHash<int, QVector<int>> bndPointPhysToPointIds;
-    QHash<int, QVector<int>> bndEdgePhysToPointIds;
-    QHash<int, QVector<int>> bndFacePhysToPointIds;
-
-    QHash<int, QVector<qint64>> bndEdgePhysToEdgeKeys;
-    QHash<int, QVector<qint64>> bndFacePhysToFaceKeys;
-
-    QHash<vtkIdType, int> cellIdToMatype;
-    QHash<vtkIdType, int> cellIdToLayer;
-    QHash<vtkIdType, QString> cellIdToGroupName;
-    QHash<int, QVector<qint64>> matypeToCellIds;
-    QHash<int, QVector<qint64>> layerToCellIds;
+        pointIdToNodeId.clear();
+        nodeIdToPointId.clear();
+    }
 };
-
 #endif // MESH_H
