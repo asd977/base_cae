@@ -462,12 +462,12 @@ void syncAutoNumberProperties(MaterialModel* model, MaterialEntry* entry)
     }
 
     QList<int> groupIds = entry->appliedDomainGroupIds.values();
-    std::sort(matypes.begin(), groupIds.end());
+    std::sort(groupIds.begin(), groupIds.end());
 
     QStringList tokens;
     for (int groupId : groupIds)
     {
-        if (matype >= 0)
+        if (groupId >= 0)
         {
             tokens.append(QString::number(groupId));
         }
@@ -543,7 +543,7 @@ bool MaterialManager::saveProject()
             entryObj.insert(QStringLiteral("properties"), propertiesObj);
 
             QList<int> groupIds = entry.appliedDomainGroupIds.values();
-            std::sort(matypes.begin(), groupIds.end());
+            std::sort(groupIds.begin(), groupIds.end());
             QJsonArray appliedArray;
             for (int groupId : groupIds)
             {
@@ -2689,9 +2689,9 @@ bool MaterialManager::generateCaculateFile()
     auto imatLabel = [](int groupId) -> QString
     {
         // 尽量贴近你示例：IMAT= 10 这种（两位数前空一格）
-        if (matype < 10)
+        if (groupId < 10)
             return QString("IMAT=%1").arg(groupId);
-        if (matype < 100)
+        if (groupId < 100)
             return QString("IMAT= %1").arg(groupId);
         return QString("IMAT=%1").arg(groupId);
     };
