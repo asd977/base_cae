@@ -73,7 +73,7 @@ void MaterialEntryWidget::beforeLoad()
         PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid,
                                                     false);
         if (!m_entryId.isEmpty())
-            m_materialManager->refreshMatypeHighlight(m_entryId);
+            m_materialManager->refreshDomainGroupHighlight(m_entryId);
     }
 }
 
@@ -252,7 +252,7 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     m_formLayout->addRow(QString("材料名称"), m_nameEdit);
 
     // 先取 appliedList，后面初始化要用
-    QList<int> appliedList = entry->appliedMatypes.values();
+    QList<int> appliedList = entry->appliedDomainGroupIds.values();
     std::sort(appliedList.begin(), appliedList.end());
 
     // ===== MATYPE 选择 + 施加（放到动态字段上面）=====
@@ -263,7 +263,7 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     m_matypeCombo = new CustomComboBox(matypeRowWidget);
     m_matypeCombo->addItem(QString("未选择"), QVariant());
 
-    QList<int> matypes = m_materialManager->availableMatypes().values();
+    QList<int> matypes = m_materialManager->availableDomainGroups().values();
     std::sort(matypes.begin(), matypes.end());
     for (int value : matypes)
     {
@@ -286,7 +286,7 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     rowLayout->addWidget(m_applyButton);
     rowLayout->addStretch();
 
-    m_formLayout->addRow(QString("关联MATYPE"), matypeRowWidget);
+    m_formLayout->addRow(QStringLiteral("关联域"), matypeRowWidget);
 
     // ===== 已施加 MATYPE 列表 + 移除 =====
     QWidget* appliedRowWidget = new QWidget(this);
@@ -310,7 +310,7 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     appliedLayout->addWidget(m_appliedMatypesList);
     appliedLayout->addWidget(m_removeButton);
 
-    m_formLayout->addRow(QString("已施加材料单元"), appliedRowWidget);
+    m_formLayout->addRow(QStringLiteral("已施加域"), appliedRowWidget);
 
     QWidget* transitionRowWidget = new QWidget(this);
     auto* transitionLayout = new QHBoxLayout(transitionRowWidget);
@@ -376,7 +376,7 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     rebuildSeepageFields(entry);
 
     // ===== 初始化选中 MATYPE =====
-    int initialMatype = m_materialManager->selectedMatypeForEntry(m_entryId);
+    int initialMatype = m_materialManager->selectedDomainGroupForEntry(m_entryId);
     if (initialMatype < 0 && !appliedList.isEmpty())
     {
         initialMatype = appliedList.first();
@@ -396,7 +396,7 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     m_isUpdating = false;
 
     updateAppliedListColors();
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    m_materialManager->refreshDomainGroupHighlight(m_entryId);
 }
 
 void MaterialEntryWidget::clearForm()
@@ -493,7 +493,7 @@ void MaterialEntryWidget::onMatypeChanged(int)
 
     // 仅在非下拉预览阶段同步 Selected，覆盖键盘/滚轮等非 activated 路径。
     m_materialManager->setSelectedMatypeForEntry(m_entryId, matype);
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    m_materialManager->refreshDomainGroupHighlight(m_entryId);
 
     updateAppliedListColors();
 }
@@ -516,7 +516,7 @@ void MaterialEntryWidget::onMatypeActivated(int)
     m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
 
     updateAppliedListColors();
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    m_materialManager->refreshDomainGroupHighlight(m_entryId);
 }
 
 void MaterialEntryWidget::onApplyMatypeClicked()
@@ -527,7 +527,7 @@ void MaterialEntryWidget::onApplyMatypeClicked()
     QVariant data = m_matypeCombo->currentData();
     int matype = data.isValid() ? data.toInt() : -1;
 
-    m_materialManager->applyMatypeToEntry(m_entryId, matype);
+    m_materialManager->applyDomainGroupToEntry(m_entryId, matype);
 }
 
 void MaterialEntryWidget::onAppliedMatypeSelected(const QString& text)
@@ -543,7 +543,7 @@ void MaterialEntryWidget::onAppliedMatypeSelected(const QString& text)
         m_preDeleteMatype = -1;
         m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
         updateAppliedListColors();
-        m_materialManager->refreshMatypeHighlight(m_entryId);
+        m_materialManager->refreshDomainGroupHighlight(m_entryId);
         return;
     }
     const int matype = item->data(Qt::UserRole).toInt();
@@ -555,7 +555,7 @@ void MaterialEntryWidget::onAppliedMatypeSelected(const QString& text)
     m_materialManager->setPreDeleteMatypeForEntry(m_entryId, matype);
 
     updateAppliedListColors();
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    m_materialManager->refreshDomainGroupHighlight(m_entryId);
 }
 
 void MaterialEntryWidget::onTransitionModeChanged(int state)
@@ -593,8 +593,9 @@ void MaterialEntryWidget::onTransitionModeChanged(int state)
     }
     entry->transitionOnly = true;
     entry->transitionMatype = matype;
+    entry->appliedDomainGroupIds.clear();
     entry->appliedMatypes.clear();
-    m_materialManager->refreshEntryWidgetMatypes(entry->id, entry->appliedMatypes, -1);
+    m_materialManager->refreshEntryWidgetDomainGroups(entry->id, entry->appliedDomainGroupIds, -1);
     if (m_matypeCombo)
         m_matypeCombo->setEnabled(false);
     if (m_applyButton)
@@ -649,7 +650,7 @@ void MaterialEntryWidget::onMatypeHovered(int index)
 
     m_previewMatype = matype;
     m_materialManager->setPreviewMatypeForEntry(m_entryId, matype);
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    m_materialManager->refreshDomainGroupHighlight(m_entryId);
 }
 
 void MaterialEntryWidget::onDropdownClosed()
@@ -669,7 +670,7 @@ void MaterialEntryWidget::onDropdownClosed()
 
     if (m_matypeCombo)
     {
-        const int selected = m_materialManager->selectedMatypeForEntry(m_entryId);
+        const int selected = m_materialManager->selectedDomainGroupForEntry(m_entryId);
         int comboIndex = (selected >= 0) ? m_matypeCombo->findData(selected) : 0;
         if (comboIndex < 0)
             comboIndex = 0;
@@ -693,7 +694,7 @@ void MaterialEntryWidget::onDropdownClosed()
 
     // 下拉关闭后仅取消 Preview，并恢复到该条目的应有高亮状态（Selected /
     // PreDelete / Applied）。
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    m_materialManager->refreshDomainGroupHighlight(m_entryId);
 }
 
 void MaterialEntryWidget::onRemoveMatypeClicked()
@@ -710,13 +711,13 @@ void MaterialEntryWidget::onRemoveMatypeClicked()
     if (!ok)
         return;
 
-    m_materialManager->removeMatypeFromEntry(m_entryId, matype);
+    m_materialManager->removeDomainGroupFromEntry(m_entryId, matype);
 
     // 移除后清掉预删除
     m_preDeleteMatype = -1;
     m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
     updateAppliedListColors();
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    m_materialManager->refreshDomainGroupHighlight(m_entryId);
 }
 
 void MaterialEntryWidget::updateAppliedListColors()

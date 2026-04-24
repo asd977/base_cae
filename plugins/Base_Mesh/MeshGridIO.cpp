@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <cmath>
 #include <vector>
+#include <limits>
 #include <PublicVariables.h>
 #include <PublicConstants.h>
 
@@ -282,6 +283,232 @@ static int tetHexKetypeFromCell(vtkCell* cell, int fallback)
     }
 }
 
+static constexpr int kDefaultDomainGroupId = 1;
+static constexpr int kDefaultBoundaryFaceGroupId = 10001;
+static constexpr int kDefaultBoundaryEdgeGroupId = 10002;
+static constexpr int kDefaultBoundaryPointGroupId = 10003;
+
+static int maxCellDimension(vtkUnstructuredGrid* grid)
+{
+    if (!grid)
+        return -1;
+    int maxDim = -1;
+    for (vtkIdType cid = 0; cid < grid->GetNumberOfCells(); ++cid)
+    {
+        vtkCell* cell = grid->GetCell(cid);
+        if (cell)
+            maxDim = qMax(maxDim, cell->GetCellDimension());
+    }
+    return maxDim;
+}
+
+static void addDomainGroup(MshPickMap& pick, int id, const QString& name, int dim,
+                           const QVector<qint64>& cellIds, const QString& source)
+{
+    if (id <= 0 || cellIds.isEmpty())
+        return;
+    MeshGroupInfo info;
+    info.id = id;
+    info.name = name;
+    info.kind = MeshGroupKind::Domain;
+    info.source = source;
+    info.sourceId = id;
+    info.dim = dim;
+    pick.groupInfos[id] = info;
+    pick.domainGroupToCellIds[id] = cellIds;
+    pick.physIdToName[id] = name;
+    pick.physIdToDim[id] = dim;
+    pick.volPhysToCellIds[id] = cellIds;
+}
+
+static void addBoundaryGroup(MshPickMap& pick, int id, MeshGroupKind kind, const QString& name,
+                             const QVector<int>& pointIds, const QString& source)
+{
+    if (id <= 0 || pointIds.isEmpty())
+        return;
+    MeshGroupInfo info;
+    info.id = id;
+    info.name = name;
+    info.kind = kind;
+    info.source = source;
+    info.sourceId = id;
+    if (kind == MeshGroupKind::BoundaryPoint)
+    {
+        info.dim = 0;
+        pick.pointGroupToPointIds[id] = pointIds;
+        pick.bndPointPhysToPointIds[id] = pointIds;
+    }
+    else if (kind == MeshGroupKind::BoundaryEdge)
+    {
+        info.dim = 1;
+        pick.edgeGroupToPointIds[id] = pointIds;
+        pick.bndEdgePhysToPointIds[id] = pointIds;
+    }
+    else if (kind == MeshGroupKind::BoundaryFace)
+    {
+        info.dim = 2;
+        pick.faceGroupToPointIds[id] = pointIds;
+        pick.bndFacePhysToPointIds[id] = pointIds;
+    }
+    pick.groupInfos[id] = info;
+    pick.physIdToName[id] = name;
+    pick.physIdToDim[id] = info.dim;
+}
+
+static QVector<qint64> allCellsOfDim(vtkUnstructuredGrid* grid, int dim)
+{
+    QVector<qint64> out;
+    if (!grid)
+        return out;
+    for (vtkIdType cid = 0; cid < grid->GetNumberOfCells(); ++cid)
+    {
+        vtkCell* cell = grid->GetCell(cid);
+        if (cell && cell->GetCellDimension() == dim)
+            out.push_back(static_cast<qint64>(cid));
+    }
+    return out;
+}
+
+static QVector<int> collectPointIdsFromCells(vtkUnstructuredGrid* grid, const QVector<qint64>& cellIds)
+{
+    QSet<int> pointSet;
+    if (!grid)
+        return {};
+    for (qint64 rawCid : cellIds)
+    {
+        vtkIdType cid = static_cast<vtkIdType>(rawCid);
+        if (cid < 0 || cid >= grid->GetNumberOfCells())
+            continue;
+        vtkCell* cell = grid->GetCell(cid);
+        if (!cell || !cell->GetPointIds())
+            continue;
+        vtkIdList* ids = cell->GetPointIds();
+        for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
+        {
+            vtkIdType pid = ids->GetId(i);
+            if (pid >= 0 && pid <= std::numeric_limits<int>::max())
+                pointSet.insert(static_cast<int>(pid));
+        }
+    }
+    QVector<int> out = pointSet.values().toVector();
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+static void dedupPickMap(MshPickMap& pick)
+{
+    auto dedupInt = [](QVector<int>& v) {
+        std::sort(v.begin(), v.end());
+        v.erase(std::unique(v.begin(), v.end()), v.end());
+    };
+    auto dedupI64 = [](QVector<qint64>& v) {
+        std::sort(v.begin(), v.end());
+        v.erase(std::unique(v.begin(), v.end()), v.end());
+    };
+    for (auto it = pick.domainGroupToCellIds.begin(); it != pick.domainGroupToCellIds.end(); ++it)
+        dedupI64(it.value());
+    for (auto it = pick.volPhysToCellIds.begin(); it != pick.volPhysToCellIds.end(); ++it)
+        dedupI64(it.value());
+    for (auto it = pick.pointGroupToPointIds.begin(); it != pick.pointGroupToPointIds.end(); ++it)
+        dedupInt(it.value());
+    for (auto it = pick.edgeGroupToPointIds.begin(); it != pick.edgeGroupToPointIds.end(); ++it)
+        dedupInt(it.value());
+    for (auto it = pick.faceGroupToPointIds.begin(); it != pick.faceGroupToPointIds.end(); ++it)
+        dedupInt(it.value());
+    for (auto it = pick.bndPointPhysToPointIds.begin(); it != pick.bndPointPhysToPointIds.end(); ++it)
+        dedupInt(it.value());
+    for (auto it = pick.bndEdgePhysToPointIds.begin(); it != pick.bndEdgePhysToPointIds.end(); ++it)
+        dedupInt(it.value());
+    for (auto it = pick.bndFacePhysToPointIds.begin(); it != pick.bndFacePhysToPointIds.end(); ++it)
+        dedupInt(it.value());
+}
+
+static void normalizeImportedPickMap(vtkUnstructuredGrid* grid, MshPickMap& pick, const QString& source)
+{
+    if (!grid)
+        return;
+    const int domainDim = maxCellDimension(grid);
+    if (domainDim < 0)
+        return;
+    if (pick.volPhysToCellIds.isEmpty() && pick.domainGroupToCellIds.isEmpty())
+        addDomainGroup(pick, kDefaultDomainGroupId, QStringLiteral("全部域"), domainDim,
+                       allCellsOfDim(grid, domainDim), source);
+    for (auto it = pick.volPhysToCellIds.constBegin(); it != pick.volPhysToCellIds.constEnd(); ++it)
+        addDomainGroup(pick, it.key(), pick.physIdToName.value(it.key(), QStringLiteral("域_%1").arg(it.key())),
+                       pick.physIdToDim.value(it.key(), domainDim), it.value(), source);
+    for (auto it = pick.bndPointPhysToPointIds.constBegin(); it != pick.bndPointPhysToPointIds.constEnd(); ++it)
+        addBoundaryGroup(pick, it.key(), MeshGroupKind::BoundaryPoint,
+                         pick.physIdToName.value(it.key(), QStringLiteral("点边界_%1").arg(it.key())),
+                         it.value(), source);
+    for (auto it = pick.bndEdgePhysToPointIds.constBegin(); it != pick.bndEdgePhysToPointIds.constEnd(); ++it)
+        addBoundaryGroup(pick, it.key(), MeshGroupKind::BoundaryEdge,
+                         pick.physIdToName.value(it.key(), QStringLiteral("线边界_%1").arg(it.key())),
+                         it.value(), source);
+    for (auto it = pick.bndFacePhysToPointIds.constBegin(); it != pick.bndFacePhysToPointIds.constEnd(); ++it)
+        addBoundaryGroup(pick, it.key(), MeshGroupKind::BoundaryFace,
+                         pick.physIdToName.value(it.key(), QStringLiteral("面边界_%1").arg(it.key())),
+                         it.value(), source);
+
+    const bool hasBoundary = !pick.pointGroupToPointIds.isEmpty() || !pick.edgeGroupToPointIds.isEmpty() ||
+                             !pick.faceGroupToPointIds.isEmpty();
+    if (!hasBoundary && source != QStringLiteral("IIIN"))
+    {
+        const QVector<int> pointIds = collectPointIdsFromCells(grid, allCellsOfDim(grid, domainDim));
+        if (domainDim >= 2)
+            addBoundaryGroup(pick, kDefaultBoundaryFaceGroupId, MeshGroupKind::BoundaryFace,
+                             QStringLiteral("默认边界"), pointIds, source);
+        else if (domainDim == 1)
+            addBoundaryGroup(pick, kDefaultBoundaryEdgeGroupId, MeshGroupKind::BoundaryEdge,
+                             QStringLiteral("默认边界"), pointIds, source);
+        else if (domainDim == 0)
+            addBoundaryGroup(pick, kDefaultBoundaryPointGroupId, MeshGroupKind::BoundaryPoint,
+                             QStringLiteral("默认边界"), pointIds, source);
+    }
+    dedupPickMap(pick);
+}
+
+static void buildIiinLegacyTags(vtkUnstructuredGrid* grid, MshPickMap& pick)
+{
+    if (!grid)
+        return;
+    auto* cd = grid->GetCellData();
+    auto* matypeArr = cd ? vtkIntArray::SafeDownCast(cd->GetArray("MATYPE")) : nullptr;
+    auto* layerArr = cd ? vtkIntArray::SafeDownCast(cd->GetArray("LAYER")) : nullptr;
+    const int domainDim = maxCellDimension(grid);
+    if (domainDim < 0)
+        return;
+    QVector<qint64> allDomainCells;
+    for (vtkIdType cid = 0; cid < grid->GetNumberOfCells(); ++cid)
+    {
+        vtkCell* cell = grid->GetCell(cid);
+        if (!cell || cell->GetCellDimension() != domainDim)
+            continue;
+        allDomainCells.push_back(static_cast<qint64>(cid));
+        if (matypeArr && cid < matypeArr->GetNumberOfTuples())
+        {
+            const int v = matypeArr->GetValue(cid);
+            pick.iiin.cellIdToMatype[cid] = v;
+            pick.iiin.matypeValues.insert(v);
+            pick.iiin.matypeToCellIds[v].push_back(static_cast<qint64>(cid));
+            pick.cellIdToMatype[cid] = v;
+            pick.matypeToCellIds[v].push_back(static_cast<qint64>(cid));
+        }
+        if (layerArr && cid < layerArr->GetNumberOfTuples())
+        {
+            const int v = layerArr->GetValue(cid);
+            pick.iiin.cellIdToLayer[cid] = v;
+            pick.iiin.layerValues.insert(v);
+            pick.iiin.layerToCellIds[v].push_back(static_cast<qint64>(cid));
+            pick.cellIdToLayer[cid] = v;
+            pick.layerToCellIds[v].push_back(static_cast<qint64>(cid));
+        }
+    }
+    pick.iiin.valid = true;
+    addDomainGroup(pick, kDefaultDomainGroupId, QStringLiteral("全部域"), domainDim, allDomainCells,
+                   QStringLiteral("IIIN"));
+    dedupPickMap(pick);
+}
+
 } // namespace
 
 vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString& fileName,
@@ -346,13 +573,9 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString& fil
 
         m_mshPickMap.volPhysToCellIds[physId].push_back(static_cast<qint64>(cid));
         if (matypeArr)
-        {
-            matypeArr->SetValue(cid, physId);
-        }
+            matypeArr->SetValue(cid, 1);
         if (layerArr)
-        {
-            layerArr->SetValue(cid, physId);
-        }
+            layerArr->SetValue(cid, 1);
         if (ketypeArr)
         {
             vtkCell* cell = grid->GetCell(cid);
@@ -420,7 +643,8 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString& fil
         }
     }
 
-    qInfo() << "[Flac3D] unique group->MATYPE count=" << groupToPhysId.size();
+    normalizeImportedPickMap(grid, m_mshPickMap, QStringLiteral("Flac3D"));
+    qInfo() << "[Flac3D] unique group->DomainGroup count=" << groupToPhysId.size();
 
     return grid;
 }
@@ -438,27 +662,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importInp(const QString& fileNa
     }
     ensureDefaultArrays(grid);
 
-    auto* cd = grid->GetCellData();
-    auto* matype = cd ? vtkIntArray::SafeDownCast(cd->GetArray("MATYPE")) : nullptr;
-    auto* layer = cd ? vtkIntArray::SafeDownCast(cd->GetArray("LAYER")) : nullptr;
-    if (matype && layer)
-    {
-        for (auto it = m_mshPickMap.volPhysToCellIds.constBegin();
-             it != m_mshPickMap.volPhysToCellIds.constEnd(); ++it)
-        {
-            const int physId = it.key();
-            for (qint64 rawCid : it.value())
-            {
-                const vtkIdType cid = static_cast<vtkIdType>(rawCid);
-                if (cid < 0 || cid >= grid->GetNumberOfCells())
-                    continue;
-                matype->SetValue(cid, physId);
-                layer->SetValue(cid, physId);
-            }
-        }
-        grid->GetCellData()->AddArray(matype);
-        grid->GetCellData()->AddArray(layer);
-    }
+    normalizeImportedPickMap(grid, m_mshPickMap, QStringLiteral("AbaqusInp"));
     return grid;
 }
 
@@ -688,16 +892,15 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadCurrentGmshMesh(QString* er
                     if (!ok)
                         continue;
 
-                    const bool shouldInsertCell =
-                        (dim == targetCellDim) || (targetCellDim == 3 && dim == 2);
+                    const bool shouldInsertCell = (dim == targetCellDim);
 
                     vtkIdType cid = -1;
                     if (shouldInsertCell)
                     {
                         cid = grid->InsertNextCell(vtkType, numNodes, ids);
                         elemIdArr->InsertNextValue(static_cast<int>(tags[e]));
-                        matypeArr->InsertNextValue(physId);
-                        layerArr->InsertNextValue(physId);
+                        matypeArr->InsertNextValue(1);
+                        layerArr->InsertNextValue(1);
                         ketypeArr->InsertNextValue(gmshToKetype(gmshType));
                     }
 
@@ -947,6 +1150,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadCurrentGmshMesh(QString* er
     grid->GetCellData()->AddArray(elemIdArr);
 
     ensureDefaultArrays(grid);
+    normalizeImportedPickMap(grid, m_mshPickMap, QStringLiteral("GmshPhysical"));
     return grid;
 }
 
@@ -1590,11 +1794,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
             pick.physIdToDim.insert(physId, 2);
     }
 
-    // 写回成员：供外部 DisplacementConstraintWidget / FaceLoadPage 等查询
-    m_mshPickMap = pick;
-
-    // 同步 RegionId/RegionName，且将 MATYPE 直接映射到体
-    // physicalId（便于材料批量设置）
+    // 同步 RegionId/RegionName，非 IIIN 网格 MATYPE/LAYER 仅占位，不表达分组语义。
     auto* cd = grid->GetCellData();
 
     auto ensureCellIntArray = [cd, nCells](const char* name, int defaultValue)
@@ -1645,11 +1845,10 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
         const int physId = cellToPhys.value(cid, 0);
-        const int mappedMatype = (physId > 0 ? physId : 1);
-        matype->SetValue(cid, mappedMatype);
+        matype->SetValue(cid, 1);
         if (layer)
         {
-            layer->SetValue(cid, mappedMatype);
+            layer->SetValue(cid, 1);
         }
         if (ketype)
         {
@@ -1662,6 +1861,9 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
 
     cd->AddArray(regionId);
     cd->AddArray(regionName);
+
+    normalizeImportedPickMap(grid, pick, QStringLiteral("MshPhysical"));
+    m_mshPickMap = pick;
 
     grid->Squeeze();
     return grid;
@@ -2029,6 +2231,9 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
     grid->GetCellData()->AddArray(tail2Arr);
 
     ensureDefaultArrays(grid);
+    m_mshPickMap = MshPickMap{};
+    buildIiinLegacyTags(grid, m_mshPickMap);
+    grid->Squeeze();
     return grid;
 }
 

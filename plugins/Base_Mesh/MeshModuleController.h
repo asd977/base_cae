@@ -28,6 +28,13 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     void closeProject();
 
     QSet<int> getAvailableMatypes() const override;
+    QSet<int> getAvailableDomainGroupIds() const override;
+    QVector<qint64> domainGroupCellIds(int groupId) const override;
+    QString domainGroupName(int groupId) const override;
+    QSet<int> iiinMatypeValues() const override;
+    QSet<int> iiinLayerValues() const override;
+    QVector<qint64> iiinMatypeCells(int matype) const override;
+    QVector<qint64> iiinLayerCells(int layer) const override;
     void highlightDomainMatypes(const QSet<int>& matypes, int selectedMatype, int previewMatype,
                           int preDeleteMatype) override;
     QVector<DomainKey> availableDomains(DomainType type) const override;

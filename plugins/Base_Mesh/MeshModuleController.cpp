@@ -531,84 +531,73 @@ void MeshModuleController::closeProject()
 
 QSet<int> MeshModuleController::getAvailableMatypes() const
 {
-    QSet<int> ret;
-    if (!m_importedGrid)
-        return ret;
+    return getAvailableDomainGroupIds();
+}
 
-    auto* arr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray("MATYPE"));
-    if (!arr)
-        return ret;
-
-    int maxDim = -1;
-    const vtkIdType nCells = m_importedGrid->GetNumberOfCells();
-    for (vtkIdType i = 0; i < nCells; ++i)
+QSet<int> MeshModuleController::getAvailableDomainGroupIds() const
+{
+    QSet<int> out;
+    const MshPickMap pick = MeshGridIO::instance().getMeshMap();
+    const auto& groups = !pick.domainGroupToCellIds.isEmpty() ? pick.domainGroupToCellIds
+                                                               : pick.volPhysToCellIds;
+    for (auto it = groups.constBegin(); it != groups.constEnd(); ++it)
     {
-        vtkCell* c = m_importedGrid->GetCell(i);
-        if (!c)
-            continue;
-        maxDim = qMax(maxDim, c->GetCellDimension());
+        if (!it.value().isEmpty())
+            out.insert(it.key());
     }
-    if (maxDim < 0)
-        return ret;
+    return out;
+}
 
-    const vtkIdType n = qMin(arr->GetNumberOfTuples(), nCells);
-    for (vtkIdType i = 0; i < n; ++i)
+QVector<qint64> MeshModuleController::domainGroupCellIds(int groupId) const
+{
+    const MshPickMap pick = MeshGridIO::instance().getMeshMap();
+    if (pick.domainGroupToCellIds.contains(groupId))
+        return pick.domainGroupToCellIds.value(groupId);
+    return pick.volPhysToCellIds.value(groupId);
+}
+
+QString MeshModuleController::domainGroupName(int groupId) const
+{
+    const MshPickMap pick = MeshGridIO::instance().getMeshMap();
+    if (pick.groupInfos.contains(groupId))
     {
-        vtkCell* c = m_importedGrid->GetCell(i);
-        if (!c || c->GetCellDimension() != maxDim)
-            continue;
-        ret.insert(arr->GetValue(i));
+        const QString n = pick.groupInfos.value(groupId).name.trimmed();
+        if (!n.isEmpty())
+            return n;
     }
-    return ret;
+    return pick.physIdToName.value(groupId, QStringLiteral("域_%1").arg(groupId));
+}
+
+QSet<int> MeshModuleController::iiinMatypeValues() const
+{
+    return MeshGridIO::instance().getMeshMap().iiin.matypeValues;
+}
+
+QSet<int> MeshModuleController::iiinLayerValues() const
+{
+    return MeshGridIO::instance().getMeshMap().iiin.layerValues;
+}
+
+QVector<qint64> MeshModuleController::iiinMatypeCells(int matype) const
+{
+    return MeshGridIO::instance().getMeshMap().iiin.matypeToCellIds.value(matype);
+}
+
+QVector<qint64> MeshModuleController::iiinLayerCells(int layer) const
+{
+    return MeshGridIO::instance().getMeshMap().iiin.layerToCellIds.value(layer);
 }
 
 QVector<DomainKey> MeshModuleController::availableDomains(DomainType type) const
 {
     QVector<DomainKey> out;
-    if (!m_importedGrid)
+    if (type != DomainType::Group && type != DomainType::Matype && type != DomainType::Layer)
         return out;
-
-    const char* arrayName = nullptr;
-    if (type == DomainType::Matype)
-        arrayName = "MATYPE";
-    else if (type == DomainType::Layer)
-        arrayName = "LAYER";
-    else
-        return out;
-
-    auto* arr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray(arrayName));
-    if (!arr)
-        return out;
-
-    QSet<int> ids;
-    const vtkIdType nCells = m_importedGrid->GetNumberOfCells();
-
-    int maxDim = -1;
-    for (vtkIdType i = 0; i < nCells; ++i)
-    {
-        vtkCell* c = m_importedGrid->GetCell(i);
-        if (!c)
-            continue;
-        maxDim = qMax(maxDim, c->GetCellDimension());
-    }
-
-    const vtkIdType n = qMin(arr->GetNumberOfTuples(), nCells);
-    for (vtkIdType i = 0; i < n; ++i)
-    {
-        vtkCell* c = m_importedGrid->GetCell(i);
-        if (!c || c->GetCellDimension() != maxDim)
-            continue;
-        ids.insert(arr->GetValue(i));
-    }
-
-    out.reserve(ids.size());
-    for (int id : ids)
-        out.push_back(DomainKey{type, id});
-
-    std::sort(out.begin(), out.end(), [](const DomainKey& a, const DomainKey& b)
-              {
-                  return a.id < b.id;
-              });
+    QList<int> ordered = getAvailableDomainGroupIds().values();
+    std::sort(ordered.begin(), ordered.end());
+    out.reserve(ordered.size());
+    for (int id : ordered)
+        out.push_back(DomainKey{DomainType::Group, id});
     return out;
 }
 
@@ -618,22 +607,11 @@ QSet<vtkIdType> MeshModuleController::domainCells(const DomainKey& key) const
     if (!m_importedGrid || !key.isValid())
         return out;
 
-    const char* arrayName = nullptr;
-    if (key.type == DomainType::Matype)
-        arrayName = "MATYPE";
-    else if (key.type == DomainType::Layer)
-        arrayName = "LAYER";
-    else
-        return out;
-
-    auto* arr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray(arrayName));
-    if (!arr)
-        return out;
-
-    const vtkIdType n = qMin(arr->GetNumberOfTuples(), m_importedGrid->GetNumberOfCells());
-    for (vtkIdType cid = 0; cid < n; ++cid)
+    const QVector<qint64> cells = domainGroupCellIds(key.id);
+    for (qint64 rawCid : cells)
     {
-        if (arr->GetValue(cid) == key.id)
+        const vtkIdType cid = static_cast<vtkIdType>(rawCid);
+        if (cid >= 0 && cid < m_importedGrid->GetNumberOfCells())
             out.insert(cid);
     }
     return out;
@@ -645,18 +623,20 @@ QSet<DomainKey> MeshModuleController::domainsOfCell(vtkIdType cid) const
     if (!m_importedGrid || cid < 0 || cid >= m_importedGrid->GetNumberOfCells())
         return out;
 
-    if (auto* matArr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray("MATYPE")))
+    const MshPickMap pick = MeshGridIO::instance().getMeshMap();
+    const auto& groups = !pick.domainGroupToCellIds.isEmpty() ? pick.domainGroupToCellIds
+                                                               : pick.volPhysToCellIds;
+    for (auto it = groups.constBegin(); it != groups.constEnd(); ++it)
     {
-        if (cid < matArr->GetNumberOfTuples())
-            out.insert(DomainKey{DomainType::Matype, matArr->GetValue(cid)});
+        for (qint64 rawCid : it.value())
+        {
+            if (static_cast<vtkIdType>(rawCid) == cid)
+            {
+                out.insert(DomainKey{DomainType::Group, it.key()});
+                break;
+            }
+        }
     }
-
-    if (auto* layArr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray("LAYER")))
-    {
-        if (cid < layArr->GetNumberOfTuples())
-            out.insert(DomainKey{DomainType::Layer, layArr->GetValue(cid)});
-    }
-
     return out;
 }
 
@@ -664,9 +644,7 @@ QString MeshModuleController::domainDisplayText(const DomainKey& key) const
 {
     if (!key.isValid())
         return QString();
-    if (key.type == DomainType::Matype)
-        return QStringLiteral("MATYPE %1").arg(key.id);
-    return QStringLiteral("LAYER %1").arg(key.id);
+    return QStringLiteral("域 %1：%2").arg(key.id).arg(domainGroupName(key.id));
 }
 
 void MeshModuleController::highlightDomainMatypes(const QSet<int>& matypes, int selectedMatype,
@@ -1441,13 +1419,11 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
         }
     };
 
-    const auto matypeGroups = buildGroupsFromCellArray("MATYPE");
-    const auto layerGroups = buildGroupsFromCellArray("LAYER");
-    appendGroupSurfaceCells(matypeGroups);
-    appendGroupSurfaceCells(layerGroups);
-
     const MshPickMap pickMap = MeshGridIO::instance().getMeshMap();
-    appendGroupSurfaceCells(pickMap.volPhysToCellIds);
+    if (!pickMap.domainGroupToCellIds.isEmpty())
+        appendGroupSurfaceCells(pickMap.domainGroupToCellIds);
+    else
+        appendGroupSurfaceCells(pickMap.volPhysToCellIds);
     appendFilter->Update();
 
     auto merged = vtkUnstructuredGrid::SafeDownCast(appendFilter->GetOutput());
@@ -1508,31 +1484,49 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
         return;
     MshPickMap pick = MeshGridIO::instance().getMeshMap();
 
-    pick.cellIdToMatype.clear();
-    pick.cellIdToLayer.clear();
-    pick.cellIdToGroupName.clear();
+    pick.iiin = IiinLegacyTags{};
     pick.matypeToCellIds.clear();
     pick.layerToCellIds.clear();
+    pick.cellIdToMatype.clear();
+    pick.cellIdToLayer.clear();
 
     auto* matArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"));
     auto* layArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"));
-    auto* grpArr = vtkStringArray::SafeDownCast(grid->GetCellData()->GetAbstractArray("GroupName"));
 
+    int maxDim = -1;
     const vtkIdType nCells = grid->GetNumberOfCells();
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
-        const int mat = matArr ? matArr->GetValue(cid) : 0;
-        const int lay = layArr ? layArr->GetValue(cid) : 0;
-        const QString g = (grpArr && cid < grpArr->GetNumberOfValues())
-                              ? QString::fromStdString(grpArr->GetValue(cid)).trimmed()
-                              : QString();
-
-        pick.cellIdToMatype[cid] = mat;
-        pick.cellIdToLayer[cid] = lay;
-        pick.cellIdToGroupName[cid] = g;
-        pick.matypeToCellIds[mat].push_back(cid);
-        pick.layerToCellIds[lay].push_back(cid);
+        vtkCell* c = grid->GetCell(cid);
+        if (c)
+            maxDim = qMax(maxDim, c->GetCellDimension());
     }
+
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    {
+        vtkCell* c = grid->GetCell(cid);
+        if (!c || c->GetCellDimension() != maxDim)
+            continue;
+        if (matArr && cid < matArr->GetNumberOfTuples())
+        {
+            const int mat = matArr->GetValue(cid);
+            pick.iiin.matypeValues.insert(mat);
+            pick.iiin.cellIdToMatype[cid] = mat;
+            pick.iiin.matypeToCellIds[mat].push_back(cid);
+            pick.cellIdToMatype[cid] = mat;
+            pick.matypeToCellIds[mat].push_back(cid);
+        }
+        if (layArr && cid < layArr->GetNumberOfTuples())
+        {
+            const int lay = layArr->GetValue(cid);
+            pick.iiin.layerValues.insert(lay);
+            pick.iiin.cellIdToLayer[cid] = lay;
+            pick.iiin.layerToCellIds[lay].push_back(cid);
+            pick.cellIdToLayer[cid] = lay;
+            pick.layerToCellIds[lay].push_back(cid);
+        }
+    }
+    pick.iiin.valid = (matArr || layArr);
 
     MeshGridIO::instance().setMeshMap(pick);
 }

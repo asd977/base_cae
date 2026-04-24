@@ -1,41 +1,77 @@
 ﻿#ifndef MESH_H
 #define MESH_H
 #include <QHash>
+#include <QSet>
 #include <QString>
 #include <QVector>
 #include <QtGlobal>
 
+#include <vtkType.h>
+
+enum class MeshGroupKind
+{
+    Domain = 0,
+    BoundaryPoint = 1,
+    BoundaryEdge = 2,
+    BoundaryFace = 3
+};
+
+struct MeshGroupInfo
+{
+    int id = 0;
+    QString name;
+    MeshGroupKind kind = MeshGroupKind::Domain;
+    QString source;
+    int sourceId = 0;
+    int dim = -1;
+};
+
+struct IiinLegacyTags
+{
+    bool valid = false;
+    QSet<int> matypeValues;
+    QSet<int> layerValues;
+    QHash<vtkIdType, int> cellIdToMatype;
+    QHash<vtkIdType, int> cellIdToLayer;
+    QHash<int, QVector<qint64>> matypeToCellIds;
+    QHash<int, QVector<qint64>> layerToCellIds;
+};
+
 struct MshPickMap
 {
-    // ----- PhysicalNames -----
-    QHash<int, QString> physIdToName; // physicalId -> 物理组名字（如 "face_1"）
-    QHash<int, int> physIdToDim;      // physicalId -> 维度（0点 1线 2面 3体）
+    QHash<int, MeshGroupInfo> groupInfos;
 
-    // ----- Node 映射 -----
-    QHash<int, int> nodeIdToPointId; // msh NodeId -> vtk pointId（用 msh 元素找 vtk 点）
-    QHash<int, int> pointIdToNodeId; // vtk pointId -> msh NodeId（UI显示 nodeId / 写文件用）
+    QHash<int, QVector<qint64>> domainGroupToCellIds;
 
-    // ----- 体单元分组（下拉框“选体”常用） -----
-    QHash<int, QVector<qint64>>
-        volPhysToCellIds; // physicalId(dim=3) -> vtk cellId 列表（qint64存）
+    QHash<int, QVector<int>> pointGroupToPointIds;
+    QHash<int, QVector<int>> edgeGroupToPointIds;
+    QHash<int, QVector<int>> faceGroupToPointIds;
 
-    // ----- 网格分组（统一存储） -----
-    QHash<qint64, int> cellIdToMatype;           // vtk cellId -> MATYPE
-    QHash<qint64, int> cellIdToLayer;            // vtk cellId -> LAYER
-    QHash<qint64, QString> cellIdToGroupName;    // vtk cellId -> GroupName
-    QHash<int, QVector<qint64>> matypeToCellIds; // MATYPE -> cellIds
-    QHash<int, QVector<qint64>> layerToCellIds;  // LAYER  -> cellIds
+    QHash<int, QVector<qint64>> edgeGroupToEdgeKeys;
+    QHash<int, QVector<qint64>> faceGroupToFaceKeys;
 
-    // ----- 边界：用于“选点” -----
-    QHash<int, QVector<int>> bndPointPhysToPointIds; // physicalId(dim=0) -> vtk pointId 列表
-    QHash<int, QVector<int>> bndEdgePhysToPointIds;  // physicalId(dim=1) -> vtk pointId
-                                                     // 列表（线的端点集合）
-    QHash<int, QVector<int>> bndFacePhysToPointIds;  // physicalId(dim=2) -> vtk pointId
-                                                     // 列表（面的角点集合）
+    QHash<int, int> nodeIdToPointId;
+    QHash<int, int> pointIdToNodeId;
 
-    // ----- 边界：用于“高亮线/面” -----
-    QHash<int, QVector<qint64>> bndEdgePhysToEdgeKeys; // physicalId(dim=1) -> edgeKey 列表
-    QHash<int, QVector<qint64>> bndFacePhysToFaceKeys; // physicalId(dim=2) -> faceKey 列表
+    IiinLegacyTags iiin;
+
+    QHash<int, QString> physIdToName;
+    QHash<int, int> physIdToDim;
+
+    QHash<int, QVector<qint64>> volPhysToCellIds;
+
+    QHash<int, QVector<int>> bndPointPhysToPointIds;
+    QHash<int, QVector<int>> bndEdgePhysToPointIds;
+    QHash<int, QVector<int>> bndFacePhysToPointIds;
+
+    QHash<int, QVector<qint64>> bndEdgePhysToEdgeKeys;
+    QHash<int, QVector<qint64>> bndFacePhysToFaceKeys;
+
+    QHash<vtkIdType, int> cellIdToMatype;
+    QHash<vtkIdType, int> cellIdToLayer;
+    QHash<vtkIdType, QString> cellIdToGroupName;
+    QHash<int, QVector<qint64>> matypeToCellIds;
+    QHash<int, QVector<qint64>> layerToCellIds;
 };
 
 #endif // MESH_H

@@ -12,7 +12,8 @@ struct MaterialEntry
     QString id;
     QString name;
     QMap<QString, QString> properties;
-    QSet<int> appliedMatypes;
+    QSet<int> appliedDomainGroupIds;
+    QSet<int> appliedMatypes; // deprecated
     bool transitionOnly = false;
     int transitionMatype = -1;
     QString seepageModelKey;

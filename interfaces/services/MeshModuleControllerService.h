@@ -9,13 +9,15 @@
 
 enum class DomainType : qint8
 {
-    Matype = 0,
-    Layer = 1
+    Invalid = 0,
+    Group = 1,
+    Matype = 10, // deprecated
+    Layer = 11   // deprecated
 };
 
 struct DomainKey
 {
-    DomainType type = DomainType::Matype;
+    DomainType type = DomainType::Group;
     int id = -1;
 
     bool isValid() const
@@ -74,6 +76,13 @@ struct MeshModuleControllerService
     virtual bool loadProject() = 0;
     virtual void closeProject() = 0;
     virtual QSet<int> getAvailableMatypes() const = 0;
+    virtual QSet<int> getAvailableDomainGroupIds() const = 0;
+    virtual QVector<qint64> domainGroupCellIds(int groupId) const = 0;
+    virtual QString domainGroupName(int groupId) const = 0;
+    virtual QSet<int> iiinMatypeValues() const = 0;
+    virtual QSet<int> iiinLayerValues() const = 0;
+    virtual QVector<qint64> iiinMatypeCells(int matype) const = 0;
+    virtual QVector<qint64> iiinLayerCells(int layer) const = 0;
     virtual void highlightDomainMatypes(const QSet<int>& matypes, int selectedMatype, int previewMatype,
                                   int preDeleteMatype) = 0;
     virtual QVector<DomainKey> availableDomains(DomainType type) const = 0;

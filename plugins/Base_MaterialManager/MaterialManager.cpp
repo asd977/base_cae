@@ -461,15 +461,15 @@ void syncAutoNumberProperties(MaterialModel* model, MaterialEntry* entry)
         return;
     }
 
-    QList<int> matypes = entry->appliedMatypes.values();
-    std::sort(matypes.begin(), matypes.end());
+    QList<int> groupIds = entry->appliedDomainGroupIds.values();
+    std::sort(matypes.begin(), groupIds.end());
 
     QStringList tokens;
-    for (int matype : matypes)
+    for (int groupId : groupIds)
     {
         if (matype >= 0)
         {
-            tokens.append(QString::number(matype));
+            tokens.append(QString::number(groupId));
         }
     }
     const QString value = tokens.join(QLatin1Char(','));
@@ -542,12 +542,12 @@ bool MaterialManager::saveProject()
             }
             entryObj.insert(QStringLiteral("properties"), propertiesObj);
 
-            QList<int> matypes = entry.appliedMatypes.values();
-            std::sort(matypes.begin(), matypes.end());
+            QList<int> groupIds = entry.appliedDomainGroupIds.values();
+            std::sort(matypes.begin(), groupIds.end());
             QJsonArray appliedArray;
-            for (int matype : matypes)
+            for (int groupId : groupIds)
             {
-                appliedArray.append(matype);
+                appliedArray.append(groupId);
             }
             entryObj.insert(QStringLiteral("applied_matypes"), appliedArray);
             entryObj.insert(QStringLiteral("transition_only"), entry.transitionOnly);
@@ -676,9 +676,9 @@ bool MaterialManager::loadProject()
                 }
 
                 const QJsonArray applied = entryObj.value(QStringLiteral("applied_matypes")).toArray();
-                for (const auto& matypeValue : applied)
+                for (const auto& groupIdValue : applied)
                 {
-                    entry.appliedMatypes.insert(matypeValue.toInt(-1));
+                    entry.appliedDomainGroupIds.insert(matypeValue.toInt(-1));
                 }
                 entry.transitionOnly = entryObj.value(QStringLiteral("transition_only")).toBool(false);
                 entry.transitionMatype = entryObj.value(QStringLiteral("transition_matype")).toInt(-1);
@@ -727,7 +727,7 @@ bool MaterialManager::loadProject()
     ensureEntryIds();
     notifyLibraryChanged();
     // 工程打开时会在后台重建条目页面，避免把条目高亮残留到初始状态。
-    clearAllMatypeHighlight();
+    clearAllDomainGroupHighlight();
     return true;
 }
 
@@ -907,9 +907,9 @@ void MaterialManager::setupTreeWidget()
 
 void MaterialManager::loadDefaultLibrary()
 {
-    m_selectedMatypes.clear();
-    m_previewMatypes.clear();
-    m_preDeleteMatypes.clear();
+    m_selectedDomainGroups.clear();
+    m_previewDomainGroups.clear();
+    m_preDeleteDomainGroups.clear();
     m_models = createDefaultMaterialModels();
     notifyLibraryChanged();
 }
@@ -933,9 +933,9 @@ void MaterialManager::newProjectForPath(const QString& workPath)
     m_entryItems.clear();
     m_addedEntryIds.clear();
     m_materialTransitions.clear();
-    m_selectedMatypes.clear();
-    m_previewMatypes.clear();
-    m_preDeleteMatypes.clear();
+    m_selectedDomainGroups.clear();
+    m_previewDomainGroups.clear();
+    m_preDeleteDomainGroups.clear();
 
     m_materialManagerWidget = new MaterialManagerWidget(this);
     loadDefaultLibrary();
@@ -1040,7 +1040,7 @@ QVector<QStringList> MaterialManager::getValueStrings()
                 encoded << (column + QLatin1Char(':') + entry.properties.value(column));
             }
             row << encoded.join(QString("|;|"));
-            QList<int> appliedList = entry.appliedMatypes.values();
+            QList<int> appliedList = entry.appliedDomainGroupIds.values();
             std::sort(appliedList.begin(), appliedList.end());
             QStringList appliedStrings;
             for (int value : appliedList)
@@ -1058,9 +1058,9 @@ QVector<QStringList> MaterialManager::getValueStrings()
 
 void MaterialManager::setValueStrings(QVector<QStringList> values)
 {
-    m_selectedMatypes.clear();
-    m_previewMatypes.clear();
-    m_preDeleteMatypes.clear();
+    m_selectedDomainGroups.clear();
+    m_previewDomainGroups.clear();
+    m_preDeleteDomainGroups.clear();
     if (values.isEmpty())
     {
         loadDefaultLibrary();
@@ -1133,12 +1133,12 @@ void MaterialManager::setValueStrings(QVector<QStringList> values)
         }
 
         m_models[index].materials.append(entry);
-        const QStringList matypeList =
+        const QStringList groupIdList =
             appliedMatypes.split(QLatin1Char(','), QString::SkipEmptyParts);
-        for (const QString& matypeStr : matypeList)
+        for (const QString& groupIdStr : groupIdList)
         {
             bool ok = false;
-            int value = matypeStr.toInt(&ok);
+            int value = groupIdStr.toInt(&ok);
             if (ok)
             {
                 m_models[index].materials.last().appliedMatypes.insert(value);
@@ -1176,16 +1176,16 @@ const QVector<MaterialModel>& MaterialManager::seepageModels() const
     return m_seepageModels;
 }
 
-bool MaterialManager::validateTransitionMatype(const QString& entryId, int matype, QString* error) const
+bool MaterialManager::validateTransitionMatype(const QString& entryId, int groupId, QString* error) const
 {
-    if (matype <= 0)
+    if (groupId <= 0)
     {
         if (error)
             *error = QStringLiteral("编号必须为正整数。");
         return false;
     }
-    const QSet<int> meshMatypes = availableMatypes();
-    if (meshMatypes.contains(matype))
+    const QSet<int> meshMatypes = availableDomainGroups();
+    if (meshMatypes.contains(groupId))
     {
         if (error)
             *error = QStringLiteral("该编号已存在于网格 MATYPE 中。");
@@ -1198,13 +1198,13 @@ bool MaterialManager::validateTransitionMatype(const QString& entryId, int matyp
         {
             if (entry.id == entryId)
                 continue;
-            if (entry.appliedMatypes.contains(matype))
+            if (entry.appliedDomainGroupIds.contains(groupId))
             {
                 if (error)
                     *error = QStringLiteral("该编号已被其他材料施加到网格。");
                 return false;
             }
-            if (entry.transitionOnly && entry.transitionMatype == matype)
+            if (entry.transitionOnly && entry.transitionMatype == groupId)
             {
                 if (error)
                     *error = QStringLiteral("该编号已被其他“后续变换材料”占用。");
@@ -1224,13 +1224,13 @@ QMap<int, QString> MaterialManager::transitionSourceLabels() const
         {
             if (!m_addedEntryIds.contains(entry.id))
                 continue;
-            for (int matype : entry.appliedMatypes)
+            for (int groupId : entry.appliedDomainGroupIds)
             {
-                if (matype <= 0 || labels.contains(matype))
+                if (groupId <= 0 || labels.contains(groupId))
                     continue;
-                labels.insert(matype, QStringLiteral("%1/%2 [#%3]")
+                labels.insert(groupId, QStringLiteral("%1/%2 [#%3]")
                                           .arg(model.displayName, entry.name,
-                                               QString::number(matype)));
+                                               QString::number(groupId)));
             }
         }
     }
@@ -1246,13 +1246,13 @@ QMap<int, QString> MaterialManager::transitionTargetLabels() const
         {
             if (!m_addedEntryIds.contains(entry.id))
                 continue;
-            for (int matype : entry.appliedMatypes)
+            for (int groupId : entry.appliedDomainGroupIds)
             {
-                if (matype <= 0 || labels.contains(matype))
+                if (groupId <= 0 || labels.contains(groupId))
                     continue;
-                labels.insert(matype, QStringLiteral("%1/%2 [#%3]")
+                labels.insert(groupId, QStringLiteral("%1/%2 [#%3]")
                                           .arg(model.displayName, entry.name,
-                                               QString::number(matype)));
+                                               QString::number(groupId)));
             }
             if (entry.transitionOnly && entry.transitionMatype > 0 &&
                 !labels.contains(entry.transitionMatype))
@@ -1495,19 +1495,19 @@ void MaterialManager::removeEntryFromProjectTree(const QString& entryId)
     rebuildProjectTree();
 }
 
-QSet<int> MaterialManager::availableMatypes() const
+QSet<int> MaterialManager::availableDomainGroups() const
 {
     auto* service = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!service)
     {
         return {};
     }
-    return service->getAvailableMatypes();
+    return service->getAvailableDomainGroupIds();
 }
 
-void MaterialManager::highlightMatypes(const QString& entryId, const QSet<int>& matypes,
-                                       int selectedMatype,
-                                       int previewMatype, int preDeleteMatype)
+void MaterialManager::highlightDomainGroups(const QString& entryId, const QSet<int>& groupIds,
+                                            int selectedGroupId, int previewGroupId,
+                                            int preDeleteGroupId)
 {
     if (entryId.isEmpty())
     {
@@ -1517,52 +1517,52 @@ void MaterialManager::highlightMatypes(const QString& entryId, const QSet<int>& 
     const QString uuid = m_pickUuid.isEmpty() ? entryId : m_pickUuid;
 
     QSet<DomainKey> applied;
-    for (int id : matypes)
-        applied.insert(DomainKey{DomainType::Matype, id});
+    for (int id : groupIds)
+        applied.insert(DomainKey{DomainType::Group, id});
     PickManager::instance().setAppliedDomains(domain, uuid, applied);
     PickManager::instance().setSelectedDomain(
-        domain, uuid, selectedMatype >= 0 ? DomainKey{DomainType::Matype, selectedMatype} : DomainKey{});
+        domain, uuid, selectedGroupId >= 0 ? DomainKey{DomainType::Group, selectedGroupId} : DomainKey{});
     PickManager::instance().setPreviewDomain(
-        domain, uuid, previewMatype >= 0 ? DomainKey{DomainType::Matype, previewMatype} : DomainKey{});
+        domain, uuid, previewGroupId >= 0 ? DomainKey{DomainType::Group, previewGroupId} : DomainKey{});
     PickManager::instance().setPreDeleteDomain(
         domain, uuid,
-        preDeleteMatype >= 0 ? DomainKey{DomainType::Matype, preDeleteMatype} : DomainKey{});
+        preDeleteGroupId >= 0 ? DomainKey{DomainType::Group, preDeleteGroupId} : DomainKey{});
 }
 
-void MaterialManager::refreshMatypeHighlight(const QString& entryId)
+void MaterialManager::refreshDomainGroupHighlight(const QString& entryId)
 {
     MaterialEntry* entry = findEntry(entryId);
     if (!entry)
         return;
 
-    const int preview = m_previewMatypes.value(entryId, -1);
-    const int preDelete = m_preDeleteMatypes.value(entryId, -1);
+    const int preview = m_previewDomainGroups.value(entryId, -1);
+    const int preDelete = m_preDeleteDomainGroups.value(entryId, -1);
     // 不再使用 Selected 高亮，仅保留 Applied / Preview / PreDelete。
-    highlightMatypes(entryId, entry->appliedMatypes, -1, preview, preDelete);
+    highlightDomainGroups(entryId, entry->appliedDomainGroupIds, -1, preview, preDelete);
 }
 
-int MaterialManager::selectedMatypeForEntry(const QString& entryId) const
+int MaterialManager::selectedDomainGroupForEntry(const QString& entryId) const
 {
-    return m_selectedMatypes.value(entryId, -1);
+    return m_selectedDomainGroups.value(entryId, -1);
 }
 
-void MaterialManager::setSelectedMatypeForEntry(const QString& entryId, int matype)
+void MaterialManager::setSelectedDomainGroupForEntry(const QString& entryId, int groupId)
 {
     if (entryId.isEmpty())
     {
         return;
     }
-    if (matype < 0)
+    if (groupId < 0)
     {
-        m_selectedMatypes.remove(entryId);
+        m_selectedDomainGroups.remove(entryId);
         return;
     }
-    m_selectedMatypes.insert(entryId, matype);
+    m_selectedDomainGroups.insert(entryId, groupId);
 }
 
-void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
+void MaterialManager::applyDomainGroupToEntry(const QString& entryId, int groupId)
 {
-    if (matype < 0)
+    if (groupId < 0)
         return;
 
     MaterialEntry* entry = findEntry(entryId);
@@ -1578,41 +1578,41 @@ void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
             if (otherEntry.id == entryId)
                 continue;
 
-            if (otherEntry.appliedMatypes.remove(matype))
+            if (otherEntry.appliedDomainGroupIds.remove(groupId))
             {
-                if (m_selectedMatypes.value(otherEntry.id, -1) == matype)
-                    m_selectedMatypes.remove(otherEntry.id);
-                if (m_previewMatypes.value(otherEntry.id, -1) == matype)
-                    m_previewMatypes.remove(otherEntry.id);
-                if (m_preDeleteMatypes.value(otherEntry.id, -1) == matype)
-                    m_preDeleteMatypes.remove(otherEntry.id);
+                if (m_selectedDomainGroups.value(otherEntry.id, -1) == groupId)
+                    m_selectedDomainGroups.remove(otherEntry.id);
+                if (m_previewDomainGroups.value(otherEntry.id, -1) == groupId)
+                    m_previewDomainGroups.remove(otherEntry.id);
+                if (m_preDeleteDomainGroups.value(otherEntry.id, -1) == groupId)
+                    m_preDeleteDomainGroups.remove(otherEntry.id);
 
                 syncAutoNumberProperties(&model, &otherEntry);
-                refreshEntryWidgetMatypes(otherEntry.id, otherEntry.appliedMatypes,
-                                          m_selectedMatypes.value(otherEntry.id, -1));
-                refreshMatypeHighlight(otherEntry.id);
+                refreshEntryWidgetDomainGroups(otherEntry.id, otherEntry.appliedDomainGroupIds,
+                                          m_selectedDomainGroups.value(otherEntry.id, -1));
+                refreshDomainGroupHighlight(otherEntry.id);
             }
         }
     }
 
-    setSelectedMatypeForEntry(entryId, matype);
-    entry->appliedMatypes.insert(matype);
+    setSelectedDomainGroupForEntry(entryId, groupId);
+    entry->appliedDomainGroupIds.insert(groupId);
     MaterialModel* model = nullptr;
     findEntry(entryId, &model);
     syncAutoNumberProperties(model, entry);
 
     // 施加后通常清掉 predelete/preview
-    setPreviewMatypeForEntry(entryId, -1);
-    setPreDeleteMatypeForEntry(entryId, -1);
+    setPreviewDomainGroupForEntry(entryId, -1);
+    setPreDeleteDomainGroupForEntry(entryId, -1);
 
-    refreshEntryWidgetMatypes(entryId, entry->appliedMatypes, matype);
+    refreshEntryWidgetDomainGroups(entryId, entry->appliedDomainGroupIds, groupId);
     notifyEntryUpdated(entryId, false);
-    refreshMatypeHighlight(entryId);
+    refreshDomainGroupHighlight(entryId);
 }
 
-void MaterialManager::removeMatypeFromEntry(const QString& entryId, int matype)
+void MaterialManager::removeDomainGroupFromEntry(const QString& entryId, int groupId)
 {
-    if (matype < 0)
+    if (groupId < 0)
         return;
 
     MaterialModel* model = nullptr;
@@ -1620,43 +1620,43 @@ void MaterialManager::removeMatypeFromEntry(const QString& entryId, int matype)
     if (!entry)
         return;
 
-    if (entry->appliedMatypes.remove(matype))
+    if (entry->appliedDomainGroupIds.remove(groupId))
     {
-        if (m_selectedMatypes.value(entryId, -1) == matype)
+        if (m_selectedDomainGroups.value(entryId, -1) == groupId)
         {
-            m_selectedMatypes.remove(entryId);
+            m_selectedDomainGroups.remove(entryId);
         }
-        if (m_previewMatypes.value(entryId, -1) == matype)
+        if (m_previewDomainGroups.value(entryId, -1) == groupId)
         {
-            m_previewMatypes.remove(entryId);
+            m_previewDomainGroups.remove(entryId);
         }
-        if (m_preDeleteMatypes.value(entryId, -1) == matype)
+        if (m_preDeleteDomainGroups.value(entryId, -1) == groupId)
         {
-            m_preDeleteMatypes.remove(entryId);
+            m_preDeleteDomainGroups.remove(entryId);
         }
 
         syncAutoNumberProperties(model, entry);
-        refreshEntryWidgetMatypes(entryId, entry->appliedMatypes,
-                                  m_selectedMatypes.value(entryId, -1));
+        refreshEntryWidgetDomainGroups(entryId, entry->appliedDomainGroupIds,
+                                  m_selectedDomainGroups.value(entryId, -1));
         notifyEntryUpdated(entryId, false);
-        refreshMatypeHighlight(entryId);
+        refreshDomainGroupHighlight(entryId);
     }
 }
 
-void MaterialManager::refreshEntryWidgetMatypes(const QString& entryId, const QSet<int>& applied,
-                                                int selectedMatype)
+void MaterialManager::refreshEntryWidgetDomainGroups(const QString& entryId, const QSet<int>& applied,
+                                                int selectedGroupId)
 {
     auto* widget = m_entryWidgets.value(entryId, nullptr);
     if (!widget)
     {
         return;
     }
-    widget->refreshAppliedMatypes(applied, selectedMatype);
+    widget->refreshAppliedMatypes(applied, selectedGroupId);
 }
 
 bool MaterialManager::generateCaculateFile()
 {
-    // ===== 1) 收集：只要“已添加到工程 + 关联了 MATYPE”的材料，并建立 matype ->
+    // ===== 1) 收集：只要“已添加到工程 + 关联了 MATYPE”的材料，并建立 groupId ->
     // (model, entry) 映射 =====
     struct MatInfo
     {
@@ -1664,7 +1664,7 @@ bool MaterialManager::generateCaculateFile()
         MaterialEntry* entry = nullptr;
     };
 
-    QMap<int, MatInfo> matypeMap; // matype -> info
+    QMap<int, MatInfo> groupIdMap; // groupId -> info
     int maxMatype = -1;
 
     for (auto& model : m_models)
@@ -1674,20 +1674,20 @@ bool MaterialManager::generateCaculateFile()
             if (!m_addedEntryIds.contains(entry.id))
                 continue;
 
-            QSet<int> exportMatypes = entry.appliedMatypes;
+            QSet<int> exportMatypes = entry.appliedDomainGroupIds;
             if (entry.transitionOnly && entry.transitionMatype > 0)
                 exportMatypes.insert(entry.transitionMatype);
             if (exportMatypes.isEmpty())
                 continue;
 
-            for (int matype : exportMatypes)
+            for (int groupId : exportMatypes)
             {
-                if (matype <= 0)
+                if (groupId <= 0)
                     continue;
-                maxMatype = qMax(maxMatype, matype);
+                maxMatype = qMax(maxMatype, groupId);
 
                 // 如果同一个 MATYPE 被多个材料占用，这里默认“后者覆盖前者”
-                matypeMap[matype] = MatInfo{&model, &entry};
+                groupIdMap[groupId] = MatInfo{&model, &entry};
             }
         }
     }
@@ -1890,21 +1890,21 @@ bool MaterialManager::generateCaculateFile()
     };
 
     // 填值：黄金坪地下厂房模型按 CONMAT 行号写入，其他模型仍走 columnOutputRows
-    for (auto it = matypeMap.constBegin(); it != matypeMap.constEnd(); ++it)
+    for (auto it = groupIdMap.constBegin(); it != groupIdMap.constEnd(); ++it)
     {
-        const int matype = it.key();
+        const int groupId = it.key();
         const MatInfo& info = it.value();
         if (!info.model || !info.entry)
             continue;
         // IMAT.DAT 的编号从 1 开始，0 号无效
-        if (matype <= 0 || matype > nmat)
+        if (groupId <= 0 || groupId > nmat)
             continue;
 
-        const int matIndex = matype - 1;
+        const int matIndex = groupId - 1;
 
         if (info.model->key == QStringLiteral("huangjinping_underground_plant")) // 黄金坪厂房(样表1 2)
         {
-            const double matypeOri = static_cast<double>(matype);
+            const double groupIdOri = static_cast<double>(groupId);
             const double itagEx = valueOf(info.entry, QStringLiteral("岩类分区"));
             const double alfaBa = valueOf(info.entry, QStringLiteral("半开挖区荷载释放系数"));
             const double laReborn = valueOf(info.entry, QStringLiteral("再生时对应开挖级"));
@@ -1989,7 +1989,7 @@ bool MaterialManager::generateCaculateFile()
             setRow(77, alfa0);
             setRow(78, d0);
             setRow(79, alfa1);
-            setRow(84, matypeOri);
+            setRow(84, groupIdOri);
             setRow(91, rc);
             setRow(92, rt);
             setRow(94, fai);
@@ -2018,7 +2018,7 @@ bool MaterialManager::generateCaculateFile()
             const double coMpa = valueOf(info.entry, QStringLiteral("凝聚力C‘（MPa）"));
 
             const double ibuck = 2.0;
-            const double matypeOri = static_cast<double>(matype);
+            const double groupIdOri = static_cast<double>(groupId);
             const double itagEx = 0.0;
             const double alfaBa = 0.0;
             const double laReborn = 0.0;
@@ -2087,7 +2087,7 @@ bool MaterialManager::generateCaculateFile()
             setRow(65, 1.3);
             setRow(66, 1.0);
             setRow(67, 0.05);
-            setRow(84, matypeOri);
+            setRow(84, groupIdOri);
             setRow(91, rc);
             setRow(92, rt);
             setRow(94, fai);
@@ -2686,14 +2686,14 @@ bool MaterialManager::generateCaculateFile()
         return QString("%1").arg(mantStr + expStr, 13);
     };
 
-    auto imatLabel = [](int matype) -> QString
+    auto imatLabel = [](int groupId) -> QString
     {
         // 尽量贴近你示例：IMAT= 10 这种（两位数前空一格）
         if (matype < 10)
-            return QString("IMAT=%1").arg(matype);
+            return QString("IMAT=%1").arg(groupId);
         if (matype < 100)
-            return QString("IMAT= %1").arg(matype);
-        return QString("IMAT=%1").arg(matype);
+            return QString("IMAT= %1").arg(groupId);
+        return QString("IMAT=%1").arg(groupId);
     };
 
     // ===== 6) 文件头 =====
@@ -2726,8 +2726,8 @@ bool MaterialManager::generateCaculateFile()
 
             for (int k = 0; k < 10; ++k)
             {
-                const int matype = startMat + k;
-                const int matIndex = matype - 1;
+                const int groupId = startMat + k;
+                const int matIndex = groupId - 1;
                 const double v = (matIndex >= 0 && matIndex < nmat) ? values[r][matIndex] : 0.0;
                 line += fmt1P(v);
             }
@@ -2741,7 +2741,7 @@ bool MaterialManager::generateCaculateFile()
     file.close();
 
     // ===== 8) 同步生成 MACB.DAT / MACHAN.DAT =====
-    const QList<int> macbMatypes = matypeMap.keys(); // QMap keys 默认升序
+    const QList<int> macbMatypes = groupIdMap.keys(); // QMap keys 默认升序
 
     auto writeNumDat = [&](const QString& fileName, const QList<int>& ids) -> bool
     {
@@ -2778,25 +2778,25 @@ bool MaterialManager::generateIMATFile()
     return generateCaculateFile();
 }
 
-void MaterialManager::clearMatypeHighlight(const QString& entryId)
+void MaterialManager::clearDomainGroupHighlight(const QString& entryId)
 {
     if (entryId.isEmpty())
     {
         return;
     }
 
-    m_previewMatypes.remove(entryId);
-    m_preDeleteMatypes.remove(entryId);
+    m_previewDomainGroups.remove(entryId);
+    m_preDeleteDomainGroups.remove(entryId);
 
     const QString domain = m_pickDomain.isEmpty() ? QStringLiteral("MaterialManager") : m_pickDomain;
     const QString uuid = m_pickUuid.isEmpty() ? entryId : m_pickUuid;
     PickManager::instance().clearDomainSelection(domain, uuid);
 }
 
-void MaterialManager::clearAllMatypeHighlight()
+void MaterialManager::clearAllDomainGroupHighlight()
 {
-    m_previewMatypes.clear();
-    m_preDeleteMatypes.clear();
+    m_previewDomainGroups.clear();
+    m_preDeleteDomainGroups.clear();
     const QString domain = m_pickDomain.isEmpty() ? QStringLiteral("MaterialManager") : m_pickDomain;
     if (m_pickUuid.isEmpty())
         PickManager::instance().clearDomainSelection(domain);
@@ -2816,40 +2816,113 @@ void MaterialManager::clearPickContext()
     m_pickUuid.clear();
 }
 
+int MaterialManager::previewDomainGroupForEntry(const QString& entryId) const
+{
+    return m_previewDomainGroups.value(entryId, -1);
+}
+
+void MaterialManager::setPreviewDomainGroupForEntry(const QString& entryId, int groupId)
+{
+    if (entryId.isEmpty())
+        return;
+    if (groupId < 0)
+    {
+        m_previewDomainGroups.remove(entryId);
+    }
+    else
+    {
+        m_previewDomainGroups.insert(entryId, groupId);
+    }
+}
+
+int MaterialManager::preDeleteDomainGroupForEntry(const QString& entryId) const
+{
+    return m_preDeleteDomainGroups.value(entryId, -1);
+}
+
+void MaterialManager::setPreDeleteDomainGroupForEntry(const QString& entryId, int groupId)
+{
+    if (entryId.isEmpty())
+        return;
+    if (groupId < 0)
+    {
+        m_preDeleteDomainGroups.remove(entryId);
+    }
+    else
+    {
+        m_preDeleteDomainGroups.insert(entryId, groupId);
+    }
+}
+
+QSet<int> MaterialManager::availableMatypes() const
+{
+    return availableDomainGroups();
+}
+
+void MaterialManager::highlightMatypes(const QString& entryId, const QSet<int>& matypes,
+                                       int selectedMatype, int previewMatype,
+                                       int preDeleteMatype)
+{
+    highlightDomainGroups(entryId, matypes, selectedMatype, previewMatype, preDeleteMatype);
+}
+
+void MaterialManager::refreshMatypeHighlight(const QString& entryId)
+{
+    refreshDomainGroupHighlight(entryId);
+}
+
+void MaterialManager::clearMatypeHighlight(const QString& entryId)
+{
+    clearDomainGroupHighlight(entryId);
+}
+
+void MaterialManager::clearAllMatypeHighlight()
+{
+    clearAllDomainGroupHighlight();
+}
+
+int MaterialManager::selectedMatypeForEntry(const QString& entryId) const
+{
+    return selectedDomainGroupForEntry(entryId);
+}
+
+void MaterialManager::setSelectedMatypeForEntry(const QString& entryId, int matype)
+{
+    setSelectedDomainGroupForEntry(entryId, matype);
+}
+
 int MaterialManager::previewMatypeForEntry(const QString& entryId) const
 {
-    return m_previewMatypes.value(entryId, -1);
+    return previewDomainGroupForEntry(entryId);
 }
 
 void MaterialManager::setPreviewMatypeForEntry(const QString& entryId, int matype)
 {
-    if (entryId.isEmpty())
-        return;
-    if (matype < 0)
-    {
-        m_previewMatypes.remove(entryId);
-    }
-    else
-    {
-        m_previewMatypes.insert(entryId, matype);
-    }
+    setPreviewDomainGroupForEntry(entryId, matype);
 }
 
 int MaterialManager::preDeleteMatypeForEntry(const QString& entryId) const
 {
-    return m_preDeleteMatypes.value(entryId, -1);
+    return preDeleteDomainGroupForEntry(entryId);
 }
 
 void MaterialManager::setPreDeleteMatypeForEntry(const QString& entryId, int matype)
 {
-    if (entryId.isEmpty())
-        return;
-    if (matype < 0)
-    {
-        m_preDeleteMatypes.remove(entryId);
-    }
-    else
-    {
-        m_preDeleteMatypes.insert(entryId, matype);
-    }
+    setPreDeleteDomainGroupForEntry(entryId, matype);
+}
+
+void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
+{
+    applyDomainGroupToEntry(entryId, matype);
+}
+
+void MaterialManager::removeMatypeFromEntry(const QString& entryId, int matype)
+{
+    removeDomainGroupFromEntry(entryId, matype);
+}
+
+void MaterialManager::refreshEntryWidgetMatypes(const QString& entryId, const QSet<int>& applied,
+                                                int selectedMatype)
+{
+    refreshEntryWidgetDomainGroups(entryId, applied, selectedMatype);
 }
