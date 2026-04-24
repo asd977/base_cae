@@ -54,28 +54,42 @@ class MaterialManager : public QObject, public MaterialManagerService
     void addEntryToProjectTree(const QString& entryId);
     void removeEntryFromProjectTree(const QString& entryId);
 
-    QSet<int> availableMatypes() const;
+    QSet<int> availableDomainGroups() const;
+    QSet<int> availableMatypes() const; // deprecated
 
     // ===== MATYPE 高亮核心接口 =====
-    void refreshMatypeHighlight(const QString& entryId); // 按当前 entry 状态刷新网格
-    void
-    clearMatypeHighlight(const QString& entryId); // 清空该 entry 的所有高亮（含 preview/predelete）
-    void clearAllMatypeHighlight();               // 清空全局高亮（推荐在离开模块时用）
+    void refreshDomainGroupHighlight(const QString& entryId);
+    void clearDomainGroupHighlight(const QString& entryId);
+    void clearAllDomainGroupHighlight();
 
-    int selectedMatypeForEntry(const QString& entryId) const;
-    void setSelectedMatypeForEntry(const QString& entryId, int matype);
+    int selectedDomainGroupForEntry(const QString& entryId) const;
+    void setSelectedDomainGroupForEntry(const QString& entryId, int groupId);
 
-    int previewMatypeForEntry(const QString& entryId) const;
-    void setPreviewMatypeForEntry(const QString& entryId, int matype);
+    int previewDomainGroupForEntry(const QString& entryId) const;
+    void setPreviewDomainGroupForEntry(const QString& entryId, int groupId);
 
-    int preDeleteMatypeForEntry(const QString& entryId) const;
-    void setPreDeleteMatypeForEntry(const QString& entryId, int matype);
+    int preDeleteDomainGroupForEntry(const QString& entryId) const;
+    void setPreDeleteDomainGroupForEntry(const QString& entryId, int groupId);
 
-    void applyMatypeToEntry(const QString& entryId, int matype);
-    void removeMatypeFromEntry(const QString& entryId, int matype);
+    void applyDomainGroupToEntry(const QString& entryId, int groupId);
+    void removeDomainGroupFromEntry(const QString& entryId, int groupId);
 
+    void refreshEntryWidgetDomainGroups(const QString& entryId, const QSet<int>& applied,
+                                        int selectedGroupId);
+
+    void refreshMatypeHighlight(const QString& entryId); // deprecated
+    void clearMatypeHighlight(const QString& entryId);   // deprecated
+    void clearAllMatypeHighlight();                      // deprecated
+    int selectedMatypeForEntry(const QString& entryId) const; // deprecated
+    void setSelectedMatypeForEntry(const QString& entryId, int matype); // deprecated
+    int previewMatypeForEntry(const QString& entryId) const; // deprecated
+    void setPreviewMatypeForEntry(const QString& entryId, int matype); // deprecated
+    int preDeleteMatypeForEntry(const QString& entryId) const; // deprecated
+    void setPreDeleteMatypeForEntry(const QString& entryId, int matype); // deprecated
+    void applyMatypeToEntry(const QString& entryId, int matype); // deprecated
+    void removeMatypeFromEntry(const QString& entryId, int matype); // deprecated
     void refreshEntryWidgetMatypes(const QString& entryId, const QSet<int>& applied,
-                                   int selectedMatype);
+                                   int selectedMatype); // deprecated
 
     bool generateCaculateFile();
 
@@ -99,8 +113,10 @@ class MaterialManager : public QObject, public MaterialManagerService
     void rebuildProjectTree();
     void clearProjectTree();
     // 原 highlightMatypes 扩展为 3 态输入（Selected / Preview / PreDelete）
+    void highlightDomainGroups(const QString& entryId, const QSet<int>& groupIds, int selectedGroupId,
+                               int previewGroupId, int preDeleteGroupId);
     void highlightMatypes(const QString& entryId, const QSet<int>& matypes, int selectedMatype,
-                          int previewMatype, int preDeleteMatype);
+                          int previewMatype, int preDeleteMatype); // deprecated
 
   private:
     MaterialManagerWidget* m_materialManagerWidget;
@@ -121,9 +137,9 @@ class MaterialManager : public QObject, public MaterialManagerService
     QVector<QPair<int, int>> m_materialTransitions;
 
     // ===== 3态：Selected / Preview / PreDelete =====
-    QHash<QString, int> m_selectedMatypes;
-    QHash<QString, int> m_previewMatypes;
-    QHash<QString, int> m_preDeleteMatypes;
+    QHash<QString, int> m_selectedDomainGroups;
+    QHash<QString, int> m_previewDomainGroups;
+    QHash<QString, int> m_preDeleteDomainGroups;
 
     // services
     ProjectManagerService* m_projectManagerService = nullptr;

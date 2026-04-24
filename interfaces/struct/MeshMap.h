@@ -1,41 +1,101 @@
 ﻿#ifndef MESH_H
 #define MESH_H
 #include <QHash>
+#include <QSet>
 #include <QString>
 #include <QVector>
 #include <QtGlobal>
 
-struct MshPickMap
+#include <vtkType.h>
+
+enum class MeshGroupKind
 {
-    // ----- PhysicalNames -----
-    QHash<int, QString> physIdToName; // physicalId -> 物理组名字（如 "face_1"）
-    QHash<int, int> physIdToDim;      // physicalId -> 维度（0点 1线 2面 3体）
-
-    // ----- Node 映射 -----
-    QHash<int, int> nodeIdToPointId; // msh NodeId -> vtk pointId（用 msh 元素找 vtk 点）
-    QHash<int, int> pointIdToNodeId; // vtk pointId -> msh NodeId（UI显示 nodeId / 写文件用）
-
-    // ----- 体单元分组（下拉框“选体”常用） -----
-    QHash<int, QVector<qint64>>
-        volPhysToCellIds; // physicalId(dim=3) -> vtk cellId 列表（qint64存）
-
-    // ----- 网格分组（统一存储） -----
-    QHash<qint64, int> cellIdToMatype;           // vtk cellId -> MATYPE
-    QHash<qint64, int> cellIdToLayer;            // vtk cellId -> LAYER
-    QHash<qint64, QString> cellIdToGroupName;    // vtk cellId -> GroupName
-    QHash<int, QVector<qint64>> matypeToCellIds; // MATYPE -> cellIds
-    QHash<int, QVector<qint64>> layerToCellIds;  // LAYER  -> cellIds
-
-    // ----- 边界：用于“选点” -----
-    QHash<int, QVector<int>> bndPointPhysToPointIds; // physicalId(dim=0) -> vtk pointId 列表
-    QHash<int, QVector<int>> bndEdgePhysToPointIds;  // physicalId(dim=1) -> vtk pointId
-                                                     // 列表（线的端点集合）
-    QHash<int, QVector<int>> bndFacePhysToPointIds;  // physicalId(dim=2) -> vtk pointId
-                                                     // 列表（面的角点集合）
-
-    // ----- 边界：用于“高亮线/面” -----
-    QHash<int, QVector<qint64>> bndEdgePhysToEdgeKeys; // physicalId(dim=1) -> edgeKey 列表
-    QHash<int, QVector<qint64>> bndFacePhysToFaceKeys; // physicalId(dim=2) -> faceKey 列表
+    Domain = 0,
+    BoundaryPoint = 1,
+    BoundaryEdge = 2,
+    BoundaryFace = 3
 };
 
+enum class MeshGroupSource
+{
+    Unknown = 0,
+
+    IiinMatype,
+    IiinLayer,
+
+    GmshPhysicalVolume,
+    GmshPhysicalSurface,
+    GmshPhysicalCurve,
+    GmshPhysicalPoint,
+
+    AbaqusElset,
+    AbaqusNset,
+
+    FlacZoneGroup,
+
+    User
+};
+
+struct MeshGroupInfo
+{
+    int id = 0;
+    QString name;
+
+    MeshGroupKind kind = MeshGroupKind::Domain;
+    MeshGroupSource source = MeshGroupSource::Unknown;
+
+           // 点0、线1、面2、体3
+    int dim = -1;
+
+           // 原始编号，例如 MATYPE=3、LAYER=2、Gmsh PhysicalId=5
+    int sourceId = 0;
+};
+struct IiinLegacyTags
+{
+    bool valid = false;
+    QSet<int> matypeValues;
+    QSet<int> layerValues;
+    QHash<vtkIdType, int> cellIdToMatype;
+    QHash<vtkIdType, int> cellIdToLayer;
+    QHash<int, QVector<qint64>> matypeToCellIds;
+    QHash<int, QVector<qint64>> layerToCellIds;
+};
+
+
+struct MshPickMap
+{
+    // 所有组的元信息
+    QHash<int, MeshGroupInfo> groups;
+
+           // 域分组：材料、开挖、体控制都读这个
+    QHash<int, QVector<qint64>> domainGroups;
+
+           // 边界分组：约束、荷载读这些
+    QHash<int, QVector<int>> pointBoundaryGroups;
+    QHash<int, QVector<int>> edgeBoundaryPointGroups;
+    QHash<int, QVector<int>> faceBoundaryPointGroups;
+
+    QHash<int, QVector<qint64>> edgeBoundaryKeys;
+    QHash<int, QVector<qint64>> faceBoundaryKeys;
+
+           // 节点映射
+    QHash<int, int> pointIdToNodeId;
+    QHash<int, int> nodeIdToPointId;
+
+    void clear()
+    {
+        groups.clear();
+        domainGroups.clear();
+
+        pointBoundaryGroups.clear();
+        edgeBoundaryPointGroups.clear();
+        faceBoundaryPointGroups.clear();
+
+        edgeBoundaryKeys.clear();
+        faceBoundaryKeys.clear();
+
+        pointIdToNodeId.clear();
+        nodeIdToPointId.clear();
+    }
+};
 #endif // MESH_H
