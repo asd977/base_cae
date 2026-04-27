@@ -325,7 +325,7 @@ void PickManager::updateStructure()
         rebuildLineNodeOverlayAll();
 }
 
-QSet<DomainKey> PickManager::appliedDomains(const QString& domain, const QString& uuid) const
+QSet<DomainKey> PickManager::appliedDomains(const QString& domain, const QString& uuid)
 {
     return m_domainsByDomainUuid.value(domain).value(uuid);
 }

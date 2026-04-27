@@ -60,7 +60,7 @@ class CORE_EXPORT PickManager : public QObject
                                  GridKind kind) const;
     QVector<vtkIdType> getSelectedPointIds(const QString& domain, const QString& uuid,
                                            GridKind kind) const;
-    QSet<DomainKey> appliedDomains(const QString& domain, const QString& uuid) const;
+    QSet<DomainKey> appliedDomains(const QString& domain, const QString& uuid);
     DomainKey selectedDomain(const QString& domain, const QString& uuid) const;
     DomainKey previewDomain(const QString& domain, const QString& uuid) const;
     DomainKey preDeleteDomain(const QString& domain, const QString& uuid) const;

@@ -1,4 +1,4 @@
-#ifndef MESH_H
+﻿#ifndef MESH_H
 #define MESH_H
 
 #include <QHash>
@@ -6,7 +6,9 @@
 #include <QString>
 #include <QVector>
 #include <QtGlobal>
+
 #include <algorithm>
+#include <QSet>
 
 using MeshIdType = qint64;
 

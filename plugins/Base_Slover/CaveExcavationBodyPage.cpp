@@ -485,7 +485,7 @@ PickMode CaveExcavationBodyPage::currentPickMode() const
     return (meshDim == 2) ? PickMode::Face : PickMode::Domain;
 }
 
-QSet<int> CaveExcavationBodyPage::selectedLayerGroups() const
+QSet<int> CaveExcavationBodyPage::selectedLayerGroups()
 {
     QSet<int> out;
     const QSet<DomainKey> owned =

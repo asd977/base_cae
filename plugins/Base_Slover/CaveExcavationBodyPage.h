@@ -42,7 +42,7 @@ class CaveExcavationBodyPage : public BasePage
     void refreshGroupComboMarks();
     void updatePersistentSelectionFaces();
     void updateGroupDomainHighlight(int previewGroup = -1);
-    QSet<int> selectedLayerGroups() const;
+    QSet<int> selectedLayerGroups();
     PickMode currentPickMode() const;
 
   private:
