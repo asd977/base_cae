@@ -42,11 +42,10 @@ class CaveExcavationBodyPage : public BasePage
     void refreshGroupComboMarks();
     void updatePersistentSelectionFaces();
     void updateGroupDomainHighlight(int previewGroup = -1);
+    QSet<int> selectedLayerGroups() const;
     PickMode currentPickMode() const;
-    void syncGroupsFromPickManager();
 
   private:
-    QSet<int> m_selectedGroups;
     int m_lastHoveredIndex = -1;
 
     QComboBox* m_groupCombo = nullptr;

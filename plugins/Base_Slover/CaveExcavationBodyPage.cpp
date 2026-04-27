@@ -79,7 +79,6 @@ void CaveExcavationBodyPage::beforeLoad()
 
     if (mode == PickMode::Domain)
     {
-        syncGroupsFromPickManager();
         refreshSelectedGroupList();
         refreshGroupComboMarks();
         updateGroupDomainHighlight();
@@ -104,7 +103,7 @@ QJsonObject CaveExcavationBodyPage::saveJson()
     QJsonObject obj;
 
     QJsonArray selectedGroupsArr;
-    QList<int> selected = m_selectedGroups.values();
+    QList<int> selected = selectedLayerGroups().values();
     std::sort(selected.begin(), selected.end());
     for (int g : selected)
         selectedGroupsArr.append(g);
@@ -128,10 +127,15 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
 {
     setupGroupCombo();
 
-    m_selectedGroups.clear();
+    QSet<DomainKey> domains;
     const auto selectedGroupsArr = obj.value("selected_groups").toArray();
     for (const auto& v : selectedGroupsArr)
-        m_selectedGroups.insert(v.toInt());
+    {
+        const int gid = v.toInt(-1);
+        if (gid > 0)
+            domains.insert(DomainKey{"LAYER", 3, gid});
+    }
+    PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
 
     QVector<vtkIdType> faceKeys, edgeKeys;
     const auto faceArr = obj.value("face_solid").toArray();
@@ -156,7 +160,8 @@ QVector<int> CaveExcavationBodyPage::selectedElementIds()
 {
     std::set<int> uniq;
 
-    for (int g : m_selectedGroups)
+    const QSet<int> groups = selectedLayerGroups();
+    for (int g : groups)
     {
         const QVector<int> elemIds = elementIdsFromCells(groupCellIds(g));
         for (int ke : elemIds)
@@ -198,7 +203,6 @@ void CaveExcavationBodyPage::onClearClicked()
     PickManager::instance().setPreviewDomain(getPageType(), m_uuid, DomainKey{});
     PickManager::instance().setPreDeleteDomain(getPageType(), m_uuid, DomainKey{});
 
-    syncGroupsFromPickManager();
     refreshSelectedGroupList();
     refreshGroupComboMarks();
 
@@ -226,7 +230,6 @@ void CaveExcavationBodyPage::onAddGroupClicked()
     PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
 
            // UI 一律从 PickManager 回读
-    syncGroupsFromPickManager();
     refreshSelectedGroupList();
     refreshGroupComboMarks();
     updatePersistentSelectionFaces();
@@ -254,7 +257,6 @@ void CaveExcavationBodyPage::onRemoveSelectedGroupsClicked()
 
     PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
 
-    syncGroupsFromPickManager();
     refreshSelectedGroupList();
     refreshGroupComboMarks();
     updatePersistentSelectionFaces();
@@ -297,8 +299,6 @@ void CaveExcavationBodyPage::setupGroupCombo()
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
         return;
-    const MshPickMap map = meshSvc->mshPickMapSolid();
-
     const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     const bool is3d = (meshDim == 3);
     if (!is3d)
@@ -311,7 +311,6 @@ void CaveExcavationBodyPage::setupGroupCombo()
             m_removeGroupBtn->setEnabled(false);
         if (m_groupList)
             m_groupList->setEnabled(false);
-        m_selectedGroups.clear();
         refreshSelectedGroupList();
         refreshGroupComboMarks();
         return;
@@ -434,7 +433,7 @@ void CaveExcavationBodyPage::refreshSelectedGroupList()
 
     m_groupList->clear();
 
-    QList<int> ids = m_selectedGroups.values();
+    QList<int> ids = selectedLayerGroups().values();
     std::sort(ids.begin(), ids.end());
 
     for (int id : ids)
@@ -472,11 +471,6 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
     if (currentPickMode() != PickMode::Domain)
         return;
 
-    QSet<DomainKey> selectedDomains;
-    for (int gid : m_selectedGroups)
-        selectedDomains.insert(DomainKey{"LAYER", 3, gid});
-
-    PickManager::instance().setAppliedDomains(getPageType(), m_uuid, selectedDomains);
     PickManager::instance().setSelectedDomain(getPageType(), m_uuid, DomainKey{});
     PickManager::instance().setPreviewDomain(
         getPageType(), m_uuid,
@@ -490,16 +484,16 @@ PickMode CaveExcavationBodyPage::currentPickMode() const
     return (meshDim == 2) ? PickMode::Face : PickMode::Domain;
 }
 
-void CaveExcavationBodyPage::syncGroupsFromPickManager()
+QSet<int> CaveExcavationBodyPage::selectedLayerGroups() const
 {
-    m_selectedGroups.clear();
-
+    QSet<int> out;
     const QSet<DomainKey> owned =
         PickManager::instance().appliedDomains(getPageType(), m_uuid);
 
     for (const DomainKey& key : owned)
     {
         if (key.category.compare("LAYER", Qt::CaseInsensitive) == 0 && key.isValid())
-            m_selectedGroups.insert(key.id);
+            out.insert(key.id);
     }
+    return out;
 }
