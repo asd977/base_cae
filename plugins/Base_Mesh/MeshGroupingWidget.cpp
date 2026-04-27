@@ -641,8 +641,35 @@ void MeshGroupingWidget::refreshGroupList()
         table->resizeColumnsToContents();
     };
 
-    fillTableByMap(ui->tblMatypeGroups, pick.matypeToCellIds, pick.cellIdToGroupName);
-    fillTableByMap(ui->tblLayerGroups, pick.layerToCellIds, pick.cellIdToGroupName);
+    QHash<int, QVector<qint64>> matypeToCells;
+    QHash<int, QVector<qint64>> layerToCells;
+    QHash<qint64, QString> matypeNameByCell;
+    QHash<qint64, QString> layerNameByCell;
+    for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
+    {
+        const MeshTagSet& set = it.value();
+        if (set.key.category.compare("MATYPE", Qt::CaseInsensitive) == 0)
+        {
+            auto& cells = matypeToCells[set.key.id];
+            for (MeshIdType cid : set.cellIds)
+            {
+                cells.push_back(static_cast<qint64>(cid));
+                matypeNameByCell[static_cast<qint64>(cid)] = set.name;
+            }
+        }
+        else if (set.key.category.compare("LAYER", Qt::CaseInsensitive) == 0)
+        {
+            auto& cells = layerToCells[set.key.id];
+            for (MeshIdType cid : set.cellIds)
+            {
+                cells.push_back(static_cast<qint64>(cid));
+                layerNameByCell[static_cast<qint64>(cid)] = set.name;
+            }
+        }
+    }
+
+    fillTableByMap(ui->tblMatypeGroups, matypeToCells, matypeNameByCell);
+    fillTableByMap(ui->tblLayerGroups, layerToCells, layerNameByCell);
 }
 
 void MeshGroupingWidget::refreshBoundaryGroupList()
