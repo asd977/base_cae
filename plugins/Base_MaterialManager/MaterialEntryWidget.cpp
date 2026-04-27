@@ -39,10 +39,9 @@ QString matypeDisplayText(int matype, const MshPickMap* pickMap = nullptr)
     }
     else if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
     {
-        const MshPickMap pick = meshService->mshPickMapSolid();
-        QString name = pick.physicalName(matype, 3).trimmed();
+        QString name = meshService->matypePhysicalName(matype, 3).trimmed();
         if (name.isEmpty())
-            name = pick.physicalName(matype).trimmed();
+            name = meshService->matypePhysicalName(matype).trimmed();
         if (!name.isEmpty())
             return name;
     }
@@ -78,14 +77,25 @@ void MaterialEntryWidget::beforeLoad()
     {
         m_materialManager->setPickContext(getPageType(), m_uuid);
         PickManager::instance().activate(getPageType(), m_uuid, PickMode::Domain);
-        PickManager::instance().setClickPickEnabled(getPageType(), m_uuid,
-                                                    true);
-        PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid,
-                                                    false);
+        PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
+        PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, false);
         connect(&PickManager::instance(), &PickManager::domainSelected, this,
                 &MaterialEntryWidget::onDomainPicked, Qt::UniqueConnection);
+        m_pickInteractionReady = true;
         if (!m_entryId.isEmpty())
-            m_materialManager->refreshMatypeHighlight(m_entryId);
+        {
+            MaterialEntry* entry = lookupEntry();
+            const int selected = m_materialManager->selectedMatypeForEntry(m_entryId);
+            const int preview = m_materialManager->previewMatypeForEntry(m_entryId);
+            const int preDelete = m_materialManager->preDeleteMatypeForEntry(m_entryId);
+            const bool hasHighlightState =
+                entry && (!entry->appliedMatypes.isEmpty() || selected >= 0 || preview >= 0 ||
+                          preDelete >= 0);
+            if (hasHighlightState)
+            {
+                refreshMatypeHighlightSafe();
+            }
+        }
     }
 }
 
@@ -104,6 +114,7 @@ void MaterialEntryWidget::beforeUnload()
         disconnect(&PickManager::instance(), &PickManager::domainSelected, this,
                    &MaterialEntryWidget::onDomainPicked);
         PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Domain);
+        m_pickInteractionReady = false;
         m_materialManager->clearPickContext();
     }
 
@@ -276,19 +287,14 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
 
     m_matypeCombo = new CustomComboBox(matypeRowWidget);
     m_matypeCombo->addItem(QString("未选择"), QVariant());
-
-    QList<int> matypes = m_materialManager->availableMatypes().values();
-    std::sort(matypes.begin(), matypes.end());
-    MshPickMap pickMap;
-    if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
-        pickMap = meshService->mshPickMapSolid();
-    for (int value : matypes)
-    {
-        m_matypeCombo->addItem(matypeDisplayText(value, &pickMap), value);
-    }
+    m_matypeOptionsLoaded = false;
+    for (int value : appliedList)
+        appendMatypeOption(value);
 
     connect(m_matypeCombo, &CustomComboBox::itemHovered, this,
             &MaterialEntryWidget::onMatypeHovered);
+    connect(m_matypeCombo, &CustomComboBox::dropdownOpened, this,
+            &MaterialEntryWidget::ensureMatypeOptionsLoaded);
     connect(m_matypeCombo, &CustomComboBox::dropdownClosed, this,
             &MaterialEntryWidget::onDropdownClosed);
     connect(m_matypeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
@@ -313,7 +319,7 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     m_appliedMatypesList = new QListWidget(appliedRowWidget);
     for (int value : appliedList)
     {
-        auto* item = new QListWidgetItem(matypeDisplayText(value, &pickMap), m_appliedMatypesList);
+        auto* item = new QListWidgetItem(matypeDisplayText(value), m_appliedMatypesList);
         item->setData(Qt::UserRole, value);
     }
 
@@ -446,11 +452,59 @@ void MaterialEntryWidget::clearForm()
     m_transitionMatypeSpin = nullptr;
 
     m_lastHoveredIndex = -1;
+    m_matypeOptionsLoaded = false;
 }
 
 MaterialEntry* MaterialEntryWidget::lookupEntry(MaterialModel** model) const
 {
     return m_materialManager->findEntry(m_entryId, model);
+}
+
+void MaterialEntryWidget::ensurePickInteractionReady()
+{
+    if (!m_materialManager || m_pickInteractionReady)
+        return;
+    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Domain);
+    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
+    PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, false);
+    connect(&PickManager::instance(), &PickManager::domainSelected, this,
+            &MaterialEntryWidget::onDomainPicked, Qt::UniqueConnection);
+    m_pickInteractionReady = true;
+}
+
+void MaterialEntryWidget::refreshMatypeHighlightSafe()
+{
+    ensurePickInteractionReady();
+    if (m_materialManager)
+        m_materialManager->refreshMatypeHighlight(m_entryId);
+}
+
+void MaterialEntryWidget::appendMatypeOption(int matype)
+{
+    if (!m_matypeCombo || matype <= 0)
+        return;
+    if (m_matypeCombo->findData(matype) >= 0)
+        return;
+    m_matypeCombo->addItem(matypeDisplayText(matype), matype);
+}
+
+void MaterialEntryWidget::ensureMatypeOptionsLoaded()
+{
+    if (!m_matypeCombo || m_matypeOptionsLoaded || !m_materialManager)
+        return;
+
+    const QVariant currentValue = m_matypeCombo->currentData();
+    const QSignalBlocker blocker(m_matypeCombo);
+    QList<int> matypes = m_materialManager->availableMatypes().values();
+    std::sort(matypes.begin(), matypes.end());
+    for (int value : matypes)
+        appendMatypeOption(value);
+
+    int currentIndex = currentValue.isValid() ? m_matypeCombo->findData(currentValue) : 0;
+    if (currentIndex < 0)
+        currentIndex = 0;
+    m_matypeCombo->setCurrentIndex(currentIndex);
+    m_matypeOptionsLoaded = true;
 }
 
 void MaterialEntryWidget::refreshAppliedMatypes(const QSet<int>& appliedMatypes, int selectedMatype)
@@ -463,12 +517,9 @@ void MaterialEntryWidget::refreshAppliedMatypes(const QSet<int>& appliedMatypes,
     m_appliedMatypesList->clear();
     QList<int> appliedList = appliedMatypes.values();
     std::sort(appliedList.begin(), appliedList.end());
-    MshPickMap pickMap;
-    if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
-        pickMap = meshService->mshPickMapSolid();
     for (int value : appliedList)
     {
-        auto* item = new QListWidgetItem(matypeDisplayText(value, &pickMap), m_appliedMatypesList);
+        auto* item = new QListWidgetItem(matypeDisplayText(value), m_appliedMatypesList);
         item->setData(Qt::UserRole, value);
     }
 
@@ -515,7 +566,7 @@ void MaterialEntryWidget::onMatypeChanged(int)
 
     // 仅在非下拉预览阶段同步 Selected，覆盖键盘/滚轮等非 activated 路径。
     m_materialManager->setSelectedMatypeForEntry(m_entryId, matype);
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    refreshMatypeHighlightSafe();
 
     updateAppliedListColors();
 }
@@ -538,7 +589,7 @@ void MaterialEntryWidget::onMatypeActivated(int)
     m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
 
     updateAppliedListColors();
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    refreshMatypeHighlightSafe();
 }
 
 void MaterialEntryWidget::onApplyMatypeClicked()
@@ -565,7 +616,7 @@ void MaterialEntryWidget::onAppliedMatypeSelected(const QString& text)
         m_preDeleteMatype = -1;
         m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
         updateAppliedListColors();
-        m_materialManager->refreshMatypeHighlight(m_entryId);
+        refreshMatypeHighlightSafe();
         return;
     }
     const int matype = item->data(Qt::UserRole).toInt();
@@ -577,7 +628,7 @@ void MaterialEntryWidget::onAppliedMatypeSelected(const QString& text)
     m_materialManager->setPreDeleteMatypeForEntry(m_entryId, matype);
 
     updateAppliedListColors();
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    refreshMatypeHighlightSafe();
 }
 
 void MaterialEntryWidget::onTransitionModeChanged(int state)
@@ -671,7 +722,7 @@ void MaterialEntryWidget::onMatypeHovered(int index)
 
     m_previewMatype = matype;
     m_materialManager->setPreviewMatypeForEntry(m_entryId, matype);
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    refreshMatypeHighlightSafe();
 }
 
 void MaterialEntryWidget::onDropdownClosed()
@@ -715,7 +766,7 @@ void MaterialEntryWidget::onDropdownClosed()
 
     // 下拉关闭后仅取消 Preview，并恢复到该条目的应有高亮状态（Selected /
     // PreDelete / Applied）。
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    refreshMatypeHighlightSafe();
 }
 
 void MaterialEntryWidget::onRemoveMatypeClicked()
@@ -738,7 +789,7 @@ void MaterialEntryWidget::onRemoveMatypeClicked()
     m_preDeleteMatype = -1;
     m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
     updateAppliedListColors();
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    refreshMatypeHighlightSafe();
 }
 
 void MaterialEntryWidget::onDomainPicked(const QString& domain, const QString& uuid, const DomainKey& key)
@@ -766,7 +817,7 @@ void MaterialEntryWidget::onDomainPicked(const QString& domain, const QString& u
     }
 
     m_materialManager->setSelectedMatypeForEntry(m_entryId, matype);
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    refreshMatypeHighlightSafe();
     updateAppliedListColors();
 }
 

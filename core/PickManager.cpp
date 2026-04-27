@@ -501,7 +501,28 @@ void PickManager::activate(const QString& domain, const QString& uuid, PickMode 
     m_currentUUid = uuid;
     m_pickMode = mode;
 
-    refreshStructureIfNeeded();
+    if (mode == PickMode::Domain)
+    {
+        const QSet<DomainKey> applied = m_domainsByDomainUuid.value(domain).value(uuid);
+        const DomainKey selected =
+            m_selectedDomainByDomainUuid.value(domain).value(uuid, DomainKey{});
+        const DomainKey preview =
+            m_previewDomainByDomainUuid.value(domain).value(uuid, DomainKey{});
+        const DomainKey preDelete =
+            m_preDeleteDomainByDomainUuid.value(domain).value(uuid, DomainKey{});
+        const bool hasAny = !applied.isEmpty() || selected.isValid() || preview.isValid() ||
+                            preDelete.isValid();
+        if (!hasAny && !m_domainColoringActive)
+        {
+            updateActorVisibility();
+            if (m_lineNodeActor)
+                m_lineNodeActor->SetVisibility(false);
+            teardownPicking();
+            return;
+        }
+    }
+
+    // 结构缓存由网格导入/显示数据更新链路主动刷新，避免页面进入时触发重建。
     updateActorVisibility();
 
            // line node hints 仅 node 模式显示
@@ -827,40 +848,41 @@ bool PickManager::pickAt(int x, int y)
             origCellId = static_cast<vtkIdType>(origCellArr->GetTuple1(cellId));
 
         DomainKey pickedKey;
-        if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+
+        // 先走 MATYPE 数组，避免每次点击复制整份 pickMap。
+        auto* matypeArr = vtkIntArray::SafeDownCast(ds->GetCellData()->GetArray("MATYPE"));
+        if (matypeArr && cellId >= 0 && cellId < matypeArr->GetNumberOfTuples())
         {
-            const MshPickMap pickMap = meshSvc->mshPickMapSolid();
-            const auto tags = pickMap.cellIdToDomainTags.value(static_cast<MeshIdType>(origCellId));
-            for (const MeshTagKey& tag : tags)
+            const int matype = matypeArr->GetValue(cellId);
+            if (matype > 0)
+                pickedKey = DomainKey{QStringLiteral("MATYPE"), 3, matype};
+        }
+
+        if (!pickedKey.isValid())
+        {
+            if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
             {
-                if (tag.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0 &&
-                    tag.dim == 3 && tag.id > 0)
-                {
-                    pickedKey = DomainKey{tag.category, tag.dim, tag.id};
-                    break;
-                }
-            }
-            if (!pickedKey.isValid())
-            {
+                const auto tags = meshSvc->domainTagsOfCell(static_cast<MeshIdType>(origCellId));
                 for (const MeshTagKey& tag : tags)
                 {
-                    if (tag.dim == 3 && tag.id > 0)
+                    if (tag.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0 &&
+                        tag.dim == 3 && tag.id > 0)
                     {
                         pickedKey = DomainKey{tag.category, tag.dim, tag.id};
                         break;
                     }
                 }
-            }
-        }
-
-        if (!pickedKey.isValid())
-        {
-            auto* matypeArr = vtkIntArray::SafeDownCast(ds->GetCellData()->GetArray("MATYPE"));
-            if (matypeArr && cellId >= 0 && cellId < matypeArr->GetNumberOfTuples())
-            {
-                const int matype = matypeArr->GetValue(cellId);
-                if (matype > 0)
-                    pickedKey = DomainKey{QStringLiteral("MATYPE"), 3, matype};
+                if (!pickedKey.isValid())
+                {
+                    for (const MeshTagKey& tag : tags)
+                    {
+                        if (tag.dim == 3 && tag.id > 0)
+                        {
+                            pickedKey = DomainKey{tag.category, tag.dim, tag.id};
+                            break;
+                        }
+                    }
+                }
             }
         }
 

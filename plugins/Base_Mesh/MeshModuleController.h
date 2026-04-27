@@ -50,6 +50,8 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     bool importCurrentGmshMesh(QString* errMsg = nullptr) override;
 
     MshPickMap mshPickMapSolid();
+    QVector<MeshTagKey> domainTagsOfCell(MeshIdType cellId) const override;
+    QString matypePhysicalName(int matype, int dim = 3) const override;
     void setMshPickMapSolid(const MshPickMap& pickMap) override;
     bool autoGroupingBySpatialBins(int binCount, const QString& targetArrayName, int startValue,
                                    const QString& groupPrefix, QString* errMsg = nullptr) override;
