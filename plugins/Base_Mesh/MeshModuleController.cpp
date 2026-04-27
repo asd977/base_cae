@@ -1503,12 +1503,23 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
     pick.cellIdToGroupName.clear();
     pick.matypeToCellIds.clear();
     pick.layerToCellIds.clear();
+    pick.tagSets.clear();
+    pick.cellIdToDomainTags.clear();
 
     auto* matArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"));
     auto* layArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"));
     auto* grpArr = vtkStringArray::SafeDownCast(grid->GetCellData()->GetAbstractArray("GroupName"));
 
     const vtkIdType nCells = grid->GetNumberOfCells();
+    int maxDim = -1;
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    {
+        if (auto* c = grid->GetCell(cid))
+            maxDim = qMax(maxDim, c->GetCellDimension());
+    }
+    if (maxDim >= 0)
+        pick.meshDim = maxDim;
+
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
         const int mat = matArr ? matArr->GetValue(cid) : 0;
@@ -1522,6 +1533,31 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
         pick.cellIdToGroupName[cid] = g;
         pick.matypeToCellIds[mat].push_back(cid);
         pick.layerToCellIds[lay].push_back(cid);
+
+        auto addDomainTag = [&](const QString& category, int id)
+        {
+            if (id <= 0)
+                return;
+            MeshTagKey key;
+            key.category = category;
+            key.dim = pick.meshDim;
+            key.id = id;
+            if (!pick.tagSets.contains(key))
+            {
+                MeshTagSet set;
+                set.key = key;
+                set.name = QString("%1=%2").arg(category).arg(id);
+                set.source = "GridSync";
+                pick.tagSets.insert(key, set);
+            }
+            pick.tagSets[key].cellIds.push_back(static_cast<MeshIdType>(cid));
+            auto& domainTags = pick.cellIdToDomainTags[cid];
+            if (!domainTags.contains(key))
+                domainTags.push_back(key);
+        };
+
+        addDomainTag("MATYPE", mat);
+        addDomainTag("LAYER", lay);
     }
 
     MeshGridIO::instance().setMeshMap(pick);

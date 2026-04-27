@@ -1580,6 +1580,40 @@ void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
     if (!entry)
         return;
 
+    auto findOwnerEntryId = [&](int targetMatype) -> QString
+    {
+        for (const auto& model : m_models)
+        {
+            for (const auto& e : model.materials)
+            {
+                if (e.appliedMatypes.contains(targetMatype))
+                    return e.id;
+            }
+        }
+        return {};
+    };
+
+    const QString ownerId = findOwnerEntryId(matype);
+    if (!ownerId.isEmpty() && ownerId != entryId)
+    {
+        MaterialModel* ownerModel = nullptr;
+        MaterialEntry* ownerEntry = findEntry(ownerId, &ownerModel);
+        if (ownerEntry)
+        {
+            ownerEntry->appliedMatypes.remove(matype);
+            if (m_selectedMatypes.value(ownerId, -1) == matype)
+                m_selectedMatypes.remove(ownerId);
+            if (m_previewMatypes.value(ownerId, -1) == matype)
+                m_previewMatypes.remove(ownerId);
+            if (m_preDeleteMatypes.value(ownerId, -1) == matype)
+                m_preDeleteMatypes.remove(ownerId);
+            syncAutoNumberProperties(ownerModel, ownerEntry);
+            refreshEntryWidgetMatypes(ownerId, ownerEntry->appliedMatypes,
+                                      m_selectedMatypes.value(ownerId, -1));
+            refreshMatypeHighlight(ownerId);
+        }
+    }
+
     setSelectedMatypeForEntry(entryId, matype);
     entry->appliedMatypes.insert(matype);
     MaterialModel* model = nullptr;
