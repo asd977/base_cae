@@ -410,7 +410,6 @@ void PickManager::setAppliedDomains(const QString& domain, const QString& uuid,
     if (del.isValid() && !keys.contains(del))
         m_preDeleteDomainByDomainUuid[domain][uuid] = DomainKey{};
 
-    refreshStructureIfNeeded();
     rebuildDomainHighlightActors();
 }
 
@@ -478,20 +477,6 @@ void PickManager::clearDomainSelection(const QString& domain, const QString& uui
     rebuildDomainHighlightActors();
 }
 
-void PickManager::refreshStructureIfNeeded()
-{
-    const qint64 rev = PublicVariables::instance().get("pick_structure_revision").toLongLong();
-    const bool needRefresh = (rev != m_structureRevisionSeen) ||
-                             (m_gridSolid == nullptr && m_gridLine == nullptr) ||
-                             (m_visual && (m_solidProp == nullptr && m_lineProp == nullptr));
-
-    if (needRefresh)
-    {
-        updateStructure();
-        m_structureRevisionSeen = rev;
-    }
-}
-
 void PickManager::activate(const QString& domain, const QString& uuid, PickMode mode)
 {
     if (mode != PickMode::Face)
@@ -501,7 +486,6 @@ void PickManager::activate(const QString& domain, const QString& uuid, PickMode 
     m_currentUUid = uuid;
     m_pickMode = mode;
 
-    refreshStructureIfNeeded();
     updateActorVisibility();
 
            // line node hints 仅 node 模式显示

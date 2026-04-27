@@ -183,7 +183,6 @@ class CORE_EXPORT PickManager : public QObject
                                        vtkIdType& outOrigCellId, int& outOrigFaceLocalId) const;
 
     void updateActorVisibility();
-    void refreshStructureIfNeeded();
     // 将材料域高亮状态写入一套统一的 cell 颜色数组并刷新显示。
     void rebuildDomainHighlightActors();
     QSet<vtkIdType> cellsOfDomain(const DomainKey& key) const;
@@ -217,7 +216,6 @@ class CORE_EXPORT PickManager : public QObject
     // ============ active ============
     QString m_currentDomain;
     QString m_currentUUid;
-    qint64 m_structureRevisionSeen = -1;
     PickMode m_pickMode = PickMode::Node;
 
     VisualWidgetService* m_visual = nullptr;
