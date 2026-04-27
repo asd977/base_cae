@@ -396,7 +396,9 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     m_isUpdating = false;
 
     updateAppliedListColors();
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    // 这里仅重建页面控件，不主动触发网格高亮刷新。
+    // 高亮由 beforeLoad()/用户交互路径触发，避免在“创建材料/重建树”时对未激活页面
+    // 执行 PickManager 刷新导致的崩溃风险。
 }
 
 void MaterialEntryWidget::clearForm()
