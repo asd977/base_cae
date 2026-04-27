@@ -522,7 +522,7 @@ void PickManager::activate(const QString& domain, const QString& uuid, PickMode 
         }
     }
 
-    refreshStructureIfNeeded();
+    // 结构缓存由网格导入/显示数据更新链路主动刷新，避免页面进入时触发重建。
     updateActorVisibility();
 
            // line node hints 仅 node 模式显示
