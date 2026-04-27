@@ -719,6 +719,8 @@ void MaterialEntryWidget::onMatypeHovered(int index)
     // 业务：Preview matype
     QVariant data = m_matypeCombo->itemData(index);
     int matype = data.isValid() ? data.toInt() : -1;
+    if (m_previewMatype == matype)
+        return;
 
     m_previewMatype = matype;
     m_materialManager->setPreviewMatypeForEntry(m_entryId, matype);
@@ -733,12 +735,9 @@ void MaterialEntryWidget::onDropdownClosed()
         m_lastHoveredIndex = -1;
     }
 
-    // 下拉关闭：取消 Preview，恢复（PreDelete/Selected/Applied）
-    if (m_previewMatype != -1)
-    {
-        m_previewMatype = -1;
-        m_materialManager->setPreviewMatypeForEntry(m_entryId, -1);
-    }
+    // 下拉关闭：始终取消 Preview，恢复（PreDelete/Selected/Applied）。
+    m_previewMatype = -1;
+    m_materialManager->setPreviewMatypeForEntry(m_entryId, -1);
 
     if (m_matypeCombo)
     {

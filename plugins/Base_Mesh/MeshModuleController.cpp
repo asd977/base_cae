@@ -982,15 +982,6 @@ MshPickMap MeshModuleController::mshPickMapSolid()
     return MeshGridIO::instance().getMeshMap();
 }
 
-QVector<MeshTagKey> MeshModuleController::domainTagsOfCell(MeshIdType cellId) const
-{
-    if (cellId < 0)
-    {
-        return {};
-    }
-    return MeshGridIO::instance().getMeshMapRef().cellIdToDomainTags.value(cellId);
-}
-
 QString MeshModuleController::matypePhysicalName(int matype, int dim) const
 {
     if (matype <= 0)
