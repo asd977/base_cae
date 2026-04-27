@@ -14,6 +14,7 @@ class QListWidget;
 class CaveExcavationBodyPage : public BasePage
 {
     Q_OBJECT
+
   public:
     explicit CaveExcavationBodyPage(QWidget* parent = nullptr);
 
@@ -34,14 +35,14 @@ class CaveExcavationBodyPage : public BasePage
 
   private:
     void setupGroupCombo();
-    QVector<int> availableGroupIds() const;
-    QVector<vtkIdType> groupCellIds(int groupId) const;
+    QVector<int> availableLayerIds() const;
+    QVector<vtkIdType> layerCellIds(int layerId) const;
     QVector<vtkIdType> visibleBoundaryFaceKeys(const QVector<vtkIdType>& cellIds) const;
     QVector<int> elementIdsFromCells(const QVector<vtkIdType>& cellIds) const;
     void refreshSelectedGroupList();
     void refreshGroupComboMarks();
     void updatePersistentSelectionFaces();
-    void updateGroupDomainHighlight(int previewGroup = -1);
+    void updateGroupDomainHighlight(int previewLayer = -1);
     QSet<int> selectedLayerGroups();
     PickMode currentPickMode() const;
 

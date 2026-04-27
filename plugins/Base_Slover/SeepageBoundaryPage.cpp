@@ -16,9 +16,41 @@
 #include <QSet>
 #include <QSignalBlocker>
 #include <QTextStream>
+#include <QVariant>
 #include <algorithm>
 
 #include "ui_SeepageBoundaryPage.h"
+
+namespace
+{
+QString boundaryDisplayText(const MeshTagSet& set)
+{
+    return QStringLiteral("%1  (dim=%2, id=%3)")
+    .arg(set.displayName())
+        .arg(set.key.dim)
+        .arg(set.key.id);
+}
+
+MeshTagKey comboBoundaryKey(QComboBox* combo, int index)
+{
+    if (!combo || index < 0 || index >= combo->count())
+        return MeshTagKey{};
+    return combo->itemData(index).value<MeshTagKey>();
+}
+
+QVector<vtkIdType> pointIdsOfBoundary(const MshPickMap& map, const MeshTagKey& key)
+{
+    QVector<vtkIdType> out;
+    if (!key.isValid())
+        return out;
+
+    const MeshTagSet set = map.tagSets.value(key);
+    out.reserve(set.pointIds.size());
+    for (MeshIdType pid : set.pointIds)
+        out.push_back(static_cast<vtkIdType>(pid));
+    return out;
+}
+} // namespace
 
 SeepageBoundaryPage::SeepageBoundaryPage(const QString& pageType, const QString& boundaryTitle,
                                          const QString& exportFileName, QWidget* parent)
@@ -59,25 +91,17 @@ QVector<int> SeepageBoundaryPage::selectedNodeIds()
     auto collectPickedIds = [&](GridKind kind)
     {
         QVector<int> out;
-        // PickManager::getIdList(Node) 返回的是业务点号（point/node id），
-        // 不是 vtk point id。这里直接使用该结果导出 JD_*.DAT。
         const QVector<vtkIdType> picked = pm.getIdList(getPageType(), m_uuid, PickMode::Node, kind);
-        if (picked.isEmpty())
-            return out;
         out.reserve(picked.size());
         for (vtkIdType pid : picked)
-        {
             out.push_back(static_cast<int>(pid));
-        }
         return out;
     };
 
     QSet<int> merged;
-    const QVector<int> solidNodes = collectPickedIds(GridKind::Solid);
-    const QVector<int> lineNodes = collectPickedIds(GridKind::Line);
-    for (int id : solidNodes)
+    for (int id : collectPickedIds(GridKind::Solid))
         merged.insert(id);
-    for (int id : lineNodes)
+    for (int id : collectPickedIds(GridKind::Line))
         merged.insert(id);
 
     QVector<int> result;
@@ -101,16 +125,12 @@ bool SeepageBoundaryPage::exportDatFile()
 
     QFile file(wd.filePath("PREP/" + m_exportFileName));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
-    {
         return false;
-    }
 
     QTextStream os(&file);
     os << ids.size() << "\n";
     for (int i = 0; i < ids.size(); ++i)
-    {
         os << ids[i] << " " << (i + 1) << "\n";
-    }
 
     file.close();
     return true;
@@ -126,6 +146,8 @@ void SeepageBoundaryPage::setupBatchGroupCombo()
 {
     if (!ui)
         return;
+
+    qRegisterMetaType<MeshTagKey>("MeshTagKey");
 
     ui->comboBoxDim->blockSignals(true);
     ui->comboBoxDim->clear();
@@ -157,28 +179,10 @@ void SeepageBoundaryPage::setupBatchGroupCombo()
                         return;
 
                     const MshPickMap& map = meshSvc->mshPickMapSolid();
-                    const int physId = ui->comboBoxGroup->itemData(row).toInt();
-                    const int dim = map.physicalDim(physId);
-
-                    QVector<int> pointIdsInt;
-                    if (dim == 0)
-                        pointIdsInt = map.physicalPointIds(physId, 0);
-                    else if (dim == 1)
-                        pointIdsInt = map.physicalPointIds(physId, 1);
-                    else if (dim == 2)
-                        pointIdsInt = map.physicalPointIds(physId, 2);
-                    else
-                        return;
-
-                    QVector<vtkIdType> pointIds;
-                    pointIds.reserve(pointIdsInt.size());
-                    for (int pid : pointIdsInt)
-                    {
-                        pointIds.push_back(vtkIdType(pid));
-                    }
-
+                    const MeshTagKey key = comboBoundaryKey(ui->comboBoxGroup, row);
                     PickManager::instance().setPreviewPointIds(getPageType(), m_uuid,
-                                                               GridKind::Solid, pointIds);
+                                                               GridKind::Solid,
+                                                               pointIdsOfBoundary(map, key));
                 },
                 Qt::UniqueConnection);
 
@@ -190,6 +194,7 @@ void SeepageBoundaryPage::setupBatchGroupCombo()
                 },
                 Qt::UniqueConnection);
     }
+
     connect(ui->btnBatchAdd, &QPushButton::clicked, this,
             [this]()
             {
@@ -212,18 +217,12 @@ void SeepageBoundaryPage::refreshGroupCombo()
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
 
-    const auto nameMap = map.physicalNameMap();
-    for (auto it = nameMap.constBegin(); it != nameMap.constEnd(); ++it)
+    const QVector<MeshTagSet> sets = map.boundaryTagSets(dimFilter);
+    for (const MeshTagSet& set : sets)
     {
-        const int physId = it.key();
-        const int dim = map.physicalDim(physId);
-        if (dim < 0 || dim > 2)
+        if (set.pointIds.isEmpty())
             continue;
-        if (dimFilter >= 0 && dim != dimFilter)
-            continue;
-
-        ui->comboBoxGroup->addItem(
-            QString("%1  (dim=%2, id=%3)").arg(it.value()).arg(dim).arg(physId), physId);
+        ui->comboBoxGroup->addItem(boundaryDisplayText(set), QVariant::fromValue(set.key));
     }
 
     ui->comboBoxGroup->blockSignals(false);
@@ -245,25 +244,10 @@ void SeepageBoundaryPage::onGroupChanged(int index)
         return;
 
     const MshPickMap& map = meshSvc->mshPickMapSolid();
-    const int physId = ui->comboBoxGroup->itemData(index).toInt();
-    const int dim = map.physicalDim(physId);
-
-    QVector<int> pointIdsInt;
-    if (dim == 0)
-        pointIdsInt = map.physicalPointIds(physId, 0);
-    else if (dim == 1)
-        pointIdsInt = map.physicalPointIds(physId, 1);
-    else if (dim == 2)
-        pointIdsInt = map.physicalPointIds(physId, 2);
-    else
+    const MeshTagKey key = comboBoundaryKey(ui->comboBoxGroup, index);
+    const QVector<vtkIdType> pointIds = pointIdsOfBoundary(map, key);
+    if (pointIds.isEmpty())
         return;
-
-    QVector<vtkIdType> pointIds;
-    pointIds.reserve(pointIdsInt.size());
-    for (int pid : pointIdsInt)
-    {
-        pointIds.push_back(vtkIdType(pid));
-    }
 
     PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pointIds,
                                                 false);
@@ -274,7 +258,11 @@ QJsonObject SeepageBoundaryPage::saveJson()
 {
     QJsonObject obj;
     obj["dim_index"] = ui->comboBoxDim->currentIndex();
-    obj["group_phys_id"] = ui->comboBoxGroup->currentData().toInt();
+
+    const MeshTagKey key = comboBoundaryKey(ui->comboBoxGroup, ui->comboBoxGroup->currentIndex());
+    obj["group_category"] = key.category;
+    obj["group_dim"] = key.dim;
+    obj["group_id"] = key.id;
 
     auto toJson = [](const QVector<vtkIdType>& ids)
     {
@@ -283,6 +271,7 @@ QJsonObject SeepageBoundaryPage::saveJson()
             arr.append(static_cast<qint64>(id));
         return arr;
     };
+
     obj["picked_solid"] =
         toJson(PickManager::instance().getSelectedPointIds(getPageType(), m_uuid, GridKind::Solid));
     obj["picked_line"] =
@@ -295,12 +284,15 @@ void SeepageBoundaryPage::loadJson(const QJsonObject& obj)
     const int dimIndex = obj.value("dim_index").toInt(0);
     ui->comboBoxDim->setCurrentIndex(dimIndex);
 
-    const int physId = obj.value("group_phys_id").toInt(-1);
+    MeshTagKey savedKey;
+    savedKey.category = obj.value("group_category").toString();
+    savedKey.dim = obj.value("group_dim").toInt(-1);
+    savedKey.id = obj.value("group_id").toInt(0);
+
     for (int i = 0; i < ui->comboBoxGroup->count(); ++i)
     {
-        if (ui->comboBoxGroup->itemData(i).toInt() == physId)
+        if (comboBoundaryKey(ui->comboBoxGroup, i) == savedKey)
         {
-            // 只恢复 UI 选项，不触发批量分组选点覆盖已保存的 picked_*。
             const QSignalBlocker blocker(ui->comboBoxGroup);
             ui->comboBoxGroup->setCurrentIndex(i);
             break;
@@ -315,6 +307,7 @@ void SeepageBoundaryPage::loadJson(const QJsonObject& obj)
             out.push_back(static_cast<vtkIdType>(v.toVariant().toLongLong()));
         return out;
     };
+
     const auto solidIds = fromJson(obj.value("picked_solid").toArray());
     const auto lineIds = fromJson(obj.value("picked_line").toArray());
 

@@ -1,43 +1,41 @@
-﻿#ifndef MATERIALMANAGER_H
-#define MATERIALMANAGER_H
+﻿#pragma once
 
-#include <services/MaterialManagerService.h>
-#include <services/MeshModuleControllerService.h>
-#include <services/ProjectManagerService.h>
-
+#include <QObject>
 #include <QHash>
 #include <QMap>
 #include <QSet>
-#include <QSqlDatabase>
+#include <QString>
+#include <QStringList>
+#include <QVector>
+#include <QPair>
+
+#include <struct/MeshMap.h>
+#include <services/MaterialManagerService.h>
+#include <services/ProjectManagerService.h>
 
 #include "MaterialLibraryData.h"
-#include "MaterialManagerWidget.h"
 
-class MaterialManagerWidget;
-class MaterialEntryWidget;
-class MaterialModelWidget;
-class MaterialTransitionPage;
+class BasePage;
 class ProjectNode;
+class MaterialManagerWidget;
+class MaterialModelWidget;
+class MaterialEntryWidget;
+class MaterialTransitionPage;
+class ProjectManagerService;
 
 class MaterialManager : public QObject, public MaterialManagerService
 {
     Q_OBJECT
+
   public:
-    MaterialManager();
+    explicit MaterialManager();
 
-    BasePage* getMaterialManagerWidget() override;
-    void newProject() override;
-    bool saveProject() override;
-    bool loadProject() override;
-    void addMaterialFromMenu(const QString& modelKey) override;
-    void showBuiltinMaterialListDialog() override;
-    void showBuiltinSeepageListDialog() override;
-    void showMaterialTransitionDialog() override;
-    QVector<QPair<int, int>> materialTransitions() const override;
-    void setMaterialTransitions(const QVector<QPair<int, int>>& transitions) override;
-    bool generateIMATFile() override;
+    BasePage* getMaterialManagerWidget();
 
-    QString addMaterialToModel(const QString& modelKey, bool addToProjectTree = true);
+    void newProject();
+    bool saveProject();
+    bool loadProject();
+    void newProjectForPath(const QString& workPath);
 
     const QVector<MaterialModel>& models() const;
     QVector<MaterialModel>& models();
@@ -48,89 +46,104 @@ class MaterialManager : public QObject, public MaterialManagerService
     void notifyLibraryChanged(bool refreshProjectTree = true);
     void notifyEntryUpdated(const QString& entryId, bool nameChanged);
 
+    QVector<QStringList> getValueStrings();
+    void setValueStrings(QVector<QStringList> values);
+
+    static bool isAutoNumberColumn(const QString& columnName);
+
+    bool isSeepageModelKey(const QString& modelKey) const;
+    const QVector<MaterialModel>& seepageModels() const;
+
+    QString addMaterialToModel(const QString& modelKey, bool addToProjectTree = true);
+    void addMaterialFromMenu(const QString& modelKey);
+
+    void showBuiltinMaterialListDialog();
+    void showBuiltinSeepageListDialog();
+    void showMaterialTransitionDialog();
+
+    QVector<QPair<int, int>> materialTransitions() const;
+    void setMaterialTransitions(const QVector<QPair<int, int>>& transitions);
+
+    bool validateTransitionMatype(const QString& entryId, int matype, QString* error = nullptr) const;
+    QMap<int, QString> transitionSourceLabels() const;
+    QMap<int, QString> transitionTargetLabels() const;
+
     void focusOnMaterial(const QString& entryId);
     void focusOnModel(const QString& modelKey);
 
     void addEntryToProjectTree(const QString& entryId);
     void removeEntryFromProjectTree(const QString& entryId);
 
-    QSet<int> availableMatypes() const;
+    QVector<MeshTagSet> availableDomainTagSets() const;
 
-    // ===== MATYPE 高亮核心接口 =====
-    void refreshMatypeHighlight(const QString& entryId); // 按当前 entry 状态刷新网格
-    void
-    clearMatypeHighlight(const QString& entryId); // 清空该 entry 的所有高亮（含 preview/predelete）
-    void clearAllMatypeHighlight();               // 清空全局高亮（推荐在离开模块时用）
+    void highlightDomainTags(const QString& entryId,
+                             const QSet<MeshTagKey>& tags,
+                             const MeshTagKey& selected,
+                             const MeshTagKey& preview,
+                             const MeshTagKey& preDelete);
+    void refreshDomainTagHighlight(const QString& entryId);
 
-    int selectedMatypeForEntry(const QString& entryId) const;
-    void setSelectedMatypeForEntry(const QString& entryId, int matype);
+    MeshTagKey selectedDomainTagForEntry(const QString& entryId) const;
+    void setSelectedDomainTagForEntry(const QString& entryId, const MeshTagKey& key);
 
-    int previewMatypeForEntry(const QString& entryId) const;
-    void setPreviewMatypeForEntry(const QString& entryId, int matype);
+    MeshTagKey previewDomainTagForEntry(const QString& entryId) const;
+    void setPreviewDomainTagForEntry(const QString& entryId, const MeshTagKey& key);
 
-    int preDeleteMatypeForEntry(const QString& entryId) const;
-    void setPreDeleteMatypeForEntry(const QString& entryId, int matype);
+    MeshTagKey preDeleteDomainTagForEntry(const QString& entryId) const;
+    void setPreDeleteDomainTagForEntry(const QString& entryId, const MeshTagKey& key);
 
-    void applyMatypeToEntry(const QString& entryId, int matype);
-    void removeMatypeFromEntry(const QString& entryId, int matype);
+    void applyDomainTagToEntry(const QString& entryId, const MeshTagKey& key);
+    void removeDomainTagFromEntry(const QString& entryId, const MeshTagKey& key);
 
-    void refreshEntryWidgetMatypes(const QString& entryId, const QSet<int>& applied,
-                                   int selectedMatype);
+    void refreshEntryWidgetDomainTags(const QString& entryId,
+                                      const QSet<MeshTagKey>& applied,
+                                      const MeshTagKey& selected);
 
     bool generateCaculateFile();
+    bool generateIMATFile();
 
-    QVector<QStringList> getValueStrings();
-    void setValueStrings(QVector<QStringList> values);
-    static bool isAutoNumberColumn(const QString& columnName);
-    bool isSeepageModelKey(const QString& modelKey) const;
-    const QVector<MaterialModel>& seepageModels() const;
-    bool validateTransitionMatype(const QString& entryId, int matype, QString* error) const;
-    QMap<int, QString> transitionSourceLabels() const;
-    QMap<int, QString> transitionTargetLabels() const;
+    void clearDomainTagHighlight(const QString& entryId);
+    void clearAllDomainTagHighlight();
+
     void setPickContext(const QString& domain, const QString& uuid);
     void clearPickContext();
 
   private:
-    void ensureTransitionNode();
-    void newProjectForPath(const QString& workPath);
     void setupTreeWidget();
     void loadDefaultLibrary();
+    void ensureTransitionNode();
     void ensureEntryIds();
     void rebuildProjectTree();
     void clearProjectTree();
-    // 原 highlightMatypes 扩展为 3 态输入（Selected / Preview / PreDelete）
-    void highlightMatypes(const QString& entryId, const QSet<int>& matypes, int selectedMatype,
-                          int previewMatype, int preDeleteMatype);
+    void rebuildDomainTagOwners();
 
   private:
-    MaterialManagerWidget* m_materialManagerWidget;
+    ProjectManagerService* m_projectManagerService = nullptr;
 
-    // project tree
-    ProjectNode* m_rootItem;
+    MaterialManagerWidget* m_materialManagerWidget = nullptr;
+    MaterialTransitionPage* m_transitionPage = nullptr;
+
+    ProjectNode* m_rootItem = nullptr;
+    ProjectNode* m_transitionNode = nullptr;
+
     QHash<QString, ProjectNode*> m_modelItems;
     QHash<QString, ProjectNode*> m_entryItems;
 
     QHash<QString, MaterialModelWidget*> m_modelWidgets;
     QHash<QString, MaterialEntryWidget*> m_entryWidgets;
-    MaterialTransitionPage* m_transitionPage = nullptr;
-    ProjectNode* m_transitionNode = nullptr;
 
     QVector<MaterialModel> m_models;
-    QSet<QString> m_addedEntryIds;
     QVector<MaterialModel> m_seepageModels;
     QVector<QPair<int, int>> m_materialTransitions;
 
-    // ===== 3态：Selected / Preview / PreDelete =====
-    QHash<QString, int> m_selectedMatypes;
-    QHash<QString, int> m_previewMatypes;
-    QHash<QString, int> m_preDeleteMatypes;
-    QHash<int, QString> m_matypeOwnerById;
+    QSet<QString> m_addedEntryIds;
 
-    // services
-    ProjectManagerService* m_projectManagerService = nullptr;
+    QHash<QString, MeshTagKey> m_selectedDomainTags;
+    QHash<QString, MeshTagKey> m_previewDomainTags;
+    QHash<QString, MeshTagKey> m_preDeleteDomainTags;
+    QHash<MeshTagKey, QString> m_domainTagOwnerByKey;
+
     QString m_workPath;
     QString m_pickDomain;
     QString m_pickUuid;
 };
-
-#endif // MATERIALMANAGER_H

@@ -30,6 +30,56 @@
 #include "PickManager.h"
 #include "ui_LoadSpecificationWidget.h"
 
+namespace
+{
+QString boundaryTagText(const MeshTagSet& set)
+{
+    const QString name = set.displayName();
+    return QStringLiteral("%1  (dim=%2, id=%3)")
+        .arg(name)
+        .arg(set.key.dim)
+        .arg(set.key.id);
+}
+
+MeshTagKey comboTagKey(QComboBox* combo, int index = -1)
+{
+    if (!combo)
+        return MeshTagKey{};
+    const QVariant v = (index >= 0) ? combo->itemData(index) : combo->currentData();
+    if (!v.isValid())
+        return MeshTagKey{};
+    return v.value<MeshTagKey>();
+}
+
+QVector<vtkIdType> toVtkIds(const QVector<MeshIdType>& values)
+{
+    QVector<vtkIdType> out;
+    out.reserve(values.size());
+    for (MeshIdType v : values)
+        out.push_back(static_cast<vtkIdType>(v));
+    return out;
+}
+
+QVector<vtkIdType> pointIdsOfTag(const MshPickMap& map, const MeshTagKey& key)
+{
+    const MeshTagSet set = map.tagSets.value(key);
+    return toVtkIds(set.pointIds);
+}
+
+QVector<vtkIdType> edgeKeysOfTag(const MshPickMap& map, const MeshTagKey& key)
+{
+    const MeshTagSet set = map.tagSets.value(key);
+    return toVtkIds(set.edgeKeys);
+}
+
+QVector<vtkIdType> faceKeysOfTag(const MshPickMap& map, const MeshTagKey& key)
+{
+    const MeshTagSet set = map.tagSets.value(key);
+    return toVtkIds(set.faceKeys);
+}
+}
+
+
 static const QString kPickSurfacePropId = QString("loadspec.pick.surface");
 static const QString kPickHighlightPropId = QString("loadspec.pick.highlight");
 
@@ -55,7 +105,7 @@ void LoadSpecificationWidget::beforeLoad()
     if (!m_volumeGrid)
         return;
 
-    // !!! 按你项目真实接口改名：renderer()/interactor()/render() !!!
+           // !!! 按你项目真实接口改名：renderer()/interactor()/render() !!!
     m_renderer = m_visual->renderer();
     m_interactor = m_visual->interactor();
 
@@ -65,7 +115,7 @@ void LoadSpecificationWidget::beforeLoad()
         return;
     }
 
-    // 默认不启用，等勾选框触发
+           // 默认不启用，等勾选框触发
     m_pickEnabled = false;
 
     setupBatchGroupCombo();
@@ -96,15 +146,14 @@ void LoadSpecificationWidget::setupBatchGroupCombo()
     ui->comboBoxDim->setCurrentIndex(1);
     ui->comboBoxDim->blockSignals(false);
 
-    // 防止页面切换后重复连接导致槽函数被多次触发
     QObject::disconnect(ui->comboBoxDim, nullptr, this, nullptr);
     QObject::disconnect(ui->comboBoxGroup, nullptr, this, nullptr);
+    QObject::disconnect(ui->btnBatchAdd, nullptr, this, nullptr);
 
     connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &LoadSpecificationWidget::onDimChanged, Qt::UniqueConnection);
-    auto* batchAddBtn = ui->btnBatchAdd;
-    QObject::disconnect(batchAddBtn, nullptr, this, nullptr);
-    connect(batchAddBtn, &QPushButton::clicked, this,
+
+    connect(ui->btnBatchAdd, &QPushButton::clicked, this,
             [this]()
             {
                 onGroupChanged(ui->comboBoxGroup->currentIndex());
@@ -120,24 +169,16 @@ void LoadSpecificationWidget::setupBatchGroupCombo()
                     if (row < 0 || !m_meshCtrl)
                         return;
                     const MshPickMap& map = m_meshCtrl->mshPickMapSolid();
-                    const int physId = ui->comboBoxGroup->itemData(row).toInt();
+                    const MeshTagKey key = comboTagKey(ui->comboBoxGroup, row);
                     const int dim = ui->comboBoxDim->currentData().toInt();
                     if (dim == 1)
-                    {
-                        QVector<vtkIdType> edgeKeys;
-                        for (qint64 k : map.physicalEdgeKeys(physId))
-                            edgeKeys.push_back(vtkIdType(k));
-                        PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                                   edgeKeys);
-                    }
+                        PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid,
+                                                                   GridKind::Solid,
+                                                                   edgeKeysOfTag(map, key));
                     else
-                    {
-                        QVector<vtkIdType> faceKeys;
-                        for (qint64 k : map.physicalFaceKeys(physId))
-                            faceKeys.push_back(vtkIdType(k));
-                        PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                                   faceKeys);
-                    }
+                        PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid,
+                                                                   GridKind::Solid,
+                                                                   faceKeysOfTag(map, key));
                 },
                 Qt::UniqueConnection);
         connect(groupCombo, &CustomComboBox::dropdownClosed, this,
@@ -160,14 +201,11 @@ void LoadSpecificationWidget::refreshGroupCombo()
     const int dimFilter = ui->comboBoxDim->currentData().toInt();
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
-    const auto nameMap = map.physicalNameMap();
-    for (auto it = nameMap.constBegin(); it != nameMap.constEnd(); ++it)
-    {
-        const int physId = it.key();
-        if (map.physicalDim(physId) != dimFilter)
-            continue;
-        ui->comboBoxGroup->addItem(QString("%1 (id=%2)").arg(it.value()).arg(physId), physId);
-    }
+
+    const QVector<MeshTagSet> sets = map.boundaryTagSets(dimFilter);
+    for (const MeshTagSet& set : sets)
+        ui->comboBoxGroup->addItem(boundaryTagText(set), QVariant::fromValue(set.key));
+
     ui->comboBoxGroup->blockSignals(false);
 }
 
@@ -181,24 +219,18 @@ void LoadSpecificationWidget::onGroupChanged(int index)
     if (index < 0 || !m_meshCtrl)
         return;
     const MshPickMap& map = m_meshCtrl->mshPickMapSolid();
-    const int physId = ui->comboBoxGroup->itemData(index).toInt();
+    const MeshTagKey key = comboTagKey(ui->comboBoxGroup, index);
     const int dim = ui->comboBoxDim->currentData().toInt();
 
     if (dim == 1)
     {
-        QVector<vtkIdType> edgeKeys;
-        for (qint64 v : map.physicalEdgeKeys(physId))
-            edgeKeys.push_back(vtkIdType(v));
         PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                    edgeKeys, false);
+                                                    edgeKeysOfTag(map, key), false);
     }
     else if (dim == 2)
     {
-        QVector<vtkIdType> faceKeys;
-        for (qint64 v : map.physicalFaceKeys(physId))
-            faceKeys.push_back(vtkIdType(v));
         PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                    faceKeys, false);
+                                                    faceKeysOfTag(map, key), false);
     }
 }
 
@@ -224,7 +256,7 @@ void LoadSpecificationWidget::setupSurfaceAndPicker()
     if (!m_visual || !m_renderer || !m_interactor)
         return;
 
-    // ---------- 1) 优先复用当前可视化里正在显示的表面数据 ----------
+           // ---------- 1) 优先复用当前可视化里正在显示的表面数据 ----------
     vtkActor* sourceSurfaceActor = nullptr;
     vtkDataSet* sourceSurfaceDataSet = nullptr;
     const QStringList surfacePropIds = {QStringLiteral("mesh.imported.surface"),
@@ -264,7 +296,7 @@ void LoadSpecificationWidget::setupSurfaceAndPicker()
         return;
     }
 
-    // ---------- 2) pick actor：优先复用现有外表面 actor，避免重复生成外表面 ----------
+           // ---------- 2) pick actor：优先复用现有外表面 actor，避免重复生成外表面 ----------
     m_ownsSurfaceActor = false;
     if (sourceSurfaceActor)
     {
@@ -277,7 +309,7 @@ void LoadSpecificationWidget::setupSurfaceAndPicker()
         return;
     }
 
-    // ---------- 3) 高亮 actor：先给一个空输入（关键修复点） ----------
+           // ---------- 3) 高亮 actor：先给一个空输入（关键修复点） ----------
     auto emptyPoly = vtkSmartPointer<vtkPolyData>::New();
 
     m_highlightMapper = vtkSmartPointer<vtkDataSetMapper>::New();
@@ -297,14 +329,14 @@ void LoadSpecificationWidget::setupSurfaceAndPicker()
     m_visual->addProp(kPickHighlightPropId, m_highlightActor, QString("载荷"), QString("选中高亮"),
                       true, true);
 
-    // ---------- 4) picker（只 pick surfaceActor） ----------
+           // ---------- 4) picker（只 pick surfaceActor） ----------
     m_picker = vtkSmartPointer<vtkCellPicker>::New();
     m_picker->SetTolerance(0.0005);
     m_picker->PickFromListOn();
     m_picker->InitializePickList();
     m_picker->AddPickList(m_surfaceActor);
 
-    // ---------- 5) 左键回调 ----------
+           // ---------- 5) 左键回调 ----------
     m_leftPressCb = vtkSmartPointer<vtkCallbackCommand>::New();
     m_leftPressCb->SetClientData(this);
     m_leftPressCb->SetCallback(&LoadSpecificationWidget::OnLeftButtonPress);
@@ -360,8 +392,8 @@ void LoadSpecificationWidget::OnLeftButtonPress(vtkObject* caller, unsigned long
     self->m_interactor->GetEventPosition(xy);
     self->handlePick(xy[0], xy[1]);
 
-    // 不阻断相机交互：让后续的交互风格继续处理
-    // 你的工程如果发现“点选会影响旋转/拖拽”，再在 UI 上用模式切换去控制即可。
+           // 不阻断相机交互：让后续的交互风格继续处理
+           // 你的工程如果发现“点选会影响旋转/拖拽”，再在 UI 上用模式切换去控制即可。
 }
 
 void LoadSpecificationWidget::handlePick(int displayX, int displayY)
@@ -385,8 +417,8 @@ void LoadSpecificationWidget::handlePick(int displayX, int displayY)
     if (!ptIds)
         return;
 
-    // 取 PointData 的 node_id（如果你在 buildGridFromModel 里写了 node_id，
-    // 一般 surface 也会继承下来；若没继承，就只输出 pointId）
+           // 取 PointData 的 node_id（如果你在 buildGridFromModel 里写了 node_id，
+           // 一般 surface 也会继承下来；若没继承，就只输出 pointId）
     vtkIntArray* nodeIdArr =
         vtkIntArray::SafeDownCast(m_surface->GetPointData()->GetArray("node_id"));
 
@@ -402,7 +434,7 @@ void LoadSpecificationWidget::handlePick(int displayX, int displayY)
         }
     }
 
-    // 再点一次取消选中
+           // 再点一次取消选中
     if (m_selectedSurfaceCellIds.contains(cellId))
         m_selectedSurfaceCellIds.remove(cellId);
     else
@@ -450,7 +482,7 @@ void LoadSpecificationWidget::rebuildHighlight()
     extract->SetCellList(idList);
     extract->Update();
 
-    // vtkExtractCells 输出是 unstructured grid，这里转成 polydata 来渲染轮廓/面片
+           // vtkExtractCells 输出是 unstructured grid，这里转成 polydata 来渲染轮廓/面片
     auto geom = vtkSmartPointer<vtkGeometryFilter>::New();
     geom->SetInputConnection(extract->GetOutputPort());
     geom->Update();

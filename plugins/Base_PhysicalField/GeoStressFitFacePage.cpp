@@ -21,6 +21,56 @@
 #include "ui_GeoStressFitFacePage.h"
 #include "vtkPointData.h"
 
+namespace
+{
+QString boundaryTagText(const MeshTagSet& set)
+{
+    const QString name = set.displayName();
+    return QStringLiteral("%1  (dim=%2, id=%3)")
+        .arg(name)
+        .arg(set.key.dim)
+        .arg(set.key.id);
+}
+
+MeshTagKey comboTagKey(QComboBox* combo, int index = -1)
+{
+    if (!combo)
+        return MeshTagKey{};
+    const QVariant v = (index >= 0) ? combo->itemData(index) : combo->currentData();
+    if (!v.isValid())
+        return MeshTagKey{};
+    return v.value<MeshTagKey>();
+}
+
+QVector<vtkIdType> toVtkIds(const QVector<MeshIdType>& values)
+{
+    QVector<vtkIdType> out;
+    out.reserve(values.size());
+    for (MeshIdType v : values)
+        out.push_back(static_cast<vtkIdType>(v));
+    return out;
+}
+
+QVector<vtkIdType> pointIdsOfTag(const MshPickMap& map, const MeshTagKey& key)
+{
+    const MeshTagSet set = map.tagSets.value(key);
+    return toVtkIds(set.pointIds);
+}
+
+QVector<vtkIdType> edgeKeysOfTag(const MshPickMap& map, const MeshTagKey& key)
+{
+    const MeshTagSet set = map.tagSets.value(key);
+    return toVtkIds(set.edgeKeys);
+}
+
+QVector<vtkIdType> faceKeysOfTag(const MshPickMap& map, const MeshTagKey& key)
+{
+    const MeshTagSet set = map.tagSets.value(key);
+    return toVtkIds(set.faceKeys);
+}
+}
+
+
 static inline QString ensureDatSuffix(QString n)
 {
     n = n.trimmed();
@@ -45,7 +95,7 @@ GeoStressFitFacePage::GeoStressFitFacePage(QWidget* parent)
 {
     ui->setupUi(this);
 
-    // 默认值：2D 默认选边，3D 默认选面（用户仍可改）
+           // 默认值：2D 默认选边，3D 默认选面（用户仍可改）
     ensureDefaultPickTarget();
 
     connect(ui->radionButtonEdge, &QRadioButton::toggled, this,
@@ -85,19 +135,16 @@ void GeoStressFitFacePage::beforeLoad()
     m_activeMode = decidePickMode();
     PickManager::instance().activate(getPageType(), m_uuid, m_activeMode);
 
-    // 1) 先刷新下拉框内容（按当前模式：Edge / Face）
     refreshGroupCombo();
 
-    // 防止页面切换后重复连接导致槽函数被触发多次
     QObject::disconnect(ui->comboBoxDim, nullptr, this, nullptr);
     QObject::disconnect(ui->comboBoxGroup, nullptr, this, nullptr);
+    QObject::disconnect(ui->btnBatchAdd, nullptr, this, nullptr);
 
-    // 2) 绑定“下拉框改变” -> 批量设置 keys
     connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &GeoStressFitFacePage::onDimComboChanged, Qt::UniqueConnection);
-    auto* batchAddBtn = ui->btnBatchAdd;
-    QObject::disconnect(batchAddBtn, nullptr, this, nullptr);
-    connect(batchAddBtn, &QPushButton::clicked, this,
+
+    connect(ui->btnBatchAdd, &QPushButton::clicked, this,
             [this]()
             {
                 onGroupComboChanged(ui->comboBoxGroup->currentIndex());
@@ -115,24 +162,16 @@ void GeoStressFitFacePage::beforeLoad()
                     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
                     if (!meshSvc)
                         return;
-                    const MshPickMap& mapS = meshSvc->mshPickMapSolid();
-                    const int physId = ui->comboBoxGroup->itemData(row).toInt();
+                    const MshPickMap& map = meshSvc->mshPickMapSolid();
+                    const MeshTagKey key = comboTagKey(ui->comboBoxGroup, row);
                     if (pickEdge())
-                    {
-                        QVector<vtkIdType> keys;
-                        for (qint64 k : mapS.physicalEdgeKeys(physId))
-                            keys.push_back(vtkIdType(k));
-                        PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                                   keys);
-                    }
+                        PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid,
+                                                                   GridKind::Solid,
+                                                                   edgeKeysOfTag(map, key));
                     else
-                    {
-                        QVector<vtkIdType> keys;
-                        for (qint64 k : mapS.physicalFaceKeys(physId))
-                            keys.push_back(vtkIdType(k));
-                        PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                                   keys);
-                    }
+                        PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid,
+                                                                   GridKind::Solid,
+                                                                   faceKeysOfTag(map, key));
                 },
                 Qt::UniqueConnection);
         connect(groupCombo, &CustomComboBox::dropdownClosed, this,
@@ -143,8 +182,6 @@ void GeoStressFitFacePage::beforeLoad()
                 },
                 Qt::UniqueConnection);
     }
-
-    // 3) 下拉框只做预览，不自动应用；由“添加”按钮触发
 }
 
 void GeoStressFitFacePage::refreshGroupCombo()
@@ -152,9 +189,6 @@ void GeoStressFitFacePage::refreshGroupCombo()
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
         return;
-
-    const MshPickMap& mapS = meshSvc->mshPickMapSolid();
-    //    const MshPickMap& mapL = meshSvc->mshPickMapLine();
 
     const int wantDim = ui->comboBoxDim->currentData().toInt() >= 0
                             ? ui->comboBoxDim->currentData().toInt()
@@ -168,45 +202,17 @@ void GeoStressFitFacePage::refreshGroupCombo()
     ui->comboBoxDim->setCurrentIndex(wantDim == 1 ? 1 : 2);
     ui->comboBoxDim->blockSignals(false);
 
+    const MshPickMap& map = meshSvc->mshPickMapSolid();
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
 
-    // 合并两份 map 的 physId（避免只在 line 或只在 solid 的组漏掉）
-    QSet<int> allPhys;
-    const auto dimMap = mapS.physicalDimMap();
-    for (auto it = dimMap.constBegin(); it != dimMap.constEnd(); ++it)
-        if (it.value() == wantDim)
-            allPhys.insert(it.key());
-    //    for (auto it = mapL.physicalDimMap().constBegin(); it !=
-    //    mapL.physicalDimMap().constEnd(); ++it)
-    //        if (it.value() == wantDim) allPhys.insert(it.key());
-
-    QVector<int> ids = allPhys.values().toVector();
-    std::sort(ids.begin(), ids.end());
-
-    for (int physId : ids)
-    {
-        // 显示名：优先用 PhysicalNames 的 name，否则 fallback
-        QString name = mapS.physicalName(physId);
-        //        if (name.isEmpty()) name = mapL.physicalName(physId);
-        if (name.isEmpty())
-            name = QString("phys_%1").arg(physId);
-
-        // itemData 存 physId，后面取出来查 map
-        ui->comboBoxGroup->addItem(name, physId);
-    }
+    const QVector<MeshTagSet> sets = map.boundaryTagSets(wantDim);
+    for (const MeshTagSet& set : sets)
+        ui->comboBoxGroup->addItem(boundaryTagText(set), QVariant::fromValue(set.key));
 
     ui->comboBoxGroup->blockSignals(false);
 }
 
-static inline QVector<vtkIdType> toVtkIds(const QVector<qint64>& in)
-{
-    QVector<vtkIdType> out;
-    out.reserve(in.size());
-    for (qint64 v : in)
-        out.push_back(static_cast<vtkIdType>(v));
-    return out;
-}
 
 void GeoStressFitFacePage::onDimComboChanged(int)
 {
@@ -223,34 +229,24 @@ void GeoStressFitFacePage::onGroupComboChanged(int idx)
     if (!meshSvc)
         return;
 
-    const MshPickMap& mapS = meshSvc->mshPickMapSolid();
-
-    const int physId = ui->comboBoxGroup->itemData(idx).toInt();
+    const MshPickMap& map = meshSvc->mshPickMapSolid();
+    const MeshTagKey key = comboTagKey(ui->comboBoxGroup, idx);
+    if (!key.isValid())
+        return;
 
     PickManager& pm = PickManager::instance();
     const QString domain = getPageType();
     const QString uuid = m_uuid;
-
-    const bool replace = false; // 点击添加：并入当前选择
+    const bool replace = false;
 
     if (pickEdge())
     {
-        // dim=1：edgeKeys（只用 solid）
-        const QVector<vtkIdType> keysSolid = toVtkIds(mapS.physicalEdgeKeys(physId));
-
-        pm.setSelectedEdgeKeys(domain, uuid, GridKind::Solid, keysSolid, replace);
-
-        // 可选：清空 Line 侧（防止你之前在别的网格上选过）
+        pm.setSelectedEdgeKeys(domain, uuid, GridKind::Solid, edgeKeysOfTag(map, key), replace);
         pm.setSelectedEdgeKeys(domain, uuid, GridKind::Line, {}, true);
     }
     else
     {
-        // dim=2：faceKeys（只用 solid）
-        const QVector<vtkIdType> keysSolid = toVtkIds(mapS.physicalFaceKeys(physId));
-
-        pm.setSelectedFaceKeys(domain, uuid, GridKind::Solid, keysSolid, replace);
-
-        // 可选：清空 Line 侧
+        pm.setSelectedFaceKeys(domain, uuid, GridKind::Solid, faceKeysOfTag(map, key), replace);
         pm.setSelectedFaceKeys(domain, uuid, GridKind::Line, {}, true);
     }
 }
@@ -296,7 +292,7 @@ bool GeoStressFitFacePage::exportLeftDatFile()
     const bool wantEdge = pickEdge();
     const PickMode mode = wantEdge ? PickMode::Edge : PickMode::Face;
 
-    // 取 solid/line 两套
+           // 取 solid/line 两套
     const QVector<vtkIdType> keysSolid = pm.getIdList(domain, uuid, mode, GridKind::Solid);
     const QVector<vtkIdType> keysLine = pm.getIdList(domain, uuid, mode, GridKind::Line);
 
@@ -355,7 +351,7 @@ bool GeoStressFitFacePage::exportLeftDatFile()
         if (!ids || ids->GetNumberOfIds() < 2)
             return out;
 
-        // ✅ 二次边可能 3 点，保留前 4 个（LEFT.DAT 最多 JD1..JD4）
+               // ✅ 二次边可能 3 点，保留前 4 个（LEFT.DAT 最多 JD1..JD4）
         const int n = int(ids->GetNumberOfIds());
         const int m = std::min(n, 4);
         out.reserve(m);
@@ -399,8 +395,8 @@ bool GeoStressFitFacePage::exportLeftDatFile()
         if (!ids || ids->GetNumberOfIds() < 3)
             return out;
 
-        // ✅ 只取角点（LEFT.DAT JD1..JD4）
-        // VTK_QUADRATIC_QUAD 的前 4 个通常是角点；三角面则 3 个
+               // ✅ 只取角点（LEFT.DAT JD1..JD4）
+               // VTK_QUADRATIC_QUAD 的前 4 个通常是角点；三角面则 3 个
         const int n = int(ids->GetNumberOfIds());
         const int m = std::min(n, 4);
         out.reserve(m);
@@ -412,7 +408,7 @@ bool GeoStressFitFacePage::exportLeftDatFile()
         return out;
     };
 
-    // grid + node_id array
+           // grid + node_id array
     vtkUnstructuredGrid* gS = pm.solidGrid();
     vtkUnstructuredGrid* gL = pm.lineGrid();
     vtkIntArray* nS =
@@ -436,7 +432,7 @@ bool GeoStressFitFacePage::exportLeftDatFile()
     consume(gS, nS, keysS, true);
     consume(gL, nL, keysL, false);
 
-    // 写文件
+           // 写文件
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     QDir wd(projectDir);

@@ -6,9 +6,11 @@
 #include <QBrush>
 #include <QCheckBox>
 #include <QColor>
+#include <QComboBox>
 #include <QFontDatabase>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QListWidgetItem>
 #include <QMessageBox>
 #include <QScrollArea>
 #include <QSignalBlocker>
@@ -25,30 +27,75 @@
 
 namespace
 {
-QString matypeDisplayText(int matype, const MshPickMap* pickMap = nullptr)
+QString domainTagDisplayText(const MeshTagSet& set)
 {
-    if (matype <= 0)
+    QString name = set.name.trimmed();
+    if (name.isEmpty())
+        name = QStringLiteral("%1=%2").arg(set.key.category).arg(set.key.id);
+    return QStringLiteral("[%1] %2").arg(set.key.category, name);
+}
+
+QString domainTagDisplayText(const MeshTagKey& key)
+{
+    if (!key.isValid())
         return QString();
-    if (pickMap)
-    {
-        QString name = pickMap->physicalName(matype, 3).trimmed();
-        if (name.isEmpty())
-            name = pickMap->physicalName(matype).trimmed();
-        if (!name.isEmpty())
-            return name;
-    }
-    else if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+    if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
     {
         const MshPickMap pick = meshService->mshPickMapSolid();
-        QString name = pick.physicalName(matype, 3).trimmed();
-        if (name.isEmpty())
-            name = pick.physicalName(matype).trimmed();
-        if (!name.isEmpty())
-            return name;
+        const MeshTagSet set = pick.tagSets.value(key);
+        if (set.key.isValid())
+            return domainTagDisplayText(set);
     }
-    return QString::number(matype);
+    return QStringLiteral("[%1] %2").arg(key.category).arg(key.id);
 }
+
+MeshTagKey comboDomainKey(QComboBox* combo)
+{
+    if (!combo)
+        return MeshTagKey{};
+    const QVariant data = combo->currentData();
+    if (!data.isValid())
+        return MeshTagKey{};
+    return data.value<MeshTagKey>();
 }
+
+MeshTagKey itemDomainKey(QListWidgetItem* item)
+{
+    if (!item)
+        return MeshTagKey{};
+    const QVariant data = item->data(Qt::UserRole);
+    if (!data.isValid())
+        return MeshTagKey{};
+    return data.value<MeshTagKey>();
+}
+
+int findDomainKeyIndex(QComboBox* combo, const MeshTagKey& key)
+{
+    if (!combo || !key.isValid())
+        return -1;
+    for (int i = 0; i < combo->count(); ++i)
+    {
+        const MeshTagKey k = combo->itemData(i).value<MeshTagKey>();
+        if (k == key)
+            return i;
+    }
+    return -1;
+}
+
+QList<MeshTagKey> sortedKeys(const QSet<MeshTagKey>& keys)
+{
+    QList<MeshTagKey> list = keys.values();
+    std::sort(list.begin(), list.end(), [](const MeshTagKey& a, const MeshTagKey& b)
+              {
+                  if (a.category != b.category)
+                      return a.category < b.category;
+                  if (a.dim != b.dim)
+                      return a.dim < b.dim;
+                  return a.id < b.id;
+              });
+    return list;
+}
+} // namespace
 
 MaterialEntryWidget::MaterialEntryWidget(MaterialManager* manager, QWidget* parent)
     : BasePage("MaterialEntryWidget"), m_materialManager(manager), m_isUpdating(false),
@@ -83,7 +130,7 @@ void MaterialEntryWidget::beforeLoad()
         PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid,
                                                     false);
         if (!m_entryId.isEmpty())
-            m_materialManager->refreshMatypeHighlight(m_entryId);
+            m_materialManager->refreshDomainTagHighlight(m_entryId);
     }
 }
 
@@ -93,9 +140,9 @@ void MaterialEntryWidget::beforeUnload()
         return;
     m_beforeUnloadHandled = true;
 
-    // 离开页面：仅做“清理”，不要再触发恢复高亮逻辑
-    m_previewMatype = -1;
-    m_preDeleteMatype = -1;
+           // 离开页面：仅做“清理”，不要再触发恢复高亮逻辑
+    m_previewDomainTag = MeshTagKey{};
+    m_preDeleteDomainTag = MeshTagKey{};
 
     if (m_materialManager)
     {
@@ -103,19 +150,19 @@ void MaterialEntryWidget::beforeUnload()
         m_materialManager->clearPickContext();
     }
 
-    // 仅清理 UI hover，不调用 onDropdownClosed（其末尾会 refresh 高亮）
-    if (m_matypeCombo && m_lastHoveredIndex >= 0)
+           // 仅清理 UI hover，不调用 onDropdownClosed（其末尾会 refresh 高亮）
+    if (m_domainCombo && m_lastHoveredIndex >= 0)
     {
-        m_matypeCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
+        m_domainCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
         m_lastHoveredIndex = -1;
     }
 
-    // list 背景也清掉
-    if (m_appliedMatypesList)
+           // list 背景也清掉
+    if (m_appliedDomainList)
     {
-        for (int i = 0; i < m_appliedMatypesList->count(); ++i)
+        for (int i = 0; i < m_appliedDomainList->count(); ++i)
         {
-            m_appliedMatypesList->item(i)->setBackground(QBrush());
+            m_appliedDomainList->item(i)->setBackground(QBrush());
         }
     }
 }
@@ -213,7 +260,7 @@ void MaterialEntryWidget::rebuildSeepageFields(MaterialEntry* entry)
     m_seepageValueEdits.clear();
 
     const QString seepageModelKey = m_seepageCombo ? m_seepageCombo->currentData().toString()
-                                                    : entry->seepageModelKey;
+                                                   : entry->seepageModelKey;
     const auto& seepageModels = m_materialManager->seepageModels();
     const MaterialModel* selectedSeepageModel = nullptr;
     for (const auto& seepageModel : seepageModels)
@@ -256,74 +303,68 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
         return;
     }
 
-    // ===== 名称 =====
+           // ===== 名称 =====
     m_nameEdit = new QLineEdit(entry->name, this);
     connect(m_nameEdit, &QLineEdit::textEdited, this, &MaterialEntryWidget::onNameEdited);
-    m_formLayout->addRow(QString("材料名称"), m_nameEdit);
+    m_formLayout->addRow(QStringLiteral("材料名称"), m_nameEdit);
 
-    // 先取 appliedList，后面初始化要用
-    QList<int> appliedList = entry->appliedMatypes.values();
-    std::sort(appliedList.begin(), appliedList.end());
+    const QList<MeshTagKey> appliedList = sortedKeys(entry->appliedDomainTags);
 
-    // ===== MATYPE 选择 + 施加（放到动态字段上面）=====
-    QWidget* matypeRowWidget = new QWidget(this);
-    auto* rowLayout = new QHBoxLayout(matypeRowWidget);
+           // ===== 域分组选择 + 施加 =====
+    QWidget* domainRowWidget = new QWidget(this);
+    auto* rowLayout = new QHBoxLayout(domainRowWidget);
     rowLayout->setContentsMargins(0, 0, 0, 0);
 
-    m_matypeCombo = new CustomComboBox(matypeRowWidget);
-    m_matypeCombo->addItem(QString("未选择"), QVariant());
+    m_domainCombo = new CustomComboBox(domainRowWidget);
+    m_domainCombo->addItem(QStringLiteral("未选择"), QVariant());
 
-    QList<int> matypes = m_materialManager->availableMatypes().values();
-    std::sort(matypes.begin(), matypes.end());
-    MshPickMap pickMap;
-    if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
-        pickMap = meshService->mshPickMapSolid();
-    for (int value : matypes)
+    const QVector<MeshTagSet> domainSets = m_materialManager->availableDomainTagSets();
+    for (const MeshTagSet& set : domainSets)
     {
-        m_matypeCombo->addItem(matypeDisplayText(value, &pickMap), value);
+        m_domainCombo->addItem(domainTagDisplayText(set), QVariant::fromValue(set.key));
     }
 
-    connect(m_matypeCombo, &CustomComboBox::itemHovered, this,
-            &MaterialEntryWidget::onMatypeHovered);
-    connect(m_matypeCombo, &CustomComboBox::dropdownClosed, this,
+    connect(m_domainCombo, &CustomComboBox::itemHovered, this,
+            &MaterialEntryWidget::onDomainHovered);
+    connect(m_domainCombo, &CustomComboBox::dropdownClosed, this,
             &MaterialEntryWidget::onDropdownClosed);
-    connect(m_matypeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &MaterialEntryWidget::onMatypeChanged);
-    connect(m_matypeCombo, QOverload<int>::of(&QComboBox::activated), this,
-            &MaterialEntryWidget::onMatypeActivated);
+    connect(m_domainCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &MaterialEntryWidget::onDomainChanged);
+    connect(m_domainCombo, QOverload<int>::of(&QComboBox::activated), this,
+            &MaterialEntryWidget::onDomainActivated);
 
-    m_applyButton = new QPushButton(QString("施加到网格"), matypeRowWidget);
-    connect(m_applyButton, &QPushButton::clicked, this, &MaterialEntryWidget::onApplyMatypeClicked);
+    m_applyDomainButton = new QPushButton(QStringLiteral("施加到网格"), domainRowWidget);
+    connect(m_applyDomainButton, &QPushButton::clicked, this, &MaterialEntryWidget::onApplyDomainClicked);
 
-    rowLayout->addWidget(m_matypeCombo);
-    rowLayout->addWidget(m_applyButton);
+    rowLayout->addWidget(m_domainCombo);
+    rowLayout->addWidget(m_applyDomainButton);
     rowLayout->addStretch();
 
-    m_formLayout->addRow(QString("关联MATYPE"), matypeRowWidget);
+    m_formLayout->addRow(QStringLiteral("关联域分组"), domainRowWidget);
 
-    // ===== 已施加 MATYPE 列表 + 移除 =====
-    QWidget* appliedRowWidget = new QWidget(this);
-    auto* appliedLayout = new QHBoxLayout(appliedRowWidget);
+           // ===== 已施加域分组列表 + 移除 =====
+    QWidget* appliedDomainRowWidget = new QWidget(this);
+    auto* appliedLayout = new QHBoxLayout(appliedDomainRowWidget);
     appliedLayout->setContentsMargins(0, 0, 0, 0);
 
-    m_appliedMatypesList = new QListWidget(appliedRowWidget);
-    for (int value : appliedList)
+    m_appliedDomainList = new QListWidget(appliedDomainRowWidget);
+    for (const MeshTagKey& key : appliedList)
     {
-        auto* item = new QListWidgetItem(matypeDisplayText(value, &pickMap), m_appliedMatypesList);
-        item->setData(Qt::UserRole, value);
+        auto* item = new QListWidgetItem(domainTagDisplayText(key), m_appliedDomainList);
+        item->setData(Qt::UserRole, QVariant::fromValue(key));
     }
 
-    connect(m_appliedMatypesList, &QListWidget::currentTextChanged, this,
-            &MaterialEntryWidget::onAppliedMatypeSelected);
+    connect(m_appliedDomainList, &QListWidget::currentTextChanged, this,
+            &MaterialEntryWidget::onAppliedDomainSelected);
 
-    m_removeButton = new QPushButton(QString("移除选中"), appliedRowWidget);
-    connect(m_removeButton, &QPushButton::clicked, this,
-            &MaterialEntryWidget::onRemoveMatypeClicked);
+    m_removeDomainButton = new QPushButton(QStringLiteral("移除选中"), appliedDomainRowWidget);
+    connect(m_removeDomainButton, &QPushButton::clicked, this,
+            &MaterialEntryWidget::onRemoveDomainClicked);
 
-    appliedLayout->addWidget(m_appliedMatypesList);
-    appliedLayout->addWidget(m_removeButton);
+    appliedLayout->addWidget(m_appliedDomainList);
+    appliedLayout->addWidget(m_removeDomainButton);
 
-    m_formLayout->addRow(QString("已施加材料单元"), appliedRowWidget);
+    m_formLayout->addRow(QStringLiteral("已施加域分组"), appliedDomainRowWidget);
 
     QWidget* transitionRowWidget = new QWidget(this);
     auto* transitionLayout = new QHBoxLayout(transitionRowWidget);
@@ -341,27 +382,25 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     connect(m_transitionOnlyCheck, &QCheckBox::stateChanged, this,
             &MaterialEntryWidget::onTransitionModeChanged);
     connect(m_transitionMatypeSpin, qOverload<int>(&QSpinBox::valueChanged), this,
-            &MaterialEntryWidget::onTransitionMatypeChanged);
+            &MaterialEntryWidget::onTransitionDomainChanged);
     m_formLayout->addRow(QStringLiteral("后续变换"), transitionRowWidget);
     if (entry->transitionOnly)
     {
-        if (m_matypeCombo)
-            m_matypeCombo->setEnabled(false);
-        if (m_applyButton)
-            m_applyButton->setEnabled(false);
-        if (m_appliedMatypesList)
-            m_appliedMatypesList->setEnabled(false);
-        if (m_removeButton)
-            m_removeButton->setEnabled(false);
+        if (m_domainCombo)
+            m_domainCombo->setEnabled(false);
+        if (m_applyDomainButton)
+            m_applyDomainButton->setEnabled(false);
+        if (m_appliedDomainList)
+            m_appliedDomainList->setEnabled(false);
+        if (m_removeDomainButton)
+            m_removeDomainButton->setEnabled(false);
     }
 
-    // ===== 动态字段（放在 MATYPE 区域下面）=====
+           // ===== 动态字段（放在域分组区域下面）=====
     for (const QString& column : model->columns)
     {
         if (MaterialManager::isAutoNumberColumn(column))
-        {
             continue;
-        }
         auto* valueEdit = new QLineEdit(entry->properties.value(column), this);
         valueEdit->setProperty("columnName", column);
         connect(valueEdit, &QLineEdit::textEdited, this, &MaterialEntryWidget::onValueEdited);
@@ -369,14 +408,12 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
         m_valueEdits.insert(column, valueEdit);
     }
 
-    // ===== 渗流/流变模型（放到最下方）=====
+           // ===== 渗流/流变模型（放到最下方）=====
     m_seepageCombo = new CustomComboBox(this);
     m_seepageCombo->addItem(QStringLiteral("无"), QString());
     const auto& seepageModels = m_materialManager->seepageModels();
     for (const auto& seepageModel : seepageModels)
-    {
         m_seepageCombo->addItem(seepageModel.displayName, seepageModel.key);
-    }
     int seepageIndex = m_seepageCombo->findData(entry->seepageModelKey);
     m_seepageCombo->setCurrentIndex(seepageIndex >= 0 ? seepageIndex : 0);
     connect(m_seepageCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
@@ -388,30 +425,23 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     m_formLayout->addRow(QStringLiteral("渗流参数"), seepageFieldsWidget);
     rebuildSeepageFields(entry);
 
-    // ===== 初始化选中 MATYPE =====
-    int initialMatype = m_materialManager->selectedMatypeForEntry(m_entryId);
-    if (initialMatype < 0 && !appliedList.isEmpty())
-    {
-        initialMatype = appliedList.first();
-    }
+           // ===== 初始化选中域分组 =====
+    MeshTagKey initialKey = m_materialManager->selectedDomainTagForEntry(m_entryId);
+    if (!initialKey.isValid() && !appliedList.isEmpty())
+        initialKey = appliedList.first();
 
-    int comboIndex = (initialMatype >= 0) ? m_matypeCombo->findData(initialMatype) : -1;
-    m_matypeCombo->setCurrentIndex(comboIndex >= 0 ? comboIndex : 0);
+    const int comboIndex = initialKey.isValid() ? findDomainKeyIndex(m_domainCombo, initialKey) : -1;
+    m_domainCombo->setCurrentIndex(comboIndex >= 0 ? comboIndex : 0);
+    m_materialManager->setSelectedDomainTagForEntry(m_entryId, initialKey);
 
-    m_materialManager->setSelectedMatypeForEntry(m_entryId, initialMatype);
-
-    // 初始化：清空 preview / predelete
-    m_previewMatype = -1;
-    m_preDeleteMatype = -1;
-    m_materialManager->setPreviewMatypeForEntry(m_entryId, -1);
-    m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
+           // 初始化：清空 preview / predelete
+    m_previewDomainTag = MeshTagKey{};
+    m_preDeleteDomainTag = MeshTagKey{};
+    m_materialManager->setPreviewDomainTagForEntry(m_entryId, MeshTagKey{});
+    m_materialManager->setPreDeleteDomainTagForEntry(m_entryId, MeshTagKey{});
 
     m_isUpdating = false;
-
     updateAppliedListColors();
-    // 这里仅重建页面控件，不主动触发网格高亮刷新。
-    // 高亮由 beforeLoad()/用户交互路径触发，避免在“创建材料/重建树”时对未激活页面
-    // 执行 PickManager 刷新导致的崩溃风险。
 }
 
 void MaterialEntryWidget::clearForm()
@@ -433,11 +463,11 @@ void MaterialEntryWidget::clearForm()
     m_seepageFieldsLayout = nullptr;
     m_seepageValueEdits.clear();
 
-    m_matypeCombo = nullptr;
-    m_applyButton = nullptr;
+    m_domainCombo = nullptr;
+    m_applyDomainButton = nullptr;
 
-    m_appliedMatypesList = nullptr;
-    m_removeButton = nullptr;
+    m_appliedDomainList = nullptr;
+    m_removeDomainButton = nullptr;
     m_transitionOnlyCheck = nullptr;
     m_transitionMatypeSpin = nullptr;
 
@@ -449,131 +479,110 @@ MaterialEntry* MaterialEntryWidget::lookupEntry(MaterialModel** model) const
     return m_materialManager->findEntry(m_entryId, model);
 }
 
-void MaterialEntryWidget::refreshAppliedMatypes(const QSet<int>& appliedMatypes, int selectedMatype)
+void MaterialEntryWidget::refreshAppliedDomainTags(const QSet<MeshTagKey>& appliedTags,
+                                                   const MeshTagKey& selectedKey)
 {
-    if (!m_appliedMatypesList || !m_matypeCombo)
+    if (!m_appliedDomainList || !m_domainCombo)
         return;
 
     m_isUpdating = true;
+    m_appliedDomainList->clear();
 
-    m_appliedMatypesList->clear();
-    QList<int> appliedList = appliedMatypes.values();
-    std::sort(appliedList.begin(), appliedList.end());
-    MshPickMap pickMap;
-    if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
-        pickMap = meshService->mshPickMapSolid();
-    for (int value : appliedList)
+    const QList<MeshTagKey> appliedList = sortedKeys(appliedTags);
+    for (const MeshTagKey& key : appliedList)
     {
-        auto* item = new QListWidgetItem(matypeDisplayText(value, &pickMap), m_appliedMatypesList);
-        item->setData(Qt::UserRole, value);
+        auto* item = new QListWidgetItem(domainTagDisplayText(key), m_appliedDomainList);
+        item->setData(Qt::UserRole, QVariant::fromValue(key));
     }
 
-    int comboIndex = (selectedMatype >= 0) ? m_matypeCombo->findData(selectedMatype) : 0;
+    int comboIndex = selectedKey.isValid() ? findDomainKeyIndex(m_domainCombo, selectedKey) : 0;
     if (comboIndex < 0)
         comboIndex = 0;
-    m_matypeCombo->setCurrentIndex(comboIndex);
+    m_domainCombo->setCurrentIndex(comboIndex);
 
-    // 数据刷新后，预删除/预览都清空（避免旧状态影响）
-    m_preDeleteMatype = -1;
-    m_previewMatype = -1;
-    m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
-    m_materialManager->setPreviewMatypeForEntry(m_entryId, -1);
+    m_preDeleteDomainTag = MeshTagKey{};
+    m_previewDomainTag = MeshTagKey{};
+    m_materialManager->setPreDeleteDomainTagForEntry(m_entryId, MeshTagKey{});
+    m_materialManager->setPreviewDomainTagForEntry(m_entryId, MeshTagKey{});
 
     m_isUpdating = false;
-
     updateAppliedListColors();
 }
 
-void MaterialEntryWidget::onMatypeChanged(int)
+void MaterialEntryWidget::onDomainChanged(int)
 {
-    if (m_isUpdating || !m_matypeCombo)
+    if (m_isUpdating || !m_domainCombo)
         return;
 
-    // 下拉关闭时某些实现会额外发一次
-    // currentIndexChanged（并非真实提交），直接忽略。
-    if (m_ignoreNextMatypeChanged)
+    if (m_ignoreNextDomainChanged)
     {
-        m_ignoreNextMatypeChanged = false;
+        m_ignoreNextDomainChanged = false;
         updateAppliedListColors();
         return;
     }
 
-    // 下拉弹层可见时，currentIndexChanged 可能由“悬浮预览”触发，
-    // 不能把该值写成 Selected（否则关闭下拉后会残留预选色/选中色）。
-    if (m_matypeCombo->view() && m_matypeCombo->view()->isVisible())
+    if (m_domainCombo->view() && m_domainCombo->view()->isVisible())
     {
         updateAppliedListColors();
         return;
     }
 
-    const QVariant data = m_matypeCombo->currentData();
-    const int matype = data.isValid() ? data.toInt() : -1;
-
-    // 仅在非下拉预览阶段同步 Selected，覆盖键盘/滚轮等非 activated 路径。
-    m_materialManager->setSelectedMatypeForEntry(m_entryId, matype);
-    m_materialManager->refreshMatypeHighlight(m_entryId);
-
+    const MeshTagKey key = comboDomainKey(m_domainCombo);
+    m_materialManager->setSelectedDomainTagForEntry(m_entryId, key);
+    m_materialManager->refreshDomainTagHighlight(m_entryId);
     updateAppliedListColors();
 }
 
-void MaterialEntryWidget::onMatypeActivated(int)
+void MaterialEntryWidget::onDomainActivated(int)
 {
-    if (m_isUpdating || !m_matypeCombo)
+    if (m_isUpdating || !m_domainCombo)
         return;
 
-    QVariant data = m_matypeCombo->currentData();
-    int matype = data.isValid() ? data.toInt() : -1;
+    const MeshTagKey key = comboDomainKey(m_domainCombo);
+    m_materialManager->setSelectedDomainTagForEntry(m_entryId, key);
 
-    // 选中态：写入 Selected
-    m_materialManager->setSelectedMatypeForEntry(m_entryId, matype);
-
-    // 改选中时通常清掉预删除（更符合直觉）
-    m_preDeleteMatype = -1;
-    if (m_appliedMatypesList)
-        m_appliedMatypesList->clearSelection();
-    m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
+    m_preDeleteDomainTag = MeshTagKey{};
+    if (m_appliedDomainList)
+        m_appliedDomainList->clearSelection();
+    m_materialManager->setPreDeleteDomainTagForEntry(m_entryId, MeshTagKey{});
 
     updateAppliedListColors();
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    m_materialManager->refreshDomainTagHighlight(m_entryId);
 }
 
-void MaterialEntryWidget::onApplyMatypeClicked()
+void MaterialEntryWidget::onApplyDomainClicked()
 {
-    if (!m_matypeCombo)
+    if (!m_domainCombo)
         return;
 
-    QVariant data = m_matypeCombo->currentData();
-    int matype = data.isValid() ? data.toInt() : -1;
-
-    m_materialManager->applyMatypeToEntry(m_entryId, matype);
+    const MeshTagKey key = comboDomainKey(m_domainCombo);
+    m_materialManager->applyDomainTagToEntry(m_entryId, key);
 }
 
-void MaterialEntryWidget::onAppliedMatypeSelected(const QString& text)
+void MaterialEntryWidget::onAppliedDomainSelected(const QString& text)
 {
     Q_UNUSED(text);
     if (m_isUpdating)
         return;
 
-    auto* item = m_appliedMatypesList ? m_appliedMatypesList->currentItem() : nullptr;
+    auto* item = m_appliedDomainList ? m_appliedDomainList->currentItem() : nullptr;
     if (!item)
     {
-        // 清选择 => 取消预删除
-        m_preDeleteMatype = -1;
-        m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
+        m_preDeleteDomainTag = MeshTagKey{};
+        m_materialManager->setPreDeleteDomainTagForEntry(m_entryId, MeshTagKey{});
         updateAppliedListColors();
-        m_materialManager->refreshMatypeHighlight(m_entryId);
+        m_materialManager->refreshDomainTagHighlight(m_entryId);
         return;
     }
-    const int matype = item->data(Qt::UserRole).toInt();
-    if (matype <= 0)
+
+    const MeshTagKey key = itemDomainKey(item);
+    if (!key.isValid())
         return;
 
-    // ★ 只设置“预删除”，不改变 Selected
-    m_preDeleteMatype = matype;
-    m_materialManager->setPreDeleteMatypeForEntry(m_entryId, matype);
-
+    m_preDeleteDomainTag = key;
+    m_materialManager->setPreDeleteDomainTagForEntry(m_entryId, key);
     updateAppliedListColors();
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    m_materialManager->refreshDomainTagHighlight(m_entryId);
 }
 
 void MaterialEntryWidget::onTransitionModeChanged(int state)
@@ -587,14 +596,14 @@ void MaterialEntryWidget::onTransitionModeChanged(int state)
     {
         entry->transitionOnly = false;
         entry->transitionMatype = -1;
-        if (m_matypeCombo)
-            m_matypeCombo->setEnabled(true);
-        if (m_applyButton)
-            m_applyButton->setEnabled(true);
-        if (m_appliedMatypesList)
-            m_appliedMatypesList->setEnabled(true);
-        if (m_removeButton)
-            m_removeButton->setEnabled(true);
+        if (m_domainCombo)
+            m_domainCombo->setEnabled(true);
+        if (m_applyDomainButton)
+            m_applyDomainButton->setEnabled(true);
+        if (m_appliedDomainList)
+            m_appliedDomainList->setEnabled(true);
+        if (m_removeDomainButton)
+            m_removeDomainButton->setEnabled(true);
         return;
     }
     QString error;
@@ -611,20 +620,21 @@ void MaterialEntryWidget::onTransitionModeChanged(int state)
     }
     entry->transitionOnly = true;
     entry->transitionMatype = matype;
-    entry->appliedMatypes.clear();
-    m_materialManager->refreshEntryWidgetMatypes(entry->id, entry->appliedMatypes, -1);
-    if (m_matypeCombo)
-        m_matypeCombo->setEnabled(false);
-    if (m_applyButton)
-        m_applyButton->setEnabled(false);
-    if (m_appliedMatypesList)
-        m_appliedMatypesList->setEnabled(false);
-    if (m_removeButton)
-        m_removeButton->setEnabled(false);
+    entry->appliedDomainTags.clear();
+    m_materialManager->refreshEntryWidgetDomainTags(entry->id, entry->appliedDomainTags, MeshTagKey{});
+    m_materialManager->refreshDomainTagHighlight(entry->id);
+    if (m_domainCombo)
+        m_domainCombo->setEnabled(false);
+    if (m_applyDomainButton)
+        m_applyDomainButton->setEnabled(false);
+    if (m_appliedDomainList)
+        m_appliedDomainList->setEnabled(false);
+    if (m_removeDomainButton)
+        m_removeDomainButton->setEnabled(false);
     m_materialManager->notifyEntryUpdated(entry->id, false);
 }
 
-void MaterialEntryWidget::onTransitionMatypeChanged(int value)
+void MaterialEntryWidget::onTransitionDomainChanged(int value)
 {
     MaterialEntry* entry = lookupEntry();
     if (!entry || !m_transitionOnlyCheck || !m_transitionOnlyCheck->isChecked())
@@ -641,19 +651,16 @@ void MaterialEntryWidget::onTransitionMatypeChanged(int value)
     entry->transitionMatype = value;
 }
 
-void MaterialEntryWidget::onMatypeHovered(int index)
+void MaterialEntryWidget::onDomainHovered(int index)
 {
-    if (!m_matypeCombo)
+    if (!m_domainCombo)
         return;
 
-    // UI：下拉项背景淡蓝（你原逻辑保留）
     if (m_lastHoveredIndex >= 0)
-    {
-        m_matypeCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
-    }
+        m_domainCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
     if (index >= 0)
     {
-        m_matypeCombo->setItemData(index, QColor(230, 247, 255), Qt::BackgroundRole);
+        m_domainCombo->setItemData(index, QColor(230, 247, 255), Qt::BackgroundRole);
         m_lastHoveredIndex = index;
     }
     else
@@ -661,108 +668,89 @@ void MaterialEntryWidget::onMatypeHovered(int index)
         m_lastHoveredIndex = -1;
     }
 
-    // 业务：Preview matype
-    QVariant data = m_matypeCombo->itemData(index);
-    int matype = data.isValid() ? data.toInt() : -1;
+    MeshTagKey key;
+    if (index >= 0)
+        key = m_domainCombo->itemData(index).value<MeshTagKey>();
 
-    m_previewMatype = matype;
-    m_materialManager->setPreviewMatypeForEntry(m_entryId, matype);
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    m_previewDomainTag = key;
+    m_materialManager->setPreviewDomainTagForEntry(m_entryId, key);
+    m_materialManager->refreshDomainTagHighlight(m_entryId);
 }
 
 void MaterialEntryWidget::onDropdownClosed()
 {
-    if (m_matypeCombo && m_lastHoveredIndex >= 0)
+    if (m_domainCombo && m_lastHoveredIndex >= 0)
     {
-        m_matypeCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
+        m_domainCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
         m_lastHoveredIndex = -1;
     }
 
-    // 下拉关闭：取消 Preview，恢复（PreDelete/Selected/Applied）
-    if (m_previewMatype != -1)
+    if (m_previewDomainTag.isValid())
     {
-        m_previewMatype = -1;
-        m_materialManager->setPreviewMatypeForEntry(m_entryId, -1);
+        m_previewDomainTag = MeshTagKey{};
+        m_materialManager->setPreviewDomainTagForEntry(m_entryId, MeshTagKey{});
     }
 
-    if (m_matypeCombo)
+    if (m_domainCombo)
     {
-        const int selected = m_materialManager->selectedMatypeForEntry(m_entryId);
-        int comboIndex = (selected >= 0) ? m_matypeCombo->findData(selected) : 0;
+        const MeshTagKey selected = m_materialManager->selectedDomainTagForEntry(m_entryId);
+        int comboIndex = selected.isValid() ? findDomainKeyIndex(m_domainCombo, selected) : 0;
         if (comboIndex < 0)
             comboIndex = 0;
-        m_ignoreNextMatypeChanged = true;
-        QSignalBlocker blocker(m_matypeCombo);
-        m_matypeCombo->setCurrentIndex(comboIndex);
+        m_ignoreNextDomainChanged = true;
+        QSignalBlocker blocker(m_domainCombo);
+        m_domainCombo->setCurrentIndex(comboIndex);
         QTimer::singleShot(0, this,
                            [this]()
                            {
-                               m_ignoreNextMatypeChanged = false;
+                               m_ignoreNextDomainChanged = false;
                            });
     }
 
     updateAppliedListColors();
-
-    // 卸载过程中只做状态清理，不回刷高亮，避免离开页面后颜色被重新点亮
     if (m_beforeUnloadHandled)
-    {
         return;
-    }
-
-    // 下拉关闭后仅取消 Preview，并恢复到该条目的应有高亮状态（Selected /
-    // PreDelete / Applied）。
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    m_materialManager->refreshDomainTagHighlight(m_entryId);
 }
 
-void MaterialEntryWidget::onRemoveMatypeClicked()
+void MaterialEntryWidget::onRemoveDomainClicked()
 {
-    if (!m_appliedMatypesList)
+    if (!m_appliedDomainList)
         return;
 
-    auto* item = m_appliedMatypesList->currentItem();
+    auto* item = m_appliedDomainList->currentItem();
     if (!item)
         return;
 
-    bool ok = false;
-    int matype = item->data(Qt::UserRole).toInt(&ok);
-    if (!ok)
+    const MeshTagKey key = itemDomainKey(item);
+    if (!key.isValid())
         return;
 
-    m_materialManager->removeMatypeFromEntry(m_entryId, matype);
-
-    // 移除后清掉预删除
-    m_preDeleteMatype = -1;
-    m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
+    m_materialManager->removeDomainTagFromEntry(m_entryId, key);
+    m_preDeleteDomainTag = MeshTagKey{};
+    m_materialManager->setPreDeleteDomainTagForEntry(m_entryId, MeshTagKey{});
     updateAppliedListColors();
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    m_materialManager->refreshDomainTagHighlight(m_entryId);
 }
 
 void MaterialEntryWidget::updateAppliedListColors()
 {
-    if (!m_appliedMatypesList)
+    if (!m_appliedDomainList)
         return;
 
-    // 两种色：预删除(淡红)、其他(无)
     const QColor preDeleteColor(255, 230, 230);
-
-    for (int i = 0; i < m_appliedMatypesList->count(); ++i)
+    for (int i = 0; i < m_appliedDomainList->count(); ++i)
     {
-        auto* it = m_appliedMatypesList->item(i);
-        bool ok = false;
-        int v = it->data(Qt::UserRole).toInt(&ok);
-        if (!ok)
+        auto* it = m_appliedDomainList->item(i);
+        const MeshTagKey key = itemDomainKey(it);
+        if (!key.isValid())
         {
             it->setBackground(QBrush());
             continue;
         }
-
-        if (m_preDeleteMatype >= 0 && v == m_preDeleteMatype)
-        {
+        if (m_preDeleteDomainTag.isValid() && key == m_preDeleteDomainTag)
             it->setBackground(preDeleteColor);
-        }
         else
-        {
             it->setBackground(QBrush());
-        }
     }
 }
