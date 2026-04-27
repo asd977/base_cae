@@ -248,7 +248,7 @@ void CaveExcavationBodyPage::onAddGroupClicked()
     QList<DomainKey> oldKeys = domains.values();
     for (const DomainKey& key : oldKeys)
     {
-        if (key.type != DomainType::Layer || !key.isValid())
+        if (key.category.compare("LAYER", Qt::CaseInsensitive) != 0 || !key.isValid())
             continue;
         if (key.id == gid)
             continue;
@@ -259,7 +259,7 @@ void CaveExcavationBodyPage::onAddGroupClicked()
             nextDomains.remove(key);
     }
 
-    nextDomains.insert(DomainKey{DomainType::Layer, gid});
+    nextDomains.insert(DomainKey{"LAYER", 3, gid});
 
     PickManager::instance().setAppliedDomains(getPageType(), m_uuid, nextDomains);
 
@@ -287,7 +287,7 @@ void CaveExcavationBodyPage::onRemoveSelectedGroupsClicked()
         bool ok = false;
         const int gid = item->data(Qt::UserRole).toInt(&ok);
         if (ok)
-            domains.remove(DomainKey{DomainType::Layer, gid});
+            domains.remove(DomainKey{"LAYER", 3, gid});
     }
 
     PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
@@ -377,47 +377,33 @@ QVector<int> CaveExcavationBodyPage::availableGroupIds() const
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
         return out;
-    const MshPickMap map = meshSvc->mshPickMapSolid();
 
-    QList<int> keys = map.layerToCellIds.keys();
-
-    std::sort(keys.begin(), keys.end());
-    for (int id : keys)
+    const QVector<MeshTagSet> sets = meshSvc->domainTagSets();
+    for (const MeshTagSet& set : sets)
     {
-        if (!groupCellIds(id).isEmpty())
-            out.push_back(id);
+        if (set.key.category.compare("LAYER", Qt::CaseInsensitive) != 0)
+            continue;
+        if (set.key.id <= 0)
+            continue;
+        if (!meshSvc->cellIdsOfTag(set.key).isEmpty())
+            out.push_back(set.key.id);
     }
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
     return out;
 }
 
 QVector<vtkIdType> CaveExcavationBodyPage::groupCellIds(int groupId) const
 {
-    QVector<vtkIdType> out;
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
-        return out;
-    const MshPickMap map = meshSvc->mshPickMapSolid();
-    vtkUnstructuredGrid* grid = meshSvc->getVtkUnstructuredGridSolid();
-    if (!grid)
-        return out;
+        return {};
 
-    QVector<qint64> src = map.layerToCellIds.value(groupId);
-
-    out.reserve(src.size());
-    for (qint64 c : src)
-    {
-        const vtkIdType cid = static_cast<vtkIdType>(c);
-        if (cid < 0 || cid >= grid->GetNumberOfCells())
-            continue;
-        vtkCell* cell = grid->GetCell(cid);
-        if (!cell)
-            continue;
-        if (PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt() == 3 &&
-            cell->GetCellDimension() != 3)
-            continue;
-        out.push_back(cid);
-    }
-    return out;
+    MeshTagKey key;
+    key.category = "LAYER";
+    key.dim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    key.id = groupId;
+    return meshSvc->cellIdsOfTag(key);
 }
 
 QSet<int> CaveExcavationBodyPage::groupDomainIds(int groupId) const
@@ -534,13 +520,13 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
 
     QSet<DomainKey> selectedDomains;
     for (int gid : m_selectedGroups)
-        selectedDomains.insert(DomainKey{DomainType::Layer, gid});
+        selectedDomains.insert(DomainKey{"LAYER", 3, gid});
 
     PickManager::instance().setAppliedDomains(getPageType(), m_uuid, selectedDomains);
     PickManager::instance().setSelectedDomain(getPageType(), m_uuid, DomainKey{});
     PickManager::instance().setPreviewDomain(
         getPageType(), m_uuid,
-        previewGroup >= 0 ? DomainKey{DomainType::Layer, previewGroup} : DomainKey{});
+        previewGroup >= 0 ? DomainKey{"LAYER", 3, previewGroup} : DomainKey{});
     PickManager::instance().setPreDeleteDomain(getPageType(), m_uuid, DomainKey{});
 }
 
@@ -559,7 +545,7 @@ void CaveExcavationBodyPage::syncGroupsFromPickManager()
 
     for (const DomainKey& key : owned)
     {
-        if (key.type == DomainType::Layer && key.isValid())
+        if (key.category.compare("LAYER", Qt::CaseInsensitive) == 0 && key.isValid())
             m_selectedGroups.insert(key.id);
     }
 }

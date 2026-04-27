@@ -27,10 +27,16 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     bool loadProject();
     void closeProject();
 
+    QVector<MeshTagSet> domainTagSets() const override;
+    QVector<MeshTagSet> boundaryTagSets(int dimFilter = -1) const override;
+    QVector<vtkIdType> cellIdsOfTag(const MeshTagKey& key) const override;
+    QVector<vtkIdType> pointIdsOfTag(const MeshTagKey& key) const override;
+    QString displayTextOfTag(const MeshTagKey& key) const override;
+
     QSet<int> getAvailableMatypes() const override;
     void highlightDomainMatypes(const QSet<int>& matypes, int selectedMatype, int previewMatype,
                           int preDeleteMatype) override;
-    QVector<DomainKey> availableDomains(DomainType type) const override;
+    QVector<DomainKey> availableDomains(const QString& category) const override;
     QSet<vtkIdType> domainCells(const DomainKey& key) const override;
     QSet<DomainKey> domainsOfCell(vtkIdType cid) const override;
     QString domainDisplayText(const DomainKey& key) const override;
