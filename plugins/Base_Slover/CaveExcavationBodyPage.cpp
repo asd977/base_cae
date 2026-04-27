@@ -163,7 +163,7 @@ QVector<int> CaveExcavationBodyPage::selectedElementIds()
     const QSet<int> groups = selectedLayerGroups();
     for (int g : groups)
     {
-        const QVector<int> elemIds = elementIdsFromCells(groupCellIds(g));
+        const QVector<int> elemIds = elementIdsFromCells(layerCellIds(g));
         for (int ke : elemIds)
             uniq.insert(ke);
     }
@@ -316,7 +316,7 @@ void CaveExcavationBodyPage::setupGroupCombo()
         return;
     }
 
-    const QVector<int> ids = availableGroupIds();
+    const QVector<int> ids = availableLayerIds();
     m_groupCombo->blockSignals(true);
     m_groupCombo->clear();
     for (int id : ids)
@@ -332,7 +332,7 @@ void CaveExcavationBodyPage::setupGroupCombo()
     refreshGroupComboMarks();
 }
 
-QVector<int> CaveExcavationBodyPage::availableGroupIds() const
+QVector<int> CaveExcavationBodyPage::availableLayerIds() const
 {
     QVector<int> out;
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
@@ -354,7 +354,7 @@ QVector<int> CaveExcavationBodyPage::availableGroupIds() const
     return out;
 }
 
-QVector<vtkIdType> CaveExcavationBodyPage::groupCellIds(int groupId) const
+QVector<vtkIdType> CaveExcavationBodyPage::layerCellIds(int groupId) const
 {
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
@@ -388,10 +388,10 @@ QVector<vtkIdType> CaveExcavationBodyPage::visibleBoundaryFaceKeys(const QVector
         cset.insert(cid);
 
     QSet<vtkIdType> uniq;
-    const auto faceMap = map.physicalFaceKeyMap();
-    for (auto it = faceMap.constBegin(); it != faceMap.constEnd(); ++it)
+    const QVector<MeshTagSet> boundaryFaces = map.boundaryTagSets(2);
+    for (const MeshTagSet& set : boundaryFaces)
     {
-        for (qint64 k : it.value())
+        for (MeshIdType k : set.faceKeys)
         {
             const vtkIdType fk = static_cast<vtkIdType>(k);
             const vtkIdType cid = PickManager::instance().unpackFaceCellId(fk);

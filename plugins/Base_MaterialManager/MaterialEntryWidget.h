@@ -1,12 +1,14 @@
 ﻿#pragma once
 
 #include <BasePage.h>
+#include <struct/MeshMap.h>
 
 #include <QFormLayout>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMap>
 #include <QPushButton>
+#include <QSet>
 
 class MaterialManager;
 class MaterialModel;
@@ -18,34 +20,37 @@ class QSpinBox;
 class MaterialEntryWidget : public BasePage
 {
     Q_OBJECT
+
   public:
     explicit MaterialEntryWidget(MaterialManager* manager, QWidget* parent = nullptr);
     ~MaterialEntryWidget() override;
 
     void setEntry(const QString& modelKey, const QString& entryId);
 
-    void refreshAppliedMatypes(const QSet<int>& appliedMatypes, int selectedMatype);
+    void refreshAppliedDomainTags(const QSet<MeshTagKey>& appliedTags,
+                                  const MeshTagKey& selectedKey);
 
     void beforeLoad() override;
     void beforeUnload() override;
 
+    void onTransitionDomainChanged(int value);
   private slots:
     void onNameEdited(const QString& text);
     void onValueEdited(const QString& text);
     void onSeepageModelChanged(int index);
     void onSeepageValueEdited(const QString& text);
 
-    void onMatypeChanged(int index);
-    void onMatypeActivated(int index);
-    void onApplyMatypeClicked();
+    void onDomainChanged(int index);
+    void onDomainActivated(int index);
+    void onApplyDomainClicked();
 
-    void onAppliedMatypeSelected(const QString& text);
-    void onRemoveMatypeClicked();
+    void onAppliedDomainSelected(const QString& text);
+    void onRemoveDomainClicked();
 
-    void onMatypeHovered(int index);
+    void onDomainHovered(int index);
     void onDropdownClosed();
+
     void onTransitionModeChanged(int state);
-    void onTransitionMatypeChanged(int value);
 
   private:
     void rebuildForm(MaterialModel* model, MaterialEntry* entry);
@@ -53,38 +58,38 @@ class MaterialEntryWidget : public BasePage
     void clearForm();
     MaterialEntry* lookupEntry(MaterialModel** model = nullptr) const;
 
-    void updateAppliedListColors(); // ★ list 里“预删除/选中”两色
+    void updateAppliedListColors();
 
   private:
-    MaterialManager* m_materialManager;
+    MaterialManager* m_materialManager = nullptr;
 
     QString m_modelKey;
     QString m_entryId;
 
-    bool m_isUpdating;
+    bool m_isUpdating = false;
+    bool m_ignoreNextDomainChanged = false;
+    bool m_beforeUnloadHandled = false;
 
-    QFormLayout* m_formLayout;
+    QFormLayout* m_formLayout = nullptr;
 
-    QLineEdit* m_nameEdit;
+    QLineEdit* m_nameEdit = nullptr;
     QMap<QString, QLineEdit*> m_valueEdits;
+
     CustomComboBox* m_seepageCombo = nullptr;
     QFormLayout* m_seepageFieldsLayout = nullptr;
     QMap<QString, QLineEdit*> m_seepageValueEdits;
 
-    CustomComboBox* m_matypeCombo = nullptr;
-    QPushButton* m_applyButton = nullptr;
+    CustomComboBox* m_domainCombo = nullptr;
+    QPushButton* m_applyDomainButton = nullptr;
 
-    QListWidget* m_appliedMatypesList = nullptr;
-    QPushButton* m_removeButton = nullptr;
+    QListWidget* m_appliedDomainList = nullptr;
+    QPushButton* m_removeDomainButton = nullptr;
+
     QCheckBox* m_transitionOnlyCheck = nullptr;
     QSpinBox* m_transitionMatypeSpin = nullptr;
 
     int m_lastHoveredIndex = -1;
 
-    // ===== 两个临时态（不写入材料数据，只影响高亮）=====
-    int m_previewMatype = -1;   // 下拉悬浮
-    int m_preDeleteMatype = -1; // list 选中
-
-    bool m_ignoreNextMatypeChanged = false; // 忽略下拉关闭后可能触发的伪 currentIndexChanged
-    bool m_beforeUnloadHandled = false;
+    MeshTagKey m_previewDomainTag;
+    MeshTagKey m_preDeleteDomainTag;
 };

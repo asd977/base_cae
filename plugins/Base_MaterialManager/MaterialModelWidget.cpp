@@ -32,7 +32,6 @@ void MaterialModelWidget::beforeLoad()
     {
         return;
     }
-    m_materialManager->clearAllMatypeHighlight();
 }
 
 void MaterialModelWidget::beforeUnload()
@@ -41,7 +40,6 @@ void MaterialModelWidget::beforeUnload()
     {
         return;
     }
-    m_materialManager->clearAllMatypeHighlight();
 }
 
 void MaterialModelWidget::onOpenLibrary()

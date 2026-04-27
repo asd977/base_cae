@@ -54,37 +54,127 @@ static inline bool parseDouble(const QString& s, double& v)
     return ok;
 }
 
-static inline MeshTagKey domainPhysicalKey(int physId)
+static inline MeshTagKey physicalKey(int dim, int physId)
 {
-    return MeshTagKey{QStringLiteral("Physical"), 3, physId};
+    return MeshTagKey{QStringLiteral("Physical"), dim, physId};
 }
 
-static inline MeshTagSet& ensureDomainPhysicalTagSet(MshPickMap& pickMap, int physId)
+static inline QString fallbackPhysicalName(int dim, int physId)
 {
-    const MeshTagKey key = domainPhysicalKey(physId);
-    if (!pickMap.tagSets.contains(key))
-    {
-        MeshTagSet set;
-        set.key = key;
-        set.source = QStringLiteral("MeshGridIO");
-        pickMap.tagSets.insert(key, set);
-    }
-    MeshTagSet& set = pickMap.tagSets[key];
-    if (set.name.trimmed().isEmpty())
-    {
-        set.name = pickMap.physIdToName.value(physId, QStringLiteral("phys_%1").arg(physId));
-    }
-    return set;
+    if (dim >= 0)
+        return QStringLiteral("dim%1_phys%2").arg(dim).arg(physId);
+    return QStringLiteral("phys_%1").arg(physId);
 }
 
-static inline void appendDomainPhysicalCell(MshPickMap& pickMap, int physId, MeshIdType cellId)
+static inline MeshTagSet& ensurePhysicalTagSet(MshPickMap& pickMap, int dim, int physId,
+                                               const QString& name = QString(),
+                                               const QString& source = QStringLiteral("MeshGridIO"))
+{
+    MeshTagSet* set = pickMap.ensureTagSet(physicalKey(dim, physId),
+                                           name.trimmed().isEmpty()
+                                               ? fallbackPhysicalName(dim, physId)
+                                               : name.trimmed(),
+                                           source);
+    return *set;
+}
+
+static inline QString physicalNameOf(const MshPickMap& pickMap, int dim, int physId)
+{
+    if (physId <= 0)
+        return QString();
+
+    if (dim >= 0)
+    {
+        const MeshTagSet set = pickMap.tagSets.value(physicalKey(dim, physId));
+        if (set.key.isValid() && !set.name.trimmed().isEmpty())
+            return set.name.trimmed();
+    }
+
+    for (int d = 0; d <= 3; ++d)
+    {
+        const MeshTagSet set = pickMap.tagSets.value(physicalKey(d, physId));
+        if (set.key.isValid() && !set.name.trimmed().isEmpty())
+            return set.name.trimmed();
+    }
+
+    return fallbackPhysicalName(dim, physId);
+}
+
+static inline int physicalDimOf(const MshPickMap& pickMap, int physId)
+{
+    if (physId <= 0)
+        return -1;
+    for (int d = 0; d <= 3; ++d)
+    {
+        if (pickMap.tagSets.contains(physicalKey(d, physId)))
+            return d;
+    }
+    return -1;
+}
+
+static inline void appendDomainPhysicalCell(MshPickMap& pickMap, int physId, MeshIdType cellId,
+                                            const QString& name = QString())
 {
     if (physId <= 0 || cellId < 0)
         return;
 
-    MeshTagSet& set = ensureDomainPhysicalTagSet(pickMap, physId);
+    MeshTagSet& set = ensurePhysicalTagSet(pickMap, 3, physId, name);
     set.cellIds.push_back(cellId);
     pickMap.cellIdToDomainTags[cellId].push_back(set.key);
+}
+
+static inline void appendBoundaryPhysicalPoint(MshPickMap& pickMap, int dim, int physId,
+                                               MeshIdType pointId,
+                                               const QString& name = QString())
+{
+    if (physId <= 0 || dim < 0 || dim > 2 || pointId < 0)
+        return;
+
+    MeshTagSet& set = ensurePhysicalTagSet(pickMap, dim, physId, name);
+    set.pointIds.push_back(pointId);
+    pickMap.pointIdToBoundaryTags[pointId].push_back(set.key);
+}
+
+static inline void appendBoundaryPhysicalEdgeKey(MshPickMap& pickMap, int physId, MeshIdType edgeKey,
+                                                 const QString& name = QString())
+{
+    if (physId <= 0 || edgeKey < 0)
+        return;
+
+    MeshTagSet& set = ensurePhysicalTagSet(pickMap, 1, physId, name);
+    set.edgeKeys.push_back(edgeKey);
+    pickMap.edgeKeyToBoundaryTags[edgeKey].push_back(set.key);
+}
+
+static inline void appendBoundaryPhysicalFaceKey(MshPickMap& pickMap, int physId, MeshIdType faceKey,
+                                                 const QString& name = QString())
+{
+    if (physId <= 0 || faceKey < 0)
+        return;
+
+    MeshTagSet& set = ensurePhysicalTagSet(pickMap, 2, physId, name);
+    set.faceKeys.push_back(faceKey);
+    pickMap.faceKeyToBoundaryTags[faceKey].push_back(set.key);
+}
+
+static inline void appendDomainTagCell(MshPickMap& pickMap, const QString& category, int id,
+                                       MeshIdType cellId, const QString& name = QString(),
+                                       const QString& source = QStringLiteral("MeshGridIO"))
+{
+    if (id <= 0 || cellId < 0)
+        return;
+
+    const MeshTagKey key{category, 3, id};
+    MeshTagSet* set = pickMap.ensureTagSet(key,
+                                           name.trimmed().isEmpty()
+                                               ? QStringLiteral("%1=%2").arg(category).arg(id)
+                                               : name.trimmed(),
+                                           source);
+    if (!set)
+        return;
+
+    set->cellIds.push_back(cellId);
+    pickMap.cellIdToDomainTags[cellId].push_back(key);
 }
 
 // 你的“显示代理策略”搬到 IO 层：ketype -> (vtkCellType, localNodeLids) 若干片
@@ -105,7 +195,7 @@ static QVector<QPair<int, QVector<int>>> proxyPieces(int ketype)
         pieces.push_back({VTK_QUADRATIC_EDGE, {0, 2, 1}});
         break;
 
-    // 2D quad
+               // 2D quad
     case 3:
         pieces.push_back({VTK_QUAD, {0, 1, 2, 3}});
         break;
@@ -133,7 +223,7 @@ static QVector<QPair<int, QVector<int>>> proxyPieces(int ketype)
         pieces.push_back({VTK_TRIANGLE, {3, 0, 4}});
         break;
 
-    // 2D tri
+               // 2D tri
     case 31:
         pieces.push_back({VTK_TRIANGLE, {0, 1, 2}});
         break;
@@ -150,7 +240,7 @@ static QVector<QPair<int, QVector<int>>> proxyPieces(int ketype)
         pieces.push_back({VTK_TRIANGLE, {0, 4, 8}});
         break;
 
-    // 3D
+               // 3D
     case 35:
         pieces.push_back({VTK_TETRA, {0, 1, 2, 3}});
         break;
@@ -335,7 +425,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString& fil
     auto* cd = grid->GetCellData();
     auto* fd = grid->GetFieldData();
 
-    // GroupName 是 vtkStringArray（vtkAbstractArray），不能用 GetArray 取
+           // GroupName 是 vtkStringArray（vtkAbstractArray），不能用 GetArray 取
     auto* groupArr = cd ? vtkStringArray::SafeDownCast(cd->GetAbstractArray("GroupName")) : nullptr;
     auto* matypeArr = cd ? vtkIntArray::SafeDownCast(cd->GetArray("MATYPE")) : nullptr;
     auto* layerArr = cd ? vtkIntArray::SafeDownCast(cd->GetArray("LAYER")) : nullptr;
@@ -357,13 +447,13 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString& fil
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
         const QString groupName = (groupArr && cid < groupArr->GetNumberOfValues())
-                                      ? QString::fromStdString(groupArr->GetValue(cid)).trimmed()
-                                      : QString();
+        ? QString::fromStdString(groupArr->GetValue(cid)).trimmed()
+        : QString();
 
         if (groupName.isEmpty())
             continue;
 
-        // 使用完整分组串（例如 slotA;slotB），避免只取第一个组导致材料分区塌缩
+               // 使用完整分组串（例如 slotA;slotB），避免只取第一个组导致材料分区塌缩
         const QString groupKey = groupName;
         if (groupKey.isEmpty())
             continue;
@@ -373,8 +463,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString& fil
         {
             physId = nextPhysId++;
             groupToPhysId.insert(groupKey, physId);
-            m_mshPickMap.physIdToName.insert(physId, groupKey);
-            m_mshPickMap.physIdToDim.insert(physId, 3);
+            ensurePhysicalTagSet(m_mshPickMap, 3, physId, groupKey);
         }
 
         appendDomainPhysicalCell(m_mshPickMap, physId, static_cast<MeshIdType>(cid));
@@ -405,7 +494,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString& fil
         }
     }
 
-    // 同步一份 RegionId/RegionName，方便后续统一按区域批量赋材
+           // 同步一份 RegionId/RegionName，方便后续统一按区域批量赋材
     auto regionIdArr = vtkSmartPointer<vtkIntArray>::New();
     regionIdArr->SetName("RegionId");
     regionIdArr->SetNumberOfTuples(nCells);
@@ -422,7 +511,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString& fil
         if (matypeArr)
         {
             regionId = matypeArr->GetValue(cid);
-            regionName = m_mshPickMap.physIdToName.value(regionId);
+            regionName = physicalNameOf(m_mshPickMap, 3, regionId);
         }
         regionIdArr->SetValue(cid, regionId);
         regionNameArr->SetValue(cid, regionName.toStdString());
@@ -672,10 +761,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadCurrentGmshMesh(QString* er
                 {
                     physName = QString("dim%1_phys%2").arg(dim).arg(physId);
                 }
-                if (!m_mshPickMap.physIdToName.contains(physId))
-                    m_mshPickMap.physIdToName.insert(physId, physName);
-                if (!m_mshPickMap.physIdToDim.contains(physId))
-                    m_mshPickMap.physIdToDim.insert(physId, dim);
+                ensurePhysicalTagSet(m_mshPickMap, dim, physId, physName);
             }
 
             std::vector<int> elementTypes;
@@ -740,18 +826,15 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadCurrentGmshMesh(QString* er
 
                     if (physId > 0)
                     {
-                        if (!m_mshPickMap.physIdToDim.contains(physId))
-                        {
-                            m_mshPickMap.physIdToDim.insert(physId, dim);
-                        }
+                        ensurePhysicalTagSet(m_mshPickMap, dim, physId);
 
                         if (dim == targetCellDim)
                         {
                             appendDomainPhysicalCell(m_mshPickMap, physId,
                                                      static_cast<MeshIdType>(cid));
 
-                            // 2D 模型时，域单元本身就是“可选面”；1D
-                            // 模型时，域单元本身就是“可选线”。
+                                   // 2D 模型时，域单元本身就是“可选面”；1D
+                                   // 模型时，域单元本身就是“可选线”。
                             if (targetCellDim == 2)
                             {
                                 const int cornerN =
@@ -764,7 +847,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadCurrentGmshMesh(QString* er
                                     if (ids[k] <= std::numeric_limits<int>::max())
                                     {
                                         const int pk = static_cast<int>(ids[k]);
-                                        m_mshPickMap.bndFacePhysToPointIds[physId].push_back(pk);
+                                        appendBoundaryPhysicalPoint(m_mshPickMap, 2, physId, pk);
                                         facePts.push_back(pk);
                                     }
                                 }
@@ -780,8 +863,8 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadCurrentGmshMesh(QString* er
                                 {
                                     const int p0 = static_cast<int>(ids[0]);
                                     const int p1 = static_cast<int>(ids[1]);
-                                    m_mshPickMap.bndEdgePhysToPointIds[physId].push_back(p0);
-                                    m_mshPickMap.bndEdgePhysToPointIds[physId].push_back(p1);
+                                    appendBoundaryPhysicalPoint(m_mshPickMap, 1, physId, p0);
+                                    appendBoundaryPhysicalPoint(m_mshPickMap, 1, physId, p1);
                                     tmpEdgeElems[physId].push_back(QVector<int>{p0, p1});
                                 }
                             }
@@ -792,8 +875,8 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadCurrentGmshMesh(QString* er
                             {
                                 if (numNodes >= 1 && ids[0] <= std::numeric_limits<int>::max())
                                 {
-                                    m_mshPickMap.bndPointPhysToPointIds[physId].push_back(
-                                        static_cast<int>(ids[0]));
+                                    appendBoundaryPhysicalPoint(m_mshPickMap, 0, physId,
+                                                                static_cast<int>(ids[0]));
                                 }
                             }
                             else if (dim == 1)
@@ -803,8 +886,8 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadCurrentGmshMesh(QString* er
                                 {
                                     const int p0 = static_cast<int>(ids[0]);
                                     const int p1 = static_cast<int>(ids[1]);
-                                    m_mshPickMap.bndEdgePhysToPointIds[physId].push_back(p0);
-                                    m_mshPickMap.bndEdgePhysToPointIds[physId].push_back(p1);
+                                    appendBoundaryPhysicalPoint(m_mshPickMap, 1, physId, p0);
+                                    appendBoundaryPhysicalPoint(m_mshPickMap, 1, physId, p1);
                                     tmpEdgeElems[physId].push_back(QVector<int>{p0, p1});
                                 }
                             }
@@ -820,7 +903,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadCurrentGmshMesh(QString* er
                                     if (ids[k] <= std::numeric_limits<int>::max())
                                     {
                                         const int pk = static_cast<int>(ids[k]);
-                                        m_mshPickMap.bndFacePhysToPointIds[physId].push_back(pk);
+                                        appendBoundaryPhysicalPoint(m_mshPickMap, 2, physId, pk);
                                         facePts.push_back(pk);
                                     }
                                 }
@@ -923,7 +1006,6 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadCurrentGmshMesh(QString* er
     for (auto it = tmpEdgeElems.begin(); it != tmpEdgeElems.end(); ++it)
     {
         const int physId = it.key();
-        auto& out = m_mshPickMap.bndEdgePhysToEdgeKeys[physId];
         for (const auto& e2 : it.value())
         {
             if (e2.size() != 2)
@@ -931,14 +1013,13 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadCurrentGmshMesh(QString* er
             const quint64 k = pack2(e2[0], e2[1]);
             auto hit = edgeIndex.find(k);
             if (hit != edgeIndex.end())
-                out.push_back(hit.value());
+                appendBoundaryPhysicalEdgeKey(m_mshPickMap, physId, hit.value());
         }
     }
 
     for (auto it = tmpFaceElems.begin(); it != tmpFaceElems.end(); ++it)
     {
         const int physId = it.key();
-        auto& out = m_mshPickMap.bndFacePhysToFaceKeys[physId];
         for (const auto& fn : it.value())
         {
             if (fn.size() < 3)
@@ -946,7 +1027,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadCurrentGmshMesh(QString* er
             const QByteArray k = packN_sorted(fn);
             auto hit = faceIndex.find(k);
             if (hit != faceIndex.end())
-                out.push_back(hit.value());
+                appendBoundaryPhysicalFaceKey(m_mshPickMap, physId, hit.value());
         }
     }
 
@@ -956,28 +1037,20 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadCurrentGmshMesh(QString* er
         v.erase(std::unique(v.begin(), v.end()), v.end());
     };
 
-    for (auto it = m_mshPickMap.bndEdgePhysToEdgeKeys.begin();
-         it != m_mshPickMap.bndEdgePhysToEdgeKeys.end(); ++it)
-        dedupI64Vec(it.value());
-    for (auto it = m_mshPickMap.bndFacePhysToFaceKeys.begin();
-         it != m_mshPickMap.bndFacePhysToFaceKeys.end(); ++it)
-        dedupI64Vec(it.value());
-
-    auto dedupIntVec = [](QVector<int>& v)
+    auto dedupIdVec = [](QVector<MeshIdType>& v)
     {
         std::sort(v.begin(), v.end());
         v.erase(std::unique(v.begin(), v.end()), v.end());
     };
 
-    for (auto it = m_mshPickMap.bndPointPhysToPointIds.begin();
-         it != m_mshPickMap.bndPointPhysToPointIds.end(); ++it)
-        dedupIntVec(it.value());
-    for (auto it = m_mshPickMap.bndEdgePhysToPointIds.begin();
-         it != m_mshPickMap.bndEdgePhysToPointIds.end(); ++it)
-        dedupIntVec(it.value());
-    for (auto it = m_mshPickMap.bndFacePhysToPointIds.begin();
-         it != m_mshPickMap.bndFacePhysToPointIds.end(); ++it)
-        dedupIntVec(it.value());
+    for (auto it = m_mshPickMap.tagSets.begin(); it != m_mshPickMap.tagSets.end(); ++it)
+    {
+        MeshTagSet& set = it.value();
+        dedupIdVec(set.cellIds);
+        dedupIdVec(set.pointIds);
+        dedupIdVec(set.edgeKeys);
+        dedupIdVec(set.faceKeys);
+    }
     grid->GetCellData()->AddArray(matypeArr);
     grid->GetCellData()->AddArray(layerArr);
     grid->GetCellData()->AddArray(ketypeArr);
@@ -1031,39 +1104,36 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
 
     clearPickMap();
 
-    // ------------------ 结果：grid + pickMap ------------------
+           // ------------------ 结果：grid + pickMap ------------------
     auto grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
 
     MshPickMap pick; // 本次读入生成的映射（最后写回 m_mshPickMap）
 
-    // ------------------ Nodes ------------------
+           // ------------------ Nodes ------------------
     auto pts = vtkSmartPointer<vtkPoints>::New();
     pts->SetDataTypeToDouble();
 
-    // msh nodeId -> vtk pointId
+           // msh nodeId -> vtk pointId
     QHash<int, vtkIdType> nodeIdToVtkId;
     nodeIdToVtkId.reserve(4096);
 
     bool haveNodes = false;
     bool haveElements = false;
 
-    // ------------------ 临时：边界元素角点(用于后处理构造 edgeKey/faceKey)
-    // ------------------ physId -> 多个边界元素，每个元素是“角点 vtk pointId
-    // 列表”
+           // ------------------ 临时：边界元素角点(用于后处理构造 edgeKey/faceKey)
+           // ------------------ physId -> 多个边界元素，每个元素是“角点 vtk pointId
+           // 列表”
     QHash<int, QVector<QVector<int>>> tmpEdgeElems; // 每个元素2点
     QHash<int, QVector<QVector<int>>> tmpFaceElems; // 每个元素3点或4点
 
-    // ------------------ helper：physName fallback ------------------
+           // ------------------ helper：physName fallback ------------------
     auto physNameOf = [&](int physId) -> QString
     {
-        QString name = pick.physIdToName.value(physId);
-        if (name.isEmpty() && physId != 0)
-            name = QString("phys_%1").arg(physId);
-        return name;
+        return physicalNameOf(pick, -1, physId);
     };
 
-    // ------------------ helper：msh nodeId -> vtk pointId(int)
-    // ------------------
+           // ------------------ helper：msh nodeId -> vtk pointId(int)
+           // ------------------
     auto toVtkPidInt = [&](int mshNid) -> int
     {
         auto it = nodeIdToVtkId.find(mshNid);
@@ -1075,7 +1145,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
         return int(pid);
     };
 
-    // ------------------ helper：vector 去重（int / qint64） ------------------
+           // ------------------ helper：vector 去重（int / qint64） ------------------
     auto dedupIntVec = [](QVector<int>& v)
     {
         std::sort(v.begin(), v.end());
@@ -1087,14 +1157,14 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
         v.erase(std::unique(v.begin(), v.end()), v.end());
     };
 
-    // ------------------ 读文件主循环 ------------------
+           // ------------------ 读文件主循环 ------------------
     while (!in.atEnd())
     {
         QString line = stripInlineComment(in.readLine());
         if (line.isEmpty())
             continue;
 
-        // ---- MeshFormat ----
+               // ---- MeshFormat ----
         if (line == "$MeshFormat")
         {
             if (in.atEnd())
@@ -1104,7 +1174,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
             if (tok.size() < 3)
                 return fail("invalid MeshFormat line");
 
-            // 2.2 0 8
+                   // 2.2 0 8
             const int fileType = tok[1].toInt(); // 0 ascii, 1 binary
 
             while (!in.atEnd())
@@ -1120,7 +1190,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
             continue;
         }
 
-        // ---- PhysicalNames ----
+               // ---- PhysicalNames ----
         if (line == "$PhysicalNames")
         {
             if (in.atEnd())
@@ -1142,8 +1212,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
                     const int dim = m.captured(1).toInt();
                     const int tag = m.captured(2).toInt();
                     const QString name = m.captured(3);
-                    pick.physIdToDim[tag] = dim;
-                    pick.physIdToName[tag] = name;
+                    ensurePhysicalTagSet(pick, dim, tag, name);
                 }
                 else
                 {
@@ -1154,8 +1223,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
                         const int tag = tok[1].toInt();
                         QString name = tok.mid(2).join(' ');
                         name = unquote(name);
-                        pick.physIdToDim[tag] = dim;
-                        pick.physIdToName[tag] = name;
+                        ensurePhysicalTagSet(pick, dim, tag, name);
                     }
                 }
             }
@@ -1169,7 +1237,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
             continue;
         }
 
-        // ---- Nodes (msh2.2) ----
+               // ---- Nodes (msh2.2) ----
         if (line == "$Nodes")
         {
             if (in.atEnd())
@@ -1200,7 +1268,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
                 const vtkIdType vid = pts->InsertNextPoint(x, y, z);
                 nodeIdToVtkId.insert(nid, vid);
 
-                // 写入 pick 的双向映射（int）
+                       // 写入 pick 的双向映射（int）
                 if (vid > std::numeric_limits<int>::max())
                     return fail("vtk pointId exceeds int range (too many points)");
                 pick.nodeIdToPointId.insert(nid, int(vid));
@@ -1219,7 +1287,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
             continue;
         }
 
-        // ---- Elements (msh2.2) ----
+               // ---- Elements (msh2.2) ----
         if (line == "$Elements")
         {
             if (!haveNodes)
@@ -1278,7 +1346,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
                         nodeIds.push_back(nid);
                 }
 
-                // ========== 体单元：导入 tet/hex/wedge/pyramid（高阶取角点）==========
+                       // ========== 体单元：导入 tet/hex/wedge/pyramid（高阶取角点）==========
                 int vtkType = -1;
                 int needN = 0;
                 bool isVolumeCell = false;
@@ -1344,7 +1412,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
 
                     const vtkIdType cellId = grid->InsertNextCell(vtkType, needN, ptIds);
 
-                    // 体分组：physicalId -> cellIds（仅体单元进入体分组）
+                           // 体分组：physicalId -> cellIds（仅体单元进入体分组）
                     if (isVolumeCell)
                         appendDomainPhysicalCell(pick, physicalId, MeshIdType(cellId));
                 }
@@ -1358,12 +1426,12 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
                         {
                             const int pid = toVtkPidInt(nodeIds[0]);
                             if (pid >= 0)
-                                pick.bndPointPhysToPointIds[physicalId].push_back(pid);
+                                appendBoundaryPhysicalPoint(pick, 0, physicalId, pid);
                         }
                         continue;
                     }
 
-                    // 线：line2(1) / line3(8) => 取端点两个角点
+                           // 线：line2(1) / line3(8) => 取端点两个角点
                     if (elemType == 1 || elemType == 8)
                     {
                         if (nodeIds.size() >= 2)
@@ -1372,15 +1440,15 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
                             const int p1 = toVtkPidInt(nodeIds[1]);
                             if (p0 >= 0 && p1 >= 0)
                             {
-                                pick.bndEdgePhysToPointIds[physicalId].push_back(p0);
-                                pick.bndEdgePhysToPointIds[physicalId].push_back(p1);
+                                appendBoundaryPhysicalPoint(pick, 1, physicalId, p0);
+                                appendBoundaryPhysicalPoint(pick, 1, physicalId, p1);
                                 tmpEdgeElems[physicalId].push_back(QVector<int>{p0, p1});
                             }
                         }
                         continue;
                     }
 
-                    // 三角面：tri3(2) / tri6(9) => 取前三个角点
+                           // 三角面：tri3(2) / tri6(9) => 取前三个角点
                     if (elemType == 2 || elemType == 9)
                     {
                         if (nodeIds.size() >= 3)
@@ -1390,16 +1458,16 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
                             const int p2 = toVtkPidInt(nodeIds[2]);
                             if (p0 >= 0 && p1 >= 0 && p2 >= 0)
                             {
-                                pick.bndFacePhysToPointIds[physicalId].push_back(p0);
-                                pick.bndFacePhysToPointIds[physicalId].push_back(p1);
-                                pick.bndFacePhysToPointIds[physicalId].push_back(p2);
+                                appendBoundaryPhysicalPoint(pick, 2, physicalId, p0);
+                                appendBoundaryPhysicalPoint(pick, 2, physicalId, p1);
+                                appendBoundaryPhysicalPoint(pick, 2, physicalId, p2);
                                 tmpFaceElems[physicalId].push_back(QVector<int>{p0, p1, p2});
                             }
                         }
                         continue;
                     }
 
-                    // 四边形面：quad4(3) / quad9(10) => 取前四个角点
+                           // 四边形面：quad4(3) / quad9(10) => 取前四个角点
                     if (elemType == 3 || elemType == 10)
                     {
                         if (nodeIds.size() >= 4)
@@ -1410,17 +1478,17 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
                             const int p3 = toVtkPidInt(nodeIds[3]);
                             if (p0 >= 0 && p1 >= 0 && p2 >= 0 && p3 >= 0)
                             {
-                                pick.bndFacePhysToPointIds[physicalId].push_back(p0);
-                                pick.bndFacePhysToPointIds[physicalId].push_back(p1);
-                                pick.bndFacePhysToPointIds[physicalId].push_back(p2);
-                                pick.bndFacePhysToPointIds[physicalId].push_back(p3);
+                                appendBoundaryPhysicalPoint(pick, 2, physicalId, p0);
+                                appendBoundaryPhysicalPoint(pick, 2, physicalId, p1);
+                                appendBoundaryPhysicalPoint(pick, 2, physicalId, p2);
+                                appendBoundaryPhysicalPoint(pick, 2, physicalId, p3);
                                 tmpFaceElems[physicalId].push_back(QVector<int>{p0, p1, p2, p3});
                             }
                         }
                         continue;
                     }
 
-                    // 其他类型先忽略（需要再扩展）
+                           // 其他类型先忽略（需要再扩展）
                 }
             }
 
@@ -1435,7 +1503,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
             continue;
         }
 
-        // 其它段落：$NodeData/$ElementData/... 忽略
+               // 其它段落：$NodeData/$ElementData/... 忽略
     }
 
     f.close();
@@ -1450,24 +1518,19 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
                     "elements found)");
     }
 
-    // ======================= 后处理：去重点集 =======================
-    for (auto it = pick.bndPointPhysToPointIds.begin(); it != pick.bndPointPhysToPointIds.end();
-         ++it)
-        dedupIntVec(it.value());
-    for (auto it = pick.bndEdgePhysToPointIds.begin(); it != pick.bndEdgePhysToPointIds.end(); ++it)
-        dedupIntVec(it.value());
-    for (auto it = pick.bndFacePhysToPointIds.begin(); it != pick.bndFacePhysToPointIds.end(); ++it)
-        dedupIntVec(it.value());
-
+           // ======================= 后处理：去重统一分组 =======================
     for (auto it = pick.tagSets.begin(); it != pick.tagSets.end(); ++it)
     {
         MeshTagSet& set = it.value();
         dedupI64Vec(set.cellIds);
+        dedupI64Vec(set.pointIds);
+        dedupI64Vec(set.edgeKeys);
+        dedupI64Vec(set.faceKeys);
     }
 
-    // ======================= 后处理：构造 edgeKey / faceKey
-    // ======================= edgeKey = (cellId<<4) | (edgeLocalId & 0xF) faceKey
-    // = (cellId<<4) | (faceLocalId & 0xF)
+           // ======================= 后处理：构造 edgeKey / faceKey
+           // ======================= edgeKey = (cellId<<4) | (edgeLocalId & 0xF) faceKey
+           // = (cellId<<4) | (faceLocalId & 0xF)
 
     auto pack2 = [](int a, int b) -> quint64
     {
@@ -1496,7 +1559,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
         if (!cell)
             continue;
 
-        // ---- edges ----
+               // ---- edges ----
         const int nEdges = cell->GetNumberOfEdges();
         for (int ei = 0; ei < nEdges; ++ei)
         {
@@ -1522,7 +1585,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
                 edgeIndex.insert(k, edgeKey);
         }
 
-        // ---- faces ----
+               // ---- faces ----
         const int nFaces = cell->GetNumberOfFaces();
         for (int fi = 0; fi < nFaces; ++fi)
         {
@@ -1551,14 +1614,11 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
         }
     }
 
-    // 用 msh 的边界线元素(2点) -> edgeIndex 查 edgeKey
+           // 用 msh 的边界线元素(2点) -> edgeIndex 查 edgeKey
     for (auto it = tmpEdgeElems.begin(); it != tmpEdgeElems.end(); ++it)
     {
         const int physId = it.key();
         const auto& elems = it.value();
-
-        auto& out = pick.bndEdgePhysToEdgeKeys[physId];
-        out.reserve(elems.size());
 
         for (const auto& e2 : elems)
         {
@@ -1567,19 +1627,15 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
             const quint64 k = pack2(e2[0], e2[1]);
             auto hit = edgeIndex.find(k);
             if (hit != edgeIndex.end())
-                out.push_back(hit.value());
+                appendBoundaryPhysicalEdgeKey(pick, physId, hit.value());
         }
-        dedupI64Vec(out);
     }
 
-    // 用 msh 的边界面元素(3/4点) -> faceIndex 查 faceKey
+           // 用 msh 的边界面元素(3/4点) -> faceIndex 查 faceKey
     for (auto it = tmpFaceElems.begin(); it != tmpFaceElems.end(); ++it)
     {
         const int physId = it.key();
         const auto& elems = it.value();
-
-        auto& out = pick.bndFacePhysToFaceKeys[physId];
-        out.reserve(elems.size());
 
         for (const auto& fN : elems)
         {
@@ -1588,65 +1644,29 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
             const QByteArray k = packN_sorted(fN);
             auto hit = faceIndex.find(k);
             if (hit != faceIndex.end())
-                out.push_back(hit.value());
+                appendBoundaryPhysicalFaceKey(pick, physId, hit.value());
         }
-        dedupI64Vec(out);
     }
 
-    // ======================= PhysicalNames 缺失时：给 physId 兜底名/维度
-    // ======================= （很多 msh 可能没写 $PhysicalNames，但 elements
-    // 里仍然有 physicalId） 这里尽量补全名字（phys_#），维度补不全就保持缺省
-    for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
-    {
-        const MeshTagKey& key = it.key();
-        if (key.category != QStringLiteral("Physical") || key.dim != 3 || key.id <= 0)
-            continue;
-        const int physId = key.id;
-        if (!pick.physIdToName.contains(physId))
-            pick.physIdToName.insert(physId, physNameOf(physId));
-        if (!pick.physIdToDim.contains(physId))
-            pick.physIdToDim.insert(physId, 3);
-    }
-    for (auto it = pick.bndPointPhysToPointIds.begin(); it != pick.bndPointPhysToPointIds.end();
-         ++it)
-    {
-        const int physId = it.key();
-        if (!pick.physIdToName.contains(physId))
-            pick.physIdToName.insert(physId, physNameOf(physId));
-        if (!pick.physIdToDim.contains(physId))
-            pick.physIdToDim.insert(physId, 0);
-    }
-    for (auto it = pick.bndEdgePhysToPointIds.begin(); it != pick.bndEdgePhysToPointIds.end(); ++it)
-    {
-        const int physId = it.key();
-        if (!pick.physIdToName.contains(physId))
-            pick.physIdToName.insert(physId, physNameOf(physId));
-        if (!pick.physIdToDim.contains(physId))
-            pick.physIdToDim.insert(physId, 1);
-    }
-    for (auto it = pick.bndFacePhysToPointIds.begin(); it != pick.bndFacePhysToPointIds.end(); ++it)
-    {
-        const int physId = it.key();
-        if (!pick.physIdToName.contains(physId))
-            pick.physIdToName.insert(physId, physNameOf(physId));
-        if (!pick.physIdToDim.contains(physId))
-            pick.physIdToDim.insert(physId, 2);
-    }
+           // ======================= 统一分组兜底命名 + 去重 =======================
     for (auto it = pick.tagSets.begin(); it != pick.tagSets.end(); ++it)
     {
         MeshTagSet& set = it.value();
-        if (set.key.category == QStringLiteral("Physical") && set.key.dim == 3 &&
-            set.name.trimmed().isEmpty())
-        {
-            set.name = pick.physIdToName.value(set.key.id, physNameOf(set.key.id));
-        }
+        if (set.name.trimmed().isEmpty())
+            set.name = set.key.category == QStringLiteral("Physical")
+                           ? physicalNameOf(pick, set.key.dim, set.key.id)
+                           : QStringLiteral("%1=%2").arg(set.key.category).arg(set.key.id);
+        dedupI64Vec(set.cellIds);
+        dedupI64Vec(set.pointIds);
+        dedupI64Vec(set.edgeKeys);
+        dedupI64Vec(set.faceKeys);
     }
 
-    // 写回成员：供外部 DisplacementConstraintWidget / FaceLoadPage 等查询
+           // 写回成员：供外部 DisplacementConstraintWidget / FaceLoadPage 等查询
     m_mshPickMap = pick;
 
-    // 同步 RegionId/RegionName，且将 MATYPE 直接映射到体
-    // physicalId（便于材料批量设置）
+           // 同步 RegionId/RegionName，且将 MATYPE 直接映射到体
+           // physicalId（便于材料批量设置）
     auto* cd = grid->GetCellData();
 
     auto ensureCellIntArray = [cd, nCells](const char* name, int defaultValue)
@@ -1711,7 +1731,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
             ketype->SetValue(cid, tetHexKetypeFromCell(cell, ketype->GetValue(cid)));
         }
         regionId->SetValue(cid, physId);
-        regionName->SetValue(cid, pick.physIdToName.value(physId).toStdString());
+        regionName->SetValue(cid, physicalNameOf(pick, 3, physId).toStdString());
     }
 
     cd->AddArray(regionId);
@@ -1795,7 +1815,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
     if (manod <= 0)
         manod = 8; // 容错
 
-    // -------- nodes --------
+           // -------- nodes --------
     struct NodeRec
     {
         double x, y, z;
@@ -1860,7 +1880,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
         numnp = nodes.size();
     }
 
-    // points + node_id
+           // points + node_id
     auto pts = vtkSmartPointer<vtkPoints>::New();
     pts->SetNumberOfPoints(numnp);
 
@@ -1869,7 +1889,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
     nodeIdArr->SetNumberOfComponents(1);
     nodeIdArr->SetNumberOfTuples(numnp);
 
-    // id->pointIndex
+           // id->pointIndex
     QHash<int, vtkIdType> id2p;
     id2p.reserve(numnp * 2);
 
@@ -1884,7 +1904,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
     grid->SetPoints(pts);
     grid->GetPointData()->AddArray(nodeIdArr);
 
-    // cell arrays
+           // cell arrays
     auto matypeArr = vtkSmartPointer<vtkIntArray>::New();
     matypeArr->SetName("MATYPE");
     matypeArr->SetNumberOfComponents(1);
@@ -1913,7 +1933,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
     tail2Arr->SetName("TAIL2");
     tail2Arr->SetNumberOfComponents(1);
 
-    // -------- elems --------
+           // -------- elems --------
     struct ElemRec
     {
         int id = 0;
@@ -1944,7 +1964,8 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
         if (ptIds.size() != localNodeLids.size())
             return;
 
-        grid->InsertNextCell(vtkCellType, static_cast<vtkIdType>(ptIds.size()), ptIds.data());
+        const vtkIdType cid =
+            grid->InsertNextCell(vtkCellType, static_cast<vtkIdType>(ptIds.size()), ptIds.data());
 
         matypeArr->InsertNextValue(e.matype);
         elemIdArr->InsertNextValue(e.id);
@@ -1953,6 +1974,13 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
         partArr->InsertNextValue(part);
         tail1Arr->InsertNextValue(e.tail1);
         tail2Arr->InsertNextValue(e.tail2);
+
+        appendDomainTagCell(m_mshPickMap, QStringLiteral("MATYPE"), e.matype,
+                            static_cast<MeshIdType>(cid), QStringLiteral("MATYPE=%1").arg(e.matype),
+                            QStringLiteral("IIIN"));
+        appendDomainTagCell(m_mshPickMap, QStringLiteral("LAYER"), e.layer,
+                            static_cast<MeshIdType>(cid), QStringLiteral("LAYER=%1").arg(e.layer),
+                            QStringLiteral("IIIN"));
     };
 
     int readElems = 0;
@@ -2041,9 +2069,9 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
         if (!ok)
             continue;
 
-        // 兼容退化四边形面片：
-        // 一些网格会把三角形面写成 KETYPE=3(quad4)，但4个节点里有重复点。
-        // 例如: n1 n2 n3 n3，这里应按三角形处理。
+               // 兼容退化四边形面片：
+               // 一些网格会把三角形面写成 KETYPE=3(quad4)，但4个节点里有重复点。
+               // 例如: n1 n2 n3 n3，这里应按三角形处理。
         if (e.ketype == 3)
         {
             QVector<int> uniq;
@@ -2109,7 +2137,7 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
         return false;
     }
 
-    // 先确保数组齐全
+           // 先确保数组齐全
     ensureDefaultArrays(grid);
 
     auto* matypeArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"));
@@ -2124,7 +2152,7 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
     double bounds[6];
     grid->GetBounds(bounds);
     double xmin = bounds[0], xmax = bounds[1], ymin = bounds[2], ymax = bounds[3], zmin = bounds[4],
-           zmax = bounds[5];
+        zmax = bounds[5];
 
     const int madim = (std::abs(zmax - zmin) < 1e-12) ? 2 : 3;
     const double am = 1.0;
@@ -2132,9 +2160,9 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
     const double d1 = 0.0, d2 = 0.0, d3 = 0.0;
     const int iobject = 0, ivertical = 2;
 
-    // 导出目标维度单元：
-    // - 3D 模型导出体单元 + 线单元（锚杆/杆单元保留）
-    // - 2D 模型导出面单元 + 线单元
+           // 导出目标维度单元：
+           // - 3D 模型导出体单元 + 线单元（锚杆/杆单元保留）
+           // - 2D 模型导出面单元 + 线单元
     const int exportCellDim = (madim >= 3) ? 3 : 2;
     QVector<vtkIdType> exportCellIds;
     exportCellIds.reserve(static_cast<int>(totalCells));
@@ -2157,7 +2185,7 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
 
     const vtkIdType ncell = static_cast<vtkIdType>(exportCellIds.size());
 
-    // 统计 manod（导出单元中的最大节点数）
+           // 统计 manod（导出单元中的最大节点数）
     int manod = 0;
     QVector<int> cellKetype(static_cast<int>(ncell), 0);
     QVector<int> cellExpN(static_cast<int>(ncell), 0);
@@ -2202,29 +2230,29 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
         return QString::asprintf("%*.*f", w, p, v);
     };
 
-    // header line 1
+           // header line 1
     out << iField(numnp, 10) << iField(madim, 10) << iField(ncell, 10) << iField(manod, 10)
         << iField(extra, 10) << rField(am, 16, 4) << rField(d1, 16, 4) << rField(d2, 16, 4)
         << rField(d3, 16, 4) << "\n";
 
-    // header line 2
+           // header line 2
     out << iField(iobject, 8) << iField(ivertical, 8) << rField(xmin, 14, 4) << rField(xmax, 14, 4)
         << rField(ymin, 14, 4) << rField(ymax, 14, 4) << rField(zmin, 14, 4)
         << rField(zmax, 14, 4) << "\n";
 
-    // nodes: 优先保留原 node_id，缺失时回退到 idx+1
+           // nodes: 优先保留原 node_id，缺失时回退到 idx+1
     for (vtkIdType i = 0; i < numnp; ++i)
     {
         double p[3];
         grid->GetPoint(i, p);
         const int outNodeId =
             (nodeIdArr && i < nodeIdArr->GetNumberOfTuples()) ? nodeIdArr->GetValue(i)
-                                                               : (static_cast<int>(i) + 1);
+                                                              : (static_cast<int>(i) + 1);
         out << rField(p[0], 15, 5) << rField(p[1], 15, 5) << rField(p[2], 15, 5)
             << iField(outNodeId, 10) << "\n";
     }
 
-    // elems: 优先保留原 elem_id 与 node_id（必要时按 ketype 做重排）
+           // elems: 优先保留原 elem_id 与 node_id（必要时按 ketype 做重排）
     for (int oi = 0; oi < exportCellIds.size(); ++oi)
     {
         const vtkIdType cid = exportCellIds[oi];
@@ -2237,7 +2265,7 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
         int t1 = tail1Arr ? tail1Arr->GetValue(cid) : 0;
         int t2 = tail2Arr ? tail2Arr->GetValue(cid) : 0;
 
-        // 取 VTK 顺序的点
+               // 取 VTK 顺序的点
         QVector<int> vtkNodeIds;
         vtkNodeIds.reserve(expN);
 
@@ -2251,11 +2279,11 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
             vtkNodeIds.push_back(outNodeId);
         }
 
-        // 如果 expN > 实际点数（一般不会），补 0
+               // 如果 expN > 实际点数（一般不会），补 0
         while (vtkNodeIds.size() < expN)
             vtkNodeIds.push_back(0);
 
-        // 重排到 IIIN 顺序
+               // 重排到 IIIN 顺序
         QVector<int> iiOrder = vtkToIiinOrder(k);
         QVector<int> outConn;
         outConn.reserve(expN);
@@ -2270,7 +2298,7 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
             outConn = vtkNodeIds; // 线性或无需重排
         }
 
-        // IIIN.DAT 单元号按导出顺序从 1 开始连续编号
+               // IIIN.DAT 单元号按导出顺序从 1 开始连续编号
         const int outElemId = oi + 1;
         out << iField(outElemId, 8);
 
@@ -2312,10 +2340,10 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadFlac3dGrid(const QString& f
     };
     QVector<Zone> zones;
 
-    // 一个 zone 可能属于多个 group（同一 slot），所以用 QStringList
+           // 一个 zone 可能属于多个 group（同一 slot），所以用 QStringList
     QMap<int, QStringList> zoneGroups;
 
-    // ========= 打开文件 =========
+           // ========= 打开文件 =========
     QFile f(fileName);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
     {
@@ -2323,7 +2351,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadFlac3dGrid(const QString& f
         return nullptr;
     }
 
-    // ========= 一些解析工具 =========
+           // ========= 一些解析工具 =========
     auto stripInlineComment = [](QString s) -> QString
     {
         // 处理： "305238 * FACES" 这种行内注释
@@ -2353,7 +2381,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadFlac3dGrid(const QString& f
             lst.push_back(gname);
     };
 
-    // 收集所有 slot 的 ZGROUP，避免文件把分区写在非 "1" 槽位时被忽略
+           // 收集所有 slot 的 ZGROUP，避免文件把分区写在非 "1" 槽位时被忽略
     const QString kWantedSlot;
 
     QString curGroupName;
@@ -2400,7 +2428,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadFlac3dGrid(const QString& f
         }
     };
 
-    // ========= 第一遍：读 G/Z/ZGROUP =========
+           // ========= 第一遍：读 G/Z/ZGROUP =========
     QTextStream in(&f);
     while (!in.atEnd())
     {
@@ -2408,7 +2436,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadFlac3dGrid(const QString& f
         if (line.isEmpty())
             continue;
 
-        // 若正在读取 ZGROUP 的 zone-id 列表（多行）
+               // 若正在读取 ZGROUP 的 zone-id 列表（多行）
         if (inZGroupIds)
         {
             // 纯数字/范围行通常以数字开头
@@ -2499,7 +2527,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadFlac3dGrid(const QString& f
             curGroupName = unquote(tok[1]);
             curSlot.clear(); // 默认：未指定 slot
 
-            // 找 SLOT
+                   // 找 SLOT
             for (int i = 2; i + 1 < tok.size(); ++i)
             {
                 if (tok[i].compare("SLOT", Qt::CaseInsensitive) == 0)
@@ -2514,7 +2542,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadFlac3dGrid(const QString& f
             qInfo() << "[Flac3D] parse ZGROUP name=" << curGroupName
                     << " slot=" << (curSlot.isEmpty() ? QString("<none>") : curSlot);
 
-            // 同行如果也带了 zone ids，也顺手解析（容错）
+                   // 同行如果也带了 zone ids，也顺手解析（容错）
             for (int i = 2; i < tok.size(); ++i)
             {
                 if (tok[i].compare("SLOT", Qt::CaseInsensitive) == 0)
@@ -2526,7 +2554,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadFlac3dGrid(const QString& f
                     parseZoneIdToken(tok[i]);
             }
 
-            // 进入“多行 zone id 列表”模式
+                   // 进入“多行 zone id 列表”模式
             inZGroupIds = true;
         }
         // 其它段落（FACE GROUPS 等）这里暂不处理
@@ -2539,7 +2567,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadFlac3dGrid(const QString& f
         return nullptr;
     }
 
-    // ========= 建 vtkPoints =========
+           // ========= 建 vtkPoints =========
     vtkSmartPointer<vtkPoints> pts = vtkSmartPointer<vtkPoints>::New();
     QMap<int, vtkIdType> idMap;
     vtkIdType nextId = 0;
@@ -2863,13 +2891,13 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadFlac3dGrid(const QString& f
 
     qInfo() << "[Flac3D] all seen slots=" << QStringList(seenSlots.values()).join(',');
 
-    // ========= 生成 cell 数据 + 组->cell 列表 =========
+           // ========= 生成 cell 数据 + 组->cell 列表 =========
     QVector<int> cellZoneIds;
     QVector<QString> cellGroupNames;
     cellZoneIds.reserve(zones.size());
     cellGroupNames.reserve(zones.size());
 
-    // groupName -> cellId list
+           // groupName -> cellId list
     QMap<QString, QVector<vtkIdType>> groupToCells;
 
     for (const Zone& z : zones)
@@ -2902,7 +2930,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadFlac3dGrid(const QString& f
         }
     }
 
-    // ========= 填 ZoneId / GroupName 到 CellData =========
+           // ========= 填 ZoneId / GroupName 到 CellData =========
     auto zoneIdArr = vtkSmartPointer<vtkIntArray>::New();
     zoneIdArr->SetName("ZoneId");
     zoneIdArr->SetNumberOfComponents(1);
@@ -2922,12 +2950,12 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadFlac3dGrid(const QString& f
     grid->GetCellData()->AddArray(zoneIdArr);
     grid->GetCellData()->AddArray(groupArr);
 
-    // ========= 把“每个组有哪些 cellId”塞进 FieldData（可选但你要的就是这个）
-    // ========= 采用打包结构：
-    //   ZGroupNames[i]    = 第 i 个组名
-    //   ZGroupOffsets[i]  = 该组的 cellId 起始下标
-    //   ZGroupOffsets[i+1]= 结束下标（不含）
-    //   ZGroupCellIds[off..end-1] = 该组的所有 cellId
+           // ========= 把“每个组有哪些 cellId”塞进 FieldData（可选但你要的就是这个）
+           // ========= 采用打包结构：
+           //   ZGroupNames[i]    = 第 i 个组名
+           //   ZGroupOffsets[i]  = 该组的 cellId 起始下标
+           //   ZGroupOffsets[i+1]= 结束下标（不含）
+           //   ZGroupCellIds[off..end-1] = 该组的所有 cellId
     auto zGroupNames = vtkSmartPointer<vtkStringArray>::New();
     auto zGroupOffsets = vtkSmartPointer<vtkIdTypeArray>::New();
     auto zGroupCellIds = vtkSmartPointer<vtkIdTypeArray>::New();
@@ -3052,7 +3080,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
             {
                 QRegularExpression re(QString(",\\s*%1\\s*=\\s*([^,\\r\\n]+)")
                                           .arg(QRegularExpression::escape(keyUpper)),
-                                      QRegularExpression::CaseInsensitiveOption);
+                                          QRegularExpression::CaseInsensitiveOption);
                 auto m = re.match(rawLine);
                 if (!m.hasMatch())
                     return QString();
@@ -3286,12 +3314,11 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
             return 0;
         if (groupToPhysId.contains(g))
             return groupToPhysId.value(g);
-        while (m_mshPickMap.physIdToName.contains(nextPhysId))
+        while (physicalDimOf(m_mshPickMap, nextPhysId) >= 0)
             ++nextPhysId;
         const int physId = nextPhysId++;
         groupToPhysId.insert(g, physId);
-        m_mshPickMap.physIdToName.insert(physId, g);
-        m_mshPickMap.physIdToDim.insert(physId, dim);
+        ensurePhysicalTagSet(m_mshPickMap, dim, physId, g);
         return physId;
     };
 
@@ -3330,16 +3357,21 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
 
         if (dim >= 3)
         {
-            MeshTagSet& set = ensureDomainPhysicalTagSet(m_mshPickMap, physId);
-            set.name = setName;
+            MeshTagSet& set = ensurePhysicalTagSet(m_mshPickMap, 3, physId, setName);
             set.cellIds = allCellIds.values().toVector();
             for (MeshIdType cid : set.cellIds)
                 m_mshPickMap.cellIdToDomainTags[cid].push_back(set.key);
         }
         else if (dim == 2)
-            m_mshPickMap.bndFacePhysToPointIds[physId] = allPointIds.values().toVector();
+        {
+            for (int pid : allPointIds)
+                appendBoundaryPhysicalPoint(m_mshPickMap, 2, physId, pid, setName);
+        }
         else
-            m_mshPickMap.bndEdgePhysToPointIds[physId] = allPointIds.values().toVector();
+        {
+            for (int pid : allPointIds)
+                appendBoundaryPhysicalPoint(m_mshPickMap, 1, physId, pid, setName);
+        }
     }
 
     for (auto it = nsetToNodeIds.constBegin(); it != nsetToNodeIds.constEnd(); ++it)
@@ -3358,7 +3390,8 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
         const int physId = ensurePhysId(it.key(), 0);
         if (physId <= 0)
             continue;
-        m_mshPickMap.bndPointPhysToPointIds[physId] = pids;
+        for (int pid : pids)
+            appendBoundaryPhysicalPoint(m_mshPickMap, 0, physId, pid, it.key());
     }
 
     return grid;
@@ -3372,7 +3405,7 @@ void MeshGridIO::ensureDefaultArrays(vtkUnstructuredGrid* grid) const
     const vtkIdType nPts = grid->GetNumberOfPoints();
     const vtkIdType nCells = grid->GetNumberOfCells();
 
-    // point: node_id
+           // point: node_id
     {
         auto nodeId = getOrCreatePointIntArray(grid, "node_id");
         nodeId->SetNumberOfTuples(nPts);
@@ -3380,7 +3413,7 @@ void MeshGridIO::ensureDefaultArrays(vtkUnstructuredGrid* grid) const
             nodeId->SetValue(i, static_cast<int>(i) + 1);
     }
 
-    // cell arrays
+           // cell arrays
     auto matype = getOrCreateCellIntArray(grid, "MATYPE");
     auto layer = getOrCreateCellIntArray(grid, "LAYER");
     auto ketype = getOrCreateCellIntArray(grid, "KETYPE");
@@ -3396,8 +3429,8 @@ void MeshGridIO::ensureDefaultArrays(vtkUnstructuredGrid* grid) const
         const bool hasExactTupleCount = (arr->GetNumberOfTuples() == nCells);
         arr->SetNumberOfTuples(nCells);
 
-        // 只在“新建/尺寸变化”时清零，避免覆盖已正确导入的数据（如 IIIN 的
-        // MATYPE/LAYER）
+               // 只在“新建/尺寸变化”时清零，避免覆盖已正确导入的数据（如 IIIN 的
+               // MATYPE/LAYER）
         if (!hasExactTupleCount)
         {
             arr->FillComponent(0, 0.0);
@@ -3436,8 +3469,8 @@ void MeshGridIO::ensureDefaultArrays(vtkUnstructuredGrid* grid) const
                 ketype->SetValue(cid, 0);
         }
 
-        // src_part / tail 默认 0
-        // part->GetValue(cid) == 0 ok
+               // src_part / tail 默认 0
+               // part->GetValue(cid) == 0 ok
     }
 
 }

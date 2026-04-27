@@ -7,19 +7,51 @@
 #include <services/MeshModuleControllerService.h>
 #include <struct/MeshMap.h>
 
-#include <QComboBox>
 #include <QCheckBox>
-#include <QPushButton>
+#include <QComboBox>
 #include <QDebug>
+#include <QPushButton>
+#include <QVariant>
 
 #include "PickManager.h"
 #include "ui_BeamLoadPage.h"
+
+namespace
+{
+QString boundaryDisplayText(const MeshTagSet& set)
+{
+    const QString name = set.displayName();
+    return QStringLiteral("%1  (dim=%2, id=%3)")
+        .arg(name)
+        .arg(set.key.dim)
+        .arg(set.key.id);
+}
+
+MeshTagKey comboBoundaryKey(QComboBox* combo, int index)
+{
+    if (!combo || index < 0 || index >= combo->count())
+        return MeshTagKey{};
+    return combo->itemData(index).value<MeshTagKey>();
+}
+
+QVector<vtkIdType> pointIdsOfBoundary(const MshPickMap& map, const MeshTagKey& key)
+{
+    QVector<vtkIdType> out;
+    if (!key.isValid())
+        return out;
+
+    const MeshTagSet set = map.tagSets.value(key);
+    out.reserve(set.pointIds.size());
+    for (MeshIdType pid : set.pointIds)
+        out.push_back(static_cast<vtkIdType>(pid));
+    return out;
+}
+} // namespace
 
 BeamLoadPage::BeamLoadPage(QWidget* parent) : BasePage("BeamLoadPage"), ui(new Ui::BeamLoadPage)
 {
     ui->setupUi(this);
 
-    // 一些默认值（你可按需要改）
     ui->spinBoxLDTYPE->setValue(0);
     ui->doubleSpinBoxA->setValue(0.0);
     ui->doubleSpinBoxP->setValue(0.0);
@@ -35,11 +67,8 @@ BeamLoadPage::~BeamLoadPage()
 
 void BeamLoadPage::beforeLoad()
 {
-    PickManager::instance();
-
-    // 2D 时禁用 ZP（写出时固定为 0）
     const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
-    const bool is2D = (NDIM == 2);
+    Q_UNUSED(NDIM);
 
     qDebug() << "[BeamLoadPage] beforeLoad node pick checkbox init, uuid=" << m_uuid;
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
@@ -59,6 +88,7 @@ void BeamLoadPage::beforeLoad()
                          ui->labelPrevOwnerValue->setText(prevUuid);
                      },
                      Qt::UniqueConnection);
+
     QObject::disconnect(ui->pickEnableCheckBox, nullptr, this, nullptr);
     QObject::connect(ui->pickEnableCheckBox, &QCheckBox::toggled, this,
                      [this](bool on)
@@ -82,14 +112,17 @@ int BeamLoadPage::ldTypeValue() const
 {
     return ui->spinBoxLDTYPE->value();
 }
+
 double BeamLoadPage::aValue() const
 {
     return ui->doubleSpinBoxA->value();
 }
+
 double BeamLoadPage::pValue() const
 {
     return ui->doubleSpinBoxP->value();
 }
+
 int BeamLoadPage::idirValue() const
 {
     return ui->spinBoxIDIR->value();
@@ -97,6 +130,8 @@ int BeamLoadPage::idirValue() const
 
 void BeamLoadPage::setupBatchGroupCombo()
 {
+    qRegisterMetaType<MeshTagKey>("MeshTagKey");
+
     ui->comboBoxDim->blockSignals(true);
     ui->comboBoxDim->clear();
     ui->comboBoxDim->addItem("全部维度", -1);
@@ -106,15 +141,14 @@ void BeamLoadPage::setupBatchGroupCombo()
     ui->comboBoxDim->setCurrentIndex(0);
     ui->comboBoxDim->blockSignals(false);
 
-    // 防止页面切换后重复连接导致槽函数被多次触发
     QObject::disconnect(ui->comboBoxDim, nullptr, this, nullptr);
     QObject::disconnect(ui->comboBoxGroup, nullptr, this, nullptr);
+    QObject::disconnect(ui->btnBatchAdd, nullptr, this, nullptr);
 
     connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &BeamLoadPage::onDimChanged, Qt::UniqueConnection);
-    auto* batchAddBtn = ui->btnBatchAdd;
-    QObject::disconnect(batchAddBtn, nullptr, this, nullptr);
-    connect(batchAddBtn, &QPushButton::clicked, this,
+
+    connect(ui->btnBatchAdd, &QPushButton::clicked, this,
             [this]()
             {
                 onGroupChanged(ui->comboBoxGroup->currentIndex());
@@ -130,29 +164,24 @@ void BeamLoadPage::setupBatchGroupCombo()
                     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
                     if (!meshSvc || row < 0)
                         return;
+
                     const MshPickMap& map = meshSvc->mshPickMapSolid();
-                    const int physId = ui->comboBoxGroup->itemData(row).toInt();
-                    const int dim = map.physicalDim(physId);
-                    QVector<int> pointIdsInt;
-                    if (dim == 0)
-                        pointIdsInt = map.physicalPointIds(physId, 0);
-                    else if (dim == 1)
-                        pointIdsInt = map.physicalPointIds(physId, 1);
-                    else if (dim == 2)
-                        pointIdsInt = map.physicalPointIds(physId, 2);
-                    QVector<vtkIdType> pids;
-                    for (int pid : pointIdsInt)
-                        pids.push_back(vtkIdType(pid));
-                    PickManager::instance().setPreviewPointIds(getPageType(), m_uuid, GridKind::Solid, pids);
+                    const MeshTagKey key = comboBoundaryKey(ui->comboBoxGroup, row);
+                    PickManager::instance().setPreviewPointIds(getPageType(), m_uuid,
+                                                               GridKind::Solid,
+                                                               pointIdsOfBoundary(map, key));
                 },
                 Qt::UniqueConnection);
+
         connect(groupCombo, &CustomComboBox::dropdownClosed, this,
                 [this]()
                 {
-                    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Node);
+                    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid,
+                                                                  PickMode::Node);
                 },
                 Qt::UniqueConnection);
     }
+
     refreshGroupCombo();
 }
 
@@ -161,28 +190,27 @@ void BeamLoadPage::refreshGroupCombo()
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
         return;
+
     const int dimFilter = ui->comboBoxDim->currentData().toInt();
     const MshPickMap& map = meshSvc->mshPickMapSolid();
 
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
-    const auto nameMap = map.physicalNameMap();
-    for (auto it = nameMap.constBegin(); it != nameMap.constEnd(); ++it)
+
+    const QVector<MeshTagSet> sets = map.boundaryTagSets(dimFilter);
+    for (const MeshTagSet& set : sets)
     {
-        const int physId = it.key();
-        const int dim = map.physicalDim(physId);
-        if (dim < 0 || dim > 2)
+        if (set.pointIds.isEmpty())
             continue;
-        if (dimFilter >= 0 && dimFilter != dim)
-            continue;
-        ui->comboBoxGroup->addItem(
-            QString("%1  (dim=%2, id=%3)").arg(it.value()).arg(dim).arg(physId), physId);
+        ui->comboBoxGroup->addItem(boundaryDisplayText(set), QVariant::fromValue(set.key));
     }
+
     ui->comboBoxGroup->blockSignals(false);
 }
 
 void BeamLoadPage::onDimChanged(int)
 {
+    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Node);
     refreshGroupCombo();
 }
 
@@ -190,26 +218,18 @@ void BeamLoadPage::onGroupChanged(int index)
 {
     if (index < 0)
         return;
+
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
         return;
-    const MshPickMap& map = meshSvc->mshPickMapSolid();
 
-    const int physId = ui->comboBoxGroup->itemData(index).toInt();
-    const int dim = map.physicalDim(physId);
-    QVector<int> pointIdsInt;
-    if (dim == 0)
-        pointIdsInt = map.physicalPointIds(physId, 0);
-    else if (dim == 1)
-        pointIdsInt = map.physicalPointIds(physId, 1);
-    else if (dim == 2)
-        pointIdsInt = map.physicalPointIds(physId, 2);
-    else
+    const MshPickMap& map = meshSvc->mshPickMapSolid();
+    const MeshTagKey key = comboBoundaryKey(ui->comboBoxGroup, index);
+    const QVector<vtkIdType> pids = pointIdsOfBoundary(map, key);
+    if (pids.isEmpty())
         return;
 
-    QVector<vtkIdType> pids;
-    pids.reserve(pointIdsInt.size());
-    for (int pid : pointIdsInt)
-        pids.push_back(vtkIdType(pid));
-    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pids, false);
+    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pids,
+                                                false);
+    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Node);
 }

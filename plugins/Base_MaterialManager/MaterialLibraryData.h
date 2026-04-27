@@ -7,12 +7,14 @@
 #include <QStringList>
 #include <QVector>
 
+#include <struct/MeshMap.h>
+
 struct MaterialEntry
 {
     QString id;
     QString name;
     QMap<QString, QString> properties;
-    QSet<int> appliedMatypes;
+    QSet<MeshTagKey> appliedDomainTags;
     bool transitionOnly = false;
     int transitionMatype = -1;
     QString seepageModelKey;

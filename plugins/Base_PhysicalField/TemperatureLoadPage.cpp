@@ -17,6 +17,56 @@
 #include "PickManager.h"
 #include "ui_TemperatureLoadPage.h"
 
+namespace
+{
+QString boundaryTagText(const MeshTagSet& set)
+{
+    const QString name = set.displayName();
+    return QStringLiteral("%1  (dim=%2, id=%3)")
+        .arg(name)
+        .arg(set.key.dim)
+        .arg(set.key.id);
+}
+
+MeshTagKey comboTagKey(QComboBox* combo, int index = -1)
+{
+    if (!combo)
+        return MeshTagKey{};
+    const QVariant v = (index >= 0) ? combo->itemData(index) : combo->currentData();
+    if (!v.isValid())
+        return MeshTagKey{};
+    return v.value<MeshTagKey>();
+}
+
+QVector<vtkIdType> toVtkIds(const QVector<MeshIdType>& values)
+{
+    QVector<vtkIdType> out;
+    out.reserve(values.size());
+    for (MeshIdType v : values)
+        out.push_back(static_cast<vtkIdType>(v));
+    return out;
+}
+
+QVector<vtkIdType> pointIdsOfTag(const MshPickMap& map, const MeshTagKey& key)
+{
+    const MeshTagSet set = map.tagSets.value(key);
+    return toVtkIds(set.pointIds);
+}
+
+QVector<vtkIdType> edgeKeysOfTag(const MshPickMap& map, const MeshTagKey& key)
+{
+    const MeshTagSet set = map.tagSets.value(key);
+    return toVtkIds(set.edgeKeys);
+}
+
+QVector<vtkIdType> faceKeysOfTag(const MshPickMap& map, const MeshTagKey& key)
+{
+    const MeshTagSet set = map.tagSets.value(key);
+    return toVtkIds(set.faceKeys);
+}
+}
+
+
 TemperatureLoadPage::TemperatureLoadPage(QWidget* parent) : BasePage("TemperatureLoadPage")
 {
     ui = new Ui::TemperatureLoadPage;
@@ -78,6 +128,7 @@ void TemperatureLoadPage::setupBatchGroupCombo()
 {
     if (!ui)
         return;
+
     ui->comboBoxDim->blockSignals(true);
     ui->comboBoxDim->clear();
     ui->comboBoxDim->addItem("全部维度", -1);
@@ -87,15 +138,14 @@ void TemperatureLoadPage::setupBatchGroupCombo()
     ui->comboBoxDim->setCurrentIndex(0);
     ui->comboBoxDim->blockSignals(false);
 
-    // 防止页面切换后重复连接导致槽函数被多次触发
     QObject::disconnect(ui->comboBoxDim, nullptr, this, nullptr);
     QObject::disconnect(ui->comboBoxGroup, nullptr, this, nullptr);
+    QObject::disconnect(ui->btnBatchAdd, nullptr, this, nullptr);
 
     connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &TemperatureLoadPage::onDimChanged, Qt::UniqueConnection);
-    auto* batchAddBtn = ui->btnBatchAdd;
-    QObject::disconnect(batchAddBtn, nullptr, this, nullptr);
-    connect(batchAddBtn, &QPushButton::clicked, this,
+
+    connect(ui->btnBatchAdd, &QPushButton::clicked, this,
             [this]()
             {
                 onGroupChanged(ui->comboBoxGroup->currentIndex());
@@ -108,23 +158,16 @@ void TemperatureLoadPage::setupBatchGroupCombo()
         connect(groupCombo, &CustomComboBox::itemHovered, this,
                 [this](const int& row)
                 {
+                    if (row < 0)
+                        return;
                     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-                    if (!meshSvc || row < 0)
+                    if (!meshSvc)
                         return;
                     const MshPickMap& map = meshSvc->mshPickMapSolid();
-                    const int physId = ui->comboBoxGroup->itemData(row).toInt();
-                    const int dim = map.physicalDim(physId);
-                    QVector<int> pointIdsInt;
-                    if (dim == 0)
-                        pointIdsInt = map.physicalPointIds(physId, 0);
-                    else if (dim == 1)
-                        pointIdsInt = map.physicalPointIds(physId, 1);
-                    else if (dim == 2)
-                        pointIdsInt = map.physicalPointIds(physId, 2);
-                    QVector<vtkIdType> pids;
-                    for (int pid : pointIdsInt)
-                        pids.push_back(vtkIdType(pid));
-                    PickManager::instance().setPreviewPointIds(getPageType(), m_uuid, GridKind::Solid, pids);
+                    const MeshTagKey key = comboTagKey(ui->comboBoxGroup, row);
+                    PickManager::instance().setPreviewPointIds(getPageType(), m_uuid,
+                                                               GridKind::Solid,
+                                                               pointIdsOfTag(map, key));
                 },
                 Qt::UniqueConnection);
         connect(groupCombo, &CustomComboBox::dropdownClosed, this,
@@ -134,31 +177,26 @@ void TemperatureLoadPage::setupBatchGroupCombo()
                 },
                 Qt::UniqueConnection);
     }
+
     refreshGroupCombo();
 }
 
 void TemperatureLoadPage::refreshGroupCombo()
 {
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    if (!meshSvc)
+    if (!meshSvc || !ui)
         return;
 
-    const MshPickMap& map = meshSvc->mshPickMapSolid();
     const int dimFilter = ui->comboBoxDim->currentData().toInt();
+    const MshPickMap& map = meshSvc->mshPickMapSolid();
+
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
-    const auto nameMap = map.physicalNameMap();
-    for (auto it = nameMap.constBegin(); it != nameMap.constEnd(); ++it)
-    {
-        const int physId = it.key();
-        const int dim = map.physicalDim(physId);
-        if (dim < 0 || dim > 2)
-            continue;
-        if (dimFilter >= 0 && dim != dimFilter)
-            continue;
-        ui->comboBoxGroup->addItem(
-            QString("%1  (dim=%2, id=%3)").arg(it.value()).arg(dim).arg(physId), physId);
-    }
+
+    const QVector<MeshTagSet> sets = map.boundaryTagSets(dimFilter);
+    for (const MeshTagSet& set : sets)
+        ui->comboBoxGroup->addItem(boundaryTagText(set), QVariant::fromValue(set.key));
+
     ui->comboBoxGroup->blockSignals(false);
 }
 
@@ -169,28 +207,18 @@ void TemperatureLoadPage::onDimChanged(int)
 
 void TemperatureLoadPage::onGroupChanged(int index)
 {
-    if (index < 0)
+    if (index < 0 || !ui)
         return;
+
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
         return;
-    const MshPickMap& map = meshSvc->mshPickMapSolid();
 
-    const int physId = ui->comboBoxGroup->itemData(index).toInt();
-    const int dim = map.physicalDim(physId);
-    QVector<int> pointIdsInt;
-    if (dim == 0)
-        pointIdsInt = map.physicalPointIds(physId, 0);
-    else if (dim == 1)
-        pointIdsInt = map.physicalPointIds(physId, 1);
-    else if (dim == 2)
-        pointIdsInt = map.physicalPointIds(physId, 2);
-    else
+    const MshPickMap& map = meshSvc->mshPickMapSolid();
+    const MeshTagKey key = comboTagKey(ui->comboBoxGroup, index);
+    if (!key.isValid())
         return;
 
-    QVector<vtkIdType> pids;
-    pids.reserve(pointIdsInt.size());
-    for (int pid : pointIdsInt)
-        pids.push_back(vtkIdType(pid));
-    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pids, false);
+    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid,
+                                                pointIdsOfTag(map, key), false);
 }

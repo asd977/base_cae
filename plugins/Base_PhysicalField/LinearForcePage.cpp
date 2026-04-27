@@ -12,6 +12,56 @@
 
 #include "ui_LinearForcePage.h"
 
+namespace
+{
+QString boundaryTagText(const MeshTagSet& set)
+{
+    const QString name = set.displayName();
+    return QStringLiteral("%1  (dim=%2, id=%3)")
+        .arg(name)
+        .arg(set.key.dim)
+        .arg(set.key.id);
+}
+
+MeshTagKey comboTagKey(QComboBox* combo, int index = -1)
+{
+    if (!combo)
+        return MeshTagKey{};
+    const QVariant v = (index >= 0) ? combo->itemData(index) : combo->currentData();
+    if (!v.isValid())
+        return MeshTagKey{};
+    return v.value<MeshTagKey>();
+}
+
+QVector<vtkIdType> toVtkIds(const QVector<MeshIdType>& values)
+{
+    QVector<vtkIdType> out;
+    out.reserve(values.size());
+    for (MeshIdType v : values)
+        out.push_back(static_cast<vtkIdType>(v));
+    return out;
+}
+
+QVector<vtkIdType> pointIdsOfTag(const MshPickMap& map, const MeshTagKey& key)
+{
+    const MeshTagSet set = map.tagSets.value(key);
+    return toVtkIds(set.pointIds);
+}
+
+QVector<vtkIdType> edgeKeysOfTag(const MshPickMap& map, const MeshTagKey& key)
+{
+    const MeshTagSet set = map.tagSets.value(key);
+    return toVtkIds(set.edgeKeys);
+}
+
+QVector<vtkIdType> faceKeysOfTag(const MshPickMap& map, const MeshTagKey& key)
+{
+    const MeshTagSet set = map.tagSets.value(key);
+    return toVtkIds(set.faceKeys);
+}
+}
+
+
 LinearForcePage::LinearForcePage(QWidget* parent)
     : BasePage("LinearForcePage"), ui(new Ui::LinearForcePage)
 {
@@ -60,15 +110,14 @@ void LinearForcePage::setupBatchGroupCombo()
     ui->comboBoxDim->setCurrentIndex(0);
     ui->comboBoxDim->blockSignals(false);
 
-    // 防止页面切换后重复连接导致槽函数被多次触发
     QObject::disconnect(ui->comboBoxDim, nullptr, this, nullptr);
     QObject::disconnect(ui->comboBoxGroup, nullptr, this, nullptr);
+    QObject::disconnect(ui->btnBatchAdd, nullptr, this, nullptr);
 
     connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &LinearForcePage::onDimChanged, Qt::UniqueConnection);
-    auto* batchAddBtn = ui->btnBatchAdd;
-    QObject::disconnect(batchAddBtn, nullptr, this, nullptr);
-    connect(batchAddBtn, &QPushButton::clicked, this,
+
+    connect(ui->btnBatchAdd, &QPushButton::clicked, this,
             [this]()
             {
                 onGroupChanged(ui->comboBoxGroup->currentIndex());
@@ -87,12 +136,10 @@ void LinearForcePage::setupBatchGroupCombo()
                     if (!meshSvc)
                         return;
                     const MshPickMap& map = meshSvc->mshPickMapSolid();
-                    const int physId = ui->comboBoxGroup->itemData(row).toInt();
-                    QVector<vtkIdType> edgeKeys;
-                    for (qint64 k : map.physicalEdgeKeys(physId))
-                        edgeKeys.push_back(vtkIdType(k));
-                    PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                               edgeKeys);
+                    const MeshTagKey key = comboTagKey(ui->comboBoxGroup, row);
+                    PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid,
+                                                               GridKind::Solid,
+                                                               edgeKeysOfTag(map, key));
                 },
                 Qt::UniqueConnection);
         connect(groupCombo, &CustomComboBox::dropdownClosed, this,
@@ -110,21 +157,15 @@ void LinearForcePage::refreshGroupCombo()
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
         return;
-    const int dimFilter = ui->comboBoxDim->currentData().toInt();
+
     const MshPickMap& map = meshSvc->mshPickMapSolid();
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
-    const auto nameMap = map.physicalNameMap();
-    for (auto it = nameMap.constBegin(); it != nameMap.constEnd(); ++it)
-    {
-        const int physId = it.key();
-        const int dim = map.physicalDim(physId);
-        if (dim != 1)
-            continue;
-        if (dimFilter != 1)
-            continue;
-        ui->comboBoxGroup->addItem(QString("%1  (id=%2)").arg(it.value()).arg(physId), physId);
-    }
+
+    const QVector<MeshTagSet> sets = map.boundaryTagSets(1);
+    for (const MeshTagSet& set : sets)
+        ui->comboBoxGroup->addItem(boundaryTagText(set), QVariant::fromValue(set.key));
+
     ui->comboBoxGroup->blockSignals(false);
 }
 
@@ -140,15 +181,12 @@ void LinearForcePage::onGroupChanged(int index)
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
         return;
+
     const MshPickMap& map = meshSvc->mshPickMapSolid();
-    const int physId = ui->comboBoxGroup->itemData(index).toInt();
+    const MeshTagKey key = comboTagKey(ui->comboBoxGroup, index);
+    if (!key.isValid())
+        return;
 
-    const QVector<qint64> edgeKeys64 = map.physicalEdgeKeys(physId);
-    QVector<vtkIdType> edgeKeys;
-    edgeKeys.reserve(edgeKeys64.size());
-    for (qint64 k : edgeKeys64)
-        edgeKeys.push_back(vtkIdType(k));
-
-    PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid, edgeKeys,
-                                                false);
+    PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
+                                                edgeKeysOfTag(map, key), false);
 }
