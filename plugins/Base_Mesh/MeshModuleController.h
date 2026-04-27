@@ -38,7 +38,6 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
                           int preDeleteMatype) override;
     QVector<DomainKey> availableDomains(const QString& category) const override;
     QSet<MeshIdType> domainCells(const DomainKey& key) const override;
-    QSet<DomainKey> domainsOfCell(MeshIdType cid) const override;
     QString domainDisplayText(const DomainKey& key) const override;
 
     vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGrid();

@@ -184,7 +184,6 @@ class CORE_EXPORT PickManager : public QObject
     // 将材料域高亮状态写入一套统一的 cell 颜色数组并刷新显示。
     void rebuildDomainHighlightActors();
     QSet<vtkIdType> cellsOfDomain(const DomainKey& key) const;
-    QSet<DomainKey> domainsOfCell(vtkIdType cid) const;
     QString domainOwner(const QString& domain, const DomainKey& key) const;
 
     // line node overlay

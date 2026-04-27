@@ -652,18 +652,6 @@ QSet<MeshIdType> MeshModuleController::domainCells(const DomainKey& key) const
     return out;
 }
 
-QSet<DomainKey> MeshModuleController::domainsOfCell(MeshIdType cid) const
-{
-    QSet<DomainKey> out;
-    const MshPickMap map = MeshGridIO::instance().getMeshMap();
-    const QVector<MeshTagKey> keys = map.cellIdToDomainTags.value(cid);
-    for (const MeshTagKey& key : keys)
-    {
-        out.insert(DomainKey{key.category, key.dim, key.id});
-    }
-    return out;
-}
-
 QString MeshModuleController::domainDisplayText(const DomainKey& key) const
 {
     if (!key.isValid())

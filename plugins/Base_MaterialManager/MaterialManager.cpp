@@ -1580,32 +1580,6 @@ void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
     if (!entry)
         return;
 
-    // 材料条目层面的互斥：同一个 MATYPE 只能挂在一个条目下。
-    // PickManager 负责显示/高亮互斥；这里负责材料数据本身的互斥一致性。
-    for (auto& model : m_models)
-    {
-        for (auto& otherEntry : model.materials)
-        {
-            if (otherEntry.id == entryId)
-                continue;
-
-            if (otherEntry.appliedMatypes.remove(matype))
-            {
-                if (m_selectedMatypes.value(otherEntry.id, -1) == matype)
-                    m_selectedMatypes.remove(otherEntry.id);
-                if (m_previewMatypes.value(otherEntry.id, -1) == matype)
-                    m_previewMatypes.remove(otherEntry.id);
-                if (m_preDeleteMatypes.value(otherEntry.id, -1) == matype)
-                    m_preDeleteMatypes.remove(otherEntry.id);
-
-                syncAutoNumberProperties(&model, &otherEntry);
-                refreshEntryWidgetMatypes(otherEntry.id, otherEntry.appliedMatypes,
-                                          m_selectedMatypes.value(otherEntry.id, -1));
-                refreshMatypeHighlight(otherEntry.id);
-            }
-        }
-    }
-
     setSelectedMatypeForEntry(entryId, matype);
     entry->appliedMatypes.insert(matype);
     MaterialModel* model = nullptr;

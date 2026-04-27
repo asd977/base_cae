@@ -85,7 +85,6 @@ struct MeshModuleControllerService
                                         int previewMatype, int preDeleteMatype) = 0;
     virtual QVector<DomainKey> availableDomains(const QString& category) const = 0;
     virtual QSet<MeshIdType> domainCells(const DomainKey& key) const = 0;
-    virtual QSet<DomainKey> domainsOfCell(MeshIdType cid) const = 0;
     virtual QString domainDisplayText(const DomainKey& key) const = 0;
 
     virtual vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGrid() = 0;

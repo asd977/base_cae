@@ -362,14 +362,6 @@ QSet<vtkIdType> PickManager::cellsOfDomain(const DomainKey& key) const
     return out;
 }
 
-QSet<DomainKey> PickManager::domainsOfCell(vtkIdType cid) const
-{
-    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    if (!meshSvc)
-        return {};
-    return meshSvc->domainsOfCell(static_cast<MeshIdType>(cid));
-}
-
 void PickManager::setAppliedDomains(const QString& domain, const QString& uuid,
                                     const QSet<DomainKey>& keys)
 {
@@ -1933,30 +1925,30 @@ void PickManager::rebuildDomainHighlightActors()
     const unsigned char preDeleteColor[3] = {255, 153, 0};
     auto* origCellArr = m_solidPickDataSet->GetCellData()->GetArray("vtkOriginalCellIds");
 
+    QSet<vtkIdType> appliedCells;
+    for (const DomainKey& key : applied)
+    {
+        const QSet<vtkIdType> ids = cellsOfDomain(key);
+        appliedCells.unite(ids);
+    }
+    const QSet<vtkIdType> selectedCells = selected.isValid() ? cellsOfDomain(selected) : QSet<vtkIdType>{};
+    const QSet<vtkIdType> previewCells = preview.isValid() ? cellsOfDomain(preview) : QSet<vtkIdType>{};
+    const QSet<vtkIdType> preDeleteCells =
+        preDelete.isValid() ? cellsOfDomain(preDelete) : QSet<vtkIdType>{};
+
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
         vtkIdType srcCid = cid;
         if (origCellArr && cid < origCellArr->GetNumberOfTuples())
             srcCid = vtkIdType(origCellArr->GetTuple1(cid));
         const unsigned char* c = normal;
-        const QSet<DomainKey> cellDomains = domainsOfCell(srcCid);
-
-        bool hitApplied = false;
-        for (const DomainKey& k : cellDomains)
-        {
-            if (applied.contains(k))
-            {
-                hitApplied = true;
-                break;
-            }
-        }
-        if (hitApplied)
+        if (appliedCells.contains(srcCid))
             c = appliedColor;
-        if (preDelete.isValid() && cellDomains.contains(preDelete))
+        if (preDeleteCells.contains(srcCid))
             c = preDeleteColor;
-        if (selected.isValid() && cellDomains.contains(selected))
+        if (selectedCells.contains(srcCid))
             c = selectedColor;
-        if (preview.isValid() && cellDomains.contains(preview))
+        if (previewCells.contains(srcCid))
             c = previewColor;
         colors->SetTypedTuple(cid, c);
     }
