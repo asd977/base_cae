@@ -1,4 +1,4 @@
-﻿#ifndef MESH_MODULE_CONTROLLER_SERVICE_H
+#ifndef MESH_MODULE_CONTROLLER_SERVICE_H
 #define MESH_MODULE_CONTROLLER_SERVICE_H
 
 #include <QHash>
@@ -7,7 +7,6 @@
 #include <QVector>
 #include <QtGlobal>
 #include <struct/MeshMap.h>
-#include <vtkType.h>
 
 struct DomainKey
 {
@@ -76,8 +75,8 @@ struct MeshModuleControllerService
 
     virtual QVector<MeshTagSet> domainTagSets() const = 0;
     virtual QVector<MeshTagSet> boundaryTagSets(int dimFilter = -1) const = 0;
-    virtual QVector<vtkIdType> cellIdsOfTag(const MeshTagKey& key) const = 0;
-    virtual QVector<vtkIdType> pointIdsOfTag(const MeshTagKey& key) const = 0;
+    virtual QVector<MeshIdType> cellIdsOfTag(const MeshTagKey& key) const = 0;
+    virtual QVector<MeshIdType> pointIdsOfTag(const MeshTagKey& key) const = 0;
     virtual QString displayTextOfTag(const MeshTagKey& key) const = 0;
 
     // legacy domain highlight API (kept while UI migration is in progress)
@@ -85,8 +84,8 @@ struct MeshModuleControllerService
     virtual void highlightDomainMatypes(const QSet<int>& matypes, int selectedMatype,
                                         int previewMatype, int preDeleteMatype) = 0;
     virtual QVector<DomainKey> availableDomains(const QString& category) const = 0;
-    virtual QSet<vtkIdType> domainCells(const DomainKey& key) const = 0;
-    virtual QSet<DomainKey> domainsOfCell(vtkIdType cid) const = 0;
+    virtual QSet<MeshIdType> domainCells(const DomainKey& key) const = 0;
+    virtual QSet<DomainKey> domainsOfCell(MeshIdType cid) const = 0;
     virtual QString domainDisplayText(const DomainKey& key) const = 0;
 
     virtual vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGrid() = 0;

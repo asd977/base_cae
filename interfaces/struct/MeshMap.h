@@ -2,10 +2,12 @@
 #define MESH_H
 
 #include <QHash>
+#include <QMetaType>
 #include <QString>
 #include <QVector>
 #include <QtGlobal>
-#include <vtkType.h>
+
+using MeshIdType = qint64;
 
 struct MeshTagKey
 {
@@ -38,10 +40,10 @@ struct MeshTagSet
     QString name;
     QString source;
 
-    QVector<vtkIdType> pointIds;
-    QVector<vtkIdType> cellIds;
-    QVector<vtkIdType> edgeKeys;
-    QVector<vtkIdType> faceKeys;
+    QVector<MeshIdType> pointIds;
+    QVector<MeshIdType> cellIds;
+    QVector<MeshIdType> edgeKeys;
+    QVector<MeshIdType> faceKeys;
 };
 
 struct MshPickMap
@@ -80,8 +82,8 @@ struct MshPickMap
 
     // ----- 新统一分组模型 -----
     QHash<MeshTagKey, MeshTagSet> tagSets;
-    QHash<vtkIdType, QVector<MeshTagKey>> cellIdToDomainTags;
-    QHash<vtkIdType, QVector<MeshTagKey>> pointIdToBoundaryTags;
+    QHash<MeshIdType, QVector<MeshTagKey>> cellIdToDomainTags;
+    QHash<MeshIdType, QVector<MeshTagKey>> pointIdToBoundaryTags;
 };
 
 Q_DECLARE_METATYPE(MeshTagKey)

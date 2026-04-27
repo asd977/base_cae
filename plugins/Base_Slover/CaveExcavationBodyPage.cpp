@@ -403,7 +403,12 @@ QVector<vtkIdType> CaveExcavationBodyPage::groupCellIds(int groupId) const
     key.category = "LAYER";
     key.dim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     key.id = groupId;
-    return meshSvc->cellIdsOfTag(key);
+    const QVector<MeshIdType> src = meshSvc->cellIdsOfTag(key);
+    QVector<vtkIdType> out;
+    out.reserve(src.size());
+    for (MeshIdType cid : src)
+        out.push_back(static_cast<vtkIdType>(cid));
+    return out;
 }
 
 QSet<int> CaveExcavationBodyPage::groupDomainIds(int groupId) const

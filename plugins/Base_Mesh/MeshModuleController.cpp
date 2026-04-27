@@ -550,7 +550,7 @@ QVector<MeshTagSet> MeshModuleController::domainTagSets() const
             MeshTagSet set;
             set.key = MeshTagKey{"MATYPE", map.meshDim, it.key()};
             for (qint64 cid : it.value())
-                set.cellIds.push_back(static_cast<vtkIdType>(cid));
+                set.cellIds.push_back(static_cast<MeshIdType>(cid));
             set.name = QString("MATYPE=%1").arg(it.key());
             set.source = "Legacy";
             out.push_back(set);
@@ -560,7 +560,7 @@ QVector<MeshTagSet> MeshModuleController::domainTagSets() const
             MeshTagSet set;
             set.key = MeshTagKey{"LAYER", map.meshDim, it.key()};
             for (qint64 cid : it.value())
-                set.cellIds.push_back(static_cast<vtkIdType>(cid));
+                set.cellIds.push_back(static_cast<MeshIdType>(cid));
             set.name = QString("LAYER=%1").arg(it.key());
             set.source = "Legacy";
             out.push_back(set);
@@ -596,27 +596,27 @@ QVector<MeshTagSet> MeshModuleController::boundaryTagSets(int dimFilter) const
     return out;
 }
 
-QVector<vtkIdType> MeshModuleController::cellIdsOfTag(const MeshTagKey& key) const
+QVector<MeshIdType> MeshModuleController::cellIdsOfTag(const MeshTagKey& key) const
 {
     const MshPickMap map = MeshGridIO::instance().getMeshMap();
     if (map.tagSets.contains(key))
         return map.tagSets.value(key).cellIds;
 
-    QVector<vtkIdType> out;
+    QVector<MeshIdType> out;
     if (key.category.compare("MATYPE", Qt::CaseInsensitive) == 0)
     {
         for (qint64 cid : map.matypeToCellIds.value(key.id))
-            out.push_back(static_cast<vtkIdType>(cid));
+            out.push_back(static_cast<MeshIdType>(cid));
     }
     else if (key.category.compare("LAYER", Qt::CaseInsensitive) == 0)
     {
         for (qint64 cid : map.layerToCellIds.value(key.id))
-            out.push_back(static_cast<vtkIdType>(cid));
+            out.push_back(static_cast<MeshIdType>(cid));
     }
     return out;
 }
 
-QVector<vtkIdType> MeshModuleController::pointIdsOfTag(const MeshTagKey& key) const
+QVector<MeshIdType> MeshModuleController::pointIdsOfTag(const MeshTagKey& key) const
 {
     const MshPickMap map = MeshGridIO::instance().getMeshMap();
     if (map.tagSets.contains(key))
@@ -679,19 +679,19 @@ QVector<DomainKey> MeshModuleController::availableDomains(const QString& categor
     return out;
 }
 
-QSet<vtkIdType> MeshModuleController::domainCells(const DomainKey& key) const
+QSet<MeshIdType> MeshModuleController::domainCells(const DomainKey& key) const
 {
-    QSet<vtkIdType> out;
+    QSet<MeshIdType> out;
     if (!key.isValid())
         return out;
 
     const MeshTagKey tagKey{key.category, key.dim, key.id};
-    for (vtkIdType cid : cellIdsOfTag(tagKey))
+    for (MeshIdType cid : cellIdsOfTag(tagKey))
         out.insert(cid);
     return out;
 }
 
-QSet<DomainKey> MeshModuleController::domainsOfCell(vtkIdType cid) const
+QSet<DomainKey> MeshModuleController::domainsOfCell(MeshIdType cid) const
 {
     QSet<DomainKey> out;
     const MshPickMap map = MeshGridIO::instance().getMeshMap();

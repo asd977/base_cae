@@ -104,8 +104,13 @@ void DisplacementConstraintWidget::beforeLoad()
                     if (!meshSvc || row < 0)
                         return;
                     const MeshTagKey key = ui->comboBoxGroup->itemData(row).value<MeshTagKey>();
-                    const QVector<vtkIdType> pids = meshSvc->pointIdsOfTag(key);
-                    PickManager::instance().setPreviewPointIds(getPageType(), m_uuid, GridKind::Solid, pids);
+                    const QVector<MeshIdType> tagPids = meshSvc->pointIdsOfTag(key);
+                    QVector<vtkIdType> pids;
+                    pids.reserve(tagPids.size());
+                    for (MeshIdType pid : tagPids)
+                        pids.push_back(static_cast<vtkIdType>(pid));
+                    PickManager::instance().setPreviewPointIds(getPageType(), m_uuid, GridKind::Solid,
+                                                               pids);
                 },
                 Qt::UniqueConnection);
         connect(groupCombo, &CustomComboBox::dropdownClosed, this,
@@ -165,7 +170,11 @@ void DisplacementConstraintWidget::onGroupChanged(int index)
         return;
 
     const MeshTagKey key = ui->comboBoxGroup->itemData(index).value<MeshTagKey>();
-    const QVector<vtkIdType> pids = meshSvc->pointIdsOfTag(key);
+    const QVector<MeshIdType> tagPids = meshSvc->pointIdsOfTag(key);
+    QVector<vtkIdType> pids;
+    pids.reserve(tagPids.size());
+    for (MeshIdType pid : tagPids)
+        pids.push_back(static_cast<vtkIdType>(pid));
 
     PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pids, false);
 }
