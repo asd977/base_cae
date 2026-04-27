@@ -532,7 +532,7 @@ void MeshModuleController::closeProject()
 QVector<MeshTagSet> MeshModuleController::domainTagSets() const
 {
     QVector<MeshTagSet> out;
-    const MshPickMap map = MeshGridIO::instance().getMeshMap();
+    const MshPickMap& map = MeshGridIO::instance().getMeshMapRef();
     for (auto it = map.tagSets.constBegin(); it != map.tagSets.constEnd(); ++it)
     {
         const MeshTagSet& set = it.value();
@@ -552,7 +552,7 @@ QVector<MeshTagSet> MeshModuleController::domainTagSets() const
 QVector<MeshTagSet> MeshModuleController::boundaryTagSets(int dimFilter) const
 {
     QVector<MeshTagSet> out;
-    const MshPickMap map = MeshGridIO::instance().getMeshMap();
+    const MshPickMap& map = MeshGridIO::instance().getMeshMapRef();
 
     if (!map.tagSets.isEmpty())
     {
@@ -571,7 +571,7 @@ QVector<MeshTagSet> MeshModuleController::boundaryTagSets(int dimFilter) const
 
 QVector<MeshIdType> MeshModuleController::cellIdsOfTag(const MeshTagKey& key) const
 {
-    const MshPickMap map = MeshGridIO::instance().getMeshMap();
+    const MshPickMap& map = MeshGridIO::instance().getMeshMapRef();
     if (map.tagSets.contains(key))
         return map.tagSets.value(key).cellIds;
     return {};
@@ -579,7 +579,7 @@ QVector<MeshIdType> MeshModuleController::cellIdsOfTag(const MeshTagKey& key) co
 
 QVector<MeshIdType> MeshModuleController::pointIdsOfTag(const MeshTagKey& key) const
 {
-    const MshPickMap map = MeshGridIO::instance().getMeshMap();
+    const MshPickMap& map = MeshGridIO::instance().getMeshMapRef();
     if (map.tagSets.contains(key))
         return map.tagSets.value(key).pointIds;
     return {};
@@ -587,7 +587,7 @@ QVector<MeshIdType> MeshModuleController::pointIdsOfTag(const MeshTagKey& key) c
 
 QString MeshModuleController::displayTextOfTag(const MeshTagKey& key) const
 {
-    const MshPickMap map = MeshGridIO::instance().getMeshMap();
+    const MshPickMap& map = MeshGridIO::instance().getMeshMapRef();
     if (map.tagSets.contains(key) && !map.tagSets.value(key).name.trimmed().isEmpty())
         return QString("%1: %2").arg(key.category, map.tagSets.value(key).name);
     return QString("%1=%2").arg(key.category).arg(key.id);
@@ -596,7 +596,7 @@ QString MeshModuleController::displayTextOfTag(const MeshTagKey& key) const
 QSet<int> MeshModuleController::getAvailableMatypes() const
 {
     QSet<int> ret;
-    const MshPickMap map = MeshGridIO::instance().getMeshMap();
+    const MshPickMap& map = MeshGridIO::instance().getMeshMapRef();
     for (auto it = map.tagSets.constBegin(); it != map.tagSets.constEnd(); ++it)
     {
         const MeshTagSet& set = it.value();
@@ -1407,7 +1407,7 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
     appendGroupSurfaceCells(matypeGroups);
     appendGroupSurfaceCells(layerGroups);
 
-    const MshPickMap pickMap = MeshGridIO::instance().getMeshMap();
+    const MshPickMap& pickMap = MeshGridIO::instance().getMeshMapRef();
     QHash<int, QVector<qint64>> domainGroups;
     int gid = 1;
     for (auto it = pickMap.tagSets.constBegin(); it != pickMap.tagSets.constEnd(); ++it)

@@ -1732,6 +1732,11 @@ MshPickMap MeshGridIO::getMeshMap()
     return m_mshPickMap;
 }
 
+const MshPickMap& MeshGridIO::getMeshMapRef() const
+{
+    return m_mshPickMap;
+}
+
 void MeshGridIO::setMeshMap(const MshPickMap& pickMap)
 {
     m_mshPickMap = pickMap;

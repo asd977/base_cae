@@ -43,6 +43,7 @@ class MeshGridIO
     static QString defaultIiinOutputPath(const QString& sourceFile);
 
     MshPickMap getMeshMap();
+    const MshPickMap& getMeshMapRef() const;
     void setMeshMap(const MshPickMap& pickMap);
 
   private:
