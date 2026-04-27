@@ -101,6 +101,10 @@ class MaterialManager : public QObject, public MaterialManagerService
     // 原 highlightMatypes 扩展为 3 态输入（Selected / Preview / PreDelete）
     void highlightMatypes(const QString& entryId, const QSet<int>& matypes, int selectedMatype,
                           int previewMatype, int preDeleteMatype);
+    QString materialPickDomain() const;
+    QString materialPickUuid(const QString& entryId) const;
+    static DomainKey matypeDomainKey(int matype);
+    static int matypeFromDomainKey(const DomainKey& key);
 
   private:
     MaterialManagerWidget* m_materialManagerWidget;
@@ -119,12 +123,6 @@ class MaterialManager : public QObject, public MaterialManagerService
     QSet<QString> m_addedEntryIds;
     QVector<MaterialModel> m_seepageModels;
     QVector<QPair<int, int>> m_materialTransitions;
-
-    // ===== 3态：Selected / Preview / PreDelete =====
-    QHash<QString, int> m_selectedMatypes;
-    QHash<QString, int> m_previewMatypes;
-    QHash<QString, int> m_preDeleteMatypes;
-    QHash<int, QString> m_matypeOwnerById;
 
     // services
     ProjectManagerService* m_projectManagerService = nullptr;

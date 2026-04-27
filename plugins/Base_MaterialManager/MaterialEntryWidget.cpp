@@ -25,6 +25,22 @@
 
 namespace
 {
+DomainKey makeMatypeKey(int matype)
+{
+    DomainKey key;
+    key.category = "MATYPE";
+    key.dim = 3;
+    key.id = matype;
+    return key;
+}
+
+int matypeFromKey(const DomainKey& key)
+{
+    if (!key.isValid() || key.category.compare("MATYPE", Qt::CaseInsensitive) != 0)
+        return -1;
+    return key.id;
+}
+
 QString matypeDisplayText(int matype, const MshPickMap* pickMap = nullptr)
 {
     if (matype <= 0)
@@ -47,6 +63,11 @@ QString matypeDisplayText(int matype, const MshPickMap* pickMap = nullptr)
             return name;
     }
     return QString::number(matype);
+}
+
+QString pickDomainForMaterial()
+{
+    return QStringLiteral("MaterialEntryWidget");
 }
 }
 
@@ -389,7 +410,8 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     rebuildSeepageFields(entry);
 
     // ===== 初始化选中 MATYPE =====
-    int initialMatype = m_materialManager->selectedMatypeForEntry(m_entryId);
+    int initialMatype =
+        matypeFromKey(PickManager::instance().selectedDomain(pickDomainForMaterial(), m_entryId));
     if (initialMatype < 0 && !appliedList.isEmpty())
     {
         initialMatype = appliedList.first();
@@ -398,13 +420,15 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     int comboIndex = (initialMatype >= 0) ? m_matypeCombo->findData(initialMatype) : -1;
     m_matypeCombo->setCurrentIndex(comboIndex >= 0 ? comboIndex : 0);
 
-    m_materialManager->setSelectedMatypeForEntry(m_entryId, initialMatype);
+    PickManager::instance().setSelectedDomain(
+        pickDomainForMaterial(), m_entryId,
+        initialMatype >= 0 ? makeMatypeKey(initialMatype) : DomainKey{});
 
     // 初始化：清空 preview / predelete
     m_previewMatype = -1;
     m_preDeleteMatype = -1;
-    m_materialManager->setPreviewMatypeForEntry(m_entryId, -1);
-    m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
+    PickManager::instance().setPreviewDomain(pickDomainForMaterial(), m_entryId, DomainKey{});
+    PickManager::instance().setPreDeleteDomain(pickDomainForMaterial(), m_entryId, DomainKey{});
 
     m_isUpdating = false;
 
@@ -476,8 +500,8 @@ void MaterialEntryWidget::refreshAppliedMatypes(const QSet<int>& appliedMatypes,
     // 数据刷新后，预删除/预览都清空（避免旧状态影响）
     m_preDeleteMatype = -1;
     m_previewMatype = -1;
-    m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
-    m_materialManager->setPreviewMatypeForEntry(m_entryId, -1);
+    PickManager::instance().setPreDeleteDomain(pickDomainForMaterial(), m_entryId, DomainKey{});
+    PickManager::instance().setPreviewDomain(pickDomainForMaterial(), m_entryId, DomainKey{});
 
     m_isUpdating = false;
 
@@ -510,7 +534,8 @@ void MaterialEntryWidget::onMatypeChanged(int)
     const int matype = data.isValid() ? data.toInt() : -1;
 
     // 仅在非下拉预览阶段同步 Selected，覆盖键盘/滚轮等非 activated 路径。
-    m_materialManager->setSelectedMatypeForEntry(m_entryId, matype);
+    PickManager::instance().setSelectedDomain(
+        pickDomainForMaterial(), m_entryId, matype >= 0 ? makeMatypeKey(matype) : DomainKey{});
     m_materialManager->refreshMatypeHighlight(m_entryId);
 
     updateAppliedListColors();
@@ -525,13 +550,14 @@ void MaterialEntryWidget::onMatypeActivated(int)
     int matype = data.isValid() ? data.toInt() : -1;
 
     // 选中态：写入 Selected
-    m_materialManager->setSelectedMatypeForEntry(m_entryId, matype);
+    PickManager::instance().setSelectedDomain(
+        pickDomainForMaterial(), m_entryId, matype >= 0 ? makeMatypeKey(matype) : DomainKey{});
 
     // 改选中时通常清掉预删除（更符合直觉）
     m_preDeleteMatype = -1;
     if (m_appliedMatypesList)
         m_appliedMatypesList->clearSelection();
-    m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
+    PickManager::instance().setPreDeleteDomain(pickDomainForMaterial(), m_entryId, DomainKey{});
 
     updateAppliedListColors();
     m_materialManager->refreshMatypeHighlight(m_entryId);
@@ -559,7 +585,7 @@ void MaterialEntryWidget::onAppliedMatypeSelected(const QString& text)
     {
         // 清选择 => 取消预删除
         m_preDeleteMatype = -1;
-        m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
+        PickManager::instance().setPreDeleteDomain(pickDomainForMaterial(), m_entryId, DomainKey{});
         updateAppliedListColors();
         m_materialManager->refreshMatypeHighlight(m_entryId);
         return;
@@ -570,7 +596,8 @@ void MaterialEntryWidget::onAppliedMatypeSelected(const QString& text)
 
     // ★ 只设置“预删除”，不改变 Selected
     m_preDeleteMatype = matype;
-    m_materialManager->setPreDeleteMatypeForEntry(m_entryId, matype);
+    PickManager::instance().setPreDeleteDomain(
+        pickDomainForMaterial(), m_entryId, matype >= 0 ? makeMatypeKey(matype) : DomainKey{});
 
     updateAppliedListColors();
     m_materialManager->refreshMatypeHighlight(m_entryId);
@@ -666,7 +693,8 @@ void MaterialEntryWidget::onMatypeHovered(int index)
     int matype = data.isValid() ? data.toInt() : -1;
 
     m_previewMatype = matype;
-    m_materialManager->setPreviewMatypeForEntry(m_entryId, matype);
+    PickManager::instance().setPreviewDomain(
+        pickDomainForMaterial(), m_entryId, matype >= 0 ? makeMatypeKey(matype) : DomainKey{});
     m_materialManager->refreshMatypeHighlight(m_entryId);
 }
 
@@ -682,12 +710,13 @@ void MaterialEntryWidget::onDropdownClosed()
     if (m_previewMatype != -1)
     {
         m_previewMatype = -1;
-        m_materialManager->setPreviewMatypeForEntry(m_entryId, -1);
+        PickManager::instance().setPreviewDomain(pickDomainForMaterial(), m_entryId, DomainKey{});
     }
 
     if (m_matypeCombo)
     {
-        const int selected = m_materialManager->selectedMatypeForEntry(m_entryId);
+        const int selected =
+            matypeFromKey(PickManager::instance().selectedDomain(pickDomainForMaterial(), m_entryId));
         int comboIndex = (selected >= 0) ? m_matypeCombo->findData(selected) : 0;
         if (comboIndex < 0)
             comboIndex = 0;
@@ -732,7 +761,7 @@ void MaterialEntryWidget::onRemoveMatypeClicked()
 
     // 移除后清掉预删除
     m_preDeleteMatype = -1;
-    m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
+    PickManager::instance().setPreDeleteDomain(pickDomainForMaterial(), m_entryId, DomainKey{});
     updateAppliedListColors();
     m_materialManager->refreshMatypeHighlight(m_entryId);
 }

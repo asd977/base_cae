@@ -907,10 +907,6 @@ void MaterialManager::setupTreeWidget()
 
 void MaterialManager::loadDefaultLibrary()
 {
-    m_selectedMatypes.clear();
-    m_previewMatypes.clear();
-    m_preDeleteMatypes.clear();
-    m_matypeOwnerById.clear();
     m_models = createDefaultMaterialModels();
     notifyLibraryChanged();
 }
@@ -934,10 +930,6 @@ void MaterialManager::newProjectForPath(const QString& workPath)
     m_entryItems.clear();
     m_addedEntryIds.clear();
     m_materialTransitions.clear();
-    m_selectedMatypes.clear();
-    m_previewMatypes.clear();
-    m_preDeleteMatypes.clear();
-    m_matypeOwnerById.clear();
 
     m_materialManagerWidget = new MaterialManagerWidget(this);
     loadDefaultLibrary();
@@ -1060,10 +1052,6 @@ QVector<QStringList> MaterialManager::getValueStrings()
 
 void MaterialManager::setValueStrings(QVector<QStringList> values)
 {
-    m_selectedMatypes.clear();
-    m_previewMatypes.clear();
-    m_preDeleteMatypes.clear();
-    m_matypeOwnerById.clear();
     if (values.isEmpty())
     {
         loadDefaultLibrary();
@@ -1518,30 +1506,21 @@ void MaterialManager::highlightMatypes(const QString& entryId, const QSet<int>& 
     {
         return;
     }
-    const QString domain = m_pickDomain.isEmpty() ? QStringLiteral("MaterialManager") : m_pickDomain;
-    const QString uuid = m_pickUuid.isEmpty() ? entryId : m_pickUuid;
-
-    auto mk = [](int id) -> DomainKey
-    {
-        DomainKey key;
-        key.category = "MATYPE";
-        key.dim = 3;
-        key.id = id;
-        return key;
-    };
+    const QString domain = materialPickDomain();
+    const QString uuid = materialPickUuid(entryId);
 
     QSet<DomainKey> applied;
     for (int id : matypes)
-        applied.insert(mk(id));
+        applied.insert(matypeDomainKey(id));
     PickManager::instance().setAppliedDomains(domain, uuid, applied);
     PickManager::instance().setSelectedDomain(domain, uuid,
-                                              selectedMatype >= 0 ? mk(selectedMatype)
+                                              selectedMatype >= 0 ? matypeDomainKey(selectedMatype)
                                                                   : DomainKey{});
     PickManager::instance().setPreviewDomain(domain, uuid,
-                                             previewMatype >= 0 ? mk(previewMatype)
+                                             previewMatype >= 0 ? matypeDomainKey(previewMatype)
                                                                 : DomainKey{});
     PickManager::instance().setPreDeleteDomain(domain, uuid,
-                                               preDeleteMatype >= 0 ? mk(preDeleteMatype)
+                                               preDeleteMatype >= 0 ? matypeDomainKey(preDeleteMatype)
                                                                     : DomainKey{});
 }
 
@@ -1551,29 +1530,27 @@ void MaterialManager::refreshMatypeHighlight(const QString& entryId)
     if (!entry)
         return;
 
-    const int preview = m_previewMatypes.value(entryId, -1);
-    const int preDelete = m_preDeleteMatypes.value(entryId, -1);
-    // 不再使用 Selected 高亮，仅保留 Applied / Preview / PreDelete。
-    highlightMatypes(entryId, entry->appliedMatypes, -1, preview, preDelete);
+    const int selected = selectedMatypeForEntry(entryId);
+    const int preview = previewMatypeForEntry(entryId);
+    const int preDelete = preDeleteMatypeForEntry(entryId);
+    highlightMatypes(entryId, entry->appliedMatypes, selected, preview, preDelete);
 }
 
 int MaterialManager::selectedMatypeForEntry(const QString& entryId) const
 {
-    return m_selectedMatypes.value(entryId, -1);
+    const DomainKey key =
+        PickManager::instance().selectedDomain(materialPickDomain(), materialPickUuid(entryId));
+    return matypeFromDomainKey(key);
 }
 
 void MaterialManager::setSelectedMatypeForEntry(const QString& entryId, int matype)
 {
     if (entryId.isEmpty())
-    {
         return;
-    }
-    if (matype < 0)
-    {
-        m_selectedMatypes.remove(entryId);
-        return;
-    }
-    m_selectedMatypes.insert(entryId, matype);
+
+    PickManager::instance().setSelectedDomain(
+        materialPickDomain(), materialPickUuid(entryId),
+        matype >= 0 ? matypeDomainKey(matype) : DomainKey{});
 }
 
 void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
@@ -1598,7 +1575,7 @@ void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
         return {};
     };
 
-    QString ownerId = m_matypeOwnerById.value(matype);
+    QString ownerId = PickManager::instance().domainOwner(materialPickDomain(), matypeDomainKey(matype));
     if (ownerId.isEmpty())
         ownerId = findOwnerEntryId(matype);
     if (!ownerId.isEmpty() && ownerId != entryId)
@@ -1608,22 +1585,21 @@ void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
         if (ownerEntry)
         {
             ownerEntry->appliedMatypes.remove(matype);
-            if (m_selectedMatypes.value(ownerId, -1) == matype)
-                m_selectedMatypes.remove(ownerId);
-            if (m_previewMatypes.value(ownerId, -1) == matype)
-                m_previewMatypes.remove(ownerId);
-            if (m_preDeleteMatypes.value(ownerId, -1) == matype)
-                m_preDeleteMatypes.remove(ownerId);
+            if (selectedMatypeForEntry(ownerId) == matype)
+                setSelectedMatypeForEntry(ownerId, -1);
+            if (previewMatypeForEntry(ownerId) == matype)
+                setPreviewMatypeForEntry(ownerId, -1);
+            if (preDeleteMatypeForEntry(ownerId) == matype)
+                setPreDeleteMatypeForEntry(ownerId, -1);
             syncAutoNumberProperties(ownerModel, ownerEntry);
             refreshEntryWidgetMatypes(ownerId, ownerEntry->appliedMatypes,
-                                      m_selectedMatypes.value(ownerId, -1));
+                                      selectedMatypeForEntry(ownerId));
             refreshMatypeHighlight(ownerId);
         }
     }
 
     setSelectedMatypeForEntry(entryId, matype);
     entry->appliedMatypes.insert(matype);
-    m_matypeOwnerById.insert(matype, entryId);
     MaterialModel* model = nullptr;
     findEntry(entryId, &model);
     syncAutoNumberProperties(model, entry);
@@ -1649,24 +1625,22 @@ void MaterialManager::removeMatypeFromEntry(const QString& entryId, int matype)
 
     if (entry->appliedMatypes.remove(matype))
     {
-        if (m_matypeOwnerById.value(matype) == entryId)
-            m_matypeOwnerById.remove(matype);
-        if (m_selectedMatypes.value(entryId, -1) == matype)
+        if (selectedMatypeForEntry(entryId) == matype)
         {
-            m_selectedMatypes.remove(entryId);
+            setSelectedMatypeForEntry(entryId, -1);
         }
-        if (m_previewMatypes.value(entryId, -1) == matype)
+        if (previewMatypeForEntry(entryId) == matype)
         {
-            m_previewMatypes.remove(entryId);
+            setPreviewMatypeForEntry(entryId, -1);
         }
-        if (m_preDeleteMatypes.value(entryId, -1) == matype)
+        if (preDeleteMatypeForEntry(entryId) == matype)
         {
-            m_preDeleteMatypes.remove(entryId);
+            setPreDeleteMatypeForEntry(entryId, -1);
         }
 
         syncAutoNumberProperties(model, entry);
         refreshEntryWidgetMatypes(entryId, entry->appliedMatypes,
-                                  m_selectedMatypes.value(entryId, -1));
+                                  selectedMatypeForEntry(entryId));
         notifyEntryUpdated(entryId, false);
         refreshMatypeHighlight(entryId);
     }
@@ -2814,23 +2788,12 @@ void MaterialManager::clearMatypeHighlight(const QString& entryId)
         return;
     }
 
-    m_previewMatypes.remove(entryId);
-    m_preDeleteMatypes.remove(entryId);
-
-    const QString domain = m_pickDomain.isEmpty() ? QStringLiteral("MaterialManager") : m_pickDomain;
-    const QString uuid = m_pickUuid.isEmpty() ? entryId : m_pickUuid;
-    PickManager::instance().clearDomainSelection(domain, uuid);
+    PickManager::instance().clearDomainSelection(materialPickDomain(), materialPickUuid(entryId));
 }
 
 void MaterialManager::clearAllMatypeHighlight()
 {
-    m_previewMatypes.clear();
-    m_preDeleteMatypes.clear();
-    const QString domain = m_pickDomain.isEmpty() ? QStringLiteral("MaterialManager") : m_pickDomain;
-    if (m_pickUuid.isEmpty())
-        PickManager::instance().clearDomainSelection(domain);
-    else
-        PickManager::instance().clearDomainSelection(domain, m_pickUuid);
+    PickManager::instance().clearDomainSelection(materialPickDomain());
 }
 
 void MaterialManager::setPickContext(const QString& domain, const QString& uuid)
@@ -2847,38 +2810,59 @@ void MaterialManager::clearPickContext()
 
 int MaterialManager::previewMatypeForEntry(const QString& entryId) const
 {
-    return m_previewMatypes.value(entryId, -1);
+    const DomainKey key =
+        PickManager::instance().previewDomain(materialPickDomain(), materialPickUuid(entryId));
+    return matypeFromDomainKey(key);
 }
 
 void MaterialManager::setPreviewMatypeForEntry(const QString& entryId, int matype)
 {
     if (entryId.isEmpty())
         return;
-    if (matype < 0)
-    {
-        m_previewMatypes.remove(entryId);
-    }
-    else
-    {
-        m_previewMatypes.insert(entryId, matype);
-    }
+    PickManager::instance().setPreviewDomain(
+        materialPickDomain(), materialPickUuid(entryId),
+        matype >= 0 ? matypeDomainKey(matype) : DomainKey{});
 }
 
 int MaterialManager::preDeleteMatypeForEntry(const QString& entryId) const
 {
-    return m_preDeleteMatypes.value(entryId, -1);
+    const DomainKey key =
+        PickManager::instance().preDeleteDomain(materialPickDomain(), materialPickUuid(entryId));
+    return matypeFromDomainKey(key);
 }
 
 void MaterialManager::setPreDeleteMatypeForEntry(const QString& entryId, int matype)
 {
     if (entryId.isEmpty())
         return;
-    if (matype < 0)
-    {
-        m_preDeleteMatypes.remove(entryId);
-    }
-    else
-    {
-        m_preDeleteMatypes.insert(entryId, matype);
-    }
+    PickManager::instance().setPreDeleteDomain(
+        materialPickDomain(), materialPickUuid(entryId),
+        matype >= 0 ? matypeDomainKey(matype) : DomainKey{});
+}
+
+QString MaterialManager::materialPickDomain() const
+{
+    return m_pickDomain.isEmpty() ? QStringLiteral("MaterialManager") : m_pickDomain;
+}
+
+QString MaterialManager::materialPickUuid(const QString& entryId) const
+{
+    Q_UNUSED(m_pickUuid);
+    return entryId;
+}
+
+DomainKey MaterialManager::matypeDomainKey(int matype)
+{
+    DomainKey key;
+    key.category = "MATYPE";
+    key.dim = 3;
+    key.id = matype;
+    return key;
+}
+
+int MaterialManager::matypeFromDomainKey(const DomainKey& key)
+{
+    if (!key.isValid() || key.category.compare("MATYPE", Qt::CaseInsensitive) != 0)
+        return -1;
+    return key.id;
 }
