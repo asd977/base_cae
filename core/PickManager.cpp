@@ -501,6 +501,27 @@ void PickManager::activate(const QString& domain, const QString& uuid, PickMode 
     m_currentUUid = uuid;
     m_pickMode = mode;
 
+    if (mode == PickMode::Domain)
+    {
+        const QSet<DomainKey> applied = m_domainsByDomainUuid.value(domain).value(uuid);
+        const DomainKey selected =
+            m_selectedDomainByDomainUuid.value(domain).value(uuid, DomainKey{});
+        const DomainKey preview =
+            m_previewDomainByDomainUuid.value(domain).value(uuid, DomainKey{});
+        const DomainKey preDelete =
+            m_preDeleteDomainByDomainUuid.value(domain).value(uuid, DomainKey{});
+        const bool hasAny = !applied.isEmpty() || selected.isValid() || preview.isValid() ||
+                            preDelete.isValid();
+        if (!hasAny && !m_domainColoringActive)
+        {
+            updateActorVisibility();
+            if (m_lineNodeActor)
+                m_lineNodeActor->SetVisibility(false);
+            teardownPicking();
+            return;
+        }
+    }
+
     refreshStructureIfNeeded();
     updateActorVisibility();
 

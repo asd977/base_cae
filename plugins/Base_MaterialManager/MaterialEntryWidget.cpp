@@ -76,6 +76,12 @@ void MaterialEntryWidget::beforeLoad()
     if (m_materialManager)
     {
         m_materialManager->setPickContext(getPageType(), m_uuid);
+        PickManager::instance().activate(getPageType(), m_uuid, PickMode::Domain);
+        PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
+        PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, false);
+        connect(&PickManager::instance(), &PickManager::domainSelected, this,
+                &MaterialEntryWidget::onDomainPicked, Qt::UniqueConnection);
+        m_pickInteractionReady = true;
         if (!m_entryId.isEmpty())
         {
             MaterialEntry* entry = lookupEntry();
@@ -105,13 +111,10 @@ void MaterialEntryWidget::beforeUnload()
 
     if (m_materialManager)
     {
-        if (m_pickInteractionReady)
-        {
-            disconnect(&PickManager::instance(), &PickManager::domainSelected, this,
-                       &MaterialEntryWidget::onDomainPicked);
-            PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Domain);
-            m_pickInteractionReady = false;
-        }
+        disconnect(&PickManager::instance(), &PickManager::domainSelected, this,
+                   &MaterialEntryWidget::onDomainPicked);
+        PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Domain);
+        m_pickInteractionReady = false;
         m_materialManager->clearPickContext();
     }
 
