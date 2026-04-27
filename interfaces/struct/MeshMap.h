@@ -6,6 +6,7 @@
 #include <QString>
 #include <QVector>
 #include <QtGlobal>
+#include <algorithm>
 
 using MeshIdType = qint64;
 
@@ -73,6 +74,50 @@ struct MshPickMap
     QHash<MeshTagKey, MeshTagSet> tagSets;
     QHash<MeshIdType, QVector<MeshTagKey>> cellIdToDomainTags;
     QHash<MeshIdType, QVector<MeshTagKey>> pointIdToBoundaryTags;
+
+    QVector<MeshTagSet> physicalTagSets(int dimFilter = -1) const
+    {
+        QVector<MeshTagSet> out;
+        out.reserve(tagSets.size());
+        for (auto it = tagSets.constBegin(); it != tagSets.constEnd(); ++it)
+        {
+            const MeshTagSet& set = it.value();
+            if (set.key.category != QStringLiteral("Physical"))
+                continue;
+            if (dimFilter >= 0 && set.key.dim != dimFilter)
+                continue;
+            out.push_back(set);
+        }
+        std::sort(out.begin(), out.end(), [](const MeshTagSet& a, const MeshTagSet& b)
+                  {
+                      if (a.key.dim != b.key.dim)
+                          return a.key.dim < b.key.dim;
+                      return a.key.id < b.key.id;
+                  });
+        return out;
+    }
+
+    QString physicalName(int physId, int dim = -1) const
+    {
+        if (physId <= 0)
+            return {};
+        if (dim >= 0)
+        {
+            const MeshTagKey key{QStringLiteral("Physical"), dim, physId};
+            if (tagSets.contains(key))
+                return tagSets.value(key).name.trimmed();
+        }
+        for (int d = 0; d <= 3; ++d)
+        {
+            const MeshTagKey key{QStringLiteral("Physical"), d, physId};
+            if (!tagSets.contains(key))
+                continue;
+            const QString n = tagSets.value(key).name.trimmed();
+            if (!n.isEmpty())
+                return n;
+        }
+        return {};
+    }
 };
 
 Q_DECLARE_METATYPE(MeshTagKey)

@@ -32,7 +32,9 @@ QString matypeDisplayText(int matype)
     if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
     {
         const MshPickMap pick = meshService->mshPickMapSolid();
-        const QString name = pick.physIdToName.value(matype).trimmed();
+        QString name = pick.physicalName(matype, 3).trimmed();
+        if (name.isEmpty())
+            name = pick.physicalName(matype).trimmed();
         if (!name.isEmpty())
             return name;
     }
