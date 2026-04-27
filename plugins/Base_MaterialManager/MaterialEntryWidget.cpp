@@ -76,13 +76,6 @@ void MaterialEntryWidget::beforeLoad()
     if (m_materialManager)
     {
         m_materialManager->setPickContext(getPageType(), m_uuid);
-        PickManager::instance().activate(getPageType(), m_uuid, PickMode::Domain);
-        PickManager::instance().setClickPickEnabled(getPageType(), m_uuid,
-                                                    true);
-        PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid,
-                                                    false);
-        connect(&PickManager::instance(), &PickManager::domainSelected, this,
-                &MaterialEntryWidget::onDomainPicked, Qt::UniqueConnection);
         if (!m_entryId.isEmpty())
         {
             MaterialEntry* entry = lookupEntry();
@@ -94,7 +87,7 @@ void MaterialEntryWidget::beforeLoad()
                           preDelete >= 0);
             if (hasHighlightState)
             {
-                m_materialManager->refreshMatypeHighlight(m_entryId);
+                refreshMatypeHighlightSafe();
             }
         }
     }
@@ -112,9 +105,13 @@ void MaterialEntryWidget::beforeUnload()
 
     if (m_materialManager)
     {
-        disconnect(&PickManager::instance(), &PickManager::domainSelected, this,
-                   &MaterialEntryWidget::onDomainPicked);
-        PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Domain);
+        if (m_pickInteractionReady)
+        {
+            disconnect(&PickManager::instance(), &PickManager::domainSelected, this,
+                       &MaterialEntryWidget::onDomainPicked);
+            PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Domain);
+            m_pickInteractionReady = false;
+        }
         m_materialManager->clearPickContext();
     }
 
@@ -460,6 +457,25 @@ MaterialEntry* MaterialEntryWidget::lookupEntry(MaterialModel** model) const
     return m_materialManager->findEntry(m_entryId, model);
 }
 
+void MaterialEntryWidget::ensurePickInteractionReady()
+{
+    if (!m_materialManager || m_pickInteractionReady)
+        return;
+    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Domain);
+    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
+    PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, false);
+    connect(&PickManager::instance(), &PickManager::domainSelected, this,
+            &MaterialEntryWidget::onDomainPicked, Qt::UniqueConnection);
+    m_pickInteractionReady = true;
+}
+
+void MaterialEntryWidget::refreshMatypeHighlightSafe()
+{
+    ensurePickInteractionReady();
+    if (m_materialManager)
+        m_materialManager->refreshMatypeHighlight(m_entryId);
+}
+
 void MaterialEntryWidget::appendMatypeOption(int matype)
 {
     if (!m_matypeCombo || matype <= 0)
@@ -547,7 +563,7 @@ void MaterialEntryWidget::onMatypeChanged(int)
 
     // 仅在非下拉预览阶段同步 Selected，覆盖键盘/滚轮等非 activated 路径。
     m_materialManager->setSelectedMatypeForEntry(m_entryId, matype);
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    refreshMatypeHighlightSafe();
 
     updateAppliedListColors();
 }
@@ -570,7 +586,7 @@ void MaterialEntryWidget::onMatypeActivated(int)
     m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
 
     updateAppliedListColors();
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    refreshMatypeHighlightSafe();
 }
 
 void MaterialEntryWidget::onApplyMatypeClicked()
@@ -597,7 +613,7 @@ void MaterialEntryWidget::onAppliedMatypeSelected(const QString& text)
         m_preDeleteMatype = -1;
         m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
         updateAppliedListColors();
-        m_materialManager->refreshMatypeHighlight(m_entryId);
+        refreshMatypeHighlightSafe();
         return;
     }
     const int matype = item->data(Qt::UserRole).toInt();
@@ -609,7 +625,7 @@ void MaterialEntryWidget::onAppliedMatypeSelected(const QString& text)
     m_materialManager->setPreDeleteMatypeForEntry(m_entryId, matype);
 
     updateAppliedListColors();
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    refreshMatypeHighlightSafe();
 }
 
 void MaterialEntryWidget::onTransitionModeChanged(int state)
@@ -703,7 +719,7 @@ void MaterialEntryWidget::onMatypeHovered(int index)
 
     m_previewMatype = matype;
     m_materialManager->setPreviewMatypeForEntry(m_entryId, matype);
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    refreshMatypeHighlightSafe();
 }
 
 void MaterialEntryWidget::onDropdownClosed()
@@ -747,7 +763,7 @@ void MaterialEntryWidget::onDropdownClosed()
 
     // 下拉关闭后仅取消 Preview，并恢复到该条目的应有高亮状态（Selected /
     // PreDelete / Applied）。
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    refreshMatypeHighlightSafe();
 }
 
 void MaterialEntryWidget::onRemoveMatypeClicked()
@@ -770,7 +786,7 @@ void MaterialEntryWidget::onRemoveMatypeClicked()
     m_preDeleteMatype = -1;
     m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
     updateAppliedListColors();
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    refreshMatypeHighlightSafe();
 }
 
 void MaterialEntryWidget::onDomainPicked(const QString& domain, const QString& uuid, const DomainKey& key)
@@ -798,7 +814,7 @@ void MaterialEntryWidget::onDomainPicked(const QString& domain, const QString& u
     }
 
     m_materialManager->setSelectedMatypeForEntry(m_entryId, matype);
-    m_materialManager->refreshMatypeHighlight(m_entryId);
+    refreshMatypeHighlightSafe();
     updateAppliedListColors();
 }
 

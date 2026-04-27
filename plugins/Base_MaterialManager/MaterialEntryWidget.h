@@ -50,6 +50,8 @@ class MaterialEntryWidget : public BasePage
     void onDomainPicked(const QString& domain, const QString& uuid, const DomainKey& key);
 
   private:
+    void ensurePickInteractionReady();
+    void refreshMatypeHighlightSafe();
     void ensureMatypeOptionsLoaded();
     void appendMatypeOption(int matype);
     void rebuildForm(MaterialModel* model, MaterialEntry* entry);
@@ -92,4 +94,5 @@ class MaterialEntryWidget : public BasePage
     bool m_ignoreNextMatypeChanged = false; // 忽略下拉关闭后可能触发的伪 currentIndexChanged
     bool m_beforeUnloadHandled = false;
     bool m_matypeOptionsLoaded = false;
+    bool m_pickInteractionReady = false;
 };
