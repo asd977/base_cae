@@ -139,6 +139,9 @@ class CORE_EXPORT PickManager : public QObject
     void setPreDeleteDomain(const QString& domain, const QString& uuid, const DomainKey& key);
     void clearDomainSelection(const QString& domain, const QString& uuid = QString());
 
+  signals:
+    void domainSelected(const QString& domain, const QString& uuid, const DomainKey& key);
+
   private:
     explicit PickManager(QObject* parent = nullptr);
     ~PickManager() override = default;

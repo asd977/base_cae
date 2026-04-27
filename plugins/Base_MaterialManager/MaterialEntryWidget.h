@@ -14,6 +14,7 @@ class MaterialEntry;
 class CustomComboBox;
 class QCheckBox;
 class QSpinBox;
+struct DomainKey;
 
 class MaterialEntryWidget : public BasePage
 {
@@ -46,6 +47,7 @@ class MaterialEntryWidget : public BasePage
     void onDropdownClosed();
     void onTransitionModeChanged(int state);
     void onTransitionMatypeChanged(int value);
+    void onDomainPicked(const QString& domain, const QString& uuid, const DomainKey& key);
 
   private:
     void rebuildForm(MaterialModel* model, MaterialEntry* entry);

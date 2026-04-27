@@ -79,9 +79,11 @@ void MaterialEntryWidget::beforeLoad()
         m_materialManager->setPickContext(getPageType(), m_uuid);
         PickManager::instance().activate(getPageType(), m_uuid, PickMode::Domain);
         PickManager::instance().setClickPickEnabled(getPageType(), m_uuid,
-                                                    false);
+                                                    true);
         PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid,
                                                     false);
+        connect(&PickManager::instance(), &PickManager::domainSelected, this,
+                &MaterialEntryWidget::onDomainPicked, Qt::UniqueConnection);
         if (!m_entryId.isEmpty())
             m_materialManager->refreshMatypeHighlight(m_entryId);
     }
@@ -99,6 +101,8 @@ void MaterialEntryWidget::beforeUnload()
 
     if (m_materialManager)
     {
+        disconnect(&PickManager::instance(), &PickManager::domainSelected, this,
+                   &MaterialEntryWidget::onDomainPicked);
         PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Domain);
         m_materialManager->clearPickContext();
     }
@@ -735,6 +739,35 @@ void MaterialEntryWidget::onRemoveMatypeClicked()
     m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
     updateAppliedListColors();
     m_materialManager->refreshMatypeHighlight(m_entryId);
+}
+
+void MaterialEntryWidget::onDomainPicked(const QString& domain, const QString& uuid, const DomainKey& key)
+{
+    if (!m_materialManager || !m_matypeCombo)
+        return;
+    if (domain != getPageType() || uuid != m_uuid)
+        return;
+    if (key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) != 0 || key.id <= 0)
+        return;
+
+    const int matype = key.id;
+    const int comboIndex = m_matypeCombo->findData(matype);
+    if (comboIndex < 0)
+        return;
+
+    if (m_appliedMatypesList)
+        m_appliedMatypesList->clearSelection();
+    m_preDeleteMatype = -1;
+    m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
+
+    {
+        QSignalBlocker blocker(m_matypeCombo);
+        m_matypeCombo->setCurrentIndex(comboIndex);
+    }
+
+    m_materialManager->setSelectedMatypeForEntry(m_entryId, matype);
+    m_materialManager->refreshMatypeHighlight(m_entryId);
+    updateAppliedListColors();
 }
 
 void MaterialEntryWidget::updateAppliedListColors()
