@@ -596,32 +596,15 @@ QString MeshModuleController::displayTextOfTag(const MeshTagKey& key) const
 QSet<int> MeshModuleController::getAvailableMatypes() const
 {
     QSet<int> ret;
-    if (!m_importedGrid)
-        return ret;
-
-    auto* arr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray("MATYPE"));
-    if (!arr)
-        return ret;
-
-    int maxDim = -1;
-    const vtkIdType nCells = m_importedGrid->GetNumberOfCells();
-    for (vtkIdType i = 0; i < nCells; ++i)
+    const MshPickMap map = MeshGridIO::instance().getMeshMap();
+    for (auto it = map.tagSets.constBegin(); it != map.tagSets.constEnd(); ++it)
     {
-        vtkCell* c = m_importedGrid->GetCell(i);
-        if (!c)
+        const MeshTagSet& set = it.value();
+        if (set.key.dim != map.meshDim || set.cellIds.isEmpty())
             continue;
-        maxDim = qMax(maxDim, c->GetCellDimension());
-    }
-    if (maxDim < 0)
-        return ret;
-
-    const vtkIdType n = qMin(arr->GetNumberOfTuples(), nCells);
-    for (vtkIdType i = 0; i < n; ++i)
-    {
-        vtkCell* c = m_importedGrid->GetCell(i);
-        if (!c || c->GetCellDimension() != maxDim)
+        if (set.key.category.compare("MATYPE", Qt::CaseInsensitive) != 0)
             continue;
-        ret.insert(arr->GetValue(i));
+        ret.insert(set.key.id);
     }
     return ret;
 }
