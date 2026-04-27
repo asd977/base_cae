@@ -1180,7 +1180,6 @@ void MeshModuleController::displayCurrentGrid()
     const qint64 rev = PublicVariables::instance().get("pick_structure_revision").toLongLong();
     PublicVariables::instance().set("pick_structure_revision", rev + 1, "project_dir");
 
-    PickManager::instance().updateStructure();
     if (!m_visualWidgetService || !m_hasGrid || !m_importedGrid)
         return;
 
@@ -1262,6 +1261,8 @@ void MeshModuleController::displayCurrentGrid()
 
     // 网格导入/预览后默认只显示网格。
     m_visualWidgetService->setGroupVisible("Geometry", false, false);
+    // 必须在网格 prop 完成更新后再同步 PickManager 结构，否则会抓到旧 actor/mapper。
+    PickManager::instance().updateStructure();
     m_visualWidgetService->render();
 }
 
