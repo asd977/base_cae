@@ -84,7 +84,19 @@ void MaterialEntryWidget::beforeLoad()
         connect(&PickManager::instance(), &PickManager::domainSelected, this,
                 &MaterialEntryWidget::onDomainPicked, Qt::UniqueConnection);
         if (!m_entryId.isEmpty())
-            m_materialManager->refreshMatypeHighlight(m_entryId);
+        {
+            MaterialEntry* entry = lookupEntry();
+            const int selected = m_materialManager->selectedMatypeForEntry(m_entryId);
+            const int preview = m_materialManager->previewMatypeForEntry(m_entryId);
+            const int preDelete = m_materialManager->preDeleteMatypeForEntry(m_entryId);
+            const bool hasHighlightState =
+                entry && (!entry->appliedMatypes.isEmpty() || selected >= 0 || preview >= 0 ||
+                          preDelete >= 0);
+            if (hasHighlightState)
+            {
+                m_materialManager->refreshMatypeHighlight(m_entryId);
+            }
+        }
     }
 }
 
