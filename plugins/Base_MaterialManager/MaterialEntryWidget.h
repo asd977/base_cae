@@ -91,6 +91,7 @@ class MaterialEntryWidget : public BasePage
     int m_previewMatype = -1;   // 下拉悬浮
     int m_preDeleteMatype = -1; // list 选中
 
+    bool m_matypeDropdownOpen = false;
     bool m_ignoreNextMatypeChanged = false; // 忽略下拉关闭后可能触发的伪 currentIndexChanged
     bool m_beforeUnloadHandled = false;
     bool m_matypeOptionsLoaded = false;

@@ -291,7 +291,11 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     connect(m_matypeCombo, &CustomComboBox::itemHovered, this,
             &MaterialEntryWidget::onMatypeHovered);
     connect(m_matypeCombo, &CustomComboBox::dropdownOpened, this,
-            &MaterialEntryWidget::ensureMatypeOptionsLoaded);
+            [this]()
+            {
+                m_matypeDropdownOpen = true;
+                ensureMatypeOptionsLoaded();
+            });
     connect(m_matypeCombo, &CustomComboBox::dropdownClosed, this,
             &MaterialEntryWidget::onDropdownClosed);
     connect(m_matypeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
@@ -449,6 +453,7 @@ void MaterialEntryWidget::clearForm()
     m_transitionMatypeSpin = nullptr;
 
     m_lastHoveredIndex = -1;
+    m_matypeDropdownOpen = false;
     m_matypeOptionsLoaded = false;
 }
 
@@ -552,7 +557,7 @@ void MaterialEntryWidget::onMatypeChanged(int)
 
     // 下拉弹层可见时，currentIndexChanged 可能由“悬浮预览”触发，
     // 不能把该值写成 Selected（否则关闭下拉后会残留预选色/选中色）。
-    if (m_matypeCombo->view() && m_matypeCombo->view()->isVisible())
+    if (m_matypeDropdownOpen || (m_matypeCombo->view() && m_matypeCombo->view()->isVisible()))
     {
         updateAppliedListColors();
         return;
@@ -724,6 +729,16 @@ void MaterialEntryWidget::onMatypeHovered(int index)
 
 void MaterialEntryWidget::onDropdownClosed()
 {
+    m_matypeDropdownOpen = false;
+    // 一些平台/样式会在关闭下拉后额外触发一次 currentIndexChanged（由 hover 项带出），
+    // 这里先吞掉，避免把“悬浮预览”误写成 Selected（红色残留）。
+    m_ignoreNextMatypeChanged = true;
+    QTimer::singleShot(0, this,
+                       [this]()
+                       {
+                           m_ignoreNextMatypeChanged = false;
+                       });
+
     if (m_matypeCombo && m_lastHoveredIndex >= 0)
     {
         m_matypeCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
@@ -743,14 +758,8 @@ void MaterialEntryWidget::onDropdownClosed()
         int comboIndex = (selected >= 0) ? m_matypeCombo->findData(selected) : 0;
         if (comboIndex < 0)
             comboIndex = 0;
-        m_ignoreNextMatypeChanged = true;
         QSignalBlocker blocker(m_matypeCombo);
         m_matypeCombo->setCurrentIndex(comboIndex);
-        QTimer::singleShot(0, this,
-                           [this]()
-                           {
-                               m_ignoreNextMatypeChanged = false;
-                           });
     }
 
     updateAppliedListColors();
