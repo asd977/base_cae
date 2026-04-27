@@ -287,16 +287,14 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
 
     m_matypeCombo = new CustomComboBox(matypeRowWidget);
     m_matypeCombo->addItem(QString("未选择"), QVariant());
-
-    QList<int> matypes = m_materialManager->availableMatypes().values();
-    std::sort(matypes.begin(), matypes.end());
-    for (int value : matypes)
-    {
-        m_matypeCombo->addItem(matypeDisplayText(value), value);
-    }
+    m_matypeOptionsLoaded = false;
+    for (int value : appliedList)
+        appendMatypeOption(value);
 
     connect(m_matypeCombo, &CustomComboBox::itemHovered, this,
             &MaterialEntryWidget::onMatypeHovered);
+    connect(m_matypeCombo, &CustomComboBox::dropdownOpened, this,
+            &MaterialEntryWidget::ensureMatypeOptionsLoaded);
     connect(m_matypeCombo, &CustomComboBox::dropdownClosed, this,
             &MaterialEntryWidget::onDropdownClosed);
     connect(m_matypeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
@@ -454,11 +452,40 @@ void MaterialEntryWidget::clearForm()
     m_transitionMatypeSpin = nullptr;
 
     m_lastHoveredIndex = -1;
+    m_matypeOptionsLoaded = false;
 }
 
 MaterialEntry* MaterialEntryWidget::lookupEntry(MaterialModel** model) const
 {
     return m_materialManager->findEntry(m_entryId, model);
+}
+
+void MaterialEntryWidget::appendMatypeOption(int matype)
+{
+    if (!m_matypeCombo || matype <= 0)
+        return;
+    if (m_matypeCombo->findData(matype) >= 0)
+        return;
+    m_matypeCombo->addItem(matypeDisplayText(matype), matype);
+}
+
+void MaterialEntryWidget::ensureMatypeOptionsLoaded()
+{
+    if (!m_matypeCombo || m_matypeOptionsLoaded || !m_materialManager)
+        return;
+
+    const QVariant currentValue = m_matypeCombo->currentData();
+    const QSignalBlocker blocker(m_matypeCombo);
+    QList<int> matypes = m_materialManager->availableMatypes().values();
+    std::sort(matypes.begin(), matypes.end());
+    for (int value : matypes)
+        appendMatypeOption(value);
+
+    int currentIndex = currentValue.isValid() ? m_matypeCombo->findData(currentValue) : 0;
+    if (currentIndex < 0)
+        currentIndex = 0;
+    m_matypeCombo->setCurrentIndex(currentIndex);
+    m_matypeOptionsLoaded = true;
 }
 
 void MaterialEntryWidget::refreshAppliedMatypes(const QSet<int>& appliedMatypes, int selectedMatype)
