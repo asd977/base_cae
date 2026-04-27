@@ -842,47 +842,15 @@ bool PickManager::pickAt(int x, int y)
         if (kind != GridKind::Solid)
             return false;
 
-        vtkIdType origCellId = cellId;
-        vtkDataArray* origCellArr = findArray(ds->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
-        if (origCellArr && cellId >= 0 && cellId < origCellArr->GetNumberOfTuples())
-            origCellId = static_cast<vtkIdType>(origCellArr->GetTuple1(cellId));
-
         DomainKey pickedKey;
-        if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
-        {
-            const MshPickMap pickMap = meshSvc->mshPickMapSolid();
-            const auto tags = pickMap.cellIdToDomainTags.value(static_cast<MeshIdType>(origCellId));
-            for (const MeshTagKey& tag : tags)
-            {
-                if (tag.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0 &&
-                    tag.dim == 3 && tag.id > 0)
-                {
-                    pickedKey = DomainKey{tag.category, tag.dim, tag.id};
-                    break;
-                }
-            }
-            if (!pickedKey.isValid())
-            {
-                for (const MeshTagKey& tag : tags)
-                {
-                    if (tag.dim == 3 && tag.id > 0)
-                    {
-                        pickedKey = DomainKey{tag.category, tag.dim, tag.id};
-                        break;
-                    }
-                }
-            }
-        }
 
-        if (!pickedKey.isValid())
+        // 先走 MATYPE 数组，避免每次点击复制整份 pickMap。
+        auto* matypeArr = vtkIntArray::SafeDownCast(ds->GetCellData()->GetArray("MATYPE"));
+        if (matypeArr && cellId >= 0 && cellId < matypeArr->GetNumberOfTuples())
         {
-            auto* matypeArr = vtkIntArray::SafeDownCast(ds->GetCellData()->GetArray("MATYPE"));
-            if (matypeArr && cellId >= 0 && cellId < matypeArr->GetNumberOfTuples())
-            {
-                const int matype = matypeArr->GetValue(cellId);
-                if (matype > 0)
-                    pickedKey = DomainKey{QStringLiteral("MATYPE"), 3, matype};
-            }
+            const int matype = matypeArr->GetValue(cellId);
+            if (matype > 0)
+                pickedKey = DomainKey{QStringLiteral("MATYPE"), 3, matype};
         }
 
         if (!pickedKey.isValid())
