@@ -294,6 +294,9 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
             [this]()
             {
                 m_matypeDropdownOpen = true;
+                m_matypeActivatedInDropdown = false;
+                m_selectedMatypeBeforeDropdown =
+                    m_materialManager ? m_materialManager->selectedMatypeForEntry(m_entryId) : -1;
                 ensureMatypeOptionsLoaded();
             });
     connect(m_matypeCombo, &CustomComboBox::dropdownClosed, this,
@@ -454,6 +457,8 @@ void MaterialEntryWidget::clearForm()
 
     m_lastHoveredIndex = -1;
     m_matypeDropdownOpen = false;
+    m_matypeActivatedInDropdown = false;
+    m_selectedMatypeBeforeDropdown = -1;
     m_matypeOptionsLoaded = false;
 }
 
@@ -577,6 +582,9 @@ void MaterialEntryWidget::onMatypeActivated(int)
 {
     if (m_isUpdating || !m_matypeCombo)
         return;
+
+    if (m_matypeDropdownOpen)
+        m_matypeActivatedInDropdown = true;
 
     QVariant data = m_matypeCombo->currentData();
     int matype = data.isValid() ? data.toInt() : -1;
@@ -745,22 +753,28 @@ void MaterialEntryWidget::onDropdownClosed()
         m_lastHoveredIndex = -1;
     }
 
-    // 下拉关闭：取消 Preview，恢复（PreDelete/Selected/Applied）
-    if (m_previewMatype != -1)
-    {
-        m_previewMatype = -1;
+    // 下拉关闭：无条件取消 Preview，避免悬浮高亮残留。
+    m_previewMatype = -1;
+    if (m_materialManager)
         m_materialManager->setPreviewMatypeForEntry(m_entryId, -1);
+
+    // 如果本次下拉没有发生激活选择（仅悬浮/浏览），恢复到下拉打开前的 Selected。
+    if (!m_matypeActivatedInDropdown && m_materialManager)
+    {
+        m_materialManager->setSelectedMatypeForEntry(m_entryId, m_selectedMatypeBeforeDropdown);
     }
 
     if (m_matypeCombo)
     {
-        const int selected = m_materialManager->selectedMatypeForEntry(m_entryId);
+        const int selected = m_materialManager ? m_materialManager->selectedMatypeForEntry(m_entryId) : -1;
         int comboIndex = (selected >= 0) ? m_matypeCombo->findData(selected) : 0;
         if (comboIndex < 0)
             comboIndex = 0;
         QSignalBlocker blocker(m_matypeCombo);
         m_matypeCombo->setCurrentIndex(comboIndex);
     }
+    m_matypeActivatedInDropdown = false;
+    m_selectedMatypeBeforeDropdown = -1;
 
     updateAppliedListColors();
 
