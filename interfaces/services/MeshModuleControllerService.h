@@ -95,6 +95,7 @@ struct MeshModuleControllerService
     virtual void importMshGrid(QString path) = 0;
     virtual bool importCurrentGmshMesh(QString* errMsg = nullptr) = 0;
     virtual MshPickMap mshPickMapSolid() = 0;
+    virtual QString matypePhysicalName(int matype, int dim = 3) const = 0;
     virtual void setMshPickMapSolid(const MshPickMap& pickMap) = 0;
     virtual bool autoGroupingBySpatialBins(int binCount, const QString& targetArrayName,
                                            int startValue, const QString& groupPrefix,

@@ -982,6 +982,15 @@ MshPickMap MeshModuleController::mshPickMapSolid()
     return MeshGridIO::instance().getMeshMap();
 }
 
+QString MeshModuleController::matypePhysicalName(int matype, int dim) const
+{
+    if (matype <= 0)
+    {
+        return QString();
+    }
+    return MeshGridIO::instance().getMeshMapRef().physicalName(matype, dim);
+}
+
 void MeshModuleController::setMshPickMapSolid(const MshPickMap& pickMap)
 {
     MeshGridIO::instance().setMeshMap(pickMap);
