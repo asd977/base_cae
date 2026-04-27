@@ -910,6 +910,7 @@ void MaterialManager::loadDefaultLibrary()
     m_selectedMatypes.clear();
     m_previewMatypes.clear();
     m_preDeleteMatypes.clear();
+    m_matypeOwnerById.clear();
     m_models = createDefaultMaterialModels();
     notifyLibraryChanged();
 }
@@ -936,6 +937,7 @@ void MaterialManager::newProjectForPath(const QString& workPath)
     m_selectedMatypes.clear();
     m_previewMatypes.clear();
     m_preDeleteMatypes.clear();
+    m_matypeOwnerById.clear();
 
     m_materialManagerWidget = new MaterialManagerWidget(this);
     loadDefaultLibrary();
@@ -1061,6 +1063,7 @@ void MaterialManager::setValueStrings(QVector<QStringList> values)
     m_selectedMatypes.clear();
     m_previewMatypes.clear();
     m_preDeleteMatypes.clear();
+    m_matypeOwnerById.clear();
     if (values.isEmpty())
     {
         loadDefaultLibrary();
@@ -1593,7 +1596,9 @@ void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
         return {};
     };
 
-    const QString ownerId = findOwnerEntryId(matype);
+    QString ownerId = m_matypeOwnerById.value(matype);
+    if (ownerId.isEmpty())
+        ownerId = findOwnerEntryId(matype);
     if (!ownerId.isEmpty() && ownerId != entryId)
     {
         MaterialModel* ownerModel = nullptr;
@@ -1616,6 +1621,7 @@ void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
 
     setSelectedMatypeForEntry(entryId, matype);
     entry->appliedMatypes.insert(matype);
+    m_matypeOwnerById.insert(matype, entryId);
     MaterialModel* model = nullptr;
     findEntry(entryId, &model);
     syncAutoNumberProperties(model, entry);
@@ -1641,6 +1647,8 @@ void MaterialManager::removeMatypeFromEntry(const QString& entryId, int matype)
 
     if (entry->appliedMatypes.remove(matype))
     {
+        if (m_matypeOwnerById.value(matype) == entryId)
+            m_matypeOwnerById.remove(matype);
         if (m_selectedMatypes.value(entryId, -1) == matype)
         {
             m_selectedMatypes.remove(entryId);

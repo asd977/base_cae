@@ -1355,40 +1355,6 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
     auto appendFilter = vtkSmartPointer<vtkAppendFilter>::New();
     appendFilter->AddInputData(outNonLine);
 
-    auto buildGroupsFromCellArray = [src](const char* arrayName)
-    {
-        QHash<int, QVector<qint64>> rst;
-        if (!src || !src->GetCellData())
-            return rst;
-        auto* arr = vtkIntArray::SafeDownCast(src->GetCellData()->GetArray(arrayName));
-        if (!arr)
-            return rst;
-        const vtkIdType n = src->GetNumberOfCells();
-        vtkIdType n3d = 0;
-        for (vtkIdType cid = 0; cid < n; ++cid)
-        {
-            vtkCell* c = src->GetCell(cid);
-            if (!c || c->GetCellDimension() != 3)
-                continue;
-            ++n3d;
-            rst[arr->GetValue(cid)].push_back(static_cast<qint64>(cid));
-        }
-        if (n3d <= 0)
-            return QHash<int, QVector<qint64>>{};
-
-        // 只有一个组或整个体域都在同一组时，追加其表面没有增益，跳过以降低卡顿。
-        if (rst.size() <= 1)
-            return QHash<int, QVector<qint64>>{};
-        for (auto it = rst.begin(); it != rst.end();)
-        {
-            if (it.value().size() >= n3d)
-                it = rst.erase(it);
-            else
-                ++it;
-        }
-        return rst;
-    };
-
     const auto appendGroupSurfaceCells = [&](const QHash<int, QVector<qint64>>& groupToCells)
     {
         for (auto it = groupToCells.constBegin(); it != groupToCells.constEnd(); ++it)
@@ -1431,13 +1397,21 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
         }
     };
 
-    const auto matypeGroups = buildGroupsFromCellArray("MATYPE");
-    const auto layerGroups = buildGroupsFromCellArray("LAYER");
-    appendGroupSurfaceCells(matypeGroups);
-    appendGroupSurfaceCells(layerGroups);
-
     const MshPickMap pickMap = MeshGridIO::instance().getMeshMap();
-    appendGroupSurfaceCells(pickMap.volPhysToCellIds);
+    QHash<int, QVector<qint64>> domainGroups;
+    int gid = 1;
+    for (auto it = pickMap.tagSets.constBegin(); it != pickMap.tagSets.constEnd(); ++it)
+    {
+        const MeshTagSet& set = it.value();
+        if (set.key.dim != pickMap.meshDim || set.cellIds.isEmpty())
+            continue;
+        QVector<qint64> cells;
+        cells.reserve(set.cellIds.size());
+        for (MeshIdType cid : set.cellIds)
+            cells.push_back(static_cast<qint64>(cid));
+        domainGroups.insert(gid++, cells);
+    }
+    appendGroupSurfaceCells(domainGroups);
     appendFilter->Update();
 
     auto merged = vtkUnstructuredGrid::SafeDownCast(appendFilter->GetOutput());
@@ -1498,18 +1472,11 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
         return;
     MshPickMap pick = MeshGridIO::instance().getMeshMap();
 
-    pick.cellIdToMatype.clear();
-    pick.cellIdToLayer.clear();
-    pick.cellIdToGroupName.clear();
-    pick.matypeToCellIds.clear();
-    pick.layerToCellIds.clear();
     pick.tagSets.clear();
     pick.cellIdToDomainTags.clear();
 
     auto* matArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"));
     auto* layArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"));
-    auto* grpArr = vtkStringArray::SafeDownCast(grid->GetCellData()->GetAbstractArray("GroupName"));
-
     const vtkIdType nCells = grid->GetNumberOfCells();
     int maxDim = -1;
     for (vtkIdType cid = 0; cid < nCells; ++cid)
@@ -1524,15 +1491,6 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
     {
         const int mat = matArr ? matArr->GetValue(cid) : 0;
         const int lay = layArr ? layArr->GetValue(cid) : 0;
-        const QString g = (grpArr && cid < grpArr->GetNumberOfValues())
-                              ? QString::fromStdString(grpArr->GetValue(cid)).trimmed()
-                              : QString();
-
-        pick.cellIdToMatype[cid] = mat;
-        pick.cellIdToLayer[cid] = lay;
-        pick.cellIdToGroupName[cid] = g;
-        pick.matypeToCellIds[mat].push_back(cid);
-        pick.layerToCellIds[lay].push_back(cid);
 
         auto addDomainTag = [&](const QString& category, int id)
         {

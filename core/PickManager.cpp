@@ -370,6 +370,8 @@ void PickManager::setAppliedDomains(const QString& domain, const QString& uuid,
     auto& prevOwners = m_prevOwnerDomainByDomain[domain];
 
     const QSet<DomainKey> oldSet = uuid2set.value(uuid);
+    if (oldSet == keys)
+        return;
     const QSet<DomainKey> removed = oldSet - keys;
     for (const DomainKey& key : removed)
     {
@@ -414,18 +416,24 @@ void PickManager::setAppliedDomains(const QString& domain, const QString& uuid,
 
 void PickManager::setSelectedDomain(const QString& domain, const QString& uuid, const DomainKey& key)
 {
+    if (m_selectedDomainByDomainUuid.value(domain).value(uuid, DomainKey{}) == key)
+        return;
     m_selectedDomainByDomainUuid[domain][uuid] = key;
     rebuildDomainHighlightActors();
 }
 
 void PickManager::setPreviewDomain(const QString& domain, const QString& uuid, const DomainKey& key)
 {
+    if (m_previewDomainByDomainUuid.value(domain).value(uuid, DomainKey{}) == key)
+        return;
     m_previewDomainByDomainUuid[domain][uuid] = key;
     rebuildDomainHighlightActors();
 }
 
 void PickManager::setPreDeleteDomain(const QString& domain, const QString& uuid, const DomainKey& key)
 {
+    if (m_preDeleteDomainByDomainUuid.value(domain).value(uuid, DomainKey{}) == key)
+        return;
     m_preDeleteDomainByDomainUuid[domain][uuid] = key;
     rebuildDomainHighlightActors();
 }

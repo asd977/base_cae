@@ -124,6 +124,7 @@ class MaterialManager : public QObject, public MaterialManagerService
     QHash<QString, int> m_selectedMatypes;
     QHash<QString, int> m_previewMatypes;
     QHash<QString, int> m_preDeleteMatypes;
+    QHash<int, QString> m_matypeOwnerById;
 
     // services
     ProjectManagerService* m_projectManagerService = nullptr;
