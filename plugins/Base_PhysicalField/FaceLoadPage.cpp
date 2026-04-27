@@ -63,11 +63,11 @@ void FaceLoadPage::setupBatchGroupCombo()
     ui->comboBoxDim->blockSignals(true);
     ui->comboBoxDim->clear();
 
-    if (!map.bndEdgePhysToEdgeKeys.isEmpty())
+    if (!map.physicalEdgeKeyMap().isEmpty())
     {
         ui->comboBoxDim->addItem("线", 1);
     }
-    if (!map.bndFacePhysToFaceKeys.isEmpty())
+    if (!map.physicalFaceKeyMap().isEmpty())
     {
         ui->comboBoxDim->addItem("面", 2);
     }
@@ -112,7 +112,7 @@ void FaceLoadPage::setupBatchGroupCombo()
                     if (dim == 1)
                     {
                         QVector<vtkIdType> edgeKeys;
-                        for (qint64 k : map.bndEdgePhysToEdgeKeys.value(physId))
+                        for (qint64 k : map.physicalEdgeKeys(physId))
                             edgeKeys.push_back(vtkIdType(k));
                         PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
                                                                    edgeKeys);
@@ -120,7 +120,7 @@ void FaceLoadPage::setupBatchGroupCombo()
                     else
                     {
                         QVector<vtkIdType> faceKeys;
-                        for (qint64 k : map.bndFacePhysToFaceKeys.value(physId))
+                        for (qint64 k : map.physicalFaceKeys(physId))
                             faceKeys.push_back(vtkIdType(k));
                         PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid, GridKind::Solid,
                                                                    faceKeys);
@@ -157,15 +157,15 @@ void FaceLoadPage::refreshGroupCombo()
         std::sort(physIds.begin(), physIds.end());
         for (int physId : physIds)
         {
-            const QString name = map.physIdToName.value(physId, QString("phys_%1").arg(physId));
+            const QString name = map.physicalName(physId);
             ui->comboBoxGroup->addItem(QString("%1  (id=%2)").arg(name).arg(physId), physId);
         }
     };
 
     if (dimFilter == 1)
-        addByMap(map.bndEdgePhysToEdgeKeys);
+        addByMap(map.physicalEdgeKeyMap());
     else if (dimFilter == 2)
-        addByMap(map.bndFacePhysToFaceKeys);
+        addByMap(map.physicalFaceKeyMap());
 
     ui->comboBoxGroup->blockSignals(false);
 }
@@ -188,7 +188,7 @@ void FaceLoadPage::onGroupChanged(int index)
     const int dim = ui->comboBoxDim->currentData().toInt();
     if (dim == 1)
     {
-        const QVector<qint64> edgeKeys64 = map.bndEdgePhysToEdgeKeys.value(physId);
+        const QVector<qint64> edgeKeys64 = map.physicalEdgeKeys(physId);
         QVector<vtkIdType> edgeKeys;
         edgeKeys.reserve(edgeKeys64.size());
         for (qint64 k : edgeKeys64)
@@ -198,7 +198,7 @@ void FaceLoadPage::onGroupChanged(int index)
     }
     else
     {
-        const QVector<qint64> faceKeys64 = map.bndFacePhysToFaceKeys.value(physId);
+        const QVector<qint64> faceKeys64 = map.physicalFaceKeys(physId);
         QVector<vtkIdType> faceKeys;
         faceKeys.reserve(faceKeys64.size());
         for (qint64 k : faceKeys64)

@@ -349,10 +349,11 @@ void StressBoundaryPage::setupBatchGroupCombo()
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
 
-    for (auto it = map.physIdToName.constBegin(); it != map.physIdToName.constEnd(); ++it)
+    const auto nameMap = map.physicalNameMap();
+    for (auto it = nameMap.constBegin(); it != nameMap.constEnd(); ++it)
     {
         const int physId = it.key();
-        const int dim = map.physIdToDim.value(physId, -1);
+        const int dim = map.physicalDim(physId);
         if (dim != targetDim)
             continue;
         ui->comboBoxGroup->addItem(
@@ -383,7 +384,7 @@ void StressBoundaryPage::setupBatchGroupCombo()
                     if (currentPickMode() == PickMode::Face)
                     {
                         QVector<vtkIdType> faceKeys;
-                        for (qint64 k : map.bndFacePhysToFaceKeys.value(physId))
+                        for (qint64 k : map.physicalFaceKeys(physId))
                             faceKeys.push_back(vtkIdType(k));
                         PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid,
                                                                    GridKind::Solid, faceKeys);
@@ -391,7 +392,7 @@ void StressBoundaryPage::setupBatchGroupCombo()
                     else
                     {
                         QVector<vtkIdType> edgeKeys;
-                        for (qint64 k : map.bndEdgePhysToEdgeKeys.value(physId))
+                        for (qint64 k : map.physicalEdgeKeys(physId))
                             edgeKeys.push_back(vtkIdType(k));
                         PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid,
                                                                    GridKind::Solid, edgeKeys);
@@ -431,7 +432,7 @@ void StressBoundaryPage::onGroupChanged(int index)
     if (currentPickMode() == PickMode::Face)
     {
         QVector<vtkIdType> faceKeys;
-        const auto faceKeysInt = map.bndFacePhysToFaceKeys.value(physId);
+        const auto faceKeysInt = map.physicalFaceKeys(physId);
         faceKeys.reserve(faceKeysInt.size());
         for (qint64 k : faceKeysInt)
             faceKeys.push_back(static_cast<vtkIdType>(k));
@@ -442,7 +443,7 @@ void StressBoundaryPage::onGroupChanged(int index)
     else
     {
         QVector<vtkIdType> edgeKeys;
-        const auto edgeKeysInt = map.bndEdgePhysToEdgeKeys.value(physId);
+        const auto edgeKeysInt = map.physicalEdgeKeys(physId);
         edgeKeys.reserve(edgeKeysInt.size());
         for (qint64 k : edgeKeysInt)
             edgeKeys.push_back(static_cast<vtkIdType>(k));

@@ -148,14 +148,14 @@ void PointForcePage::setupBatchGroupCombo()
                         return;
                     const MshPickMap& map = meshSvc->mshPickMapSolid();
                     const int physId = ui->comboBoxGroup->itemData(row).toInt();
-                    const int dim = map.physIdToDim.value(physId, -1);
+                    const int dim = map.physicalDim(physId);
                     QVector<int> pointIdsInt;
                     if (dim == 0)
-                        pointIdsInt = map.bndPointPhysToPointIds.value(physId);
+                        pointIdsInt = map.physicalPointIds(physId, 0);
                     else if (dim == 1)
-                        pointIdsInt = map.bndEdgePhysToPointIds.value(physId);
+                        pointIdsInt = map.physicalPointIds(physId, 1);
                     else if (dim == 2)
-                        pointIdsInt = map.bndFacePhysToPointIds.value(physId);
+                        pointIdsInt = map.physicalPointIds(physId, 2);
                     QVector<vtkIdType> pids;
                     for (int pid : pointIdsInt)
                         pids.push_back(vtkIdType(pid));
@@ -183,10 +183,11 @@ void PointForcePage::refreshGroupCombo()
     const int dimFilter = ui->comboBoxDim->currentData().toInt();
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
-    for (auto it = map.physIdToName.constBegin(); it != map.physIdToName.constEnd(); ++it)
+    const auto nameMap = map.physicalNameMap();
+    for (auto it = nameMap.constBegin(); it != nameMap.constEnd(); ++it)
     {
         const int physId = it.key();
-        const int dim = map.physIdToDim.value(physId, -1);
+        const int dim = map.physicalDim(physId);
         if (dim < 0 || dim > 2)
             continue;
         if (dimFilter >= 0 && dim != dimFilter)
@@ -212,14 +213,14 @@ void PointForcePage::onGroupChanged(int index)
     const MshPickMap& map = meshSvc->mshPickMapSolid();
 
     const int physId = ui->comboBoxGroup->itemData(index).toInt();
-    const int dim = map.physIdToDim.value(physId, -1);
+    const int dim = map.physicalDim(physId);
     QVector<int> pointIdsInt;
     if (dim == 0)
-        pointIdsInt = map.bndPointPhysToPointIds.value(physId);
+        pointIdsInt = map.physicalPointIds(physId, 0);
     else if (dim == 1)
-        pointIdsInt = map.bndEdgePhysToPointIds.value(physId);
+        pointIdsInt = map.physicalPointIds(physId, 1);
     else if (dim == 2)
-        pointIdsInt = map.bndFacePhysToPointIds.value(physId);
+        pointIdsInt = map.physicalPointIds(physId, 2);
     else
         return;
 

@@ -452,7 +452,7 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
         if (pts.size() < 3)
             continue;
 
-        while (merged.physIdToName.contains(autoPhysId))
+        while (merged.physicalNameMap().contains(autoPhysId))
             ++autoPhysId;
 
         const QString baseName = QString("AutoPatch_%1").arg(added + 1, 3, 10, QChar('0'));
@@ -461,6 +461,17 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
         merged.bndFacePhysToFaceKeys[autoPhysId] = faceKeys;
         merged.physIdToDim[autoPhysId] = 2;
         merged.physIdToName[autoPhysId] = baseName;
+        {
+            const MeshTagKey k{QStringLiteral("Physical"), 2, autoPhysId};
+            MeshTagSet set;
+            set.key = k;
+            set.name = baseName;
+            set.source = QStringLiteral("MeshGroupingWidget");
+            for (int pid : pts)
+                set.pointIds.push_back(static_cast<MeshIdType>(pid));
+            set.faceKeys = faceKeys;
+            merged.tagSets.insert(k, set);
+        }
 
         // 额外生成线/点边界组，便于边界条件页面直接按 dim=1/0 复用。
         QVector<qint64> edgeKeys;
@@ -509,7 +520,7 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
         edgeKeys.erase(std::unique(edgeKeys.begin(), edgeKeys.end()), edgeKeys.end());
 
         int edgePhysId = autoPhysId + 100000;
-        while (merged.physIdToName.contains(edgePhysId))
+        while (merged.physicalNameMap().contains(edgePhysId))
             ++edgePhysId;
         if (!edgeKeys.isEmpty())
         {
@@ -519,16 +530,33 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
             merged.bndEdgePhysToPointIds[edgePhysId] = edgePts;
             merged.physIdToDim[edgePhysId] = 1;
             merged.physIdToName[edgePhysId] = baseName + "_Edge";
+            const MeshTagKey k{QStringLiteral("Physical"), 1, edgePhysId};
+            MeshTagSet set;
+            set.key = k;
+            set.name = baseName + "_Edge";
+            set.source = QStringLiteral("MeshGroupingWidget");
+            for (int pid : edgePts)
+                set.pointIds.push_back(static_cast<MeshIdType>(pid));
+            set.edgeKeys = edgeKeys;
+            merged.tagSets.insert(k, set);
         }
 
         int pointPhysId = autoPhysId + 200000;
-        while (merged.physIdToName.contains(pointPhysId))
+        while (merged.physicalNameMap().contains(pointPhysId))
             ++pointPhysId;
         if (!pts.isEmpty())
         {
             merged.bndPointPhysToPointIds[pointPhysId] = pts;
             merged.physIdToDim[pointPhysId] = 0;
             merged.physIdToName[pointPhysId] = baseName + "_Point";
+            const MeshTagKey k{QStringLiteral("Physical"), 0, pointPhysId};
+            MeshTagSet set;
+            set.key = k;
+            set.name = baseName + "_Point";
+            set.source = QStringLiteral("MeshGroupingWidget");
+            for (int pid : pts)
+                set.pointIds.push_back(static_cast<MeshIdType>(pid));
+            merged.tagSets.insert(k, set);
         }
 
         ++autoPhysId;
@@ -682,29 +710,29 @@ void MeshGroupingWidget::refreshBoundaryGroupList()
 
     const MshPickMap pick =
         m_hasAutoBoundaryGroups ? m_autoBoundaryPickMap : meshService->mshPickMapSolid();
-    QList<int> physIds = pick.physIdToName.keys();
+    QList<int> physIds = pick.physicalNameMap().keys();
     std::sort(physIds.begin(), physIds.end());
 
     ui->tblBoundaryGroups->setRowCount(physIds.size());
     int row = 0;
     for (int physId : physIds)
     {
-        const int dim = pick.physIdToDim.value(physId, -1);
+        const int dim = pick.physicalDim(physId);
         if (dim < 0 || dim > 2)
             continue;
 
         QString dimName = (dim == 0) ? "点边界" : (dim == 1 ? "线边界" : "面边界");
         int count = 0;
         if (dim == 0)
-            count = pick.bndPointPhysToPointIds.value(physId).size();
+            count = pick.physicalPointIds(physId, 0).size();
         if (dim == 1)
-            count = pick.bndEdgePhysToPointIds.value(physId).size();
+            count = pick.physicalPointIds(physId, 1).size();
         if (dim == 2)
-            count = pick.bndFacePhysToPointIds.value(physId).size();
+            count = pick.physicalPointIds(physId, 2).size();
 
         ui->tblBoundaryGroups->setItem(row, 0, new QTableWidgetItem(QString::number(physId)));
         ui->tblBoundaryGroups->setItem(row, 1,
-                                       new QTableWidgetItem(pick.physIdToName.value(physId)));
+                                       new QTableWidgetItem(pick.physicalName(physId)));
         ui->tblBoundaryGroups->setItem(row, 2, new QTableWidgetItem(dimName));
         ui->tblBoundaryGroups->setItem(row, 3, new QTableWidgetItem(QString::number(count)));
         ++row;

@@ -125,7 +125,7 @@ void LoadSpecificationWidget::setupBatchGroupCombo()
                     if (dim == 1)
                     {
                         QVector<vtkIdType> edgeKeys;
-                        for (qint64 k : map.bndEdgePhysToEdgeKeys.value(physId))
+                        for (qint64 k : map.physicalEdgeKeys(physId))
                             edgeKeys.push_back(vtkIdType(k));
                         PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
                                                                    edgeKeys);
@@ -133,7 +133,7 @@ void LoadSpecificationWidget::setupBatchGroupCombo()
                     else
                     {
                         QVector<vtkIdType> faceKeys;
-                        for (qint64 k : map.bndFacePhysToFaceKeys.value(physId))
+                        for (qint64 k : map.physicalFaceKeys(physId))
                             faceKeys.push_back(vtkIdType(k));
                         PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid, GridKind::Solid,
                                                                    faceKeys);
@@ -160,10 +160,11 @@ void LoadSpecificationWidget::refreshGroupCombo()
     const int dimFilter = ui->comboBoxDim->currentData().toInt();
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
-    for (auto it = map.physIdToName.constBegin(); it != map.physIdToName.constEnd(); ++it)
+    const auto nameMap = map.physicalNameMap();
+    for (auto it = nameMap.constBegin(); it != nameMap.constEnd(); ++it)
     {
         const int physId = it.key();
-        if (map.physIdToDim.value(physId, -1) != dimFilter)
+        if (map.physicalDim(physId) != dimFilter)
             continue;
         ui->comboBoxGroup->addItem(QString("%1 (id=%2)").arg(it.value()).arg(physId), physId);
     }
@@ -186,7 +187,7 @@ void LoadSpecificationWidget::onGroupChanged(int index)
     if (dim == 1)
     {
         QVector<vtkIdType> edgeKeys;
-        for (qint64 v : map.bndEdgePhysToEdgeKeys.value(physId))
+        for (qint64 v : map.physicalEdgeKeys(physId))
             edgeKeys.push_back(vtkIdType(v));
         PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
                                                     edgeKeys, false);
@@ -194,7 +195,7 @@ void LoadSpecificationWidget::onGroupChanged(int index)
     else if (dim == 2)
     {
         QVector<vtkIdType> faceKeys;
-        for (qint64 v : map.bndFacePhysToFaceKeys.value(physId))
+        for (qint64 v : map.physicalFaceKeys(physId))
             faceKeys.push_back(vtkIdType(v));
         PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
                                                     faceKeys, false);

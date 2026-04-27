@@ -120,7 +120,7 @@ void GeoStressFitFacePage::beforeLoad()
                     if (pickEdge())
                     {
                         QVector<vtkIdType> keys;
-                        for (qint64 k : mapS.bndEdgePhysToEdgeKeys.value(physId))
+                        for (qint64 k : mapS.physicalEdgeKeys(physId))
                             keys.push_back(vtkIdType(k));
                         PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
                                                                    keys);
@@ -128,7 +128,7 @@ void GeoStressFitFacePage::beforeLoad()
                     else
                     {
                         QVector<vtkIdType> keys;
-                        for (qint64 k : mapS.bndFacePhysToFaceKeys.value(physId))
+                        for (qint64 k : mapS.physicalFaceKeys(physId))
                             keys.push_back(vtkIdType(k));
                         PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid, GridKind::Solid,
                                                                    keys);
@@ -173,11 +173,12 @@ void GeoStressFitFacePage::refreshGroupCombo()
 
     // 合并两份 map 的 physId（避免只在 line 或只在 solid 的组漏掉）
     QSet<int> allPhys;
-    for (auto it = mapS.physIdToDim.constBegin(); it != mapS.physIdToDim.constEnd(); ++it)
+    const auto dimMap = mapS.physicalDimMap();
+    for (auto it = dimMap.constBegin(); it != dimMap.constEnd(); ++it)
         if (it.value() == wantDim)
             allPhys.insert(it.key());
-    //    for (auto it = mapL.physIdToDim.constBegin(); it !=
-    //    mapL.physIdToDim.constEnd(); ++it)
+    //    for (auto it = mapL.physicalDimMap().constBegin(); it !=
+    //    mapL.physicalDimMap().constEnd(); ++it)
     //        if (it.value() == wantDim) allPhys.insert(it.key());
 
     QVector<int> ids = allPhys.values().toVector();
@@ -186,8 +187,8 @@ void GeoStressFitFacePage::refreshGroupCombo()
     for (int physId : ids)
     {
         // 显示名：优先用 PhysicalNames 的 name，否则 fallback
-        QString name = mapS.physIdToName.value(physId);
-        //        if (name.isEmpty()) name = mapL.physIdToName.value(physId);
+        QString name = mapS.physicalName(physId);
+        //        if (name.isEmpty()) name = mapL.physicalName(physId);
         if (name.isEmpty())
             name = QString("phys_%1").arg(physId);
 
@@ -235,7 +236,7 @@ void GeoStressFitFacePage::onGroupComboChanged(int idx)
     if (pickEdge())
     {
         // dim=1：edgeKeys（只用 solid）
-        const QVector<vtkIdType> keysSolid = toVtkIds(mapS.bndEdgePhysToEdgeKeys.value(physId));
+        const QVector<vtkIdType> keysSolid = toVtkIds(mapS.physicalEdgeKeys(physId));
 
         pm.setSelectedEdgeKeys(domain, uuid, GridKind::Solid, keysSolid, replace);
 
@@ -245,7 +246,7 @@ void GeoStressFitFacePage::onGroupComboChanged(int idx)
     else
     {
         // dim=2：faceKeys（只用 solid）
-        const QVector<vtkIdType> keysSolid = toVtkIds(mapS.bndFacePhysToFaceKeys.value(physId));
+        const QVector<vtkIdType> keysSolid = toVtkIds(mapS.physicalFaceKeys(physId));
 
         pm.setSelectedFaceKeys(domain, uuid, GridKind::Solid, keysSolid, replace);
 

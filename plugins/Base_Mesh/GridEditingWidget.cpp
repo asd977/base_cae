@@ -934,7 +934,7 @@ void GridEditingWidget::updateFilterCombosFromGrid()
         const MshPickMap pick = MeshGridIO::instance().getMeshMap();
         for (int v : list)
         {
-            const QString name = pick.physIdToName.value(v).trimmed();
+            const QString name = pick.physicalName(v).trimmed();
             ui->comboBoxMatype->addItem(name.isEmpty() ? QString::number(v) : name, v);
         }
         ui->comboBoxMatype->setCurrentIndex(0);

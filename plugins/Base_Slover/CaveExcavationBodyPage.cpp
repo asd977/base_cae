@@ -388,7 +388,8 @@ QVector<vtkIdType> CaveExcavationBodyPage::visibleBoundaryFaceKeys(const QVector
         cset.insert(cid);
 
     QSet<vtkIdType> uniq;
-    for (auto it = map.bndFacePhysToFaceKeys.constBegin(); it != map.bndFacePhysToFaceKeys.constEnd(); ++it)
+    const auto faceMap = map.physicalFaceKeyMap();
+    for (auto it = faceMap.constBegin(); it != faceMap.constEnd(); ++it)
     {
         for (qint64 k : it.value())
         {

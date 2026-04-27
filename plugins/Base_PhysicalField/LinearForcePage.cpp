@@ -89,7 +89,7 @@ void LinearForcePage::setupBatchGroupCombo()
                     const MshPickMap& map = meshSvc->mshPickMapSolid();
                     const int physId = ui->comboBoxGroup->itemData(row).toInt();
                     QVector<vtkIdType> edgeKeys;
-                    for (qint64 k : map.bndEdgePhysToEdgeKeys.value(physId))
+                    for (qint64 k : map.physicalEdgeKeys(physId))
                         edgeKeys.push_back(vtkIdType(k));
                     PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
                                                                edgeKeys);
@@ -114,10 +114,11 @@ void LinearForcePage::refreshGroupCombo()
     const MshPickMap& map = meshSvc->mshPickMapSolid();
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
-    for (auto it = map.physIdToName.constBegin(); it != map.physIdToName.constEnd(); ++it)
+    const auto nameMap = map.physicalNameMap();
+    for (auto it = nameMap.constBegin(); it != nameMap.constEnd(); ++it)
     {
         const int physId = it.key();
-        const int dim = map.physIdToDim.value(physId, -1);
+        const int dim = map.physicalDim(physId);
         if (dim != 1)
             continue;
         if (dimFilter != 1)
@@ -142,7 +143,7 @@ void LinearForcePage::onGroupChanged(int index)
     const MshPickMap& map = meshSvc->mshPickMapSolid();
     const int physId = ui->comboBoxGroup->itemData(index).toInt();
 
-    const QVector<qint64> edgeKeys64 = map.bndEdgePhysToEdgeKeys.value(physId);
+    const QVector<qint64> edgeKeys64 = map.physicalEdgeKeys(physId);
     QVector<vtkIdType> edgeKeys;
     edgeKeys.reserve(edgeKeys64.size());
     for (qint64 k : edgeKeys64)
