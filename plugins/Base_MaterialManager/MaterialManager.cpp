@@ -1353,6 +1353,7 @@ void MaterialManager::rebuildProjectTree()
         }
 
         ProjectNode* entryItem = m_entryItems.value(entryId, nullptr);
+        bool entryCreated = false;
         if (!entryItem)
         {
             auto* entryWidget = new MaterialEntryWidget(this);
@@ -1364,6 +1365,7 @@ void MaterialManager::rebuildProjectTree()
             m_entryWidgets.insert(entryId, entryWidget);
             m_entryItems.insert(entryId, entryItem);
             modelItem->addChild(entryItem);
+            entryCreated = true;
         }
         else if (entryItem->parent() != modelItem)
         {
@@ -1375,7 +1377,7 @@ void MaterialManager::rebuildProjectTree()
             modelItem->addChild(entryItem);
         }
         entryItem->setText(0, entry->name);
-        if (m_entryWidgets.contains(entryId))
+        if (!entryCreated && m_entryWidgets.contains(entryId))
         {
             m_entryWidgets[entryId]->setEntry(model->key, entryId);
         }
