@@ -17,38 +17,8 @@
 #include <QVBoxLayout>
 #include <algorithm>
 #include <PickManager.h>
-#include <ServiceRegistry.h>
-#include <services/MeshModuleControllerService.h>
-#include <struct/MeshMap.h>
 
 #include "MaterialManager.h"
-
-namespace
-{
-QString matypeDisplayText(int matype, const MshPickMap* pickMap = nullptr)
-{
-    if (matype <= 0)
-        return QString();
-    if (pickMap)
-    {
-        QString name = pickMap->physicalName(matype, 3).trimmed();
-        if (name.isEmpty())
-            name = pickMap->physicalName(matype).trimmed();
-        if (!name.isEmpty())
-            return name;
-    }
-    else if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
-    {
-        const MshPickMap pick = meshService->mshPickMapSolid();
-        QString name = pick.physicalName(matype, 3).trimmed();
-        if (name.isEmpty())
-            name = pick.physicalName(matype).trimmed();
-        if (!name.isEmpty())
-            return name;
-    }
-    return QString::number(matype);
-}
-}
 
 MaterialEntryWidget::MaterialEntryWidget(MaterialManager* manager, QWidget* parent)
     : BasePage("MaterialEntryWidget"), m_materialManager(manager), m_isUpdating(false),
@@ -279,12 +249,10 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
 
     QList<int> matypes = m_materialManager->availableMatypes().values();
     std::sort(matypes.begin(), matypes.end());
-    MshPickMap pickMap;
-    if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
-        pickMap = meshService->mshPickMapSolid();
     for (int value : matypes)
     {
-        m_matypeCombo->addItem(matypeDisplayText(value, &pickMap), value);
+        // 为避免材料页面重建时触发额外网格名称解析，这里仅显示编号。
+        m_matypeCombo->addItem(QString::number(value), value);
     }
 
     connect(m_matypeCombo, &CustomComboBox::itemHovered, this,
@@ -313,7 +281,7 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     m_appliedMatypesList = new QListWidget(appliedRowWidget);
     for (int value : appliedList)
     {
-        auto* item = new QListWidgetItem(matypeDisplayText(value, &pickMap), m_appliedMatypesList);
+        auto* item = new QListWidgetItem(QString::number(value), m_appliedMatypesList);
         item->setData(Qt::UserRole, value);
     }
 
@@ -463,12 +431,9 @@ void MaterialEntryWidget::refreshAppliedMatypes(const QSet<int>& appliedMatypes,
     m_appliedMatypesList->clear();
     QList<int> appliedList = appliedMatypes.values();
     std::sort(appliedList.begin(), appliedList.end());
-    MshPickMap pickMap;
-    if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
-        pickMap = meshService->mshPickMapSolid();
     for (int value : appliedList)
     {
-        auto* item = new QListWidgetItem(matypeDisplayText(value, &pickMap), m_appliedMatypesList);
+        auto* item = new QListWidgetItem(QString::number(value), m_appliedMatypesList);
         item->setData(Qt::UserRole, value);
     }
 
