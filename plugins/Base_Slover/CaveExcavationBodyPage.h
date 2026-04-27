@@ -36,7 +36,6 @@ class CaveExcavationBodyPage : public BasePage
     void setupGroupCombo();
     QVector<int> availableGroupIds() const;
     QVector<vtkIdType> groupCellIds(int groupId) const;
-    QSet<int> groupDomainIds(int groupId) const;
     QVector<vtkIdType> visibleBoundaryFaceKeys(const QVector<vtkIdType>& cellIds) const;
     QVector<int> elementIdsFromCells(const QVector<vtkIdType>& cellIds) const;
     void refreshSelectedGroupList();

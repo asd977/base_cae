@@ -1516,17 +1516,28 @@ void MaterialManager::highlightMatypes(const QString& entryId, const QSet<int>& 
     const QString domain = m_pickDomain.isEmpty() ? QStringLiteral("MaterialManager") : m_pickDomain;
     const QString uuid = m_pickUuid.isEmpty() ? entryId : m_pickUuid;
 
+    auto mk = [](int id) -> DomainKey
+    {
+        DomainKey key;
+        key.category = "MATYPE";
+        key.dim = 3;
+        key.id = id;
+        return key;
+    };
+
     QSet<DomainKey> applied;
     for (int id : matypes)
-        applied.insert(DomainKey{DomainType::Matype, id});
+        applied.insert(mk(id));
     PickManager::instance().setAppliedDomains(domain, uuid, applied);
-    PickManager::instance().setSelectedDomain(
-        domain, uuid, selectedMatype >= 0 ? DomainKey{DomainType::Matype, selectedMatype} : DomainKey{});
-    PickManager::instance().setPreviewDomain(
-        domain, uuid, previewMatype >= 0 ? DomainKey{DomainType::Matype, previewMatype} : DomainKey{});
-    PickManager::instance().setPreDeleteDomain(
-        domain, uuid,
-        preDeleteMatype >= 0 ? DomainKey{DomainType::Matype, preDeleteMatype} : DomainKey{});
+    PickManager::instance().setSelectedDomain(domain, uuid,
+                                              selectedMatype >= 0 ? mk(selectedMatype)
+                                                                  : DomainKey{});
+    PickManager::instance().setPreviewDomain(domain, uuid,
+                                             previewMatype >= 0 ? mk(previewMatype)
+                                                                : DomainKey{});
+    PickManager::instance().setPreDeleteDomain(domain, uuid,
+                                               preDeleteMatype >= 0 ? mk(preDeleteMatype)
+                                                                    : DomainKey{});
 }
 
 void MaterialManager::refreshMatypeHighlight(const QString& entryId)

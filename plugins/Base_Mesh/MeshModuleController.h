@@ -27,12 +27,18 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     bool loadProject();
     void closeProject();
 
+    QVector<MeshTagSet> domainTagSets() const override;
+    QVector<MeshTagSet> boundaryTagSets(int dimFilter = -1) const override;
+    QVector<MeshIdType> cellIdsOfTag(const MeshTagKey& key) const override;
+    QVector<MeshIdType> pointIdsOfTag(const MeshTagKey& key) const override;
+    QString displayTextOfTag(const MeshTagKey& key) const override;
+
     QSet<int> getAvailableMatypes() const override;
     void highlightDomainMatypes(const QSet<int>& matypes, int selectedMatype, int previewMatype,
                           int preDeleteMatype) override;
-    QVector<DomainKey> availableDomains(DomainType type) const override;
-    QSet<vtkIdType> domainCells(const DomainKey& key) const override;
-    QSet<DomainKey> domainsOfCell(vtkIdType cid) const override;
+    QVector<DomainKey> availableDomains(const QString& category) const override;
+    QSet<MeshIdType> domainCells(const DomainKey& key) const override;
+    QSet<DomainKey> domainsOfCell(MeshIdType cid) const override;
     QString domainDisplayText(const DomainKey& key) const override;
 
     vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGrid();

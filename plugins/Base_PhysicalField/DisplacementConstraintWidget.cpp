@@ -66,7 +66,6 @@ void DisplacementConstraintWidget::beforeLoad()
 
     // 你需要在 meshSvc 里提供一个 getter：返回最近一次 msh 导入的 MshPickMap
     // 例如：const MshPickMap& map = meshSvc->mshPickMapSolid();
-    const MshPickMap& map = meshSvc->mshPickMapSolid();
 
     ui->comboBoxDim->blockSignals(true);
     ui->comboBoxDim->clear();
@@ -104,20 +103,14 @@ void DisplacementConstraintWidget::beforeLoad()
                     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
                     if (!meshSvc || row < 0)
                         return;
-                    const MshPickMap& map = meshSvc->mshPickMapSolid();
-                    const int physId = ui->comboBoxGroup->itemData(row).toInt();
-                    const int dim = map.physIdToDim.value(physId, -1);
-                    QVector<int> pointIdsInt;
-                    if (dim == 0)
-                        pointIdsInt = map.bndPointPhysToPointIds.value(physId);
-                    else if (dim == 1)
-                        pointIdsInt = map.bndEdgePhysToPointIds.value(physId);
-                    else if (dim == 2)
-                        pointIdsInt = map.bndFacePhysToPointIds.value(physId);
+                    const MeshTagKey key = ui->comboBoxGroup->itemData(row).value<MeshTagKey>();
+                    const QVector<MeshIdType> tagPids = meshSvc->pointIdsOfTag(key);
                     QVector<vtkIdType> pids;
-                    for (int pid : pointIdsInt)
-                        pids.push_back(vtkIdType(pid));
-                    PickManager::instance().setPreviewPointIds(getPageType(), m_uuid, GridKind::Solid, pids);
+                    pids.reserve(tagPids.size());
+                    for (MeshIdType pid : tagPids)
+                        pids.push_back(static_cast<vtkIdType>(pid));
+                    PickManager::instance().setPreviewPointIds(getPageType(), m_uuid, GridKind::Solid,
+                                                               pids);
                 },
                 Qt::UniqueConnection);
         connect(groupCombo, &CustomComboBox::dropdownClosed, this,
@@ -146,22 +139,18 @@ void DisplacementConstraintWidget::refreshGroupCombo(int dimFilter)
     if (!meshSvc)
         return;
 
-    const MshPickMap& map = meshSvc->mshPickMapSolid();
+    const QVector<MeshTagSet> sets = meshSvc->boundaryTagSets(dimFilter);
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
 
-    for (auto it = map.physIdToName.begin(); it != map.physIdToName.end(); ++it)
+    for (const MeshTagSet& set : sets)
     {
-        const int physId = it.key();
-        const QString name = it.value();
-        const int dim = map.physIdToDim.value(physId, -1);
-        if (dim < 0 || dim > 2)
-            continue;
-        if (dimFilter >= 0 && dimFilter != dim)
-            continue;
-
-        const QString text = QString("%1  (dim=%2, id=%3)").arg(name).arg(dim).arg(physId);
-        ui->comboBoxGroup->addItem(text, physId);
+        const QString text = QString("%1=%2  dim=%3  %4")
+                                 .arg(set.key.category)
+                                 .arg(set.key.id)
+                                 .arg(set.key.dim)
+                                 .arg(set.name);
+        ui->comboBoxGroup->addItem(text, QVariant::fromValue(set.key));
     }
     ui->comboBoxGroup->blockSignals(false);
 }
@@ -180,33 +169,14 @@ void DisplacementConstraintWidget::onGroupChanged(int index)
     if (!meshSvc)
         return;
 
-    const MshPickMap& map = meshSvc->mshPickMapSolid();
-
-    const int physId = ui->comboBoxGroup->itemData(index).toInt();
-    const int dim = map.physIdToDim.value(physId, -1);
-
-    // 取出“vtk pointId 列表”
-    QVector<int> pointIdsInt;
-    if (dim == 0)
-        pointIdsInt = map.bndPointPhysToPointIds.value(physId);
-    else if (dim == 1)
-        pointIdsInt = map.bndEdgePhysToPointIds.value(physId);
-    else if (dim == 2)
-        pointIdsInt = map.bndFacePhysToPointIds.value(physId);
-    else
-        return;
-
-    qDebug() << "dim " << dim << " " << "pointIdsInt.size() " << pointIdsInt.size();
+    const MeshTagKey key = ui->comboBoxGroup->itemData(index).value<MeshTagKey>();
+    const QVector<MeshIdType> tagPids = meshSvc->pointIdsOfTag(key);
     QVector<vtkIdType> pids;
-    pids.reserve(pointIdsInt.size());
-    for (int pid : pointIdsInt)
-        pids.push_back(vtkIdType(pid));
+    pids.reserve(tagPids.size());
+    for (MeshIdType pid : tagPids)
+        pids.push_back(static_cast<vtkIdType>(pid));
 
-    // 传给 PickManager：replace = false（通过“添加”并入当前选择）
     PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pids, false);
-
-    // 如果你希望同步 UI（比如显示数量）
-    // ui->SelectedCountLabel->setText(QString::number(pids.size()));
 }
 
 

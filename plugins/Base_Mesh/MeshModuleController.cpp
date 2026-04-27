@@ -529,6 +529,70 @@ void MeshModuleController::closeProject()
     m_volumeRules.clear();
 }
 
+QVector<MeshTagSet> MeshModuleController::domainTagSets() const
+{
+    QVector<MeshTagSet> out;
+    const MshPickMap map = MeshGridIO::instance().getMeshMap();
+    for (auto it = map.tagSets.constBegin(); it != map.tagSets.constEnd(); ++it)
+    {
+        const MeshTagSet& set = it.value();
+        if (set.key.dim == map.meshDim && !set.cellIds.isEmpty())
+            out.push_back(set);
+    }
+
+    std::sort(out.begin(), out.end(), [](const MeshTagSet& a, const MeshTagSet& b)
+              {
+                  if (a.key.category != b.key.category)
+                      return a.key.category < b.key.category;
+                  return a.key.id < b.key.id;
+              });
+    return out;
+}
+
+QVector<MeshTagSet> MeshModuleController::boundaryTagSets(int dimFilter) const
+{
+    QVector<MeshTagSet> out;
+    const MshPickMap map = MeshGridIO::instance().getMeshMap();
+
+    if (!map.tagSets.isEmpty())
+    {
+        for (auto it = map.tagSets.constBegin(); it != map.tagSets.constEnd(); ++it)
+        {
+            const MeshTagSet& set = it.value();
+            if (set.key.dim >= map.meshDim)
+                continue;
+            if (dimFilter >= 0 && set.key.dim != dimFilter)
+                continue;
+            out.push_back(set);
+        }
+    }
+    return out;
+}
+
+QVector<MeshIdType> MeshModuleController::cellIdsOfTag(const MeshTagKey& key) const
+{
+    const MshPickMap map = MeshGridIO::instance().getMeshMap();
+    if (map.tagSets.contains(key))
+        return map.tagSets.value(key).cellIds;
+    return {};
+}
+
+QVector<MeshIdType> MeshModuleController::pointIdsOfTag(const MeshTagKey& key) const
+{
+    const MshPickMap map = MeshGridIO::instance().getMeshMap();
+    if (map.tagSets.contains(key))
+        return map.tagSets.value(key).pointIds;
+    return {};
+}
+
+QString MeshModuleController::displayTextOfTag(const MeshTagKey& key) const
+{
+    const MshPickMap map = MeshGridIO::instance().getMeshMap();
+    if (map.tagSets.contains(key) && !map.tagSets.value(key).name.trimmed().isEmpty())
+        return QString("%1: %2").arg(key.category, map.tagSets.value(key).name);
+    return QString("%1=%2").arg(key.category).arg(key.id);
+}
+
 QSet<int> MeshModuleController::getAvailableMatypes() const
 {
     QSet<int> ret;
@@ -562,101 +626,41 @@ QSet<int> MeshModuleController::getAvailableMatypes() const
     return ret;
 }
 
-QVector<DomainKey> MeshModuleController::availableDomains(DomainType type) const
+QVector<DomainKey> MeshModuleController::availableDomains(const QString& category) const
 {
     QVector<DomainKey> out;
-    if (!m_importedGrid)
-        return out;
-
-    const char* arrayName = nullptr;
-    if (type == DomainType::Matype)
-        arrayName = "MATYPE";
-    else if (type == DomainType::Layer)
-        arrayName = "LAYER";
-    else
-        return out;
-
-    auto* arr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray(arrayName));
-    if (!arr)
-        return out;
-
-    QSet<int> ids;
-    const vtkIdType nCells = m_importedGrid->GetNumberOfCells();
-
-    int maxDim = -1;
-    for (vtkIdType i = 0; i < nCells; ++i)
+    const auto sets = domainTagSets();
+    for (const MeshTagSet& set : sets)
     {
-        vtkCell* c = m_importedGrid->GetCell(i);
-        if (!c)
+        if (!category.trimmed().isEmpty() &&
+            set.key.category.compare(category, Qt::CaseInsensitive) != 0)
             continue;
-        maxDim = qMax(maxDim, c->GetCellDimension());
+        out.push_back(DomainKey{set.key.category, set.key.dim, set.key.id});
     }
-
-    const vtkIdType n = qMin(arr->GetNumberOfTuples(), nCells);
-    for (vtkIdType i = 0; i < n; ++i)
-    {
-        vtkCell* c = m_importedGrid->GetCell(i);
-        if (!c || c->GetCellDimension() != maxDim)
-            continue;
-        ids.insert(arr->GetValue(i));
-    }
-
-    out.reserve(ids.size());
-    for (int id : ids)
-        out.push_back(DomainKey{type, id});
-
-    std::sort(out.begin(), out.end(), [](const DomainKey& a, const DomainKey& b)
-              {
-                  return a.id < b.id;
-              });
     return out;
 }
 
-QSet<vtkIdType> MeshModuleController::domainCells(const DomainKey& key) const
+QSet<MeshIdType> MeshModuleController::domainCells(const DomainKey& key) const
 {
-    QSet<vtkIdType> out;
-    if (!m_importedGrid || !key.isValid())
+    QSet<MeshIdType> out;
+    if (!key.isValid())
         return out;
 
-    const char* arrayName = nullptr;
-    if (key.type == DomainType::Matype)
-        arrayName = "MATYPE";
-    else if (key.type == DomainType::Layer)
-        arrayName = "LAYER";
-    else
-        return out;
-
-    auto* arr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray(arrayName));
-    if (!arr)
-        return out;
-
-    const vtkIdType n = qMin(arr->GetNumberOfTuples(), m_importedGrid->GetNumberOfCells());
-    for (vtkIdType cid = 0; cid < n; ++cid)
-    {
-        if (arr->GetValue(cid) == key.id)
-            out.insert(cid);
-    }
+    const MeshTagKey tagKey{key.category, key.dim, key.id};
+    for (MeshIdType cid : cellIdsOfTag(tagKey))
+        out.insert(cid);
     return out;
 }
 
-QSet<DomainKey> MeshModuleController::domainsOfCell(vtkIdType cid) const
+QSet<DomainKey> MeshModuleController::domainsOfCell(MeshIdType cid) const
 {
     QSet<DomainKey> out;
-    if (!m_importedGrid || cid < 0 || cid >= m_importedGrid->GetNumberOfCells())
-        return out;
-
-    if (auto* matArr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray("MATYPE")))
+    const MshPickMap map = MeshGridIO::instance().getMeshMap();
+    const QVector<MeshTagKey> keys = map.cellIdToDomainTags.value(cid);
+    for (const MeshTagKey& key : keys)
     {
-        if (cid < matArr->GetNumberOfTuples())
-            out.insert(DomainKey{DomainType::Matype, matArr->GetValue(cid)});
+        out.insert(DomainKey{key.category, key.dim, key.id});
     }
-
-    if (auto* layArr = vtkIntArray::SafeDownCast(m_importedGrid->GetCellData()->GetArray("LAYER")))
-    {
-        if (cid < layArr->GetNumberOfTuples())
-            out.insert(DomainKey{DomainType::Layer, layArr->GetValue(cid)});
-    }
-
     return out;
 }
 
@@ -664,9 +668,7 @@ QString MeshModuleController::domainDisplayText(const DomainKey& key) const
 {
     if (!key.isValid())
         return QString();
-    if (key.type == DomainType::Matype)
-        return QStringLiteral("MATYPE %1").arg(key.id);
-    return QStringLiteral("LAYER %1").arg(key.id);
+    return displayTextOfTag(MeshTagKey{key.category, key.dim, key.id});
 }
 
 void MeshModuleController::highlightDomainMatypes(const QSet<int>& matypes, int selectedMatype,

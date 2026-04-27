@@ -132,23 +132,6 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
     const auto selectedGroupsArr = obj.value("selected_groups").toArray();
     for (const auto& v : selectedGroupsArr)
         m_selectedGroups.insert(v.toInt());
-    {
-        QSet<int> keep;
-        QSet<int> ownedDomainIds;
-        QList<int> ordered = m_selectedGroups.values();
-        std::sort(ordered.begin(), ordered.end());
-        for (int gid : ordered)
-        {
-            const QSet<int> ids = groupDomainIds(gid);
-            QSet<int> inter = ids;
-            inter.intersect(ownedDomainIds);
-            if (!inter.isEmpty())
-                continue;
-            keep.insert(gid);
-            ownedDomainIds.unite(ids);
-        }
-        m_selectedGroups = keep;
-    }
 
     QVector<vtkIdType> faceKeys, edgeKeys;
     const auto faceArr = obj.value("face_solid").toArray();
@@ -239,29 +222,8 @@ void CaveExcavationBodyPage::onAddGroupClicked()
     const int gid = m_groupCombo->currentData().toInt();
 
     QSet<DomainKey> domains = PickManager::instance().appliedDomains(getPageType(), m_uuid);
-
-           // 先把旧的 Layer 域取出来做互斥处理
-    QSet<DomainKey> nextDomains = domains;
-
-    const QSet<int> newIds = groupDomainIds(gid);
-
-    QList<DomainKey> oldKeys = domains.values();
-    for (const DomainKey& key : oldKeys)
-    {
-        if (key.type != DomainType::Layer || !key.isValid())
-            continue;
-        if (key.id == gid)
-            continue;
-
-        QSet<int> inter = groupDomainIds(key.id);
-        inter.intersect(newIds);
-        if (!inter.isEmpty())
-            nextDomains.remove(key);
-    }
-
-    nextDomains.insert(DomainKey{DomainType::Layer, gid});
-
-    PickManager::instance().setAppliedDomains(getPageType(), m_uuid, nextDomains);
+    domains.insert(DomainKey{"LAYER", 3, gid});
+    PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
 
            // UI 一律从 PickManager 回读
     syncGroupsFromPickManager();
@@ -287,7 +249,7 @@ void CaveExcavationBodyPage::onRemoveSelectedGroupsClicked()
         bool ok = false;
         const int gid = item->data(Qt::UserRole).toInt(&ok);
         if (ok)
-            domains.remove(DomainKey{DomainType::Layer, gid});
+            domains.remove(DomainKey{"LAYER", 3, gid});
     }
 
     PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
@@ -377,59 +339,37 @@ QVector<int> CaveExcavationBodyPage::availableGroupIds() const
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
         return out;
-    const MshPickMap map = meshSvc->mshPickMapSolid();
 
-    QList<int> keys = map.layerToCellIds.keys();
-
-    std::sort(keys.begin(), keys.end());
-    for (int id : keys)
+    const QVector<MeshTagSet> sets = meshSvc->domainTagSets();
+    for (const MeshTagSet& set : sets)
     {
-        if (!groupCellIds(id).isEmpty())
-            out.push_back(id);
+        if (set.key.category.compare("LAYER", Qt::CaseInsensitive) != 0)
+            continue;
+        if (set.key.id <= 0)
+            continue;
+        if (!meshSvc->cellIdsOfTag(set.key).isEmpty())
+            out.push_back(set.key.id);
     }
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
     return out;
 }
 
 QVector<vtkIdType> CaveExcavationBodyPage::groupCellIds(int groupId) const
 {
-    QVector<vtkIdType> out;
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
-        return out;
-    const MshPickMap map = meshSvc->mshPickMapSolid();
-    vtkUnstructuredGrid* grid = meshSvc->getVtkUnstructuredGridSolid();
-    if (!grid)
-        return out;
+        return {};
 
-    QVector<qint64> src = map.layerToCellIds.value(groupId);
-
+    MeshTagKey key;
+    key.category = "LAYER";
+    key.dim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    key.id = groupId;
+    const QVector<MeshIdType> src = meshSvc->cellIdsOfTag(key);
+    QVector<vtkIdType> out;
     out.reserve(src.size());
-    for (qint64 c : src)
-    {
-        const vtkIdType cid = static_cast<vtkIdType>(c);
-        if (cid < 0 || cid >= grid->GetNumberOfCells())
-            continue;
-        vtkCell* cell = grid->GetCell(cid);
-        if (!cell)
-            continue;
-        if (PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt() == 3 &&
-            cell->GetCellDimension() != 3)
-            continue;
-        out.push_back(cid);
-    }
-    return out;
-}
-
-QSet<int> CaveExcavationBodyPage::groupDomainIds(int groupId) const
-{
-    QSet<int> out;
-    const auto cids = groupCellIds(groupId);
-    for (vtkIdType cid : cids)
-    {
-        if (cid < 0 || cid > std::numeric_limits<int>::max())
-            continue;
-        out.insert(int(cid));
-    }
+    for (MeshIdType cid : src)
+        out.push_back(static_cast<vtkIdType>(cid));
     return out;
 }
 
@@ -534,13 +474,13 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
 
     QSet<DomainKey> selectedDomains;
     for (int gid : m_selectedGroups)
-        selectedDomains.insert(DomainKey{DomainType::Layer, gid});
+        selectedDomains.insert(DomainKey{"LAYER", 3, gid});
 
     PickManager::instance().setAppliedDomains(getPageType(), m_uuid, selectedDomains);
     PickManager::instance().setSelectedDomain(getPageType(), m_uuid, DomainKey{});
     PickManager::instance().setPreviewDomain(
         getPageType(), m_uuid,
-        previewGroup >= 0 ? DomainKey{DomainType::Layer, previewGroup} : DomainKey{});
+        previewGroup >= 0 ? DomainKey{"LAYER", 3, previewGroup} : DomainKey{});
     PickManager::instance().setPreDeleteDomain(getPageType(), m_uuid, DomainKey{});
 }
 
@@ -559,7 +499,7 @@ void CaveExcavationBodyPage::syncGroupsFromPickManager()
 
     for (const DomainKey& key : owned)
     {
-        if (key.type == DomainType::Layer && key.isValid())
+        if (key.category.compare("LAYER", Qt::CaseInsensitive) == 0 && key.isValid())
             m_selectedGroups.insert(key.id);
     }
 }

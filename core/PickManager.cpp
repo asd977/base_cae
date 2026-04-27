@@ -355,7 +355,11 @@ QSet<vtkIdType> PickManager::cellsOfDomain(const DomainKey& key) const
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc || !key.isValid())
         return {};
-    return meshSvc->domainCells(key);
+    QSet<vtkIdType> out;
+    const QSet<MeshIdType> src = meshSvc->domainCells(key);
+    for (MeshIdType cid : src)
+        out.insert(static_cast<vtkIdType>(cid));
+    return out;
 }
 
 QSet<DomainKey> PickManager::domainsOfCell(vtkIdType cid) const
@@ -363,7 +367,7 @@ QSet<DomainKey> PickManager::domainsOfCell(vtkIdType cid) const
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
         return {};
-    return meshSvc->domainsOfCell(cid);
+    return meshSvc->domainsOfCell(static_cast<MeshIdType>(cid));
 }
 
 void PickManager::setAppliedDomains(const QString& domain, const QString& uuid,
