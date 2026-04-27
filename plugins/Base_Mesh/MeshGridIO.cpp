@@ -54,6 +54,39 @@ static inline bool parseDouble(const QString& s, double& v)
     return ok;
 }
 
+static inline MeshTagKey domainPhysicalKey(int physId)
+{
+    return MeshTagKey{QStringLiteral("Physical"), 3, physId};
+}
+
+static inline MeshTagSet& ensureDomainPhysicalTagSet(MshPickMap& pickMap, int physId)
+{
+    const MeshTagKey key = domainPhysicalKey(physId);
+    if (!pickMap.tagSets.contains(key))
+    {
+        MeshTagSet set;
+        set.key = key;
+        set.source = QStringLiteral("MeshGridIO");
+        pickMap.tagSets.insert(key, set);
+    }
+    MeshTagSet& set = pickMap.tagSets[key];
+    if (set.name.trimmed().isEmpty())
+    {
+        set.name = pickMap.physIdToName.value(physId, QStringLiteral("phys_%1").arg(physId));
+    }
+    return set;
+}
+
+static inline void appendDomainPhysicalCell(MshPickMap& pickMap, int physId, MeshIdType cellId)
+{
+    if (physId <= 0 || cellId < 0)
+        return;
+
+    MeshTagSet& set = ensureDomainPhysicalTagSet(pickMap, physId);
+    set.cellIds.push_back(cellId);
+    pickMap.cellIdToDomainTags[cellId].push_back(set.key);
+}
+
 // 你的“显示代理策略”搬到 IO 层：ketype -> (vtkCellType, localNodeLids) 若干片
 static QVector<QPair<int, QVector<int>>> proxyPieces(int ketype)
 {
@@ -344,7 +377,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString& fil
             m_mshPickMap.physIdToDim.insert(physId, 3);
         }
 
-        m_mshPickMap.volPhysToCellIds[physId].push_back(static_cast<qint64>(cid));
+        appendDomainPhysicalCell(m_mshPickMap, physId, static_cast<MeshIdType>(cid));
         if (matypeArr)
         {
             matypeArr->SetValue(cid, physId);
@@ -443,11 +476,15 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importInp(const QString& fileNa
     auto* layer = cd ? vtkIntArray::SafeDownCast(cd->GetArray("LAYER")) : nullptr;
     if (matype && layer)
     {
-        for (auto it = m_mshPickMap.volPhysToCellIds.constBegin();
-             it != m_mshPickMap.volPhysToCellIds.constEnd(); ++it)
+        for (auto it = m_mshPickMap.tagSets.constBegin(); it != m_mshPickMap.tagSets.constEnd();
+             ++it)
         {
-            const int physId = it.key();
-            for (qint64 rawCid : it.value())
+            const MeshTagKey& key = it.key();
+            const MeshTagSet& set = it.value();
+            if (key.category != QStringLiteral("Physical") || key.dim != 3 || key.id <= 0)
+                continue;
+            const int physId = key.id;
+            for (MeshIdType rawCid : set.cellIds)
             {
                 const vtkIdType cid = static_cast<vtkIdType>(rawCid);
                 if (cid < 0 || cid >= grid->GetNumberOfCells())
@@ -710,8 +747,8 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadCurrentGmshMesh(QString* er
 
                         if (dim == targetCellDim)
                         {
-                            m_mshPickMap.volPhysToCellIds[physId].push_back(
-                                static_cast<qint64>(cid));
+                            appendDomainPhysicalCell(m_mshPickMap, physId,
+                                                     static_cast<MeshIdType>(cid));
 
                             // 2D 模型时，域单元本身就是“可选面”；1D
                             // 模型时，域单元本身就是“可选线”。
@@ -1309,7 +1346,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
 
                     // 体分组：physicalId -> cellIds（仅体单元进入体分组）
                     if (isVolumeCell)
-                        pick.volPhysToCellIds[physicalId].push_back(qint64(cellId));
+                        appendDomainPhysicalCell(pick, physicalId, MeshIdType(cellId));
                 }
                 else
                 {
@@ -1422,8 +1459,11 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
     for (auto it = pick.bndFacePhysToPointIds.begin(); it != pick.bndFacePhysToPointIds.end(); ++it)
         dedupIntVec(it.value());
 
-    for (auto it = pick.volPhysToCellIds.begin(); it != pick.volPhysToCellIds.end(); ++it)
-        dedupI64Vec(it.value());
+    for (auto it = pick.tagSets.begin(); it != pick.tagSets.end(); ++it)
+    {
+        MeshTagSet& set = it.value();
+        dedupI64Vec(set.cellIds);
+    }
 
     // ======================= 后处理：构造 edgeKey / faceKey
     // ======================= edgeKey = (cellId<<4) | (edgeLocalId & 0xF) faceKey
@@ -1556,9 +1596,12 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
     // ======================= PhysicalNames 缺失时：给 physId 兜底名/维度
     // ======================= （很多 msh 可能没写 $PhysicalNames，但 elements
     // 里仍然有 physicalId） 这里尽量补全名字（phys_#），维度补不全就保持缺省
-    for (auto it = pick.volPhysToCellIds.begin(); it != pick.volPhysToCellIds.end(); ++it)
+    for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
     {
-        const int physId = it.key();
+        const MeshTagKey& key = it.key();
+        if (key.category != QStringLiteral("Physical") || key.dim != 3 || key.id <= 0)
+            continue;
+        const int physId = key.id;
         if (!pick.physIdToName.contains(physId))
             pick.physIdToName.insert(physId, physNameOf(physId));
         if (!pick.physIdToDim.contains(physId))
@@ -1588,6 +1631,15 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
             pick.physIdToName.insert(physId, physNameOf(physId));
         if (!pick.physIdToDim.contains(physId))
             pick.physIdToDim.insert(physId, 2);
+    }
+    for (auto it = pick.tagSets.begin(); it != pick.tagSets.end(); ++it)
+    {
+        MeshTagSet& set = it.value();
+        if (set.key.category == QStringLiteral("Physical") && set.key.dim == 3 &&
+            set.name.trimmed().isEmpty())
+        {
+            set.name = pick.physIdToName.value(set.key.id, physNameOf(set.key.id));
+        }
     }
 
     // 写回成员：供外部 DisplacementConstraintWidget / FaceLoadPage 等查询
@@ -1631,11 +1683,13 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
     regionName->SetNumberOfValues(nCells);
 
     QHash<vtkIdType, int> cellToPhys;
-    for (auto it = pick.volPhysToCellIds.begin(); it != pick.volPhysToCellIds.end(); ++it)
+    for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
     {
-        const int physId = it.key();
-        const auto& cids = it.value();
-        for (qint64 c : cids)
+        const MeshTagKey& key = it.key();
+        if (key.category != QStringLiteral("Physical") || key.dim != 3 || key.id <= 0)
+            continue;
+        const int physId = key.id;
+        for (MeshIdType c : it.value().cellIds)
         {
             if (c >= 0)
                 cellToPhys.insert(static_cast<vtkIdType>(c), physId);
@@ -3270,7 +3324,13 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
             continue;
 
         if (dim >= 3)
-            m_mshPickMap.volPhysToCellIds[physId] = allCellIds.values().toVector();
+        {
+            MeshTagSet& set = ensureDomainPhysicalTagSet(m_mshPickMap, physId);
+            set.name = setName;
+            set.cellIds = allCellIds.values().toVector();
+            for (MeshIdType cid : set.cellIds)
+                m_mshPickMap.cellIdToDomainTags[cid].push_back(set.key);
+        }
         else if (dim == 2)
             m_mshPickMap.bndFacePhysToPointIds[physId] = allPointIds.values().toVector();
         else
