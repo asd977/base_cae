@@ -760,18 +760,6 @@ void MaterialEntryWidget::onDropdownClosed()
                                m_materialManager->setSelectedMatypeForEntry(m_entryId,
                                                                             m_selectedMatypeBeforeDropdown);
 
-                           if (m_matypeCombo)
-                           {
-                               const int selected =
-                                   m_materialManager ? m_materialManager->selectedMatypeForEntry(m_entryId)
-                                                     : -1;
-                               int comboIndex = (selected >= 0) ? m_matypeCombo->findData(selected) : 0;
-                               if (comboIndex < 0)
-                                   comboIndex = 0;
-                               QSignalBlocker blocker(m_matypeCombo);
-                               m_matypeCombo->setCurrentIndex(comboIndex);
-                           }
-
                            m_matypeActivatedInDropdown = false;
                            m_selectedMatypeBeforeDropdown = -1;
                            updateAppliedListColors();

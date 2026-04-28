@@ -1952,6 +1952,8 @@ void PickManager::rebuildDomainHighlightActors()
             mapper->SetScalarMode(m_savedDomainScalarMode);
             mapper->SetColorMode(m_savedDomainColorMode);
             mapper->SetScalarVisibility(m_savedDomainScalarVisibility ? 1 : 0);
+            if (m_visual)
+                m_visual->render();
         }
         return;
     }
