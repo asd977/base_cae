@@ -1514,7 +1514,8 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
 
         auto addDomainTag = [&](const QString& category, int id)
         {
-            if (id <= 0)
+            const bool isLayer = (category.compare("LAYER", Qt::CaseInsensitive) == 0);
+            if (isLayer ? (id == 0) : (id <= 0))
                 return;
             MeshTagKey key;
             key.category = category;

@@ -818,7 +818,7 @@ bool PickManager::pickAt(int x, int y)
             for (const MeshTagKey& tag : tags)
             {
                 if (tag.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0 &&
-                    tag.dim == 3 && tag.id > 0)
+                    tag.dim == 3 && tag.id != 0)
                 {
                     pickedKey = DomainKey{tag.category, tag.dim, tag.id};
                     break;
@@ -828,7 +828,7 @@ bool PickManager::pickAt(int x, int y)
             {
                 for (const MeshTagKey& tag : tags)
                 {
-                    if (tag.dim == 3 && tag.id > 0)
+                    if (tag.dim == 3 && tag.id != 0)
                     {
                         pickedKey = DomainKey{tag.category, tag.dim, tag.id};
                         break;
