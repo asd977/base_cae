@@ -1981,10 +1981,7 @@ void PickManager::rebuildDomainHighlightActors()
         const QSet<vtkIdType> ids = cellsOfDomain(key);
         appliedCells.unite(ids);
     }
-    const bool suppressSelectedTint =
-        m_currentDomain.contains(QStringLiteral("Material"), Qt::CaseInsensitive);
-    const QSet<vtkIdType> selectedCells =
-        (!suppressSelectedTint && selected.isValid()) ? cellsOfDomain(selected) : QSet<vtkIdType>{};
+    const QSet<vtkIdType> selectedCells; // 统一不再使用 selected 红色着色，避免残留状态干扰显示。
     const QSet<vtkIdType> previewCells = preview.isValid() ? cellsOfDomain(preview) : QSet<vtkIdType>{};
     const QSet<vtkIdType> preDeleteCells =
         preDelete.isValid() ? cellsOfDomain(preDelete) : QSet<vtkIdType>{};
