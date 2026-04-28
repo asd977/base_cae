@@ -363,6 +363,15 @@ QVector<vtkIdType> CaveExcavationBodyPage::visibleBoundaryFaceKeys(const QVector
     if (cellIds.isEmpty())
         return out;
 
+    const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    if (meshDim == 2)
+    {
+        out.reserve(cellIds.size());
+        for (vtkIdType cid : cellIds)
+            out.push_back(PickManager::instance().packFaceKey(cid, 0));
+        return out;
+    }
+
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
         return out;
@@ -387,18 +396,6 @@ QVector<vtkIdType> CaveExcavationBodyPage::visibleBoundaryFaceKeys(const QVector
     out.reserve(uniq.size());
     for (vtkIdType fk : uniq)
         out.push_back(fk);
-
-    if (out.isEmpty())
-    {
-        const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
-        if (meshDim == 2)
-        {
-            out.reserve(cellIds.size());
-            for (vtkIdType cid : cellIds)
-                out.push_back(PickManager::instance().packFaceKey(cid, 0));
-        }
-    }
-
     return out;
 }
 
