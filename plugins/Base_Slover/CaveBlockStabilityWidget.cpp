@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QJsonObject>
 #include <QLineEdit>
+#include <QPushButton>
 #include <QTextStream>
 
 #include "CaveBlockPlanePage.h"
@@ -17,6 +18,11 @@ CaveBlockStabilityWidget::CaveBlockStabilityWidget(QWidget* parent)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
+    connect(ui->computeBtn, &QPushButton::clicked, this,
+            [this]()
+            {
+                emit computeRequested();
+            });
 }
 
 CaveBlockStabilityWidget::~CaveBlockStabilityWidget()
@@ -93,7 +99,12 @@ bool CaveBlockStabilityWidget::exportDatFiles(const QVector<CaveBlockPlanePage*>
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     QDir wd(QDir(projectDir).absolutePath());
 
-    QFile icutFile(wd.filePath(valueOrDefault(ui->icutFileEdit, "ICUT.DAT")));
+    if (!wd.exists("SliderCase") && !wd.mkpath("SliderCase"))
+        return false;
+
+    QDir sliderDir(wd.filePath("SliderCase"));
+
+    QFile icutFile(sliderDir.filePath(valueOrDefault(ui->icutFileEdit, "ICUT.DAT")));
     if (!icutFile.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
     QTextStream icut(&icutFile);
@@ -102,7 +113,7 @@ bool CaveBlockStabilityWidget::exportDatFiles(const QVector<CaveBlockPlanePage*>
     for (int i = 0; i < planePages.size(); ++i)
         icut << planePages[i]->icutLine(i + 1) << "\n";
 
-    QFile paraFile(wd.filePath("PARA.DAT"));
+    QFile paraFile(sliderDir.filePath("PARA.DAT"));
     if (!paraFile.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
     QTextStream para(&paraFile);
@@ -111,7 +122,7 @@ bool CaveBlockStabilityWidget::exportDatFiles(const QVector<CaveBlockPlanePage*>
     for (int i = 0; i < planePages.size(); ++i)
         para << planePages[i]->paraLine(i + 1) << "\n";
 
-    QFile mesg(wd.filePath("MESG227.DAT"));
+    QFile mesg(sliderDir.filePath("MESG227.DAT"));
     if (!mesg.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
     QTextStream os(&mesg);

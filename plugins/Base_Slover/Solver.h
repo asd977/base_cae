@@ -31,6 +31,7 @@ class Solver : public QObject, public SolverService
     void onComputeCaveExcavation(ProjectNode* analysisNode);
     void onComputeSlopeStability(ProjectNode* analysisNode);
     void onComputeGeoStressRegression(ProjectNode* analysisNode);
+    void onComputeCaveBlockStability(ProjectNode* analysisNode);
 
   private:
     void initAction();

@@ -319,6 +319,14 @@ bool Solver::loadProject()
                             onComputeGeoStressRegression(node);
                         });
             }
+            else if (auto* blockPage = dynamic_cast<CaveBlockStabilityWidget*>(page))
+            {
+                connect(blockPage, &CaveBlockStabilityWidget::computeRequested, this,
+                        [this, node]()
+                        {
+                            onComputeCaveBlockStability(node);
+                        });
+            }
             page->loadJson(childObj.value("state").toObject());
             analysisNode->addChild(node);
 
@@ -907,6 +915,11 @@ void Solver::addCaveBlockStabilityNode(ProjectNode* analysisNode, bool setCurren
     auto* node = new ProjectNode("洞室块体稳定性分析", QUuid::createUuid().toString(), page);
     setupNodeRole(node, "CaveBlockStabilityAnalysis");
     analysisNode->addChild(node);
+    connect(page, &CaveBlockStabilityWidget::computeRequested, this,
+            [this, node]()
+            {
+                onComputeCaveBlockStability(node);
+            });
     addCaveBlockPlaneNode(node, false);
 
     if (setCurrent)
@@ -1395,6 +1408,36 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
         QMessageBox::information(nullptr, "导出成功", "地应力回归计算输入文件导出成功。");
     else
         QMessageBox::warning(nullptr, "导出失败", "IGEOS.DAT 导出失败。");
+}
+
+void Solver::onComputeCaveBlockStability(ProjectNode* analysisNode)
+{
+    if (!analysisNode || !analysisNode->getPage())
+        return;
+
+    auto* blockPage = dynamic_cast<CaveBlockStabilityWidget*>(analysisNode->getPage());
+    if (!blockPage)
+        return;
+
+    QVector<CaveBlockPlanePage*> planePages;
+    for (ProjectNode* child : analysisNode->getChildren())
+    {
+        if (auto* planePage = dynamic_cast<CaveBlockPlanePage*>(child->getPage()))
+            planePages.push_back(planePage);
+    }
+
+    if (planePages.isEmpty())
+    {
+        QMessageBox::warning(nullptr, "导出失败", "未定义滑块面，无法生成文件。");
+        return;
+    }
+
+    if (blockPage->exportDatFiles(planePages))
+        QMessageBox::information(nullptr, "导出成功",
+                                 "已在 SliderCase 文件夹生成 ICUT.DAT、PARA.DAT、MESG227.DAT。");
+    else
+        QMessageBox::warning(nullptr, "导出失败",
+                             "生成滑块文件失败，请检查 SliderCase 目录与参数设置。");
 }
 
 bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analysisType)
