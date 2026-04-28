@@ -1905,26 +1905,38 @@ void PickManager::restoreFaceColoring()
 
 void PickManager::rebuildDomainHighlightActors()
 {
-    if (!m_visual || !m_gridSolid || !m_solidPickDataSet)
+    if (!m_visual)
         return;
 
-    auto* actor = vtkActor::SafeDownCast(m_solidProp);
-    if (!actor || !actor->GetMapper())
-        return;
-    auto* mapper = actor->GetMapper();
+    auto restoreDataset = [&](vtkDataSet* ds, vtkProp* prop, vtkSmartPointer<vtkDataArray>& savedScalars,
+                              bool& savedVisibility, int& savedScalarMode, int& savedColorMode)
+    {
+        if (!ds || !prop)
+            return;
+        auto* actor = vtkActor::SafeDownCast(prop);
+        if (!actor || !actor->GetMapper())
+            return;
+        auto* mapper = actor->GetMapper();
+        if (auto* cellData = ds->GetCellData())
+            cellData->SetScalars(savedScalars);
+        savedScalars = nullptr;
+        ds->Modified();
+        mapper->SetScalarMode(savedScalarMode);
+        mapper->SetColorMode(savedColorMode);
+        mapper->SetScalarVisibility(savedVisibility ? 1 : 0);
+    };
 
     if (m_pickMode != PickMode::Domain)
     {
         if (m_domainColoringActive)
         {
-            if (auto* cellData = m_solidPickDataSet->GetCellData())
-                cellData->SetScalars(m_savedDomainCellScalars);
-            m_savedDomainCellScalars = nullptr;
+            restoreDataset(m_solidPickDataSet, m_solidProp, m_savedDomainCellScalarsSolid,
+                           m_savedDomainScalarVisibilitySolid, m_savedDomainScalarModeSolid,
+                           m_savedDomainColorModeSolid);
+            restoreDataset(m_linePickDataSet, m_lineProp, m_savedDomainCellScalarsLine,
+                           m_savedDomainScalarVisibilityLine, m_savedDomainScalarModeLine,
+                           m_savedDomainColorModeLine);
             m_domainColoringActive = false;
-            m_solidPickDataSet->Modified();
-            mapper->SetScalarMode(m_savedDomainScalarMode);
-            mapper->SetColorMode(m_savedDomainColorMode);
-            mapper->SetScalarVisibility(m_savedDomainScalarVisibility ? 1 : 0);
             m_visual->render();
         }
         return;
@@ -1944,79 +1956,93 @@ void PickManager::rebuildDomainHighlightActors()
     {
         if (m_domainColoringActive)
         {
-            if (auto* cellData = m_solidPickDataSet->GetCellData())
-                cellData->SetScalars(m_savedDomainCellScalars);
-            m_savedDomainCellScalars = nullptr;
+            restoreDataset(m_solidPickDataSet, m_solidProp, m_savedDomainCellScalarsSolid,
+                           m_savedDomainScalarVisibilitySolid, m_savedDomainScalarModeSolid,
+                           m_savedDomainColorModeSolid);
+            restoreDataset(m_linePickDataSet, m_lineProp, m_savedDomainCellScalarsLine,
+                           m_savedDomainScalarVisibilityLine, m_savedDomainScalarModeLine,
+                           m_savedDomainColorModeLine);
             m_domainColoringActive = false;
-            m_solidPickDataSet->Modified();
-            mapper->SetScalarMode(m_savedDomainScalarMode);
-            mapper->SetColorMode(m_savedDomainColorMode);
-            mapper->SetScalarVisibility(m_savedDomainScalarVisibility ? 1 : 0);
             if (m_visual)
                 m_visual->render();
         }
         return;
     }
 
-    auto* cellData = m_solidPickDataSet->GetCellData();
-    if (!cellData)
-        return;
-
-    const vtkIdType nCells = m_solidPickDataSet->GetNumberOfCells();
-    auto colors = vtkSmartPointer<vtkUnsignedCharArray>::New();
-    colors->SetName("pick_domain_colors");
-    colors->SetNumberOfComponents(3);
-    colors->SetNumberOfTuples(nCells);
-
     const unsigned char normal[3] = {179, 179, 179};
     const unsigned char appliedColor[3] = {64, 170, 64};
     const unsigned char selectedColor[3] = {220, 50, 50};
     const unsigned char previewColor[3] = {50, 90, 220};
     const unsigned char preDeleteColor[3] = {255, 153, 0};
-    auto* origCellArr = m_solidPickDataSet->GetCellData()->GetArray("vtkOriginalCellIds");
 
     QSet<vtkIdType> appliedCells;
     for (const DomainKey& key : applied)
-    {
-        const QSet<vtkIdType> ids = cellsOfDomain(key);
-        appliedCells.unite(ids);
-    }
-    const QSet<vtkIdType> selectedCells; // 统一不再使用 selected 红色着色，避免残留状态干扰显示。
+        appliedCells.unite(cellsOfDomain(key));
+    const QSet<vtkIdType> selectedCells; // 保持与既有逻辑一致：不再使用 selected 着色。
     const QSet<vtkIdType> previewCells = preview.isValid() ? cellsOfDomain(preview) : QSet<vtkIdType>{};
     const QSet<vtkIdType> preDeleteCells =
         preDelete.isValid() ? cellsOfDomain(preDelete) : QSet<vtkIdType>{};
 
-    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    auto colorDataset = [&](vtkDataSet* ds, vtkProp* prop, vtkSmartPointer<vtkDataArray>& savedScalars,
+                            bool& savedVisibility, int& savedScalarMode, int& savedColorMode)
     {
-        vtkIdType srcCid = cid;
-        if (origCellArr && cid < origCellArr->GetNumberOfTuples())
-            srcCid = vtkIdType(origCellArr->GetTuple1(cid));
-        const unsigned char* c = normal;
-        if (appliedCells.contains(srcCid))
-            c = appliedColor;
-        if (preDeleteCells.contains(srcCid))
-            c = preDeleteColor;
-        if (selectedCells.contains(srcCid))
-            c = selectedColor;
-        if (previewCells.contains(srcCid))
-            c = previewColor;
-        colors->SetTypedTuple(cid, c);
-    }
+        if (!ds || !prop)
+            return;
+        auto* actor = vtkActor::SafeDownCast(prop);
+        if (!actor || !actor->GetMapper())
+            return;
+        auto* mapper = actor->GetMapper();
+        auto* cellData = ds->GetCellData();
+        if (!cellData)
+            return;
 
-    if (!m_domainColoringActive)
-    {
-        if (auto* cellData = m_solidPickDataSet->GetCellData())
-            m_savedDomainCellScalars = cellData->GetScalars();
-        m_savedDomainScalarVisibility = mapper->GetScalarVisibility() != 0;
-        m_savedDomainScalarMode = mapper->GetScalarMode();
-        m_savedDomainColorMode = mapper->GetColorMode();
-        m_domainColoringActive = true;
-    }
-    cellData->SetScalars(colors);
-    m_solidPickDataSet->Modified();
-    mapper->SetScalarModeToUseCellData();
-    mapper->SetColorModeToDirectScalars();
-    mapper->ScalarVisibilityOn();
+        const vtkIdType nCells = ds->GetNumberOfCells();
+        auto colors = vtkSmartPointer<vtkUnsignedCharArray>::New();
+        colors->SetName("pick_domain_colors");
+        colors->SetNumberOfComponents(3);
+        colors->SetNumberOfTuples(nCells);
+
+        auto* origCellArr = cellData->GetArray("vtkOriginalCellIds");
+        for (vtkIdType cid = 0; cid < nCells; ++cid)
+        {
+            vtkIdType srcCid = cid;
+            if (origCellArr && cid < origCellArr->GetNumberOfTuples())
+                srcCid = vtkIdType(origCellArr->GetTuple1(cid));
+            const unsigned char* c = normal;
+            if (appliedCells.contains(srcCid))
+                c = appliedColor;
+            if (preDeleteCells.contains(srcCid))
+                c = preDeleteColor;
+            if (selectedCells.contains(srcCid))
+                c = selectedColor;
+            if (previewCells.contains(srcCid))
+                c = previewColor;
+            colors->SetTypedTuple(cid, c);
+        }
+
+        if (!m_domainColoringActive)
+        {
+            savedScalars = cellData->GetScalars();
+            savedVisibility = mapper->GetScalarVisibility() != 0;
+            savedScalarMode = mapper->GetScalarMode();
+            savedColorMode = mapper->GetColorMode();
+        }
+
+        cellData->SetScalars(colors);
+        ds->Modified();
+        mapper->SetScalarModeToUseCellData();
+        mapper->SetColorModeToDirectScalars();
+        mapper->ScalarVisibilityOn();
+    };
+
+    colorDataset(m_solidPickDataSet, m_solidProp, m_savedDomainCellScalarsSolid,
+                 m_savedDomainScalarVisibilitySolid, m_savedDomainScalarModeSolid,
+                 m_savedDomainColorModeSolid);
+    colorDataset(m_linePickDataSet, m_lineProp, m_savedDomainCellScalarsLine,
+                 m_savedDomainScalarVisibilityLine, m_savedDomainScalarModeLine,
+                 m_savedDomainColorModeLine);
+
+    m_domainColoringActive = true;
     m_visual->render();
 }
 

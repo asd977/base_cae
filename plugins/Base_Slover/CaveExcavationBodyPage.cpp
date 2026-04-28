@@ -133,7 +133,7 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
     {
         const int gid = v.toInt(-1);
         if (gid > 0)
-            domains.insert(DomainKey{"LAYER", 3, gid});
+            domains.insert(DomainKey{"LAYER", layerDomainDim(), gid});
     }
     PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
 
@@ -217,16 +217,13 @@ void CaveExcavationBodyPage::onClearClicked()
 }
 void CaveExcavationBodyPage::onAddGroupClicked()
 {
-    const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
-    if (meshDim != 3)
-        return;
     if (!m_groupCombo || m_groupCombo->currentIndex() < 0)
         return;
 
     const int gid = m_groupCombo->currentData().toInt();
 
     QSet<DomainKey> domains = PickManager::instance().appliedDomains(getPageType(), m_uuid);
-    domains.insert(DomainKey{"LAYER", 3, gid});
+    domains.insert(DomainKey{"LAYER", layerDomainDim(), gid});
     PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
 
            // UI 一律从 PickManager 回读
@@ -238,9 +235,6 @@ void CaveExcavationBodyPage::onAddGroupClicked()
 
 void CaveExcavationBodyPage::onRemoveSelectedGroupsClicked()
 {
-    const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
-    if (meshDim != 3)
-        return;
     if (!m_groupList)
         return;
 
@@ -252,7 +246,7 @@ void CaveExcavationBodyPage::onRemoveSelectedGroupsClicked()
         bool ok = false;
         const int gid = item->data(Qt::UserRole).toInt(&ok);
         if (ok)
-            domains.remove(DomainKey{"LAYER", 3, gid});
+            domains.remove(DomainKey{"LAYER", layerDomainDim(), gid});
     }
 
     PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
@@ -299,23 +293,6 @@ void CaveExcavationBodyPage::setupGroupCombo()
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
         return;
-    const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
-    const bool is3d = (meshDim == 3);
-    if (!is3d)
-    {
-        if (m_groupCombo)
-            m_groupCombo->clear();
-        if (m_addGroupBtn)
-            m_addGroupBtn->setEnabled(false);
-        if (m_removeGroupBtn)
-            m_removeGroupBtn->setEnabled(false);
-        if (m_groupList)
-            m_groupList->setEnabled(false);
-        refreshSelectedGroupList();
-        refreshGroupComboMarks();
-        return;
-    }
-
     const QVector<int> ids = availableGroupIds();
     m_groupCombo->blockSignals(true);
     m_groupCombo->clear();
@@ -475,8 +452,14 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
     PickManager::instance().setSelectedDomain(getPageType(), m_uuid, DomainKey{});
     PickManager::instance().setPreviewDomain(
         getPageType(), m_uuid,
-        previewGroup >= 0 ? DomainKey{"LAYER", 3, previewGroup} : DomainKey{});
+        previewGroup >= 0 ? DomainKey{"LAYER", layerDomainDim(), previewGroup} : DomainKey{});
     PickManager::instance().setPreDeleteDomain(getPageType(), m_uuid, DomainKey{});
+}
+
+int CaveExcavationBodyPage::layerDomainDim() const
+{
+    const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    return (meshDim == 2) ? 2 : 3;
 }
 
 PickMode CaveExcavationBodyPage::currentPickMode() const

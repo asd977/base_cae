@@ -44,6 +44,7 @@ class CaveExcavationBodyPage : public BasePage
     void updateGroupDomainHighlight(int previewGroup = -1);
     QSet<int> selectedLayerGroups();
     PickMode currentPickMode() const;
+    int layerDomainDim() const;
 
   private:
     int m_lastHoveredIndex = -1;

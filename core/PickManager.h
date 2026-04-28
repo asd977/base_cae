@@ -345,11 +345,15 @@ class CORE_EXPORT PickManager : public QObject
     QHash<QString, QHash<QString, DomainKey>> m_selectedDomainByDomainUuid;
     QHash<QString, QHash<QString, DomainKey>> m_previewDomainByDomainUuid;
     QHash<QString, QHash<QString, DomainKey>> m_preDeleteDomainByDomainUuid;
-    vtkSmartPointer<vtkDataArray> m_savedDomainCellScalars;
+    vtkSmartPointer<vtkDataArray> m_savedDomainCellScalarsSolid;
+    vtkSmartPointer<vtkDataArray> m_savedDomainCellScalarsLine;
     bool m_domainColoringActive = false;
-    bool m_savedDomainScalarVisibility = false;
-    int m_savedDomainScalarMode = 0;
-    int m_savedDomainColorMode = 0;
+    bool m_savedDomainScalarVisibilitySolid = false;
+    int m_savedDomainScalarModeSolid = 0;
+    int m_savedDomainColorModeSolid = 0;
+    bool m_savedDomainScalarVisibilityLine = false;
+    int m_savedDomainScalarModeLine = 0;
+    int m_savedDomainColorModeLine = 0;
 
   signals:
     void nodePicked(const QString& domain, const QString& activeUuid, GridKind kind, vtkIdType pid,
