@@ -4,13 +4,18 @@
 #include <PickManager.h>
 
 class QLineEdit;
-class QPushButton;
+
+namespace Ui
+{
+class CaveBlockPlanePage;
+}
 
 class CaveBlockPlanePage : public BasePage
 {
     Q_OBJECT
   public:
     explicit CaveBlockPlanePage(QWidget* parent = nullptr);
+    ~CaveBlockPlanePage() override;
 
     void beforeLoad() override;
     void beforeUnload() override;
@@ -28,19 +33,5 @@ class CaveBlockPlanePage : public BasePage
     QString valueOrDefault(QLineEdit* edit, const QString& def) const;
 
   private:
-    QLineEdit* m_x1Edit = nullptr;
-    QLineEdit* m_y1Edit = nullptr;
-    QLineEdit* m_z1Edit = nullptr;
-    QLineEdit* m_x2Edit = nullptr;
-    QLineEdit* m_y2Edit = nullptr;
-    QLineEdit* m_z2Edit = nullptr;
-    QLineEdit* m_x3Edit = nullptr;
-    QLineEdit* m_y3Edit = nullptr;
-    QLineEdit* m_z3Edit = nullptr;
-
-    QLineEdit* m_fpEdit = nullptr;
-    QLineEdit* m_cEdit = nullptr;
-    QLineEdit* m_rtEdit = nullptr;
-
-    QPushButton* m_pickFillBtn = nullptr;
+    Ui::CaveBlockPlanePage* ui = nullptr;
 };
