@@ -912,6 +912,12 @@ bool PickManager::pickAt(int x, int y)
         int origFaceLocalId = 15;
         if (!computePickedFaceFromBoundary(ds, cellId, origCellId, origFaceLocalId))
             return false;
+        if (m_gridSolid && origCellId >= 0 && origCellId < m_gridSolid->GetNumberOfCells())
+        {
+            vtkCell* srcCell = m_gridSolid->GetCell(origCellId);
+            if (srcCell && srcCell->GetCellDimension() == 2)
+                origFaceLocalId = 0;
+        }
         toggleSelectFace(kind, packFaceKey(origCellId, origFaceLocalId));
         return true;
     }
@@ -1799,6 +1805,12 @@ void PickManager::rebuildBoundaryFaceCellIndex()
             int srcFaceLocalId = 15;
             if (!computePickedFaceFromBoundary(pickedDs, cid, srcCellId, srcFaceLocalId))
                 continue;
+            if (sourceGrid && srcCellId >= 0 && srcCellId < sourceGrid->GetNumberOfCells())
+            {
+                vtkCell* srcCell = sourceGrid->GetCell(srcCellId);
+                if (srcCell && srcCell->GetCellDimension() == 2)
+                    srcFaceLocalId = 0;
+            }
             out[packFaceKey(srcCellId, srcFaceLocalId)].push_back(cid);
         }
     };
