@@ -555,7 +555,6 @@ void MaterialEntryWidget::onMatypeChanged(int)
     // currentIndexChanged（并非真实提交），直接忽略。
     if (m_ignoreNextMatypeChanged)
     {
-        m_ignoreNextMatypeChanged = false;
         updateAppliedListColors();
         return;
     }
@@ -738,55 +737,55 @@ void MaterialEntryWidget::onMatypeHovered(int index)
 void MaterialEntryWidget::onDropdownClosed()
 {
     m_matypeDropdownOpen = false;
-    // 一些平台/样式会在关闭下拉后额外触发一次 currentIndexChanged（由 hover 项带出），
-    // 这里先吞掉，避免把“悬浮预览”误写成 Selected（红色残留）。
+    // 注意：CustomComboBox 在 hidePopup() 里先 emit dropdownClosed，再调用 QComboBox::hidePopup()。
+    // 因此这里必须把清理/恢复放到下一轮事件循环，避免被基类后续的 index 提交覆盖。
     m_ignoreNextMatypeChanged = true;
     QTimer::singleShot(0, this,
                        [this]()
                        {
+                           if (m_matypeCombo && m_lastHoveredIndex >= 0)
+                           {
+                               m_matypeCombo->setItemData(m_lastHoveredIndex, QVariant(),
+                                                          Qt::BackgroundRole);
+                               m_lastHoveredIndex = -1;
+                           }
+
+                           // 下拉关闭：无条件取消 Preview，避免悬浮高亮残留。
+                           m_previewMatype = -1;
+                           if (m_materialManager)
+                               m_materialManager->setPreviewMatypeForEntry(m_entryId, -1);
+
+                           // 如果本次下拉没有发生激活选择（仅悬浮/浏览），恢复到下拉打开前的 Selected。
+                           if (!m_matypeActivatedInDropdown && m_materialManager)
+                               m_materialManager->setSelectedMatypeForEntry(m_entryId,
+                                                                            m_selectedMatypeBeforeDropdown);
+
+                           if (m_matypeCombo)
+                           {
+                               const int selected =
+                                   m_materialManager ? m_materialManager->selectedMatypeForEntry(m_entryId)
+                                                     : -1;
+                               int comboIndex = (selected >= 0) ? m_matypeCombo->findData(selected) : 0;
+                               if (comboIndex < 0)
+                                   comboIndex = 0;
+                               QSignalBlocker blocker(m_matypeCombo);
+                               m_matypeCombo->setCurrentIndex(comboIndex);
+                           }
+
+                           m_matypeActivatedInDropdown = false;
+                           m_selectedMatypeBeforeDropdown = -1;
+                           updateAppliedListColors();
+
+                           // 卸载过程中只做状态清理，不回刷高亮，避免离开页面后颜色被重新点亮
+                           if (!m_beforeUnloadHandled)
+                           {
+                               // 下拉关闭后仅取消 Preview，并恢复到该条目的应有高亮状态
+                               //（Selected / PreDelete / Applied）。
+                               refreshMatypeHighlightSafe();
+                           }
+
                            m_ignoreNextMatypeChanged = false;
                        });
-
-    if (m_matypeCombo && m_lastHoveredIndex >= 0)
-    {
-        m_matypeCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
-        m_lastHoveredIndex = -1;
-    }
-
-    // 下拉关闭：无条件取消 Preview，避免悬浮高亮残留。
-    m_previewMatype = -1;
-    if (m_materialManager)
-        m_materialManager->setPreviewMatypeForEntry(m_entryId, -1);
-
-    // 如果本次下拉没有发生激活选择（仅悬浮/浏览），恢复到下拉打开前的 Selected。
-    if (!m_matypeActivatedInDropdown && m_materialManager)
-    {
-        m_materialManager->setSelectedMatypeForEntry(m_entryId, m_selectedMatypeBeforeDropdown);
-    }
-
-    if (m_matypeCombo)
-    {
-        const int selected = m_materialManager ? m_materialManager->selectedMatypeForEntry(m_entryId) : -1;
-        int comboIndex = (selected >= 0) ? m_matypeCombo->findData(selected) : 0;
-        if (comboIndex < 0)
-            comboIndex = 0;
-        QSignalBlocker blocker(m_matypeCombo);
-        m_matypeCombo->setCurrentIndex(comboIndex);
-    }
-    m_matypeActivatedInDropdown = false;
-    m_selectedMatypeBeforeDropdown = -1;
-
-    updateAppliedListColors();
-
-    // 卸载过程中只做状态清理，不回刷高亮，避免离开页面后颜色被重新点亮
-    if (m_beforeUnloadHandled)
-    {
-        return;
-    }
-
-    // 下拉关闭后仅取消 Preview，并恢复到该条目的应有高亮状态（Selected /
-    // PreDelete / Applied）。
-    refreshMatypeHighlightSafe();
 }
 
 void MaterialEntryWidget::onRemoveMatypeClicked()
