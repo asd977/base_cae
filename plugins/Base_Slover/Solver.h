@@ -7,6 +7,7 @@
 
 class CaveSupportComputationPage;
 class CaveExcavationBodyPage;
+class CaveBlockPlanePage;
 
 class Solver : public QObject, public SolverService
 {
@@ -42,6 +43,8 @@ class Solver : public QObject, public SolverService
     void addGeoStressRegressionNode(ProjectNode* analysisNode, bool setCurrent);
     void addCaveSupportComputationNode(ProjectNode* analysisNode, bool setCurrent) const;
     void addCaveExcavationBodyNode(ProjectNode* supportNode, bool setCurrent) const;
+    void addCaveBlockStabilityNode(ProjectNode* analysisNode, bool setCurrent) const;
+    void addCaveBlockPlaneNode(ProjectNode* blockNode, bool setCurrent) const;
     void addGeoStressSideFaceNode(ProjectNode* geostressNode, bool setCurrent) const;
     void addGeoStressMeasurePointNode(ProjectNode* geostressNode, bool setCurrent) const;
     void addGeoStressOuterForceNode(ProjectNode* geostressNode, bool setCurrent) const;
