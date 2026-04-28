@@ -16,7 +16,7 @@ struct DomainKey
 
     bool isValid() const
     {
-        return !category.trimmed().isEmpty() && dim >= 0 && id > 0;
+        return !category.trimmed().isEmpty() && dim >= 0 && id != 0;
     }
 
     bool operator==(const DomainKey& other) const

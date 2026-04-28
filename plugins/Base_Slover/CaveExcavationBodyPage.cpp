@@ -24,7 +24,6 @@
 #include <QSignalBlocker>
 #include <QVBoxLayout>
 #include <algorithm>
-#include <cmath>
 #include <limits>
 #include <set>
 
@@ -327,25 +326,6 @@ QVector<int> CaveExcavationBodyPage::availableGroupIds() const
         if (!meshSvc->cellIdsOfTag(set.key).isEmpty())
             out.push_back(set.key.id);
     }
-
-    vtkUnstructuredGrid* grid = meshSvc->getVtkUnstructuredGridSolid();
-    if (!grid)
-        grid = PickManager::instance().solidGrid();
-    if (grid && grid->GetCellData())
-    {
-        vtkDataArray* layerArr = vtkDataArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"));
-        if (layerArr)
-        {
-            const vtkIdType n = std::min(layerArr->GetNumberOfTuples(), grid->GetNumberOfCells());
-            for (vtkIdType i = 0; i < n; ++i)
-            {
-                const int gid = static_cast<int>(std::llround(layerArr->GetTuple1(i)));
-                if (gid != 0)
-                    out.push_back(gid);
-            }
-        }
-    }
-
     std::sort(out.begin(), out.end());
     out.erase(std::unique(out.begin(), out.end()), out.end());
     return out;
@@ -363,31 +343,9 @@ QVector<vtkIdType> CaveExcavationBodyPage::groupCellIds(int groupId) const
     key.id = groupId;
     const QVector<MeshIdType> src = meshSvc->cellIdsOfTag(key);
     QVector<vtkIdType> out;
-    if (!src.isEmpty())
-    {
-        out.reserve(src.size());
-        for (MeshIdType cid : src)
-            out.push_back(static_cast<vtkIdType>(cid));
-        return out;
-    }
-
-    vtkUnstructuredGrid* grid = meshSvc->getVtkUnstructuredGridSolid();
-    if (!grid)
-        grid = PickManager::instance().solidGrid();
-    if (!grid || !grid->GetCellData())
-        return out;
-
-    vtkDataArray* layerArr = vtkDataArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"));
-    if (!layerArr)
-        return out;
-
-    const vtkIdType n = std::min(layerArr->GetNumberOfTuples(), grid->GetNumberOfCells());
-    for (vtkIdType cid = 0; cid < n; ++cid)
-    {
-        const int gid = static_cast<int>(std::llround(layerArr->GetTuple1(cid)));
-        if (gid == groupId)
-            out.push_back(cid);
-    }
+    out.reserve(src.size());
+    for (MeshIdType cid : src)
+        out.push_back(static_cast<vtkIdType>(cid));
     return out;
 }
 

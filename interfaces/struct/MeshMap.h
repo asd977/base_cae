@@ -20,7 +20,7 @@ struct MeshTagKey
 
     bool isValid() const
     {
-        return !category.trimmed().isEmpty() && dim >= 0 && dim <= 3 && id > 0;
+        return !category.trimmed().isEmpty() && dim >= 0 && dim <= 3 && id != 0;
     }
 
     bool operator==(const MeshTagKey& other) const
