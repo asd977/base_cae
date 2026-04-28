@@ -131,8 +131,8 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
     const auto selectedGroupsArr = obj.value("selected_groups").toArray();
     for (const auto& v : selectedGroupsArr)
     {
-        const int gid = v.toInt(-1);
-        if (gid > 0)
+        const int gid = v.toInt(std::numeric_limits<int>::min());
+        if (gid != std::numeric_limits<int>::min() && gid != 0)
             domains.insert(DomainKey{"LAYER", layerDomainDim(), gid});
     }
     PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
@@ -321,7 +321,7 @@ QVector<int> CaveExcavationBodyPage::availableGroupIds() const
     {
         if (set.key.category.compare("LAYER", Qt::CaseInsensitive) != 0)
             continue;
-        if (set.key.id <= 0)
+        if (set.key.id == 0)
             continue;
         if (!meshSvc->cellIdsOfTag(set.key).isEmpty())
             out.push_back(set.key.id);
@@ -476,7 +476,7 @@ QSet<int> CaveExcavationBodyPage::selectedLayerGroups()
 
     for (const DomainKey& key : owned)
     {
-        if (key.category.compare("LAYER", Qt::CaseInsensitive) == 0 && key.isValid())
+        if (key.category.compare("LAYER", Qt::CaseInsensitive) == 0 && key.id != 0)
             out.insert(key.id);
     }
     return out;
