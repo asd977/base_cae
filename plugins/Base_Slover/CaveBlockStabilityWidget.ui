@@ -6,7 +6,7 @@
    <item>
     <widget class="QLabel" name="titleLabel">
      <property name="text">
-      <string>洞室块体稳定性分析（生成 ICUT.DAT / PARA.DAT / MESG227.DAT）</string>
+      <string>洞室块体稳定性分析（生成 ICUT.DAT / PARA.DAT / MESG227.DAT / ICUTPLANE.DAT）</string>
      </property>
     </widget>
    </item>

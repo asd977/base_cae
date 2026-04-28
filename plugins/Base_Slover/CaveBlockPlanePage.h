@@ -2,6 +2,7 @@
 
 #include <BasePage.h>
 #include <PickManager.h>
+#include <QVector3D>
 
 class QLineEdit;
 
@@ -25,6 +26,9 @@ class CaveBlockPlanePage : public BasePage
 
     QString icutLine(int ii) const;
     QString paraLine(int ii) const;
+    QVector3D p1Vector() const;
+    QVector3D normalVector() const;
+    double pickedFaceArea() const;
 
   private slots:
     void onFillFromPickedFace();

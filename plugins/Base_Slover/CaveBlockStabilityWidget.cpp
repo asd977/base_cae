@@ -9,6 +9,7 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QTextStream>
+#include <QVector3D>
 
 #include "CaveBlockPlanePage.h"
 #include "ui_CaveBlockStabilityWidget.h"
@@ -165,6 +166,48 @@ bool CaveBlockStabilityWidget::exportDatFiles(const QVector<CaveBlockPlanePage*>
     os << quoteValue("---") << "\n";
     os << quoteValue("---") << "\n";
     os << quoteValue("---") << "\n";
+
+    QFile icutPlaneFile(sliderDir.filePath("ICUTPLANE.DAT"));
+    if (!icutPlaneFile.open(QIODevice::WriteOnly | QIODevice::Text))
+        return false;
+    QTextStream ps(&icutPlaneFile);
+    ps << QString("%1 %2   NCUT NDIM\n").arg(planePages.size(), 6).arg(3, 6);
+    ps << "X1 Y1 Z1 n1 n2 n3 II\n";
+    QVector<double> areas;
+    areas.reserve(planePages.size());
+    for (int i = 0; i < planePages.size(); ++i)
+    {
+        const QVector3D p = planePages[i]->p1Vector();
+        const QVector3D n = planePages[i]->normalVector();
+        ps << QString("%1 %2 %3 %4 %5 %6 %7\n")
+                  .arg(double(p.x()), 12, 'f', 6)
+                  .arg(double(p.y()), 12, 'f', 6)
+                  .arg(double(p.z()), 12, 'f', 6)
+                  .arg(double(n.x()), 12, 'f', 6)
+                  .arg(double(n.y()), 12, 'f', 6)
+                  .arg(double(n.z()), 12, 'f', 6)
+                  .arg(i + 1, 6);
+        areas.push_back(planePages[i]->pickedFaceArea());
+    }
+
+    const double gamma = valueOrDefault(ui->weightEdit, "23.52").toDouble();
+    const double volume = 0.0;
+    const double weight = gamma * volume;
+    ps << "VOL(m2) GAMA(kN/m3) WEIGHT(kN) IVERTICAL\n";
+    ps << QString("%1 %2 %3 %4\n").arg(volume, 12, 'E', 6).arg(gamma, 10, 'f', 4).arg(
+              weight, 12, 'E', 6).arg(3, 6);
+    ps << "重力矢量\n";
+    ps << QString("%1 %2 %3\n")
+              .arg(0.0, 12, 'E', 6)
+              .arg(0.0, 12, 'E', 6)
+              .arg(-weight, 12, 'E', 6);
+    ps << "各面正压力(kN) （负值：压紧；正值：拉开）\n";
+    const double perFacePressure = planePages.isEmpty() ? 0.0 : (-weight / planePages.size());
+    for (int i = 0; i < planePages.size(); ++i)
+        ps << QString("%1 %2 ICUT\n").arg(perFacePressure, 12, 'E', 6).arg(i + 1, 6);
+    ps << "各面面积(m2)\n";
+    for (int i = 0; i < areas.size(); ++i)
+        ps << QString("%1 %2 ICUT\n").arg(areas[i], 12, 'E', 6).arg(i + 1, 6);
 
     return true;
 }

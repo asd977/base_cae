@@ -1213,7 +1213,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         if (planePages.isEmpty() || !blockPage->exportDatFiles(planePages))
         {
             ok = false;
-            failedFiles << "ICUT.DAT/PARA.DAT/MESG227.DAT";
+            failedFiles << "ICUT.DAT/PARA.DAT/MESG227.DAT/ICUTPLANE.DAT";
         }
         break;
     }
@@ -1434,7 +1434,7 @@ void Solver::onComputeCaveBlockStability(ProjectNode* analysisNode)
 
     if (blockPage->exportDatFiles(planePages))
         QMessageBox::information(nullptr, "导出成功",
-                                 "已在 SliderCase 文件夹生成 ICUT.DAT、PARA.DAT、MESG227.DAT。");
+                                 "已在 SliderCase 文件夹生成 ICUT.DAT、PARA.DAT、MESG227.DAT、ICUTPLANE.DAT。");
     else
         QMessageBox::warning(nullptr, "导出失败",
                              "生成滑块文件失败，请检查 SliderCase 目录与参数设置。");
