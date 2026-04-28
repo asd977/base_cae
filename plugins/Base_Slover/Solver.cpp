@@ -1433,6 +1433,22 @@ bool Solver::endCommonCompute(ProjectNode* analysisNode, const QString& analysis
         iiits << line << "\n";
 
     const int iauto = resolveIauto(analysisNode, analysisType);
+
+    auto requiredMainDatByIauto = [&](int code) -> QString
+    {
+        if (code == 4)
+            return QStringLiteral("ISEEP.DAT");
+        if (code == 3)
+            return QStringLiteral("IFILL.DAT");
+        if (code == 5)
+            return QStringLiteral("ICAVE.DAT");
+        if (code == 8)
+            return QStringLiteral("ISLOP.DAT");
+        if (code == 6)
+            return QStringLiteral("IGEOS.DAT");
+        return QString();
+    };
+
     QFile autoFile(projectRoot.filePath("MESG_IAUOTO.DAT"));
     if (!autoFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
     {
@@ -1459,10 +1475,21 @@ bool Solver::endCommonCompute(ProjectNode* analysisNode, const QString& analysis
         return false;
     }
 
+    const QString runWorkingDir = projectRoot.absolutePath();
+    const QString requiredMainDat = requiredMainDatByIauto(iauto);
+    if (!requiredMainDat.isEmpty())
+    {
+        const QString requiredDatPath = QDir(runWorkingDir).filePath(requiredMainDat);
+        qDebug() << "Solver precheck:" << requiredMainDat << "exists="
+                 << QFileInfo::exists(requiredDatPath) << requiredDatPath;
+    }
+    qDebug() << "Solver precheck: IIIDIR path=" << iiidirPath;
+    qDebug() << "Solver precheck: workingDir=" << runWorkingDir;
+
     auto* process = new QProcess(this);
     process->setProgram(QDir::toNativeSeparators(solverExe));
     process->setArguments(QStringList());
-    process->setWorkingDirectory(projectRoot.absolutePath());
+    process->setWorkingDirectory(runWorkingDir);
     process->setProcessChannelMode(QProcess::SeparateChannels);
 
     connect(process, &QProcess::readyReadStandardOutput, this,
