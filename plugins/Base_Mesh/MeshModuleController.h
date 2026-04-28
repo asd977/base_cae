@@ -82,8 +82,12 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     void onQualityStd();
     void onMeshEdit();
     void onMeshGrouping();
+    void onDamParametricModeling(int iobject);
 
     void displayCurrentGrid(); // 只显示 m_importedGrid
+    QString ensureProjectPrepDir(QString* errMsg = nullptr) const;
+    QString askSolverRootDir() const;
+    int askModelDimension() const;
 
     void splitGridByDim(vtkUnstructuredGrid* src, vtkSmartPointer<vtkUnstructuredGrid>& outLine,
                         vtkSmartPointer<vtkUnstructuredGrid>& outNonLine);

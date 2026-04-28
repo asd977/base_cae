@@ -704,6 +704,27 @@ void UiFrame::buildRibbonTabs()
         bindEvent(this, actMeshGrouping, PublicConstants::kActionPreprocessMeshGrouping);
         // bindEvent(this, actQuality,
         // PublicConstants::kActionPreprocessQualityStd);
+
+        // ============ 坝体参数化 ============
+        auto* panelDam = cate->addPannel("坝体参数化");
+        auto* actDamHomogeneous =
+            makeAction(this, ":/resources/menu/minimal/analysis.svg", "均质坝");
+        auto* actDamClayCore =
+            makeAction(this, ":/resources/menu/minimal/analysis.svg", "黏土心墙坝");
+        auto* actDamFaceSlab =
+            makeAction(this, ":/resources/menu/minimal/analysis.svg", "面板坝");
+        auto* actDamAsphaltCore =
+            makeAction(this, ":/resources/menu/minimal/analysis.svg", "沥青心墙坝");
+
+        addActionToPanel(panelDam, actDamHomogeneous, 1);
+        addActionToPanel(panelDam, actDamClayCore, 1);
+        addActionToPanel(panelDam, actDamFaceSlab, 1);
+        addActionToPanel(panelDam, actDamAsphaltCore, 1);
+
+        bindEvent(this, actDamHomogeneous, PublicConstants::kActionPreprocessDamHomogeneous);
+        bindEvent(this, actDamClayCore, PublicConstants::kActionPreprocessDamClayCore);
+        bindEvent(this, actDamFaceSlab, PublicConstants::kActionPreprocessDamFaceSlab);
+        bindEvent(this, actDamAsphaltCore, PublicConstants::kActionPreprocessDamAsphaltCore);
     }
 
     // =========================
