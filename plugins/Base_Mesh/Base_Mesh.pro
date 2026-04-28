@@ -6,6 +6,7 @@ INCLUDEPATH += $$PWD/../../interfaces
 
 HEADERS += \
     ParametricDam/DamParametricTypes.h \
+    ParametricDam/DamParametricDialog.h \
     ParametricDam/FillPrepIO.h \
     ParametricDam/MsgJzDamIO.h \
     ParametricDam/DamParametricCalculator.h \
@@ -23,6 +24,7 @@ HEADERS += \
 
 SOURCES += \
     ParametricDam/DamParametricTypes.cpp \
+    ParametricDam/DamParametricDialog.cpp \
     ParametricDam/FillPrepIO.cpp \
     ParametricDam/MsgJzDamIO.cpp \
     ParametricDam/DamParametricCalculator.cpp \
@@ -39,6 +41,7 @@ SOURCES += \
     MeshGroupingWidget.cpp
 
 FORMS += \
+    ParametricDam/DamParametricDialog.ui \
     MeshGlobalMeshingWidget.ui \
     MeshSingleMeshingWidget.ui \
     MeshVolumeControlWidget.ui \

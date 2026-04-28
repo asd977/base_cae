@@ -46,8 +46,7 @@ bool DamParametricRunner::run(const DamParametricContext& ctx, QString* error)
 
     if (ctx.iobject == 3 || ctx.iobject == 4 || ctx.iobject == 5 || ctx.iobject == 8)
     {
-        FillPrepParams fillPrep;
-        if (!FillPrepIO::write(ctx.projectDir, fillPrep, error))
+        if (!FillPrepIO::ensureExists(ctx.projectDir, error))
             return false;
     }
 

@@ -8,8 +8,7 @@
 #include <MeshGroupingWidget.h>
 #include <MeshSingleMeshingWidget.h>
 #include <MeshVolumeControlWidget.h>
-#include <ParametricDam/DamParametricCalculator.h>
-#include <ParametricDam/DamParametricRunner.h>
+#include <ParametricDam/DamParametricDialog.h>
 #include <ParametricDam/MsgJzDamIO.h>
 #include <PickManager.h>
 #include <ProjectNode.h>
@@ -45,8 +44,6 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QInputDialog>
-#include <QLineEdit>
 #include <QMessageBox>
 #include <QSet>
 #include <QVector>
@@ -879,25 +876,6 @@ QString MeshModuleController::ensureProjectPrepDir(QString* errMsg) const
     return wd.filePath("PREP");
 }
 
-QString MeshModuleController::askSolverRootDir() const
-{
-    const QString hint =
-        QDir::toNativeSeparators(QDir::home().filePath("NASGEWIN64")); // 可在弹窗中改成真实目录
-    bool ok = false;
-    const QString value = QInputDialog::getText(
-        nullptr, QString("参数化建模"), QString("请输入求解器根目录（含 A02_CKJACOBI 子目录）："),
-        QLineEdit::Normal, hint, &ok);
-    return ok ? value.trimmed() : QString();
-}
-
-int MeshModuleController::askModelDimension() const
-{
-    bool ok = false;
-    const int dim = QInputDialog::getInt(nullptr, QString("参数化建模"), QString("模型维数（2/3）："), 3,
-                                         2, 3, 1, &ok);
-    return ok ? dim : -1;
-}
-
 void MeshModuleController::onDamParametricModeling(int iobject)
 {
     QString error;
@@ -908,19 +886,11 @@ void MeshModuleController::onDamParametricModeling(int iobject)
         return;
     }
 
-    const int ndimModel = askModelDimension();
-    if (ndimModel != 2 && ndimModel != 3)
-        return;
-
-    const QString solverRoot = askSolverRootDir();
-    if (solverRoot.isEmpty())
-        return;
-
     DamParametricContext ctx;
     ctx.projectDir = prepDir;
-    ctx.solverRoot = solverRoot;
+    ctx.solverRoot = QDir::toNativeSeparators(QDir::home().filePath("NASGEWIN64"));
     ctx.iobject = iobject;
-    ctx.ndimModel = ndimModel;
+    ctx.ndimModel = 3;
     ctx.useDebugExe = true;
 
     if (!MsgJzDamIO::ensureExists(ctx.projectDir, &error))
@@ -939,41 +909,26 @@ void MeshModuleController::onDamParametricModeling(int iobject)
     params.P(35) = QString::number(ctx.ndimModel);
     applyDamObjectLabels(ctx.iobject, params);
 
-    if (!DamParametricCalculator::calculate(ctx.iobject, params, &error))
-    {
-        QMessageBox::warning(nullptr, QString("参数转换计算失败"), error);
-        return;
-    }
+    auto* dialog = new DamParametricDialog(ctx, params, nullptr);
+    connect(dialog, &DamParametricDialog::iiinGenerated, this,
+            [this](const QString& iiinPath)
+            {
+                QString err;
+                auto grid = MeshGridIO::instance().loadIiinFile(iiinPath, &err);
+                if (!grid || grid->GetNumberOfCells() == 0)
+                {
+                    QMessageBox::warning(nullptr, QString("参数化建模"),
+                                         err.isEmpty() ? QString("IIIN.DAT 导入失败") : err);
+                    return;
+                }
 
-    if (!MsgJzDamIO::write(ctx.projectDir, params, &error))
-    {
-        QMessageBox::warning(nullptr, QString("写参数文件失败"), error);
-        return;
-    }
-
-    if (!DamParametricRunner::run(ctx, &error))
-    {
-        QMessageBox::warning(nullptr, QString("调用 A02_CKJACOBI 失败"), error);
-        return;
-    }
-
-    const QString iiinPath = QDir(ctx.projectDir).filePath("IIIN.DAT");
-    auto grid = MeshGridIO::instance().loadIiinFile(iiinPath, &error);
-    if (!grid || grid->GetNumberOfCells() == 0)
-    {
-        QMessageBox::warning(nullptr, QString("参数化建模"),
-                             error.isEmpty() ? QString("IIIN.DAT 导入失败") : error);
-        return;
-    }
-
-    m_importedGrid = grid;
-    m_hasGrid = true;
-    m_sourceFileName = iiinPath;
-    displayCurrentGrid();
-
-    QMessageBox::information(nullptr, QString("参数化建模"),
-                             QString("%1完成并已导入：\n%2").arg(damDialogTitle(iobject, ndimModel),
-                                                                iiinPath));
+                m_importedGrid = grid;
+                m_hasGrid = true;
+                m_sourceFileName = iiinPath;
+                displayCurrentGrid();
+            });
+    dialog->exec();
+    dialog->deleteLater();
 }
 
 // -------------------- handlers --------------------

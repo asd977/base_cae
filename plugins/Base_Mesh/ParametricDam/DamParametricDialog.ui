@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>DamParametricDialog</class>
+ <widget class="QDialog" name="DamParametricDialog">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>980</width><height>720</height></rect>
+  </property>
+  <property name="windowTitle"><string>坝体参数化建模</string></property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <layout class="QHBoxLayout" name="topLayout">
+     <item><widget class="QLabel" name="labelTypeTitle"><property name="text"><string>坝体类型:</string></property></widget></item>
+     <item><widget class="QLabel" name="labelDamType"><property name="text"><string>-</string></property></widget></item>
+     <item><widget class="QLabel" name="labelSolver"><property name="text"><string>solverRoot:</string></property></widget></item>
+     <item><widget class="QLineEdit" name="editSolverRoot"/></item>
+     <item><widget class="QLabel" name="labelDim"><property name="text"><string>维数:</string></property></widget></item>
+     <item><widget class="QSpinBox" name="spinDim"><property name="minimum"><number>2</number></property><property name="maximum"><number>3</number></property></widget></item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="mainLayout">
+     <item>
+      <widget class="QGroupBox" name="groupInputs">
+       <property name="title"><string>输入参数</string></property>
+       <layout class="QFormLayout" name="formInputs">
+        <item row="0" column="0"><widget class="QLabel" name="labelP003"><property name="text"><string>B1</string></property></widget></item>
+        <item row="0" column="1"><widget class="QLineEdit" name="editP003"/></item>
+        <item row="1" column="0"><widget class="QLabel" name="labelP004"><property name="text"><string>HBOT</string></property></widget></item>
+        <item row="1" column="1"><widget class="QLineEdit" name="editP004"/></item>
+        <item row="2" column="0"><widget class="QLabel" name="labelP005"><property name="text"><string>HTOP</string></property></widget></item>
+        <item row="2" column="1"><widget class="QLineEdit" name="editP005"/></item>
+        <item row="3" column="0"><widget class="QLabel" name="labelP006"><property name="text"><string>W1</string></property></widget></item>
+        <item row="3" column="1"><widget class="QLineEdit" name="editP006"/></item>
+        <item row="4" column="0"><widget class="QLabel" name="labelP009"><property name="text"><string>NLAYER</string></property></widget></item>
+        <item row="4" column="1"><widget class="QLineEdit" name="editP009"/></item>
+        <item row="5" column="0"><widget class="QLabel" name="labelP010"><property name="text"><string>B2</string></property></widget></item>
+        <item row="5" column="1"><widget class="QLineEdit" name="editP010"/></item>
+        <item row="6" column="0"><widget class="QLabel" name="labelP011"><property name="text"><string>B3</string></property></widget></item>
+        <item row="6" column="1"><widget class="QLineEdit" name="editP011"/></item>
+        <item row="7" column="0"><widget class="QLabel" name="labelP012"><property name="text"><string>W2</string></property></widget></item>
+        <item row="7" column="1"><widget class="QLineEdit" name="editP012"/></item>
+        <item row="8" column="0"><widget class="QLabel" name="labelP013"><property name="text"><string>W3</string></property></widget></item>
+        <item row="8" column="1"><widget class="QLineEdit" name="editP013"/></item>
+        <item row="9" column="0"><widget class="QLabel" name="labelP015"><property name="text"><string>AMX</string></property></widget></item>
+        <item row="9" column="1"><widget class="QLineEdit" name="editP015"/></item>
+        <item row="10" column="0"><widget class="QLabel" name="labelP016"><property name="text"><string>AMZ</string></property></widget></item>
+        <item row="10" column="1"><widget class="QLineEdit" name="editP016"/></item>
+        <item row="11" column="0"><widget class="QLabel" name="labelW4"><property name="text"><string>W4</string></property></widget></item>
+        <item row="11" column="1"><widget class="QLineEdit" name="editP025"/></item>
+        <item row="12" column="0"><widget class="QLabel" name="labelW5"><property name="text"><string>W5</string></property></widget></item>
+        <item row="12" column="1"><widget class="QLineEdit" name="editP027"/></item>
+        <item row="13" column="0"><widget class="QLabel" name="labelT1"><property name="text"><string>T1</string></property></widget></item>
+        <item row="13" column="1"><widget class="QLineEdit" name="editP029"/></item>
+        <item row="14" column="0"><widget class="QLabel" name="labelT2"><property name="text"><string>T2</string></property></widget></item>
+        <item row="14" column="1"><widget class="QLineEdit" name="editP031"/></item>
+        <item row="15" column="0"><widget class="QLabel" name="labelP034"><property name="text"><string>P034</string></property></widget></item>
+        <item row="15" column="1"><widget class="QLineEdit" name="editP034"/></item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <layout class="QVBoxLayout" name="rightLayout">
+       <item>
+        <widget class="QGroupBox" name="groupDerived">
+         <property name="title"><string>转换结果(只读)</string></property>
+         <layout class="QFormLayout" name="formDerived">
+          <item row="0" column="0"><widget class="QLabel" name="labelD1"><property name="text"><string>ALFA1</string></property></widget></item>
+          <item row="0" column="1"><widget class="QLineEdit" name="editP001"><property name="readOnly"><bool>true</bool></property></widget></item>
+          <item row="1" column="0"><widget class="QLabel" name="labelD2"><property name="text"><string>ALFA2</string></property></widget></item>
+          <item row="1" column="1"><widget class="QLineEdit" name="editP002"><property name="readOnly"><bool>true</bool></property></widget></item>
+          <item row="2" column="0"><widget class="QLabel" name="labelD3"><property name="text"><string>BETA1</string></property></widget></item>
+          <item row="2" column="1"><widget class="QLineEdit" name="editP007"><property name="readOnly"><bool>true</bool></property></widget></item>
+          <item row="3" column="0"><widget class="QLabel" name="labelD4"><property name="text"><string>BETA2</string></property></widget></item>
+          <item row="3" column="1"><widget class="QLineEdit" name="editP008"><property name="readOnly"><bool>true</bool></property></widget></item>
+          <item row="4" column="0"><widget class="QLabel" name="labelD5"><property name="text"><string>WM</string></property></widget></item>
+          <item row="4" column="1"><widget class="QLineEdit" name="editP019"><property name="readOnly"><bool>true</bool></property></widget></item>
+          <item row="5" column="0"><widget class="QLabel" name="labelD6"><property name="text"><string>BM</string></property></widget></item>
+          <item row="5" column="1"><widget class="QLineEdit" name="editP020"><property name="readOnly"><bool>true</bool></property></widget></item>
+          <item row="6" column="0"><widget class="QLabel" name="labelD7"><property name="text"><string>HEIT</string></property></widget></item>
+          <item row="6" column="1"><widget class="QLineEdit" name="editP021"><property name="readOnly"><bool>true</bool></property></widget></item>
+          <item row="7" column="0"><widget class="QLabel" name="labelD8"><property name="text"><string>HPACK</string></property></widget></item>
+          <item row="7" column="1"><widget class="QLineEdit" name="editP022"><property name="readOnly"><bool>true</bool></property></widget></item>
+          <item row="8" column="0"><widget class="QLabel" name="labelD9"><property name="text"><string>HM</string></property></widget></item>
+          <item row="8" column="1"><widget class="QLineEdit" name="editP023"><property name="readOnly"><bool>true</bool></property></widget></item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupFillPrep">
+         <property name="title"><string>填筑前处理参数</string></property>
+         <layout class="QFormLayout" name="formFillPrep">
+          <item row="0" column="0"><widget class="QLabel" name="labelXmid"><property name="text"><string>XMID</string></property></widget></item>
+          <item row="0" column="1"><widget class="QLineEdit" name="editXmid"/></item>
+          <item row="1" column="0"><widget class="QLabel" name="labelWidth"><property name="text"><string>WIDTH</string></property></widget></item>
+          <item row="1" column="1"><widget class="QLineEdit" name="editWidth"/></item>
+          <item row="2" column="0"><widget class="QLabel" name="labelYa"><property name="text"><string>YA</string></property></widget></item>
+          <item row="2" column="1"><widget class="QLineEdit" name="editYa"/></item>
+          <item row="3" column="0"><widget class="QLabel" name="labelYb"><property name="text"><string>YB</string></property></widget></item>
+          <item row="3" column="1"><widget class="QLineEdit" name="editYb"/></item>
+          <item row="4" column="0"><widget class="QLabel" name="labelTol2"><property name="text"><string>TOL2</string></property></widget></item>
+          <item row="4" column="1"><widget class="QLineEdit" name="editTol2"/></item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="buttonLayout">
+     <item><spacer name="horizontalSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+     <item><widget class="QPushButton" name="btnConvert"><property name="text"><string>转换计算</string></property></widget></item>
+     <item><widget class="QPushButton" name="btnGenerate"><property name="text"><string>生成模型</string></property></widget></item>
+     <item><widget class="QPushButton" name="btnCancel"><property name="text"><string>取消</string></property></widget></item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -86,8 +86,6 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
 
     void displayCurrentGrid(); // 只显示 m_importedGrid
     QString ensureProjectPrepDir(QString* errMsg = nullptr) const;
-    QString askSolverRootDir() const;
-    int askModelDimension() const;
 
     void splitGridByDim(vtkUnstructuredGrid* src, vtkSmartPointer<vtkUnstructuredGrid>& outLine,
                         vtkSmartPointer<vtkUnstructuredGrid>& outNonLine);
