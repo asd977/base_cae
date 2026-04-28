@@ -87,6 +87,7 @@ void CaveExcavationBodyPage::beforeLoad()
     {
         refreshSelectedGroupList();
         refreshGroupComboMarks();
+        updatePersistentSelectionFaces();
     }
 }
 
@@ -271,6 +272,13 @@ void CaveExcavationBodyPage::onGroupHovered(int index)
     m_lastHoveredIndex = index;
 
     const int gid = m_groupCombo->itemData(index).toInt();
+    if (currentPickMode() == PickMode::Face)
+    {
+        const QVector<vtkIdType> previewFaceKeys = visibleBoundaryFaceKeys(groupCellIds(gid));
+        PickManager::instance().setPreviewFaceKeys(
+            getPageType(), m_uuid, GridKind::Solid, previewFaceKeys);
+        return;
+    }
     updateGroupDomainHighlight(gid);
 }
 
@@ -380,6 +388,17 @@ QVector<vtkIdType> CaveExcavationBodyPage::visibleBoundaryFaceKeys(const QVector
     for (vtkIdType fk : uniq)
         out.push_back(fk);
 
+    if (out.isEmpty())
+    {
+        const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+        if (meshDim == 2)
+        {
+            out.reserve(cellIds.size());
+            for (vtkIdType cid : cellIds)
+                out.push_back(PickManager::instance().packFaceKey(cid, 0));
+        }
+    }
+
     return out;
 }
 
@@ -437,9 +456,25 @@ void CaveExcavationBodyPage::updatePersistentSelectionFaces()
 {
     const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
 
-           // 2D：面选择由 PickManager 的 Face 模式直接管理，这里不要覆盖
+           // 2D：将“已选分组”转为 Face 持久高亮，便于开挖体分组可视反馈
     if (meshDim == 2)
+    {
+        QSet<vtkIdType> uniq;
+        const QSet<int> groups = selectedLayerGroups();
+        for (int gid : groups)
+        {
+            const QVector<vtkIdType> faceKeys = visibleBoundaryFaceKeys(groupCellIds(gid));
+            for (vtkIdType fk : faceKeys)
+                uniq.insert(fk);
+        }
+        QVector<vtkIdType> merged;
+        merged.reserve(uniq.size());
+        for (vtkIdType fk : uniq)
+            merged.push_back(fk);
+        PickManager::instance().setSelectedFaceKeys(
+            getPageType(), m_uuid, GridKind::Solid, merged, true);
         return;
+    }
 
            // 3D：当前不使用 face 持久高亮
     PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, {}, true);
