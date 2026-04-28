@@ -1520,12 +1520,25 @@ void MaterialManager::highlightMatypes(const QString& entryId, const QSet<int>& 
     }
     const QString domain = m_pickDomain.isEmpty() ? QStringLiteral("MaterialManager") : m_pickDomain;
     const QString uuid = m_pickUuid.isEmpty() ? entryId : m_pickUuid;
+    int matypeDim = 3;
+    if (auto* service = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+    {
+        const QVector<DomainKey> domains = service->availableDomains(QStringLiteral("MATYPE"));
+        for (const DomainKey& key : domains)
+        {
+            if (key.isValid())
+            {
+                matypeDim = key.dim;
+                break;
+            }
+        }
+    }
 
-    auto mk = [](int id) -> DomainKey
+    auto mk = [matypeDim](int id) -> DomainKey
     {
         DomainKey key;
         key.category = "MATYPE";
-        key.dim = 3;
+        key.dim = matypeDim;
         key.id = id;
         return key;
     };
