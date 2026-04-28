@@ -1981,7 +1981,10 @@ void PickManager::rebuildDomainHighlightActors()
         const QSet<vtkIdType> ids = cellsOfDomain(key);
         appliedCells.unite(ids);
     }
-    const QSet<vtkIdType> selectedCells = selected.isValid() ? cellsOfDomain(selected) : QSet<vtkIdType>{};
+    const bool suppressSelectedTint =
+        m_currentDomain.contains(QStringLiteral("Material"), Qt::CaseInsensitive);
+    const QSet<vtkIdType> selectedCells =
+        (!suppressSelectedTint && selected.isValid()) ? cellsOfDomain(selected) : QSet<vtkIdType>{};
     const QSet<vtkIdType> previewCells = preview.isValid() ? cellsOfDomain(preview) : QSet<vtkIdType>{};
     const QSet<vtkIdType> preDeleteCells =
         preDelete.isValid() ? cellsOfDomain(preDelete) : QSet<vtkIdType>{};
