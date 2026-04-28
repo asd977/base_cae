@@ -6,6 +6,7 @@ INCLUDEPATH += $$PWD/../../interfaces
 
 HEADERS += \
     ParametricDam/DamParametricTypes.h \
+    ParametricDam/FillPrepIO.h \
     ParametricDam/MsgJzDamIO.h \
     ParametricDam/DamParametricCalculator.h \
     ParametricDam/DamParametricRunner.h \
@@ -22,6 +23,7 @@ HEADERS += \
 
 SOURCES += \
     ParametricDam/DamParametricTypes.cpp \
+    ParametricDam/FillPrepIO.cpp \
     ParametricDam/MsgJzDamIO.cpp \
     ParametricDam/DamParametricCalculator.cpp \
     ParametricDam/DamParametricRunner.cpp \

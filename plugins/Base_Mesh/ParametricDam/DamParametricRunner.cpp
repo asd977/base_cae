@@ -1,4 +1,5 @@
 #include "DamParametricRunner.h"
+#include "FillPrepIO.h"
 
 #include <QDir>
 #include <QFile>
@@ -41,6 +42,13 @@ bool DamParametricRunner::run(const DamParametricContext& ctx, QString* error)
         if (error)
             *error = QString("工程目录不存在：%1").arg(ctx.projectDir);
         return false;
+    }
+
+    if (ctx.iobject == 3 || ctx.iobject == 4 || ctx.iobject == 5 || ctx.iobject == 8)
+    {
+        FillPrepParams fillPrep;
+        if (!FillPrepIO::write(ctx.projectDir, fillPrep, error))
+            return false;
     }
 
     if (!writeTaskFile(ctx.projectDir, error))
