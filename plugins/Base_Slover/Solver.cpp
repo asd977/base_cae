@@ -12,14 +12,17 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMessageBox>
 #include <QMenu>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QSet>
+#include <QTextStream>
 #include <QStringList>
 #include <algorithm>
 
@@ -964,7 +967,8 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
 
     if (ok)
     {
-        QMessageBox::information(nullptr, "导出成功", "渗流计算输入文件导出成功（PREP/）。");
+        if (endCommonCompute(analysisNode, "渗流分析"))
+            QMessageBox::information(nullptr, "计算启动", "渗流计算输入文件导出成功，已启动求解器。");
     }
     else
     {
@@ -1015,8 +1019,10 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
     }
 
     if (ok)
-        QMessageBox::information(nullptr, "导出成功",
-                                 "土石坝计算输入文件导出成功（IFILL.DAT 与 PREP/）。");
+    {
+        if (endCommonCompute(analysisNode, "土石坝计算"))
+            QMessageBox::information(nullptr, "计算启动", "土石坝计算输入文件导出成功，已启动求解器。");
+    }
     else
         QMessageBox::warning(nullptr, "导出失败",
                              QString("以下文件导出失败：\n%1").arg(failedFiles.join("\n")));
@@ -1233,8 +1239,10 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     }
 
     if (ok)
-        QMessageBox::information(nullptr, "导出成功",
-                                 "洞室开挖输入文件导出成功。");
+    {
+        if (endCommonCompute(analysisNode, "洞室开挖"))
+            QMessageBox::information(nullptr, "计算启动", "洞室开挖输入文件导出成功，已启动求解器。");
+    }
     else
         QMessageBox::warning(nullptr, "导出失败",
                              QString("以下文件导出失败：\n%1").arg(failedFiles.join("\n")));
@@ -1247,7 +1255,10 @@ void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
 
     auto* slopePage = dynamic_cast<SlopeStabilityWidget*>(analysisNode->getPage());
     if (slopePage && slopePage->exportIslopDatFile())
-        QMessageBox::information(nullptr, "导出成功", "边坡分析输入文件导出成功。");
+    {
+        if (endCommonCompute(analysisNode, "边坡分析"))
+            QMessageBox::information(nullptr, "计算启动", "边坡分析输入文件导出成功，已启动求解器。");
+    }
     else
         QMessageBox::warning(nullptr, "导出失败", "ISLOP.DAT 导出失败。");
 }
@@ -1259,7 +1270,10 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
 
     auto* page = dynamic_cast<GeoStressRegressionWidget*>(analysisNode->getPage());
     if (page && page->exportIGEOSDatFile(buildGeoStressPayload(analysisNode)))
-        QMessageBox::information(nullptr, "导出成功", "地应力回归计算输入文件导出成功。");
+    {
+        if (endCommonCompute(analysisNode, "地应力回归计算"))
+            QMessageBox::information(nullptr, "计算启动", "地应力回归计算输入文件导出成功，已启动求解器。");
+    }
     else
         QMessageBox::warning(nullptr, "导出失败", "IGEOS.DAT 导出失败。");
 }
@@ -1331,6 +1345,126 @@ bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analys
 
     return exportInouseDatFile() && exportMaMaskDatFile() && exportKetraceDatFile() &&
            exportJdtraceDatFile();
+}
+
+
+
+int Solver::resolveIauto(const ProjectNode* analysisNode, const QString& analysisType) const
+{
+    const QString kind = analysisNode
+                             ? analysisNode->data(0, ProjectNode::RoleKind).toString()
+                             : QString();
+    if (kind == "SeepageAnalysis" || analysisType.contains("渗流"))
+        return 4;
+    if (kind == "StressStrainAnalysis" || kind == "DamAnalysis" || analysisType.contains("土石坝"))
+        return 3;
+    if (kind == "CaveExcavationAnalysis" || analysisType.contains("洞室"))
+        return 5;
+    if (kind == "SlopeStabilityAnalysis" || analysisType.contains("边坡"))
+        return 8;
+    if (kind == "GeoStressRegression" || analysisType.contains("地应力"))
+        return 6;
+    return 0;
+}
+
+bool Solver::endCommonCompute(ProjectNode* analysisNode, const QString& analysisType)
+{
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir projectRoot(QDir(projectDir).absolutePath());
+    QDir solverDir(projectRoot.filePath("solver"));
+    if (!solverDir.exists())
+    {
+        QMessageBox::warning(nullptr, "计算失败",
+                             QString("%1缺少 solver 目录。").arg(analysisType));
+        return false;
+    }
+
+    const QString iiidirPath = projectRoot.filePath("IIIDIR.DAT");
+    const QString iiidirTemplatePath = solverDir.filePath("IIIDIR.DAT");
+    QStringList lines;
+    if (QFile::exists(iiidirTemplatePath))
+    {
+        QFile in(iiidirTemplatePath);
+        if (in.open(QIODevice::ReadOnly | QIODevice::Text))
+            lines = QString::fromLocal8Bit(in.readAll()).split(QRegularExpression("\r?\n"));
+    }
+    while (lines.size() < 9)
+        lines << QString();
+
+    int idevice = 0;
+    QRegularExpression ideviceRe(QStringLiteral(R"(([-+]?\d+))"));
+    const auto ideviceMatch = ideviceRe.match(lines.at(4));
+    if (ideviceMatch.hasMatch())
+        idevice = ideviceMatch.captured(1).toInt();
+
+    const QString nativeProjectDir = QDir::toNativeSeparators(projectRoot.absolutePath() + QDir::separator());
+    const QString nativePrepDir =
+        QDir::toNativeSeparators(projectRoot.filePath("PREP") + QDir::separator());
+    const QString nativeSolverDir = QDir::toNativeSeparators(solverDir.absolutePath() + QDir::separator());
+
+    lines[0] = QString("'%1'").arg(nativeProjectDir);
+    if (lines[1].trimmed().isEmpty())
+        lines[1] = "'0.01'";
+    if (lines[2].trimmed().isEmpty())
+        lines[2] = "'9.81000  0.000000E+06 10'";
+    lines[3] = QString("'%1'").arg(nativeSolverDir);
+    lines[4] = QString("%1  IDEVICE=IPARA(1)").arg(idevice, 8);
+    if (lines[5].trimmed().isEmpty())
+        lines[5] = "       0  ILOG_GZKZR=IPARA(2)";
+    if (lines[6].trimmed().isEmpty())
+        lines[6] = "       0  ILOG_SOLVE=IPARA(3)";
+    lines[7] = QString("'%1'").arg(nativePrepDir);
+    if (lines[8].trimmed().isEmpty())
+        lines[8] = "           3";
+
+    QFile outIii(iiidirPath);
+    if (!outIii.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+    {
+        QMessageBox::warning(nullptr, "计算失败",
+                             QString("%1写入 IIIDIR.DAT 失败。").arg(analysisType));
+        return false;
+    }
+    QTextStream iiits(&outIii);
+    for (const QString& line : lines)
+        iiits << line << "\n";
+
+    const int iauto = resolveIauto(analysisNode, analysisType);
+    QFile autoFile(projectRoot.filePath("MESG_IAUOTO.DAT"));
+    if (!autoFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+    {
+        QMessageBox::warning(nullptr, "计算失败",
+                             QString("%1写入 MESG_IAUOTO.DAT 失败。").arg(analysisType));
+        return false;
+    }
+    QTextStream ats(&autoFile);
+    ats << iauto << "\n";
+
+    QString solverExeRelativePath;
+    if (idevice == -1)
+        solverExeRelativePath = "PCCAE_CPU/X64/Debug/PCCAE_CPU.EXE";
+    else if (idevice == 0)
+        solverExeRelativePath = "PCCAE_CPU/X64/Release/PCCAE_CPU.EXE";
+    else
+        solverExeRelativePath = "PCCAE_GPU/X64/Release/PCCAE_GPU.EXE";
+
+    const QString solverExe = solverDir.filePath(solverExeRelativePath);
+    if (!QFileInfo::exists(solverExe))
+    {
+        QMessageBox::warning(nullptr, "计算失败",
+                             QString("%1求解器不存在：%2").arg(analysisType, solverExe));
+        return false;
+    }
+
+    if (!QProcess::startDetached(QDir::toNativeSeparators(solverExe), QStringList(),
+                                 projectRoot.absolutePath()))
+    {
+        QMessageBox::warning(nullptr, "计算失败",
+                             QString("%1启动求解器失败。").arg(analysisType));
+        return false;
+    }
+
+    return true;
 }
 
 int Solver::nextStressStrainIndex() const
