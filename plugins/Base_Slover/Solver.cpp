@@ -10,7 +10,9 @@
 #include <services/PhysicalFieldService.h>
 #include <services/ProjectManagerService.h>
 
+#include <QCoreApplication>
 #include <QDir>
+#include <QDebug>
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
@@ -1372,7 +1374,8 @@ bool Solver::endCommonCompute(ProjectNode* analysisNode, const QString& analysis
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     QDir projectRoot(QDir(projectDir).absolutePath());
-    QDir solverDir(projectRoot.filePath("solver"));
+    const QDir appDir(QCoreApplication::applicationDirPath());
+    QDir solverDir(appDir.filePath("solver"));
     if (!solverDir.exists())
     {
         QMessageBox::warning(nullptr, "计算失败",
@@ -1380,8 +1383,8 @@ bool Solver::endCommonCompute(ProjectNode* analysisNode, const QString& analysis
         return false;
     }
 
-    const QString iiidirPath = projectRoot.filePath("IIIDIR.DAT");
-    const QString iiidirTemplatePath = solverDir.filePath("IIIDIR.DAT");
+    const QString iiidirPath = solverDir.filePath("IIIDIR.DAT");
+    const QString iiidirTemplatePath = iiidirPath;
     QStringList lines;
     if (QFile::exists(iiidirTemplatePath))
     {
@@ -1456,13 +1459,50 @@ bool Solver::endCommonCompute(ProjectNode* analysisNode, const QString& analysis
         return false;
     }
 
-    if (!QProcess::startDetached(QDir::toNativeSeparators(solverExe), QStringList(),
-                                 projectRoot.absolutePath()))
+    auto* process = new QProcess(this);
+    process->setProgram(QDir::toNativeSeparators(solverExe));
+    process->setArguments(QStringList());
+    process->setWorkingDirectory(projectRoot.absolutePath());
+    process->setProcessChannelMode(QProcess::SeparateChannels);
+
+    connect(process, &QProcess::readyReadStandardOutput, this,
+            [process]()
+            {
+                const QByteArray data = process->readAllStandardOutput();
+                if (!data.isEmpty())
+                    qDebug().noquote() << QString::fromLocal8Bit(data).trimmed();
+            });
+    connect(process, &QProcess::readyReadStandardError, this,
+            [process]()
+            {
+                const QByteArray data = process->readAllStandardError();
+                if (!data.isEmpty())
+                    qDebug().noquote() << QString::fromLocal8Bit(data).trimmed();
+            });
+    connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
+            [process](int exitCode, QProcess::ExitStatus status)
+            {
+                qDebug() << "Solver finished, exitCode=" << exitCode << ", status=" << status;
+                process->deleteLater();
+            });
+    connect(process, &QProcess::errorOccurred, this,
+            [process](QProcess::ProcessError err)
+            {
+                qDebug() << "Solver process error:" << err << process->errorString();
+            });
+
+    process->start();
+    if (!process->waitForStarted(3000))
     {
         QMessageBox::warning(nullptr, "计算失败",
-                             QString("%1启动求解器失败。").arg(analysisType));
+                             QString("%1启动求解器失败：%2").arg(analysisType,
+                                                            process->errorString()));
+        process->deleteLater();
         return false;
     }
+
+    qDebug() << "Solver started:" << QDir::toNativeSeparators(solverExe)
+             << "workingDir=" << projectRoot.absolutePath();
 
     return true;
 }
