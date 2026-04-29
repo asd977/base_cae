@@ -326,27 +326,27 @@ GridKind CaveBlockPlanePage::currentGridKind()
 {
     return GridKind::Solid;
 }
-    if (currentPickMode() == PickMode::Edge)
-    {
-        vtkIdType cellId = PickManager::instance().unpackEdgeCellId(faceKey);
-        int edgeLocalId = PickManager::instance().unpackEdgeLocalId(faceKey);
-        if (cellId < 0 || cellId >= grid->GetNumberOfCells())
-            return false;
-        vtkCell* cell = grid->GetCell(cellId);
-        if (!cell)
-            return false;
-        vtkCell* edge = cell->GetEdge(edgeLocalId);
-        if (!edge || edge->GetNumberOfPoints() < 2)
-            return false;
-        double p1[3] = {0.0, 0.0, 0.0};
-        double p2[3] = {0.0, 0.0, 0.0};
-        edge->GetPoints()->GetPoint(0, p1);
-        edge->GetPoints()->GetPoint(1, p2);
-        ui->x1Edit->setText(QString::number(p1[0], 'f', 6));
-        ui->y1Edit->setText(QString::number(p1[1], 'f', 6));
-        ui->z1Edit->setText(QString::number(p1[2], 'f', 6));
-        ui->x2Edit->setText(QString::number(p2[0], 'f', 6));
-        ui->y2Edit->setText(QString::number(p2[1], 'f', 6));
-        ui->z2Edit->setText(QString::number(p2[2], 'f', 6));
-        return true;
-    }
+    // if (currentPickMode() == PickMode::Edge)
+    // {
+    //     vtkIdType cellId = PickManager::instance().unpackEdgeCellId(faceKey);
+    //     int edgeLocalId = PickManager::instance().unpackEdgeLocalId(faceKey);
+    //     if (cellId < 0 || cellId >= grid->GetNumberOfCells())
+    //         return false;
+    //     vtkCell* cell = grid->GetCell(cellId);
+    //     if (!cell)
+    //         return false;
+    //     vtkCell* edge = cell->GetEdge(edgeLocalId);
+    //     if (!edge || edge->GetNumberOfPoints() < 2)
+    //         return false;
+    //     double p1[3] = {0.0, 0.0, 0.0};
+    //     double p2[3] = {0.0, 0.0, 0.0};
+    //     edge->GetPoints()->GetPoint(0, p1);
+    //     edge->GetPoints()->GetPoint(1, p2);
+    //     ui->x1Edit->setText(QString::number(p1[0], 'f', 6));
+    //     ui->y1Edit->setText(QString::number(p1[1], 'f', 6));
+    //     ui->z1Edit->setText(QString::number(p1[2], 'f', 6));
+    //     ui->x2Edit->setText(QString::number(p2[0], 'f', 6));
+    //     ui->y2Edit->setText(QString::number(p2[1], 'f', 6));
+    //     ui->z2Edit->setText(QString::number(p2[2], 'f', 6));
+    //     return true;
+    // }
