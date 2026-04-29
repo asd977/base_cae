@@ -204,6 +204,7 @@ double CaveBlockPlanePage::pickedFaceArea()
         return 0.5 * QVector3D::crossProduct(p2 - p1, p3 - p1).length();
     }
 
+    vtkIdType faceKey = keys.first();
     vtkIdType cellId = PickManager::instance().unpackFaceCellId(faceKey);
     int faceLocalId = PickManager::instance().unpackFaceLocalId(faceKey);
     if (cellId < 0 || cellId >= grid->GetNumberOfCells())
