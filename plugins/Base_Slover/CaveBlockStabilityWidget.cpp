@@ -8,8 +8,6 @@
 #include <QJsonObject>
 #include <QLineEdit>
 #include <QPushButton>
-#include <QRegularExpression>
-#include <QStringList>
 #include <QTextStream>
 #include <QVector3D>
 #include <cmath>
@@ -227,32 +225,6 @@ bool CaveBlockStabilityWidget::exportDatFiles(QVector<CaveBlockPlanePage*>& plan
         const int pairs = points.size() * (points.size() - 1) / 2;
         lengthScale = (pairs > 0) ? (lengthScale / (2.0 * pairs)) : 0.0;
     }
-    if (lengthScale <= 1e-9)
-    {
-        // 当点位退化（例如多个面的P1恰好相同）时，用切面的局部几何尺度回退，
-        // 避免落到默认坐标范围(±1e6)导致非物理超大体积。
-        double avgEdge = 0.0;
-        int edgeCount = 0;
-        for (CaveBlockPlanePage* page : planePages)
-        {
-            const QVector3D p1 = page->p1Vector();
-            QStringList parts = page->icutLine(0).split(QRegularExpression("\\s+"),
-                                                        QString::SkipEmptyParts);
-            if (parts.size() >= 9)
-            {
-                const QVector3D p2(parts.at(3).toDouble(), parts.at(4).toDouble(),
-                                   parts.at(5).toDouble());
-                const QVector3D p3(parts.at(6).toDouble(), parts.at(7).toDouble(),
-                                   parts.at(8).toDouble());
-                avgEdge += (p2 - p1).length() + (p3 - p2).length() + (p1 - p3).length();
-                edgeCount += 3;
-            }
-        }
-        if (edgeCount > 0)
-            avgEdge /= edgeCount;
-        lengthScale = qMax(1e-3, avgEdge / 3.0);
-    }
-
     double avgArea = 0.0;
     for (double a : areas)
         avgArea += a;
