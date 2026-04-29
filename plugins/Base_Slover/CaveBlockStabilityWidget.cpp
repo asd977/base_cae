@@ -8,6 +8,8 @@
 #include <QJsonObject>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QRegularExpression>
+#include <QStringList>
 #include <QTextStream>
 #include <QVector3D>
 #include <cmath>
@@ -184,8 +186,8 @@ bool CaveBlockStabilityWidget::exportDatFiles(const QVector<CaveBlockPlanePage*>
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     ps.setCodec("UTF-8");
 #endif
-    const int method = 2;
-    ps << QString("%1 %2   NCUT METHOD\n").arg(planePages.size(), 6).arg(method, 6);
+    const int ndim = 3;
+    ps << QString("%1 %2   NCUT NDIM\n").arg(planePages.size(), 6).arg(ndim, 6);
     ps << "X1 Y1 Z1 n1 n2 n3 II\n";
     QVector<double> areas;
     areas.reserve(planePages.size());
@@ -227,13 +229,28 @@ bool CaveBlockStabilityWidget::exportDatFiles(const QVector<CaveBlockPlanePage*>
     }
     if (lengthScale <= 1e-9)
     {
-        const double xLen = std::abs(valueOrDefault(ui->xMaxEdit, "1.0E6").toDouble()
-                                     - valueOrDefault(ui->xMinEdit, "-1.0E6").toDouble());
-        const double yLen = std::abs(valueOrDefault(ui->yMaxEdit, "1.0E6").toDouble()
-                                     - valueOrDefault(ui->yMinEdit, "-1.0E6").toDouble());
-        const double zLen = std::abs(valueOrDefault(ui->zMaxEdit, "1.0E6").toDouble()
-                                     - valueOrDefault(ui->zMinEdit, "-1.0E6").toDouble());
-        lengthScale = qMax(1.0, (xLen + yLen + zLen) / 30.0);
+        // 当点位退化（例如多个面的P1恰好相同）时，用切面的局部几何尺度回退，
+        // 避免落到默认坐标范围(±1e6)导致非物理超大体积。
+        double avgEdge = 0.0;
+        int edgeCount = 0;
+        for (const CaveBlockPlanePage* page : planePages)
+        {
+            const QVector3D p1 = page->p1Vector();
+            const QStringList parts = page->icutLine(0).split(QRegularExpression("\\s+"),
+                                                              Qt::SkipEmptyParts);
+            if (parts.size() >= 9)
+            {
+                const QVector3D p2(parts.at(3).toDouble(), parts.at(4).toDouble(),
+                                   parts.at(5).toDouble());
+                const QVector3D p3(parts.at(6).toDouble(), parts.at(7).toDouble(),
+                                   parts.at(8).toDouble());
+                avgEdge += (p2 - p1).length() + (p3 - p2).length() + (p1 - p3).length();
+                edgeCount += 3;
+            }
+        }
+        if (edgeCount > 0)
+            avgEdge /= edgeCount;
+        lengthScale = qMax(1e-3, avgEdge / 3.0);
     }
 
     double avgArea = 0.0;
