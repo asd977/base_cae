@@ -4,8 +4,16 @@
  <widget class="QWidget" name="CaveBlockPlanePage">
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="QLabel" name="titleLabel">
-     <property name="text"><string>滑块面（按 P1-&gt;P2-&gt;P3 右手法则，法向指向块体内部）</string></property>
+   <widget class="QLabel" name="titleLabel">
+     <property name="text"><string>滑块面定义（P1-&gt;P2-&gt;P3 右手法则，法向指向块体内部）</string></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="pickHintLabel">
+     <property name="text"><string>说明：仅允许选择1个面；点击“从拾取面读取3点”后自动填充P1/P2/P3。</string></property>
+     <property name="styleSheet">
+      <string notr="true">color:#666666;</string>
+     </property>
     </widget>
    </item>
    <item>

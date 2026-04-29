@@ -33,6 +33,12 @@ void CaveBlockPlanePage::beforeLoad()
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Face);
     PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
     PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, false);
+    // 滑块面仅允许单面拾取：进入页面时若已有多面，保留第一个
+    const auto keys =
+        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid);
+    if (keys.size() > 1)
+        PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
+                                                    {keys.first()}, true);
 }
 
 void CaveBlockPlanePage::beforeUnload()
@@ -233,6 +239,10 @@ void CaveBlockPlanePage::onFillFromPickedFace()
                                                         GridKind::Solid);
     if (keys.isEmpty())
         return;
+    // 仅使用第一张面，并将选择态固化为单面，避免“选了多面后颜色/点位混乱”
+    if (keys.size() > 1)
+        PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
+                                                    {keys.first()}, true);
 
     const vtkIdType cellId = PickManager::instance().unpackFaceCellId(keys.first());
     const int faceLocalId = PickManager::instance().unpackFaceLocalId(keys.first());
