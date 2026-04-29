@@ -35,22 +35,9 @@ CaveBlockPlanePage::~CaveBlockPlanePage()
 void CaveBlockPlanePage::beforeLoad()
 {
     PickMode mode = currentPickMode();
-    GridKind kind = currentGridKind();
     PickManager::instance().activate(getPageType(), m_uuid, mode);
     PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
     PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, false);
-    // 滑块面仅允许单面拾取：进入页面时若已有多面，保留第一个
-    const auto keys =
-        PickManager::instance().getIdList(getPageType(), m_uuid, mode, kind);
-    if (keys.size() > 1)
-    {
-        if (mode == PickMode::Face)
-            PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, kind,
-                                                        {keys.first()}, true);
-        else
-            PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, kind, {keys.first()},
-                                                        true);
-    }
     m_lastFaceKey = -1;
     if (m_syncTimer)
         m_syncTimer->start();
@@ -233,17 +220,8 @@ void CaveBlockPlanePage::onSelectionSyncTick()
     if (keys.isEmpty())
         return;
 
-    // 单面约束：选中阶段实时生效，保留“最后选中”的那一个
+    // 选择态完全由 PickManager 管理，这里只读取当前激活项用于自动填点
     vtkIdType activeKey = keys.last();
-    if (keys.size() > 1 || activeKey != m_lastFaceKey)
-    {
-        if (mode == PickMode::Face)
-            PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, kind, {activeKey},
-                                                        true);
-        else
-            PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, kind, {activeKey},
-                                                        true);
-    }
 
     if (activeKey != m_lastFaceKey)
     {
