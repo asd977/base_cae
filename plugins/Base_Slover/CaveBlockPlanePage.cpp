@@ -1,5 +1,8 @@
 #include "CaveBlockPlanePage.h"
 
+#include <PublicConstants.h>
+#include <PublicVariables.h>
+
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLineEdit>
@@ -31,15 +34,23 @@ CaveBlockPlanePage::~CaveBlockPlanePage()
 
 void CaveBlockPlanePage::beforeLoad()
 {
-    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Face);
+    PickMode mode = currentPickMode();
+    GridKind kind = currentGridKind();
+    PickManager::instance().activate(getPageType(), m_uuid, mode);
     PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
     PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, false);
     // 滑块面仅允许单面拾取：进入页面时若已有多面，保留第一个
     const auto keys =
-        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid);
+        PickManager::instance().getIdList(getPageType(), m_uuid, mode, kind);
     if (keys.size() > 1)
-        PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                    {keys.first()}, true);
+    {
+        if (mode == PickMode::Face)
+            PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, kind,
+                                                        {keys.first()}, true);
+        else
+            PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, kind, {keys.first()},
+                                                        true);
+    }
     m_lastFaceKey = -1;
     if (m_syncTimer)
         m_syncTimer->start();
@@ -47,8 +58,9 @@ void CaveBlockPlanePage::beforeLoad()
 
 void CaveBlockPlanePage::beforeUnload()
 {
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Face);
-    PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Face);
+    PickMode mode = currentPickMode();
+    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, mode);
+    PickManager::instance().deactivate(getPageType(), m_uuid, mode);
     if (m_syncTimer)
         m_syncTimer->stop();
 }
@@ -215,18 +227,22 @@ double CaveBlockPlanePage::pickedFaceArea()
 
 void CaveBlockPlanePage::onSelectionSyncTick()
 {
-    const auto keys = PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face,
-                                                        GridKind::Solid);
+    PickMode mode = currentPickMode();
+    GridKind kind = currentGridKind();
+    QVector<vtkIdType> keys = PickManager::instance().getIdList(getPageType(), m_uuid, mode, kind);
     if (keys.isEmpty())
         return;
 
     // 单面约束：选中阶段实时生效，保留“最后选中”的那一个
     vtkIdType activeKey = keys.last();
-    if (keys.size() > 1 && activeKey != m_lastFaceKey)
+    if (keys.size() > 1 || activeKey != m_lastFaceKey)
     {
-        PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                    {activeKey}, true);
-        return;
+        if (mode == PickMode::Face)
+            PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, kind, {activeKey},
+                                                        true);
+        else
+            PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, kind, {activeKey},
+                                                        true);
     }
 
     if (activeKey != m_lastFaceKey)
@@ -321,3 +337,38 @@ QString CaveBlockPlanePage::valueOrDefault(QLineEdit* edit, QString def)
     const QString v = edit->text().trimmed();
     return v.isEmpty() ? def : v;
 }
+
+PickMode CaveBlockPlanePage::currentPickMode()
+{
+    int dim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    return (dim == 2) ? PickMode::Edge : PickMode::Face;
+}
+
+GridKind CaveBlockPlanePage::currentGridKind()
+{
+    return GridKind::Solid;
+}
+    if (currentPickMode() == PickMode::Edge)
+    {
+        vtkIdType cellId = PickManager::instance().unpackEdgeCellId(faceKey);
+        int edgeLocalId = PickManager::instance().unpackEdgeLocalId(faceKey);
+        if (cellId < 0 || cellId >= grid->GetNumberOfCells())
+            return false;
+        vtkCell* cell = grid->GetCell(cellId);
+        if (!cell)
+            return false;
+        vtkCell* edge = cell->GetEdge(edgeLocalId);
+        if (!edge || edge->GetNumberOfPoints() < 2)
+            return false;
+        double p1[3] = {0.0, 0.0, 0.0};
+        double p2[3] = {0.0, 0.0, 0.0};
+        edge->GetPoints()->GetPoint(0, p1);
+        edge->GetPoints()->GetPoint(1, p2);
+        ui->x1Edit->setText(QString::number(p1[0], 'f', 6));
+        ui->y1Edit->setText(QString::number(p1[1], 'f', 6));
+        ui->z1Edit->setText(QString::number(p1[2], 'f', 6));
+        ui->x2Edit->setText(QString::number(p2[0], 'f', 6));
+        ui->y2Edit->setText(QString::number(p2[1], 'f', 6));
+        ui->z2Edit->setText(QString::number(p2[2], 'f', 6));
+        return true;
+    }

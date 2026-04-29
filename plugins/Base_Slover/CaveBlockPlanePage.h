@@ -38,6 +38,8 @@ class CaveBlockPlanePage : public BasePage
   private:
     QString valueOrDefault(QLineEdit* edit, QString def);
     bool fillFromFaceKey(vtkIdType faceKey);
+    PickMode currentPickMode();
+    GridKind currentGridKind();
 
   private:
     Ui::CaveBlockPlanePage* ui = nullptr;
