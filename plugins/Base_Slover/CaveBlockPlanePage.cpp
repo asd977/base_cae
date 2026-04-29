@@ -204,8 +204,8 @@ double CaveBlockPlanePage::pickedFaceArea() const
         return 0.5 * QVector3D::crossProduct(p2 - p1, p3 - p1).length();
     }
 
-    const vtkIdType cellId = PickManager::instance().unpackFaceCellId(keys.first());
-    const int faceLocalId = PickManager::instance().unpackFaceLocalId(faceKey);
+    vtkIdType cellId = PickManager::instance().unpackFaceCellId(faceKey);
+    int faceLocalId = PickManager::instance().unpackFaceLocalId(faceKey);
     if (cellId < 0 || cellId >= grid->GetNumberOfCells())
         return 0.0;
 
@@ -267,8 +267,8 @@ bool CaveBlockPlanePage::fillFromFaceKey(vtkIdType faceKey)
     if (!grid)
         return false;
 
-    const vtkIdType cellId = PickManager::instance().unpackFaceCellId(faceKey);
-    const int faceLocalId = PickManager::instance().unpackFaceLocalId(keys.first());
+    vtkIdType cellId = PickManager::instance().unpackFaceCellId(faceKey);
+    int faceLocalId = PickManager::instance().unpackFaceLocalId(faceKey);
     if (cellId < 0 || cellId >= grid->GetNumberOfCells())
         return false;
 
