@@ -23,13 +23,13 @@ class CaveBlockStabilityWidget : public BasePage
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
 
-    bool exportDatFiles(const QVector<CaveBlockPlanePage*>& planePages) const;
+    bool exportDatFiles(QVector<CaveBlockPlanePage*>& planePages);
   signals:
     void computeRequested();
 
   private:
-    QString quoteValue(const QString& value) const;
-    QString valueOrDefault(QLineEdit* edit, const QString& def) const;
+    QString quoteValue(QString value);
+    QString valueOrDefault(QLineEdit* edit, QString def);
 
   private:
     Ui::CaveBlockStabilityWidget* ui = nullptr;

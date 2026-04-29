@@ -94,7 +94,7 @@ void CaveBlockStabilityWidget::loadJson(const QJsonObject& obj)
     ui->im2Edit->setText(obj.value("im2").toString(ui->im2Edit->text()));
 }
 
-bool CaveBlockStabilityWidget::exportDatFiles(const QVector<CaveBlockPlanePage*>& planePages) const
+bool CaveBlockStabilityWidget::exportDatFiles(QVector<CaveBlockPlanePage*>& planePages)
 {
     if (planePages.isEmpty())
         return false;
@@ -233,7 +233,7 @@ bool CaveBlockStabilityWidget::exportDatFiles(const QVector<CaveBlockPlanePage*>
         // 避免落到默认坐标范围(±1e6)导致非物理超大体积。
         double avgEdge = 0.0;
         int edgeCount = 0;
-        for (const CaveBlockPlanePage* page : planePages)
+        for (CaveBlockPlanePage* page : planePages)
         {
             const QVector3D p1 = page->p1Vector();
             const QStringList parts = page->icutLine(0).split(QRegularExpression("\\s+"),
@@ -280,12 +280,12 @@ bool CaveBlockStabilityWidget::exportDatFiles(const QVector<CaveBlockPlanePage*>
     return true;
 }
 
-QString CaveBlockStabilityWidget::quoteValue(const QString& value) const
+QString CaveBlockStabilityWidget::quoteValue(QString value)
 {
     return "'" + value.trimmed() + "'";
 }
 
-QString CaveBlockStabilityWidget::valueOrDefault(QLineEdit* edit, const QString& def) const
+QString CaveBlockStabilityWidget::valueOrDefault(QLineEdit* edit, QString def)
 {
     if (!edit)
         return def;

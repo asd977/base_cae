@@ -121,7 +121,7 @@ void CaveBlockPlanePage::loadJson(const QJsonObject& obj)
                                                 true);
 }
 
-QString CaveBlockPlanePage::icutLine(int ii) const
+QString CaveBlockPlanePage::icutLine(int ii)
 {
     return QString("%1 %2 %3 %4 %5 %6 %7 %8 %9 %10")
         .arg(valueOrDefault(ui->x1Edit, "0.0"))
@@ -136,7 +136,7 @@ QString CaveBlockPlanePage::icutLine(int ii) const
         .arg(ii);
 }
 
-QString CaveBlockPlanePage::paraLine(int ii) const
+QString CaveBlockPlanePage::paraLine(int ii)
 {
     return QString("%1 %2 %3 %4")
         .arg(valueOrDefault(ui->fpEdit, "0.8391"))
@@ -145,14 +145,14 @@ QString CaveBlockPlanePage::paraLine(int ii) const
         .arg(ii);
 }
 
-QVector3D CaveBlockPlanePage::p1Vector() const
+QVector3D CaveBlockPlanePage::p1Vector()
 {
     return QVector3D(valueOrDefault(ui->x1Edit, "0.0").toDouble(),
                      valueOrDefault(ui->y1Edit, "0.0").toDouble(),
                      valueOrDefault(ui->z1Edit, "0.0").toDouble());
 }
 
-QVector3D CaveBlockPlanePage::normalVector() const
+QVector3D CaveBlockPlanePage::normalVector()
 {
     const QVector3D p1(valueOrDefault(ui->x1Edit, "0.0").toDouble(),
                        valueOrDefault(ui->y1Edit, "0.0").toDouble(),
@@ -170,7 +170,7 @@ QVector3D CaveBlockPlanePage::normalVector() const
     return n;
 }
 
-double CaveBlockPlanePage::pickedFaceArea() const
+double CaveBlockPlanePage::pickedFaceArea()
 {
     PickManager::instance().updateStructure();
     vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
@@ -288,7 +288,7 @@ bool CaveBlockPlanePage::fillFromFaceKey(vtkIdType faceKey)
         face->GetPoints()->GetPoint(i, p);
         const QVector3D v(p[0], p[1], p[2]);
         bool duplicated = false;
-        for (const QVector3D& ex : uniqPoints)
+        for (QVector3D ex : uniqPoints)
         {
             if ((ex - v).lengthSquared() <= eps2)
             {
@@ -332,7 +332,7 @@ bool CaveBlockPlanePage::fillFromFaceKey(vtkIdType faceKey)
     return true;
 }
 
-QString CaveBlockPlanePage::valueOrDefault(QLineEdit* edit, const QString& def) const
+QString CaveBlockPlanePage::valueOrDefault(QLineEdit* edit, QString def)
 {
     if (!edit)
         return def;

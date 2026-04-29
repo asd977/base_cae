@@ -25,18 +25,18 @@ class CaveBlockPlanePage : public BasePage
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
 
-    QString icutLine(int ii) const;
-    QString paraLine(int ii) const;
-    QVector3D p1Vector() const;
-    QVector3D normalVector() const;
-    double pickedFaceArea() const;
+    QString icutLine(int ii);
+    QString paraLine(int ii);
+    QVector3D p1Vector();
+    QVector3D normalVector();
+    double pickedFaceArea();
 
   private slots:
     void onSelectionSyncTick();
     void onFillFromPickedFace(vtkIdType faceKey);
 
   private:
-    QString valueOrDefault(QLineEdit* edit, const QString& def) const;
+    QString valueOrDefault(QLineEdit* edit, QString def);
     bool fillFromFaceKey(vtkIdType faceKey);
 
   private:
