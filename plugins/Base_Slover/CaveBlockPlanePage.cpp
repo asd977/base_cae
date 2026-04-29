@@ -161,12 +161,34 @@ double CaveBlockPlanePage::pickedFaceArea() const
     PickManager::instance().updateStructure();
     vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
     if (!grid)
-        return 0.0;
+    {
+        const QVector3D p1(valueOrDefault(ui->x1Edit, "0.0").toDouble(),
+                           valueOrDefault(ui->y1Edit, "0.0").toDouble(),
+                           valueOrDefault(ui->z1Edit, "0.0").toDouble());
+        const QVector3D p2(valueOrDefault(ui->x2Edit, "0.0").toDouble(),
+                           valueOrDefault(ui->y2Edit, "0.0").toDouble(),
+                           valueOrDefault(ui->z2Edit, "0.0").toDouble());
+        const QVector3D p3(valueOrDefault(ui->x3Edit, "0.0").toDouble(),
+                           valueOrDefault(ui->y3Edit, "0.0").toDouble(),
+                           valueOrDefault(ui->z3Edit, "0.0").toDouble());
+        return 0.5 * QVector3D::crossProduct(p2 - p1, p3 - p1).length();
+    }
 
     const auto keys =
         PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid);
     if (keys.isEmpty())
-        return 0.0;
+    {
+        const QVector3D p1(valueOrDefault(ui->x1Edit, "0.0").toDouble(),
+                           valueOrDefault(ui->y1Edit, "0.0").toDouble(),
+                           valueOrDefault(ui->z1Edit, "0.0").toDouble());
+        const QVector3D p2(valueOrDefault(ui->x2Edit, "0.0").toDouble(),
+                           valueOrDefault(ui->y2Edit, "0.0").toDouble(),
+                           valueOrDefault(ui->z2Edit, "0.0").toDouble());
+        const QVector3D p3(valueOrDefault(ui->x3Edit, "0.0").toDouble(),
+                           valueOrDefault(ui->y3Edit, "0.0").toDouble(),
+                           valueOrDefault(ui->z3Edit, "0.0").toDouble());
+        return 0.5 * QVector3D::crossProduct(p2 - p1, p3 - p1).length();
+    }
 
     const vtkIdType cellId = PickManager::instance().unpackFaceCellId(keys.first());
     const int faceLocalId = PickManager::instance().unpackFaceLocalId(keys.first());

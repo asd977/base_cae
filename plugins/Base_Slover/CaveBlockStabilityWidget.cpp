@@ -10,6 +10,7 @@
 #include <QPushButton>
 #include <QTextStream>
 #include <QVector3D>
+#include <cmath>
 
 #include "CaveBlockPlanePage.h"
 #include "ui_CaveBlockStabilityWidget.h"
@@ -171,14 +172,21 @@ bool CaveBlockStabilityWidget::exportDatFiles(const QVector<CaveBlockPlanePage*>
     if (!icutPlaneFile.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
     QTextStream ps(&icutPlaneFile);
-    ps << QString("%1 %2   NCUT NDIM\n").arg(planePages.size(), 6).arg(3, 6);
+    const int method = 2;
+    ps << QString("%1 %2   NCUT METHOD\n").arg(planePages.size(), 6).arg(method, 6);
     ps << "X1 Y1 Z1 n1 n2 n3 II\n";
     QVector<double> areas;
     areas.reserve(planePages.size());
+    QVector<QVector3D> points;
+    QVector<QVector3D> normals;
+    points.reserve(planePages.size());
+    normals.reserve(planePages.size());
     for (int i = 0; i < planePages.size(); ++i)
     {
         const QVector3D p = planePages[i]->p1Vector();
         const QVector3D n = planePages[i]->normalVector();
+        points.push_back(p);
+        normals.push_back(n);
         ps << QString("%1 %2 %3 %4 %5 %6 %7\n")
                   .arg(double(p.x()), 12, 'f', 6)
                   .arg(double(p.y()), 12, 'f', 6)
@@ -191,7 +199,37 @@ bool CaveBlockStabilityWidget::exportDatFiles(const QVector<CaveBlockPlanePage*>
     }
 
     const double gamma = valueOrDefault(ui->weightEdit, "23.52").toDouble();
-    const double volume = 0.0;
+    double lengthScale = 0.0;
+    if (points.size() >= 2)
+    {
+        for (int i = 0; i < points.size(); ++i)
+        {
+            for (int j = i + 1; j < points.size(); ++j)
+            {
+                lengthScale += std::abs(QVector3D::dotProduct(normals[i], points[j] - points[i]));
+                lengthScale += std::abs(QVector3D::dotProduct(normals[j], points[i] - points[j]));
+            }
+        }
+        const int pairs = points.size() * (points.size() - 1) / 2;
+        lengthScale = (pairs > 0) ? (lengthScale / (2.0 * pairs)) : 0.0;
+    }
+    if (lengthScale <= 1e-9)
+    {
+        const double xLen = std::abs(valueOrDefault(ui->xMaxEdit, "1.0E6").toDouble()
+                                     - valueOrDefault(ui->xMinEdit, "-1.0E6").toDouble());
+        const double yLen = std::abs(valueOrDefault(ui->yMaxEdit, "1.0E6").toDouble()
+                                     - valueOrDefault(ui->yMinEdit, "-1.0E6").toDouble());
+        const double zLen = std::abs(valueOrDefault(ui->zMaxEdit, "1.0E6").toDouble()
+                                     - valueOrDefault(ui->zMinEdit, "-1.0E6").toDouble());
+        lengthScale = qMax(1.0, (xLen + yLen + zLen) / 30.0);
+    }
+
+    double avgArea = 0.0;
+    for (double a : areas)
+        avgArea += a;
+    if (!areas.isEmpty())
+        avgArea /= areas.size();
+    const double volume = avgArea * lengthScale;
     const double weight = gamma * volume;
     ps << "VOL(m2) GAMA(kN/m3) WEIGHT(kN) IVERTICAL\n";
     ps << QString("%1 %2 %3 %4\n").arg(volume, 12, 'E', 6).arg(gamma, 10, 'f', 4).arg(
@@ -202,7 +240,8 @@ bool CaveBlockStabilityWidget::exportDatFiles(const QVector<CaveBlockPlanePage*>
               .arg(0.0, 12, 'E', 6)
               .arg(-weight, 12, 'E', 6);
     ps << "各面正压力(kN) （负值：压紧；正值：拉开）\n";
-    const double perFacePressure = planePages.isEmpty() ? 0.0 : (-weight / planePages.size());
+    const int pressureFaceCount = qMax(3, planePages.size());
+    const double perFacePressure = (pressureFaceCount > 0) ? (-weight / pressureFaceCount) : 0.0;
     for (int i = 0; i < planePages.size(); ++i)
         ps << QString("%1 %2 ICUT\n").arg(perFacePressure, 12, 'E', 6).arg(i + 1, 6);
     ps << "各面面积(m2)\n";
