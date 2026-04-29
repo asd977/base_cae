@@ -236,8 +236,8 @@ bool CaveBlockStabilityWidget::exportDatFiles(QVector<CaveBlockPlanePage*>& plan
         for (CaveBlockPlanePage* page : planePages)
         {
             const QVector3D p1 = page->p1Vector();
-            const QStringList parts = page->icutLine(0).split(QRegularExpression("\\s+"),
-                                                              Qt::SkipEmptyParts);
+            QStringList parts = page->icutLine(0).split(QRegularExpression("\\s+"),
+                                                        QString::SkipEmptyParts);
             if (parts.size() >= 9)
             {
                 const QVector3D p2(parts.at(3).toDouble(), parts.at(4).toDouble(),

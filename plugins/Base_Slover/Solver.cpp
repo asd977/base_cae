@@ -892,7 +892,7 @@ void Solver::addCaveExcavationBodyNode(ProjectNode* supportNode, bool setCurrent
     }
 }
 
-void Solver::addCaveBlockStabilityNode(ProjectNode* analysisNode, bool setCurrent) const
+void Solver::addCaveBlockStabilityNode(ProjectNode* analysisNode, bool setCurrent)
 {
     if (!analysisNode)
         return;
