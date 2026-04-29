@@ -10,15 +10,10 @@
    </item>
    <item>
     <widget class="QLabel" name="pickHintLabel">
-     <property name="text"><string>说明：仅允许选择1个面；点击“从拾取面读取3点”后自动填充P1/P2/P3。</string></property>
+     <property name="text"><string>说明：仅允许选择1个面；选中面后自动填充P1/P2/P3。</string></property>
      <property name="styleSheet">
       <string notr="true">color:#666666;</string>
      </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QPushButton" name="pickFillBtn">
-     <property name="text"><string>从拾取面读取3点</string></property>
     </widget>
    </item>
    <item>

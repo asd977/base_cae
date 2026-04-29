@@ -3,7 +3,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLineEdit>
-#include <QPushButton>
+#include <QTimer>
 #include <QVector3D>
 #include <QVector>
 #include <utility>
@@ -19,8 +19,9 @@ CaveBlockPlanePage::CaveBlockPlanePage(QWidget* parent)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
-
-    connect(ui->pickFillBtn, &QPushButton::clicked, this, &CaveBlockPlanePage::onFillFromPickedFace);
+    m_syncTimer = new QTimer(this);
+    m_syncTimer->setInterval(120);
+    connect(m_syncTimer, &QTimer::timeout, this, &CaveBlockPlanePage::onSelectionSyncTick);
 }
 
 CaveBlockPlanePage::~CaveBlockPlanePage()
@@ -39,12 +40,17 @@ void CaveBlockPlanePage::beforeLoad()
     if (keys.size() > 1)
         PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
                                                     {keys.first()}, true);
+    m_lastFaceKey = -1;
+    if (m_syncTimer)
+        m_syncTimer->start();
 }
 
 void CaveBlockPlanePage::beforeUnload()
 {
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Face);
     PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Face);
+    if (m_syncTimer)
+        m_syncTimer->stop();
 }
 
 QJsonObject CaveBlockPlanePage::saveJson()
@@ -199,7 +205,7 @@ double CaveBlockPlanePage::pickedFaceArea() const
     }
 
     const vtkIdType cellId = PickManager::instance().unpackFaceCellId(keys.first());
-    const int faceLocalId = PickManager::instance().unpackFaceLocalId(keys.first());
+    const int faceLocalId = PickManager::instance().unpackFaceLocalId(faceKey);
     if (cellId < 0 || cellId >= grid->GetNumberOfCells())
         return 0.0;
 
@@ -228,34 +234,51 @@ double CaveBlockPlanePage::pickedFaceArea() const
     return area;
 }
 
-void CaveBlockPlanePage::onFillFromPickedFace()
+void CaveBlockPlanePage::onSelectionSyncTick()
 {
-    PickManager::instance().updateStructure();
-    vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
-    if (!grid)
-        return;
-
     const auto keys = PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face,
                                                         GridKind::Solid);
     if (keys.isEmpty())
         return;
-    // 仅使用第一张面，并将选择态固化为单面，避免“选了多面后颜色/点位混乱”
+
+    // 单面约束：选中阶段实时生效，保留“最后选中”的那一个
+    vtkIdType activeKey = keys.last();
     if (keys.size() > 1)
         PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                    {keys.first()}, true);
+                                                    {activeKey}, true);
 
-    const vtkIdType cellId = PickManager::instance().unpackFaceCellId(keys.first());
+    if (activeKey != m_lastFaceKey)
+    {
+        onFillFromPickedFace(activeKey);
+        m_lastFaceKey = activeKey;
+    }
+}
+
+void CaveBlockPlanePage::onFillFromPickedFace(vtkIdType faceKey)
+{
+    if (!fillFromFaceKey(faceKey))
+        return;
+}
+
+bool CaveBlockPlanePage::fillFromFaceKey(vtkIdType faceKey)
+{
+    PickManager::instance().updateStructure();
+    vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
+    if (!grid)
+        return false;
+
+    const vtkIdType cellId = PickManager::instance().unpackFaceCellId(faceKey);
     const int faceLocalId = PickManager::instance().unpackFaceLocalId(keys.first());
     if (cellId < 0 || cellId >= grid->GetNumberOfCells())
-        return;
+        return false;
 
     vtkCell* cell = grid->GetCell(cellId);
     if (!cell)
-        return;
+        return false;
 
     vtkCell* face = cell->GetFace(faceLocalId);
     if (!face || face->GetNumberOfPoints() < 3)
-        return;
+        return false;
 
     QVector<QVector3D> uniqPoints;
     const double eps2 = 1e-16;
@@ -279,7 +302,7 @@ void CaveBlockPlanePage::onFillFromPickedFace()
             break;
     }
     if (uniqPoints.size() < 3)
-        return;
+        return false;
 
     // 右手螺旋：优先令法向指向单元内部（用“面中心->单元中心”方向判定）
     QVector3D p1 = uniqPoints[0];
@@ -306,6 +329,7 @@ void CaveBlockPlanePage::onFillFromPickedFace()
     ui->x3Edit->setText(QString::number(p3.x(), 'f', 6));
     ui->y3Edit->setText(QString::number(p3.y(), 'f', 6));
     ui->z3Edit->setText(QString::number(p3.z(), 'f', 6));
+    return true;
 }
 
 QString CaveBlockPlanePage::valueOrDefault(QLineEdit* edit, const QString& def) const
