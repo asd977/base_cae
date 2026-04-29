@@ -5,6 +5,8 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QVector3D>
+#include <QVector>
+#include <utility>
 
 #include <vtkCell.h>
 #include <vtkPoints.h>
@@ -245,21 +247,55 @@ void CaveBlockPlanePage::onFillFromPickedFace()
     if (!face || face->GetNumberOfPoints() < 3)
         return;
 
-    double p[3] = {0.0, 0.0, 0.0};
-    face->GetPoints()->GetPoint(0, p);
-    ui->x1Edit->setText(QString::number(p[0], 'f', 6));
-    ui->y1Edit->setText(QString::number(p[1], 'f', 6));
-    ui->z1Edit->setText(QString::number(p[2], 'f', 6));
+    QVector<QVector3D> uniqPoints;
+    const double eps2 = 1e-16;
+    for (vtkIdType i = 0; i < face->GetNumberOfPoints(); ++i)
+    {
+        double p[3] = {0.0, 0.0, 0.0};
+        face->GetPoints()->GetPoint(i, p);
+        const QVector3D v(p[0], p[1], p[2]);
+        bool duplicated = false;
+        for (const QVector3D& ex : uniqPoints)
+        {
+            if ((ex - v).lengthSquared() <= eps2)
+            {
+                duplicated = true;
+                break;
+            }
+        }
+        if (!duplicated)
+            uniqPoints.push_back(v);
+        if (uniqPoints.size() >= 3)
+            break;
+    }
+    if (uniqPoints.size() < 3)
+        return;
 
-    face->GetPoints()->GetPoint(1, p);
-    ui->x2Edit->setText(QString::number(p[0], 'f', 6));
-    ui->y2Edit->setText(QString::number(p[1], 'f', 6));
-    ui->z2Edit->setText(QString::number(p[2], 'f', 6));
+    // 右手螺旋：优先令法向指向单元内部（用“面中心->单元中心”方向判定）
+    QVector3D p1 = uniqPoints[0];
+    QVector3D p2 = uniqPoints[1];
+    QVector3D p3 = uniqPoints[2];
+    const QVector3D n = QVector3D::crossProduct(p2 - p1, p3 - p1);
+    QVector3D faceCenter = (p1 + p2 + p3) / 3.0f;
+    double c[3] = {0.0, 0.0, 0.0};
+    cell->GetParametricCenter(c);
+    double wc[3] = {0.0, 0.0, 0.0};
+    double weights[32] = {0.0};
+    int subId = 0;
+    cell->EvaluateLocation(subId, c, wc, weights);
+    QVector3D cellCenter(wc[0], wc[1], wc[2]);
+    if (QVector3D::dotProduct(n, cellCenter - faceCenter) < 0.0)
+        std::swap(p2, p3);
 
-    face->GetPoints()->GetPoint(2, p);
-    ui->x3Edit->setText(QString::number(p[0], 'f', 6));
-    ui->y3Edit->setText(QString::number(p[1], 'f', 6));
-    ui->z3Edit->setText(QString::number(p[2], 'f', 6));
+    ui->x1Edit->setText(QString::number(p1.x(), 'f', 6));
+    ui->y1Edit->setText(QString::number(p1.y(), 'f', 6));
+    ui->z1Edit->setText(QString::number(p1.z(), 'f', 6));
+    ui->x2Edit->setText(QString::number(p2.x(), 'f', 6));
+    ui->y2Edit->setText(QString::number(p2.y(), 'f', 6));
+    ui->z2Edit->setText(QString::number(p2.z(), 'f', 6));
+    ui->x3Edit->setText(QString::number(p3.x(), 'f', 6));
+    ui->y3Edit->setText(QString::number(p3.y(), 'f', 6));
+    ui->z3Edit->setText(QString::number(p3.z(), 'f', 6));
 }
 
 QString CaveBlockPlanePage::valueOrDefault(QLineEdit* edit, const QString& def) const

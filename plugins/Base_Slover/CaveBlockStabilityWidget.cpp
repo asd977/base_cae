@@ -110,6 +110,9 @@ bool CaveBlockStabilityWidget::exportDatFiles(const QVector<CaveBlockPlanePage*>
     if (!icutFile.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
     QTextStream icut(&icutFile);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    icut.setCodec("UTF-8");
+#endif
     icut << QString("%1 1\n").arg(planePages.size());
     icut << "X1 Y1 Z1 X2 Y2 Z2 X3 Y3 Z3 II\n";
     for (int i = 0; i < planePages.size(); ++i)
@@ -119,8 +122,11 @@ bool CaveBlockStabilityWidget::exportDatFiles(const QVector<CaveBlockPlanePage*>
     if (!paraFile.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
     QTextStream para(&paraFile);
+ #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    para.setCodec("UTF-8");
+#endif
     para << QString("%1\n").arg(planePages.size());
-    para << "剪摩fp 剪摩C(kPa) 抗拉强度Rt(kPa) II\n";
+    para << "FP C(KPA) RT(KPA) II\n";
     for (int i = 0; i < planePages.size(); ++i)
         para << planePages[i]->paraLine(i + 1) << "\n";
 
@@ -128,6 +134,9 @@ bool CaveBlockStabilityWidget::exportDatFiles(const QVector<CaveBlockPlanePage*>
     if (!mesg.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
     QTextStream os(&mesg);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    os.setCodec("UTF-8");
+#endif
     os << quoteValue("---") << "\n";
     os << quoteValue(valueOrDefault(ui->icutFileEdit, "ICUT.DAT")) << "\n";
     os << quoteValue(valueOrDefault(ui->safeFileEdit, "SAFE_CAVEBLK.DAT")) << "\n";
@@ -172,6 +181,9 @@ bool CaveBlockStabilityWidget::exportDatFiles(const QVector<CaveBlockPlanePage*>
     if (!icutPlaneFile.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
     QTextStream ps(&icutPlaneFile);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    ps.setCodec("UTF-8");
+#endif
     const int method = 2;
     ps << QString("%1 %2   NCUT METHOD\n").arg(planePages.size(), 6).arg(method, 6);
     ps << "X1 Y1 Z1 n1 n2 n3 II\n";
@@ -231,20 +243,20 @@ bool CaveBlockStabilityWidget::exportDatFiles(const QVector<CaveBlockPlanePage*>
         avgArea /= areas.size();
     const double volume = avgArea * lengthScale;
     const double weight = gamma * volume;
-    ps << "VOL(m2) GAMA(kN/m3) WEIGHT(kN) IVERTICAL\n";
+    ps << "VOL(M3) GAMA(KN/M3) WEIGHT(KN) IVERTICAL\n";
     ps << QString("%1 %2 %3 %4\n").arg(volume, 12, 'E', 6).arg(gamma, 10, 'f', 4).arg(
               weight, 12, 'E', 6).arg(3, 6);
-    ps << "重力矢量\n";
+    ps << "GRAVITY_VECTOR\n";
     ps << QString("%1 %2 %3\n")
               .arg(0.0, 12, 'E', 6)
               .arg(0.0, 12, 'E', 6)
               .arg(-weight, 12, 'E', 6);
-    ps << "各面正压力(kN) （负值：压紧；正值：拉开）\n";
+    ps << "FACE_NORMAL_PRESSURE(KN)\n";
     const int pressureFaceCount = qMax(3, planePages.size());
     const double perFacePressure = (pressureFaceCount > 0) ? (-weight / pressureFaceCount) : 0.0;
     for (int i = 0; i < planePages.size(); ++i)
         ps << QString("%1 %2 ICUT\n").arg(perFacePressure, 12, 'E', 6).arg(i + 1, 6);
-    ps << "各面面积(m2)\n";
+    ps << "FACE_AREA(M2)\n";
     for (int i = 0; i < areas.size(); ++i)
         ps << QString("%1 %2 ICUT\n").arg(areas[i], 12, 'E', 6).arg(i + 1, 6);
 
