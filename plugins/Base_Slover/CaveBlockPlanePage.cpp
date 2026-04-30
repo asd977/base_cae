@@ -219,6 +219,7 @@ void CaveBlockPlanePage::syncPointsFromSelectedFace()
     if (currentPickMode() != PickMode::Face)
         return;
 
+    PickManager::instance().updateStructure();
     vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
     if (!grid)
         return;
