@@ -33,10 +33,22 @@ void CaveBlockPlanePage::beforeLoad()
     PickManager::instance().activate(getPageType(), m_uuid, mode);
     PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
     PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, false);
+    m_faceSyncConn = QObject::connect(&PickManager::instance(), &PickManager::faceSelectionChanged,
+                                      this,
+                                      [this](const QString& domain, const QString& activeUuid,
+                                             GridKind kind, vtkIdType)
+                                      {
+                                          if (domain != getPageType() || activeUuid != m_uuid ||
+                                              kind != GridKind::Solid)
+                                              return;
+                                          syncPointsFromSelectedFace();
+                                      });
 }
 
 void CaveBlockPlanePage::beforeUnload()
 {
+    if (m_faceSyncConn)
+        QObject::disconnect(m_faceSyncConn);
     PickMode mode = currentPickMode();
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, mode);
     PickManager::instance().deactivate(getPageType(), m_uuid, mode);
