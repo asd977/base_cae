@@ -141,6 +141,7 @@ class CORE_EXPORT PickManager : public QObject
 
   signals:
     void domainSelected(const QString& domain, const QString& uuid, const DomainKey& key);
+    void selectionChanged(const QString& domain, const QString& uuid, PickMode mode, GridKind kind);
 
   private:
     explicit PickManager(QObject* parent = nullptr);

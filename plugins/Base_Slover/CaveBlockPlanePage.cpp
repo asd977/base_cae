@@ -20,6 +20,16 @@ CaveBlockPlanePage::CaveBlockPlanePage(QWidget* parent)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
+
+    connect(&PickManager::instance(), &PickManager::selectionChanged, this,
+            [this](const QString& domain, const QString& uuid, PickMode mode, GridKind kind)
+            {
+                if (domain != getPageType() || uuid != m_uuid)
+                    return;
+                if (mode != PickMode::Face || kind != GridKind::Solid)
+                    return;
+                syncPointsFromSelectedFace();
+            });
 }
 
 CaveBlockPlanePage::~CaveBlockPlanePage()

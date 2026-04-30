@@ -1786,6 +1786,8 @@ void PickManager::toggleSelectFace(GridKind kind, vtkIdType faceKey)
         mySet.insert(faceKey);
     }
 
+    emit selectionChanged(dom, uid, PickMode::Face, kind);
+
     markDirty(DirtyFace);
 }
 
@@ -2285,6 +2287,8 @@ void PickManager::setSelectedFaceKeys(const QString& domain, const QString& uuid
         owners[faceKey] = uuid;
         mySet.insert(faceKey);
     }
+
+    emit selectionChanged(domain, uuid, PickMode::Face, kind);
 
     if (domain == m_currentDomain && uuid == m_currentUUid && m_pickMode == PickMode::Face)
         markDirty(DirtyFace);
