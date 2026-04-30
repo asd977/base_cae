@@ -185,33 +185,35 @@ double CaveBlockPlanePage::pickedFaceArea()
     if (keys.isEmpty())
         return 0.0;
 
-    vtkIdType faceKey = keys.first();
-    vtkIdType cellId = PickManager::instance().unpackFaceCellId(faceKey);
-    int faceLocalId = PickManager::instance().unpackFaceLocalId(faceKey);
-    if (cellId < 0 || cellId >= grid->GetNumberOfCells())
-        return 0.0;
-
-    vtkCell* cell = grid->GetCell(cellId);
-    if (!cell)
-        return 0.0;
-    vtkCell* face = cell->GetFace(faceLocalId);
-    if (!face || face->GetNumberOfPoints() < 3)
-        return 0.0;
-
     auto toVec = [](double p[3]) { return QVector3D(p[0], p[1], p[2]); };
-    double p0Raw[3] = {0.0, 0.0, 0.0};
-    face->GetPoints()->GetPoint(0, p0Raw);
-    const QVector3D p0 = toVec(p0Raw);
     double area = 0.0;
-    for (vtkIdType i = 1; i + 1 < face->GetNumberOfPoints(); ++i)
+    for (vtkIdType faceKey : keys)
     {
-        double p1Raw[3] = {0.0, 0.0, 0.0};
-        double p2Raw[3] = {0.0, 0.0, 0.0};
-        face->GetPoints()->GetPoint(i, p1Raw);
-        face->GetPoints()->GetPoint(i + 1, p2Raw);
-        const QVector3D v1 = toVec(p1Raw) - p0;
-        const QVector3D v2 = toVec(p2Raw) - p0;
-        area += 0.5 * QVector3D::crossProduct(v1, v2).length();
+        const vtkIdType cellId = PickManager::instance().unpackFaceCellId(faceKey);
+        const int faceLocalId = PickManager::instance().unpackFaceLocalId(faceKey);
+        if (cellId < 0 || cellId >= grid->GetNumberOfCells())
+            continue;
+
+        vtkCell* cell = grid->GetCell(cellId);
+        if (!cell)
+            continue;
+        vtkCell* face = cell->GetFace(faceLocalId);
+        if (!face || face->GetNumberOfPoints() < 3)
+            continue;
+
+        double p0Raw[3] = {0.0, 0.0, 0.0};
+        face->GetPoints()->GetPoint(0, p0Raw);
+        const QVector3D p0 = toVec(p0Raw);
+        for (vtkIdType i = 1; i + 1 < face->GetNumberOfPoints(); ++i)
+        {
+            double p1Raw[3] = {0.0, 0.0, 0.0};
+            double p2Raw[3] = {0.0, 0.0, 0.0};
+            face->GetPoints()->GetPoint(i, p1Raw);
+            face->GetPoints()->GetPoint(i + 1, p2Raw);
+            const QVector3D v1 = toVec(p1Raw) - p0;
+            const QVector3D v2 = toVec(p2Raw) - p0;
+            area += 0.5 * QVector3D::crossProduct(v1, v2).length();
+        }
     }
     return area;
 }
