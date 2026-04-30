@@ -594,9 +594,20 @@ void GridEditingWidget::buildOrUpdateViewGrid()
     vtkScalarsToColors* prevLookupTable = m_meshMapper->GetLookupTable();
 
     bool usedLineFallback = false;
+    if (!hasFilter)
+    {
+        // 无过滤时直接复用全量网格，避免全单元扫描 + ExtractCells 的重复开销。
+        m_viewGrid = m_fullGrid;
+        rebuildViewMaps();
+    }
+    else
     {
         auto ids = vtkSmartPointer<vtkIdList>::New();
         auto lineIdsFallback = vtkSmartPointer<vtkIdList>::New();
+        auto* cd = m_fullGrid->GetCellData();
+        auto* aK = cd ? cd->GetArray("KETYPE") : nullptr;
+        auto* aM = cd ? cd->GetArray("MATYPE") : nullptr;
+        auto* aL = cd ? cd->GetArray("LAYER") : nullptr;
 
         for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
         {
@@ -606,16 +617,12 @@ void GridEditingWidget::buildOrUpdateViewGrid()
 
             if (cell->GetCellDimension() >= 2)
             {
-                if (!hasFilter || cellMatchesFilter(c))
+                if (cellMatchesFilter(c))
                     ids->InsertNextId(c);
                 continue;
             }
 
             // 兜底：当网格仅包含线单元时，允许显示线网格，避免视图为空。
-            auto* cd = m_fullGrid->GetCellData();
-            auto* aK = cd ? cd->GetArray("KETYPE") : nullptr;
-            auto* aM = cd ? cd->GetArray("MATYPE") : nullptr;
-            auto* aL = cd ? cd->GetArray("LAYER") : nullptr;
             const int k = tuple1i(aK, c, 0);
             const int m = tuple1i(aM, c, 0);
             const int l = tuple1i(aL, c, 0);
