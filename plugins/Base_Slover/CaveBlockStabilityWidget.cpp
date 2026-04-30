@@ -235,16 +235,20 @@ bool CaveBlockStabilityWidget::exportDatFiles(QVector<CaveBlockPlanePage*>& plan
     ps << "VOL(M3) GAMA(KN/M3) WEIGHT(KN) IVERTICAL\n";
     ps << QString("%1 %2 %3 %4\n").arg(volume, 12, 'E', 6).arg(gamma, 10, 'f', 4).arg(
               weight, 12, 'E', 6).arg(3, 6);
+    const int iVertical = 3;
+    QVector3D gravityVector(0.0f, 0.0f, 0.0f);
+    gravityVector[iVertical - 1] = float(-weight);
     ps << "GRAVITY_VECTOR\n";
     ps << QString("%1 %2 %3\n")
-              .arg(0.0, 12, 'E', 6)
-              .arg(0.0, 12, 'E', 6)
-              .arg(-weight, 12, 'E', 6);
+              .arg(double(gravityVector.x()), 12, 'E', 6)
+              .arg(double(gravityVector.y()), 12, 'E', 6)
+              .arg(double(gravityVector.z()), 12, 'E', 6);
     ps << "FACE_NORMAL_PRESSURE(KN)\n";
-    const int pressureFaceCount = qMax(3, planePages.size());
-    const double perFacePressure = (pressureFaceCount > 0) ? (-weight / pressureFaceCount) : 0.0;
     for (int i = 0; i < planePages.size(); ++i)
-        ps << QString("%1 %2 ICUT\n").arg(perFacePressure, 12, 'E', 6).arg(i + 1, 6);
+    {
+        const double normalPressure = QVector3D::dotProduct(normals[i], gravityVector);
+        ps << QString("%1 %2 ICUT\n").arg(normalPressure, 12, 'E', 6).arg(i + 1, 6);
+    }
     ps << "FACE_AREA(M2)\n";
     for (int i = 0; i < areas.size(); ++i)
         ps << QString("%1 %2 ICUT\n").arg(areas[i], 12, 'E', 6).arg(i + 1, 6);
