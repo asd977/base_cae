@@ -4,6 +4,7 @@
 #include <PublicVariables.h>
 
 #include <QJsonArray>
+#include <algorithm>
 #include <QJsonObject>
 #include <QLineEdit>
 #include <QTimer>
@@ -219,6 +220,11 @@ void CaveBlockPlanePage::onSelectionSyncTick()
     QVector<vtkIdType> keys = PickManager::instance().getIdList(getPageType(), m_uuid, mode, kind);
     if (keys.isEmpty())
         return;
+
+    // getIdList(Face/Edge) 底层来源是 QSet，遍历顺序不稳定；
+    // 若直接取 last() 会在定时轮询中来回切换，造成页面“闪动”。
+    // 这里按 key 数值排序后取末项，保证激活项稳定。
+    std::sort(keys.begin(), keys.end());
 
     // 选择态完全由 PickManager 管理，这里只读取当前激活项用于自动填点
     vtkIdType activeKey = keys.last();
