@@ -32,6 +32,7 @@ class CaveBlockPlanePage : public BasePage
 
   private:
     QString valueOrDefault(QLineEdit* edit, QString def);
+    void syncPointsFromSelectedFace();
     PickMode currentPickMode();
     GridKind currentGridKind();
 

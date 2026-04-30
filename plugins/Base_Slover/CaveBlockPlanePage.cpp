@@ -44,6 +44,8 @@ void CaveBlockPlanePage::beforeUnload()
 
 QJsonObject CaveBlockPlanePage::saveJson()
 {
+    syncPointsFromSelectedFace();
+
     QJsonObject obj;
     QJsonArray p1;
     p1.append(ui->x1Edit->text().trimmed());
@@ -112,6 +114,8 @@ void CaveBlockPlanePage::loadJson(const QJsonObject& obj)
 
 QString CaveBlockPlanePage::icutLine(int ii)
 {
+    syncPointsFromSelectedFace();
+
     return QString("%1 %2 %3 %4 %5 %6 %7 %8 %9 %10")
         .arg(valueOrDefault(ui->x1Edit, "0.0"))
         .arg(valueOrDefault(ui->y1Edit, "0.0"))
@@ -208,6 +212,51 @@ QString CaveBlockPlanePage::valueOrDefault(QLineEdit* edit, QString def)
         return def;
     const QString v = edit->text().trimmed();
     return v.isEmpty() ? def : v;
+}
+
+void CaveBlockPlanePage::syncPointsFromSelectedFace()
+{
+    if (currentPickMode() != PickMode::Face)
+        return;
+
+    vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
+    if (!grid)
+        return;
+
+    const auto keys =
+        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid);
+    if (keys.isEmpty())
+        return;
+
+    const vtkIdType faceKey = keys.first();
+    const vtkIdType cellId = PickManager::instance().unpackFaceCellId(faceKey);
+    const int faceLocalId = PickManager::instance().unpackFaceLocalId(faceKey);
+    if (cellId < 0 || cellId >= grid->GetNumberOfCells())
+        return;
+
+    vtkCell* cell = grid->GetCell(cellId);
+    if (!cell)
+        return;
+    vtkCell* face = cell->GetFace(faceLocalId);
+    if (!face || face->GetNumberOfPoints() < 3)
+        return;
+
+    double p1[3] = {0.0, 0.0, 0.0};
+    double p2[3] = {0.0, 0.0, 0.0};
+    double p3[3] = {0.0, 0.0, 0.0};
+    face->GetPoints()->GetPoint(0, p1);
+    face->GetPoints()->GetPoint(1, p2);
+    face->GetPoints()->GetPoint(2, p3);
+
+    ui->x1Edit->setText(QString::number(p1[0], 'f', 6));
+    ui->y1Edit->setText(QString::number(p1[1], 'f', 6));
+    ui->z1Edit->setText(QString::number(p1[2], 'f', 6));
+    ui->x2Edit->setText(QString::number(p2[0], 'f', 6));
+    ui->y2Edit->setText(QString::number(p2[1], 'f', 6));
+    ui->z2Edit->setText(QString::number(p2[2], 'f', 6));
+    ui->x3Edit->setText(QString::number(p3[0], 'f', 6));
+    ui->y3Edit->setText(QString::number(p3[1], 'f', 6));
+    ui->z3Edit->setText(QString::number(p3[2], 'f', 6));
 }
 
 PickMode CaveBlockPlanePage::currentPickMode()
