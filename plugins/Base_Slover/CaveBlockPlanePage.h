@@ -5,7 +5,6 @@
 #include <QVector3D>
 
 class QLineEdit;
-class QTimer;
 
 namespace Ui
 {
@@ -31,18 +30,11 @@ class CaveBlockPlanePage : public BasePage
     QVector3D normalVector();
     double pickedFaceArea();
 
-  private slots:
-    void onSelectionSyncTick();
-    void onFillFromPickedFace(vtkIdType faceKey);
-
   private:
     QString valueOrDefault(QLineEdit* edit, QString def);
-    bool fillFromFaceKey(vtkIdType faceKey);
     PickMode currentPickMode();
     GridKind currentGridKind();
 
   private:
     Ui::CaveBlockPlanePage* ui = nullptr;
-    QTimer* m_syncTimer = nullptr;
-    vtkIdType m_lastFaceKey = -1;
 };

@@ -4,13 +4,10 @@
 #include <PublicVariables.h>
 
 #include <QJsonArray>
-#include <algorithm>
 #include <QJsonObject>
 #include <QLineEdit>
-#include <QTimer>
 #include <QVector3D>
 #include <QVector>
-#include <utility>
 
 #include <vtkCell.h>
 #include <vtkPoints.h>
@@ -23,9 +20,6 @@ CaveBlockPlanePage::CaveBlockPlanePage(QWidget* parent)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
-    m_syncTimer = new QTimer(this);
-    m_syncTimer->setInterval(120);
-    connect(m_syncTimer, &QTimer::timeout, this, &CaveBlockPlanePage::onSelectionSyncTick);
 }
 
 CaveBlockPlanePage::~CaveBlockPlanePage()
@@ -39,9 +33,6 @@ void CaveBlockPlanePage::beforeLoad()
     PickManager::instance().activate(getPageType(), m_uuid, mode);
     PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
     PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, false);
-    m_lastFaceKey = -1;
-    if (m_syncTimer)
-        m_syncTimer->start();
 }
 
 void CaveBlockPlanePage::beforeUnload()
@@ -49,8 +40,6 @@ void CaveBlockPlanePage::beforeUnload()
     PickMode mode = currentPickMode();
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, mode);
     PickManager::instance().deactivate(getPageType(), m_uuid, mode);
-    if (m_syncTimer)
-        m_syncTimer->stop();
 }
 
 QJsonObject CaveBlockPlanePage::saveJson()
@@ -213,107 +202,6 @@ double CaveBlockPlanePage::pickedFaceArea()
     return area;
 }
 
-void CaveBlockPlanePage::onSelectionSyncTick()
-{
-    PickMode mode = currentPickMode();
-    GridKind kind = currentGridKind();
-    QVector<vtkIdType> keys = PickManager::instance().getIdList(getPageType(), m_uuid, mode, kind);
-    if (keys.isEmpty())
-        return;
-
-    // getIdList(Face/Edge) 底层来源是 QSet，遍历顺序不稳定；
-    // 若直接取 last() 会在定时轮询中来回切换，造成页面“闪动”。
-    // 这里按 key 数值排序后取末项，保证激活项稳定。
-    std::sort(keys.begin(), keys.end());
-
-    // 选择态完全由 PickManager 管理，这里只读取当前激活项用于自动填点
-    vtkIdType activeKey = keys.last();
-
-    if (activeKey != m_lastFaceKey)
-    {
-        onFillFromPickedFace(activeKey);
-        m_lastFaceKey = activeKey;
-    }
-}
-
-void CaveBlockPlanePage::onFillFromPickedFace(vtkIdType faceKey)
-{
-    if (!fillFromFaceKey(faceKey))
-        return;
-}
-
-bool CaveBlockPlanePage::fillFromFaceKey(vtkIdType faceKey)
-{
-    PickManager::instance().updateStructure();
-    vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
-    if (!grid)
-        return false;
-
-    vtkIdType cellId = PickManager::instance().unpackFaceCellId(faceKey);
-    int faceLocalId = PickManager::instance().unpackFaceLocalId(faceKey);
-    if (cellId < 0 || cellId >= grid->GetNumberOfCells())
-        return false;
-
-    vtkCell* cell = grid->GetCell(cellId);
-    if (!cell)
-        return false;
-
-    vtkCell* face = cell->GetFace(faceLocalId);
-    if (!face || face->GetNumberOfPoints() < 3)
-        return false;
-
-    QVector<QVector3D> uniqPoints;
-    const double eps2 = 1e-16;
-    for (vtkIdType i = 0; i < face->GetNumberOfPoints(); ++i)
-    {
-        double p[3] = {0.0, 0.0, 0.0};
-        face->GetPoints()->GetPoint(i, p);
-        const QVector3D v(p[0], p[1], p[2]);
-        bool duplicated = false;
-        for (QVector3D ex : uniqPoints)
-        {
-            if ((ex - v).lengthSquared() <= eps2)
-            {
-                duplicated = true;
-                break;
-            }
-        }
-        if (!duplicated)
-            uniqPoints.push_back(v);
-        if (uniqPoints.size() >= 3)
-            break;
-    }
-    if (uniqPoints.size() < 3)
-        return false;
-
-    // 右手螺旋：优先令法向指向单元内部（用“面中心->单元中心”方向判定）
-    QVector3D p1 = uniqPoints[0];
-    QVector3D p2 = uniqPoints[1];
-    QVector3D p3 = uniqPoints[2];
-    const QVector3D n = QVector3D::crossProduct(p2 - p1, p3 - p1);
-    QVector3D faceCenter = (p1 + p2 + p3) / 3.0f;
-    double c[3] = {0.0, 0.0, 0.0};
-    cell->GetParametricCenter(c);
-    double wc[3] = {0.0, 0.0, 0.0};
-    double weights[32] = {0.0};
-    int subId = 0;
-    cell->EvaluateLocation(subId, c, wc, weights);
-    QVector3D cellCenter(wc[0], wc[1], wc[2]);
-    if (QVector3D::dotProduct(n, cellCenter - faceCenter) < 0.0)
-        std::swap(p2, p3);
-
-    ui->x1Edit->setText(QString::number(p1.x(), 'f', 6));
-    ui->y1Edit->setText(QString::number(p1.y(), 'f', 6));
-    ui->z1Edit->setText(QString::number(p1.z(), 'f', 6));
-    ui->x2Edit->setText(QString::number(p2.x(), 'f', 6));
-    ui->y2Edit->setText(QString::number(p2.y(), 'f', 6));
-    ui->z2Edit->setText(QString::number(p2.z(), 'f', 6));
-    ui->x3Edit->setText(QString::number(p3.x(), 'f', 6));
-    ui->y3Edit->setText(QString::number(p3.y(), 'f', 6));
-    ui->z3Edit->setText(QString::number(p3.z(), 'f', 6));
-    return true;
-}
-
 QString CaveBlockPlanePage::valueOrDefault(QLineEdit* edit, QString def)
 {
     if (!edit)
@@ -332,27 +220,3 @@ GridKind CaveBlockPlanePage::currentGridKind()
 {
     return GridKind::Solid;
 }
-    // if (currentPickMode() == PickMode::Edge)
-    // {
-    //     vtkIdType cellId = PickManager::instance().unpackEdgeCellId(faceKey);
-    //     int edgeLocalId = PickManager::instance().unpackEdgeLocalId(faceKey);
-    //     if (cellId < 0 || cellId >= grid->GetNumberOfCells())
-    //         return false;
-    //     vtkCell* cell = grid->GetCell(cellId);
-    //     if (!cell)
-    //         return false;
-    //     vtkCell* edge = cell->GetEdge(edgeLocalId);
-    //     if (!edge || edge->GetNumberOfPoints() < 2)
-    //         return false;
-    //     double p1[3] = {0.0, 0.0, 0.0};
-    //     double p2[3] = {0.0, 0.0, 0.0};
-    //     edge->GetPoints()->GetPoint(0, p1);
-    //     edge->GetPoints()->GetPoint(1, p2);
-    //     ui->x1Edit->setText(QString::number(p1[0], 'f', 6));
-    //     ui->y1Edit->setText(QString::number(p1[1], 'f', 6));
-    //     ui->z1Edit->setText(QString::number(p1[2], 'f', 6));
-    //     ui->x2Edit->setText(QString::number(p2[0], 'f', 6));
-    //     ui->y2Edit->setText(QString::number(p2[1], 'f', 6));
-    //     ui->z2Edit->setText(QString::number(p2[2], 'f', 6));
-    //     return true;
-    // }
