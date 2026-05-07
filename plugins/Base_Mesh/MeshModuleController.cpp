@@ -8,6 +8,8 @@
 #include <MeshGroupingWidget.h>
 #include <MeshSingleMeshingWidget.h>
 #include <MeshVolumeControlWidget.h>
+#include <ParametricDam/DamParametricDialog.h>
+#include <ParametricDam/MsgJzDamIO.h>
 #include <PickManager.h>
 #include <ProjectNode.h>
 #include <PublicConstants.h>
@@ -831,6 +833,102 @@ void MeshModuleController::initAction()
         {
             onQualityStd();
         });
+    reg(PublicConstants::kActionPreprocessDamHomogeneous,
+        [this]
+        {
+            onDamParametricModeling(static_cast<int>(DamObjectType::HomogeneousDam));
+        });
+    reg(PublicConstants::kActionPreprocessDamClayCore,
+        [this]
+        {
+            onDamParametricModeling(static_cast<int>(DamObjectType::ClayCoreDam));
+        });
+    reg(PublicConstants::kActionPreprocessDamFaceSlab,
+        [this]
+        {
+            onDamParametricModeling(static_cast<int>(DamObjectType::FaceSlabDam));
+        });
+    reg(PublicConstants::kActionPreprocessDamAsphaltCore,
+        [this]
+        {
+            onDamParametricModeling(static_cast<int>(DamObjectType::AsphaltCoreDam));
+        });
+}
+
+QString MeshModuleController::ensureProjectPrepDir(QString* errMsg) const
+{
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString().trimmed();
+    if (projectDir.isEmpty())
+    {
+        if (errMsg)
+            *errMsg = QString("当前未打开工程目录，无法执行坝体参数化建模。");
+        return {};
+    }
+
+    QDir wd(projectDir);
+    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+    {
+        if (errMsg)
+            *errMsg = QString("无法创建 PREP 目录：%1").arg(wd.filePath("PREP"));
+        return {};
+    }
+    return wd.filePath("PREP");
+}
+
+void MeshModuleController::onDamParametricModeling(int iobject)
+{
+    QString error;
+    const QString prepDir = ensureProjectPrepDir(&error);
+    if (prepDir.isEmpty())
+    {
+        QMessageBox::warning(nullptr, QString("参数化建模"), error);
+        return;
+    }
+
+    DamParametricContext ctx;
+    ctx.projectDir = prepDir;
+    ctx.solverRoot = QDir::toNativeSeparators(QDir::home().filePath("NASGEWIN64"));
+    ctx.iobject = iobject;
+    ctx.ndimModel = 3;
+    ctx.useDebugExe = true;
+
+    if (!MsgJzDamIO::ensureExists(ctx.projectDir, &error))
+    {
+        QMessageBox::warning(nullptr, QString("参数化建模"), error);
+        return;
+    }
+
+    MsgJzDamParams params;
+    if (!MsgJzDamIO::read(ctx.projectDir, params, &error))
+    {
+        QMessageBox::warning(nullptr, QString("参数化建模"), error);
+        return;
+    }
+
+    params.P(35) = QString::number(ctx.ndimModel);
+    applyDamObjectLabels(ctx.iobject, params);
+
+    auto* dialog = new DamParametricDialog(ctx, params, nullptr);
+    connect(dialog, &DamParametricDialog::iiinGenerated, this,
+            [this](const QString& iiinPath)
+            {
+                QString err;
+                auto grid = MeshGridIO::instance().loadIiinFile(iiinPath, &err);
+                if (!grid || grid->GetNumberOfCells() == 0)
+                {
+                    QMessageBox::warning(nullptr, QString("参数化建模"),
+                                         err.isEmpty() ? QString("IIIN.DAT 导入失败") : err);
+                    return;
+                }
+
+                m_importedGrid = grid;
+                m_hasGrid = true;
+                m_sourceFileName = iiinPath;
+                displayCurrentGrid();
+            });
+    dialog->exec();
+    dialog->deleteLater();
 }
 
 // -------------------- handlers --------------------

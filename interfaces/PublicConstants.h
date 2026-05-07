@@ -124,6 +124,10 @@ constexpr char kActionPreprocessCtrlEdge[] = "mesh_ctrl_edge";       // 边控�
 constexpr char kActionPreprocessMeshEdit[] = "mesh_ctrl_edit";       // 网格编辑
 constexpr char kActionPreprocessMeshGrouping[] = "mesh_grouping";    // 网格分组
 constexpr char kActionPreprocessQualityStd[] = "grid_quality_std";   // 网格质量标准
+constexpr char kActionPreprocessDamHomogeneous[] = "dam_param_homogeneous"; // 均质坝参数化
+constexpr char kActionPreprocessDamClayCore[] = "dam_param_clay_core";      // 黏土心墙坝参数化
+constexpr char kActionPreprocessDamFaceSlab[] = "dam_param_face_slab";      // 面板坝参数化
+constexpr char kActionPreprocessDamAsphaltCore[] = "dam_param_asphalt_core"; // 沥青心墙坝参数化
 
 // --- Boundary / 边界条件 ---
 constexpr char kActionBoundarySolid[] = "boundary_solid";

@@ -5,6 +5,12 @@ QT += widgets core xml gui
 INCLUDEPATH += $$PWD/../../interfaces
 
 HEADERS += \
+    ParametricDam/DamParametricTypes.h \
+    ParametricDam/DamParametricDialog.h \
+    ParametricDam/FillPrepIO.h \
+    ParametricDam/MsgJzDamIO.h \
+    ParametricDam/DamParametricCalculator.h \
+    ParametricDam/DamParametricRunner.h \
     MeshGlobalMeshingWidget.h \
     MeshSingleMeshingWidget.h \
     MeshVolumeControlWidget.h \
@@ -17,6 +23,12 @@ HEADERS += \
     MeshGroupingWidget.h
 
 SOURCES += \
+    ParametricDam/DamParametricTypes.cpp \
+    ParametricDam/DamParametricDialog.cpp \
+    ParametricDam/FillPrepIO.cpp \
+    ParametricDam/MsgJzDamIO.cpp \
+    ParametricDam/DamParametricCalculator.cpp \
+    ParametricDam/DamParametricRunner.cpp \
     MeshGlobalMeshingWidget.cpp \
     MeshSingleMeshingWidget.cpp \
     MeshVolumeControlWidget.cpp \
@@ -29,6 +41,7 @@ SOURCES += \
     MeshGroupingWidget.cpp
 
 FORMS += \
+    ParametricDam/DamParametricDialog.ui \
     MeshGlobalMeshingWidget.ui \
     MeshSingleMeshingWidget.ui \
     MeshVolumeControlWidget.ui \
