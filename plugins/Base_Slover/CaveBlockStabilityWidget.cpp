@@ -179,9 +179,74 @@ bool CaveBlockStabilityWidget::exportDatFiles(QVector<CaveBlockPlanePage*>& plan
                          .arg(valueOrDefault(ui->im1Edit, "1"))
                          .arg(valueOrDefault(ui->im2Edit, "2")))
        << "\n";
-    os << quoteValue("---") << "\n";
-    os << quoteValue("---") << "\n";
-    os << quoteValue("---") << "\n";
+    const QStringList lines = {
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+        "---",
+
+        "                              ",
+        "                              ",
+
+        "MESG227.DAT",
+        R"(E:\FEMMODEL\wedgetest\)",
+
+        "-------",
+        "-------",
+        "-------",
+        "-------",
+        "-------",
+        "-------",
+        "-------",
+        "-------",
+        "-------",
+        "-------",
+        "-------",
+        "-------",
+        "-------",
+        "-------",
+        "-------",
+        "-------",
+        "-------",
+        "-------",
+        "-------"
+    };
+
+    for (const QString& line : lines)
+    {
+        os << quoteValue(line) << "\n";
+    }
 
     QFile icutPlaneFile(sliderDir.filePath("ICUTPLANE.DAT"));
     if (!icutPlaneFile.open(QIODevice::WriteOnly | QIODevice::Text))
