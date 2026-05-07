@@ -3375,9 +3375,17 @@ void MeshGridIO::ensureDefaultArrays(vtkUnstructuredGrid* grid) const
     // point: node_id
     {
         auto nodeId = getOrCreatePointIntArray(grid, "node_id");
-        nodeId->SetNumberOfTuples(nPts);
-        for (vtkIdType i = 0; i < nPts; ++i)
-            nodeId->SetValue(i, static_cast<int>(i) + 1);
+        const bool hasExactTupleCount = (nodeId && nodeId->GetNumberOfTuples() == nPts);
+        if (nodeId)
+        {
+            nodeId->SetNumberOfTuples(nPts);
+            // 仅在新建/尺寸变化时初始化，避免大网格导入后重复全量回写。
+            if (!hasExactTupleCount)
+            {
+                for (vtkIdType i = 0; i < nPts; ++i)
+                    nodeId->SetValue(i, static_cast<int>(i) + 1);
+            }
+        }
     }
 
     // cell arrays
@@ -3389,10 +3397,10 @@ void MeshGridIO::ensureDefaultArrays(vtkUnstructuredGrid* grid) const
     auto tail1 = getOrCreateCellIntArray(grid, "TAIL1");
     auto tail2 = getOrCreateCellIntArray(grid, "TAIL2");
 
-    auto resizeAndInitIfNeeded = [nCells](vtkIntArray* arr)
+    auto resizeAndInitIfNeeded = [nCells](vtkIntArray* arr) -> bool
     {
         if (!arr)
-            return;
+            return false;
         const bool hasExactTupleCount = (arr->GetNumberOfTuples() == nCells);
         arr->SetNumberOfTuples(nCells);
 
@@ -3402,15 +3410,20 @@ void MeshGridIO::ensureDefaultArrays(vtkUnstructuredGrid* grid) const
         {
             arr->FillComponent(0, 0.0);
         }
+        return !hasExactTupleCount;
     };
 
-    resizeAndInitIfNeeded(matype);
-    resizeAndInitIfNeeded(layer);
-    resizeAndInitIfNeeded(ketype);
-    resizeAndInitIfNeeded(elemId);
+    const bool matypeResized = resizeAndInitIfNeeded(matype);
+    const bool layerResized = resizeAndInitIfNeeded(layer);
+    const bool ketypeResized = resizeAndInitIfNeeded(ketype);
+    const bool elemIdResized = resizeAndInitIfNeeded(elemId);
     resizeAndInitIfNeeded(part);
     resizeAndInitIfNeeded(tail1);
     resizeAndInitIfNeeded(tail2);
+
+    // 常见导入路径下数组已完整存在，直接返回避免按单元扫描与 GetCell() 开销。
+    if (!matypeResized && !layerResized && !ketypeResized && !elemIdResized)
+        return;
 
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
