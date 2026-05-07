@@ -2,6 +2,7 @@
 
 #include <BasePage.h>
 #include <PickManager.h>
+#include <QMetaObject>
 #include <QVector3D>
 
 class QLineEdit;
@@ -38,4 +39,5 @@ class CaveBlockPlanePage : public BasePage
 
   private:
     Ui::CaveBlockPlanePage* ui = nullptr;
+    QMetaObject::Connection m_faceSyncConn;
 };

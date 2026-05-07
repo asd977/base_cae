@@ -1789,6 +1789,7 @@ void PickManager::toggleSelectFace(GridKind kind, vtkIdType faceKey)
     emit selectionChanged(dom, uid, PickMode::Face, kind);
 
     markDirty(DirtyFace);
+    emit faceSelectionChanged(dom, uid, kind, faceKey);
 }
 
 void PickManager::rebuildBoundaryFaceCellIndex()

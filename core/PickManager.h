@@ -359,6 +359,8 @@ class CORE_EXPORT PickManager : public QObject
   signals:
     void nodePicked(const QString& domain, const QString& activeUuid, GridKind kind, vtkIdType pid,
                     int nodeId, double x, double y, double z, const QString& prevUuid);
+    void faceSelectionChanged(const QString& domain, const QString& activeUuid, GridKind kind,
+                              vtkIdType faceKey);
 };
 
 #endif // PICKMANAGER_H
