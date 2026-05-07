@@ -230,7 +230,9 @@ bool CaveBlockStabilityWidget::exportDatFiles(QVector<CaveBlockPlanePage*>& plan
         avgArea += a;
     if (!areas.isEmpty())
         avgArea /= areas.size();
-    const double volume = avgArea * lengthScale;
+    double volume = avgArea * lengthScale;
+    if (volume <= 0.0 && avgArea > 0.0)
+        volume = avgArea;
     const double weight = gamma * volume;
     ps << "VOL(M3) GAMA(KN/M3) WEIGHT(KN) IVERTICAL\n";
     ps << QString("%1 %2 %3 %4\n").arg(volume, 12, 'E', 6).arg(gamma, 10, 'f', 4).arg(
