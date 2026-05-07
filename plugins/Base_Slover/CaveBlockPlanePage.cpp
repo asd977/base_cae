@@ -8,6 +8,7 @@
 #include <QLineEdit>
 #include <QVector3D>
 #include <QVector>
+#include <utility>
 
 #include <vtkCell.h>
 #include <vtkPoints.h>
@@ -170,6 +171,8 @@ QVector3D CaveBlockPlanePage::normalVector()
     if (n.length() <= 1e-12)
         return QVector3D(0.0f, 0.0f, 1.0f);
     n.normalize();
+    if (n.z() < 0.0f)
+        n = -n;
     return n;
 }
 
@@ -277,10 +280,18 @@ void CaveBlockPlanePage::syncPointsFromSelectedFace()
     if (uniquePoints.size() < 3)
         return;
 
-    const QVector3D p1v = uniquePoints[0];
-    int i2 = -1;
+    int i1 = 0;
     for (int i = 1; i < uniquePoints.size(); ++i)
     {
+        if (uniquePoints[i].z() > uniquePoints[i1].z())
+            i1 = i;
+    }
+    const QVector3D p1v = uniquePoints[i1];
+    int i2 = -1;
+    for (int i = 0; i < uniquePoints.size(); ++i)
+    {
+        if (i == i1)
+            continue;
         if ((uniquePoints[i] - p1v).lengthSquared() > tol2)
         {
             i2 = i;
@@ -292,8 +303,10 @@ void CaveBlockPlanePage::syncPointsFromSelectedFace()
 
     int i3 = -1;
     const QVector3D v12 = uniquePoints[i2] - p1v;
-    for (int i = i2 + 1; i < uniquePoints.size(); ++i)
+    for (int i = 0; i < uniquePoints.size(); ++i)
     {
+        if (i == i1 || i == i2)
+            continue;
         const QVector3D v13 = uniquePoints[i] - p1v;
         if (QVector3D::crossProduct(v12, v13).lengthSquared() > tol2)
         {
@@ -304,8 +317,11 @@ void CaveBlockPlanePage::syncPointsFromSelectedFace()
     if (i3 < 0)
         return;
 
-    const QVector3D p2v = uniquePoints[i2];
-    const QVector3D p3v = uniquePoints[i3];
+    QVector3D p2v = uniquePoints[i2];
+    QVector3D p3v = uniquePoints[i3];
+    QVector3D n = QVector3D::crossProduct(p2v - p1v, p3v - p1v);
+    if (n.z() < 0.0f)
+        std::swap(p2v, p3v);
 
     ui->x1Edit->setText(QString::number(p1v.x(), 'f', 6));
     ui->y1Edit->setText(QString::number(p1v.y(), 'f', 6));
