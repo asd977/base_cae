@@ -254,22 +254,68 @@ void CaveBlockPlanePage::syncPointsFromSelectedFace()
     if (!face || face->GetNumberOfPoints() < 3)
         return;
 
-    double p1[3] = {0.0, 0.0, 0.0};
-    double p2[3] = {0.0, 0.0, 0.0};
-    double p3[3] = {0.0, 0.0, 0.0};
-    face->GetPoints()->GetPoint(0, p1);
-    face->GetPoints()->GetPoint(1, p2);
-    face->GetPoints()->GetPoint(2, p3);
+    QVector<QVector3D> uniquePoints;
+    uniquePoints.reserve(face->GetNumberOfPoints());
+    const double tol2 = 1e-16;
+    for (vtkIdType i = 0; i < face->GetNumberOfPoints(); ++i)
+    {
+        double pRaw[3] = {0.0, 0.0, 0.0};
+        face->GetPoints()->GetPoint(i, pRaw);
+        const QVector3D p(pRaw[0], pRaw[1], pRaw[2]);
+        bool duplicated = false;
+        for (const QVector3D& ep : uniquePoints)
+        {
+            if ((p - ep).lengthSquared() <= tol2)
+            {
+                duplicated = true;
+                break;
+            }
+        }
+        if (!duplicated)
+            uniquePoints.push_back(p);
+    }
+    if (uniquePoints.size() < 3)
+        return;
 
-    ui->x1Edit->setText(QString::number(p1[0], 'f', 6));
-    ui->y1Edit->setText(QString::number(p1[1], 'f', 6));
-    ui->z1Edit->setText(QString::number(p1[2], 'f', 6));
-    ui->x2Edit->setText(QString::number(p2[0], 'f', 6));
-    ui->y2Edit->setText(QString::number(p2[1], 'f', 6));
-    ui->z2Edit->setText(QString::number(p2[2], 'f', 6));
-    ui->x3Edit->setText(QString::number(p3[0], 'f', 6));
-    ui->y3Edit->setText(QString::number(p3[1], 'f', 6));
-    ui->z3Edit->setText(QString::number(p3[2], 'f', 6));
+    const QVector3D p1v = uniquePoints[0];
+    int i2 = -1;
+    for (int i = 1; i < uniquePoints.size(); ++i)
+    {
+        if ((uniquePoints[i] - p1v).lengthSquared() > tol2)
+        {
+            i2 = i;
+            break;
+        }
+    }
+    if (i2 < 0)
+        return;
+
+    int i3 = -1;
+    const QVector3D v12 = uniquePoints[i2] - p1v;
+    for (int i = i2 + 1; i < uniquePoints.size(); ++i)
+    {
+        const QVector3D v13 = uniquePoints[i] - p1v;
+        if (QVector3D::crossProduct(v12, v13).lengthSquared() > tol2)
+        {
+            i3 = i;
+            break;
+        }
+    }
+    if (i3 < 0)
+        return;
+
+    const QVector3D p2v = uniquePoints[i2];
+    const QVector3D p3v = uniquePoints[i3];
+
+    ui->x1Edit->setText(QString::number(p1v.x(), 'f', 6));
+    ui->y1Edit->setText(QString::number(p1v.y(), 'f', 6));
+    ui->z1Edit->setText(QString::number(p1v.z(), 'f', 6));
+    ui->x2Edit->setText(QString::number(p2v.x(), 'f', 6));
+    ui->y2Edit->setText(QString::number(p2v.y(), 'f', 6));
+    ui->z2Edit->setText(QString::number(p2v.z(), 'f', 6));
+    ui->x3Edit->setText(QString::number(p3v.x(), 'f', 6));
+    ui->y3Edit->setText(QString::number(p3v.y(), 'f', 6));
+    ui->z3Edit->setText(QString::number(p3v.z(), 'f', 6));
 }
 
 PickMode CaveBlockPlanePage::currentPickMode()
