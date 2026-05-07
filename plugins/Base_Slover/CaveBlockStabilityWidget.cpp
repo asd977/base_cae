@@ -12,8 +12,14 @@
 #include <QVector3D>
 #include <cmath>
 
+#include "PickManager.h"
 #include "CaveBlockPlanePage.h"
 #include "ui_CaveBlockStabilityWidget.h"
+#include <vtkCellData.h>
+#include <vtkCellSizeFilter.h>
+#include <vtkDataArray.h>
+#include <vtkNew.h>
+#include <vtkUnstructuredGrid.h>
 
 CaveBlockStabilityWidget::CaveBlockStabilityWidget(QWidget* parent)
     : BasePage("CaveBlockStabilityAnalysis"), ui(new Ui::CaveBlockStabilityWidget)
@@ -189,15 +195,12 @@ bool CaveBlockStabilityWidget::exportDatFiles(QVector<CaveBlockPlanePage*>& plan
     ps << "X1 Y1 Z1 n1 n2 n3 II\n";
     QVector<double> areas;
     areas.reserve(planePages.size());
-    QVector<QVector3D> points;
     QVector<QVector3D> normals;
-    points.reserve(planePages.size());
     normals.reserve(planePages.size());
     for (int i = 0; i < planePages.size(); ++i)
     {
         const QVector3D p = planePages[i]->p1Vector();
         const QVector3D n = planePages[i]->normalVector();
-        points.push_back(p);
         normals.push_back(n);
         ps << QString("%1 %2 %3 %4 %5 %6 %7\n")
                   .arg(double(p.x()), 12, 'f', 6)
@@ -211,28 +214,33 @@ bool CaveBlockStabilityWidget::exportDatFiles(QVector<CaveBlockPlanePage*>& plan
     }
 
     const double gamma = valueOrDefault(ui->weightEdit, "23.52").toDouble();
-    double lengthScale = 0.0;
-    if (points.size() >= 2)
+    auto computeSolidVolume = []() -> double
     {
-        for (int i = 0; i < points.size(); ++i)
-        {
-            for (int j = i + 1; j < points.size(); ++j)
-            {
-                lengthScale += std::abs(QVector3D::dotProduct(normals[i], points[j] - points[i]));
-                lengthScale += std::abs(QVector3D::dotProduct(normals[j], points[i] - points[j]));
-            }
-        }
-        const int pairs = points.size() * (points.size() - 1) / 2;
-        lengthScale = (pairs > 0) ? (lengthScale / (2.0 * pairs)) : 0.0;
-    }
-    double avgArea = 0.0;
-    for (double a : areas)
-        avgArea += a;
-    if (!areas.isEmpty())
-        avgArea /= areas.size();
-    double volume = avgArea * lengthScale;
-    if (volume <= 0.0 && avgArea > 0.0)
-        volume = avgArea;
+        PickManager::instance().updateStructure();
+        vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
+        if (!grid)
+            return 0.0;
+
+        vtkNew<vtkCellSizeFilter> sizeFilter;
+        sizeFilter->SetInputData(grid);
+        sizeFilter->ComputeVertexCountOff();
+        sizeFilter->ComputeLengthOff();
+        sizeFilter->ComputeAreaOff();
+        sizeFilter->ComputeVolumeOn();
+        sizeFilter->Update();
+
+        vtkUnstructuredGrid* outGrid = vtkUnstructuredGrid::SafeDownCast(sizeFilter->GetOutput());
+        if (!outGrid || !outGrid->GetCellData())
+            return 0.0;
+        vtkDataArray* volumes = outGrid->GetCellData()->GetArray("Volume");
+        if (!volumes)
+            return 0.0;
+        double vol = 0.0;
+        for (vtkIdType i = 0; i < volumes->GetNumberOfTuples(); ++i)
+            vol += volumes->GetComponent(i, 0);
+        return vol;
+    };
+    const double volume = computeSolidVolume();
     const double weight = gamma * volume;
     ps << "VOL(M3) GAMA(KN/M3) WEIGHT(KN) IVERTICAL\n";
     ps << QString("%1 %2 %3 %4\n").arg(volume, 12, 'E', 6).arg(gamma, 10, 'f', 4).arg(
