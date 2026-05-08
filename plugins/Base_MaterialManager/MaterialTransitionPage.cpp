@@ -28,6 +28,9 @@ int currentMatype(QComboBox* box)
 MaterialTransitionPage::MaterialTransitionPage(MaterialManager* manager, QWidget* parent)
     : BasePage("MaterialTransitionPage"), m_manager(manager)
 {
+    setAttribute(Qt::WA_StyledBackground, true);
+    setStyleSheet(QStringLiteral("background-color: white;"));
+
     auto* root = new QVBoxLayout(this);
     root->addWidget(new QLabel(QStringLiteral("材料变换：明确选择“原材料/区域”到“变更后材料”。"), this));
 

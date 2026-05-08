@@ -16,6 +16,8 @@ MaterialManagerWidget::MaterialManagerWidget(MaterialManager* manager, QWidget* 
       ui(new Ui::MaterialManagerWidget)
 {
     ui->setupUi(this);
+    setAttribute(Qt::WA_StyledBackground, true);
+    setStyleSheet(QStringLiteral("background-color: white;"));
 
     ui->treeWidget->setHeaderHidden(false);
     ui->treeWidget->setIndentation(18);
