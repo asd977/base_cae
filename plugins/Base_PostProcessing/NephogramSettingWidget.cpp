@@ -102,6 +102,13 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
             updateNephogram(ui->scalarComboBox->currentText());
     });
 
+    // 按需求移除分屏对比入口：仅保留单图云图模式
+    m_compareEnabled = false;
+    ui->compareEnableCheckBox->setChecked(false);
+    ui->compareEnableCheckBox->setEnabled(false);
+    ui->pushButton_2->hide();
+    ui->widget->hide();
+
     initResultDirectoryOptions();
 }
 
@@ -185,17 +192,9 @@ void NephogramSettingWidget::beforeLoad()
         return;
     }
 
-    if (m_compareEnabled)
-    {
-        enterCompareMode();
-        updateCompare();
-    }
-    else
-    {
-        ensureActorAttached();
-        syncScalarBarFromCurrent();
-        m_actor->SetMapper(m_mapper);
-    }
+    ensureActorAttached();
+    syncScalarBarFromCurrent();
+    m_actor->SetMapper(m_mapper);
 
     if (auto* rw = m_visualService->renderWindow())
         rw->Render();
@@ -206,11 +205,7 @@ void NephogramSettingWidget::beforeUnload()
     if (!m_visualService)
         return;
     clearContourOverlay();
-    if (m_compareEnabled)
-    {
-        exitCompareMode();
-    }
-    else if (m_actorAttached)
+    if (m_actorAttached)
     {
         removeActorByService(m_visualService, m_actor);
         m_actorAttached = false;
@@ -687,51 +682,22 @@ void NephogramSettingWidget::fillCompareCombosFromSteps()
     ui->rightStepComboBox->blockSignals(false);
 }
 
-void NephogramSettingWidget::on_compareEnableCheckBox_toggled(bool checked)
+void NephogramSettingWidget::on_compareEnableCheckBox_toggled(bool)
 {
-    if (checked == m_compareEnabled)
-        return;
-    m_compareEnabled = checked;
-
-    if (m_compareEnabled)
-    {
-        enterCompareMode();
-        updateCompare();
-    }
-    else
-    {
-        exitCompareMode();
-
-        // 回到单图
-        syncScalarBarFromCurrent();
-        m_actor->SetMapper(m_mapper);
-        ensureActorAttached();
-        if (auto* rw = m_visualService ? m_visualService->renderWindow() : nullptr)
-            rw->Render();
-    }
+    // 分屏对比已下线，保留槽函数以兼容旧 UI 连接
+    m_compareEnabled = false;
 }
 
 void NephogramSettingWidget::on_leftStepComboBox_currentIndexChanged(int)
 {
-    if (m_compareEnabled)
-        updateCompare();
 }
 
 void NephogramSettingWidget::on_rightStepComboBox_currentIndexChanged(int)
 {
-    if (m_compareEnabled)
-        updateCompare();
 }
 
-void NephogramSettingWidget::on_splitSlider_valueChanged(int value)
+void NephogramSettingWidget::on_splitSlider_valueChanged(int)
 {
-    if (!m_compareEnabled)
-        return;
-    m_splitRatio = std::min(std::max(value / 100.0, 0.05), 0.95);
-
-    updateViewports(m_splitRatio);
-    if (auto* rw = m_visualService ? m_visualService->renderWindow() : nullptr)
-        rw->Render();
 }
 
 vtkDataArray* NephogramSettingWidget::findScalarArray(vtkUnstructuredGrid* grid,
