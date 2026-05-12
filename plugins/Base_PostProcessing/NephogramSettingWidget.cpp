@@ -8,6 +8,7 @@
 #include <vtkAppendFilter.h>
 #include <vtkCamera.h>
 #include <vtkCellData.h>
+#include <vtkCell.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkContourFilter.h>
 #include <vtkDataSetSurfaceFilter.h>
@@ -936,10 +937,20 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName, boo
     QVector<double> addedLevels;
     addedLevels.reserve(levelsToShow);
 
-    const vtkIdType pointCount = contourOutput->GetNumberOfPoints();
-    for (vtkIdType i = 0; i < pointCount; ++i)
+    const vtkIdType cellCount = contourOutput->GetNumberOfCells();
+    for (vtkIdType ci = 0; ci < cellCount; ++ci)
     {
-        const double v = contourScalars->GetComponent(i, 0);
+        auto* cell = contourOutput->GetCell(ci);
+        if (!cell)
+            continue;
+
+        auto* ids = cell->GetPointIds();
+        if (!ids || ids->GetNumberOfIds() <= 0)
+            continue;
+
+        const vtkIdType midId = ids->GetId(ids->GetNumberOfIds() / 2);
+        const double v = contourScalars->GetComponent(midId, 0);
+
         bool exists = false;
         for (double lv : addedLevels)
         {
@@ -953,7 +964,7 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName, boo
             continue;
 
         double p[3];
-        contourOutput->GetPoint(i, p);
+        contourOutput->GetPoint(midId, p);
         labelPts->InsertNextPoint(p);
         labelVals->InsertNextValue(v);
         addedLevels.push_back(v);
