@@ -12,15 +12,18 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMessageBox>
 #include <QMenu>
+#include <QCoreApplication>
 #include <QRegularExpression>
 #include <QSet>
 #include <QStringList>
+#include <QProcess>
 #include <algorithm>
 
 #include <vtkCell.h>
@@ -1089,6 +1092,7 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
 
     if (ok)
     {
+        launchSolverExecutable("渗流分析");
         QMessageBox::information(nullptr, "导出成功", "渗流计算输入文件导出成功（PREP/）。");
     }
     else
@@ -1140,8 +1144,11 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
     }
 
     if (ok)
+    {
+        launchSolverExecutable("土石坝计算");
         QMessageBox::information(nullptr, "导出成功",
                                  "土石坝计算输入文件导出成功（IFILL.DAT 与 PREP/）。");
+    }
     else
         QMessageBox::warning(nullptr, "导出失败",
                              QString("以下文件导出失败：\n%1").arg(failedFiles.join("\n")));
@@ -1379,8 +1386,11 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     }
 
     if (ok)
+    {
+        launchSolverExecutable("洞室开挖");
         QMessageBox::information(nullptr, "导出成功",
                                  "洞室开挖输入文件导出成功。");
+    }
     else
         QMessageBox::warning(nullptr, "导出失败",
                              QString("以下文件导出失败：\n%1").arg(failedFiles.join("\n")));
@@ -1393,7 +1403,10 @@ void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
 
     auto* slopePage = dynamic_cast<SlopeStabilityWidget*>(analysisNode->getPage());
     if (slopePage && slopePage->exportIslopDatFile())
+    {
+        launchSolverExecutable("边坡分析");
         QMessageBox::information(nullptr, "导出成功", "边坡分析输入文件导出成功。");
+    }
     else
         QMessageBox::warning(nullptr, "导出失败", "ISLOP.DAT 导出失败。");
 }
@@ -1405,7 +1418,10 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
 
     auto* page = dynamic_cast<GeoStressRegressionWidget*>(analysisNode->getPage());
     if (page && page->exportIGEOSDatFile(buildGeoStressPayload(analysisNode)))
+    {
+        launchSolverExecutable("地应力回归计算");
         QMessageBox::information(nullptr, "导出成功", "地应力回归计算输入文件导出成功。");
+    }
     else
         QMessageBox::warning(nullptr, "导出失败", "IGEOS.DAT 导出失败。");
 }
@@ -1433,8 +1449,11 @@ void Solver::onComputeCaveBlockStability(ProjectNode* analysisNode)
     }
 
     if (blockPage->exportDatFiles(planePages))
+    {
+        launchSolverExecutable("块体稳定分析");
         QMessageBox::information(nullptr, "导出成功",
                                  "已在 SliderCase 文件夹生成 ICUT.DAT、PARA.DAT、MESG227.DAT、ICUTPLANE.DAT。");
+    }
     else
         QMessageBox::warning(nullptr, "导出失败",
                              "生成滑块文件失败，请检查 SliderCase 目录与参数设置。");
@@ -1507,6 +1526,26 @@ bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analys
 
     return exportInouseDatFile() && exportMaMaskDatFile() && exportKetraceDatFile() &&
            exportJdtraceDatFile();
+}
+
+bool Solver::launchSolverExecutable(const QString& analysisType) const
+{
+    const QString exePath =
+        QDir::toNativeSeparators(
+            QDir(QCoreApplication::applicationDirPath())
+                .filePath("solver/PCCAE_CPU/solverPCCAE_CPU.exe"));
+    if (!QFileInfo::exists(exePath))
+    {
+        QMessageBox::warning(nullptr, "启动求解器失败",
+                             QString("%1导出成功，但未找到求解器：\n%2")
+                                 .arg(analysisType, exePath));
+        return false;
+    }
+
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QProcess::startDetached(exePath, QStringList(), QDir(projectDir).absolutePath());
+    return true;
 }
 
 int Solver::nextStressStrainIndex() const

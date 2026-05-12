@@ -440,8 +440,15 @@ void ProjectManager::onSphereGemoAct()
 void ProjectManager::updateIiidirDatForProject(const QString& projectDir, bool usePrepAsRoot) const
 {
     const QString iiidirPath = QStringLiteral("D:/IIIDIR.DAT");
-    const QString baseDir = QDir::toNativeSeparators(projectDir);
-    const QString prepDir = QDir::toNativeSeparators(QDir(projectDir).filePath("PREP"));
+    const auto ensureTrailingSlash = [](QString path) -> QString
+    {
+        path = QDir::toNativeSeparators(path);
+        if (!path.endsWith("\\") && !path.endsWith("/"))
+            path += "\\";
+        return path;
+    };
+    const QString baseDir = ensureTrailingSlash(projectDir);
+    const QString prepDir = ensureTrailingSlash(QDir(projectDir).filePath("PREP"));
     const QString rootDir = usePrepAsRoot ? prepDir : baseDir;
 
     const QString content =
@@ -452,7 +459,7 @@ void ProjectManager::updateIiidirDatForProject(const QString& projectDir, bool u
                 "        0  IDEVICE\n"
                 "           0  ILOG_GZKZR\n"
                 "       0  ILOG_SOLVE\n"
-                "'%2\\'\n"
+                "'%2'\n"
                 "           8   \n")
             .arg(rootDir, prepDir);
 
