@@ -28,6 +28,7 @@
 #include "IsosurfaceSegmentationWidget.h"
 #include "IsosurfaceSettingsWidget.h"
 #include "ProbeSettingsWidget.h"
+#include "ResultArrangeWidget.h"
 VTK_MODULE_INIT(vtkRenderingOpenGL2)
 VTK_MODULE_INIT(vtkRenderingContextOpenGL2)
 VTK_MODULE_INIT(vtkInteractionStyle);
@@ -86,6 +87,11 @@ void PostProcessing::initPageFactory()
         [this](VisualWidgetService* host)
     {
         return new CurveSettingsWidget(host);
+    };
+    m_pageFactory[PublicConstants::kPagePostProcessResultArrange] =
+        [this](VisualWidgetService* /*host*/)
+    {
+        return new ResultArrangeWidget();
     };
 }
 
@@ -206,6 +212,15 @@ void PostProcessing::newCurveSettingWidget()
         pm->setCurrentItem(node);
 }
 
+void PostProcessing::newResultArrangeWidget()
+{
+    ResultArrangeWidget* tmp = new ResultArrangeWidget;
+    ProjectNode* node = new ProjectNode("成果整理", QUuid::createUuid().toString(), (BasePage*)tmp);
+    m_root->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(node);
+}
+
 void PostProcessing::newProject()
 {
     m_root = new ProjectNode("后处理");
@@ -273,6 +288,12 @@ void PostProcessing::initAction()
                                              {
                                                  //        this->newNephogramSettingWidget();
                                              });
+    EventManager::instance().registerHandler(
+        PublicConstants::kActionPostProcessResultArrange, this,
+        [this](const QVariantMap& data)
+        {
+            this->newResultArrangeWidget();
+        });
 }
 
 bool PostProcessing::saveProject()

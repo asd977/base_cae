@@ -48,6 +48,7 @@ constexpr char kActionPostProcessAnimation[] = "new_animation";
 constexpr char kActionPostProcessPickPhysical[] = "new_pickphysical";
 constexpr char kActionPostProcessDerivative[] = "new_derivative";
 constexpr char kActionPostProcessDataExport[] = "new_dataexp";
+constexpr char kActionPostProcessResultArrange[] = "new_result_arrange";
 
 // --- Surrogate Model / 代理模型 ---
 constexpr char kActionSurrogateModelLatin[] = "new_LatinHypercubeSampling";
@@ -172,6 +173,7 @@ constexpr char kPagePostProcessAnimation[] = "animation";
 constexpr char kPagePostProcessDerivative[] = "derivative";
 constexpr char kPagePostProcessCurve[] = "curve";
 constexpr char kPagePostProcessOccBoolean[] = "occboolen";
+constexpr char kPagePostProcessResultArrange[] = "result_arrange";
 
 // --- PreProcess pages ---
 constexpr char kPagePreprocessImportGeometry[] = "importGeom";

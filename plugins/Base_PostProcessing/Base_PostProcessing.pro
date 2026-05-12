@@ -16,6 +16,7 @@ HEADERS += \
     PostProcessing.h \
     PostVisualUtils.h \
     ProbeSettingsWidget.h \
+    ResultArrangeWidget.h \
     SliceSettingsWidget.h \
     VectorSettingWidget.h
 
@@ -29,6 +30,7 @@ SOURCES += \
     NephogramSettingWidget.cpp \
     PostProcessing.cpp \
     ProbeSettingsWidget.cpp \
+    ResultArrangeWidget.cpp \
     SliceSettingsWidget.cpp \
     VectorSettingWidget.cpp
 
@@ -41,6 +43,7 @@ FORMS += \
     IsosurfaceSettingsWidget.ui \
     NephogramSettingWidget.ui \
     ProbeSettingsWidget.ui \
+    ResultArrangeWidget.ui \
     SliceSettingsWidget.ui \
     VectorSettingWidget.ui
 
