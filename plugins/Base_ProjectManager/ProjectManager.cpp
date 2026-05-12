@@ -212,6 +212,7 @@ void ProjectManager::openProject()
 
     PublicVariables::instance().set(PublicConstants::kProjectDirectoryKey, m_projectTempFolder,
                                     "project_dir");
+    updateIiidirDatForProject(m_projectTempFolder, false);
 
     m_projectTreeWidget->buildDefaultProjectTree(m_projectName);
     m_rootNode = m_projectTreeWidget->m_rootNode;
@@ -379,6 +380,7 @@ void ProjectManager::newProject()
     {
         postProcessingService->newProject();
     }
+    updateIiidirDatForProject(m_projectTempFolder, false);
     // 代理模型暂不参与新建工程。
     // if (auto* surrogateModelService =
     // ServiceRegistry::instance().getService<SurrogateModelService>())
@@ -433,6 +435,35 @@ void ProjectManager::onSphereGemoAct()
     ServiceRegistry::instance().getService<PreProcessingService>(); BasePage* page
     = preProcessingService->newGeometrySphereWidget(); treeChildFactory(type,
     page, name);*/
+}
+
+void ProjectManager::updateIiidirDatForProject(const QString& projectDir, bool usePrepAsRoot) const
+{
+    const QString iiidirPath = QStringLiteral("D:/IIIDIR.DAT");
+    const QString baseDir = QDir::toNativeSeparators(projectDir);
+    const QString prepDir = QDir::toNativeSeparators(QDir(projectDir).filePath("PREP"));
+    const QString rootDir = usePrepAsRoot ? prepDir : baseDir;
+
+    const QString content =
+        QString("'%1'\n"
+                "'1'\n"
+                "'9.81 0.0 1'\n"
+                "'D:\\NASGEWIN64\\'\n"
+                "        0  IDEVICE\n"
+                "           0  ILOG_GZKZR\n"
+                "       0  ILOG_SOLVE\n"
+                "'%2\\'\n"
+                "           8   \n")
+            .arg(rootDir, prepDir);
+
+    QFile file(iiidirPath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
+    {
+        qWarning() << "无法写入 IIIDIR.DAT:" << iiidirPath << file.errorString();
+        return;
+    }
+    file.write(content.toUtf8());
+    file.close();
 }
 
 void ProjectManager::onCurvedSurfaceGridAct()

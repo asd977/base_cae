@@ -1136,18 +1136,77 @@ void MeshModuleController::onCtrlEdge()
 
 void MeshModuleController::onQualityStd()
 {
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    if (projectDir.isEmpty())
+    {
+        QMessageBox::warning(nullptr, "网格质量检查", "当前未找到工程目录，无法执行网格质量检查。");
+        return;
+    }
+
+    const QString iiidirPath = QStringLiteral("D:/IIIDIR.DAT");
+    const QString projectDirNative = QDir::toNativeSeparators(projectDir);
+    const QString prepDir = QDir::toNativeSeparators(QDir(projectDir).filePath("PREP"));
+    const auto writeIiidir = [iiidirPath, prepDir](const QString& rootDir) -> bool
+    {
+        const QString content =
+            QString("'%1'\n"
+                    "'1'\n"
+                    "'9.81 0.0 1'\n"
+                    "'D:\\NASGEWIN64\\'\n"
+                    "        0  IDEVICE\n"
+                    "           0  ILOG_GZKZR\n"
+                    "       0  ILOG_SOLVE\n"
+                    "'%2\\'\n"
+                    "           8   \n")
+                .arg(rootDir, prepDir);
+
+        QFile file(iiidirPath);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
+            return false;
+        file.write(content.toUtf8());
+        file.close();
+        return true;
+    };
+
+    if (!writeIiidir(prepDir))
+    {
+        QMessageBox::warning(nullptr, "网格质量检查", QString("无法写入 %1").arg(iiidirPath));
+        return;
+    }
+
     const QString exePath =
         QDir::toNativeSeparators(QCoreApplication::applicationDirPath() + "/grid_quality/A02_CKJACOBI.exe");
 
     if (!QFileInfo::exists(exePath))
     {
+        writeIiidir(projectDirNative);
         QMessageBox::warning(nullptr, "网格质量检查", QString("未找到可执行文件:\n%1").arg(exePath));
         return;
     }
 
-    if (!QProcess::startDetached(exePath, {}))
+    auto* process = new QProcess(this);
+    process->setProgram(exePath);
+
+    QObject::connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+                     [writeIiidir, projectDirNative, process](int, QProcess::ExitStatus)
+                     {
+                         writeIiidir(projectDirNative);
+                         process->deleteLater();
+                     });
+    QObject::connect(process, &QProcess::errorOccurred, this,
+                     [writeIiidir, projectDirNative, process](QProcess::ProcessError)
+                     {
+                         writeIiidir(projectDirNative);
+                         process->deleteLater();
+                     });
+
+    process->start();
+    if (!process->waitForStarted(3000))
     {
+        writeIiidir(projectDirNative);
         QMessageBox::warning(nullptr, "网格质量检查", QString("启动失败:\n%1").arg(exePath));
+        process->deleteLater();
     }
 }
 

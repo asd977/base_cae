@@ -100,6 +100,7 @@ class ProjectManager : public QObject, public ProjectManagerService
      * @param uuid uuid
      */
     void onDeletePageSig(const QString& uuid);
+    void updateIiidirDatForProject(const QString& projectDir, bool usePrepAsRoot) const;
 
   private:
     ProjectTreeWidget* m_projectTreeWidget;
