@@ -1092,8 +1092,8 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
 
     if (ok)
     {
-        launchSolverExecutable("渗流分析");
         QMessageBox::information(nullptr, "导出成功", "渗流计算输入文件导出成功（PREP/）。");
+        launchSolverExecutable("渗流分析");
     }
     else
     {
@@ -1145,9 +1145,9 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
 
     if (ok)
     {
-        launchSolverExecutable("土石坝计算");
         QMessageBox::information(nullptr, "导出成功",
                                  "土石坝计算输入文件导出成功（IFILL.DAT 与 PREP/）。");
+        launchSolverExecutable("土石坝计算");
     }
     else
         QMessageBox::warning(nullptr, "导出失败",
@@ -1387,9 +1387,9 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 
     if (ok)
     {
-        launchSolverExecutable("洞室开挖");
         QMessageBox::information(nullptr, "导出成功",
                                  "洞室开挖输入文件导出成功。");
+        launchSolverExecutable("洞室开挖");
     }
     else
         QMessageBox::warning(nullptr, "导出失败",
@@ -1404,8 +1404,8 @@ void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
     auto* slopePage = dynamic_cast<SlopeStabilityWidget*>(analysisNode->getPage());
     if (slopePage && slopePage->exportIslopDatFile())
     {
-        launchSolverExecutable("边坡分析");
         QMessageBox::information(nullptr, "导出成功", "边坡分析输入文件导出成功。");
+        launchSolverExecutable("边坡分析");
     }
     else
         QMessageBox::warning(nullptr, "导出失败", "ISLOP.DAT 导出失败。");
@@ -1419,8 +1419,8 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
     auto* page = dynamic_cast<GeoStressRegressionWidget*>(analysisNode->getPage());
     if (page && page->exportIGEOSDatFile(buildGeoStressPayload(analysisNode)))
     {
-        launchSolverExecutable("地应力回归计算");
         QMessageBox::information(nullptr, "导出成功", "地应力回归计算输入文件导出成功。");
+        launchSolverExecutable("地应力回归计算");
     }
     else
         QMessageBox::warning(nullptr, "导出失败", "IGEOS.DAT 导出失败。");
@@ -1450,9 +1450,9 @@ void Solver::onComputeCaveBlockStability(ProjectNode* analysisNode)
 
     if (blockPage->exportDatFiles(planePages))
     {
-        launchSolverExecutable("块体稳定分析");
         QMessageBox::information(nullptr, "导出成功",
                                  "已在 SliderCase 文件夹生成 ICUT.DAT、PARA.DAT、MESG227.DAT、ICUTPLANE.DAT。");
+        launchSolverExecutable("块体稳定分析");
     }
     else
         QMessageBox::warning(nullptr, "导出失败",
