@@ -8,9 +8,15 @@
 #include <vtkAppendFilter.h>
 #include <vtkCamera.h>
 #include <vtkCellData.h>
+#include <vtkPolyDataMapper.h>
+#include <vtkMaskPoints.h>
+#include <vtkLabeledDataMapper.h>
+#include <vtkContourFilter.h>
+#include <vtkCellCenters.h>
 #include <vtkCellPicker.h>
 #include <vtkDataArray.h>
 #include <vtkDataSetMapper.h>
+#include <vtkDataObject.h>
 #include <vtkLookupTable.h>
 #include <vtkMultiBlockDataSet.h>
 #include <vtkPointData.h>
@@ -57,6 +63,8 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
     // 单图对象
     m_actor = vtkSmartPointer<vtkActor>::New();
     m_mapper = vtkSmartPointer<vtkDataSetMapper>::New();
+    m_contourActor = vtkSmartPointer<vtkActor>::New();
+    m_contourLabelActor = vtkSmartPointer<vtkActor2D>::New();
 
     connect(ui->stepComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &NephogramSettingWidget::on_stepComboBox_currentIndexChanged);
@@ -81,6 +89,19 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
         ui->splitSlider->setMaximum(95);
         ui->splitSlider->setValue(50);
     }
+
+    connect(ui->contourEnableCheckBox, &QCheckBox::toggled, this, [this](bool) {
+        if (!m_compareEnabled)
+            updateNephogram(ui->scalarComboBox->currentText());
+    });
+    connect(ui->contourLevelsSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int) {
+        if (!m_compareEnabled)
+            updateNephogram(ui->scalarComboBox->currentText());
+    });
+    connect(ui->contourLabelCheckBox, &QCheckBox::toggled, this, [this](bool) {
+        if (!m_compareEnabled)
+            updateNephogram(ui->scalarComboBox->currentText());
+    });
 
     initResultDirectoryOptions();
 }
@@ -367,6 +388,9 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName)
     m_actor->SetMapper(m_mapper);
     m_actor->GetProperty()->SetRepresentationToSurface();
     ensureActorAttached();
+    double contourRange[2];
+    scalarArray->GetRange(contourRange);
+    updateContourOverlay(selectedScalarName, usePointData, contourRange[0], contourRange[1]);
 
     if (auto* rw = m_visualService ? m_visualService->renderWindow() : nullptr)
         rw->Render();
@@ -870,4 +894,53 @@ void NephogramSettingWidget::readVtu(const QString& fileName)
     ui->scalarComboBox->blockSignals(false);
 
     updateNephogram(ui->scalarComboBox->currentText());
+}
+
+void NephogramSettingWidget::updateContourOverlay(const QString& scalarName, bool usePointData, double minV, double maxV)
+{
+    if (!m_visualService || !m_grid || !m_actorAttached)
+        return;
+
+    auto* ren = m_visualService->renderer();
+    if (!ren)
+        return;
+
+    ren->RemoveActor(m_contourActor);
+    ren->RemoveActor2D(m_contourLabelActor);
+
+    if (!ui->contourEnableCheckBox->isChecked())
+        return;
+
+    auto contour = vtkSmartPointer<vtkContourFilter>::New();
+    contour->SetInputData(m_grid);
+    contour->SetInputArrayToProcess(0, 0, 0, usePointData ? vtkDataObject::FIELD_ASSOCIATION_POINTS : vtkDataObject::FIELD_ASSOCIATION_CELLS, scalarName.toUtf8().constData());
+    const int levels = std::max(2, ui->contourLevelsSpinBox->value());
+    contour->GenerateValues(levels, minV, maxV);
+    contour->Update();
+
+    auto contourMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    contourMapper->SetInputConnection(contour->GetOutputPort());
+    contourMapper->ScalarVisibilityOff();
+    m_contourActor->SetMapper(contourMapper);
+    m_contourActor->GetProperty()->SetColor(0.1, 0.1, 0.1);
+    m_contourActor->GetProperty()->SetLineWidth(1.2);
+    ren->AddActor(m_contourActor);
+
+    if (!ui->contourLabelCheckBox->isChecked())
+        return;
+
+    auto centers = vtkSmartPointer<vtkCellCenters>::New();
+    centers->SetInputConnection(contour->GetOutputPort());
+    auto mask = vtkSmartPointer<vtkMaskPoints>::New();
+    mask->SetInputConnection(centers->GetOutputPort());
+    mask->SetOnRatio(3);
+    mask->RandomModeOff();
+
+    auto labelMapper = vtkSmartPointer<vtkLabeledDataMapper>::New();
+    labelMapper->SetInputConnection(mask->GetOutputPort());
+    labelMapper->SetLabelModeToLabelScalars();
+    labelMapper->GetLabelTextProperty()->SetFontSize(12);
+    labelMapper->GetLabelTextProperty()->SetColor(0.05, 0.05, 0.05);
+    m_contourLabelActor->SetMapper(labelMapper);
+    ren->AddActor2D(m_contourLabelActor);
 }
