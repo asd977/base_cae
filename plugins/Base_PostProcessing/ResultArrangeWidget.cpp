@@ -57,7 +57,7 @@ void ResultArrangeWidget::launchPostTool()
     if (!prepDir.endsWith("\\"))
         prepDir += "\\";
 
-    out << "'" << prepDir << "'\n";
+    out << "'" << resultDir << "'\n";
     out << "'1'\n";
     out << "'9.81 0.0 1'\n";
     out << "'D:\\NASGEWIN64\\'\n";
@@ -70,7 +70,7 @@ void ResultArrangeWidget::launchPostTool()
 
     const QString appDir = QCoreApplication::applicationDirPath();
     const QString executable =
-        QDir::toNativeSeparators(QDir(appDir).filePath("post/A0_FEMWINPOST/Debug/A0_FEMWINPOST"));
+        QDir::toNativeSeparators(QDir(appDir).filePath("post/A0_FEMWINPOST/Debug/A0_FEMWINPOST.exe"));
 
     if (!QFileInfo::exists(executable))
     {
