@@ -36,7 +36,6 @@ class PostProcessing : public QObject, public PostProcessingService
     void newDerivedValueSettingWidget();
     void newCurveSettingWidget();
     void newResultArrangeWidget();
-    ProjectNode* ensureResultArrangeNode();
     VisualWidgetService* visualService();
 
   private:

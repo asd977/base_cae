@@ -214,34 +214,11 @@ void PostProcessing::newCurveSettingWidget()
 
 void PostProcessing::newResultArrangeWidget()
 {
-    ProjectNode* node = ensureResultArrangeNode();
-    if (!node)
+    if (!m_root)
         return;
 
     if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-        pm->setCurrentItem(node);
-}
-
-ProjectNode* PostProcessing::ensureResultArrangeNode()
-{
-    if (!m_root)
-        return nullptr;
-
-    const int count = m_root->childCount();
-    for (int i = 0; i < count; ++i)
-    {
-        auto* node = static_cast<ProjectNode*>(m_root->child(i));
-        if (!node)
-            continue;
-        auto* page = node->getPage();
-        if (page && page->getPageType() == PublicConstants::kPagePostProcessResultArrange)
-            return node;
-    }
-
-    ResultArrangeWidget* page = new ResultArrangeWidget;
-    auto* node = new ProjectNode("成果整理", QUuid::createUuid().toString(), page);
-    m_root->addChild(node);
-    return node;
+        pm->setCurrentItem(m_root);
 }
 
 void PostProcessing::newProject()
@@ -251,7 +228,7 @@ void PostProcessing::newProject()
     ProjectManagerService* projectManagerService =
         ServiceRegistry::instance().getService<ProjectManagerService>();
     projectManagerService->addTreeItem(m_root);
-    ensureResultArrangeNode();
+    m_root->setPage(new ResultArrangeWidget);
 }
 
 void PostProcessing::initAction()
@@ -361,6 +338,7 @@ bool PostProcessing::loadProject()
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
     pm->addTreeItem(m_root);
+    m_root->setPage(new ResultArrangeWidget);
 
     const QString filePath =
         QDir(projectDir).filePath(PublicConstants::kPostProcessingProjectFileName);
@@ -386,7 +364,6 @@ bool PostProcessing::loadProject()
         if (page)
             page->loadJson(state);
     }
-    ensureResultArrangeNode();
     return true;
 }
 
@@ -413,6 +390,11 @@ void PostProcessing::closeProject()
     // 从工程树移除根节点
     if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
     {
+    }
+    if (auto* page = m_root->getPage())
+    {
+        page->deleteLater();
+        m_root->setPage(nullptr);
     }
     delete m_root;
     m_root = nullptr;
