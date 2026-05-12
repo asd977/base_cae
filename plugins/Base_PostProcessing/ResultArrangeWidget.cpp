@@ -4,9 +4,11 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QProcess>
+#include <QTextStream>
 
 #include "ui_ResultArrangeWidget.h"
 
@@ -32,6 +34,33 @@ void ResultArrangeWidget::beforeUnload()
 
 void ResultArrangeWidget::launchPostTool()
 {
+    QString resultDir = QDir::toNativeSeparators(ui->dirLineEdit->text().trimmed());
+    if (resultDir.isEmpty())
+    {
+        QMessageBox::warning(this, tr("成果整理"), tr("请先输入成果目录。"));
+        return;
+    }
+    if (!resultDir.endsWith("\\"))
+        resultDir += "\\";
+
+    QFile datFile("D:/IIIDIR.DAT");
+    if (!datFile.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QMessageBox::warning(this, tr("成果整理"), tr("无法写入 D:/IIIDIR.DAT"));
+        return;
+    }
+    QTextStream out(&datFile);
+    out << resultDir << "\n";
+    out << "1\n";
+    out << "9.81 0.0 1\n";
+    out << "D:\\NASGEWIN64\\\n";
+    out << "        0  IDEVICE\n";
+    out << "           0  ILOG_GZKZR\n";
+    out << "       0  ILOG_SOLVE\n";
+    out << resultDir << "\n";
+    out << "           8\n";
+    datFile.close();
+
     const QString appDir = QCoreApplication::applicationDirPath();
     const QString executable =
         QDir::toNativeSeparators(QDir(appDir).filePath("post/A0_FEMWINPOST/Debug/A0_FEMWINPOST"));

@@ -17,9 +17,23 @@
    <item>
     <widget class="QLabel" name="infoLabel">
      <property name="text">
-      <string>点击下方按钮启动成果整理程序。</string>
-     </property>
-    </widget>
+      <string>设置成果目录后，点击下方按钮会先更新 D:\IIIDIR.DAT，再启动成果整理程序。</string>
+      </property>
+     </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="pathLayout">
+     <item>
+      <widget class="QLabel" name="pathLabel">
+       <property name="text">
+        <string>成果目录：</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="dirLineEdit"/>
+     </item>
+    </layout>
    </item>
    <item>
     <widget class="QPushButton" name="runButton">
