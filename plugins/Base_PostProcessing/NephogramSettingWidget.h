@@ -15,8 +15,10 @@
 #include <QString>
 #include <QVariantMap>
 #include <QWidget>
+#include <vector>
 
 class VisualWidgetService;
+class vtkBillboardTextActor3D;
 namespace Ui
 {
 class NephogramSettingWidget;
@@ -113,6 +115,11 @@ class NephogramSettingWidget : public BasePage
     bool m_actorAttached{false}; // 避免重复 addActor
 
     void readVtu(const QString& fileName);
+    void updateContourOverlay(const QString& scalarName, bool usePointData, double minV, double maxV);
+    void clearContourOverlay();
+
+    vtkSmartPointer<vtkActor> m_contourActor;
+    std::vector<vtkSmartPointer<vtkBillboardTextActor3D>> m_contourLabelActors;
 };
 
 #endif
