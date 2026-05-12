@@ -3,6 +3,7 @@
 
 #include <BasePage.h>
 #include <vtkActor.h>
+#include <vtkActor2D.h>
 #include <vtkCommand.h>
 #include <vtkDataSetMapper.h>
 #include <vtkInteractorStyleTrackballCamera.h>
@@ -113,6 +114,11 @@ class NephogramSettingWidget : public BasePage
     bool m_actorAttached{false}; // 避免重复 addActor
 
     void readVtu(const QString& fileName);
+    void updateContourOverlay(const QString& scalarName, bool usePointData, double minV, double maxV);
+    void clearContourOverlay();
+
+    vtkSmartPointer<vtkActor> m_contourActor;
+    vtkSmartPointer<vtkActor2D> m_contourLabelActor;
 };
 
 #endif

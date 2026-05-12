@@ -74,7 +74,28 @@
       <item row="2" column="1">
        <widget class="QComboBox" name="scalarComboBox" />
       </item>
-     </layout>
+           <item row="3" column="0">
+       <widget class="QCheckBox" name="contourEnableCheckBox">
+        <property name="text">
+         <string>显示等值线</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QSpinBox" name="contourLevelsSpinBox">
+        <property name="minimum"><number>2</number></property>
+        <property name="maximum"><number>30</number></property>
+        <property name="value"><number>10</number></property>
+       </widget>
+      </item>
+      <item row="4" column="0" colspan="2">
+       <widget class="QCheckBox" name="contourLabelCheckBox">
+        <property name="text">
+         <string>等值线上显示数值</string>
+        </property>
+       </widget>
+      </item>
+</layout>
     </widget>
    </item>
    <item>

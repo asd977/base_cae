@@ -8,9 +8,17 @@
 #include <vtkAppendFilter.h>
 #include <vtkCamera.h>
 #include <vtkCellData.h>
+#include <vtkPolyDataMapper.h>
+#include <vtkContourFilter.h>
+#include <vtkDataSetSurfaceFilter.h>
+#include <vtkMaskPoints.h>
+#include <vtkLabeledDataMapper.h>
 #include <vtkCellPicker.h>
 #include <vtkDataArray.h>
+#include <vtkDoubleArray.h>
+#include <vtkPoints.h>
 #include <vtkDataSetMapper.h>
+#include <vtkDataObject.h>
 #include <vtkLookupTable.h>
 #include <vtkMultiBlockDataSet.h>
 #include <vtkPointData.h>
@@ -34,6 +42,7 @@
 #include <QFileDialog>
 #include <QMap>
 #include <QRegularExpression>
+#include <QVector>
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -57,6 +66,8 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
     // 单图对象
     m_actor = vtkSmartPointer<vtkActor>::New();
     m_mapper = vtkSmartPointer<vtkDataSetMapper>::New();
+    m_contourActor = vtkSmartPointer<vtkActor>::New();
+    m_contourLabelActor = vtkSmartPointer<vtkActor2D>::New();
 
     connect(ui->stepComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &NephogramSettingWidget::on_stepComboBox_currentIndexChanged);
@@ -81,6 +92,26 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
         ui->splitSlider->setMaximum(95);
         ui->splitSlider->setValue(50);
     }
+
+    connect(ui->contourEnableCheckBox, &QCheckBox::toggled, this, [this](bool) {
+        if (!m_compareEnabled)
+            updateNephogram(ui->scalarComboBox->currentText());
+    });
+    connect(ui->contourLevelsSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int) {
+        if (!m_compareEnabled)
+            updateNephogram(ui->scalarComboBox->currentText());
+    });
+    connect(ui->contourLabelCheckBox, &QCheckBox::toggled, this, [this](bool) {
+        if (!m_compareEnabled)
+            updateNephogram(ui->scalarComboBox->currentText());
+    });
+
+    // 按需求移除分屏对比入口：仅保留单图云图模式
+    m_compareEnabled = false;
+    ui->compareEnableCheckBox->setChecked(false);
+    ui->compareEnableCheckBox->setEnabled(false);
+    ui->pushButton_2->hide();
+    ui->widget->hide();
 
     initResultDirectoryOptions();
 }
@@ -165,17 +196,9 @@ void NephogramSettingWidget::beforeLoad()
         return;
     }
 
-    if (m_compareEnabled)
-    {
-        enterCompareMode();
-        updateCompare();
-    }
-    else
-    {
-        ensureActorAttached();
-        syncScalarBarFromCurrent();
-        m_actor->SetMapper(m_mapper);
-    }
+    ensureActorAttached();
+    syncScalarBarFromCurrent();
+    m_actor->SetMapper(m_mapper);
 
     if (auto* rw = m_visualService->renderWindow())
         rw->Render();
@@ -185,11 +208,8 @@ void NephogramSettingWidget::beforeUnload()
 {
     if (!m_visualService)
         return;
-    if (m_compareEnabled)
-    {
-        exitCompareMode();
-    }
-    else if (m_actorAttached)
+    clearContourOverlay();
+    if (m_actorAttached)
     {
         removeActorByService(m_visualService, m_actor);
         m_actorAttached = false;
@@ -367,6 +387,9 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName)
     m_actor->SetMapper(m_mapper);
     m_actor->GetProperty()->SetRepresentationToSurface();
     ensureActorAttached();
+    double contourRange[2];
+    scalarArray->GetRange(contourRange);
+    updateContourOverlay(selectedScalarName, usePointData, contourRange[0], contourRange[1]);
 
     if (auto* rw = m_visualService ? m_visualService->renderWindow() : nullptr)
         rw->Render();
@@ -465,6 +488,7 @@ void NephogramSettingWidget::enterCompareMode()
     m_baseRenderer->SetErase(false); // 仅绘制其 props（ScalarBar 等）
 
     // 2) 移除单图 actor，避免重叠
+    clearContourOverlay();
     if (m_actorAttached)
     {
         removeActorByService(m_visualService, m_actor);
@@ -662,51 +686,22 @@ void NephogramSettingWidget::fillCompareCombosFromSteps()
     ui->rightStepComboBox->blockSignals(false);
 }
 
-void NephogramSettingWidget::on_compareEnableCheckBox_toggled(bool checked)
+void NephogramSettingWidget::on_compareEnableCheckBox_toggled(bool)
 {
-    if (checked == m_compareEnabled)
-        return;
-    m_compareEnabled = checked;
-
-    if (m_compareEnabled)
-    {
-        enterCompareMode();
-        updateCompare();
-    }
-    else
-    {
-        exitCompareMode();
-
-        // 回到单图
-        syncScalarBarFromCurrent();
-        m_actor->SetMapper(m_mapper);
-        ensureActorAttached();
-        if (auto* rw = m_visualService ? m_visualService->renderWindow() : nullptr)
-            rw->Render();
-    }
+    // 分屏对比已下线，保留槽函数以兼容旧 UI 连接
+    m_compareEnabled = false;
 }
 
 void NephogramSettingWidget::on_leftStepComboBox_currentIndexChanged(int)
 {
-    if (m_compareEnabled)
-        updateCompare();
 }
 
 void NephogramSettingWidget::on_rightStepComboBox_currentIndexChanged(int)
 {
-    if (m_compareEnabled)
-        updateCompare();
 }
 
-void NephogramSettingWidget::on_splitSlider_valueChanged(int value)
+void NephogramSettingWidget::on_splitSlider_valueChanged(int)
 {
-    if (!m_compareEnabled)
-        return;
-    m_splitRatio = std::min(std::max(value / 100.0, 0.05), 0.95);
-
-    updateViewports(m_splitRatio);
-    if (auto* rw = m_visualService ? m_visualService->renderWindow() : nullptr)
-        rw->Render();
 }
 
 vtkDataArray* NephogramSettingWidget::findScalarArray(vtkUnstructuredGrid* grid,
@@ -871,3 +866,115 @@ void NephogramSettingWidget::readVtu(const QString& fileName)
 
     updateNephogram(ui->scalarComboBox->currentText());
 }
+
+void NephogramSettingWidget::clearContourOverlay()
+{
+    if (!m_visualService)
+        return;
+    if (auto* ren = m_visualService->renderer())
+    {
+        ren->RemoveActor(m_contourActor);
+        ren->RemoveActor2D(m_contourLabelActor);
+    }
+}
+
+void NephogramSettingWidget::updateContourOverlay(const QString& scalarName, bool usePointData, double minV, double maxV)
+{
+    if (!m_visualService || !m_grid || !m_actorAttached)
+        return;
+
+    auto* ren = m_visualService->renderer();
+    if (!ren)
+        return;
+
+    clearContourOverlay();
+
+    if (!ui->contourEnableCheckBox->isChecked())
+        return;
+
+    auto surfaceFilter = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+    surfaceFilter->SetInputData(m_grid);
+
+    auto contour = vtkSmartPointer<vtkContourFilter>::New();
+    contour->SetInputConnection(surfaceFilter->GetOutputPort());
+    contour->SetInputArrayToProcess(0, 0, 0,
+                                    usePointData ? vtkDataObject::FIELD_ASSOCIATION_POINTS
+                                                 : vtkDataObject::FIELD_ASSOCIATION_CELLS,
+                                    scalarName.toUtf8().constData());
+    const int levels = std::max(2, ui->contourLevelsSpinBox->value());
+    contour->GenerateValues(levels, minV, maxV);
+    contour->Update();
+
+    auto* contourOutput = contour->GetOutput();
+    if (!contourOutput || contourOutput->GetNumberOfCells() <= 0 ||
+        contourOutput->GetNumberOfPoints() <= 0)
+        return;
+
+    auto contourMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    contourMapper->SetInputConnection(contour->GetOutputPort());
+    contourMapper->ScalarVisibilityOff();
+    m_contourActor->SetMapper(contourMapper);
+    m_contourActor->GetProperty()->SetColor(0.0, 0.0, 0.0);
+    m_contourActor->GetProperty()->SetLineWidth(1.6);
+    ren->AddActor(m_contourActor);
+
+    if (!ui->contourLabelCheckBox->isChecked())
+        return;
+
+    vtkDataArray* contourScalars = contourOutput->GetPointData() ? contourOutput->GetPointData()->GetScalars() : nullptr;
+    if (!contourScalars)
+        return;
+
+    auto labelPoly = vtkSmartPointer<vtkPolyData>::New();
+    auto labelPts = vtkSmartPointer<vtkPoints>::New();
+    auto labelVals = vtkSmartPointer<vtkDoubleArray>::New();
+    labelVals->SetName("ContourLabels");
+
+    const int levelsToShow = std::max(2, ui->contourLevelsSpinBox->value());
+    const double span = std::max(std::abs(maxV - minV), 1e-12);
+    const double tol = span * 1e-6;
+    QVector<double> addedLevels;
+    addedLevels.reserve(levelsToShow);
+
+    const vtkIdType pointCount = contourOutput->GetNumberOfPoints();
+    for (vtkIdType i = 0; i < pointCount; ++i)
+    {
+        const double v = contourScalars->GetComponent(i, 0);
+        bool exists = false;
+        for (double lv : addedLevels)
+        {
+            if (std::abs(lv - v) <= tol)
+            {
+                exists = true;
+                break;
+            }
+        }
+        if (exists)
+            continue;
+
+        double p[3];
+        contourOutput->GetPoint(i, p);
+        labelPts->InsertNextPoint(p);
+        labelVals->InsertNextValue(v);
+        addedLevels.push_back(v);
+
+        if (addedLevels.size() >= levelsToShow)
+            break;
+    }
+
+    if (labelPts->GetNumberOfPoints() <= 0)
+        return;
+
+    labelPoly->SetPoints(labelPts);
+    labelPoly->GetPointData()->SetScalars(labelVals);
+
+    auto labelMapper = vtkSmartPointer<vtkLabeledDataMapper>::New();
+    labelMapper->SetInputData(labelPoly);
+    labelMapper->SetLabelModeToLabelScalars();
+    labelMapper->GetLabelTextProperty()->SetFontSize(12);
+    labelMapper->GetLabelTextProperty()->SetColor(0.0, 0.0, 0.0);
+
+    m_contourLabelActor->SetMapper(labelMapper);
+    ren->AddActor2D(m_contourLabelActor);
+}
+
