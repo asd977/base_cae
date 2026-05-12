@@ -22,6 +22,14 @@ ResultArrangeWidget::~ResultArrangeWidget()
     delete ui;
 }
 
+void ResultArrangeWidget::beforeLoad()
+{
+}
+
+void ResultArrangeWidget::beforeUnload()
+{
+}
+
 void ResultArrangeWidget::launchPostTool()
 {
     const QString appDir = QCoreApplication::applicationDirPath();

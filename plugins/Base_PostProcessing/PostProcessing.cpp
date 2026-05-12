@@ -214,6 +214,26 @@ void PostProcessing::newCurveSettingWidget()
 
 void PostProcessing::newResultArrangeWidget()
 {
+    if (!m_root)
+        return;
+
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+    {
+        const int count = m_root->childCount();
+        for (int i = 0; i < count; ++i)
+        {
+            auto* node = static_cast<ProjectNode*>(m_root->child(i));
+            if (!node)
+                continue;
+            auto* page = node->getPage();
+            if (page && page->getPageType() == PublicConstants::kPagePostProcessResultArrange)
+            {
+                pm->setCurrentItem(node);
+                return;
+            }
+        }
+    }
+
     ResultArrangeWidget* tmp = new ResultArrangeWidget;
     ProjectNode* node = new ProjectNode("成果整理", QUuid::createUuid().toString(), (BasePage*)tmp);
     m_root->addChild(node);

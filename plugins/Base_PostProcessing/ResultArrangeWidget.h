@@ -13,6 +13,8 @@ class ResultArrangeWidget : public BasePage
   public:
     explicit ResultArrangeWidget(QWidget* parent = nullptr);
     ~ResultArrangeWidget() override;
+    void beforeLoad() override;
+    void beforeUnload() override;
 
   private:
     Ui::ResultArrangeWidget* ui;
