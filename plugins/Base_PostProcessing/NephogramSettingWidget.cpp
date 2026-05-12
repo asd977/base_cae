@@ -13,7 +13,7 @@
 #include <vtkContourFilter.h>
 #include <vtkDataSetSurfaceFilter.h>
 #include <vtkMaskPoints.h>
-#include <vtkBillboardTextActor3D.h>
+#include <vtkLabeledDataMapper.h>
 #include <vtkCellPicker.h>
 #include <vtkDataArray.h>
 #include <vtkDoubleArray.h>
@@ -68,6 +68,7 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
     m_actor = vtkSmartPointer<vtkActor>::New();
     m_mapper = vtkSmartPointer<vtkDataSetMapper>::New();
     m_contourActor = vtkSmartPointer<vtkActor>::New();
+    m_contourLabelActor = vtkSmartPointer<vtkActor2D>::New();
 
     connect(ui->stepComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &NephogramSettingWidget::on_stepComboBox_currentIndexChanged);
@@ -874,9 +875,7 @@ void NephogramSettingWidget::clearContourOverlay()
     if (auto* ren = m_visualService->renderer())
     {
         ren->RemoveActor(m_contourActor);
-        for (auto& labelActor : m_contourLabelActors)
-            ren->RemoveActor(labelActor);
-        m_contourLabelActors.clear();
+        ren->RemoveActor2D(m_contourLabelActor);
     }
 }
 
@@ -923,9 +922,15 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName, boo
     if (!ui->contourLabelCheckBox->isChecked())
         return;
 
-    vtkDataArray* contourScalars = contourOutput->GetPointData() ? contourOutput->GetPointData()->GetScalars() : nullptr;
+    vtkDataArray* contourScalars =
+        contourOutput->GetPointData() ? contourOutput->GetPointData()->GetScalars() : nullptr;
     if (!contourScalars)
         return;
+
+    auto labelPoly = vtkSmartPointer<vtkPolyData>::New();
+    auto labelPts = vtkSmartPointer<vtkPoints>::New();
+    auto labelVals = vtkSmartPointer<vtkDoubleArray>::New();
+    labelVals->SetName("ContourLabels");
 
     const int levelsToShow = std::max(2, ui->contourLevelsSpinBox->value());
     const double span = std::max(std::abs(maxV - minV), 1e-12);
@@ -961,18 +966,27 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName, boo
 
         double p[3];
         contourOutput->GetPoint(midId, p);
-
-        auto labelActor = vtkSmartPointer<vtkBillboardTextActor3D>::New();
-        labelActor->SetPosition(p);
-        labelActor->SetInput(QString::number(v, 'g', 5).toUtf8().constData());
-        labelActor->GetTextProperty()->SetFontSize(14);
-        labelActor->GetTextProperty()->SetColor(0.0, 0.0, 0.0);
-        ren->AddActor(labelActor);
-        m_contourLabelActors.push_back(labelActor);
-
+        labelPts->InsertNextPoint(p);
+        labelVals->InsertNextValue(v);
         addedLevels.push_back(v);
         if (addedLevels.size() >= levelsToShow)
             break;
     }
+
+    if (labelPts->GetNumberOfPoints() <= 0)
+        return;
+
+    labelPoly->SetPoints(labelPts);
+    labelPoly->GetPointData()->SetScalars(labelVals);
+
+    auto labelMapper = vtkSmartPointer<vtkLabeledDataMapper>::New();
+    labelMapper->SetInputData(labelPoly);
+    labelMapper->SetLabelModeToLabelScalars();
+    labelMapper->GetLabelTextProperty()->SetFontSize(12);
+    labelMapper->GetLabelTextProperty()->SetColor(0.0, 0.0, 0.0);
+
+    m_contourLabelActor->SetMapper(labelMapper);
+    ren->AddActor2D(m_contourLabelActor);
+
 }
 

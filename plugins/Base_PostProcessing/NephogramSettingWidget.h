@@ -3,6 +3,7 @@
 
 #include <BasePage.h>
 #include <vtkActor.h>
+#include <vtkActor2D.h>
 #include <vtkCommand.h>
 #include <vtkDataSetMapper.h>
 #include <vtkInteractorStyleTrackballCamera.h>
@@ -15,10 +16,8 @@
 #include <QString>
 #include <QVariantMap>
 #include <QWidget>
-#include <vector>
 
 class VisualWidgetService;
-class vtkBillboardTextActor3D;
 namespace Ui
 {
 class NephogramSettingWidget;
@@ -119,7 +118,7 @@ class NephogramSettingWidget : public BasePage
     void clearContourOverlay();
 
     vtkSmartPointer<vtkActor> m_contourActor;
-    std::vector<vtkSmartPointer<vtkBillboardTextActor3D>> m_contourLabelActors;
+    vtkSmartPointer<vtkActor2D> m_contourLabelActor;
 };
 
 #endif
