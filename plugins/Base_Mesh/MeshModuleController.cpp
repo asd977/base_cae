@@ -50,6 +50,11 @@
 #include <functional>
 #include <limits>
 
+
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
+
 namespace
 {
 
@@ -214,6 +219,7 @@ void rebuildOriginalIdArrays(vtkUnstructuredGrid* sourceGrid, vtkPolyData* poly)
 }
 
 } // namespace
+#include <QCoreApplication>
 #include <vtkStringArray.h>
 
 // === 这些头文件你后面真正实现时再加 ===
@@ -1138,6 +1144,7 @@ void MeshModuleController::onQualityStd()
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+
     if (projectDir.isEmpty())
     {
         QMessageBox::warning(nullptr, "网格质量检查", "当前未找到工程目录，无法执行网格质量检查。");
@@ -1145,10 +1152,57 @@ void MeshModuleController::onQualityStd()
     }
 
     const QString iiidirPath = QStringLiteral("D:/IIIDIR.DAT");
-    const QString projectDirNative = QDir::toNativeSeparators(projectDir);
-    const QString prepDir = QDir::toNativeSeparators(QDir(projectDir).filePath("PREP"));
-    const auto writeIiidir = [iiidirPath, prepDir](const QString& rootDir) -> bool
+
+    const QString projectDirNative =
+        QDir::toNativeSeparators(QDir(projectDir).absolutePath());
+
+    const QString prepDir =
+        QDir::toNativeSeparators(QDir(projectDir).filePath("PREP"));
+
+    if (!QDir(prepDir).exists())
     {
+        QMessageBox::warning(nullptr, "网格质量检查",
+                             QString("未找到 PREP 目录:\n%1").arg(prepDir));
+        return;
+    }
+
+    const QString gridQualityDir =
+        QDir::toNativeSeparators(
+            QCoreApplication::applicationDirPath() + "/grid_quality");
+
+    if (!QDir(gridQualityDir).exists())
+    {
+        QMessageBox::warning(nullptr, "网格质量检查",
+                             QString("未找到网格质量检查程序目录:\n%1").arg(gridQualityDir));
+        return;
+    }
+
+    const QString exePath =
+        QDir::toNativeSeparators(
+            QDir(gridQualityDir).filePath("A02_CKJACOBI.exe"));
+
+    if (!QFileInfo::exists(exePath))
+    {
+        QMessageBox::warning(nullptr, "网格质量检查",
+                             QString("未找到可执行文件:\n%1").arg(exePath));
+        return;
+    }
+
+    const auto ensureTrailingSlash = [](QString path) -> QString
+    {
+        path = QDir::toNativeSeparators(path);
+        if (!path.endsWith("\\") && !path.endsWith("/"))
+        {
+            path += "\\";
+        }
+        return path;
+    };
+
+    const auto writeIiidir = [iiidirPath, prepDir, ensureTrailingSlash](const QString& rootDir) -> bool
+    {
+        const QString rootDirWithSlash = ensureTrailingSlash(rootDir);
+        const QString prepDirWithSlash = ensureTrailingSlash(prepDir);
+
         const QString content =
             QString("'%1'\n"
                     "'1'\n"
@@ -1157,56 +1211,141 @@ void MeshModuleController::onQualityStd()
                     "        0  IDEVICE\n"
                     "           0  ILOG_GZKZR\n"
                     "       0  ILOG_SOLVE\n"
-                    "'%2\\'\n"
+                    "'%2'\n"
                     "           8   \n")
-                .arg(rootDir, prepDir);
+                .arg(rootDirWithSlash, prepDirWithSlash);
 
         QFile file(iiidirPath);
         if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
+        {
             return false;
-        file.write(content.toUtf8());
+        }
+
+        file.write(content.toLocal8Bit());
         file.close();
         return true;
     };
 
+    const auto writeMesgItask = [](const QString& dirPath) -> bool
+    {
+        const QString mesgItaskPath =
+            QDir(dirPath).filePath(QStringLiteral("MESG_ITASK.DAT"));
+
+        QFile file(mesgItaskPath);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
+        {
+            return false;
+        }
+
+        file.write("2\n");
+        file.close();
+
+        return true;
+    };
+    /*
+     * 运行检查前写入 IIIDIR.DAT。
+     *
+     * 这里传 prepDir，是为了让 A02_CKJACOBI 进入网格检查相关工作目录。
+     * 程序结束后再恢复为 projectDirNative。
+     */
     if (!writeIiidir(prepDir))
     {
-        QMessageBox::warning(nullptr, "网格质量检查", QString("无法写入 %1").arg(iiidirPath));
+        QMessageBox::warning(nullptr, "网格质量检查",
+                             QString("无法写入 %1").arg(iiidirPath));
         return;
     }
 
-    const QString exePath =
-        QDir::toNativeSeparators(QCoreApplication::applicationDirPath() + "/grid_quality/A02_CKJACOBI.exe");
-
-    if (!QFileInfo::exists(exePath))
+    /*
+     * MESG_ITASK.DAT 要放在当前工作目录。
+     *
+     * 你下面 process->setWorkingDirectory(gridQualityDir)，
+     * 所以这里先在 grid_quality 目录下检查/创建 MESG_ITASK.DAT。
+     */
+    if (!writeMesgItask(gridQualityDir))
     {
         writeIiidir(projectDirNative);
-        QMessageBox::warning(nullptr, "网格质量检查", QString("未找到可执行文件:\n%1").arg(exePath));
+
+        QMessageBox::warning(nullptr, "网格质量检查",
+                             QString("无法写入 MESG_ITASK.DAT:\n%1")
+                                 .arg(QDir(projectDir).filePath("MESG_ITASK.DAT")));
         return;
     }
 
     auto* process = new QProcess(this);
     process->setProgram(exePath);
 
-    QObject::connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-                     [writeIiidir, projectDirNative, process](int, QProcess::ExitStatus)
-                     {
-                         writeIiidir(projectDirNative);
-                         process->deleteLater();
-                     });
-    QObject::connect(process, &QProcess::errorOccurred, this,
-                     [writeIiidir, projectDirNative, process](QProcess::ProcessError)
-                     {
-                         writeIiidir(projectDirNative);
-                         process->deleteLater();
-                     });
+    /*
+     * 这里沿用你现在的写法：
+     * 工作目录设置为 grid_quality。
+     *
+     * 因为 A02_CKJACOBI.exe 是控制台程序，
+     * 并且可能依赖当前目录下的控制文件。
+     */
+    process->setWorkingDirectory(gridQualityDir);
+
+#ifdef Q_OS_WIN
+    process->setCreateProcessArgumentsModifier(
+        [](QProcess::CreateProcessArguments* args)
+        {
+            /*
+             * 创建新的控制台窗口，也就是弹出黑窗口。
+             */
+            args->flags |= CREATE_NEW_CONSOLE;
+
+            /*
+             * 不让 Qt 接管标准输入输出。
+             * 否则 Fortran 控制台程序可能无法正常在黑窗口中输入参数。
+             */
+            args->startupInfo->dwFlags &= ~STARTF_USESTDHANDLES;
+        });
+#endif
+
+    connect(process,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this,
+            [writeIiidir, projectDirNative, process](int exitCode, QProcess::ExitStatus exitStatus)
+            {
+                writeIiidir(projectDirNative);
+
+                if (exitStatus == QProcess::NormalExit && exitCode == 0)
+                {
+                    QMessageBox::information(nullptr, "网格质量检查", "网格质量检查执行完成。");
+                }
+                else
+                {
+                    QMessageBox::warning(nullptr, "网格质量检查",
+                                         QString("网格质量检查程序异常结束。\n退出码: %1")
+                                             .arg(exitCode));
+                }
+
+                process->deleteLater();
+            });
+
+    connect(process,
+            &QProcess::errorOccurred,
+            this,
+            [writeIiidir, projectDirNative, process](QProcess::ProcessError error)
+            {
+                writeIiidir(projectDirNative);
+
+                QMessageBox::warning(nullptr, "网格质量检查",
+                                     QString("网格质量检查程序启动或执行失败。\n错误码: %1")
+                                         .arg(static_cast<int>(error)));
+
+                process->deleteLater();
+            });
 
     process->start();
+
     if (!process->waitForStarted(3000))
     {
         writeIiidir(projectDirNative);
-        QMessageBox::warning(nullptr, "网格质量检查", QString("启动失败:\n%1").arg(exePath));
+
+        QMessageBox::warning(nullptr, "网格质量检查",
+                             QString("启动失败:\n%1").arg(exePath));
+
         process->deleteLater();
+        return;
     }
 }
 
