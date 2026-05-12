@@ -1533,7 +1533,7 @@ bool Solver::launchSolverExecutable(const QString& analysisType) const
     const QString exePath =
         QDir::toNativeSeparators(
             QDir(QCoreApplication::applicationDirPath())
-                .filePath("solver/PCCAE_CPU/solverPCCAE_CPU.exe"));
+                .filePath("solver/PCCAE_CPU/PCCAE_CPU.exe"));
     if (!QFileInfo::exists(exePath))
     {
         QMessageBox::warning(nullptr, "启动求解器失败",
