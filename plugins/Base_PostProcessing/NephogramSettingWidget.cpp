@@ -15,6 +15,8 @@
 #include <vtkLabeledDataMapper.h>
 #include <vtkCellPicker.h>
 #include <vtkDataArray.h>
+#include <vtkDoubleArray.h>
+#include <vtkPoints.h>
 #include <vtkDataSetMapper.h>
 #include <vtkDataObject.h>
 #include <vtkLookupTable.h>
@@ -40,6 +42,7 @@
 #include <QFileDialog>
 #include <QMap>
 #include <QRegularExpression>
+#include <QVector>
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -918,13 +921,55 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName, boo
     if (!ui->contourLabelCheckBox->isChecked())
         return;
 
-    auto labelPoints = vtkSmartPointer<vtkMaskPoints>::New();
-    labelPoints->SetInputConnection(contour->GetOutputPort());
-    labelPoints->SetOnRatio(4);
-    labelPoints->RandomModeOff();
+    vtkDataArray* contourScalars = contourOutput->GetPointData() ? contourOutput->GetPointData()->GetScalars() : nullptr;
+    if (!contourScalars)
+        return;
+
+    auto labelPoly = vtkSmartPointer<vtkPolyData>::New();
+    auto labelPts = vtkSmartPointer<vtkPoints>::New();
+    auto labelVals = vtkSmartPointer<vtkDoubleArray>::New();
+    labelVals->SetName("ContourLabels");
+
+    const int levelsToShow = std::max(2, ui->contourLevelsSpinBox->value());
+    const double span = std::max(std::abs(maxV - minV), 1e-12);
+    const double tol = span * 1e-6;
+    QVector<double> addedLevels;
+    addedLevels.reserve(levelsToShow);
+
+    const vtkIdType pointCount = contourOutput->GetNumberOfPoints();
+    for (vtkIdType i = 0; i < pointCount; ++i)
+    {
+        const double v = contourScalars->GetComponent(i, 0);
+        bool exists = false;
+        for (double lv : addedLevels)
+        {
+            if (std::abs(lv - v) <= tol)
+            {
+                exists = true;
+                break;
+            }
+        }
+        if (exists)
+            continue;
+
+        double p[3];
+        contourOutput->GetPoint(i, p);
+        labelPts->InsertNextPoint(p);
+        labelVals->InsertNextValue(v);
+        addedLevels.push_back(v);
+
+        if (addedLevels.size() >= levelsToShow)
+            break;
+    }
+
+    if (labelPts->GetNumberOfPoints() <= 0)
+        return;
+
+    labelPoly->SetPoints(labelPts);
+    labelPoly->GetPointData()->SetScalars(labelVals);
 
     auto labelMapper = vtkSmartPointer<vtkLabeledDataMapper>::New();
-    labelMapper->SetInputConnection(labelPoints->GetOutputPort());
+    labelMapper->SetInputData(labelPoly);
     labelMapper->SetLabelModeToLabelScalars();
     labelMapper->GetLabelTextProperty()->SetFontSize(12);
     labelMapper->GetLabelTextProperty()->SetColor(0.0, 0.0, 0.0);
