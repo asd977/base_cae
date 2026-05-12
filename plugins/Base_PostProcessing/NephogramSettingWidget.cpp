@@ -173,6 +173,9 @@ void NephogramSettingWidget::beforeLoad()
         return;
     }
 
+    if (auto* rw = m_visualService->renderWindow())
+        rw->StencilCapableOn();
+
     if (ui->stepComboBox->currentIndex() == -1)
     {
         m_initialized = false;
@@ -900,6 +903,11 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName, boo
     const int levels = std::max(2, ui->contourLevelsSpinBox->value());
     contour->GenerateValues(levels, minV, maxV);
     contour->Update();
+
+    auto* contourOutput = contour->GetOutput();
+    if (!contourOutput || contourOutput->GetNumberOfCells() <= 0 ||
+        contourOutput->GetNumberOfPoints() <= 0)
+        return;
 
     auto contourMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
     contourMapper->SetInputConnection(contour->GetOutputPort());
