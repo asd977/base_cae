@@ -43,6 +43,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMessageBox>
+#include <QProcess>
 #include <QSet>
 #include <QVector>
 #include <algorithm>
@@ -1135,8 +1136,19 @@ void MeshModuleController::onCtrlEdge()
 
 void MeshModuleController::onQualityStd()
 {
-    // auto* w = new MeshQualityStandardWidget();
-    QWidget* w = new QWidget();
+    const QString exePath =
+        QDir::toNativeSeparators(QCoreApplication::applicationDirPath() + "/grid_quality/A02_CKJACOBI.exe");
+
+    if (!QFileInfo::exists(exePath))
+    {
+        QMessageBox::warning(nullptr, "网格质量检查", QString("未找到可执行文件:\n%1").arg(exePath));
+        return;
+    }
+
+    if (!QProcess::startDetached(exePath, {}))
+    {
+        QMessageBox::warning(nullptr, "网格质量检查", QString("启动失败:\n%1").arg(exePath));
+    }
 }
 
 void MeshModuleController::onMeshGrouping()
