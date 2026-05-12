@@ -214,31 +214,34 @@ void PostProcessing::newCurveSettingWidget()
 
 void PostProcessing::newResultArrangeWidget()
 {
-    if (!m_root)
+    ProjectNode* node = ensureResultArrangeNode();
+    if (!node)
         return;
 
     if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(node);
+}
+
+ProjectNode* PostProcessing::ensureResultArrangeNode()
+{
+    if (!m_root)
+        return nullptr;
+
+    const int count = m_root->childCount();
+    for (int i = 0; i < count; ++i)
     {
-        const int count = m_root->childCount();
-        for (int i = 0; i < count; ++i)
-        {
-            auto* node = static_cast<ProjectNode*>(m_root->child(i));
-            if (!node)
-                continue;
-            auto* page = node->getPage();
-            if (page && page->getPageType() == PublicConstants::kPagePostProcessResultArrange)
-            {
-                pm->setCurrentItem(node);
-                return;
-            }
-        }
+        auto* node = static_cast<ProjectNode*>(m_root->child(i));
+        if (!node)
+            continue;
+        auto* page = node->getPage();
+        if (page && page->getPageType() == PublicConstants::kPagePostProcessResultArrange)
+            return node;
     }
 
-    ResultArrangeWidget* tmp = new ResultArrangeWidget;
-    ProjectNode* node = new ProjectNode("成果整理", QUuid::createUuid().toString(), (BasePage*)tmp);
+    ResultArrangeWidget* page = new ResultArrangeWidget;
+    auto* node = new ProjectNode("成果整理", QUuid::createUuid().toString(), page);
     m_root->addChild(node);
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-        pm->setCurrentItem(node);
+    return node;
 }
 
 void PostProcessing::newProject()
@@ -248,6 +251,7 @@ void PostProcessing::newProject()
     ProjectManagerService* projectManagerService =
         ServiceRegistry::instance().getService<ProjectManagerService>();
     projectManagerService->addTreeItem(m_root);
+    ensureResultArrangeNode();
 }
 
 void PostProcessing::initAction()
@@ -382,6 +386,7 @@ bool PostProcessing::loadProject()
         if (page)
             page->loadJson(state);
     }
+    ensureResultArrangeNode();
     return true;
 }
 
