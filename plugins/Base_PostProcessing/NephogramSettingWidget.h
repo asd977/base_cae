@@ -4,7 +4,6 @@
 #include <BasePage.h>
 #include <vtkActor.h>
 #include <vtkCommand.h>
-#include <vtkActor2D.h>
 #include <vtkDataSetMapper.h>
 #include <vtkInteractorStyleTrackballCamera.h>
 #include <vtkLookupTable.h>
@@ -118,7 +117,7 @@ class NephogramSettingWidget : public BasePage
     void clearContourOverlay();
 
     vtkSmartPointer<vtkActor> m_contourActor;
-    vtkSmartPointer<vtkActor2D> m_contourLabelActor;
+    vtkSmartPointer<vtkActor> m_contourLabelActor;
 };
 
 #endif

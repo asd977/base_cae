@@ -63,7 +63,7 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
     m_actor = vtkSmartPointer<vtkActor>::New();
     m_mapper = vtkSmartPointer<vtkDataSetMapper>::New();
     m_contourActor = vtkSmartPointer<vtkActor>::New();
-    m_contourLabelActor = vtkSmartPointer<vtkActor2D>::New();
+    m_contourLabelActor = vtkSmartPointer<vtkActor>::New();
 
     connect(ui->stepComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &NephogramSettingWidget::on_stepComboBox_currentIndexChanged);
@@ -870,7 +870,7 @@ void NephogramSettingWidget::clearContourOverlay()
     if (auto* ren = m_visualService->renderer())
     {
         ren->RemoveActor(m_contourActor);
-        ren->RemoveActor2D(m_contourLabelActor);
+        ren->RemoveActor(m_contourLabelActor);
     }
 }
 
@@ -917,10 +917,7 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName, boo
     labelMapper->SetLabelVisibility(1);
     labelMapper->SetSkipDistance(18.0);
     labelMapper->SetScalarVisibility(0);
-    labelMapper->GetTextProperty()->SetFontSize(12);
-    labelMapper->GetTextProperty()->SetColor(0.0, 0.0, 0.0);
-
     m_contourLabelActor->SetMapper(labelMapper);
-    ren->AddActor2D(m_contourLabelActor);
+    ren->AddActor(m_contourLabelActor);
 }
 
