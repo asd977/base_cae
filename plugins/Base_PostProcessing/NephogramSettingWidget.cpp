@@ -11,7 +11,8 @@
 #include <vtkPolyDataMapper.h>
 #include <vtkContourFilter.h>
 #include <vtkDataSetSurfaceFilter.h>
-#include <vtkLabeledContourMapper.h>
+#include <vtkMaskPoints.h>
+#include <vtkLabeledDataMapper.h>
 #include <vtkCellPicker.h>
 #include <vtkDataArray.h>
 #include <vtkDataSetMapper.h>
@@ -63,7 +64,7 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
     m_actor = vtkSmartPointer<vtkActor>::New();
     m_mapper = vtkSmartPointer<vtkDataSetMapper>::New();
     m_contourActor = vtkSmartPointer<vtkActor>::New();
-    m_contourLabelActor = vtkSmartPointer<vtkActor>::New();
+    m_contourLabelActor = vtkSmartPointer<vtkActor2D>::New();
 
     connect(ui->stepComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &NephogramSettingWidget::on_stepComboBox_currentIndexChanged);
@@ -172,9 +173,6 @@ void NephogramSettingWidget::beforeLoad()
         qWarning() << "Visual service is null in NephogramSettingWidget.";
         return;
     }
-
-    if (auto* rw = m_visualService->renderWindow())
-        rw->StencilCapableOn();
 
     if (ui->stepComboBox->currentIndex() == -1)
     {
@@ -873,7 +871,7 @@ void NephogramSettingWidget::clearContourOverlay()
     if (auto* ren = m_visualService->renderer())
     {
         ren->RemoveActor(m_contourActor);
-        ren->RemoveActor(m_contourLabelActor);
+        ren->RemoveActor2D(m_contourLabelActor);
     }
 }
 
@@ -920,12 +918,18 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName, boo
     if (!ui->contourLabelCheckBox->isChecked())
         return;
 
-    auto labelMapper = vtkSmartPointer<vtkLabeledContourMapper>::New();
-    labelMapper->SetInputConnection(contour->GetOutputPort());
-    labelMapper->SetLabelVisibility(1);
-    labelMapper->SetSkipDistance(18.0);
-    labelMapper->SetScalarVisibility(0);
+    auto labelPoints = vtkSmartPointer<vtkMaskPoints>::New();
+    labelPoints->SetInputConnection(contour->GetOutputPort());
+    labelPoints->SetOnRatio(4);
+    labelPoints->RandomModeOff();
+
+    auto labelMapper = vtkSmartPointer<vtkLabeledDataMapper>::New();
+    labelMapper->SetInputConnection(labelPoints->GetOutputPort());
+    labelMapper->SetLabelModeToLabelScalars();
+    labelMapper->GetLabelTextProperty()->SetFontSize(12);
+    labelMapper->GetLabelTextProperty()->SetColor(0.0, 0.0, 0.0);
+
     m_contourLabelActor->SetMapper(labelMapper);
-    ren->AddActor(m_contourLabelActor);
+    ren->AddActor2D(m_contourLabelActor);
 }
 
