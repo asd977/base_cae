@@ -10,6 +10,7 @@
 #include <vtkCellData.h>
 #include <vtkCell.h>
 #include <vtkPolyDataMapper.h>
+#include <vtkSelectVisiblePoints.h>
 #include <vtkContourFilter.h>
 #include <vtkDataSetSurfaceFilter.h>
 #include <vtkMaskPoints.h>
@@ -979,8 +980,13 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName, boo
     labelPoly->SetPoints(labelPts);
     labelPoly->GetPointData()->SetScalars(labelVals);
 
+    auto visiblePoints = vtkSmartPointer<vtkSelectVisiblePoints>::New();
+    visiblePoints->SetRenderer(ren);
+    visiblePoints->SetInputData(labelPoly);
+    visiblePoints->Update();
+
     auto labelMapper = vtkSmartPointer<vtkLabeledDataMapper>::New();
-    labelMapper->SetInputData(labelPoly);
+    labelMapper->SetInputConnection(visiblePoints->GetOutputPort());
     labelMapper->SetLabelModeToLabelScalars();
     labelMapper->GetLabelTextProperty()->SetFontSize(12);
     labelMapper->GetLabelTextProperty()->SetColor(0.0, 0.0, 0.0);
