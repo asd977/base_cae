@@ -50,14 +50,14 @@ void ResultArrangeWidget::launchPostTool()
         return;
     }
     QTextStream out(&datFile);
-    out << resultDir << "\n";
-    out << "1\n";
-    out << "9.81 0.0 1\n";
-    out << "D:\\NASGEWIN64\\\n";
+    out << "'" << resultDir << "'\n";
+    out << "'1'\n";
+    out << "'9.81 0.0 1'\n";
+    out << "'D:\\NASGEWIN64\\'\n";
     out << "        0  IDEVICE\n";
     out << "           0  ILOG_GZKZR\n";
     out << "       0  ILOG_SOLVE\n";
-    out << resultDir << "\n";
+    out << "'" << resultDir << "'\n";
     out << "           8\n";
     datFile.close();
 
