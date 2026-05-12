@@ -115,6 +115,7 @@ class NephogramSettingWidget : public BasePage
 
     void readVtu(const QString& fileName);
     void updateContourOverlay(const QString& scalarName, bool usePointData, double minV, double maxV);
+    void clearContourOverlay();
 
     vtkSmartPointer<vtkActor> m_contourActor;
     vtkSmartPointer<vtkActor2D> m_contourLabelActor;
