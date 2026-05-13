@@ -179,6 +179,17 @@ void NephogramSettingWidget::beforeLoad()
         return;
     }
 
+    // 每次进入页面都刷新结果文件列表，确保新产生的文件可见。
+    const QString previousStep = ui->stepComboBox->currentText();
+    m_dataPath = selectedResultDirectoryPath();
+    loadFileName(m_dataPath);
+    if (!previousStep.isEmpty())
+    {
+        const int previousIndex = ui->stepComboBox->findText(previousStep);
+        if (previousIndex >= 0)
+            ui->stepComboBox->setCurrentIndex(previousIndex);
+    }
+
     if (ui->stepComboBox->currentIndex() == -1)
     {
         m_initialized = false;
@@ -186,8 +197,6 @@ void NephogramSettingWidget::beforeLoad()
 
     if (!m_initialized)
     {
-        m_dataPath = selectedResultDirectoryPath();
-        loadFileName(m_dataPath);
         ensureActorAttached();
         m_initialized = true;
 
