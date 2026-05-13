@@ -2280,8 +2280,11 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
         const int outNodeId =
             (nodeIdArr && i < nodeIdArr->GetNumberOfTuples()) ? nodeIdArr->GetValue(i)
                                                               : (static_cast<int>(i) + 1);
-        out << rField(p[0], 15, 5) << rField(p[1], 15, 5) << rField(p[2], 15, 5)
-            << iField(outNodeId, 10) << "\n";
+
+        out << rField(p[0], 15, 5) << rField(p[1], 15, 5);
+        if (madim >= 3)
+            out << rField(p[2], 15, 5);
+        out << iField(outNodeId, 10) << "\n";
     }
 
            // elems: 优先保留原 elem_id 与 node_id（必要时按 ketype 做重排）
