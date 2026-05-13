@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>420</width>
+    <width>186</width>
     <height>220</height>
    </rect>
   </property>
@@ -14,13 +14,6 @@
    <string>成果整理</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
-   <item>
-    <widget class="QLabel" name="infoLabel">
-     <property name="text">
-      <string>设置成果目录后，点击下方按钮会先更新 D:\IIIDIR.DAT，再启动成果整理程序。</string>
-      </property>
-     </widget>
-   </item>
    <item>
     <layout class="QHBoxLayout" name="pathLayout">
      <item>
