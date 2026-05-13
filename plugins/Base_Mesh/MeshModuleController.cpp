@@ -36,6 +36,8 @@
 #include <vtkProperty.h>
 #include <vtkUnstructuredGrid.h>
 
+#include <QByteArray>
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -57,6 +59,845 @@
 
 namespace
 {
+
+static const char* kMeshMapFileName = "mesh_map.json";
+static const char* kMeshMshSnapshotFileName = "mesh_snapshot.msh";
+
+static bool copyFileOverwrite(const QString& sourcePath, const QString& targetPath)
+{
+    if (sourcePath.trimmed().isEmpty() || targetPath.trimmed().isEmpty())
+        return false;
+    if (!QFileInfo::exists(sourcePath))
+        return false;
+
+    if (QFileInfo::exists(targetPath) && !QFile::remove(targetPath))
+        return false;
+
+    return QFile::copy(sourcePath, targetPath);
+}
+
+static QString currentGeneratedMshPath()
+{
+    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("tempGrid/mesh.msh"));
+}
+
+static QString chooseMshSnapshotSource(const QString& sourceFileName)
+{
+    const QFileInfo srcInfo(sourceFileName);
+    if (srcInfo.exists() && srcInfo.suffix().compare(QStringLiteral("msh"), Qt::CaseInsensitive) == 0)
+        return srcInfo.absoluteFilePath();
+
+           // m_sourceFileName 为空通常表示来自当前 Gmsh 内存模型划分，此时 MeshProcessor 会写出 tempGrid/mesh.msh。
+    if (sourceFileName.trimmed().isEmpty())
+    {
+        const QString generated = currentGeneratedMshPath();
+        if (QFileInfo::exists(generated))
+            return generated;
+    }
+
+    return QString();
+}
+
+static QJsonArray meshIdVectorToJson(const QVector<MeshIdType>& ids)
+{
+    QJsonArray arr;
+    for (MeshIdType id : ids)
+        arr.append(QString::number(static_cast<qint64>(id)));
+    return arr;
+}
+
+static QVector<MeshIdType> jsonToMeshIdVector(const QJsonArray& arr)
+{
+    QVector<MeshIdType> ids;
+    ids.reserve(arr.size());
+    for (const auto& v : arr)
+        ids.push_back(static_cast<MeshIdType>(v.toString().toLongLong()));
+    return ids;
+}
+
+static QJsonArray intVectorToJson(const QVector<int>& ids)
+{
+    QJsonArray arr;
+    for (int id : ids)
+        arr.append(id);
+    return arr;
+}
+
+static QVector<int> jsonToIntVector(const QJsonArray& arr)
+{
+    QVector<int> ids;
+    ids.reserve(arr.size());
+    for (const auto& v : arr)
+        ids.push_back(v.toInt());
+    return ids;
+}
+
+static QJsonArray int64VectorToJson(const QVector<qint64>& ids)
+{
+    QJsonArray arr;
+    for (qint64 id : ids)
+        arr.append(QString::number(id));
+    return arr;
+}
+
+static QVector<qint64> jsonToInt64Vector(const QJsonArray& arr)
+{
+    QVector<qint64> ids;
+    ids.reserve(arr.size());
+    for (const auto& v : arr)
+        ids.push_back(v.toString().toLongLong());
+    return ids;
+}
+
+static QJsonArray nestedIntVectorToJson(const QVector<QVector<int>>& values)
+{
+    QJsonArray arr;
+
+    for (const QVector<int>& one : values)
+    {
+        QJsonArray item;
+        for (int v : one)
+            item.append(v);
+        arr.append(item);
+    }
+
+    return arr;
+}
+
+static QVector<QVector<int>> jsonToNestedIntVector(const QJsonArray& arr)
+{
+    QVector<QVector<int>> values;
+    values.reserve(arr.size());
+
+    for (const auto& v : arr)
+    {
+        QVector<int> one;
+        const QJsonArray item = v.toArray();
+        one.reserve(item.size());
+
+        for (const auto& x : item)
+            one.push_back(x.toInt());
+
+        values.push_back(one);
+    }
+
+    return values;
+}
+
+static QJsonObject intStringHashToJson(const QHash<int, QString>& map)
+{
+    QJsonObject obj;
+    for (auto it = map.constBegin(); it != map.constEnd(); ++it)
+        obj[QString::number(it.key())] = it.value();
+    return obj;
+}
+
+static QHash<int, QString> jsonToIntStringHash(const QJsonObject& obj)
+{
+    QHash<int, QString> map;
+    for (auto it = obj.constBegin(); it != obj.constEnd(); ++it)
+        map.insert(it.key().toInt(), it.value().toString());
+    return map;
+}
+
+static QJsonObject intIntHashToJson(const QHash<int, int>& map)
+{
+    QJsonObject obj;
+    for (auto it = map.constBegin(); it != map.constEnd(); ++it)
+        obj[QString::number(it.key())] = it.value();
+    return obj;
+}
+
+static QHash<int, int> jsonToIntIntHash(const QJsonObject& obj)
+{
+    QHash<int, int> map;
+    for (auto it = obj.constBegin(); it != obj.constEnd(); ++it)
+        map.insert(it.key().toInt(), it.value().toInt());
+    return map;
+}
+
+static QJsonObject intVectorHashToJson(const QHash<int, QVector<int>>& map)
+{
+    QJsonObject obj;
+    for (auto it = map.constBegin(); it != map.constEnd(); ++it)
+        obj[QString::number(it.key())] = intVectorToJson(it.value());
+    return obj;
+}
+
+static QHash<int, QVector<int>> jsonToIntVectorHash(const QJsonObject& obj)
+{
+    QHash<int, QVector<int>> map;
+    for (auto it = obj.constBegin(); it != obj.constEnd(); ++it)
+        map.insert(it.key().toInt(), jsonToIntVector(it.value().toArray()));
+    return map;
+}
+
+static QJsonObject intInt64VectorHashToJson(const QHash<int, QVector<qint64>>& map)
+{
+    QJsonObject obj;
+    for (auto it = map.constBegin(); it != map.constEnd(); ++it)
+        obj[QString::number(it.key())] = int64VectorToJson(it.value());
+    return obj;
+}
+
+static QHash<int, QVector<qint64>> jsonToIntInt64VectorHash(const QJsonObject& obj)
+{
+    QHash<int, QVector<qint64>> map;
+    for (auto it = obj.constBegin(); it != obj.constEnd(); ++it)
+        map.insert(it.key().toInt(), jsonToInt64Vector(it.value().toArray()));
+    return map;
+}
+
+static QJsonObject nestedIntVectorHashToJson(const QHash<int, QVector<QVector<int>>>& map)
+{
+    QJsonObject obj;
+    for (auto it = map.constBegin(); it != map.constEnd(); ++it)
+        obj[QString::number(it.key())] = nestedIntVectorToJson(it.value());
+    return obj;
+}
+
+static QHash<int, QVector<QVector<int>>> jsonToNestedIntVectorHash(const QJsonObject& obj)
+{
+    QHash<int, QVector<QVector<int>>> map;
+    for (auto it = obj.constBegin(); it != obj.constEnd(); ++it)
+        map.insert(it.key().toInt(), jsonToNestedIntVector(it.value().toArray()));
+    return map;
+}
+
+static QJsonObject meshTagKeyToJson(const MeshTagKey& key)
+{
+    QJsonObject obj;
+    obj["category"] = key.category;
+    obj["dim"] = key.dim;
+    obj["id"] = key.id;
+    return obj;
+}
+
+static MeshTagKey jsonToMeshTagKey(const QJsonObject& obj)
+{
+    MeshTagKey key;
+    key.category = obj.value("category").toString();
+    key.dim = obj.value("dim").toInt();
+    key.id = obj.value("id").toInt();
+    return key;
+}
+
+static QJsonArray meshTagKeyVectorToJson(const QVector<MeshTagKey>& keys)
+{
+    QJsonArray arr;
+    for (const MeshTagKey& key : keys)
+        arr.append(meshTagKeyToJson(key));
+    return arr;
+}
+
+static QVector<MeshTagKey> jsonToMeshTagKeyVector(const QJsonArray& arr)
+{
+    QVector<MeshTagKey> keys;
+    keys.reserve(arr.size());
+
+    for (const auto& v : arr)
+        keys.push_back(jsonToMeshTagKey(v.toObject()));
+
+    return keys;
+}
+
+static QJsonObject meshIdTagKeyVectorHashToJson(const QHash<MeshIdType, QVector<MeshTagKey>>& map)
+{
+    QJsonObject obj;
+
+    for (auto it = map.constBegin(); it != map.constEnd(); ++it)
+    {
+        obj[QString::number(static_cast<qint64>(it.key()))] =
+            meshTagKeyVectorToJson(it.value());
+    }
+
+    return obj;
+}
+
+static QHash<MeshIdType, QVector<MeshTagKey>> jsonToMeshIdTagKeyVectorHash(
+    const QJsonObject& obj)
+{
+    QHash<MeshIdType, QVector<MeshTagKey>> map;
+
+    for (auto it = obj.constBegin(); it != obj.constEnd(); ++it)
+    {
+        const MeshIdType id = static_cast<MeshIdType>(it.key().toLongLong());
+        map.insert(id, jsonToMeshTagKeyVector(it.value().toArray()));
+    }
+
+    return map;
+}
+
+static QJsonObject meshTagSetToJson(const MeshTagSet& set)
+{
+    QJsonObject obj;
+
+    obj["key"] = meshTagKeyToJson(set.key);
+    obj["name"] = set.name;
+    obj["source"] = set.source;
+    obj["point_ids"] = meshIdVectorToJson(set.pointIds);
+    obj["cell_ids"] = meshIdVectorToJson(set.cellIds);
+    obj["edge_keys"] = meshIdVectorToJson(set.edgeKeys);
+    obj["face_keys"] = meshIdVectorToJson(set.faceKeys);
+
+    return obj;
+}
+
+static MeshTagSet jsonToMeshTagSet(const QJsonObject& obj)
+{
+    MeshTagSet set;
+
+    set.key = jsonToMeshTagKey(obj.value("key").toObject());
+    set.name = obj.value("name").toString();
+    set.source = obj.value("source").toString();
+    set.pointIds = jsonToMeshIdVector(obj.value("point_ids").toArray());
+    set.cellIds = jsonToMeshIdVector(obj.value("cell_ids").toArray());
+    set.edgeKeys = jsonToMeshIdVector(obj.value("edge_keys").toArray());
+    set.faceKeys = jsonToMeshIdVector(obj.value("face_keys").toArray());
+
+    return set;
+}
+
+static QHash<int, int> buildPointIdToNodeId(vtkUnstructuredGrid* grid)
+{
+    QHash<int, int> pointToNode;
+
+    auto* nodeIdArr = grid && grid->GetPointData()
+                          ? vtkIntArray::SafeDownCast(grid->GetPointData()->GetArray("node_id"))
+                          : nullptr;
+
+    if (!grid || !nodeIdArr)
+        return pointToNode;
+
+    const vtkIdType nPts = grid->GetNumberOfPoints();
+    for (vtkIdType pid = 0; pid < nPts; ++pid)
+        pointToNode.insert(static_cast<int>(pid), nodeIdArr->GetValue(pid));
+
+    return pointToNode;
+}
+
+static QHash<int, int> buildNodeIdToPointId(vtkUnstructuredGrid* grid)
+{
+    QHash<int, int> nodeToPoint;
+
+    auto* nodeIdArr = grid && grid->GetPointData()
+                          ? vtkIntArray::SafeDownCast(grid->GetPointData()->GetArray("node_id"))
+                          : nullptr;
+
+    if (!grid || !nodeIdArr)
+        return nodeToPoint;
+
+    const vtkIdType nPts = grid->GetNumberOfPoints();
+    for (vtkIdType pid = 0; pid < nPts; ++pid)
+        nodeToPoint.insert(nodeIdArr->GetValue(pid), static_cast<int>(pid));
+
+    return nodeToPoint;
+}
+
+static QVector<int> pointIdsToNodeIds(const QVector<int>& pointIds,
+                                      const QHash<int, int>& pointToNode)
+{
+    QVector<int> nodeIds;
+    nodeIds.reserve(pointIds.size());
+
+    for (int pid : pointIds)
+    {
+        if (pointToNode.contains(pid))
+            nodeIds.push_back(pointToNode.value(pid));
+    }
+
+    std::sort(nodeIds.begin(), nodeIds.end());
+    nodeIds.erase(std::unique(nodeIds.begin(), nodeIds.end()), nodeIds.end());
+
+    return nodeIds;
+}
+
+static QHash<int, QVector<int>> pointPhysToNodePhys(
+    const QHash<int, QVector<int>>& physToPointIds,
+    const QHash<int, int>& pointToNode)
+{
+    QHash<int, QVector<int>> out;
+
+    for (auto it = physToPointIds.constBegin(); it != physToPointIds.constEnd(); ++it)
+        out.insert(it.key(), pointIdsToNodeIds(it.value(), pointToNode));
+
+    return out;
+}
+
+static QVector<int> nodeIdsToPointIds(const QVector<int>& nodeIds,
+                                      const QHash<int, int>& nodeToPoint)
+{
+    QVector<int> pointIds;
+    pointIds.reserve(nodeIds.size());
+
+    for (int nodeId : nodeIds)
+    {
+        if (nodeToPoint.contains(nodeId))
+            pointIds.push_back(nodeToPoint.value(nodeId));
+    }
+
+    std::sort(pointIds.begin(), pointIds.end());
+    pointIds.erase(std::unique(pointIds.begin(), pointIds.end()), pointIds.end());
+
+    return pointIds;
+}
+
+static QHash<int, QVector<int>> nodePhysToPointPhys(
+    const QHash<int, QVector<int>>& physToNodeIds,
+    const QHash<int, int>& nodeToPoint)
+{
+    QHash<int, QVector<int>> out;
+
+    for (auto it = physToNodeIds.constBegin(); it != physToNodeIds.constEnd(); ++it)
+        out.insert(it.key(), nodeIdsToPointIds(it.value(), nodeToPoint));
+
+    return out;
+}
+
+static QHash<int, QVector<QVector<int>>> edgeNodeElemsFromKeys(
+    vtkUnstructuredGrid* grid,
+    const MshPickMap& pick,
+    const QHash<int, int>& pointToNode)
+{
+    QHash<int, QVector<QVector<int>>> out;
+
+    if (!grid)
+        return out;
+
+    for (auto it = pick.bndEdgePhysToEdgeKeys.constBegin();
+         it != pick.bndEdgePhysToEdgeKeys.constEnd(); ++it)
+    {
+        const int physId = it.key();
+
+        for (qint64 edgeKey : it.value())
+        {
+            const vtkIdType cid = static_cast<vtkIdType>(edgeKey >> 4);
+            const int localEdgeId = static_cast<int>(edgeKey & 0xF);
+
+            vtkCell* cell = grid->GetCell(cid);
+            vtkCell* edge = cell ? cell->GetEdge(localEdgeId) : nullptr;
+
+            if (!edge || edge->GetNumberOfPoints() < 2)
+                continue;
+
+            const int p0 = static_cast<int>(edge->GetPointId(0));
+            const int p1 = static_cast<int>(edge->GetPointId(1));
+
+            if (!pointToNode.contains(p0) || !pointToNode.contains(p1))
+                continue;
+
+            QVector<int> nodePair;
+            nodePair.push_back(pointToNode.value(p0));
+            nodePair.push_back(pointToNode.value(p1));
+            out[physId].push_back(nodePair);
+        }
+    }
+
+    return out;
+}
+
+static QHash<int, QVector<QVector<int>>> faceNodeElemsFromKeys(
+    vtkUnstructuredGrid* grid,
+    const MshPickMap& pick,
+    const QHash<int, int>& pointToNode)
+{
+    QHash<int, QVector<QVector<int>>> out;
+
+    if (!grid)
+        return out;
+
+    for (auto it = pick.bndFacePhysToFaceKeys.constBegin();
+         it != pick.bndFacePhysToFaceKeys.constEnd(); ++it)
+    {
+        const int physId = it.key();
+
+        for (qint64 faceKey : it.value())
+        {
+            const vtkIdType cid = static_cast<vtkIdType>(faceKey >> 4);
+            const int localFaceId = static_cast<int>(faceKey & 0xF);
+
+            vtkCell* cell = grid->GetCell(cid);
+            vtkCell* face = cell ? cell->GetFace(localFaceId) : nullptr;
+
+            if (!face || face->GetNumberOfPoints() < 3)
+                continue;
+
+            QVector<int> nodeIds;
+            nodeIds.reserve(face->GetNumberOfPoints());
+
+            for (vtkIdType i = 0; i < face->GetNumberOfPoints(); ++i)
+            {
+                const int pid = static_cast<int>(face->GetPointId(i));
+                if (pointToNode.contains(pid))
+                    nodeIds.push_back(pointToNode.value(pid));
+            }
+
+            if (nodeIds.size() >= 3)
+                out[physId].push_back(nodeIds);
+        }
+    }
+
+    return out;
+}
+
+static quint64 packEdgePointIds(int a, int b)
+{
+    const quint32 x = static_cast<quint32>(qMin(a, b));
+    const quint32 y = static_cast<quint32>(qMax(a, b));
+    return (quint64(x) << 32) | quint64(y);
+}
+
+static QByteArray packFacePointIds(QVector<int> ids)
+{
+    std::sort(ids.begin(), ids.end());
+
+    QByteArray key;
+    key.reserve(ids.size() * int(sizeof(qint32)));
+
+    for (int id : ids)
+    {
+        const qint32 v = qint32(id);
+        key.append(reinterpret_cast<const char*>(&v), int(sizeof(qint32)));
+    }
+
+    return key;
+}
+
+static void rebuildCurrentNodeMaps(MshPickMap& pick, vtkUnstructuredGrid* grid)
+{
+    pick.nodeIdToPointId.clear();
+    pick.pointIdToNodeId.clear();
+
+    auto* nodeIdArr = grid && grid->GetPointData()
+                          ? vtkIntArray::SafeDownCast(grid->GetPointData()->GetArray("node_id"))
+                          : nullptr;
+
+    if (!grid || !nodeIdArr)
+        return;
+
+    const vtkIdType nPts = grid->GetNumberOfPoints();
+    for (vtkIdType pid = 0; pid < nPts; ++pid)
+    {
+        const int nodeId = nodeIdArr->GetValue(pid);
+        const int pointId = static_cast<int>(pid);
+        pick.nodeIdToPointId.insert(nodeId, pointId);
+        pick.pointIdToNodeId.insert(pointId, nodeId);
+    }
+}
+
+static void rebuildBoundaryRuntimeIndexFromNodeData(
+    MshPickMap& pick,
+    vtkUnstructuredGrid* grid,
+    const QHash<int, QVector<int>>& pointPhysToNodeIds,
+    const QHash<int, QVector<int>>& edgePhysToNodeIds,
+    const QHash<int, QVector<int>>& facePhysToNodeIds,
+    const QHash<int, QVector<QVector<int>>>& edgeNodeElems,
+    const QHash<int, QVector<QVector<int>>>& faceNodeElems)
+{
+    pick.bndPointPhysToPointIds.clear();
+    pick.bndEdgePhysToPointIds.clear();
+    pick.bndFacePhysToPointIds.clear();
+    pick.bndEdgePhysToEdgeKeys.clear();
+    pick.bndFacePhysToFaceKeys.clear();
+
+    if (!grid)
+        return;
+
+    const QHash<int, int> nodeToPoint = buildNodeIdToPointId(grid);
+
+    pick.bndPointPhysToPointIds = nodePhysToPointPhys(pointPhysToNodeIds, nodeToPoint);
+    pick.bndEdgePhysToPointIds = nodePhysToPointPhys(edgePhysToNodeIds, nodeToPoint);
+    pick.bndFacePhysToPointIds = nodePhysToPointPhys(facePhysToNodeIds, nodeToPoint);
+
+    QHash<quint64, qint64> edgeIndex;
+    QHash<QByteArray, qint64> faceIndex;
+
+    const vtkIdType nCells = grid->GetNumberOfCells();
+
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    {
+        vtkCell* cell = grid->GetCell(cid);
+        if (!cell)
+            continue;
+
+        const int nEdges = cell->GetNumberOfEdges();
+
+        for (int ei = 0; ei < nEdges; ++ei)
+        {
+            vtkCell* edge = cell->GetEdge(ei);
+
+            if (!edge || edge->GetNumberOfPoints() < 2)
+                continue;
+
+            const int p0 = static_cast<int>(edge->GetPointId(0));
+            const int p1 = static_cast<int>(edge->GetPointId(1));
+            const quint64 key = packEdgePointIds(p0, p1);
+            const qint64 edgeKey = (qint64(cid) << 4) | (qint64(ei) & 0xF);
+
+            if (!edgeIndex.contains(key))
+                edgeIndex.insert(key, edgeKey);
+        }
+
+        const int nFaces = cell->GetNumberOfFaces();
+
+        for (int fi = 0; fi < nFaces; ++fi)
+        {
+            vtkCell* face = cell->GetFace(fi);
+
+            if (!face || face->GetNumberOfPoints() < 3)
+                continue;
+
+            QVector<int> pids;
+            pids.reserve(face->GetNumberOfPoints());
+
+            for (vtkIdType i = 0; i < face->GetNumberOfPoints(); ++i)
+                pids.push_back(static_cast<int>(face->GetPointId(i)));
+
+            const QByteArray key = packFacePointIds(pids);
+            const qint64 faceKey = (qint64(cid) << 4) | (qint64(fi) & 0xF);
+
+            if (!faceIndex.contains(key))
+                faceIndex.insert(key, faceKey);
+        }
+    }
+
+    for (auto it = edgeNodeElems.constBegin(); it != edgeNodeElems.constEnd(); ++it)
+    {
+        const int physId = it.key();
+
+        for (const QVector<int>& nodePair : it.value())
+        {
+            if (nodePair.size() < 2)
+                continue;
+
+            const int p0 = nodeToPoint.value(nodePair[0], -1);
+            const int p1 = nodeToPoint.value(nodePair[1], -1);
+
+            if (p0 < 0 || p1 < 0)
+                continue;
+
+            const quint64 key = packEdgePointIds(p0, p1);
+            if (edgeIndex.contains(key))
+                pick.bndEdgePhysToEdgeKeys[physId].push_back(edgeIndex.value(key));
+        }
+    }
+
+    for (auto it = faceNodeElems.constBegin(); it != faceNodeElems.constEnd(); ++it)
+    {
+        const int physId = it.key();
+
+        for (const QVector<int>& faceNodes : it.value())
+        {
+            QVector<int> pids;
+            pids.reserve(faceNodes.size());
+
+            for (int nodeId : faceNodes)
+            {
+                const int pid = nodeToPoint.value(nodeId, -1);
+                if (pid >= 0)
+                    pids.push_back(pid);
+            }
+
+            if (pids.size() < 3)
+                continue;
+
+            const QByteArray key = packFacePointIds(pids);
+            if (faceIndex.contains(key))
+                pick.bndFacePhysToFaceKeys[physId].push_back(faceIndex.value(key));
+        }
+    }
+
+    auto dedupInt = [](QVector<int>& values)
+    {
+        std::sort(values.begin(), values.end());
+        values.erase(std::unique(values.begin(), values.end()), values.end());
+    };
+
+    auto dedupI64 = [](QVector<qint64>& values)
+    {
+        std::sort(values.begin(), values.end());
+        values.erase(std::unique(values.begin(), values.end()), values.end());
+    };
+
+    for (auto it = pick.bndPointPhysToPointIds.begin(); it != pick.bndPointPhysToPointIds.end(); ++it)
+        dedupInt(it.value());
+    for (auto it = pick.bndEdgePhysToPointIds.begin(); it != pick.bndEdgePhysToPointIds.end(); ++it)
+        dedupInt(it.value());
+    for (auto it = pick.bndFacePhysToPointIds.begin(); it != pick.bndFacePhysToPointIds.end(); ++it)
+        dedupInt(it.value());
+    for (auto it = pick.bndEdgePhysToEdgeKeys.begin(); it != pick.bndEdgePhysToEdgeKeys.end(); ++it)
+        dedupI64(it.value());
+    for (auto it = pick.bndFacePhysToFaceKeys.begin(); it != pick.bndFacePhysToFaceKeys.end(); ++it)
+        dedupI64(it.value());
+}
+
+static void refreshPhysicalBoundaryTagSets(MshPickMap& pick)
+{
+    QVector<MeshTagKey> removeKeys;
+
+    for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
+    {
+        const MeshTagKey& key = it.key();
+        if (key.category == QStringLiteral("Physical") && key.dim < pick.meshDim)
+            removeKeys.push_back(key);
+    }
+
+    for (const MeshTagKey& key : removeKeys)
+        pick.tagSets.remove(key);
+
+    auto addBoundarySet = [&](int physId, int dim, const QVector<int>& pointIds)
+    {
+        if (physId <= 0 || pointIds.isEmpty())
+            return;
+
+        MeshTagKey key;
+        key.category = QStringLiteral("Physical");
+        key.dim = dim;
+        key.id = physId;
+
+        MeshTagSet set;
+        set.key = key;
+        set.name = pick.physIdToName.value(physId, QStringLiteral("phys_%1").arg(physId));
+        set.source = QStringLiteral("ProjectRestore");
+
+        for (int pid : pointIds)
+            set.pointIds.push_back(static_cast<MeshIdType>(pid));
+
+        pick.tagSets.insert(key, set);
+    };
+
+    for (auto it = pick.bndPointPhysToPointIds.constBegin();
+         it != pick.bndPointPhysToPointIds.constEnd(); ++it)
+        addBoundarySet(it.key(), 0, it.value());
+
+    for (auto it = pick.bndEdgePhysToPointIds.constBegin();
+         it != pick.bndEdgePhysToPointIds.constEnd(); ++it)
+        addBoundarySet(it.key(), 1, it.value());
+
+    for (auto it = pick.bndFacePhysToPointIds.constBegin();
+         it != pick.bndFacePhysToPointIds.constEnd(); ++it)
+        addBoundarySet(it.key(), 2, it.value());
+}
+
+static bool saveMeshMapJson(const QString& filePath,
+                            const MshPickMap& pick,
+                            vtkUnstructuredGrid* grid,
+                            QString* errMsg)
+{
+    QJsonObject root;
+
+    const QHash<int, int> pointToNode = buildPointIdToNodeId(grid);
+
+    root["mesh_dim"] = pick.meshDim;
+    root["phys_id_to_name"] = intStringHashToJson(pick.physIdToName);
+    root["phys_id_to_dim"] = intIntHashToJson(pick.physIdToDim);
+
+    root["bnd_point_phys_to_node_ids"] =
+        intVectorHashToJson(pointPhysToNodePhys(pick.bndPointPhysToPointIds, pointToNode));
+
+    root["bnd_edge_phys_to_node_ids"] =
+        intVectorHashToJson(pointPhysToNodePhys(pick.bndEdgePhysToPointIds, pointToNode));
+
+    root["bnd_face_phys_to_node_ids"] =
+        intVectorHashToJson(pointPhysToNodePhys(pick.bndFacePhysToPointIds, pointToNode));
+
+    root["bnd_edge_phys_to_node_elems"] =
+        nestedIntVectorHashToJson(edgeNodeElemsFromKeys(grid, pick, pointToNode));
+
+    root["bnd_face_phys_to_node_elems"] =
+        nestedIntVectorHashToJson(faceNodeElemsFromKeys(grid, pick, pointToNode));
+
+    QJsonArray tagSets;
+    for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
+        tagSets.append(meshTagSetToJson(it.value()));
+
+    root["tag_sets"] = tagSets;
+    root["cell_id_to_domain_tags"] =
+        meshIdTagKeyVectorHashToJson(pick.cellIdToDomainTags);
+
+    QFile file(filePath);
+
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    {
+        if (errMsg)
+            *errMsg = QString("无法写入网格映射文件：%1").arg(filePath);
+        return false;
+    }
+
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    file.close();
+
+    return true;
+}
+
+static bool loadMeshMapJson(const QString& filePath,
+                            vtkUnstructuredGrid* grid,
+                            QString* errMsg)
+{
+    QFile file(filePath);
+
+    if (!file.open(QIODevice::ReadOnly))
+    {
+        if (errMsg)
+            *errMsg = QString("无法读取网格映射文件：%1").arg(filePath);
+        return false;
+    }
+
+    const QByteArray bytes = file.readAll();
+    file.close();
+
+    const QJsonObject root = QJsonDocument::fromJson(bytes).object();
+
+    MshPickMap pick;
+
+    pick.meshDim = root.value("mesh_dim").toInt();
+    pick.physIdToName =
+        jsonToIntStringHash(root.value("phys_id_to_name").toObject());
+    pick.physIdToDim =
+        jsonToIntIntHash(root.value("phys_id_to_dim").toObject());
+
+    const QJsonArray tagSets = root.value("tag_sets").toArray();
+
+    for (const auto& v : tagSets)
+    {
+        const MeshTagSet set = jsonToMeshTagSet(v.toObject());
+        pick.tagSets.insert(set.key, set);
+    }
+
+    pick.cellIdToDomainTags =
+        jsonToMeshIdTagKeyVectorHash(root.value("cell_id_to_domain_tags").toObject());
+
+    rebuildCurrentNodeMaps(pick, grid);
+
+    const QHash<int, QVector<int>> pointPhysToNodeIds =
+        jsonToIntVectorHash(root.value("bnd_point_phys_to_node_ids").toObject());
+
+    const QHash<int, QVector<int>> edgePhysToNodeIds =
+        jsonToIntVectorHash(root.value("bnd_edge_phys_to_node_ids").toObject());
+
+    const QHash<int, QVector<int>> facePhysToNodeIds =
+        jsonToIntVectorHash(root.value("bnd_face_phys_to_node_ids").toObject());
+
+    const QHash<int, QVector<QVector<int>>> edgeNodeElems =
+        jsonToNestedIntVectorHash(root.value("bnd_edge_phys_to_node_elems").toObject());
+
+    const QHash<int, QVector<QVector<int>>> faceNodeElems =
+        jsonToNestedIntVectorHash(root.value("bnd_face_phys_to_node_elems").toObject());
+
+    rebuildBoundaryRuntimeIndexFromNodeData(pick,
+                                            grid,
+                                            pointPhysToNodeIds,
+                                            edgePhysToNodeIds,
+                                            facePhysToNodeIds,
+                                            edgeNodeElems,
+                                            faceNodeElems);
+
+    refreshPhysicalBoundaryTagSets(pick);
+
+    MeshGridIO::instance().setMeshMap(pick);
+
+    return true;
+}
 
 ProjectNode* findDirectChildByKind(ProjectNode* parent, const QString& kind)
 {
@@ -131,7 +972,7 @@ void rebuildOriginalIdArrays(vtkUnstructuredGrid* sourceGrid, vtkPolyData* poly)
             return true;
         };
 
-        // 通过几何位置回映射到 sourceGrid 点 id。
+               // 通过几何位置回映射到 sourceGrid 点 id。
         for (vtkIdType pid = 0; pid < poly->GetNumberOfPoints(); ++pid)
         {
             double p[3] = {0.0, 0.0, 0.0};
@@ -259,6 +1100,7 @@ bool MeshModuleController::saveProject()
 {
     QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+
     if (projectDir.isEmpty())
         return false;
 
@@ -266,14 +1108,32 @@ bool MeshModuleController::saveProject()
     root["module"] = "Mesh";
     root["root_title"] = "网格";
 
-    const QString snapshotPath = QDir(projectDir).filePath(PublicConstants::kMeshSnapshotFileName);
-    const bool hasGrid = (m_importedGrid && m_importedGrid->GetNumberOfCells() > 0);
+    const QString snapshotPath =
+        QDir(projectDir).filePath(PublicConstants::kMeshSnapshotFileName);
+
+    const QString meshMapPath =
+        QDir(projectDir).filePath(kMeshMapFileName);
+
+    const bool hasGrid =
+        (m_importedGrid && m_importedGrid->GetNumberOfCells() > 0);
+
     root["has_grid"] = hasGrid;
     root["snapshot_file"] = PublicConstants::kMeshSnapshotFileName;
+    root["mesh_map_file"] = kMeshMapFileName;
+    // 工程恢复固定使用 IIIN/DAT 快照 + mesh_map.json。
+    // 不再优先按 msh_snapshot 恢复，避免 loadMshFile 再次把低维边界单元混入显示网格。
+    root["mesh_restore_mode"] = QStringLiteral("dat");
+
     if (hasGrid)
     {
         QString err;
+
         if (!MeshGridIO::instance().exportIiinFile(snapshotPath, m_importedGrid, &err))
+        {
+            return false;
+        }
+
+        if (!saveMeshMapJson(meshMapPath, MeshGridIO::instance().getMeshMapRef(), m_importedGrid, &err))
         {
             return false;
         }
@@ -282,6 +1142,7 @@ bool MeshModuleController::saveProject()
     auto edgeRulesToJson = [this]()
     {
         QJsonArray arr;
+
         for (const auto& rule : m_edgeRules)
         {
             QJsonObject obj;
@@ -290,11 +1151,14 @@ bool MeshModuleController::saveProject()
             obj["bias"] = rule.bias;
             arr.append(obj);
         }
+
         return arr;
     };
+
     auto faceRulesToJson = [this]()
     {
         QJsonArray arr;
+
         for (const auto& rule : m_faceRules)
         {
             QJsonObject obj;
@@ -304,11 +1168,14 @@ bool MeshModuleController::saveProject()
             obj["curvature_per_2pi"] = rule.curvatureElementsPer2Pi;
             arr.append(obj);
         }
+
         return arr;
     };
+
     auto volumeRulesToJson = [this]()
     {
         QJsonArray arr;
+
         for (const auto& rule : m_volumeRules)
         {
             QJsonObject obj;
@@ -316,6 +1183,7 @@ bool MeshModuleController::saveProject()
             obj["local_size_factor"] = rule.localSizeFactor;
             arr.append(obj);
         }
+
         return arr;
     };
 
@@ -324,9 +1192,11 @@ bool MeshModuleController::saveProject()
     root["volume_rules"] = volumeRulesToJson();
 
     QJsonArray nodeItems;
+
     std::function<QJsonObject(ProjectNode*)> saveNode = [&](ProjectNode* node) -> QJsonObject
     {
         QJsonObject obj;
+
         if (!node)
             return obj;
 
@@ -336,38 +1206,51 @@ bool MeshModuleController::saveProject()
         obj["kind"] = node->data(0, ProjectNode::RoleKind).toString();
 
         QJsonArray children;
+
         for (int i = 0; i < node->childCount(); ++i)
         {
             auto* child = dynamic_cast<ProjectNode*>(node->child(i));
+
             if (!child)
                 continue;
+
             children.append(saveNode(child));
         }
+
         obj["children"] = children;
         return obj;
     };
+
     if (m_gridNode)
     {
         for (int i = 0; i < m_gridNode->childCount(); ++i)
         {
             auto* child = dynamic_cast<ProjectNode*>(m_gridNode->child(i));
+
             if (!child)
                 continue;
+
             nodeItems.append(saveNode(child));
         }
     }
+
     root["nodes"] = nodeItems;
 
     QFile file(QDir(projectDir).filePath(PublicConstants::kMeshProjectFileName));
-    if (!file.open(QIODevice::WriteOnly))
+
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
         return false;
+
     file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    file.close();
+
     return true;
 }
 
 bool MeshModuleController::loadProject()
 {
     auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
+
     m_gridNode = new ProjectNode("网格");
     m_gridNode->setData(0, ProjectNode::RoleModule, "Mesh");
     m_gridNode->setData(0, ProjectNode::RoleKind, "MeshRoot");
@@ -375,95 +1258,116 @@ bool MeshModuleController::loadProject()
 
     QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+
     if (projectDir.isEmpty())
         return false;
 
     QFile file(QDir(projectDir).filePath(PublicConstants::kMeshProjectFileName));
+
     if (!file.open(QIODevice::ReadOnly))
         return true;
 
     const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+    file.close();
 
     const bool hasGrid = root.value("has_grid").toBool(false);
+
     if (hasGrid)
     {
         const QString snapshotName =
             root.value("snapshot_file").toString(PublicConstants::kMeshSnapshotFileName);
+
+        const QString meshMapName =
+            root.value("mesh_map_file").toString(kMeshMapFileName);
+
         const QString snapshotPath = QDir(projectDir).filePath(snapshotName);
-        if (QFileInfo::exists(snapshotPath))
+        const QString meshMapPath = QDir(projectDir).filePath(meshMapName);
+
+        QString err;
+
+        auto grid = MeshGridIO::instance().loadIiinFile(snapshotPath, &err);
+
+        if (!grid || grid->GetNumberOfCells() <= 0)
         {
-            QString err;
-            auto grid = MeshGridIO::instance().loadIiinFile(snapshotPath, &err);
-            if (grid)
+            QMessageBox::warning(nullptr,
+                                 QStringLiteral("工程网格读取失败"),
+                                 err.isEmpty()
+                                     ? QStringLiteral("工程网格快照读取失败。")
+                                     : err);
+            return false;
+        }
+
+        m_importedGrid = grid;
+        m_hasGrid = true;
+        m_sourceFileName.clear();
+
+        m_splitCacheSource = nullptr;
+        m_splitCacheLine = nullptr;
+        m_splitCacheNonLine = nullptr;
+
+        /*
+         * 新工程：
+         * 有 mesh_map.json，则恢复 Physical 边界、node_id 边界映射等。
+         *          * 旧工程：
+         * 没有 mesh_map.json，不能失败。
+         * 直接从 DAT 网格里的 MATYPE/LAYER 重建域分组即可。
+         */
+        if (QFileInfo::exists(meshMapPath))
+        {
+            if (!loadMeshMapJson(meshMapPath, m_importedGrid, &err))
             {
-                m_importedGrid = grid;
-                m_hasGrid = true;
-                m_sourceFileName.clear();
-                {
-                    vtkSmartPointer<vtkUnstructuredGrid> tmpLine;
-                    vtkSmartPointer<vtkUnstructuredGrid> tmpNonLine;
-                    splitGridByDim(m_importedGrid, tmpLine, tmpNonLine);
-                }
                 syncPickMapGroupingFromGrid(m_importedGrid);
-                displayCurrentGrid();
-                PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
             }
         }
+        else
+        {
+            syncPickMapGroupingFromGrid(m_importedGrid);
+        }
+
+        displayCurrentGrid();
+
+        PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
     }
 
     m_edgeRules.clear();
+
     for (const auto& v : root.value("edge_rules").toArray())
     {
         const QJsonObject obj = v.toObject();
+
         EdgeControlRule rule;
         rule.edgeIds = obj.value("edge_ids").toString();
         rule.divisions = obj.value("divisions").toInt(10);
         rule.bias = obj.value("bias").toDouble(1.0);
+
         m_edgeRules.push_back(rule);
     }
 
     m_faceRules.clear();
+
     for (const auto& v : root.value("face_rules").toArray())
     {
         const QJsonObject obj = v.toObject();
+
         FaceControlRule rule;
         rule.faceIds = obj.value("face_ids").toString();
-        if (obj.contains("local_size_factor"))
-        {
-            rule.localSizeFactor = obj.value("local_size_factor").toDouble(1.0);
-        }
-        else
-        {
-            rule.localSizeFactor = 1.0;
-        }
-        // Legacy keys target_size/min_size/max_size are ignored after model
-        // simplification.
+        rule.localSizeFactor = obj.value("local_size_factor").toDouble(1.0);
         rule.curvatureRefine = obj.value("curvature_refine").toBool(true);
-        if (obj.contains("curvature_per_2pi"))
-        {
-            rule.curvatureElementsPer2Pi = obj.value("curvature_per_2pi").toInt(20);
-        }
-        else
-        {
-            rule.curvatureElementsPer2Pi = obj.value("curvature_level").toInt(20);
-        }
+        rule.curvatureElementsPer2Pi = obj.value("curvature_per_2pi").toInt(20);
+
         m_faceRules.push_back(rule);
     }
 
     m_volumeRules.clear();
+
     for (const auto& v : root.value("volume_rules").toArray())
     {
         const QJsonObject obj = v.toObject();
+
         VolumeControlRule rule;
         rule.volumeIds = obj.value("volume_ids").toString();
-        if (obj.contains("local_size_factor"))
-        {
-            rule.localSizeFactor = obj.value("local_size_factor").toDouble(1.0);
-        }
-        else
-        {
-            rule.localSizeFactor = 1.0;
-        }
+        rule.localSizeFactor = obj.value("local_size_factor").toDouble(1.0);
+
         m_volumeRules.push_back(rule);
     }
 
@@ -471,26 +1375,35 @@ bool MeshModuleController::loadProject()
     {
         if (kind == "GlobalMeshing")
             return new MeshGlobalMeshingWidget();
+
         if (kind == "SingleMeshing")
             return new MeshSingleMeshingWidget();
+
         if (kind == "VolumeControl")
             return new MeshVolumeControlWidget();
+
         if (kind == "FaceControl")
             return new MeshFaceControlWidget();
+
         if (kind == "EdgeControl")
             return new MeshEdgeControlWidget();
+
         if (kind == "MeshGrouping")
             return new MeshGroupingWidget();
+
         if (kind == "MeshEdit")
         {
             auto* w = new GridEditingWidget();
             m_gridEditingWidget = w;
+
             if (m_importedGrid && m_importedGrid->GetNumberOfCells() > 0)
             {
                 w->setEditableGrid(m_importedGrid, m_sourceFileName);
             }
+
             return w;
         }
+
         return nullptr;
     };
 
@@ -501,19 +1414,24 @@ bool MeshModuleController::loadProject()
             return;
 
         const QString kind = obj.value("kind").toString();
+
         BasePage* page = createPageByKind(kind);
+
         if (!page)
             return;
 
         const QString title = obj.value("title").toString(kind);
         const QString uuid = obj.value("uuid").toString(QUuid::createUuid().toString());
+
         auto* node = new ProjectNode(title, uuid, page);
         node->setData(0, ProjectNode::RoleModule, "Mesh");
         node->setData(0, ProjectNode::RoleKind, kind);
         node->setData(0, ProjectNode::RoleUuid, uuid);
+
         parent->addChild(node);
 
         const QJsonArray children = obj.value("children").toArray();
+
         for (const auto& childVal : children)
         {
             loadNode(node, childVal.toObject());
@@ -521,6 +1439,7 @@ bool MeshModuleController::loadProject()
     };
 
     const QJsonArray nodes = root.value("nodes").toArray();
+
     for (const auto& n : nodes)
     {
         loadNode(m_gridNode, n.toObject());
@@ -650,7 +1569,7 @@ QString MeshModuleController::domainDisplayText(const DomainKey& key) const
 }
 
 void MeshModuleController::highlightDomainMatypes(const QSet<int>& matypes, int selectedMatype,
-                                            int previewMatype, int preDeleteMatype)
+                                                  int previewMatype, int preDeleteMatype)
 {
     if (!m_gridEditingWidget)
     {
@@ -772,7 +1691,7 @@ void MeshModuleController::initAction()
                            });
     };
 
-    // --- IO ---
+           // --- IO ---
     reg(PublicConstants::kActionPreprocessImportGrid,
         [this]
         {
@@ -784,7 +1703,7 @@ void MeshModuleController::initAction()
             onExportGrid();
         });
 
-    // --- Meshing ---
+           // --- Meshing ---
     reg(PublicConstants::kActionPreprocessMeshGlobal,
         [this]
         {
@@ -817,7 +1736,7 @@ void MeshModuleController::initAction()
             onMeshGrouping();
         });
 
-    // --- Control & Quality ---
+           // --- Control & Quality ---
     reg(PublicConstants::kActionPreprocessCtrlVolume,
         [this]
         {
@@ -933,28 +1852,41 @@ void MeshModuleController::onImportGrid()
         }
     }
 
-    displayCurrentGrid();
     syncPickMapGroupingFromGrid(m_importedGrid);
+
+    m_splitCacheSource = nullptr;
+    m_splitCacheLine = nullptr;
+    m_splitCacheNonLine = nullptr;
+
+    displayCurrentGrid();
+
     PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
 }
 
 void MeshModuleController::importMshGrid(QString path)
 {
-    vtkSmartPointer<vtkUnstructuredGrid> grid;
     QString err;
-    grid = MeshGridIO::instance().loadMshFile(path, &err);
+    auto grid = MeshGridIO::instance().loadMshFile(path, &err);
+
+    if (!grid || grid->GetNumberOfCells() <= 0)
+    {
+        QMessageBox::warning(nullptr, QString("导入失败"),
+                             err.isEmpty() ? QString("MSH 网格导入失败") : err);
+        return;
+    }
 
     m_importedGrid = grid;
     m_hasGrid = true;
     m_sourceFileName = path;
-    {
-        vtkSmartPointer<vtkUnstructuredGrid> tmpLine;
-        vtkSmartPointer<vtkUnstructuredGrid> tmpNonLine;
-        splitGridByDim(m_importedGrid, tmpLine, tmpNonLine);
-    }
+
+    syncPickMapGroupingFromGrid(m_importedGrid);
+
+    m_splitCacheSource = nullptr;
+    m_splitCacheLine = nullptr;
+    m_splitCacheNonLine = nullptr;
 
     displayCurrentGrid();
-    syncPickMapGroupingFromGrid(m_importedGrid);
+
     PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
 }
 
@@ -1469,7 +2401,7 @@ void MeshModuleController::displayCurrentGrid()
         m_previewMapper = m_previewLineMapper;
     }
 
-    // 网格导入/预览后默认只显示网格。
+           // 网格导入/预览后默认只显示网格。
     m_visualWidgetService->setGroupVisible("Geometry", false, false);
     // 必须在网格 prop 完成更新后再同步 PickManager 结构，否则会抓到旧 actor/mapper。
     PickManager::instance().updateStructure();
@@ -1552,101 +2484,8 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
         outNonLine = vtkUnstructuredGrid::SafeDownCast(ex->GetOutput());
     }
 
-    if (!outNonLine || outNonLine->GetNumberOfCells() <= 0)
-        return;
-
-    auto appendFilter = vtkSmartPointer<vtkAppendFilter>::New();
-    appendFilter->AddInputData(outNonLine);
-
-    auto buildGroupsFromCellArray = [src](const char* arrayName)
-    {
-        QHash<int, QVector<qint64>> rst;
-        if (!src || !src->GetCellData())
-            return rst;
-        auto* arr = vtkIntArray::SafeDownCast(src->GetCellData()->GetArray(arrayName));
-        if (!arr)
-            return rst;
-        const vtkIdType n = src->GetNumberOfCells();
-        for (vtkIdType cid = 0; cid < n; ++cid)
-        {
-            vtkCell* c = src->GetCell(cid);
-            if (!c || c->GetCellDimension() != 3)
-                continue;
-            const int v = arr->GetValue(cid);
-            if (v <= 0)
-                continue;
-            rst[v].push_back(static_cast<qint64>(cid));
-        }
-        return rst;
-    };
-
-    const auto appendGroupSurfaceCells = [&](const QHash<int, QVector<qint64>>& groupToCells)
-    {
-        for (auto it = groupToCells.constBegin(); it != groupToCells.constEnd(); ++it)
-        {
-            const auto& cells = it.value();
-            if (cells.isEmpty())
-                continue;
-
-            auto idList = vtkSmartPointer<vtkIdList>::New();
-            idList->Allocate(cells.size());
-            for (qint64 rawCid : cells)
-            {
-                const vtkIdType cid = static_cast<vtkIdType>(rawCid);
-                if (cid < 0 || cid >= src->GetNumberOfCells())
-                    continue;
-                vtkCell* c = src->GetCell(cid);
-                if (!c || c->GetCellDimension() != 3)
-                    continue;
-                idList->InsertNextId(cid);
-            }
-            if (idList->GetNumberOfIds() <= 0)
-                continue;
-
-            auto ex = vtkSmartPointer<vtkExtractCells>::New();
-            ex->SetInputData(src);
-            ex->SetCellList(idList);
-            ex->Update();
-
-            auto groupGrid = vtkUnstructuredGrid::SafeDownCast(ex->GetOutput());
-            if (!groupGrid || groupGrid->GetNumberOfCells() <= 0)
-                continue;
-
-            auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-            surf->SetInputData(groupGrid);
-            surf->Update();
-            if (!surf->GetOutput() || surf->GetOutput()->GetNumberOfCells() <= 0)
-                continue;
-
-            appendFilter->AddInputData(surf->GetOutput());
-        }
-    };
-
-    const auto matypeGroups = buildGroupsFromCellArray("MATYPE");
-    const auto layerGroups = buildGroupsFromCellArray("LAYER");
-    appendGroupSurfaceCells(matypeGroups);
-    appendGroupSurfaceCells(layerGroups);
-
-    const MshPickMap& pickMap = MeshGridIO::instance().getMeshMapRef();
-    QHash<int, QVector<qint64>> domainGroups;
-    int gid = 1;
-    for (auto it = pickMap.tagSets.constBegin(); it != pickMap.tagSets.constEnd(); ++it)
-    {
-        const MeshTagSet& set = it.value();
-        if (set.key.dim != pickMap.meshDim || set.cellIds.isEmpty())
-            continue;
-        QVector<qint64> cells;
-        cells.reserve(set.cellIds.size());
-        for (MeshIdType cid : set.cellIds)
-            cells.push_back(static_cast<qint64>(cid));
-        domainGroups.insert(gid++, cells);
-    }
-    appendGroupSurfaceCells(domainGroups);
-    appendFilter->Update();
-
-    auto merged = vtkUnstructuredGrid::SafeDownCast(appendFilter->GetOutput());
-    if (merged && merged->GetNumberOfCells() > 0)
-        outNonLine = merged;
+           // splitGridByDim 只做维度拆分，不再追加 MATYPE/LAYER/Physical 分组表面。
+           // 分组表面属于业务选择/高亮数据，不能混入显示网格；否则打开工程后会显示重复壳。
 
     m_splitCacheSource = src;
     m_splitCacheLine = outLine;
@@ -1700,58 +2539,134 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
 {
     if (!grid)
         return;
+
     MshPickMap pick = MeshGridIO::instance().getMeshMap();
 
-    pick.tagSets.clear();
+    int meshDim = -1;
+    const vtkIdType nCells = grid->GetNumberOfCells();
+
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    {
+        vtkCell* cell = grid->GetCell(cid);
+
+        if (!cell)
+            continue;
+
+        meshDim = qMax(meshDim, cell->GetCellDimension());
+    }
+
+    if (meshDim < 0)
+        return;
+
+    pick.meshDim = meshDim;
+
+    QVector<MeshTagKey> removeKeys;
+
+    for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
+    {
+        const MeshTagKey& key = it.key();
+
+        const bool isMatype =
+            key.category.compare("MATYPE", Qt::CaseInsensitive) == 0;
+
+        const bool isLayer =
+            key.category.compare("LAYER", Qt::CaseInsensitive) == 0;
+
+        if (isMatype || isLayer)
+        {
+            removeKeys.push_back(key);
+        }
+    }
+
+    for (const MeshTagKey& key : removeKeys)
+    {
+        pick.tagSets.remove(key);
+    }
+
     pick.cellIdToDomainTags.clear();
 
-    auto* matArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"));
-    auto* layArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"));
-    const vtkIdType nCells = grid->GetNumberOfCells();
-    int maxDim = -1;
-    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    auto* matArr =
+        vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"));
+
+    auto* layArr =
+        vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"));
+
+    auto addDomainTag = [&](const QString& category, int id, vtkIdType cid)
     {
-        if (auto* c = grid->GetCell(cid))
-            maxDim = qMax(maxDim, c->GetCellDimension());
-    }
-    if (maxDim >= 0)
-        pick.meshDim = maxDim;
+        const bool isLayer =
+            category.compare("LAYER", Qt::CaseInsensitive) == 0;
+
+        if (isLayer)
+        {
+            if (id == 0)
+                return;
+        }
+        else
+        {
+            if (id <= 0)
+                return;
+        }
+
+        MeshTagKey key;
+        key.category = category;
+        key.dim = pick.meshDim;
+        key.id = id;
+
+        if (!pick.tagSets.contains(key))
+        {
+            MeshTagSet set;
+            set.key = key;
+            set.name = QString("%1=%2").arg(category).arg(id);
+            set.source = "GridCellData";
+
+            pick.tagSets.insert(key, set);
+        }
+
+        pick.tagSets[key].cellIds.push_back(static_cast<MeshIdType>(cid));
+
+        auto& tags = pick.cellIdToDomainTags[static_cast<MeshIdType>(cid)];
+
+        if (!tags.contains(key))
+        {
+            tags.push_back(key);
+        }
+    };
 
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
+        vtkCell* cell = grid->GetCell(cid);
+
+        if (!cell)
+            continue;
+
+        if (cell->GetCellDimension() != pick.meshDim)
+            continue;
+
         const int mat = matArr ? matArr->GetValue(cid) : 0;
         const int lay = layArr ? layArr->GetValue(cid) : 0;
 
-        auto addDomainTag = [&](const QString& category, int id)
-        {
-            const bool isLayer = (category.compare("LAYER", Qt::CaseInsensitive) == 0);
-            if (isLayer ? (id == 0) : (id <= 0))
-                return;
-            MeshTagKey key;
-            key.category = category;
-            key.dim = pick.meshDim;
-            key.id = id;
-            if (!pick.tagSets.contains(key))
-            {
-                MeshTagSet set;
-                set.key = key;
-                set.name = QString("%1=%2").arg(category).arg(id);
-                set.source = "GridSync";
-                pick.tagSets.insert(key, set);
-            }
-            pick.tagSets[key].cellIds.push_back(static_cast<MeshIdType>(cid));
-            auto& domainTags = pick.cellIdToDomainTags[cid];
-            if (!domainTags.contains(key))
-                domainTags.push_back(key);
-        };
+        addDomainTag("MATYPE", mat, cid);
+        addDomainTag("LAYER", lay, cid);
+    }
 
-        addDomainTag("MATYPE", mat);
-        addDomainTag("LAYER", lay);
+           // 保留并重建已有最高维 Physical 域标签的 cellId -> tags 反查。
+           // 上面清空 cellIdToDomainTags 是为了重建 MATYPE/LAYER，但不能丢掉导入/恢复的 Physical 域。
+    for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
+    {
+        const MeshTagSet& set = it.value();
+        if (set.key.dim != pick.meshDim || set.cellIds.isEmpty())
+            continue;
+
+        for (MeshIdType cid : set.cellIds)
+        {
+            auto& tags = pick.cellIdToDomainTags[cid];
+            if (!tags.contains(set.key))
+                tags.push_back(set.key);
+        }
     }
 
     MeshGridIO::instance().setMeshMap(pick);
 }
-
 vtkSmartPointer<vtkUnstructuredGrid> MeshModuleController::getVtkUnstructuredGridSolid()
 {
     return m_previewSurfaceGrid;
@@ -1840,8 +2755,8 @@ bool MeshModuleController::autoGroupingBySpatialBins(int binCount, const QString
     if (span[2] > span[axis])
         axis = 2;
 
-    // 业务上「填筑层」更关注高程分层：优先按 Z 方向划分。
-    // 若 Z 跨度近乎为 0（例如二维工况），再回退到最大跨度方向。
+           // 业务上「填筑层」更关注高程分层：优先按 Z 方向划分。
+           // 若 Z 跨度近乎为 0（例如二维工况），再回退到最大跨度方向。
     if (targetArrayName.compare("LAYER", Qt::CaseInsensitive) == 0)
     {
         constexpr double kEps = 1e-12;
@@ -1879,8 +2794,8 @@ bool MeshModuleController::autoGroupingBySpatialBins(int binCount, const QString
         groupArr->SetNumberOfValues(nCells);
     }
 
-    // 使用“按主轴排序后的等数量分箱”（quantile
-    // binning），避免仅按跨度均分导致某些组过密/过疏。
+           // 使用“按主轴排序后的等数量分箱”（quantile
+           // binning），避免仅按跨度均分导致某些组过密/过疏。
     std::sort(centers.begin(), centers.end(),
               [axis](const CellCenter& a, const CellCenter& b)
               {
