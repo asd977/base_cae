@@ -6,6 +6,7 @@
 #include <struct/MeshMap.h>
 
 #include <QComboBox>
+#include <QCheckBox>
 #include <QDebug>
 #include <QDoubleSpinBox>
 #include <QMessageBox>
@@ -34,11 +35,21 @@ void FaceLoadPage::beforeLoad()
     PickManager::instance();
 
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Face);
+    QObject::disconnect(ui->pickEnableCheckBox, nullptr, this, nullptr);
+    QObject::connect(ui->pickEnableCheckBox, &QCheckBox::toggled, this,
+                     [this](bool on)
+                     {
+                         PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, on);
+                     },
+                     Qt::UniqueConnection);
+    ui->pickEnableCheckBox->setChecked(false);
+    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
     setupBatchGroupCombo();
 }
 
 void FaceLoadPage::beforeUnload()
 {
+    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
     PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Face);
 }
 
