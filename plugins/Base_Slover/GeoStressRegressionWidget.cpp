@@ -14,6 +14,14 @@ namespace
 {
 const QString kRoofFileName = "FAROOF.DAT";
 const QString kForceFileName = "FTLOAD.DAT";
+
+QString ensureTrailingSep(const QString& path)
+{
+    QString p = QDir::toNativeSeparators(path);
+    if (!p.endsWith(QDir::separator()))
+        p += QDir::separator();
+    return p;
+}
 }
 
 GeoStressRegressionWidget::GeoStressRegressionWidget(QWidget* parent)
@@ -22,24 +30,7 @@ GeoStressRegressionWidget::GeoStressRegressionWidget(QWidget* parent)
     Q_UNUSED(parent);
     ui->setupUi(this);
 
-    const QString projectDir =
-        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(QDir(projectDir).absolutePath());
-
-    auto ensureTrailingSep = [](const QString& path)
-    {
-        QString p = QDir::toNativeSeparators(path);
-        if (!p.endsWith(QDir::separator()))
-            p += QDir::separator();
-        return p;
-    };
-
-    ui->prepDirEdit->setText(ensureTrailingSep(wd.filePath("PREP")));
-    ui->prepDirEdit->setReadOnly(true);
-    ui->roofEdit->setReadOnly(true);
-    ui->roofEdit->setText(kRoofFileName);
     ui->reservedEdit->setText("0");
-
 
     connect(ui->btnCompute, &QPushButton::clicked, this, &GeoStressRegressionWidget::onComputeClicked);
 }
@@ -65,14 +56,6 @@ bool GeoStressRegressionWidget::exportIGEOSDatFile(const ExportPayload& payload)
     if (!wd.exists("PREP") && !wd.mkpath("PREP"))
         return false;
 
-    auto ensureTrailingSep = [](const QString& path)
-    {
-        QString p = QDir::toNativeSeparators(path);
-        if (!p.endsWith(QDir::separator()))
-            p += QDir::separator();
-        return p;
-    };
-
     QFile file(wd.filePath("IGEOS.DAT"));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
@@ -81,7 +64,7 @@ bool GeoStressRegressionWidget::exportIGEOSDatFile(const ExportPayload& payload)
     const QString prepDir = ensureTrailingSep(wd.filePath("PREP"));
 
     os << "'" << prepDir << "'       1\n";
-    os << "'" << ui->roofEdit->text().trimmed() << "'       2\n";
+    os << "'" << kRoofFileName << "'       2\n";
     os << "'" << payload.sideFaceFiles.value(0, "FA_SIDE1.DAT") << "'       3\n";
     os << "'" << payload.sideFaceFiles.value(1, "FA_SIDE2.DAT") << "'       4\n";
     os << "'" << payload.sideFaceFiles.value(2, "FA_SIDE3.DAT") << "'       5\n";
@@ -114,9 +97,12 @@ bool GeoStressRegressionWidget::exportIGEOSDatFile(const ExportPayload& payload)
 
 QJsonObject GeoStressRegressionWidget::saveJson()
 {
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir wd(QDir(projectDir).absolutePath());
     QJsonObject obj;
-    obj["prep_dir"] = ui->prepDirEdit->text().trimmed();
-    obj["roof"] = ui->roofEdit->text().trimmed();
+    obj["prep_dir"] = ensureTrailingSep(QDir(wd.filePath("PREP")).absolutePath());
+    obj["roof"] = kRoofFileName;
     obj["factor"] = ui->factorEdit->text().trimmed();
     obj["calc_mode"] = ui->calcModeCombo->currentIndex();
     obj["reserved"] = ui->reservedEdit->text().trimmed();
@@ -128,8 +114,6 @@ QJsonObject GeoStressRegressionWidget::saveJson()
 
 void GeoStressRegressionWidget::loadJson(const QJsonObject& obj)
 {
-    ui->prepDirEdit->setText(obj.value("prep_dir").toString(ui->prepDirEdit->text()));
-    ui->roofEdit->setText(obj.value("roof").toString(ui->roofEdit->text()));
     ui->factorEdit->setText(obj.value("factor").toString(ui->factorEdit->text()));
     ui->calcModeCombo->setCurrentIndex(obj.value("calc_mode").toInt(ui->calcModeCombo->currentIndex()));
     ui->reservedEdit->setText(obj.value("reserved").toString(ui->reservedEdit->text()));
