@@ -905,7 +905,7 @@ bool PreProcessing::writeMultipleShapesStepFile(const QString& filePath)
     for (auto it = shapes.begin(); it != shapes.end(); ++it)
     {
         GeomShapeObject* obj = it.value();
-        qDebug() << it.key();
+        qInfo() << "[Base_Gemo] Geometry key:" << it.key();
         if (!obj || !obj->getShape() || obj->getShape()->IsNull())
             continue;
         builder.Add(compound, *obj->getShape());
@@ -916,7 +916,7 @@ bool PreProcessing::writeMultipleShapesStepFile(const QString& filePath)
     if (status != IFSelect_RetDone)
         return false;
 
-    qDebug() << filePath;
+    qInfo() << "[Base_Gemo] Export path:" << filePath;
     status = writer.Write(filePath.toUtf8().constData());
     return (status == IFSelect_RetDone);
 }

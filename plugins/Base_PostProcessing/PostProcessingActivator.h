@@ -23,12 +23,12 @@ class PostProcessingActivator : public QObject, public PluginInterface
     }
     void start() override
     {
-        qDebug() << "start PostProcessing";
+        qInfo() << "[Base_PostProcessing] Start PostProcessing";
         PostProcessing* postProcessing = new PostProcessing;
     }
     void stop() override
     {
-        qDebug() << "Stopping...";
+        qInfo() << "[Base_PostProcessing] Stopping...";
     }
 };
 

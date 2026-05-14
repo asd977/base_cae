@@ -22,12 +22,12 @@ class MaterialManagerActivator : public QObject, public PluginInterface
     }
     void start() override
     {
-        qDebug() << "start MaterialManager";
+        qInfo() << "[Base_MaterialManager] Start MaterialManager";
         MaterialManager* m = new MaterialManager;
     }
     void stop() override
     {
-        qDebug() << "Stopping...";
+        qInfo() << "[Base_MaterialManager] Stopping...";
     }
 };
 #endif // MATERIALMANAGERACTIVATOR_H

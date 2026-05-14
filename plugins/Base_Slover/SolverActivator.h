@@ -23,12 +23,12 @@ class SolverActivator : public QObject, public PluginInterface
     }
     void start() override
     {
-        qDebug() << "start Solver";
+        qInfo() << "[Base_Slover] Start Solver";
         Solver* solver = new Solver;
     }
     void stop() override
     {
-        qDebug() << "Stopping...";
+        qInfo() << "[Base_Slover] Stopping...";
     }
 };
 #endif // SOLVERACTIVATOR_H
