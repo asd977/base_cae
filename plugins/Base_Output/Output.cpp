@@ -48,13 +48,26 @@ void Output::installQtLogBridge()
 void Output::qtMessageHandler(QtMsgType type, const QMessageLogContext& context,
                               const QString& msg)
 {
-    QString level = "[INFO]";
+    if (msg.startsWith("__RAW__"))
+    {
+        Output* instance = nullptr;
+        {
+            QMutexLocker locker(&g_outputMutex);
+            instance = g_outputInstance;
+        }
+        if (instance)
+            instance->outputLog(msg.mid(QString("__RAW__").size()));
+        if (g_prevHandler)
+            g_prevHandler(type, context, msg.mid(QString("__RAW__").size()));
+        return;
+    }
+    QString level = "[信息]";
     if (type == QtWarningMsg)
-        level = "[WARN]";
+        level = "[警告]";
     else if (type == QtCriticalMsg || type == QtFatalMsg)
-        level = "[ERROR]";
+        level = "[错误]";
     else if (type == QtDebugMsg)
-        level = "[DEBUG]";
+        return;
 
     QString location;
     if (context.file && context.line > 0)

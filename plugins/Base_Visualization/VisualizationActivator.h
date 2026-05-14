@@ -23,12 +23,12 @@ class VisualizationActivator : public QObject, public PluginInterface
     }
     void start() override
     {
-        qDebug() << "Start Visualization";
+        qInfo() << "Start Visualization";
         VisualizationWidget* visualizationWidget = new VisualizationWidget;
     }
     void stop() override
     {
-        qDebug() << "Stopping...";
+        qInfo() << "Stopping...";
     }
 };
 

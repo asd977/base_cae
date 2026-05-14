@@ -753,7 +753,7 @@ void GridEditingWidget::deleteElemById(int elemId)
     }
     else
     {
-        qDebug() << "[GridEditingWidget] delete elem" << elemId;
+        qInfo() << "删除单元" << elemId;
     }
 }
 
@@ -948,7 +948,7 @@ void GridEditingWidget::on_pushButtonSave_clicked()
     }
 
     m_dirty = false;
-    qDebug() << "[GridEditingWidget] saved changes to" << m_fileName;
+    qInfo() << "网格修改已保存到" << m_fileName;
 }
 
 void GridEditingWidget::setupInteractor()

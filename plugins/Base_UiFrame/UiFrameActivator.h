@@ -22,12 +22,12 @@ class UiFrameActivator : public QObject, public PluginInterface
     }
     void start() override
     {
-        qDebug() << "Start UiFrame";
+        qInfo() << "Start UiFrame";
         UiFrame* uiFrame = new UiFrame;
     }
     void stop() override
     {
-        qDebug() << "Stopping...";
+        qInfo() << "Stopping...";
     }
 };
 

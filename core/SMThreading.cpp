@@ -20,7 +20,7 @@ void SMThreading::postTask(const std::function<void()>& task)
 
 void SMThreading::run()
 {
-    qDebug() << "SMThreading:" << this->currentThreadId();
+    qInfo() << "SMThreading:" << this->currentThreadId();
     while (!m_shouldStop)
     {
         bool queueEmpty = false;

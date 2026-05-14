@@ -183,7 +183,7 @@ void DerivedValueSettingWidget::beforeLoad()
     //    if (!m_loadedOnce) {
     //
 
-    //        qDebug()<<m_dataPath;
+    //        qInfo()<<m_dataPath;
     //        refreshDatasets();              // 扫描文件
     //        rebuildScalarCatalog();         // 汇总数组目录
     //        rebuildScalarComboForAssoc();   // 按当前域填充 scalar 下拉
