@@ -20,7 +20,7 @@ int main(int argc, char** argv)
     QApplication app(argc, argv);
 
     Logger::installQtMessageBridge();
-    qCInfo(lcApp) << "Launcher started.";
+    qCInfo(lcApp) << "启动程序中...";
     StyleManager::applyStyleSheet(app, QString(":/resources/style/app.qss"));
 
     QString exePath = QCoreApplication::applicationDirPath();
@@ -28,11 +28,11 @@ int main(int argc, char** argv)
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, &onAppAboutToQuit);
 
     QString pluginDirPath = QDir::cleanPath(exePath) + "/plugins";
-    qCInfo(lcApp) << "pluginDirPath " << pluginDirPath;
+    qCInfo(lcApp) << "插件目录:" << pluginDirPath;
     QDir pluginDir(pluginDirPath);
     if (!pluginDir.exists())
     {
-        qCInfo(lcApp) << "Plugin directory does not exist:" << pluginDirPath;
+        qCCritical(lcApp) << "插件目录不存在，程序无法继续:" << pluginDirPath;
         return -1;
     }
 
@@ -45,7 +45,7 @@ int main(int argc, char** argv)
         QPluginLoader* loader = new QPluginLoader(pluginPath);
         if (!loader->load())
         {
-            qCInfo(lcApp) << "Failed to load plugin" << fileName << ":" << loader->errorString();
+            qCWarning(lcApp) << "插件加载失败:" << fileName << "原因:" << loader->errorString();
             delete loader;
             continue;
         }
@@ -53,7 +53,7 @@ int main(int argc, char** argv)
         QObject* plugin = loader->instance();
         if (!plugin)
         {
-            qCInfo(lcApp) << "Failed to get instance for" << fileName << ":" << loader->errorString();
+            qCWarning(lcApp) << "插件实例化失败:" << fileName << "原因:" << loader->errorString();
             delete loader;
             continue;
         }
@@ -63,11 +63,11 @@ int main(int argc, char** argv)
         {
             QString name = pluginInterface->pluginName();
             loadedPlugins[name] = pluginInterface;
-            qCInfo(lcApp) << "Loaded plugin:" << name;
+            qCInfo(lcApp) << "插件已加载:" << name;
         }
         else
         {
-            qCInfo(lcApp) << "Plugin" << fileName << "does not implement PluginInterface";
+            qCWarning(lcApp) << "插件接口不兼容:" << fileName;
             delete loader;
         }
     }
@@ -89,15 +89,16 @@ int main(int argc, char** argv)
     {
         if (loadedPlugins.contains(name))
         {
-            qCInfo(lcApp) << "Starting plugin:" << name;
+            qCInfo(lcApp) << "正在启动模块:" << name;
             loadedPlugins[name]->start();
         }
         else
         {
-            qCWarning(lcApp) << "Plugin with name" << name << "not found!";
+            qCWarning(lcApp) << "模块未找到，已跳过:" << name;
         }
     }
 
+    qCInfo(lcApp) << "模块启动流程完成，进入主界面。";
     EventManager::instance().sendEvent(PublicConstants::kEventLoadComplete);
     return app.exec();
 }
