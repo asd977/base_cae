@@ -421,7 +421,7 @@ void AnimationAviWidget::onTick()
 
 void AnimationAviWidget::on_playPauseButton_clicked()
 {
-    qDebug() << "m_isPlaying " << m_isPlaying;
+    qInfo() << "动画播放状态=" << m_isPlaying;
     if (m_isPlaying)
         stopTimer();
     else

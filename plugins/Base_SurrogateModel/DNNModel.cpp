@@ -185,10 +185,10 @@ void DNNModel::on_importSourceFilePushButton_clicked()
     m_splitProcess->start();
 
     // Optionally, show success message
-    qDebug() << ("文件已成功处理并保存为Corr_data-2.txt");
+    qInfo() << ("文件已成功处理并保存为Corr_data-2.txt");
 
     m_variableNames = variableNames;
-    qDebug() << m_variableNames;
+    qInfo() << m_variableNames;
 
     // 之后在ui->sourceFileTableWidget 中根据m_variableNames中的数量添加行
     // 第一列就是m_variableNames中的名称，第二列除了最后一行都是“变元”，最后一行是“函数值”，
@@ -262,12 +262,12 @@ void DNNModel::on_importSourceFilePushButton_clicked()
         }
         else
         {
-            qDebug() << "Failed to copy file to" << destinationPath;
+            qInfo() << "Failed to copy file to" << destinationPath;
         }
     }
     else
     {
-        qDebug() << "Source file does not exist:" << sourceFile;
+        qInfo() << "Source file does not exist:" << sourceFile;
     }
 }
 
@@ -526,8 +526,8 @@ void DNNModel::on_startTrainModel_clicked()
     QString layerSizes = "", activationFunctions = "";
 
     getLayerParameters(layerSizes, activationFunctions);
-    qDebug() << "layerSizes " << layerSizes;
-    qDebug() << "activationFunctions " << activationFunctions;
+    qInfo() << "layerSizes " << layerSizes;
+    qInfo() << "activationFunctions " << activationFunctions;
 
     // 设置命令行参数
     m_trainModelProcess->setArguments(
@@ -542,7 +542,7 @@ void DNNModel::on_startTrainModel_clicked()
                       << ui->epochsLineEdit->text() << "--train_type" << QString::number(0));
 
     // 调试：打印参数
-    qDebug() << "命令行参数：" << m_trainModelProcess->arguments();
+    qInfo() << "命令行参数：" << m_trainModelProcess->arguments();
 
     // 启动进程
     m_trainModelProcess->start();
@@ -564,7 +564,7 @@ void DNNModel::connectOutput()
             [=]()
             {
                 QString output = QString::fromUtf8(m_trainModelProcess->readAllStandardOutput());
-                qDebug() << ("Python 输出：") << output;
+                qInfo() << ("Python 输出：") << output;
                 if (output.contains("finish training"))
                 {
                     updateLineGraph();
@@ -576,7 +576,7 @@ void DNNModel::connectOutput()
             [=]()
             {
                 QString error = QString::fromUtf8(m_trainModelProcess->readAllStandardError());
-                qDebug() << ("Python 错误：") << error;
+                qInfo() << ("Python 错误：") << error;
                 QMessageBox::warning(this, ("训练错误"), error);
             });
 
@@ -625,8 +625,8 @@ void DNNModel::on_continueTrainModel_clicked()
     QString layerSizes, activationFunctions;
 
     getLayerParameters(layerSizes, activationFunctions);
-    qDebug() << "layerSizes " << layerSizes;
-    qDebug() << "activationFunctions " << activationFunctions;
+    qInfo() << "layerSizes " << layerSizes;
+    qInfo() << "activationFunctions " << activationFunctions;
 
     // 设置命令行参数
     m_trainModelProcess->setArguments(
@@ -641,7 +641,7 @@ void DNNModel::on_continueTrainModel_clicked()
                       << ui->epochsLineEdit->text() << "--train_type" << QString::number(1));
 
     // 调试：打印参数
-    qDebug() << "命令行参数：" << m_trainModelProcess->arguments();
+    qInfo() << "命令行参数：" << m_trainModelProcess->arguments();
 
     // 启动进程
     m_trainModelProcess->start();
@@ -803,12 +803,12 @@ void DNNModel::updateLineGraph()
                     if (line.isEmpty())
                         continue;
 
-                    qDebug() << ("处理行:") << line;
+                    qInfo() << ("处理行:") << line;
 
                     if (line == "ok")
                     {
                         //                isFinished = true;
-                        qDebug() << "预测结束";
+                        qInfo() << "预测结束";
                         continue;
                     }
                     predictions.append(line);
@@ -821,7 +821,7 @@ void DNNModel::updateLineGraph()
                 QString error = QString::fromLocal8Bit(process.readAllStandardError()).trimmed();
                 if (!error.isEmpty())
                 {
-                    qDebug() << "Python 错误：" << error;
+                    qInfo() << "Python 错误：" << error;
                 }
             });
 
@@ -840,7 +840,7 @@ void DNNModel::updateLineGraph()
         return;
     }
 
-    qDebug() << ("执行完成");
+    qInfo() << ("执行完成");
     if (process.exitCode() != 0)
     {
         QMessageBox::critical(this, ("错误"),
@@ -997,7 +997,7 @@ bool DNNModel::readFromStream(QTextStream& in)
     // 检查字段部分是否存在
     if (sections.isEmpty())
     {
-        qDebug() << "错误：DNNModel 数据为空";
+        qInfo() << "错误：DNNModel 数据为空";
         return false;
     }
 
@@ -1005,7 +1005,7 @@ bool DNNModel::readFromStream(QTextStream& in)
     QStringList values = sections[0].split("_");
     if (values.size() < 8)
     {
-        qDebug() << "错误：字段数量不足，预期8个，实际" << values.size();
+        qInfo() << "错误：字段数量不足，预期8个，实际" << values.size();
         return false;
     }
 
@@ -1061,7 +1061,7 @@ bool DNNModel::readFromStream(QTextStream& in)
             cells << cell;
             if (cells.size() != 3 && !rowData.isEmpty())
             {
-                qDebug() << "错误：sourceFileTableWidget 第" << row + 1
+                qInfo() << "错误：sourceFileTableWidget 第" << row + 1
                          << "行列数不符，预期3列，实际" << cells.size();
                 return false;
             }
@@ -1121,7 +1121,7 @@ bool DNNModel::readFromStream(QTextStream& in)
             cells << cell;
             if (cells.size() != 2 && !rowData.isEmpty())
             {
-                qDebug() << "错误：layerWidget 第" << row + 1 << "行列数不符，预期2列，实际"
+                qInfo() << "错误：layerWidget 第" << row + 1 << "行列数不符，预期2列，实际"
                          << cells.size();
                 return false;
             }

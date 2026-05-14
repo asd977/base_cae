@@ -312,7 +312,7 @@ void LoadSpecificationWidget::setupSurfaceAndPicker()
 
     m_selectedSurfaceCellIds.clear();
 
-    qDebug() << "[LoadSpecificationWidget] Face picking enabled. surfaceCells="
+    qInfo() << "[LoadSpecificationWidget] Face picking enabled. surfaceCells="
              << m_surface->GetNumberOfCells();
 
     m_visual->render();
@@ -346,7 +346,7 @@ void LoadSpecificationWidget::teardownSurfaceAndPicker()
     m_highlightMapper = nullptr;
     m_highlightActor = nullptr;
 
-    qDebug() << "[LoadSpecificationWidget] Face picking disabled.";
+    qInfo() << "[LoadSpecificationWidget] Face picking disabled.";
 }
 
 void LoadSpecificationWidget::OnLeftButtonPress(vtkObject* caller, unsigned long, void* clientdata,
@@ -410,13 +410,13 @@ void LoadSpecificationWidget::handlePick(int displayX, int displayY)
 
     if (nodeIdArr)
     {
-        qDebug() << "[PickFace] surfaceCellId=" << cellId << " vtkPointIds={"
+        qInfo() << "[PickFace] surfaceCellId=" << cellId << " vtkPointIds={"
                  << vtkPidList.join(",") << "}"
                  << " node_id={" << nodeIdList.join(",") << "}";
     }
     else
     {
-        qDebug() << "[PickFace] surfaceCellId=" << cellId << " vtkPointIds={"
+        qInfo() << "[PickFace] surfaceCellId=" << cellId << " vtkPointIds={"
                  << vtkPidList.join(",") << "}"
                  << " (no node_id array in PointData)";
     }

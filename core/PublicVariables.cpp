@@ -51,7 +51,7 @@ bool PublicVariables::set(const QString& key, const QVariant& value, const QStri
     }
 
     configMap[key] = value;
-    qDebug() << "Setting" << key << "to" << value;
+    qInfo() << "Setting" << key << "to" << value;
     return true;
 }
 

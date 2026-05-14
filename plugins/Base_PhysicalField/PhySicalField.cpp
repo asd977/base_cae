@@ -792,7 +792,7 @@ void PhysicalField::generateIIIDFile()
     }
 
     const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
-    qDebug()<<"NDIM "<<NDIM;
+    qInfo()<<"NDIM "<<NDIM;
     const bool is3D = (NDIM == 3);
     const int MADOF = is3D ? 3 : 2;
 
@@ -841,7 +841,7 @@ void PhysicalField::generateIIIDFile()
     // 4) 收集位移约束节点
     QList<ProjectNode*> bcNodes;
     collectDisplacementNodes(m_node, bcNodes);
-    qDebug() << "bcNodes size:" << bcNodes.size();
+    qInfo() << "bcNodes size:" << bcNodes.size();
 
     const QString domain = "DisplacementConstraintWidget"; // 必须与 activate 一致
 
@@ -862,7 +862,7 @@ void PhysicalField::generateIIIDFile()
             ux = page->uxFlag();
             uy = page->uyFlag();
             uz = is3D ? page->uzFlag() : 1;
-            qDebug() << "apply bc uuid=" << uuid << " ux,uy,uz=" << ux << uy << uz;
+            qInfo() << "apply bc uuid=" << uuid << " ux,uy,uz=" << ux << uy << uz;
         }
 
         // solid picks
@@ -870,7 +870,7 @@ void PhysicalField::generateIIIDFile()
             const QVector<vtkIdType> pickedSolid =
                 PickManager::instance().getIdList(domain, uuid, PickMode::Node, GridKind::Solid);
 
-            qDebug() << uuid << " pickedSolid(node_id) " << pickedSolid;
+            qInfo() << uuid << " pickedSolid(node_id) " << pickedSolid;
             ApplyPickedNodeIdsToFlags(pickedSolid, ux, uy, uz, rowOfNodeId, flags);
         }
 
@@ -879,7 +879,7 @@ void PhysicalField::generateIIIDFile()
             const QVector<vtkIdType> pickedLine =
                 PickManager::instance().getIdList(domain, uuid, PickMode::Node, GridKind::Line);
 
-            qDebug() << uuid << " pickedLine(node_id) " << pickedLine;
+            qInfo() << uuid << " pickedLine(node_id) " << pickedLine;
             ApplyPickedNodeIdsToFlags(pickedLine, ux, uy, uz, rowOfNodeId, flags);
         }
     }
@@ -934,7 +934,7 @@ void PhysicalField::generateIIIDFile()
     }
 
     f.close();
-    qDebug() << "IIID generated:" << path;
+    qInfo() << "IIID generated:" << path;
 }
 
 QString PhysicalField::pageTitleByUuid(const QString& uuid) const
@@ -1234,7 +1234,7 @@ void PhysicalField::writeIIWL_Part4_PointForce(QTextStream& os)
     // ---------- 收集所有 PointForcePage ----------
     QList<ProjectNode*> pages;
     CollectNodesByKind(m_node, "PointForcePage", pages);
-    qDebug() << "pages.size() " << pages.size();
+    qInfo() << "pages.size() " << pages.size();
 
     struct Row2D
     {
@@ -1276,7 +1276,7 @@ void PhysicalField::writeIIWL_Part4_PointForce(QTextStream& os)
         const QVector<vtkIdType> idsLine =
             PickManager::instance().getIdList(domain, uuid, PickMode::Node, GridKind::Line);
 
-        qDebug() << "output idsSolid " << idsSolid << " " << idsLine;
+        qInfo() << "output idsSolid " << idsSolid << " " << idsLine;
 
         QSet<int> nodeIds;
         for (auto v : idsSolid)
@@ -1391,7 +1391,7 @@ void PhysicalField::writeIIWL_Part5_LinearForce(QTextStream& os)
     QList<ProjectNode*> pages;
     CollectNodesByKind(m_node, "LinearForcePage", pages);
 
-    qDebug() << "IIWL Part5 LinearForce pages.size=" << pages.size();
+    qInfo() << "IIWL Part5 LinearForce pages.size=" << pages.size();
 
     struct Rec
     {
@@ -1420,7 +1420,7 @@ void PhysicalField::writeIIWL_Part5_LinearForce(QTextStream& os)
         if (nodesByKe.isEmpty())
             nodesByKe = PickManager::instance().getEdgeNodesByKe(domainLine, uuid, GridKind::Solid);
 
-        qDebug() << "[Part5] uuid=" << uuid << "KE keys=" << nodesByKe.keys();
+        qInfo() << "[Part5] uuid=" << uuid << "KE keys=" << nodesByKe.keys();
 
         for (auto it = nodesByKe.begin(); it != nodesByKe.end(); ++it)
         {
@@ -1445,7 +1445,7 @@ void PhysicalField::writeIIWL_Part5_LinearForce(QTextStream& os)
     os << "\n";
     os << NFL << "\t" << "NFL" << "\n";
 
-    qDebug() << "IIWL Part5 NFL=" << NFL << "LXJMEL=" << LXJMEL;
+    qInfo() << "IIWL Part5 NFL=" << NFL << "LXJMEL=" << LXJMEL;
 
     // 格式：KE  (线力序号)  NLIJD
     //       J  Fx Fy Fz    (NLIJD 行)
@@ -1455,7 +1455,7 @@ void PhysicalField::writeIIWL_Part5_LinearForce(QTextStream& os)
         const Rec& r = recs[i];
         const int NLIJD = r.nodeIds.size();
 
-        qDebug() << "[Part5] write idx=" << idx << "ke=" << r.ke << "NLIJD=" << NLIJD;
+        qInfo() << "[Part5] write idx=" << idx << "ke=" << r.ke << "NLIJD=" << NLIJD;
 
         os << r.ke << "\t" << idx << "\t" << NLIJD << "\n";
         for (int nodeId : r.nodeIds)
@@ -1474,7 +1474,7 @@ void PhysicalField::writeIIWL_Part7_TemperatureLoad(QTextStream& os)
     QList<ProjectNode*> pages;
     CollectNodesByKind(m_node, "TemperatureLoadPage", pages);
 
-    qDebug() << "IIWL Part7 TemperatureLoad pages.size=" << pages.size();
+    qInfo() << "IIWL Part7 TemperatureLoad pages.size=" << pages.size();
 
     struct Row
     {
@@ -1517,7 +1517,7 @@ void PhysicalField::writeIIWL_Part7_TemperatureLoad(QTextStream& os)
         QVector<int> nodeList = nodeIds.values().toVector();
         std::sort(nodeList.begin(), nodeList.end());
 
-        qDebug() << "Part7 uuid=" << uuid << "alfa=" << alfa << "dt=" << dt << "nodes=" << nodeList;
+        qInfo() << "Part7 uuid=" << uuid << "alfa=" << alfa << "dt=" << dt << "nodes=" << nodeList;
 
         for (int nodeId : nodeList)
         {
@@ -1551,7 +1551,7 @@ void PhysicalField::writeIIWL_Part7_TemperatureLoad(QTextStream& os)
     // ✅ 说明行：JMFW ALFA DT II
     os << "JMFW\tALFA\tDT\tII\n";
 
-    qDebug() << "IIWL Part7 FINAL NFW=" << NFW;
+    qInfo() << "IIWL Part7 FINAL NFW=" << NFW;
 
     for (int i = 0; i < rows.size(); ++i)
     {
@@ -1571,7 +1571,7 @@ void PhysicalField::writeIIWL_Part6_FaceLoad(QTextStream& os)
     QList<ProjectNode*> pages;
     CollectNodesByKind(m_node, "FaceLoadPage", pages);
 
-    qDebug() << "IIWL Part6 FaceLoad pages.size=" << pages.size();
+    qInfo() << "IIWL Part6 FaceLoad pages.size=" << pages.size();
 
     struct Rec
     {
@@ -1601,7 +1601,7 @@ void PhysicalField::writeIIWL_Part6_FaceLoad(QTextStream& os)
         if (nodesByKe.isEmpty())
             nodesByKe = PickManager::instance().getFaceNodesByKe(domainFace, uuid, GridKind::Line);
 
-        qDebug() << "[Part6] uuid=" << uuid << "KE keys=" << nodesByKe.keys();
+        qInfo() << "[Part6] uuid=" << uuid << "KE keys=" << nodesByKe.keys();
 
         for (auto it = nodesByKe.begin(); it != nodesByKe.end(); ++it)
         {
@@ -1626,7 +1626,7 @@ void PhysicalField::writeIIWL_Part6_FaceLoad(QTextStream& os)
     os << "\n";
     os << NFT << "\t" << "NFT" << "\n";
 
-    qDebug() << "IIWL Part6 NFT=" << NFT << "LXJMET=" << LXJMET;
+    qInfo() << "IIWL Part6 NFT=" << NFT << "LXJMET=" << LXJMET;
 
     // 格式：KE  (面力序号)  NFAJD
     //       J  Fx Fy Fz    (NFAJD 行)
@@ -1636,7 +1636,7 @@ void PhysicalField::writeIIWL_Part6_FaceLoad(QTextStream& os)
         const Rec& r = recs[i];
         const int NFAJD = r.nodeIds.size();
 
-        qDebug() << "[Part6] write idx=" << idx << "ke=" << r.ke << "NFAJD=" << NFAJD;
+        qInfo() << "[Part6] write idx=" << idx << "ke=" << r.ke << "NFAJD=" << NFAJD;
 
         os << r.ke << "\t" << idx << "\t" << NFAJD << "\n";
         for (int nodeId : r.nodeIds)
@@ -1668,7 +1668,7 @@ void PhysicalField::writeIIWL_Part8_BeamSpecialDistributedLoad(QTextStream& os)
     vtkDataArray* elemIdSolid =
         (gSolid ? vtkDataArray::SafeDownCast(gSolid->GetCellData()->GetArray("elem_id")) : nullptr);
 
-    qDebug() << "IIWL Part8 BeamLoad NDIM=" << NDIM << "gLine=" << (void*)gLine
+    qInfo() << "IIWL Part8 BeamLoad NDIM=" << NDIM << "gLine=" << (void*)gLine
              << "nodeIdLine=" << (void*)nodeIdLine << "elemIdLine=" << (void*)elemIdLine
              << "gSolid=" << (void*)gSolid << "nodeIdSolid=" << (void*)nodeIdSolid
              << "elemIdSolid=" << (void*)elemIdSolid;
@@ -1736,7 +1736,7 @@ void PhysicalField::writeIIWL_Part8_BeamSpecialDistributedLoad(QTextStream& os)
     // ---------- 收集页面 ----------
     QList<ProjectNode*> pages;
     CollectNodesByKind(m_node, "BeamLoadPage", pages);
-    qDebug() << "IIWL Part8 BeamLoad pages.size=" << pages.size();
+    qInfo() << "IIWL Part8 BeamLoad pages.size=" << pages.size();
 
     struct Row
     {
@@ -1771,7 +1771,7 @@ void PhysicalField::writeIIWL_Part8_BeamSpecialDistributedLoad(QTextStream& os)
         const QVector<vtkIdType> pickedNodeSolid =
             PickManager::instance().getIdList(domain, uuid, PickMode::Node, GridKind::Solid);
 
-        qDebug() << "[Part8] uuid=" << uuid << "pickedNodeLine(node_id)=" << pickedNodeLine
+        qInfo() << "[Part8] uuid=" << uuid << "pickedNodeLine(node_id)=" << pickedNodeLine
                  << "pickedNodeSolid(node_id)=" << pickedNodeSolid << "params: ldType=" << ldType
                  << "a=" << a << "p=" << p << "idir=" << idir;
 
@@ -1812,7 +1812,7 @@ void PhysicalField::writeIIWL_Part8_BeamSpecialDistributedLoad(QTextStream& os)
 
                 wroteByNode = true;
 
-                qDebug() << "[Part8]" << tag << "nodeId=" << nodeId << "pid=" << (long long)pid
+                qInfo() << "[Part8]" << tag << "nodeId=" << nodeId << "pid=" << (long long)pid
                          << "ke=" << ke << "xyz=" << r.xp << r.yp << r.zp;
             }
         };
@@ -1832,7 +1832,7 @@ void PhysicalField::writeIIWL_Part8_BeamSpecialDistributedLoad(QTextStream& os)
             const QVector<vtkIdType> pickedEdgeSolid =
                 PickManager::instance().getIdList(domain, uuid, PickMode::Edge, GridKind::Solid);
 
-            qDebug() << "[Part8] fallback pickedEdgeLine(edgeKey)=" << pickedEdgeLine
+            qInfo() << "[Part8] fallback pickedEdgeLine(edgeKey)=" << pickedEdgeLine
                      << "pickedEdgeSolid(edgeKey)=" << pickedEdgeSolid;
 
             auto consumeEdges = [&](vtkUnstructuredGrid* g, vtkDataArray* elemIdArr,
@@ -1873,7 +1873,7 @@ void PhysicalField::writeIIWL_Part8_BeamSpecialDistributedLoad(QTextStream& os)
                     r.idir = idir;
                     rows.push_back(r);
 
-                    qDebug() << "[Part8]" << tag << "edgeKey=" << (long long)edgeKey
+                    qInfo() << "[Part8]" << tag << "edgeKey=" << (long long)edgeKey
                              << "cellId=" << (long long)cellId << "ke=" << ke << "xyz=" << r.xp
                              << r.yp << r.zp;
                 }
@@ -1897,7 +1897,7 @@ void PhysicalField::writeIIWL_Part8_BeamSpecialDistributedLoad(QTextStream& os)
     else
         os << "JMFG\tXP\tYP\tZP\tLDTYPE\tA\tP\tIDIR\tII\n";
 
-    qDebug() << "IIWL Part8 FINAL NFG=" << NFG;
+    qInfo() << "IIWL Part8 FINAL NFG=" << NFG;
 
     for (int i = 0; i < rows.size(); ++i)
     {
@@ -1928,7 +1928,7 @@ void PhysicalField::generateWaveFiles()
 
     QList<ProjectNode*> pages;
     CollectNodesByKind(m_node, "SeismicAndAddedMassPage", pages);
-    qDebug() << "WAVE pages.size=" << pages.size();
+    qInfo() << "WAVE pages.size=" << pages.size();
 
     SeismicAndAddedMassPage* page = nullptr;
     if (!pages.isEmpty())
@@ -1968,7 +1968,7 @@ void PhysicalField::generateWaveFiles()
         }
 
         file.close();
-        qDebug() << "WAVE generated :" << path << "N=" << N << "AMP=" << amp;
+        qInfo() << "WAVE generated :" << path << "N=" << N << "AMP=" << amp;
     };
 
     QVector<QPair<double, double>> sx, sy, sz;
@@ -1986,7 +1986,7 @@ void PhysicalField::generateWaveFiles()
     }
     else
     {
-        qDebug() << "WAVE: no seismic page, output empty files";
+        qInfo() << "WAVE: no seismic page, output empty files";
     }
 
     writeOneFile("WAVE-AX.DAT", sx, axAmp, "AX");
@@ -2022,7 +2022,7 @@ void PhysicalField::generateIIWLFile()
     writeIIWL_Part8_BeamSpecialDistributedLoad(os);
 
     f.close();
-    qDebug() << "IIWL generated :" << path;
+    qInfo() << "IIWL generated :" << path;
 
     generateWaveFiles();
 }
