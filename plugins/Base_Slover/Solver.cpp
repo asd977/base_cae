@@ -1631,11 +1631,6 @@ bool Solver::updatePrepDatFiles(const QString& projectDir, int solverMode) const
     if (lines.size() < 2)
         return false;
 
-    QRegularExpression targetRe(
-        R"(^\s*\d+\s+2\s+6\.0000\s+6\.0000\s+6\.0000\s+6\.0000\s+6\.0000\s+6\.0000\s*$)");
-    if (!targetRe.match(lines[1]).hasMatch())
-        return false;
-
     lines[1].replace(QRegularExpression(R"(^\s*\d+)"), QString("%8").arg(solverMode));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
         return false;
