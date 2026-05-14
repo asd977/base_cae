@@ -54,8 +54,40 @@
 
 namespace
 {
-const QStringList kResultDirectories = {"SEEPCASE01"};
-const QStringList kPreferredResultFiles = {"TEC_HP.DAT", "TEC_VELO.DAT"};
+
+struct ResultDirectoryConfig
+{
+    QString dirName;      // 实际文件夹名
+    QString displayName;  // UI显示名
+    QString description;  // 说明
+};
+
+struct ResultFileConfig
+{
+    QString fileName;     // 实际文件名
+    QString displayName;  // UI显示名
+    QString description;  // 说明
+};
+
+const QVector<ResultDirectoryConfig> kResultDirectoryConfigs = {
+    {"SEEPCASE01",   "渗流结果", "渗流计算结果目录"},
+    {"CASE01FILL01", "土石坝结果", "土石坝填筑/坝体计算结果目录"},
+    {"GEOSTR", "地应力回归", "地应力回归计算结果目录"},
+    {"CASE01JACA/J03","开挖结果J03","开挖结果J03"},
+    {"CASE01","边坡稳定","边坡稳定"}
+
+
+
+};
+
+const QVector<ResultFileConfig> kPreferredResultFileConfigs = {
+    {"TEC_HP.DAT",   "水头渗压", "水头、渗压结果"},
+    {"TEC_VELO.DAT", "渗流速度", "渗流速度分量"},
+    {"TEC_DISP.DAT", "坝体位移", "坝体位移结果"},
+    {"TEC_PRS.DAT",  "主应力",   "主应力分量"},
+    {"TEC_CMM.DAT",   "应力水平", "应力水平结果"}
+};
+
 } // namespace
 
 NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessingWidget,
@@ -268,14 +300,21 @@ void NephogramSettingWidget::loadFileName(const QString& dataPath)
     }
 
     // 优先加载指定文件名（后续扩展时只改这里）
-    for (const QString& name : kPreferredResultFiles)
+    for (const auto& cfg : kPreferredResultFileConfigs)
     {
-        const QString fullPath = directory.filePath(name);
+        const QString fullPath = directory.filePath(cfg.fileName);
         if (QFileInfo::exists(fullPath))
         {
-            const QString stepName = QFileInfo(fullPath).completeBaseName();
+            const QString stepName = cfg.displayName;
+
             m_stepFileMap.insert(stepName, fullPath);
             ui->stepComboBox->addItem(stepName);
+
+            const int index = ui->stepComboBox->count() - 1;
+            ui->stepComboBox->setItemData(
+                index,
+                QString("%1：%2").arg(cfg.fileName, cfg.description),
+                Qt::ToolTipRole);
         }
     }
 
@@ -458,21 +497,37 @@ void NephogramSettingWidget::initResultDirectoryOptions()
 {
     ui->resultDirComboBox->blockSignals(true);
     ui->resultDirComboBox->clear();
-    ui->resultDirComboBox->addItems(kResultDirectories);
+
+    for (const auto& cfg : kResultDirectoryConfigs)
+    {
+        ui->resultDirComboBox->addItem(cfg.displayName, cfg.dirName);
+
+        const int index = ui->resultDirComboBox->count() - 1;
+        ui->resultDirComboBox->setItemData(
+            index,
+            QString("%1：%2").arg(cfg.dirName, cfg.description),
+            Qt::ToolTipRole);
+    }
+
     if (ui->resultDirComboBox->count() > 0)
     {
         ui->resultDirComboBox->setCurrentIndex(0);
     }
+
     ui->resultDirComboBox->blockSignals(false);
 }
-
 QString NephogramSettingWidget::selectedResultDirectoryPath() const
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    const QString dirName = ui->resultDirComboBox->currentText().isEmpty()
-                                ? QString("SEEPCASE01")
-                                : ui->resultDirComboBox->currentText();
+
+    QString dirName = ui->resultDirComboBox->currentData().toString();
+
+    if (dirName.isEmpty())
+    {
+        dirName = "SEEPCASE01";
+    }
+
     return QDir(projectDir).filePath(dirName);
 }
 

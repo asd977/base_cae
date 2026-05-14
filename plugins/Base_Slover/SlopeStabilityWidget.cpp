@@ -136,9 +136,9 @@ QString SlopeStabilityWidget::defaultValueByLine(int lineNo) const
 
 namespace
 {
-constexpr char kAccXFileName[] = "ACCEX.DAT";
-constexpr char kAccYFileName[] = "ACCEY.DAT";
-constexpr char kAccZFileName[] = "ACCEZ.DAT";
+constexpr char kAccXFileName[] = "WAVE-AX.DAT";
+constexpr char kAccYFileName[] = "WAVE-AY.DAT";
+constexpr char kAccZFileName[] = "WAVE-AZ.DAT";
 }
 
 void SlopeStabilityWidget::initStrengthReserveTable()

@@ -1957,18 +1957,32 @@ bool Solver::exportMaMaskDatFile()
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     QDir wd(QDir(projectDir).absolutePath());
+
+    // 确保 PREP 文件夹存在
     if (!wd.exists("PREP") && !wd.mkpath("PREP"))
         return false;
 
+           // 共同的文件内容
+    const QString fileContent = "   0   NUM\n";
+
+           // 1. 生成 MA_MASK.DAT
     QFile file(wd.filePath("PREP/MA_MASK.DAT"));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
-
     QTextStream os(&file);
-    os << "   0   NUM\n";
+    os << fileContent;
+    file.close(); // 显式关闭文件是个好习惯
+
+           // 2. 生成 MA_MASK_CMM.DAT
+    QFile fileCmm(wd.filePath("PREP/MA_MASK_CMM.DAT"));
+    if (!fileCmm.open(QIODevice::WriteOnly | QIODevice::Text))
+        return false;
+    QTextStream osCmm(&fileCmm);
+    osCmm << fileContent;
+    fileCmm.close();
+
     return true;
 }
-
 bool Solver::exportKetraceDatFile()
 {
     const QString projectDir =
