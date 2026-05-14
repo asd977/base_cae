@@ -23,12 +23,12 @@ class OutputActivator : public QObject, public PluginInterface
     }
     void start() override
     {
-        qDebug() << "start Output";
+        qInfo() << "start Output";
         Output* output = new Output;
     }
     void stop() override
     {
-        qDebug() << "Stopping...";
+        qInfo() << "Stopping...";
     }
 };
 

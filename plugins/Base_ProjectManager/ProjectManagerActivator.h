@@ -23,12 +23,12 @@ class ProjectManagerActivator : public QObject, public PluginInterface
     ProjectManager* projectManager;
     void start() override
     {
-        qDebug() << "start ProjectManager";
+        qInfo() << "start ProjectManager";
         projectManager = new ProjectManager;
     }
     void stop() override
     {
-        qDebug() << "Stopping...";
+        qInfo() << "Stopping...";
         delete projectManager;
     }
 };

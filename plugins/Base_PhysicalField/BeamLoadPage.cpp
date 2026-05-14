@@ -41,7 +41,7 @@ void BeamLoadPage::beforeLoad()
     const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     const bool is2D = (NDIM == 2);
 
-    qDebug() << "[BeamLoadPage] beforeLoad node pick checkbox init, uuid=" << m_uuid;
+    qInfo() << "[BeamLoadPage] beforeLoad node pick checkbox init, uuid=" << m_uuid;
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
     setupBatchGroupCombo();
 
@@ -73,7 +73,7 @@ void BeamLoadPage::beforeLoad()
 void BeamLoadPage::beforeUnload()
 {
     QObject::disconnect(&PickManager::instance(), &PickManager::nodePicked, this, nullptr);
-    qDebug() << "[BeamLoadPage] beforeUnload deactivate node pick, uuid=" << m_uuid;
+    qInfo() << "[BeamLoadPage] beforeUnload deactivate node pick, uuid=" << m_uuid;
     PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
     PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
 }

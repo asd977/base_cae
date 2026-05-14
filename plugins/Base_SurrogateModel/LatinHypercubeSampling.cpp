@@ -560,7 +560,7 @@ void LatinHypercubeSampling::runPythonLHS_File()
     // 直接使用统一结构
     const auto jsonObj = toJson();
     const auto jsonText = QString::fromUtf8(QJsonDocument(jsonObj).toJson(QJsonDocument::Compact));
-    qDebug().noquote() << ">>> JSON to Python:\n" << jsonText;
+    qInfo().noquote() << ">>> JSON to Python:\n" << jsonText;
 
     // 写临时 JSON 文件
     QFile tf("C:/project/base_cae/build/release/scripts/lhs_input.json");
@@ -601,8 +601,8 @@ void LatinHypercubeSampling::runPythonLHS_File()
     p->waitForFinished(-1);
     const int exitCode = p->exitCode();
     const QString out = QString::fromUtf8(p->readAllStandardOutput());
-    qDebug().noquote() << ">>> Python output:\n" << out;
-    qDebug() << ">>> exitCode =" << exitCode << " input =" << tf.fileName();
+    qInfo().noquote() << ">>> Python output:\n" << out;
+    qInfo() << ">>> exitCode =" << exitCode << " input =" << tf.fileName();
 
     if (exitCode != 0)
     {
@@ -624,7 +624,7 @@ void LatinHypercubeSampling::on_test_clicked()
     if (row >= 0 && row < m_rows.size())
         syncRowFromPanel(row);
 
-    qDebug().noquote() << QString::fromUtf8(
+    qInfo().noquote() << QString::fromUtf8(
         QJsonDocument(toJson()).toJson(QJsonDocument::Indented));
     runPythonLHS_File();
 }

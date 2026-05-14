@@ -22,12 +22,12 @@ class PhysicalFieldActivator : public QObject, public PluginInterface
     }
     void start() override
     {
-        qDebug() << "start PhySicalField";
+        qInfo() << "start PhySicalField";
         PhysicalField* phySicalField = new PhysicalField;
     }
     void stop() override
     {
-        qDebug() << "Stopping...";
+        qInfo() << "Stopping...";
     }
 };
 

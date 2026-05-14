@@ -9,6 +9,7 @@
 #include <services/MeshModuleControllerService.h>
 #include <services/PhysicalFieldService.h>
 #include <services/ProjectManagerService.h>
+#include <services/OutputService.h>
 
 #include <QDir>
 #include <QFile>
@@ -1528,7 +1529,7 @@ bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analys
            exportJdtraceDatFile();
 }
 
-bool Solver::launchSolverExecutable(const QString& analysisType) const
+bool Solver::launchSolverExecutable(const QString& analysisType)
 {
     const QString exePath =
         QDir::toNativeSeparators(
@@ -1564,7 +1565,55 @@ bool Solver::launchSolverExecutable(const QString& analysisType) const
         }
     }
 
-    QProcess::startDetached(exePath, QStringList(), QDir(projectDir).absolutePath());
+    if (m_solverProcess)
+    {
+        m_solverProcess->disconnect(this);
+        m_solverProcess->kill();
+        m_solverProcess->deleteLater();
+        m_solverProcess = nullptr;
+    }
+
+    m_solverProcess = new QProcess(this);
+    m_solverProcess->setWorkingDirectory(QDir(projectDir).absolutePath());
+    m_solverProcess->setProgram(exePath);
+    m_solverProcess->setArguments(QStringList());
+    m_solverProcess->setProcessChannelMode(QProcess::MergedChannels);
+
+    connect(m_solverProcess, &QProcess::readyReadStandardOutput, this, [this]() {
+        if (!m_solverProcess)
+            return;
+        const QString output = QString::fromLocal8Bit(m_solverProcess->readAllStandardOutput()).trimmed();
+        if (!output.isEmpty())
+            if (auto* outputService = ServiceRegistry::instance().getService<OutputService>())
+                outputService->outputLog(output);
+    });
+
+    connect(m_solverProcess, &QProcess::errorOccurred, this,
+            [](QProcess::ProcessError) {});
+
+    connect(m_solverProcess,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this](int, QProcess::ExitStatus) {
+                if (m_solverProcess)
+                {
+                    m_solverProcess->deleteLater();
+                    m_solverProcess = nullptr;
+                }
+            });
+
+    m_solverProcess->start();
+    if (!m_solverProcess->waitForStarted(5000))
+    {
+        QMessageBox::warning(nullptr, "启动求解器失败",
+                             QString("%1启动求解器进程失败：%2")
+                                 .arg(analysisType, m_solverProcess->errorString()));
+        
+        m_solverProcess->deleteLater();
+        m_solverProcess = nullptr;
+        return false;
+    }
+
+    
     return true;
 }
 
