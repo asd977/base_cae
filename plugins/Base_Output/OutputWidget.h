@@ -18,6 +18,7 @@ struct LogEntry
 {
     QString timestamp;
     LogLevel level;
+    QString category;
     QString message;
 };
 
@@ -45,6 +46,7 @@ class OutputWidget : public QWidget
     void trimOverflow();
     void refreshView();
     QString formatEntry(const LogEntry& entry) const;
+    QString detectCategory(const QString& message) const;
     LogEntry parseEntry(const QString& rawText) const;
     bool shouldDisplay(LogLevel level) const;
 
