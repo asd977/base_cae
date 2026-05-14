@@ -62,12 +62,12 @@ void MeshProcessor::loadOCCFile(const QString& filePath)
         //        gmsh::model::occ::removeAllDuplicates();
         //        gmsh::model::occ::synchronize();
 
-        qDebug() << "Successfully loaded occ file:" << QString::fromStdString(stepName);
-        qDebug() << "Imported entities:";
+        qInfo() << "[Base_Mesh] Successfully loaded occ file:" << QString::fromStdString(stepName);
+        qInfo() << "[Base_Mesh] Imported entities:";
         for (std::vector<std::pair<int, int>>::const_iterator it = outDimTags.begin();
              it != outDimTags.end(); ++it)
         {
-            qDebug() << "Dimension:" << it->first << ", Tag:" << it->second;
+            qInfo() << "[Base_Mesh] Dimension:" << it->first << ", Tag:" << it->second;
         }
         bool isSuccess = createGridByDim();
         if (!isSuccess)
@@ -294,7 +294,7 @@ void MeshProcessor::loadOCCFile(const QString& filePath)
     }
     catch (const std::string& error)
     {
-        qDebug() << "Failed to load OCC file";
+        qWarning() << "[Base_Mesh] Failed to load OCC file";
         // throw std::runtime_error("Failed to load OCC file");
     }
 }
@@ -527,7 +527,7 @@ bool MeshProcessor::loadImportGridFile(const QString& filePath)
     }
     catch (const std::exception& e)
     {
-        qDebug() << "Error importing .msh file: ";
+        qWarning() << "[Base_Mesh] Error importing .msh file";
         return false;
     }
     std::vector<std::size_t> nodeTags;

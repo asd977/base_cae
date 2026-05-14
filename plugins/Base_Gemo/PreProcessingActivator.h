@@ -23,12 +23,12 @@ class PreProcessingActivator : public QObject, public PluginInterface
     }
     void start() override
     {
-        qDebug() << "Start PreProcessing";
+        qInfo() << "[Base_Gemo] Start PreProcessing";
         PreProcessing* preProcessing = new PreProcessing;
     }
     void stop() override
     {
-        qDebug() << "Stopping...";
+        qInfo() << "[Base_Gemo] Stopping...";
     }
 };
 

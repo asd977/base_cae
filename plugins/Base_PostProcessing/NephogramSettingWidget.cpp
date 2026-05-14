@@ -855,7 +855,7 @@ QJsonObject NephogramSettingWidget::saveJson()
 
 void NephogramSettingWidget::loadJson(const QJsonObject& obj)
 {
-    qDebug() << "load";
+    qInfo() << "[Base_PostProcessing] Load nephogram settings";
     qDebug() << obj.value("scalar").toString();
     qDebug() << obj.value("range_min").toDouble();
     qDebug() << obj.value("range_max").toDouble();
