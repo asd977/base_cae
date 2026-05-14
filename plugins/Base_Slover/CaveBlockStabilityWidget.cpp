@@ -26,6 +26,10 @@ CaveBlockStabilityWidget::CaveBlockStabilityWidget(QWidget* parent)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
+    ui->icutFileEdit->setText(QStringLiteral("ICUT.DAT"));
+    ui->safeFileEdit->setText(QStringLiteral("SAFE_CAVEBLK.DAT"));
+    ui->icutFileEdit->hide();
+    ui->safeFileEdit->hide();
     connect(ui->computeBtn, &QPushButton::clicked, this,
             [this]()
             {
