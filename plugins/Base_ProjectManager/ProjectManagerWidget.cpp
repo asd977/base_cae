@@ -18,7 +18,7 @@ ProjectManagerWidget::ProjectManagerWidget(ProjectManager* projectManager)
     : m_projectManager(projectManager)
 {
     m_uiFrameService = ServiceRegistry::instance().getService<UiFrameService>();
-    qDebug() << "m_uiFrameService " << m_uiFrameService;
+    qInfo() << "m_uiFrameService " << m_uiFrameService;
     setupMenuButton();
     setupTreeWidget();
     setupSettingWidget();
@@ -152,7 +152,7 @@ void ProjectManagerWidget::generateMenu(const QPoint& pos)
     QTreeWidgetItem* item = m_treeWidget->itemAt(pos);
     if (item)
     {
-        qDebug() << item->text(0);
+        qInfo() << item->text(0);
     }
 }
 
@@ -168,7 +168,7 @@ void ProjectManagerWidget::onItemPressed(QTreeWidgetItem* item, int column)
     {
         return;
     }
-    qDebug() << "press " << uuid;
+    qInfo() << "press " << uuid;
     if (m_itemMap[uuid])
     {
         if (m_tmpSettingWidget != nullptr)

@@ -23,12 +23,12 @@ class PreProcessingActivator : public QObject, public PluginInterface
     }
     void start() override
     {
-        qDebug() << "Start PreProcessing";
+        qInfo() << "启动前处理模块";
         PreProcessing* preProcessing = new PreProcessing;
     }
     void stop() override
     {
-        qDebug() << "Stopping...";
+        qInfo() << "停止前处理模块";
     }
 };
 

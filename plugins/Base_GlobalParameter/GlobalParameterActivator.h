@@ -23,12 +23,12 @@ class GlobalParameterActivator : public QObject, public PluginInterface
     }
     void start() override
     {
-        qDebug() << "start GlobalParameter";
+        qInfo() << "start GlobalParameter";
         GlobalParameter* postProcessing = new GlobalParameter;
     }
     void stop() override
     {
-        qDebug() << "Stopping...";
+        qInfo() << "Stopping...";
     }
 };
 

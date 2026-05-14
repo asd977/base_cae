@@ -75,7 +75,7 @@ void OutputWidget::refreshView()
 QString OutputWidget::formatEntry(const LogEntry& entry) const
 {
     QString color = "#2e7d32";
-    QString levelText = "INFO";
+    QString levelText = entry.category.isEmpty() ? "通用" : entry.category;
     if (entry.level == LogLevel::Warning)
     {
         color = "#ed6c02";
@@ -86,11 +86,7 @@ QString OutputWidget::formatEntry(const LogEntry& entry) const
         color = "#d32f2f";
         levelText = "ERROR";
     }
-    else if (entry.level == LogLevel::Debug)
-    {
-        color = "#0277bd";
-        levelText = "DEBUG";
-    }
+
 
     return QString("<span style='color:#9e9e9e;'>[%1]</span> "
                    "<span style='color:%2; font-weight:600;'>[%3]</span> %4")
@@ -103,9 +99,10 @@ QString OutputWidget::formatEntry(const LogEntry& entry) const
 LogEntry OutputWidget::parseEntry(const QString& rawText) const
 {
     LogEntry entry;
-    entry.timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz");
+    entry.timestamp = QDateTime::currentDateTime().toString("MM-dd HH:mm");
     entry.level = LogLevel::Info;
     entry.message = rawText;
+    entry.category = detectCategory(rawText);
 
     if (rawText.startsWith("[ERROR]", Qt::CaseInsensitive) || rawText.startsWith("[错误]"))
     {
@@ -118,18 +115,25 @@ LogEntry OutputWidget::parseEntry(const QString& rawText) const
         entry.level = LogLevel::Warning;
         entry.message = rawText.mid(rawText.indexOf(']') + 1).trimmed();
     }
-    else if (rawText.startsWith("[DEBUG]", Qt::CaseInsensitive) || rawText.startsWith("[调试]"))
-    {
-        entry.level = LogLevel::Debug;
-        entry.message = rawText.mid(rawText.indexOf(']') + 1).trimmed();
-    }
     else if (rawText.startsWith("[INFO]", Qt::CaseInsensitive) || rawText.startsWith("[信息]"))
     {
         entry.level = LogLevel::Info;
         entry.message = rawText.mid(rawText.indexOf(']') + 1).trimmed();
     }
 
+    entry.category = detectCategory(entry.message);
     return entry;
+}
+
+QString OutputWidget::detectCategory(const QString& message) const
+{
+    if (message.contains("几何") || message.contains("前处理")) return "几何";
+    if (message.contains("网格")) return "网格";
+    if (message.contains("求解")) return "求解";
+    if (message.contains("材料")) return "材料";
+    if (message.contains("后处理") || message.contains("云图") || message.contains("等值")) return "后处理";
+    if (message.contains("项目")) return "项目";
+    return "通用";
 }
 
 bool OutputWidget::shouldDisplay(LogLevel level) const
