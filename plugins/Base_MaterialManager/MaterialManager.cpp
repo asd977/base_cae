@@ -7,6 +7,10 @@
 #include <ContextMenuHub.h>
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
+#include <struct/MeshMap.h>
+#include <vtkCellData.h>
+#include <vtkIntArray.h>
+#include <vtkUnstructuredGrid.h>
 
 #include <QDebug>
 #include <QGuiApplication>
@@ -1515,47 +1519,126 @@ void MaterialManager::highlightMatypes(const QString& entryId, const QSet<int>& 
                                        int previewMatype, int preDeleteMatype)
 {
     if (entryId.isEmpty())
-    {
         return;
-    }
+
     const QString domain = m_pickDomain.isEmpty() ? QStringLiteral("MaterialManager") : m_pickDomain;
     const QString uuid = m_pickUuid.isEmpty() ? entryId : m_pickUuid;
-    int matypeDim = 3;
-    if (auto* service = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+
+    auto* service = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+
+    auto keysForMatype = [service](int matype) -> QSet<DomainKey>
     {
-        const QVector<DomainKey> domains = service->availableDomains(QStringLiteral("MATYPE"));
-        for (const DomainKey& key : domains)
+        QSet<DomainKey> keys;
+
+        if (matype <= 0 || !service)
+            return keys;
+
+        // 优先从真实 MeshTagSet 获取。这样同一个 MATYPE 同时存在实体单元(dim=3)
+        // 和杆单元(dim=1)时，两类 DomainKey 都会被加入。
+        const QVector<MeshTagSet> sets = service->domainTagSets();
+        for (const MeshTagSet& set : sets)
         {
-            if (key.isValid())
+            if (set.key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) != 0)
+                continue;
+            if (set.key.id != matype)
+                continue;
+            if (set.key.dim <= 0)
+                continue;
+            if (service->cellIdsOfTag(set.key).isEmpty())
+                continue;
+
+            keys.insert(DomainKey{set.key.category, set.key.dim, set.key.id});
+        }
+
+        auto gridHasMatype = [](vtkUnstructuredGrid* grid, int id) -> bool
+        {
+            auto* arr = grid && grid->GetCellData()
+                            ? vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"))
+                            : nullptr;
+            if (!grid || !arr)
+                return false;
+
+            const vtkIdType n = std::min(grid->GetNumberOfCells(), arr->GetNumberOfTuples());
+            for (vtkIdType cid = 0; cid < n; ++cid)
             {
-                matypeDim = key.dim;
-                break;
+                if (arr->GetValue(cid) == id)
+                    return true;
+            }
+            return false;
+        };
+
+        // 拆分后的 lineGrid 可能没有通过 domainTagSets 暴露出来，但 CellData/MATYPE 仍然存在。
+        // 这里显式补充 dim=1，保证材料规则可以驱动杆单元高亮。
+        if (gridHasMatype(service->getVtkUnstructuredGridLine(), matype))
+            keys.insert(DomainKey{QStringLiteral("MATYPE"), 1, matype});
+
+        if (gridHasMatype(service->getVtkUnstructuredGridSolid(), matype))
+        {
+            const int solidDim = PublicVariables::instance()
+                                     .get(PublicConstants::kMeshDimension)
+                                     .toInt();
+            keys.insert(DomainKey{QStringLiteral("MATYPE"), solidDim == 2 ? 2 : 3, matype});
+        }
+
+        // 兼容旧接口：如果 domainTagSets/CellData 都没返回，再看 availableDomains。
+        if (keys.isEmpty())
+        {
+            const QVector<DomainKey> domains = service->availableDomains(QStringLiteral("MATYPE"));
+            for (const DomainKey& key : domains)
+            {
+                if (!key.isValid())
+                    continue;
+                if (key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) != 0)
+                    continue;
+                if (key.id != matype)
+                    continue;
+
+                keys.insert(key);
             }
         }
-    }
 
-    auto mk = [matypeDim](int id) -> DomainKey
+        return keys;
+    };
+
+    auto preferredKeyForMatype = [&keysForMatype](int matype) -> DomainKey
     {
-        DomainKey key;
-        key.category = "MATYPE";
-        key.dim = matypeDim;
-        key.id = id;
-        return key;
+        const QSet<DomainKey> keys = keysForMatype(matype);
+        if (keys.isEmpty())
+            return DomainKey{};
+
+        QList<DomainKey> list = keys.values();
+        std::sort(list.begin(), list.end(),
+                  [](const DomainKey& a, const DomainKey& b)
+                  {
+                      // preview / preDelete 只能给一个 DomainKey。
+                      // 优先实体域，其次面域，最后杆单元。
+                      if (a.dim != b.dim)
+                          return a.dim > b.dim;
+                      return a.id < b.id;
+                  });
+        return list.first();
     };
 
     QSet<DomainKey> applied;
-    for (int id : matypes)
-        applied.insert(mk(id));
+    for (int matype : matypes)
+        applied.unite(keysForMatype(matype));
+
     PickManager::instance().setAppliedDomains(domain, uuid, applied);
-    PickManager::instance().setSelectedDomain(domain, uuid,
-                                              selectedMatype >= 0 ? mk(selectedMatype)
-                                                                  : DomainKey{});
-    PickManager::instance().setPreviewDomain(domain, uuid,
-                                             previewMatype >= 0 ? mk(previewMatype)
-                                                                : DomainKey{});
-    PickManager::instance().setPreDeleteDomain(domain, uuid,
-                                               preDeleteMatype >= 0 ? mk(preDeleteMatype)
-                                                                    : DomainKey{});
+
+    // 材料页的“当前下拉选中”不是模型高亮中的 selectedDomain。
+    // CaveExcavationBodyPage 也是 applied 持久高亮 + preview 悬浮高亮；
+    // 不设置 selectedDomain，避免选中项被 PickManager 的 selectedColor 染成红色。
+    PickManager::instance().setSelectedDomain(domain, uuid, DomainKey{});
+
+    PickManager::instance().setPreviewDomain(
+        domain,
+        uuid,
+        previewMatype > 0 ? preferredKeyForMatype(previewMatype) : DomainKey{});
+
+    PickManager::instance().setPreDeleteDomain(
+        domain,
+        uuid,
+        preDeleteMatype > 0 ? preferredKeyForMatype(preDeleteMatype) : DomainKey{});
 }
 
 void MaterialManager::refreshMatypeHighlight(const QString& entryId)

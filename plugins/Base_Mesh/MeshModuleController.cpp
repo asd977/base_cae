@@ -1523,15 +1523,46 @@ QSet<int> MeshModuleController::getAvailableMatypes() const
 {
     QSet<int> ret;
     const MshPickMap& map = MeshGridIO::instance().getMeshMapRef();
+
     for (auto it = map.tagSets.constBegin(); it != map.tagSets.constEnd(); ++it)
     {
         const MeshTagSet& set = it.value();
-        if (set.key.dim != map.meshDim || set.cellIds.isEmpty())
+
+        // 材料编号来自 MATYPE，既可能在实体/面单元，也可能在杆单元。
+        // 这里不能只返回 map.meshDim 的最高维域，否则 lineGrid 独有的 MATYPE 无法出现在材料下拉框中。
+        if (set.cellIds.isEmpty())
             continue;
+
         if (set.key.category.compare("MATYPE", Qt::CaseInsensitive) != 0)
             continue;
+
+        if (set.key.id <= 0)
+            continue;
+
         ret.insert(set.key.id);
     }
+
+    // 兼容拆分后的 lineGrid：如果 tagSets 旧数据还没同步，也从 lineGrid 的 CellData/MATYPE 里补充。
+    auto appendMatypesFromGrid = [&ret](vtkUnstructuredGrid* grid)
+    {
+        auto* arr = grid && grid->GetCellData()
+                        ? vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"))
+                        : nullptr;
+        if (!grid || !arr)
+            return;
+
+        const vtkIdType n = std::min(grid->GetNumberOfCells(), arr->GetNumberOfTuples());
+        for (vtkIdType cid = 0; cid < n; ++cid)
+        {
+            const int id = arr->GetValue(cid);
+            if (id > 0)
+                ret.insert(id);
+        }
+    };
+
+    appendMatypesFromGrid(m_previewSurfaceGrid);
+    appendMatypesFromGrid(m_previewLineGrid);
+
     return ret;
 }
 
@@ -2558,6 +2589,9 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
     if (meshDim < 0)
         return;
 
+    // meshDim 表示模型最高维度；MATYPE/LAYER 的 DomainKey.dim 不能全部使用 meshDim。
+    // 混合网格中杆单元必须生成 dim=1，否则 MaterialManager/PickManager 无法把 lineGrid
+    // 当作独立域进行高亮。
     pick.meshDim = meshDim;
 
     QVector<MeshTagKey> removeKeys;
@@ -2573,15 +2607,11 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
             key.category.compare("LAYER", Qt::CaseInsensitive) == 0;
 
         if (isMatype || isLayer)
-        {
             removeKeys.push_back(key);
-        }
     }
 
     for (const MeshTagKey& key : removeKeys)
-    {
         pick.tagSets.remove(key);
-    }
 
     pick.cellIdToDomainTags.clear();
 
@@ -2591,8 +2621,11 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
     auto* layArr =
         vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"));
 
-    auto addDomainTag = [&](const QString& category, int id, vtkIdType cid)
+    auto addDomainTag = [&](const QString& category, int dim, int id, vtkIdType cid)
     {
+        if (dim <= 0)
+            return;
+
         const bool isLayer =
             category.compare("LAYER", Qt::CaseInsensitive) == 0;
 
@@ -2609,7 +2642,7 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
 
         MeshTagKey key;
         key.category = category;
-        key.dim = pick.meshDim;
+        key.dim = dim;
         key.id = id;
 
         if (!pick.tagSets.contains(key))
@@ -2627,9 +2660,7 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
         auto& tags = pick.cellIdToDomainTags[static_cast<MeshIdType>(cid)];
 
         if (!tags.contains(key))
-        {
             tags.push_back(key);
-        }
     };
 
     for (vtkIdType cid = 0; cid < nCells; ++cid)
@@ -2639,22 +2670,35 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
         if (!cell)
             continue;
 
-        if (cell->GetCellDimension() != pick.meshDim)
+        const int cellDim = cell->GetCellDimension();
+        if (cellDim <= 0)
             continue;
 
         const int mat = matArr ? matArr->GetValue(cid) : 0;
         const int lay = layArr ? layArr->GetValue(cid) : 0;
 
-        addDomainTag("MATYPE", mat, cid);
-        addDomainTag("LAYER", lay, cid);
+        addDomainTag("MATYPE", cellDim, mat, cid);
+        addDomainTag("LAYER", cellDim, lay, cid);
     }
 
-           // 保留并重建已有最高维 Physical 域标签的 cellId -> tags 反查。
-           // 上面清空 cellIdToDomainTags 是为了重建 MATYPE/LAYER，但不能丢掉导入/恢复的 Physical 域。
+    // 保留并重建已有 Physical 域标签的 cellId -> tags 反查。
+    // MATYPE/LAYER 已按单元真实维度重建；Physical 仍按原导入标签保留。
     for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
     {
         const MeshTagSet& set = it.value();
-        if (set.key.dim != pick.meshDim || set.cellIds.isEmpty())
+
+        if (set.cellIds.isEmpty())
+            continue;
+
+        const bool isMatype =
+            set.key.category.compare("MATYPE", Qt::CaseInsensitive) == 0;
+        const bool isLayer =
+            set.key.category.compare("LAYER", Qt::CaseInsensitive) == 0;
+
+        if (isMatype || isLayer)
+            continue;
+
+        if (set.key.dim != pick.meshDim)
             continue;
 
         for (MeshIdType cid : set.cellIds)
@@ -2667,6 +2711,7 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
 
     MeshGridIO::instance().setMeshMap(pick);
 }
+
 vtkSmartPointer<vtkUnstructuredGrid> MeshModuleController::getVtkUnstructuredGridSolid()
 {
     return m_previewSurfaceGrid;

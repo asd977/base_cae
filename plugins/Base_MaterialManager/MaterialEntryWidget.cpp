@@ -99,36 +99,42 @@ void MaterialEntryWidget::beforeUnload()
         return;
     m_beforeUnloadHandled = true;
 
-    // 离开页面：仅做“清理”，不要再触发恢复高亮逻辑
+    // 离开材料页面时必须清掉本页面在 PickManager 中留下的 Domain 高亮状态。
+    // 只 deactivate 不会清 setAppliedDomains / preview / preDelete，容易导致颜色残留。
     m_previewMatype = -1;
     m_preDeleteMatype = -1;
 
+    auto& pm = PickManager::instance();
+
+    disconnect(&pm, &PickManager::domainSelected, this,
+               &MaterialEntryWidget::onDomainPicked);
+
+    pm.setAppliedDomains(getPageType(), m_uuid, QSet<DomainKey>{});
+    pm.setSelectedDomain(getPageType(), m_uuid, DomainKey{});
+    pm.setPreviewDomain(getPageType(), m_uuid, DomainKey{});
+    pm.setPreDeleteDomain(getPageType(), m_uuid, DomainKey{});
+    pm.clearDomainSelection(getPageType(), m_uuid);
+    pm.deactivate(getPageType(), m_uuid, PickMode::Domain);
+
+    m_pickInteractionReady = false;
+
     if (m_materialManager)
     {
-        if (m_pickInteractionReady)
-        {
-            disconnect(&PickManager::instance(), &PickManager::domainSelected, this,
-                       &MaterialEntryWidget::onDomainPicked);
-            PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Domain);
-            m_pickInteractionReady = false;
-        }
+        m_materialManager->setPreviewMatypeForEntry(m_entryId, -1);
+        m_materialManager->setPreDeleteMatypeForEntry(m_entryId, -1);
         m_materialManager->clearPickContext();
     }
 
-    // 仅清理 UI hover，不调用 onDropdownClosed（其末尾会 refresh 高亮）
     if (m_matypeCombo && m_lastHoveredIndex >= 0)
     {
         m_matypeCombo->setItemData(m_lastHoveredIndex, QVariant(), Qt::BackgroundRole);
         m_lastHoveredIndex = -1;
     }
 
-    // list 背景也清掉
     if (m_appliedMatypesList)
     {
         for (int i = 0; i < m_appliedMatypesList->count(); ++i)
-        {
             m_appliedMatypesList->item(i)->setBackground(QBrush());
-        }
     }
 }
 
@@ -466,11 +472,15 @@ void MaterialEntryWidget::ensurePickInteractionReady()
 {
     if (!m_materialManager || m_pickInteractionReady)
         return;
+
+    // 材料页不做 Domain 鼠标点选，只使用 PickManager 的 Domain 高亮能力。
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Domain);
-    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
+    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
     PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, false);
-    connect(&PickManager::instance(), &PickManager::domainSelected, this,
-            &MaterialEntryWidget::onDomainPicked, Qt::UniqueConnection);
+
+    disconnect(&PickManager::instance(), &PickManager::domainSelected, this,
+               &MaterialEntryWidget::onDomainPicked);
+
     m_pickInteractionReady = true;
 }
 
