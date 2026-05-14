@@ -27,43 +27,30 @@ CaveExcavationWidget::CaveExcavationWidget(QWidget* parent)
     ui->line1Edit->setText(QDir::toNativeSeparators(QDir(projectAbs).filePath("PREP")) + QDir::separator());
     ui->line14Edit->setText(QDir::toNativeSeparators(QDir(projectAbs).filePath("GEOSTR")) + QDir::separator());
 
-    const QList<QPair<QLabel*, QString>> labelTextMap = {
-        {ui->label1,  QStringLiteral("洞室默认文件目录")},
-        {ui->label2,  QStringLiteral("荷载释放文件（MAFACTOR）")},
-        {ui->label3,  QStringLiteral("地下水影响开关（IFSEEP）")},
-        {ui->label4,  QStringLiteral("地下水面点集文件")},
-        {ui->label5,  QStringLiteral("洞内水位（HW_NEI）")},
-        {ui->label6,  QStringLiteral("衬砌内表面文件")},
-        {ui->label7,  QStringLiteral("衬砌外水位（HW_WAI）")},
-        {ui->label8,  QStringLiteral("衬砌外表面文件")},
-        {ui->label9,  QStringLiteral("吊车梁材料文件")},
-        {ui->label10, QStringLiteral("吊车梁安装级")},
-        {ui->label11, QStringLiteral("围岩已释放荷载 α")},
-        {ui->label12, QStringLiteral("衬砌外表面文件（T11）")},
-        {ui->label13, QStringLiteral("渗压场文件")},
-        {ui->label14, QStringLiteral("地应力场目录")},
-        {ui->label15, QStringLiteral("特征节点文件")},
-        {ui->label16, QStringLiteral("特征单元文件")},
-        {ui->label17, QStringLiteral("工况查看/编辑文件")},
-        {ui->label18, QStringLiteral("阻尼开关（IF_BOP）")},
-        {ui->label19, QStringLiteral("阻尼参数（IDAMP）")},
-        {ui->label20, QStringLiteral("Rayleigh α（ALFAP）")},
-        {ui->label21, QStringLiteral("Rayleigh β（BBETAP）")},
-        {ui->label22, QStringLiteral("计算方式（ITYPE_JISUAN）")},
-        {ui->label23, QStringLiteral("开挖荷载计算方式")},
-        {ui->label24, QStringLiteral("迭代法与迭代数")},
-        {ui->label25, QStringLiteral("加固对应荷载分级")},
+    const QHash<int, QString> fixedValues = {
+        {1, QDir::toNativeSeparators(QDir(projectAbs).filePath("PREP")) + QDir::separator()},
+        {2, QStringLiteral("MAFACTOR.DAT")},
+        {4, QStringLiteral("SHUIMX.DAT")},
+        {6, QStringLiteral("IIJX_CHEN.DAT")},
+        {8, QStringLiteral("IIJX_T01-01.DAT")},
+        {9, QStringLiteral("MASET_DCL.DAT")},
+        {12, QStringLiteral("IIJX_T11.DAT")},
+        {13, QStringLiteral("IISEEP.DAT")},
+        {14, QDir::toNativeSeparators(QDir(projectAbs).filePath("GEOSTR")) + QDir::separator()},
+        {15, QStringLiteral("JDTRACE.DAT")},
+        {16, QStringLiteral("KETRACE.DAT")},
+        {17, QStringLiteral("TDTRACE.DAT")},
     };
-    for (const auto& item : labelTextMap)
-        item.first->setText(item.second);
 
-    const QList<QLineEdit*> fixedFileInputs = {
-        ui->line1Edit, ui->line2Edit, ui->line4Edit, ui->line6Edit, ui->line8Edit,
-        ui->line9Edit, ui->line12Edit, ui->line13Edit, ui->line14Edit, ui->line15Edit,
-        ui->line16Edit, ui->line17Edit,
-    };
-    for (auto* edit : fixedFileInputs)
-        edit->hide();
+    for (auto it = fixedValues.constBegin(); it != fixedValues.constEnd(); ++it)
+    {
+        if (auto* edit = findChild<QLineEdit*>(QString("line%1Edit").arg(it.key())))
+            edit->setText(it.value());
+        if (auto* label = findChild<QLabel*>(QString("label%1").arg(it.key())))
+            label->deleteLater();
+        if (auto* edit = findChild<QLineEdit*>(QString("line%1Edit").arg(it.key())))
+            edit->deleteLater();
+    }
 
     connect(ui->btnCompute, &QPushButton::clicked, this, &CaveExcavationWidget::onComputeClicked);
 }
@@ -89,19 +76,30 @@ bool CaveExcavationWidget::exportICaveDatFile(const QString& supportCaseSection)
         return false;
 
     QTextStream os(&file);
-    const QList<QLineEdit*> edits = {
-        ui->line1Edit,  ui->line2Edit,  ui->line3Edit,  ui->line4Edit,  ui->line5Edit,
-        ui->line6Edit,  ui->line7Edit,  ui->line8Edit,  ui->line9Edit,  ui->line10Edit,
-        ui->line11Edit, ui->line12Edit, ui->line13Edit, ui->line14Edit, ui->line15Edit,
-        ui->line16Edit, ui->line17Edit, ui->line18Edit, ui->line19Edit, ui->line20Edit,
-        ui->line21Edit, ui->line22Edit, ui->line23Edit, ui->line24Edit, ui->line25Edit,
+    const QHash<int, QString> fixedValues = {
+        {1, QDir::toNativeSeparators(wd.filePath("PREP")) + QDir::separator()},
+        {2, QStringLiteral("MAFACTOR.DAT")},
+        {4, QStringLiteral("SHUIMX.DAT")},
+        {6, QStringLiteral("IIJX_CHEN.DAT")},
+        {8, QStringLiteral("IIJX_T01-01.DAT")},
+        {9, QStringLiteral("MASET_DCL.DAT")},
+        {12, QStringLiteral("IIJX_T11.DAT")},
+        {13, QStringLiteral("IISEEP.DAT")},
+        {14, QDir::toNativeSeparators(wd.filePath("GEOSTR")) + QDir::separator()},
+        {15, QStringLiteral("JDTRACE.DAT")},
+        {16, QStringLiteral("KETRACE.DAT")},
+        {17, QStringLiteral("TDTRACE.DAT")},
     };
 
     const QSet<int> quotedFields = {1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25};
-    for (int i = 0; i < edits.size(); ++i)
+    for (int fieldNo = 1; fieldNo <= 25; ++fieldNo)
     {
-        const int fieldNo = i + 1;
-        const QString value = edits.at(i)->text().trimmed();
+        QString value;
+        if (fixedValues.contains(fieldNo))
+            value = fixedValues.value(fieldNo);
+        else if (auto* edit = findChild<QLineEdit*>(QString("line%1Edit").arg(fieldNo)))
+            value = edit->text().trimmed();
+
         if (quotedFields.contains(fieldNo))
             os << "'" << value << "'      " << fieldNo << "\n";
         else
@@ -118,8 +116,12 @@ QJsonObject CaveExcavationWidget::saveJson()
     QJsonObject obj;
     for (int i = 1; i <= 25; ++i)
     {
+        const QString key = QString("line_%1").arg(i);
+        const QStringList fixed = {"1","2","4","6","8","9","12","13","14","15","16","17"};
+        if (fixed.contains(QString::number(i)))
+            continue;
         auto* edit = findChild<QLineEdit*>(QString("line%1Edit").arg(i));
-        obj[QString("line_%1").arg(i)] = edit ? edit->text().trimmed() : "";
+        obj[key] = edit ? edit->text().trimmed() : "";
     }
     return obj;
 }
@@ -128,6 +130,9 @@ void CaveExcavationWidget::loadJson(const QJsonObject& obj)
 {
     for (int i = 1; i <= 25; ++i)
     {
+        const QStringList fixed = {"1","2","4","6","8","9","12","13","14","15","16","17"};
+        if (fixed.contains(QString::number(i)))
+            continue;
         auto* edit = findChild<QLineEdit*>(QString("line%1Edit").arg(i));
         if (!edit)
             continue;
