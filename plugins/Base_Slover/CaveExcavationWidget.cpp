@@ -21,37 +21,6 @@ CaveExcavationWidget::CaveExcavationWidget(QWidget* parent)
         "QWidget#CaveExcavationWidget, QWidget#scrollAreaWidgetContents { background: white; }");
     ui->scrollArea->setStyleSheet("QScrollArea { background: white; border: 0; }");
 
-    const QString projectDir =
-        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    const QString projectAbs = QDir(projectDir).absolutePath();
-    ui->line1Edit->setText(QDir::toNativeSeparators(QDir(projectAbs).filePath("PREP")) + QDir::separator());
-    ui->line14Edit->setText(QDir::toNativeSeparators(QDir(projectAbs).filePath("GEOSTR")) + QDir::separator());
-
-    const QHash<int, QString> fixedValues = {
-        {1, QDir::toNativeSeparators(QDir(projectAbs).filePath("PREP")) + QDir::separator()},
-        {2, QStringLiteral("MAFACTOR.DAT")},
-        {4, QStringLiteral("SHUIMX.DAT")},
-        {6, QStringLiteral("IIJX_CHEN.DAT")},
-        {8, QStringLiteral("IIJX_T01-01.DAT")},
-        {9, QStringLiteral("MASET_DCL.DAT")},
-        {12, QStringLiteral("IIJX_T11.DAT")},
-        {13, QStringLiteral("IISEEP.DAT")},
-        {14, QDir::toNativeSeparators(QDir(projectAbs).filePath("GEOSTR")) + QDir::separator()},
-        {15, QStringLiteral("JDTRACE.DAT")},
-        {16, QStringLiteral("KETRACE.DAT")},
-        {17, QStringLiteral("TDTRACE.DAT")},
-    };
-
-    for (auto it = fixedValues.constBegin(); it != fixedValues.constEnd(); ++it)
-    {
-        if (auto* edit = findChild<QLineEdit*>(QString("line%1Edit").arg(it.key())))
-            edit->setText(it.value());
-        if (auto* label = findChild<QLabel*>(QString("label%1").arg(it.key())))
-            label->deleteLater();
-        if (auto* edit = findChild<QLineEdit*>(QString("line%1Edit").arg(it.key())))
-            edit->deleteLater();
-    }
-
     connect(ui->btnCompute, &QPushButton::clicked, this, &CaveExcavationWidget::onComputeClicked);
 }
 
