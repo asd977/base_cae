@@ -1827,7 +1827,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
 
     in >> numnp >> madim >> nelem >> manod >> extra >> am >> d1 >> d2 >> d3;
     PublicVariables::instance().set(PublicConstants::kMeshDimension,madim,"mesh");
-    qDebug()<<"dim "<<madim;
+    qInfo() << "[Base_Mesh][MeshGridIO] dim" << madim;
     if (in.status() != QTextStream::Ok)
     {
         if (errMsg)

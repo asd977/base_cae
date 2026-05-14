@@ -477,7 +477,7 @@ void MeshGlobalMeshingWidget::showMeshVtk(const QString& vtkPath)
     const vtkIdType nPts = grid->GetNumberOfPoints();
     const vtkIdType nCells = grid->GetNumberOfCells();
 
-    qDebug() << QString("网格加载成功：Points=%1, Elements(Cells)=%2")
+    qInfo() << QString("[Base_Mesh] 网格加载成功：Points=%1, Elements(Cells)=%2")
                     .arg((qlonglong)nPts)
                     .arg((qlonglong)nCells);
 }

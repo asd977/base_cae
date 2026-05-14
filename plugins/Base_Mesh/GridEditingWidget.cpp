@@ -2121,7 +2121,7 @@ void GridEditingWidget::on_pushButtonSave_clicked()
     }
 
     m_dirty = false;
-    qDebug() << "[GridEditingWidget] saved to" << out;
+    qInfo() << "[Base_Mesh][GridEditingWidget] saved to" << out;
 }
 
 // ===================== beforeLoad/unload =====================

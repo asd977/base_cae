@@ -753,7 +753,7 @@ void GridEditingWidget::deleteElemById(int elemId)
     }
     else
     {
-        qDebug() << "[GridEditingWidget] delete elem" << elemId;
+        qInfo() << "[Base_Mesh][GridEditingWidget] delete elem" << elemId;
     }
 }
 
@@ -948,7 +948,7 @@ void GridEditingWidget::on_pushButtonSave_clicked()
     }
 
     m_dirty = false;
-    qDebug() << "[GridEditingWidget] saved changes to" << m_fileName;
+    qInfo() << "[Base_Mesh][GridEditingWidget] saved changes to" << m_fileName;
 }
 
 void GridEditingWidget::setupInteractor()

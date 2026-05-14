@@ -225,7 +225,7 @@ void IsosurfaceSettingsWidget::readTecplotLatest()
 
 void IsosurfaceSettingsWidget::readTecplot(const QString& file)
 {
-    qDebug() << file;
+    qInfo() << "[Base_PostProcessing] Isosurface file:" << file;
     vtkSmartPointer<vtkTecplotReader> reader = vtkSmartPointer<vtkTecplotReader>::New();
     reader->SetFileName(file.toUtf8().constData());
     reader->Update();
