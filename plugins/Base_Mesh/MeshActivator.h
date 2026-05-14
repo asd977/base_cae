@@ -23,12 +23,12 @@ class MeshActivator : public QObject, public PluginInterface
     }
     void start() override
     {
-        qDebug() << "Start MeshModuleController";
+        qInfo() << "启动网格模块";
         MeshModuleController* meshProcessor = new MeshModuleController;
     }
     void stop() override
     {
-        qDebug() << "Stopping...";
+        qInfo() << "停止网格模块";
     }
 };
 

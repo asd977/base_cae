@@ -855,10 +855,10 @@ QJsonObject NephogramSettingWidget::saveJson()
 
 void NephogramSettingWidget::loadJson(const QJsonObject& obj)
 {
-    qDebug() << "load";
-    qDebug() << obj.value("scalar").toString();
-    qDebug() << obj.value("range_min").toDouble();
-    qDebug() << obj.value("range_max").toDouble();
+    qInfo() << "加载云图设置";
+    qInfo() << "云图标量=" << obj.value("scalar").toString();
+    qInfo() << "云图最小值=" << obj.value("range_min").toDouble();
+    qInfo() << "云图最大值=" << obj.value("range_max").toDouble();
 }
 
 

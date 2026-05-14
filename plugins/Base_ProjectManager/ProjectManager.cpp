@@ -70,10 +70,10 @@ ProjectManager::ProjectManager()
         PublicConstants::kEventLoadComplete, this,
         [this](const QVariantMap& data)
         {
-            qDebug() << "m_outputService";
+            qInfo() << "m_outputService";
 
             m_outputService = ServiceRegistry::instance().getService<OutputService>();
-            qDebug() << "end m_outputService";
+            qInfo() << "end m_outputService";
         });
 }
 
@@ -667,7 +667,7 @@ bool ProjectManager::saveAllProModelData(const QString& fileName)
     bool isok /*= JlCompress::compressDir(fileName, m_projectTempFolder)*/;
     if (!isok)
     {
-        qDebug() << "smproj save failed!!!";
+        qInfo() << "smproj save failed!!!";
     }
     return isok;
 }
