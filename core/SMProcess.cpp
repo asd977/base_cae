@@ -26,7 +26,7 @@ SMProcess::~SMProcess()
 
 void SMProcess::startProcess(bool async)
 {
-    qCInfo(lcProcess).noquote() << "开始求解器计算:" << m_programPath << m_arguments.join(" ");
+    qInfo().noquote() << "开始求解器计算:" << m_programPath << m_arguments.join(" ");
     const bool hasArguments = !m_arguments.isEmpty();
 
     if (async)
@@ -57,12 +57,12 @@ void SMProcess::onFinished(int code, ExitStatus status)
 {
     if ((code == 0 || code == 1) && status == QProcess::NormalExit)
     {
-        qCInfo(lcProcess).noquote() << "求解器运行完成，退出码:" << code;
+        qInfo().noquote() << "求解器运行完成，退出码:" << code;
         emit onCompleted(true);
     }
     else
     {
-        qCCritical(lcProcess).noquote() << "求解器异常退出，退出码:" << code;
+        qCritical().noquote() << "求解器异常退出，退出码:" << code;
         emit onCompleted(false);
     }
 }
@@ -91,7 +91,7 @@ void SMProcess::onError(ProcessError error)
         errorStr = "求解器发生未知错误";
         break;
     }
-    qCCritical(lcProcess).noquote() << errorStr;
+    qCritical().noquote() << errorStr;
     emit onErrorSignal(errorStr);
 }
 
@@ -100,7 +100,7 @@ void SMProcess::onOutput()
     QByteArray outputData = this->readAllStandardOutput();
     const QString text = QString::fromLocal8Bit(outputData).trimmed();
     if (!text.isEmpty())
-        qCInfo(lcProcess).noquote() << "[求解器输出]" << text;
+        qInfo().noquote() << "[求解器输出]" << text;
 }
 
 void SMProcess::onErrorOutput()
@@ -108,7 +108,7 @@ void SMProcess::onErrorOutput()
     const QByteArray errorData = this->readAllStandardError();
     const QString text = QString::fromLocal8Bit(errorData).trimmed();
     if (!text.isEmpty())
-        qCWarning(lcProcess).noquote() << "[求解器警告]" << text;
+        qWarning().noquote() << "[求解器警告]" << text;
 }
 
 void SMProcess::initializeConnections()
