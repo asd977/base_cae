@@ -22,12 +22,12 @@ class SurrogateModelActivator : public QObject, public PluginInterface
     }
     void start() override
     {
-        qDebug() << "start SurrogateModel";
+        qInfo() << "start SurrogateModel";
         SurrogateModel* surrogateModel = new SurrogateModel;
     }
     void stop() override
     {
-        qDebug() << "Stopping...";
+        qInfo() << "Stopping...";
     }
 };
 

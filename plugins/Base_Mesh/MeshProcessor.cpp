@@ -62,12 +62,12 @@ void MeshProcessor::loadOCCFile(const QString& filePath)
         //        gmsh::model::occ::removeAllDuplicates();
         //        gmsh::model::occ::synchronize();
 
-        qDebug() << "Successfully loaded occ file:" << QString::fromStdString(stepName);
-        qDebug() << "Imported entities:";
+        qInfo() << "成功加载OCC文件:" << QString::fromStdString(stepName);
+        qInfo() << "导入实体:";
         for (std::vector<std::pair<int, int>>::const_iterator it = outDimTags.begin();
              it != outDimTags.end(); ++it)
         {
-            qDebug() << "Dimension:" << it->first << ", Tag:" << it->second;
+            qInfo() << "维度:" << it->first << ", Tag:" << it->second;
         }
         bool isSuccess = createGridByDim();
         if (!isSuccess)
@@ -294,7 +294,7 @@ void MeshProcessor::loadOCCFile(const QString& filePath)
     }
     catch (const std::string& error)
     {
-        qDebug() << "Failed to load OCC file";
+        qWarning() << "加载OCC文件失败";
         // throw std::runtime_error("Failed to load OCC file");
     }
 }
@@ -303,7 +303,7 @@ bool MeshProcessor::createGridByDim()
 {
     try
     {
-        qDebug() << "m_dimension " << m_dimension;
+        qInfo() << "网格维度=" << m_dimension;
 
         if (m_dimension == 2)
         {
@@ -321,7 +321,7 @@ bool MeshProcessor::createGridByDim()
             // 阶数(1为线性2为二次)
             gmsh::option::setNumber("Mesh.ElementOrder", m_elementOrder);
             // 算法
-            qDebug() << "算法：" << m_aigorithm;
+            qInfo() << "网格算法:" << m_aigorithm;
             gmsh::option::setNumber("Mesh.Algorithm", m_aigorithm);
             // 光滑迭代次数
             gmsh::option::setNumber("Mesh.Smoothing", m_smoothing);
@@ -355,7 +355,7 @@ bool MeshProcessor::createGridByDim()
             gmsh::option::setNumber("Mesh.CharacteristicLengthMin", m_gridLengthMin);
             gmsh::option::setNumber("Mesh.MeshSizeFactor", m_sizeFactor);
             gmsh::option::setNumber("Mesh.ElementOrder", m_elementOrder);
-            qDebug() << "算法：" << m_aigorithm;
+            qInfo() << "网格算法:" << m_aigorithm;
             gmsh::option::setNumber("Mesh.Algorithm3D", m_aigorithm);
             gmsh::model::mesh::generate(3);
         }
@@ -413,7 +413,7 @@ std::map<int, int> MeshProcessor::createFacePhysicalGroup()
     // 获取几何中的所有“面”实体（OCC surface），不是网格单元
     gmsh::model::getEntities(faces, 2); // 2 = surface
 
-    qDebug() << "createFacePhysicalGroup: surfaces count =" << faces.size();
+    qInfo() << "创建面物理组，面数量=" << faces.size();
 
     for (const auto& s : faces)
     {
@@ -429,7 +429,7 @@ std::map<int, int> MeshProcessor::createFacePhysicalGroup()
         // 记录：几何面 tag -> physical tag
         geom_to_phys[surface_tag] = phys_tag;
 
-        qDebug() << "  surface_tag =" << surface_tag << " -> phys_tag =" << phys_tag
+        qInfo() << "面标签=" << surface_tag << " -> phys_tag=" << phys_tag
                  << " name =" << QString::fromStdString(name);
     }
 
@@ -527,7 +527,7 @@ bool MeshProcessor::loadImportGridFile(const QString& filePath)
     }
     catch (const std::exception& e)
     {
-        qDebug() << "Error importing .msh file: ";
+        qWarning() << "导入.msh文件失败";
         return false;
     }
     std::vector<std::size_t> nodeTags;
@@ -585,7 +585,7 @@ void MeshProcessor::removeExistingModel(const std::string& modelName)
         {
             gmsh::model::setCurrent(modelName); // 设置为当前模型
             gmsh::model::remove();              // 移除模型
-            qDebug() << "Removed existing model: " << QString::fromStdString(modelName);
+            qInfo() << "已移除已有模型:" << QString::fromStdString(modelName);
             break;
         }
     }

@@ -4,6 +4,7 @@
 #include <ProjectNode.h>
 #include <services/SolverService.h>
 #include "GeoStressRegressionWidget.h"
+#include <QProcess>
 
 class CaveSupportComputationPage;
 class CaveExcavationBodyPage;
@@ -51,7 +52,7 @@ class Solver : public QObject, public SolverService
     void addGeoStressOuterForceNode(ProjectNode* geostressNode, bool setCurrent) const;
     GeoStressRegressionWidget::ExportPayload buildGeoStressPayload(ProjectNode* geostressNode) const;
     bool beginCommonCompute(ProjectNode* analysisNode, const QString& analysisType);
-    bool launchSolverExecutable(const QString& analysisType) const;
+    bool launchSolverExecutable(const QString& analysisType);
     int solverModeFromAnalysisType(const QString& analysisType) const;
     bool updateIiiDirDat(const QString& projectDir, int solverMode) const;
     bool updatePrepDatFiles(const QString& projectDir, int solverMode) const;
@@ -64,6 +65,7 @@ class Solver : public QObject, public SolverService
 
   private:
     ProjectNode* m_root = nullptr;
+    QProcess* m_solverProcess = nullptr;
     bool exportInouseDatFile();
     bool exportMaMaskDatFile();
     bool exportKetraceDatFile();
