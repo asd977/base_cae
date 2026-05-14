@@ -48,19 +48,19 @@ void SeismicAndAddedMassPage::beforeLoad()
     PickManager::instance();
 
     // 这个页面后面还要做“附加质量面”，用 Face 拾取更合适（先占位）
-    qDebug() << "[SeismicAndAddedMassPage] beforeLoad activate Face pick uuid=" << m_uuid;
+    qInfo() << "[SeismicAndAddedMassPage] beforeLoad activate Face pick uuid=" << m_uuid;
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Face);
 
     const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     const bool is2D = (NDIM == 2);
 
-    qDebug() << "[SeismicAndAddedMassPage] NDIM=" << NDIM
+    qInfo() << "[SeismicAndAddedMassPage] NDIM=" << NDIM
              << "rows=" << ui->tableSeismic->rowCount();
 }
 
 void SeismicAndAddedMassPage::beforeUnload()
 {
-    qDebug() << "[SeismicAndAddedMassPage] beforeUnload deactivate Face pick uuid=" << m_uuid;
+    qInfo() << "[SeismicAndAddedMassPage] beforeUnload deactivate Face pick uuid=" << m_uuid;
     PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Face);
 }
 
@@ -165,7 +165,7 @@ QVector<QPair<double, double>> SeismicAndAddedMassPage::seriesX() const
 
         out.push_back({t, ax});
     }
-    qDebug() << "[SeismicSeries] X parsed N=" << out.size();
+    qInfo() << "[SeismicSeries] X parsed N=" << out.size();
     return out;
 }
 
@@ -188,7 +188,7 @@ QVector<QPair<double, double>> SeismicAndAddedMassPage::seriesY() const
 
         out.push_back({t, ay});
     }
-    qDebug() << "[SeismicSeries] Y parsed N=" << out.size();
+    qInfo() << "[SeismicSeries] Y parsed N=" << out.size();
     return out;
 }
 
@@ -211,7 +211,7 @@ QVector<QPair<double, double>> SeismicAndAddedMassPage::seriesZ() const
 
         out.push_back({t, az});
     }
-    qDebug() << "[SeismicSeries] Z parsed N=" << out.size();
+    qInfo() << "[SeismicSeries] Z parsed N=" << out.size();
     return out;
 }
 
@@ -220,7 +220,7 @@ void SeismicAndAddedMassPage::on_btnAddRow_clicked()
 {
     int r = ui->tableSeismic->rowCount();
     ui->tableSeismic->insertRow(r);
-    qDebug() << "[SeismicTable] add row ->" << r;
+    qInfo() << "[SeismicTable] add row ->" << r;
 }
 
 void SeismicAndAddedMassPage::on_btnDeleteRow_clicked()
@@ -238,7 +238,7 @@ void SeismicAndAddedMassPage::on_btnDeleteRow_clicked()
 
     for (const QModelIndex& idx : sel)
     {
-        qDebug() << "[SeismicTable] delete row" << idx.row();
+        qInfo() << "[SeismicTable] delete row" << idx.row();
         ui->tableSeismic->removeRow(idx.row());
     }
     ensureAtLeastOneRow();
@@ -246,7 +246,7 @@ void SeismicAndAddedMassPage::on_btnDeleteRow_clicked()
 
 void SeismicAndAddedMassPage::on_btnClear_clicked()
 {
-    qDebug() << "[SeismicTable] clear all";
+    qInfo() << "[SeismicTable] clear all";
     ui->tableSeismic->setRowCount(0);
     ensureAtLeastOneRow();
 }
@@ -322,5 +322,5 @@ void SeismicAndAddedMassPage::on_btnImportCsv_clicked()
         }
     }
 
-    qDebug() << "[SeismicTable] import csv rows=" << rows.size() << "file=" << filePath;
+    qInfo() << "[SeismicTable] import csv rows=" << rows.size() << "file=" << filePath;
 }
