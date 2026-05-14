@@ -2121,7 +2121,7 @@ void GridEditingWidget::on_pushButtonSave_clicked()
     }
 
     m_dirty = false;
-    qDebug() << "[GridEditingWidget] saved to" << out;
+    qInfo() << "网格已保存到" << out;
 }
 
 // ===================== beforeLoad/unload =====================

@@ -306,8 +306,8 @@ void DatasetEvaluation::detectParamsFromDataset()
 
     QString err;
     const QStringList headers = tryDetectHeaders(path, &err);
-    qDebug() << "path " << path;
-    qDebug() << "headers " << headers;
+    qInfo() << "path " << path;
+    qInfo() << "headers " << headers;
 
     // 过滤无效列（首列 index/编号、以及 colN 占位）
     QStringList filtered;
