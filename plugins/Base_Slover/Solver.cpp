@@ -1621,36 +1621,26 @@ bool Solver::updateIiiDirDat(const QString& projectDir, int solverMode) const
 
 bool Solver::updatePrepDatFiles(const QString& projectDir, int solverMode) const
 {
-    QDir prepDir(QDir(projectDir).filePath("PREP"));
-    const QFileInfoList datFiles =
-        prepDir.entryInfoList(QStringList() << "*.DAT", QDir::Files | QDir::Readable);
+    QFile file(QDir(projectDir).filePath("PREP/IIIN.DAT"));
+    if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return false;
 
-    bool updated = false;
-    for (const QFileInfo& fi : datFiles)
-    {
-        QFile file(fi.absoluteFilePath());
-        if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-            continue;
+    QString content = QString::fromLocal8Bit(file.readAll());
+    file.close();
+    QStringList lines = content.split(QRegularExpression("\\r?\\n"), QString::KeepEmptyParts);
+    if (lines.size() < 2)
+        return false;
 
-        QString content = QString::fromLocal8Bit(file.readAll());
-        file.close();
-        QStringList lines = content.split(QRegularExpression("\\r?\\n"), QString::KeepEmptyParts);
-        if (lines.size() < 2)
-            continue;
+    QRegularExpression targetRe(
+        R"(^\s*\d+\s+2\s+6\.0000\s+6\.0000\s+6\.0000\s+6\.0000\s+6\.0000\s+6\.0000\s*$)");
+    if (!targetRe.match(lines[1]).hasMatch())
+        return false;
 
-        QRegularExpression targetRe(
-            R"(^\s*\d+\s+2\s+6\.0000\s+6\.0000\s+6\.0000\s+6\.0000\s+6\.0000\s+6\.0000\s*$)");
-        if (!targetRe.match(lines[1]).hasMatch())
-            continue;
-
-        lines[1].replace(QRegularExpression(R"(^\s*\d+)"), QString("%8").arg(solverMode));
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
-            continue;
-        file.write(lines.join("\n").toLocal8Bit());
-        updated = true;
-    }
-
-    return updated;
+    lines[1].replace(QRegularExpression(R"(^\s*\d+)"), QString("%8").arg(solverMode));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+        return false;
+    file.write(lines.join("\n").toLocal8Bit());
+    return true;
 }
 
 int Solver::nextStressStrainIndex() const
