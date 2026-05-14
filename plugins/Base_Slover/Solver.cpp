@@ -1544,8 +1544,113 @@ bool Solver::launchSolverExecutable(const QString& analysisType) const
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QProcess::execute("taskkill", {"-f", "-im", "PCCAE_CPU.exe"});
+
+    const int solverMode = solverModeFromAnalysisType(analysisType);
+    if (solverMode > 0)
+    {
+        if (!updateIiiDirDat(projectDir, solverMode))
+        {
+            QMessageBox::warning(nullptr, "启动求解器失败",
+                                 QString("%1更新 IIIDIR.DAT 失败。").arg(analysisType));
+            return false;
+        }
+
+        if (!updatePrepDatFiles(projectDir, solverMode))
+        {
+            QMessageBox::warning(nullptr, "启动求解器失败",
+                                 QString("%1更新 PREP/DAT 文件失败。").arg(analysisType));
+            return false;
+        }
+    }
+
     QProcess::startDetached(exePath, QStringList(), QDir(projectDir).absolutePath());
     return true;
+}
+
+int Solver::solverModeFromAnalysisType(const QString& analysisType) const
+{
+    if (analysisType.contains("渗流") || analysisType.contains("土石坝"))
+        return 8;
+    if (analysisType.contains("洞室"))
+        return 6;
+    if (analysisType.contains("边坡"))
+        return 7;
+    return 0;
+}
+
+bool Solver::updateIiiDirDat(const QString& projectDir, int solverMode) const
+{
+    QFile file(QDir(projectDir).filePath("IIIDIR.DAT"));
+    if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return false;
+
+    QString content = QString::fromLocal8Bit(file.readAll());
+    file.close();
+    QStringList lines = content.split(QRegularExpression("\\r?\\n"), Qt::KeepEmptyParts);
+    if (lines.size() < 2)
+        return false;
+
+    const QString nativeProjectDir = QDir::toNativeSeparators(QDir(projectDir).absolutePath());
+    const QString projectWithSlash = nativeProjectDir.endsWith('\\') ? nativeProjectDir : nativeProjectDir + "\\";
+    const QString prepDir = projectWithSlash + "PREP";
+
+    lines[0] = QString("'%1'").arg(projectWithSlash);
+
+    for (int i = 0; i < lines.size(); ++i)
+    {
+        const QString trimmed = lines[i].trimmed();
+        if (trimmed.contains("\\PREP'") || trimmed.contains("/PREP'"))
+            lines[i] = QString("'%1'").arg(prepDir);
+
+        bool ok = false;
+        trimmed.toInt(&ok);
+        if (ok && i > 0)
+        {
+            const QString prev = lines[i - 1];
+            if (prev.contains("\\PREP'") || prev.contains("/PREP'"))
+                lines[i] = QString("%1").arg(solverMode, 12);
+        }
+    }
+
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+        return false;
+    file.write(lines.join("\n").toLocal8Bit());
+    return true;
+}
+
+bool Solver::updatePrepDatFiles(const QString& projectDir, int solverMode) const
+{
+    QDir prepDir(QDir(projectDir).filePath("PREP"));
+    const QFileInfoList datFiles =
+        prepDir.entryInfoList(QStringList() << "*.DAT", QDir::Files | QDir::Readable);
+
+    bool updated = false;
+    for (const QFileInfo& fi : datFiles)
+    {
+        QFile file(fi.absoluteFilePath());
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+            continue;
+
+        QString content = QString::fromLocal8Bit(file.readAll());
+        file.close();
+        QStringList lines = content.split(QRegularExpression("\\r?\\n"), Qt::KeepEmptyParts);
+        if (lines.size() < 2)
+            continue;
+
+        QRegularExpression targetRe(
+            R"(^\s*\d+\s+2\s+6\.0000\s+6\.0000\s+6\.0000\s+6\.0000\s+6\.0000\s+6\.0000\s*$)");
+        if (!targetRe.match(lines[1]).hasMatch())
+            continue;
+
+        lines[1].replace(QRegularExpression(R"(^\s*\d+)"), QString("%8").arg(solverMode));
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+            continue;
+        file.write(lines.join("\n").toLocal8Bit());
+        updated = true;
+    }
+
+    return updated;
 }
 
 int Solver::nextStressStrainIndex() const

@@ -52,6 +52,9 @@ class Solver : public QObject, public SolverService
     GeoStressRegressionWidget::ExportPayload buildGeoStressPayload(ProjectNode* geostressNode) const;
     bool beginCommonCompute(ProjectNode* analysisNode, const QString& analysisType);
     bool launchSolverExecutable(const QString& analysisType) const;
+    int solverModeFromAnalysisType(const QString& analysisType) const;
+    bool updateIiiDirDat(const QString& projectDir, int solverMode) const;
+    bool updatePrepDatFiles(const QString& projectDir, int solverMode) const;
     int nextSeepageIndex() const;
     int nextStressStrainIndex() const;
     int nextCaveExcavationIndex() const;
