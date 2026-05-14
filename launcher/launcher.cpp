@@ -4,7 +4,8 @@
 #include <StyleManager.h>
 
 #include <QApplication>
-#include <QDebug>
+
+#include <Logger.h>
 #include <QDir>
 #include <QPluginLoader>
 #include <QSurfaceFormat>
@@ -18,7 +19,8 @@ int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
 
-    qDebug() << "asd";
+    Logger::installQtMessageBridge();
+    qCInfo(lcApp) << "Launcher started.";
     StyleManager::applyStyleSheet(app, QString(":/resources/style/app.qss"));
 
     QString exePath = QCoreApplication::applicationDirPath();
@@ -26,11 +28,11 @@ int main(int argc, char** argv)
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, &onAppAboutToQuit);
 
     QString pluginDirPath = QDir::cleanPath(exePath) + "/plugins";
-    qDebug() << "pluginDirPath " << pluginDirPath;
+    qCInfo(lcApp) << "pluginDirPath " << pluginDirPath;
     QDir pluginDir(pluginDirPath);
     if (!pluginDir.exists())
     {
-        qDebug() << "Plugin directory does not exist:" << pluginDirPath;
+        qCInfo(lcApp) << "Plugin directory does not exist:" << pluginDirPath;
         return -1;
     }
 
@@ -43,7 +45,7 @@ int main(int argc, char** argv)
         QPluginLoader* loader = new QPluginLoader(pluginPath);
         if (!loader->load())
         {
-            qDebug() << "Failed to load plugin" << fileName << ":" << loader->errorString();
+            qCInfo(lcApp) << "Failed to load plugin" << fileName << ":" << loader->errorString();
             delete loader;
             continue;
         }
@@ -51,7 +53,7 @@ int main(int argc, char** argv)
         QObject* plugin = loader->instance();
         if (!plugin)
         {
-            qDebug() << "Failed to get instance for" << fileName << ":" << loader->errorString();
+            qCInfo(lcApp) << "Failed to get instance for" << fileName << ":" << loader->errorString();
             delete loader;
             continue;
         }
@@ -61,11 +63,11 @@ int main(int argc, char** argv)
         {
             QString name = pluginInterface->pluginName();
             loadedPlugins[name] = pluginInterface;
-            qDebug() << "Loaded plugin:" << name;
+            qCInfo(lcApp) << "Loaded plugin:" << name;
         }
         else
         {
-            qDebug() << "Plugin" << fileName << "does not implement PluginInterface";
+            qCInfo(lcApp) << "Plugin" << fileName << "does not implement PluginInterface";
             delete loader;
         }
     }
@@ -87,12 +89,12 @@ int main(int argc, char** argv)
     {
         if (loadedPlugins.contains(name))
         {
-            qDebug() << "Starting plugin:" << name;
+            qCInfo(lcApp) << "Starting plugin:" << name;
             loadedPlugins[name]->start();
         }
         else
         {
-            qWarning() << "Plugin with name" << name << "not found!";
+            qCWarning(lcApp) << "Plugin with name" << name << "not found!";
         }
     }
 

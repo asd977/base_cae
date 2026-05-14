@@ -1,6 +1,6 @@
 ﻿#include "SMProcess.h"
 
-#include <QDebug>
+#include <Logger.h>
 namespace SMProcessTool
 {
 SMProcess::SMProcess(const QString& program)
@@ -26,7 +26,7 @@ SMProcess::~SMProcess()
 
 void SMProcess::startProcess(bool async)
 {
-    qInfo().noquote() << m_programPath;
+    qCInfo(lcProcess).noquote() << "Start process:" << m_programPath << m_arguments.join(" ");
     const bool hasArguments = !m_arguments.isEmpty();
 
     if (async)
@@ -61,7 +61,7 @@ void SMProcess::onFinished(int code, ExitStatus status)
     }
     else
     {
-        qInfo().noquote() << "Exit code:" << code;
+        qCWarning(lcProcess).noquote() << "Exit code:" << code;
         emit onCompleted(false);
     }
 }
@@ -90,19 +90,28 @@ void SMProcess::onError(ProcessError error)
         errorStr = "Error: Unknown error";
         break;
     }
-    qInfo().noquote() << errorStr;
+    qCCritical(lcProcess).noquote() << errorStr;
     emit onErrorSignal(errorStr);
 }
 
 void SMProcess::onOutput()
 {
     QByteArray outputData = this->readAllStandardOutput();
-    qInfo().noquote() << outputData;
+    qCInfo(lcProcess).noquote() << QString::fromLocal8Bit(outputData).trimmed();
+}
+
+void SMProcess::onErrorOutput()
+{
+    const QByteArray errorData = this->readAllStandardError();
+    const QString text = QString::fromLocal8Bit(errorData).trimmed();
+    if (!text.isEmpty())
+        qCWarning(lcProcess).noquote() << text;
 }
 
 void SMProcess::initializeConnections()
 {
     connect(this, &QProcess::readyReadStandardOutput, this, &SMProcess::onOutput);
+    connect(this, &QProcess::readyReadStandardError, this, &SMProcess::onErrorOutput);
     connect(this, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
             &SMProcess::onFinished);
     connect(this, &QProcess::errorOccurred, this, &SMProcess::onError);

@@ -15,11 +15,6 @@ class Output : public QObject, public OutputService
     Output();
     // 输出日志
     void outputLog(QString str);
-    static void installQtLogBridge();
-
-  private:
-    static void qtMessageHandler(QtMsgType type, const QMessageLogContext& context,
-                                 const QString& msg);
     UiFrameService* m_uiFrameService;
     // 输出日志的窗口
     OutputWidget* m_logOutputWidget;
