@@ -1581,13 +1581,13 @@ int Solver::solverModeFromAnalysisType(const QString& analysisType) const
 
 bool Solver::updateIiiDirDat(const QString& projectDir, int solverMode) const
 {
-    QFile file(QDir(projectDir).filePath("IIIDIR.DAT"));
+    QFile file("D:/IIIDIR.DAT");
     if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))
         return false;
 
     QString content = QString::fromLocal8Bit(file.readAll());
     file.close();
-    QStringList lines = content.split(QRegularExpression("\\r?\\n"), Qt::KeepEmptyParts);
+    QStringList lines = content.split(QRegularExpression("\\r?\\n"), QString::KeepEmptyParts);
     if (lines.size() < 2)
         return false;
 
@@ -1634,7 +1634,7 @@ bool Solver::updatePrepDatFiles(const QString& projectDir, int solverMode) const
 
         QString content = QString::fromLocal8Bit(file.readAll());
         file.close();
-        QStringList lines = content.split(QRegularExpression("\\r?\\n"), Qt::KeepEmptyParts);
+        QStringList lines = content.split(QRegularExpression("\\r?\\n"), QString::KeepEmptyParts);
         if (lines.size() < 2)
             continue;
 
