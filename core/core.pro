@@ -33,8 +33,7 @@ HEADERS += \
         SMProcess.h \
     StyleManager.h \
     EventManager.h \
-    PickManager.h \
-    Logger.h
+    PickManager.h
 
 SOURCES += \
     ContextMenuHub.cpp \
@@ -47,8 +46,7 @@ SOURCES += \
         SMProcess.cpp \
     StyleManager.cpp \
     EventManager.cpp \
-    PickManager.cpp \
-    Logger.cpp
+    PickManager.cpp
 
 
 

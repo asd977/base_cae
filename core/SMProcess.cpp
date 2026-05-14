@@ -1,6 +1,6 @@
 ﻿#include "SMProcess.h"
 
-#include <Logger.h>
+#include <QDebug>
 namespace SMProcessTool
 {
 SMProcess::SMProcess(const QString& program)

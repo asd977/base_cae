@@ -5,7 +5,6 @@
 
 #include <QApplication>
 
-#include <Logger.h>
 #include <QDir>
 #include <QPluginLoader>
 #include <QSurfaceFormat>
@@ -19,7 +18,6 @@ int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
 
-    Logger::installQtMessageBridge();
     qInfo() << "启动程序中...";
     StyleManager::applyStyleSheet(app, QString(":/resources/style/app.qss"));
 
