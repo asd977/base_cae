@@ -792,7 +792,7 @@ bool PickManager::pickAt(int x, int y)
         return false;
 
     vtkDataSet* ds = m_cellPicker->GetDataSet();
-    qDebug()<<ds;
+    qInfo()<<ds;
     vtkCell* cell = ds ? ds->GetCell(cellId) : nullptr;
     if (!cell)
         return false;

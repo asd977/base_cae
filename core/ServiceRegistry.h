@@ -19,7 +19,7 @@ class CORE_EXPORT ServiceRegistry
     {
         std::type_index index(typeid(T));
         services[index] = static_cast<void*>(service);
-        qDebug() << "Registered service:" << index.name() << service;
+        qInfo() << "Registered service:" << index.name() << service;
     }
 
     // 获取服务

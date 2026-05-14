@@ -45,22 +45,10 @@ void Output::installQtLogBridge()
         g_prevHandler = qInstallMessageHandler(&Output::qtMessageHandler);
 }
 
-void Output::qtMessageHandler(QtMsgType type, const QMessageLogContext& context,
-                              const QString& msg)
+void Output::qtMessageHandler(QtMsgType, const QMessageLogContext&, const QString& msg)
 {
-    QString level = "[INFO]";
-    if (type == QtWarningMsg)
-        level = "[WARN]";
-    else if (type == QtCriticalMsg || type == QtFatalMsg)
-        level = "[ERROR]";
-    else if (type == QtDebugMsg)
-        level = "[DEBUG]";
-
-    QString location;
-    if (context.file && context.line > 0)
-        location = QString(" (%1:%2)").arg(context.file).arg(context.line);
-
-    const QString text = QString("%1 %2%3").arg(level, msg, location);
+    if (!msg.startsWith("__RAW__"))
+        return;
 
     Output* instance = nullptr;
     {
@@ -68,8 +56,5 @@ void Output::qtMessageHandler(QtMsgType type, const QMessageLogContext& context,
         instance = g_outputInstance;
     }
     if (instance)
-        instance->outputLog(text);
-
-    if (g_prevHandler)
-        g_prevHandler(type, context, msg);
+        instance->outputLog(msg.mid(QString("__RAW__").size()));
 }

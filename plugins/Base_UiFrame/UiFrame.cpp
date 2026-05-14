@@ -82,9 +82,9 @@ UiFrame::UiFrame(QWidget* parent, SARibbonMainWindowStyles style)
     EventManager::instance().registerHandler(PublicConstants::kEventLoadComplete, this,
                                              [this](const QVariantMap&)
                                              {
-                                                 qDebug() << "restoreUiState";
+                                                 qInfo() << "restoreUiState";
                                                  this->restoreUiState();
-                                                 qDebug() << "end restoreUiState";
+                                                 qInfo() << "end restoreUiState";
                                              });
     EventManager::instance().registerHandler(PublicConstants::kEventQuitApp, this,
                                              [this](const QVariantMap&)
@@ -308,9 +308,9 @@ void UiFrame::setDockWidgetStyle()
                       background: #c0c0c0; /* 设置水平滚动条滑块的背景颜色 */
                   }
                   )";
-    qDebug() << "m_dockManager->setStyleSheet(qss)";
+    qInfo() << "m_dockManager->setStyleSheet(qss)";
     m_dockManager->setStyleSheet(qss);
-    qDebug() << "m_dockManager->setStyleSheet(qss)";
+    qInfo() << "m_dockManager->setStyleSheet(qss)";
 }
 
 ads::DockWidgetArea UiFrame::preferDockArea(const QString& name) const
