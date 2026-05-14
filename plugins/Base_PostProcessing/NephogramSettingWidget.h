@@ -1,4 +1,4 @@
-﻿#ifndef NEPHOGRAMSETTINGWIDGET_H
+#ifndef NEPHOGRAMSETTINGWIDGET_H
 #define NEPHOGRAMSETTINGWIDGET_H
 
 #include <BasePage.h>
@@ -60,6 +60,10 @@ class NephogramSettingWidget : public BasePage
     void initResultDirectoryOptions();
     QString selectedResultDirectoryPath() const;
     void readTecplot(const QString& fileName);
+
+    // 全局结果规则
+    void setupResultRuleConfigButton();
+    void openResultRuleConfigDialog();
 
     // 对比辅助
     void enterCompareMode();

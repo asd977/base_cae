@@ -18,7 +18,9 @@ HEADERS += \
     ProbeSettingsWidget.h \
     ResultArrangeWidget.h \
     SliceSettingsWidget.h \
-    VectorSettingWidget.h
+    VectorSettingWidget.h \
+    ResultRuleConfigDialog.h \
+    ResultRuleManager.h
 
 SOURCES += \
     AnimationAviWidget.cpp \
@@ -32,7 +34,9 @@ SOURCES += \
     ProbeSettingsWidget.cpp \
     ResultArrangeWidget.cpp \
     SliceSettingsWidget.cpp \
-    VectorSettingWidget.cpp
+    VectorSettingWidget.cpp \
+    ResultRuleConfigDialog.cpp \
+    ResultRuleManager.cpp
 
 FORMS += \
     AnimationAviWidget.ui \
