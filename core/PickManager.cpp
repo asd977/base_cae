@@ -537,7 +537,9 @@ void PickManager::activate(const QString& domain, const QString& uuid, PickMode 
     if (m_lineNodeActor)
     {
         const bool hasLine = (m_gridLine && m_gridLine->GetNumberOfPoints() > 0);
-        const bool show = m_showLineNodes && hasLine && (m_pickMode == PickMode::Node);
+        const bool hasActivePickContext = !m_currentDomain.isEmpty() && !m_currentUUid.isEmpty();
+        const bool show =
+            m_showLineNodes && hasLine && hasActivePickContext && (m_pickMode == PickMode::Node);
         m_lineNodeActor->SetVisibility(show);
     }
 
@@ -3092,7 +3094,8 @@ void PickManager::rebuildLineNodeOverlayAll()
     m_lineNodePoly->SetPoints(m_gridLine->GetPoints());
     m_lineNodePoly->Modified();
 
-    m_lineNodeActor->SetVisibility(m_pickMode == PickMode::Node);
+    const bool hasActivePickContext = !m_currentDomain.isEmpty() && !m_currentUUid.isEmpty();
+    m_lineNodeActor->SetVisibility(hasActivePickContext && (m_pickMode == PickMode::Node));
 }
 
 // ===================== commit exclusive =====================
