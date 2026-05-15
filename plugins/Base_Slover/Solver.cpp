@@ -1156,6 +1156,19 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
 
 void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 {
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QFile iautoFile(QDir(projectDir).absoluteFilePath("MESG_IAUTO.DAT"));
+    if (!iautoFile.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QMessageBox::warning(nullptr, "计算失败", "洞室开挖写入 MESG_IAUTO.DAT 失败。");
+        return;
+    }
+    {
+        QTextStream os(&iautoFile);
+        os << "5\n";
+    }
+
     if (!beginCommonCompute(analysisNode, "洞室开挖"))
         return;
 
@@ -1413,6 +1426,19 @@ void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
 
 void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
 {
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QFile iautoFile(QDir(projectDir).absoluteFilePath("MESG_IAUTO.DAT"));
+    if (!iautoFile.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QMessageBox::warning(nullptr, "计算失败", "地应力回归计算写入 MESG_IAUTO.DAT 失败。");
+        return;
+    }
+    {
+        QTextStream os(&iautoFile);
+        os << "6\n";
+    }
+
     if (!beginCommonCompute(analysisNode, "地应力回归计算"))
         return;
 
@@ -1523,25 +1549,6 @@ bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analys
     auto* materialManagerService = ServiceRegistry::instance().getService<MaterialManagerService>();
     if (materialManagerService && !materialManagerService->generateIMATFile())
         return false;
-
-    int iautoValue = -1;
-    if (analysisType == QStringLiteral("地应力回归计算"))
-        iautoValue = 6;
-    else if (analysisType == QStringLiteral("洞室开挖"))
-        iautoValue = 5;
-
-    if (iautoValue > 0)
-    {
-        QFile iautoFile(wd.filePath("MESG_IAUTO.DAT"));
-        if (!iautoFile.open(QIODevice::WriteOnly | QIODevice::Text))
-        {
-            QMessageBox::warning(nullptr, "计算失败",
-                                 QString("%1写入 MESG_IAUTO.DAT 失败。").arg(analysisType));
-            return false;
-        }
-        QTextStream os(&iautoFile);
-        os << iautoValue << "\n";
-    }
 
     return exportInouseDatFile() && exportMaMaskDatFile() && exportKetraceDatFile() &&
            exportJdtraceDatFile();
