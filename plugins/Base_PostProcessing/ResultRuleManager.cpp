@@ -1,12 +1,13 @@
 #include "ResultRuleManager.h"
 
-#include <QCoreApplication>
+#include <PublicConstants.h>
+#include <PublicVariables.h>
+
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QStandardPaths>
 
 ResultRuleManager& ResultRuleManager::instance()
 {
@@ -52,17 +53,11 @@ void ResultRuleManager::setFileRules(const QVector<ResultFileRule>& rules)
 
 QString ResultRuleManager::configFilePath() const
 {
-    QString baseDir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    QString projectDir = PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString().trimmed();
+    if (projectDir.isEmpty())
+        projectDir = QDir::currentPath();
 
-    if (baseDir.trimmed().isEmpty())
-    {
-        const QString appName = QCoreApplication::applicationName().trimmed().isEmpty()
-                                    ? QStringLiteral("BaseCAE")
-                                    : QCoreApplication::applicationName().trimmed();
-        baseDir = QDir::home().filePath(QStringLiteral(".%1").arg(appName));
-    }
-
-    QDir dir(baseDir);
+    QDir dir(QDir(projectDir).filePath(QStringLiteral("config")));
     if (!dir.exists())
         dir.mkpath(QStringLiteral("."));
 

@@ -38,13 +38,11 @@
 #include <vtkXMLPolyDataReader.h>
 #include <vtkXMLUnstructuredGridReader.h>
 
-#include <QBoxLayout>
 #include <QCheckBox>
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonObject>
-#include <QPushButton>
 #include <QRegularExpression>
 #include <QSpinBox>
 #include <QStringList>
@@ -99,8 +97,6 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
     m_contourActor = vtkSmartPointer<vtkActor>::New();
     m_contourLabelActor = vtkSmartPointer<vtkActor2D>::New();
 
-    setupResultRuleConfigButton();
-
     connect(ui->stepComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &NephogramSettingWidget::on_stepComboBox_currentIndexChanged);
     connect(ui->scalarComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
@@ -150,25 +146,6 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
 NephogramSettingWidget::~NephogramSettingWidget()
 {
     delete ui;
-}
-
-void NephogramSettingWidget::setupResultRuleConfigButton()
-{
-    auto* btn = new QPushButton(QStringLiteral("结果规则配置"), this);
-    btn->setToolTip(QStringLiteral("查看、添加、删除全局结果目录和结果文件规则"));
-
-    connect(btn, &QPushButton::clicked, this, &NephogramSettingWidget::openResultRuleConfigDialog);
-
-    if (auto* boxLayout = qobject_cast<QBoxLayout*>(layout()))
-    {
-        boxLayout->insertWidget(0, btn, 0, Qt::AlignLeft);
-    }
-    else
-    {
-        btn->setGeometry(8, 8, 120, 28);
-        btn->show();
-        btn->raise();
-    }
 }
 
 void NephogramSettingWidget::openResultRuleConfigDialog()

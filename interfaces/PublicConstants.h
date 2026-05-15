@@ -49,6 +49,7 @@ constexpr char kActionPostProcessPickPhysical[] = "new_pickphysical";
 constexpr char kActionPostProcessDerivative[] = "new_derivative";
 constexpr char kActionPostProcessDataExport[] = "new_dataexp";
 constexpr char kActionPostProcessResultArrange[] = "new_result_arrange";
+constexpr char kActionPostProcessResultRuleConfig[] = "post_result_rule_config";
 
 // --- Surrogate Model / 代理模型 ---
 constexpr char kActionSurrogateModelLatin[] = "new_LatinHypercubeSampling";

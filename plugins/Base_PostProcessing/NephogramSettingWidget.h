@@ -62,7 +62,6 @@ class NephogramSettingWidget : public BasePage
     void readTecplot(const QString& fileName);
 
     // 全局结果规则
-    void setupResultRuleConfigButton();
     void openResultRuleConfigDialog();
 
     // 对比辅助

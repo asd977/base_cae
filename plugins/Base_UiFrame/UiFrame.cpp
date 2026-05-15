@@ -985,6 +985,8 @@ void UiFrame::buildRibbonTabs()
        auto* actXY = makeAction(this, ":/resources/menu/minimal/post-curve.svg", "&曲线");
        auto* actArrange =
            makeAction(this, ":/resources/menu/minimal/post-curve.svg", "&成果整理");
+       auto* actResultConfig =
+           makeAction(this, ":/resources/menu/minimal/post-curve.svg", "&结果配置");
        // auto* actAnim = makeAction(this, ":/resources/menu/minimal/post-animation.svg", "&动画");
        // auto* actPick = makeAction(this, ":/resources/menu/minimal/post-probe.svg", "&拾取物理量");
        // auto* actDer = makeAction(this, ":/resources/menu/minimal/post-derived.svg", "&派生值");
@@ -998,6 +1000,7 @@ void UiFrame::buildRibbonTabs()
        addActionToPanel(panel, actIsoS, 2);
        addActionToPanel(panel, actXY, 3);
        addActionToPanel(panel, actArrange, 3);
+       addActionToPanel(panel, actResultConfig, 3);
        // addActionToPanel(panel, actAnim, 3);
        // addActionToPanel(panel, actPick, 3);
        // addActionToPanel(panel, actDer, 2);
@@ -1011,6 +1014,7 @@ void UiFrame::buildRibbonTabs()
        bindEvent(this, actIsoS, PublicConstants::kActionPostProcessIsosurfaceSegmentation);
        bindEvent(this, actXY, PublicConstants::kActionPostProcessXyPlot);
        bindEvent(this, actArrange, PublicConstants::kActionPostProcessResultArrange);
+       bindEvent(this, actResultConfig, PublicConstants::kActionPostProcessResultRuleConfig);
        // bindEvent(this, actAnim, PublicConstants::kActionPostProcessAnimation);
        // bindEvent(this, actPick, PublicConstants::kActionPostProcessPickPhysical);
        // bindEvent(this, actDer, PublicConstants::kActionPostProcessDerivative);

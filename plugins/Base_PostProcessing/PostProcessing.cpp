@@ -29,6 +29,7 @@
 #include "IsosurfaceSettingsWidget.h"
 #include "ProbeSettingsWidget.h"
 #include "ResultArrangeWidget.h"
+#include "ResultRuleConfigDialog.h"
 VTK_MODULE_INIT(vtkRenderingOpenGL2)
 VTK_MODULE_INIT(vtkRenderingContextOpenGL2)
 VTK_MODULE_INIT(vtkInteractionStyle);
@@ -294,6 +295,13 @@ void PostProcessing::initAction()
         [this](const QVariantMap& data)
         {
             this->newResultArrangeWidget();
+        });
+    EventManager::instance().registerHandler(
+        PublicConstants::kActionPostProcessResultRuleConfig, this,
+        [this](const QVariantMap& data)
+        {
+            ResultRuleConfigDialog dlg;
+            dlg.exec();
         });
 }
 

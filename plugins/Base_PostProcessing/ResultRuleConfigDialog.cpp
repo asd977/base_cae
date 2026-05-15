@@ -1,6 +1,5 @@
 #include "ResultRuleConfigDialog.h"
 
-#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QHeaderView>
@@ -92,19 +91,10 @@ bool editFileRule(ResultFileRule& rule, QWidget* parent)
 
     auto* displayEdit = new QLineEdit(rule.displayName, &dlg);
     auto* fileEdit = new QLineEdit(rule.fileName, &dlg);
-    auto* formatBox = new QComboBox(&dlg);
     auto* descEdit = new QLineEdit(rule.description, &dlg);
-
-    formatBox->addItem(QStringLiteral("Tecplot"), QStringLiteral("tecplot"));
-    formatBox->addItem(QStringLiteral("VTU"), QStringLiteral("vtu"));
-
-    const int formatIndex = formatBox->findData(rule.format.toLower());
-    if (formatIndex >= 0)
-        formatBox->setCurrentIndex(formatIndex);
 
     form->addRow(QStringLiteral("显示名"), displayEdit);
     form->addRow(QStringLiteral("文件名"), fileEdit);
-    form->addRow(QStringLiteral("格式"), formatBox);
     form->addRow(QStringLiteral("说明"), descEdit);
 
     layout->addLayout(form);
@@ -120,7 +110,9 @@ bool editFileRule(ResultFileRule& rule, QWidget* parent)
 
     rule.displayName = displayEdit->text().trimmed();
     rule.fileName = fileEdit->text().trimmed();
-    rule.format = formatBox->currentData().toString();
+    rule.format = rule.fileName.endsWith(QStringLiteral(".vtu"), Qt::CaseInsensitive)
+                      ? QStringLiteral("vtu")
+                      : QStringLiteral("tecplot");
     rule.description = descEdit->text().trimmed();
 
     if (rule.fileName.isEmpty())
@@ -179,9 +171,9 @@ void ResultRuleConfigDialog::buildUi()
     auto* fileLayout = new QVBoxLayout(filePage);
 
     m_fileTable = new QTableWidget(filePage);
-    m_fileTable->setColumnCount(4);
+    m_fileTable->setColumnCount(3);
     m_fileTable->setHorizontalHeaderLabels(
-        {QStringLiteral("显示名"), QStringLiteral("文件名"), QStringLiteral("格式"), QStringLiteral("说明")});
+        {QStringLiteral("显示名"), QStringLiteral("文件名"), QStringLiteral("说明")});
     m_fileTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     m_fileTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_fileTable->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -269,8 +261,7 @@ void ResultRuleConfigDialog::loadFromManager()
 
         setCellText(m_fileTable, row, 0, rule.displayName);
         setCellText(m_fileTable, row, 1, rule.fileName);
-        setCellText(m_fileTable, row, 2, rule.format);
-        setCellText(m_fileTable, row, 3, rule.description);
+        setCellText(m_fileTable, row, 2, rule.description);
     }
 }
 
@@ -319,8 +310,7 @@ void ResultRuleConfigDialog::addFileRule()
 
     setCellText(m_fileTable, row, 0, rule.displayName);
     setCellText(m_fileTable, row, 1, rule.fileName);
-    setCellText(m_fileTable, row, 2, rule.format);
-    setCellText(m_fileTable, row, 3, rule.description);
+    setCellText(m_fileTable, row, 2, rule.description);
 
     m_fileTable->selectRow(row);
 }
@@ -365,8 +355,7 @@ QVector<ResultFileRule> ResultRuleConfigDialog::collectFileRules() const
         ResultFileRule rule;
         rule.displayName = cellText(m_fileTable, row, 0);
         rule.fileName = cellText(m_fileTable, row, 1);
-        rule.format = cellText(m_fileTable, row, 2).toLower();
-        rule.description = cellText(m_fileTable, row, 3);
+        rule.description = cellText(m_fileTable, row, 2);
 
         if (rule.fileName.isEmpty())
             continue;
@@ -374,10 +363,9 @@ QVector<ResultFileRule> ResultRuleConfigDialog::collectFileRules() const
         if (rule.displayName.isEmpty())
             rule.displayName = rule.fileName;
 
-        if (rule.format.isEmpty())
-            rule.format = rule.fileName.endsWith(QStringLiteral(".vtu"), Qt::CaseInsensitive)
-                              ? QStringLiteral("vtu")
-                              : QStringLiteral("tecplot");
+        rule.format = rule.fileName.endsWith(QStringLiteral(".vtu"), Qt::CaseInsensitive)
+                          ? QStringLiteral("vtu")
+                          : QStringLiteral("tecplot");
 
         rules.push_back(rule);
     }
