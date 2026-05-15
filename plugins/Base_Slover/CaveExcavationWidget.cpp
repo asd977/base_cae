@@ -52,7 +52,7 @@ bool CaveExcavationWidget::exportICaveDatFile(const QString& supportCaseSection)
         {6, QStringLiteral("IIJX_CHEN.DAT")},
         {8, QStringLiteral("IIJX_T01-01.DAT")},
         {9, QStringLiteral("MASET_DCL.DAT")},
-        {12, QStringLiteral("IIJX_T11.DAT")},
+        {12, QStringLiteral("1")},
         {13, QStringLiteral("IISEEP.DAT")},
         {14, QDir::toNativeSeparators(wd.filePath("GEOSTR")) + QDir::separator()},
         {15, QStringLiteral("JDTRACE.DAT")},

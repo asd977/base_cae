@@ -1238,8 +1238,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         break;
     }
 
-    const QString projectDir =
-        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+
     QDir wd(QDir(projectDir).absolutePath());
     if (!wd.exists("PREP") && !wd.mkpath("PREP"))
     {
@@ -1645,8 +1644,11 @@ int Solver::solverModeFromAnalysisType(const QString& analysisType) const
 {
     if (analysisType.contains("渗流") || analysisType.contains("土石坝"))
         return 8;
-    if (analysisType.contains("洞室"))
+    if (analysisType.contains("洞室") ||
+        analysisType.contains("地应力") ||
+        analysisType.contains("开挖")) {
         return 6;
+    }
     if (analysisType.contains("边坡"))
         return 7;
     return 0;
