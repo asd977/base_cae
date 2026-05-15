@@ -1524,6 +1524,25 @@ bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analys
     if (materialManagerService && !materialManagerService->generateIMATFile())
         return false;
 
+    int iautoValue = -1;
+    if (analysisType == QStringLiteral("地应力回归计算"))
+        iautoValue = 6;
+    else if (analysisType == QStringLiteral("洞室开挖"))
+        iautoValue = 5;
+
+    if (iautoValue > 0)
+    {
+        QFile iautoFile(wd.filePath("MESG_IAUTO.DAT"));
+        if (!iautoFile.open(QIODevice::WriteOnly | QIODevice::Text))
+        {
+            QMessageBox::warning(nullptr, "计算失败",
+                                 QString("%1写入 MESG_IAUTO.DAT 失败。").arg(analysisType));
+            return false;
+        }
+        QTextStream os(&iautoFile);
+        os << iautoValue << "\n";
+    }
+
     return exportInouseDatFile() && exportMaMaskDatFile() && exportKetraceDatFile() &&
            exportJdtraceDatFile();
 }
