@@ -17,6 +17,9 @@ ResultArrangeWidget::ResultArrangeWidget(QWidget* parent)
     : BasePage(PublicConstants::kPagePostProcessResultArrange), ui(new Ui::ResultArrangeWidget)
 {
     ui->setupUi(this);
+    ui->typeComboBox->addItem(tr("均质坝"), 8);
+    ui->typeComboBox->addItem(tr("边坡"), 7);
+    ui->typeComboBox->addItem(tr("洞室"), 6);
     connect(ui->runButton, &QPushButton::clicked, this, &ResultArrangeWidget::launchPostTool);
 }
 
@@ -65,7 +68,7 @@ void ResultArrangeWidget::launchPostTool()
     out << "           0  ILOG_GZKZR\n";
     out << "       0  ILOG_SOLVE\n";
     out << "'" << prepDir << "'\n";
-    out << "           8\n";
+    out << QString("           %1\n").arg(ui->typeComboBox->currentData().toInt());
     datFile.close();
 
     const QString appDir = QCoreApplication::applicationDirPath();

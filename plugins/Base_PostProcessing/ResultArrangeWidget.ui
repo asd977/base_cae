@@ -26,6 +26,20 @@
      <item>
       <widget class="QLineEdit" name="dirLineEdit"/>
      </item>
+   </layout>
+  </item>
+   <item>
+    <layout class="QHBoxLayout" name="typeLayout">
+     <item>
+      <widget class="QLabel" name="typeLabel">
+       <property name="text">
+        <string>工程类型：</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QComboBox" name="typeComboBox"/>
+     </item>
     </layout>
    </item>
    <item>
