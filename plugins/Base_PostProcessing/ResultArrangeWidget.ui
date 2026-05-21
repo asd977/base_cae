@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>186</width>
+    <width>148</width>
     <height>220</height>
    </rect>
   </property>
@@ -26,12 +26,18 @@
      <item>
       <widget class="QLineEdit" name="dirLineEdit"/>
      </item>
-   </layout>
-  </item>
+    </layout>
+   </item>
    <item>
     <layout class="QHBoxLayout" name="typeLayout">
      <item>
       <widget class="QLabel" name="typeLabel">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
        <property name="text">
         <string>工程类型：</string>
        </property>

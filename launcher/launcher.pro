@@ -1,7 +1,9 @@
 TEMPLATE = app
 QT += widgets
 
-CONFIG += console c++11
+CONFIG += c++11
+CONFIG -= console
+CONFIG += windows
 
 CONFIG(debug, debug|release) {
     APP_OUTPUT_DIR = $$clean_path($$PWD/../build/debug)
