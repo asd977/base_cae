@@ -24,7 +24,6 @@ class OutputWidget : public QWidget
     void showEvent(QShowEvent* event);
 
   private slots:
-    void onFilterChanged(int index);
     void onClearClicked();
 
   private:

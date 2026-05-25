@@ -50,42 +50,6 @@
       <number>0</number>
      </property>
      <item>
-      <widget class="QLabel" name="levelLabel">
-       <property name="text">
-        <string>级别筛选</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QComboBox" name="levelFilterComboBox">
-       <item>
-        <property name="text">
-         <string>全部</string>
-        </property>
-       </item>
-       <item>
-        <property name="text">
-         <string>信息</string>
-        </property>
-       </item>
-       <item>
-        <property name="text">
-         <string>警告</string>
-        </property>
-       </item>
-       <item>
-        <property name="text">
-         <string>错误</string>
-        </property>
-       </item>
-       <item>
-        <property name="text">
-         <string>调试</string>
-        </property>
-       </item>
-      </widget>
-     </item>
-     <item>
       <spacer name="horizontalSpacer">
        <property name="orientation">
         <enum>Qt::Horizontal</enum>
