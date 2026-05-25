@@ -9,6 +9,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QVBoxLayout>
@@ -26,6 +27,11 @@ int currentMatype(QComboBox* box)
 
     const QVariant data = box->currentData();
     return data.isValid() ? data.toInt() : -1;
+}
+
+int currentMatype(QSpinBox* spin)
+{
+    return spin ? spin->value() : -1;
 }
 
 int currentDomainDim()
@@ -179,15 +185,13 @@ void MaterialTransitionPage::addRow(int oldMatype, int newMatype)
 
     m_table->setCellWidget(row, 1, oldBox);
 
-    auto* newBox = new QComboBox(m_table);
-    for (auto it = m_newOptions.constBegin(); it != m_newOptions.constEnd(); ++it)
-        newBox->addItem(it.value(), it.key());
-
-    const int newIndex = newBox->findData(newMatype);
-    if (newIndex >= 0)
-        newBox->setCurrentIndex(newIndex);
-
-    m_table->setCellWidget(row, 2, newBox);
+    auto* newSpin = new QSpinBox(m_table);
+    newSpin->setRange(1, 1000000);
+    if (newMatype > 0)
+        newSpin->setValue(newMatype);
+    else if (!m_newOptions.isEmpty())
+        newSpin->setValue(m_newOptions.constBegin().key());
+    m_table->setCellWidget(row, 2, newSpin);
 
     connect(oldBox, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this, oldBox](int)
@@ -209,15 +213,15 @@ void MaterialTransitionPage::addRow(int oldMatype, int newMatype)
                 }
             });
 
-    connect(newBox, qOverload<int>(&QComboBox::currentIndexChanged), this,
-            [this, newBox](int)
+    connect(newSpin, qOverload<int>(&QSpinBox::valueChanged), this,
+            [this, newSpin](int)
             {
                 if (!m_table)
                     return;
 
                 for (int r = 0; r < m_table->rowCount(); ++r)
                 {
-                    if (m_table->cellWidget(r, 2) == newBox)
+                    if (m_table->cellWidget(r, 2) == newSpin)
                     {
                         if (m_table->currentRow() != r)
                             m_table->setCurrentCell(r, 2);
@@ -244,10 +248,10 @@ void MaterialTransitionPage::refreshRowHighlight(int row)
     }
 
     auto* oldBox = qobject_cast<QComboBox*>(m_table->cellWidget(row, 1));
-    auto* newBox = qobject_cast<QComboBox*>(m_table->cellWidget(row, 2));
+    auto* newSpin = qobject_cast<QSpinBox*>(m_table->cellWidget(row, 2));
 
     const int oldMat = currentMatype(oldBox);
-    const int newMat = currentMatype(newBox);
+    const int newMat = currentMatype(newSpin);
 
     const DomainKey oldKey = matypeDomainKey(oldMat);
     const DomainKey newKey = matypeDomainKey(newMat);
@@ -337,10 +341,10 @@ void MaterialTransitionPage::syncMappingsToManager()
     for (int r = 0; r < m_table->rowCount(); ++r)
     {
         auto* oldBox = qobject_cast<QComboBox*>(m_table->cellWidget(r, 1));
-        auto* newBox = qobject_cast<QComboBox*>(m_table->cellWidget(r, 2));
+        auto* newSpin = qobject_cast<QSpinBox*>(m_table->cellWidget(r, 2));
 
         const int oldV = currentMatype(oldBox);
-        const int newV = currentMatype(newBox);
+        const int newV = currentMatype(newSpin);
 
         if (oldV > 0 && newV > 0)
             mappings.push_back({oldV, newV});
