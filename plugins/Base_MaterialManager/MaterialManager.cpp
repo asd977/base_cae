@@ -465,27 +465,18 @@ void syncAutoNumberProperties(MaterialModel* model, MaterialEntry* entry)
         return;
     }
 
-    QString value;
-    if (entry->transitionOnly && entry->transitionMatype > 0)
-    {
-        // “仅用于后续变换”时，编号应跟随用户可编辑的变换编号。
-        value = QString::number(entry->transitionMatype);
-    }
-    else
-    {
-        QList<int> matypes = entry->appliedMatypes.values();
-        std::sort(matypes.begin(), matypes.end());
+    QList<int> matypes = entry->appliedMatypes.values();
+    std::sort(matypes.begin(), matypes.end());
 
-        QStringList tokens;
-        for (int matype : matypes)
+    QStringList tokens;
+    for (int matype : matypes)
+    {
+        if (matype >= 0)
         {
-            if (matype >= 0)
-            {
-                tokens.append(QString::number(matype));
-            }
+            tokens.append(QString::number(matype));
         }
-        value = tokens.join(QLatin1Char(','));
     }
+    const QString value = tokens.join(QLatin1Char(','));
 
     for (const QString& column : model->columns)
     {
