@@ -727,11 +727,11 @@ void UiFrame::buildRibbonTabs()
                                          "各向同性本构");
         auto* actNanshui = makeAction(this, ":/resources/menu/minimal/mat-nanshui.svg", "非线性土体模型");
         auto* actKg = makeAction(this, ":/resources/menu/minimal/mat-kg.svg", "K-G模型");
-        auto* actBuiltinMaterial = makeAction(this, ":/resources/menu/minimal/mat-hjp.svg",
+        auto* actBuiltinMaterial = makeAction(this, ":/resources/menu/minimal/mat-builtin-material.svg",
                                               "材料示例");
-        auto* actBuiltinSeepage = makeAction(this, ":/resources/menu/minimal/mat-dynamic.svg",
+        auto* actBuiltinSeepage = makeAction(this, ":/resources/menu/minimal/mat-builtin-seepage.svg",
                                              "渗流示例");
-        auto* actMaterialTransition = makeAction(this, ":/resources/menu/minimal/mat-special.svg",
+        auto* actMaterialTransition = makeAction(this, ":/resources/menu/minimal/mat-transition.svg",
                                                  "材料变换");
 
         // 材料类型较多，统一改为 small action，减少 Ribbon 占位并避免文字截断。

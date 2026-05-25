@@ -186,5 +186,8 @@
         <file>resources/menu/minimal/mat-nanshui.svg</file>
         <file>resources/menu/minimal/mat-kg.svg</file>
         <file>resources/menu/minimal/mat-special.svg</file>
+        <file>resources/menu/minimal/mat-builtin-material.svg</file>
+        <file>resources/menu/minimal/mat-builtin-seepage.svg</file>
+        <file>resources/menu/minimal/mat-transition.svg</file>
     </qresource>
 </RCC>
