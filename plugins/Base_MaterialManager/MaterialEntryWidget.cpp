@@ -350,7 +350,7 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     m_transitionMatypeSpin = new QSpinBox(transitionRowWidget);
     m_transitionMatypeSpin->setRange(1, 1000000);
     m_transitionMatypeSpin->setValue(entry->transitionMatype > 0 ? entry->transitionMatype : 1);
-    m_transitionMatypeSpin->setEnabled(entry->transitionOnly);
+    m_transitionMatypeSpin->setEnabled(true);
     transitionLayout->addWidget(m_transitionOnlyCheck);
     transitionLayout->addWidget(new QLabel(QStringLiteral("编号"), transitionRowWidget));
     transitionLayout->addWidget(m_transitionMatypeSpin);
@@ -648,11 +648,10 @@ void MaterialEntryWidget::onTransitionModeChanged(int state)
     if (!entry || !m_transitionMatypeSpin)
         return;
     const bool enabled = (state == Qt::Checked);
-    m_transitionMatypeSpin->setEnabled(enabled);
     if (!enabled)
     {
         entry->transitionOnly = false;
-        entry->transitionMatype = -1;
+        entry->transitionMatype = m_transitionMatypeSpin->value();
         if (m_matypeCombo)
             m_matypeCombo->setEnabled(true);
         if (m_applyButton)
@@ -671,9 +670,7 @@ void MaterialEntryWidget::onTransitionModeChanged(int state)
         QMessageBox::warning(this, QStringLiteral("提示"), error);
         QSignalBlocker blocker(m_transitionOnlyCheck);
         m_transitionOnlyCheck->setChecked(false);
-        m_transitionMatypeSpin->setEnabled(false);
         entry->transitionOnly = false;
-        entry->transitionMatype = -1;
         return;
     }
     entry->transitionOnly = true;
@@ -694,18 +691,25 @@ void MaterialEntryWidget::onTransitionModeChanged(int state)
 void MaterialEntryWidget::onTransitionMatypeChanged(int value)
 {
     MaterialEntry* entry = lookupEntry();
-    if (!entry || !m_transitionOnlyCheck || !m_transitionOnlyCheck->isChecked())
+    if (!entry || !m_transitionOnlyCheck)
         return;
+    const int previousMatype = entry->transitionMatype;
+    entry->transitionMatype = value;
+    if (!m_transitionOnlyCheck->isChecked())
+    {
+        m_materialManager->notifyEntryUpdated(entry->id, false);
+        return;
+    }
     QString error;
     if (!m_materialManager->validateTransitionMatype(m_entryId, value, &error))
     {
         QMessageBox::warning(this, QStringLiteral("提示"), error);
+        entry->transitionMatype = previousMatype;
         QSignalBlocker blocker(m_transitionMatypeSpin);
-        m_transitionMatypeSpin->setValue(entry->transitionMatype > 0 ? entry->transitionMatype : 1);
+        m_transitionMatypeSpin->setValue(previousMatype > 0 ? previousMatype : 1);
         return;
     }
     entry->transitionOnly = true;
-    entry->transitionMatype = value;
     m_materialManager->notifyEntryUpdated(entry->id, false);
 }
 
