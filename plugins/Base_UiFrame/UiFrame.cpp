@@ -949,13 +949,13 @@ void UiFrame::buildRibbonTabs()
         cate->setObjectName("analysisObj");
 
         auto* panel = cate->addPannel("分析");
-        auto* actParam = makeAction(this, ":/resources/menu/minimal/analysis.svg", "&渗流分析");
+        auto* actParam = makeAction(this, ":/resources/menu/minimal/analysis-seepage.svg", "&渗流分析");
         auto* actStress =
-            makeAction(this, ":/resources/menu/minimal/analysis.svg", "&土石坝计算");
+            makeAction(this, ":/resources/menu/minimal/analysis-dam.svg", "&土石坝计算");
         auto* actCave =
-            makeAction(this, ":/resources/menu/minimal/analysis.svg", "&洞室开挖");
+            makeAction(this, ":/resources/menu/minimal/analysis-cave.svg", "&洞室开挖");
         auto* actSlope =
-            makeAction(this, ":/resources/menu/minimal/analysis.svg", "&边坡分析");
+            makeAction(this, ":/resources/menu/minimal/analysis-slope.svg", "&边坡分析");
 
         addActionToPanel(panel, actParam, 3);
         addActionToPanel(panel, actStress, 3);
@@ -984,9 +984,9 @@ void UiFrame::buildRibbonTabs()
            makeAction(this, ":/resources/menu/minimal/post-isosurface-seg.svg", "&等值面分割");
        auto* actXY = makeAction(this, ":/resources/menu/minimal/post-curve.svg", "&曲线");
        auto* actArrange =
-           makeAction(this, ":/resources/menu/minimal/post-curve.svg", "&成果整理");
+           makeAction(this, ":/resources/menu/minimal/post-arrange.svg", "&成果整理");
        auto* actResultConfig =
-           makeAction(this, ":/resources/menu/minimal/post-curve.svg", "&结果配置");
+           makeAction(this, ":/resources/menu/minimal/post-config.svg", "&结果配置");
        // auto* actAnim = makeAction(this, ":/resources/menu/minimal/post-animation.svg", "&动画");
        // auto* actPick = makeAction(this, ":/resources/menu/minimal/post-probe.svg", "&拾取物理量");
        // auto* actDer = makeAction(this, ":/resources/menu/minimal/post-derived.svg", "&派生值");
