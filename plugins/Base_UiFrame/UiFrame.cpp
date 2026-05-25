@@ -434,7 +434,7 @@ void UiFrame::buildRibbonTabs()
                                       const QString& icon,
                                       const QString& text,
                                       int row,
-                                      const QString& eventId) {
+                                      const char* eventId) {
             auto* action = makeAction(this, icon, text);
             addActionToPanel(panel, action, row);
             bindEvent(this, action, eventId);
