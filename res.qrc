@@ -59,16 +59,12 @@
         <file>resources/rotate.png</file>
         <file>resources/scale.png</file>
         <file>resources/translation.png</file>
-		<file>resources/menu/boundary_solid.png</file>
-		<file>resources/menu/boundary_face.png</file>
-		<file>resources/menu/boundary_line.png</file>
-		<file>resources/menu/boundary_point.png</file>
-		<file>resources/icon/reset_default_setting.png</file>
-		<file>resources/icon/InnerAdd.png</file>
-		<file>resources/icon/InnerSub.png</file>
-		<file>resources/icon/confirm.png</file>
-		<file>resources/icon/geomSearch.png</file>
-		<file>resources/icon/geomImport.png</file>
+        <file>resources/icon/reset_default_setting.png</file>
+        <file>resources/icon/InnerAdd.png</file>
+        <file>resources/icon/InnerSub.png</file>
+        <file>resources/icon/confirm.png</file>
+        <file>resources/icon/geomSearch.png</file>
+        <file>resources/icon/geomImport.png</file>
         <file>resources/icon/geom-unused.svg</file>
         <file>resources/icon/geom-used.svg</file>
         <file>resources/icon/switch-off.png</file>
@@ -117,73 +113,8 @@
         <file>resources/icon/view_fit.svg</file>
         <file>resources/icon/view_scale_on.svg</file>
         <file>resources/icon/view_scale_off.svg</file>
-        <file>resources/menu/DerivedValue.png</file>
-        <file>resources/menu/Export.png</file>
-        <file>resources/menu/File.png</file>
-        <file>resources/menu/MaximumValue.png</file>
-        <file>resources/menu/MinimumValue.png</file>
-        <file>resources/menu/ParametricCurve.png</file>
-        <file>resources/menu/Exit.png</file>
-        <file>resources/menu/ExportDB.png</file>
-        <file>resources/menu/Function.png</file>
-        <file>resources/menu/NewProject.png</file>
-        <file>resources/menu/Save.png</file>
-        <file>resources/menu/OpenProject.png</file>
-        <file>resources/menu/Parameter.png</file>
-        <file>resources/menu/ExportGeometry.png</file>
-        <file>resources/menu/ImportGeometry.png</file>
-        <file>resources/menu/ArcCurve.png</file>
-        <file>resources/menu/Bell.png</file>
-        <file>resources/menu/Curve1.png</file>
-        <file>resources/menu/Curve2.png</file>
-        <file>resources/menu/Curve3.png</file>
-        <file>resources/menu/Curve4.png</file>
-        <file>resources/menu/Delete.png</file>
-        <file>resources/menu/Draw.png</file>
-        <file>resources/menu/Elipse.png</file>
-        <file>resources/menu/LineGraph.png</file>
-        <file>resources/menu/LineSegment.png</file>
-        <file>resources/menu/Measure.png</file>
-        <file>resources/menu/Point.png</file>
-        <file>resources/menu/Polygon.png</file>
-        <file>resources/menu/Rectangle.png</file>
-        <file>resources/menu/Round.png</file>
-        <file>resources/menu/Square.png</file>
-        <file>resources/menu/Square-Yellow.png</file>
-        <file>resources/menu/Transmission.png</file>
-        <file>resources/menu/showFace.png</file>
-        <file>resources/menu/showLine.png</file>
-        <file>resources/menu/showPoint.png</file>
-        <file>resources/menu/spiral.png</file>
-        <file>resources/menu/circleRing.png</file>
-        <file>resources/menu/cylinder.png</file>
-        <file>resources/menu/cone.png</file>
-        <file>resources/menu/sphere.png</file>
-        <file>resources/menu/cuboid.png</file>
-        <file>resources/menu/hyperbola.png</file>
-        <file>resources/menu/parabola.png</file>
-        <file>resources/menu/centroidMeasure.png</file>
-        <file>resources/menu/positionMeasure.png</file>
-        <file>resources/menu/distanceMeasure.png</file>
         <file>resources/icon.svg</file>
         <file>resources/style/app.qss</file>
-        <file>resources/menu/DataSampling.png</file>
-        <file>resources/menu/DatasetEvaluation.png</file>
-        <file>resources/menu/DNN.png</file>
-        <file>resources/menu/LatinHypercubeSampling.png</file>
-        <file>resources/menu/OrthogonalSampling.png</file>
-        <file>resources/menu/POD.png</file>
-		<file>resources/menu/importGrid.png</file>
-		<file>resources/menu/exportGrid.png</file>
-		<file>resources/menu/solidMesh.png</file>
-		<file>resources/menu/surfaceMesh.png</file>
-		<file>resources/menu/statisticsInfo.png</file>
-		<file>resources/menu/resetGrid.png</file>
-		<file>resources/menu/drawGrid.png</file>
-		<file>resources/menu/resizeGridSize.png</file>
-		<file>resources/menu/gridSize.png</file>
-		<file>resources/menu/showGrid.png</file>
-		
         <file>resources/menu/minimal/app-new.svg</file>
         <file>resources/menu/minimal/app-open.svg</file>
         <file>resources/menu/minimal/app-save.svg</file>
@@ -206,23 +137,6 @@
         <file>resources/menu/minimal/boolean.svg</file>
         <file>resources/menu/minimal/mesh.svg</file>
         <file>resources/menu/minimal/analysis.svg</file>
-        <file>resources/menu/minimal/mat-soil.svg</file>
-        <file>resources/menu/minimal/mat-creep.svg</file>
-        <file>resources/menu/minimal/mat-special.svg</file>
-        <file>resources/menu/minimal/mat-hjp.svg</file>
-        <file>resources/menu/minimal/mat-soil-eb.svg</file>
-        <file>resources/menu/minimal/mat-dynamic.svg</file>
-        <file>resources/menu/minimal/mat-soil-emu.svg</file>
-        <file>resources/menu/minimal/mat-soil-emu-crush.svg</file>
-        <file>resources/menu/minimal/mat-seepage.svg</file>
-        <file>resources/menu/minimal/mat-bar.svg</file>
-        <file>resources/menu/minimal/mat-dagangshan.svg</file>
-        <file>resources/menu/minimal/mat-nanshui.svg</file>
-        <file>resources/menu/minimal/mat-kg.svg</file>
-        <file>resources/menu/minimal/mat-shenzhujiang.svg</file>
-        <file>resources/menu/minimal/mat-liguoying.svg</file>
-        <file>resources/menu/minimal/mat-nine-param.svg</file>
-        <file>resources/menu/minimal/mat-xiyuan.svg</file>
         <file>resources/menu/minimal/constraint.svg</file>
         <file>resources/menu/minimal/load.svg</file>
         <file>resources/menu/minimal/boolean-fuse.svg</file>

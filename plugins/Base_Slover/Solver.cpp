@@ -1,4 +1,4 @@
-﻿#include "Solver.h"
+#include "Solver.h"
 
 #include <ContextMenuHub.h>
 #include <EventManager.h>
@@ -1065,6 +1065,19 @@ void Solver::onSlopeStabilityAction()
 
 void Solver::onComputeSeepage(ProjectNode* analysisNode)
 {
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QFile iautoFile(QDir(projectDir).absoluteFilePath("MESG_IAUTO.DAT"));
+    if (!iautoFile.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QMessageBox::warning(nullptr, "计算失败", "渗流分析写入 MESG_IAUTO.DAT 失败。");
+        return;
+    }
+    {
+        QTextStream os(&iautoFile);
+        os << "4\n";
+    }
+
     if (!beginCommonCompute(analysisNode, "渗流分析"))
         return;
 
@@ -1104,6 +1117,19 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
 
 void Solver::onComputeStressStrain(ProjectNode* analysisNode)
 {
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QFile iautoFile(QDir(projectDir).absoluteFilePath("MESG_IAUTO.DAT"));
+    if (!iautoFile.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QMessageBox::warning(nullptr, "计算失败", "土石坝计算写入 MESG_IAUTO.DAT 失败。");
+        return;
+    }
+    {
+        QTextStream os(&iautoFile);
+        os << "3\n";
+    }
+
     if (!beginCommonCompute(analysisNode, "土石坝计算"))
         return;
 
@@ -1496,6 +1522,8 @@ bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analys
         return false;
     }
 
+    QProcess::execute("taskkill", {"-f", "-im", "PCCAE_CPU.exe"});
+
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     QDir wd(QDir(projectDir).absolutePath());
@@ -1608,7 +1636,20 @@ bool Solver::launchSolverExecutable(const QString& analysisType)
             return;
         const QString output = QString::fromLocal8Bit(m_solverProcess->readAllStandardOutput()).trimmed();
         if (!output.isEmpty())
+        {
             qInfo().noquote() << ("__RAW__" + output);
+            if (output.contains("结束进程"))
+            {
+                QProcess::execute("taskkill", {"-f", "-im", "PCCAE_CPU.exe"});
+                if (m_solverProcess)
+                {
+                    m_solverProcess->disconnect(this);
+                    m_solverProcess->kill();
+                    m_solverProcess->deleteLater();
+                    m_solverProcess = nullptr;
+                }
+            }
+        }
     });
 
     connect(m_solverProcess, &QProcess::errorOccurred, this,
