@@ -465,18 +465,27 @@ void syncAutoNumberProperties(MaterialModel* model, MaterialEntry* entry)
         return;
     }
 
-    QList<int> matypes = entry->appliedMatypes.values();
-    std::sort(matypes.begin(), matypes.end());
-
-    QStringList tokens;
-    for (int matype : matypes)
+    QString value;
+    if (entry->transitionOnly && entry->transitionMatype > 0)
     {
-        if (matype >= 0)
-        {
-            tokens.append(QString::number(matype));
-        }
+        // “仅用于后续变换”时，编号应跟随用户可编辑的变换编号。
+        value = QString::number(entry->transitionMatype);
     }
-    const QString value = tokens.join(QLatin1Char(','));
+    else
+    {
+        QList<int> matypes = entry->appliedMatypes.values();
+        std::sort(matypes.begin(), matypes.end());
+
+        QStringList tokens;
+        for (int matype : matypes)
+        {
+            if (matype >= 0)
+            {
+                tokens.append(QString::number(matype));
+            }
+        }
+        value = tokens.join(QLatin1Char(','));
+    }
 
     for (const QString& column : model->columns)
     {
