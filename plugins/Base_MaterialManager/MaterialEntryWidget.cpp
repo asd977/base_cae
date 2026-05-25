@@ -661,6 +661,7 @@ void MaterialEntryWidget::onTransitionModeChanged(int state)
             m_appliedMatypesList->setEnabled(true);
         if (m_removeButton)
             m_removeButton->setEnabled(true);
+        m_materialManager->notifyEntryUpdated(entry->id, false);
         return;
     }
     QString error;
@@ -705,6 +706,7 @@ void MaterialEntryWidget::onTransitionMatypeChanged(int value)
     }
     entry->transitionOnly = true;
     entry->transitionMatype = value;
+    m_materialManager->notifyEntryUpdated(entry->id, false);
 }
 
 void MaterialEntryWidget::onMatypeHovered(int index)
