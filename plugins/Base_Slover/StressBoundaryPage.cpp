@@ -78,9 +78,8 @@ StressBoundaryPage::EdgeRow makeRow(vtkUnstructuredGrid* grid, vtkDataArray* ele
     std::sort(kes.begin(), kes.end());
     row.ke1 = kes.isEmpty() ? 0 : kes[0];
     row.ke2 = (kes.size() >= 2) ? kes[1] : 0;
-    // 2D 水头边界 DAT 期望沿边方向输出为 (终点, 起点)，不做节点号升序重排。
-    row.jd1 = int(nodeIdArr->GetTuple1(pidB));
-    row.jd2 = int(nodeIdArr->GetTuple1(pidA));
+    row.jd1 = int(nodeIdArr->GetTuple1(pidA));
+    row.jd2 = int(nodeIdArr->GetTuple1(pidB));
     return row;
 }
 
@@ -318,8 +317,9 @@ bool StressBoundaryPage::exportDatFile()
                       .arg(i + 1, 9)
                       .arg(row.ke1, 9)
                       .arg(row.ke2, 9)
-                      .arg(row.jd1, 9)
+                      // 2D 线边界输出采用 (终点, 起点) 顺序
                       .arg(row.jd2, 9)
+                      .arg(row.jd1, 9)
                       .arg(10, 9);
         }
     }
