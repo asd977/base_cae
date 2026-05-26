@@ -3,6 +3,7 @@
 #define GRAVITYDAMDIALOG_H
 
 #include <QComboBox>
+#include <QLabel>
 #include <QLineEdit>
 #include <QPointF>
 
@@ -27,27 +28,32 @@ class GravityDamDialog : public BasePage
   private slots:
     void onPreview2DClicked();
     void onGenerate3DClicked();
-    void onDamTypeChanged(int index);
+    void onTemplateChanged(int index);
 
   private:
-    enum DamType
+    enum EngineeringTemplate
     {
-        TrapezoidDam = 0,
-        UpstreamVerticalDam = 1,
-        DownstreamStepDam = 2
+        GravityDamTemplate = 0,
+        EarthRockfillDamTemplate = 1,
+        SlopeTemplate = 2,
+        CavernTemplate = 3,
+        DamFoundationLayerTemplate = 4,
+        CurtainGroutingTemplate = 5,
+        SupportStructureTemplate = 6
     };
     void initUI();
     bool readParameters(double& damHeight, double& crestWidth, double& upSlope, double& downSlope,
                         double& damLength, int& layerCount, double& x, double& y, double& z,
-                        DamType& damType) const;
+                        EngineeringTemplate& tpl) const;
     void applyPreviewText(double damHeight, double crestWidth, double upSlope, double downSlope,
-                          int layerCount, DamType damType) const;
+                          int layerCount, EngineeringTemplate tpl) const;
     void buildDamBody(double damHeight, double crestWidth, double upSlope, double downSlope,
-                      double damLength, int layerCount, double x, double y, double z, DamType damType);
+                      double damLength, int layerCount, double x, double y, double z,
+                      EngineeringTemplate tpl);
     QVector<QPointF> buildSectionPoints(double damHeight, double crestWidth, double upSlope,
-                                        double downSlope, DamType damType) const;
+                                        double downSlope, EngineeringTemplate tpl) const;
     void updateIllustration(double damHeight, double crestWidth, double upSlope, double downSlope,
-                            int layerCount, DamType damType);
+                            int layerCount, EngineeringTemplate tpl);
 
   private:
     QComboBox* damTypeCombo = nullptr;

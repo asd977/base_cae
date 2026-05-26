@@ -91,9 +91,13 @@ void GravityDamDialog::initUI()
     auto* coordValidator = new QDoubleValidator(-1e9, 1e9, 3, this);
 
     damTypeCombo = new QComboBox(this);
-    damTypeCombo->addItem("标准重力坝（双坡）");
-    damTypeCombo->addItem("上游垂直重力坝");
-    damTypeCombo->addItem("下游台阶重力坝");
+    damTypeCombo->addItem("重力坝模板");
+    damTypeCombo->addItem("土石坝模板");
+    damTypeCombo->addItem("边坡模板");
+    damTypeCombo->addItem("洞室模板");
+    damTypeCombo->addItem("坝基分层模板");
+    damTypeCombo->addItem("帷幕防渗模板");
+    damTypeCombo->addItem("支护结构模板");
     heightEdit = new QLineEdit("80", this);
     crestWidthEdit = new QLineEdit("10", this);
     upstreamSlopeEdit = new QLineEdit("0.2", this);
@@ -152,14 +156,14 @@ void GravityDamDialog::initUI()
     connect(previewBtn, &QPushButton::clicked, this, &GravityDamDialog::onPreview2DClicked);
     connect(generateBtn, &QPushButton::clicked, this, &GravityDamDialog::onGenerate3DClicked);
     connect(damTypeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &GravityDamDialog::onDamTypeChanged);
+            &GravityDamDialog::onTemplateChanged);
 
     onPreview2DClicked();
 }
 
 bool GravityDamDialog::readParameters(double& damHeight, double& crestWidth, double& upSlope,
                                       double& downSlope, double& damLength, int& layerCount,
-                                      double& x, double& y, double& z, DamType& damType) const
+                                      double& x, double& y, double& z, EngineeringTemplate& damType) const
 {
     bool ok = false;
     damHeight = heightEdit->text().toDouble(&ok);
@@ -189,12 +193,12 @@ bool GravityDamDialog::readParameters(double& damHeight, double& crestWidth, dou
     z = zEdit->text().toDouble(&ok);
     if (!ok)
         return false;
-    damType = static_cast<DamType>(damTypeCombo->currentIndex());
+    damType = static_cast<EngineeringTemplate>(damTypeCombo->currentIndex());
     return true;
 }
 
 void GravityDamDialog::applyPreviewText(double damHeight, double crestWidth, double upSlope,
-                                        double downSlope, int layerCount, DamType damType) const
+                                        double downSlope, int layerCount, EngineeringTemplate damType) const
 {
     const auto points = buildSectionPoints(damHeight, crestWidth, upSlope, downSlope, damType);
     if (points.size() < 4)
@@ -211,29 +215,67 @@ void GravityDamDialog::applyPreviewText(double damHeight, double crestWidth, dou
 
 QVector<QPointF> GravityDamDialog::buildSectionPoints(double damHeight, double crestWidth,
                                                       double upSlope, double downSlope,
-                                                      DamType damType) const
+                                                      EngineeringTemplate tpl) const
 {
     QVector<QPointF> p;
-    if (damType == UpstreamVerticalDam)
+    if (tpl == EarthRockfillDamTemplate)
     {
-        const double x0 = 0.0;
-        const double x1 = crestWidth;
-        const double x2 = crestWidth + damHeight * downSlope;
-        p << QPointF(x0, 0.0) << QPointF(x0, damHeight) << QPointF(x1, damHeight) << QPointF(x2, 0.0);
+        // 土石坝：双坡更缓
+        const double mu = qMax(upSlope, 1.2);
+        const double md = qMax(downSlope, 1.5);
+        const double x1 = damHeight * mu;
+        const double x2 = x1 + crestWidth;
+        const double x3 = x2 + damHeight * md;
+        p << QPointF(0.0, 0.0) << QPointF(x1, damHeight) << QPointF(x2, damHeight) << QPointF(x3, 0.0);
     }
-    else if (damType == DownstreamStepDam)
+    else if (tpl == SlopeTemplate)
     {
-        const double xTopLeft = damHeight * upSlope;
-        const double xTopRight = xTopLeft + crestWidth;
-        const double midZ = damHeight * 0.45;
-        const double stepW = qMax(crestWidth * 0.35, 1.0);
-        const double xMidRight = xTopRight + (damHeight - midZ) * downSlope + stepW;
-        const double xBaseRight = xTopRight + damHeight * downSlope;
-        p << QPointF(0.0, 0.0) << QPointF(xTopLeft, damHeight) << QPointF(xTopRight, damHeight)
-          << QPointF(xMidRight, midZ) << QPointF(xBaseRight, 0.0);
+        // 边坡：单坡台阶
+        const double benchZ = damHeight * 0.55;
+        const double benchW = qMax(crestWidth * 0.8, 3.0);
+        const double xBenchLeft = (damHeight - benchZ) * qMax(downSlope, 0.8);
+        const double xBaseRight = xBenchLeft + benchW + benchZ * qMax(downSlope, 0.8);
+        p << QPointF(0.0, 0.0) << QPointF(xBenchLeft, benchZ) << QPointF(xBenchLeft + benchW, benchZ)
+          << QPointF(xBaseRight, 0.0);
+    }
+    else if (tpl == CavernTemplate)
+    {
+        // 洞室：矩形+拱顶
+        const double hWall = damHeight * 0.65;
+        const double span = qMax(crestWidth * 2.0, 8.0);
+        p << QPointF(0.0, 0.0) << QPointF(0.0, hWall) << QPointF(span * 0.25, damHeight)
+          << QPointF(span * 0.75, damHeight) << QPointF(span, hWall) << QPointF(span, 0.0);
+    }
+    else if (tpl == DamFoundationLayerTemplate)
+    {
+        // 坝基分层：上窄下宽梯形基座
+        const double baseH = damHeight * 0.7;
+        const double toeL = baseH * qMax(upSlope, 0.3);
+        const double toeR = baseH * qMax(downSlope, 0.6);
+        p << QPointF(0.0, 0.0) << QPointF(toeL, baseH) << QPointF(toeL + crestWidth, baseH)
+          << QPointF(toeL + crestWidth + toeR, 0.0);
+    }
+    else if (tpl == CurtainGroutingTemplate)
+    {
+        // 帷幕防渗：顶部平台+垂向帷幕墙
+        const double span = qMax(crestWidth * 2.0, 10.0);
+        const double cutX = span * 0.45;
+        p << QPointF(0.0, 0.0) << QPointF(0.0, damHeight * 0.35) << QPointF(span, damHeight * 0.35)
+          << QPointF(span, 0.0);
+        p << QPointF(cutX, damHeight * 0.35) << QPointF(cutX + span * 0.06, damHeight * 0.35)
+          << QPointF(cutX + span * 0.06, 0.0) << QPointF(cutX, 0.0);
+    }
+    else if (tpl == SupportStructureTemplate)
+    {
+        // 支护结构：锚喷+挡墙的组合轮廓
+        const double wallH = damHeight * 0.6;
+        const double wallW = qMax(crestWidth * 0.7, 2.0);
+        p << QPointF(0.0, 0.0) << QPointF(0.0, wallH) << QPointF(wallW, wallH)
+          << QPointF(wallW + wallH * 0.8, 0.0);
     }
     else
     {
+        // 重力坝模板（默认）
         const double x1 = damHeight * upSlope;
         const double x2 = x1 + crestWidth;
         const double x3 = x2 + damHeight * downSlope;
@@ -243,7 +285,7 @@ QVector<QPointF> GravityDamDialog::buildSectionPoints(double damHeight, double c
 }
 
 void GravityDamDialog::updateIllustration(double damHeight, double crestWidth, double upSlope,
-                                          double downSlope, int layerCount, DamType damType)
+                                          double downSlope, int layerCount, EngineeringTemplate damType)
 {
     const auto points = buildSectionPoints(damHeight, crestWidth, upSlope, downSlope, damType);
     if (points.size() < 4)
@@ -298,7 +340,7 @@ void GravityDamDialog::onPreview2DClicked()
 {
     double H = 0, Bt = 0, mu = 0, md = 0, L = 0, x = 0, y = 0, z = 0;
     int N = 0;
-    DamType type = TrapezoidDam;
+    EngineeringTemplate type = GravityDamTemplate;
     if (!readParameters(H, Bt, mu, md, L, N, x, y, z, type))
     {
         QMessageBox::warning(this, "参数错误", "请检查参数：H、Bt、L、N必须>0；坡比不能为负。");
@@ -312,7 +354,7 @@ void GravityDamDialog::onGenerate3DClicked()
 {
     double H = 0, Bt = 0, mu = 0, md = 0, L = 0, x = 0, y = 0, z = 0;
     int N = 0;
-    DamType type = TrapezoidDam;
+    EngineeringTemplate type = GravityDamTemplate;
     if (!readParameters(H, Bt, mu, md, L, N, x, y, z, type))
     {
         QMessageBox::warning(this, "参数错误", "请检查参数：H、Bt、L、N必须>0；坡比不能为负。");
@@ -324,7 +366,7 @@ void GravityDamDialog::onGenerate3DClicked()
     buildDamBody(H, Bt, mu, md, L, N, x, y, z, type);
 }
 
-void GravityDamDialog::onDamTypeChanged(int index)
+void GravityDamDialog::onTemplateChanged(int index)
 {
     Q_UNUSED(index);
     onPreview2DClicked();
@@ -332,7 +374,7 @@ void GravityDamDialog::onDamTypeChanged(int index)
 
 void GravityDamDialog::buildDamBody(double damHeight, double crestWidth, double upSlope,
                                     double downSlope, double damLength, int layerCount, double x,
-                                    double y, double z, DamType damType)
+                                    double y, double z, EngineeringTemplate damType)
 {
     GeometryCleanup::removeExistingGeometry(m_uuid);
 
