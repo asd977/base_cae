@@ -2,7 +2,6 @@
 #ifndef GRAVITYDAMDIALOG_H
 #define GRAVITYDAMDIALOG_H
 
-#include <QComboBox>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPointF>
@@ -28,7 +27,6 @@ class GravityDamDialog : public BasePage
   private slots:
     void onPreview2DClicked();
     void onGenerate3DClicked();
-    void onTemplateChanged(int index);
 
   private:
     enum EngineeringTemplate
@@ -56,7 +54,6 @@ class GravityDamDialog : public BasePage
                             int layerCount, EngineeringTemplate tpl);
 
   private:
-    QComboBox* damTypeCombo = nullptr;
     QLineEdit* heightEdit = nullptr;
     QLineEdit* crestWidthEdit = nullptr;
     QLineEdit* upstreamSlopeEdit = nullptr;

@@ -294,12 +294,6 @@ void GravityDamDialog::onGenerate3DClicked()
     buildDamBody(H, Bt, mu, md, L, N, x, y, z, type);
 }
 
-void GravityDamDialog::onTemplateChanged(int index)
-{
-    Q_UNUSED(index);
-    onPreview2DClicked();
-}
-
 void GravityDamDialog::buildDamBody(double damHeight, double crestWidth, double upSlope,
                                     double downSlope, double damLength, int layerCount, double x,
                                     double y, double z, EngineeringTemplate damType)
