@@ -32,38 +32,56 @@ void EarthRockfillDamDialog::onPreviewClicked(){updateDiagram();}
 
 void EarthRockfillDamDialog::buildLayeredDam(double H,double Bt,double mu,double md,double L,int layers)
 {
-    Q_UNUSED(layers);
     const double x1 = H * mu, x2 = x1 + Bt, x3 = x2 + H * md;
     const double core = coreWidthEdit->text().toDouble();
     const double filterW = core * 0.6;
     const double c = (x1 + x2) * 0.5;
+    const double layerH = H / layers;
+    TopoDS_Compound comp;
+    BRep_Builder b;
+    b.MakeCompound(comp);
 
-    auto makeZone=[&](double xl,double xr){
+    auto addBand = [&](double left0, double left1, double right1, double right0, double z0, double z1)
+    {
+        if (right0 <= left0 || right1 <= left1)
+            return;
         BRepBuilderAPI_MakePolygon pg;
-        pg.Add(gp_Pnt(xl,0,0));
-        pg.Add(gp_Pnt(xl + (x1-xl)*(H/H),0,H));
-        pg.Add(gp_Pnt(xr - (x3-xr)*(H/H),0,H));
-        pg.Add(gp_Pnt(xr,0,0));
+        pg.Add(gp_Pnt(left0, 0, z0));
+        pg.Add(gp_Pnt(left1, 0, z1));
+        pg.Add(gp_Pnt(right1, 0, z1));
+        pg.Add(gp_Pnt(right0, 0, z0));
         pg.Close();
-        return BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(pg.Wire()),gp_Vec(0,L,0)).Shape();
+        b.Add(comp, BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(pg.Wire()), gp_Vec(0, L, 0)).Shape());
     };
 
-    // 连续主坝体
-    BRepBuilderAPI_MakePolygon damPoly;
-    damPoly.Add(gp_Pnt(0,0,0)); damPoly.Add(gp_Pnt(x1,0,H)); damPoly.Add(gp_Pnt(x2,0,H)); damPoly.Add(gp_Pnt(x3,0,0)); damPoly.Close();
-    TopoDS_Shape damBody = BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(damPoly.Wire()),gp_Vec(0,L,0)).Shape();
+    for (int i = 0; i < layers; ++i)
+    {
+        const double z0 = i * layerH;
+        const double z1 = (i + 1) * layerH;
 
-    // 心墙与反滤层做“嵌入分区条带”
-    BRepBuilderAPI_MakePolygon corePoly;
-    corePoly.Add(gp_Pnt(c-core*0.5,0,0)); corePoly.Add(gp_Pnt(c-core*0.5,0,H)); corePoly.Add(gp_Pnt(c+core*0.5,0,H)); corePoly.Add(gp_Pnt(c+core*0.5,0,0)); corePoly.Close();
-    TopoDS_Shape coreBody = BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(corePoly.Wire()),gp_Vec(0,L,0)).Shape();
+        const double leftOuter0 = (H - z0) * mu;
+        const double leftOuter1 = (H - z1) * mu;
+        const double rightOuter0 = x2 + (H - z0) * md;
+        const double rightOuter1 = x2 + (H - z1) * md;
 
-    BRepBuilderAPI_MakePolygon f1; f1.Add(gp_Pnt(c-core*0.5-filterW,0,0)); f1.Add(gp_Pnt(c-core*0.5-filterW,0,H)); f1.Add(gp_Pnt(c-core*0.5,0,H)); f1.Add(gp_Pnt(c-core*0.5,0,0)); f1.Close();
-    BRepBuilderAPI_MakePolygon f2; f2.Add(gp_Pnt(c+core*0.5,0,0)); f2.Add(gp_Pnt(c+core*0.5,0,H)); f2.Add(gp_Pnt(c+core*0.5+filterW,0,H)); f2.Add(gp_Pnt(c+core*0.5+filterW,0,0)); f2.Close();
-    TopoDS_Shape f1Body = BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(f1.Wire()),gp_Vec(0,L,0)).Shape();
-    TopoDS_Shape f2Body = BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(f2.Wire()),gp_Vec(0,L,0)).Shape();
+        const double coreL = c - core * 0.5;
+        const double coreR = c + core * 0.5;
+        const double f1L = coreL - filterW;
+        const double f1R = coreL;
+        const double f2L = coreR;
+        const double f2R = coreR + filterW;
 
-    TopoDS_Compound comp; BRep_Builder b; b.MakeCompound(comp); b.Add(comp, damBody); b.Add(comp, coreBody); b.Add(comp, f1Body); b.Add(comp, f2Body);
+        // 左堆石区（外壳）
+        addBand(leftOuter0, leftOuter1, f1L, f1L, z0, z1);
+        // 左反滤层
+        addBand(f1L, f1L, f1R, f1R, z0, z1);
+        // 心墙
+        addBand(coreL, coreL, coreR, coreR, z0, z1);
+        // 右反滤层
+        addBand(f2L, f2L, f2R, f2R, z0, z1);
+        // 右堆石区（外壳）
+        addBand(f2R, f2R, rightOuter1, rightOuter0, z0, z1);
+    }
 
     auto* obj = new GeomShapeObject(m_uuid, new TopoDS_Shape(comp), getDisplayName());
     GeomManager::GeomManagerInstance::getInstance()->appendGeomShapeObject(obj);

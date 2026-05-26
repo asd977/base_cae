@@ -121,26 +121,35 @@ void SlopeTemplateDialog::onPreviewClicked() { updateDiagram(); }
 
 void SlopeTemplateDialog::buildLayeredSlope(double H, double bw, double slope, double L, int bc)
 {
-    QVector<QPointF> profile;
-    profile << QPointF(0, 0);
+    // 严格按“顶部折线 + 底部闭合边”构造闭合轮廓，避免自交与空白面
+    QVector<QPointF> topPolyline;
     double x = 0.0, z = H;
-    profile << QPointF(x, z);
+    topPolyline << QPointF(x, z);
     const double dz = H / bc;
     const double dx = dz * slope;
     for (int i = 0; i < bc; ++i)
     {
-        x += dx; z -= dz;
-        profile << QPointF(x, z);
+        x += dx;
+        z -= dz;
+        topPolyline << QPointF(x, z);
         if (i != bc - 1)
         {
             x += bw;
-            profile << QPointF(x, z);
+            topPolyline << QPointF(x, z);
         }
     }
-    profile << QPointF(x + bw, 0);
+
+    const double toeX = x + bw;
+
+    QPolygonF profile;
+    profile << QPointF(0.0, 0.0);          // 坡脚左
+    for (const auto& p : topPolyline)      // 顶部折线（左->右）
+        profile << p;
+    profile << QPointF(toeX, 0.0);         // 坡脚右
 
     BRepBuilderAPI_MakePolygon pg;
-    for (const auto& pt : profile) pg.Add(gp_Pnt(pt.x(), 0, pt.y()));
+    for (const auto& pt : profile)
+        pg.Add(gp_Pnt(pt.x(), 0, pt.y()));
     pg.Close();
 
     TopoDS_Shape slopeSolid = BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(pg.Wire()), gp_Vec(0, L, 0)).Shape();
