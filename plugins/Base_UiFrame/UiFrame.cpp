@@ -429,56 +429,71 @@ void UiFrame::buildRibbonTabs()
         auto* cate = m_ribbon->addCategoryPage("几何");
         cate->setObjectName("geomObj");
 
-        // ---------------------------------
-        // 1) 导入导出（保留）
-        // ---------------------------------
+        // 统一入口：创建 action + 放到 panel + 绑定事件
+        auto addRibbonAction = [this](SARibbonPannel* panel,
+                                      const QString& icon,
+                                      const QString& text,
+                                      int row,
+                                      const char* eventId) {
+            auto* action = makeAction(this, icon, text);
+            addActionToPanel(panel, action, row);
+            bindEvent(this, action, eventId);
+            return action;
+        };
+
+        // 1) 导入导出
         {
             auto* panel = cate->addPannel("导入导出");
-            auto* actImport = makeAction(this, ":/resources/menu/minimal/import.svg", "&导入");
-            auto* actExport = makeAction(this, ":/resources/menu/minimal/export.svg", "&导出");
-            addActionToPanel(panel, actImport, 2);
-            addActionToPanel(panel, actExport, 2);
-            bindEvent(this, actImport, PublicConstants::kActionPreprocessImportGeometry);
-            bindEvent(this, actExport, PublicConstants::kActionPreprocessExportGeometry);
+            addRibbonAction(panel,
+                            ":/resources/menu/minimal/import.svg",
+                            "&导入",
+                            2,
+                            PublicConstants::kActionPreprocessImportGeometry);
+            addRibbonAction(panel,
+                            ":/resources/menu/minimal/export.svg",
+                            "&导出",
+                            2,
+                            PublicConstants::kActionPreprocessExportGeometry);
         }
 
-        // ---------------------------------
-        // 2) 创建（Create）：基本体 + 2D轮廓(Profile)
-        // ---------------------------------
+        // 2) 创建（基础体 + 2D 轮廓）
         {
             auto* panel = cate->addPannel("创建");
 
-            // ---- 2.1 基本体（你已有的这些保留）----
-            auto* actBox = makeAction(this, ":/resources/menu/minimal/cuboid.svg", "&长方体");
-            auto* actSphere = makeAction(this, ":/resources/menu/minimal/sphere.svg", "&球体");
-            auto* actCone = makeAction(this, ":/resources/menu/minimal/cone.svg", "&圆锥体");
-            auto* actTorus = makeAction(this, ":/resources/menu/minimal/torus.svg", "&圆环");
-            auto* actCylinder =
-                makeAction(this, ":/resources/menu/minimal/cylinder.svg", "&圆柱体");
+            // 基础体：保持在同一视觉层级
+            addRibbonAction(panel,
+                            ":/resources/menu/minimal/cuboid.svg",
+                            "&长方体",
+                            1,
+                            PublicConstants::kActionPreprocessBox);
+            addRibbonAction(panel,
+                            ":/resources/menu/minimal/sphere.svg",
+                            "&球体",
+                            1,
+                            PublicConstants::kActionPreprocessSphere);
+            addRibbonAction(panel,
+                            ":/resources/menu/minimal/cone.svg",
+                            "&圆锥体",
+                            1,
+                            PublicConstants::kActionPreprocessCone);
+            addRibbonAction(panel,
+                            ":/resources/menu/minimal/torus.svg",
+                            "&圆环",
+                            1,
+                            PublicConstants::kActionPreprocessTorus);
+            addRibbonAction(panel,
+                            ":/resources/menu/minimal/cylinder.svg",
+                            "&圆柱体",
+                            1,
+                            PublicConstants::kActionPreprocessCylinder);
 
-            addActionToPanel(panel, actBox, 1);
-            addActionToPanel(panel, actSphere, 1);
-            addActionToPanel(panel, actCone, 1);
-            addActionToPanel(panel, actTorus, 1);
-            addActionToPanel(panel, actCylinder, 1);
-
-            bindEvent(this, actBox, PublicConstants::kActionPreprocessBox);
-            bindEvent(this, actSphere, PublicConstants::kActionPreprocessSphere);
-            bindEvent(this, actCone, PublicConstants::kActionPreprocessCone);
-            bindEvent(this, actTorus, PublicConstants::kActionPreprocessTorus);
-            bindEvent(this, actCylinder, PublicConstants::kActionPreprocessCylinder);
-
-            // ---- 2.2 2D轮廓(Profile)：替代2D草图（参数化节点）----
-            auto* actProfileMain =
-                makeAction(this, ":/resources/menu/minimal/profile.svg", "&2D轮廓");
+            // 2D 轮廓：作为单独下拉入口，减少按钮拥挤
+            auto* actProfileMain = makeAction(this, ":/resources/menu/minimal/profile.svg", "&2D轮廓");
             auto* profileMenu = new SARibbonMenu(this);
-
-            auto* actProfileRect =
-                makeAction(this, ":/resources/menu/minimal/rectangle.svg", "&矩形");
+            auto* actProfileRect = makeAction(this, ":/resources/menu/minimal/rectangle.svg", "&矩形");
             auto* actProfileCircle = makeAction(this, ":/resources/menu/minimal/circle.svg", "&圆");
             auto* actProfileRing = makeAction(this, ":/resources/menu/minimal/ring.svg", "&环");
-            auto* actProfilePolygon =
-                makeAction(this, ":/resources/menu/minimal/polygon.svg", "&多边形");
+            auto* actProfilePolygon = makeAction(this, ":/resources/menu/minimal/polygon.svg", "&多边形");
 
             profileMenu->addAction(actProfileRect);
             profileMenu->addAction(actProfileCircle);
@@ -488,9 +503,6 @@ void UiFrame::buildRibbonTabs()
             actProfileMain->setMenu(profileMenu);
             addActionToPanel(panel, actProfileMain, 2);
 
-            // Profile 节点创建：节点属性里选择支撑面/偏移/尺寸，不做“工作平面”菜单
-            // bindEvent(this, actProfileMain,
-            // PublicConstants::kActionGeomCreateProfile); // 可选：总入口
             bindEvent(this, actProfileRect, PublicConstants::kActionGeomCreatePlanarRect);
             bindEvent(this, actProfileCircle, PublicConstants::kActionGeomCreatePlanarCircle);
             bindEvent(this, actProfileRing, PublicConstants::kActionGeomCreateEllipse);
