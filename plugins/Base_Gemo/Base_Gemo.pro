@@ -14,6 +14,10 @@ HEADERS += \
     BaseGeometryDialog\EllipseDialog.h\
     BaseGeometryDialog\PolygonDialog.h\
     BaseGeometryDialog\RectangleDialog.h\
+    BaseGeometryDialog\GravityDamDialog.h\
+    BaseGeometryDialog\EarthRockfillDamDialog.h\
+    BaseGeometryDialog\SlopeTemplateDialog.h\
+    BaseGeometryDialog\CavernTemplateDialog.h\
     OccBooleanFuseWidget.h \
     OccBooleanCutWidget.h \
     OccBooleanCommonWidget.h \
@@ -34,6 +38,10 @@ SOURCES += \
     BaseGeometryDialog\EllipseDialog.cpp\
     BaseGeometryDialog\PolygonDialog.cpp\
     BaseGeometryDialog\RectangleDialog.cpp\
+    BaseGeometryDialog\GravityDamDialog.cpp\
+    BaseGeometryDialog\EarthRockfillDamDialog.cpp\
+    BaseGeometryDialog\SlopeTemplateDialog.cpp\
+    BaseGeometryDialog\CavernTemplateDialog.cpp\
     OccBooleanFuseWidget.cpp \
     OccBooleanCutWidget.cpp \
     OccBooleanCommonWidget.cpp \
