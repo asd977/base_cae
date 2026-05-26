@@ -29,6 +29,17 @@
 
 namespace
 {
+struct EdgeRaw
+{
+    int ke1 = 0;
+    int ke2 = 0;
+    int jdA = 0;
+    int jdB = 0;
+    double ax = 0.0;
+    double ay = 0.0;
+    double bx = 0.0;
+    double by = 0.0;
+};
 
 bool lessRow(const StressBoundaryPage::EdgeRow& a, const StressBoundaryPage::EdgeRow& b)
 {
@@ -87,6 +98,8 @@ QVector<StressBoundaryPage::EdgeRow> collectRowsFromEdges(GridKind kind, const Q
                                                           const QString& uuid)
 {
     QVector<StressBoundaryPage::EdgeRow> rows;
+    QVector<EdgeRaw> rawEdges;
+    bool keepChainOrder = false;
     PickManager& pm = PickManager::instance();
     vtkUnstructuredGrid* grid = (kind == GridKind::Solid) ? pm.solidGrid() : pm.lineGrid();
     if (!grid)
@@ -138,14 +151,125 @@ QVector<StressBoundaryPage::EdgeRow> collectRowsFromEdges(GridKind kind, const Q
         if (pidA < 0 || pidB < 0)
             continue;
         rows.push_back(makeRow(grid, elemIdArr, nodeIdArr, cellId, pidA, pidB));
+
+        double pa[3] = {0.0, 0.0, 0.0};
+        double pb[3] = {0.0, 0.0, 0.0};
+        grid->GetPoint(pidA, pa);
+        grid->GetPoint(pidB, pb);
+        EdgeRaw raw;
+        raw.ke1 = rows.back().ke1;
+        raw.ke2 = rows.back().ke2;
+        raw.jdA = rows.back().jd1;
+        raw.jdB = rows.back().jd2;
+        raw.ax = pa[0];
+        raw.ay = pa[1];
+        raw.bx = pb[0];
+        raw.by = pb[1];
+        rawEdges.push_back(raw);
     }
 
-    std::sort(rows.begin(), rows.end(), lessRow);
-    rows.erase(std::unique(rows.begin(), rows.end(),
-                           [](const StressBoundaryPage::EdgeRow& a,
-                              const StressBoundaryPage::EdgeRow& b)
-                           { return a.ke1 == b.ke1 && a.ke2 == b.ke2 && a.jd1 == b.jd1 && a.jd2 == b.jd2; }),
-               rows.end());
+    // 优先按“连通链+几何起点”恢复旧流程的边界定向（而非按编号大小）。
+    if (rawEdges.size() >= 2)
+    {
+        QHash<int, QVector<int>> nodeToEdges;
+        QHash<int, QPair<double, double>> nodeXY;
+        for (int i = 0; i < rawEdges.size(); ++i)
+        {
+            const auto& e = rawEdges[i];
+            nodeToEdges[e.jdA].push_back(i);
+            nodeToEdges[e.jdB].push_back(i);
+            if (!nodeXY.contains(e.jdA))
+                nodeXY.insert(e.jdA, qMakePair(e.ax, e.ay));
+            if (!nodeXY.contains(e.jdB))
+                nodeXY.insert(e.jdB, qMakePair(e.bx, e.by));
+        }
+
+        QVector<int> endpoints;
+        for (auto it = nodeToEdges.constBegin(); it != nodeToEdges.constEnd(); ++it)
+            if (it.value().size() == 1)
+                endpoints.push_back(it.key());
+
+        if (!endpoints.isEmpty())
+        {
+            auto lessNodeByXY = [&](int lhs, int rhs)
+            {
+                const auto l = nodeXY.value(lhs);
+                const auto r = nodeXY.value(rhs);
+                if (l.second != r.second)
+                    return l.second < r.second; // 先按Y
+                if (l.first != r.first)
+                    return l.first < r.first; // 再按X
+                return lhs < rhs;
+            };
+            std::sort(endpoints.begin(), endpoints.end(), lessNodeByXY);
+            const int startNode = endpoints.first();
+
+            QVector<EdgeRow> chained;
+            chained.reserve(rawEdges.size());
+            QSet<int> usedEdges;
+            int prevNode = -1;
+            int currNode = startNode;
+
+            while (chained.size() < rawEdges.size())
+            {
+                const auto candidates = nodeToEdges.value(currNode);
+                int chosen = -1;
+                for (int ei : candidates)
+                {
+                    if (usedEdges.contains(ei))
+                        continue;
+                    const auto& e = rawEdges[ei];
+                    const int other = (e.jdA == currNode) ? e.jdB : e.jdA;
+                    if (other == prevNode)
+                        continue;
+                    chosen = ei;
+                    break;
+                }
+                if (chosen < 0)
+                {
+                    for (int ei : candidates)
+                    {
+                        if (!usedEdges.contains(ei))
+                        {
+                            chosen = ei;
+                            break;
+                        }
+                    }
+                }
+                if (chosen < 0)
+                    break;
+
+                usedEdges.insert(chosen);
+                const auto& e = rawEdges[chosen];
+                const int nextNode = (e.jdA == currNode) ? e.jdB : e.jdA;
+                EdgeRow row;
+                row.ke1 = e.ke1;
+                row.ke2 = e.ke2;
+                // 与旧 AutoCAD 结果一致：每段输出 (next, curr)
+                row.jd1 = nextNode;
+                row.jd2 = currNode;
+                chained.push_back(row);
+                prevNode = currNode;
+                currNode = nextNode;
+            }
+
+            if (chained.size() == rawEdges.size())
+            {
+                rows = chained;
+                keepChainOrder = true;
+            }
+        }
+    }
+
+    if (!keepChainOrder)
+    {
+        std::sort(rows.begin(), rows.end(), lessRow);
+        rows.erase(std::unique(rows.begin(), rows.end(),
+                               [](const StressBoundaryPage::EdgeRow& a,
+                                  const StressBoundaryPage::EdgeRow& b)
+                               { return a.ke1 == b.ke1 && a.ke2 == b.ke2 && a.jd1 == b.jd1 && a.jd2 == b.jd2; }),
+                   rows.end());
+    }
     return rows;
 }
 
@@ -317,9 +441,8 @@ bool StressBoundaryPage::exportDatFile()
                       .arg(i + 1, 9)
                       .arg(row.ke1, 9)
                       .arg(row.ke2, 9)
-                      // 2D 线边界输出采用 (终点, 起点) 顺序
-                      .arg(row.jd2, 9)
                       .arg(row.jd1, 9)
+                      .arg(row.jd2, 9)
                       .arg(10, 9);
         }
     }
