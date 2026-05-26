@@ -310,7 +310,7 @@ QString FillStorageCyclePage::sectionText(int caseIndex) const
                          tableItemText(m_dropTable, i, 1, "0.000"))
                     .arg(i + 1);
 
-    text += "0     NCHANGE\n";
+    text += QString("%1     NCHANGE\n").arg(numWet);
     const int nCircle = m_circleTable ? m_circleTable->rowCount() : 0;
     text += QString("%1  NCIRCLE\n").arg(nCircle);
     text += "JPACK_STA JPACK_END TT_PACK HWJ_STA HWJ_END TT_FILL IF_PACK IF_PLIU IF_FILL IF_FLIU CAHEAD CABODY\n";
