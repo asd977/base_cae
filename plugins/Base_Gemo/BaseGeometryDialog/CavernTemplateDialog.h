@@ -4,6 +4,7 @@
 #include "BasePage.h"
 #include <QLabel>
 #include <QLineEdit>
+#include <QPixmap>
 
 class CavernTemplateDialog : public BasePage
 {
@@ -18,9 +19,11 @@ class CavernTemplateDialog : public BasePage
     void onPreviewClicked();
     void onGenerateClicked();
   private:
+    void resizeEvent(QResizeEvent* event) override;
     void updateDiagram();
     void buildLayeredCavern(double span,double wallH,double archH,double len,double lining);
     QLineEdit *spanEdit,*wallHEdit,*archHEdit,*lenEdit,*liningEdit;
     QLabel* diagramLabel = nullptr;
+    QPixmap diagramPixmap;
 };
 #endif

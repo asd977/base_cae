@@ -192,8 +192,9 @@ CavernTemplateDialog::CavernTemplateDialog(QWidget* parent)
     mainLayout->addLayout(form);
 
     diagramLabel = new QLabel(this);
-    diagramLabel->setMinimumHeight(260);
     diagramLabel->setAlignment(Qt::AlignCenter);
+    diagramLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+    diagramLabel->setMinimumSize(0, 0);
     mainLayout->addWidget(diagramLabel);
 
     auto* row = new QHBoxLayout();
@@ -243,18 +244,24 @@ void CavernTemplateDialog::loadJson(const QJsonObject& object)
     updateDiagram();
 }
 
+void CavernTemplateDialog::resizeEvent(QResizeEvent* event)
+{
+    BasePage::resizeEvent(event);
+    if (!diagramPixmap.isNull() && diagramLabel)
+        diagramLabel->setPixmap(diagramPixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+}
+
 void CavernTemplateDialog::updateDiagram()
 {
     const QString resourcePath = QStringLiteral(":/resources/cavern_parameter_diagram.png");
-    QPixmap pixmap;
-    pixmap.load(resourcePath);
-    if (pixmap.isNull())
+    diagramPixmap.load(resourcePath);
+    if (diagramPixmap.isNull())
     {
         diagramLabel->setText("参数示意图加载失败：resources/cavern_parameter_diagram.png");
         return;
     }
 
-    diagramLabel->setPixmap(pixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    diagramLabel->setPixmap(diagramPixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
 
 

@@ -139,8 +139,9 @@ void GravityDamDialog::initUI()
     preview2DEdit->setReadOnly(true);
 
     diagramLabel = new QLabel(this);
-    diagramLabel->setMinimumHeight(260);
     diagramLabel->setAlignment(Qt::AlignCenter);
+    diagramLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+    diagramLabel->setMinimumSize(0, 0);
 
     previewLayout->addWidget(preview2DEdit);
     previewLayout->addWidget(diagramLabel);
@@ -241,6 +242,13 @@ QVector<QPointF> GravityDamDialog::buildSectionPoints(double damHeight, double c
     return points;
 }
 
+void GravityDamDialog::resizeEvent(QResizeEvent* event)
+{
+    BasePage::resizeEvent(event);
+    if (!diagramPixmap.isNull() && diagramLabel)
+        diagramLabel->setPixmap(diagramPixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+}
+
 void GravityDamDialog::updateIllustration(double damHeight, double crestWidth, double upSlope,
                                           double downSlope, int layerCount, EngineeringTemplate damType)
 {
@@ -252,15 +260,14 @@ void GravityDamDialog::updateIllustration(double damHeight, double crestWidth, d
     Q_UNUSED(damType);
 
     const QString resourcePath = QStringLiteral(":/resources/gravity_dam_parameter_diagram.png");
-    QPixmap pixmap;
-    pixmap.load(resourcePath);
-    if (pixmap.isNull())
+    diagramPixmap.load(resourcePath);
+    if (diagramPixmap.isNull())
     {
         diagramLabel->setText("参数示意图加载失败：resources/gravity_dam_parameter_diagram.png");
         return;
     }
 
-    diagramLabel->setPixmap(pixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    diagramLabel->setPixmap(diagramPixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
 
 

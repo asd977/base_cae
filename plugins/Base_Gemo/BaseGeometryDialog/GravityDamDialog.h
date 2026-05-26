@@ -4,6 +4,7 @@
 
 #include <QLabel>
 #include <QLineEdit>
+#include <QPixmap>
 #include <QPointF>
 
 #include "BasePage.h"
@@ -29,6 +30,7 @@ class GravityDamDialog : public BasePage
     void onGenerate3DClicked();
 
   private:
+    void resizeEvent(QResizeEvent* event) override;
     enum EngineeringTemplate
     {
         GravityDamTemplate = 0,
@@ -65,6 +67,7 @@ class GravityDamDialog : public BasePage
     QLineEdit* zEdit = nullptr;
     QLineEdit* preview2DEdit = nullptr;
     QLabel* diagramLabel = nullptr;
+    QPixmap diagramPixmap;
 };
 
 #endif // GRAVITYDAMDIALOG_H
