@@ -77,6 +77,9 @@ constexpr char kActionPreprocessCone[] = "new_cone";
 constexpr char kActionPreprocessTorus[] = "new_torus";
 constexpr char kActionPreprocessCylinder[] = "new_cylinder";
 constexpr char kActionPreprocessGravityDam[] = "new_gravity_dam";
+constexpr char kActionPreprocessEarthRockfillDam[] = "new_earthrockfill_dam";
+constexpr char kActionPreprocessSlopeTemplate[] = "new_slope_template";
+constexpr char kActionPreprocessCavernTemplate[] = "new_cavern_template";
 
 // --- 基本体2D  ---
 constexpr char kActionGeomCreatePlanarRect[] = "geom_planar_rect";
@@ -203,6 +206,9 @@ constexpr char kPagePreprocessCone[] = "cone";
 constexpr char kPagePreprocessCylinder[] = "cylinder";
 constexpr char kPagePreprocessTorus[] = "torus";
 constexpr char kPagePreprocessGravityDam[] = "gravity_dam";
+constexpr char kPagePreprocessEarthRockfillDam[] = "earthrockfill_dam";
+constexpr char kPagePreprocessSlopeTemplate[] = "slope_template";
+constexpr char kPagePreprocessCavernTemplate[] = "cavern_template";
 constexpr char kPagePreprocessHelix[] = "helix";
 
 constexpr char kPagePreprocessMesh2d[] = "mesh2d";

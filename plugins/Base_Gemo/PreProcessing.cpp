@@ -85,6 +85,9 @@
 #include "BaseGeometryDialog\CylinderDialog.h"
 #include "BaseGeometryDialog\EllipseDialog.h"
 #include "BaseGeometryDialog\GravityDamDialog.h"
+#include "BaseGeometryDialog\CavernTemplateDialog.h"
+#include "BaseGeometryDialog\SlopeTemplateDialog.h"
+#include "BaseGeometryDialog\EarthRockfillDamDialog.h"
 #include "BaseGeometryDialog\PolygonDialog.h"
 #include "BaseGeometryDialog\RectangleDialog.h"
 #include "BaseGeometryDialog\SphereDialog.h"
@@ -507,6 +510,21 @@ ProjectNode* PreProcessing::createGeometryNodeByType(const QString& type, const 
         page = new GravityDamDialog();
         nodeKind = "GravityDam";
     }
+    else if (type == PublicConstants::kPagePreprocessEarthRockfillDam)
+    {
+        page = new EarthRockfillDamDialog();
+        nodeKind = "EarthRockfillDam";
+    }
+    else if (type == PublicConstants::kPagePreprocessSlopeTemplate)
+    {
+        page = new SlopeTemplateDialog();
+        nodeKind = "SlopeTemplate";
+    }
+    else if (type == PublicConstants::kPagePreprocessCavernTemplate)
+    {
+        page = new CavernTemplateDialog();
+        nodeKind = "CavernTemplate";
+    }
     else if (type == PublicConstants::kPagePreprocessCircle)
     {
         page = new CircleDialog();
@@ -792,6 +810,21 @@ void PreProcessing::initRibbonActionConn()
         {
             newGeometryGravityDamWidget();
         }); // 重力坝
+    reg(PublicConstants::kActionPreprocessEarthRockfillDam,
+        [this]
+        {
+            newGeometryEarthRockfillDamWidget();
+        });
+    reg(PublicConstants::kActionPreprocessSlopeTemplate,
+        [this]
+        {
+            newGeometrySlopeTemplateWidget();
+        });
+    reg(PublicConstants::kActionPreprocessCavernTemplate,
+        [this]
+        {
+            newGeometryCavernTemplateWidget();
+        });
 
     reg(PublicConstants::kActionGeomCreatePlanarCircle,
         [this]
@@ -1414,4 +1447,53 @@ void PreProcessing::clearEntityHighlight()
         vis->removeProp("preproc.entity.highlight", true);
         vis->removeProp("preproc.entity.highlight.hover", true);
     }
+}
+
+
+void PreProcessing::newGeometryEarthRockfillDamWidget(QString title)
+{
+    if (!m_geomNode) return;
+    auto* w = new EarthRockfillDamDialog();
+    QString uuid = w->getUuid();
+    QString displayName = makeUniqueName(title, "EarthRockfillDam");
+    ProjectNode* node = new ProjectNode(displayName, uuid, (BasePage*)w);
+    m_geomNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
+    w->setDisplayName(displayName);
+    node->setData(0, ProjectNode::RoleUuid, uuid);
+    node->setData(0, ProjectNode::RoleModule, "Geometry");
+    node->setData(0, ProjectNode::RoleKind, "EarthRockfillDam");
+    node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
+}
+
+void PreProcessing::newGeometrySlopeTemplateWidget(QString title)
+{
+    if (!m_geomNode) return;
+    auto* w = new SlopeTemplateDialog();
+    QString uuid = w->getUuid();
+    QString displayName = makeUniqueName(title, "SlopeTemplate");
+    ProjectNode* node = new ProjectNode(displayName, uuid, (BasePage*)w);
+    m_geomNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
+    w->setDisplayName(displayName);
+    node->setData(0, ProjectNode::RoleUuid, uuid);
+    node->setData(0, ProjectNode::RoleModule, "Geometry");
+    node->setData(0, ProjectNode::RoleKind, "SlopeTemplate");
+    node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
+}
+
+void PreProcessing::newGeometryCavernTemplateWidget(QString title)
+{
+    if (!m_geomNode) return;
+    auto* w = new CavernTemplateDialog();
+    QString uuid = w->getUuid();
+    QString displayName = makeUniqueName(title, "CavernTemplate");
+    ProjectNode* node = new ProjectNode(displayName, uuid, (BasePage*)w);
+    m_geomNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setCurrentItem(node);
+    w->setDisplayName(displayName);
+    node->setData(0, ProjectNode::RoleUuid, uuid);
+    node->setData(0, ProjectNode::RoleModule, "Geometry");
+    node->setData(0, ProjectNode::RoleKind, "CavernTemplate");
+    node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
