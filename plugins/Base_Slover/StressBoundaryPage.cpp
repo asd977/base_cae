@@ -204,7 +204,7 @@ QVector<StressBoundaryPage::EdgeRow> collectRowsFromEdges(GridKind kind, const Q
             std::sort(endpoints.begin(), endpoints.end(), lessNodeByXY);
             const int startNode = endpoints.first();
 
-            QVector<EdgeRow> chained;
+            QVector<StressBoundaryPage::EdgeRow> chained;
             chained.reserve(rawEdges.size());
             QSet<int> usedEdges;
             int prevNode = -1;
@@ -242,7 +242,7 @@ QVector<StressBoundaryPage::EdgeRow> collectRowsFromEdges(GridKind kind, const Q
                 usedEdges.insert(chosen);
                 const auto& e = rawEdges[chosen];
                 const int nextNode = (e.jdA == currNode) ? e.jdB : e.jdA;
-                EdgeRow row;
+                StressBoundaryPage::EdgeRow row;
                 row.ke1 = e.ke1;
                 row.ke2 = e.ke2;
                 // 与旧 AutoCAD 结果一致：每段输出 (next, curr)
