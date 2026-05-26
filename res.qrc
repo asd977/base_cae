@@ -36,6 +36,10 @@
         <file>resources/importModel.png</file>
         <file>resources/rectangle.png</file>
         <file>resources/up_arrow.png</file>
+        <file>resources/cavern_parameter_diagram.svg</file>
+        <file>resources/earth_rockfill_dam_parameter_diagram.svg</file>
+        <file>resources/gravity_dam_parameter_diagram.svg</file>
+        <file>resources/slope_parameter_diagram.svg</file>
         <file>resources/images/close-button.svg</file>
         <file>resources/images/close-button-disabled.svg</file>
         <file>resources/images/close-button-focused.svg</file>
