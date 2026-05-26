@@ -99,9 +99,7 @@ void FillStorageCyclePage::initValueEditors()
                              "蓄水结束后流变时间", "是否填筑", "是否填筑期流变", "是否蓄水",
                              "是否蓄水期流变", "节点水头文件", "节点体力文件"});
 
-    m_wetTable->setRowCount(1);
-    m_wetTable->setItem(0, 0, new QTableWidgetItem("1"));
-    m_wetTable->setItem(0, 1, new QTableWidgetItem("1"));
+    m_wetTable->setRowCount(0);
     m_wetTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     loadWetMappingsFromService();
 
@@ -229,7 +227,10 @@ void FillStorageCyclePage::loadWetMappingsFromService()
         return;
     const auto transitions = materialService->materialTransitions();
     if (transitions.isEmpty())
+    {
+        m_wetTable->setRowCount(0);
         return;
+    }
 
     m_wetTable->setRowCount(transitions.size());
     for (int i = 0; i < transitions.size(); ++i)
@@ -310,7 +311,7 @@ QString FillStorageCyclePage::sectionText(int caseIndex) const
                          tableItemText(m_dropTable, i, 1, "0.000"))
                     .arg(i + 1);
 
-    text += QString("%1     NCHANGE\n").arg(numWet);
+    text += "0     NCHANGE\n";
     const int nCircle = m_circleTable ? m_circleTable->rowCount() : 0;
     text += QString("%1  NCIRCLE\n").arg(nCircle);
     text += "JPACK_STA JPACK_END TT_PACK HWJ_STA HWJ_END TT_FILL IF_PACK IF_PLIU IF_FILL IF_FLIU CAHEAD CABODY\n";
