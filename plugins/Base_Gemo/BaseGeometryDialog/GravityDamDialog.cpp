@@ -144,7 +144,7 @@ void GravityDamDialog::initUI()
     diagramLabel->setMinimumSize(0, 0);
 
     previewLayout->addWidget(preview2DEdit);
-    previewLayout->addWidget(diagramLabel);
+    previewLayout->addWidget(diagramLabel, 1);
 
     auto* btnLayout = new QHBoxLayout();
     auto* generateBtn = new QPushButton("生成3D坝体", this);
@@ -246,7 +246,16 @@ void GravityDamDialog::resizeEvent(QResizeEvent* event)
 {
     BasePage::resizeEvent(event);
     if (!diagramPixmap.isNull() && diagramLabel)
-        diagramLabel->setPixmap(diagramPixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    {
+        const QSize targetSize = diagramLabel->size();
+        if (targetSize.isEmpty())
+        {
+            diagramLabel->setPixmap(diagramPixmap);
+            return;
+        }
+
+        diagramLabel->setPixmap(diagramPixmap.scaled(targetSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    }
 }
 
 void GravityDamDialog::updateIllustration(double damHeight, double crestWidth, double upSlope,
@@ -267,7 +276,14 @@ void GravityDamDialog::updateIllustration(double damHeight, double crestWidth, d
         return;
     }
 
-    diagramLabel->setPixmap(diagramPixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    const QSize targetSize = diagramLabel->size();
+    if (targetSize.isEmpty())
+    {
+        diagramLabel->setPixmap(diagramPixmap);
+        return;
+    }
+
+    diagramLabel->setPixmap(diagramPixmap.scaled(targetSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
 
 
