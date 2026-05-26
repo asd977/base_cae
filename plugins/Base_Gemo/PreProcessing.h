@@ -41,6 +41,7 @@ class PreProcessing : public QObject, public PreProcessingService
     void newGeometryConeWidget(QString title = QObject::tr("圆锥体"));
     void newGeometryTorusWidget(QString title = QObject::tr("圆环体"));
     void newGeometryCylinderWidget(QString title = QObject::tr("圆柱体"));
+    void newGeometryGravityDamWidget(QString title = QObject::tr("重力坝"));
     BasePage* newGeometryCircleWidget(QString title = QObject::tr("圆形"));
     BasePage* newGeometryEllipseWidget(QString title = QObject::tr("椭圆"));
     BasePage* newGeometryPolygonWidget(QString title = QObject::tr("多边形"));

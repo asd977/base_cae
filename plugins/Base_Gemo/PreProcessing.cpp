@@ -84,6 +84,7 @@
 #include "BaseGeometryDialog\ConeDialog.h"
 #include "BaseGeometryDialog\CylinderDialog.h"
 #include "BaseGeometryDialog\EllipseDialog.h"
+#include "BaseGeometryDialog\GravityDamDialog.h"
 #include "BaseGeometryDialog\PolygonDialog.h"
 #include "BaseGeometryDialog\RectangleDialog.h"
 #include "BaseGeometryDialog\SphereDialog.h"
@@ -501,6 +502,11 @@ ProjectNode* PreProcessing::createGeometryNodeByType(const QString& type, const 
         page = new TorusDialog();
         nodeKind = "Torus";
     }
+    else if (type == PublicConstants::kPagePreprocessGravityDam)
+    {
+        page = new GravityDamDialog();
+        nodeKind = "GravityDam";
+    }
     else if (type == PublicConstants::kPagePreprocessCircle)
     {
         page = new CircleDialog();
@@ -781,6 +787,11 @@ void PreProcessing::initRibbonActionConn()
         {
             newGeometryTorusWidget();
         }); // 圆环
+    reg(PublicConstants::kActionPreprocessGravityDam,
+        [this]
+        {
+            newGeometryGravityDamWidget();
+        }); // 重力坝
 
     reg(PublicConstants::kActionGeomCreatePlanarCircle,
         [this]
@@ -1012,6 +1023,25 @@ void PreProcessing::newGeometryCylinderWidget(QString title)
     node->setData(0, ProjectNode::RoleUuid, uuid);
     node->setData(0, ProjectNode::RoleModule, "Geometry");
     node->setData(0, ProjectNode::RoleKind, "Cylinder");
+    node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
+}
+
+void PreProcessing::newGeometryGravityDamWidget(QString title)
+{
+    if (!m_geomNode)
+        return;
+    auto* w = new GravityDamDialog();
+    QString uuid = w->getUuid();
+    QString displayName = makeUniqueName(title, "GravityDam");
+    ProjectNode* node = new ProjectNode(displayName, uuid, (BasePage*)w);
+    m_geomNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(node);
+
+    w->setDisplayName(displayName);
+    node->setData(0, ProjectNode::RoleUuid, uuid);
+    node->setData(0, ProjectNode::RoleModule, "Geometry");
+    node->setData(0, ProjectNode::RoleKind, "GravityDam");
     node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 

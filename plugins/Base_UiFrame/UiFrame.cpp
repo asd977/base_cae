@@ -455,18 +455,22 @@ void UiFrame::buildRibbonTabs()
             auto* actTorus = makeAction(this, ":/resources/menu/minimal/torus.svg", "&圆环");
             auto* actCylinder =
                 makeAction(this, ":/resources/menu/minimal/cylinder.svg", "&圆柱体");
+            auto* actGravityDam =
+                makeAction(this, ":/resources/menu/minimal/analysis-dam.svg", "&重力坝");
 
             addActionToPanel(panel, actBox, 1);
             addActionToPanel(panel, actSphere, 1);
             addActionToPanel(panel, actCone, 1);
             addActionToPanel(panel, actTorus, 1);
             addActionToPanel(panel, actCylinder, 1);
+            addActionToPanel(panel, actGravityDam, 1);
 
             bindEvent(this, actBox, PublicConstants::kActionPreprocessBox);
             bindEvent(this, actSphere, PublicConstants::kActionPreprocessSphere);
             bindEvent(this, actCone, PublicConstants::kActionPreprocessCone);
             bindEvent(this, actTorus, PublicConstants::kActionPreprocessTorus);
             bindEvent(this, actCylinder, PublicConstants::kActionPreprocessCylinder);
+            bindEvent(this, actGravityDam, PublicConstants::kActionPreprocessGravityDam);
 
             // ---- 2.2 2D轮廓(Profile)：替代2D草图（参数化节点）----
             auto* actProfileMain =

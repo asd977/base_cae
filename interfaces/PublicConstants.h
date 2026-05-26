@@ -76,6 +76,7 @@ constexpr char kActionPreprocessSphere[] = "new_sphere";
 constexpr char kActionPreprocessCone[] = "new_cone";
 constexpr char kActionPreprocessTorus[] = "new_torus";
 constexpr char kActionPreprocessCylinder[] = "new_cylinder";
+constexpr char kActionPreprocessGravityDam[] = "new_gravity_dam";
 
 // --- 基本体2D  ---
 constexpr char kActionGeomCreatePlanarRect[] = "geom_planar_rect";
@@ -201,6 +202,7 @@ constexpr char kPagePreprocessSphere[] = "sphere";
 constexpr char kPagePreprocessCone[] = "cone";
 constexpr char kPagePreprocessCylinder[] = "cylinder";
 constexpr char kPagePreprocessTorus[] = "torus";
+constexpr char kPagePreprocessGravityDam[] = "gravity_dam";
 constexpr char kPagePreprocessHelix[] = "helix";
 
 constexpr char kPagePreprocessMesh2d[] = "mesh2d";
