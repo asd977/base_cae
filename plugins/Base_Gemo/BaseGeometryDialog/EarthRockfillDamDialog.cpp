@@ -19,7 +19,7 @@
 #include <QPushButton>
 #include <QPainter>
 #include <QSize>
-#include <QSvgRenderer>
+#include <QtSvg/QSvgRenderer>
 #include <QVBoxLayout>
 #include <QVector>
 #include <ServiceRegistry.h>
