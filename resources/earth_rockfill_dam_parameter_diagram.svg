@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+<defs>
+  <marker id="arrow" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto-start-reverse">
+    <path d="M 0 0 L 10 5 L 0 10 z" fill="#222"/>
+  </marker>
+  <style>
+    .label { font-family: "Microsoft YaHei", "Noto Sans CJK SC", "SimHei", Arial, sans-serif; font-size: 30px; font-weight: 700; fill: #111; }
+    .labelSmall { font-family: "Microsoft YaHei", "Noto Sans CJK SC", "SimHei", Arial, sans-serif; font-size: 26px; font-weight: 700; fill: #111; }
+    .dim { stroke: #222; stroke-width: 3; fill: none; marker-start: url(#arrow); marker-end: url(#arrow); }
+    .ext { stroke: #777; stroke-width: 2; fill: none; }
+    .thin { stroke: #777; stroke-width: 1.6; fill: none; }
+    .dash { stroke: #888; stroke-width: 2; stroke-dasharray: 20 14; fill: none; }
+    .outline { stroke: #222; stroke-width: 4; fill: none; }
+  </style>
+</defs>
+<rect x="0" y="0" width="1600" height="1000" fill="#ffffff"/>
+<polygon points="260,720 730,230 970,230 1400,720" fill="#d9c993" fill-opacity="1" stroke="#222" stroke-width="4" stroke-linejoin="round"/>
+<polygon points="709.0,720 761.0,230 807.0,230 755.0,720" fill="#efe0a8" fill-opacity="1" stroke="#9a8848" stroke-width="2" stroke-linejoin="round"/>
+<polygon points="945.0,720 893.0,230 939.0,230 991.0,720" fill="#efe0a8" fill-opacity="1" stroke="#9a8848" stroke-width="2" stroke-linejoin="round"/>
+<polygon points="755.0,720 807.0,230 893.0,230 945.0,720" fill="#df6d5d" fill-opacity="1" stroke="#7c3b36" stroke-width="2" stroke-linejoin="round"/>
+<line x1="270" y1="658.75" x2="1390" y2="658.75" class="dash"/>
+<line x1="270" y1="597.5" x2="1390" y2="597.5" class="dash"/>
+<line x1="270" y1="536.25" x2="1390" y2="536.25" class="dash"/>
+<line x1="270" y1="475.0" x2="1390" y2="475.0" class="dash"/>
+<line x1="270" y1="413.75" x2="1390" y2="413.75" class="dash"/>
+<line x1="270" y1="352.5" x2="1390" y2="352.5" class="dash"/>
+<line x1="270" y1="291.25" x2="1390" y2="291.25" class="dash"/>
+<rect x="1219.5" y="449.0" width="181.0" height="52.0" rx="10" ry="10" fill="#fff" stroke="#d0d0d0" stroke-width="1.2"/>
+<text x="1310" y="485.0" text-anchor="middle" class="label">填筑层数 N</text>
+<line x1="730" y1="230" x2="165" y2="230" class="ext"/>
+<line x1="260" y1="720" x2="165" y2="720" class="ext"/>
+<line x1="165" y1="230" x2="165" y2="720" class="dim"/>
+<rect x="31.2" y="449.0" width="121.5" height="52.0" rx="10" ry="10" fill="#fff" stroke="#d0d0d0" stroke-width="1.2"/>
+<text x="92" y="485.0" text-anchor="middle" class="label">坝高 H</text>
+<line x1="260" y1="720" x2="260" y2="815" class="ext"/>
+<line x1="730" y1="230" x2="730" y2="815" class="ext"/>
+<line x1="260" y1="815" x2="730" y2="815" class="dim"/>
+<rect x="381.1" y="839.0" width="227.8" height="52.0" rx="10" ry="10" fill="#fff" stroke="#d0d0d0" stroke-width="1.2"/>
+<text x="495.0" y="875" text-anchor="middle" class="label">上游水平宽 Wu</text>
+<line x1="730" y1="230" x2="730" y2="170" class="ext"/>
+<line x1="970" y1="230" x2="970" y2="170" class="ext"/>
+<line x1="730" y1="170" x2="970" y2="170" class="dim"/>
+<rect x="765.9" y="94.0" width="168.2" height="52.0" rx="10" ry="10" fill="#fff" stroke="#d0d0d0" stroke-width="1.2"/>
+<text x="850.0" y="130" text-anchor="middle" class="label">坝顶宽 Bt</text>
+<line x1="970" y1="230" x2="970" y2="815" class="ext"/>
+<line x1="1400" y1="720" x2="1400" y2="815" class="ext"/>
+<line x1="970" y1="815" x2="1400" y2="815" class="dim"/>
+<rect x="1071.1" y="839.0" width="227.8" height="52.0" rx="10" ry="10" fill="#fff" stroke="#d0d0d0" stroke-width="1.2"/>
+<text x="1185.0" y="875" text-anchor="middle" class="label">下游水平宽 Wd</text>
+<line x1="807.0" y1="230" x2="807.0" y2="300" class="ext"/>
+<line x1="893.0" y1="230" x2="893.0" y2="300" class="ext"/>
+<line x1="807.0" y1="300" x2="893.0" y2="300" class="dim"/>
+<rect x="751.0" y="324.0" width="198.0" height="52.0" rx="10" ry="10" fill="#fff" stroke="#d0d0d0" stroke-width="1.2"/>
+<text x="850.0" y="360" text-anchor="middle" class="label">心墙顶宽 Ct</text>
+<line x1="755.0" y1="720" x2="755.0" y2="660" class="ext"/>
+<line x1="945.0" y1="720" x2="945.0" y2="660" class="ext"/>
+<line x1="755.0" y1="660" x2="945.0" y2="660" class="dim"/>
+<rect x="751.0" y="589.0" width="198.0" height="52.0" rx="10" ry="10" fill="#fff" stroke="#d0d0d0" stroke-width="1.2"/>
+<text x="850.0" y="625" text-anchor="middle" class="label">心墙底宽 Cb</text>
+<line x1="945.0" y1="720" x2="945.0" y2="600" class="ext"/>
+<line x1="991.0" y1="720" x2="991.0" y2="600" class="ext"/>
+<line x1="945.0" y1="600" x2="991.0" y2="600" class="dim"/>
+<rect x="892.4" y="529.0" width="151.2" height="52.0" rx="10" ry="10" fill="#fff" stroke="#d0d0d0" stroke-width="1.2"/>
+<text x="968.0" y="565" text-anchor="middle" class="label">反滤层 F</text>
+<line x1="1230" y1="905" x2="1370" y2="860" stroke="#222" stroke-width="3" marker-end="url(#arrow)"/>
+<rect x="1121.6" y="917.0" width="346.8" height="46.0" rx="10" ry="10" fill="#fff" stroke="#d0d0d0" stroke-width="1.2"/>
+<text x="1295" y="950" text-anchor="middle" class="labelSmall">坝轴线长度 L（拉伸方向）</text>
+</svg>
