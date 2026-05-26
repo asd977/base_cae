@@ -125,23 +125,32 @@ void EarthRockfillDamDialog::onPreviewClicked() { updateDiagram(); }
 
 void EarthRockfillDamDialog::buildLayeredDam(double H, double Bt, double mu, double md, double L, int layers)
 {
-    const double layerH = H / layers;
+    Q_UNUSED(layers);
     TopoDS_Compound comp;
     BRep_Builder b; b.MakeCompound(comp);
-    for (int i = 0; i < layers; ++i)
-    {
-        const double z0 = layerH * i;
-        const double z1 = layerH * (i + 1);
-        const double xL0 = (H - z0) * mu;
-        const double xL1 = (H - z1) * mu;
-        const double xR0 = xL0 + Bt + (H - z0) * md;
-        const double xR1 = xL1 + Bt + (H - z1) * md;
-        BRepBuilderAPI_MakePolygon pg;
-        pg.Add(gp_Pnt(xL0, 0, z0)); pg.Add(gp_Pnt(xL1, 0, z1));
-        pg.Add(gp_Pnt(xR1, 0, z1)); pg.Add(gp_Pnt(xR0, 0, z0));
-        pg.Close();
-        b.Add(comp, BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(pg.Wire()), gp_Vec(0, L, 0)).Shape());
-    }
+
+    // 主坝体（连续整体）
+    const double x1 = H * mu;
+    const double x2 = x1 + Bt;
+    const double x3 = x2 + H * md;
+    BRepBuilderAPI_MakePolygon damPoly;
+    damPoly.Add(gp_Pnt(0, 0, 0));
+    damPoly.Add(gp_Pnt(x1, 0, H));
+    damPoly.Add(gp_Pnt(x2, 0, H));
+    damPoly.Add(gp_Pnt(x3, 0, 0));
+    damPoly.Close();
+    b.Add(comp, BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(damPoly.Wire()), gp_Vec(0, L, 0)).Shape());
+
+    // 心墙体（独立分区，避免全部都被分层条带切碎）
+    const double core = coreWidthEdit->text().toDouble();
+    const double cx = (x1 + x2) * 0.5;
+    BRepBuilderAPI_MakePolygon corePoly;
+    corePoly.Add(gp_Pnt(cx - core * 0.5, 0, 0));
+    corePoly.Add(gp_Pnt(cx - core * 0.5, 0, H));
+    corePoly.Add(gp_Pnt(cx + core * 0.5, 0, H));
+    corePoly.Add(gp_Pnt(cx + core * 0.5, 0, 0));
+    corePoly.Close();
+    b.Add(comp, BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(corePoly.Wire()), gp_Vec(0, L, 0)).Shape());
 
     auto* obj = new GeomShapeObject(m_uuid, new TopoDS_Shape(comp), getDisplayName());
     GeomManager::GeomManagerInstance::getInstance()->appendGeomShapeObject(obj);
