@@ -5,6 +5,9 @@
 #include "BasePage.h"
 #include <QLabel>
 #include <QLineEdit>
+#include <QPixmap>
+
+class QResizeEvent;
 
 class EarthRockfillDamDialog : public BasePage
 {
@@ -15,6 +18,9 @@ class EarthRockfillDamDialog : public BasePage
     void loadJson(const QJsonObject& obj) override;
     void beforeLoad() override {}
     void beforeUnload() override {}
+
+  protected:
+    void resizeEvent(QResizeEvent* event) override;
 
   private slots:
     void onPreviewClicked();
@@ -27,6 +33,7 @@ class EarthRockfillDamDialog : public BasePage
 
     QLineEdit *hEdit, *crestEdit, *upEdit, *downEdit, *lenEdit, *coreWidthEdit, *layerEdit;
     QLabel* diagramLabel = nullptr;
+    QPixmap diagramPixmap;
 };
 
 #endif

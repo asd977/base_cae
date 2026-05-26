@@ -239,17 +239,25 @@ void EarthRockfillDamDialog::initUi()
     updateDiagram();
 }
 
+
+void EarthRockfillDamDialog::resizeEvent(QResizeEvent* event)
+{
+    BasePage::resizeEvent(event);
+    if (!diagramPixmap.isNull() && diagramLabel)
+        diagramLabel->setPixmap(diagramPixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+}
+
 void EarthRockfillDamDialog::updateDiagram()
 {
     const QString resourcePath = QStringLiteral(":/resources/earth_rockfill_dam_parameter_diagram.png");
-    QPixmap pixmap(resourcePath);
-    if (pixmap.isNull())
+    diagramPixmap.load(resourcePath);
+    if (diagramPixmap.isNull())
     {
         diagramLabel->setText("参数示意图加载失败：resources/earth_rockfill_dam_parameter_diagram.png");
         return;
     }
 
-    diagramLabel->setPixmap(pixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    diagramLabel->setPixmap(diagramPixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
 
 
