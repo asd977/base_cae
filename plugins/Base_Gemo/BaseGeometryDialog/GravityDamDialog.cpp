@@ -141,17 +141,15 @@ void GravityDamDialog::initUI()
     preview2DEdit->setReadOnly(true);
 
     diagramLabel = new QLabel(this);
-    diagramLabel->setMinimumSize(960, 480);
+    diagramLabel->setMinimumHeight(260);
     diagramLabel->setAlignment(Qt::AlignCenter);
 
     previewLayout->addWidget(preview2DEdit);
     previewLayout->addWidget(diagramLabel);
 
     auto* btnLayout = new QHBoxLayout();
-    auto* previewBtn = new QPushButton("更新2D断面", this);
     auto* generateBtn = new QPushButton("生成3D坝体", this);
     btnLayout->addStretch();
-    btnLayout->addWidget(previewBtn);
     btnLayout->addWidget(generateBtn);
 
     mainLayout->addWidget(pageNameLabel);
@@ -161,7 +159,6 @@ void GravityDamDialog::initUI()
     mainLayout->addLayout(btnLayout);
     mainLayout->addStretch();
 
-    connect(previewBtn, &QPushButton::clicked, this, &GravityDamDialog::onPreview2DClicked);
     connect(generateBtn, &QPushButton::clicked, this, &GravityDamDialog::onGenerate3DClicked);
 
     onPreview2DClicked();
@@ -264,7 +261,7 @@ void GravityDamDialog::updateIllustration(double damHeight, double crestWidth, d
         return;
     }
 
-    const QSize targetSize = diagramLabel->size().expandedTo(QSize(1200, 600));
+    const QSize targetSize = diagramLabel->size();
     QPixmap pixmap(targetSize);
     pixmap.fill(Qt::transparent);
 
@@ -272,7 +269,7 @@ void GravityDamDialog::updateIllustration(double damHeight, double crestWidth, d
     renderer.render(&painter);
     painter.end();
 
-    diagramLabel->setPixmap(pixmap);
+    diagramLabel->setPixmap(pixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
 
 

@@ -190,18 +190,14 @@ SlopeTemplateDialog::SlopeTemplateDialog(QWidget* parent)
     mainLayout->addLayout(form);
 
     diagramLabel = new QLabel(this);
-    diagramLabel->setMinimumSize(960, 480);
+    diagramLabel->setMinimumHeight(260);
     diagramLabel->setAlignment(Qt::AlignCenter);
     mainLayout->addWidget(diagramLabel);
 
     auto* row = new QHBoxLayout();
-    auto* previewButton = new QPushButton("更新说明图", this);
     auto* generateButton = new QPushButton("生成边坡", this);
-    row->addWidget(previewButton);
     row->addWidget(generateButton);
     mainLayout->addLayout(row);
-
-    connect(previewButton, &QPushButton::clicked, this, &SlopeTemplateDialog::onPreviewClicked);
     connect(generateButton, &QPushButton::clicked, this, &SlopeTemplateDialog::onGenerateClicked);
 
     updateDiagram();
@@ -255,7 +251,7 @@ void SlopeTemplateDialog::updateDiagram()
         return;
     }
 
-    const QSize targetSize = diagramLabel->size().expandedTo(QSize(1200, 600));
+    const QSize targetSize = diagramLabel->size();
     QPixmap pixmap(targetSize);
     pixmap.fill(Qt::transparent);
 
@@ -263,7 +259,7 @@ void SlopeTemplateDialog::updateDiagram()
     renderer.render(&painter);
     painter.end();
 
-    diagramLabel->setPixmap(pixmap);
+    diagramLabel->setPixmap(pixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
 
 
