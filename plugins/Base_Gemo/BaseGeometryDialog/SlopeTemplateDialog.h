@@ -4,6 +4,7 @@
 #include "BasePage.h"
 #include <QLabel>
 #include <QLineEdit>
+
 class SlopeTemplateDialog : public BasePage
 {
     Q_OBJECT
@@ -18,7 +19,8 @@ class SlopeTemplateDialog : public BasePage
     void onGenerateClicked();
   private:
     void updateDiagram();
-    QLineEdit *hEdit,*benchWidthEdit,*slopeEdit,*lenEdit;
+    void buildLayeredSlope(double H, double benchW, double slope, double L, int benchCount);
+    QLineEdit *hEdit,*benchWidthEdit,*slopeEdit,*lenEdit,*benchCountEdit;
     QLabel* diagramLabel = nullptr;
 };
 #endif

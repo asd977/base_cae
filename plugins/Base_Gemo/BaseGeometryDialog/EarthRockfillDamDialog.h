@@ -23,7 +23,9 @@ class EarthRockfillDamDialog : public BasePage
   private:
     void initUi();
     void updateDiagram();
-    QLineEdit *hEdit, *crestEdit, *upEdit, *downEdit, *lenEdit, *coreWidthEdit;
+    void buildLayeredDam(double H, double Bt, double mu, double md, double L, int layers);
+
+    QLineEdit *hEdit, *crestEdit, *upEdit, *downEdit, *lenEdit, *coreWidthEdit, *layerEdit;
     QLabel* diagramLabel = nullptr;
 };
 

@@ -44,7 +44,6 @@ QJsonObject GravityDamDialog::saveJson()
     state["downstreamSlope"] = downstreamSlopeEdit->text().toDouble();
     state["length"] = lengthEdit->text().toDouble();
     state["layerCount"] = layerCountEdit->text().toInt();
-    state["damType"] = damTypeCombo->currentIndex();
     state["x"] = xEdit->text().toDouble();
     state["y"] = yEdit->text().toDouble();
     state["z"] = zEdit->text().toDouble();
@@ -65,8 +64,6 @@ void GravityDamDialog::loadJson(const QJsonObject& state)
         lengthEdit->setText(QString::number(state["length"].toDouble()));
     if (state.contains("layerCount"))
         layerCountEdit->setText(QString::number(state["layerCount"].toInt()));
-    if (state.contains("damType"))
-        damTypeCombo->setCurrentIndex(state["damType"].toInt());
     if (state.contains("x"))
         xEdit->setText(QString::number(state["x"].toDouble()));
     if (state.contains("y"))
@@ -206,70 +203,12 @@ QVector<QPointF> GravityDamDialog::buildSectionPoints(double damHeight, double c
                                                       double upSlope, double downSlope,
                                                       EngineeringTemplate tpl) const
 {
+    Q_UNUSED(tpl);
     QVector<QPointF> p;
-    if (tpl == EarthRockfillDamTemplate)
-    {
-        // 土石坝：双坡更缓
-        const double mu = qMax(upSlope, 1.2);
-        const double md = qMax(downSlope, 1.5);
-        const double x1 = damHeight * mu;
-        const double x2 = x1 + crestWidth;
-        const double x3 = x2 + damHeight * md;
-        p << QPointF(0.0, 0.0) << QPointF(x1, damHeight) << QPointF(x2, damHeight) << QPointF(x3, 0.0);
-    }
-    else if (tpl == SlopeTemplate)
-    {
-        // 边坡：单坡台阶
-        const double benchZ = damHeight * 0.55;
-        const double benchW = qMax(crestWidth * 0.8, 3.0);
-        const double xBenchLeft = (damHeight - benchZ) * qMax(downSlope, 0.8);
-        const double xBaseRight = xBenchLeft + benchW + benchZ * qMax(downSlope, 0.8);
-        p << QPointF(0.0, 0.0) << QPointF(xBenchLeft, benchZ) << QPointF(xBenchLeft + benchW, benchZ)
-          << QPointF(xBaseRight, 0.0);
-    }
-    else if (tpl == CavernTemplate)
-    {
-        // 洞室：矩形+拱顶
-        const double hWall = damHeight * 0.65;
-        const double span = qMax(crestWidth * 2.0, 8.0);
-        p << QPointF(0.0, 0.0) << QPointF(0.0, hWall) << QPointF(span * 0.25, damHeight)
-          << QPointF(span * 0.75, damHeight) << QPointF(span, hWall) << QPointF(span, 0.0);
-    }
-    else if (tpl == DamFoundationLayerTemplate)
-    {
-        // 坝基分层：上窄下宽梯形基座
-        const double baseH = damHeight * 0.7;
-        const double toeL = baseH * qMax(upSlope, 0.3);
-        const double toeR = baseH * qMax(downSlope, 0.6);
-        p << QPointF(0.0, 0.0) << QPointF(toeL, baseH) << QPointF(toeL + crestWidth, baseH)
-          << QPointF(toeL + crestWidth + toeR, 0.0);
-    }
-    else if (tpl == CurtainGroutingTemplate)
-    {
-        // 帷幕防渗：顶部平台+垂向帷幕墙
-        const double span = qMax(crestWidth * 2.0, 10.0);
-        const double cutX = span * 0.45;
-        p << QPointF(0.0, 0.0) << QPointF(0.0, damHeight * 0.35) << QPointF(span, damHeight * 0.35)
-          << QPointF(span, 0.0);
-        p << QPointF(cutX, damHeight * 0.35) << QPointF(cutX + span * 0.06, damHeight * 0.35)
-          << QPointF(cutX + span * 0.06, 0.0) << QPointF(cutX, 0.0);
-    }
-    else if (tpl == SupportStructureTemplate)
-    {
-        // 支护结构：锚喷+挡墙的组合轮廓
-        const double wallH = damHeight * 0.6;
-        const double wallW = qMax(crestWidth * 0.7, 2.0);
-        p << QPointF(0.0, 0.0) << QPointF(0.0, wallH) << QPointF(wallW, wallH)
-          << QPointF(wallW + wallH * 0.8, 0.0);
-    }
-    else
-    {
-        // 重力坝模板（默认）
-        const double x1 = damHeight * upSlope;
-        const double x2 = x1 + crestWidth;
-        const double x3 = x2 + damHeight * downSlope;
-        p << QPointF(0.0, 0.0) << QPointF(x1, damHeight) << QPointF(x2, damHeight) << QPointF(x3, 0.0);
-    }
+    const double x1 = damHeight * upSlope;
+    const double x2 = x1 + crestWidth;
+    const double x3 = x2 + damHeight * downSlope;
+    p << QPointF(0.0, 0.0) << QPointF(x1, damHeight) << QPointF(x2, damHeight) << QPointF(x3, 0.0);
     return p;
 }
 
