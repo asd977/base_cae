@@ -141,7 +141,7 @@ void GravityDamDialog::initUI()
     preview2DEdit->setReadOnly(true);
 
     diagramLabel = new QLabel(this);
-    diagramLabel->setMinimumHeight(220);
+    diagramLabel->setMinimumSize(960, 480);
     diagramLabel->setAlignment(Qt::AlignCenter);
 
     previewLayout->addWidget(preview2DEdit);
@@ -264,7 +264,7 @@ void GravityDamDialog::updateIllustration(double damHeight, double crestWidth, d
         return;
     }
 
-    const QSize targetSize = diagramLabel->size().expandedTo(QSize(760, 320));
+    const QSize targetSize = diagramLabel->size().expandedTo(QSize(1200, 600));
     QPixmap pixmap(targetSize);
     pixmap.fill(Qt::transparent);
 

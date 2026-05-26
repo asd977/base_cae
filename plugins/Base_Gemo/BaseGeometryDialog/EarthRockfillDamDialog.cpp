@@ -228,7 +228,7 @@ void EarthRockfillDamDialog::initUi()
     mainLayout->addLayout(form);
 
     diagramLabel = new QLabel(this);
-    diagramLabel->setMinimumHeight(260);
+    diagramLabel->setMinimumSize(960, 480);
     diagramLabel->setAlignment(Qt::AlignCenter);
     mainLayout->addWidget(diagramLabel);
 
@@ -255,7 +255,7 @@ void EarthRockfillDamDialog::updateDiagram()
         return;
     }
 
-    const QSize targetSize = diagramLabel->size().expandedTo(QSize(760, 320));
+    const QSize targetSize = diagramLabel->size().expandedTo(QSize(1200, 600));
     QPixmap pixmap(targetSize);
     pixmap.fill(Qt::transparent);
 
