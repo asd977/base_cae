@@ -29,10 +29,11 @@ class GravityDamDialog : public BasePage
   private:
     void initUI();
     bool readParameters(double& damHeight, double& crestWidth, double& upSlope, double& downSlope,
-                        double& damLength, double& x, double& y, double& z) const;
-    void applyPreviewText(double damHeight, double crestWidth, double upSlope, double downSlope) const;
+                        double& damLength, int& layerCount, double& x, double& y, double& z) const;
+    void applyPreviewText(double damHeight, double crestWidth, double upSlope, double downSlope,
+                          int layerCount) const;
     void buildDamBody(double damHeight, double crestWidth, double upSlope, double downSlope,
-                      double damLength, double x, double y, double z);
+                      double damLength, int layerCount, double x, double y, double z);
 
   private:
     QLineEdit* heightEdit = nullptr;
@@ -40,6 +41,7 @@ class GravityDamDialog : public BasePage
     QLineEdit* upstreamSlopeEdit = nullptr;
     QLineEdit* downstreamSlopeEdit = nullptr;
     QLineEdit* lengthEdit = nullptr;
+    QLineEdit* layerCountEdit = nullptr;
     QLineEdit* xEdit = nullptr;
     QLineEdit* yEdit = nullptr;
     QLineEdit* zEdit = nullptr;

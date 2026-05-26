@@ -10,10 +10,12 @@
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
+#include <BRep_Builder.hxx>
 #include <QDoubleValidator>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QIntValidator>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QTextStream>
@@ -39,6 +41,7 @@ QJsonObject GravityDamDialog::saveJson()
     state["upstreamSlope"] = upstreamSlopeEdit->text().toDouble();
     state["downstreamSlope"] = downstreamSlopeEdit->text().toDouble();
     state["length"] = lengthEdit->text().toDouble();
+    state["layerCount"] = layerCountEdit->text().toInt();
     state["x"] = xEdit->text().toDouble();
     state["y"] = yEdit->text().toDouble();
     state["z"] = zEdit->text().toDouble();
@@ -57,6 +60,8 @@ void GravityDamDialog::loadJson(const QJsonObject& state)
         downstreamSlopeEdit->setText(QString::number(state["downstreamSlope"].toDouble()));
     if (state.contains("length"))
         lengthEdit->setText(QString::number(state["length"].toDouble()));
+    if (state.contains("layerCount"))
+        layerCountEdit->setText(QString::number(state["layerCount"].toInt()));
     if (state.contains("x"))
         xEdit->setText(QString::number(state["x"].toDouble()));
     if (state.contains("y"))
@@ -85,6 +90,7 @@ void GravityDamDialog::initUI()
     upstreamSlopeEdit = new QLineEdit("0.2", this);
     downstreamSlopeEdit = new QLineEdit("0.75", this);
     lengthEdit = new QLineEdit("180", this);
+    layerCountEdit = new QLineEdit("6", this);
     xEdit = new QLineEdit("0", this);
     yEdit = new QLineEdit("0", this);
     zEdit = new QLineEdit("0", this);
@@ -94,6 +100,7 @@ void GravityDamDialog::initUI()
     upstreamSlopeEdit->setValidator(slopeValidator);
     downstreamSlopeEdit->setValidator(slopeValidator);
     lengthEdit->setValidator(posValidator);
+    layerCountEdit->setValidator(new QIntValidator(1, 200, this));
     xEdit->setValidator(coordValidator);
     yEdit->setValidator(coordValidator);
     zEdit->setValidator(coordValidator);
@@ -103,6 +110,7 @@ void GravityDamDialog::initUI()
     form->addRow("上游坡比 mu", upstreamSlopeEdit);
     form->addRow("下游坡比 md", downstreamSlopeEdit);
     form->addRow("坝轴线长度 L", lengthEdit);
+    form->addRow("分层数 N", layerCountEdit);
     form->addRow("基点 X", xEdit);
     form->addRow("基点 Y", yEdit);
     form->addRow("基点 Z", zEdit);
@@ -134,8 +142,8 @@ void GravityDamDialog::initUI()
 }
 
 bool GravityDamDialog::readParameters(double& damHeight, double& crestWidth, double& upSlope,
-                                      double& downSlope, double& damLength, double& x, double& y,
-                                      double& z) const
+                                      double& downSlope, double& damLength, int& layerCount,
+                                      double& x, double& y, double& z) const
 {
     bool ok = false;
     damHeight = heightEdit->text().toDouble(&ok);
@@ -153,6 +161,9 @@ bool GravityDamDialog::readParameters(double& damHeight, double& crestWidth, dou
     damLength = lengthEdit->text().toDouble(&ok);
     if (!ok || damLength <= 0)
         return false;
+    layerCount = layerCountEdit->text().toInt(&ok);
+    if (!ok || layerCount <= 0)
+        return false;
     x = xEdit->text().toDouble(&ok);
     if (!ok)
         return false;
@@ -164,65 +175,86 @@ bool GravityDamDialog::readParameters(double& damHeight, double& crestWidth, dou
 }
 
 void GravityDamDialog::applyPreviewText(double damHeight, double crestWidth, double upSlope,
-                                        double downSlope) const
+                                        double downSlope, int layerCount) const
 {
     const double baseWidth = crestWidth + damHeight * (upSlope + downSlope);
     const double x0 = 0.0;
     const double x1 = damHeight * upSlope;
     const double x2 = x1 + crestWidth;
     const double x3 = baseWidth;
-    preview2DEdit->setText(QString("P1(0,0) P2(%1,%2) P3(%3,%2) P4(%4,0)")
-                               .arg(x1, 0, 'f', 3)
-                               .arg(damHeight, 0, 'f', 3)
-                               .arg(x2, 0, 'f', 3)
-                               .arg(x3, 0, 'f', 3));
+    const double layerH = damHeight / layerCount;
+    preview2DEdit->setText(
+        QString("N=%5, ΔH=%6 | P1(0,0) P2(%1,%2) P3(%3,%2) P4(%4,0)")
+            .arg(x1, 0, 'f', 3)
+            .arg(damHeight, 0, 'f', 3)
+            .arg(x2, 0, 'f', 3)
+            .arg(x3, 0, 'f', 3)
+            .arg(layerCount)
+            .arg(layerH, 0, 'f', 3));
     Q_UNUSED(x0);
 }
 
 void GravityDamDialog::onPreview2DClicked()
 {
     double H = 0, Bt = 0, mu = 0, md = 0, L = 0, x = 0, y = 0, z = 0;
-    if (!readParameters(H, Bt, mu, md, L, x, y, z))
+    int N = 0;
+    if (!readParameters(H, Bt, mu, md, L, N, x, y, z))
     {
-        QMessageBox::warning(this, "参数错误", "请检查参数：H、Bt、L必须>0；坡比不能为负。");
+        QMessageBox::warning(this, "参数错误", "请检查参数：H、Bt、L、N必须>0；坡比不能为负。");
         return;
     }
-    applyPreviewText(H, Bt, mu, md);
+    applyPreviewText(H, Bt, mu, md, N);
 }
 
 void GravityDamDialog::onGenerate3DClicked()
 {
     double H = 0, Bt = 0, mu = 0, md = 0, L = 0, x = 0, y = 0, z = 0;
-    if (!readParameters(H, Bt, mu, md, L, x, y, z))
+    int N = 0;
+    if (!readParameters(H, Bt, mu, md, L, N, x, y, z))
     {
-        QMessageBox::warning(this, "参数错误", "请检查参数：H、Bt、L必须>0；坡比不能为负。");
+        QMessageBox::warning(this, "参数错误", "请检查参数：H、Bt、L、N必须>0；坡比不能为负。");
         return;
     }
 
-    applyPreviewText(H, Bt, mu, md);
-    buildDamBody(H, Bt, mu, md, L, x, y, z);
+    applyPreviewText(H, Bt, mu, md, N);
+    buildDamBody(H, Bt, mu, md, L, N, x, y, z);
 }
 
 void GravityDamDialog::buildDamBody(double damHeight, double crestWidth, double upSlope,
-                                    double downSlope, double damLength, double x, double y, double z)
+                                    double downSlope, double damLength, int layerCount, double x,
+                                    double y, double z)
 {
     GeometryCleanup::removeExistingGeometry(m_uuid);
 
-    const double x1 = x + damHeight * upSlope;
-    const double x2 = x1 + crestWidth;
-    const double x3 = x2 + damHeight * downSlope;
-    const double zTop = z + damHeight;
+    TopoDS_Compound layeredDam;
+    BRep_Builder builder;
+    builder.MakeCompound(layeredDam);
+    const double layerH = damHeight / layerCount;
+    for (int i = 0; i < layerCount; ++i)
+    {
+        const double z0 = z + layerH * i;
+        const double z1 = z + layerH * (i + 1);
+        const double localH0 = damHeight - (z0 - z);
+        const double localH1 = damHeight - (z1 - z);
 
-    BRepBuilderAPI_MakePolygon profile;
-    profile.Add(gp_Pnt(x, y, z));
-    profile.Add(gp_Pnt(x1, y, zTop));
-    profile.Add(gp_Pnt(x2, y, zTop));
-    profile.Add(gp_Pnt(x3, y, z));
-    profile.Close();
+        const double xUp0 = x + localH0 * upSlope;
+        const double xUp1 = x + localH1 * upSlope;
+        const double xDown0 = x + localH0 * upSlope + crestWidth + localH0 * downSlope;
+        const double xDown1 = x + localH1 * upSlope + crestWidth + localH1 * downSlope;
 
-    TopoDS_Wire wire = profile.Wire();
-    TopoDS_Face face = BRepBuilderAPI_MakeFace(wire);
-    TopoDS_Shape damShape = BRepPrimAPI_MakePrism(face, gp_Vec(0, damLength, 0)).Shape();
+        BRepBuilderAPI_MakePolygon layerProfile;
+        layerProfile.Add(gp_Pnt(xUp0, y, z0));
+        layerProfile.Add(gp_Pnt(xUp1, y, z1));
+        layerProfile.Add(gp_Pnt(xDown1, y, z1));
+        layerProfile.Add(gp_Pnt(xDown0, y, z0));
+        layerProfile.Close();
+
+        TopoDS_Wire layerWire = layerProfile.Wire();
+        TopoDS_Face layerFace = BRepBuilderAPI_MakeFace(layerWire);
+        TopoDS_Shape layerSolid = BRepPrimAPI_MakePrism(layerFace, gp_Vec(0, damLength, 0)).Shape();
+        builder.Add(layeredDam, layerSolid);
+    }
+    TopoDS_Shape damShape = layeredDam;
 
     TopoDS_Shape* shape = new TopoDS_Shape(damShape);
     auto* mgr = GeomManager::GeomManagerInstance::getInstance();
