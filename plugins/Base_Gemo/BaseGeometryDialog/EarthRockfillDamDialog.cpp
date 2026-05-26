@@ -1,4 +1,4 @@
-﻿#include "EarthRockfillDamDialog.h"
+#include "EarthRockfillDamDialog.h"
 
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
@@ -11,86 +11,430 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QIntValidator>
+#include <QJsonObject>
+#include <QLabel>
+#include <QLineEdit>
+#include <QMessageBox>
 #include <QPainter>
+#include <QPointF>
+#include <QPolygonF>
 #include <QPushButton>
+#include <QRegion>
 #include <QVBoxLayout>
+#include <QVector>
 #include <ServiceRegistry.h>
+#include <TopoDS_Compound.hxx>
+#include <TopoDS_Face.hxx>
+#include <TopoDS_Shape.hxx>
+#include <TopoDS_Wire.hxx>
+#include <gp_Pnt.hxx>
+#include <gp_Vec.hxx>
 #include <services/ProjectManagerService.h>
 #include <services/VisualWidgetService.h>
 
-EarthRockfillDamDialog::EarthRockfillDamDialog(QWidget*) : BasePage(PublicConstants::kPagePreprocessEarthRockfillDam) { initUi(); }
-
-QJsonObject EarthRockfillDamDialog::saveJson(){QJsonObject o; o["h"]=hEdit->text().toDouble(); o["crest"]=crestEdit->text().toDouble(); o["up"]=upEdit->text().toDouble(); o["down"]=downEdit->text().toDouble(); o["len"]=lenEdit->text().toDouble(); o["core"]=coreWidthEdit->text().toDouble(); o["layers"]=layerEdit->text().toInt(); return o;}
-
-void EarthRockfillDamDialog::loadJson(const QJsonObject& o){if(o.contains("h"))hEdit->setText(QString::number(o["h"].toDouble()));if(o.contains("crest"))crestEdit->setText(QString::number(o["crest"].toDouble()));if(o.contains("up"))upEdit->setText(QString::number(o["up"].toDouble()));if(o.contains("down"))downEdit->setText(QString::number(o["down"].toDouble()));if(o.contains("len"))lenEdit->setText(QString::number(o["len"].toDouble()));if(o.contains("core"))coreWidthEdit->setText(QString::number(o["core"].toDouble()));if(o.contains("layers"))layerEdit->setText(QString::number(o["layers"].toInt())); updateDiagram();}
-
-void EarthRockfillDamDialog::initUi(){auto* l=new QVBoxLayout(this); auto* f=new QFormLayout; auto* dv=new QDoubleValidator(0.01,1e9,3,this); hEdit=new QLineEdit("90"); crestEdit=new QLineEdit("12"); upEdit=new QLineEdit("2.2"); downEdit=new QLineEdit("1.9"); lenEdit=new QLineEdit("260"); coreWidthEdit=new QLineEdit("6"); layerEdit=new QLineEdit("10"); for(auto* e:{hEdit,crestEdit,upEdit,downEdit,lenEdit,coreWidthEdit}) e->setValidator(dv); layerEdit->setValidator(new QIntValidator(1,200,this)); f->addRow("坝高H",hEdit); f->addRow("坝顶宽Bt",crestEdit); f->addRow("上游坡比",upEdit); f->addRow("下游坡比",downEdit); f->addRow("坝轴线长度L",lenEdit); f->addRow("心墙宽度",coreWidthEdit); f->addRow("分层数N",layerEdit); l->addLayout(f); diagramLabel=new QLabel(this); diagramLabel->setMinimumHeight(190); l->addWidget(diagramLabel); auto* row=new QHBoxLayout; auto* prev=new QPushButton("更新说明图"); auto* gen=new QPushButton("生成土石坝"); row->addWidget(prev); row->addWidget(gen); l->addLayout(row); connect(prev,&QPushButton::clicked,this,&EarthRockfillDamDialog::onPreviewClicked); connect(gen,&QPushButton::clicked,this,&EarthRockfillDamDialog::onGenerateClicked); updateDiagram();}
-
-void EarthRockfillDamDialog::updateDiagram(){const double H=hEdit->text().toDouble(),Bt=crestEdit->text().toDouble(),mu=upEdit->text().toDouble(),md=downEdit->text().toDouble(),core=coreWidthEdit->text().toDouble();const int N=layerEdit->text().toInt(); const double x1=H*mu,x2=x1+Bt,x3=x2+H*md; const double c=(x1+x2)*0.5; const double filt=core*0.6; QPixmap pix(500,190); pix.fill(Qt::white); QPainter p(&pix); p.setRenderHint(QPainter::Antialiasing); const double s=qMin(430.0/qMax(1.0,x3),130.0/qMax(1.0,H)); auto m=[&](double x,double z){return QPointF(20+x*s,165-z*s);}; p.setBrush(QColor(196,182,136)); p.drawPolygon(QPolygonF()<<m(0,0)<<m(x1,H)<<m(x2,H)<<m(x3,0)); p.setBrush(QColor(230,210,150)); p.drawRect(QRectF(m(c-core*0.5-filt,H).x(),m(0,0).y(),filt*s,-H*s)); p.drawRect(QRectF(m(c+core*0.5,H).x(),m(0,0).y(),filt*s,-H*s)); p.setBrush(QColor(220,90,90,220)); p.drawRect(QRectF(m(c-core*0.5,H).x(),m(0,0).y(),core*s,-H*s)); p.setPen(QPen(Qt::gray,1,Qt::DashLine)); for(int i=1;i<N;i++){double z=H*i/N; p.drawLine(m(0,z),m(x3,z));} p.setPen(Qt::black); p.drawText(8,16,"土石坝：堆石区 + 反滤层 + 心墙 + 分层"); diagramLabel->setPixmap(pix);} 
-
-void EarthRockfillDamDialog::onPreviewClicked(){updateDiagram();}
-
-void EarthRockfillDamDialog::buildLayeredDam(double H,double Bt,double mu,double md,double L,int layers)
+namespace
 {
-    const double x1 = H * mu, x2 = x1 + Bt, x3 = x2 + H * md;
-    const double core = coreWidthEdit->text().toDouble();
-    const double filterW = core * 0.6;
-    const double c = (x1 + x2) * 0.5;
-    const double layerH = H / layers;
-    TopoDS_Compound comp;
-    BRep_Builder b;
-    b.MakeCompound(comp);
+constexpr double kEps = 1.0e-7;
 
-    auto addBand = [&](double left0, double left1, double right1, double right0, double z0, double z1)
+QLineEdit* findEdit(QWidget* owner, const char* objectName)
+{
+    return owner ? owner->findChild<QLineEdit*>(QString::fromLatin1(objectName)) : nullptr;
+}
+
+double readEdit(QWidget* owner, const char* objectName, double fallback)
+{
+    if (auto* edit = findEdit(owner, objectName))
     {
-        if (right0 <= left0 || right1 <= left1)
-            return;
-        BRepBuilderAPI_MakePolygon pg;
-        pg.Add(gp_Pnt(left0, 0, z0));
-        pg.Add(gp_Pnt(left1, 0, z1));
-        pg.Add(gp_Pnt(right1, 0, z1));
-        pg.Add(gp_Pnt(right0, 0, z0));
-        pg.Close();
-        b.Add(comp, BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(pg.Wire()), gp_Vec(0, L, 0)).Shape());
+        bool ok = false;
+        const double value = edit->text().toDouble(&ok);
+        if (ok)
+            return value;
+    }
+    return fallback;
+}
+
+void setEditIfExists(QWidget* owner, const char* objectName, double value)
+{
+    if (auto* edit = findEdit(owner, objectName))
+        edit->setText(QString::number(value));
+}
+
+TopoDS_Shape makePrismFromProfile(const QVector<QPointF>& profile, double length)
+{
+    if (profile.size() < 3 || length <= kEps)
+        return TopoDS_Shape();
+
+    BRepBuilderAPI_MakePolygon polygon;
+    QPointF lastPoint;
+    bool hasLast = false;
+    int validCount = 0;
+
+    for (const QPointF& point : profile)
+    {
+        if (hasLast && qAbs(point.x() - lastPoint.x()) < kEps && qAbs(point.y() - lastPoint.y()) < kEps)
+            continue;
+        polygon.Add(gp_Pnt(point.x(), 0.0, point.y()));
+        lastPoint = point;
+        hasLast = true;
+        ++validCount;
+    }
+
+    if (validCount < 3)
+        return TopoDS_Shape();
+
+    polygon.Close();
+    BRepBuilderAPI_MakeFace faceMaker(polygon.Wire());
+    if (!faceMaker.IsDone())
+        return TopoDS_Shape();
+
+    return BRepPrimAPI_MakePrism(faceMaker.Face(), gp_Vec(0.0, length, 0.0)).Shape();
+}
+
+bool appendBand(TopoDS_Compound& compound,
+                BRep_Builder& builder,
+                double outerLeft0,
+                double outerRight0,
+                double outerLeft1,
+                double outerRight1,
+                double regionLeft0,
+                double regionRight0,
+                double regionLeft1,
+                double regionRight1,
+                double z0,
+                double z1,
+                double length)
+{
+    const double left0 = qMax(outerLeft0, regionLeft0);
+    const double right0 = qMin(outerRight0, regionRight0);
+    const double left1 = qMax(outerLeft1, regionLeft1);
+    const double right1 = qMin(outerRight1, regionRight1);
+
+    if ((right0 - left0 <= kEps) && (right1 - left1 <= kEps))
+        return false;
+
+    QVector<QPointF> profile;
+    if (right0 - left0 > kEps)
+        profile << QPointF(left0, z0) << QPointF(right0, z0);
+    if (right1 - left1 > kEps)
+        profile << QPointF(right1, z1) << QPointF(left1, z1);
+
+    TopoDS_Shape solid = makePrismFromProfile(profile, length);
+    if (solid.IsNull())
+        return false;
+
+    builder.Add(compound, solid);
+    return true;
+}
+
+} // namespace
+
+EarthRockfillDamDialog::EarthRockfillDamDialog(QWidget* parent)
+    : BasePage(PublicConstants::kPagePreprocessEarthRockfillDam)
+{
+    Q_UNUSED(parent);
+    initUi();
+}
+
+QJsonObject EarthRockfillDamDialog::saveJson()
+{
+    QJsonObject object;
+    object["h"] = hEdit->text().toDouble();
+    object["crest"] = crestEdit->text().toDouble();
+    object["upW"] = upEdit->text().toDouble();
+    object["downW"] = downEdit->text().toDouble();
+    object["len"] = lenEdit->text().toDouble();
+    object["coreTop"] = coreWidthEdit->text().toDouble();
+    object["coreBottom"] = readEdit(this, "coreBottomEdit", 22.0);
+    object["filter"] = readEdit(this, "filterWidthEdit", 4.0);
+    object["coreOffset"] = readEdit(this, "coreOffsetEdit", 0.0);
+    object["layers"] = layerEdit->text().toInt();
+    return object;
+}
+
+void EarthRockfillDamDialog::loadJson(const QJsonObject& object)
+{
+    if (object.contains("h"))
+        hEdit->setText(QString::number(object["h"].toDouble()));
+    if (object.contains("crest"))
+        crestEdit->setText(QString::number(object["crest"].toDouble()));
+    if (object.contains("upW"))
+        upEdit->setText(QString::number(object["upW"].toDouble()));
+    else if (object.contains("up"))
+        upEdit->setText(QString::number(object["up"].toDouble()));
+    if (object.contains("downW"))
+        downEdit->setText(QString::number(object["downW"].toDouble()));
+    else if (object.contains("down"))
+        downEdit->setText(QString::number(object["down"].toDouble()));
+    if (object.contains("len"))
+        lenEdit->setText(QString::number(object["len"].toDouble()));
+    if (object.contains("coreTop"))
+        coreWidthEdit->setText(QString::number(object["coreTop"].toDouble()));
+    else if (object.contains("core"))
+        coreWidthEdit->setText(QString::number(object["core"].toDouble()));
+    if (object.contains("coreBottom"))
+        setEditIfExists(this, "coreBottomEdit", object["coreBottom"].toDouble());
+    if (object.contains("filter"))
+        setEditIfExists(this, "filterWidthEdit", object["filter"].toDouble());
+    if (object.contains("coreOffset"))
+        setEditIfExists(this, "coreOffsetEdit", object["coreOffset"].toDouble());
+    if (object.contains("layers"))
+        layerEdit->setText(QString::number(object["layers"].toInt()));
+
+    updateDiagram();
+}
+
+void EarthRockfillDamDialog::initUi()
+{
+    auto* mainLayout = new QVBoxLayout(this);
+    auto* form = new QFormLayout();
+
+    auto* positiveValidator = new QDoubleValidator(0.01, 1.0e9, 3, this);
+    auto* coordValidator = new QDoubleValidator(-1.0e9, 1.0e9, 3, this);
+
+    hEdit = new QLineEdit("80", this);
+    crestEdit = new QLineEdit("20", this);
+    upEdit = new QLineEdit("160", this);       // 上游坝坡水平宽 Wu
+    downEdit = new QLineEdit("140", this);     // 下游坝坡水平宽 Wd
+    lenEdit = new QLineEdit("220", this);
+
+    coreWidthEdit = new QLineEdit("6", this);  // 心墙顶宽 Ct
+    layerEdit = new QLineEdit("8", this);
+
+    auto* coreBottomEdit = new QLineEdit("28", this);
+    coreBottomEdit->setObjectName("coreBottomEdit");
+
+    auto* filterWidthEdit = new QLineEdit("3", this);
+    filterWidthEdit->setObjectName("filterWidthEdit");
+
+    auto* coreOffsetEdit = new QLineEdit("0", this);
+    coreOffsetEdit->setObjectName("coreOffsetEdit");
+
+    for (auto* edit : {hEdit, crestEdit, upEdit, downEdit, lenEdit, coreWidthEdit, coreBottomEdit, filterWidthEdit})
+        edit->setValidator(positiveValidator);
+    coreOffsetEdit->setValidator(coordValidator);
+    layerEdit->setValidator(new QIntValidator(1, 200, this));
+
+    form->addRow("坝高 H", hEdit);
+    form->addRow("坝顶宽 Bt", crestEdit);
+    form->addRow("上游坝坡水平宽 Wu", upEdit);
+    form->addRow("下游坝坡水平宽 Wd", downEdit);
+    form->addRow("坝轴线长度 L", lenEdit);
+    form->addRow("心墙顶宽 Ct", coreWidthEdit);
+    form->addRow("心墙底宽 Cb", coreBottomEdit);
+    form->addRow("反滤层宽 F", filterWidthEdit);
+    form->addRow("心墙中心偏移 Xc", coreOffsetEdit);
+    form->addRow("填筑层数 N", layerEdit);
+    mainLayout->addLayout(form);
+
+    diagramLabel = new QLabel(this);
+    diagramLabel->setMinimumHeight(260);
+    diagramLabel->setAlignment(Qt::AlignCenter);
+    mainLayout->addWidget(diagramLabel);
+
+    auto* row = new QHBoxLayout();
+    auto* previewButton = new QPushButton("更新说明图", this);
+    auto* generateButton = new QPushButton("生成土石坝", this);
+    row->addWidget(previewButton);
+    row->addWidget(generateButton);
+    mainLayout->addLayout(row);
+
+    connect(previewButton, &QPushButton::clicked, this, &EarthRockfillDamDialog::onPreviewClicked);
+    connect(generateButton, &QPushButton::clicked, this, &EarthRockfillDamDialog::onGenerateClicked);
+
+    updateDiagram();
+}
+
+void EarthRockfillDamDialog::updateDiagram()
+{
+    const double H = hEdit->text().toDouble();
+    const double Bt = crestEdit->text().toDouble();
+    const double Wu = upEdit->text().toDouble();
+    const double Wd = downEdit->text().toDouble();
+    const double Ct = coreWidthEdit->text().toDouble();
+    const double Cb = readEdit(this, "coreBottomEdit", 22.0);
+    const double F = readEdit(this, "filterWidthEdit", 4.0);
+    const double Xc = readEdit(this, "coreOffsetEdit", 0.0);
+    const int N = qMax(1, layerEdit->text().toInt());
+
+    if (H <= kEps || Bt <= kEps || Wu <= kEps || Wd <= kEps || Ct <= kEps || Cb <= kEps || F <= kEps)
+        return;
+
+    const double totalWidth = Wu + Bt + Wd;
+    const double x1 = Wu;
+    const double x2 = Wu + Bt;
+    const double center = Wu + Bt * 0.5 + Xc;
+
+    QPixmap pixmap(680, 280);
+    pixmap.fill(Qt::white);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    const double scale = qMin(620.0 / qMax(1.0, totalWidth), 175.0 / qMax(1.0, H));
+    auto mapPoint = [&](double x, double z)
+    {
+        return QPointF(30.0 + x * scale, 225.0 - z * scale);
     };
+
+    QPolygonF damPolygon;
+    damPolygon << mapPoint(0.0, 0.0)
+               << mapPoint(x1, H)
+               << mapPoint(x2, H)
+               << mapPoint(totalWidth, 0.0);
+
+    painter.setPen(QPen(QColor(90, 80, 60), 1.5));
+    painter.setBrush(QColor(196, 182, 136));
+    painter.drawPolygon(damPolygon);
+
+    painter.save();
+    painter.setClipRegion(QRegion(damPolygon.toPolygon()));
+
+    QPolygonF leftFilter;
+    leftFilter << mapPoint(center - Cb * 0.5 - F, 0.0)
+               << mapPoint(center - Ct * 0.5 - F, H)
+               << mapPoint(center - Ct * 0.5, H)
+               << mapPoint(center - Cb * 0.5, 0.0);
+
+    QPolygonF corePolygon;
+    corePolygon << mapPoint(center - Cb * 0.5, 0.0)
+                << mapPoint(center - Ct * 0.5, H)
+                << mapPoint(center + Ct * 0.5, H)
+                << mapPoint(center + Cb * 0.5, 0.0);
+
+    QPolygonF rightFilter;
+    rightFilter << mapPoint(center + Cb * 0.5, 0.0)
+                << mapPoint(center + Ct * 0.5, H)
+                << mapPoint(center + Ct * 0.5 + F, H)
+                << mapPoint(center + Cb * 0.5 + F, 0.0);
+
+    painter.setPen(QPen(QColor(120, 100, 70), 1));
+    painter.setBrush(QColor(230, 210, 150, 210));
+    painter.drawPolygon(leftFilter);
+    painter.drawPolygon(rightFilter);
+
+    painter.setBrush(QColor(220, 90, 90, 220));
+    painter.drawPolygon(corePolygon);
+
+    painter.setPen(QPen(Qt::gray, 1, Qt::DashLine));
+    for (int i = 1; i < N; ++i)
+    {
+        const double z = H * i / static_cast<double>(N);
+        painter.drawLine(mapPoint(0.0, z), mapPoint(totalWidth, z));
+    }
+    painter.restore();
+
+    painter.setPen(Qt::black);
+    painter.drawText(8, 18, "土石坝模板：Wu/Wd=上下游坝坡水平宽；Ct/Cb=心墙顶宽/底宽；F=反滤层宽；Xc=心墙中心偏移");
+    painter.drawText(8, 38, "生成逻辑：填筑层 N × 上游坝壳/左反滤/心墙/右反滤/下游坝壳，是真实几何分区。心墙/反滤必须落在坝体内部。");
+    diagramLabel->setPixmap(pixmap);
+}
+
+void EarthRockfillDamDialog::onPreviewClicked()
+{
+    updateDiagram();
+}
+
+void EarthRockfillDamDialog::buildLayeredDam(double H, double Bt, double Wu, double Wd, double L, int layers)
+{
+    const double Ct = coreWidthEdit->text().toDouble();
+    const double Cb = readEdit(this, "coreBottomEdit", 22.0);
+    const double F = readEdit(this, "filterWidthEdit", 4.0);
+    const double Xc = readEdit(this, "coreOffsetEdit", 0.0);
+
+    if (H <= kEps || Bt <= kEps || Wu <= kEps || Wd <= kEps || L <= kEps || layers <= 0 ||
+        Ct <= kEps || Cb <= kEps || F <= kEps)
+    {
+        QMessageBox::warning(this, "参数错误", "请检查参数：坝高、坝顶宽、上下游水平宽、长度、心墙宽、反滤层宽和层数必须为正值。");
+        return;
+    }
+
+    const double totalWidth = Wu + Bt + Wd;
+    const double center = Wu + Bt * 0.5 + Xc;
+
+    const double topLeftWithFilter = center - Ct * 0.5 - F;
+    const double topRightWithFilter = center + Ct * 0.5 + F;
+    const double bottomLeftWithFilter = center - Cb * 0.5 - F;
+    const double bottomRightWithFilter = center + Cb * 0.5 + F;
+
+    if (topLeftWithFilter <= Wu + kEps || topRightWithFilter >= Wu + Bt - kEps)
+    {
+        QMessageBox::warning(this, "参数错误", "心墙顶宽 Ct + 两侧反滤层宽 2F 必须位于坝顶宽 Bt 内。请减小 Ct/F，或调整心墙中心偏移 Xc。");
+        return;
+    }
+    if (bottomLeftWithFilter <= kEps || bottomRightWithFilter >= totalWidth - kEps)
+    {
+        QMessageBox::warning(this, "参数错误", "心墙底宽 Cb + 两侧反滤层宽 2F 必须位于坝体底宽内。请减小 Cb/F，或调整心墙中心偏移 Xc。");
+        return;
+    }
+
+    const double layerH = H / static_cast<double>(layers);
+
+    auto outerLeftAt = [&](double z)
+    {
+        return Wu * z / H;
+    };
+    auto outerRightAt = [&](double z)
+    {
+        return totalWidth - Wd * z / H;
+    };
+    auto coreHalfAt = [&](double z)
+    {
+        return Cb * 0.5 + (Ct - Cb) * 0.5 * z / H;
+    };
+
+    TopoDS_Compound compound;
+    BRep_Builder builder;
+    builder.MakeCompound(compound);
 
     for (int i = 0; i < layers; ++i)
     {
         const double z0 = i * layerH;
         const double z1 = (i + 1) * layerH;
 
-        const double leftOuter0 = (H - z0) * mu;
-        const double leftOuter1 = (H - z1) * mu;
-        const double rightOuter0 = x2 + (H - z0) * md;
-        const double rightOuter1 = x2 + (H - z1) * md;
+        const double outerL0 = outerLeftAt(z0);
+        const double outerR0 = outerRightAt(z0);
+        const double outerL1 = outerLeftAt(z1);
+        const double outerR1 = outerRightAt(z1);
 
-        const double coreL = c - core * 0.5;
-        const double coreR = c + core * 0.5;
-        const double f1L = coreL - filterW;
-        const double f1R = coreL;
-        const double f2L = coreR;
-        const double f2R = coreR + filterW;
+        const double half0 = coreHalfAt(z0);
+        const double half1 = coreHalfAt(z1);
+        const double coreL0 = center - half0;
+        const double coreR0 = center + half0;
+        const double coreL1 = center - half1;
+        const double coreR1 = center + half1;
 
-        // 左堆石区（外壳）
-        addBand(leftOuter0, leftOuter1, f1L, f1L, z0, z1);
-        // 左反滤层
-        addBand(f1L, f1L, f1R, f1R, z0, z1);
-        // 心墙
-        addBand(coreL, coreL, coreR, coreR, z0, z1);
-        // 右反滤层
-        addBand(f2L, f2L, f2R, f2R, z0, z1);
-        // 右堆石区（外壳）
-        addBand(f2R, f2R, rightOuter1, rightOuter0, z0, z1);
+        appendBand(compound, builder, outerL0, outerR0, outerL1, outerR1,
+                   -1.0e12, coreL0 - F, -1.0e12, coreL1 - F, z0, z1, L); // 上游坝壳
+        appendBand(compound, builder, outerL0, outerR0, outerL1, outerR1,
+                   coreL0 - F, coreL0, coreL1 - F, coreL1, z0, z1, L);    // 左反滤层
+        appendBand(compound, builder, outerL0, outerR0, outerL1, outerR1,
+                   coreL0, coreR0, coreL1, coreR1, z0, z1, L);            // 心墙
+        appendBand(compound, builder, outerL0, outerR0, outerL1, outerR1,
+                   coreR0, coreR0 + F, coreR1, coreR1 + F, z0, z1, L);    // 右反滤层
+        appendBand(compound, builder, outerL0, outerR0, outerL1, outerR1,
+                   coreR0 + F, 1.0e12, coreR1 + F, 1.0e12, z0, z1, L);    // 下游坝壳
     }
 
-    auto* obj = new GeomShapeObject(m_uuid, new TopoDS_Shape(comp), getDisplayName());
-    GeomManager::GeomManagerInstance::getInstance()->appendGeomShapeObject(obj);
+    auto* object = new GeomShapeObject(m_uuid, new TopoDS_Shape(compound), getDisplayName());
+    GeomManager::GeomManagerInstance::getInstance()->appendGeomShapeObject(object);
+
     if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>())
     {
-        vis->addProp(m_uuid + "_face", obj->getSurfActor(), "Geometry", m_uuid + "_face", true);
-        vis->addProp(m_uuid + "_edge", obj->getEdgeActor(), "Geometry", m_uuid + "_face", true);
+        vis->addProp(m_uuid + "_face", object->getSurfActor(), "Geometry", m_uuid + "_face", true);
+        vis->addProp(m_uuid + "_edge", object->getEdgeActor(), "Geometry", m_uuid + "_face", true);
     }
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setNodeDimmed(m_uuid, false);
+
+    if (auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>())
+        projectManagerService->setNodeDimmed(m_uuid, false);
 }
 
-void EarthRockfillDamDialog::onGenerateClicked(){updateDiagram(); GeometryCleanup::removeExistingGeometry(m_uuid); buildLayeredDam(hEdit->text().toDouble(),crestEdit->text().toDouble(),upEdit->text().toDouble(),downEdit->text().toDouble(),lenEdit->text().toDouble(),layerEdit->text().toInt());}
+void EarthRockfillDamDialog::onGenerateClicked()
+{
+    updateDiagram();
+    GeometryCleanup::removeExistingGeometry(m_uuid);
+    buildLayeredDam(hEdit->text().toDouble(),
+                    crestEdit->text().toDouble(),
+                    upEdit->text().toDouble(),
+                    downEdit->text().toDouble(),
+                    lenEdit->text().toDouble(),
+                    layerEdit->text().toInt());
+}

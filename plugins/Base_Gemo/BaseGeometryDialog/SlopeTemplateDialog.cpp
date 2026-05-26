@@ -1,4 +1,4 @@
-﻿#include "SlopeTemplateDialog.h"
+#include "SlopeTemplateDialog.h"
 
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
@@ -10,163 +10,341 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QIntValidator>
+#include <QJsonObject>
+#include <QLabel>
+#include <QLineEdit>
+#include <QMessageBox>
 #include <QPainter>
+#include <QPointF>
+#include <QPolygonF>
 #include <QPushButton>
 #include <QVBoxLayout>
+#include <QVector>
 #include <ServiceRegistry.h>
+#include <TopoDS_Face.hxx>
+#include <TopoDS_Shape.hxx>
+#include <TopoDS_Wire.hxx>
+#include <gp_Pnt.hxx>
+#include <gp_Vec.hxx>
 #include <services/ProjectManagerService.h>
 #include <services/VisualWidgetService.h>
 
-SlopeTemplateDialog::SlopeTemplateDialog(QWidget*) : BasePage(PublicConstants::kPagePreprocessSlopeTemplate)
+namespace
 {
-    auto* l = new QVBoxLayout(this);
-    auto* f = new QFormLayout;
-    auto* dv = new QDoubleValidator(0.01, 1e9, 3, this);
-    hEdit = new QLineEdit("65");
-    benchWidthEdit = new QLineEdit("8");
-    slopeEdit = new QLineEdit("1.2");
-    lenEdit = new QLineEdit("120");
-    benchCountEdit = new QLineEdit("3");
-    for (auto* e : {hEdit, benchWidthEdit, slopeEdit, lenEdit}) e->setValidator(dv);
-    benchCountEdit->setValidator(new QIntValidator(1, 8, this));
+constexpr double kEps = 1.0e-7;
 
-    f->addRow("坡高H", hEdit);
-    f->addRow("平台宽", benchWidthEdit);
-    f->addRow("坡比", slopeEdit);
-    f->addRow("延伸长度L", lenEdit);
-    f->addRow("平台级数", benchCountEdit);
-    l->addLayout(f);
+QLineEdit* findEdit(QWidget* owner, const char* objectName)
+{
+    return owner ? owner->findChild<QLineEdit*>(QString::fromLatin1(objectName)) : nullptr;
+}
+
+double readEdit(QWidget* owner, const char* objectName, double fallback)
+{
+    if (auto* edit = findEdit(owner, objectName))
+    {
+        bool ok = false;
+        const double value = edit->text().toDouble(&ok);
+        if (ok)
+            return value;
+    }
+    return fallback;
+}
+
+void setEditIfExists(QWidget* owner, const char* objectName, double value)
+{
+    if (auto* edit = findEdit(owner, objectName))
+        edit->setText(QString::number(value));
+}
+
+// 边坡断面：
+// 1) 左侧是远场竖向边界；
+// 2) 右侧是多级开挖坡面；
+// 3) 坡脚外延保留，但必须有“底部厚度 Hbase”，否则外延只是一条零厚度面；
+// 4) 模型厚度 L 由拉伸方向控制，平面断面不再额外设置“宽度”。
+QVector<QPointF> buildSlopeProfile2D(double height,
+                                     double topPlatformWidth,
+                                     double middleBenchWidth,
+                                     double stageHorizontalWidth,
+                                     double toeExtensionLength,
+                                     double baseHeight,
+                                     int stageCount)
+{
+    QVector<QPointF> profile;
+    if (height <= kEps || topPlatformWidth < 0.0 || middleBenchWidth < 0.0 ||
+        stageHorizontalWidth <= kEps || toeExtensionLength < 0.0 || baseHeight <= kEps ||
+        stageCount <= 0)
+        return profile;
+
+    profile << QPointF(0.0, -baseHeight);   // 左下远场底边
+    profile << QPointF(0.0, height);        // 左上远场地表
+
+    double x = 0.0;
+    double z = height;
+    const double dz = height / static_cast<double>(stageCount);
+
+    if (topPlatformWidth > kEps)
+    {
+        x += topPlatformWidth;
+        profile << QPointF(x, z);           // 坡顶平台
+    }
+
+    for (int i = 0; i < stageCount; ++i)
+    {
+        x += stageHorizontalWidth;
+        z = qMax(0.0, height - (i + 1) * dz);
+        profile << QPointF(x, z);           // 第 i 级坡面终点
+
+        if (i != stageCount - 1 && middleBenchWidth > kEps)
+        {
+            x += middleBenchWidth;
+            profile << QPointF(x, z);       // 中间平台
+        }
+    }
+
+    if (toeExtensionLength > kEps)
+    {
+        x += toeExtensionLength;
+        profile << QPointF(x, 0.0);         // 坡脚外延平台面
+    }
+
+    profile << QPointF(x, -baseHeight);     // 外延/坡脚底部，有厚度，不是零厚度面
+    return profile;
+}
+
+TopoDS_Shape makePrismFromProfile(const QVector<QPointF>& profile, double length)
+{
+    if (profile.size() < 3 || length <= kEps)
+        return TopoDS_Shape();
+
+    BRepBuilderAPI_MakePolygon polygon;
+    QPointF lastPoint;
+    bool hasLast = false;
+    int validCount = 0;
+
+    for (const QPointF& point : profile)
+    {
+        if (hasLast && qAbs(point.x() - lastPoint.x()) < kEps && qAbs(point.y() - lastPoint.y()) < kEps)
+            continue;
+        polygon.Add(gp_Pnt(point.x(), 0.0, point.y()));
+        lastPoint = point;
+        hasLast = true;
+        ++validCount;
+    }
+
+    if (validCount < 3)
+        return TopoDS_Shape();
+
+    polygon.Close();
+    BRepBuilderAPI_MakeFace faceMaker(polygon.Wire());
+    if (!faceMaker.IsDone())
+        return TopoDS_Shape();
+
+    return BRepPrimAPI_MakePrism(faceMaker.Face(), gp_Vec(0.0, length, 0.0)).Shape();
+}
+
+} // namespace
+
+SlopeTemplateDialog::SlopeTemplateDialog(QWidget* parent)
+    : BasePage(PublicConstants::kPagePreprocessSlopeTemplate)
+{
+    Q_UNUSED(parent);
+
+    auto* mainLayout = new QVBoxLayout(this);
+    auto* form = new QFormLayout();
+
+    auto* positiveValidator = new QDoubleValidator(0.01, 1.0e9, 3, this);
+    auto* nonNegativeValidator = new QDoubleValidator(0.0, 1.0e9, 3, this);
+
+    hEdit = new QLineEdit("65", this);
+    benchWidthEdit = new QLineEdit("8", this);      // 中间平台宽 Bmid
+    slopeEdit = new QLineEdit("18", this);          // 单级坡面水平宽 Ws
+    lenEdit = new QLineEdit("120", this);           // 拉伸厚度 L
+    benchCountEdit = new QLineEdit("3", this);      // 台阶级数 N
+
+    auto* topPlatformEdit = new QLineEdit("20", this);
+    topPlatformEdit->setObjectName("topPlatformEdit");
+    auto* toeExtensionEdit = new QLineEdit("30", this);
+    toeExtensionEdit->setObjectName("toeExtensionEdit");
+    auto* baseHeightEdit = new QLineEdit("15", this);
+    baseHeightEdit->setObjectName("baseHeightEdit");
+
+    hEdit->setValidator(positiveValidator);
+    benchWidthEdit->setValidator(nonNegativeValidator);
+    slopeEdit->setValidator(positiveValidator);
+    lenEdit->setValidator(positiveValidator);
+    benchCountEdit->setValidator(new QIntValidator(1, 50, this));
+    topPlatformEdit->setValidator(nonNegativeValidator);
+    toeExtensionEdit->setValidator(nonNegativeValidator);
+    baseHeightEdit->setValidator(positiveValidator);
+
+    form->addRow("坡高 H", hEdit);
+    form->addRow("坡顶平台宽 Btop", topPlatformEdit);
+    form->addRow("中间平台宽 Bmid", benchWidthEdit);
+    form->addRow("单级坡面水平宽 Ws", slopeEdit);
+    form->addRow("坡脚外延长度 Etoe", toeExtensionEdit);
+    form->addRow("底部厚度 Hbase", baseHeightEdit);
+    form->addRow("模型厚度 L", lenEdit);
+    form->addRow("台阶级数 N", benchCountEdit);
+    mainLayout->addLayout(form);
 
     diagramLabel = new QLabel(this);
-    diagramLabel->setMinimumHeight(180);
-    l->addWidget(diagramLabel);
+    diagramLabel->setMinimumHeight(240);
+    diagramLabel->setAlignment(Qt::AlignCenter);
+    mainLayout->addWidget(diagramLabel);
 
-    auto* r = new QHBoxLayout;
-    auto* p = new QPushButton("更新说明图");
-    auto* g = new QPushButton("生成边坡");
-    r->addWidget(p);
-    r->addWidget(g);
-    l->addLayout(r);
+    auto* row = new QHBoxLayout();
+    auto* previewButton = new QPushButton("更新说明图", this);
+    auto* generateButton = new QPushButton("生成边坡", this);
+    row->addWidget(previewButton);
+    row->addWidget(generateButton);
+    mainLayout->addLayout(row);
 
-    connect(p, &QPushButton::clicked, this, &SlopeTemplateDialog::onPreviewClicked);
-    connect(g, &QPushButton::clicked, this, &SlopeTemplateDialog::onGenerateClicked);
+    connect(previewButton, &QPushButton::clicked, this, &SlopeTemplateDialog::onPreviewClicked);
+    connect(generateButton, &QPushButton::clicked, this, &SlopeTemplateDialog::onGenerateClicked);
+
     updateDiagram();
 }
 
 QJsonObject SlopeTemplateDialog::saveJson()
 {
-    QJsonObject o;
-    o["h"] = hEdit->text().toDouble();
-    o["bw"] = benchWidthEdit->text().toDouble();
-    o["s"] = slopeEdit->text().toDouble();
-    o["l"] = lenEdit->text().toDouble();
-    o["bc"] = benchCountEdit->text().toInt();
-    return o;
+    QJsonObject object;
+    object["h"] = hEdit->text().toDouble();
+    object["top"] = readEdit(this, "topPlatformEdit", 20.0);
+    object["bw"] = benchWidthEdit->text().toDouble();
+    object["w"] = slopeEdit->text().toDouble();
+    object["toe"] = readEdit(this, "toeExtensionEdit", 30.0);
+    object["baseH"] = readEdit(this, "baseHeightEdit", 15.0);
+    object["l"] = lenEdit->text().toDouble();
+    object["bc"] = benchCountEdit->text().toInt();
+    return object;
 }
 
-void SlopeTemplateDialog::loadJson(const QJsonObject& o)
+void SlopeTemplateDialog::loadJson(const QJsonObject& object)
 {
-    if (o.contains("h")) hEdit->setText(QString::number(o["h"].toDouble()));
-    if (o.contains("bw")) benchWidthEdit->setText(QString::number(o["bw"].toDouble()));
-    if (o.contains("s")) slopeEdit->setText(QString::number(o["s"].toDouble()));
-    if (o.contains("l")) lenEdit->setText(QString::number(o["l"].toDouble()));
-    if (o.contains("bc")) benchCountEdit->setText(QString::number(o["bc"].toInt()));
+    if (object.contains("h"))
+        hEdit->setText(QString::number(object["h"].toDouble()));
+    if (object.contains("top"))
+        setEditIfExists(this, "topPlatformEdit", object["top"].toDouble());
+    if (object.contains("bw"))
+        benchWidthEdit->setText(QString::number(object["bw"].toDouble()));
+    if (object.contains("w"))
+        slopeEdit->setText(QString::number(object["w"].toDouble()));
+    else if (object.contains("s"))
+        slopeEdit->setText(QString::number(object["s"].toDouble()));
+    if (object.contains("toe"))
+        setEditIfExists(this, "toeExtensionEdit", object["toe"].toDouble());
+    if (object.contains("baseH"))
+        setEditIfExists(this, "baseHeightEdit", object["baseH"].toDouble());
+    if (object.contains("l"))
+        lenEdit->setText(QString::number(object["l"].toDouble()));
+    if (object.contains("bc"))
+        benchCountEdit->setText(QString::number(object["bc"].toInt()));
+
     updateDiagram();
 }
 
 void SlopeTemplateDialog::updateDiagram()
 {
     const double H = hEdit->text().toDouble();
-    const double bw = benchWidthEdit->text().toDouble();
-    const double s = slopeEdit->text().toDouble();
-    const int bc = benchCountEdit->text().toInt();
+    const double top = readEdit(this, "topPlatformEdit", 20.0);
+    const double Bmid = benchWidthEdit->text().toDouble();
+    const double Ws = slopeEdit->text().toDouble();
+    const double Etoe = readEdit(this, "toeExtensionEdit", 30.0);
+    const double Hbase = readEdit(this, "baseHeightEdit", 15.0);
+    const int N = qMax(1, benchCountEdit->text().toInt());
 
-    QPixmap pix(460, 180);
-    pix.fill(Qt::white);
-    QPainter p(&pix);
-    p.setRenderHint(QPainter::Antialiasing);
+    const QVector<QPointF> profile = buildSlopeProfile2D(H, top, Bmid, Ws, Etoe, Hbase, N);
+    if (profile.size() < 3)
+        return;
 
-    QVector<QPointF> profile;
-    profile << QPointF(0, 0);
-    double x = 0.0, z = H;
-    profile << QPointF(x, z);
-    const double dz = H / bc;
-    const double dx = dz * s;
-    for (int i = 0; i < bc; ++i)
+    QPixmap pixmap(640, 270);
+    pixmap.fill(Qt::white);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    double maxX = 0.0;
+    double minZ = 0.0;
+    for (const QPointF& point : profile)
     {
-        x += dx; z -= dz;
-        profile << QPointF(x, z);
-        if (i != bc - 1)
-        {
-            x += bw;
-            profile << QPointF(x, z);
-        }
+        maxX = qMax(maxX, point.x());
+        minZ = qMin(minZ, point.y());
     }
-    profile << QPointF(x + bw, 0);
 
-    double xmax = 0;
-    for (const auto& pt : profile) xmax = qMax(xmax, pt.x());
-    const double sc = qMin(380.0 / qMax(1.0, xmax), 130.0 / qMax(1.0, H));
-    auto m = [&](double xx, double zz){ return QPointF(20 + xx * sc, 160 - zz * sc); };
+    const double scale = qMin(570.0 / qMax(1.0, maxX), 175.0 / qMax(1.0, H - minZ));
+    auto mapPoint = [&](const QPointF& point)
+    {
+        return QPointF(34.0 + point.x() * scale, 220.0 - (point.y() - minZ) * scale);
+    };
 
-    QPolygonF poly;
-    for (auto& pt : profile) poly << m(pt.x(), pt.y());
-    p.setBrush(QColor(200, 230, 200));
-    p.drawPolygon(poly);
-    p.drawText(8, 16, "边坡：连续体 + 多级平台");
-    diagramLabel->setPixmap(pix);
+    QPolygonF polygon;
+    for (const QPointF& point : profile)
+        polygon << mapPoint(point);
+
+    painter.setPen(QPen(QColor(85, 100, 85), 1.5));
+    painter.setBrush(QColor(205, 230, 205));
+    painter.drawPolygon(polygon);
+
+    painter.setPen(QPen(QColor(120, 120, 120), 1, Qt::DashLine));
+    const double dz = H / static_cast<double>(N);
+    for (int i = 1; i < N; ++i)
+    {
+        const double z = H - i * dz;
+        const double y = mapPoint(QPointF(0.0, z)).y();
+        painter.drawLine(QPointF(34.0, y), QPointF(610.0, y));
+    }
+
+    painter.setPen(Qt::black);
+    painter.drawText(8, 18, "边坡模板：H=坡高，Btop=坡顶平台宽，Bmid=中间平台宽，Ws=单级坡面水平宽");
+    painter.drawText(8, 38, "Etoe=坡脚外延长度，Hbase=底部厚度。外延区有厚度，拉伸后是体，不是零厚度面。");
+    diagramLabel->setPixmap(pixmap);
 }
 
-void SlopeTemplateDialog::onPreviewClicked() { updateDiagram(); }
-
-void SlopeTemplateDialog::buildLayeredSlope(double H, double bw, double slope, double L, int bc)
+void SlopeTemplateDialog::onPreviewClicked()
 {
-    // 严格按“顶部折线 + 底部闭合边”构造闭合轮廓，避免自交与空白面
-    QVector<QPointF> topPolyline;
-    double x = 0.0, z = H;
-    topPolyline << QPointF(x, z);
-    const double dz = H / bc;
-    const double dx = dz * slope;
-    for (int i = 0; i < bc; ++i)
+    updateDiagram();
+}
+
+void SlopeTemplateDialog::buildLayeredSlope(double H, double Bmid, double Ws, double L, int N)
+{
+    const double top = readEdit(this, "topPlatformEdit", 20.0);
+    const double Etoe = readEdit(this, "toeExtensionEdit", 30.0);
+    const double Hbase = readEdit(this, "baseHeightEdit", 15.0);
+
+    if (H <= kEps || top < 0.0 || Bmid < 0.0 || Ws <= kEps || Etoe < 0.0 ||
+        Hbase <= kEps || L <= kEps || N <= 0)
     {
-        x += dx;
-        z -= dz;
-        topPolyline << QPointF(x, z);
-        if (i != bc - 1)
-        {
-            x += bw;
-            topPolyline << QPointF(x, z);
-        }
+        QMessageBox::warning(this, "参数错误", "请检查参数：坡高、单级坡面水平宽、底部厚度、模型厚度必须大于0；平台宽和坡脚外延长度可以为0；台阶级数必须大于0。");
+        return;
     }
 
-    const double toeX = x + bw;
+    const QVector<QPointF> profile = buildSlopeProfile2D(H, top, Bmid, Ws, Etoe, Hbase, N);
+    TopoDS_Shape slopeSolid = makePrismFromProfile(profile, L);
+    if (slopeSolid.IsNull())
+    {
+        QMessageBox::warning(this, "生成失败", "边坡断面无效，无法生成三维实体。");
+        return;
+    }
 
-    QPolygonF profile;
-    profile << QPointF(0.0, 0.0);          // 坡脚左
-    for (const auto& p : topPolyline)      // 顶部折线（左->右）
-        profile << p;
-    profile << QPointF(toeX, 0.0);         // 坡脚右
+    auto* object = new GeomShapeObject(m_uuid, new TopoDS_Shape(slopeSolid), getDisplayName());
+    GeomManager::GeomManagerInstance::getInstance()->appendGeomShapeObject(object);
 
-    BRepBuilderAPI_MakePolygon pg;
-    for (const auto& pt : profile)
-        pg.Add(gp_Pnt(pt.x(), 0, pt.y()));
-    pg.Close();
-
-    TopoDS_Shape slopeSolid = BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(pg.Wire()), gp_Vec(0, L, 0)).Shape();
-    auto* obj = new GeomShapeObject(m_uuid, new TopoDS_Shape(slopeSolid), getDisplayName());
-    GeomManager::GeomManagerInstance::getInstance()->appendGeomShapeObject(obj);
     if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>())
     {
-        vis->addProp(m_uuid + "_face", obj->getSurfActor(), "Geometry", m_uuid + "_face", true);
-        vis->addProp(m_uuid + "_edge", obj->getEdgeActor(), "Geometry", m_uuid + "_face", true);
+        vis->addProp(m_uuid + "_face", object->getSurfActor(), "Geometry", m_uuid + "_face", true);
+        vis->addProp(m_uuid + "_edge", object->getEdgeActor(), "Geometry", m_uuid + "_face", true);
     }
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>()) pm->setNodeDimmed(m_uuid, false);
+
+    if (auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>())
+        projectManagerService->setNodeDimmed(m_uuid, false);
 }
 
 void SlopeTemplateDialog::onGenerateClicked()
 {
     updateDiagram();
     GeometryCleanup::removeExistingGeometry(m_uuid);
-    buildLayeredSlope(hEdit->text().toDouble(), benchWidthEdit->text().toDouble(), slopeEdit->text().toDouble(),
-                      lenEdit->text().toDouble(), benchCountEdit->text().toInt());
+    buildLayeredSlope(hEdit->text().toDouble(),
+                      benchWidthEdit->text().toDouble(),
+                      slopeEdit->text().toDouble(),
+                      lenEdit->text().toDouble(),
+                      benchCountEdit->text().toInt());
 }

@@ -1,4 +1,4 @@
-﻿#include "GravityDamDialog.h"
+#include "GravityDamDialog.h"
 
 #include <GeomManagerInstance.h>
 #include <GeometryCleanup.h>
@@ -16,18 +16,32 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QIntValidator>
+#include <QJsonObject>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMessageBox>
 #include <QPainter>
+#include <QPointF>
+#include <QPolygonF>
 #include <QPushButton>
+#include <QRegion>
 #include <QVBoxLayout>
 #include <QVector>
+#include <TopoDS_Face.hxx>
+#include <TopoDS_Shape.hxx>
 #include <TopoDS_Wire.hxx>
+#include <gp_Pnt.hxx>
 #include <gp_Vec.hxx>
+
+namespace
+{
+constexpr double kEps = 1.0e-7;
+}
 
 GravityDamDialog::GravityDamDialog(QWidget* parent)
     : BasePage(PublicConstants::kPagePreprocessGravityDam)
 {
+    Q_UNUSED(parent);
     initUI();
 }
 
@@ -70,6 +84,8 @@ void GravityDamDialog::loadJson(const QJsonObject& state)
         yEdit->setText(QString::number(state["y"].toDouble()));
     if (state.contains("z"))
         zEdit->setText(QString::number(state["z"].toDouble()));
+
+    onPreview2DClicked();
 }
 
 void GravityDamDialog::initUI()
@@ -77,15 +93,16 @@ void GravityDamDialog::initUI()
     auto* mainLayout = new QVBoxLayout(this);
     auto* pageNameLabel = new QLabel(QString("几何模块"), this);
     pageNameLabel->setObjectName("pageNameLabel");
+
     auto* sectionTitleButton = new QPushButton(QString("重力坝参数模板"), this);
     sectionTitleButton->setObjectName("sectionTitleButton");
     sectionTitleButton->setEnabled(false);
 
     auto* inputGroup = new QGroupBox("参数输入", this);
     auto* form = new QFormLayout(inputGroup);
-    auto* posValidator = new QDoubleValidator(0.001, 1e9, 3, this);
+    auto* posValidator = new QDoubleValidator(0.001, 1.0e9, 3, this);
     auto* slopeValidator = new QDoubleValidator(0.0, 1000.0, 4, this);
-    auto* coordValidator = new QDoubleValidator(-1e9, 1e9, 3, this);
+    auto* coordValidator = new QDoubleValidator(-1.0e9, 1.0e9, 3, this);
 
     heightEdit = new QLineEdit("80", this);
     crestWidthEdit = new QLineEdit("10", this);
@@ -121,9 +138,11 @@ void GravityDamDialog::initUI()
     auto* previewLayout = new QVBoxLayout(previewGroup);
     preview2DEdit = new QLineEdit(this);
     preview2DEdit->setReadOnly(true);
+
     diagramLabel = new QLabel(this);
     diagramLabel->setMinimumHeight(220);
     diagramLabel->setAlignment(Qt::AlignCenter);
+
     previewLayout->addWidget(preview2DEdit);
     previewLayout->addWidget(diagramLabel);
 
@@ -152,33 +171,43 @@ bool GravityDamDialog::readParameters(double& damHeight, double& crestWidth, dou
                                       double& x, double& y, double& z, EngineeringTemplate& damType) const
 {
     bool ok = false;
+
     damHeight = heightEdit->text().toDouble(&ok);
-    if (!ok || damHeight <= 0)
+    if (!ok || damHeight <= 0.0)
         return false;
+
     crestWidth = crestWidthEdit->text().toDouble(&ok);
-    if (!ok || crestWidth <= 0)
+    if (!ok || crestWidth <= 0.0)
         return false;
+
     upSlope = upstreamSlopeEdit->text().toDouble(&ok);
-    if (!ok || upSlope < 0)
+    if (!ok || upSlope < 0.0)
         return false;
+
     downSlope = downstreamSlopeEdit->text().toDouble(&ok);
-    if (!ok || downSlope < 0)
+    if (!ok || downSlope < 0.0)
         return false;
+
     damLength = lengthEdit->text().toDouble(&ok);
-    if (!ok || damLength <= 0)
+    if (!ok || damLength <= 0.0)
         return false;
+
     layerCount = layerCountEdit->text().toInt(&ok);
     if (!ok || layerCount <= 0)
         return false;
+
     x = xEdit->text().toDouble(&ok);
     if (!ok)
         return false;
+
     y = yEdit->text().toDouble(&ok);
     if (!ok)
         return false;
+
     z = zEdit->text().toDouble(&ok);
     if (!ok)
         return false;
+
     damType = GravityDamTemplate;
     return true;
 }
@@ -189,10 +218,9 @@ void GravityDamDialog::applyPreviewText(double damHeight, double crestWidth, dou
     const auto points = buildSectionPoints(damHeight, crestWidth, upSlope, downSlope, damType);
     if (points.size() < 4)
         return;
-    const QString typeName = "重力坝模板";
+
     const double layerH = damHeight / layerCount;
-    preview2DEdit->setText(QString("%1 | N=%2, ΔH=%3 | 顶宽=%4, 坝高=%5")
-                               .arg(typeName)
+    preview2DEdit->setText(QString("重力坝模板 | N=%1, ΔH=%2 | 顶宽=%3, 坝高=%4")
                                .arg(layerCount)
                                .arg(layerH, 0, 'f', 3)
                                .arg(crestWidth, 0, 'f', 3)
@@ -204,12 +232,17 @@ QVector<QPointF> GravityDamDialog::buildSectionPoints(double damHeight, double c
                                                       EngineeringTemplate tpl) const
 {
     Q_UNUSED(tpl);
-    QVector<QPointF> p;
+
     const double x1 = damHeight * upSlope;
     const double x2 = x1 + crestWidth;
     const double x3 = x2 + damHeight * downSlope;
-    p << QPointF(0.0, 0.0) << QPointF(x1, damHeight) << QPointF(x2, damHeight) << QPointF(x3, 0.0);
-    return p;
+
+    QVector<QPointF> points;
+    points << QPointF(0.0, 0.0)
+           << QPointF(x1, damHeight)
+           << QPointF(x2, damHeight)
+           << QPointF(x3, 0.0);
+    return points;
 }
 
 void GravityDamDialog::updateIllustration(double damHeight, double crestWidth, double upSlope,
@@ -219,70 +252,75 @@ void GravityDamDialog::updateIllustration(double damHeight, double crestWidth, d
     if (points.size() < 4)
         return;
 
-    QPixmap pix(520, 240);
-    pix.fill(Qt::white);
-    QPainter painter(&pix);
+    QPixmap pixmap(520, 240);
+    pixmap.fill(Qt::white);
+
+    QPainter painter(&pixmap);
     painter.setRenderHint(QPainter::Antialiasing, true);
 
-    double maxX = 0.0, maxZ = damHeight;
-    for (const auto& pt : points)
-    {
-        maxX = qMax(maxX, pt.x());
-        maxZ = qMax(maxZ, pt.y());
-    }
-    const double margin = 24.0;
-    const double sx = (pix.width() - 2 * margin) / qMax(maxX, 1.0);
-    const double sz = (pix.height() - 2 * margin) / qMax(maxZ, 1.0);
-    const double scale = qMin(sx, sz);
+    double maxX = 0.0;
+    for (const auto& point : points)
+        maxX = qMax(maxX, point.x());
 
-    auto mapPt = [&](const QPointF& p)
-    { return QPointF(margin + p.x() * scale, pix.height() - margin - p.y() * scale); };
+    const double margin = 24.0;
+    const double scale = qMin((pixmap.width() - 2.0 * margin) / qMax(maxX, 1.0),
+                              (pixmap.height() - 2.0 * margin) / qMax(damHeight, 1.0));
+
+    auto mapPoint = [&](const QPointF& point) {
+        return QPointF(margin + point.x() * scale, pixmap.height() - margin - point.y() * scale);
+    };
 
     painter.setPen(QPen(QColor("#4C5A78"), 2));
-    painter.drawLine(QPointF(margin, pix.height() - margin), QPointF(pix.width() - margin, pix.height() - margin));
-    painter.drawLine(QPointF(margin, pix.height() - margin), QPointF(margin, margin));
+    painter.drawLine(QPointF(margin, pixmap.height() - margin), QPointF(pixmap.width() - margin, pixmap.height() - margin));
+    painter.drawLine(QPointF(margin, pixmap.height() - margin), QPointF(margin, margin));
 
-    QPolygonF poly;
-    for (const auto& pt : points)
-        poly << mapPt(pt);
+    QPolygonF polygon;
+    for (const auto& point : points)
+        polygon << mapPoint(point);
 
     painter.setPen(QPen(QColor("#1F4E79"), 2));
     painter.setBrush(QColor(193, 222, 255, 180));
-    painter.drawPolygon(poly);
+    painter.drawPolygon(polygon);
 
+    painter.save();
+    painter.setClipRegion(QRegion(polygon.toPolygon()));
     painter.setPen(QPen(QColor("#7A7A7A"), 1, Qt::DashLine));
     for (int i = 1; i < layerCount; ++i)
     {
         const double zLayer = damHeight * i / layerCount;
-        const QPointF p1 = mapPt(QPointF(0.0, zLayer));
-        painter.drawLine(QPointF(margin, p1.y()), QPointF(pix.width() - margin, p1.y()));
+        painter.drawLine(QPointF(margin, pixmap.height() - margin - zLayer * scale),
+                         QPointF(pixmap.width() - margin, pixmap.height() - margin - zLayer * scale));
     }
+    painter.restore();
 
     painter.setPen(QPen(Qt::black, 1));
     painter.drawText(12, 18, QString("坝型: 重力坝模板"));
     painter.drawText(12, 36, QString("H=%1, Bt=%2, N=%3").arg(damHeight).arg(crestWidth).arg(layerCount));
-    diagramLabel->setPixmap(pix);
+    diagramLabel->setPixmap(pixmap);
 }
 
 void GravityDamDialog::onPreview2DClicked()
 {
-    double H = 0, Bt = 0, mu = 0, md = 0, L = 0, x = 0, y = 0, z = 0;
+    double H = 0.0, Bt = 0.0, mu = 0.0, md = 0.0, L = 0.0, x = 0.0, y = 0.0, z = 0.0;
     int N = 0;
     EngineeringTemplate type = GravityDamTemplate;
+
     if (!readParameters(H, Bt, mu, md, L, N, x, y, z, type))
     {
         QMessageBox::warning(this, "参数错误", "请检查参数：H、Bt、L、N必须>0；坡比不能为负。");
         return;
     }
+
     applyPreviewText(H, Bt, mu, md, N, type);
     updateIllustration(H, Bt, mu, md, N, type);
 }
 
 void GravityDamDialog::onGenerate3DClicked()
 {
-    double H = 0, Bt = 0, mu = 0, md = 0, L = 0, x = 0, y = 0, z = 0;
+    double H = 0.0, Bt = 0.0, mu = 0.0, md = 0.0, L = 0.0, x = 0.0, y = 0.0, z = 0.0;
     int N = 0;
     EngineeringTemplate type = GravityDamTemplate;
+
     if (!readParameters(H, Bt, mu, md, L, N, x, y, z, type))
     {
         QMessageBox::warning(this, "参数错误", "请检查参数：H、Bt、L、N必须>0；坡比不能为负。");
@@ -300,53 +338,66 @@ void GravityDamDialog::buildDamBody(double damHeight, double crestWidth, double 
 {
     GeometryCleanup::removeExistingGeometry(m_uuid);
 
+    const auto section = buildSectionPoints(damHeight, crestWidth, upSlope, downSlope, damType);
+    if (section.size() < 4 || damLength <= kEps || layerCount <= 0)
+        return;
+
     TopoDS_Compound layeredDam;
     BRep_Builder builder;
     builder.MakeCompound(layeredDam);
+
     const double layerH = damHeight / layerCount;
-    const auto section = buildSectionPoints(damHeight, crestWidth, upSlope, downSlope, damType);
-    if (section.size() < 4)
-        return;
+
     auto intersectionRangeAtZ = [&](double zQuery, double& xMin, double& xMax) -> bool
     {
         QVector<double> xs;
+
         for (int i = 0; i < section.size(); ++i)
         {
             const QPointF a = section[i];
             const QPointF b = section[(i + 1) % section.size()];
+
             const double zA = a.y();
             const double zB = b.y();
-            const double lo = qMin(zA, zB);
-            const double hi = qMax(zA, zB);
-            if (zQuery < lo - 1e-9 || zQuery > hi + 1e-9)
+            const double low = qMin(zA, zB);
+            const double high = qMax(zA, zB);
+
+            if (zQuery < low - kEps || zQuery > high + kEps)
                 continue;
-            if (qFuzzyCompare(zA + 1.0, zB + 1.0))
+
+            if (qAbs(zA - zB) < kEps)
             {
                 xs << a.x() << b.x();
                 continue;
             }
+
             const double t = (zQuery - zA) / (zB - zA);
             xs << (a.x() + t * (b.x() - a.x()));
         }
+
         if (xs.isEmpty())
             return false;
+
         xMin = xs[0];
         xMax = xs[0];
-        for (double vx : xs)
+        for (double value : xs)
         {
-            xMin = qMin(xMin, vx);
-            xMax = qMax(xMax, vx);
+            xMin = qMin(xMin, value);
+            xMax = qMax(xMax, value);
         }
-        return true;
+
+        return xMax - xMin > kEps;
     };
 
     for (int i = 0; i < layerCount; ++i)
     {
         const double z0 = z + layerH * i;
         const double z1 = z + layerH * (i + 1);
-        double xL0 = 0, xR0 = 0, xL1 = 0, xR1 = 0;
+
+        double xL0 = 0.0, xR0 = 0.0, xL1 = 0.0, xR1 = 0.0;
         if (!intersectionRangeAtZ(z0 - z, xL0, xR0) || !intersectionRangeAtZ(z1 - z, xL1, xR1))
             continue;
+
         BRepBuilderAPI_MakePolygon layerProfile;
         layerProfile.Add(gp_Pnt(x + xL0, y, z0));
         layerProfile.Add(gp_Pnt(x + xL1, y, z1));
@@ -355,16 +406,16 @@ void GravityDamDialog::buildDamBody(double damHeight, double crestWidth, double 
         layerProfile.Close();
 
         TopoDS_Wire layerWire = layerProfile.Wire();
-        TopoDS_Face layerFace = BRepBuilderAPI_MakeFace(layerWire);
-        TopoDS_Shape layerSolid = BRepPrimAPI_MakePrism(layerFace, gp_Vec(0, damLength, 0)).Shape();
+        BRepBuilderAPI_MakeFace faceMaker(layerWire);
+        if (!faceMaker.IsDone())
+            continue;
+
+        TopoDS_Shape layerSolid = BRepPrimAPI_MakePrism(faceMaker.Face(), gp_Vec(0.0, damLength, 0.0)).Shape();
         builder.Add(layeredDam, layerSolid);
     }
-    TopoDS_Shape damShape = layeredDam;
 
-    TopoDS_Shape* shape = new TopoDS_Shape(damShape);
-    auto* mgr = GeomManager::GeomManagerInstance::getInstance();
-    GeomShapeObject* object = new GeomShapeObject(m_uuid, shape, getDisplayName());
-    mgr->appendGeomShapeObject(object);
+    auto* object = new GeomShapeObject(m_uuid, new TopoDS_Shape(layeredDam), getDisplayName());
+    GeomManager::GeomManagerInstance::getInstance()->appendGeomShapeObject(object);
 
     if (auto* vis = ServiceRegistry::instance().getService<VisualWidgetService>())
     {
