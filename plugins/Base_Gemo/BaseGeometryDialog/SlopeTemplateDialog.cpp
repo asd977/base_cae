@@ -16,9 +16,7 @@
 #include <QMessageBox>
 #include <QPointF>
 #include <QPushButton>
-#include <QPainter>
 #include <QSize>
-#include <QtSvg/QSvgRenderer>
 #include <QVBoxLayout>
 #include <QVector>
 #include <ServiceRegistry.h>
@@ -243,21 +241,14 @@ void SlopeTemplateDialog::loadJson(const QJsonObject& object)
 
 void SlopeTemplateDialog::updateDiagram()
 {
-    const QString resourcePath = QStringLiteral(":/resources/slope_parameter_diagram.svg");
-    QSvgRenderer renderer(resourcePath);
-    if (!renderer.isValid())
+    const QString resourcePath = QStringLiteral(":/resources/slope_parameter_diagram.png");
+    QPixmap pixmap;
+    pixmap.load(resourcePath);
+    if (pixmap.isNull())
     {
-        diagramLabel->setText("参数示意图加载失败：resources/slope_parameter_diagram.svg");
+        diagramLabel->setText("参数示意图加载失败：resources/slope_parameter_diagram.png");
         return;
     }
-
-    const QSize targetSize = diagramLabel->size();
-    QPixmap pixmap(targetSize);
-    pixmap.fill(Qt::transparent);
-
-    QPainter painter(&pixmap);
-    renderer.render(&painter);
-    painter.end();
 
     diagramLabel->setPixmap(pixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
