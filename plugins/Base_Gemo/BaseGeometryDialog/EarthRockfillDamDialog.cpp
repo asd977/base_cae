@@ -228,7 +228,8 @@ void EarthRockfillDamDialog::initUi()
 
     diagramLabel = new QLabel(this);
     diagramLabel->setAlignment(Qt::AlignCenter);
-    diagramLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    diagramLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+    diagramLabel->setMinimumSize(0, 0);
     mainLayout->addWidget(diagramLabel);
 
     auto* row = new QHBoxLayout();
