@@ -25,6 +25,7 @@
 #include <QPolygonF>
 #include <QPushButton>
 #include <QRegion>
+#include <QRectF>
 #include <QVBoxLayout>
 #include <QVector>
 #include <TopoDS_Face.hxx>
@@ -36,6 +37,80 @@
 namespace
 {
 constexpr double kEps = 1.0e-7;
+
+void drawHorizontalDimension(QPainter& painter,
+                             QPointF left,
+                             QPointF right,
+                             const QString& text,
+                             double textDy = -22.0)
+{
+    if (left.x() > right.x())
+    {
+        const QPointF tmp = left;
+        left = right;
+        right = tmp;
+    }
+
+    painter.save();
+    painter.setPen(QPen(QColor(35, 35, 35), 1.2));
+    painter.drawLine(left, right);
+
+    constexpr double arrow = 6.0;
+    painter.drawLine(left, left + QPointF(arrow, -4.0));
+    painter.drawLine(left, left + QPointF(arrow, 4.0));
+    painter.drawLine(right, right + QPointF(-arrow, -4.0));
+    painter.drawLine(right, right + QPointF(-arrow, 4.0));
+
+    painter.drawLine(left + QPointF(0.0, -5.0), left + QPointF(0.0, 5.0));
+    painter.drawLine(right + QPointF(0.0, -5.0), right + QPointF(0.0, 5.0));
+
+    const double w = qMax(38.0, right.x() - left.x());
+    const double x = (left.x() + right.x() - w) * 0.5;
+    painter.drawText(QRectF(x, left.y() + textDy, w, 18.0), Qt::AlignCenter, text);
+    painter.restore();
+}
+
+void drawVerticalDimension(QPainter& painter,
+                           QPointF top,
+                           QPointF bottom,
+                           const QString& text,
+                           double textDx = -74.0)
+{
+    if (top.y() > bottom.y())
+    {
+        const QPointF tmp = top;
+        top = bottom;
+        bottom = tmp;
+    }
+
+    painter.save();
+    painter.setPen(QPen(QColor(35, 35, 35), 1.2));
+    painter.drawLine(top, bottom);
+
+    constexpr double arrow = 6.0;
+    painter.drawLine(top, top + QPointF(-4.0, arrow));
+    painter.drawLine(top, top + QPointF(4.0, arrow));
+    painter.drawLine(bottom, bottom + QPointF(-4.0, -arrow));
+    painter.drawLine(bottom, bottom + QPointF(4.0, -arrow));
+
+    painter.drawLine(top + QPointF(-5.0, 0.0), top + QPointF(5.0, 0.0));
+    painter.drawLine(bottom + QPointF(-5.0, 0.0), bottom + QPointF(5.0, 0.0));
+
+    painter.drawText(QRectF(top.x() + textDx, top.y() + (bottom.y() - top.y() - 18.0) * 0.5,
+                            68.0, 18.0),
+                     Qt::AlignCenter,
+                     text);
+    painter.restore();
+}
+
+void drawGuideLine(QPainter& painter, QPointF a, QPointF b)
+{
+    painter.save();
+    painter.setPen(QPen(QColor(110, 110, 110), 1.0, Qt::DashLine));
+    painter.drawLine(a, b);
+    painter.restore();
+}
+
 }
 
 GravityDamDialog::GravityDamDialog(QWidget* parent)
@@ -252,7 +327,7 @@ void GravityDamDialog::updateIllustration(double damHeight, double crestWidth, d
     if (points.size() < 4)
         return;
 
-    QPixmap pixmap(520, 240);
+    QPixmap pixmap(760, 350);
     pixmap.fill(Qt::white);
 
     QPainter painter(&pixmap);
@@ -262,17 +337,25 @@ void GravityDamDialog::updateIllustration(double damHeight, double crestWidth, d
     for (const auto& point : points)
         maxX = qMax(maxX, point.x());
 
-    const double margin = 24.0;
-    const double scale = qMin((pixmap.width() - 2.0 * margin) / qMax(maxX, 1.0),
-                              (pixmap.height() - 2.0 * margin) / qMax(damHeight, 1.0));
+    const double leftMargin = 95.0;
+    const double bottomY = 275.0;
+    const double scale = qMin(575.0 / qMax(maxX, 1.0),
+                              205.0 / qMax(damHeight, 1.0));
 
     auto mapPoint = [&](const QPointF& point) {
-        return QPointF(margin + point.x() * scale, pixmap.height() - margin - point.y() * scale);
+        return QPointF(leftMargin + point.x() * scale, bottomY - point.y() * scale);
+    };
+    auto mapXZ = [&](double x, double z) {
+        return mapPoint(QPointF(x, z));
     };
 
-    painter.setPen(QPen(QColor("#4C5A78"), 2));
-    painter.drawLine(QPointF(margin, pixmap.height() - margin), QPointF(pixmap.width() - margin, pixmap.height() - margin));
-    painter.drawLine(QPointF(margin, pixmap.height() - margin), QPointF(margin, margin));
+    const double x1 = damHeight * upSlope;
+    const double x2 = x1 + crestWidth;
+    const double x3 = x2 + damHeight * downSlope;
+
+    painter.setPen(QPen(QColor("#4C5A78"), 1.2));
+    painter.drawLine(mapXZ(0.0, 0.0), mapXZ(x3, 0.0));
+    painter.drawLine(mapXZ(0.0, 0.0), mapXZ(0.0, damHeight));
 
     QPolygonF polygon;
     for (const auto& point : points)
@@ -288,16 +371,49 @@ void GravityDamDialog::updateIllustration(double damHeight, double crestWidth, d
     for (int i = 1; i < layerCount; ++i)
     {
         const double zLayer = damHeight * i / layerCount;
-        painter.drawLine(QPointF(margin, pixmap.height() - margin - zLayer * scale),
-                         QPointF(pixmap.width() - margin, pixmap.height() - margin - zLayer * scale));
+        painter.drawLine(mapXZ(0.0, zLayer), mapXZ(x3, zLayer));
     }
     painter.restore();
 
+    // 端点投影线。
+    drawGuideLine(painter, mapXZ(x1, 0.0), mapXZ(x1, damHeight));
+    drawGuideLine(painter, mapXZ(x2, 0.0), mapXZ(x2, damHeight));
+
+    drawVerticalDimension(painter,
+                          mapXZ(-8.0 / scale, damHeight),
+                          mapXZ(-8.0 / scale, 0.0),
+                          "H 坝高",
+                          -76.0);
+    drawHorizontalDimension(painter,
+                            mapXZ(x1, damHeight) + QPointF(0.0, -30.0),
+                            mapXZ(x2, damHeight) + QPointF(0.0, -30.0),
+                            "Bt 坝顶宽",
+                            -20.0);
+    drawHorizontalDimension(painter,
+                            mapXZ(0.0, 0.0) + QPointF(0.0, 32.0),
+                            mapXZ(x1, 0.0) + QPointF(0.0, 32.0),
+                            "mu×H 上游水平投影",
+                            5.0);
+    drawHorizontalDimension(painter,
+                            mapXZ(x2, 0.0) + QPointF(0.0, 32.0),
+                            mapXZ(x3, 0.0) + QPointF(0.0, 32.0),
+                            "md×H 下游水平投影",
+                            5.0);
+
     painter.setPen(QPen(Qt::black, 1));
-    painter.drawText(12, 18, QString("坝型: 重力坝模板"));
-    painter.drawText(12, 36, QString("H=%1, Bt=%2, N=%3").arg(damHeight).arg(crestWidth).arg(layerCount));
+    const QPointF upSlopeMid((mapXZ(0.0, 0.0).x() + mapXZ(x1, damHeight).x()) * 0.5,
+                             (mapXZ(0.0, 0.0).y() + mapXZ(x1, damHeight).y()) * 0.5);
+    const QPointF downSlopeMid((mapXZ(x2, damHeight).x() + mapXZ(x3, 0.0).x()) * 0.5,
+                               (mapXZ(x2, damHeight).y() + mapXZ(x3, 0.0).y()) * 0.5);
+    painter.drawText(upSlopeMid + QPointF(-48.0, -8.0), QString("mu=%1").arg(upSlope));
+    painter.drawText(downSlopeMid + QPointF(12.0, -8.0), QString("md=%1").arg(downSlope));
+
+    painter.drawText(12, 22, "重力坝参数标注图：H/Bt 直接标在高度和坝顶；mu、md 对应坡面水平投影。");
+    painter.drawText(12, 332, QString("N=%1 分层；L 为坝轴线长度/拉伸方向，不在当前 XZ 断面内按真实长度绘制。").arg(layerCount));
+
     diagramLabel->setPixmap(pixmap);
 }
+
 
 void GravityDamDialog::onPreview2DClicked()
 {

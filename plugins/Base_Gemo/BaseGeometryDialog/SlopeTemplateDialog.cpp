@@ -18,6 +18,7 @@
 #include <QPointF>
 #include <QPolygonF>
 #include <QPushButton>
+#include <QRectF>
 #include <QVBoxLayout>
 #include <QVector>
 #include <ServiceRegistry.h>
@@ -32,6 +33,80 @@
 namespace
 {
 constexpr double kEps = 1.0e-7;
+
+void drawHorizontalDimension(QPainter& painter,
+                             QPointF left,
+                             QPointF right,
+                             const QString& text,
+                             double textDy = -22.0)
+{
+    if (left.x() > right.x())
+    {
+        const QPointF tmp = left;
+        left = right;
+        right = tmp;
+    }
+
+    painter.save();
+    painter.setPen(QPen(QColor(35, 35, 35), 1.2));
+    painter.drawLine(left, right);
+
+    constexpr double arrow = 6.0;
+    painter.drawLine(left, left + QPointF(arrow, -4.0));
+    painter.drawLine(left, left + QPointF(arrow, 4.0));
+    painter.drawLine(right, right + QPointF(-arrow, -4.0));
+    painter.drawLine(right, right + QPointF(-arrow, 4.0));
+
+    painter.drawLine(left + QPointF(0.0, -5.0), left + QPointF(0.0, 5.0));
+    painter.drawLine(right + QPointF(0.0, -5.0), right + QPointF(0.0, 5.0));
+
+    const double w = qMax(38.0, right.x() - left.x());
+    const double x = (left.x() + right.x() - w) * 0.5;
+    painter.drawText(QRectF(x, left.y() + textDy, w, 18.0), Qt::AlignCenter, text);
+    painter.restore();
+}
+
+void drawVerticalDimension(QPainter& painter,
+                           QPointF top,
+                           QPointF bottom,
+                           const QString& text,
+                           double textDx = -74.0)
+{
+    if (top.y() > bottom.y())
+    {
+        const QPointF tmp = top;
+        top = bottom;
+        bottom = tmp;
+    }
+
+    painter.save();
+    painter.setPen(QPen(QColor(35, 35, 35), 1.2));
+    painter.drawLine(top, bottom);
+
+    constexpr double arrow = 6.0;
+    painter.drawLine(top, top + QPointF(-4.0, arrow));
+    painter.drawLine(top, top + QPointF(4.0, arrow));
+    painter.drawLine(bottom, bottom + QPointF(-4.0, -arrow));
+    painter.drawLine(bottom, bottom + QPointF(4.0, -arrow));
+
+    painter.drawLine(top + QPointF(-5.0, 0.0), top + QPointF(5.0, 0.0));
+    painter.drawLine(bottom + QPointF(-5.0, 0.0), bottom + QPointF(5.0, 0.0));
+
+    painter.drawText(QRectF(top.x() + textDx, top.y() + (bottom.y() - top.y() - 18.0) * 0.5,
+                            68.0, 18.0),
+                     Qt::AlignCenter,
+                     text);
+    painter.restore();
+}
+
+void drawGuideLine(QPainter& painter, QPointF a, QPointF b)
+{
+    painter.save();
+    painter.setPen(QPen(QColor(110, 110, 110), 1.0, Qt::DashLine));
+    painter.drawLine(a, b);
+    painter.restore();
+}
+
 
 QLineEdit* findEdit(QWidget* owner, const char* objectName)
 {
@@ -257,7 +332,7 @@ void SlopeTemplateDialog::updateDiagram()
     if (profile.size() < 3)
         return;
 
-    QPixmap pixmap(640, 270);
+    QPixmap pixmap(760, 350);
     pixmap.fill(Qt::white);
     QPainter painter(&pixmap);
     painter.setRenderHint(QPainter::Antialiasing, true);
@@ -270,10 +345,16 @@ void SlopeTemplateDialog::updateDiagram()
         minZ = qMin(minZ, point.y());
     }
 
-    const double scale = qMin(570.0 / qMax(1.0, maxX), 175.0 / qMax(1.0, H - minZ));
+    const double leftMargin = 95.0;
+    const double bottomY = 275.0;
+    const double scale = qMin(575.0 / qMax(1.0, maxX), 205.0 / qMax(1.0, H - minZ));
     auto mapPoint = [&](const QPointF& point)
     {
-        return QPointF(34.0 + point.x() * scale, 220.0 - (point.y() - minZ) * scale);
+        return QPointF(leftMargin + point.x() * scale, bottomY - (point.y() - minZ) * scale);
+    };
+    auto mapXZ = [&](double x, double z)
+    {
+        return mapPoint(QPointF(x, z));
     };
 
     QPolygonF polygon;
@@ -289,15 +370,71 @@ void SlopeTemplateDialog::updateDiagram()
     for (int i = 1; i < N; ++i)
     {
         const double z = H - i * dz;
-        const double y = mapPoint(QPointF(0.0, z)).y();
-        painter.drawLine(QPointF(34.0, y), QPointF(610.0, y));
+        painter.drawLine(mapXZ(0.0, z), mapXZ(maxX, z));
     }
 
-    painter.setPen(Qt::black);
-    painter.drawText(8, 18, "边坡模板：H=坡高，Btop=坡顶平台宽，Bmid=中间平台宽，Ws=单级坡面水平宽");
-    painter.drawText(8, 38, "Etoe=坡脚外延长度，Hbase=底部厚度。外延区有厚度，拉伸后是体，不是零厚度面。");
+    // 计算几个标注点，和 buildSlopeProfile2D 的几何逻辑保持一致。
+    const double z0 = H;
+    const double z1 = H - dz;
+    const double xTop0 = 0.0;
+    const double xTop1 = top;
+    const double xSlope1 = top + Ws;
+    const double xBench1 = xSlope1 + Bmid;
+    const double xToeStart = top + N * Ws + qMax(0, N - 1) * Bmid;
+    const double xToeEnd = xToeStart + Etoe;
+
+    drawGuideLine(painter, mapXZ(0.0, 0.0), mapXZ(0.0, H));
+    drawGuideLine(painter, mapXZ(xTop1, 0.0), mapXZ(xTop1, H));
+    drawGuideLine(painter, mapXZ(xSlope1, 0.0), mapXZ(xSlope1, z1));
+    drawGuideLine(painter, mapXZ(xToeStart, minZ), mapXZ(xToeStart, 0.0));
+
+    drawVerticalDimension(painter,
+                          mapXZ(-8.0 / scale, H),
+                          mapXZ(-8.0 / scale, 0.0),
+                          "H 坡高",
+                          -76.0);
+    drawHorizontalDimension(painter,
+                            mapXZ(xTop0, H) + QPointF(0.0, -28.0),
+                            mapXZ(xTop1, H) + QPointF(0.0, -28.0),
+                            "Btop 坡顶平台",
+                            -20.0);
+    drawHorizontalDimension(painter,
+                            mapXZ(xTop1, z0) + QPointF(0.0, 26.0),
+                            mapXZ(xSlope1, z0) + QPointF(0.0, 26.0),
+                            "Ws 单级水平宽",
+                            5.0);
+
+    if (N > 1 && Bmid > kEps)
+    {
+        drawHorizontalDimension(painter,
+                                mapXZ(xSlope1, z1) + QPointF(0.0, 24.0),
+                                mapXZ(xBench1, z1) + QPointF(0.0, 24.0),
+                                "Bmid 中间平台",
+                                5.0);
+    }
+
+    if (Etoe > kEps)
+    {
+        drawHorizontalDimension(painter,
+                                mapXZ(xToeStart, 0.0) + QPointF(0.0, 30.0),
+                                mapXZ(xToeEnd, 0.0) + QPointF(0.0, 30.0),
+                                "Etoe 坡脚外延",
+                                5.0);
+    }
+
+    drawVerticalDimension(painter,
+                          mapXZ(maxX, 0.0),
+                          mapXZ(maxX, -Hbase),
+                          "Hbase 底部厚度",
+                          12.0);
+
+    painter.setPen(QPen(Qt::black, 1));
+    painter.drawText(12, 22, "边坡参数标注图：平台宽、单级坡面水平宽、坡高和底部厚度直接标在对应位置。");
+    painter.drawText(12, 332, QString("N=%1 台阶级数；L 为模型厚度/拉伸方向，不在当前 XZ 断面内按真实长度绘制。").arg(N));
+
     diagramLabel->setPixmap(pixmap);
 }
+
 
 void SlopeTemplateDialog::onPreviewClicked()
 {
