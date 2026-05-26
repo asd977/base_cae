@@ -90,14 +90,6 @@ void GravityDamDialog::initUI()
     auto* slopeValidator = new QDoubleValidator(0.0, 1000.0, 4, this);
     auto* coordValidator = new QDoubleValidator(-1e9, 1e9, 3, this);
 
-    damTypeCombo = new QComboBox(this);
-    damTypeCombo->addItem("重力坝模板");
-    damTypeCombo->addItem("土石坝模板");
-    damTypeCombo->addItem("边坡模板");
-    damTypeCombo->addItem("洞室模板");
-    damTypeCombo->addItem("坝基分层模板");
-    damTypeCombo->addItem("帷幕防渗模板");
-    damTypeCombo->addItem("支护结构模板");
     heightEdit = new QLineEdit("80", this);
     crestWidthEdit = new QLineEdit("10", this);
     upstreamSlopeEdit = new QLineEdit("0.2", this);
@@ -118,7 +110,6 @@ void GravityDamDialog::initUI()
     yEdit->setValidator(coordValidator);
     zEdit->setValidator(coordValidator);
 
-    form->addRow("坝型", damTypeCombo);
     form->addRow("坝高 H", heightEdit);
     form->addRow("坝顶宽 Bt", crestWidthEdit);
     form->addRow("上游坡比 mu", upstreamSlopeEdit);
@@ -155,8 +146,6 @@ void GravityDamDialog::initUI()
 
     connect(previewBtn, &QPushButton::clicked, this, &GravityDamDialog::onPreview2DClicked);
     connect(generateBtn, &QPushButton::clicked, this, &GravityDamDialog::onGenerate3DClicked);
-    connect(damTypeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &GravityDamDialog::onTemplateChanged);
 
     onPreview2DClicked();
 }
@@ -193,7 +182,7 @@ bool GravityDamDialog::readParameters(double& damHeight, double& crestWidth, dou
     z = zEdit->text().toDouble(&ok);
     if (!ok)
         return false;
-    damType = static_cast<EngineeringTemplate>(damTypeCombo->currentIndex());
+    damType = GravityDamTemplate;
     return true;
 }
 
@@ -203,7 +192,7 @@ void GravityDamDialog::applyPreviewText(double damHeight, double crestWidth, dou
     const auto points = buildSectionPoints(damHeight, crestWidth, upSlope, downSlope, damType);
     if (points.size() < 4)
         return;
-    const QString typeName = damTypeCombo->currentText();
+    const QString typeName = "重力坝模板";
     const double layerH = damHeight / layerCount;
     preview2DEdit->setText(QString("%1 | N=%2, ΔH=%3 | 顶宽=%4, 坝高=%5")
                                .arg(typeName)
@@ -331,7 +320,7 @@ void GravityDamDialog::updateIllustration(double damHeight, double crestWidth, d
     }
 
     painter.setPen(QPen(Qt::black, 1));
-    painter.drawText(12, 18, QString("坝型: %1").arg(damTypeCombo->currentText()));
+    painter.drawText(12, 18, QString("坝型: 重力坝模板"));
     painter.drawText(12, 36, QString("H=%1, Bt=%2, N=%3").arg(damHeight).arg(crestWidth).arg(layerCount));
     diagramLabel->setPixmap(pix);
 }

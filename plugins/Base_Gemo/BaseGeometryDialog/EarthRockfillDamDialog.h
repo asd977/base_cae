@@ -3,6 +3,7 @@
 #define EARTHROCKFILLDAMDIALOG_H
 
 #include "BasePage.h"
+#include <QLabel>
 #include <QLineEdit>
 
 class EarthRockfillDamDialog : public BasePage
@@ -16,11 +17,14 @@ class EarthRockfillDamDialog : public BasePage
     void beforeUnload() override {}
 
   private slots:
+    void onPreviewClicked();
     void onGenerateClicked();
 
   private:
     void initUi();
+    void updateDiagram();
     QLineEdit *hEdit, *crestEdit, *upEdit, *downEdit, *lenEdit, *coreWidthEdit;
+    QLabel* diagramLabel = nullptr;
 };
 
 #endif

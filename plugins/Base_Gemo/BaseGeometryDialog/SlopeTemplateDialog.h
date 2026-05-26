@@ -2,6 +2,7 @@
 #ifndef SLOPETEMPLATEDIALOG_H
 #define SLOPETEMPLATEDIALOG_H
 #include "BasePage.h"
+#include <QLabel>
 #include <QLineEdit>
 class SlopeTemplateDialog : public BasePage
 {
@@ -13,8 +14,11 @@ class SlopeTemplateDialog : public BasePage
     void beforeLoad() override {}
     void beforeUnload() override {}
   private slots:
+    void onPreviewClicked();
     void onGenerateClicked();
   private:
+    void updateDiagram();
     QLineEdit *hEdit,*benchWidthEdit,*slopeEdit,*lenEdit;
+    QLabel* diagramLabel = nullptr;
 };
 #endif

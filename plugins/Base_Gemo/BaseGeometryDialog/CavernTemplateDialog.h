@@ -2,6 +2,7 @@
 #ifndef CAVERNTEMPLATEDIALOG_H
 #define CAVERNTEMPLATEDIALOG_H
 #include "BasePage.h"
+#include <QLabel>
 #include <QLineEdit>
 class CavernTemplateDialog : public BasePage
 {
@@ -13,8 +14,11 @@ class CavernTemplateDialog : public BasePage
     void beforeLoad() override {}
     void beforeUnload() override {}
   private slots:
+    void onPreviewClicked();
     void onGenerateClicked();
   private:
+    void updateDiagram();
     QLineEdit *spanEdit,*wallH,*archH,*lenEdit;
+    QLabel* diagramLabel = nullptr;
 };
 #endif
