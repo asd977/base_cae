@@ -650,8 +650,23 @@ void MaterialEntryWidget::onTransitionModeChanged(int state)
     const bool enabled = (state == Qt::Checked);
     if (!enabled)
     {
+        int sourceMatype = m_materialManager->selectedMatypeForEntry(m_entryId);
+        if (sourceMatype <= 0 && m_matypeCombo)
+        {
+            const QVariant sourceData = m_matypeCombo->currentData();
+            sourceMatype = sourceData.isValid() ? sourceData.toInt() : -1;
+        }
         entry->transitionOnly = false;
         entry->transitionMatype = m_transitionMatypeSpin->value();
+        if (sourceMatype > 0)
+        {
+            auto mappings = m_materialManager->materialTransitions();
+            mappings.erase(std::remove_if(mappings.begin(), mappings.end(),
+                                          [sourceMatype](const QPair<int, int>& p)
+                                          { return p.first == sourceMatype; }),
+                           mappings.end());
+            m_materialManager->setMaterialTransitions(mappings);
+        }
         if (m_matypeCombo)
             m_matypeCombo->setEnabled(true);
         if (m_applyButton)
@@ -675,6 +690,29 @@ void MaterialEntryWidget::onTransitionModeChanged(int state)
     }
     entry->transitionOnly = true;
     entry->transitionMatype = matype;
+    int sourceMatype = m_materialManager->selectedMatypeForEntry(m_entryId);
+    if (sourceMatype <= 0 && m_matypeCombo)
+    {
+        const QVariant sourceData = m_matypeCombo->currentData();
+        sourceMatype = sourceData.isValid() ? sourceData.toInt() : -1;
+    }
+    if (sourceMatype > 0)
+    {
+        auto mappings = m_materialManager->materialTransitions();
+        bool replaced = false;
+        for (auto& p : mappings)
+        {
+            if (p.first == sourceMatype)
+            {
+                p.second = matype;
+                replaced = true;
+                break;
+            }
+        }
+        if (!replaced)
+            mappings.push_back({sourceMatype, matype});
+        m_materialManager->setMaterialTransitions(mappings);
+    }
     entry->appliedMatypes.clear();
     m_materialManager->refreshEntryWidgetMatypes(entry->id, entry->appliedMatypes, -1);
     if (m_matypeCombo)
@@ -710,6 +748,29 @@ void MaterialEntryWidget::onTransitionMatypeChanged(int value)
         return;
     }
     entry->transitionOnly = true;
+    int sourceMatype = m_materialManager->selectedMatypeForEntry(m_entryId);
+    if (sourceMatype <= 0 && m_matypeCombo)
+    {
+        const QVariant sourceData = m_matypeCombo->currentData();
+        sourceMatype = sourceData.isValid() ? sourceData.toInt() : -1;
+    }
+    if (sourceMatype > 0)
+    {
+        auto mappings = m_materialManager->materialTransitions();
+        bool replaced = false;
+        for (auto& p : mappings)
+        {
+            if (p.first == sourceMatype)
+            {
+                p.second = value;
+                replaced = true;
+                break;
+            }
+        }
+        if (!replaced)
+            mappings.push_back({sourceMatype, value});
+        m_materialManager->setMaterialTransitions(mappings);
+    }
     m_materialManager->notifyEntryUpdated(entry->id, false);
 }
 
