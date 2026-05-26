@@ -18,6 +18,7 @@
 #include <QPointF>
 #include <QPushButton>
 #include <QSize>
+#include <QSizePolicy>
 #include <QVBoxLayout>
 #include <QVector>
 #include <ServiceRegistry.h>
@@ -226,8 +227,8 @@ void EarthRockfillDamDialog::initUi()
     mainLayout->addLayout(form);
 
     diagramLabel = new QLabel(this);
-    diagramLabel->setMinimumHeight(260);
     diagramLabel->setAlignment(Qt::AlignCenter);
+    diagramLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     mainLayout->addWidget(diagramLabel);
 
     auto* row = new QHBoxLayout();
