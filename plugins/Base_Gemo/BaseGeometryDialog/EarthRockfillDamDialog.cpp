@@ -17,6 +17,9 @@
 #include <QMessageBox>
 #include <QPointF>
 #include <QPushButton>
+#include <QPainter>
+#include <QSize>
+#include <QSvgRenderer>
 #include <QVBoxLayout>
 #include <QVector>
 #include <ServiceRegistry.h>
@@ -244,14 +247,25 @@ void EarthRockfillDamDialog::initUi()
 
 void EarthRockfillDamDialog::updateDiagram()
 {
-    const QPixmap pixmap(":/resources/earth_rockfill_dam_parameter_diagram.svg");
-    if (pixmap.isNull())
+    const QString resourcePath = QStringLiteral(":/resources/earth_rockfill_dam_parameter_diagram.svg");
+    QSvgRenderer renderer(resourcePath);
+    if (!renderer.isValid())
     {
         diagramLabel->setText("参数示意图加载失败：resources/earth_rockfill_dam_parameter_diagram.svg");
         return;
     }
-    diagramLabel->setPixmap(pixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+
+    const QSize targetSize = diagramLabel->size().expandedTo(QSize(760, 320));
+    QPixmap pixmap(targetSize);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    renderer.render(&painter);
+    painter.end();
+
+    diagramLabel->setPixmap(pixmap);
 }
+
 
 
 
