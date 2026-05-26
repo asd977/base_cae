@@ -15,12 +15,8 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
-#include <QPainter>
 #include <QPointF>
-#include <QPolygonF>
 #include <QPushButton>
-#include <QRegion>
-#include <QRectF>
 #include <QVBoxLayout>
 #include <QVector>
 #include <ServiceRegistry.h>
@@ -36,79 +32,6 @@
 namespace
 {
 constexpr double kEps = 1.0e-7;
-
-void drawHorizontalDimension(QPainter& painter,
-                             QPointF left,
-                             QPointF right,
-                             const QString& text,
-                             double textDy = -22.0)
-{
-    if (left.x() > right.x())
-    {
-        const QPointF tmp = left;
-        left = right;
-        right = tmp;
-    }
-
-    painter.save();
-    painter.setPen(QPen(QColor(35, 35, 35), 1.2));
-    painter.drawLine(left, right);
-
-    constexpr double arrow = 6.0;
-    painter.drawLine(left, left + QPointF(arrow, -4.0));
-    painter.drawLine(left, left + QPointF(arrow, 4.0));
-    painter.drawLine(right, right + QPointF(-arrow, -4.0));
-    painter.drawLine(right, right + QPointF(-arrow, 4.0));
-
-    painter.drawLine(left + QPointF(0.0, -5.0), left + QPointF(0.0, 5.0));
-    painter.drawLine(right + QPointF(0.0, -5.0), right + QPointF(0.0, 5.0));
-
-    const double w = qMax(38.0, right.x() - left.x());
-    const double x = (left.x() + right.x() - w) * 0.5;
-    painter.drawText(QRectF(x, left.y() + textDy, w, 18.0), Qt::AlignCenter, text);
-    painter.restore();
-}
-
-void drawVerticalDimension(QPainter& painter,
-                           QPointF top,
-                           QPointF bottom,
-                           const QString& text,
-                           double textDx = -74.0)
-{
-    if (top.y() > bottom.y())
-    {
-        const QPointF tmp = top;
-        top = bottom;
-        bottom = tmp;
-    }
-
-    painter.save();
-    painter.setPen(QPen(QColor(35, 35, 35), 1.2));
-    painter.drawLine(top, bottom);
-
-    constexpr double arrow = 6.0;
-    painter.drawLine(top, top + QPointF(-4.0, arrow));
-    painter.drawLine(top, top + QPointF(4.0, arrow));
-    painter.drawLine(bottom, bottom + QPointF(-4.0, -arrow));
-    painter.drawLine(bottom, bottom + QPointF(4.0, -arrow));
-
-    painter.drawLine(top + QPointF(-5.0, 0.0), top + QPointF(5.0, 0.0));
-    painter.drawLine(bottom + QPointF(-5.0, 0.0), bottom + QPointF(5.0, 0.0));
-
-    painter.drawText(QRectF(top.x() + textDx, top.y() + (bottom.y() - top.y() - 18.0) * 0.5,
-                            68.0, 18.0),
-                     Qt::AlignCenter,
-                     text);
-    painter.restore();
-}
-
-void drawGuideLine(QPainter& painter, QPointF a, QPointF b)
-{
-    painter.save();
-    painter.setPen(QPen(QColor(110, 110, 110), 1.0, Qt::DashLine));
-    painter.drawLine(a, b);
-    painter.restore();
-}
 
 
 QLineEdit* findEdit(QWidget* owner, const char* objectName)
@@ -325,111 +248,15 @@ void CavernTemplateDialog::loadJson(const QJsonObject& object)
 
 void CavernTemplateDialog::updateDiagram()
 {
-    const double span = spanEdit->text().toDouble();
-    const double wallH = wallHEdit->text().toDouble();
-    const double archH = archHEdit->text().toDouble();
-    const int stageCount = qMax(1, liningEdit->text().toInt());
-    const double sideRock = readEdit(this, "sideRockEdit", 18.0);
-    const double topRock = readEdit(this, "topRockEdit", 16.0);
-    const double bottomRock = readEdit(this, "bottomRockEdit", 8.0);
-
-    if (span <= kEps || wallH <= kEps || archH <= kEps || sideRock <= kEps || topRock <= kEps || bottomRock <= kEps)
+    const QPixmap pixmap(":/resources/cavern_parameter_diagram.svg");
+    if (pixmap.isNull())
+    {
+        diagramLabel->setText("参数示意图加载失败：resources/cavern_parameter_diagram.svg");
         return;
-
-    const double cavernH = wallH + archH;
-    const double minX = -sideRock;
-    const double maxX = span + sideRock;
-    const double minZ = -bottomRock;
-    const double maxZ = cavernH + topRock;
-
-    QPixmap pixmap(760, 350);
-    pixmap.fill(Qt::white);
-    QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-
-    const double leftMargin = 95.0;
-    const double bottomY = 275.0;
-    const double scale = qMin(565.0 / qMax(1.0, maxX - minX), 205.0 / qMax(1.0, maxZ - minZ));
-    auto mapPoint = [&](double x, double z)
-    {
-        return QPointF(leftMargin + (x - minX) * scale, bottomY - (z - minZ) * scale);
-    };
-
-    QPolygonF rockBox;
-    rockBox << mapPoint(minX, minZ)
-            << mapPoint(maxX, minZ)
-            << mapPoint(maxX, maxZ)
-            << mapPoint(minX, maxZ);
-
-    painter.setPen(QPen(QColor(90, 90, 100), 1.5));
-    painter.setBrush(QColor(195, 200, 215));
-    painter.drawPolygon(rockBox);
-
-    QPolygonF cavern;
-    for (const QPointF& point : buildCavernProfile(span, wallH, archH))
-        cavern << mapPoint(point.x(), point.y());
-
-    painter.setBrush(QColor(245, 245, 245));
-    painter.drawPolygon(cavern);
-
-    painter.save();
-    painter.setClipRegion(QRegion(cavern.toPolygon()));
-    painter.setPen(QPen(QColor(80, 80, 80), 1, Qt::DashLine));
-    for (int i = 1; i < stageCount; ++i)
-    {
-        const double z = cavernH * i / static_cast<double>(stageCount);
-        painter.drawLine(mapPoint(cavernLeftAtZ(span, wallH, archH, z), z),
-                         mapPoint(cavernRightAtZ(span, wallH, archH, z), z));
     }
-    painter.restore();
-
-    // 辅助投影线。
-    drawGuideLine(painter, mapPoint(0.0, minZ), mapPoint(0.0, maxZ));
-    drawGuideLine(painter, mapPoint(span, minZ), mapPoint(span, maxZ));
-    drawGuideLine(painter, mapPoint(minX, 0.0), mapPoint(maxX, 0.0));
-    drawGuideLine(painter, mapPoint(minX, wallH), mapPoint(maxX, wallH));
-    drawGuideLine(painter, mapPoint(minX, cavernH), mapPoint(maxX, cavernH));
-
-    // 洞口参数。
-    drawHorizontalDimension(painter,
-                            mapPoint(0.0, 0.0) + QPointF(0.0, 24.0),
-                            mapPoint(span, 0.0) + QPointF(0.0, 24.0),
-                            "B 洞口宽",
-                            5.0);
-    drawVerticalDimension(painter,
-                          mapPoint(span, wallH),
-                          mapPoint(span, 0.0),
-                          "Hw 直墙高",
-                          12.0);
-    drawVerticalDimension(painter,
-                          mapPoint(span * 0.78, cavernH),
-                          mapPoint(span * 0.78, wallH),
-                          "Ha 拱顶高",
-                          12.0);
-
-    // 围岩参数。
-    drawHorizontalDimension(painter,
-                            mapPoint(minX, cavernH * 0.5),
-                            mapPoint(0.0, cavernH * 0.5),
-                            "Wr 左右围岩",
-                            -22.0);
-    drawVerticalDimension(painter,
-                          mapPoint(maxX, maxZ),
-                          mapPoint(maxX, cavernH),
-                          "Htop 顶部围岩",
-                          12.0);
-    drawVerticalDimension(painter,
-                          mapPoint(minX, 0.0),
-                          mapPoint(minX, minZ),
-                          "Hbot 底部围岩",
-                          -78.0);
-
-    painter.setPen(QPen(Qt::black, 1));
-    painter.drawText(12, 22, "洞室参数标注图：尺寸线对应 B/Hw/Ha/Wr/Htop/Hbot；洞口虚线为开挖级。");
-    painter.drawText(12, 332, QString("N=%1 洞口竖向开挖级；L 为洞室进深/拉伸方向，不在当前 XZ 断面内按真实长度绘制。").arg(stageCount));
-
-    diagramLabel->setPixmap(pixmap);
+    diagramLabel->setPixmap(pixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
+
 
 
 void CavernTemplateDialog::onPreviewClicked()

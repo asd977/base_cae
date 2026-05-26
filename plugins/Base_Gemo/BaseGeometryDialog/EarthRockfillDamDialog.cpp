@@ -15,12 +15,8 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
-#include <QPainter>
 #include <QPointF>
-#include <QPolygonF>
 #include <QPushButton>
-#include <QRegion>
-#include <QRectF>
 #include <QVBoxLayout>
 #include <QVector>
 #include <ServiceRegistry.h>
@@ -36,79 +32,6 @@
 namespace
 {
 constexpr double kEps = 1.0e-7;
-
-void drawHorizontalDimension(QPainter& painter,
-                             QPointF left,
-                             QPointF right,
-                             const QString& text,
-                             double textDy = -22.0)
-{
-    if (left.x() > right.x())
-    {
-        const QPointF tmp = left;
-        left = right;
-        right = tmp;
-    }
-
-    painter.save();
-    painter.setPen(QPen(QColor(35, 35, 35), 1.2));
-    painter.drawLine(left, right);
-
-    constexpr double arrow = 6.0;
-    painter.drawLine(left, left + QPointF(arrow, -4.0));
-    painter.drawLine(left, left + QPointF(arrow, 4.0));
-    painter.drawLine(right, right + QPointF(-arrow, -4.0));
-    painter.drawLine(right, right + QPointF(-arrow, 4.0));
-
-    painter.drawLine(left + QPointF(0.0, -5.0), left + QPointF(0.0, 5.0));
-    painter.drawLine(right + QPointF(0.0, -5.0), right + QPointF(0.0, 5.0));
-
-    const double w = qMax(38.0, right.x() - left.x());
-    const double x = (left.x() + right.x() - w) * 0.5;
-    painter.drawText(QRectF(x, left.y() + textDy, w, 18.0), Qt::AlignCenter, text);
-    painter.restore();
-}
-
-void drawVerticalDimension(QPainter& painter,
-                           QPointF top,
-                           QPointF bottom,
-                           const QString& text,
-                           double textDx = -74.0)
-{
-    if (top.y() > bottom.y())
-    {
-        const QPointF tmp = top;
-        top = bottom;
-        bottom = tmp;
-    }
-
-    painter.save();
-    painter.setPen(QPen(QColor(35, 35, 35), 1.2));
-    painter.drawLine(top, bottom);
-
-    constexpr double arrow = 6.0;
-    painter.drawLine(top, top + QPointF(-4.0, arrow));
-    painter.drawLine(top, top + QPointF(4.0, arrow));
-    painter.drawLine(bottom, bottom + QPointF(-4.0, -arrow));
-    painter.drawLine(bottom, bottom + QPointF(4.0, -arrow));
-
-    painter.drawLine(top + QPointF(-5.0, 0.0), top + QPointF(5.0, 0.0));
-    painter.drawLine(bottom + QPointF(-5.0, 0.0), bottom + QPointF(5.0, 0.0));
-
-    painter.drawText(QRectF(top.x() + textDx, top.y() + (bottom.y() - top.y() - 18.0) * 0.5,
-                            68.0, 18.0),
-                     Qt::AlignCenter,
-                     text);
-    painter.restore();
-}
-
-void drawGuideLine(QPainter& painter, QPointF a, QPointF b)
-{
-    painter.save();
-    painter.setPen(QPen(QColor(110, 110, 110), 1.0, Qt::DashLine));
-    painter.drawLine(a, b);
-    painter.restore();
-}
 
 
 QLineEdit* findEdit(QWidget* owner, const char* objectName)
@@ -321,149 +244,15 @@ void EarthRockfillDamDialog::initUi()
 
 void EarthRockfillDamDialog::updateDiagram()
 {
-    const double H = hEdit->text().toDouble();
-    const double Bt = crestEdit->text().toDouble();
-    const double Wu = upEdit->text().toDouble();
-    const double Wd = downEdit->text().toDouble();
-    const double Ct = coreWidthEdit->text().toDouble();
-    const double Cb = readEdit(this, "coreBottomEdit", 22.0);
-    const double F = readEdit(this, "filterWidthEdit", 4.0);
-    const double Xc = readEdit(this, "coreOffsetEdit", 0.0);
-    const int N = qMax(1, layerEdit->text().toInt());
-
-    if (H <= kEps || Bt <= kEps || Wu <= kEps || Wd <= kEps || Ct <= kEps || Cb <= kEps || F <= kEps)
+    const QPixmap pixmap(":/resources/earth_rockfill_dam_parameter_diagram.svg");
+    if (pixmap.isNull())
+    {
+        diagramLabel->setText("参数示意图加载失败：resources/earth_rockfill_dam_parameter_diagram.svg");
         return;
-
-    const double totalWidth = Wu + Bt + Wd;
-    const double x1 = Wu;
-    const double x2 = Wu + Bt;
-    const double damCenter = Wu + Bt * 0.5;
-    const double coreCenter = damCenter + Xc;
-
-    QPixmap pixmap(760, 360);
-    pixmap.fill(Qt::white);
-    QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-
-    const double leftMargin = 95.0;
-    const double bottomY = 285.0;
-    const double scale = qMin(560.0 / qMax(1.0, totalWidth), 205.0 / qMax(1.0, H));
-    auto mapPoint = [&](double x, double z)
-    {
-        return QPointF(leftMargin + x * scale, bottomY - z * scale);
-    };
-
-    QPolygonF damPolygon;
-    damPolygon << mapPoint(0.0, 0.0)
-               << mapPoint(x1, H)
-               << mapPoint(x2, H)
-               << mapPoint(totalWidth, 0.0);
-
-    painter.setPen(QPen(QColor(90, 80, 60), 1.5));
-    painter.setBrush(QColor(196, 182, 136));
-    painter.drawPolygon(damPolygon);
-
-    painter.save();
-    painter.setClipRegion(QRegion(damPolygon.toPolygon()));
-
-    QPolygonF leftFilter;
-    leftFilter << mapPoint(coreCenter - Cb * 0.5 - F, 0.0)
-               << mapPoint(coreCenter - Ct * 0.5 - F, H)
-               << mapPoint(coreCenter - Ct * 0.5, H)
-               << mapPoint(coreCenter - Cb * 0.5, 0.0);
-
-    QPolygonF corePolygon;
-    corePolygon << mapPoint(coreCenter - Cb * 0.5, 0.0)
-                << mapPoint(coreCenter - Ct * 0.5, H)
-                << mapPoint(coreCenter + Ct * 0.5, H)
-                << mapPoint(coreCenter + Cb * 0.5, 0.0);
-
-    QPolygonF rightFilter;
-    rightFilter << mapPoint(coreCenter + Cb * 0.5, 0.0)
-                << mapPoint(coreCenter + Ct * 0.5, H)
-                << mapPoint(coreCenter + Ct * 0.5 + F, H)
-                << mapPoint(coreCenter + Cb * 0.5 + F, 0.0);
-
-    painter.setPen(QPen(QColor(120, 100, 70), 1));
-    painter.setBrush(QColor(230, 210, 150, 210));
-    painter.drawPolygon(leftFilter);
-    painter.drawPolygon(rightFilter);
-
-    painter.setBrush(QColor(220, 90, 90, 220));
-    painter.drawPolygon(corePolygon);
-
-    painter.setPen(QPen(Qt::gray, 1, Qt::DashLine));
-    for (int i = 1; i < N; ++i)
-    {
-        const double z = H * i / static_cast<double>(N);
-        painter.drawLine(mapPoint(0.0, z), mapPoint(totalWidth, z));
     }
-    painter.restore();
-
-    // 几何辅助线：让顶部宽、水平投影宽、心墙宽和底宽的端点一眼能对上。
-    drawGuideLine(painter, mapPoint(x1, H), mapPoint(x1, 0.0));
-    drawGuideLine(painter, mapPoint(x2, H), mapPoint(x2, 0.0));
-    drawGuideLine(painter, mapPoint(coreCenter, H), mapPoint(coreCenter, 0.0));
-
-    // 外轮廓主参数。
-    drawVerticalDimension(painter,
-                          mapPoint(-10.0 / scale, H),
-                          mapPoint(-10.0 / scale, 0.0),
-                          "H 坝高",
-                          -76.0);
-    drawHorizontalDimension(painter,
-                            mapPoint(0.0, 0.0) + QPointF(0.0, 32.0),
-                            mapPoint(Wu, 0.0) + QPointF(0.0, 32.0),
-                            "Wu 上游水平宽",
-                            5.0);
-    drawHorizontalDimension(painter,
-                            mapPoint(Wu, H) + QPointF(0.0, -30.0),
-                            mapPoint(Wu + Bt, H) + QPointF(0.0, -30.0),
-                            "Bt 坝顶宽",
-                            -20.0);
-    drawHorizontalDimension(painter,
-                            mapPoint(Wu + Bt, 0.0) + QPointF(0.0, 32.0),
-                            mapPoint(totalWidth, 0.0) + QPointF(0.0, 32.0),
-                            "Wd 下游水平宽",
-                            5.0);
-
-    // 心墙和反滤层参数。
-    drawHorizontalDimension(painter,
-                            mapPoint(coreCenter - Ct * 0.5, H) + QPointF(0.0, 14.0),
-                            mapPoint(coreCenter + Ct * 0.5, H) + QPointF(0.0, 14.0),
-                            "Ct",
-                            -18.0);
-    drawHorizontalDimension(painter,
-                            mapPoint(coreCenter - Cb * 0.5, 0.0) + QPointF(0.0, -18.0),
-                            mapPoint(coreCenter + Cb * 0.5, 0.0) + QPointF(0.0, -18.0),
-                            "Cb",
-                            -18.0);
-    drawHorizontalDimension(painter,
-                            mapPoint(coreCenter - Ct * 0.5 - F, H) + QPointF(0.0, 34.0),
-                            mapPoint(coreCenter - Ct * 0.5, H) + QPointF(0.0, 34.0),
-                            "F",
-                            -18.0);
-
-    if (qAbs(Xc) > kEps)
-    {
-        drawHorizontalDimension(painter,
-                                mapPoint(damCenter, H) + QPointF(0.0, -52.0),
-                                mapPoint(coreCenter, H) + QPointF(0.0, -52.0),
-                                "Xc",
-                                -18.0);
-    }
-    else
-    {
-        painter.setPen(QPen(QColor(60, 60, 60), 1.0));
-        painter.drawText(mapPoint(coreCenter, H) + QPointF(8.0, -48.0), "Xc=0");
-    }
-
-    painter.setPen(QPen(Qt::black, 1));
-    painter.drawText(12, 22, "土石坝参数标注图：尺寸线直接对应输入参数；虚线为填筑层。");
-    painter.drawText(12, 342, QString("N=%1 填筑层；L 为坝轴线长度/拉伸方向，不在当前 XZ 断面内按真实长度绘制。").arg(N));
-
-    diagramLabel->setPixmap(pixmap);
+    diagramLabel->setPixmap(pixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
+
 
 
 void EarthRockfillDamDialog::onPreviewClicked()
