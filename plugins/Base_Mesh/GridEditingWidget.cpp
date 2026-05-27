@@ -107,8 +107,8 @@ class GridEditingMouseCallback : public vtkCommand
         if (!iren || !Widget)
             return;
 
-        if (!Widget->isMousePickingEnabled())
-            return;
+        Q_UNUSED(Widget);
+        return;
 
         auto rw = iren->GetRenderWindow();
         if (!rw)
@@ -130,64 +130,18 @@ class GridEditingMouseCallback : public vtkCommand
         // 左键按下
         if (eventId == vtkCommand::LeftButtonPressEvent)
         {
-            long long pickedPoint = -1;
-            long long pickedCell = -1;
-
-            if (CellPicker)
-            {
-                if (CellPicker->Pick(x, y, 0, renderer))
-                {
-                    pickedCell = CellPicker->GetCellId();
-                }
-            }
-
-            if (PointPicker)
-            {
-                if (PointPicker->Pick(x, y, 0, renderer))
-                {
-                    pickedPoint = PointPicker->GetPointId();
-                }
-            }
-
-            Widget->onPicked(pickedPoint, pickedCell);
-
-            // 拖动：以 cell 为准，从 cell 内挑最近且最前的点
-            if (pickedCell >= 0)
-            {
-                Widget->beginNodeDragFromCell(pickedCell, x, y);
-                this->AbortFlagOn();
-            }
             return;
         }
 
         // 鼠标移动
         if (eventId == vtkCommand::MouseMoveEvent)
         {
-            if (!Widget->isDraggingNode())
-                return;
-
-            if (!CellPicker)
-                return;
-
-            if (CellPicker->Pick(x, y, 0, renderer))
-            {
-                double wp[3];
-                CellPicker->GetPickPosition(wp);
-                Widget->dragNodeToWorldPosition(wp);
-            }
-
-            this->AbortFlagOn();
             return;
         }
 
         // 左键抬起
         if (eventId == vtkCommand::LeftButtonReleaseEvent)
         {
-            if (Widget->isDraggingNode())
-            {
-                Widget->endNodeDrag();
-                this->AbortFlagOn();
-            }
             return;
         }
     }
@@ -242,19 +196,7 @@ void GridEditingWidget::clearData()
     m_highlightedMatype = -1;
     m_matypeLookupTable = nullptr;
 
-    m_minNodeId = m_maxNodeId = 0;
-    m_minElemId = m_maxElemId = 0;
-
-    m_fullNodeIdToVtkId.clear();
-    m_viewNodeIdToVtkId.clear();
-    m_viewSurfaceNodeIdToVtkId.clear();
-    m_fullElemIdToCellId.clear();
-
     m_colorMode = ColorMode::None;
-
-    m_isDragging = false;
-    m_dragViewPointId = -1;
-    m_dragNodeId = -1;
 
 }
 
@@ -338,7 +280,6 @@ void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString
     }
 
     rebuildFullMaps();
-    updateIdRangeLabels();
     updateFilterCombosFromGrid();
     updateFilterSummaryLabel();
 
@@ -357,18 +298,8 @@ void GridEditingWidget::clearGrid()
 
     if (ui)
     {
-        if (ui->labelNodeRangeValue)
-            ui->labelNodeRangeValue->setText("--");
-        if (ui->labelElemRangeValue)
-            ui->labelElemRangeValue->setText("--");
-        if (ui->lineEditMoveNodeId)
-            ui->lineEditMoveNodeId->clear();
-        if (ui->lineEditDeleteElemId)
-            ui->lineEditDeleteElemId->clear();
         if (ui->labelFilterSummary)
             ui->labelFilterSummary->setText(QString("当前过滤：全部"));
-        if (ui->comboBoxColorMode)
-            ui->comboBoxColorMode->setCurrentIndex(0);
     }
 }
 
@@ -837,117 +768,7 @@ void GridEditingWidget::updateFilterSummaryLabel()
     ui->labelFilterSummary->setText(summary);
 }
 
-void GridEditingWidget::on_pushButtonMoveNode_clicked()
-{
-    if (!ui || !m_fullGrid)
-        return;
-
-    bool ok = false;
-    int nodeId = ui->lineEditMoveNodeId ? ui->lineEditMoveNodeId->text().trimmed().toInt(&ok) : 0;
-    if (!ok)
-        return;
-
-    QString sx = ui->lineEditNewX ? ui->lineEditNewX->text().trimmed() : QString();
-    QString sy = ui->lineEditNewY ? ui->lineEditNewY->text().trimmed() : QString();
-    QString sz = ui->lineEditNewZ ? ui->lineEditNewZ->text().trimmed() : QString();
-
-    double vx = 0, vy = 0, vz = 0;
-    const double *px = nullptr, *py = nullptr, *pz = nullptr;
-
-    if (!sx.isEmpty())
-    {
-        vx = sx.toDouble(&ok);
-        if (!ok)
-            return;
-        px = &vx;
-    }
-    if (!sy.isEmpty())
-    {
-        vy = sy.toDouble(&ok);
-        if (!ok)
-            return;
-        py = &vy;
-    }
-    if (!sz.isEmpty())
-    {
-        vz = sz.toDouble(&ok);
-        if (!ok)
-            return;
-        pz = &vz;
-    }
-
-    moveNodeById(nodeId, px, py, pz);
-    m_dirty = true;
-}
-
-void GridEditingWidget::on_pushButtonDeleteElem_clicked()
-{
-    if (!ui || !m_fullGrid)
-        return;
-
-    bool ok = false;
-    int elemId =
-        ui->lineEditDeleteElemId ? ui->lineEditDeleteElemId->text().trimmed().toInt(&ok) : 0;
-    if (!ok)
-        return;
-
-    deleteElemById(elemId);
-}
-
 // ===================== ID ranges =====================
-
-void GridEditingWidget::updateIdRangeLabels()
-{
-    if (!ui || !m_fullGrid)
-        return;
-
-    auto* nodeIdArr =
-        m_fullGrid->GetPointData() ? m_fullGrid->GetPointData()->GetArray("node_id") : nullptr;
-    auto* elemIdArr =
-        m_fullGrid->GetCellData() ? m_fullGrid->GetCellData()->GetArray("elem_id") : nullptr;
-
-    if (!nodeIdArr || nodeIdArr->GetNumberOfTuples() == 0)
-    {
-        if (ui->labelNodeRangeValue)
-            ui->labelNodeRangeValue->setText("--");
-    }
-    else
-    {
-        int minN = std::numeric_limits<int>::max();
-        int maxN = std::numeric_limits<int>::min();
-        for (vtkIdType i = 0; i < nodeIdArr->GetNumberOfTuples(); ++i)
-        {
-            int v = static_cast<int>(nodeIdArr->GetTuple1(i));
-            minN = std::min(minN, v);
-            maxN = std::max(maxN, v);
-        }
-        m_minNodeId = minN;
-        m_maxNodeId = maxN;
-        if (ui->labelNodeRangeValue)
-            ui->labelNodeRangeValue->setText(QString("%1 ~ %2").arg(minN).arg(maxN));
-    }
-
-    if (!elemIdArr || elemIdArr->GetNumberOfTuples() == 0)
-    {
-        if (ui->labelElemRangeValue)
-            ui->labelElemRangeValue->setText("--");
-    }
-    else
-    {
-        int minE = std::numeric_limits<int>::max();
-        int maxE = std::numeric_limits<int>::min();
-        for (vtkIdType i = 0; i < elemIdArr->GetNumberOfTuples(); ++i)
-        {
-            int v = static_cast<int>(elemIdArr->GetTuple1(i));
-            minE = std::min(minE, v);
-            maxE = std::max(maxE, v);
-        }
-        m_minElemId = minE;
-        m_maxElemId = maxE;
-        if (ui->labelElemRangeValue)
-            ui->labelElemRangeValue->setText(QString("%1 ~ %2").arg(minE).arg(maxE));
-    }
-}
 
 // ===================== Opacity / Wireframe / Picking toggle
 // =====================
@@ -963,11 +784,6 @@ QStringList GridEditingWidget::availableMeshPropIds() const
     if (m_visualWidgetService->getProp(kImportedMeshLinePropId))
         ids << kImportedMeshLinePropId;
     return ids;
-}
-
-void GridEditingWidget::on_checkBoxEnablePicking_toggled(bool checked)
-{
-    m_enableMousePicking = checked;
 }
 
 // ===================== Color mode / LUT =====================
@@ -1170,350 +986,6 @@ void GridEditingWidget::highlightMatypes(const QSet<int>& matypes, int selectedM
     m_meshMapper->ScalarVisibilityOn();
 
     m_visualWidgetService->render();
-}
-
-// ===================== Picking feedback =====================
-
-void GridEditingWidget::onPicked(long long pickedPointId, long long pickedCellId)
-{
-    if (!ui)
-        return;
-    vtkDataSet* pickDs = m_meshMapper ? m_meshMapper->GetInput() : nullptr;
-    if (!pickDs)
-        pickDs = vtkDataSet::SafeDownCast(m_viewGrid.GetPointer());
-    if (!pickDs)
-        return;
-    auto* pointData = pickDs->GetPointData();
-    auto* cellData = pickDs->GetCellData();
-
-    if (pickedPointId >= 0 && pointData)
-    {
-        auto* nodeIdArr = vtkIntArray::SafeDownCast(pointData->GetArray("node_id"));
-        if (nodeIdArr && pickedPointId < nodeIdArr->GetNumberOfTuples())
-        {
-            int nodeId = nodeIdArr->GetValue(static_cast<vtkIdType>(pickedPointId));
-            if (ui->lineEditMoveNodeId)
-                ui->lineEditMoveNodeId->setText(QString::number(nodeId));
-        }
-    }
-
-    if (pickedCellId >= 0 && cellData)
-    {
-        auto* elemIdArr = vtkIntArray::SafeDownCast(cellData->GetArray("elem_id"));
-        if (elemIdArr && pickedCellId < elemIdArr->GetNumberOfTuples())
-        {
-            int elemId = elemIdArr->GetValue(static_cast<vtkIdType>(pickedCellId));
-            if (ui->lineEditDeleteElemId)
-                ui->lineEditDeleteElemId->setText(QString::number(elemId));
-        }
-    }
-}
-
-// ===================== Drag node =====================
-
-void GridEditingWidget::beginNodeDragByPointId(long long viewPointId)
-{
-    if (!m_viewGrid || !m_fullGrid || viewPointId < 0)
-        return;
-
-    auto* nodeIdArr =
-        m_viewGrid->GetPointData() ? m_viewGrid->GetPointData()->GetArray("node_id") : nullptr;
-    int nodeId = tuple1i(nodeIdArr, static_cast<vtkIdType>(viewPointId), -1);
-    if (nodeId < 0)
-        return;
-    beginNodeDragByNodeId(nodeId);
-}
-
-void GridEditingWidget::beginNodeDragByNodeId(int nodeId)
-{
-    if (!m_fullGrid || nodeId < 0)
-        return;
-    auto itFull = m_fullNodeIdToVtkId.find(nodeId);
-    if (itFull == m_fullNodeIdToVtkId.end())
-        return;
-
-    double p0[3];
-    m_fullGrid->GetPoints()->GetPoint(itFull.value(), p0);
-
-    m_isDragging = true;
-    m_dragViewPointId = -1;
-    m_dragNodeId = nodeId;
-
-    m_dragStartX = p0[0];
-    m_dragStartY = p0[1];
-    m_dragStartZ = p0[2];
-
-    if (ui)
-    {
-        if (ui->lineEditMoveNodeId)
-            ui->lineEditMoveNodeId->setText(QString::number(nodeId));
-        if (ui->lineEditNodeX0)
-            ui->lineEditNodeX0->setText(QString::number(m_dragStartX));
-        if (ui->lineEditNodeY0)
-            ui->lineEditNodeY0->setText(QString::number(m_dragStartY));
-        if (ui->lineEditNodeZ0)
-            ui->lineEditNodeZ0->setText(QString::number(m_dragStartZ));
-
-        if (ui->lineEditNodeXCur)
-            ui->lineEditNodeXCur->setText(QString::number(m_dragStartX));
-        if (ui->lineEditNodeYCur)
-            ui->lineEditNodeYCur->setText(QString::number(m_dragStartY));
-        if (ui->lineEditNodeZCur)
-            ui->lineEditNodeZCur->setText(QString::number(m_dragStartZ));
-    }
-}
-
-void GridEditingWidget::beginNodeDragFromCell(long long cellId, int displayX, int displayY)
-{
-    vtkDataSet* pickDs = m_meshMapper ? m_meshMapper->GetInput() : nullptr;
-    if (!pickDs)
-        pickDs = vtkDataSet::SafeDownCast(m_viewGrid.GetPointer());
-    if (!pickDs || !m_points || !m_renderer || cellId < 0)
-        return;
-
-    vtkIdType cid = static_cast<vtkIdType>(cellId);
-    vtkCell* cell = pickDs->GetCell(cid);
-    if (!cell)
-        return;
-
-    vtkIdList* ids = cell->GetPointIds();
-    if (!ids || ids->GetNumberOfIds() == 0)
-        return;
-
-    double bestDepth = 1e9;
-    vtkIdType bestPid = -1;
-    const double pixelTol2 = 15.0 * 15.0;
-
-    for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
-    {
-        vtkIdType pid = ids->GetId(i);
-
-        double world[3];
-        m_points->GetPoint(pid, world);
-
-        m_renderer->SetWorldPoint(world[0], world[1], world[2], 1.0);
-        m_renderer->WorldToDisplay();
-        double disp[3];
-        m_renderer->GetDisplayPoint(disp);
-
-        double dx = disp[0] - displayX;
-        double dy = disp[1] - displayY;
-        double d2 = dx * dx + dy * dy;
-
-        if (d2 > pixelTol2)
-            continue;
-
-        if (disp[2] < bestDepth)
-        {
-            bestDepth = disp[2];
-            bestPid = pid;
-        }
-    }
-
-    if (bestPid < 0)
-        return;
-
-    auto* nodeIdArr = pickDs->GetPointData() ? pickDs->GetPointData()->GetArray("node_id")
-                                             : nullptr;
-    const int nodeId = tuple1i(nodeIdArr, bestPid, -1);
-    beginNodeDragByNodeId(nodeId);
-}
-
-void GridEditingWidget::dragNodeToWorldPosition(const double worldPos[3])
-{
-    if (!m_isDragging || !m_fullGrid)
-        return;
-
-    auto itFull = m_fullNodeIdToVtkId.find(m_dragNodeId);
-    if (itFull == m_fullNodeIdToVtkId.end())
-        return;
-
-    auto* fullPts = m_fullGrid->GetPoints();
-    if (!fullPts)
-        return;
-
-    fullPts->SetPoint(itFull.value(), worldPos[0], worldPos[1], worldPos[2]);
-    fullPts->Modified();
-    m_fullGrid->Modified();
-
-    if (m_viewGrid)
-    {
-        auto itView = m_viewNodeIdToVtkId.find(m_dragNodeId);
-        if (itView != m_viewNodeIdToVtkId.end())
-        {
-            auto* viewPts = m_viewGrid->GetPoints();
-            if (viewPts)
-            {
-                viewPts->SetPoint(itView.value(), worldPos[0], worldPos[1], worldPos[2]);
-                viewPts->Modified();
-                m_viewGrid->Modified();
-            }
-        }
-    }
-    if (m_meshMapper)
-    {
-        vtkDataSet* renderDs = m_meshMapper->GetInput();
-        vtkPointSet* renderPointSet = renderDs ? vtkPointSet::SafeDownCast(renderDs) : nullptr;
-        if (renderPointSet && renderPointSet->GetPoints())
-        {
-            auto itRender = m_viewSurfaceNodeIdToVtkId.find(m_dragNodeId);
-            if (itRender != m_viewSurfaceNodeIdToVtkId.end())
-            {
-                renderPointSet->GetPoints()->SetPoint(itRender.value(), worldPos[0], worldPos[1],
-                                                      worldPos[2]);
-                renderPointSet->GetPoints()->Modified();
-                renderDs->Modified();
-            }
-        }
-    }
-
-    m_dirty = true;
-
-    if (m_visualWidgetService)
-        m_visualWidgetService->render();
-
-    if (ui)
-    {
-        if (ui->lineEditNodeXCur)
-            ui->lineEditNodeXCur->setText(QString::number(worldPos[0]));
-        if (ui->lineEditNodeYCur)
-            ui->lineEditNodeYCur->setText(QString::number(worldPos[1]));
-        if (ui->lineEditNodeZCur)
-            ui->lineEditNodeZCur->setText(QString::number(worldPos[2]));
-    }
-}
-
-void GridEditingWidget::endNodeDrag()
-{
-    if (!m_isDragging)
-        return;
-
-    m_isDragging = false;
-    m_dragViewPointId = -1;
-    m_dragNodeId = -1;
-
-    m_dirty = true;
-}
-
-// ===================== Manual move / delete =====================
-
-void GridEditingWidget::moveNodeById(int nodeId, const double* newX, const double* newY,
-                                     const double* newZ)
-{
-    if (!m_fullGrid)
-        return;
-
-    auto itFull = m_fullNodeIdToVtkId.find(nodeId);
-    if (itFull == m_fullNodeIdToVtkId.end())
-    {
-        qWarning() << "[GridEditingWidget] moveNodeById: node not found:" << nodeId;
-        return;
-    }
-
-    double p[3];
-    m_fullGrid->GetPoints()->GetPoint(itFull.value(), p);
-
-    if (newX)
-        p[0] = *newX;
-    if (newY)
-        p[1] = *newY;
-    if (newZ)
-        p[2] = *newZ;
-
-    m_fullGrid->GetPoints()->SetPoint(itFull.value(), p);
-    m_fullGrid->GetPoints()->Modified();
-    m_fullGrid->Modified();
-
-    if (m_viewGrid)
-    {
-        auto itView = m_viewNodeIdToVtkId.find(nodeId);
-        if (itView != m_viewNodeIdToVtkId.end())
-        {
-            m_viewGrid->GetPoints()->SetPoint(itView.value(), p);
-            m_viewGrid->GetPoints()->Modified();
-            m_viewGrid->Modified();
-        }
-    }
-    if (m_meshMapper)
-    {
-        vtkDataSet* renderDs = m_meshMapper->GetInput();
-        vtkPointSet* renderPointSet = renderDs ? vtkPointSet::SafeDownCast(renderDs) : nullptr;
-        if (renderPointSet && renderPointSet->GetPoints())
-        {
-            auto itRender = m_viewSurfaceNodeIdToVtkId.find(nodeId);
-            if (itRender != m_viewSurfaceNodeIdToVtkId.end())
-            {
-                renderPointSet->GetPoints()->SetPoint(itRender.value(), p);
-                renderPointSet->GetPoints()->Modified();
-                renderDs->Modified();
-            }
-        }
-    }
-    if (m_visualWidgetService)
-        m_visualWidgetService->render();
-}
-
-void GridEditingWidget::deleteElemById(int elemId)
-{
-    //    if (!m_fullGrid) return;
-    //    auto it = m_fullElemIdToCellId.find(elemId);
-    //    if (it == m_fullElemIdToCellId.end()) { return; }
-}
-
-// ===================== Save =====================
-
-bool GridEditingWidget::saveAsVtu(const QString& filePath)
-{
-    if (!m_fullGrid || filePath.isEmpty())
-        return false;
-
-    auto writer = vtkSmartPointer<vtkXMLUnstructuredGridWriter>::New();
-    writer->SetInputData(m_fullGrid);
-#if VTK_MAJOR_VERSION <= 5
-    writer->SetFileName(filePath.toLocal8Bit().constData());
-#else
-    writer->SetFileName(filePath.toUtf8().constData());
-#endif
-    const int ok = writer->Write();
-    return ok != 0;
-}
-
-void GridEditingWidget::on_pushButtonSave_clicked()
-{
-    if (!m_fullGrid || m_fullGrid->GetNumberOfCells() == 0)
-    {
-        qWarning() << "[GridEditingWidget] nothing to save.";
-        return;
-    }
-
-    // 默认保存：如果 sourceName 是有效路径，就直接写；否则弹窗保存 .vtu
-    QString out = m_sourceName;
-    const bool hasPath = !out.isEmpty() && (out.contains('/') || out.contains('\\'));
-
-    if (!hasPath || !out.endsWith(".vtu", Qt::CaseInsensitive))
-    {
-        QString defaultName = out;
-        if (defaultName.isEmpty())
-            defaultName = "edited_mesh.vtu";
-        if (!defaultName.endsWith(".vtu", Qt::CaseInsensitive))
-            defaultName += ".vtu";
-
-        out = QFileDialog::getSaveFileName(this, QString("保存网格"), defaultName,
-                                           QString("VTK Unstructured Grid (*.vtu)"));
-        if (out.isEmpty())
-            return;
-        if (!out.endsWith(".vtu", Qt::CaseInsensitive))
-            out += ".vtu";
-    }
-
-    if (!saveAsVtu(out))
-    {
-        qWarning() << "[GridEditingWidget] save vtu failed:" << out;
-        return;
-    }
-
-    m_dirty = false;
-    qInfo() << "网格已保存到" << out;
 }
 
 // ===================== beforeLoad/unload =====================

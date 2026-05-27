@@ -57,22 +57,6 @@ class GridEditingWidget : public BasePage
     void highlightMatypes(const QSet<int>& matypes, int selectedMatype, int previewMatype,
                           int preDeleteMatype);
 
-    bool isMousePickingEnabled() const
-    {
-        return m_enableMousePicking;
-    }
-    bool isDraggingNode() const
-    {
-        return m_isDragging;
-    }
-
-    // mouse callback -> widget
-    void onPicked(long long pickedPointId, long long pickedCellId);
-
-    void beginNodeDragFromCell(long long cellId, int displayX, int displayY);
-    void dragNodeToWorldPosition(const double worldPos[3]);
-    void endNodeDrag();
-
     void beforeLoad();
     void beforeUnload();
 
@@ -80,13 +64,7 @@ class GridEditingWidget : public BasePage
     void on_pushButtonApplyFilter_clicked();
     void on_pushButtonResetFilter_clicked();
 
-    void on_pushButtonMoveNode_clicked();
-    void on_pushButtonDeleteElem_clicked();
-
-    void on_checkBoxEnablePicking_toggled(bool checked);
     void on_comboBoxColorMode_currentIndexChanged(int index);
-
-    void on_pushButtonSave_clicked();
 
   private:
     void clearData();
@@ -107,23 +85,13 @@ class GridEditingWidget : public BasePage
     bool cellMatchesFilter(vtkIdType fullCellId) const;
     QSet<int> collectUniqueCellInts(const char* arrayName) const;
 
-    void updateIdRangeLabels();
     void updateFilterCombosFromGrid();
     void updateFilterSummaryLabel();
-
-
-    void beginNodeDragByPointId(long long viewPointId);
-    void beginNodeDragByNodeId(int nodeId);
 
     void applyColorMode();
     vtkSmartPointer<vtkLookupTable> buildLookupTable(const QSet<int>& values) const;
     QStringList availableMeshPropIds() const;
 
-    // editing helpers
-    void moveNodeById(int nodeId, const double* newX, const double* newY, const double* newZ);
-    void deleteElemById(int elemId);
-
-    bool saveAsVtu(const QString& filePath); // 可改 UI 可配
 
   private:
     Ui::GridEditingWidget* ui = nullptr;
@@ -149,10 +117,6 @@ class GridEditingWidget : public BasePage
     int m_highlightedMatype = -1;
     vtkSmartPointer<vtkLookupTable> m_matypeLookupTable;
 
-    // id ranges
-    int m_minNodeId = 0, m_maxNodeId = 0;
-    int m_minElemId = 0, m_maxElemId = 0;
-
     // maps
     QHash<int, vtkIdType> m_fullNodeIdToVtkId;
     QHash<int, vtkIdType> m_viewNodeIdToVtkId;
@@ -172,15 +136,4 @@ class GridEditingWidget : public BasePage
     vtkSmartPointer<vtkPointPicker> m_pointPicker;
 
     vtkSmartPointer<vtkCommand> m_mouseCallback;
-
-    bool m_enableMousePicking = false;
-
-    // color mode
-    ColorMode m_colorMode = ColorMode::None;
-
-    // drag state
-    bool m_isDragging = false;
-    long long m_dragViewPointId = -1;
-    int m_dragNodeId = -1;
-    double m_dragStartX = 0, m_dragStartY = 0, m_dragStartZ = 0;
 };
