@@ -1,203 +1,105 @@
-﻿#include "GridEditingWidget.h"
-
-#include <QColor>
-#include <QComboBox>
-#include <QDebug>
-#include <QFileDialog>
-#include <QRect>
-#include <QTextStream>
-#include <QVariant>
-#include <algorithm>
-#include <cmath>
-#include <limits>
+#include "GridEditingWidget.h"
 
 #include "ui_GridEditingWidget.h"
 
-// services
 #include <ServiceRegistry.h>
 #include <services/VisualWidgetService.h>
 
-// VTK
+#include "MeshGridIO.h"
+
 #include <vtkActor.h>
-#include <vtkActor2D.h>
 #include <vtkCell.h>
-#include <vtkCellArray.h>
 #include <vtkCellData.h>
-#include <vtkCellPicker.h>
-#include <vtkCommand.h>
 #include <vtkDataArray.h>
 #include <vtkDataSet.h>
 #include <vtkDataSetMapper.h>
 #include <vtkDataSetSurfaceFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
-#include <vtkIdTypeArray.h>
-#include <vtkIntArray.h>
 #include <vtkLookupTable.h>
 #include <vtkMapper.h>
-#include <vtkPointData.h>
-#include <vtkPointSet.h>
-#include <vtkPointPicker.h>
-#include <vtkPoints.h>
 #include <vtkPolyData.h>
-#include <vtkPolyLine.h>
+#include <vtkPolyDataMapper.h>
 #include <vtkProperty.h>
-#include <vtkProperty2D.h>
-#include <vtkRenderWindow.h>
-#include <vtkRenderWindowInteractor.h>
-#include <vtkRenderer.h>
-#include <vtkRendererCollection.h>
 #include <vtkSmartPointer.h>
 #include <vtkUnstructuredGrid.h>
-#include <vtkXMLUnstructuredGridWriter.h>
 
-#include "MeshGridIO.h"
+#include <QColor>
+#include <QComboBox>
+#include <QSignalBlocker>
+#include <QStringList>
+#include <QVariant>
+
+#include <algorithm>
 
 namespace
 {
-// registry ids
-static const QString kIiinGroup = QString("IIIN"); // 只是 UI 分组名，可保留
-static const QString kImportedMeshSurfacePropId = QString("mesh.imported.surface");
-static const QString kImportedMeshLinePropId = QString("mesh.imported.line");
+static const QString kImportedMeshSurfacePropId = QStringLiteral("mesh.imported.surface");
+static const QString kImportedMeshLinePropId = QStringLiteral("mesh.imported.line");
+
+static int tuple1i(vtkDataArray* array, vtkIdType tupleId, int defaultValue = 0)
+{
+    if (!array || tupleId < 0 || tupleId >= array->GetNumberOfTuples())
+        return defaultValue;
+    return static_cast<int>(array->GetTuple1(tupleId));
+}
+
+static QColor categoricalColor(int value)
+{
+    if (value <= 0)
+        return QColor::fromRgbF(0.78, 0.78, 0.78);
+
+    const int hue = ((value * 47) % 360 + 360) % 360;
+    return QColor::fromHsv(hue, 170, 220);
+}
 } // namespace
-
-static inline int tuple1i(vtkDataArray* a, vtkIdType id, int def = -1)
-{
-    if (!a)
-        return def;
-    if (id < 0 || id >= a->GetNumberOfTuples())
-        return def;
-    return static_cast<int>(a->GetTuple1(id));
-}
-
-static vtkSmartPointer<vtkIntArray> ensureIntArray(vtkFieldData* fd, const char* name,
-                                                   vtkIdType nTuples)
-{
-    auto* arr = vtkIntArray::SafeDownCast(fd->GetArray(name));
-    if (arr && arr->GetNumberOfTuples() == nTuples)
-        return arr;
-
-    auto a = vtkSmartPointer<vtkIntArray>::New();
-    a->SetName(name);
-    a->SetNumberOfComponents(1);
-    a->SetNumberOfTuples(nTuples);
-    fd->AddArray(a);
-    return a;
-}
-
-// ------------------- 鼠标回调 -------------------
-
-class GridEditingMouseCallback : public vtkCommand
-{
-  public:
-    static GridEditingMouseCallback* New()
-    {
-        return new GridEditingMouseCallback;
-    }
-
-    GridEditingWidget* Widget = nullptr;
-    vtkCellPicker* CellPicker = nullptr;
-    vtkPointPicker* PointPicker = nullptr;
-
-    void Execute(vtkObject* caller, unsigned long eventId, void* callData) override
-    {
-        Q_UNUSED(callData);
-
-        auto iren = vtkRenderWindowInteractor::SafeDownCast(caller);
-        if (!iren || !Widget)
-            return;
-
-        Q_UNUSED(Widget);
-        return;
-
-        auto rw = iren->GetRenderWindow();
-        if (!rw)
-            return;
-
-        auto rc = rw->GetRenderers();
-        if (!rc || rc->GetNumberOfItems() == 0)
-            return;
-
-        vtkRenderer* renderer = rc->GetFirstRenderer();
-        if (!renderer)
-            return;
-
-        int pos[2];
-        iren->GetEventPosition(pos);
-        int x = pos[0];
-        int y = pos[1];
-
-        // 左键按下
-        if (eventId == vtkCommand::LeftButtonPressEvent)
-        {
-            return;
-        }
-
-        // 鼠标移动
-        if (eventId == vtkCommand::MouseMoveEvent)
-        {
-            return;
-        }
-
-        // 左键抬起
-        if (eventId == vtkCommand::LeftButtonReleaseEvent)
-        {
-            return;
-        }
-    }
-};
-
-// ------------------- GridEditingWidget 实现 -------------------
 
 GridEditingWidget::GridEditingWidget(QWidget* parent)
     : BasePage("GridEditingWidget"), ui(new Ui::GridEditingWidget)
 {
-    ui->setupUi(this);
+    Q_UNUSED(parent);
 
+    ui->setupUi(this);
     m_visualWidgetService = ServiceRegistry::instance().getService<VisualWidgetService>();
 
     if (ui->comboBoxColorMode)
     {
         ui->comboBoxColorMode->clear();
-        ui->comboBoxColorMode->addItem(QString("默认"), static_cast<int>(ColorMode::None));
-        ui->comboBoxColorMode->addItem(QString("单元类型"), static_cast<int>(ColorMode::Ketype));
-        ui->comboBoxColorMode->addItem(QString("材料类型"), static_cast<int>(ColorMode::Matype));
-        ui->comboBoxColorMode->addItem(QString("填筑分层"), static_cast<int>(ColorMode::Layer));
+        ui->comboBoxColorMode->addItem(QStringLiteral("默认"), static_cast<int>(ColorMode::None));
+        ui->comboBoxColorMode->addItem(QStringLiteral("单元类型"), static_cast<int>(ColorMode::Ketype));
+        ui->comboBoxColorMode->addItem(QStringLiteral("材料类型"), static_cast<int>(ColorMode::Matype));
+        ui->comboBoxColorMode->addItem(QStringLiteral("填筑分层"), static_cast<int>(ColorMode::Layer));
         ui->comboBoxColorMode->setCurrentIndex(0);
     }
 }
 
 GridEditingWidget::~GridEditingWidget()
 {
-    if (m_interactor && m_mouseCallback)
-    {
-        m_interactor->RemoveObserver(m_mouseCallback);
-    }
-    m_mouseCallback = nullptr;
     delete ui;
 }
 
 void GridEditingWidget::clearData()
 {
     m_fullGrid = nullptr;
-    m_viewGrid = nullptr;
     m_viewSurface = nullptr;
-    m_originalRenderInput = nullptr;
-    m_points = nullptr;
-
+    m_viewLineGrid = nullptr;
     m_sourceName.clear();
-    m_dirty = false;
 
     m_filterKetypes.clear();
     m_filterMatypes.clear();
     m_filterLayers.clear();
 
-    m_highlightedMatypes.clear();
-    m_highlightedMatype = -1;
-    m_matypeLookupTable = nullptr;
-
     m_colorMode = ColorMode::None;
 
+    m_highlightedMatypes.clear();
+    m_selectedMatype = -1;
+    m_previewMatype = -1;
+    m_preDeleteMatype = -1;
+
+    m_surfaceActor = nullptr;
+    m_lineActor = nullptr;
+    m_surfaceMapper = nullptr;
+    m_lineMapper = nullptr;
 }
 
 void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString& sourceName)
@@ -205,90 +107,23 @@ void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString
     clearData();
     m_sourceName = sourceName;
 
-    if (!grid)
+    if (ui && ui->comboBoxColorMode)
+    {
+        const QSignalBlocker blocker(ui->comboBoxColorMode);
+        ui->comboBoxColorMode->setCurrentIndex(0);
+    }
+
+    if (!grid || grid->GetNumberOfCells() <= 0)
+    {
+        updateFilterSummaryLabel();
         return;
+    }
 
     m_fullGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
     m_fullGrid->DeepCopy(grid);
 
-    // 兜底：确保必要数组存在
-    if (m_fullGrid->GetNumberOfPoints() > 0)
-    {
-        auto* pd = m_fullGrid->GetPointData();
-        auto nodeIdLegacy = vtkIntArray::SafeDownCast(pd ? pd->GetArray("node_id") : nullptr);
-        auto nodeIdPrimary = vtkIntArray::SafeDownCast(pd ? pd->GetArray("NodeId") : nullptr);
-        vtkIntArray* source = nullptr;
-        if (nodeIdLegacy && nodeIdLegacy->GetNumberOfTuples() == m_fullGrid->GetNumberOfPoints())
-            source = nodeIdLegacy;
-        else if (nodeIdPrimary && nodeIdPrimary->GetNumberOfTuples() == m_fullGrid->GetNumberOfPoints())
-            source = nodeIdPrimary;
-
-        auto nodeIdLower = ensureIntArray(pd, "node_id", m_fullGrid->GetNumberOfPoints());
-        if (source)
-        {
-            for (vtkIdType i = 0; i < m_fullGrid->GetNumberOfPoints(); ++i)
-            {
-                const int v = source->GetValue(i);
-                nodeIdLower->SetValue(i, v);
-            }
-        }
-        else
-        {
-            for (vtkIdType i = 0; i < m_fullGrid->GetNumberOfPoints(); ++i)
-            {
-                const int v = static_cast<int>(i + 1);
-                nodeIdLower->SetValue(i, v);
-            }
-        }
-        if (pd && pd->GetArray("NodeId"))
-            pd->RemoveArray("NodeId");
-    }
-
-    if (m_fullGrid->GetNumberOfCells() > 0)
-    {
-        auto* cd = m_fullGrid->GetCellData();
-        auto elemIdLegacy = vtkIntArray::SafeDownCast(cd ? cd->GetArray("elem_id") : nullptr);
-        auto elemIdPrimary = vtkIntArray::SafeDownCast(cd ? cd->GetArray("ElemId") : nullptr);
-        vtkIntArray* source = nullptr;
-        if (elemIdLegacy && elemIdLegacy->GetNumberOfTuples() == m_fullGrid->GetNumberOfCells())
-            source = elemIdLegacy;
-        else if (elemIdPrimary && elemIdPrimary->GetNumberOfTuples() == m_fullGrid->GetNumberOfCells())
-            source = elemIdPrimary;
-
-        auto elemIdLower = ensureIntArray(cd, "elem_id", m_fullGrid->GetNumberOfCells());
-        if (source)
-        {
-            for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
-            {
-                const int v = source->GetValue(c);
-                elemIdLower->SetValue(c, v);
-            }
-        }
-        else
-        {
-            for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
-            {
-                const int v = static_cast<int>(c + 1);
-                elemIdLower->SetValue(c, v);
-            }
-        }
-        if (cd && cd->GetArray("ElemId"))
-            cd->RemoveArray("ElemId");
-        ensureIntArray(cd, "KETYPE", m_fullGrid->GetNumberOfCells());
-        ensureIntArray(cd, "MATYPE", m_fullGrid->GetNumberOfCells());
-        ensureIntArray(cd, "LAYER", m_fullGrid->GetNumberOfCells());
-    }
-
-    rebuildFullMaps();
     updateFilterCombosFromGrid();
     updateFilterSummaryLabel();
-
-
-    if (!m_interactor || !m_renderer)
-    {
-        setupInteractor();
-    }
-
     buildOrUpdateViewGrid();
 }
 
@@ -298,351 +133,417 @@ void GridEditingWidget::clearGrid()
 
     if (ui)
     {
+        if (ui->comboBoxKetype)
+            ui->comboBoxKetype->clear();
+        if (ui->comboBoxMatype)
+            ui->comboBoxMatype->clear();
+        if (ui->comboBoxLayer)
+            ui->comboBoxLayer->clear();
         if (ui->labelFilterSummary)
-            ui->labelFilterSummary->setText(QString("当前过滤：全部"));
+            ui->labelFilterSummary->setText(QStringLiteral("当前过滤：全部"));
     }
 }
 
-vtkDataArray* GridEditingWidget::pointArray(const char* name) const
+bool GridEditingWidget::hasFilter() const
 {
-    if (!m_viewGrid)
-        return nullptr;
-    auto* pd = m_viewGrid->GetPointData();
-    return pd ? pd->GetArray(name) : nullptr;
+    return !m_filterKetypes.isEmpty() || !m_filterMatypes.isEmpty() || !m_filterLayers.isEmpty();
 }
 
-vtkDataArray* GridEditingWidget::cellArray(const char* name) const
+bool GridEditingWidget::cellMatchesFilter(vtkIdType cellId) const
 {
-    if (!m_viewGrid)
-        return nullptr;
-    auto* cd = m_viewGrid->GetCellData();
-    return cd ? cd->GetArray(name) : nullptr;
-}
-
-void GridEditingWidget::rebuildFullMaps()
-{
-    m_fullNodeIdToVtkId.clear();
-    m_fullElemIdToCellId.clear();
-    if (!m_fullGrid)
-        return;
-
-    auto* nodeIdArr =
-        m_fullGrid->GetPointData() ? m_fullGrid->GetPointData()->GetArray("node_id") : nullptr;
-    for (vtkIdType p = 0; p < m_fullGrid->GetNumberOfPoints(); ++p)
-    {
-        int nid = tuple1i(nodeIdArr, p, -1);
-        if (nid >= 0)
-            m_fullNodeIdToVtkId.insert(nid, p);
-    }
-
-    auto* elemIdArr =
-        m_fullGrid->GetCellData() ? m_fullGrid->GetCellData()->GetArray("elem_id") : nullptr;
-    for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
-    {
-        int eid = tuple1i(elemIdArr, c, -1);
-        if (eid >= 0)
-            m_fullElemIdToCellId.insert(eid, c);
-    }
-}
-
-void GridEditingWidget::rebuildViewMaps()
-{
-    m_viewNodeIdToVtkId.clear();
-    if (!m_viewGrid)
-        return;
-
-    auto* nodeIdArr =
-        m_viewGrid->GetPointData() ? m_viewGrid->GetPointData()->GetArray("node_id") : nullptr;
-    for (vtkIdType p = 0; p < m_viewGrid->GetNumberOfPoints(); ++p)
-    {
-        int nid = tuple1i(nodeIdArr, p, -1);
-        if (nid >= 0)
-            m_viewNodeIdToVtkId.insert(nid, p);
-    }
-}
-
-QSet<int> GridEditingWidget::parseIntSetFromString(const QString& text) const
-{
-    QSet<int> s;
-    const auto parts = text.split(',', QString::SkipEmptyParts);
-    for (const QString& part : parts)
-    {
-        const QString v = part.trimmed();
-        if (v.isEmpty())
-            continue;
-        bool ok = false;
-        int n = v.toInt(&ok);
-        if (ok)
-            s.insert(n);
-    }
-    return s;
-}
-
-// ===================== Filter / ViewGrid =====================
-
-bool GridEditingWidget::cellMatchesFilter(vtkIdType fullCellId) const
-{
-    if (!m_fullGrid)
+    if (!m_fullGrid || cellId < 0 || cellId >= m_fullGrid->GetNumberOfCells())
         return false;
-    vtkCell* cell = m_fullGrid->GetCell(fullCellId);
-    if (!cell)
-        return false;
-    if (cell->GetCellDimension() < 2)
-        return false;
+
     auto* cd = m_fullGrid->GetCellData();
     if (!cd)
-        return true;
-
-    auto* aK = cd->GetArray("KETYPE");
-    auto* aM = cd->GetArray("MATYPE");
-    auto* aL = cd->GetArray("LAYER");
-
-    int k = tuple1i(aK, fullCellId, 0);
-    int m = tuple1i(aM, fullCellId, 0);
-    int l = tuple1i(aL, fullCellId, 0);
-
-    if (!m_filterKetypes.isEmpty() && !m_filterKetypes.contains(k))
         return false;
-    if (!m_filterMatypes.isEmpty() && !m_filterMatypes.contains(m))
+
+    const int ketype = tuple1i(cd->GetArray("KETYPE"), cellId, 0);
+    const int matype = tuple1i(cd->GetArray("MATYPE"), cellId, 0);
+    const int layer = tuple1i(cd->GetArray("LAYER"), cellId, 0);
+
+    if (!m_filterKetypes.isEmpty() && !m_filterKetypes.contains(ketype))
         return false;
-    if (!m_filterLayers.isEmpty() && !m_filterLayers.contains(l))
+    if (!m_filterMatypes.isEmpty() && !m_filterMatypes.contains(matype))
         return false;
+    if (!m_filterLayers.isEmpty() && !m_filterLayers.contains(layer))
+        return false;
+
     return true;
+}
+
+void GridEditingWidget::refreshMeshActors()
+{
+    m_surfaceActor = nullptr;
+    m_lineActor = nullptr;
+    m_surfaceMapper = nullptr;
+    m_lineMapper = nullptr;
+
+    if (!m_visualWidgetService)
+        return;
+
+    m_surfaceActor = vtkActor::SafeDownCast(m_visualWidgetService->getProp(kImportedMeshSurfacePropId));
+    m_lineActor = vtkActor::SafeDownCast(m_visualWidgetService->getProp(kImportedMeshLinePropId));
+
+    m_surfaceMapper = m_surfaceActor ? m_surfaceActor->GetMapper() : nullptr;
+    m_lineMapper = m_lineActor ? m_lineActor->GetMapper() : nullptr;
+}
+
+vtkSmartPointer<vtkUnstructuredGrid> GridEditingWidget::extractCells(
+    const vtkSmartPointer<vtkIdList>& ids) const
+{
+    auto out = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    if (!m_fullGrid || !ids || ids->GetNumberOfIds() <= 0)
+        return out;
+
+    auto extractor = vtkSmartPointer<vtkExtractCells>::New();
+    extractor->SetInputData(m_fullGrid);
+    extractor->SetCellList(ids);
+    extractor->Update();
+
+    out->ShallowCopy(extractor->GetOutput());
+    return out;
+}
+
+void GridEditingWidget::setMapperInput(vtkMapper* mapper, vtkDataSet* dataSet) const
+{
+    if (!mapper || !dataSet)
+        return;
+
+    if (auto* polyMapper = vtkPolyDataMapper::SafeDownCast(mapper))
+    {
+        if (auto* poly = vtkPolyData::SafeDownCast(dataSet))
+            polyMapper->SetInputData(poly);
+        return;
+    }
+
+    if (auto* dataSetMapper = vtkDataSetMapper::SafeDownCast(mapper))
+    {
+        dataSetMapper->SetInputData(dataSet);
+        return;
+    }
 }
 
 void GridEditingWidget::buildOrUpdateViewGrid()
 {
+    refreshMeshActors();
+
     if (!m_visualWidgetService || !m_fullGrid)
         return;
-    if (m_fullGrid->GetNumberOfPoints() == 0 || m_fullGrid->GetNumberOfCells() == 0)
-        return;
 
-    // 找 mesh actor / mapper
-    vtkActor* existingActor = nullptr;
-    if (m_visualWidgetService)
+    auto surfaceCellIds = vtkSmartPointer<vtkIdList>::New();
+    auto lineCellIds = vtkSmartPointer<vtkIdList>::New();
+
+    const bool filtering = hasFilter();
+    const vtkIdType cellCount = m_fullGrid->GetNumberOfCells();
+
+    for (vtkIdType cellId = 0; cellId < cellCount; ++cellId)
     {
-        existingActor =
-            vtkActor::SafeDownCast(m_visualWidgetService->getProp(kImportedMeshSurfacePropId));
-        if (!existingActor)
-        {
-            existingActor =
-                vtkActor::SafeDownCast(m_visualWidgetService->getProp(kImportedMeshLinePropId));
-        }
-    }
-    if (existingActor)
-    {
-        m_meshActor = existingActor;
-        m_meshMapper = vtkDataSetMapper::SafeDownCast(existingActor->GetMapper());
+        vtkCell* cell = m_fullGrid->GetCell(cellId);
+        if (!cell)
+            continue;
 
-        // 兼容 displayCurrentGrid 可能设置的其他 mapper（如 vtkPolyDataMapper）。
-        // 网格编辑流程后续依赖 vtkDataSetMapper 接口，这里做一次适配替换。
-        if (!m_meshMapper)
-        {
-            vtkMapper* rawMapper = existingActor->GetMapper();
-            vtkDataSet* mapperInput = rawMapper ? vtkDataSet::SafeDownCast(rawMapper->GetInput()) : nullptr;
-            if (mapperInput)
-            {
-                auto dsMapper = vtkSmartPointer<vtkDataSetMapper>::New();
-                dsMapper->SetInputData(mapperInput);
-                dsMapper->SetScalarVisibility(rawMapper->GetScalarVisibility());
-                dsMapper->SetScalarMode(rawMapper->GetScalarMode());
-                if (rawMapper->GetArrayName() && rawMapper->GetArrayName()[0] != '\0')
-                    dsMapper->SelectColorArray(rawMapper->GetArrayName());
-                if (rawMapper->GetLookupTable())
-                    dsMapper->SetLookupTable(rawMapper->GetLookupTable());
-                existingActor->SetMapper(dsMapper);
-                m_meshMapper = dsMapper;
-            }
-        }
-    }
-    if (!m_meshMapper)
-        return;
-    if (!m_originalRenderInput)
-        m_originalRenderInput = m_meshMapper->GetInput();
+        if (filtering && !cellMatchesFilter(cellId))
+            continue;
 
-    const bool hasFilter =
-        !m_filterKetypes.isEmpty() || !m_filterMatypes.isEmpty() || !m_filterLayers.isEmpty();
-
-    // 过滤显示时，隐藏导入线网格，避免“只筛体/面但线还在”的错觉；
-    // 当没有过滤或仅线兜底时再恢复。
-    if (m_visualWidgetService)
-        m_visualWidgetService->setVisible("mesh.imported.line", !hasFilter, false);
-
-    // 记录 mapper 原有着色状态：避免仅因重建 viewGrid 就丢失当前颜色。
-    const int prevScalarVisibility = m_meshMapper->GetScalarVisibility();
-    const int prevScalarMode = m_meshMapper->GetScalarMode();
-    const char* prevArrayName = m_meshMapper->GetArrayName();
-    vtkScalarsToColors* prevLookupTable = m_meshMapper->GetLookupTable();
-
-    bool usedLineFallback = false;
-    {
-        auto ids = vtkSmartPointer<vtkIdList>::New();
-        auto lineIdsFallback = vtkSmartPointer<vtkIdList>::New();
-
-        for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c)
-        {
-            vtkCell* cell = m_fullGrid->GetCell(c);
-            if (!cell)
-                continue;
-
-            if (cell->GetCellDimension() >= 2)
-            {
-                if (!hasFilter || cellMatchesFilter(c))
-                    ids->InsertNextId(c);
-                continue;
-            }
-
-            // 兜底：当网格仅包含线单元时，允许显示线网格，避免视图为空。
-            auto* cd = m_fullGrid->GetCellData();
-            auto* aK = cd ? cd->GetArray("KETYPE") : nullptr;
-            auto* aM = cd ? cd->GetArray("MATYPE") : nullptr;
-            auto* aL = cd ? cd->GetArray("LAYER") : nullptr;
-            const int k = tuple1i(aK, c, 0);
-            const int m = tuple1i(aM, c, 0);
-            const int l = tuple1i(aL, c, 0);
-            const bool okK = m_filterKetypes.isEmpty() || m_filterKetypes.contains(k);
-            const bool okM = m_filterMatypes.isEmpty() || m_filterMatypes.contains(m);
-            const bool okL = m_filterLayers.isEmpty() || m_filterLayers.contains(l);
-            if (okK && okM && okL)
-                lineIdsFallback->InsertNextId(c);
-        }
-
-        vtkIdList* targetIds = ids;
-        if (ids->GetNumberOfIds() == 0 && lineIdsFallback->GetNumberOfIds() > 0)
-        {
-            targetIds = lineIdsFallback;
-            usedLineFallback = true;
-        }
-
-        auto ex = vtkSmartPointer<vtkExtractCells>::New();
-        ex->SetInputData(m_fullGrid);
-        ex->SetCellList(targetIds);
-        ex->Update();
-        m_viewGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
-        m_viewGrid->ShallowCopy(ex->GetOutput());
-
-        rebuildViewMaps();
+        const int dim = cell->GetCellDimension();
+        if (dim >= 2)
+            surfaceCellIds->InsertNextId(cellId);
+        else if (dim == 1)
+            lineCellIds->InsertNextId(cellId);
     }
 
-    // 默认复用原始渲染输入；当存在过滤条件时，临时切换到过滤后的显示数据。
-    if (hasFilter)
-    {
-        if (usedLineFallback)
-        {
-            m_meshMapper->SetInputData(m_viewGrid);
-        }
-        else
-        {
-            auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-            surf->SetInputData(m_viewGrid);
-            surf->PassThroughPointIdsOn();
-            surf->PassThroughCellIdsOn();
-            surf->Update();
-            m_viewSurface = vtkSmartPointer<vtkPolyData>::New();
-            m_viewSurface->ShallowCopy(surf->GetOutput());
-            m_meshMapper->SetInputData(m_viewSurface);
-        }
-    }
-    else if (m_originalRenderInput)
-    {
-        m_meshMapper->SetInputData(m_originalRenderInput);
-    }
+    m_viewSurface = nullptr;
+    m_viewLineGrid = nullptr;
 
-    if (!hasFilter || usedLineFallback)
-        m_viewSurface = nullptr;
-    if (m_visualWidgetService && usedLineFallback)
-        m_visualWidgetService->setVisible("mesh.imported.line", true, false);
-    m_viewSurfaceNodeIdToVtkId.clear();
-    vtkDataSet* pickDs = m_meshMapper ? m_meshMapper->GetInput() : nullptr;
-    vtkPointSet* pickPointSet = pickDs ? vtkPointSet::SafeDownCast(pickDs) : nullptr;
-    m_points = pickPointSet ? pickPointSet->GetPoints()
-                            : (m_viewGrid ? m_viewGrid->GetPoints() : nullptr);
-    if (pickDs)
+    if (surfaceCellIds->GetNumberOfIds() > 0)
     {
-        auto* nodeIdArr = pickDs->GetPointData() ? pickDs->GetPointData()->GetArray("node_id")
-                                                 : nullptr;
-        for (vtkIdType p = 0; p < pickDs->GetNumberOfPoints(); ++p)
-        {
-            const int nid = tuple1i(nodeIdArr, p, -1);
-            if (nid >= 0)
-                m_viewSurfaceNodeIdToVtkId.insert(nid, p);
-        }
-    }
+        auto surfaceSource = extractCells(surfaceCellIds);
+        auto surfaceFilter = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+        surfaceFilter->SetInputData(surfaceSource);
+        surfaceFilter->PassThroughCellIdsOn();
+        surfaceFilter->PassThroughPointIdsOn();
+        surfaceFilter->Update();
 
-
-    if (!m_interactor || !m_renderer)
-        setupInteractor();
-
-    if (m_cellPicker && m_meshActor)
-    {
-        m_cellPicker->InitializePickList();
-        m_cellPicker->AddPickList(m_meshActor);
-        m_cellPicker->PickFromListOn();
-    }
-    if (m_pointPicker && m_meshActor)
-    {
-        m_pointPicker->InitializePickList();
-        m_pointPicker->AddPickList(m_meshActor);
-        m_pointPicker->PickFromListOn();
-    }
-
-    // 仅在显式选择颜色模式或存在材料高亮 LUT 时改写 mapper 颜色状态。
-    // 否则恢复 mapper 原有着色配置，避免创建/重建网格编辑时颜色丢失。
-    if (m_matypeLookupTable || m_colorMode != ColorMode::None)
-    {
-        applyColorMode();
+        m_viewSurface = vtkSmartPointer<vtkPolyData>::New();
+        m_viewSurface->ShallowCopy(surfaceFilter->GetOutput());
     }
     else
     {
-        m_meshMapper->SetScalarMode(prevScalarMode);
-        if (prevArrayName && prevArrayName[0] != '\0')
-        {
-            m_meshMapper->SelectColorArray(prevArrayName);
-        }
-        if (prevLookupTable)
-        {
-            m_meshMapper->SetLookupTable(prevLookupTable);
-            m_meshMapper->UseLookupTableScalarRangeOn();
-        }
-        if (prevScalarVisibility)
-            m_meshMapper->ScalarVisibilityOn();
-        else
-            m_meshMapper->ScalarVisibilityOff();
+        m_viewSurface = vtkSmartPointer<vtkPolyData>::New();
     }
+
+    if (lineCellIds->GetNumberOfIds() > 0)
+        m_viewLineGrid = extractCells(lineCellIds);
+    else
+        m_viewLineGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+
+    if (m_surfaceMapper)
+        setMapperInput(m_surfaceMapper, m_viewSurface);
+    if (m_lineMapper)
+        setMapperInput(m_lineMapper, m_viewLineGrid);
+
+    const bool showSurface = m_viewSurface && m_viewSurface->GetNumberOfCells() > 0;
+    const bool showLine = m_viewLineGrid && m_viewLineGrid->GetNumberOfCells() > 0;
+
+    m_visualWidgetService->setVisible(kImportedMeshSurfacePropId, showSurface, false);
+    m_visualWidgetService->setVisible(kImportedMeshLinePropId, showLine, false);
+
+    applyColorMode();
     m_visualWidgetService->render();
 }
 
-// ===================== Interactor =====================
-
-void GridEditingWidget::setupInteractor()
+QSet<int> GridEditingWidget::collectUniqueCellInts(vtkDataSet* dataSet, const char* arrayName) const
 {
-    if (!m_visualWidgetService)
-        return;
-    if (m_interactor)
-        return;
+    QSet<int> values;
+    if (!dataSet || !arrayName)
+        return values;
 
-    m_interactor = m_visualWidgetService->interactor();
-    m_renderer = m_visualWidgetService->renderer();
-    if (!m_interactor || !m_renderer)
-        return;
+    auto* cd = dataSet->GetCellData();
+    auto* array = cd ? cd->GetArray(arrayName) : nullptr;
+    if (!array)
+        return values;
 
-    m_cellPicker = vtkSmartPointer<vtkCellPicker>::New();
-    m_pointPicker = vtkSmartPointer<vtkPointPicker>::New();
+    for (vtkIdType i = 0; i < array->GetNumberOfTuples(); ++i)
+        values.insert(static_cast<int>(array->GetTuple1(i)));
 
-    auto cb = vtkSmartPointer<GridEditingMouseCallback>::New();
-    cb->Widget = this;
-    cb->CellPicker = m_cellPicker;
-    cb->PointPicker = m_pointPicker;
-
-    m_mouseCallback = cb;
-
-    double priority = 1.0;
-    m_interactor->AddObserver(vtkCommand::LeftButtonPressEvent, cb, priority);
-    m_interactor->AddObserver(vtkCommand::MouseMoveEvent, cb, priority);
-    m_interactor->AddObserver(vtkCommand::LeftButtonReleaseEvent, cb, priority);
+    return values;
 }
 
-// ===================== UI: filter =====================
+QSet<int> GridEditingWidget::collectUniqueCellInts(const char* arrayName) const
+{
+    return collectUniqueCellInts(m_fullGrid, arrayName);
+}
+
+QSet<int> GridEditingWidget::collectVisibleCellInts(const char* arrayName) const
+{
+    QSet<int> values = collectUniqueCellInts(m_viewSurface, arrayName);
+    values.unite(collectUniqueCellInts(m_viewLineGrid, arrayName));
+    return values;
+}
+
+void GridEditingWidget::updateFilterCombosFromGrid()
+{
+    if (!ui)
+        return;
+
+    auto fillCombo = [](QComboBox* combo, const QSet<int>& values)
+    {
+        if (!combo)
+            return;
+
+        const QSignalBlocker blocker(combo);
+        combo->clear();
+        combo->addItem(QStringLiteral("全部"), QVariant());
+
+        QList<int> list = values.values();
+        std::sort(list.begin(), list.end());
+
+        for (int value : list)
+            combo->addItem(QString::number(value), value);
+
+        combo->setCurrentIndex(0);
+    };
+
+    fillCombo(ui->comboBoxKetype, collectUniqueCellInts("KETYPE"));
+    fillCombo(ui->comboBoxLayer, collectUniqueCellInts("LAYER"));
+
+    if (ui->comboBoxMatype)
+    {
+        const QSignalBlocker blocker(ui->comboBoxMatype);
+        ui->comboBoxMatype->clear();
+        ui->comboBoxMatype->addItem(QStringLiteral("全部"), QVariant());
+
+        QList<int> list = collectUniqueCellInts("MATYPE").values();
+        std::sort(list.begin(), list.end());
+
+        const MshPickMap pickMap = MeshGridIO::instance().getMeshMap();
+        for (int value : list)
+        {
+            const QString name = pickMap.physicalName(value).trimmed();
+            ui->comboBoxMatype->addItem(name.isEmpty() ? QString::number(value)
+                                                       : QStringLiteral("%1 (%2)").arg(name).arg(value),
+                                        value);
+        }
+
+        ui->comboBoxMatype->setCurrentIndex(0);
+    }
+}
+
+void GridEditingWidget::updateFilterSummaryLabel()
+{
+    if (!ui || !ui->labelFilterSummary)
+        return;
+
+    auto describe = [](const QSet<int>& values)
+    {
+        if (values.isEmpty())
+            return QStringLiteral("全部");
+
+        QList<int> list = values.values();
+        std::sort(list.begin(), list.end());
+
+        QStringList items;
+        for (int value : list)
+            items << QString::number(value);
+
+        return items.join(QStringLiteral(","));
+    };
+
+    ui->labelFilterSummary->setText(
+        QStringLiteral("当前过滤：KETYPE(%1) | MATYPE(%2) | LAYER(%3)")
+            .arg(describe(m_filterKetypes))
+            .arg(describe(m_filterMatypes))
+            .arg(describe(m_filterLayers)));
+}
+
+vtkSmartPointer<vtkLookupTable> GridEditingWidget::buildLookupTable(const QSet<int>& values) const
+{
+    if (values.isEmpty())
+        return nullptr;
+
+    int maxValue = -1;
+    for (int value : values)
+        maxValue = qMax(maxValue, value);
+
+    if (maxValue < 0)
+        return nullptr;
+
+    auto lut = vtkSmartPointer<vtkLookupTable>::New();
+    lut->SetNumberOfTableValues(maxValue + 1);
+    lut->SetTableRange(0.0, maxValue);
+    lut->Build();
+
+    for (int i = 0; i <= maxValue; ++i)
+    {
+        const QColor color = values.contains(i) ? categoricalColor(i)
+                                                : QColor::fromRgbF(0.78, 0.78, 0.78);
+        lut->SetTableValue(i, color.redF(), color.greenF(), color.blueF(), 1.0);
+    }
+
+    return lut;
+}
+
+bool GridEditingWidget::hasMatypeHighlight() const
+{
+    return !m_highlightedMatypes.isEmpty() ||
+           m_selectedMatype >= 0 ||
+           m_previewMatype >= 0 ||
+           m_preDeleteMatype >= 0;
+}
+
+vtkSmartPointer<vtkLookupTable> GridEditingWidget::buildMatypeHighlightLookupTable() const
+{
+    QSet<int> values = collectVisibleCellInts("MATYPE");
+    values.unite(m_highlightedMatypes);
+
+    if (m_selectedMatype >= 0)
+        values.insert(m_selectedMatype);
+    if (m_previewMatype >= 0)
+        values.insert(m_previewMatype);
+    if (m_preDeleteMatype >= 0)
+        values.insert(m_preDeleteMatype);
+
+    int maxValue = -1;
+    for (int value : values)
+        maxValue = qMax(maxValue, value);
+
+    if (maxValue < 0)
+        return nullptr;
+
+    auto lut = vtkSmartPointer<vtkLookupTable>::New();
+    lut->SetNumberOfTableValues(maxValue + 1);
+    lut->SetTableRange(0.0, maxValue);
+    lut->Build();
+
+    for (int i = 0; i <= maxValue; ++i)
+        lut->SetTableValue(i, 0.75, 0.75, 0.75, 1.0);
+
+    for (int matype : m_highlightedMatypes)
+    {
+        if (matype >= 0 && matype <= maxValue)
+            lut->SetTableValue(matype, 0.25, 0.75, 0.25, 1.0);
+    }
+
+    if (m_selectedMatype >= 0 && m_selectedMatype <= maxValue)
+        lut->SetTableValue(m_selectedMatype, 0.90, 0.20, 0.20, 1.0);
+
+    if (m_previewMatype >= 0 && m_previewMatype <= maxValue)
+        lut->SetTableValue(m_previewMatype, 0.20, 0.40, 0.90, 1.0);
+
+    if (m_preDeleteMatype >= 0 && m_preDeleteMatype <= maxValue)
+        lut->SetTableValue(m_preDeleteMatype, 0.90, 0.55, 0.20, 1.0);
+
+    return lut;
+}
+
+void GridEditingWidget::applyScalarColor(vtkMapper* mapper,
+                                         vtkDataSet* dataSet,
+                                         const char* arrayName,
+                                         vtkLookupTable* lut) const
+{
+    if (!mapper || !dataSet || !arrayName || !lut)
+        return;
+
+    auto* cd = dataSet->GetCellData();
+    if (!cd || !cd->GetArray(arrayName))
+    {
+        mapper->ScalarVisibilityOff();
+        return;
+    }
+
+    mapper->SetScalarModeToUseCellFieldData();
+    mapper->SelectColorArray(arrayName);
+    mapper->SetLookupTable(lut);
+    mapper->UseLookupTableScalarRangeOn();
+    mapper->ScalarVisibilityOn();
+}
+
+void GridEditingWidget::applyColorMode()
+{
+    if (m_surfaceMapper)
+        m_surfaceMapper->ScalarVisibilityOff();
+    if (m_lineMapper)
+        m_lineMapper->ScalarVisibilityOff();
+
+    if (!m_fullGrid)
+        return;
+
+    const char* arrayName = nullptr;
+    vtkSmartPointer<vtkLookupTable> lut;
+
+    if (hasMatypeHighlight())
+    {
+        arrayName = "MATYPE";
+        lut = buildMatypeHighlightLookupTable();
+    }
+    else
+    {
+        switch (m_colorMode)
+        {
+        case ColorMode::Ketype:
+            arrayName = "KETYPE";
+            break;
+        case ColorMode::Matype:
+            arrayName = "MATYPE";
+            break;
+        case ColorMode::Layer:
+            arrayName = "LAYER";
+            break;
+        case ColorMode::None:
+        default:
+            return;
+        }
+
+        lut = buildLookupTable(collectVisibleCellInts(arrayName));
+    }
+
+    if (!arrayName || !lut)
+        return;
+
+    applyScalarColor(m_surfaceMapper, m_viewSurface, arrayName, lut);
+    applyScalarColor(m_lineMapper, m_viewLineGrid, arrayName, lut);
+}
 
 void GridEditingWidget::on_pushButtonApplyFilter_clicked()
 {
@@ -650,24 +551,19 @@ void GridEditingWidget::on_pushButtonApplyFilter_clicked()
     m_filterMatypes.clear();
     m_filterLayers.clear();
 
-    if (ui->comboBoxKetype)
+    auto readCombo = [](QComboBox* combo, QSet<int>& target)
     {
-        QVariant data = ui->comboBoxKetype->currentData();
+        if (!combo)
+            return;
+
+        const QVariant data = combo->currentData();
         if (data.isValid())
-            m_filterKetypes.insert(data.toInt());
-    }
-    if (ui->comboBoxMatype)
-    {
-        QVariant data = ui->comboBoxMatype->currentData();
-        if (data.isValid())
-            m_filterMatypes.insert(data.toInt());
-    }
-    if (ui->comboBoxLayer)
-    {
-        QVariant data = ui->comboBoxLayer->currentData();
-        if (data.isValid())
-            m_filterLayers.insert(data.toInt());
-    }
+            target.insert(data.toInt());
+    };
+
+    readCombo(ui->comboBoxKetype, m_filterKetypes);
+    readCombo(ui->comboBoxMatype, m_filterMatypes);
+    readCombo(ui->comboBoxLayer, m_filterLayers);
 
     updateFilterSummaryLabel();
     buildOrUpdateViewGrid();
@@ -690,310 +586,44 @@ void GridEditingWidget::on_pushButtonResetFilter_clicked()
     buildOrUpdateViewGrid();
 }
 
-QSet<int> GridEditingWidget::collectUniqueCellInts(const char* arrayName) const
-{
-    QSet<int> s;
-    if (!m_fullGrid)
-        return s;
-    auto* cd = m_fullGrid->GetCellData();
-    auto* a = cd ? cd->GetArray(arrayName) : nullptr;
-    if (!a)
-        return s;
-
-    for (vtkIdType i = 0; i < a->GetNumberOfTuples(); ++i)
-    {
-        s.insert(static_cast<int>(a->GetTuple1(i)));
-    }
-    return s;
-}
-
-void GridEditingWidget::updateFilterCombosFromGrid()
-{
-    if (!ui)
-        return;
-
-    auto fillCombo = [](QComboBox* combo, const QSet<int>& values)
-    {
-        if (!combo)
-            return;
-        combo->clear();
-        combo->addItem(QString("全部"), QVariant());
-        QList<int> list = values.values();
-        std::sort(list.begin(), list.end());
-        for (int v : list)
-            combo->addItem(QString::number(v), v);
-        combo->setCurrentIndex(0);
-    };
-
-    fillCombo(ui->comboBoxKetype, collectUniqueCellInts("KETYPE"));
-    if (ui->comboBoxMatype)
-    {
-        ui->comboBoxMatype->clear();
-        ui->comboBoxMatype->addItem(QString("全部"), QVariant());
-        QList<int> list = collectUniqueCellInts("MATYPE").values();
-        std::sort(list.begin(), list.end());
-        const MshPickMap pick = MeshGridIO::instance().getMeshMap();
-        for (int v : list)
-        {
-            const QString name = pick.physicalName(v).trimmed();
-            ui->comboBoxMatype->addItem(name.isEmpty() ? QString::number(v) : name, v);
-        }
-        ui->comboBoxMatype->setCurrentIndex(0);
-    }
-    fillCombo(ui->comboBoxLayer, collectUniqueCellInts("LAYER"));
-}
-
-void GridEditingWidget::updateFilterSummaryLabel()
-{
-    if (!ui || !ui->labelFilterSummary)
-        return;
-
-    auto describeSet = [](const QSet<int>& values)
-    {
-        if (values.isEmpty())
-            return QString("全部");
-        QList<int> list = values.values();
-        std::sort(list.begin(), list.end());
-        QStringList strList;
-        for (int v : list)
-            strList << QString::number(v);
-        return strList.join(',');
-    };
-
-    const QString summary = QString("当前过滤：KETYPE(%1) | MATYPE(%2) | LAYER(%3)")
-                                .arg(describeSet(m_filterKetypes))
-                                .arg(describeSet(m_filterMatypes))
-                                .arg(describeSet(m_filterLayers));
-
-    ui->labelFilterSummary->setText(summary);
-}
-
-// ===================== ID ranges =====================
-
-// ===================== Opacity / Wireframe / Picking toggle
-// =====================
-
-QStringList GridEditingWidget::availableMeshPropIds() const
-{
-    QStringList ids;
-    if (!m_visualWidgetService)
-        return ids;
-
-    if (m_visualWidgetService->getProp(kImportedMeshSurfacePropId))
-        ids << kImportedMeshSurfacePropId;
-    if (m_visualWidgetService->getProp(kImportedMeshLinePropId))
-        ids << kImportedMeshLinePropId;
-    return ids;
-}
-
-// ===================== Color mode / LUT =====================
-
-vtkSmartPointer<vtkLookupTable> GridEditingWidget::buildLookupTable(const QSet<int>& values) const
-{
-    int maxValue = -1;
-    for (int v : values)
-        maxValue = qMax(maxValue, v);
-    if (maxValue < 0)
-        return nullptr;
-
-    auto lut = vtkSmartPointer<vtkLookupTable>::New();
-    lut->SetNumberOfTableValues(maxValue + 1);
-    lut->SetTableRange(0.0, maxValue);
-    lut->Build();
-
-    for (int i = 0; i <= maxValue; ++i)
-    {
-        if (values.contains(i))
-        {
-            QColor c = QColor::fromHsv((i * 37) % 360, 170, 220);
-            lut->SetTableValue(i, c.redF(), c.greenF(), c.blueF(), 1.0);
-        }
-        else
-        {
-            lut->SetTableValue(i, 0.85, 0.85, 0.85, 1.0);
-        }
-    }
-    return lut;
-}
-
-void GridEditingWidget::applyColorMode()
-{
-    if (!m_meshMapper || !m_visualWidgetService || !m_viewGrid)
-        return;
-
-    // 如果外部高亮 MATYPE LUT 生效，则优先用它（除非你想强制覆盖）
-    if (m_matypeLookupTable)
-    {
-        m_meshMapper->SetScalarModeToUseCellFieldData();
-        m_meshMapper->SelectColorArray("MATYPE");
-        m_meshMapper->SetLookupTable(m_matypeLookupTable);
-        m_meshMapper->UseLookupTableScalarRangeOn();
-        m_meshMapper->ScalarVisibilityOn();
-        m_visualWidgetService->render();
-        return;
-    }
-
-    QString arrayName;
-    QSet<int> values;
-
-    switch (m_colorMode)
-    {
-    case ColorMode::Ketype:
-        arrayName = "KETYPE";
-        values = collectUniqueCellInts("KETYPE");
-        break;
-    case ColorMode::Matype:
-        arrayName = "MATYPE";
-        values = collectUniqueCellInts("MATYPE");
-        break;
-    case ColorMode::Layer:
-        arrayName = "LAYER";
-        values = collectUniqueCellInts("LAYER");
-        break;
-    case ColorMode::None:
-    default:
-        m_meshMapper->ScalarVisibilityOff();
-        m_visualWidgetService->render();
-        return;
-    }
-
-    if (values.isEmpty())
-    {
-        m_meshMapper->ScalarVisibilityOff();
-        m_visualWidgetService->render();
-        return;
-    }
-
-    auto lut = buildLookupTable(values);
-    if (!lut)
-    {
-        m_meshMapper->ScalarVisibilityOff();
-        m_visualWidgetService->render();
-        return;
-    }
-
-    m_meshMapper->SetScalarModeToUseCellFieldData();
-    m_meshMapper->SelectColorArray(arrayName.toUtf8().constData());
-    m_meshMapper->SetLookupTable(lut);
-    m_meshMapper->UseLookupTableScalarRangeOn();
-    m_meshMapper->ScalarVisibilityOn();
-    m_visualWidgetService->render();
-}
-
 void GridEditingWidget::on_comboBoxColorMode_currentIndexChanged(int index)
 {
     Q_UNUSED(index);
+
     if (!ui || !ui->comboBoxColorMode)
         return;
 
-    QVariant data = ui->comboBoxColorMode->currentData();
-    if (data.isValid())
-    {
-        m_colorMode = static_cast<ColorMode>(data.toInt());
-    }
-    else
-    {
-        m_colorMode = ColorMode::None;
-    }
+    const QVariant data = ui->comboBoxColorMode->currentData();
+    m_colorMode = data.isValid() ? static_cast<ColorMode>(data.toInt()) : ColorMode::None;
 
-    // 清掉 highlight LUT（你也可以选择不清）
-    m_matypeLookupTable = nullptr;
+    // 用户手动选择颜色模式时，退出外部 MATYPE 高亮状态。
+    m_highlightedMatypes.clear();
+    m_selectedMatype = -1;
+    m_previewMatype = -1;
+    m_preDeleteMatype = -1;
 
     applyColorMode();
+    if (m_visualWidgetService)
+        m_visualWidgetService->render();
 }
 
-// 外部调用：高亮 MATYPE（不依赖 IiinGridModel）
-void GridEditingWidget::highlightMatypes(const QSet<int>& matypes, int selectedMatype,
-                                         int previewMatype, int preDeleteMatype)
+void GridEditingWidget::highlightMatypes(const QSet<int>& matypes,
+                                         int selectedMatype,
+                                         int previewMatype,
+                                         int preDeleteMatype)
 {
     m_highlightedMatypes = matypes;
-    m_highlightedMatype = selectedMatype;
+    m_selectedMatype = selectedMatype;
+    m_previewMatype = previewMatype;
+    m_preDeleteMatype = preDeleteMatype;
 
-    if (!m_meshMapper || !m_viewGrid || !m_visualWidgetService)
-    {
-        return;
-    }
-
-    const bool hasSelection =
-        !matypes.isEmpty() || selectedMatype >= 0 || previewMatype >= 0 || preDeleteMatype >= 0;
-
-    if (!hasSelection)
-    {
-        m_matypeLookupTable = nullptr;
-        applyColorMode();
-        return;
-    }
-
-    // 最大 MATYPE 取值：从 viewGrid 的 MATYPE 数组扫一遍 + 参数补充
-    int maxMatype = -1;
-    auto* aM = m_viewGrid->GetCellData() ? m_viewGrid->GetCellData()->GetArray("MATYPE") : nullptr;
-    if (aM)
-    {
-        for (vtkIdType i = 0; i < aM->GetNumberOfTuples(); ++i)
-        {
-            maxMatype = qMax(maxMatype, static_cast<int>(aM->GetTuple1(i)));
-        }
-    }
-    maxMatype = qMax(maxMatype, selectedMatype);
-    maxMatype = qMax(maxMatype, previewMatype);
-    maxMatype = qMax(maxMatype, preDeleteMatype);
-    for (int v : matypes)
-        maxMatype = qMax(maxMatype, v);
-
-    if (maxMatype < 0)
-        return;
-
-    auto lut = vtkSmartPointer<vtkLookupTable>::New();
-    lut->SetNumberOfTableValues(maxMatype + 1);
-    lut->SetTableRange(0.0, maxMatype);
-    lut->Build();
-
-    // 默认灰
-    for (int i = 0; i <= maxMatype; ++i)
-    {
-        lut->SetTableValue(i, 0.75, 0.75, 0.75, 1.0);
-    }
-    // 集合绿
-    for (int matype : matypes)
-    {
-        if (matype >= 0 && matype <= maxMatype)
-        {
-            lut->SetTableValue(matype, 0.25, 0.75, 0.25, 1.0);
-        }
-    }
-    // 选中红
-    if (selectedMatype >= 0 && selectedMatype <= maxMatype)
-    {
-        lut->SetTableValue(selectedMatype, 0.9, 0.2, 0.2, 1.0);
-    }
-    // 预览蓝
-    if (previewMatype >= 0 && previewMatype <= maxMatype)
-    {
-        lut->SetTableValue(previewMatype, 0.2, 0.4, 0.9, 1.0);
-    }
-    // 待删橙
-    if (preDeleteMatype >= 0 && preDeleteMatype <= maxMatype)
-    {
-        lut->SetTableValue(preDeleteMatype, 0.9, 0.55, 0.2, 1.0);
-    }
-
-    m_matypeLookupTable = lut;
-
-    m_meshMapper->SetScalarModeToUseCellFieldData();
-    m_meshMapper->SelectColorArray("MATYPE");
-    m_meshMapper->SetLookupTable(lut);
-    m_meshMapper->UseLookupTableScalarRangeOn();
-    m_meshMapper->ScalarVisibilityOn();
-
-    m_visualWidgetService->render();
+    applyColorMode();
+    if (m_visualWidgetService)
+        m_visualWidgetService->render();
 }
-
-// ===================== beforeLoad/unload =====================
 
 void GridEditingWidget::beforeLoad()
 {
-    // 这里不再从 IiinGridModel 拉数据
-    // 你可以在外部调用 setEditableGrid(...) 注入当前网格
 }
 
 void GridEditingWidget::beforeUnload()
