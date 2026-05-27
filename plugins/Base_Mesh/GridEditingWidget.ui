@@ -7,11 +7,11 @@
     <x>0</x>
     <y>0</y>
     <width>542</width>
-    <height>1156</height>
+    <height>640</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>网格编辑</string>
+   <string>网格显示设置</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="leftMargin">
@@ -26,10 +26,10 @@
    <property name="bottomMargin">
     <number>0</number>
    </property>
-      <item>
+   <item>
     <widget class="QLabel" name="pageNameLabel">
      <property name="text">
-      <string>支持筛选显示与多颜色显示</string>
+      <string>筛选与多颜色显示</string>
      </property>
     </widget>
    </item>
@@ -40,7 +40,7 @@
      </property>
     </widget>
    </item>
-<item>
+   <item>
     <widget class="QLabel" name="label">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
@@ -49,7 +49,7 @@
       </sizepolicy>
      </property>
      <property name="text">
-      <string>网格编辑</string>
+      <string>显示属性</string>
      </property>
     </widget>
    </item>
@@ -63,6 +63,16 @@
    <item>
     <widget class="QWidget" name="widget_3" native="true">
      <layout class="QGridLayout" name="gridLayout_3">
+      <item row="0" column="0">
+       <widget class="QLabel" name="labelColorMode">
+        <property name="text">
+         <string>颜色显示:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="comboBoxColorMode"/>
+      </item>
       <item row="1" column="0">
        <widget class="QLabel" name="labelKetypeFilter">
         <property name="text">
@@ -77,34 +87,22 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="0">
-       <widget class="QLabel" name="labelColorMode">
-        <property name="text">
-         <string>颜色显示:</string>
-        </property>
-       </widget>
-      </item>
       <item row="2" column="0">
        <widget class="QLabel" name="labelMatypeFilter">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
         <property name="text">
          <string>材料类型:</string>
         </property>
        </widget>
       </item>
+      <item row="2" column="1">
+       <widget class="QComboBox" name="comboBoxMatype">
+        <property name="editable">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
       <item row="3" column="0">
        <widget class="QLabel" name="labelLayerFilter">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
         <property name="text">
          <string>填筑分层:</string>
         </property>
@@ -148,17 +146,7 @@
         </item>
        </layout>
       </item>
-      <item row="0" column="1">
-       <widget class="QComboBox" name="comboBoxColorMode" />
-      </item>
-      <item row="2" column="1">
-       <widget class="QComboBox" name="comboBoxMatype">
-        <property name="editable">
-         <bool>false</bool>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="0">
+      <item row="5" column="0" colspan="2">
        <widget class="QLabel" name="labelFilterSummary">
         <property name="text">
          <string>当前过滤：全部</string>
@@ -171,7 +159,7 @@
      </layout>
     </widget>
    </item>
-         <item>
+   <item>
     <spacer name="verticalSpacer">
      <property name="sizeHint" stdset="0">
       <size>
@@ -183,6 +171,6 @@
    </item>
   </layout>
  </widget>
- <resources />
- <connections />
+ <resources/>
+ <connections/>
 </ui>
