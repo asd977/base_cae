@@ -133,8 +133,6 @@ void GravityDamDialog::initUI()
     form->addRow("基点 Y", yEdit);
     form->addRow("基点 Z", zEdit);
 
-    auto* previewGroup = new QGroupBox("2D断面预览（XZ平面）", this);
-    auto* previewLayout = new QVBoxLayout(previewGroup);
     preview2DEdit = new QLineEdit(this);
     preview2DEdit->setReadOnly(true);
 
@@ -143,8 +141,8 @@ void GravityDamDialog::initUI()
     diagramLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
     diagramLabel->setMinimumSize(0, 0);
 
-    previewLayout->addWidget(preview2DEdit);
-    previewLayout->addWidget(diagramLabel, 1);
+    mainLayout->addWidget(preview2DEdit);
+    mainLayout->addWidget(diagramLabel, 1);
 
     auto* btnLayout = new QHBoxLayout();
     auto* generateBtn = new QPushButton("生成3D坝体", this);
@@ -154,7 +152,6 @@ void GravityDamDialog::initUI()
     mainLayout->addWidget(pageNameLabel);
     mainLayout->addWidget(sectionTitleButton);
     mainLayout->addWidget(inputGroup);
-    mainLayout->addWidget(previewGroup);
     mainLayout->addLayout(btnLayout);
     mainLayout->addStretch();
 
@@ -246,16 +243,7 @@ void GravityDamDialog::resizeEvent(QResizeEvent* event)
 {
     BasePage::resizeEvent(event);
     if (!diagramPixmap.isNull() && diagramLabel)
-    {
-        const QSize targetSize = diagramLabel->size();
-        if (targetSize.isEmpty())
-        {
-            diagramLabel->setPixmap(diagramPixmap);
-            return;
-        }
-
-        diagramLabel->setPixmap(diagramPixmap.scaled(targetSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-    }
+        diagramLabel->setPixmap(diagramPixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
 
 void GravityDamDialog::updateIllustration(double damHeight, double crestWidth, double upSlope,
@@ -276,14 +264,7 @@ void GravityDamDialog::updateIllustration(double damHeight, double crestWidth, d
         return;
     }
 
-    const QSize targetSize = diagramLabel->size();
-    if (targetSize.isEmpty())
-    {
-        diagramLabel->setPixmap(diagramPixmap);
-        return;
-    }
-
-    diagramLabel->setPixmap(diagramPixmap.scaled(targetSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    diagramLabel->setPixmap(diagramPixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
 
 
