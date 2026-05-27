@@ -25,7 +25,6 @@
 #include <vtkCellData.h>
 #include <vtkCellPicker.h>
 #include <vtkCommand.h>
-#include <vtkCoordinate.h>
 #include <vtkDataArray.h>
 #include <vtkDataSet.h>
 #include <vtkDataSetMapper.h>
@@ -34,7 +33,6 @@
 #include <vtkIdList.h>
 #include <vtkIdTypeArray.h>
 #include <vtkIntArray.h>
-#include <vtkLabeledDataMapper.h>
 #include <vtkLookupTable.h>
 #include <vtkMapper.h>
 #include <vtkPointData.h>
@@ -42,7 +40,6 @@
 #include <vtkPointPicker.h>
 #include <vtkPoints.h>
 #include <vtkPolyData.h>
-#include <vtkPolyDataMapper2D.h>
 #include <vtkPolyLine.h>
 #include <vtkProperty.h>
 #include <vtkProperty2D.h>
@@ -51,7 +48,6 @@
 #include <vtkRenderer.h>
 #include <vtkRendererCollection.h>
 #include <vtkSmartPointer.h>
-#include <vtkTextProperty.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkXMLUnstructuredGridWriter.h>
 
@@ -63,9 +59,6 @@ namespace
 static const QString kIiinGroup = QString("IIIN"); // 只是 UI 分组名，可保留
 static const QString kImportedMeshSurfacePropId = QString("mesh.imported.surface");
 static const QString kImportedMeshLinePropId = QString("mesh.imported.line");
-static const QString kNodeLblPropId = QString("iiin.node_labels");
-static const QString kElemLblPropId = QString("iiin.elem_labels");
-static const QString kSelectBoxPropId = QString("iiin.box_selection");
 } // namespace
 
 static inline int tuple1i(vtkDataArray* a, vtkIdType id, int def = -1)
@@ -114,7 +107,7 @@ class GridEditingMouseCallback : public vtkCommand
         if (!iren || !Widget)
             return;
 
-        if (!Widget->isMousePickingEnabled() && !Widget->isLabelBoxSelectionActive())
+        if (!Widget->isMousePickingEnabled())
             return;
 
         auto rw = iren->GetRenderWindow();
@@ -137,13 +130,6 @@ class GridEditingMouseCallback : public vtkCommand
         // 左键按下
         if (eventId == vtkCommand::LeftButtonPressEvent)
         {
-            if (Widget->isLabelBoxSelectionActive())
-            {
-                Widget->startLabelBoxSelection(x, y);
-                this->AbortFlagOn();
-                return;
-            }
-
             long long pickedPoint = -1;
             long long pickedCell = -1;
 
@@ -177,13 +163,6 @@ class GridEditingMouseCallback : public vtkCommand
         // 鼠标移动
         if (eventId == vtkCommand::MouseMoveEvent)
         {
-            if (Widget->isLabelBoxSelectionActive() && Widget->isBoxSelecting())
-            {
-                Widget->updateLabelBoxSelection(x, y);
-                this->AbortFlagOn();
-                return;
-            }
-
             if (!Widget->isDraggingNode())
                 return;
 
@@ -204,13 +183,6 @@ class GridEditingMouseCallback : public vtkCommand
         // 左键抬起
         if (eventId == vtkCommand::LeftButtonReleaseEvent)
         {
-            if (Widget->isLabelBoxSelectionActive() && Widget->isBoxSelecting())
-            {
-                Widget->finishLabelBoxSelection(x, y);
-                this->AbortFlagOn();
-                return;
-            }
-
             if (Widget->isDraggingNode())
             {
                 Widget->endNodeDrag();
@@ -229,8 +201,6 @@ GridEditingWidget::GridEditingWidget(QWidget* parent)
     ui->setupUi(this);
 
     m_visualWidgetService = ServiceRegistry::instance().getService<VisualWidgetService>();
-
-    updateSurfaceLabelSummary(QString("外表面编号：未生成"));
 
     if (ui->comboBoxColorMode)
     {
@@ -280,21 +250,12 @@ void GridEditingWidget::clearData()
     m_viewSurfaceNodeIdToVtkId.clear();
     m_fullElemIdToCellId.clear();
 
-    m_labelSelectionMode = LabelSelectionMode::None;
-    m_isBoxSelecting = false;
-
     m_colorMode = ColorMode::None;
 
     m_isDragging = false;
     m_dragViewPointId = -1;
     m_dragNodeId = -1;
 
-    updateSurfaceLabelSummary(QString("外表面编号：未生成"));
-
-    if (m_visualWidgetService)
-    {
-        m_visualWidgetService->setVisible(kSelectBoxPropId, false, false);
-    }
 }
 
 void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString& sourceName)
@@ -381,7 +342,6 @@ void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString
     updateFilterCombosFromGrid();
     updateFilterSummaryLabel();
 
-    ensureLabelActorsCreated();
 
     if (!m_interactor || !m_renderer)
     {
@@ -393,14 +353,6 @@ void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString
 
 void GridEditingWidget::clearGrid()
 {
-    if (m_visualWidgetService)
-    {
-        m_visualWidgetService->removeProp(kNodeLblPropId, false);
-        m_visualWidgetService->removeProp(kElemLblPropId, false);
-        m_visualWidgetService->setVisible(kSelectBoxPropId, false, false);
-        m_visualWidgetService->render();
-    }
-
     clearData();
 
     if (ui)
@@ -411,8 +363,6 @@ void GridEditingWidget::clearGrid()
             ui->labelElemRangeValue->setText("--");
         if (ui->lineEditMoveNodeId)
             ui->lineEditMoveNodeId->clear();
-        if (ui->lineEditElemIdForLabels)
-            ui->lineEditElemIdForLabels->clear();
         if (ui->lineEditDeleteElemId)
             ui->lineEditDeleteElemId->clear();
         if (ui->labelFilterSummary)
@@ -688,7 +638,6 @@ void GridEditingWidget::buildOrUpdateViewGrid()
         }
     }
 
-    ensureLabelActorsCreated();
 
     if (!m_interactor || !m_renderer)
         setupInteractor();
@@ -730,85 +679,6 @@ void GridEditingWidget::buildOrUpdateViewGrid()
             m_meshMapper->ScalarVisibilityOff();
     }
     m_visualWidgetService->render();
-}
-
-// ===================== Labels actors =====================
-
-void GridEditingWidget::ensureLabelActorsCreated()
-{
-    if (!m_visualWidgetService)
-        return;
-
-    if (!m_nodeLabelMapper)
-    {
-        auto mapper = vtkSmartPointer<vtkLabeledDataMapper>::New();
-        auto actor = vtkSmartPointer<vtkActor2D>::New();
-
-        mapper->SetLabelModeToLabelFieldData();
-        mapper->SetLabelFormat("N%d");
-        actor->SetMapper(mapper);
-
-        m_nodeLabelMapper = mapper;
-        m_nodeLabelActor = actor;
-
-        if (m_visualWidgetService->getProp(kNodeLblPropId) == nullptr)
-        {
-            m_visualWidgetService->addProp(kNodeLblPropId, m_nodeLabelActor, kIiinGroup,
-                                           QString("节点号"), false, false);
-        }
-        m_visualWidgetService->setVisible(kNodeLblPropId, false, false);
-    }
-
-    if (!m_elemLabelMapper)
-    {
-        auto mapper = vtkSmartPointer<vtkLabeledDataMapper>::New();
-        auto actor = vtkSmartPointer<vtkActor2D>::New();
-
-        mapper->SetLabelModeToLabelFieldData();
-        mapper->SetLabelFormat("E%d");
-        actor->SetMapper(mapper);
-
-        m_elemLabelMapper = mapper;
-        m_elemLabelActor = actor;
-
-        if (m_visualWidgetService->getProp(kElemLblPropId) == nullptr)
-        {
-            m_visualWidgetService->addProp(kElemLblPropId, m_elemLabelActor, kIiinGroup,
-                                           QString("单元号"), false, false);
-        }
-        m_visualWidgetService->setVisible(kElemLblPropId, false, false);
-    }
-
-    applyLabelTextStyles();
-}
-
-void GridEditingWidget::applyLabelTextStyles()
-{
-    if (m_nodeLabelMapper && !m_nodeLabelTextProperty)
-    {
-        m_nodeLabelTextProperty = vtkSmartPointer<vtkTextProperty>::New();
-        m_nodeLabelTextProperty->SetColor(0.09, 0.36, 0.89);
-        m_nodeLabelTextProperty->SetBold(true);
-        m_nodeLabelTextProperty->SetBackgroundColor(0.95, 0.97, 1.0);
-        m_nodeLabelTextProperty->SetBackgroundOpacity(0.35);
-    }
-    if (m_elemLabelMapper && !m_elemLabelTextProperty)
-    {
-        m_elemLabelTextProperty = vtkSmartPointer<vtkTextProperty>::New();
-        m_elemLabelTextProperty->SetColor(0.93, 0.42, 0.08);
-        m_elemLabelTextProperty->SetBold(true);
-        m_elemLabelTextProperty->SetBackgroundColor(1.0, 0.97, 0.93);
-        m_elemLabelTextProperty->SetBackgroundOpacity(0.35);
-    }
-
-    if (m_nodeLabelMapper && m_nodeLabelTextProperty)
-    {
-        m_nodeLabelMapper->SetLabelTextProperty(m_nodeLabelTextProperty);
-    }
-    if (m_elemLabelMapper && m_elemLabelTextProperty)
-    {
-        m_elemLabelMapper->SetLabelTextProperty(m_elemLabelTextProperty);
-    }
 }
 
 // ===================== Interactor =====================
@@ -965,772 +835,6 @@ void GridEditingWidget::updateFilterSummaryLabel()
                                 .arg(describeSet(m_filterLayers));
 
     ui->labelFilterSummary->setText(summary);
-}
-
-void GridEditingWidget::updateSurfaceLabelSummary(const QString& text)
-{
-    if (ui && ui->labelSurfaceLabelSummary)
-    {
-        ui->labelSurfaceLabelSummary->setText(text);
-    }
-}
-
-// ===================== UI: show labels by box =====================
-
-void GridEditingWidget::on_pushButtonShowNodeLabels_clicked()
-{
-    beginLabelBoxSelection(LabelSelectionMode::SurfaceNode);
-}
-
-void GridEditingWidget::on_pushButtonShowElemLabel_clicked()
-{
-    beginLabelBoxSelection(LabelSelectionMode::SurfaceElem);
-}
-
-void GridEditingWidget::on_pushButtonShowSurfaceLabels_clicked()
-{
-    beginLabelBoxSelection(LabelSelectionMode::SurfaceBoth);
-}
-
-void GridEditingWidget::beginLabelBoxSelection(LabelSelectionMode mode)
-{
-    m_labelSelectionMode = mode;
-    m_isBoxSelecting = false;
-
-    if (m_visualWidgetService)
-    {
-        m_visualWidgetService->setVisible(kNodeLblPropId, false, false);
-        m_visualWidgetService->setVisible(kElemLblPropId, false, false);
-        m_visualWidgetService->setVisible(kSelectBoxPropId, false, false);
-        m_visualWidgetService->render();
-    }
-
-    QString hint;
-    switch (mode)
-    {
-    case LabelSelectionMode::SurfaceNode:
-        hint = QString("外表面编号：请在视图区框选（网格点号）");
-        break;
-    case LabelSelectionMode::SurfaceElem:
-        hint = QString("外表面编号：请在视图区框选（单元号）");
-        break;
-    case LabelSelectionMode::SurfaceBoth:
-        hint = QString("外表面编号：请在视图区框选（节点+单元）");
-        break;
-    default:
-        hint = QString("外表面编号：未生成");
-        break;
-    }
-    updateSurfaceLabelSummary(hint);
-}
-
-void GridEditingWidget::ensureSelectionBoxActorCreated()
-{
-    if (!m_visualWidgetService || m_boxSelectionActor)
-        return;
-
-    m_boxSelectionPoly = vtkSmartPointer<vtkPolyData>::New();
-    auto points = vtkSmartPointer<vtkPoints>::New();
-    points->SetNumberOfPoints(5);
-    m_boxSelectionPoly->SetPoints(points);
-
-    auto polyLine = vtkSmartPointer<vtkPolyLine>::New();
-    polyLine->GetPointIds()->SetNumberOfIds(5);
-    for (vtkIdType i = 0; i < 5; ++i)
-    {
-        polyLine->GetPointIds()->SetId(i, i);
-    }
-
-    auto lines = vtkSmartPointer<vtkCellArray>::New();
-    lines->InsertNextCell(polyLine);
-    m_boxSelectionPoly->SetLines(lines);
-
-    m_boxSelectionCoord = vtkSmartPointer<vtkCoordinate>::New();
-    m_boxSelectionCoord->SetCoordinateSystemToDisplay();
-
-    m_boxSelectionMapper = vtkSmartPointer<vtkPolyDataMapper2D>::New();
-    m_boxSelectionMapper->SetTransformCoordinate(m_boxSelectionCoord);
-    m_boxSelectionMapper->SetInputData(m_boxSelectionPoly);
-
-    m_boxSelectionActor = vtkSmartPointer<vtkActor2D>::New();
-    m_boxSelectionActor->SetMapper(m_boxSelectionMapper);
-    m_boxSelectionActor->GetProperty()->SetColor(0.05, 0.55, 0.95);
-    m_boxSelectionActor->GetProperty()->SetLineWidth(1.5);
-
-    if (m_visualWidgetService->getProp(kSelectBoxPropId) == nullptr)
-    {
-        m_visualWidgetService->addProp(kSelectBoxPropId, m_boxSelectionActor, kIiinGroup,
-                                       QString("框选区域"), false, false);
-    }
-    m_visualWidgetService->setVisible(kSelectBoxPropId, false, false);
-}
-
-void GridEditingWidget::updateSelectionBoxActor(const QRect& rect)
-{
-    if (!m_boxSelectionPoly)
-        return;
-    auto points = m_boxSelectionPoly->GetPoints();
-    if (!points)
-        return;
-
-    const double minX = rect.left();
-    const double maxX = rect.right();
-    const double minY = rect.top();
-    const double maxY = rect.bottom();
-
-    points->SetPoint(0, minX, minY, 0.0);
-    points->SetPoint(1, maxX, minY, 0.0);
-    points->SetPoint(2, maxX, maxY, 0.0);
-    points->SetPoint(3, minX, maxY, 0.0);
-    points->SetPoint(4, minX, minY, 0.0);
-    points->Modified();
-    m_boxSelectionPoly->Modified();
-}
-
-void GridEditingWidget::startLabelBoxSelection(int x, int y)
-{
-    if (m_labelSelectionMode == LabelSelectionMode::None)
-        return;
-
-    m_isBoxSelecting = true;
-    m_boxStart[0] = x;
-    m_boxStart[1] = y;
-    m_boxEnd[0] = x;
-    m_boxEnd[1] = y;
-
-    ensureSelectionBoxActorCreated();
-    const QRect rect(QPoint(x, y), QPoint(x, y));
-    updateSelectionBoxActor(rect);
-
-    if (m_visualWidgetService)
-    {
-        m_visualWidgetService->setVisible(kSelectBoxPropId, true, false);
-        m_visualWidgetService->render();
-    }
-}
-
-void GridEditingWidget::updateLabelBoxSelection(int x, int y)
-{
-    if (!m_isBoxSelecting)
-        return;
-
-    m_boxEnd[0] = x;
-    m_boxEnd[1] = y;
-
-    const int minX = std::min(m_boxStart[0], m_boxEnd[0]);
-    const int maxX = std::max(m_boxStart[0], m_boxEnd[0]);
-    const int minY = std::min(m_boxStart[1], m_boxEnd[1]);
-    const int maxY = std::max(m_boxStart[1], m_boxEnd[1]);
-    const QRect rect(QPoint(minX, minY), QPoint(maxX, maxY));
-    updateSelectionBoxActor(rect);
-
-    if (m_visualWidgetService)
-        m_visualWidgetService->render();
-}
-
-void GridEditingWidget::finishLabelBoxSelection(int x, int y)
-{
-    if (!m_isBoxSelecting)
-        return;
-
-    m_boxEnd[0] = x;
-    m_boxEnd[1] = y;
-    m_isBoxSelecting = false;
-
-    const int minX = std::min(m_boxStart[0], m_boxEnd[0]);
-    const int maxX = std::max(m_boxStart[0], m_boxEnd[0]);
-    const int minY = std::min(m_boxStart[1], m_boxEnd[1]);
-    const int maxY = std::max(m_boxStart[1], m_boxEnd[1]);
-    const QRect rect(QPoint(minX, minY), QPoint(maxX, maxY));
-
-    updateSelectionBoxActor(rect);
-
-    if (m_visualWidgetService)
-    {
-        m_visualWidgetService->setVisible(kSelectBoxPropId, false, false);
-    }
-
-    showSurfaceLabelsInRect(rect, m_labelSelectionMode);
-    m_labelSelectionMode = LabelSelectionMode::None;
-}
-
-// 视图内“外表面”判定：用 viewGrid bounds 做 bbox 表面节点（和你原逻辑一致）
-void GridEditingWidget::showSurfaceLabelsInRect(const QRect& rect, LabelSelectionMode mode)
-{
-    if (!m_visualWidgetService)
-    {
-        updateSurfaceLabelSummary(QString("外表面编号：渲染服务不可用"));
-        return;
-    }
-    ensureLabelActorsCreated();
-    applyLabelTextStyles();
-
-    vtkRenderer* renderer = m_visualWidgetService->renderer();
-    if (!renderer || !m_viewGrid)
-    {
-        updateSurfaceLabelSummary(QString("外表面编号：缺少渲染器或网格"));
-        return;
-    }
-
-    const bool showNodes =
-        (mode == LabelSelectionMode::SurfaceNode || mode == LabelSelectionMode::SurfaceBoth);
-    const bool showElems =
-        (mode == LabelSelectionMode::SurfaceElem || mode == LabelSelectionMode::SurfaceBoth);
-
-    auto projectToDisplay = [&](const double world[3], double& sx, double& sy, double& sz) -> bool
-    {
-        renderer->SetWorldPoint(world[0], world[1], world[2], 1.0);
-        renderer->WorldToDisplay();
-        double* dp = renderer->GetDisplayPoint();
-        sx = dp[0];
-        sy = dp[1];
-        sz = dp[2];
-        return std::isfinite(sx) && std::isfinite(sy) && std::isfinite(sz);
-    };
-
-    const int minX = rect.left();
-    const int maxX = rect.right();
-    const int minY = rect.top();
-    const int maxY = rect.bottom();
-
-    auto inRect = [&](double sx, double sy)
-    {
-        return sx >= minX && sx <= maxX && sy >= minY && sy <= maxY;
-    };
-
-    double bounds[6];
-    m_viewGrid->GetBounds(bounds);
-    const double xmin = bounds[0], xmax = bounds[1];
-    const double ymin = bounds[2], ymax = bounds[3];
-    const double zmin = bounds[4], zmax = bounds[5];
-    const double span = std::max({xmax - xmin, ymax - ymin, zmax - zmin});
-    const double eps = std::max(1e-9, span * 1e-6);
-
-    auto isBoundaryPoint = [&](const double p[3])
-    {
-        return (std::abs(p[0] - xmin) <= eps) || (std::abs(p[0] - xmax) <= eps) ||
-               (std::abs(p[1] - ymin) <= eps) || (std::abs(p[1] - ymax) <= eps) ||
-               (std::abs(p[2] - zmin) <= eps) || (std::abs(p[2] - zmax) <= eps);
-    };
-
-    auto* nodeIdArr =
-        m_viewGrid->GetPointData() ? m_viewGrid->GetPointData()->GetArray("node_id") : nullptr;
-    auto* elemIdArr =
-        m_viewGrid->GetCellData() ? m_viewGrid->GetCellData()->GetArray("elem_id") : nullptr;
-
-    if (!nodeIdArr || !elemIdArr)
-    {
-        updateSurfaceLabelSummary(QString("外表面编号：缺少 NodeId 或 ElemId 数组"));
-        m_visualWidgetService->setVisible(kNodeLblPropId, false, false);
-        m_visualWidgetService->setVisible(kElemLblPropId, false, true);
-        return;
-    }
-
-    const double binSize = 60.0; // 分桶像素，避免过密
-    const int maxLabels = maxSurfaceLabelCount();
-
-    struct Cand
-    {
-        double wx, wy, wz;
-        double depth;
-        int id;
-    };
-
-    auto pickFrontmost = [&](QMap<QPair<int, int>, Cand>& buckets, int bx, int by, const Cand& c)
-    {
-        QPair<int, int> key(bx, by);
-        auto it = buckets.find(key);
-        if (it == buckets.end() || c.depth < it->depth)
-        {
-            buckets.insert(key, c);
-        }
-    };
-
-    // -------- nodes --------
-    int selectedNodeCount = 0;
-    if (showNodes)
-    {
-        QMap<QPair<int, int>, Cand> nodeBuckets;
-
-        for (vtkIdType pid = 0; pid < m_viewGrid->GetNumberOfPoints(); ++pid)
-        {
-            double p[3];
-            m_viewGrid->GetPoint(pid, p);
-            if (!isBoundaryPoint(p))
-                continue;
-
-            double sx = 0, sy = 0, sz = 0;
-            if (!projectToDisplay(p, sx, sy, sz))
-                continue;
-            if (!inRect(sx, sy))
-                continue;
-
-            int nid = tuple1i(nodeIdArr, pid, -1);
-            if (nid < 0)
-                continue;
-
-            const int bx = static_cast<int>(std::floor(sx / binSize));
-            const int by = static_cast<int>(std::floor(sy / binSize));
-            pickFrontmost(nodeBuckets, bx, by, {p[0], p[1], p[2], sz, nid});
-        }
-
-        QVector<Cand> nodes = nodeBuckets.values().toVector();
-        std::sort(nodes.begin(), nodes.end(),
-                  [](const Cand& a, const Cand& b)
-                  {
-                      return a.id < b.id;
-                  });
-
-        if (nodes.size() > maxLabels)
-        {
-            const int step = std::max(1, (nodes.size() + maxLabels - 1) / maxLabels);
-            QVector<Cand> trimmed;
-            for (int i = 0; i < nodes.size(); i += step)
-                trimmed.push_back(nodes[i]);
-            nodes.swap(trimmed);
-        }
-        selectedNodeCount = nodes.size();
-
-        auto poly = vtkSmartPointer<vtkPolyData>::New();
-        auto pts = vtkSmartPointer<vtkPoints>::New();
-        auto idA = vtkSmartPointer<vtkIntArray>::New();
-        idA->SetName("NodeId");
-        idA->SetNumberOfComponents(1);
-
-        for (const auto& c : nodes)
-        {
-            pts->InsertNextPoint(c.wx, c.wy, c.wz);
-            idA->InsertNextValue(c.id);
-        }
-        poly->SetPoints(pts);
-        poly->GetPointData()->AddArray(idA);
-
-        m_nodeLabelMapper->SetInputData(poly);
-        m_nodeLabelMapper->SetFieldDataName("NodeId");
-        m_visualWidgetService->setVisible(kNodeLblPropId, pts->GetNumberOfPoints() > 0, false);
-    }
-    else
-    {
-        m_visualWidgetService->setVisible(kNodeLblPropId, false, false);
-    }
-
-    // -------- elems --------
-    int selectedElemCount = 0;
-    if (showElems)
-    {
-        QMap<QPair<int, int>, Cand> elemBuckets;
-
-        for (vtkIdType cid = 0; cid < m_viewGrid->GetNumberOfCells(); ++cid)
-        {
-            vtkCell* cell = m_viewGrid->GetCell(cid);
-            if (!cell)
-                continue;
-
-            vtkIdList* pids = cell->GetPointIds();
-            if (!pids || pids->GetNumberOfIds() == 0)
-                continue;
-
-            bool onSurface = false;
-            double cx = 0, cy = 0, cz = 0;
-            int cnt = 0;
-
-            for (vtkIdType i = 0; i < pids->GetNumberOfIds(); ++i)
-            {
-                double p[3];
-                m_viewGrid->GetPoint(pids->GetId(i), p);
-                cx += p[0];
-                cy += p[1];
-                cz += p[2];
-                ++cnt;
-                if (isBoundaryPoint(p))
-                    onSurface = true;
-            }
-            if (!onSurface || cnt == 0)
-                continue;
-
-            double center[3] = {cx / cnt, cy / cnt, cz / cnt};
-            double sx = 0, sy = 0, sz = 0;
-            if (!projectToDisplay(center, sx, sy, sz))
-                continue;
-            if (!inRect(sx, sy))
-                continue;
-
-            int eid = tuple1i(elemIdArr, cid, -1);
-            if (eid < 0)
-                continue;
-
-            const int bx = static_cast<int>(std::floor(sx / binSize));
-            const int by = static_cast<int>(std::floor(sy / binSize));
-            pickFrontmost(elemBuckets, bx, by, {center[0], center[1], center[2], sz, eid});
-        }
-
-        QVector<Cand> elems = elemBuckets.values().toVector();
-        std::sort(elems.begin(), elems.end(),
-                  [](const Cand& a, const Cand& b)
-                  {
-                      return a.id < b.id;
-                  });
-
-        if (elems.size() > maxLabels)
-        {
-            const int step = std::max(1, (elems.size() + maxLabels - 1) / maxLabels);
-            QVector<Cand> trimmed;
-            for (int i = 0; i < elems.size(); i += step)
-                trimmed.push_back(elems[i]);
-            elems.swap(trimmed);
-        }
-        selectedElemCount = elems.size();
-
-        auto poly = vtkSmartPointer<vtkPolyData>::New();
-        auto pts = vtkSmartPointer<vtkPoints>::New();
-        auto idA = vtkSmartPointer<vtkIntArray>::New();
-        idA->SetName("ElemId");
-        idA->SetNumberOfComponents(1);
-
-        for (const auto& c : elems)
-        {
-            pts->InsertNextPoint(c.wx, c.wy, c.wz);
-            idA->InsertNextValue(c.id);
-        }
-        poly->SetPoints(pts);
-        poly->GetPointData()->AddArray(idA);
-
-        m_elemLabelMapper->SetInputData(poly);
-        m_elemLabelMapper->SetFieldDataName("ElemId");
-        m_visualWidgetService->setVisible(kElemLblPropId, pts->GetNumberOfPoints() > 0, false);
-    }
-    else
-    {
-        m_visualWidgetService->setVisible(kElemLblPropId, false, false);
-    }
-
-    const QString summary = QString("外表面编号：框选节点 %1，框选单元 %2")
-                                .arg(showNodes ? selectedNodeCount : 0)
-                                .arg(showElems ? selectedElemCount : 0);
-    updateSurfaceLabelSummary(summary);
-
-    m_visualWidgetService->render();
-}
-
-// ===================== Picking feedback =====================
-
-void GridEditingWidget::onPicked(long long pickedPointId, long long pickedCellId)
-{
-    if (!ui)
-        return;
-    vtkDataSet* pickDs = m_meshMapper ? m_meshMapper->GetInput() : nullptr;
-    if (!pickDs)
-        pickDs = vtkDataSet::SafeDownCast(m_viewGrid.GetPointer());
-    if (!pickDs)
-        return;
-    auto* pointData = pickDs->GetPointData();
-    auto* cellData = pickDs->GetCellData();
-
-    if (pickedPointId >= 0 && pointData)
-    {
-        auto* nodeIdArr = vtkIntArray::SafeDownCast(pointData->GetArray("node_id"));
-        if (nodeIdArr && pickedPointId < nodeIdArr->GetNumberOfTuples())
-        {
-            int nodeId = nodeIdArr->GetValue(static_cast<vtkIdType>(pickedPointId));
-            if (ui->lineEditMoveNodeId)
-                ui->lineEditMoveNodeId->setText(QString::number(nodeId));
-        }
-    }
-
-    if (pickedCellId >= 0 && cellData)
-    {
-        auto* elemIdArr = vtkIntArray::SafeDownCast(cellData->GetArray("elem_id"));
-        if (elemIdArr && pickedCellId < elemIdArr->GetNumberOfTuples())
-        {
-            int elemId = elemIdArr->GetValue(static_cast<vtkIdType>(pickedCellId));
-            if (ui->lineEditElemIdForLabels)
-                ui->lineEditElemIdForLabels->setText(QString::number(elemId));
-            if (ui->lineEditDeleteElemId)
-                ui->lineEditDeleteElemId->setText(QString::number(elemId));
-        }
-    }
-}
-
-// ===================== Drag node =====================
-
-void GridEditingWidget::beginNodeDragByPointId(long long viewPointId)
-{
-    if (!m_viewGrid || !m_fullGrid || viewPointId < 0)
-        return;
-
-    auto* nodeIdArr =
-        m_viewGrid->GetPointData() ? m_viewGrid->GetPointData()->GetArray("node_id") : nullptr;
-    int nodeId = tuple1i(nodeIdArr, static_cast<vtkIdType>(viewPointId), -1);
-    if (nodeId < 0)
-        return;
-    beginNodeDragByNodeId(nodeId);
-}
-
-void GridEditingWidget::beginNodeDragByNodeId(int nodeId)
-{
-    if (!m_fullGrid || nodeId < 0)
-        return;
-    auto itFull = m_fullNodeIdToVtkId.find(nodeId);
-    if (itFull == m_fullNodeIdToVtkId.end())
-        return;
-
-    double p0[3];
-    m_fullGrid->GetPoints()->GetPoint(itFull.value(), p0);
-
-    m_isDragging = true;
-    m_dragViewPointId = -1;
-    m_dragNodeId = nodeId;
-
-    m_dragStartX = p0[0];
-    m_dragStartY = p0[1];
-    m_dragStartZ = p0[2];
-
-    if (ui)
-    {
-        if (ui->lineEditMoveNodeId)
-            ui->lineEditMoveNodeId->setText(QString::number(nodeId));
-        if (ui->lineEditNodeX0)
-            ui->lineEditNodeX0->setText(QString::number(m_dragStartX));
-        if (ui->lineEditNodeY0)
-            ui->lineEditNodeY0->setText(QString::number(m_dragStartY));
-        if (ui->lineEditNodeZ0)
-            ui->lineEditNodeZ0->setText(QString::number(m_dragStartZ));
-
-        if (ui->lineEditNodeXCur)
-            ui->lineEditNodeXCur->setText(QString::number(m_dragStartX));
-        if (ui->lineEditNodeYCur)
-            ui->lineEditNodeYCur->setText(QString::number(m_dragStartY));
-        if (ui->lineEditNodeZCur)
-            ui->lineEditNodeZCur->setText(QString::number(m_dragStartZ));
-    }
-}
-
-void GridEditingWidget::beginNodeDragFromCell(long long cellId, int displayX, int displayY)
-{
-    vtkDataSet* pickDs = m_meshMapper ? m_meshMapper->GetInput() : nullptr;
-    if (!pickDs)
-        pickDs = vtkDataSet::SafeDownCast(m_viewGrid.GetPointer());
-    if (!pickDs || !m_points || !m_renderer || cellId < 0)
-        return;
-
-    vtkIdType cid = static_cast<vtkIdType>(cellId);
-    vtkCell* cell = pickDs->GetCell(cid);
-    if (!cell)
-        return;
-
-    vtkIdList* ids = cell->GetPointIds();
-    if (!ids || ids->GetNumberOfIds() == 0)
-        return;
-
-    double bestDepth = 1e9;
-    vtkIdType bestPid = -1;
-    const double pixelTol2 = 15.0 * 15.0;
-
-    for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
-    {
-        vtkIdType pid = ids->GetId(i);
-
-        double world[3];
-        m_points->GetPoint(pid, world);
-
-        m_renderer->SetWorldPoint(world[0], world[1], world[2], 1.0);
-        m_renderer->WorldToDisplay();
-        double disp[3];
-        m_renderer->GetDisplayPoint(disp);
-
-        double dx = disp[0] - displayX;
-        double dy = disp[1] - displayY;
-        double d2 = dx * dx + dy * dy;
-
-        if (d2 > pixelTol2)
-            continue;
-
-        if (disp[2] < bestDepth)
-        {
-            bestDepth = disp[2];
-            bestPid = pid;
-        }
-    }
-
-    if (bestPid < 0)
-        return;
-
-    auto* nodeIdArr = pickDs->GetPointData() ? pickDs->GetPointData()->GetArray("node_id")
-                                             : nullptr;
-    const int nodeId = tuple1i(nodeIdArr, bestPid, -1);
-    beginNodeDragByNodeId(nodeId);
-}
-
-void GridEditingWidget::dragNodeToWorldPosition(const double worldPos[3])
-{
-    if (!m_isDragging || !m_fullGrid)
-        return;
-
-    auto itFull = m_fullNodeIdToVtkId.find(m_dragNodeId);
-    if (itFull == m_fullNodeIdToVtkId.end())
-        return;
-
-    auto* fullPts = m_fullGrid->GetPoints();
-    if (!fullPts)
-        return;
-
-    fullPts->SetPoint(itFull.value(), worldPos[0], worldPos[1], worldPos[2]);
-    fullPts->Modified();
-    m_fullGrid->Modified();
-
-    // 同步 view
-    if (m_viewGrid)
-    {
-        auto itView = m_viewNodeIdToVtkId.find(m_dragNodeId);
-        if (itView != m_viewNodeIdToVtkId.end())
-        {
-            auto* viewPts = m_viewGrid->GetPoints();
-            if (viewPts)
-            {
-                viewPts->SetPoint(itView.value(), worldPos[0], worldPos[1], worldPos[2]);
-                viewPts->Modified();
-                m_viewGrid->Modified();
-            }
-        }
-    }
-    if (m_meshMapper)
-    {
-        vtkDataSet* renderDs = m_meshMapper->GetInput();
-        vtkPointSet* renderPointSet = renderDs ? vtkPointSet::SafeDownCast(renderDs) : nullptr;
-        if (renderPointSet && renderPointSet->GetPoints())
-        {
-            auto itRender = m_viewSurfaceNodeIdToVtkId.find(m_dragNodeId);
-            if (itRender != m_viewSurfaceNodeIdToVtkId.end())
-            {
-                renderPointSet->GetPoints()->SetPoint(itRender.value(), worldPos[0], worldPos[1],
-                                                      worldPos[2]);
-                renderPointSet->GetPoints()->Modified();
-                renderDs->Modified();
-            }
-        }
-    }
-
-    m_dirty = true;
-
-    if (m_visualWidgetService)
-        m_visualWidgetService->render();
-
-    if (ui)
-    {
-        if (ui->lineEditNodeXCur)
-            ui->lineEditNodeXCur->setText(QString::number(worldPos[0]));
-        if (ui->lineEditNodeYCur)
-            ui->lineEditNodeYCur->setText(QString::number(worldPos[1]));
-        if (ui->lineEditNodeZCur)
-            ui->lineEditNodeZCur->setText(QString::number(worldPos[2]));
-    }
-}
-
-void GridEditingWidget::endNodeDrag()
-{
-    if (!m_isDragging)
-        return;
-
-    m_isDragging = false;
-    m_dragViewPointId = -1;
-    m_dragNodeId = -1;
-
-    m_dirty = true;
-}
-
-// ===================== Manual move / delete =====================
-
-void GridEditingWidget::moveNodeById(int nodeId, const double* newX, const double* newY,
-                                     const double* newZ)
-{
-    if (!m_fullGrid)
-        return;
-
-    auto itFull = m_fullNodeIdToVtkId.find(nodeId);
-    if (itFull == m_fullNodeIdToVtkId.end())
-    {
-        qWarning() << "[GridEditingWidget] moveNodeById: node not found:" << nodeId;
-        return;
-    }
-
-    double p[3];
-    m_fullGrid->GetPoints()->GetPoint(itFull.value(), p);
-
-    if (newX)
-        p[0] = *newX;
-    if (newY)
-        p[1] = *newY;
-    if (newZ)
-        p[2] = *newZ;
-
-    m_fullGrid->GetPoints()->SetPoint(itFull.value(), p);
-    m_fullGrid->GetPoints()->Modified();
-    m_fullGrid->Modified();
-
-    // view 同步
-    if (m_viewGrid)
-    {
-        auto itView = m_viewNodeIdToVtkId.find(nodeId);
-        if (itView != m_viewNodeIdToVtkId.end())
-        {
-            m_viewGrid->GetPoints()->SetPoint(itView.value(), p);
-            m_viewGrid->GetPoints()->Modified();
-            m_viewGrid->Modified();
-        }
-    }
-    if (m_meshMapper)
-    {
-        vtkDataSet* renderDs = m_meshMapper->GetInput();
-        vtkPointSet* renderPointSet = renderDs ? vtkPointSet::SafeDownCast(renderDs) : nullptr;
-        if (renderPointSet && renderPointSet->GetPoints())
-        {
-            auto itRender = m_viewSurfaceNodeIdToVtkId.find(nodeId);
-            if (itRender != m_viewSurfaceNodeIdToVtkId.end())
-            {
-                renderPointSet->GetPoints()->SetPoint(itRender.value(), p);
-                renderPointSet->GetPoints()->Modified();
-                renderDs->Modified();
-            }
-        }
-    }
-    if (m_visualWidgetService)
-        m_visualWidgetService->render();
-}
-
-void GridEditingWidget::deleteElemById(int elemId)
-{
-    //    if (!m_fullGrid) return;
-
-    //    auto it = m_fullElemIdToCellId.find(elemId);
-    //    if (it == m_fullElemIdToCellId.end()) {
-    //        qWarning() << "[GridEditingWidget] deleteElemById: elem not found:"
-    //        << elemId; return;
-    //    }
-    //    vtkIdType delCid = it.value();
-
-    //    // 通用稳妥：重建 fullGrid（避免不同 VTK 版本 DeleteCell 支持差异）
-    //    auto keep = vtkSmartPointer<vtkIdTypeArray>::New();
-    //    keep->SetNumberOfComponents(1);
-    //    for (vtkIdType c = 0; c < m_fullGrid->GetNumberOfCells(); ++c) {
-    //        if (c == delCid) continue;
-    //        keep->InsertNextValue(c);
-    //    }
-
-    //    auto ex = vtkSmartPointer<vtkExtractCells>::New();
-    //    ex->SetInputData(m_fullGrid);
-    //    ex->SetCellList(keep);
-    //    ex->Update();
-
-    //    auto newFull = vtkSmartPointer<vtkUnstructuredGrid>::New();
-    //    newFull->ShallowCopy(ex->GetOutput());
-    //    m_fullGrid = newFull;
-
-    //    m_dirty = true;
-
-    //    rebuildFullMaps();
-    //    updateIdRangeLabels();
-    //    updateFilterCombosFromGrid();
-    //    buildOrUpdateViewGrid();
 }
 
 void GridEditingWidget::on_pushButtonMoveNode_clicked()
@@ -2134,110 +1238,4 @@ void GridEditingWidget::beforeLoad()
 
 void GridEditingWidget::beforeUnload()
 {
-}
-
-// ===================== 单个单元标签显示（可选，用于你原先的两个按钮逻辑扩展）
-// =====================
-
-void GridEditingWidget::showNodeLabelsForElem(int elemId)
-{
-    if (!m_visualWidgetService || !m_nodeLabelMapper || !m_fullGrid)
-        return;
-
-    auto it = m_fullElemIdToCellId.find(elemId);
-    if (it == m_fullElemIdToCellId.end())
-    {
-        m_visualWidgetService->setVisible(kNodeLblPropId, false, true);
-        return;
-    }
-
-    vtkIdType cid = it.value();
-    vtkCell* cell = m_fullGrid->GetCell(cid);
-    if (!cell)
-        return;
-
-    auto* nodeIdArr =
-        m_fullGrid->GetPointData() ? m_fullGrid->GetPointData()->GetArray("node_id") : nullptr;
-    if (!nodeIdArr)
-        return;
-
-    auto poly = vtkSmartPointer<vtkPolyData>::New();
-    auto points = vtkSmartPointer<vtkPoints>::New();
-    auto idArr = vtkSmartPointer<vtkIntArray>::New();
-    idArr->SetName("NodeId");
-    idArr->SetNumberOfComponents(1);
-
-    vtkIdList* pids = cell->GetPointIds();
-    for (vtkIdType i = 0; i < pids->GetNumberOfIds(); ++i)
-    {
-        vtkIdType pid = pids->GetId(i);
-
-        double p[3];
-        m_fullGrid->GetPoints()->GetPoint(pid, p);
-
-        int nid = tuple1i(nodeIdArr, pid, -1);
-        if (nid < 0)
-            continue;
-
-        points->InsertNextPoint(p);
-        idArr->InsertNextValue(nid);
-    }
-
-    poly->SetPoints(points);
-    poly->GetPointData()->AddArray(idArr);
-
-    m_nodeLabelMapper->SetInputData(poly);
-    m_nodeLabelMapper->SetFieldDataName("NodeId");
-    m_visualWidgetService->setVisible(kNodeLblPropId, points->GetNumberOfPoints() > 0, true);
-}
-
-void GridEditingWidget::showElemLabelForElem(int elemId)
-{
-    if (!m_visualWidgetService || !m_elemLabelMapper || !m_fullGrid)
-        return;
-
-    auto it = m_fullElemIdToCellId.find(elemId);
-    if (it == m_fullElemIdToCellId.end())
-    {
-        m_visualWidgetService->setVisible(kElemLblPropId, false, true);
-        return;
-    }
-
-    vtkIdType cid = it.value();
-    vtkCell* cell = m_fullGrid->GetCell(cid);
-    if (!cell)
-        return;
-
-    vtkIdList* pids = cell->GetPointIds();
-    if (!pids || pids->GetNumberOfIds() == 0)
-        return;
-
-    double cx = 0, cy = 0, cz = 0;
-    for (vtkIdType i = 0; i < pids->GetNumberOfIds(); ++i)
-    {
-        double p[3];
-        m_fullGrid->GetPoints()->GetPoint(pids->GetId(i), p);
-        cx += p[0];
-        cy += p[1];
-        cz += p[2];
-    }
-    cx /= pids->GetNumberOfIds();
-    cy /= pids->GetNumberOfIds();
-    cz /= pids->GetNumberOfIds();
-
-    auto poly = vtkSmartPointer<vtkPolyData>::New();
-    auto points = vtkSmartPointer<vtkPoints>::New();
-    auto idArr = vtkSmartPointer<vtkIntArray>::New();
-    idArr->SetName("ElemId");
-    idArr->SetNumberOfComponents(1);
-
-    points->InsertNextPoint(cx, cy, cz);
-    idArr->InsertNextValue(elemId);
-
-    poly->SetPoints(points);
-    poly->GetPointData()->AddArray(idArr);
-
-    m_elemLabelMapper->SetInputData(poly);
-    m_elemLabelMapper->SetFieldDataName("ElemId");
-    m_visualWidgetService->setVisible(kElemLblPropId, true, true);
 }

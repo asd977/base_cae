@@ -24,8 +24,6 @@ class vtkUnstructuredGrid;
 class vtkDataSetMapper;
 class vtkActor;
 class vtkActor2D;
-class vtkLabeledDataMapper;
-class vtkTextProperty;
 class vtkCellPicker;
 class vtkPointPicker;
 class vtkLookupTable;
@@ -33,8 +31,6 @@ class vtkRenderer;
 class vtkRenderWindowInteractor;
 class vtkCommand;
 class vtkPolyData;
-class vtkPolyDataMapper2D;
-class vtkCoordinate;
 class vtkDataArray;
 class vtkDataSet;
 
@@ -42,13 +38,6 @@ class GridEditingWidget : public BasePage
 {
     Q_OBJECT
   public:
-    enum class LabelSelectionMode
-    {
-        None,
-        SurfaceNode,
-        SurfaceElem,
-        SurfaceBoth
-    };
     enum class ColorMode
     {
         None,
@@ -76,14 +65,6 @@ class GridEditingWidget : public BasePage
     {
         return m_isDragging;
     }
-    bool isLabelBoxSelectionActive() const
-    {
-        return m_labelSelectionMode != LabelSelectionMode::None;
-    }
-    bool isBoxSelecting() const
-    {
-        return m_isBoxSelecting;
-    }
 
     // mouse callback -> widget
     void onPicked(long long pickedPointId, long long pickedCellId);
@@ -92,20 +73,12 @@ class GridEditingWidget : public BasePage
     void dragNodeToWorldPosition(const double worldPos[3]);
     void endNodeDrag();
 
-    void startLabelBoxSelection(int x, int y);
-    void updateLabelBoxSelection(int x, int y);
-    void finishLabelBoxSelection(int x, int y);
-
     void beforeLoad();
     void beforeUnload();
 
   private slots:
     void on_pushButtonApplyFilter_clicked();
     void on_pushButtonResetFilter_clicked();
-
-    void on_pushButtonShowNodeLabels_clicked();
-    void on_pushButtonShowElemLabel_clicked();
-    void on_pushButtonShowSurfaceLabels_clicked();
 
     void on_pushButtonMoveNode_clicked();
     void on_pushButtonDeleteElem_clicked();
@@ -124,9 +97,6 @@ class GridEditingWidget : public BasePage
     void buildOrUpdateViewGrid();
     void setupInteractor();
 
-    void ensureLabelActorsCreated();
-    void applyLabelTextStyles();
-
     // maps
     void rebuildFullMaps();
     void rebuildViewMaps();
@@ -140,18 +110,10 @@ class GridEditingWidget : public BasePage
     void updateIdRangeLabels();
     void updateFilterCombosFromGrid();
     void updateFilterSummaryLabel();
-    void updateSurfaceLabelSummary(const QString& text);
 
-    void showNodeLabelsForElem(int elemId);
-    void showElemLabelForElem(int elemId);
 
     void beginNodeDragByPointId(long long viewPointId);
     void beginNodeDragByNodeId(int nodeId);
-    void beginLabelBoxSelection(LabelSelectionMode mode);
-    void showSurfaceLabelsInRect(const QRect& rect, LabelSelectionMode mode);
-
-    void ensureSelectionBoxActorCreated();
-    void updateSelectionBoxActor(const QRect& rect);
 
     void applyColorMode();
     vtkSmartPointer<vtkLookupTable> buildLookupTable(const QSet<int>& values) const;
@@ -161,12 +123,7 @@ class GridEditingWidget : public BasePage
     void moveNodeById(int nodeId, const double* newX, const double* newY, const double* newZ);
     void deleteElemById(int elemId);
 
-    bool saveAsVtu(const QString& filePath);
-
-    int maxSurfaceLabelCount() const
-    {
-        return 300;
-    } // 可改 UI 可配
+    bool saveAsVtu(const QString& filePath); // 可改 UI 可配
 
   private:
     Ui::GridEditingWidget* ui = nullptr;
@@ -207,21 +164,6 @@ class GridEditingWidget : public BasePage
     vtkSmartPointer<vtkDataSetMapper> m_meshMapper;
     vtkSmartPointer<vtkActor> m_meshActor;
 
-    // labels
-    vtkSmartPointer<vtkLabeledDataMapper> m_nodeLabelMapper;
-    vtkSmartPointer<vtkActor2D> m_nodeLabelActor;
-    vtkSmartPointer<vtkTextProperty> m_nodeLabelTextProperty;
-
-    vtkSmartPointer<vtkLabeledDataMapper> m_elemLabelMapper;
-    vtkSmartPointer<vtkActor2D> m_elemLabelActor;
-    vtkSmartPointer<vtkTextProperty> m_elemLabelTextProperty;
-
-    // selection box
-    vtkSmartPointer<vtkPolyData> m_boxSelectionPoly;
-    vtkSmartPointer<vtkPolyDataMapper2D> m_boxSelectionMapper;
-    vtkSmartPointer<vtkCoordinate> m_boxSelectionCoord;
-    vtkSmartPointer<vtkActor2D> m_boxSelectionActor;
-
     // picking / interactor
     vtkRenderWindowInteractor* m_interactor = nullptr;
     vtkRenderer* m_renderer = nullptr;
@@ -232,12 +174,6 @@ class GridEditingWidget : public BasePage
     vtkSmartPointer<vtkCommand> m_mouseCallback;
 
     bool m_enableMousePicking = false;
-
-    // label box selection
-    LabelSelectionMode m_labelSelectionMode = LabelSelectionMode::None;
-    bool m_isBoxSelecting = false;
-    int m_boxStart[2] = {0, 0};
-    int m_boxEnd[2] = {0, 0};
 
     // color mode
     ColorMode m_colorMode = ColorMode::None;
