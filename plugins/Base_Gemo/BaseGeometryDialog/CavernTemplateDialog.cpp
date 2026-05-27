@@ -13,6 +13,9 @@
 #include <QIntValidator>
 #include <QJsonObject>
 #include <QLabel>
+#include <QSizePolicy>
+#include <QPixmap>
+#include <QGroupBox>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPointF>
@@ -33,6 +36,18 @@
 namespace
 {
 constexpr double kEps = 1.0e-7;
+
+void setScaledDiagram(QLabel* label, const QPixmap& pixmap)
+{
+    if (!label || pixmap.isNull())
+        return;
+
+    QSize targetSize = label->size();
+    if (targetSize.width() <= 1 || targetSize.height() <= 1)
+        targetSize = QSize(640, 240);
+
+    label->setPixmap(pixmap.scaled(targetSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+}
 
 
 QLineEdit* findEdit(QWidget* owner, const char* objectName)
@@ -160,7 +175,18 @@ CavernTemplateDialog::CavernTemplateDialog(QWidget* parent)
     Q_UNUSED(parent);
 
     auto* mainLayout = new QVBoxLayout(this);
-    auto* form = new QFormLayout();
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    mainLayout->setSpacing(6);
+
+    auto* pageNameLabel = new QLabel(QString("几何模块"), this);
+    pageNameLabel->setObjectName("pageNameLabel");
+
+    auto* sectionTitleButton = new QPushButton(QString("洞室参数模板"), this);
+    sectionTitleButton->setObjectName("sectionTitleButton");
+    sectionTitleButton->setEnabled(false);
+
+    auto* inputGroup = new QGroupBox("参数输入", this);
+    auto* form = new QFormLayout(inputGroup);
 
     auto* positiveValidator = new QDoubleValidator(0.01, 1.0e9, 3, this);
 
@@ -189,18 +215,26 @@ CavernTemplateDialog::CavernTemplateDialog(QWidget* parent)
     form->addRow("左右围岩余量 Wr", sideRockEdit);
     form->addRow("顶部围岩厚度 Htop", topRockEdit);
     form->addRow("底部围岩厚度 Hbot", bottomRockEdit);
-    mainLayout->addLayout(form);
+
+    auto* row = new QHBoxLayout();
+    row->setContentsMargins(0, 0, 0, 0);
+    auto* generateButton = new QPushButton("生成洞室", this);
+    row->addStretch();
+    row->addWidget(generateButton);
 
     diagramLabel = new QLabel(this);
     diagramLabel->setAlignment(Qt::AlignCenter);
-    diagramLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
     diagramLabel->setMinimumSize(0, 0);
-    mainLayout->addWidget(diagramLabel);
+    diagramLabel->setScaledContents(false);
+    diagramLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
 
-    auto* row = new QHBoxLayout();
-    auto* generateButton = new QPushButton("生成洞室", this);
-    row->addWidget(generateButton);
+    mainLayout->addWidget(pageNameLabel);
+    mainLayout->addWidget(sectionTitleButton);
+    mainLayout->addWidget(inputGroup);
     mainLayout->addLayout(row);
+    mainLayout->addWidget(diagramLabel, 2);
+    mainLayout->addStretch(1);
+
     connect(generateButton, &QPushButton::clicked, this, &CavernTemplateDialog::onGenerateClicked);
 
     updateDiagram();
@@ -248,7 +282,7 @@ void CavernTemplateDialog::resizeEvent(QResizeEvent* event)
 {
     BasePage::resizeEvent(event);
     if (!diagramPixmap.isNull() && diagramLabel)
-        diagramLabel->setPixmap(diagramPixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        setScaledDiagram(diagramLabel, diagramPixmap);
 }
 
 void CavernTemplateDialog::updateDiagram()
@@ -261,7 +295,7 @@ void CavernTemplateDialog::updateDiagram()
         return;
     }
 
-    diagramLabel->setPixmap(diagramPixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    setScaledDiagram(diagramLabel, diagramPixmap);
 }
 
 

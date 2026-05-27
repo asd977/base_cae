@@ -18,6 +18,8 @@
 #include <QIntValidator>
 #include <QJsonObject>
 #include <QLabel>
+#include <QSizePolicy>
+#include <QPixmap>
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPointF>
@@ -34,6 +36,18 @@
 namespace
 {
 constexpr double kEps = 1.0e-7;
+
+void setScaledDiagram(QLabel* label, const QPixmap& pixmap)
+{
+    if (!label || pixmap.isNull())
+        return;
+
+    QSize targetSize = label->size();
+    if (targetSize.width() <= 1 || targetSize.height() <= 1)
+        targetSize = QSize(640, 240);
+
+    label->setPixmap(pixmap.scaled(targetSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+}
 
 }
 
@@ -90,6 +104,9 @@ void GravityDamDialog::loadJson(const QJsonObject& state)
 void GravityDamDialog::initUI()
 {
     auto* mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    mainLayout->setSpacing(6);
+
     auto* pageNameLabel = new QLabel(QString("几何模块"), this);
     pageNameLabel->setObjectName("pageNameLabel");
 
@@ -99,6 +116,7 @@ void GravityDamDialog::initUI()
 
     auto* inputGroup = new QGroupBox("参数输入", this);
     auto* form = new QFormLayout(inputGroup);
+
     auto* posValidator = new QDoubleValidator(0.001, 1.0e9, 3, this);
     auto* slopeValidator = new QDoubleValidator(0.0, 1000.0, 4, this);
     auto* coordValidator = new QDoubleValidator(-1.0e9, 1.0e9, 3, this);
@@ -133,27 +151,25 @@ void GravityDamDialog::initUI()
     form->addRow("基点 Y", yEdit);
     form->addRow("基点 Z", zEdit);
 
-    preview2DEdit = new QLineEdit(this);
-    preview2DEdit->setReadOnly(true);
-
-    diagramLabel = new QLabel(this);
-    diagramLabel->setAlignment(Qt::AlignCenter);
-    diagramLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
-    diagramLabel->setMinimumSize(0, 0);
-
-    mainLayout->addWidget(preview2DEdit);
-    mainLayout->addWidget(diagramLabel, 1);
-
     auto* btnLayout = new QHBoxLayout();
+    btnLayout->setContentsMargins(0, 0, 0, 0);
+
     auto* generateBtn = new QPushButton("生成3D坝体", this);
     btnLayout->addStretch();
     btnLayout->addWidget(generateBtn);
+
+    diagramLabel = new QLabel(this);
+    diagramLabel->setAlignment(Qt::AlignCenter);
+    diagramLabel->setMinimumSize(0, 0);
+    diagramLabel->setScaledContents(false);
+    diagramLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
 
     mainLayout->addWidget(pageNameLabel);
     mainLayout->addWidget(sectionTitleButton);
     mainLayout->addWidget(inputGroup);
     mainLayout->addLayout(btnLayout);
-    mainLayout->addStretch();
+    mainLayout->addWidget(diagramLabel, 2);
+    mainLayout->addStretch(1);
 
     connect(generateBtn, &QPushButton::clicked, this, &GravityDamDialog::onGenerate3DClicked);
 
@@ -206,21 +222,6 @@ bool GravityDamDialog::readParameters(double& damHeight, double& crestWidth, dou
     return true;
 }
 
-void GravityDamDialog::applyPreviewText(double damHeight, double crestWidth, double upSlope,
-                                        double downSlope, int layerCount, EngineeringTemplate damType) const
-{
-    const auto points = buildSectionPoints(damHeight, crestWidth, upSlope, downSlope, damType);
-    if (points.size() < 4)
-        return;
-
-    const double layerH = damHeight / layerCount;
-    preview2DEdit->setText(QString("重力坝模板 | N=%1, ΔH=%2 | 顶宽=%3, 坝高=%4")
-                               .arg(layerCount)
-                               .arg(layerH, 0, 'f', 3)
-                               .arg(crestWidth, 0, 'f', 3)
-                               .arg(damHeight, 0, 'f', 3));
-}
-
 QVector<QPointF> GravityDamDialog::buildSectionPoints(double damHeight, double crestWidth,
                                                       double upSlope, double downSlope,
                                                       EngineeringTemplate tpl) const
@@ -243,7 +244,7 @@ void GravityDamDialog::resizeEvent(QResizeEvent* event)
 {
     BasePage::resizeEvent(event);
     if (!diagramPixmap.isNull() && diagramLabel)
-        diagramLabel->setPixmap(diagramPixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        setScaledDiagram(diagramLabel, diagramPixmap);
 }
 
 void GravityDamDialog::updateIllustration(double damHeight, double crestWidth, double upSlope,
@@ -264,11 +265,8 @@ void GravityDamDialog::updateIllustration(double damHeight, double crestWidth, d
         return;
     }
 
-    diagramLabel->setPixmap(diagramPixmap.scaled(diagramLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    setScaledDiagram(diagramLabel, diagramPixmap);
 }
-
-
-
 
 void GravityDamDialog::onPreview2DClicked()
 {
@@ -282,7 +280,6 @@ void GravityDamDialog::onPreview2DClicked()
         return;
     }
 
-    applyPreviewText(H, Bt, mu, md, N, type);
     updateIllustration(H, Bt, mu, md, N, type);
 }
 
@@ -298,7 +295,6 @@ void GravityDamDialog::onGenerate3DClicked()
         return;
     }
 
-    applyPreviewText(H, Bt, mu, md, N, type);
     updateIllustration(H, Bt, mu, md, N, type);
     buildDamBody(H, Bt, mu, md, L, N, x, y, z, type);
 }
