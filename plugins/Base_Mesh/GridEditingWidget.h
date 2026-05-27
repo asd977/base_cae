@@ -116,6 +116,7 @@ class GridEditingWidget : public BasePage
     QSet<int> m_highlightedMatypes;
     int m_highlightedMatype = -1;
     vtkSmartPointer<vtkLookupTable> m_matypeLookupTable;
+    ColorMode m_colorMode = ColorMode::None;
 
     // maps
     QHash<int, vtkIdType> m_fullNodeIdToVtkId;
