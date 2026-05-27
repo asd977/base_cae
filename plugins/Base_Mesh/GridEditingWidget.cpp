@@ -1172,6 +1172,294 @@ void GridEditingWidget::highlightMatypes(const QSet<int>& matypes, int selectedM
     m_visualWidgetService->render();
 }
 
+// ===================== Picking feedback =====================
+
+void GridEditingWidget::onPicked(long long pickedPointId, long long pickedCellId)
+{
+    if (!ui)
+        return;
+    vtkDataSet* pickDs = m_meshMapper ? m_meshMapper->GetInput() : nullptr;
+    if (!pickDs)
+        pickDs = vtkDataSet::SafeDownCast(m_viewGrid.GetPointer());
+    if (!pickDs)
+        return;
+    auto* pointData = pickDs->GetPointData();
+    auto* cellData = pickDs->GetCellData();
+
+    if (pickedPointId >= 0 && pointData)
+    {
+        auto* nodeIdArr = vtkIntArray::SafeDownCast(pointData->GetArray("node_id"));
+        if (nodeIdArr && pickedPointId < nodeIdArr->GetNumberOfTuples())
+        {
+            int nodeId = nodeIdArr->GetValue(static_cast<vtkIdType>(pickedPointId));
+            if (ui->lineEditMoveNodeId)
+                ui->lineEditMoveNodeId->setText(QString::number(nodeId));
+        }
+    }
+
+    if (pickedCellId >= 0 && cellData)
+    {
+        auto* elemIdArr = vtkIntArray::SafeDownCast(cellData->GetArray("elem_id"));
+        if (elemIdArr && pickedCellId < elemIdArr->GetNumberOfTuples())
+        {
+            int elemId = elemIdArr->GetValue(static_cast<vtkIdType>(pickedCellId));
+            if (ui->lineEditDeleteElemId)
+                ui->lineEditDeleteElemId->setText(QString::number(elemId));
+        }
+    }
+}
+
+// ===================== Drag node =====================
+
+void GridEditingWidget::beginNodeDragByPointId(long long viewPointId)
+{
+    if (!m_viewGrid || !m_fullGrid || viewPointId < 0)
+        return;
+
+    auto* nodeIdArr =
+        m_viewGrid->GetPointData() ? m_viewGrid->GetPointData()->GetArray("node_id") : nullptr;
+    int nodeId = tuple1i(nodeIdArr, static_cast<vtkIdType>(viewPointId), -1);
+    if (nodeId < 0)
+        return;
+    beginNodeDragByNodeId(nodeId);
+}
+
+void GridEditingWidget::beginNodeDragByNodeId(int nodeId)
+{
+    if (!m_fullGrid || nodeId < 0)
+        return;
+    auto itFull = m_fullNodeIdToVtkId.find(nodeId);
+    if (itFull == m_fullNodeIdToVtkId.end())
+        return;
+
+    double p0[3];
+    m_fullGrid->GetPoints()->GetPoint(itFull.value(), p0);
+
+    m_isDragging = true;
+    m_dragViewPointId = -1;
+    m_dragNodeId = nodeId;
+
+    m_dragStartX = p0[0];
+    m_dragStartY = p0[1];
+    m_dragStartZ = p0[2];
+
+    if (ui)
+    {
+        if (ui->lineEditMoveNodeId)
+            ui->lineEditMoveNodeId->setText(QString::number(nodeId));
+        if (ui->lineEditNodeX0)
+            ui->lineEditNodeX0->setText(QString::number(m_dragStartX));
+        if (ui->lineEditNodeY0)
+            ui->lineEditNodeY0->setText(QString::number(m_dragStartY));
+        if (ui->lineEditNodeZ0)
+            ui->lineEditNodeZ0->setText(QString::number(m_dragStartZ));
+
+        if (ui->lineEditNodeXCur)
+            ui->lineEditNodeXCur->setText(QString::number(m_dragStartX));
+        if (ui->lineEditNodeYCur)
+            ui->lineEditNodeYCur->setText(QString::number(m_dragStartY));
+        if (ui->lineEditNodeZCur)
+            ui->lineEditNodeZCur->setText(QString::number(m_dragStartZ));
+    }
+}
+
+void GridEditingWidget::beginNodeDragFromCell(long long cellId, int displayX, int displayY)
+{
+    vtkDataSet* pickDs = m_meshMapper ? m_meshMapper->GetInput() : nullptr;
+    if (!pickDs)
+        pickDs = vtkDataSet::SafeDownCast(m_viewGrid.GetPointer());
+    if (!pickDs || !m_points || !m_renderer || cellId < 0)
+        return;
+
+    vtkIdType cid = static_cast<vtkIdType>(cellId);
+    vtkCell* cell = pickDs->GetCell(cid);
+    if (!cell)
+        return;
+
+    vtkIdList* ids = cell->GetPointIds();
+    if (!ids || ids->GetNumberOfIds() == 0)
+        return;
+
+    double bestDepth = 1e9;
+    vtkIdType bestPid = -1;
+    const double pixelTol2 = 15.0 * 15.0;
+
+    for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
+    {
+        vtkIdType pid = ids->GetId(i);
+
+        double world[3];
+        m_points->GetPoint(pid, world);
+
+        m_renderer->SetWorldPoint(world[0], world[1], world[2], 1.0);
+        m_renderer->WorldToDisplay();
+        double disp[3];
+        m_renderer->GetDisplayPoint(disp);
+
+        double dx = disp[0] - displayX;
+        double dy = disp[1] - displayY;
+        double d2 = dx * dx + dy * dy;
+
+        if (d2 > pixelTol2)
+            continue;
+
+        if (disp[2] < bestDepth)
+        {
+            bestDepth = disp[2];
+            bestPid = pid;
+        }
+    }
+
+    if (bestPid < 0)
+        return;
+
+    auto* nodeIdArr = pickDs->GetPointData() ? pickDs->GetPointData()->GetArray("node_id")
+                                             : nullptr;
+    const int nodeId = tuple1i(nodeIdArr, bestPid, -1);
+    beginNodeDragByNodeId(nodeId);
+}
+
+void GridEditingWidget::dragNodeToWorldPosition(const double worldPos[3])
+{
+    if (!m_isDragging || !m_fullGrid)
+        return;
+
+    auto itFull = m_fullNodeIdToVtkId.find(m_dragNodeId);
+    if (itFull == m_fullNodeIdToVtkId.end())
+        return;
+
+    auto* fullPts = m_fullGrid->GetPoints();
+    if (!fullPts)
+        return;
+
+    fullPts->SetPoint(itFull.value(), worldPos[0], worldPos[1], worldPos[2]);
+    fullPts->Modified();
+    m_fullGrid->Modified();
+
+    if (m_viewGrid)
+    {
+        auto itView = m_viewNodeIdToVtkId.find(m_dragNodeId);
+        if (itView != m_viewNodeIdToVtkId.end())
+        {
+            auto* viewPts = m_viewGrid->GetPoints();
+            if (viewPts)
+            {
+                viewPts->SetPoint(itView.value(), worldPos[0], worldPos[1], worldPos[2]);
+                viewPts->Modified();
+                m_viewGrid->Modified();
+            }
+        }
+    }
+    if (m_meshMapper)
+    {
+        vtkDataSet* renderDs = m_meshMapper->GetInput();
+        vtkPointSet* renderPointSet = renderDs ? vtkPointSet::SafeDownCast(renderDs) : nullptr;
+        if (renderPointSet && renderPointSet->GetPoints())
+        {
+            auto itRender = m_viewSurfaceNodeIdToVtkId.find(m_dragNodeId);
+            if (itRender != m_viewSurfaceNodeIdToVtkId.end())
+            {
+                renderPointSet->GetPoints()->SetPoint(itRender.value(), worldPos[0], worldPos[1],
+                                                      worldPos[2]);
+                renderPointSet->GetPoints()->Modified();
+                renderDs->Modified();
+            }
+        }
+    }
+
+    m_dirty = true;
+
+    if (m_visualWidgetService)
+        m_visualWidgetService->render();
+
+    if (ui)
+    {
+        if (ui->lineEditNodeXCur)
+            ui->lineEditNodeXCur->setText(QString::number(worldPos[0]));
+        if (ui->lineEditNodeYCur)
+            ui->lineEditNodeYCur->setText(QString::number(worldPos[1]));
+        if (ui->lineEditNodeZCur)
+            ui->lineEditNodeZCur->setText(QString::number(worldPos[2]));
+    }
+}
+
+void GridEditingWidget::endNodeDrag()
+{
+    if (!m_isDragging)
+        return;
+
+    m_isDragging = false;
+    m_dragViewPointId = -1;
+    m_dragNodeId = -1;
+
+    m_dirty = true;
+}
+
+// ===================== Manual move / delete =====================
+
+void GridEditingWidget::moveNodeById(int nodeId, const double* newX, const double* newY,
+                                     const double* newZ)
+{
+    if (!m_fullGrid)
+        return;
+
+    auto itFull = m_fullNodeIdToVtkId.find(nodeId);
+    if (itFull == m_fullNodeIdToVtkId.end())
+    {
+        qWarning() << "[GridEditingWidget] moveNodeById: node not found:" << nodeId;
+        return;
+    }
+
+    double p[3];
+    m_fullGrid->GetPoints()->GetPoint(itFull.value(), p);
+
+    if (newX)
+        p[0] = *newX;
+    if (newY)
+        p[1] = *newY;
+    if (newZ)
+        p[2] = *newZ;
+
+    m_fullGrid->GetPoints()->SetPoint(itFull.value(), p);
+    m_fullGrid->GetPoints()->Modified();
+    m_fullGrid->Modified();
+
+    if (m_viewGrid)
+    {
+        auto itView = m_viewNodeIdToVtkId.find(nodeId);
+        if (itView != m_viewNodeIdToVtkId.end())
+        {
+            m_viewGrid->GetPoints()->SetPoint(itView.value(), p);
+            m_viewGrid->GetPoints()->Modified();
+            m_viewGrid->Modified();
+        }
+    }
+    if (m_meshMapper)
+    {
+        vtkDataSet* renderDs = m_meshMapper->GetInput();
+        vtkPointSet* renderPointSet = renderDs ? vtkPointSet::SafeDownCast(renderDs) : nullptr;
+        if (renderPointSet && renderPointSet->GetPoints())
+        {
+            auto itRender = m_viewSurfaceNodeIdToVtkId.find(nodeId);
+            if (itRender != m_viewSurfaceNodeIdToVtkId.end())
+            {
+                renderPointSet->GetPoints()->SetPoint(itRender.value(), p);
+                renderPointSet->GetPoints()->Modified();
+                renderDs->Modified();
+            }
+        }
+    }
+    if (m_visualWidgetService)
+        m_visualWidgetService->render();
+}
+
+void GridEditingWidget::deleteElemById(int elemId)
+{
+    //    if (!m_fullGrid) return;
+    //    auto it = m_fullElemIdToCellId.find(elemId);
+    //    if (it == m_fullElemIdToCellId.end()) { return; }
+}
+
 // ===================== Save =====================
 
 bool GridEditingWidget::saveAsVtu(const QString& filePath)
