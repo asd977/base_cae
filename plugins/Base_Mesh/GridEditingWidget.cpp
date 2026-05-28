@@ -206,7 +206,6 @@ GridEditingWidget::GridEditingWidget(QWidget* parent)
                 &GridEditingWidget::onFilterTreeItemChanged);
     }
 
-    updateFilterSummaryLabel();
 }
 
 GridEditingWidget::~GridEditingWidget()
@@ -257,7 +256,6 @@ void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString
     if (!grid || grid->GetNumberOfCells() <= 0)
     {
         buildFilterTreeFromGrid();
-        updateFilterSummaryLabel();
         return;
     }
 
@@ -265,7 +263,6 @@ void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString
     m_fullGrid->ShallowCopy(grid);
 
     buildFilterTreeFromGrid();
-    updateFilterSummaryLabel();
     refreshMeshActors();
 }
 
@@ -276,7 +273,6 @@ void GridEditingWidget::clearGrid()
     if (ui && ui->treeWidgetFilterValues)
         ui->treeWidgetFilterValues->clear();
 
-    updateFilterSummaryLabel();
 }
 
 bool GridEditingWidget::cellMatchesFilter(vtkIdType cellId) const
@@ -650,7 +646,6 @@ void GridEditingWidget::applyFilterFromTree()
     setGlobalValue(kGlobalFilterMatypeKey, intSetToString(m_filterMatypes));
     setGlobalValue(kGlobalFilterLayerKey, intSetToString(m_filterLayers));
 
-    updateFilterSummaryLabel();
     buildOrUpdateViewGrid();
 }
 
@@ -689,54 +684,9 @@ void GridEditingWidget::onFilterTreeItemChanged(QTreeWidgetItem* item, int colum
     m_filterKetypes = checkedValuesForCategory(kCategoryKetype);
     m_filterMatypes = checkedValuesForCategory(kCategoryMatype);
     m_filterLayers = checkedValuesForCategory(kCategoryLayer);
-    updateFilterSummaryLabel();
 
     if (ui->checkBoxAutoApply && ui->checkBoxAutoApply->isChecked())
         applyFilterFromTree();
-}
-
-void GridEditingWidget::updateFilterSummaryLabel()
-{
-    if (!ui || !ui->labelFilterSummary)
-        return;
-
-    auto describe = [](const QString& name,
-                       const QSet<int>& allValues,
-                       const QSet<int>& checkedValues) -> QString
-    {
-        if (allValues.isEmpty())
-            return QStringLiteral("%1：无字段").arg(name);
-
-        if (setEquals(allValues, checkedValues))
-            return QStringLiteral("%1：全部 %2").arg(name).arg(allValues.size());
-
-        if (checkedValues.isEmpty())
-            return QStringLiteral("%1：无 0/%2").arg(name).arg(allValues.size());
-
-        QList<int> list = checkedValues.values();
-        std::sort(list.begin(), list.end());
-
-        QStringList items;
-        const int maxPreviewCount = 8;
-        for (int i = 0; i < list.size() && i < maxPreviewCount; ++i)
-            items << QString::number(list[i]);
-
-        QString text = items.join(QStringLiteral(","));
-        if (list.size() > maxPreviewCount)
-            text += QStringLiteral(" ...");
-
-        return QStringLiteral("%1：%2/%3 [%4]")
-            .arg(name)
-            .arg(checkedValues.size())
-            .arg(allValues.size())
-            .arg(text);
-    };
-
-    ui->labelFilterSummary->setText(
-        QStringLiteral("全局筛选  |  %1  |  %2  |  %3")
-            .arg(describe(QStringLiteral("KETYPE"), m_allKetypes, m_filterKetypes))
-            .arg(describe(QStringLiteral("MATYPE"), m_allMatypes, m_filterMatypes))
-            .arg(describe(QStringLiteral("LAYER"), m_allLayers, m_filterLayers)));
 }
 
 vtkSmartPointer<vtkLookupTable> GridEditingWidget::buildLookupTable(const QSet<int>& values) const
