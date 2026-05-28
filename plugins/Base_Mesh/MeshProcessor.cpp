@@ -1,4 +1,4 @@
-﻿#include "MeshProcessor.h"
+#include "MeshProcessor.h"
 
 MeshProcessor::MeshProcessor()
 {
@@ -135,160 +135,81 @@ void MeshProcessor::loadOCCFile(const QString& filePath)
             m_solidEleSize += tags.size();
         }
 
-        // 节点到几何点的映射
-        int pointIndex = 0;
+        auto appendPhysicalElementMap = [](int dim,
+                                         int geomTag,
+                                         int physTag,
+                                         std::map<int, std::vector<int>>& elemMap,
+                                         std::map<int, std::vector<int>>& elemIndexMap)
+        {
+            // Gmsh 4.15 的 C++ 接口没有 getElementsForPhysicalGroup。
+            // 这里每个 physical group 本来就是按单个几何实体创建的：geomTag -> physTag，
+            // 所以直接按几何实体 tag 取元素即可，仍然避免了旧版“每个组扫描全部元素”的慢逻辑。
+            (void)physTag;
+
+            std::vector<int> elementTypes;
+            std::vector<std::vector<std::size_t>> elementTags;
+            std::vector<std::vector<std::size_t>> elementNodeTags;
+            gmsh::model::mesh::getElements(elementTypes, elementTags, elementNodeTags, dim, geomTag);
+
+            for (std::size_t block = 0; block < elementTags.size(); ++block)
+            {
+                const std::vector<std::size_t>& tags = elementTags[block];
+                const std::vector<std::size_t>& nodes = elementNodeTags[block];
+                if (tags.empty() || nodes.empty())
+                    continue;
+
+                const std::size_t nodesPerElem = nodes.size() / tags.size();
+                if (nodesPerElem == 0)
+                    continue;
+
+                std::vector<int>& dst = elemMap[geomTag];
+                dst.reserve(dst.size() + tags.size());
+
+                for (std::size_t j = 0; j < tags.size(); ++j)
+                {
+                    const int elemTag = static_cast<int>(tags[j]);
+                    dst.push_back(elemTag);
+
+                    std::vector<int> elemNodes;
+                    elemNodes.reserve(nodesPerElem);
+                    const std::size_t base = j * nodesPerElem;
+                    for (std::size_t k = 0; k < nodesPerElem && base + k < nodes.size(); ++k)
+                        elemNodes.push_back(static_cast<int>(nodes[base + k]));
+
+                    elemIndexMap[elemTag] = elemNodes;
+                }
+            }
+        };
+
+        // 节点到几何点的映射：直接按物理组取元素，不再对所有点单元进行二次扫描。
         for (std::map<int, int>::const_iterator it = geom_point_to_physical.begin();
              it != geom_point_to_physical.end(); ++it)
         {
-            int geom_tag = it->first;
-            int phys_tag = it->second;
-            std::vector<std::size_t> phys_node_tags;
-            std::vector<double> phys_node_coords;
-            gmsh::model::mesh::getNodesForPhysicalGroup(0, phys_tag, phys_node_tags,
-                                                        phys_node_coords);
-            std::set<std::size_t> phys_node_set(phys_node_tags.begin(), phys_node_tags.end());
-            const std::vector<std::size_t>& elem_tags = element_tags0[0];
-            const std::vector<std::size_t>& elem_nodes = node_tags0[0];
-            int elem_index = elem_tags[pointIndex];
-            int node_index = elem_nodes[pointIndex];
-            std::vector<int> _vec1;
-            _vec1.push_back(elem_index);
-            std::vector<int> _vec2;
-            _vec2.push_back(node_index);
-            pointToNodes[geom_tag] = _vec1;
-            pointToNodesIndex[elem_index] = _vec2;
-            pointIndex++;
+            const int geomTag = it->first;
+            const int physTag = it->second;
+            appendPhysicalElementMap(0, geomTag, physTag, pointToNodes, pointToNodesIndex);
         }
 
-        // 线单元到几何线的映射
+        // 线/面/体单元到几何实体的映射：使用 Gmsh 的 PhysicalGroup 索引直接取元素。
+        // 旧逻辑是“每个物理组扫描全部元素并判断节点集合”，复杂网格下是主要慢点之一。
         for (std::map<int, int>::const_iterator it = geom_edge_to_physical.begin();
              it != geom_edge_to_physical.end(); ++it)
         {
-            int geom_tag = it->first;
-            int phys_tag = it->second;
-            std::vector<std::size_t> phys_node_tags;
-            std::vector<double> phys_node_coords;
-            gmsh::model::mesh::getNodesForPhysicalGroup(1, phys_tag, phys_node_tags,
-                                                        phys_node_coords);
-            std::set<std::size_t> phys_node_set(phys_node_tags.begin(), phys_node_tags.end());
-
-            for (std::size_t i = 0; i < element_types1.size(); ++i)
-            {
-                if (element_types1[i] != 1)
-                    continue; // 仅处理线单元
-                const std::vector<std::size_t>& elem_tags = element_tags1[i];
-                const std::vector<std::size_t>& elem_nodes = node_tags1[i];
-                for (std::size_t j = 0; j < elem_tags.size(); ++j)
-                {
-                    std::size_t elem_tag = elem_tags[j];
-                    std::size_t node1 = elem_nodes[2 * j];
-                    std::size_t node2 = elem_nodes[2 * j + 1];
-                    if (phys_node_set.find(node1) != phys_node_set.end() &&
-                        phys_node_set.find(node2) != phys_node_set.end())
-                    {
-                        std::vector<int> _vec1;
-                        _vec1.push_back(node1);
-                        _vec1.push_back(node2);
-                        lineToElements[geom_tag].push_back(elem_tag);
-                        lineToElementsIndex[elem_tag] = _vec1;
-                    }
-                }
-            }
+            appendPhysicalElementMap(1, it->first, it->second, lineToElements, lineToElementsIndex);
         }
 
-        // 面单元到几何面的映射
         for (std::map<int, int>::const_iterator it = m_geom_face_to_physical.begin();
              it != m_geom_face_to_physical.end(); ++it)
         {
-            int geom_tag = it->first;
-            int phys_tag = it->second;
-            std::vector<std::size_t> phys_node_tags;
-            std::vector<double> phys_node_coords;
-            gmsh::model::mesh::getNodesForPhysicalGroup(2, phys_tag, phys_node_tags,
-                                                        phys_node_coords);
-            std::set<std::size_t> phys_node_set(phys_node_tags.begin(), phys_node_tags.end());
-
-            for (std::size_t i = 0; i < element_types2.size(); ++i)
-            {
-                if (element_types2[i] != 2 && element_types2[i] != 3) // 三角形或四边形
-                {
-                    continue;
-                }
-                const std::vector<std::size_t>& elem_tags = element_tags2[i];
-                const std::vector<std::size_t>& elem_nodes = node_tags2[i];
-                int nodes_per_elem = (element_types2[i] == 2) ? 3 : 4;
-                for (std::size_t j = 0; j < elem_tags.size(); ++j)
-                {
-                    std::size_t elem_tag = elem_tags[j];
-                    bool all_nodes_in_face = true;
-                    for (int k = 0; k < nodes_per_elem; ++k)
-                    {
-                        std::size_t node = elem_nodes[j * nodes_per_elem + k];
-                        if (phys_node_set.find(node) == phys_node_set.end())
-                        {
-                            all_nodes_in_face = false;
-                            break;
-                        }
-                    }
-                    if (all_nodes_in_face)
-                    {
-                        surfaceToElements[geom_tag].push_back(elem_tag);
-                        std::vector<int> _vec1;
-                        for (int k = 0; k < nodes_per_elem; ++k)
-                        {
-                            _vec1.push_back(elem_nodes[j * nodes_per_elem + k]);
-                        }
-                        surfaceToElementsIndex[elem_tag] = _vec1;
-                    }
-                }
-            }
+            appendPhysicalElementMap(2, it->first, it->second, surfaceToElements, surfaceToElementsIndex);
         }
 
-        // 体单元到几何体的映射
         for (std::map<int, int>::const_iterator it = geom_volume_to_physical.begin();
              it != geom_volume_to_physical.end(); ++it)
         {
-            int geom_tag = it->first;
-            int phys_tag = it->second;
-            std::vector<std::size_t> phys_node_tags;
-            std::vector<double> phys_node_coords;
-            gmsh::model::mesh::getNodesForPhysicalGroup(3, phys_tag, phys_node_tags,
-                                                        phys_node_coords);
-            std::set<std::size_t> phys_node_set(phys_node_tags.begin(), phys_node_tags.end());
-
-            for (std::size_t i = 0; i < element_types3.size(); ++i)
-            {
-                if (element_types3[i] != 4 && element_types3[i] != 5)
-                    continue; // 四面体或六面体
-                const std::vector<std::size_t>& elem_tags = element_tags3[i];
-                const std::vector<std::size_t>& elem_nodes = node_tags3[i];
-                int nodes_per_elem = (element_types3[i] == 4) ? 4 : 8;
-                for (std::size_t j = 0; j < elem_tags.size(); ++j)
-                {
-                    std::size_t elem_tag = elem_tags[j];
-                    bool all_nodes_in_volume = true;
-                    for (int k = 0; k < nodes_per_elem; ++k)
-                    {
-                        std::size_t node = elem_nodes[j * nodes_per_elem + k];
-                        if (phys_node_set.find(node) == phys_node_set.end())
-                        {
-                            all_nodes_in_volume = false;
-                            break;
-                        }
-                    }
-                    if (all_nodes_in_volume)
-                    {
-                        volumeToElements[geom_tag].push_back(elem_tag);
-                        std::vector<int> _vec1;
-                        for (int k = 0; k < nodes_per_elem; ++k)
-                        {
-                            _vec1.push_back(elem_nodes[j * nodes_per_elem + k]);
-                        }
-                        volumeToElementsIndex[elem_tag] = _vec1;
-                    }
-                }
-            }
+            appendPhysicalElementMap(3, it->first, it->second, volumeToElements, volumeToElementsIndex);
         }
+
         // 导出网格
         writeGmshFile();
     }
@@ -521,7 +442,7 @@ bool MeshProcessor::loadImportGridFile(const QString& filePath)
         std::string path = filePath.toStdString();
         std::string modelName = "msh_model";
         removeExistingModel(modelName);
-        gmsh::option::setNumber("General.Verbosity", 5);
+        gmsh::option::setNumber("General.Verbosity", 2);
         gmsh::model::add(modelName);
         gmsh::merge(path);
     }

@@ -1,10 +1,11 @@
-﻿#include "MeshGridIO.h"
+#include "MeshGridIO.h"
 
 #include <gmsh.h>
 #include <vtkCell.h>
 #include <vtkCellData.h>
 #include <vtkFieldData.h>
 #include <vtkHexahedron.h>
+#include <vtkIdTypeArray.h>
 #include <vtkIntArray.h>
 #include <vtkNew.h>
 #include <vtkPointData.h>
@@ -27,6 +28,9 @@
 #include <QVector3D>
 #include <algorithm>
 #include <cmath>
+#include <cctype>
+#include <cstdlib>
+#include <cstring>
 #include <vector>
 #include <PublicVariables.h>
 #include <PublicConstants.h>
@@ -39,6 +43,8 @@ static constexpr auto kSkipEmptyParts = QString::SkipEmptyParts;
 
 namespace
 {
+
+static const QRegularExpression kWhitespaceRe(QStringLiteral("\\s+"));
 
 static inline bool parseInt(const QString& s, int& v)
 {
@@ -1004,16 +1010,14 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
 
     QFile f(fileName);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
-    {
         return fail(QString("cannot open msh file: %1").arg(fileName));
-    }
 
     QTextStream in(&f);
     in.setLocale(QLocale::c());
 
     auto stripInlineComment = [](QString s) -> QString
     {
-        const int p = s.indexOf('*'); // 兼容你之前写法
+        const int p = s.indexOf('*');
         if (p >= 0)
             s = s.left(p);
         return s.trimmed();
@@ -1031,31 +1035,141 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
         return s;
     };
 
+    auto skipSpace = [](const char*& p)
+    {
+        while (*p && std::isspace(static_cast<unsigned char>(*p)))
+            ++p;
+    };
+
+    auto readInt = [&](const char*& p, int& out) -> bool
+    {
+        skipSpace(p);
+        if (!*p)
+            return false;
+        char* end = nullptr;
+        const long v = std::strtol(p, &end, 10);
+        if (end == p)
+            return false;
+        out = static_cast<int>(v);
+        p = end;
+        return true;
+    };
+
+    auto readDouble = [&](const char*& p, double& out) -> bool
+    {
+        skipSpace(p);
+        if (!*p)
+            return false;
+        char* end = nullptr;
+        const double v = std::strtod(p, &end);
+        if (end == p)
+            return false;
+        out = v;
+        p = end;
+        return true;
+    };
+
+    auto elementDimOf = [](int elemType) -> int
+    {
+        switch (elemType)
+        {
+        case 15:
+            return 0;
+        case 1:
+        case 8:
+            return 1;
+        case 2:
+        case 3:
+        case 9:
+        case 10:
+            return 2;
+        case 4:
+        case 5:
+        case 6:
+        case 7:
+        case 11:
+        case 12:
+        case 13:
+        case 14:
+        case 17:
+        case 18:
+        case 19:
+            return 3;
+        default:
+            return -1;
+        }
+    };
+
+    auto vtkTypeAndCornerCount = [](int elemType, int& vtkType, int& needN) -> bool
+    {
+        vtkType = -1;
+        needN = 0;
+        switch (elemType)
+        {
+        case 15:
+            vtkType = VTK_VERTEX;
+            needN = 1;
+            return true;
+        case 1:
+        case 8:
+            vtkType = VTK_LINE;
+            needN = 2;
+            return true;
+        case 2:
+        case 9:
+            vtkType = VTK_TRIANGLE;
+            needN = 3;
+            return true;
+        case 3:
+        case 10:
+            vtkType = VTK_QUAD;
+            needN = 4;
+            return true;
+        case 4:
+        case 11:
+            vtkType = VTK_TETRA;
+            needN = 4;
+            return true;
+        case 5:
+        case 12:
+        case 17:
+            vtkType = VTK_HEXAHEDRON;
+            needN = 8;
+            return true;
+        case 6:
+        case 13:
+        case 18:
+            vtkType = VTK_WEDGE;
+            needN = 6;
+            return true;
+        case 7:
+        case 14:
+        case 19:
+            vtkType = VTK_PYRAMID;
+            needN = 5;
+            return true;
+        default:
+            return false;
+        }
+    };
+
     clearPickMap();
 
-           // ------------------ 结果：grid + pickMap ------------------
     auto grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    MshPickMap pick;
 
-    MshPickMap pick; // 本次读入生成的映射（最后写回 m_mshPickMap）
-
-           // ------------------ Nodes ------------------
     auto pts = vtkSmartPointer<vtkPoints>::New();
     pts->SetDataTypeToDouble();
 
-           // msh nodeId -> vtk pointId
     QHash<int, vtkIdType> nodeIdToVtkId;
     nodeIdToVtkId.reserve(4096);
 
     bool haveNodes = false;
     bool haveElements = false;
 
-           // ------------------ 临时：边界元素角点(用于后处理构造 edgeKey/faceKey)
-           // ------------------ physId -> 多个边界元素，每个元素是“角点 vtk pointId
-           // 列表”
-    QHash<int, QVector<QVector<int>>> tmpEdgeElems; // 每个元素2点
-    QHash<int, QVector<QVector<int>>> tmpFaceElems; // 每个元素3点或4点
+    QHash<int, QVector<QVector<int>>> tmpEdgeElems;
+    QHash<int, QVector<QVector<int>>> tmpFaceElems;
 
-           // ------------------ helper：physName fallback ------------------
     auto physNameOf = [&](int physId) -> QString
     {
         QString name = pick.physIdToName.value(physId);
@@ -1064,20 +1178,6 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
         return name;
     };
 
-           // ------------------ helper：msh nodeId -> vtk pointId(int)
-           // ------------------
-    auto toVtkPidInt = [&](int mshNid) -> int
-    {
-        auto it = nodeIdToVtkId.find(mshNid);
-        if (it == nodeIdToVtkId.end())
-            return -1;
-        const vtkIdType pid = it.value();
-        if (pid > std::numeric_limits<int>::max())
-            return -1;
-        return int(pid);
-    };
-
-           // ------------------ helper：vector 去重（int / qint64） ------------------
     auto dedupIntVec = [](QVector<int>& v)
     {
         std::sort(v.begin(), v.end());
@@ -1089,25 +1189,35 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
         v.erase(std::unique(v.begin(), v.end()), v.end());
     };
 
-           // ------------------ 读文件主循环 ------------------
+    struct ElementRec
+    {
+        int elemId = 0;
+        int elemType = 0;
+        int elemDim = -1;
+        int vtkType = -1;
+        int needN = 0;
+        int physicalId = 0;
+        QVector<vtkIdType> ptIds;
+    };
+
     while (!in.atEnd())
     {
         QString line = stripInlineComment(in.readLine());
         if (line.isEmpty())
             continue;
 
-               // ---- MeshFormat ----
         if (line == "$MeshFormat")
         {
             if (in.atEnd())
                 return fail("unexpected EOF after $MeshFormat");
             const QString fmt = stripInlineComment(in.readLine());
-            const auto tok = fmt.split(QRegularExpression("\\s+"), kSkipEmptyParts);
-            if (tok.size() < 3)
+            const QByteArray ba = fmt.toLatin1();
+            const char* p = ba.constData();
+            double version = 0.0;
+            int fileType = 0;
+            int dataSize = 0;
+            if (!readDouble(p, version) || !readInt(p, fileType) || !readInt(p, dataSize))
                 return fail("invalid MeshFormat line");
-
-                   // 2.2 0 8
-            const int fileType = tok[1].toInt(); // 0 ascii, 1 binary
 
             while (!in.atEnd())
             {
@@ -1116,13 +1226,10 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
                     break;
             }
             if (fileType != 0)
-            {
                 return fail(QString("only ASCII msh is supported (fileType=%1)").arg(fileType));
-            }
             continue;
         }
 
-               // ---- PhysicalNames ----
         if (line == "$PhysicalNames")
         {
             if (in.atEnd())
@@ -1131,13 +1238,12 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
             if (n < 0)
                 return fail("invalid $PhysicalNames count");
 
-            QRegularExpression re("^\\s*(\\d+)\\s+(\\d+)\\s+\"(.*)\"\\s*$");
+            QRegularExpression re("^\\s*(\\d+)\\s+(\\d+)\\s+\\\"(.*)\\\"\\s*$");
             for (int i = 0; i < n; ++i)
             {
                 if (in.atEnd())
                     return fail("unexpected EOF in $PhysicalNames");
                 const QString s = stripInlineComment(in.readLine());
-
                 auto m = re.match(s);
                 if (m.hasMatch())
                 {
@@ -1171,7 +1277,6 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
             continue;
         }
 
-               // ---- Nodes (msh2.2) ----
         if (line == "$Nodes")
         {
             if (in.atEnd())
@@ -1181,28 +1286,24 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
                 return fail("invalid $Nodes count");
 
             pts->Allocate(nNodes);
+            nodeIdToVtkId.reserve(nNodes);
 
             for (int i = 0; i < nNodes; ++i)
             {
                 if (in.atEnd())
                     return fail("unexpected EOF in $Nodes");
                 const QString s = stripInlineComment(in.readLine());
-                const auto tok = s.split(QRegularExpression("\\s+"), kSkipEmptyParts);
-                if (tok.size() < 4)
-                    return fail("invalid node line");
+                const QByteArray ba = s.toLatin1();
+                const char* p = ba.constData();
 
-                bool okId = false, okX = false, okY = false, okZ = false;
-                const int nid = tok[0].toInt(&okId);
-                const double x = tok[1].toDouble(&okX);
-                const double y = tok[2].toDouble(&okY);
-                const double z = tok[3].toDouble(&okZ);
-                if (!okId || !okX || !okY || !okZ)
+                int nid = 0;
+                double x = 0.0, y = 0.0, z = 0.0;
+                if (!readInt(p, nid) || !readDouble(p, x) || !readDouble(p, y) || !readDouble(p, z))
                     return fail("failed to parse node");
 
                 const vtkIdType vid = pts->InsertNextPoint(x, y, z);
                 nodeIdToVtkId.insert(nid, vid);
 
-                       // 写入 pick 的双向映射（int）
                 if (vid > std::numeric_limits<int>::max())
                     return fail("vtk pointId exceeds int range (too many points)");
                 pick.nodeIdToPointId.insert(nid, int(vid));
@@ -1221,7 +1322,6 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
             continue;
         }
 
-               // ---- Elements (msh2.2) ----
         if (line == "$Elements")
         {
             if (!haveNodes)
@@ -1233,8 +1333,9 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
             if (nElem <= 0)
                 return fail("invalid $Elements count");
 
-            QVector<QString> elementLines;
-            elementLines.reserve(nElem);
+            QVector<ElementRec> elements;
+            elements.reserve(nElem);
+            int targetCellDim = -1;
 
             for (int i = 0; i < nElem; ++i)
             {
@@ -1242,8 +1343,61 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
                     return fail("unexpected EOF in $Elements");
 
                 const QString s = stripInlineComment(in.readLine());
-                if (!s.isEmpty())
-                    elementLines.push_back(s);
+                if (s.isEmpty())
+                    continue;
+
+                const QByteArray ba = s.toLatin1();
+                const char* p = ba.constData();
+
+                ElementRec e;
+                int numTags = 0;
+                if (!readInt(p, e.elemId) || !readInt(p, e.elemType) || !readInt(p, numTags))
+                    return fail("failed to parse element header");
+                if (numTags < 0)
+                    return fail("invalid numTags");
+
+                QVector<int> tags;
+                tags.reserve(numTags);
+                for (int k = 0; k < numTags; ++k)
+                {
+                    int tag = 0;
+                    if (!readInt(p, tag))
+                        return fail("failed to parse element tag");
+                    tags.push_back(tag);
+                }
+                e.physicalId = (numTags >= 1 ? tags[0] : 0);
+                e.elemDim = elementDimOf(e.elemType);
+                if (e.elemDim < 0)
+                    continue;
+
+                if (!vtkTypeAndCornerCount(e.elemType, e.vtkType, e.needN))
+                    continue;
+
+                e.ptIds.reserve(e.needN);
+                for (int k = 0; k < e.needN; ++k)
+                {
+                    int nid = 0;
+                    if (!readInt(p, nid))
+                    {
+                        return fail(QString("element %1 type %2 has too few nodes")
+                                        .arg(e.elemId)
+                                        .arg(e.elemType));
+                    }
+                    auto it = nodeIdToVtkId.find(nid);
+                    if (it == nodeIdToVtkId.end())
+                    {
+                        return fail(QString("element %1 references unknown node id %2")
+                                        .arg(e.elemId)
+                                        .arg(nid));
+                    }
+                    e.ptIds.push_back(it.value());
+                }
+
+                if (e.physicalId > 0 && !pick.physIdToDim.contains(e.physicalId))
+                    pick.physIdToDim.insert(e.physicalId, e.elemDim);
+
+                targetCellDim = qMax(targetCellDim, e.elemDim);
+                elements.push_back(e);
             }
 
             while (!in.atEnd())
@@ -1253,242 +1407,81 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
                     break;
             }
 
-            auto elementDimOf = [](int elemType) -> int
-            {
-                switch (elemType)
-                {
-                case 15:
-                    return 0;
-                case 1:
-                case 8:
-                    return 1;
-                case 2:
-                case 3:
-                case 9:
-                case 10:
-                    return 2;
-                case 4:
-                case 5:
-                case 6:
-                case 7:
-                case 11:
-                case 12:
-                case 13:
-                case 14:
-                case 17:
-                case 18:
-                case 19:
-                    return 3;
-                default:
-                    return -1;
-                }
-            };
-
-            int targetCellDim = -1;
-            for (const QString& s : elementLines)
-            {
-                const auto tok = s.split(QRegularExpression("\\s+"), kSkipEmptyParts);
-                if (tok.size() < 3)
-                    continue;
-                bool okType = false;
-                const int elemType = tok[1].toInt(&okType);
-                if (!okType)
-                    continue;
-                targetCellDim = qMax(targetCellDim, elementDimOf(elemType));
-            }
-
             if (targetCellDim < 0)
                 return fail("no supported elements found in $Elements");
 
-            grid->Allocate(nElem);
+            grid->Allocate(elements.size());
 
-            for (const QString& s : elementLines)
+            for (const ElementRec& e : elements)
             {
-                const auto tok = s.split(QRegularExpression("\\s+"), kSkipEmptyParts);
-                if (tok.size() < 3)
-                    return fail("invalid element line");
-
-                int p = 0;
-                bool okE = false, okT = false, okNT = false;
-                const int elemId = tok[p++].toInt(&okE);
-                const int elemType = tok[p++].toInt(&okT);
-                const int numTags = tok[p++].toInt(&okNT);
-                if (!okE || !okT || !okNT)
-                    return fail("failed to parse element header");
-                if (numTags < 0)
-                    return fail("invalid numTags");
-                if (tok.size() < 3 + numTags)
-                    return fail("element line too short for tags");
-
-                QVector<int> tags;
-                tags.reserve(numTags);
-                for (int k = 0; k < numTags; ++k)
+                if (e.elemDim == targetCellDim)
                 {
-                    bool ok = false;
-                    tags.push_back(tok[p++].toInt(&ok));
-                    if (!ok)
-                        return fail("failed to parse element tag");
-                }
+                    const vtkIdType cellId = grid->InsertNextCell(e.vtkType, e.needN, e.ptIds.constData());
+                    appendDomainPhysicalCell(pick, e.physicalId, MeshIdType(cellId));
 
-                const int physicalId = (numTags >= 1 ? tags[0] : 0);
-
-                QVector<int> nodeIds;
-                nodeIds.reserve(tok.size() - p);
-                for (; p < tok.size(); ++p)
-                {
-                    bool ok = false;
-                    const int nid = tok[p].toInt(&ok);
-                    if (ok)
-                        nodeIds.push_back(nid);
-                }
-
-                const int elemDim = elementDimOf(elemType);
-                if (elemDim < 0)
-                    continue;
-
-                int vtkType = -1;
-                int needN = 0;
-
-                if (elemType == 15)
-                {
-                    vtkType = VTK_VERTEX;
-                    needN = 1;
-                }
-                else if (elemType == 1 || elemType == 8)
-                {
-                    vtkType = VTK_LINE;
-                    needN = 2;
-                }
-                else if (elemType == 2 || elemType == 9)
-                {
-                    vtkType = VTK_TRIANGLE;
-                    needN = 3;
-                }
-                else if (elemType == 3 || elemType == 10)
-                {
-                    vtkType = VTK_QUAD;
-                    needN = 4;
-                }
-                else if (elemType == 4 || elemType == 11)
-                {
-                    vtkType = VTK_TETRA;
-                    needN = 4;
-                }
-                else if (elemType == 5 || elemType == 17 || elemType == 12)
-                {
-                    vtkType = VTK_HEXAHEDRON;
-                    needN = 8;
-                }
-                else if (elemType == 6 || elemType == 13 || elemType == 18)
-                {
-                    vtkType = VTK_WEDGE;
-                    needN = 6;
-                }
-                else if (elemType == 7 || elemType == 14 || elemType == 19)
-                {
-                    vtkType = VTK_PYRAMID;
-                    needN = 5;
-                }
-
-                if (vtkType < 0 || needN <= 0)
-                    continue;
-
-                if (nodeIds.size() < needN)
-                {
-                    return fail(QString("element %1 type %2 has too few nodes (%3)")
-                                    .arg(elemId)
-                                    .arg(elemType)
-                                    .arg(nodeIds.size()));
-                }
-
-                QVector<vtkIdType> ptIds;
-                ptIds.reserve(needN);
-                for (int k = 0; k < needN; ++k)
-                {
-                    const int nid = nodeIds[k];
-                    auto it = nodeIdToVtkId.find(nid);
-                    if (it == nodeIdToVtkId.end())
-                    {
-                        return fail(QString("element %1 references unknown node id %2")
-                                        .arg(elemId)
-                                        .arg(nid));
-                    }
-                    ptIds.push_back(it.value());
-                }
-
-                if (physicalId > 0 && !pick.physIdToDim.contains(physicalId))
-                    pick.physIdToDim.insert(physicalId, elemDim);
-
-                if (elemDim == targetCellDim)
-                {
-                    const vtkIdType cellId = grid->InsertNextCell(vtkType, needN, ptIds.data());
-                    appendDomainPhysicalCell(pick, physicalId, MeshIdType(cellId));
-
-                    if (targetCellDim == 2 && needN >= 3)
+                    if (targetCellDim == 2 && e.needN >= 3)
                     {
                         QVector<int> facePts;
-                        facePts.reserve(needN);
-                        for (int k = 0; k < needN; ++k)
+                        facePts.reserve(e.needN);
+                        for (vtkIdType pid64 : e.ptIds)
                         {
-                            if (ptIds[k] <= std::numeric_limits<int>::max())
+                            if (pid64 <= std::numeric_limits<int>::max())
                             {
-                                const int pid = int(ptIds[k]);
-                                pick.bndFacePhysToPointIds[physicalId].push_back(pid);
+                                const int pid = int(pid64);
+                                pick.bndFacePhysToPointIds[e.physicalId].push_back(pid);
                                 facePts.push_back(pid);
                             }
                         }
                         if (facePts.size() >= 3)
-                            tmpFaceElems[physicalId].push_back(facePts);
+                            tmpFaceElems[e.physicalId].push_back(facePts);
                     }
-                    else if (targetCellDim == 1 && needN >= 2)
+                    else if (targetCellDim == 1 && e.needN >= 2)
                     {
-                        if (ptIds[0] <= std::numeric_limits<int>::max() &&
-                            ptIds[1] <= std::numeric_limits<int>::max())
+                        if (e.ptIds[0] <= std::numeric_limits<int>::max() &&
+                            e.ptIds[1] <= std::numeric_limits<int>::max())
                         {
-                            const int p0 = int(ptIds[0]);
-                            const int p1 = int(ptIds[1]);
-                            pick.bndEdgePhysToPointIds[physicalId].push_back(p0);
-                            pick.bndEdgePhysToPointIds[physicalId].push_back(p1);
-                            tmpEdgeElems[physicalId].push_back(QVector<int>{p0, p1});
+                            const int p0 = int(e.ptIds[0]);
+                            const int p1 = int(e.ptIds[1]);
+                            pick.bndEdgePhysToPointIds[e.physicalId].push_back(p0);
+                            pick.bndEdgePhysToPointIds[e.physicalId].push_back(p1);
+                            tmpEdgeElems[e.physicalId].push_back(QVector<int>{p0, p1});
                         }
                     }
-
                     continue;
                 }
 
-                       // 低维 Physical 元素只作为边界选择数据进入 MshPickMap，不能插入真实 grid。
-                if (elemDim == 0)
+                if (e.elemDim == 0)
                 {
-                    if (!ptIds.isEmpty() && ptIds[0] <= std::numeric_limits<int>::max())
-                        pick.bndPointPhysToPointIds[physicalId].push_back(int(ptIds[0]));
+                    if (!e.ptIds.isEmpty() && e.ptIds[0] <= std::numeric_limits<int>::max())
+                        pick.bndPointPhysToPointIds[e.physicalId].push_back(int(e.ptIds[0]));
                 }
-                else if (elemDim == 1)
+                else if (e.elemDim == 1)
                 {
-                    if (ptIds.size() >= 2 && ptIds[0] <= std::numeric_limits<int>::max() &&
-                        ptIds[1] <= std::numeric_limits<int>::max())
+                    if (e.ptIds.size() >= 2 && e.ptIds[0] <= std::numeric_limits<int>::max() &&
+                        e.ptIds[1] <= std::numeric_limits<int>::max())
                     {
-                        const int p0 = int(ptIds[0]);
-                        const int p1 = int(ptIds[1]);
-                        pick.bndEdgePhysToPointIds[physicalId].push_back(p0);
-                        pick.bndEdgePhysToPointIds[physicalId].push_back(p1);
-                        tmpEdgeElems[physicalId].push_back(QVector<int>{p0, p1});
+                        const int p0 = int(e.ptIds[0]);
+                        const int p1 = int(e.ptIds[1]);
+                        pick.bndEdgePhysToPointIds[e.physicalId].push_back(p0);
+                        pick.bndEdgePhysToPointIds[e.physicalId].push_back(p1);
+                        tmpEdgeElems[e.physicalId].push_back(QVector<int>{p0, p1});
                     }
                 }
-                else if (elemDim == 2)
+                else if (e.elemDim == 2)
                 {
                     QVector<int> facePts;
-                    facePts.reserve(qMin(needN, 4));
-                    for (int k = 0; k < needN; ++k)
+                    facePts.reserve(e.needN);
+                    for (vtkIdType pid64 : e.ptIds)
                     {
-                        if (ptIds[k] <= std::numeric_limits<int>::max())
+                        if (pid64 <= std::numeric_limits<int>::max())
                         {
-                            const int pid = int(ptIds[k]);
-                            pick.bndFacePhysToPointIds[physicalId].push_back(pid);
+                            const int pid = int(pid64);
+                            pick.bndFacePhysToPointIds[e.physicalId].push_back(pid);
                             facePts.push_back(pid);
                         }
                     }
                     if (facePts.size() >= 3)
-                        tmpFaceElems[physicalId].push_back(facePts);
+                        tmpFaceElems[e.physicalId].push_back(facePts);
                 }
             }
 
@@ -1496,23 +1489,17 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
             continue;
         }
 
-               // 其它段落：$NodeData/$ElementData/... 忽略
+        // 其它段落：$NodeData/$ElementData/... 忽略
     }
 
     f.close();
 
     if (!haveNodes)
-    {
         return fail("no $Nodes section found (only msh2.2 supported in this loader)");
-    }
     if (!haveElements || grid->GetNumberOfCells() == 0)
-    {
         return fail("no supported target-dimensional cells imported from $Elements");
-    }
 
-           // ======================= 后处理：去重点集 =======================
-    for (auto it = pick.bndPointPhysToPointIds.begin(); it != pick.bndPointPhysToPointIds.end();
-         ++it)
+    for (auto it = pick.bndPointPhysToPointIds.begin(); it != pick.bndPointPhysToPointIds.end(); ++it)
         dedupIntVec(it.value());
     for (auto it = pick.bndEdgePhysToPointIds.begin(); it != pick.bndEdgePhysToPointIds.end(); ++it)
         dedupIntVec(it.value());
@@ -1524,10 +1511,6 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
         MeshTagSet& set = it.value();
         dedupI64Vec(set.cellIds);
     }
-
-           // ======================= 后处理：构造 edgeKey / faceKey
-           // ======================= edgeKey = (cellId<<4) | (edgeLocalId & 0xF) faceKey
-           // = (cellId<<4) | (faceLocalId & 0xF)
 
     auto pack2 = [](int a, int b) -> quint64
     {
@@ -1546,116 +1529,122 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
         return key;
     };
 
-    QHash<quint64, qint64> edgeIndex;    // (pidA,pidB) -> edgeKey
-    QHash<QByteArray, qint64> faceIndex; // (sorted pids...) -> faceKey
+    QHash<quint64, qint64> edgeIndex;
+    QHash<QByteArray, qint64> faceIndex;
 
+    const bool needEdgeIndex = !tmpEdgeElems.isEmpty();
+    const bool needFaceIndex = !tmpFaceElems.isEmpty();
     const vtkIdType nCells = grid->GetNumberOfCells();
-    for (vtkIdType cid = 0; cid < nCells; ++cid)
+
+    if (needEdgeIndex || needFaceIndex)
     {
-        vtkCell* cell = grid->GetCell(cid);
-        if (!cell)
-            continue;
-
-               // ---- edges ----
-        const int nEdges = cell->GetNumberOfEdges();
-        for (int ei = 0; ei < nEdges; ++ei)
+        for (vtkIdType cid = 0; cid < nCells; ++cid)
         {
-            vtkCell* e = cell->GetEdge(ei);
-            if (!e)
-                continue;
-            vtkIdList* ids = e->GetPointIds();
-            if (!ids || ids->GetNumberOfIds() < 2)
+            vtkCell* cell = grid->GetCell(cid);
+            if (!cell)
                 continue;
 
-            const vtkIdType a64 = ids->GetId(0);
-            const vtkIdType b64 = ids->GetId(1);
-            if (a64 > std::numeric_limits<int>::max() || b64 > std::numeric_limits<int>::max())
-                return fail("vtk pointId exceeds int range when building edge index");
-
-            const int a = int(a64);
-            const int b = int(b64);
-
-            const quint64 k = pack2(a, b);
-            const qint64 edgeKey = (qint64(cid) << 4) | (qint64(ei) & 0xF);
-
-            if (!edgeIndex.contains(k))
-                edgeIndex.insert(k, edgeKey);
-        }
-
-               // ---- faces ----
-        const int nFaces = cell->GetNumberOfFaces();
-        for (int fi = 0; fi < nFaces; ++fi)
-        {
-            vtkCell* fcell = cell->GetFace(fi);
-            if (!fcell)
-                continue;
-            vtkIdList* ids = fcell->GetPointIds();
-            if (!ids || ids->GetNumberOfIds() < 3)
-                continue;
-
-            QVector<int> fpids;
-            fpids.reserve(int(ids->GetNumberOfIds()));
-            for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
+            if (needEdgeIndex)
             {
-                const vtkIdType pid64 = ids->GetId(i);
-                if (pid64 > std::numeric_limits<int>::max())
-                    return fail("vtk pointId exceeds int range when building face index");
-                fpids.push_back(int(pid64));
+                const int nEdges = cell->GetNumberOfEdges();
+                for (int ei = 0; ei < nEdges; ++ei)
+                {
+                    vtkCell* e = cell->GetEdge(ei);
+                    if (!e)
+                        continue;
+                    vtkIdList* ids = e->GetPointIds();
+                    if (!ids || ids->GetNumberOfIds() < 2)
+                        continue;
+
+                    const vtkIdType a64 = ids->GetId(0);
+                    const vtkIdType b64 = ids->GetId(1);
+                    if (a64 > std::numeric_limits<int>::max() || b64 > std::numeric_limits<int>::max())
+                        return fail("vtk pointId exceeds int range when building edge index");
+
+                    const quint64 k = pack2(int(a64), int(b64));
+                    const qint64 edgeKey = (qint64(cid) << 4) | (qint64(ei) & 0xF);
+                    if (!edgeIndex.contains(k))
+                        edgeIndex.insert(k, edgeKey);
+                }
             }
 
-            const QByteArray k = packN_sorted(fpids);
-            const qint64 faceKey = (qint64(cid) << 4) | (qint64(fi) & 0xF);
+            if (needFaceIndex)
+            {
+                const int nFaces = cell->GetNumberOfFaces();
+                for (int fi = 0; fi < nFaces; ++fi)
+                {
+                    vtkCell* fcell = cell->GetFace(fi);
+                    if (!fcell)
+                        continue;
+                    vtkIdList* ids = fcell->GetPointIds();
+                    if (!ids || ids->GetNumberOfIds() < 3)
+                        continue;
 
-            if (!faceIndex.contains(k))
-                faceIndex.insert(k, faceKey);
+                    QVector<int> fpids;
+                    fpids.reserve(int(ids->GetNumberOfIds()));
+                    for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
+                    {
+                        const vtkIdType pid64 = ids->GetId(i);
+                        if (pid64 > std::numeric_limits<int>::max())
+                            return fail("vtk pointId exceeds int range when building face index");
+                        fpids.push_back(int(pid64));
+                    }
+
+                    const QByteArray k = packN_sorted(fpids);
+                    const qint64 faceKey = (qint64(cid) << 4) | (qint64(fi) & 0xF);
+                    if (!faceIndex.contains(k))
+                        faceIndex.insert(k, faceKey);
+                }
+            }
         }
     }
 
-           // 用 msh 的边界线元素(2点) -> edgeIndex 查 edgeKey
-    for (auto it = tmpEdgeElems.begin(); it != tmpEdgeElems.end(); ++it)
+    if (needEdgeIndex)
     {
-        const int physId = it.key();
-        const auto& elems = it.value();
-
-        auto& out = pick.bndEdgePhysToEdgeKeys[physId];
-        out.reserve(elems.size());
-
-        for (const auto& e2 : elems)
+        for (auto it = tmpEdgeElems.begin(); it != tmpEdgeElems.end(); ++it)
         {
-            if (e2.size() != 2)
-                continue;
-            const quint64 k = pack2(e2[0], e2[1]);
-            auto hit = edgeIndex.find(k);
-            if (hit != edgeIndex.end())
-                out.push_back(hit.value());
+            const int physId = it.key();
+            const auto& elems = it.value();
+
+            auto& out = pick.bndEdgePhysToEdgeKeys[physId];
+            out.reserve(elems.size());
+
+            for (const auto& e2 : elems)
+            {
+                if (e2.size() != 2)
+                    continue;
+                const quint64 k = pack2(e2[0], e2[1]);
+                auto hit = edgeIndex.find(k);
+                if (hit != edgeIndex.end())
+                    out.push_back(hit.value());
+            }
+            dedupI64Vec(out);
         }
-        dedupI64Vec(out);
     }
 
-           // 用 msh 的边界面元素(3/4点) -> faceIndex 查 faceKey
-    for (auto it = tmpFaceElems.begin(); it != tmpFaceElems.end(); ++it)
+    if (needFaceIndex)
     {
-        const int physId = it.key();
-        const auto& elems = it.value();
-
-        auto& out = pick.bndFacePhysToFaceKeys[physId];
-        out.reserve(elems.size());
-
-        for (const auto& fN : elems)
+        for (auto it = tmpFaceElems.begin(); it != tmpFaceElems.end(); ++it)
         {
-            if (fN.size() < 3)
-                continue;
-            const QByteArray k = packN_sorted(fN);
-            auto hit = faceIndex.find(k);
-            if (hit != faceIndex.end())
-                out.push_back(hit.value());
+            const int physId = it.key();
+            const auto& elems = it.value();
+
+            auto& out = pick.bndFacePhysToFaceKeys[physId];
+            out.reserve(elems.size());
+
+            for (const auto& fN : elems)
+            {
+                if (fN.size() < 3)
+                    continue;
+                const QByteArray k = packN_sorted(fN);
+                auto hit = faceIndex.find(k);
+                if (hit != faceIndex.end())
+                    out.push_back(hit.value());
+            }
+            dedupI64Vec(out);
         }
-        dedupI64Vec(out);
     }
 
-           // ======================= PhysicalNames 缺失时：给 physId 兜底名/维度
-           // ======================= （很多 msh 可能没写 $PhysicalNames，但 elements
-           // 里仍然有 physicalId） 这里尽量补全名字（phys_#），维度补不全就保持缺省
     for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
     {
         const MeshTagKey& key = it.key();
@@ -1667,8 +1656,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
         if (!pick.physIdToDim.contains(physId))
             pick.physIdToDim.insert(physId, 3);
     }
-    for (auto it = pick.bndPointPhysToPointIds.begin(); it != pick.bndPointPhysToPointIds.end();
-         ++it)
+    for (auto it = pick.bndPointPhysToPointIds.begin(); it != pick.bndPointPhysToPointIds.end(); ++it)
     {
         const int physId = it.key();
         if (!pick.physIdToName.contains(physId))
@@ -1702,13 +1690,9 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
         }
     }
 
-           // 写回成员：供外部 DisplacementConstraintWidget / FaceLoadPage 等查询
     m_mshPickMap = pick;
 
-           // 同步 RegionId/RegionName，且将 MATYPE 直接映射到体
-           // physicalId（便于材料批量设置）
     auto* cd = grid->GetCellData();
-
     auto ensureCellIntArray = [cd, nCells](const char* name, int defaultValue)
     {
         auto* arr = vtkIntArray::SafeDownCast(cd->GetArray(name));
@@ -1743,6 +1727,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
     regionName->SetNumberOfValues(nCells);
 
     QHash<vtkIdType, int> cellToPhys;
+    cellToPhys.reserve(nCells);
     for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
     {
         const MeshTagKey& key = it.key();
@@ -1762,9 +1747,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
         const int mappedMatype = (physId > 0 ? physId : 1);
         matype->SetValue(cid, mappedMatype);
         if (layer)
-        {
             layer->SetValue(cid, mappedMatype);
-        }
         if (ketype)
         {
             vtkCell* cell = grid->GetCell(cid);
@@ -1813,115 +1796,162 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
     clearPickMap();
 
     QFile f(fileName);
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+    if (!f.open(QIODevice::ReadOnly))
     {
         if (errMsg)
             *errMsg = QObject::tr("无法打开文件: %1").arg(fileName);
         return nullptr;
     }
 
-    QTextStream in(&f);
+    const QByteArray bytes = f.readAll();
+    f.close();
+
+    class FastParser
+    {
+      public:
+        FastParser(const QByteArray& b) : m_cur(b.constData()), m_end(b.constData() + b.size()) {}
+
+        bool readInt(int& value)
+        {
+            skipSpace();
+            if (m_cur >= m_end)
+                return false;
+            char* next = nullptr;
+            const long v = std::strtol(m_cur, &next, 10);
+            if (next == m_cur)
+                return false;
+            value = static_cast<int>(v);
+            m_cur = next;
+            return true;
+        }
+
+        bool readDouble(double& value)
+        {
+            skipSpace();
+            if (m_cur >= m_end)
+                return false;
+            char* next = nullptr;
+            const double v = std::strtod(m_cur, &next);
+            if (next == m_cur)
+                return false;
+            value = v;
+            m_cur = next;
+            return true;
+        }
+
+        void skipLine()
+        {
+            while (m_cur < m_end && *m_cur != '\n')
+                ++m_cur;
+            if (m_cur < m_end && *m_cur == '\n')
+                ++m_cur;
+        }
+
+        bool readIntLine(QVector<int>& values)
+        {
+            values.clear();
+
+            while (m_cur < m_end)
+            {
+                // 空行直接跳过；行内只跳过空白，不跨过换行。
+                while (m_cur < m_end && (*m_cur == ' ' || *m_cur == '\t' || *m_cur == '\r'))
+                    ++m_cur;
+                if (m_cur < m_end && *m_cur == '\n')
+                {
+                    ++m_cur;
+                    continue;
+                }
+
+                while (m_cur < m_end && *m_cur != '\n')
+                {
+                    while (m_cur < m_end && (*m_cur == ' ' || *m_cur == '\t' || *m_cur == '\r'))
+                        ++m_cur;
+                    if (m_cur >= m_end || *m_cur == '\n')
+                        break;
+
+                    // IIIN.DAT 正常不带注释；这里仅跳过整行注释，避免把说明文字解析成 0。
+                    if (*m_cur == '#' || *m_cur == '!')
+                    {
+                        while (m_cur < m_end && *m_cur != '\n')
+                            ++m_cur;
+                        break;
+                    }
+
+                    char* next = nullptr;
+                    const long v = std::strtol(m_cur, &next, 10);
+                    if (next == m_cur)
+                    {
+                        while (m_cur < m_end && *m_cur != ' ' && *m_cur != '\t' && *m_cur != '\r' && *m_cur != '\n')
+                            ++m_cur;
+                        continue;
+                    }
+
+                    values.push_back(static_cast<int>(v));
+                    m_cur = next;
+                }
+
+                if (m_cur < m_end && *m_cur == '\n')
+                    ++m_cur;
+
+                if (!values.isEmpty())
+                    return true;
+            }
+
+            return false;
+        }
+
+      private:
+        void skipSpace()
+        {
+            while (m_cur < m_end && (*m_cur == ' ' || *m_cur == '\t' || *m_cur == '\r' || *m_cur == '\n'))
+                ++m_cur;
+        }
+
+      private:
+        const char* m_cur = nullptr;
+        const char* m_end = nullptr;
+    };
+
+    FastParser parser(bytes);
 
     int numnp = 0, madim = 3, nelem = 0, manod = 0, extra = 0;
     double am = 1.0, d1 = 0.0, d2 = 0.0, d3 = 0.0;
 
-    in >> numnp >> madim >> nelem >> manod >> extra >> am >> d1 >> d2 >> d3;
-    PublicVariables::instance().set(PublicConstants::kMeshDimension,madim,"mesh");
-    qInfo() << "网格维度" << madim;
-    if (in.status() != QTextStream::Ok)
+    if (!parser.readInt(numnp) || !parser.readInt(madim) || !parser.readInt(nelem) ||
+        !parser.readInt(manod) || !parser.readInt(extra) || !parser.readDouble(am) ||
+        !parser.readDouble(d1) || !parser.readDouble(d2) || !parser.readDouble(d3))
     {
         if (errMsg)
-            *errMsg = "首行(控制信息)读取失败";
+            *errMsg = QStringLiteral("首行(控制信息)读取失败");
         return nullptr;
     }
 
+    PublicVariables::instance().set(PublicConstants::kMeshDimension, madim, "mesh");
+    qInfo() << "网格维度" << madim;
+
     int iobject = 0, ivertical = 2;
     double xmin = 0, xmax = 0, ymin = 0, ymax = 0, zmin = 0, zmax = 0;
-    in >> iobject >> ivertical >> xmin >> xmax >> ymin >> ymax >> zmin >> zmax;
-    if (in.status() != QTextStream::Ok)
+    if (!parser.readInt(iobject) || !parser.readInt(ivertical) || !parser.readDouble(xmin) ||
+        !parser.readDouble(xmax) || !parser.readDouble(ymin) || !parser.readDouble(ymax) ||
+        !parser.readDouble(zmin) || !parser.readDouble(zmax))
     {
         if (errMsg)
-            *errMsg = "第二行(对象信息)读取失败";
+            *errMsg = QStringLiteral("第二行(对象信息)读取失败");
         return nullptr;
     }
-    in.readLine(); // 丢弃第二行尾部
+    parser.skipLine();
 
     if (numnp <= 0)
     {
         if (errMsg)
-            *errMsg = "节点数 numnp 非法";
+            *errMsg = QStringLiteral("节点数 numnp 非法");
         return nullptr;
     }
     if (manod <= 0)
-        manod = 8; // 容错
+        manod = 8;
 
-           // -------- nodes --------
-    struct NodeRec
-    {
-        double x, y, z;
-        int id;
-    };
-    QVector<NodeRec> nodes;
-    nodes.reserve(numnp);
-
-    while (!in.atEnd() && nodes.size() < numnp)
-    {
-        QString raw = in.readLine();
-        if (raw.isNull())
-            break;
-        QString line = raw.trimmed();
-        if (line.isEmpty())
-            continue;
-
-        QStringList parts = line.simplified().split(' ', kSkipEmptyParts);
-        if (parts.size() < 3)
-            continue;
-
-        NodeRec n{};
-        bool ok = true;
-
-        if (parts.size() >= 4)
-        {
-            ok &= parseDouble(parts[0], n.x);
-            ok &= parseDouble(parts[1], n.y);
-            ok &= parseDouble(parts[2], n.z);
-            ok &= parseInt(parts[3], n.id);
-        }
-        else
-        {
-            if (madim == 2)
-            {
-                ok &= parseDouble(parts[0], n.x);
-                ok &= parseDouble(parts[1], n.y);
-                n.z = 0.0;
-                ok &= parseInt(parts[2], n.id);
-            }
-            else
-            {
-                ok &= parseDouble(parts[0], n.x);
-                ok &= parseDouble(parts[1], n.y);
-                ok &= parseDouble(parts[2], n.z);
-                n.id = nodes.size() + 1;
-            }
-        }
-        if (!ok)
-            continue;
-
-        n.x *= am;
-        n.y *= am;
-        n.z *= am;
-        nodes.push_back(n);
-    }
-
-    if (nodes.size() != numnp)
-    {
-        // 容错：不强制失败，但提醒
-        qWarning() << "[IIIN] node count mismatch, header=" << numnp << "read=" << nodes.size();
-        numnp = nodes.size();
-    }
-
-           // points + node_id
     auto pts = vtkSmartPointer<vtkPoints>::New();
+    pts->SetDataTypeToDouble();
     pts->SetNumberOfPoints(numnp);
 
     auto nodeIdArr = vtkSmartPointer<vtkIntArray>::New();
@@ -1929,225 +1959,416 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
     nodeIdArr->SetNumberOfComponents(1);
     nodeIdArr->SetNumberOfTuples(numnp);
 
-           // id->pointIndex
-    QHash<int, vtkIdType> id2p;
-    id2p.reserve(numnp * 2);
+    auto originalPointIds = vtkSmartPointer<vtkIdTypeArray>::New();
+    originalPointIds->SetName("vtkOriginalPointIds");
+    originalPointIds->SetNumberOfComponents(1);
+    originalPointIds->SetNumberOfTuples(numnp);
+
+    QVector<int> nodeIds;
+    nodeIds.resize(numnp);
+
+    int minNodeId = INT_MAX;
+    int maxNodeId = INT_MIN;
 
     for (int i = 0; i < numnp; ++i)
     {
-        pts->SetPoint(i, nodes[i].x, nodes[i].y, nodes[i].z);
-        nodeIdArr->SetValue(i, nodes[i].id);
-        id2p.insert(nodes[i].id, static_cast<vtkIdType>(i));
+        double x = 0.0, y = 0.0, z = 0.0;
+        int id = i + 1;
+
+        if (madim <= 2)
+        {
+            if (!parser.readDouble(x) || !parser.readDouble(y) || !parser.readInt(id))
+            {
+                if (errMsg)
+                    *errMsg = QStringLiteral("节点数据读取失败，位置：%1").arg(i + 1);
+                return nullptr;
+            }
+            z = 0.0;
+        }
+        else
+        {
+            if (!parser.readDouble(x) || !parser.readDouble(y) || !parser.readDouble(z) || !parser.readInt(id))
+            {
+                if (errMsg)
+                    *errMsg = QStringLiteral("节点数据读取失败，位置：%1").arg(i + 1);
+                return nullptr;
+            }
+        }
+
+        x *= am;
+        y *= am;
+        z *= am;
+
+        pts->SetPoint(i, x, y, z);
+        nodeIdArr->SetValue(i, id);
+        originalPointIds->SetValue(i, i);
+        nodeIds[i] = id;
+        minNodeId = qMin(minNodeId, id);
+        maxNodeId = qMax(maxNodeId, id);
     }
+
+    QVector<vtkIdType> denseIdToPoint;
+    QHash<int, vtkIdType> sparseIdToPoint;
+
+    const qint64 idRange = (maxNodeId >= minNodeId) ? (qint64(maxNodeId) - qint64(minNodeId) + 1) : 0;
+    const bool useDenseMap = (idRange > 0 && idRange <= qint64(numnp) * 4 && idRange <= 20000000);
+
+    if (useDenseMap)
+    {
+        denseIdToPoint.resize(int(idRange));
+        std::fill(denseIdToPoint.begin(), denseIdToPoint.end(), static_cast<vtkIdType>(-1));
+        for (int i = 0; i < numnp; ++i)
+            denseIdToPoint[nodeIds[i] - minNodeId] = static_cast<vtkIdType>(i);
+    }
+    else
+    {
+        sparseIdToPoint.reserve(numnp * 2);
+        for (int i = 0; i < numnp; ++i)
+            sparseIdToPoint.insert(nodeIds[i], static_cast<vtkIdType>(i));
+    }
+
+    auto pointIdOfNode = [&](int nid) -> vtkIdType
+    {
+        if (nid == 0)
+            return -1;
+        if (useDenseMap)
+        {
+            const qint64 idx = qint64(nid) - qint64(minNodeId);
+            if (idx < 0 || idx >= denseIdToPoint.size())
+                return -1;
+            return denseIdToPoint[int(idx)];
+        }
+        auto it = sparseIdToPoint.constFind(nid);
+        return (it == sparseIdToPoint.constEnd()) ? static_cast<vtkIdType>(-1) : it.value();
+    };
 
     auto grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
     grid->SetPoints(pts);
     grid->GetPointData()->AddArray(nodeIdArr);
+    grid->GetPointData()->AddArray(originalPointIds);
 
-           // cell arrays
+    const vtkIdType estimatedCells = nelem > 0 ? static_cast<vtkIdType>(nelem) : 1024;
+    grid->Allocate(estimatedCells);
+
     auto matypeArr = vtkSmartPointer<vtkIntArray>::New();
     matypeArr->SetName("MATYPE");
     matypeArr->SetNumberOfComponents(1);
+    matypeArr->Allocate(estimatedCells);
 
     auto elemIdArr = vtkSmartPointer<vtkIntArray>::New();
     elemIdArr->SetName("elem_id");
     elemIdArr->SetNumberOfComponents(1);
+    elemIdArr->Allocate(estimatedCells);
 
     auto ketypeArr = vtkSmartPointer<vtkIntArray>::New();
     ketypeArr->SetName("KETYPE");
     ketypeArr->SetNumberOfComponents(1);
+    ketypeArr->Allocate(estimatedCells);
 
     auto layerArr = vtkSmartPointer<vtkIntArray>::New();
     layerArr->SetName("LAYER");
     layerArr->SetNumberOfComponents(1);
+    layerArr->Allocate(estimatedCells);
 
     auto partArr = vtkSmartPointer<vtkIntArray>::New();
     partArr->SetName("src_part");
     partArr->SetNumberOfComponents(1);
+    partArr->Allocate(estimatedCells);
 
     auto tail1Arr = vtkSmartPointer<vtkIntArray>::New();
     tail1Arr->SetName("TAIL1");
     tail1Arr->SetNumberOfComponents(1);
+    tail1Arr->Allocate(estimatedCells);
 
     auto tail2Arr = vtkSmartPointer<vtkIntArray>::New();
     tail2Arr->SetName("TAIL2");
     tail2Arr->SetNumberOfComponents(1);
+    tail2Arr->Allocate(estimatedCells);
 
-           // -------- elems --------
-    struct ElemRec
+    auto originalCellIds = vtkSmartPointer<vtkIdTypeArray>::New();
+    originalCellIds->SetName("vtkOriginalCellIds");
+    originalCellIds->SetNumberOfComponents(1);
+    originalCellIds->Allocate(estimatedCells);
+
+    auto cellDimArr = vtkSmartPointer<vtkIntArray>::New();
+    cellDimArr->SetName("CELL_DIM");
+    cellDimArr->SetNumberOfComponents(1);
+    cellDimArr->Allocate(estimatedCells);
+
+    QVector<int> elemNodeIds;
+    elemNodeIds.resize(manod);
+    vtkIdType ptIdsBuf[32];
+
+    auto vtkTypeDimension = [](int vtkCellType) -> int
     {
-        int id = 0;
-        QVector<int> nodeIds; // 0..manod-1
-        int ketype = 0, matype = 0, layer = 0, tail1 = 0, tail2 = 0;
+        switch (vtkCellType)
+        {
+        case VTK_LINE:
+        case VTK_QUADRATIC_EDGE:
+            return 1;
+        case VTK_TRIANGLE:
+        case VTK_QUADRATIC_TRIANGLE:
+        case VTK_QUAD:
+        case VTK_QUADRATIC_LINEAR_QUAD:
+        case VTK_QUADRATIC_QUAD:
+        case VTK_BIQUADRATIC_QUAD:
+            return 2;
+        case VTK_TETRA:
+        case VTK_HEXAHEDRON:
+        case VTK_WEDGE:
+        case VTK_PYRAMID:
+        case VTK_QUADRATIC_HEXAHEDRON:
+            return 3;
+        default:
+            return 0;
+        }
     };
 
-    auto addCellPiece = [&](int vtkCellType, const QVector<int>& localNodeLids, const ElemRec& e,
+    auto addCellPiece = [&](int vtkCellType, const int* localNodeLids, int lidCount,
+                            int elemId, int ketype, int matype, int layer, int tail1, int tail2,
                             int part) -> void
     {
-        QVector<vtkIdType> ptIds;
-        ptIds.reserve(localNodeLids.size());
-
-        for (int lid : localNodeLids)
-        {
-            if (lid < 0 || lid >= e.nodeIds.size())
-                return;
-            int nid = e.nodeIds[lid];
-            if (nid == 0)
-                return;
-
-            auto it = id2p.find(nid);
-            if (it == id2p.end())
-                return;
-            ptIds.push_back(it.value());
-        }
-
-        if (ptIds.size() != localNodeLids.size())
+        if (lidCount <= 0 || lidCount > 32)
             return;
 
-        grid->InsertNextCell(vtkCellType, static_cast<vtkIdType>(ptIds.size()), ptIds.data());
+        for (int i = 0; i < lidCount; ++i)
+        {
+            const int lid = localNodeLids[i];
+            if (lid < 0 || lid >= elemNodeIds.size())
+                return;
+            const vtkIdType pid = pointIdOfNode(elemNodeIds[lid]);
+            if (pid < 0)
+                return;
+            ptIdsBuf[i] = pid;
+        }
 
-        matypeArr->InsertNextValue(e.matype);
-        elemIdArr->InsertNextValue(e.id);
-        ketypeArr->InsertNextValue(e.ketype);
-        layerArr->InsertNextValue(e.layer);
+        const vtkIdType cellId = grid->InsertNextCell(vtkCellType, static_cast<vtkIdType>(lidCount), ptIdsBuf);
+        matypeArr->InsertNextValue(matype);
+        elemIdArr->InsertNextValue(elemId);
+        ketypeArr->InsertNextValue(ketype);
+        layerArr->InsertNextValue(layer);
         partArr->InsertNextValue(part);
-        tail1Arr->InsertNextValue(e.tail1);
-        tail2Arr->InsertNextValue(e.tail2);
+        tail1Arr->InsertNextValue(tail1);
+        tail2Arr->InsertNextValue(tail2);
+        originalCellIds->InsertNextValue(cellId);
+        cellDimArr->InsertNextValue(vtkTypeDimension(vtkCellType));
+    };
+
+    auto addPiecesByKetype = [&](int elemId, int ketype, int matype, int layer, int tail1, int tail2) -> bool
+    {
+        switch (ketype)
+        {
+        case 1:
+        case 10:
+        case 21:
+        {
+            static const int ids[] = {0, 1};
+            addCellPiece(VTK_LINE, ids, 2, elemId, ketype, matype, layer, tail1, tail2, 0);
+            return true;
+        }
+        case 2:
+        {
+            static const int ids[] = {0, 2, 1};
+            addCellPiece(VTK_QUADRATIC_EDGE, ids, 3, elemId, ketype, matype, layer, tail1, tail2, 0);
+            return true;
+        }
+        case 3:
+        case 11:
+        {
+            static const int ids[] = {0, 1, 2, 3};
+            addCellPiece(VTK_QUAD, ids, 4, elemId, ketype, matype, layer, tail1, tail2, 0);
+            return true;
+        }
+        case 4:
+        {
+            static const int ids[] = {0, 2, 3, 5, 1, 4};
+            addCellPiece(VTK_QUADRATIC_LINEAR_QUAD, ids, 6, elemId, ketype, matype, layer, tail1, tail2, 0);
+            return true;
+        }
+        case 5:
+        {
+            static const int ids[] = {0, 2, 4, 6, 1, 3, 5, 7};
+            addCellPiece(VTK_QUADRATIC_QUAD, ids, 8, elemId, ketype, matype, layer, tail1, tail2, 0);
+            return true;
+        }
+        case 29:
+        {
+            static const int ids[] = {0, 2, 4, 6, 1, 3, 5, 7, 8};
+            addCellPiece(VTK_BIQUADRATIC_QUAD, ids, 9, elemId, ketype, matype, layer, tail1, tail2, 0);
+            return true;
+        }
+        case 12:
+        {
+            static const int a[] = {0, 1, 4};
+            static const int b[] = {1, 2, 4};
+            static const int c[] = {2, 3, 4};
+            static const int d[] = {3, 0, 4};
+            addCellPiece(VTK_TRIANGLE, a, 3, elemId, ketype, matype, layer, tail1, tail2, 0);
+            addCellPiece(VTK_TRIANGLE, b, 3, elemId, ketype, matype, layer, tail1, tail2, 1);
+            addCellPiece(VTK_TRIANGLE, c, 3, elemId, ketype, matype, layer, tail1, tail2, 2);
+            addCellPiece(VTK_TRIANGLE, d, 3, elemId, ketype, matype, layer, tail1, tail2, 3);
+            return true;
+        }
+        case 31:
+        {
+            static const int ids[] = {0, 1, 2};
+            addCellPiece(VTK_TRIANGLE, ids, 3, elemId, ketype, matype, layer, tail1, tail2, 0);
+            return true;
+        }
+        case 32:
+        {
+            static const int ids[] = {0, 2, 4, 1, 3, 5};
+            addCellPiece(VTK_QUADRATIC_TRIANGLE, ids, 6, elemId, ketype, matype, layer, tail1, tail2, 0);
+            return true;
+        }
+        case 33:
+        {
+            static const int ids[] = {0, 3, 6};
+            addCellPiece(VTK_TRIANGLE, ids, 3, elemId, ketype, matype, layer, tail1, tail2, 0);
+            return true;
+        }
+        case 34:
+        {
+            static const int ids[] = {0, 4, 8};
+            addCellPiece(VTK_TRIANGLE, ids, 3, elemId, ketype, matype, layer, tail1, tail2, 0);
+            return true;
+        }
+        case 35:
+        {
+            static const int ids[] = {0, 1, 2, 3};
+            addCellPiece(VTK_TETRA, ids, 4, elemId, ketype, matype, layer, tail1, tail2, 0);
+            return true;
+        }
+        case 6:
+        case 13:
+        {
+            static const int ids[] = {0, 1, 2, 3, 4, 5, 6, 7};
+            addCellPiece(VTK_HEXAHEDRON, ids, 8, elemId, ketype, matype, layer, tail1, tail2, 0);
+            return true;
+        }
+        case 36:
+        {
+            static const int ids[] = {0, 1, 2, 3, 9, 10, 11, 12};
+            addCellPiece(VTK_HEXAHEDRON, ids, 8, elemId, ketype, matype, layer, tail1, tail2, 0);
+            return true;
+        }
+        case 37:
+        {
+            static const int ids[] = {0, 2, 4, 6, 12, 14, 16, 18, 1, 3, 5, 7, 13, 15, 17, 19, 8, 9, 10, 11};
+            addCellPiece(VTK_QUADRATIC_HEXAHEDRON, ids, 20, elemId, ketype, matype, layer, tail1, tail2, 0);
+            return true;
+        }
+        case 9:
+        case 17:
+        {
+            static const int a[] = {0, 1, 2, 3};
+            static const int b[] = {4, 5, 6, 7};
+            addCellPiece(VTK_QUAD, a, 4, elemId, ketype, matype, layer, tail1, tail2, 0);
+            addCellPiece(VTK_QUAD, b, 4, elemId, ketype, matype, layer, tail1, tail2, 1);
+            return true;
+        }
+        default:
+            return false;
+        }
     };
 
     int readElems = 0;
-    while (!in.atEnd())
+    for (int elemIndex = 0; elemIndex < nelem; ++elemIndex)
     {
-        if (nelem > 0 && readElems >= nelem)
-            break;
-
-        QString raw = in.readLine();
-        if (raw.isNull())
-            break;
-        QString line = raw.trimmed();
-        if (line.isEmpty())
-            continue;
-
-        QStringList parts = line.simplified().split(' ', kSkipEmptyParts);
-        if (parts.size() < 4)
-            continue;
-
         int elemId = 0;
-        if (!parseInt(parts[0], elemId))
+        if (!parser.readInt(elemId))
+            break;
+
+        for (int i = 0; i < manod; ++i)
+        {
+            int nid = 0;
+            if (!parser.readInt(nid))
+            {
+                if (errMsg)
+                    *errMsg = QStringLiteral("单元节点数据读取失败，单元位置：%1").arg(elemIndex + 1);
+                return nullptr;
+            }
+            elemNodeIds[i] = nid;
+        }
+
+        int ketype = 0, matype = 0, layer = 0, tail1 = 0, tail2 = 0;
+        if (!parser.readInt(ketype) || !parser.readInt(matype) || !parser.readInt(layer))
+        {
+            if (errMsg)
+                *errMsg = QStringLiteral("单元属性数据读取失败，单元位置：%1").arg(elemIndex + 1);
+            return nullptr;
+        }
+
+        if (extra >= 4 && !parser.readInt(tail1))
+        {
+            if (errMsg)
+                *errMsg = QStringLiteral("TAIL1 读取失败，单元位置：%1").arg(elemIndex + 1);
+            return nullptr;
+        }
+        if (extra >= 5 && !parser.readInt(tail2))
+        {
+            if (errMsg)
+                *errMsg = QStringLiteral("TAIL2 读取失败，单元位置：%1").arg(elemIndex + 1);
+            return nullptr;
+        }
+        for (int i = 5; i < extra; ++i)
+        {
+            int ignored = 0;
+            if (!parser.readInt(ignored))
+            {
+                if (errMsg)
+                    *errMsg = QStringLiteral("扩展属性读取失败，单元位置：%1").arg(elemIndex + 1);
+                return nullptr;
+            }
+        }
+
+        if (ketype <= 0 || ketype > 200)
             continue;
 
-        auto tryParse = [&](bool withTail, ElemRec& e) -> bool
+        if (ketype == 3)
         {
-            const int n = parts.size();
-            int ket = 0, mat = 0, lay = 0, t1 = 0, t2 = 0;
-            int nodeCount = 0;
-
-            if (withTail)
+            int uniq[4] = {0, 0, 0, 0};
+            int uniqCount = 0;
+            for (int i = 0; i < qMin(manod, 4); ++i)
             {
-                if (n < 6)
-                    return false;
-                if (!parseInt(parts[n - 5], ket))
-                    return false;
-                if (!parseInt(parts[n - 4], mat))
-                    return false;
-                if (!parseInt(parts[n - 3], lay))
-                    return false;
-                if (!parseInt(parts[n - 2], t1))
-                    return false;
-                if (!parseInt(parts[n - 1], t2))
-                    return false;
-                nodeCount = n - 1 - 5;
-            }
-            else
-            {
-                if (!parseInt(parts[n - 3], ket))
-                    return false;
-                if (!parseInt(parts[n - 2], mat))
-                    return false;
-                if (!parseInt(parts[n - 1], lay))
-                    return false;
-                t1 = t2 = 0;
-                nodeCount = n - 1 - 3;
-            }
-
-            if (ket <= 0 || ket > 200)
-                return false;
-            if (nodeCount < 0 || nodeCount > manod)
-                return false;
-
-            e.id = elemId;
-            e.ketype = ket;
-            e.matype = mat;
-            e.layer = lay;
-            e.tail1 = t1;
-            e.tail2 = t2;
-            e.nodeIds.clear();
-            e.nodeIds.resize(manod);
-
-            for (int i = 0; i < nodeCount; ++i)
-            {
-                int nid = 0;
-                if (!parseInt(parts[1 + i], nid))
-                    return false;
-                e.nodeIds[i] = nid;
-            }
-            return true;
-        };
-
-        ElemRec e;
-        bool ok = tryParse(true, e);
-        if (!ok)
-            ok = tryParse(false, e);
-        if (!ok)
-            continue;
-
-               // 兼容退化四边形面片：
-               // 一些网格会把三角形面写成 KETYPE=3(quad4)，但4个节点里有重复点。
-               // 例如: n1 n2 n3 n3，这里应按三角形处理。
-        if (e.ketype == 3)
-        {
-            QVector<int> uniq;
-            uniq.reserve(4);
-            QSet<int> seen;
-            for (int i = 0; i < e.nodeIds.size(); ++i)
-            {
-                const int nid = e.nodeIds[i];
-                if (nid == 0 || seen.contains(nid))
+                const int nid = elemNodeIds[i];
+                if (nid == 0)
                     continue;
-                seen.insert(nid);
-                uniq.push_back(nid);
+                bool exists = false;
+                for (int j = 0; j < uniqCount; ++j)
+                {
+                    if (uniq[j] == nid)
+                    {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists && uniqCount < 4)
+                    uniq[uniqCount++] = nid;
             }
-            if (uniq.size() == 3)
+            if (uniqCount == 3)
             {
-                e.ketype = 31; // tri3
-                e.nodeIds.fill(0);
-                for (int i = 0; i < 3; ++i)
-                    e.nodeIds[i] = uniq[i];
+                ketype = 31;
+                elemNodeIds[0] = uniq[0];
+                elemNodeIds[1] = uniq[1];
+                elemNodeIds[2] = uniq[2];
             }
         }
 
-        auto pieces = proxyPieces(e.ketype);
-        if (pieces.isEmpty())
-            continue;
-
-        for (int pi = 0; pi < pieces.size(); ++pi)
-        {
-            addCellPiece(pieces[pi].first, pieces[pi].second, e, pi);
-        }
-
-        ++readElems;
+        if (addPiecesByKetype(elemId, ketype, matype, layer, tail1, tail2))
+            ++readElems;
     }
 
     grid->GetCellData()->AddArray(matypeArr);
-
     grid->GetCellData()->AddArray(elemIdArr);
     grid->GetCellData()->AddArray(ketypeArr);
     grid->GetCellData()->AddArray(layerArr);
     grid->GetCellData()->AddArray(partArr);
     grid->GetCellData()->AddArray(tail1Arr);
     grid->GetCellData()->AddArray(tail2Arr);
+    grid->GetCellData()->AddArray(originalCellIds);
+    grid->GetCellData()->AddArray(cellDimArr);
 
-    ensureDefaultArrays(grid);
     return grid;
 }
 

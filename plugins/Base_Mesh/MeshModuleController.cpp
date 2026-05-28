@@ -1113,27 +1113,52 @@ static QColor meshDisplayCategoricalColor(int value)
     return QColor::fromHsv(hue, 170, 220);
 }
 
-static vtkSmartPointer<vtkUnstructuredGrid> meshDisplayCopyWithFullCellIds(vtkUnstructuredGrid* grid)
+static void meshDisplayEnsureOriginalIds(vtkUnstructuredGrid* grid)
+{
+    if (!grid)
+        return;
+
+    auto* pd = grid->GetPointData();
+    auto* cd = grid->GetCellData();
+
+    const bool pointIdsOk = pd && pd->GetArray("vtkOriginalPointIds") &&
+                            pd->GetArray("vtkOriginalPointIds")->GetNumberOfTuples() == grid->GetNumberOfPoints();
+    const bool cellIdsOk = cd && cd->GetArray("vtkOriginalCellIds") &&
+                           cd->GetArray("vtkOriginalCellIds")->GetNumberOfTuples() == grid->GetNumberOfCells();
+
+    if (!pointIdsOk && pd)
+    {
+        auto pointIds = vtkSmartPointer<vtkIdTypeArray>::New();
+        pointIds->SetName("vtkOriginalPointIds");
+        pointIds->SetNumberOfComponents(1);
+        pointIds->SetNumberOfTuples(grid->GetNumberOfPoints());
+        for (vtkIdType pid = 0; pid < grid->GetNumberOfPoints(); ++pid)
+            pointIds->SetValue(pid, pid);
+        pd->RemoveArray("vtkOriginalPointIds");
+        pd->AddArray(pointIds);
+    }
+
+    if (!cellIdsOk && cd)
+    {
+        auto cellIds = vtkSmartPointer<vtkIdTypeArray>::New();
+        cellIds->SetName("vtkOriginalCellIds");
+        cellIds->SetNumberOfComponents(1);
+        cellIds->SetNumberOfTuples(grid->GetNumberOfCells());
+        for (vtkIdType cid = 0; cid < grid->GetNumberOfCells(); ++cid)
+            cellIds->SetValue(cid, cid);
+        cd->RemoveArray("vtkOriginalCellIds");
+        cd->AddArray(cellIds);
+    }
+}
+
+static vtkSmartPointer<vtkUnstructuredGrid> meshDisplayCopyWithOriginalIds(vtkUnstructuredGrid* grid)
 {
     auto out = vtkSmartPointer<vtkUnstructuredGrid>::New();
     if (!grid)
         return out;
 
+    meshDisplayEnsureOriginalIds(grid);
     out->ShallowCopy(grid);
-
-    auto fullIds = vtkSmartPointer<vtkIdTypeArray>::New();
-    fullIds->SetName("vtkOriginalCellIds");
-    fullIds->SetNumberOfComponents(1);
-    fullIds->SetNumberOfTuples(grid->GetNumberOfCells());
-    for (vtkIdType cid = 0; cid < grid->GetNumberOfCells(); ++cid)
-        fullIds->SetValue(cid, cid);
-
-    if (auto* cd = out->GetCellData())
-    {
-        cd->RemoveArray("vtkOriginalCellIds");
-        cd->AddArray(fullIds);
-    }
-
     return out;
 }
 
@@ -1144,7 +1169,7 @@ static vtkSmartPointer<vtkUnstructuredGrid> meshDisplayExtractCells(
     if (!fullGrid || !ids || ids->GetNumberOfIds() <= 0)
         return out;
 
-    auto source = meshDisplayCopyWithFullCellIds(fullGrid);
+    auto source = meshDisplayCopyWithOriginalIds(fullGrid);
 
     auto ex = vtkSmartPointer<vtkExtractCells>::New();
     ex->SetInputData(source);
@@ -1275,6 +1300,14 @@ static void meshDisplayApplyGlobalState(vtkUnstructuredGrid* fullGrid,
         return;
 
     const bool customFilter = PublicVariables::instance().get(kMeshDisplayFilterCustomKey).toBool();
+    if (!customFilter)
+    {
+        if (surfaceMapper)
+            surfaceMapper->ScalarVisibilityOff();
+        if (lineMapper)
+            lineMapper->ScalarVisibilityOff();
+        return;
+    }
 
     const QSet<int> ketypes = meshDisplayIntSetFromString(
         PublicVariables::instance().get(kMeshDisplayFilterKetypeKey).toString());
@@ -1301,28 +1334,50 @@ static void meshDisplayApplyGlobalState(vtkUnstructuredGrid* fullGrid,
             lineIds->InsertNextId(cid);
     }
 
-    vtkSmartPointer<vtkPolyData> viewSurface = vtkSmartPointer<vtkPolyData>::New();
+    vtkSmartPointer<vtkDataSet> viewSurface;
     vtkSmartPointer<vtkUnstructuredGrid> viewLineGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
 
     if (surfaceIds->GetNumberOfIds() > 0)
     {
         auto surfaceSource = meshDisplayExtractCells(fullGrid, surfaceIds);
-        auto surfaceFilter = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-        surfaceFilter->SetInputData(surfaceSource);
-        surfaceFilter->Update();
-        viewSurface->ShallowCopy(surfaceFilter->GetOutput());
+
+        bool hasVolumeCell = false;
+        for (vtkIdType cid = 0; cid < surfaceSource->GetNumberOfCells(); ++cid)
+        {
+            vtkCell* cell = surfaceSource->GetCell(cid);
+            if (cell && cell->GetCellDimension() >= 3)
+            {
+                hasVolumeCell = true;
+                break;
+            }
+        }
+
+        if (hasVolumeCell)
+        {
+            auto surfaceFilter = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+            surfaceFilter->SetInputData(surfaceSource);
+            surfaceFilter->Update();
+
+            auto poly = vtkSmartPointer<vtkPolyData>::New();
+            poly->ShallowCopy(surfaceFilter->GetOutput());
+            viewSurface = poly;
+        }
+        else
+        {
+            viewSurface = surfaceSource;
+        }
     }
 
     if (lineIds->GetNumberOfIds() > 0)
         viewLineGrid = meshDisplayExtractCells(fullGrid, lineIds);
 
     if (surfaceMapper)
-        meshDisplaySetMapperInput(surfaceMapper, viewSurface);
+        meshDisplaySetMapperInput(surfaceMapper, viewSurface ? viewSurface.GetPointer() : nullptr);
     if (lineMapper)
         meshDisplaySetMapperInput(lineMapper, viewLineGrid);
 
     if (surfaceActor)
-        surfaceActor->SetVisibility(viewSurface->GetNumberOfCells() > 0 ? 1 : 0);
+        surfaceActor->SetVisibility(viewSurface && viewSurface->GetNumberOfCells() > 0 ? 1 : 0);
     if (lineActor)
         lineActor->SetVisibility(viewLineGrid->GetNumberOfCells() > 0 ? 1 : 0);
 
@@ -2091,12 +2146,6 @@ void MeshModuleController::onImportGrid()
     m_importedGrid = grid;
     m_hasGrid = true;
     m_sourceFileName = fileName;
-    {
-        vtkSmartPointer<vtkUnstructuredGrid> tmpLine;
-        vtkSmartPointer<vtkUnstructuredGrid> tmpNonLine;
-        splitGridByDim(m_importedGrid, tmpLine, tmpNonLine);
-    }
-
     if (ext == "dat")
     {
         const QString projectDir =
@@ -2178,14 +2227,8 @@ bool MeshModuleController::importCurrentGmshMesh(QString* errMsg)
     m_importedGrid = grid;
     m_hasGrid = true;
     m_sourceFileName.clear();
-    {
-        vtkSmartPointer<vtkUnstructuredGrid> tmpLine;
-        vtkSmartPointer<vtkUnstructuredGrid> tmpNonLine;
-        splitGridByDim(m_importedGrid, tmpLine, tmpNonLine);
-    }
-
-    displayCurrentGrid();
     syncPickMapGroupingFromGrid(m_importedGrid);
+    displayCurrentGrid();
     PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
     return true;
 }
@@ -2611,16 +2654,41 @@ void MeshModuleController::displayCurrentGrid()
 
     if (nonLineGrid && nonLineGrid->GetNumberOfCells() > 0)
     {
-        auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-        surf->SetInputData(nonLineGrid);
-        surf->Update();
+        bool hasVolumeCell = false;
+        for (vtkIdType cid = 0; cid < nonLineGrid->GetNumberOfCells(); ++cid)
+        {
+            vtkCell* cell = nonLineGrid->GetCell(cid);
+            if (cell && cell->GetCellDimension() >= 3)
+            {
+                hasVolumeCell = true;
+                break;
+            }
+        }
 
-        auto boundary = vtkSmartPointer<vtkPolyData>::New();
-        boundary->ShallowCopy(surf->GetOutput());
-        rebuildOriginalIdArrays(nonLineGrid, boundary);
+        vtkSmartPointer<vtkMapper> mapper;
 
-        auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-        mapper->SetInputData(boundary);
+        if (hasVolumeCell)
+        {
+            auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+            surf->SetInputData(nonLineGrid);
+            surf->Update();
+
+            auto boundary = vtkSmartPointer<vtkPolyData>::New();
+            boundary->ShallowCopy(surf->GetOutput());
+
+            auto polyMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+            polyMapper->SetInputData(boundary);
+            mapper = polyMapper;
+        }
+        else
+        {
+            // 纯 2D 网格不需要再走 vtkDataSetSurfaceFilter。直接显示 unstructured grid，
+            // 同时保留 cellId/pointId 对应关系，面拾取也更直接。
+            auto dataMapper = vtkSmartPointer<vtkDataSetMapper>::New();
+            dataMapper->SetInputData(nonLineGrid);
+            mapper = dataMapper;
+        }
+
         mapper->ScalarVisibilityOff();
 
         auto surfActor = vtkSmartPointer<vtkActor>::New();
@@ -2723,35 +2791,68 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
     if (!src)
         return;
 
-    if (m_splitCacheSource == src && m_splitCacheNonLine)
+    if (m_splitCacheSource == src && (m_splitCacheLine || m_splitCacheNonLine))
     {
         outLine = m_splitCacheLine;
         outNonLine = m_splitCacheNonLine;
         return;
     }
 
-    auto lineIds = vtkSmartPointer<vtkIdList>::New();
-    auto nonLineIds = vtkSmartPointer<vtkIdList>::New();
+    meshDisplayEnsureOriginalIds(src);
 
     const vtkIdType nCells = src->GetNumberOfCells();
+    vtkIdType lineCount = 0;
+    vtkIdType nonLineCount = 0;
+
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
         vtkCell* c = src->GetCell(cid);
         if (!c)
             continue;
 
-        const int dim = c->GetCellDimension(); // 1=线,2=面,3=体
-        if (dim == 1)
-        {
-            lineIds->InsertNextId(cid);
-        }
+        if (c->GetCellDimension() == 1)
+            ++lineCount;
         else
-        {
-            nonLineIds->InsertNextId(cid);
-        }
+            ++nonLineCount;
     }
 
-    auto sourceWithIds = meshDisplayCopyWithFullCellIds(src);
+    // 大型 IIIN.DAT 通常只有一种维度。此时不要再 ExtractCells 复制整张网格。
+    if (lineCount == 0)
+    {
+        outNonLine = src;
+        m_splitCacheSource = src;
+        m_splitCacheLine = nullptr;
+        m_splitCacheNonLine = outNonLine;
+        return;
+    }
+
+    if (nonLineCount == 0)
+    {
+        outLine = src;
+        m_splitCacheSource = src;
+        m_splitCacheLine = outLine;
+        m_splitCacheNonLine = nullptr;
+        return;
+    }
+
+    auto lineIds = vtkSmartPointer<vtkIdList>::New();
+    auto nonLineIds = vtkSmartPointer<vtkIdList>::New();
+    lineIds->Allocate(lineCount);
+    nonLineIds->Allocate(nonLineCount);
+
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    {
+        vtkCell* c = src->GetCell(cid);
+        if (!c)
+            continue;
+
+        if (c->GetCellDimension() == 1)
+            lineIds->InsertNextId(cid);
+        else
+            nonLineIds->InsertNextId(cid);
+    }
+
+    auto sourceWithIds = meshDisplayCopyWithOriginalIds(src);
 
     if (lineIds->GetNumberOfIds() > 0)
     {
@@ -2770,9 +2871,6 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
         ex->Update();
         outNonLine = vtkUnstructuredGrid::SafeDownCast(ex->GetOutput());
     }
-
-           // splitGridByDim 只做维度拆分，不再追加 MATYPE/LAYER/Physical 分组表面。
-           // 分组表面属于业务选择/高亮数据，不能混入显示网格；否则打开工程后会显示重复壳。
 
     m_splitCacheSource = src;
     m_splitCacheLine = outLine;
@@ -2814,10 +2912,9 @@ vtkSmartPointer<vtkActor> MeshModuleController::createLineActor(vtkUnstructuredG
     actor->SetMapper(mapper);
 
     auto* p = actor->GetProperty();
-    p->SetColor(0.85, 0.85, 0.85); // 与面/体网格默认填充色保持一致
-    p->SetSpecular(0.0);
+    p->SetColor(0.78, 0.78, 0.78); // 与面/体网格默认颜色保持一致
     p->SetLineWidth(1.0);
-    p->LightingOn();
+    p->SetSpecular(0.0);
     p->RenderLinesAsTubesOff();
 
     return actor;
