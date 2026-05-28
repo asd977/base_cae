@@ -1,4 +1,4 @@
-﻿#include "MeshModuleController.h"
+#include "MeshModuleController.h"
 
 #include <EventManager.h>
 #include <GridEditingWidget.h>
@@ -22,6 +22,8 @@
 #include <vtkCellData.h>
 #include <vtkCellType.h>
 #include <vtkDataSetMapper.h>
+#include <vtkDataArray.h>
+#include <vtkDataSet.h>
 #include <vtkDataSetSurfaceFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkIdList.h>
@@ -31,12 +33,14 @@
 #include <vtkMapper.h>
 #include <vtkPointLocator.h>
 #include <vtkPolyData.h>
+#include <vtkPolyDataMapper.h>
 #include <vtkPointData.h>
 #include <vtkPoints.h>
 #include <vtkProperty.h>
 #include <vtkUnstructuredGrid.h>
 
 #include <QByteArray>
+#include <QColor>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -47,6 +51,7 @@
 #include <QMessageBox>
 #include <QProcess>
 #include <QSet>
+#include <QStringList>
 #include <QVector>
 #include <algorithm>
 #include <functional>
@@ -59,6 +64,11 @@
 
 namespace
 {
+
+static bool meshDomainKeyIsValid(const DomainKey& key)
+{
+    return !key.category.trimmed().isEmpty() && key.dim >= 0 && key.id != 0;
+}
 
 static const char* kMeshMapFileName = "mesh_map.json";
 static const char* kMeshMshSnapshotFileName = "mesh_snapshot.msh";
@@ -941,6 +951,8 @@ void rebuildOriginalIdArrays(vtkUnstructuredGrid* sourceGrid, vtkPolyData* poly)
         pointLocator->BuildLocator();
 
         const vtkIdType nSourceCells = sourceGrid->GetNumberOfCells();
+        vtkDataArray* sourceOrigCellIds =
+            sourceGrid->GetCellData() ? sourceGrid->GetCellData()->GetArray("vtkOriginalCellIds") : nullptr;
         QVector<QSet<vtkIdType>> sourceCellPointSets((int)nSourceCells);
         QVector<char> sourceCellPointSetBuilt((int)nSourceCells, 0);
         auto containsAllMappedPoints = [&](vtkIdType sourceCellId,
@@ -1043,7 +1055,12 @@ void rebuildOriginalIdArrays(vtkUnstructuredGrid* sourceGrid, vtkPolyData* poly)
             }
 
             if (bestSourceCellId >= 0)
-                cellIds->SetValue(cid, bestSourceCellId);
+            {
+                vtkIdType finalCellId = bestSourceCellId;
+                if (sourceOrigCellIds && bestSourceCellId < sourceOrigCellIds->GetNumberOfTuples())
+                    finalCellId = static_cast<vtkIdType>(sourceOrigCellIds->GetTuple1(bestSourceCellId));
+                cellIds->SetValue(cid, finalCellId);
+            }
         }
     }
 
@@ -1057,6 +1074,263 @@ void rebuildOriginalIdArrays(vtkUnstructuredGrid* sourceGrid, vtkPolyData* poly)
         cd->RemoveArray("vtkOriginalCellIds");
         cd->AddArray(cellIds);
     }
+}
+
+
+
+static const QString kMeshDisplayFilterCustomKey = QStringLiteral("mesh.display.filter.custom");
+static const QString kMeshDisplayFilterKetypeKey = QStringLiteral("mesh.display.filter.ketype.checked");
+static const QString kMeshDisplayFilterMatypeKey = QStringLiteral("mesh.display.filter.matype.checked");
+static const QString kMeshDisplayFilterLayerKey = QStringLiteral("mesh.display.filter.layer.checked");
+
+static QSet<int> meshDisplayIntSetFromString(const QString& text)
+{
+    QSet<int> values;
+    const QStringList parts = text.split(',', QString::SkipEmptyParts);
+    for (const QString& part : parts)
+    {
+        bool ok = false;
+        const int value = part.trimmed().toInt(&ok);
+        if (ok)
+            values.insert(value);
+    }
+    return values;
+}
+
+static int meshDisplayTuple1i(vtkDataArray* array, vtkIdType tupleId, int defaultValue = 0)
+{
+    if (!array || tupleId < 0 || tupleId >= array->GetNumberOfTuples())
+        return defaultValue;
+    return static_cast<int>(array->GetTuple1(tupleId));
+}
+
+static QColor meshDisplayCategoricalColor(int value)
+{
+    if (value == 0)
+        return QColor::fromRgbF(0.78, 0.78, 0.78);
+
+    const int hue = ((value * 47) % 360 + 360) % 360;
+    return QColor::fromHsv(hue, 170, 220);
+}
+
+static vtkSmartPointer<vtkUnstructuredGrid> meshDisplayCopyWithFullCellIds(vtkUnstructuredGrid* grid)
+{
+    auto out = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    if (!grid)
+        return out;
+
+    out->ShallowCopy(grid);
+
+    auto fullIds = vtkSmartPointer<vtkIdTypeArray>::New();
+    fullIds->SetName("vtkOriginalCellIds");
+    fullIds->SetNumberOfComponents(1);
+    fullIds->SetNumberOfTuples(grid->GetNumberOfCells());
+    for (vtkIdType cid = 0; cid < grid->GetNumberOfCells(); ++cid)
+        fullIds->SetValue(cid, cid);
+
+    if (auto* cd = out->GetCellData())
+    {
+        cd->RemoveArray("vtkOriginalCellIds");
+        cd->AddArray(fullIds);
+    }
+
+    return out;
+}
+
+static vtkSmartPointer<vtkUnstructuredGrid> meshDisplayExtractCells(
+    vtkUnstructuredGrid* fullGrid, const vtkSmartPointer<vtkIdList>& ids)
+{
+    auto out = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    if (!fullGrid || !ids || ids->GetNumberOfIds() <= 0)
+        return out;
+
+    auto source = meshDisplayCopyWithFullCellIds(fullGrid);
+
+    auto ex = vtkSmartPointer<vtkExtractCells>::New();
+    ex->SetInputData(source);
+    ex->SetCellList(ids);
+    ex->Update();
+
+    out->ShallowCopy(ex->GetOutput());
+    return out;
+}
+
+static void meshDisplaySetMapperInput(vtkMapper* mapper, vtkDataSet* dataSet)
+{
+    if (!mapper || !dataSet)
+        return;
+
+    if (auto* polyMapper = vtkPolyDataMapper::SafeDownCast(mapper))
+    {
+        if (auto* poly = vtkPolyData::SafeDownCast(dataSet))
+            polyMapper->SetInputData(poly);
+        return;
+    }
+
+    if (auto* dataSetMapper = vtkDataSetMapper::SafeDownCast(mapper))
+        dataSetMapper->SetInputData(dataSet);
+}
+
+static bool meshDisplayCellMatchesFilter(vtkUnstructuredGrid* grid,
+                                         vtkIdType cellId,
+                                         bool customFilter,
+                                         const QSet<int>& ketypes,
+                                         const QSet<int>& matypes,
+                                         const QSet<int>& layers)
+{
+    if (!customFilter)
+        return true;
+    if (!grid || cellId < 0 || cellId >= grid->GetNumberOfCells())
+        return false;
+
+    auto* cd = grid->GetCellData();
+    if (!cd)
+        return true;
+
+    auto allowed = [](vtkDataArray* array, vtkIdType tupleId, const QSet<int>& values) -> bool
+    {
+        if (!array)
+            return true;
+        return values.contains(meshDisplayTuple1i(array, tupleId, 0));
+    };
+
+    return allowed(cd->GetArray("KETYPE"), cellId, ketypes) &&
+           allowed(cd->GetArray("MATYPE"), cellId, matypes) &&
+           allowed(cd->GetArray("LAYER"), cellId, layers);
+}
+
+static QSet<int> meshDisplayCollectCellInts(vtkDataSet* dataSet, const char* arrayName)
+{
+    QSet<int> values;
+    auto* array = dataSet && dataSet->GetCellData() ? dataSet->GetCellData()->GetArray(arrayName) : nullptr;
+    if (!array)
+        return values;
+
+    for (vtkIdType i = 0; i < array->GetNumberOfTuples(); ++i)
+        values.insert(static_cast<int>(array->GetTuple1(i)));
+    return values;
+}
+
+static vtkSmartPointer<vtkLookupTable> meshDisplayBuildLookupTable(const QSet<int>& values)
+{
+    if (values.isEmpty())
+        return nullptr;
+
+    int minValue = std::numeric_limits<int>::max();
+    int maxValue = std::numeric_limits<int>::min();
+    for (int value : values)
+    {
+        minValue = qMin(minValue, value);
+        maxValue = qMax(maxValue, value);
+    }
+    if (minValue > maxValue)
+        return nullptr;
+
+    const int tableSize = maxValue - minValue + 1;
+    auto lut = vtkSmartPointer<vtkLookupTable>::New();
+    lut->SetNumberOfTableValues(tableSize);
+    lut->SetTableRange(static_cast<double>(minValue), static_cast<double>(maxValue));
+    lut->Build();
+
+    for (int i = 0; i < tableSize; ++i)
+    {
+        const int value = minValue + i;
+        const QColor color = values.contains(value) ? meshDisplayCategoricalColor(value)
+                                                    : QColor::fromRgbF(0.78, 0.78, 0.78);
+        lut->SetTableValue(i, color.redF(), color.greenF(), color.blueF(), 1.0);
+    }
+
+    return lut;
+}
+
+static void meshDisplayApplyScalarColor(vtkMapper* mapper,
+                                        vtkDataSet* dataSet,
+                                        const char* arrayName,
+                                        vtkLookupTable* lut)
+{
+    if (!mapper || !dataSet || !arrayName || !lut)
+        return;
+
+    auto* cd = dataSet->GetCellData();
+    if (!cd || !cd->GetArray(arrayName))
+    {
+        mapper->ScalarVisibilityOff();
+        return;
+    }
+
+    mapper->SetScalarModeToUseCellFieldData();
+    mapper->SelectColorArray(arrayName);
+    mapper->SetLookupTable(lut);
+    mapper->UseLookupTableScalarRangeOn();
+    mapper->ScalarVisibilityOn();
+}
+
+static void meshDisplayApplyGlobalState(vtkUnstructuredGrid* fullGrid,
+                                        vtkActor* surfaceActor,
+                                        vtkMapper* surfaceMapper,
+                                        vtkActor* lineActor,
+                                        vtkMapper* lineMapper)
+{
+    if (!fullGrid || (!surfaceMapper && !lineMapper))
+        return;
+
+    const bool customFilter = PublicVariables::instance().get(kMeshDisplayFilterCustomKey).toBool();
+
+    const QSet<int> ketypes = meshDisplayIntSetFromString(
+        PublicVariables::instance().get(kMeshDisplayFilterKetypeKey).toString());
+    const QSet<int> matypes = meshDisplayIntSetFromString(
+        PublicVariables::instance().get(kMeshDisplayFilterMatypeKey).toString());
+    const QSet<int> layers = meshDisplayIntSetFromString(
+        PublicVariables::instance().get(kMeshDisplayFilterLayerKey).toString());
+
+    auto surfaceIds = vtkSmartPointer<vtkIdList>::New();
+    auto lineIds = vtkSmartPointer<vtkIdList>::New();
+
+    for (vtkIdType cid = 0; cid < fullGrid->GetNumberOfCells(); ++cid)
+    {
+        vtkCell* cell = fullGrid->GetCell(cid);
+        if (!cell)
+            continue;
+        if (!meshDisplayCellMatchesFilter(fullGrid, cid, customFilter, ketypes, matypes, layers))
+            continue;
+
+        const int dim = cell->GetCellDimension();
+        if (dim >= 2)
+            surfaceIds->InsertNextId(cid);
+        else if (dim == 1)
+            lineIds->InsertNextId(cid);
+    }
+
+    vtkSmartPointer<vtkPolyData> viewSurface = vtkSmartPointer<vtkPolyData>::New();
+    vtkSmartPointer<vtkUnstructuredGrid> viewLineGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+
+    if (surfaceIds->GetNumberOfIds() > 0)
+    {
+        auto surfaceSource = meshDisplayExtractCells(fullGrid, surfaceIds);
+        auto surfaceFilter = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+        surfaceFilter->SetInputData(surfaceSource);
+        surfaceFilter->Update();
+        viewSurface->ShallowCopy(surfaceFilter->GetOutput());
+    }
+
+    if (lineIds->GetNumberOfIds() > 0)
+        viewLineGrid = meshDisplayExtractCells(fullGrid, lineIds);
+
+    if (surfaceMapper)
+        meshDisplaySetMapperInput(surfaceMapper, viewSurface);
+    if (lineMapper)
+        meshDisplaySetMapperInput(lineMapper, viewLineGrid);
+
+    if (surfaceActor)
+        surfaceActor->SetVisibility(viewSurface->GetNumberOfCells() > 0 ? 1 : 0);
+    if (lineActor)
+        lineActor->SetVisibility(viewLineGrid->GetNumberOfCells() > 0 ? 1 : 0);
+
+    if (surfaceMapper)
+        surfaceMapper->ScalarVisibilityOff();
+    if (lineMapper)
+        lineMapper->ScalarVisibilityOff();
+
 }
 
 } // namespace
@@ -1583,7 +1857,7 @@ QVector<DomainKey> MeshModuleController::availableDomains(const QString& categor
 QSet<MeshIdType> MeshModuleController::domainCells(const DomainKey& key) const
 {
     QSet<MeshIdType> out;
-    if (!key.isValid())
+    if (!meshDomainKeyIsValid(key))
         return out;
 
     const MeshTagKey tagKey{key.category, key.dim, key.id};
@@ -1594,7 +1868,7 @@ QSet<MeshIdType> MeshModuleController::domainCells(const DomainKey& key) const
 
 QString MeshModuleController::domainDisplayText(const DomainKey& key) const
 {
-    if (!key.isValid())
+    if (!meshDomainKeyIsValid(key))
         return QString();
     return displayTextOfTag(MeshTagKey{key.category, key.dim, key.id});
 }
@@ -1602,111 +1876,80 @@ QString MeshModuleController::domainDisplayText(const DomainKey& key) const
 void MeshModuleController::highlightDomainMatypes(const QSet<int>& matypes, int selectedMatype,
                                                   int previewMatype, int preDeleteMatype)
 {
-    if (!m_gridEditingWidget)
+    Q_UNUSED(selectedMatype);
+
+    if (!m_visualWidgetService)
+        return;
+
+    QList<vtkMapper*> targetMappers;
+    if (m_previewSurfaceMapper)
+        targetMappers.push_back(m_previewSurfaceMapper);
+    if (m_previewLineMapper)
+        targetMappers.push_back(m_previewLineMapper);
+    if (targetMappers.isEmpty() && m_previewMapper)
+        targetMappers.push_back(m_previewMapper);
+    if (targetMappers.isEmpty())
+        return;
+
+    const bool hasSelection =
+        !matypes.isEmpty() || previewMatype >= 0 || preDeleteMatype >= 0;
+
+    if (!hasSelection)
     {
-        if (!m_visualWidgetService)
-        {
-            return;
-        }
-
-        QList<vtkMapper*> targetMappers;
-        if (m_previewSurfaceMapper)
-            targetMappers.push_back(m_previewSurfaceMapper);
-        if (m_previewLineMapper)
-            targetMappers.push_back(m_previewLineMapper);
-        if (targetMappers.isEmpty() && m_previewMapper)
-            targetMappers.push_back(m_previewMapper);
-        if (targetMappers.isEmpty())
-        {
-            return;
-        }
-
-        const bool hasSelection =
-            !matypes.isEmpty() || selectedMatype >= 0 || previewMatype >= 0 || preDeleteMatype >= 0;
-
-        if (!hasSelection)
-        {
-            for (auto* mapper : std::as_const(targetMappers))
-            {
-                if (mapper)
-                {
-                    mapper->ScalarVisibilityOff();
-                }
-            }
-            m_visualWidgetService->render();
-            return;
-        }
-
-        QSet<int> allMatypes = getAvailableMatypes();
-        if (selectedMatype >= 0)
-        {
-            allMatypes.insert(selectedMatype);
-        }
-        if (previewMatype >= 0)
-        {
-            allMatypes.insert(previewMatype);
-        }
-        if (preDeleteMatype >= 0)
-        {
-            allMatypes.insert(preDeleteMatype);
-        }
-        allMatypes.unite(matypes);
-
-        int maxMatype = -1;
-        for (int v : std::as_const(allMatypes))
-        {
-            maxMatype = qMax(maxMatype, v);
-        }
-        if (maxMatype < 0)
-        {
-            return;
-        }
-
-        auto lut = vtkSmartPointer<vtkLookupTable>::New();
-        lut->SetNumberOfTableValues(maxMatype + 1);
-        lut->SetTableRange(0.0, maxMatype);
-        lut->Build();
-
-        for (int i = 0; i <= maxMatype; ++i)
-        {
-            lut->SetTableValue(i, 0.75, 0.75, 0.75, 1.0);
-        }
-        for (int matype : std::as_const(matypes))
-        {
-            if (matype >= 0 && matype <= maxMatype)
-            {
-                lut->SetTableValue(matype, 0.25, 0.75, 0.25, 1.0);
-            }
-        }
-        if (selectedMatype >= 0 && selectedMatype <= maxMatype)
-        {
-            lut->SetTableValue(selectedMatype, 0.9, 0.2, 0.2, 1.0);
-        }
-        if (previewMatype >= 0 && previewMatype <= maxMatype)
-        {
-            lut->SetTableValue(previewMatype, 0.2, 0.4, 0.9, 1.0);
-        }
-        if (preDeleteMatype >= 0 && preDeleteMatype <= maxMatype)
-        {
-            lut->SetTableValue(preDeleteMatype, 0.9, 0.55, 0.2, 1.0);
-        }
-
-        for (auto* mapper : std::as_const(targetMappers))
-        {
-            if (!mapper)
-            {
-                continue;
-            }
-            mapper->SetScalarModeToUseCellFieldData();
-            mapper->SelectColorArray("MATYPE");
-            mapper->SetLookupTable(lut);
-            mapper->UseLookupTableScalarRangeOn();
-            mapper->ScalarVisibilityOn();
-        }
+        // 清除材料临时高亮后，恢复全局显示控制的颜色状态。
+        meshDisplayApplyGlobalState(m_importedGrid,
+                                    m_previewSurfaceActor,
+                                    m_previewSurfaceMapper,
+                                    m_previewLineActor,
+                                    m_previewLineMapper);
+        PickManager::instance().updateStructure();
         m_visualWidgetService->render();
         return;
     }
-    m_gridEditingWidget->highlightMatypes(matypes, selectedMatype, previewMatype, preDeleteMatype);
+
+    QSet<int> allMatypes = getAvailableMatypes();
+    if (previewMatype >= 0)
+        allMatypes.insert(previewMatype);
+    if (preDeleteMatype >= 0)
+        allMatypes.insert(preDeleteMatype);
+    allMatypes.unite(matypes);
+
+    int maxMatype = -1;
+    for (int v : allMatypes)
+        maxMatype = qMax(maxMatype, v);
+    if (maxMatype < 0)
+        return;
+
+    auto lut = vtkSmartPointer<vtkLookupTable>::New();
+    lut->SetNumberOfTableValues(maxMatype + 1);
+    lut->SetTableRange(0.0, maxMatype);
+    lut->Build();
+
+    for (int i = 0; i <= maxMatype; ++i)
+        lut->SetTableValue(i, 0.75, 0.75, 0.75, 1.0);
+
+    for (int matype : matypes)
+    {
+        if (matype >= 0 && matype <= maxMatype)
+            lut->SetTableValue(matype, 0.25, 0.75, 0.25, 1.0);
+    }
+    if (previewMatype >= 0 && previewMatype <= maxMatype)
+        lut->SetTableValue(previewMatype, 0.2, 0.4, 0.9, 1.0);
+    if (preDeleteMatype >= 0 && preDeleteMatype <= maxMatype)
+        lut->SetTableValue(preDeleteMatype, 0.9, 0.55, 0.2, 1.0);
+
+    for (auto* mapper : targetMappers)
+    {
+        if (!mapper)
+            continue;
+        mapper->SetScalarModeToUseCellFieldData();
+        mapper->SelectColorArray("MATYPE");
+        mapper->SetLookupTable(lut);
+        mapper->UseLookupTableScalarRangeOn();
+        mapper->ScalarVisibilityOn();
+    }
+
+    m_visualWidgetService->render();
 }
 
 void MeshModuleController::initAction()
@@ -2356,6 +2599,7 @@ void MeshModuleController::displayCurrentGrid()
     if (!m_visualWidgetService || !m_hasGrid || !m_importedGrid)
         return;
 
+
     vtkSmartPointer<vtkUnstructuredGrid> lineGrid;
     vtkSmartPointer<vtkUnstructuredGrid> nonLineGrid;
     splitGridByDim(m_importedGrid, lineGrid, nonLineGrid);
@@ -2383,7 +2627,7 @@ void MeshModuleController::displayCurrentGrid()
         surfActor->SetMapper(mapper);
         auto* prop = surfActor->GetProperty();
         prop->SetRepresentationToSurface();
-        prop->SetColor(0.7, 0.7, 0.7);
+        prop->SetColor(0.78, 0.78, 0.78);
         // prop->SetSpecular(0.0);
         prop->EdgeVisibilityOn();
         prop->SetEdgeColor(0.0, 0.0, 0.0);
@@ -2434,6 +2678,16 @@ void MeshModuleController::displayCurrentGrid()
 
            // 网格导入/预览后默认只显示网格。
     m_visualWidgetService->setGroupVisible("Geometry", false, false);
+
+    // 全局显示控制在这里统一应用。
+    // GridEditingWidget 只负责修改 PublicVariables 中的显示状态；
+    // displayCurrentGrid / 页面切换 / 工程恢复后都由这里重新套用筛选和颜色。
+    meshDisplayApplyGlobalState(m_importedGrid,
+                                m_previewSurfaceActor,
+                                m_previewSurfaceMapper,
+                                m_previewLineActor,
+                                m_previewLineMapper);
+
     // 必须在网格 prop 完成更新后再同步 PickManager 结构，否则会抓到旧 actor/mapper。
     PickManager::instance().updateStructure();
     m_visualWidgetService->render();
@@ -2497,10 +2751,12 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
         }
     }
 
+    auto sourceWithIds = meshDisplayCopyWithFullCellIds(src);
+
     if (lineIds->GetNumberOfIds() > 0)
     {
         auto ex = vtkSmartPointer<vtkExtractCells>::New();
-        ex->SetInputData(src);
+        ex->SetInputData(sourceWithIds);
         ex->SetCellList(lineIds);
         ex->Update();
         outLine = vtkUnstructuredGrid::SafeDownCast(ex->GetOutput());
@@ -2509,7 +2765,7 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
     if (nonLineIds->GetNumberOfIds() > 0)
     {
         auto ex = vtkSmartPointer<vtkExtractCells>::New();
-        ex->SetInputData(src);
+        ex->SetInputData(sourceWithIds);
         ex->SetCellList(nonLineIds);
         ex->Update();
         outNonLine = vtkUnstructuredGrid::SafeDownCast(ex->GetOutput());
@@ -2536,7 +2792,7 @@ vtkSmartPointer<vtkActor> MeshModuleController::createSurfaceActor(vtkDataSet* g
     actor->SetMapper(mapper);
 
     auto* p = actor->GetProperty();
-    p->SetColor(0.85, 0.85, 0.85);  // 与几何默认色一致
+    p->SetColor(0.78, 0.78, 0.78);  // 与导入网格默认色一致
     p->SetSpecular(0.0);            // 避免高光导致“发亮”
     p->EdgeVisibilityOn();          // 显示边
     p->SetEdgeColor(0.0, 0.0, 0.0); // 黑色边
@@ -2558,13 +2814,15 @@ vtkSmartPointer<vtkActor> MeshModuleController::createLineActor(vtkUnstructuredG
     actor->SetMapper(mapper);
 
     auto* p = actor->GetProperty();
-    p->SetColor(0.0, 0.0, 0.0); // 黑线
-    p->SetLineWidth(2.0);
-    p->LightingOff();          // 关键：避免线被光照“洗白/发虚”
-    p->RenderLinesAsTubesOn(); // 可选但很推荐：更粗更好点选（VTK支持则生效）
+    p->SetColor(0.85, 0.85, 0.85); // 与面/体网格默认填充色保持一致
+    p->SetSpecular(0.0);
+    p->SetLineWidth(1.0);
+    p->LightingOn();
+    p->RenderLinesAsTubesOff();
 
     return actor;
 }
+
 
 static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
 {
@@ -2884,10 +3142,12 @@ bool MeshModuleController::groupByCoordinateRange(double xmin, double xmax, doub
             *errMsg = QString("当前没有可分组的网格");
         return false;
     }
-    if (value <= 0)
+    const bool targetIsLayer = targetArrayName.compare("LAYER", Qt::CaseInsensitive) == 0;
+    if ((targetIsLayer && value == 0) || (!targetIsLayer && value <= 0))
     {
         if (errMsg)
-            *errMsg = QString("分组编号必须大于 0");
+            *errMsg = targetIsLayer ? QString("LAYER 分组编号不能为 0")
+                                    : QString("分组编号必须大于 0");
         return false;
     }
     if (targetArrayName.trimmed().isEmpty())

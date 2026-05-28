@@ -680,18 +680,18 @@ void UiFrame::buildRibbonTabs()
         // // ============ 剖分方式 ============
         auto* panelMesh = cate->addPannel("剖分");
         auto* actGlobal = makeAction(this, ":/resources/menu/minimal/mesh-global.svg", "&整体剖分");
-        auto* actSingle = makeAction(this, ":/resources/menu/minimal/mesh-single.svg", "&单体剖分");
+        // auto* actSingle = makeAction(this, ":/resources/menu/minimal/mesh-single.svg", "&单体剖分");
         // auto* actMapped = makeAction(this, ":/resources/menu/meshMapped.png",
         // "&映射剖分"); auto* actSweep  = makeAction(this,
         // ":/resources/menu/meshSweep.png",   "&扫掠剖分");
 
         addActionToPanel(panelMesh, actGlobal, 2);
-        addActionToPanel(panelMesh, actSingle, 2);
+        // addActionToPanel(panelMesh, actSingle, 2);
         // addActionToPanel(panelMesh, actMapped, 2);
         // addActionToPanel(panelMesh, actSweep,  2);
 
         bindEvent(this, actGlobal, PublicConstants::kActionPreprocessMeshGlobal);
-        bindEvent(this, actSingle, PublicConstants::kActionPreprocessMeshSingle);
+        // bindEvent(this, actSingle, PublicConstants::kActionPreprocessMeshSingle);
         // bindEvent(this, actMapped, PublicConstants::kActionPreprocessMeshMapped);
         // bindEvent(this, actSweep,  PublicConstants::kActionPreprocessMeshSweep);
 

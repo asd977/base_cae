@@ -1518,6 +1518,8 @@ void MaterialManager::highlightMatypes(const QString& entryId, const QSet<int>& 
                                        int selectedMatype,
                                        int previewMatype, int preDeleteMatype)
 {
+    Q_UNUSED(selectedMatype);
+
     if (entryId.isEmpty())
         return;
 
@@ -1647,10 +1649,9 @@ void MaterialManager::refreshMatypeHighlight(const QString& entryId)
     if (!entry)
         return;
 
-    const int selected = m_selectedMatypes.value(entryId, -1);
     const int preview = m_previewMatypes.value(entryId, -1);
     const int preDelete = m_preDeleteMatypes.value(entryId, -1);
-    highlightMatypes(entryId, entry->appliedMatypes, selected, preview, preDelete);
+    highlightMatypes(entryId, entry->appliedMatypes, -1, preview, preDelete);
 }
 
 int MaterialManager::selectedMatypeForEntry(const QString& entryId) const

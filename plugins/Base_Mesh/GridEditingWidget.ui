@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='UTF-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>GridEditingWidget</class>
  <widget class="QWidget" name="GridEditingWidget">
@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>542</width>
-    <height>640</height>
+    <width>560</width>
+    <height>680</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -26,6 +26,9 @@
    <property name="bottomMargin">
     <number>0</number>
    </property>
+   <property name="spacing">
+    <number>8</number>
+   </property>
    <item>
     <widget class="QLabel" name="pageNameLabel">
      <property name="text">
@@ -36,89 +39,98 @@
    <item>
     <widget class="QPushButton" name="sectionTitleButton">
      <property name="text">
-      <string>功能设置</string>
+      <string>显示控制</string>
      </property>
     </widget>
    </item>
    <item>
-    <widget class="QLabel" name="label">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
-     <property name="text">
-      <string>显示属性</string>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QPushButton" name="pushButton_2">
-     <property name="text">
-      <string>显示属性</string>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QWidget" name="widget_3" native="true">
-     <layout class="QGridLayout" name="gridLayout_3">
-      <item row="0" column="0">
-       <widget class="QLabel" name="labelColorMode">
+    <widget class="QWidget" name="widgetDisplayControl" native="true">
+     <layout class="QVBoxLayout" name="verticalLayoutDisplayControl">
+      <property name="leftMargin">
+       <number>8</number>
+      </property>
+      <property name="topMargin">
+       <number>8</number>
+      </property>
+      <property name="rightMargin">
+       <number>8</number>
+      </property>
+      <property name="bottomMargin">
+       <number>8</number>
+      </property>
+      <property name="spacing">
+       <number>8</number>
+      </property>
+      <item>
+       <layout class="QGridLayout" name="gridLayoutColorMode">
+        <item row="0" column="0">
+         <widget class="QLabel" name="labelColorMode">
+          <property name="text">
+           <string>颜色显示：</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QComboBox" name="comboBoxColorMode"/>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelFilterHint">
         <property name="text">
-         <string>颜色显示:</string>
+         <string>勾选表示保留显示，取消勾选表示隐藏；父级可一键勾选/取消整组。</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
         </property>
        </widget>
       </item>
-      <item row="0" column="1">
-       <widget class="QComboBox" name="comboBoxColorMode"/>
-      </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="labelKetypeFilter">
-        <property name="text">
-         <string>单元类型:</string>
+      <item>
+       <widget class="QTreeWidget" name="treeWidgetFilterValues">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>260</height>
+         </size>
         </property>
+        <property name="alternatingRowColors">
+         <bool>true</bool>
+        </property>
+        <property name="rootIsDecorated">
+         <bool>true</bool>
+        </property>
+        <property name="itemsExpandable">
+         <bool>true</bool>
+        </property>
+        <property name="allColumnsShowFocus">
+         <bool>true</bool>
+        </property>
+        <column>
+         <property name="text">
+          <string>筛选项</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>数量</string>
+         </property>
+        </column>
        </widget>
       </item>
-      <item row="1" column="1">
-       <widget class="QComboBox" name="comboBoxKetype">
-        <property name="editable">
-         <bool>false</bool>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="labelMatypeFilter">
-        <property name="text">
-         <string>材料类型:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <widget class="QComboBox" name="comboBoxMatype">
-        <property name="editable">
-         <bool>false</bool>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="0">
-       <widget class="QLabel" name="labelLayerFilter">
-        <property name="text">
-         <string>填筑分层:</string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="1">
-       <widget class="QComboBox" name="comboBoxLayer">
-        <property name="editable">
-         <bool>false</bool>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="0" colspan="2">
-       <layout class="QHBoxLayout" name="horizontalLayout_2">
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayoutOptions">
         <item>
-         <spacer name="horizontalSpacer">
+         <widget class="QCheckBox" name="checkBoxAutoApply">
+          <property name="text">
+           <string>勾选后自动应用</string>
+          </property>
+          <property name="checked">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="horizontalSpacerOptions">
           <property name="orientation">
            <enum>Qt::Horizontal</enum>
           </property>
@@ -133,23 +145,30 @@
         <item>
          <widget class="QPushButton" name="pushButtonApplyFilter">
           <property name="text">
-           <string>应用过滤</string>
+           <string>应用筛选</string>
           </property>
          </widget>
         </item>
         <item>
          <widget class="QPushButton" name="pushButtonResetFilter">
           <property name="text">
-           <string>重置</string>
+           <string>全部显示</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pushButtonUncheckAll">
+          <property name="text">
+           <string>全部隐藏</string>
           </property>
          </widget>
         </item>
        </layout>
       </item>
-      <item row="5" column="0" colspan="2">
+      <item>
        <widget class="QLabel" name="labelFilterSummary">
         <property name="text">
-         <string>当前过滤：全部</string>
+         <string>当前显示：无网格</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>
@@ -161,6 +180,9 @@
    </item>
    <item>
     <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
      <property name="sizeHint" stdset="0">
       <size>
        <width>20</width>

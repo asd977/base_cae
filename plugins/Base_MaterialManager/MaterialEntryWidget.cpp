@@ -79,12 +79,10 @@ void MaterialEntryWidget::beforeLoad()
         if (!m_entryId.isEmpty())
         {
             MaterialEntry* entry = lookupEntry();
-            const int selected = m_materialManager->selectedMatypeForEntry(m_entryId);
             const int preview = m_materialManager->previewMatypeForEntry(m_entryId);
             const int preDelete = m_materialManager->preDeleteMatypeForEntry(m_entryId);
             const bool hasHighlightState =
-                entry && (!entry->appliedMatypes.isEmpty() || selected >= 0 || preview >= 0 ||
-                          preDelete >= 0);
+                entry && (!entry->appliedMatypes.isEmpty() || preview >= 0 || preDelete >= 0);
             if (hasHighlightState)
             {
                 refreshMatypeHighlightSafe();
@@ -575,9 +573,8 @@ void MaterialEntryWidget::onMatypeChanged(int)
     const QVariant data = m_matypeCombo->currentData();
     const int matype = data.isValid() ? data.toInt() : -1;
 
-    // 仅在非下拉预览阶段同步 Selected，覆盖键盘/滚轮等非 activated 路径。
+    // 仅同步材料页下拉框当前值，不触发三维高亮刷新。
     m_materialManager->setSelectedMatypeForEntry(m_entryId, matype);
-    refreshMatypeHighlightSafe();
 
     updateAppliedListColors();
 }
@@ -830,7 +827,7 @@ void MaterialEntryWidget::onDropdownClosed()
                            if (!m_beforeUnloadHandled)
                            {
                                // 下拉关闭后仅取消 Preview，并恢复到该条目的应有高亮状态
-                               //（Selected / PreDelete / Applied）。
+                               //（Applied / PreDelete）。Selected 只作为下拉框当前值，不参与三维高亮。
                                refreshMatypeHighlightSafe();
                            }
 

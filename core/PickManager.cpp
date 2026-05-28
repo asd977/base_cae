@@ -65,6 +65,12 @@ vtkDataArray* findArray(vtkFieldData* fd, const char* a, const char* b = nullptr
         return fd->GetArray(b);
     return nullptr;
 }
+
+static bool domainKeyIsValidForDisplay(const DomainKey& key)
+{
+    return !key.category.trimmed().isEmpty() && key.dim >= 0 && key.id != 0;
+}
+
 } // namespace
 
 static inline double dist2PointToSegment(const double x[3], const double a[3], const double b[3])
@@ -353,56 +359,57 @@ QString PickManager::domainOwner(const QString& domain, const DomainKey& key) co
 QSet<vtkIdType> PickManager::cellsOfDomain(const DomainKey& key) const
 {
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    if (!meshSvc || !key.isValid())
+    if (!meshSvc || !domainKeyIsValidForDisplay(key))
         return {};
 
     QSet<vtkIdType> out;
 
-    auto appendMatypeCellsFromDataset = [&out](vtkDataSet* ds, int matype)
-    {
-        if (!ds || matype <= 0 || !ds->GetCellData())
-            return;
-
-        vtkDataArray* matypeArr = ds->GetCellData()->GetArray("MATYPE");
-        if (!matypeArr)
-            return;
-
-        vtkDataArray* origCellArr = ds->GetCellData()->GetArray("vtkOriginalCellIds");
-        const vtkIdType n = std::min(ds->GetNumberOfCells(), matypeArr->GetNumberOfTuples());
-
-        for (vtkIdType cid = 0; cid < n; ++cid)
-        {
-            if (static_cast<int>(matypeArr->GetTuple1(cid)) != matype)
-                continue;
-
-            // 同时加入本地 cell id 和原始 cell id。
-            // surface/line actor 可能使用 vtkOriginalCellIds 比较；lineGrid fallback 又常常是本地 id。
-            out.insert(cid);
-
-            if (origCellArr && cid < origCellArr->GetNumberOfTuples())
-                out.insert(static_cast<vtkIdType>(origCellArr->GetTuple1(cid)));
-        }
-    };
-
-    // MATYPE 的 lineGrid 高亮优先按当前显示数据集扫描，避免 vtkExtractCells 拆分后
-    // 原始 cell id 与 lineGrid 本地 cell id 不一致导致无法着色。
-    if (key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0)
-    {
-        if (key.dim == 1)
-        {
-            appendMatypeCellsFromDataset(m_linePickDataSet ? m_linePickDataSet : vtkDataSet::SafeDownCast(m_gridLine), key.id);
-        }
-        else
-        {
-            appendMatypeCellsFromDataset(m_solidPickDataSet ? m_solidPickDataSet : vtkDataSet::SafeDownCast(m_gridSolid), key.id);
-        }
-    }
-
-    // tagSets 中的 cellIds 通常是原始 m_importedGrid cell id。保留它们，供 surface actor
-    // 通过 vtkOriginalCellIds 匹配。
+    // tagSets 中的 cellIds 是 m_importedGrid / nonLineGrid 的原始 cell id。
+    // 对 surface actor 着色时，应与 vtkOriginalCellIds 对比，而不是混入 surface 本地 cell id。
     const QSet<MeshIdType> src = meshSvc->domainCells(key);
     for (MeshIdType cid : src)
         out.insert(static_cast<vtkIdType>(cid));
+
+    auto appendCellsFromDataset = [&out](vtkDataSet* ds, const QString& arrayName, int id)
+    {
+        if (!ds || id == 0 || !ds->GetCellData())
+            return;
+
+        vtkDataArray* valueArr = ds->GetCellData()->GetArray(arrayName.toUtf8().constData());
+        if (!valueArr)
+            return;
+
+        vtkDataArray* origCellArr = ds->GetCellData()->GetArray("vtkOriginalCellIds");
+        const vtkIdType n = std::min(ds->GetNumberOfCells(), valueArr->GetNumberOfTuples());
+
+        for (vtkIdType cid = 0; cid < n; ++cid)
+        {
+            if (static_cast<int>(valueArr->GetTuple1(cid)) != id)
+                continue;
+
+            // 有 vtkOriginalCellIds 时返回原始 cell id；没有时才返回当前数据集本地 cell id。
+            // 不能同时返回两套编号，否则 local id 会误命中其他原始 cell id，出现碎面/整片误高亮。
+            vtkIdType keyId = cid;
+            if (origCellArr && cid < origCellArr->GetNumberOfTuples())
+                keyId = static_cast<vtkIdType>(origCellArr->GetTuple1(cid));
+            out.insert(keyId);
+        }
+    };
+
+    // 兜底：旧工程或拆分后的 lineGrid 可能没有完整 tagSets，但 CellData 仍有 MATYPE/LAYER。
+    if (key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0 ||
+        key.category.compare(QStringLiteral("LAYER"), Qt::CaseInsensitive) == 0)
+    {
+        const QString arrayName = key.category.toUpper();
+        if (key.dim == 1)
+            appendCellsFromDataset(m_linePickDataSet ? m_linePickDataSet
+                                                     : vtkDataSet::SafeDownCast(m_gridLine),
+                                   arrayName, key.id);
+        else
+            appendCellsFromDataset(m_solidPickDataSet ? m_solidPickDataSet
+                                                      : vtkDataSet::SafeDownCast(m_gridSolid),
+                                   arrayName, key.id);
+    }
 
     return out;
 }
@@ -444,15 +451,15 @@ void PickManager::setAppliedDomains(const QString& domain, const QString& uuid,
     uuid2set[uuid] = keys;
 
     const DomainKey sel = m_selectedDomainByDomainUuid[domain].value(uuid, DomainKey{});
-    if (sel.isValid() && !keys.contains(sel))
+    if (domainKeyIsValidForDisplay(sel) && !keys.contains(sel))
         m_selectedDomainByDomainUuid[domain][uuid] = DomainKey{};
 
     const DomainKey pre = m_previewDomainByDomainUuid[domain].value(uuid, DomainKey{});
-    if (pre.isValid() && !keys.contains(pre))
+    if (domainKeyIsValidForDisplay(pre) && !keys.contains(pre))
         m_previewDomainByDomainUuid[domain][uuid] = DomainKey{};
 
     const DomainKey del = m_preDeleteDomainByDomainUuid[domain].value(uuid, DomainKey{});
-    if (del.isValid() && !keys.contains(del))
+    if (domainKeyIsValidForDisplay(del) && !keys.contains(del))
         m_preDeleteDomainByDomainUuid[domain][uuid] = DomainKey{};
 
     rebuildDomainHighlightActors();
@@ -839,7 +846,6 @@ bool PickManager::pickAt(int x, int y)
         return false;
 
     vtkDataSet* ds = m_cellPicker->GetDataSet();
-    qInfo()<<ds;
     vtkCell* cell = ds ? ds->GetCell(cellId) : nullptr;
     if (!cell)
         return false;
@@ -862,16 +868,32 @@ bool PickManager::pickAt(int x, int y)
         {
             const MshPickMap pickMap = meshSvc->mshPickMapSolid();
             const auto tags = pickMap.cellIdToDomainTags.value(static_cast<MeshIdType>(origCellId));
+
+            // 负数目前主要出现在 LAYER 中；先识别负数 LAYER，避免被同一单元上的 MATYPE 抢先选走。
             for (const MeshTagKey& tag : tags)
             {
-                if (tag.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0 &&
-                    tag.dim == 3 && tag.id != 0)
+                if (tag.category.compare(QStringLiteral("LAYER"), Qt::CaseInsensitive) == 0 &&
+                    tag.dim == 3 && tag.id < 0)
                 {
                     pickedKey = DomainKey{tag.category, tag.dim, tag.id};
                     break;
                 }
             }
-            if (!pickedKey.isValid())
+
+            if (!domainKeyIsValidForDisplay(pickedKey))
+            {
+                for (const MeshTagKey& tag : tags)
+                {
+                    if (tag.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0 &&
+                        tag.dim == 3 && tag.id != 0)
+                    {
+                        pickedKey = DomainKey{tag.category, tag.dim, tag.id};
+                        break;
+                    }
+                }
+            }
+
+            if (!domainKeyIsValidForDisplay(pickedKey))
             {
                 for (const MeshTagKey& tag : tags)
                 {
@@ -884,18 +906,40 @@ bool PickManager::pickAt(int x, int y)
             }
         }
 
-        if (!pickedKey.isValid())
+        if (!domainKeyIsValidForDisplay(pickedKey))
+        {
+            auto* layerArr = vtkIntArray::SafeDownCast(ds->GetCellData()->GetArray("LAYER"));
+            if (layerArr && cellId >= 0 && cellId < layerArr->GetNumberOfTuples())
+            {
+                const int layer = layerArr->GetValue(cellId);
+                if (layer < 0)
+                    pickedKey = DomainKey{QStringLiteral("LAYER"), 3, layer};
+            }
+        }
+
+        if (!domainKeyIsValidForDisplay(pickedKey))
         {
             auto* matypeArr = vtkIntArray::SafeDownCast(ds->GetCellData()->GetArray("MATYPE"));
             if (matypeArr && cellId >= 0 && cellId < matypeArr->GetNumberOfTuples())
             {
                 const int matype = matypeArr->GetValue(cellId);
-                if (matype > 0)
+                if (matype != 0)
                     pickedKey = DomainKey{QStringLiteral("MATYPE"), 3, matype};
             }
         }
 
-        if (!pickedKey.isValid())
+        if (!domainKeyIsValidForDisplay(pickedKey))
+        {
+            auto* layerArr = vtkIntArray::SafeDownCast(ds->GetCellData()->GetArray("LAYER"));
+            if (layerArr && cellId >= 0 && cellId < layerArr->GetNumberOfTuples())
+            {
+                const int layer = layerArr->GetValue(cellId);
+                if (layer != 0)
+                    pickedKey = DomainKey{QStringLiteral("LAYER"), 3, layer};
+            }
+        }
+
+        if (!domainKeyIsValidForDisplay(pickedKey))
             return false;
 
         setSelectedDomain(m_currentDomain, m_currentUUid, pickedKey);
@@ -1008,11 +1052,7 @@ void PickManager::markDirty(int bits)
         return;
 
     m_rebuildScheduled = true;
-    QTimer::singleShot(0, this,
-                       [this]()
-                       {
-                           flushRebuild();
-                       });
+    flushRebuild();
 }
 
 void PickManager::flushRebuild()
@@ -2024,8 +2064,8 @@ void PickManager::rebuildDomainHighlightActors()
     const DomainKey preDelete =
         m_preDeleteDomainByDomainUuid.value(m_currentDomain).value(m_currentUUid, DomainKey{});
 
-    const bool hasAny = !applied.isEmpty() || selected.isValid() || preview.isValid() ||
-                        preDelete.isValid();
+    const bool hasAny = !applied.isEmpty() || domainKeyIsValidForDisplay(selected) || domainKeyIsValidForDisplay(preview) ||
+                        domainKeyIsValidForDisplay(preDelete);
     if (!hasAny)
     {
         if (m_domainColoringActive)
@@ -2062,7 +2102,7 @@ void PickManager::rebuildDomainHighlightActors()
                                 QSet<vtkIdType>& solidCells,
                                 QSet<vtkIdType>& lineCells)
     {
-        if (!key.isValid())
+        if (!domainKeyIsValidForDisplay(key))
             return;
 
         if (key.dim == 1)
@@ -2115,14 +2155,16 @@ void PickManager::rebuildDomainHighlightActors()
         auto* origCellArr = cellData->GetArray("vtkOriginalCellIds");
         for (vtkIdType cid = 0; cid < nCells; ++cid)
         {
-            vtkIdType srcCid = cid;
+            vtkIdType cellKey = cid;
             if (origCellArr && cid < origCellArr->GetNumberOfTuples())
-                srcCid = vtkIdType(origCellArr->GetTuple1(cid));
+                cellKey = vtkIdType(origCellArr->GetTuple1(cid));
 
-            const bool hitApplied = appliedCells.contains(srcCid) || appliedCells.contains(cid);
-            const bool hitPreDelete = preDeleteCells.contains(srcCid) || preDeleteCells.contains(cid);
-            const bool hitSelected = selectedCells.contains(srcCid) || selectedCells.contains(cid);
-            const bool hitPreview = previewCells.contains(srcCid) || previewCells.contains(cid);
+            // 只使用一种编号体系：有 vtkOriginalCellIds 就用原始 cell id，否则用当前数据集本地 id。
+            // 不能同时判断 cellKey 和 cid，否则 surface 本地编号可能误撞原始编号。
+            const bool hitApplied = appliedCells.contains(cellKey);
+            const bool hitPreDelete = preDeleteCells.contains(cellKey);
+            const bool hitSelected = selectedCells.contains(cellKey);
+            const bool hitPreview = previewCells.contains(cellKey);
 
             const unsigned char* c = normal;
             if (hitApplied)

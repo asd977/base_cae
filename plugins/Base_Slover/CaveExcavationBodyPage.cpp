@@ -81,7 +81,7 @@ void CaveExcavationBodyPage::beforeLoad()
     {
         refreshSelectedGroupList();
         refreshGroupComboMarks();
-        updateGroupDomainHighlight();
+        updateGroupDomainHighlight(0);
     }
     else
     {
@@ -152,7 +152,7 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
     PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid, edgeKeys, true);
 
     updatePersistentSelectionFaces();
-    updateGroupDomainHighlight();
+    updateGroupDomainHighlight(0);
     refreshSelectedGroupList();
     refreshGroupComboMarks();
 }
@@ -214,7 +214,7 @@ void CaveExcavationBodyPage::onClearClicked()
     }
 
     updatePersistentSelectionFaces();
-    updateGroupDomainHighlight();
+    updateGroupDomainHighlight(0);
 }
 void CaveExcavationBodyPage::onAddGroupClicked()
 {
@@ -231,7 +231,7 @@ void CaveExcavationBodyPage::onAddGroupClicked()
     refreshSelectedGroupList();
     refreshGroupComboMarks();
     updatePersistentSelectionFaces();
-    updateGroupDomainHighlight();
+    updateGroupDomainHighlight(0);
 }
 
 void CaveExcavationBodyPage::onRemoveSelectedGroupsClicked()
@@ -255,7 +255,7 @@ void CaveExcavationBodyPage::onRemoveSelectedGroupsClicked()
     refreshSelectedGroupList();
     refreshGroupComboMarks();
     updatePersistentSelectionFaces();
-    updateGroupDomainHighlight();
+    updateGroupDomainHighlight(0);
 }
 void CaveExcavationBodyPage::onGroupHovered(int index)
 {
@@ -290,7 +290,7 @@ void CaveExcavationBodyPage::onGroupDropdownClosed()
     refreshGroupComboMarks();
     if (currentPickMode() == PickMode::Face)
         PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Face);
-    updateGroupDomainHighlight();
+    updateGroupDomainHighlight(0);
 }
 
 void CaveExcavationBodyPage::setupGroupCombo()
@@ -484,7 +484,7 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
     PickManager::instance().setSelectedDomain(getPageType(), m_uuid, DomainKey{});
     PickManager::instance().setPreviewDomain(
         getPageType(), m_uuid,
-        previewGroup >= 0 ? DomainKey{"LAYER", layerDomainDim(), previewGroup} : DomainKey{});
+        previewGroup != 0 ? DomainKey{"LAYER", layerDomainDim(), previewGroup} : DomainKey{});
     PickManager::instance().setPreDeleteDomain(getPageType(), m_uuid, DomainKey{});
 }
 
