@@ -37,6 +37,9 @@
 #include <vtkSelectionNode.h>
 #include <vtkUnsignedCharArray.h>
 #include <vtkUnstructuredGrid.h>
+#include <vtkExtractCells.h>
+#include <vtkIdTypeArray.h>
+
 #include <QHash>
 
 namespace
@@ -86,11 +89,19 @@ struct RgbColor
     unsigned char b = 199;
 };
 
-static const RgbColor kColorBase{199, 199, 199};
-static const RgbColor kColorApplied{64, 170, 64};
-static const RgbColor kColorPreview{255, 153, 0};
-static const RgbColor kColorSelected{220, 50, 50};
-static const RgbColor kColorPreDelete{255, 80, 0};
+// 统一拾取/高亮颜色。kPickNormalColor 的 199/255≈0.78，必须和 MeshModuleController 的默认网格灰色一致，避免预选时普通区域闪动。
+static const RgbColor kPickNormalColor   = {199, 199, 199};
+static const RgbColor kPickAppliedColor  = {64, 170, 64};
+static const RgbColor kPickPreviewColor  = {255, 153, 0};
+static const RgbColor kPickSelectedColor = {220, 50, 50};
+static const RgbColor kPickPreDeleteColor = {255, 110, 0};
+
+constexpr double kPickPreviewR = 1.0;
+constexpr double kPickPreviewG = 153.0 / 255.0;
+constexpr double kPickPreviewB = 0.0;
+constexpr double kPickSelectedR = 220.0 / 255.0;
+constexpr double kPickSelectedG = 50.0 / 255.0;
+constexpr double kPickSelectedB = 50.0 / 255.0;
 
 struct ScalarHighlightState
 {
@@ -98,7 +109,7 @@ struct ScalarHighlightState
     vtkProp* prop = nullptr;
     vtkSmartPointer<vtkDataArray> savedScalars;
     vtkSmartPointer<vtkUnsignedCharArray> colors;
-    QVector<vtkIdType> previousLocalIds;
+    QSet<vtkIdType> previousLocalIds;
     bool active = false;
     int savedScalarVisibility = 0;
     int savedScalarMode = 0;
@@ -267,14 +278,10 @@ static bool ensureScalarHighlight(const QString& stateKey,
     state.active = true;
 
     unsigned char base[3];
-    unsigned char* data = state.colors->GetPointer(0);
     for (vtkIdType cid = 0; cid < ds->GetNumberOfCells(); ++cid)
     {
         baseColorAt(state, cid, fallback, base);
-        const vtkIdType off = cid * 3;
-        data[off + 0] = base[0];
-        data[off + 1] = base[1];
-        data[off + 2] = base[2];
+        state.colors->SetTypedTuple(cid, base);
     }
 
     ds->GetCellData()->SetScalars(state.colors);
@@ -302,44 +309,30 @@ static void updateScalarHighlight(const QString& stateKey,
         return;
 
     ScalarHighlightState& state = s_scalarHighlightStates[stateKey];
-    if (!state.colors)
-        return;
 
-    const vtkIdType nCells = ds->GetNumberOfCells();
-    unsigned char* data = state.colors->GetPointer(0);
     unsigned char base[3];
-
     for (vtkIdType cid : state.previousLocalIds)
     {
-        if (cid < 0 || cid >= nCells || targetColors.contains(cid))
+        if (targetColors.contains(cid) || cid < 0 || cid >= ds->GetNumberOfCells())
             continue;
-
         baseColorAt(state, cid, fallback, base);
-        const vtkIdType off = cid * 3;
-        data[off + 0] = base[0];
-        data[off + 1] = base[1];
-        data[off + 2] = base[2];
+        state.colors->SetTypedTuple(cid, base);
     }
 
-    QVector<vtkIdType> nextLocalIds;
+    QSet<vtkIdType> nextLocalIds;
     nextLocalIds.reserve(targetColors.size());
-
     for (auto it = targetColors.constBegin(); it != targetColors.constEnd(); ++it)
     {
         const vtkIdType cid = it.key();
-        if (cid < 0 || cid >= nCells)
+        if (cid < 0 || cid >= ds->GetNumberOfCells())
             continue;
 
         const RgbColor c = it.value();
-        const vtkIdType off = cid * 3;
-        data[off + 0] = c.r;
-        data[off + 1] = c.g;
-        data[off + 2] = c.b;
-        nextLocalIds.push_back(cid);
+        const unsigned char tuple[3] = {c.r, c.g, c.b};
+        state.colors->SetTypedTuple(cid, tuple);
+        nextLocalIds.insert(cid);
     }
 
-    std::sort(nextLocalIds.begin(), nextLocalIds.end());
-    nextLocalIds.erase(std::unique(nextLocalIds.begin(), nextLocalIds.end()), nextLocalIds.end());
     state.previousLocalIds = nextLocalIds;
 
     ds->GetCellData()->SetScalars(state.colors);
@@ -423,7 +416,7 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_selActor = vtkSmartPointer<vtkActor>::New();
     m_selActor->SetMapper(m_selMapper);
     m_selActor->GetProperty()->SetPointSize(8);
-    m_selActor->GetProperty()->SetColor(1.0, 0.1, 0.1);
+    m_selActor->GetProperty()->SetColor(kPickSelectedR, kPickSelectedG, kPickSelectedB);
     m_selActor->GetProperty()->SetOpacity(1.0);
     m_selActor->GetProperty()->SetRenderPointsAsSpheres(true);
     m_selActor->PickableOff();
@@ -442,7 +435,7 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_previewSelActor = vtkSmartPointer<vtkActor>::New();
     m_previewSelActor->SetMapper(m_previewSelMapper);
     m_previewSelActor->GetProperty()->SetPointSize(10);
-    m_previewSelActor->GetProperty()->SetColor(1.0, 0.6, 0.0);
+    m_previewSelActor->GetProperty()->SetColor(kPickPreviewR, kPickPreviewG, kPickPreviewB);
     m_previewSelActor->GetProperty()->SetRenderPointsAsSpheres(true);
     m_previewSelActor->PickableOff();
     m_previewSelActor->SetVisibility(false);
@@ -483,7 +476,7 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
 
     m_edgeActor = vtkSmartPointer<vtkActor>::New();
     m_edgeActor->SetMapper(m_edgeMapper);
-    m_edgeActor->GetProperty()->SetColor(1.0, 1.0, 0.1);
+    m_edgeActor->GetProperty()->SetColor(kPickSelectedR, kPickSelectedG, kPickSelectedB);
     m_edgeActor->GetProperty()->SetLineWidth(3.0);
     m_edgeActor->GetProperty()->SetRepresentationToWireframe();
     m_edgeActor->PickableOff();
@@ -504,7 +497,7 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_previewEdgeMapper->SetInputData(m_previewEdgePoly);
     m_previewEdgeActor = vtkSmartPointer<vtkActor>::New();
     m_previewEdgeActor->SetMapper(m_previewEdgeMapper);
-    m_previewEdgeActor->GetProperty()->SetColor(1.0, 0.5, 0.0);
+    m_previewEdgeActor->GetProperty()->SetColor(kPickPreviewR, kPickPreviewG, kPickPreviewB);
     m_previewEdgeActor->GetProperty()->SetLineWidth(4.0);
     m_previewEdgeActor->GetProperty()->SetRepresentationToWireframe();
     m_previewEdgeActor->PickableOff();
@@ -663,10 +656,56 @@ QSet<vtkIdType> PickManager::cellsOfDomain(const DomainKey& key) const
         return {};
 
     QSet<vtkIdType> out;
+
+    // tagSets 中的 cellIds 是 m_importedGrid / nonLineGrid 的原始 cell id。
+    // 对 surface actor 着色时，应与 vtkOriginalCellIds 对比，而不是混入 surface 本地 cell id。
     const QSet<MeshIdType> src = meshSvc->domainCells(key);
-    out.reserve(src.size());
     for (MeshIdType cid : src)
         out.insert(static_cast<vtkIdType>(cid));
+
+    auto appendCellsFromDataset = [&out](vtkDataSet* ds, const QString& arrayName, int id)
+    {
+        if (!ds || id == 0 || !ds->GetCellData())
+            return;
+
+        vtkDataArray* valueArr = ds->GetCellData()->GetArray(arrayName.toUtf8().constData());
+        if (!valueArr)
+            return;
+
+        vtkDataArray* origCellArr = ds->GetCellData()->GetArray("vtkOriginalCellIds");
+        const vtkIdType n = std::min(ds->GetNumberOfCells(), valueArr->GetNumberOfTuples());
+
+        for (vtkIdType cid = 0; cid < n; ++cid)
+        {
+            if (static_cast<int>(valueArr->GetTuple1(cid)) != id)
+                continue;
+
+            // 有 vtkOriginalCellIds 时返回原始 cell id；没有时才返回当前数据集本地 cell id。
+            // 不能同时返回两套编号，否则 local id 会误命中其他原始 cell id，出现碎面/整片误高亮。
+            vtkIdType keyId = cid;
+            if (origCellArr && cid < origCellArr->GetNumberOfTuples())
+                keyId = static_cast<vtkIdType>(origCellArr->GetTuple1(cid));
+            out.insert(keyId);
+        }
+    };
+
+    // 只有 tagSets 缺失时才用 CellData 扫描兜底。
+    // 正常导入的 IIIN/Msh 已经有 domainCells，不能每次预选都再扫一遍整张 dataset。
+    if (out.isEmpty() &&
+        (key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0 ||
+         key.category.compare(QStringLiteral("LAYER"), Qt::CaseInsensitive) == 0))
+    {
+        const QString arrayName = key.category.toUpper();
+        if (key.dim == 1)
+            appendCellsFromDataset(m_linePickDataSet ? m_linePickDataSet
+                                                     : vtkDataSet::SafeDownCast(m_gridLine),
+                                   arrayName, key.id);
+        else
+            appendCellsFromDataset(m_solidPickDataSet ? m_solidPickDataSet
+                                                      : vtkDataSet::SafeDownCast(m_gridSolid),
+                                   arrayName, key.id);
+    }
+
     return out;
 }
 
@@ -2008,9 +2047,7 @@ bool PickManager::computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType 
         return false;
 
     auto* origCellArr = findArray(pickedDs->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
-    auto* origPointArr =
-        findArray(pickedDs->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
-    if (!origCellArr || !origPointArr)
+    if (!origCellArr || pickedCellId < 0 || pickedCellId >= origCellArr->GetNumberOfTuples())
         return false;
 
     vtkCell* pickedCell = pickedDs->GetCell(pickedCellId);
@@ -2022,6 +2059,31 @@ bool PickManager::computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType 
         return false;
     vtkCell* origCell = m_gridSolid->GetCell(outOrigCellId);
     if (!origCell)
+        return false;
+
+    // 自建内部域 surface 会直接写入原始面 local id；优先使用它。
+    // 这样不依赖 vtkOriginalPointIds 反推，也能正确高亮内部交界面。
+    if (auto* origFaceArr = findArray(pickedDs->GetCellData(), "vtkOriginalFaceIds", "orig_face_id"))
+    {
+        if (pickedCellId >= 0 && pickedCellId < origFaceArr->GetNumberOfTuples())
+        {
+            const int fid = static_cast<int>(origFaceArr->GetTuple1(pickedCellId));
+            if (origCell->GetCellDimension() == 2)
+            {
+                outOrigFaceLocalId = 15;
+                return true;
+            }
+            if (fid >= 0 && fid < origCell->GetNumberOfFaces())
+            {
+                outOrigFaceLocalId = fid;
+                return true;
+            }
+        }
+    }
+
+    auto* origPointArr =
+        findArray(pickedDs->GetPointData(), "vtkOriginalPointIds", "orig_point_id");
+    if (!origPointArr)
         return false;
 
     QSet<vtkIdType> pickedOrigPids;
@@ -2189,9 +2251,9 @@ void PickManager::rebuildFaceColorForActive()
         return;
     }
 
-    const RgbColor normal = kColorBase;
-    const RgbColor previewColor = kColorPreview;
-    const RgbColor selectedColor = kColorSelected;
+    const RgbColor normal = kPickNormalColor;
+    const RgbColor previewColor = kPickPreviewColor;
+    const RgbColor selectedColor = kPickSelectedColor;
 
     QHash<vtkIdType, RgbColor> targetColors;
 
@@ -2278,11 +2340,11 @@ void PickManager::rebuildDomainHighlightActors()
         return;
     }
 
-    const RgbColor normal = kColorBase;
-    const RgbColor appliedColor = kColorApplied;
-    const RgbColor previewColor = kColorPreview;
-    const RgbColor selectedColor = kColorSelected;
-    const RgbColor preDeleteColor = kColorPreDelete;
+    const RgbColor normal = kPickNormalColor;
+    const RgbColor appliedColor = kPickAppliedColor;
+    const RgbColor previewColor = kPickPreviewColor;
+    const RgbColor selectedColor = kPickSelectedColor;
+    const RgbColor preDeleteColor = kPickPreDeleteColor;
 
     QSet<vtkIdType> appliedSolidCells;
     QSet<vtkIdType> appliedLineCells;

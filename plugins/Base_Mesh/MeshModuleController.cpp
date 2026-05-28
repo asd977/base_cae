@@ -17,6 +17,7 @@
 #include <services/ProjectManagerService.h>
 #include <services/VisualWidgetService.h>
 #include <vtkActor.h>
+#include <vtkCellArray.h>
 #include <vtkAppendFilter.h>
 #include <vtkCell.h>
 #include <vtkCellData.h>
@@ -48,6 +49,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QHash>
 #include <QMessageBox>
 #include <QProcess>
 #include <QSet>
@@ -64,6 +66,11 @@
 
 namespace
 {
+
+// 统一网格默认显示颜色：必须和 PickManager 中的普通区域颜色保持一致，避免进入预选/选中时灰度闪动。
+constexpr double kMeshDefaultGray = 0.78;
+constexpr double kMeshDefaultEdgeGray = 0.0;
+constexpr double kMeshDefaultLineWidth = 1.0;
 
 static bool meshDomainKeyIsValid(const DomainKey& key)
 {
@@ -1169,7 +1176,7 @@ static int meshDisplayCellDimensionFast(vtkUnstructuredGrid* grid, vtkIdType cel
 static QColor meshDisplayCategoricalColor(int value)
 {
     if (value == 0)
-        return QColor::fromRgbF(0.78, 0.78, 0.78);
+        return QColor::fromRgbF(kMeshDefaultGray, kMeshDefaultGray, kMeshDefaultGray);
 
     const int hue = ((value * 47) % 360 + 360) % 360;
     return QColor::fromHsv(hue, 170, 220);
@@ -1214,6 +1221,227 @@ static vtkSmartPointer<vtkUnstructuredGrid> meshDisplayExtractCells(
     ex->Update();
 
     out->ShallowCopy(ex->GetOutput());
+    return out;
+}
+
+static QByteArray meshDisplayFaceKey(vtkIdList* pointIds)
+{
+    QVector<vtkIdType> ids;
+    if (pointIds)
+    {
+        ids.reserve(static_cast<int>(pointIds->GetNumberOfIds()));
+        for (vtkIdType i = 0; i < pointIds->GetNumberOfIds(); ++i)
+            ids.push_back(pointIds->GetId(i));
+    }
+
+    std::sort(ids.begin(), ids.end());
+
+    QByteArray key;
+    key.reserve(ids.size() * int(sizeof(vtkIdType)));
+    for (vtkIdType id : ids)
+        key.append(reinterpret_cast<const char*>(&id), int(sizeof(vtkIdType)));
+    return key;
+}
+
+static vtkIdType meshDisplayOriginalCellId(vtkDataSet* grid, vtkIdType cellId)
+{
+    if (!grid || cellId < 0 || cellId >= grid->GetNumberOfCells())
+        return cellId;
+
+    auto* arr = grid->GetCellData() ? grid->GetCellData()->GetArray("vtkOriginalCellIds") : nullptr;
+    if (arr && cellId < arr->GetNumberOfTuples())
+        return static_cast<vtkIdType>(arr->GetTuple1(cellId));
+    return cellId;
+}
+
+static int meshDisplayDomainValue(vtkDataSet* grid, vtkIdType cellId, const char* arrayName)
+{
+    auto* arr = (grid && grid->GetCellData()) ? grid->GetCellData()->GetArray(arrayName) : nullptr;
+    if (!arr || cellId < 0 || cellId >= arr->GetNumberOfTuples())
+        return 0;
+    return static_cast<int>(arr->GetTuple1(cellId));
+}
+
+struct MeshDisplayFaceRef
+{
+    vtkIdType cellId = -1;          // local cell id in the display source
+    vtkIdType originalCellId = -1;  // cell id in m_importedGrid
+    int originalFaceId = 15;        // local face id in original cell; 15 means whole 2D cell
+    int matype = 0;
+    int layer = 0;
+    QVector<vtkIdType> pointIds;
+};
+
+static bool meshDisplayDifferentDomain(const MeshDisplayFaceRef& a,
+                                       const MeshDisplayFaceRef& b,
+                                       bool hasMatype,
+                                       bool hasLayer)
+{
+    if (hasLayer && a.layer != b.layer)
+        return true;
+    if (hasMatype && a.matype != b.matype)
+        return true;
+    return false;
+}
+
+static void meshDisplayAddSurfaceFace(vtkPolyData* out,
+                                      vtkCellArray* polys,
+                                      vtkIdTypeArray* originalCellIds,
+                                      vtkIdTypeArray* originalFaceIds,
+                                      vtkCellData* sourceCellData,
+                                      const MeshDisplayFaceRef& face)
+{
+    if (!out || !polys || !originalCellIds || !originalFaceIds || face.pointIds.size() < 3)
+        return;
+
+    auto ids = vtkSmartPointer<vtkIdList>::New();
+    ids->SetNumberOfIds(face.pointIds.size());
+    for (int i = 0; i < face.pointIds.size(); ++i)
+        ids->SetId(i, face.pointIds[i]);
+
+    const vtkIdType newCellId = polys->GetNumberOfCells();
+    polys->InsertNextCell(ids);
+    if (sourceCellData && out->GetCellData())
+        out->GetCellData()->CopyData(sourceCellData, face.cellId, newCellId);
+    originalCellIds->InsertNextValue(face.originalCellId);
+    originalFaceIds->InsertNextValue(face.originalFaceId);
+}
+
+static vtkSmartPointer<vtkPolyData> meshDisplayBuildDomainSurface(vtkUnstructuredGrid* grid)
+{
+    auto out = vtkSmartPointer<vtkPolyData>::New();
+    if (!grid || grid->GetNumberOfCells() <= 0 || !grid->GetPoints())
+        return out;
+
+    out->SetPoints(grid->GetPoints());
+
+    auto polys = vtkSmartPointer<vtkCellArray>::New();
+    out->SetPolys(polys);
+
+    vtkCellData* srcCellData = grid->GetCellData();
+    if (srcCellData)
+        out->GetCellData()->CopyAllocate(srcCellData, grid->GetNumberOfCells());
+
+    auto originalPointIds = vtkSmartPointer<vtkIdTypeArray>::New();
+    originalPointIds->SetName("vtkOriginalPointIds");
+    originalPointIds->SetNumberOfComponents(1);
+    originalPointIds->SetNumberOfTuples(grid->GetNumberOfPoints());
+    for (vtkIdType pid = 0; pid < grid->GetNumberOfPoints(); ++pid)
+        originalPointIds->SetValue(pid, pid);
+
+    auto originalIds = vtkSmartPointer<vtkIdTypeArray>::New();
+    originalIds->SetName("vtkOriginalCellIds");
+    originalIds->SetNumberOfComponents(1);
+
+    auto originalFaceIds = vtkSmartPointer<vtkIdTypeArray>::New();
+    originalFaceIds->SetName("vtkOriginalFaceIds");
+    originalFaceIds->SetNumberOfComponents(1);
+
+    const bool hasMatype = srcCellData && srcCellData->GetArray("MATYPE");
+    const bool hasLayer = srcCellData && srcCellData->GetArray("LAYER");
+
+    QHash<QByteArray, QVector<MeshDisplayFaceRef>> faceMap;
+    faceMap.reserve(static_cast<int>(grid->GetNumberOfCells() * 3));
+
+    const vtkIdType nCells = grid->GetNumberOfCells();
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    {
+        const int dim = meshDisplayCellDimensionFast(grid, cid);
+        vtkCell* cell = grid->GetCell(cid);
+        if (!cell)
+            continue;
+
+        MeshDisplayFaceRef ref;
+        ref.cellId = cid;
+        ref.originalCellId = meshDisplayOriginalCellId(grid, cid);
+        ref.matype = meshDisplayDomainValue(grid, cid, "MATYPE");
+        ref.layer = meshDisplayDomainValue(grid, cid, "LAYER");
+
+        if (dim == 2)
+        {
+            ref.originalFaceId = 15;
+            vtkIdList* pids = cell->GetPointIds();
+            if (!pids || pids->GetNumberOfIds() < 3)
+                continue;
+
+            ref.pointIds.reserve(static_cast<int>(pids->GetNumberOfIds()));
+            for (vtkIdType i = 0; i < pids->GetNumberOfIds(); ++i)
+                ref.pointIds.push_back(pids->GetId(i));
+
+            meshDisplayAddSurfaceFace(out, polys, originalIds, originalFaceIds, srcCellData, ref);
+            continue;
+        }
+
+        if (dim != 3)
+            continue;
+
+        const int nFaces = cell->GetNumberOfFaces();
+        for (int fi = 0; fi < nFaces; ++fi)
+        {
+            vtkCell* face = cell->GetFace(fi);
+            if (!face)
+                continue;
+
+            vtkIdList* pids = face->GetPointIds();
+            if (!pids || pids->GetNumberOfIds() < 3)
+                continue;
+
+            MeshDisplayFaceRef one = ref;
+            one.originalFaceId = fi;
+            one.pointIds.reserve(static_cast<int>(pids->GetNumberOfIds()));
+            for (vtkIdType i = 0; i < pids->GetNumberOfIds(); ++i)
+                one.pointIds.push_back(pids->GetId(i));
+
+            faceMap[meshDisplayFaceKey(pids)].push_back(one);
+        }
+    }
+
+    for (auto it = faceMap.constBegin(); it != faceMap.constEnd(); ++it)
+    {
+        const QVector<MeshDisplayFaceRef>& owners = it.value();
+        if (owners.isEmpty())
+            continue;
+
+        if (owners.size() == 1)
+        {
+            meshDisplayAddSurfaceFace(out, polys, originalIds, originalFaceIds, srcCellData, owners[0]);
+            continue;
+        }
+
+        for (int i = 0; i < owners.size(); ++i)
+        {
+            bool visibleInterface = false;
+            for (int j = 0; j < owners.size(); ++j)
+            {
+                if (i == j)
+                    continue;
+                if (meshDisplayDifferentDomain(owners[i], owners[j], hasMatype, hasLayer))
+                {
+                    visibleInterface = true;
+                    break;
+                }
+            }
+
+            if (visibleInterface)
+                meshDisplayAddSurfaceFace(out, polys, originalIds, originalFaceIds, srcCellData, owners[i]);
+        }
+    }
+
+    if (out->GetPointData())
+    {
+        out->GetPointData()->RemoveArray("vtkOriginalPointIds");
+        out->GetPointData()->AddArray(originalPointIds);
+    }
+
+    if (out->GetCellData())
+    {
+        out->GetCellData()->RemoveArray("vtkOriginalCellIds");
+        out->GetCellData()->RemoveArray("vtkOriginalFaceIds");
+        out->GetCellData()->AddArray(originalIds);
+        out->GetCellData()->AddArray(originalFaceIds);
+    }
+
+    out->Modified();
     return out;
 }
 
@@ -1298,7 +1526,7 @@ static vtkSmartPointer<vtkLookupTable> meshDisplayBuildLookupTable(const QSet<in
     {
         const int value = minValue + i;
         const QColor color = values.contains(value) ? meshDisplayCategoricalColor(value)
-                                                    : QColor::fromRgbF(0.78, 0.78, 0.78);
+                                                    : QColor::fromRgbF(kMeshDefaultGray, kMeshDefaultGray, kMeshDefaultGray);
         lut->SetTableValue(i, color.redF(), color.greenF(), color.blueF(), 1.0);
     }
 
@@ -1374,10 +1602,7 @@ static void meshDisplayApplyGlobalState(vtkUnstructuredGrid* fullGrid,
     if (surfaceIds->GetNumberOfIds() > 0)
     {
         auto surfaceSource = meshDisplayExtractCells(fullGrid, surfaceIds);
-        auto surfaceFilter = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-        surfaceFilter->SetInputData(surfaceSource);
-        surfaceFilter->Update();
-        viewSurface->ShallowCopy(surfaceFilter->GetOutput());
+        viewSurface->ShallowCopy(meshDisplayBuildDomainSurface(surfaceSource));
     }
 
     if (lineIds->GetNumberOfIds() > 0)
@@ -2666,14 +2891,7 @@ void MeshModuleController::displayCurrentGrid()
 
     if (nonLineGrid && nonLineGrid->GetNumberOfCells() > 0)
     {
-        auto surf = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-        surf->SetInputData(nonLineGrid);
-        surf->PassThroughPointIdsOn();
-        surf->PassThroughCellIdsOn();
-        surf->Update();
-
-        auto boundary = vtkSmartPointer<vtkPolyData>::New();
-        boundary->ShallowCopy(surf->GetOutput());
+        auto boundary = meshDisplayBuildDomainSurface(nonLineGrid);
 
         auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
         mapper->SetInputData(boundary);
@@ -2683,11 +2901,11 @@ void MeshModuleController::displayCurrentGrid()
         surfActor->SetMapper(mapper);
         auto* prop = surfActor->GetProperty();
         prop->SetRepresentationToSurface();
-        prop->SetColor(0.78, 0.78, 0.78);
+        prop->SetColor(kMeshDefaultGray, kMeshDefaultGray, kMeshDefaultGray);
         // prop->SetSpecular(0.0);
         prop->EdgeVisibilityOn();
         prop->SetEdgeColor(0.0, 0.0, 0.0);
-        prop->SetLineWidth(1.0);
+        prop->SetLineWidth(kMeshDefaultLineWidth);
 
         m_visualWidgetService->addProp(kMeshSurfId, surfActor, QString("网格"),
                                        QString("导入网格-面/体"), true, true);
@@ -2858,11 +3076,11 @@ vtkSmartPointer<vtkActor> MeshModuleController::createSurfaceActor(vtkDataSet* g
     actor->SetMapper(mapper);
 
     auto* p = actor->GetProperty();
-    p->SetColor(0.78, 0.78, 0.78);  // 与导入网格默认色一致
+    p->SetColor(kMeshDefaultGray, kMeshDefaultGray, kMeshDefaultGray);
     p->SetSpecular(0.0);            // 避免高光导致“发亮”
     p->EdgeVisibilityOn();          // 显示边
-    p->SetEdgeColor(0.0, 0.0, 0.0); // 黑色边
-    p->SetLineWidth(1.0);
+    p->SetEdgeColor(kMeshDefaultEdgeGray, kMeshDefaultEdgeGray, kMeshDefaultEdgeGray);
+    p->SetLineWidth(kMeshDefaultLineWidth);
 
     return actor;
 }
@@ -2880,10 +3098,10 @@ vtkSmartPointer<vtkActor> MeshModuleController::createLineActor(vtkUnstructuredG
     actor->SetMapper(mapper);
 
     auto* p = actor->GetProperty();
-    p->SetColor(0.78, 0.78, 0.78); // 与面/体网格默认颜色保持一致
-    p->SetLineWidth(2.0);
+    p->SetColor(kMeshDefaultGray, kMeshDefaultGray, kMeshDefaultGray);
+    p->SetLineWidth(kMeshDefaultLineWidth);           // 不做“管线”效果，避免杆单元比普通网格更粗、更亮
     p->SetSpecular(0.0);
-    p->RenderLinesAsTubesOn();
+    p->RenderLinesAsTubesOff();
 
     return actor;
 }

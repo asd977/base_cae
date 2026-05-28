@@ -306,6 +306,36 @@ static vtkSmartPointer<vtkIntArray> getOrCreatePointIntArray(vtkUnstructuredGrid
     return arr;
 }
 
+
+static QString meshDisplayNameByDim(int dim, int id)
+{
+    QString prefix;
+    switch (dim)
+    {
+    case 0: prefix = QStringLiteral("点"); break;
+    case 1: prefix = QStringLiteral("线"); break;
+    case 2: prefix = QStringLiteral("面"); break;
+    case 3: prefix = QStringLiteral("体"); break;
+    default: prefix = QStringLiteral("实体"); break;
+    }
+    return QStringLiteral("%1%2").arg(prefix).arg(id);
+}
+
+static QString sanitizePhysicalDisplayName(int dim, int id, const QString& rawName)
+{
+    const QString name = rawName.trimmed();
+    if (name.isEmpty())
+        return meshDisplayNameByDim(dim, id);
+
+    static const QRegularExpression generatedNameRe(
+        QStringLiteral("^(dim\\d+(_|-)?.*|point_\\d+|edge_\\d+|face_\\d+|volume_\\d+|MeshPoint_\\d+|MeshEdge_\\d+|MeshFace_\\d+|MeshVolume_\\d+)$"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (generatedNameRe.match(name).hasMatch())
+        return meshDisplayNameByDim(dim, id);
+
+    return name;
+}
+
 static int tetHexKetypeFromCell(vtkCell* cell, int fallback)
 {
     if (!cell)
@@ -674,10 +704,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadCurrentGmshMesh(QString* er
                 catch (...)
                 {
                 }
-                if (physName.isEmpty())
-                {
-                    physName = QString("dim%1_phys%2").arg(dim).arg(physId);
-                }
+                physName = sanitizePhysicalDisplayName(dim, entityTag, physName);
                 if (!m_mshPickMap.physIdToName.contains(physId))
                     m_mshPickMap.physIdToName.insert(physId, physName);
                 if (!m_mshPickMap.physIdToDim.contains(physId))
@@ -1249,7 +1276,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
                 {
                     const int dim = m.captured(1).toInt();
                     const int tag = m.captured(2).toInt();
-                    const QString name = m.captured(3);
+                    const QString name = sanitizePhysicalDisplayName(dim, tag, m.captured(3));
                     pick.physIdToDim[tag] = dim;
                     pick.physIdToName[tag] = name;
                 }
@@ -1261,7 +1288,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
                         const int dim = tok[0].toInt();
                         const int tag = tok[1].toInt();
                         QString name = tok.mid(2).join(' ');
-                        name = unquote(name);
+                        name = sanitizePhysicalDisplayName(dim, tag, unquote(name));
                         pick.physIdToDim[tag] = dim;
                         pick.physIdToName[tag] = name;
                     }

@@ -1,5 +1,21 @@
 #include "MeshProcessor.h"
 
+
+namespace
+{
+static std::string physicalEntityName(int dim, int tag)
+{
+    switch (dim)
+    {
+    case 0: return "点" + std::to_string(tag);
+    case 1: return "线" + std::to_string(tag);
+    case 2: return "面" + std::to_string(tag);
+    case 3: return "体" + std::to_string(tag);
+    default: return "实体" + std::to_string(tag);
+    }
+}
+} // namespace
+
 MeshProcessor::MeshProcessor()
 {
     gmsh::initialize();
@@ -306,7 +322,7 @@ std::map<int, int> MeshProcessor::createPointPhysicalGroup()
     {
         int tag = it->second;
         int physical_tag = gmsh::model::addPhysicalGroup(0, std::vector<int>(1, tag));
-        gmsh::model::setPhysicalName(0, physical_tag, "point_" + std::to_string(tag));
+        gmsh::model::setPhysicalName(0, physical_tag, physicalEntityName(0, tag));
         geom_point_to_physical[tag] = physical_tag;
     }
     return geom_point_to_physical;
@@ -321,7 +337,7 @@ std::map<int, int> MeshProcessor::createLinePhysicalGroup()
     {
         int tag = it->second;
         int physical_tag = gmsh::model::addPhysicalGroup(1, std::vector<int>(1, tag));
-        gmsh::model::setPhysicalName(1, physical_tag, "edge_" + std::to_string(tag));
+        gmsh::model::setPhysicalName(1, physical_tag, physicalEntityName(1, tag));
         geom_edge_to_physical[tag] = physical_tag;
     }
     return geom_edge_to_physical;
@@ -344,7 +360,7 @@ std::map<int, int> MeshProcessor::createFacePhysicalGroup()
         int phys_tag = gmsh::model::addPhysicalGroup(2, std::vector<int>(1, surface_tag));
 
         // 名字随便起一个，主要是方便检查
-        std::string name = "face_" + std::to_string(surface_tag);
+        std::string name = physicalEntityName(2, surface_tag);
         gmsh::model::setPhysicalName(2, phys_tag, name);
 
         // 记录：几何面 tag -> physical tag
@@ -366,7 +382,7 @@ std::map<int, int> MeshProcessor::createSolidPhysicalGroup()
     {
         int tag = it->second;
         int physical_tag = gmsh::model::addPhysicalGroup(3, std::vector<int>(1, tag));
-        gmsh::model::setPhysicalName(3, physical_tag, "volume_" + std::to_string(tag));
+        gmsh::model::setPhysicalName(3, physical_tag, physicalEntityName(3, tag));
         geom_volume_to_physical[tag] = physical_tag;
     }
     return geom_volume_to_physical;
