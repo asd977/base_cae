@@ -1,4 +1,4 @@
-#include "PickManager.h"
+﻿#include "PickManager.h"
 
 #include <PublicVariables.h>
 #include <ServiceRegistry.h>
@@ -93,7 +93,7 @@ struct RgbColor
 static const RgbColor kPickNormalColor   = {199, 199, 199};
 static const RgbColor kPickAppliedColor  = {64, 170, 64};
 static const RgbColor kPickPreviewColor  = {255, 153, 0};
-static const RgbColor kPickSelectedColor = {220, 50, 50};
+static const RgbColor kPickSelectedColor  = {64, 170, 64};
 static const RgbColor kPickPreDeleteColor = {255, 110, 0};
 
 constexpr double kPickPreviewR = 1.0;
