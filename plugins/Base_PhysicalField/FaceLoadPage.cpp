@@ -1,4 +1,4 @@
-#include "FaceLoadPage.h"
+﻿#include "FaceLoadPage.h"
 
 #include <CustomComboBox.h>
 #include <ServiceRegistry.h>
@@ -18,6 +18,56 @@
 #include "PickManager.h"
 #include "ui_FaceLoadPage.h"
 #include "vtkPointData.h"
+
+
+namespace
+{
+static QString boundaryDimText(int dim)
+{
+    switch (dim)
+    {
+    case 1: return QStringLiteral("线边界");
+    case 2: return QStringLiteral("面边界");
+    case 0: return QStringLiteral("点边界");
+    default: return QStringLiteral("边界");
+    }
+}
+
+static QVector<vtkIdType> toVtkKeys(const QVector<MeshIdType>& ids)
+{
+    QVector<vtkIdType> out;
+    out.reserve(ids.size());
+    for (MeshIdType id : ids)
+        out.push_back(static_cast<vtkIdType>(id));
+    return out;
+}
+
+static MeshTagKey comboTagKey(QComboBox* combo, int row)
+{
+    if (!combo || row < 0)
+        return {};
+    return combo->itemData(row).value<MeshTagKey>();
+}
+
+static QString boundaryDisplayText(MeshModuleControllerService* meshSvc, const MeshTagSet& set, bool showDimPrefix)
+{
+    QString text = meshSvc ? meshSvc->displayTextOfTag(set.key) : set.name.trimmed();
+    if (text.trimmed().isEmpty())
+        text = QStringLiteral("%1%2").arg(boundaryDimText(set.key.dim)).arg(set.key.id);
+    return showDimPrefix ? QStringLiteral("%1：%2").arg(boundaryDimText(set.key.dim), text) : text;
+}
+
+static MeshTagSet findBoundarySet(MeshModuleControllerService* meshSvc, const MeshTagKey& key)
+{
+    if (!meshSvc || !key.isValid())
+        return {};
+    const QVector<MeshTagSet> sets = meshSvc->boundaryTagSets(key.dim);
+    for (const MeshTagSet& set : sets)
+        if (set.key == key)
+            return set;
+    return {};
+}
+}
 
 FaceLoadPage::FaceLoadPage(QWidget* parent) : BasePage("FaceLoadPage"), ui(new Ui::FaceLoadPage)
 {
@@ -66,155 +116,76 @@ double FaceLoadPage::fzValue()
     return ui->lineEditZ->text().toDouble();
 }
 
+
 void FaceLoadPage::setupBatchGroupCombo()
 {
-    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    const MshPickMap map = meshSvc ? meshSvc->mshPickMapSolid() : MshPickMap{};
-
     ui->comboBoxDim->blockSignals(true);
     ui->comboBoxDim->clear();
-
-    if (!map.physicalEdgeKeyMap().isEmpty())
-    {
-        ui->comboBoxDim->addItem("线", 1);
-    }
-    if (!map.physicalFaceKeyMap().isEmpty())
-    {
-        ui->comboBoxDim->addItem("面", 2);
-    }
-
-    if (ui->comboBoxDim->count() == 0)
-    {
-        ui->comboBoxDim->addItem("面", 2);
-    }
-
-    ui->comboBoxDim->setCurrentIndex(0);
+    ui->comboBoxDim->addItem(QStringLiteral("线边界"), 1);
+    ui->comboBoxDim->addItem(QStringLiteral("面边界"), 2);
+    ui->comboBoxDim->setCurrentIndex(1);
     ui->comboBoxDim->blockSignals(false);
-
-    // 防止页面切换后重复连接导致槽函数被多次触发
     QObject::disconnect(ui->comboBoxDim, nullptr, this, nullptr);
     QObject::disconnect(ui->comboBoxGroup, nullptr, this, nullptr);
-
-    connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &FaceLoadPage::onDimChanged, Qt::UniqueConnection);
+    connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &FaceLoadPage::onDimChanged, Qt::UniqueConnection);
     auto* batchAddBtn = ui->btnBatchAdd;
     QObject::disconnect(batchAddBtn, nullptr, this, nullptr);
-    connect(batchAddBtn, &QPushButton::clicked, this,
-            [this]()
-            {
-                onGroupChanged(ui->comboBoxGroup->currentIndex());
-            },
-            Qt::UniqueConnection);
-
+    connect(batchAddBtn, &QPushButton::clicked, this, [this](){ onGroupChanged(ui->comboBoxGroup->currentIndex()); }, Qt::UniqueConnection);
     if (auto* groupCombo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
     {
         QObject::disconnect(groupCombo, nullptr, this, nullptr);
         connect(groupCombo, &CustomComboBox::itemHovered, this,
                 [this](const int& row)
                 {
-                    if (row < 0)
-                        return;
                     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-                    if (!meshSvc)
-                        return;
-                    const MshPickMap& map = meshSvc->mshPickMapSolid();
-                    const int physId = ui->comboBoxGroup->itemData(row).toInt();
-                    const int dim = ui->comboBoxDim->currentData().toInt();
-                    if (dim == 1)
-                    {
-                        QVector<vtkIdType> edgeKeys;
-                        for (qint64 k : map.physicalEdgeKeys(physId))
-                            edgeKeys.push_back(vtkIdType(k));
-                        PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                                   edgeKeys);
-                    }
-                    else
-                    {
-                        QVector<vtkIdType> faceKeys;
-                        for (qint64 k : map.physicalFaceKeys(physId))
-                            faceKeys.push_back(vtkIdType(k));
-                        PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                                   faceKeys);
-                    }
-                },
-                Qt::UniqueConnection);
+                    if (!meshSvc || row < 0) return;
+                    const MeshTagSet set = findBoundarySet(meshSvc, comboTagKey(ui->comboBoxGroup, row));
+                    if (set.key.dim == 1)
+                        PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid, GridKind::Solid, toVtkKeys(set.edgeKeys));
+                    else if (set.key.dim == 2)
+                        PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid, GridKind::Solid, toVtkKeys(set.faceKeys));
+                }, Qt::UniqueConnection);
         connect(groupCombo, &CustomComboBox::dropdownClosed, this,
-                [this]()
-                {
-                    const int dim = ui->comboBoxDim->currentData().toInt();
-                    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid,
-                                                                  dim == 1 ? PickMode::Edge : PickMode::Face);
-                },
-                Qt::UniqueConnection);
+                [this](){ const int dim = ui->comboBoxDim->currentData().toInt(); PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, dim == 1 ? PickMode::Edge : PickMode::Face); }, Qt::UniqueConnection);
     }
-
     refreshGroupCombo();
 }
+
+
 
 void FaceLoadPage::refreshGroupCombo()
 {
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    if (!meshSvc)
-        return;
+    if (!meshSvc) return;
     const int dimFilter = ui->comboBoxDim->currentData().toInt();
-    const MshPickMap& map = meshSvc->mshPickMapSolid();
-
+    const QVector<MeshTagSet> sets = meshSvc->boundaryTagSets(dimFilter);
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
-
-    auto addByMap = [&](const QHash<int, QVector<qint64>>& keyMap)
+    for (const MeshTagSet& set : sets)
     {
-        QList<int> physIds = keyMap.keys();
-        std::sort(physIds.begin(), physIds.end());
-        for (int physId : physIds)
-        {
-            const QString name = map.physicalName(physId);
-            ui->comboBoxGroup->addItem(QString("%1  (id=%2)").arg(name).arg(physId), physId);
-        }
-    };
-
-    if (dimFilter == 1)
-        addByMap(map.physicalEdgeKeyMap());
-    else if (dimFilter == 2)
-        addByMap(map.physicalFaceKeyMap());
-
+        if (dimFilter == 1 && set.edgeKeys.isEmpty()) continue;
+        if (dimFilter == 2 && set.faceKeys.isEmpty()) continue;
+        ui->comboBoxGroup->addItem(boundaryDisplayText(meshSvc, set, false), QVariant::fromValue(set.key));
+    }
     ui->comboBoxGroup->blockSignals(false);
 }
+
 
 void FaceLoadPage::onDimChanged(int)
 {
     refreshGroupCombo();
 }
 
+
 void FaceLoadPage::onGroupChanged(int index)
 {
-    if (index < 0)
-        return;
+    if (index < 0) return;
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    if (!meshSvc)
-        return;
-    const MshPickMap& map = meshSvc->mshPickMapSolid();
-    const int physId = ui->comboBoxGroup->itemData(index).toInt();
-
-    const int dim = ui->comboBoxDim->currentData().toInt();
-    if (dim == 1)
-    {
-        const QVector<qint64> edgeKeys64 = map.physicalEdgeKeys(physId);
-        QVector<vtkIdType> edgeKeys;
-        edgeKeys.reserve(edgeKeys64.size());
-        for (qint64 k : edgeKeys64)
-            edgeKeys.push_back(vtkIdType(k));
-        PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                    edgeKeys, false);
-    }
-    else
-    {
-        const QVector<qint64> faceKeys64 = map.physicalFaceKeys(physId);
-        QVector<vtkIdType> faceKeys;
-        faceKeys.reserve(faceKeys64.size());
-        for (qint64 k : faceKeys64)
-            faceKeys.push_back(vtkIdType(k));
-        PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                    faceKeys, false);
-    }
+    if (!meshSvc) return;
+    const MeshTagSet set = findBoundarySet(meshSvc, comboTagKey(ui->comboBoxGroup, index));
+    if (set.key.dim == 1)
+        PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid, toVtkKeys(set.edgeKeys), false);
+    else if (set.key.dim == 2)
+        PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, toVtkKeys(set.faceKeys), false);
 }
+

@@ -1,4 +1,4 @@
-﻿#include "PickManager.h"
+#include "PickManager.h"
 
 #include <PublicVariables.h>
 #include <ServiceRegistry.h>
@@ -611,9 +611,9 @@ void PickManager::updateStructure()
     s_localCellIndexCaches.clear();
     restoreAllColorHighlights();
 
-    // 导入/刷新网格时只同步数据引用，不提前构建面/边拾取索引。
-    // 面索引只在 Face 模式需要，边规范化缓存只在 Edge 模式需要；
-    // 大 IIIN.DAT 如果在这里全部预建，会明显拖慢导入。
+           // 导入/刷新网格时只同步数据引用，不提前构建面/边拾取索引。
+           // 面索引只在 Face 模式需要，边规范化缓存只在 Edge 模式需要；
+           // 大 IIIN.DAT 如果在这里全部预建，会明显拖慢导入。
     m_solidBoundaryCellsByFaceKey.clear();
     m_solidCanonicalEdgeByPointPair.clear();
     m_lineCanonicalEdgeByPointPair.clear();
@@ -657,54 +657,11 @@ QSet<vtkIdType> PickManager::cellsOfDomain(const DomainKey& key) const
 
     QSet<vtkIdType> out;
 
-    // tagSets 中的 cellIds 是 m_importedGrid / nonLineGrid 的原始 cell id。
-    // 对 surface actor 着色时，应与 vtkOriginalCellIds 对比，而不是混入 surface 本地 cell id。
+           // 统一原则：域选择只认 MeshModuleController/domainCells，也就是 MeshTagSet.cellIds。
+           // PickManager 不再扫描 MATYPE/LAYER CellData 做兜底，否则又会形成第二套域规则。
     const QSet<MeshIdType> src = meshSvc->domainCells(key);
     for (MeshIdType cid : src)
         out.insert(static_cast<vtkIdType>(cid));
-
-    auto appendCellsFromDataset = [&out](vtkDataSet* ds, const QString& arrayName, int id)
-    {
-        if (!ds || id == 0 || !ds->GetCellData())
-            return;
-
-        vtkDataArray* valueArr = ds->GetCellData()->GetArray(arrayName.toUtf8().constData());
-        if (!valueArr)
-            return;
-
-        vtkDataArray* origCellArr = ds->GetCellData()->GetArray("vtkOriginalCellIds");
-        const vtkIdType n = std::min(ds->GetNumberOfCells(), valueArr->GetNumberOfTuples());
-
-        for (vtkIdType cid = 0; cid < n; ++cid)
-        {
-            if (static_cast<int>(valueArr->GetTuple1(cid)) != id)
-                continue;
-
-            // 有 vtkOriginalCellIds 时返回原始 cell id；没有时才返回当前数据集本地 cell id。
-            // 不能同时返回两套编号，否则 local id 会误命中其他原始 cell id，出现碎面/整片误高亮。
-            vtkIdType keyId = cid;
-            if (origCellArr && cid < origCellArr->GetNumberOfTuples())
-                keyId = static_cast<vtkIdType>(origCellArr->GetTuple1(cid));
-            out.insert(keyId);
-        }
-    };
-
-    // 只有 tagSets 缺失时才用 CellData 扫描兜底。
-    // 正常导入的 IIIN/Msh 已经有 domainCells，不能每次预选都再扫一遍整张 dataset。
-    if (out.isEmpty() &&
-        (key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0 ||
-         key.category.compare(QStringLiteral("LAYER"), Qt::CaseInsensitive) == 0))
-    {
-        const QString arrayName = key.category.toUpper();
-        if (key.dim == 1)
-            appendCellsFromDataset(m_linePickDataSet ? m_linePickDataSet
-                                                     : vtkDataSet::SafeDownCast(m_gridLine),
-                                   arrayName, key.id);
-        else
-            appendCellsFromDataset(m_solidPickDataSet ? m_solidPickDataSet
-                                                      : vtkDataSet::SafeDownCast(m_gridSolid),
-                                   arrayName, key.id);
-    }
 
     return out;
 }
@@ -875,8 +832,8 @@ void PickManager::deactivate(const QString& domain, const QString& uuid, PickMod
     if (domain != m_currentDomain || uuid != m_currentUUid)
         return;
 
-    // if (mode == PickMode::Domain)
-    //     clearDomainSelection(domain, uuid);
+           // if (mode == PickMode::Domain)
+           //     clearDomainSelection(domain, uuid);
 
     if (mode == PickMode::Node)
         commitNodeExclusive(domain, uuid);
@@ -1170,28 +1127,34 @@ bool PickManager::pickAt(int x, int y)
         DomainKey pickedKey;
         if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
         {
-            const MshPickMap pickMap = meshSvc->mshPickMapSolid();
-            const auto tags = pickMap.cellIdToDomainTags.value(static_cast<MeshIdType>(origCellId));
-
-            // 负数目前主要出现在 LAYER 中；先识别负数 LAYER，避免被同一单元上的 MATYPE 抢先选走。
-            for (const MeshTagKey& tag : tags)
+            QVector<DomainKey> candidates;
+            const QVector<DomainKey> domains = meshSvc->availableDomains(QString());
+            for (const DomainKey& key : domains)
             {
-                if (tag.category.compare(QStringLiteral("LAYER"), Qt::CaseInsensitive) == 0 &&
-                    tag.dim == pickedDomainDim && tag.id < 0)
+                if (key.dim != pickedDomainDim || key.id == 0)
+                    continue;
+                const QSet<MeshIdType> cells = meshSvc->domainCells(key);
+                if (cells.contains(static_cast<MeshIdType>(origCellId)))
+                    candidates.push_back(key);
+            }
+
+                   // 负数目前主要出现在 LAYER 中；先识别负数 LAYER，避免被同一单元上的 MATYPE 抢先选走。
+            for (const DomainKey& key : candidates)
+            {
+                if (key.category.compare(QStringLiteral("LAYER"), Qt::CaseInsensitive) == 0 && key.id < 0)
                 {
-                    pickedKey = DomainKey{tag.category, tag.dim, tag.id};
+                    pickedKey = key;
                     break;
                 }
             }
 
             if (!domainKeyIsValidForDisplay(pickedKey))
             {
-                for (const MeshTagKey& tag : tags)
+                for (const DomainKey& key : candidates)
                 {
-                    if (tag.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0 &&
-                        tag.dim == pickedDomainDim && tag.id != 0)
+                    if (key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0)
                     {
-                        pickedKey = DomainKey{tag.category, tag.dim, tag.id};
+                        pickedKey = key;
                         break;
                     }
                 }
@@ -1199,47 +1162,14 @@ bool PickManager::pickAt(int x, int y)
 
             if (!domainKeyIsValidForDisplay(pickedKey))
             {
-                for (const MeshTagKey& tag : tags)
+                for (const DomainKey& key : candidates)
                 {
-                    if (tag.dim == pickedDomainDim && tag.id != 0)
+                    if (domainKeyIsValidForDisplay(key))
                     {
-                        pickedKey = DomainKey{tag.category, tag.dim, tag.id};
+                        pickedKey = key;
                         break;
                     }
                 }
-            }
-        }
-
-        if (!domainKeyIsValidForDisplay(pickedKey))
-        {
-            auto* layerArr = vtkIntArray::SafeDownCast(ds->GetCellData()->GetArray("LAYER"));
-            if (layerArr && cellId >= 0 && cellId < layerArr->GetNumberOfTuples())
-            {
-                const int layer = layerArr->GetValue(cellId);
-                if (layer < 0)
-                    pickedKey = DomainKey{QStringLiteral("LAYER"), pickedDomainDim, layer};
-            }
-        }
-
-        if (!domainKeyIsValidForDisplay(pickedKey))
-        {
-            auto* matypeArr = vtkIntArray::SafeDownCast(ds->GetCellData()->GetArray("MATYPE"));
-            if (matypeArr && cellId >= 0 && cellId < matypeArr->GetNumberOfTuples())
-            {
-                const int matype = matypeArr->GetValue(cellId);
-                if (matype != 0)
-                    pickedKey = DomainKey{QStringLiteral("MATYPE"), pickedDomainDim, matype};
-            }
-        }
-
-        if (!domainKeyIsValidForDisplay(pickedKey))
-        {
-            auto* layerArr = vtkIntArray::SafeDownCast(ds->GetCellData()->GetArray("LAYER"));
-            if (layerArr && cellId >= 0 && cellId < layerArr->GetNumberOfTuples())
-            {
-                const int layer = layerArr->GetValue(cellId);
-                if (layer != 0)
-                    pickedKey = DomainKey{QStringLiteral("LAYER"), pickedDomainDim, layer};
             }
         }
 
@@ -1307,12 +1237,9 @@ bool PickManager::pickAt(int x, int y)
         int origFaceLocalId = 15;
         if (!computePickedFaceFromBoundary(ds, cellId, origCellId, origFaceLocalId))
             return false;
-        if (m_gridSolid && origCellId >= 0 && origCellId < m_gridSolid->GetNumberOfCells())
-        {
-            vtkCell* srcCell = m_gridSolid->GetCell(origCellId);
-            if (srcCell && srcCell->GetCellDimension() == 2)
-                origFaceLocalId = 0;
-        }
+        // computePickedFaceFromBoundary 已经返回与 MeshTagSet.faceKeys 一致的 localId。
+        // 2D 面单元统一使用 localId=15，不能再改成 0，否则点选/框选生成的 faceKey
+        // 会和下拉框中的 MeshTagSet.faceKeys 不一致，表现为高亮乱跳。
         toggleSelectFace(kind, packFaceKey(origCellId, origFaceLocalId));
         return true;
     }
@@ -1731,6 +1658,68 @@ bool PickManager::computePickedEdgeFromBoundary(vtkDataSet* pickedDs, vtkIdType 
     if (a < 0 || b < 0)
         return false;
 
+           // 先按统一后的 MeshTagSet.edgeKeys 反查。
+           // 下拉框批量选择用的就是这组 edgeKeys；手工点选也必须产出同一种 key，
+           // 否则会出现“下拉框正确、点选/框选乱窜”的不一致。
+    if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+    {
+        const QVector<MeshTagSet> sets = meshSvc->boundaryTagSets(1);
+        for (const MeshTagSet& set : sets)
+        {
+            for (MeshIdType rawKey : set.edgeKeys)
+            {
+                const vtkIdType edgeKey = static_cast<vtkIdType>(rawKey);
+                const vtkIdType cid = unpackEdgeCellId(edgeKey);
+                const int ei = unpackEdgeLocalId(edgeKey);
+                if (cid != outOrigCellId)
+                    continue;
+
+                if (origCell->GetCellDimension() == 1 || ei == 15)
+                {
+                    vtkIdList* eids = origCell->GetPointIds();
+                    if (!eids || eids->GetNumberOfIds() < 2)
+                        continue;
+                    bool hasA = false;
+                    bool hasB = false;
+                    for (vtkIdType k = 0; k < eids->GetNumberOfIds(); ++k)
+                    {
+                        const vtkIdType pid = eids->GetId(k);
+                        hasA = hasA || (pid == a);
+                        hasB = hasB || (pid == b);
+                    }
+                    if (hasA && hasB)
+                    {
+                        outOrigEdgeLocalId = 15;
+                        return true;
+                    }
+                    continue;
+                }
+
+                if (ei < 0 || ei >= origCell->GetNumberOfEdges())
+                    continue;
+                vtkCell* e = origCell->GetEdge(ei);
+                if (!e)
+                    continue;
+                vtkIdList* eids = e->GetPointIds();
+                if (!eids || eids->GetNumberOfIds() < 2)
+                    continue;
+                bool hasA = false;
+                bool hasB = false;
+                for (vtkIdType k = 0; k < eids->GetNumberOfIds(); ++k)
+                {
+                    const vtkIdType pid = eids->GetId(k);
+                    hasA = hasA || (pid == a);
+                    hasB = hasB || (pid == b);
+                }
+                if (hasA && hasB)
+                {
+                    outOrigEdgeLocalId = ei;
+                    return true;
+                }
+            }
+        }
+    }
+
     const int nEdges = origCell->GetNumberOfEdges();
     int bestEdge = -1;
     double bestEdgeD2 = std::numeric_limits<double>::max();
@@ -2046,6 +2035,19 @@ bool PickManager::computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType 
     if (!pickedDs || !m_gridSolid)
         return false;
 
+           // 最快路径：MeshModuleController 构造 surface 时直接写入 faceKey。
+           // PickManager 不再根据点集反推 faceKey，避免大网格下预选/框选时重复计算。
+    if (auto* faceKeyArr = findArray(pickedDs->GetCellData(), "vtkOriginalFaceKeys", "orig_face_key"))
+    {
+        if (pickedCellId >= 0 && pickedCellId < faceKeyArr->GetNumberOfTuples())
+        {
+            const vtkIdType faceKey = static_cast<vtkIdType>(faceKeyArr->GetTuple1(pickedCellId));
+            outOrigCellId = static_cast<vtkIdType>(faceKey >> 4);
+            outOrigFaceLocalId = static_cast<int>(faceKey & 0xF);
+            return outOrigCellId >= 0 && outOrigCellId < m_gridSolid->GetNumberOfCells();
+        }
+    }
+
     auto* origCellArr = findArray(pickedDs->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
     if (!origCellArr || pickedCellId < 0 || pickedCellId >= origCellArr->GetNumberOfTuples())
         return false;
@@ -2061,8 +2063,8 @@ bool PickManager::computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType 
     if (!origCell)
         return false;
 
-    // 自建内部域 surface 会直接写入原始面 local id；优先使用它。
-    // 这样不依赖 vtkOriginalPointIds 反推，也能正确高亮内部交界面。
+           // 自建内部域 surface 会直接写入原始面 local id；优先使用它。
+           // 这样不依赖 vtkOriginalPointIds 反推，也能正确高亮内部交界面。
     if (auto* origFaceArr = findArray(pickedDs->GetCellData(), "vtkOriginalFaceIds", "orig_face_id"))
     {
         if (pickedCellId >= 0 && pickedCellId < origFaceArr->GetNumberOfTuples())
@@ -2098,6 +2100,81 @@ bool PickManager::computePickedFaceFromBoundary(vtkDataSet* pickedDs, vtkIdType 
     }
     if (pickedOrigPids.size() < 3)
         return false;
+
+           // 先按统一后的 MeshTagSet.faceKeys 反查。
+           // 批量下拉框、预览高亮和手工点选必须使用同一套 faceKey。
+           // 这里优先在 tagSets 里找当前原始 cell 对应的 faceKey，避免仅靠 vtkOriginalPointIds
+           // 的子集判断时，高阶单元/细分面把 local face 判断到相邻面上。
+    if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+    {
+        int bestLocalId = -1;
+        int bestScore = -1;
+
+        const QVector<MeshTagSet> sets = meshSvc->boundaryTagSets(2);
+        for (const MeshTagSet& set : sets)
+        {
+            for (MeshIdType rawKey : set.faceKeys)
+            {
+                const vtkIdType faceKey = static_cast<vtkIdType>(rawKey);
+                const vtkIdType cid = unpackFaceCellId(faceKey);
+                int fid = unpackFaceLocalId(faceKey);
+                if (cid != outOrigCellId)
+                    continue;
+
+                QSet<vtkIdType> facePids;
+                if (origCell->GetCellDimension() == 2 || fid == 15)
+                {
+                    vtkIdList* cids = origCell->GetPointIds();
+                    if (!cids || cids->GetNumberOfIds() < 3)
+                        continue;
+                    fid = 15;
+                    for (vtkIdType i = 0; i < cids->GetNumberOfIds(); ++i)
+                        facePids.insert(cids->GetId(i));
+                }
+                else
+                {
+                    if (fid < 0 || fid >= origCell->GetNumberOfFaces())
+                        continue;
+                    vtkCell* f = origCell->GetFace(fid);
+                    if (!f)
+                        continue;
+                    vtkIdList* fids = f->GetPointIds();
+                    if (!fids || fids->GetNumberOfIds() < 3)
+                        continue;
+                    for (vtkIdType i = 0; i < fids->GetNumberOfIds(); ++i)
+                        facePids.insert(fids->GetId(i));
+                }
+
+                bool subset = true;
+                int hitCount = 0;
+                for (vtkIdType pid : pickedOrigPids)
+                {
+                    if (!facePids.contains(pid))
+                    {
+                        subset = false;
+                        break;
+                    }
+                    ++hitCount;
+                }
+                if (!subset)
+                    continue;
+
+                const bool exact = (facePids.size() == pickedOrigPids.size());
+                const int score = (exact ? 100000 : 0) + hitCount;
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestLocalId = fid;
+                }
+            }
+        }
+
+        if (bestLocalId >= 0)
+        {
+            outOrigFaceLocalId = bestLocalId;
+            return true;
+        }
+    }
 
            // 2D 原单元没有 faces：整片即一个“face”(localId=15)
     if (origCell->GetCellDimension() == 2)
@@ -2214,6 +2291,17 @@ void PickManager::rebuildBoundaryFaceCellIndex()
     {
         if (!pickedDs || !sourceGrid)
             return;
+        if (auto* faceKeyArr = findArray(pickedDs->GetCellData(), "vtkOriginalFaceKeys", "orig_face_key"))
+        {
+            const vtkIdType n = qMin(pickedDs->GetNumberOfCells(), faceKeyArr->GetNumberOfTuples());
+            for (vtkIdType cid = 0; cid < n; ++cid)
+            {
+                const vtkIdType faceKey = static_cast<vtkIdType>(faceKeyArr->GetTuple1(cid));
+                out[faceKey].push_back(cid);
+            }
+            return;
+        }
+
         const vtkIdType nCells = pickedDs->GetNumberOfCells();
         for (vtkIdType cid = 0; cid < nCells; ++cid)
         {
@@ -2221,12 +2309,9 @@ void PickManager::rebuildBoundaryFaceCellIndex()
             int srcFaceLocalId = 15;
             if (!computePickedFaceFromBoundary(pickedDs, cid, srcCellId, srcFaceLocalId))
                 continue;
-            if (sourceGrid && srcCellId >= 0 && srcCellId < sourceGrid->GetNumberOfCells())
-            {
-                vtkCell* srcCell = sourceGrid->GetCell(srcCellId);
-                if (srcCell && srcCell->GetCellDimension() == 2)
-                    srcFaceLocalId = 0;
-            }
+            // srcFaceLocalId 必须保持 computePickedFaceFromBoundary 的结果：
+            // 3D 体单元为真实 local face id，2D 面单元为 15。
+            // 这里不能把 2D 面单元改成 0，否则和 MeshTagSet.faceKeys 不一致。
             out[packFaceKey(srcCellId, srcFaceLocalId)].push_back(cid);
         }
     };
@@ -2269,7 +2354,7 @@ void PickManager::rebuildFaceColorForActive()
         putLocalCellsToColorMap(m_solidPickDataSet, localCells, color, targetColors);
     };
 
-    // 选中优先级高于预选。
+           // 选中优先级高于预选。
     appendFaceKeys(previewSolid, previewColor);
     appendFaceKeys(selectedSolid, selectedColor);
 
@@ -2393,7 +2478,7 @@ void PickManager::rebuildDomainHighlightActors()
     QHash<vtkIdType, RgbColor> solidTargetColors;
     QHash<vtkIdType, RgbColor> lineTargetColors;
 
-    // 颜色优先级：preDelete > selected > preview > applied。
+           // 颜色优先级：preDelete > selected > preview > applied。
     putSourceCellsToLocalColorMap(m_solidPickDataSet, appliedSolidCells, appliedColor, solidTargetColors);
     putSourceCellsToLocalColorMap(m_linePickDataSet, appliedLineCells, appliedColor, lineTargetColors);
 
@@ -3049,7 +3134,7 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                 if (!cell)
                     continue;
 
-                // Solid surface pick dataset（来自 boundary filter）：需要映射回原始体单元 edgeLocalId。
+                       // Solid surface pick dataset（来自 boundary filter）：需要映射回原始体单元 edgeLocalId。
                 if (kind == GridKind::Solid && pickedDs != m_gridSolid)
                 {
                     auto* origCellArr = findArray(pickedDs->GetCellData(), "vtkOriginalCellIds", "orig_cell_id");
@@ -3083,6 +3168,61 @@ bool PickManager::hardwareBoxSelect(int x0, int y0, int x1, int y1, bool deselec
                         const vtkIdType b = vtkIdType(origPointArr->GetTuple1(pb));
                         if (a < 0 || b < 0)
                             continue;
+
+                        bool matchedByTagSet = false;
+                        if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+                        {
+                            const QVector<MeshTagSet> sets = meshSvc->boundaryTagSets(1);
+                            for (const MeshTagSet& set : sets)
+                            {
+                                if (matchedByTagSet)
+                                    break;
+                                for (MeshIdType rawKey : set.edgeKeys)
+                                {
+                                    const vtkIdType edgeKey = static_cast<vtkIdType>(rawKey);
+                                    const vtkIdType cid = unpackEdgeCellId(edgeKey);
+                                    const int ei = unpackEdgeLocalId(edgeKey);
+                                    if (cid != origCellId)
+                                        continue;
+
+                                    vtkIdList* eids = nullptr;
+                                    if (origCell->GetCellDimension() == 1 || ei == 15)
+                                    {
+                                        eids = origCell->GetPointIds();
+                                    }
+                                    else
+                                    {
+                                        if (ei < 0 || ei >= origCell->GetNumberOfEdges())
+                                            continue;
+                                        vtkCell* e = origCell->GetEdge(ei);
+                                        if (!e)
+                                            continue;
+                                        eids = e->GetPointIds();
+                                    }
+                                    if (!eids || eids->GetNumberOfIds() < 2)
+                                        continue;
+
+                                    bool hasA = false;
+                                    bool hasB = false;
+                                    for (vtkIdType ek = 0; ek < eids->GetNumberOfIds(); ++ek)
+                                    {
+                                        const vtkIdType epid = eids->GetId(ek);
+                                        hasA = hasA || (epid == a);
+                                        hasB = hasB || (epid == b);
+                                    }
+                                    if (hasA && hasB)
+                                    {
+                                        setEdgeSelected_NoRefresh(kind, edgeKey, !deselect);
+                                        changed = true;
+                                        matchedByTagSet = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if (matchedByTagSet)
+                            continue;
+
                         const int nEdges = origCell->GetNumberOfEdges();
                         for (int ei = 0; ei < nEdges; ++ei)
                         {

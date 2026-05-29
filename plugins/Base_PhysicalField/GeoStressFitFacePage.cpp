@@ -1,4 +1,4 @@
-#include "GeoStressFitFacePage.h"
+﻿#include "GeoStressFitFacePage.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -38,6 +38,56 @@ QString GeoStressFitFacePage::fnameForExport() const
         return n;
     // 没填就自动命名
     return QString("LEFT_%1.DAT").arg(m_uuid);
+}
+
+
+namespace
+{
+static QString boundaryDimText(int dim)
+{
+    switch (dim)
+    {
+    case 1: return QStringLiteral("线边界");
+    case 2: return QStringLiteral("面边界");
+    case 0: return QStringLiteral("点边界");
+    default: return QStringLiteral("边界");
+    }
+}
+
+static QVector<vtkIdType> toVtkKeys(const QVector<MeshIdType>& ids)
+{
+    QVector<vtkIdType> out;
+    out.reserve(ids.size());
+    for (MeshIdType id : ids)
+        out.push_back(static_cast<vtkIdType>(id));
+    return out;
+}
+
+static MeshTagKey comboTagKey(QComboBox* combo, int row)
+{
+    if (!combo || row < 0)
+        return {};
+    return combo->itemData(row).value<MeshTagKey>();
+}
+
+static QString boundaryDisplayText(MeshModuleControllerService* meshSvc, const MeshTagSet& set, bool showDimPrefix)
+{
+    QString text = meshSvc ? meshSvc->displayTextOfTag(set.key) : set.name.trimmed();
+    if (text.trimmed().isEmpty())
+        text = QStringLiteral("%1%2").arg(boundaryDimText(set.key.dim)).arg(set.key.id);
+    return showDimPrefix ? QStringLiteral("%1：%2").arg(boundaryDimText(set.key.dim), text) : text;
+}
+
+static MeshTagSet findBoundarySet(MeshModuleControllerService* meshSvc, const MeshTagKey& key)
+{
+    if (!meshSvc || !key.isValid())
+        return {};
+    const QVector<MeshTagSet> sets = meshSvc->boundaryTagSets(key.dim);
+    for (const MeshTagSet& set : sets)
+        if (set.key == key)
+            return set;
+    return {};
+}
 }
 
 GeoStressFitFacePage::GeoStressFitFacePage(QWidget* parent)
@@ -115,24 +165,11 @@ void GeoStressFitFacePage::beforeLoad()
                     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
                     if (!meshSvc)
                         return;
-                    const MshPickMap& mapS = meshSvc->mshPickMapSolid();
-                    const int physId = ui->comboBoxGroup->itemData(row).toInt();
+                    const MeshTagSet set = findBoundarySet(meshSvc, comboTagKey(ui->comboBoxGroup, row));
                     if (pickEdge())
-                    {
-                        QVector<vtkIdType> keys;
-                        for (qint64 k : mapS.physicalEdgeKeys(physId))
-                            keys.push_back(vtkIdType(k));
-                        PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                                   keys);
-                    }
+                        PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid, GridKind::Solid, toVtkKeys(set.edgeKeys));
                     else
-                    {
-                        QVector<vtkIdType> keys;
-                        for (qint64 k : mapS.physicalFaceKeys(physId))
-                            keys.push_back(vtkIdType(k));
-                        PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                                   keys);
-                    }
+                        PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid, GridKind::Solid, toVtkKeys(set.faceKeys));
                 },
                 Qt::UniqueConnection);
         connect(groupCombo, &CustomComboBox::dropdownClosed, this,
@@ -147,57 +184,30 @@ void GeoStressFitFacePage::beforeLoad()
     // 3) 下拉框只做预览，不自动应用；由“添加”按钮触发
 }
 
+
 void GeoStressFitFacePage::refreshGroupCombo()
 {
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    if (!meshSvc)
-        return;
-
-    const MshPickMap& mapS = meshSvc->mshPickMapSolid();
-    //    const MshPickMap& mapL = meshSvc->mshPickMapLine();
-
-    const int wantDim = ui->comboBoxDim->currentData().toInt() >= 0
-                            ? ui->comboBoxDim->currentData().toInt()
-                            : (pickEdge() ? 1 : 2);
-
+    if (!meshSvc) return;
+    const int wantDim = ui->comboBoxDim->currentData().toInt() >= 0 ? ui->comboBoxDim->currentData().toInt() : (pickEdge() ? 1 : 2);
     ui->comboBoxDim->blockSignals(true);
     ui->comboBoxDim->clear();
-    ui->comboBoxDim->addItem("全部维度", -1);
-    ui->comboBoxDim->addItem("dim1 线", 1);
-    ui->comboBoxDim->addItem("dim2 面", 2);
-    ui->comboBoxDim->setCurrentIndex(wantDim == 1 ? 1 : 2);
+    ui->comboBoxDim->addItem(QStringLiteral("线边界"), 1);
+    ui->comboBoxDim->addItem(QStringLiteral("面边界"), 2);
+    ui->comboBoxDim->setCurrentIndex(wantDim == 1 ? 0 : 1);
     ui->comboBoxDim->blockSignals(false);
-
+    const QVector<MeshTagSet> sets = meshSvc->boundaryTagSets(wantDim);
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
-
-    // 合并两份 map 的 physId（避免只在 line 或只在 solid 的组漏掉）
-    QSet<int> allPhys;
-    const auto dimMap = mapS.physicalDimMap();
-    for (auto it = dimMap.constBegin(); it != dimMap.constEnd(); ++it)
-        if (it.value() == wantDim)
-            allPhys.insert(it.key());
-    //    for (auto it = mapL.physicalDimMap().constBegin(); it !=
-    //    mapL.physicalDimMap().constEnd(); ++it)
-    //        if (it.value() == wantDim) allPhys.insert(it.key());
-
-    QVector<int> ids = allPhys.values().toVector();
-    std::sort(ids.begin(), ids.end());
-
-    for (int physId : ids)
+    for (const MeshTagSet& set : sets)
     {
-        // 显示名：优先用 PhysicalNames 的 name，否则 fallback
-        QString name = mapS.physicalName(physId);
-        //        if (name.isEmpty()) name = mapL.physicalName(physId);
-        if (name.isEmpty())
-            name = QString("phys_%1").arg(physId);
-
-        // itemData 存 physId，后面取出来查 map
-        ui->comboBoxGroup->addItem(name, physId);
+        if (wantDim == 1 && set.edgeKeys.isEmpty()) continue;
+        if (wantDim == 2 && set.faceKeys.isEmpty()) continue;
+        ui->comboBoxGroup->addItem(boundaryDisplayText(meshSvc, set, false), QVariant::fromValue(set.key));
     }
-
     ui->comboBoxGroup->blockSignals(false);
 }
+
 
 static inline QVector<vtkIdType> toVtkIds(const QVector<qint64>& in)
 {
@@ -214,46 +224,29 @@ void GeoStressFitFacePage::onDimComboChanged(int)
     onGroupComboChanged(ui->comboBoxGroup->currentIndex());
 }
 
+
 void GeoStressFitFacePage::onGroupComboChanged(int idx)
 {
-    if (idx < 0)
-        return;
-
+    if (idx < 0) return;
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    if (!meshSvc)
-        return;
-
-    const MshPickMap& mapS = meshSvc->mshPickMapSolid();
-
-    const int physId = ui->comboBoxGroup->itemData(idx).toInt();
-
+    if (!meshSvc) return;
+    const MeshTagSet set = findBoundarySet(meshSvc, comboTagKey(ui->comboBoxGroup, idx));
     PickManager& pm = PickManager::instance();
     const QString domain = getPageType();
     const QString uuid = m_uuid;
-
-    const bool replace = false; // 点击添加：并入当前选择
-
+    const bool replace = false;
     if (pickEdge())
     {
-        // dim=1：edgeKeys（只用 solid）
-        const QVector<vtkIdType> keysSolid = toVtkIds(mapS.physicalEdgeKeys(physId));
-
-        pm.setSelectedEdgeKeys(domain, uuid, GridKind::Solid, keysSolid, replace);
-
-        // 可选：清空 Line 侧（防止你之前在别的网格上选过）
+        pm.setSelectedEdgeKeys(domain, uuid, GridKind::Solid, toVtkKeys(set.edgeKeys), replace);
         pm.setSelectedEdgeKeys(domain, uuid, GridKind::Line, {}, true);
     }
     else
     {
-        // dim=2：faceKeys（只用 solid）
-        const QVector<vtkIdType> keysSolid = toVtkIds(mapS.physicalFaceKeys(physId));
-
-        pm.setSelectedFaceKeys(domain, uuid, GridKind::Solid, keysSolid, replace);
-
-        // 可选：清空 Line 侧
+        pm.setSelectedFaceKeys(domain, uuid, GridKind::Solid, toVtkKeys(set.faceKeys), replace);
         pm.setSelectedFaceKeys(domain, uuid, GridKind::Line, {}, true);
     }
 }
+
 
 void GeoStressFitFacePage::beforeUnload()
 {

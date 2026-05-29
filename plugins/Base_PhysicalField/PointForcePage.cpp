@@ -1,4 +1,4 @@
-#include "PointForcePage.h"
+﻿#include "PointForcePage.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -18,6 +18,45 @@
 
 #include "PickManager.h"
 #include "ui_PointForcePage.h"
+
+
+namespace
+{
+static QString boundaryDimText(int dim)
+{
+    switch (dim)
+    {
+    case 0: return QStringLiteral("点边界");
+    case 1: return QStringLiteral("线边界");
+    case 2: return QStringLiteral("面边界");
+    default: return QStringLiteral("边界");
+    }
+}
+
+static QVector<vtkIdType> toVtkIds(const QVector<MeshIdType>& ids)
+{
+    QVector<vtkIdType> out;
+    out.reserve(ids.size());
+    for (MeshIdType id : ids)
+        out.push_back(static_cast<vtkIdType>(id));
+    return out;
+}
+
+static MeshTagKey comboTagKey(QComboBox* combo, int row)
+{
+    if (!combo || row < 0)
+        return {};
+    return combo->itemData(row).value<MeshTagKey>();
+}
+
+static QString boundaryDisplayText(MeshModuleControllerService* meshSvc, const MeshTagSet& set, bool showDimPrefix)
+{
+    QString text = meshSvc ? meshSvc->displayTextOfTag(set.key) : set.name.trimmed();
+    if (text.trimmed().isEmpty())
+        text = QStringLiteral("%1%2").arg(boundaryDimText(set.key.dim)).arg(set.key.id);
+    return showDimPrefix ? QStringLiteral("%1：%2").arg(boundaryDimText(set.key.dim), text) : text;
+}
+}
 
 PointForcePage::PointForcePage(QWidget* parent)
     : BasePage("PointForcePage"), ui(new Ui::PointForcePage)
@@ -109,25 +148,27 @@ double PointForcePage::mzValue() const
     return ui->spinMz->value();
 }
 
+
 void PointForcePage::setupBatchGroupCombo()
 {
     if (!ui)
         return;
+
     ui->comboBoxDim->blockSignals(true);
     ui->comboBoxDim->clear();
-    ui->comboBoxDim->addItem("全部维度", -1);
-    ui->comboBoxDim->addItem("dim0 点", 0);
-    ui->comboBoxDim->addItem("dim1 线", 1);
-    ui->comboBoxDim->addItem("dim2 面", 2);
+    ui->comboBoxDim->addItem(QStringLiteral("全部边界"), -1);
+    ui->comboBoxDim->addItem(QStringLiteral("点边界"), 0);
+    ui->comboBoxDim->addItem(QStringLiteral("线边界"), 1);
+    ui->comboBoxDim->addItem(QStringLiteral("面边界"), 2);
     ui->comboBoxDim->setCurrentIndex(0);
     ui->comboBoxDim->blockSignals(false);
 
-    // 防止页面切换后重复连接导致槽函数被多次触发
     QObject::disconnect(ui->comboBoxDim, nullptr, this, nullptr);
     QObject::disconnect(ui->comboBoxGroup, nullptr, this, nullptr);
 
     connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &PointForcePage::onDimChanged, Qt::UniqueConnection);
+
     auto* batchAddBtn = ui->btnBatchAdd;
     QObject::disconnect(batchAddBtn, nullptr, this, nullptr);
     connect(batchAddBtn, &QPushButton::clicked, this,
@@ -146,20 +187,9 @@ void PointForcePage::setupBatchGroupCombo()
                     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
                     if (!meshSvc || row < 0)
                         return;
-                    const MshPickMap& map = meshSvc->mshPickMapSolid();
-                    const int physId = ui->comboBoxGroup->itemData(row).toInt();
-                    const int dim = map.physicalDim(physId);
-                    QVector<int> pointIdsInt;
-                    if (dim == 0)
-                        pointIdsInt = map.physicalPointIds(physId, 0);
-                    else if (dim == 1)
-                        pointIdsInt = map.physicalPointIds(physId, 1);
-                    else if (dim == 2)
-                        pointIdsInt = map.physicalPointIds(physId, 2);
-                    QVector<vtkIdType> pids;
-                    for (int pid : pointIdsInt)
-                        pids.push_back(vtkIdType(pid));
-                    PickManager::instance().setPreviewPointIds(getPageType(), m_uuid, GridKind::Solid, pids);
+                    const MeshTagKey key = comboTagKey(ui->comboBoxGroup, row);
+                    PickManager::instance().setPreviewPointIds(getPageType(), m_uuid, GridKind::Solid,
+                                                               toVtkIds(meshSvc->pointIdsOfTag(key)));
                 },
                 Qt::UniqueConnection);
         connect(groupCombo, &CustomComboBox::dropdownClosed, this,
@@ -173,35 +203,31 @@ void PointForcePage::setupBatchGroupCombo()
     refreshGroupCombo();
 }
 
+
+
 void PointForcePage::refreshGroupCombo()
 {
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
         return;
 
-    const MshPickMap& map = meshSvc->mshPickMapSolid();
     const int dimFilter = ui->comboBoxDim->currentData().toInt();
+    const QVector<MeshTagSet> sets = meshSvc->boundaryTagSets(dimFilter);
+    const bool showDimPrefix = (dimFilter < 0);
+
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
-    const auto nameMap = map.physicalNameMap();
-    for (auto it = nameMap.constBegin(); it != nameMap.constEnd(); ++it)
-    {
-        const int physId = it.key();
-        const int dim = map.physicalDim(physId);
-        if (dim < 0 || dim > 2)
-            continue;
-        if (dimFilter >= 0 && dim != dimFilter)
-            continue;
-        ui->comboBoxGroup->addItem(
-            QString("%1  (dim=%2, id=%3)").arg(it.value()).arg(dim).arg(physId), physId);
-    }
+    for (const MeshTagSet& set : sets)
+        ui->comboBoxGroup->addItem(boundaryDisplayText(meshSvc, set, showDimPrefix), QVariant::fromValue(set.key));
     ui->comboBoxGroup->blockSignals(false);
 }
+
 
 void PointForcePage::onDimChanged(int)
 {
     refreshGroupCombo();
 }
+
 
 void PointForcePage::onGroupChanged(int index)
 {
@@ -210,23 +236,8 @@ void PointForcePage::onGroupChanged(int index)
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
         return;
-    const MshPickMap& map = meshSvc->mshPickMapSolid();
-
-    const int physId = ui->comboBoxGroup->itemData(index).toInt();
-    const int dim = map.physicalDim(physId);
-    QVector<int> pointIdsInt;
-    if (dim == 0)
-        pointIdsInt = map.physicalPointIds(physId, 0);
-    else if (dim == 1)
-        pointIdsInt = map.physicalPointIds(physId, 1);
-    else if (dim == 2)
-        pointIdsInt = map.physicalPointIds(physId, 2);
-    else
-        return;
-
-    QVector<vtkIdType> pids;
-    pids.reserve(pointIdsInt.size());
-    for (int pid : pointIdsInt)
-        pids.push_back(vtkIdType(pid));
-    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pids, false);
+    const MeshTagKey key = comboTagKey(ui->comboBoxGroup, index);
+    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid,
+                                                toVtkIds(meshSvc->pointIdsOfTag(key)), false);
 }
+

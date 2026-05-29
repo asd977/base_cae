@@ -1,4 +1,4 @@
-﻿#ifndef MESH_H
+#ifndef MESH_H
 #define MESH_H
 
 #include <QHash>
@@ -53,26 +53,19 @@ struct MshPickMap
 {
     int meshDim = 3;
 
-    // ----- PhysicalNames -----
-    QHash<int, QString> physIdToName; // physicalId -> 物理组名字（如 "face_1"）
+    // ----- 兼容字段：PhysicalNames -----
+    // 注意：业务层/界面层不要直接依赖这些字段。
+    // 统一的分组与边界业务模型是 tagSets。
+    QHash<int, QString> physIdToName; // physicalId -> 物理组名字
     QHash<int, int> physIdToDim;      // physicalId -> 维度（0点 1线 2面 3体）
 
     // ----- Node 映射 -----
     QHash<int, int> nodeIdToPointId; // msh NodeId -> vtk pointId（用 msh 元素找 vtk 点）
     QHash<int, int> pointIdToNodeId; // vtk pointId -> msh NodeId（UI显示 nodeId / 写文件用）
 
-    // ----- 边界：用于“选点” -----
-    QHash<int, QVector<int>> bndPointPhysToPointIds; // physicalId(dim=0) -> vtk pointId 列表
-    QHash<int, QVector<int>> bndEdgePhysToPointIds;  // physicalId(dim=1) -> vtk pointId
-                                                     // 列表（线的端点集合）
-    QHash<int, QVector<int>> bndFacePhysToPointIds;  // physicalId(dim=2) -> vtk pointId
-                                                     // 列表（面的角点集合）
-
-    // ----- 边界：用于“高亮线/面” -----
-    QHash<int, QVector<qint64>> bndEdgePhysToEdgeKeys; // physicalId(dim=1) -> edgeKey 列表
-    QHash<int, QVector<qint64>> bndFacePhysToFaceKeys; // physicalId(dim=2) -> faceKey 列表
-
-    // ----- 新统一分组模型 -----
+    // ----- 唯一业务分组模型 -----
+    // 域、边界点、边界线、边界面都统一落到这里。
+    // 页面层应只读取 MeshModuleController::boundaryTagSets()/domainTagSets()，不要直接读 bndXXX。
     QHash<MeshTagKey, MeshTagSet> tagSets;
     QHash<MeshIdType, QVector<MeshTagKey>> cellIdToDomainTags;
     QHash<MeshIdType, QVector<MeshTagKey>> pointIdToBoundaryTags;
@@ -131,7 +124,7 @@ struct MshPickMap
             if (tagSets.contains(key))
                 return d;
         }
-        return physIdToDim.value(physId, -1);
+        return -1;
     }
 
     QVector<int> physicalIds(int dimFilter = -1) const
@@ -151,15 +144,6 @@ struct MshPickMap
                 ids.push_back(key.id);
             }
         }
-        if (ids.isEmpty())
-        {
-            for (auto it = physIdToDim.constBegin(); it != physIdToDim.constEnd(); ++it)
-            {
-                if (dimFilter >= 0 && it.value() != dimFilter)
-                    continue;
-                ids.push_back(it.key());
-            }
-        }
         std::sort(ids.begin(), ids.end());
         return ids;
     }
@@ -169,40 +153,34 @@ struct MshPickMap
         if (physId <= 0 || dim < 0 || dim > 2)
             return {};
         const MeshTagKey key{QStringLiteral("Physical"), dim, physId};
-        if (tagSets.contains(key))
-        {
-            QVector<int> out;
-            out.reserve(tagSets.value(key).pointIds.size());
-            for (MeshIdType v : tagSets.value(key).pointIds)
-                out.push_back(static_cast<int>(v));
-            return out;
-        }
-        if (dim == 0)
-            return bndPointPhysToPointIds.value(physId);
-        if (dim == 1)
-            return bndEdgePhysToPointIds.value(physId);
-        return bndFacePhysToPointIds.value(physId);
+        if (!tagSets.contains(key))
+            return {};
+        QVector<int> out;
+        out.reserve(tagSets.value(key).pointIds.size());
+        for (MeshIdType v : tagSets.value(key).pointIds)
+            out.push_back(static_cast<int>(v));
+        return out;
     }
 
     QVector<qint64> physicalEdgeKeys(int physId) const
     {
         const MeshTagKey key{QStringLiteral("Physical"), 1, physId};
-        if (tagSets.contains(key) && !tagSets.value(key).edgeKeys.isEmpty())
+        if (tagSets.contains(key))
             return tagSets.value(key).edgeKeys;
-        return bndEdgePhysToEdgeKeys.value(physId);
+        return {};
     }
 
     QVector<qint64> physicalFaceKeys(int physId) const
     {
         const MeshTagKey key{QStringLiteral("Physical"), 2, physId};
-        if (tagSets.contains(key) && !tagSets.value(key).faceKeys.isEmpty())
+        if (tagSets.contains(key))
             return tagSets.value(key).faceKeys;
-        return bndFacePhysToFaceKeys.value(physId);
+        return {};
     }
 
     QHash<int, QString> physicalNameMap() const
     {
-        QHash<int, QString> out = physIdToName;
+        QHash<int, QString> out;
         for (const MeshTagSet& set : physicalTagSets())
         {
             if (set.name.trimmed().isEmpty())
@@ -214,7 +192,7 @@ struct MshPickMap
 
     QHash<int, int> physicalDimMap() const
     {
-        QHash<int, int> out = physIdToDim;
+        QHash<int, int> out;
         for (const MeshTagSet& set : physicalTagSets())
             out.insert(set.key.id, set.key.dim);
         return out;
@@ -222,7 +200,7 @@ struct MshPickMap
 
     QHash<int, QVector<qint64>> physicalEdgeKeyMap() const
     {
-        QHash<int, QVector<qint64>> out = bndEdgePhysToEdgeKeys;
+        QHash<int, QVector<qint64>> out;
         for (const MeshTagSet& set : physicalTagSets(1))
         {
             if (!set.edgeKeys.isEmpty())
@@ -233,7 +211,7 @@ struct MshPickMap
 
     QHash<int, QVector<qint64>> physicalFaceKeyMap() const
     {
-        QHash<int, QVector<qint64>> out = bndFacePhysToFaceKeys;
+        QHash<int, QVector<qint64>> out;
         for (const MeshTagSet& set : physicalTagSets(2))
         {
             if (!set.faceKeys.isEmpty())

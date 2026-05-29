@@ -12,6 +12,7 @@
 
 #include <vtkActor.h>
 #include <vtkCell.h>
+#include <vtkCellArray.h>
 #include <vtkCellData.h>
 #include <vtkDataArray.h>
 #include <vtkDataSet.h>
@@ -25,11 +26,14 @@
 #include <vtkPolyData.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkSmartPointer.h>
+#include <vtkPointData.h>
 #include <vtkUnstructuredGrid.h>
 
+#include <QByteArray>
 #include <QCheckBox>
 #include <QColor>
 #include <QComboBox>
+#include <QHash>
 #include <QSignalBlocker>
 #include <QStringList>
 #include <QTreeWidget>
@@ -150,19 +154,276 @@ static vtkSmartPointer<vtkUnstructuredGrid> copyWithFullCellIds(vtkUnstructuredG
 
     out->ShallowCopy(grid);
 
-    auto fullIds = vtkSmartPointer<vtkIdTypeArray>::New();
-    fullIds->SetName("vtkOriginalCellIds");
-    fullIds->SetNumberOfComponents(1);
-    fullIds->SetNumberOfTuples(grid->GetNumberOfCells());
+           // 关键：筛选抽取后 cellId/pointId 会变成本地编号。
+           // PickManager 需要通过 vtkOriginalCellIds / vtkOriginalPointIds 回到完整网格编号。
+    auto fullCellIds = vtkSmartPointer<vtkIdTypeArray>::New();
+    fullCellIds->SetName("vtkOriginalCellIds");
+    fullCellIds->SetNumberOfComponents(1);
+    fullCellIds->SetNumberOfTuples(grid->GetNumberOfCells());
     for (vtkIdType cid = 0; cid < grid->GetNumberOfCells(); ++cid)
-        fullIds->SetValue(cid, cid);
+        fullCellIds->SetValue(cid, cid);
 
     if (auto* cd = out->GetCellData())
     {
         cd->RemoveArray("vtkOriginalCellIds");
-        cd->AddArray(fullIds);
+        cd->AddArray(fullCellIds);
     }
 
+    auto fullPointIds = vtkSmartPointer<vtkIdTypeArray>::New();
+    fullPointIds->SetName("vtkOriginalPointIds");
+    fullPointIds->SetNumberOfComponents(1);
+    fullPointIds->SetNumberOfTuples(grid->GetNumberOfPoints());
+    for (vtkIdType pid = 0; pid < grid->GetNumberOfPoints(); ++pid)
+        fullPointIds->SetValue(pid, pid);
+
+    if (auto* pd = out->GetPointData())
+    {
+        pd->RemoveArray("vtkOriginalPointIds");
+        pd->AddArray(fullPointIds);
+    }
+
+    return out;
+}
+
+static int viewCellDimension(vtkUnstructuredGrid* grid, vtkIdType cellId)
+{
+    vtkCell* cell = (grid && cellId >= 0 && cellId < grid->GetNumberOfCells())
+    ? grid->GetCell(cellId)
+    : nullptr;
+    return cell ? cell->GetCellDimension() : -1;
+}
+
+static vtkIdType originalCellIdOf(vtkDataSet* grid, vtkIdType cellId)
+{
+    if (!grid || cellId < 0 || cellId >= grid->GetNumberOfCells())
+        return cellId;
+
+    auto* arr = grid->GetCellData() ? grid->GetCellData()->GetArray("vtkOriginalCellIds") : nullptr;
+    if (arr && cellId < arr->GetNumberOfTuples())
+        return static_cast<vtkIdType>(arr->GetTuple1(cellId));
+    return cellId;
+}
+
+static vtkIdType originalPointIdOf(vtkDataSet* grid, vtkIdType pointId)
+{
+    if (!grid || pointId < 0 || pointId >= grid->GetNumberOfPoints())
+        return pointId;
+
+    auto* arr = grid->GetPointData() ? grid->GetPointData()->GetArray("vtkOriginalPointIds") : nullptr;
+    if (arr && pointId < arr->GetNumberOfTuples())
+        return static_cast<vtkIdType>(arr->GetTuple1(pointId));
+    return pointId;
+}
+
+static int cellIntValue(vtkDataSet* grid, vtkIdType cellId, const char* arrayName)
+{
+    auto* arr = (grid && grid->GetCellData()) ? grid->GetCellData()->GetArray(arrayName) : nullptr;
+    if (!arr || cellId < 0 || cellId >= arr->GetNumberOfTuples())
+        return 0;
+    return static_cast<int>(arr->GetTuple1(cellId));
+}
+
+static QByteArray facePointKey(vtkIdList* pointIds)
+{
+    QVector<vtkIdType> ids;
+    if (pointIds)
+    {
+        ids.reserve(static_cast<int>(pointIds->GetNumberOfIds()));
+        for (vtkIdType i = 0; i < pointIds->GetNumberOfIds(); ++i)
+            ids.push_back(pointIds->GetId(i));
+    }
+
+    std::sort(ids.begin(), ids.end());
+
+    QByteArray key;
+    key.reserve(ids.size() * int(sizeof(vtkIdType)));
+    for (vtkIdType id : ids)
+        key.append(reinterpret_cast<const char*>(&id), int(sizeof(vtkIdType)));
+    return key;
+}
+
+struct ViewFaceRef
+{
+    vtkIdType cellId = -1;          // 筛选后 surfaceSource 的本地 cell id
+    vtkIdType originalCellId = -1;  // 完整网格 cell id
+    int originalFaceId = 15;        // 3D 单元局部面 id；2D 单元整体面固定为 15
+    int matype = 0;
+    int layer = 0;
+    QVector<vtkIdType> pointIds;    // surfaceSource 的本地点 id，用于 polydata 组面
+};
+
+static bool differentVisibleDomain(const ViewFaceRef& a, const ViewFaceRef& b,
+                                   bool hasMatype, bool hasLayer)
+{
+    if (hasLayer && a.layer != b.layer)
+        return true;
+    if (hasMatype && a.matype != b.matype)
+        return true;
+    return false;
+}
+
+static void addViewSurfaceFace(vtkPolyData* out,
+                               vtkCellArray* polys,
+                               vtkIdTypeArray* originalCellIds,
+                               vtkIdTypeArray* originalFaceIds,
+                               vtkCellData* sourceCellData,
+                               const ViewFaceRef& face)
+{
+    if (!out || !polys || !originalCellIds || !originalFaceIds || face.pointIds.size() < 3)
+        return;
+
+    auto ids = vtkSmartPointer<vtkIdList>::New();
+    ids->SetNumberOfIds(face.pointIds.size());
+    for (int i = 0; i < face.pointIds.size(); ++i)
+        ids->SetId(i, face.pointIds[i]);
+
+    const vtkIdType newCellId = polys->GetNumberOfCells();
+    polys->InsertNextCell(ids);
+
+    if (sourceCellData && out->GetCellData())
+        out->GetCellData()->CopyData(sourceCellData, face.cellId, newCellId);
+
+    originalCellIds->InsertNextValue(face.originalCellId);
+    originalFaceIds->InsertNextValue(face.originalFaceId);
+}
+
+static vtkSmartPointer<vtkPolyData> buildMappedViewSurface(vtkUnstructuredGrid* grid)
+{
+    auto out = vtkSmartPointer<vtkPolyData>::New();
+    if (!grid || grid->GetNumberOfCells() <= 0 || !grid->GetPoints())
+        return out;
+
+    out->SetPoints(grid->GetPoints());
+
+    auto polys = vtkSmartPointer<vtkCellArray>::New();
+    out->SetPolys(polys);
+
+    vtkCellData* srcCellData = grid->GetCellData();
+    if (srcCellData)
+        out->GetCellData()->CopyAllocate(srcCellData, grid->GetNumberOfCells());
+
+    auto originalPointIds = vtkSmartPointer<vtkIdTypeArray>::New();
+    originalPointIds->SetName("vtkOriginalPointIds");
+    originalPointIds->SetNumberOfComponents(1);
+    originalPointIds->SetNumberOfTuples(grid->GetNumberOfPoints());
+    for (vtkIdType pid = 0; pid < grid->GetNumberOfPoints(); ++pid)
+        originalPointIds->SetValue(pid, originalPointIdOf(grid, pid));
+
+    auto originalCellIds = vtkSmartPointer<vtkIdTypeArray>::New();
+    originalCellIds->SetName("vtkOriginalCellIds");
+    originalCellIds->SetNumberOfComponents(1);
+
+    auto originalFaceIds = vtkSmartPointer<vtkIdTypeArray>::New();
+    originalFaceIds->SetName("vtkOriginalFaceIds");
+    originalFaceIds->SetNumberOfComponents(1);
+
+    const bool hasMatype = srcCellData && srcCellData->GetArray("MATYPE");
+    const bool hasLayer = srcCellData && srcCellData->GetArray("LAYER");
+
+    QHash<QByteArray, QVector<ViewFaceRef>> faceMap;
+    faceMap.reserve(static_cast<int>(grid->GetNumberOfCells() * 3));
+
+    const vtkIdType nCells = grid->GetNumberOfCells();
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    {
+        const int dim = viewCellDimension(grid, cid);
+        vtkCell* cell = grid->GetCell(cid);
+        if (!cell)
+            continue;
+
+        ViewFaceRef ref;
+        ref.cellId = cid;
+        ref.originalCellId = originalCellIdOf(grid, cid);
+        ref.matype = cellIntValue(grid, cid, "MATYPE");
+        ref.layer = cellIntValue(grid, cid, "LAYER");
+
+        if (dim == 2)
+        {
+            ref.originalFaceId = 15;
+            vtkIdList* pids = cell->GetPointIds();
+            if (!pids || pids->GetNumberOfIds() < 3)
+                continue;
+
+            ref.pointIds.reserve(static_cast<int>(pids->GetNumberOfIds()));
+            for (vtkIdType i = 0; i < pids->GetNumberOfIds(); ++i)
+                ref.pointIds.push_back(pids->GetId(i));
+
+            addViewSurfaceFace(out, polys, originalCellIds, originalFaceIds, srcCellData, ref);
+            continue;
+        }
+
+        if (dim != 3)
+            continue;
+
+        const int nFaces = cell->GetNumberOfFaces();
+        for (int fi = 0; fi < nFaces; ++fi)
+        {
+            vtkCell* face = cell->GetFace(fi);
+            if (!face)
+                continue;
+
+            vtkIdList* pids = face->GetPointIds();
+            if (!pids || pids->GetNumberOfIds() < 3)
+                continue;
+
+            ViewFaceRef one = ref;
+            one.originalFaceId = fi;
+            one.pointIds.reserve(static_cast<int>(pids->GetNumberOfIds()));
+            for (vtkIdType i = 0; i < pids->GetNumberOfIds(); ++i)
+                one.pointIds.push_back(pids->GetId(i));
+
+            faceMap[facePointKey(pids)].push_back(one);
+        }
+    }
+
+    for (auto it = faceMap.constBegin(); it != faceMap.constEnd(); ++it)
+    {
+        const QVector<ViewFaceRef>& owners = it.value();
+        if (owners.isEmpty())
+            continue;
+
+        if (owners.size() == 1)
+        {
+            addViewSurfaceFace(out, polys, originalCellIds, originalFaceIds, srcCellData, owners[0]);
+            continue;
+        }
+
+               // 筛选视图里相邻单元同属同一材料/层时，内部面不显示；
+               // 材料/分层不同的内部界面保留，和 MeshModuleController 主显示逻辑一致。
+        for (int i = 0; i < owners.size(); ++i)
+        {
+            bool visibleInterface = false;
+            for (int j = 0; j < owners.size(); ++j)
+            {
+                if (i == j)
+                    continue;
+                if (differentVisibleDomain(owners[i], owners[j], hasMatype, hasLayer))
+                {
+                    visibleInterface = true;
+                    break;
+                }
+            }
+
+            if (visibleInterface)
+                addViewSurfaceFace(out, polys, originalCellIds, originalFaceIds, srcCellData, owners[i]);
+        }
+    }
+
+    if (out->GetPointData())
+    {
+        out->GetPointData()->RemoveArray("vtkOriginalPointIds");
+        out->GetPointData()->AddArray(originalPointIds);
+    }
+
+    if (out->GetCellData())
+    {
+        out->GetCellData()->RemoveArray("vtkOriginalCellIds");
+        out->GetCellData()->RemoveArray("vtkOriginalFaceIds");
+        out->GetCellData()->AddArray(originalCellIds);
+        out->GetCellData()->AddArray(originalFaceIds);
+    }
+
+    out->Modified();
     return out;
 }
 } // namespace
@@ -243,7 +504,7 @@ void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString
     clearData();
     m_sourceName = sourceName;
 
-    // 颜色模式只在当前网格编辑页生效，不再保存/恢复为全局状态。
+           // 颜色模式只在当前网格编辑页生效，不再保存/恢复为全局状态。
     m_colorMode = ColorMode::None;
 
     if (ui && ui->comboBoxColorMode)
@@ -380,12 +641,10 @@ void GridEditingWidget::buildOrUpdateViewGrid()
     if (surfaceCellIds->GetNumberOfIds() > 0)
     {
         auto surfaceSource = extractCells(surfaceCellIds);
-        auto surfaceFilter = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-        surfaceFilter->SetInputData(surfaceSource);
-        surfaceFilter->Update();
-
-        m_viewSurface = vtkSmartPointer<vtkPolyData>::New();
-        m_viewSurface->ShallowCopy(surfaceFilter->GetOutput());
+        // 不再用 vtkDataSetSurfaceFilter 直接抽壳。
+        // 直接抽壳只保证 vtkOriginalCellIds，无法稳定提供 originalFaceIds，
+        // 高阶单元/内部界面/筛选后局部点编号都会导致 PickManager 反推错面。
+        m_viewSurface = buildMappedViewSurface(surfaceSource);
     }
     else
     {
@@ -521,9 +780,9 @@ void GridEditingWidget::buildFilterTreeFromGrid()
             child->setData(0, kRoleIsGroup, false);
             child->setFlags(child->flags() | Qt::ItemIsUserCheckable);
             child->setToolTip(0, QStringLiteral("%1 = %2，单元数量：%3")
-                                      .arg(category)
-                                      .arg(it.key())
-                                      .arg(it.value()));
+                                     .arg(category)
+                                     .arg(it.key())
+                                     .arg(it.value()));
 
             bool checked = true;
             if (category == kCategoryKetype)
@@ -680,7 +939,7 @@ void GridEditingWidget::onFilterTreeItemChanged(QTreeWidgetItem* item, int colum
         m_updatingFilterTree = false;
     }
 
-    // 先只同步页面状态，不重建树、不改回用户刚点击的勾选状态。
+           // 先只同步页面状态，不重建树、不改回用户刚点击的勾选状态。
     m_filterKetypes = checkedValuesForCategory(kCategoryKetype);
     m_filterMatypes = checkedValuesForCategory(kCategoryMatype);
     m_filterLayers = checkedValuesForCategory(kCategoryLayer);

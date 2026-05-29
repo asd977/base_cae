@@ -17,9 +17,9 @@
 #include <services/ProjectManagerService.h>
 #include <services/VisualWidgetService.h>
 #include <vtkActor.h>
-#include <vtkCellArray.h>
 #include <vtkAppendFilter.h>
 #include <vtkCell.h>
+#include <vtkCellArray.h>
 #include <vtkCellData.h>
 #include <vtkCellType.h>
 #include <vtkDataSetMapper.h>
@@ -46,12 +46,13 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QHash>
 #include <QMessageBox>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QSet>
 #include <QStringList>
 #include <QVector>
@@ -66,11 +67,6 @@
 
 namespace
 {
-
-// 统一网格默认显示颜色：必须和 PickManager 中的普通区域颜色保持一致，避免进入预选/选中时灰度闪动。
-constexpr double kMeshDefaultGray = 0.78;
-constexpr double kMeshDefaultEdgeGray = 0.0;
-constexpr double kMeshDefaultLineWidth = 1.0;
 
 static bool meshDomainKeyIsValid(const DomainKey& key)
 {
@@ -114,6 +110,127 @@ static QString chooseMshSnapshotSource(const QString& sourceFileName)
 
     return QString();
 }
+
+static QString physicalUiNameByDim(int dim, int id)
+{
+    QString prefix;
+    switch (dim)
+    {
+    case 0: prefix = QStringLiteral("点边界"); break;
+    case 1: prefix = QStringLiteral("线边界"); break;
+    case 2: prefix = QStringLiteral("面边界"); break;
+    case 3: prefix = QStringLiteral("体域"); break;
+    default: prefix = QStringLiteral("分组"); break;
+    }
+    return QStringLiteral("%1%2").arg(prefix).arg(id);
+}
+
+static QString normalizePhysicalUiName(int dim, int id, const QString& rawName)
+{
+    const QString name = rawName.trimmed();
+    if (name.isEmpty())
+        return physicalUiNameByDim(dim, id);
+
+    static const QRegularExpression generatedNameRe(
+        QStringLiteral("^(dim\\d+(_|-)?.*|phys_\\d+|point_\\d+|edge_\\d+|face_\\d+|volume_\\d+|MeshPoint_\\d+|MeshEdge_\\d+|MeshFace_\\d+|MeshVolume_\\d+)$"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (generatedNameRe.match(name).hasMatch())
+        return physicalUiNameByDim(dim, id);
+
+    return name;
+}
+
+static QVector<MeshIdType> meshIdsFromIntVector(const QVector<int>& values)
+{
+    QVector<MeshIdType> out;
+    out.reserve(values.size());
+    for (int v : values)
+        out.push_back(static_cast<MeshIdType>(v));
+
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    return out;
+}
+
+static QVector<MeshIdType> meshIdsFromInt64Vector(const QVector<qint64>& values)
+{
+    QVector<MeshIdType> out;
+    out.reserve(values.size());
+    for (qint64 v : values)
+        out.push_back(static_cast<MeshIdType>(v));
+
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    return out;
+}
+
+static void normalizeMeshTagSet(MeshTagSet& set)
+{
+    set.name = normalizePhysicalUiName(set.key.dim, set.key.id, set.name);
+
+    std::sort(set.pointIds.begin(), set.pointIds.end());
+    set.pointIds.erase(std::unique(set.pointIds.begin(), set.pointIds.end()), set.pointIds.end());
+
+    std::sort(set.cellIds.begin(), set.cellIds.end());
+    set.cellIds.erase(std::unique(set.cellIds.begin(), set.cellIds.end()), set.cellIds.end());
+
+    std::sort(set.edgeKeys.begin(), set.edgeKeys.end());
+    set.edgeKeys.erase(std::unique(set.edgeKeys.begin(), set.edgeKeys.end()), set.edgeKeys.end());
+
+    std::sort(set.faceKeys.begin(), set.faceKeys.end());
+    set.faceKeys.erase(std::unique(set.faceKeys.begin(), set.faceKeys.end()), set.faceKeys.end());
+}
+
+static void upsertPhysicalBoundarySet(QHash<MeshTagKey, MeshTagSet>& sets,
+                                      const MshPickMap& map,
+                                      int physId,
+                                      int dim,
+                                      const QVector<int>& pointIds,
+                                      const QVector<qint64>& edgeKeys,
+                                      const QVector<qint64>& faceKeys)
+{
+    if (physId <= 0 || dim < 0 || dim >= map.meshDim)
+        return;
+    if (pointIds.isEmpty() && edgeKeys.isEmpty() && faceKeys.isEmpty())
+        return;
+
+    MeshTagKey key;
+    key.category = QStringLiteral("Physical");
+    key.dim = dim;
+    key.id = physId;
+
+    MeshTagSet set = sets.value(key);
+    set.key = key;
+    if (set.source.trimmed().isEmpty())
+        set.source = QStringLiteral("BoundaryIndex");
+
+    if (set.name.trimmed().isEmpty())
+        set.name = map.physIdToName.value(physId);
+
+    set.pointIds += meshIdsFromIntVector(pointIds);
+    set.edgeKeys += meshIdsFromInt64Vector(edgeKeys);
+    set.faceKeys += meshIdsFromInt64Vector(faceKeys);
+
+    normalizeMeshTagSet(set);
+    sets.insert(key, set);
+}
+
+static QVector<MeshTagSet> sortedMeshTagSets(QHash<MeshTagKey, MeshTagSet> sets)
+{
+    QVector<MeshTagSet> out = sets.values().toVector();
+
+    std::sort(out.begin(), out.end(), [](const MeshTagSet& a, const MeshTagSet& b)
+              {
+                  if (a.key.dim != b.key.dim)
+                      return a.key.dim < b.key.dim;
+                  if (a.key.category != b.key.category)
+                      return a.key.category < b.key.category;
+                  return a.key.id < b.key.id;
+              });
+
+    return out;
+}
+
 
 static QJsonArray meshIdVectorToJson(const QVector<MeshIdType>& ids)
 {
@@ -471,6 +588,116 @@ static QHash<int, QVector<int>> nodePhysToPointPhys(
     return out;
 }
 
+
+static MeshTagSet& ensurePhysicalTagSet(MshPickMap& pick,
+                                        int physId,
+                                        int dim,
+                                        const QString& source)
+{
+    static MeshTagSet invalid;
+    if (physId <= 0 || dim < 0 || dim > 3)
+        return invalid;
+
+    MeshTagKey key{QStringLiteral("Physical"), dim, physId};
+    if (!pick.tagSets.contains(key))
+    {
+        MeshTagSet set;
+        set.key = key;
+        set.name = pick.physIdToName.value(physId, QStringLiteral("Physical=%1").arg(physId));
+        set.source = source;
+        pick.tagSets.insert(key, set);
+    }
+
+    MeshTagSet& set = pick.tagSets[key];
+    if (set.name.trimmed().isEmpty())
+        set.name = pick.physIdToName.value(physId, QStringLiteral("Physical=%1").arg(physId));
+    if (set.source.trimmed().isEmpty())
+        set.source = source;
+    pick.physIdToName.insert(physId, set.name);
+    pick.physIdToDim.insert(physId, dim);
+    return set;
+}
+
+static void setPhysicalBoundaryPointIds(MshPickMap& pick,
+                                        int physId,
+                                        int dim,
+                                        const QVector<int>& pointIds,
+                                        const QString& source)
+{
+    MeshTagSet& set = ensurePhysicalTagSet(pick, physId, dim, source);
+    if (!set.key.isValid())
+        return;
+    set.pointIds.clear();
+    set.pointIds.reserve(pointIds.size());
+    for (int pid : pointIds)
+    {
+        if (pid >= 0)
+            set.pointIds.push_back(static_cast<MeshIdType>(pid));
+    }
+}
+
+static void appendPhysicalBoundaryEdgeKey(MshPickMap& pick, int physId, qint64 edgeKey, const QString& source)
+{
+    MeshTagSet& set = ensurePhysicalTagSet(pick, physId, 1, source);
+    if (set.key.isValid())
+        set.edgeKeys.push_back(static_cast<MeshIdType>(edgeKey));
+}
+
+static void appendPhysicalBoundaryFaceKey(MshPickMap& pick, int physId, qint64 faceKey, const QString& source)
+{
+    MeshTagSet& set = ensurePhysicalTagSet(pick, physId, 2, source);
+    if (set.key.isValid())
+        set.faceKeys.push_back(static_cast<MeshIdType>(faceKey));
+}
+
+static void normalizeMeshTagSets(MshPickMap& pick)
+{
+    pick.pointIdToBoundaryTags.clear();
+
+    auto dedupMeshIds = [](QVector<MeshIdType>& values)
+    {
+        std::sort(values.begin(), values.end());
+        values.erase(std::unique(values.begin(), values.end()), values.end());
+    };
+
+    for (auto it = pick.tagSets.begin(); it != pick.tagSets.end(); ++it)
+    {
+        MeshTagSet& set = it.value();
+        dedupMeshIds(set.pointIds);
+        dedupMeshIds(set.cellIds);
+        dedupMeshIds(set.edgeKeys);
+        dedupMeshIds(set.faceKeys);
+
+        if (set.key.category == QStringLiteral("Physical"))
+        {
+            if (set.name.trimmed().isEmpty())
+                set.name = pick.physIdToName.value(set.key.id, QStringLiteral("Physical=%1").arg(set.key.id));
+            pick.physIdToName.insert(set.key.id, set.name);
+            pick.physIdToDim.insert(set.key.id, set.key.dim);
+
+            if (set.key.dim >= 0 && set.key.dim < pick.meshDim)
+            {
+                for (MeshIdType pid : set.pointIds)
+                    pick.pointIdToBoundaryTags[pid].push_back(set.key);
+            }
+        }
+    }
+
+    for (auto it = pick.pointIdToBoundaryTags.begin(); it != pick.pointIdToBoundaryTags.end(); ++it)
+    {
+        auto& keys = it.value();
+        std::sort(keys.begin(), keys.end(), [](const MeshTagKey& a, const MeshTagKey& b)
+                  {
+                      if (a.category != b.category)
+                          return a.category < b.category;
+                      if (a.dim != b.dim)
+                          return a.dim < b.dim;
+                      return a.id < b.id;
+                  });
+        keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
+    }
+}
+
 static QHash<int, QVector<QVector<int>>> edgeNodeElemsFromKeys(
     vtkUnstructuredGrid* grid,
     const MshPickMap& pick,
@@ -481,12 +708,11 @@ static QHash<int, QVector<QVector<int>>> edgeNodeElemsFromKeys(
     if (!grid)
         return out;
 
-    for (auto it = pick.bndEdgePhysToEdgeKeys.constBegin();
-         it != pick.bndEdgePhysToEdgeKeys.constEnd(); ++it)
+    for (const MeshTagSet& set : pick.physicalTagSets(1))
     {
-        const int physId = it.key();
+        const int physId = set.key.id;
 
-        for (qint64 edgeKey : it.value())
+        for (qint64 edgeKey : set.edgeKeys)
         {
             const vtkIdType cid = static_cast<vtkIdType>(edgeKey >> 4);
             const int localEdgeId = static_cast<int>(edgeKey & 0xF);
@@ -523,12 +749,11 @@ static QHash<int, QVector<QVector<int>>> faceNodeElemsFromKeys(
     if (!grid)
         return out;
 
-    for (auto it = pick.bndFacePhysToFaceKeys.constBegin();
-         it != pick.bndFacePhysToFaceKeys.constEnd(); ++it)
+    for (const MeshTagSet& set : pick.physicalTagSets(2))
     {
-        const int physId = it.key();
+        const int physId = set.key.id;
 
-        for (qint64 faceKey : it.value())
+        for (qint64 faceKey : set.faceKeys)
         {
             const vtkIdType cid = static_cast<vtkIdType>(faceKey >> 4);
             const int localFaceId = static_cast<int>(faceKey & 0xF);
@@ -611,26 +836,24 @@ static void rebuildBoundaryRuntimeIndexFromNodeData(
     const QHash<int, QVector<QVector<int>>>& edgeNodeElems,
     const QHash<int, QVector<QVector<int>>>& faceNodeElems)
 {
-    pick.bndPointPhysToPointIds.clear();
-    pick.bndEdgePhysToPointIds.clear();
-    pick.bndFacePhysToPointIds.clear();
-    pick.bndEdgePhysToEdgeKeys.clear();
-    pick.bndFacePhysToFaceKeys.clear();
-
     if (!grid)
         return;
 
     const QHash<int, int> nodeToPoint = buildNodeIdToPointId(grid);
 
-    pick.bndPointPhysToPointIds = nodePhysToPointPhys(pointPhysToNodeIds, nodeToPoint);
-    pick.bndEdgePhysToPointIds = nodePhysToPointPhys(edgePhysToNodeIds, nodeToPoint);
-    pick.bndFacePhysToPointIds = nodePhysToPointPhys(facePhysToNodeIds, nodeToPoint);
+    for (auto it = pointPhysToNodeIds.constBegin(); it != pointPhysToNodeIds.constEnd(); ++it)
+        setPhysicalBoundaryPointIds(pick, it.key(), 0, nodeIdsToPointIds(it.value(), nodeToPoint), QStringLiteral("ProjectRestoreLegacy"));
+
+    for (auto it = edgePhysToNodeIds.constBegin(); it != edgePhysToNodeIds.constEnd(); ++it)
+        setPhysicalBoundaryPointIds(pick, it.key(), 1, nodeIdsToPointIds(it.value(), nodeToPoint), QStringLiteral("ProjectRestoreLegacy"));
+
+    for (auto it = facePhysToNodeIds.constBegin(); it != facePhysToNodeIds.constEnd(); ++it)
+        setPhysicalBoundaryPointIds(pick, it.key(), 2, nodeIdsToPointIds(it.value(), nodeToPoint), QStringLiteral("ProjectRestoreLegacy"));
 
     QHash<quint64, qint64> edgeIndex;
     QHash<QByteArray, qint64> faceIndex;
 
     const vtkIdType nCells = grid->GetNumberOfCells();
-
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
         vtkCell* cell = grid->GetCell(cid);
@@ -638,41 +861,31 @@ static void rebuildBoundaryRuntimeIndexFromNodeData(
             continue;
 
         const int nEdges = cell->GetNumberOfEdges();
-
         for (int ei = 0; ei < nEdges; ++ei)
         {
             vtkCell* edge = cell->GetEdge(ei);
-
             if (!edge || edge->GetNumberOfPoints() < 2)
                 continue;
-
             const int p0 = static_cast<int>(edge->GetPointId(0));
             const int p1 = static_cast<int>(edge->GetPointId(1));
             const quint64 key = packEdgePointIds(p0, p1);
             const qint64 edgeKey = (qint64(cid) << 4) | (qint64(ei) & 0xF);
-
             if (!edgeIndex.contains(key))
                 edgeIndex.insert(key, edgeKey);
         }
 
         const int nFaces = cell->GetNumberOfFaces();
-
         for (int fi = 0; fi < nFaces; ++fi)
         {
             vtkCell* face = cell->GetFace(fi);
-
             if (!face || face->GetNumberOfPoints() < 3)
                 continue;
-
             QVector<int> pids;
             pids.reserve(face->GetNumberOfPoints());
-
             for (vtkIdType i = 0; i < face->GetNumberOfPoints(); ++i)
                 pids.push_back(static_cast<int>(face->GetPointId(i)));
-
             const QByteArray key = packFacePointIds(pids);
             const qint64 faceKey = (qint64(cid) << 4) | (qint64(fi) & 0xF);
-
             if (!faceIndex.contains(key))
                 faceIndex.insert(key, faceKey);
         }
@@ -681,119 +894,42 @@ static void rebuildBoundaryRuntimeIndexFromNodeData(
     for (auto it = edgeNodeElems.constBegin(); it != edgeNodeElems.constEnd(); ++it)
     {
         const int physId = it.key();
-
         for (const QVector<int>& nodePair : it.value())
         {
             if (nodePair.size() < 2)
                 continue;
-
             const int p0 = nodeToPoint.value(nodePair[0], -1);
             const int p1 = nodeToPoint.value(nodePair[1], -1);
-
             if (p0 < 0 || p1 < 0)
                 continue;
-
             const quint64 key = packEdgePointIds(p0, p1);
             if (edgeIndex.contains(key))
-                pick.bndEdgePhysToEdgeKeys[physId].push_back(edgeIndex.value(key));
+                appendPhysicalBoundaryEdgeKey(pick, physId, edgeIndex.value(key), QStringLiteral("ProjectRestoreLegacy"));
         }
     }
 
     for (auto it = faceNodeElems.constBegin(); it != faceNodeElems.constEnd(); ++it)
     {
         const int physId = it.key();
-
         for (const QVector<int>& faceNodes : it.value())
         {
             QVector<int> pids;
             pids.reserve(faceNodes.size());
-
             for (int nodeId : faceNodes)
             {
                 const int pid = nodeToPoint.value(nodeId, -1);
                 if (pid >= 0)
                     pids.push_back(pid);
             }
-
             if (pids.size() < 3)
                 continue;
-
             const QByteArray key = packFacePointIds(pids);
             if (faceIndex.contains(key))
-                pick.bndFacePhysToFaceKeys[physId].push_back(faceIndex.value(key));
+                appendPhysicalBoundaryFaceKey(pick, physId, faceIndex.value(key), QStringLiteral("ProjectRestoreLegacy"));
         }
     }
 
-    auto dedupInt = [](QVector<int>& values)
-    {
-        std::sort(values.begin(), values.end());
-        values.erase(std::unique(values.begin(), values.end()), values.end());
-    };
-
-    auto dedupI64 = [](QVector<qint64>& values)
-    {
-        std::sort(values.begin(), values.end());
-        values.erase(std::unique(values.begin(), values.end()), values.end());
-    };
-
-    for (auto it = pick.bndPointPhysToPointIds.begin(); it != pick.bndPointPhysToPointIds.end(); ++it)
-        dedupInt(it.value());
-    for (auto it = pick.bndEdgePhysToPointIds.begin(); it != pick.bndEdgePhysToPointIds.end(); ++it)
-        dedupInt(it.value());
-    for (auto it = pick.bndFacePhysToPointIds.begin(); it != pick.bndFacePhysToPointIds.end(); ++it)
-        dedupInt(it.value());
-    for (auto it = pick.bndEdgePhysToEdgeKeys.begin(); it != pick.bndEdgePhysToEdgeKeys.end(); ++it)
-        dedupI64(it.value());
-    for (auto it = pick.bndFacePhysToFaceKeys.begin(); it != pick.bndFacePhysToFaceKeys.end(); ++it)
-        dedupI64(it.value());
-}
-
-static void refreshPhysicalBoundaryTagSets(MshPickMap& pick)
-{
-    QVector<MeshTagKey> removeKeys;
-
-    for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
-    {
-        const MeshTagKey& key = it.key();
-        if (key.category == QStringLiteral("Physical") && key.dim < pick.meshDim)
-            removeKeys.push_back(key);
-    }
-
-    for (const MeshTagKey& key : removeKeys)
-        pick.tagSets.remove(key);
-
-    auto addBoundarySet = [&](int physId, int dim, const QVector<int>& pointIds)
-    {
-        if (physId <= 0 || pointIds.isEmpty())
-            return;
-
-        MeshTagKey key;
-        key.category = QStringLiteral("Physical");
-        key.dim = dim;
-        key.id = physId;
-
-        MeshTagSet set;
-        set.key = key;
-        set.name = pick.physIdToName.value(physId, QStringLiteral("phys_%1").arg(physId));
-        set.source = QStringLiteral("ProjectRestore");
-
-        for (int pid : pointIds)
-            set.pointIds.push_back(static_cast<MeshIdType>(pid));
-
-        pick.tagSets.insert(key, set);
-    };
-
-    for (auto it = pick.bndPointPhysToPointIds.constBegin();
-         it != pick.bndPointPhysToPointIds.constEnd(); ++it)
-        addBoundarySet(it.key(), 0, it.value());
-
-    for (auto it = pick.bndEdgePhysToPointIds.constBegin();
-         it != pick.bndEdgePhysToPointIds.constEnd(); ++it)
-        addBoundarySet(it.key(), 1, it.value());
-
-    for (auto it = pick.bndFacePhysToPointIds.constBegin();
-         it != pick.bndFacePhysToPointIds.constEnd(); ++it)
-        addBoundarySet(it.key(), 2, it.value());
+    normalizeMeshTagSets(pick);
 }
 
 static bool saveMeshMapJson(const QString& filePath,
@@ -802,27 +938,11 @@ static bool saveMeshMapJson(const QString& filePath,
                             QString* errMsg)
 {
     QJsonObject root;
-
-    const QHash<int, int> pointToNode = buildPointIdToNodeId(grid);
+    Q_UNUSED(grid);
 
     root["mesh_dim"] = pick.meshDim;
     root["phys_id_to_name"] = intStringHashToJson(pick.physIdToName);
     root["phys_id_to_dim"] = intIntHashToJson(pick.physIdToDim);
-
-    root["bnd_point_phys_to_node_ids"] =
-        intVectorHashToJson(pointPhysToNodePhys(pick.bndPointPhysToPointIds, pointToNode));
-
-    root["bnd_edge_phys_to_node_ids"] =
-        intVectorHashToJson(pointPhysToNodePhys(pick.bndEdgePhysToPointIds, pointToNode));
-
-    root["bnd_face_phys_to_node_ids"] =
-        intVectorHashToJson(pointPhysToNodePhys(pick.bndFacePhysToPointIds, pointToNode));
-
-    root["bnd_edge_phys_to_node_elems"] =
-        nestedIntVectorHashToJson(edgeNodeElemsFromKeys(grid, pick, pointToNode));
-
-    root["bnd_face_phys_to_node_elems"] =
-        nestedIntVectorHashToJson(faceNodeElemsFromKeys(grid, pick, pointToNode));
 
     QJsonArray tagSets;
     for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
@@ -909,8 +1029,7 @@ static bool loadMeshMapJson(const QString& filePath,
                                             edgeNodeElems,
                                             faceNodeElems);
 
-    refreshPhysicalBoundaryTagSets(pick);
-
+    normalizeMeshTagSets(pick);
     MeshGridIO::instance().setMeshMap(pick);
 
     return true;
@@ -1123,10 +1242,8 @@ static int meshDisplayDimFromKetype(int ketype)
     case 3:
     case 4:
     case 5:
-    case 9:
     case 11:
     case 12:
-    case 17:
     case 29:
     case 31:
     case 32:
@@ -1134,7 +1251,9 @@ static int meshDisplayDimFromKetype(int ketype)
     case 34:
         return 2;
     case 6:
+    case 9:
     case 13:
+    case 17:
     case 35:
     case 36:
     case 37:
@@ -1176,7 +1295,7 @@ static int meshDisplayCellDimensionFast(vtkUnstructuredGrid* grid, vtkIdType cel
 static QColor meshDisplayCategoricalColor(int value)
 {
     if (value == 0)
-        return QColor::fromRgbF(kMeshDefaultGray, kMeshDefaultGray, kMeshDefaultGray);
+        return QColor::fromRgbF(0.78, 0.78, 0.78);
 
     const int hue = ((value * 47) % 360 + 360) % 360;
     return QColor::fromHsv(hue, 170, 220);
@@ -1194,13 +1313,40 @@ static vtkSmartPointer<vtkUnstructuredGrid> meshDisplayCopyWithFullCellIds(vtkUn
     fullIds->SetName("vtkOriginalCellIds");
     fullIds->SetNumberOfComponents(1);
     fullIds->SetNumberOfTuples(grid->GetNumberOfCells());
+
+    auto* oldCellIds = grid->GetCellData() ? grid->GetCellData()->GetArray("vtkOriginalCellIds") : nullptr;
     for (vtkIdType cid = 0; cid < grid->GetNumberOfCells(); ++cid)
-        fullIds->SetValue(cid, cid);
+    {
+        vtkIdType oid = cid;
+        if (oldCellIds && cid < oldCellIds->GetNumberOfTuples())
+            oid = static_cast<vtkIdType>(oldCellIds->GetTuple1(cid));
+        fullIds->SetValue(cid, oid);
+    }
 
     if (auto* cd = out->GetCellData())
     {
         cd->RemoveArray("vtkOriginalCellIds");
         cd->AddArray(fullIds);
+    }
+
+    auto fullPointIds = vtkSmartPointer<vtkIdTypeArray>::New();
+    fullPointIds->SetName("vtkOriginalPointIds");
+    fullPointIds->SetNumberOfComponents(1);
+    fullPointIds->SetNumberOfTuples(grid->GetNumberOfPoints());
+
+    auto* oldPointIds = grid->GetPointData() ? grid->GetPointData()->GetArray("vtkOriginalPointIds") : nullptr;
+    for (vtkIdType pid = 0; pid < grid->GetNumberOfPoints(); ++pid)
+    {
+        vtkIdType oid = pid;
+        if (oldPointIds && pid < oldPointIds->GetNumberOfTuples())
+            oid = static_cast<vtkIdType>(oldPointIds->GetTuple1(pid));
+        fullPointIds->SetValue(pid, oid);
+    }
+
+    if (auto* pd = out->GetPointData())
+    {
+        pd->RemoveArray("vtkOriginalPointIds");
+        pd->AddArray(fullPointIds);
     }
 
     return out;
@@ -1223,6 +1369,7 @@ static vtkSmartPointer<vtkUnstructuredGrid> meshDisplayExtractCells(
     out->ShallowCopy(ex->GetOutput());
     return out;
 }
+
 
 static QByteArray meshDisplayFaceKey(vtkIdList* pointIds)
 {
@@ -1264,9 +1411,9 @@ static int meshDisplayDomainValue(vtkDataSet* grid, vtkIdType cellId, const char
 
 struct MeshDisplayFaceRef
 {
-    vtkIdType cellId = -1;          // local cell id in the display source
+    vtkIdType cellId = -1;          // cell id in current display source grid
     vtkIdType originalCellId = -1;  // cell id in m_importedGrid
-    int originalFaceId = 15;        // local face id in original cell; 15 means whole 2D cell
+    int originalFaceId = 15;        // 15 表示 2D 单元整体面
     int matype = 0;
     int layer = 0;
     QVector<vtkIdType> pointIds;
@@ -1288,31 +1435,63 @@ static void meshDisplayAddSurfaceFace(vtkPolyData* out,
                                       vtkCellArray* polys,
                                       vtkIdTypeArray* originalCellIds,
                                       vtkIdTypeArray* originalFaceIds,
+                                      vtkIdTypeArray* originalFaceKeys,
                                       vtkCellData* sourceCellData,
                                       const MeshDisplayFaceRef& face)
 {
-    if (!out || !polys || !originalCellIds || !originalFaceIds || face.pointIds.size() < 3)
+    if (!out || !polys || !originalCellIds || !originalFaceIds || !originalFaceKeys || face.pointIds.size() < 3)
         return;
 
-    auto ids = vtkSmartPointer<vtkIdList>::New();
-    ids->SetNumberOfIds(face.pointIds.size());
-    for (int i = 0; i < face.pointIds.size(); ++i)
-        ids->SetId(i, face.pointIds[i]);
-
     const vtkIdType newCellId = polys->GetNumberOfCells();
-    polys->InsertNextCell(ids);
+
+           // 不创建临时 vtkIdList，避免导入大网格时每个面一次堆分配。
+    polys->InsertNextCell(static_cast<vtkIdType>(face.pointIds.size()));
+    for (vtkIdType pid : face.pointIds)
+        polys->InsertCellPoint(pid);
+
     if (sourceCellData && out->GetCellData())
         out->GetCellData()->CopyData(sourceCellData, face.cellId, newCellId);
+
     originalCellIds->InsertNextValue(face.originalCellId);
     originalFaceIds->InsertNextValue(face.originalFaceId);
+    originalFaceKeys->InsertNextValue((static_cast<vtkIdType>(face.originalCellId) << 4) |
+                                      (static_cast<vtkIdType>(face.originalFaceId) & 0xF));
 }
 
-static vtkSmartPointer<vtkPolyData> meshDisplayBuildDomainSurface(vtkUnstructuredGrid* grid)
+static bool meshDisplayCellPassesDisplayFilter(vtkUnstructuredGrid* grid,
+                                               vtkIdType cellId,
+                                               bool customFilter,
+                                               const QSet<int>& ketypes,
+                                               const QSet<int>& matypes,
+                                               const QSet<int>& layers)
+{
+    if (!customFilter)
+        return true;
+    if (!grid || cellId < 0 || cellId >= grid->GetNumberOfCells())
+        return false;
+
+    auto allowed = [](int value, const QSet<int>& values) -> bool
+    {
+        return values.isEmpty() || values.contains(value);
+    };
+
+    return allowed(meshDisplayDomainValue(grid, cellId, "KETYPE"), ketypes) &&
+           allowed(meshDisplayDomainValue(grid, cellId, "MATYPE"), matypes) &&
+           allowed(meshDisplayDomainValue(grid, cellId, "LAYER"), layers);
+}
+
+static vtkSmartPointer<vtkPolyData> meshDisplayBuildMappedSurface(vtkUnstructuredGrid* grid,
+                                                                  bool customFilter = false,
+                                                                  const QSet<int>& ketypes = QSet<int>(),
+                                                                  const QSet<int>& matypes = QSet<int>(),
+                                                                  const QSet<int>& layers = QSet<int>())
 {
     auto out = vtkSmartPointer<vtkPolyData>::New();
     if (!grid || grid->GetNumberOfCells() <= 0 || !grid->GetPoints())
         return out;
 
+           // 关键：直接复用显示源网格的点表。这样 PickManager 看到的 surface pid 与原网格 pid 一致，
+           // 不再通过 vtkDataSetSurfaceFilter + 最近点回猜，避免点选/框选“乱窜”。
     out->SetPoints(grid->GetPoints());
 
     auto polys = vtkSmartPointer<vtkCellArray>::New();
@@ -1326,16 +1505,29 @@ static vtkSmartPointer<vtkPolyData> meshDisplayBuildDomainSurface(vtkUnstructure
     originalPointIds->SetName("vtkOriginalPointIds");
     originalPointIds->SetNumberOfComponents(1);
     originalPointIds->SetNumberOfTuples(grid->GetNumberOfPoints());
-    for (vtkIdType pid = 0; pid < grid->GetNumberOfPoints(); ++pid)
-        originalPointIds->SetValue(pid, pid);
 
-    auto originalIds = vtkSmartPointer<vtkIdTypeArray>::New();
-    originalIds->SetName("vtkOriginalCellIds");
-    originalIds->SetNumberOfComponents(1);
+    auto* sourceOriginalPointIds = grid->GetPointData()
+                                       ? grid->GetPointData()->GetArray("vtkOriginalPointIds")
+                                       : nullptr;
+    for (vtkIdType pid = 0; pid < grid->GetNumberOfPoints(); ++pid)
+    {
+        vtkIdType oid = pid;
+        if (sourceOriginalPointIds && pid < sourceOriginalPointIds->GetNumberOfTuples())
+            oid = static_cast<vtkIdType>(sourceOriginalPointIds->GetTuple1(pid));
+        originalPointIds->SetValue(pid, oid);
+    }
+
+    auto originalCellIds = vtkSmartPointer<vtkIdTypeArray>::New();
+    originalCellIds->SetName("vtkOriginalCellIds");
+    originalCellIds->SetNumberOfComponents(1);
 
     auto originalFaceIds = vtkSmartPointer<vtkIdTypeArray>::New();
     originalFaceIds->SetName("vtkOriginalFaceIds");
     originalFaceIds->SetNumberOfComponents(1);
+
+    auto originalFaceKeys = vtkSmartPointer<vtkIdTypeArray>::New();
+    originalFaceKeys->SetName("vtkOriginalFaceKeys");
+    originalFaceKeys->SetNumberOfComponents(1);
 
     const bool hasMatype = srcCellData && srcCellData->GetArray("MATYPE");
     const bool hasLayer = srcCellData && srcCellData->GetArray("LAYER");
@@ -1346,6 +1538,9 @@ static vtkSmartPointer<vtkPolyData> meshDisplayBuildDomainSurface(vtkUnstructure
     const vtkIdType nCells = grid->GetNumberOfCells();
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
+        if (!meshDisplayCellPassesDisplayFilter(grid, cid, customFilter, ketypes, matypes, layers))
+            continue;
+
         const int dim = meshDisplayCellDimensionFast(grid, cid);
         vtkCell* cell = grid->GetCell(cid);
         if (!cell)
@@ -1368,7 +1563,7 @@ static vtkSmartPointer<vtkPolyData> meshDisplayBuildDomainSurface(vtkUnstructure
             for (vtkIdType i = 0; i < pids->GetNumberOfIds(); ++i)
                 ref.pointIds.push_back(pids->GetId(i));
 
-            meshDisplayAddSurfaceFace(out, polys, originalIds, originalFaceIds, srcCellData, ref);
+            meshDisplayAddSurfaceFace(out, polys, originalCellIds, originalFaceIds, originalFaceKeys, srcCellData, ref);
             continue;
         }
 
@@ -1396,6 +1591,7 @@ static vtkSmartPointer<vtkPolyData> meshDisplayBuildDomainSurface(vtkUnstructure
         }
     }
 
+           // 外表面：只有一个 owner；内部材料/分层交界面：两个 owner 但 MATYPE/LAYER 不同，也需要显示和可拾取。
     for (auto it = faceMap.constBegin(); it != faceMap.constEnd(); ++it)
     {
         const QVector<MeshDisplayFaceRef>& owners = it.value();
@@ -1404,7 +1600,7 @@ static vtkSmartPointer<vtkPolyData> meshDisplayBuildDomainSurface(vtkUnstructure
 
         if (owners.size() == 1)
         {
-            meshDisplayAddSurfaceFace(out, polys, originalIds, originalFaceIds, srcCellData, owners[0]);
+            meshDisplayAddSurfaceFace(out, polys, originalCellIds, originalFaceIds, originalFaceKeys, srcCellData, owners[0]);
             continue;
         }
 
@@ -1423,7 +1619,7 @@ static vtkSmartPointer<vtkPolyData> meshDisplayBuildDomainSurface(vtkUnstructure
             }
 
             if (visibleInterface)
-                meshDisplayAddSurfaceFace(out, polys, originalIds, originalFaceIds, srcCellData, owners[i]);
+                meshDisplayAddSurfaceFace(out, polys, originalCellIds, originalFaceIds, originalFaceKeys, srcCellData, owners[i]);
         }
     }
 
@@ -1437,8 +1633,10 @@ static vtkSmartPointer<vtkPolyData> meshDisplayBuildDomainSurface(vtkUnstructure
     {
         out->GetCellData()->RemoveArray("vtkOriginalCellIds");
         out->GetCellData()->RemoveArray("vtkOriginalFaceIds");
-        out->GetCellData()->AddArray(originalIds);
+        out->GetCellData()->RemoveArray("vtkOriginalFaceKeys");
+        out->GetCellData()->AddArray(originalCellIds);
         out->GetCellData()->AddArray(originalFaceIds);
+        out->GetCellData()->AddArray(originalFaceKeys);
     }
 
     out->Modified();
@@ -1468,25 +1666,7 @@ static bool meshDisplayCellMatchesFilter(vtkUnstructuredGrid* grid,
                                          const QSet<int>& matypes,
                                          const QSet<int>& layers)
 {
-    if (!customFilter)
-        return true;
-    if (!grid || cellId < 0 || cellId >= grid->GetNumberOfCells())
-        return false;
-
-    auto* cd = grid->GetCellData();
-    if (!cd)
-        return true;
-
-    auto allowed = [](vtkDataArray* array, vtkIdType tupleId, const QSet<int>& values) -> bool
-    {
-        if (!array)
-            return true;
-        return values.contains(meshDisplayTuple1i(array, tupleId, 0));
-    };
-
-    return allowed(cd->GetArray("KETYPE"), cellId, ketypes) &&
-           allowed(cd->GetArray("MATYPE"), cellId, matypes) &&
-           allowed(cd->GetArray("LAYER"), cellId, layers);
+    return meshDisplayCellPassesDisplayFilter(grid, cellId, customFilter, ketypes, matypes, layers);
 }
 
 static QSet<int> meshDisplayCollectCellInts(vtkDataSet* dataSet, const char* arrayName)
@@ -1526,7 +1706,7 @@ static vtkSmartPointer<vtkLookupTable> meshDisplayBuildLookupTable(const QSet<in
     {
         const int value = minValue + i;
         const QColor color = values.contains(value) ? meshDisplayCategoricalColor(value)
-                                                    : QColor::fromRgbF(kMeshDefaultGray, kMeshDefaultGray, kMeshDefaultGray);
+                                                    : QColor::fromRgbF(0.78, 0.78, 0.78);
         lut->SetTableValue(i, color.redF(), color.greenF(), color.blueF(), 1.0);
     }
 
@@ -1555,6 +1735,31 @@ static void meshDisplayApplyScalarColor(vtkMapper* mapper,
     mapper->ScalarVisibilityOn();
 }
 
+static vtkSmartPointer<vtkUnstructuredGrid> meshDisplayBuildLineGrid(vtkUnstructuredGrid* fullGrid,
+                                                                     bool customFilter,
+                                                                     const QSet<int>& ketypes,
+                                                                     const QSet<int>& matypes,
+                                                                     const QSet<int>& layers)
+{
+    auto lineIds = vtkSmartPointer<vtkIdList>::New();
+    if (!fullGrid)
+        return vtkSmartPointer<vtkUnstructuredGrid>::New();
+
+    const vtkIdType nCells = fullGrid->GetNumberOfCells();
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    {
+        if (!meshDisplayCellPassesDisplayFilter(fullGrid, cid, customFilter, ketypes, matypes, layers))
+            continue;
+        if (meshDisplayCellDimensionFast(fullGrid, cid) == 1)
+            lineIds->InsertNextId(cid);
+    }
+
+    if (lineIds->GetNumberOfIds() <= 0)
+        return vtkSmartPointer<vtkUnstructuredGrid>::New();
+
+    return meshDisplayExtractCells(fullGrid, lineIds);
+}
+
 static void meshDisplayApplyGlobalState(vtkUnstructuredGrid* fullGrid,
                                         vtkActor* surfaceActor,
                                         vtkMapper* surfaceMapper,
@@ -1565,14 +1770,6 @@ static void meshDisplayApplyGlobalState(vtkUnstructuredGrid* fullGrid,
         return;
 
     const bool customFilter = PublicVariables::instance().get(kMeshDisplayFilterCustomKey).toBool();
-    if (!customFilter)
-    {
-        if (surfaceMapper)
-            surfaceMapper->ScalarVisibilityOff();
-        if (lineMapper)
-            lineMapper->ScalarVisibilityOff();
-        return;
-    }
 
     const QSet<int> ketypes = meshDisplayIntSetFromString(
         PublicVariables::instance().get(kMeshDisplayFilterKetypeKey).toString());
@@ -1581,32 +1778,11 @@ static void meshDisplayApplyGlobalState(vtkUnstructuredGrid* fullGrid,
     const QSet<int> layers = meshDisplayIntSetFromString(
         PublicVariables::instance().get(kMeshDisplayFilterLayerKey).toString());
 
-    auto surfaceIds = vtkSmartPointer<vtkIdList>::New();
-    auto lineIds = vtkSmartPointer<vtkIdList>::New();
+    vtkSmartPointer<vtkPolyData> viewSurface =
+        meshDisplayBuildMappedSurface(fullGrid, customFilter, ketypes, matypes, layers);
 
-    for (vtkIdType cid = 0; cid < fullGrid->GetNumberOfCells(); ++cid)
-    {
-        if (!meshDisplayCellMatchesFilter(fullGrid, cid, customFilter, ketypes, matypes, layers))
-            continue;
-
-        const int dim = meshDisplayCellDimensionFast(fullGrid, cid);
-        if (dim >= 2)
-            surfaceIds->InsertNextId(cid);
-        else if (dim == 1)
-            lineIds->InsertNextId(cid);
-    }
-
-    vtkSmartPointer<vtkPolyData> viewSurface = vtkSmartPointer<vtkPolyData>::New();
-    vtkSmartPointer<vtkUnstructuredGrid> viewLineGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
-
-    if (surfaceIds->GetNumberOfIds() > 0)
-    {
-        auto surfaceSource = meshDisplayExtractCells(fullGrid, surfaceIds);
-        viewSurface->ShallowCopy(meshDisplayBuildDomainSurface(surfaceSource));
-    }
-
-    if (lineIds->GetNumberOfIds() > 0)
-        viewLineGrid = meshDisplayExtractCells(fullGrid, lineIds);
+    vtkSmartPointer<vtkUnstructuredGrid> viewLineGrid =
+        meshDisplayBuildLineGrid(fullGrid, customFilter, ketypes, matypes, layers);
 
     if (surfaceMapper)
         meshDisplaySetMapperInput(surfaceMapper, viewSurface);
@@ -2043,47 +2219,83 @@ QVector<MeshTagSet> MeshModuleController::domainTagSets() const
 
 QVector<MeshTagSet> MeshModuleController::boundaryTagSets(int dimFilter) const
 {
-    QVector<MeshTagSet> out;
     const MshPickMap& map = MeshGridIO::instance().getMeshMapRef();
 
-    if (!map.tagSets.isEmpty())
+    QHash<MeshTagKey, MeshTagSet> sets;
+
+           // 主入口：tagSets。这里是 UI 和业务层唯一应该依赖的边界模型。
+    for (auto it = map.tagSets.constBegin(); it != map.tagSets.constEnd(); ++it)
     {
-        for (auto it = map.tagSets.constBegin(); it != map.tagSets.constEnd(); ++it)
-        {
-            const MeshTagSet& set = it.value();
-            if (set.key.dim >= map.meshDim)
-                continue;
-            if (dimFilter >= 0 && set.key.dim != dimFilter)
-                continue;
-            out.push_back(set);
-        }
+        MeshTagSet set = it.value();
+        if (set.key.category != QStringLiteral("Physical"))
+            continue;
+        if (set.key.dim < 0 || set.key.dim >= map.meshDim)
+            continue;
+        if (dimFilter >= 0 && set.key.dim != dimFilter)
+            continue;
+
+        if (set.pointIds.isEmpty() && set.edgeKeys.isEmpty() && set.faceKeys.isEmpty())
+            continue;
+
+        normalizeMeshTagSet(set);
+        sets.insert(set.key, set);
     }
-    return out;
+
+           // 不再从任何旧映射兜底；Controller 对外只返回 tagSets。
+    return sortedMeshTagSets(sets);
 }
 
 QVector<MeshIdType> MeshModuleController::cellIdsOfTag(const MeshTagKey& key) const
 {
+    if (!key.isValid())
+        return {};
+
     const MshPickMap& map = MeshGridIO::instance().getMeshMapRef();
     if (map.tagSets.contains(key))
-        return map.tagSets.value(key).cellIds;
+    {
+        QVector<MeshIdType> ids = map.tagSets.value(key).cellIds;
+        std::sort(ids.begin(), ids.end());
+        ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+        return ids;
+    }
     return {};
 }
 
 QVector<MeshIdType> MeshModuleController::pointIdsOfTag(const MeshTagKey& key) const
 {
+    if (!key.isValid())
+        return {};
+
     const MshPickMap& map = MeshGridIO::instance().getMeshMapRef();
     if (map.tagSets.contains(key))
-        return map.tagSets.value(key).pointIds;
+    {
+        QVector<MeshIdType> ids = map.tagSets.value(key).pointIds;
+        std::sort(ids.begin(), ids.end());
+        ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+        return ids;
+    }
+
     return {};
 }
 
 QString MeshModuleController::displayTextOfTag(const MeshTagKey& key) const
 {
     const MshPickMap& map = MeshGridIO::instance().getMeshMapRef();
-    if (map.tagSets.contains(key) && !map.tagSets.value(key).name.trimmed().isEmpty())
-        return QString("%1: %2").arg(key.category, map.tagSets.value(key).name);
-    return QString("%1=%2").arg(key.category).arg(key.id);
+
+    if (map.tagSets.contains(key))
+    {
+        const QString name = normalizePhysicalUiName(key.dim, key.id, map.tagSets.value(key).name);
+        if (key.category == QStringLiteral("Physical"))
+            return name;
+        return QStringLiteral("%1：%2").arg(key.category, name);
+    }
+
+    if (key.category == QStringLiteral("Physical"))
+        return normalizePhysicalUiName(key.dim, key.id, map.physIdToName.value(key.id));
+
+    return QStringLiteral("%1=%2").arg(key.category).arg(key.id);
 }
+
 
 QSet<int> MeshModuleController::getAvailableMatypes() const
 {
@@ -2094,8 +2306,8 @@ QSet<int> MeshModuleController::getAvailableMatypes() const
     {
         const MeshTagSet& set = it.value();
 
-        // 材料编号来自 MATYPE，既可能在实体/面单元，也可能在杆单元。
-        // 这里不能只返回 map.meshDim 的最高维域，否则 lineGrid 独有的 MATYPE 无法出现在材料下拉框中。
+               // 材料编号来自 MATYPE，既可能在实体/面单元，也可能在杆单元。
+               // 这里不能只返回 map.meshDim 的最高维域，否则 lineGrid 独有的 MATYPE 无法出现在材料下拉框中。
         if (set.cellIds.isEmpty())
             continue;
 
@@ -2108,12 +2320,12 @@ QSet<int> MeshModuleController::getAvailableMatypes() const
         ret.insert(set.key.id);
     }
 
-    // 兼容拆分后的 lineGrid：如果 tagSets 旧数据还没同步，也从 lineGrid 的 CellData/MATYPE 里补充。
+           // 兼容拆分后的 lineGrid：如果 tagSets 旧数据还没同步，也从 lineGrid 的 CellData/MATYPE 里补充。
     auto appendMatypesFromGrid = [&ret](vtkUnstructuredGrid* grid)
     {
         auto* arr = grid && grid->GetCellData()
-                        ? vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"))
-                        : nullptr;
+        ? vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"))
+        : nullptr;
         if (!grid || !arr)
             return;
 
@@ -2383,6 +2595,12 @@ void MeshModuleController::onImportGrid()
     m_importedGrid = grid;
     m_hasGrid = true;
     m_sourceFileName = fileName;
+    {
+        vtkSmartPointer<vtkUnstructuredGrid> tmpLine;
+        vtkSmartPointer<vtkUnstructuredGrid> tmpNonLine;
+        splitGridByDim(m_importedGrid, tmpLine, tmpNonLine);
+    }
+
     if (ext == "dat")
     {
         const QString projectDir =
@@ -2464,6 +2682,12 @@ bool MeshModuleController::importCurrentGmshMesh(QString* errMsg)
     m_importedGrid = grid;
     m_hasGrid = true;
     m_sourceFileName.clear();
+    {
+        vtkSmartPointer<vtkUnstructuredGrid> tmpLine;
+        vtkSmartPointer<vtkUnstructuredGrid> tmpNonLine;
+        splitGridByDim(m_importedGrid, tmpLine, tmpNonLine);
+    }
+
     displayCurrentGrid();
     syncPickMapGroupingFromGrid(m_importedGrid);
     PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
@@ -2472,6 +2696,8 @@ bool MeshModuleController::importCurrentGmshMesh(QString* errMsg)
 
 MshPickMap MeshModuleController::mshPickMapSolid()
 {
+    // 仅保留兼容旧页面的出口；不再在这里生成/修正边界规则。
+    // 规则统一在 MeshGridIO::normalizePhysicalTagSets() 中完成。
     return MeshGridIO::instance().getMeshMap();
 }
 
@@ -2486,6 +2712,7 @@ QString MeshModuleController::matypePhysicalName(int matype, int dim) const
 
 void MeshModuleController::setMshPickMapSolid(const MshPickMap& pickMap)
 {
+    // 统一入口交给 MeshGridIO::setMeshMap() 规整，Controller 不再维护第二套边界规则。
     MeshGridIO::instance().setMeshMap(pickMap);
 }
 
@@ -2879,90 +3106,73 @@ void MeshModuleController::displayCurrentGrid()
     if (!m_visualWidgetService || !m_hasGrid || !m_importedGrid)
         return;
 
-
-    vtkSmartPointer<vtkUnstructuredGrid> lineGrid;
-    vtkSmartPointer<vtkUnstructuredGrid> nonLineGrid;
-    splitGridByDim(m_importedGrid, lineGrid, nonLineGrid);
-
     static const QString kMeshSurfId = QString("mesh.imported.surface");
     static const QString kMeshLineId = QString("mesh.imported.line");
     m_visualWidgetService->removeProp(kMeshSurfId, false);
     m_visualWidgetService->removeProp(kMeshLineId, false);
 
-    if (nonLineGrid && nonLineGrid->GetNumberOfCells() > 0)
-    {
-        auto boundary = meshDisplayBuildDomainSurface(nonLineGrid);
+           // 这里不再先 splitGridByDim / vtkExtractCells 再抽 surface。
+           // surface/line 的真实输入由 meshDisplayApplyGlobalState 一次性从 m_importedGrid 构造，
+           // 避免导入阶段重复拷贝网格和重复构造外表面。
+    auto emptySurface = vtkSmartPointer<vtkPolyData>::New();
+    auto surfaceMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    surfaceMapper->SetInputData(emptySurface);
+    surfaceMapper->ScalarVisibilityOff();
 
-        auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-        mapper->SetInputData(boundary);
-        mapper->ScalarVisibilityOff();
+    auto surfActor = vtkSmartPointer<vtkActor>::New();
+    surfActor->SetMapper(surfaceMapper);
+    auto* surfProp = surfActor->GetProperty();
+    surfProp->SetRepresentationToSurface();
+    surfProp->SetColor(0.78, 0.78, 0.78);
+    surfProp->EdgeVisibilityOn();
+    surfProp->SetEdgeColor(0.0, 0.0, 0.0);
+    surfProp->SetLineWidth(1.0);
+    m_visualWidgetService->addProp(kMeshSurfId, surfActor, QString("网格"),
+                                   QString("导入网格-面/体"), true, true);
 
-        auto surfActor = vtkSmartPointer<vtkActor>::New();
-        surfActor->SetMapper(mapper);
-        auto* prop = surfActor->GetProperty();
-        prop->SetRepresentationToSurface();
-        prop->SetColor(kMeshDefaultGray, kMeshDefaultGray, kMeshDefaultGray);
-        // prop->SetSpecular(0.0);
-        prop->EdgeVisibilityOn();
-        prop->SetEdgeColor(0.0, 0.0, 0.0);
-        prop->SetLineWidth(kMeshDefaultLineWidth);
+    auto emptyLine = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    auto lineMapper = vtkSmartPointer<vtkDataSetMapper>::New();
+    lineMapper->SetInputData(emptyLine);
+    lineMapper->ScalarVisibilityOff();
 
-        m_visualWidgetService->addProp(kMeshSurfId, surfActor, QString("网格"),
-                                       QString("导入网格-面/体"), true, true);
+    auto lineActor = vtkSmartPointer<vtkActor>::New();
+    lineActor->SetMapper(lineMapper);
+    auto* lineProp = lineActor->GetProperty();
+    lineProp->SetColor(0.78, 0.78, 0.78);
+    lineProp->SetLineWidth(2.0);
+    lineProp->SetSpecular(0.0);
+    lineProp->RenderLinesAsTubesOn();
+    m_visualWidgetService->addProp(kMeshLineId, lineActor, QString("网格"),
+                                   QString("导入网格-线"), true, true);
 
-        m_previewSurfaceGrid = m_importedGrid;
-        m_previewSurfaceActor = surfActor;
-        m_previewSurfaceMapper = surfActor->GetMapper();
-    }
-    else
-    {
-        m_previewSurfaceGrid = nullptr;
-        m_previewSurfaceActor = nullptr;
-        m_previewSurfaceMapper = nullptr;
-    }
+    m_previewSurfaceGrid = m_importedGrid;
+    m_previewSurfaceActor = surfActor;
+    m_previewSurfaceMapper = surfaceMapper;
+    m_previewLineGrid = emptyLine;
+    m_previewLineActor = lineActor;
+    m_previewLineMapper = lineMapper;
 
-    if (lineGrid && lineGrid->GetNumberOfCells() > 0)
-    {
-        auto lineActor = createLineActor(lineGrid);
-        m_visualWidgetService->addProp(kMeshLineId, lineActor, QString("网格"),
-                                       QString("导入网格-线"), true, true);
-        m_previewLineGrid = lineGrid;
-        m_previewLineActor = lineActor;
-        m_previewLineMapper = lineActor->GetMapper();
-    }
-    else
-    {
-        m_previewLineGrid = nullptr;
-        m_previewLineActor = nullptr;
-        m_previewLineMapper = nullptr;
-    }
-
-    if (m_previewSurfaceGrid)
-    {
-        m_previewGrid = m_previewSurfaceGrid;
-        m_previewActor = m_previewSurfaceActor;
-        m_previewMapper = m_previewSurfaceMapper;
-    }
-    else
-    {
-        m_previewGrid = m_previewLineGrid;
-        m_previewActor = m_previewLineActor;
-        m_previewMapper = m_previewLineMapper;
-    }
+    m_previewGrid = m_previewSurfaceGrid;
+    m_previewActor = m_previewSurfaceActor;
+    m_previewMapper = m_previewSurfaceMapper;
 
            // 网格导入/预览后默认只显示网格。
     m_visualWidgetService->setGroupVisible("Geometry", false, false);
 
-    // 全局显示控制在这里统一应用。
-    // GridEditingWidget 只负责修改 PublicVariables 中的显示状态；
-    // displayCurrentGrid / 页面切换 / 工程恢复后都由这里重新套用筛选和颜色。
+           // 全局显示控制在这里统一应用。该函数会从 m_importedGrid 一次性构造：
+           // 1) 只包含外表面/必要内部分界面的 surface；
+           // 2) 带 vtkOriginalCellIds / vtkOriginalFaceIds / vtkOriginalFaceKeys 的拾取映射；
+           // 3) 线单元显示网格。
     meshDisplayApplyGlobalState(m_importedGrid,
                                 m_previewSurfaceActor,
                                 m_previewSurfaceMapper,
                                 m_previewLineActor,
                                 m_previewLineMapper);
 
-    // 必须在网格 prop 完成更新后再同步 PickManager 结构，否则会抓到旧 actor/mapper。
+    if (auto* dsMapper = vtkDataSetMapper::SafeDownCast(m_previewLineMapper))
+        m_previewLineGrid = vtkUnstructuredGrid::SafeDownCast(dsMapper->GetInput());
+
+           // 必须在网格 prop 完成更新后再同步 PickManager 结构，否则会抓到旧 actor/mapper。
     PickManager::instance().updateStructure();
     m_visualWidgetService->render();
 }
@@ -3010,29 +3220,19 @@ void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,
     const vtkIdType nCells = src->GetNumberOfCells();
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
+        vtkCell* c = src->GetCell(cid);
+        if (!c)
+            continue;
+
         const int dim = meshDisplayCellDimensionFast(src, cid);
         if (dim == 1)
+        {
             lineIds->InsertNextId(cid);
-        else if (dim >= 2)
+        }
+        else
+        {
             nonLineIds->InsertNextId(cid);
-    }
-
-    if (lineIds->GetNumberOfIds() == 0)
-    {
-        outNonLine = src;
-        m_splitCacheSource = src;
-        m_splitCacheLine = nullptr;
-        m_splitCacheNonLine = outNonLine;
-        return;
-    }
-
-    if (nonLineIds->GetNumberOfIds() == 0)
-    {
-        outLine = src;
-        m_splitCacheSource = src;
-        m_splitCacheLine = outLine;
-        m_splitCacheNonLine = nullptr;
-        return;
+        }
     }
 
     auto sourceWithIds = meshDisplayCopyWithFullCellIds(src);
@@ -3076,11 +3276,11 @@ vtkSmartPointer<vtkActor> MeshModuleController::createSurfaceActor(vtkDataSet* g
     actor->SetMapper(mapper);
 
     auto* p = actor->GetProperty();
-    p->SetColor(kMeshDefaultGray, kMeshDefaultGray, kMeshDefaultGray);
+    p->SetColor(0.78, 0.78, 0.78);  // 与导入网格默认色一致
     p->SetSpecular(0.0);            // 避免高光导致“发亮”
     p->EdgeVisibilityOn();          // 显示边
-    p->SetEdgeColor(kMeshDefaultEdgeGray, kMeshDefaultEdgeGray, kMeshDefaultEdgeGray);
-    p->SetLineWidth(kMeshDefaultLineWidth);
+    p->SetEdgeColor(0.0, 0.0, 0.0); // 黑色边
+    p->SetLineWidth(1.0);
 
     return actor;
 }
@@ -3098,10 +3298,10 @@ vtkSmartPointer<vtkActor> MeshModuleController::createLineActor(vtkUnstructuredG
     actor->SetMapper(mapper);
 
     auto* p = actor->GetProperty();
-    p->SetColor(kMeshDefaultGray, kMeshDefaultGray, kMeshDefaultGray);
-    p->SetLineWidth(kMeshDefaultLineWidth);           // 不做“管线”效果，避免杆单元比普通网格更粗、更亮
+    p->SetColor(0.78, 0.78, 0.78); // 与面/体网格默认颜色保持一致
+    p->SetLineWidth(2.0);
     p->SetSpecular(0.0);
-    p->RenderLinesAsTubesOff();
+    p->RenderLinesAsTubesOn();
 
     return actor;
 }
@@ -3118,14 +3318,21 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
     const vtkIdType nCells = grid->GetNumberOfCells();
 
     for (vtkIdType cid = 0; cid < nCells; ++cid)
+    {
+        vtkCell* cell = grid->GetCell(cid);
+
+        if (!cell)
+            continue;
+
         meshDim = qMax(meshDim, meshDisplayCellDimensionFast(grid, cid));
+    }
 
     if (meshDim < 0)
         return;
 
-    // meshDim 表示模型最高维度；MATYPE/LAYER 的 DomainKey.dim 不能全部使用 meshDim。
-    // 混合网格中杆单元必须生成 dim=1，否则 MaterialManager/PickManager 无法把 lineGrid
-    // 当作独立域进行高亮。
+           // meshDim 表示模型最高维度；MATYPE/LAYER 的 DomainKey.dim 不能全部使用 meshDim。
+           // 混合网格中杆单元必须生成 dim=1，否则 MaterialManager/PickManager 无法把 lineGrid
+           // 当作独立域进行高亮。
     pick.meshDim = meshDim;
 
     QVector<MeshTagKey> removeKeys;
@@ -3199,6 +3406,11 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
 
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
+        vtkCell* cell = grid->GetCell(cid);
+
+        if (!cell)
+            continue;
+
         const int cellDim = meshDisplayCellDimensionFast(grid, cid);
         if (cellDim <= 0)
             continue;
@@ -3210,8 +3422,8 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
         addDomainTag("LAYER", cellDim, lay, cid);
     }
 
-    // 保留并重建已有 Physical 域标签的 cellId -> tags 反查。
-    // MATYPE/LAYER 已按单元真实维度重建；Physical 仍按原导入标签保留。
+           // 保留并重建已有 Physical 域标签的 cellId -> tags 反查。
+           // MATYPE/LAYER 已按单元真实维度重建；Physical 仍按原导入标签保留。
     for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
     {
         const MeshTagSet& set = it.value();

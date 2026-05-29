@@ -34,6 +34,45 @@
 #include <vtkUnstructuredGrid.h>
 #include <vtkVertexGlyphFilter.h>
 
+
+namespace
+{
+static QString boundaryDimText(int dim)
+{
+    switch (dim)
+    {
+    case 0: return QStringLiteral("点边界");
+    case 1: return QStringLiteral("线边界");
+    case 2: return QStringLiteral("面边界");
+    default: return QStringLiteral("边界");
+    }
+}
+
+static QVector<vtkIdType> toVtkIds(const QVector<MeshIdType>& ids)
+{
+    QVector<vtkIdType> out;
+    out.reserve(ids.size());
+    for (MeshIdType id : ids)
+        out.push_back(static_cast<vtkIdType>(id));
+    return out;
+}
+
+static MeshTagKey comboTagKey(QComboBox* combo, int row)
+{
+    if (!combo || row < 0)
+        return {};
+    return combo->itemData(row).value<MeshTagKey>();
+}
+
+static QString boundaryDisplayText(MeshModuleControllerService* meshSvc, const MeshTagSet& set, bool showDimPrefix)
+{
+    QString text = meshSvc ? meshSvc->displayTextOfTag(set.key) : set.name.trimmed();
+    if (text.trimmed().isEmpty())
+        text = QStringLiteral("%1%2").arg(boundaryDimText(set.key.dim)).arg(set.key.id);
+    return showDimPrefix ? QStringLiteral("%1：%2").arg(boundaryDimText(set.key.dim), text) : text;
+}
+}
+
 DisplacementConstraintWidget::DisplacementConstraintWidget(QWidget* parent)
     : BasePage("DisplacementConstraintWidget"), ui(new Ui::DisplacementConstraintWidget)
 {
@@ -64,16 +103,13 @@ void DisplacementConstraintWidget::beforeLoad()
     if (!meshSvc)
         return;
 
-    // 你需要在 meshSvc 里提供一个 getter：返回最近一次 msh 导入的 MshPickMap
-    // 例如：const MshPickMap& map = meshSvc->mshPickMapSolid();
-
     ui->comboBoxDim->blockSignals(true);
     ui->comboBoxDim->clear();
-    ui->comboBoxDim->addItem("全部维度", -1);
-    ui->comboBoxDim->addItem("dim0 点", 0);
-    ui->comboBoxDim->addItem("dim1 线", 1);
-    ui->comboBoxDim->addItem("dim2 面", 2);
-    ui->comboBoxDim->setCurrentIndex(3);
+    ui->comboBoxDim->addItem(QStringLiteral("全部边界"), -1);
+    ui->comboBoxDim->addItem(QStringLiteral("点边界"), 0);
+    ui->comboBoxDim->addItem(QStringLiteral("线边界"), 1);
+    ui->comboBoxDim->addItem(QStringLiteral("面边界"), 2);
+    ui->comboBoxDim->setCurrentIndex(0);
     ui->comboBoxDim->blockSignals(false);
 
     refreshGroupCombo(ui->comboBoxDim->currentData().toInt());
@@ -133,6 +169,7 @@ void DisplacementConstraintWidget::beforeLoad()
     PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
 }
 
+
 void DisplacementConstraintWidget::refreshGroupCombo(int dimFilter)
 {
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
@@ -140,44 +177,33 @@ void DisplacementConstraintWidget::refreshGroupCombo(int dimFilter)
         return;
 
     const QVector<MeshTagSet> sets = meshSvc->boundaryTagSets(dimFilter);
+    const bool showDimPrefix = (dimFilter < 0);
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
-
     for (const MeshTagSet& set : sets)
-    {
-        const QString text = QString("%1=%2  dim=%3  %4")
-                                 .arg(set.key.category)
-                                 .arg(set.key.id)
-                                 .arg(set.key.dim)
-                                 .arg(set.name);
-        ui->comboBoxGroup->addItem(text, QVariant::fromValue(set.key));
-    }
+        ui->comboBoxGroup->addItem(boundaryDisplayText(meshSvc, set, showDimPrefix), QVariant::fromValue(set.key));
     ui->comboBoxGroup->blockSignals(false);
 }
+
 
 void DisplacementConstraintWidget::onDimChanged(int)
 {
     refreshGroupCombo(ui->comboBoxDim->currentData().toInt());
 }
 
+
 void DisplacementConstraintWidget::onGroupChanged(int index)
 {
     if (index < 0)
         return;
-
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
         return;
-
-    const MeshTagKey key = ui->comboBoxGroup->itemData(index).value<MeshTagKey>();
-    const QVector<MeshIdType> tagPids = meshSvc->pointIdsOfTag(key);
-    QVector<vtkIdType> pids;
-    pids.reserve(tagPids.size());
-    for (MeshIdType pid : tagPids)
-        pids.push_back(static_cast<vtkIdType>(pid));
-
-    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pids, false);
+    const MeshTagKey key = comboTagKey(ui->comboBoxGroup, index);
+    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid,
+                                                toVtkIds(meshSvc->pointIdsOfTag(key)), false);
 }
+
 
 
 QJsonObject DisplacementConstraintWidget::saveJson()

@@ -235,15 +235,16 @@ void VisualizationWidget::initViewToolbar()
 
     addSep();
 
+
     root->addWidget(makeIconBtn(":/resources/icon/view_front.png", tr("前视图"),
                                 [this]()
                                 {
-                                    setCameraToAxis(0.0, -1.0, 0.0);
+                                    setCameraToAxis(0.0, 0.0, 1.0);
                                 }));
     root->addWidget(makeIconBtn(":/resources/icon/view_back.png", tr("后视图"),
                                 [this]()
                                 {
-                                    setCameraToAxis(0.0, 1.0, 0.0);
+                                    setCameraToAxis(0.0, 0.0, -1.0);
                                 }));
     root->addWidget(makeIconBtn(":/resources/icon/view_left.png", tr("左视图"),
                                 [this]()
@@ -258,12 +259,12 @@ void VisualizationWidget::initViewToolbar()
     root->addWidget(makeIconBtn(":/resources/icon/view_top.png", tr("顶视图"),
                                 [this]()
                                 {
-                                    setCameraToAxis(0.0, 0.0, 1.0);
+                                    setCameraToAxis(0.0, 1.0, 0.0);
                                 }));
     root->addWidget(makeIconBtn(":/resources/icon/view_bottom.png", tr("底视图"),
                                 [this]()
                                 {
-                                    setCameraToAxis(0.0, 0.0, -1.0);
+                                    setCameraToAxis(0.0, -1.0, 0.0);
                                 }));
 
     root->addStretch(1);
