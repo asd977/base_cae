@@ -160,13 +160,11 @@ void LoadSpecificationWidget::refreshGroupCombo()
     const int dimFilter = ui->comboBoxDim->currentData().toInt();
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
-    const auto nameMap = map.physicalNameMap();
-    for (auto it = nameMap.constBegin(); it != nameMap.constEnd(); ++it)
+    const QVector<int> physIds = map.physicalIds(dimFilter);
+    for (int physId : physIds)
     {
-        const int physId = it.key();
-        if (map.physicalDim(physId) != dimFilter)
-            continue;
-        ui->comboBoxGroup->addItem(QString("%1 (id=%2)").arg(it.value()).arg(physId), physId);
+        QString name = map.physicalName(physId, dimFilter).trimmed();
+        ui->comboBoxGroup->addItem(QString("%1 (id=%2)").arg(name).arg(physId), physId);
     }
     ui->comboBoxGroup->blockSignals(false);
 }

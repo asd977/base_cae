@@ -166,17 +166,15 @@ void BeamLoadPage::refreshGroupCombo()
 
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
-    const auto nameMap = map.physicalNameMap();
-    for (auto it = nameMap.constBegin(); it != nameMap.constEnd(); ++it)
+    const QVector<int> physIds = map.physicalIds(dimFilter);
+    for (int physId : physIds)
     {
-        const int physId = it.key();
         const int dim = map.physicalDim(physId);
         if (dim < 0 || dim > 2)
             continue;
-        if (dimFilter >= 0 && dimFilter != dim)
-            continue;
+        QString name = map.physicalName(physId, dim).trimmed();
         ui->comboBoxGroup->addItem(
-            QString("%1  (dim=%2, id=%3)").arg(it.value()).arg(dim).arg(physId), physId);
+            QString("%1  (dim=%2, id=%3)").arg(name).arg(dim).arg(physId), physId);
     }
     ui->comboBoxGroup->blockSignals(false);
 }

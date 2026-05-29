@@ -125,16 +125,16 @@ void LinearForcePage::refreshGroupCombo()
     const MshPickMap& map = meshSvc->mshPickMapSolid();
     ui->comboBoxGroup->blockSignals(true);
     ui->comboBoxGroup->clear();
-    const auto nameMap = map.physicalNameMap();
-    for (auto it = nameMap.constBegin(); it != nameMap.constEnd(); ++it)
+    if (dimFilter != 1)
     {
-        const int physId = it.key();
-        const int dim = map.physicalDim(physId);
-        if (dim != 1)
-            continue;
-        if (dimFilter != 1)
-            continue;
-        ui->comboBoxGroup->addItem(QString("%1  (id=%2)").arg(it.value()).arg(physId), physId);
+        ui->comboBoxGroup->blockSignals(false);
+        return;
+    }
+    const QVector<int> physIds = map.physicalIds(1);
+    for (int physId : physIds)
+    {
+        QString name = map.physicalName(physId, 1).trimmed();
+        ui->comboBoxGroup->addItem(QString("%1  (id=%2)").arg(name).arg(physId), physId);
     }
     ui->comboBoxGroup->blockSignals(false);
 }
