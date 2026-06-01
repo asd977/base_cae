@@ -26,7 +26,7 @@ SMProcess::~SMProcess()
 
 void SMProcess::startProcess(bool async)
 {
-    qInfo().noquote() << m_programPath;
+    qInfo().noquote() << "开始求解器计算:" << m_programPath << m_arguments.join(" ");
     const bool hasArguments = !m_arguments.isEmpty();
 
     if (async)
@@ -57,11 +57,12 @@ void SMProcess::onFinished(int code, ExitStatus status)
 {
     if ((code == 0 || code == 1) && status == QProcess::NormalExit)
     {
+        qInfo().noquote() << "求解器运行完成，退出码:" << code;
         emit onCompleted(true);
     }
     else
     {
-        qInfo().noquote() << "Exit code:" << code;
+        qCritical().noquote() << "求解器异常退出，退出码:" << code;
         emit onCompleted(false);
     }
 }
@@ -72,37 +73,48 @@ void SMProcess::onError(ProcessError error)
     switch (error)
     {
     case FailedToStart:
-        errorStr = "Error: Failed to start";
+        errorStr = "求解器启动失败";
         break;
     case Crashed:
-        errorStr = "Error: Program crashed";
+        errorStr = "求解器运行崩溃";
         break;
     case Timedout:
-        errorStr = "Error: Run timeout";
+        errorStr = "求解器运行超时";
         break;
     case ReadError:
-        errorStr = "Error: ReadError";
+        errorStr = "求解器读取输出失败";
         break;
     case WriteError:
-        errorStr = "Error: WriteError";
+        errorStr = "求解器写入输入失败";
         break;
     default:
-        errorStr = "Error: Unknown error";
+        errorStr = "求解器发生未知错误";
         break;
     }
-    qInfo().noquote() << errorStr;
+    qCritical().noquote() << errorStr;
     emit onErrorSignal(errorStr);
 }
 
 void SMProcess::onOutput()
 {
     QByteArray outputData = this->readAllStandardOutput();
-    qInfo().noquote() << outputData;
+    const QString text = QString::fromLocal8Bit(outputData).trimmed();
+    if (!text.isEmpty())
+        qInfo().noquote() << "[求解器输出]" << text;
+}
+
+void SMProcess::onErrorOutput()
+{
+    const QByteArray errorData = this->readAllStandardError();
+    const QString text = QString::fromLocal8Bit(errorData).trimmed();
+    if (!text.isEmpty())
+        qWarning().noquote() << "[求解器警告]" << text;
 }
 
 void SMProcess::initializeConnections()
 {
     connect(this, &QProcess::readyReadStandardOutput, this, &SMProcess::onOutput);
+    connect(this, &QProcess::readyReadStandardError, this, &SMProcess::onErrorOutput);
     connect(this, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
             &SMProcess::onFinished);
     connect(this, &QProcess::errorOccurred, this, &SMProcess::onError);

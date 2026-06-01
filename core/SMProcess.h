@@ -40,6 +40,7 @@ class CORE_EXPORT SMProcess : public QProcess
     void onFinished(int code, QProcess::ExitStatus status);
     void onError(QProcess::ProcessError error);
     void onOutput();
+    void onErrorOutput();
 
   private:
     SMProcess() = delete;

@@ -4,7 +4,7 @@
 #include <StyleManager.h>
 
 #include <QApplication>
-#include <QDebug>
+
 #include <QDir>
 #include <QPluginLoader>
 #include <QSurfaceFormat>
@@ -18,7 +18,7 @@ int main(int argc, char** argv)
 {
     QApplication app(argc, argv);
 
-    qDebug() << "asd";
+    qInfo() << "启动程序中...";
     StyleManager::applyStyleSheet(app, QString(":/resources/style/app.qss"));
 
     QString exePath = QCoreApplication::applicationDirPath();
@@ -26,11 +26,11 @@ int main(int argc, char** argv)
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, &onAppAboutToQuit);
 
     QString pluginDirPath = QDir::cleanPath(exePath) + "/plugins";
-    qDebug() << "pluginDirPath " << pluginDirPath;
+    qInfo() << "插件目录:" << pluginDirPath;
     QDir pluginDir(pluginDirPath);
     if (!pluginDir.exists())
     {
-        qDebug() << "Plugin directory does not exist:" << pluginDirPath;
+        qCritical() << "插件目录不存在，程序无法继续:" << pluginDirPath;
         return -1;
     }
 
@@ -43,7 +43,7 @@ int main(int argc, char** argv)
         QPluginLoader* loader = new QPluginLoader(pluginPath);
         if (!loader->load())
         {
-            qDebug() << "Failed to load plugin" << fileName << ":" << loader->errorString();
+            qWarning() << "插件加载失败:" << fileName << "原因:" << loader->errorString();
             delete loader;
             continue;
         }
@@ -51,7 +51,7 @@ int main(int argc, char** argv)
         QObject* plugin = loader->instance();
         if (!plugin)
         {
-            qDebug() << "Failed to get instance for" << fileName << ":" << loader->errorString();
+            qWarning() << "插件实例化失败:" << fileName << "原因:" << loader->errorString();
             delete loader;
             continue;
         }
@@ -61,11 +61,11 @@ int main(int argc, char** argv)
         {
             QString name = pluginInterface->pluginName();
             loadedPlugins[name] = pluginInterface;
-            qDebug() << "Loaded plugin:" << name;
+            qInfo() << "插件已加载:" << name;
         }
         else
         {
-            qDebug() << "Plugin" << fileName << "does not implement PluginInterface";
+            qWarning() << "插件接口不兼容:" << fileName;
             delete loader;
         }
     }
@@ -87,15 +87,16 @@ int main(int argc, char** argv)
     {
         if (loadedPlugins.contains(name))
         {
-            qDebug() << "Starting plugin:" << name;
+            qInfo() << "正在启动模块:" << name;
             loadedPlugins[name]->start();
         }
         else
         {
-            qWarning() << "Plugin with name" << name << "not found!";
+            qWarning() << "模块未找到，已跳过:" << name;
         }
     }
 
+    qInfo() << "模块启动流程完成，进入主界面。";
     EventManager::instance().sendEvent(PublicConstants::kEventLoadComplete);
     return app.exec();
 }
