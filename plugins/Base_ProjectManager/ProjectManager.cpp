@@ -15,6 +15,7 @@
 #include <QFile>
 #include <QIcon>
 #include <QMessageBox>
+#include <QTimer>
 #include <QVariant>
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
@@ -70,10 +71,17 @@ ProjectManager::ProjectManager()
         PublicConstants::kEventLoadComplete, this,
         [this](const QVariantMap& data)
         {
+            Q_UNUSED(data);
             qInfo() << "m_outputService";
 
             m_outputService = ServiceRegistry::instance().getService<OutputService>();
             qInfo() << "end m_outputService";
+
+            QTimer::singleShot(0, this,
+                               [this]()
+                               {
+                                   this->newProject();
+                               });
         });
 }
 
