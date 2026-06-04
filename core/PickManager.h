@@ -114,6 +114,7 @@ class CORE_EXPORT PickManager : public QObject
     }
 
     void clearSelection(const QString& domain, const QString& uuid, PickMode mode);
+    void clearNodeDomainSelectionNoRestore(const QString& domain);
     void setSelectedPointIds(const QString& domain, const QString& uuid, GridKind kind,
                              const QVector<vtkIdType>& pointIds, bool replace = true);
 

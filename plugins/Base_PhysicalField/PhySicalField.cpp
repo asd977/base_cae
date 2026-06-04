@@ -1065,17 +1065,17 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
         buildPointIdsByNodeId(PickManager::instance().lineGrid());
 
     // 导入是生成 IIID.DAT 的反向操作：先移除已有位移约束，再按文件内容重建。
+    // 这里按 DisplacementConstraintWidget 域整体清理，不恢复 prevOwner，避免删除旧约束时
+    // 把已删除 uuid 恢复成“幽灵选中点”，导致个别杆单元/共享节点无法取消选中。
+    const QString displacementDomain = QStringLiteral("DisplacementConstraintWidget");
+    PickManager::instance().clearNodeDomainSelectionNoRestore(displacementDomain);
+
     QList<ProjectNode*> oldConstraints;
     collectDisplacementNodes(m_node, oldConstraints);
     for (ProjectNode* node : oldConstraints)
     {
         if (!node)
             continue;
-        const QString uuid = node->getUuid();
-        const QString domain = node->getPage() ? node->getPage()->getPageType()
-                                                : QStringLiteral("DisplacementConstraintWidget");
-        PickManager::instance().setSelectedPointIds(domain, uuid, GridKind::Solid, QVector<vtkIdType>(), true);
-        PickManager::instance().setSelectedPointIds(domain, uuid, GridKind::Line, QVector<vtkIdType>(), true);
         if (auto* parent = static_cast<ProjectNode*>(node->parent()))
             parent->removeChild(node);
         if (node->getPage())
