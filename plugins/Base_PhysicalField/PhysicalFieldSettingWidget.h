@@ -22,11 +22,7 @@ class PhysicalFieldSettingWidget : public BasePage
     void beforeUnload() override;
 
   private slots:
-    void on_testPushButton_clicked();
-
-    void on_pushButton_clicked();
-
-    void on_dataPushButton_clicked();
+    void on_importIIIDButton_clicked();
 
 private:
     Ui::PhysicalFieldSettingWidget* ui;

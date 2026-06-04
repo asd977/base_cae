@@ -16,9 +16,11 @@
 #include <QDir>
 #include <QFile>
 #include <QHash>
+#include <QMap>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QSet>
 #include <QTextStream>
 #include <QVector>
@@ -935,6 +937,150 @@ void PhysicalField::generateIIIDFile()
 
     f.close();
     qInfo() << "IIID generated:" << path;
+}
+
+
+bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessage)
+{
+    auto fail = [errorMessage](const QString& message)
+    {
+        if (errorMessage)
+            *errorMessage = message;
+        qWarning() << "importIIIDFile:" << message;
+        return false;
+    };
+
+    if (!m_node)
+        return fail(QStringLiteral("约束与荷载节点尚未初始化"));
+
+    QFile f(filePath);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return fail(QStringLiteral("无法打开文件：%1").arg(filePath));
+
+    QTextStream is(&f);
+    auto readDataLine = [&is](QString& out) -> bool
+    {
+        while (!is.atEnd())
+        {
+            out = is.readLine().trimmed();
+            if (out.isEmpty())
+                continue;
+            if (out.startsWith('#') || out.startsWith('!'))
+                continue;
+            return true;
+        }
+        return false;
+    };
+
+    QString line;
+    if (!readDataLine(line))
+        return fail(QStringLiteral("IIID.DAT 文件为空"));
+
+    const QStringList header = line.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+    if (header.size() < 2)
+        return fail(QStringLiteral("IIID.DAT 首行格式错误，应为：节点数 自由度数"));
+
+    bool okNum = false, okDof = false;
+    const int numNp = header.at(0).toInt(&okNum);
+    const int maDof = header.at(1).toInt(&okDof);
+    if (!okNum || !okDof || numNp < 0 || (maDof != 2 && maDof != 3))
+        return fail(QStringLiteral("IIID.DAT 首行节点数或自由度数无效"));
+
+    // 生成逻辑会写两行相同文件头；导入时兼容有/无第二行文件头两种格式。
+    if (!readDataLine(line))
+        return fail(QStringLiteral("IIID.DAT 缺少约束数据"));
+
+    QStringList parts = line.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+    if (parts.size() == 2)
+    {
+        bool okHeader2Num = false, okHeader2Dof = false;
+        const int secondNum = parts.at(0).toInt(&okHeader2Num);
+        const int secondDof = parts.at(1).toInt(&okHeader2Dof);
+        if (!okHeader2Num || !okHeader2Dof || secondNum != numNp || secondDof != maDof)
+            return fail(QStringLiteral("IIID.DAT 第二行文件头与首行不一致"));
+        if (!readDataLine(line) && numNp > 0)
+            return fail(QStringLiteral("IIID.DAT 缺少约束数据行"));
+        parts = line.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+    }
+
+    QMap<QString, QVector<vtkIdType>> groupedNodeIds;
+    int parsedRows = 0;
+    while (parsedRows < numNp)
+    {
+        if (parts.size() < maDof + 1)
+            return fail(QStringLiteral("IIID.DAT 第 %1 条约束数据格式错误").arg(parsedRows + 1));
+
+        bool okUx = false, okUy = false, okUz = true, okNode = false;
+        const int ux = parts.at(0).toInt(&okUx);
+        const int uy = parts.at(1).toInt(&okUy);
+        const int uz = (maDof == 3) ? parts.at(2).toInt(&okUz) : 1;
+        const int nodeId = parts.at(maDof).toInt(&okNode);
+        if (!okUx || !okUy || !okUz || !okNode)
+            return fail(QStringLiteral("IIID.DAT 第 %1 条约束数据包含非整数字段").arg(parsedRows + 1));
+
+        if (!(ux == 1 && uy == 1 && uz == 1))
+        {
+            const QString key = QStringLiteral("%1,%2,%3").arg(ux).arg(uy).arg(uz);
+            groupedNodeIds[key].push_back(static_cast<vtkIdType>(nodeId));
+        }
+
+        ++parsedRows;
+        if (parsedRows >= numNp)
+            break;
+        if (!readDataLine(line))
+            return fail(QStringLiteral("IIID.DAT 数据行数量少于文件头声明的 %1 行").arg(numNp));
+        parts = line.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+    }
+
+    // 导入是生成 IIID.DAT 的反向操作：先移除已有位移约束，再按文件内容重建。
+    QList<ProjectNode*> oldConstraints;
+    collectDisplacementNodes(m_node, oldConstraints);
+    for (ProjectNode* node : oldConstraints)
+    {
+        if (!node)
+            continue;
+        const QString uuid = node->getUuid();
+        const QString domain = node->getPage() ? node->getPage()->getPageType()
+                                                : QStringLiteral("DisplacementConstraintWidget");
+        PickManager::instance().setSelectedPointIds(domain, uuid, GridKind::Solid, QVector<vtkIdType>(), true);
+        PickManager::instance().setSelectedPointIds(domain, uuid, GridKind::Line, QVector<vtkIdType>(), true);
+        if (auto* parent = static_cast<ProjectNode*>(node->parent()))
+            parent->removeChild(node);
+        if (node->getPage())
+            delete node->getPage();
+        delete node;
+    }
+
+    ProjectNode* lastCreated = nullptr;
+    for (auto it = groupedNodeIds.cbegin(); it != groupedNodeIds.cend(); ++it)
+    {
+        const QStringList flags = it.key().split(',');
+        const QString title = MakeIndexedTitle(m_node, QStringLiteral("DisplacementConstraint"),
+                                               QStringLiteral("位移约束"));
+        ProjectNode* node = createNodeByKind(QStringLiteral("DisplacementConstraint"), title,
+                                             QUuid::createUuid().toString());
+        if (!node || !node->getPage())
+            continue;
+
+        QJsonObject pageData;
+        pageData["ux"] = flags.value(0, QStringLiteral("1"));
+        pageData["uy"] = flags.value(1, QStringLiteral("1"));
+        pageData["uz"] = flags.value(2, QStringLiteral("1"));
+        node->getPage()->loadJson(pageData);
+
+        PickManager::instance().setSelectedPointIds(node->getPage()->getPageType(), node->getUuid(),
+                                                    GridKind::Solid, it.value(), true);
+        lastCreated = node;
+    }
+
+    if (lastCreated)
+    {
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(lastCreated);
+    }
+
+    qInfo() << "IIID imported:" << filePath << "constraint groups=" << groupedNodeIds.size();
+    return true;
 }
 
 QString PhysicalField::pageTitleByUuid(const QString& uuid) const

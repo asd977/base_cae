@@ -1,5 +1,8 @@
 ﻿#ifndef PHYSICALFIELDSERVICE_H
 #define PHYSICALFIELDSERVICE_H
+
+#include <QString>
+
 class BasePage;
 
 struct PhysicalFieldService
@@ -11,6 +14,7 @@ struct PhysicalFieldService
     virtual bool loadProject() = 0;
     virtual void generateIIIDFile() = 0;
     virtual void generateIIWLFile() = 0;
+    virtual bool importIIIDFile(const QString& filePath, QString* errorMessage = nullptr) = 0;
 
     virtual QString pageTitleByUuid(const QString& uuid) const = 0;
 };

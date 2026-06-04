@@ -26,6 +26,7 @@ class PhysicalField : public QObject, public PhysicalFieldService
 
     // 生成荷载文件
     void generateIIWLFile();
+    bool importIIIDFile(const QString& filePath, QString* errorMessage = nullptr) override;
     QString pageTitleByUuid(const QString& uuid) const override;
 
   private slots:

@@ -37,52 +37,24 @@
     </widget>
    </item>
    <item>
-    <widget class="QPushButton" name="pushButton">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
-     <property name="text">
-      <string>文件生成</string>
-     </property>
-    </widget>
-   </item>
-   <item>
     <widget class="QWidget" name="contentWidget" native="true">
      <layout class="QVBoxLayout" name="contentLayout">
       <item>
-       <widget class="QPushButton" name="testPushButton">
+       <widget class="QPushButton" name="importIIIDButton">
         <property name="text">
-         <string>test（IIID.DAT）</string>
+         <string>导入 IIID.DAT 并创建约束</string>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QPushButton" name="dataPushButton">
+       <widget class="QLabel" name="importHintLabel">
         <property name="text">
-         <string>test(IIWL.DAT)</string>
+         <string>选择 IIID.DAT 后，将按文件中的约束标志自动重建位移约束节点。</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
         </property>
        </widget>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="horizontalLayoutButtons">
-        <item>
-         <widget class="QPushButton" name="buttonOk">
-          <property name="text">
-           <string>确定</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="buttonCancel">
-          <property name="text">
-           <string>取消</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
       </item>
      </layout>
     </widget>
