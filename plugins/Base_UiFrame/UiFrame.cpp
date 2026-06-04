@@ -404,95 +404,78 @@ void UiFrame::buildRibbonAppButton()
 void UiFrame::buildRibbonTabs()
 {
     // =========================
-    // 自定义参数
-    // =========================
-    //    {
-    //        auto* cate = m_ribbon->addCategoryPage("自定义参数");
-    //        cate->setObjectName("paramObj");
-
-    //        auto* panel = cate->addPannel("参数");
-    //        auto* actParam = makeAction(this,
-    //        ":/resources/menu/minimal/param.svg", "&参数"); auto* actFunc  =
-    //        makeAction(this, ":/resources/menu/minimal/function.svg",  "&函数");
-
-    //        addActionToPanel(panel, actParam, 3);
-    //        addActionToPanel(panel, actFunc,  3);
-
-    //        bindEvent(this, actParam, PublicConstants::kActionCustomParam);
-    //        bindEvent(this, actFunc,  PublicConstants::kActionCustomFunction);
-    //    }
-
-    // =========================
     // 几何
     // =========================
     {
         auto* cate = m_ribbon->addCategoryPage("几何");
         cate->setObjectName("geomObj");
 
-        // ---------------------------------
-        // 1) 导入导出（保留）
-        // ---------------------------------
+               // ---------- 文件 ----------
         {
-            auto* panel = cate->addPannel("导入导出");
+            auto* panel = cate->addPannel("文件");
+
             auto* actImport = makeAction(this, ":/resources/menu/minimal/import.svg", "&导入");
             auto* actExport = makeAction(this, ":/resources/menu/minimal/export.svg", "&导出");
-            addActionToPanel(panel, actImport, 2);
-            addActionToPanel(panel, actExport, 2);
+
+            addActionToPanel(panel, actImport, 3);
+            addActionToPanel(panel, actExport, 3);
+
             bindEvent(this, actImport, PublicConstants::kActionPreprocessImportGeometry);
             bindEvent(this, actExport, PublicConstants::kActionPreprocessExportGeometry);
         }
 
-        // ---------------------------------
-        // 2) 创建（Create）：基本体 + 2D轮廓(Profile)
-        // ---------------------------------
+        // ---------- 创建 ----------
         {
             auto* panel = cate->addPannel("创建");
 
-            // ---- 2.1 基本体（你已有的这些保留）----
-            auto* actBox = makeAction(this, ":/resources/menu/minimal/cuboid.svg", "&长方体");
-            auto* actSphere = makeAction(this, ":/resources/menu/minimal/sphere.svg", "&球体");
-            auto* actCone = makeAction(this, ":/resources/menu/minimal/cone.svg", "&圆锥体");
-            auto* actTorus = makeAction(this, ":/resources/menu/minimal/torus.svg", "&圆环");
+                   // =========================
+                   // 1) 三维实体
+                   // =========================
+            auto* actSolidMain =
+                makeAction(this, ":/resources/menu/minimal/cuboid.svg", "&三维实体");
+
+            auto* solidMenu = new SARibbonMenu(this);
+
+            auto* actBox =
+                makeAction(this, ":/resources/menu/minimal/cuboid.svg", "&长方体");
             auto* actCylinder =
                 makeAction(this, ":/resources/menu/minimal/cylinder.svg", "&圆柱体");
-            auto* actGravityDam =
-                makeAction(this, ":/resources/menu/minimal/analysis-dam.svg", "&重力坝");
-            auto* actEarthRockfillDam =
-                makeAction(this, ":/resources/menu/minimal/mat-soil-eb.svg", "&土石坝");
-            auto* actSlopeTemplate =
-                makeAction(this, ":/resources/menu/minimal/analysis-slope.svg", "&边坡");
-            auto* actCavernTemplate =
-                makeAction(this, ":/resources/menu/minimal/analysis-cave.svg", "&洞室");
+            auto* actSphere =
+                makeAction(this, ":/resources/menu/minimal/sphere.svg", "&球体");
+            auto* actCone =
+                makeAction(this, ":/resources/menu/minimal/cone.svg", "&圆锥体");
+            auto* actTorus =
+                makeAction(this, ":/resources/menu/minimal/torus.svg", "&圆环");
 
-            addActionToPanel(panel, actBox, 1);
-            addActionToPanel(panel, actSphere, 1);
-            addActionToPanel(panel, actCone, 1);
-            addActionToPanel(panel, actTorus, 1);
-            addActionToPanel(panel, actCylinder, 1);
-            addActionToPanel(panel, actGravityDam, 1);
-            addActionToPanel(panel, actEarthRockfillDam, 1);
-            addActionToPanel(panel, actSlopeTemplate, 1);
-            addActionToPanel(panel, actCavernTemplate, 1);
+            solidMenu->addAction(actBox);
+            solidMenu->addAction(actCylinder);
+            solidMenu->addAction(actSphere);
+            solidMenu->addAction(actCone);
+            solidMenu->addAction(actTorus);
+
+            actSolidMain->setMenu(solidMenu);
+            addActionToPanel(panel, actSolidMain, 3);
 
             bindEvent(this, actBox, PublicConstants::kActionPreprocessBox);
+            bindEvent(this, actCylinder, PublicConstants::kActionPreprocessCylinder);
             bindEvent(this, actSphere, PublicConstants::kActionPreprocessSphere);
             bindEvent(this, actCone, PublicConstants::kActionPreprocessCone);
             bindEvent(this, actTorus, PublicConstants::kActionPreprocessTorus);
-            bindEvent(this, actCylinder, PublicConstants::kActionPreprocessCylinder);
-            bindEvent(this, actGravityDam, PublicConstants::kActionPreprocessGravityDam);
-            bindEvent(this, actEarthRockfillDam, PublicConstants::kActionPreprocessEarthRockfillDam);
-            bindEvent(this, actSlopeTemplate, PublicConstants::kActionPreprocessSlopeTemplate);
-            bindEvent(this, actCavernTemplate, PublicConstants::kActionPreprocessCavernTemplate);
 
-            // ---- 2.2 2D轮廓(Profile)：替代2D草图（参数化节点）----
+                   // =========================
+                   // 2) 二维轮廓
+                   // =========================
             auto* actProfileMain =
-                makeAction(this, ":/resources/menu/minimal/profile.svg", "&2D轮廓");
+                makeAction(this, ":/resources/menu/minimal/profile.svg", "&二维轮廓");
+
             auto* profileMenu = new SARibbonMenu(this);
 
             auto* actProfileRect =
                 makeAction(this, ":/resources/menu/minimal/rectangle.svg", "&矩形");
-            auto* actProfileCircle = makeAction(this, ":/resources/menu/minimal/circle.svg", "&圆");
-            auto* actProfileRing = makeAction(this, ":/resources/menu/minimal/ring.svg", "&环");
+            auto* actProfileCircle =
+                makeAction(this, ":/resources/menu/minimal/circle.svg", "&圆");
+            auto* actProfileRing =
+                makeAction(this, ":/resources/menu/minimal/ring.svg", "&环");
             auto* actProfilePolygon =
                 makeAction(this, ":/resources/menu/minimal/polygon.svg", "&多边形");
 
@@ -502,466 +485,335 @@ void UiFrame::buildRibbonTabs()
             profileMenu->addAction(actProfilePolygon);
 
             actProfileMain->setMenu(profileMenu);
-            addActionToPanel(panel, actProfileMain, 2);
+            addActionToPanel(panel, actProfileMain, 3);
 
-            // Profile 节点创建：节点属性里选择支撑面/偏移/尺寸，不做“工作平面”菜单
-            // bindEvent(this, actProfileMain,
-            // PublicConstants::kActionGeomCreateProfile); // 可选：总入口
             bindEvent(this, actProfileRect, PublicConstants::kActionGeomCreatePlanarRect);
             bindEvent(this, actProfileCircle, PublicConstants::kActionGeomCreatePlanarCircle);
             bindEvent(this, actProfileRing, PublicConstants::kActionGeomCreateEllipse);
             bindEvent(this, actProfilePolygon, PublicConstants::kActionGeomCreatePlanarPolygon);
         }
 
-        // ---------------------------------
-        // 3) 特征（Feature）：在树上加特征节点
-        // ---------------------------------
-        // {
-        //     auto* panel = cate->addPannel("特征");
+               // ---------- 工程模板 ----------
+        {
+            auto* panel = cate->addPannel("工程模板");
 
-        //     auto* actExtrude = makeAction(this, "", "&拉伸");
-        //     auto* actRevolve = makeAction(this, "", "&旋转");
-        //     auto* actThicken = makeAction(this, "", "&加厚");
-        //     auto* actShell   = makeAction(this, "", "&抽壳");
+            auto* actGravityDam =
+                makeAction(this, ":/resources/menu/minimal/analysis-dam.svg", "&重力坝");
+            auto* actEarthRockfillDam =
+                makeAction(this, ":/resources/menu/minimal/mat-soil-eb.svg", "&土石坝");
+            auto* actSlopeTemplate =
+                makeAction(this, ":/resources/menu/minimal/analysis-slope.svg", "&边坡");
+            auto* actCavernTemplate =
+                makeAction(this, ":/resources/menu/minimal/analysis-cave.svg", "&洞室");
 
-        //     addActionToPanel(panel, actExtrude, 3);
-        //     addActionToPanel(panel, actRevolve, 3);
-        //     addActionToPanel(panel, actThicken, 3);
-        //     addActionToPanel(panel, actShell,   3);
+            addActionToPanel(panel, actGravityDam, 3);
+            addActionToPanel(panel, actEarthRockfillDam, 3);
+            addActionToPanel(panel, actSlopeTemplate, 3);
+            addActionToPanel(panel, actCavernTemplate, 3);
 
-        //     bindEvent(this, actExtrude, PublicConstants::kActionGeomAddExtrude);
-        //     bindEvent(this, actRevolve, PublicConstants::kActionGeomAddRevolve);
-        //     bindEvent(this, actThicken, PublicConstants::kActionGeomAddThicken);
-        //     bindEvent(this, actShell,   PublicConstants::kActionGeomAddShell);
-        // }
+            bindEvent(this, actGravityDam, PublicConstants::kActionPreprocessGravityDam);
+            bindEvent(this, actEarthRockfillDam, PublicConstants::kActionPreprocessEarthRockfillDam);
+            bindEvent(this, actSlopeTemplate, PublicConstants::kActionPreprocessSlopeTemplate);
+            bindEvent(this, actCavernTemplate, PublicConstants::kActionPreprocessCavernTemplate);
+        }
 
-        // ---------------------------------
-        // 4) 布尔（Boolean）：不合并，保留 Fuse/Union/Cut/Common 四个节点入口
-        // ---------------------------------
+
+               // ---------- 布尔 ----------
         {
             auto* panel = cate->addPannel("布尔");
 
             auto* actFuse = makeAction(this, ":/resources/menu/minimal/boolean-fuse.svg", "&并集");
-            // auto* actUnion =
-            //     makeAction(this, ":/resources/menu/minimal/boolean-union.svg", "联&合体");
             auto* actCut = makeAction(this, ":/resources/menu/minimal/boolean-cut.svg", "&差集");
             auto* actCommon =
                 makeAction(this, ":/resources/menu/minimal/boolean-common.svg", "&交集");
 
             addActionToPanel(panel, actFuse, 3);
-            // addActionToPanel(panel, actUnion, 3);
             addActionToPanel(panel, actCut, 3);
             addActionToPanel(panel, actCommon, 3);
 
             bindEvent(this, actFuse, PublicConstants::kActionGeomFuse);
-            // bindEvent(this, actUnion, PublicConstants::kActionGeomUnion);
             bindEvent(this, actCut, PublicConstants::kActionGeomCut);
             bindEvent(this, actCommon, PublicConstants::kActionGeomCommon);
         }
-
-        // ---------------------------------
-        // 5) 修改（Modify）：节点化（边处理/偏移/分割）
-        // ---------------------------------
-        // {
-        //     auto* panel = cate->addPannel("修改");
-
-        //     auto* actEdgeBlend = makeAction(this, "", "&边处理"); //
-        //     圆角/倒角在节点属性里选择 auto* actOffset    = makeAction(this, "",
-        //     "&偏移"); auto* actSplit     = makeAction(this, "", "&分割");
-
-        //     addActionToPanel(panel, actEdgeBlend, 3);
-        //     addActionToPanel(panel, actOffset,    3);
-        //     addActionToPanel(panel, actSplit,     3);
-
-        //     bindEvent(this, actEdgeBlend,
-        //     PublicConstants::kActionGeomAddEdgeBlend); bindEvent(this, actOffset,
-        //     PublicConstants::kActionGeomAddOffset); bindEvent(this, actSplit,
-        //     PublicConstants::kActionGeomAddSplit);
-        // }
-
-        // // ---------------------------------
-        // // 6) 变换与阵列（Transform）：节点化（变换/镜像/阵列）
-        // // ---------------------------------
-        // {
-        //     auto* panel = cate->addPannel("变换");
-
-        //     auto* actTransform = makeAction(this, "", "&移动/旋转");
-        //     auto* actMirror    = makeAction(this, "", "&镜像");
-        //     auto* actPattern   = makeAction(this, "", "&阵列"); //
-        //     线性/圆周/矩形在节点属性里选
-
-        //     addActionToPanel(panel, actTransform, 3);
-        //     addActionToPanel(panel, actMirror,    3);
-        //     addActionToPanel(panel, actPattern,   3);
-
-        //     bindEvent(this, actTransform,
-        //     PublicConstants::kActionGeomAddTransform); bindEvent(this, actMirror,
-        //     PublicConstants::kActionGeomAddMirror); bindEvent(this, actPattern,
-        //     PublicConstants::kActionGeomAddPattern);
-        // }
-
-        // ---------------------------------
-        // 7) 显示与测量（Display/Measure）：保留；删除“选择模式”控件
-        // ---------------------------------
-        // {
-        //     auto* panel = cate->addPannel("显示测量");
-
-        //     // 显示模式
-        //     auto* actSolid = makeAction(this, "", "&实体显示");
-        //     auto* actWire  = makeAction(this, "", "&线框显示");
-        //     auto* actTrans = makeAction(this, "", "&透明显示");
-
-        //     addActionToPanel(panel, actSolid, 3);
-        //     addActionToPanel(panel, actWire,  3);
-        //     addActionToPanel(panel, actTrans, 3);
-
-        //     bindEvent(this, actSolid,
-        //     PublicConstants::kActionPreprocessSolidView); bindEvent(this,
-        //     actWire,  PublicConstants::kActionPreprocessLineView);
-        //     bindEvent(this, actTrans,
-        //     PublicConstants::kActionPreprocessTransmissionView);
-
-        //     // 显示元素
-        //     auto* actShowFace  = makeAction(this, "", "&显示面");
-        //     auto* actShowLine  = makeAction(this, "", "&显示线");
-        //     auto* actShowPoint = makeAction(this, "", "&显示点");
-
-        //     addActionToPanel(panel, actShowFace,  3);
-        //     addActionToPanel(panel, actShowLine,  2);
-        //     addActionToPanel(panel, actShowPoint, 2);
-
-        //     bindEvent(this, actShowFace,
-        //     PublicConstants::kActionPreprocessShowFace); bindEvent(this,
-        //     actShowLine,  PublicConstants::kActionPreprocessShowLine);
-        //     bindEvent(this, actShowPoint,
-        //     PublicConstants::kActionPreprocessShowPoint);
-
-        //     // 测量（合并成下拉）
-        //     auto* actMeasureMain = makeAction(this, "", "&测量");
-        //     auto* measureMenu = new SARibbonMenu(this);
-
-        //     auto* actPos = makeAction(this, "", "&位置测量");
-        //     auto* actCen = makeAction(this, "", "&质心测量");
-        //     auto* actDis = makeAction(this, "", "&距离测量");
-
-        //     measureMenu->addAction(actPos);
-        //     measureMenu->addAction(actCen);
-        //     measureMenu->addAction(actDis);
-
-        //     actMeasureMain->setMenu(measureMenu);
-        //     addActionToPanel(panel, actMeasureMain, 3);
-
-        //     bindEvent(this, actMeasureMain,
-        //     PublicConstants::kActionPreprocessMeasure); bindEvent(this, actPos,
-        //     PublicConstants::kActionPreprocessMeasurePosition); bindEvent(this,
-        //     actCen, PublicConstants::kActionPreprocessMeasureCentroid);
-        //     bindEvent(this, actDis,
-        //     PublicConstants::kActionPreprocessMeasureDistance);
-        // }
     }
 
-    // =========================
-    // 网格
-    // =========================
+           // =========================
+           // 网格
+           // =========================
     {
         auto* cate = m_ribbon->addCategoryPage("网格");
         cate->setObjectName("gridObj");
 
-        // ============ 导入导出 ============
-        auto* panelIO = cate->addPannel("导入导出");
-        auto* actImport = makeAction(this, ":/resources/menu/minimal/import.svg", "&导入");
-        auto* actExport = makeAction(this, ":/resources/menu/minimal/export.svg", "&导出");
-        addActionToPanel(panelIO, actImport, 2);
-        addActionToPanel(panelIO, actExport, 2);
+               // ---------- 文件 ----------
+        {
+            auto* panel = cate->addPannel("文件");
 
-        bindEvent(this, actImport, PublicConstants::kActionPreprocessImportGrid);
-        bindEvent(this, actExport, PublicConstants::kActionPreprocessExportGrid);
+            auto* actImport = makeAction(this, ":/resources/menu/minimal/import.svg", "&导入");
+            auto* actExport = makeAction(this, ":/resources/menu/minimal/export.svg", "&导出");
 
-        // // ============ 剖分方式 ============
-        auto* panelMesh = cate->addPannel("剖分");
-        auto* actGlobal = makeAction(this, ":/resources/menu/minimal/mesh-global.svg", "&整体剖分");
-        // auto* actSingle = makeAction(this, ":/resources/menu/minimal/mesh-single.svg", "&单体剖分");
-        // auto* actMapped = makeAction(this, ":/resources/menu/meshMapped.png",
-        // "&映射剖分"); auto* actSweep  = makeAction(this,
-        // ":/resources/menu/meshSweep.png",   "&扫掠剖分");
+            addActionToPanel(panel, actImport, 3);
+            addActionToPanel(panel, actExport, 3);
 
-        addActionToPanel(panelMesh, actGlobal, 2);
-        // addActionToPanel(panelMesh, actSingle, 2);
-        // addActionToPanel(panelMesh, actMapped, 2);
-        // addActionToPanel(panelMesh, actSweep,  2);
+            bindEvent(this, actImport, PublicConstants::kActionPreprocessImportGrid);
+            bindEvent(this, actExport, PublicConstants::kActionPreprocessExportGrid);
+        }
 
-        bindEvent(this, actGlobal, PublicConstants::kActionPreprocessMeshGlobal);
-        // bindEvent(this, actSingle, PublicConstants::kActionPreprocessMeshSingle);
-        // bindEvent(this, actMapped, PublicConstants::kActionPreprocessMeshMapped);
-        // bindEvent(this, actSweep,  PublicConstants::kActionPreprocessMeshSweep);
+               // ---------- 剖分 ----------
+        {
+            auto* panel = cate->addPannel("剖分");
 
-        // // ============ 控制与质量 ============
-        auto* panelCtrl = cate->addPannel("控制");
-        auto* actVolCtrl = makeAction(this, ":/resources/menu/minimal/mesh-vol.svg", "&体控制");
-        auto* actFaceCtrl = makeAction(this, ":/resources/menu/minimal/mesh-face.svg", "&面控制");
-        auto* actEdgeCtrl = makeAction(this, ":/resources/menu/minimal/mesh-edge.svg", "&边控制");
-        auto* actMeshEdit = makeAction(this, ":/resources/menu/minimal/mesh-edit.svg", "&显示控制");
-        auto* actQuality = makeAction(this, ":/resources/menu/minimal/mesh-edit.svg", "&网格质量检查");
+            auto* actGlobal =
+                makeAction(this, ":/resources/menu/minimal/mesh-global.svg", "&整体剖分");
 
-        addActionToPanel(panelCtrl, actVolCtrl, 2);
-        addActionToPanel(panelCtrl, actFaceCtrl, 2);
-        addActionToPanel(panelCtrl, actEdgeCtrl, 2);
-        addActionToPanel(panelCtrl, actMeshEdit, 2);
-        addActionToPanel(panelCtrl, actQuality, 2);
+            addActionToPanel(panel, actGlobal, 3);
 
-        bindEvent(this, actVolCtrl, PublicConstants::kActionPreprocessCtrlVolume);
-        bindEvent(this, actFaceCtrl, PublicConstants::kActionPreprocessCtrlSurface);
-        bindEvent(this, actEdgeCtrl, PublicConstants::kActionPreprocessCtrlEdge);
-        bindEvent(this, actMeshEdit, PublicConstants::kActionPreprocessMeshEdit);
-        bindEvent(this, actQuality, PublicConstants::kActionPreprocessQualityStd);
+            bindEvent(this, actGlobal, PublicConstants::kActionPreprocessMeshGlobal);
+        }
+
+               // ---------- 尺寸控制 ----------
+        {
+            auto* panel = cate->addPannel("尺寸控制");
+
+            auto* actVolCtrl =
+                makeAction(this, ":/resources/menu/minimal/mesh-vol.svg", "&体控制");
+            auto* actFaceCtrl =
+                makeAction(this, ":/resources/menu/minimal/mesh-face.svg", "&面控制");
+            auto* actEdgeCtrl =
+                makeAction(this, ":/resources/menu/minimal/mesh-edge.svg", "&边控制");
+
+            addActionToPanel(panel, actVolCtrl, 3);
+            addActionToPanel(panel, actFaceCtrl, 3);
+            addActionToPanel(panel, actEdgeCtrl, 3);
+
+            bindEvent(this, actVolCtrl, PublicConstants::kActionPreprocessCtrlVolume);
+            bindEvent(this, actFaceCtrl, PublicConstants::kActionPreprocessCtrlSurface);
+            bindEvent(this, actEdgeCtrl, PublicConstants::kActionPreprocessCtrlEdge);
+        }
+
+               // ---------- 网格工具 ----------
+        {
+            auto* panel = cate->addPannel("网格工具");
+
+            auto* actMeshEdit =
+                makeAction(this, ":/resources/menu/minimal/mesh-edit.svg", "&网格编辑");
+            auto* actMeshGrouping =
+                makeAction(this, ":/resources/menu/minimal/mesh-group.svg", "&网格分组");
+            auto* actQuality =
+                makeAction(this, ":/resources/menu/minimal/mesh-edit.svg", "&质量检查");
+
+            addActionToPanel(panel, actMeshEdit, 3);
+            addActionToPanel(panel, actMeshGrouping, 3);
+            addActionToPanel(panel, actQuality, 3);
+
+            bindEvent(this, actMeshEdit, PublicConstants::kActionPreprocessMeshEdit);
+            bindEvent(this, actMeshGrouping, PublicConstants::kActionPreprocessMeshGrouping);
+            bindEvent(this, actQuality, PublicConstants::kActionPreprocessQualityStd);
+        }
     }
 
-    // =========================
-    // 材料
-    // =========================
+           // =========================
+           // 材料
+           // =========================
     {
         auto* cate = m_ribbon->addCategoryPage("材料");
         cate->setObjectName("materialObj");
 
-        auto* panelSoil = cate->addPannel("模型");
-        auto* panelBuiltin = cate->addPannel("内置数据");
-        auto* panelTransition = cate->addPannel("变换");
-
-        auto* actHjp = makeAction(this, ":/resources/menu/minimal/mat-hjp.svg", "围岩开挖模型");
-        auto* actSoilEb = makeAction(this, ":/resources/menu/minimal/mat-soil-eb.svg", "E-B模型");
-        auto* actDynamic = makeAction(this, ":/resources/menu/minimal/mat-dynamic.svg", "坝料动力本构");
-        auto* actSoilEmu = makeAction(this, ":/resources/menu/minimal/mat-soil-emu.svg", "E-μ模型");
-        auto* actSoilEmuCrush =
-            makeAction(this, ":/resources/menu/minimal/mat-soil-emu-crush.svg", "E-μ破碎模型");
-        auto* actBar =
-            makeAction(this, ":/resources/menu/minimal/mat-bar.svg", "锚杆单元模型");
-        auto* actDagangshan = makeAction(this, ":/resources/menu/minimal/mat-dagangshan.svg",
-                                         "各向同性本构");
-        auto* actNanshui = makeAction(this, ":/resources/menu/minimal/mat-nanshui.svg", "非线性土体模型");
-        auto* actKg = makeAction(this, ":/resources/menu/minimal/mat-kg.svg", "K-G模型");
-        auto* actBuiltinMaterial = makeAction(this, ":/resources/menu/minimal/mat-builtin-material.svg",
-                                              "材料示例");
-        auto* actBuiltinSeepage = makeAction(this, ":/resources/menu/minimal/mat-builtin-seepage.svg",
-                                             "渗流示例");
-        auto* actMaterialTransition = makeAction(this, ":/resources/menu/minimal/mat-transition.svg",
-                                                 "材料变换");
-
-        // 材料类型较多，统一改为 small action，减少 Ribbon 占位并避免文字截断。
-        addActionToPanel(panelSoil, actSoilEb, 1);
-        addActionToPanel(panelSoil, actSoilEmu, 1);
-        addActionToPanel(panelSoil, actSoilEmuCrush, 1);
-        addActionToPanel(panelSoil, actNanshui, 1);
-        addActionToPanel(panelSoil, actKg, 1);
-
-        addActionToPanel(panelSoil, actHjp, 1);
-        addActionToPanel(panelSoil, actDynamic, 1);
-        addActionToPanel(panelSoil, actBar, 1);
-        addActionToPanel(panelSoil, actDagangshan, 1);
-        addActionToPanel(panelBuiltin, actBuiltinMaterial, 3);
-        addActionToPanel(panelBuiltin, actBuiltinSeepage, 3);
-        addActionToPanel(panelTransition, actMaterialTransition, 2);
-
-        connect(actHjp, &QAction::triggered, this,
-                []()
-                {
-                    auto* materialService =
-                        ServiceRegistry::instance().getService<MaterialManagerService>();
-                    if (materialService)
+        auto addMaterialAction = [this](QAction* action, const QString& materialKey)
+        {
+            connect(action, &QAction::triggered, this,
+                    [materialKey]()
                     {
-                        materialService->addMaterialFromMenu(
-                            QStringLiteral("huangjinping_underground_plant"));
-                    }
-                });
+                        auto* materialService =
+                            ServiceRegistry::instance().getService<MaterialManagerService>();
+                        if (materialService)
+                            materialService->addMaterialFromMenu(materialKey);
+                    });
+        };
 
-        connect(actSoilEb, &QAction::triggered, this,
-                []()
-                {
-                    auto* materialService =
-                        ServiceRegistry::instance().getService<MaterialManagerService>();
-                    if (materialService)
+               // ---------- 土体模型 ----------
+        {
+            auto* panel = cate->addPannel("土体模型");
+
+            auto* actSoilEb =
+                makeAction(this, ":/resources/menu/minimal/mat-soil-eb.svg", "E-B模型");
+            auto* actSoilEmu =
+                makeAction(this, ":/resources/menu/minimal/mat-soil-emu.svg", "E-μ模型");
+            auto* actSoilEmuCrush =
+                makeAction(this, ":/resources/menu/minimal/mat-soil-emu-crush.svg", "E-μ破碎");
+            auto* actNanshui =
+                makeAction(this, ":/resources/menu/minimal/mat-nanshui.svg", "非线性土体");
+            auto* actKg =
+                makeAction(this, ":/resources/menu/minimal/mat-kg.svg", "K-G模型");
+
+            addActionToPanel(panel, actSoilEb, 2);
+            addActionToPanel(panel, actSoilEmu, 2);
+            addActionToPanel(panel, actSoilEmuCrush, 2);
+            addActionToPanel(panel, actNanshui, 2);
+            addActionToPanel(panel, actKg, 2);
+
+            addMaterialAction(actSoilEb, QStringLiteral("soil_eb"));
+            addMaterialAction(actSoilEmu, QStringLiteral("soil_emu"));
+            addMaterialAction(actSoilEmuCrush, QStringLiteral("soil_emu_crush"));
+            addMaterialAction(actNanshui, QStringLiteral("soil_nanshui"));
+            addMaterialAction(actKg, QStringLiteral("soil_kg"));
+        }
+
+               // ---------- 工程模型 ----------
+        {
+            auto* panel = cate->addPannel("工程模型");
+
+            auto* actHjp =
+                makeAction(this, ":/resources/menu/minimal/mat-hjp.svg", "围岩开挖");
+            auto* actDynamic =
+                makeAction(this, ":/resources/menu/minimal/mat-dynamic.svg", "动力本构");
+            auto* actBar =
+                makeAction(this, ":/resources/menu/minimal/mat-bar.svg", "锚杆单元");
+            auto* actDagangshan =
+                makeAction(this, ":/resources/menu/minimal/mat-dagangshan.svg", "各向同性");
+
+            addActionToPanel(panel, actHjp, 2);
+            addActionToPanel(panel, actDynamic, 2);
+            addActionToPanel(panel, actBar, 2);
+            addActionToPanel(panel, actDagangshan, 2);
+
+            addMaterialAction(actHjp, QStringLiteral("huangjinping_underground_plant"));
+            addMaterialAction(actDynamic, QStringLiteral("dam_dynamic"));
+            addMaterialAction(actBar, QStringLiteral("huangjinping_bar_element"));
+            addMaterialAction(actDagangshan, QStringLiteral("dagangshan_isotropic"));
+        }
+
+               // ---------- 数据与变换 ----------
+        {
+            auto* panel = cate->addPannel("数据与变换");
+
+            auto* actBuiltinMaterial =
+                makeAction(this, ":/resources/menu/minimal/mat-builtin-material.svg", "材料示例");
+            auto* actBuiltinSeepage =
+                makeAction(this, ":/resources/menu/minimal/mat-builtin-seepage.svg", "渗流示例");
+            auto* actMaterialTransition =
+                makeAction(this, ":/resources/menu/minimal/mat-transition.svg", "材料变换");
+
+            addActionToPanel(panel, actBuiltinMaterial, 3);
+            addActionToPanel(panel, actBuiltinSeepage, 3);
+            addActionToPanel(panel, actMaterialTransition, 2);
+
+            connect(actBuiltinMaterial, &QAction::triggered, this,
+                    []()
                     {
-                        materialService->addMaterialFromMenu(QStringLiteral("soil_eb"));
-                    }
-                });
+                        auto* materialService =
+                            ServiceRegistry::instance().getService<MaterialManagerService>();
+                        if (materialService)
+                            materialService->showBuiltinMaterialListDialog();
+                    });
 
-        connect(actDynamic, &QAction::triggered, this,
-                []()
-                {
-                    auto* materialService =
-                        ServiceRegistry::instance().getService<MaterialManagerService>();
-                    if (materialService)
+            connect(actBuiltinSeepage, &QAction::triggered, this,
+                    []()
                     {
-                        materialService->addMaterialFromMenu(QStringLiteral("dam_dynamic"));
-                    }
-                });
+                        auto* materialService =
+                            ServiceRegistry::instance().getService<MaterialManagerService>();
+                        if (materialService)
+                            materialService->showBuiltinSeepageListDialog();
+                    });
 
-        connect(actSoilEmu, &QAction::triggered, this,
-                []()
-                {
-                    auto* materialService =
-                        ServiceRegistry::instance().getService<MaterialManagerService>();
-                    if (materialService)
+            connect(actMaterialTransition, &QAction::triggered, this,
+                    []()
                     {
-                        materialService->addMaterialFromMenu(QStringLiteral("soil_emu"));
-                    }
-                });
-
-        connect(actSoilEmuCrush, &QAction::triggered, this,
-                []()
-                {
-                    auto* materialService =
-                        ServiceRegistry::instance().getService<MaterialManagerService>();
-                    if (materialService)
-                    {
-                        materialService->addMaterialFromMenu(QStringLiteral("soil_emu_crush"));
-                    }
-                });
-
-        connect(actBar, &QAction::triggered, this,
-                []()
-                {
-                    auto* materialService =
-                        ServiceRegistry::instance().getService<MaterialManagerService>();
-                    if (materialService)
-                    {
-                        materialService->addMaterialFromMenu(
-                            QStringLiteral("huangjinping_bar_element"));
-                    }
-                });
-
-        connect(actDagangshan, &QAction::triggered, this,
-                []()
-                {
-                    auto* materialService =
-                        ServiceRegistry::instance().getService<MaterialManagerService>();
-                    if (materialService)
-                    {
-                        materialService->addMaterialFromMenu(
-                            QStringLiteral("dagangshan_isotropic"));
-                    }
-                });
-
-        connect(actNanshui, &QAction::triggered, this,
-                []()
-                {
-                    auto* materialService =
-                        ServiceRegistry::instance().getService<MaterialManagerService>();
-                    if (materialService)
-                    {
-                        materialService->addMaterialFromMenu(QStringLiteral("soil_nanshui"));
-                    }
-                });
-
-        connect(actKg, &QAction::triggered, this,
-                []()
-                {
-                    auto* materialService =
-                        ServiceRegistry::instance().getService<MaterialManagerService>();
-                    if (materialService)
-                    {
-                        materialService->addMaterialFromMenu(QStringLiteral("soil_kg"));
-                    }
-                });
-
-        connect(actBuiltinMaterial, &QAction::triggered, this,
-                []()
-                {
-                    auto* materialService =
-                        ServiceRegistry::instance().getService<MaterialManagerService>();
-                    if (materialService)
-                    {
-                        materialService->showBuiltinMaterialListDialog();
-                    }
-                });
-
-        connect(actBuiltinSeepage, &QAction::triggered, this,
-                []()
-                {
-                    auto* materialService =
-                        ServiceRegistry::instance().getService<MaterialManagerService>();
-                    if (materialService)
-                    {
-                        materialService->showBuiltinSeepageListDialog();
-                    }
-                });
-
-        connect(actMaterialTransition, &QAction::triggered, this,
-                []()
-                {
-                    auto* materialService =
-                        ServiceRegistry::instance().getService<MaterialManagerService>();
-                    if (materialService)
-                    {
-                        materialService->showMaterialTransitionDialog();
-                    }
-                });
-
+                        auto* materialService =
+                            ServiceRegistry::instance().getService<MaterialManagerService>();
+                        if (materialService)
+                            materialService->showMaterialTransitionDialog();
+                    });
+        }
     }
 
-    // =========================
-    // 约束与荷载
-    // =========================
+           // =========================
+           // 约束与荷载
+           // =========================
     {
         auto* cate = m_ribbon->addCategoryPage("约束与荷载");
         cate->setObjectName("boundObj");
 
-        auto* panelConstraint = cate->addPannel("约束");
-        auto* actDisplacement =
-            makeAction(this, ":/resources/menu/minimal/constraint.svg", "&位移约束");
-        addActionToPanel(panelConstraint, actDisplacement, 2);
-        bindEvent(this, actDisplacement, PublicConstants::kActionPhysicalDisplacementConstraint);
+               // ---------- 约束 ----------
+        {
+            auto* panel = cate->addPannel("约束");
 
-        auto* panelLoad = cate->addPannel("荷载");
-        auto* actGeoStressPoint = makeAction(
-            this, ":/resources/menu/minimal/load-geostress-point.svg", "&现场地应力信息");
-        auto* actGeoStressFitFace =
-            makeAction(this, ":/resources/menu/minimal/load-geostress-face.svg", "&梯形边界荷载");
-        auto* actBodyForce =
-            makeAction(this, ":/resources/menu/minimal/load-body-force.svg", "&体积力荷载");
-        auto* actConcentratedForce =
-            makeAction(this, ":/resources/menu/minimal/load-concentrated.svg", "&集中力荷载");
-        auto* actLinearForce =
-            makeAction(this, ":/resources/menu/minimal/load-linear.svg", "&线力荷载");
-        auto* actSurfaceForce =
-            makeAction(this, ":/resources/menu/minimal/load-surface.svg", "&面力荷载");
-        auto* actTemperatureLoad =
-            makeAction(this, ":/resources/menu/minimal/load-temperature.svg", "&变温荷载");
-        auto* actBeamLoad =
-            makeAction(this, ":/resources/menu/minimal/load-beam.svg", "&梁单元荷载");
-        auto* actSeismicAndAddedMass =
-            makeAction(this, ":/resources/menu/minimal/load-seismic.svg", "&地震加速度表");
+            auto* actDisplacement =
+                makeAction(this, ":/resources/menu/minimal/constraint.svg", "&位移约束");
 
-        addActionToPanel(panelLoad, actGeoStressPoint, 3);
-        addActionToPanel(panelLoad, actGeoStressFitFace, 3);
-        addActionToPanel(panelLoad, actBodyForce, 3);
-        addActionToPanel(panelLoad, actConcentratedForce, 3);
-        addActionToPanel(panelLoad, actLinearForce, 3);
-        addActionToPanel(panelLoad, actSurfaceForce, 3);
-        addActionToPanel(panelLoad, actTemperatureLoad, 3);
-        addActionToPanel(panelLoad, actBeamLoad, 3);
-        addActionToPanel(panelLoad, actSeismicAndAddedMass, 3);
+            addActionToPanel(panel, actDisplacement, 3);
 
-        bindEvent(this, actGeoStressPoint, PublicConstants::kActionPhysicalGeoStressPoint);
-        bindEvent(this, actGeoStressFitFace, PublicConstants::kActionPhysicalGeoStressFitFace);
-        bindEvent(this, actBodyForce, PublicConstants::kActionPhysicalBodyForce);
-        bindEvent(this, actConcentratedForce, PublicConstants::kActionPhysicalConcentratedForce);
-        bindEvent(this, actLinearForce, PublicConstants::kActionPhysicalLinearForce);
-        bindEvent(this, actSurfaceForce, PublicConstants::kActionPhysicalSurfaceForce);
-        bindEvent(this, actTemperatureLoad, PublicConstants::kActionPhysicalTemperatureLoad);
-        bindEvent(this, actBeamLoad, PublicConstants::kActionPhysicalBeamLoad);
-        bindEvent(this, actSeismicAndAddedMass,
-                  PublicConstants::kActionPhysicalSeismicAndAddedMass);
+            bindEvent(this, actDisplacement,
+                      PublicConstants::kActionPhysicalDisplacementConstraint);
+        }
+
+               // ---------- 地应力 ----------
+        {
+            auto* panel = cate->addPannel("地应力");
+
+            auto* actGeoStressPoint =
+                makeAction(this, ":/resources/menu/minimal/load-geostress-point.svg",
+                           "&现场地应力");
+            auto* actGeoStressFitFace =
+                makeAction(this, ":/resources/menu/minimal/load-geostress-face.svg",
+                           "&梯形边界");
+
+            addActionToPanel(panel, actGeoStressPoint, 3);
+            addActionToPanel(panel, actGeoStressFitFace, 3);
+
+            bindEvent(this, actGeoStressPoint, PublicConstants::kActionPhysicalGeoStressPoint);
+            bindEvent(this, actGeoStressFitFace, PublicConstants::kActionPhysicalGeoStressFitFace);
+        }
+
+               // ---------- 荷载 ----------
+        {
+            auto* panel = cate->addPannel("荷载");
+
+            auto* actBodyForce =
+                makeAction(this, ":/resources/menu/minimal/load-body-force.svg", "&体积力");
+            auto* actConcentratedForce =
+                makeAction(this, ":/resources/menu/minimal/load-concentrated.svg", "&集中力");
+            auto* actLinearForce =
+                makeAction(this, ":/resources/menu/minimal/load-linear.svg", "&线力");
+            auto* actSurfaceForce =
+                makeAction(this, ":/resources/menu/minimal/load-surface.svg", "&面力");
+            auto* actTemperatureLoad =
+                makeAction(this, ":/resources/menu/minimal/load-temperature.svg", "&变温");
+            auto* actBeamLoad =
+                makeAction(this, ":/resources/menu/minimal/load-beam.svg", "&梁单元");
+            auto* actSeismicAndAddedMass =
+                makeAction(this, ":/resources/menu/minimal/load-seismic.svg", "&地震表");
+
+            addActionToPanel(panel, actBodyForce, 2);
+            addActionToPanel(panel, actConcentratedForce, 2);
+            addActionToPanel(panel, actLinearForce, 2);
+            addActionToPanel(panel, actSurfaceForce, 2);
+            addActionToPanel(panel, actTemperatureLoad, 2);
+            addActionToPanel(panel, actBeamLoad, 2);
+            addActionToPanel(panel, actSeismicAndAddedMass, 2);
+
+            bindEvent(this, actBodyForce, PublicConstants::kActionPhysicalBodyForce);
+            bindEvent(this, actConcentratedForce,
+                      PublicConstants::kActionPhysicalConcentratedForce);
+            bindEvent(this, actLinearForce, PublicConstants::kActionPhysicalLinearForce);
+            bindEvent(this, actSurfaceForce, PublicConstants::kActionPhysicalSurfaceForce);
+            bindEvent(this, actTemperatureLoad, PublicConstants::kActionPhysicalTemperatureLoad);
+            bindEvent(this, actBeamLoad, PublicConstants::kActionPhysicalBeamLoad);
+            bindEvent(this, actSeismicAndAddedMass,
+                      PublicConstants::kActionPhysicalSeismicAndAddedMass);
+        }
     }
 
-    // =========================
-    // 分析
-    // =========================
+           // =========================
+           // 分析
+           // =========================
     {
         auto* cate = m_ribbon->addCategoryPage("分析");
         cate->setObjectName("analysisObj");
 
-        auto* panel = cate->addPannel("分析");
-        auto* actParam = makeAction(this, ":/resources/menu/minimal/analysis-seepage.svg", "&渗流分析");
+        auto* panel = cate->addPannel("分析类型");
+
+        auto* actParam =
+            makeAction(this, ":/resources/menu/minimal/analysis-seepage.svg", "&渗流分析");
         auto* actStress =
             makeAction(this, ":/resources/menu/minimal/analysis-dam.svg", "&土石坝计算");
         auto* actCave =
@@ -980,211 +832,74 @@ void UiFrame::buildRibbonTabs()
         bindEvent(this, actSlope, PublicConstants::kActionSlopeStabilityKey);
     }
 
-    // =========================
-    // 结果
-    // =========================
+           // =========================
+           // 结果
+           // =========================
     {
         auto* cate = m_ribbon->addCategoryPage("结果");
+        cate->setObjectName("resultObj");
 
-        auto* panel = cate->addPannel("后处理操作");
-        auto* actNeph = makeAction(this, ":/resources/menu/minimal/post-nephogram.svg", "&云图");
-       auto* actVec = makeAction(this, ":/resources/menu/minimal/post-vector.svg", "&矢量");
-       auto* actSlc = makeAction(this, ":/resources/menu/minimal/post-slice.svg", "&切面");
-       auto* actDice = makeAction(this, ":/resources/menu/minimal/post-block.svg", "&切块");
-       auto* actIso = makeAction(this, ":/resources/menu/minimal/post-isosurface.svg", "&等值面");
-       auto* actIsoS =
-           makeAction(this, ":/resources/menu/minimal/post-isosurface-seg.svg", "&等值面分割");
-       auto* actXY = makeAction(this, ":/resources/menu/minimal/post-curve.svg", "&曲线");
-       auto* actArrange =
-           makeAction(this, ":/resources/menu/minimal/post-arrange.svg", "&成果整理");
-       auto* actResultConfig =
-           makeAction(this, ":/resources/menu/minimal/post-config.svg", "&结果配置");
-       // auto* actAnim = makeAction(this, ":/resources/menu/minimal/post-animation.svg", "&动画");
-       // auto* actPick = makeAction(this, ":/resources/menu/minimal/post-probe.svg", "&拾取物理量");
-       // auto* actDer = makeAction(this, ":/resources/menu/minimal/post-derived.svg", "&派生值");
-       // auto* actExp = makeAction(this, ":/resources/menu/minimal/post-export.svg", "&数据导出");
+               // ---------- 云图显示 ----------
+        {
+            auto* panel = cate->addPannel("显示");
 
-        addActionToPanel(panel, actNeph, 2);
-       addActionToPanel(panel, actVec, 2);
-       addActionToPanel(panel, actSlc, 2);
-       addActionToPanel(panel, actDice, 2);
-       addActionToPanel(panel, actIso, 2);
-       addActionToPanel(panel, actIsoS, 2);
-       addActionToPanel(panel, actXY, 3);
-       addActionToPanel(panel, actArrange, 3);
-       addActionToPanel(panel, actResultConfig, 3);
-       // addActionToPanel(panel, actAnim, 3);
-       // addActionToPanel(panel, actPick, 3);
-       // addActionToPanel(panel, actDer, 2);
-       // addActionToPanel(panel, actExp, 2);
+            auto* actNeph =
+                makeAction(this, ":/resources/menu/minimal/post-nephogram.svg", "&云图");
+            auto* actVec =
+                makeAction(this, ":/resources/menu/minimal/post-vector.svg", "&矢量");
+            auto* actSlc =
+                makeAction(this, ":/resources/menu/minimal/post-slice.svg", "&切面");
+            auto* actDice =
+                makeAction(this, ":/resources/menu/minimal/post-block.svg", "&切块");
 
-        bindEvent(this, actNeph, PublicConstants::kActionPostProcessNephogram);
-       bindEvent(this, actVec, PublicConstants::kActionPostProcessVector);
-       bindEvent(this, actSlc, PublicConstants::kActionPostProcessSection);
-       bindEvent(this, actDice, PublicConstants::kActionPostProcessDice);
-       bindEvent(this, actIso, PublicConstants::kActionPostProcessIsosurface);
-       bindEvent(this, actIsoS, PublicConstants::kActionPostProcessIsosurfaceSegmentation);
-       bindEvent(this, actXY, PublicConstants::kActionPostProcessXyPlot);
-       bindEvent(this, actArrange, PublicConstants::kActionPostProcessResultArrange);
-       bindEvent(this, actResultConfig, PublicConstants::kActionPostProcessResultRuleConfig);
-       // bindEvent(this, actAnim, PublicConstants::kActionPostProcessAnimation);
-       // bindEvent(this, actPick, PublicConstants::kActionPostProcessPickPhysical);
-       // bindEvent(this, actDer, PublicConstants::kActionPostProcessDerivative);
-       // bindEvent(this, actExp, PublicConstants::kActionPostProcessDataExport);
+            addActionToPanel(panel, actNeph, 3);
+            addActionToPanel(panel, actVec, 3);
+            addActionToPanel(panel, actSlc, 2);
+            addActionToPanel(panel, actDice, 2);
+
+            bindEvent(this, actNeph, PublicConstants::kActionPostProcessNephogram);
+            bindEvent(this, actVec, PublicConstants::kActionPostProcessVector);
+            bindEvent(this, actSlc, PublicConstants::kActionPostProcessSection);
+            bindEvent(this, actDice, PublicConstants::kActionPostProcessDice);
+        }
+
+               // ---------- 提取 ----------
+        {
+            auto* panel = cate->addPannel("提取");
+
+            auto* actIso =
+                makeAction(this, ":/resources/menu/minimal/post-isosurface.svg", "&等值面");
+            auto* actIsoS =
+                makeAction(this, ":/resources/menu/minimal/post-isosurface-seg.svg",
+                           "&等值面分割");
+            auto* actXY =
+                makeAction(this, ":/resources/menu/minimal/post-curve.svg", "&曲线");
+
+            addActionToPanel(panel, actIso, 3);
+            addActionToPanel(panel, actIsoS, 2);
+            addActionToPanel(panel, actXY, 3);
+
+            bindEvent(this, actIso, PublicConstants::kActionPostProcessIsosurface);
+            bindEvent(this, actIsoS,
+                      PublicConstants::kActionPostProcessIsosurfaceSegmentation);
+            bindEvent(this, actXY, PublicConstants::kActionPostProcessXyPlot);
+        }
+
+               // ---------- 成果 ----------
+        {
+            auto* panel = cate->addPannel("成果");
+
+            auto* actArrange =
+                makeAction(this, ":/resources/menu/minimal/post-arrange.svg", "&成果整理");
+            auto* actResultConfig =
+                makeAction(this, ":/resources/menu/minimal/post-config.svg", "&结果配置");
+
+            addActionToPanel(panel, actArrange, 3);
+            addActionToPanel(panel, actResultConfig, 3);
+
+            bindEvent(this, actArrange, PublicConstants::kActionPostProcessResultArrange);
+            bindEvent(this, actResultConfig,
+                      PublicConstants::kActionPostProcessResultRuleConfig);
+        }
     }
-
-    // // =========================
-    // // 显示（视图）
-    // // =========================
-    // {
-    //     auto* cate = m_ribbon->addCategoryPage("显示");
-    //     cate->setObjectName("viewObj");
-
-    //     auto* panel = cate->addPannel("显示");
-
-    //     auto* actPX = makeAction(this, ":/resources/icon/view_right.png",
-    //     "&+X"); auto* actNX = makeAction(this,
-    //     ":/resources/icon/view_left.png",  "&-X"); auto* actPY =
-    //     makeAction(this, ":/resources/icon/view_top.png",   "&+Y"); auto* actNY
-    //     = makeAction(this, ":/resources/icon/view_bottom.png","&-Y"); auto*
-    //     actPZ = makeAction(this, ":/resources/icon/view_front.png", "&+Z");
-    //     auto* actNZ = makeAction(this, ":/resources/icon/view_back.png",
-    //     "&-Z"); auto* actFit= makeAction(this, ":/resources/icon/autofit.png",
-    //     "&重置相机"); auto* actLay= makeAction(this,
-    //     ":/resources/icon/reset_default_setting.png", "&恢复默认布局");
-
-    //     addActionToPanel(panel, actPX, 2);
-    //     addActionToPanel(panel, actNX, 2);
-    //     addActionToPanel(panel, actPY, 2);
-    //     addActionToPanel(panel, actNY, 2);
-    //     addActionToPanel(panel, actPZ, 2);
-    //     addActionToPanel(panel, actNZ, 2);
-    //     addActionToPanel(panel, actFit,3);
-    //     addActionToPanel(panel, actLay,3);
-
-    //     bindEvent(this, actPX, PublicConstants::kActionViewPosX);
-    //     bindEvent(this, actNX, PublicConstants::kActionViewNegX);
-    //     bindEvent(this, actPY, PublicConstants::kActionViewPosY);
-    //     bindEvent(this, actNY, PublicConstants::kActionViewNegY);
-    //     bindEvent(this, actPZ, PublicConstants::kActionViewPosZ);
-    //     bindEvent(this, actNZ, PublicConstants::kActionViewNegZ);
-    //     bindEvent(this, actFit, PublicConstants::kActionViewResetCamera);
-
-    //     connect(actLay, &QAction::triggered, this, [this]() {
-    //         if (m_dockManager && !m_defaultDockState.isEmpty())
-    //             m_dockManager->restoreState(m_defaultDockState);
-    //         EventManager::instance().sendEvent(PublicConstants::kActionViewResetLayout);
-    //     });
-
-    //     // checkbox：标尺/光照
-    //     auto* staff = new SARibbonCheckBox(this);
-    //     staff->setText("标尺显示");
-    //     staff->setChecked(true);
-    //     panel->addSmallWidget(staff);
-    //     connect(staff, &QCheckBox::toggled, this, [](bool on) {
-    //         QVariantMap data; data["checked"] = on;
-    //         EventManager::instance().sendEvent(PublicConstants::kActionViewToggleStaff,
-    //         data);
-    //     });
-
-    //     auto* light = new SARibbonCheckBox(this);
-    //     light->setText("光照");
-    //     light->setChecked(false);
-    //     panel->addSmallWidget(light);
-    //     connect(light, &QCheckBox::toggled, this, [](bool on) {
-    //         QVariantMap data; data["checked"] = on;
-    //         EventManager::instance().sendEvent(PublicConstants::kActionViewToggleLight,
-    //         data);
-    //     });
-
-    //     // 透明度 slider + label
-    //     auto* container = new QWidget(this);
-    //     auto* lay = new QHBoxLayout(container);
-    //     lay->setContentsMargins(0,0,0,0);
-    //     lay->setSpacing(5);
-
-    //     auto* lbl = new QLabel("透明度:", container);
-    //     auto* slider = new QSlider(Qt::Horizontal, container);
-    //     slider->setRange(1, 100);
-    //     slider->setValue(100);
-    //     slider->setFixedWidth(120);
-    //     auto* val = new QLabel("100", container);
-    //     val->setFixedWidth(40);
-
-    //     lay->addWidget(lbl);
-    //     lay->addWidget(slider);
-    //     lay->addWidget(val);
-
-    //     panel->addWidget(container, SARibbonPannelItem::Small);
-
-    //     connect(slider, &QSlider::valueChanged, this, [val](int v) {
-    //         val->setText(QString::number(v));
-    //         QVariantMap data; data["value"] = v;
-    //         EventManager::instance().sendEvent(PublicConstants::kActionViewSetTransparency,
-    //         data);
-    //     });
-
-    //     // 主题下拉
-    //     auto* groupWidget = new SARibbonButtonGroupWidget(panel);
-    //     groupWidget->setMinimumWidth(170);
-    //     groupWidget->setContentsMargins(0, 0, 0, 0);
-    //     groupWidget->setWindowTitle("颜色主题");
-
-    //     auto* tlabel = new QLabel(groupWidget);
-    //     tlabel->setText("颜色主题");
-    //     groupWidget->addWidget(tlabel);
-
-    //     auto* combo = new SARibbonComboBox(groupWidget);
-    //     combo->addItems(QStringList() << "亮色主题" << "暗色主题");
-    //     combo->setMinimumWidth(100);
-    //     groupWidget->addWidget(combo);
-
-    //     panel->addWidget(groupWidget, SARibbonPannelItem::Large);
-
-    //     connect(combo, &QComboBox::currentTextChanged, this, [](const QString&
-    //     text) {
-    //         QVariantMap data; data["theme"] = text;
-    //         EventManager::instance().sendEvent(PublicConstants::kActionViewSetTheme,
-    //         data);
-    //     });
-    // }
-
-    // // =========================
-    // // 代理模型（你已有常量）
-    // // =========================
-    // {
-    //     auto* cate = m_ribbon->addCategoryPage("代理模型");
-    //     cate->setObjectName("modelObj");
-
-    //     auto* panel = cate->addPannel("代理模型");
-    //     auto* actSampling = makeAction(this,
-    //     ":/resources/menu/DataSampling.png", "&数据采样");
-
-    //     auto* menu = new SARibbonMenu(this);
-    //     auto* actOrtho = makeAction(this,
-    //     ":/resources/menu/OrthogonalSampling.png", "&正交采样"); auto* actLatin
-    //     = makeAction(this, ":/resources/menu/LatinHypercubeSampling.png",
-    //     "&拉丁超立方采样"); menu->addAction(actOrtho);
-    //     menu->addAction(actLatin);
-
-    //     actSampling->setMenu(menu);
-    //     addActionToPanel(panel, actSampling, 3);
-
-    //     bindEvent(this, actOrtho,
-    //     PublicConstants::kActionSurrogateModelOrthogonal); bindEvent(this,
-    //     actLatin, PublicConstants::kActionSurrogateModelLatin);
-
-    //     auto* actEval = makeAction(this,
-    //     ":/resources/menu/DatasetEvaluation.png", "&数据集评估"); auto* actDnn
-    //     = makeAction(this, ":/resources/menu/DNN.png", "&DNN"); auto* actPod  =
-    //     makeAction(this, ":/resources/menu/POD.png", "&POD");
-    //     addActionToPanel(panel, actEval, 3);
-    //     addActionToPanel(panel, actDnn,  2);
-    //     addActionToPanel(panel, actPod,  2);
-
-    //     bindEvent(this, actEval,
-    //     PublicConstants::kActionSurrogateModelDataEvaluation); bindEvent(this,
-    //     actDnn,  PublicConstants::kActionSurrogateModelDnn); bindEvent(this,
-    //     actPod,  PublicConstants::kActionSurrogateModelPod);
-    // }
 }
