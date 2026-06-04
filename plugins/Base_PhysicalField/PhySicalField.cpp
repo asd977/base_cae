@@ -1045,9 +1045,9 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
         return vtkIntArray::SafeDownCast(g->GetPointData()->GetArray("NodeId"));
     };
 
-    auto buildPointIdsByNodeId = [&findNodeIdArray](vtkUnstructuredGrid* g)
+    auto buildPointIdByNodeId = [&findNodeIdArray](vtkUnstructuredGrid* g)
     {
-        QHash<int, QVector<vtkIdType>> out;
+        QHash<int, vtkIdType> out;
         vtkIntArray* nodeIdArr = findNodeIdArray(g);
         if (!g || !nodeIdArr)
             return out;
@@ -1055,27 +1055,31 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
         const vtkIdType nPts = g->GetNumberOfPoints();
         out.reserve(int(nPts * 1.3));
         for (vtkIdType pid = 0; pid < nPts; ++pid)
-            out[nodeIdArr->GetValue(int(pid))].push_back(pid);
+        {
+            const int nodeId = nodeIdArr->GetValue(int(pid));
+            if (!out.contains(nodeId))
+                out.insert(nodeId, pid);
+        }
         return out;
     };
 
-    const QHash<int, QVector<vtkIdType>> solidPointIdsByNodeId =
-        buildPointIdsByNodeId(PickManager::instance().solidGrid());
-    const QHash<int, QVector<vtkIdType>> linePointIdsByNodeId =
-        buildPointIdsByNodeId(PickManager::instance().lineGrid());
+    const QHash<int, vtkIdType> solidPointIdByNodeId =
+        buildPointIdByNodeId(PickManager::instance().solidGrid());
+    const QHash<int, vtkIdType> linePointIdByNodeId =
+        buildPointIdByNodeId(PickManager::instance().lineGrid());
 
     // 导入是生成 IIID.DAT 的反向操作：先移除已有位移约束，再按文件内容重建。
-    // 这里按 DisplacementConstraintWidget 域整体清理，不恢复 prevOwner，避免删除旧约束时
-    // 把已删除 uuid 恢复成“幽灵选中点”，导致个别杆单元/共享节点无法取消选中。
-    const QString displacementDomain = QStringLiteral("DisplacementConstraintWidget");
-    PickManager::instance().clearNodeDomainSelectionNoRestore(displacementDomain);
-
     QList<ProjectNode*> oldConstraints;
     collectDisplacementNodes(m_node, oldConstraints);
     for (ProjectNode* node : oldConstraints)
     {
         if (!node)
             continue;
+        const QString uuid = node->getUuid();
+        const QString domain = node->getPage() ? node->getPage()->getPageType()
+                                                : QStringLiteral("DisplacementConstraintWidget");
+        PickManager::instance().setSelectedPointIds(domain, uuid, GridKind::Solid, QVector<vtkIdType>(), true);
+        PickManager::instance().setSelectedPointIds(domain, uuid, GridKind::Line, QVector<vtkIdType>(), true);
         if (auto* parent = static_cast<ProjectNode*>(node->parent()))
             parent->removeChild(node);
         if (node->getPage())
@@ -1089,44 +1093,34 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
         const QStringList flags = it.key().split(',');
         const bool isBarConstraint = flags.contains(QStringLiteral("-10000"));
 
-        QSet<vtkIdType> solidPointIdSet;
-        QSet<vtkIdType> linePointIdSet;
+        QVector<vtkIdType> solidPointIds;
+        QVector<vtkIdType> linePointIds;
         for (const int nodeId : it.value())
         {
             if (isBarConstraint)
             {
                 // 杆单元约束在 IIID.DAT 中用 -10000 标识；不是 -10000 的约束
-                // 不应再回退/优先判断到 lineGrid，否则共享节点会被错误归到杆单元。
-                const QVector<vtkIdType> lineIds = linePointIdsByNodeId.value(nodeId);
-                for (vtkIdType pid : lineIds)
-                    linePointIdSet.insert(pid);
-
-                if (lineIds.isEmpty())
+                // 只进入 lineGrid，不再检查实体网格。
+                if (linePointIdByNodeId.contains(nodeId))
+                    linePointIds.push_back(linePointIdByNodeId.value(nodeId));
+                else
                     qWarning() << "importIIIDFile: bar node_id not found in line grid:" << nodeId;
             }
             else
             {
-                const QVector<vtkIdType> solidIds = solidPointIdsByNodeId.value(nodeId);
-                for (vtkIdType pid : solidIds)
-                    solidPointIdSet.insert(pid);
-
-                if (solidIds.isEmpty())
+                if (solidPointIdByNodeId.contains(nodeId))
+                    solidPointIds.push_back(solidPointIdByNodeId.value(nodeId));
+                else
                     qWarning() << "importIIIDFile: node_id not found in solid grid:" << nodeId;
             }
         }
 
-        QVector<vtkIdType> solidPointIds;
-        solidPointIds.reserve(solidPointIdSet.size());
-        for (vtkIdType pid : solidPointIdSet)
-            solidPointIds.push_back(pid);
-
-        QVector<vtkIdType> linePointIds;
-        linePointIds.reserve(linePointIdSet.size());
-        for (vtkIdType pid : linePointIdSet)
-            linePointIds.push_back(pid);
-
         std::sort(solidPointIds.begin(), solidPointIds.end());
+        solidPointIds.erase(std::unique(solidPointIds.begin(), solidPointIds.end()),
+                            solidPointIds.end());
         std::sort(linePointIds.begin(), linePointIds.end());
+        linePointIds.erase(std::unique(linePointIds.begin(), linePointIds.end()),
+                           linePointIds.end());
 
         if (solidPointIds.isEmpty() && linePointIds.isEmpty())
         {

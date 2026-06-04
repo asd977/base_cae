@@ -576,20 +576,6 @@ void PickManager::clearNodeSelection_NoRefresh(const QString& domain, const QStr
     }
 }
 
-void PickManager::clearNodeDomainSelectionNoRestore(const QString& domain)
-{
-    m_ownerPointSolidByDomain.remove(domain);
-    m_pointsSolidByDomainUuid.remove(domain);
-    m_prevOwnerPointSolidByDomain.remove(domain);
-
-    m_ownerPointLineByDomain.remove(domain);
-    m_pointsLineByDomainUuid.remove(domain);
-    m_prevOwnerPointLineByDomain.remove(domain);
-
-    if (domain == m_currentDomain && m_pickMode == PickMode::Node)
-        markDirty(DirtyNode);
-}
-
 void PickManager::updateStructure()
 {
     restoreFaceColoring();
