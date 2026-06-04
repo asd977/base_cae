@@ -46,16 +46,6 @@
         </property>
        </widget>
       </item>
-      <item>
-       <widget class="QLabel" name="importHintLabel">
-        <property name="text">
-         <string>选择 IIID.DAT 后，将按文件中的约束标志自动重建位移约束节点。</string>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-       </widget>
-      </item>
      </layout>
     </widget>
    </item>
