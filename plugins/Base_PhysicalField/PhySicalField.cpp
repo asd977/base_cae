@@ -1086,27 +1086,33 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
     ProjectNode* lastCreated = nullptr;
     for (auto it = groupedNodeIds.cbegin(); it != groupedNodeIds.cend(); ++it)
     {
+        const QStringList flags = it.key().split(',');
+        const bool isBarConstraint = flags.contains(QStringLiteral("-10000"));
+
         QSet<vtkIdType> solidPointIdSet;
         QSet<vtkIdType> linePointIdSet;
         for (const int nodeId : it.value())
         {
-            const QVector<vtkIdType> solidIds = solidPointIdsByNodeId.value(nodeId);
-            if (!solidIds.isEmpty())
+            if (isBarConstraint)
             {
-                // 同一个 node_id 可能同时出现在实体网格和杆单元 lineGrid 中。
-                // 位移约束按 node_id 生效，只需要恢复到一个 pick 网格；优先实体网格，
-                // 避免杆端共享节点被导入成 Solid + Line 两份选择，造成界面上个别重复/错选。
+                // 杆单元约束在 IIID.DAT 中用 -10000 标识；不是 -10000 的约束
+                // 不应再回退/优先判断到 lineGrid，否则共享节点会被错误归到杆单元。
+                const QVector<vtkIdType> lineIds = linePointIdsByNodeId.value(nodeId);
+                for (vtkIdType pid : lineIds)
+                    linePointIdSet.insert(pid);
+
+                if (lineIds.isEmpty())
+                    qWarning() << "importIIIDFile: bar node_id not found in line grid:" << nodeId;
+            }
+            else
+            {
+                const QVector<vtkIdType> solidIds = solidPointIdsByNodeId.value(nodeId);
                 for (vtkIdType pid : solidIds)
                     solidPointIdSet.insert(pid);
-                continue;
+
+                if (solidIds.isEmpty())
+                    qWarning() << "importIIIDFile: node_id not found in solid grid:" << nodeId;
             }
-
-            const QVector<vtkIdType> lineIds = linePointIdsByNodeId.value(nodeId);
-            for (vtkIdType pid : lineIds)
-                linePointIdSet.insert(pid);
-
-            if (lineIds.isEmpty())
-                qWarning() << "importIIIDFile: node_id not found in pick grids:" << nodeId;
         }
 
         QVector<vtkIdType> solidPointIds;
@@ -1128,7 +1134,6 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
             continue;
         }
 
-        const QStringList flags = it.key().split(',');
         const QString title = MakeIndexedTitle(m_node, QStringLiteral("DisplacementConstraint"),
                                                QStringLiteral("位移约束"));
         ProjectNode* node = createNodeByKind(QStringLiteral("DisplacementConstraint"), title,
