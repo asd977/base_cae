@@ -26,6 +26,7 @@
 #include <vtkProp.h>
 #include <vtkActor2D.h>
 #include <vtkSmartPointer.h>
+#include <vtkTextActor.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkVertexGlyphFilter.h>
 
@@ -184,6 +185,7 @@ class CORE_EXPORT PickManager : public QObject
                                        vtkIdType& outOrigCellId, int& outOrigFaceLocalId) const;
 
     void updateActorVisibility();
+    void updateBoxSelectHintVisibility();
     // 将材料域高亮状态写入一套统一的 cell 颜色数组并刷新显示。
     void rebuildDomainHighlightActors();
     QSet<vtkIdType> cellsOfDomain(const DomainKey& key) const;
@@ -247,6 +249,7 @@ class CORE_EXPORT PickManager : public QObject
     vtkSmartPointer<vtkPolyData> m_dragRectPoly;
     vtkSmartPointer<vtkPolyDataMapper2D> m_dragRectMapper;
     vtkSmartPointer<vtkActor2D> m_dragRectActor;
+    vtkSmartPointer<vtkTextActor> m_boxSelectHintActor;
 
     // coalesce
     int m_dirtyBits = DirtyNone;

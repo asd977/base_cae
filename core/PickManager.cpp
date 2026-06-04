@@ -35,6 +35,8 @@
 #include <vtkRenderer.h>
 #include <vtkSelection.h>
 #include <vtkSelectionNode.h>
+#include <vtkTextActor.h>
+#include <vtkTextProperty.h>
 #include <vtkUnsignedCharArray.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkExtractCells.h>
@@ -95,6 +97,7 @@ static const RgbColor kPickAppliedColor  = {64, 170, 64};
 static const RgbColor kPickPreviewColor  = {255, 153, 0};
 static const RgbColor kPickSelectedColor  = {64, 170, 64};
 static const RgbColor kPickPreDeleteColor = {255, 110, 0};
+static const char* kBoxSelectHintText = "Shift框选，Ctrl取消框选";
 
 constexpr double kPickPreviewR = 1.0;
 constexpr double kPickPreviewG = 153.0 / 255.0;
@@ -461,6 +464,23 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
     m_visual->removeProp("pick.drag.rect", false);
     m_visual->addProp("pick.drag.rect", m_dragRectActor, QString("{pick} 框选框"),
                       QString("拾取框选框"), true, true);
+
+    // ================== box selection hint ==================
+    m_boxSelectHintActor = vtkSmartPointer<vtkTextActor>::New();
+    m_boxSelectHintActor->SetInput(kBoxSelectHintText);
+    m_boxSelectHintActor->SetPosition(12, 12);
+    if (auto* textProperty = m_boxSelectHintActor->GetTextProperty())
+    {
+        textProperty->SetFontSize(16);
+        textProperty->SetColor(0.12, 0.12, 0.12);
+        textProperty->SetOpacity(0.85);
+        textProperty->BoldOff();
+    }
+    m_boxSelectHintActor->PickableOff();
+    m_boxSelectHintActor->SetVisibility(false);
+    m_visual->removeProp("pick.box.hint", false);
+    m_visual->addProp("pick.box.hint", m_boxSelectHintActor, QString("{pick} 框选提示"),
+                      QString("拾取框选快捷键提示"), false, false);
 
            // ================== Edge overlay (polyline) ==================
     m_edgePts = vtkSmartPointer<vtkPoints>::New();
@@ -869,6 +889,8 @@ void PickManager::deactivate(const QString& domain, const QString& uuid, PickMod
         m_previewSelActor->SetVisibility(false);
     if (m_previewEdgeActor)
         m_previewEdgeActor->SetVisibility(false);
+    if (m_boxSelectHintActor)
+        m_boxSelectHintActor->SetVisibility(false);
     restoreAllColorHighlights();
 
     clearPreviewSelection(domain, uuid, PickMode::Node);
@@ -911,6 +933,7 @@ void PickManager::updateActorVisibility()
         m_previewSelActor->SetVisibility(m_pickMode == PickMode::Node);
     if (m_previewEdgeActor)
         m_previewEdgeActor->SetVisibility(m_pickMode == PickMode::Edge);
+    updateBoxSelectHintVisibility();
 }
 
 void PickManager::setupPicking()
@@ -2901,13 +2924,30 @@ void PickManager::clearPreviewSelection(const QString& domain, const QString& uu
 void PickManager::setBoxSelectEnabled(const QString& domain, const QString& uuid, bool enabled)
 {
     m_boxSelectEnabledByDomainUuid[domain][uuid] = enabled;
-    if (domain == m_currentDomain && uuid == m_currentUUid && !enabled)
-        updateDragRect(0, 0, 0, 0, false);
+    if (domain == m_currentDomain && uuid == m_currentUUid)
+    {
+        if (!enabled)
+            updateDragRect(0, 0, 0, 0, false);
+        updateBoxSelectHintVisibility();
+        if (m_visual)
+            m_visual->render();
+    }
 }
 
 void PickManager::setClickPickEnabled(const QString& domain, const QString& uuid, bool enabled)
 {
     m_clickPickEnabledByDomainUuid[domain][uuid] = enabled;
+}
+
+void PickManager::updateBoxSelectHintVisibility()
+{
+    if (!m_boxSelectHintActor)
+        return;
+
+    const bool pickModeSupportsBox =
+        (m_pickMode == PickMode::Node || m_pickMode == PickMode::Edge || m_pickMode == PickMode::Face);
+    const bool show = pickModeSupportsBox && isBoxSelectEnabledForActive();
+    m_boxSelectHintActor->SetVisibility(show);
 }
 
 bool PickManager::isBoxSelectEnabledForActive() const
