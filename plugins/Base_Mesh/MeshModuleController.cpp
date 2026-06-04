@@ -2162,7 +2162,8 @@ bool MeshModuleController::loadProject()
         if (!page)
             return;
 
-        const QString title = obj.value("title").toString(kind);
+        const QString title = kind == "MeshEdit" ? QStringLiteral("显示控制")
+                                                   : obj.value("title").toString(kind);
         const QString uuid = obj.value("uuid").toString(QUuid::createUuid().toString());
 
         auto* node = new ProjectNode(title, uuid, page);
@@ -2637,6 +2638,7 @@ void MeshModuleController::onImportGrid()
     m_splitCacheNonLine = nullptr;
 
     displayCurrentGrid();
+    openGridDisplayControlPage();
 
     PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
 }
@@ -2664,6 +2666,7 @@ void MeshModuleController::importMshGrid(QString path)
     m_splitCacheNonLine = nullptr;
 
     displayCurrentGrid();
+    openGridDisplayControlPage();
 
     PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
 }
@@ -2690,6 +2693,7 @@ bool MeshModuleController::importCurrentGmshMesh(QString* errMsg)
 
     displayCurrentGrid();
     syncPickMapGroupingFromGrid(m_importedGrid);
+    openGridDisplayControlPage();
     PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
     return true;
 }
@@ -3083,6 +3087,26 @@ void MeshModuleController::onMeshGrouping()
 
 void MeshModuleController::onMeshEdit()
 {
+    openGridDisplayControlPage();
+}
+
+void MeshModuleController::openGridDisplayControlPage()
+{
+    if (!m_gridNode)
+        return;
+
+    if (auto* existed = findDirectChildByKind(m_gridNode, "MeshEdit"))
+    {
+        if (m_gridEditingWidget && m_importedGrid && m_importedGrid->GetNumberOfCells() > 0)
+        {
+            m_gridEditingWidget->setEditableGrid(m_importedGrid, m_sourceFileName);
+        }
+
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(existed);
+        return;
+    }
+
     auto* w = new GridEditingWidget();
     m_gridEditingWidget = w;
     if (m_importedGrid && m_importedGrid->GetNumberOfCells() > 0)
@@ -3090,7 +3114,7 @@ void MeshModuleController::onMeshEdit()
         w->setEditableGrid(m_importedGrid, m_sourceFileName);
     }
 
-    auto* node = new ProjectNode("网格编辑", QUuid::createUuid().toString(), w);
+    auto* node = new ProjectNode("显示控制", QUuid::createUuid().toString(), w);
     node->setData(0, ProjectNode::RoleModule, "Mesh");
     node->setData(0, ProjectNode::RoleKind, "MeshEdit");
     m_gridNode->addChild(node);

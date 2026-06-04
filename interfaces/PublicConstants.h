@@ -127,7 +127,7 @@ constexpr char kActionPreprocessMeshSweep[] = "grid_mesh_sweep";   // 扫掠剖�
 constexpr char kActionPreprocessCtrlVolume[] = "grid_ctrl_volume";   // 体控制
 constexpr char kActionPreprocessCtrlSurface[] = "grid_ctrl_surface"; // 面控制
 constexpr char kActionPreprocessCtrlEdge[] = "mesh_ctrl_edge";       // 边控制
-constexpr char kActionPreprocessMeshEdit[] = "mesh_ctrl_edit";       // 网格编辑
+constexpr char kActionPreprocessMeshEdit[] = "mesh_ctrl_edit";       // 显示控制
 constexpr char kActionPreprocessMeshGrouping[] = "mesh_grouping";    // 网格分组
 constexpr char kActionPreprocessQualityStd[] = "grid_quality_std";   // 网格质量标准
 

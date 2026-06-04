@@ -82,6 +82,7 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     void onQualityStd();
     void onMeshEdit();
     void onMeshGrouping();
+    void openGridDisplayControlPage();
 
     void displayCurrentGrid(); // 只显示 m_importedGrid
 

@@ -700,23 +700,19 @@ void UiFrame::buildRibbonTabs()
         auto* actVolCtrl = makeAction(this, ":/resources/menu/minimal/mesh-vol.svg", "&体控制");
         auto* actFaceCtrl = makeAction(this, ":/resources/menu/minimal/mesh-face.svg", "&面控制");
         auto* actEdgeCtrl = makeAction(this, ":/resources/menu/minimal/mesh-edge.svg", "&边控制");
-        auto* actMeshEdit = makeAction(this, ":/resources/menu/minimal/mesh-edit.svg", "&网格编辑");
-        auto* actMeshGrouping =
-            makeAction(this, ":/resources/menu/minimal/mesh-group.svg", "&网格分组");
+        auto* actMeshEdit = makeAction(this, ":/resources/menu/minimal/mesh-edit.svg", "&显示控制");
         auto* actQuality = makeAction(this, ":/resources/menu/minimal/mesh-edit.svg", "&网格质量检查");
 
         addActionToPanel(panelCtrl, actVolCtrl, 2);
         addActionToPanel(panelCtrl, actFaceCtrl, 2);
         addActionToPanel(panelCtrl, actEdgeCtrl, 2);
         addActionToPanel(panelCtrl, actMeshEdit, 2);
-        addActionToPanel(panelCtrl, actMeshGrouping, 2);
         addActionToPanel(panelCtrl, actQuality, 2);
 
         bindEvent(this, actVolCtrl, PublicConstants::kActionPreprocessCtrlVolume);
         bindEvent(this, actFaceCtrl, PublicConstants::kActionPreprocessCtrlSurface);
         bindEvent(this, actEdgeCtrl, PublicConstants::kActionPreprocessCtrlEdge);
         bindEvent(this, actMeshEdit, PublicConstants::kActionPreprocessMeshEdit);
-        bindEvent(this, actMeshGrouping, PublicConstants::kActionPreprocessMeshGrouping);
         bindEvent(this, actQuality, PublicConstants::kActionPreprocessQualityStd);
     }
 
