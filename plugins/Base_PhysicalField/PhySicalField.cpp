@@ -1086,21 +1086,41 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
     ProjectNode* lastCreated = nullptr;
     for (auto it = groupedNodeIds.cbegin(); it != groupedNodeIds.cend(); ++it)
     {
-        QVector<vtkIdType> solidPointIds;
-        QVector<vtkIdType> linePointIds;
+        QSet<vtkIdType> solidPointIdSet;
+        QSet<vtkIdType> linePointIdSet;
         for (const int nodeId : it.value())
         {
             const QVector<vtkIdType> solidIds = solidPointIdsByNodeId.value(nodeId);
-            for (vtkIdType pid : solidIds)
-                solidPointIds.push_back(pid);
+            if (!solidIds.isEmpty())
+            {
+                // 同一个 node_id 可能同时出现在实体网格和杆单元 lineGrid 中。
+                // 位移约束按 node_id 生效，只需要恢复到一个 pick 网格；优先实体网格，
+                // 避免杆端共享节点被导入成 Solid + Line 两份选择，造成界面上个别重复/错选。
+                for (vtkIdType pid : solidIds)
+                    solidPointIdSet.insert(pid);
+                continue;
+            }
 
             const QVector<vtkIdType> lineIds = linePointIdsByNodeId.value(nodeId);
             for (vtkIdType pid : lineIds)
-                linePointIds.push_back(pid);
+                linePointIdSet.insert(pid);
 
-            if (solidIds.isEmpty() && lineIds.isEmpty())
+            if (lineIds.isEmpty())
                 qWarning() << "importIIIDFile: node_id not found in pick grids:" << nodeId;
         }
+
+        QVector<vtkIdType> solidPointIds;
+        solidPointIds.reserve(solidPointIdSet.size());
+        for (vtkIdType pid : solidPointIdSet)
+            solidPointIds.push_back(pid);
+
+        QVector<vtkIdType> linePointIds;
+        linePointIds.reserve(linePointIdSet.size());
+        for (vtkIdType pid : linePointIdSet)
+            linePointIds.push_back(pid);
+
+        std::sort(solidPointIds.begin(), solidPointIds.end());
+        std::sort(linePointIds.begin(), linePointIds.end());
 
         if (solidPointIds.isEmpty() && linePointIds.isEmpty())
         {
