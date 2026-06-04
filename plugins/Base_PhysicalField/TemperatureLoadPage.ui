@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>320</width>
-    <height>486</height>
+    <height>520</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -95,7 +95,7 @@
       <item>
        <widget class="QGroupBox" name="groupBoxParams">
         <property name="title">
-         <string>统一参数（应用到选中节点）</string>
+         <string>统一参数</string>
         </property>
         <layout class="QGridLayout" name="gridLayout">
          <item row="0" column="0">

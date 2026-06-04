@@ -52,38 +52,24 @@
    <item>
     <widget class="QWidget" name="contentWidget" native="true">
      <layout class="QGridLayout" name="gridLayout">
-      <item row="3" column="1">
-       <widget class="QLineEdit" name="lineEditX"/>
-      </item>
-      <item row="4" column="0">
-       <widget class="QLabel" name="label_2">
-        <property name="text">
-         <string>FY</string>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="0">
-       <widget class="QLabel" name="label_3">
-        <property name="text">
-         <string>FZ</string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="0">
-       <widget class="QLabel" name="label">
-        <property name="text">
-         <string>FX</string>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="1">
-       <widget class="QLineEdit" name="lineEditZ"/>
-      </item>
-      <item row="4" column="1">
-       <widget class="QLineEdit" name="lineEditY"/>
-      </item>
       <item row="0" column="0" colspan="2">
        <widget class="CustomComboBox" name="comboBoxDim"/>
+      </item>
+      <item row="4" column="1">
+       <widget class="QLineEdit" name="lineEditX"/>
+      </item>
+      <item row="6" column="1">
+       <widget class="QLineEdit" name="lineEditZ"/>
+      </item>
+      <item row="5" column="1">
+       <widget class="QLineEdit" name="lineEditY"/>
+      </item>
+      <item row="2" column="0" colspan="2">
+       <widget class="QCheckBox" name="pickEnableCheckBox">
+        <property name="text">
+         <string>开启控制选线</string>
+        </property>
+       </widget>
       </item>
       <item row="1" column="0" colspan="2">
        <layout class="QHBoxLayout" name="horizontalLayoutGroupSelect">
@@ -105,14 +91,28 @@
         </item>
        </layout>
       </item>
-      <item row="2" column="0" colspan="2">
-       <widget class="QCheckBox" name="pickEnableCheckBox">
+      <item row="4" column="0">
+       <widget class="QLabel" name="label">
         <property name="text">
-         <string>开启控制选线</string>
+         <string>FX</string>
         </property>
        </widget>
       </item>
-      <item>
+      <item row="6" column="0">
+       <widget class="QLabel" name="label_3">
+        <property name="text">
+         <string>FZ</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="0">
+       <widget class="QLabel" name="label_2">
+        <property name="text">
+         <string>FY</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0" colspan="2">
        <widget class="QLabel" name="boxSelectHintLabel">
         <property name="text">
          <string>提示：Shift+拖拽框选，Ctrl+拖拽取消选择</string>
