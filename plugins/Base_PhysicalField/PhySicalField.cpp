@@ -976,7 +976,7 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
     if (!readDataLine(line))
         return fail(QStringLiteral("IIID.DAT 文件为空"));
 
-    const QStringList header = line.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+    const QStringList header = line.split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
     if (header.size() < 2)
         return fail(QStringLiteral("IIID.DAT 首行格式错误，应为：节点数 自由度数"));
 
@@ -990,7 +990,7 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
     if (!readDataLine(line))
         return fail(QStringLiteral("IIID.DAT 缺少约束数据"));
 
-    QStringList parts = line.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+    QStringList parts = line.split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
     if (parts.size() == 2)
     {
         bool okHeader2Num = false, okHeader2Dof = false;
@@ -1000,7 +1000,7 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
             return fail(QStringLiteral("IIID.DAT 第二行文件头与首行不一致"));
         if (!readDataLine(line) && numNp > 0)
             return fail(QStringLiteral("IIID.DAT 缺少约束数据行"));
-        parts = line.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+        parts = line.split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
     }
 
     QMap<QString, QVector<vtkIdType>> groupedNodeIds;
@@ -1029,7 +1029,7 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
             break;
         if (!readDataLine(line))
             return fail(QStringLiteral("IIID.DAT 数据行数量少于文件头声明的 %1 行").arg(numNp));
-        parts = line.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+        parts = line.split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
     }
 
     // 导入是生成 IIID.DAT 的反向操作：先移除已有位移约束，再按文件内容重建。
