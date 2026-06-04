@@ -1063,10 +1063,33 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
         return out;
     };
 
+    auto buildIsolatedNodeIds = [&findNodeIdArray](vtkUnstructuredGrid* g)
+    {
+        QSet<int> out;
+        vtkIntArray* nodeIdArr = findNodeIdArray(g);
+        if (!g || !nodeIdArr)
+            return out;
+
+        vtkNew<vtkIdList> cellIds;
+        const vtkIdType nPts = g->GetNumberOfPoints();
+        for (vtkIdType pid = 0; pid < nPts; ++pid)
+        {
+            cellIds->Reset();
+            g->GetPointCells(pid, cellIds);
+            if (cellIds->GetNumberOfIds() == 0)
+                out.insert(nodeIdArr->GetValue(int(pid)));
+        }
+        return out;
+    };
+
     const QHash<int, vtkIdType> solidPointIdByNodeId =
         buildPointIdByNodeId(PickManager::instance().solidGrid());
     const QHash<int, vtkIdType> linePointIdByNodeId =
         buildPointIdByNodeId(PickManager::instance().lineGrid());
+
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    vtkUnstructuredGrid* gAll = meshSvc ? meshSvc->getVtkUnstructuredGrid() : nullptr;
+    const QSet<int> isolatedNodeIds = buildIsolatedNodeIds(gAll);
 
     // 导入是生成 IIID.DAT 的反向操作：先移除已有位移约束，再按文件内容重建。
     QList<ProjectNode*> oldConstraints;
@@ -1097,6 +1120,9 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
         QVector<vtkIdType> linePointIds;
         for (const int nodeId : it.value())
         {
+            if (isolatedNodeIds.contains(nodeId))
+                continue;
+
             if (isBarConstraint)
             {
                 // 杆单元约束在 IIID.DAT 中用 -10000 标识；不是 -10000 的约束
