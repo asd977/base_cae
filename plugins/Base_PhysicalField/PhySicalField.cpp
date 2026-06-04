@@ -1003,7 +1003,7 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
         parts = line.split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
     }
 
-    QMap<QString, QVector<vtkIdType>> groupedNodeIds;
+    QMap<QString, QVector<int>> groupedNodeIds;
     int parsedRows = 0;
     while (parsedRows < numNp)
     {
@@ -1021,7 +1021,7 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
         if (!(ux == 1 && uy == 1 && uz == 1))
         {
             const QString key = QStringLiteral("%1,%2,%3").arg(ux).arg(uy).arg(uz);
-            groupedNodeIds[key].push_back(static_cast<vtkIdType>(nodeId));
+            groupedNodeIds[key].push_back(nodeId);
         }
 
         ++parsedRows;
@@ -1031,6 +1031,38 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
             return fail(QStringLiteral("IIID.DAT 数据行数量少于文件头声明的 %1 行").arg(numNp));
         parts = line.split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
     }
+
+    // IIID.DAT 中记录的是 node_id；PickManager 的 setSelectedPointIds 需要的是各网格内
+    // 的 VTK point id。因此导入前必须先把 node_id 映射回 Solid/Line 网格点索引。
+    PickManager::instance().updateStructure();
+
+    auto findNodeIdArray = [](vtkUnstructuredGrid* g) -> vtkIntArray*
+    {
+        if (!g || !g->GetPointData())
+            return nullptr;
+        if (auto* a = vtkIntArray::SafeDownCast(g->GetPointData()->GetArray("node_id")))
+            return a;
+        return vtkIntArray::SafeDownCast(g->GetPointData()->GetArray("NodeId"));
+    };
+
+    auto buildPointIdsByNodeId = [&findNodeIdArray](vtkUnstructuredGrid* g)
+    {
+        QHash<int, QVector<vtkIdType>> out;
+        vtkIntArray* nodeIdArr = findNodeIdArray(g);
+        if (!g || !nodeIdArr)
+            return out;
+
+        const vtkIdType nPts = g->GetNumberOfPoints();
+        out.reserve(int(nPts * 1.3));
+        for (vtkIdType pid = 0; pid < nPts; ++pid)
+            out[nodeIdArr->GetValue(int(pid))].push_back(pid);
+        return out;
+    };
+
+    const QHash<int, QVector<vtkIdType>> solidPointIdsByNodeId =
+        buildPointIdsByNodeId(PickManager::instance().solidGrid());
+    const QHash<int, QVector<vtkIdType>> linePointIdsByNodeId =
+        buildPointIdsByNodeId(PickManager::instance().lineGrid());
 
     // 导入是生成 IIID.DAT 的反向操作：先移除已有位移约束，再按文件内容重建。
     QList<ProjectNode*> oldConstraints;
@@ -1054,6 +1086,28 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
     ProjectNode* lastCreated = nullptr;
     for (auto it = groupedNodeIds.cbegin(); it != groupedNodeIds.cend(); ++it)
     {
+        QVector<vtkIdType> solidPointIds;
+        QVector<vtkIdType> linePointIds;
+        for (const int nodeId : it.value())
+        {
+            const QVector<vtkIdType> solidIds = solidPointIdsByNodeId.value(nodeId);
+            for (vtkIdType pid : solidIds)
+                solidPointIds.push_back(pid);
+
+            const QVector<vtkIdType> lineIds = linePointIdsByNodeId.value(nodeId);
+            for (vtkIdType pid : lineIds)
+                linePointIds.push_back(pid);
+
+            if (solidIds.isEmpty() && lineIds.isEmpty())
+                qWarning() << "importIIIDFile: node_id not found in pick grids:" << nodeId;
+        }
+
+        if (solidPointIds.isEmpty() && linePointIds.isEmpty())
+        {
+            qWarning() << "importIIIDFile: skip empty constraint group:" << it.key();
+            continue;
+        }
+
         const QStringList flags = it.key().split(',');
         const QString title = MakeIndexedTitle(m_node, QStringLiteral("DisplacementConstraint"),
                                                QStringLiteral("位移约束"));
@@ -1068,8 +1122,11 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
         pageData["uz"] = flags.value(2, QStringLiteral("1"));
         node->getPage()->loadJson(pageData);
 
-        PickManager::instance().setSelectedPointIds(node->getPage()->getPageType(), node->getUuid(),
-                                                    GridKind::Solid, it.value(), true);
+        const QString domain = node->getPage()->getPageType();
+        PickManager::instance().setSelectedPointIds(domain, node->getUuid(), GridKind::Solid,
+                                                    solidPointIds, true);
+        PickManager::instance().setSelectedPointIds(domain, node->getUuid(), GridKind::Line,
+                                                    linePointIds, true);
         lastCreated = node;
     }
 
