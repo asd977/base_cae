@@ -54,6 +54,16 @@
     </widget>
    </item>
    <item>
+    <widget class="QLabel" name="boxSelectHintLabel">
+     <property name="text">
+      <string>提示：Shift+拖拽框选，Ctrl+拖拽取消选择</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="QGroupBox" name="groupBoxInfo">
      <property name="title">
       <string>边界信息</string>
