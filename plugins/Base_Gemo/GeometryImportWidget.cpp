@@ -22,6 +22,8 @@
 #include <STEPControl_Reader.hxx>
 #include <TCollection_ExtendedString.hxx>
 #include <TopoDS_Compound.hxx>
+#include <TopoDS_Edge.hxx>
+#include <TopoDS_Shape.hxx>
 #include <gp_Ax2.hxx>
 #include <gp_Circ.hxx>
 #include <gp_Dir.hxx>
@@ -74,7 +76,10 @@ static void addDxfLine(BRep_Builder& builder, TopoDS_Compound& compound, const g
 
     BRepBuilderAPI_MakeEdge makeEdge(p1, p2);
     if (makeEdge.IsDone())
-        builder.Add(compound, makeEdge.Edge());
+    {
+        const TopoDS_Shape edge = makeEdge.Edge();
+        builder.Add(compound, edge);
+    }
 }
 
 static void addDxfCircle(BRep_Builder& builder, TopoDS_Compound& compound, const gp_Pnt& center,
@@ -85,7 +90,10 @@ static void addDxfCircle(BRep_Builder& builder, TopoDS_Compound& compound, const
 
     BRepBuilderAPI_MakeEdge makeEdge(gp_Circ(gp_Ax2(center, gp_Dir(0, 0, 1)), radius));
     if (makeEdge.IsDone())
-        builder.Add(compound, makeEdge.Edge());
+    {
+        const TopoDS_Shape edge = makeEdge.Edge();
+        builder.Add(compound, edge);
+    }
 }
 
 static void addDxfArc(BRep_Builder& builder, TopoDS_Compound& compound, const gp_Pnt& center,
@@ -103,7 +111,10 @@ static void addDxfArc(BRep_Builder& builder, TopoDS_Compound& compound, const gp
     BRepBuilderAPI_MakeEdge makeEdge(gp_Circ(gp_Ax2(center, gp_Dir(0, 0, 1)), radius), startRad,
                                      endRad);
     if (makeEdge.IsDone())
-        builder.Add(compound, makeEdge.Edge());
+    {
+        const TopoDS_Shape edge = makeEdge.Edge();
+        builder.Add(compound, edge);
+    }
 }
 
 static void addDxfLwPolyline(BRep_Builder& builder, TopoDS_Compound& compound,
