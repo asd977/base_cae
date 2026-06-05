@@ -3,6 +3,7 @@
 #include <QAbstractItemView>
 #include <QCheckBox>
 #include <QDebug>
+#include <QFileDialog>
 #include <QHeaderView>
 #include <QMessageBox>
 #include <QTreeWidget>
@@ -163,5 +164,35 @@ void MaterialManagerWidget::on_generateImatButton_clicked()
     {
         QMessageBox::warning(this, QString("提示"),
                              QString("生成失败，请确认材料已添加到工程并选择 MATYPE。"));
+    }
+}
+void MaterialManagerWidget::on_importImatButton_clicked()
+{
+    if (!m_materialManager)
+    {
+        return;
+    }
+
+    const QString filePath = QFileDialog::getOpenFileName(
+        this, QStringLiteral("导入 IMAT.DAT"), QString(),
+        QStringLiteral("IMAT 文件 (IMAT.DAT *.dat *.DAT);;所有文件 (*.*)"));
+    if (filePath.isEmpty())
+    {
+        return;
+    }
+
+    int importedCount = 0;
+    QString error;
+    if (m_materialManager->importIMATFile(filePath, &importedCount, &error))
+    {
+        QMessageBox::information(
+            this, QStringLiteral("提示"),
+            QStringLiteral("已从 IMAT.DAT 创建 %1 个材料，并自动添加到工程。").arg(importedCount));
+    }
+    else
+    {
+        QMessageBox::warning(this, QStringLiteral("提示"),
+                             error.isEmpty() ? QStringLiteral("导入失败，请确认 IMAT.DAT 格式。")
+                                             : error);
     }
 }
