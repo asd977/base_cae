@@ -18,6 +18,7 @@
 #include <QClipboard>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -2939,11 +2940,14 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
     {
         QStringList result;
         static const QRegularExpression numberRe(
-            QStringLiteral("[-+]?\\d*\\.?\\d+(?:[Ee][-+]?\\d+)?"));
+            QStringLiteral("[-+]?\\d*\\.?\\d+(?:[EeDd][-+]?\\d+)?"));
         QRegularExpressionMatchIterator it = numberRe.globalMatch(line);
         while (it.hasNext())
         {
-            result << it.next().captured(0);
+            QString token = it.next().captured(0);
+            token.replace(QLatin1Char('D'), QLatin1Char('E'));
+            token.replace(QLatin1Char('d'), QLatin1Char('E'));
+            result << token;
         }
         return result;
     };
@@ -2992,7 +2996,7 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
         }
 
         const QStringList nums = numericTokens(line);
-        if (nums.size() < 11)
+        if (nums.size() < 2)
         {
             continue;
         }
@@ -3004,7 +3008,8 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
             continue;
         }
 
-        for (int k = 0; k < 10 && k < nums.size() - 1; ++k)
+        const int valueCount = qMin(10, nums.size() - 1);
+        for (int k = 0; k < valueCount; ++k)
         {
             const int matIndex = currentGroup * 10 + k;
             if (matIndex < 0 || matIndex >= nmat)
@@ -3038,28 +3043,13 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
         }
         return values[row - 1][matIndex];
     };
-    auto isZero = [](double value) -> bool { return std::fabs(value) < 1.0e-12; };
-    auto isGlobalDefaultRow = [](int row) -> bool
+    auto nearlyEqual = [](double lhs, double rhs) -> bool
     {
-        return row == 14 || row == 18 || row == 22 || row == 65 || row == 66 || row == 75 ||
-               row == 89;
+        return std::fabs(lhs - rhs) <= 1.0e-8 * qMax(1.0, qMax(std::fabs(lhs), std::fabs(rhs)));
     };
-    auto isDefaultOnly = [&](int matIndex) -> bool
+    auto isNonZero = [&](int matIndex, int row) -> bool
     {
-        for (int row = 1; row <= ncon; ++row)
-        {
-            const double value = rowValue(matIndex, row);
-            if (isZero(value))
-            {
-                continue;
-            }
-            if (isGlobalDefaultRow(row))
-            {
-                continue;
-            }
-            return false;
-        }
-        return true;
+        return !nearlyEqual(rowValue(matIndex, row), 0.0);
     };
     auto formatValue = [](double value) -> QString
     {
@@ -3073,36 +3063,169 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
     {
         entry.properties.insert(key, formatValue(value));
     };
-    auto modelForIb = [this](double ib) -> MaterialModel*
+    auto setSeepageProperty = [&](MaterialEntry& entry, const QString& key, double value)
     {
-        const int rounded = static_cast<int>(std::llround(ib));
-        if (rounded == -1)
+        entry.seepageProperties.insert(key, formatValue(value));
+    };
+
+    auto readMatypeList = [&](const QString& datFileName) -> QSet<int>
+    {
+        QSet<int> result;
+        const QFileInfo imatInfo(filePath);
+        QFile datFile(imatInfo.dir().filePath(datFileName));
+        if (!datFile.open(QIODevice::ReadOnly | QIODevice::Text))
+        {
+            return result;
+        }
+        QTextStream datStream(&datFile);
+        while (!datStream.atEnd())
+        {
+            const QString line = datStream.readLine();
+            if (line.contains(QStringLiteral("NUM"), Qt::CaseInsensitive))
+            {
+                continue;
+            }
+            const QStringList nums = numericTokens(line);
+            if (nums.isEmpty())
+            {
+                continue;
+            }
+            bool ok = false;
+            const int value = nums.first().toInt(&ok);
+            if (ok && value > 0 && value <= nmat)
+            {
+                result.insert(value);
+            }
+        }
+        return result;
+    };
+
+    // 正向导出会同步写 MACB.DAT，那里才是真正“需要的”材料号；IMAT.DAT 的 NMAT
+    // 可能为了 10 列分组被补齐，也可能包含求解器默认 VOID 材料，不能逐列全部创建。
+    QSet<int> targetMatypes = readMatypeList(QStringLiteral("MACB.DAT"));
+    const bool hasExplicitMatypeList = !targetMatypes.isEmpty();
+
+    auto looksLikeForwardDefaultVoid = [&]() -> bool
+    {
+        if (nmat <= 0)
+        {
+            return false;
+        }
+        const int m = 0;
+        return nearlyEqual(rowValue(m, 2), 100.0) && nearlyEqual(rowValue(m, 3), 100.0) &&
+               nearlyEqual(rowValue(m, 4), 0.30) && nearlyEqual(rowValue(m, 5), 100.0) &&
+               nearlyEqual(rowValue(m, 8), 1.0) && nearlyEqual(rowValue(m, 9), 2000.0e6) &&
+               nearlyEqual(rowValue(m, 10), 200.0e6) && nearlyEqual(rowValue(m, 11), 78.0) &&
+               nearlyEqual(rowValue(m, 12), 200.0e6);
+    };
+
+    auto hasAnyTypeSignature = [&](int matIndex) -> bool
+    {
+        const int ib = static_cast<int>(std::llround(rowValue(matIndex, 1)));
+        if (ib == -1 || ib == -2 || ib == -3 || ib == -4 || ib == -5 || ib == -6 || ib == 1 ||
+            ib == 2)
+        {
+            return true;
+        }
+        const int creepType = static_cast<int>(std::llround(rowValue(matIndex, 102)));
+        return creepType >= 1 && creepType <= 4;
+    };
+
+    if (!hasExplicitMatypeList)
+    {
+        const bool defaultVoid = looksLikeForwardDefaultVoid();
+        for (int matIndex = 0; matIndex < nmat; ++matIndex)
+        {
+            if (defaultVoid && matIndex == 0)
+            {
+                continue;
+            }
+            if (hasAnyTypeSignature(matIndex))
+            {
+                targetMatypes.insert(matIndex + 1);
+            }
+        }
+    }
+
+    if (targetMatypes.isEmpty())
+    {
+        if (error)
+        {
+            *error = QStringLiteral("未找到需要创建的材料号。请确认同目录存在 MACB.DAT，或 IMAT.DAT 中包含可识别的材料类型标识。");
+        }
+        return false;
+    }
+
+    auto modelForMatype = [&](int matIndex) -> MaterialModel*
+    {
+        const int ib = static_cast<int>(std::llround(rowValue(matIndex, 1)));
+        if (ib == -1)
             return findModel(QStringLiteral("soil_eb"));
-        if (rounded == -3)
-            return findModel(QStringLiteral("soil_emu"));
-        if (rounded == -4)
-            return findModel(QStringLiteral("dam_dynamic"));
-        if (rounded == -5)
-            return findModel(QStringLiteral("soil_nanshui"));
-        if (rounded == -6)
-            return findModel(QStringLiteral("soil_emu_crush"));
-        if (rounded == -2)
+        if (ib == -2)
             return findModel(QStringLiteral("soil_kg"));
-        return findModel(QStringLiteral("dagangshan_isotropic"));
+        if (ib == -3)
+            return findModel(QStringLiteral("soil_emu"));
+        if (ib == -4)
+            return findModel(QStringLiteral("dam_dynamic"));
+        if (ib == -5)
+            return findModel(QStringLiteral("soil_nanshui"));
+        if (ib == -6)
+            return findModel(QStringLiteral("soil_emu_crush"));
+        if (ib == 1 && (nearlyEqual(rowValue(matIndex, 13), 2.0) || isNonZero(matIndex, 38) ||
+                        isNonZero(matIndex, 93)))
+            return findModel(QStringLiteral("huangjinping_bar_element"));
+        if (ib == 2)
+        {
+            if (isNonZero(matIndex, 58) || isNonZero(matIndex, 59) || isNonZero(matIndex, 77) ||
+                isNonZero(matIndex, 78) || isNonZero(matIndex, 100))
+            {
+                return findModel(QStringLiteral("huangjinping_underground_plant"));
+            }
+            return findModel(QStringLiteral("dagangshan_isotropic"));
+        }
+
+        const int creepType = static_cast<int>(std::llround(rowValue(matIndex, 102)));
+        if (creepType == 1)
+            return findModel(QStringLiteral("shenzhujiang_creep"));
+        if (creepType == 2)
+            return findModel(QStringLiteral("liguoying_creep"));
+        if (creepType == 3)
+            return findModel(QStringLiteral("nine_param_creep"));
+        if (creepType == 4)
+            return findModel(QStringLiteral("xiyuan_creep"));
+        return nullptr;
+    };
+
+    auto restoreSeepage = [&](MaterialEntry& entry, int matIndex)
+    {
+        const double k1 = rowValue(matIndex, 96);
+        const double k2 = rowValue(matIndex, 97);
+        const double k3 = rowValue(matIndex, 98);
+        const double rip = rowValue(matIndex, 60);
+        if (!nearlyEqual(k1, 0.0) && nearlyEqual(k1, k2) && nearlyEqual(k1, k3))
+        {
+            entry.seepageModelKey = QStringLiteral("jk_corewall_steady_seepage");
+            setSeepageProperty(entry, QStringLiteral("渗透系数K(Lu)"), k1 / 1.0e-7);
+            setSeepageProperty(entry, QStringLiteral("允许比降"), rip);
+        }
     };
 
     int count = 0;
-    for (int matIndex = 0; matIndex < nmat; ++matIndex)
+    QList<int> sortedMatypes = targetMatypes.values();
+    std::sort(sortedMatypes.begin(), sortedMatypes.end());
+    for (int matype : sortedMatypes)
     {
-        if (isDefaultOnly(matIndex))
+        const int matIndex = matype - 1;
+        if (matIndex < 0 || matIndex >= nmat)
         {
             continue;
         }
 
-        const int matype = matIndex + 1;
-        MaterialModel* model = modelForIb(rowValue(matIndex, 1));
+        MaterialModel* model = modelForMatype(matIndex);
         if (!model)
         {
+            qWarning() << "Skip IMAT material because type is not recognized" << matype
+                       << "IB" << rowValue(matIndex, 1) << "ICREEP" << rowValue(matIndex, 102);
             continue;
         }
 
@@ -3116,7 +3239,23 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
         }
 
         const int ib = static_cast<int>(std::llround(rowValue(matIndex, 1)));
-        if (model->key == QStringLiteral("dagangshan_isotropic"))
+        if (model->key == QStringLiteral("huangjinping_underground_plant"))
+        {
+            setProperty(entry, QStringLiteral("编号"), matype);
+            setProperty(entry, QStringLiteral("岩类分区"), rowValue(matIndex, 100));
+            setProperty(entry, QStringLiteral("半开挖区荷载释放系数"), rowValue(matIndex, 58));
+            setProperty(entry, QStringLiteral("再生时对应开挖级"), rowValue(matIndex, 59));
+            setProperty(entry, QStringLiteral("变形模量E（GPa）"), rowValue(matIndex, 2) / 1.0e9);
+            setProperty(entry, QStringLiteral("泊松比μ"), rowValue(matIndex, 4));
+            setProperty(entry, QStringLiteral("容重t/m3"), rowValue(matIndex, 7) / 1.0e3);
+            setProperty(entry, QStringLiteral("抗剪断强度内摩擦系数"),
+                        std::tan(rowValue(matIndex, 11) * 3.141592653589793 / 180.0));
+            setProperty(entry, QStringLiteral("凝聚力C‘（MPa）"), rowValue(matIndex, 12) / 1.0e6);
+            setProperty(entry, QStringLiteral("剪胀角(°)"), rowValue(matIndex, 99));
+            setProperty(entry, QStringLiteral("洞室边缘松弛系数α0"), rowValue(matIndex, 77));
+            setProperty(entry, QStringLiteral("松弛距离d0"), rowValue(matIndex, 78));
+        }
+        else if (model->key == QStringLiteral("dagangshan_isotropic"))
         {
             setProperty(entry, QStringLiteral("序号"), matype);
             setProperty(entry, QStringLiteral("变形模量E（GPa）"), rowValue(matIndex, 2) / 1.0e9);
@@ -3126,6 +3265,18 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
                         std::tan(rowValue(matIndex, 11) * 3.141592653589793 / 180.0));
             setProperty(entry, QStringLiteral("凝聚力C‘（MPa）"), rowValue(matIndex, 12) / 1.0e6);
             setProperty(entry, QStringLiteral("剪胀角(°)"), rowValue(matIndex, 99));
+        }
+        else if (model->key == QStringLiteral("huangjinping_bar_element"))
+        {
+            setProperty(entry, QStringLiteral("序号"), matype);
+            setProperty(entry, QStringLiteral("变模E1,E2（GPa）"), rowValue(matIndex, 2) / 1.0e9);
+            setProperty(entry, QStringLiteral("容重t/m3"), rowValue(matIndex, 7) / 1.0e3);
+            setProperty(entry, QStringLiteral("杆面积（m2）"), rowValue(matIndex, 8));
+            setProperty(entry, QStringLiteral("抗拉（压）强度ft（MPa）"), rowValue(matIndex, 10) / 1.0e6);
+            setProperty(entry, QStringLiteral("间距(m)"), rowValue(matIndex, 38));
+            setProperty(entry, QStringLiteral("排距(m)"), rowValue(matIndex, 37));
+            setProperty(entry, QStringLiteral("预应力T（KN）"), rowValue(matIndex, 93) / 1.0e3);
+            setProperty(entry, QStringLiteral("预应系数"), rowValue(matIndex, 89));
         }
         else if (model->key == QStringLiteral("dam_dynamic"))
         {
@@ -3146,6 +3297,47 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
             setProperty(entry, QStringLiteral("nv"), rowValue(matIndex, 107));
             setProperty(entry, QStringLiteral("np"), rowValue(matIndex, 108));
         }
+        else if (model->key == QStringLiteral("shenzhujiang_creep"))
+        {
+            setProperty(entry, QStringLiteral("序号"), matype);
+            setProperty(entry, QStringLiteral("应变速率系数α"), rowValue(matIndex, 14));
+            setProperty(entry, QStringLiteral("体积流变系数b"), rowValue(matIndex, 15));
+            setProperty(entry, QStringLiteral("剪切流变系数d"), rowValue(matIndex, 16));
+        }
+        else if (model->key == QStringLiteral("liguoying_creep"))
+        {
+            setProperty(entry, QStringLiteral("序号"), matype);
+            setProperty(entry, QStringLiteral("应变速率系数α"), rowValue(matIndex, 14));
+            setProperty(entry, QStringLiteral("体积流变系数b"), rowValue(matIndex, 15));
+            setProperty(entry, QStringLiteral("体积流变系数c"), rowValue(matIndex, 16));
+            setProperty(entry, QStringLiteral("剪切流变系数d"), rowValue(matIndex, 17));
+            setProperty(entry, QStringLiteral("体积流变指数m1"), rowValue(matIndex, 18));
+            setProperty(entry, QStringLiteral("体积流变指数m2"), rowValue(matIndex, 19));
+            setProperty(entry, QStringLiteral("剪切流变指数m3"), rowValue(matIndex, 20));
+        }
+        else if (model->key == QStringLiteral("nine_param_creep"))
+        {
+            setProperty(entry, QStringLiteral("序号"), matype);
+            setProperty(entry, QStringLiteral("应变速率系数λv"), rowValue(matIndex, 14));
+            setProperty(entry, QStringLiteral("体积流变系数Cα"), rowValue(matIndex, 15));
+            setProperty(entry, QStringLiteral("体积流变系数Cβ"), rowValue(matIndex, 16));
+            setProperty(entry, QStringLiteral("体积流变指数dα"), rowValue(matIndex, 17));
+            setProperty(entry, QStringLiteral("体积流变指数dβ"), rowValue(matIndex, 18));
+            setProperty(entry, QStringLiteral("主应变系数c"), rowValue(matIndex, 19));
+            setProperty(entry, QStringLiteral("主应变系数d"), rowValue(matIndex, 20));
+            setProperty(entry, QStringLiteral("主应变流变系数η"), rowValue(matIndex, 21));
+            setProperty(entry, QStringLiteral("主应变流变系数m"), rowValue(matIndex, 22));
+        }
+        else if (model->key == QStringLiteral("xiyuan_creep"))
+        {
+            setProperty(entry, QStringLiteral("序号"), matype);
+            setProperty(entry, QStringLiteral("瞬时弹性模量E1（GPa）"), rowValue(matIndex, 2));
+            setProperty(entry, QStringLiteral("粘塑性模量E2（GPa）"), rowValue(matIndex, 3));
+            setProperty(entry, QStringLiteral("泊松比μ1"), rowValue(matIndex, 4));
+            setProperty(entry, QStringLiteral("泊松比μ2"), rowValue(matIndex, 5));
+            setProperty(entry, QStringLiteral("粘弹性系数η1"), rowValue(matIndex, 103));
+            setProperty(entry, QStringLiteral("粘塑性系数η2"), rowValue(matIndex, 104));
+        }
         else
         {
             const QString dryPhi = model->columns.contains(QStringLiteral("φ0"))
@@ -3161,39 +3353,8 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
             setProperty(entry, dryPhi, rowValue(matIndex, 11));
             setProperty(entry, deltaPhi, rowValue(matIndex, 76));
             setProperty(entry, QStringLiteral("c(KPa)"), rowValue(matIndex, 12) / 1.0e3);
-            setProperty(entry, QStringLiteral("Rf"), rowValue(matIndex, 71));
-            setProperty(entry, QStringLiteral("K"), rowValue(matIndex, 69));
-            setProperty(entry, QStringLiteral("n"), rowValue(matIndex, 70));
 
-            if (ib == -1)
-            {
-                setProperty(entry, QStringLiteral("Kur"), rowValue(matIndex, 72));
-                setProperty(entry, QStringLiteral("Kb"), rowValue(matIndex, 74));
-                setProperty(entry, QStringLiteral("m"), rowValue(matIndex, 75));
-            }
-            else if (ib == -3)
-            {
-                setProperty(entry, QStringLiteral("G"), rowValue(matIndex, 77));
-                setProperty(entry, QStringLiteral("D"), rowValue(matIndex, 78));
-                setProperty(entry, QStringLiteral("F"), rowValue(matIndex, 79));
-            }
-            else if (ib == -5)
-            {
-                setProperty(entry, QStringLiteral("Kur"), rowValue(matIndex, 72));
-                setProperty(entry, QStringLiteral("cd"), rowValue(matIndex, 77));
-                setProperty(entry, QStringLiteral("nd"), rowValue(matIndex, 78));
-                setProperty(entry, QStringLiteral("Rd"), rowValue(matIndex, 79));
-            }
-            else if (ib == -6)
-            {
-                setProperty(entry, QStringLiteral("C1"), rowValue(matIndex, 109));
-                setProperty(entry, QStringLiteral("n1"), rowValue(matIndex, 110));
-                setProperty(entry, QStringLiteral("C2"), rowValue(matIndex, 111));
-                setProperty(entry, QStringLiteral("n2"), rowValue(matIndex, 112));
-                setProperty(entry, QStringLiteral("C3"), rowValue(matIndex, 113));
-                setProperty(entry, QStringLiteral("n3"), rowValue(matIndex, 114));
-            }
-            else if (ib == -2)
+            if (ib == -2)
             {
                 setProperty(entry, QStringLiteral("Ki,Kie(10^5Pa)"), rowValue(matIndex, 69));
                 setProperty(entry, QStringLiteral("αk,αke"), rowValue(matIndex, 70));
@@ -3203,8 +3364,50 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
                 setProperty(entry, QStringLiteral("a(10^5Pa)"), rowValue(matIndex, 72));
                 setProperty(entry, QStringLiteral("b"), rowValue(matIndex, 73));
             }
+            else
+            {
+                setProperty(entry, QStringLiteral("Rf"), rowValue(matIndex, 71));
+                setProperty(entry, QStringLiteral("K"), rowValue(matIndex, 69));
+                setProperty(entry, QStringLiteral("n"), rowValue(matIndex, 70));
+                if (ib == -1)
+                {
+                    setProperty(entry, QStringLiteral("Kur"), rowValue(matIndex, 72));
+                    setProperty(entry, QStringLiteral("Kb"), rowValue(matIndex, 74));
+                    setProperty(entry, QStringLiteral("m"), rowValue(matIndex, 75));
+                }
+                else if (ib == -3)
+                {
+                    setProperty(entry, QStringLiteral("G"), rowValue(matIndex, 77));
+                    setProperty(entry, QStringLiteral("D"), rowValue(matIndex, 78));
+                    setProperty(entry, QStringLiteral("F"), rowValue(matIndex, 79));
+                }
+                else if (ib == -5)
+                {
+                    setProperty(entry, QStringLiteral("Kur"), rowValue(matIndex, 72));
+                    setProperty(entry, QStringLiteral("cd"), rowValue(matIndex, 77));
+                    setProperty(entry, QStringLiteral("nd"), rowValue(matIndex, 78));
+                    setProperty(entry, QStringLiteral("Rd"), rowValue(matIndex, 79));
+                }
+                else if (ib == -6)
+                {
+                    setProperty(entry, QStringLiteral("C1"), rowValue(matIndex, 109));
+                    setProperty(entry, QStringLiteral("n1"), rowValue(matIndex, 110));
+                    setProperty(entry, QStringLiteral("C2"), rowValue(matIndex, 111));
+                    setProperty(entry, QStringLiteral("n2"), rowValue(matIndex, 112));
+                    setProperty(entry, QStringLiteral("C3"), rowValue(matIndex, 113));
+                    setProperty(entry, QStringLiteral("n3"), rowValue(matIndex, 114));
+                }
+            }
         }
 
+        restoreSeepage(entry, matIndex);
+        for (auto& existingModel : m_models)
+        {
+            for (auto& existingEntry : existingModel.materials)
+            {
+                existingEntry.appliedMatypes.remove(matype);
+            }
+        }
         entry.appliedMatypes.insert(matype);
         model->materials.append(entry);
         m_addedEntryIds.insert(entry.id);
@@ -3216,7 +3419,7 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
     {
         if (error)
         {
-            *error = QStringLiteral("IMAT.DAT 中未发现可创建的材料列。");
+            *error = QStringLiteral("IMAT.DAT 中未发现可识别且需要创建的材料列。");
         }
         return false;
     }
