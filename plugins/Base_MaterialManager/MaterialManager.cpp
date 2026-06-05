@@ -3147,11 +3147,42 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
         }
     }
 
+    const QSet<int> meshMatypes = availableMatypes();
+    if (!meshMatypes.isEmpty())
+    {
+        QSet<int> filteredMatypes;
+        for (int matype : targetMatypes)
+        {
+            if (meshMatypes.contains(matype))
+            {
+                filteredMatypes.insert(matype);
+            }
+        }
+
+        if (filteredMatypes.size() != targetMatypes.size())
+        {
+            QList<int> skippedMatypes;
+            for (int matype : targetMatypes)
+            {
+                if (!filteredMatypes.contains(matype))
+                {
+                    skippedMatypes << matype;
+                }
+            }
+            std::sort(skippedMatypes.begin(), skippedMatypes.end());
+            qWarning() << "Skip IMAT materials because MATYPE groups do not exist in current mesh"
+                       << skippedMatypes;
+        }
+        targetMatypes = filteredMatypes;
+    }
+
     if (targetMatypes.isEmpty())
     {
         if (error)
         {
-            *error = QStringLiteral("未找到需要创建的材料号。请确认同目录存在 MACB.DAT，或 IMAT.DAT 中包含可识别的材料类型标识。");
+            *error = meshMatypes.isEmpty()
+                         ? QStringLiteral("未找到需要创建的材料号。请确认同目录存在 MACB.DAT，或 IMAT.DAT 中包含可识别的材料类型标识。")
+                         : QStringLiteral("IMAT.DAT 中识别到的材料号在当前网格 MATYPE 分组中不存在，未创建材料。");
         }
         return false;
     }
