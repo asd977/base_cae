@@ -595,18 +595,18 @@ void UiFrame::buildRibbonTabs()
             auto* panel = cate->addPannel("网格工具");
 
             auto* actMeshEdit =
-                makeAction(this, ":/resources/menu/minimal/mesh-edit.svg", "&网格编辑");
-            auto* actMeshGrouping =
-                makeAction(this, ":/resources/menu/minimal/mesh-group.svg", "&网格分组");
+                makeAction(this, ":/resources/menu/minimal/mesh-edit.svg", "&显示控制");
+            // auto* actMeshGrouping =
+            //     makeAction(this, ":/resources/menu/minimal/mesh-group.svg", "&网格分组");
             auto* actQuality =
                 makeAction(this, ":/resources/menu/minimal/mesh-edit.svg", "&质量检查");
 
             addActionToPanel(panel, actMeshEdit, 3);
-            addActionToPanel(panel, actMeshGrouping, 3);
+            // addActionToPanel(panel, actMeshGrouping, 3);
             addActionToPanel(panel, actQuality, 3);
 
             bindEvent(this, actMeshEdit, PublicConstants::kActionPreprocessMeshEdit);
-            bindEvent(this, actMeshGrouping, PublicConstants::kActionPreprocessMeshGrouping);
+            // bindEvent(this, actMeshGrouping, PublicConstants::kActionPreprocessMeshGrouping);
             bindEvent(this, actQuality, PublicConstants::kActionPreprocessQualityStd);
         }
     }
@@ -695,7 +695,7 @@ void UiFrame::buildRibbonTabs()
 
             addActionToPanel(panel, actBuiltinMaterial, 3);
             addActionToPanel(panel, actBuiltinSeepage, 3);
-            addActionToPanel(panel, actMaterialTransition, 2);
+            addActionToPanel(panel, actMaterialTransition, 3);
 
             connect(actBuiltinMaterial, &QAction::triggered, this,
                     []()
@@ -876,7 +876,7 @@ void UiFrame::buildRibbonTabs()
                 makeAction(this, ":/resources/menu/minimal/post-curve.svg", "&曲线");
 
             addActionToPanel(panel, actIso, 3);
-            addActionToPanel(panel, actIsoS, 2);
+            addActionToPanel(panel, actIsoS, 3);
             addActionToPanel(panel, actXY, 3);
 
             bindEvent(this, actIso, PublicConstants::kActionPostProcessIsosurface);
