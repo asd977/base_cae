@@ -34,6 +34,7 @@ class MaterialManagerWidget : public BasePage
     void on_addToTreeButton_clicked();
     void on_removeFromTreeButton_clicked();
     void on_generateImatButton_clicked();
+    void on_importImatButton_clicked();
 
   private:
     Ui::MaterialManagerWidget* ui;

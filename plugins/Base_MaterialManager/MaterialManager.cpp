@@ -33,6 +33,7 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QDialogButtonBox>
 #include <QShortcut>
 #include <QSplitter>
@@ -2896,6 +2897,336 @@ bool MaterialManager::generateCaculateFile()
         return false;
     }
 
+    return true;
+}
+
+
+bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount, QString* error)
+{
+    if (importedCount)
+    {
+        *importedCount = 0;
+    }
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        if (error)
+        {
+            *error = QStringLiteral("无法打开 IMAT.DAT 文件。");
+        }
+        return false;
+    }
+
+    QTextStream in(&file);
+    QStringList lines;
+    while (!in.atEnd())
+    {
+        lines << in.readLine();
+    }
+    file.close();
+
+    if (lines.isEmpty())
+    {
+        if (error)
+        {
+            *error = QStringLiteral("IMAT.DAT 文件为空。");
+        }
+        return false;
+    }
+
+    auto numericTokens = [](const QString& line) -> QStringList
+    {
+        QStringList result;
+        static const QRegularExpression numberRe(
+            QStringLiteral("[-+]?\\d*\\.?\\d+(?:[Ee][-+]?\\d+)?"));
+        QRegularExpressionMatchIterator it = numberRe.globalMatch(line);
+        while (it.hasNext())
+        {
+            result << it.next().captured(0);
+        }
+        return result;
+    };
+
+    QStringList headerTokens = numericTokens(lines.first());
+    if (headerTokens.size() < 2)
+    {
+        if (error)
+        {
+            *error = QStringLiteral("IMAT.DAT 文件头格式错误，未读取到 NMAT/NCON。");
+        }
+        return false;
+    }
+
+    bool okNmat = false;
+    bool okNcon = false;
+    const int nmat = headerTokens.at(0).toInt(&okNmat);
+    const int ncon = headerTokens.at(1).toInt(&okNcon);
+    if (!okNmat || !okNcon || nmat <= 0 || ncon <= 0)
+    {
+        if (error)
+        {
+            *error = QStringLiteral("IMAT.DAT 文件头中的 NMAT/NCON 无效。");
+        }
+        return false;
+    }
+
+    QVector<QVector<double>> values(ncon, QVector<double>(nmat, 0.0));
+    int currentGroup = -1;
+    bool hasData = false;
+    static const QRegularExpression groupRe(QStringLiteral("GROUP\\s+NUM\\s*=\\s*(\\d+)"),
+                                            QRegularExpression::CaseInsensitiveOption);
+
+    for (int lineIndex = 1; lineIndex < lines.size(); ++lineIndex)
+    {
+        const QString line = lines.at(lineIndex);
+        const QRegularExpressionMatch groupMatch = groupRe.match(line);
+        if (groupMatch.hasMatch())
+        {
+            currentGroup = groupMatch.captured(1).toInt() - 1;
+            continue;
+        }
+        if (currentGroup < 0 || line.contains(QStringLiteral("IMAT"), Qt::CaseInsensitive))
+        {
+            continue;
+        }
+
+        const QStringList nums = numericTokens(line);
+        if (nums.size() < 11)
+        {
+            continue;
+        }
+
+        bool okRow = false;
+        const int row = nums.last().toInt(&okRow);
+        if (!okRow || row < 1 || row > ncon)
+        {
+            continue;
+        }
+
+        for (int k = 0; k < 10 && k < nums.size() - 1; ++k)
+        {
+            const int matIndex = currentGroup * 10 + k;
+            if (matIndex < 0 || matIndex >= nmat)
+            {
+                continue;
+            }
+            bool okValue = false;
+            const double value = nums.at(k).toDouble(&okValue);
+            if (okValue)
+            {
+                values[row - 1][matIndex] = value;
+                hasData = true;
+            }
+        }
+    }
+
+    if (!hasData)
+    {
+        if (error)
+        {
+            *error = QStringLiteral("未在 IMAT.DAT 中读取到 CONMAT 数据。");
+        }
+        return false;
+    }
+
+    auto rowValue = [&](int matIndex, int row) -> double
+    {
+        if (row < 1 || row > ncon || matIndex < 0 || matIndex >= nmat)
+        {
+            return 0.0;
+        }
+        return values[row - 1][matIndex];
+    };
+    auto isZero = [](double value) -> bool { return std::fabs(value) < 1.0e-12; };
+    auto isGlobalDefaultRow = [](int row) -> bool
+    {
+        return row == 14 || row == 18 || row == 22 || row == 65 || row == 66 || row == 75 ||
+               row == 89;
+    };
+    auto isDefaultOnly = [&](int matIndex) -> bool
+    {
+        for (int row = 1; row <= ncon; ++row)
+        {
+            const double value = rowValue(matIndex, row);
+            if (isZero(value))
+            {
+                continue;
+            }
+            if (isGlobalDefaultRow(row))
+            {
+                continue;
+            }
+            return false;
+        }
+        return true;
+    };
+    auto formatValue = [](double value) -> QString
+    {
+        if (std::fabs(value) < 1.0e-12)
+        {
+            value = 0.0;
+        }
+        return QString::number(value, 'g', 12);
+    };
+    auto setProperty = [&](MaterialEntry& entry, const QString& key, double value)
+    {
+        entry.properties.insert(key, formatValue(value));
+    };
+    auto modelForIb = [this](double ib) -> MaterialModel*
+    {
+        const int rounded = static_cast<int>(std::llround(ib));
+        if (rounded == -1)
+            return findModel(QStringLiteral("soil_eb"));
+        if (rounded == -3)
+            return findModel(QStringLiteral("soil_emu"));
+        if (rounded == -4)
+            return findModel(QStringLiteral("dam_dynamic"));
+        if (rounded == -5)
+            return findModel(QStringLiteral("soil_nanshui"));
+        if (rounded == -6)
+            return findModel(QStringLiteral("soil_emu_crush"));
+        if (rounded == -2)
+            return findModel(QStringLiteral("soil_kg"));
+        return findModel(QStringLiteral("dagangshan_isotropic"));
+    };
+
+    int count = 0;
+    for (int matIndex = 0; matIndex < nmat; ++matIndex)
+    {
+        if (isDefaultOnly(matIndex))
+        {
+            continue;
+        }
+
+        const int matype = matIndex + 1;
+        MaterialModel* model = modelForIb(rowValue(matIndex, 1));
+        if (!model)
+        {
+            continue;
+        }
+
+        MaterialEntry entry;
+        entry.id = QUuid::createUuid().toString();
+        entry.name = QStringLiteral("IMAT_%1").arg(matype);
+        for (const QString& column : model->columns)
+        {
+            entry.properties.insert(column, isAutoNumberColumn(column) ? QString::number(matype)
+                                                                       : QStringLiteral("0"));
+        }
+
+        const int ib = static_cast<int>(std::llround(rowValue(matIndex, 1)));
+        if (model->key == QStringLiteral("dagangshan_isotropic"))
+        {
+            setProperty(entry, QStringLiteral("序号"), matype);
+            setProperty(entry, QStringLiteral("变形模量E（GPa）"), rowValue(matIndex, 2) / 1.0e9);
+            setProperty(entry, QStringLiteral("泊松比μ"), rowValue(matIndex, 4));
+            setProperty(entry, QStringLiteral("容重t/m3"), rowValue(matIndex, 7) / 1.0e3);
+            setProperty(entry, QStringLiteral("抗剪断强度内摩擦系数"),
+                        std::tan(rowValue(matIndex, 11) * 3.141592653589793 / 180.0));
+            setProperty(entry, QStringLiteral("凝聚力C‘（MPa）"), rowValue(matIndex, 12) / 1.0e6);
+            setProperty(entry, QStringLiteral("剪胀角(°)"), rowValue(matIndex, 99));
+        }
+        else if (model->key == QStringLiteral("dam_dynamic"))
+        {
+            setProperty(entry, QStringLiteral("编号"), matype);
+            setProperty(entry, QStringLiteral("静力计算编号"), rowValue(matIndex, 84));
+            setProperty(entry, QStringLiteral("是否液化"), rowValue(matIndex, 13));
+            setProperty(entry, QStringLiteral("DRYK1(KPa)"), rowValue(matIndex, 80));
+            setProperty(entry, QStringLiteral("DRYN1"), rowValue(matIndex, 81));
+            setProperty(entry, QStringLiteral("FAI(°)"), rowValue(matIndex, 88));
+            setProperty(entry, QStringLiteral("CO(KPa)"), rowValue(matIndex, 83) / 1.0e3);
+            setProperty(entry, QStringLiteral("PU"), rowValue(matIndex, 4));
+            setProperty(entry, QStringLiteral("DRYDAM"), rowValue(matIndex, 82));
+            setProperty(entry, QStringLiteral("RATIAO1(0.1)"), rowValue(matIndex, 85));
+            setProperty(entry, QStringLiteral("RATIAO2(0.3)"), rowValue(matIndex, 86));
+            setProperty(entry, QStringLiteral("RATIAO3(0.5)"), rowValue(matIndex, 87));
+            setProperty(entry, QStringLiteral("Kv"), rowValue(matIndex, 105));
+            setProperty(entry, QStringLiteral("Kp"), rowValue(matIndex, 106));
+            setProperty(entry, QStringLiteral("nv"), rowValue(matIndex, 107));
+            setProperty(entry, QStringLiteral("np"), rowValue(matIndex, 108));
+        }
+        else
+        {
+            const QString dryPhi = model->columns.contains(QStringLiteral("φ0"))
+                                     ? QStringLiteral("φ0")
+                                     : QStringLiteral("φ0(°)");
+            const QString deltaPhi = model->columns.contains(QStringLiteral("Δφ"))
+                                       ? QStringLiteral("Δφ")
+                                       : QStringLiteral("Δφ(°)");
+            setProperty(entry, QStringLiteral("材料编号"), matype);
+            setProperty(entry, QStringLiteral("干容重(t/m3)"), rowValue(matIndex, 7) / 1.0e3);
+            setProperty(entry, QStringLiteral("天然容重(t/m3)"), rowValue(matIndex, 90) / 1.0e3);
+            setProperty(entry, QStringLiteral("饱和容重(t/m3)"), rowValue(matIndex, 89) / 1.0e3);
+            setProperty(entry, dryPhi, rowValue(matIndex, 11));
+            setProperty(entry, deltaPhi, rowValue(matIndex, 76));
+            setProperty(entry, QStringLiteral("c(KPa)"), rowValue(matIndex, 12) / 1.0e3);
+            setProperty(entry, QStringLiteral("Rf"), rowValue(matIndex, 71));
+            setProperty(entry, QStringLiteral("K"), rowValue(matIndex, 69));
+            setProperty(entry, QStringLiteral("n"), rowValue(matIndex, 70));
+
+            if (ib == -1)
+            {
+                setProperty(entry, QStringLiteral("Kur"), rowValue(matIndex, 72));
+                setProperty(entry, QStringLiteral("Kb"), rowValue(matIndex, 74));
+                setProperty(entry, QStringLiteral("m"), rowValue(matIndex, 75));
+            }
+            else if (ib == -3)
+            {
+                setProperty(entry, QStringLiteral("G"), rowValue(matIndex, 77));
+                setProperty(entry, QStringLiteral("D"), rowValue(matIndex, 78));
+                setProperty(entry, QStringLiteral("F"), rowValue(matIndex, 79));
+            }
+            else if (ib == -5)
+            {
+                setProperty(entry, QStringLiteral("Kur"), rowValue(matIndex, 72));
+                setProperty(entry, QStringLiteral("cd"), rowValue(matIndex, 77));
+                setProperty(entry, QStringLiteral("nd"), rowValue(matIndex, 78));
+                setProperty(entry, QStringLiteral("Rd"), rowValue(matIndex, 79));
+            }
+            else if (ib == -6)
+            {
+                setProperty(entry, QStringLiteral("C1"), rowValue(matIndex, 109));
+                setProperty(entry, QStringLiteral("n1"), rowValue(matIndex, 110));
+                setProperty(entry, QStringLiteral("C2"), rowValue(matIndex, 111));
+                setProperty(entry, QStringLiteral("n2"), rowValue(matIndex, 112));
+                setProperty(entry, QStringLiteral("C3"), rowValue(matIndex, 113));
+                setProperty(entry, QStringLiteral("n3"), rowValue(matIndex, 114));
+            }
+            else if (ib == -2)
+            {
+                setProperty(entry, QStringLiteral("Ki,Kie(10^5Pa)"), rowValue(matIndex, 69));
+                setProperty(entry, QStringLiteral("αk,αke"), rowValue(matIndex, 70));
+                setProperty(entry, QStringLiteral("Gi,Gie(10^5Pa)"), rowValue(matIndex, 74));
+                setProperty(entry, QStringLiteral("αG,αGe"), rowValue(matIndex, 71));
+                setProperty(entry, QStringLiteral("βG"), rowValue(matIndex, 75));
+                setProperty(entry, QStringLiteral("a(10^5Pa)"), rowValue(matIndex, 72));
+                setProperty(entry, QStringLiteral("b"), rowValue(matIndex, 73));
+            }
+        }
+
+        entry.appliedMatypes.insert(matype);
+        model->materials.append(entry);
+        m_addedEntryIds.insert(entry.id);
+        m_matypeOwnerById.insert(matype, entry.id);
+        ++count;
+    }
+
+    if (count <= 0)
+    {
+        if (error)
+        {
+            *error = QStringLiteral("IMAT.DAT 中未发现可创建的材料列。");
+        }
+        return false;
+    }
+
+    ensureEntryIds();
+    notifyLibraryChanged(true);
+    if (importedCount)
+    {
+        *importedCount = count;
+    }
     return true;
 }
 
