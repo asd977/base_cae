@@ -35,6 +35,8 @@ class ProjectSetupDialog : public QDialog
         connect(m_browseButton, &QPushButton::clicked, this,
                 &ProjectSetupDialog::browseProjectPath);
         connect(m_okButton, &QPushButton::clicked, this, &ProjectSetupDialog::onOkClicked);
+        connect(m_openProjectButton, &QPushButton::clicked, this,
+                &ProjectSetupDialog::onOpenProjectClicked);
         connect(m_cancelButton, &QPushButton::clicked, this, &QDialog::reject);
     }
 
@@ -45,6 +47,11 @@ class ProjectSetupDialog : public QDialog
     QString projectPath() const
     {
         return m_pathEdit->text().trimmed();
+    }
+
+    bool shouldOpenProject() const
+    {
+        return m_openProjectRequested;
     }
 
   private slots:
@@ -58,6 +65,12 @@ class ProjectSetupDialog : public QDialog
         {
             m_pathEdit->setText(QDir::toNativeSeparators(dir));
         }
+    }
+
+    void onOpenProjectClicked()
+    {
+        m_openProjectRequested = true;
+        accept();
     }
 
     void onOkClicked()
@@ -138,6 +151,7 @@ class ProjectSetupDialog : public QDialog
         m_pathEdit->setPlaceholderText("请选择项目路径");
 
         m_browseButton = new QPushButton("浏览...");
+        m_openProjectButton = new QPushButton("打开工程...");
         m_okButton = new QPushButton("确定");
         m_cancelButton = new QPushButton("取消");
         m_defaultWorkDirCheck = new QCheckBox("设为默认工作路径");
@@ -158,6 +172,7 @@ class ProjectSetupDialog : public QDialog
 
         // 按钮布局
         QHBoxLayout* buttonLayout = new QHBoxLayout;
+        buttonLayout->addWidget(m_openProjectButton);
         buttonLayout->addStretch();
         buttonLayout->addWidget(m_okButton);
         buttonLayout->addWidget(m_cancelButton);
@@ -175,7 +190,9 @@ class ProjectSetupDialog : public QDialog
     QLineEdit* m_nameEdit;
     QLineEdit* m_pathEdit;
     QPushButton* m_browseButton;
+    QPushButton* m_openProjectButton;
     QPushButton* m_okButton;
     QPushButton* m_cancelButton;
     QCheckBox* m_defaultWorkDirCheck;
+    bool m_openProjectRequested = false;
 };

@@ -331,11 +331,19 @@ void ProjectManager::saveProject()
 void ProjectManager::newProject()
 {
     ProjectSetupDialog dialog;
-    if (dialog.exec() == QDialog::Accepted)
+    if (dialog.exec() != QDialog::Accepted)
     {
-        m_projectName = dialog.projectName();
-        m_projectPath = dialog.projectPath();
+        return;
     }
+
+    if (dialog.shouldOpenProject())
+    {
+        openProject();
+        return;
+    }
+
+    m_projectName = dialog.projectName();
+    m_projectPath = dialog.projectPath();
     if (m_projectName == "" || m_projectPath == "")
     {
         return;
