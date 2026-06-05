@@ -78,6 +78,7 @@ class MaterialManager : public QObject, public MaterialManagerService
                                    int selectedMatype);
 
     bool generateCaculateFile();
+    bool importIMATFile(const QString& filePath, int* importedCount = nullptr, QString* error = nullptr);
 
     QVector<QStringList> getValueStrings();
     void setValueStrings(QVector<QStringList> values);
