@@ -25,13 +25,16 @@ class GeoStressOuterForcePage : public BasePage
 
   private slots:
     void onClearClicked();
+    void onBatchAddClicked();
+    void onGroupHovered(int row);
 
   private:
     PickMode currentPickMode() const;
+    void refreshGroupCombo();
 
   private:
-    QComboBox* m_pickModeCombo = nullptr;
-    QComboBox* m_forceEnabledCombo = nullptr;
+    QComboBox* m_groupCombo = nullptr;
+    QPushButton* m_batchAddBtn = nullptr;
     QLineEdit* m_fxEdit = nullptr;
     QLineEdit* m_fyEdit = nullptr;
     QLineEdit* m_fzEdit = nullptr;

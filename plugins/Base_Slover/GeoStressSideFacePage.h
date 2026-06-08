@@ -35,13 +35,17 @@ class GeoStressSideFacePage : public BasePage
 
   private slots:
     void onClearClicked();
+    void onBatchAddClicked();
+    void onGroupHovered(int row);
 
   private:
     PickMode currentPickMode() const;
+    void refreshGroupCombo();
 
   private:
     int m_faceIndex = 1;
-    QComboBox* m_pickModeCombo = nullptr;
+    QComboBox* m_groupCombo = nullptr;
+    QPushButton* m_batchAddBtn = nullptr;
     QLineEdit* m_idirEdit = nullptr;
     QLineEdit* m_heightEdit = nullptr;
     QLineEdit* m_gamaEdit = nullptr;

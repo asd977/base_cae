@@ -2,6 +2,10 @@
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <CustomComboBox.h>
+#include <ServiceRegistry.h>
+#include <services/MeshModuleControllerService.h>
+#include <struct/MeshMap.h>
 #include <vtkCell.h>
 #include <vtkCellData.h>
 #include <vtkDataArray.h>
@@ -29,6 +33,41 @@ struct EdgeRow
     int jd1 = 0;
     int jd2 = 0;
 };
+
+QVector<vtkIdType> toVtkKeys(const QVector<MeshIdType>& ids)
+{
+    QVector<vtkIdType> out;
+    out.reserve(ids.size());
+    for (MeshIdType id : ids)
+        out.push_back(static_cast<vtkIdType>(id));
+    return out;
+}
+
+MeshTagKey comboTagKey(QComboBox* combo, int row)
+{
+    if (!combo || row < 0)
+        return {};
+    return combo->itemData(row).value<MeshTagKey>();
+}
+
+QString boundaryDisplayText(MeshModuleControllerService* meshSvc, const MeshTagSet& set)
+{
+    QString text = meshSvc ? meshSvc->displayTextOfTag(set.key) : set.name.trimmed();
+    if (text.trimmed().isEmpty())
+        text = QStringLiteral("边界%1").arg(set.key.id);
+    return text;
+}
+
+MeshTagSet findBoundarySet(MeshModuleControllerService* meshSvc, const MeshTagKey& key)
+{
+    if (!meshSvc || !key.isValid())
+        return {};
+    const QVector<MeshTagSet> sets = meshSvc->boundaryTagSets(key.dim);
+    for (const MeshTagSet& set : sets)
+        if (set.key == key)
+            return set;
+    return {};
+}
 
 QVector<EdgeRow> collectRows(vtkUnstructuredGrid* grid, const QString& domain, const QString& uuid,
                              PickMode mode)
@@ -114,30 +153,38 @@ GeoStressOuterForcePage::GeoStressOuterForcePage(QWidget* parent)
 {
     Q_UNUSED(parent);
     auto* form = new QFormLayout(this);
-    m_pickModeCombo = new QComboBox(this);
-    m_pickModeCombo->addItem("2D选线", "edge");
-    m_pickModeCombo->addItem("3D选面", "face");
+    m_groupCombo = new CustomComboBox(this);
+    m_batchAddBtn = new QPushButton("添加分组", this);
     m_clearBtn = new QPushButton("清空所选", this);
-    m_forceEnabledCombo = new QComboBox(this);
-    m_forceEnabledCombo->addItem("0 - 不考虑", 0);
-    m_forceEnabledCombo->addItem("1 - 考虑", 1);
     m_fxEdit = new QLineEdit("0", this);
     m_fyEdit = new QLineEdit("0", this);
     m_fzEdit = new QLineEdit("0", this);
 
-    form->addRow("拾取模式", m_pickModeCombo);
+    form->addRow("批量选择", m_groupCombo);
+    form->addRow("", m_batchAddBtn);
     form->addRow("", m_clearBtn);
-    form->addRow("是否考虑外面力", m_forceEnabledCombo);
     form->addRow("FX", m_fxEdit);
     form->addRow("FY", m_fyEdit);
     form->addRow("FZ", m_fzEdit);
 
     connect(m_clearBtn, &QPushButton::clicked, this, &GeoStressOuterForcePage::onClearClicked);
+    connect(m_batchAddBtn, &QPushButton::clicked, this, &GeoStressOuterForcePage::onBatchAddClicked);
+    if (auto* groupCombo = qobject_cast<CustomComboBox*>(m_groupCombo))
+    {
+        connect(groupCombo, &CustomComboBox::itemHovered, this, &GeoStressOuterForcePage::onGroupHovered);
+        connect(groupCombo, &CustomComboBox::dropdownClosed, this,
+                [this]()
+                {
+                    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid,
+                                                                  currentPickMode());
+                });
+    }
 }
 
 void GeoStressOuterForcePage::beforeLoad()
 {
     PickManager::instance().activate(getPageType(), m_uuid, currentPickMode());
+    refreshGroupCombo();
 }
 
 void GeoStressOuterForcePage::beforeUnload()
@@ -149,8 +196,7 @@ void GeoStressOuterForcePage::beforeUnload()
 QJsonObject GeoStressOuterForcePage::saveJson()
 {
     QJsonObject obj;
-    obj["pick_mode"] = m_pickModeCombo->currentData().toString();
-    obj["force_enabled"] = m_forceEnabledCombo->currentData().toInt();
+    obj["pick_mode"] = currentPickMode() == PickMode::Face ? "face" : "edge";
     obj["fx"] = m_fxEdit->text().trimmed();
     obj["fy"] = m_fyEdit->text().trimmed();
     obj["fz"] = m_fzEdit->text().trimmed();
@@ -170,14 +216,6 @@ QJsonObject GeoStressOuterForcePage::saveJson()
 
 void GeoStressOuterForcePage::loadJson(const QJsonObject& obj)
 {
-    const int modeIdx = m_pickModeCombo->findData(obj.value("pick_mode").toString("edge"));
-    if (modeIdx >= 0)
-        m_pickModeCombo->setCurrentIndex(modeIdx);
-
-    const int enabled = obj.value("force_enabled").toInt(m_forceEnabledCombo->currentData().toInt());
-    const int idx = m_forceEnabledCombo->findData(enabled);
-    if (idx >= 0)
-        m_forceEnabledCombo->setCurrentIndex(idx);
     m_fxEdit->setText(obj.value("fx").toString(m_fxEdit->text()));
     m_fyEdit->setText(obj.value("fy").toString(m_fyEdit->text()));
     m_fzEdit->setText(obj.value("fz").toString(m_fzEdit->text()));
@@ -204,7 +242,7 @@ QString GeoStressOuterForcePage::forceFile() const
 
 int GeoStressOuterForcePage::forceEnabled() const
 {
-    return m_forceEnabledCombo->currentData().toInt();
+    return 1;
 }
 
 bool GeoStressOuterForcePage::exportDatFiles() const
@@ -275,7 +313,60 @@ void GeoStressOuterForcePage::onClearClicked()
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
 }
 
+void GeoStressOuterForcePage::onBatchAddClicked()
+{
+    if (!m_groupCombo || m_groupCombo->currentIndex() < 0)
+        return;
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshSvc)
+        return;
+
+    const MeshTagSet set = findBoundarySet(meshSvc, comboTagKey(m_groupCombo, m_groupCombo->currentIndex()));
+    if (currentPickMode() == PickMode::Face)
+        PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
+                                                    toVtkKeys(set.faceKeys), false);
+    else
+        PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
+                                                    toVtkKeys(set.edgeKeys), false);
+}
+
+void GeoStressOuterForcePage::onGroupHovered(int row)
+{
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshSvc || row < 0)
+        return;
+    const MeshTagSet set = findBoundarySet(meshSvc, comboTagKey(m_groupCombo, row));
+    if (currentPickMode() == PickMode::Face)
+        PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid, GridKind::Solid,
+                                                   toVtkKeys(set.faceKeys));
+    else
+        PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
+                                                   toVtkKeys(set.edgeKeys));
+}
+
 PickMode GeoStressOuterForcePage::currentPickMode() const
 {
-    return m_pickModeCombo->currentData().toString() == "face" ? PickMode::Face : PickMode::Edge;
+    const int ndim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    return ndim == 2 ? PickMode::Edge : PickMode::Face;
+}
+
+void GeoStressOuterForcePage::refreshGroupCombo()
+{
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshSvc || !m_groupCombo)
+        return;
+
+    const int wantDim = currentPickMode() == PickMode::Face ? 2 : 1;
+    const QVector<MeshTagSet> sets = meshSvc->boundaryTagSets(wantDim);
+    m_groupCombo->blockSignals(true);
+    m_groupCombo->clear();
+    for (const MeshTagSet& set : sets)
+    {
+        if (wantDim == 1 && set.edgeKeys.isEmpty())
+            continue;
+        if (wantDim == 2 && set.faceKeys.isEmpty())
+            continue;
+        m_groupCombo->addItem(boundaryDisplayText(meshSvc, set), QVariant::fromValue(set.key));
+    }
+    m_groupCombo->blockSignals(false);
 }
