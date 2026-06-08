@@ -7,7 +7,6 @@
 #include <vtkUnstructuredGrid.h>
 
 #include <algorithm>
-#include <cmath>
 #include <functional>
 #include <limits>
 
@@ -400,15 +399,6 @@ vtkIdType GeoStressMeasurePointPage::resolvePointIdByCoordinates(const QString& 
     if (!grid || grid->GetNumberOfPoints() <= 0)
         return -1;
 
-    double bounds[6] = {0, 0, 0, 0, 0, 0};
-    grid->GetBounds(bounds);
-    const double dx = bounds[1] - bounds[0];
-    const double dy = bounds[3] - bounds[2];
-    const double dz = bounds[5] - bounds[4];
-    const double diag = std::sqrt(dx * dx + dy * dy + dz * dz);
-    const double tol = std::max(1.0e-8, diag * 1.0e-8);
-    const double tol2 = tol * tol;
-
     vtkIdType bestPid = -1;
     double bestDist2 = std::numeric_limits<double>::max();
     for (vtkIdType pid = 0; pid < grid->GetNumberOfPoints(); ++pid)
@@ -426,7 +416,7 @@ vtkIdType GeoStressMeasurePointPage::resolvePointIdByCoordinates(const QString& 
         }
     }
 
-    if (bestPid < 0 || bestDist2 > tol2)
+    if (bestPid < 0)
         return -1;
 
     if (nodeId)
