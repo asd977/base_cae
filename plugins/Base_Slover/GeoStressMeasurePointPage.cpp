@@ -6,31 +6,53 @@
 #include <vtkPointData.h>
 #include <vtkUnstructuredGrid.h>
 
+#include <algorithm>
+#include <functional>
+
+#include <QAbstractItemView>
 #include <QCheckBox>
 #include <QFile>
 #include <QFileDialog>
-#include <QFormLayout>
 #include <QGroupBox>
+#include <QHeaderView>
 #include <QHBoxLayout>
 #include <QJsonArray>
+#include <QJsonObject>
 #include <QLabel>
-#include <QLineEdit>
+#include <QList>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QStringList>
+#include <QTableWidget>
+#include <QTableWidgetItem>
 #include <QTextStream>
 #include <QVBoxLayout>
 
 namespace
 {
-QString valueOrZero(const QLineEdit* edit)
+QString valueOrZero(const QString& text)
 {
-    const QString value = edit ? edit->text().trimmed() : QString();
+    const QString value = text.trimmed();
     return value.isEmpty() ? QStringLiteral("0") : value;
 }
 
 QStringList splitDataLine(const QString& line)
 {
     return line.trimmed().split(QRegularExpression(QStringLiteral("[,\\s]+")), Qt::SkipEmptyParts);
+}
+
+bool isNumericRow(const QStringList& values, int count)
+{
+    if (values.size() < count)
+        return false;
+    for (int i = 0; i < count; ++i)
+    {
+        bool ok = false;
+        values.value(i).toDouble(&ok);
+        if (!ok)
+            return false;
+    }
+    return true;
 }
 }
 
@@ -44,58 +66,55 @@ GeoStressMeasurePointPage::GeoStressMeasurePointPage(QWidget* parent)
     auto* pickLayout = new QVBoxLayout(pickGroup);
     auto* pickHintLabel = new QLabel("提示：Shift+拖拽框选，Ctrl+拖拽取消选择", pickGroup);
     pickHintLabel->setWordWrap(true);
+    m_dimensionHintLabel = new QLabel(pickGroup);
+    m_dimensionHintLabel->setWordWrap(true);
 
-    m_pointIdEdit = new QLineEdit(pickGroup);
-    m_pointIdEdit->setReadOnly(true);
-    m_clearBtn = new QPushButton("清空所选", pickGroup);
     m_pickEnableCheckBox = new QCheckBox("开启点选", pickGroup);
-
-    auto* pointRow = new QHBoxLayout;
-    pointRow->addWidget(new QLabel("实测点", pickGroup));
-    pointRow->addWidget(m_pointIdEdit, 1);
-    pointRow->addWidget(m_clearBtn);
+    m_addManualRowBtn = new QPushButton("添加手动行", pickGroup);
+    m_appendSelectedPointsBtn = new QPushButton("添加当前选择", pickGroup);
+    m_importBtn = new QPushButton("导入数据", pickGroup);
+    m_removeRowsBtn = new QPushButton("移除选中", pickGroup);
+    m_clearBtn = new QPushButton("清空全部", pickGroup);
 
     auto* actionRow = new QHBoxLayout;
     actionRow->addWidget(m_pickEnableCheckBox);
     actionRow->addStretch(1);
+    actionRow->addWidget(m_addManualRowBtn);
+    actionRow->addWidget(m_appendSelectedPointsBtn);
+    actionRow->addWidget(m_importBtn);
+    actionRow->addWidget(m_removeRowsBtn);
+    actionRow->addWidget(m_clearBtn);
 
     pickLayout->addWidget(pickHintLabel);
-    pickLayout->addLayout(pointRow);
+    pickLayout->addWidget(m_dimensionHintLabel);
     pickLayout->addLayout(actionRow);
     mainLayout->addWidget(pickGroup);
 
     auto* dataGroup = new QGroupBox("实测地应力数据", this);
-    auto* form = new QFormLayout(dataGroup);
-    m_xEdit = new QLineEdit("0", dataGroup);
-    m_yEdit = new QLineEdit("0", dataGroup);
-    m_zEdit = new QLineEdit("0", dataGroup);
-    m_sgxEdit = new QLineEdit("0", dataGroup);
-    m_sgyEdit = new QLineEdit("0", dataGroup);
-    m_sgzEdit = new QLineEdit("0", dataGroup);
-    m_txyEdit = new QLineEdit("0", dataGroup);
-    m_tyzEdit = new QLineEdit("0", dataGroup);
-    m_tzxEdit = new QLineEdit("0", dataGroup);
-    m_importBtn = new QPushButton("导入数据", dataGroup);
-
-    form->addRow("XP", m_xEdit);
-    form->addRow("YP", m_yEdit);
-    m_zLabel = new QLabel("ZP", dataGroup);
-    form->addRow(m_zLabel, m_zEdit);
-    form->addRow("SGX", m_sgxEdit);
-    form->addRow("SGY", m_sgyEdit);
-    m_sgzLabel = new QLabel("SGZ", dataGroup);
-    form->addRow(m_sgzLabel, m_sgzEdit);
-    form->addRow("TXY", m_txyEdit);
-    m_tyzLabel = new QLabel("TYZ", dataGroup);
-    form->addRow(m_tyzLabel, m_tyzEdit);
-    m_tzxLabel = new QLabel("TZX", dataGroup);
-    form->addRow(m_tzxLabel, m_tzxEdit);
-    form->addRow("", m_importBtn);
-    mainLayout->addWidget(dataGroup);
-    mainLayout->addStretch(1);
+    auto* dataLayout = new QVBoxLayout(dataGroup);
+    m_table = new QTableWidget(0, ColCount, dataGroup);
+    m_table->setHorizontalHeaderLabels(QStringList() << "点号" << "XP" << "YP" << "ZP" << "SGX"
+                                             << "SGY" << "SGZ" << "TXY" << "TYZ" << "TZX"
+                                             << "pid");
+    m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_table->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    m_table->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed |
+                             QAbstractItemView::SelectedClicked);
+    m_table->horizontalHeader()->setStretchLastSection(false);
+    m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_table->horizontalHeader()->setSectionResizeMode(ColX, QHeaderView::Stretch);
+    m_table->horizontalHeader()->setSectionResizeMode(ColY, QHeaderView::Stretch);
+    m_table->setColumnHidden(ColPid, true);
+    dataLayout->addWidget(m_table);
+    mainLayout->addWidget(dataGroup, 1);
 
     connect(m_clearBtn, &QPushButton::clicked, this, &GeoStressMeasurePointPage::onClearClicked);
     connect(m_importBtn, &QPushButton::clicked, this, &GeoStressMeasurePointPage::onImportClicked);
+    connect(m_addManualRowBtn, &QPushButton::clicked, this,
+            &GeoStressMeasurePointPage::onAddManualRowClicked);
+    connect(m_appendSelectedPointsBtn, &QPushButton::clicked, this,
+            &GeoStressMeasurePointPage::onAppendSelectedPointsClicked);
+    connect(m_removeRowsBtn, &QPushButton::clicked, this, &GeoStressMeasurePointPage::onRemoveRowsClicked);
     connect(m_pickEnableCheckBox, &QCheckBox::toggled, this,
             [this](bool on)
             {
@@ -114,6 +133,7 @@ void GeoStressMeasurePointPage::beforeLoad()
         m_pickEnableCheckBox->setChecked(false);
     PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
     applyDimensionUi();
+    syncPickedPointIds();
 }
 
 void GeoStressMeasurePointPage::beforeUnload()
@@ -128,76 +148,96 @@ void GeoStressMeasurePointPage::beforeUnload()
 QJsonObject GeoStressMeasurePointPage::saveJson()
 {
     QJsonObject obj;
-    obj["x"] = m_xEdit->text().trimmed();
-    obj["y"] = m_yEdit->text().trimmed();
-    obj["z"] = m_zEdit->text().trimmed();
-    obj["sgx"] = m_sgxEdit->text().trimmed();
-    obj["sgy"] = m_sgyEdit->text().trimmed();
-    obj["sgz"] = m_sgzEdit->text().trimmed();
-    obj["txy"] = m_txyEdit->text().trimmed();
-    obj["tyz"] = m_tyzEdit->text().trimmed();
-    obj["tzx"] = m_tzxEdit->text().trimmed();
-
-    QJsonArray arr;
-    for (vtkIdType id : PickManager::instance().getSelectedPointIds(getPageType(), m_uuid, GridKind::Solid))
-        arr.append(qint64(id));
-    obj["picked_points"] = arr;
-
+    QJsonArray rows;
+    for (int row = 0; row < m_table->rowCount(); ++row)
+    {
+        QJsonObject item;
+        item["node_id"] = cellText(row, ColNodeId);
+        item["x"] = cellText(row, ColX);
+        item["y"] = cellText(row, ColY);
+        item["z"] = cellText(row, ColZ);
+        item["sgx"] = cellText(row, ColSgx);
+        item["sgy"] = cellText(row, ColSgy);
+        item["sgz"] = cellText(row, ColSgz);
+        item["txy"] = cellText(row, ColTxy);
+        item["tyz"] = cellText(row, ColTyz);
+        item["tzx"] = cellText(row, ColTzx);
+        item["pid"] = cellText(row, ColPid);
+        rows.append(item);
+    }
+    obj["measure_points"] = rows;
     return obj;
 }
 
 void GeoStressMeasurePointPage::loadJson(const QJsonObject& obj)
 {
-    m_xEdit->setText(obj.value("x").toString(m_xEdit->text()));
-    m_yEdit->setText(obj.value("y").toString(m_yEdit->text()));
-    m_zEdit->setText(obj.value("z").toString(m_zEdit->text()));
-    m_sgxEdit->setText(obj.value("sgx").toString(m_sgxEdit->text()));
-    m_sgyEdit->setText(obj.value("sgy").toString(m_sgyEdit->text()));
-    m_sgzEdit->setText(obj.value("sgz").toString(m_sgzEdit->text()));
-    m_txyEdit->setText(obj.value("txy").toString(m_txyEdit->text()));
-    m_tyzEdit->setText(obj.value("tyz").toString(m_tyzEdit->text()));
-    m_tzxEdit->setText(obj.value("tzx").toString(m_tzxEdit->text()));
-
-    QVector<vtkIdType> ids;
-    for (const auto& v : obj.value("picked_points").toArray())
-        ids.push_back(v.toVariant().toLongLong());
-    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, ids, true);
-
-    m_pointIdEdit->setText(ids.isEmpty() ? QString() : QString::number(ids.first()));
-    if (!obj.contains("x") && !ids.isEmpty())
+    m_table->setRowCount(0);
+    const QJsonArray rows = obj.value("measure_points").toArray();
+    for (const auto& value : rows)
     {
-        vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
-        const vtkIdType pid = ids.first();
-        if (grid && pid >= 0 && pid < grid->GetNumberOfPoints())
-        {
-            double xyz[3] = {0, 0, 0};
-            grid->GetPoint(pid, xyz);
-            setCoordinateValues(xyz[0], xyz[1], xyz[2]);
-        }
+        const QJsonObject item = value.toObject();
+        appendRow(item.value("node_id").toString(), item.value("x").toString("0"),
+                  item.value("y").toString("0"), item.value("z").toString("0"),
+                  item.value("sgx").toString("0"), item.value("sgy").toString("0"),
+                  item.value("sgz").toString("0"), item.value("txy").toString("0"),
+                  item.value("tyz").toString("0"), item.value("tzx").toString("0"),
+                  item.value("pid").toString("-1").toLongLong());
     }
+
+    // 兼容旧工程：旧版本仅保存单个测点字段和 picked_points。
+    if (rows.isEmpty() && (obj.contains("sgx") || obj.contains("picked_points")))
+    {
+        QString nodeId;
+        vtkIdType pid = -1;
+        const QJsonArray picked = obj.value("picked_points").toArray();
+        if (!picked.isEmpty())
+        {
+            pid = picked.first().toVariant().toLongLong();
+            nodeId = QString::number(pid);
+        }
+        appendRow(nodeId, obj.value("x").toString("0"), obj.value("y").toString("0"),
+                  obj.value("z").toString("0"), obj.value("sgx").toString("0"),
+                  obj.value("sgy").toString("0"), obj.value("sgz").toString("0"),
+                  obj.value("txy").toString("0"), obj.value("tyz").toString("0"),
+                  obj.value("tzx").toString("0"), pid);
+    }
+
     applyDimensionUi();
+    syncPickedPointIds();
 }
 
 GeoStressMeasurePointPage::MeasurePoint GeoStressMeasurePointPage::point() const
 {
-    MeasurePoint p;
-    p.x = valueOrZero(m_xEdit);
-    p.y = valueOrZero(m_yEdit);
-    p.z = valueOrZero(m_zEdit);
-    p.sgx = valueOrZero(m_sgxEdit);
-    p.sgy = valueOrZero(m_sgyEdit);
-    p.sgz = valueOrZero(m_sgzEdit);
-    p.txy = valueOrZero(m_txyEdit);
-    p.tyz = valueOrZero(m_tyzEdit);
-    p.tzx = valueOrZero(m_tzxEdit);
-    return p;
+    const QVector<MeasurePoint> all = points();
+    return all.isEmpty() ? MeasurePoint{} : all.first();
+}
+
+QVector<GeoStressMeasurePointPage::MeasurePoint> GeoStressMeasurePointPage::points() const
+{
+    QVector<MeasurePoint> out;
+    out.reserve(m_table->rowCount());
+    for (int row = 0; row < m_table->rowCount(); ++row)
+    {
+        MeasurePoint p;
+        p.x = valueOrZero(cellText(row, ColX));
+        p.y = valueOrZero(cellText(row, ColY));
+        p.z = valueOrZero(cellText(row, ColZ));
+        p.sgx = valueOrZero(cellText(row, ColSgx));
+        p.sgy = valueOrZero(cellText(row, ColSgy));
+        p.sgz = valueOrZero(cellText(row, ColSgz));
+        p.txy = valueOrZero(cellText(row, ColTxy));
+        p.tyz = valueOrZero(cellText(row, ColTyz));
+        p.tzx = valueOrZero(cellText(row, ColTzx));
+        out.push_back(p);
+    }
+    return out;
 }
 
 void GeoStressMeasurePointPage::onClearClicked()
 {
+    m_table->setRowCount(0);
     PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Node);
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Node);
-    m_pointIdEdit->clear();
 }
 
 void GeoStressMeasurePointPage::onImportClicked()
@@ -217,9 +257,36 @@ void GeoStressMeasurePointPage::onImportClicked()
         const QString line = in.readLine().trimmed();
         if (line.isEmpty() || line.startsWith('#'))
             continue;
-        if (applyImportedValues(splitDataLine(line)))
-            return;
+        appendImportedValues(splitDataLine(line));
     }
+    syncPickedPointIds();
+}
+
+void GeoStressMeasurePointPage::onAddManualRowClicked()
+{
+    appendRow(QString(), "0", "0", currentDimension() == 3 ? "0" : "0", "0", "0", "0", "0", "0", "0");
+}
+
+void GeoStressMeasurePointPage::onAppendSelectedPointsClicked()
+{
+    const auto ids = PickManager::instance().getSelectedPointIds(getPageType(), m_uuid, GridKind::Solid);
+    for (vtkIdType pid : ids)
+        appendPointByPid(pid);
+    syncPickedPointIds();
+}
+
+void GeoStressMeasurePointPage::onRemoveRowsClicked()
+{
+    QList<int> rows;
+    const auto ranges = m_table->selectedRanges();
+    for (const QTableWidgetSelectionRange& range : ranges)
+        for (int row = range.topRow(); row <= range.bottomRow(); ++row)
+            rows.push_back(row);
+    std::sort(rows.begin(), rows.end(), std::greater<int>());
+    rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
+    for (int row : rows)
+        m_table->removeRow(row);
+    syncPickedPointIds();
 }
 
 void GeoStressMeasurePointPage::onNodePicked(const QString& domain, const QString& activeUuid,
@@ -229,10 +296,13 @@ void GeoStressMeasurePointPage::onNodePicked(const QString& domain, const QStrin
     if (domain != getPageType() || activeUuid != m_uuid)
         return;
 
-    m_pointIdEdit->setText(QString::number(nodeId));
-    setCoordinateValues(x, y, z);
-    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid,
-                                                QVector<vtkIdType>{pid}, true);
+    Q_UNUSED(nodeId);
+    Q_UNUSED(x);
+    Q_UNUSED(y);
+    Q_UNUSED(z);
+
+    appendPointByPid(pid);
+    syncPickedPointIds();
 }
 
 int GeoStressMeasurePointPage::currentDimension() const
@@ -243,63 +313,116 @@ int GeoStressMeasurePointPage::currentDimension() const
 void GeoStressMeasurePointPage::applyDimensionUi()
 {
     const bool is3D = currentDimension() == 3;
-    if (m_zLabel)
-        m_zLabel->setVisible(is3D);
-    if (m_zEdit)
-        m_zEdit->setVisible(is3D);
-    if (m_sgzLabel)
-        m_sgzLabel->setVisible(is3D);
-    if (m_sgzEdit)
-        m_sgzEdit->setVisible(is3D);
-    if (m_tyzLabel)
-        m_tyzLabel->setVisible(is3D);
-    if (m_tyzEdit)
-        m_tyzEdit->setVisible(is3D);
-    if (m_tzxLabel)
-        m_tzxLabel->setVisible(is3D);
-    if (m_tzxEdit)
-        m_tzxEdit->setVisible(is3D);
+    if (m_dimensionHintLabel)
+    {
+        m_dimensionHintLabel->setText(
+            is3D ? QStringLiteral("三维格式：XP YP ZP SGX SGY SGZ TXY TYZ TZX")
+                 : QStringLiteral("二维格式：XP YP SGX SGY TXY"));
+    }
+    if (!m_table)
+        return;
+    m_table->setColumnHidden(ColZ, !is3D);
+    m_table->setColumnHidden(ColSgz, !is3D);
+    m_table->setColumnHidden(ColTyz, !is3D);
+    m_table->setColumnHidden(ColTzx, !is3D);
+    m_table->setColumnHidden(ColPid, true);
 }
 
-bool GeoStressMeasurePointPage::applyImportedValues(const QStringList& values)
+bool GeoStressMeasurePointPage::appendImportedValues(const QStringList& values)
 {
     const int dim = currentDimension();
     const int minColumns = dim == 3 ? 9 : 5;
-    if (values.size() < minColumns)
+    if (!isNumericRow(values, minColumns))
         return false;
 
-    for (int col = 0; col < minColumns; ++col)
-    {
-        bool ok = false;
-        values.value(col).toDouble(&ok);
-        if (!ok)
-            return false;
-    }
-
     int i = 0;
-    m_xEdit->setText(values.value(i++));
-    m_yEdit->setText(values.value(i++));
-    if (dim == 3)
-        m_zEdit->setText(values.value(i++));
-    else
-        m_zEdit->setText("0");
-    m_sgxEdit->setText(values.value(i++));
-    m_sgyEdit->setText(values.value(i++));
-    if (dim == 3)
-        m_sgzEdit->setText(values.value(i++));
-    m_txyEdit->setText(values.value(i++));
-    if (dim == 3)
-    {
-        m_tyzEdit->setText(values.value(i++));
-        m_tzxEdit->setText(values.value(i++));
-    }
-    applyDimensionUi();
+    const QString x = values.value(i++);
+    const QString y = values.value(i++);
+    const QString z = dim == 3 ? values.value(i++) : QStringLiteral("0");
+    const QString sgx = values.value(i++);
+    const QString sgy = values.value(i++);
+    const QString sgz = dim == 3 ? values.value(i++) : QStringLiteral("0");
+    const QString txy = values.value(i++);
+    const QString tyz = dim == 3 ? values.value(i++) : QStringLiteral("0");
+    const QString tzx = dim == 3 ? values.value(i++) : QStringLiteral("0");
+    appendRow(QString(), x, y, z, sgx, sgy, sgz, txy, tyz, tzx);
     return true;
 }
 
-void GeoStressMeasurePointPage::setCoordinateValues(double x, double y, double z)
+bool GeoStressMeasurePointPage::appendPointByPid(vtkIdType pid)
 {
-    m_xEdit->setText(QString::number(x, 'g', 12));
-    m_yEdit->setText(QString::number(y, 'g', 12));
-    m_zEdit->setText(currentDimension() == 3 ? QString::number(z, 'g', 12) : QStringLiteral("0"));
+    for (int row = 0; row < m_table->rowCount(); ++row)
+    {
+        bool ok = false;
+        const qlonglong existingPid = cellText(row, ColPid).toLongLong(&ok);
+        if (ok && existingPid == pid)
+            return false;
+    }
+
+    vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
+    if (!grid || pid < 0 || pid >= grid->GetNumberOfPoints())
+        return false;
+
+    double xyz[3] = {0, 0, 0};
+    grid->GetPoint(pid, xyz);
+
+    QString nodeId = QString::number(pid);
+    if (auto* nodeIdArr = vtkDataArray::SafeDownCast(grid->GetPointData()->GetArray("node_id")))
+        nodeId = QString::number(int(nodeIdArr->GetTuple1(pid)));
+
+    appendRow(nodeId, QString::number(xyz[0], 'g', 12), QString::number(xyz[1], 'g', 12),
+              currentDimension() == 3 ? QString::number(xyz[2], 'g', 12) : QStringLiteral("0"),
+              "0", "0", "0", "0", "0", "0", pid);
+    return true;
+}
+
+int GeoStressMeasurePointPage::appendRow(const QString& nodeId, const QString& x, const QString& y,
+                                         const QString& z, const QString& sgx, const QString& sgy,
+                                         const QString& sgz, const QString& txy, const QString& tyz,
+                                         const QString& tzx, vtkIdType pid)
+{
+    const int row = m_table->rowCount();
+    m_table->insertRow(row);
+    setCellText(row, ColNodeId, nodeId, false);
+    setCellText(row, ColX, x);
+    setCellText(row, ColY, y);
+    setCellText(row, ColZ, z);
+    setCellText(row, ColSgx, sgx);
+    setCellText(row, ColSgy, sgy);
+    setCellText(row, ColSgz, sgz);
+    setCellText(row, ColTxy, txy);
+    setCellText(row, ColTyz, tyz);
+    setCellText(row, ColTzx, tzx);
+    setCellText(row, ColPid, QString::number(qint64(pid)), false);
+    applyDimensionUi();
+    return row;
+}
+
+QString GeoStressMeasurePointPage::cellText(int row, int col) const
+{
+    const QTableWidgetItem* item = m_table ? m_table->item(row, col) : nullptr;
+    return item ? item->text().trimmed() : QString();
+}
+
+void GeoStressMeasurePointPage::setCellText(int row, int col, const QString& text, bool editable)
+{
+    auto* item = new QTableWidgetItem(text);
+    Qt::ItemFlags flags = item->flags();
+    if (!editable)
+        flags &= ~Qt::ItemIsEditable;
+    item->setFlags(flags);
+    m_table->setItem(row, col, item);
+}
+
+void GeoStressMeasurePointPage::syncPickedPointIds()
+{
+    QVector<vtkIdType> ids;
+    for (int row = 0; row < m_table->rowCount(); ++row)
+    {
+        bool ok = false;
+        const qlonglong pid = cellText(row, ColPid).toLongLong(&ok);
+        if (ok && pid >= 0)
+            ids.push_back(static_cast<vtkIdType>(pid));
+    }
+    PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, ids, true);
 }
