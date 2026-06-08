@@ -21,9 +21,13 @@ class GeoStressRegressionWidget : public BasePage
     {
         QString x;
         QString y;
+        QString z;
         QString sgx;
         QString sgy;
+        QString sgz;
         QString txy;
+        QString tyz;
+        QString tzx;
         QString ii;
     };
     struct FaceAttrRow

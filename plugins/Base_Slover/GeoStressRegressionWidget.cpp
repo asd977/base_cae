@@ -79,10 +79,25 @@ bool GeoStressRegressionWidget::exportIGEOSDatFile(const ExportPayload& payload)
     os << "   1     NCHANGE\n";
     os << "   1     1     1    MACHAN    MACHAN  II\n";
     os << QString("%1    NUM_GEO\n").arg(payload.measureRows.size());
-    os << "X           Y           SGX         SGY         TXY         II\n";
-    for (const auto& row : payload.measureRows)
+    const int ndim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    if (ndim == 2)
     {
-        os << row.x << "   " << row.y << "   " << row.sgx << "   " << row.sgy << "   " << row.txy << "   " << row.ii << "\n";
+        os << "XP          YP          SGX         SGY         TXY         II\n";
+        for (const auto& row : payload.measureRows)
+        {
+            os << row.x << "   " << row.y << "   " << row.sgx << "   " << row.sgy << "   "
+               << row.txy << "   " << row.ii << "\n";
+        }
+    }
+    else
+    {
+        os << "XP          YP          ZP          SGX         SGY         SGZ         TXY         TYZ         TZX         II\n";
+        for (const auto& row : payload.measureRows)
+        {
+            os << row.x << "   " << row.y << "   " << row.z << "   " << row.sgx << "   "
+               << row.sgy << "   " << row.sgz << "   " << row.txy << "   " << row.tyz
+               << "   " << row.tzx << "   " << row.ii << "\n";
+        }
     }
 
     os << QString("%1    NFA_GEO\n").arg(payload.faceRows.size());

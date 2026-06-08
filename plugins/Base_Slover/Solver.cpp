@@ -830,7 +830,8 @@ GeoStressRegressionWidget::ExportPayload Solver::buildGeoStressPayload(ProjectNo
         {
             const auto point = p->point();
             ++measureIndex;
-            payload.measureRows.push_back({point.x, point.y, point.sgx, point.sgy, point.txy, QString::number(measureIndex)});
+            payload.measureRows.push_back({point.x, point.y, point.z, point.sgx, point.sgy, point.sgz,
+                                           point.txy, point.tyz, point.tzx, QString::number(measureIndex)});
         }
         else if (auto* f = dynamic_cast<GeoStressOuterForcePage*>(child->getPage()))
         {
