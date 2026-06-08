@@ -3,6 +3,7 @@
 #include <BasePage.h>
 #include <PickManager.h>
 
+class QCheckBox;
 class QComboBox;
 class QLineEdit;
 class QPushButton;
@@ -39,4 +40,5 @@ class GeoStressOuterForcePage : public BasePage
     QLineEdit* m_fyEdit = nullptr;
     QLineEdit* m_fzEdit = nullptr;
     QPushButton* m_clearBtn = nullptr;
+    QCheckBox* m_pickEnableCheckBox = nullptr;
 };

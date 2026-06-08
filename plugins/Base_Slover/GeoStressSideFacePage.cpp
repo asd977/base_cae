@@ -12,15 +12,20 @@
 #include <vtkPointData.h>
 #include <vtkUnstructuredGrid.h>
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDir>
 #include <QFile>
 #include <QFormLayout>
+#include <QGroupBox>
+#include <QHBoxLayout>
 #include <QJsonArray>
+#include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSet>
 #include <QTextStream>
+#include <QVBoxLayout>
 
 namespace
 {
@@ -156,26 +161,53 @@ GeoStressSideFacePage::GeoStressSideFacePage(QWidget* parent)
     : BasePage("GeoStressRegressionSideFace")
 {
     Q_UNUSED(parent);
-    auto* form = new QFormLayout(this);
+    auto* mainLayout = new QVBoxLayout(this);
 
-    m_groupCombo = new CustomComboBox(this);
-    m_batchAddBtn = new QPushButton("添加分组", this);
-    m_clearBtn = new QPushButton("清空所选", this);
+    auto* selectionGroup = new QGroupBox("边界选择", this);
+    auto* selectionLayout = new QVBoxLayout(selectionGroup);
+    auto* pickHintLabel = new QLabel("提示：Shift+拖拽框选，Ctrl+拖拽取消选择", selectionGroup);
+    pickHintLabel->setWordWrap(true);
 
-    m_idirEdit = new QLineEdit("1", this);
-    m_heightEdit = new QLineEdit("2000.0000", this);
-    m_gamaEdit = new QLineEdit("2650.0000", this);
-    m_pgroutEdit = new QLineEdit("0", this);
-    form->addRow("批量选择", m_groupCombo);
-    form->addRow("", m_batchAddBtn);
-    form->addRow("", m_clearBtn);
+    m_groupCombo = new CustomComboBox(selectionGroup);
+    m_batchAddBtn = new QPushButton("添加分组", selectionGroup);
+    m_clearBtn = new QPushButton("清空所选", selectionGroup);
+    m_pickEnableCheckBox = new QCheckBox("开启点选", selectionGroup);
+
+    auto* groupRow = new QHBoxLayout;
+    groupRow->addWidget(new QLabel("批量选择", selectionGroup));
+    groupRow->addWidget(m_groupCombo, 1);
+    groupRow->addWidget(m_batchAddBtn);
+
+    auto* actionRow = new QHBoxLayout;
+    actionRow->addWidget(m_pickEnableCheckBox);
+    actionRow->addStretch(1);
+    actionRow->addWidget(m_clearBtn);
+
+    selectionLayout->addWidget(pickHintLabel);
+    selectionLayout->addLayout(groupRow);
+    selectionLayout->addLayout(actionRow);
+    mainLayout->addWidget(selectionGroup);
+
+    auto* paramGroup = new QGroupBox("侧立面参数", this);
+    auto* form = new QFormLayout(paramGroup);
+    m_idirEdit = new QLineEdit("1", paramGroup);
+    m_heightEdit = new QLineEdit("2000.0000", paramGroup);
+    m_gamaEdit = new QLineEdit("2650.0000", paramGroup);
+    m_pgroutEdit = new QLineEdit("0", paramGroup);
     form->addRow("剖切方向(IDIR)", m_idirEdit);
     form->addRow("侧压高程(m)", m_heightEdit);
     form->addRow("测压容重(kg/m3)", m_gamaEdit);
     form->addRow("附加矩形常压(Pa)", m_pgroutEdit);
+    mainLayout->addWidget(paramGroup);
+    mainLayout->addStretch(1);
 
     connect(m_clearBtn, &QPushButton::clicked, this, &GeoStressSideFacePage::onClearClicked);
     connect(m_batchAddBtn, &QPushButton::clicked, this, &GeoStressSideFacePage::onBatchAddClicked);
+    connect(m_pickEnableCheckBox, &QCheckBox::toggled, this,
+            [this](bool on)
+            {
+                PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, on);
+            });
     if (auto* groupCombo = qobject_cast<CustomComboBox*>(m_groupCombo))
     {
         connect(groupCombo, &CustomComboBox::itemHovered, this, &GeoStressSideFacePage::onGroupHovered);
@@ -191,12 +223,16 @@ GeoStressSideFacePage::GeoStressSideFacePage(QWidget* parent)
 void GeoStressSideFacePage::beforeLoad()
 {
     PickManager::instance().activate(getPageType(), m_uuid, currentPickMode());
+    if (m_pickEnableCheckBox)
+        m_pickEnableCheckBox->setChecked(false);
+    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
     refreshGroupCombo();
 }
 
 void GeoStressSideFacePage::beforeUnload()
 {
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
     PickManager::instance().deactivate(getPageType(), m_uuid, currentPickMode());
 }
 
