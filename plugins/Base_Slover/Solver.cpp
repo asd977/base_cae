@@ -215,11 +215,6 @@ bool Solver::loadProject()
                 analysisObj.value("title").toString("洞室开挖"),
                 analysisObj.value("uuid").toString(QUuid::createUuid().toString()), cavePage);
             cavePage->loadJson(analysisObj.value("state").toObject());
-            connect(cavePage, &CaveExcavationWidget::computeRequested, this,
-                    [this, analysisNode]()
-                    {
-                        onComputeCaveExcavation(analysisNode);
-                    });
             analysisPage = cavePage;
         }
 
@@ -320,6 +315,14 @@ bool Solver::loadProject()
                         [this, node]()
                         {
                             onComputeGeoStressRegression(node);
+                        });
+            }
+            else if (auto* supportPage = dynamic_cast<CaveSupportComputationPage*>(page))
+            {
+                connect(supportPage, &CaveSupportComputationPage::computeRequested, this,
+                        [this, analysisNode]()
+                        {
+                            onComputeCaveExcavation(analysisNode);
                         });
             }
             else if (auto* blockPage = dynamic_cast<CaveBlockStabilityWidget*>(page))
@@ -867,6 +870,11 @@ void Solver::addCaveSupportComputationNode(ProjectNode* analysisNode, bool setCu
     }
 
     auto* page = new CaveSupportComputationPage();
+    connect(page, &CaveSupportComputationPage::computeRequested, this,
+            [this, analysisNode]()
+            {
+                onComputeCaveExcavation(analysisNode);
+            });
     auto* node = new ProjectNode("开挖和加固计算", QUuid::createUuid().toString(), page);
     setupNodeRole(node, "CaveSupportComputation");
     analysisNode->addChild(node);
@@ -1029,12 +1037,6 @@ void Solver::onCaveExcavationAction()
     const QString analysisName = QString("洞室开挖(%1)").arg(nextCaveExcavationIndex());
     auto* analysisNode = new ProjectNode(analysisName, QUuid::createUuid().toString(), cavePage);
     setupNodeRole(analysisNode, "CaveExcavationAnalysis");
-
-    connect(cavePage, &CaveExcavationWidget::computeRequested, this,
-            [this, analysisNode]()
-            {
-                onComputeCaveExcavation(analysisNode);
-            });
 
     addGeoStressRegressionNode(analysisNode, false);
     addCaveSupportComputationNode(analysisNode, false);
@@ -1205,12 +1207,14 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     QStringList failedFiles;
 
     QString supportCaseSection;
+    CaveSupportComputationPage* supportComputationPage = nullptr;
     QVector<CaveExcavationBodyPage*> excavationBodies;
     for (ProjectNode* child : analysisNode->getChildren())
     {
         auto* supportPage = dynamic_cast<CaveSupportComputationPage*>(child->getPage());
         if (!supportPage)
             continue;
+        supportComputationPage = supportPage;
         supportCaseSection = supportPage->sectionText();
         for (ProjectNode* bodyNode : child->getChildren())
         {
@@ -1227,8 +1231,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         failedFiles << "IIKE_T01-**.DAT";
     }
 
-    auto* cavePage = dynamic_cast<CaveExcavationWidget*>(analysisNode->getPage());
-    if (!cavePage || !cavePage->exportICaveDatFile(supportCaseSection))
+    if (!supportComputationPage || !supportComputationPage->exportICaveDatFile(supportCaseSection))
     {
         ok = false;
         failedFiles << "ICAVE.DAT";

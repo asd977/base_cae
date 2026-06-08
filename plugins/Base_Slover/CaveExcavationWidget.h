@@ -21,16 +21,8 @@ class CaveExcavationWidget : public BasePage
     void beforeLoad() override;
     void beforeUnload() override;
 
-    bool exportICaveDatFile(const QString& supportCaseSection) const;
-
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
-
-  signals:
-    void computeRequested();
-
-  private slots:
-    void onComputeClicked();
 
   private:
     Ui::CaveExcavationWidget* ui;
