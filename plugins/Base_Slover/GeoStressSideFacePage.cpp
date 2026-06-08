@@ -1,8 +1,8 @@
 #include "GeoStressSideFacePage.h"
 
+#include <CustomComboBox.h>
 #include <PublicConstants.h>
 #include <PublicVariables.h>
-#include <CustomComboBox.h>
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
 #include <struct/MeshMap.h>
@@ -11,6 +11,8 @@
 #include <vtkDataArray.h>
 #include <vtkPointData.h>
 #include <vtkUnstructuredGrid.h>
+
+#include <algorithm>
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -35,6 +37,8 @@ struct EdgeRow
     int ke2 = 0;
     int jd1 = 0;
     int jd2 = 0;
+    int jd3 = 0;
+    int jd4 = 0;
 };
 
 QVector<vtkIdType> toVtkKeys(const QVector<MeshIdType>& ids)
@@ -72,14 +76,33 @@ MeshTagSet findBoundarySet(MeshModuleControllerService* meshSvc, const MeshTagKe
     return {};
 }
 
-EdgeRow makeRow(vtkUnstructuredGrid* grid, vtkDataArray* elemIdArr, vtkDataArray* nodeIdArr,
-                vtkIdType cellId, vtkIdType pidA, vtkIdType pidB)
+EdgeRow makeEdgeRow(vtkDataArray* elemIdArr, vtkDataArray* nodeIdArr, vtkIdType cellId,
+                    vtkIdType pidA, vtkIdType pidB)
 {
     EdgeRow row;
     row.ke1 = elemIdArr ? int(elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
     row.ke2 = 0;
     row.jd1 = int(nodeIdArr->GetTuple1(pidA));
     row.jd2 = int(nodeIdArr->GetTuple1(pidB));
+    return row;
+}
+
+EdgeRow makeFaceRow(vtkDataArray* elemIdArr, vtkDataArray* nodeIdArr, vtkIdType cellId,
+                    vtkIdList* ids)
+{
+    EdgeRow row;
+    row.ke1 = elemIdArr ? int(elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
+    row.ke2 = 0;
+
+    const int cornerCount = std::min<int>(ids ? ids->GetNumberOfIds() : 0, 4);
+    if (cornerCount >= 1)
+        row.jd1 = int(nodeIdArr->GetTuple1(ids->GetId(0)));
+    if (cornerCount >= 2)
+        row.jd2 = int(nodeIdArr->GetTuple1(ids->GetId(1)));
+    if (cornerCount >= 3)
+        row.jd3 = int(nodeIdArr->GetTuple1(ids->GetId(2)));
+    if (cornerCount >= 4)
+        row.jd4 = int(nodeIdArr->GetTuple1(ids->GetId(3)));
     return row;
 }
 
@@ -99,8 +122,10 @@ QVector<EdgeRow> collectRows(vtkUnstructuredGrid* grid, const QString& domain, c
     const auto keys = pm.getIdList(domain, uuid, mode, GridKind::Solid);
     for (vtkIdType key : keys)
     {
-        const vtkIdType cellId = (mode == PickMode::Face) ? pm.unpackFaceCellId(key) : pm.unpackEdgeCellId(key);
-        const int localId = (mode == PickMode::Face) ? pm.unpackFaceLocalId(key) : pm.unpackEdgeLocalId(key);
+        const vtkIdType cellId =
+            (mode == PickMode::Face) ? pm.unpackFaceCellId(key) : pm.unpackEdgeCellId(key);
+        const int localId =
+            (mode == PickMode::Face) ? pm.unpackFaceLocalId(key) : pm.unpackEdgeLocalId(key);
         if (cellId < 0 || cellId >= grid->GetNumberOfCells())
             continue;
         vtkCell* cell = grid->GetCell(cellId);
@@ -119,14 +144,9 @@ QVector<EdgeRow> collectRows(vtkUnstructuredGrid* grid, const QString& domain, c
                 auto* face = cell->GetFace(localId);
                 ids = face ? face->GetPointIds() : nullptr;
             }
-            if (!ids || ids->GetNumberOfIds() < 2)
+            if (!ids || ids->GetNumberOfIds() < 3)
                 continue;
-            for (vtkIdType i = 0; i < ids->GetNumberOfIds(); ++i)
-            {
-                const vtkIdType a = ids->GetId(i);
-                const vtkIdType b = ids->GetId((i + 1) % ids->GetNumberOfIds());
-                rows.push_back(makeRow(grid, elemIdArr, nodeIdArr, cellId, a, b));
-            }
+            rows.push_back(makeFaceRow(elemIdArr, nodeIdArr, cellId, ids));
         }
         else
         {
@@ -150,7 +170,7 @@ QVector<EdgeRow> collectRows(vtkUnstructuredGrid* grid, const QString& domain, c
                 a = ids->GetId(0);
                 b = ids->GetId(ids->GetNumberOfIds() - 1);
             }
-            rows.push_back(makeRow(grid, elemIdArr, nodeIdArr, cellId, a, b));
+            rows.push_back(makeEdgeRow(elemIdArr, nodeIdArr, cellId, a, b));
         }
     }
     return rows;
@@ -210,7 +230,8 @@ GeoStressSideFacePage::GeoStressSideFacePage(QWidget* parent)
             });
     if (auto* groupCombo = qobject_cast<CustomComboBox*>(m_groupCombo))
     {
-        connect(groupCombo, &CustomComboBox::itemHovered, this, &GeoStressSideFacePage::onGroupHovered);
+        connect(groupCombo, &CustomComboBox::itemHovered, this,
+                &GeoStressSideFacePage::onGroupHovered);
         connect(groupCombo, &CustomComboBox::dropdownClosed, this,
                 [this]()
                 {
@@ -254,8 +275,10 @@ QJsonObject GeoStressSideFacePage::saveJson()
         return arr;
     };
 
-    obj["picked_edges"] = toJson(PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Edge, GridKind::Solid));
-    obj["picked_faces"] = toJson(PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid));
+    obj["picked_edges"] = toJson(
+        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Edge, GridKind::Solid));
+    obj["picked_faces"] = toJson(
+        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid));
     return obj;
 }
 
@@ -277,9 +300,11 @@ void GeoStressSideFacePage::loadJson(const QJsonObject& obj)
     };
 
     PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                fromJson(obj.value("picked_edges").toArray()), true);
+                                                fromJson(obj.value("picked_edges").toArray()),
+                                                true);
     PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
-                                                fromJson(obj.value("picked_faces").toArray()), true);
+                                                fromJson(obj.value("picked_faces").toArray()),
+                                                true);
 }
 
 QString GeoStressSideFacePage::faceFile() const
@@ -328,18 +353,43 @@ bool GeoStressSideFacePage::exportDatFile() const
         return false;
 
     QTextStream os(&file);
-    os << QString("%1        4     NJX   MAKOD\n").arg(rows.size());
-    os << "    KJX     KE1     KE2     JD1     JD2  JAT\n";
+    const bool isFaceMode = (currentPickMode() == PickMode::Face);
+    if (isFaceMode)
+    {
+        os << QString("%1        6     NJX   MAKOD\n").arg(rows.size());
+        os << "    KJX     KE1     KE2     JD1     JD2     JD3     JD4  JAT\n";
+    }
+    else
+    {
+        os << QString("%1        4     NJX   MAKOD\n").arg(rows.size());
+        os << "    KJX     KE1     KE2     JD1     JD2  JAT\n";
+    }
+
     for (int i = 0; i < rows.size(); ++i)
     {
         const EdgeRow& row = rows[i];
-        os << QString("%1 %2 %3 %4 %5 %6\n")
-                  .arg(i + 1, 9)
-                  .arg(row.ke1, 9)
-                  .arg(0, 9)
-                  .arg(row.jd1, 9)
-                  .arg(row.jd2, 9)
-                  .arg(0, 9);
+        if (isFaceMode)
+        {
+            os << QString("%1 %2 %3 %4 %5 %6 %7 %8\n")
+                      .arg(i + 1, 9)
+                      .arg(row.ke1, 9)
+                      .arg(row.ke2, 9)
+                      .arg(row.jd1, 9)
+                      .arg(row.jd2, 9)
+                      .arg(row.jd3, 9)
+                      .arg(row.jd4, 9)
+                      .arg(6, 9);
+        }
+        else
+        {
+            os << QString("%1 %2 %3 %4 %5 %6\n")
+                      .arg(i + 1, 9)
+                      .arg(row.ke1, 9)
+                      .arg(row.ke2, 9)
+                      .arg(row.jd1, 9)
+                      .arg(row.jd2, 9)
+                      .arg(0, 9);
+        }
     }
     return true;
 }
@@ -358,7 +408,8 @@ void GeoStressSideFacePage::onBatchAddClicked()
     if (!meshSvc)
         return;
 
-    const MeshTagSet set = findBoundarySet(meshSvc, comboTagKey(m_groupCombo, m_groupCombo->currentIndex()));
+    const MeshTagSet set =
+        findBoundarySet(meshSvc, comboTagKey(m_groupCombo, m_groupCombo->currentIndex()));
     if (currentPickMode() == PickMode::Face)
         PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
                                                     toVtkKeys(set.faceKeys), false);
