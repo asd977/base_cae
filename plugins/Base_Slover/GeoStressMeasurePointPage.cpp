@@ -39,7 +39,7 @@ QString valueOrZero(const QString& text)
 
 QStringList splitDataLine(const QString& line)
 {
-    return line.trimmed().split(QRegularExpression(QStringLiteral("[,\\s]+")), Qt::SkipEmptyParts);
+    return line.trimmed().split(QRegularExpression(QStringLiteral("[,\\s]+")), QString::SkipEmptyParts);
 }
 
 bool isNumericRow(const QStringList& values, int count)
