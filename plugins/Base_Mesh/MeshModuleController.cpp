@@ -76,6 +76,48 @@ static bool meshDomainKeyIsValid(const DomainKey& key)
 static const char* kMeshMapFileName = "mesh_map.json";
 static const char* kMeshMshSnapshotFileName = "mesh_snapshot.msh";
 
+// 大网格保存优化：
+// 1) IIIN/DAT 网格快照只有在网格对象真正变更后才重写；
+// 2) MATYPE/LAYER 来自 vtkCellData，保存工程时不再把每个单元 id 全量写入 mesh_map.json；
+// 3) cell_id_to_domain_tags 是运行期反查缓存，可由 tagSets + 网格 CellData 重建，不再落盘。
+static QHash<QString, unsigned long> s_savedSnapshotMTimeByPath;
+
+static QString normalizedProjectPathKey(const QString& path)
+{
+    return QDir::cleanPath(QFileInfo(path).absoluteFilePath());
+}
+
+static unsigned long gridModifiedTime(vtkUnstructuredGrid* grid)
+{
+    return grid ? static_cast<unsigned long>(grid->GetMTime()) : 0UL;
+}
+
+static bool shouldRewriteGridSnapshot(const QString& snapshotPath, vtkUnstructuredGrid* grid)
+{
+    if (!grid || grid->GetNumberOfCells() <= 0)
+        return false;
+
+    if (!QFileInfo::exists(snapshotPath))
+        return true;
+
+    const QString key = normalizedProjectPathKey(snapshotPath);
+    return s_savedSnapshotMTimeByPath.value(key, 0UL) != gridModifiedTime(grid);
+}
+
+static void markGridSnapshotSaved(const QString& snapshotPath, vtkUnstructuredGrid* grid)
+{
+    if (!grid)
+        return;
+
+    s_savedSnapshotMTimeByPath.insert(normalizedProjectPathKey(snapshotPath), gridModifiedTime(grid));
+}
+
+static bool isGridCellDataDomainTag(const MeshTagKey& key)
+{
+    return key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0
+           || key.category.compare(QStringLiteral("LAYER"), Qt::CaseInsensitive) == 0;
+}
+
 static bool copyFileOverwrite(const QString& sourcePath, const QString& targetPath)
 {
     if (sourcePath.trimmed().isEmpty() || targetPath.trimmed().isEmpty())
@@ -946,11 +988,19 @@ static bool saveMeshMapJson(const QString& filePath,
 
     QJsonArray tagSets;
     for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
-        tagSets.append(meshTagSetToJson(it.value()));
+    {
+        const MeshTagSet& set = it.value();
+
+        // MATYPE/LAYER 是由网格 CellData 派生出来的运行期分组，
+        // 大网格时 cellIds 会非常大，保存它们只会造成工程文件膨胀。
+        // 加载工程后会通过 syncPickMapGroupingFromGrid() 从网格重新构建。
+        if (isGridCellDataDomainTag(set.key))
+            continue;
+
+        tagSets.append(meshTagSetToJson(set));
+    }
 
     root["tag_sets"] = tagSets;
-    root["cell_id_to_domain_tags"] =
-        meshIdTagKeyVectorHashToJson(pick.cellIdToDomainTags);
 
     QFile file(filePath);
 
@@ -961,7 +1011,7 @@ static bool saveMeshMapJson(const QString& filePath,
         return false;
     }
 
-    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
     file.close();
 
     return true;
@@ -1001,8 +1051,10 @@ static bool loadMeshMapJson(const QString& filePath,
         pick.tagSets.insert(set.key, set);
     }
 
-    pick.cellIdToDomainTags =
-        jsonToMeshIdTagKeyVectorHash(root.value("cell_id_to_domain_tags").toObject());
+    // cellIdToDomainTags 不再落盘。它是运行期反查缓存，
+    // MeshModuleController::loadProject() 成功加载 mesh_map.json 后会调用
+    // syncPickMapGroupingFromGrid() 根据 tagSets + 网格 CellData 统一重建。
+    pick.cellIdToDomainTags.clear();
 
     rebuildCurrentNodeMaps(pick, grid);
 
@@ -1870,9 +1922,13 @@ bool MeshModuleController::saveProject()
     {
         QString err;
 
-        if (!MeshGridIO::instance().exportIiinFile(snapshotPath, m_importedGrid, &err))
+        if (shouldRewriteGridSnapshot(snapshotPath, m_importedGrid))
         {
-            return false;
+            if (!MeshGridIO::instance().exportIiinFile(snapshotPath, m_importedGrid, &err))
+            {
+                return false;
+            }
+            markGridSnapshotSaved(snapshotPath, m_importedGrid);
         }
 
         if (!saveMeshMapJson(meshMapPath, MeshGridIO::instance().getMeshMapRef(), m_importedGrid, &err))
@@ -1983,7 +2039,7 @@ bool MeshModuleController::saveProject()
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
         return false;
 
-    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
     file.close();
 
     return true;
@@ -2060,11 +2116,19 @@ bool MeshModuleController::loadProject()
             {
                 syncPickMapGroupingFromGrid(m_importedGrid);
             }
+            else
+            {
+                // 新版 mesh_map.json 不再保存 MATYPE/LAYER 的大 cellIds，
+                // 这里统一从网格 CellData 重建材料/层级分组和 cellId 反查缓存。
+                syncPickMapGroupingFromGrid(m_importedGrid);
+            }
         }
         else
         {
             syncPickMapGroupingFromGrid(m_importedGrid);
         }
+
+        markGridSnapshotSaved(snapshotPath, m_importedGrid);
 
         displayCurrentGrid();
 
