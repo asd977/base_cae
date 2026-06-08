@@ -127,6 +127,7 @@ GeoStressMeasurePointPage::GeoStressMeasurePointPage(QWidget* parent)
 
 void GeoStressMeasurePointPage::beforeLoad()
 {
+    PickManager::instance().updateStructure();
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
     QObject::connect(&PickManager::instance(), &PickManager::nodePicked, this,
                      &GeoStressMeasurePointPage::onNodePicked, Qt::UniqueConnection);
@@ -395,6 +396,7 @@ vtkIdType GeoStressMeasurePointPage::resolvePointIdByCoordinates(const QString& 
     if (!okX || !okY || (currentDimension() == 3 && !okZ))
         return -1;
 
+    PickManager::instance().updateStructure();
     vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
     if (!grid || grid->GetNumberOfPoints() <= 0)
         return -1;
