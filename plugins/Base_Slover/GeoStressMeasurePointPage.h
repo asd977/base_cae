@@ -69,6 +69,8 @@ class GeoStressMeasurePointPage : public BasePage
     void applyDimensionUi();
     bool appendImportedValues(const QStringList& values);
     bool appendPointByPid(vtkIdType pid);
+    vtkIdType resolvePointIdByCoordinates(const QString& xText, const QString& yText,
+                                          const QString& zText, QString* nodeId = nullptr) const;
     int appendRow(const QString& nodeId, const QString& x, const QString& y, const QString& z,
                   const QString& sgx, const QString& sgy, const QString& sgz,
                   const QString& txy, const QString& tyz, const QString& tzx,

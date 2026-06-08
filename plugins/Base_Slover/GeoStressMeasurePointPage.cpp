@@ -7,7 +7,9 @@
 #include <vtkUnstructuredGrid.h>
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
+#include <limits>
 
 #include <QAbstractItemView>
 #include <QCheckBox>
@@ -345,7 +347,10 @@ bool GeoStressMeasurePointPage::appendImportedValues(const QStringList& values)
     const QString txy = values.value(i++);
     const QString tyz = dim == 3 ? values.value(i++) : QStringLiteral("0");
     const QString tzx = dim == 3 ? values.value(i++) : QStringLiteral("0");
-    appendRow(QString(), x, y, z, sgx, sgy, sgz, txy, tyz, tzx);
+
+    QString nodeId;
+    const vtkIdType pid = resolvePointIdByCoordinates(x, y, z, &nodeId);
+    appendRow(nodeId, x, y, z, sgx, sgy, sgz, txy, tyz, tzx, pid);
     return true;
 }
 
@@ -374,6 +379,63 @@ bool GeoStressMeasurePointPage::appendPointByPid(vtkIdType pid)
               currentDimension() == 3 ? QString::number(xyz[2], 'g', 12) : QStringLiteral("0"),
               "0", "0", "0", "0", "0", "0", pid);
     return true;
+}
+
+vtkIdType GeoStressMeasurePointPage::resolvePointIdByCoordinates(const QString& xText,
+                                                                  const QString& yText,
+                                                                  const QString& zText,
+                                                                  QString* nodeId) const
+{
+    if (nodeId)
+        nodeId->clear();
+
+    bool okX = false, okY = false, okZ = false;
+    const double x = xText.toDouble(&okX);
+    const double y = yText.toDouble(&okY);
+    const double z = currentDimension() == 3 ? zText.toDouble(&okZ) : 0.0;
+    if (!okX || !okY || (currentDimension() == 3 && !okZ))
+        return -1;
+
+    vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
+    if (!grid || grid->GetNumberOfPoints() <= 0)
+        return -1;
+
+    double bounds[6] = {0, 0, 0, 0, 0, 0};
+    grid->GetBounds(bounds);
+    const double dx = bounds[1] - bounds[0];
+    const double dy = bounds[3] - bounds[2];
+    const double dz = bounds[5] - bounds[4];
+    const double diag = std::sqrt(dx * dx + dy * dy + dz * dz);
+    const double tol = std::max(1.0e-8, diag * 1.0e-8);
+    const double tol2 = tol * tol;
+
+    vtkIdType bestPid = -1;
+    double bestDist2 = std::numeric_limits<double>::max();
+    for (vtkIdType pid = 0; pid < grid->GetNumberOfPoints(); ++pid)
+    {
+        double p[3] = {0, 0, 0};
+        grid->GetPoint(pid, p);
+        const double ddx = p[0] - x;
+        const double ddy = p[1] - y;
+        const double ddz = currentDimension() == 3 ? (p[2] - z) : 0.0;
+        const double dist2 = ddx * ddx + ddy * ddy + ddz * ddz;
+        if (dist2 < bestDist2)
+        {
+            bestDist2 = dist2;
+            bestPid = pid;
+        }
+    }
+
+    if (bestPid < 0 || bestDist2 > tol2)
+        return -1;
+
+    if (nodeId)
+    {
+        *nodeId = QString::number(bestPid);
+        if (auto* nodeIdArr = vtkDataArray::SafeDownCast(grid->GetPointData()->GetArray("node_id")))
+            *nodeId = QString::number(int(nodeIdArr->GetTuple1(bestPid)));
+    }
+    return bestPid;
 }
 
 int GeoStressMeasurePointPage::appendRow(const QString& nodeId, const QString& x, const QString& y,
@@ -420,8 +482,19 @@ void GeoStressMeasurePointPage::syncPickedPointIds()
     for (int row = 0; row < m_table->rowCount(); ++row)
     {
         bool ok = false;
-        const qlonglong pid = cellText(row, ColPid).toLongLong(&ok);
-        if (ok && pid >= 0)
+        qlonglong pid = cellText(row, ColPid).toLongLong(&ok);
+        if (!ok || pid < 0)
+        {
+            QString nodeId;
+            pid = resolvePointIdByCoordinates(cellText(row, ColX), cellText(row, ColY),
+                                              cellText(row, ColZ), &nodeId);
+            if (pid >= 0)
+            {
+                setCellText(row, ColPid, QString::number(pid), false);
+                setCellText(row, ColNodeId, nodeId, false);
+            }
+        }
+        if (pid >= 0)
             ids.push_back(static_cast<vtkIdType>(pid));
     }
     PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, ids, true);
