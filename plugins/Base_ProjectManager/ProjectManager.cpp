@@ -363,11 +363,7 @@ void ProjectManager::newProject()
     {
         globalParameterService->newProject();
     }
-    if (auto* materialManagerService =
-            ServiceRegistry::instance().getService<MaterialManagerService>())
-    {
-        materialManagerService->newProject();
-    }
+
     if (auto* preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>())
     {
         preProcessingService->newProject();
@@ -376,6 +372,12 @@ void ProjectManager::newProject()
             ServiceRegistry::instance().getService<MeshModuleControllerService>())
     {
         meshModuleControllerService->newProject();
+    }
+
+    if (auto* materialManagerService =
+        ServiceRegistry::instance().getService<MaterialManagerService>())
+    {
+        materialManagerService->newProject();
     }
 
     if (auto* physicalFieldService = ServiceRegistry::instance().getService<PhysicalFieldService>())
