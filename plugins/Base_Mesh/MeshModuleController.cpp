@@ -6,6 +6,7 @@
 #include <MeshFaceControlWidget.h>
 #include <MeshGlobalMeshingWidget.h>
 #include <MeshGroupingWidget.h>
+#include <MeshImportSettingsWidget.h>
 #include <MeshSingleMeshingWidget.h>
 #include <MeshVolumeControlWidget.h>
 #include <PickManager.h>
@@ -53,6 +54,7 @@
 #include <QMessageBox>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QTimer>
 #include <QSet>
 #include <QStringList>
 #include <QVector>
@@ -1881,7 +1883,21 @@ MeshModuleController::MeshModuleController(QObject* parent) : QObject(parent)
 void MeshModuleController::newProject()
 {
     auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
-    m_gridNode = new ProjectNode("网格");
+    m_verticalAxis = 2;
+    m_importSettingsWidget = new MeshImportSettingsWidget();
+    m_importSettingsWidget->setVerticalAxis(m_verticalAxis);
+    m_importSettingsWidget->setSourceFileName(m_sourceFileName);
+    connect(m_importSettingsWidget, &MeshImportSettingsWidget::importRequested, this,
+            &MeshModuleController::onImportGridFileDialog);
+    connect(m_importSettingsWidget, &MeshImportSettingsWidget::verticalAxisChanged, this,
+            [this](int axis)
+            {
+                if (axis < 1 || axis > 3)
+                    return;
+                m_verticalAxis = axis;
+                MeshGridIO::setVerticalAxis(m_importedGrid, m_verticalAxis);
+            });
+    m_gridNode = new ProjectNode("网格", QUuid::createUuid().toString(), m_importSettingsWidget);
     m_gridNode->setData(0, ProjectNode::RoleModule, "Mesh");
     m_gridNode->setData(0, ProjectNode::RoleKind, "MeshRoot");
     projectManagerService->addTreeItem(m_gridNode);
@@ -1889,6 +1905,7 @@ void MeshModuleController::newProject()
     m_faceRules.clear();
     m_volumeRules.clear();
 }
+
 
 bool MeshModuleController::saveProject()
 {
@@ -1917,6 +1934,7 @@ bool MeshModuleController::saveProject()
     // 工程恢复固定使用 IIIN/DAT 快照 + mesh_map.json。
     // 不再优先按 msh_snapshot 恢复，避免 loadMshFile 再次把低维边界单元混入显示网格。
     root["mesh_restore_mode"] = QStringLiteral("dat");
+    root["vertical_axis"] = m_verticalAxis;
 
     if (hasGrid)
     {
@@ -1924,7 +1942,7 @@ bool MeshModuleController::saveProject()
 
         if (shouldRewriteGridSnapshot(snapshotPath, m_importedGrid))
         {
-            if (!MeshGridIO::instance().exportIiinFile(snapshotPath, m_importedGrid, &err))
+            if (!MeshGridIO::instance().exportIiinFile(snapshotPath, m_importedGrid, &err, m_verticalAxis))
             {
                 return false;
             }
@@ -2049,7 +2067,18 @@ bool MeshModuleController::loadProject()
 {
     auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
 
-    m_gridNode = new ProjectNode("网格");
+    m_importSettingsWidget = new MeshImportSettingsWidget();
+    connect(m_importSettingsWidget, &MeshImportSettingsWidget::importRequested, this,
+            &MeshModuleController::onImportGridFileDialog);
+    connect(m_importSettingsWidget, &MeshImportSettingsWidget::verticalAxisChanged, this,
+            [this](int axis)
+            {
+                if (axis < 1 || axis > 3)
+                    return;
+                m_verticalAxis = axis;
+                MeshGridIO::setVerticalAxis(m_importedGrid, m_verticalAxis);
+            });
+    m_gridNode = new ProjectNode("网格", QUuid::createUuid().toString(), m_importSettingsWidget);
     m_gridNode->setData(0, ProjectNode::RoleModule, "Mesh");
     m_gridNode->setData(0, ProjectNode::RoleKind, "MeshRoot");
     projectManagerService->addTreeItem(m_gridNode);
@@ -2067,6 +2096,13 @@ bool MeshModuleController::loadProject()
 
     const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
     file.close();
+
+    const bool hasSavedVerticalAxis = root.contains("vertical_axis");
+    m_verticalAxis = root.value("vertical_axis").toInt(2);
+    if (m_verticalAxis < 1 || m_verticalAxis > 3)
+        m_verticalAxis = 2;
+    if (m_importSettingsWidget)
+        m_importSettingsWidget->setVerticalAxis(m_verticalAxis);
 
     const bool hasGrid = root.value("has_grid").toBool(false);
 
@@ -2096,8 +2132,16 @@ bool MeshModuleController::loadProject()
         }
 
         m_importedGrid = grid;
+        if (!hasSavedVerticalAxis)
+            m_verticalAxis = MeshGridIO::verticalAxisOfGrid(m_importedGrid, m_verticalAxis);
+        MeshGridIO::setVerticalAxis(m_importedGrid, m_verticalAxis);
         m_hasGrid = true;
         m_sourceFileName.clear();
+        if (m_importSettingsWidget)
+        {
+            m_importSettingsWidget->setVerticalAxis(m_verticalAxis);
+            m_importSettingsWidget->setSourceFileName(m_sourceFileName);
+        }
 
         m_splitCacheSource = nullptr;
         m_splitCacheLine = nullptr;
@@ -2196,6 +2240,10 @@ bool MeshModuleController::loadProject()
 
         if (kind == "MeshGrouping")
             return new MeshGroupingWidget();
+
+        if (kind == "MeshImportSettings")
+            return nullptr;
+
 
         if (kind == "MeshEdit")
         {
@@ -2605,6 +2653,12 @@ void MeshModuleController::initAction()
 // -------------------- handlers --------------------
 void MeshModuleController::onImportGrid()
 {
+    openImportSettingsPage(true);
+    QTimer::singleShot(0, this, &MeshModuleController::onImportGridFileDialog);
+}
+
+void MeshModuleController::onImportGridFileDialog()
+{
     QString fileName;
     QFileDialog dialog(nullptr, QString("选择网格文件"));
     dialog.setNameFilter(QString("Grid Files (*.nas *.inp *.flac3d *.f3grid *.DAT *.msh)"));
@@ -2613,6 +2667,14 @@ void MeshModuleController::onImportGrid()
     {
         fileName = dialog.selectedFiles().first();
     }
+    if (fileName.isEmpty())
+        return;
+
+    importGridFile(fileName);
+}
+
+void MeshModuleController::importGridFile(const QString& fileName)
+{
     if (fileName.isEmpty())
         return;
 
@@ -2646,7 +2708,7 @@ void MeshModuleController::onImportGrid()
     else
     {
         QMessageBox::warning(nullptr, QString("不支持的格式"),
-                             QString("当前只支持 .nas / .inp / .flac3d / .f3grid / .dat"));
+                             QString("当前只支持 .nas / .inp / .flac3d / .f3grid / .dat / .msh"));
         return;
     }
 
@@ -2660,6 +2722,17 @@ void MeshModuleController::onImportGrid()
     m_importedGrid = grid;
     m_hasGrid = true;
     m_sourceFileName = fileName;
+    if (ext == "dat")
+        m_verticalAxis = MeshGridIO::verticalAxisOfGrid(m_importedGrid, m_verticalAxis);
+    else
+        MeshGridIO::setVerticalAxis(m_importedGrid, m_verticalAxis);
+
+    if (m_importSettingsWidget)
+    {
+        m_importSettingsWidget->setVerticalAxis(m_verticalAxis);
+        m_importSettingsWidget->setSourceFileName(m_sourceFileName);
+    }
+
     {
         vtkSmartPointer<vtkUnstructuredGrid> tmpLine;
         vtkSmartPointer<vtkUnstructuredGrid> tmpNonLine;
@@ -2702,7 +2775,7 @@ void MeshModuleController::onImportGrid()
     m_splitCacheNonLine = nullptr;
 
     displayCurrentGrid();
-    openGridDisplayControlPage();
+    openImportSettingsPage(true);
 
     PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
 }
@@ -2802,7 +2875,7 @@ void MeshModuleController::onExportGrid()
         return;
 
     QString err;
-    if (!MeshGridIO::instance().exportIiinFile(fileName, m_importedGrid, &err))
+    if (!MeshGridIO::instance().exportIiinFile(fileName, m_importedGrid, &err, m_verticalAxis))
     {
         QMessageBox::warning(nullptr, QString("导出失败"),
                              err.isEmpty() ? QString("IIIN.DAT 导出失败") : err);
@@ -3149,6 +3222,44 @@ void MeshModuleController::onMeshGrouping()
         pm->setCurrentItem(node);
 }
 
+void MeshModuleController::openImportSettingsPage(bool setCurrent)
+{
+    if (!m_gridNode)
+        return;
+
+    if (!m_importSettingsWidget)
+    {
+        m_importSettingsWidget = new MeshImportSettingsWidget();
+        m_importSettingsWidget->setVerticalAxis(m_verticalAxis);
+        m_importSettingsWidget->setSourceFileName(m_sourceFileName);
+        connect(m_importSettingsWidget, &MeshImportSettingsWidget::importRequested, this,
+                &MeshModuleController::onImportGridFileDialog);
+        connect(m_importSettingsWidget, &MeshImportSettingsWidget::verticalAxisChanged, this,
+                [this](int axis)
+                {
+                    if (axis < 1 || axis > 3)
+                        return;
+                    m_verticalAxis = axis;
+                    MeshGridIO::setVerticalAxis(m_importedGrid, m_verticalAxis);
+                });
+        m_gridNode->setPage(m_importSettingsWidget);
+    }
+    else
+    {
+        m_importSettingsWidget->setVerticalAxis(m_verticalAxis);
+        m_importSettingsWidget->setSourceFileName(m_sourceFileName);
+        if (!m_gridNode->getPage())
+            m_gridNode->setPage(m_importSettingsWidget);
+    }
+
+    if (setCurrent)
+    {
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(m_gridNode);
+    }
+}
+
+
 void MeshModuleController::onMeshEdit()
 {
     openGridDisplayControlPage();
@@ -3275,6 +3386,11 @@ QString MeshModuleController::sourceMeshFilePath() const
     return m_sourceFileName;
 }
 
+int MeshModuleController::verticalAxis() const
+{
+    return m_verticalAxis;
+}
+
 bool MeshModuleController::exportIiinDatFile(const QString& filePath, QString* errMsg)
 {
     if (!m_hasGrid || !m_importedGrid)
@@ -3283,7 +3399,8 @@ bool MeshModuleController::exportIiinDatFile(const QString& filePath, QString* e
             *errMsg = QStringLiteral("当前无可导出的网格数据");
         return false;
     }
-    return MeshGridIO::instance().exportIiinFile(filePath, m_importedGrid, errMsg);
+    MeshGridIO::setVerticalAxis(m_importedGrid, m_verticalAxis);
+    return MeshGridIO::instance().exportIiinFile(filePath, m_importedGrid, errMsg, m_verticalAxis);
 }
 
 void MeshModuleController::splitGridByDim(vtkUnstructuredGrid* src,

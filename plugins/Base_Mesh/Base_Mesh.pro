@@ -14,6 +14,7 @@ HEADERS += \
     MeshProcessor.h \
     MeshGridIO.h \
     GridEditingWidget.h \
+    MeshImportSettingsWidget.h \
     MeshGroupingWidget.h
 
 SOURCES += \
@@ -26,6 +27,7 @@ SOURCES += \
     MeshProcessor.cpp \
     MeshGridIO.cpp \
     GridEditingWidget.cpp \
+    MeshImportSettingsWidget.cpp \
     MeshGroupingWidget.cpp
 
 FORMS += \
@@ -35,6 +37,7 @@ FORMS += \
     MeshFaceControlWidget.ui \
     MeshEdgeControlWidget.ui \
     GridEditingWidget.ui \
+    MeshImportSettingsWidget.ui \
     MeshGroupingWidget.ui
 
 

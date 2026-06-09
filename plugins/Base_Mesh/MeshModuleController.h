@@ -15,6 +15,7 @@ class vtkMapper;
 class vtkDataSet;
 class vtkUnstructuredGrid;
 class GridEditingWidget;
+class MeshImportSettingsWidget;
 
 class MeshModuleController : public QObject, public MeshModuleControllerService
 {
@@ -44,6 +45,7 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGridSolid();
     vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGridLine();
     QString sourceMeshFilePath() const override;
+    int verticalAxis() const override;
     bool exportIiinDatFile(const QString& filePath, QString* errMsg = nullptr) override;
 
     void importMshGrid(QString path);
@@ -69,6 +71,8 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     void initAction();
 
     void onImportGrid();
+    void onImportGridFileDialog();
+    void importGridFile(const QString& fileName);
     void onExportGrid();
 
     void onMeshGlobal();
@@ -82,6 +86,7 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     void onQualityStd();
     void onMeshEdit();
     void onMeshGrouping();
+    void openImportSettingsPage(bool setCurrent = true);
     void openGridDisplayControlPage();
 
     void displayCurrentGrid(); // 只显示 m_importedGrid
@@ -102,6 +107,8 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
 
     VisualWidgetService* m_visualWidgetService = nullptr;
     GridEditingWidget* m_gridEditingWidget = nullptr;
+    MeshImportSettingsWidget* m_importSettingsWidget = nullptr;
+    int m_verticalAxis = 2;
 
     vtkSmartPointer<vtkMapper> m_previewSurfaceMapper;
     vtkSmartPointer<vtkActor> m_previewSurfaceActor;
