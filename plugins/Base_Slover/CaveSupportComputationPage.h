@@ -10,6 +10,7 @@ class QSpinBox;
 class QTableWidget;
 class QWidget;
 class QDoubleSpinBox;
+class QPushButton;
 namespace Ui
 {
 class CaveSupportComputationPage;
@@ -27,12 +28,17 @@ class CaveSupportComputationPage : public BasePage
     void beforeUnload() override;
 
     QString sectionText();
+    bool exportICaveDatFile(const QString& supportCaseSection) const;
 
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
 
+  signals:
+    void computeRequested();
+
   private slots:
     void onExcavationLevelCountChanged(int count);
+    void onComputeClicked();
 
   private:
     struct CaseData
@@ -74,6 +80,7 @@ class CaveSupportComputationPage : public BasePage
     QLineEdit* m_accXEdit = nullptr;
     QLineEdit* m_accYEdit = nullptr;
     QLineEdit* m_accZEdit = nullptr;
+    QPushButton* m_computeButton = nullptr;
 
     CaseData m_caseData;
     bool m_isUpdatingUi = false;

@@ -6,13 +6,18 @@
 #include <QComboBox>
 #include <QDir>
 #include <QDoubleSpinBox>
+#include <QFile>
+#include <QHash>
 #include <QHeaderView>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLineEdit>
+#include <QPushButton>
+#include <QSet>
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QTableWidgetItem>
+#include <QTextStream>
 
 #include "ui_CaveSupportComputationPage.h"
 
@@ -41,6 +46,7 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     m_accXEdit = ui->editAccX;
     m_accYEdit = ui->editAccY;
     m_accZEdit = ui->editAccZ;
+    m_computeButton = ui->btnCompute;
 
     m_excavationDaysTable->setColumnCount(2);
     m_excavationDaysTable->setHorizontalHeaderLabels({"开挖级", "用时（天）"});
@@ -79,6 +85,8 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
 
     connect(m_iexcaMaxSpin, qOverload<int>(&QSpinBox::valueChanged), this,
             &CaveSupportComputationPage::onExcavationLevelCountChanged);
+    connect(m_computeButton, &QPushButton::clicked, this,
+            &CaveSupportComputationPage::onComputeClicked);
 
     m_caseData = CaseData();
     onExcavationLevelCountChanged(m_iexcaMaxSpin->value());
@@ -140,6 +148,56 @@ QString CaveSupportComputationPage::sectionText()
     return text;
 }
 
+bool CaveSupportComputationPage::exportICaveDatFile(const QString& supportCaseSection) const
+{
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir wd(QDir(projectDir).absolutePath());
+    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+        return false;
+
+    QFile file(wd.filePath("ICAVE.DAT"));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        return false;
+
+    QTextStream os(&file);
+    const QHash<int, QString> fixedValues = {
+        {1, QDir::toNativeSeparators(wd.filePath("PREP")) + QDir::separator()},
+        {2, QStringLiteral("MAFACTOR.DAT")},
+        {4, QStringLiteral("SHUIMX.DAT")},
+        {6, QStringLiteral("IIJX_CHEN.DAT")},
+        {8, QStringLiteral("IIJX_T01-01.DAT")},
+        {9, QStringLiteral("MASET_DCL.DAT")},
+        {12, QStringLiteral("1")},
+        {13, QStringLiteral("IISEEP.DAT")},
+        {14, QDir::toNativeSeparators(wd.filePath("GEOSTR")) + QDir::separator()},
+        {15, QStringLiteral("JDTRACE.DAT")},
+        {16, QStringLiteral("KETRACE.DAT")},
+        {17, QStringLiteral("TDTRACE.DAT")},
+    };
+
+    const QSet<int> quotedFields = {1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14,
+                                    15, 16, 17, 18, 19, 20, 21, 22, 23,
+                                    24, 25};
+    for (int fieldNo = 1; fieldNo <= 25; ++fieldNo)
+    {
+        QString value;
+        if (fixedValues.contains(fieldNo))
+            value = fixedValues.value(fieldNo);
+        else if (auto* edit = findChild<QLineEdit*>(QString("line%1Edit").arg(fieldNo)))
+            value = edit->text().trimmed();
+
+        if (quotedFields.contains(fieldNo))
+            os << "'" << value << "'      " << fieldNo << "\n";
+        else
+            os << " " << value << "      " << fieldNo << "\n";
+    }
+
+    if (!supportCaseSection.trimmed().isEmpty())
+        os << supportCaseSection.trimmed() << "\n";
+    return true;
+}
+
 QJsonObject CaveSupportComputationPage::saveJson()
 {
     saveCurrentCase();
@@ -181,6 +239,15 @@ QJsonObject CaveSupportComputationPage::saveJson()
     one["iday_case"] = m_caseData.idayCase;
     cases.append(one);
     obj["cases"] = cases;
+    const QStringList fixedIcaveFields = {"1", "2", "4", "6", "8", "9",
+                                          "12", "13", "14", "15", "16", "17"};
+    for (int i = 1; i <= 25; ++i)
+    {
+        if (fixedIcaveFields.contains(QString::number(i)))
+            continue;
+        auto* edit = findChild<QLineEdit*>(QString("line%1Edit").arg(i));
+        obj[QString("line_%1").arg(i)] = edit ? edit->text().trimmed() : "";
+    }
     return obj;
 }
 
@@ -223,6 +290,17 @@ void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
     if (m_accZEdit)
         m_accZEdit->setText(obj.value("acc_z").toString("ACCEZ.DAT"));
 
+    const QStringList fixedIcaveFields = {"1", "2", "4", "6", "8", "9",
+                                          "12", "13", "14", "15", "16", "17"};
+    for (int i = 1; i <= 25; ++i)
+    {
+        if (fixedIcaveFields.contains(QString::number(i)))
+            continue;
+        auto* edit = findChild<QLineEdit*>(QString("line%1Edit").arg(i));
+        if (edit)
+            edit->setText(obj.value(QString("line_%1").arg(i)).toString(edit->text()));
+    }
+
     const QJsonArray cases = obj.value("cases").toArray();
     if (!cases.isEmpty())
     {
@@ -262,6 +340,11 @@ void CaveSupportComputationPage::onExcavationLevelCountChanged(int count)
         if (!m_excavationDaysTable->item(r, 1))
             m_excavationDaysTable->setItem(r, 1, new QTableWidgetItem(r < oldRows ? "0" : "0"));
     }
+}
+
+void CaveSupportComputationPage::onComputeClicked()
+{
+    emit computeRequested();
 }
 
 void CaveSupportComputationPage::saveCurrentCase()
