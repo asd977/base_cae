@@ -82,3 +82,11 @@ void MeshImportSettingsWidget::setSourceFileName(const QString& fileName)
     m_labelSourceFile->setText(QStringLiteral("当前网格：%1").arg(info.fileName()));
     m_labelSourceFile->setToolTip(fileName);
 }
+
+void MeshImportSettingsWidget::beforeLoad()
+{
+}
+
+void MeshImportSettingsWidget::beforeUnload()
+{
+}

@@ -18,6 +18,9 @@ class MeshImportSettingsWidget : public BasePage
     void setVerticalAxis(int axis);
     void setSourceFileName(const QString& fileName);
 
+    void beforeLoad() override;
+    void beforeUnload() override;
+
   signals:
     void importRequested();
     void verticalAxisChanged(int axis);
