@@ -38,7 +38,10 @@ class MeshGridIO
 
     // 从 vtk 网格导出 IIIN.DAT
     bool exportIiinFile(const QString& fileName, vtkUnstructuredGrid* grid,
-                        QString* errMsg = nullptr) const;
+                        QString* errMsg = nullptr, int verticalAxis = 0) const;
+
+    static int verticalAxisOfGrid(vtkUnstructuredGrid* grid, int fallback = 2);
+    static void setVerticalAxis(vtkUnstructuredGrid* grid, int axis);
 
     static QString defaultIiinOutputPath(const QString& sourceFile);
 

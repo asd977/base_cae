@@ -55,7 +55,7 @@ class Solver : public QObject, public SolverService
     bool launchSolverExecutable(const QString& analysisType);
     int solverModeFromAnalysisType(const QString& analysisType) const;
     bool updateIiiDirDat(const QString& projectDir, int solverMode) const;
-    bool updatePrepDatFiles(const QString& projectDir, int solverMode) const;
+    bool updatePrepDatFiles(const QString& projectDir, int solverMode, int verticalAxis) const;
     int nextSeepageIndex() const;
     int nextStressStrainIndex() const;
     int nextCaveExcavationIndex() const;

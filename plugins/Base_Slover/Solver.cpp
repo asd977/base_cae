@@ -1612,7 +1612,11 @@ bool Solver::launchSolverExecutable(const QString& analysisType)
             return false;
         }
 
-        if (!updatePrepDatFiles(projectDir, solverMode))
+        int verticalAxis = 2;
+        if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+            verticalAxis = meshSvc->verticalAxis();
+
+        if (!updatePrepDatFiles(projectDir, solverMode, verticalAxis))
         {
             QMessageBox::warning(nullptr, "启动求解器失败",
                                  QString("%1更新 PREP/DAT 文件失败。").arg(analysisType));
@@ -1738,7 +1742,7 @@ bool Solver::updateIiiDirDat(const QString& projectDir, int solverMode) const
     return true;
 }
 
-bool Solver::updatePrepDatFiles(const QString& projectDir, int solverMode) const
+bool Solver::updatePrepDatFiles(const QString& projectDir, int solverMode, int verticalAxis) const
 {
     QFile file(QDir(projectDir).filePath("PREP/IIIN.DAT"));
     if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -1750,7 +1754,18 @@ bool Solver::updatePrepDatFiles(const QString& projectDir, int solverMode) const
     if (lines.size() < 2)
         return false;
 
-    lines[1].replace(QRegularExpression(R"(^\s*\d+)"), QString("%8").arg(solverMode));
+    const int safeVerticalAxis = (verticalAxis >= 1 && verticalAxis <= 3) ? verticalAxis : 2;
+    const QRegularExpression headerRe(R"(^\s*\d+\s+\d+)");
+    const QRegularExpressionMatch match = headerRe.match(lines[1]);
+    if (match.hasMatch())
+    {
+        const QString replacement = QString("%1%2").arg(solverMode, 8).arg(safeVerticalAxis, 8);
+        lines[1].replace(0, match.capturedLength(0), replacement);
+    }
+    else
+    {
+        lines[1].replace(QRegularExpression(R"(^\s*\d+)"), QString("%8").arg(solverMode));
+    }
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
         return false;
     file.write(lines.join("\n").toLocal8Bit());

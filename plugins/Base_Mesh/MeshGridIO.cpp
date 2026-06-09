@@ -46,6 +46,13 @@ namespace
 
 static const QRegularExpression kWhitespaceRe(QStringLiteral("\\s+"));
 
+static const char* kIiinVerticalAxisArrayName = "IIIN_IVERTICAL";
+
+static int normalizedVerticalAxis(int axis, int fallback = 2)
+{
+    return (axis >= 1 && axis <= 3) ? axis : fallback;
+}
+
 static inline bool parseInt(const QString& s, int& v)
 {
     bool ok = false;
@@ -2203,6 +2210,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
 
     auto grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
     grid->SetPoints(pts);
+    setVerticalAxis(grid, ivertical);
     grid->GetPointData()->AddArray(nodeIdArr);
     grid->GetPointData()->AddArray(originalPointIds);
 
@@ -2533,7 +2541,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
 }
 
 bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* grid,
-                                QString* errMsg) const
+                                QString* errMsg, int verticalAxis) const
 {
     if (!grid || grid->GetNumberOfPoints() == 0 || grid->GetNumberOfCells() == 0)
     {
@@ -2571,7 +2579,8 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
     const double am = 1.0;
     const int extra = 5;
     const double d1 = 0.0, d2 = 0.0, d3 = 0.0;
-    const int iobject = 0, ivertical = 2;
+    const int iobject = 0;
+    const int ivertical = verticalAxisOfGrid(grid, normalizedVerticalAxis(verticalAxis));
 
            // 导出目标维度单元：
            // - 3D 模型导出体单元 + 线单元（锚杆/杆单元保留）
@@ -2731,6 +2740,34 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
     out.flush();
     f.close();
     return true;
+}
+
+int MeshGridIO::verticalAxisOfGrid(vtkUnstructuredGrid* grid, int fallback)
+{
+    const int safeFallback = normalizedVerticalAxis(fallback);
+    if (!grid || !grid->GetFieldData())
+        return safeFallback;
+
+    auto* axisArr = vtkIntArray::SafeDownCast(
+        grid->GetFieldData()->GetArray(kIiinVerticalAxisArrayName));
+    if (!axisArr || axisArr->GetNumberOfTuples() <= 0)
+        return safeFallback;
+
+    return normalizedVerticalAxis(axisArr->GetValue(0), safeFallback);
+}
+
+void MeshGridIO::setVerticalAxis(vtkUnstructuredGrid* grid, int axis)
+{
+    if (!grid)
+        return;
+
+    auto arr = vtkSmartPointer<vtkIntArray>::New();
+    arr->SetName(kIiinVerticalAxisArrayName);
+    arr->SetNumberOfComponents(1);
+    arr->SetNumberOfTuples(1);
+    arr->SetValue(0, normalizedVerticalAxis(axis));
+    grid->GetFieldData()->RemoveArray(kIiinVerticalAxisArrayName);
+    grid->GetFieldData()->AddArray(arr);
 }
 
 QString MeshGridIO::defaultIiinOutputPath(const QString& sourceFile)

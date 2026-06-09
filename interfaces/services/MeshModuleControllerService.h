@@ -91,6 +91,7 @@ struct MeshModuleControllerService
     virtual vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGridSolid() = 0;
     virtual vtkSmartPointer<vtkUnstructuredGrid> getVtkUnstructuredGridLine() = 0;
     virtual QString sourceMeshFilePath() const = 0;
+    virtual int verticalAxis() const = 0;
     virtual bool exportIiinDatFile(const QString& filePath, QString* errMsg = nullptr) = 0;
     virtual void importMshGrid(QString path) = 0;
     virtual bool importCurrentGmshMesh(QString* errMsg = nullptr) = 0;
