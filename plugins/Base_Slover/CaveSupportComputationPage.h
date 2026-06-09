@@ -27,12 +27,18 @@ class CaveSupportComputationPage : public BasePage
     void beforeUnload() override;
 
     QString sectionText();
+    bool exportICaveDatFile(const QString& supportCaseSection) const;
+    void loadLegacyCaveJson(const QJsonObject& obj);
 
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
 
+  signals:
+    void computeRequested();
+
   private slots:
     void onExcavationLevelCountChanged(int count);
+    void onComputeClicked();
 
   private:
     struct CaseData

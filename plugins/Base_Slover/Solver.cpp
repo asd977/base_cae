@@ -50,6 +50,35 @@
 #include "SlopeStabilityWidget.h"
 #include "SolverSettingWidget.h"
 
+namespace
+{
+QStringList caveIcaveLineKeys()
+{
+    return {"line_3", "line_5", "line_7", "line_10", "line_11", "line_18", "line_19",
+            "line_20", "line_21", "line_22", "line_23", "line_24", "line_25"};
+}
+
+bool hasAnyIcaveLineValue(const QJsonObject& obj)
+{
+    for (const QString& key : caveIcaveLineKeys())
+    {
+        if (!obj.value(key).toString().trimmed().isEmpty())
+            return true;
+    }
+    return false;
+}
+
+bool hasAnyIcaveLineKey(const QJsonObject& obj)
+{
+    for (const QString& key : caveIcaveLineKeys())
+    {
+        if (obj.contains(key))
+            return true;
+    }
+    return false;
+}
+}
+
 Solver::Solver()
 {
     ServiceRegistry::instance().registerService<SolverService>(this);
@@ -161,6 +190,7 @@ bool Solver::loadProject()
     for (const auto& item : root.value("items").toArray())
     {
         const QJsonObject analysisObj = item.toObject();
+        const QJsonObject analysisState = analysisObj.value("state").toObject();
         const QString analysisType = analysisObj.value("type").toString();
 
         BasePage* analysisPage = nullptr;
@@ -172,7 +202,7 @@ bool Solver::loadProject()
             analysisNode = new ProjectNode(
                 analysisObj.value("title").toString("渗流分析"),
                 analysisObj.value("uuid").toString(QUuid::createUuid().toString()), seepagePage);
-            seepagePage->loadJson(analysisObj.value("state").toObject());
+            seepagePage->loadJson(analysisState);
             connect(seepagePage, &SeepageWidget::computeRequested, this,
                     [this, analysisNode]()
                     {
@@ -186,7 +216,7 @@ bool Solver::loadProject()
             analysisNode = new ProjectNode(
                 analysisObj.value("title").toString("土石坝计算"),
                 analysisObj.value("uuid").toString(QUuid::createUuid().toString()), stressPage);
-            stressPage->loadJson(analysisObj.value("state").toObject());
+            stressPage->loadJson(analysisState);
             connect(stressPage, &DamAnalysisWidget::computeRequested, this,
                     [this, analysisNode]()
                     {
@@ -200,7 +230,7 @@ bool Solver::loadProject()
             analysisNode = new ProjectNode(
                 analysisObj.value("title").toString("边坡分析"),
                 analysisObj.value("uuid").toString(QUuid::createUuid().toString()), slopePage);
-            slopePage->loadJson(analysisObj.value("state").toObject());
+            slopePage->loadJson(analysisState);
             connect(slopePage, &SlopeStabilityWidget::computeRequested, this,
                     [this, analysisNode]()
                     {
@@ -214,13 +244,22 @@ bool Solver::loadProject()
             analysisNode = new ProjectNode(
                 analysisObj.value("title").toString("洞室开挖"),
                 analysisObj.value("uuid").toString(QUuid::createUuid().toString()), cavePage);
-            cavePage->loadJson(analysisObj.value("state").toObject());
-            connect(cavePage, &CaveExcavationWidget::computeRequested, this,
+            cavePage->loadJson(analysisState);
+            analysisPage = cavePage;
+        }
+        else if (analysisType == "CaveBlockStabilityAnalysis")
+        {
+            auto* blockPage = new CaveBlockStabilityWidget();
+            analysisNode = new ProjectNode(
+                analysisObj.value("title").toString("块体稳定计算"),
+                analysisObj.value("uuid").toString(QUuid::createUuid().toString()), blockPage);
+            blockPage->loadJson(analysisState);
+            connect(blockPage, &CaveBlockStabilityWidget::computeRequested, this,
                     [this, analysisNode]()
                     {
-                        onComputeCaveExcavation(analysisNode);
+                        onComputeCaveBlockStability(analysisNode);
                     });
-            analysisPage = cavePage;
+            analysisPage = blockPage;
         }
 
         if (!analysisNode || !analysisPage)
@@ -322,6 +361,14 @@ bool Solver::loadProject()
                             onComputeGeoStressRegression(node);
                         });
             }
+            else if (auto* supportPage = dynamic_cast<CaveSupportComputationPage*>(page))
+            {
+                connect(supportPage, &CaveSupportComputationPage::computeRequested, this,
+                        [this, analysisNode]()
+                        {
+                            onComputeCaveExcavation(analysisNode);
+                        });
+            }
             else if (auto* blockPage = dynamic_cast<CaveBlockStabilityWidget*>(page))
             {
                 connect(blockPage, &CaveBlockStabilityWidget::computeRequested, this,
@@ -330,7 +377,14 @@ bool Solver::loadProject()
                             onComputeCaveBlockStability(node);
                         });
             }
-            page->loadJson(childObj.value("state").toObject());
+            const QJsonObject childState = childObj.value("state").toObject();
+            page->loadJson(childState);
+            if (analysisType == "CaveExcavationAnalysis" && type == "CaveSupportComputation"
+                && !hasAnyIcaveLineKey(childState) && hasAnyIcaveLineValue(analysisState))
+            {
+                if (auto* supportPage = dynamic_cast<CaveSupportComputationPage*>(page))
+                    supportPage->loadLegacyCaveJson(analysisState);
+            }
             analysisNode->addChild(node);
 
             if (type == "GeoStressRegressionAnalysis" || type == "CaveSupportComputation"
@@ -401,21 +455,6 @@ bool Solver::loadProject()
             }
         }
 
-        if (analysisType == "CaveExcavationAnalysis" && !hasCaveBlockStabilityNode)
-        {
-            addCaveBlockStabilityNode(analysisNode, false);
-        }
-        else if (analysisType == "CaveExcavationAnalysis")
-        {
-            for (ProjectNode* child : analysisNode->getChildren())
-            {
-                if (!child || !child->getPage()
-                    || child->getPage()->getPageType() != "CaveBlockStabilityAnalysis")
-                    continue;
-                if (countGeoStressChildren(child, "CaveBlockPlane") == 0)
-                    addCaveBlockPlaneNode(child, false);
-            }
-        }
 
         if (analysisType == "CaveExcavationAnalysis" && !hasCaveSupportComputationNode)
         {
@@ -432,6 +471,9 @@ bool Solver::loadProject()
                     addCaveExcavationBodyNode(child, false);
             }
         }
+        if (analysisType == "CaveBlockStabilityAnalysis"
+            && countGeoStressChildren(analysisNode, "CaveBlockPlane") == 0)
+            addCaveBlockPlaneNode(analysisNode, false);
 
         if (analysisType == "StressStrainAnalysis" || analysisType == "DamAnalysis")
             setupNodeRole(analysisNode, "DamAnalysis");
@@ -441,6 +483,8 @@ bool Solver::loadProject()
             setupNodeRole(analysisNode, "SlopeStabilityAnalysis");
         else if (analysisType == "CaveExcavationAnalysis")
             setupNodeRole(analysisNode, "CaveExcavationAnalysis");
+        else if (analysisType == "CaveBlockStabilityAnalysis")
+            setupNodeRole(analysisNode, "CaveBlockStabilityAnalysis");
 
         syncDamAnalysisMCase(analysisNode);
 
@@ -473,6 +517,11 @@ void Solver::initAction()
                        [this](const QVariantMap&)
                        {
                            onCaveExcavationAction();
+                       });
+    em.registerHandler(PublicConstants::kActionCaveBlockStabilityKey,
+                       [this](const QVariantMap&)
+                       {
+                           onCaveBlockStabilityAction();
                        });
     em.registerHandler(PublicConstants::kActionSlopeStabilityKey,
                        [this](const QVariantMap&)
@@ -529,16 +578,6 @@ void Solver::initTreeMenu()
                         if (!analysisNode)
                             return;
                         addCaveSupportComputationNode(analysisNode, true);
-                    });
-                ContextMenuHub::addAction(
-                    menu, this, "新增洞室块体稳定性分析",
-                    [this, uuid]()
-                    {
-                        auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
-                        auto* analysisNode = pm ? pm->findNodeByUuid(uuid) : nullptr;
-                        if (!analysisNode)
-                            return;
-                        addCaveBlockStabilityNode(analysisNode, true);
                     });
             }
             else if (kind == "CaveSupportComputation")
@@ -847,7 +886,7 @@ GeoStressRegressionWidget::ExportPayload Solver::buildGeoStressPayload(ProjectNo
 }
 
 
-void Solver::addCaveSupportComputationNode(ProjectNode* analysisNode, bool setCurrent) const
+void Solver::addCaveSupportComputationNode(ProjectNode* analysisNode, bool setCurrent)
 {
     if (!analysisNode)
         return;
@@ -870,6 +909,11 @@ void Solver::addCaveSupportComputationNode(ProjectNode* analysisNode, bool setCu
     auto* node = new ProjectNode("开挖和加固计算", QUuid::createUuid().toString(), page);
     setupNodeRole(node, "CaveSupportComputation");
     analysisNode->addChild(node);
+    connect(page, &CaveSupportComputationPage::computeRequested, this,
+            [this, analysisNode]()
+            {
+                onComputeCaveExcavation(analysisNode);
+            });
     addCaveExcavationBodyNode(node, false);
 
     if (setCurrent)
@@ -1030,15 +1074,31 @@ void Solver::onCaveExcavationAction()
     auto* analysisNode = new ProjectNode(analysisName, QUuid::createUuid().toString(), cavePage);
     setupNodeRole(analysisNode, "CaveExcavationAnalysis");
 
-    connect(cavePage, &CaveExcavationWidget::computeRequested, this,
-            [this, analysisNode]()
-            {
-                onComputeCaveExcavation(analysisNode);
-            });
-
     addGeoStressRegressionNode(analysisNode, false);
     addCaveSupportComputationNode(analysisNode, false);
-    addCaveBlockStabilityNode(analysisNode, false);
+
+    m_root->addChild(analysisNode);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(analysisNode);
+}
+
+void Solver::onCaveBlockStabilityAction()
+{
+    if (!m_root)
+        return;
+
+    auto* blockPage = new CaveBlockStabilityWidget();
+    const QString analysisName = QString("块体稳定计算(%1)").arg(nextCaveBlockStabilityIndex());
+    auto* analysisNode = new ProjectNode(analysisName, QUuid::createUuid().toString(), blockPage);
+    setupNodeRole(analysisNode, "CaveBlockStabilityAnalysis");
+
+    connect(blockPage, &CaveBlockStabilityWidget::computeRequested, this,
+            [this, analysisNode]()
+            {
+                onComputeCaveBlockStability(analysisNode);
+            });
+
+    addCaveBlockPlaneNode(analysisNode, false);
 
     m_root->addChild(analysisNode);
     if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
@@ -1205,10 +1265,11 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     QStringList failedFiles;
 
     QString supportCaseSection;
+    CaveSupportComputationPage* supportPage = nullptr;
     QVector<CaveExcavationBodyPage*> excavationBodies;
     for (ProjectNode* child : analysisNode->getChildren())
     {
-        auto* supportPage = dynamic_cast<CaveSupportComputationPage*>(child->getPage());
+        supportPage = dynamic_cast<CaveSupportComputationPage*>(child->getPage());
         if (!supportPage)
             continue;
         supportCaseSection = supportPage->sectionText();
@@ -1227,8 +1288,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         failedFiles << "IIKE_T01-**.DAT";
     }
 
-    auto* cavePage = dynamic_cast<CaveExcavationWidget*>(analysisNode->getPage());
-    if (!cavePage || !cavePage->exportICaveDatFile(supportCaseSection))
+    if (!supportPage || !supportPage->exportICaveDatFile(supportCaseSection))
     {
         ok = false;
         failedFiles << "ICAVE.DAT";
@@ -1245,28 +1305,6 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         if (!oneOk)
             failedFiles << "IGEOS.DAT";
     }
-
-    for (ProjectNode* child : analysisNode->getChildren())
-    {
-        auto* blockPage = dynamic_cast<CaveBlockStabilityWidget*>(child->getPage());
-        if (!blockPage)
-            continue;
-
-        QVector<CaveBlockPlanePage*> planePages;
-        for (ProjectNode* planeNode : child->getChildren())
-        {
-            if (auto* planePage = dynamic_cast<CaveBlockPlanePage*>(planeNode->getPage()))
-                planePages.push_back(planePage);
-        }
-
-        if (planePages.isEmpty() || !blockPage->exportDatFiles(planePages))
-        {
-            ok = false;
-            failedFiles << "ICUT.DAT/PARA.DAT/MESG227.DAT/ICUTPLANE.DAT";
-        }
-        break;
-    }
-
 
     QDir wd(QDir(projectDir).absolutePath());
     if (!wd.exists("PREP") && !wd.mkpath("PREP"))
@@ -1805,6 +1843,32 @@ int Solver::nextCaveExcavationIndex() const
 
     int maxIdx = 0;
     QRegularExpression re(QString(R"(^洞室开挖\((\d+)\)$)"));
+
+    for (ProjectNode* child : m_root->getChildren())
+    {
+        if (!child)
+            continue;
+        const QString name = child->getName();
+        auto m = re.match(name);
+        if (m.hasMatch())
+        {
+            bool ok = false;
+            int idx = m.captured(1).toInt(&ok);
+            if (ok)
+                maxIdx = std::max(maxIdx, idx);
+        }
+    }
+
+    return maxIdx + 1;
+}
+
+int Solver::nextCaveBlockStabilityIndex() const
+{
+    if (!m_root)
+        return 1;
+
+    int maxIdx = 0;
+    QRegularExpression re(QString(R"(^块体稳定计算\((\d+)\)$)"));
 
     for (ProjectNode* child : m_root->getChildren())
     {
