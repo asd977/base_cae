@@ -6,13 +6,210 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>491</width>
-    <height>622</height>
+    <width>490</width>
+    <height>1435</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayoutRoot">
    <item>
+    <widget class="QGroupBox" name="groupIcaveParams">
+     <property name="title">
+      <string>洞室开挖流程控制参数</string>
+     </property>
+     <layout class="QFormLayout" name="formLayoutIcave">
+      <item row="0" column="0">
+       <widget class="QLabel" name="label3">
+        <property name="text">
+         <string>地下水影响开关（IFSEEP）</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="line3Edit">
+        <property name="text">
+         <string>0</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label5">
+        <property name="text">
+         <string>洞内水位（HW_NEI）</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLineEdit" name="line5Edit">
+        <property name="text">
+         <string>0.0</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label7">
+        <property name="text">
+         <string>衬砌外水位（HW_WAI）</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QLineEdit" name="line7Edit">
+        <property name="text">
+         <string>0.0</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label10">
+        <property name="text">
+         <string>吊车梁安装级</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QLineEdit" name="line10Edit">
+        <property name="text">
+         <string>-4</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="label11">
+        <property name="text">
+         <string>围岩已释放荷载 α</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QLineEdit" name="line11Edit">
+        <property name="text">
+         <string>1.0</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="0">
+       <widget class="QLabel" name="label18">
+        <property name="text">
+         <string>阻尼开关（IF_BOP）</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="1">
+       <widget class="QLineEdit" name="line18Edit">
+        <property name="text">
+         <string>0</string>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="0">
+       <widget class="QLabel" name="label19">
+        <property name="text">
+         <string>阻尼参数（IDAMP）</string>
+        </property>
+       </widget>
+      </item>
+      <item row="6" column="1">
+       <widget class="QLineEdit" name="line19Edit">
+        <property name="text">
+         <string>0</string>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="0">
+       <widget class="QLabel" name="label20">
+        <property name="text">
+         <string>Rayleigh α（ALFAP）</string>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="1">
+       <widget class="QLineEdit" name="line20Edit">
+        <property name="text">
+         <string>0.05</string>
+        </property>
+       </widget>
+      </item>
+      <item row="8" column="0">
+       <widget class="QLabel" name="label21">
+        <property name="text">
+         <string>Rayleigh β（BBETAP）</string>
+        </property>
+       </widget>
+      </item>
+      <item row="8" column="1">
+       <widget class="QLineEdit" name="line21Edit">
+        <property name="text">
+         <string>0.0</string>
+        </property>
+       </widget>
+      </item>
+      <item row="9" column="0">
+       <widget class="QLabel" name="label22">
+        <property name="text">
+         <string>计算方式（ITYPE_JISUAN）</string>
+        </property>
+       </widget>
+      </item>
+      <item row="9" column="1">
+       <widget class="QLineEdit" name="line22Edit">
+        <property name="text">
+         <string>1</string>
+        </property>
+       </widget>
+      </item>
+      <item row="10" column="0">
+       <widget class="QLabel" name="label23">
+        <property name="text">
+         <string>开挖荷载计算方式</string>
+        </property>
+       </widget>
+      </item>
+      <item row="10" column="1">
+       <widget class="QLineEdit" name="line23Edit">
+        <property name="text">
+         <string>2</string>
+        </property>
+       </widget>
+      </item>
+      <item row="11" column="0">
+       <widget class="QLabel" name="label24">
+        <property name="text">
+         <string>迭代法与迭代数</string>
+        </property>
+       </widget>
+      </item>
+      <item row="11" column="1">
+       <widget class="QLineEdit" name="line24Edit">
+        <property name="text">
+         <string>1 100</string>
+        </property>
+       </widget>
+      </item>
+      <item row="12" column="0">
+       <widget class="QLabel" name="label25">
+        <property name="text">
+         <string>加固对应荷载分级</string>
+        </property>
+       </widget>
+      </item>
+      <item row="12" column="1">
+       <widget class="QLineEdit" name="line25Edit">
+        <property name="text">
+         <string>4</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <widget class="QGroupBox" name="groupExcavationTime">
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>300</height>
+      </size>
+     </property>
      <property name="title">
       <string> 洞室开挖时间定义</string>
      </property>
@@ -63,9 +260,16 @@
    <item>
     <widget class="QGroupBox" name="groupParams">
      <property name="title">
-      <string>开挖与加固参数（工况1）</string>
+      <string>开挖与加固参数</string>
      </property>
      <layout class="QFormLayout" name="formLayoutParams">
+      <item row="0" column="0">
+       <widget class="QLabel" name="labelIexcaSta">
+        <property name="text">
+         <string>起始开挖级（负值）</string>
+        </property>
+       </widget>
+      </item>
       <item row="0" column="1">
        <widget class="QWidget" name="widgetExcRange" native="true">
         <layout class="QHBoxLayout" name="horizontalLayoutExcRange">
@@ -171,20 +375,13 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="0">
-       <widget class="QLabel" name="labelIexcaSta">
-        <property name="text">
-         <string>起始开挖级（负值）</string>
-        </property>
-       </widget>
-      </item>
      </layout>
     </widget>
    </item>
    <item>
     <widget class="QGroupBox" name="groupDyna">
      <property name="title">
-      <string>4.5.6 洞室地震动力计算相关定义</string>
+      <string>洞室地震动力计算相关定义</string>
      </property>
      <layout class="QFormLayout" name="formLayoutDyna">
       <item row="0" column="0">
@@ -349,42 +546,6 @@
         </property>
        </widget>
       </item>
-     </layout>
-    </widget>
-   </item>
-
-   <item>
-    <widget class="QGroupBox" name="groupIcaveParams">
-     <property name="title">
-      <string>洞室开挖流程控制参数（ICAVE.DAT）</string>
-     </property>
-     <layout class="QFormLayout" name="formLayoutIcave">
-      <item row="0" column="0"><widget class="QLabel" name="label3"><property name="text"><string>地下水影响开关（IFSEEP）</string></property></widget></item>
-      <item row="0" column="1"><widget class="QLineEdit" name="line3Edit"><property name="text"><string>0</string></property></widget></item>
-      <item row="1" column="0"><widget class="QLabel" name="label5"><property name="text"><string>洞内水位（HW_NEI）</string></property></widget></item>
-      <item row="1" column="1"><widget class="QLineEdit" name="line5Edit"><property name="text"><string>0.0</string></property></widget></item>
-      <item row="2" column="0"><widget class="QLabel" name="label7"><property name="text"><string>衬砌外水位（HW_WAI）</string></property></widget></item>
-      <item row="2" column="1"><widget class="QLineEdit" name="line7Edit"><property name="text"><string>0.0</string></property></widget></item>
-      <item row="3" column="0"><widget class="QLabel" name="label10"><property name="text"><string>吊车梁安装级</string></property></widget></item>
-      <item row="3" column="1"><widget class="QLineEdit" name="line10Edit"><property name="text"><string>-4</string></property></widget></item>
-      <item row="4" column="0"><widget class="QLabel" name="label11"><property name="text"><string>围岩已释放荷载 α</string></property></widget></item>
-      <item row="4" column="1"><widget class="QLineEdit" name="line11Edit"><property name="text"><string>1.0</string></property></widget></item>
-      <item row="5" column="0"><widget class="QLabel" name="label18"><property name="text"><string>阻尼开关（IF_BOP）</string></property></widget></item>
-      <item row="5" column="1"><widget class="QLineEdit" name="line18Edit"><property name="text"><string>0</string></property></widget></item>
-      <item row="6" column="0"><widget class="QLabel" name="label19"><property name="text"><string>阻尼参数（IDAMP）</string></property></widget></item>
-      <item row="6" column="1"><widget class="QLineEdit" name="line19Edit"><property name="text"><string>0</string></property></widget></item>
-      <item row="7" column="0"><widget class="QLabel" name="label20"><property name="text"><string>Rayleigh α（ALFAP）</string></property></widget></item>
-      <item row="7" column="1"><widget class="QLineEdit" name="line20Edit"><property name="text"><string>0.05</string></property></widget></item>
-      <item row="8" column="0"><widget class="QLabel" name="label21"><property name="text"><string>Rayleigh β（BBETAP）</string></property></widget></item>
-      <item row="8" column="1"><widget class="QLineEdit" name="line21Edit"><property name="text"><string>0.0</string></property></widget></item>
-      <item row="9" column="0"><widget class="QLabel" name="label22"><property name="text"><string>计算方式（ITYPE_JISUAN）</string></property></widget></item>
-      <item row="9" column="1"><widget class="QLineEdit" name="line22Edit"><property name="text"><string>1</string></property></widget></item>
-      <item row="10" column="0"><widget class="QLabel" name="label23"><property name="text"><string>开挖荷载计算方式</string></property></widget></item>
-      <item row="10" column="1"><widget class="QLineEdit" name="line23Edit"><property name="text"><string>2</string></property></widget></item>
-      <item row="11" column="0"><widget class="QLabel" name="label24"><property name="text"><string>迭代法与迭代数</string></property></widget></item>
-      <item row="11" column="1"><widget class="QLineEdit" name="line24Edit"><property name="text"><string>1 100</string></property></widget></item>
-      <item row="12" column="0"><widget class="QLabel" name="label25"><property name="text"><string>加固对应荷载分级</string></property></widget></item>
-      <item row="12" column="1"><widget class="QLineEdit" name="line25Edit"><property name="text"><string>4</string></property></widget></item>
      </layout>
     </widget>
    </item>
