@@ -16,6 +16,7 @@
 #include <QLineEdit>
 #include <QSpinBox>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QStringList>
@@ -252,9 +253,15 @@ void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
     m_isUpdatingUi = true;
 
     m_caseData = CaseData();
+    if (m_excavationDaysTable)
+        m_excavationDaysTable->setUpdatesEnabled(false);
+
     const int iexcaMax = qMax(1, obj.value("iexca_max").toInt(1));
     if (m_iexcaMaxSpin)
+    {
+        const QSignalBlocker blocker(m_iexcaMaxSpin);
         m_iexcaMaxSpin->setValue(iexcaMax);
+    }
     onExcavationLevelCountChanged(iexcaMax);
     const QJsonArray excavationDays = obj.value("excavation_days").toArray();
     for (int i = 0; i < excavationDays.size() && i < iexcaMax; ++i)
@@ -303,6 +310,9 @@ void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
     }
 
     loadLegacyCaveJson(obj);
+
+    if (m_excavationDaysTable)
+        m_excavationDaysTable->setUpdatesEnabled(true);
 
     m_isUpdatingUi = false;
     loadCaseToUi();
