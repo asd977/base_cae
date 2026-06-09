@@ -1883,14 +1883,27 @@ MeshModuleController::MeshModuleController(QObject* parent) : QObject(parent)
 void MeshModuleController::newProject()
 {
     auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
-    m_gridNode = new ProjectNode("网格");
+    m_verticalAxis = 2;
+    m_importSettingsWidget = new MeshImportSettingsWidget();
+    m_importSettingsWidget->setVerticalAxis(m_verticalAxis);
+    m_importSettingsWidget->setSourceFileName(m_sourceFileName);
+    connect(m_importSettingsWidget, &MeshImportSettingsWidget::importRequested, this,
+            &MeshModuleController::onImportGridFileDialog);
+    connect(m_importSettingsWidget, &MeshImportSettingsWidget::verticalAxisChanged, this,
+            [this](int axis)
+            {
+                if (axis < 1 || axis > 3)
+                    return;
+                m_verticalAxis = axis;
+                MeshGridIO::setVerticalAxis(m_importedGrid, m_verticalAxis);
+            });
+    m_gridNode = new ProjectNode("网格", QUuid::createUuid().toString(), m_importSettingsWidget);
     m_gridNode->setData(0, ProjectNode::RoleModule, "Mesh");
     m_gridNode->setData(0, ProjectNode::RoleKind, "MeshRoot");
     projectManagerService->addTreeItem(m_gridNode);
     m_edgeRules.clear();
     m_faceRules.clear();
     m_volumeRules.clear();
-    m_verticalAxis = 2;
 }
 
 
@@ -2054,7 +2067,18 @@ bool MeshModuleController::loadProject()
 {
     auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
 
-    m_gridNode = new ProjectNode("网格");
+    m_importSettingsWidget = new MeshImportSettingsWidget();
+    connect(m_importSettingsWidget, &MeshImportSettingsWidget::importRequested, this,
+            &MeshModuleController::onImportGridFileDialog);
+    connect(m_importSettingsWidget, &MeshImportSettingsWidget::verticalAxisChanged, this,
+            [this](int axis)
+            {
+                if (axis < 1 || axis > 3)
+                    return;
+                m_verticalAxis = axis;
+                MeshGridIO::setVerticalAxis(m_importedGrid, m_verticalAxis);
+            });
+    m_gridNode = new ProjectNode("网格", QUuid::createUuid().toString(), m_importSettingsWidget);
     m_gridNode->setData(0, ProjectNode::RoleModule, "Mesh");
     m_gridNode->setData(0, ProjectNode::RoleKind, "MeshRoot");
     projectManagerService->addTreeItem(m_gridNode);
@@ -2077,6 +2101,8 @@ bool MeshModuleController::loadProject()
     m_verticalAxis = root.value("vertical_axis").toInt(2);
     if (m_verticalAxis < 1 || m_verticalAxis > 3)
         m_verticalAxis = 2;
+    if (m_importSettingsWidget)
+        m_importSettingsWidget->setVerticalAxis(m_verticalAxis);
 
     const bool hasGrid = root.value("has_grid").toBool(false);
 
@@ -2111,6 +2137,11 @@ bool MeshModuleController::loadProject()
         MeshGridIO::setVerticalAxis(m_importedGrid, m_verticalAxis);
         m_hasGrid = true;
         m_sourceFileName.clear();
+        if (m_importSettingsWidget)
+        {
+            m_importSettingsWidget->setVerticalAxis(m_verticalAxis);
+            m_importSettingsWidget->setSourceFileName(m_sourceFileName);
+        }
 
         m_splitCacheSource = nullptr;
         m_splitCacheLine = nullptr;
@@ -2211,23 +2242,8 @@ bool MeshModuleController::loadProject()
             return new MeshGroupingWidget();
 
         if (kind == "MeshImportSettings")
-        {
-            auto* w = new MeshImportSettingsWidget();
-            m_importSettingsWidget = w;
-            w->setVerticalAxis(m_verticalAxis);
-            w->setSourceFileName(m_sourceFileName);
-            connect(w, &MeshImportSettingsWidget::importRequested, this,
-                    &MeshModuleController::onImportGridFileDialog);
-            connect(w, &MeshImportSettingsWidget::verticalAxisChanged, this,
-                    [this](int axis)
-                    {
-                        if (axis < 1 || axis > 3)
-                            return;
-                        m_verticalAxis = axis;
-                        MeshGridIO::setVerticalAxis(m_importedGrid, m_verticalAxis);
-                    });
-            return w;
-        }
+            return nullptr;
+
 
         if (kind == "MeshEdit")
         {
@@ -3211,47 +3227,38 @@ void MeshModuleController::openImportSettingsPage(bool setCurrent)
     if (!m_gridNode)
         return;
 
-    if (auto* existed = findDirectChildByKind(m_gridNode, "MeshImportSettings"))
+    if (!m_importSettingsWidget)
     {
-        if (m_importSettingsWidget)
-        {
-            m_importSettingsWidget->setVerticalAxis(m_verticalAxis);
-            m_importSettingsWidget->setSourceFileName(m_sourceFileName);
-        }
-
-        if (setCurrent)
-        {
-            if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-                pm->setCurrentItem(existed);
-        }
-        return;
+        m_importSettingsWidget = new MeshImportSettingsWidget();
+        m_importSettingsWidget->setVerticalAxis(m_verticalAxis);
+        m_importSettingsWidget->setSourceFileName(m_sourceFileName);
+        connect(m_importSettingsWidget, &MeshImportSettingsWidget::importRequested, this,
+                &MeshModuleController::onImportGridFileDialog);
+        connect(m_importSettingsWidget, &MeshImportSettingsWidget::verticalAxisChanged, this,
+                [this](int axis)
+                {
+                    if (axis < 1 || axis > 3)
+                        return;
+                    m_verticalAxis = axis;
+                    MeshGridIO::setVerticalAxis(m_importedGrid, m_verticalAxis);
+                });
+        m_gridNode->setPage(m_importSettingsWidget);
+    }
+    else
+    {
+        m_importSettingsWidget->setVerticalAxis(m_verticalAxis);
+        m_importSettingsWidget->setSourceFileName(m_sourceFileName);
+        if (!m_gridNode->getPage())
+            m_gridNode->setPage(m_importSettingsWidget);
     }
 
-    auto* w = new MeshImportSettingsWidget();
-    m_importSettingsWidget = w;
-    w->setVerticalAxis(m_verticalAxis);
-    w->setSourceFileName(m_sourceFileName);
-    connect(w, &MeshImportSettingsWidget::importRequested, this,
-            &MeshModuleController::onImportGridFileDialog);
-    connect(w, &MeshImportSettingsWidget::verticalAxisChanged, this,
-            [this](int axis)
-            {
-                if (axis < 1 || axis > 3)
-                    return;
-                m_verticalAxis = axis;
-                MeshGridIO::setVerticalAxis(m_importedGrid, m_verticalAxis);
-            });
-
-    auto* node = new ProjectNode("网格导入", QUuid::createUuid().toString(), w);
-    node->setData(0, ProjectNode::RoleModule, "Mesh");
-    node->setData(0, ProjectNode::RoleKind, "MeshImportSettings");
-    m_gridNode->addChild(node);
     if (setCurrent)
     {
         if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-            pm->setCurrentItem(node);
+            pm->setCurrentItem(m_gridNode);
     }
 }
+
 
 void MeshModuleController::onMeshEdit()
 {
