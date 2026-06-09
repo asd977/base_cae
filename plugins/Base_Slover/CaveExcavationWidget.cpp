@@ -17,11 +17,7 @@ CaveExcavationWidget::CaveExcavationWidget(QWidget* parent)
     Q_UNUSED(parent);
     ui->setupUi(this);
     setAttribute(Qt::WA_StyledBackground, true);
-    setStyleSheet(
-        "QWidget#CaveExcavationWidget, QWidget#scrollAreaWidgetContents { background: white; }");
-    ui->scrollArea->setStyleSheet("QScrollArea { background: white; border: 0; }");
-
-    connect(ui->btnCompute, &QPushButton::clicked, this, &CaveExcavationWidget::onComputeClicked);
+    setStyleSheet("QWidget#CaveExcavationWidget { background: white; }");
 }
 
 CaveExcavationWidget::~CaveExcavationWidget()

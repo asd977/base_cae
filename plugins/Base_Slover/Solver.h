@@ -27,6 +27,7 @@ class Solver : public QObject, public SolverService
     void onStressStrainAction();
     void onCaveExcavationAction();
     void onSlopeStabilityAction();
+    void onCaveBlockStabilityAction();
     void onComputeSeepage(ProjectNode* analysisNode);
     void onComputeStressStrain(ProjectNode* analysisNode);
     void onComputeCaveExcavation(ProjectNode* analysisNode);
@@ -43,7 +44,7 @@ class Solver : public QObject, public SolverService
     void syncDamAnalysisMCase(ProjectNode* analysisNode) const;
     void addFillStorageCycleNode(ProjectNode* analysisNode, bool setCurrent) const;
     void addGeoStressRegressionNode(ProjectNode* analysisNode, bool setCurrent);
-    void addCaveSupportComputationNode(ProjectNode* analysisNode, bool setCurrent) const;
+    void addCaveSupportComputationNode(ProjectNode* analysisNode, bool setCurrent);
     void addCaveExcavationBodyNode(ProjectNode* supportNode, bool setCurrent) const;
     void addCaveBlockStabilityNode(ProjectNode* analysisNode, bool setCurrent);
     void addCaveBlockPlaneNode(ProjectNode* blockNode, bool setCurrent) const;
@@ -59,6 +60,7 @@ class Solver : public QObject, public SolverService
     int nextSeepageIndex() const;
     int nextStressStrainIndex() const;
     int nextCaveExcavationIndex() const;
+    int nextCaveBlockStabilityIndex() const;
     int nextSlopeIndex() const;
     void removeNodeByUuid(const QString& uuid);
     void deleteNodeRecursively(ProjectNode* node) const;
