@@ -37,6 +37,7 @@ FORMS += \
     MeshFaceControlWidget.ui \
     MeshEdgeControlWidget.ui \
     GridEditingWidget.ui \
+    MeshImportSettingsWidget.ui \
     MeshGroupingWidget.ui
 
 

@@ -4,15 +4,17 @@
 
 #include <QString>
 
-class QComboBox;
-class QLabel;
-class QPushButton;
+namespace Ui
+{
+class MeshImportSettingsWidget;
+}
 
 class MeshImportSettingsWidget : public BasePage
 {
     Q_OBJECT
   public:
     explicit MeshImportSettingsWidget(QWidget* parent = nullptr);
+    ~MeshImportSettingsWidget() override;
 
     int verticalAxis() const;
     void setVerticalAxis(int axis);
@@ -26,7 +28,5 @@ class MeshImportSettingsWidget : public BasePage
     void verticalAxisChanged(int axis);
 
   private:
-    QComboBox* m_comboVerticalAxis = nullptr;
-    QLabel* m_labelSourceFile = nullptr;
-    QPushButton* m_buttonImport = nullptr;
+    Ui::MeshImportSettingsWidget* ui = nullptr;
 };
