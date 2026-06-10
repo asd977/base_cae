@@ -1351,7 +1351,7 @@ void MaterialManager::rebuildProjectTree()
             m_rootItem->addChild(modelItem);
         }
         modelItem->setText(0, model->displayName);
-        modelItem->setExpanded(true);
+        modelItem->setExpanded(false);
 
         if (m_modelWidgets.contains(model->key))
         {
@@ -1465,7 +1465,7 @@ void MaterialManager::rebuildProjectTree()
         }
     }
 
-    m_rootItem->setExpanded(true);
+    m_rootItem->setExpanded(false);
 }
 
 void MaterialManager::clearProjectTree()

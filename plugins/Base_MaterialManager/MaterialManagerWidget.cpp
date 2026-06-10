@@ -46,7 +46,7 @@ void MaterialManagerWidget::refreshSummary(const QVector<MaterialModel>& models)
             entryItem->setData(0, Qt::UserRole + 1, entry.id);
         }
     }
-    ui->treeWidget->expandAll();
+    ui->treeWidget->collapseAll();
 }
 
 void MaterialManagerWidget::beforeLoad()
