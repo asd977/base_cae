@@ -1,4 +1,5 @@
 include($$PWD/plugin-dev.pri)
+include($$PWD/../../libs/OCC/occ.pri)
 
 QT += widgets core xml
 
