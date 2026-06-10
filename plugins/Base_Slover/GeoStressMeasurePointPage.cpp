@@ -285,12 +285,7 @@ int GeoStressMeasurePointPage::currentDimension() const
 void GeoStressMeasurePointPage::applyDimensionUi()
 {
     const bool is3D = currentDimension() == 3;
-    if (ui->dimensionHintLabel)
-    {
-        ui->dimensionHintLabel->setText(
-            is3D ? QStringLiteral("三维格式：XP YP ZP SGX SGY SGZ TXY TYZ TZX")
-                 : QStringLiteral("二维格式：XP YP SGX SGY TXY"));
-    }
+
     if (!ui->measureTable)
         return;
     ui->measureTable->setColumnHidden(ColZ, !is3D);

@@ -3,25 +3,76 @@
  <class>GeoStressMeasurePointPage</class>
  <widget class="QWidget" name="GeoStressMeasurePointPage">
   <property name="geometry">
-   <rect><x>0</x><y>0</y><width>720</width><height>520</height></rect>
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>663</width>
+    <height>746</height>
+   </rect>
   </property>
-  <property name="windowTitle"><string>实测地应力</string></property>
+  <property name="windowTitle">
+   <string>实测地应力</string>
+  </property>
   <layout class="QVBoxLayout" name="mainLayout">
    <item>
     <widget class="QGroupBox" name="pickGroup">
-     <property name="title"><string>测点选择</string></property>
+     <property name="title">
+      <string>测点选择</string>
+     </property>
      <layout class="QVBoxLayout" name="pickLayout">
-      <item><widget class="QLabel" name="pickHintLabel"><property name="text"><string>提示：Shift+拖拽框选，Ctrl+拖拽取消选择</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
-      <item><widget class="QLabel" name="dimensionHintLabel"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+      <item>
+       <widget class="QLabel" name="pickHintLabel">
+        <property name="text">
+         <string>提示：Shift+拖拽框选，Ctrl+拖拽取消选择</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
       <item>
        <layout class="QHBoxLayout" name="actionRowLayout">
-        <item><widget class="QCheckBox" name="pickEnableCheckBox"><property name="text"><string>开启点选</string></property></widget></item>
-        <item><spacer name="actionSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
-        <item><widget class="QPushButton" name="addManualRowButton"><property name="text"><string>添加手动行</string></property></widget></item>
-        <item><widget class="QPushButton" name="appendSelectedPointsButton"><property name="text"><string>添加当前选择</string></property></widget></item>
-        <item><widget class="QPushButton" name="importButton"><property name="text"><string>导入数据</string></property></widget></item>
-        <item><widget class="QPushButton" name="removeRowsButton"><property name="text"><string>移除选中</string></property></widget></item>
-        <item><widget class="QPushButton" name="clearButton"><property name="text"><string>清空全部</string></property></widget></item>
+        <item>
+         <widget class="QCheckBox" name="pickEnableCheckBox">
+          <property name="text">
+           <string>开启点选</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="actionSpacer">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QPushButton" name="appendSelectedPointsButton">
+          <property name="text">
+           <string>添加当前选择</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="importButton">
+          <property name="text">
+           <string>导入数据</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="clearButton">
+          <property name="text">
+           <string>清空全部</string>
+          </property>
+         </widget>
+        </item>
        </layout>
       </item>
      </layout>
@@ -29,23 +80,102 @@
    </item>
    <item>
     <widget class="QGroupBox" name="dataGroup">
-     <property name="title"><string>实测地应力数据</string></property>
+     <property name="title">
+      <string>实测地应力数据</string>
+     </property>
      <layout class="QVBoxLayout" name="dataLayout">
       <item>
        <widget class="QTableWidget" name="measureTable">
-        <property name="columnCount"><number>11</number></property>
-        <column><property name="text"><string>点号</string></property></column>
-        <column><property name="text"><string>XP</string></property></column>
-        <column><property name="text"><string>YP</string></property></column>
-        <column><property name="text"><string>ZP</string></property></column>
-        <column><property name="text"><string>SGX</string></property></column>
-        <column><property name="text"><string>SGY</string></property></column>
-        <column><property name="text"><string>SGZ</string></property></column>
-        <column><property name="text"><string>TXY</string></property></column>
-        <column><property name="text"><string>TYZ</string></property></column>
-        <column><property name="text"><string>TZX</string></property></column>
-        <column><property name="text"><string>pid</string></property></column>
+        <property name="columnCount">
+         <number>11</number>
+        </property>
+        <column>
+         <property name="text">
+          <string>点号</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>XP</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>YP</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>ZP</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>SGX</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>SGY</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>SGZ</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>TXY</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>TYZ</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>TZX</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>pid</string>
+         </property>
+        </column>
        </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout">
+        <item>
+         <spacer name="horizontalSpacer">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QPushButton" name="addManualRowButton">
+          <property name="text">
+           <string>添加手动行</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="removeRowsButton">
+          <property name="text">
+           <string>移除选中</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
      </layout>
     </widget>
