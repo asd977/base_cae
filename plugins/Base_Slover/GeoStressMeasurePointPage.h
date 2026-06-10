@@ -5,11 +5,6 @@
 #include <QVector>
 #include <QStringList>
 
-class QCheckBox;
-class QLabel;
-class QPushButton;
-class QTableWidget;
-
 namespace Ui
 {
 class GeoStressMeasurePointPage;
@@ -87,12 +82,4 @@ class GeoStressMeasurePointPage : public BasePage
 
   private:
     Ui::GeoStressMeasurePointPage* ui = nullptr;
-    QTableWidget* m_table = nullptr;
-    QPushButton* m_clearBtn = nullptr;
-    QPushButton* m_importBtn = nullptr;
-    QPushButton* m_appendSelectedPointsBtn = nullptr;
-    QPushButton* m_addManualRowBtn = nullptr;
-    QPushButton* m_removeRowsBtn = nullptr;
-    QCheckBox* m_pickEnableCheckBox = nullptr;
-    QLabel* m_dimensionHintLabel = nullptr;
 };

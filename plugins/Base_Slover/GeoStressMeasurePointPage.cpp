@@ -61,36 +61,27 @@ GeoStressMeasurePointPage::GeoStressMeasurePointPage(QWidget* parent)
     Q_UNUSED(parent);
     ui->setupUi(this);
 
-    m_table = ui->measureTable;
-    m_clearBtn = ui->clearButton;
-    m_importBtn = ui->importButton;
-    m_appendSelectedPointsBtn = ui->appendSelectedPointsButton;
-    m_addManualRowBtn = ui->addManualRowButton;
-    m_removeRowsBtn = ui->removeRowsButton;
-    m_pickEnableCheckBox = ui->pickEnableCheckBox;
-    m_dimensionHintLabel = ui->dimensionHintLabel;
-
-    m_table->setHorizontalHeaderLabels(QStringList() << "点号" << "XP" << "YP" << "ZP" << "SGX"
+    ui->measureTable->setHorizontalHeaderLabels(QStringList() << "点号" << "XP" << "YP" << "ZP" << "SGX"
                                              << "SGY" << "SGZ" << "TXY" << "TYZ" << "TZX"
                                              << "pid");
-    m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_table->setSelectionMode(QAbstractItemView::ExtendedSelection);
-    m_table->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed |
+    ui->measureTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    ui->measureTable->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    ui->measureTable->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed |
                              QAbstractItemView::SelectedClicked);
-    m_table->horizontalHeader()->setStretchLastSection(false);
-    m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
-    m_table->horizontalHeader()->setSectionResizeMode(ColX, QHeaderView::Stretch);
-    m_table->horizontalHeader()->setSectionResizeMode(ColY, QHeaderView::Stretch);
-    m_table->setColumnHidden(ColPid, true);
+    ui->measureTable->horizontalHeader()->setStretchLastSection(false);
+    ui->measureTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    ui->measureTable->horizontalHeader()->setSectionResizeMode(ColX, QHeaderView::Stretch);
+    ui->measureTable->horizontalHeader()->setSectionResizeMode(ColY, QHeaderView::Stretch);
+    ui->measureTable->setColumnHidden(ColPid, true);
 
-    connect(m_clearBtn, &QPushButton::clicked, this, &GeoStressMeasurePointPage::onClearClicked);
-    connect(m_importBtn, &QPushButton::clicked, this, &GeoStressMeasurePointPage::onImportClicked);
-    connect(m_addManualRowBtn, &QPushButton::clicked, this,
+    connect(ui->clearButton, &QPushButton::clicked, this, &GeoStressMeasurePointPage::onClearClicked);
+    connect(ui->importButton, &QPushButton::clicked, this, &GeoStressMeasurePointPage::onImportClicked);
+    connect(ui->addManualRowButton, &QPushButton::clicked, this,
             &GeoStressMeasurePointPage::onAddManualRowClicked);
-    connect(m_appendSelectedPointsBtn, &QPushButton::clicked, this,
+    connect(ui->appendSelectedPointsButton, &QPushButton::clicked, this,
             &GeoStressMeasurePointPage::onAppendSelectedPointsClicked);
-    connect(m_removeRowsBtn, &QPushButton::clicked, this, &GeoStressMeasurePointPage::onRemoveRowsClicked);
-    connect(m_pickEnableCheckBox, &QCheckBox::toggled, this,
+    connect(ui->removeRowsButton, &QPushButton::clicked, this, &GeoStressMeasurePointPage::onRemoveRowsClicked);
+    connect(ui->pickEnableCheckBox, &QCheckBox::toggled, this,
             [this](bool on)
             {
                 PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, on);
@@ -110,8 +101,8 @@ void GeoStressMeasurePointPage::beforeLoad()
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
     QObject::connect(&PickManager::instance(), &PickManager::nodePicked, this,
                      &GeoStressMeasurePointPage::onNodePicked, Qt::UniqueConnection);
-    if (m_pickEnableCheckBox)
-        m_pickEnableCheckBox->setChecked(false);
+    if (ui->pickEnableCheckBox)
+        ui->pickEnableCheckBox->setChecked(false);
     PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
     applyDimensionUi();
     syncPickedPointIds();
@@ -130,7 +121,7 @@ QJsonObject GeoStressMeasurePointPage::saveJson()
 {
     QJsonObject obj;
     QJsonArray rows;
-    for (int row = 0; row < m_table->rowCount(); ++row)
+    for (int row = 0; row < ui->measureTable->rowCount(); ++row)
     {
         QJsonObject item;
         item["node_id"] = cellText(row, ColNodeId);
@@ -152,7 +143,7 @@ QJsonObject GeoStressMeasurePointPage::saveJson()
 
 void GeoStressMeasurePointPage::loadJson(const QJsonObject& obj)
 {
-    m_table->setRowCount(0);
+    ui->measureTable->setRowCount(0);
     const QJsonArray rows = obj.value("measure_points").toArray();
     for (const auto& value : rows)
     {
@@ -196,8 +187,8 @@ GeoStressMeasurePointPage::MeasurePoint GeoStressMeasurePointPage::point() const
 QVector<GeoStressMeasurePointPage::MeasurePoint> GeoStressMeasurePointPage::points() const
 {
     QVector<MeasurePoint> out;
-    out.reserve(m_table->rowCount());
-    for (int row = 0; row < m_table->rowCount(); ++row)
+    out.reserve(ui->measureTable->rowCount());
+    for (int row = 0; row < ui->measureTable->rowCount(); ++row)
     {
         MeasurePoint p;
         p.x = valueOrZero(cellText(row, ColX));
@@ -216,7 +207,7 @@ QVector<GeoStressMeasurePointPage::MeasurePoint> GeoStressMeasurePointPage::poin
 
 void GeoStressMeasurePointPage::onClearClicked()
 {
-    m_table->setRowCount(0);
+    ui->measureTable->setRowCount(0);
     PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Node);
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Node);
 }
@@ -259,14 +250,14 @@ void GeoStressMeasurePointPage::onAppendSelectedPointsClicked()
 void GeoStressMeasurePointPage::onRemoveRowsClicked()
 {
     QList<int> rows;
-    const auto ranges = m_table->selectedRanges();
+    const auto ranges = ui->measureTable->selectedRanges();
     for (const QTableWidgetSelectionRange& range : ranges)
         for (int row = range.topRow(); row <= range.bottomRow(); ++row)
             rows.push_back(row);
     std::sort(rows.begin(), rows.end(), std::greater<int>());
     rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
     for (int row : rows)
-        m_table->removeRow(row);
+        ui->measureTable->removeRow(row);
     syncPickedPointIds();
 }
 
@@ -294,19 +285,19 @@ int GeoStressMeasurePointPage::currentDimension() const
 void GeoStressMeasurePointPage::applyDimensionUi()
 {
     const bool is3D = currentDimension() == 3;
-    if (m_dimensionHintLabel)
+    if (ui->dimensionHintLabel)
     {
-        m_dimensionHintLabel->setText(
+        ui->dimensionHintLabel->setText(
             is3D ? QStringLiteral("三维格式：XP YP ZP SGX SGY SGZ TXY TYZ TZX")
                  : QStringLiteral("二维格式：XP YP SGX SGY TXY"));
     }
-    if (!m_table)
+    if (!ui->measureTable)
         return;
-    m_table->setColumnHidden(ColZ, !is3D);
-    m_table->setColumnHidden(ColSgz, !is3D);
-    m_table->setColumnHidden(ColTyz, !is3D);
-    m_table->setColumnHidden(ColTzx, !is3D);
-    m_table->setColumnHidden(ColPid, true);
+    ui->measureTable->setColumnHidden(ColZ, !is3D);
+    ui->measureTable->setColumnHidden(ColSgz, !is3D);
+    ui->measureTable->setColumnHidden(ColTyz, !is3D);
+    ui->measureTable->setColumnHidden(ColTzx, !is3D);
+    ui->measureTable->setColumnHidden(ColPid, true);
 }
 
 bool GeoStressMeasurePointPage::appendImportedValues(const QStringList& values)
@@ -335,7 +326,7 @@ bool GeoStressMeasurePointPage::appendImportedValues(const QStringList& values)
 
 bool GeoStressMeasurePointPage::appendPointByPid(vtkIdType pid)
 {
-    for (int row = 0; row < m_table->rowCount(); ++row)
+    for (int row = 0; row < ui->measureTable->rowCount(); ++row)
     {
         bool ok = false;
         const qlonglong existingPid = cellText(row, ColPid).toLongLong(&ok);
@@ -414,8 +405,8 @@ int GeoStressMeasurePointPage::appendRow(const QString& nodeId, const QString& x
                                          const QString& sgz, const QString& txy, const QString& tyz,
                                          const QString& tzx, vtkIdType pid)
 {
-    const int row = m_table->rowCount();
-    m_table->insertRow(row);
+    const int row = ui->measureTable->rowCount();
+    ui->measureTable->insertRow(row);
     setCellText(row, ColNodeId, nodeId, false);
     setCellText(row, ColX, x);
     setCellText(row, ColY, y);
@@ -433,7 +424,7 @@ int GeoStressMeasurePointPage::appendRow(const QString& nodeId, const QString& x
 
 QString GeoStressMeasurePointPage::cellText(int row, int col) const
 {
-    const QTableWidgetItem* item = m_table ? m_table->item(row, col) : nullptr;
+    const QTableWidgetItem* item = ui->measureTable ? ui->measureTable->item(row, col) : nullptr;
     return item ? item->text().trimmed() : QString();
 }
 
@@ -444,13 +435,13 @@ void GeoStressMeasurePointPage::setCellText(int row, int col, const QString& tex
     if (!editable)
         flags &= ~Qt::ItemIsEditable;
     item->setFlags(flags);
-    m_table->setItem(row, col, item);
+    ui->measureTable->setItem(row, col, item);
 }
 
 void GeoStressMeasurePointPage::syncPickedPointIds()
 {
     QVector<vtkIdType> ids;
-    for (int row = 0; row < m_table->rowCount(); ++row)
+    for (int row = 0; row < ui->measureTable->rowCount(); ++row)
     {
         bool ok = false;
         qlonglong pid = cellText(row, ColPid).toLongLong(&ok);

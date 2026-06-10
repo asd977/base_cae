@@ -3,11 +3,6 @@
 #include <BasePage.h>
 #include <PickManager.h>
 
-class QCheckBox;
-class QComboBox;
-class QLineEdit;
-class QPushButton;
-
 namespace Ui
 {
 class GeoStressSideFacePage;
@@ -52,12 +47,4 @@ class GeoStressSideFacePage : public BasePage
   private:
     Ui::GeoStressSideFacePage* ui = nullptr;
     int m_faceIndex = 1;
-    QComboBox* m_groupCombo = nullptr;
-    QPushButton* m_batchAddBtn = nullptr;
-    QLineEdit* m_idirEdit = nullptr;
-    QLineEdit* m_heightEdit = nullptr;
-    QLineEdit* m_gamaEdit = nullptr;
-    QLineEdit* m_pgroutEdit = nullptr;
-    QPushButton* m_clearBtn = nullptr;
-    QCheckBox* m_pickEnableCheckBox = nullptr;
 };

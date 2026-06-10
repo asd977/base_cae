@@ -180,33 +180,21 @@ GeoStressSideFacePage::GeoStressSideFacePage(QWidget* parent)
     Q_UNUSED(parent);
     ui->setupUi(this);
 
-    m_groupCombo = ui->groupCombo;
-    m_batchAddBtn = ui->batchAddButton;
-    m_clearBtn = ui->clearButton;
-    m_pickEnableCheckBox = ui->pickEnableCheckBox;
-    m_idirEdit = ui->idirEdit;
-    m_heightEdit = ui->heightEdit;
-    m_gamaEdit = ui->gamaEdit;
-    m_pgroutEdit = ui->pgroutEdit;
-
-    connect(m_clearBtn, &QPushButton::clicked, this, &GeoStressSideFacePage::onClearClicked);
-    connect(m_batchAddBtn, &QPushButton::clicked, this, &GeoStressSideFacePage::onBatchAddClicked);
-    connect(m_pickEnableCheckBox, &QCheckBox::toggled, this,
+    connect(ui->clearButton, &QPushButton::clicked, this, &GeoStressSideFacePage::onClearClicked);
+    connect(ui->batchAddButton, &QPushButton::clicked, this, &GeoStressSideFacePage::onBatchAddClicked);
+    connect(ui->pickEnableCheckBox, &QCheckBox::toggled, this,
             [this](bool on)
             {
                 PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, on);
             });
-    if (auto* groupCombo = qobject_cast<CustomComboBox*>(m_groupCombo))
-    {
-        connect(groupCombo, &CustomComboBox::itemHovered, this,
-                &GeoStressSideFacePage::onGroupHovered);
-        connect(groupCombo, &CustomComboBox::dropdownClosed, this,
-                [this]()
-                {
-                    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid,
-                                                                  currentPickMode());
-                });
-    }
+    connect(ui->groupCombo, &CustomComboBox::itemHovered, this,
+            &GeoStressSideFacePage::onGroupHovered);
+    connect(ui->groupCombo, &CustomComboBox::dropdownClosed, this,
+            [this]()
+            {
+                PickManager::instance().clearPreviewSelection(getPageType(), m_uuid,
+                                                              currentPickMode());
+            });
 }
 
 GeoStressSideFacePage::~GeoStressSideFacePage()
@@ -217,8 +205,8 @@ GeoStressSideFacePage::~GeoStressSideFacePage()
 void GeoStressSideFacePage::beforeLoad()
 {
     PickManager::instance().activate(getPageType(), m_uuid, currentPickMode());
-    if (m_pickEnableCheckBox)
-        m_pickEnableCheckBox->setChecked(false);
+    if (ui->pickEnableCheckBox)
+        ui->pickEnableCheckBox->setChecked(false);
     PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
     refreshGroupCombo();
 }
@@ -235,10 +223,10 @@ QJsonObject GeoStressSideFacePage::saveJson()
     QJsonObject obj;
     obj["face_index"] = m_faceIndex;
     obj["pick_mode"] = currentPickMode() == PickMode::Face ? "face" : "edge";
-    obj["idir"] = m_idirEdit->text().trimmed();
-    obj["height"] = m_heightEdit->text().trimmed();
-    obj["gama"] = m_gamaEdit->text().trimmed();
-    obj["pgrout"] = m_pgroutEdit->text().trimmed();
+    obj["idir"] = ui->idirEdit->text().trimmed();
+    obj["height"] = ui->heightEdit->text().trimmed();
+    obj["gama"] = ui->gamaEdit->text().trimmed();
+    obj["pgrout"] = ui->pgroutEdit->text().trimmed();
 
     auto toJson = [](const QVector<vtkIdType>& ids)
     {
@@ -258,10 +246,10 @@ QJsonObject GeoStressSideFacePage::saveJson()
 void GeoStressSideFacePage::loadJson(const QJsonObject& obj)
 {
     setFaceIndex(obj.value("face_index").toInt(m_faceIndex));
-    m_idirEdit->setText(obj.value("idir").toString(m_idirEdit->text()));
-    m_heightEdit->setText(obj.value("height").toString(m_heightEdit->text()));
-    m_gamaEdit->setText(obj.value("gama").toString(m_gamaEdit->text()));
-    m_pgroutEdit->setText(obj.value("pgrout").toString(m_pgroutEdit->text()));
+    ui->idirEdit->setText(obj.value("idir").toString(ui->idirEdit->text()));
+    ui->heightEdit->setText(obj.value("height").toString(ui->heightEdit->text()));
+    ui->gamaEdit->setText(obj.value("gama").toString(ui->gamaEdit->text()));
+    ui->pgroutEdit->setText(obj.value("pgrout").toString(ui->pgroutEdit->text()));
 
     auto fromJson = [](const QJsonArray& arr)
     {
@@ -288,10 +276,10 @@ QString GeoStressSideFacePage::faceFile() const
 GeoStressSideFacePage::FaceAttr GeoStressSideFacePage::attr() const
 {
     FaceAttr a;
-    a.idir = m_idirEdit->text().trimmed();
-    a.height = m_heightEdit->text().trimmed();
-    a.gama = m_gamaEdit->text().trimmed();
-    a.pgrout = m_pgroutEdit->text().trimmed();
+    a.idir = ui->idirEdit->text().trimmed();
+    a.height = ui->heightEdit->text().trimmed();
+    a.gama = ui->gamaEdit->text().trimmed();
+    a.pgrout = ui->pgroutEdit->text().trimmed();
     a.ii = QString::number(m_faceIndex);
     return a;
 }
@@ -375,14 +363,14 @@ void GeoStressSideFacePage::onClearClicked()
 
 void GeoStressSideFacePage::onBatchAddClicked()
 {
-    if (!m_groupCombo || m_groupCombo->currentIndex() < 0)
+    if (!ui->groupCombo || ui->groupCombo->currentIndex() < 0)
         return;
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
         return;
 
     const MeshTagSet set =
-        findBoundarySet(meshSvc, comboTagKey(m_groupCombo, m_groupCombo->currentIndex()));
+        findBoundarySet(meshSvc, comboTagKey(ui->groupCombo, ui->groupCombo->currentIndex()));
     if (currentPickMode() == PickMode::Face)
         PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
                                                     toVtkKeys(set.faceKeys), false);
@@ -396,7 +384,7 @@ void GeoStressSideFacePage::onGroupHovered(int row)
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc || row < 0)
         return;
-    const MeshTagSet set = findBoundarySet(meshSvc, comboTagKey(m_groupCombo, row));
+    const MeshTagSet set = findBoundarySet(meshSvc, comboTagKey(ui->groupCombo, row));
     if (currentPickMode() == PickMode::Face)
         PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid, GridKind::Solid,
                                                    toVtkKeys(set.faceKeys));
@@ -414,20 +402,20 @@ PickMode GeoStressSideFacePage::currentPickMode() const
 void GeoStressSideFacePage::refreshGroupCombo()
 {
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    if (!meshSvc || !m_groupCombo)
+    if (!meshSvc || !ui->groupCombo)
         return;
 
     const int wantDim = currentPickMode() == PickMode::Face ? 2 : 1;
     const QVector<MeshTagSet> sets = meshSvc->boundaryTagSets(wantDim);
-    m_groupCombo->blockSignals(true);
-    m_groupCombo->clear();
+    ui->groupCombo->blockSignals(true);
+    ui->groupCombo->clear();
     for (const MeshTagSet& set : sets)
     {
         if (wantDim == 1 && set.edgeKeys.isEmpty())
             continue;
         if (wantDim == 2 && set.faceKeys.isEmpty())
             continue;
-        m_groupCombo->addItem(boundaryDisplayText(meshSvc, set), QVariant::fromValue(set.key));
+        ui->groupCombo->addItem(boundaryDisplayText(meshSvc, set), QVariant::fromValue(set.key));
     }
-    m_groupCombo->blockSignals(false);
+    ui->groupCombo->blockSignals(false);
 }
