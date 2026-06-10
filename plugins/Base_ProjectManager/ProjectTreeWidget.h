@@ -1,4 +1,4 @@
-﻿#ifndef PROJECTTREEWIDGET_H
+#ifndef PROJECTTREEWIDGET_H
 #define PROJECTTREEWIDGET_H
 
 #include <ServiceRegistry.h>

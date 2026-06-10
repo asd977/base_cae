@@ -190,32 +190,33 @@ QStackedWidget#projectSettingStackWidget {
 
 QTreeWidget#projectTreeWidget {
     border: none;
-    font-family: "Microsoft YaHei", "微软雅黑";
-    font-size: 16px;
+    font-family: "Microsoft YaHei", "微软雅黑", "Segoe UI", sans-serif;
+    font-size: 15px;
+    outline: none;
+    color: #000000;
+    background-color: #ffffff;
     show-decoration-selected: 1;
-    selection-background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,
-        stop:0 rgba(255, 255, 255, 255), stop:0.5 rgba(235, 247, 253, 255), stop:1 rgba(213, 237, 250, 255));
-    color: black;
-    background-color: rgb(255, 255, 255);
 }
 
 QTreeWidget#projectTreeWidget::item {
-    height: 30px;
-    border: 1px solid transparent;
-    color: black;
-    background-color: rgb(255, 255, 255);
-}
-
-QTreeWidget#projectTreeWidget::item:selected,
-QTreeWidget#projectTreeWidget::branch:selected {
-    background-color: rgb(192, 226, 252);
-    color: black;
+    height: 35px;
+    padding-left: 6px;
+    color: #000000;
+    background-color: transparent;
+    border: none;
 }
 
 QTreeWidget#projectTreeWidget::item:hover,
 QTreeWidget#projectTreeWidget::branch:hover {
-    background-color: rgb(226, 242, 254);
-    color: black;
+    background-color: #f4f7fa;
+    color: #356793;
+}
+
+QTreeWidget#projectTreeWidget::item:selected,
+QTreeWidget#projectTreeWidget::branch:selected {
+    background-color: #e8f0f8;
+    color: #356793;
+    font-weight: bold;
 }
 
 QTreeWidget#projectTreeWidget::branch:closed:has-children {

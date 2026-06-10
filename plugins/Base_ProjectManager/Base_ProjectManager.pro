@@ -10,14 +10,16 @@ HEADERS += \
     ProjectTreeWidget.h \
 	ProjectSetupDialog.h\
     SettingWidget.h \
-    ConcretePageA.h
+    ConcretePageA.h \
+    DashboardPage.h
 
 
 SOURCES += \
     ProjectManager.cpp \
     ProjectTreeWidget.cpp \
 	ProjectSetupDialog.cpp\
-    SettingWidget.cpp
+    SettingWidget.cpp \
+    DashboardPage.cpp
 
 
 FORMS += \

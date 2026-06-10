@@ -1,4 +1,5 @@
-﻿#include "ProjectTreeWidget.h"
+#include "ProjectTreeWidget.h"
+#include "DashboardPage.h"
 
 #include <ContextMenuHub.h>
 #include <QHeaderView.h>
@@ -81,7 +82,10 @@ void ProjectTreeWidget::onCurItemChanged(QTreeWidgetItem* current, QTreeWidgetIt
 
     BasePage* page = node->getPage();
     if (!page)
-        return;
+    {
+        page = new DashboardPage(node, this);
+        node->setPage(page);
+    }
 
     // 1. 处理旧页面的卸载（同页重入不触发 unload）
     BasePage* prevPage = nullptr;
@@ -306,3 +310,4 @@ void ProjectTreeWidget::blockSignal(bool value)
         m_treeWidget->blockSignals(false);
     }
 }
+
