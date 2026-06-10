@@ -855,16 +855,21 @@ void UiFrame::buildRibbonTabs()
                 makeAction(this, ":/resources/menu/minimal/post-slice.svg", "&切面");
             auto* actDice =
                 makeAction(this, ":/resources/menu/minimal/post-block.svg", "&切块");
+            auto* actContourReader =
+                makeAction(this, ":/resources/menu/minimal/post-nephogram.svg", "&读取轮廓图");
 
             addActionToPanel(panel, actNeph, 3);
             addActionToPanel(panel, actVec, 3);
             addActionToPanel(panel, actSlc, 2);
             addActionToPanel(panel, actDice, 2);
+            addActionToPanel(panel, actContourReader, 3);
 
             bindEvent(this, actNeph, PublicConstants::kActionPostProcessNephogram);
             bindEvent(this, actVec, PublicConstants::kActionPostProcessVector);
             bindEvent(this, actSlc, PublicConstants::kActionPostProcessSection);
             bindEvent(this, actDice, PublicConstants::kActionPostProcessDice);
+            bindEvent(this, actContourReader,
+                      PublicConstants::kActionPostProcessContourReader);
         }
 
                // ---------- 提取 ----------

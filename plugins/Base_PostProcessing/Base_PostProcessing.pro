@@ -13,6 +13,7 @@ HEADERS += \
     IsosurfaceSegmentationWidget.h \
     IsosurfaceSettingsWidget.h \
     NephogramSettingWidget.h \
+    PostContourReaderWidget.h \
     PostProcessing.h \
     PostVisualUtils.h \
     ProbeSettingsWidget.h \
@@ -30,6 +31,7 @@ SOURCES += \
     IsosurfaceSegmentationWidget.cpp \
     IsosurfaceSettingsWidget.cpp \
     NephogramSettingWidget.cpp \
+    PostContourReaderWidget.cpp \
     PostProcessing.cpp \
     ProbeSettingsWidget.cpp \
     ResultArrangeWidget.cpp \
@@ -46,6 +48,7 @@ FORMS += \
     IsosurfaceSegmentationWidget.ui \
     IsosurfaceSettingsWidget.ui \
     NephogramSettingWidget.ui \
+    PostContourReaderWidget.ui \
     ProbeSettingsWidget.ui \
     ResultArrangeWidget.ui \
     SliceSettingsWidget.ui \

@@ -48,6 +48,7 @@ constexpr char kActionPostProcessAnimation[] = "new_animation";
 constexpr char kActionPostProcessPickPhysical[] = "new_pickphysical";
 constexpr char kActionPostProcessDerivative[] = "new_derivative";
 constexpr char kActionPostProcessDataExport[] = "new_dataexp";
+constexpr char kActionPostProcessContourReader[] = "new_contour_reader";
 constexpr char kActionPostProcessResultArrange[] = "new_result_arrange";
 constexpr char kActionPostProcessResultRuleConfig[] = "post_result_rule_config";
 
@@ -177,6 +178,7 @@ constexpr char kPagePostProcessIsosurfaceSegmentation[] = "isosurfaceseg";
 constexpr char kPagePostProcessAnimation[] = "animation";
 constexpr char kPagePostProcessDerivative[] = "derivative";
 constexpr char kPagePostProcessCurve[] = "curve";
+constexpr char kPagePostProcessContourReader[] = "contour_reader";
 constexpr char kPagePostProcessOccBoolean[] = "occboolen";
 constexpr char kPagePostProcessResultArrange[] = "result_arrange";
 

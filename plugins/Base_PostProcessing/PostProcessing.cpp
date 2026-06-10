@@ -28,6 +28,7 @@
 #include "IsosurfaceSegmentationWidget.h"
 #include "IsosurfaceSettingsWidget.h"
 #include "ProbeSettingsWidget.h"
+#include "PostContourReaderWidget.h"
 #include "ResultArrangeWidget.h"
 #include "ResultRuleConfigDialog.h"
 VTK_MODULE_INIT(vtkRenderingOpenGL2)
@@ -93,6 +94,11 @@ void PostProcessing::initPageFactory()
         [this](VisualWidgetService* /*host*/)
     {
         return new ResultArrangeWidget();
+    };
+    m_pageFactory[PublicConstants::kPagePostProcessContourReader] =
+        [this](VisualWidgetService* /*host*/)
+    {
+        return new PostContourReaderWidget();
     };
 }
 
@@ -222,6 +228,16 @@ void PostProcessing::newResultArrangeWidget()
         pm->setCurrentItem(m_root);
 }
 
+void PostProcessing::newPostContourReaderWidget()
+{
+    PostContourReaderWidget* tmp = new PostContourReaderWidget;
+    ProjectNode* node = new ProjectNode("读取轮廓图", QUuid::createUuid().toString(), (BasePage*)tmp);
+
+    m_root->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(node);
+}
+
 void PostProcessing::newProject()
 {
     m_root = new ProjectNode("后处理");
@@ -290,6 +306,12 @@ void PostProcessing::initAction()
                                              {
                                                  //        this->newNephogramSettingWidget();
                                              });
+    EventManager::instance().registerHandler(
+        PublicConstants::kActionPostProcessContourReader, this,
+        [this](const QVariantMap& data)
+        {
+            this->newPostContourReaderWidget();
+        });
     EventManager::instance().registerHandler(
         PublicConstants::kActionPostProcessResultArrange, this,
         [this](const QVariantMap& data)
