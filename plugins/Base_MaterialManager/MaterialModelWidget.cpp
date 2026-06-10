@@ -9,6 +9,11 @@ MaterialModelWidget::MaterialModelWidget(MaterialManager* manager, QWidget* pare
       m_summaryLabel(new QLabel(this))
 {
     setAttribute(Qt::WA_StyledBackground, true);
+    QPalette modelPal = this->palette();
+    modelPal.setColor(QPalette::Window, Qt::white);
+    this->setPalette(modelPal);
+    this->setAutoFillBackground(true);
+
     m_titleLabel->setObjectName("pageHeaderLabel");
 
     auto* openButton = new QPushButton(QString("新增材料"), this);

@@ -64,6 +64,11 @@ MaterialTransitionPage::MaterialTransitionPage(MaterialManager* manager, QWidget
     : BasePage("MaterialTransitionPage"), m_manager(manager)
 {
     setAttribute(Qt::WA_StyledBackground, true);
+    QPalette transPal = this->palette();
+    transPal.setColor(QPalette::Window, Qt::white);
+    this->setPalette(transPal);
+    this->setAutoFillBackground(true);
+
     auto* pageHeaderLabel = new QLabel("材料变换设置", this);
     pageHeaderLabel->setObjectName("pageHeaderLabel");
 

@@ -62,11 +62,22 @@ MaterialEntryWidget::MaterialEntryWidget(MaterialManager* manager, QWidget* pare
 
     auto* container = new QWidget(this);
     container->setLayout(m_formLayout);
+    QPalette containerPal = container->palette();
+    containerPal.setColor(QPalette::Window, Qt::white);
+    container->setPalette(containerPal);
+    container->setAutoFillBackground(true);
 
     auto* scrollArea = new QScrollArea(this);
     scrollArea->setWidget(container);
     scrollArea->setWidgetResizable(true);
     scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setStyleSheet("QScrollArea { background-color: white; border: none; }");
+    QPalette scrollPal = scrollArea->palette();
+    scrollPal.setColor(QPalette::Window, Qt::white);
+    scrollArea->setPalette(scrollPal);
+    if (scrollArea->viewport()) {
+        scrollArea->viewport()->setPalette(scrollPal);
+    }
 
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
