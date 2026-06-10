@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>GeoStressFitFacePage</class>
  <widget class="QWidget" name="GeoStressFitFacePage">
@@ -23,23 +23,13 @@
    <property name="rightMargin">
     <number>0</number>
    </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
    <item>
-    <widget class="QLabel" name="pageNameLabel">
+    <widget class="QLabel" name="pageHeaderLabel">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
-     <property name="text">
-      <string>约束与荷载</string>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QPushButton" name="sectionTitleButton">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
        <horstretch>0</horstretch>
        <verstretch>0</verstretch>
       </sizepolicy>
@@ -55,7 +45,7 @@
       <string>提示：Shift+拖拽框选，Ctrl+拖拽取消选择</string>
      </property>
      <property name="wordWrap">
-      <bool>true</bool>
+      <bool>false</bool>
      </property>
     </widget>
    </item>
@@ -93,15 +83,34 @@
            <property name="maximum">
             <double>1000000000000.000000000000000</double>
            </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
           </widget>
          </item>
          <item row="0" column="0" colspan="2">
-          <widget class="CustomComboBox" name="comboBoxDim"/>
+          <widget class="CustomComboBox" name="comboBoxDim">
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
          </item>
          <item row="3" column="1">
           <widget class="QLineEdit" name="editFname">
            <property name="placeholderText">
             <string>例如 LEFT.DAT</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
            </property>
           </widget>
          </item>
@@ -123,6 +132,12 @@
            <property name="value">
             <number>1</number>
            </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
           </widget>
          </item>
          <item row="4" column="0">
@@ -135,7 +150,14 @@
          <item row="1" column="0" colspan="2">
           <layout class="QHBoxLayout" name="horizontalLayoutGroupSelect">
            <item>
-            <widget class="CustomComboBox" name="comboBoxGroup"/>
+            <widget class="CustomComboBox" name="comboBoxGroup">
+             <property name="minimumSize">
+              <size>
+               <width>10</width>
+               <height>0</height>
+              </size>
+             </property>
+            </widget>
            </item>
            <item>
             <widget class="QPushButton" name="btnBatchAdd">
@@ -165,6 +187,12 @@
            </property>
            <property name="value">
             <double>2700.000000000000000</double>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
            </property>
           </widget>
          </item>
@@ -213,6 +241,12 @@
              <string>3（法向 Z）</string>
             </property>
            </item>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
           </widget>
          </item>
          <item row="5" column="1">
@@ -226,11 +260,32 @@
            <property name="maximum">
             <double>1000000000000.000000000000000</double>
            </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
           </widget>
          </item>
         </layout>
        </widget>
       </item>
+      <property name="leftMargin">
+       <number>9</number>
+      </property>
+      <property name="topMargin">
+       <number>9</number>
+      </property>
+      <property name="rightMargin">
+       <number>9</number>
+      </property>
+      <property name="bottomMargin">
+       <number>9</number>
+      </property>
+      <property name="spacing">
+       <number>6</number>
+      </property>
      </layout>
     </widget>
    </item>
@@ -256,6 +311,6 @@
    <header>CustomComboBox.h</header>
   </customwidget>
  </customwidgets>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

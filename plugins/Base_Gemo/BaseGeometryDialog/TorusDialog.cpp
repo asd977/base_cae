@@ -154,13 +154,9 @@ void TorusDialog::initUI()
     QPushButton* okButton = new QPushButton("生成几何体", this);
     // 布局
     QVBoxLayout* mainLayout = new QVBoxLayout;
-    auto* pageNameLabel = new QLabel(QString("几何模块"), this);
-    pageNameLabel->setObjectName("pageNameLabel");
-    auto* sectionTitleButton = new QPushButton(QString("参数设置"), this);
-    sectionTitleButton->setObjectName("sectionTitleButton");
-    sectionTitleButton->setEnabled(false);
-    mainLayout->addWidget(pageNameLabel);
-    mainLayout->addWidget(sectionTitleButton);
+    auto* pageHeaderLabel = new QLabel(QString("参数设置"), this);
+    pageHeaderLabel->setObjectName("pageHeaderLabel");
+    mainLayout->addWidget(pageHeaderLabel);
     QHBoxLayout* majorRadiusLayout = new QHBoxLayout;
     QHBoxLayout* minorRadiusLayout = new QHBoxLayout;
     QHBoxLayout* xLayout = new QHBoxLayout;

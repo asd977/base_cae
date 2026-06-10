@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>CurveSettingsWidget</class>
  <widget class="QWidget" name="CurveSettingsWidget">
@@ -14,110 +14,170 @@
    <string>曲线设置</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
    <item>
-    <widget class="QGroupBox" name="groupBoxData">
-     <property name="title">
-      <string>数据选择</string>
+    <widget class="QLabel" name="pageHeaderLabel">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
      </property>
-     <layout class="QFormLayout" name="formLayoutData">
-      <item row="0" column="0">
-       <widget class="QLabel" name="labelResultDir">
-        <property name="text">
-         <string>结果目录</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <widget class="QComboBox" name="resultDirComboBox"/>
-      </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="labelFile">
-        <property name="text">
-         <string>结果文件</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="QComboBox" name="fileComboBox"/>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="labelXField">
-        <property name="text">
-         <string>X轴字段</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <widget class="QComboBox" name="xFieldComboBox"/>
-      </item>
-     </layout>
+     <property name="text">
+      <string>曲线显示设置</string>
+     </property>
     </widget>
    </item>
    <item>
-    <widget class="QGroupBox" name="groupBoxSeries">
-     <property name="title">
-      <string>曲线设置</string>
+    <layout class="QVBoxLayout" name="contentLayout">
+     <property name="leftMargin">
+      <number>9</number>
      </property>
-     <layout class="QHBoxLayout" name="horizontalLayoutSeries">
-      <item>
-       <widget class="QCheckBox" name="fosCheckBox">
-        <property name="text">
-         <string>FOS</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QCheckBox" name="ptotCheckBox">
-        <property name="text">
-         <string>PTOT</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QCheckBox" name="maxUrCheckBox">
-        <property name="text">
-         <string>MAX UR</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QCheckBox" name="loopCheckBox">
-        <property name="text">
-         <string>LOOP</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <spacer name="horizontalSpacer">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>40</width>
-          <height>20</height>
-         </size>
-        </property>
-       </spacer>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
-    <spacer name="verticalSpacer">
-     <property name="orientation">
-      <enum>Qt::Vertical</enum>
+     <property name="topMargin">
+      <number>9</number>
      </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>40</height>
-      </size>
+     <property name="rightMargin">
+      <number>9</number>
      </property>
-    </spacer>
+     <property name="bottomMargin">
+      <number>9</number>
+     </property>
+     <property name="spacing">
+      <number>6</number>
+     </property>
+     <item>
+      <widget class="QGroupBox" name="groupBoxData">
+       <property name="title">
+        <string>数据选择</string>
+       </property>
+       <layout class="QFormLayout" name="formLayoutData">
+        <item row="0" column="0">
+         <widget class="QLabel" name="labelResultDir">
+          <property name="text">
+           <string>结果目录</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QComboBox" name="resultDirComboBox">
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="labelFile">
+          <property name="text">
+           <string>结果文件</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QComboBox" name="fileComboBox">
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="labelXField">
+          <property name="text">
+           <string>X轴字段</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QComboBox" name="xFieldComboBox">
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QGroupBox" name="groupBoxSeries">
+       <property name="title">
+        <string>曲线设置</string>
+       </property>
+       <layout class="QVBoxLayout" name="horizontalLayoutSeries">
+        <item>
+         <layout class="QHBoxLayout" name="seriesRow1">
+          <item>
+           <widget class="QCheckBox" name="fosCheckBox">
+            <property name="text">
+             <string>FOS</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="ptotCheckBox">
+            <property name="text">
+             <string>PTOT</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="seriesRow2">
+          <item>
+           <widget class="QCheckBox" name="maxUrCheckBox">
+            <property name="text">
+             <string>MAX UR</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="loopCheckBox">
+            <property name="text">
+             <string>LOOP</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <spacer name="verticalSpacer">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>20</width>
+         <height>40</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+    </layout>
    </item>
   </layout>
  </widget>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

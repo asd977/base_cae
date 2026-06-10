@@ -26,537 +26,853 @@
    <property name="bottomMargin">
     <number>0</number>
    </property>
-   <item><widget class="QLabel" name="pageNameLabel"><property name="text"><string>土石坝计算</string></property></widget></item><item><widget class="QPushButton" name="sectionTitleButton"><property name="text"><string>土石坝全局参数</string></property></widget></item><item>
-    <widget class="QGroupBox" name="groupBoxIfill">
-     <property name="title">
-      <string>全局参数分组</string>
+   <item>
+    <widget class="QLabel" name="pageHeaderLabel">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
      </property>
-     <layout class="QFormLayout" name="formLayoutIfill">
-      <item row="14" column="0">
-       <widget class="QLabel" name="labelLine15">
-        <property name="text">
-         <string>阻尼类型</string>
-        </property>
-       </widget>
-      </item>
-      <item row="14" column="1">
-       <widget class="QComboBox" name="comboLine15">
-        <item>
-         <property name="text">
-          <string>0 系统阻尼</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>1 分材料阻尼</string>
-         </property>
-        </item>
-       </widget>
-      </item>
-      <item row="15" column="0">
-       <widget class="QLabel" name="labelLine16">
-        <property name="text">
-         <string>瑞雷阻尼</string>
-        </property>
-       </widget>
-      </item>
-      <item row="15" column="1">
-       <widget class="QComboBox" name="comboLine16">
-        <item>
-         <property name="text">
-          <string>0 非瑞雷阻尼</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>1 瑞雷阻尼</string>
-         </property>
-        </item>
-       </widget>
-      </item>
-      <item row="16" column="0">
-       <widget class="QLabel" name="labelLine17">
-        <property name="text">
-         <string>质量阻尼系数</string>
-        </property>
-       </widget>
-      </item>
-      <item row="16" column="1">
-       <widget class="QLineEdit" name="editLine17">
-        <property name="text">
-         <string>0.05</string>
-        </property>
-       </widget>
-      </item>
-      <item row="17" column="0">
-       <widget class="QLabel" name="labelLine18">
-        <property name="text">
-         <string>刚度阻尼系数</string>
-        </property>
-       </widget>
-      </item>
-      <item row="17" column="1">
-       <widget class="QLineEdit" name="editLine18">
-        <property name="text">
-         <string>0.01</string>
-        </property>
-       </widget>
-      </item>
-      <item row="18" column="0">
-       <widget class="QLabel" name="labelLine19">
-        <property name="text">
-         <string>计算类型</string>
-        </property>
-       </widget>
-      </item>
-      <item row="18" column="1">
-       <widget class="QComboBox" name="comboLine19">
-        <item>
-         <property name="text">
-          <string>1 静力计算</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>2 动力计算</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>3 静动力全部计算</string>
-         </property>
-        </item>
-       </widget>
-      </item>
-      <item row="19" column="0">
-       <widget class="QLabel" name="labelLine20">
-        <property name="text">
-         <string>迭代方法与次数</string>
-        </property>
-       </widget>
-      </item>
-      <item row="19" column="1">
-       <layout class="QHBoxLayout" name="layoutMethodIter">
-        <item>
-         <widget class="QComboBox" name="comboMethodIter">
-          <item>
-           <property name="text">
-            <string>1 常刚度法（初应变法）</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>2 常刚度法（初应力法）</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>3 变刚度法（切线刚度法）</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>4 中点增量法（土坝填筑）</string>
-           </property>
-          </item>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="labelIter">
-          <property name="text">
-           <string>迭代次数</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLineEdit" name="editIter">
-          <property name="text">
-           <string>10</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="20" column="0">
-       <widget class="QLabel" name="labelLine21">
-        <property name="text">
-         <string>蠕变计算时间步长</string>
-        </property>
-       </widget>
-      </item>
-      <item row="20" column="1">
-       <widget class="QLineEdit" name="editLine21">
-        <property name="text">
-         <string>0.000</string>
-        </property>
-       </widget>
-      </item>
-      <item row="21" column="0">
-       <widget class="QLabel" name="labelLine22">
-        <property name="text">
-         <string>水平最大地震加速度</string>
-        </property>
-       </widget>
-      </item>
-      <item row="21" column="1">
-       <widget class="QLineEdit" name="editLine22">
-        <property name="text">
-         <string>1.962</string>
-        </property>
-       </widget>
-      </item>
-      <item row="22" column="0">
-       <widget class="QLabel" name="labelLine23">
-        <property name="text">
-         <string>竖向最大地震加速度</string>
-        </property>
-       </widget>
-      </item>
-      <item row="22" column="1">
-       <widget class="QLineEdit" name="editLine23">
-        <property name="text">
-         <string>1.308</string>
-        </property>
-       </widget>
-      </item>
-      <item row="23" column="0">
-       <widget class="QLabel" name="labelLine24">
-        <property name="text">
-         <string>反应谱特征周期TG1</string>
-        </property>
-       </widget>
-      </item>
-      <item row="23" column="1">
-       <widget class="QLineEdit" name="editLine24">
-        <property name="text">
-         <string>0.1</string>
-        </property>
-       </widget>
-      </item>
-      <item row="24" column="0">
-       <widget class="QLabel" name="labelLine25">
-        <property name="text">
-         <string>反应谱特征周期TG2</string>
-        </property>
-       </widget>
-      </item>
-      <item row="24" column="1">
-       <widget class="QLineEdit" name="editLine25">
-        <property name="text">
-         <string>0.2</string>
-        </property>
-       </widget>
-      </item>
-      <item row="25" column="0">
-       <widget class="QLabel" name="labelLine26">
-        <property name="text">
-         <string>反应谱最大放大系数</string>
-        </property>
-       </widget>
-      </item>
-      <item row="25" column="1">
-       <widget class="QLineEdit" name="editLine26">
-        <property name="text">
-         <string>2.0</string>
-        </property>
-       </widget>
-      </item>
-      <item row="26" column="0">
-       <widget class="QLabel" name="labelLine27">
-        <property name="text">
-         <string>反应谱指数</string>
-        </property>
-       </widget>
-      </item>
-      <item row="26" column="1">
-       <widget class="QLineEdit" name="editLine27">
-        <property name="text">
-         <string>0.9</string>
-        </property>
-       </widget>
-      </item>
-      <item row="27" column="0">
-       <widget class="QLabel" name="labelLine28">
-        <property name="text">
-         <string>地震震级</string>
-        </property>
-       </widget>
-      </item>
-      <item row="27" column="1">
-       <widget class="QLineEdit" name="editLine28">
-        <property name="text">
-         <string>7.0</string>
-        </property>
-       </widget>
-      </item>
-      <item row="28" column="0">
-       <widget class="QLabel" name="labelLine29">
-        <property name="text">
-         <string>是否计算特征值</string>
-        </property>
-       </widget>
-      </item>
-      <item row="28" column="1">
-       <widget class="QComboBox" name="comboLine29">
-        <item>
-         <property name="text">
-          <string>0 不计算</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>1 计算</string>
-         </property>
-        </item>
-       </widget>
-      </item>
-      <item row="29" column="0">
-       <widget class="QLabel" name="labelLine30">
-        <property name="text">
-         <string>特征值数</string>
-        </property>
-       </widget>
-      </item>
-      <item row="29" column="1">
-       <widget class="QLineEdit" name="editLine30">
-        <property name="text">
-         <string>10</string>
-        </property>
-       </widget>
-      </item>
-      <item row="31" column="0">
-       <widget class="QLabel" name="labelX">
-        <property name="text">
-         <string>扬压力折减位置</string>
-        </property>
-       </widget>
-      </item>
-      <item row="31" column="1">
-       <layout class="QHBoxLayout" name="layoutX">
-        <item>
-         <widget class="QLabel" name="labelX1">
-          <property name="text">
-           <string>X1</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLineEdit" name="editX1">
-          <property name="text">
-           <string>0.000000</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="labelX2">
-          <property name="text">
-           <string>X2</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLineEdit" name="editX2">
-          <property name="text">
-           <string>0.000000</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="labelX3">
-          <property name="text">
-           <string>X3</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLineEdit" name="editX3">
-          <property name="text">
-           <string>0.000000</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="32" column="0">
-       <widget class="QLabel" name="labelAlfa">
-        <property name="text">
-         <string>折减系数</string>
-        </property>
-       </widget>
-      </item>
-      <item row="32" column="1">
-       <layout class="QHBoxLayout" name="layoutAlfa">
-        <item>
-         <widget class="QLabel" name="labelAlfa1">
-          <property name="text">
-           <string>α1</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLineEdit" name="editAlfa1">
-          <property name="text">
-           <string>0.000000</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="labelAlfa2">
-          <property name="text">
-           <string>α2</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLineEdit" name="editAlfa2">
-          <property name="text">
-           <string>0.000000</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="labelAlfa3">
-          <property name="text">
-           <string>α3</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLineEdit" name="editAlfa3">
-          <property name="text">
-           <string>0.000000</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="33" column="0">
-       <widget class="QLabel" name="labelAxis">
-        <property name="text">
-         <string>上下游轴指向</string>
-        </property>
-       </widget>
-      </item>
-      <item row="33" column="1">
-       <layout class="QHBoxLayout" name="layoutAxis">
-        <item>
-         <widget class="QLabel" name="labelAxisUp">
-          <property name="text">
-           <string>上游轴</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QComboBox" name="comboAxisUp">
-          <item>
-           <property name="text">
-            <string>1 X轴</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>2 Y轴</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>3 Z轴</string>
-           </property>
-          </item>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="labelAxisDown">
-          <property name="text">
-           <string>下游轴</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QComboBox" name="comboAxisDown">
-          <item>
-           <property name="text">
-            <string>1 X轴</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>2 Y轴</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>3 Z轴</string>
-           </property>
-          </item>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item row="34" column="0">
-       <widget class="QLabel" name="labelIfRock">
-        <property name="text">
-         <string>是否进行岩体自重计算(IFROCK)</string>
-        </property>
-       </widget>
-      </item>
-      <item row="35" column="0">
-       <widget class="QLabel" name="labelIfIso">
-        <property name="text">
-         <string>地基是否按均质材料计算(IFISO)</string>
-        </property>
-       </widget>
-      </item>
-      <item row="35" column="1">
-       <widget class="QComboBox" name="comboIfIso">
-        <item>
-         <property name="text">
-          <string>0 按建模材料计算</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>1 按IFISO材料计算</string>
-         </property>
-        </item>
-       </widget>
-      </item>
-      <item row="34" column="1">
-       <widget class="QComboBox" name="comboIfRock">
-        <item>
-         <property name="text">
-          <string>0 否（已计算过）</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>1 是（本次计算）</string>
-         </property>
-        </item>
-       </widget>
-      </item>
-      <item row="36" column="1">
-       <widget class="QPushButton" name="btnCompute">
-        <property name="text">
-         <string>计算</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
+     <property name="text">
+      <string>土石坝全局参数</string>
+     </property>
     </widget>
    </item>
    <item>
-    <spacer name="verticalSpacer">
-     <property name="orientation">
-      <enum>Qt::Vertical</enum>
+    <layout class="QVBoxLayout" name="contentLayout">
+     <property name="leftMargin">
+      <number>9</number>
      </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>40</height>
-      </size>
+     <property name="topMargin">
+      <number>9</number>
      </property>
-    </spacer>
+     <property name="rightMargin">
+      <number>9</number>
+     </property>
+     <property name="bottomMargin">
+      <number>9</number>
+     </property>
+     <property name="spacing">
+      <number>6</number>
+     </property>
+     <item>
+      <widget class="QGroupBox" name="groupBoxIfill">
+       <property name="title">
+        <string>全局参数分组</string>
+       </property>
+       <layout class="QFormLayout" name="formLayoutIfill">
+        <item row="14" column="0">
+         <widget class="QLabel" name="labelLine15">
+          <property name="text">
+           <string>阻尼类型</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="14" column="1">
+         <widget class="QComboBox" name="comboLine15">
+          <item>
+           <property name="text">
+            <string>0 系统阻尼</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>1 分材料阻尼</string>
+           </property>
+          </item>
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item row="15" column="0">
+         <widget class="QLabel" name="labelLine16">
+          <property name="text">
+           <string>瑞雷阻尼</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="15" column="1">
+         <widget class="QComboBox" name="comboLine16">
+          <item>
+           <property name="text">
+            <string>0 非瑞雷阻尼</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>1 瑞雷阻尼</string>
+           </property>
+          </item>
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item row="16" column="0">
+         <widget class="QLabel" name="labelLine17">
+          <property name="text">
+           <string>质量阻尼系数</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="16" column="1">
+         <widget class="QLineEdit" name="editLine17">
+          <property name="text">
+           <string>0.05</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item row="17" column="0">
+         <widget class="QLabel" name="labelLine18">
+          <property name="text">
+           <string>刚度阻尼系数</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="17" column="1">
+         <widget class="QLineEdit" name="editLine18">
+          <property name="text">
+           <string>0.01</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item row="18" column="0">
+         <widget class="QLabel" name="labelLine19">
+          <property name="text">
+           <string>计算类型</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="18" column="1">
+         <widget class="QComboBox" name="comboLine19">
+          <item>
+           <property name="text">
+            <string>1 静力计算</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>2 动力计算</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>3 静动力全部计算</string>
+           </property>
+          </item>
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item row="19" column="0">
+         <widget class="QLabel" name="labelLine20">
+          <property name="text">
+           <string>迭代方法与次数</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="19" column="1">
+         <layout class="QHBoxLayout" name="layoutMethodIter">
+          <item>
+           <widget class="QComboBox" name="comboMethodIter">
+            <item>
+             <property name="text">
+              <string>1 常刚度法（初应变法）</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>2 常刚度法（初应力法）</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>3 变刚度法（切线刚度法）</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>4 中点增量法（土坝填筑）</string>
+             </property>
+            </item>
+            <property name="minimumSize">
+             <size>
+              <width>10</width>
+              <height>0</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="labelIter">
+            <property name="text">
+             <string>迭代次数</string>
+            </property>
+            <property name="wordWrap">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="editIter">
+            <property name="text">
+             <string>10</string>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>10</width>
+              <height>0</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item row="20" column="0">
+         <widget class="QLabel" name="labelLine21">
+          <property name="text">
+           <string>蠕变计算时间步长</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="20" column="1">
+         <widget class="QLineEdit" name="editLine21">
+          <property name="text">
+           <string>0.000</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item row="21" column="0">
+         <widget class="QLabel" name="labelLine22">
+          <property name="text">
+           <string>水平最大地震加速度</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="21" column="1">
+         <widget class="QLineEdit" name="editLine22">
+          <property name="text">
+           <string>1.962</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item row="22" column="0">
+         <widget class="QLabel" name="labelLine23">
+          <property name="text">
+           <string>竖向最大地震加速度</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="22" column="1">
+         <widget class="QLineEdit" name="editLine23">
+          <property name="text">
+           <string>1.308</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item row="23" column="0">
+         <widget class="QLabel" name="labelLine24">
+          <property name="text">
+           <string>反应谱特征周期TG1</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="23" column="1">
+         <widget class="QLineEdit" name="editLine24">
+          <property name="text">
+           <string>0.1</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item row="24" column="0">
+         <widget class="QLabel" name="labelLine25">
+          <property name="text">
+           <string>反应谱特征周期TG2</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="24" column="1">
+         <widget class="QLineEdit" name="editLine25">
+          <property name="text">
+           <string>0.2</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item row="25" column="0">
+         <widget class="QLabel" name="labelLine26">
+          <property name="text">
+           <string>反应谱最大放大系数</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="25" column="1">
+         <widget class="QLineEdit" name="editLine26">
+          <property name="text">
+           <string>2.0</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item row="26" column="0">
+         <widget class="QLabel" name="labelLine27">
+          <property name="text">
+           <string>反应谱指数</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="26" column="1">
+         <widget class="QLineEdit" name="editLine27">
+          <property name="text">
+           <string>0.9</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item row="27" column="0">
+         <widget class="QLabel" name="labelLine28">
+          <property name="text">
+           <string>地震震级</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="27" column="1">
+         <widget class="QLineEdit" name="editLine28">
+          <property name="text">
+           <string>7.0</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item row="28" column="0">
+         <widget class="QLabel" name="labelLine29">
+          <property name="text">
+           <string>是否计算特征值</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="28" column="1">
+         <widget class="QComboBox" name="comboLine29">
+          <item>
+           <property name="text">
+            <string>0 不计算</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>1 计算</string>
+           </property>
+          </item>
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item row="29" column="0">
+         <widget class="QLabel" name="labelLine30">
+          <property name="text">
+           <string>特征值数</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="29" column="1">
+         <widget class="QLineEdit" name="editLine30">
+          <property name="text">
+           <string>10</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item row="31" column="0">
+         <widget class="QLabel" name="labelX">
+          <property name="text">
+           <string>扬压力折减位置</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="31" column="1">
+         <layout class="QVBoxLayout" name="layoutX">
+          <item>
+           <layout class="QHBoxLayout" name="layoutX_1">
+            <item>
+             <widget class="QLabel" name="labelX1">
+              <property name="text">
+               <string>X1</string>
+              </property>
+              <property name="wordWrap">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="editX1">
+              <property name="text">
+               <string>0.000000</string>
+              </property>
+              <property name="minimumSize">
+               <size>
+                <width>10</width>
+                <height>0</height>
+               </size>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="layoutX_2">
+            <item>
+             <widget class="QLabel" name="labelX2">
+              <property name="text">
+               <string>X2</string>
+              </property>
+              <property name="wordWrap">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="editX2">
+              <property name="text">
+               <string>0.000000</string>
+              </property>
+              <property name="minimumSize">
+               <size>
+                <width>10</width>
+                <height>0</height>
+               </size>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="layoutX_3">
+            <item>
+             <widget class="QLabel" name="labelX3">
+              <property name="text">
+               <string>X3</string>
+              </property>
+              <property name="wordWrap">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="editX3">
+              <property name="text">
+               <string>0.000000</string>
+              </property>
+              <property name="minimumSize">
+               <size>
+                <width>10</width>
+                <height>0</height>
+               </size>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </item>
+        <item row="32" column="0">
+         <widget class="QLabel" name="labelAlfa">
+          <property name="text">
+           <string>折减系数</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="32" column="1">
+         <layout class="QVBoxLayout" name="layoutAlfa">
+          <item>
+           <layout class="QHBoxLayout" name="layoutAlfa_1">
+            <item>
+             <widget class="QLabel" name="labelAlfa1">
+              <property name="text">
+               <string>α1</string>
+              </property>
+              <property name="wordWrap">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="editAlfa1">
+              <property name="text">
+               <string>0.000000</string>
+              </property>
+              <property name="minimumSize">
+               <size>
+                <width>10</width>
+                <height>0</height>
+               </size>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="layoutAlfa_2">
+            <item>
+             <widget class="QLabel" name="labelAlfa2">
+              <property name="text">
+               <string>α2</string>
+              </property>
+              <property name="wordWrap">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="editAlfa2">
+              <property name="text">
+               <string>0.000000</string>
+              </property>
+              <property name="minimumSize">
+               <size>
+                <width>10</width>
+                <height>0</height>
+               </size>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="layoutAlfa_3">
+            <item>
+             <widget class="QLabel" name="labelAlfa3">
+              <property name="text">
+               <string>α3</string>
+              </property>
+              <property name="wordWrap">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="editAlfa3">
+              <property name="text">
+               <string>0.000000</string>
+              </property>
+              <property name="minimumSize">
+               <size>
+                <width>10</width>
+                <height>0</height>
+               </size>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </item>
+        <item row="33" column="0">
+         <widget class="QLabel" name="labelAxis">
+          <property name="text">
+           <string>上下游轴指向</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="33" column="1">
+         <layout class="QVBoxLayout" name="layoutAxis">
+          <item>
+           <layout class="QHBoxLayout" name="layoutAxisUp">
+            <item>
+             <widget class="QLabel" name="labelAxisUp">
+              <property name="text">
+               <string>上游轴</string>
+              </property>
+              <property name="wordWrap">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboAxisUp">
+              <item>
+               <property name="text">
+                <string>1 X轴</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>2 Y轴</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>3 Z轴</string>
+               </property>
+              </item>
+              <property name="minimumSize">
+               <size>
+                <width>10</width>
+                <height>0</height>
+               </size>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="layoutAxisDown">
+            <item>
+             <widget class="QLabel" name="labelAxisDown">
+              <property name="text">
+               <string>下游轴</string>
+              </property>
+              <property name="wordWrap">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="comboAxisDown">
+              <item>
+               <property name="text">
+                <string>1 X轴</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>2 Y轴</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>3 Z轴</string>
+               </property>
+              </item>
+              <property name="minimumSize">
+               <size>
+                <width>10</width>
+                <height>0</height>
+               </size>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </item>
+        <item row="34" column="0">
+         <widget class="QLabel" name="labelIfRock">
+          <property name="text">
+           <string>是否进行岩体自重计算</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="35" column="0">
+         <widget class="QLabel" name="labelIfIso">
+          <property name="text">
+           <string>地基是否按均质材料计算</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="35" column="1">
+         <widget class="QComboBox" name="comboIfIso">
+          <item>
+           <property name="text">
+            <string>0 按建模材料计算</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>1 按IFISO材料计算</string>
+           </property>
+          </item>
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item row="34" column="1">
+         <widget class="QComboBox" name="comboIfRock">
+          <item>
+           <property name="text">
+            <string>0 否（已计算过）</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>1 是（本次计算）</string>
+           </property>
+          </item>
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item row="36" column="1">
+         <widget class="QPushButton" name="btnCompute">
+          <property name="text">
+           <string>计算</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <spacer name="verticalSpacer">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>20</width>
+         <height>40</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+    </layout>
    </item>
   </layout>
  </widget>

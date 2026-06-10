@@ -161,44 +161,44 @@ void DatasetEvaluation::wireSignals()
                 removeSelectedTestRows();
             });
 
-    connect(ui->evaluateBtn, &QPushButton::clicked, this,
-            [this]
-            {
-                if (m_usedParams.isEmpty())
-                {
-                    QMessageBox::warning(this, tr("未选择参数"),
-                                         tr("请在“参数列”中至少勾选一个参数。"));
-                    return;
-                }
-                const QString train = ui->datasetPathEdit->text().trimmed();
-                if (train.isEmpty() || !QFileInfo::exists(train))
-                {
-                    QMessageBox::warning(this, tr("无效数据集"),
-                                         tr("请先选择有效的采样结果文件。"));
-                    return;
-                }
-                const QString testJsonFile = makeTestJsonFile();
+    // connect(ui->evaluateBtn, &QPushButton::clicked, this,
+    //         [this]
+    //         {
+    //             if (m_usedParams.isEmpty())
+    //             {
+    //                 QMessageBox::warning(this, tr("未选择参数"),
+    //                                      tr("请在“参数列”中至少勾选一个参数。"));
+    //                 return;
+    //             }
+    //             const QString train = ui->datasetPathEdit->text().trimmed();
+    //             if (train.isEmpty() || !QFileInfo::exists(train))
+    //             {
+    //                 QMessageBox::warning(this, tr("无效数据集"),
+    //                                      tr("请先选择有效的采样结果文件。"));
+    //                 return;
+    //             }
+    //             const QString testJsonFile = makeTestJsonFile();
 
-                if (testJsonFile.isEmpty())
-                {
-                    QMessageBox::warning(
-                        this, tr("无测试点"),
-                        tr("请在“测试点”表中输入至少一行（所有已勾选参数需填写数值）。"));
-                    return;
-                }
+    //             if (testJsonFile.isEmpty())
+    //             {
+    //                 QMessageBox::warning(
+    //                     this, tr("无测试点"),
+    //                     tr("请在“测试点”表中输入至少一行（所有已勾选参数需填写数值）。"));
+    //                 return;
+    //             }
 
-                QString outTxt, outPng, consoleOut;
-                if (!runRbfEval(train, testJsonFile, ui->thresholdSpin->value(), &outTxt, &outPng,
-                                &consoleOut))
-                {
-                    QMessageBox::warning(this, tr("执行失败"),
-                                         consoleOut.isEmpty() ? tr("RBF 评估脚本执行失败。")
-                                                              : consoleOut);
-                    return;
-                }
-                loadRbfOutputToTable(outTxt);
-                //        loadImageIfExists(outPng);
-            });
+    //             QString outTxt, outPng, consoleOut;
+    //             if (!runRbfEval(train, testJsonFile, ui->thresholdSpin->value(), &outTxt, &outPng,
+    //                             &consoleOut))
+    //             {
+    //                 QMessageBox::warning(this, tr("执行失败"),
+    //                                      consoleOut.isEmpty() ? tr("RBF 评估脚本执行失败。")
+    //                                                           : consoleOut);
+    //                 return;
+    //             }
+    //             loadRbfOutputToTable(outTxt);
+    //             //        loadImageIfExists(outPng);
+    //         });
 }
 
 void DatasetEvaluation::onDatasetKindChanged()

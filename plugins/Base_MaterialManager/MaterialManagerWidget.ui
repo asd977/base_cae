@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='UTF-8'?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>MaterialManagerWidget</class>
  <widget class="QWidget" name="MaterialManagerWidget">
@@ -27,108 +27,126 @@
     <number>0</number>
    </property>
    <property name="bottomMargin">
-    <number>26</number>
+    <number>0</number>
    </property>
-      <item>
-    <widget class="QLabel" name="pageNameLabel">
+   <item>
+    <widget class="QLabel" name="pageHeaderLabel">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
      <property name="text">
-      <string>Form</string>
+      <string>材料参数设置</string>
      </property>
     </widget>
    </item>
    <item>
-    <widget class="QPushButton" name="sectionTitleButton">
-     <property name="text">
-      <string>功能设置</string>
+    <layout class="QVBoxLayout" name="contentLayout">
+     <property name="leftMargin">
+      <number>9</number>
      </property>
-    </widget>
-   </item>
-<item>
-    <widget class="QLabel" name="label">
-     <property name="text">
-      <string>材料</string>
+     <property name="topMargin">
+      <number>9</number>
      </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QPushButton" name="pushButton_2">
-     <property name="text">
-      <string>新增材料</string>
+     <property name="rightMargin">
+      <number>9</number>
      </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QTreeWidget" name="treeWidget">
-     <column>
-      <property name="text">
-       <string>材料列表</string>
-      </property>
-     </column>
-    </widget>
-   </item>
-   <item>
-    <layout class="QHBoxLayout" name="actionLayout">
+     <property name="bottomMargin">
+      <number>9</number>
+     </property>
+     <property name="spacing">
+      <number>6</number>
+     </property>
      <item>
-      <widget class="QPushButton" name="pushButton_3">
-       <property name="minimumSize">
+      <widget class="QLabel" name="label">
+       <property name="text">
+        <string>材料</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="pushButton_2">
+       <property name="text">
+        <string>新增材料</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QTreeWidget" name="treeWidget">
+       <column>
+        <property name="text">
+         <string>材料列表</string>
+        </property>
+       </column>
+      </widget>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="actionLayout">
+       <item>
+        <widget class="QPushButton" name="pushButton_3">
+         <property name="minimumSize">
+          <size>
+           <width>50</width>
+           <height>0</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>新建材料</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="addToTreeButton">
+         <property name="text">
+          <string>添加到工程</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="removeFromTreeButton">
+         <property name="text">
+          <string>工程中移除</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="imatLayout">
+       <item>
+        <widget class="QPushButton" name="generateImatButton">
+         <property name="text">
+          <string>生成 IMAT.DAT（测试）</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="importImatButton">
+         <property name="text">
+          <string>导入 IMAT.DAT 并创建</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <spacer name="verticalSpacer">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
         <size>
-         <width>50</width>
-         <height>0</height>
+         <width>20</width>
+         <height>40</height>
         </size>
        </property>
-       <property name="text">
-        <string>新建材料</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="addToTreeButton">
-       <property name="text">
-        <string>添加到工程</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="removeFromTreeButton">
-       <property name="text">
-        <string>工程中移除</string>
-       </property>
-      </widget>
-     </item>
-       </layout>
-   </item>
-   <item>
-    <layout class="QHBoxLayout" name="imatLayout">
-     <item>
-      <widget class="QPushButton" name="generateImatButton">
-       <property name="text">
-        <string>生成 IMAT.DAT（测试）</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="importImatButton">
-       <property name="text">
-        <string>导入 IMAT.DAT 并创建</string>
-       </property>
-      </widget>
+      </spacer>
      </item>
     </layout>
    </item>
-  <item>
-    <spacer name="verticalSpacer">
-     <property name="orientation">
-      <enum>Qt::Vertical</enum>
-     </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>40</height>
-      </size>
-     </property>
-    </spacer>
-   </item>
-</layout>
+  </layout>
  </widget>
  <resources />
  <connections />

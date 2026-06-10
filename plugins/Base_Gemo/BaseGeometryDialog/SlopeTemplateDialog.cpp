@@ -168,12 +168,10 @@ SlopeTemplateDialog::SlopeTemplateDialog(QWidget* parent)
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(6);
 
-    auto* pageNameLabel = new QLabel(QString("几何模块"), this);
-    pageNameLabel->setObjectName("pageNameLabel");
+    auto* pageHeaderLabel = new QLabel(QString("边坡参数模板"), this);
+    pageHeaderLabel->setObjectName("pageHeaderLabel");
+    mainLayout->addWidget(pageHeaderLabel);
 
-    auto* sectionTitleButton = new QPushButton(QString("边坡参数模板"), this);
-    sectionTitleButton->setObjectName("sectionTitleButton");
-    sectionTitleButton->setEnabled(false);
 
     auto* inputGroup = new QGroupBox("参数输入", this);
     auto* form = new QFormLayout(inputGroup);
@@ -224,8 +222,6 @@ SlopeTemplateDialog::SlopeTemplateDialog(QWidget* parent)
     diagramLabel->setScaledContents(false);
     diagramLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
 
-    mainLayout->addWidget(pageNameLabel);
-    mainLayout->addWidget(sectionTitleButton);
     mainLayout->addWidget(inputGroup);
     mainLayout->addLayout(row);
     mainLayout->addWidget(diagramLabel, 2);

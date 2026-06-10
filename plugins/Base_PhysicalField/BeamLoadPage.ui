@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>BeamLoadPage</class>
  <widget class="QWidget" name="BeamLoadPage">
@@ -23,23 +23,13 @@
    <property name="rightMargin">
     <number>0</number>
    </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
    <item>
-    <widget class="QLabel" name="pageNameLabel">
+    <widget class="QLabel" name="pageHeaderLabel">
      <property name="sizePolicy">
       <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
-     <property name="text">
-      <string>约束与荷载</string>
-     </property>
-    </widget>
-   </item>
-   <item>
-    <widget class="QPushButton" name="sectionTitleButton">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
        <horstretch>0</horstretch>
        <verstretch>0</verstretch>
       </sizepolicy>
@@ -53,12 +43,26 @@
     <widget class="QWidget" name="contentWidget" native="true">
      <layout class="QVBoxLayout" name="contentLayout">
       <item>
-       <widget class="CustomComboBox" name="comboBoxDim"/>
+       <widget class="CustomComboBox" name="comboBoxDim">
+        <property name="minimumSize">
+         <size>
+          <width>10</width>
+          <height>0</height>
+         </size>
+        </property>
+       </widget>
       </item>
       <item>
        <layout class="QHBoxLayout" name="horizontalLayoutGroupSelect">
         <item>
-         <widget class="CustomComboBox" name="comboBoxGroup"/>
+         <widget class="CustomComboBox" name="comboBoxGroup">
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
         </item>
         <item>
          <widget class="QPushButton" name="btnBatchAdd">
@@ -88,7 +92,7 @@
          <string>提示：Shift+拖拽框选，Ctrl+拖拽取消选择</string>
         </property>
         <property name="wordWrap">
-         <bool>true</bool>
+         <bool>false</bool>
         </property>
        </widget>
       </item>
@@ -119,6 +123,12 @@
            <property name="maximum">
             <number>999999</number>
            </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
           </widget>
          </item>
          <item row="1" column="0">
@@ -127,7 +137,7 @@
             <string>荷载特征位置 a（按求解器定义填写）</string>
            </property>
            <property name="text">
-            <string>LOCATION (A)</string>
+            <string>LOCATION</string>
            </property>
           </widget>
          </item>
@@ -142,6 +152,12 @@
            <property name="maximum">
             <double>1000000000000.000000000000000</double>
            </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
           </widget>
          </item>
          <item row="2" column="0">
@@ -150,7 +166,7 @@
             <string>荷载大小 P（按求解器单位填写）</string>
            </property>
            <property name="text">
-            <string>LOAD (P)</string>
+            <string>LOAD</string>
            </property>
           </widget>
          </item>
@@ -165,6 +181,12 @@
            <property name="maximum">
             <double>1000000000000.000000000000000</double>
            </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
           </widget>
          </item>
          <item row="3" column="0">
@@ -173,7 +195,7 @@
             <string>荷载作用面/方向 IDIR（整数）</string>
            </property>
            <property name="text">
-            <string>ACTION_PLANE (IDIR)</string>
+            <string>ACTION</string>
            </property>
           </widget>
          </item>
@@ -184,6 +206,12 @@
            </property>
            <property name="maximum">
             <number>999999</number>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
            </property>
           </widget>
          </item>
@@ -206,7 +234,7 @@
          <item row="0" column="1">
           <widget class="QLabel" name="labelNodeIdValue">
            <property name="text">
-            <string/>
+            <string />
            </property>
           </widget>
          </item>
@@ -220,7 +248,7 @@
          <item row="1" column="1">
           <widget class="QLabel" name="labelXValue">
            <property name="text">
-            <string/>
+            <string />
            </property>
           </widget>
          </item>
@@ -234,7 +262,7 @@
          <item row="2" column="1">
           <widget class="QLabel" name="labelYValue">
            <property name="text">
-            <string/>
+            <string />
            </property>
           </widget>
          </item>
@@ -248,7 +276,7 @@
          <item row="3" column="1">
           <widget class="QLabel" name="labelZValue">
            <property name="text">
-            <string/>
+            <string />
            </property>
           </widget>
          </item>
@@ -262,13 +290,28 @@
          <item row="4" column="1">
           <widget class="QLabel" name="labelPrevOwnerValue">
            <property name="text">
-            <string/>
+            <string />
            </property>
           </widget>
          </item>
         </layout>
        </widget>
       </item>
+      <property name="leftMargin">
+       <number>9</number>
+      </property>
+      <property name="topMargin">
+       <number>9</number>
+      </property>
+      <property name="rightMargin">
+       <number>9</number>
+      </property>
+      <property name="bottomMargin">
+       <number>9</number>
+      </property>
+      <property name="spacing">
+       <number>6</number>
+      </property>
      </layout>
     </widget>
    </item>
@@ -294,6 +337,6 @@
    <header>CustomComboBox.h</header>
   </customwidget>
  </customwidgets>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

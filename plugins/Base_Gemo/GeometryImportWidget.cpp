@@ -268,15 +268,11 @@ GeometryImportWidget::GeometryImportWidget(QWidget* parent)
     // 设置 QLineEdit 为只读，防止手动编辑路径
     pathLineEdit->setReadOnly(true);
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
-    auto* pageNameLabel = new QLabel("几何模块", this);
-    pageNameLabel->setObjectName("pageNameLabel");
-    auto* sectionTitleButton = new QPushButton("导入几何体", this);
-    sectionTitleButton->setObjectName("sectionTitleButton");
-    sectionTitleButton->setEnabled(false);
+    auto* pageHeaderLabel = new QLabel(QString("导入几何体"), this);
+    pageHeaderLabel->setObjectName("pageHeaderLabel");
+    mainLayout->addWidget(pageHeaderLabel);
     // 创建水平布局
     QHBoxLayout* layout = new QHBoxLayout(this);
-    mainLayout->addWidget(pageNameLabel);
-    mainLayout->addWidget(sectionTitleButton);
     mainLayout->addWidget(pathLabel);
     mainLayout->addWidget(pathLineEdit);
     layout->addWidget(browseButton);
