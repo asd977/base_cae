@@ -10,6 +10,11 @@ class QLabel;
 class QPushButton;
 class QTableWidget;
 
+namespace Ui
+{
+class GeoStressMeasurePointPage;
+}
+
 class GeoStressMeasurePointPage : public BasePage
 {
     Q_OBJECT
@@ -28,6 +33,7 @@ class GeoStressMeasurePointPage : public BasePage
     };
 
     explicit GeoStressMeasurePointPage(QWidget* parent = nullptr);
+    ~GeoStressMeasurePointPage() override;
 
     void beforeLoad() override;
     void beforeUnload() override;
@@ -80,6 +86,7 @@ class GeoStressMeasurePointPage : public BasePage
     void syncPickedPointIds();
 
   private:
+    Ui::GeoStressMeasurePointPage* ui = nullptr;
     QTableWidget* m_table = nullptr;
     QPushButton* m_clearBtn = nullptr;
     QPushButton* m_importBtn = nullptr;

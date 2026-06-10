@@ -48,6 +48,9 @@ FORMS += \
     CaveExcavationWidget.ui \
     CaveSupportComputationPage.ui \
     GeoStressRegressionWidget.ui \
+    GeoStressSideFacePage.ui \
+    GeoStressOuterForcePage.ui \
+    GeoStressMeasurePointPage.ui \
     FillStorageCyclePage.ui \
     SeepageBoundaryPage.ui \
     SeepageWidget.ui \

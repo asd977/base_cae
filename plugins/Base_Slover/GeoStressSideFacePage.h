@@ -8,6 +8,11 @@ class QComboBox;
 class QLineEdit;
 class QPushButton;
 
+namespace Ui
+{
+class GeoStressSideFacePage;
+}
+
 class GeoStressSideFacePage : public BasePage
 {
     Q_OBJECT
@@ -22,6 +27,7 @@ class GeoStressSideFacePage : public BasePage
     };
 
     explicit GeoStressSideFacePage(QWidget* parent = nullptr);
+    ~GeoStressSideFacePage() override;
 
     void beforeLoad() override;
     void beforeUnload() override;
@@ -44,6 +50,7 @@ class GeoStressSideFacePage : public BasePage
     void refreshGroupCombo();
 
   private:
+    Ui::GeoStressSideFacePage* ui = nullptr;
     int m_faceIndex = 1;
     QComboBox* m_groupCombo = nullptr;
     QPushButton* m_batchAddBtn = nullptr;

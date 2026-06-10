@@ -14,12 +14,9 @@
 #include <QCheckBox>
 #include <QFile>
 #include <QFileDialog>
-#include <QGroupBox>
 #include <QHeaderView>
-#include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonObject>
-#include <QLabel>
 #include <QList>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -27,7 +24,8 @@
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTextStream>
-#include <QVBoxLayout>
+
+#include "ui_GeoStressMeasurePointPage.h"
 
 namespace
 {
@@ -58,42 +56,20 @@ bool isNumericRow(const QStringList& values, int count)
 }
 
 GeoStressMeasurePointPage::GeoStressMeasurePointPage(QWidget* parent)
-    : BasePage("GeoStressRegressionMeasurePoint")
+    : BasePage("GeoStressRegressionMeasurePoint"), ui(new Ui::GeoStressMeasurePointPage)
 {
     Q_UNUSED(parent);
-    auto* mainLayout = new QVBoxLayout(this);
+    ui->setupUi(this);
 
-    auto* pickGroup = new QGroupBox("测点选择", this);
-    auto* pickLayout = new QVBoxLayout(pickGroup);
-    auto* pickHintLabel = new QLabel("提示：Shift+拖拽框选，Ctrl+拖拽取消选择", pickGroup);
-    pickHintLabel->setWordWrap(true);
-    m_dimensionHintLabel = new QLabel(pickGroup);
-    m_dimensionHintLabel->setWordWrap(true);
+    m_table = ui->measureTable;
+    m_clearBtn = ui->clearButton;
+    m_importBtn = ui->importButton;
+    m_appendSelectedPointsBtn = ui->appendSelectedPointsButton;
+    m_addManualRowBtn = ui->addManualRowButton;
+    m_removeRowsBtn = ui->removeRowsButton;
+    m_pickEnableCheckBox = ui->pickEnableCheckBox;
+    m_dimensionHintLabel = ui->dimensionHintLabel;
 
-    m_pickEnableCheckBox = new QCheckBox("开启点选", pickGroup);
-    m_addManualRowBtn = new QPushButton("添加手动行", pickGroup);
-    m_appendSelectedPointsBtn = new QPushButton("添加当前选择", pickGroup);
-    m_importBtn = new QPushButton("导入数据", pickGroup);
-    m_removeRowsBtn = new QPushButton("移除选中", pickGroup);
-    m_clearBtn = new QPushButton("清空全部", pickGroup);
-
-    auto* actionRow = new QHBoxLayout;
-    actionRow->addWidget(m_pickEnableCheckBox);
-    actionRow->addStretch(1);
-    actionRow->addWidget(m_addManualRowBtn);
-    actionRow->addWidget(m_appendSelectedPointsBtn);
-    actionRow->addWidget(m_importBtn);
-    actionRow->addWidget(m_removeRowsBtn);
-    actionRow->addWidget(m_clearBtn);
-
-    pickLayout->addWidget(pickHintLabel);
-    pickLayout->addWidget(m_dimensionHintLabel);
-    pickLayout->addLayout(actionRow);
-    mainLayout->addWidget(pickGroup);
-
-    auto* dataGroup = new QGroupBox("实测地应力数据", this);
-    auto* dataLayout = new QVBoxLayout(dataGroup);
-    m_table = new QTableWidget(0, ColCount, dataGroup);
     m_table->setHorizontalHeaderLabels(QStringList() << "点号" << "XP" << "YP" << "ZP" << "SGX"
                                              << "SGY" << "SGZ" << "TXY" << "TYZ" << "TZX"
                                              << "pid");
@@ -106,8 +82,6 @@ GeoStressMeasurePointPage::GeoStressMeasurePointPage(QWidget* parent)
     m_table->horizontalHeader()->setSectionResizeMode(ColX, QHeaderView::Stretch);
     m_table->horizontalHeader()->setSectionResizeMode(ColY, QHeaderView::Stretch);
     m_table->setColumnHidden(ColPid, true);
-    dataLayout->addWidget(m_table);
-    mainLayout->addWidget(dataGroup, 1);
 
     connect(m_clearBtn, &QPushButton::clicked, this, &GeoStressMeasurePointPage::onClearClicked);
     connect(m_importBtn, &QPushButton::clicked, this, &GeoStressMeasurePointPage::onImportClicked);
@@ -123,6 +97,11 @@ GeoStressMeasurePointPage::GeoStressMeasurePointPage(QWidget* parent)
             });
 
     applyDimensionUi();
+}
+
+GeoStressMeasurePointPage::~GeoStressMeasurePointPage()
+{
+    delete ui;
 }
 
 void GeoStressMeasurePointPage::beforeLoad()

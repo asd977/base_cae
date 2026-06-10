@@ -8,11 +8,17 @@ class QComboBox;
 class QLineEdit;
 class QPushButton;
 
+namespace Ui
+{
+class GeoStressOuterForcePage;
+}
+
 class GeoStressOuterForcePage : public BasePage
 {
     Q_OBJECT
   public:
     explicit GeoStressOuterForcePage(QWidget* parent = nullptr);
+    ~GeoStressOuterForcePage() override;
 
     void beforeLoad() override;
     void beforeUnload() override;
@@ -34,6 +40,7 @@ class GeoStressOuterForcePage : public BasePage
     void refreshGroupCombo();
 
   private:
+    Ui::GeoStressOuterForcePage* ui = nullptr;
     QComboBox* m_groupCombo = nullptr;
     QPushButton* m_batchAddBtn = nullptr;
     QLineEdit* m_fxEdit = nullptr;

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>GeoStressOuterForcePage</class>
+ <widget class="QWidget" name="GeoStressOuterForcePage">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>460</width><height>330</height></rect>
+  </property>
+  <property name="windowTitle"><string>外立面</string></property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <item>
+    <widget class="QGroupBox" name="selectionGroup">
+     <property name="title"><string>边界选择</string></property>
+     <layout class="QVBoxLayout" name="selectionLayout">
+      <item>
+       <widget class="QLabel" name="pickHintLabel">
+        <property name="text"><string>提示：Shift+拖拽框选，Ctrl+拖拽取消选择</string></property>
+        <property name="wordWrap"><bool>true</bool></property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="groupRowLayout">
+        <item><widget class="QLabel" name="batchSelectLabel"><property name="text"><string>批量选择</string></property></widget></item>
+        <item><widget class="CustomComboBox" name="groupCombo"/></item>
+        <item><widget class="QPushButton" name="batchAddButton"><property name="text"><string>添加分组</string></property></widget></item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="actionRowLayout">
+        <item><widget class="QCheckBox" name="pickEnableCheckBox"><property name="text"><string>开启点选</string></property></widget></item>
+        <item><spacer name="actionSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+        <item><widget class="QPushButton" name="clearButton"><property name="text"><string>清空所选</string></property></widget></item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="forceGroup">
+     <property name="title"><string>外面力参数</string></property>
+     <layout class="QFormLayout" name="forceFormLayout">
+      <item row="0" column="0"><widget class="QLabel" name="fxLabel"><property name="text"><string>FX</string></property></widget></item>
+      <item row="0" column="1"><widget class="QLineEdit" name="fxEdit"><property name="text"><string>0</string></property></widget></item>
+      <item row="1" column="0"><widget class="QLabel" name="fyLabel"><property name="text"><string>FY</string></property></widget></item>
+      <item row="1" column="1"><widget class="QLineEdit" name="fyEdit"><property name="text"><string>0</string></property></widget></item>
+      <item row="2" column="0"><widget class="QLabel" name="fzLabel"><property name="text"><string>FZ</string></property></widget></item>
+      <item row="2" column="1"><widget class="QLineEdit" name="fzEdit"><property name="text"><string>0</string></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget><class>CustomComboBox</class><extends>QComboBox</extends><header>CustomComboBox.h</header></customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>
