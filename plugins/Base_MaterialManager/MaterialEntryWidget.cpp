@@ -53,15 +53,24 @@ MaterialEntryWidget::MaterialEntryWidget(MaterialManager* manager, QWidget* pare
     : BasePage("MaterialEntryWidget"), m_materialManager(manager), m_isUpdating(false),
       m_formLayout(new QFormLayout), m_nameEdit(nullptr)
 {
+    setAttribute(Qt::WA_StyledBackground, true);
+    auto* pageHeaderLabel = new QLabel("材料参数设置", this);
+    pageHeaderLabel->setObjectName("pageHeaderLabel");
+
+    m_formLayout->setContentsMargins(9, 9, 9, 9);
+    m_formLayout->setSpacing(6);
+
     auto* container = new QWidget(this);
     container->setLayout(m_formLayout);
 
     auto* scrollArea = new QScrollArea(this);
     scrollArea->setWidget(container);
     scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
 
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
+    layout->addWidget(pageHeaderLabel);
     layout->addWidget(scrollArea);
 }
 
@@ -253,6 +262,7 @@ void MaterialEntryWidget::rebuildSeepageFields(MaterialEntry* entry)
         }
         auto* seepageValueEdit =
             new QLineEdit(entry->seepageProperties.value(column, QStringLiteral("0")), this);
+        seepageValueEdit->setMinimumWidth(10);
         seepageValueEdit->setProperty("columnName", column);
         connect(seepageValueEdit, &QLineEdit::textEdited, this,
                 &MaterialEntryWidget::onSeepageValueEdited);
@@ -274,6 +284,7 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
 
     // ===== 名称 =====
     m_nameEdit = new QLineEdit(entry->name, this);
+    m_nameEdit->setMinimumWidth(10);
     connect(m_nameEdit, &QLineEdit::textEdited, this, &MaterialEntryWidget::onNameEdited);
     m_formLayout->addRow(QString("材料名称"), m_nameEdit);
 
@@ -287,6 +298,7 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     rowLayout->setContentsMargins(0, 0, 0, 0);
 
     m_matypeCombo = new CustomComboBox(matypeRowWidget);
+    m_matypeCombo->setMinimumWidth(10);
     m_matypeCombo->addItem(QString("未选择"), QVariant());
     m_matypeOptionsLoaded = false;
     for (int value : appliedList)
@@ -346,6 +358,7 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     m_transitionOnlyCheck = new QCheckBox(QStringLiteral("仅用于后续变换"), transitionRowWidget);
     m_transitionOnlyCheck->setChecked(entry->transitionOnly);
     m_transitionMatypeSpin = new QSpinBox(transitionRowWidget);
+    m_transitionMatypeSpin->setMinimumWidth(10);
     m_transitionMatypeSpin->setRange(1, 1000000);
     m_transitionMatypeSpin->setValue(entry->transitionMatype > 0 ? entry->transitionMatype : 1);
     m_transitionMatypeSpin->setEnabled(true);
@@ -378,6 +391,7 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
             continue;
         }
         auto* valueEdit = new QLineEdit(entry->properties.value(column), this);
+        valueEdit->setMinimumWidth(10);
         valueEdit->setProperty("columnName", column);
         connect(valueEdit, &QLineEdit::textEdited, this, &MaterialEntryWidget::onValueEdited);
         m_formLayout->addRow(column, valueEdit);
@@ -386,6 +400,7 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
 
     // ===== 渗流/流变模型（放到最下方）=====
     m_seepageCombo = new CustomComboBox(this);
+    m_seepageCombo->setMinimumWidth(10);
     m_seepageCombo->addItem(QStringLiteral("无"), QString());
     const auto& seepageModels = m_materialManager->seepageModels();
     for (const auto& seepageModel : seepageModels)

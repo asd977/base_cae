@@ -110,6 +110,11 @@ void GravityDamDialog::initUI()
     auto* pageHeaderLabel = new QLabel(QString("重力坝参数模板"), this);
     pageHeaderLabel->setObjectName("pageHeaderLabel");
     mainLayout->addWidget(pageHeaderLabel);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    QVBoxLayout* contentLayout = new QVBoxLayout();
+    contentLayout->setContentsMargins(9, 9, 9, 9);
+    contentLayout->setSpacing(6);
+    mainLayout->addLayout(contentLayout);
 
 
     auto* inputGroup = new QGroupBox("参数输入", this);
@@ -120,14 +125,23 @@ void GravityDamDialog::initUI()
     auto* coordValidator = new QDoubleValidator(-1.0e9, 1.0e9, 3, this);
 
     heightEdit = new QLineEdit("80", this);
+    heightEdit->setMinimumWidth(10);
     crestWidthEdit = new QLineEdit("10", this);
+    crestWidthEdit->setMinimumWidth(10);
     upstreamSlopeEdit = new QLineEdit("0.2", this);
+    upstreamSlopeEdit->setMinimumWidth(10);
     downstreamSlopeEdit = new QLineEdit("0.75", this);
+    downstreamSlopeEdit->setMinimumWidth(10);
     lengthEdit = new QLineEdit("180", this);
+    lengthEdit->setMinimumWidth(10);
     layerCountEdit = new QLineEdit("6", this);
+    layerCountEdit->setMinimumWidth(10);
     xEdit = new QLineEdit("0", this);
+    xEdit->setMinimumWidth(10);
     yEdit = new QLineEdit("0", this);
+    yEdit->setMinimumWidth(10);
     zEdit = new QLineEdit("0", this);
+    zEdit->setMinimumWidth(10);
 
     heightEdit->setValidator(posValidator);
     crestWidthEdit->setValidator(posValidator);
@@ -162,10 +176,10 @@ void GravityDamDialog::initUI()
     diagramLabel->setScaledContents(false);
     diagramLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
 
-    mainLayout->addWidget(inputGroup);
-    mainLayout->addLayout(btnLayout);
-    mainLayout->addWidget(diagramLabel, 2);
-    mainLayout->addStretch(1);
+    contentLayout->addWidget(inputGroup);
+    contentLayout->addLayout(btnLayout);
+    contentLayout->addWidget(diagramLabel, 2);
+    contentLayout->addStretch(1);
 
     connect(generateBtn, &QPushButton::clicked, this, &GravityDamDialog::onGenerate3DClicked);
 

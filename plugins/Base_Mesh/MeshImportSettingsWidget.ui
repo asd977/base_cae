@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>MeshImportSettingsWidget</class>
  <widget class="QWidget" name="MeshImportSettingsWidget">
@@ -75,6 +75,18 @@
         </property>
        </widget>
       </item>
+      <property name="leftMargin">
+       <number>9</number>
+      </property>
+      <property name="topMargin">
+       <number>9</number>
+      </property>
+      <property name="rightMargin">
+       <number>9</number>
+      </property>
+      <property name="bottomMargin">
+       <number>9</number>
+      </property>
      </layout>
     </widget>
    </item>
@@ -110,6 +122,18 @@
         </item>
        </widget>
       </item>
+      <property name="leftMargin">
+       <number>9</number>
+      </property>
+      <property name="topMargin">
+       <number>9</number>
+      </property>
+      <property name="rightMargin">
+       <number>9</number>
+      </property>
+      <property name="bottomMargin">
+       <number>9</number>
+      </property>
      </layout>
     </widget>
    </item>
@@ -128,6 +152,6 @@
    </item>
   </layout>
  </widget>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

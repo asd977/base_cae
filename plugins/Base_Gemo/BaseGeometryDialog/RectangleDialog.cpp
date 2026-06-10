@@ -34,15 +34,21 @@ RectangleDialog::RectangleDialog(QWidget* parent)
     auto* pageHeaderLabel = new QLabel(QString("参数设置"), this);
     pageHeaderLabel->setObjectName("pageHeaderLabel");
     layout->addWidget(pageHeaderLabel);
+    layout->setContentsMargins(0, 0, 0, 0);
+    QVBoxLayout* contentLayout = new QVBoxLayout();
+    contentLayout->setContentsMargins(9, 9, 9, 9);
+    contentLayout->setSpacing(6);
+    layout->addLayout(contentLayout);
 
     // ---- 基准面选择 ----
     planeLabel = new QLabel(QString("基准面："), this);
     planeCombo = new QComboBox(this);
+    planeCombo->setMinimumWidth(10);
     planeCombo->addItem("XY", static_cast<int>(PlaneType::XY));
     planeCombo->addItem("XZ", static_cast<int>(PlaneType::XZ));
     planeCombo->addItem("YZ", static_cast<int>(PlaneType::YZ));
-    layout->addWidget(planeLabel);
-    layout->addWidget(planeCombo);
+    contentLayout->addWidget(planeLabel);
+    contentLayout->addWidget(planeCombo);
 
     connect(planeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &RectangleDialog::onPlaneChanged);
@@ -50,35 +56,40 @@ RectangleDialog::RectangleDialog(QWidget* parent)
     // ---- 长度输入 ----
     QLabel* lengthLabel = new QLabel(QString("长度："), this);
     lengthEdit = new QLineEdit(this);
+    lengthEdit->setMinimumWidth(10);
     lengthEdit->setValidator(new QDoubleValidator(0.0, 1e6, 6, this));
-    layout->addWidget(lengthLabel);
-    layout->addWidget(lengthEdit);
+    contentLayout->addWidget(lengthLabel);
+    contentLayout->addWidget(lengthEdit);
 
     // ---- 宽度输入 ----
     QLabel* widthLabel = new QLabel(QString("宽度："), this);
     widthEdit = new QLineEdit(this);
+    widthEdit->setMinimumWidth(10);
     widthEdit->setValidator(new QDoubleValidator(0.0, 1e6, 6, this));
-    layout->addWidget(widthLabel);
-    layout->addWidget(widthEdit);
+    contentLayout->addWidget(widthLabel);
+    contentLayout->addWidget(widthEdit);
 
     // ---- 中心点输入（与 Circle 一致：X/Y/Z 都有，基准面决定哪个是偏移）----
     centerXLabel = new QLabel(QString("中心X坐标："), this);
     centerXEdit = new QLineEdit(this);
+    centerXEdit->setMinimumWidth(10);
     centerXEdit->setValidator(new QDoubleValidator(-1e6, 1e6, 6, this));
-    layout->addWidget(centerXLabel);
-    layout->addWidget(centerXEdit);
+    contentLayout->addWidget(centerXLabel);
+    contentLayout->addWidget(centerXEdit);
 
     centerYLabel = new QLabel(QString("中心Y坐标："), this);
     centerYEdit = new QLineEdit(this);
+    centerYEdit->setMinimumWidth(10);
     centerYEdit->setValidator(new QDoubleValidator(-1e6, 1e6, 6, this));
-    layout->addWidget(centerYLabel);
-    layout->addWidget(centerYEdit);
+    contentLayout->addWidget(centerYLabel);
+    contentLayout->addWidget(centerYEdit);
 
     centerZLabel = new QLabel(QString("中心Z坐标："), this);
     centerZEdit = new QLineEdit(this);
+    centerZEdit->setMinimumWidth(10);
     centerZEdit->setValidator(new QDoubleValidator(-1e6, 1e6, 6, this));
-    layout->addWidget(centerZLabel);
-    layout->addWidget(centerZEdit);
+    contentLayout->addWidget(centerZLabel);
+    contentLayout->addWidget(centerZEdit);
 
     // ---- 创建按钮 ----
     QPushButton* okButton = new QPushButton(QString("生成几何体"), this);
@@ -86,8 +97,8 @@ RectangleDialog::RectangleDialog(QWidget* parent)
     QHBoxLayout* buttonLayout = new QHBoxLayout();
     buttonLayout->addStretch();
     buttonLayout->addWidget(okButton);
-    layout->addLayout(buttonLayout);
-    layout->addStretch();
+    contentLayout->addLayout(buttonLayout);
+    contentLayout->addStretch();
 
     connect(okButton, &QPushButton::clicked, this, &RectangleDialog::validateInput);
 

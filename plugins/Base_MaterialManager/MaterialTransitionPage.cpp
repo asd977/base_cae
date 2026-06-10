@@ -63,12 +63,24 @@ void clearMaterialTransitionHighlight(const QString& pageType, const QString& uu
 MaterialTransitionPage::MaterialTransitionPage(MaterialManager* manager, QWidget* parent)
     : BasePage("MaterialTransitionPage"), m_manager(manager)
 {
-    auto* root = new QVBoxLayout(this);
+    setAttribute(Qt::WA_StyledBackground, true);
+    auto* pageHeaderLabel = new QLabel("材料变换设置", this);
+    pageHeaderLabel->setObjectName("pageHeaderLabel");
 
-    root->addWidget(
+    auto* root = new QVBoxLayout(this);
+    root->setContentsMargins(0, 0, 0, 0);
+    root->addWidget(pageHeaderLabel);
+
+    auto* contentLayout = new QVBoxLayout();
+    contentLayout->setContentsMargins(9, 9, 9, 9);
+    contentLayout->setSpacing(6);
+    root->addLayout(contentLayout);
+
+    contentLayout->addWidget(
         new QLabel(QStringLiteral("材料变换：明确选择“原材料/区域”到“变更后材料”。"), this));
 
     m_table = new QTableWidget(this);
+    m_table->setMinimumWidth(10);
     m_table->setColumnCount(3);
     m_table->setHorizontalHeaderLabels(
         {QStringLiteral("选中"),
@@ -77,8 +89,9 @@ MaterialTransitionPage::MaterialTransitionPage(MaterialManager* manager, QWidget
 
     m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
     m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    m_table->horizontalHeader()->setStretchLastSection(true);
 
-    root->addWidget(m_table);
+    contentLayout->addWidget(m_table);
 
     auto* row = new QHBoxLayout();
 
@@ -89,7 +102,7 @@ MaterialTransitionPage::MaterialTransitionPage(MaterialManager* manager, QWidget
     row->addWidget(delBtn);
     row->addStretch();
 
-    root->addLayout(row);
+    contentLayout->addLayout(row);
 
     connect(addBtn, &QPushButton::clicked,
             this, &MaterialTransitionPage::onAddRow);
@@ -170,6 +183,7 @@ void MaterialTransitionPage::addRow(int oldMatype, int newMatype)
     m_table->setItem(row, 0, markerItem);
 
     auto* oldBox = new QComboBox(m_table);
+    oldBox->setMinimumWidth(10);
     for (auto it = m_oldOptions.constBegin(); it != m_oldOptions.constEnd(); ++it)
         oldBox->addItem(it.value(), it.key());
 
@@ -180,6 +194,7 @@ void MaterialTransitionPage::addRow(int oldMatype, int newMatype)
     m_table->setCellWidget(row, 1, oldBox);
 
     auto* newBox = new QComboBox(m_table);
+    newBox->setMinimumWidth(10);
     for (auto it = m_newOptions.constBegin(); it != m_newOptions.constEnd(); ++it)
         newBox->addItem(it.value(), it.key());
 

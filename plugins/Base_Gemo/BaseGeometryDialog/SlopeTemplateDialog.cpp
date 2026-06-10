@@ -171,6 +171,11 @@ SlopeTemplateDialog::SlopeTemplateDialog(QWidget* parent)
     auto* pageHeaderLabel = new QLabel(QString("边坡参数模板"), this);
     pageHeaderLabel->setObjectName("pageHeaderLabel");
     mainLayout->addWidget(pageHeaderLabel);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    QVBoxLayout* contentLayout = new QVBoxLayout();
+    contentLayout->setContentsMargins(9, 9, 9, 9);
+    contentLayout->setSpacing(6);
+    mainLayout->addLayout(contentLayout);
 
 
     auto* inputGroup = new QGroupBox("参数输入", this);
@@ -180,16 +185,24 @@ SlopeTemplateDialog::SlopeTemplateDialog(QWidget* parent)
     auto* nonNegativeValidator = new QDoubleValidator(0.0, 1.0e9, 3, this);
 
     hEdit = new QLineEdit("65", this);
-    benchWidthEdit = new QLineEdit("8", this);      // 中间平台宽 Bmid
-    slopeEdit = new QLineEdit("18", this);          // 单级坡面水平宽 Ws
-    lenEdit = new QLineEdit("120", this);           // 拉伸厚度 L
-    benchCountEdit = new QLineEdit("3", this);      // 台阶级数 N
+    hEdit->setMinimumWidth(10);
+    benchWidthEdit = new QLineEdit("8", this);
+    benchWidthEdit->setMinimumWidth(10);      // 中间平台宽 Bmid
+    slopeEdit = new QLineEdit("18", this);
+    slopeEdit->setMinimumWidth(10);          // 单级坡面水平宽 Ws
+    lenEdit = new QLineEdit("120", this);
+    lenEdit->setMinimumWidth(10);           // 拉伸厚度 L
+    benchCountEdit = new QLineEdit("3", this);
+    benchCountEdit->setMinimumWidth(10);      // 台阶级数 N
 
     auto* topPlatformEdit = new QLineEdit("20", this);
+    topPlatformEdit->setMinimumWidth(10);
     topPlatformEdit->setObjectName("topPlatformEdit");
     auto* toeExtensionEdit = new QLineEdit("30", this);
+    toeExtensionEdit->setMinimumWidth(10);
     toeExtensionEdit->setObjectName("toeExtensionEdit");
     auto* baseHeightEdit = new QLineEdit("15", this);
+    baseHeightEdit->setMinimumWidth(10);
     baseHeightEdit->setObjectName("baseHeightEdit");
 
     hEdit->setValidator(positiveValidator);
@@ -222,10 +235,10 @@ SlopeTemplateDialog::SlopeTemplateDialog(QWidget* parent)
     diagramLabel->setScaledContents(false);
     diagramLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
 
-    mainLayout->addWidget(inputGroup);
-    mainLayout->addLayout(row);
-    mainLayout->addWidget(diagramLabel, 2);
-    mainLayout->addStretch(1);
+    contentLayout->addWidget(inputGroup);
+    contentLayout->addLayout(row);
+    contentLayout->addWidget(diagramLabel, 2);
+    contentLayout->addStretch(1);
 
     connect(generateButton, &QPushButton::clicked, this, &SlopeTemplateDialog::onGenerateClicked);
 

@@ -18,22 +18,27 @@ CylinderDialog::CylinderDialog(QWidget* parent) : BasePage(PublicConstants::kPag
     // 创建输入框和标签
     QLabel* radiusLabel = new QLabel("半径：", this);
     radiusEdit = new QLineEdit(this);
+    radiusEdit->setMinimumWidth(10);
     radiusEdit->setValidator(new QDoubleValidator(0.1, 1000.0, 2, this));
 
     QLabel* heightLabel = new QLabel("高度：", this);
     heightEdit = new QLineEdit(this);
+    heightEdit->setMinimumWidth(10);
     heightEdit->setValidator(new QDoubleValidator(0.1, 1000.0, 2, this));
 
     QLabel* xLabel = new QLabel("底面中心 X：", this);
     xEdit = new QLineEdit(this);
+    xEdit->setMinimumWidth(10);
     xEdit->setValidator(new QDoubleValidator(-1000.0, 1000.0, 2, this));
 
     QLabel* yLabel = new QLabel("底面中心 Y：", this);
     yEdit = new QLineEdit(this);
+    yEdit->setMinimumWidth(10);
     yEdit->setValidator(new QDoubleValidator(-1000.0, 1000.0, 2, this));
 
     QLabel* zLabel = new QLabel("底面中心 Z：", this);
     zEdit = new QLineEdit(this);
+    zEdit->setMinimumWidth(10);
     zEdit->setValidator(new QDoubleValidator(-1000.0, 1000.0, 2, this));
 
     // 设置默认值
@@ -51,6 +56,11 @@ CylinderDialog::CylinderDialog(QWidget* parent) : BasePage(PublicConstants::kPag
     auto* pageHeaderLabel = new QLabel(QString("参数设置"), this);
     pageHeaderLabel->setObjectName("pageHeaderLabel");
     mainLayout->addWidget(pageHeaderLabel);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    QVBoxLayout* contentLayout = new QVBoxLayout();
+    contentLayout->setContentsMargins(9, 9, 9, 9);
+    contentLayout->setSpacing(6);
+    mainLayout->addLayout(contentLayout);
     QHBoxLayout* radiusLayout = new QHBoxLayout;
     QHBoxLayout* heightLayout = new QHBoxLayout;
     QHBoxLayout* xLayout = new QHBoxLayout;
@@ -71,13 +81,13 @@ CylinderDialog::CylinderDialog(QWidget* parent) : BasePage(PublicConstants::kPag
     buttonLayout->addStretch();
     buttonLayout->addWidget(okButton);
 
-    mainLayout->addLayout(radiusLayout);
-    mainLayout->addLayout(heightLayout);
-    mainLayout->addLayout(xLayout);
-    mainLayout->addLayout(yLayout);
-    mainLayout->addLayout(zLayout);
-    mainLayout->addLayout(buttonLayout);
-    mainLayout->addStretch();
+    contentLayout->addLayout(radiusLayout);
+    contentLayout->addLayout(heightLayout);
+    contentLayout->addLayout(xLayout);
+    contentLayout->addLayout(yLayout);
+    contentLayout->addLayout(zLayout);
+    contentLayout->addLayout(buttonLayout);
+    contentLayout->addStretch();
     setLayout(mainLayout);
 
     // 连接按钮信号

@@ -291,3 +291,11 @@ QWidget[dimDisabled="true"] {
     color: #A0A0A0;
     background-color: #F5F5F5;
 }
+
+MaterialEntryWidget,
+MaterialTransitionPage,
+MaterialModelWidget,
+QScrollArea,
+QScrollArea > QWidget {
+    background-color: white;
+}

@@ -66,16 +66,16 @@
        </property>
        <layout class="QVBoxLayout" name="fileVBoxLayout">
         <property name="leftMargin">
-         <number>8</number>
+         <number>9</number>
         </property>
         <property name="topMargin">
-         <number>8</number>
+         <number>9</number>
         </property>
         <property name="rightMargin">
-         <number>8</number>
+         <number>9</number>
         </property>
         <property name="bottomMargin">
-         <number>8</number>
+         <number>9</number>
         </property>
         <item>
          <layout class="QHBoxLayout" name="fileHBoxLayout">
@@ -99,6 +99,18 @@
             </property>
            </widget>
           </item>
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
          </layout>
         </item>
         <item>
@@ -117,6 +129,18 @@
             </property>
            </widget>
           </item>
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
          </layout>
         </item>
        </layout>
@@ -129,16 +153,16 @@
        </property>
        <layout class="QFormLayout" name="displayFormLayout">
         <property name="leftMargin">
-         <number>8</number>
+         <number>9</number>
         </property>
         <property name="topMargin">
-         <number>8</number>
+         <number>9</number>
         </property>
         <property name="rightMargin">
-         <number>8</number>
+         <number>9</number>
         </property>
         <property name="bottomMargin">
-         <number>8</number>
+         <number>9</number>
         </property>
         <item row="0" column="0">
          <widget class="QLabel" name="lineWidthTextLabel">
@@ -225,16 +249,16 @@
        </property>
        <layout class="QFormLayout" name="summaryFormLayout">
         <property name="leftMargin">
-         <number>8</number>
+         <number>9</number>
         </property>
         <property name="topMargin">
-         <number>8</number>
+         <number>9</number>
         </property>
         <property name="rightMargin">
-         <number>8</number>
+         <number>9</number>
         </property>
         <property name="bottomMargin">
-         <number>8</number>
+         <number>9</number>
         </property>
         <item row="0" column="0">
          <widget class="QLabel" name="fileTitleLabel">

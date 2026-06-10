@@ -39,15 +39,21 @@ CircleDialog::CircleDialog(QWidget* parent) : BasePage(PublicConstants::kPagePre
     auto* pageHeaderLabel = new QLabel(QString("参数设置"), this);
     pageHeaderLabel->setObjectName("pageHeaderLabel");
     layout->addWidget(pageHeaderLabel);
+    layout->setContentsMargins(0, 0, 0, 0);
+    QVBoxLayout* contentLayout = new QVBoxLayout();
+    contentLayout->setContentsMargins(9, 9, 9, 9);
+    contentLayout->setSpacing(6);
+    layout->addLayout(contentLayout);
 
     // ---- 基准面选择（2D 圆必须有）----
     planeLabel = new QLabel(QString("基准面："), this);
     planeCombo = new QComboBox(this);
+    planeCombo->setMinimumWidth(10);
     planeCombo->addItem("XY", static_cast<int>(PlaneType::XY));
     planeCombo->addItem("XZ", static_cast<int>(PlaneType::XZ));
     planeCombo->addItem("YZ", static_cast<int>(PlaneType::YZ));
-    layout->addWidget(planeLabel);
-    layout->addWidget(planeCombo);
+    contentLayout->addWidget(planeLabel);
+    contentLayout->addWidget(planeCombo);
 
     connect(planeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &CircleDialog::onPlaneChanged);
@@ -55,28 +61,32 @@ CircleDialog::CircleDialog(QWidget* parent) : BasePage(PublicConstants::kPagePre
     // ---- 半径输入 ----
     QLabel* radiusLabel = new QLabel(QString("半径："), this);
     radiusEdit = new QLineEdit(this);
+    radiusEdit->setMinimumWidth(10);
     radiusEdit->setValidator(new QDoubleValidator(0.0, 1e6, 6, this)); // 正数
-    layout->addWidget(radiusLabel);
-    layout->addWidget(radiusEdit);
+    contentLayout->addWidget(radiusLabel);
+    contentLayout->addWidget(radiusEdit);
 
     // ---- 中心点输入（X/Y/Z 全保留，基准面不同语义不同）----
     centerXLabel = new QLabel(QString("中心X坐标："), this);
     centerXEdit = new QLineEdit(this);
+    centerXEdit->setMinimumWidth(10);
     centerXEdit->setValidator(new QDoubleValidator(-1e6, 1e6, 6, this));
-    layout->addWidget(centerXLabel);
-    layout->addWidget(centerXEdit);
+    contentLayout->addWidget(centerXLabel);
+    contentLayout->addWidget(centerXEdit);
 
     centerYLabel = new QLabel(QString("中心Y坐标："), this);
     centerYEdit = new QLineEdit(this);
+    centerYEdit->setMinimumWidth(10);
     centerYEdit->setValidator(new QDoubleValidator(-1e6, 1e6, 6, this));
-    layout->addWidget(centerYLabel);
-    layout->addWidget(centerYEdit);
+    contentLayout->addWidget(centerYLabel);
+    contentLayout->addWidget(centerYEdit);
 
     centerZLabel = new QLabel(QString("中心Z坐标："), this);
     centerZEdit = new QLineEdit(this);
+    centerZEdit->setMinimumWidth(10);
     centerZEdit->setValidator(new QDoubleValidator(-1e6, 1e6, 6, this));
-    layout->addWidget(centerZLabel);
-    layout->addWidget(centerZEdit);
+    contentLayout->addWidget(centerZLabel);
+    contentLayout->addWidget(centerZEdit);
 
     // ---- 按钮 ----
     QPushButton* okButton = new QPushButton(QString("生成几何体"), this);
@@ -84,8 +94,8 @@ CircleDialog::CircleDialog(QWidget* parent) : BasePage(PublicConstants::kPagePre
     QHBoxLayout* buttonLayout = new QHBoxLayout();
     buttonLayout->addStretch();
     buttonLayout->addWidget(okButton);
-    layout->addLayout(buttonLayout);
-    layout->addStretch();
+    contentLayout->addLayout(buttonLayout);
+    contentLayout->addStretch();
 
     connect(okButton, &QPushButton::clicked, this, &CircleDialog::validateInput);
 

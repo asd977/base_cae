@@ -206,6 +206,11 @@ void EarthRockfillDamDialog::initUi()
     auto* pageHeaderLabel = new QLabel(QString("土石坝参数模板"), this);
     pageHeaderLabel->setObjectName("pageHeaderLabel");
     mainLayout->addWidget(pageHeaderLabel);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    QVBoxLayout* contentLayout = new QVBoxLayout();
+    contentLayout->setContentsMargins(9, 9, 9, 9);
+    contentLayout->setSpacing(6);
+    mainLayout->addLayout(contentLayout);
 
 
     auto* inputGroup = new QGroupBox("参数输入", this);
@@ -215,21 +220,31 @@ void EarthRockfillDamDialog::initUi()
     auto* coordValidator = new QDoubleValidator(-1.0e9, 1.0e9, 3, this);
 
     hEdit = new QLineEdit("80", this);
+    hEdit->setMinimumWidth(10);
     crestEdit = new QLineEdit("20", this);
-    upEdit = new QLineEdit("160", this);       // 上游坝坡水平宽 Wu
-    downEdit = new QLineEdit("140", this);     // 下游坝坡水平宽 Wd
+    crestEdit->setMinimumWidth(10);
+    upEdit = new QLineEdit("160", this);
+    upEdit->setMinimumWidth(10);       // 上游坝坡水平宽 Wu
+    downEdit = new QLineEdit("140", this);
+    downEdit->setMinimumWidth(10);     // 下游坝坡水平宽 Wd
     lenEdit = new QLineEdit("220", this);
+    lenEdit->setMinimumWidth(10);
 
-    coreWidthEdit = new QLineEdit("6", this);  // 心墙顶宽 Ct
+    coreWidthEdit = new QLineEdit("6", this);
+    coreWidthEdit->setMinimumWidth(10);  // 心墙顶宽 Ct
     layerEdit = new QLineEdit("8", this);
+    layerEdit->setMinimumWidth(10);
 
     auto* coreBottomEdit = new QLineEdit("28", this);
+    coreBottomEdit->setMinimumWidth(10);
     coreBottomEdit->setObjectName("coreBottomEdit");
 
     auto* filterWidthEdit = new QLineEdit("3", this);
+    filterWidthEdit->setMinimumWidth(10);
     filterWidthEdit->setObjectName("filterWidthEdit");
 
     auto* coreOffsetEdit = new QLineEdit("0", this);
+    coreOffsetEdit->setMinimumWidth(10);
     coreOffsetEdit->setObjectName("coreOffsetEdit");
 
     for (auto* edit : {hEdit, crestEdit, upEdit, downEdit, lenEdit, coreWidthEdit, coreBottomEdit, filterWidthEdit})
@@ -260,10 +275,10 @@ void EarthRockfillDamDialog::initUi()
     diagramLabel->setScaledContents(false);
     diagramLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
 
-    mainLayout->addWidget(inputGroup);
-    mainLayout->addLayout(row);
-    mainLayout->addWidget(diagramLabel, 2);
-    mainLayout->addStretch(1);
+    contentLayout->addWidget(inputGroup);
+    contentLayout->addLayout(row);
+    contentLayout->addWidget(diagramLabel, 2);
+    contentLayout->addStretch(1);
 
     connect(generateButton, &QPushButton::clicked, this, &EarthRockfillDamDialog::onGenerateClicked);
 

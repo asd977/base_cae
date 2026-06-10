@@ -262,6 +262,7 @@ GeometryImportWidget::GeometryImportWidget(QWidget* parent)
     // 创建 UI 组件
     pathLabel = new QLabel("几何文件路径:", this);
     pathLineEdit = new QLineEdit(this);
+    pathLineEdit->setMinimumWidth(10);
     browseButton = new QPushButton("浏览", this);
     importButton = new QPushButton("导入", this);
 
@@ -271,15 +272,20 @@ GeometryImportWidget::GeometryImportWidget(QWidget* parent)
     auto* pageHeaderLabel = new QLabel(QString("导入几何体"), this);
     pageHeaderLabel->setObjectName("pageHeaderLabel");
     mainLayout->addWidget(pageHeaderLabel);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    QVBoxLayout* contentLayout = new QVBoxLayout();
+    contentLayout->setContentsMargins(9, 9, 9, 9);
+    contentLayout->setSpacing(6);
+    mainLayout->addLayout(contentLayout);
     // 创建水平布局
     QHBoxLayout* layout = new QHBoxLayout(this);
-    mainLayout->addWidget(pathLabel);
-    mainLayout->addWidget(pathLineEdit);
+    contentLayout->addWidget(pathLabel);
+    contentLayout->addWidget(pathLineEdit);
     layout->addWidget(browseButton);
     layout->addWidget(importButton);
     layout->addStretch();
-    mainLayout->addLayout(layout);
-    mainLayout->addStretch();
+    contentLayout->addLayout(layout);
+    contentLayout->addStretch();
     // 设置按钮大小
     browseButton->setFixedWidth(60);
     importButton->setFixedWidth(60);

@@ -28,18 +28,22 @@ void SphereDialog::initUI()
     // 创建输入框和标签
     QLabel* radiusLabel = new QLabel("半径:", this);
     radiusEdit = new QLineEdit(this);
+    radiusEdit->setMinimumWidth(10);
     radiusEdit->setValidator(new QDoubleValidator(0.1, 1000.0, 2, this));
 
     QLabel* xLabel = new QLabel("中心X:", this);
     xEdit = new QLineEdit(this);
+    xEdit->setMinimumWidth(10);
     xEdit->setValidator(new QDoubleValidator(-1000.0, 1000.0, 2, this));
 
     QLabel* yLabel = new QLabel("中心Y:", this);
     yEdit = new QLineEdit(this);
+    yEdit->setMinimumWidth(10);
     yEdit->setValidator(new QDoubleValidator(-1000.0, 1000.0, 2, this));
 
     QLabel* zLabel = new QLabel("中心Z:", this);
     zEdit = new QLineEdit(this);
+    zEdit->setMinimumWidth(10);
     zEdit->setValidator(new QDoubleValidator(-1000.0, 1000.0, 2, this));
 
     // 设置默认值
@@ -55,6 +59,11 @@ void SphereDialog::initUI()
     auto* pageHeaderLabel = new QLabel(QString("参数设置"), this);
     pageHeaderLabel->setObjectName("pageHeaderLabel");
     mainLayout->addWidget(pageHeaderLabel);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    QVBoxLayout* contentLayout = new QVBoxLayout();
+    contentLayout->setContentsMargins(9, 9, 9, 9);
+    contentLayout->setSpacing(6);
+    mainLayout->addLayout(contentLayout);
     QHBoxLayout* radiusLayout = new QHBoxLayout;
     QHBoxLayout* xLayout = new QHBoxLayout;
     QHBoxLayout* yLayout = new QHBoxLayout;
@@ -72,12 +81,12 @@ void SphereDialog::initUI()
     buttonLayout->addStretch();
     buttonLayout->addWidget(okButton);
 
-    mainLayout->addLayout(radiusLayout);
-    mainLayout->addLayout(xLayout);
-    mainLayout->addLayout(yLayout);
-    mainLayout->addLayout(zLayout);
-    mainLayout->addLayout(buttonLayout);
-    mainLayout->addStretch();
+    contentLayout->addLayout(radiusLayout);
+    contentLayout->addLayout(xLayout);
+    contentLayout->addLayout(yLayout);
+    contentLayout->addLayout(zLayout);
+    contentLayout->addLayout(buttonLayout);
+    contentLayout->addStretch();
     setLayout(mainLayout);
     connect(okButton, &QPushButton::clicked, this, &SphereDialog::onOkClicked);
 }

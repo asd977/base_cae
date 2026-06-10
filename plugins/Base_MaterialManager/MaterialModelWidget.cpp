@@ -8,15 +8,24 @@ MaterialModelWidget::MaterialModelWidget(MaterialManager* manager, QWidget* pare
     : BasePage("MaterialModelWidget"), m_materialManager(manager), m_titleLabel(new QLabel(this)),
       m_summaryLabel(new QLabel(this))
 {
+    setAttribute(Qt::WA_StyledBackground, true);
+    m_titleLabel->setObjectName("pageHeaderLabel");
+
     auto* openButton = new QPushButton(QString("新增材料"), this);
     connect(openButton, &QPushButton::clicked, this, &MaterialModelWidget::onOpenLibrary);
 
     auto* layout = new QVBoxLayout(this);
+    layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(m_titleLabel);
-    layout->addWidget(m_summaryLabel);
-    layout->addStretch();
-    layout->addWidget(openButton);
-    layout->setContentsMargins(8, 8, 8, 8);
+
+    auto* contentLayout = new QVBoxLayout();
+    contentLayout->setContentsMargins(9, 9, 9, 9);
+    contentLayout->setSpacing(6);
+    layout->addLayout(contentLayout);
+
+    contentLayout->addWidget(m_summaryLabel);
+    contentLayout->addStretch();
+    contentLayout->addWidget(openButton);
 }
 
 void MaterialModelWidget::setModel(const MaterialModel& model)

@@ -72,16 +72,16 @@
          <number>8</number>
         </property>
         <property name="leftMargin">
-         <number>8</number>
+         <number>0</number>
         </property>
         <property name="topMargin">
-         <number>8</number>
+         <number>0</number>
         </property>
         <property name="rightMargin">
-         <number>8</number>
+         <number>0</number>
         </property>
         <property name="bottomMargin">
-         <number>8</number>
+         <number>0</number>
         </property>
         <item>
          <layout class="QGridLayout" name="gridLayoutColorMode">
@@ -108,6 +108,18 @@
             </property>
            </widget>
           </item>
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
          </layout>
         </item>
         <item>
@@ -169,6 +181,18 @@
               </property>
              </spacer>
             </item>
+            <property name="leftMargin">
+             <number>0</number>
+            </property>
+            <property name="topMargin">
+             <number>0</number>
+            </property>
+            <property name="rightMargin">
+             <number>0</number>
+            </property>
+            <property name="bottomMargin">
+             <number>0</number>
+            </property>
            </layout>
           </item>
           <item>
@@ -187,8 +211,32 @@
               </property>
              </widget>
             </item>
+            <property name="leftMargin">
+             <number>0</number>
+            </property>
+            <property name="topMargin">
+             <number>0</number>
+            </property>
+            <property name="rightMargin">
+             <number>0</number>
+            </property>
+            <property name="bottomMargin">
+             <number>0</number>
+            </property>
            </layout>
           </item>
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
          </layout>
         </item>
        </layout>

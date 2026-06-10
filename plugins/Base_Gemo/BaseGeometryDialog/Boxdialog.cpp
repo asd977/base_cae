@@ -41,26 +41,32 @@ void BoxDialog::initUI()
     // 创建输入框和标签
     QLabel* lengthLabel = new QLabel("长度:", this);
     lengthEdit = new QLineEdit(this);
+    lengthEdit->setMinimumWidth(10);
     lengthEdit->setValidator(new QDoubleValidator(0.1, 1000.0, 2, this)); // 限制正数
 
     QLabel* widthLabel = new QLabel("宽度:", this);
     widthEdit = new QLineEdit(this);
+    widthEdit->setMinimumWidth(10);
     widthEdit->setValidator(new QDoubleValidator(0.1, 1000.0, 2, this));
 
     QLabel* heightLabel = new QLabel("高度:", this);
     heightEdit = new QLineEdit(this);
+    heightEdit->setMinimumWidth(10);
     heightEdit->setValidator(new QDoubleValidator(0.1, 1000.0, 2, this));
 
     QLabel* xLabel = new QLabel("位置X:", this);
     xEdit = new QLineEdit(this);
+    xEdit->setMinimumWidth(10);
     xEdit->setValidator(new QDoubleValidator(-1000.0, 1000.0, 2, this));
 
     QLabel* yLabel = new QLabel("位置Y:", this);
     yEdit = new QLineEdit(this);
+    yEdit->setMinimumWidth(10);
     yEdit->setValidator(new QDoubleValidator(-1000.0, 1000.0, 2, this));
 
     QLabel* zLabel = new QLabel("位置Z:", this);
     zEdit = new QLineEdit(this);
+    zEdit->setMinimumWidth(10);
     zEdit->setValidator(new QDoubleValidator(-1000.0, 1000.0, 2, this));
 
     // 设置默认值
@@ -79,6 +85,11 @@ void BoxDialog::initUI()
     auto* pageHeaderLabel = new QLabel(QString("参数设置"), this);
     pageHeaderLabel->setObjectName("pageHeaderLabel");
     mainLayout->addWidget(pageHeaderLabel);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    QVBoxLayout* contentLayout = new QVBoxLayout();
+    contentLayout->setContentsMargins(9, 9, 9, 9);
+    contentLayout->setSpacing(6);
+    mainLayout->addLayout(contentLayout);
     QHBoxLayout* lengthLayout = new QHBoxLayout;
     QHBoxLayout* widthLayout = new QHBoxLayout;
     QHBoxLayout* heightLayout = new QHBoxLayout;
@@ -102,14 +113,14 @@ void BoxDialog::initUI()
     buttonLayout->addStretch();
     buttonLayout->addWidget(okButton);
 
-    mainLayout->addLayout(lengthLayout);
-    mainLayout->addLayout(widthLayout);
-    mainLayout->addLayout(heightLayout);
-    mainLayout->addLayout(xLayout);
-    mainLayout->addLayout(yLayout);
-    mainLayout->addLayout(zLayout);
-    mainLayout->addLayout(buttonLayout);
-    mainLayout->addStretch();
+    contentLayout->addLayout(lengthLayout);
+    contentLayout->addLayout(widthLayout);
+    contentLayout->addLayout(heightLayout);
+    contentLayout->addLayout(xLayout);
+    contentLayout->addLayout(yLayout);
+    contentLayout->addLayout(zLayout);
+    contentLayout->addLayout(buttonLayout);
+    contentLayout->addStretch();
     setLayout(mainLayout);
 
     connect(okButton, &QPushButton::clicked, this, &BoxDialog::onOkClicked);

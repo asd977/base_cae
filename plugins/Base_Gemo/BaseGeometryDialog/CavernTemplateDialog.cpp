@@ -181,6 +181,11 @@ CavernTemplateDialog::CavernTemplateDialog(QWidget* parent)
     auto* pageHeaderLabel = new QLabel(QString("洞室参数模板"), this);
     pageHeaderLabel->setObjectName("pageHeaderLabel");
     mainLayout->addWidget(pageHeaderLabel);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    QVBoxLayout* contentLayout = new QVBoxLayout();
+    contentLayout->setContentsMargins(9, 9, 9, 9);
+    contentLayout->setSpacing(6);
+    mainLayout->addLayout(contentLayout);
 
 
     auto* inputGroup = new QGroupBox("参数输入", this);
@@ -189,16 +194,24 @@ CavernTemplateDialog::CavernTemplateDialog(QWidget* parent)
     auto* positiveValidator = new QDoubleValidator(0.01, 1.0e9, 3, this);
 
     spanEdit = new QLineEdit("18", this);
+    spanEdit->setMinimumWidth(10);
     wallHEdit = new QLineEdit("12", this);
+    wallHEdit->setMinimumWidth(10);
     archHEdit = new QLineEdit("4", this);
+    archHEdit->setMinimumWidth(10);
     lenEdit = new QLineEdit("80", this);
-    liningEdit = new QLineEdit("4", this); // 复用原成员：这里表示洞口竖向开挖级数 N。
+    lenEdit->setMinimumWidth(10);
+    liningEdit = new QLineEdit("4", this);
+    liningEdit->setMinimumWidth(10); // 复用原成员：这里表示洞口竖向开挖级数 N。
 
     auto* sideRockEdit = new QLineEdit("18", this);
+    sideRockEdit->setMinimumWidth(10);
     sideRockEdit->setObjectName("sideRockEdit");
     auto* topRockEdit = new QLineEdit("16", this);
+    topRockEdit->setMinimumWidth(10);
     topRockEdit->setObjectName("topRockEdit");
     auto* bottomRockEdit = new QLineEdit("8", this);
+    bottomRockEdit->setMinimumWidth(10);
     bottomRockEdit->setObjectName("bottomRockEdit");
 
     for (auto* edit : {spanEdit, wallHEdit, archHEdit, lenEdit, sideRockEdit, topRockEdit, bottomRockEdit})
@@ -226,10 +239,10 @@ CavernTemplateDialog::CavernTemplateDialog(QWidget* parent)
     diagramLabel->setScaledContents(false);
     diagramLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
 
-    mainLayout->addWidget(inputGroup);
-    mainLayout->addLayout(row);
-    mainLayout->addWidget(diagramLabel, 2);
-    mainLayout->addStretch(1);
+    contentLayout->addWidget(inputGroup);
+    contentLayout->addLayout(row);
+    contentLayout->addWidget(diagramLabel, 2);
+    contentLayout->addStretch(1);
 
     connect(generateButton, &QPushButton::clicked, this, &CavernTemplateDialog::onGenerateClicked);
 

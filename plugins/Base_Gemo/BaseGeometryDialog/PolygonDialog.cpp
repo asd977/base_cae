@@ -33,15 +33,21 @@ PolygonDialog::PolygonDialog(QWidget* parent) : BasePage(PublicConstants::kPageP
     auto* pageHeaderLabel = new QLabel(QString("参数设置"), this);
     pageHeaderLabel->setObjectName("pageHeaderLabel");
     layout->addWidget(pageHeaderLabel);
+    layout->setContentsMargins(0, 0, 0, 0);
+    QVBoxLayout* contentLayout = new QVBoxLayout();
+    contentLayout->setContentsMargins(9, 9, 9, 9);
+    contentLayout->setSpacing(6);
+    layout->addLayout(contentLayout);
 
     // ---- 基准面 ----
     planeLabel = new QLabel(QString("基准面："), this);
     planeCombo = new QComboBox(this);
+    planeCombo->setMinimumWidth(10);
     planeCombo->addItem("XY", static_cast<int>(PlaneType::XY));
     planeCombo->addItem("XZ", static_cast<int>(PlaneType::XZ));
     planeCombo->addItem("YZ", static_cast<int>(PlaneType::YZ));
-    layout->addWidget(planeLabel);
-    layout->addWidget(planeCombo);
+    contentLayout->addWidget(planeLabel);
+    contentLayout->addWidget(planeCombo);
 
     connect(planeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &PolygonDialog::onPlaneChanged);
@@ -49,42 +55,48 @@ PolygonDialog::PolygonDialog(QWidget* parent) : BasePage(PublicConstants::kPageP
     // ---- 半径 ----
     QLabel* radiusLabel = new QLabel(QString("半径："), this);
     radiusEdit = new QLineEdit(this);
+    radiusEdit->setMinimumWidth(10);
     radiusEdit->setValidator(new QDoubleValidator(0.0, 1e6, 6, this));
-    layout->addWidget(radiusLabel);
-    layout->addWidget(radiusEdit);
+    contentLayout->addWidget(radiusLabel);
+    contentLayout->addWidget(radiusEdit);
 
     // ---- 边数 ----
     QLabel* sidesLabel = new QLabel(QString("边数："), this);
     sidesEdit = new QLineEdit(this);
+    sidesEdit->setMinimumWidth(10);
     sidesEdit->setValidator(new QIntValidator(3, 100, this));
-    layout->addWidget(sidesLabel);
-    layout->addWidget(sidesEdit);
+    contentLayout->addWidget(sidesLabel);
+    contentLayout->addWidget(sidesEdit);
 
     // ---- 旋转角（建议加上）----
     QLabel* rotateLabel = new QLabel(QString("旋转角(°)："), this);
     rotateDegEdit = new QLineEdit(this);
+    rotateDegEdit->setMinimumWidth(10);
     rotateDegEdit->setValidator(new QDoubleValidator(-360.0, 360.0, 6, this));
-    layout->addWidget(rotateLabel);
-    layout->addWidget(rotateDegEdit);
+    contentLayout->addWidget(rotateLabel);
+    contentLayout->addWidget(rotateDegEdit);
 
     // ---- 中心点 X/Y/Z（与其它 2D 图形一致）----
     centerXLabel = new QLabel(QString("中心X坐标："), this);
     centerXEdit = new QLineEdit(this);
+    centerXEdit->setMinimumWidth(10);
     centerXEdit->setValidator(new QDoubleValidator(-1e6, 1e6, 6, this));
-    layout->addWidget(centerXLabel);
-    layout->addWidget(centerXEdit);
+    contentLayout->addWidget(centerXLabel);
+    contentLayout->addWidget(centerXEdit);
 
     centerYLabel = new QLabel(QString("中心Y坐标："), this);
     centerYEdit = new QLineEdit(this);
+    centerYEdit->setMinimumWidth(10);
     centerYEdit->setValidator(new QDoubleValidator(-1e6, 1e6, 6, this));
-    layout->addWidget(centerYLabel);
-    layout->addWidget(centerYEdit);
+    contentLayout->addWidget(centerYLabel);
+    contentLayout->addWidget(centerYEdit);
 
     centerZLabel = new QLabel(QString("中心Z坐标："), this);
     centerZEdit = new QLineEdit(this);
+    centerZEdit->setMinimumWidth(10);
     centerZEdit->setValidator(new QDoubleValidator(-1e6, 1e6, 6, this));
-    layout->addWidget(centerZLabel);
-    layout->addWidget(centerZEdit);
+    contentLayout->addWidget(centerZLabel);
+    contentLayout->addWidget(centerZEdit);
 
     // ---- 按钮 ----
     QPushButton* okButton = new QPushButton(QString("生成几何体"), this);
@@ -92,8 +104,8 @@ PolygonDialog::PolygonDialog(QWidget* parent) : BasePage(PublicConstants::kPageP
     QHBoxLayout* buttonLayout = new QHBoxLayout();
     buttonLayout->addStretch();
     buttonLayout->addWidget(okButton);
-    layout->addLayout(buttonLayout);
-    layout->addStretch();
+    contentLayout->addLayout(buttonLayout);
+    contentLayout->addStretch();
 
     connect(okButton, &QPushButton::clicked, this, &PolygonDialog::validateInput);
 
