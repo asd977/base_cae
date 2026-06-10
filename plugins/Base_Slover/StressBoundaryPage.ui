@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>StressBoundaryPage</class>
  <widget class="QWidget" name="StressBoundaryPage">
@@ -36,7 +36,7 @@
    <item>
     <widget class="QPushButton" name="sectionTitleButton">
      <property name="text">
-      <string>功能设置</string>
+      <string>应力边界设置</string>
      </property>
     </widget>
    </item>
@@ -58,7 +58,7 @@
     </widget>
    </item>
    <item>
-    <widget class="CustomComboBox" name="comboBoxGroup"/>
+    <widget class="CustomComboBox" name="comboBoxGroup" />
    </item>
    <item>
     <widget class="QPushButton" name="btnBatchAdd">
@@ -150,6 +150,6 @@
   <header>CustomComboBox.h</header>
  </customwidget>
 </customwidgets>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

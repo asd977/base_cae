@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>SolverSettingWidget</class>
  <widget class="QWidget" name="SolverSettingWidget">
@@ -11,10 +11,10 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>固体力学场展示界面</string>
+   <string>计算分析</string>
   </property>
-  <layout class="QVBoxLayout" name="verticalLayoutRoot"/>
+  <layout class="QVBoxLayout" name="verticalLayoutRoot"><property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><item><widget class="QLabel" name="pageNameLabel"><property name="text"><string>计算分析</string></property></widget></item><item><widget class="QPushButton" name="sectionTitleButton"><property name="text"><string>计算分析管理</string></property></widget></item></layout>
  </widget>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>GeoStressMeasurePointPage</class>
  <widget class="QWidget" name="GeoStressMeasurePointPage">
@@ -14,7 +14,7 @@
    <string>实测地应力</string>
   </property>
   <layout class="QVBoxLayout" name="mainLayout">
-   <item>
+   <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><item><widget class="QLabel" name="pageNameLabel"><property name="text"><string>地应力回归实测点</string></property></widget></item><item><widget class="QPushButton" name="sectionTitleButton"><property name="text"><string>实测地应力测点</string></property></widget></item><item>
     <widget class="QGroupBox" name="pickGroup">
      <property name="title">
       <string>测点选择</string>
@@ -182,6 +182,6 @@
    </item>
   </layout>
  </widget>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

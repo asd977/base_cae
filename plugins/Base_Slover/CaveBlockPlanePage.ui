@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>CaveBlockPlanePage</class>
  <widget class="QWidget" name="CaveBlockPlanePage">
@@ -11,7 +11,7 @@
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
-   <item>
+   <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><item><widget class="QLabel" name="pageNameLabel"><property name="text"><string>滑块面</string></property></widget></item><item><widget class="QPushButton" name="sectionTitleButton"><property name="text"><string>滑块面参数设置</string></property></widget></item><item>
     <layout class="QGridLayout" name="pointGridLayout">
      <item row="0" column="1">
       <widget class="QLabel" name="labelX">
@@ -181,6 +181,6 @@
    </item>
   </layout>
  </widget>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

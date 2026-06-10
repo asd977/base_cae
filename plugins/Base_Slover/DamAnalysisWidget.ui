@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>DamAnalysisWidget</class>
  <widget class="QWidget" name="DamAnalysisWidget">
@@ -24,9 +24,9 @@
     <number>0</number>
    </property>
    <property name="bottomMargin">
-    <number>4</number>
+    <number>0</number>
    </property>
-   <item>
+   <item><widget class="QLabel" name="pageNameLabel"><property name="text"><string>土石坝计算</string></property></widget></item><item><widget class="QPushButton" name="sectionTitleButton"><property name="text"><string>土石坝全局参数</string></property></widget></item><item>
     <widget class="QGroupBox" name="groupBoxIfill">
      <property name="title">
       <string>全局参数分组</string>
@@ -560,6 +560,6 @@
    </item>
   </layout>
  </widget>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

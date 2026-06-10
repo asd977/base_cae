@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>GeoStressOuterForcePage</class>
  <widget class="QWidget" name="GeoStressOuterForcePage">
@@ -14,7 +14,7 @@
    <string>外立面</string>
   </property>
   <layout class="QVBoxLayout" name="mainLayout">
-   <item>
+   <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><item><widget class="QLabel" name="pageNameLabel"><property name="text"><string>地应力回归外面力</string></property></widget></item><item><widget class="QPushButton" name="sectionTitleButton"><property name="text"><string>外面力参数设置</string></property></widget></item><item>
     <widget class="QGroupBox" name="selectionGroup">
      <property name="title">
       <string>边界选择</string>
@@ -46,7 +46,7 @@
          </widget>
         </item>
         <item>
-         <widget class="CustomComboBox" name="groupCombo"/>
+         <widget class="CustomComboBox" name="groupCombo" />
         </item>
         <item>
          <widget class="QPushButton" name="batchAddButton">
@@ -164,6 +164,6 @@
    <header>CustomComboBox.h</header>
   </customwidget>
  </customwidgets>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

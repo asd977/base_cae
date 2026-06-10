@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>CaveSupportComputationPage</class>
  <widget class="QWidget" name="CaveSupportComputationPage">
@@ -11,7 +11,7 @@
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayoutRoot">
-   <item>
+   <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property><item><widget class="QLabel" name="pageNameLabel"><property name="text"><string>开挖和加固计算</string></property></widget></item><item><widget class="QPushButton" name="sectionTitleButton"><property name="text"><string>开挖与加固参数</string></property></widget></item><item>
     <widget class="QGroupBox" name="groupIcaveParams">
      <property name="title">
       <string>洞室开挖流程控制参数</string>
@@ -252,7 +252,7 @@
        </layout>
       </item>
       <item>
-       <widget class="QTableWidget" name="tableExcavationDays"/>
+       <widget class="QTableWidget" name="tableExcavationDays" />
       </item>
      </layout>
     </widget>
@@ -286,7 +286,7 @@
           <number>0</number>
          </property>
          <item>
-          <widget class="QLineEdit" name="editIexcaSta"/>
+          <widget class="QLineEdit" name="editIexcaSta" />
          </item>
          <item>
           <widget class="QLabel" name="labelIexcaEnd">
@@ -296,7 +296,7 @@
           </widget>
          </item>
          <item>
-          <widget class="QLineEdit" name="editIexcaEnd"/>
+          <widget class="QLineEdit" name="editIexcaEnd" />
          </item>
         </layout>
        </widget>
@@ -309,7 +309,7 @@
        </widget>
       </item>
       <item row="1" column="1">
-       <widget class="QComboBox" name="comboIfEall"/>
+       <widget class="QComboBox" name="comboIfEall" />
       </item>
       <item row="2" column="0">
        <widget class="QLabel" name="labelIfJall">
@@ -319,7 +319,7 @@
        </widget>
       </item>
       <item row="2" column="1">
-       <widget class="QComboBox" name="comboIfJall"/>
+       <widget class="QComboBox" name="comboIfJall" />
       </item>
       <item row="3" column="0">
        <widget class="QLabel" name="labelIfE1toa">
@@ -329,7 +329,7 @@
        </widget>
       </item>
       <item row="3" column="1">
-       <widget class="QComboBox" name="comboIfE1toa"/>
+       <widget class="QComboBox" name="comboIfE1toa" />
       </item>
       <item row="4" column="0">
        <widget class="QLabel" name="labelIfJ1toa">
@@ -339,7 +339,7 @@
        </widget>
       </item>
       <item row="4" column="1">
-       <widget class="QComboBox" name="comboIfJ1toa"/>
+       <widget class="QComboBox" name="comboIfJ1toa" />
       </item>
       <item row="5" column="0">
        <widget class="QLabel" name="labelJaMethod">
@@ -349,7 +349,7 @@
        </widget>
       </item>
       <item row="5" column="1">
-       <widget class="QComboBox" name="comboJaMethod"/>
+       <widget class="QComboBox" name="comboJaMethod" />
       </item>
       <item row="6" column="0">
        <widget class="QLabel" name="labelIfChen">
@@ -359,7 +359,7 @@
        </widget>
       </item>
       <item row="6" column="1">
-       <widget class="QComboBox" name="comboIfChen"/>
+       <widget class="QComboBox" name="comboIfChen" />
       </item>
       <item row="7" column="0">
        <widget class="QLabel" name="labelIdayCase">
@@ -392,7 +392,7 @@
        </widget>
       </item>
       <item row="0" column="1">
-       <widget class="QComboBox" name="comboIfMode"/>
+       <widget class="QComboBox" name="comboIfMode" />
       </item>
       <item row="1" column="0">
        <widget class="QLabel" name="labelIfWave">
@@ -402,7 +402,7 @@
        </widget>
       </item>
       <item row="1" column="1">
-       <widget class="QComboBox" name="comboIfWave"/>
+       <widget class="QComboBox" name="comboIfWave" />
       </item>
       <item row="2" column="1">
        <widget class="QWidget" name="widgetTimeParams" native="true">
@@ -571,6 +571,6 @@
    </item>
   </layout>
  </widget>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>
