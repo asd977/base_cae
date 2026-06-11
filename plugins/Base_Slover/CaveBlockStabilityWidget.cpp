@@ -27,6 +27,8 @@ CaveBlockStabilityWidget::CaveBlockStabilityWidget(QWidget* parent)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
+    setAttribute(Qt::WA_StyledBackground, true);
+    setStyleSheet("background-color: white;");
     ui->icutFileEdit->setText(QStringLiteral("ICUT.DAT"));
     ui->safeFileEdit->setText(QStringLiteral("SAFE_CAVEBLK.DAT"));
     ui->icutFileEdit->hide();

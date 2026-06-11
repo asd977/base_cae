@@ -1470,8 +1470,142 @@ struct MeshDisplayFaceRef
     int originalFaceId = 15;        // 15 表示 2D 单元整体面
     int matype = 0;
     int layer = 0;
-    QVector<vtkIdType> pointIds;
+    int vtkCellType = VTK_EMPTY_CELL;
+    QVector<vtkIdType> pointIds;    // 保留当前面的完整点序，包括高阶中间节点
 };
+
+// 高阶单元显示代理：vtkPolyData 的 polygon 只能按边界点顺序连线，
+// 不能把高阶面上的中间节点也当作多边形顶点，否则会出现斜线/蜘蛛网。
+// 这里仅取角点用于显示；真实网格、KETYPE、node_id、拾取映射仍保留在原 grid 中。
+static QVector<vtkIdType> meshDisplayFaceCornerPointIds(vtkCell* face)
+{
+    QVector<vtkIdType> ids;
+    if (!face)
+        return ids;
+
+    vtkIdList* pids = face->GetPointIds();
+    if (!pids)
+        return ids;
+
+    const int pointCount = static_cast<int>(pids->GetNumberOfIds());
+    if (pointCount < 3)
+        return ids;
+
+    int cornerCount = pointCount;
+
+    switch (face->GetCellType())
+    {
+    case VTK_TRIANGLE:
+    case VTK_QUADRATIC_TRIANGLE:
+    case VTK_BIQUADRATIC_TRIANGLE:
+        cornerCount = 3;
+        break;
+
+    case VTK_QUAD:
+    case VTK_PIXEL:
+    case VTK_QUADRATIC_QUAD:
+    case VTK_QUADRATIC_LINEAR_QUAD:
+    case VTK_BIQUADRATIC_QUAD:
+        cornerCount = 4;
+        break;
+
+    default:
+        // 常见兜底：
+        // 6 节点面多为二次三角形；8/9 节点面多为二次四边形。
+        if (pointCount == 6)
+            cornerCount = 3;
+        else if (pointCount == 8 || pointCount == 9)
+            cornerCount = 4;
+        else
+        {
+            const int edgeCount = face->GetNumberOfEdges();
+            if (edgeCount == 3 || edgeCount == 4)
+                cornerCount = edgeCount;
+        }
+        break;
+    }
+
+    cornerCount = std::min(cornerCount, pointCount);
+    ids.reserve(cornerCount);
+
+    for (int i = 0; i < cornerCount; ++i)
+        ids.push_back(pids->GetId(i));
+
+    return ids;
+}
+
+
+static QVector<QVector<vtkIdType>> meshDisplayFaceDisplayPolys(const MeshDisplayFaceRef& face)
+{
+    QVector<QVector<vtkIdType>> polys;
+    const QVector<vtkIdType>& p = face.pointIds;
+    const int n = p.size();
+
+    if (n < 3)
+        return polys;
+
+    auto addTri = [&](int a, int b, int c)
+    {
+        if (a < n && b < n && c < n)
+            polys.push_back(QVector<vtkIdType>{p[a], p[b], p[c]});
+    };
+
+    auto addQuad = [&](int a, int b, int c, int d)
+    {
+        if (a < n && b < n && c < n && d < n)
+            polys.push_back(QVector<vtkIdType>{p[a], p[b], p[c], p[d]});
+    };
+
+    // 二次三角形：VTK_QUADRATIC_TRIANGLE = 0,1,2 为角点，3/4/5 为边中点。
+    // 拆成 4 个一阶三角形，这样边中点之间的线也能显示出来。
+    if (face.vtkCellType == VTK_QUADRATIC_TRIANGLE ||
+        face.vtkCellType == VTK_BIQUADRATIC_TRIANGLE ||
+        n == 6)
+    {
+        addTri(0, 3, 5);
+        addTri(3, 1, 4);
+        addTri(5, 4, 2);
+        addTri(3, 4, 5);
+        return polys;
+    }
+
+    // 二次四边形：VTK_QUADRATIC_QUAD = 0~3 角点，4~7 边中点。
+    // 8 节点没有中心点，用 4 个角三角形 + 1 个中间四边形显示内部网格线。
+    if (face.vtkCellType == VTK_QUADRATIC_QUAD || n == 8)
+    {
+        addTri(0, 4, 7);
+        addTri(4, 1, 5);
+        addTri(5, 2, 6);
+        addTri(7, 6, 3);
+        addQuad(4, 5, 6, 7);
+        return polys;
+    }
+
+    // 九节点四边形：8 是中心点，拆成 4 个小四边形，显示效果最干净。
+    if (face.vtkCellType == VTK_BIQUADRATIC_QUAD || n == 9)
+    {
+        addQuad(0, 4, 8, 7);
+        addQuad(4, 1, 5, 8);
+        addQuad(8, 5, 2, 6);
+        addQuad(7, 8, 6, 3);
+        return polys;
+    }
+
+    // 六节点二次线性四边形：不同求解器顺序不完全一致，保守显示为角点面，避免乱连。
+    if (face.vtkCellType == VTK_QUADRATIC_LINEAR_QUAD && n >= 4)
+    {
+        addQuad(0, 1, 2, 3);
+        return polys;
+    }
+
+    // 一阶三角/四边形，或者未知面：只用角点显示。
+    if (n == 3)
+        polys.push_back(p);
+    else if (n >= 4)
+        addQuad(0, 1, 2, 3);
+
+    return polys;
+}
 
 static bool meshDisplayDifferentDomain(const MeshDisplayFaceRef& a,
                                        const MeshDisplayFaceRef& b,
@@ -1496,20 +1630,31 @@ static void meshDisplayAddSurfaceFace(vtkPolyData* out,
     if (!out || !polys || !originalCellIds || !originalFaceIds || !originalFaceKeys || face.pointIds.size() < 3)
         return;
 
-    const vtkIdType newCellId = polys->GetNumberOfCells();
+    const QVector<QVector<vtkIdType>> displayPolys = meshDisplayFaceDisplayPolys(face);
+    if (displayPolys.isEmpty())
+        return;
 
-           // 不创建临时 vtkIdList，避免导入大网格时每个面一次堆分配。
-    polys->InsertNextCell(static_cast<vtkIdType>(face.pointIds.size()));
-    for (vtkIdType pid : face.pointIds)
-        polys->InsertCellPoint(pid);
+    for (const QVector<vtkIdType>& polyPts : displayPolys)
+    {
+        if (polyPts.size() < 3)
+            continue;
 
-    if (sourceCellData && out->GetCellData())
-        out->GetCellData()->CopyData(sourceCellData, face.cellId, newCellId);
+        const vtkIdType newCellId = polys->GetNumberOfCells();
 
-    originalCellIds->InsertNextValue(face.originalCellId);
-    originalFaceIds->InsertNextValue(face.originalFaceId);
-    originalFaceKeys->InsertNextValue((static_cast<vtkIdType>(face.originalCellId) << 4) |
-                                      (static_cast<vtkIdType>(face.originalFaceId) & 0xF));
+        // 不创建临时 vtkIdList，避免导入大网格时每个面一次堆分配。
+        polys->InsertNextCell(static_cast<vtkIdType>(polyPts.size()));
+        for (vtkIdType pid : polyPts)
+            polys->InsertCellPoint(pid);
+
+        if (sourceCellData && out->GetCellData())
+            out->GetCellData()->CopyData(sourceCellData, face.cellId, newCellId);
+
+        // 一个高阶面可能拆成多个显示小面，但它们都回指到同一个原始单元/原始面。
+        originalCellIds->InsertNextValue(face.originalCellId);
+        originalFaceIds->InsertNextValue(face.originalFaceId);
+        originalFaceKeys->InsertNextValue((static_cast<vtkIdType>(face.originalCellId) << 4) |
+                                          (static_cast<vtkIdType>(face.originalFaceId) & 0xF));
+    }
 }
 
 static bool meshDisplayCellPassesDisplayFilter(vtkUnstructuredGrid* grid,
@@ -1553,7 +1698,7 @@ static vtkSmartPointer<vtkPolyData> meshDisplayBuildMappedSurface(vtkUnstructure
 
     vtkCellData* srcCellData = grid->GetCellData();
     if (srcCellData)
-        out->GetCellData()->CopyAllocate(srcCellData, grid->GetNumberOfCells());
+        out->GetCellData()->CopyAllocate(srcCellData, grid->GetNumberOfCells() * 6);
 
     auto originalPointIds = vtkSmartPointer<vtkIdTypeArray>::New();
     originalPointIds->SetName("vtkOriginalPointIds");
@@ -1609,6 +1754,8 @@ static vtkSmartPointer<vtkPolyData> meshDisplayBuildMappedSurface(vtkUnstructure
         if (dim == 2)
         {
             ref.originalFaceId = 15;
+            ref.vtkCellType = cell->GetCellType();
+
             vtkIdList* pids = cell->GetPointIds();
             if (!pids || pids->GetNumberOfIds() < 3)
                 continue;
@@ -1637,10 +1784,16 @@ static vtkSmartPointer<vtkPolyData> meshDisplayBuildMappedSurface(vtkUnstructure
 
             MeshDisplayFaceRef one = ref;
             one.originalFaceId = fi;
+            one.vtkCellType = face->GetCellType();
             one.pointIds.reserve(static_cast<int>(pids->GetNumberOfIds()));
             for (vtkIdType i = 0; i < pids->GetNumberOfIds(); ++i)
                 one.pointIds.push_back(pids->GetId(i));
 
+            if (one.pointIds.size() < 3)
+                continue;
+
+            // faceMap 使用完整高阶面点集作为 key，用于正确识别相邻单元共享面；
+            // 写入 vtkPolyData 时再拆成若干一阶显示小面，避免高阶点乱连。
             faceMap[meshDisplayFaceKey(pids)].push_back(one);
         }
     }

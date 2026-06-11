@@ -296,6 +296,9 @@ QWidget[dimDisabled="true"] {
 MaterialEntryWidget,
 MaterialTransitionPage,
 MaterialModelWidget,
+CaveBlockPlanePage,
+CaveBlockStabilityWidget,
+DashboardPage,
 QScrollArea,
 QScrollArea > QWidget {
     background-color: white;

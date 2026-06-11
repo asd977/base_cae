@@ -677,8 +677,8 @@ void VisualizationWidget::setScalarBarTitle(const QString& title, bool renderNow
     {
         m_scalarBar->SetTitle(title.toUtf8().constData());
         m_scalarBar->UnconstrainedFontSizeOn();
-        applyYaHeiTextStyle(m_scalarBar->GetTitleTextProperty(), 10, true);
-        applyYaHeiTextStyle(m_scalarBar->GetLabelTextProperty(), 5, false);
+        applyYaHeiTextStyle(m_scalarBar->GetTitleTextProperty(), 15, true);
+        applyYaHeiTextStyle(m_scalarBar->GetLabelTextProperty(), 12, false);
         m_scalarBar->Modified();
     }
 

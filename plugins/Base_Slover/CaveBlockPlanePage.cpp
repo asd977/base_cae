@@ -106,6 +106,8 @@ CaveBlockPlanePage::CaveBlockPlanePage(QWidget* parent)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
+    setAttribute(Qt::WA_StyledBackground, true);
+    setStyleSheet("background-color: white;");
 
     auto* validator = new QDoubleValidator(-1.0e12, 1.0e12, 6, this);
     validator->setNotation(QDoubleValidator::ScientificNotation);
