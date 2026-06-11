@@ -151,6 +151,7 @@ void VisualizationWidget::initVtk()
     m_scalarBar->SetVisibility(false);
 
     m_scalarBar->SetOrientationToVertical();
+    m_scalarBar->UnconstrainedFontSizeOn();
 
     // 位置：靠右，但不要太贴边
     m_scalarBar->GetPositionCoordinate()->SetCoordinateSystemToNormalizedViewport();
@@ -162,9 +163,9 @@ void VisualizationWidget::initVtk()
     m_scalarBar->SetMaximumWidthInPixels(42);
     m_scalarBar->SetMaximumHeightInPixels(220);
 
-    // 字体：微软雅黑，字号缩小
+    // 字体：微软雅黑，字号缩小；开启 UnconstrainedFontSize 后字号才不会被色标尺寸重新约束
     applyYaHeiTextStyle(m_scalarBar->GetTitleTextProperty(), 10, true);
-    applyYaHeiTextStyle(m_scalarBar->GetLabelTextProperty(), 9, false);
+    applyYaHeiTextStyle(m_scalarBar->GetLabelTextProperty(), 5, false);
 
     // 不要背景白框
     m_scalarBar->DrawBackgroundOff();
@@ -675,8 +676,10 @@ void VisualizationWidget::setScalarBarTitle(const QString& title, bool renderNow
     if (m_scalarBar)
     {
         m_scalarBar->SetTitle(title.toUtf8().constData());
+        m_scalarBar->UnconstrainedFontSizeOn();
         applyYaHeiTextStyle(m_scalarBar->GetTitleTextProperty(), 10, true);
         applyYaHeiTextStyle(m_scalarBar->GetLabelTextProperty(), 5, false);
+        m_scalarBar->Modified();
     }
 
     if (renderNow)
