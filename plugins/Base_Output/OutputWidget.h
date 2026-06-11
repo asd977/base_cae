@@ -1,4 +1,4 @@
-﻿#ifndef OUTPUTWIDGET_H
+#ifndef OUTPUTWIDGET_H
 #define OUTPUTWIDGET_H
 
 #include <QVector>
@@ -25,6 +25,9 @@ class OutputWidget : public QWidget
 
   private slots:
     void onClearClicked();
+
+  protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
   private:
     Ui::OutputWidget* ui;
