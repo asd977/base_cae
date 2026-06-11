@@ -6,6 +6,7 @@
 #include <QDir>
 #include <QFile>
 #include <QJsonObject>
+#include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QTextStream>
@@ -30,6 +31,11 @@ CaveBlockStabilityWidget::CaveBlockStabilityWidget(QWidget* parent)
     ui->safeFileEdit->setText(QStringLiteral("SAFE_CAVEBLK.DAT"));
     ui->icutFileEdit->hide();
     ui->safeFileEdit->hide();
+    ui->labelIcut->hide();
+    ui->labelSafe->hide();
+    // ui->fileHiddenWidget->hide();
+    ui->computeBtn->setText(QStringLiteral("计算"));
+
     connect(ui->computeBtn, &QPushButton::clicked, this,
             [this]()
             {

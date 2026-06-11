@@ -3,6 +3,7 @@
 #include <ServiceRegistry.h>
 #include <services/UiFrameService.h>
 
+#include <QDir>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -20,6 +21,7 @@
 #include <cmath>
 
 // VTK
+#include <QFileInfo>
 #include <vtkActor.h>
 #include <vtkAxesActor.h>
 #include <vtkCamera.h>
@@ -38,6 +40,58 @@
 #include <vtkScalarBarActor.h>
 #include <vtkTextProperty.h>
 #include <vtkTransform.h>
+#include <vtkProperty2D.h>
+
+namespace
+{
+QString findMicrosoftYaHeiFontFile()
+{
+#ifdef Q_OS_WIN
+    const QString winDir = qEnvironmentVariable("WINDIR", "C:/Windows");
+    const QString fontDir = QDir(winDir).filePath("Fonts");
+
+    const QStringList candidates = {
+        "msyh.ttc",     // 微软雅黑
+        "msyh.ttf",
+        "msyhbd.ttc",   // 微软雅黑 Bold
+        "msyhbd.ttf",
+        "msyhui.ttf"    // Microsoft YaHei UI
+    };
+
+    for (const QString& name : candidates)
+    {
+        const QString path = QDir(fontDir).filePath(name);
+        if (QFileInfo::exists(path))
+            return path;
+    }
+#endif
+    return QString();
+}
+
+void applyYaHeiTextStyle(vtkTextProperty* prop, int fontSize, bool bold = false)
+{
+    if (!prop)
+        return;
+
+    prop->SetFontSize(fontSize);
+    prop->SetColor(0.15, 0.15, 0.15);   // 深灰，不要纯黑
+    prop->SetBold(bold ? 1 : 0);
+    prop->SetItalic(0);
+    prop->SetShadow(0);
+
+    const QString fontFile = findMicrosoftYaHeiFontFile();
+    if (!fontFile.isEmpty())
+    {
+        const QByteArray bytes = fontFile.toLocal8Bit();
+        prop->SetFontFamily(VTK_FONT_FILE);
+        prop->SetFontFile(bytes.constData());
+    }
+    else
+    {
+        prop->SetFontFamilyToArial();
+    }
+}
+}
 
 VisualizationWidget::VisualizationWidget(QWidget* parent) : QWidget(parent)
 {
@@ -90,12 +144,31 @@ void VisualizationWidget::initVtk()
     // ---------- ScalarBar ----------
     m_scalarBar = vtkSmartPointer<vtkScalarBarActor>::New();
     m_scalarBar->SetLookupTable(m_lut);
-    m_scalarBar->SetTitle(" ");
-    m_scalarBar->SetNumberOfLabels(5);
+    m_scalarBar->SetTitle("");
+    m_scalarBar->SetNumberOfLabels(4);          // 标签少一点，别太挤
+    m_scalarBar->SetLabelFormat("%.3g");        // 数值更紧凑
+    m_scalarBar->SetMaximumNumberOfColors(256);
     m_scalarBar->SetVisibility(false);
 
-    m_scalarBar->GetTitleTextProperty()->SetFontSize(14);
-    m_scalarBar->GetLabelTextProperty()->SetFontSize(12);
+    m_scalarBar->SetOrientationToVertical();
+
+    // 位置：靠右，但不要太贴边
+    m_scalarBar->GetPositionCoordinate()->SetCoordinateSystemToNormalizedViewport();
+    m_scalarBar->GetPosition2Coordinate()->SetCoordinateSystemToNormalizedViewport();
+    m_scalarBar->SetPosition(0.93, 0.28);
+    m_scalarBar->SetPosition2(0.028, 0.42);     // 更窄、更短
+
+    // 像素限制：防止窗口大时文字和色条一起变粗变大
+    m_scalarBar->SetMaximumWidthInPixels(42);
+    m_scalarBar->SetMaximumHeightInPixels(220);
+
+    // 字体：微软雅黑，字号缩小
+    applyYaHeiTextStyle(m_scalarBar->GetTitleTextProperty(), 10, true);
+    applyYaHeiTextStyle(m_scalarBar->GetLabelTextProperty(), 9, false);
+
+    // 不要背景白框
+    m_scalarBar->DrawBackgroundOff();
+    m_scalarBar->DrawFrameOff();
 
     m_renderer->AddActor2D(m_scalarBar);
 
@@ -600,11 +673,15 @@ bool VisualizationWidget::isScalarBarVisible() const
 void VisualizationWidget::setScalarBarTitle(const QString& title, bool renderNow)
 {
     if (m_scalarBar)
+    {
         m_scalarBar->SetTitle(title.toUtf8().constData());
+        applyYaHeiTextStyle(m_scalarBar->GetTitleTextProperty(), 10, true);
+        applyYaHeiTextStyle(m_scalarBar->GetLabelTextProperty(), 5, false);
+    }
+
     if (renderNow)
         render();
 }
-
 void VisualizationWidget::setScalarBarNumberOfLabels(int n, bool renderNow)
 {
     if (m_scalarBar)

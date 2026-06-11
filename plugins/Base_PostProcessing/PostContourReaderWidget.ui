@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>PostContourReaderWidget</class>
  <widget class="QWidget" name="PostContourReaderWidget">
@@ -6,14 +6,17 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>420</width>
-    <height>280</height>
+    <width>408</width>
+    <height>717</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>洞室变形轮廓图</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="spacing">
+    <number>8</number>
+   </property>
    <property name="leftMargin">
     <number>0</number>
    </property>
@@ -25,9 +28,6 @@
    </property>
    <property name="bottomMargin">
     <number>0</number>
-   </property>
-   <property name="spacing">
-    <number>8</number>
    </property>
    <item>
     <widget class="QLabel" name="pageHeaderLabel">
@@ -44,6 +44,9 @@
    </item>
    <item>
     <layout class="QVBoxLayout" name="contentLayout">
+     <property name="spacing">
+      <number>6</number>
+     </property>
      <property name="leftMargin">
       <number>9</number>
      </property>
@@ -55,9 +58,6 @@
      </property>
      <property name="bottomMargin">
       <number>9</number>
-     </property>
-     <property name="spacing">
-      <number>6</number>
      </property>
      <item>
       <widget class="QGroupBox" name="fileGroupBox">
@@ -79,26 +79,6 @@
         </property>
         <item>
          <layout class="QHBoxLayout" name="fileHBoxLayout">
-          <item>
-           <widget class="QLineEdit" name="filePathLineEdit">
-            <property name="placeholderText">
-             <string>选择轮廓图 SCR 文件</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="browseButton">
-            <property name="text">
-             <string>选择</string>
-            </property>
-           </widget>
-          </item>
           <property name="leftMargin">
            <number>0</number>
           </property>
@@ -111,10 +91,42 @@
           <property name="bottomMargin">
            <number>0</number>
           </property>
+          <item>
+           <widget class="QLineEdit" name="filePathLineEdit">
+            <property name="minimumSize">
+             <size>
+              <width>10</width>
+              <height>0</height>
+             </size>
+            </property>
+            <property name="placeholderText">
+             <string>选择轮廓图 SCR 文件</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="browseButton">
+            <property name="text">
+             <string>选择</string>
+            </property>
+           </widget>
+          </item>
          </layout>
         </item>
         <item>
          <layout class="QHBoxLayout" name="buttonHBoxLayout">
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
           <item>
            <widget class="QPushButton" name="loadButton">
             <property name="text">
@@ -129,18 +141,6 @@
             </property>
            </widget>
           </item>
-          <property name="leftMargin">
-           <number>0</number>
-          </property>
-          <property name="topMargin">
-           <number>0</number>
-          </property>
-          <property name="rightMargin">
-           <number>0</number>
-          </property>
-          <property name="bottomMargin">
-           <number>0</number>
-          </property>
          </layout>
         </item>
        </layout>
@@ -173,6 +173,12 @@
         </item>
         <item row="0" column="1">
          <widget class="QDoubleSpinBox" name="lineWidthDoubleSpinBox">
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
           <property name="minimum">
            <double>1.000000000000000</double>
           </property>
@@ -184,12 +190,6 @@
           </property>
           <property name="value">
            <double>1.500000000000000</double>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
           </property>
          </widget>
         </item>
@@ -222,6 +222,12 @@
           <property name="enabled">
            <bool>false</bool>
           </property>
+          <property name="minimumSize">
+           <size>
+            <width>10</width>
+            <height>0</height>
+           </size>
+          </property>
           <property name="minimum">
            <number>6</number>
           </property>
@@ -230,12 +236,6 @@
           </property>
           <property name="value">
            <number>8</number>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
           </property>
          </widget>
         </item>
@@ -259,6 +259,6 @@
    </item>
   </layout>
  </widget>
- <resources />
- <connections />
+ <resources/>
+ <connections/>
 </ui>

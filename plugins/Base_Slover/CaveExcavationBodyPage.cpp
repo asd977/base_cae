@@ -13,9 +13,12 @@
 #include <vtkDataArray.h>
 #include <vtkUnstructuredGrid.h>
 
+#include <QAbstractItemView>
 #include <QColor>
 #include <QComboBox>
 #include <QFormLayout>
+#include <QGroupBox>
+#include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLabel>
@@ -23,6 +26,7 @@
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QVBoxLayout>
+#include <QVariant>
 #include <algorithm>
 #include <limits>
 #include <set>
@@ -33,26 +37,99 @@ CaveExcavationBodyPage::CaveExcavationBodyPage(QWidget* parent)
     Q_UNUSED(parent);
 
     auto* root = new QVBoxLayout(this);
-    root->addWidget(new QLabel("开挖体（2D选面，3D选体）", this));
+    root->setContentsMargins(12, 12, 12, 12);
+    root->setSpacing(10);
 
-    auto* form = new QFormLayout();
-    m_groupCombo = new CustomComboBox(this);
-    m_addGroupBtn = new QPushButton("添加分组", this);
-    m_removeGroupBtn = new QPushButton("删除选中组", this);
-    m_clearBtn = new QPushButton("清空所选", this);
-    m_groupList = new QListWidget(this);
-    form->addRow("选组", m_groupCombo);
-    form->addRow("", m_addGroupBtn);
-    form->addRow("已选组", m_groupList);
-    form->addRow("", m_removeGroupBtn);
-    form->addRow("", m_clearBtn);
-    root->addLayout(form);
+    auto* title = new QLabel(QStringLiteral("开挖体选择"), this);
+    title->setStyleSheet(QStringLiteral("font-size:16px;font-weight:600;color:#1f2937;"));
+    root->addWidget(title);
+
+    auto* hint = new QLabel(QStringLiteral("2D 工况只选择一个开挖面；3D 工况只选择一个开挖体分组。下拉框悬停可预览，点击“设为当前”后替换原选择。"), this);
+    hint->setWordWrap(true);
+    hint->setStyleSheet(QStringLiteral("color:#6b7280;"));
+    root->addWidget(hint);
+
+    auto* pickGroup = new QGroupBox(QStringLiteral("1. 选择对象"), this);
+    auto* pickForm = new QFormLayout(pickGroup);
+    pickForm->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+    pickForm->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
+
+    m_groupCombo = new CustomComboBox(pickGroup);
+    m_addGroupBtn = new QPushButton(QStringLiteral("设为当前"), pickGroup);
+    m_clearBtn = new QPushButton(QStringLiteral("清空"), pickGroup);
+
+    auto* actionRow = new QWidget(pickGroup);
+    auto* actionLayout = new QHBoxLayout(actionRow);
+    actionLayout->setContentsMargins(0, 0, 0, 0);
+    actionLayout->setSpacing(8);
+    actionLayout->addWidget(m_addGroupBtn);
+    actionLayout->addWidget(m_clearBtn);
+
+    pickForm->addRow(QStringLiteral("分组"), m_groupCombo);
+    pickForm->addRow(QString(), actionRow);
+    root->addWidget(pickGroup);
+
+    auto* currentGroup = new QGroupBox(QStringLiteral("2. 当前选择"), this);
+    auto* currentLayout = new QVBoxLayout(currentGroup);
+    currentLayout->setContentsMargins(10, 8, 10, 10);
+    currentLayout->setSpacing(8);
+    m_groupList = new QListWidget(currentGroup);
+    m_groupList->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_groupList->setMaximumHeight(86);
+    m_removeGroupBtn = new QPushButton(QStringLiteral("移除当前选择"), currentGroup);
+    currentLayout->addWidget(m_groupList);
+    currentLayout->addWidget(m_removeGroupBtn);
+    root->addWidget(currentGroup);
     root->addStretch();
 
     connect(m_addGroupBtn, &QPushButton::clicked, this, &CaveExcavationBodyPage::onAddGroupClicked);
     connect(m_removeGroupBtn, &QPushButton::clicked, this,
             &CaveExcavationBodyPage::onRemoveSelectedGroupsClicked);
     connect(m_clearBtn, &QPushButton::clicked, this, &CaveExcavationBodyPage::onClearClicked);
+
+    connect(&PickManager::instance(), &PickManager::selectionChanged, this,
+            [this](const QString& domain, const QString& uuid, PickMode mode, GridKind kind)
+            {
+                if (domain != getPageType() || uuid != m_uuid || mode != PickMode::Face ||
+                    kind != GridKind::Solid)
+                    return;
+
+                const int meshDim =
+                    PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+                if (meshDim != 2)
+                    return;
+
+                QVector<vtkIdType> keys = PickManager::instance().getIdList(
+                    getPageType(), m_uuid, PickMode::Face, GridKind::Solid);
+                if (keys.size() <= 1)
+                {
+                    if (keys.isEmpty())
+                        setProperty("single_face_key", QString());
+                    else
+                        setProperty("single_face_key", QString::number(static_cast<qint64>(keys.first())));
+                    return;
+                }
+
+                bool ok = false;
+                const vtkIdType lastKey =
+                    static_cast<vtkIdType>(property("single_face_key").toString().toLongLong(&ok));
+                vtkIdType keep = keys.first();
+                if (ok)
+                {
+                    for (vtkIdType key : keys)
+                    {
+                        if (key != lastKey)
+                        {
+                            keep = key;
+                            break;
+                        }
+                    }
+                }
+
+                setProperty("single_face_key", QString::number(static_cast<qint64>(keep)));
+                PickManager::instance().setSelectedFaceKeys(
+                    getPageType(), m_uuid, GridKind::Solid, QVector<vtkIdType>{keep}, true);
+            });
 
     if (auto* combo = qobject_cast<CustomComboBox*>(m_groupCombo))
     {
@@ -75,7 +152,7 @@ void CaveExcavationBodyPage::beforeLoad()
     const int meshDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     const bool allowFacePick = (meshDim == 2 && mode == PickMode::Face);
     PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, allowFacePick);
-    PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, allowFacePick);
+    PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, false);
 
     if (mode == PickMode::Domain)
     {
@@ -115,8 +192,8 @@ QJsonObject CaveExcavationBodyPage::saveJson()
         PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid);
     const auto edgeKeys =
         PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Edge, GridKind::Solid);
-    for (vtkIdType key : faceKeys)
-        faceArr.append(static_cast<qint64>(key));
+    if (!faceKeys.isEmpty())
+        faceArr.append(static_cast<qint64>(faceKeys.first()));
     for (vtkIdType key : edgeKeys)
         edgeArr.append(static_cast<qint64>(key));
     obj["face_solid"] = faceArr;
@@ -134,7 +211,10 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
     {
         const int gid = v.toInt(std::numeric_limits<int>::min());
         if (gid != std::numeric_limits<int>::min() && gid != 0)
+        {
             domains.insert(DomainKey{"LAYER", layerDomainDim(), gid});
+            break;
+        }
     }
     PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
 
@@ -142,7 +222,10 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
     const auto faceArr = obj.value("face_solid").toArray();
     faceKeys.reserve(faceArr.size());
     for (const auto& v : faceArr)
+    {
         faceKeys.push_back(static_cast<vtkIdType>(v.toVariant().toLongLong()));
+        break;
+    }
     const auto edgeArr = obj.value("edge_solid").toArray();
     edgeKeys.reserve(edgeArr.size());
     for (const auto& v : edgeArr)
@@ -223,7 +306,7 @@ void CaveExcavationBodyPage::onAddGroupClicked()
 
     const int gid = m_groupCombo->currentData().toInt();
 
-    QSet<DomainKey> domains = PickManager::instance().appliedDomains(getPageType(), m_uuid);
+    QSet<DomainKey> domains;
     domains.insert(DomainKey{"LAYER", layerDomainDim(), gid});
     PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
 
@@ -276,7 +359,9 @@ void CaveExcavationBodyPage::onGroupHovered(int index)
     {
         const QVector<vtkIdType> previewFaceKeys = visibleBoundaryFaceKeys(groupCellIds(gid));
         PickManager::instance().setPreviewFaceKeys(
-            getPageType(), m_uuid, GridKind::Solid, previewFaceKeys);
+            getPageType(), m_uuid, GridKind::Solid,
+            previewFaceKeys.isEmpty() ? QVector<vtkIdType>{}
+                                      : QVector<vtkIdType>{previewFaceKeys.first()});
         return;
     }
     updateGroupDomainHighlight(gid);
@@ -456,20 +541,19 @@ void CaveExcavationBodyPage::updatePersistentSelectionFaces()
            // 2D：将“已选分组”转为 Face 持久高亮，便于开挖体分组可视反馈
     if (meshDim == 2)
     {
-        QSet<vtkIdType> uniq;
+        QVector<vtkIdType> singleFace;
         const QSet<int> groups = selectedLayerGroups();
         for (int gid : groups)
         {
             const QVector<vtkIdType> faceKeys = visibleBoundaryFaceKeys(groupCellIds(gid));
-            for (vtkIdType fk : faceKeys)
-                uniq.insert(fk);
+            if (!faceKeys.isEmpty())
+            {
+                singleFace.push_back(faceKeys.first());
+                break;
+            }
         }
-        QVector<vtkIdType> merged;
-        merged.reserve(uniq.size());
-        for (vtkIdType fk : uniq)
-            merged.push_back(fk);
         PickManager::instance().setSelectedFaceKeys(
-            getPageType(), m_uuid, GridKind::Solid, merged, true);
+            getPageType(), m_uuid, GridKind::Solid, singleFace, true);
         return;
     }
 

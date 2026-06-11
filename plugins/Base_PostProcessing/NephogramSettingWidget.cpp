@@ -795,7 +795,6 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName,
         return;
 
     auto* ren = m_visualService->renderer();
-
     if (!ren)
         return;
 
@@ -804,62 +803,121 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName,
     if (!ui->contourEnableCheckBox->isChecked())
         return;
 
-    vtkSmartPointer<vtkAlgorithmOutput> contourInputPort;
+    if (scalarName.isEmpty())
+        return;
 
-    auto cellToPoint = vtkSmartPointer<vtkCellDataToPointData>::New();
+    // 保持逻辑简单：只抽外表面，然后用表面上的点数据生成等值线。
+    // 如果结果是 CellData，只在抽出的表面上转 PointData，避免体内部单元参与平均。
     auto surfaceFilter = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+    surfaceFilter->SetInputData(m_grid);
+    surfaceFilter->Update();
+
+    vtkPolyData* surface = surfaceFilter->GetOutput();
+    if (!surface || surface->GetNumberOfPoints() <= 0 || surface->GetNumberOfCells() <= 0)
+        return;
+
+    vtkSmartPointer<vtkPolyData> contourInput = vtkSmartPointer<vtkPolyData>::New();
 
     if (usePointData)
     {
-        surfaceFilter->SetInputData(m_grid);
+        contourInput->ShallowCopy(surface);
     }
     else
     {
-        cellToPoint->SetInputData(m_grid);
-        cellToPoint->PassCellDataOn();
+        auto cellToPoint = vtkSmartPointer<vtkCellDataToPointData>::New();
+        cellToPoint->SetInputData(surface);
+        cellToPoint->PassCellDataOff();
         cellToPoint->Update();
-        surfaceFilter->SetInputConnection(cellToPoint->GetOutputPort());
+
+        if (auto* converted = vtkPolyData::SafeDownCast(cellToPoint->GetOutput()))
+            contourInput->ShallowCopy(converted);
     }
 
-    surfaceFilter->Update();
-
-    auto contour = vtkSmartPointer<vtkContourFilter>::New();
-    contour->SetInputConnection(surfaceFilter->GetOutputPort());
-    contour->SetInputArrayToProcess(0, 0, 0,
-                                    vtkDataObject::FIELD_ASSOCIATION_POINTS,
-                                    scalarName.toUtf8().constData());
-
-    const int levels = std::max(2, ui->contourLevelsSpinBox->value());
-    contour->GenerateValues(levels, minV, maxV);
-    contour->Update();
-
-    auto* contourOutput = contour->GetOutput();
-
-    if (!contourOutput || contourOutput->GetNumberOfCells() <= 0 ||
-        contourOutput->GetNumberOfPoints() <= 0)
+    if (!contourInput || contourInput->GetNumberOfPoints() <= 0 ||
+        contourInput->GetNumberOfCells() <= 0)
     {
         return;
     }
 
+    const QByteArray scalarNameUtf8 = scalarName.toUtf8();
+    auto* pointData = contourInput->GetPointData();
+    vtkDataArray* contourArray = pointData ? pointData->GetArray(scalarNameUtf8.constData()) : nullptr;
+
+    if (!contourArray)
+    {
+        qWarning() << "Contour scalar array not found on surface:" << scalarName;
+        return;
+    }
+
+    pointData->SetActiveScalars(scalarNameUtf8.constData());
+
+    // 用表面数据自己的范围，不用整体体数据范围。
+    // 否则某些层值可能根本不落在当前表面范围内，结果就是一条线也没有。
+    double range[2];
+    contourArray->GetRange(range);
+
+    if (std::abs(range[1] - range[0]) < 1e-12)
+        return;
+
+    auto contour = vtkSmartPointer<vtkContourFilter>::New();
+    contour->SetInputData(contourInput);
+    contour->SetInputArrayToProcess(0, 0, 0,
+                                    vtkDataObject::FIELD_ASSOCIATION_POINTS,
+                                    scalarNameUtf8.constData());
+
+    const int levels = std::max(1, ui->contourLevelsSpinBox->value());
+    contour->SetNumberOfContours(levels);
+
+    if (levels == 1)
+    {
+        contour->SetValue(0, 0.5 * (range[0] + range[1]));
+    }
+    else
+    {
+        // 不画 min/max 两端线，减少边界脏线。
+        for (int i = 0; i < levels; ++i)
+        {
+            const double t = double(i + 1) / double(levels + 1);
+            contour->SetValue(i, range[0] + (range[1] - range[0]) * t);
+        }
+    }
+
+    contour->Update();
+
+    vtkPolyData* contourOutput = contour->GetOutput();
+    if (!contourOutput || contourOutput->GetNumberOfCells() <= 0 ||
+        contourOutput->GetNumberOfPoints() <= 0)
+    {
+        qWarning() << "No contour generated for" << scalarName
+                   << "surface range:" << range[0] << range[1]
+                   << "input range:" << minV << maxV;
+        return;
+    }
+
+    auto contourData = vtkSmartPointer<vtkPolyData>::New();
+    contourData->ShallowCopy(contourOutput);
+
     auto contourMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-    contourMapper->SetInputConnection(contour->GetOutputPort());
+    contourMapper->SetInputData(contourData);
     contourMapper->ScalarVisibilityOff();
     contourMapper->SetResolveCoincidentTopologyToPolygonOffset();
-    contourMapper->SetRelativeCoincidentTopologyLineOffsetParameters(-1.0, -10.0);
+    contourMapper->SetRelativeCoincidentTopologyLineOffsetParameters(-1.0, -1.0);
 
     m_contourActor->SetMapper(contourMapper);
-    m_contourActor->GetProperty()->SetColor(0.12, 0.12, 0.12);
-    m_contourActor->GetProperty()->SetOpacity(0.78);
-    m_contourActor->GetProperty()->SetLineWidth(1.1);
+    m_contourActor->PickableOff();
+    m_contourActor->GetProperty()->LightingOff();
+    m_contourActor->GetProperty()->SetColor(0.08, 0.08, 0.08);
+    m_contourActor->GetProperty()->SetOpacity(0.85);
+    m_contourActor->GetProperty()->SetLineWidth(1.0);
 
     ren->AddActor(m_contourActor);
 
     if (!ui->contourLabelCheckBox->isChecked())
         return;
 
-    vtkDataArray* contourScalars =
-        contourOutput->GetPointData() ? contourOutput->GetPointData()->GetScalars() : nullptr;
-
+    vtkDataArray* contourScalars = contourData->GetPointData()
+                                       ? contourData->GetPointData()->GetScalars()
+                                       : nullptr;
     if (!contourScalars)
         return;
 
@@ -868,24 +926,21 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName,
     auto labelVals = vtkSmartPointer<vtkDoubleArray>::New();
     labelVals->SetName("ContourLabels");
 
-    const int maxLabels = std::min(std::max(2, ui->contourLevelsSpinBox->value()), 8);
-    const double span = std::max(std::abs(maxV - minV), 1e-12);
+    const int maxLabels = std::min(levels, 8);
+    const double span = std::max(std::abs(range[1] - range[0]), 1e-12);
     const double tol = span * 1e-5;
 
     QVector<double> addedLevels;
     addedLevels.reserve(maxLabels);
 
-    const vtkIdType cellCount = contourOutput->GetNumberOfCells();
-
+    const vtkIdType cellCount = contourData->GetNumberOfCells();
     for (vtkIdType ci = 0; ci < cellCount; ++ci)
     {
-        auto* cell = contourOutput->GetCell(ci);
-
+        vtkCell* cell = contourData->GetCell(ci);
         if (!cell)
             continue;
 
-        auto* ids = cell->GetPointIds();
-
+        vtkIdList* ids = cell->GetPointIds();
         if (!ids || ids->GetNumberOfIds() <= 0)
             continue;
 
@@ -906,7 +961,7 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName,
             continue;
 
         double p[3];
-        contourOutput->GetPoint(midId, p);
+        contourData->GetPoint(midId, p);
         labelPts->InsertNextPoint(p);
         labelVals->InsertNextValue(v);
         addedLevels.push_back(v);

@@ -1,132 +1,214 @@
 #include "CaveBlockPlanePage.h"
 
-#include <PublicConstants.h>
-#include <PublicVariables.h>
-
+#include <QDoubleValidator>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QLabel>
 #include <QLineEdit>
-#include <QVector3D>
-#include <QVector>
-#include <utility>
+#include <QPushButton>
+#include <QSignalBlocker>
+#include <QStringList>
+#include <QVariant>
 
 #include <vtkCell.h>
-#include <vtkPoints.h>
+#include <vtkIdList.h>
+#include <vtkMath.h>
 #include <vtkUnstructuredGrid.h>
 
 #include "ui_CaveBlockPlanePage.h"
 
+namespace
+{
+constexpr vtkIdType kInvalidFaceKey = -1;
+
+QString fmt(double v)
+{
+    return QString::number(v, 'f', 6);
+}
+
+double editValue(QLineEdit* edit, double def = 0.0)
+{
+    if (!edit)
+        return def;
+    bool ok = false;
+    const double v = edit->text().trimmed().toDouble(&ok);
+    return ok ? v : def;
+}
+
+vtkIdType faceCellId(vtkIdType faceKey)
+{
+    return faceKey >> 4;
+}
+
+int faceLocalId(vtkIdType faceKey)
+{
+    return int(faceKey & 0xF);
+}
+
+QVector<vtkIdType> pointIdsOfFace(vtkUnstructuredGrid* grid, vtkIdType faceKey)
+{
+    QVector<vtkIdType> ids;
+    if (!grid || faceKey < 0)
+        return ids;
+
+    const vtkIdType cellId = faceCellId(faceKey);
+    const int localId = faceLocalId(faceKey);
+    if (cellId < 0 || cellId >= grid->GetNumberOfCells())
+        return ids;
+
+    vtkCell* cell = grid->GetCell(cellId);
+    if (!cell)
+        return ids;
+
+    vtkIdList* src = nullptr;
+    if (cell->GetCellDimension() == 2 || localId == 15)
+    {
+        src = cell->GetPointIds();
+    }
+    else if (localId >= 0 && localId < cell->GetNumberOfFaces())
+    {
+        vtkCell* face = cell->GetFace(localId);
+        src = face ? face->GetPointIds() : nullptr;
+    }
+
+    if (!src || src->GetNumberOfIds() < 3)
+        return ids;
+
+    ids.reserve(int(src->GetNumberOfIds()));
+    for (vtkIdType i = 0; i < src->GetNumberOfIds(); ++i)
+        ids.push_back(src->GetId(i));
+    return ids;
+}
+
+QVector3D pointOf(vtkUnstructuredGrid* grid, vtkIdType pointId)
+{
+    double p[3] = {0.0, 0.0, 0.0};
+    if (grid && pointId >= 0 && pointId < grid->GetNumberOfPoints())
+        grid->GetPoint(pointId, p);
+    return QVector3D(float(p[0]), float(p[1]), float(p[2]));
+}
+
+double polygonArea(const QVector<QVector3D>& pts)
+{
+    if (pts.size() < 3)
+        return 0.0;
+
+    double area = 0.0;
+    const QVector3D& p0 = pts[0];
+    for (int i = 1; i + 1 < pts.size(); ++i)
+        area += 0.5 * QVector3D::crossProduct(pts[i] - p0, pts[i + 1] - p0).length();
+    return area;
+}
+} // namespace
+
 CaveBlockPlanePage::CaveBlockPlanePage(QWidget* parent)
-    : BasePage("CaveBlockPlane"), ui(new Ui::CaveBlockPlanePage)
+    : BasePage("CaveBlockPlanePage"), ui(new Ui::CaveBlockPlanePage)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
 
-    connect(&PickManager::instance(), &PickManager::selectionChanged, this,
-            [this](const QString& domain, const QString& uuid, PickMode mode, GridKind kind)
-            {
-                if (domain != getPageType() || uuid != m_uuid)
-                    return;
-                if (mode != PickMode::Face || kind != GridKind::Solid)
-                    return;
-                syncPointsFromSelectedFace();
-            });
+    auto* validator = new QDoubleValidator(-1.0e12, 1.0e12, 6, this);
+    validator->setNotation(QDoubleValidator::ScientificNotation);
+    for (QLineEdit* edit : {ui->x1Edit, ui->y1Edit, ui->z1Edit,
+                            ui->x2Edit, ui->y2Edit, ui->z2Edit,
+                            ui->x3Edit, ui->y3Edit, ui->z3Edit,
+                            ui->fpEdit, ui->cEdit, ui->rtEdit})
+    {
+        edit->setValidator(validator);
+    }
+
+    if (ui->faceStatusLabel)
+        ui->faceStatusLabel->setText(QStringLiteral("未选择切割面"));
+
+    if (ui->clearFaceBtn)
+    {
+        connect(ui->clearFaceBtn, &QPushButton::clicked, this,
+                [this]()
+                {
+                    m_selectedFaceKey = kInvalidFaceKey;
+                    PickManager::instance().setSelectedFaceKeys(
+                        getPageType(), m_uuid, currentGridKind(), {}, true);
+                    if (ui->faceStatusLabel)
+                        ui->faceStatusLabel->setText(QStringLiteral("未选择切割面"));
+                });
+    }
 }
 
 CaveBlockPlanePage::~CaveBlockPlanePage()
 {
+    beforeUnload();
     delete ui;
 }
 
 void CaveBlockPlanePage::beforeLoad()
 {
-    PickMode mode = currentPickMode();
-    PickManager::instance().activate(getPageType(), m_uuid, mode);
+    PickManager::instance().updateStructure();
+    PickManager::instance().activate(getPageType(), m_uuid, currentPickMode());
     PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
     PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, false);
+
+    connect(&PickManager::instance(), &PickManager::selectionChanged, this,
+            &CaveBlockPlanePage::onPickSelectionChanged, Qt::UniqueConnection);
+
+    enforceSingleSelectedFace();
+    syncPointsFromSelectedFace();
 }
 
 void CaveBlockPlanePage::beforeUnload()
 {
-    PickMode mode = currentPickMode();
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, mode);
-    PickManager::instance().deactivate(getPageType(), m_uuid, mode);
+    disconnect(&PickManager::instance(), &PickManager::selectionChanged, this,
+               &CaveBlockPlanePage::onPickSelectionChanged);
+    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().deactivate(getPageType(), m_uuid, currentPickMode());
 }
 
 QJsonObject CaveBlockPlanePage::saveJson()
 {
-    syncPointsFromSelectedFace();
-
     QJsonObject obj;
-    QJsonArray p1;
-    p1.append(ui->x1Edit->text().trimmed());
-    p1.append(ui->y1Edit->text().trimmed());
-    p1.append(ui->z1Edit->text().trimmed());
-    QJsonArray p2;
-    p2.append(ui->x2Edit->text().trimmed());
-    p2.append(ui->y2Edit->text().trimmed());
-    p2.append(ui->z2Edit->text().trimmed());
-    QJsonArray p3;
-    p3.append(ui->x3Edit->text().trimmed());
-    p3.append(ui->y3Edit->text().trimmed());
-    p3.append(ui->z3Edit->text().trimmed());
-    obj["p1"] = p1;
-    obj["p2"] = p2;
-    obj["p3"] = p3;
+    obj["x1"] = ui->x1Edit->text().trimmed();
+    obj["y1"] = ui->y1Edit->text().trimmed();
+    obj["z1"] = ui->z1Edit->text().trimmed();
+    obj["x2"] = ui->x2Edit->text().trimmed();
+    obj["y2"] = ui->y2Edit->text().trimmed();
+    obj["z2"] = ui->z2Edit->text().trimmed();
+    obj["x3"] = ui->x3Edit->text().trimmed();
+    obj["y3"] = ui->y3Edit->text().trimmed();
+    obj["z3"] = ui->z3Edit->text().trimmed();
     obj["fp"] = ui->fpEdit->text().trimmed();
     obj["c"] = ui->cEdit->text().trimmed();
     obj["rt"] = ui->rtEdit->text().trimmed();
 
-    QJsonArray faceKeys;
-    const auto keys = PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face,
-                                                        GridKind::Solid);
-    for (vtkIdType key : keys)
-        faceKeys.append(static_cast<qint64>(key));
-    obj["face_keys"] = faceKeys;
+    const auto keys = selectedFaceKeys();
+    if (!keys.isEmpty())
+        obj["face_key"] = static_cast<qint64>(keys.first());
     return obj;
 }
 
 void CaveBlockPlanePage::loadJson(const QJsonObject& obj)
 {
-    const auto p1 = obj.value("p1").toArray();
-    const auto p2 = obj.value("p2").toArray();
-    const auto p3 = obj.value("p3").toArray();
-    if (p1.size() >= 3)
-    {
-        ui->x1Edit->setText(p1.at(0).toString(ui->x1Edit->text()));
-        ui->y1Edit->setText(p1.at(1).toString(ui->y1Edit->text()));
-        ui->z1Edit->setText(p1.at(2).toString(ui->z1Edit->text()));
-    }
-    if (p2.size() >= 3)
-    {
-        ui->x2Edit->setText(p2.at(0).toString(ui->x2Edit->text()));
-        ui->y2Edit->setText(p2.at(1).toString(ui->y2Edit->text()));
-        ui->z2Edit->setText(p2.at(2).toString(ui->z2Edit->text()));
-    }
-    if (p3.size() >= 3)
-    {
-        ui->x3Edit->setText(p3.at(0).toString(ui->x3Edit->text()));
-        ui->y3Edit->setText(p3.at(1).toString(ui->y3Edit->text()));
-        ui->z3Edit->setText(p3.at(2).toString(ui->z3Edit->text()));
-    }
-
+    ui->x1Edit->setText(obj.value("x1").toString(ui->x1Edit->text()));
+    ui->y1Edit->setText(obj.value("y1").toString(ui->y1Edit->text()));
+    ui->z1Edit->setText(obj.value("z1").toString(ui->z1Edit->text()));
+    ui->x2Edit->setText(obj.value("x2").toString(ui->x2Edit->text()));
+    ui->y2Edit->setText(obj.value("y2").toString(ui->y2Edit->text()));
+    ui->z2Edit->setText(obj.value("z2").toString(ui->z2Edit->text()));
+    ui->x3Edit->setText(obj.value("x3").toString(ui->x3Edit->text()));
+    ui->y3Edit->setText(obj.value("y3").toString(ui->y3Edit->text()));
+    ui->z3Edit->setText(obj.value("z3").toString(ui->z3Edit->text()));
     ui->fpEdit->setText(obj.value("fp").toString(ui->fpEdit->text()));
     ui->cEdit->setText(obj.value("c").toString(ui->cEdit->text()));
     ui->rtEdit->setText(obj.value("rt").toString(ui->rtEdit->text()));
 
-    QVector<vtkIdType> faceKeys;
-    const auto faceArr = obj.value("face_keys").toArray();
-    faceKeys.reserve(faceArr.size());
-    for (const auto& v : faceArr)
-        faceKeys.push_back(static_cast<vtkIdType>(v.toVariant().toLongLong()));
-    PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, faceKeys,
-                                                true);
+    if (obj.contains("face_key"))
+    {
+        m_selectedFaceKey = static_cast<vtkIdType>(obj.value("face_key").toVariant().toLongLong());
+        PickManager::instance().setSelectedFaceKeys(
+            getPageType(), m_uuid, currentGridKind(), QVector<vtkIdType>{m_selectedFaceKey}, true);
+    }
 }
 
 QString CaveBlockPlanePage::icutLine(int ii)
 {
-    syncPointsFromSelectedFace();
-
     return QString("%1 %2 %3 %4 %5 %6 %7 %8 %9 %10")
         .arg(valueOrDefault(ui->x1Edit, "0.0"))
         .arg(valueOrDefault(ui->y1Edit, "0.0"))
@@ -151,74 +233,49 @@ QString CaveBlockPlanePage::paraLine(int ii)
 
 QVector3D CaveBlockPlanePage::p1Vector()
 {
-    return QVector3D(valueOrDefault(ui->x1Edit, "0.0").toDouble(),
-                     valueOrDefault(ui->y1Edit, "0.0").toDouble(),
-                     valueOrDefault(ui->z1Edit, "0.0").toDouble());
+    return QVector3D(float(editValue(ui->x1Edit)), float(editValue(ui->y1Edit)),
+                     float(editValue(ui->z1Edit)));
 }
 
 QVector3D CaveBlockPlanePage::normalVector()
 {
-    const QVector3D p1(valueOrDefault(ui->x1Edit, "0.0").toDouble(),
-                       valueOrDefault(ui->y1Edit, "0.0").toDouble(),
-                       valueOrDefault(ui->z1Edit, "0.0").toDouble());
-    const QVector3D p2(valueOrDefault(ui->x2Edit, "0.0").toDouble(),
-                       valueOrDefault(ui->y2Edit, "0.0").toDouble(),
-                       valueOrDefault(ui->z2Edit, "0.0").toDouble());
-    const QVector3D p3(valueOrDefault(ui->x3Edit, "0.0").toDouble(),
-                       valueOrDefault(ui->y3Edit, "0.0").toDouble(),
-                       valueOrDefault(ui->z3Edit, "0.0").toDouble());
+    const QVector3D p1(float(editValue(ui->x1Edit)), float(editValue(ui->y1Edit)),
+                       float(editValue(ui->z1Edit)));
+    const QVector3D p2(float(editValue(ui->x2Edit)), float(editValue(ui->y2Edit)),
+                       float(editValue(ui->z2Edit)));
+    const QVector3D p3(float(editValue(ui->x3Edit)), float(editValue(ui->y3Edit)),
+                       float(editValue(ui->z3Edit)));
+
     QVector3D n = QVector3D::crossProduct(p2 - p1, p3 - p1);
-    if (n.length() <= 1e-12)
+    if (n.lengthSquared() < 1.0e-16)
         return QVector3D(0.0f, 0.0f, 1.0f);
-    n.normalize();
-    if (n.z() < 0.0f)
-        n = -n;
-    return n;
+    return n.normalized();
 }
 
 double CaveBlockPlanePage::pickedFaceArea()
 {
-    PickManager::instance().updateStructure();
-    vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
-    if (!grid)
-        return 0.0;
-
-    const auto keys =
-        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid);
-    if (keys.isEmpty())
-        return 0.0;
-
-    auto toVec = [](double p[3]) { return QVector3D(p[0], p[1], p[2]); };
-    double area = 0.0;
-    for (vtkIdType faceKey : keys)
+    const auto keys = selectedFaceKeys();
+    if (!keys.isEmpty())
     {
-        const vtkIdType cellId = PickManager::instance().unpackFaceCellId(faceKey);
-        const int faceLocalId = PickManager::instance().unpackFaceLocalId(faceKey);
-        if (cellId < 0 || cellId >= grid->GetNumberOfCells())
-            continue;
-
-        vtkCell* cell = grid->GetCell(cellId);
-        if (!cell)
-            continue;
-        vtkCell* face = cell->GetFace(faceLocalId);
-        if (!face || face->GetNumberOfPoints() < 3)
-            continue;
-
-        double p0Raw[3] = {0.0, 0.0, 0.0};
-        face->GetPoints()->GetPoint(0, p0Raw);
-        const QVector3D p0 = toVec(p0Raw);
-        for (vtkIdType i = 1; i + 1 < face->GetNumberOfPoints(); ++i)
-        {
-            double p1Raw[3] = {0.0, 0.0, 0.0};
-            double p2Raw[3] = {0.0, 0.0, 0.0};
-            face->GetPoints()->GetPoint(i, p1Raw);
-            face->GetPoints()->GetPoint(i + 1, p2Raw);
-            const QVector3D v1 = toVec(p1Raw) - p0;
-            const QVector3D v2 = toVec(p2Raw) - p0;
-            area += 0.5 * QVector3D::crossProduct(v1, v2).length();
-        }
+        PickManager::instance().updateStructure();
+        vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
+        const QVector<vtkIdType> pids = pointIdsOfFace(grid, keys.first());
+        QVector<QVector3D> pts;
+        pts.reserve(pids.size());
+        for (vtkIdType pid : pids)
+            pts.push_back(pointOf(grid, pid));
+        const double area = polygonArea(pts);
+        if (area > 0.0)
+            return area;
     }
-    return area;
+
+    const QVector3D p1(float(editValue(ui->x1Edit)), float(editValue(ui->y1Edit)),
+                       float(editValue(ui->z1Edit)));
+    const QVector3D p2(float(editValue(ui->x2Edit)), float(editValue(ui->y2Edit)),
+                       float(editValue(ui->z2Edit)));
+    const QVector3D p3(float(editValue(ui->x3Edit)), float(editValue(ui->y3Edit)),
+                       float(editValue(ui->z3Edit)));
+    return 0.5 * QVector3D::crossProduct(p2 - p1, p3 - p1).length();
 }
 
 QString CaveBlockPlanePage::valueOrDefault(QLineEdit* edit, QString def)
@@ -231,116 +288,104 @@ QString CaveBlockPlanePage::valueOrDefault(QLineEdit* edit, QString def)
 
 void CaveBlockPlanePage::syncPointsFromSelectedFace()
 {
-    if (currentPickMode() != PickMode::Face)
+    const auto keys = selectedFaceKeys();
+    if (keys.isEmpty())
+    {
+        if (ui->faceStatusLabel)
+            ui->faceStatusLabel->setText(QStringLiteral("未选择切割面"));
         return;
+    }
 
     PickManager::instance().updateStructure();
     vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
-    if (!grid)
-        return;
-
-    const auto keys =
-        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid);
-    if (keys.isEmpty())
-        return;
-
-    const vtkIdType faceKey = keys.first();
-    const vtkIdType cellId = PickManager::instance().unpackFaceCellId(faceKey);
-    const int faceLocalId = PickManager::instance().unpackFaceLocalId(faceKey);
-    if (cellId < 0 || cellId >= grid->GetNumberOfCells())
-        return;
-
-    vtkCell* cell = grid->GetCell(cellId);
-    if (!cell)
-        return;
-    vtkCell* face = cell->GetFace(faceLocalId);
-    if (!face || face->GetNumberOfPoints() < 3)
-        return;
-
-    QVector<QVector3D> uniquePoints;
-    uniquePoints.reserve(face->GetNumberOfPoints());
-    const double tol2 = 1e-16;
-    for (vtkIdType i = 0; i < face->GetNumberOfPoints(); ++i)
+    const QVector<vtkIdType> pids = pointIdsOfFace(grid, keys.first());
+    if (!grid || pids.size() < 3)
     {
-        double pRaw[3] = {0.0, 0.0, 0.0};
-        face->GetPoints()->GetPoint(i, pRaw);
-        const QVector3D p(pRaw[0], pRaw[1], pRaw[2]);
-        bool duplicated = false;
-        for (const QVector3D& ep : uniquePoints)
-        {
-            if ((p - ep).lengthSquared() <= tol2)
-            {
-                duplicated = true;
-                break;
-            }
-        }
-        if (!duplicated)
-            uniquePoints.push_back(p);
-    }
-    if (uniquePoints.size() < 3)
+        if (ui->faceStatusLabel)
+            ui->faceStatusLabel->setText(QStringLiteral("当前面无效，请重新选择"));
         return;
-
-    int i1 = 0;
-    for (int i = 1; i < uniquePoints.size(); ++i)
-    {
-        if (uniquePoints[i].z() > uniquePoints[i1].z())
-            i1 = i;
     }
-    const QVector3D p1v = uniquePoints[i1];
-    int i2 = -1;
-    for (int i = 0; i < uniquePoints.size(); ++i)
-    {
-        if (i == i1)
-            continue;
-        if ((uniquePoints[i] - p1v).lengthSquared() > tol2)
-        {
-            i2 = i;
-            break;
-        }
-    }
-    if (i2 < 0)
-        return;
 
-    int i3 = -1;
-    const QVector3D v12 = uniquePoints[i2] - p1v;
-    for (int i = 0; i < uniquePoints.size(); ++i)
-    {
-        if (i == i1 || i == i2)
-            continue;
-        const QVector3D v13 = uniquePoints[i] - p1v;
-        if (QVector3D::crossProduct(v12, v13).lengthSquared() > tol2)
-        {
-            i3 = i;
-            break;
-        }
-    }
-    if (i3 < 0)
-        return;
+    const QVector3D p1 = pointOf(grid, pids[0]);
+    const QVector3D p2 = pointOf(grid, pids[1]);
+    const QVector3D p3 = pointOf(grid, pids[2]);
 
-    QVector3D p2v = uniquePoints[i2];
-    QVector3D p3v = uniquePoints[i3];
-    QVector3D n = QVector3D::crossProduct(p2v - p1v, p3v - p1v);
-    if (n.z() < 0.0f)
-        std::swap(p2v, p3v);
+    const QSignalBlocker b1(ui->x1Edit); const QSignalBlocker b2(ui->y1Edit); const QSignalBlocker b3(ui->z1Edit);
+    const QSignalBlocker b4(ui->x2Edit); const QSignalBlocker b5(ui->y2Edit); const QSignalBlocker b6(ui->z2Edit);
+    const QSignalBlocker b7(ui->x3Edit); const QSignalBlocker b8(ui->y3Edit); const QSignalBlocker b9(ui->z3Edit);
 
-    ui->x1Edit->setText(QString::number(p1v.x(), 'f', 6));
-    ui->y1Edit->setText(QString::number(p1v.y(), 'f', 6));
-    ui->z1Edit->setText(QString::number(p1v.z(), 'f', 6));
-    ui->x2Edit->setText(QString::number(p2v.x(), 'f', 6));
-    ui->y2Edit->setText(QString::number(p2v.y(), 'f', 6));
-    ui->z2Edit->setText(QString::number(p2v.z(), 'f', 6));
-    ui->x3Edit->setText(QString::number(p3v.x(), 'f', 6));
-    ui->y3Edit->setText(QString::number(p3v.y(), 'f', 6));
-    ui->z3Edit->setText(QString::number(p3v.z(), 'f', 6));
+    ui->x1Edit->setText(fmt(p1.x())); ui->y1Edit->setText(fmt(p1.y())); ui->z1Edit->setText(fmt(p1.z()));
+    ui->x2Edit->setText(fmt(p2.x())); ui->y2Edit->setText(fmt(p2.y())); ui->z2Edit->setText(fmt(p2.z()));
+    ui->x3Edit->setText(fmt(p3.x())); ui->y3Edit->setText(fmt(p3.y())); ui->z3Edit->setText(fmt(p3.z()));
+
+    if (ui->faceStatusLabel)
+        ui->faceStatusLabel->setText(
+            QStringLiteral("已选择 1 个切割面，面积：%1").arg(pickedFaceArea(), 0, 'f', 4));
 }
 
 PickMode CaveBlockPlanePage::currentPickMode()
 {
-    int dim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
-    return (dim == 2) ? PickMode::Edge : PickMode::Face;
+    return PickMode::Face;
 }
 
 GridKind CaveBlockPlanePage::currentGridKind()
 {
     return GridKind::Solid;
+}
+
+QVector<vtkIdType> CaveBlockPlanePage::selectedFaceKeys()
+{
+    return PickManager::instance().getIdList(
+        getPageType(),
+        m_uuid,
+        currentPickMode(),
+        currentGridKind());
+}
+
+void CaveBlockPlanePage::enforceSingleSelectedFace()
+{
+    if (m_enforcingSingleFace)
+        return;
+
+    QVector<vtkIdType> keys = selectedFaceKeys();
+    if (keys.isEmpty())
+    {
+        m_selectedFaceKey = kInvalidFaceKey;
+        return;
+    }
+
+    vtkIdType keep = keys.first();
+    if (m_selectedFaceKey != kInvalidFaceKey)
+    {
+        for (vtkIdType key : keys)
+        {
+            if (key != m_selectedFaceKey)
+            {
+                keep = key;
+                break;
+            }
+        }
+    }
+
+    m_selectedFaceKey = keep;
+    if (keys.size() == 1 && keys.first() == keep)
+        return;
+
+    m_enforcingSingleFace = true;
+    PickManager::instance().setSelectedFaceKeys(
+        getPageType(), m_uuid, currentGridKind(), QVector<vtkIdType>{keep}, true);
+    m_enforcingSingleFace = false;
+}
+
+void CaveBlockPlanePage::onPickSelectionChanged(const QString& domain,
+                                                const QString& uuid,
+                                                PickMode mode,
+                                                GridKind kind)
+{
+    if (domain != getPageType() || uuid != m_uuid || mode != currentPickMode() ||
+        kind != currentGridKind())
+        return;
+
+    enforceSingleSelectedFace();
+    syncPointsFromSelectedFace();
 }
