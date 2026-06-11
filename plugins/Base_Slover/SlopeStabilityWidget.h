@@ -31,9 +31,13 @@ class SlopeStabilityWidget : public BasePage
 
   signals:
     void computeRequested();
+    void stopRequested();
+
 
   private slots:
     void onComputeClicked();
+    void setComputing(bool computing);
+
 
   private:
     QString quoteValue(const QString& value) const;

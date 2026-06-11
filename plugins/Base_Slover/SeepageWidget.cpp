@@ -405,5 +405,17 @@ void SeepageWidget::loadJson(const QJsonObject& obj)
 
 void SeepageWidget::onComputeClicked()
 {
+    if (ui->btnCompute->property("computing").toBool())
+    {
+        emit stopRequested();
+        return;
+    }
+
     emit computeRequested();
+}
+
+void SeepageWidget::setComputing(bool computing)
+{
+    ui->btnCompute->setProperty("computing", computing);
+    ui->btnCompute->setText(computing ? QStringLiteral("停止") : QStringLiteral("计算"));
 }

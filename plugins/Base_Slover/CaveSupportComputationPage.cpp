@@ -398,5 +398,17 @@ void CaveSupportComputationPage::loadCaseToUi()
 
 void CaveSupportComputationPage::onComputeClicked()
 {
+    if (ui->btnCompute->property("computing").toBool())
+    {
+        emit stopRequested();
+        return;
+    }
+
     emit computeRequested();
+}
+
+void CaveSupportComputationPage::setComputing(bool computing)
+{
+    ui->btnCompute->setProperty("computing", computing);
+    ui->btnCompute->setText(computing ? QStringLiteral("停止") : QStringLiteral("计算"));
 }

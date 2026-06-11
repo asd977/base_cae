@@ -26,6 +26,10 @@ class CaveBlockStabilityWidget : public BasePage
     bool exportDatFiles(QVector<CaveBlockPlanePage*>& planePages);
   signals:
     void computeRequested();
+    void stopRequested();
+
+  public slots:
+    void setComputing(bool computing);
 
   private:
     QString quoteValue(QString value);

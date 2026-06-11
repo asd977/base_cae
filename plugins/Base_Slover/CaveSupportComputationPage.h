@@ -35,10 +35,14 @@ class CaveSupportComputationPage : public BasePage
 
   signals:
     void computeRequested();
+    void stopRequested();
+
 
   private slots:
     void onExcavationLevelCountChanged(int count);
     void onComputeClicked();
+    void setComputing(bool computing);
+
 
   private:
     struct CaseData

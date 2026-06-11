@@ -34,9 +34,13 @@ class SeepageWidget : public BasePage
 
   signals:
     void computeRequested();
+    void stopRequested();
+
 
   private slots:
     void onComputeClicked();
+    void setComputing(bool computing);
+
     void onEditGlobalMappingsClicked();
     void onEditHwDropCurvesClicked();
 
