@@ -10,6 +10,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QScopedValueRollback>
 
 #include "ui_CurveSettingsWidget.h"
 
@@ -84,6 +85,8 @@ QJsonObject CurveSettingsWidget::saveJson()
 
 void CurveSettingsWidget::loadJson(const QJsonObject& obj)
 {
+    QScopedValueRollback<bool> loadingGuard(m_loadingState, true);
+
     if (!m_initialized)
     {
         initResultDirectoryOptions();
@@ -122,6 +125,9 @@ void CurveSettingsWidget::loadJson(const QJsonObject& obj)
 
 void CurveSettingsWidget::reloadAndShowCurve()
 {
+    if (m_loadingState)
+        return;
+
     const QString traceFile = selectedTraceFilePath();
     if (traceFile.isEmpty())
     {

@@ -44,6 +44,7 @@
 #include <QFileInfo>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <QScopedValueRollback>
 #include <QSpinBox>
 #include <QStringList>
 #include <QVector>
@@ -476,6 +477,9 @@ void NephogramSettingWidget::readTecplot(const QString& fileName)
 
 void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName)
 {
+    if (m_loadingState)
+        return;
+
     if (!m_grid)
     {
         qWarning() << "No grid to visualize.";
@@ -651,6 +655,8 @@ QJsonObject NephogramSettingWidget::saveJson()
 
 void NephogramSettingWidget::loadJson(const QJsonObject& obj)
 {
+    QScopedValueRollback<bool> loadingGuard(m_loadingState, true);
+
     const QString resultDir = obj.value(QStringLiteral("resultDir")).toString();
     const QString step = obj.value(QStringLiteral("step")).toString();
     const QString scalar = obj.value(QStringLiteral("scalar")).toString();
@@ -680,8 +686,11 @@ void NephogramSettingWidget::loadJson(const QJsonObject& obj)
         const int scalarIndex = ui->scalarComboBox->findText(scalar);
         if (scalarIndex >= 0)
             ui->scalarComboBox->setCurrentIndex(scalarIndex);
-        else
-            m_currentArrayName = scalar;
+        m_currentArrayName = scalar;
+    }
+    else
+    {
+        m_currentArrayName = ui->scalarComboBox->currentText();
     }
 }
 

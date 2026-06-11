@@ -37,4 +37,5 @@ class CurveSettingsWidget : public BasePage
     Ui::CurveSettingsWidget* ui = nullptr;
     VisualWidgetService* m_visualService = nullptr;
     bool m_initialized = false;
+    bool m_loadingState = false;
 };

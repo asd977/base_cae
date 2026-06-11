@@ -74,6 +74,7 @@ class NephogramSettingWidget : public BasePage
     QMap<QString, QString> m_stepFileMap;
     bool m_initialized{false};   // 首次进入才读数据/填 step
     bool m_actorAttached{false}; // 避免重复 addActor
+    bool m_loadingState{false};  // 项目反序列化时只恢复 UI 状态，不立即渲染
 
     void readVtu(const QString& fileName);
     void updateContourOverlay(const QString& scalarName, bool usePointData, double minV, double maxV);
