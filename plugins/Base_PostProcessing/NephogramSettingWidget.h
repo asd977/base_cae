@@ -4,20 +4,18 @@
 #include <BasePage.h>
 #include <vtkActor.h>
 #include <vtkActor2D.h>
-#include <vtkCommand.h>
 #include <vtkDataSetMapper.h>
-#include <vtkInteractorStyleTrackballCamera.h>
 #include <vtkLookupTable.h>
-#include <vtkRenderer.h>
 #include <vtkSmartPointer.h>
 #include <vtkUnstructuredGrid.h>
 
 #include <QMap>
 #include <QString>
-#include <QVariantMap>
 #include <QWidget>
 
 class VisualWidgetService;
+class vtkDataArray;
+class vtkObject;
 namespace Ui
 {
 class NephogramSettingWidget;
@@ -39,13 +37,11 @@ class NephogramSettingWidget : public BasePage
     void selectGridNode(vtkObject* caller, unsigned long eventId, void* callData);
 
   private slots:
-    // 单图模式
     void on_stepComboBox_currentIndexChanged(int index);
     void on_scalarComboBox_currentIndexChanged(int index);
     void on_resultDirComboBox_currentIndexChanged(int index);
 
   private:
-    // 单图辅助
     void ensureActorAttached();
     void syncScalarBarFromCurrent();
     void updateNephogram(const QString& selectedScalarName);
@@ -67,11 +63,9 @@ class NephogramSettingWidget : public BasePage
     Ui::NephogramSettingWidget* ui{nullptr};
     VisualWidgetService* m_visualService{nullptr};
 
-    // —— 单图对象 ——
     vtkSmartPointer<vtkActor> m_actor;
     vtkSmartPointer<vtkDataSetMapper> m_mapper;
     vtkSmartPointer<vtkUnstructuredGrid> m_grid;
-
 
     // —— 状态/路径 ——
     QString m_dataPath;
