@@ -144,5 +144,17 @@ void GeoStressRegressionWidget::loadJson(const QJsonObject& obj)
 
 void GeoStressRegressionWidget::onComputeClicked()
 {
+    if (ui->btnCompute->property("computing").toBool())
+    {
+        emit stopRequested();
+        return;
+    }
+
     emit computeRequested();
+}
+
+void GeoStressRegressionWidget::setComputing(bool computing)
+{
+    ui->btnCompute->setProperty("computing", computing);
+    ui->btnCompute->setText(computing ? QStringLiteral("停止") : QStringLiteral("计算"));
 }

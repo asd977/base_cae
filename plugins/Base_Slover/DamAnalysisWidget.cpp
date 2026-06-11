@@ -479,5 +479,17 @@ void DamAnalysisWidget::loadJson(const QJsonObject& obj)
 
 void DamAnalysisWidget::onComputeClicked()
 {
+    if (ui->btnCompute->property("computing").toBool())
+    {
+        emit stopRequested();
+        return;
+    }
+
     emit computeRequested();
+}
+
+void DamAnalysisWidget::setComputing(bool computing)
+{
+    ui->btnCompute->setProperty("computing", computing);
+    ui->btnCompute->setText(computing ? QStringLiteral("停止") : QStringLiteral("计算"));
 }

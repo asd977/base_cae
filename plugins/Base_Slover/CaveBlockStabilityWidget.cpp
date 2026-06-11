@@ -33,6 +33,12 @@ CaveBlockStabilityWidget::CaveBlockStabilityWidget(QWidget* parent)
     connect(ui->computeBtn, &QPushButton::clicked, this,
             [this]()
             {
+                if (ui->computeBtn->property("computing").toBool())
+                {
+                    emit stopRequested();
+                    return;
+                }
+
                 emit computeRequested();
             });
 }
@@ -40,6 +46,13 @@ CaveBlockStabilityWidget::CaveBlockStabilityWidget(QWidget* parent)
 CaveBlockStabilityWidget::~CaveBlockStabilityWidget()
 {
     delete ui;
+}
+
+
+void CaveBlockStabilityWidget::setComputing(bool computing)
+{
+    ui->computeBtn->setProperty("computing", computing);
+    ui->computeBtn->setText(computing ? QStringLiteral("停止") : QStringLiteral("计算"));
 }
 
 void CaveBlockStabilityWidget::beforeLoad()

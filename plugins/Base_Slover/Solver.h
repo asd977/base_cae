@@ -5,10 +5,12 @@
 #include <services/SolverService.h>
 #include "GeoStressRegressionWidget.h"
 #include <QProcess>
+#include <QPointer>
 
 class CaveSupportComputationPage;
 class CaveExcavationBodyPage;
 class CaveBlockPlanePage;
+class QWidget;
 
 class Solver : public QObject, public SolverService
 {
@@ -34,6 +36,7 @@ class Solver : public QObject, public SolverService
     void onComputeSlopeStability(ProjectNode* analysisNode);
     void onComputeGeoStressRegression(ProjectNode* analysisNode);
     void onComputeCaveBlockStability(ProjectNode* analysisNode);
+    void stopSolverExecutable();
 
   private:
     void initAction();
@@ -54,6 +57,9 @@ class Solver : public QObject, public SolverService
     GeoStressRegressionWidget::ExportPayload buildGeoStressPayload(ProjectNode* geostressNode) const;
     bool beginCommonCompute(ProjectNode* analysisNode, const QString& analysisType);
     bool launchSolverExecutable(const QString& analysisType);
+    void finishSolverProcess(bool terminateProcess);
+    void setComputeWidgetRunning(QWidget* widget, bool computing) const;
+    void connectStopRequest(QObject* page) const;
     int solverModeFromAnalysisType(const QString& analysisType) const;
     bool updateIiiDirDat(const QString& projectDir, int solverMode) const;
     bool updatePrepDatFiles(const QString& projectDir, int solverMode, int verticalAxis) const;
@@ -68,6 +74,8 @@ class Solver : public QObject, public SolverService
   private:
     ProjectNode* m_root = nullptr;
     QProcess* m_solverProcess = nullptr;
+    QPointer<QWidget> m_pendingComputeWidget;
+    QPointer<QWidget> m_activeComputeWidget;
     bool exportInouseDatFile();
     bool exportMaMaskDatFile();
     bool exportKetraceDatFile();

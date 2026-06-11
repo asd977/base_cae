@@ -24,6 +24,7 @@
 #include <QSet>
 #include <QStringList>
 #include <QProcess>
+#include <QWidget>
 #include <algorithm>
 
 #include <vtkCell.h>
@@ -208,6 +209,7 @@ bool Solver::loadProject()
                     {
                         onComputeSeepage(analysisNode);
                     });
+            connectStopRequest(seepagePage);
             analysisPage = seepagePage;
         }
         else if (analysisType == "StressStrainAnalysis" || analysisType == "DamAnalysis")
@@ -222,6 +224,7 @@ bool Solver::loadProject()
                     {
                         onComputeStressStrain(analysisNode);
                     });
+            connectStopRequest(stressPage);
             analysisPage = stressPage;
         }
         else if (analysisType == "SlopeStabilityAnalysis")
@@ -236,6 +239,7 @@ bool Solver::loadProject()
                     {
                         onComputeSlopeStability(analysisNode);
                     });
+            connectStopRequest(slopePage);
             analysisPage = slopePage;
         }
         else if (analysisType == "CaveExcavationAnalysis")
@@ -259,6 +263,7 @@ bool Solver::loadProject()
                     {
                         onComputeCaveBlockStability(analysisNode);
                     });
+            connectStopRequest(blockPage);
             analysisPage = blockPage;
         }
 
@@ -360,6 +365,7 @@ bool Solver::loadProject()
                         {
                             onComputeGeoStressRegression(node);
                         });
+            connectStopRequest(geoPage);
             }
             else if (auto* supportPage = dynamic_cast<CaveSupportComputationPage*>(page))
             {
@@ -368,6 +374,7 @@ bool Solver::loadProject()
                         {
                             onComputeCaveExcavation(analysisNode);
                         });
+            connectStopRequest(supportPage);
             }
             else if (auto* blockPage = dynamic_cast<CaveBlockStabilityWidget*>(page))
             {
@@ -376,6 +383,7 @@ bool Solver::loadProject()
                         {
                             onComputeCaveBlockStability(node);
                         });
+            connectStopRequest(blockPage);
             }
             const QJsonObject childState = childObj.value("state").toObject();
             page->loadJson(childState);
@@ -784,6 +792,7 @@ void Solver::addGeoStressRegressionNode(ProjectNode* analysisNode, bool setCurre
             {
                 onComputeGeoStressRegression(node);
             });
+            connectStopRequest(page);
 
     addGeoStressSideFaceNode(node, false);
     addGeoStressMeasurePointNode(node, false);
@@ -914,6 +923,7 @@ void Solver::addCaveSupportComputationNode(ProjectNode* analysisNode, bool setCu
             {
                 onComputeCaveExcavation(analysisNode);
             });
+            connectStopRequest(page);
     addCaveExcavationBodyNode(node, false);
 
     if (setCurrent)
@@ -970,6 +980,7 @@ void Solver::addCaveBlockStabilityNode(ProjectNode* analysisNode, bool setCurren
             {
                 onComputeCaveBlockStability(node);
             });
+            connectStopRequest(page);
     addCaveBlockPlaneNode(node, false);
 
     if (setCurrent)
@@ -1012,6 +1023,7 @@ void Solver::onSeepageAction()
             {
                 onComputeSeepage(analysisNode);
             });
+            connectStopRequest(seepagePage);
 
     auto addBoundary = [&](const QString& name, const QString& pageType, const QString& fileName)
     {
@@ -1045,6 +1057,7 @@ void Solver::onStressStrainAction()
             {
                 onComputeStressStrain(analysisNode);
             });
+            connectStopRequest(stressPage);
 
     auto addBoundary = [&](const QString& name, const QString& pageType, const QString& fileName)
     {
@@ -1097,6 +1110,7 @@ void Solver::onCaveBlockStabilityAction()
             {
                 onComputeCaveBlockStability(analysisNode);
             });
+            connectStopRequest(blockPage);
 
     addCaveBlockPlaneNode(analysisNode, false);
 
@@ -1120,6 +1134,7 @@ void Solver::onSlopeStabilityAction()
             {
                 onComputeSlopeStability(analysisNode);
             });
+            connectStopRequest(slopePage);
 
     m_root->addChild(analysisNode);
     if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
@@ -1128,6 +1143,7 @@ void Solver::onSlopeStabilityAction()
 
 void Solver::onComputeSeepage(ProjectNode* analysisNode)
 {
+    m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     QFile iautoFile(QDir(projectDir).absoluteFilePath("MESG_IAUTO.DAT"));
@@ -1180,6 +1196,7 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
 
 void Solver::onComputeStressStrain(ProjectNode* analysisNode)
 {
+    m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     QFile iautoFile(QDir(projectDir).absoluteFilePath("MESG_IAUTO.DAT"));
@@ -1245,6 +1262,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
 
 void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 {
+    m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     QFile iautoFile(QDir(projectDir).absoluteFilePath("MESG_IAUTO.DAT"));
@@ -1477,6 +1495,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 
 void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
 {
+    m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
     if (!beginCommonCompute(analysisNode, "边坡分析"))
         return;
 
@@ -1492,6 +1511,7 @@ void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
 
 void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
 {
+    m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     QFile iautoFile(QDir(projectDir).absoluteFilePath("MESG_IAUTO.DAT"));
@@ -1520,6 +1540,7 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
 
 void Solver::onComputeCaveBlockStability(ProjectNode* analysisNode)
 {
+    m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
     if (!analysisNode || !analysisNode->getPage())
         return;
 
@@ -1551,6 +1572,49 @@ void Solver::onComputeCaveBlockStability(ProjectNode* analysisNode)
                              "生成滑块文件失败，请检查 SliderCase 目录与参数设置。");
 }
 
+
+void Solver::connectStopRequest(QObject* page) const
+{
+    if (!page || page->metaObject()->indexOfSignal("stopRequested()") < 0)
+        return;
+
+    connect(page, SIGNAL(stopRequested()), this, SLOT(stopSolverExecutable()), Qt::UniqueConnection);
+}
+
+void Solver::setComputeWidgetRunning(QWidget* widget, bool computing) const
+{
+    if (!widget)
+        return;
+
+    QMetaObject::invokeMethod(widget, "setComputing", Qt::DirectConnection, Q_ARG(bool, computing));
+}
+
+void Solver::finishSolverProcess(bool terminateProcess)
+{
+    if (terminateProcess)
+        QProcess::execute("taskkill", {"-f", "-im", "PCCAE_CPU.exe"});
+
+    if (m_solverProcess)
+    {
+        m_solverProcess->disconnect(this);
+        if (terminateProcess && m_solverProcess->state() != QProcess::NotRunning)
+        {
+            m_solverProcess->kill();
+            m_solverProcess->waitForFinished(3000);
+        }
+        m_solverProcess->deleteLater();
+        m_solverProcess = nullptr;
+    }
+
+    setComputeWidgetRunning(m_activeComputeWidget, false);
+    m_activeComputeWidget = nullptr;
+}
+
+void Solver::stopSolverExecutable()
+{
+    finishSolverProcess(true);
+}
+
 bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analysisType)
 {
     if (!analysisNode)
@@ -1563,7 +1627,10 @@ bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analys
         return false;
     }
 
-    QProcess::execute("taskkill", {"-f", "-im", "PCCAE_CPU.exe"});
+    if (m_solverProcess)
+        finishSolverProcess(true);
+    else
+        QProcess::execute("taskkill", {"-f", "-im", "PCCAE_CPU.exe"});
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
@@ -1638,7 +1705,10 @@ bool Solver::launchSolverExecutable(const QString& analysisType)
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QProcess::execute("taskkill", {"-f", "-im", "PCCAE_CPU.exe"});
+    if (m_solverProcess)
+        finishSolverProcess(true);
+    else
+        QProcess::execute("taskkill", {"-f", "-im", "PCCAE_CPU.exe"});
 
     const int solverMode = solverModeFromAnalysisType(analysisType);
     if (solverMode > 0)
@@ -1662,13 +1732,8 @@ bool Solver::launchSolverExecutable(const QString& analysisType)
         }
     }
 
-    if (m_solverProcess)
-    {
-        m_solverProcess->disconnect(this);
-        m_solverProcess->kill();
-        m_solverProcess->deleteLater();
-        m_solverProcess = nullptr;
-    }
+    m_activeComputeWidget = m_pendingComputeWidget;
+    m_pendingComputeWidget = nullptr;
 
     m_solverProcess = new QProcess(this);
     m_solverProcess->setWorkingDirectory(QDir(projectDir).absolutePath());
@@ -1684,16 +1749,7 @@ bool Solver::launchSolverExecutable(const QString& analysisType)
         {
             qInfo().noquote() << ("__RAW__" + output);
             if (output.contains("结束进程"))
-            {
-                QProcess::execute("taskkill", {"-f", "-im", "PCCAE_CPU.exe"});
-                if (m_solverProcess)
-                {
-                    m_solverProcess->disconnect(this);
-                    m_solverProcess->kill();
-                    m_solverProcess->deleteLater();
-                    m_solverProcess = nullptr;
-                }
-            }
+                finishSolverProcess(true);
         }
     });
 
@@ -1703,11 +1759,7 @@ bool Solver::launchSolverExecutable(const QString& analysisType)
     connect(m_solverProcess,
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
             [this](int, QProcess::ExitStatus) {
-                if (m_solverProcess)
-                {
-                    m_solverProcess->deleteLater();
-                    m_solverProcess = nullptr;
-                }
+                finishSolverProcess(false);
             });
 
     m_solverProcess->start();
@@ -1717,12 +1769,11 @@ bool Solver::launchSolverExecutable(const QString& analysisType)
                              QString("%1启动求解器进程失败：%2")
                                  .arg(analysisType, m_solverProcess->errorString()));
         
-        m_solverProcess->deleteLater();
-        m_solverProcess = nullptr;
+        finishSolverProcess(false);
         return false;
     }
 
-    
+    setComputeWidgetRunning(m_activeComputeWidget, true);
     return true;
 }
 
