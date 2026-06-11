@@ -75,8 +75,12 @@ void ProbeSettingsWidget::beforeLoad()
 
 void ProbeSettingsWidget::beforeUnload()
 {
-    // 离开页面：只解绑观察者，不清表，不销毁 picker
-    unhookInteractor();
+    // 离开页面时关闭复选框，同时通过 toggled(false) 关闭拾取功能。
+    // 不清表、不销毁 picker，保留已有拾取结果。
+    if (ui->enableProbeCheckBox && ui->enableProbeCheckBox->isChecked())
+        ui->enableProbeCheckBox->setChecked(false);
+    else
+        unhookInteractor();
 }
 
 bool ProbeSettingsWidget::ensureVisualService()

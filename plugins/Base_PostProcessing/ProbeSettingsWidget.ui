@@ -39,6 +39,13 @@
       </widget>
      </item>
      <item>
+      <widget class="QPushButton" name="clearPushButton">
+       <property name="text">
+        <string>清空</string>
+       </property>
+      </widget>
+     </item>
+     <item>
       <spacer name="toolbarSpacer">
        <property name="orientation">
         <enum>Qt::Orientation::Horizontal</enum>
@@ -50,13 +57,6 @@
         </size>
        </property>
       </spacer>
-     </item>
-     <item>
-      <widget class="QPushButton" name="clearPushButton">
-       <property name="text">
-        <string>清空</string>
-       </property>
-      </widget>
      </item>
     </layout>
    </item>
