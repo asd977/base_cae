@@ -1,5 +1,6 @@
-﻿#include "ProbeSettingsWidget.h"
+#include "ProbeSettingsWidget.h"
 
+#include <ServiceRegistry.h>
 #include <services/VisualWidgetService.h>
 #include <vtkActor.h>
 #include <vtkAlgorithm.h>
@@ -12,6 +13,7 @@
 #include <vtkDataSet.h>
 #include <vtkDataSetMapper.h>
 #include <vtkLookupTable.h>
+#include <vtkNew.h>
 #include <vtkMapper.h>
 #include <vtkPointData.h>
 #include <vtkPointLocator.h>
@@ -22,20 +24,13 @@
 #include <vtkRendererCollection.h>
 #include <vtkScalarBarActor.h>
 
+#include <QDebug>
 #include <QHeaderView>
 #include <QTableWidget>
 #include <cmath>
+#include <limits>
 
 #include "ui_ProbeSettingsWidget.h"
-
-// 小工具：把 VTK 回调转发到 this
-namespace
-{
-struct ClickPayload
-{
-    ProbeSettingsWidget* self{nullptr};
-};
-} // namespace
 
 static inline QString sci(double v, int prec = 6)
 {
@@ -71,6 +66,8 @@ ProbeSettingsWidget::~ProbeSettingsWidget()
 
 void ProbeSettingsWidget::beforeLoad()
 {
+    ensureVisualService();
+
     // 回到页面时，如果 UI 上是开启状态，就确保已 hook
     if (ui->enableProbeCheckBox && ui->enableProbeCheckBox->isChecked() && !m_hooked)
         hookInteractor();
@@ -82,9 +79,22 @@ void ProbeSettingsWidget::beforeUnload()
     unhookInteractor();
 }
 
+bool ProbeSettingsWidget::ensureVisualService()
+{
+    if (!m_visualService)
+        m_visualService = ServiceRegistry::instance().getService<VisualWidgetService>();
+
+    if (!m_visualService)
+        qWarning() << "[ProbeSettingsWidget] VisualWidgetService is not available.";
+
+    return m_visualService != nullptr;
+}
+
 void ProbeSettingsWidget::hookInteractor()
 {
     if (m_hooked)
+        return;
+    if (!ensureVisualService())
         return;
     auto rw = m_visualService ? m_visualService->renderWindow() : nullptr;
     if (!rw)
@@ -94,14 +104,13 @@ void ProbeSettingsWidget::hookInteractor()
         return;
 
     auto cb = vtkSmartPointer<vtkCallbackCommand>::New();
-    auto payload = new ClickPayload{this}; // 交由 callback 生命周期管理
-    cb->SetClientData(payload);
+    cb->SetClientData(this);
     cb->SetCallback(
         [](vtkObject* caller, unsigned long eid, void* clientData, void* callData)
         {
             Q_UNUSED(callData);
-            auto p = static_cast<ClickPayload*>(clientData);
-            if (!p || !p->self)
+            auto self = static_cast<ProbeSettingsWidget*>(clientData);
+            if (!self)
                 return;
             auto iren = static_cast<vtkRenderWindowInteractor*>(caller);
             if (!iren)
@@ -111,11 +120,11 @@ void ProbeSettingsWidget::hookInteractor()
             // 左键按下触发
             if (eid == vtkCommand::LeftButtonPressEvent)
             {
-                p->self->handlePick(x, y);
+                self->handlePick(x, y);
             }
         });
 
-    iren->AddObserver(vtkCommand::LeftButtonPressEvent, cb);
+    iren->AddObserver(vtkCommand::LeftButtonPressEvent, cb, 1.0f);
     m_clickObserver = cb;
     m_hooked = true;
 }
@@ -138,17 +147,40 @@ void ProbeSettingsWidget::unhookInteractor()
 
 void ProbeSettingsWidget::handlePick(int displayX, int displayY)
 {
+    if (!ensureVisualService())
+        return;
+
     auto rw = m_visualService ? m_visualService->renderWindow() : nullptr;
     if (!rw)
         return;
-    auto rc = rw->GetRenderers();
-    if (!rc || rc->GetNumberOfItems() == 0)
-        return;
-    auto ren = rc->GetFirstRenderer();
-    if (!ren)
-        return;
 
-    if (!m_picker->Pick(displayX, displayY, 0.0, ren))
+    vtkRenderer* ren = m_visualService ? m_visualService->renderer() : nullptr;
+
+    bool picked = false;
+    if (ren)
+        picked = m_picker->Pick(displayX, displayY, 0.0, ren) != 0;
+
+    if (!picked)
+    {
+        auto rc = rw->GetRenderers();
+        if (!rc || rc->GetNumberOfItems() == 0)
+            return;
+
+        rc->InitTraversal();
+        while (auto* candidate = rc->GetNextItem())
+        {
+            if (candidate == ren)
+                continue;
+            if (m_picker->Pick(displayX, displayY, 0.0, candidate))
+            {
+                ren = candidate;
+                picked = true;
+                break;
+            }
+        }
+    }
+
+    if (!picked)
         return;
 
     double pos[3];

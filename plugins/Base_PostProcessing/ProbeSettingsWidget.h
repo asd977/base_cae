@@ -38,6 +38,7 @@ class ProbeSettingsWidget : public BasePage
 
   private:
     // 绑定/解绑交互回调
+    bool ensureVisualService();
     void hookInteractor();
     void unhookInteractor();
 

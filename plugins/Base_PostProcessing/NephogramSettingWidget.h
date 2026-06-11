@@ -1,4 +1,4 @@
-#ifndef NEPHOGRAMSETTINGWIDGET_H
+﻿#ifndef NEPHOGRAMSETTINGWIDGET_H
 #define NEPHOGRAMSETTINGWIDGET_H
 
 #include <BasePage.h>
@@ -40,16 +40,9 @@ class NephogramSettingWidget : public BasePage
 
   private slots:
     // 单图模式
-    void on_pushButton_clicked();
     void on_stepComboBox_currentIndexChanged(int index);
     void on_scalarComboBox_currentIndexChanged(int index);
     void on_resultDirComboBox_currentIndexChanged(int index);
-
-    // 对比模式 UI 槽
-    void on_compareEnableCheckBox_toggled(bool checked);
-    void on_leftStepComboBox_currentIndexChanged(int index);
-    void on_rightStepComboBox_currentIndexChanged(int index);
-    void on_splitSlider_valueChanged(int value);
 
   private:
     // 单图辅助
@@ -64,16 +57,6 @@ class NephogramSettingWidget : public BasePage
     // 全局结果规则
     void openResultRuleConfigDialog();
 
-    // 对比辅助
-    void enterCompareMode();
-    void exitCompareMode();
-    void updateCompare();
-    void updateViewports(double ratio); // 0~1
-    void syncScalarBarForCompare(vtkDataArray* leftArr, vtkDataArray* rightArr);
-    void fillCompareCombosFromSteps();
-    vtkSmartPointer<vtkUnstructuredGrid> loadGridFromTecplot(const QString& fileName);
-    vtkSmartPointer<vtkUnstructuredGrid> loadGridFromFile(const QString& fileName);
-    QString resultDirectory() const;
     vtkDataArray* findScalarArray(vtkUnstructuredGrid* grid, const QString& scalarName,
                                   bool& usePointData) const;
     void updateLookupTableRange(vtkLookupTable* lut, double minV, double maxV) const;
@@ -89,24 +72,6 @@ class NephogramSettingWidget : public BasePage
     vtkSmartPointer<vtkDataSetMapper> m_mapper;
     vtkSmartPointer<vtkUnstructuredGrid> m_grid;
 
-    // —— 对比对象 ——
-    bool m_compareEnabled{false};
-    double m_splitRatio{0.5}; // 0~1
-
-    vtkSmartPointer<vtkRenderer> m_leftRen;
-    vtkSmartPointer<vtkRenderer> m_rightRen;
-
-    // 保存基础渲染器（持有 ScalarBar），用于分层覆盖
-    vtkSmartPointer<vtkRenderer> m_baseRenderer;
-
-    vtkSmartPointer<vtkActor> m_leftActor;
-    vtkSmartPointer<vtkActor> m_rightActor;
-
-    vtkSmartPointer<vtkDataSetMapper> m_leftMapper;
-    vtkSmartPointer<vtkDataSetMapper> m_rightMapper;
-
-    vtkSmartPointer<vtkUnstructuredGrid> m_leftGrid;
-    vtkSmartPointer<vtkUnstructuredGrid> m_rightGrid;
 
     // —— 状态/路径 ——
     QString m_dataPath;

@@ -104,40 +104,16 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
     connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &NephogramSettingWidget::on_resultDirComboBox_currentIndexChanged);
 
-    connect(ui->compareEnableCheckBox, &QCheckBox::toggled, this,
-            &NephogramSettingWidget::on_compareEnableCheckBox_toggled);
-    connect(ui->leftStepComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &NephogramSettingWidget::on_leftStepComboBox_currentIndexChanged);
-    connect(ui->rightStepComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &NephogramSettingWidget::on_rightStepComboBox_currentIndexChanged);
-    connect(ui->splitSlider, &QSlider::valueChanged, this,
-            &NephogramSettingWidget::on_splitSlider_valueChanged);
-
-    if (ui->splitSlider->minimum() != 5 || ui->splitSlider->maximum() != 95)
-    {
-        ui->splitSlider->setMinimum(5);
-        ui->splitSlider->setMaximum(95);
-        ui->splitSlider->setValue(50);
-    }
 
     connect(ui->contourEnableCheckBox, &QCheckBox::toggled, this, [this](bool) {
-        if (!m_compareEnabled)
-            updateNephogram(ui->scalarComboBox->currentText());
+        updateNephogram(ui->scalarComboBox->currentText());
     });
     connect(ui->contourLevelsSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int) {
-        if (!m_compareEnabled)
-            updateNephogram(ui->scalarComboBox->currentText());
+        updateNephogram(ui->scalarComboBox->currentText());
     });
     connect(ui->contourLabelCheckBox, &QCheckBox::toggled, this, [this](bool) {
-        if (!m_compareEnabled)
-            updateNephogram(ui->scalarComboBox->currentText());
+        updateNephogram(ui->scalarComboBox->currentText());
     });
-
-    m_compareEnabled = false;
-    ui->compareEnableCheckBox->setChecked(false);
-    ui->compareEnableCheckBox->setEnabled(false);
-    ui->pushButton_2->hide();
-    ui->widget->hide();
 
     ResultRuleManager::instance().ensureLoaded();
     initResultDirectoryOptions();
@@ -334,7 +310,6 @@ void NephogramSettingWidget::loadFileName(const QString& dataPath)
     {
         qWarning() << "Directory not found:" << dataPath;
         ui->stepComboBox->blockSignals(false);
-        fillCompareCombosFromSteps();
         return;
     }
 
@@ -399,7 +374,6 @@ void NephogramSettingWidget::loadFileName(const QString& dataPath)
         qWarning() << "No configured result files found in" << dataPath;
     }
 
-    fillCompareCombosFromSteps();
 }
 
 void NephogramSettingWidget::on_resultDirComboBox_currentIndexChanged(int)
@@ -410,10 +384,7 @@ void NephogramSettingWidget::on_resultDirComboBox_currentIndexChanged(int)
 
 void NephogramSettingWidget::on_scalarComboBox_currentIndexChanged(int)
 {
-    if (m_compareEnabled)
-        updateCompare();
-    else
-        updateNephogram(ui->scalarComboBox->currentText());
+    updateNephogram(ui->scalarComboBox->currentText());
 }
 
 void NephogramSettingWidget::readTecplot(const QString& fileName)
@@ -538,59 +509,6 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName)
         rw->Render();
 }
 
-vtkSmartPointer<vtkUnstructuredGrid>
-NephogramSettingWidget::loadGridFromTecplot(const QString& fileName)
-{
-    auto reader = vtkSmartPointer<vtkTecplotReader>::New();
-    reader->SetFileName(fileName.toUtf8().constData());
-    reader->Update();
-
-    auto multi = reader->GetOutput();
-
-    if (!multi || multi->GetNumberOfBlocks() <= 0)
-        return nullptr;
-
-    auto appender = vtkSmartPointer<vtkAppendFilter>::New();
-
-    int addedBlocks = 0;
-    for (int i = 0; i < multi->GetNumberOfBlocks(); ++i)
-    {
-        if (auto* block = vtkUnstructuredGrid::SafeDownCast(multi->GetBlock(i)))
-        {
-            appender->AddInputData(block);
-            ++addedBlocks;
-        }
-    }
-
-    if (addedBlocks == 0)
-        return nullptr;
-
-    appender->Update();
-    return appender->GetOutput();
-}
-
-vtkSmartPointer<vtkUnstructuredGrid>
-NephogramSettingWidget::loadGridFromFile(const QString& fileName)
-{
-    if (fileName.isEmpty())
-        return nullptr;
-
-    if (QFileInfo(fileName).suffix().compare(QStringLiteral("vtu"), Qt::CaseInsensitive) == 0)
-    {
-        auto reader = vtkSmartPointer<vtkXMLUnstructuredGridReader>::New();
-        reader->SetFileName(fileName.toUtf8().constData());
-        reader->Update();
-        return reader->GetOutput();
-    }
-
-    return loadGridFromTecplot(fileName);
-}
-
-QString NephogramSettingWidget::resultDirectory() const
-{
-    return selectedResultDirectoryPath();
-}
-
 void NephogramSettingWidget::initResultDirectoryOptions()
 {
     ResultRuleManager::instance().ensureLoaded();
@@ -646,250 +564,6 @@ QString NephogramSettingWidget::selectedResultDirectoryPath() const
         return projectDir;
 
     return QDir(projectDir).filePath(dirName);
-}
-
-void NephogramSettingWidget::enterCompareMode()
-{
-    if (m_leftRen && m_rightRen)
-        return;
-
-    auto* rw = m_visualService->renderWindow();
-    if (!rw)
-        return;
-
-    vtkRenderer* baseRen = rw->GetRenderers()->GetFirstRenderer();
-
-    if (!baseRen)
-        return;
-
-    m_baseRenderer = baseRen;
-
-    rw->SetNumberOfLayers(std::max(rw->GetNumberOfLayers(), 2));
-
-    m_baseRenderer->SetLayer(1);
-    m_baseRenderer->SetErase(false);
-
-    clearContourOverlay();
-
-    if (m_actorAttached)
-    {
-        removeActorByService(m_visualService, m_actor);
-        m_actorAttached = false;
-    }
-
-    m_leftRen = vtkSmartPointer<vtkRenderer>::New();
-    m_rightRen = vtkSmartPointer<vtkRenderer>::New();
-
-    m_leftRen->SetActiveCamera(m_baseRenderer->GetActiveCamera());
-    m_rightRen->SetActiveCamera(m_baseRenderer->GetActiveCamera());
-
-    double bg[3];
-    m_baseRenderer->GetBackground(bg);
-    m_leftRen->SetBackground(bg);
-    m_rightRen->SetBackground(bg);
-
-    m_leftRen->SetLayer(0);
-    m_rightRen->SetLayer(0);
-
-    rw->AddRenderer(m_leftRen);
-    rw->AddRenderer(m_rightRen);
-
-    m_leftActor = vtkSmartPointer<vtkActor>::New();
-    m_rightActor = vtkSmartPointer<vtkActor>::New();
-    m_leftMapper = vtkSmartPointer<vtkDataSetMapper>::New();
-    m_rightMapper = vtkSmartPointer<vtkDataSetMapper>::New();
-
-    m_leftActor->SetMapper(m_leftMapper);
-    m_rightActor->SetMapper(m_rightMapper);
-
-    m_leftRen->AddActor(m_leftActor);
-    m_rightRen->AddActor(m_rightActor);
-
-    updateViewports(m_splitRatio);
-}
-
-void NephogramSettingWidget::exitCompareMode()
-{
-    auto* rw = m_visualService->renderWindow();
-
-    if (m_baseRenderer)
-    {
-        m_baseRenderer->SetLayer(0);
-        m_baseRenderer->SetErase(true);
-    }
-
-    if (rw)
-    {
-        if (m_leftRen)
-            rw->RemoveRenderer(m_leftRen);
-
-        if (m_rightRen)
-            rw->RemoveRenderer(m_rightRen);
-    }
-
-    m_leftRen = nullptr;
-    m_rightRen = nullptr;
-    m_leftActor = nullptr;
-    m_rightActor = nullptr;
-    m_leftMapper = nullptr;
-    m_rightMapper = nullptr;
-    m_leftGrid = nullptr;
-    m_rightGrid = nullptr;
-    m_baseRenderer = nullptr;
-
-    ensureActorAttached();
-}
-
-void NephogramSettingWidget::updateViewports(double ratio)
-{
-    ratio = std::min(std::max(ratio, 0.05), 0.95);
-
-    if (m_leftRen)
-        m_leftRen->SetViewport(0.0, 0.0, ratio, 1.0);
-
-    if (m_rightRen)
-        m_rightRen->SetViewport(ratio, 0.0, 1.0, 1.0);
-}
-
-void NephogramSettingWidget::syncScalarBarForCompare(vtkDataArray* leftArr, vtkDataArray* rightArr)
-{
-    if (!leftArr || !rightArr)
-        return;
-
-    double rL[2], rR[2];
-    leftArr->GetRange(rL);
-    rightArr->GetRange(rR);
-
-    const double minV = std::min(rL[0], rR[0]);
-    const double maxV = std::max(rL[1], rR[1]);
-
-    vtkScalarBarActor* scalarBar = m_visualService ? m_visualService->scalarBarActor() : nullptr;
-
-    if (!scalarBar)
-        return;
-
-    if (m_visualService)
-        m_visualService->showScalarBar(true, false);
-
-    scalarBar->SetWidth(0.08);
-    scalarBar->SetHeight(0.5);
-    scalarBar->SetPosition(0.90, 0.25);
-    scalarBar->GetTitleTextProperty()->SetColor(0.0, 0.0, 0.0);
-    scalarBar->GetLabelTextProperty()->SetColor(0.0, 0.0, 0.0);
-
-    if (auto* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable()))
-    {
-        updateLookupTableRange(lut, minV, maxV);
-        scalarBar->SetTitle(m_currentArrayName.toUtf8().constData());
-
-        bool usePointLeft = true;
-        bool usePointRight = true;
-
-        findScalarArray(m_leftGrid, m_currentArrayName, usePointLeft);
-        findScalarArray(m_rightGrid, m_currentArrayName, usePointRight);
-
-        configureMapper(m_leftMapper, m_currentArrayName, usePointLeft, minV, maxV, lut);
-        configureMapper(m_rightMapper, m_currentArrayName, usePointRight, minV, maxV, lut);
-    }
-}
-
-void NephogramSettingWidget::updateCompare()
-{
-    if (!m_leftRen || !m_rightRen)
-        return;
-
-    const QString scalar = ui->scalarComboBox->currentText();
-
-    if (scalar.isEmpty())
-        return;
-
-    m_currentArrayName = scalar;
-
-    auto fileByStep = [&](const QString& stepText) -> QString
-    {
-        return m_stepFileMap.value(stepText);
-    };
-
-    const QString leftStep = ui->leftStepComboBox->currentText();
-    const QString rightStep = ui->rightStepComboBox->currentText();
-
-    if (leftStep.isEmpty() || rightStep.isEmpty())
-        return;
-
-    m_leftGrid = loadGridFromFile(fileByStep(leftStep));
-    m_rightGrid = loadGridFromFile(fileByStep(rightStep));
-
-    if (!m_leftGrid || !m_rightGrid)
-    {
-        qWarning() << "Failed to load compare grids:" << leftStep << rightStep;
-        return;
-    }
-
-    bool usePointLeft = true;
-    bool usePointRight = true;
-
-    auto* leftArr = findScalarArray(m_leftGrid, scalar, usePointLeft);
-    auto* rightArr = findScalarArray(m_rightGrid, scalar, usePointRight);
-
-    if (!leftArr || !rightArr)
-    {
-        qWarning() << "Scalar not found in left/right:" << scalar;
-        return;
-    }
-
-    syncScalarBarForCompare(leftArr, rightArr);
-
-    m_leftMapper->SetInputData(m_leftGrid);
-    m_rightMapper->SetInputData(m_rightGrid);
-
-    m_leftActor->GetProperty()->SetRepresentationToSurface();
-    m_rightActor->GetProperty()->SetRepresentationToSurface();
-
-    if (auto* rw = m_visualService ? m_visualService->renderWindow() : nullptr)
-        rw->Render();
-}
-
-void NephogramSettingWidget::fillCompareCombosFromSteps()
-{
-    QStringList steps;
-
-    for (int i = 0; i < ui->stepComboBox->count(); ++i)
-        steps << ui->stepComboBox->itemText(i);
-
-    ui->leftStepComboBox->blockSignals(true);
-    ui->rightStepComboBox->blockSignals(true);
-
-    ui->leftStepComboBox->clear();
-    ui->rightStepComboBox->clear();
-
-    ui->leftStepComboBox->addItems(steps);
-    ui->rightStepComboBox->addItems(steps);
-
-    if (ui->leftStepComboBox->count() > 0)
-        ui->leftStepComboBox->setCurrentIndex(0);
-
-    if (ui->rightStepComboBox->count() > 1)
-        ui->rightStepComboBox->setCurrentIndex(ui->rightStepComboBox->count() - 1);
-
-    ui->leftStepComboBox->blockSignals(false);
-    ui->rightStepComboBox->blockSignals(false);
-}
-
-void NephogramSettingWidget::on_compareEnableCheckBox_toggled(bool)
-{
-    m_compareEnabled = false;
-}
-
-void NephogramSettingWidget::on_leftStepComboBox_currentIndexChanged(int)
-{
-}
-
-void NephogramSettingWidget::on_rightStepComboBox_currentIndexChanged(int)
-{
-}
-
-void NephogramSettingWidget::on_splitSlider_valueChanged(int)
-{
 }
 
 vtkDataArray* NephogramSettingWidget::findScalarArray(vtkUnstructuredGrid* grid,
@@ -965,9 +639,6 @@ void NephogramSettingWidget::configureMapper(vtkDataSetMapper* mapper, const QSt
     mapper->InterpolateScalarsBeforeMappingOn();
 }
 
-void NephogramSettingWidget::on_pushButton_clicked()
-{
-}
 
 QJsonObject NephogramSettingWidget::saveJson()
 {
