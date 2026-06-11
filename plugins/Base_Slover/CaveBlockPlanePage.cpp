@@ -126,8 +126,7 @@ CaveBlockPlanePage::CaveBlockPlanePage(QWidget* parent)
                 [this]()
                 {
                     m_selectedFaceKey = kInvalidFaceKey;
-                    PickManager::instance().setSelectedFaceKeys(
-                        getPageType(), m_uuid, currentGridKind(), {}, true);
+                    PickManager::instance().clearSelection(getPageType(), m_uuid, currentPickMode());
                     if (ui->faceStatusLabel)
                         ui->faceStatusLabel->setText(QStringLiteral("未选择切割面"));
                 });
@@ -150,8 +149,7 @@ void CaveBlockPlanePage::beforeLoad()
     connect(&PickManager::instance(), &PickManager::selectionChanged, this,
             &CaveBlockPlanePage::onPickSelectionChanged, Qt::UniqueConnection);
 
-    enforceSingleSelectedFace();
-    syncPointsFromSelectedFace();
+    normalizeAndSyncSelectedFace();
 }
 
 void CaveBlockPlanePage::beforeUnload()
@@ -257,7 +255,6 @@ double CaveBlockPlanePage::pickedFaceArea()
     const auto keys = selectedFaceKeys();
     if (!keys.isEmpty())
     {
-        PickManager::instance().updateStructure();
         vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
         const QVector<vtkIdType> pids = pointIdsOfFace(grid, keys.first());
         QVector<QVector3D> pts;
@@ -296,7 +293,6 @@ void CaveBlockPlanePage::syncPointsFromSelectedFace()
         return;
     }
 
-    PickManager::instance().updateStructure();
     vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
     const QVector<vtkIdType> pids = pointIdsOfFace(grid, keys.first());
     if (!grid || pids.size() < 3)
@@ -342,7 +338,24 @@ QVector<vtkIdType> CaveBlockPlanePage::selectedFaceKeys()
         currentGridKind());
 }
 
-void CaveBlockPlanePage::enforceSingleSelectedFace()
+vtkIdType CaveBlockPlanePage::chooseSingleFaceKey(const QVector<vtkIdType>& keys) const
+{
+    if (keys.isEmpty())
+        return kInvalidFaceKey;
+
+    if (m_selectedFaceKey != kInvalidFaceKey)
+    {
+        for (vtkIdType key : keys)
+        {
+            if (key != m_selectedFaceKey)
+                return key;
+        }
+    }
+
+    return keys.first();
+}
+
+void CaveBlockPlanePage::normalizeAndSyncSelectedFace()
 {
     if (m_enforcingSingleFace)
         return;
@@ -351,30 +364,32 @@ void CaveBlockPlanePage::enforceSingleSelectedFace()
     if (keys.isEmpty())
     {
         m_selectedFaceKey = kInvalidFaceKey;
+        syncPointsFromSelectedFace();
         return;
     }
 
-    vtkIdType keep = keys.first();
-    if (m_selectedFaceKey != kInvalidFaceKey)
+    const vtkIdType keep = chooseSingleFaceKey(keys);
+    if (keep == kInvalidFaceKey)
     {
-        for (vtkIdType key : keys)
-        {
-            if (key != m_selectedFaceKey)
-            {
-                keep = key;
-                break;
-            }
-        }
+        m_selectedFaceKey = kInvalidFaceKey;
+        syncPointsFromSelectedFace();
+        return;
     }
 
+    const bool alreadySingle = (keys.size() == 1 && keys.first() == keep);
     m_selectedFaceKey = keep;
-    if (keys.size() == 1 && keys.first() == keep)
-        return;
 
-    m_enforcingSingleFace = true;
-    PickManager::instance().setSelectedFaceKeys(
-        getPageType(), m_uuid, currentGridKind(), QVector<vtkIdType>{keep}, true);
-    m_enforcingSingleFace = false;
+    // PickManager 的点击逻辑是 toggle。点击第二个面时，集合会临时变成“旧面 + 新面”。
+    // 这里只在确实出现多个面时写回，避免 selectionChanged -> setSelectedFaceKeys 的递归。
+    if (!alreadySingle)
+    {
+        m_enforcingSingleFace = true;
+        PickManager::instance().setSelectedFaceKeys(
+            getPageType(), m_uuid, currentGridKind(), QVector<vtkIdType>{keep}, true);
+        m_enforcingSingleFace = false;
+    }
+
+    syncPointsFromSelectedFace();
 }
 
 void CaveBlockPlanePage::onPickSelectionChanged(const QString& domain,
@@ -386,6 +401,5 @@ void CaveBlockPlanePage::onPickSelectionChanged(const QString& domain,
         kind != currentGridKind())
         return;
 
-    enforceSingleSelectedFace();
-    syncPointsFromSelectedFace();
+    normalizeAndSyncSelectedFace();
 }

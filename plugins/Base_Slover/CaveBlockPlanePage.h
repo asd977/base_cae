@@ -42,7 +42,8 @@ class CaveBlockPlanePage : public BasePage
     PickMode currentPickMode();
     GridKind currentGridKind();
     QVector<vtkIdType> selectedFaceKeys();
-    void enforceSingleSelectedFace();
+    vtkIdType chooseSingleFaceKey(const QVector<vtkIdType>& keys) const;
+    void normalizeAndSyncSelectedFace();
 
   private:
     Ui::CaveBlockPlanePage* ui = nullptr;
