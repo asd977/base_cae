@@ -7,11 +7,11 @@
     <x>0</x>
     <y>0</y>
     <width>420</width>
-    <height>360</height>
+    <height>280</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>读取轮廓图</string>
+   <string>洞室变形轮廓图</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="leftMargin">
@@ -38,7 +38,7 @@
       </sizepolicy>
      </property>
      <property name="text">
-      <string>轮廓图设置</string>
+      <string>洞室变形轮廓图设置</string>
      </property>
     </widget>
    </item>
@@ -62,7 +62,7 @@
      <item>
       <widget class="QGroupBox" name="fileGroupBox">
        <property name="title">
-        <string>SCR文件</string>
+        <string>数据文件</string>
        </property>
        <layout class="QVBoxLayout" name="fileVBoxLayout">
         <property name="leftMargin">
@@ -82,7 +82,7 @@
           <item>
            <widget class="QLineEdit" name="filePathLineEdit">
             <property name="placeholderText">
-             <string>选择 .SCR 文件</string>
+             <string>选择轮廓图 SCR 文件</string>
             </property>
             <property name="minimumSize">
              <size>
@@ -95,7 +95,7 @@
           <item>
            <widget class="QPushButton" name="browseButton">
             <property name="text">
-             <string>浏览</string>
+             <string>选择</string>
             </property>
            </widget>
           </item>
@@ -118,7 +118,7 @@
           <item>
            <widget class="QPushButton" name="loadButton">
             <property name="text">
-             <string>读取并显示</string>
+             <string>显示轮廓图</string>
             </property>
            </widget>
           </item>
@@ -203,7 +203,7 @@
         <item row="1" column="1">
          <widget class="QCheckBox" name="showTextCheckBox">
           <property name="text">
-           <string>显示TEXT标注</string>
+           <string>显示文字标注</string>
           </property>
           <property name="checked">
            <bool>false</bool>
@@ -236,106 +236,6 @@
             <width>10</width>
             <height>0</height>
            </size>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </widget>
-     </item>
-     <item>
-      <widget class="QGroupBox" name="summaryGroupBox">
-       <property name="title">
-        <string>读取信息</string>
-       </property>
-       <layout class="QFormLayout" name="summaryFormLayout">
-        <property name="leftMargin">
-         <number>9</number>
-        </property>
-        <property name="topMargin">
-         <number>9</number>
-        </property>
-        <property name="rightMargin">
-         <number>9</number>
-        </property>
-        <property name="bottomMargin">
-         <number>9</number>
-        </property>
-        <item row="0" column="0">
-         <widget class="QLabel" name="fileTitleLabel">
-          <property name="text">
-           <string>文件</string>
-          </property>
-         </widget>
-        </item>
-        <item row="0" column="1">
-         <widget class="QLabel" name="fileNameLabel">
-          <property name="text">
-           <string>未读取</string>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="0">
-         <widget class="QLabel" name="lineTitleLabel">
-          <property name="text">
-           <string>线段</string>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="1">
-         <widget class="QLabel" name="lineCountLabel">
-          <property name="text">
-           <string>0</string>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="0">
-         <widget class="QLabel" name="textTitleLabel">
-          <property name="text">
-           <string>文字</string>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="1">
-         <widget class="QLabel" name="textCountLabel">
-          <property name="text">
-           <string>0</string>
-          </property>
-         </widget>
-        </item>
-        <item row="3" column="0">
-         <widget class="QLabel" name="boundsTitleLabel">
-          <property name="text">
-           <string>范围</string>
-          </property>
-         </widget>
-        </item>
-        <item row="3" column="1">
-         <widget class="QLabel" name="boundsLabel">
-          <property name="text">
-           <string>-</string>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item row="4" column="0">
-         <widget class="QLabel" name="statusTitleLabel">
-          <property name="text">
-           <string>状态</string>
-          </property>
-         </widget>
-        </item>
-        <item row="4" column="1">
-         <widget class="QLabel" name="statusLabel">
-          <property name="text">
-           <string>未读取 SCR 文件。</string>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
           </property>
          </widget>
         </item>

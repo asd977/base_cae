@@ -100,7 +100,6 @@ class PostContourReaderWidget : public BasePage
     void buildLineActor();
     void buildTextActors();
     void removeActorsFromRenderer();
-    void updateSummary();
     void setStatusMessage(const QString& message);
 
     static QColor aciColor(int colorIndex);

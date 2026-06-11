@@ -856,7 +856,7 @@ void UiFrame::buildRibbonTabs()
             auto* actDice =
                 makeAction(this, ":/resources/menu/minimal/post-block.svg", "&切块");
             auto* actContourReader =
-                makeAction(this, ":/resources/menu/minimal/post-nephogram.svg", "&读取轮廓图");
+                makeAction(this, ":/resources/menu/minimal/post-nephogram.svg", "&洞室变形轮廓图");
 
             addActionToPanel(panel, actNeph, 3);
             addActionToPanel(panel, actVec, 3);

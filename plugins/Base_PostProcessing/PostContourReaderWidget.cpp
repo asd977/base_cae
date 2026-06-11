@@ -81,7 +81,7 @@ PostContourReaderWidget::PostContourReaderWidget(QWidget* parent)
     ui->showTextCheckBox->setChecked(false);
     ui->textFontSizeSpinBox->setEnabled(false);
 
-    updateSummary();
+    setStatusMessage(QStringLiteral("未选择轮廓图数据文件。"));
 }
 
 PostContourReaderWidget::~PostContourReaderWidget()
@@ -113,7 +113,7 @@ bool PostContourReaderWidget::ensureVisualService()
 
     if (!m_visualService)
     {
-        setStatusMessage(QStringLiteral("未找到后处理显示服务，无法显示 SCR 轮廓。"));
+        setStatusMessage(QStringLiteral("未找到后处理显示服务，无法显示洞室变形轮廓图。"));
         return false;
     }
 
@@ -128,7 +128,7 @@ void PostContourReaderWidget::onBrowseClicked()
 
     const QString filePath = QFileDialog::getOpenFileName(
         this,
-        QStringLiteral("选择 AutoCAD SCR 轮廓文件"),
+        QStringLiteral("选择洞室变形轮廓图数据文件"),
         startDir,
         QStringLiteral("AutoCAD Script (*.scr *.SCR);;所有文件 (*.*)"));
 
@@ -144,7 +144,7 @@ void PostContourReaderWidget::onLoadClicked()
 
     if (filePath.isEmpty())
     {
-        QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("请先选择 SCR 文件。"));
+        QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("请先选择轮廓图数据文件。"));
         return;
     }
 
@@ -153,18 +153,15 @@ void PostContourReaderWidget::onLoadClicked()
 
     if (!parseScrFile(filePath, parsed, &error))
     {
-        QMessageBox::warning(this, QStringLiteral("读取失败"), error);
+        QMessageBox::warning(this, QStringLiteral("显示失败"), error);
         setStatusMessage(error);
         return;
     }
 
     m_model = parsed;
-    updateSummary();
     displayModel(true);
 
-    setStatusMessage(QStringLiteral("已读取并显示：线段 %1 条，文字标注 %2 个。")
-                         .arg(m_model.lines.size())
-                         .arg(m_model.texts.size()));
+    setStatusMessage(QStringLiteral("已显示洞室变形轮廓图。"));
 }
 
 void PostContourReaderWidget::onClearClicked()
@@ -172,8 +169,7 @@ void PostContourReaderWidget::onClearClicked()
     removeActorsFromRenderer();
     m_model = ScrModel();
     m_linePolyData = vtkSmartPointer<vtkPolyData>::New();
-    updateSummary();
-    setStatusMessage(QStringLiteral("已清空 SCR 轮廓显示。"));
+    setStatusMessage(QStringLiteral("已清空洞室变形轮廓图。"));
 }
 
 void PostContourReaderWidget::onTextVisibleChanged(bool checked)
@@ -194,7 +190,7 @@ bool PostContourReaderWidget::parseScrFile(const QString& filePath,
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
     {
         if (errorMessage)
-            *errorMessage = QStringLiteral("无法打开 SCR 文件：%1").arg(filePath);
+            *errorMessage = QStringLiteral("无法打开轮廓图数据文件：%1").arg(filePath);
         return false;
     }
 
@@ -330,7 +326,7 @@ bool PostContourReaderWidget::parseScrFile(const QString& filePath,
     if (model.lines.isEmpty() && model.texts.isEmpty())
     {
         if (errorMessage)
-            *errorMessage = QStringLiteral("SCR 文件中没有解析到 LINE 或 TEXT：%1").arg(filePath);
+            *errorMessage = QStringLiteral("轮廓图数据文件中没有解析到线段或文字标注：%1").arg(filePath);
         return false;
     }
 
@@ -353,7 +349,7 @@ void PostContourReaderWidget::displayModel(bool resetCamera)
     auto* ren = m_visualService->renderer();
     if (!ren)
     {
-        setStatusMessage(QStringLiteral("后处理 renderer 为空，无法显示 SCR 轮廓。"));
+        setStatusMessage(QStringLiteral("后处理 renderer 为空，无法显示洞室变形轮廓图。"));
         return;
     }
 
@@ -475,41 +471,10 @@ void PostContourReaderWidget::removeActorsFromRenderer()
         rw->Render();
 }
 
-void PostContourReaderWidget::updateSummary()
-{
-    ui->fileNameLabel->setText(m_model.filePath.isEmpty()
-                                   ? QStringLiteral("未读取")
-                                   : QFileInfo(m_model.filePath).fileName());
-    ui->lineCountLabel->setText(QString::number(m_model.lines.size()));
-    ui->textCountLabel->setText(QString::number(m_model.texts.size()));
-
-    if (m_model.hasBounds)
-    {
-        ui->boundsLabel->setText(
-            QStringLiteral("X[%1, %2]\nY[%3, %4]\nZ[%5, %6]")
-                .arg(m_model.minX, 0, 'f', 3)
-                .arg(m_model.maxX, 0, 'f', 3)
-                .arg(m_model.minY, 0, 'f', 3)
-                .arg(m_model.maxY, 0, 'f', 3)
-                .arg(m_model.minZ, 0, 'f', 3)
-                .arg(m_model.maxZ, 0, 'f', 3));
-    }
-    else
-    {
-        ui->boundsLabel->setText(QStringLiteral("-"));
-    }
-
-    if (m_model.filePath.isEmpty())
-        setStatusMessage(QStringLiteral("未读取 SCR 文件。"));
-}
-
 void PostContourReaderWidget::setStatusMessage(const QString& message)
 {
     if (!ui)
         return;
-
-    if (ui->statusLabel)
-        ui->statusLabel->setText(message);
 
     qInfo() << "PostContourReaderWidget:" << message;
 }

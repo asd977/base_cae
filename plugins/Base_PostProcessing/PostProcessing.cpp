@@ -61,7 +61,7 @@ const QVector<PostNodeSpec>& postNodeSpecs()
         {"曲线", PublicConstants::kPagePostProcessCurve},
         {"动画", PublicConstants::kPagePostProcessAnimation},
         {"派生值", PublicConstants::kPagePostProcessDerivative},
-        {"读取轮廓图", PublicConstants::kPagePostProcessContourReader},
+        {"洞室变形轮廓图", PublicConstants::kPagePostProcessContourReader},
         {"成果整理", PublicConstants::kPagePostProcessResultArrange},
     };
     return specs;
@@ -313,7 +313,7 @@ void PostProcessing::newResultArrangeWidget()
 
 void PostProcessing::newPostContourReaderWidget()
 {
-    createPostNode(PublicConstants::kPagePostProcessContourReader, QStringLiteral("读取轮廓图"));
+    createPostNode(PublicConstants::kPagePostProcessContourReader, QStringLiteral("洞室变形轮廓图"));
 }
 
 void PostProcessing::newProject()
