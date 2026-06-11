@@ -27,6 +27,7 @@ class PostProcessing : public QObject, public PostProcessingService
   private:
     void newNephogramSettingWidget();
     void initAction();
+    void initTreeMenu();
     void newVectorSettingWidget();
     void newSliceSettingWidget();
     void newBlockSettingsWidget();
@@ -41,14 +42,14 @@ class PostProcessing : public QObject, public PostProcessingService
 
   private:
     VisualWidgetService* m_visualService{nullptr};
-    NephogramSettingWidget* m_nephogramSettingWidget;
+    NephogramSettingWidget* m_nephogramSettingWidget{nullptr};
 
-    VectorSettingWidget* m_vectorSettingWidget;
+    VectorSettingWidget* m_vectorSettingWidget{nullptr};
 
-    SliceSettingsWidget* m_sliceSettingWidget;
+    SliceSettingsWidget* m_sliceSettingWidget{nullptr};
 
-    BlockSettingsWidget* m_blockSettingsWidget;
-    ProjectNode* m_root;
+    BlockSettingsWidget* m_blockSettingsWidget{nullptr};
+    ProjectNode* m_root{nullptr};
 
     QMap<QString, std::function<BasePage*(VisualWidgetService*)>> m_pageFactory;
 
@@ -56,6 +57,14 @@ class PostProcessing : public QObject, public PostProcessingService
     bool readJsonFile(const QString& filePath, QJsonObject& out);
     void initPageFactory();
     BasePage* createPageByType(const QString& type);
+    ProjectNode* createPostNode(const QString& type, const QString& title,
+                                const QString& uuid = QString(), bool select = true);
+    ProjectNode* findChildByUuid(const QString& uuid) const;
+    ProjectNode* findChildByType(const QString& type) const;
+    void configureNode(ProjectNode* node, const QString& type);
+    void renameNode(const QString& uuid);
+    void deleteNode(const QString& uuid);
+    void removeRootFromTree();
 };
 
 #endif // POSTPROCESSING_H

@@ -980,7 +980,38 @@ QJsonObject NephogramSettingWidget::saveJson()
 
 void NephogramSettingWidget::loadJson(const QJsonObject& obj)
 {
-    Q_UNUSED(obj);
+    const QString resultDir = obj.value(QStringLiteral("resultDir")).toString();
+    const QString step = obj.value(QStringLiteral("step")).toString();
+    const QString scalar = obj.value(QStringLiteral("scalar")).toString();
+
+    ResultRuleManager::instance().ensureLoaded();
+    initResultDirectoryOptions();
+
+    if (!resultDir.isEmpty())
+    {
+        const int dirIndex = ui->resultDirComboBox->findData(resultDir);
+        if (dirIndex >= 0)
+            ui->resultDirComboBox->setCurrentIndex(dirIndex);
+    }
+
+    m_dataPath = selectedResultDirectoryPath();
+    loadFileName(m_dataPath);
+
+    if (!step.isEmpty())
+    {
+        const int stepIndex = ui->stepComboBox->findText(step);
+        if (stepIndex >= 0)
+            ui->stepComboBox->setCurrentIndex(stepIndex);
+    }
+
+    if (!scalar.isEmpty())
+    {
+        const int scalarIndex = ui->scalarComboBox->findText(scalar);
+        if (scalarIndex >= 0)
+            ui->scalarComboBox->setCurrentIndex(scalarIndex);
+        else
+            m_currentArrayName = scalar;
+    }
 }
 
 void NephogramSettingWidget::readVtu(const QString& fileName)

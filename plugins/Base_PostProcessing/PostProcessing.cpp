@@ -1,6 +1,7 @@
 ﻿
 #include "PostProcessing.h"
 
+#include <ContextMenuHub.h>
 #include <EventManager.h>
 #include <ProjectNode.h>
 #include <PublicConstants.h>
@@ -15,12 +16,17 @@
 
 #include <QDebug>
 #include <QDir>
+#include <QInputDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLineEdit>
+#include <QMenu>
 #include <QToolButton>
+#include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QUuid>
+#include <QVector>
 
 #include "AnimationAviWidget.h"
 #include "CurveSettingsWidget.h"
@@ -34,6 +40,33 @@
 VTK_MODULE_INIT(vtkRenderingOpenGL2)
 VTK_MODULE_INIT(vtkRenderingContextOpenGL2)
 VTK_MODULE_INIT(vtkInteractionStyle);
+
+namespace
+{
+struct PostNodeSpec
+{
+    const char* title;
+    const char* type;
+};
+
+const QVector<PostNodeSpec>& postNodeSpecs()
+{
+    static const QVector<PostNodeSpec> specs = {
+        {"云图", PublicConstants::kPagePostProcessNephogram},
+        {"矢量", PublicConstants::kPagePostProcessVector},
+        {"切面", PublicConstants::kPagePostProcessSlice},
+        {"切块", PublicConstants::kPagePostProcessBlock},
+        {"等值面", PublicConstants::kPagePostProcessIsosurface},
+        {"等值面分割", PublicConstants::kPagePostProcessIsosurfaceSegmentation},
+        {"曲线", PublicConstants::kPagePostProcessCurve},
+        {"动画", PublicConstants::kPagePostProcessAnimation},
+        {"派生值", PublicConstants::kPagePostProcessDerivative},
+        {"读取轮廓图", PublicConstants::kPagePostProcessContourReader},
+        {"成果整理", PublicConstants::kPagePostProcessResultArrange},
+    };
+    return specs;
+}
+} // namespace
 
 VisualWidgetService* PostProcessing::visualService()
 {
@@ -108,6 +141,94 @@ BasePage* PostProcessing::createPageByType(const QString& type)
     return it == m_pageFactory.end() ? nullptr : it.value()(visualService());
 }
 
+void PostProcessing::configureNode(ProjectNode* node, const QString& type)
+{
+    if (!node)
+        return;
+
+    node->setData(0, ProjectNode::RoleUuid, node->getUuid());
+    node->setData(0, ProjectNode::RoleModule, QStringLiteral("PostProcessing"));
+    node->setData(0, ProjectNode::RoleKind, type);
+}
+
+ProjectNode* PostProcessing::createPostNode(const QString& type, const QString& title,
+                                            const QString& uuid, bool select)
+{
+    if (!m_root)
+        return nullptr;
+
+    if (type == PublicConstants::kPagePostProcessResultArrange)
+    {
+        if (auto* existed = findChildByType(type))
+        {
+            if (select)
+            {
+                if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+                    pm->setCurrentItem(existed);
+            }
+            return existed;
+        }
+    }
+
+    BasePage* page = createPageByType(type);
+    if (!page)
+    {
+        qWarning() << "Unsupported post-processing page type:" << type;
+        return nullptr;
+    }
+
+    const QString id = uuid.isEmpty() ? QUuid::createUuid().toString() : uuid;
+    ProjectNode* node = new ProjectNode(title, id, page);
+    configureNode(node, type);
+    m_root->addChild(node);
+
+    if (select)
+    {
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(node);
+    }
+
+    return node;
+}
+
+ProjectNode* PostProcessing::findChildByUuid(const QString& uuid) const
+{
+    if (uuid.isEmpty() || !m_root)
+        return nullptr;
+
+    for (int i = 0; i < m_root->childCount(); ++i)
+    {
+        auto* node = static_cast<ProjectNode*>(m_root->child(i));
+        if (!node)
+            continue;
+
+        QString nodeUuid = node->data(0, ProjectNode::RoleUuid).toString();
+        if (nodeUuid.isEmpty())
+            nodeUuid = node->getUuid();
+        if (nodeUuid == uuid)
+            return node;
+    }
+
+    return nullptr;
+}
+
+ProjectNode* PostProcessing::findChildByType(const QString& type) const
+{
+    if (type.isEmpty() || !m_root)
+        return nullptr;
+
+    for (int i = 0; i < m_root->childCount(); ++i)
+    {
+        auto* node = static_cast<ProjectNode*>(m_root->child(i));
+        if (!node)
+            continue;
+        if (node->data(0, ProjectNode::RoleKind).toString() == type)
+            return node;
+    }
+
+    return nullptr;
+}
+
 PostProcessing::PostProcessing()
 {
     m_visualService = nullptr;
@@ -119,79 +240,45 @@ PostProcessing::PostProcessing()
     if (uiFrameService)
         uiFrameService->addWidget(tmp, "物理量");
 
-    initAction();
     initPageFactory();
+    initAction();
+    initTreeMenu();
 }
 
 void PostProcessing::newNephogramSettingWidget()
 {
-    NephogramSettingWidget* tmp = new NephogramSettingWidget(visualService());
-    ProjectNode* node = new ProjectNode("云图", QUuid::createUuid().toString(), (BasePage*)tmp);
-
-    m_root->addChild(node);
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-        pm->setCurrentItem(node);
+    createPostNode(PublicConstants::kPagePostProcessNephogram, QStringLiteral("云图"));
 }
 
 void PostProcessing::newVectorSettingWidget()
 {
-    VectorSettingWidget* tmp = new VectorSettingWidget(visualService());
-    ProjectNode* node = new ProjectNode("矢量", QUuid::createUuid().toString(), (BasePage*)tmp);
-
-    m_root->addChild(node);
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-        pm->setCurrentItem(node);
+    createPostNode(PublicConstants::kPagePostProcessVector, QStringLiteral("矢量"));
 }
 
 void PostProcessing::newSliceSettingWidget()
 {
-    SliceSettingsWidget* tmp = new SliceSettingsWidget(visualService());
-    ProjectNode* node = new ProjectNode("切面", QUuid::createUuid().toString(), (BasePage*)tmp);
-
-    m_root->addChild(node);
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-        pm->setCurrentItem(node);
+    createPostNode(PublicConstants::kPagePostProcessSlice, QStringLiteral("切面"));
 }
 
 void PostProcessing::newBlockSettingsWidget()
 {
-    BlockSettingsWidget* tmp = new BlockSettingsWidget(visualService());
-    ProjectNode* node = new ProjectNode("切块", QUuid::createUuid().toString(), (BasePage*)tmp);
-
-    m_root->addChild(node);
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-        pm->setCurrentItem(node);
+    createPostNode(PublicConstants::kPagePostProcessBlock, QStringLiteral("切块"));
 }
 
 void PostProcessing::newIsosurfaceSettingsWidget()
 {
-    IsosurfaceSettingsWidget* tmp = new IsosurfaceSettingsWidget(visualService());
-    ProjectNode* node = new ProjectNode("等值面", QUuid::createUuid().toString(), (BasePage*)tmp);
-
-    m_root->addChild(node);
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-        pm->setCurrentItem(node);
+    createPostNode(PublicConstants::kPagePostProcessIsosurface, QStringLiteral("等值面"));
 }
 
 void PostProcessing::newIsosurfaceSegmentationWidget()
 {
-    IsosurfaceSegmentationWidget* tmp = new IsosurfaceSegmentationWidget(visualService());
-    ProjectNode* node =
-        new ProjectNode("等值面分割", QUuid::createUuid().toString(), (BasePage*)tmp);
-
-    m_root->addChild(node);
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-        pm->setCurrentItem(node);
+    createPostNode(PublicConstants::kPagePostProcessIsosurfaceSegmentation,
+                   QStringLiteral("等值面分割"));
 }
 
 void PostProcessing::newAnimationAviWidget()
 {
-    AnimationAviWidget* tmp = new AnimationAviWidget(visualService());
-    ProjectNode* node = new ProjectNode("动画", QUuid::createUuid().toString(), (BasePage*)tmp);
-
-    m_root->addChild(node);
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-        pm->setCurrentItem(node);
+    createPostNode(PublicConstants::kPagePostProcessAnimation, QStringLiteral("动画"));
 }
 
 // void PostProcessing::newProbeSettingsWidget()
@@ -201,22 +288,12 @@ void PostProcessing::newAnimationAviWidget()
 
 void PostProcessing::newDerivedValueSettingWidget()
 {
-    DerivedValueSettingWidget* tmp = new DerivedValueSettingWidget;
-    ProjectNode* node = new ProjectNode("派生值", QUuid::createUuid().toString(), (BasePage*)tmp);
-
-    m_root->addChild(node);
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-        pm->setCurrentItem(node);
+    createPostNode(PublicConstants::kPagePostProcessDerivative, QStringLiteral("派生值"));
 }
 
 void PostProcessing::newCurveSettingWidget()
 {
-    CurveSettingsWidget* tmp = new CurveSettingsWidget(visualService());
-    ProjectNode* node = new ProjectNode("曲线", QUuid::createUuid().toString(), (BasePage*)tmp);
-
-    m_root->addChild(node);
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-        pm->setCurrentItem(node);
+    createPostNode(PublicConstants::kPagePostProcessCurve, QStringLiteral("曲线"));
 }
 
 void PostProcessing::newResultArrangeWidget()
@@ -224,107 +301,233 @@ void PostProcessing::newResultArrangeWidget()
     if (!m_root)
         return;
 
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-        pm->setCurrentItem(m_root);
+    if (auto* existed = findChildByType(PublicConstants::kPagePostProcessResultArrange))
+    {
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(existed);
+        return;
+    }
+
+    createPostNode(PublicConstants::kPagePostProcessResultArrange, QStringLiteral("成果整理"));
 }
 
 void PostProcessing::newPostContourReaderWidget()
 {
-    PostContourReaderWidget* tmp = new PostContourReaderWidget;
-    ProjectNode* node = new ProjectNode("读取轮廓图", QUuid::createUuid().toString(), (BasePage*)tmp);
-
-    m_root->addChild(node);
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-        pm->setCurrentItem(node);
+    createPostNode(PublicConstants::kPagePostProcessContourReader, QStringLiteral("读取轮廓图"));
 }
 
 void PostProcessing::newProject()
 {
+    if (m_root)
+        closeProject();
+
     m_root = new ProjectNode("后处理");
+    m_root->setData(0, ProjectNode::RoleUuid, m_root->getUuid());
     m_root->setData(0, ProjectNode::RoleModule, "PostProcessing");
+    m_root->setData(0, ProjectNode::RoleKind, "PostProcessingRoot");
     ProjectManagerService* projectManagerService =
         ServiceRegistry::instance().getService<ProjectManagerService>();
-    projectManagerService->addTreeItem(m_root);
-    m_root->setPage(new ResultArrangeWidget);
+    if (projectManagerService)
+        projectManagerService->addTreeItem(m_root);
 }
 
 void PostProcessing::initAction()
 {
     EventManager::instance().registerHandler(PublicConstants::kActionPostProcessNephogram, this,
-                                             [this](const QVariantMap& data)
+                                             [this](const QVariantMap&)
                                              {
                                                  this->newNephogramSettingWidget();
                                              });
     EventManager::instance().registerHandler(PublicConstants::kActionPostProcessVector, this,
-                                             [this](const QVariantMap& data)
+                                             [this](const QVariantMap&)
                                              {
                                                  this->newVectorSettingWidget();
                                              });
     EventManager::instance().registerHandler(PublicConstants::kActionPostProcessSection, this,
-                                             [this](const QVariantMap& data)
+                                             [this](const QVariantMap&)
                                              {
                                                  this->newSliceSettingWidget();
                                              });
     EventManager::instance().registerHandler(PublicConstants::kActionPostProcessDice, this,
-                                             [this](const QVariantMap& data)
+                                             [this](const QVariantMap&)
                                              {
                                                  this->newBlockSettingsWidget();
                                              });
     EventManager::instance().registerHandler(PublicConstants::kActionPostProcessIsosurface, this,
-                                             [this](const QVariantMap& data)
+                                             [this](const QVariantMap&)
                                              {
                                                  this->newIsosurfaceSettingsWidget();
                                              });
     EventManager::instance().registerHandler(
         PublicConstants::kActionPostProcessIsosurfaceSegmentation, this,
-        [this](const QVariantMap& data)
+        [this](const QVariantMap&)
         {
             this->newIsosurfaceSegmentationWidget();
         });
     EventManager::instance().registerHandler(PublicConstants::kActionPostProcessXyPlot, this,
-                                             [this](const QVariantMap& data)
+                                             [this](const QVariantMap&)
                                              {
                                                  this->newCurveSettingWidget();
                                              });
     EventManager::instance().registerHandler(PublicConstants::kActionPostProcessAnimation, this,
-                                             [this](const QVariantMap& data)
+                                             [this](const QVariantMap&)
                                              {
                                                  this->newAnimationAviWidget();
                                              });
     EventManager::instance().registerHandler(PublicConstants::kActionPostProcessPickPhysical, this,
-                                             [this](const QVariantMap& data)
+                                             [this](const QVariantMap&)
                                              {
                                                  //        this->ne();
                                              });
     EventManager::instance().registerHandler(PublicConstants::kActionPostProcessDerivative, this,
-                                             [this](const QVariantMap& data)
+                                             [this](const QVariantMap&)
                                              {
                                                  this->newDerivedValueSettingWidget();
                                              });
     EventManager::instance().registerHandler(PublicConstants::kActionPostProcessDataExport, this,
-                                             [this](const QVariantMap& data)
+                                             [this](const QVariantMap&)
                                              {
                                                  //        this->newNephogramSettingWidget();
                                              });
     EventManager::instance().registerHandler(
         PublicConstants::kActionPostProcessContourReader, this,
-        [this](const QVariantMap& data)
+        [this](const QVariantMap&)
         {
             this->newPostContourReaderWidget();
         });
     EventManager::instance().registerHandler(
         PublicConstants::kActionPostProcessResultArrange, this,
-        [this](const QVariantMap& data)
+        [this](const QVariantMap&)
         {
             this->newResultArrangeWidget();
         });
     EventManager::instance().registerHandler(
         PublicConstants::kActionPostProcessResultRuleConfig, this,
-        [this](const QVariantMap& data)
+        [this](const QVariantMap&)
         {
             ResultRuleConfigDialog dlg;
             dlg.exec();
         });
+}
+
+void PostProcessing::initTreeMenu()
+{
+    ContextMenuHub::instance().registerProvider(
+        QStringLiteral("project_tree.node"), this,
+        [this](QMenu* menu, const QVariantMap& ctx)
+        {
+            const QString uuid = ctx.value(QStringLiteral("uuid")).toString();
+            const QString kind = ctx.value(QStringLiteral("kind")).toString();
+
+            ContextMenuHub::addSeparator(menu);
+
+            if (kind == QStringLiteral("PostProcessingRoot"))
+            {
+                for (const auto& spec : postNodeSpecs())
+                {
+                    const QString title = QString::fromUtf8(spec.title);
+                    const QString type = QString::fromLatin1(spec.type);
+                    ContextMenuHub::addAction(menu, this, QStringLiteral("新增%1").arg(title),
+                                              [this, type, title]
+                                              {
+                                                  if (type ==
+                                                      PublicConstants::kPagePostProcessResultArrange)
+                                                  {
+                                                      newResultArrangeWidget();
+                                                      return;
+                                                  }
+                                                  createPostNode(type, title);
+                                              });
+                }
+
+                ContextMenuHub::addSeparator(menu);
+                ContextMenuHub::addAction(menu, this, QStringLiteral("结果配置"),
+                                          [this]
+                                          {
+                                              ResultRuleConfigDialog dlg;
+                                              dlg.exec();
+                                          });
+                return;
+            }
+
+            ContextMenuHub::addAction(menu, this, QStringLiteral("重命名"),
+                                      [this, uuid]
+                                      {
+                                          renameNode(uuid);
+                                      });
+            ContextMenuHub::addAction(menu, this, QStringLiteral("删除"),
+                                      [this, uuid]
+                                      {
+                                          deleteNode(uuid);
+                                      });
+        },
+        80,
+        [](const QVariantMap& ctx) -> bool
+        {
+            return ctx.value(QStringLiteral("module")).toString() ==
+                   QStringLiteral("PostProcessing");
+        });
+}
+
+void PostProcessing::renameNode(const QString& uuid)
+{
+    ProjectNode* node = findChildByUuid(uuid);
+    if (!node)
+        return;
+
+    const QString currentName = node->text(0);
+    bool ok = false;
+    const QString newName = QInputDialog::getText(nullptr, tr("重命名后处理结果"),
+                                                  tr("请输入新名称："), QLineEdit::Normal,
+                                                  currentName, &ok);
+    if (!ok)
+        return;
+
+    const QString trimmedName = newName.trimmed();
+    if (trimmedName.isEmpty() || trimmedName == currentName)
+        return;
+
+    node->setText(0, trimmedName);
+    node->setName(trimmedName);
+    if (BasePage* page = node->getPage())
+        page->setDisplayName(trimmedName);
+}
+
+void PostProcessing::deleteNode(const QString& uuid)
+{
+    ProjectNode* node = findChildByUuid(uuid);
+    if (!node || !m_root)
+        return;
+
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(m_root);
+
+    if (BasePage* page = node->getPage())
+    {
+        page->beforeUnload();
+        page->deleteLater();
+        node->setPage(nullptr);
+    }
+
+    m_root->removeChild(node);
+    delete node;
+}
+
+void PostProcessing::removeRootFromTree()
+{
+    if (!m_root)
+        return;
+
+    if (QTreeWidget* tree = m_root->treeWidget())
+    {
+        const int index = tree->indexOfTopLevelItem(m_root);
+        if (index >= 0)
+            tree->takeTopLevelItem(index);
+    }
+    else if (QTreeWidgetItem* parent = m_root->parent())
+    {
+        parent->removeChild(m_root);
+    }
 }
 
 bool PostProcessing::saveProject()
@@ -348,6 +551,8 @@ bool PostProcessing::saveProject()
         if (!node)
             continue;
         BasePage* page = node->getPage();
+        if (!page)
+            continue;
 
         QJsonObject item;
         item["uuid"] = node->getUuid();
@@ -362,13 +567,18 @@ bool PostProcessing::saveProject()
 
 bool PostProcessing::loadProject()
 {
+    if (m_root)
+        closeProject();
+
     m_root = new ProjectNode("后处理");
+    m_root->setData(0, ProjectNode::RoleUuid, m_root->getUuid());
     m_root->setData(0, ProjectNode::RoleModule, "PostProcessing");
+    m_root->setData(0, ProjectNode::RoleKind, "PostProcessingRoot");
     QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
-    pm->addTreeItem(m_root);
-    m_root->setPage(new ResultArrangeWidget);
+    if (pm)
+        pm->addTreeItem(m_root);
 
     const QString filePath =
         QDir(projectDir).filePath(PublicConstants::kPostProcessingProjectFileName);
@@ -387,11 +597,11 @@ bool PostProcessing::loadProject()
         const QString type = obj.value("type").toString();
         const QJsonObject state = obj.value("state").toObject();
 
-        BasePage* page = createPageByType(type);
-        ProjectNode* node = new ProjectNode(title, id, page);
-        m_root->addChild(node);
+        ProjectNode* node = createPostNode(type, title, id, false);
+        if (!node)
+            continue;
 
-        if (page)
+        if (BasePage* page = node->getPage())
             page->loadJson(state);
     }
     return true;
@@ -409,20 +619,20 @@ void PostProcessing::closeProject()
         {
             if (auto* page = node->getPage())
             {
+                page->beforeUnload();
                 page->deleteLater();
 
                 node->setPage(nullptr);
             }
-            delete m_root->takeChild(0);
+            m_root->removeChild(node);
+            delete node;
         }
     }
 
-    // 从工程树移除根节点
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-    {
-    }
+    removeRootFromTree();
     if (auto* page = m_root->getPage())
     {
+        page->beforeUnload();
         page->deleteLater();
         m_root->setPage(nullptr);
     }
