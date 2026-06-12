@@ -10,9 +10,12 @@
 #include <QStringList>
 #include <QVariant>
 
+#include <algorithm>
+
 #include <vtkCell.h>
 #include <vtkIdList.h>
 #include <vtkMath.h>
+#include <vtkPoints.h>
 #include <vtkUnstructuredGrid.h>
 
 #include "ui_CaveBlockPlanePage.h"
@@ -20,6 +23,7 @@
 namespace
 {
 constexpr vtkIdType kInvalidFaceKey = -1;
+constexpr float kEps2 = 1.0e-12f;
 
 QString fmt(double v)
 {
@@ -45,47 +49,210 @@ int faceLocalId(vtkIdType faceKey)
     return int(faceKey & 0xF);
 }
 
-QVector<vtkIdType> pointIdsOfFace(vtkUnstructuredGrid* grid, vtkIdType faceKey)
+void appendUniquePoint(QVector<QVector3D>& pts, const QVector3D& p)
 {
-    QVector<vtkIdType> ids;
+    for (const QVector3D& old : pts)
+    {
+        if ((old - p).lengthSquared() <= kEps2)
+            return;
+    }
+    pts.push_back(p);
+}
+
+QVector3D averageOfPoints(vtkPoints* points)
+{
+    QVector3D c(0.0f, 0.0f, 0.0f);
+    if (!points || points->GetNumberOfPoints() <= 0)
+        return c;
+
+    const vtkIdType n = points->GetNumberOfPoints();
+    for (vtkIdType i = 0; i < n; ++i)
+    {
+        double p[3] = {0.0, 0.0, 0.0};
+        points->GetPoint(i, p);
+        c += QVector3D(float(p[0]), float(p[1]), float(p[2]));
+    }
+    return c / float(n);
+}
+
+QVector3D averageOfVectorPoints(const QVector<QVector3D>& pts)
+{
+    QVector3D c(0.0f, 0.0f, 0.0f);
+    if (pts.isEmpty())
+        return c;
+
+    for (const QVector3D& p : pts)
+        c += p;
+    return c / float(pts.size());
+}
+
+bool isNonCollinear(const QVector3D& p1, const QVector3D& p2, const QVector3D& p3)
+{
+    return QVector3D::crossProduct(p2 - p1, p3 - p1).lengthSquared() > kEps2;
+}
+
+QVector<QVector3D> pointsOfFace(vtkUnstructuredGrid* grid, vtkIdType faceKey)
+{
+    QVector<QVector3D> pts;
     if (!grid || faceKey < 0)
-        return ids;
+        return pts;
 
     const vtkIdType cellId = faceCellId(faceKey);
     const int localId = faceLocalId(faceKey);
     if (cellId < 0 || cellId >= grid->GetNumberOfCells())
-        return ids;
+        return pts;
 
     vtkCell* cell = grid->GetCell(cellId);
     if (!cell)
-        return ids;
+        return pts;
 
-    vtkIdList* src = nullptr;
+    auto appendPoints = [&pts](vtkPoints* points)
+    {
+        if (!points)
+            return;
+        const vtkIdType n = points->GetNumberOfPoints();
+        pts.reserve(int(n));
+        for (vtkIdType i = 0; i < n; ++i)
+        {
+            double p[3] = {0.0, 0.0, 0.0};
+            points->GetPoint(i, p);
+            appendUniquePoint(pts, QVector3D(float(p[0]), float(p[1]), float(p[2])));
+        }
+    };
+
+    // 关键点：3D 体单元的 face->GetPointIds() 是 face 局部点号，不能再拿去 grid->GetPoint()。
+    // 这里直接从 cell/face 自身的 vtkPoints 取坐标，避免 P1/P2 重复或坐标错乱。
     if (cell->GetCellDimension() == 2 || localId == 15)
     {
-        src = cell->GetPointIds();
+        appendPoints(cell->GetPoints());
     }
     else if (localId >= 0 && localId < cell->GetNumberOfFaces())
     {
         vtkCell* face = cell->GetFace(localId);
-        src = face ? face->GetPointIds() : nullptr;
+        if (face)
+            appendPoints(face->GetPoints());
     }
 
-    if (!src || src->GetNumberOfIds() < 3)
-        return ids;
-
-    ids.reserve(int(src->GetNumberOfIds()));
-    for (vtkIdType i = 0; i < src->GetNumberOfIds(); ++i)
-        ids.push_back(src->GetId(i));
-    return ids;
+    return pts;
 }
 
-QVector3D pointOf(vtkUnstructuredGrid* grid, vtkIdType pointId)
+bool insidePointOfFace(vtkUnstructuredGrid* grid, vtkIdType faceKey, QVector3D& insidePoint)
 {
-    double p[3] = {0.0, 0.0, 0.0};
-    if (grid && pointId >= 0 && pointId < grid->GetNumberOfPoints())
-        grid->GetPoint(pointId, p);
-    return QVector3D(float(p[0]), float(p[1]), float(p[2]));
+    if (!grid || faceKey < 0)
+        return false;
+
+    const vtkIdType cellId = faceCellId(faceKey);
+    if (cellId < 0 || cellId >= grid->GetNumberOfCells())
+        return false;
+
+    vtkCell* cell = grid->GetCell(cellId);
+    if (!cell || cell->GetCellDimension() < 3 || !cell->GetPoints())
+        return false;
+
+    insidePoint = averageOfPoints(cell->GetPoints());
+    return true;
+}
+
+QVector<QVector3D> chooseThreePlanePoints(const QVector<QVector3D>& pts)
+{
+    QVector<QVector3D> out;
+    if (pts.size() < 3)
+        return out;
+
+    // 普通三角面/四边面：优先保持 VTK face 自身点序，只跳过共线组合。
+    // 这样线性单元不会因为“最远点规则”改变起点，输出更接近原单元面定义。
+    if (pts.size() <= 4)
+    {
+        for (int i = 0; i < pts.size(); ++i)
+        {
+            for (int j = i + 1; j < pts.size(); ++j)
+            {
+                for (int k = j + 1; k < pts.size(); ++k)
+                {
+                    if (isNonCollinear(pts[i], pts[j], pts[k]))
+                    {
+                        out.push_back(pts[i]);
+                        out.push_back(pts[j]);
+                        out.push_back(pts[k]);
+                        return out;
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
+    // 高阶/细分面：用“最远一对点 + 离该线最远第三点”避开中间节点。
+    int a = 0;
+    int b = 1;
+    double bestLen2 = -1.0;
+    for (int i = 0; i < pts.size(); ++i)
+    {
+        for (int j = i + 1; j < pts.size(); ++j)
+        {
+            const double len2 = double((pts[j] - pts[i]).lengthSquared());
+            if (len2 > bestLen2)
+            {
+                bestLen2 = len2;
+                a = i;
+                b = j;
+            }
+        }
+    }
+
+    int c = -1;
+    double bestArea2 = -1.0;
+    const QVector3D base = pts[b] - pts[a];
+    for (int i = 0; i < pts.size(); ++i)
+    {
+        if (i == a || i == b)
+            continue;
+        const double area2 = double(QVector3D::crossProduct(base, pts[i] - pts[a]).lengthSquared());
+        if (area2 > bestArea2)
+        {
+            bestArea2 = area2;
+            c = i;
+        }
+    }
+
+    if (c < 0)
+        return out;
+
+    out.push_back(pts[a]);
+    out.push_back(pts[b]);
+    out.push_back(pts[c]);
+    return out;
+}
+
+void orientThreePointsToInside(QVector<QVector3D>& triPts,
+                               const QVector<QVector3D>& facePts,
+                               vtkUnstructuredGrid* grid,
+                               vtkIdType faceKey)
+{
+    if (triPts.size() < 3)
+        return;
+
+    QVector3D insidePoint;
+    if (!insidePointOfFace(grid, faceKey, insidePoint))
+        return;
+
+    const QVector3D faceCenter = averageOfVectorPoints(facePts.isEmpty() ? triPts : facePts);
+    const QVector3D n = QVector3D::crossProduct(triPts[1] - triPts[0], triPts[2] - triPts[0]);
+    if (n.lengthSquared() <= kEps2)
+        return;
+
+    // 右手螺旋法则：P1 -> P2 -> P3 的法向应指向块体内部。
+    // 若当前法向背离单元中心，就交换两个点反转法向。
+    if (QVector3D::dotProduct(n, insidePoint - faceCenter) < 0.0f)
+        std::swap(triPts[1], triPts[2]);
+}
+
+QVector<QVector3D> orientedThreePlanePoints(vtkUnstructuredGrid* grid, vtkIdType faceKey)
+{
+    const QVector<QVector3D> facePts = pointsOfFace(grid, faceKey);
+    QVector<QVector3D> triPts = chooseThreePlanePoints(facePts);
+    orientThreePointsToInside(triPts, facePts, grid, faceKey);
+    return triPts;
 }
 
 double polygonArea(const QVector<QVector3D>& pts)
@@ -247,7 +414,7 @@ QVector3D CaveBlockPlanePage::normalVector()
                        float(editValue(ui->z3Edit)));
 
     QVector3D n = QVector3D::crossProduct(p2 - p1, p3 - p1);
-    if (n.lengthSquared() < 1.0e-16)
+    if (n.lengthSquared() < kEps2)
         return QVector3D(0.0f, 0.0f, 1.0f);
     return n.normalized();
 }
@@ -258,11 +425,7 @@ double CaveBlockPlanePage::pickedFaceArea()
     if (!keys.isEmpty())
     {
         vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
-        const QVector<vtkIdType> pids = pointIdsOfFace(grid, keys.first());
-        QVector<QVector3D> pts;
-        pts.reserve(pids.size());
-        for (vtkIdType pid : pids)
-            pts.push_back(pointOf(grid, pid));
+        const QVector<QVector3D> pts = pointsOfFace(grid, keys.first());
         const double area = polygonArea(pts);
         if (area > 0.0)
             return area;
@@ -296,17 +459,17 @@ void CaveBlockPlanePage::syncPointsFromSelectedFace()
     }
 
     vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
-    const QVector<vtkIdType> pids = pointIdsOfFace(grid, keys.first());
-    if (!grid || pids.size() < 3)
+    const QVector<QVector3D> triPts = orientedThreePlanePoints(grid, keys.first());
+    if (!grid || triPts.size() < 3)
     {
         if (ui->faceStatusLabel)
             ui->faceStatusLabel->setText(QStringLiteral("当前面无效，请重新选择"));
         return;
     }
 
-    const QVector3D p1 = pointOf(grid, pids[0]);
-    const QVector3D p2 = pointOf(grid, pids[1]);
-    const QVector3D p3 = pointOf(grid, pids[2]);
+    const QVector3D p1 = triPts[0];
+    const QVector3D p2 = triPts[1];
+    const QVector3D p3 = triPts[2];
 
     const QSignalBlocker b1(ui->x1Edit); const QSignalBlocker b2(ui->y1Edit); const QSignalBlocker b3(ui->z1Edit);
     const QSignalBlocker b4(ui->x2Edit); const QSignalBlocker b5(ui->y2Edit); const QSignalBlocker b6(ui->z2Edit);

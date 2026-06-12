@@ -3,9 +3,6 @@
 #include <BasePage.h>
 #include <PickManager.h>
 #include <QVector3D>
-#include <vtkType.h>
-
-class QString;
 
 class QLineEdit;
 
@@ -33,17 +30,21 @@ class CaveBlockPlanePage : public BasePage
     QVector3D normalVector();
     double pickedFaceArea();
 
-  private slots:
-    void onPickSelectionChanged(const QString& domain, const QString& uuid, PickMode mode, GridKind kind);
-
   private:
     QString valueOrDefault(QLineEdit* edit, QString def);
     void syncPointsFromSelectedFace();
     PickMode currentPickMode();
     GridKind currentGridKind();
+
     QVector<vtkIdType> selectedFaceKeys();
     vtkIdType chooseSingleFaceKey(const QVector<vtkIdType>& keys) const;
     void normalizeAndSyncSelectedFace();
+
+  private slots:
+    void onPickSelectionChanged(const QString& domain,
+                                const QString& uuid,
+                                PickMode mode,
+                                GridKind kind);
 
   private:
     Ui::CaveBlockPlanePage* ui = nullptr;
