@@ -1,4 +1,4 @@
-﻿#ifndef SOLVER_H
+#ifndef SOLVER_H
 #define SOLVER_H
 
 #include <ProjectNode.h>
@@ -57,6 +57,7 @@ class Solver : public QObject, public SolverService
     GeoStressRegressionWidget::ExportPayload buildGeoStressPayload(ProjectNode* geostressNode) const;
     bool beginCommonCompute(ProjectNode* analysisNode, const QString& analysisType);
     bool launchSolverExecutable(const QString& analysisType);
+    bool launchCaveBlockSolverExecutable();
     void finishSolverProcess(bool terminateProcess);
     void setComputeWidgetRunning(QWidget* widget, bool computing) const;
     void connectStopRequest(QObject* page) const;

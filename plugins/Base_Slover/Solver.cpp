@@ -1565,7 +1565,7 @@ void Solver::onComputeCaveBlockStability(ProjectNode* analysisNode)
     {
         QMessageBox::information(nullptr, "导出成功",
                                  "已在 SliderCase 文件夹生成 ICUT.DAT、PARA.DAT、MESG227.DAT、ICUTPLANE.DAT。");
-        launchSolverExecutable("块体稳定分析");
+        launchCaveBlockSolverExecutable();
     }
     else
         QMessageBox::warning(nullptr, "导出失败",
@@ -1688,6 +1688,84 @@ bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analys
     return exportInouseDatFile() && exportMaMaskDatFile() && exportKetraceDatFile() &&
            exportJdtraceDatFile();
 }
+
+
+bool Solver::launchCaveBlockSolverExecutable()
+{
+    const QString exePath =
+        QDir::toNativeSeparators(
+            QDir(QCoreApplication::applicationDirPath())
+                .filePath("solver/PCCAE_CPU/PCCAE_CPU.exe"));
+    if (!QFileInfo::exists(exePath))
+    {
+        QMessageBox::warning(nullptr, "启动求解器失败",
+                             QString("块体稳定分析导出成功，但未找到求解器：\n%1")
+                                 .arg(exePath));
+        return false;
+    }
+
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QString sliderDir = QDir(projectDir).absoluteFilePath("SliderCase");
+    if (!QDir(sliderDir).exists())
+    {
+        QMessageBox::warning(nullptr, "启动求解器失败",
+                             QString("块体稳定分析缺少 SliderCase 目录：\n%1").arg(sliderDir));
+        return false;
+    }
+
+    if (m_solverProcess)
+        finishSolverProcess(true);
+    else
+        QProcess::execute("taskkill", {"-f", "-im", "PCCAE_CPU.exe"});
+
+    m_activeComputeWidget = m_pendingComputeWidget;
+    m_pendingComputeWidget = nullptr;
+
+    m_solverProcess = new QProcess(this);
+    // 滑块计算仍使用 PCCAE_CPU.exe，但输入文件位于 SliderCase，不能走项目根目录下
+    // 依赖 MESG_IAUTO.DAT 的自动分发入口。
+    m_solverProcess->setWorkingDirectory(QDir(sliderDir).absolutePath());
+    m_solverProcess->setProgram(exePath);
+    m_solverProcess->setArguments(QStringList());
+    m_solverProcess->setProcessChannelMode(QProcess::MergedChannels);
+
+    connect(m_solverProcess, &QProcess::readyReadStandardOutput, this, [this]() {
+        if (!m_solverProcess)
+            return;
+        const QString output = QString::fromLocal8Bit(m_solverProcess->readAllStandardOutput()).trimmed();
+        if (!output.isEmpty())
+        {
+            qInfo().noquote() << ("__RAW__" + output);
+            if (output.contains("结束进程"))
+                finishSolverProcess(true);
+        }
+    });
+
+    connect(m_solverProcess, &QProcess::errorOccurred, this,
+            [](QProcess::ProcessError) {});
+
+    connect(m_solverProcess,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this](int, QProcess::ExitStatus) {
+                finishSolverProcess(false);
+            });
+
+    m_solverProcess->start();
+    if (!m_solverProcess->waitForStarted(5000))
+    {
+        QMessageBox::warning(nullptr, "启动求解器失败",
+                             QString("块体稳定分析启动求解器进程失败：%1")
+                                 .arg(m_solverProcess->errorString()));
+
+        finishSolverProcess(false);
+        return false;
+    }
+
+    setComputeWidgetRunning(m_activeComputeWidget, true);
+    return true;
+}
+
 
 bool Solver::launchSolverExecutable(const QString& analysisType)
 {

@@ -245,7 +245,7 @@ bool CaveBlockStabilityWidget::exportDatFiles(QVector<CaveBlockPlanePage*>& plan
         "                              ",
 
         "MESG227.DAT",
-        R"(E:\FEMMODEL\wedgetest\)",
+        QDir::toNativeSeparators(sliderDir.absolutePath() + QDir::separator()),
 
         "-------",
         "-------",
