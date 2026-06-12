@@ -26,11 +26,19 @@
 #include <QProcess>
 #include <QWidget>
 #include <algorithm>
+#include <array>
+#include <limits>
+#include <map>
+#include <set>
+#include <utility>
+#include <vector>
 
 #include <vtkCell.h>
 #include <vtkCellData.h>
 #include <vtkDataArray.h>
 #include <vtkIdList.h>
+#include <vtkPointData.h>
+#include <vtkSmartPointer.h>
 #include <vtkStaticCellLocator.h>
 #include <vtkUnstructuredGrid.h>
 
@@ -1304,6 +1312,8 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         ok = false;
         failedFiles << "IIKE_E**-**.DAT";
         failedFiles << "IIKE_T01-**.DAT";
+        failedFiles << "IIJX_E**-**.DAT";
+        failedFiles << "IIJX_T01-**.DAT";
     }
 
     if (!supportPage || !supportPage->exportICaveDatFile(supportCaseSection))
@@ -1439,6 +1449,104 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 
         const QString prepDir =
             QDir::toNativeSeparators(QDir(wd.filePath("PREP")).absolutePath()) + QDir::separator();
+
+        struct CaveElemContext
+        {
+            vtkSmartPointer<vtkUnstructuredGrid> grid;
+            vtkDataArray* elemIdArr = nullptr;
+            vtkDataArray* nodeIdArr = nullptr;
+            QHash<int, vtkIdType> elemToCellId;
+            int targetDim = 3;
+        };
+
+        auto buildCaveElemContext = [&]() -> CaveElemContext
+        {
+            CaveElemContext ctx;
+            ctx.targetDim =
+                PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+
+            auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+            if (!meshSvc)
+                return ctx;
+
+            ctx.grid = meshSvc->getVtkUnstructuredGridSolid();
+            if (!ctx.grid || ctx.grid->GetNumberOfCells() <= 0)
+                ctx.grid = meshSvc->getVtkUnstructuredGrid();
+
+            if (!ctx.grid || ctx.grid->GetNumberOfCells() <= 0)
+                return ctx;
+
+            ctx.elemIdArr =
+                vtkDataArray::SafeDownCast(ctx.grid->GetCellData()->GetArray("elem_id"));
+
+            if (ctx.grid->GetPointData())
+            {
+                ctx.nodeIdArr =
+                    vtkDataArray::SafeDownCast(ctx.grid->GetPointData()->GetArray("node_id"));
+                if (!ctx.nodeIdArr)
+                    ctx.nodeIdArr =
+                        vtkDataArray::SafeDownCast(ctx.grid->GetPointData()->GetArray("nodeId"));
+                if (!ctx.nodeIdArr)
+                    ctx.nodeIdArr =
+                        vtkDataArray::SafeDownCast(ctx.grid->GetPointData()->GetArray("point_id"));
+                if (!ctx.nodeIdArr)
+                    ctx.nodeIdArr =
+                        vtkDataArray::SafeDownCast(ctx.grid->GetPointData()->GetArray("global_node_id"));
+            }
+
+            ctx.elemToCellId.reserve(int(ctx.grid->GetNumberOfCells()));
+            for (vtkIdType cellId = 0; cellId < ctx.grid->GetNumberOfCells(); ++cellId)
+            {
+                vtkCell* cell = ctx.grid->GetCell(cellId);
+                if (!cell)
+                    continue;
+
+                // 开挖只针对当前工况维度的实体/区域单元：
+                // 2D 只取二维面单元，3D 只取三维体单元，杆单元/线单元不参与开挖。
+                if (cell->GetCellDimension() != ctx.targetDim)
+                    continue;
+
+                const int elemId =
+                    ctx.elemIdArr ? int(ctx.elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
+                if (elemId <= 0)
+                    continue;
+
+                if (!ctx.elemToCellId.contains(elemId))
+                    ctx.elemToCellId.insert(elemId, cellId);
+            }
+
+            return ctx;
+        };
+
+        CaveElemContext caveCtx = buildCaveElemContext();
+
+        auto normalizeExcavationElems = [&](const QVector<int>& rawKes) -> QVector<int>
+        {
+            QSet<int> uniq;
+            for (int ke : rawKes)
+            {
+                // 这里再次过滤，避免同一分组里混入杆单元/线单元时被写入 IIKE/IIJX。
+                if (caveCtx.elemToCellId.contains(ke))
+                    uniq.insert(ke);
+            }
+
+            QVector<int> out = uniq.values().toVector();
+            std::sort(out.begin(), out.end());
+            return out;
+        };
+
+        auto nodeIdOfPoint = [&](vtkIdType pointId) -> int
+        {
+            if (caveCtx.nodeIdArr && pointId >= 0 &&
+                pointId < caveCtx.nodeIdArr->GetNumberOfTuples())
+            {
+                const int nodeId = int(caveCtx.nodeIdArr->GetTuple1(pointId));
+                if (nodeId > 0)
+                    return nodeId;
+            }
+            return int(pointId + 1);
+        };
+
         auto writeIike = [&](const QString& fileName, const QVector<int>& kes, int iex1,
                              int iex2) -> bool
         {
@@ -1457,10 +1565,188 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
             return true;
         };
 
+        struct IijxRow
+        {
+            int ke1 = 0;
+            int ke2 = -1;
+            int jd1 = 0;
+            int jd2 = 0;
+            int jat = 0;
+        };
+
+        auto writeIijx = [&](const QString& fileName, const QVector<int>& kes, int iex1,
+                             int iex2) -> bool
+        {
+            QFile f(wd.filePath("PREP/" + fileName));
+            if (!f.open(QIODevice::WriteOnly | QIODevice::Text))
+                return false;
+
+            QVector<IijxRow> rows;
+            int makod = 4;
+
+            if (caveCtx.grid)
+            {
+                if (caveCtx.targetDim == 2)
+                {
+                    struct EdgeCandidate
+                    {
+                        std::vector<vtkIdType> key;
+                        IijxRow row;
+                    };
+
+                    std::map<std::vector<vtkIdType>, int> edgeUseCount;
+                    QVector<EdgeCandidate> candidates;
+
+                    for (int ke : kes)
+                    {
+                        const vtkIdType cellId = caveCtx.elemToCellId.value(ke, -1);
+                        if (cellId < 0)
+                            continue;
+
+                        vtkCell* cell = caveCtx.grid->GetCell(cellId);
+                        if (!cell || cell->GetCellDimension() != caveCtx.targetDim)
+                            continue;
+
+                        makod = qMax(makod, int(cell->GetNumberOfPoints()));
+
+                        const int edgeCount = cell->GetNumberOfEdges();
+                        for (int edgeId = 0; edgeId < edgeCount; ++edgeId)
+                        {
+                            vtkCell* edge = cell->GetEdge(edgeId);
+                            if (!edge || !edge->GetPointIds() ||
+                                edge->GetPointIds()->GetNumberOfIds() < 2)
+                                continue;
+
+                            const vtkIdType p1 = edge->GetPointId(0);
+                            const vtkIdType p2 = edge->GetPointId(1);
+
+                            std::vector<vtkIdType> key{p1, p2};
+                            std::sort(key.begin(), key.end());
+
+                            edgeUseCount[key] += 1;
+
+                            EdgeCandidate cand;
+                            cand.key = key;
+                            cand.row.ke1 = ke;
+                            cand.row.ke2 = -1;
+                            cand.row.jd1 = nodeIdOfPoint(p1);
+                            cand.row.jd2 = nodeIdOfPoint(p2);
+                            cand.row.jat = 0;
+                            candidates.push_back(cand);
+                        }
+                    }
+
+                    for (const EdgeCandidate& cand : candidates)
+                    {
+                        if (edgeUseCount[cand.key] == 1)
+                            rows.push_back(cand.row);
+                    }
+                }
+                else
+                {
+                    struct FaceCandidate
+                    {
+                        std::vector<vtkIdType> key;
+                        int ke = 0;
+                        QVector<vtkIdType> pointIds;
+                    };
+
+                    std::map<std::vector<vtkIdType>, int> faceUseCount;
+                    QVector<FaceCandidate> faceCandidates;
+
+                    for (int ke : kes)
+                    {
+                        const vtkIdType cellId = caveCtx.elemToCellId.value(ke, -1);
+                        if (cellId < 0)
+                            continue;
+
+                        vtkCell* cell = caveCtx.grid->GetCell(cellId);
+                        if (!cell || cell->GetCellDimension() != caveCtx.targetDim)
+                            continue;
+
+                        makod = qMax(makod, int(cell->GetNumberOfPoints()));
+
+                        const int faceCount = cell->GetNumberOfFaces();
+                        for (int faceId = 0; faceId < faceCount; ++faceId)
+                        {
+                            vtkCell* face = cell->GetFace(faceId);
+                            if (!face || !face->GetPointIds() ||
+                                face->GetPointIds()->GetNumberOfIds() < 3)
+                                continue;
+
+                            FaceCandidate cand;
+                            cand.ke = ke;
+                            cand.pointIds.reserve(int(face->GetPointIds()->GetNumberOfIds()));
+
+                            for (vtkIdType i = 0; i < face->GetPointIds()->GetNumberOfIds(); ++i)
+                            {
+                                const vtkIdType pid = face->GetPointId(i);
+                                cand.pointIds.push_back(pid);
+                                cand.key.push_back(pid);
+                            }
+
+                            std::sort(cand.key.begin(), cand.key.end());
+                            faceUseCount[cand.key] += 1;
+                            faceCandidates.push_back(cand);
+                        }
+                    }
+
+                    std::set<std::vector<vtkIdType>> writtenEdges;
+                    for (const FaceCandidate& face : faceCandidates)
+                    {
+                        if (faceUseCount[face.key] != 1)
+                            continue;
+
+                        const int n = face.pointIds.size();
+                        for (int i = 0; i < n; ++i)
+                        {
+                            const vtkIdType p1 = face.pointIds[i];
+                            const vtkIdType p2 = face.pointIds[(i + 1) % n];
+
+                            std::vector<vtkIdType> edgeKey{p1, p2};
+                            std::sort(edgeKey.begin(), edgeKey.end());
+                            if (writtenEdges.find(edgeKey) != writtenEdges.end())
+                                continue;
+                            writtenEdges.insert(edgeKey);
+
+                            IijxRow row;
+                            row.ke1 = face.ke;
+                            row.ke2 = -1;
+                            row.jd1 = nodeIdOfPoint(p1);
+                            row.jd2 = nodeIdOfPoint(p2);
+                            row.jat = 0;
+                            rows.push_back(row);
+                        }
+                    }
+                }
+            }
+
+            QTextStream os(&f);
+            os << QString("%1%2     NJX   MAKOD\n").arg(rows.size(), 9).arg(makod, 9);
+            os << "    KJX     KE1     KE2     JD1     JD2  JAT\n";
+            for (int i = 0; i < rows.size(); ++i)
+            {
+                const IijxRow& row = rows[i];
+                os << QString("%1%2%3%4%5%6\n")
+                          .arg(i + 1, 9)
+                          .arg(row.ke1, 9)
+                          .arg(row.ke2, 9)
+                          .arg(row.jd1, 9)
+                          .arg(row.jd2, 9)
+                          .arg(row.jat, 10);
+            }
+            os << QString("    DIR=%1                                                    \n").arg(prepDir);
+            os << " ISHIFT=       2\n";
+            os << QString("   NJX=%1\n").arg(rows.size(), 8);
+            os << QString(" IEX1=%1  IEX2=%2  \n").arg(iex1, 4).arg(iex2, 4);
+            return true;
+        };
+
         QSet<int> cumulative;
         for (int i = 0; i < excavationBodies.size(); ++i)
         {
-            QVector<int> e = excavationBodies[i]->selectedElementIds();
+            QVector<int> e = normalizeExcavationElems(excavationBodies[i]->selectedElementIds());
+
             const QString idx = QString("%1").arg(i + 1, 2, 10, QLatin1Char('0'));
             const QString eFile = QString("IIKE_E%1-%1.DAT").arg(idx);
             if (!writeIike(eFile, e, -(i + 1), -(i + 1)))
@@ -1469,15 +1755,31 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                 failedFiles << eFile;
             }
 
+            const QString ejxFile = QString("IIJX_E%1-%1.DAT").arg(idx);
+            if (!writeIijx(ejxFile, e, -(i + 1), -(i + 1)))
+            {
+                ok = false;
+                failedFiles << ejxFile;
+            }
+
             for (int ke : e)
                 cumulative.insert(ke);
+
             QVector<int> t = cumulative.values().toVector();
             std::sort(t.begin(), t.end());
+
             const QString tFile = QString("IIKE_T01-%1.DAT").arg(idx);
             if (!writeIike(tFile, t, -1, -(i + 1)))
             {
                 ok = false;
                 failedFiles << tFile;
+            }
+
+            const QString tjxFile = QString("IIJX_T01-%1.DAT").arg(idx);
+            if (!writeIijx(tjxFile, t, -1, -(i + 1)))
+            {
+                ok = false;
+                failedFiles << tjxFile;
             }
         }
     }
