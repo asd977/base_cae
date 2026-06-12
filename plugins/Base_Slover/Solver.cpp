@@ -1731,7 +1731,7 @@ bool Solver::launchCaveBlockSolverExecutable()
 
     m_solverProcess = new QProcess(this);
     // 滑块计算仍使用 PCCAE_CPU.exe；运行前把 D:/IIIDIR.DAT 指向 SliderCase
-    // 并写入 227 工况，使求解器进入滑块流程而不是 MESG_IAUTO 自动分发流程。
+    // 并写入滑块需要的 6 工况，使求解器进入滑块流程而不是 MESG_IAUTO 自动分发流程。
     m_solverProcess->setWorkingDirectory(QDir(sliderDir).absolutePath());
     m_solverProcess->setProgram(exePath);
     m_solverProcess->setArguments(QStringList());
@@ -1910,7 +1910,7 @@ bool Solver::updateCaveBlockIiiDirDat(const QString& sliderDir) const
                 lines[i + 1].trimmed().toInt(&ok);
                 if (ok)
                 {
-                    lines[i + 1] = QString("%1   ").arg(227, 12);
+                    lines[i + 1] = QString("%1   ").arg(6, 12);
                     updatedModeLine = true;
                 }
             }
