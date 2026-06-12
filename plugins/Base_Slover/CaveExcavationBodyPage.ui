@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>CaveExcavationBodyPage</class>
+ <widget class="QWidget" name="CaveExcavationBodyPage">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>480</width>
+    <height>360</height>
+   </rect>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayoutRoot">
+   <property name="leftMargin">
+    <number>12</number>
+   </property>
+   <property name="topMargin">
+    <number>12</number>
+   </property>
+   <property name="rightMargin">
+    <number>12</number>
+   </property>
+   <property name="bottomMargin">
+    <number>12</number>
+   </property>
+   <property name="spacing">
+    <number>10</number>
+   </property>
+   <item>
+    <widget class="QLabel" name="titleLabel">
+     <property name="styleSheet">
+      <string notr="true">font-size:16px;font-weight:600;color:#1f2937;</string>
+     </property>
+     <property name="text">
+      <string>开挖体选择</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="hintLabel">
+     <property name="styleSheet">
+      <string notr="true">color:#6b7280;</string>
+     </property>
+     <property name="text">
+      <string>选择一个或多个开挖体分组。2D 工况选择二维开挖区域分组，3D 工况选择三维开挖体分组。下拉框悬停可预览，点击“添加到当前”后加入当前选择。</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="pickGroupBox">
+     <property name="title">
+      <string>1. 选择对象</string>
+     </property>
+     <layout class="QFormLayout" name="pickFormLayout">
+      <property name="fieldGrowthPolicy">
+       <enum>QFormLayout::ExpandingFieldsGrow</enum>
+      </property>
+      <property name="labelAlignment">
+       <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+      </property>
+      <item row="0" column="0">
+       <widget class="QLabel" name="groupLabel">
+        <property name="text">
+         <string>分组</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="CustomComboBox" name="groupCombo"/>
+      </item>
+      <item row="1" column="1">
+       <widget class="QWidget" name="actionRow" native="true">
+        <layout class="QHBoxLayout" name="actionLayout">
+         <property name="leftMargin">
+          <number>0</number>
+         </property>
+         <property name="topMargin">
+          <number>0</number>
+         </property>
+         <property name="rightMargin">
+          <number>0</number>
+         </property>
+         <property name="bottomMargin">
+          <number>0</number>
+         </property>
+         <property name="spacing">
+          <number>8</number>
+         </property>
+         <item>
+          <widget class="QPushButton" name="addGroupButton">
+           <property name="text">
+            <string>添加到当前</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="clearButton">
+           <property name="text">
+            <string>清空</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="currentGroupBox">
+     <property name="title">
+      <string>2. 当前选择</string>
+     </property>
+     <layout class="QVBoxLayout" name="currentLayout">
+      <property name="leftMargin">
+       <number>10</number>
+      </property>
+      <property name="topMargin">
+       <number>8</number>
+      </property>
+      <property name="rightMargin">
+       <number>10</number>
+      </property>
+      <property name="bottomMargin">
+       <number>10</number>
+      </property>
+      <property name="spacing">
+       <number>8</number>
+      </property>
+      <item>
+       <widget class="QListWidget" name="groupList">
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>120</height>
+         </size>
+        </property>
+        <property name="selectionMode">
+         <enum>QAbstractItemView::ExtendedSelection</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="removeGroupButton">
+        <property name="text">
+         <string>移除选中分组</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>CustomComboBox</class>
+   <extends>QComboBox</extends>
+   <header>CustomComboBox.h</header>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>

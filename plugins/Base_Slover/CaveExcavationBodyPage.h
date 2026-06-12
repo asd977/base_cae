@@ -10,12 +10,17 @@
 class QComboBox;
 class QPushButton;
 class QListWidget;
+namespace Ui
+{
+class CaveExcavationBodyPage;
+}
 
 class CaveExcavationBodyPage : public BasePage
 {
     Q_OBJECT
   public:
     explicit CaveExcavationBodyPage(QWidget* parent = nullptr);
+    ~CaveExcavationBodyPage() override;
 
     void beforeLoad() override;
     void beforeUnload() override;
@@ -47,6 +52,8 @@ class CaveExcavationBodyPage : public BasePage
     int layerDomainDim() const;
 
   private:
+    Ui::CaveExcavationBodyPage* ui = nullptr;
+
     int m_lastHoveredIndex = -1;
 
     QComboBox* m_groupCombo = nullptr;

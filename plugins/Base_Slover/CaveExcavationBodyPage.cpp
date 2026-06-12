@@ -13,21 +13,17 @@
 #include <vtkDataArray.h>
 #include <vtkUnstructuredGrid.h>
 
-#include <QAbstractItemView>
 #include <QColor>
 #include <QComboBox>
-#include <QFormLayout>
-#include <QGroupBox>
-#include <QHBoxLayout>
 #include <QJsonArray>
 #include <QJsonObject>
-#include <QLabel>
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QPushButton>
+
+#include "ui_CaveExcavationBodyPage.h"
+
 #include <QSet>
-#include <QSignalBlocker>
-#include <QVBoxLayout>
 #include <QVariant>
 
 #include <algorithm>
@@ -38,60 +34,16 @@
 #include <vector>
 
 CaveExcavationBodyPage::CaveExcavationBodyPage(QWidget* parent)
-    : BasePage("CaveExcavationBody")
+    : BasePage("CaveExcavationBody"), ui(new Ui::CaveExcavationBodyPage)
 {
+    ui->setupUi(this);
     Q_UNUSED(parent);
 
-    auto* root = new QVBoxLayout(this);
-    root->setContentsMargins(12, 12, 12, 12);
-    root->setSpacing(10);
-
-    auto* title = new QLabel(QStringLiteral("开挖体选择"), this);
-    title->setStyleSheet(QStringLiteral("font-size:16px;font-weight:600;color:#1f2937;"));
-    root->addWidget(title);
-
-    auto* hint = new QLabel(
-        QStringLiteral("选择一个或多个开挖体分组。2D 工况选择二维开挖区域分组，3D 工况选择三维开挖体分组。下拉框悬停可预览，点击“添加到当前”后加入当前选择。"),
-        this);
-    hint->setWordWrap(true);
-    hint->setStyleSheet(QStringLiteral("color:#6b7280;"));
-    root->addWidget(hint);
-
-    auto* pickGroup = new QGroupBox(QStringLiteral("1. 选择对象"), this);
-    auto* pickForm = new QFormLayout(pickGroup);
-    pickForm->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
-    pickForm->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
-
-    m_groupCombo = new CustomComboBox(pickGroup);
-    m_addGroupBtn = new QPushButton(QStringLiteral("添加到当前"), pickGroup);
-    m_clearBtn = new QPushButton(QStringLiteral("清空"), pickGroup);
-
-    auto* actionRow = new QWidget(pickGroup);
-    auto* actionLayout = new QHBoxLayout(actionRow);
-    actionLayout->setContentsMargins(0, 0, 0, 0);
-    actionLayout->setSpacing(8);
-    actionLayout->addWidget(m_addGroupBtn);
-    actionLayout->addWidget(m_clearBtn);
-
-    pickForm->addRow(QStringLiteral("分组"), m_groupCombo);
-    pickForm->addRow(QString(), actionRow);
-    root->addWidget(pickGroup);
-
-    auto* currentGroup = new QGroupBox(QStringLiteral("2. 当前选择"), this);
-    auto* currentLayout = new QVBoxLayout(currentGroup);
-    currentLayout->setContentsMargins(10, 8, 10, 10);
-    currentLayout->setSpacing(8);
-
-    m_groupList = new QListWidget(currentGroup);
-    m_groupList->setSelectionMode(QAbstractItemView::ExtendedSelection);
-    m_groupList->setMaximumHeight(120);
-
-    m_removeGroupBtn = new QPushButton(QStringLiteral("移除选中分组"), currentGroup);
-
-    currentLayout->addWidget(m_groupList);
-    currentLayout->addWidget(m_removeGroupBtn);
-    root->addWidget(currentGroup);
-    root->addStretch();
+    m_groupCombo = ui->groupCombo;
+    m_addGroupBtn = ui->addGroupButton;
+    m_clearBtn = ui->clearButton;
+    m_groupList = ui->groupList;
+    m_removeGroupBtn = ui->removeGroupButton;
 
     connect(m_addGroupBtn, &QPushButton::clicked,
             this, &CaveExcavationBodyPage::onAddGroupClicked);
@@ -113,6 +65,11 @@ CaveExcavationBodyPage::CaveExcavationBodyPage(QWidget* parent)
 
     setupGroupCombo();
     refreshSelectedGroupList();
+}
+
+CaveExcavationBodyPage::~CaveExcavationBodyPage()
+{
+    delete ui;
 }
 
 void CaveExcavationBodyPage::beforeLoad()

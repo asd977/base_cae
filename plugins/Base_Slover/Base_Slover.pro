@@ -45,6 +45,7 @@ SOURCES += \
 FORMS += \
     CaveBlockPlanePage.ui \
     CaveBlockStabilityWidget.ui \
+    CaveExcavationBodyPage.ui \
     CaveExcavationWidget.ui \
     CaveSupportComputationPage.ui \
     GeoStressRegressionWidget.ui \
