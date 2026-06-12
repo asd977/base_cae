@@ -1714,6 +1714,13 @@ bool Solver::launchCaveBlockSolverExecutable()
         return false;
     }
 
+    if (!updateCaveBlockIiiDirDat(sliderDir))
+    {
+        QMessageBox::warning(nullptr, "启动求解器失败",
+                             "块体稳定分析更新 IIIDIR.DAT 失败。");
+        return false;
+    }
+
     if (m_solverProcess)
         finishSolverProcess(true);
     else
@@ -1723,8 +1730,8 @@ bool Solver::launchCaveBlockSolverExecutable()
     m_pendingComputeWidget = nullptr;
 
     m_solverProcess = new QProcess(this);
-    // 滑块计算仍使用 PCCAE_CPU.exe，但输入文件位于 SliderCase，不能走项目根目录下
-    // 依赖 MESG_IAUTO.DAT 的自动分发入口。
+    // 滑块计算仍使用 PCCAE_CPU.exe；运行前把 D:/IIIDIR.DAT 指向 SliderCase
+    // 并写入 227 工况，使求解器进入滑块流程而不是 MESG_IAUTO 自动分发流程。
     m_solverProcess->setWorkingDirectory(QDir(sliderDir).absolutePath());
     m_solverProcess->setProgram(exePath);
     m_solverProcess->setArguments(QStringList());
@@ -1867,6 +1874,57 @@ int Solver::solverModeFromAnalysisType(const QString& analysisType) const
     if (analysisType.contains("边坡"))
         return 7;
     return 0;
+}
+
+
+bool Solver::updateCaveBlockIiiDirDat(const QString& sliderDir) const
+{
+    QFile file("D:/IIIDIR.DAT");
+    if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return false;
+
+    QString content = QString::fromLocal8Bit(file.readAll());
+    file.close();
+    QStringList lines = content.split(QRegularExpression("\\r?\\n"), QString::KeepEmptyParts);
+    if (lines.size() < 2)
+        return false;
+
+    QString nativeSliderDir = QDir::toNativeSeparators(QDir(sliderDir).absolutePath());
+    if (!nativeSliderDir.endsWith('\\'))
+        nativeSliderDir += "\\";
+
+    lines[0] = QString("'%1'").arg(nativeSliderDir);
+
+    bool updatedModeLine = false;
+    for (int i = lines.size() - 1; i >= 1; --i)
+    {
+        const QString trimmed = lines[i].trimmed();
+        const bool quotedPath = trimmed.startsWith("'") && trimmed.endsWith("'") &&
+                                (trimmed.contains('\\') || trimmed.contains('/'));
+        if (quotedPath)
+        {
+            lines[i] = QString("'%1'").arg(nativeSliderDir);
+            if (i + 1 < lines.size())
+            {
+                bool ok = false;
+                lines[i + 1].trimmed().toInt(&ok);
+                if (ok)
+                {
+                    lines[i + 1] = QString("%1   ").arg(227, 12);
+                    updatedModeLine = true;
+                }
+            }
+            break;
+        }
+    }
+
+    if (!updatedModeLine)
+        return false;
+
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+        return false;
+    file.write(lines.join("\n").toLocal8Bit());
+    return true;
 }
 
 bool Solver::updateIiiDirDat(const QString& projectDir, int solverMode) const
