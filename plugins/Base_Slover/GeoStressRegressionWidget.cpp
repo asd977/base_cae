@@ -114,10 +114,13 @@ bool GeoStressRegressionWidget::exportIGEOSDatFile(const ExportPayload& payload)
     }
 
     os << QString("%1    NFA_GEO\n").arg(payload.faceRows.size());
-    os << "IDIR       HEIGHT      GAMA          PGROUT  II\n";
-    for (const auto& row : payload.faceRows)
+    os << "FNAME            IDIR       HEIGHT      GAMA          PGROUT  II\n";
+    for (int i = 0; i < payload.faceRows.size(); ++i)
     {
-        os << row.idir << "   " << row.height << "   " << row.gama << "   " << row.pgrout << "   " << row.ii << "\n";
+        const auto& row = payload.faceRows.at(i);
+        os << "'" << payload.sideFaceFiles.value(i, QString("FA_SIDE%1.DAT").arg(i + 1)) << "'   "
+           << row.idir << "   " << row.height << "   " << row.gama << "   " << row.pgrout
+           << "   " << row.ii << "\n";
     }
 
     return true;
