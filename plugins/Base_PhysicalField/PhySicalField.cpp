@@ -26,6 +26,8 @@
 #include <QVector>
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <limits>
 
 #include "BodyForcePage.h"
 #include "PhysicalFieldSettingWidget.h"
@@ -971,6 +973,30 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
         }
         return false;
     };
+    auto parseIntegerField = [](const QString& text, int& value) -> bool
+    {
+        bool ok = false;
+        const int intValue = text.toInt(&ok);
+        if (ok)
+        {
+            value = intValue;
+            return true;
+        }
+
+        bool okDouble = false;
+        const double doubleValue = text.toDouble(&okDouble);
+        if (!okDouble)
+            return false;
+
+        const double rounded = std::round(doubleValue);
+        if (std::fabs(doubleValue - rounded) > 1e-9 ||
+            rounded < std::numeric_limits<int>::min() ||
+            rounded > std::numeric_limits<int>::max())
+            return false;
+
+        value = static_cast<int>(rounded);
+        return true;
+    };
 
     QString line;
     if (!readDataLine(line))
@@ -1011,10 +1037,15 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
             return fail(QStringLiteral("IIID.DAT 第 %1 条约束数据格式错误").arg(parsedRows + 1));
 
         bool okUx = false, okUy = false, okUz = true, okNode = false;
-        const int ux = parts.at(0).toInt(&okUx);
-        const int uy = parts.at(1).toInt(&okUy);
-        const int uz = (maDof == 3) ? parts.at(2).toInt(&okUz) : 1;
-        const int nodeId = parts.at(maDof).toInt(&okNode);
+        int ux = 0;
+        int uy = 0;
+        int uz = 1;
+        int nodeId = 0;
+        okUx = parseIntegerField(parts.at(0), ux);
+        okUy = parseIntegerField(parts.at(1), uy);
+        if (maDof == 3)
+            okUz = parseIntegerField(parts.at(2), uz);
+        okNode = parseIntegerField(parts.at(maDof), nodeId);
         if (!okUx || !okUy || !okUz || !okNode)
             return fail(QStringLiteral("IIID.DAT 第 %1 条约束数据包含非整数字段").arg(parsedRows + 1));
 
