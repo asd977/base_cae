@@ -599,7 +599,7 @@ void UiFrame::buildRibbonTabs()
             // auto* actMeshGrouping =
             //     makeAction(this, ":/resources/menu/minimal/mesh-group.svg", "&网格分组");
             auto* actQuality =
-                makeAction(this, ":/resources/menu/minimal/mesh-edit.svg", "&质量检查");
+                makeAction(this, ":/resources/menu/minimal/mesh-quality.svg", "&质量检查");
 
             addActionToPanel(panel, actMeshEdit, 3);
             // addActionToPanel(panel, actMeshGrouping, 3);
@@ -821,7 +821,7 @@ void UiFrame::buildRibbonTabs()
         auto* actSlope =
             makeAction(this, ":/resources/menu/minimal/analysis-slope.svg", "&边坡分析");
         auto* actBlock =
-            makeAction(this, ":/resources/menu/minimal/analysis-cave.svg", "&块体稳定计算");
+            makeAction(this, ":/resources/menu/minimal/analysis-block.svg", "&块体稳定计算");
 
         addActionToPanel(panel, actParam, 3);
         addActionToPanel(panel, actStress, 3);
