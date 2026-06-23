@@ -960,11 +960,20 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
         return fail(QStringLiteral("无法打开文件：%1").arg(filePath));
 
     QTextStream is(&f);
-    auto readDataLine = [&is](QString& out) -> bool
+    QStringList pendingDataLines;
+    auto readDataLine = [&is, &pendingDataLines](QString& out) -> bool
     {
-        while (!is.atEnd())
+        while (!is.atEnd() || !pendingDataLines.isEmpty())
         {
-            out = is.readLine().trimmed();
+            if (pendingDataLines.isEmpty())
+            {
+                QString raw = is.readLine();
+                raw.replace(QStringLiteral("\\r"), QStringLiteral("\n"));
+                raw.replace(QStringLiteral("\\n"), QStringLiteral("\n"));
+                pendingDataLines = raw.split('\n');
+            }
+
+            out = pendingDataLines.takeFirst().trimmed();
             if (out.isEmpty())
                 continue;
             if (out.startsWith('#') || out.startsWith('!'))
@@ -975,8 +984,20 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
     };
     auto parseIntegerField = [](const QString& text, int& value) -> bool
     {
+        QString normalized;
+        normalized.reserve(text.size());
+        for (const QChar ch : text.trimmed())
+        {
+            if (ch.isNull() || ch == QChar(0xFEFF) || ch == QChar(0x200B))
+                continue;
+            if (ch.unicode() < 0x20)
+                continue;
+            normalized.append(ch);
+        }
+        normalized.replace(',', '.');
+
         bool ok = false;
-        const int intValue = text.toInt(&ok);
+        const int intValue = normalized.toInt(&ok);
         if (ok)
         {
             value = intValue;
@@ -984,7 +1005,7 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
         }
 
         bool okDouble = false;
-        const double doubleValue = text.toDouble(&okDouble);
+        const double doubleValue = normalized.toDouble(&okDouble);
         if (!okDouble)
             return false;
 
