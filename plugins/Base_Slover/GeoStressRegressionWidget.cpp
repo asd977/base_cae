@@ -66,6 +66,16 @@ bool GeoStressRegressionWidget::exportIGEOSDatFile(const ExportPayload& payload)
     QTextStream os(&file);
     const QString prepDir = ensureTrailingSep(wd.filePath("PREP"));
 
+    QFile imidFile(wd.filePath("IMID_GEOS.DAT"));
+    if (!imidFile.open(QIODevice::WriteOnly | QIODevice::Text))
+        return false;
+    QTextStream imidOs(&imidFile);
+    imidOs << "  3\n";
+    imidOs << "  3\n";
+    imidOs << "  1\n";
+    imidOs << "   0.00000\n";
+    imidOs << "'" << prepDir << "'\n";
+
     os << "'" << prepDir << "'       1\n";
     os << "'" << kRoofFileName << "'       2\n";
     os << "'" << payload.sideFaceFiles.value(0, "FA_SIDE1.DAT") << "'       3\n";
