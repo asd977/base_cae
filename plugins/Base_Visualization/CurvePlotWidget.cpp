@@ -5,8 +5,6 @@
 #include <QRegularExpression>
 #include <QVBoxLayout>
 
-#include <algorithm>
-
 #include "qcustomplot.h"
 
 CurvePlotWidget::CurvePlotWidget(QWidget* parent) : QWidget(parent)
@@ -139,9 +137,15 @@ void CurvePlotWidget::renderPlot(const QString& xField, const QSet<QString>& yFi
     m_plot->graph(3)->setVisible(yFields.contains("LOOP"));
     m_plot->graph(3)->setData(x, loop);
 
-    const auto xMinMax = std::minmax_element(x.constBegin(), x.constEnd());
-    const double minX = *xMinMax.first;
-    const double maxX = *xMinMax.second;
+    double minX = x.first();
+    double maxX = minX;
+    for (const double value : qAsConst(x))
+    {
+        if (value < minX)
+            minX = value;
+        if (value > maxX)
+            maxX = value;
+    }
     m_plot->xAxis->setRange(minX, maxX > minX ? maxX : minX + 1.0);
 
     m_plot->rescaleAxes(true);

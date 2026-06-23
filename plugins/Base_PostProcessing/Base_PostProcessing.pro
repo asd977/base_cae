@@ -57,8 +57,7 @@ FORMS += \
 
 
 
-RESOURCES += \
-    ../../res.qrc
+RESOURCES +=
 
 msvc
 {
