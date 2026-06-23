@@ -134,36 +134,6 @@
          </property>
         </widget>
        </item>
-       <item row="3" column="0">
-        <widget class="QLabel" name="label10">
-         <property name="text">
-          <string>是否考虑外面力</string>
-         </property>
-         <property name="wordWrap">
-          <bool>false</bool>
-         </property>
-        </widget>
-       </item>
-       <item row="3" column="1">
-        <widget class="QComboBox" name="forceEnabledCombo">
-         <item>
-          <property name="text">
-           <string>0 - 不考虑</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>1 - 考虑</string>
-          </property>
-         </item>
-         <property name="minimumSize">
-          <size>
-           <width>10</width>
-           <height>0</height>
-          </size>
-         </property>
-        </widget>
-       </item>
        <item row="4" column="0">
         <widget class="QLabel" name="label11">
          <property name="text">

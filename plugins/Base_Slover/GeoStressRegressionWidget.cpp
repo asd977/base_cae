@@ -134,7 +134,6 @@ QJsonObject GeoStressRegressionWidget::saveJson()
     obj["factor"] = ui->factorEdit->text().trimmed();
     obj["calc_mode"] = ui->calcModeCombo->currentIndex();
     obj["reserved"] = ui->reservedEdit->text().trimmed();
-    obj["force_enabled"] = ui->forceEnabledCombo->currentIndex();
     obj["lambda"] = ui->lambdaEdit->text().trimmed();
 
     return obj;
@@ -145,8 +144,6 @@ void GeoStressRegressionWidget::loadJson(const QJsonObject& obj)
     ui->factorEdit->setText(obj.value("factor").toString(ui->factorEdit->text()));
     ui->calcModeCombo->setCurrentIndex(obj.value("calc_mode").toInt(ui->calcModeCombo->currentIndex()));
     ui->reservedEdit->setText(obj.value("reserved").toString(ui->reservedEdit->text()));
-    ui->forceEnabledCombo->setCurrentIndex(
-        obj.value("force_enabled").toInt(ui->forceEnabledCombo->currentIndex()));
     ui->lambdaEdit->setText(obj.value("lambda").toString(ui->lambdaEdit->text()));
 
     // 兼容旧工程：measure_rows/face_rows 由子节点替代，因此不再在主页面恢复。
