@@ -941,13 +941,15 @@ void PhysicalField::generateIIIDFile()
     qInfo() << "IIID generated:" << path;
 }
 
-
 bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessage)
 {
+    const QString fileTag = QStringLiteral("IID.DAT");
+
     auto fail = [errorMessage](const QString& message)
     {
         if (errorMessage)
             *errorMessage = message;
+
         qWarning() << "importIIIDFile:" << message;
         return false;
     };
@@ -960,115 +962,188 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
         return fail(QStringLiteral("无法打开文件：%1").arg(filePath));
 
     QTextStream is(&f);
-    QStringList pendingDataLines;
-    auto readDataLine = [&is, &pendingDataLines](QString& out) -> bool
-    {
-        while (!is.atEnd() || !pendingDataLines.isEmpty())
-        {
-            if (pendingDataLines.isEmpty())
-            {
-                QString raw = is.readLine();
-                raw.replace(QStringLiteral("\\r"), QStringLiteral("\n"));
-                raw.replace(QStringLiteral("\\n"), QStringLiteral("\n"));
-                pendingDataLines = raw.split('\n');
-            }
 
-            out = pendingDataLines.takeFirst().trimmed();
+    auto readDataLine = [&is](QString& out) -> bool
+    {
+        while (!is.atEnd())
+        {
+            out = is.readLine().trimmed();
+
             if (out.isEmpty())
                 continue;
+
             if (out.startsWith('#') || out.startsWith('!'))
                 continue;
+
             return true;
         }
+
         return false;
     };
-    auto parseIntegerField = [](const QString& text, int& value) -> bool
+
+    const QRegularExpression spaceRe(QStringLiteral("\\s+"));
+
+    auto splitFields = [&spaceRe](const QString& text) -> QStringList
     {
-        QString normalized;
-        normalized.reserve(text.size());
-        for (const QChar ch : text.trimmed())
-        {
-            if (ch.isNull() || ch == QChar(0xFEFF) || ch == QChar(0x200B))
-                continue;
-            if (ch.unicode() < 0x20)
-                continue;
-            normalized.append(ch);
-        }
-        normalized.replace(',', '.');
+        return text.trimmed().split(spaceRe, QString::SkipEmptyParts);
+    };
+
+    auto parseStrictInt = [](const QString& text, int& value) -> bool
+    {
+        const QString s = text.trimmed();
+
+        if (s.isEmpty())
+            return false;
 
         bool ok = false;
-        const int intValue = normalized.toInt(&ok);
-        if (ok)
+        const int v = s.toInt(&ok);
+
+        if (!ok)
+            return false;
+
+        value = v;
+        return true;
+    };
+
+    auto parseHeaderLine = [&splitFields, &parseStrictInt](const QString& text,
+                                                           int& numNp,
+                                                           int& maDof,
+                                                           QString* err) -> bool
+    {
+        const QStringList fields = splitFields(text);
+
+               // 正式支持两种文件头：
+               // 1) NUMNP MADOF
+               //    396 2
+               //
+               // 2) NUMNP MADOF + 字段名说明
+               //    396 2 NUMNP MADOF
+        if (fields.size() != 2 && fields.size() != 4)
         {
-            value = intValue;
-            return true;
+            if (err)
+            {
+                *err = QStringLiteral("格式错误，应为：节点数 自由度数，或：节点数 自由度数 NUMNP MADOF；实际为：%1")
+                           .arg(text);
+            }
+
+            return false;
         }
 
-        bool okDouble = false;
-        const double doubleValue = normalized.toDouble(&okDouble);
-        if (!okDouble)
-            return false;
+        if (!parseStrictInt(fields.at(0), numNp) ||
+            !parseStrictInt(fields.at(1), maDof))
+        {
+            if (err)
+                *err = QStringLiteral("前两列必须为整数：%1").arg(text);
 
-        const double rounded = std::round(doubleValue);
-        if (std::fabs(doubleValue - rounded) > 1e-9 ||
-            rounded < std::numeric_limits<int>::min() ||
-            rounded > std::numeric_limits<int>::max())
             return false;
+        }
 
-        value = static_cast<int>(rounded);
+        if (fields.size() == 4)
+        {
+            if (fields.at(2).compare(QStringLiteral("NUMNP"), Qt::CaseInsensitive) != 0 ||
+                fields.at(3).compare(QStringLiteral("MADOF"), Qt::CaseInsensitive) != 0)
+            {
+                if (err)
+                    *err = QStringLiteral("第 3、4 列应为 NUMNP MADOF：%1").arg(text);
+
+                return false;
+            }
+        }
+
         return true;
     };
 
     QString line;
     if (!readDataLine(line))
-        return fail(QStringLiteral("IIID.DAT 文件为空"));
+        return fail(QStringLiteral("%1 文件为空").arg(fileTag));
 
-    const QStringList header = line.split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
-    if (header.size() < 2)
-        return fail(QStringLiteral("IIID.DAT 首行格式错误，应为：节点数 自由度数"));
+    int numNp = 0;
+    int maDof = 0;
 
-    bool okNum = false, okDof = false;
-    const int numNp = header.at(0).toInt(&okNum);
-    const int maDof = header.at(1).toInt(&okDof);
-    if (!okNum || !okDof || numNp < 0 || (maDof != 2 && maDof != 3))
-        return fail(QStringLiteral("IIID.DAT 首行节点数或自由度数无效"));
+    QString headerError;
+    if (!parseHeaderLine(line, numNp, maDof, &headerError))
+        return fail(QStringLiteral("%1 首行%2").arg(fileTag, headerError));
 
-    // 生成逻辑会写两行相同文件头；导入时兼容有/无第二行文件头两种格式。
-    if (!readDataLine(line))
-        return fail(QStringLiteral("IIID.DAT 缺少约束数据"));
-
-    QStringList parts = line.split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
-    if (parts.size() == 2)
+    if (numNp < 0 || (maDof != 2 && maDof != 3))
     {
-        bool okHeader2Num = false, okHeader2Dof = false;
-        const int secondNum = parts.at(0).toInt(&okHeader2Num);
-        const int secondDof = parts.at(1).toInt(&okHeader2Dof);
-        if (!okHeader2Num || !okHeader2Dof || secondNum != numNp || secondDof != maDof)
-            return fail(QStringLiteral("IIID.DAT 第二行文件头与首行不一致"));
-        if (!readDataLine(line) && numNp > 0)
-            return fail(QStringLiteral("IIID.DAT 缺少约束数据行"));
-        parts = line.split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
+        return fail(QStringLiteral("%1 首行节点数或自由度数无效：%2")
+                        .arg(fileTag, line));
+    }
+
+    QStringList parts;
+
+    if (numNp > 0)
+    {
+        if (!readDataLine(line))
+            return fail(QStringLiteral("%1 缺少约束数据").arg(fileTag));
+
+        int secondNum = 0;
+        int secondDof = 0;
+        QString secondHeaderError;
+
+        if (parseHeaderLine(line, secondNum, secondDof, &secondHeaderError))
+        {
+            if (secondNum != numNp || secondDof != maDof)
+            {
+                return fail(QStringLiteral("%1 第二行文件头与首行不一致：%2")
+                                .arg(fileTag, line));
+            }
+
+            if (!readDataLine(line))
+                return fail(QStringLiteral("%1 缺少约束数据行").arg(fileTag));
+        }
+
+        parts = splitFields(line);
     }
 
     QMap<QString, QVector<int>> groupedNodeIds;
-    int parsedRows = 0;
-    while (parsedRows < numNp)
-    {
-        if (parts.size() < maDof + 1)
-            return fail(QStringLiteral("IIID.DAT 第 %1 条约束数据格式错误").arg(parsedRows + 1));
 
-        bool okUx = false, okUy = false, okUz = true, okNode = false;
+    for (int rowIndex = 0; rowIndex < numNp; ++rowIndex)
+    {
+        const int expectedFieldCount = maDof + 1;
+
+        if (parts.size() != expectedFieldCount)
+        {
+            return fail(QStringLiteral("%1 第 %2 条约束数据格式错误，应为 %3 列，实际为 %4 列：%5")
+                            .arg(fileTag)
+                            .arg(rowIndex + 1)
+                            .arg(expectedFieldCount)
+                            .arg(parts.size())
+                            .arg(line));
+        }
+
         int ux = 0;
         int uy = 0;
         int uz = 1;
         int nodeId = 0;
-        okUx = parseIntegerField(parts.at(0), ux);
-        okUy = parseIntegerField(parts.at(1), uy);
+
+        if (!parseStrictInt(parts.at(0), ux) ||
+            !parseStrictInt(parts.at(1), uy))
+        {
+            return fail(QStringLiteral("%1 第 %2 条约束数据包含非整数字段：%3")
+                            .arg(fileTag)
+                            .arg(rowIndex + 1)
+                            .arg(line));
+        }
+
         if (maDof == 3)
-            okUz = parseIntegerField(parts.at(2), uz);
-        okNode = parseIntegerField(parts.at(maDof), nodeId);
-        if (!okUx || !okUy || !okUz || !okNode)
-            return fail(QStringLiteral("IIID.DAT 第 %1 条约束数据包含非整数字段").arg(parsedRows + 1));
+        {
+            if (!parseStrictInt(parts.at(2), uz))
+            {
+                return fail(QStringLiteral("%1 第 %2 条约束数据包含非整数字段：%3")
+                                .arg(fileTag)
+                                .arg(rowIndex + 1)
+                                .arg(line));
+            }
+        }
+
+        if (!parseStrictInt(parts.at(maDof), nodeId))
+        {
+            return fail(QStringLiteral("%1 第 %2 条约束数据包含非整数字段：%3")
+                            .arg(fileTag)
+                            .arg(rowIndex + 1)
+                            .arg(line));
+        }
 
         if (!(ux == 1 && uy == 1 && uz == 1))
         {
@@ -1076,93 +1151,127 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
             groupedNodeIds[key].push_back(nodeId);
         }
 
-        ++parsedRows;
-        if (parsedRows >= numNp)
-            break;
-        if (!readDataLine(line))
-            return fail(QStringLiteral("IIID.DAT 数据行数量少于文件头声明的 %1 行").arg(numNp));
-        parts = line.split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
+        if (rowIndex + 1 < numNp)
+        {
+            if (!readDataLine(line))
+            {
+                return fail(QStringLiteral("%1 数据行数量少于文件头声明的 %2 行")
+                                .arg(fileTag)
+                                .arg(numNp));
+            }
+
+            parts = splitFields(line);
+        }
     }
 
-    // IIID.DAT 中记录的是 node_id；PickManager 的 setSelectedPointIds 需要的是各网格内
-    // 的 VTK point id。因此导入前必须先把 node_id 映射回 Solid/Line 网格点索引。
+           // IID.DAT 中记录的是 node_id；PickManager 的 setSelectedPointIds 需要的是各网格内
+           // 的 VTK point id。因此导入前必须先把 node_id 映射回 Solid/Line 网格点索引。
     PickManager::instance().updateStructure();
 
     auto findNodeIdArray = [](vtkUnstructuredGrid* g) -> vtkIntArray*
     {
         if (!g || !g->GetPointData())
             return nullptr;
+
         if (auto* a = vtkIntArray::SafeDownCast(g->GetPointData()->GetArray("node_id")))
             return a;
+
         return vtkIntArray::SafeDownCast(g->GetPointData()->GetArray("NodeId"));
     };
 
     auto buildPointIdByNodeId = [&findNodeIdArray](vtkUnstructuredGrid* g)
     {
         QHash<int, vtkIdType> out;
+
         vtkIntArray* nodeIdArr = findNodeIdArray(g);
         if (!g || !nodeIdArr)
             return out;
 
         const vtkIdType nPts = g->GetNumberOfPoints();
         out.reserve(int(nPts * 1.3));
+
         for (vtkIdType pid = 0; pid < nPts; ++pid)
         {
             const int nodeId = nodeIdArr->GetValue(int(pid));
+
             if (!out.contains(nodeId))
                 out.insert(nodeId, pid);
         }
+
         return out;
     };
 
     auto buildIsolatedNodeIds = [&findNodeIdArray](vtkUnstructuredGrid* g)
     {
         QSet<int> out;
+
         vtkIntArray* nodeIdArr = findNodeIdArray(g);
         if (!g || !nodeIdArr)
             return out;
 
         vtkNew<vtkIdList> cellIds;
         const vtkIdType nPts = g->GetNumberOfPoints();
+
         for (vtkIdType pid = 0; pid < nPts; ++pid)
         {
             cellIds->Reset();
             g->GetPointCells(pid, cellIds);
+
             if (cellIds->GetNumberOfIds() == 0)
                 out.insert(nodeIdArr->GetValue(int(pid)));
         }
+
         return out;
     };
 
     const QHash<int, vtkIdType> solidPointIdByNodeId =
         buildPointIdByNodeId(PickManager::instance().solidGrid());
+
     const QHash<int, vtkIdType> linePointIdByNodeId =
         buildPointIdByNodeId(PickManager::instance().lineGrid());
 
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     vtkUnstructuredGrid* gAll = meshSvc ? meshSvc->getVtkUnstructuredGrid() : nullptr;
+
     const QSet<int> isolatedNodeIds = buildIsolatedNodeIds(gAll);
 
-    // 导入是生成 IIID.DAT 的反向操作：先移除已有位移约束，再按文件内容重建。
+           // 导入是生成 IID.DAT 的反向操作：先移除已有位移约束，再按文件内容重建。
     QList<ProjectNode*> oldConstraints;
     collectDisplacementNodes(m_node, oldConstraints);
+
     for (ProjectNode* node : oldConstraints)
     {
         if (!node)
             continue;
+
         const QString uuid = node->getUuid();
-        const QString domain = node->getPage() ? node->getPage()->getPageType()
-                                                : QStringLiteral("DisplacementConstraintWidget");
-        PickManager::instance().setSelectedPointIds(domain, uuid, GridKind::Solid, QVector<vtkIdType>(), true);
-        PickManager::instance().setSelectedPointIds(domain, uuid, GridKind::Line, QVector<vtkIdType>(), true);
+        const QString domain = node->getPage()
+                                   ? node->getPage()->getPageType()
+                                   : QStringLiteral("DisplacementConstraintWidget");
+
+        PickManager::instance().setSelectedPointIds(domain,
+                                                    uuid,
+                                                    GridKind::Solid,
+                                                    QVector<vtkIdType>(),
+                                                    true);
+
+        PickManager::instance().setSelectedPointIds(domain,
+                                                    uuid,
+                                                    GridKind::Line,
+                                                    QVector<vtkIdType>(),
+                                                    true);
+
         if (auto* parent = static_cast<ProjectNode*>(node->parent()))
             parent->removeChild(node);
+
         if (node->getPage())
             delete node->getPage();
+
         delete node;
     }
 
     ProjectNode* lastCreated = nullptr;
+
     for (auto it = groupedNodeIds.cbegin(); it != groupedNodeIds.cend(); ++it)
     {
         const QStringList flags = it.key().split(',');
@@ -1170,6 +1279,7 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
 
         QVector<vtkIdType> solidPointIds;
         QVector<vtkIdType> linePointIds;
+
         for (const int nodeId : it.value())
         {
             if (isolatedNodeIds.contains(nodeId))
@@ -1177,8 +1287,7 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
 
             if (isBarConstraint)
             {
-                // 杆单元约束在 IIID.DAT 中用 -10000 标识；不是 -10000 的约束
-                // 只进入 lineGrid，不再检查实体网格。
+                // 杆单元约束在 IID.DAT 中用 -10000 标识，只进入线单元网格。
                 if (linePointIdByNodeId.contains(nodeId))
                     linePointIds.push_back(linePointIdByNodeId.value(nodeId));
                 else
@@ -1186,6 +1295,7 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
             }
             else
             {
+                // 普通约束只进入实体网格。
                 if (solidPointIdByNodeId.contains(nodeId))
                     solidPointIds.push_back(solidPointIdByNodeId.value(nodeId));
                 else
@@ -1196,6 +1306,7 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
         std::sort(solidPointIds.begin(), solidPointIds.end());
         solidPointIds.erase(std::unique(solidPointIds.begin(), solidPointIds.end()),
                             solidPointIds.end());
+
         std::sort(linePointIds.begin(), linePointIds.end());
         linePointIds.erase(std::unique(linePointIds.begin(), linePointIds.end()),
                            linePointIds.end());
@@ -1206,10 +1317,14 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
             continue;
         }
 
-        const QString title = MakeIndexedTitle(m_node, QStringLiteral("DisplacementConstraint"),
+        const QString title = MakeIndexedTitle(m_node,
+                                               QStringLiteral("DisplacementConstraint"),
                                                QStringLiteral("位移约束"));
-        ProjectNode* node = createNodeByKind(QStringLiteral("DisplacementConstraint"), title,
+
+        ProjectNode* node = createNodeByKind(QStringLiteral("DisplacementConstraint"),
+                                             title,
                                              QUuid::createUuid().toString());
+
         if (!node || !node->getPage())
             continue;
 
@@ -1217,13 +1332,23 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
         pageData["ux"] = flags.value(0, QStringLiteral("1"));
         pageData["uy"] = flags.value(1, QStringLiteral("1"));
         pageData["uz"] = flags.value(2, QStringLiteral("1"));
+
         node->getPage()->loadJson(pageData);
 
         const QString domain = node->getPage()->getPageType();
-        PickManager::instance().setSelectedPointIds(domain, node->getUuid(), GridKind::Solid,
-                                                    solidPointIds, true);
-        PickManager::instance().setSelectedPointIds(domain, node->getUuid(), GridKind::Line,
-                                                    linePointIds, true);
+
+        PickManager::instance().setSelectedPointIds(domain,
+                                                    node->getUuid(),
+                                                    GridKind::Solid,
+                                                    solidPointIds,
+                                                    true);
+
+        PickManager::instance().setSelectedPointIds(domain,
+                                                    node->getUuid(),
+                                                    GridKind::Line,
+                                                    linePointIds,
+                                                    true);
+
         lastCreated = node;
     }
 
@@ -1233,7 +1358,9 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
             pm->setCurrentItem(lastCreated);
     }
 
-    qInfo() << "IIID imported:" << filePath << "constraint groups=" << groupedNodeIds.size();
+    qInfo() << "IID imported:" << filePath
+            << "constraint groups=" << groupedNodeIds.size();
+
     return true;
 }
 
