@@ -1798,6 +1798,19 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
 {
     m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QFile iautoFile(QDir(projectDir).absoluteFilePath("MESG_IAUTO.DAT"));
+    if (!iautoFile.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QMessageBox::warning(nullptr, "计算失败", "边坡分析写入 MESG_IAUTO.DAT 失败。");
+        return;
+    }
+    {
+        QTextStream os(&iautoFile);
+        os << "8\n";
+    }
+
     if (!beginCommonCompute(analysisNode, "边坡分析"))
         return;
 
