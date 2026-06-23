@@ -59,7 +59,6 @@
         <file>resources/images/vs-pin-button-disabled.svg</file>
         <file>resources/images/vs-pin-button-pinned.svg</file>
         <file>resources/images/vs-pin-button-pinned-focused.svg</file>
-        <file>resources/icon.ico</file>
         <file>resources/rotate.png</file>
         <file>resources/scale.png</file>
         <file>resources/translation.png</file>
@@ -122,10 +121,7 @@
         <file>resources/menu/minimal/app-new.svg</file>
         <file>resources/menu/minimal/app-open.svg</file>
         <file>resources/menu/minimal/app-save.svg</file>
-        <file>resources/menu/minimal/app-export.svg</file>
         <file>resources/menu/minimal/app-exit.svg</file>
-        <file>resources/menu/minimal/param.svg</file>
-        <file>resources/menu/minimal/function.svg</file>
         <file>resources/menu/minimal/import.svg</file>
         <file>resources/menu/minimal/export.svg</file>
         <file>resources/menu/minimal/cuboid.svg</file>
@@ -138,21 +134,16 @@
         <file>resources/menu/minimal/circle.svg</file>
         <file>resources/menu/minimal/ring.svg</file>
         <file>resources/menu/minimal/polygon.svg</file>
-        <file>resources/menu/minimal/boolean.svg</file>
-        <file>resources/menu/minimal/mesh.svg</file>
-        <file>resources/menu/minimal/analysis.svg</file>
         <file>resources/menu/minimal/constraint.svg</file>
-        <file>resources/menu/minimal/load.svg</file>
         <file>resources/menu/minimal/boolean-fuse.svg</file>
-        <file>resources/menu/minimal/boolean-union.svg</file>
         <file>resources/menu/minimal/boolean-cut.svg</file>
         <file>resources/menu/minimal/boolean-common.svg</file>
         <file>resources/menu/minimal/mesh-global.svg</file>
-        <file>resources/menu/minimal/mesh-single.svg</file>
         <file>resources/menu/minimal/mesh-vol.svg</file>
         <file>resources/menu/minimal/mesh-face.svg</file>
         <file>resources/menu/minimal/mesh-edge.svg</file>
         <file>resources/menu/minimal/mesh-edit.svg</file>
+        <file>resources/menu/minimal/mesh-quality.svg</file>
         <file>resources/menu/minimal/mesh-group.svg</file>
         <file>resources/menu/minimal/load-geostress-point.svg</file>
         <file>resources/menu/minimal/load-geostress-face.svg</file>
@@ -170,15 +161,12 @@
         <file>resources/menu/minimal/post-isosurface.svg</file>
         <file>resources/menu/minimal/post-isosurface-seg.svg</file>
         <file>resources/menu/minimal/post-curve.svg</file>
-        <file>resources/menu/minimal/post-animation.svg</file>
-        <file>resources/menu/minimal/post-probe.svg</file>
-        <file>resources/menu/minimal/post-derived.svg</file>
-        <file>resources/menu/minimal/post-export.svg</file>
         <file>resources/menu/minimal/post-arrange.svg</file>
         <file>resources/menu/minimal/post-config.svg</file>
         <file>resources/menu/minimal/analysis-seepage.svg</file>
         <file>resources/menu/minimal/analysis-dam.svg</file>
         <file>resources/menu/minimal/analysis-cave.svg</file>
+        <file>resources/menu/minimal/analysis-block.svg</file>
         <file>resources/menu/minimal/analysis-slope.svg</file>
         <file>resources/menu/minimal/mat-hjp.svg</file>
         <file>resources/menu/minimal/mat-soil-eb.svg</file>
@@ -189,7 +177,6 @@
         <file>resources/menu/minimal/mat-dagangshan.svg</file>
         <file>resources/menu/minimal/mat-nanshui.svg</file>
         <file>resources/menu/minimal/mat-kg.svg</file>
-        <file>resources/menu/minimal/mat-special.svg</file>
         <file>resources/menu/minimal/mat-builtin-material.svg</file>
         <file>resources/menu/minimal/mat-builtin-seepage.svg</file>
         <file>resources/menu/minimal/mat-transition.svg</file>
