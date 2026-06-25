@@ -225,7 +225,7 @@ void VisualizationWidget::initViewToolbar()
         btn->setIcon(QIcon(iconPath));
         btn->setIconSize(QSize(20, 20));
         btn->setToolTip(tip);
-        btn->setFixedSize(40, 36);
+        btn->setMinimumSize(38, 32);
         connect(btn, &QToolButton::clicked, this, fn);
         return btn;
     };
@@ -349,7 +349,7 @@ void VisualizationWidget::initViewToolbar()
     m_opacityButton->setText(tr("100% ▾"));
     m_opacityButton->setIcon(QIcon(":/resources/icon/view_opacity.svg"));
     m_opacityButton->setIconSize(QSize(16, 16));
-    m_opacityButton->setFixedSize(92, 36);
+    m_opacityButton->setMinimumSize(92, 36);
     m_opacityButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     root->addWidget(m_opacityButton);
 

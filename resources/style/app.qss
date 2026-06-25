@@ -1,10 +1,10 @@
 QWidget {
     font-family: "Microsoft YaHei", "微软雅黑";
+    font-size: 9pt;
 }
 
 QPushButton {
-    font-size: 17px;
-    min-height: 32px;
+    min-height: 30px;
     color: rgb(51, 51, 51);
     background-color: rgb(255, 255, 255);
     border: 1px solid rgb(169, 169, 169);
@@ -26,23 +26,21 @@ QPushButton#sectionTitleButton {
     border-width: 1px;
     border-color: rgb(121, 121, 121);
     border-style: solid;
-    min-height: 33px;
+    min-height: 32px;
     border-top: 1px solid rgb(169, 169, 169);
     border-bottom: 1px solid rgb(169, 169, 169);
     border-left: none;
     border-right: none;
     text-align: left;
     padding-left: 15px;
-    font-size: 17px;
 }
 
 QLabel {
-    font-size: 17px;
     color: rgb(51, 51, 51);
 }
 
 QLabel#pageNameLabel {
-    font-size: 20px;
+    font-size: 14pt;
     padding-left: 9px;
     color: rgb(53, 103, 147);
 }
@@ -53,10 +51,9 @@ QLabel#pageHeaderLabel {
     border-bottom: 1px solid rgb(169, 169, 169);
     border-left: none;
     border-right: none;
-    min-height: 33px;
-    max-height: 33px;
+    min-height: 30px;
+    max-height: 30px;
     padding-left: 15px;
-    font-size: 17px;
     font-weight: bold;
     color: rgb(53, 103, 147);
 }
@@ -69,8 +66,7 @@ QDoubleSpinBox,
 QDateTimeEdit {
     border: 1px solid rgb(200, 200, 200);
     border-radius: 2px;
-    font-size: 17px;
-    min-height: 30px;
+    min-height: 28px;
 }
 
 QLineEdit:focus,
@@ -84,13 +80,12 @@ QDateTimeEdit:focus {
 }
 
 QComboBox {
-    font-size: 17px;
     color: rgb(51, 51, 51);
     padding-left: 6px;
     background: rgb(240, 240, 240);
     border: 1px solid rgb(169, 169, 169);
     border-radius: 3px;
-    min-height: 30px;
+    min-height: 28px;
 }
 
 QComboBox::drop-down {
@@ -136,20 +131,18 @@ QDoubleSpinBox::up-arrow {
 QSpinBox::down-arrow,
 QDoubleSpinBox::down-arrow {
     image: url(:/resources/arrow_down_drawn.svg);
-    width: 10px;
-    height: 10px;
+    width: 12px;
+    height: 12px;
 }
 
 QRadioButton,
 QCheckBox,
 QGroupBox {
-    font-size: 17px;
 }
 
 QTableWidget,
 QTreeWidget,
 QListWidget {
-    font-size: 16px;
     gridline-color: rgb(210, 210, 210);
 }
 
@@ -164,13 +157,13 @@ QScrollBar:horizontal {
 }
 
 QScrollBar::handle:vertical {
-    min-height: 40px;
+    min-height: 30px;
     background: rgb(154, 164, 178);
     border-radius: 6px;
 }
 
 QScrollBar::handle:horizontal {
-    min-width: 40px;
+    min-width: 30px;
     background: rgb(154, 164, 178);
     border-radius: 6px;
 }
@@ -191,32 +184,47 @@ QStackedWidget#projectSettingStackWidget {
 QTreeWidget#projectTreeWidget {
     border: none;
     font-family: "Microsoft YaHei", "微软雅黑", "Segoe UI", sans-serif;
-    font-size: 15px;
+    font-size: 9pt;
     outline: none;
-    color: #000000;
-    background-color: #ffffff;
-    show-decoration-selected: 1;
+    color: #333333;
+    background-color: #fafbfc;
+    show-decoration-selected: 0;
 }
 
 QTreeWidget#projectTreeWidget::item {
-    height: 35px;
-    padding-left: 6px;
-    color: #000000;
+    height: 28px;
+    padding-left: 8px;
+    padding-right: 8px;
+    color: #333333;
     background-color: transparent;
     border: none;
+    border-radius: 6px;
+    margin: 1px 4px;
 }
 
-QTreeWidget#projectTreeWidget::item:hover,
+QTreeWidget#projectTreeWidget::item:hover {
+    background-color: #e8ecf1;
+    color: #1a1a1a;
+}
+
+QTreeWidget#projectTreeWidget::item:selected {
+    background-color: #dce6f0;
+    color: #1a5fb4;
+    font-weight: 600;
+    border-left: 3px solid #1a5fb4;
+    padding-left: 5px;
+}
+
+QTreeWidget#projectTreeWidget::branch {
+    background-color: transparent;
+}
+
 QTreeWidget#projectTreeWidget::branch:hover {
-    background-color: #f4f7fa;
-    color: #356793;
+    background-color: transparent;
 }
 
-QTreeWidget#projectTreeWidget::item:selected,
 QTreeWidget#projectTreeWidget::branch:selected {
-    background-color: #e8f0f8;
-    color: #356793;
-    font-weight: bold;
+    background-color: transparent;
 }
 
 QTreeWidget#projectTreeWidget::branch:closed:has-children {
@@ -227,14 +235,40 @@ QTreeWidget#projectTreeWidget::branch:open:has-children {
     image: url(:/resources/btn_down.png);
 }
 
+QTreeWidget#projectTreeWidget QScrollBar:vertical {
+    width: 6px;
+    background: transparent;
+    margin: 0;
+}
+
+QTreeWidget#projectTreeWidget QScrollBar::handle:vertical {
+    background: #c4cdd5;
+    border-radius: 3px;
+    min-height: 30px;
+}
+
+QTreeWidget#projectTreeWidget QScrollBar::handle:vertical:hover {
+    background: #9aa5b0;
+}
+
+QTreeWidget#projectTreeWidget QScrollBar::add-line:vertical,
+QTreeWidget#projectTreeWidget QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+QTreeWidget#projectTreeWidget QScrollBar::add-page:vertical,
+QTreeWidget#projectTreeWidget QScrollBar::sub-page:vertical {
+    background: transparent;
+}
+
 QFrame#visualizationViewToolbar {
     background: rgba(245, 248, 252, 225);
     border: none;
 }
 
 QFrame#visualizationViewToolbar QToolButton {
-    min-width: 38px;
-    min-height: 34px;
+    min-width: 36px;
+    min-height: 32px;
     border: none;
     border-radius: 6px;
     background: transparent;
@@ -261,7 +295,7 @@ QMenu#visualizationOpacityMenu {
 }
 
 QLabel#visualizationOpacityPercentLabel {
-    font: 600 14px "Microsoft YaHei";
+    font: 600 9pt "Microsoft YaHei";
     color: #2F3A4A;
 }
 
@@ -303,3 +337,4 @@ QScrollArea,
 QScrollArea > QWidget {
     background-color: white;
 }
+
