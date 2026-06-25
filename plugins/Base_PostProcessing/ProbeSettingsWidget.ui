@@ -11,6 +11,9 @@
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="spacing">
+    <number>8</number>
+   </property>
    <property name="leftMargin">
     <number>9</number>
    </property>
@@ -22,9 +25,6 @@
    </property>
    <property name="bottomMargin">
     <number>9</number>
-   </property>
-   <property name="spacing">
-    <number>8</number>
    </property>
    <item>
     <layout class="QHBoxLayout" name="toolbarLayout">
@@ -39,16 +39,9 @@
       </widget>
      </item>
      <item>
-      <widget class="QPushButton" name="clearPushButton">
-       <property name="text">
-        <string>清空</string>
-       </property>
-      </widget>
-     </item>
-     <item>
       <spacer name="toolbarSpacer">
        <property name="orientation">
-        <enum>Qt::Orientation::Horizontal</enum>
+        <enum>Qt::Horizontal</enum>
        </property>
        <property name="sizeHint" stdset="0">
         <size>
@@ -57,6 +50,19 @@
         </size>
        </property>
       </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="clearPushButton">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="text">
+        <string>清空</string>
+       </property>
+      </widget>
      </item>
     </layout>
    </item>

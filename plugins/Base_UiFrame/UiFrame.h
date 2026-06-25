@@ -1,4 +1,4 @@
-﻿#ifndef UIFRAME_H
+#ifndef UIFRAME_H
 #define UIFRAME_H
 
 #include <DockManager.h>
@@ -13,6 +13,11 @@
 
 class SARibbonBar;
 class SARibbonMenu;
+
+namespace ads
+{
+class CDockAreaWidget;
+}
 
 class UiFrame : public SARibbonMainWindow, public UiFrameService
 {
@@ -44,6 +49,8 @@ class UiFrame : public SARibbonMainWindow, public UiFrameService
     void buildRibbonTabs();      // 其它标签页
 
     void setDockWidgetStyle();
+    void updateAreaTabStyle(ads::CDockAreaWidget* area);
+    void updateAllContainersTabStyle();
     ads::DockWidgetArea preferDockArea(const QString& name) const;
     void captureDefaultDockState();
 

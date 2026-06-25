@@ -1,9 +1,16 @@
-﻿#include "UiFrame.h"
+#include "UiFrame.h"
 
 #include <EventManager.h>
 #include <PublicConstants.h>
 #include <ServiceRegistry.h>
 #include <services/MaterialManagerService.h>
+
+#include <DockAreaWidget.h>
+#include <DockAreaTitleBar.h>
+#include <DockAreaTabBar.h>
+#include <DockWidgetTab.h>
+#include <QStyle>
+#include <QPointer>
 
 #include <QAbstractButton>
 #include <QComboBox>
@@ -124,8 +131,41 @@ void UiFrame::initDockManager()
     ads::CDockManager::setConfigFlag(ads::CDockManager::XmlCompressionEnabled, false);
     ads::CDockManager::setConfigFlag(ads::CDockManager::FocusHighlighting, true);
     ads::CDockManager::setAutoHideConfigFlags(ads::CDockManager::DefaultAutoHideConfig);
+    ads::CDockManager::setConfigFlag(ads::CDockManager::AlwaysShowTabs, true);
 
     m_dockManager = new ads::CDockManager(this);
+
+    connect(m_dockManager, &ads::CDockManager::dockAreaCreated, this,
+            [this](ads::CDockAreaWidget* area)
+            {
+                if (!area)
+                    return;
+                QPointer<ads::CDockAreaWidget> safeArea(area);
+                auto titleBar = area->titleBar();
+                auto tabBar = titleBar ? titleBar->tabBar() : nullptr;
+                if (tabBar)
+                {
+                    connect(tabBar, &ads::CDockAreaTabBar::tabInserted, this,
+                            [this, safeArea]() { if (safeArea) this->updateAreaTabStyle(safeArea); });
+                    connect(tabBar, &ads::CDockAreaTabBar::tabClosed, this,
+                            [this, safeArea]() { if (safeArea) this->updateAreaTabStyle(safeArea); });
+                    connect(tabBar, &ads::CDockAreaTabBar::tabOpened, this,
+                            [this, safeArea]() { if (safeArea) this->updateAreaTabStyle(safeArea); });
+                    connect(tabBar, &ads::CDockAreaTabBar::removingTab, this,
+                            [this, safeArea]()
+                            {
+                                QMetaObject::invokeMethod(this,
+                                                          [this, safeArea]()
+                                                          {
+                                                              if (safeArea)
+                                                                  this->updateAreaTabStyle(safeArea);
+                                                          },
+                                                          Qt::QueuedConnection);
+                            });
+                }
+                if (safeArea)
+                    this->updateAreaTabStyle(safeArea);
+            });
 
     m_dockManager->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     m_dockManager->setContentsMargins(0, 0, 0, 0);
@@ -178,6 +218,7 @@ QAction* UiFrame::addWidget(QWidget* widget, QString name)
         m_centerDockArea = targetArea;
 
     captureDefaultDockState();
+    updateAllContainersTabStyle();
     return dockWidget->toggleViewAction();
 }
 
@@ -197,6 +238,7 @@ QAction* UiFrame::addWidgetForTabwidget(QWidget* widget, QString name)
         m_dockManager->addDockWidgetTabToArea(dockWidget, m_centerDockArea);
 
     captureDefaultDockState();
+    updateAllContainersTabStyle();
     return dockWidget->toggleViewAction();
 }
 
@@ -217,6 +259,7 @@ void UiFrame::restoreUiState()
         m_defaultDockState = savedState;
 
     setDockWidgetStyle();
+    updateAllContainersTabStyle();
     show();
 }
 
@@ -247,13 +290,12 @@ void UiFrame::setDockWidgetStyle()
     //        }
     QString qss = R"(
                   QSplitter::handle {
-                  height: 4px; /* 间接调整分隔线的高度（如果是水平分隔线） */
-                     width: 4px; /* 间接调整分隔线的宽度（如果是垂直分隔线） */
+                      height: 4px; /* 间接调整分隔线的高度（如果是水平分隔线） */
+                      width: 4px; /* 间接调整分隔线的宽度（如果是垂直分隔线） */
                   }
                   ads--CDockAreaWidget[focused="true"]  {
-                  background: white;
-
-                  border-color: rgb(96,181,247);
+                      background: white;
+                      border-color: rgb(96,181,247);
                   }
 
                   #dockAreaAutoHideButton {
@@ -267,25 +309,17 @@ void UiFrame::setDockWidgetStyle()
                       qproperty-iconSize: 16px;
                   }
 
-
                   ads--CDockAreaWidget #tabsMenuButton::menu-indicator {
                       image: none;
                   }
                   QScrollArea#dockWidgetScrollArea {
-                  padding: 0px;
-                  }
-                  QScrollArea#dockWidgetScrollArea {
+                      padding: 0px;
                       border: 0px solid rgb(200, 200, 200);
                   }
                   ads--CDockAreaWidget {
-                      border: 1px solid rgb(200, 200, 200);
+                      border: 1px solid #dcdfe6;
                   }
-                  ads--CDockWidgetTab  {
-                      background: red;
-                  }
-                  QLabel#dockWidgetTabLabel {
-                      text-align: left;
-                  }
+
                   QScrollBar:vertical {
                       width: 10px; /* 设置垂直滚动条的宽度 */
                       background: #f0f0f0; /* 设置滚动条的背景颜色 */
@@ -311,6 +345,227 @@ void UiFrame::setDockWidgetStyle()
     qInfo() << "m_dockManager->setStyleSheet(qss)";
     m_dockManager->setStyleSheet(qss);
     qInfo() << "m_dockManager->setStyleSheet(qss)";
+}
+
+void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
+{
+    if (!area)
+        return;
+
+    int openCount = area->openDockWidgetsCount();
+    bool isSingle = (openCount == 1);
+
+    auto titleBar = area->titleBar();
+    if (titleBar)
+    {
+        if (isSingle)
+        {
+            titleBar->setStyleSheet(
+                "ads--CDockAreaTitleBar {"
+                "  background: white;"
+                "  border: none;"
+                "  min-height: 40px;"
+                "  max-height: 40px;"
+                "}"
+                "ads--CDockAreaTitleBar ads--CTitleBarButton {"
+                "  background: transparent;"
+                "  border: none;"
+                "  padding: 4px;"
+                "  margin: 8px 2px;"
+                "  border-radius: 4px;"
+                "  min-width: 24px;"
+                "  min-height: 24px;"
+                "  max-width: 24px;"
+                "  max-height: 24px;"
+                "}"
+                "ads--CDockAreaTitleBar ads--CTitleBarButton:hover {"
+                "  background: rgba(0, 0, 0, 0.05);"
+                "}"
+                "ads--CDockAreaTitleBar ads--CTitleBarButton:pressed {"
+                "  background: rgba(0, 0, 0, 0.1);"
+                "}"
+                "ads--CDockAreaTitleBar #dockAreaCloseButton {"
+                "  qproperty-icon: url(:/resources/images/close-button.svg);"
+                "  qproperty-iconSize: 14px;"
+                "}"
+                "ads--CDockAreaTitleBar #dockAreaCloseButton:hover {"
+                "  background: #e81123;"
+                "  border-radius: 4px;"
+                "  qproperty-icon: url(:/resources/images/close-button-focused.svg);"
+                "}"
+                "ads--CDockAreaTitleBar #dockAreaCloseButton:pressed {"
+                "  background: #f1707a;"
+                "}"
+                "ads--CDockAreaTitleBar #dockAreaAutoHideButton {"
+                "  qproperty-icon: url(:/resources/images/vs-pin-button.svg);"
+                "  qproperty-iconSize: 14px;"
+                "}"
+                "ads--CAutoHideDockContainer ads--CDockAreaTitleBar #dockAreaAutoHideButton {"
+                "  qproperty-icon: url(:/resources/images/vs-pin-button-pinned-focused.svg);"
+                "  qproperty-iconSize: 14px;"
+                "}"
+                "ads--CDockAreaTitleBar #tabsMenuButton {"
+                "  qproperty-icon: url(:/resources/images/tabs-menu-button.svg);"
+                "  qproperty-iconSize: 14px;"
+                "}"
+                "ads--CDockAreaTitleBar #tabsMenuButton::menu-indicator {"
+                "  image: none;"
+                "}"
+                "ads--CDockAreaTitleBar #dockAreaUndockButton {"
+                "  qproperty-icon: url(:/resources/images/detach-button.svg);"
+                "  qproperty-iconSize: 14px;"
+                "}"
+            );
+        }
+        else
+        {
+            titleBar->setStyleSheet(
+                "ads--CDockAreaTitleBar {"
+                "  background: #eef2f6;"
+                "  border-bottom: 1px solid #dcdfe6;"
+                "  min-height: 28px;"
+                "  max-height: 28px;"
+                "}"
+                "ads--CDockAreaTitleBar ads--CTitleBarButton {"
+                "  background: transparent;"
+                "  border: none;"
+                "  padding: 2px;"
+                "  margin: 4px 1px;"
+                "  border-radius: 3px;"
+                "  min-width: 20px;"
+                "  min-height: 20px;"
+                "  max-width: 20px;"
+                "  max-height: 20px;"
+                "}"
+                "ads--CDockAreaTitleBar ads--CTitleBarButton:hover {"
+                "  background: rgba(0, 0, 0, 0.05);"
+                "}"
+                "ads--CDockAreaTitleBar ads--CTitleBarButton:pressed {"
+                "  background: rgba(0, 0, 0, 0.1);"
+                "}"
+                "ads--CDockAreaTitleBar #dockAreaCloseButton {"
+                "  qproperty-icon: url(:/resources/images/close-button.svg);"
+                "  qproperty-iconSize: 12px;"
+                "}"
+                "ads--CDockAreaTitleBar #dockAreaCloseButton:hover {"
+                "  background: #e81123;"
+                "  border-radius: 3px;"
+                "  qproperty-icon: url(:/resources/images/close-button-focused.svg);"
+                "}"
+                "ads--CDockAreaTitleBar #dockAreaCloseButton:pressed {"
+                "  background: #f1707a;"
+                "}"
+                "ads--CDockAreaTitleBar #dockAreaAutoHideButton {"
+                "  qproperty-icon: url(:/resources/images/vs-pin-button.svg);"
+                "  qproperty-iconSize: 12px;"
+                "}"
+                "ads--CAutoHideDockContainer ads--CDockAreaTitleBar #dockAreaAutoHideButton {"
+                "  qproperty-icon: url(:/resources/images/vs-pin-button-pinned-focused.svg);"
+                "  qproperty-iconSize: 12px;"
+                "}"
+                "ads--CDockAreaTitleBar #tabsMenuButton {"
+                "  qproperty-icon: url(:/resources/images/tabs-menu-button.svg);"
+                "  qproperty-iconSize: 12px;"
+                "}"
+                "ads--CDockAreaTitleBar #tabsMenuButton::menu-indicator {"
+                "  image: none;"
+                "}"
+                "ads--CDockAreaTitleBar #dockAreaUndockButton {"
+                "  qproperty-icon: url(:/resources/images/detach-button.svg);"
+                "  qproperty-iconSize: 12px;"
+                "}"
+            );
+        }
+    }
+
+    auto tabBar = titleBar ? titleBar->tabBar() : nullptr;
+    if (tabBar)
+    {
+        tabBar->setStyleSheet("background: transparent; border: none;");
+
+        for (int i = 0; i < tabBar->count(); ++i)
+        {
+            auto tab = tabBar->tab(i);
+            if (tab)
+            {
+                if (isSingle)
+                {
+                    tab->setStyleSheet(
+                        "ads--CDockWidgetTab, "
+                        "ads--CDockWidgetTab[activeTab=\"true\"], "
+                        "ads--CDockWidgetTab[focused=\"true\"] {"
+                        "  background: transparent;"
+                        "  border: none;"
+                        "  padding-left: 4px;"
+                        "}"
+                        "ads--CDockWidgetTab QLabel#dockWidgetTabLabel {"
+                        "  font-family: \"Microsoft YaHei\", \"微软雅黑\";"
+                        "  font-weight: normal;"
+                        "  font-size: 15pt;"
+                        "  color: #1a5fb4;"
+                        "  text-align: left;"
+                        "  background: transparent;"
+                        "}"
+                    );
+                }
+                else
+                {
+                    tab->setStyleSheet(
+                        "ads--CDockWidgetTab {"
+                        "  background: transparent;"
+                        "  border: none;"
+                        "  border-top: 2px solid transparent;"
+                        "  padding: 0px 14px;"
+                        "  min-height: 24px;"
+                        "  max-height: 24px;"
+                        "}"
+                        "ads--CDockWidgetTab QLabel#dockWidgetTabLabel {"
+                        "  font-family: \"Microsoft YaHei\", \"微软雅黑\";"
+                        "  font-weight: normal;"
+                        "  font-size: 9pt;"
+                        "  color: #606266;"
+                        "  text-align: left;"
+                        "  background: transparent;"
+                        "}"
+                        "ads--CDockWidgetTab:hover {"
+                        "  background: rgba(255, 255, 255, 0.4);"
+                        "}"
+                        "ads--CDockWidgetTab:hover QLabel#dockWidgetTabLabel {"
+                        "  color: #111111;"
+                        "}"
+                        "ads--CDockWidgetTab[activeTab=\"true\"] {"
+                        "  background: #ffffff;"
+                        "  border-top: 2px solid #1a5fb4;"
+                        "}"
+                        "ads--CDockWidgetTab[activeTab=\"true\"] QLabel#dockWidgetTabLabel {"
+                        "  font-weight: normal;"
+                        "  color: #1a5fb4;"
+                        "  background: transparent;"
+                        "}"
+                        "ads--CDockWidgetTab[focused=\"true\"] {"
+                        "  background: #ffffff;"
+                        "  border-top: 2px solid #1a5fb4;"
+                        "}"
+                        "ads--CDockWidgetTab[focused=\"true\"] QLabel#dockWidgetTabLabel {"
+                        "  font-weight: normal;"
+                        "  color: #1a5fb4;"
+                        "  background: transparent;"
+                        "}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+void UiFrame::updateAllContainersTabStyle()
+{
+    if (!m_dockManager)
+        return;
+    for (auto area : m_dockManager->findChildren<ads::CDockAreaWidget*>())
+    {
+        updateAreaTabStyle(area);
+    }
 }
 
 ads::DockWidgetArea UiFrame::preferDockArea(const QString& name) const

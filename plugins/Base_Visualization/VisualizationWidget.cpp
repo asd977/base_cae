@@ -1,4 +1,4 @@
-﻿#include "VisualizationWidget.h"
+#include "VisualizationWidget.h"
 
 #include <ServiceRegistry.h>
 #include <services/UiFrameService.h>
@@ -213,19 +213,41 @@ void VisualizationWidget::initViewToolbar()
     m_toolbar = new QFrame(this);
     m_toolbar->setObjectName("visualizationViewToolbar");
     m_toolbar->setAttribute(Qt::WA_StyledBackground, true);
+    m_toolbar->setStyleSheet(
+        "QFrame#visualizationViewToolbar {"
+        "  background: transparent;"
+        "  border: none;"
+        "}"
+        "QFrame#visualizationViewToolbar QToolButton {"
+        "  background: transparent;"
+        "  border: none;"
+        "  border-radius: 4px;"
+        "}"
+        "QFrame#visualizationViewToolbar QToolButton:hover {"
+        "  background-color: rgba(0, 0, 0, 0.06);"
+        "}"
+        "QFrame#visualizationViewToolbar QToolButton:pressed {"
+        "  background-color: rgba(0, 0, 0, 0.12);"
+        "}"
+        "QFrame#visualizationToolbarSeparator {"
+        "  background-color: rgba(0, 0, 0, 0.08);"
+        "  width: 1px;"
+        "  max-width: 1px;"
+        "}"
+    );
 
     auto* root = new QHBoxLayout(m_toolbar);
-    root->setContentsMargins(12, 6, 12, 6);
-    root->setSpacing(4);
+    root->setContentsMargins(12, 3, 12, 3);
+    root->setSpacing(6);
 
     auto makeIconBtn = [this](const QString& iconPath, const QString& tip, auto fn)
     {
         auto* btn = new QToolButton(m_toolbar);
         btn->setAutoRaise(true);
         btn->setIcon(QIcon(iconPath));
-        btn->setIconSize(QSize(20, 20));
+        btn->setIconSize(QSize(16, 16));
         btn->setToolTip(tip);
-        btn->setMinimumSize(38, 32);
+        btn->setFixedSize(30, 30);
         connect(btn, &QToolButton::clicked, this, fn);
         return btn;
     };
@@ -235,7 +257,7 @@ void VisualizationWidget::initViewToolbar()
         auto* sep = new QFrame(m_toolbar);
         sep->setFrameShape(QFrame::VLine);
         sep->setObjectName("visualizationToolbarSeparator");
-        sep->setFixedHeight(26);
+        sep->setFixedHeight(18);
         root->addWidget(sep);
     };
 
@@ -344,18 +366,55 @@ void VisualizationWidget::initViewToolbar()
     root->addStretch(1);
 
     m_opacityButton = new QToolButton(m_toolbar);
+    m_opacityButton->setObjectName("opacityButton");
     m_opacityButton->setAutoRaise(true);
     m_opacityButton->setToolTip(tr("整体透明度"));
-    m_opacityButton->setText(tr("100% ▾"));
     m_opacityButton->setIcon(QIcon(":/resources/icon/view_opacity.svg"));
     m_opacityButton->setIconSize(QSize(16, 16));
-    m_opacityButton->setMinimumSize(92, 36);
-    m_opacityButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    m_opacityButton->setFixedSize(30, 30);
+    m_opacityButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
     root->addWidget(m_opacityButton);
 
     m_opacityMenu = new QMenu(m_toolbar);
     m_opacityMenu->setWindowFlags(m_opacityMenu->windowFlags() | Qt::FramelessWindowHint);
     m_opacityMenu->setObjectName("visualizationOpacityMenu");
+    m_opacityMenu->setStyleSheet(
+        "QMenu#visualizationOpacityMenu {"
+        "  background-color: #ffffff;"
+        "  border: 1px solid #dcdfe6;"
+        "  border-radius: 4px;"
+        "  padding: 4px;"
+        "}"
+        "QLabel#visualizationOpacityPercentLabel {"
+        "  font-family: 'Microsoft YaHei', sans-serif;"
+        "  font-size: 11px;"
+        "  color: #606266;"
+        "  font-weight: bold;"
+        "}"
+        "QSlider::groove:vertical {"
+        "  background: #eef2f6;"
+        "  width: 6px;"
+        "  border-radius: 3px;"
+        "}"
+        "QSlider::handle:vertical {"
+        "  background: #1a5fb4;"
+        "  height: 12px;"
+        "  width: 12px;"
+        "  margin: 0 -3px;"
+        "  border-radius: 6px;"
+        "}"
+        "QSlider::handle:vertical:hover {"
+        "  background: #5294e2;"
+        "}"
+        "QSlider::sub-page:vertical {"
+        "  background: #eef2f6;"
+        "  border-radius: 3px;"
+        "}"
+        "QSlider::add-page:vertical {"
+        "  background: #1a5fb4;"
+        "  border-radius: 3px;"
+        "}"
+    );
 
     auto* popupWidget = new QWidget(m_opacityMenu);
     auto* popupLayout = new QVBoxLayout(popupWidget);
@@ -398,7 +457,7 @@ void VisualizationWidget::initViewToolbar()
                 m_opacityMenu->popup(p);
             });
 
-    const int toolbarHeight = 48;
+    const int toolbarHeight = 36;
     m_toolbar->setGeometry(0, 0, width(), toolbarHeight);
     m_toolbar->show();
 }
@@ -854,7 +913,7 @@ void VisualizationWidget::updateProjectionButtonIcon()
     const QString icon = m_isParallelProjection ? QString(":/resources/icon/parallel.png")
                                                 : QString(":/resources/icon/perspective.png");
     m_projectionButton->setIcon(QIcon(icon));
-    m_projectionButton->setIconSize(QSize(18, 18));
+    m_projectionButton->setIconSize(QSize(16, 16));
 }
 
 void VisualizationWidget::updateScaleButtonIcon()
@@ -864,7 +923,7 @@ void VisualizationWidget::updateScaleButtonIcon()
     const QString icon = m_isScaleVisible ? QString(":/resources/icon/view_scale_on.svg")
                                           : QString(":/resources/icon/view_scale_off.svg");
     m_scaleButton->setIcon(QIcon(icon));
-    m_scaleButton->setIconSize(QSize(18, 18));
+    m_scaleButton->setIconSize(QSize(16, 16));
 }
 
 void VisualizationWidget::resizeEvent(QResizeEvent* event)
@@ -872,7 +931,7 @@ void VisualizationWidget::resizeEvent(QResizeEvent* event)
     QWidget::resizeEvent(event);
     if (m_toolbar)
     {
-        const int toolbarHeight = 48;
+        const int toolbarHeight = 36;
         m_toolbar->setGeometry(0, 0, width(), toolbarHeight);
     }
 }

@@ -20,7 +20,7 @@ OutputWidget::OutputWidget(QWidget* parent) : QWidget(parent), ui(new Ui::Output
     floatingClearBtn->setObjectName("floatingClearBtn");
     floatingClearBtn->setCursor(Qt::PointingHandCursor);
     floatingClearBtn->setToolTip("清空日志");
-    floatingClearBtn->setMinimumSize(44, 22);
+    floatingClearBtn->setFixedSize(44, 22);
     
     // Style it: rectangular badge, light grey semi-transparent, gets opaque on hover
     floatingClearBtn->setStyleSheet(
