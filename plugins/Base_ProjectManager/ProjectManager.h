@@ -20,7 +20,6 @@
 #include "ProjectSetupDialog.h"
 #include "qsettings.h"
 
-class ProjectManagerWidget;
 class ProjectManager : public QObject, public ProjectManagerService
 {
     Q_OBJECT

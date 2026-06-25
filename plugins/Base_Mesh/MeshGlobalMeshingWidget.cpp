@@ -196,19 +196,19 @@ QString MeshGlobalMeshingWidget::tempDirPath() const
 }
 QString MeshGlobalMeshingWidget::tempStepPath() const
 {
-    return tempDirPath() + "/geom.step";
+    return QDir(tempDirPath()).filePath("geom.step");
 }
 QString MeshGlobalMeshingWidget::tempMshPath() const
 {
-    return tempDirPath() + "/mesh.msh";
+    return QDir(tempDirPath()).filePath("mesh.msh");
 }
 QString MeshGlobalMeshingWidget::tempVtkPath() const
 {
-    return tempDirPath() + "/mesh.vtk";
+    return QDir(tempDirPath()).filePath("mesh.vtk");
 }
 QString MeshGlobalMeshingWidget::tempNasPath() const
 {
-    return tempDirPath() + "/mesh.nas";
+    return QDir(tempDirPath()).filePath("mesh.nas");
 }
 
 void MeshGlobalMeshingWidget::onGenerate()
@@ -218,7 +218,7 @@ void MeshGlobalMeshingWidget::onGenerate()
 
     QString fileName = "ExportedModel.step";
     QString currentWorPath = QCoreApplication::applicationDirPath();
-    QString filePath = currentWorPath + "/data/" + fileName;
+    QString filePath = QDir(QDir(currentWorPath).filePath("data")).filePath(fileName);
 
     Params p = collectParams();
     PublicVariables::instance().set(PublicConstants::kMeshDimension,p.dimension,"mesh");

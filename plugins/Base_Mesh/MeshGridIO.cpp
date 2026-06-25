@@ -20,6 +20,7 @@
 #include <QDebug>
 #include <QFile>
 #include <QFileInfo>
+#include <QDir>
 #include <QMap>
 #include <QObject>
 #include <QSet>
@@ -2773,7 +2774,7 @@ void MeshGridIO::setVerticalAxis(vtkUnstructuredGrid* grid, int axis)
 QString MeshGridIO::defaultIiinOutputPath(const QString& sourceFile)
 {
     QFileInfo info(sourceFile);
-    return info.path() + "/" + info.completeBaseName() + ".dat";
+    return QDir(info.path()).filePath(info.completeBaseName() + ".dat");
 }
 
 vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadFlac3dGrid(const QString& fileName) const

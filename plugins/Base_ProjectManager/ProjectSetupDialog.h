@@ -22,7 +22,7 @@ class ProjectSetupDialog : public QDialog
         // 创建界面
         setupUI();
 
-        QString cfgFile = QCoreApplication::applicationDirPath() + "/config.ini";
+        QString cfgFile = QDir(QCoreApplication::applicationDirPath()).filePath("config.ini");
         QSettings settings(cfgFile, QSettings::IniFormat);
         QString defaultPath = settings.value("ProjectSetupDialog/defaultPath").toString();
         if (!defaultPath.isEmpty())
@@ -111,7 +111,7 @@ class ProjectSetupDialog : public QDialog
         }
 
         // 检查路径是否可写
-        QFile testFile(path + "/test_write.tmp");
+        QFile testFile(QDir(path).filePath("test_write.tmp"));
         if (testFile.open(QIODevice::WriteOnly))
         {
             testFile.remove();
@@ -122,7 +122,7 @@ class ProjectSetupDialog : public QDialog
             return;
         }
 
-        QString cfgFile = QCoreApplication::applicationDirPath() + "/config.ini";
+        QString cfgFile = QDir(QCoreApplication::applicationDirPath()).filePath("config.ini");
         QSettings settings(cfgFile, QSettings::IniFormat);
         if (m_defaultWorkDirCheck->isChecked())
         {

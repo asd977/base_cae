@@ -176,10 +176,10 @@ void DNNModel::on_importSourceFilePushButton_clicked()
     m_splitProcess->setProgram(currentPath + "/python309/python.exe");
 
     // 设置参数列表
-    m_splitProcess->setArguments(QStringList() << currentPath + "/corrode/split_train_test.py"
-                                               << m_workPath + "/model/Corr_data-2.txt"
-                                               << m_workPath + "/model/Corr_data_train.txt"
-                                               << m_workPath + "/model/Corr_data_validation.txt"
+    m_splitProcess->setArguments(QStringList() << QDir(currentPath).filePath("corrode/split_train_test.py")
+                                               << QDir(m_workPath).filePath("model/Corr_data-2.txt")
+                                               << QDir(m_workPath).filePath("model/Corr_data_train.txt")
+                                               << QDir(m_workPath).filePath("model/Corr_data_validation.txt")
                                                << ui->verifyDataLineEdit->text());
 
     m_splitProcess->start();
@@ -254,7 +254,7 @@ void DNNModel::on_importSourceFilePushButton_clicked()
     ui->layerWidget->setItem(1, 0, new QTableWidgetItem(("密集")));
     ui->layerWidget->setItem(1, 1, new QTableWidgetItem(("输出特征=1,活化=线性(无)")));
 
-    QString destinationPath = m_workPath + "/model/" + "Corr_data.txt";
+    QString destinationPath = QDir(m_workPath).filePath("model/Corr_data.txt");
     if (QFile::exists(sourceFile))
     {
         if (QFile::copy(sourceFile, destinationPath))
@@ -513,14 +513,14 @@ void DNNModel::on_startTrainModel_clicked()
     m_trainModelProcess->setProcessEnvironment(env);
 
     // 设置工作目录和 Python 可执行文件路径
-    m_trainModelProcess->setWorkingDirectory(currentPath + "/python309");
-    m_trainModelProcess->setProgram(currentPath + "/python309/python.exe");
+    m_trainModelProcess->setWorkingDirectory(QDir(currentPath).filePath("python309"));
+    m_trainModelProcess->setProgram(QDir(currentPath).filePath("python309/python.exe"));
 
     // 准备参数
-    QString trainDataFile = m_workPath + "/model/Corr_data_train.txt";    // 训练数据文件
-    QString valDataFile = m_workPath + "/model/Corr_data_validation.txt"; // 验证数据文件
-    QString onnxFile = m_workPath + "/model/model.onnx";                  // ONNX 输出文件
-    QString pthFile = m_workPath + "/model/model.pth";                    // PyTorch 权重文件
+    QString trainDataFile = QDir(m_workPath).filePath("model/Corr_data_train.txt");    // 训练数据文件
+    QString valDataFile = QDir(m_workPath).filePath("model/Corr_data_validation.txt"); // 验证数据文件
+    QString onnxFile = QDir(m_workPath).filePath("model/model.onnx");                  // ONNX 输出文件
+    QString pthFile = QDir(m_workPath).filePath("model/model.pth");                    // PyTorch 权重文件
 
     // 动态层数和激活函数
     QString layerSizes = "", activationFunctions = "";
@@ -531,7 +531,7 @@ void DNNModel::on_startTrainModel_clicked()
 
     // 设置命令行参数
     m_trainModelProcess->setArguments(
-        QStringList() << currentPath + "/corrode/corr_MLP_1.py" << "--train_data_file"
+        QStringList() << QDir(currentPath).filePath("corrode/corr_MLP_1.py") << "--train_data_file"
                       << trainDataFile << "--val_data_file" << valDataFile << "--onxx_file"
                       << onnxFile << "--pth_file" << pthFile << "--optimizer_type"
                       << QString::number(ui->methodComboBox->currentIndex()) << "--learning_rate"
@@ -630,7 +630,7 @@ void DNNModel::on_continueTrainModel_clicked()
 
     // 设置命令行参数
     m_trainModelProcess->setArguments(
-        QStringList() << currentPath + "/corrode/corr_MLP_1.py" << "--train_data_file"
+        QStringList() << QDir(currentPath).filePath("corrode/corr_MLP_1.py") << "--train_data_file"
                       << trainDataFile << "--val_data_file" << valDataFile << "--onxx_file"
                       << onnxFile << "--pth_file" << pthFile << "--optimizer_type"
                       << QString::number(ui->methodComboBox->currentIndex()) << "--learning_rate"

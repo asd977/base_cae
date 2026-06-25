@@ -1151,6 +1151,8 @@ void Solver::onSlopeStabilityAction()
 
 void Solver::onComputeSeepage(ProjectNode* analysisNode)
 {
+    try
+    {
     m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
@@ -1200,10 +1202,17 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
         QMessageBox::warning(nullptr, "导出失败",
                              QString("以下文件导出失败：\n%1").arg(failedFiles.join("\n")));
     }
+    }
+    catch (const std::exception& e)
+    {
+        qWarning() << "渗流分析计算失败:" << e.what();
+    }
 }
 
 void Solver::onComputeStressStrain(ProjectNode* analysisNode)
 {
+    try
+    {
     m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
@@ -1266,10 +1275,17 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
     else
         QMessageBox::warning(nullptr, "导出失败",
                              QString("以下文件导出失败：\n%1").arg(failedFiles.join("\n")));
+    }
+    catch (const std::exception& e)
+    {
+        qWarning() << "土石坝计算失败:" << e.what();
+    }
 }
 
 void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 {
+    try
+    {
     m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
@@ -1793,10 +1809,17 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     else
         QMessageBox::warning(nullptr, "导出失败",
                              QString("以下文件导出失败：\n%1").arg(failedFiles.join("\n")));
+    }
+    catch (const std::exception& e)
+    {
+        qWarning() << "洞室开挖计算失败:" << e.what();
+    }
 }
 
 void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
 {
+    try
+    {
     m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
@@ -1822,10 +1845,17 @@ void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
     }
     else
         QMessageBox::warning(nullptr, "导出失败", "ISLOP.DAT 导出失败。");
+    }
+    catch (const std::exception& e)
+    {
+        qWarning() << "边坡分析计算失败:" << e.what();
+    }
 }
 
 void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
 {
+    try
+    {
     m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
@@ -1851,10 +1881,17 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
     }
     else
         QMessageBox::warning(nullptr, "导出失败", "IGEOS.DAT 导出失败。");
+    }
+    catch (const std::exception& e)
+    {
+        qWarning() << "地应力回归计算失败:" << e.what();
+    }
 }
 
 void Solver::onComputeCaveBlockStability(ProjectNode* analysisNode)
 {
+    try
+    {
     m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
     if (!analysisNode || !analysisNode->getPage())
         return;
@@ -1885,6 +1922,11 @@ void Solver::onComputeCaveBlockStability(ProjectNode* analysisNode)
     else
         QMessageBox::warning(nullptr, "导出失败",
                              "生成滑块文件失败，请检查 SliderCase 目录与参数设置。");
+    }
+    catch (const std::exception& e)
+    {
+        qWarning() << "洞室块体稳定性计算失败:" << e.what();
+    }
 }
 
 
@@ -1932,6 +1974,8 @@ void Solver::stopSolverExecutable()
 
 bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analysisType)
 {
+    try
+    {
     if (!analysisNode)
         return false;
 
@@ -2002,6 +2046,12 @@ bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analys
 
     return exportInouseDatFile() && exportMaMaskDatFile() && exportKetraceDatFile() &&
            exportJdtraceDatFile();
+    }
+    catch (const std::exception& e)
+    {
+        qWarning() << "beginCommonCompute 失败:" << e.what();
+        return false;
+    }
 }
 
 
@@ -2255,7 +2305,7 @@ bool Solver::updateIiiDirDat(const QString& projectDir, int solverMode) const
         return false;
 
     const QString nativeProjectDir = QDir::toNativeSeparators(QDir(projectDir).absolutePath());
-    const QString projectWithSlash = nativeProjectDir.endsWith('\\') ? nativeProjectDir : nativeProjectDir + "\\";
+    const QString projectWithSlash = QDir(nativeProjectDir).absolutePath() + QDir::separator();
     const QString prepDir = projectWithSlash + "PREP";
 
     lines[0] = QString("'%1'").arg(projectWithSlash);

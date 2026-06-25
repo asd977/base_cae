@@ -258,25 +258,6 @@ class MeshGlobalWorker : public QObject
 
             // 1) 准备 STEP 输入
             QString stepPath = m_p.inputStepPath;
-            // if (m_p.useCurrentGeometry)
-            // {
-            //     stepPath = m_tempStepPath;
-            //     QString err;
-            //     if (!exportCurrentGeometryToStep(stepPath, err))
-            //     {
-            //         emit finishedFail(QString("STEP 导出失败：%1").arg(err));
-            //         return;
-            //     }
-            //     emit log(QString("STEP 已导出：%1").arg(stepPath));
-            // }
-            // else
-            // {
-            //     if (stepPath.isEmpty() || !QFileInfo::exists(stepPath))
-            //     {
-            //         emit finishedFail(QString("STEP
-            //         文件不存在：%1").arg(stepPath)); return;
-            //     }
-            // }
 
             // 2) 清理/建模
             gmsh::clear();

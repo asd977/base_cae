@@ -35,23 +35,23 @@ class PreProcessing : public QObject, public PreProcessingService
     void clearEntityHoverHighlight() override;
     void clearEntityHighlight() override;
 
-    BasePage* newGeometryImportWidget(QString title = QObject::tr("导入几何体"));
-    void newGeometryBoxWidget(QString title = QObject::tr("长方体"));
-    void newGeometrySphereWidget(QString title = QObject::tr("球体"));
-    void newGeometryConeWidget(QString title = QObject::tr("圆锥体"));
-    void newGeometryTorusWidget(QString title = QObject::tr("圆环体"));
-    void newGeometryCylinderWidget(QString title = QObject::tr("圆柱体"));
-    void newGeometryGravityDamWidget(QString title = QObject::tr("重力坝"));
-    void newGeometryEarthRockfillDamWidget(QString title = QObject::tr("土石坝"));
-    void newGeometrySlopeTemplateWidget(QString title = QObject::tr("边坡"));
-    void newGeometryCavernTemplateWidget(QString title = QObject::tr("洞室"));
-    BasePage* newGeometryCircleWidget(QString title = QObject::tr("圆形"));
-    BasePage* newGeometryEllipseWidget(QString title = QObject::tr("椭圆"));
-    BasePage* newGeometryPolygonWidget(QString title = QObject::tr("多边形"));
-    BasePage* newGeometryRectangleWidget(QString title = QObject::tr("矩形"));
-    void newOccBooleanFuseWidget(QString title = QObject::tr("布尔融合"));
-    void newOccBooleanCutWidget(QString title = QObject::tr("布尔切割"));
-    void newOccBooleanCommonWidget(QString title = QObject::tr("布尔求交"));
+    BasePage* newGeometryImportWidget(const QString& title = QObject::tr("导入几何体"));
+    void newGeometryBoxWidget(const QString& title = QObject::tr("长方体"));
+    void newGeometrySphereWidget(const QString& title = QObject::tr("球体"));
+    void newGeometryConeWidget(const QString& title = QObject::tr("圆锥体"));
+    void newGeometryTorusWidget(const QString& title = QObject::tr("圆环体"));
+    void newGeometryCylinderWidget(const QString& title = QObject::tr("圆柱体"));
+    void newGeometryGravityDamWidget(const QString& title = QObject::tr("重力坝"));
+    void newGeometryEarthRockfillDamWidget(const QString& title = QObject::tr("土石坝"));
+    void newGeometrySlopeTemplateWidget(const QString& title = QObject::tr("边坡"));
+    void newGeometryCavernTemplateWidget(const QString& title = QObject::tr("洞室"));
+    BasePage* newGeometryCircleWidget(const QString& title = QObject::tr("圆形"));
+    BasePage* newGeometryEllipseWidget(const QString& title = QObject::tr("椭圆"));
+    BasePage* newGeometryPolygonWidget(const QString& title = QObject::tr("多边形"));
+    BasePage* newGeometryRectangleWidget(const QString& title = QObject::tr("矩形"));
+    void newOccBooleanFuseWidget(const QString& title = QObject::tr("布尔融合"));
+    void newOccBooleanCutWidget(const QString& title = QObject::tr("布尔切割"));
+    void newOccBooleanCommonWidget(const QString& title = QObject::tr("布尔求交"));
     bool exportGeom();
 
   private:
@@ -67,7 +67,7 @@ class PreProcessing : public QObject, public PreProcessingService
     void initRibbonActionConn();
 
   private:
-    QMap<QString, std::function<BasePage*(QString title)>> m_pageFactory;
+    QMap<QString, std::function<BasePage*(const QString& title)>> m_pageFactory;
     ProjectNode* m_geomNode = nullptr;
     ProjectNode* m_gridNode = nullptr;
     UiFrameService* m_uiFrameService = nullptr;

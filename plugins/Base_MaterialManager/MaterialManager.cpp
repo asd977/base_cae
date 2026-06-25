@@ -47,6 +47,13 @@
 
 namespace
 {
+
+constexpr int REFERENCE_DIALOG_WIDTH  = 1100;
+constexpr int REFERENCE_DIALOG_HEIGHT = 680;
+constexpr int DEFAULT_NCON            = 200;
+constexpr int MIN_NMAT                = 10;
+constexpr double CO_THRESHOLD         = 1.0e-1;
+
 struct ReferenceTableData
 {
     QString modelName;
@@ -363,7 +370,7 @@ void showReferenceListDialog(const QString& title, const QVector<ReferenceTableD
     auto* dialog = new QDialog(parent);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->setWindowTitle(title);
-    dialog->resize(1100, 680);
+    dialog->resize(REFERENCE_DIALOG_WIDTH, REFERENCE_DIALOG_HEIGHT);
 
     auto* layout = new QVBoxLayout(dialog);
     auto* splitter = new QSplitter(Qt::Horizontal, dialog);
@@ -1824,9 +1831,9 @@ bool MaterialManager::generateCaculateFile()
         return false;
 
     // ===== 2) NMAT / NCON =====
-    const int ncon = 200;
+    const int ncon = DEFAULT_NCON;
     const int nmatReal = maxMatype;                        // 1..maxMatype
-    const int nmat = qMax(10, ((nmatReal + 9) / 10) * 10); // 补齐到 10 的倍数（每组 10 列）
+    const int nmat = qMax(MIN_NMAT, ((nmatReal + 9) / 10) * 10); // 补齐到 10 的倍数（每组 10 列）
 
     // ===== 3) 输出文件 =====
     QDir workDir(m_workPath);
@@ -2058,7 +2065,7 @@ bool MaterialManager::generateCaculateFile()
             double rt = 0.0;
             double rc = 0.0;
 
-            if (co > 1.0e-1)
+            if (co > CO_THRESHOLD)
             {
                 const double faiRad = fai * 3.141592653589793 / 180.0;
                 const double sinF = std::sin(faiRad);
@@ -2161,7 +2168,7 @@ bool MaterialManager::generateCaculateFile()
             double rt = 0.0;
             double rc = 0.0;
 
-            if (co > 1.0e-1)
+            if (co > CO_THRESHOLD)
             {
                 const double faiRad = fai * 3.141592653589793 / 180.0;
                 const double sinF = std::sin(faiRad);

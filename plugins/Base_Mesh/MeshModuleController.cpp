@@ -61,6 +61,7 @@
 #include <algorithm>
 #include <functional>
 #include <limits>
+#include <memory>
 
 
 #ifdef Q_OS_WIN
@@ -69,6 +70,12 @@
 
 namespace
 {
+
+constexpr int MIN_EDGE_POINTS   = 2;
+constexpr int MIN_FACE_POINTS   = 3;
+constexpr int MAX_MESH_DIM      = 3;
+constexpr double CENTER_FACTOR  = 0.5;
+constexpr double DEFAULT_ALPHA  = 1.0;
 
 static bool meshDomainKeyIsValid(const DomainKey& key)
 {
@@ -764,7 +771,7 @@ static QHash<int, QVector<QVector<int>>> edgeNodeElemsFromKeys(
             vtkCell* cell = grid->GetCell(cid);
             vtkCell* edge = cell ? cell->GetEdge(localEdgeId) : nullptr;
 
-            if (!edge || edge->GetNumberOfPoints() < 2)
+            if (!edge || edge->GetNumberOfPoints() < MIN_EDGE_POINTS)
                 continue;
 
             const int p0 = static_cast<int>(edge->GetPointId(0));
@@ -805,7 +812,7 @@ static QHash<int, QVector<QVector<int>>> faceNodeElemsFromKeys(
             vtkCell* cell = grid->GetCell(cid);
             vtkCell* face = cell ? cell->GetFace(localFaceId) : nullptr;
 
-            if (!face || face->GetNumberOfPoints() < 3)
+            if (!face || face->GetNumberOfPoints() < MIN_FACE_POINTS)
                 continue;
 
             QVector<int> nodeIds;
@@ -908,7 +915,7 @@ static void rebuildBoundaryRuntimeIndexFromNodeData(
         for (int ei = 0; ei < nEdges; ++ei)
         {
             vtkCell* edge = cell->GetEdge(ei);
-            if (!edge || edge->GetNumberOfPoints() < 2)
+            if (!edge || edge->GetNumberOfPoints() < MIN_EDGE_POINTS)
                 continue;
             const int p0 = static_cast<int>(edge->GetPointId(0));
             const int p1 = static_cast<int>(edge->GetPointId(1));
@@ -922,7 +929,7 @@ static void rebuildBoundaryRuntimeIndexFromNodeData(
         for (int fi = 0; fi < nFaces; ++fi)
         {
             vtkCell* face = cell->GetFace(fi);
-            if (!face || face->GetNumberOfPoints() < 3)
+            if (!face || face->GetNumberOfPoints() < MIN_FACE_POINTS)
                 continue;
             QVector<int> pids;
             pids.reserve(face->GetNumberOfPoints());
@@ -2037,6 +2044,7 @@ void MeshModuleController::newProject()
 {
     auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
     m_verticalAxis = 2;
+    delete m_importSettingsWidget;
     m_importSettingsWidget = new MeshImportSettingsWidget();
     m_importSettingsWidget->setVerticalAxis(m_verticalAxis);
     m_importSettingsWidget->setSourceFileName(m_sourceFileName);
@@ -2220,6 +2228,7 @@ bool MeshModuleController::loadProject()
 {
     auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
 
+    delete m_importSettingsWidget;
     m_importSettingsWidget = new MeshImportSettingsWidget();
     connect(m_importSettingsWidget, &MeshImportSettingsWidget::importRequested, this,
             &MeshModuleController::onImportGridFileDialog);
@@ -3069,13 +3078,13 @@ void MeshModuleController::onMeshSingle()
 void MeshModuleController::onMeshMapped()
 {
     // auto* w = new MeshMappedMeshingWidget();
-    QWidget* w = new QWidget();
+    auto w = std::make_unique<QWidget>();
 }
 
 void MeshModuleController::onMeshSweep()
 {
     // auto* w = new MeshSweepMeshingWidget();
-    QWidget* w = new QWidget();
+    auto w = std::make_unique<QWidget>();
 }
 
 void MeshModuleController::onCtrlVolume()
@@ -3174,8 +3183,7 @@ void MeshModuleController::onQualityStd()
     }
 
     const QString gridQualityDir =
-        QDir::toNativeSeparators(
-            QCoreApplication::applicationDirPath() + "/grid_quality");
+            QDir(QCoreApplication::applicationDirPath()).filePath("grid_quality");
 
     if (!QDir(gridQualityDir).exists())
     {
@@ -3228,7 +3236,7 @@ void MeshModuleController::onQualityStd()
             return false;
         }
 
-        file.write(content.toLocal8Bit());
+        file.write(content.toUtf8());
         file.close();
         return true;
     };
@@ -3873,9 +3881,9 @@ bool MeshModuleController::autoGroupingBySpatialBins(int binCount, const QString
             continue;
         double b[6] = {0, 0, 0, 0, 0, 0};
         cell->GetBounds(b);
-        const double cx = 0.5 * (b[0] + b[1]);
-        const double cy = 0.5 * (b[2] + b[3]);
-        const double cz = 0.5 * (b[4] + b[5]);
+        const double cx = CENTER_FACTOR * (b[0] + b[1]);
+        const double cy = CENTER_FACTOR * (b[2] + b[3]);
+        const double cz = CENTER_FACTOR * (b[4] + b[5]);
         minV[0] = std::min(minV[0], cx);
         minV[1] = std::min(minV[1], cy);
         minV[2] = std::min(minV[2], cz);
@@ -3909,11 +3917,11 @@ bool MeshModuleController::autoGroupingBySpatialBins(int binCount, const QString
     }
 
     auto* targetArr = vtkIntArray::SafeDownCast(
-        m_importedGrid->GetCellData()->GetArray(targetArrayName.toStdString().c_str()));
+        m_importedGrid->GetCellData()->GetArray(targetArrayName.toUtf8().constData()));
     if (!targetArr)
     {
         auto newArr = vtkSmartPointer<vtkIntArray>::New();
-        newArr->SetName(targetArrayName.toStdString().c_str());
+        newArr->SetName(targetArrayName.toUtf8().constData());
         newArr->SetNumberOfComponents(1);
         newArr->SetNumberOfTuples(nCells);
         newArr->FillComponent(0, 0);
@@ -3962,7 +3970,7 @@ bool MeshModuleController::autoGroupingBySpatialBins(int binCount, const QString
         const int targetValue = startValue + bin;
         const vtkIdType cid = centers[i].cid;
         targetArr->SetValue(cid, targetValue);
-        groupArr->SetValue(cid, QString("%1_%2").arg(groupPrefix).arg(targetValue).toStdString());
+        groupArr->SetValue(cid, QString("%1_%2").arg(groupPrefix).arg(targetValue).toUtf8().constData());
     }
 
     m_importedGrid->GetCellData()->Modified();
@@ -4044,9 +4052,9 @@ bool MeshModuleController::groupByCoordinateRange(double xmin, double xmax, doub
             continue;
         double b[6] = {0, 0, 0, 0, 0, 0};
         cell->GetBounds(b);
-        const double cx = 0.5 * (b[0] + b[1]);
-        const double cy = 0.5 * (b[2] + b[3]);
-        const double cz = 0.5 * (b[4] + b[5]);
+        const double cx = CENTER_FACTOR * (b[0] + b[1]);
+        const double cy = CENTER_FACTOR * (b[2] + b[3]);
+        const double cz = CENTER_FACTOR * (b[4] + b[5]);
         if (cx >= xmin && cx <= xmax && cy >= ymin && cy <= ymax && cz >= zmin && cz <= zmax)
         {
             targetArr->SetValue(cid, value);

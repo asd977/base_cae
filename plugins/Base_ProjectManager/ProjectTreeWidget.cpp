@@ -55,6 +55,11 @@ void ProjectTreeWidget::applyTreeTheme()
     m_treeWidget->setSelectionMode(QAbstractItemView::SingleSelection);
     m_treeWidget->setExpandsOnDoubleClick(true);
     m_treeWidget->setEditTriggers(QAbstractItemView::EditKeyPressed);
+    m_treeWidget->setAnimated(true);
+    m_treeWidget->setIconSize(QSize(20, 20));
+    m_treeWidget->setRootIsDecorated(true);
+    m_treeWidget->setItemsExpandable(true);
+    m_treeWidget->setFocusPolicy(Qt::NoFocus);
     m_treeWidget->setHeaderLabel("Setting");
 }
 void ProjectTreeWidget::buildDefaultProjectTree(const QString& projectName)

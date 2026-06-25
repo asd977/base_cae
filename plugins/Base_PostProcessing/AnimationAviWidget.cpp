@@ -491,67 +491,6 @@ void AnimationAviWidget::on_fixRangeCheckBox_toggled(bool)
 
 bool AnimationAviWidget::exportAVI(const QString& fileName, double fps)
 {
-    //     if (m_frames.isEmpty()) return false;
-    //     auto rw = m_visualService->renderWindow();
-
-    //     // 捕获器
-    //     auto w2i = vtkSmartPointer<vtkWindowToImageFilter>::New();
-    //     w2i->SetInput(rw);
-    //     w2i->SetInputBufferTypeToRGB();
-    //     w2i->ReadFrontBufferOff();
-    //     w2i->ShouldRerenderOff();
-
-    //     // 写 AVI
-    //     auto avi = vtkSmartPointer<vtkAVIWriter>::New();
-    //     avi->SetFileName(fileName.toUtf8().constData());
-    // #if defined(VTK_AVIWRITER_HAS_RATE) || 1
-    //     avi->SetRate(int(std::round(fps))); // 大多数版本支持；如不支持可移除
-    // #endif
-    //     avi->SetInputConnection(w2i->GetOutputPort());
-    //     avi->Start();
-
-    //     // 停止实时播放，逐帧写出
-    //     bool looping = ui->loopCheckBox->isChecked();
-    //     stopTimer();
-
-    //     const bool doInterp = ui->interpCheckBox->isChecked() &&
-    //     (ui->interpCountSpin->value() > 0); const int N =
-    //     ui->interpCountSpin->value();
-
-    //     for (int i=0; i<m_frames.size(); ++i)
-    //     {
-    //         // —— 原始帧 ——
-    //         loadFrame(i);
-    //         rw->Render();
-    //         w2i->Modified(); w2i->Update();
-    //         avi->Write();
-
-    //         // —— 插帧 ——
-    //         int j = (i+1 < m_frames.size()) ? (i+1) : (looping ? 0 : -1);
-    //         if (doInterp && j >= 0 && canInterpolateBetween(i, j)) {
-    //             auto g0 = loadGridFromFile(m_frames[i].filePath);
-    //             auto g1 = loadGridFromFile(m_frames[j].filePath);
-    //             for (int k=0; k<N; ++k) {
-    //                 double alpha = double(k+1)/double(N+1);
-    //                 auto gI = interpolateGrids(g0, g1, alpha);
-    //                 if (!gI) break;
-    //                 m_mapper->SetInputData(gI);
-    //                 if (ui->scalarComboBox->count() > 0) {
-    //                     const QString s = ui->scalarComboBox->currentText();
-    //                     double range[2]{0,1};
-    //                     if (m_hasFixedRange) { range[0]=m_fixedRange[0];
-    //                     range[1]=m_fixedRange[1]; } else if (auto arr =
-    //                     gI->GetPointData()->GetArray(s.toUtf8().data())) {
-    //                     arr->GetRange(range); } applyScalarAndLUT(s, range);
-    //                 }
-    //                 rw->Render();
-    //                 w2i->Modified(); w2i->Update();
-    //                 avi->Write();
-    //             }
-    //         }
-    //     }
-
-    //     avi->End();
     return true;
 }
 

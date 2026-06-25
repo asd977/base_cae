@@ -1,4 +1,4 @@
-﻿#include "PhySicalField.h"
+#include "PhySicalField.h"
 
 #include <ContextMenuHub.h>
 #include <DisplacementConstraintWidget.h>
@@ -28,6 +28,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <memory>
 
 #include "BodyForcePage.h"
 #include "PhysicalFieldSettingWidget.h"
@@ -50,6 +51,16 @@
 #include <vtkUnstructuredGrid.h>
 
 #include "DisplacementConstraintWidget.h"
+
+namespace {
+    constexpr int DIMENSION_2D = 2;
+    constexpr int DIMENSION_3D = 3;
+    constexpr int DOF_2D       = 2;
+    constexpr int DOF_3D       = 3;
+    constexpr int NCOM_2D      = 3;
+    constexpr int NCOM_3D      = 6;
+    constexpr double HASH_LOAD_FACTOR = 1.3;
+}  // namespace
 
 static int CountKind(ProjectNode* root, const QString& kind)
 {
@@ -165,8 +176,8 @@ void PhysicalField::initAction()
 
 BasePage* PhysicalField::getPhysicalFiledSettingWidget()
 {
-    PhysicalFieldSettingWidget* tmp = new PhysicalFieldSettingWidget;
-    return (BasePage*)tmp;
+    auto tmp = std::make_unique<PhysicalFieldSettingWidget>();
+    return tmp.release();
 }
 
 void PhysicalField::intitTreeMenu()
@@ -312,10 +323,10 @@ void PhysicalField::removeNodeByUuid(const QString& uuid)
 
 void PhysicalField::newProject()
 {
-    auto* physicalFieldSettingWidget = new PhysicalFieldSettingWidget;
+    auto physicalFieldSettingWidget = std::make_unique<PhysicalFieldSettingWidget>();
 
     QString uuid = QUuid::createUuid().toString();
-    m_node = new ProjectNode("约束与荷载", uuid, (BasePage*)physicalFieldSettingWidget);
+    m_node = new ProjectNode("约束与荷载", uuid, (BasePage*)physicalFieldSettingWidget.release());
 
     // 关键：把上下文写进 item data
     m_node->setData(0, ProjectNode::RoleUuid, m_node->getUuid());
@@ -789,7 +800,9 @@ void PhysicalField::generateIIIDFile()
     vtkIntArray* idLine = findNodeIdArray(gLine);
     vtkIntArray* idAll = findNodeIdArray(gAll);
 
-    if ((gSolid && !idSolid) || (gLine && !idLine) || (gAll && !idAll))
+    if ((gSolid && gSolid->GetNumberOfPoints() > 0 && !idSolid) ||
+        (gLine && gLine->GetNumberOfPoints() > 0 && !idLine) ||
+        (gAll && gAll->GetNumberOfPoints() > 0 && !idAll))
     {
         qWarning() << "generateIIIDFile: node id array missing on some grid";
         return;
@@ -797,7 +810,7 @@ void PhysicalField::generateIIIDFile()
 
     const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     qInfo()<<"NDIM "<<NDIM;
-    const bool is3D = (NDIM == 3);
+    const bool is3D = (NDIM == DIMENSION_3D);
     const int MADOF = is3D ? 3 : 2;
 
     // 1) 收集所有 node_id（all + solid + line），去重并排序
@@ -806,20 +819,20 @@ void PhysicalField::generateIIIDFile()
                        (gSolid ? int(gSolid->GetNumberOfPoints()) : 0) +
                        (gLine ? int(gLine->GetNumberOfPoints()) : 0));
 
-    if (gAll)
+    if (gAll && idAll)
     {
         const int n = int(gAll->GetNumberOfPoints());
         for (int i = 0; i < n; ++i)
             allNodeIds.push_back(idAll->GetValue(i));
     }
 
-    if (gSolid)
+    if (gSolid && idSolid)
     {
         const int n = int(gSolid->GetNumberOfPoints());
         for (int i = 0; i < n; ++i)
             allNodeIds.push_back(idSolid->GetValue(i));
     }
-    if (gLine)
+    if (gLine && idLine)
     {
         const int n = int(gLine->GetNumberOfPoints());
         for (int i = 0; i < n; ++i)
@@ -1434,7 +1447,7 @@ void PhysicalField::writeIIWL_Part1_GeoStressPoint(QTextStream& os)
     }
 
     const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
-    const int NCOM = (NDIM == 2) ? 3 : 6;
+    const int NCOM = (NDIM == DIMENSION_2D) ? 3 : 6;
 
     QList<ProjectNode*> pages;
     CollectNodesByKind(m_node, "GeoStressPointPage", pages);
@@ -1506,7 +1519,7 @@ void PhysicalField::writeIIWL_Part1_GeoStressPoint(QTextStream& os)
     // ---- Part1 输出 ----
     os << QString("%1\t%2\t%3\tNUM_GEO\tNDIM\tNCOM\n").arg(NUM_GEO).arg(NDIM).arg(NCOM);
 
-    if (NDIM == 2)
+    if (NDIM == DIMENSION_2D)
         os << "XP\tYP\tSGX\tSGY\tTXY\tII\n";
     else
         os << "XP\tYP\tZP\tSGX\tSGY\tSGZ\tTYZ\tTZX\tTXY\tII\n";
@@ -1520,7 +1533,7 @@ void PhysicalField::writeIIWL_Part1_GeoStressPoint(QTextStream& os)
 
         const int II = i + 1;
 
-        if (NDIM == 2)
+        if (NDIM == DIMENSION_2D)
         {
             os << fmtE(xyz.x) << "\t" << fmtE(xyz.y) << "\t" << fmtE(s.sx) << "\t" << fmtE(s.sy)
                << "\t" << fmtE(s.sxy) << "\t" << II << "\n";
@@ -1691,10 +1704,10 @@ void PhysicalField::writeIIWL_Part4_PointForce(QTextStream& os)
         // 3D: FX FY FZ MX MY MZ
         const double fx = page->fxValue();
         const double fy = page->fyValue();
-        const double fz = (NDIM == 3) ? page->fzValue() : 0.0;
+        const double fz = (NDIM == DIMENSION_3D) ? page->fzValue() : 0.0;
 
-        const double mx = (NDIM == 3) ? page->mxValue() : 0.0;
-        const double my = (NDIM == 3) ? page->myValue() : 0.0;
+        const double mx = (NDIM == DIMENSION_3D) ? page->mxValue() : 0.0;
+        const double my = (NDIM == DIMENSION_3D) ? page->myValue() : 0.0;
         const double mz = page->mzValue(); // 2D 用作 M；3D 用作 MZ
 
         // 你当前 getIdList(Node) 返回的是 node_id（见你 Part1 的实现）
@@ -1745,7 +1758,7 @@ void PhysicalField::writeIIWL_Part4_PointForce(QTextStream& os)
             g->GetPoint(pid, p);
             const int jmfc = chooseElemIdForPid(g, elemArr, pid);
 
-            if (NDIM == 2)
+            if (NDIM == DIMENSION_2D)
             {
                 Row2D r;
                 r.jmfc = jmfc;
@@ -1774,18 +1787,18 @@ void PhysicalField::writeIIWL_Part4_PointForce(QTextStream& os)
         }
     }
 
-    const int NFC = (NDIM == 2) ? rows2.size() : rows3.size();
+    const int NFC = (NDIM == DIMENSION_2D) ? rows2.size() : rows3.size();
 
     os << "\n";
     os << QString("%1\tNFC\n").arg(NFC);
 
-    if (NDIM == 2)
+    if (NDIM == DIMENSION_2D)
         os << "JMFC\tXC\tYC\tFX\tFY\tM\tII(BLANK)\n";
     else
         os << "JMFC\tXC\tYC\tZC\tFX\tFY\tFZ\tMX\tMY\tMZ\tII(BLANK)\n";
 
     // II(BLANK) = 序号 1..NFC
-    if (NDIM == 2)
+    if (NDIM == DIMENSION_2D)
     {
         for (int i = 0; i < rows2.size(); ++i)
         {
@@ -1839,7 +1852,7 @@ void PhysicalField::writeIIWL_Part5_LinearForce(QTextStream& os)
 
         const double fx = page->fxValue();
         const double fy = page->fyValue();
-        const double fz = (NDIM == 3) ? page->fzValue() : 0.0;
+        const double fz = (NDIM == DIMENSION_3D) ? page->fzValue() : 0.0;
 
         // ✅ 线力：用 edgeNodesByKe（优先 lineGrid）
         QHash<int, QVector<int>> nodesByKe =
@@ -2020,7 +2033,7 @@ void PhysicalField::writeIIWL_Part6_FaceLoad(QTextStream& os)
         // ✅ FaceLoadPage 需要有 fx/fy/fz getter（没有就补）
         const double fx = page->fxValue();
         const double fy = page->fyValue();
-        const double fz = (NDIM == 3) ? page->fzValue() : 0.0;
+        const double fz = (NDIM == DIMENSION_3D) ? page->fzValue() : 0.0;
 
         // ✅ 面力：一般在 solidGrid（优先 solid）
         QHash<int, QVector<int>> nodesByKe =
@@ -2230,7 +2243,7 @@ void PhysicalField::writeIIWL_Part8_BeamSpecialDistributedLoad(QTextStream& os)
                 r.jmfg = ke;
                 r.xp = pt[0];
                 r.yp = pt[1];
-                r.zp = (NDIM == 3) ? pt[2] : 0.0;
+                r.zp = (NDIM == DIMENSION_3D) ? pt[2] : 0.0;
                 r.ldType = ldType;
                 r.a = a;
                 r.p = p;
@@ -2293,7 +2306,7 @@ void PhysicalField::writeIIWL_Part8_BeamSpecialDistributedLoad(QTextStream& os)
                     r.jmfg = ke;
                     r.xp = pt[0];
                     r.yp = pt[1];
-                    r.zp = (NDIM == 3) ? pt[2] : 0.0;
+                    r.zp = (NDIM == DIMENSION_3D) ? pt[2] : 0.0;
                     r.ldType = ldType;
                     r.a = a;
                     r.p = p;
@@ -2319,7 +2332,7 @@ void PhysicalField::writeIIWL_Part8_BeamSpecialDistributedLoad(QTextStream& os)
     os << QString("%1\tNFG\n").arg(NFG);
 
     // ✅ 2D/3D 头按实际输出
-    if (NDIM == 2)
+    if (NDIM == DIMENSION_2D)
         os << "JMFG\tXP\tYP\tLDTYPE\tA\tP\tIDIR\tII\n";
     else
         os << "JMFG\tXP\tYP\tZP\tLDTYPE\tA\tP\tIDIR\tII\n";
@@ -2331,7 +2344,7 @@ void PhysicalField::writeIIWL_Part8_BeamSpecialDistributedLoad(QTextStream& os)
         const int II = i + 1;
         const Row& r = rows[i];
 
-        if (NDIM == 2)
+        if (NDIM == DIMENSION_2D)
         {
             os << r.jmfg << "\t" << fmtE(r.xp) << "\t" << fmtE(r.yp) << "\t" << r.ldType << "\t"
                << fmtE(r.a) << "\t" << fmtE(r.p) << "\t" << r.idir << "\t" << II << "\n";

@@ -350,7 +350,7 @@ void ProjectManager::newProject()
     }
 
     m_projectEnginePath =
-        QDir(m_projectPath).filePath(m_projectName + "/" + m_projectName + ".xml");
+        QDir(QDir(m_projectPath).filePath(m_projectName)).filePath(m_projectName + ".xml");
     if (!createProjectFilesFolder(true))
     {
         return;

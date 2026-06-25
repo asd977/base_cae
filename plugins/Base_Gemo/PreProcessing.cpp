@@ -128,15 +128,15 @@ void PreProcessing::initPageFactory()
     // title) { return m_preProcessingWidget->newGridImportWidget(title); };
     // // 几何
     // m_pageFactory[PublicConstants::kPagePreprocessImportGeometry] =
-    // [this](QString title) { return
+    // [this](const QString& title) { return
     // m_preProcessingWidget->newGeometryImportWidget(title); };
-    // m_pageFactory[PublicConstants::kPagePreprocessArc] = [this](QString title){
+    // m_pageFactory[PublicConstants::kPagePreprocessArc] = [this](const QString& title){
     // return m_preProcessingWidget->newGeometryArcWidget(title); };
     // m_pageFactory[PublicConstants::kPagePreprocessBezier2d] = [this](QString
     // title) { return m_preProcessingWidget->newGeometryTwoBsrWidget(title); };
     // m_pageFactory[PublicConstants::kPagePreprocessBezier3d] = [this](QString
     // title) { return m_preProcessingWidget->newGeometryThreeBsrWidget(title); };
-    // m_pageFactory[PublicConstants::kPagePreprocessCone] = [this](QString title)
+    // m_pageFactory[PublicConstants::kPagePreprocessCone] = [this](const QString& title)
     // { return m_preProcessingWidget->newGeometryConeWidget(title); };
     // m_pageFactory[PublicConstants::kPagePreprocessCylinder] = [this](QString
     // title) { return m_preProcessingWidget->newGeometryCylinderWidget(title); };
@@ -146,7 +146,7 @@ void PreProcessing::initPageFactory()
     // title) { return m_preProcessingWidget->newGeometryHelixWidget(title); };
     // m_pageFactory[PublicConstants::kPagePreprocessCircle] = [this](QString
     // title) { return m_preProcessingWidget->newGeometryCircleWidget(title); };
-    // m_pageFactory[PublicConstants::kPagePreprocessLine] = [this](QString title)
+    // m_pageFactory[PublicConstants::kPagePreprocessLine] = [this](const QString& title)
     // { return m_preProcessingWidget->newGeometryLineWidget(title); };
     // m_pageFactory[PublicConstants::kPagePreprocessTorus] = [this](QString
     // title) { return m_preProcessingWidget->newGeometryTorusWidget(title); };
@@ -163,9 +163,9 @@ void PreProcessing::initPageFactory()
     // }; m_pageFactory[PublicConstants::kPagePreprocessPoint] = [this](QString
     // title) { return m_preProcessingWidget->newGeometryPointWidget(title); };
     // m_pageFactory[PublicConstants::kPagePreprocessParametricCurve] =
-    // [this](QString title) { return
+    // [this](const QString& title) { return
     // m_preProcessingWidget->newGeometryParamCurveWidget(title); };
-    // m_pageFactory[PublicConstants::kPagePreprocessBox] = [this](QString title)
+    // m_pageFactory[PublicConstants::kPagePreprocessBox] = [this](const QString& title)
     // { return m_preProcessingWidget->newGeometryBoxWidget(title); };
     // m_pageFactory[PublicConstants::kPagePreprocessHyperbola] = [this](QString
     // title) { return m_preProcessingWidget->newGeometryHyperbolaWidget(title);
@@ -869,7 +869,7 @@ void PreProcessing::initRibbonActionConn()
         }); // common
 }
 
-BasePage* PreProcessing::newGeometryImportWidget(QString title)
+BasePage* PreProcessing::newGeometryImportWidget(const QString& title)
 {
     if (!m_geomNode)
         return nullptr;
@@ -965,7 +965,7 @@ bool PreProcessing::writeMultipleShapesStepFile(const QString& filePath)
     return (status == IFSelect_RetDone);
 }
 
-void PreProcessing::newGeometryBoxWidget(QString title)
+void PreProcessing::newGeometryBoxWidget(const QString& title)
 {
     if (!m_geomNode)
         return;
@@ -983,7 +983,7 @@ void PreProcessing::newGeometryBoxWidget(QString title)
     node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 
-void PreProcessing::newGeometrySphereWidget(QString title)
+void PreProcessing::newGeometrySphereWidget(const QString& title)
 {
     if (!m_geomNode)
         return;
@@ -1002,7 +1002,7 @@ void PreProcessing::newGeometrySphereWidget(QString title)
     node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 
-void PreProcessing::newGeometryConeWidget(QString title)
+void PreProcessing::newGeometryConeWidget(const QString& title)
 {
     if (!m_geomNode)
         return;
@@ -1021,7 +1021,7 @@ void PreProcessing::newGeometryConeWidget(QString title)
     node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 
-void PreProcessing::newGeometryTorusWidget(QString title)
+void PreProcessing::newGeometryTorusWidget(const QString& title)
 {
     if (!m_geomNode)
         return;
@@ -1040,7 +1040,7 @@ void PreProcessing::newGeometryTorusWidget(QString title)
     node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 
-void PreProcessing::newGeometryCylinderWidget(QString title)
+void PreProcessing::newGeometryCylinderWidget(const QString& title)
 {
     if (!m_geomNode)
         return;
@@ -1059,7 +1059,7 @@ void PreProcessing::newGeometryCylinderWidget(QString title)
     node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 
-void PreProcessing::newGeometryGravityDamWidget(QString title)
+void PreProcessing::newGeometryGravityDamWidget(const QString& title)
 {
     if (!m_geomNode)
         return;
@@ -1078,7 +1078,7 @@ void PreProcessing::newGeometryGravityDamWidget(QString title)
     node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 
-BasePage* PreProcessing::newGeometryCircleWidget(QString title)
+BasePage* PreProcessing::newGeometryCircleWidget(const QString& title)
 {
     if (!m_geomNode)
         return nullptr;
@@ -1101,7 +1101,7 @@ BasePage* PreProcessing::newGeometryCircleWidget(QString title)
     return w;
 }
 
-BasePage* PreProcessing::newGeometryEllipseWidget(QString title)
+BasePage* PreProcessing::newGeometryEllipseWidget(const QString& title)
 {
     if (!m_geomNode)
         return nullptr;
@@ -1124,7 +1124,7 @@ BasePage* PreProcessing::newGeometryEllipseWidget(QString title)
     return w;
 }
 
-BasePage* PreProcessing::newGeometryPolygonWidget(QString title)
+BasePage* PreProcessing::newGeometryPolygonWidget(const QString& title)
 {
     if (!m_geomNode)
         return nullptr;
@@ -1147,7 +1147,7 @@ BasePage* PreProcessing::newGeometryPolygonWidget(QString title)
     return w;
 }
 
-BasePage* PreProcessing::newGeometryRectangleWidget(QString title)
+BasePage* PreProcessing::newGeometryRectangleWidget(const QString& title)
 {
     if (!m_geomNode)
         return nullptr;
@@ -1170,7 +1170,7 @@ BasePage* PreProcessing::newGeometryRectangleWidget(QString title)
     return w;
 }
 
-void PreProcessing::newOccBooleanFuseWidget(QString title)
+void PreProcessing::newOccBooleanFuseWidget(const QString& title)
 {
     if (!m_geomNode)
         return;
@@ -1188,7 +1188,7 @@ void PreProcessing::newOccBooleanFuseWidget(QString title)
     node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 
-void PreProcessing::newOccBooleanCutWidget(QString title)
+void PreProcessing::newOccBooleanCutWidget(const QString& title)
 {
     if (!m_geomNode)
         return;
@@ -1206,7 +1206,7 @@ void PreProcessing::newOccBooleanCutWidget(QString title)
     node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 
-void PreProcessing::newOccBooleanCommonWidget(QString title)
+void PreProcessing::newOccBooleanCommonWidget(const QString& title)
 {
     if (!m_geomNode)
         return;
@@ -1450,7 +1450,7 @@ void PreProcessing::clearEntityHighlight()
 }
 
 
-void PreProcessing::newGeometryEarthRockfillDamWidget(QString title)
+void PreProcessing::newGeometryEarthRockfillDamWidget(const QString& title)
 {
     if (!m_geomNode) return;
     auto* w = new EarthRockfillDamDialog();
@@ -1466,7 +1466,7 @@ void PreProcessing::newGeometryEarthRockfillDamWidget(QString title)
     node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 
-void PreProcessing::newGeometrySlopeTemplateWidget(QString title)
+void PreProcessing::newGeometrySlopeTemplateWidget(const QString& title)
 {
     if (!m_geomNode) return;
     auto* w = new SlopeTemplateDialog();
@@ -1482,7 +1482,7 @@ void PreProcessing::newGeometrySlopeTemplateWidget(QString title)
     node->setIcon(0, QIcon(":/resources/icon/geom-unused.svg"));
 }
 
-void PreProcessing::newGeometryCavernTemplateWidget(QString title)
+void PreProcessing::newGeometryCavernTemplateWidget(const QString& title)
 {
     if (!m_geomNode) return;
     auto* w = new CavernTemplateDialog();
