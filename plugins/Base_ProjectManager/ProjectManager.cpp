@@ -1,4 +1,4 @@
-﻿#include "ProjectManager.h"
+#include "ProjectManager.h"
 
 #include <PublicVariables.h>
 #include <services/BoundaryConditionsService.h>
@@ -176,7 +176,14 @@ void ProjectManager::setNodeDimmed(const QString& uuid, bool dimmed)
                               : QIcon(":/resources/icon/geom-used.svg");
     node->setIcon(0, icon);
     node->setData(0, ProjectNode::RoleDimmed, dimmed);
-    node->setForeground(0, QBrush(Qt::black));
+    if (dimmed)
+    {
+        node->setForeground(0, QBrush(QColor("#8a95a5")));
+    }
+    else
+    {
+        node->setData(0, Qt::ForegroundRole, QVariant());
+    }
 }
 
 void ProjectManager::openProject()

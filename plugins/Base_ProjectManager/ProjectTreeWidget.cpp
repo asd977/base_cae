@@ -47,7 +47,7 @@ void ProjectTreeWidget::applyTreeTheme()
         return;
     }
 
-    m_treeWidget->setIndentation(20);
+    m_treeWidget->setIndentation(18);
     m_treeWidget->setObjectName("projectTreeWidget");
     m_treeWidget->setColumnCount(1);
     m_treeWidget->header()->setVisible(false);
@@ -56,7 +56,7 @@ void ProjectTreeWidget::applyTreeTheme()
     m_treeWidget->setExpandsOnDoubleClick(true);
     m_treeWidget->setEditTriggers(QAbstractItemView::EditKeyPressed);
     m_treeWidget->setAnimated(true);
-    m_treeWidget->setIconSize(QSize(20, 20));
+    m_treeWidget->setIconSize(QSize(18, 18));
     m_treeWidget->setRootIsDecorated(true);
     m_treeWidget->setItemsExpandable(true);
     m_treeWidget->setFocusPolicy(Qt::NoFocus);

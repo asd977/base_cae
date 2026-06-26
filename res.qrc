@@ -119,6 +119,8 @@
         <file>resources/icon/view_scale_off.svg</file>
         <file>resources/icon.svg</file>
         <file>resources/style/app.qss</file>
+        <file>resources/style/chevron_right.svg</file>
+        <file>resources/style/chevron_down.svg</file>
         <file>resources/menu/minimal/app-new.svg</file>
         <file>resources/menu/minimal/app-open.svg</file>
         <file>resources/menu/minimal/app-save.svg</file>

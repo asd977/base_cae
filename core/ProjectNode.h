@@ -1,4 +1,4 @@
-﻿#ifndef PROJECTNODE_H
+#ifndef PROJECTNODE_H
 #define PROJECTNODE_H
 #include <qmetatype.h>
 #include <qobject.h>

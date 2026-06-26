@@ -290,12 +290,13 @@ void UiFrame::setDockWidgetStyle()
     //        }
     QString qss = R"(
                   QSplitter::handle {
-                      height: 4px; /* 间接调整分隔线的高度（如果是水平分隔线） */
-                      width: 4px; /* 间接调整分隔线的宽度（如果是垂直分隔线） */
+                      height: 3px;
+                      width: 3px;
+                      background: #e2e6ea;
                   }
                   ads--CDockAreaWidget[focused="true"]  {
                       background: white;
-                      border-color: rgb(96,181,247);
+                      border-color: #4a90d9;
                   }
 
                   #dockAreaAutoHideButton {
@@ -314,32 +315,63 @@ void UiFrame::setDockWidgetStyle()
                   }
                   QScrollArea#dockWidgetScrollArea {
                       padding: 0px;
-                      border: 0px solid rgb(200, 200, 200);
+                      border: none;
                   }
                   ads--CDockAreaWidget {
-                      border: 1px solid #dcdfe6;
+                      border: 1px solid #e2e6ea;
                   }
 
                   QScrollBar:vertical {
-                      width: 10px; /* 设置垂直滚动条的宽度 */
-                      background: #f0f0f0; /* 设置滚动条的背景颜色 */
-                      border: none; /* 取消垂直滚动条的边框样式 */
-                      border-radius: 5px; /* 设置滚动条的圆角 */
+                      width: 8px;
+                      background: transparent;
+                      border: none;
+                      margin: 2px 1px;
                   }
 
                   QScrollBar:horizontal {
-                      height: 10px; /* 设置水平滚动条的高度 */
-                      background: #f0f0f0; /* 设置滚动条的背景颜色 */
-                      border: none; /* 取消水平滚动条的边框样式 */
-                      border-radius: 5px; /* 设置滚动条的圆角 */
+                      height: 8px;
+                      background: transparent;
+                      border: none;
+                      margin: 1px 2px;
                   }
 
                   QScrollBar::handle:vertical {
-                      background: #c0c0c0; /* 设置垂直滚动条滑块的背景颜色 */
+                      min-height: 24px;
+                      background: #c1c7d0;
+                      border: none;
+                      border-radius: 3px;
                   }
 
                   QScrollBar::handle:horizontal {
-                      background: #c0c0c0; /* 设置水平滚动条滑块的背景颜色 */
+                      min-width: 24px;
+                      background: #c1c7d0;
+                      border: none;
+                      border-radius: 3px;
+                  }
+
+                  QScrollBar::handle:vertical:hover,
+                  QScrollBar::handle:horizontal:hover {
+                      background: #a5adba;
+                  }
+
+                  QScrollBar::handle:vertical:pressed,
+                  QScrollBar::handle:horizontal:pressed {
+                      background: #7a869a;
+                  }
+
+                  QScrollBar::add-line:vertical,
+                  QScrollBar::sub-line:vertical,
+                  QScrollBar::add-line:horizontal,
+                  QScrollBar::sub-line:horizontal {
+                      width: 0px;
+                      height: 0px;
+                  }
+
+                  QScrollBar::add-page:vertical,
+                  QScrollBar::sub-page:vertical,
+                  QScrollBar::add-page:horizontal,
+                  QScrollBar::sub-page:horizontal {
+                      background: transparent;
                   }
                   )";
     qInfo() << "m_dockManager->setStyleSheet(qss)";
@@ -502,7 +534,7 @@ void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
                         "  font-family: \"Microsoft YaHei\", \"微软雅黑\";"
                         "  font-weight: normal;"
                         "  font-size: 15pt;"
-                        "  color: #1a5fb4;"
+                        "  color: #3a7bc8;"
                         "  text-align: left;"
                         "  background: transparent;"
                         "}"
@@ -535,20 +567,20 @@ void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
                         "}"
                         "ads--CDockWidgetTab[activeTab=\"true\"] {"
                         "  background: #ffffff;"
-                        "  border-top: 2px solid #1a5fb4;"
+                        "  border-top: 2px solid #4a90d9;"
                         "}"
                         "ads--CDockWidgetTab[activeTab=\"true\"] QLabel#dockWidgetTabLabel {"
                         "  font-weight: normal;"
-                        "  color: #1a5fb4;"
+                        "  color: #3a7bc8;"
                         "  background: transparent;"
                         "}"
                         "ads--CDockWidgetTab[focused=\"true\"] {"
                         "  background: #ffffff;"
-                        "  border-top: 2px solid #1a5fb4;"
+                        "  border-top: 2px solid #4a90d9;"
                         "}"
                         "ads--CDockWidgetTab[focused=\"true\"] QLabel#dockWidgetTabLabel {"
                         "  font-weight: normal;"
-                        "  color: #1a5fb4;"
+                        "  color: #3a7bc8;"
                         "  background: transparent;"
                         "}"
                     );

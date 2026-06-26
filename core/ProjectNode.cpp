@@ -1,4 +1,4 @@
-﻿#include "ProjectNode.h"
+#include "ProjectNode.h"
 
 #include <qdebug.h>
 
