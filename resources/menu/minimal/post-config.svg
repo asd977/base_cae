@@ -1,6 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
-  <circle cx="32" cy="32" r="10" stroke="#0891B2" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="32" cy="32" r="4" fill="#D97706"/>
-  <path d="M32 8v8M32 48v8M8 32h8M48 32h8" stroke="#0891B2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M15 15l6 6M43 43l6 6M49 15l-6 6M21 43l-6 6" stroke="#0891B2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- 8 Teeth -->
+  <path d="M32 22v-8M32 42v8M22 32h-8M42 32h8M24.9 24.9l-5.6-5.6M39.1 39.1l5.6 5.6M39.1 24.9l5.6-5.6M24.9 39.1l-5.6 5.6" stroke="#356793" stroke-width="5.5" stroke-linecap="round"/>
+  
+  <!-- Outer gear body circle -->
+  <circle cx="32" cy="32" r="11" stroke="#356793" stroke-width="4.5" fill="#356793" fill-opacity="0.25"/>
+  <!-- Inner hole -->
+  <circle cx="32" cy="32" r="4.5" stroke="#356793" stroke-width="2.5" fill="#FFFFFF"/>
 </svg>

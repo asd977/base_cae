@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
-  <rect x="6" y="6" width="52" height="52" rx="4" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M14 46l10-10" stroke="#DC2626" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M20 36l4 0 0 4" stroke="#DC2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M28 44l8-16" stroke="#2563EB" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M32 28l4 2-2 4" stroke="#2563EB" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M40 40l6-12" stroke="#059669" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M42 28l4 0 0 4" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M48 38l4-8" stroke="#D97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="6" y="6" width="52" height="52" rx="4" stroke="#475569" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="#475569" fill-opacity="0.05"/>
+  <path d="M14 46l10-10" stroke="#D65F5F" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M20 36l4 0 0 4" stroke="#D65F5F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M28 44l8-16" stroke="#356793" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M32 28l4 2-2 4" stroke="#356793" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M40 40l6-12" stroke="#3CA783" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M42 28l4 0 0 4" stroke="#3CA783" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M48 38l4-8" stroke="#C9863B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
