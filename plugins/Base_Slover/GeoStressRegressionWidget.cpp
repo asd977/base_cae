@@ -65,15 +65,17 @@ bool GeoStressRegressionWidget::exportIGEOSDatFile(const ExportPayload& payload)
 
     QTextStream os(&file);
     const QString prepDir = ensureTrailingSep(wd.filePath("PREP"));
+    const int ndim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    const bool is2D = (ndim == 2);
 
     QFile imidFile(wd.filePath("IMID_GEOS.DAT"));
     if (!imidFile.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
     QTextStream imidOs(&imidFile);
-    imidOs << "  3\n";
-    imidOs << "  3\n";
-    imidOs << "  1\n";
-    imidOs << "   0.00000\n";
+    imidOs << (is2D ? "  2\n" : "  3\n");
+    imidOs << (is2D ? "  2\n" : "  3\n");
+    imidOs << (is2D ? "  0\n" : "  1\n");
+    imidOs << (is2D ? "   2.00000\n" : "   0.00000\n");
     imidOs << "'" << prepDir << "'\n";
 
     os << "'" << prepDir << "'       1\n";
@@ -86,14 +88,13 @@ bool GeoStressRegressionWidget::exportIGEOSDatFile(const ExportPayload& payload)
     os << "'" << QString::number(ui->calcModeCombo->currentIndex()) << "'       8\n";
     os << "'" << ui->reservedEdit->text().trimmed() << "'       9\n";
     os << "'" << (payload.forceFile.isEmpty() ? kForceFileName : payload.forceFile) << "'      10\n";
-    os << "'" << QString::number(payload.forceEnabled) << "'      11\n";
+    os << "'" << QString::number(is2D ? 0 : 1) << "'      11\n";
     os << "'" << ui->lambdaEdit->text().trimmed() << "'      12\n";
 
     os << "   1     NCHANGE\n";
     os << "   1     1     1    MACHAN    MACHAN  II\n";
     os << QString("%1    NUM_GEO\n").arg(payload.measureRows.size());
-    const int ndim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
-    if (ndim == 2)
+    if (is2D)
     {
         os << "XP          YP          SGX         SGY         TXY         II\n";
         for (const auto& row : payload.measureRows)

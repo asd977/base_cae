@@ -1,4 +1,4 @@
-﻿#include "MaterialEntryWidget.h"
+#include "MaterialEntryWidget.h"
 
 #include <CustomComboBox.h>
 

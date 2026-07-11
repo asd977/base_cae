@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="3 3 58 58" fill="none">
+
+  <defs>
+    <linearGradient id="panel" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#b9cad8"/>
+    </linearGradient>
+    <linearGradient id="top" x1="14" y1="8" x2="50" y2="30" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#cbd9e7"/>
+    </linearGradient>
+    <linearGradient id="left" x1="12" y1="20" x2="33" y2="55" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e3edf4"/>
+      <stop offset="1" stop-color="#9fb3c4"/>
+    </linearGradient>
+    <linearGradient id="right" x1="31" y1="20" x2="53" y2="55" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#bfd0df"/>
+      <stop offset="1" stop-color="#7f98aa"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="14" y1="12" x2="50" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#20a8dc"/>
+      <stop offset="1" stop-color="#1467a6"/>
+    </linearGradient>
+    <linearGradient id="green" x1="14" y1="12" x2="50" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6fc17d"/>
+      <stop offset="1" stop-color="#357d4a"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="14" y1="12" x2="50" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f0ad42"/>
+      <stop offset="1" stop-color="#bb5f22"/>
+    </linearGradient>
+    <linearGradient id="red" x1="14" y1="12" x2="50" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#dc7461"/>
+      <stop offset="1" stop-color="#ad3f38"/>
+    </linearGradient>
+  </defs>
+<g transform="translate(-5,4) scale(0.72)">
+  <polygon points="32.0,9.0 52.0,20.0 32.0,32.0 12.0,20.0" fill="#f7f9fb" stroke="#2b3642" stroke-width="2.7" stroke-linejoin="round"/>
+  <polygon points="12.0,20.0 32.0,32.0 32.0,55.0 12.0,43.0" fill="#dbe4ec" stroke="#2b3642" stroke-width="2.7" stroke-linejoin="round"/>
+  <polygon points="52.0,20.0 32.0,32.0 32.0,55.0 52.0,43.0" fill="#b8c6d2" stroke="#2b3642" stroke-width="2.7" stroke-linejoin="round"/>
+  <polygon points="34.0,34.0 48.0,26.0 48.0,41.0 34.0,49.0" fill="#1689c7" opacity="0.74" stroke="#2b3642" stroke-width="1.7" stroke-linejoin="round"/></g>
+  <g transform="translate(20,18)">
+    <ellipse cx="12" cy="6" rx="10" ry="5" fill="#f7f9fb" stroke="#2b3642" stroke-width="2.4"/>
+    <path d="M2 6v21c0 4 5 7 10 7s10-3 10-7V6" fill="#3f95c7" opacity="0.82" stroke="#2b3642" stroke-width="2.4"/>
+  </g>
+  <circle cx="45" cy="37" r="12" fill="#70a86c" opacity="0.9" stroke="#2b3642" stroke-width="2.6"/>
+  <path d="M18 14h24" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.74"/>
+</svg>

@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="3 3 58 58" fill="none">
+
+  <defs>
+    <linearGradient id="gTop" x1="14" y1="8" x2="50" y2="30" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#cbd9e7"/>
+    </linearGradient>
+    <linearGradient id="gLeft" x1="12" y1="20" x2="33" y2="55" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e3edf4"/>
+      <stop offset="1" stop-color="#9fb3c4"/>
+    </linearGradient>
+    <linearGradient id="gRight" x1="31" y1="20" x2="53" y2="55" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#bfd0df"/>
+      <stop offset="1" stop-color="#7f98aa"/>
+    </linearGradient>
+    <linearGradient id="gPanel" x1="10" y1="10" x2="54" y2="54" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#b9cad8"/>
+    </linearGradient>
+    <linearGradient id="gBlue" x1="18" y1="12" x2="46" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#20a8dc"/>
+      <stop offset="1" stop-color="#1467a6"/>
+    </linearGradient>
+    <linearGradient id="gGreen" x1="18" y1="12" x2="46" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6fc17d"/>
+      <stop offset="1" stop-color="#357d4a"/>
+    </linearGradient>
+    <linearGradient id="gOrange" x1="18" y1="12" x2="46" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f0ad42"/>
+      <stop offset="1" stop-color="#bb5f22"/>
+    </linearGradient>
+    <linearGradient id="gRed" x1="18" y1="12" x2="46" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#dc7461"/>
+      <stop offset="1" stop-color="#ad3f38"/>
+    </linearGradient>
+  </defs>
+  <rect x="10" y="10" width="44" height="44" rx="2" fill="#eef3f7" stroke="#2b3642" stroke-width="2.9" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M15 16h34M15 49h34" stroke="#53606d" stroke-width="1.5" opacity="0.74"/>
+  <path d="M15 45c8-3 14-5 20-3 5 1 8 4 14 2" stroke="#c94843" stroke-width="3" stroke-linecap="round"/>
+  <path d="M15 38c8-4 14-7 20-5 5 1 9 5 14 4" stroke="#df9b32" stroke-width="3" stroke-linecap="round"/>
+  <path d="M16 31c7-4 13-8 19-7 5 1 9 5 13 5" stroke="#d7c344" stroke-width="3" stroke-linecap="round"/>
+  <path d="M18 25c6-4 11-7 17-6 5 1 8 4 11 4" stroke="#4ca86e" stroke-width="3" stroke-linecap="round"/>
+  <path d="M22 19c4-3 8-4 12-3 4 1 6 3 8 3" stroke="#2e7fc1" stroke-width="2.6" stroke-linecap="round"/>
+</svg>
