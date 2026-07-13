@@ -36,6 +36,7 @@
 namespace
 {
 const QString kRangePreviewPropId = "mesh.grouping.range.preview";
+constexpr int FIRST_COMPUTABLE_MATYPE = 2;
 
 static bool physicalTagExists(const MshPickMap& pick, int physId)
 {
@@ -117,6 +118,21 @@ MeshGroupingWidget::MeshGroupingWidget(QWidget* parent)
     ui->cmbRangeTargetArray->addItem("材料分组(MATYPE)", "MATYPE");
     ui->cmbRangeTargetArray->addItem("填筑层分组(LAYER)", "LAYER");
 
+    auto syncMatypeNumberBounds = [this]()
+    {
+        const bool autoTargetIsMatype =
+            ui->cmbTargetArray->currentData().toString().compare("MATYPE", Qt::CaseInsensitive) == 0;
+        ui->spStartValue->setMinimum(autoTargetIsMatype ? FIRST_COMPUTABLE_MATYPE : 1);
+        if (autoTargetIsMatype && ui->spStartValue->value() < FIRST_COMPUTABLE_MATYPE)
+            ui->spStartValue->setValue(FIRST_COMPUTABLE_MATYPE);
+
+        const bool rangeTargetIsMatype =
+            ui->cmbRangeTargetArray->currentData().toString().compare("MATYPE", Qt::CaseInsensitive) == 0;
+        ui->spTargetValue->setMinimum(rangeTargetIsMatype ? FIRST_COMPUTABLE_MATYPE : 1);
+        if (rangeTargetIsMatype && ui->spTargetValue->value() < FIRST_COMPUTABLE_MATYPE)
+            ui->spTargetValue->setValue(FIRST_COMPUTABLE_MATYPE);
+    };
+
     connect(ui->btnAutoGrouping, &QPushButton::clicked, this, &MeshGroupingWidget::onAutoGrouping);
     connect(ui->btnRangeGrouping, &QPushButton::clicked, this,
             &MeshGroupingWidget::onRangeGrouping);
@@ -127,15 +143,18 @@ MeshGroupingWidget::MeshGroupingWidget(QWidget* parent)
     connect(ui->chkShowRangeBox, &QCheckBox::toggled, this,
             &MeshGroupingWidget::onToggleRangePreview);
     connect(ui->cmbTargetArray, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            [this](int idx)
+            [this, syncMatypeNumberBounds](int idx)
             {
                 ui->cmbRangeTargetArray->setCurrentIndex(idx);
+                syncMatypeNumberBounds();
             });
     connect(ui->cmbRangeTargetArray, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            [this](int idx)
+            [this, syncMatypeNumberBounds](int idx)
             {
                 ui->cmbTargetArray->setCurrentIndex(idx);
+                syncMatypeNumberBounds();
             });
+    syncMatypeNumberBounds();
 
     auto bindRangeChanged = [this](QDoubleSpinBox* s)
     {

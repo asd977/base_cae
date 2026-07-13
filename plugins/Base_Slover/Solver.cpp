@@ -35,6 +35,7 @@
 
 #include <vtkCell.h>
 #include <vtkCellData.h>
+#include <vtkCellType.h>
 #include <vtkDataArray.h>
 #include <vtkIdList.h>
 #include <vtkPointData.h>
@@ -281,7 +282,6 @@ bool Solver::loadProject()
         bool hasFillStorageCycleNode = false;
         bool hasGeoStressRegressionNode = false;
         bool hasCaveSupportComputationNode = false;
-        bool hasCaveBlockStabilityNode = false;
         for (const auto& childV : analysisObj.value("children").toArray())
         {
             const QJsonObject childObj = childV.toObject();
@@ -330,7 +330,6 @@ bool Solver::loadProject()
             else if (type == "CaveBlockStabilityAnalysis")
             {
                 page = new CaveBlockStabilityWidget();
-                hasCaveBlockStabilityNode = true;
             }
             else if (type == "CaveBlockPlane")
             {
@@ -893,10 +892,19 @@ GeoStressRegressionWidget::ExportPayload Solver::buildGeoStressPayload(ProjectNo
         }
         else if (auto* f = dynamic_cast<GeoStressOuterForcePage*>(child->getPage()))
         {
-            f->exportDatFiles();
+            // 不再无条件生成 FTLOAD.DAT。零外力或未选择作用边/面时，
+            // IGEOS 的 ITAG_FT 必须保持 0，避免求解器读取无效或旧的 FTLOAD.DAT。
+            const int enabled = f->forceEnabled();
+            if (enabled == 0)
+                continue;
+
+            // 只有文件成功生成后才允许启用 FTLOAD。
+            if (!f->exportDatFiles())
+                continue;
+
             if (payload.forceFile.isEmpty())
                 payload.forceFile = f->forceFile();
-            payload.forceEnabled = f->forceEnabled();
+            payload.forceEnabled = 1;
         }
     }
     return payload;
@@ -1289,6 +1297,136 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+
+    // 先收集开挖级，再生成 IIIN/ICAVE。旧代码先导出 IIIN，导致开挖层号来不及写入。
+    CaveSupportComputationPage* supportPage = nullptr;
+    QVector<CaveExcavationBodyPage*> excavationBodies;
+    for (ProjectNode* child : analysisNode->getChildren())
+    {
+        auto* candidate = dynamic_cast<CaveSupportComputationPage*>(child->getPage());
+        if (!candidate)
+            continue;
+
+        supportPage = candidate;
+        for (ProjectNode* bodyNode : child->getChildren())
+        {
+            if (auto* bodyPage = dynamic_cast<CaveExcavationBodyPage*>(bodyNode->getPage()))
+                excavationBodies.push_back(bodyPage);
+        }
+        break;
+    }
+
+    if (!supportPage)
+    {
+        QMessageBox::warning(nullptr, "计算失败", "未找到洞室开挖计算设置页面。");
+        return;
+    }
+    if (excavationBodies.isEmpty())
+    {
+        QMessageBox::warning(nullptr, "计算失败", "请至少创建一个开挖体，并为其选择区域分组。");
+        return;
+    }
+
+    const int caveCalculationType = supportPage->calculationTypeCode();
+    const int caveLoadMethod = supportPage->excavationLoadMethodCode();
+    if (caveCalculationType < 1 || caveCalculationType > 3)
+    {
+        QMessageBox::warning(nullptr, "计算失败",
+                             "计算类型代码无效：应为 1（静力）、2（动力）或 3（静力+动力）。");
+        return;
+    }
+    if (caveLoadMethod < 1 || caveLoadMethod > 2)
+    {
+        QMessageBox::warning(nullptr, "计算失败",
+                             "开挖荷载来源代码无效：应为 1（按开挖面）或 2（按开挖单元）。");
+        return;
+    }
+
+    auto* caveMeshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    vtkSmartPointer<vtkUnstructuredGrid> caveGrid =
+        caveMeshSvc ? caveMeshSvc->getVtkUnstructuredGridSolid() : nullptr;
+    if (!caveGrid || caveGrid->GetNumberOfCells() <= 0)
+        caveGrid = caveMeshSvc ? caveMeshSvc->getVtkUnstructuredGrid() : nullptr;
+
+    bool hasTetrahedron = false;
+    if (caveGrid)
+    {
+        for (vtkIdType cid = 0; cid < caveGrid->GetNumberOfCells(); ++cid)
+        {
+            vtkCell* cell = caveGrid->GetCell(cid);
+            if (cell && cell->GetCellDimension() == 3 && cell->GetCellType() == VTK_TETRA)
+            {
+                hasTetrahedron = true;
+                break;
+            }
+        }
+    }
+    if (hasTetrahedron)
+    {
+        QMessageBox::warning(nullptr, "计算失败",
+                             "当前旧版 Fortran AUTOCAVE 不完整支持四节点四面体开挖。"
+                             "按面法与按单元法都会在旧开挖预处理阶段发生格式不兼容。"
+                             "请使用六面体网格后再计算。");
+        return;
+    }
+
+    const QDir projectRoot(QDir(projectDir).absolutePath());
+    const QString stressFile = caveLoadMethod == 1
+                                   ? projectRoot.filePath("GEOSTR/MODSTR.TXT")
+                                   : projectRoot.filePath("GEOSTR/ISGMAR.TXT");
+    if (!QFileInfo::exists(stressFile))
+    {
+        QMessageBox::warning(nullptr, "计算失败",
+                             QString("开挖计算缺少地应力结果文件：\n%1\n请先完成地应力回归计算。")
+                                 .arg(stressFile));
+        return;
+    }
+
+    const bool needsDynamicFiles = caveCalculationType != 1 ||
+                                   supportPage->modalAnalysisEnabled() ||
+                                   supportPage->timeHistoryEnabled();
+    if (needsDynamicFiles && !QFileInfo::exists(projectRoot.filePath("PREP/TDTRACE.DAT")))
+    {
+        QMessageBox::warning(nullptr, "计算失败",
+                             "当前设置包含动力、模态或时程任务，但 PREP/TDTRACE.DAT 不存在。"
+                             "普通静力开挖请把计算类型设为 1，并关闭模态及时程分析。");
+        return;
+    }
+
+    QVector<QVector<int>> selectedSourceElements;
+    selectedSourceElements.reserve(excavationBodies.size());
+    QSet<int> assignedSourceElements;
+    for (int level = 0; level < excavationBodies.size(); ++level)
+    {
+        QVector<int> elemIds = excavationBodies[level]->selectedElementIds();
+        std::sort(elemIds.begin(), elemIds.end());
+        elemIds.erase(std::unique(elemIds.begin(), elemIds.end()), elemIds.end());
+
+        if (elemIds.isEmpty())
+        {
+            QMessageBox::warning(nullptr, "计算失败",
+                                 QString("第 %1 级开挖体没有选择任何实体单元。").arg(level + 1));
+            return;
+        }
+
+        for (int elemId : elemIds)
+        {
+            if (assignedSourceElements.contains(elemId))
+            {
+                QMessageBox::warning(nullptr, "计算失败",
+                                     QString("单元 %1 被重复分配到多个开挖级，请删除重复选择。")
+                                         .arg(elemId));
+                return;
+            }
+            assignedSourceElements.insert(elemId);
+        }
+        selectedSourceElements.push_back(elemIds);
+    }
+
+    // ICAVE 中的 IEXCA_MAX、IEXCA_STA、IEXCA_END 与实际开挖体数量保持一致。
+    supportPage->setExcavationLevelCount(excavationBodies.size());
+    const QString supportCaseSection = supportPage->sectionText();
+
     QFile iautoFile(QDir(projectDir).absoluteFilePath("MESG_IAUTO.DAT"));
     if (!iautoFile.open(QIODevice::WriteOnly | QIODevice::Text))
     {
@@ -1306,33 +1444,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     bool ok = true;
     QStringList failedFiles;
 
-    QString supportCaseSection;
-    CaveSupportComputationPage* supportPage = nullptr;
-    QVector<CaveExcavationBodyPage*> excavationBodies;
-    for (ProjectNode* child : analysisNode->getChildren())
-    {
-        supportPage = dynamic_cast<CaveSupportComputationPage*>(child->getPage());
-        if (!supportPage)
-            continue;
-        supportCaseSection = supportPage->sectionText();
-        for (ProjectNode* bodyNode : child->getChildren())
-        {
-            if (auto* bodyPage = dynamic_cast<CaveExcavationBodyPage*>(bodyNode->getPage()))
-                excavationBodies.push_back(bodyPage);
-        }
-        break;
-    }
-
-    if (excavationBodies.isEmpty())
-    {
-        ok = false;
-        failedFiles << "IIKE_E**-**.DAT";
-        failedFiles << "IIKE_T01-**.DAT";
-        failedFiles << "IIJX_E**-**.DAT";
-        failedFiles << "IIJX_T01-**.DAT";
-    }
-
-    if (!supportPage || !supportPage->exportICaveDatFile(supportCaseSection))
+    if (!supportPage->exportICaveDatFile(supportCaseSection))
     {
         ok = false;
         failedFiles << "ICAVE.DAT";
@@ -1379,13 +1491,31 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                 vtkIdType cellId = -1;
             };
 
+            const int targetDim =
+                PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+            const QFileInfo sourceInfo(meshSvc->sourceMeshFilePath());
+            const bool keepSourceElementIds =
+                sourceInfo.exists() &&
+                sourceInfo.suffix().compare(QStringLiteral("dat"), Qt::CaseInsensitive) == 0;
+
             QVector<ElemCellPair> elemCells;
             elemCells.reserve(int(grid->GetNumberOfCells()));
+            int exportedElementIndex = 0;
             for (vtkIdType cellId = 0; cellId < grid->GetNumberOfCells(); ++cellId)
             {
-                const int elemId =
+                vtkCell* cell = grid->GetCell(cellId);
+                if (!cell)
+                    continue;
+                const int cellDim = cell->GetCellDimension();
+                if (cellDim != targetDim && cellDim != 1)
+                    continue;
+
+                ++exportedElementIndex;
+                const int sourceElemId =
                     elemIdArr ? int(elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
-                elemCells.push_back({elemId, cellId});
+                const int calculationElemId =
+                    keepSourceElementIds ? sourceElemId : exportedElementIndex;
+                elemCells.push_back({calculationElemId, cellId});
             }
             std::sort(elemCells.begin(), elemCells.end(),
                       [](const ElemCellPair& a, const ElemCellPair& b)
@@ -1471,8 +1601,11 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
             vtkSmartPointer<vtkUnstructuredGrid> grid;
             vtkDataArray* elemIdArr = nullptr;
             vtkDataArray* nodeIdArr = nullptr;
-            QHash<int, vtkIdType> elemToCellId;
+            QHash<int, vtkIdType> sourceElemToCellId;
+            QHash<int, int> sourceElemToCalculationElemId;
+            QHash<int, vtkIdType> calculationElemToCellId;
             int targetDim = 3;
+            bool keepSourceElementIds = false;
         };
 
         auto buildCaveElemContext = [&]() -> CaveElemContext
@@ -1484,6 +1617,11 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
             auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
             if (!meshSvc)
                 return ctx;
+
+            const QFileInfo sourceInfo(meshSvc->sourceMeshFilePath());
+            ctx.keepSourceElementIds =
+                sourceInfo.exists() &&
+                sourceInfo.suffix().compare(QStringLiteral("dat"), Qt::CaseInsensitive) == 0;
 
             ctx.grid = meshSvc->getVtkUnstructuredGridSolid();
             if (!ctx.grid || ctx.grid->GetNumberOfCells() <= 0)
@@ -1510,25 +1648,42 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                         vtkDataArray::SafeDownCast(ctx.grid->GetPointData()->GetArray("global_node_id"));
             }
 
-            ctx.elemToCellId.reserve(int(ctx.grid->GetNumberOfCells()));
+            ctx.sourceElemToCellId.reserve(int(ctx.grid->GetNumberOfCells()));
+            ctx.sourceElemToCalculationElemId.reserve(int(ctx.grid->GetNumberOfCells()));
+            ctx.calculationElemToCellId.reserve(int(ctx.grid->GetNumberOfCells()));
+
+            int exportedElementIndex = 0;
             for (vtkIdType cellId = 0; cellId < ctx.grid->GetNumberOfCells(); ++cellId)
             {
                 vtkCell* cell = ctx.grid->GetCell(cellId);
                 if (!cell)
                     continue;
 
-                // 开挖只针对当前工况维度的实体/区域单元：
-                // 2D 只取二维面单元，3D 只取三维体单元，杆单元/线单元不参与开挖。
-                if (cell->GetCellDimension() != ctx.targetDim)
+                const int cellDim = cell->GetCellDimension();
+                if (cellDim != ctx.targetDim && cellDim != 1)
                     continue;
 
-                const int elemId =
+                ++exportedElementIndex;
+
+                // 杆/线单元会导出，但不能作为开挖单元。
+                if (cellDim != ctx.targetDim)
+                    continue;
+
+                const int sourceElemId =
                     ctx.elemIdArr ? int(ctx.elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
-                if (elemId <= 0)
+                if (sourceElemId <= 0)
                     continue;
 
-                if (!ctx.elemToCellId.contains(elemId))
-                    ctx.elemToCellId.insert(elemId, cellId);
+                // 直接导入 IIIN.DAT 时保留原单元号；其他网格导出 IIIN 时按导出顺序重新编号。
+                const int calculationElemId =
+                    ctx.keepSourceElementIds ? sourceElemId : exportedElementIndex;
+
+                if (!ctx.sourceElemToCellId.contains(sourceElemId))
+                    ctx.sourceElemToCellId.insert(sourceElemId, cellId);
+                if (!ctx.sourceElemToCalculationElemId.contains(sourceElemId))
+                    ctx.sourceElemToCalculationElemId.insert(sourceElemId, calculationElemId);
+                if (!ctx.calculationElemToCellId.contains(calculationElemId))
+                    ctx.calculationElemToCellId.insert(calculationElemId, cellId);
             }
 
             return ctx;
@@ -1536,20 +1691,146 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 
         CaveElemContext caveCtx = buildCaveElemContext();
 
-        auto normalizeExcavationElems = [&](const QVector<int>& rawKes) -> QVector<int>
+        auto normalizeExcavationElems = [&](const QVector<int>& rawSourceElemIds) -> QVector<int>
         {
             QSet<int> uniq;
-            for (int ke : rawKes)
+            for (int sourceElemId : rawSourceElemIds)
             {
-                // 这里再次过滤，避免同一分组里混入杆单元/线单元时被写入 IIKE/IIJX。
-                if (caveCtx.elemToCellId.contains(ke))
-                    uniq.insert(ke);
+                // 将界面保存的原始 elem_id 转成 IIIN/IIKE 实际使用的计算单元号。
+                const auto it = caveCtx.sourceElemToCalculationElemId.constFind(sourceElemId);
+                if (it != caveCtx.sourceElemToCalculationElemId.constEnd())
+                    uniq.insert(it.value());
             }
 
             QVector<int> out = uniq.values().toVector();
             std::sort(out.begin(), out.end());
             return out;
         };
+
+        if (!caveCtx.grid || caveCtx.calculationElemToCellId.isEmpty())
+        {
+            QMessageBox::warning(nullptr, "计算失败", "无法建立洞室开挖单元与 IIIN 单元号的对应关系。");
+            return;
+        }
+
+        QVector<QVector<int>> calculationElementsByLevel;
+        calculationElementsByLevel.reserve(selectedSourceElements.size());
+        for (int level = 0; level < selectedSourceElements.size(); ++level)
+        {
+            const QVector<int> calculationIds =
+                normalizeExcavationElems(selectedSourceElements[level]);
+            if (calculationIds.size() != selectedSourceElements[level].size())
+            {
+                QMessageBox::warning(
+                    nullptr, "计算失败",
+                    QString("第 %1 级开挖体中有单元无法映射到 IIIN.DAT，请重新导入网格后再试。")
+                        .arg(level + 1));
+                return;
+            }
+            calculationElementsByLevel.push_back(calculationIds);
+        }
+
+        auto patchCaveIiinLayers = [&](const QString& filePath) -> bool
+        {
+            QFile file(filePath);
+            if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+                return false;
+
+            QStringList lines =
+                QString::fromLocal8Bit(file.readAll())
+                    .split(QRegularExpression(QStringLiteral("\\r?\\n")),
+                           QString::KeepEmptyParts);
+            file.close();
+
+            if (lines.size() < 2)
+                return false;
+
+            static const QRegularExpression intRe(QStringLiteral("[-+]?\\d+"));
+            auto integerMatches = [&](const QString& line)
+            {
+                QVector<QRegularExpressionMatch> out;
+                auto it = intRe.globalMatch(line);
+                while (it.hasNext())
+                    out.push_back(it.next());
+                return out;
+            };
+
+            const QVector<QRegularExpressionMatch> headerMatches = integerMatches(lines.at(0));
+            if (headerMatches.size() < 4)
+                return false;
+
+            const int numnp = headerMatches.at(0).captured().toInt();
+            const int nelem = headerMatches.at(2).captured().toInt();
+            const int manod = headerMatches.at(3).captured().toInt();
+            const int firstElemLine = 2 + numnp;
+            const int layerTokenIndex = manod + 3;
+            if (numnp < 0 || nelem <= 0 || manod <= 0 ||
+                lines.size() < firstElemLine + nelem)
+                return false;
+
+            QHash<int, int> layerByCalculationElem;
+            for (auto it = caveCtx.calculationElemToCellId.constBegin();
+                 it != caveCtx.calculationElemToCellId.constEnd(); ++it)
+            {
+                layerByCalculationElem.insert(it.key(), 1);
+            }
+            for (int level = 0; level < calculationElementsByLevel.size(); ++level)
+            {
+                for (int calculationElemId : calculationElementsByLevel[level])
+                    layerByCalculationElem[calculationElemId] = -(level + 1);
+            }
+
+            int changed = 0;
+            for (int i = 0; i < nelem; ++i)
+            {
+                QString& line = lines[firstElemLine + i];
+                const QVector<QRegularExpressionMatch> matches = integerMatches(line);
+                if (matches.size() <= layerTokenIndex)
+                    return false;
+
+                const int calculationElemId = matches.at(0).captured().toInt();
+                const auto layerIt = layerByCalculationElem.constFind(calculationElemId);
+                if (layerIt == layerByCalculationElem.constEnd())
+                    continue;
+
+                const QRegularExpressionMatch& layerMatch = matches.at(layerTokenIndex);
+                QString replacement = QString::number(layerIt.value());
+                if (layerMatch.capturedLength() > replacement.size())
+                {
+                    replacement = replacement.rightJustified(
+                        layerMatch.capturedLength(), QLatin1Char(' '));
+                }
+                line.replace(layerMatch.capturedStart(), layerMatch.capturedLength(), replacement);
+                ++changed;
+            }
+
+            if (changed != layerByCalculationElem.size())
+                return false;
+
+            if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+                return false;
+            file.write(lines.join(QStringLiteral("\n")).toLocal8Bit());
+            return true;
+        };
+
+        if (!patchCaveIiinLayers(wd.filePath("PREP/IIIN.DAT")))
+        {
+            QMessageBox::warning(
+                nullptr, "计算失败",
+                "设置 IIIN.DAT 开挖层号失败。普通围岩应为 1，开挖级应为 -1、-2……");
+            return;
+        }
+
+        // 删除上一轮遗留的开挖文件，避免旧级数文件干扰本次计算。
+        QDir prepDirectory(wd.filePath("PREP"));
+        const QStringList staleFilters = {
+            QStringLiteral("IIKE_E*.DAT"), QStringLiteral("IIKE_T*.DAT"),
+            QStringLiteral("IIJX_E*.DAT"), QStringLiteral("IIJX_T*.DAT")};
+        for (const QString& staleName :
+             prepDirectory.entryList(staleFilters, QDir::Files | QDir::NoSymLinks))
+        {
+            prepDirectory.remove(staleName);
+        }
 
         auto nodeIdOfPoint = [&](vtkIdType pointId) -> int
         {
@@ -1585,8 +1866,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         {
             int ke1 = 0;
             int ke2 = -1;
-            int jd1 = 0;
-            int jd2 = 0;
+            QVector<int> nodeIds;
             int jat = 0;
         };
 
@@ -1598,32 +1878,72 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                 return false;
 
             QVector<IijxRow> rows;
-            int makod = 4;
 
             if (caveCtx.grid)
             {
+                QHash<vtkIdType, int> cellToCalculationElemId;
+                cellToCalculationElemId.reserve(caveCtx.calculationElemToCellId.size());
+                for (auto it = caveCtx.calculationElemToCellId.constBegin();
+                     it != caveCtx.calculationElemToCellId.constEnd(); ++it)
+                {
+                    cellToCalculationElemId.insert(it.value(), it.key());
+                }
+
                 if (caveCtx.targetDim == 2)
                 {
-                    struct EdgeCandidate
+                    struct EdgeOwner
                     {
-                        std::vector<vtkIdType> key;
-                        IijxRow row;
+                        int ke = 0;
+                        QVector<vtkIdType> pointIds;
                     };
 
-                    std::map<std::vector<vtkIdType>, int> edgeUseCount;
-                    QVector<EdgeCandidate> candidates;
+                    std::map<std::vector<vtkIdType>, std::vector<EdgeOwner>> edgeOwners;
 
+                    for (vtkIdType cellId = 0; cellId < caveCtx.grid->GetNumberOfCells();
+                         ++cellId)
+                    {
+                        vtkCell* cell = caveCtx.grid->GetCell(cellId);
+                        if (!cell || cell->GetCellDimension() != caveCtx.targetDim)
+                            continue;
+
+                        const int ownerKe = cellToCalculationElemId.value(cellId, 0);
+                        if (ownerKe <= 0)
+                            continue;
+
+                        const int edgeCount = cell->GetNumberOfEdges();
+                        for (int edgeId = 0; edgeId < edgeCount; ++edgeId)
+                        {
+                            vtkCell* edge = cell->GetEdge(edgeId);
+                            if (!edge || !edge->GetPointIds() ||
+                                edge->GetPointIds()->GetNumberOfIds() < 2)
+                                continue;
+
+                            EdgeOwner owner;
+                            owner.ke = ownerKe;
+                            owner.pointIds = {edge->GetPointId(0), edge->GetPointId(1)};
+
+                            std::vector<vtkIdType> key{
+                                owner.pointIds[0], owner.pointIds[1]};
+                            std::sort(key.begin(), key.end());
+                            edgeOwners[key].push_back(owner);
+                        }
+                    }
+
+                    QSet<int> selectedKes;
+                    for (int ke : kes)
+                        selectedKes.insert(ke);
+
+                    std::set<std::vector<vtkIdType>> writtenEdges;
                     for (int ke : kes)
                     {
-                        const vtkIdType cellId = caveCtx.elemToCellId.value(ke, -1);
+                        const vtkIdType cellId =
+                            caveCtx.calculationElemToCellId.value(ke, -1);
                         if (cellId < 0)
                             continue;
 
                         vtkCell* cell = caveCtx.grid->GetCell(cellId);
                         if (!cell || cell->GetCellDimension() != caveCtx.targetDim)
                             continue;
-
-                        makod = qMax(makod, int(cell->GetNumberOfPoints()));
 
                         const int edgeCount = cell->GetNumberOfEdges();
                         for (int edgeId = 0; edgeId < edgeCount; ++edgeId)
@@ -1635,44 +1955,105 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 
                             const vtkIdType p1 = edge->GetPointId(0);
                             const vtkIdType p2 = edge->GetPointId(1);
-
                             std::vector<vtkIdType> key{p1, p2};
                             std::sort(key.begin(), key.end());
 
-                            edgeUseCount[key] += 1;
+                            if (writtenEdges.find(key) != writtenEdges.end())
+                                continue;
 
-                            EdgeCandidate cand;
-                            cand.key = key;
-                            cand.row.ke1 = ke;
-                            cand.row.ke2 = -1;
-                            cand.row.jd1 = nodeIdOfPoint(p1);
-                            cand.row.jd2 = nodeIdOfPoint(p2);
-                            cand.row.jat = 0;
-                            candidates.push_back(cand);
+                            const auto ownerIt = edgeOwners.find(key);
+                            if (ownerIt == edgeOwners.end())
+                                continue;
+
+                            bool hasOtherSelectedOwner = false;
+                            int oppositeKe = -1;
+                            for (const EdgeOwner& owner : ownerIt->second)
+                            {
+                                if (owner.ke == ke)
+                                    continue;
+
+                                if (selectedKes.contains(owner.ke))
+                                {
+                                    hasOtherSelectedOwner = true;
+                                    break;
+                                }
+
+                                if (oppositeKe < 0)
+                                    oppositeKe = owner.ke;
+                            }
+
+                            if (hasOtherSelectedOwner)
+                                continue;
+
+                            writtenEdges.insert(key);
+
+                            IijxRow row;
+                            row.ke1 = ke;
+                            row.ke2 = oppositeKe;
+                            row.nodeIds = {nodeIdOfPoint(p1), nodeIdOfPoint(p2)};
+                            rows.push_back(row);
                         }
-                    }
-
-                    for (const EdgeCandidate& cand : candidates)
-                    {
-                        if (edgeUseCount[cand.key] == 1)
-                            rows.push_back(cand.row);
                     }
                 }
                 else
                 {
-                    struct FaceCandidate
+                    struct FaceOwner
                     {
-                        std::vector<vtkIdType> key;
                         int ke = 0;
                         QVector<vtkIdType> pointIds;
                     };
 
-                    std::map<std::vector<vtkIdType>, int> faceUseCount;
-                    QVector<FaceCandidate> faceCandidates;
+                    std::map<std::vector<vtkIdType>, std::vector<FaceOwner>> faceOwners;
 
+                    for (vtkIdType cellId = 0; cellId < caveCtx.grid->GetNumberOfCells();
+                         ++cellId)
+                    {
+                        vtkCell* cell = caveCtx.grid->GetCell(cellId);
+                        if (!cell || cell->GetCellDimension() != caveCtx.targetDim)
+                            continue;
+
+                        const int ownerKe = cellToCalculationElemId.value(cellId, 0);
+                        if (ownerKe <= 0)
+                            continue;
+
+                        const int faceCount = cell->GetNumberOfFaces();
+                        for (int faceId = 0; faceId < faceCount; ++faceId)
+                        {
+                            vtkCell* face = cell->GetFace(faceId);
+                            if (!face || !face->GetPointIds())
+                                continue;
+
+                            const vtkIdType faceNodeCount =
+                                face->GetPointIds()->GetNumberOfIds();
+                            if (faceNodeCount < 3 || faceNodeCount > 4)
+                                continue;
+
+                            FaceOwner owner;
+                            owner.ke = ownerKe;
+                            owner.pointIds.reserve(int(faceNodeCount));
+
+                            std::vector<vtkIdType> key;
+                            key.reserve(size_t(faceNodeCount));
+                            for (vtkIdType i = 0; i < faceNodeCount; ++i)
+                            {
+                                const vtkIdType pid = face->GetPointId(i);
+                                owner.pointIds.push_back(pid);
+                                key.push_back(pid);
+                            }
+                            std::sort(key.begin(), key.end());
+                            faceOwners[key].push_back(owner);
+                        }
+                    }
+
+                    QSet<int> selectedKes;
+                    for (int ke : kes)
+                        selectedKes.insert(ke);
+
+                    std::set<std::vector<vtkIdType>> writtenFaces;
                     for (int ke : kes)
                     {
-                        const vtkIdType cellId = caveCtx.elemToCellId.value(ke, -1);
+                        const vtkIdType cellId =
+                            caveCtx.calculationElemToCellId.value(ke, -1);
                         if (cellId < 0)
                             continue;
 
@@ -1680,88 +2061,142 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                         if (!cell || cell->GetCellDimension() != caveCtx.targetDim)
                             continue;
 
-                        makod = qMax(makod, int(cell->GetNumberOfPoints()));
-
                         const int faceCount = cell->GetNumberOfFaces();
                         for (int faceId = 0; faceId < faceCount; ++faceId)
                         {
                             vtkCell* face = cell->GetFace(faceId);
-                            if (!face || !face->GetPointIds() ||
-                                face->GetPointIds()->GetNumberOfIds() < 3)
+                            if (!face || !face->GetPointIds())
                                 continue;
 
-                            FaceCandidate cand;
-                            cand.ke = ke;
-                            cand.pointIds.reserve(int(face->GetPointIds()->GetNumberOfIds()));
+                            const vtkIdType faceNodeCount =
+                                face->GetPointIds()->GetNumberOfIds();
+                            if (faceNodeCount < 3 || faceNodeCount > 4)
+                                continue;
 
-                            for (vtkIdType i = 0; i < face->GetPointIds()->GetNumberOfIds(); ++i)
+                            QVector<vtkIdType> orientedPointIds;
+                            orientedPointIds.reserve(int(faceNodeCount));
+                            std::vector<vtkIdType> key;
+                            key.reserve(size_t(faceNodeCount));
+
+                            for (vtkIdType i = 0; i < faceNodeCount; ++i)
                             {
                                 const vtkIdType pid = face->GetPointId(i);
-                                cand.pointIds.push_back(pid);
-                                cand.key.push_back(pid);
+                                orientedPointIds.push_back(pid);
+                                key.push_back(pid);
+                            }
+                            std::sort(key.begin(), key.end());
+
+                            if (writtenFaces.find(key) != writtenFaces.end())
+                                continue;
+
+                            const auto ownerIt = faceOwners.find(key);
+                            if (ownerIt == faceOwners.end())
+                                continue;
+
+                            bool hasOtherSelectedOwner = false;
+                            int oppositeKe = -1;
+                            for (const FaceOwner& owner : ownerIt->second)
+                            {
+                                if (owner.ke == ke)
+                                    continue;
+
+                                if (selectedKes.contains(owner.ke))
+                                {
+                                    hasOtherSelectedOwner = true;
+                                    break;
+                                }
+
+                                if (oppositeKe < 0)
+                                    oppositeKe = owner.ke;
                             }
 
-                            std::sort(cand.key.begin(), cand.key.end());
-                            faceUseCount[cand.key] += 1;
-                            faceCandidates.push_back(cand);
-                        }
-                    }
-
-                    std::set<std::vector<vtkIdType>> writtenEdges;
-                    for (const FaceCandidate& face : faceCandidates)
-                    {
-                        if (faceUseCount[face.key] != 1)
-                            continue;
-
-                        const int n = face.pointIds.size();
-                        for (int i = 0; i < n; ++i)
-                        {
-                            const vtkIdType p1 = face.pointIds[i];
-                            const vtkIdType p2 = face.pointIds[(i + 1) % n];
-
-                            std::vector<vtkIdType> edgeKey{p1, p2};
-                            std::sort(edgeKey.begin(), edgeKey.end());
-                            if (writtenEdges.find(edgeKey) != writtenEdges.end())
+                            // 两侧都属于开挖体的是内部面，不应写入 IIJX。
+                            if (hasOtherSelectedOwner)
                                 continue;
-                            writtenEdges.insert(edgeKey);
+
+                            writtenFaces.insert(key);
 
                             IijxRow row;
-                            row.ke1 = face.ke;
-                            row.ke2 = -1;
-                            row.jd1 = nodeIdOfPoint(p1);
-                            row.jd2 = nodeIdOfPoint(p2);
-                            row.jat = 0;
+                            row.ke1 = ke;
+                            row.ke2 = oppositeKe;
+                            row.nodeIds.reserve(int(faceNodeCount));
+                            for (vtkIdType pid : orientedPointIds)
+                                row.nodeIds.push_back(nodeIdOfPoint(pid));
+
+                            // 四面体边界面保留 3 个节点；六面体边界面保留 4 个节点。
+                            // MAKOD 必须等于 2 + 实际面节点数，否则 EXCAIIWL 会在 IIWL 中
+                            // 生成错误的 NFAJD。
+                            if (row.nodeIds.size() < 3 || row.nodeIds.size() > 4)
+                                continue;
+
                             rows.push_back(row);
                         }
                     }
                 }
             }
 
+            int faceNodeCount = (caveCtx.targetDim == 2 ? 2 : 0);
+            for (const IijxRow& row : rows)
+                faceNodeCount = qMax(faceNodeCount, row.nodeIds.size());
+
+            if (caveCtx.targetDim == 3 && faceNodeCount == 0)
+                faceNodeCount = 3;
+
+            // IIJX 的 MAKOD = KE1、KE2 两列 + 实际面节点数。
+            // 四面体：3 节点面 -> MAKOD=5 -> 后续 IIWL 中 NFAJD=3。
+            // 六面体：4 节点面 -> MAKOD=6 -> 后续 IIWL 中 NFAJD=4。
+            const int makod = faceNodeCount + 2;
+
+            // 若同一文件同时存在三角面和四边形面，统一按最大节点数输出；
+            // 只有这种混合情况才补重复节点。
+            if (caveCtx.targetDim == 3 && faceNodeCount == 4)
+            {
+                for (IijxRow& row : rows)
+                {
+                    while (row.nodeIds.size() < 4 && !row.nodeIds.isEmpty())
+                        row.nodeIds.push_back(row.nodeIds.last());
+                }
+            }
+
             QTextStream os(&f);
-            os << QString("%1%2     NJX   MAKOD\n").arg(rows.size(), 9).arg(makod, 9);
-            os << "    KJX     KE1     KE2     JD1     JD2  JAT\n";
+            os << QString("%1%2     NJX   MAKOD\n")
+                      .arg(rows.size(), 9)
+                      .arg(makod, 9);
+
+            if (caveCtx.targetDim == 2)
+                os << "    KJX     KE1     KE2     JD1     JD2  JAT\n";
+            else if (faceNodeCount == 3)
+                os << "    KJX     KE1     KE2     JD1     JD2     JD3  JAT\n";
+            else
+                os << "    KJX     KE1     KE2     JD1     JD2     JD3     JD4  JAT\n";
+
             for (int i = 0; i < rows.size(); ++i)
             {
                 const IijxRow& row = rows[i];
-                os << QString("%1%2%3%4%5%6\n")
+
+                os << QString("%1%2%3")
                           .arg(i + 1, 9)
                           .arg(row.ke1, 9)
-                          .arg(row.ke2, 9)
-                          .arg(row.jd1, 9)
-                          .arg(row.jd2, 9)
-                          .arg(row.jat, 10);
+                          .arg(row.ke2, 9);
+
+                for (int nodeId : row.nodeIds)
+                    os << QString("%1").arg(nodeId, 9);
+
+                // 通用 READ_IIJX 会读取 JAT；ARCHFTVECT 在读满所需字段后会丢弃本行尾部 JAT。
+                os << QString("%1\n").arg(row.jat, 10);
             }
+
             os << QString("    DIR=%1                                                    \n").arg(prepDir);
             os << " ISHIFT=       2\n";
             os << QString("   NJX=%1\n").arg(rows.size(), 8);
             os << QString(" IEX1=%1  IEX2=%2  \n").arg(iex1, 4).arg(iex2, 4);
-            return true;
+            return !rows.isEmpty();
         };
 
         QSet<int> cumulative;
         for (int i = 0; i < excavationBodies.size(); ++i)
         {
-            QVector<int> e = normalizeExcavationElems(excavationBodies[i]->selectedElementIds());
+            const QVector<int>& e = calculationElementsByLevel[i];
 
             const QString idx = QString("%1").arg(i + 1, 2, 10, QLatin1Char('0'));
             const QString eFile = QString("IIKE_E%1-%1.DAT").arg(idx);
@@ -1797,6 +2232,33 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                 ok = false;
                 failedFiles << tjxFile;
             }
+        }
+
+
+        auto hasPositiveRecordCount = [&](const QString& fileName) -> bool
+        {
+            QFile file(wd.filePath("PREP/" + fileName));
+            if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+                return false;
+            const QString firstLine = QString::fromLocal8Bit(file.readLine());
+            const QRegularExpressionMatch match =
+                QRegularExpression(QStringLiteral("[-+]?\\d+")).match(firstLine);
+            return match.hasMatch() && match.captured().toInt() > 0;
+        };
+
+        const QString lastIndex =
+            QString("%1").arg(excavationBodies.size(), 2, 10, QLatin1Char('0'));
+        const QString expectedTotalIike = QString("IIKE_T01-%1.DAT").arg(lastIndex);
+        const QString expectedTotalIijx = QString("IIJX_T01-%1.DAT").arg(lastIndex);
+        if (!hasPositiveRecordCount(expectedTotalIike))
+        {
+            ok = false;
+            failedFiles << expectedTotalIike + QStringLiteral("（不存在或无开挖单元）");
+        }
+        if (!QFileInfo::exists(wd.filePath("PREP/" + expectedTotalIijx)))
+        {
+            ok = false;
+            failedFiles << expectedTotalIijx;
         }
     }
 
@@ -1837,6 +2299,13 @@ void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
     if (!beginCommonCompute(analysisNode, "边坡分析"))
         return;
 
+    if (!forceSlopeIiinLayersToOne(projectDir))
+    {
+        QMessageBox::warning(nullptr, "计算失败",
+                             "边坡分析设置 IIIN.DAT 分层为 1 失败。");
+        return;
+    }
+
     auto* slopePage = dynamic_cast<SlopeStabilityWidget*>(analysisNode->getPage());
     if (slopePage && slopePage->exportIslopDatFile())
     {
@@ -1874,7 +2343,15 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
         return;
 
     auto* page = dynamic_cast<GeoStressRegressionWidget*>(analysisNode->getPage());
-    if (page && page->exportIGEOSDatFile(buildGeoStressPayload(analysisNode)))
+    const GeoStressRegressionWidget::ExportPayload payload = buildGeoStressPayload(analysisNode);
+    if (page && page->calculationModeCode() == 1 && payload.measureRows.isEmpty())
+    {
+        QMessageBox::warning(nullptr, "计算失败",
+                             "已选择代码 1（实测地应力多元回归），但没有定义任何实测点。");
+        return;
+    }
+
+    if (page && page->exportIGEOSDatFile(payload))
     {
         QMessageBox::information(nullptr, "导出成功", "地应力回归计算输入文件导出成功。");
         launchSolverExecutable("地应力回归计算");
@@ -2356,6 +2833,76 @@ bool Solver::updatePrepDatFiles(const QString& projectDir, int solverMode, int v
     {
         lines[1].replace(QRegularExpression(R"(^\s*\d+)"), QString("%8").arg(solverMode));
     }
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+        return false;
+    file.write(lines.join("\n").toLocal8Bit());
+    return true;
+}
+
+bool Solver::forceSlopeIiinLayersToOne(const QString& projectDir) const
+{
+    QFile file(QDir(projectDir).filePath("PREP/IIIN.DAT"));
+    if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return false;
+
+    QString content = QString::fromLocal8Bit(file.readAll());
+    file.close();
+
+    QStringList lines = content.split(QRegularExpression("\\r?\\n"), QString::KeepEmptyParts);
+    if (lines.size() < 2)
+        return false;
+
+    static const QRegularExpression intRe(QStringLiteral("[-+]?\\d+"));
+    auto intsInLine = [](const QString& line) -> QVector<int>
+    {
+        QVector<int> values;
+        QRegularExpressionMatchIterator it = intRe.globalMatch(line);
+        while (it.hasNext())
+        {
+            bool ok = false;
+            const int value = it.next().captured(0).toInt(&ok);
+            if (ok)
+                values.push_back(value);
+            if (values.size() >= 5)
+                break;
+        }
+        return values;
+    };
+
+    const QVector<int> header = intsInLine(lines.at(0));
+    if (header.size() < 4)
+        return false;
+
+    const int numnp = header.at(0);
+    const int nelem = header.at(2);
+    const int manod = header.at(3);
+    if (numnp < 0 || nelem < 0 || manod <= 0)
+        return false;
+
+    const int firstElemLine = 2 + numnp;
+    if (firstElemLine < 0 || lines.size() < firstElemLine + nelem)
+        return false;
+
+    const int layerTokenIndex = manod + 3; // elem id + manod nodes + KETYPE + MATYPE + LAYER
+    for (int i = 0; i < nelem; ++i)
+    {
+        QString& line = lines[firstElemLine + i];
+
+        QVector<QRegularExpressionMatch> matches;
+        QRegularExpressionMatchIterator it = intRe.globalMatch(line);
+        while (it.hasNext())
+            matches.push_back(it.next());
+
+        if (matches.size() <= layerTokenIndex)
+            return false;
+
+        const QRegularExpressionMatch& layerMatch = matches.at(layerTokenIndex);
+        QString replacement = QStringLiteral("1");
+        if (layerMatch.capturedLength(0) > replacement.size())
+            replacement = replacement.rightJustified(layerMatch.capturedLength(0), QLatin1Char(' '));
+        line.replace(layerMatch.capturedStart(0), layerMatch.capturedLength(0), replacement);
+    }
+
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
         return false;
     file.write(lines.join("\n").toLocal8Bit());

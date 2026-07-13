@@ -95,12 +95,12 @@
         <widget class="QComboBox" name="calcModeCombo">
          <item>
           <property name="text">
-           <string>0 - 仅计算自重应力</string>
+           <string>仅计算自重应力</string>
           </property>
          </item>
          <item>
           <property name="text">
-           <string>1 - 按实测地应力多元回归</string>
+           <string>按实测地应力进行多元回归</string>
           </property>
          </item>
          <property name="minimumSize">

@@ -54,6 +54,7 @@ class GeoStressRegressionWidget : public BasePage
     void beforeUnload() override;
 
     bool exportIGEOSDatFile(const ExportPayload& payload) const;
+    int calculationModeCode() const;
 
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;

@@ -3,6 +3,7 @@
 #include <PublicConstants.h>
 #include <PublicVariables.h>
 
+#include <QComboBox>
 #include <QDir>
 #include <QFile>
 #include <QJsonObject>
@@ -27,6 +28,22 @@ CaveBlockStabilityWidget::CaveBlockStabilityWidget(QWidget* parent)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
+    ui->comboIfDir->addItem("0 - 使用起点 A 和终点 B 定义方向", "0");
+    ui->comboIfDir->addItem("1 - 使用指定面 IM1/IM2 定义方向", "1");
+
+    auto updateDirectionEditors = [this]()
+    {
+        const bool usePoints = ui->comboIfDir->currentData().toString() == QStringLiteral("0");
+        for (QLineEdit* edit : {ui->axEdit, ui->ayEdit, ui->azEdit,
+                                ui->bxEdit, ui->byEdit, ui->bzEdit})
+            edit->setEnabled(usePoints);
+        ui->im1Edit->setEnabled(!usePoints);
+        ui->im2Edit->setEnabled(!usePoints);
+    };
+    connect(ui->comboIfDir, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [updateDirectionEditors](int) { updateDirectionEditors(); });
+    updateDirectionEditors();
+
     setAttribute(Qt::WA_StyledBackground, true);
     setStyleSheet("background-color: white;");
     ui->icutFileEdit->setText(QStringLiteral("ICUT.DAT"));
@@ -86,7 +103,7 @@ QJsonObject CaveBlockStabilityWidget::saveJson()
     obj["fx"] = ui->fxEdit->text().trimmed();
     obj["fy"] = ui->fyEdit->text().trimmed();
     obj["fz"] = ui->fzEdit->text().trimmed();
-    obj["if_dir"] = ui->ifDirEdit->text().trimmed();
+    obj["if_dir"] = ui->comboIfDir->currentData().toString();
     obj["ax"] = ui->axEdit->text().trimmed();
     obj["ay"] = ui->ayEdit->text().trimmed();
     obj["az"] = ui->azEdit->text().trimmed();
@@ -112,7 +129,10 @@ void CaveBlockStabilityWidget::loadJson(const QJsonObject& obj)
     ui->fxEdit->setText(obj.value("fx").toString(ui->fxEdit->text()));
     ui->fyEdit->setText(obj.value("fy").toString(ui->fyEdit->text()));
     ui->fzEdit->setText(obj.value("fz").toString(ui->fzEdit->text()));
-    ui->ifDirEdit->setText(obj.value("if_dir").toString(ui->ifDirEdit->text()));
+    {
+        const int index = ui->comboIfDir->findData(obj.value("if_dir").toString("0"));
+        ui->comboIfDir->setCurrentIndex(index >= 0 ? index : 0);
+    }
     ui->axEdit->setText(obj.value("ax").toString(ui->axEdit->text()));
     ui->ayEdit->setText(obj.value("ay").toString(ui->ayEdit->text()));
     ui->azEdit->setText(obj.value("az").toString(ui->azEdit->text()));
@@ -189,7 +209,7 @@ bool CaveBlockStabilityWidget::exportDatFiles(QVector<CaveBlockPlanePage*>& plan
                          .arg(valueOrDefault(ui->fyEdit, "0.0"))
                          .arg(valueOrDefault(ui->fzEdit, "0.0")))
        << "\n";
-    os << quoteValue(valueOrDefault(ui->ifDirEdit, "0")) << "\n";
+    os << quoteValue(ui->comboIfDir->currentData().toString()) << "\n";
     os << quoteValue(QString("%1 %2 %3")
                          .arg(valueOrDefault(ui->axEdit, "0.0"))
                          .arg(valueOrDefault(ui->ayEdit, "0.0"))

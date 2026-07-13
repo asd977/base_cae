@@ -180,6 +180,10 @@ GeoStressSideFacePage::GeoStressSideFacePage(QWidget* parent)
     Q_UNUSED(parent);
     ui->setupUi(this);
 
+    ui->idirCombo->addItem("1 - X 方向（求解器代码）", "1");
+    ui->idirCombo->addItem("2 - Y 方向（求解器代码）", "2");
+    ui->idirCombo->addItem("3 - Z 方向（求解器代码）", "3");
+
     connect(ui->clearButton, &QPushButton::clicked, this, &GeoStressSideFacePage::onClearClicked);
     connect(ui->batchAddButton, &QPushButton::clicked, this, &GeoStressSideFacePage::onBatchAddClicked);
     connect(ui->pickEnableCheckBox, &QCheckBox::toggled, this,
@@ -223,7 +227,7 @@ QJsonObject GeoStressSideFacePage::saveJson()
     QJsonObject obj;
     obj["face_index"] = m_faceIndex;
     obj["pick_mode"] = currentPickMode() == PickMode::Face ? "face" : "edge";
-    obj["idir"] = ui->idirEdit->text().trimmed();
+    obj["idir"] = ui->idirCombo->currentData().toString();
     obj["height"] = ui->heightEdit->text().trimmed();
     obj["gama"] = ui->gamaEdit->text().trimmed();
     obj["pgrout"] = ui->pgroutEdit->text().trimmed();
@@ -246,7 +250,10 @@ QJsonObject GeoStressSideFacePage::saveJson()
 void GeoStressSideFacePage::loadJson(const QJsonObject& obj)
 {
     setFaceIndex(obj.value("face_index").toInt(m_faceIndex));
-    ui->idirEdit->setText(obj.value("idir").toString(ui->idirEdit->text()));
+    {
+        const int index = ui->idirCombo->findData(obj.value("idir").toString("1"));
+        ui->idirCombo->setCurrentIndex(index >= 0 ? index : 0);
+    }
     ui->heightEdit->setText(obj.value("height").toString(ui->heightEdit->text()));
     ui->gamaEdit->setText(obj.value("gama").toString(ui->gamaEdit->text()));
     ui->pgroutEdit->setText(obj.value("pgrout").toString(ui->pgroutEdit->text()));
@@ -276,7 +283,7 @@ QString GeoStressSideFacePage::faceFile() const
 GeoStressSideFacePage::FaceAttr GeoStressSideFacePage::attr() const
 {
     FaceAttr a;
-    a.idir = ui->idirEdit->text().trimmed();
+    a.idir = ui->idirCombo->currentData().toString();
     a.height = ui->heightEdit->text().trimmed();
     a.gama = ui->gamaEdit->text().trimmed();
     a.pgrout = ui->pgroutEdit->text().trimmed();

@@ -78,17 +78,17 @@
            <widget class="QComboBox" name="comboIFIIWL_SEEP">
             <item>
              <property name="text">
-              <string>0 - 不记入坝基渗透荷载</string>
+              <string>不计入坝基渗透荷载</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>1 - 记入并按折减系数线性假设施加面力</string>
+              <string>按折减系数施加坝基面力</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>2 - 由CASEEP读入水头压力并施加面力</string>
+              <string>从 CASEEP 读取水头压力</string>
              </property>
             </item>
             <property name="minimumSize">
@@ -113,17 +113,17 @@
            <widget class="QComboBox" name="comboIFIIWL_BODY">
             <item>
              <property name="text">
-              <string>0 - 不记入坝体渗透体力</string>
+              <string>不计入坝体渗透体力</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>1 - 按饱和/湿容重差施加向下体力</string>
+              <string>按容重差施加向下体力</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>2 - 由CABODY读入节点体力</string>
+              <string>从 CABODY 读取节点体力</string>
              </property>
             </item>
             <property name="minimumSize">
@@ -148,12 +148,12 @@
            <widget class="QComboBox" name="comboIFIIWL_FACE">
             <item>
              <property name="text">
-              <string>0 - 不记入坝体水面压力</string>
+              <string>不计入坝体水面压力</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>1 - 记入坝体水面压力</string>
+              <string>计入坝体水面压力</string>
              </property>
             </item>
             <property name="minimumSize">
@@ -201,12 +201,12 @@
              <widget class="QComboBox" name="comboIFWET">
               <item>
                <property name="text">
-                <string>0 - 不考虑湿化计算</string>
+                <string>不进行湿化计算</string>
                </property>
               </item>
               <item>
                <property name="text">
-                <string>1 - 考虑湿化计算</string>
+                <string>进行湿化计算</string>
                </property>
               </item>
               <property name="minimumSize">
@@ -231,12 +231,12 @@
              <widget class="QComboBox" name="comboIFDROP">
               <item>
                <property name="text">
-                <string>0 - 不进行水位骤降计算</string>
+                <string>不进行水位骤降计算</string>
                </property>
               </item>
               <item>
                <property name="text">
-                <string>1 - 进行水位骤降计算</string>
+                <string>进行水位骤降计算</string>
                </property>
               </item>
               <property name="minimumSize">
@@ -388,12 +388,12 @@
            <widget class="QComboBox" name="comboIFMODE">
             <item>
              <property name="text">
-              <string>0 - 不进行拟静力计算</string>
+              <string>不进行拟静力计算</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>1 - 进行拟静力计算</string>
+              <string>进行拟静力计算</string>
              </property>
             </item>
             <property name="minimumSize">
@@ -418,12 +418,12 @@
            <widget class="QComboBox" name="comboIFWAVE">
             <item>
              <property name="text">
-              <string>0 - 不进行地震波动力计算</string>
+              <string>不进行地震波动力计算</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>1 - 进行地震波动力计算</string>
+              <string>进行地震波动力计算</string>
              </property>
             </item>
             <property name="minimumSize">
@@ -448,12 +448,12 @@
            <widget class="QComboBox" name="comboIFSETT">
             <item>
              <property name="text">
-              <string>0 - 不进行流变计算</string>
+              <string>不进行流变计算</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>1 - 进行流变计算</string>
+              <string>进行流变计算</string>
              </property>
             </item>
             <property name="minimumSize">

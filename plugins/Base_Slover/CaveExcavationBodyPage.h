@@ -40,6 +40,7 @@ class CaveExcavationBodyPage : public BasePage
   private:
     void setupGroupCombo();
     QVector<int> availableGroupIds() const;
+    QString groupDisplayText(int groupId) const;
     QVector<vtkIdType> groupCellIds(int groupId) const;
     QVector<vtkIdType> visibleBoundaryFaceKeys(const QVector<vtkIdType>& cellIds) const;
     QVector<int> elementIdsFromCells(const QVector<vtkIdType>& cellIds) const;
@@ -48,6 +49,7 @@ class CaveExcavationBodyPage : public BasePage
     void updatePersistentSelectionFaces();
     void updateGroupDomainHighlight(int previewGroup = -1);
     QSet<int> selectedLayerGroups();
+    QString selectionGroupCategory() const;
     PickMode currentPickMode() const;
     int layerDomainDim() const;
 

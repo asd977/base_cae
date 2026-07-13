@@ -43,8 +43,12 @@ class SlopeStabilityWidget : public BasePage
     QString quoteValue(const QString& value) const;
     QString lineValue(int lineNo) const;
     void setLineValue(int lineNo, const QString& value);
+    QString gravityLineValue() const;
+    void setGravityLineValue(const QString& value);
     QString defaultValueByLine(int lineNo) const;
     void initStrengthReserveTable();
+    void setStrengthReserveOutputCombo(int row, const QString& value);
+    QString strengthReserveOutputValue(int row) const;
 
   private:
     Ui::SlopeStabilityWidget* ui;

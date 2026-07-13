@@ -48,6 +48,8 @@ namespace
 static const QRegularExpression kWhitespaceRe(QStringLiteral("\\s+"));
 
 static const char* kIiinVerticalAxisArrayName = "IIIN_IVERTICAL";
+constexpr int kDefaultCalculationMatype = 2;
+constexpr int kDefaultConstructionLayer = 1;
 
 static int normalizedVerticalAxis(int axis, int fallback = 2)
 {
@@ -535,6 +537,33 @@ static int tetHexKetypeFromCell(vtkCell* cell, int fallback)
     }
 }
 
+static bool looksLikeAnsysInpFile(const QString& fileName)
+{
+    QFile file(fileName);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return false;
+
+    QTextStream in(&file);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    in.setCodec("UTF-8");
+#else
+    in.setEncoding(QStringConverter::Utf8);
+#endif
+
+    for (int i = 0; i < 200 && !in.atEnd(); ++i)
+    {
+        const QString upper = in.readLine().trimmed().toUpper();
+        if (upper.startsWith(QStringLiteral("NBLOCK")) ||
+            upper.startsWith(QStringLiteral("EBLOCK")) ||
+            upper.startsWith(QStringLiteral("/PREP7")) ||
+            upper.contains(QStringLiteral("ANSYS INPUT DECK")))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString& fileName,
@@ -565,7 +594,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString& fil
                           : nullptr;
 
     QHash<QString, int> groupToPhysId;
-    int nextPhysId = 1;
+    int nextPhysId = kDefaultCalculationMatype;
 
     if (!groupArr)
     {
@@ -604,7 +633,8 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString& fil
         }
         if (layerArr)
         {
-            layerArr->SetValue(cid, physId);
+            // 物理分组只用于材料/区域识别；施工层由洞室工况单独设置。
+            layerArr->SetValue(cid, kDefaultConstructionLayer);
         }
         if (ketypeArr)
         {
@@ -683,11 +713,18 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importInp(const QString& fileNa
 {
     clearPickMap();
 
-    auto grid = loadAbaqusInpGrid(fileName);
+    QString parseErr;
+    auto grid = looksLikeAnsysInpFile(fileName)
+                    ? loadAnsysInpGrid(fileName, &parseErr)
+                    : loadAbaqusInpGrid(fileName);
     if (!grid || grid->GetNumberOfCells() == 0)
     {
         if (errMsg)
-            *errMsg = QObject::tr("无法解析 Abaqus 网格: %1").arg(fileName);
+        {
+            *errMsg = parseErr.isEmpty()
+                          ? QObject::tr("无法解析 Abaqus/ANSYS 网格: %1").arg(fileName)
+                          : parseErr;
+        }
         return nullptr;
     }
     ensureDefaultArrays(grid);
@@ -711,7 +748,8 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importInp(const QString& fileNa
                 if (cid < 0 || cid >= grid->GetNumberOfCells())
                     continue;
                 matype->SetValue(cid, physId);
-                layer->SetValue(cid, physId);
+                // 不再把 Physical ID 当作施工层。
+                layer->SetValue(cid, kDefaultConstructionLayer);
             }
         }
         grid->GetCellData()->AddArray(matype);
@@ -955,7 +993,8 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadCurrentGmshMesh(QString* er
                         cid = grid->InsertNextCell(vtkType, numNodes, ids);
                         elemIdArr->InsertNextValue(static_cast<int>(tags[e]));
                         matypeArr->InsertNextValue(physId);
-                        layerArr->InsertNextValue(physId);
+                        // 新导入网格默认属于第 1 施工层；开挖级在求解前写入 IIIN。
+                        layerArr->InsertNextValue(kDefaultConstructionLayer);
                         ketypeArr->InsertNextValue(gmshToKetype(gmshType));
                     }
 
@@ -1879,8 +1918,8 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
         return arr;
     };
 
-    auto* matype = ensureCellIntArray("MATYPE", 1);
-    auto* layer = ensureCellIntArray("LAYER", 1);
+    auto* matype = ensureCellIntArray("MATYPE", kDefaultCalculationMatype);
+    auto* layer = ensureCellIntArray("LAYER", kDefaultConstructionLayer);
     auto* ketype = ensureCellIntArray("KETYPE", 0);
 
     auto regionId = vtkSmartPointer<vtkIntArray>::New();
@@ -1909,10 +1948,11 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadMshFile(const QString& file
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
         const int physId = cellToPhys.value(cid, 0);
-        const int mappedMatype = (physId > 0 ? physId : 1);
+        const int mappedMatype = (physId > 0 ? physId : kDefaultCalculationMatype);
+        const int mappedLayer = kDefaultConstructionLayer;
         matype->SetValue(cid, mappedMatype);
         if (layer)
-            layer->SetValue(cid, mappedMatype);
+            layer->SetValue(cid, mappedLayer);
         if (ketype)
         {
             vtkCell* cell = grid->GetCell(cid);
@@ -2686,8 +2726,8 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
         const int k = cellKetype[oi];
         const int expN = cellExpN[oi];
 
-        int mat = matypeArr ? matypeArr->GetValue(cid) : 1;
-        int lay = layerArr ? layerArr->GetValue(cid) : 1;
+        int mat = matypeArr ? matypeArr->GetValue(cid) : kDefaultCalculationMatype;
+        int lay = layerArr ? layerArr->GetValue(cid) : kDefaultConstructionLayer;
         int t1 = tail1Arr ? tail1Arr->GetValue(cid) : 0;
         int t2 = tail2Arr ? tail2Arr->GetValue(cid) : 0;
 
@@ -3472,6 +3512,8 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
 
     auto nodesPerType = [](const QString& tUpper) -> int
     {
+        if (tUpper.startsWith("C3D10"))
+            return 10;
         if (tUpper.startsWith("C3D8"))
             return 8;
         if (tUpper.startsWith("C3D4"))
@@ -3492,6 +3534,42 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
         return s.split(',', QString::SkipEmptyParts);
     };
 
+    auto appendSetIds = [](const QStringList& tok, bool generate, QSet<int>& ids)
+    {
+        if (generate && tok.size() >= 2)
+        {
+            bool okStart = false;
+            bool okEnd = false;
+            bool okStep = true;
+            const int start = tok.value(0).trimmed().toInt(&okStart);
+            const int end = tok.value(1).trimmed().toInt(&okEnd);
+            int step = tok.size() >= 3 ? tok.value(2).trimmed().toInt(&okStep) : 1;
+            if (okStart && okEnd && okStep && step != 0)
+            {
+                if (start <= end && step > 0)
+                {
+                    for (int id = start; id <= end; id += step)
+                        ids.insert(id);
+                    return;
+                }
+                if (start >= end && step < 0)
+                {
+                    for (int id = start; id >= end; id += step)
+                        ids.insert(id);
+                    return;
+                }
+            }
+        }
+
+        for (const QString& t : tok)
+        {
+            bool ok = false;
+            const int id = t.trimmed().toInt(&ok);
+            if (ok)
+                ids.insert(id);
+        }
+    };
+
     bool inNode = false;
     bool inElem = false;
     bool inElset = false;
@@ -3499,6 +3577,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
     QString curElemTypeUpper;
     QString curElemElset;
     QString curSetName;
+    bool curSetGenerate = false;
     int expectedConn = -1;
 
     bool elemContinuing = false;
@@ -3528,6 +3607,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
             curElemTypeUpper.clear();
             curElemElset.clear();
             curSetName.clear();
+            curSetGenerate = false;
 
             QString upper = line.toUpper();
             auto parseHeaderValue = [&](const QString& keyUpper) -> QString
@@ -3550,13 +3630,10 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
                 inElem = true;
                 curElemElset = parseHeaderValue("ELSET");
 
-                int pos = upper.indexOf("TYPE=");
-                if (pos != -1)
+                curElemTypeUpper = parseHeaderValue("TYPE").toUpper();
+                if (!curElemTypeUpper.isEmpty())
                 {
-                    curElemTypeUpper = upper.mid(pos + 5).trimmed();
-                    int comma = curElemTypeUpper.indexOf(',');
-                    if (comma != -1)
-                        curElemTypeUpper = curElemTypeUpper.left(comma).trimmed();
+                    curElemTypeUpper = curElemTypeUpper.trimmed();
                     expectedConn = nodesPerType(curElemTypeUpper);
                     if (expectedConn < 0)
                     {
@@ -3568,11 +3645,13 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
             {
                 inElset = true;
                 curSetName = parseHeaderValue("ELSET");
+                curSetGenerate = upper.contains("GENERATE");
             }
             else if (upper.startsWith("*NSET"))
             {
                 inNset = true;
                 curSetName = parseHeaderValue("NSET");
+                curSetGenerate = upper.contains("GENERATE");
             }
             continue;
         }
@@ -3643,26 +3722,14 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
         if (inElset && !curSetName.isEmpty())
         {
             QStringList tok = splitCsv(line);
-            for (const QString& t : tok)
-            {
-                bool ok = false;
-                const int id = t.trimmed().toInt(&ok);
-                if (ok)
-                    elsetToElemIds[curSetName].insert(id);
-            }
+            appendSetIds(tok, curSetGenerate, elsetToElemIds[curSetName]);
             continue;
         }
 
         if (inNset && !curSetName.isEmpty())
         {
             QStringList tok = splitCsv(line);
-            for (const QString& t : tok)
-            {
-                bool ok = false;
-                const int id = t.trimmed().toInt(&ok);
-                if (ok)
-                    nsetToNodeIds[curSetName].insert(id);
-            }
+            appendSetIds(tok, curSetGenerate, nsetToNodeIds[curSetName]);
             continue;
         }
     }
@@ -3725,6 +3792,14 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
             const vtkIdType cid = grid->InsertNextCell(VTK_TETRA, 4, ids);
             elemIdToCellIds[e.id].push_back(cid);
         }
+        else if (e.type.startsWith("C3D10") && e.conn.size() == 10)
+        {
+            vtkIdType ids[4];
+            for (int i = 0; i < 4; ++i)
+                ids[i] = idMap.value(e.conn[i]);
+            const vtkIdType cid = grid->InsertNextCell(VTK_TETRA, 4, ids);
+            elemIdToCellIds[e.id].push_back(cid);
+        }
         else if (e.type.startsWith("C3D6") && e.conn.size() == 6)
         {
             vtkIdType ids[6];
@@ -3759,7 +3834,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
         }
     }
 
-    int nextPhysId = 1;
+    int nextPhysId = kDefaultCalculationMatype;
     QHash<QString, int> groupToPhysId;
     auto ensurePhysId = [&](const QString& groupName, int dim) -> int
     {
@@ -3847,6 +3922,298 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
     return grid;
 }
 
+vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAnsysInpGrid(const QString& fileName,
+                                                                  QString* errMsg)
+{
+    QFile file(fileName);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        if (errMsg)
+            *errMsg = QObject::tr("无法打开 ANSYS 网格文件: %1").arg(fileName);
+        qWarning() << "Cannot open ANSYS inp file:" << fileName;
+        return nullptr;
+    }
+
+    QTextStream in(&file);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    in.setCodec("UTF-8");
+#else
+    in.setEncoding(QStringConverter::Utf8);
+#endif
+
+    struct AnsysElem
+    {
+        int id = 0;
+        int mat = kDefaultCalculationMatype;
+        int type = 0;
+        QVector<int> conn;
+    };
+
+    QMap<int, QVector3D> nodeMap;
+    QVector<AnsysElem> elems;
+    QVector<int> pendingElemFields;
+
+    bool inNodeBlock = false;
+    bool inElemBlock = false;
+    bool skipBlockFormatLine = false;
+
+    auto splitWhitespace = [](const QString& s)
+    {
+        return s.split(kWhitespaceRe, kSkipEmptyParts);
+    };
+
+    auto parsePendingElements = [&]()
+    {
+        while (pendingElemFields.size() >= 11)
+        {
+            const int nodeCount = pendingElemFields.value(8);
+            if (nodeCount <= 0 || nodeCount > 64)
+            {
+                pendingElemFields.remove(0);
+                continue;
+            }
+
+            const int required = 11 + nodeCount;
+            if (pendingElemFields.size() < required)
+                return;
+
+            AnsysElem elem;
+            elem.mat = pendingElemFields.value(0);
+            elem.type = pendingElemFields.value(1);
+            elem.id = pendingElemFields.value(10);
+            for (int i = 0; i < nodeCount; ++i)
+                elem.conn.push_back(pendingElemFields.value(11 + i));
+            elems.push_back(elem);
+            pendingElemFields.remove(0, required);
+        }
+    };
+
+    while (!in.atEnd())
+    {
+        const QString rawLine = in.readLine();
+        const QString line = rawLine.trimmed();
+        if (line.isEmpty())
+            continue;
+
+        const QString upper = line.toUpper();
+        if (upper.startsWith(QStringLiteral("!!")) || upper.startsWith(QStringLiteral("!")))
+            continue;
+
+        if (upper.startsWith(QStringLiteral("NBLOCK")))
+        {
+            inNodeBlock = true;
+            inElemBlock = false;
+            skipBlockFormatLine = true;
+            continue;
+        }
+
+        if (upper.startsWith(QStringLiteral("EBLOCK")))
+        {
+            inElemBlock = true;
+            inNodeBlock = false;
+            skipBlockFormatLine = true;
+            pendingElemFields.clear();
+            continue;
+        }
+
+        if (inNodeBlock)
+        {
+            if (skipBlockFormatLine && line.startsWith(QLatin1Char('(')))
+            {
+                skipBlockFormatLine = false;
+                continue;
+            }
+            skipBlockFormatLine = false;
+
+            if (upper.startsWith(QStringLiteral("N,")) || upper.startsWith(QStringLiteral("-1")))
+            {
+                inNodeBlock = false;
+                continue;
+            }
+
+            const QStringList tok = splitWhitespace(line);
+            if (tok.size() >= 6)
+            {
+                bool okId = false;
+                bool okX = false;
+                bool okY = false;
+                bool okZ = false;
+                const int id = tok.value(0).toInt(&okId);
+                const double x = tok.value(tok.size() - 3).toDouble(&okX);
+                const double y = tok.value(tok.size() - 2).toDouble(&okY);
+                const double z = tok.value(tok.size() - 1).toDouble(&okZ);
+                if (okId && okX && okY && okZ)
+                    nodeMap.insert(id, QVector3D(x, y, z));
+            }
+            continue;
+        }
+
+        if (inElemBlock)
+        {
+            if (skipBlockFormatLine && line.startsWith(QLatin1Char('(')))
+            {
+                skipBlockFormatLine = false;
+                continue;
+            }
+            skipBlockFormatLine = false;
+
+            const QStringList tok = splitWhitespace(line);
+            if (tok.isEmpty())
+                continue;
+
+            bool okFirst = false;
+            const int first = tok.value(0).toInt(&okFirst);
+            if (okFirst && first == -1)
+            {
+                parsePendingElements();
+                pendingElemFields.clear();
+                inElemBlock = false;
+                continue;
+            }
+
+            for (const QString& t : tok)
+            {
+                bool ok = false;
+                const int v = t.toInt(&ok);
+                if (ok)
+                    pendingElemFields.push_back(v);
+            }
+            parsePendingElements();
+        }
+    }
+
+    parsePendingElements();
+    file.close();
+
+    if (nodeMap.isEmpty())
+    {
+        if (errMsg)
+            *errMsg = QObject::tr("ANSYS .inp 中未找到 NBLOCK 节点块: %1").arg(fileName);
+        return nullptr;
+    }
+
+    if (elems.isEmpty())
+    {
+        if (errMsg)
+        {
+            *errMsg = QObject::tr("该文件是 ANSYS/HyperMesh 输入文件，包含 %1 个节点，但没有 EBLOCK 或其他单元连接。"
+                                  "没有四面体单元的节点连接关系，无法导入为网格。请重新导出包含单元的 Abaqus *ELEMENT 或 ANSYS EBLOCK 文件。")
+                          .arg(nodeMap.size());
+        }
+        return nullptr;
+    }
+
+    vtkNew<vtkPoints> pts;
+    pts->SetDataTypeToDouble();
+
+    vtkNew<vtkIntArray> nodeIdArr;
+    nodeIdArr->SetName("node_id");
+
+    QMap<int, vtkIdType> idMap;
+    vtkIdType pid = 0;
+    for (auto it = nodeMap.constBegin(); it != nodeMap.constEnd(); ++it)
+    {
+        const QVector3D& p = it.value();
+        pts->InsertNextPoint(p.x(), p.y(), p.z());
+        nodeIdArr->InsertNextValue(it.key());
+        idMap.insert(it.key(), pid);
+        m_mshPickMap.nodeIdToPointId[it.key()] = static_cast<int>(pid);
+        m_mshPickMap.pointIdToNodeId[static_cast<int>(pid)] = it.key();
+        ++pid;
+    }
+
+    vtkNew<vtkUnstructuredGrid> grid;
+    grid->SetPoints(pts);
+    grid->GetPointData()->AddArray(nodeIdArr);
+
+    vtkNew<vtkIntArray> matypeArr;
+    matypeArr->SetName("MATYPE");
+    vtkNew<vtkIntArray> layerArr;
+    layerArr->SetName("LAYER");
+    vtkNew<vtkIntArray> ketypeArr;
+    ketypeArr->SetName("KETYPE");
+    vtkNew<vtkIntArray> elemIdArr;
+    elemIdArr->SetName("elem_id");
+
+    auto allIdsValid = [&](const QVector<int>& conn) -> bool
+    {
+        for (int nid : conn)
+            if (!idMap.contains(nid))
+                return false;
+        return true;
+    };
+
+    auto appendCellArrays = [&](const AnsysElem& elem, int ketype)
+    {
+        matypeArr->InsertNextValue(elem.mat >= kDefaultCalculationMatype ? elem.mat : kDefaultCalculationMatype);
+        layerArr->InsertNextValue(kDefaultConstructionLayer);
+        ketypeArr->InsertNextValue(ketype);
+        elemIdArr->InsertNextValue(elem.id > 0 ? elem.id : static_cast<int>(grid->GetNumberOfCells()));
+    };
+
+    for (const AnsysElem& elem : elems)
+    {
+        if (!allIdsValid(elem.conn))
+        {
+            qWarning() << "Skip ANSYS element: has undefined node id, elem=" << elem.id;
+            continue;
+        }
+
+        const int nodeCount = elem.conn.size();
+        if (nodeCount == 4 || nodeCount == 10)
+        {
+            vtkIdType ids[4];
+            for (int i = 0; i < 4; ++i)
+                ids[i] = idMap.value(elem.conn.value(i));
+            grid->InsertNextCell(VTK_TETRA, 4, ids);
+            appendCellArrays(elem, 35);
+        }
+        else if (nodeCount == 8)
+        {
+            vtkIdType ids[8];
+            for (int i = 0; i < 8; ++i)
+                ids[i] = idMap.value(elem.conn.value(i));
+            grid->InsertNextCell(VTK_HEXAHEDRON, 8, ids);
+            appendCellArrays(elem, 6);
+        }
+        else if (nodeCount == 6)
+        {
+            vtkIdType ids[6];
+            for (int i = 0; i < 6; ++i)
+                ids[i] = idMap.value(elem.conn.value(i));
+            grid->InsertNextCell(VTK_WEDGE, 6, ids);
+            appendCellArrays(elem, 38);
+        }
+        else if (nodeCount == 5)
+        {
+            vtkIdType ids[5];
+            for (int i = 0; i < 5; ++i)
+                ids[i] = idMap.value(elem.conn.value(i));
+            grid->InsertNextCell(VTK_PYRAMID, 5, ids);
+            appendCellArrays(elem, 39);
+        }
+        else
+        {
+            qWarning() << "Skip unsupported ANSYS element node count:" << nodeCount
+                       << "elem=" << elem.id;
+        }
+    }
+
+    if (grid->GetNumberOfCells() == 0)
+    {
+        if (errMsg)
+            *errMsg = QObject::tr("ANSYS .inp 中没有可支持的实体单元，无法导入: %1").arg(fileName);
+        return nullptr;
+    }
+
+    grid->GetCellData()->AddArray(matypeArr);
+    grid->GetCellData()->AddArray(layerArr);
+    grid->GetCellData()->AddArray(ketypeArr);
+    grid->GetCellData()->AddArray(elemIdArr);
+    normalizePhysicalTagSets(m_mshPickMap, QStringLiteral("AnsysInpGrid"));
+    return grid;
+}
+
 void MeshGridIO::ensureDefaultArrays(vtkUnstructuredGrid* grid) const
 {
     if (!grid)
@@ -3899,9 +4266,9 @@ void MeshGridIO::ensureDefaultArrays(vtkUnstructuredGrid* grid) const
     {
         // 若已有值也无所谓，这里给默认兜底
         if (matype->GetValue(cid) == 0)
-            matype->SetValue(cid, 1);
+            matype->SetValue(cid, kDefaultCalculationMatype);
         if (layer->GetValue(cid) == 0)
-            layer->SetValue(cid, 1);
+            layer->SetValue(cid, kDefaultConstructionLayer);
         if (elemId->GetValue(cid) == 0)
             elemId->SetValue(cid, static_cast<int>(cid) + 1);
 

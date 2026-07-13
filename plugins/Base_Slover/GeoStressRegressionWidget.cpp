@@ -51,6 +51,11 @@ void GeoStressRegressionWidget::beforeUnload()
 {
 }
 
+int GeoStressRegressionWidget::calculationModeCode() const
+{
+    return ui->calcModeCombo->currentIndex();
+}
+
 bool GeoStressRegressionWidget::exportIGEOSDatFile(const ExportPayload& payload) const
 {
     const QString projectDir =
@@ -88,7 +93,14 @@ bool GeoStressRegressionWidget::exportIGEOSDatFile(const ExportPayload& payload)
     os << "'" << QString::number(ui->calcModeCombo->currentIndex()) << "'       8\n";
     os << "'" << ui->reservedEdit->text().trimmed() << "'       9\n";
     os << "'" << (payload.forceFile.isEmpty() ? kForceFileName : payload.forceFile) << "'      10\n";
-    os << "'" << QString::number(is2D ? 0 : 1) << "'      11\n";
+
+    // IGEOS 第 11 项是是否读取 FTLOAD.DAT，与模型维度无关。
+    // 计算方式 0 明确表示“仅计算自重应力”，此时无条件禁止读取 FTLOAD.DAT。
+    // 只有非自重模式，并且外力页面存在非零外力及有效作用边/面时才启用。
+    const int calcMode = ui->calcModeCombo->currentIndex();
+    const int forceEnabled =
+        (calcMode != 0 && payload.forceEnabled != 0) ? 1 : 0;
+    os << "'" << QString::number(forceEnabled) << "'      11\n";
     os << "'" << ui->lambdaEdit->text().trimmed() << "'      12\n";
 
     os << "   1     NCHANGE\n";

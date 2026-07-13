@@ -62,7 +62,7 @@
         <item row="0" column="0">
          <widget class="QLabel" name="label3">
           <property name="text">
-           <string>地下水影响开关</string>
+           <string>地下水影响</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>
@@ -70,15 +70,9 @@
          </widget>
         </item>
         <item row="0" column="1">
-         <widget class="QLineEdit" name="line3Edit">
-          <property name="text">
-           <string>0</string>
-          </property>
+         <widget class="QComboBox" name="comboIfSeep">
           <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
+           <size><width>10</width><height>0</height></size>
           </property>
          </widget>
         </item>
@@ -177,7 +171,7 @@
         <item row="5" column="0">
          <widget class="QLabel" name="label18">
           <property name="text">
-           <string>阻尼开关</string>
+           <string>阻尼方式</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>
@@ -185,15 +179,9 @@
          </widget>
         </item>
         <item row="5" column="1">
-         <widget class="QLineEdit" name="line18Edit">
-          <property name="text">
-           <string>0</string>
-          </property>
+         <widget class="QComboBox" name="comboDampingMode">
           <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
+           <size><width>10</width><height>0</height></size>
           </property>
          </widget>
         </item>
@@ -269,7 +257,7 @@
         <item row="9" column="0">
          <widget class="QLabel" name="label22">
           <property name="text">
-           <string>计算方式</string>
+           <string>计算类型</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>
@@ -277,22 +265,16 @@
          </widget>
         </item>
         <item row="9" column="1">
-         <widget class="QLineEdit" name="line22Edit">
-          <property name="text">
-           <string>1</string>
-          </property>
+         <widget class="QComboBox" name="comboCalculationType">
           <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
+           <size><width>10</width><height>0</height></size>
           </property>
          </widget>
         </item>
         <item row="10" column="0">
          <widget class="QLabel" name="label23">
           <property name="text">
-           <string>开挖荷载计算方式</string>
+           <string>开挖荷载来源</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>
@@ -300,22 +282,16 @@
          </widget>
         </item>
         <item row="10" column="1">
-         <widget class="QLineEdit" name="line23Edit">
-          <property name="text">
-           <string>2</string>
-          </property>
+         <widget class="QComboBox" name="comboExcavationLoadMethod">
           <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
+           <size><width>10</width><height>0</height></size>
           </property>
          </widget>
         </item>
         <item row="11" column="0">
          <widget class="QLabel" name="label24">
           <property name="text">
-           <string>迭代法与迭代数</string>
+           <string>非线性迭代</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>
@@ -323,17 +299,21 @@
          </widget>
         </item>
         <item row="11" column="1">
-         <widget class="QLineEdit" name="line24Edit">
-          <property name="text">
-           <string>1 100</string>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
+         <layout class="QHBoxLayout" name="layoutIteration">
+          <property name="spacing"><number>6</number></property>
+          <item>
+           <widget class="QComboBox" name="comboIterationMethod"/>
+          </item>
+          <item>
+           <widget class="QSpinBox" name="spinIterationCount">
+            <property name="toolTip"><string>最大迭代次数</string></property>
+            <property name="minimum"><number>1</number></property>
+            <property name="maximum"><number>100000</number></property>
+            <property name="value"><number>100</number></property>
+            <property name="suffix"><string> 次</string></property>
+           </widget>
+          </item>
+         </layout>
         </item>
         <item row="12" column="0">
          <widget class="QLabel" name="label25">
@@ -504,6 +484,8 @@
            </property>
            <item>
             <widget class="QLineEdit" name="editIexcaSta">
+            <property name="readOnly"><bool>true</bool></property>
+            <property name="toolTip"><string>由开挖体数量自动生成，不需要手工填写</string></property>
              <property name="minimumSize">
               <size>
                <width>10</width>
@@ -524,6 +506,8 @@
            </item>
            <item>
             <widget class="QLineEdit" name="editIexcaEnd">
+            <property name="readOnly"><bool>true</bool></property>
+            <property name="toolTip"><string>由开挖体数量自动生成，不需要手工填写</string></property>
              <property name="minimumSize">
               <size>
                <width>10</width>
@@ -538,7 +522,7 @@
         <item row="1" column="0">
          <widget class="QLabel" name="labelIfEall">
           <property name="text">
-           <string>一次成洞</string>
+           <string>一次成洞（不加固）</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>
@@ -558,7 +542,7 @@
         <item row="2" column="0">
          <widget class="QLabel" name="labelIfJall">
           <property name="text">
-           <string>一次成洞</string>
+           <string>一次成洞（加固）</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>
@@ -578,7 +562,7 @@
         <item row="3" column="0">
          <widget class="QLabel" name="labelIfE1toa">
           <property name="text">
-           <string>逐级开挖</string>
+           <string>逐级开挖（不加固）</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>
@@ -598,7 +582,7 @@
         <item row="4" column="0">
          <widget class="QLabel" name="labelIfJ1toa">
           <property name="text">
-           <string>逐级开挖</string>
+           <string>逐级开挖（加固）</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>

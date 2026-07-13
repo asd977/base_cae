@@ -1,4 +1,4 @@
-﻿#include "SeepageWidget.h"
+#include "SeepageWidget.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -47,12 +47,14 @@ SeepageWidget::SeepageWidget(QWidget* parent)
     connect(ui->btnHwDropCurves, &QPushButton::clicked, this,
             &SeepageWidget::onEditHwDropCurvesClicked);
 
-    ui->comboComputeType->addItem("1 - 仅进行稳定渗流计算", 1);
-    ui->comboComputeType->addItem("2 - 仅进行非稳定渗流计算", 2);
-    ui->comboComputeType->addItem("3 - 按流程全部进行计算", 3);
+    ui->comboComputeType->addItem(QStringLiteral("仅进行稳定渗流计算"), 1);
+    ui->comboComputeType->addItem(QStringLiteral("仅进行非稳定渗流计算"), 2);
+    ui->comboComputeType->addItem(QStringLiteral("先稳定渗流，再进行非稳定渗流"), 3);
+    ui->comboComputeType->setToolTip(
+        QStringLiteral("界面显示计算含义，导出时仍写入求解器需要的 1、2、3。"));
 
-    ui->comboItagFree->addItem("0 - 不计入", 0);
-    ui->comboItagFree->addItem("1 - 计入", 1);
+    ui->comboItagFree->addItem(QStringLiteral("不计入天然渗流场"), 0);
+    ui->comboItagFree->addItem(QStringLiteral("计入天然渗流场"), 1);
 
 }
 

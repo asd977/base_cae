@@ -25,9 +25,16 @@
 
 namespace
 {
+constexpr int FIRST_COMPUTABLE_MATYPE = 2;
+
+bool isComputableMatype(int matype)
+{
+    return matype >= FIRST_COMPUTABLE_MATYPE;
+}
+
 QString matypeDisplayText(int matype, const MshPickMap* pickMap = nullptr)
 {
-    if (matype <= 0)
+    if (!isComputableMatype(matype))
         return QString();
     if (pickMap)
     {
@@ -370,8 +377,10 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     m_transitionOnlyCheck->setChecked(entry->transitionOnly);
     m_transitionMatypeSpin = new QSpinBox(transitionRowWidget);
     m_transitionMatypeSpin->setMinimumWidth(10);
-    m_transitionMatypeSpin->setRange(1, 1000000);
-    m_transitionMatypeSpin->setValue(entry->transitionMatype > 0 ? entry->transitionMatype : 1);
+    m_transitionMatypeSpin->setRange(FIRST_COMPUTABLE_MATYPE, 1000000);
+    m_transitionMatypeSpin->setValue(isComputableMatype(entry->transitionMatype)
+                                         ? entry->transitionMatype
+                                         : FIRST_COMPUTABLE_MATYPE);
     m_transitionMatypeSpin->setEnabled(true);
     transitionLayout->addWidget(m_transitionOnlyCheck);
     transitionLayout->addWidget(new QLabel(QStringLiteral("编号"), transitionRowWidget));
@@ -517,7 +526,7 @@ void MaterialEntryWidget::refreshMatypeHighlightSafe()
 
 void MaterialEntryWidget::appendMatypeOption(int matype)
 {
-    if (!m_matypeCombo || matype <= 0)
+    if (!m_matypeCombo || !isComputableMatype(matype))
         return;
     if (m_matypeCombo->findData(matype) >= 0)
         return;
@@ -654,7 +663,7 @@ void MaterialEntryWidget::onAppliedMatypeSelected(const QString& text)
         return;
     }
     const int matype = item->data(Qt::UserRole).toInt();
-    if (matype <= 0)
+    if (!isComputableMatype(matype))
         return;
 
     // ★ 只设置“预删除”，不改变 Selected
@@ -674,14 +683,14 @@ void MaterialEntryWidget::onTransitionModeChanged(int state)
     if (!enabled)
     {
         int sourceMatype = m_materialManager->selectedMatypeForEntry(m_entryId);
-        if (sourceMatype <= 0 && m_matypeCombo)
+        if (!isComputableMatype(sourceMatype) && m_matypeCombo)
         {
             const QVariant sourceData = m_matypeCombo->currentData();
             sourceMatype = sourceData.isValid() ? sourceData.toInt() : -1;
         }
         entry->transitionOnly = false;
         entry->transitionMatype = m_transitionMatypeSpin->value();
-        if (sourceMatype > 0)
+        if (isComputableMatype(sourceMatype))
         {
             auto mappings = m_materialManager->materialTransitions();
             mappings.erase(std::remove_if(mappings.begin(), mappings.end(),
@@ -714,12 +723,12 @@ void MaterialEntryWidget::onTransitionModeChanged(int state)
     entry->transitionOnly = true;
     entry->transitionMatype = matype;
     int sourceMatype = m_materialManager->selectedMatypeForEntry(m_entryId);
-    if (sourceMatype <= 0 && m_matypeCombo)
+    if (!isComputableMatype(sourceMatype) && m_matypeCombo)
     {
         const QVariant sourceData = m_matypeCombo->currentData();
         sourceMatype = sourceData.isValid() ? sourceData.toInt() : -1;
     }
-    if (sourceMatype > 0)
+    if (isComputableMatype(sourceMatype))
     {
         auto mappings = m_materialManager->materialTransitions();
         bool replaced = false;
@@ -767,17 +776,19 @@ void MaterialEntryWidget::onTransitionMatypeChanged(int value)
         QMessageBox::warning(this, QStringLiteral("提示"), error);
         entry->transitionMatype = previousMatype;
         QSignalBlocker blocker(m_transitionMatypeSpin);
-        m_transitionMatypeSpin->setValue(previousMatype > 0 ? previousMatype : 1);
+        m_transitionMatypeSpin->setValue(isComputableMatype(previousMatype)
+                                             ? previousMatype
+                                             : FIRST_COMPUTABLE_MATYPE);
         return;
     }
     entry->transitionOnly = true;
     int sourceMatype = m_materialManager->selectedMatypeForEntry(m_entryId);
-    if (sourceMatype <= 0 && m_matypeCombo)
+    if (!isComputableMatype(sourceMatype) && m_matypeCombo)
     {
         const QVariant sourceData = m_matypeCombo->currentData();
         sourceMatype = sourceData.isValid() ? sourceData.toInt() : -1;
     }
-    if (sourceMatype > 0)
+    if (isComputableMatype(sourceMatype))
     {
         auto mappings = m_materialManager->materialTransitions();
         bool replaced = false;
@@ -890,7 +901,8 @@ void MaterialEntryWidget::onDomainPicked(const QString& domain, const QString& u
         return;
     if (domain != getPageType() || uuid != m_uuid)
         return;
-    if (key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) != 0 || key.id <= 0)
+    if (key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) != 0 ||
+        !isComputableMatype(key.id))
         return;
 
     const int matype = key.id;

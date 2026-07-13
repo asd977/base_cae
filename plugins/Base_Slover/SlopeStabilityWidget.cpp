@@ -16,6 +16,20 @@
 
 #include "ui_SlopeStabilityWidget.h"
 
+namespace
+{
+QStringList splitGravityComponents(const QString& value)
+{
+    const QStringList defaults = {"0.0", "-9.81", "0.0"};
+    const QStringList parts = value.simplified().split(QLatin1Char(' '), QString::SkipEmptyParts);
+
+    QStringList result;
+    for (int i = 0; i < 3; ++i)
+        result.append(parts.value(i, defaults.value(i)));
+    return result;
+}
+}
+
 SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
     : BasePage("SlopeStabilityAnalysis"), ui(new Ui::SlopeStabilityWidget)
 {
@@ -24,7 +38,7 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
 
     m_lineEditors[1] = nullptr;
     m_lineEditors[3] = ui->line3Combo;
-    m_lineEditors[4] = ui->line4Edit;
+    m_lineEditors[4] = nullptr;
     m_lineEditors[5] = ui->line5Combo;
     m_lineEditors[6] = ui->line6Edit;
     m_lineEditors[7] = ui->line7Edit;
@@ -63,8 +77,8 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
     ui->ifModeCombo->setItemData(1, "1");
     ui->ifWaveCombo->setItemData(0, "0");
     ui->ifWaveCombo->setItemData(1, "1");
-    ui->ifModeCombo->setCurrentIndex(1);
-    ui->ifWaveCombo->setCurrentIndex(1);
+    ui->ifModeCombo->setCurrentIndex(0);
+    ui->ifWaveCombo->setCurrentIndex(0);
 
     initStrengthReserveTable();
     connect(ui->btnCompute, &QPushButton::clicked, this, &SlopeStabilityWidget::onComputeClicked);
@@ -73,7 +87,7 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
         const int row = ui->strengthReserveTable->rowCount();
         ui->strengthReserveTable->insertRow(row);
         ui->strengthReserveTable->setItem(row, 0, new QTableWidgetItem("1.0000"));
-        ui->strengthReserveTable->setItem(row, 1, new QTableWidgetItem("1.0000"));
+        setStrengthReserveOutputCombo(row, QStringLiteral("1.0000"));
     });
     connect(ui->removeReserveRowBtn, &QPushButton::clicked, this, [this]()
     {
@@ -103,6 +117,9 @@ QString SlopeStabilityWidget::quoteValue(const QString& value) const
 
 QString SlopeStabilityWidget::lineValue(int lineNo) const
 {
+    if (lineNo == 4)
+        return gravityLineValue();
+
     QWidget* w = m_lineEditors.value(lineNo, nullptr);
     if (auto* combo = qobject_cast<QComboBox*>(w))
         return combo->currentData().toString();
@@ -113,6 +130,12 @@ QString SlopeStabilityWidget::lineValue(int lineNo) const
 
 void SlopeStabilityWidget::setLineValue(int lineNo, const QString& value)
 {
+    if (lineNo == 4)
+    {
+        setGravityLineValue(value);
+        return;
+    }
+
     QWidget* w = m_lineEditors.value(lineNo, nullptr);
     if (auto* combo = qobject_cast<QComboBox*>(w))
     {
@@ -123,6 +146,25 @@ void SlopeStabilityWidget::setLineValue(int lineNo, const QString& value)
     }
     if (auto* edit = qobject_cast<QLineEdit*>(w))
         edit->setText(value);
+}
+
+QString SlopeStabilityWidget::gravityLineValue() const
+{
+    const QStringList defaults = splitGravityComponents(defaultValueByLine(4));
+    const QStringList values = {
+        ui->gravityXEdit->text().trimmed().isEmpty() ? defaults.value(0) : ui->gravityXEdit->text().trimmed(),
+        ui->gravityYEdit->text().trimmed().isEmpty() ? defaults.value(1) : ui->gravityYEdit->text().trimmed(),
+        ui->gravityZEdit->text().trimmed().isEmpty() ? defaults.value(2) : ui->gravityZEdit->text().trimmed()
+    };
+    return values.join("   ");
+}
+
+void SlopeStabilityWidget::setGravityLineValue(const QString& value)
+{
+    const QStringList values = splitGravityComponents(value);
+    ui->gravityXEdit->setText(values.value(0));
+    ui->gravityYEdit->setText(values.value(1));
+    ui->gravityZEdit->setText(values.value(2));
 }
 
 QString SlopeStabilityWidget::defaultValueByLine(int lineNo) const
@@ -154,9 +196,36 @@ void SlopeStabilityWidget::initStrengthReserveTable()
     for (int row = 0; row < factors.size(); ++row)
     {
         ui->strengthReserveTable->setItem(row, 0, new QTableWidgetItem(factors.at(row)));
-        ui->strengthReserveTable->setItem(row, 1, new QTableWidgetItem(ifpr.at(row)));
+        setStrengthReserveOutputCombo(row, ifpr.at(row));
     }
     ui->strengthReserveTable->horizontalHeader()->setStretchLastSection(true);
+}
+
+void SlopeStabilityWidget::setStrengthReserveOutputCombo(int row, const QString& value)
+{
+    if (row < 0 || row >= ui->strengthReserveTable->rowCount())
+        return;
+
+    auto* combo = new QComboBox(ui->strengthReserveTable);
+    combo->addItem(QStringLiteral("0 - 不输出该储备系数结果"), QStringLiteral("0.0000"));
+    combo->addItem(QStringLiteral("1 - 输出该储备系数结果"), QStringLiteral("1.0000"));
+    const QString normalized = value.trimmed().startsWith(QLatin1Char('0'))
+                                   ? QStringLiteral("0.0000")
+                                   : QStringLiteral("1.0000");
+    const int index = combo->findData(normalized);
+    combo->setCurrentIndex(index >= 0 ? index : 1);
+    ui->strengthReserveTable->setCellWidget(row, 1, combo);
+}
+
+QString SlopeStabilityWidget::strengthReserveOutputValue(int row) const
+{
+    if (row < 0 || row >= ui->strengthReserveTable->rowCount())
+        return QStringLiteral("1.0000");
+    if (auto* combo = qobject_cast<QComboBox*>(ui->strengthReserveTable->cellWidget(row, 1)))
+        return combo->currentData().toString();
+    const auto* item = ui->strengthReserveTable->item(row, 1);
+    const QString value = item ? item->text().trimmed() : QString();
+    return value.isEmpty() ? QStringLiteral("1.0000") : value;
 }
 
 bool SlopeStabilityWidget::exportIslopDatFile() const
@@ -210,10 +279,7 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
         if (factor.isEmpty())
             continue;
 
-        const auto* ifprItem = ui->strengthReserveTable->item(row, 1);
-        QString ifpr = ifprItem ? ifprItem->text().trimmed() : "1.0000";
-        if (ifpr.isEmpty())
-            ifpr = "1.0000";
+        const QString ifpr = strengthReserveOutputValue(row);
 
         bool factorOk = false;
         bool ifprOk = false;
@@ -269,9 +335,8 @@ QJsonObject SlopeStabilityWidget::saveJson()
     {
         QJsonObject one;
         const auto* factorItem = ui->strengthReserveTable->item(row, 0);
-        const auto* ifprItem = ui->strengthReserveTable->item(row, 1);
         one["factor"] = factorItem ? factorItem->text().trimmed() : "";
-        one["ifpr"] = ifprItem ? ifprItem->text().trimmed() : "";
+        one["ifpr"] = strengthReserveOutputValue(row);
         reserve.append(one);
     }
     obj["strength_reserve"] = reserve;
@@ -313,8 +378,7 @@ void SlopeStabilityWidget::loadJson(const QJsonObject& obj)
         }
         ui->strengthReserveTable->setItem(
             row, 0, new QTableWidgetItem(factor.isEmpty() ? QString() : factor));
-        ui->strengthReserveTable->setItem(
-            row, 1, new QTableWidgetItem(ifpr.isEmpty() ? QString("1.0000") : ifpr));
+        setStrengthReserveOutputCombo(row, ifpr.isEmpty() ? QStringLiteral("1.0000") : ifpr);
     }
 
     ui->dtEdit->setText(obj.value("dt").toString(ui->dtEdit->text()));

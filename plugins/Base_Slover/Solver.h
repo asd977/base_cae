@@ -65,6 +65,7 @@ class Solver : public QObject, public SolverService
     bool updateIiiDirDat(const QString& projectDir, int solverMode) const;
     bool updateCaveBlockIiiDirDat(const QString& sliderDir) const;
     bool updatePrepDatFiles(const QString& projectDir, int solverMode, int verticalAxis) const;
+    bool forceSlopeIiinLayersToOne(const QString& projectDir) const;
     int nextSeepageIndex() const;
     int nextStressStrainIndex() const;
     int nextCaveExcavationIndex() const;

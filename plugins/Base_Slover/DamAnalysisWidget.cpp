@@ -1,4 +1,4 @@
-﻿#include "DamAnalysisWidget.h"
+#include "DamAnalysisWidget.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -118,6 +118,36 @@ void DamAnalysisWidget::initValueEditors()
     m_comboIfRock->setItemData(1, "1");
     m_comboIfIso->setItemData(0, "0");
     m_comboIfIso->setItemData(1, "1");
+
+    ui->comboLine15->setItemText(0, QStringLiteral("统一使用系统阻尼"));
+    ui->comboLine15->setItemText(1, QStringLiteral("按材料分别设置阻尼"));
+    ui->comboLine16->setItemText(0, QStringLiteral("不使用 Rayleigh 阻尼"));
+    ui->comboLine16->setItemText(1, QStringLiteral("使用 Rayleigh 阻尼"));
+    ui->comboLine19->setItemText(0, QStringLiteral("仅静力分析"));
+    ui->comboLine19->setItemText(1, QStringLiteral("仅动力分析（需时程文件）"));
+    ui->comboLine19->setItemText(2, QStringLiteral("静力后继续动力分析"));
+    ui->comboLine29->setItemText(0, QStringLiteral("不计算特征值"));
+    ui->comboLine29->setItemText(1, QStringLiteral("计算特征值"));
+
+    m_comboMethodIter->setItemText(0, QStringLiteral("初应变法（常刚度）"));
+    m_comboMethodIter->setItemText(1, QStringLiteral("初应力法（常刚度）"));
+    m_comboMethodIter->setItemText(2, QStringLiteral("变刚度法（切线刚度）"));
+    m_comboMethodIter->setItemText(3, QStringLiteral("中点增量法（土坝填筑）"));
+    m_comboAxisUp->setItemText(0, QStringLiteral("X 轴"));
+    m_comboAxisUp->setItemText(1, QStringLiteral("Y 轴"));
+    m_comboAxisUp->setItemText(2, QStringLiteral("Z 轴"));
+    m_comboAxisDown->setItemText(0, QStringLiteral("X 轴"));
+    m_comboAxisDown->setItemText(1, QStringLiteral("Y 轴"));
+    m_comboAxisDown->setItemText(2, QStringLiteral("Z 轴"));
+    m_comboIfRock->setItemText(0, QStringLiteral("不重复计算（已有岩体自重结果）"));
+    m_comboIfRock->setItemText(1, QStringLiteral("本次计算岩体自重"));
+    m_comboIfIso->setItemText(0, QStringLiteral("按建模材料计算"));
+    m_comboIfIso->setItemText(1, QStringLiteral("按指定均质材料计算"));
+
+    ui->comboLine19->setToolTip(
+        QStringLiteral("仅动力分析需要 JDTRACE、KETRACE、TDTRACE 等动力输入文件。"));
+    m_comboMethodIter->setToolTip(
+        QStringLiteral("界面显示算法名称，导出文件仍使用对应数字代码。"));
 
 }
 

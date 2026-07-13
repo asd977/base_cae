@@ -76,27 +76,27 @@
          <widget class="QComboBox" name="line3Combo">
           <item>
            <property name="text">
-            <string>0 荷载增量法</string>
+            <string>0 - 荷载增量法</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>1 强度储备法(降C)</string>
+            <string>1 - 强度储备法（降 C）</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>2 强度储备法(降F)</string>
+            <string>2 - 强度储备法（降 F）</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>3 强度储备法(同时降C/F)</string>
+            <string>3 - 强度储备法（同时降 C/F）</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>4 强度储备法(同时降E/C/F)</string>
+            <string>4 - 强度储备法（同时降 E/C/F）</string>
            </property>
           </item>
           <property name="minimumSize">
@@ -118,16 +118,81 @@
          </widget>
         </item>
         <item row="3" column="1">
-         <widget class="QLineEdit" name="line4Edit">
-          <property name="text">
-           <string>0.0   -9.81   0.0</string>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
+         <widget class="QWidget" name="gravityWidget">
+          <layout class="QHBoxLayout" name="gravityLayout">
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
+           <item>
+            <widget class="QLabel" name="gravityXLabel">
+             <property name="text">
+              <string>X</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLineEdit" name="gravityXEdit">
+             <property name="text">
+              <string>0.0</string>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>10</width>
+               <height>0</height>
+              </size>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="gravityYLabel">
+             <property name="text">
+              <string>Y</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLineEdit" name="gravityYEdit">
+             <property name="text">
+              <string>-9.81</string>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>10</width>
+               <height>0</height>
+              </size>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="gravityZLabel">
+             <property name="text">
+              <string>Z</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLineEdit" name="gravityZEdit">
+             <property name="text">
+              <string>0.0</string>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>10</width>
+               <height>0</height>
+              </size>
+             </property>
+            </widget>
+           </item>
+          </layout>
          </widget>
         </item>
         <item row="4" column="0">
@@ -144,17 +209,17 @@
          <widget class="QComboBox" name="line5Combo">
           <item>
            <property name="text">
-            <string>1 初应变法</string>
+            <string>1 - 初应变法</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>2 初应力法</string>
+            <string>2 - 初应力法</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>3 变刚度法</string>
+            <string>3 - 变刚度法</string>
            </property>
           </item>
           <property name="minimumSize">
@@ -225,12 +290,12 @@
          <widget class="QComboBox" name="line8Combo">
           <item>
            <property name="text">
-            <string>1 仅施加重力</string>
+            <string>1 - 仅施加重力</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>2 按 IIWL.DAT 施加</string>
+            <string>2 - 按 IIWL.DAT 施加</string>
            </property>
           </item>
           <property name="minimumSize">
@@ -255,12 +320,12 @@
          <widget class="QComboBox" name="line15Combo">
           <item>
            <property name="text">
-            <string>0 系统阻尼</string>
+            <string>0 - 系统阻尼</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>1 分材料阻尼</string>
+            <string>1 - 分材料阻尼</string>
            </property>
           </item>
           <property name="minimumSize">
@@ -285,12 +350,12 @@
          <widget class="QComboBox" name="line16Combo">
           <item>
            <property name="text">
-            <string>0 非瑞雷</string>
+            <string>0 - 非瑞雷阻尼</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>1 瑞雷</string>
+            <string>1 - 瑞雷阻尼</string>
            </property>
           </item>
           <property name="minimumSize">
@@ -361,17 +426,17 @@
          <widget class="QComboBox" name="line19Combo">
           <item>
            <property name="text">
-            <string>1 仅静力</string>
+            <string>1 - 仅静力计算</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>2 仅动力</string>
+            <string>2 - 仅动力计算</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>3 静力+动力</string>
+            <string>3 - 静力后继续动力计算</string>
            </property>
           </item>
           <property name="minimumSize">
@@ -379,6 +444,16 @@
             <width>10</width>
             <height>0</height>
            </size>
+          </property>
+         </widget>
+        </item>
+        <item row="19" column="0" colspan="2">
+         <widget class="QLabel" name="layerHintLabel">
+          <property name="text">
+           <string>提示：边坡计算时，IIIN.DAT 中所有 LAYER 分层会统一设为 1。</string>
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
           </property>
          </widget>
         </item>
@@ -486,12 +561,12 @@
          <widget class="QComboBox" name="ifModeCombo">
           <item>
            <property name="text">
-            <string>否</string>
+            <string>0 - 否</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>是</string>
+            <string>1 - 是</string>
            </property>
           </item>
           <property name="minimumSize">
@@ -516,12 +591,12 @@
          <widget class="QComboBox" name="ifWaveCombo">
           <item>
            <property name="text">
-            <string>否</string>
+            <string>0 - 否</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>是</string>
+            <string>1 - 是</string>
            </property>
           </item>
           <property name="minimumSize">

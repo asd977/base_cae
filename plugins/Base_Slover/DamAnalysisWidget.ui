@@ -76,12 +76,12 @@
          <widget class="QComboBox" name="comboLine15">
           <item>
            <property name="text">
-            <string>0 系统阻尼</string>
+            <string>0 - 系统阻尼</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>1 分材料阻尼</string>
+            <string>1 - 分材料阻尼</string>
            </property>
           </item>
           <property name="minimumSize">
@@ -106,12 +106,12 @@
          <widget class="QComboBox" name="comboLine16">
           <item>
            <property name="text">
-            <string>0 非瑞雷阻尼</string>
+            <string>0 - 非瑞雷阻尼</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>1 瑞雷阻尼</string>
+            <string>1 - 瑞雷阻尼</string>
            </property>
           </item>
           <property name="minimumSize">
@@ -182,17 +182,17 @@
          <widget class="QComboBox" name="comboLine19">
           <item>
            <property name="text">
-            <string>1 静力计算</string>
+            <string>1 - 仅静力计算</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>2 动力计算</string>
+            <string>2 - 仅动力计算</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>3 静动力全部计算</string>
+            <string>3 - 静力后继续动力计算</string>
            </property>
           </item>
           <property name="minimumSize">
@@ -219,22 +219,22 @@
            <widget class="QComboBox" name="comboMethodIter">
             <item>
              <property name="text">
-              <string>1 常刚度法（初应变法）</string>
+              <string>1 - 常刚度法（初应变法）</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>2 常刚度法（初应力法）</string>
+              <string>2 - 常刚度法（初应力法）</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>3 变刚度法（切线刚度法）</string>
+              <string>3 - 变刚度法（切线刚度法）</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>4 中点增量法（土坝填筑）</string>
+              <string>4 - 中点增量法（土坝填筑）</string>
              </property>
             </item>
             <property name="minimumSize">
@@ -480,12 +480,12 @@
          <widget class="QComboBox" name="comboLine29">
           <item>
            <property name="text">
-            <string>0 不计算</string>
+            <string>0 - 不计算</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>1 计算</string>
+            <string>1 - 计算</string>
            </property>
           </item>
           <property name="minimumSize">
@@ -833,17 +833,17 @@
              <widget class="QComboBox" name="comboAxisUp">
               <item>
                <property name="text">
-                <string>1 X轴</string>
+                <string>1 - X 轴</string>
                </property>
               </item>
               <item>
                <property name="text">
-                <string>2 Y轴</string>
+                <string>2 - Y 轴</string>
                </property>
               </item>
               <item>
                <property name="text">
-                <string>3 Z轴</string>
+                <string>3 - Z 轴</string>
                </property>
               </item>
               <property name="minimumSize">
@@ -884,17 +884,17 @@
              <widget class="QComboBox" name="comboAxisDown">
               <item>
                <property name="text">
-                <string>1 X轴</string>
+                <string>1 - X 轴</string>
                </property>
               </item>
               <item>
                <property name="text">
-                <string>2 Y轴</string>
+                <string>2 - Y 轴</string>
                </property>
               </item>
               <item>
                <property name="text">
-                <string>3 Z轴</string>
+                <string>3 - Z 轴</string>
                </property>
               </item>
               <property name="minimumSize">
@@ -957,12 +957,12 @@
          <widget class="QComboBox" name="comboIfIso">
           <item>
            <property name="text">
-            <string>0 按建模材料计算</string>
+            <string>0 - 按建模材料计算</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>1 按IFISO材料计算</string>
+            <string>1 - 按 IFISO 材料计算</string>
            </property>
           </item>
           <property name="minimumSize">
@@ -977,12 +977,12 @@
          <widget class="QComboBox" name="comboIfRock">
           <item>
            <property name="text">
-            <string>0 否（已计算过）</string>
+            <string>0 - 否（已计算过）</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>1 是（本次计算）</string>
+            <string>1 - 是（本次计算）</string>
            </property>
           </item>
           <property name="minimumSize">

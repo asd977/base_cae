@@ -1,4 +1,4 @@
-﻿#include "FillStorageCyclePage.h"
+#include "FillStorageCyclePage.h"
 
 #include <ServiceRegistry.h>
 #include <services/MaterialManagerService.h>
@@ -84,6 +84,25 @@ void FillStorageCyclePage::initValueEditors()
     ui->comboIFSETT->setItemData(0, "0");
     ui->comboIFSETT->setItemData(1, "1");
 
+    ui->comboIFIIWL_SEEP->setItemText(0, QStringLiteral("不计入坝基渗透荷载"));
+    ui->comboIFIIWL_SEEP->setItemText(1, QStringLiteral("按折减系数施加坝基面力"));
+    ui->comboIFIIWL_SEEP->setItemText(2, QStringLiteral("从 CASEEP 读取水头压力"));
+    ui->comboIFIIWL_BODY->setItemText(0, QStringLiteral("不计入坝体渗透体力"));
+    ui->comboIFIIWL_BODY->setItemText(1, QStringLiteral("按容重差施加向下体力"));
+    ui->comboIFIIWL_BODY->setItemText(2, QStringLiteral("从 CABODY 读取节点体力"));
+    ui->comboIFIIWL_FACE->setItemText(0, QStringLiteral("不计入坝体水面压力"));
+    ui->comboIFIIWL_FACE->setItemText(1, QStringLiteral("计入坝体水面压力"));
+    ui->comboIFWET->setItemText(0, QStringLiteral("不进行湿化计算"));
+    ui->comboIFWET->setItemText(1, QStringLiteral("进行湿化计算"));
+    ui->comboIFDROP->setItemText(0, QStringLiteral("不进行水位骤降计算"));
+    ui->comboIFDROP->setItemText(1, QStringLiteral("进行水位骤降计算"));
+    ui->comboIFMODE->setItemText(0, QStringLiteral("不进行拟静力计算"));
+    ui->comboIFMODE->setItemText(1, QStringLiteral("进行拟静力计算"));
+    ui->comboIFWAVE->setItemText(0, QStringLiteral("不进行地震波动力计算"));
+    ui->comboIFWAVE->setItemText(1, QStringLiteral("进行地震波动力计算"));
+    ui->comboIFSETT->setItemText(0, QStringLiteral("不进行流变计算"));
+    ui->comboIFSETT->setItemText(1, QStringLiteral("进行流变计算"));
+
     auto mkTable = [this](const QStringList& headers)
     {
         auto* t = new QTableWidget(this);
@@ -141,8 +160,8 @@ void FillStorageCyclePage::initValueEditors()
         auto setCircleCombo = [table](int row, int col, const QString& val)
         {
             auto* cb = new QComboBox(table);
-            cb->addItem("0 - 否", "0");
-            cb->addItem("1 - 是", "1");
+            cb->addItem(QStringLiteral("否"), QStringLiteral("0"));
+            cb->addItem(QStringLiteral("是"), QStringLiteral("1"));
             const int idx = cb->findData(val.trimmed());
             cb->setCurrentIndex(idx >= 0 ? idx : 0);
             table->setCellWidget(row, col, cb);

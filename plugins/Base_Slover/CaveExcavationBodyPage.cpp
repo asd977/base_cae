@@ -14,6 +14,7 @@
 #include <vtkUnstructuredGrid.h>
 
 #include <QColor>
+#include <QHash>
 #include <QComboBox>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -114,7 +115,7 @@ QJsonObject CaveExcavationBodyPage::saveJson()
 
     obj["selected_groups"] = selectedGroupsArr;
 
-    // 当前版本以 selected_groups 为唯一业务保存来源。
+    // selected_groups 只保存分组编号；新版优先对应 Physical 分组，旧工程可回退到 LAYER。
     // face_solid / edge_solid 保留为空数组，避免旧逻辑误把高亮面当成业务数据。
     obj["face_solid"] = QJsonArray();
     obj["edge_solid"] = QJsonArray();
@@ -133,7 +134,7 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
     {
         const int gid = v.toInt(std::numeric_limits<int>::min());
         if (gid != std::numeric_limits<int>::min() && gid != 0)
-            domains.insert(DomainKey{"LAYER", layerDomainDim(), gid});
+            domains.insert(DomainKey{selectionGroupCategory(), layerDomainDim(), gid});
     }
 
     PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
@@ -199,7 +200,7 @@ void CaveExcavationBodyPage::onAddGroupClicked()
     QSet<DomainKey> domains =
         PickManager::instance().appliedDomains(getPageType(), m_uuid);
 
-    domains.insert(DomainKey{"LAYER", layerDomainDim(), gid});
+    domains.insert(DomainKey{selectionGroupCategory(), layerDomainDim(), gid});
 
     PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
 
@@ -223,7 +224,7 @@ void CaveExcavationBodyPage::onRemoveSelectedGroupsClicked()
         bool ok = false;
         const int gid = item->data(Qt::UserRole).toInt(&ok);
         if (ok)
-            domains.remove(DomainKey{"LAYER", layerDomainDim(), gid});
+            domains.remove(DomainKey{selectionGroupCategory(), layerDomainDim(), gid});
     }
 
     PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
@@ -293,8 +294,23 @@ void CaveExcavationBodyPage::setupGroupCombo()
     m_groupCombo->blockSignals(true);
     m_groupCombo->clear();
 
+    const QVector<MeshTagSet> sets = meshSvc->domainTagSets();
+    QHash<int, QString> names;
+    const QString category = selectionGroupCategory();
+    for (const MeshTagSet& set : sets)
+    {
+        if (set.key.category.compare(category, Qt::CaseInsensitive) == 0 && set.key.id != 0)
+            names.insert(set.key.id, set.name.trimmed());
+    }
+
     for (int id : ids)
-        m_groupCombo->addItem(QString::number(id), id);
+    {
+        const QString name = names.value(id);
+        const QString text = name.isEmpty()
+                                 ? QStringLiteral("ID %1").arg(id)
+                                 : QStringLiteral("%1（ID %2）").arg(name).arg(id);
+        m_groupCombo->addItem(text, id);
+    }
 
     m_groupCombo->blockSignals(false);
 
@@ -319,10 +335,11 @@ QVector<int> CaveExcavationBodyPage::availableGroupIds() const
         return out;
 
     const QVector<MeshTagSet> sets = meshSvc->domainTagSets();
+    const QString category = selectionGroupCategory();
 
     for (const MeshTagSet& set : sets)
     {
-        if (set.key.category.compare("LAYER", Qt::CaseInsensitive) != 0)
+        if (set.key.category.compare(category, Qt::CaseInsensitive) != 0)
             continue;
 
         if (set.key.id == 0)
@@ -347,7 +364,7 @@ QVector<vtkIdType> CaveExcavationBodyPage::groupCellIds(int groupId) const
         return out;
 
     MeshTagKey key;
-    key.category = "LAYER";
+    key.category = selectionGroupCategory();
     key.dim = layerDomainDim();
     key.id = groupId;
 
@@ -535,7 +552,14 @@ void CaveExcavationBodyPage::refreshSelectedGroupList()
 
     for (int id : ids)
     {
-        auto* item = new QListWidgetItem(QString::number(id), m_groupList);
+        QString text = QStringLiteral("ID %1").arg(id);
+        if (m_groupCombo)
+        {
+            const int index = m_groupCombo->findData(id);
+            if (index >= 0)
+                text = m_groupCombo->itemText(index);
+        }
+        auto* item = new QListWidgetItem(text, m_groupList);
         item->setData(Qt::UserRole, id);
     }
 }
@@ -549,8 +573,8 @@ void CaveExcavationBodyPage::refreshGroupComboMarks()
     {
         const int gid = m_groupCombo->itemData(i).toInt();
 
-        // ComboBox 中只显示原始分组编号，不添加勾选符号或其他标记。
-        m_groupCombo->setItemText(i, QString::number(gid));
+        // 保留“名称 + ID”的调试显示，不添加勾选符号。
+        Q_UNUSED(gid);
         m_groupCombo->setItemData(i, QVariant(), Qt::BackgroundRole);
         m_groupCombo->setItemData(i, QVariant(), Qt::ForegroundRole);
     }
@@ -598,7 +622,7 @@ int CaveExcavationBodyPage::layerDomainDim() const
 PickMode CaveExcavationBodyPage::currentPickMode() const
 {
     // 洞室开挖体选择本质是“分组选择”。
-    // 业务数据仍保存 LAYER 分组，但可视高亮和最终输出会过滤掉杆/线单元。
+    // 业务数据保存区域分组编号；新版优先使用 Physical 分组，并过滤杆/线单元。
     return PickMode::Domain;
 }
 
@@ -609,11 +633,36 @@ QSet<int> CaveExcavationBodyPage::selectedLayerGroups()
     const QSet<DomainKey> owned =
         PickManager::instance().appliedDomains(getPageType(), m_uuid);
 
+    const QString category = selectionGroupCategory();
     for (const DomainKey& key : owned)
     {
-        if (key.category.compare("LAYER", Qt::CaseInsensitive) == 0 && key.id != 0)
+        if (key.category.compare(category, Qt::CaseInsensitive) == 0 && key.id != 0)
             out.insert(key.id);
     }
 
     return out;
+}
+
+QString CaveExcavationBodyPage::selectionGroupCategory() const
+{
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshSvc)
+        return QStringLiteral("LAYER");
+
+    const int targetDim = layerDomainDim();
+    const QVector<MeshTagSet> sets = meshSvc->domainTagSets();
+
+    // 新版优先使用 Physical 体域分组做选择。这样 LAYER 可以保持真正的施工层含义。
+    for (const MeshTagSet& set : sets)
+    {
+        if (set.key.category.compare(QStringLiteral("Physical"), Qt::CaseInsensitive) != 0)
+            continue;
+        if (set.key.dim != targetDim || set.key.id <= 0)
+            continue;
+        if (!meshSvc->cellIdsOfTag(set.key).isEmpty())
+            return QStringLiteral("Physical");
+    }
+
+    // 兼容旧工程：没有 Physical 分组时，仍允许使用原来的 LAYER 分组。
+    return QStringLiteral("LAYER");
 }

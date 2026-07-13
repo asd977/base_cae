@@ -19,6 +19,8 @@
 
 namespace
 {
+constexpr int FIRST_COMPUTABLE_MATYPE = 2;
+
 int currentMatype(QComboBox* box)
 {
     if (!box)
@@ -39,7 +41,7 @@ int currentDomainDim()
 
 DomainKey matypeDomainKey(int matype)
 {
-    if (matype <= 0)
+    if (matype < FIRST_COMPUTABLE_MATYPE)
         return DomainKey{};
 
     return DomainKey{
@@ -362,7 +364,7 @@ void MaterialTransitionPage::syncMappingsToManager()
         const int oldV = currentMatype(oldBox);
         const int newV = currentMatype(newBox);
 
-        if (oldV > 0 && newV > 0)
+        if (oldV >= FIRST_COMPUTABLE_MATYPE && newV >= FIRST_COMPUTABLE_MATYPE)
             mappings.push_back({oldV, newV});
     }
 

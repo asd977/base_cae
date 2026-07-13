@@ -28,6 +28,17 @@ class CaveSupportComputationPage : public BasePage
 
     QString sectionText();
     bool exportICaveDatFile(const QString& supportCaseSection) const;
+
+    // 由实际“开挖体”节点数量统一控制开挖级数，避免 ICAVE 与 IIKE 文件数量不一致。
+    void setExcavationLevelCount(int count);
+    int excavationLevelCount() const;
+
+    // Solver 计算前校验使用。界面显示中文选项，返回值仍是 Fortran 数字代码。
+    int calculationTypeCode() const;
+    int excavationLoadMethodCode() const;
+    bool modalAnalysisEnabled() const;
+    bool timeHistoryEnabled() const;
+
     void loadLegacyCaveJson(const QJsonObject& obj);
 
     QJsonObject saveJson() override;
@@ -51,9 +62,9 @@ class CaveSupportComputationPage : public BasePage
         QString iexcaSta = "-1";
         QString iexcaEnd = "-3";
         QString ifEall = "1";
-        QString ifJall = "1";
-        QString ifE1toa = "1";
-        QString ifJ1toa = "1";
+        QString ifJall = "0";
+        QString ifE1toa = "0";
+        QString ifJ1toa = "0";
         QString jaMethod = "1";
         QString ifChen = "0";
         QString idayCase = "0";
@@ -61,6 +72,8 @@ class CaveSupportComputationPage : public BasePage
 
     void saveCurrentCase();
     void loadCaseToUi();
+    QString controlFieldValue(int fieldNo) const;
+    void setControlFieldValue(int fieldNo, const QString& value);
 
   private:
     Ui::CaveSupportComputationPage* ui = nullptr;
@@ -69,6 +82,12 @@ class CaveSupportComputationPage : public BasePage
     QTableWidget* m_excavationDaysTable = nullptr;
     QLineEdit* m_iexcaStaEdit = nullptr;
     QLineEdit* m_iexcaEndEdit = nullptr;
+    QComboBox* m_ifSeepCombo = nullptr;
+    QComboBox* m_dampingModeCombo = nullptr;
+    QComboBox* m_calculationTypeCombo = nullptr;
+    QComboBox* m_excavationLoadMethodCombo = nullptr;
+    QComboBox* m_iterationMethodCombo = nullptr;
+    QSpinBox* m_iterationCountSpin = nullptr;
     QComboBox* m_ifEallCombo = nullptr;
     QComboBox* m_ifJallCombo = nullptr;
     QComboBox* m_ifE1toaCombo = nullptr;

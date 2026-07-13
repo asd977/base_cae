@@ -1,4 +1,4 @@
-﻿#include "SeepageBoundaryPage.h"
+#include "SeepageBoundaryPage.h"
 
 #include <PickManager.h>
 #include <CustomComboBox.h>
@@ -129,10 +129,10 @@ void SeepageBoundaryPage::setupBatchGroupCombo()
 
     ui->comboBoxDim->blockSignals(true);
     ui->comboBoxDim->clear();
-    ui->comboBoxDim->addItem(tr("全部维度"), -1);
-    ui->comboBoxDim->addItem(tr("dim0 点"), 0);
-    ui->comboBoxDim->addItem(tr("dim1 线"), 1);
-    ui->comboBoxDim->addItem(tr("dim2 面"), 2);
+    ui->comboBoxDim->addItem(tr("-1 - 全部维度"), -1);
+    ui->comboBoxDim->addItem(tr("0 - 点边界"), 0);
+    ui->comboBoxDim->addItem(tr("1 - 线边界"), 1);
+    ui->comboBoxDim->addItem(tr("2 - 面边界"), 2);
     ui->comboBoxDim->setCurrentIndex(0);
     ui->comboBoxDim->blockSignals(false);
 

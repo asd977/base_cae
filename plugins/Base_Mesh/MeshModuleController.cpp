@@ -74,6 +74,7 @@ namespace
 constexpr int MIN_EDGE_POINTS   = 2;
 constexpr int MIN_FACE_POINTS   = 3;
 constexpr int MAX_MESH_DIM      = 3;
+constexpr int FIRST_COMPUTABLE_MATYPE = 2;
 constexpr double CENTER_FACTOR  = 0.5;
 constexpr double DEFAULT_ALPHA  = 1.0;
 
@@ -2589,7 +2590,7 @@ QSet<int> MeshModuleController::getAvailableMatypes() const
         if (set.key.category.compare("MATYPE", Qt::CaseInsensitive) != 0)
             continue;
 
-        if (set.key.id <= 0)
+        if (set.key.id < FIRST_COMPUTABLE_MATYPE)
             continue;
 
         ret.insert(set.key.id);
@@ -2608,7 +2609,7 @@ QSet<int> MeshModuleController::getAvailableMatypes() const
         for (vtkIdType cid = 0; cid < n; ++cid)
         {
             const int id = arr->GetValue(cid);
-            if (id > 0)
+            if (id >= FIRST_COMPUTABLE_MATYPE)
                 ret.insert(id);
         }
     };
@@ -3845,9 +3846,13 @@ bool MeshModuleController::autoGroupingBySpatialBins(int binCount, const QString
             *errMsg = QString("自动分组数至少为 2");
         return false;
     }
-    if (startValue <= 0)
+    const bool targetIsMatype = targetArrayName.compare("MATYPE", Qt::CaseInsensitive) == 0;
+    if ((targetIsMatype && startValue < FIRST_COMPUTABLE_MATYPE) ||
+        (!targetIsMatype && startValue <= 0))
     {
-        if (errMsg)
+        if (errMsg && targetIsMatype)
+            *errMsg = QStringLiteral("MATYPE 起始编号必须大于等于 2，1 表示不进入计算");
+        else if (errMsg)
             *errMsg = QString("起始编号必须大于 0");
         return false;
     }
@@ -3992,9 +3997,14 @@ bool MeshModuleController::groupByCoordinateRange(double xmin, double xmax, doub
         return false;
     }
     const bool targetIsLayer = targetArrayName.compare("LAYER", Qt::CaseInsensitive) == 0;
-    if ((targetIsLayer && value == 0) || (!targetIsLayer && value <= 0))
+    const bool targetIsMatype = targetArrayName.compare("MATYPE", Qt::CaseInsensitive) == 0;
+    if ((targetIsLayer && value == 0) ||
+        (targetIsMatype && value < FIRST_COMPUTABLE_MATYPE) ||
+        (!targetIsLayer && !targetIsMatype && value <= 0))
     {
-        if (errMsg)
+        if (errMsg && targetIsMatype)
+            *errMsg = QStringLiteral("MATYPE 分组编号必须大于等于 2，1 表示不进入计算");
+        else if (errMsg)
             *errMsg = targetIsLayer ? QString("LAYER 分组编号不能为 0")
                                     : QString("分组编号必须大于 0");
         return false;

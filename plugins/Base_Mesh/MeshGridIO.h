@@ -52,6 +52,8 @@ class MeshGridIO
   private:
     vtkSmartPointer<vtkUnstructuredGrid> loadFlac3dGrid(const QString& fileName) const;
     vtkSmartPointer<vtkUnstructuredGrid> loadAbaqusInpGrid(const QString& fileName);
+    vtkSmartPointer<vtkUnstructuredGrid> loadAnsysInpGrid(const QString& fileName,
+                                                         QString* errMsg = nullptr);
 
     // 确保网格上有这些数组：point: node_id；cell:
     // MATYPE/LAYER/KETYPE/elem_id/src_part/TAIL1/TAIL2

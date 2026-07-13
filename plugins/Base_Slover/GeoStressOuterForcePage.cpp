@@ -13,12 +13,14 @@
 #include <vtkUnstructuredGrid.h>
 
 #include <algorithm>
+#include <cmath>
 
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
+#include <QLocale>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSet>
@@ -74,6 +76,33 @@ MeshTagSet findBoundarySet(MeshModuleControllerService* meshSvc, const MeshTagKe
         if (set.key == key)
             return set;
     return {};
+}
+
+bool readForceComponents(const Ui::GeoStressOuterForcePage* ui, double& fx, double& fy,
+                         double& fz)
+{
+    if (!ui || !ui->fxEdit || !ui->fyEdit || !ui->fzEdit)
+        return false;
+
+    bool okX = false;
+    bool okY = false;
+    bool okZ = false;
+    fx = QLocale::c().toDouble(ui->fxEdit->text().trimmed(), &okX);
+    fy = QLocale::c().toDouble(ui->fyEdit->text().trimmed(), &okY);
+    fz = QLocale::c().toDouble(ui->fzEdit->text().trimmed(), &okZ);
+    return okX && okY && okZ;
+}
+
+bool hasNonZeroForce(double fx, double fy, double fz)
+{
+    constexpr double kForceTolerance = 1.0e-20;
+    return std::abs(fx) > kForceTolerance || std::abs(fy) > kForceTolerance
+           || std::abs(fz) > kForceTolerance;
+}
+
+QString formatScientific(double value)
+{
+    return QString::asprintf("%.6E", value);
 }
 
 QVector<EdgeRow> collectRows(vtkUnstructuredGrid* grid, const QString& domain, const QString& uuid,
@@ -271,18 +300,39 @@ QString GeoStressOuterForcePage::forceFile() const
 
 int GeoStressOuterForcePage::forceEnabled() const
 {
-    return 1;
+    double fx = 0.0;
+    double fy = 0.0;
+    double fz = 0.0;
+    if (!readForceComponents(ui, fx, fy, fz) || !hasNonZeroForce(fx, fy, fz))
+        return 0;
+
+    PickManager::instance().updateStructure();
+    vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
+    if (!grid)
+        return 0;
+
+    const QVector<EdgeRow> rows =
+        collectRows(grid, QStringLiteral("GeoStressRegressionOuterForce"), m_uuid,
+                    currentPickMode());
+    return rows.isEmpty() ? 0 : 1;
 }
 
 bool GeoStressOuterForcePage::exportDatFiles() const
 {
+    double fx = 0.0;
+    double fy = 0.0;
+    double fz = 0.0;
+    if (!readForceComponents(ui, fx, fy, fz))
+        return false;
+
     PickManager::instance().updateStructure();
     vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
     if (!grid)
         return false;
 
-    const QString domain = "GeoStressRegressionOuterForce";
-    const QVector<EdgeRow> rows = collectRows(grid, domain, m_uuid, currentPickMode());
+    const QVector<EdgeRow> rows =
+        collectRows(grid, QStringLiteral("GeoStressRegressionOuterForce"), m_uuid,
+                    currentPickMode());
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
@@ -343,19 +393,35 @@ bool GeoStressOuterForcePage::exportDatFiles() const
     forceOs << QString("%1       0.000       0.000   0.000000E+00  %2\n")
                    .arg(rows.size())
                    .arg(forceName);
-    for (const auto& row : rows)
+
+    const QString fxText = formatScientific(fx);
+    const QString fyText = formatScientific(fy);
+    const QString fzText = formatScientific(fz);
+    const QString totalText = formatScientific(std::sqrt(fx * fx + fy * fy + fz * fz));
+
+    for (int faceIndex = 0; faceIndex < rows.size(); ++faceIndex)
     {
+        const EdgeRow& row = rows.at(faceIndex);
         const int nfaJd = isFaceMode ? row.nodeCount : 2;
-        forceOs << QString("%1 %2     1  KE  NFAJD  NFT\n").arg(row.ke1, 9).arg(nfaJd, 5);
+        const int nft = faceIndex + 1;
+
+        // READ_IIWL 实际读取前三个整数：KE、NFT+NSHI、NFAJD。
+        // 第四个 NFT 与旧求解器自身输出格式保持一致，读取时会被忽略。
+        forceOs << QString("%1 %2 %3 %4  KE  NFT+NSHI  NFAJD  NFT\n")
+                       .arg(row.ke1, 9)
+                       .arg(nft, 9)
+                       .arg(nfaJd, 9)
+                       .arg(nft, 9);
 
         const int nodeIds[] = {row.jd1, row.jd2, row.jd3, row.jd4};
-        for (int i = 0; i < nfaJd; ++i)
+        for (int nodeIndex = 0; nodeIndex < nfaJd; ++nodeIndex)
         {
-            forceOs << QString("%1 %2 %3 %4    P=\n")
-                           .arg(nodeIds[i], 9)
-                           .arg(ui->fxEdit->text().trimmed(), 14)
-                           .arg(ui->fyEdit->text().trimmed(), 14)
-                           .arg(ui->fzEdit->text().trimmed(), 14);
+            forceOs << QString("%1  %2  %3  %4  P=%5\n")
+                           .arg(nodeIds[nodeIndex], 9)
+                           .arg(fxText, 14)
+                           .arg(fyText, 14)
+                           .arg(fzText, 14)
+                           .arg(totalText, 14);
         }
     }
 

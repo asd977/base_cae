@@ -16,6 +16,7 @@
 #include <QLineEdit>
 #include <QSpinBox>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QSignalBlocker>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -29,6 +30,12 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     ui->setupUi(this);
     Q_UNUSED(parent);
 
+    m_ifSeepCombo = ui->comboIfSeep;
+    m_dampingModeCombo = ui->comboDampingMode;
+    m_calculationTypeCombo = ui->comboCalculationType;
+    m_excavationLoadMethodCombo = ui->comboExcavationLoadMethod;
+    m_iterationMethodCombo = ui->comboIterationMethod;
+    m_iterationCountSpin = ui->spinIterationCount;
     m_iexcaMaxSpin = ui->spinIexcaMax;
     m_excavationDaysTable = ui->tableExcavationDays;
     m_iexcaStaEdit = ui->editIexcaSta;
@@ -58,8 +65,8 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
         if (!combo)
             return;
         combo->clear();
-        combo->addItem(QString("1 - %1").arg(enableText), "1");
         combo->addItem(QString("0 - %1").arg(disableText), "0");
+        combo->addItem(QString("1 - %1").arg(enableText), "1");
     };
 
     setupBoolCombo(m_ifEallCombo, "计算不加固条件下一次开挖成洞",
@@ -72,17 +79,43 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
                    "不进行加固条件下逐级开挖成洞计算");
     setupBoolCombo(m_ifChenCombo, "计算衬砌内力", "不需计算衬砌内力");
 
+    m_ifSeepCombo->clear();
+    m_ifSeepCombo->addItem("0 - 不考虑地下水影响", "0");
+    m_ifSeepCombo->addItem("1 - 考虑地下水影响", "1");
+
+    m_dampingModeCombo->clear();
+    m_dampingModeCombo->addItem("0 - 使用系统统一阻尼", "0");
+    m_dampingModeCombo->addItem("1 - 使用分材料阻尼", "1");
+
+    m_calculationTypeCombo->clear();
+    m_calculationTypeCombo->addItem("1 - 仅进行静力开挖计算", "1");
+    m_calculationTypeCombo->addItem("2 - 仅进行动力计算", "2");
+    m_calculationTypeCombo->addItem("3 - 静力开挖后继续动力计算", "3");
+
+    m_excavationLoadMethodCombo->clear();
+    m_excavationLoadMethodCombo->addItem("1 - 按开挖面计算（IIJX + MODSTR）", "1");
+    m_excavationLoadMethodCombo->addItem("2 - 按开挖单元计算（IIKE + ISGMAR）", "2");
+    m_excavationLoadMethodCombo->setCurrentIndex(1);
+
+    m_iterationMethodCombo->clear();
+    m_iterationMethodCombo->addItem("0 - 线弹性分析", "0");
+    m_iterationMethodCombo->addItem("1 - 初应变法", "1");
+    m_iterationMethodCombo->addItem("2 - 初应力法", "2");
+    m_iterationMethodCombo->addItem("3 - 变刚度法（切线刚度法）", "3");
+    m_iterationMethodCombo->setCurrentIndex(1);
+    m_iterationCountSpin->setValue(100);
+
     m_jaMethodCombo->clear();
     m_jaMethodCombo->addItem("1 - 锚杆/锚索加固，不考虑衬砌", "1");
     m_jaMethodCombo->addItem("2 - 同时考虑锚杆/锚索和衬砌加固", "2");
     m_idayCaseEdit->setText("0");
 
     m_ifModeCombo->clear();
-    m_ifModeCombo->addItem("1 - 进行模态分析", "1");
     m_ifModeCombo->addItem("0 - 不进行模态分析", "0");
+    m_ifModeCombo->addItem("1 - 进行模态分析", "1");
     m_ifWaveCombo->clear();
-    m_ifWaveCombo->addItem("1 - 进行时域分析", "1");
-    m_ifWaveCombo->addItem("0 - 不进行时域分析", "0");
+    m_ifWaveCombo->addItem("0 - 不进行时程分析", "0");
+    m_ifWaveCombo->addItem("1 - 进行时程分析", "1");
 
     connect(m_iexcaMaxSpin, qOverload<int>(&QSpinBox::valueChanged), this,
             &CaveSupportComputationPage::onExcavationLevelCountChanged);
@@ -100,6 +133,65 @@ CaveSupportComputationPage::~CaveSupportComputationPage()
 
 void CaveSupportComputationPage::beforeLoad() {}
 void CaveSupportComputationPage::beforeUnload() {}
+
+void CaveSupportComputationPage::setExcavationLevelCount(int count)
+{
+    const int target = qMax(1, count);
+
+    if (m_iexcaMaxSpin)
+    {
+        const QSignalBlocker blocker(m_iexcaMaxSpin);
+        m_iexcaMaxSpin->setValue(target);
+    }
+
+    onExcavationLevelCountChanged(target);
+
+    // Fortran 中开挖层号使用 -1、-2、...、-N。
+    m_caseData.iexcaSta = QStringLiteral("-1");
+    m_caseData.iexcaEnd = QString::number(-target);
+
+    if (m_iexcaStaEdit)
+        m_iexcaStaEdit->setText(m_caseData.iexcaSta);
+    if (m_iexcaEndEdit)
+        m_iexcaEndEdit->setText(m_caseData.iexcaEnd);
+}
+
+int CaveSupportComputationPage::excavationLevelCount() const
+{
+    return m_iexcaMaxSpin ? qMax(1, m_iexcaMaxSpin->value()) : 1;
+}
+
+int CaveSupportComputationPage::calculationTypeCode() const
+{
+    if (!m_calculationTypeCombo)
+        return 1;
+
+    bool ok = false;
+    const int code = m_calculationTypeCombo->currentData().toString().toInt(&ok);
+    return ok ? code : 1;
+}
+
+int CaveSupportComputationPage::excavationLoadMethodCode() const
+{
+    if (!m_excavationLoadMethodCombo)
+        return 2;
+
+    bool ok = false;
+    const int code = m_excavationLoadMethodCombo->currentData().toString().toInt(&ok);
+    return ok ? code : 2;
+}
+
+bool CaveSupportComputationPage::modalAnalysisEnabled() const
+{
+    return m_ifModeCombo &&
+           m_ifModeCombo->currentData().toString() == QStringLiteral("1");
+}
+
+bool CaveSupportComputationPage::timeHistoryEnabled() const
+{
+    return m_ifWaveCombo &&
+           m_ifWaveCombo->currentData().toString() == QStringLiteral("1");
+}
 
 QString CaveSupportComputationPage::sectionText()
 {
@@ -135,8 +227,8 @@ QString CaveSupportComputationPage::sectionText()
     caseDir = QDir::toNativeSeparators(caseDir) + QDir::separator();
     text += QString("'%1'     DIRDYNA\n").arg(caseDir);
     text += QString("%1     %2   IFMODE   IFWAVE\n")
-                .arg(m_ifModeCombo ? m_ifModeCombo->currentData().toString() : "1",
-                     m_ifWaveCombo ? m_ifWaveCombo->currentData().toString() : "1");
+                .arg(m_ifModeCombo ? m_ifModeCombo->currentData().toString() : "0",
+                     m_ifWaveCombo ? m_ifWaveCombo->currentData().toString() : "0");
     text += QString("%1    %2   %3    DT TSTA TEND\n")
                 .arg(m_dtSpin ? m_dtSpin->value() : 0.005, 0, 'f', 6)
                 .arg(m_tstaSpin ? m_tstaSpin->value() : 0.0, 0, 'f', 6)
@@ -182,8 +274,8 @@ bool CaveSupportComputationPage::exportICaveDatFile(const QString& supportCaseSe
         QString value;
         if (fixedValues.contains(fieldNo))
             value = fixedValues.value(fieldNo);
-        else if (auto* edit = findChild<QLineEdit*>(QString("line%1Edit").arg(fieldNo)))
-            value = edit->text().trimmed();
+        else
+            value = controlFieldValue(fieldNo);
 
         if (quotedFields.contains(fieldNo))
             os << "'" << value << "'      " << fieldNo << "\n";
@@ -214,8 +306,8 @@ QJsonObject CaveSupportComputationPage::saveJson()
         excavationDays.append(dayValue.isEmpty() ? "0" : dayValue);
     }
     obj["excavation_days"] = excavationDays;
-    obj["ifmode"] = m_ifModeCombo ? m_ifModeCombo->currentData().toString() : "1";
-    obj["ifwave"] = m_ifWaveCombo ? m_ifWaveCombo->currentData().toString() : "1";
+    obj["ifmode"] = m_ifModeCombo ? m_ifModeCombo->currentData().toString() : "0";
+    obj["ifwave"] = m_ifWaveCombo ? m_ifWaveCombo->currentData().toString() : "0";
     obj["dt"] = m_dtSpin ? m_dtSpin->value() : 0.005;
     obj["tsta"] = m_tstaSpin ? m_tstaSpin->value() : 0.0;
     obj["tend"] = m_tendSpin ? m_tendSpin->value() : 30.0;
@@ -242,8 +334,7 @@ QJsonObject CaveSupportComputationPage::saveJson()
     {
         if (fixed.contains(QString::number(i)))
             continue;
-        auto* edit = findChild<QLineEdit*>(QString("line%1Edit").arg(i));
-        obj[QString("line_%1").arg(i)] = edit ? edit->text().trimmed() : "";
+        obj[QString("line_%1").arg(i)] = controlFieldValue(i);
     }
     return obj;
 }
@@ -272,12 +363,12 @@ void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
     }
     if (m_ifModeCombo)
     {
-        const int idx = m_ifModeCombo->findData(obj.value("ifmode").toString("1"));
+        const int idx = m_ifModeCombo->findData(obj.value("ifmode").toString("0"));
         m_ifModeCombo->setCurrentIndex(idx >= 0 ? idx : 0);
     }
     if (m_ifWaveCombo)
     {
-        const int idx = m_ifWaveCombo->findData(obj.value("ifwave").toString("1"));
+        const int idx = m_ifWaveCombo->findData(obj.value("ifwave").toString("0"));
         m_ifWaveCombo->setCurrentIndex(idx >= 0 ? idx : 0);
     }
     if (m_dtSpin)
@@ -325,10 +416,9 @@ void CaveSupportComputationPage::loadLegacyCaveJson(const QJsonObject& obj)
     {
         if (fixed.contains(QString::number(i)))
             continue;
-        auto* edit = findChild<QLineEdit*>(QString("line%1Edit").arg(i));
-        if (!edit)
-            continue;
-        edit->setText(obj.value(QString("line_%1").arg(i)).toString(edit->text()));
+        const QString key = QString("line_%1").arg(i);
+        if (obj.contains(key))
+            setControlFieldValue(i, obj.value(key).toString(controlFieldValue(i)));
     }
 }
 
@@ -351,6 +441,92 @@ void CaveSupportComputationPage::onExcavationLevelCountChanged(int count)
         if (!m_excavationDaysTable->item(r, 1))
             m_excavationDaysTable->setItem(r, 1, new QTableWidgetItem(r < oldRows ? "0" : "0"));
     }
+
+    if (!m_isUpdatingUi)
+    {
+        m_caseData.iexcaSta = QStringLiteral("-1");
+        m_caseData.iexcaEnd = QString::number(-target);
+        if (m_iexcaStaEdit)
+            m_iexcaStaEdit->setText(m_caseData.iexcaSta);
+        if (m_iexcaEndEdit)
+            m_iexcaEndEdit->setText(m_caseData.iexcaEnd);
+    }
+}
+
+QString CaveSupportComputationPage::controlFieldValue(int fieldNo) const
+{
+    auto comboValue = [](QComboBox* combo, const QString& fallback)
+    {
+        if (!combo)
+            return fallback;
+        const QString value = combo->currentData().toString().trimmed();
+        return value.isEmpty() ? fallback : value;
+    };
+
+    switch (fieldNo)
+    {
+    case 3:
+        return comboValue(m_ifSeepCombo, QStringLiteral("0"));
+    case 18:
+        return comboValue(m_dampingModeCombo, QStringLiteral("0"));
+    case 22:
+        return comboValue(m_calculationTypeCombo, QStringLiteral("1"));
+    case 23:
+        return comboValue(m_excavationLoadMethodCombo, QStringLiteral("2"));
+    case 24:
+        return QStringLiteral("%1 %2")
+            .arg(comboValue(m_iterationMethodCombo, QStringLiteral("1")))
+            .arg(m_iterationCountSpin ? m_iterationCountSpin->value() : 100);
+    default:
+        break;
+    }
+
+    if (auto* edit = findChild<QLineEdit*>(QStringLiteral("line%1Edit").arg(fieldNo)))
+        return edit->text().trimmed();
+    return QString();
+}
+
+void CaveSupportComputationPage::setControlFieldValue(int fieldNo, const QString& value)
+{
+    auto setCombo = [](QComboBox* combo, const QString& code)
+    {
+        if (!combo)
+            return;
+        const int index = combo->findData(code.trimmed());
+        if (index >= 0)
+            combo->setCurrentIndex(index);
+    };
+
+    switch (fieldNo)
+    {
+    case 3:
+        setCombo(m_ifSeepCombo, value);
+        return;
+    case 18:
+        setCombo(m_dampingModeCombo, value);
+        return;
+    case 22:
+        setCombo(m_calculationTypeCombo, value);
+        return;
+    case 23:
+        setCombo(m_excavationLoadMethodCombo, value);
+        return;
+    case 24:
+    {
+        const QStringList parts = value.simplified().split(QLatin1Char(' '), QString::SkipEmptyParts);
+        setCombo(m_iterationMethodCombo, parts.value(0, QStringLiteral("1")));
+        bool ok = false;
+        const int count = parts.value(1, QStringLiteral("100")).toInt(&ok);
+        if (m_iterationCountSpin)
+            m_iterationCountSpin->setValue(ok ? qMax(1, count) : 100);
+        return;
+    }
+    default:
+        break;
+    }
+
+    if (auto* edit = findChild<QLineEdit*>(QStringLiteral("line%1Edit").arg(fieldNo)))
+        edit->setText(value);
 }
 
 void CaveSupportComputationPage::saveCurrentCase()

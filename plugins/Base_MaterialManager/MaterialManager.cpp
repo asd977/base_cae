@@ -52,7 +52,13 @@ constexpr int REFERENCE_DIALOG_WIDTH  = 1100;
 constexpr int REFERENCE_DIALOG_HEIGHT = 680;
 constexpr int DEFAULT_NCON            = 200;
 constexpr int MIN_NMAT                = 10;
+constexpr int FIRST_COMPUTABLE_MATYPE = 2;
 constexpr double CO_THRESHOLD         = 1.0e-1;
+
+bool isComputableMatype(int matype)
+{
+    return matype >= FIRST_COMPUTABLE_MATYPE;
+}
 
 struct ReferenceTableData
 {
@@ -480,7 +486,7 @@ void syncAutoNumberProperties(MaterialModel* model, MaterialEntry* entry)
     QStringList tokens;
     for (int matype : matypes)
     {
-        if (matype >= 0)
+        if (isComputableMatype(matype))
         {
             tokens.append(QString::number(matype));
         }
@@ -560,11 +566,15 @@ bool MaterialManager::saveProject()
             QJsonArray appliedArray;
             for (int matype : matypes)
             {
-                appliedArray.append(matype);
+                if (isComputableMatype(matype))
+                    appliedArray.append(matype);
             }
             entryObj.insert(QStringLiteral("applied_matypes"), appliedArray);
-            entryObj.insert(QStringLiteral("transition_only"), entry.transitionOnly);
-            entryObj.insert(QStringLiteral("transition_matype"), entry.transitionMatype);
+            const bool hasValidTransition = isComputableMatype(entry.transitionMatype);
+            entryObj.insert(QStringLiteral("transition_only"),
+                            entry.transitionOnly && hasValidTransition);
+            entryObj.insert(QStringLiteral("transition_matype"),
+                            hasValidTransition ? entry.transitionMatype : -1);
 
             entryObj.insert(QStringLiteral("seepage_model_key"), entry.seepageModelKey);
             QJsonObject seepagePropertiesObj;
@@ -691,10 +701,16 @@ bool MaterialManager::loadProject()
                 const QJsonArray applied = entryObj.value(QStringLiteral("applied_matypes")).toArray();
                 for (const auto& matypeValue : applied)
                 {
-                    entry.appliedMatypes.insert(matypeValue.toInt(-1));
+                    const int matype = matypeValue.toInt(-1);
+                    if (isComputableMatype(matype))
+                        entry.appliedMatypes.insert(matype);
                 }
-                entry.transitionOnly = entryObj.value(QStringLiteral("transition_only")).toBool(false);
-                entry.transitionMatype = entryObj.value(QStringLiteral("transition_matype")).toInt(-1);
+                const int transitionMatype =
+                    entryObj.value(QStringLiteral("transition_matype")).toInt(-1);
+                entry.transitionMatype =
+                    isComputableMatype(transitionMatype) ? transitionMatype : -1;
+                entry.transitionOnly = entryObj.value(QStringLiteral("transition_only")).toBool(false) &&
+                                       isComputableMatype(entry.transitionMatype);
 
                 entry.seepageModelKey = entryObj.value(QStringLiteral("seepage_model_key")).toString();
                 const QJsonObject seepageProperties =
@@ -727,8 +743,10 @@ bool MaterialManager::loadProject()
     for (const auto& val : transitionArray)
     {
         const QJsonObject row = val.toObject();
-        m_materialTransitions.push_back(
-            {row.value(QStringLiteral("old")).toInt(), row.value(QStringLiteral("new")).toInt()});
+        const int oldMatype = row.value(QStringLiteral("old")).toInt();
+        const int newMatype = row.value(QStringLiteral("new")).toInt();
+        if (isComputableMatype(oldMatype) && isComputableMatype(newMatype))
+            m_materialTransitions.push_back({oldMatype, newMatype});
     }
     const bool showTransitionNode =
         root.value(QStringLiteral("show_transition_node")).toBool(!m_materialTransitions.isEmpty());
@@ -811,7 +829,12 @@ QVector<QPair<int, int>> MaterialManager::materialTransitions() const
 
 void MaterialManager::setMaterialTransitions(const QVector<QPair<int, int>>& transitions)
 {
-    m_materialTransitions = transitions;
+    m_materialTransitions.clear();
+    for (const auto& pair : transitions)
+    {
+        if (isComputableMatype(pair.first) && isComputableMatype(pair.second))
+            m_materialTransitions.push_back(pair);
+    }
 }
 
 QString MaterialManager::addMaterialToModel(const QString& modelKey, bool addToProjectTree)
@@ -1060,11 +1083,14 @@ QVector<QStringList> MaterialManager::getValueStrings()
             QStringList appliedStrings;
             for (int value : appliedList)
             {
-                appliedStrings << QString::number(value);
+                if (isComputableMatype(value))
+                    appliedStrings << QString::number(value);
             }
             row << appliedStrings.join(QLatin1Char(','));
-            row << (entry.transitionOnly ? QStringLiteral("1") : QStringLiteral("0"));
-            row << QString::number(entry.transitionMatype);
+            const bool hasValidTransition = isComputableMatype(entry.transitionMatype);
+            row << (entry.transitionOnly && hasValidTransition ? QStringLiteral("1")
+                                                               : QStringLiteral("0"));
+            row << QString::number(hasValidTransition ? entry.transitionMatype : -1);
             results.append(row);
         }
     }
@@ -1116,8 +1142,12 @@ void MaterialManager::setValueStrings(QVector<QStringList> values)
         const QString name = list.at(2);
         const QString encoded = list.at(3);
         const QString appliedMatypes = (list.size() > 4) ? list.at(4) : QString();
-        const bool transitionOnly = (list.size() > 5) ? (list.at(5) == QStringLiteral("1")) : false;
-        const int transitionMatype = (list.size() > 6) ? list.at(6).toInt() : -1;
+        const int transitionMatypeRaw = (list.size() > 6) ? list.at(6).toInt() : -1;
+        const int transitionMatype =
+            isComputableMatype(transitionMatypeRaw) ? transitionMatypeRaw : -1;
+        const bool transitionOnly =
+            (list.size() > 5) ? (list.at(5) == QStringLiteral("1") && isComputableMatype(transitionMatype))
+                              : false;
 
         int index = findIndex(key);
         if (index < 0)
@@ -1155,7 +1185,7 @@ void MaterialManager::setValueStrings(QVector<QStringList> values)
         {
             bool ok = false;
             int value = matypeStr.toInt(&ok);
-            if (ok)
+            if (ok && isComputableMatype(value))
             {
                 m_models[index].materials.last().appliedMatypes.insert(value);
             }
@@ -1194,10 +1224,10 @@ const QVector<MaterialModel>& MaterialManager::seepageModels() const
 
 bool MaterialManager::validateTransitionMatype(const QString& entryId, int matype, QString* error) const
 {
-    if (matype <= 0)
+    if (!isComputableMatype(matype))
     {
         if (error)
-            *error = QStringLiteral("编号必须为正整数。");
+            *error = QStringLiteral("编号必须大于等于 2；1 表示不进入计算。");
         return false;
     }
     const QSet<int> meshMatypes = availableMatypes();
@@ -1242,7 +1272,7 @@ QMap<int, QString> MaterialManager::transitionSourceLabels() const
                 continue;
             for (int matype : entry.appliedMatypes)
             {
-                if (matype <= 0 || labels.contains(matype))
+                if (!isComputableMatype(matype) || labels.contains(matype))
                     continue;
                 labels.insert(matype, QStringLiteral("%1/%2 [#%3]")
                                           .arg(model.displayName, entry.name,
@@ -1264,13 +1294,13 @@ QMap<int, QString> MaterialManager::transitionTargetLabels() const
                 continue;
             for (int matype : entry.appliedMatypes)
             {
-                if (matype <= 0 || labels.contains(matype))
+                if (!isComputableMatype(matype) || labels.contains(matype))
                     continue;
                 labels.insert(matype, QStringLiteral("%1/%2 [#%3]")
                                           .arg(model.displayName, entry.name,
                                                QString::number(matype)));
             }
-            if (entry.transitionOnly && entry.transitionMatype > 0 &&
+            if (entry.transitionOnly && isComputableMatype(entry.transitionMatype) &&
                 !labels.contains(entry.transitionMatype))
             {
                 labels.insert(entry.transitionMatype,
@@ -1520,7 +1550,13 @@ QSet<int> MaterialManager::availableMatypes() const
     {
         return {};
     }
-    return service->getAvailableMatypes();
+    QSet<int> filtered;
+    for (int matype : service->getAvailableMatypes())
+    {
+        if (isComputableMatype(matype))
+            filtered.insert(matype);
+    }
+    return filtered;
 }
 
 void MaterialManager::highlightMatypes(const QString& entryId, const QSet<int>& matypes,
@@ -1541,7 +1577,7 @@ void MaterialManager::highlightMatypes(const QString& entryId, const QSet<int>& 
     {
         QSet<DomainKey> keys;
 
-        if (matype <= 0 || !service)
+        if (!isComputableMatype(matype) || !service)
             return keys;
 
         // 优先从真实 MeshTagSet 获取。这样同一个 MATYPE 同时存在实体单元(dim=3)
@@ -1674,7 +1710,7 @@ void MaterialManager::setSelectedMatypeForEntry(const QString& entryId, int maty
     {
         return;
     }
-    if (matype < 0)
+    if (!isComputableMatype(matype))
     {
         m_selectedMatypes.remove(entryId);
         return;
@@ -1684,7 +1720,7 @@ void MaterialManager::setSelectedMatypeForEntry(const QString& entryId, int maty
 
 void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
 {
-    if (matype < 0)
+    if (!isComputableMatype(matype))
         return;
 
     MaterialEntry* entry = findEntry(entryId);
@@ -1810,14 +1846,14 @@ bool MaterialManager::generateCaculateFile()
                 continue;
 
             QSet<int> exportMatypes = entry.appliedMatypes;
-            if (entry.transitionOnly && entry.transitionMatype > 0)
+            if (entry.transitionOnly && isComputableMatype(entry.transitionMatype))
                 exportMatypes.insert(entry.transitionMatype);
             if (exportMatypes.isEmpty())
                 continue;
 
             for (int matype : exportMatypes)
             {
-                if (matype <= 0)
+                if (!isComputableMatype(matype))
                     continue;
                 maxMatype = qMax(maxMatype, matype);
 
@@ -2031,8 +2067,8 @@ bool MaterialManager::generateCaculateFile()
         const MatInfo& info = it.value();
         if (!info.model || !info.entry)
             continue;
-        // IMAT.DAT 的编号从 1 开始，0 号无效
-        if (matype <= 0 || matype > nmat)
+        // IMAT=1 is reserved as VOID/no-calculation material.
+        if (!isComputableMatype(matype) || matype > nmat)
             continue;
 
         const int matIndex = matype - 1;
@@ -3099,7 +3135,7 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
             }
             bool ok = false;
             const int value = nums.first().toInt(&ok);
-            if (ok && value > 0 && value <= nmat)
+            if (ok && isComputableMatype(value) && value <= nmat)
             {
                 result.insert(value);
             }
@@ -3147,7 +3183,7 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
             {
                 continue;
             }
-            if (hasAnyTypeSignature(matIndex))
+            if (hasAnyTypeSignature(matIndex) && isComputableMatype(matIndex + 1))
             {
                 targetMatypes.insert(matIndex + 1);
             }
@@ -3523,7 +3559,7 @@ void MaterialManager::setPreviewMatypeForEntry(const QString& entryId, int matyp
 {
     if (entryId.isEmpty())
         return;
-    if (matype < 0)
+    if (!isComputableMatype(matype))
     {
         m_previewMatypes.remove(entryId);
     }
@@ -3542,7 +3578,7 @@ void MaterialManager::setPreDeleteMatypeForEntry(const QString& entryId, int mat
 {
     if (entryId.isEmpty())
         return;
-    if (matype < 0)
+    if (!isComputableMatype(matype))
     {
         m_preDeleteMatypes.remove(entryId);
     }
