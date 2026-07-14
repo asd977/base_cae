@@ -1,4 +1,4 @@
-﻿#include "MeshGlobalMeshingWidget.h"
+#include "MeshGlobalMeshingWidget.h"
 
 #include <vtkUnstructuredGridReader.h>
 
@@ -43,13 +43,13 @@ namespace
 static std::set<int> parseIdSetForParams(const QString& text)
 {
     std::set<int> ids;
-    const auto parts = text.split(',', QString::SkipEmptyParts);
+    const auto parts = text.split(',', Qt::SkipEmptyParts);
     for (QString p : parts)
     {
         p = p.trimmed();
         if (p.contains('-'))
         {
-            const auto lr = p.split('-', QString::SkipEmptyParts);
+            const auto lr = p.split('-', Qt::SkipEmptyParts);
             if (lr.size() == 2)
             {
                 bool ok1 = false, ok2 = false;

@@ -1274,7 +1274,7 @@ static const QString kMeshDisplayFilterLayerKey = QStringLiteral("mesh.display.f
 static QSet<int> meshDisplayIntSetFromString(const QString& text)
 {
     QSet<int> values;
-    const QStringList parts = text.split(',', QString::SkipEmptyParts);
+    const QStringList parts = text.split(',', Qt::SkipEmptyParts);
     for (const QString& part : parts)
     {
         bool ok = false;

@@ -1,4 +1,4 @@
-﻿#include "MeshEdgeControlWidget.h"
+#include "MeshEdgeControlWidget.h"
 
 #include <CustomComboBox.h>
 #include <ServiceRegistry.h>
@@ -19,7 +19,7 @@ namespace
 static bool parseEntityIds(const QString& text, QSet<int>& ids, QString& err)
 {
     ids.clear();
-    const QStringList parts = text.split(',', QString::SkipEmptyParts);
+    const QStringList parts = text.split(',', Qt::SkipEmptyParts);
     for (QString part : parts)
     {
         part = part.trimmed();
@@ -201,7 +201,7 @@ void MeshEdgeControlWidget::onAppendSelectedEntity()
     int id = ui->cmbEntity->currentData().toInt();
     if (id <= 0)
         return;
-    QStringList p = m_items[row].edgeIds.trimmed().split(',', QString::SkipEmptyParts);
+    QStringList p = m_items[row].edgeIds.trimmed().split(',', Qt::SkipEmptyParts);
     const QString s = QString::number(id);
     if (!p.contains(s))
     {

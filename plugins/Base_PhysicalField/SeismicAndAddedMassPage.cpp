@@ -276,7 +276,7 @@ void SeismicAndAddedMassPage::on_btnImportCsv_clicked()
         if (line.isEmpty())
             continue;
 
-        const QStringList cols = line.split(',', QString::KeepEmptyParts);
+        const QStringList cols = line.split(',', Qt::KeepEmptyParts);
         if (cols.size() < 4)
             continue;
 

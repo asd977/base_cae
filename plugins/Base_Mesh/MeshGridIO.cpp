@@ -37,9 +37,9 @@
 #include <PublicConstants.h>
 
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-static constexpr auto kSkipEmptyParts = QString::SkipEmptyParts;
+static constexpr auto kSkipEmptyParts = Qt::SkipEmptyParts;
 #else
-static constexpr auto kSkipEmptyParts = QString::SkipEmptyParts;
+static constexpr auto kSkipEmptyParts = Qt::SkipEmptyParts;
 #endif
 
 namespace
@@ -3531,7 +3531,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
 
     auto splitCsv = [](const QString& s)
     {
-        return s.split(',', QString::SkipEmptyParts);
+        return s.split(',', Qt::SkipEmptyParts);
     };
 
     auto appendSetIds = [](const QStringList& tok, bool generate, QSet<int>& ids)

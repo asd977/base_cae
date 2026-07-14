@@ -232,7 +232,7 @@ void DamAnalysisWidget::setLineValue(int lineNo, const QString& value)
     if (lineNo == 20)
     {
         const QStringList parts =
-            value.trimmed().split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
+            value.trimmed().split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
         const QString method = parts.value(0, "4");
         const QString iter = parts.value(1, "10");
         const int idx = m_comboMethodIter->findData(method);
@@ -281,7 +281,7 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
         }
         if (oneTokenLines.contains(lineNo))
         {
-            const QStringList parts = text.split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
+            const QStringList parts = text.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
             if (parts.size() != 1)
             {
                 setError(QString("第 %1 行应为单一值，当前输入：%2").arg(lineNo).arg(text));
@@ -449,7 +449,7 @@ void DamAnalysisWidget::loadJson(const QJsonObject& obj)
     else if (xVal.isString())
     {
         const QStringList parts =
-            xVal.toString().split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
+            xVal.toString().split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
         m_editX1->setText(parts.value(0, m_editX1->text()));
         m_editX2->setText(parts.value(1, m_editX2->text()));
         m_editX3->setText(parts.value(2, m_editX3->text()));
@@ -469,7 +469,7 @@ void DamAnalysisWidget::loadJson(const QJsonObject& obj)
     else if (alfaVal.isString())
     {
         const QStringList parts =
-            alfaVal.toString().split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
+            alfaVal.toString().split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
         m_editAlfa1->setText(parts.value(0, m_editAlfa1->text()));
         m_editAlfa2->setText(parts.value(1, m_editAlfa2->text()));
         m_editAlfa3->setText(parts.value(2, m_editAlfa3->text()));
@@ -490,7 +490,7 @@ void DamAnalysisWidget::loadJson(const QJsonObject& obj)
     else if (axisVal.isString())
     {
         const QStringList parts =
-            axisVal.toString().split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
+            axisVal.toString().split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
         const int upIdx = m_comboAxisUp->findData(parts.value(0));
         const int downIdx = m_comboAxisDown->findData(parts.value(1));
         if (upIdx >= 0)
@@ -513,7 +513,7 @@ void DamAnalysisWidget::loadJson(const QJsonObject& obj)
     else if (rockVal.isString())
     {
         const QStringList parts =
-            rockVal.toString().split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
+            rockVal.toString().split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
         const int rockIdx = m_comboIfRock->findData(parts.value(0));
         const int isoIdx = m_comboIfIso->findData(parts.value(1));
         if (rockIdx >= 0)

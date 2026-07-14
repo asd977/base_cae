@@ -1739,7 +1739,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
             QStringList lines =
                 QString::fromLocal8Bit(file.readAll())
                     .split(QRegularExpression(QStringLiteral("\\r?\\n")),
-                           QString::KeepEmptyParts);
+                           Qt::KeepEmptyParts);
             file.close();
 
             if (lines.size() < 2)
@@ -2727,7 +2727,7 @@ bool Solver::updateCaveBlockIiiDirDat(const QString& sliderDir) const
 
     QString content = QString::fromLocal8Bit(file.readAll());
     file.close();
-    QStringList lines = content.split(QRegularExpression("\\r?\\n"), QString::KeepEmptyParts);
+    QStringList lines = content.split(QRegularExpression("\\r?\\n"), Qt::KeepEmptyParts);
     if (lines.size() < 2)
         return false;
 
@@ -2777,7 +2777,7 @@ bool Solver::updateIiiDirDat(const QString& projectDir, int solverMode) const
 
     QString content = QString::fromLocal8Bit(file.readAll());
     file.close();
-    QStringList lines = content.split(QRegularExpression("\\r?\\n"), QString::KeepEmptyParts);
+    QStringList lines = content.split(QRegularExpression("\\r?\\n"), Qt::KeepEmptyParts);
     if (lines.size() < 2)
         return false;
 
@@ -2817,7 +2817,7 @@ bool Solver::updatePrepDatFiles(const QString& projectDir, int solverMode, int v
 
     QString content = QString::fromLocal8Bit(file.readAll());
     file.close();
-    QStringList lines = content.split(QRegularExpression("\\r?\\n"), QString::KeepEmptyParts);
+    QStringList lines = content.split(QRegularExpression("\\r?\\n"), Qt::KeepEmptyParts);
     if (lines.size() < 2)
         return false;
 
@@ -2848,7 +2848,7 @@ bool Solver::forceSlopeIiinLayersToOne(const QString& projectDir) const
     QString content = QString::fromLocal8Bit(file.readAll());
     file.close();
 
-    QStringList lines = content.split(QRegularExpression("\\r?\\n"), QString::KeepEmptyParts);
+    QStringList lines = content.split(QRegularExpression("\\r?\\n"), Qt::KeepEmptyParts);
     if (lines.size() < 2)
         return false;
 

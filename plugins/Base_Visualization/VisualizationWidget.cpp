@@ -772,7 +772,7 @@ bool VisualizationWidget::showCurveFromTraceFile(const QString& traceFilePath, c
     if (!m_curvePlotWidget || traceFilePath.isEmpty())
         return false;
 
-    const QSet<QString> yFieldSet = QSet<QString>::fromList(yFields);
+    const QSet<QString> yFieldSet = QSet<QString>(yFields.cbegin(), yFields.cend());
     const bool ok = m_curvePlotWidget->loadDataFromTraceFile(traceFilePath, xField, yFieldSet, errMsg);
     if (ok && m_stack)
         m_stack->setCurrentWidget(m_curvePlotWidget);

@@ -112,7 +112,7 @@ static QString intSetToString(const QSet<int>& values)
 static QSet<int> intSetFromString(const QString& text)
 {
     QSet<int> values;
-    const QStringList parts = text.split(',', QString::SkipEmptyParts);
+    const QStringList parts = text.split(',', Qt::SkipEmptyParts);
     for (const QString& part : parts)
     {
         bool ok = false;
@@ -768,7 +768,7 @@ void GridEditingWidget::buildFilterTreeFromGrid()
         group->setText(1, QString::number(counts.size()));
         group->setData(0, kRoleCategory, category);
         group->setData(0, kRoleIsGroup, true);
-        group->setFlags((group->flags() | Qt::ItemIsUserCheckable) & ~Qt::ItemIsTristate);
+        group->setFlags((group->flags() | Qt::ItemIsUserCheckable) & ~Qt::ItemIsAutoTristate);
 
         for (auto it = counts.constBegin(); it != counts.constEnd(); ++it)
         {

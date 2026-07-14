@@ -655,11 +655,11 @@ bool ProjectManager::readProjectManifest(const QString& manifestPath)
         xml.readNext();
         if (xml.isStartElement())
         {
-            if (xml.name() == "Name")
+            if (xml.name().toString() == "Name")
             {
                 m_projectName = xml.readElementText().trimmed();
             }
-            else if (xml.name() == "Value")
+            else if (xml.name().toString() == "Value")
             {
                 const auto attrs = xml.attributes();
                 const QString key = attrs.value("key").toString();

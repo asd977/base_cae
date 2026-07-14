@@ -1,4 +1,4 @@
-﻿#include "DatasetEvaluation.h"
+#include "DatasetEvaluation.h"
 
 #include <QDebug>
 #include <QDir>
@@ -254,13 +254,13 @@ QStringList DatasetEvaluation::tryDetectHeaders(const QString& path, QString* er
     auto splitKeep = [](const QString& s) -> QStringList
     {
         if (s.contains('\t'))
-            return s.split('\t', QString::SkipEmptyParts);
+            return s.split('\t', Qt::SkipEmptyParts);
         if (s.contains(','))
-            return s.split(',', QString::SkipEmptyParts);
+            return s.split(',', Qt::SkipEmptyParts);
         if (s.contains(';'))
-            return s.split(';', QString::SkipEmptyParts);
+            return s.split(';', Qt::SkipEmptyParts);
         // 回退：空白分隔（无法保留空字段）
-        return s.simplified().split(' ', QString::SkipEmptyParts);
+        return s.simplified().split(' ', Qt::SkipEmptyParts);
     };
 
     // 使用 KeepEmptyParts 保留空字段
@@ -499,7 +499,7 @@ void DatasetEvaluation::loadRbfOutputToTable(const QString& outTxtPath)
     // ts.setCodec("UTF-8"); // 设置正确的编码
 
     const QString header = ts.readLine().trimmed(); // 读取表头并去掉前后空格
-    const QStringList cols = header.split('\t', QString::SkipEmptyParts);
+    const QStringList cols = header.split('\t', Qt::SkipEmptyParts);
 
     // 重建结果表头
     ui->resultTable->clear();

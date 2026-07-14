@@ -568,7 +568,7 @@ void CaveSupportComputationPage::setControlFieldValue(int fieldNo, const QString
         return;
     case 24:
     {
-        const QStringList parts = value.simplified().split(QLatin1Char(' '), QString::SkipEmptyParts);
+        const QStringList parts = value.simplified().split(QLatin1Char(' '), Qt::SkipEmptyParts);
         setCombo(m_iterationMethodCombo, parts.value(0, QStringLiteral("1")));
         bool ok = false;
         const int count = parts.value(1, QStringLiteral("100")).toInt(&ok);

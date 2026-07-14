@@ -1,4 +1,4 @@
-﻿#include "MeshVolumeControlWidget.h"
+#include "MeshVolumeControlWidget.h"
 
 #include <CustomComboBox.h>
 #include <ServiceRegistry.h>
@@ -19,7 +19,7 @@ namespace
 static bool parseEntityIds(const QString& text, QSet<int>& ids, QString& err)
 {
     ids.clear();
-    const QStringList parts = text.split(',', QString::SkipEmptyParts);
+    const QStringList parts = text.split(',', Qt::SkipEmptyParts);
     for (QString part : parts)
     {
         part = part.trimmed();
@@ -198,7 +198,7 @@ void MeshVolumeControlWidget::onAppendSelectedEntity()
     int id = ui->cmbEntity->currentData().toInt();
     if (id <= 0)
         return;
-    QStringList p = m_items[row].volumeIds.trimmed().split(',', QString::SkipEmptyParts);
+    QStringList p = m_items[row].volumeIds.trimmed().split(',', Qt::SkipEmptyParts);
     QString s = QString::number(id);
     if (!p.contains(s))
     {

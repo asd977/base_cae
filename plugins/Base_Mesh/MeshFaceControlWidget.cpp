@@ -1,4 +1,4 @@
-﻿#include "MeshFaceControlWidget.h"
+#include "MeshFaceControlWidget.h"
 
 #include <CustomComboBox.h>
 #include <ServiceRegistry.h>
@@ -19,7 +19,7 @@ namespace
 static bool parseEntityIds(const QString& text, QSet<int>& ids, QString& err)
 {
     ids.clear();
-    const QStringList parts = text.split(',', QString::SkipEmptyParts);
+    const QStringList parts = text.split(',', Qt::SkipEmptyParts);
     for (QString part : parts)
     {
         part = part.trimmed();
@@ -205,7 +205,7 @@ void MeshFaceControlWidget::onAppendSelectedEntity()
     int id = ui->cmbEntity->currentData().toInt();
     if (id <= 0)
         return;
-    QStringList parts = m_items[row].faceIds.trimmed().split(',', QString::SkipEmptyParts);
+    QStringList parts = m_items[row].faceIds.trimmed().split(',', Qt::SkipEmptyParts);
     QString idStr = QString::number(id);
     if (!parts.contains(idStr))
     {

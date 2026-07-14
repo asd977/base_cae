@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <BasePage.h>
 #include <gmsh.h>
@@ -78,13 +78,13 @@ class MeshGlobalWorker : public QObject
     static std::set<int> parseIdSet(const QString& text)
     {
         std::set<int> ids;
-        const auto parts = text.split(',', QString::SkipEmptyParts);
+        const auto parts = text.split(',', Qt::SkipEmptyParts);
         for (QString p : parts)
         {
             p = p.trimmed();
             if (p.contains('-'))
             {
-                const auto lr = p.split('-', QString::SkipEmptyParts);
+                const auto lr = p.split('-', Qt::SkipEmptyParts);
                 if (lr.size() == 2)
                 {
                     bool ok1 = false, ok2 = false;

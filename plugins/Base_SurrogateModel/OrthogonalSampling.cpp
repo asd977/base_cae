@@ -1,4 +1,4 @@
-﻿#include "OrthogonalSampling.h"
+#include "OrthogonalSampling.h"
 
 #include <QDesktopServices>
 #include <QFileDialog>
@@ -120,11 +120,11 @@ QStringList OrthogonalSampling::splitValues(const QString& text) const
 {
     QString t = text;
     t.replace('\n', ' ').replace('\r', ' ').replace(',', ' ').replace(';', ' ');
-    QStringList parts = t.split(' ', QString::SkipEmptyParts);
+    QStringList parts = t.split(' ', Qt::SkipEmptyParts);
     QStringList out;
     for (auto s : parts)
     {
-        for (auto v : s.split('|', QString::SkipEmptyParts))
+        for (auto v : s.split('|', Qt::SkipEmptyParts))
         {
             v = v.trimmed();
             if (!v.isEmpty())
@@ -310,11 +310,11 @@ void OrthogonalSampling::loadSampleTable(const QString& path)
     auto split = [](const QString& s)
     {
         if (s.contains('\t'))
-            return s.split('\t', QString::SkipEmptyParts);
+            return s.split('\t', Qt::SkipEmptyParts);
         QString t = s;
         for (QChar ch : QString(",;"))
             t.replace(ch, ' ');
-        return t.split(QRegularExpression("\\s+"), QString::SkipEmptyParts);
+        return t.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
     };
     QStringList headers = split(headerLine);
     ui->sampleTable->setColumnCount(headers.size());

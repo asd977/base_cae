@@ -1,4 +1,4 @@
-﻿#include "MaterialManager.h"
+#include "MaterialManager.h"
 
 #include <ProjectNode.h>
 #include <PublicConstants.h>
@@ -1161,7 +1161,7 @@ void MaterialManager::setValueStrings(QVector<QStringList> values)
 
         MaterialEntry entry;
         entry.name = name;
-        const QStringList pairs = encoded.split(QString("|;|"), QString::SkipEmptyParts);
+        const QStringList pairs = encoded.split(QString("|;|"), Qt::SkipEmptyParts);
         for (const QString& pair : pairs)
         {
             int sep = pair.indexOf(QLatin1Char(':'));
@@ -1180,7 +1180,7 @@ void MaterialManager::setValueStrings(QVector<QStringList> values)
 
         m_models[index].materials.append(entry);
         const QStringList matypeList =
-            appliedMatypes.split(QLatin1Char(','), QString::SkipEmptyParts);
+            appliedMatypes.split(QLatin1Char(','), Qt::SkipEmptyParts);
         for (const QString& matypeStr : matypeList)
         {
             bool ok = false;

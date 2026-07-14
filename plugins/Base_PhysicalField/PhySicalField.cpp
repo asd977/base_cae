@@ -998,7 +998,7 @@ bool PhysicalField::importIIIDFile(const QString& filePath, QString* errorMessag
 
     auto splitFields = [&spaceRe](const QString& text) -> QStringList
     {
-        return text.trimmed().split(spaceRe, QString::SkipEmptyParts);
+        return text.trimmed().split(spaceRe, Qt::SkipEmptyParts);
     };
 
     auto parseStrictInt = [](const QString& text, int& value) -> bool

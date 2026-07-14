@@ -1,4 +1,4 @@
-﻿#include "DNNModel.h"
+#include "DNNModel.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -706,7 +706,7 @@ void DNNModel::updateLineGraph()
     QVector<double> times, temperatures, humidities, actualRates;
     for (const QString& line : lines)
     {
-        QStringList values = line.split(",", QString::SkipEmptyParts);
+        QStringList values = line.split(",", Qt::SkipEmptyParts);
         if (values.size() != 4)
         {
             QMessageBox::warning(this, ("错误"), QString("数据格式错误，期望4列：%1").arg(line));
@@ -796,7 +796,7 @@ void DNNModel::updateLineGraph()
             {
                 QString output = QString::fromLocal8Bit(process.readAllStandardOutput()).trimmed();
 
-                QStringList lines = output.split("\n", QString::SkipEmptyParts);
+                QStringList lines = output.split("\n", Qt::SkipEmptyParts);
                 for (QString& line : lines)
                 {
                     line = line.trimmed(); // 移除 \r 和空格
@@ -993,7 +993,7 @@ bool DNNModel::writeToStream(QTextStream& out)
 bool DNNModel::readFromStream(QTextStream& in)
 {
     QString line = in.readLine();
-    QStringList sections = line.split("|", QString::SkipEmptyParts);
+    QStringList sections = line.split("|", Qt::SkipEmptyParts);
     // 检查字段部分是否存在
     if (sections.isEmpty())
     {
@@ -1023,7 +1023,7 @@ bool DNNModel::readFromStream(QTextStream& in)
     QString sourceFileData = sections.size() > 1 ? sections[1] : "";
     if (!sourceFileData.isEmpty())
     {
-        QStringList sourceRows = sourceFileData.split(";", QString::KeepEmptyParts);
+        QStringList sourceRows = sourceFileData.split(";", Qt::KeepEmptyParts);
         ui->sourceFileTableWidget->setRowCount(sourceRows.size());
         ui->sourceFileTableWidget->setColumnCount(3);
 
@@ -1083,7 +1083,7 @@ bool DNNModel::readFromStream(QTextStream& in)
     QString layerData = sections.size() > 2 ? sections[2] : "";
     if (!layerData.isEmpty())
     {
-        QStringList layerRows = layerData.split(";", QString::KeepEmptyParts);
+        QStringList layerRows = layerData.split(";", Qt::KeepEmptyParts);
         ui->layerWidget->setRowCount(layerRows.size());
         ui->layerWidget->setColumnCount(2);
 

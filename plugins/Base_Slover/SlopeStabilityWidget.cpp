@@ -26,7 +26,7 @@ namespace
 QStringList splitGravityComponents(const QString& value)
 {
     const QStringList defaults = {"0.0", "-9.81", "0.0"};
-    const QStringList parts = value.simplified().split(QLatin1Char(' '), QString::SkipEmptyParts);
+    const QStringList parts = value.simplified().split(QLatin1Char(' '), Qt::SkipEmptyParts);
 
     QStringList result;
     for (int i = 0; i < 3; ++i)
