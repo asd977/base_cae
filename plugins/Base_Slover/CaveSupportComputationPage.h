@@ -53,6 +53,8 @@ class CaveSupportComputationPage : public BasePage
     void onExcavationLevelCountChanged(int count);
     void onComputeClicked();
     void setComputing(bool computing);
+    void updateAnalysisModeUi();
+    void updateDynamicDetailsUi();
 
 
   private:

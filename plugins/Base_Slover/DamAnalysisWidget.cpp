@@ -9,6 +9,7 @@
 #include <QJsonArray>
 #include <QLabel>
 #include <QLineEdit>
+#include <QList>
 #include <QMap>
 #include <QMessageBox>
 #include <QPushButton>
@@ -19,10 +20,12 @@
 
 #include "ui_DamAnalysisWidget.h"
 
+#include "SolverUiLayoutHelper.h"
 DamAnalysisWidget::DamAnalysisWidget(QWidget* parent)
     : BasePage("DamAnalysis"), ui(new Ui::DamAnalysisWidget)
 {
     ui->setupUi(this);
+    SolverUiLayoutHelper::polishPage(this);
     initValueEditors();
     connect(ui->btnCompute, &QPushButton::clicked, this, &DamAnalysisWidget::onComputeClicked);
 }
@@ -119,36 +122,49 @@ void DamAnalysisWidget::initValueEditors()
     m_comboIfIso->setItemData(0, "0");
     m_comboIfIso->setItemData(1, "1");
 
-    ui->comboLine15->setItemText(0, QStringLiteral("统一使用系统阻尼"));
-    ui->comboLine15->setItemText(1, QStringLiteral("按材料分别设置阻尼"));
-    ui->comboLine16->setItemText(0, QStringLiteral("不使用 Rayleigh 阻尼"));
-    ui->comboLine16->setItemText(1, QStringLiteral("使用 Rayleigh 阻尼"));
-    ui->comboLine19->setItemText(0, QStringLiteral("仅静力分析"));
-    ui->comboLine19->setItemText(1, QStringLiteral("仅动力分析（需时程文件）"));
-    ui->comboLine19->setItemText(2, QStringLiteral("静力后继续动力分析"));
-    ui->comboLine29->setItemText(0, QStringLiteral("不计算特征值"));
-    ui->comboLine29->setItemText(1, QStringLiteral("计算特征值"));
+    connect(ui->comboLine19, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this]() { updateAnalysisModeVisibility(); });
+    connect(ui->comboLine16, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this]() { updateDynamicOptionVisibility(); });
+    connect(ui->comboLine29, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this]() { updateDynamicOptionVisibility(); });
 
-    m_comboMethodIter->setItemText(0, QStringLiteral("初应变法（常刚度）"));
-    m_comboMethodIter->setItemText(1, QStringLiteral("初应力法（常刚度）"));
-    m_comboMethodIter->setItemText(2, QStringLiteral("变刚度法（切线刚度）"));
-    m_comboMethodIter->setItemText(3, QStringLiteral("中点增量法（土坝填筑）"));
-    m_comboAxisUp->setItemText(0, QStringLiteral("X 轴"));
-    m_comboAxisUp->setItemText(1, QStringLiteral("Y 轴"));
-    m_comboAxisUp->setItemText(2, QStringLiteral("Z 轴"));
-    m_comboAxisDown->setItemText(0, QStringLiteral("X 轴"));
-    m_comboAxisDown->setItemText(1, QStringLiteral("Y 轴"));
-    m_comboAxisDown->setItemText(2, QStringLiteral("Z 轴"));
-    m_comboIfRock->setItemText(0, QStringLiteral("不重复计算（已有岩体自重结果）"));
-    m_comboIfRock->setItemText(1, QStringLiteral("本次计算岩体自重"));
-    m_comboIfIso->setItemText(0, QStringLiteral("按建模材料计算"));
-    m_comboIfIso->setItemText(1, QStringLiteral("按指定均质材料计算"));
+    updateAnalysisModeVisibility();
+}
 
-    ui->comboLine19->setToolTip(
-        QStringLiteral("仅动力分析需要 JDTRACE、KETRACE、TDTRACE 等动力输入文件。"));
-    m_comboMethodIter->setToolTip(
-        QStringLiteral("界面显示算法名称，导出文件仍使用对应数字代码。"));
+void DamAnalysisWidget::updateAnalysisModeVisibility()
+{
+    SolverUiLayoutHelper::StableLayoutUpdate stableLayout(this);
 
+    const int type = ui->comboLine19->currentData().toString().toInt();
+    const bool showStatic = (type == 1 || type == 3);
+    const bool showDynamic = (type == 2 || type == 3);
+
+    ui->groupStatic->setVisible(showStatic);
+    ui->groupDynamic->setVisible(showDynamic);
+
+    updateDynamicOptionVisibility();
+}
+
+void DamAnalysisWidget::updateDynamicOptionVisibility()
+{
+    SolverUiLayoutHelper::StableLayoutUpdate stableLayout(this);
+
+    const int type = ui->comboLine19->currentData().toString().toInt();
+    const bool showDynamic = (type == 2 || type == 3);
+    const bool rayleigh = showDynamic &&
+                          ui->comboLine16->currentData().toString() == QStringLiteral("1");
+
+    // 次级开关采用“禁用”而不是反复插入/删除表单行，避免页面高度跳动。
+    ui->labelLine17->setEnabled(rayleigh);
+    ui->editLine17->setEnabled(rayleigh);
+    ui->labelLine18->setEnabled(rayleigh);
+    ui->editLine18->setEnabled(rayleigh);
+
+    const bool eigen = showDynamic &&
+                       ui->comboLine29->currentData().toString() == QStringLiteral("1");
+    ui->labelLine30->setEnabled(eigen);
+    ui->editLine30->setEnabled(eigen);
 }
 
 QString DamAnalysisWidget::quoteValue(const QString& value) const
@@ -505,6 +521,7 @@ void DamAnalysisWidget::loadJson(const QJsonObject& obj)
         if (isoIdx >= 0)
             m_comboIfIso->setCurrentIndex(isoIdx);
     }
+    updateAnalysisModeVisibility();
 }
 
 void DamAnalysisWidget::onComputeClicked()

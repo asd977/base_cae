@@ -1,4 +1,4 @@
-﻿#include <EventManager.h>
+#include <EventManager.h>
 #include <PluginInterface.h>
 #include <PublicConstants.h>
 #include <StyleManager.h>
@@ -8,6 +8,7 @@
 #include <QDir>
 #include <QPluginLoader>
 #include <QSurfaceFormat>
+#include <QtGlobal>
 
 void onAppAboutToQuit()
 {
@@ -16,9 +17,15 @@ void onAppAboutToQuit()
 
 int main(int argc, char** argv)
 {
-    QApplication app(argc, argv);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+    QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
+#endif
 
-    qDebug() << "asd";
+    QApplication app(argc, argv);
+    app.setApplicationName(QStringLiteral("POWERCHINA-GEOCAE"));
+    app.setOrganizationName(QStringLiteral("POWERCHINA"));
+
     StyleManager::applyStyleSheet(app, QString(":/resources/style/app.qss"));
 
     QString exePath = QCoreApplication::applicationDirPath();
@@ -70,7 +77,10 @@ int main(int argc, char** argv)
         }
     }
 
+    // 可视化先启动，确保 ADS 的中央工作区先建立；随后模型树、设置和日志
+    // 会稳定地落在左、右、下区域，而不是依赖旧布局文件纠正位置。
     QStringList runOrder = {"UiFrame",
+                            "Visualization",
                             "ProjectManager",
                             "Output",
                             "MaterialManager",
@@ -80,8 +90,7 @@ int main(int argc, char** argv)
                             /*"GlobalParameter",*/ "SurrogateModel",
                             "PhySicalField",
                             "BoundaryConditions",
-                            "Visualization",
-                            "MeshModuleController"}; //
+                            "MeshModuleController"};
 
     for (const QString& name : runOrder)
     {

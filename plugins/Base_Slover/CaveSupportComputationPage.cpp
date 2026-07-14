@@ -24,10 +24,12 @@
 
 #include "ui_CaveSupportComputationPage.h"
 
+#include "SolverUiLayoutHelper.h"
 CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     : BasePage("CaveSupportComputation"), ui(new Ui::CaveSupportComputationPage)
 {
     ui->setupUi(this);
+    SolverUiLayoutHelper::polishPage(this);
     Q_UNUSED(parent);
 
     m_ifSeepCombo = ui->comboIfSeep;
@@ -119,11 +121,16 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
 
     connect(m_iexcaMaxSpin, qOverload<int>(&QSpinBox::valueChanged), this,
             &CaveSupportComputationPage::onExcavationLevelCountChanged);
+    connect(m_calculationTypeCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            &CaveSupportComputationPage::updateAnalysisModeUi);
+    connect(m_ifWaveCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            &CaveSupportComputationPage::updateDynamicDetailsUi);
     connect(ui->btnCompute, &QPushButton::clicked, this, &CaveSupportComputationPage::onComputeClicked);
 
     m_caseData = CaseData();
     onExcavationLevelCountChanged(m_iexcaMaxSpin->value());
     loadCaseToUi();
+    updateAnalysisModeUi();
 }
 
 CaveSupportComputationPage::~CaveSupportComputationPage()
@@ -131,7 +138,11 @@ CaveSupportComputationPage::~CaveSupportComputationPage()
     delete ui;
 }
 
-void CaveSupportComputationPage::beforeLoad() {}
+void CaveSupportComputationPage::beforeLoad()
+{
+    updateAnalysisModeUi();
+}
+
 void CaveSupportComputationPage::beforeUnload() {}
 
 void CaveSupportComputationPage::setExcavationLevelCount(int count)
@@ -191,6 +202,47 @@ bool CaveSupportComputationPage::timeHistoryEnabled() const
 {
     return m_ifWaveCombo &&
            m_ifWaveCombo->currentData().toString() == QStringLiteral("1");
+}
+
+void CaveSupportComputationPage::updateAnalysisModeUi()
+{
+    SolverUiLayoutHelper::StableLayoutUpdate stableLayout(this);
+
+    const int typeCode = calculationTypeCode();
+    const bool showStatic = (typeCode == 1 || typeCode == 3);
+    const bool showDynamic = (typeCode == 2 || typeCode == 3);
+
+    if (ui->groupStaticControl)
+        ui->groupStaticControl->setVisible(showStatic);
+    if (ui->groupExcavationTime)
+        ui->groupExcavationTime->setVisible(showStatic);
+    if (ui->groupParams)
+        ui->groupParams->setVisible(showStatic);
+
+    if (ui->groupDynamicControl)
+        ui->groupDynamicControl->setVisible(showDynamic);
+    if (ui->groupDyna)
+        ui->groupDyna->setVisible(showDynamic);
+
+    updateDynamicDetailsUi();
+}
+
+void CaveSupportComputationPage::updateDynamicDetailsUi()
+{
+    SolverUiLayoutHelper::StableLayoutUpdate stableLayout(this);
+
+    const int typeCode = calculationTypeCode();
+    const bool dynamicVisible = (typeCode == 2 || typeCode == 3);
+    const bool showTimeHistory = dynamicVisible && timeHistoryEnabled();
+
+    ui->labelDt->setVisible(showTimeHistory);
+    ui->widgetTimeParams->setVisible(showTimeHistory);
+    ui->labelTsta->setVisible(showTimeHistory);
+    ui->spinTsta->setVisible(showTimeHistory);
+    ui->labelTend->setVisible(showTimeHistory);
+    ui->spinTend->setVisible(showTimeHistory);
+    ui->labelWaveFiles->setVisible(showTimeHistory);
+    ui->widgetWaveFiles->setVisible(showTimeHistory);
 }
 
 QString CaveSupportComputationPage::sectionText()
@@ -407,6 +459,7 @@ void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
 
     m_isUpdatingUi = false;
     loadCaseToUi();
+    updateAnalysisModeUi();
 }
 
 void CaveSupportComputationPage::loadLegacyCaveJson(const QJsonObject& obj)
@@ -441,6 +494,8 @@ void CaveSupportComputationPage::onExcavationLevelCountChanged(int count)
         if (!m_excavationDaysTable->item(r, 1))
             m_excavationDaysTable->setItem(r, 1, new QTableWidgetItem(r < oldRows ? "0" : "0"));
     }
+
+    SolverUiLayoutHelper::fitTableToRows(m_excavationDaysTable, target, 2, 6);
 
     if (!m_isUpdatingUi)
     {

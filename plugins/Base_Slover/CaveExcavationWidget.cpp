@@ -4,11 +4,13 @@
 
 #include "ui_CaveExcavationWidget.h"
 
+#include "SolverUiLayoutHelper.h"
 CaveExcavationWidget::CaveExcavationWidget(QWidget* parent)
     : BasePage("CaveExcavationAnalysis"), ui(new Ui::CaveExcavationWidget)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
+    SolverUiLayoutHelper::polishPage(this);
     setAttribute(Qt::WA_StyledBackground, true);
     setStyleSheet("QWidget#CaveExcavationWidget { background: white; }");
 }

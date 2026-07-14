@@ -20,12 +20,14 @@
 
 #include "ui_SeepageBoundaryPage.h"
 
+#include "SolverUiLayoutHelper.h"
 SeepageBoundaryPage::SeepageBoundaryPage(const QString& pageType, const QString& boundaryTitle,
                                          const QString& exportFileName, QWidget* parent)
     : BasePage(pageType), ui(new Ui::SeepageBoundaryPage), m_boundaryTitle(boundaryTitle),
       m_exportFileName(exportFileName)
 {
     ui->setupUi(this);
+    SolverUiLayoutHelper::polishPage(this);
     ui->labelBoundaryTitle->setText(boundaryTitle);
     ui->labelFileNameValue->setText(exportFileName);
     setupBatchGroupCombo();

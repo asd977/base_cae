@@ -7,15 +7,20 @@
 #include <QDir>
 #include <QFile>
 #include <QHeaderView>
+#include <QFormLayout>
+#include <QGroupBox>
 #include <QJsonArray>
 #include <QLineEdit>
+#include <QList>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTextStream>
 #include <QStringList>
+#include <QVBoxLayout>
 
 #include "ui_SlopeStabilityWidget.h"
 
+#include "SolverUiLayoutHelper.h"
 namespace
 {
 QStringList splitGravityComponents(const QString& value)
@@ -28,6 +33,42 @@ QStringList splitGravityComponents(const QString& value)
         result.append(parts.value(i, defaults.value(i)));
     return result;
 }
+
+struct FormRowWidgets
+{
+    QWidget* label = nullptr;
+    QWidget* field = nullptr;
+};
+
+FormRowWidgets takeFormRow(QFormLayout* layout, QWidget* field)
+{
+    FormRowWidgets result;
+    if (!layout || !field)
+        return result;
+
+    QFormLayout::TakeRowResult row = layout->takeRow(field);
+    if (row.labelItem)
+    {
+        result.label = row.labelItem->widget();
+        delete row.labelItem;
+    }
+    if (row.fieldItem)
+    {
+        result.field = row.fieldItem->widget();
+        delete row.fieldItem;
+    }
+    return result;
+}
+
+void appendFormRow(QFormLayout* layout, const FormRowWidgets& row)
+{
+    if (!layout || !row.field)
+        return;
+    if (row.label)
+        layout->addRow(row.label, row.field);
+    else
+        layout->addRow(row.field);
+}
 }
 
 SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
@@ -35,6 +76,8 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
+    setupStableModeSections();
+    SolverUiLayoutHelper::polishPage(this);
 
     m_lineEditors[1] = nullptr;
     m_lineEditors[3] = ui->line3Combo;
@@ -80,6 +123,11 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
     ui->ifModeCombo->setCurrentIndex(0);
     ui->ifWaveCombo->setCurrentIndex(0);
 
+    connect(ui->line19Combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this]() { updateAnalysisModeVisibility(); });
+    connect(ui->ifWaveCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this]() { updateTimeHistoryVisibility(); });
+
     initStrengthReserveTable();
     connect(ui->btnCompute, &QPushButton::clicked, this, &SlopeStabilityWidget::onComputeClicked);
     connect(ui->addReserveRowBtn, &QPushButton::clicked, this, [this]()
@@ -95,6 +143,46 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
         if (row >= 0)
             ui->strengthReserveTable->removeRow(row);
     });
+    updateAnalysisModeVisibility();
+}
+
+void SlopeStabilityWidget::setupStableModeSections()
+{
+    // “计算类型”必须固定在页面最上方。原先它位于基本参数表单底部，
+    // 切换静力/动力时前面的行被隐藏，触发控件自身会突然移动，造成明显跳变。
+    const FormRowWidgets modeRow = takeFormRow(ui->formLayout, ui->line19Combo);
+
+    auto* modeGroup = new QGroupBox(QStringLiteral("计算模式"), this);
+    modeGroup->setObjectName(QStringLiteral("analysisModeGroup"));
+    auto* modeForm = new QFormLayout(modeGroup);
+    appendFormRow(modeForm, modeRow);
+    ui->contentLayout->insertWidget(0, modeGroup);
+
+    // 阻尼参数本质上属于动力设置，从静力表单中移到动力分组。
+    // 同时重新排序：先选择动力任务，再填写其依赖的时程参数。
+    const FormRowWidgets dampingTypeRow = takeFormRow(ui->formLayout, ui->line15Combo);
+    const FormRowWidgets rayleighRow = takeFormRow(ui->formLayout, ui->line16Combo);
+    const FormRowWidgets dampingRatioRow = takeFormRow(ui->formLayout, ui->line17Edit);
+    const FormRowWidgets stiffnessDampingRow = takeFormRow(ui->formLayout, ui->line18Edit);
+
+    const FormRowWidgets timeStepRow = takeFormRow(ui->dynamicForm, ui->dtEdit);
+    const FormRowWidgets startTimeRow = takeFormRow(ui->dynamicForm, ui->tstaEdit);
+    const FormRowWidgets endTimeRow = takeFormRow(ui->dynamicForm, ui->tendEdit);
+    const FormRowWidgets modalRow = takeFormRow(ui->dynamicForm, ui->ifModeCombo);
+    const FormRowWidgets timeHistoryRow = takeFormRow(ui->dynamicForm, ui->ifWaveCombo);
+
+    appendFormRow(ui->dynamicForm, dampingTypeRow);
+    appendFormRow(ui->dynamicForm, rayleighRow);
+    appendFormRow(ui->dynamicForm, dampingRatioRow);
+    appendFormRow(ui->dynamicForm, stiffnessDampingRow);
+    appendFormRow(ui->dynamicForm, modalRow);
+    appendFormRow(ui->dynamicForm, timeHistoryRow);
+    appendFormRow(ui->dynamicForm, timeStepRow);
+    appendFormRow(ui->dynamicForm, startTimeRow);
+    appendFormRow(ui->dynamicForm, endTimeRow);
+
+    ui->islopGroup->setTitle(QStringLiteral("静力参数"));
+    ui->dynamicGroup->setTitle(QStringLiteral("动力参数"));
 }
 
 SlopeStabilityWidget::~SlopeStabilityWidget()
@@ -108,6 +196,42 @@ void SlopeStabilityWidget::beforeLoad()
 
 void SlopeStabilityWidget::beforeUnload()
 {
+}
+
+void SlopeStabilityWidget::updateAnalysisModeVisibility()
+{
+    // 以计算类型下拉框为视觉锚点，切换后它在滚动面板中的位置保持不变。
+    SolverUiLayoutHelper::StableLayoutUpdate stableLayout(this, ui->line19Combo);
+
+    const int type = ui->line19Combo->currentData().toString().toInt();
+    const bool showStatic = (type == 1 || type == 3);
+    const bool showDynamic = (type == 2 || type == 3);
+
+    // 只切换完整分组，不再逐行隐藏同一表单中的控件。
+    // 这样布局只发生一次整体变化，不会产生连续的上下抖动。
+    ui->islopGroup->setVisible(showStatic);
+    ui->reserveGroup->setVisible(showStatic);
+    ui->dynamicGroup->setVisible(showDynamic);
+
+    updateTimeHistoryVisibility();
+}
+
+void SlopeStabilityWidget::updateTimeHistoryVisibility()
+{
+    const int type = ui->line19Combo->currentData().toString().toInt();
+    const bool showDynamic = (type == 2 || type == 3);
+    const bool enableTime = showDynamic &&
+                            ui->ifWaveCombo->currentData().toString() == QStringLiteral("1");
+
+    // 时程开关变化时保留行高，仅切换可用状态，避免动力分组再次跳动。
+    const QList<QWidget*> timeWidgets = {
+        ui->d2, ui->dtEdit, ui->d3, ui->tstaEdit, ui->d4, ui->tendEdit
+    };
+    for (QWidget* widget : timeWidgets)
+    {
+        widget->setVisible(true);
+        widget->setEnabled(enableTime);
+    }
 }
 
 QString SlopeStabilityWidget::quoteValue(const QString& value) const
@@ -199,6 +323,8 @@ void SlopeStabilityWidget::initStrengthReserveTable()
         setStrengthReserveOutputCombo(row, ifpr.at(row));
     }
     ui->strengthReserveTable->horizontalHeader()->setStretchLastSection(true);
+    SolverUiLayoutHelper::fitTableToRows(ui->strengthReserveTable,
+                                          ui->strengthReserveTable->rowCount(), 5, 7);
 }
 
 void SlopeStabilityWidget::setStrengthReserveOutputCombo(int row, const QString& value)
@@ -388,8 +514,9 @@ void SlopeStabilityWidget::loadJson(const QJsonObject& obj)
     const QString ifWave = obj.value("ifwave").toString(ui->ifWaveCombo->currentData().toString());
     const int ifModeIndex = ui->ifModeCombo->findData(ifMode);
     const int ifWaveIndex = ui->ifWaveCombo->findData(ifWave);
-    ui->ifModeCombo->setCurrentIndex(ifModeIndex >= 0 ? ifModeIndex : 1);
-    ui->ifWaveCombo->setCurrentIndex(ifWaveIndex >= 0 ? ifWaveIndex : 1);
+    ui->ifModeCombo->setCurrentIndex(ifModeIndex >= 0 ? ifModeIndex : 0);
+    ui->ifWaveCombo->setCurrentIndex(ifWaveIndex >= 0 ? ifWaveIndex : 0);
+    updateAnalysisModeVisibility();
 }
 
 void SlopeStabilityWidget::onComputeClicked()

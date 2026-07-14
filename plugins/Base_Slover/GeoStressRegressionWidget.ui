@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>980</width>
-    <height>760</height>
+    <height>700</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -36,6 +36,9 @@
      </property>
      <property name="text">
       <string>地应力回归参数</string>
+     </property>
+     <property name="visible">
+      <bool>false</bool>
      </property>
     </widget>
    </item>
@@ -95,12 +98,12 @@
         <widget class="QComboBox" name="calcModeCombo">
          <item>
           <property name="text">
-           <string>仅计算自重应力</string>
+           <string>0 - 仅计算自重应力</string>
           </property>
          </item>
          <item>
           <property name="text">
-           <string>按实测地应力进行多元回归</string>
+           <string>1 - 按实测地应力多元回归</string>
           </property>
          </item>
          <property name="minimumSize">
@@ -168,6 +171,21 @@
        </property>
        <property name="bottomMargin">
         <number>0</number>
+       </property>
+       <property name="horizontalSpacing">
+        <number>14</number>
+       </property>
+       <property name="verticalSpacing">
+        <number>8</number>
+       </property>
+       <property name="fieldGrowthPolicy">
+        <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+       </property>
+       <property name="rowWrapPolicy">
+        <enum>QFormLayout::WrapLongRows</enum>
+       </property>
+       <property name="labelAlignment">
+        <set>Qt::AlignRight|Qt::AlignVCenter</set>
        </property>
       </layout>
      </item>

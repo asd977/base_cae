@@ -1,4 +1,4 @@
-#ifndef SEEPAGEWIDGET_H
+﻿#ifndef SEEPAGEWIDGET_H
 #define SEEPAGEWIDGET_H
 
 #include <BasePage.h>
@@ -59,6 +59,7 @@ class SeepageWidget : public BasePage
     };
 
     bool exportHwDropDatFiles(const QString& seepCaseDirName) const;
+    void updateComputeTypeVisibility();
 
     Ui::SeepageWidget* ui;
     QVector<MaterialMapping> globalMappings_;

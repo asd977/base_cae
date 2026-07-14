@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>663</width>
-    <height>746</height>
+    <height>650</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -36,6 +36,9 @@
      </property>
      <property name="text">
       <string>实测地应力测点</string>
+     </property>
+     <property name="visible">
+      <bool>false</bool>
      </property>
     </widget>
    </item>
@@ -231,8 +234,14 @@
           </attribute>
           <property name="minimumSize">
            <size>
-            <width>10</width>
-            <height>0</height>
+            <width>0</width>
+            <height>170</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>280</height>
            </size>
           </property>
          </widget>

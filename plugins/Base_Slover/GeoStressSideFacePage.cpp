@@ -26,6 +26,7 @@
 
 #include "ui_GeoStressSideFacePage.h"
 
+#include "SolverUiLayoutHelper.h"
 namespace
 {
 struct EdgeRow
@@ -179,6 +180,7 @@ GeoStressSideFacePage::GeoStressSideFacePage(QWidget* parent)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
+    SolverUiLayoutHelper::polishPage(this);
 
     ui->idirCombo->addItem("1 - X 方向（求解器代码）", "1");
     ui->idirCombo->addItem("2 - Y 方向（求解器代码）", "2");

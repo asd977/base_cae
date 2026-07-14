@@ -28,6 +28,7 @@
 
 #include "ui_GeoStressOuterForcePage.h"
 
+#include "SolverUiLayoutHelper.h"
 namespace
 {
 const QString kRoofFileName = "FAROOF.DAT";
@@ -207,6 +208,7 @@ GeoStressOuterForcePage::GeoStressOuterForcePage(QWidget* parent)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
+    SolverUiLayoutHelper::polishPage(this);
 
     connect(ui->clearButton, &QPushButton::clicked, this, &GeoStressOuterForcePage::onClearClicked);
     connect(ui->batchAddButton, &QPushButton::clicked, this,

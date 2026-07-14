@@ -23,11 +23,13 @@
 #include <vtkNew.h>
 #include <vtkUnstructuredGrid.h>
 
+#include "SolverUiLayoutHelper.h"
 CaveBlockStabilityWidget::CaveBlockStabilityWidget(QWidget* parent)
     : BasePage("CaveBlockStabilityAnalysis"), ui(new Ui::CaveBlockStabilityWidget)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
+    SolverUiLayoutHelper::polishPage(this);
     ui->comboIfDir->addItem("0 - 使用起点 A 和终点 B 定义方向", "0");
     ui->comboIfDir->addItem("1 - 使用指定面 IM1/IM2 定义方向", "1");
 

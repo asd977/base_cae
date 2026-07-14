@@ -20,6 +20,7 @@
 
 #include "ui_CaveBlockPlanePage.h"
 
+#include "SolverUiLayoutHelper.h"
 namespace
 {
 constexpr vtkIdType kInvalidFaceKey = -1;
@@ -273,6 +274,7 @@ CaveBlockPlanePage::CaveBlockPlanePage(QWidget* parent)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
+    SolverUiLayoutHelper::polishPage(this);
     setAttribute(Qt::WA_StyledBackground, true);
     setStyleSheet("background-color: white;");
 

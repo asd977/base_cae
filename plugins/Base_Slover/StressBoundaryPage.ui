@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>370</width>
-    <height>657</height>
+    <height>620</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -36,6 +36,9 @@
      </property>
      <property name="text">
       <string>应力边界设置</string>
+     </property>
+     <property name="visible">
+      <bool>false</bool>
      </property>
     </widget>
    </item>

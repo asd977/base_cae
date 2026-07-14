@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>491</width>
-    <height>632</height>
+    <height>580</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayoutRoot">
@@ -56,11 +56,7 @@
        </widget>
       </item>
       <item row="0" column="1">
-       <widget class="CustomComboBox" name="groupCombo">
-        <property name="toolTip">
-         <string>显示分组名称和原始 ID；计算时仍使用原始分组编号。</string>
-        </property>
-       </widget>
+       <widget class="CustomComboBox" name="groupCombo" />
       </item>
       <item row="3" column="1">
        <widget class="QWidget" name="actionRow" native="true">
@@ -92,7 +88,7 @@
          </sizepolicy>
         </property>
         <property name="text">
-         <string>开挖体分组</string>
+         <string>分组</string>
         </property>
        </widget>
       </item>
@@ -115,7 +111,7 @@
    <item>
     <widget class="QGroupBox" name="currentGroupBox">
      <property name="title">
-      <string>已选开挖体分组</string>
+      <string>当前选择</string>
      </property>
      <layout class="QVBoxLayout" name="currentLayout">
       <property name="spacing">

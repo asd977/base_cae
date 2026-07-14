@@ -57,29 +57,8 @@ ProbeSettingsWidget::ProbeSettingsWidget(VisualWidgetService* postProcessingWidg
     connect(ui->clearPushButton, &QPushButton::clicked, this,
             &ProbeSettingsWidget::on_clearPushButton_clicked);
 
-    // Style the Clear button to be compact and premium
-    if (ui->clearPushButton)
-    {
-        // ui->clearPushButton->setCursor(Qt::PointingHandCursor);
-        ui->clearPushButton->setStyleSheet(
-            "QPushButton#clearPushButton {"
-            "    background-color: #f2f2f2;"
-            "    border: 1px solid #dcdfe6;"
-            "    border-radius: 3px;"
-            "    color: #606266;"
-            "    font-size: 11px;"
-            "    font-family: 'Microsoft YaHei', sans-serif;"
-            "}"
-            "QPushButton#clearPushButton:hover {"
-            "    background-color: #e5e9f0;"
-            "    border-color: #1a5fb4;"
-            "    color: #1a5fb4;"
-            "}"
-            "QPushButton#clearPushButton:pressed {"
-            "    background-color: #dcdfe6;"
-            "}"
-        );
-    }
+    // 清空按钮沿用全局 GEOCAE 主题，避免局部蓝色样式覆盖。
+
 }
 
 ProbeSettingsWidget::~ProbeSettingsWidget()

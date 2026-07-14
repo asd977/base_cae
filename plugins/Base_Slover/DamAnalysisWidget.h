@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <BasePage.h>
 
@@ -53,6 +53,8 @@ class DamAnalysisWidget : public BasePage
     void setLineValue(int lineNo, const QString& value);
     bool isFixedFileLine(int lineNo) const;
     bool validateInputs(QString* errorMessage) const;
+    void updateAnalysisModeVisibility();
+    void updateDynamicOptionVisibility();
 
     Ui::DamAnalysisWidget* ui;
     QMap<int, QWidget*> m_lineEditors;

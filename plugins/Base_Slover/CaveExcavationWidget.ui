@@ -37,6 +37,9 @@
      <property name="text">
       <string>洞室开挖参数</string>
      </property>
+     <property name="visible">
+      <bool>false</bool>
+     </property>
     </widget>
    </item>
    <item>

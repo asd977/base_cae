@@ -1,379 +1,208 @@
+/* GEOCAE ADS Docking theme. ADS remains the layout engine only. */
 
-/*
- * Visual Studio like light theme
- */
- 
-/*****************************************************************************
- * CDockManager
- *****************************************************************************/
-ads--CDockManager 
-{
-	background: palette(window);
-} 
- 
- 
-
-/*****************************************************************************
- * CDockContainerWidget
- *****************************************************************************/ 
+ads--CDockManager,
 ads--CDockContainerWidget {
-	background: palette(window);
-	padding: 2px;
+    background: #e9eeec;
 }
 
+ads--CDockContainerWidget {
+    padding: 2px;
+}
 
-/*****************************************************************************
- * CDockAreaWidget
- *****************************************************************************/
 ads--CDockAreaWidget {
-	background: palette(window);
-	/*border: 1px solid palette(dark);*/
+    background: #ffffff;
+    border: 1px solid #cfd9d6;
 }
 
+ads--CDockAreaWidget[focused="true"] {
+    border: 1px solid #7fa99e;
+}
 
 ads--CDockAreaTitleBar {
-	background: transparent;
-	border-bottom: 2px solid rgb(204, 204, 204);
-	padding-bottom: 0px;
+    background: #f3f6f5;
+    border: none;
+    border-bottom: 1px solid #d4ddda;
+    min-height: 32px;
+    max-height: 32px;
+    padding: 0px;
 }
 
+ads--CDockWidgetTab {
+    color: #586864;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    min-height: 30px;
+    max-height: 30px;
+    padding: 0px 12px;
+    qproperty-iconSize: 15px 15px;
+}
+
+ads--CDockWidgetTab:hover {
+    color: #173f3b;
+    background: #e6efec;
+}
+
+ads--CDockWidgetTab[activeTab="true"],
+ads--CDockWidgetTab[focused="true"] {
+    color: #173f3b;
+    background: #ffffff;
+    border-bottom: 2px solid #23766f;
+}
+
+ads--CDockWidgetTab QLabel,
+ads--CDockWidgetTab QLabel#dockWidgetTabLabel {
+    color: #586864;
+    background: transparent;
+    font-family: "Microsoft YaHei", "微软雅黑", "Segoe UI";
+    font-size: 9pt;
+    font-weight: 500;
+}
+
+ads--CDockWidgetTab:hover QLabel,
+ads--CDockWidgetTab:hover QLabel#dockWidgetTabLabel,
+ads--CDockWidgetTab[activeTab="true"] QLabel,
+ads--CDockWidgetTab[activeTab="true"] QLabel#dockWidgetTabLabel,
+ads--CDockWidgetTab[focused="true"] QLabel,
+ads--CDockWidgetTab[focused="true"] QLabel#dockWidgetTabLabel {
+    color: #173f3b;
+}
 
 ads--CTitleBarButton {
-	padding: 0px 0px;
-	background: transparent;
-	border: none;
+    background: transparent;
+    border: none;
+    border-radius: 3px;
+    min-width: 22px;
+    min-height: 22px;
+    max-width: 22px;
+    max-height: 22px;
+    margin: 4px 2px;
+    padding: 3px;
 }
 
 ads--CTitleBarButton:hover {
-	background: rgba(0, 0, 0, 24);
+    background: #e1ebe8;
 }
 
 ads--CTitleBarButton:pressed {
-	background: rgba(0, 0, 0, 48);
-}
-
-QScrollArea#dockWidgetScrollArea {
-	padding: 0px;
-	border: none;
+    background: #cfdfda;
 }
 
 #tabsMenuButton::menu-indicator {
-	image: none;
+    image: none;
 }
 
+#tabsMenuButton {
+    qproperty-icon: url(:/resources/images/tabs-menu-button.svg);
+    qproperty-iconSize: 13px;
+}
 
 #dockAreaCloseButton {
-	qproperty-icon: url(:/ads/images/close-button.svg),
-		url(:/ads/images/close-button-disabled.svg) disabled;
-	qproperty-iconSize: 16px;
+    qproperty-icon: url(:/resources/images/close-button.svg),
+                    url(:/resources/images/close-button-disabled.svg) disabled;
+    qproperty-iconSize: 13px;
 }
 
-#detachGroupButton {
-	qproperty-icon: url(:/ads/images/detach-button.svg),
-		url(:/ads/images/detach-button-disabled.svg) disabled;
-	qproperty-iconSize: 16px;	
+#dockAreaCloseButton:hover {
+    background: #c94b4b;
+    qproperty-icon: url(:/resources/images/close-button-focused.svg);
 }
 
-
-ads--CDockAreaWidget[focused="true"] ads--CDockAreaTitleBar {
-	border-bottom: 2px solid palette(highlight);
-}
-
-
-/*****************************************************************************
- * CDockWidgetTab
- *****************************************************************************/
-ads--CDockWidgetTab {
-	background: palette(window);
-	border: none;
-	padding: 0 0px;
-	qproperty-iconSize: 16px 16px;/* this is optional in case you would like to change icon size*/
-}
-
-ads--CDockWidgetTab[activeTab="true"] {
-	background: rgb(204, 204, 204);
-}
-
-ads--CDockWidgetTab QLabel {
-	color: palette(foreground);
-}
-
-ads--CDockWidgetTab[activeTab="true"] QLabel {
-	color: palette(foreground);
-}
-
-
-#tabCloseButton {
-	margin-top: 2px;
-	background: none;
-	border: none;
-	padding: 0px -2px;
-	qproperty-icon: url(:/ads/images/close-button.svg),
-		url(:/ads/images/close-button-disabled.svg) disabled;
-	qproperty-iconSize: 16px;
-}
-
-#tabCloseButton:hover {
-	/*border: 1px solid rgba(0, 0, 0, 32);*/
-	background: rgba(0, 0, 0, 24);
-}
-
-#tabCloseButton:pressed {
-	background: rgba(0, 0, 0, 48);
-}
-
-
-/* Focus related styling */
-ads--CDockWidgetTab[focused="true"] {
-	background: palette(highlight);
-	border-color: palette(highlight);
-}
-
-ads--CDockWidgetTab[focused="true"] > #tabCloseButton {
-	qproperty-icon: url(:/ads/images/close-button-focused.svg)
-}
-
-ads--CDockWidgetTab[focused="true"]>#tabCloseButton:hover {
-	background: rgba(255, 255, 255, 48);
-}
-
-ads--CDockWidgetTab[focused="true"]>#tabCloseButton:pressed {
-	background: rgba(255, 255, 255, 92);
-}
-
-ads--CDockWidgetTab[focused="true"] QLabel {
-	color: palette(light);
-}
-
-
-/*****************************************************************************
- * CDockWidget
- *****************************************************************************/
-ads--CDockWidget {
-	background: palette(light);
-	border: 1px solid rgb(204, 204, 204);
-	border-top: none;
-}
-
-
-
-/*****************************************************************************
- *
- * Styling of auto hide functionality
- *
- *****************************************************************************/
- 
- 
-/*****************************************************************************
- * CAutoHideTab
- *****************************************************************************/
-ads--CAutoHideTab {
-	qproperty-iconSize: 16px 16px;/* this is optional in case you would like to change icon size*/
-	background: none;
-	border: none;
-	padding-left: 2px;
-	padding-right: 0px;
-	text-align: center;
-	min-height: 20px;
-	padding-bottom: 2px;
-}
-
-
-ads--CAutoHideTab:hover
-{
-	color: palette(highlight);
-}
-
-
-ads--CAutoHideTab[iconOnly="false"][sideBarLocation="0"],
-ads--CAutoHideTab[iconOnly="false"][sideBarLocation="2"]  {
-	border-top: 6px solid rgba(0, 0, 0, 48);
-}
-
-
-ads--CAutoHideTab[iconOnly="false"][sideBarLocation="1"],
-ads--CAutoHideTab[iconOnly="false"][sideBarLocation="3"] {
-	border-bottom: 6px solid rgba(0, 0, 0, 48);
-}
-
-
-
-ads--CAutoHideTab:hover[iconOnly="false"][sideBarLocation="0"],
-ads--CAutoHideTab:hover[iconOnly="false"][sideBarLocation="2"],
-ads--CAutoHideTab[iconOnly="false"][sideBarLocation="0"][activeTab="true"],
-ads--CAutoHideTab[iconOnly="false"][sideBarLocation="2"][activeTab="true"]  {
-	border-top: 6px solid palette(highlight);
-}
-
-
-ads--CAutoHideTab:hover[iconOnly="false"][sideBarLocation="1"],
-ads--CAutoHideTab:hover[iconOnly="false"][sideBarLocation="3"],
-ads--CAutoHideTab[iconOnly="false"][sideBarLocation="1"][activeTab="true"],
-ads--CAutoHideTab[iconOnly="false"][sideBarLocation="3"][activeTab="true"] {
-	border-bottom: 6px solid palette(highlight);
-}
-
-
-/**
- * Auto hide tabs with icon only
- */
-ads--CAutoHideTab[iconOnly="true"][sideBarLocation="0"] {
-	border-top: 6px solid rgba(0, 0, 0, 48);
-}
-
-ads--CAutoHideTab[iconOnly="true"][sideBarLocation="1"] {
-	border-left: 6px solid rgba(0, 0, 0, 48);
-}
-
-ads--CAutoHideTab[iconOnly="true"][sideBarLocation="2"] {
-	border-right: 6px solid rgba(0, 0, 0, 48);
-}
-
-ads--CAutoHideTab[iconOnly="true"][sideBarLocation="3"] {
-	border-bottom: 6px solid rgba(0, 0, 0, 48);
-}
-
-
-/**
- * Auto hide tabs with icon only hover
- */
-ads--CAutoHideTab:hover[iconOnly="true"][sideBarLocation="0"],
-ads--CAutoHideTab[iconOnly="true"][sideBarLocation="0"][activeTab="true"] {
-	border-top: 6px solid palette(highlight);
-}
-
-ads--CAutoHideTab:hover[iconOnly="true"][sideBarLocation="1"],
-ads--CAutoHideTab[iconOnly="true"][sideBarLocation="1"][activeTab="true"] {
-	border-left: 6px solid palette(highlight);
-}
-
-ads--CAutoHideTab:hover[iconOnly="true"][sideBarLocation="2"],
-ads--CAutoHideTab[iconOnly="true"][sideBarLocation="2"][activeTab="true"] {
-	border-right: 6px solid palette(highlight);
-}
-
-ads--CAutoHideTab:hover[iconOnly="true"][sideBarLocation="3"],
-ads--CAutoHideTab[iconOnly="true"][sideBarLocation="3"][activeTab="true"] {
-	border-bottom: 6px solid palette(highlight);
-}
-
-
-
-/*****************************************************************************
- * CAutoHideSideBar
- *****************************************************************************/
-ads--CAutoHideSideBar{
-	background: palette(window);
-	border: none;
-	qproperty-spacing: 12;
-}
-
-#sideTabsContainerWidget {
-	background: transparent;
-}
-
-
-ads--CAutoHideSideBar[sideBarLocation="0"] {
-	border-bottom: 1px solid palette(dark);
-}
-
-ads--CAutoHideSideBar[sideBarLocation="1"] {
-	border-right: 1px solid palette(dark);
-}
-
-ads--CAutoHideSideBar[sideBarLocation="2"] {
-	border-left: 1px solid palette(dark);
-}
-
-ads--CAutoHideSideBar[sideBarLocation="3"] {
-	border-top: 1px solid palette(dark);
-}
-
-
-/*****************************************************************************
- * CAutoHideDockContainer
- *****************************************************************************/
-ads--CAutoHideDockContainer {
-	background: palette(window);
-}
-
-
-ads--CAutoHideDockContainer ads--CDockAreaTitleBar {
-	background: palette(highlight);
-	padding: 0px;
-	border: none;
-}
-
-
-/*
- * This is required because the ads--CDockAreaWidget[focused="true"] will 
- * overwrite the ads--CAutoHideDockContainer ads--CDockAreaTitleBar rule
- */
-ads--CAutoHideDockContainer ads--CDockAreaWidget[focused="true"] ads--CDockAreaTitleBar {
-	background: palette(highlight);
-	padding: 0px;
-	border: none;
-}
-
-
-#autoHideTitleLabel {
-	padding-left: 4px;
-	color: palette(light);
-}
-
-
-/*****************************************************************************
- * CAutoHideDockContainer titlebar buttons
- *****************************************************************************/
 #dockAreaAutoHideButton {
-	qproperty-icon: url(:/ads/images/vs-pin-button.svg);
-	qproperty-iconSize: 16px;
+    qproperty-icon: url(:/resources/images/vs-pin-button.svg),
+                    url(:/resources/images/vs-pin-button-disabled.svg) disabled;
+    qproperty-iconSize: 13px;
 }
 
 ads--CAutoHideDockContainer #dockAreaAutoHideButton {
-	qproperty-icon: url(:/ads/images/vs-pin-button-pinned-focused.svg);
-	qproperty-iconSize: 16px;
+    qproperty-icon: url(:/resources/images/vs-pin-button-pinned-focused.svg);
+    qproperty-iconSize: 13px;
 }
 
-
-ads--CAutoHideDockContainer #dockAreaCloseButton{
-	qproperty-icon: url(:/ads/images/close-button-focused.svg)
+#dockAreaUndockButton,
+#detachGroupButton {
+    qproperty-icon: url(:/resources/images/detach-button.svg),
+                    url(:/resources/images/detach-button-disabled.svg) disabled;
+    qproperty-iconSize: 13px;
 }
 
-
-ads--CAutoHideDockContainer ads--CTitleBarButton:hover {
-	background: rgba(255, 255, 255, 48);
+#tabCloseButton {
+    background: transparent;
+    border: none;
+    border-radius: 3px;
+    qproperty-icon: url(:/resources/images/close-button.svg),
+                    url(:/resources/images/close-button-disabled.svg) disabled;
+    qproperty-iconSize: 12px;
 }
 
-ads--CAutoHideDockContainer ads--CTitleBarButton:pressed {
-	background: rgba(255, 255, 255, 96);
+#tabCloseButton:hover {
+    background: #e1ebe8;
 }
 
-/*****************************************************************************
- * CAutoHideDockContainer Titlebar and Buttons
- *****************************************************************************/
+QScrollArea#dockWidgetScrollArea {
+    padding: 0px;
+    border: none;
+}
 
+ads--CDockWidget {
+    background: #ffffff;
+    border: none;
+}
 
-/*****************************************************************************
- * CResizeHandle
- *****************************************************************************/
+ads--CAutoHideSideBar {
+    background: #edf2f0;
+    border: none;
+    qproperty-spacing: 8;
+}
+
+#sideTabsContainerWidget {
+    background: transparent;
+}
+
+ads--CAutoHideTab {
+    color: #566762;
+    background: transparent;
+    border: none;
+    border-left: 3px solid transparent;
+    padding: 5px 3px;
+    qproperty-iconSize: 15px 15px;
+}
+
+ads--CAutoHideTab:hover,
+ads--CAutoHideTab[activeTab="true"] {
+    color: #173f3b;
+    background: #dcebe6;
+    border-left: 3px solid #23766f;
+}
+
+ads--CAutoHideDockContainer {
+    background: #ffffff;
+    border: 1px solid #90ada5;
+}
+
+ads--CAutoHideDockContainer ads--CDockAreaTitleBar {
+    background: #e5efec;
+    border-bottom: 1px solid #c6d6d1;
+}
+
+#autoHideTitleLabel {
+    color: #173f3b;
+    padding-left: 7px;
+    font-weight: 600;
+}
+
 ads--CResizeHandle {
-	background: palette(window);
+    background: #d2dcd9;
 }
 
-
-ads--CAutoHideDockContainer[sideBarLocation="0"] ads--CResizeHandle {
-	border-top: 1px solid palette(dark);
+ads--CResizeHandle:hover {
+    background: #86aaa0;
 }
 
-ads--CAutoHideDockContainer[sideBarLocation="1"] ads--CResizeHandle {
-	border-left: 1px solid palette(dark);
+QSplitter::handle {
+    background: #d3dcda;
 }
 
-ads--CAutoHideDockContainer[sideBarLocation="2"] ads--CResizeHandle {
-	border-right: 1px solid palette(dark);
-}
-
-ads--CAutoHideDockContainer[sideBarLocation="3"] ads--CResizeHandle {
-	border-top: 1px solid palette(dark);
+QSplitter::handle:hover {
+    background: #83aa9f;
 }

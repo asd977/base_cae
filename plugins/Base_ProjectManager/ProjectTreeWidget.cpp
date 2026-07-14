@@ -8,12 +8,35 @@
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
+#include <QFont>
 #include <QIcon>
 #include <QMenu>
 #include <QPalette>
+#include <QRegularExpression>
 #include <QVariant>
 
 #include "ui_ProjectTreeWidget.h"
+
+namespace
+{
+QString normalizedPageTitle(QWidget* widget, QTreeWidgetItem* item)
+{
+    QString title;
+    if (widget)
+    {
+        if (auto* header = widget->findChild<QLabel*>(QStringLiteral("pageHeaderLabel")))
+            title = header->text().trimmed();
+    }
+
+    if (title.isEmpty() && item)
+        title = item->text(0).trimmed();
+
+    // Tree items may carry an instance suffix, e.g. 位移约束(3). The dock
+    // describes the task type, while the selected tree row keeps the instance.
+    title.remove(QRegularExpression(QStringLiteral("\\(\\d+\\)$")));
+    return title.trimmed();
+}
+}
 
 ProjectTreeWidget::ProjectTreeWidget(QWidget* parent)
     : QWidget(parent), ui(new Ui::ProjectTreeWidget)
@@ -56,7 +79,8 @@ void ProjectTreeWidget::applyTreeTheme()
     m_treeWidget->setExpandsOnDoubleClick(true);
     m_treeWidget->setEditTriggers(QAbstractItemView::EditKeyPressed);
     m_treeWidget->setAnimated(true);
-    m_treeWidget->setIconSize(QSize(18, 18));
+    m_treeWidget->setUniformRowHeights(true);
+    m_treeWidget->setIconSize(QSize(16, 16));
     m_treeWidget->setRootIsDecorated(true);
     m_treeWidget->setItemsExpandable(true);
     m_treeWidget->setFocusPolicy(Qt::NoFocus);
@@ -69,6 +93,9 @@ void ProjectTreeWidget::buildDefaultProjectTree(const QString& projectName)
 
     m_rootNode = new ProjectNode(projectName);
     m_rootNode->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+    QFont rootFont = m_rootNode->font(0);
+    rootFont.setWeight(QFont::DemiBold);
+    m_rootNode->setFont(0, rootFont);
     m_rootNode->setData(0, Qt::UserRole, QVariant::fromValue(m_rootNode));
     m_treeWidget->addTopLevelItem(m_rootNode);
     m_rootNode->setExpanded(true);
@@ -127,6 +154,10 @@ void ProjectTreeWidget::onCurItemChanged(QTreeWidgetItem* current, QTreeWidgetIt
         page->beforeLoad();
     }
     m_stackWidget->setCurrentWidget(widget);
+
+    const QString pageTitle = normalizedPageTitle(widget, current);
+    if (!pageTitle.isEmpty())
+        m_stackWidget->setWindowTitle(pageTitle);
 
     ensureSceneVisibleForCurrentNode(current);
 

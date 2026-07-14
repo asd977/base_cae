@@ -27,6 +27,7 @@
 
 #include "ui_GeoStressMeasurePointPage.h"
 
+#include "SolverUiLayoutHelper.h"
 namespace
 {
 QString valueOrZero(const QString& text)
@@ -60,6 +61,7 @@ GeoStressMeasurePointPage::GeoStressMeasurePointPage(QWidget* parent)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
+    SolverUiLayoutHelper::polishPage(this);
 
     ui->measureTable->setHorizontalHeaderLabels(QStringList() << "点号" << "XP" << "YP" << "ZP" << "SGX"
                                              << "SGY" << "SGZ" << "TXY" << "TYZ" << "TZX"

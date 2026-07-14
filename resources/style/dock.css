@@ -1,0 +1,205 @@
+/* GEOCAE ADS Docking theme: neutral desktop surfaces with restrained blue-grey focus. */
+
+ads--CDockManager,
+ads--CDockContainerWidget {
+    background: #edf0f2;
+}
+
+ads--CDockContainerWidget {
+    padding: 2px;
+}
+
+ads--CDockAreaWidget {
+    background: #ffffff;
+    border: 1px solid #d7dcdf;
+}
+
+ads--CDockAreaWidget[focused="true"] {
+    border-color: #c8d0d5;
+}
+
+ads--CDockAreaTitleBar {
+    background: #f6f7f8;
+    border: none;
+    border-bottom: 1px solid #dce1e4;
+    min-height: 31px;
+    max-height: 31px;
+    padding: 0px;
+}
+
+ads--CDockWidgetTab {
+    color: #5d676f;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    min-height: 29px;
+    max-height: 29px;
+    padding: 0px 13px;
+    qproperty-iconSize: 14px 14px;
+}
+
+ads--CDockWidgetTab:hover {
+    color: #354b57;
+    background: #eef2f4;
+}
+
+ads--CDockWidgetTab[activeTab="true"],
+ads--CDockWidgetTab[focused="true"] {
+    color: #2c5368;
+    background: #ffffff;
+    border-bottom: 2px solid #4f778d;
+}
+
+ads--CDockWidgetTab QLabel,
+ads--CDockWidgetTab QLabel#dockWidgetTabLabel {
+    color: #5d676f;
+    background: transparent;
+    font-family: "Microsoft YaHei UI", "Microsoft YaHei", "微软雅黑", "Segoe UI";
+    font-size: 9pt;
+    font-weight: 500;
+}
+
+ads--CDockWidgetTab:hover QLabel,
+ads--CDockWidgetTab:hover QLabel#dockWidgetTabLabel {
+    color: #354b57;
+}
+
+ads--CDockWidgetTab[activeTab="true"] QLabel,
+ads--CDockWidgetTab[activeTab="true"] QLabel#dockWidgetTabLabel,
+ads--CDockWidgetTab[focused="true"] QLabel,
+ads--CDockWidgetTab[focused="true"] QLabel#dockWidgetTabLabel {
+    color: #2c5368;
+    font-weight: 600;
+}
+
+ads--CTitleBarButton {
+    background: transparent;
+    border: none;
+    border-radius: 2px;
+    min-width: 21px;
+    min-height: 21px;
+    max-width: 21px;
+    max-height: 21px;
+    margin: 5px 2px;
+    padding: 3px;
+}
+
+ads--CTitleBarButton:hover {
+    background: #e8ecef;
+}
+
+ads--CTitleBarButton:pressed {
+    background: #dce2e6;
+}
+
+#tabsMenuButton::menu-indicator {
+    image: none;
+}
+
+#tabsMenuButton {
+    qproperty-icon: url(:/resources/images/tabs-menu-button.svg);
+    qproperty-iconSize: 12px;
+}
+
+#dockAreaCloseButton {
+    qproperty-icon: url(:/resources/images/close-button.svg),
+                    url(:/resources/images/close-button-disabled.svg) disabled;
+    qproperty-iconSize: 12px;
+}
+
+#dockAreaCloseButton:hover {
+    background: #c84a4a;
+    qproperty-icon: url(:/resources/images/close-button-focused.svg);
+}
+
+#dockAreaAutoHideButton {
+    qproperty-icon: url(:/resources/images/vs-pin-button.svg),
+                    url(:/resources/images/vs-pin-button-disabled.svg) disabled;
+    qproperty-iconSize: 12px;
+}
+
+ads--CAutoHideDockContainer #dockAreaAutoHideButton {
+    qproperty-icon: url(:/resources/images/vs-pin-button-pinned-focused.svg);
+    qproperty-iconSize: 12px;
+}
+
+#dockAreaUndockButton,
+#detachGroupButton {
+    qproperty-icon: url(:/resources/images/detach-button.svg),
+                    url(:/resources/images/detach-button-disabled.svg) disabled;
+    qproperty-iconSize: 12px;
+}
+
+#tabCloseButton {
+    background: transparent;
+    border: none;
+    border-radius: 2px;
+    qproperty-icon: url(:/resources/images/close-button.svg),
+                    url(:/resources/images/close-button-disabled.svg) disabled;
+    qproperty-iconSize: 12px;
+}
+
+#tabCloseButton:hover {
+    background: #e8ecef;
+}
+
+QScrollArea#dockWidgetScrollArea {
+    padding: 0px;
+    border: none;
+}
+
+ads--CDockWidget {
+    background: #ffffff;
+    border: none;
+}
+
+ads--CAutoHideSideBar {
+    background: #f2f4f5;
+    border: none;
+    qproperty-spacing: 8;
+}
+
+#sideTabsContainerWidget {
+    background: transparent;
+}
+
+ads--CAutoHideTab {
+    color: #657078;
+    background: transparent;
+    border: none;
+    border-radius: 2px;
+    padding: 4px;
+    qproperty-iconSize: 14px 14px;
+}
+
+ads--CAutoHideTab:hover,
+ads--CAutoHideTab[activeTab="true"] {
+    color: #2c5368;
+    background: #e4ebef;
+}
+
+ads--CAutoHideDockContainer {
+    background: #ffffff;
+    border: 1px solid #c7d0d5;
+}
+
+ads--CAutoHideDockContainer ads--CDockAreaTitleBar {
+    background: #f3f5f6;
+    border-bottom: 1px solid #d7dde1;
+}
+
+#autoHideTitleLabel {
+    color: #293139;
+    padding-left: 7px;
+    font-weight: 600;
+}
+
+ads--CResizeHandle,
+QSplitter::handle {
+    background: #d9dee1;
+}
+
+ads--CResizeHandle:hover,
+QSplitter::handle:hover {
+    background: #aebac1;
+}

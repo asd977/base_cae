@@ -37,6 +37,9 @@
      <property name="text">
       <string>外面力参数设置</string>
      </property>
+     <property name="visible">
+      <bool>false</bool>
+     </property>
     </widget>
    </item>
    <item>
@@ -265,6 +268,21 @@
         </property>
         <property name="bottomMargin">
          <number>9</number>
+        </property>
+        <property name="horizontalSpacing">
+         <number>14</number>
+        </property>
+        <property name="verticalSpacing">
+         <number>8</number>
+        </property>
+        <property name="fieldGrowthPolicy">
+         <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+        </property>
+        <property name="rowWrapPolicy">
+         <enum>QFormLayout::WrapLongRows</enum>
+        </property>
+        <property name="labelAlignment">
+         <set>Qt::AlignRight|Qt::AlignVCenter</set>
         </property>
        </layout>
       </widget>

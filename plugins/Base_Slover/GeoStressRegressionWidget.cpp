@@ -10,6 +10,7 @@
 
 #include "ui_GeoStressRegressionWidget.h"
 
+#include "SolverUiLayoutHelper.h"
 namespace
 {
 const QString kRoofFileName = "FAROOF.DAT";
@@ -29,6 +30,7 @@ GeoStressRegressionWidget::GeoStressRegressionWidget(QWidget* parent)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
+    SolverUiLayoutHelper::polishPage(this);
 
     ui->reservedEdit->setText("0");
     ui->reservedEdit->hide();

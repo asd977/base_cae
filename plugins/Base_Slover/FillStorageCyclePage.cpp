@@ -18,10 +18,12 @@
 
 #include "ui_FillStorageCyclePage.h"
 
+#include "SolverUiLayoutHelper.h"
 FillStorageCyclePage::FillStorageCyclePage(QWidget* parent)
     : BasePage("FillStorageCycle"), ui(new Ui::FillStorageCyclePage)
 {
     ui->setupUi(this);
+    SolverUiLayoutHelper::polishPage(this);
     initValueEditors();
     updatePreview();
 }
@@ -84,24 +86,14 @@ void FillStorageCyclePage::initValueEditors()
     ui->comboIFSETT->setItemData(0, "0");
     ui->comboIFSETT->setItemData(1, "1");
 
-    ui->comboIFIIWL_SEEP->setItemText(0, QStringLiteral("不计入坝基渗透荷载"));
-    ui->comboIFIIWL_SEEP->setItemText(1, QStringLiteral("按折减系数施加坝基面力"));
-    ui->comboIFIIWL_SEEP->setItemText(2, QStringLiteral("从 CASEEP 读取水头压力"));
-    ui->comboIFIIWL_BODY->setItemText(0, QStringLiteral("不计入坝体渗透体力"));
-    ui->comboIFIIWL_BODY->setItemText(1, QStringLiteral("按容重差施加向下体力"));
-    ui->comboIFIIWL_BODY->setItemText(2, QStringLiteral("从 CABODY 读取节点体力"));
-    ui->comboIFIIWL_FACE->setItemText(0, QStringLiteral("不计入坝体水面压力"));
-    ui->comboIFIIWL_FACE->setItemText(1, QStringLiteral("计入坝体水面压力"));
-    ui->comboIFWET->setItemText(0, QStringLiteral("不进行湿化计算"));
-    ui->comboIFWET->setItemText(1, QStringLiteral("进行湿化计算"));
-    ui->comboIFDROP->setItemText(0, QStringLiteral("不进行水位骤降计算"));
-    ui->comboIFDROP->setItemText(1, QStringLiteral("进行水位骤降计算"));
-    ui->comboIFMODE->setItemText(0, QStringLiteral("不进行拟静力计算"));
-    ui->comboIFMODE->setItemText(1, QStringLiteral("进行拟静力计算"));
-    ui->comboIFWAVE->setItemText(0, QStringLiteral("不进行地震波动力计算"));
-    ui->comboIFWAVE->setItemText(1, QStringLiteral("进行地震波动力计算"));
-    ui->comboIFSETT->setItemText(0, QStringLiteral("不进行流变计算"));
-    ui->comboIFSETT->setItemText(1, QStringLiteral("进行流变计算"));
+    connect(ui->comboIFWET, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this]() { updateConditionalVisibility(); });
+    connect(ui->comboIFDROP, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this]() { updateConditionalVisibility(); });
+    connect(ui->comboIFWAVE, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this]() { updateConditionalVisibility(); });
+    connect(ui->comboIFSETT, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this]() { updateConditionalVisibility(); });
 
     auto mkTable = [this](const QStringList& headers)
     {
@@ -160,8 +152,8 @@ void FillStorageCyclePage::initValueEditors()
         auto setCircleCombo = [table](int row, int col, const QString& val)
         {
             auto* cb = new QComboBox(table);
-            cb->addItem(QStringLiteral("否"), QStringLiteral("0"));
-            cb->addItem(QStringLiteral("是"), QStringLiteral("1"));
+            cb->addItem("0 - 否", "0");
+            cb->addItem("1 - 是", "1");
             const int idx = cb->findData(val.trimmed());
             cb->setCurrentIndex(idx >= 0 ? idx : 0);
             table->setCellWidget(row, col, cb);
@@ -237,6 +229,32 @@ void FillStorageCyclePage::initValueEditors()
     connect(ui->btnEditCircle, &QPushButton::clicked, this,
             [openEditor, this]() { openEditor(m_circleTable, "编辑填筑-蓄水周期表"); });
 
+    updateConditionalVisibility();
+}
+
+void FillStorageCyclePage::updateConditionalVisibility()
+{
+    SolverUiLayoutHelper::StableLayoutUpdate stableLayout(this);
+
+    const bool wetEnabled = ui->comboIFWET->currentData().toString() == QStringLiteral("1");
+    ui->btnEditWet->setVisible(wetEnabled);
+    ui->labelWetRows->setVisible(wetEnabled);
+
+    const bool dropEnabled = ui->comboIFDROP->currentData().toString() == QStringLiteral("1");
+    ui->btnEditDrop->setVisible(dropEnabled);
+    ui->labelDropRows->setVisible(dropEnabled);
+
+    const bool waveEnabled = ui->comboIFWAVE->currentData().toString() == QStringLiteral("1");
+    const bool creepEnabled = ui->comboIFSETT->currentData().toString() == QStringLiteral("1");
+    const bool showTime = waveEnabled || creepEnabled;
+    ui->labelDT->setVisible(showTime);
+    ui->editDT->setVisible(showTime);
+    ui->labelTSTA->setVisible(showTime);
+    ui->editTSTA->setVisible(showTime);
+    ui->labelTEND->setVisible(showTime);
+    ui->editTEND->setVisible(showTime);
+    ui->labelWOMI1->setVisible(creepEnabled);
+    ui->editWOMI1->setVisible(creepEnabled);
 }
 
 void FillStorageCyclePage::loadWetMappingsFromService()
@@ -398,6 +416,7 @@ void FillStorageCyclePage::loadJson(const QJsonObject& obj)
     jsonToTable(obj.value("wet_table").toArray(), m_wetTable, 1);
     jsonToTable(obj.value("drop_table").toArray(), m_dropTable, 1);
     jsonToTable(obj.value("circle_table").toArray(), m_circleTable, 1);
+    updateConditionalVisibility();
     updatePreview();
 }
 

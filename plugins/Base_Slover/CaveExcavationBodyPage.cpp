@@ -34,10 +34,12 @@
 #include <utility>
 #include <vector>
 
+#include "SolverUiLayoutHelper.h"
 CaveExcavationBodyPage::CaveExcavationBodyPage(QWidget* parent)
     : BasePage("CaveExcavationBody"), ui(new Ui::CaveExcavationBodyPage)
 {
     ui->setupUi(this);
+    SolverUiLayoutHelper::polishPage(this);
     Q_UNUSED(parent);
 
     m_groupCombo = ui->groupCombo;

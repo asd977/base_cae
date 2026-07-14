@@ -131,7 +131,7 @@ void VisualizationWidget::initVtk()
     m_vtkWidget->setRenderWindow(m_renderWindow);
 
     m_renderer = vtkSmartPointer<vtkRenderer>::New();
-    m_renderer->SetBackground(231.0 / 255.0, 242.0 / 255.0, 255.0 / 255.0);
+    m_renderer->SetBackground(244.0 / 255.0, 246.0 / 255.0, 248.0 / 255.0);
     m_renderer->SetBackground2(1.0, 1.0, 1.0);
     m_renderer->SetGradientBackground(true);
     m_renderWindow->AddRenderer(m_renderer);
@@ -213,28 +213,8 @@ void VisualizationWidget::initViewToolbar()
     m_toolbar = new QFrame(this);
     m_toolbar->setObjectName("visualizationViewToolbar");
     m_toolbar->setAttribute(Qt::WA_StyledBackground, true);
-    m_toolbar->setStyleSheet(
-        "QFrame#visualizationViewToolbar {"
-        "  background: transparent;"
-        "  border: none;"
-        "}"
-        "QFrame#visualizationViewToolbar QToolButton {"
-        "  background: transparent;"
-        "  border: none;"
-        "  border-radius: 4px;"
-        "}"
-        "QFrame#visualizationViewToolbar QToolButton:hover {"
-        "  background-color: rgba(0, 0, 0, 0.06);"
-        "}"
-        "QFrame#visualizationViewToolbar QToolButton:pressed {"
-        "  background-color: rgba(0, 0, 0, 0.12);"
-        "}"
-        "QFrame#visualizationToolbarSeparator {"
-        "  background-color: rgba(0, 0, 0, 0.08);"
-        "  width: 1px;"
-        "  max-width: 1px;"
-        "}"
-    );
+    // 视觉样式统一由 app.qss 管理，避免局部样式覆盖主题。
+
 
     auto* root = new QHBoxLayout(m_toolbar);
     root->setContentsMargins(12, 3, 12, 3);
@@ -378,43 +358,8 @@ void VisualizationWidget::initViewToolbar()
     m_opacityMenu = new QMenu(m_toolbar);
     m_opacityMenu->setWindowFlags(m_opacityMenu->windowFlags() | Qt::FramelessWindowHint);
     m_opacityMenu->setObjectName("visualizationOpacityMenu");
-    m_opacityMenu->setStyleSheet(
-        "QMenu#visualizationOpacityMenu {"
-        "  background-color: #ffffff;"
-        "  border: 1px solid #dcdfe6;"
-        "  border-radius: 4px;"
-        "  padding: 4px;"
-        "}"
-        "QLabel#visualizationOpacityPercentLabel {"
-        "  font-family: 'Microsoft YaHei', sans-serif;"
-        "  font-size: 11px;"
-        "  color: #606266;"
-        "  font-weight: bold;"
-        "}"
-        "QSlider::groove:vertical {"
-        "  background: #eef2f6;"
-        "  width: 6px;"
-        "  border-radius: 3px;"
-        "}"
-        "QSlider::handle:vertical {"
-        "  background: #1a5fb4;"
-        "  height: 12px;"
-        "  width: 12px;"
-        "  margin: 0 -3px;"
-        "  border-radius: 6px;"
-        "}"
-        "QSlider::handle:vertical:hover {"
-        "  background: #5294e2;"
-        "}"
-        "QSlider::sub-page:vertical {"
-        "  background: #eef2f6;"
-        "  border-radius: 3px;"
-        "}"
-        "QSlider::add-page:vertical {"
-        "  background: #1a5fb4;"
-        "  border-radius: 3px;"
-        "}"
-    );
+    // 弹出菜单和滑块沿用全局 GEOCAE 主题。
+
 
     auto* popupWidget = new QWidget(m_opacityMenu);
     auto* popupLayout = new QVBoxLayout(popupWidget);

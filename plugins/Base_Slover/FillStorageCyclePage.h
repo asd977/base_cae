@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <BasePage.h>
 
@@ -43,6 +43,7 @@ class FillStorageCyclePage : public BasePage
     QJsonArray tableToJson(QTableWidget* table) const;
     void jsonToTable(const QJsonArray& arr, QTableWidget* table, int minRows);
     void updatePreview();
+    void updateConditionalVisibility();
   private:
     Ui::FillStorageCyclePage* ui = nullptr;
     QMap<QString, QWidget*> m_editors;

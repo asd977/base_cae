@@ -7,6 +7,7 @@
 #include <services/MaterialManagerService.h>
 
 #include <QDir>
+#include <QComboBox>
 #include <QDialog>
 #include <QFile>
 #include <QJsonArray>
@@ -37,25 +38,28 @@
 
 #include "ui_SeepageWidget.h"
 
+#include "SolverUiLayoutHelper.h"
 SeepageWidget::SeepageWidget(QWidget* parent)
     : BasePage("SeepageAnalysis"), ui(new Ui::SeepageWidget)
 {
     ui->setupUi(this);
+    SolverUiLayoutHelper::polishPage(this);
     connect(ui->btnCompute, &QPushButton::clicked, this, &SeepageWidget::onComputeClicked);
     connect(ui->btnGlobalMappings, &QPushButton::clicked, this,
             &SeepageWidget::onEditGlobalMappingsClicked);
     connect(ui->btnHwDropCurves, &QPushButton::clicked, this,
             &SeepageWidget::onEditHwDropCurvesClicked);
 
-    ui->comboComputeType->addItem(QStringLiteral("仅进行稳定渗流计算"), 1);
-    ui->comboComputeType->addItem(QStringLiteral("仅进行非稳定渗流计算"), 2);
-    ui->comboComputeType->addItem(QStringLiteral("先稳定渗流，再进行非稳定渗流"), 3);
-    ui->comboComputeType->setToolTip(
-        QStringLiteral("界面显示计算含义，导出时仍写入求解器需要的 1、2、3。"));
+    ui->comboComputeType->addItem("1 - 仅进行稳定渗流计算", 1);
+    ui->comboComputeType->addItem("2 - 仅进行非稳定渗流计算", 2);
+    ui->comboComputeType->addItem("3 - 按流程全部进行计算", 3);
 
-    ui->comboItagFree->addItem(QStringLiteral("不计入天然渗流场"), 0);
-    ui->comboItagFree->addItem(QStringLiteral("计入天然渗流场"), 1);
+    ui->comboItagFree->addItem("0 - 不计入", 0);
+    ui->comboItagFree->addItem("1 - 计入", 1);
 
+    connect(ui->comboComputeType, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this]() { updateComputeTypeVisibility(); });
+    updateComputeTypeVisibility();
 }
 
 SeepageWidget::~SeepageWidget()
@@ -69,6 +73,27 @@ void SeepageWidget::beforeLoad()
 
 void SeepageWidget::beforeUnload()
 {
+}
+
+void SeepageWidget::updateComputeTypeVisibility()
+{
+    SolverUiLayoutHelper::StableLayoutUpdate stableLayout(this);
+
+    const int type = ui->comboComputeType->currentData().toInt();
+    const bool showTransient = (type == 2 || type == 3);
+
+    ui->label->setVisible(showTransient);
+    ui->spinDt->setVisible(showTransient);
+    ui->label_2->setVisible(showTransient);
+    ui->spinTsta->setVisible(showTransient);
+    ui->label_3->setVisible(showTransient);
+    ui->spinTend->setVisible(showTransient);
+    ui->labelHwDropFiles->setVisible(showTransient);
+    ui->btnHwDropCurves->setVisible(showTransient);
+
+    ui->groupBoxParameters->setTitle(type == 1 ? QStringLiteral("稳定渗流参数")
+                                               : type == 2 ? QStringLiteral("非稳定渗流参数")
+                                                           : QStringLiteral("稳定与非稳定渗流参数"));
 }
 
 double SeepageWidget::upstreamWaterLevel() const
@@ -403,6 +428,7 @@ void SeepageWidget::loadJson(const QJsonObject& obj)
         return points;
     };
     waterLevelPoints_ = loadPoints(obj.value("water_level_points").toArray());
+    updateComputeTypeVisibility();
 }
 
 void SeepageWidget::onComputeClicked()

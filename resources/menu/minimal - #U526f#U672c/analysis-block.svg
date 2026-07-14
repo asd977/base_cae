@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="3 3 58 58" fill="none">
+
+  <defs>
+    <linearGradient id="panel" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#b9cad8"/>
+    </linearGradient>
+    <linearGradient id="top" x1="14" y1="8" x2="50" y2="30" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#cbd9e7"/>
+    </linearGradient>
+    <linearGradient id="left" x1="12" y1="20" x2="33" y2="55" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e3edf4"/>
+      <stop offset="1" stop-color="#9fb3c4"/>
+    </linearGradient>
+    <linearGradient id="right" x1="31" y1="20" x2="53" y2="55" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#bfd0df"/>
+      <stop offset="1" stop-color="#7f98aa"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="14" y1="12" x2="50" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#20a8dc"/>
+      <stop offset="1" stop-color="#1467a6"/>
+    </linearGradient>
+    <linearGradient id="green" x1="14" y1="12" x2="50" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6fc17d"/>
+      <stop offset="1" stop-color="#357d4a"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="14" y1="12" x2="50" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f0ad42"/>
+      <stop offset="1" stop-color="#bb5f22"/>
+    </linearGradient>
+    <linearGradient id="red" x1="14" y1="12" x2="50" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#dc7461"/>
+      <stop offset="1" stop-color="#ad3f38"/>
+    </linearGradient>
+  </defs>
+<path d="M10 51h44L44 25 26 51z" fill="#eef3f7" stroke="#2b3642" stroke-width="2.7" stroke-linejoin="round"/>
+  <rect x="24" y="31" width="14" height="12" transform="rotate(-20 24 31)" fill="#d2843d" stroke="#2b3642" stroke-width="2.2"/>
+  <rect x="36" y="25" width="13" height="11" transform="rotate(-20 36 25)" fill="#3f95c7" stroke="#2b3642" stroke-width="2.2"/>
+  <path d="M18 47l28-20" stroke="#3e9b55" stroke-width="3" stroke-linecap="round"/>
+  <path d="M42 14c6 7 6 15 1 22" stroke="#bd4a3e" stroke-width="3.2" stroke-linecap="round" fill="none"/>
+  <path d="M43 36l-2-7 7 2" fill="#bd4a3e"/>
+</svg>

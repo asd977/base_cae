@@ -21,30 +21,12 @@ OutputWidget::OutputWidget(QWidget* parent) : QWidget(parent), ui(new Ui::Output
     floatingClearBtn->setCursor(Qt::PointingHandCursor);
     floatingClearBtn->setToolTip("清空日志");
     floatingClearBtn->setFixedSize(44, 22);
-    
-    // Style it: rectangular badge, light grey semi-transparent, gets opaque on hover
-    floatingClearBtn->setStyleSheet(
-        "QPushButton#floatingClearBtn {"
-        "    background-color: rgba(220, 220, 220, 100);"
-        "    border: 1px solid rgba(180, 180, 180, 80);"
-        "    border-radius: 3px;"
-        "    color: rgba(51, 51, 51, 180);"
-        "    font-size: 11px;"
-        "    font-family: 'Microsoft YaHei', sans-serif;"
-        "    font-weight: bold;"
-        "}"
-        "QPushButton#floatingClearBtn:hover {"
-        "    background-color: rgba(200, 200, 200, 180);"
-        "    border-color: rgba(120, 120, 120, 150);"
-        "    color: rgba(0, 0, 0, 220);"
-        "}"
-        "QPushButton#floatingClearBtn:pressed {"
-        "    background-color: rgba(160, 160, 160, 220);"
-        "}"
-    );
+
+    // Visual styling is centralized in app.qss.
+
 
     connect(floatingClearBtn, &QPushButton::clicked, this, &OutputWidget::onClearClicked);
-    
+
     // Listen to resize events on the textEdit to reposition the floating button
     ui->textEdit->installEventFilter(this);
 

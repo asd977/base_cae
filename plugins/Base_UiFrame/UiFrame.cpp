@@ -20,6 +20,7 @@
 #include <QIcon>
 #include <QLabel>
 #include <QSettings>
+#include <QString>
 #include <QSizePolicy>
 #include <QSlider>
 #include <QVBoxLayout>
@@ -129,7 +130,7 @@ void UiFrame::initDockManager()
 
     ads::CDockManager::setConfigFlag(ads::CDockManager::OpaqueSplitterResize, true);
     ads::CDockManager::setConfigFlag(ads::CDockManager::XmlCompressionEnabled, false);
-    ads::CDockManager::setConfigFlag(ads::CDockManager::FocusHighlighting, true);
+    ads::CDockManager::setConfigFlag(ads::CDockManager::FocusHighlighting, false);
     ads::CDockManager::setAutoHideConfigFlags(ads::CDockManager::DefaultAutoHideConfig);
     ads::CDockManager::setConfigFlag(ads::CDockManager::AlwaysShowTabs, true);
 
@@ -284,311 +285,240 @@ void UiFrame::storeUiState()
 
 void UiFrame::setDockWidgetStyle()
 {
-    //        if (this->centralWidget()) {
-    //            // 使用 setStyleSheet 仅针对中央区域
-    //            this->centralWidget()->setStyleSheet("background:white;");
-    //        }
-    QString qss = R"(
-                  QSplitter::handle {
-                      height: 3px;
-                      width: 3px;
-                      background: #e2e6ea;
-                  }
-                  ads--CDockAreaWidget[focused="true"]  {
-                      background: white;
-                      border-color: #4a90d9;
-                  }
+    const QString qss = QString::fromUtf8(R"(
+        ads--CDockManager,
+        ads--CDockContainerWidget {
+            background: #edf0f2;
+        }
 
-                  #dockAreaAutoHideButton {
-                      qproperty-icon: url(:/resources/images/vs-pin-button.svg),
-                          url(:/resources/images/vs-pin-button-disabled.svg) disabled;
-                      qproperty-iconSize: 16px;
-                  }
+        ads--CDockAreaWidget {
+            background: #ffffff;
+            border: 1px solid #d7dcdf;
+        }
 
-                  ads--CAutoHideDockContainer #dockAreaAutoHideButton {
-                      qproperty-icon: url(:/resources/images/vs-pin-button-pinned-focused.svg);
-                      qproperty-iconSize: 16px;
-                  }
+        ads--CDockAreaWidget[focused="true"] {
+            border-color: #c8d0d5;
+        }
 
-                  ads--CDockAreaWidget #tabsMenuButton::menu-indicator {
-                      image: none;
-                  }
-                  QScrollArea#dockWidgetScrollArea {
-                      padding: 0px;
-                      border: none;
-                  }
-                  ads--CDockAreaWidget {
-                      border: 1px solid #e2e6ea;
-                  }
+        QSplitter::handle {
+            width: 3px;
+            height: 3px;
+            background: #d9dee1;
+        }
 
-                  QScrollBar:vertical {
-                      width: 8px;
-                      background: transparent;
-                      border: none;
-                      margin: 2px 1px;
-                  }
+        QSplitter::handle:hover {
+            background: #aebac1;
+        }
 
-                  QScrollBar:horizontal {
-                      height: 8px;
-                      background: transparent;
-                      border: none;
-                      margin: 1px 2px;
-                  }
+        QScrollArea#dockWidgetScrollArea {
+            padding: 0px;
+            border: none;
+        }
 
-                  QScrollBar::handle:vertical {
-                      min-height: 24px;
-                      background: #c1c7d0;
-                      border: none;
-                      border-radius: 3px;
-                  }
+        ads--CDockAreaWidget #tabsMenuButton::menu-indicator {
+            image: none;
+        }
 
-                  QScrollBar::handle:horizontal {
-                      min-width: 24px;
-                      background: #c1c7d0;
-                      border: none;
-                      border-radius: 3px;
-                  }
+        #dockAreaAutoHideButton {
+            qproperty-icon: url(:/resources/images/vs-pin-button.svg),
+                url(:/resources/images/vs-pin-button-disabled.svg) disabled;
+            qproperty-iconSize: 13px;
+        }
 
-                  QScrollBar::handle:vertical:hover,
-                  QScrollBar::handle:horizontal:hover {
-                      background: #a5adba;
-                  }
+        ads--CAutoHideDockContainer #dockAreaAutoHideButton {
+            qproperty-icon: url(:/resources/images/vs-pin-button-pinned-focused.svg);
+            qproperty-iconSize: 13px;
+        }
 
-                  QScrollBar::handle:vertical:pressed,
-                  QScrollBar::handle:horizontal:pressed {
-                      background: #7a869a;
-                  }
+        ads--CAutoHideSideBar {
+            background: #f2f4f5;
+            border: none;
+            qproperty-spacing: 8;
+        }
 
-                  QScrollBar::add-line:vertical,
-                  QScrollBar::sub-line:vertical,
-                  QScrollBar::add-line:horizontal,
-                  QScrollBar::sub-line:horizontal {
-                      width: 0px;
-                      height: 0px;
-                  }
+        ads--CAutoHideTab {
+            color: #657078;
+            background: transparent;
+            border: none;
+            border-radius: 2px;
+            padding: 4px;
+            qproperty-iconSize: 14px 14px;
+        }
 
-                  QScrollBar::add-page:vertical,
-                  QScrollBar::sub-page:vertical,
-                  QScrollBar::add-page:horizontal,
-                  QScrollBar::sub-page:horizontal {
-                      background: transparent;
-                  }
-                  )";
-    qInfo() << "m_dockManager->setStyleSheet(qss)";
+        ads--CAutoHideTab:hover,
+        ads--CAutoHideTab[activeTab="true"] {
+            color: #2c5368;
+            background: #e4ebef;
+        }
+
+        ads--CAutoHideDockContainer {
+            background: #ffffff;
+            border: 1px solid #c7d0d5;
+        }
+    )");
+
     m_dockManager->setStyleSheet(qss);
-    qInfo() << "m_dockManager->setStyleSheet(qss)";
 }
+
 
 void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
 {
     if (!area)
         return;
 
-    int openCount = area->openDockWidgetsCount();
-    bool isSingle = (openCount == 1);
+    auto* titleBar = area->titleBar();
+    if (!titleBar)
+        return;
 
-    auto titleBar = area->titleBar();
-    if (titleBar)
+    const bool isSingle = area->openDockWidgetsCount() <= 1;
+
+    titleBar->setStyleSheet(QString::fromUtf8(R"(
+        ads--CDockAreaTitleBar {
+            background: #f6f7f8;
+            border: none;
+            border-bottom: 1px solid #dce1e4;
+            min-height: 31px;
+            max-height: 31px;
+        }
+
+        ads--CDockAreaTitleBar ads--CTitleBarButton {
+            background: transparent;
+            border: none;
+            border-radius: 2px;
+            min-width: 21px;
+            min-height: 21px;
+            max-width: 21px;
+            max-height: 21px;
+            margin: 5px 2px;
+            padding: 3px;
+        }
+
+        ads--CDockAreaTitleBar ads--CTitleBarButton:hover {
+            background: #e8ecef;
+        }
+
+        ads--CDockAreaTitleBar ads--CTitleBarButton:pressed {
+            background: #dce2e6;
+        }
+
+        ads--CDockAreaTitleBar #dockAreaCloseButton {
+            qproperty-icon: url(:/resources/images/close-button.svg);
+            qproperty-iconSize: 12px;
+        }
+
+        ads--CDockAreaTitleBar #dockAreaCloseButton:hover {
+            background: #c84a4a;
+            qproperty-icon: url(:/resources/images/close-button-focused.svg);
+        }
+
+        ads--CDockAreaTitleBar #dockAreaAutoHideButton {
+            qproperty-icon: url(:/resources/images/vs-pin-button.svg);
+            qproperty-iconSize: 12px;
+        }
+
+        ads--CAutoHideDockContainer ads--CDockAreaTitleBar #dockAreaAutoHideButton {
+            qproperty-icon: url(:/resources/images/vs-pin-button-pinned-focused.svg);
+            qproperty-iconSize: 12px;
+        }
+
+        ads--CDockAreaTitleBar #tabsMenuButton {
+            qproperty-icon: url(:/resources/images/tabs-menu-button.svg);
+            qproperty-iconSize: 12px;
+        }
+
+        ads--CDockAreaTitleBar #tabsMenuButton::menu-indicator {
+            image: none;
+        }
+
+        ads--CDockAreaTitleBar #dockAreaUndockButton {
+            qproperty-icon: url(:/resources/images/detach-button.svg);
+            qproperty-iconSize: 12px;
+        }
+    )"));
+
+    auto* tabBar = titleBar->tabBar();
+    if (!tabBar)
+        return;
+
+    tabBar->setStyleSheet(QStringLiteral("background: transparent; border: none;"));
+
+    const QString singleTabStyle = QString::fromUtf8(R"(
+        ads--CDockWidgetTab,
+        ads--CDockWidgetTab:hover,
+        ads--CDockWidgetTab[activeTab="true"],
+        ads--CDockWidgetTab[focused="true"] {
+            color: #293139;
+            background: transparent;
+            border: none;
+            min-height: 29px;
+            max-height: 29px;
+            padding: 0px 10px;
+        }
+
+        ads--CDockWidgetTab QLabel#dockWidgetTabLabel,
+        ads--CDockWidgetTab:hover QLabel#dockWidgetTabLabel,
+        ads--CDockWidgetTab[activeTab="true"] QLabel#dockWidgetTabLabel,
+        ads--CDockWidgetTab[focused="true"] QLabel#dockWidgetTabLabel {
+            color: #293139;
+            background: transparent;
+            font-family: "Microsoft YaHei UI", "Microsoft YaHei", "微软雅黑", "Segoe UI";
+            font-size: 9.5pt;
+            font-weight: 600;
+        }
+    )");
+
+    const QString multiTabStyle = QString::fromUtf8(R"(
+        ads--CDockWidgetTab {
+            color: #5d676f;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            border-radius: 0px;
+            min-height: 29px;
+            max-height: 29px;
+            margin: 0px;
+            padding: 0px 13px;
+        }
+
+        ads--CDockWidgetTab:hover {
+            color: #354b57;
+            background: #eef2f4;
+        }
+
+        ads--CDockWidgetTab[activeTab="true"],
+        ads--CDockWidgetTab[focused="true"] {
+            color: #2c5368;
+            background: #ffffff;
+            border-bottom: 2px solid #4f778d;
+        }
+
+        ads--CDockWidgetTab QLabel#dockWidgetTabLabel {
+            color: #5d676f;
+            background: transparent;
+            font-family: "Microsoft YaHei UI", "Microsoft YaHei", "微软雅黑", "Segoe UI";
+            font-size: 9pt;
+            font-weight: 500;
+        }
+
+        ads--CDockWidgetTab:hover QLabel#dockWidgetTabLabel {
+            color: #354b57;
+        }
+
+        ads--CDockWidgetTab[activeTab="true"] QLabel#dockWidgetTabLabel,
+        ads--CDockWidgetTab[focused="true"] QLabel#dockWidgetTabLabel {
+            color: #2c5368;
+            font-weight: 600;
+        }
+    )");
+
+    for (int i = 0; i < tabBar->count(); ++i)
     {
-        if (isSingle)
-        {
-            titleBar->setStyleSheet(
-                "ads--CDockAreaTitleBar {"
-                "  background: white;"
-                "  border: none;"
-                "  min-height: 40px;"
-                "  max-height: 40px;"
-                "}"
-                "ads--CDockAreaTitleBar ads--CTitleBarButton {"
-                "  background: transparent;"
-                "  border: none;"
-                "  padding: 4px;"
-                "  margin: 8px 2px;"
-                "  border-radius: 4px;"
-                "  min-width: 24px;"
-                "  min-height: 24px;"
-                "  max-width: 24px;"
-                "  max-height: 24px;"
-                "}"
-                "ads--CDockAreaTitleBar ads--CTitleBarButton:hover {"
-                "  background: rgba(0, 0, 0, 0.05);"
-                "}"
-                "ads--CDockAreaTitleBar ads--CTitleBarButton:pressed {"
-                "  background: rgba(0, 0, 0, 0.1);"
-                "}"
-                "ads--CDockAreaTitleBar #dockAreaCloseButton {"
-                "  qproperty-icon: url(:/resources/images/close-button.svg);"
-                "  qproperty-iconSize: 14px;"
-                "}"
-                "ads--CDockAreaTitleBar #dockAreaCloseButton:hover {"
-                "  background: #e81123;"
-                "  border-radius: 4px;"
-                "  qproperty-icon: url(:/resources/images/close-button-focused.svg);"
-                "}"
-                "ads--CDockAreaTitleBar #dockAreaCloseButton:pressed {"
-                "  background: #f1707a;"
-                "}"
-                "ads--CDockAreaTitleBar #dockAreaAutoHideButton {"
-                "  qproperty-icon: url(:/resources/images/vs-pin-button.svg);"
-                "  qproperty-iconSize: 14px;"
-                "}"
-                "ads--CAutoHideDockContainer ads--CDockAreaTitleBar #dockAreaAutoHideButton {"
-                "  qproperty-icon: url(:/resources/images/vs-pin-button-pinned-focused.svg);"
-                "  qproperty-iconSize: 14px;"
-                "}"
-                "ads--CDockAreaTitleBar #tabsMenuButton {"
-                "  qproperty-icon: url(:/resources/images/tabs-menu-button.svg);"
-                "  qproperty-iconSize: 14px;"
-                "}"
-                "ads--CDockAreaTitleBar #tabsMenuButton::menu-indicator {"
-                "  image: none;"
-                "}"
-                "ads--CDockAreaTitleBar #dockAreaUndockButton {"
-                "  qproperty-icon: url(:/resources/images/detach-button.svg);"
-                "  qproperty-iconSize: 14px;"
-                "}"
-            );
-        }
-        else
-        {
-            titleBar->setStyleSheet(
-                "ads--CDockAreaTitleBar {"
-                "  background: #eef2f6;"
-                "  border-bottom: 1px solid #dcdfe6;"
-                "  min-height: 28px;"
-                "  max-height: 28px;"
-                "}"
-                "ads--CDockAreaTitleBar ads--CTitleBarButton {"
-                "  background: transparent;"
-                "  border: none;"
-                "  padding: 2px;"
-                "  margin: 4px 1px;"
-                "  border-radius: 3px;"
-                "  min-width: 20px;"
-                "  min-height: 20px;"
-                "  max-width: 20px;"
-                "  max-height: 20px;"
-                "}"
-                "ads--CDockAreaTitleBar ads--CTitleBarButton:hover {"
-                "  background: rgba(0, 0, 0, 0.05);"
-                "}"
-                "ads--CDockAreaTitleBar ads--CTitleBarButton:pressed {"
-                "  background: rgba(0, 0, 0, 0.1);"
-                "}"
-                "ads--CDockAreaTitleBar #dockAreaCloseButton {"
-                "  qproperty-icon: url(:/resources/images/close-button.svg);"
-                "  qproperty-iconSize: 12px;"
-                "}"
-                "ads--CDockAreaTitleBar #dockAreaCloseButton:hover {"
-                "  background: #e81123;"
-                "  border-radius: 3px;"
-                "  qproperty-icon: url(:/resources/images/close-button-focused.svg);"
-                "}"
-                "ads--CDockAreaTitleBar #dockAreaCloseButton:pressed {"
-                "  background: #f1707a;"
-                "}"
-                "ads--CDockAreaTitleBar #dockAreaAutoHideButton {"
-                "  qproperty-icon: url(:/resources/images/vs-pin-button.svg);"
-                "  qproperty-iconSize: 12px;"
-                "}"
-                "ads--CAutoHideDockContainer ads--CDockAreaTitleBar #dockAreaAutoHideButton {"
-                "  qproperty-icon: url(:/resources/images/vs-pin-button-pinned-focused.svg);"
-                "  qproperty-iconSize: 12px;"
-                "}"
-                "ads--CDockAreaTitleBar #tabsMenuButton {"
-                "  qproperty-icon: url(:/resources/images/tabs-menu-button.svg);"
-                "  qproperty-iconSize: 12px;"
-                "}"
-                "ads--CDockAreaTitleBar #tabsMenuButton::menu-indicator {"
-                "  image: none;"
-                "}"
-                "ads--CDockAreaTitleBar #dockAreaUndockButton {"
-                "  qproperty-icon: url(:/resources/images/detach-button.svg);"
-                "  qproperty-iconSize: 12px;"
-                "}"
-            );
-        }
-    }
-
-    auto tabBar = titleBar ? titleBar->tabBar() : nullptr;
-    if (tabBar)
-    {
-        tabBar->setStyleSheet("background: transparent; border: none;");
-
-        for (int i = 0; i < tabBar->count(); ++i)
-        {
-            auto tab = tabBar->tab(i);
-            if (tab)
-            {
-                if (isSingle)
-                {
-                    tab->setStyleSheet(
-                        "ads--CDockWidgetTab, "
-                        "ads--CDockWidgetTab[activeTab=\"true\"], "
-                        "ads--CDockWidgetTab[focused=\"true\"] {"
-                        "  background: transparent;"
-                        "  border: none;"
-                        "  padding-left: 4px;"
-                        "}"
-                        "ads--CDockWidgetTab QLabel#dockWidgetTabLabel {"
-                        "  font-family: \"Microsoft YaHei\", \"微软雅黑\";"
-                        "  font-weight: normal;"
-                        "  font-size: 15pt;"
-                        "  color: #3a7bc8;"
-                        "  text-align: left;"
-                        "  background: transparent;"
-                        "}"
-                    );
-                }
-                else
-                {
-                    tab->setStyleSheet(
-                        "ads--CDockWidgetTab {"
-                        "  background: transparent;"
-                        "  border: none;"
-                        "  border-top: 2px solid transparent;"
-                        "  padding: 0px 14px;"
-                        "  min-height: 24px;"
-                        "  max-height: 24px;"
-                        "}"
-                        "ads--CDockWidgetTab QLabel#dockWidgetTabLabel {"
-                        "  font-family: \"Microsoft YaHei\", \"微软雅黑\";"
-                        "  font-weight: normal;"
-                        "  font-size: 9pt;"
-                        "  color: #606266;"
-                        "  text-align: left;"
-                        "  background: transparent;"
-                        "}"
-                        "ads--CDockWidgetTab:hover {"
-                        "  background: rgba(255, 255, 255, 0.4);"
-                        "}"
-                        "ads--CDockWidgetTab:hover QLabel#dockWidgetTabLabel {"
-                        "  color: #111111;"
-                        "}"
-                        "ads--CDockWidgetTab[activeTab=\"true\"] {"
-                        "  background: #ffffff;"
-                        "  border-top: 2px solid #4a90d9;"
-                        "}"
-                        "ads--CDockWidgetTab[activeTab=\"true\"] QLabel#dockWidgetTabLabel {"
-                        "  font-weight: normal;"
-                        "  color: #3a7bc8;"
-                        "  background: transparent;"
-                        "}"
-                        "ads--CDockWidgetTab[focused=\"true\"] {"
-                        "  background: #ffffff;"
-                        "  border-top: 2px solid #4a90d9;"
-                        "}"
-                        "ads--CDockWidgetTab[focused=\"true\"] QLabel#dockWidgetTabLabel {"
-                        "  font-weight: normal;"
-                        "  color: #3a7bc8;"
-                        "  background: transparent;"
-                        "}"
-                    );
-                }
-            }
-        }
+        auto* tab = tabBar->tab(i);
+        if (tab)
+            tab->setStyleSheet(isSingle ? singleTabStyle : multiTabStyle);
     }
 }
+
 
 void UiFrame::updateAllContainersTabStyle()
 {
@@ -634,40 +564,129 @@ void UiFrame::captureDefaultDockState()
 void UiFrame::initSARibbon()
 {
     SARibbonBar::initHighDpi();
-    setWindowTitle("POWERCHINA-GEOCAE");
+    setWindowTitle(QStringLiteral("POWERCHINA-GEOCAE"));
 
     m_ribbon = ribbonBar();
+    m_ribbon->setObjectName(QStringLiteral("geoCaeRibbonBar"));
     m_ribbon->setRibbonStyle(SARibbonBar::RibbonStyleCompactTwoRow);
     setRibbonTheme(SARibbonTheme::RibbonThemeOffice2013);
 
-    // 在 Office2013 主题基础上覆写深色样式，使 Ribbon 视觉接近黑色主题。
-    // 仅覆写文字和边框颜色为黑色，不修改背景色。
-    m_ribbon->setStyleSheet(
-        "SARibbonBar QTabBar::tab { color: #111111;}");
+    // Keep the established workflow. The refinement is intentionally subtle:
+    // flatter tabs, restrained hover states and one consistent accent.
+    m_ribbon->setStyleSheet(QString::fromUtf8(R"(
+        SARibbonBar#geoCaeRibbonBar {
+            background: #ffffff;
+            border: none;
+            border-bottom: 1px solid #d7dde1;
+        }
 
-    // m_ribbon->setStyleSheet(
-    //     "SARibbonBar QTabBar::tab { color: #111111; border: 1px solid transparent; }"
-    //     "SARibbonBar QTabBar::tab:selected { color: #111111; border: 1px solid #111111; }"
-    //     "SARibbonBar QTabBar::tab:hover { border: 1px solid #111111; }"
-    //     "SARibbonBar QStackedWidget { border-top: 1px solid #111111; }");
+        SARibbonBar#geoCaeRibbonBar QTabBar {
+            background: #ffffff;
+            border: none;
+        }
+
+        SARibbonBar#geoCaeRibbonBar QTabBar::tab {
+            color: #3d464e;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            border-radius: 0px;
+            min-height: 30px;
+            padding: 0px 16px;
+            margin: 0px;
+            font-size: 10pt;
+        }
+
+        SARibbonBar#geoCaeRibbonBar QTabBar::tab:hover:!selected {
+            color: #2e5367;
+            background: #f3f5f6;
+        }
+
+        SARibbonBar#geoCaeRibbonBar QTabBar::tab:selected {
+            color: #284d61;
+            background: #ffffff;
+            border-bottom: 2px solid #4f778d;
+            font-weight: 600;
+        }
+
+        SARibbonBar#geoCaeRibbonBar QStackedWidget {
+            background: #fbfcfc;
+            border: none;
+            border-top: 1px solid #e3e6e8;
+        }
+
+        SARibbonBar#geoCaeRibbonBar SARibbonPannel {
+            background: #fbfcfc;
+            border: none;
+            border-right: 1px solid #e3e7e9;
+        }
+
+        SARibbonBar#geoCaeRibbonBar QToolButton {
+            color: #2f373e;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 2px;
+            padding: 3px 6px;
+        }
+
+        SARibbonBar#geoCaeRibbonBar QToolButton:hover {
+            color: #294f66;
+            background: #f0f3f5;
+            border-color: #dce2e5;
+        }
+
+        SARibbonBar#geoCaeRibbonBar QToolButton:pressed,
+        SARibbonBar#geoCaeRibbonBar QToolButton:checked {
+            color: #253f4d;
+            background: #e2e9ed;
+            border-color: #c7d3d9;
+        }
+    )"));
 
     buildRibbonAppButton();
     buildRibbonTabs();
 }
 
+
 void UiFrame::buildRibbonAppButton()
 {
     QAbstractButton* btn = m_ribbon->applicationButton();
-    btn->setText(" &文件 ");
+    btn->setObjectName(QStringLiteral("geoCaeFileButton"));
+    btn->setText(QStringLiteral("文件"));
+    btn->setMinimumWidth(64);
+    btn->setStyleSheet(QString::fromUtf8(R"(
+        QAbstractButton#geoCaeFileButton {
+            color: #30383f;
+            background: #ffffff;
+            border: none;
+            border-right: 1px solid #e0e4e7;
+            border-bottom: 2px solid transparent;
+            border-radius: 0px;
+            padding: 0px 15px;
+            font-size: 10pt;
+            font-weight: 600;
+        }
+
+        QAbstractButton#geoCaeFileButton:hover {
+            color: #294f66;
+            background: #f3f5f6;
+        }
+
+        QAbstractButton#geoCaeFileButton:pressed {
+            color: #284d61;
+            background: #e8edef;
+            border-bottom: 2px solid #4f778d;
+        }
+    )"));
 
     m_applicationMenu = new SARibbonMenu(this);
     auto* appBtn = qobject_cast<SARibbonApplicationButton*>(btn);
     appBtn->setMenu(m_applicationMenu);
 
-    auto* actNew = makeAction(this, ":/resources/menu/minimal/app-new.svg", "&新建工程");
-    auto* actOpen = makeAction(this, ":/resources/menu/minimal/app-open.svg", "&打开工程");
-    auto* actSave = makeAction(this, ":/resources/menu/minimal/app-save.svg", "&保存工程");
-    auto* actExit = makeAction(this, ":/resources/menu/minimal/app-exit.svg", "&退出");
+    auto* actNew = makeAction(this, ":/resources/menu/minimal/app-new.svg", "新建工程");
+    auto* actOpen = makeAction(this, ":/resources/menu/minimal/app-open.svg", "打开工程");
+    auto* actSave = makeAction(this, ":/resources/menu/minimal/app-save.svg", "保存工程");
+    auto* actExit = makeAction(this, ":/resources/menu/minimal/app-exit.svg", "退出");
 
     m_applicationMenu->addAction(actNew);
     m_applicationMenu->addAction(actOpen);
@@ -676,7 +695,6 @@ void UiFrame::buildRibbonAppButton()
     m_applicationMenu->addAction(actExit);
 
     bindEvent(this, actNew, PublicConstants::kActionNewProject);
-    // 如果你有 open/save/export 对应事件，在 PublicConstants 里补上即可
     bindEvent(this, actOpen, PublicConstants::kActionOpenProject);
     bindEvent(this, actSave, PublicConstants::kActionSaveProject);
 
@@ -687,6 +705,7 @@ void UiFrame::buildRibbonAppButton()
                 close();
             });
 }
+
 
 void UiFrame::buildRibbonTabs()
 {

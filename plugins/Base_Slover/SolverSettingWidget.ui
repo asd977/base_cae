@@ -37,6 +37,9 @@
      <property name="text">
       <string>计算分析管理</string>
      </property>
+     <property name="visible">
+      <bool>false</bool>
+     </property>
     </widget>
    </item>
   </layout>

@@ -1,4 +1,4 @@
-﻿#include "StressBoundaryPage.h"
+#include "StressBoundaryPage.h"
 
 #include <PickManager.h>
 #include <CustomComboBox.h>
@@ -27,6 +27,7 @@
 
 #include "ui_StressBoundaryPage.h"
 
+#include "SolverUiLayoutHelper.h"
 namespace
 {
 struct EdgeRaw
@@ -351,6 +352,7 @@ StressBoundaryPage::StressBoundaryPage(const QString& pageType, const QString& b
       m_exportFileName(exportFileName)
 {
     ui->setupUi(this);
+    SolverUiLayoutHelper::polishPage(this);
     ui->labelBoundaryTitle->setText(boundaryTitle);
     ui->labelFileNameValue->setText(exportFileName);
     setupBatchGroupCombo();

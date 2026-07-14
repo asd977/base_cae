@@ -37,6 +37,9 @@
      <property name="text">
       <string>侧立面边界设置</string>
      </property>
+     <property name="visible">
+      <bool>false</bool>
+     </property>
     </widget>
    </item>
    <item>
@@ -196,7 +199,7 @@
          </widget>
         </item>
         <item row="0" column="1">
-         <widget class="QComboBox" name="idirCombo"/>
+         <widget class="QComboBox" name="idirCombo" />
         </item>
         <item row="1" column="0">
          <widget class="QLabel" name="heightLabel">
@@ -278,6 +281,21 @@
         </property>
         <property name="bottomMargin">
          <number>9</number>
+        </property>
+        <property name="horizontalSpacing">
+         <number>14</number>
+        </property>
+        <property name="verticalSpacing">
+         <number>8</number>
+        </property>
+        <property name="fieldGrowthPolicy">
+         <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+        </property>
+        <property name="rowWrapPolicy">
+         <enum>QFormLayout::WrapLongRows</enum>
+        </property>
+        <property name="labelAlignment">
+         <set>Qt::AlignRight|Qt::AlignVCenter</set>
         </property>
        </layout>
       </widget>

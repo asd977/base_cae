@@ -11,5 +11,9 @@ launcher.depends += plugins
 launcher.depends += core
 plugins.depends += core
 
+win32-msvc* {
+    QMAKE_CXXFLAGS += /MP
+}
+
 
 
