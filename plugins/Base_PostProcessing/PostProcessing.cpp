@@ -22,6 +22,7 @@
 #include <QJsonObject>
 #include <QLineEdit>
 #include <QMenu>
+#include <QThread>
 #include <QToolButton>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
@@ -35,8 +36,7 @@
 #include "IsosurfaceSettingsWidget.h"
 #include "ProbeSettingsWidget.h"
 #include "PostContourReaderWidget.h"
-#include "ResultArrangeWidget.h"
-#include "ResultRuleConfigDialog.h"
+#include "PostResultAutoPrepare.h"
 VTK_MODULE_INIT(vtkRenderingOpenGL2)
 VTK_MODULE_INIT(vtkRenderingContextOpenGL2)
 VTK_MODULE_INIT(vtkInteractionStyle);
@@ -59,10 +59,6 @@ const QVector<PostNodeSpec>& postNodeSpecs()
         {"等值面", PublicConstants::kPagePostProcessIsosurface},
         {"等值面分割", PublicConstants::kPagePostProcessIsosurfaceSegmentation},
         {"曲线", PublicConstants::kPagePostProcessCurve},
-        {"动画", PublicConstants::kPagePostProcessAnimation},
-        {"派生值", PublicConstants::kPagePostProcessDerivative},
-        {"洞室变形轮廓图", PublicConstants::kPagePostProcessContourReader},
-        {"成果整理", PublicConstants::kPagePostProcessResultArrange},
     };
     return specs;
 }
@@ -123,11 +119,6 @@ void PostProcessing::initPageFactory()
     {
         return new CurveSettingsWidget(host);
     };
-    m_pageFactory[PublicConstants::kPagePostProcessResultArrange] =
-        [this](VisualWidgetService* /*host*/)
-    {
-        return new ResultArrangeWidget();
-    };
     m_pageFactory[PublicConstants::kPagePostProcessContourReader] =
         [this](VisualWidgetService* /*host*/)
     {
@@ -156,19 +147,6 @@ ProjectNode* PostProcessing::createPostNode(const QString& type, const QString& 
 {
     if (!m_root)
         return nullptr;
-
-    if (type == PublicConstants::kPagePostProcessResultArrange)
-    {
-        if (auto* existed = findChildByType(type))
-        {
-            if (select)
-            {
-                if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-                    pm->setCurrentItem(existed);
-            }
-            return existed;
-        }
-    }
 
     BasePage* page = createPageByType(type);
     if (!page)
@@ -296,21 +274,6 @@ void PostProcessing::newCurveSettingWidget()
     createPostNode(PublicConstants::kPagePostProcessCurve, QStringLiteral("曲线"));
 }
 
-void PostProcessing::newResultArrangeWidget()
-{
-    if (!m_root)
-        return;
-
-    if (auto* existed = findChildByType(PublicConstants::kPagePostProcessResultArrange))
-    {
-        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-            pm->setCurrentItem(existed);
-        return;
-    }
-
-    createPostNode(PublicConstants::kPagePostProcessResultArrange, QStringLiteral("成果整理"));
-}
-
 void PostProcessing::newPostContourReaderWidget()
 {
     createPostNode(PublicConstants::kPagePostProcessContourReader, QStringLiteral("洞室变形轮廓图"));
@@ -396,17 +359,36 @@ void PostProcessing::initAction()
             this->newPostContourReaderWidget();
         });
     EventManager::instance().registerHandler(
-        PublicConstants::kActionPostProcessResultArrange, this,
-        [this](const QVariantMap&)
+        PublicConstants::kEventSolverFinished, this,
+        [this](const QVariantMap& data)
         {
-            this->newResultArrangeWidget();
-        });
-    EventManager::instance().registerHandler(
-        PublicConstants::kActionPostProcessResultRuleConfig, this,
-        [this](const QVariantMap&)
-        {
-            ResultRuleConfigDialog dlg;
-            dlg.exec();
+            QString projectDir = data.value(QStringLiteral("projectDir")).toString().trimmed();
+            if (projectDir.isEmpty())
+            {
+                projectDir = PublicVariables::instance()
+                                 .get(PublicConstants::kProjectDirectoryKey)
+                                 .toString()
+                                 .trimmed();
+            }
+
+            projectDir = QDir(projectDir).absolutePath();
+            if (projectDir.isEmpty() || m_preparingProjects.contains(projectDir))
+                return;
+
+            m_preparingProjects.insert(projectDir);
+            QThread* worker = QThread::create(
+                [projectDir]()
+                {
+                    PostResultAutoPrepare::prepareProject(projectDir);
+                });
+
+            connect(worker, &QThread::finished, this,
+                    [this, worker, projectDir]()
+                    {
+                        m_preparingProjects.remove(projectDir);
+                        worker->deleteLater();
+                    });
+            worker->start();
         });
 }
 
@@ -430,23 +412,9 @@ void PostProcessing::initTreeMenu()
                     ContextMenuHub::addAction(menu, this, QStringLiteral("新增%1").arg(title),
                                               [this, type, title]
                                               {
-                                                  if (type ==
-                                                      PublicConstants::kPagePostProcessResultArrange)
-                                                  {
-                                                      newResultArrangeWidget();
-                                                      return;
-                                                  }
                                                   createPostNode(type, title);
                                               });
                 }
-
-                ContextMenuHub::addSeparator(menu);
-                ContextMenuHub::addAction(menu, this, QStringLiteral("结果配置"),
-                                          [this]
-                                          {
-                                              ResultRuleConfigDialog dlg;
-                                              dlg.exec();
-                                          });
                 return;
             }
 

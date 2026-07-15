@@ -24,14 +24,9 @@
 #include <QDebug>
 #include <QDir>
 
+#include "PostResultAutoPrepare.h"
 #include "PostVisualUtils.h"
 #include "ui_VectorSettingWidget.h"
-
-namespace
-{
-const QStringList kResultDirectoriesCommon = {"SEEPCASE01"};
-const QStringList kPreferredResultFilesCommon = {"TEC_HP.DAT", "TEC_VELO.DAT"};
-} // namespace
 
 #include <stdio.h>
 #include <vtkXMLUnstructuredGridReader.h>
@@ -49,6 +44,8 @@ VectorSettingWidget::VectorSettingWidget(VisualWidgetService* postProcessingWidg
             &VectorSettingWidget::on_confirmPushButton_clicked);
     connect(ui->scaleSlider, &QSlider::valueChanged, this,
             &VectorSettingWidget::on_scaleSlider_valueChanged);
+    connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &VectorSettingWidget::on_resultDirComboBox_currentIndexChanged);
 
     // 文本框校验：抽样间隔必须为正整数
     ui->maskSzieTextEdit->setValidator(new QIntValidator(1, 1000000, this));
@@ -97,7 +94,9 @@ void VectorSettingWidget::beforeLoad()
     showPostProcessingOnly(m_visualService, false);
     const QString proj =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    m_dataPath = QDir(proj).filePath(kResultDirectoriesCommon.first());
+    refreshResultGroups();
+    if (m_dataPath.isEmpty())
+        m_dataPath = PostResultAutoPrepare::firstResultDirectory(proj);
 
     if (ui->stepComboBox->count() == 0)
     {
@@ -113,6 +112,35 @@ void VectorSettingWidget::beforeLoad()
             requestRender();
         }
     }
+}
+
+void VectorSettingWidget::refreshResultGroups()
+{
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QString previousPath = m_dataPath;
+    const QVector<PostResultAutoPrepare::ResultGroup> groups =
+        PostResultAutoPrepare::resultGroups(projectDir);
+
+    ui->resultDirComboBox->blockSignals(true);
+    ui->resultDirComboBox->clear();
+    for (const PostResultAutoPrepare::ResultGroup& group : groups)
+        ui->resultDirComboBox->addItem(group.displayName, group.sourcePath);
+
+    int index = previousPath.isEmpty() ? -1 : ui->resultDirComboBox->findData(previousPath);
+    if (index < 0 && ui->resultDirComboBox->count() > 0)
+        index = 0;
+    ui->resultDirComboBox->setCurrentIndex(index);
+    m_dataPath = index >= 0 ? ui->resultDirComboBox->itemData(index).toString() : QString();
+    ui->resultDirComboBox->blockSignals(false);
+}
+
+void VectorSettingWidget::on_resultDirComboBox_currentIndexChanged(int index)
+{
+    if (index < 0)
+        return;
+    m_dataPath = ui->resultDirComboBox->itemData(index).toString();
+    loadFileName(m_dataPath);
 }
 
 void VectorSettingWidget::beforeUnload()
@@ -131,7 +159,7 @@ void VectorSettingWidget::loadFileName(QString dataPath)
     ui->stepComboBox->blockSignals(true);
     ui->stepComboBox->clear();
 
-    const QDir directory(dataPath);
+    QDir directory(dataPath);
     if (!directory.exists())
     {
         qWarning() << "Directory not found:" << dataPath;
@@ -139,13 +167,17 @@ void VectorSettingWidget::loadFileName(QString dataPath)
         return;
     }
 
-    for (const QString& name : kPreferredResultFilesCommon)
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QVector<PostResultAutoPrepare::ResultFile> files =
+        PostResultAutoPrepare::resultFiles(projectDir, dataPath, true);
+
+    for (const PostResultAutoPrepare::ResultFile& file : files)
     {
-        const QString fullPath = directory.filePath(name);
-        if (!QFileInfo::exists(fullPath))
-            continue;
-        const QString itemName = QFileInfo(fullPath).completeBaseName();
-        ui->stepComboBox->addItem(itemName, fullPath);
+        const QString itemName = file.displayName.trimmed().isEmpty()
+                                     ? QStringLiteral("结果数据")
+                                     : file.displayName.trimmed();
+        ui->stepComboBox->addItem(itemName, file.filePath);
     }
 
     ui->stepComboBox->blockSignals(false);
@@ -208,7 +240,7 @@ bool VectorSettingWidget::ensureDataLoaded()
 
     vtkSmartPointer<vtkUnstructuredGrid> grid;
 
-    if (ext == "txt")
+    if (ext == "txt" || ext == "dat" || ext == "tec")
     {
         // ---- 原来的 Tecplot ----
         auto reader = vtkSmartPointer<vtkTecplotReader>::New();

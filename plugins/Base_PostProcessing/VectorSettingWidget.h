@@ -34,6 +34,7 @@ class VectorSettingWidget : public BasePage
     void on_scaleSlider_valueChanged(int value);
 
     void on_stepComboBox_currentIndexChanged(int index);
+    void on_resultDirComboBox_currentIndexChanged(int index);
 
   private:
     Ui::VectorSettingWidget* ui{nullptr};
@@ -59,6 +60,7 @@ class VectorSettingWidget : public BasePage
     // 工具：按名从 PointData 取数组
     static vtkDataArray* arrayByName(vtkUnstructuredGrid* grid, const QString& name);
     void loadFileName(QString dataPath);
+    void refreshResultGroups();
     double computeAutoBaseScale(vtkUnstructuredGrid* grid);
     vtkSmartPointer<vtkUnstructuredGrid> readVtu(const QString& fileName);
 };

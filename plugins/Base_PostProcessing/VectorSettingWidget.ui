@@ -82,6 +82,20 @@
       <widget class="QWidget" name="widget" native="true">
        <layout class="QVBoxLayout" name="verticalLayout_2">
         <item>
+         <layout class="QHBoxLayout" name="resultStageLayout">
+          <item>
+           <widget class="QLabel" name="resultStageLabel">
+            <property name="text">
+             <string>结果阶段</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="resultDirComboBox"/>
+          </item>
+         </layout>
+        </item>
+        <item>
          <layout class="QHBoxLayout" name="horizontalLayout_2">
           <item>
            <widget class="QLabel" name="label_6">
@@ -92,7 +106,7 @@
              </sizepolicy>
             </property>
             <property name="text">
-             <string>结果文件</string>
+             <string>结果类型</string>
             </property>
            </widget>
           </item>

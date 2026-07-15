@@ -20,3 +20,62 @@ target_link_libraries(CAE_BASE
 set_target_properties(CAE_BASE PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CAE_RUNTIME_DIR}"
 )
+
+if(WIN32)
+    set(_cae_runtime_plugin_targets
+        Base_UiFrame
+        Base_Output
+        Base_ProjectManager
+        Base_Visualization
+        Base_Gemo
+        Base_Mesh
+        Base_MaterialManager
+        Base_PostProcessing
+        Base_Slover
+        Base_GlobalParameter
+        Base_SurrogateModel
+        Base_PhysicalField
+    )
+    set(_cae_runtime_binaries "$<TARGET_FILE:CAE_BASE>")
+    foreach(_cae_runtime_plugin_target IN LISTS _cae_runtime_plugin_targets)
+        if(TARGET ${_cae_runtime_plugin_target})
+            add_dependencies(CAE_BASE ${_cae_runtime_plugin_target})
+            list(APPEND _cae_runtime_binaries "$<TARGET_FILE:${_cae_runtime_plugin_target}>")
+        endif()
+    endforeach()
+
+    get_target_property(_cae_qmake_executable Qt6::qmake IMPORTED_LOCATION)
+    if(_cae_qmake_executable)
+        get_filename_component(_cae_qt_bin_dir "${_cae_qmake_executable}" DIRECTORY)
+        find_program(_cae_windeployqt
+            NAMES windeployqt
+            HINTS "${_cae_qt_bin_dir}"
+            NO_DEFAULT_PATH
+        )
+    endif()
+
+    if(_cae_windeployqt)
+        add_custom_command(TARGET CAE_BASE POST_BUILD
+            COMMAND "${_cae_windeployqt}"
+                --no-translations
+                --no-compiler-runtime
+                --dir "${CAE_RUNTIME_DIR}"
+                ${_cae_runtime_binaries}
+            COMMENT "Deploying Qt runtime files"
+            COMMAND_EXPAND_LISTS
+            VERBATIM
+        )
+    else()
+        message(WARNING "windeployqt was not found; the release folder may require a Qt PATH")
+    endif()
+
+    file(GLOB _cae_vtk_runtime_dlls "${CAE_VTK_ROOT}/bin/*.dll")
+    foreach(_cae_vtk_runtime_dll IN LISTS _cae_vtk_runtime_dlls)
+        add_custom_command(TARGET CAE_BASE POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${_cae_vtk_runtime_dll}"
+                "${CAE_RUNTIME_DIR}"
+            VERBATIM
+        )
+    endforeach()
+endif()

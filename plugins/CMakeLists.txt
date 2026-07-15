@@ -156,6 +156,18 @@ function(cae_add_base_plugin plugin_dir)
         cae_copy_netgen_runtime(${plugin_dir})
     endif()
 
+    if(COMMAND cae_copy_occ_runtime)
+        cae_copy_occ_runtime(${plugin_dir})
+    endif()
+
+    if(COMMAND cae_copy_docking_runtime)
+        cae_copy_docking_runtime(${plugin_dir})
+    endif()
+
+    if(COMMAND cae_copy_saribbon_runtime)
+        cae_copy_saribbon_runtime(${plugin_dir})
+    endif()
+
     set_target_properties(${plugin_dir} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CAE_PLUGIN_DIR}"
         LIBRARY_OUTPUT_DIRECTORY "${CAE_PLUGIN_DIR}"

@@ -261,7 +261,7 @@
        <item row="0" column="1">
         <widget class="QLabel" name="labelFps">
          <property name="text">
-          <string>FPS</string>
+          <string>帧率</string>
          </property>
         </widget>
        </item>
@@ -292,7 +292,7 @@
        <item row="1" column="4">
         <widget class="QPushButton" name="saveAviButton">
          <property name="text">
-          <string>导出 AVI</string>
+          <string>导出视频</string>
          </property>
         </widget>
        </item>

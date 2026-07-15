@@ -33,13 +33,6 @@ set(CAE_3RDPARTY_ROOT
     "Root folder of third-party libraries"
 )
 
-get_filename_component(_cae_default_tmsr_libs "${CMAKE_SOURCE_DIR}/../TMSR/libs" ABSOLUTE)
-set(CAE_TMSR_LIBS_ROOT
-    "${_cae_default_tmsr_libs}"
-    CACHE PATH
-    "Optional TMSR libs folder used for Qt6-built third-party packages"
-)
-
 set(CAE_QT_ROOT
     ""
     CACHE PATH
@@ -76,21 +69,15 @@ set(CAE_OCC_ROOT
 )
 
 set(CAE_DOCKING_ROOT
-    "${CAE_TMSR_LIBS_ROOT}/Qt6-AdvancedDock"
-    CACHE PATH
-    "Qt Advanced Docking root"
+    "${CAE_3RDPARTY_ROOT}/Qt6-AdvancedDock"
 )
 
 set(CAE_SARIBBON_ROOT
-    "${CAE_TMSR_LIBS_ROOT}/SARibbon-qt6"
-    CACHE PATH
-    "SARibbon root"
+    "${CAE_3RDPARTY_ROOT}/SARibbon-qt6"
 )
 
 set(CAE_VTK_ROOT
-    "${CAE_TMSR_LIBS_ROOT}/vtk/vtk_release"
-    CACHE PATH
-    "VTK release install root"
+    "${CAE_3RDPARTY_ROOT}/vtk/vtk_release"
 )
 
 set(CAE_VTK_DIR

@@ -43,7 +43,6 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonObject>
-#include <QRegularExpression>
 #include <QScopedValueRollback>
 #include <QSpinBox>
 #include <QStringList>
@@ -52,27 +51,12 @@
 #include <algorithm>
 #include <cmath>
 
+#include "PostResultAutoPrepare.h"
 #include "PostVisualUtils.h"
-#include "ResultRuleConfigDialog.h"
-#include "ResultRuleManager.h"
 #include "ui_NephogramSettingWidget.h"
 
 namespace
 {
-bool wildcardMatch(const QString& pattern, const QString& text)
-{
-    const QRegularExpression re(
-        QRegularExpression::wildcardToRegularExpression(pattern),
-        QRegularExpression::CaseInsensitiveOption);
-
-    return re.match(text).hasMatch();
-}
-
-QString normalizedRelativePath(QString path)
-{
-    return QDir::fromNativeSeparators(path.trimmed()).replace(QRegularExpression(QStringLiteral("^/+")), QString());
-}
-
 QString uniqueDisplayName(const QString& baseName, const QMap<QString, QString>& existing)
 {
     if (!existing.contains(baseName))
@@ -116,40 +100,12 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
         updateNephogram(ui->scalarComboBox->currentText());
     });
 
-    ResultRuleManager::instance().ensureLoaded();
     initResultDirectoryOptions();
 }
 
 NephogramSettingWidget::~NephogramSettingWidget()
 {
     delete ui;
-}
-
-void NephogramSettingWidget::openResultRuleConfigDialog()
-{
-    ResultRuleConfigDialog dlg(this);
-
-    if (dlg.exec() != QDialog::Accepted)
-        return;
-
-    const QString previousDir = ui->resultDirComboBox->currentData().toString();
-    const QString previousStep = ui->stepComboBox->currentText();
-
-    initResultDirectoryOptions();
-
-    const int dirIndex = ui->resultDirComboBox->findData(previousDir);
-    if (dirIndex >= 0)
-        ui->resultDirComboBox->setCurrentIndex(dirIndex);
-
-    m_dataPath = selectedResultDirectoryPath();
-    loadFileName(m_dataPath);
-
-    if (!previousStep.isEmpty())
-    {
-        const int stepIndex = ui->stepComboBox->findText(previousStep);
-        if (stepIndex >= 0)
-            ui->stepComboBox->setCurrentIndex(stepIndex);
-    }
 }
 
 void NephogramSettingWidget::ensureActorAttached()
@@ -207,8 +163,6 @@ void NephogramSettingWidget::beforeLoad()
         qWarning() << "Visual service is null in NephogramSettingWidget.";
         return;
     }
-
-    ResultRuleManager::instance().ensureLoaded();
 
     const QString previousDir = ui->resultDirComboBox->currentData().toString();
     const QString previousStep = ui->stepComboBox->currentText();
@@ -314,67 +268,35 @@ void NephogramSettingWidget::loadFileName(const QString& dataPath)
         return;
     }
 
-    ResultRuleManager::instance().ensureLoaded();
-    const QVector<ResultFileRule> rules = ResultRuleManager::instance().fileRules();
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
 
-    for (const ResultFileRule& rule : rules)
+    const QVector<PostResultAutoPrepare::ResultFile> preparedFiles =
+        PostResultAutoPrepare::resultFiles(projectDir, dataPath, true);
+    if (!preparedFiles.isEmpty())
     {
-        if (rule.fileName.trimmed().isEmpty())
-            continue;
-
-        QStringList matchedFiles;
-
-        if (rule.fileName.contains('*') || rule.fileName.contains('?'))
+        for (const PostResultAutoPrepare::ResultFile& file : preparedFiles)
         {
-            const QStringList files = directory.entryList(QStringList{rule.fileName},
-                                                          QDir::Files,
-                                                          QDir::Name);
-            for (const QString& file : files)
-                matchedFiles << file;
-        }
-        else
-        {
-            if (QFileInfo::exists(directory.filePath(rule.fileName)))
-                matchedFiles << rule.fileName;
-        }
-
-        for (const QString& matchedFile : matchedFiles)
-        {
-            const QString fullPath = directory.filePath(matchedFile);
-
-            QString stepName = rule.displayName.trimmed().isEmpty()
-                                   ? matchedFile
-                                   : rule.displayName.trimmed();
-
-            if (matchedFiles.size() > 1 || m_stepFileMap.contains(stepName))
-                stepName = QStringLiteral("%1 - %2").arg(stepName, matchedFile);
-
-            stepName = uniqueDisplayName(stepName, m_stepFileMap);
-
-            m_stepFileMap.insert(stepName, fullPath);
+            const QString stepName = uniqueDisplayName(
+                file.displayName.trimmed().isEmpty() ? QStringLiteral("结果数据")
+                                                     : file.displayName.trimmed(),
+                m_stepFileMap);
+            m_stepFileMap.insert(stepName, file.filePath);
             ui->stepComboBox->addItem(stepName);
-
-            const int index = ui->stepComboBox->count() - 1;
-            ui->stepComboBox->setItemData(
-                index,
-                QStringLiteral("%1：%2").arg(matchedFile, rule.description),
-                Qt::ToolTipRole);
+            ui->stepComboBox->setItemData(ui->stepComboBox->count() - 1,
+                                          QStringLiteral("求解完成后自动生成"),
+                                          Qt::ToolTipRole);
         }
+
+        ui->stepComboBox->blockSignals(false);
+        ui->stepComboBox->setCurrentIndex(0);
+        on_stepComboBox_currentIndexChanged(ui->stepComboBox->currentIndex());
+        return;
     }
 
     ui->stepComboBox->blockSignals(false);
-
-    if (ui->stepComboBox->count() > 0)
-    {
-        ui->stepComboBox->setCurrentIndex(0);
-        on_stepComboBox_currentIndexChanged(ui->stepComboBox->currentIndex());
-    }
-    else
-    {
-        ui->scalarComboBox->clear();
-        qWarning() << "No configured result files found in" << dataPath;
-    }
-
+    ui->scalarComboBox->clear();
+    qWarning() << "No prepared post-processing results found in" << dataPath;
 }
 
 void NephogramSettingWidget::on_resultDirComboBox_currentIndexChanged(int)
@@ -515,40 +437,24 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName)
 
 void NephogramSettingWidget::initResultDirectoryOptions()
 {
-    ResultRuleManager::instance().ensureLoaded();
-
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
 
     ui->resultDirComboBox->blockSignals(true);
     ui->resultDirComboBox->clear();
 
-    const QVector<ResultDirectoryRule> rules = ResultRuleManager::instance().directoryRules();
-
-    for (const ResultDirectoryRule& rule : rules)
+    const QVector<PostResultAutoPrepare::ResultGroup> groups =
+        PostResultAutoPrepare::resultGroups(projectDir);
+    const QDir project(projectDir);
+    for (const PostResultAutoPrepare::ResultGroup& group : groups)
     {
-        const QString relPath = normalizedRelativePath(rule.dirName);
-
-        if (relPath.isEmpty())
-            continue;
-
-        const QString absPath = QDir(projectDir).filePath(relPath);
-
-        // 不做自动发现；这里只显示全局规则中配置过，且当前工程真实存在的目录。
-        if (!QDir(absPath).exists())
-            continue;
-
-        const QString display = rule.displayName.trimmed().isEmpty()
-                                    ? relPath
-                                    : rule.displayName.trimmed();
-
-        ui->resultDirComboBox->addItem(display, relPath);
+        const QString relPath = QDir::fromNativeSeparators(
+            project.relativeFilePath(group.sourcePath));
+        ui->resultDirComboBox->addItem(group.displayName, relPath);
 
         const int index = ui->resultDirComboBox->count() - 1;
         ui->resultDirComboBox->setItemData(
-            index,
-            QStringLiteral("%1：%2").arg(relPath, rule.description),
-            Qt::ToolTipRole);
+            index, QStringLiteral("自动识别的计算结果"), Qt::ToolTipRole);
     }
 
     if (ui->resultDirComboBox->count() > 0)
@@ -567,7 +473,9 @@ QString NephogramSettingWidget::selectedResultDirectoryPath() const
     if (dirName.isEmpty())
         return projectDir;
 
-    return QDir(projectDir).filePath(dirName);
+    if (QDir::isAbsolutePath(dirName))
+        return QDir(dirName).absolutePath();
+    return QDir(projectDir).absoluteFilePath(dirName);
 }
 
 vtkDataArray* NephogramSettingWidget::findScalarArray(vtkUnstructuredGrid* grid,
@@ -661,7 +569,6 @@ void NephogramSettingWidget::loadJson(const QJsonObject& obj)
     const QString step = obj.value(QStringLiteral("step")).toString();
     const QString scalar = obj.value(QStringLiteral("scalar")).toString();
 
-    ResultRuleManager::instance().ensureLoaded();
     initResultDirectoryOptions();
 
     if (!resultDir.isEmpty())

@@ -1161,21 +1161,15 @@ void UiFrame::buildRibbonTabs()
                 makeAction(this, ":/resources/menu/minimal/post-slice.svg", "&切面");
             auto* actDice =
                 makeAction(this, ":/resources/menu/minimal/post-block.svg", "&切块");
-            auto* actContourReader =
-                makeAction(this, ":/resources/menu/minimal/post-nephogram.svg", "&洞室变形轮廓图");
-
             addActionToPanel(panel, actNeph, 3);
             addActionToPanel(panel, actVec, 3);
             addActionToPanel(panel, actSlc, 2);
             addActionToPanel(panel, actDice, 2);
-            addActionToPanel(panel, actContourReader, 3);
 
             bindEvent(this, actNeph, PublicConstants::kActionPostProcessNephogram);
             bindEvent(this, actVec, PublicConstants::kActionPostProcessVector);
             bindEvent(this, actSlc, PublicConstants::kActionPostProcessSection);
             bindEvent(this, actDice, PublicConstants::kActionPostProcessDice);
-            bindEvent(this, actContourReader,
-                      PublicConstants::kActionPostProcessContourReader);
         }
 
                // ---------- 提取 ----------
@@ -1200,21 +1194,5 @@ void UiFrame::buildRibbonTabs()
             bindEvent(this, actXY, PublicConstants::kActionPostProcessXyPlot);
         }
 
-               // ---------- 成果 ----------
-        {
-            auto* panel = cate->addPannel("成果");
-
-            auto* actArrange =
-                makeAction(this, ":/resources/menu/minimal/post-arrange.svg", "&成果整理");
-            auto* actResultConfig =
-                makeAction(this, ":/resources/menu/minimal/post-config.svg", "&结果配置");
-
-            addActionToPanel(panel, actArrange, 3);
-            addActionToPanel(panel, actResultConfig, 3);
-
-            bindEvent(this, actArrange, PublicConstants::kActionPostProcessResultArrange);
-            bindEvent(this, actResultConfig,
-                      PublicConstants::kActionPostProcessResultRuleConfig);
-        }
     }
 }

@@ -11,6 +11,7 @@ namespace PublicConstants
 // --- App lifecycle ---
 constexpr char kEventLoadComplete[] = "load_complete";
 constexpr char kEventQuitApp[] = "quit_app";
+constexpr char kEventSolverFinished[] = "solver_finished";
 
 // --- Notify / Broadcast (几何、网格等状态通知) ---
 constexpr char kUpdateGeomPointIndex[] = "update_geom_point_index";

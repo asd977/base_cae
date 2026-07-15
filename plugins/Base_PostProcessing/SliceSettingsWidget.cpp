@@ -22,14 +22,9 @@
 #include <QDir>
 #include <QRegularExpression>
 
+#include "PostResultAutoPrepare.h"
 #include "PostVisualUtils.h"
 #include "ui_SliceSettingsWidget.h"
-
-namespace
-{
-const QStringList kResultDirectoriesCommon = {"SEEPCASE01"};
-const QStringList kPreferredResultFilesCommon = {"TEC_HP.DAT", "TEC_VELO.DAT"};
-} // namespace
 
 #include <vtkDataSetSurfaceFilter.h>
 
@@ -107,6 +102,8 @@ SliceSettingsWidget::SliceSettingsWidget(VisualWidgetService* postProcessingWidg
     connect(ui->sliceSlider, &QSlider::valueChanged, this, &SliceSettingsWidget::showCutPlane);
     connect(ui->planeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &SliceSettingsWidget::on_planeComboBox_currentIndexChanged);
+    connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &SliceSettingsWidget::on_resultDirComboBox_currentIndexChanged);
 
     // 确认按钮（不自动出结果，只有点确认才生成）
     connect(ui->confirmButton, &QPushButton::clicked, this,
@@ -141,6 +138,7 @@ SliceSettingsWidget::~SliceSettingsWidget()
 void SliceSettingsWidget::beforeLoad()
 {
     showPostProcessingOnly(m_visualService, false);
+    refreshResultGroups();
     if (!m_loadedOnce)
     {
         // 初始化一次
@@ -149,7 +147,8 @@ void SliceSettingsWidget::beforeLoad()
 
         const QString workPath =
             PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-        m_dataPath = QDir(workPath).filePath(kResultDirectoriesCommon.first());
+        if (m_dataPath.isEmpty())
+            m_dataPath = PostResultAutoPrepare::firstResultDirectory(workPath);
         loadFileName(m_dataPath);
 
         m_loadedOnce = true;
@@ -160,6 +159,35 @@ void SliceSettingsWidget::beforeLoad()
 
     if (auto rw = m_visualService->renderWindow())
         rw->Render();
+}
+
+void SliceSettingsWidget::refreshResultGroups()
+{
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QString previousPath = m_dataPath;
+    const QVector<PostResultAutoPrepare::ResultGroup> groups =
+        PostResultAutoPrepare::resultGroups(projectDir);
+
+    ui->resultDirComboBox->blockSignals(true);
+    ui->resultDirComboBox->clear();
+    for (const PostResultAutoPrepare::ResultGroup& group : groups)
+        ui->resultDirComboBox->addItem(group.displayName, group.sourcePath);
+
+    int index = previousPath.isEmpty() ? -1 : ui->resultDirComboBox->findData(previousPath);
+    if (index < 0 && ui->resultDirComboBox->count() > 0)
+        index = 0;
+    ui->resultDirComboBox->setCurrentIndex(index);
+    m_dataPath = index >= 0 ? ui->resultDirComboBox->itemData(index).toString() : QString();
+    ui->resultDirComboBox->blockSignals(false);
+}
+
+void SliceSettingsWidget::on_resultDirComboBox_currentIndexChanged(int index)
+{
+    if (index < 0)
+        return;
+    m_dataPath = ui->resultDirComboBox->itemData(index).toString();
+    loadFileName(m_dataPath);
 }
 
 void SliceSettingsWidget::beforeUnload()
@@ -174,7 +202,7 @@ void SliceSettingsWidget::loadFileName(QString dataPath)
     ui->stepComboBox->blockSignals(true);
     ui->stepComboBox->clear();
 
-    const QDir directory(dataPath);
+    QDir directory(dataPath);
     if (!directory.exists())
     {
         qWarning() << "Directory not found:" << dataPath;
@@ -182,13 +210,17 @@ void SliceSettingsWidget::loadFileName(QString dataPath)
         return;
     }
 
-    for (const QString& name : kPreferredResultFilesCommon)
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QVector<PostResultAutoPrepare::ResultFile> files =
+        PostResultAutoPrepare::resultFiles(projectDir, dataPath, false);
+
+    for (const PostResultAutoPrepare::ResultFile& file : files)
     {
-        const QString fullPath = directory.filePath(name);
-        if (!QFileInfo::exists(fullPath))
-            continue;
-        const QString itemName = QFileInfo(fullPath).completeBaseName();
-        ui->stepComboBox->addItem(itemName, fullPath);
+        const QString itemName = file.displayName.trimmed().isEmpty()
+                                     ? QStringLiteral("结果数据")
+                                     : file.displayName.trimmed();
+        ui->stepComboBox->addItem(itemName, file.filePath);
     }
 
     ui->stepComboBox->blockSignals(false);

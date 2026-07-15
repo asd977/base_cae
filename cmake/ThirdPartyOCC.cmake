@@ -8,6 +8,10 @@ if(NOT EXISTS "${CAE_OCC_ROOT}/lib")
     message(FATAL_ERROR "OCC lib directory not found: ${CAE_OCC_ROOT}/lib")
 endif()
 
+if(WIN32 AND NOT EXISTS "${CAE_OCC_ROOT}/bin")
+    message(FATAL_ERROR "OCC runtime bin directory not found: ${CAE_OCC_ROOT}/bin")
+endif()
+
 set(CAE_OCC_LIB_NAMES
     TKBin
     TKBinL
@@ -94,3 +98,21 @@ set_target_properties(CAE::OCC PROPERTIES
     INTERFACE_COMPILE_DEFINITIONS "$<$<CONFIG:Debug>:_DEBUG>"
     INTERFACE_COMPILE_FEATURES cxx_std_11
 )
+
+if(WIN32)
+    file(GLOB CAE_OCC_RUNTIME_DLLS CONFIGURE_DEPENDS "${CAE_OCC_ROOT}/bin/*.dll")
+    if(NOT CAE_OCC_RUNTIME_DLLS)
+        message(FATAL_ERROR "OCC runtime DLLs not found under: ${CAE_OCC_ROOT}/bin")
+    endif()
+endif()
+
+function(cae_copy_occ_runtime target_name)
+    if(WIN32)
+        add_custom_command(TARGET ${target_name} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${CAE_OCC_RUNTIME_DLLS}
+                "${CAE_RUNTIME_DIR}"
+            VERBATIM
+        )
+    endif()
+endfunction()

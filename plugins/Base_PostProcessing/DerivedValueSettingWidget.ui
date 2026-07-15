@@ -132,7 +132,7 @@
             <item>
              <widget class="QComboBox" name="assocComboBox">
               <property name="toolTip">
-               <string>Point Data / Cell Data</string>
+               <string>节点数据或单元数据</string>
               </property>
               <property name="minimumSize">
                <size>
@@ -404,17 +404,17 @@
           </column>
           <column>
            <property name="text">
-            <string>Min</string>
+            <string>最小值</string>
            </property>
           </column>
           <column>
            <property name="text">
-            <string>Max</string>
+            <string>最大值</string>
            </property>
           </column>
           <column>
            <property name="text">
-            <string>Mean</string>
+            <string>平均值</string>
            </property>
           </column>
           <attribute name="horizontalHeaderStretchLastSection">

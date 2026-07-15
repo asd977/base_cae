@@ -17,14 +17,9 @@
 #include <QDir>
 #include <QRegularExpression>
 
+#include "PostResultAutoPrepare.h"
 #include "PostVisualUtils.h"
 #include "ui_BlockSettingsWidget.h"
-
-namespace
-{
-const QStringList kResultDirectoriesCommon = {"SEEPCASE01"};
-const QStringList kPreferredResultFilesCommon = {"TEC_HP.DAT", "TEC_VELO.DAT"};
-} // namespace
 
 #include <cmath>
 
@@ -53,6 +48,8 @@ BlockSettingsWidget::BlockSettingsWidget(VisualWidgetService* postProcessingWidg
             &BlockSettingsWidget::on_blockSlider_valueChanged);
     connect(ui->flipCheckBox, &QCheckBox::toggled, this,
             &BlockSettingsWidget::on_flipCheckBox_toggled);
+    connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &BlockSettingsWidget::on_resultDirComboBox_currentIndexChanged);
 }
 
 BlockSettingsWidget::~BlockSettingsWidget()
@@ -63,11 +60,13 @@ BlockSettingsWidget::~BlockSettingsWidget()
 void BlockSettingsWidget::beforeLoad()
 {
     showPostProcessingOnly(m_visualService, false);
+    refreshResultGroups();
     if (m_dataPath.isEmpty())
     {
         const QString workPath =
             PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-        m_dataPath = QDir(workPath).filePath(kResultDirectoriesCommon.first());
+        if (m_dataPath.isEmpty())
+            m_dataPath = PostResultAutoPrepare::firstResultDirectory(workPath);
     }
 
     if (ui->stepComboBox->count() == 0)
@@ -97,6 +96,35 @@ void BlockSettingsWidget::beforeLoad()
 
     renderNow();
 }
+
+void BlockSettingsWidget::refreshResultGroups()
+{
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QString previousPath = m_dataPath;
+    const QVector<PostResultAutoPrepare::ResultGroup> groups =
+        PostResultAutoPrepare::resultGroups(projectDir);
+
+    ui->resultDirComboBox->blockSignals(true);
+    ui->resultDirComboBox->clear();
+    for (const PostResultAutoPrepare::ResultGroup& group : groups)
+        ui->resultDirComboBox->addItem(group.displayName, group.sourcePath);
+
+    int index = previousPath.isEmpty() ? -1 : ui->resultDirComboBox->findData(previousPath);
+    if (index < 0 && ui->resultDirComboBox->count() > 0)
+        index = 0;
+    ui->resultDirComboBox->setCurrentIndex(index);
+    m_dataPath = index >= 0 ? ui->resultDirComboBox->itemData(index).toString() : QString();
+    ui->resultDirComboBox->blockSignals(false);
+}
+
+void BlockSettingsWidget::on_resultDirComboBox_currentIndexChanged(int index)
+{
+    if (index < 0)
+        return;
+    m_dataPath = ui->resultDirComboBox->itemData(index).toString();
+    loadFileName(m_dataPath);
+}
 void BlockSettingsWidget::beforeUnload()
 {
     // 只移除，不销毁；保持状态与对象以便回来恢复
@@ -112,7 +140,7 @@ void BlockSettingsWidget::loadFileName(QString dataPath)
     ui->stepComboBox->blockSignals(true);
     ui->stepComboBox->clear();
 
-    const QDir directory(dataPath);
+    QDir directory(dataPath);
     if (!directory.exists())
     {
         qWarning() << "Directory not found:" << dataPath;
@@ -120,13 +148,17 @@ void BlockSettingsWidget::loadFileName(QString dataPath)
         return;
     }
 
-    for (const QString& name : kPreferredResultFilesCommon)
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QVector<PostResultAutoPrepare::ResultFile> files =
+        PostResultAutoPrepare::resultFiles(projectDir, dataPath, false);
+
+    for (const PostResultAutoPrepare::ResultFile& file : files)
     {
-        const QString fullPath = directory.filePath(name);
-        if (!QFileInfo::exists(fullPath))
-            continue;
-        const QString itemName = QFileInfo(fullPath).completeBaseName();
-        ui->stepComboBox->addItem(itemName, fullPath);
+        const QString itemName = file.displayName.trimmed().isEmpty()
+                                     ? QStringLiteral("结果数据")
+                                     : file.displayName.trimmed();
+        ui->stepComboBox->addItem(itemName, file.filePath);
     }
 
     ui->stepComboBox->blockSignals(false);

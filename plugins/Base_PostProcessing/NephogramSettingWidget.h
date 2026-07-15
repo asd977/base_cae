@@ -50,9 +50,6 @@ class NephogramSettingWidget : public BasePage
     QString selectedResultDirectoryPath() const;
     void readTecplot(const QString& fileName);
 
-    // 全局结果规则
-    void openResultRuleConfigDialog();
-
     vtkDataArray* findScalarArray(vtkUnstructuredGrid* grid, const QString& scalarName,
                                   bool& usePointData) const;
     void updateLookupTableRange(vtkLookupTable* lut, double minV, double maxV) const;

@@ -21,14 +21,9 @@
 #include <QDir>
 #include <QRegularExpression>
 
+#include "PostResultAutoPrepare.h"
 #include "PostVisualUtils.h"
 #include "ui_IsosurfaceSettingsWidget.h"
-
-namespace
-{
-const QStringList kResultDirectoriesCommon = {"SEEPCASE01"};
-const QStringList kPreferredResultFilesCommon = {"TEC_HP.DAT", "TEC_VELO.DAT"};
-} // namespace
 
 #include <vtkActor.h>
 
@@ -118,6 +113,8 @@ IsosurfaceSettingsWidget::IsosurfaceSettingsWidget(VisualWidgetService* ppw, QWi
 
     connect(ui->confirmPushButton, &QPushButton::clicked, this,
             &IsosurfaceSettingsWidget::on_confirmPushButton_clicked);
+    connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &IsosurfaceSettingsWidget::on_resultDirComboBox_currentIndexChanged);
 
     connect(ui->singleIsoGroupBox, &QGroupBox::toggled, this,
             &IsosurfaceSettingsWidget::on_singleIsoGroupBox_toggled);
@@ -133,6 +130,7 @@ IsosurfaceSettingsWidget::~IsosurfaceSettingsWidget()
 void IsosurfaceSettingsWidget::beforeLoad()
 {
     showPostProcessingOnly(m_visualService, false);
+    refreshResultGroups();
     if (ui->stepComboBox->currentIndex() == -1)
     {
         m_loadedOnce = false;
@@ -140,9 +138,10 @@ void IsosurfaceSettingsWidget::beforeLoad()
     if (!m_loadedOnce)
     {
         // <project>/data
-        m_dataPath =
-            QDir(PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString())
-                .filePath(kResultDirectoriesCommon.first());
+        const QString projectDir =
+            PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+        if (m_dataPath.isEmpty())
+            m_dataPath = PostResultAutoPrepare::firstResultDirectory(projectDir);
         //        readTecplotLatest();
         loadFileName(m_dataPath);
         //        fillScalarCombo();
@@ -153,6 +152,35 @@ void IsosurfaceSettingsWidget::beforeLoad()
     // 切回页面：按状态把之前的内容挂回去
     reattachAccordingToState();
     renderNow();
+}
+
+void IsosurfaceSettingsWidget::refreshResultGroups()
+{
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QString previousPath = m_dataPath;
+    const QVector<PostResultAutoPrepare::ResultGroup> groups =
+        PostResultAutoPrepare::resultGroups(projectDir);
+
+    ui->resultDirComboBox->blockSignals(true);
+    ui->resultDirComboBox->clear();
+    for (const PostResultAutoPrepare::ResultGroup& group : groups)
+        ui->resultDirComboBox->addItem(group.displayName, group.sourcePath);
+
+    int index = previousPath.isEmpty() ? -1 : ui->resultDirComboBox->findData(previousPath);
+    if (index < 0 && ui->resultDirComboBox->count() > 0)
+        index = 0;
+    ui->resultDirComboBox->setCurrentIndex(index);
+    m_dataPath = index >= 0 ? ui->resultDirComboBox->itemData(index).toString() : QString();
+    ui->resultDirComboBox->blockSignals(false);
+}
+
+void IsosurfaceSettingsWidget::on_resultDirComboBox_currentIndexChanged(int index)
+{
+    if (index < 0)
+        return;
+    m_dataPath = ui->resultDirComboBox->itemData(index).toString();
+    loadFileName(m_dataPath);
 }
 
 void IsosurfaceSettingsWidget::beforeUnload()
@@ -166,7 +194,7 @@ void IsosurfaceSettingsWidget::loadFileName(QString dataPath)
     ui->stepComboBox->blockSignals(true);
     ui->stepComboBox->clear();
 
-    const QDir directory(dataPath);
+    QDir directory(dataPath);
     if (!directory.exists())
     {
         qWarning() << "Directory not found:" << dataPath;
@@ -174,13 +202,17 @@ void IsosurfaceSettingsWidget::loadFileName(QString dataPath)
         return;
     }
 
-    for (const QString& name : kPreferredResultFilesCommon)
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QVector<PostResultAutoPrepare::ResultFile> files =
+        PostResultAutoPrepare::resultFiles(projectDir, dataPath, false);
+
+    for (const PostResultAutoPrepare::ResultFile& file : files)
     {
-        const QString fullPath = directory.filePath(name);
-        if (!QFileInfo::exists(fullPath))
-            continue;
-        const QString itemName = QFileInfo(fullPath).completeBaseName();
-        ui->stepComboBox->addItem(itemName, fullPath);
+        const QString itemName = file.displayName.trimmed().isEmpty()
+                                     ? QStringLiteral("结果数据")
+                                     : file.displayName.trimmed();
+        ui->stepComboBox->addItem(itemName, file.filePath);
     }
 
     ui->stepComboBox->blockSignals(false);

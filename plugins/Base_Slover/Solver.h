@@ -59,6 +59,7 @@ class Solver : public QObject, public SolverService
     bool launchSolverExecutable(const QString& analysisType);
     bool launchCaveBlockSolverExecutable();
     void finishSolverProcess(bool terminateProcess);
+    void notifySolverFinished(const QString& analysisType, const QString& projectDir);
     void setComputeWidgetRunning(QWidget* widget, bool computing) const;
     void connectStopRequest(QObject* page) const;
     int solverModeFromAnalysisType(const QString& analysisType) const;
@@ -79,6 +80,7 @@ class Solver : public QObject, public SolverService
     QProcess* m_solverProcess = nullptr;
     QPointer<QWidget> m_pendingComputeWidget;
     QPointer<QWidget> m_activeComputeWidget;
+    bool m_solverFinishedNotified{false};
     bool exportInouseDatFile();
     bool exportMaMaskDatFile();
     bool exportKetraceDatFile();

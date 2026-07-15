@@ -36,6 +36,7 @@ class BlockSettingsWidget : public BasePage
     void on_flipCheckBox_toggled(bool checked);
 
     void on_stepComboBox_currentIndexChanged(int index);
+    void on_resultDirComboBox_currentIndexChanged(int index);
 
   private:
     // 数据加载（选取 data 目录里“最新”的 stress_strainX-Y.txt）
@@ -67,4 +68,5 @@ class BlockSettingsWidget : public BasePage
     vtkSmartPointer<vtkDataSetMapper> m_mapper;
     vtkSmartPointer<vtkActor> m_actor;
     void loadFileName(QString dataPath);
+    void refreshResultGroups();
 };

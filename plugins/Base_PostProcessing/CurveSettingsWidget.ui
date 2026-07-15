@@ -68,7 +68,7 @@
         <item row="0" column="0">
          <widget class="QLabel" name="labelResultDir">
           <property name="text">
-           <string>结果目录</string>
+           <string>结果阶段</string>
           </property>
          </widget>
         </item>
@@ -85,7 +85,7 @@
         <item row="1" column="0">
          <widget class="QLabel" name="labelFile">
           <property name="text">
-           <string>结果文件</string>
+           <string>曲线类型</string>
           </property>
          </widget>
         </item>
@@ -102,7 +102,7 @@
         <item row="2" column="0">
          <widget class="QLabel" name="labelXField">
           <property name="text">
-           <string>X轴字段</string>
+           <string>横轴</string>
           </property>
          </widget>
         </item>
@@ -142,14 +142,14 @@
           <item>
            <widget class="QCheckBox" name="fosCheckBox">
             <property name="text">
-             <string>FOS</string>
+             <string>安全系数</string>
             </property>
            </widget>
           </item>
           <item>
            <widget class="QCheckBox" name="ptotCheckBox">
             <property name="text">
-             <string>PTOT</string>
+             <string>总荷载</string>
             </property>
            </widget>
           </item>
@@ -172,14 +172,14 @@
           <item>
            <widget class="QCheckBox" name="maxUrCheckBox">
             <property name="text">
-             <string>MAX UR</string>
+             <string>最大位移比</string>
             </property>
            </widget>
           </item>
           <item>
            <widget class="QCheckBox" name="loopCheckBox">
             <property name="text">
-             <string>LOOP</string>
+             <string>迭代次数</string>
             </property>
            </widget>
           </item>

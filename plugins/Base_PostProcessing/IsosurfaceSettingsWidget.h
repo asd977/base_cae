@@ -44,6 +44,7 @@ class IsosurfaceSettingsWidget : public BasePage
     void on_multiIsoGroupBox_toggled(bool checked);
 
     void on_stepComboBox_currentIndexChanged(int index);
+    void on_resultDirComboBox_currentIndexChanged(int index);
 
   private:
     /* ------- 内部助手 ------- */
@@ -108,5 +109,6 @@ class IsosurfaceSettingsWidget : public BasePage
     bool m_singleDisplayed{false};
     bool m_multiDisplayed{false};
     void loadFileName(QString dataPath);
+    void refreshResultGroups();
     void readTecplotLatest();
 };

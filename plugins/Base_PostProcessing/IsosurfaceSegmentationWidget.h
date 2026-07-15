@@ -41,6 +41,7 @@ class IsosurfaceSegmentationWidget : public BasePage
     void on_ifaceOpacitySlider_valueChanged(int v);
 
     void on_stepComboBox_currentIndexChanged(int index);
+    void on_resultDirComboBox_currentIndexChanged(int index);
 
   private:
     // 数据
@@ -89,4 +90,5 @@ class IsosurfaceSegmentationWidget : public BasePage
     vtkSmartPointer<vtkPolyDataMapper> m_mapperIso;
     vtkSmartPointer<vtkActor> m_actorIso;
     void loadFileName(QString dataPath);
+    void refreshResultGroups();
 };

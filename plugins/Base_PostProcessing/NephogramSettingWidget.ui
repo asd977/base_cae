@@ -64,7 +64,7 @@
         <item row="0" column="0">
          <widget class="QLabel" name="label_result_dir">
           <property name="text">
-           <string>结果目录</string>
+           <string>结果阶段</string>
           </property>
          </widget>
         </item>
@@ -81,7 +81,7 @@
         <item row="1" column="0">
          <widget class="QLabel" name="label_step">
           <property name="text">
-           <string>结果文件</string>
+           <string>结果类型</string>
           </property>
          </widget>
         </item>

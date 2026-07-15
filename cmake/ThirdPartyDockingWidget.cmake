@@ -4,6 +4,11 @@ if(NOT EXISTS "${CAE_DOCKING_ROOT}/include")
     message(FATAL_ERROR "DockingWidget include directory not found: ${CAE_DOCKING_ROOT}/include")
 endif()
 
+unset(CAE_DOCKING_DEBUG_LIBRARY CACHE)
+unset(CAE_DOCKING_RELEASE_LIBRARY CACHE)
+unset(CAE_DOCKING_DEBUG_RUNTIME_DLL CACHE)
+unset(CAE_DOCKING_RELEASE_RUNTIME_DLL CACHE)
+
 find_library(CAE_DOCKING_DEBUG_LIBRARY
     NAMES qtadvanceddockingd
     PATHS "${CAE_DOCKING_ROOT}/debug"
@@ -16,12 +21,28 @@ find_library(CAE_DOCKING_RELEASE_LIBRARY
     NO_DEFAULT_PATH
 )
 
+find_file(CAE_DOCKING_DEBUG_RUNTIME_DLL
+    NAMES qtadvanceddockingd.dll
+    PATHS "${CAE_DOCKING_ROOT}/debug"
+    NO_DEFAULT_PATH
+)
+
+find_file(CAE_DOCKING_RELEASE_RUNTIME_DLL
+    NAMES qtadvanceddocking.dll
+    PATHS "${CAE_DOCKING_ROOT}/release"
+    NO_DEFAULT_PATH
+)
+
 if(NOT CAE_DOCKING_DEBUG_LIBRARY)
     message(FATAL_ERROR "DockingWidget debug library not found under: ${CAE_DOCKING_ROOT}/debug")
 endif()
 
 if(NOT CAE_DOCKING_RELEASE_LIBRARY)
     message(FATAL_ERROR "DockingWidget release library not found under: ${CAE_DOCKING_ROOT}/release")
+endif()
+
+if(WIN32 AND NOT CAE_DOCKING_RELEASE_RUNTIME_DLL)
+    message(FATAL_ERROR "DockingWidget release runtime DLL not found under: ${CAE_DOCKING_ROOT}/release")
 endif()
 
 add_library(CAE::DockingWidget INTERFACE IMPORTED GLOBAL)
@@ -32,3 +53,14 @@ set_target_properties(CAE::DockingWidget PROPERTIES
     INTERFACE_COMPILE_DEFINITIONS "$<$<CONFIG:Debug>:_DEBUG>"
     INTERFACE_COMPILE_FEATURES cxx_std_11
 )
+
+function(cae_copy_docking_runtime target_name)
+    if(WIN32)
+        add_custom_command(TARGET ${target_name} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<$<CONFIG:Debug>:${CAE_DOCKING_DEBUG_RUNTIME_DLL}>$<$<NOT:$<CONFIG:Debug>>:${CAE_DOCKING_RELEASE_RUNTIME_DLL}>"
+                "${CAE_RUNTIME_DIR}"
+            VERBATIM
+        )
+    endif()
+endfunction()

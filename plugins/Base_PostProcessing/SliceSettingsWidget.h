@@ -36,6 +36,7 @@ class SliceSettingsWidget : public BasePage
   private slots:
     // 文件/标量/方向
     void on_stepComboBox_currentIndexChanged(int index);
+    void on_resultDirComboBox_currentIndexChanged(int index);
     void on_scalarComboBox_currentIndexChanged(int index);
     void on_planeComboBox_currentIndexChanged(int index);
 
@@ -53,6 +54,7 @@ class SliceSettingsWidget : public BasePage
   private:
     /* ---- 内部助手 ---- */
     void loadFileName(QString dataPath);
+    void refreshResultGroups();
     void readTecplot(const QString& fileName);
 
     // 整体云图

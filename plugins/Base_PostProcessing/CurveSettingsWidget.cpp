@@ -12,6 +12,7 @@
 #include <QFileInfo>
 #include <QScopedValueRollback>
 
+#include "PostResultAutoPrepare.h"
 #include "ui_CurveSettingsWidget.h"
 
 CurveSettingsWidget::CurveSettingsWidget(VisualWidgetService* visualService, QWidget* parent)
@@ -22,7 +23,8 @@ CurveSettingsWidget::CurveSettingsWidget(VisualWidgetService* visualService, QWi
     if (parent)
         setParent(parent);
 
-    ui->xFieldComboBox->addItems(QStringList() << "ISTEP" << "LOOP");
+    ui->xFieldComboBox->addItem(QStringLiteral("计算步"), QStringLiteral("ISTEP"));
+    ui->xFieldComboBox->addItem(QStringLiteral("迭代次数"), QStringLiteral("LOOP"));
     ui->fosCheckBox->setChecked(true);
     ui->ptotCheckBox->setChecked(true);
     ui->maxUrCheckBox->setChecked(true);
@@ -52,11 +54,8 @@ void CurveSettingsWidget::beforeLoad()
 
     m_visualService->setViewToolbarVisible(false);
 
-    if (!m_initialized)
-    {
-        initResultDirectoryOptions();
-        m_initialized = true;
-    }
+    initResultDirectoryOptions();
+    m_initialized = true;
 
     reloadAndShowCurve();
 }
@@ -73,9 +72,9 @@ void CurveSettingsWidget::beforeUnload()
 QJsonObject CurveSettingsWidget::saveJson()
 {
     QJsonObject obj;
-    obj["resultDir"] = ui->resultDirComboBox->currentText();
-    obj["fileName"] = ui->fileComboBox->currentText();
-    obj["xField"] = ui->xFieldComboBox->currentText();
+    obj["resultDir"] = ui->resultDirComboBox->currentData().toString();
+    obj["fileName"] = ui->fileComboBox->currentData().toString();
+    obj["xField"] = ui->xFieldComboBox->currentData().toString();
     obj["showFos"] = ui->fosCheckBox->isChecked();
     obj["showPtot"] = ui->ptotCheckBox->isChecked();
     obj["showMaxUr"] = ui->maxUrCheckBox->isChecked();
@@ -99,7 +98,9 @@ void CurveSettingsWidget::loadJson(const QJsonObject& obj)
 
     if (!resultDir.isEmpty())
     {
-        const int idx = ui->resultDirComboBox->findText(resultDir);
+        int idx = ui->resultDirComboBox->findData(resultDir);
+        if (idx < 0)
+            idx = ui->resultDirComboBox->findText(resultDir);
         if (idx >= 0)
             ui->resultDirComboBox->setCurrentIndex(idx);
     }
@@ -108,12 +109,16 @@ void CurveSettingsWidget::loadJson(const QJsonObject& obj)
 
     if (!fileName.isEmpty())
     {
-        const int fileIdx = ui->fileComboBox->findText(fileName);
+        int fileIdx = ui->fileComboBox->findData(fileName);
+        if (fileIdx < 0)
+            fileIdx = ui->fileComboBox->findText(fileName);
         if (fileIdx >= 0)
             ui->fileComboBox->setCurrentIndex(fileIdx);
     }
 
-    const int xIdx = ui->xFieldComboBox->findText(xField);
+    int xIdx = ui->xFieldComboBox->findData(xField);
+    if (xIdx < 0)
+        xIdx = ui->xFieldComboBox->findText(xField);
     if (xIdx >= 0)
         ui->xFieldComboBox->setCurrentIndex(xIdx);
 
@@ -139,8 +144,9 @@ void CurveSettingsWidget::reloadAndShowCurve()
         return;
     }
 
-    const QString xField =
-        ui->xFieldComboBox->currentText().isEmpty() ? "ISTEP" : ui->xFieldComboBox->currentText();
+    const QString xField = ui->xFieldComboBox->currentData().toString().isEmpty()
+                               ? QStringLiteral("ISTEP")
+                               : ui->xFieldComboBox->currentData().toString();
     const QStringList yFields = selectedYFields();
     QString curveErr;
     if (!m_visualService->showCurveFromTraceFile(traceFile, xField, yFields, &curveErr))
@@ -157,28 +163,38 @@ void CurveSettingsWidget::onResultDirChanged()
 
 void CurveSettingsWidget::initResultDirectoryOptions()
 {
+    const QString previousPath = ui->resultDirComboBox->currentData().toString();
     ui->resultDirComboBox->blockSignals(true);
     ui->resultDirComboBox->clear();
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir root(projectDir.isEmpty() ? QDir::currentPath() : projectDir);
-
-    const QFileInfoList subDirs = root.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
-    for (const QFileInfo& dirInfo : subDirs)
+    const QDir root(projectDir.isEmpty() ? QDir::currentPath() : projectDir);
+    const QVector<PostResultAutoPrepare::ResultGroup> groups =
+        PostResultAutoPrepare::resultGroups(root.absolutePath());
+    for (const PostResultAutoPrepare::ResultGroup& group : groups)
     {
-        if (QFile::exists(QDir(dirInfo.absoluteFilePath()).filePath("TRACE.TXT")))
-            ui->resultDirComboBox->addItem(dirInfo.fileName(), dirInfo.absoluteFilePath());
+        const QFileInfo trace(QDir(group.sourcePath).filePath(QStringLiteral("TRACE.TXT")));
+        if (!trace.exists() || !trace.isFile() || trace.size() == 0)
+            continue;
+        ui->resultDirComboBox->addItem(group.displayName, group.sourcePath);
+        ui->resultDirComboBox->setItemData(ui->resultDirComboBox->count() - 1,
+                                           QStringLiteral("求解过程记录"), Qt::ToolTipRole);
     }
 
     if (ui->resultDirComboBox->count() == 0)
     {
-        const QString fallback = root.filePath("CASE01");
-        ui->resultDirComboBox->addItem("CASE01", fallback);
+        const QFileInfo trace(root.filePath(QStringLiteral("TRACE.TXT")));
+        if (trace.exists() && trace.isFile() && trace.size() > 0)
+            ui->resultDirComboBox->addItem(QStringLiteral("计算过程结果"),
+                                           root.absolutePath());
     }
 
+    int index = previousPath.isEmpty() ? -1 : ui->resultDirComboBox->findData(previousPath);
+    if (index < 0 && ui->resultDirComboBox->count() > 0)
+        index = 0;
+    ui->resultDirComboBox->setCurrentIndex(index);
     ui->resultDirComboBox->blockSignals(false);
-    ui->resultDirComboBox->setCurrentIndex(0);
     refreshFilesForCurrentDir();
 }
 
@@ -188,16 +204,13 @@ void CurveSettingsWidget::refreshFilesForCurrentDir()
     ui->fileComboBox->clear();
 
     const QString dirPath = selectedResultDirectoryPath();
-    QDir dir(dirPath);
-    const QFileInfoList files =
-        dir.entryInfoList(QStringList() << "*.TXT" << "*.txt", QDir::Files, QDir::Name);
-    for (const QFileInfo& info : files)
-        ui->fileComboBox->addItem(info.fileName(), info.absoluteFilePath());
+    QFileInfo trace(QDir(dirPath).filePath(QStringLiteral("TRACE.TXT")));
+    if (!trace.exists())
+        trace = QFileInfo(QDir(dirPath).filePath(QStringLiteral("trace.txt")));
+    if (trace.exists() && trace.isFile() && trace.size() > 0)
+        ui->fileComboBox->addItem(QStringLiteral("计算过程曲线"), trace.absoluteFilePath());
 
-    const int traceIdx = ui->fileComboBox->findText("TRACE.TXT", Qt::MatchFixedString);
-    if (traceIdx >= 0)
-        ui->fileComboBox->setCurrentIndex(traceIdx);
-    else if (ui->fileComboBox->count() > 0)
+    if (ui->fileComboBox->count() > 0)
         ui->fileComboBox->setCurrentIndex(0);
 
     ui->fileComboBox->blockSignals(false);

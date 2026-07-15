@@ -125,14 +125,16 @@ DerivedValueSettingWidget::DerivedValueSettingWidget(QWidget* parent)
 
     // 顶部域选择
     ui->assocComboBox->clear();
-    ui->assocComboBox->addItem("Point Data");
-    ui->assocComboBox->addItem("Cell Data");
+    ui->assocComboBox->addItem(QStringLiteral("节点数据"), QStringLiteral("Point Data"));
+    ui->assocComboBox->addItem(QStringLiteral("单元数据"), QStringLiteral("Cell Data"));
     ui->assocComboBox->setCurrentIndex(0);
 
     // 表格外观
     ui->statsTable->setColumnCount(4);
-    ui->statsTable->setHorizontalHeaderLabels(QStringList() << "File" << "Min"
-                                                            << "Max" << "Mean");
+    ui->statsTable->setHorizontalHeaderLabels(QStringList() << QStringLiteral("数据集")
+                                                            << QStringLiteral("最小值")
+                                                            << QStringLiteral("最大值")
+                                                            << QStringLiteral("平均值"));
     ui->statsTable->verticalHeader()->setVisible(false);
     ui->statsTable->horizontalHeader()->setStretchLastSection(true);
     ui->statsTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);

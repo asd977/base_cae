@@ -6,6 +6,8 @@
 #include <services/PostProcessingService.h>
 #include <services/VisualWidgetService.h>
 
+#include <QSet>
+
 #include "BlockSettingsWidget.h"
 #include "NephogramSettingWidget.h"
 #include "SliceSettingsWidget.h"
@@ -36,7 +38,6 @@ class PostProcessing : public QObject, public PostProcessingService
     void newAnimationAviWidget();
     void newDerivedValueSettingWidget();
     void newCurveSettingWidget();
-    void newResultArrangeWidget();
     void newPostContourReaderWidget();
     VisualWidgetService* visualService();
 
@@ -50,6 +51,7 @@ class PostProcessing : public QObject, public PostProcessingService
 
     BlockSettingsWidget* m_blockSettingsWidget{nullptr};
     ProjectNode* m_root{nullptr};
+    QSet<QString> m_preparingProjects;
 
     QMap<QString, std::function<BasePage*(VisualWidgetService*)>> m_pageFactory;
 

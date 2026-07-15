@@ -2444,6 +2444,19 @@ void Solver::finishSolverProcess(bool terminateProcess)
     m_activeComputeWidget = nullptr;
 }
 
+void Solver::notifySolverFinished(const QString& analysisType, const QString& projectDir)
+{
+    if (m_solverFinishedNotified)
+        return;
+
+    m_solverFinishedNotified = true;
+
+    QVariantMap data;
+    data.insert(QStringLiteral("analysisType"), analysisType);
+    data.insert(QStringLiteral("projectDir"), QDir(projectDir).absolutePath());
+    EventManager::instance().sendEvent(PublicConstants::kEventSolverFinished, data);
+}
+
 void Solver::stopSolverExecutable()
 {
     finishSolverProcess(true);
@@ -2570,6 +2583,7 @@ bool Solver::launchCaveBlockSolverExecutable()
 
     m_activeComputeWidget = m_pendingComputeWidget;
     m_pendingComputeWidget = nullptr;
+    m_solverFinishedNotified = false;
 
     m_solverProcess = new QProcess(this);
     // 滑块计算仍使用 PCCAE_CPU.exe；运行前把 D:/IIIDIR.DAT 指向 SliderCase
@@ -2579,13 +2593,15 @@ bool Solver::launchCaveBlockSolverExecutable()
     m_solverProcess->setArguments(QStringList());
     m_solverProcess->setProcessChannelMode(QProcess::MergedChannels);
 
-    connect(m_solverProcess, &QProcess::readyReadStandardOutput, this, [this]() {
+    connect(m_solverProcess, &QProcess::readyReadStandardOutput, this, [this, projectDir]() {
         if (!m_solverProcess)
             return;
         const QString output = QString::fromLocal8Bit(m_solverProcess->readAllStandardOutput()).trimmed();
         if (!output.isEmpty())
         {
             qInfo().noquote() << ("__RAW__" + output);
+            if (output.contains(QString::fromUtf8("\xE7\xBB\x93\xE6\x9D\x9F\xE8\xBF\x9B\xE7\xA8\x8B")))
+                notifySolverFinished(QStringLiteral("CaveBlockStability"), projectDir);
             if (output.contains("结束进程"))
                 finishSolverProcess(true);
         }
@@ -2596,7 +2612,8 @@ bool Solver::launchCaveBlockSolverExecutable()
 
     connect(m_solverProcess,
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this](int, QProcess::ExitStatus) {
+            [this, projectDir](int, QProcess::ExitStatus) {
+                notifySolverFinished(QStringLiteral("CaveBlockStability"), projectDir);
                 finishSolverProcess(false);
             });
 
@@ -2661,6 +2678,7 @@ bool Solver::launchSolverExecutable(const QString& analysisType)
 
     m_activeComputeWidget = m_pendingComputeWidget;
     m_pendingComputeWidget = nullptr;
+    m_solverFinishedNotified = false;
 
     m_solverProcess = new QProcess(this);
     m_solverProcess->setWorkingDirectory(QDir(projectDir).absolutePath());
@@ -2668,13 +2686,15 @@ bool Solver::launchSolverExecutable(const QString& analysisType)
     m_solverProcess->setArguments(QStringList());
     m_solverProcess->setProcessChannelMode(QProcess::MergedChannels);
 
-    connect(m_solverProcess, &QProcess::readyReadStandardOutput, this, [this]() {
+    connect(m_solverProcess, &QProcess::readyReadStandardOutput, this, [this, analysisType, projectDir]() {
         if (!m_solverProcess)
             return;
         const QString output = QString::fromLocal8Bit(m_solverProcess->readAllStandardOutput()).trimmed();
         if (!output.isEmpty())
         {
             qInfo().noquote() << ("__RAW__" + output);
+            if (output.contains(QString::fromUtf8("\xE7\xBB\x93\xE6\x9D\x9F\xE8\xBF\x9B\xE7\xA8\x8B")))
+                notifySolverFinished(analysisType, projectDir);
             if (output.contains("结束进程"))
                 finishSolverProcess(true);
         }
@@ -2685,7 +2705,8 @@ bool Solver::launchSolverExecutable(const QString& analysisType)
 
     connect(m_solverProcess,
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this](int, QProcess::ExitStatus) {
+            [this, analysisType, projectDir](int, QProcess::ExitStatus) {
+                notifySolverFinished(analysisType, projectDir);
                 finishSolverProcess(false);
             });
 

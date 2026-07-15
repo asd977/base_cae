@@ -23,6 +23,7 @@ elseif(CAE_VTK_DIR AND EXISTS "${CAE_VTK_DIR}/VTKConfig.cmake")
 endif()
 
 if(_cae_vtk_config_file AND EXISTS "${_cae_vtk_config_file}")
+    get_filename_component(VTK_DIR "${_cae_vtk_config_file}" DIRECTORY)
     file(STRINGS "${_cae_vtk_config_file}" _cae_vtk_qt_version_line
         REGEX "if \\([0-9]+\\) # VTK_QT_VERSION"
     )
@@ -30,7 +31,7 @@ if(_cae_vtk_config_file AND EXISTS "${_cae_vtk_config_file}")
         message(FATAL_ERROR
             "The selected VTK package was built with Qt5: ${_cae_vtk_config_file}\n"
             "This project is configured for Qt6. Set CAE_VTK_ROOT to a Qt6-built VTK folder, "
-            "for example C:/project/CAE/TMSR/libs/vtk/vtk_release."
+            "expected under ${CAE_3RDPARTY_ROOT}/vtk/vtk_release."
         )
     endif()
 endif()
