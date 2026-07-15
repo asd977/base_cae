@@ -32,10 +32,6 @@ class MeshGridIO
                                                       QString* errMsg = nullptr);
     vtkSmartPointer<vtkUnstructuredGrid> importInp(const QString& fileName,
                                                    QString* errMsg = nullptr);
-    vtkSmartPointer<vtkUnstructuredGrid> loadMshFile(const QString& fileName,
-                                                     QString* errMsg = nullptr);
-    vtkSmartPointer<vtkUnstructuredGrid> loadCurrentGmshMesh(QString* errMsg = nullptr);
-
     // 从 vtk 网格导出 IIIN.DAT
     bool exportIiinFile(const QString& fileName, vtkUnstructuredGrid* grid,
                         QString* errMsg = nullptr, int verticalAxis = 0) const;

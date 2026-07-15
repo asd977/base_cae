@@ -48,8 +48,7 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     int verticalAxis() const override;
     bool exportIiinDatFile(const QString& filePath, QString* errMsg = nullptr) override;
 
-    void importMshGrid(QString path);
-    bool importCurrentGmshMesh(QString* errMsg = nullptr) override;
+    bool importGeneratedNetgenMesh(const QString& vtkPath, QString* errMsg = nullptr) override;
 
     MshPickMap mshPickMapSolid();
     QString matypePhysicalName(int matype, int dim = 3) const override;

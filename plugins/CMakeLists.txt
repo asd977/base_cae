@@ -131,7 +131,7 @@ function(cae_add_base_plugin plugin_dir)
         PRIVATE
             core
             ${_qt_libs}
-            CAE::Gmsh
+            CAE::Netgen
             CAE::OCC
             CAE::DockingWidget
             CAE::SARibbon
@@ -150,6 +150,10 @@ function(cae_add_base_plugin plugin_dir)
 
     if(COMMAND cae_vtk_autoinit)
         cae_vtk_autoinit(${plugin_dir})
+    endif()
+
+    if(COMMAND cae_copy_netgen_runtime)
+        cae_copy_netgen_runtime(${plugin_dir})
     endif()
 
     set_target_properties(${plugin_dir} PROPERTIES

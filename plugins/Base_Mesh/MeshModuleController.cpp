@@ -40,6 +40,7 @@
 #include <vtkPoints.h>
 #include <vtkProperty.h>
 #include <vtkUnstructuredGrid.h>
+#include <vtkUnstructuredGridReader.h>
 
 #include <QByteArray>
 #include <QColor>
@@ -84,7 +85,6 @@ static bool meshDomainKeyIsValid(const DomainKey& key)
 }
 
 static const char* kMeshMapFileName = "mesh_map.json";
-static const char* kMeshMshSnapshotFileName = "mesh_snapshot.msh";
 
 // 大网格保存优化：
 // 1) IIIN/DAT 网格快照只有在网格对象真正变更后才重写；
@@ -141,26 +141,28 @@ static bool copyFileOverwrite(const QString& sourcePath, const QString& targetPa
     return QFile::copy(sourcePath, targetPath);
 }
 
-static QString currentGeneratedMshPath()
+static vtkSmartPointer<vtkUnstructuredGrid> readVtkUnstructuredGrid(const QString& fileName,
+                                                                    QString* errMsg)
 {
-    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("tempGrid/mesh.msh"));
-}
+    if (errMsg)
+        errMsg->clear();
 
-static QString chooseMshSnapshotSource(const QString& sourceFileName)
-{
-    const QFileInfo srcInfo(sourceFileName);
-    if (srcInfo.exists() && srcInfo.suffix().compare(QStringLiteral("msh"), Qt::CaseInsensitive) == 0)
-        return srcInfo.absoluteFilePath();
+    auto reader = vtkSmartPointer<vtkUnstructuredGridReader>::New();
+    reader->SetFileName(QFile::encodeName(fileName).constData());
+    reader->Update();
 
-           // m_sourceFileName 为空通常表示来自当前 Gmsh 内存模型划分，此时 MeshProcessor 会写出 tempGrid/mesh.msh。
-    if (sourceFileName.trimmed().isEmpty())
+    auto* output = reader->GetOutput();
+    if (!output || output->GetNumberOfCells() <= 0)
     {
-        const QString generated = currentGeneratedMshPath();
-        if (QFileInfo::exists(generated))
-            return generated;
+        if (errMsg)
+            *errMsg = QStringLiteral("VTK mesh is empty or invalid: %1").arg(fileName);
+        return nullptr;
     }
 
-    return QString();
+    auto grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    grid->DeepCopy(output);
+    MeshGridIO::setVerticalAxis(grid, 2);
+    return grid;
 }
 
 static QString physicalUiNameByDim(int dim, int id)
@@ -2094,7 +2096,7 @@ bool MeshModuleController::saveProject()
     root["snapshot_file"] = PublicConstants::kMeshSnapshotFileName;
     root["mesh_map_file"] = kMeshMapFileName;
     // 工程恢复固定使用 IIIN/DAT 快照 + mesh_map.json。
-    // 不再优先按 msh_snapshot 恢复，避免 loadMshFile 再次把低维边界单元混入显示网格。
+    // Restore projects from the IIIN/DAT snapshot plus mesh_map.json.
     root["mesh_restore_mode"] = QStringLiteral("dat");
     root["vertical_axis"] = m_verticalAxis;
 
@@ -2824,7 +2826,7 @@ void MeshModuleController::onImportGridFileDialog()
 {
     QString fileName;
     QFileDialog dialog(nullptr, QString("选择网格文件"));
-    dialog.setNameFilter(QString("Grid Files (*.nas *.inp *.flac3d *.f3grid *.DAT *.msh)"));
+    dialog.setNameFilter(QString("Grid Files (*.nas *.inp *.flac3d *.f3grid *.DAT *.vtk)"));
     dialog.setFilter(QDir::Files);
     if (dialog.exec() == QDialog::Accepted)
     {
@@ -2864,14 +2866,14 @@ void MeshModuleController::importGridFile(const QString& fileName)
     {
         grid = MeshGridIO::instance().loadIiinFile(fileName, &err);
     }
-    else if (ext == "msh")
+    else if (ext == "vtk")
     {
-        grid = MeshGridIO::instance().loadMshFile(fileName, &err);
+        grid = readVtkUnstructuredGrid(fileName, &err);
     }
     else
     {
         QMessageBox::warning(nullptr, QString("不支持的格式"),
-                             QString("当前只支持 .nas / .inp / .flac3d / .f3grid / .dat / .msh"));
+                             QString("当前只支持 .nas / .inp / .flac3d / .f3grid / .dat / .vtk"));
         return;
     }
 
@@ -2943,48 +2945,20 @@ void MeshModuleController::importGridFile(const QString& fileName)
     PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
 }
 
-void MeshModuleController::importMshGrid(QString path)
+bool MeshModuleController::importGeneratedNetgenMesh(const QString& vtkPath, QString* errMsg)
 {
     QString err;
-    auto grid = MeshGridIO::instance().loadMshFile(path, &err);
-
-    if (!grid || grid->GetNumberOfCells() <= 0)
-    {
-        QMessageBox::warning(nullptr, QString("导入失败"),
-                             err.isEmpty() ? QString("MSH 网格导入失败") : err);
-        return;
-    }
-
-    m_importedGrid = grid;
-    m_hasGrid = true;
-    m_sourceFileName = path;
-
-    syncPickMapGroupingFromGrid(m_importedGrid);
-
-    m_splitCacheSource = nullptr;
-    m_splitCacheLine = nullptr;
-    m_splitCacheNonLine = nullptr;
-
-    displayCurrentGrid();
-    openGridDisplayControlPage();
-
-    PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
-}
-
-bool MeshModuleController::importCurrentGmshMesh(QString* errMsg)
-{
-    QString err;
-    auto grid = MeshGridIO::instance().loadCurrentGmshMesh(&err);
+    auto grid = readVtkUnstructuredGrid(vtkPath, &err);
     if (!grid || grid->GetNumberOfCells() == 0)
     {
         if (errMsg)
-            *errMsg = err.isEmpty() ? QString("Gmsh 当前模型网格为空") : err;
+            *errMsg = err.isEmpty() ? QStringLiteral("Generated Netgen VTK mesh is empty") : err;
         return false;
     }
 
     m_importedGrid = grid;
     m_hasGrid = true;
-    m_sourceFileName.clear();
+    m_sourceFileName = vtkPath;
     {
         vtkSmartPointer<vtkUnstructuredGrid> tmpLine;
         vtkSmartPointer<vtkUnstructuredGrid> tmpNonLine;
@@ -2997,7 +2971,6 @@ bool MeshModuleController::importCurrentGmshMesh(QString* errMsg)
     PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
     return true;
 }
-
 MshPickMap MeshModuleController::mshPickMapSolid()
 {
     // 仅保留兼容旧页面的出口；不再在这里生成/修正边界规则。

@@ -1,85 +1,80 @@
-# 忽略所有编译生成的文件
-*.o
-*.obj
-*.exe
-*.so
-*.a
-*.pdb
-*.ilk
-*.exp
-*.sln
-*.sln
-*.stash
-*.tlog
-*.vcxproj
-*.filters
-*.cbt
-*.idb
+# Build directories
+/build/
+/cmake-build-*/
+/out/
+/bin/
+/obj/
+/x64/
+/x86/
 
+# Local third-party SDKs installed outside source control
+/libs/
 
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
 
-# 忽略构建目录
-[Bb]uild/
-launcher/debug/*.obj
-launcher/release/launcher.obj
-core/debug/*.obj
-core/release/*.obj
-core/debug
-core/release
-launcher/release
-launcher/debug
-[Oo]bj/
-[Bb]in/
-x64/
-x86/
-plugins/Base_MaterialManager/My Advisor Results - Base_MaterialManager
-plugins/Base_Output/My Advisor Results - Base_Output
-plugins/Base_PhysicalField/My Advisor Results - Base_PhysicalField
-plugins/Base_PostProcessing/My Advisor Results - Base_PostProcessing
-plugins/Base_PreProcessing/My Advisor Results - Base_PreProcessing
-plugins/Base_ProjectManager/My Advisor Results - Base_ProjectManager
-plugins/Base_Slover/My Advisor Results - Base_Slover
-plugins/Base_UiFrame/My Advisor Results - Base_UiFrame
-plugins/Base_Visualization/My Advisor Results - Base_Visualization
-core/My Advisor Results - core
-launcher/My Advisor Results - CAE_BASE
-
-# 忽略IDE相关文件
-.vs/
-.vscode/
-*.suo
-*.user
-*.sdf
-*.ncb
-*.opendb
-
-# 忽略Qt生成的文件
-Makefile*
+# qmake / Qt Creator generated files
+.qmake.stash
+.qtcreator/
+.qtc_clangd/
 *.pro.user
+*.user
+Makefile
+Makefile.*
 moc_*.cpp
 moc_*.h
 moc_*.obj
+moc_predefs.h
 qrc_*.cpp
 ui_*.h
 *.qrc.d
 *.moc
 
-# 忽略CMake生成的文件
-CMakeCache.txt
-CMakeFiles/
-cmake_install.cmake
-install_manifest.txt
-Makefile
+# MSVC / linker outputs
+*.obj
+*.exe
+*.dll
+*.lib
+*.exp
+*.pdb
+*.ilk
+*.idb
+*.tlog
+*.sln
+*.vcxproj
+*.vcxproj.filters
 
-# 忽略其他中间文件
+# Other compiler and archive outputs
+*.o
+*.a
+*.so
+*.dylib
+
+# Logs and temporary files
 *.log
 *.tmp
 *.bak
 *.autosave
-.qtc_clangd/
+*.stash
+netgen_smoke.*
+/plugins/Base_Mesh.zip
 
-# 忽略系统文件
+# IDE and OS files
+.vs/
+.vscode/
+*.suo
+*.sdf
+*.ncb
+*.opendb
 .DS_Store
 Thumbs.db
-build/
-libs/
+
+# Legacy qmake output directories
+core/debug/
+core/release/
+launcher/debug/
+launcher/release/

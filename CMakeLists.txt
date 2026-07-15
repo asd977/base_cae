@@ -63,10 +63,10 @@ find_package(Qt6 REQUIRED COMPONENTS
 
 find_package(Qt6 QUIET COMPONENTS OpenGLWidgets)
 
-set(CAE_GMSH_ROOT
-    "${CAE_3RDPARTY_ROOT}/gmsh-4-15"
+set(CAE_NETGEN_ROOT
+    "${CAE_3RDPARTY_ROOT}/netgen"
     CACHE PATH
-    "Gmsh root"
+    "Netgen root"
 )
 
 set(CAE_OCC_ROOT
@@ -99,7 +99,7 @@ set(CAE_VTK_DIR
     "Optional path containing VTKConfig.cmake"
 )
 
-include("${CMAKE_SOURCE_DIR}/cmake/ThirdPartyGmsh.cmake")
+include("${CMAKE_SOURCE_DIR}/cmake/ThirdPartyNetgen.cmake")
 include("${CMAKE_SOURCE_DIR}/cmake/ThirdPartyOCC.cmake")
 include("${CMAKE_SOURCE_DIR}/cmake/ThirdPartyDockingWidget.cmake")
 include("${CMAKE_SOURCE_DIR}/cmake/ThirdPartySARibbon.cmake")

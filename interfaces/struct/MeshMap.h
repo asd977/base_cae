@@ -60,8 +60,8 @@ struct MshPickMap
     QHash<int, int> physIdToDim;      // physicalId -> 维度（0点 1线 2面 3体）
 
     // ----- Node 映射 -----
-    QHash<int, int> nodeIdToPointId; // msh NodeId -> vtk pointId（用 msh 元素找 vtk 点）
-    QHash<int, int> pointIdToNodeId; // vtk pointId -> msh NodeId（UI显示 nodeId / 写文件用）
+    QHash<int, int> nodeIdToPointId; // mesh NodeId -> vtk pointId
+    QHash<int, int> pointIdToNodeId; // vtk pointId -> mesh NodeId
 
     // ----- 唯一业务分组模型 -----
     // 域、边界点、边界线、边界面都统一落到这里。

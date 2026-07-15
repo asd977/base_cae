@@ -1,31 +1,11 @@
 #include "MeshGlobalMeshingWidget.h"
 
-#include <vtkUnstructuredGridReader.h>
-
-#include <PublicVariables.h>
-#include <QCoreApplication>
-#include <QDesktopServices>
-#include <QDir>
-#include <QFileDialog>
-#include <QMessageBox>
-#include <QThread>
-#include <QUrl>
-
+#include "NetgenMeshGenerator.h"
 #include "ui_MeshGlobalMeshingWidget.h"
 
-// ===== 你的几何导出依赖（按你项目实际路径改 include）=====
-#include <BRep_Builder.hxx>
-#include <IFSelect_ReturnStatus.hxx>
-#include <STEPControl_Writer.hxx>
-#include <TopoDS_Compound.hxx>
-
-// #include <GeomManager/GeomManagerInstance.h>   // <<<<<< 按你工程实际改
-// #include <GeomManager/GeomShapeObject.h>       // <<<<<< 按你工程实际改
-
-// ===== gmsh =====
-#include <MeshGridIO.h>
+#include <PublicConstants.h>
+#include <PublicVariables.h>
 #include <ServiceRegistry.h>
-#include <gmsh.h>
 #include <services/MeshModuleControllerService.h>
 #include <services/PreProcessingService.h>
 #include <services/VisualWidgetService.h>
@@ -33,63 +13,110 @@
 #include <vtkDataSetMapper.h>
 #include <vtkProperty.h>
 #include <vtkUnstructuredGrid.h>
-#include <PublicConstants.h>
+#include <vtkUnstructuredGridReader.h>
 
-#include "MeshGlobalMeshingWidget.h"
-#include "ui_MeshGlobalMeshingWidget.h"
+#include <QCoreApplication>
+#include <QComboBox>
+#include <QDesktopServices>
+#include <QDir>
+#include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QMessageBox>
+#include <QThread>
+#include <QUrl>
+
+#include <utility>
 
 namespace
 {
-static std::set<int> parseIdSetForParams(const QString& text)
-{
-    std::set<int> ids;
-    const auto parts = text.split(',', Qt::SkipEmptyParts);
-    for (QString p : parts)
-    {
-        p = p.trimmed();
-        if (p.contains('-'))
-        {
-            const auto lr = p.split('-', Qt::SkipEmptyParts);
-            if (lr.size() == 2)
-            {
-                bool ok1 = false, ok2 = false;
-                int a = lr[0].toInt(&ok1), b = lr[1].toInt(&ok2);
-                if (ok1 && ok2)
-                {
-                    if (a > b)
-                        std::swap(a, b);
-                    for (int i = a; i <= b; ++i)
-                        ids.insert(i);
-                }
-            }
-        }
-        else
-        {
-            bool ok = false;
-            int v = p.toInt(&ok);
-            if (ok)
-                ids.insert(v);
-        }
-    }
-    return ids;
+constexpr int kElemTypeHex8FromTet = 4;
 }
-} // namespace
 
-// ---------------- Widget ----------------
+MeshGlobalWorker::MeshGlobalWorker(Params p, QObject* parent)
+    : QObject(parent), m_p(std::move(p))
+{
+}
+
+void MeshGlobalWorker::run()
+{
+    NetgenMeshingRequest request;
+    request.inputGeometryPath = m_p.inputStepPath;
+    request.volPath = m_tempVolPath;
+    request.vtkPath = m_tempVtkPath;
+    request.nasPath = m_tempNasPath;
+    request.dimension = m_p.dimension;
+    request.elemType = m_p.elemType;
+    request.lenMin = m_p.lenMin;
+    request.lenMax = m_p.lenMax;
+    request.sizeFactor = m_p.sizeFactor;
+    request.elementOrder = m_p.elementOrder;
+    request.smoothing = m_p.smoothing;
+    request.fixShape = m_p.fixShape;
+    request.tolerance = m_p.tolerance;
+    request.exportVol = m_p.exportVol && m_p.elemType != kElemTypeHex8FromTet;
+    request.exportVtk = m_p.exportVtk;
+    request.exportNas = m_p.exportNas;
+
+    if (m_p.elemType == kElemTypeHex8FromTet)
+        emit log(QStringLiteral("Starting Netgen tetra mesh generation for Hex8 conversion..."));
+    else
+        emit log(QStringLiteral("Starting Netgen mesh generation..."));
+
+    QString err;
+    NetgenMeshingResult result;
+    if (!NetgenMeshGenerator::generate(request, &result, &err))
+    {
+        emit finishedFail(err.isEmpty() ? QStringLiteral("Netgen mesh generation failed") : err);
+        return;
+    }
+
+    if (m_p.elemType == kElemTypeHex8FromTet)
+    {
+        emit log(QStringLiteral(
+                     "Hex8 mesh generated from Netgen Tet4: points=%1, boundary quads=%2, "
+                     "hex=%3, min scaled Jacobian=%4")
+                     .arg(result.pointCount)
+                     .arg(result.surfaceElementCount)
+                     .arg(result.volumeElementCount)
+                     .arg(result.minScaledJacobian, 0, 'g', 6));
+    }
+    else
+    {
+        emit log(QStringLiteral("Netgen mesh generated: points=%1, surface=%2, volume=%3")
+                     .arg(result.pointCount)
+                     .arg(result.surfaceElementCount)
+                     .arg(result.volumeElementCount));
+    }
+    emit finishedOK(m_tempVolPath, m_tempVtkPath, m_tempNasPath);
+}
+
 MeshGlobalMeshingWidget::MeshGlobalMeshingWidget(QWidget* parent)
     : BasePage("MeshGlobalMeshingWidget"), ui(new Ui::MeshGlobalMeshingWidget)
 {
+    Q_UNUSED(parent);
     ui->setupUi(this);
 
     initCombos();
 
     connect(ui->cmbDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &MeshGlobalMeshingWidget::onDimChanged);
-
     connect(ui->cmbElemType, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &MeshGlobalMeshingWidget::onElemTypeChanged);
 
     onDimChanged(ui->cmbDim->currentIndex());
+}
+
+MeshGlobalMeshingWidget::~MeshGlobalMeshingWidget()
+{
+    if (m_thread)
+    {
+        m_thread->quit();
+        m_thread->wait();
+        delete m_thread;
+        m_thread = nullptr;
+    }
+    delete ui;
 }
 
 void MeshGlobalMeshingWidget::beforeLoad()
@@ -108,8 +135,8 @@ void MeshGlobalMeshingWidget::appendLog(const QString& s)
 void MeshGlobalMeshingWidget::initCombos()
 {
     ui->cmbDim->clear();
-    ui->cmbDim->addItem("2D（面网格）", 2);
-    ui->cmbDim->addItem("3D（体网格）", 3);
+    ui->cmbDim->addItem(QStringLiteral("2D Surface Mesh"), 2);
+    ui->cmbDim->addItem(QStringLiteral("3D Volume Mesh"), 3);
     ui->cmbDim->setCurrentIndex(1);
 
     ui->dsMin->setValue(0.5);
@@ -126,14 +153,14 @@ void MeshGlobalMeshingWidget::refreshElemCombo(int dim)
     ui->cmbElemType->clear();
     if (dim == 2)
     {
-        ui->cmbElemType->addItem("三角形（Tri）", 1);
-        ui->cmbElemType->addItem("四边形（Quad，重组）", 2);
+        ui->cmbElemType->addItem(QStringLiteral("Triangle"), 1);
+        ui->cmbElemType->addItem(QStringLiteral("Quad-dominated"), 2);
         ui->cmbElemType->setCurrentIndex(0);
     }
     else
     {
-        ui->cmbElemType->addItem("四面体（Tet）", 3);
-        ui->cmbElemType->addItem("六面体（Hex）", 4);
+        ui->cmbElemType->addItem(QStringLiteral("Tet"), 3);
+        ui->cmbElemType->addItem(QStringLiteral("Hex8 (Tet split)"), kElemTypeHex8FromTet);
         ui->cmbElemType->setCurrentIndex(0);
     }
 }
@@ -142,20 +169,10 @@ void MeshGlobalMeshingWidget::refreshAlgoCombo(int dim)
 {
     ui->cmbAlgo->clear();
     if (dim == 2)
-    {
-        ui->cmbAlgo->addItem("Automatic (2)", 2);
-        ui->cmbAlgo->addItem("Delaunay (5)", 5);
-        ui->cmbAlgo->addItem("Frontal-Delaunay (6)", 6);
-        ui->cmbAlgo->addItem("DelQuad (8)", 8);
-        ui->cmbAlgo->setCurrentIndex(0);
-    }
+        ui->cmbAlgo->addItem(QStringLiteral("Netgen Surface"), 1);
     else
-    {
-        ui->cmbAlgo->addItem("Delaunay (1)", 1);
-        ui->cmbAlgo->addItem("Frontal (4)", 4);
-        ui->cmbAlgo->addItem("HXT (10)", 10);
-        ui->cmbAlgo->setCurrentIndex(0);
-    }
+        ui->cmbAlgo->addItem(QStringLiteral("Netgen Volume"), 1);
+    ui->cmbAlgo->setCurrentIndex(0);
 }
 
 void MeshGlobalMeshingWidget::onDimChanged(int)
@@ -167,13 +184,15 @@ void MeshGlobalMeshingWidget::onDimChanged(int)
 
 void MeshGlobalMeshingWidget::onElemTypeChanged(int)
 {
-    // 这里目前不需要特殊处理，保留扩展点
+    const bool hexFromTet = ui->cmbElemType->currentData().toInt() == kElemTypeHex8FromTet;
+    if (hexFromTet)
+        ui->spOrder->setValue(1);
+    ui->spOrder->setMaximum(hexFromTet ? 1 : 2);
 }
 
 Params MeshGlobalMeshingWidget::collectParams() const
 {
     Params p;
-
     p.dimension = ui->cmbDim->currentData().toInt();
     p.elemType = ui->cmbElemType->currentData().toInt();
     p.lenMin = ui->dsMin->value();
@@ -184,119 +203,91 @@ Params MeshGlobalMeshingWidget::collectParams() const
     p.smoothing = ui->spSmooth->value();
     p.fixShape = ui->chkFix->isChecked();
     p.tolerance = ui->dsTol->value();
-
     return p;
 }
 
 QString MeshGlobalMeshingWidget::tempDirPath() const
 {
-    QString fileName = "ExportedModel.step";
-    QString currentWorPath = QCoreApplication::applicationDirPath();
-    return currentWorPath;
+    return QCoreApplication::applicationDirPath();
 }
+
 QString MeshGlobalMeshingWidget::tempStepPath() const
 {
-    return QDir(tempDirPath()).filePath("geom.step");
+    return QDir(tempDirPath()).filePath(QStringLiteral("geom.step"));
 }
-QString MeshGlobalMeshingWidget::tempMshPath() const
+
+QString MeshGlobalMeshingWidget::tempVolPath() const
 {
-    return QDir(tempDirPath()).filePath("mesh.msh");
+    return QDir(tempDirPath()).filePath(QStringLiteral("mesh.vol"));
 }
+
 QString MeshGlobalMeshingWidget::tempVtkPath() const
 {
-    return QDir(tempDirPath()).filePath("mesh.vtk");
+    return QDir(tempDirPath()).filePath(QStringLiteral("mesh.vtk"));
 }
+
 QString MeshGlobalMeshingWidget::tempNasPath() const
 {
-    return QDir(tempDirPath()).filePath("mesh.nas");
+    return QDir(tempDirPath()).filePath(QStringLiteral("mesh.nas"));
 }
 
 void MeshGlobalMeshingWidget::onGenerate()
 {
-    PreProcessingService* service = ServiceRegistry::instance().getService<PreProcessingService>();
-    service->generateStepFile();
-
-    QString fileName = "ExportedModel.step";
-    QString currentWorPath = QCoreApplication::applicationDirPath();
-    QString filePath = QDir(QDir(currentWorPath).filePath("data")).filePath(fileName);
-
-    Params p = collectParams();
-    PublicVariables::instance().set(PublicConstants::kMeshDimension,p.dimension,"mesh");
-
-    p.inputStepPath = filePath;
-    if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+    auto* preService = ServiceRegistry::instance().getService<PreProcessingService>();
+    if (!preService)
     {
-        p.edgeRules = meshSvc->edgeControlRules();
-        p.faceRules = meshSvc->faceControlRules();
-        p.volumeRules = meshSvc->volumeControlRules();
-        appendLog(QString("读取局部控制：边%1 面%2 体%3")
-                      .arg(p.edgeRules.size())
-                      .arg(p.faceRules.size())
-                      .arg(p.volumeRules.size()));
+        QMessageBox::warning(this, QStringLiteral("Mesh"), QStringLiteral("PreProcessing service is not available"));
+        return;
     }
 
-    if (service)
+    preService->generateStepFile();
+
+    const QString filePath =
+        QDir(QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("data")))
+            .filePath(QStringLiteral("ExportedModel.step"));
+
+    Params p = collectParams();
+    PublicVariables::instance().set(PublicConstants::kMeshDimension, p.dimension, "mesh");
+    p.inputStepPath = filePath;
+
+    if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
     {
-        auto collectCentersAndMeasures = [&](int dim, const std::set<int>& ids,
-                                             QMap<int, QVector3D>& centerDst,
-                                             QMap<int, double>& measureDst)
+        const int localRuleCount = meshService->edgeControlRules().size() +
+                                   meshService->faceControlRules().size() +
+                                   meshService->volumeControlRules().size();
+        if (localRuleCount > 0)
         {
-            for (int id : ids)
-            {
-                QVector3D c;
-                if (service->entityCenter(dim, id, c))
-                {
-                    centerDst.insert(id, c);
-                }
-                double m = 0.0;
-                if (service->entityMeasure(dim, id, m) && m > 0.0)
-                {
-                    measureDst.insert(id, m);
-                }
-            }
-        };
-
-        std::set<int> edgeIds, faceIds, volumeIds;
-        for (const auto& r : p.edgeRules)
-        {
-            const auto ids = parseIdSetForParams(r.edgeIds);
-            edgeIds.insert(ids.begin(), ids.end());
+            appendLog(QStringLiteral(
+                "Netgen backend uses global meshing parameters; existing local entity rules are not mapped."));
         }
-        for (const auto& r : p.faceRules)
-        {
-            const auto ids = parseIdSetForParams(r.faceIds);
-            faceIds.insert(ids.begin(), ids.end());
-        }
-        for (const auto& r : p.volumeRules)
-        {
-            const auto ids = parseIdSetForParams(r.volumeIds);
-            volumeIds.insert(ids.begin(), ids.end());
-        }
-
-        collectCentersAndMeasures(1, edgeIds, p.edgeCenters, p.edgeMeasures);
-        collectCentersAndMeasures(2, faceIds, p.faceCenters, p.faceMeasures);
-        collectCentersAndMeasures(3, volumeIds, p.volumeCenters, p.volumeMeasures);
     }
 
     if (p.lenMin > p.lenMax)
     {
-        QMessageBox::warning(this, "整体剖分", "最小尺寸不能大于最大尺寸。");
+        QMessageBox::warning(this, QStringLiteral("Mesh"), QStringLiteral("Minimum size cannot be larger than maximum size"));
+        return;
+    }
+
+    if (p.elemType == kElemTypeHex8FromTet && p.dimension != 3)
+    {
+        QMessageBox::warning(this, QStringLiteral("Mesh"), QStringLiteral("Hex8 conversion requires 3D volume meshing"));
         return;
     }
 
     if (p.inputStepPath.isEmpty() || !QFileInfo::exists(p.inputStepPath))
     {
-        QMessageBox::warning(this, "整体剖分", "STEP 文件不存在。");
+        QMessageBox::warning(this, QStringLiteral("Mesh"), QStringLiteral("STEP file does not exist"));
         return;
     }
 
-    // 准备 temp 目录
+    m_lastGeneratedHex8 = p.elemType == kElemTypeHex8FromTet;
+
     QDir dir(tempDirPath());
     dir.mkpath(tempDirPath());
+    QFile::remove(tempVolPath());
+    QFile::remove(tempVtkPath());
+    QFile::remove(tempNasPath());
 
-    appendLog("准备临时目录：" + tempDirPath());
-
-    // 如果已有线程，先收掉
     if (m_thread)
     {
         m_thread->quit();
@@ -305,15 +296,13 @@ void MeshGlobalMeshingWidget::onGenerate()
         m_thread = nullptr;
     }
 
-    // 启动 worker
     m_thread = new QThread(this);
     auto* worker = new MeshGlobalWorker(p);
     worker->m_tempDirPath = tempDirPath();
     worker->m_tempStepPath = tempStepPath();
-    worker->m_tempMshPath = tempMshPath();
+    worker->m_tempVolPath = tempVolPath();
     worker->m_tempVtkPath = tempVtkPath();
     worker->m_tempNasPath = tempNasPath();
-
     worker->moveToThread(m_thread);
 
     connect(m_thread, &QThread::started, worker, &MeshGlobalWorker::run);
@@ -324,80 +313,108 @@ void MeshGlobalMeshingWidget::onGenerate()
             });
 
     connect(worker, &MeshGlobalWorker::finishedOK, this,
-            [this](const QString& msh, const QString& vtk, const QString& nas)
+            [this](const QString& vol, const QString& vtk, const QString& nas)
             {
-                appendLog("整体剖分成功。");
-                emit meshGenerated(msh, vtk, nas);
-                QMessageBox::information(this, "整体剖分", "生成成功！");
-                //                showMeshVtk(tempVtkPath());
-                MeshModuleControllerService* service =
+                appendLog(QStringLiteral("Netgen mesh generation succeeded"));
+                emit meshGenerated(vol, vtk, nas);
+
+                auto* service =
                     ServiceRegistry::instance().getService<MeshModuleControllerService>();
                 if (service)
                 {
                     QString err;
-                    if (!service->importCurrentGmshMesh(&err))
+                    if (!service->importGeneratedNetgenMesh(vtk, &err))
                     {
-                        appendLog(QString("内存导入失败：%1").arg(err));
-                        QMessageBox::warning(this, "整体剖分",
-                                             QString("网格生成成功，但内存导入失败：%1").arg(err));
+                        appendLog(QStringLiteral("Generated mesh import failed: %1").arg(err));
+                        QMessageBox::warning(this, QStringLiteral("Mesh"),
+                                             QStringLiteral("Mesh generated, but import failed: %1").arg(err));
                     }
                 }
 
                 if (m_thread)
-                {
                     m_thread->quit();
-                }
             });
 
     connect(worker, &MeshGlobalWorker::finishedFail, this,
             [this](const QString& err)
             {
-                appendLog("整体剖分失败：" + err);
-                QMessageBox::critical(this, "整体剖分", err);
+                appendLog(QStringLiteral("Netgen mesh generation failed: %1").arg(err));
+                QMessageBox::critical(this, QStringLiteral("Mesh"), err);
                 if (m_thread)
-                {
                     m_thread->quit();
-                }
             });
 
     connect(m_thread, &QThread::finished, worker, &QObject::deleteLater);
-
     m_thread->start();
 }
 
 void MeshGlobalMeshingWidget::onExportAs()
 {
-    const QString savePath = QFileDialog::getSaveFileName(
-        this, "另存为网格", QString(), "Gmsh (*.msh);;VTK (*.vtk);;Nastran (*.nas);;All (*.*)");
+    const QString filters =
+        m_lastGeneratedHex8
+            ? QStringLiteral("VTK (*.vtk);;Nastran (*.nas);;All (*.*)")
+            : QStringLiteral("Netgen (*.vol);;VTK (*.vtk);;Nastran (*.nas);;All (*.*)");
+
+    QString selectedFilter;
+    QString savePath = QFileDialog::getSaveFileName(
+        this, QStringLiteral("Save Mesh As"), QString(), filters, &selectedFilter);
     if (savePath.isEmpty())
         return;
 
-    // 这里不再调用 gmsh::write（因为生成在 worker 线程里，UI 线程不碰 gmsh）
-    // 直接复制 tempGrid 里的文件即可
+    if (QFileInfo(savePath).suffix().isEmpty())
+    {
+        if (selectedFilter.startsWith(QStringLiteral("Nastran")))
+            savePath += QStringLiteral(".nas");
+        else if (!m_lastGeneratedHex8 && selectedFilter.startsWith(QStringLiteral("Netgen")))
+            savePath += QStringLiteral(".vol");
+        else
+            savePath += QStringLiteral(".vtk");
+    }
+
     QString src;
-    if (savePath.endsWith(".msh", Qt::CaseInsensitive))
-        src = tempMshPath();
-    else if (savePath.endsWith(".vtk", Qt::CaseInsensitive))
+    if (savePath.endsWith(QStringLiteral(".vtk"), Qt::CaseInsensitive))
+    {
         src = tempVtkPath();
-    else if (savePath.endsWith(".nas", Qt::CaseInsensitive))
+    }
+    else if (savePath.endsWith(QStringLiteral(".nas"), Qt::CaseInsensitive))
+    {
         src = tempNasPath();
+    }
+    else if (savePath.endsWith(QStringLiteral(".vol"), Qt::CaseInsensitive))
+    {
+        if (m_lastGeneratedHex8)
+        {
+            QMessageBox::warning(
+                this, QStringLiteral("Export"),
+                QStringLiteral("Hex8 (Tet split) is not stored in Netgen VOL format. "
+                               "Please export VTK or Nastran instead."));
+            return;
+        }
+        src = tempVolPath();
+    }
     else
-        src = tempMshPath(); // 默认 msh
+    {
+        QMessageBox::warning(
+            this, QStringLiteral("Export"),
+            QStringLiteral("Please use a supported extension: .vtk, .nas%1")
+                .arg(m_lastGeneratedHex8 ? QString() : QStringLiteral(" or .vol")));
+        return;
+    }
 
     if (!QFileInfo::exists(src))
     {
-        QMessageBox::warning(this, "导出", "临时网格文件不存在，请先生成网格。");
+        QMessageBox::warning(this, QStringLiteral("Export"), QStringLiteral("Temporary mesh file does not exist"));
         return;
     }
 
     QFile::remove(savePath);
     if (!QFile::copy(src, savePath))
     {
-        QMessageBox::warning(this, "导出", "复制失败。");
+        QMessageBox::warning(this, QStringLiteral("Export"), QStringLiteral("Failed to copy mesh file"));
         return;
     }
 
-    appendLog("已另存为：" + savePath);
+    appendLog(QStringLiteral("Saved as: %1").arg(savePath));
 }
 
 void MeshGlobalMeshingWidget::onOpenTempDir()
@@ -424,60 +441,32 @@ void MeshGlobalMeshingWidget::showMeshVtk(const QString& vtkPath)
     if (!grid || grid->GetNumberOfCells() == 0)
         return;
 
-    // 共享 mapper（表面 + 线框用同一份数据）
     auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
     mapper->SetInputData(grid);
     mapper->ScalarVisibilityOff();
 
-    // 1) 表面 actor：灰色 + 半透明
     auto actorSurf = vtkSmartPointer<vtkActor>::New();
     actorSurf->SetMapper(mapper);
-    {
-        auto* p = actorSurf->GetProperty();
-        p->SetColor(0.7, 0.7, 0.7); // 灰色
-        p->SetOpacity(0.35);        // 半透明（0~1）
-        p->SetRepresentationToSurface();
+    actorSurf->GetProperty()->SetColor(0.7, 0.7, 0.7);
+    actorSurf->GetProperty()->SetOpacity(0.35);
+    actorSurf->GetProperty()->SetRepresentationToSurface();
 
-        // 灰色半透明更“干净”的常用设置（可选）
-        p->SetAmbient(0.35);
-        p->SetDiffuse(0.65);
-        p->SetSpecular(0.0);
-    }
-
-    // 2) 线框 actor：灰色线（叠加）
     auto actorWire = vtkSmartPointer<vtkActor>::New();
     actorWire->SetMapper(mapper);
-    {
-        auto* p = actorWire->GetProperty();
-        p->SetColor(0.35, 0.35, 0.35); // 深一点的灰，线更清楚
-        p->SetOpacity(1.0);
-        p->SetRepresentationToWireframe();
-        p->SetLineWidth(1.0); // 需要更粗就 1.5/2.0
+    actorWire->GetProperty()->SetColor(0.35, 0.35, 0.35);
+    actorWire->GetProperty()->SetOpacity(1.0);
+    actorWire->GetProperty()->SetRepresentationToWireframe();
+    actorWire->GetProperty()->SetLineWidth(1.0);
+    actorWire->GetProperty()->SetRenderLinesAsTubes(false);
 
-        // 避免“虚线感”（不同平台不一定有用）
-        p->SetRenderLinesAsTubes(false);
-    }
-
-    // 仅替换网格自身显示，避免把已有几何体从场景里清空。
     visual->removeProp("mesh.global.surf", false);
     visual->removeProp("mesh.global.wire", false);
     visual->removeProp("mesh.imported.surface", false);
     visual->removeProp("mesh.imported.line", false);
 
-    // 加入显示
-    visual->addProp("mesh.global.surf", actorSurf, QString("{mesh} 全局网格-表面"));
-    visual->addProp("mesh.global.wire", actorWire, QString("{mesh} 全局网格-线框"));
-
-    // 网格结果展示时默认隐藏几何；当用户切回几何树节点会自动恢复。
+    visual->addProp("mesh.global.surf", actorSurf, QStringLiteral("{mesh} Netgen surface"));
+    visual->addProp("mesh.global.wire", actorWire, QStringLiteral("{mesh} Netgen wire"));
     visual->setGroupVisible("Geometry", false, false);
-
     visual->resetCamera();
     visual->render();
-
-    const vtkIdType nPts = grid->GetNumberOfPoints();
-    const vtkIdType nCells = grid->GetNumberOfCells();
-
-    qInfo() << QString("网格加载成功：Points=%1, Elements(Cells)=%2")
-                    .arg((qlonglong)nPts)
-                    .arg((qlonglong)nCells);
 }

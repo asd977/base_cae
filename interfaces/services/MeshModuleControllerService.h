@@ -93,8 +93,7 @@ struct MeshModuleControllerService
     virtual QString sourceMeshFilePath() const = 0;
     virtual int verticalAxis() const = 0;
     virtual bool exportIiinDatFile(const QString& filePath, QString* errMsg = nullptr) = 0;
-    virtual void importMshGrid(QString path) = 0;
-    virtual bool importCurrentGmshMesh(QString* errMsg = nullptr) = 0;
+    virtual bool importGeneratedNetgenMesh(const QString& vtkPath, QString* errMsg = nullptr) = 0;
     virtual MshPickMap mshPickMapSolid() = 0;
     virtual QString matypePhysicalName(int matype, int dim = 3) const = 0;
     virtual void setMshPickMapSolid(const MshPickMap& pickMap) = 0;
