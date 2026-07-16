@@ -4,6 +4,7 @@
 #include <services/PhysicalFieldService.h>
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <SolverFilePaths.h>
 
 #include <QFileDialog>
 #include <QMessageBox>
@@ -34,7 +35,9 @@ void PhysicalFieldSettingWidget::on_importIIIDButton_clicked()
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    const QString defaultDir = projectDir.isEmpty() ? QDir::homePath() : QDir(projectDir).filePath("PREP");
+    const QString defaultDir = projectDir.isEmpty()
+                                   ? QDir::homePath()
+                                   : SolverFilePaths::projectInputDirectory(projectDir);
     const QString filePath = QFileDialog::getOpenFileName(
         this, QStringLiteral("导入已有约束"), defaultDir,
         QStringLiteral("约束数据 (*.DAT *.dat);;所有文件 (*)"));

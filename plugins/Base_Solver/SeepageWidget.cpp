@@ -2,6 +2,7 @@
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <SolverFilePaths.h>
 #include <QDir>
 #include <QComboBox>
 #include <QDialog>
@@ -10,6 +11,7 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QMessageBox>
+#include <QStringConverter>
 #include <QDialogButtonBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -172,11 +174,10 @@ bool SeepageWidget::exportIseepDatFile() const
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    const QString projectDirAbs = QDir(projectDir).absolutePath();
-
-    QDir wd(projectDirAbs);
-    if (!wd.exists("PREP"))
-        wd.mkpath("PREP");
+    QDir wd(SolverFilePaths::outputRoot(projectDir));
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    if (!QDir().mkpath(wd.absolutePath()) || !QDir().mkpath(inputDir.absolutePath()))
+        return false;
     //    if (!wd.exists("SEEPCASE01")) wd.mkpath("SEEPCASE01");
 
     auto ensureTrailingSep = [](const QString& path)
@@ -187,7 +188,7 @@ bool SeepageWidget::exportIseepDatFile() const
         return p;
     };
 
-    const QString prepDirAbs = ensureTrailingSep(wd.filePath("PREP"));
+    const QString inputDirAbs = ensureTrailingSep(inputDir.absolutePath());
     const QString seepCaseDirName = QStringLiteral("SEEPCASE01");
     const QString seepCaseDirAbs = ensureTrailingSep(wd.filePath(seepCaseDirName));
 
@@ -200,10 +201,11 @@ bool SeepageWidget::exportIseepDatFile() const
     }
 
     QTextStream os(&file);
+    os.setEncoding(QStringConverter::System);
     os.setRealNumberNotation(QTextStream::FixedNotation);
     os.setRealNumberPrecision(6);
 
-    os << "'" << prepDirAbs << "'\n";
+    os << "'" << inputDirAbs << "'\n";
     os << "'JD_UPSEEP.DAT'\n";
     os << "'JD_DWSEEP.DAT'\n";
     os << "'" << ui->spinMainPropertyNo->value() << "'\n";
@@ -262,13 +264,13 @@ bool SeepageWidget::exportHwDropDatFiles(const QString& seepCaseDirName) const
     Q_UNUSED(seepCaseDirName);
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(QDir(projectDir).absolutePath());
-    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    if (!QDir().mkpath(inputDir.absolutePath()))
         return false;
 
     auto writeCurve = [&](const QString& fileName, bool isUpstream)
     {
-        QFile file(wd.filePath("PREP/" + fileName));
+        QFile file(inputDir.filePath(fileName));
         if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
             return false;
 

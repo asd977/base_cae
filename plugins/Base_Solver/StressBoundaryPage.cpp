@@ -4,6 +4,7 @@
 #include <CustomComboBox.h>
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <SolverFilePaths.h>
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
 #include <struct/MeshMap.h>
@@ -427,11 +428,11 @@ bool StressBoundaryPage::exportDatFile()
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(projectDir);
-    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    if (!QDir().mkpath(inputDir.absolutePath()))
         return false;
 
-    QFile file(wd.filePath("PREP/" + m_exportFileName));
+    QFile file(inputDir.filePath(m_exportFileName));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
 

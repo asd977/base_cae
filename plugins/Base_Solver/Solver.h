@@ -66,10 +66,19 @@ class Solver : public QObject, public SolverService
     void addGeoStressOuterForceNode(ProjectNode* geostressNode, bool setCurrent) const;
     GeoStressRegressionWidget::ExportPayload buildGeoStressPayload(ProjectNode* geostressNode) const;
     bool beginCommonCompute(ProjectNode* analysisNode, const QString& analysisType);
-    bool launchSolverExecutable(const QString& analysisType);
-    bool launchCaveBlockSolverExecutable();
+    ProjectNode* topLevelAnalysisNode(ProjectNode* node) const;
+    QString analysisWorkspace(ProjectNode* node) const;
+    bool prepareAnalysisWorkspace(ProjectNode* node, bool caveBlock, QString* workspaceDir,
+                                  QString* runDir) const;
+    bool writeAnalysisManifest(const QString& workspaceDir, const QString& analysisUuid,
+                               const QString& analysisName, const QString& analysisKind,
+                               const QString& analysisType, const QString& state) const;
+    void updateAnalysisManifestName(ProjectNode* node) const;
+    bool launchSolverExecutable(ProjectNode* analysisNode, const QString& analysisType);
+    bool launchCaveBlockSolverExecutable(ProjectNode* analysisNode);
     void finishSolverProcess(bool terminateProcess);
-    void notifySolverFinished(const QString& analysisType, const QString& projectDir);
+    void clearSolverRunDirectory() const;
+    void notifySolverFinished();
     void setComputeWidgetRunning(QWidget* widget, bool computing) const;
     void connectStopRequest(QObject* page) const;
     int solverModeFromAnalysisType(const QString& analysisType) const;
@@ -86,6 +95,12 @@ class Solver : public QObject, public SolverService
     QPointer<QWidget> m_pendingComputeWidget;
     QPointer<QWidget> m_activeComputeWidget;
     bool m_solverFinishedNotified{false};
+    QString m_activeProjectDir;
+    QString m_activeAnalysisWorkspace;
+    QString m_activeAnalysisUuid;
+    QString m_activeAnalysisName;
+    QString m_activeAnalysisKind;
+    QString m_activeAnalysisType;
     bool exportInouseDatFile();
     bool exportMaMaskDatFile();
     bool exportKetraceDatFile();

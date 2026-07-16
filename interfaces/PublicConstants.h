@@ -238,14 +238,22 @@ constexpr char kActionCaveBlockStabilityKey[] = "cave_block_stability_analysis";
 
 // --- Project keys / files ---
 constexpr char kProjectDirectoryKey[] = "project_dir";
-constexpr char kPostProcessingProjectFileName[] = "postprocessing.json";
-constexpr char kPreProcessingProjectFileName[] = "preprocessing.json";
-constexpr char kMeshProjectFileName[] = "mesh.json";
-constexpr char kMaterialProjectFileName[] = "material.json";
-constexpr char kPhysicalFieldProjectFileName[] = "physical_field.json";
-constexpr char kMeshSnapshotFileName[] = "mesh_snapshot.iiin.dat";
-constexpr char kSolverProjectFileName[] = "solver.json";
-constexpr char kSurrogateProjectFileName[] = "surrogate_model.json";
+constexpr char kSolverRunDirectoryKey[] = "solver_run_dir";
+constexpr char kProjectDataDirectoryName[] = u8"工程数据";
+constexpr char kProjectInputDirectoryName[] = u8"工程数据/计算输入";
+constexpr char kAnalysisInputDirectoryName[] = u8"计算输入";
+constexpr char kLegacyInputDirectoryName[] = "PREP";
+constexpr char kPostProcessingProjectFileName[] = u8"工程数据/postprocessing.json";
+constexpr char kPreProcessingProjectFileName[] = u8"工程数据/preprocessing.json";
+constexpr char kMeshProjectFileName[] = u8"工程数据/mesh.json";
+constexpr char kMaterialProjectFileName[] = u8"工程数据/material.json";
+constexpr char kPhysicalFieldProjectFileName[] = u8"工程数据/physical_field.json";
+constexpr char kMeshSnapshotFileName[] = u8"工程数据/mesh_snapshot.iiin.dat";
+constexpr char kMeshMapFileName[] = u8"工程数据/mesh_map.json";
+constexpr char kSolverProjectFileName[] = u8"工程数据/solver.json";
+constexpr char kSurrogateProjectFileName[] = u8"工程数据/surrogate_model.json";
+constexpr char kSolverAnalysisManifestFileName[] = u8"分析信息.json";
+constexpr char kPostResultDirectoryName[] = u8"计算结果";
 
 // --- Runtime values ---
 constexpr char kValuePostScalar[] = "post_scalar";

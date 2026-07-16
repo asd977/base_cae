@@ -60,6 +60,7 @@
 #include <QDebug>
 #include <QFile>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QIcon>
 #include <QInputDialog>
 #include <QLineEdit>
@@ -345,8 +346,10 @@ bool PreProcessing::saveProject()
         return true;
     QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    const QString filePath =
-        QDir(projectDir).filePath(PublicConstants::kPreProcessingProjectFileName);
+    const QString filePath = QDir(projectDir).filePath(
+        QString::fromUtf8(PublicConstants::kPreProcessingProjectFileName));
+    if (!QDir().mkpath(QFileInfo(filePath).absolutePath()))
+        return false;
 
     QJsonObject root;
     root["module"] = "PreProcessing";
@@ -394,7 +397,10 @@ bool PreProcessing::saveProject()
     }
     root["geom_items"] = geomItems;
 
-    return writeJsonFile(filePath, root);
+    const bool saved = writeJsonFile(filePath, root);
+    if (saved)
+        QFile::remove(QDir(projectDir).filePath(QStringLiteral("preprocessing.json")));
+    return saved;
 }
 
 bool PreProcessing::loadProject()
@@ -415,8 +421,8 @@ bool PreProcessing::loadChildProject(ProjectNode* rootNode, const QString& name)
 {
     QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    const QString filePath =
-        QDir(projectDir).filePath(PublicConstants::kPreProcessingProjectFileName);
+    const QString filePath = QDir(projectDir).filePath(
+        QString::fromUtf8(PublicConstants::kPreProcessingProjectFileName));
     QJsonObject root;
     if (!readJsonFile(filePath, root))
     {

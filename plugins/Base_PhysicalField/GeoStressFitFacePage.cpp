@@ -2,6 +2,7 @@
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <SolverFilePaths.h>
 #include <CustomComboBox.h>
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
@@ -432,12 +433,12 @@ bool GeoStressFitFacePage::exportLeftDatFile()
     // 写文件
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(projectDir);
-    if (!wd.exists("PREP"))
-        wd.mkpath("PREP");
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    if (!QDir().mkpath(inputDir.absolutePath()))
+        return false;
 
     const QString fileName = fnameForExport();
-    const QString path = wd.filePath("PREP/" + fileName);
+    const QString path = inputDir.filePath(fileName);
 
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text))

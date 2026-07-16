@@ -158,7 +158,7 @@ void MaterialManagerWidget::on_generateImatButton_clicked()
 {
     if (m_materialManager->generateCaculateFile())
     {
-        QMessageBox::information(this, QString("提示"), QString("已生成 PREP/IMAT.DAT"));
+    QMessageBox::information(this, QString("提示"), QString("已生成材料计算输入。"));
     }
     else
     {

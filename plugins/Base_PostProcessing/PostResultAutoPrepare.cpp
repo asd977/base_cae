@@ -1,6 +1,7 @@
 #include "PostResultAutoPrepare.h"
 
 #include "PostResultGenerator.h"
+#include <PublicConstants.h>
 
 #include <QDateTime>
 #include <QDebug>
@@ -19,14 +20,23 @@
 
 namespace
 {
-constexpr char kPostResultRoot[] = "post/results";
+constexpr char kLegacyPostResultRoot[] = "post";
 constexpr char kManifestName[] = "manifest.json";
+constexpr char kLegacyAnalysisManifestFileName[] = "analysis.json";
 constexpr int kManifestVersion = 3;
 
 struct GeneratedFileInfo
 {
     QString displayName;
     QString kind;
+};
+
+struct AnalysisIdentity
+{
+    QString uuid;
+    QString name;
+    QString kind;
+    QString workspacePath;
 };
 
 QString normalizeRelativePath(QString path)
@@ -46,6 +56,60 @@ QString sourceRelativePath(const QDir& projectDir, const QString& sourceDir)
     return relative.startsWith(QStringLiteral("..")) ? QString() : relative;
 }
 
+AnalysisIdentity analysisIdentityForSource(const QDir& projectDir, const QDir& sourceDir)
+{
+    const QStringList manifestNames = {
+        QString::fromUtf8(PublicConstants::kSolverAnalysisManifestFileName),
+        QString::fromLatin1(kLegacyAnalysisManifestFileName)};
+
+    const QString projectPath = QDir::fromNativeSeparators(
+        projectDir.absolutePath()).toCaseFolded();
+    QString currentPath = QDir(sourceDir.absolutePath()).absolutePath();
+    while (!currentPath.isEmpty())
+    {
+        const QString folded = QDir::fromNativeSeparators(currentPath).toCaseFolded();
+        if (folded != projectPath && !folded.startsWith(projectPath + QLatin1Char('/')))
+            break;
+
+        const QDir workspace(currentPath);
+        for (const QString& manifestName : manifestNames)
+        {
+            QFile file(workspace.filePath(manifestName));
+            if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+                continue;
+
+            const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+            if (!document.isObject())
+                continue;
+
+            const QJsonObject object = document.object();
+            AnalysisIdentity identity;
+            identity.uuid = object.value(QStringLiteral("analysisUuid")).toString().trimmed();
+            identity.name = object.value(QStringLiteral("analysisName")).toString().trimmed();
+            identity.kind = object.value(QStringLiteral("analysisKind")).toString().trimmed();
+            identity.workspacePath = workspace.absolutePath();
+            return identity;
+        }
+
+        if (folded == projectPath)
+            break;
+        QDir parent(currentPath);
+        if (!parent.cdUp())
+            break;
+        const QString parentPath = parent.absolutePath();
+        if (parentPath.compare(currentPath, Qt::CaseInsensitive) == 0)
+            break;
+        currentPath = parentPath;
+    }
+    return {};
+}
+
+QDir generationProjectDir(const QDir& projectDir, const QDir& sourceDir)
+{
+    const AnalysisIdentity identity = analysisIdentityForSource(projectDir, sourceDir);
+    return identity.workspacePath.isEmpty() ? projectDir : QDir(identity.workspacePath);
+}
+
 QString cacheDirName(const QString& relativePath)
 {
     QString name = normalizeRelativePath(relativePath);
@@ -55,9 +119,68 @@ QString cacheDirName(const QString& relativePath)
     return name.isEmpty() ? QStringLiteral("root") : name;
 }
 
-QDir postRootDir(const QDir& projectDir)
+bool pathIsWithin(const QString& rootPath, const QString& candidatePath)
 {
-    return QDir(projectDir.filePath(QString::fromLatin1(kPostResultRoot)));
+    const QString root = QDir::fromNativeSeparators(
+        QDir(rootPath).absolutePath()).toCaseFolded();
+    const QString candidate = QDir::fromNativeSeparators(
+        QDir(candidatePath).absolutePath()).toCaseFolded();
+    return candidate == root || candidate.startsWith(root + QLatin1Char('/'));
+}
+
+QDir postRootDirForSource(const QDir& projectDir, const QDir& sourceDir)
+{
+    const AnalysisIdentity identity = analysisIdentityForSource(projectDir, sourceDir);
+    const QDir owner(identity.workspacePath.isEmpty() ? projectDir.absolutePath()
+                                                      : identity.workspacePath);
+    return QDir(owner.filePath(
+        QString::fromUtf8(PublicConstants::kPostResultDirectoryName)));
+}
+
+bool isPreparedResultPath(const QDir& projectDir, const QString& path)
+{
+    const QString legacyPostRoot = projectDir.filePath(
+        QString::fromLatin1(kLegacyPostResultRoot));
+    if (pathIsWithin(legacyPostRoot, path))
+        return true;
+
+    const AnalysisIdentity identity = analysisIdentityForSource(projectDir, QDir(path));
+    if (identity.workspacePath.isEmpty())
+        return false;
+    const QString resultRoot = QDir(identity.workspacePath).filePath(
+        QString::fromUtf8(PublicConstants::kPostResultDirectoryName));
+    return pathIsWithin(resultRoot, path);
+}
+
+QStringList analysisWorkspaceDirectories(const QDir& projectDir)
+{
+    QStringList result;
+    QSet<QString> seen;
+    const QStringList manifestNames = {
+        QString::fromUtf8(PublicConstants::kSolverAnalysisManifestFileName),
+        QString::fromLatin1(kLegacyAnalysisManifestFileName)};
+    for (const QString& manifestName : manifestNames)
+    {
+        QDirIterator iterator(projectDir.absolutePath(), {manifestName}, QDir::Files,
+                              QDirIterator::Subdirectories);
+        while (iterator.hasNext())
+        {
+            const QString workspacePath = QFileInfo(iterator.next()).absolutePath();
+            if (isPreparedResultPath(projectDir, workspacePath))
+                continue;
+            const QString key = QDir::fromNativeSeparators(workspacePath).toCaseFolded();
+            if (!seen.contains(key))
+            {
+                seen.insert(key);
+                result.push_back(workspacePath);
+            }
+        }
+    }
+    std::sort(result.begin(), result.end(), [](const QString& left, const QString& right)
+    {
+        return left.compare(right, Qt::CaseInsensitive) < 0;
+    });
+    return result;
 }
 
 bool findFileInfo(const QDir& dir, const QString& name, QFileInfo* out = nullptr)
@@ -154,11 +277,18 @@ QList<QFileInfo> sourceFiles(const QDir& sourceDir)
 QList<QFileInfo> generationInputFiles(const QDir& projectDir, const QDir& sourceDir)
 {
     QList<QFileInfo> files = sourceFiles(sourceDir);
-    const QDir prepDir(projectDir.filePath(QStringLiteral("PREP")));
-    if (prepDir.exists())
+    const QDir inputProject = generationProjectDir(projectDir, sourceDir);
+    const QStringList inputDirectories = {
+        inputProject.filePath(QString::fromUtf8(PublicConstants::kAnalysisInputDirectoryName)),
+        inputProject.filePath(QString::fromUtf8(PublicConstants::kProjectInputDirectoryName)),
+        inputProject.filePath(QString::fromLatin1(PublicConstants::kLegacyInputDirectoryName))};
+    for (const QString& inputDirectory : inputDirectories)
     {
-        const QFileInfoList prepFiles = prepDir.entryInfoList(QDir::Files);
-        for (const QFileInfo& info : prepFiles)
+        const QDir inputDir(inputDirectory);
+        if (!inputDir.exists())
+            continue;
+        const QFileInfoList inputFiles = inputDir.entryInfoList(QDir::Files);
+        for (const QFileInfo& info : inputFiles)
         {
             const QString name = info.fileName();
             if (name.compare(QStringLiteral("MAFILESET.DAT"), Qt::CaseInsensitive) == 0 ||
@@ -430,18 +560,28 @@ QStringList discoverResultDirectories(const QString& projectDir)
 
     QStringList result;
     QSet<QString> seen;
-    const QString postRoot = postRootDir(project).absolutePath().toLower();
+    QStringList searchRoots = analysisWorkspaceDirectories(project);
+    if (searchRoots.isEmpty())
+        searchRoots.push_back(project.absolutePath());
 
-    QDirIterator iterator(project.absolutePath(), QDir::Dirs | QDir::NoDotAndDotDot,
-                          QDirIterator::Subdirectories);
-    while (iterator.hasNext())
+    for (const QString& searchRoot : searchRoots)
     {
-        const QString absolutePath = QDir(iterator.next()).absolutePath();
-        if (absolutePath.toLower().startsWith(postRoot))
-            continue;
-        const QDir source(absolutePath);
-        if (hasMeshFile(absolutePath) && hasSupportedFieldData(source))
-            appendUnique(result, seen, project.relativeFilePath(absolutePath));
+        const QDir root(searchRoot);
+        if (!isPreparedResultPath(project, root.absolutePath()) &&
+            hasMeshFile(root.absolutePath()) && hasSupportedFieldData(root))
+            appendUnique(result, seen, project.relativeFilePath(root.absolutePath()));
+
+        QDirIterator iterator(root.absolutePath(), QDir::Dirs | QDir::NoDotAndDotDot,
+                              QDirIterator::Subdirectories);
+        while (iterator.hasNext())
+        {
+            const QString absolutePath = QDir(iterator.next()).absolutePath();
+            if (isPreparedResultPath(project, absolutePath))
+                continue;
+            const QDir source(absolutePath);
+            if (hasMeshFile(absolutePath) && hasSupportedFieldData(source))
+                appendUnique(result, seen, project.relativeFilePath(absolutePath));
+        }
     }
 
     std::sort(result.begin(), result.end(), [](const QString& left, const QString& right)
@@ -528,6 +668,15 @@ QVector<ResultGroup> resultGroups(const QString& projectDir)
         seenPaths.insert(pathKey);
 
         QString displayName = resultGroupDisplayName(project.absolutePath(), absolutePath);
+        const AnalysisIdentity identity = analysisIdentityForSource(project, QDir(absolutePath));
+        if (!identity.name.isEmpty())
+        {
+            if (identity.kind == QStringLiteral("SlopeStabilityAnalysis"))
+                displayName = QStringLiteral("边坡结果");
+            else if (identity.kind == QStringLiteral("CaveBlockStabilityAnalysis"))
+                displayName = QStringLiteral("块体稳定结果");
+            displayName = QStringLiteral("%1 - %2").arg(identity.name, displayName);
+        }
         const int count = displayCounts.value(displayName) + 1;
         displayCounts.insert(displayName, count);
         if (count > 1)
@@ -542,8 +691,16 @@ QString preparedDirectory(const QString& projectDir, const QString& sourceDir)
     const QDir project(QDir::fromNativeSeparators(projectDir.trimmed()));
     if (!project.exists())
         return QString();
-    const QString relative = sourceRelativePath(project, sourceDir);
-    return relative.isEmpty() ? QString() : postRootDir(project).filePath(cacheDirName(relative));
+    const QDir source(QDir::fromNativeSeparators(sourceDir.trimmed()));
+    const AnalysisIdentity identity = analysisIdentityForSource(project, source);
+    const QDir owner(identity.workspacePath.isEmpty() ? project.absolutePath()
+                                                      : identity.workspacePath);
+    QString relative = normalizeRelativePath(owner.relativeFilePath(source.absolutePath()));
+    if (relative == QStringLiteral("."))
+        relative = QStringLiteral("综合结果");
+    if (relative.isEmpty() || relative.startsWith(QStringLiteral("..")))
+        return QString();
+    return postRootDirForSource(project, source).filePath(cacheDirName(relative));
 }
 
 bool prepareDirectory(const QString& projectDir, const QString& sourceDir)
@@ -566,7 +723,7 @@ bool prepareDirectory(const QString& projectDir, const QString& sourceDir)
     prepared.remove(QString::fromLatin1(kManifestName));
 
     PostResultGenerator::Options options;
-    options.projectDir = project.absolutePath();
+    options.projectDir = generationProjectDir(project, source).absolutePath();
     options.resultDir = source.absolutePath();
     options.outputDir = prepared.absolutePath();
     options.overwrite = true;
@@ -584,6 +741,36 @@ bool prepareDirectory(const QString& projectDir, const QString& sourceDir)
     return true;
 }
 
+bool prepareResultRoot(const QString& projectDir, const QString& resultRoot)
+{
+    const QDir project(QDir::fromNativeSeparators(projectDir.trimmed()));
+    const QDir root(QDir::fromNativeSeparators(resultRoot.trimmed()));
+    if (!project.exists() || !root.exists())
+        return false;
+
+    const QString projectPath = QDir::fromNativeSeparators(project.absolutePath()).toCaseFolded();
+    const QString rootPath = QDir::fromNativeSeparators(root.absolutePath()).toCaseFolded();
+    if (rootPath != projectPath && !rootPath.startsWith(projectPath + QLatin1Char('/')))
+        return false;
+
+    bool preparedAny = false;
+    if (hasMeshFile(root.absolutePath()) && hasSupportedFieldData(root))
+        preparedAny = prepareDirectory(project.absolutePath(), root.absolutePath());
+
+    QDirIterator iterator(root.absolutePath(), QDir::Dirs | QDir::NoDotAndDotDot,
+                          QDirIterator::Subdirectories);
+    while (iterator.hasNext())
+    {
+        const QDir source(iterator.next());
+        if (isPreparedResultPath(project, source.absolutePath()))
+            continue;
+        if (hasMeshFile(source.absolutePath()) && hasSupportedFieldData(source))
+            preparedAny = prepareDirectory(project.absolutePath(), source.absolutePath()) ||
+                          preparedAny;
+    }
+    return preparedAny;
+}
+
 bool prepareProject(const QString& projectDir)
 {
     const QDir project(QDir::fromNativeSeparators(projectDir.trimmed()));
@@ -597,6 +784,37 @@ bool prepareProject(const QString& projectDir)
                       preparedAny;
     }
     return preparedAny;
+}
+
+QStringList preparedResultDescriptions(const QString& projectDir, const QString& resultRoot)
+{
+    const QDir project(QDir::fromNativeSeparators(projectDir.trimmed()));
+    const QDir root(QDir::fromNativeSeparators(resultRoot.trimmed()));
+    if (!project.exists() || !root.exists())
+        return {};
+
+    QStringList descriptions;
+    for (const ResultGroup& group : resultGroups(project.absolutePath()))
+    {
+        if (!pathIsWithin(root.absolutePath(), group.sourcePath))
+            continue;
+
+        const QString preparedPath = preparedDirectory(project.absolutePath(), group.sourcePath);
+        QStringList resultNames;
+        QSet<QString> seen;
+        for (const ResultFile& file : readManifestFiles(QDir(preparedPath)))
+        {
+            const QString name = file.displayName.trimmed();
+            if (name.isEmpty() || seen.contains(name))
+                continue;
+            seen.insert(name);
+            resultNames.push_back(name);
+        }
+        if (!resultNames.isEmpty())
+            descriptions.push_back(QStringLiteral("%1：%2")
+                                       .arg(group.displayName, resultNames.join(QStringLiteral("、"))));
+    }
+    return descriptions;
 }
 
 QVector<ResultFile> resultFiles(const QString& projectDir, const QString& sourceDir, bool includeVtu)

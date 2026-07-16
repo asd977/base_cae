@@ -14,6 +14,7 @@
 #include <QBrush>
 #include <QFile>
 #include <QIcon>
+#include <QDirIterator>
 #include <QMessageBox>
 #include <QTimer>
 #include <QVariant>
@@ -22,6 +23,53 @@
 
 namespace
 {
+bool mergeDirectoryMissingFiles(const QString& sourcePath, const QString& targetPath)
+{
+    const QDir source(sourcePath);
+    if (!source.exists())
+        return true;
+    if (!QDir().mkpath(targetPath))
+        return false;
+
+    QDirIterator iterator(sourcePath, QDir::AllEntries | QDir::NoDotAndDotDot,
+                          QDirIterator::Subdirectories);
+    while (iterator.hasNext())
+    {
+        const QFileInfo sourceInfo(iterator.next());
+        const QString relative = source.relativeFilePath(sourceInfo.absoluteFilePath());
+        const QString target = QDir(targetPath).filePath(relative);
+        if (sourceInfo.isDir())
+        {
+            if (!QDir().mkpath(target))
+                return false;
+        }
+        else if (!QFileInfo::exists(target))
+        {
+            if (!QDir().mkpath(QFileInfo(target).absolutePath()) ||
+                !QFile::copy(sourceInfo.absoluteFilePath(), target))
+                return false;
+        }
+    }
+    return true;
+}
+
+bool removeControlFileUsingLegacyInput(const QString& filePath)
+{
+    QFile file(filePath);
+    if (!file.exists())
+        return false;
+    if (!file.open(QIODevice::ReadOnly))
+        return false;
+
+    QString content = QString::fromLocal8Bit(file.readAll());
+    content.replace('\\', '/');
+    if (!content.contains(QStringLiteral("/PREP/"), Qt::CaseInsensitive))
+        return false;
+
+    file.close();
+    return QFile::remove(filePath);
+}
+
 ProjectNode* findNodeRecursive(ProjectNode* node, const QString& uuid)
 {
     if (!node)
@@ -209,24 +257,25 @@ void ProjectManager::openProject()
         m_projectName = fileInfo.baseName();
     }
 
-    QDir baseDir = fileInfo.dir();
-    if (baseDir.dirName() == m_projectName)
-    {
-        baseDir.cdUp();
-    }
-    m_projectPath = baseDir.absolutePath();
-
-    if (!createProjectFilesFolder(false))
+    // The selected XML defines the project root. The enclosing folder may be renamed
+    // independently from the project display name stored in the manifest.
+    m_projectTempFolder = fileInfo.absolutePath();
+    m_projectPath = m_projectTempFolder;
+    PublicVariables::instance().set(PublicConstants::kProjectDirectoryKey, m_projectTempFolder,
+                                    "project_dir");
+    QDir projectDir(m_projectTempFolder);
+    const bool foldersReady = projectDir.exists() &&
+                              projectDir.mkpath(QString::fromUtf8(
+                                  PublicConstants::kProjectInputDirectoryName));
+    if (!foldersReady || !migrateLegacyProjectDataFiles() || !migrateLegacySolverFiles())
     {
         m_outputService->outputLog("工程文件有误,打开失败");
         return;
     }
     // todo 获取工程文件里面的所有内容 读取各自模块存取的数据 注意:怎么存怎么取!!!
-    m_projectEnginePath = QDir(m_projectTempFolder).filePath(m_projectName + ".xml");
+    m_projectEnginePath = fileInfo.absoluteFilePath();
     QStringList files /*= JlCompress::extractDir(smprjo_path, m_projectTempFolder)*/;
 
-    PublicVariables::instance().set(PublicConstants::kProjectDirectoryKey, m_projectTempFolder,
-                                    "project_dir");
     updateIiidirDatForProject(m_projectTempFolder, false);
 
     m_projectTreeWidget->buildDefaultProjectTree(m_projectName);
@@ -287,6 +336,13 @@ void ProjectManager::saveProject()
     if (m_projectTempFolder.isEmpty())
         return;
 
+    if (!QDir(m_projectTempFolder).mkpath(
+            QString::fromUtf8(PublicConstants::kProjectDataDirectoryName)))
+    {
+        qWarning() << "failed to create project data directory";
+        return;
+    }
+
     if (auto* postProcessingService =
             ServiceRegistry::instance().getService<PostProcessingService>())
     {
@@ -333,6 +389,8 @@ void ProjectManager::saveProject()
     // }
 
     writeProjectManifest();
+    migrateLegacyProjectDataFiles();
+    removeLegacyRootSolverFiles();
 }
 
 void ProjectManager::newProject()
@@ -462,7 +520,7 @@ void ProjectManager::onSphereGemoAct()
     page, name);*/
 }
 
-void ProjectManager::updateIiidirDatForProject(const QString& projectDir, bool usePrepAsRoot) const
+void ProjectManager::updateIiidirDatForProject(const QString& projectDir, bool useInputAsRoot) const
 {
     const QString iiidirPath = QStringLiteral("D:/IIIDIR.DAT");
     const auto ensureTrailingSlash = [](QString path) -> QString
@@ -473,8 +531,9 @@ void ProjectManager::updateIiidirDatForProject(const QString& projectDir, bool u
         return path;
     };
     const QString baseDir = ensureTrailingSlash(projectDir);
-    const QString prepDir = ensureTrailingSlash(QDir(projectDir).filePath("PREP"));
-    const QString rootDir = usePrepAsRoot ? prepDir : baseDir;
+    const QString inputDir = ensureTrailingSlash(QDir(projectDir).filePath(
+        QString::fromUtf8(PublicConstants::kProjectInputDirectoryName)));
+    const QString rootDir = useInputAsRoot ? inputDir : baseDir;
 
     const QString content =
         QString("'%1'\n"
@@ -486,7 +545,7 @@ void ProjectManager::updateIiidirDatForProject(const QString& projectDir, bool u
                 "       0  ILOG_SOLVE\n"
                 "'%2'\n"
                 "           8   \n")
-            .arg(rootDir, prepDir);
+            .arg(rootDir, inputDir);
 
     QFile file(iiidirPath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
@@ -494,7 +553,7 @@ void ProjectManager::updateIiidirDatForProject(const QString& projectDir, bool u
         qWarning() << "无法写入 IIIDIR.DAT:" << iiidirPath << file.errorString();
         return;
     }
-    file.write(content.toUtf8());
+    file.write(content.toLocal8Bit());
     file.close();
 }
 
@@ -571,11 +630,12 @@ bool ProjectManager::createProjectFilesFolder(bool askOverwrite)
         }
         else
         {
-            if (!dir.mkpath(dir.filePath("PREP")))
+            if (!dir.mkpath(dir.filePath(
+                    QString::fromUtf8(PublicConstants::kProjectInputDirectoryName))))
             {
                 return false;
             }
-            return true;
+            return migrateLegacyProjectDataFiles() && migrateLegacySolverFiles();
         }
     }
 
@@ -584,11 +644,117 @@ bool ProjectManager::createProjectFilesFolder(bool askOverwrite)
         return false;
     }
 
-    if (!dir.mkpath(dir.filePath("PREP")))
+    if (!dir.mkpath(dir.filePath(
+            QString::fromUtf8(PublicConstants::kProjectInputDirectoryName))))
     {
         return false;
     }
 
+    return migrateLegacyProjectDataFiles() && migrateLegacySolverFiles();
+}
+
+bool ProjectManager::migrateLegacySolverFiles() const
+{
+    const QDir project(m_projectTempFolder);
+    const QString legacyName = QString::fromLatin1(PublicConstants::kLegacyInputDirectoryName);
+    const QString inputName = QString::fromUtf8(PublicConstants::kAnalysisInputDirectoryName);
+    const QString projectInput = project.filePath(
+        QString::fromUtf8(PublicConstants::kProjectInputDirectoryName));
+    const QString legacyProjectInput = project.filePath(legacyName);
+
+    if (!mergeDirectoryMissingFiles(legacyProjectInput, projectInput))
+        return false;
+    if (QDir(legacyProjectInput).exists() && !QDir(legacyProjectInput).removeRecursively())
+        return false;
+
+    const QString manifestName =
+        QString::fromUtf8(PublicConstants::kSolverAnalysisManifestFileName);
+    const QFileInfoList directories =
+        project.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+    for (const QFileInfo& directory : directories)
+    {
+        QDir workspace(directory.absoluteFilePath());
+        if (!workspace.exists(manifestName))
+            continue;
+
+        const QString legacyInput = workspace.filePath(legacyName);
+        const QString analysisInput = workspace.filePath(inputName);
+        if (!mergeDirectoryMissingFiles(legacyInput, analysisInput))
+            return false;
+        if (QDir(legacyInput).exists() && !QDir(legacyInput).removeRecursively())
+            return false;
+
+        const QStringList mainControlFiles = {
+            QStringLiteral("IFILL.DAT"), QStringLiteral("ISEEP.DAT"),
+            QStringLiteral("ICAVE.DAT"), QStringLiteral("ISLOP.DAT"),
+            QStringLiteral("IGEOS.DAT"), QStringLiteral("IMID_GEOS.DAT")};
+        bool removedLegacyControl = false;
+        for (const QString& name : mainControlFiles)
+            removedLegacyControl =
+                removeControlFileUsingLegacyInput(workspace.filePath(name)) ||
+                removedLegacyControl;
+
+        if (removedLegacyControl)
+        {
+            QFile::remove(workspace.filePath(QStringLiteral("MESG_IAUTO.DAT")));
+            QFile::remove(workspace.filePath(QStringLiteral("MESG_ITASK.DAT")));
+            QFile::remove(workspace.filePath(QStringLiteral("MESG064.DAT")));
+        }
+    }
+
+    removeLegacyRootSolverFiles();
+    return QDir().mkpath(projectInput);
+}
+
+void ProjectManager::removeLegacyRootSolverFiles() const
+{
+    const QDir project(m_projectTempFolder);
+    const QStringList names = {
+        QStringLiteral("IFILL.DAT"),      QStringLiteral("ISEEP.DAT"),
+        QStringLiteral("ICAVE.DAT"),      QStringLiteral("ISLOP.DAT"),
+        QStringLiteral("IGEOS.DAT"),      QStringLiteral("IMID_GEOS.DAT"),
+        QStringLiteral("MESG_IAUTO.DAT"), QStringLiteral("MESG_ITASK.DAT"),
+        QStringLiteral("MESG064.DAT")};
+    for (const QString& name : names)
+        QFile::remove(project.filePath(name));
+}
+
+bool ProjectManager::migrateLegacyProjectDataFiles() const
+{
+    const QDir project(m_projectTempFolder);
+    const QStringList relativePaths = {
+        QString::fromUtf8(PublicConstants::kPostProcessingProjectFileName),
+        QString::fromUtf8(PublicConstants::kPreProcessingProjectFileName),
+        QString::fromUtf8(PublicConstants::kMeshProjectFileName),
+        QString::fromUtf8(PublicConstants::kMaterialProjectFileName),
+        QString::fromUtf8(PublicConstants::kPhysicalFieldProjectFileName),
+        QString::fromUtf8(PublicConstants::kMeshSnapshotFileName),
+        QString::fromUtf8(PublicConstants::kMeshMapFileName),
+        QString::fromUtf8(PublicConstants::kSolverProjectFileName),
+        QString::fromUtf8(PublicConstants::kSurrogateProjectFileName)};
+
+    for (const QString& relativePath : relativePaths)
+    {
+        const QString targetPath = project.filePath(relativePath);
+        const QString sourcePath = project.filePath(QFileInfo(relativePath).fileName());
+        if (!QFileInfo::exists(sourcePath))
+            continue;
+        if (!QDir().mkpath(QFileInfo(targetPath).absolutePath()))
+            return false;
+        if (QFileInfo::exists(targetPath))
+        {
+            // Once the centralized file exists it is authoritative. A root-level copy
+            // can only be residue written by an older plugin and must not replace it.
+            if (!QFile::remove(sourcePath))
+                return false;
+            continue;
+        }
+        if (!QFile::rename(sourcePath, targetPath))
+        {
+            if (!QFile::copy(sourcePath, targetPath) || !QFile::remove(sourcePath))
+                return false;
+        }
+    }
     return true;
 }
 
@@ -609,12 +775,18 @@ bool ProjectManager::writeProjectManifest() const
     xml.writeTextElement("Name", m_projectName);
 
     xml.writeStartElement("ProjectFiles");
-    xml.writeTextElement("PreProcessing", PublicConstants::kPreProcessingProjectFileName);
-    xml.writeTextElement("PostProcessing", PublicConstants::kPostProcessingProjectFileName);
-    xml.writeTextElement("Mesh", PublicConstants::kMeshProjectFileName);
-    xml.writeTextElement("Material", PublicConstants::kMaterialProjectFileName);
-    xml.writeTextElement("Solver", PublicConstants::kSolverProjectFileName);
-    xml.writeTextElement("Surrogate", PublicConstants::kSurrogateProjectFileName);
+    xml.writeTextElement("PreProcessing", QString::fromUtf8(
+        PublicConstants::kPreProcessingProjectFileName));
+    xml.writeTextElement("PostProcessing", QString::fromUtf8(
+        PublicConstants::kPostProcessingProjectFileName));
+    xml.writeTextElement("Mesh", QString::fromUtf8(PublicConstants::kMeshProjectFileName));
+    xml.writeTextElement("Material", QString::fromUtf8(
+        PublicConstants::kMaterialProjectFileName));
+    xml.writeTextElement("PhysicalField", QString::fromUtf8(
+        PublicConstants::kPhysicalFieldProjectFileName));
+    xml.writeTextElement("Solver", QString::fromUtf8(PublicConstants::kSolverProjectFileName));
+    xml.writeTextElement("Surrogate", QString::fromUtf8(
+        PublicConstants::kSurrogateProjectFileName));
     xml.writeEndElement();
 
     xml.writeStartElement("GlobalValues");

@@ -27,7 +27,9 @@ QString resultGroupDisplayName(const QString& projectDir, const QString& sourceD
 QVector<ResultGroup> resultGroups(const QString& projectDir);
 QString preparedDirectory(const QString& projectDir, const QString& sourceDir);
 bool prepareDirectory(const QString& projectDir, const QString& sourceDir);
+bool prepareResultRoot(const QString& projectDir, const QString& resultRoot);
 bool prepareProject(const QString& projectDir);
+QStringList preparedResultDescriptions(const QString& projectDir, const QString& resultRoot);
 QVector<ResultFile> resultFiles(const QString& projectDir, const QString& sourceDir,
                                 bool includeVtu = true);
 }

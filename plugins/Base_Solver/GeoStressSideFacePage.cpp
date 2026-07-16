@@ -3,6 +3,7 @@
 #include <CustomComboBox.h>
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <SolverFilePaths.h>
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
 #include <struct/MeshMap.h>
@@ -325,16 +326,16 @@ bool GeoStressSideFacePage::exportDatFile() const
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(projectDir);
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
     if (rows.isEmpty())
     {
-        QFile::remove(wd.filePath("PREP/" + faceFile()));
+        QFile::remove(inputDir.filePath(faceFile()));
         return false;
     }
-    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+    if (!QDir().mkpath(inputDir.absolutePath()))
         return false;
 
-    QFile file(wd.filePath("PREP/" + faceFile()));
+    QFile file(inputDir.filePath(faceFile()));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
 

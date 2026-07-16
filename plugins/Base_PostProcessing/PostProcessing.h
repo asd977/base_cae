@@ -39,6 +39,7 @@ class PostProcessing : public QObject, public PostProcessingService
     void newDerivedValueSettingWidget();
     void newCurveSettingWidget();
     void newPostContourReaderWidget();
+    void prepareResultRootAsync(const QString& projectDir, const QString& resultRoot);
     VisualWidgetService* visualService();
 
   private:
@@ -51,7 +52,8 @@ class PostProcessing : public QObject, public PostProcessingService
 
     BlockSettingsWidget* m_blockSettingsWidget{nullptr};
     ProjectNode* m_root{nullptr};
-    QSet<QString> m_preparingProjects;
+    QSet<QString> m_preparingResultRoots;
+    QSet<QString> m_pendingResultRoots;
 
     QMap<QString, std::function<BasePage*(VisualWidgetService*)>> m_pageFactory;
 

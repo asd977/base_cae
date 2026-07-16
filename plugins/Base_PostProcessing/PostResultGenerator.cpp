@@ -1,5 +1,7 @@
 #include "PostResultGenerator.h"
 
+#include <PublicConstants.h>
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -87,14 +89,26 @@ QString existingFile(const QDir& dir, const QString& name)
     return QString();
 }
 
-QString findInResultOrPrep(const QDir& resultDir, const QString& projectDir, const QString& name)
+QString findInResultOrInput(const QDir& resultDir, const QString& projectDir, const QString& name)
 {
     QString path = existingFile(resultDir, name);
     if (!path.isEmpty())
         return path;
 
     if (!projectDir.trimmed().isEmpty())
-        path = existingFile(QDir(QDir(projectDir).filePath(QStringLiteral("PREP"))), name);
+    {
+        const QDir root(projectDir);
+        const QStringList inputDirectories = {
+            root.filePath(QString::fromUtf8(PublicConstants::kAnalysisInputDirectoryName)),
+            root.filePath(QString::fromUtf8(PublicConstants::kProjectInputDirectoryName)),
+            root.filePath(QString::fromLatin1(PublicConstants::kLegacyInputDirectoryName))};
+        for (const QString& inputDirectory : inputDirectories)
+        {
+            path = existingFile(QDir(inputDirectory), name);
+            if (!path.isEmpty())
+                break;
+        }
+    }
     return path;
 }
 
@@ -357,7 +371,7 @@ QVector<ZoneGroup> loadZoneGroups(const QDir& resultDir, const QString& projectD
                                   const QVector<Element>& expanded)
 {
     QVector<ZoneGroup> groups;
-    const QString indexPath = findInResultOrPrep(resultDir, projectDir,
+    const QString indexPath = findInResultOrInput(resultDir, projectDir,
                                                   QStringLiteral("MAFILESET.DAT"));
     if (!indexPath.isEmpty())
     {
@@ -383,7 +397,7 @@ QVector<ZoneGroup> loadZoneGroups(const QDir& resultDir, const QString& projectD
                     groupFileName += QStringLiteral(".DAT");
                 QString groupPath = existingFile(indexDir, groupFileName);
                 if (groupPath.isEmpty())
-                    groupPath = findInResultOrPrep(resultDir, projectDir, groupFileName);
+                    groupPath = findInResultOrInput(resultDir, projectDir, groupFileName);
                 group.materials = readMaterialSet(groupPath);
 
                 if (group.materials.isEmpty() && fields.size() >= 3)
@@ -808,9 +822,9 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
         return result;
     }
 
-    const QSet<int> commonMasks = readMaterialSet(findInResultOrPrep(
+    const QSet<int> commonMasks = readMaterialSet(findInResultOrInput(
         resultDir, options.projectDir, QStringLiteral("MA_MASK.DAT")));
-    QSet<int> stressMasks = readMaterialSet(findInResultOrPrep(
+    QSet<int> stressMasks = readMaterialSet(findInResultOrInput(
         resultDir, options.projectDir, QStringLiteral("MA_MASK_CMM.DAT")));
     if (stressMasks.isEmpty())
         stressMasks = commonMasks;

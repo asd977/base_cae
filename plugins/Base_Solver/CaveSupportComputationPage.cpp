@@ -2,6 +2,7 @@
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <SolverFilePaths.h>
 
 #include <QComboBox>
 #include <QDir>
@@ -12,6 +13,7 @@
 #include <QJsonObject>
 #include <QFile>
 #include <QSet>
+#include <QStringConverter>
 #include <QTextStream>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -367,7 +369,7 @@ QString CaveSupportComputationPage::sectionText()
     text += QString("%1    %2    IF_CHEN    IDAY_CASE\n").arg(c.ifChen, c.idayCase);
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QString caseDir = QDir(QDir(projectDir).absolutePath()).filePath("CASE01");
+    QString caseDir = QDir(SolverFilePaths::outputRoot(projectDir)).filePath("CASE01");
     caseDir = QDir::toNativeSeparators(caseDir) + QDir::separator();
     text += QString("'%1'     DIRDYNA\n").arg(caseDir);
     text += QString("%1     %2   IFMODE   IFWAVE\n")
@@ -385,8 +387,9 @@ bool CaveSupportComputationPage::exportICaveDatFile(const QString& supportCaseSe
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(QDir(projectDir).absolutePath());
-    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+    QDir wd(SolverFilePaths::outputRoot(projectDir));
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    if (!QDir().mkpath(wd.absolutePath()) || !QDir().mkpath(inputDir.absolutePath()))
         return false;
 
     QFile file(wd.filePath("ICAVE.DAT"));
@@ -394,8 +397,9 @@ bool CaveSupportComputationPage::exportICaveDatFile(const QString& supportCaseSe
         return false;
 
     QTextStream os(&file);
+    os.setEncoding(QStringConverter::System);
     const QHash<int, QString> fixedValues = {
-        {1, QDir::toNativeSeparators(wd.filePath("PREP")) + QDir::separator()},
+        {1, QDir::toNativeSeparators(inputDir.absolutePath()) + QDir::separator()},
         {2, QStringLiteral("MAFACTOR.DAT")},
         {4, QStringLiteral("SHUIMX.DAT")},
         {6, QStringLiteral("IIJX_CHEN.DAT")},

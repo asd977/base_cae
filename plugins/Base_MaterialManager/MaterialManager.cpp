@@ -3,6 +3,7 @@
 #include <ProjectNode.h>
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <SolverFilePaths.h>
 #include <PickManager.h>
 #include <ContextMenuHub.h>
 #include <ServiceRegistry.h>
@@ -755,10 +756,32 @@ bool MaterialManager::loadProject()
         ensureTransitionNode();
     }
 
+    bool recoveredFromCalculationData = false;
+    if (m_addedEntryIds.isEmpty())
+    {
+        const QString legacyImat = QDir(SolverFilePaths::projectInputDirectory(m_workPath))
+                                       .filePath(QStringLiteral("IMAT.DAT"));
+        int importedCount = 0;
+        QString importError;
+        if (QFileInfo::exists(legacyImat) &&
+            importIMATFile(legacyImat, &importedCount, &importError) && importedCount > 0)
+        {
+            recoveredFromCalculationData = true;
+            qInfo().noquote() << QStringLiteral("已从工程计算数据恢复 %1 个材料设置。")
+                                     .arg(importedCount);
+        }
+        else if (!importError.isEmpty())
+        {
+            qWarning().noquote() << QStringLiteral("材料设置恢复失败：%1").arg(importError);
+        }
+    }
+
     ensureEntryIds();
     notifyLibraryChanged();
     // 工程打开时会在后台重建条目页面，避免把条目高亮残留到初始状态。
     clearAllMatypeHighlight();
+    if (recoveredFromCalculationData && !saveProject())
+        qWarning() << "failed to persist recovered material settings";
     return true;
 }
 
@@ -1872,10 +1895,10 @@ bool MaterialManager::generateCaculateFile()
     const int nmat = qMax(MIN_NMAT, ((nmatReal + 9) / 10) * 10); // 补齐到 10 的倍数（每组 10 列）
 
     // ===== 3) 输出文件 =====
-    QDir workDir(m_workPath);
-    if (!workDir.exists("PREP"))
-        workDir.mkpath("PREP");
-    const QString filePath = workDir.filePath(QString("PREP/IMAT.DAT"));
+    QDir workDir(SolverFilePaths::outputInputDirectory(m_workPath));
+    if (!QDir().mkpath(workDir.absolutePath()))
+        return false;
+    const QString filePath = workDir.filePath(QStringLiteral("IMAT.DAT"));
 
     QFile file(filePath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
@@ -2916,7 +2939,7 @@ bool MaterialManager::generateCaculateFile()
 
     auto writeNumDat = [&](const QString& fileName, const QList<int>& ids) -> bool
     {
-        QFile outFile(workDir.filePath(QString("PREP/%1").arg(fileName)));
+        QFile outFile(workDir.filePath(fileName));
         if (!outFile.open(QIODevice::WriteOnly | QIODevice::Text))
         {
             return false;

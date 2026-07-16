@@ -9,12 +9,14 @@
 #include <PointForcePage.h>
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <SolverFilePaths.h>
 #include <ServiceRegistry.h>
 #include <services/MeshModuleControllerService.h>
 #include <services/ProjectManagerService.h>
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QHash>
 #include <QMap>
 #include <QJsonArray>
@@ -509,7 +511,8 @@ bool PhysicalField::loadProject()
         return true;
     }
 
-    for (const auto& v : root.value("items").toArray())
+    const QJsonArray items = root.value("items").toArray();
+    for (const auto& v : items)
     {
         const QJsonObject item = v.toObject();
         const QString kind = item.value("kind").toString();
@@ -520,6 +523,23 @@ bool PhysicalField::loadProject()
             continue;
         node->getPage()->loadJson(item.value("page_data").toObject());
         restoreNodeSelection(node, item);
+    }
+
+    if (items.isEmpty())
+    {
+        const QString iiidPath = QDir(SolverFilePaths::projectInputDirectory(projectDir))
+                                     .filePath(QStringLiteral("IIID.DAT"));
+        QString errorMessage;
+        if (QFileInfo::exists(iiidPath) && importIIIDFile(iiidPath, &errorMessage))
+        {
+            qInfo().noquote() << QStringLiteral("已从工程计算数据恢复约束设置。");
+            if (!saveProject())
+                qWarning() << "failed to persist recovered physical field settings";
+        }
+        else if (!errorMessage.isEmpty())
+        {
+            qWarning().noquote() << QStringLiteral("约束设置恢复失败：%1").arg(errorMessage);
+        }
     }
 
     return true;
@@ -922,13 +942,13 @@ void PhysicalField::generateIIIDFile()
         }
     }
 
-    // 6) 写文件到 工程目录/PREP/IIID.DAT
+    // 6) 写入当前计算输入目录。
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(projectDir);
-    if (!wd.exists("PREP"))
-        wd.mkpath("PREP");
-    const QString path = wd.filePath("PREP/IIID.DAT");
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    if (!QDir().mkpath(inputDir.absolutePath()))
+        return;
+    const QString path = inputDir.filePath(QStringLiteral("IIID.DAT"));
 
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text))
@@ -2362,9 +2382,9 @@ void PhysicalField::generateWaveFiles()
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(projectDir);
-    if (!wd.exists("PREP"))
-        wd.mkpath("PREP");
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    if (!QDir().mkpath(inputDir.absolutePath()))
+        return;
 
     QList<ProjectNode*> pages;
     CollectNodesByKind(m_node, "SeismicAndAddedMassPage", pages);
@@ -2386,7 +2406,7 @@ void PhysicalField::generateWaveFiles()
     auto writeOneFile = [&](const QString& fileName, const QVector<QPair<double, double>>& series,
                             double amp, const QString& axisLabel)
     {
-        const QString path = wd.filePath(QString("PREP/%1").arg(fileName));
+        const QString path = inputDir.filePath(fileName);
         QFile file(path);
         if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         {
@@ -2438,10 +2458,10 @@ void PhysicalField::generateIIWLFile()
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(projectDir);
-    if (!wd.exists("PREP"))
-        wd.mkpath("PREP");
-    const QString path = wd.filePath("PREP/IIWL.DAT");
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    if (!QDir().mkpath(inputDir.absolutePath()))
+        return;
+    const QString path = inputDir.filePath(QStringLiteral("IIWL.DAT"));
 
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text))

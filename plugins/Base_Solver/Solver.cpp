@@ -4,6 +4,7 @@
 #include <EventManager.h>
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <SolverFilePaths.h>
 #include <ServiceRegistry.h>
 #include <services/MaterialManagerService.h>
 #include <services/MeshModuleControllerService.h>
@@ -23,10 +24,14 @@
 #include <QMessageBox>
 #include <QMenu>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QRegularExpression>
+#include <QSaveFile>
 #include <QSet>
 #include <QStringList>
+#include <QStringConverter>
 #include <QProcess>
+#include <QUuid>
 #include <QVariant>
 #include <QWidget>
 #include <algorithm>
@@ -67,6 +72,143 @@
 namespace
 {
 constexpr int kSolverCustomTitleRole = Qt::UserRole + 104;
+constexpr char kLegacyNamedAnalysisWorkspaceRoot[] = u8"计算结果";
+constexpr char kLegacyAnalysisWorkspaceRoot[] = ".analysis_runs";
+constexpr char kLegacyAnalysisManifestFileName[] = "analysis.json";
+
+bool copyFileReplacing(const QString& sourcePath, const QString& targetPath)
+{
+    const QFileInfo targetInfo(targetPath);
+    if (!QDir().mkpath(targetInfo.absolutePath()))
+        return false;
+    if (QFileInfo::exists(targetPath) && !QFile::remove(targetPath))
+        return false;
+    return QFile::copy(sourcePath, targetPath);
+}
+
+bool copyDirectoryTree(const QString& sourcePath, const QString& targetPath)
+{
+    const QDir source(sourcePath);
+    if (!source.exists() || !QDir().mkpath(targetPath))
+        return false;
+
+    const QFileInfoList entries = source.entryInfoList(
+        QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+    for (const QFileInfo& entry : entries)
+    {
+        const QString target = QDir(targetPath).filePath(entry.fileName());
+        if (entry.isDir())
+        {
+            if (!copyDirectoryTree(entry.absoluteFilePath(), target))
+                return false;
+        }
+        else if (!copyFileReplacing(entry.absoluteFilePath(), target))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool replaceDirectoryTree(const QString& sourcePath, const QString& targetPath)
+{
+    QDir target(targetPath);
+    if (target.exists() && !target.removeRecursively())
+        return false;
+    return copyDirectoryTree(sourcePath, targetPath);
+}
+
+QString workspaceKey(const QString& uuid)
+{
+    const QUuid parsed(uuid);
+    if (!parsed.isNull())
+        return parsed.toString(QUuid::WithoutBraces);
+
+    QString key = uuid.trimmed();
+    key.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9_-]")), QStringLiteral("_"));
+    return key;
+}
+
+QString safeWorkspaceName(QString name)
+{
+    name = name.trimmed();
+    name.replace(QRegularExpression(QStringLiteral("[<>:\"/\\\\|?*\\x00-\\x1F]")),
+                 QStringLiteral("_"));
+    while (name.endsWith(QLatin1Char('.')) || name.endsWith(QLatin1Char(' ')))
+        name.chop(1);
+    if (name.isEmpty())
+        name = QStringLiteral("分析");
+    if (name.size() > 80)
+        name = name.left(80).trimmed();
+
+    static const QRegularExpression reservedName(
+        QStringLiteral("^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\\..*)?$"),
+        QRegularExpression::CaseInsensitiveOption);
+    if (reservedName.match(name).hasMatch())
+        name.prepend(QLatin1Char('_'));
+    return name;
+}
+
+QString workspaceManifestUuid(const QString& workspacePath)
+{
+    const QDir workspace(workspacePath);
+    const QStringList manifestNames = {
+        QString::fromUtf8(PublicConstants::kSolverAnalysisManifestFileName),
+        QString::fromLatin1(kLegacyAnalysisManifestFileName)};
+    for (const QString& manifestName : manifestNames)
+    {
+        QFile file(workspace.filePath(manifestName));
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+            continue;
+        const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+        if (document.isObject())
+            return document.object().value(QStringLiteral("analysisUuid")).toString().trimmed();
+    }
+    return {};
+}
+
+void migrateWorkspaceManifestName(const QString& workspacePath)
+{
+    const QDir workspace(workspacePath);
+    const QString currentPath = workspace.filePath(
+        QString::fromUtf8(PublicConstants::kSolverAnalysisManifestFileName));
+    const QString legacyPath = workspace.filePath(
+        QString::fromLatin1(kLegacyAnalysisManifestFileName));
+    if (!QFileInfo::exists(currentPath) && QFileInfo::exists(legacyPath))
+        QFile::rename(legacyPath, currentPath);
+}
+
+void removeCopiedProjectMetadata(const QString& workspacePath)
+{
+    const QString manifestName = QString::fromUtf8(
+        PublicConstants::kSolverAnalysisManifestFileName);
+    const QString legacyManifestName = QString::fromLatin1(
+        kLegacyAnalysisManifestFileName);
+    const QStringList projectDataPaths = {
+        QString::fromUtf8(PublicConstants::kPostProcessingProjectFileName),
+        QString::fromUtf8(PublicConstants::kPreProcessingProjectFileName),
+        QString::fromUtf8(PublicConstants::kMeshProjectFileName),
+        QString::fromUtf8(PublicConstants::kMaterialProjectFileName),
+        QString::fromUtf8(PublicConstants::kPhysicalFieldProjectFileName),
+        QString::fromUtf8(PublicConstants::kMeshSnapshotFileName),
+        QString::fromUtf8(PublicConstants::kMeshMapFileName),
+        QString::fromUtf8(PublicConstants::kSolverProjectFileName),
+        QString::fromUtf8(PublicConstants::kSurrogateProjectFileName)};
+    QSet<QString> projectDataNames;
+    for (const QString& path : projectDataPaths)
+        projectDataNames.insert(QFileInfo(path).fileName().toCaseFolded());
+
+    const QFileInfoList files = QDir(workspacePath).entryInfoList(QDir::Files);
+    for (const QFileInfo& file : files)
+    {
+        if (file.fileName().compare(manifestName, Qt::CaseInsensitive) == 0 ||
+            file.fileName().compare(legacyManifestName, Qt::CaseInsensitive) == 0)
+            continue;
+        if (file.suffix().compare(QStringLiteral("xml"), Qt::CaseInsensitive) == 0 ||
+            projectDataNames.contains(file.fileName().toCaseFolded()))
+            QFile::remove(file.absoluteFilePath());
+    }
+}
 
 QString solverNodeBaseTitle(const QString& kind)
 {
@@ -714,6 +856,7 @@ bool Solver::loadProject()
 
 void Solver::closeProject()
 {
+    clearSolverRunDirectory();
     m_root = nullptr;
 }
 
@@ -920,18 +1063,28 @@ void Solver::removeNodeByUuid(const QString& uuid)
     if (!canDeleteNode(node))
         return;
 
+    auto* parent = dynamic_cast<ProjectNode*>(node->parent());
+    if (!parent)
+        return;
+    const bool removesAnalysis = parent == m_root;
+    const QString workspaceToRemove = removesAnalysis ? analysisWorkspace(node) : QString();
+
     if (QMessageBox::question(nullptr, QStringLiteral("删除计算项"),
-                              QStringLiteral("确定删除“%1”吗？").arg(node->getName()),
+                              removesAnalysis
+                                  ? QStringLiteral("确定删除“%1”及其计算结果吗？")
+                                        .arg(node->getName())
+                                  : QStringLiteral("确定删除“%1”吗？").arg(node->getName()),
                               QMessageBox::Yes | QMessageBox::No,
                               QMessageBox::No) != QMessageBox::Yes)
         return;
 
-    auto* parent = dynamic_cast<ProjectNode*>(node->parent());
-    if (!parent)
-        return;
+    if (removesAnalysis && m_activeAnalysisUuid == node->getUuid())
+        finishSolverProcess(true);
 
     parent->removeChild(node);
     deleteNodeRecursively(node);
+    if (!workspaceToRemove.isEmpty())
+        QDir(workspaceToRemove).removeRecursively();
     syncChildNodeNames(parent);
 
     if (parent->data(0, ProjectNode::RoleKind).toString() == "DamAnalysis")
@@ -953,6 +1106,15 @@ void Solver::renameNodeByUuid(const QString& uuid)
     if (!node || node == m_root
         || node->data(0, ProjectNode::RoleModule).toString() != QStringLiteral("Solver"))
         return;
+
+    ProjectNode* analysisOwner = topLevelAnalysisNode(node);
+    if (m_solverProcess && analysisOwner == node &&
+        m_activeAnalysisUuid == analysisOwner->getUuid())
+    {
+        QMessageBox::information(nullptr, QStringLiteral("计算正在进行"),
+                                 QStringLiteral("请在当前计算结束后重命名该分析。"));
+        return;
+    }
 
     const QString kind = node->data(0, ProjectNode::RoleKind).toString();
     const bool automaticIndex = solverNodeUsesAutomaticIndex(kind);
@@ -1007,6 +1169,9 @@ void Solver::renameNodeByUuid(const QString& uuid)
         syncChildNodeNames(parent);
     else
         setSolverNodeTitle(node, newTitle);
+
+    if (parent == m_root)
+        updateAnalysisManifestName(node);
 }
 
 void Solver::setupNodeRole(ProjectNode* node, const QString& kind) const
@@ -1104,6 +1269,7 @@ void Solver::syncAnalysisNodeNames() const
             } while (usedTitles.contains(displayTitle.toCaseFolded()));
         }
         setSolverNodeTitle(node, displayTitle);
+        updateAnalysisManifestName(node);
         usedTitles.insert(displayTitle.toCaseFolded());
     }
 }
@@ -1664,19 +1830,21 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
                                  .arg(missingBoundaries.join(QLatin1Char('\n'))));
         return;
     }
-    QFile iautoFile(QDir(projectDir).absoluteFilePath("MESG_IAUTO.DAT"));
+    if (!beginCommonCompute(analysisNode, "渗流分析"))
+        return;
+
+    QFile iautoFile(QDir(SolverFilePaths::outputRoot(projectDir))
+                        .absoluteFilePath("MESG_IAUTO.DAT"));
     if (!iautoFile.open(QIODevice::WriteOnly | QIODevice::Text))
     {
         QMessageBox::warning(nullptr, "计算失败", "渗流分析写入计算模式失败。");
+        clearSolverRunDirectory();
         return;
     }
     {
         QTextStream os(&iautoFile);
         os << "4\n";
     }
-
-    if (!beginCommonCompute(analysisNode, "渗流分析"))
-        return;
 
     bool ok = true;
     QStringList failedFiles;
@@ -1708,16 +1876,18 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
 
     if (ok)
     {
-        launchSolverExecutable("渗流分析");
+        launchSolverExecutable(analysisNode, "渗流分析");
     }
     else
     {
+        clearSolverRunDirectory();
         QMessageBox::warning(nullptr, "数据准备失败",
                              QString("以下计算数据准备失败：\n%1").arg(failedFiles.join("\n")));
     }
     }
     catch (const std::exception& e)
     {
+        clearSolverRunDirectory();
         qWarning() << "渗流分析计算失败:" << e.what();
     }
 }
@@ -1799,19 +1969,21 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
                                  .arg(missingNodes.join(QLatin1Char('\n'))));
         return;
     }
-    QFile iautoFile(QDir(projectDir).absoluteFilePath("MESG_IAUTO.DAT"));
+    if (!beginCommonCompute(analysisNode, "土石坝计算"))
+        return;
+
+    QFile iautoFile(QDir(SolverFilePaths::outputRoot(projectDir))
+                        .absoluteFilePath("MESG_IAUTO.DAT"));
     if (!iautoFile.open(QIODevice::WriteOnly | QIODevice::Text))
     {
         QMessageBox::warning(nullptr, "计算失败", "土石坝计算写入计算模式失败。");
+        clearSolverRunDirectory();
         return;
     }
     {
         QTextStream os(&iautoFile);
         os << "3\n";
     }
-
-    if (!beginCommonCompute(analysisNode, "土石坝计算"))
-        return;
 
     bool ok = true;
     QStringList failedFiles;
@@ -1856,7 +2028,8 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
 
         if (!stressPage->freezeThawEnabled())
         {
-            QFile::remove(QDir(projectDir).filePath(QStringLiteral("PREP/JMFW.DAT")));
+            QFile::remove(QDir(SolverFilePaths::outputInputDirectory(projectDir))
+                              .filePath(QStringLiteral("JMFW.DAT")));
             continue;
         }
 
@@ -1868,14 +2041,18 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
 
     if (ok)
     {
-        launchSolverExecutable("土石坝计算");
+        launchSolverExecutable(analysisNode, "土石坝计算");
     }
     else
+    {
+        clearSolverRunDirectory();
         QMessageBox::warning(nullptr, "数据准备失败",
                              QString("以下计算数据准备失败：\n%1").arg(failedFiles.join("\n")));
     }
+    }
     catch (const std::exception& e)
     {
+        clearSolverRunDirectory();
         qWarning() << "土石坝计算失败:" << e.what();
     }
 }
@@ -1959,17 +2136,16 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     }
     if (hasTetrahedron)
     {
-        QMessageBox::warning(nullptr, "计算失败",
-                             "当前旧版 Fortran AUTOCAVE 不完整支持四节点四面体开挖。"
-                             "按面法与按单元法都会在旧开挖预处理阶段发生格式不兼容。"
-                             "请使用六面体网格后再计算。");
-        return;
+        qWarning() << "cave excavation continues with four-node tetrahedral cells";
     }
 
     const QDir projectRoot(QDir(projectDir).absolutePath());
-    const QString stressFile = caveLoadMethod == 1
-                                   ? projectRoot.filePath("GEOSTR/MODSTR.TXT")
-                                   : projectRoot.filePath("GEOSTR/ISGMAR.TXT");
+    const QString stressRelativePath = caveLoadMethod == 1
+                                           ? QStringLiteral("GEOSTR/MODSTR.TXT")
+                                           : QStringLiteral("GEOSTR/ISGMAR.TXT");
+    QString stressFile = QDir(analysisWorkspace(analysisNode)).filePath(stressRelativePath);
+    if (!QFileInfo::exists(stressFile))
+        stressFile = projectRoot.filePath(stressRelativePath);
     if (!QFileInfo::exists(stressFile))
     {
         QMessageBox::warning(nullptr, QStringLiteral("计算失败"),
@@ -1980,7 +2156,9 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     const bool needsDynamicFiles = caveCalculationType != 1 ||
                                    supportPage->modalAnalysisEnabled() ||
                                    supportPage->timeHistoryEnabled();
-    if (needsDynamicFiles && !QFileInfo::exists(projectRoot.filePath("PREP/TDTRACE.DAT")))
+    if (needsDynamicFiles &&
+        !QFileInfo::exists(QDir(SolverFilePaths::projectInputDirectory(projectDir))
+                               .filePath(QStringLiteral("TDTRACE.DAT"))))
     {
         QMessageBox::warning(nullptr, QStringLiteral("计算失败"),
                              QStringLiteral("动力计算准备数据不完整。普通静力开挖请关闭模态和时程分析。"));
@@ -2019,22 +2197,23 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 
     // ICAVE 中的 IEXCA_MAX、IEXCA_STA、IEXCA_END 与实际开挖体数量保持一致。
     supportPage->setExcavationLevelCount(excavationBodies.size());
-    const QString supportCaseSection = supportPage->sectionText();
+    if (!beginCommonCompute(analysisNode, "洞室开挖"))
+        return;
 
-    QFile iautoFile(QDir(projectDir).absoluteFilePath("MESG_IAUTO.DAT"));
+    const QString supportCaseSection = supportPage->sectionText();
+    QFile iautoFile(QDir(SolverFilePaths::outputRoot(projectDir))
+                        .absoluteFilePath("MESG_IAUTO.DAT"));
     if (!iautoFile.open(QIODevice::WriteOnly | QIODevice::Text))
     {
         QMessageBox::warning(nullptr, QStringLiteral("计算失败"),
                              QStringLiteral("无法写入洞室开挖计算模式。"));
+        clearSolverRunDirectory();
         return;
     }
     {
         QTextStream os(&iautoFile);
         os << "5\n";
     }
-
-    if (!beginCommonCompute(analysisNode, "洞室开挖"))
-        return;
 
     bool ok = true;
     QStringList failedFiles;
@@ -2057,11 +2236,12 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
             failedFiles << "IGEOS.DAT";
     }
 
-    QDir wd(QDir(projectDir).absolutePath());
-    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+    QDir wd(SolverFilePaths::outputRoot(projectDir));
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    if (!QDir().mkpath(inputDir.absolutePath()))
     {
         ok = false;
-        failedFiles << "PREP";
+        failedFiles << QStringLiteral("计算输入");
     }
     else
     {
@@ -2155,7 +2335,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                 neighborsByElem[i] = std::move(rel);
             }
 
-            QFile file(wd.filePath("PREP/RELE_KETOKE.DAT"));
+            QFile file(inputDir.filePath(QStringLiteral("RELE_KETOKE.DAT")));
             if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
                 return false;
 
@@ -2185,11 +2365,11 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         if (!writeReleKetoke())
         {
             ok = false;
-            failedFiles << "PREP/RELE_KETOKE.DAT";
+            failedFiles << QStringLiteral("RELE_KETOKE.DAT");
         }
 
-        const QString prepDir =
-            QDir::toNativeSeparators(QDir(wd.filePath("PREP")).absolutePath()) + QDir::separator();
+        const QString inputPath =
+            QDir::toNativeSeparators(inputDir.absolutePath()) + QDir::separator();
 
         struct CaveElemContext
         {
@@ -2408,23 +2588,24 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
             return true;
         };
 
-        if (!patchCaveIiinLayers(wd.filePath("PREP/IIIN.DAT")))
+        if (!patchCaveIiinLayers(inputDir.filePath(QStringLiteral("IIIN.DAT"))))
         {
             QMessageBox::warning(
                 nullptr, "计算失败",
                 "设置 IIIN.DAT 开挖层号失败。普通围岩应为 1，开挖级应为 -1、-2……");
+            clearSolverRunDirectory();
             return;
         }
 
         // 删除上一轮遗留的开挖文件，避免旧级数文件干扰本次计算。
-        QDir prepDirectory(wd.filePath("PREP"));
+        QDir inputDirectory(inputDir.absolutePath());
         const QStringList staleFilters = {
             QStringLiteral("IIKE_E*.DAT"), QStringLiteral("IIKE_T*.DAT"),
             QStringLiteral("IIJX_E*.DAT"), QStringLiteral("IIJX_T*.DAT")};
         for (const QString& staleName :
-             prepDirectory.entryList(staleFilters, QDir::Files | QDir::NoSymLinks))
+             inputDirectory.entryList(staleFilters, QDir::Files | QDir::NoSymLinks))
         {
-            prepDirectory.remove(staleName);
+            inputDirectory.remove(staleName);
         }
 
         auto nodeIdOfPoint = [&](vtkIdType pointId) -> int
@@ -2442,15 +2623,16 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         auto writeIike = [&](const QString& fileName, const QVector<int>& kes, int iex1,
                              int iex2) -> bool
         {
-            QFile f(wd.filePath("PREP/" + fileName));
+            QFile f(inputDir.filePath(fileName));
             if (!f.open(QIODevice::WriteOnly | QIODevice::Text))
                 return false;
 
             QTextStream os(&f);
+            os.setEncoding(QStringConverter::System);
             os << QString("%1  NUMKE\n").arg(kes.size(), 12);
             for (int i = 0; i < kes.size(); ++i)
                 os << QString("%1%2\n").arg(kes[i], 8).arg(i + 1, 10);
-            os << QString("    DIR=%1                                                    \n").arg(prepDir);
+            os << QString("    DIR=%1                                                    \n").arg(inputPath);
             os << " ISHIFT=       1\n";
             os << "   NJX=       0\n";
             os << QString(" IEX1=%1  IEX2=%2  \n").arg(iex1, 4).arg(iex2, 4);
@@ -2468,7 +2650,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         auto writeIijx = [&](const QString& fileName, const QVector<int>& kes, int iex1,
                              int iex2) -> bool
         {
-            QFile f(wd.filePath("PREP/" + fileName));
+            QFile f(inputDir.filePath(fileName));
             if (!f.open(QIODevice::WriteOnly | QIODevice::Text))
                 return false;
 
@@ -2754,6 +2936,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
             }
 
             QTextStream os(&f);
+            os.setEncoding(QStringConverter::System);
             os << QString("%1%2     NJX   MAKOD\n")
                       .arg(rows.size(), 9)
                       .arg(makod, 9);
@@ -2781,7 +2964,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                 os << QString("%1\n").arg(row.jat, 10);
             }
 
-            os << QString("    DIR=%1                                                    \n").arg(prepDir);
+            os << QString("    DIR=%1                                                    \n").arg(inputPath);
             os << " ISHIFT=       2\n";
             os << QString("   NJX=%1\n").arg(rows.size(), 8);
             os << QString(" IEX1=%1  IEX2=%2  \n").arg(iex1, 4).arg(iex2, 4);
@@ -2832,7 +3015,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 
         auto hasPositiveRecordCount = [&](const QString& fileName) -> bool
         {
-            QFile file(wd.filePath("PREP/" + fileName));
+            QFile file(inputDir.filePath(fileName));
             if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
                 return false;
             const QString firstLine = QString::fromLocal8Bit(file.readLine());
@@ -2850,7 +3033,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
             ok = false;
             failedFiles << expectedTotalIike + QStringLiteral("（不存在或无开挖单元）");
         }
-        if (!QFileInfo::exists(wd.filePath("PREP/" + expectedTotalIijx)))
+        if (!QFileInfo::exists(inputDir.filePath(expectedTotalIijx)))
         {
             ok = false;
             failedFiles << expectedTotalIijx;
@@ -2859,10 +3042,11 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 
     if (ok)
     {
-        launchSolverExecutable("洞室开挖");
+        launchSolverExecutable(analysisNode, "洞室开挖");
     }
     else
     {
+        clearSolverRunDirectory();
         qWarning() << "洞室开挖数据准备失败:" << failedFiles;
         QMessageBox::warning(nullptr, "数据准备失败",
                              "洞室开挖数据准备失败，请检查开挖步骤和网格选择。");
@@ -2870,6 +3054,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     }
     catch (const std::exception& e)
     {
+        clearSolverRunDirectory();
         qWarning() << "洞室开挖计算失败:" << e.what();
     }
 }
@@ -2881,10 +3066,15 @@ void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
     m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QFile iautoFile(QDir(projectDir).absoluteFilePath("MESG_IAUTO.DAT"));
+    if (!beginCommonCompute(analysisNode, "边坡分析"))
+        return;
+
+    const QString runDir = SolverFilePaths::outputRoot(projectDir);
+    QFile iautoFile(QDir(runDir).absoluteFilePath("MESG_IAUTO.DAT"));
     if (!iautoFile.open(QIODevice::WriteOnly | QIODevice::Text))
     {
         QMessageBox::warning(nullptr, "计算失败", "边坡分析写入计算模式失败。");
+        clearSolverRunDirectory();
         return;
     }
     {
@@ -2892,25 +3082,27 @@ void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
         os << "8\n";
     }
 
-    if (!beginCommonCompute(analysisNode, "边坡分析"))
-        return;
-
-    if (!forceSlopeIiinLayersToOne(projectDir))
+    if (!forceSlopeIiinLayersToOne(runDir))
     {
         QMessageBox::warning(nullptr, "计算失败", "边坡分析统一网格分层失败。");
+        clearSolverRunDirectory();
         return;
     }
 
     auto* slopePage = dynamic_cast<SlopeStabilityWidget*>(analysisNode->getPage());
     if (slopePage && slopePage->exportIslopDatFile())
     {
-        launchSolverExecutable("边坡分析");
+        launchSolverExecutable(analysisNode, "边坡分析");
     }
     else
+    {
+        clearSolverRunDirectory();
         QMessageBox::warning(nullptr, "数据准备失败", "边坡分析数据准备失败。");
+    }
     }
     catch (const std::exception& e)
     {
+        clearSolverRunDirectory();
         qWarning() << "边坡分析计算失败:" << e.what();
     }
 }
@@ -2979,10 +3171,15 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QFile iautoFile(QDir(projectDir).absoluteFilePath("MESG_IAUTO.DAT"));
+    if (!beginCommonCompute(analysisNode, "地应力回归计算"))
+        return;
+
+    QFile iautoFile(QDir(SolverFilePaths::outputRoot(projectDir))
+                        .absoluteFilePath("MESG_IAUTO.DAT"));
     if (!iautoFile.open(QIODevice::WriteOnly | QIODevice::Text))
     {
         QMessageBox::warning(nullptr, "计算失败", "地应力回归计算写入计算模式失败。");
+        clearSolverRunDirectory();
         return;
     }
     {
@@ -2990,32 +3187,35 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
         os << "6\n";
     }
 
-    if (!beginCommonCompute(analysisNode, "地应力回归计算"))
-        return;
-
     const GeoStressRegressionWidget::ExportPayload payload = buildGeoStressPayload(analysisNode);
     if (payload.faceRows.size() != sideFaceCount)
     {
         QMessageBox::warning(nullptr, QStringLiteral("数据准备失败"),
                              QStringLiteral("侧立面数据生成失败，请重新检查所选网格边界。"));
+        clearSolverRunDirectory();
         return;
     }
     if (page && page->calculationModeCode() == 1 && payload.measureRows.isEmpty())
     {
         QMessageBox::warning(nullptr, "计算失败",
                              "已选择实测地应力多元回归，但没有定义任何实测点。");
+        clearSolverRunDirectory();
         return;
     }
 
     if (page && page->exportIGEOSDatFile(payload))
     {
-        launchSolverExecutable("地应力回归计算");
+        launchSolverExecutable(analysisNode, "地应力回归计算");
     }
     else
+    {
+        clearSolverRunDirectory();
         QMessageBox::warning(nullptr, "数据准备失败", "地应力回归数据准备失败。");
+    }
     }
     catch (const std::exception& e)
     {
+        clearSolverRunDirectory();
         qWarning() << "地应力回归计算失败:" << e.what();
     }
 }
@@ -3063,7 +3263,7 @@ void Solver::onComputeCaveBlockStability(ProjectNode* analysisNode)
 
     if (blockPage->exportDatFiles(planePages))
     {
-        launchCaveBlockSolverExecutable();
+        launchCaveBlockSolverExecutable(analysisNode);
     }
     else
         QMessageBox::warning(nullptr, "数据准备失败",
@@ -3094,6 +3294,12 @@ void Solver::setComputeWidgetRunning(QWidget* widget, bool computing) const
 
 void Solver::finishSolverProcess(bool terminateProcess)
 {
+    clearSolverRunDirectory();
+    if (terminateProcess && !m_solverFinishedNotified && !m_activeAnalysisWorkspace.isEmpty())
+        writeAnalysisManifest(m_activeAnalysisWorkspace, m_activeAnalysisUuid,
+                              m_activeAnalysisName, m_activeAnalysisKind,
+                              m_activeAnalysisType, QStringLiteral("stopped"));
+
     if (terminateProcess)
         QProcess::execute("taskkill", {"-f", "-im", "PCCAE_CPU.exe"});
 
@@ -3111,6 +3317,20 @@ void Solver::finishSolverProcess(bool terminateProcess)
 
     setComputeWidgetRunning(m_activeComputeWidget, false);
     m_activeComputeWidget = nullptr;
+    m_activeProjectDir.clear();
+    m_activeAnalysisWorkspace.clear();
+    m_activeAnalysisUuid.clear();
+    m_activeAnalysisName.clear();
+    m_activeAnalysisKind.clear();
+    m_activeAnalysisType.clear();
+}
+
+void Solver::clearSolverRunDirectory() const
+{
+    auto& variables = PublicVariables::instance();
+    const QString key = QString::fromLatin1(PublicConstants::kSolverRunDirectoryKey);
+    if (variables.ownerOf(key) == QStringLiteral("solver_runtime"))
+        variables.remove(key, QStringLiteral("solver_runtime"));
 }
 
 ProjectNode* Solver::findChildByPageType(ProjectNode* parent, const QString& pageType) const
@@ -3271,16 +3491,298 @@ void Solver::syncDamConditionalNodes(ProjectNode* analysisNode) const
     }
 }
 
-void Solver::notifySolverFinished(const QString& analysisType, const QString& projectDir)
+ProjectNode* Solver::topLevelAnalysisNode(ProjectNode* node) const
+{
+    ProjectNode* current = node;
+    while (current && current != m_root)
+    {
+        auto* parent = dynamic_cast<ProjectNode*>(current->parent());
+        if (parent == m_root)
+            return current;
+        current = parent;
+    }
+    return nullptr;
+}
+
+QString Solver::analysisWorkspace(ProjectNode* node) const
+{
+    ProjectNode* owner = topLevelAnalysisNode(node);
+    if (!owner)
+        return {};
+
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString().trimmed();
+    const QString analysisUuid = owner->getUuid().trimmed();
+    const QString key = workspaceKey(analysisUuid);
+    if (projectDir.isEmpty() || analysisUuid.isEmpty() || key.isEmpty())
+        return {};
+
+    const QDir project(QDir(projectDir).absolutePath());
+    const QString rootPath = project.absolutePath();
+    const QString baseName = safeWorkspaceName(owner->text(0));
+    QString desiredPath = QDir(rootPath).filePath(baseName);
+
+    if (QDir(desiredPath).exists())
+    {
+        const QString existingUuid = workspaceManifestUuid(desiredPath);
+        if (existingUuid.isEmpty() || existingUuid == analysisUuid)
+        {
+            migrateWorkspaceManifestName(desiredPath);
+            removeCopiedProjectMetadata(desiredPath);
+            return QDir(desiredPath).absolutePath();
+        }
+        int suffix = 2;
+        do
+        {
+            desiredPath = QDir(rootPath).filePath(
+                QStringLiteral("%1(%2)").arg(baseName).arg(suffix++));
+        } while (QDir(desiredPath).exists() &&
+                 workspaceManifestUuid(desiredPath) != analysisUuid);
+    }
+
+    QString existingPath;
+    const QDir currentRoot(rootPath);
+    if (currentRoot.exists())
+    {
+        const QFileInfoList candidates = currentRoot.entryInfoList(
+            QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+        for (const QFileInfo& candidate : candidates)
+        {
+            if (workspaceManifestUuid(candidate.absoluteFilePath()) == analysisUuid)
+            {
+                existingPath = candidate.absoluteFilePath();
+                break;
+            }
+        }
+    }
+
+    const QStringList legacyRootNames = {
+        QString::fromUtf8(kLegacyNamedAnalysisWorkspaceRoot),
+        QString::fromLatin1(kLegacyAnalysisWorkspaceRoot)};
+    for (const QString& legacyRootName : legacyRootNames)
+    {
+        if (!existingPath.isEmpty())
+            break;
+        const QString legacyRootPath = project.filePath(legacyRootName);
+        const QDir legacyRoot(legacyRootPath);
+        const QStringList directNames = {key, baseName};
+        for (const QString& directName : directNames)
+        {
+            const QString directLegacyPath = legacyRoot.filePath(directName);
+            if (QDir(directLegacyPath).exists() &&
+                workspaceManifestUuid(directLegacyPath) == analysisUuid)
+            {
+                existingPath = directLegacyPath;
+                break;
+            }
+        }
+        if (!existingPath.isEmpty())
+            break;
+
+        const QFileInfoList candidates = legacyRoot.entryInfoList(
+            QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+        for (const QFileInfo& candidate : candidates)
+        {
+            if (workspaceManifestUuid(candidate.absoluteFilePath()) == analysisUuid)
+            {
+                existingPath = candidate.absoluteFilePath();
+                break;
+            }
+        }
+    }
+
+    if (!existingPath.isEmpty())
+    {
+        if (QDir().mkpath(rootPath) &&
+            QDir::cleanPath(existingPath).compare(QDir::cleanPath(desiredPath),
+                                                  Qt::CaseInsensitive) != 0 &&
+            QDir().rename(existingPath, desiredPath))
+            existingPath = desiredPath;
+
+        migrateWorkspaceManifestName(existingPath);
+        removeCopiedProjectMetadata(existingPath);
+        for (const QString& legacyRootName : legacyRootNames)
+        {
+            QDir legacyRoot(project.filePath(legacyRootName));
+            if (legacyRoot.exists() &&
+                legacyRoot.entryList(QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty())
+                project.rmdir(legacyRootName);
+        }
+        return QDir(existingPath).absolutePath();
+    }
+
+    return QDir(desiredPath).absolutePath();
+}
+
+bool Solver::prepareAnalysisWorkspace(ProjectNode* node, bool caveBlock, QString* workspaceDir,
+                                      QString* runDir) const
+{
+    ProjectNode* owner = topLevelAnalysisNode(node);
+    const QString workspacePath = analysisWorkspace(owner);
+    const QString projectPath =
+        QDir(PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString())
+            .absolutePath();
+    if (!owner || workspacePath.isEmpty() || !QDir(projectPath).exists() ||
+        !QDir().mkpath(workspacePath))
+        return false;
+
+    if (caveBlock)
+    {
+        const QString source = QDir(projectPath).filePath(QStringLiteral("SliderCase"));
+        const QString target = QDir(workspacePath).filePath(QStringLiteral("SliderCase"));
+        if (!QDir(source).exists() || !replaceDirectoryTree(source, target))
+            return false;
+        if (runDir)
+            *runDir = QDir(target).absolutePath();
+    }
+    else
+    {
+        // Refresh staged inputs while preserving this analysis node's existing result directories.
+        QDir workspace(workspacePath);
+        const QString manifestName =
+            QString::fromUtf8(PublicConstants::kSolverAnalysisManifestFileName);
+        const QString legacyManifestName =
+            QString::fromLatin1(kLegacyAnalysisManifestFileName);
+        const QFileInfoList staleRootFiles = workspace.entryInfoList(QDir::Files);
+        for (const QFileInfo& file : staleRootFiles)
+        {
+            if (file.fileName().compare(manifestName, Qt::CaseInsensitive) != 0 &&
+                file.fileName().compare(legacyManifestName, Qt::CaseInsensitive) != 0 &&
+                !QFile::remove(file.absoluteFilePath()))
+                return false;
+        }
+
+        const QDir project(projectPath);
+        const QString sourceInput = SolverFilePaths::projectInputDirectory(projectPath);
+        const QString targetInput = SolverFilePaths::analysisInputDirectory(workspacePath);
+        if (!QDir(sourceInput).exists() || !replaceDirectoryTree(sourceInput, targetInput))
+            return false;
+
+        const QString ownerKind = owner->data(0, ProjectNode::RoleKind).toString();
+        const QString sourceGeoStress = project.filePath(QStringLiteral("GEOSTR"));
+        const QString targetGeoStress = workspace.filePath(QStringLiteral("GEOSTR"));
+        if (ownerKind == QStringLiteral("CaveExcavationAnalysis") &&
+            !QDir(targetGeoStress).exists() && QDir(sourceGeoStress).exists() &&
+            !copyDirectoryTree(sourceGeoStress, targetGeoStress))
+            return false;
+
+        if (runDir)
+            *runDir = workspace.absolutePath();
+    }
+
+    if (workspaceDir)
+        *workspaceDir = QDir(workspacePath).absolutePath();
+    return true;
+}
+
+bool Solver::writeAnalysisManifest(const QString& workspaceDir, const QString& analysisUuid,
+                                   const QString& analysisName, const QString& analysisKind,
+                                   const QString& analysisType, const QString& state) const
+{
+    if (workspaceDir.isEmpty() || !QDir().mkpath(workspaceDir))
+        return false;
+
+    const QString manifestPath = QDir(workspaceDir).filePath(
+        QString::fromUtf8(PublicConstants::kSolverAnalysisManifestFileName));
+    const QString legacyManifestPath = QDir(workspaceDir).filePath(
+        QString::fromLatin1(kLegacyAnalysisManifestFileName));
+    QJsonObject root;
+    QFile existing(QFileInfo::exists(manifestPath) ? manifestPath : legacyManifestPath);
+    if (existing.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        const QJsonDocument document = QJsonDocument::fromJson(existing.readAll());
+        if (document.isObject())
+            root = document.object();
+        existing.close();
+    }
+
+    root.insert(QStringLiteral("version"), 1);
+    root.insert(QStringLiteral("analysisUuid"), analysisUuid);
+    root.insert(QStringLiteral("analysisName"), analysisName);
+    root.insert(QStringLiteral("analysisKind"), analysisKind);
+    root.insert(QStringLiteral("lastAnalysisType"), analysisType);
+    root.insert(QStringLiteral("state"), state);
+    root.insert(QStringLiteral("updatedAt"),
+                QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
+
+    if (state == QStringLiteral("completed"))
+    {
+        QJsonArray completedTypes = root.value(QStringLiteral("completedTypes")).toArray();
+        bool found = false;
+        for (const QJsonValue& value : completedTypes)
+            found = found || value.toString() == analysisType;
+        if (!found)
+            completedTypes.append(analysisType);
+        root.insert(QStringLiteral("completedTypes"), completedTypes);
+        root.insert(QStringLiteral("completedAt"),
+                    QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
+    }
+
+    QSaveFile file(manifestPath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        return false;
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    const bool committed = file.commit();
+    if (committed && QFileInfo::exists(legacyManifestPath))
+        QFile::remove(legacyManifestPath);
+    return committed;
+}
+
+void Solver::updateAnalysisManifestName(ProjectNode* node) const
+{
+    ProjectNode* owner = topLevelAnalysisNode(node);
+    if (!owner || owner != node)
+        return;
+
+    const QString workspacePath = analysisWorkspace(owner);
+    if (workspacePath.isEmpty())
+        return;
+    const QString manifestPath = QDir(workspacePath).filePath(
+        QString::fromUtf8(PublicConstants::kSolverAnalysisManifestFileName));
+    const QString legacyManifestPath = QDir(workspacePath).filePath(
+        QString::fromLatin1(kLegacyAnalysisManifestFileName));
+    QFile existing(QFileInfo::exists(manifestPath) ? manifestPath : legacyManifestPath);
+    if (!existing.open(QIODevice::ReadOnly | QIODevice::Text))
+        return;
+
+    const QJsonDocument document = QJsonDocument::fromJson(existing.readAll());
+    existing.close();
+    if (!document.isObject())
+        return;
+    QJsonObject root = document.object();
+    root.insert(QStringLiteral("analysisName"), owner->text(0).trimmed());
+    root.insert(QStringLiteral("analysisKind"),
+                owner->data(0, ProjectNode::RoleKind).toString());
+    root.insert(QStringLiteral("updatedAt"),
+                QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
+
+    QSaveFile file(manifestPath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        return;
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    if (file.commit() && QFileInfo::exists(legacyManifestPath))
+        QFile::remove(legacyManifestPath);
+}
+
+void Solver::notifySolverFinished()
 {
     if (m_solverFinishedNotified)
         return;
 
     m_solverFinishedNotified = true;
 
+    if (!writeAnalysisManifest(m_activeAnalysisWorkspace, m_activeAnalysisUuid,
+                               m_activeAnalysisName, m_activeAnalysisKind,
+                               m_activeAnalysisType, QStringLiteral("completed")))
+        qWarning() << "failed to update analysis result manifest";
+
     QVariantMap data;
-    data.insert(QStringLiteral("analysisType"), analysisType);
-    data.insert(QStringLiteral("projectDir"), QDir(projectDir).absolutePath());
+    data.insert(QStringLiteral("analysisType"), m_activeAnalysisType);
+    data.insert(QStringLiteral("analysisUuid"), m_activeAnalysisUuid);
+    data.insert(QStringLiteral("analysisName"), m_activeAnalysisName);
+    data.insert(QStringLiteral("analysisKind"), m_activeAnalysisKind);
+    data.insert(QStringLiteral("projectDir"), QDir(m_activeProjectDir).absolutePath());
+    data.insert(QStringLiteral("resultRoot"), QDir(m_activeAnalysisWorkspace).absolutePath());
     EventManager::instance().sendEvent(PublicConstants::kEventSolverFinished, data);
 }
 
@@ -3293,6 +3795,7 @@ bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analys
 {
     try
     {
+    clearSolverRunDirectory();
     if (!analysisNode)
         return false;
 
@@ -3304,38 +3807,65 @@ bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analys
     }
 
     if (m_solverProcess)
+    {
+        if (QMessageBox::question(nullptr, QStringLiteral("已有计算正在进行"),
+                                  QStringLiteral("是否停止当前计算并开始“%1”？")
+                                      .arg(analysisType),
+                                  QMessageBox::Yes | QMessageBox::No,
+                                  QMessageBox::No) != QMessageBox::Yes)
+            return false;
         finishSolverProcess(true);
+    }
     else
         QProcess::execute("taskkill", {"-f", "-im", "PCCAE_CPU.exe"});
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(QDir(projectDir).absolutePath());
-    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+    ProjectNode* owner = topLevelAnalysisNode(analysisNode);
+    QString workspaceDir;
+    QString runDir;
+    if (!owner || !prepareAnalysisWorkspace(analysisNode, false, &workspaceDir, &runDir) ||
+        !writeAnalysisManifest(workspaceDir, owner->getUuid(), owner->text(0).trimmed(),
+                               owner->data(0, ProjectNode::RoleKind).toString(), analysisType,
+                               QStringLiteral("preparing")) ||
+        !PublicVariables::instance().set(PublicConstants::kSolverRunDirectoryKey, runDir,
+                                         QStringLiteral("solver_runtime")))
     {
         QMessageBox::warning(nullptr, "计算失败",
-                             QString("%1无法准备计算数据，请检查工程位置是否可写。")
+                             QString("%1无法准备独立计算目录，请检查工程位置是否可写。")
                                  .arg(analysisType));
         return false;
     }
+    const auto fail = [this, owner, workspaceDir, analysisType]() -> bool
+    {
+        writeAnalysisManifest(workspaceDir, owner->getUuid(), owner->text(0).trimmed(),
+                              owner->data(0, ProjectNode::RoleKind).toString(), analysisType,
+                              QStringLiteral("failed"));
+        clearSolverRunDirectory();
+        return false;
+    };
+
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    if (!QDir().mkpath(inputDir.absolutePath()))
+        return fail();
 
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (meshSvc)
     {
-        const QString targetIiin = wd.filePath("PREP/IIIN.DAT");
+        const QString targetIiin = inputDir.filePath(QStringLiteral("IIIN.DAT"));
         const QString sourceMeshPath = meshSvc->sourceMeshFilePath();
         const QFileInfo sourceInfo(sourceMeshPath);
         const bool sourceIsDat = sourceInfo.exists() && sourceInfo.suffix().compare("dat", Qt::CaseInsensitive) == 0;
 
         if (sourceIsDat)
         {
-            // DAT 在导入时已经备份到 PREP/IIIN.DAT，这里只在缺失时做一次兜底复制。
+            // DAT 导入时已经保存公共副本，这里只在分析副本缺失时兜底复制。
             if (!QFile::exists(targetIiin) && !QFile::copy(sourceMeshPath, targetIiin))
             {
                 QMessageBox::warning(nullptr, "计算失败",
-                                     QString("%1缺少 PREP/IIIN.DAT，且兜底复制 DAT 网格失败。")
+                                     QString("%1缺少网格计算输入，且兜底复制失败。")
                                          .arg(analysisType));
-                return false;
+                return fail();
             }
         }
         else
@@ -3344,9 +3874,9 @@ bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analys
             if (!meshSvc->exportIiinDatFile(targetIiin, &iiinErr))
             {
                 QMessageBox::warning(nullptr, "计算失败",
-                                     QString("%1生成 PREP/IIIN.DAT 失败：%2")
+                                     QString("%1生成网格计算输入失败：%2")
                                          .arg(analysisType, iiinErr));
-                return false;
+                return fail();
             }
         }
     }
@@ -3360,20 +3890,46 @@ bool Solver::beginCommonCompute(ProjectNode* analysisNode, const QString& analys
 
     auto* materialManagerService = ServiceRegistry::instance().getService<MaterialManagerService>();
     if (materialManagerService && !materialManagerService->generateIMATFile())
-        return false;
+    {
+        const QFileInfo existingImat(inputDir.filePath(QStringLiteral("IMAT.DAT")));
+        if (!existingImat.exists() || existingImat.size() <= 0)
+        {
+            QMessageBox::warning(nullptr, QStringLiteral("材料设置不完整"),
+                                 QStringLiteral("当前工程没有可用于计算的材料参数，请先完成材料设置。"));
+            return fail();
+        }
+        QMessageBox::warning(nullptr, QStringLiteral("使用已有材料数据"),
+                             QStringLiteral("材料设置未能重新生成，计算将使用工程中已有的材料数据。"));
+    }
 
-    return exportInouseDatFile() && exportMaMaskDatFile() && exportKetraceDatFile() &&
-           exportJdtraceDatFile();
+    QStringList failedInputs;
+    if (!exportInouseDatFile())
+        failedInputs << QStringLiteral("单元启用状态");
+    if (!exportMaMaskDatFile())
+        failedInputs << QStringLiteral("材料分区");
+    if (!exportKetraceDatFile())
+        failedInputs << QStringLiteral("单元追踪数据");
+    if (!exportJdtraceDatFile())
+        failedInputs << QStringLiteral("节点追踪数据");
+    if (!failedInputs.isEmpty())
+    {
+        QMessageBox::warning(nullptr, QStringLiteral("计算数据生成失败"),
+                             QStringLiteral("以下计算数据未能生成：\n%1")
+                                 .arg(failedInputs.join(QLatin1Char('\n'))));
+        return fail();
+    }
+    return true;
     }
     catch (const std::exception& e)
     {
+        clearSolverRunDirectory();
         qWarning() << "beginCommonCompute 失败:" << e.what();
         return false;
     }
 }
 
 
-bool Solver::launchCaveBlockSolverExecutable()
+bool Solver::launchCaveBlockSolverExecutable(ProjectNode* analysisNode)
 {
     const QString exePath =
         QDir::toNativeSeparators(
@@ -3389,30 +3945,49 @@ bool Solver::launchCaveBlockSolverExecutable()
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    const QString sliderDir = QDir(projectDir).absoluteFilePath("SliderCase");
-    if (!QDir(sliderDir).exists())
+
+    if (m_solverProcess)
     {
-        qWarning() << "cave block work directory missing:" << sliderDir;
-        QMessageBox::warning(nullptr, "启动求解器失败",
-                             "块体稳定分析工作区尚未创建。");
+        if (QMessageBox::question(nullptr, QStringLiteral("已有计算正在进行"),
+                                  QStringLiteral("是否停止当前计算并开始“%1”？")
+                                      .arg(QStringLiteral("块体稳定分析")),
+                                  QMessageBox::Yes | QMessageBox::No,
+                                  QMessageBox::No) != QMessageBox::Yes)
+            return false;
+        finishSolverProcess(true);
+    }
+    else
+        QProcess::execute("taskkill", {"-f", "-im", "PCCAE_CPU.exe"});
+
+    ProjectNode* owner = topLevelAnalysisNode(analysisNode);
+    QString workspaceDir;
+    QString sliderDir;
+    if (!owner || !prepareAnalysisWorkspace(analysisNode, true, &workspaceDir, &sliderDir))
+    {
+        QMessageBox::warning(nullptr, QStringLiteral("启动求解器失败"),
+                             QStringLiteral("无法准备该分析的独立计算数据。"));
         return false;
     }
 
     if (!updateCaveBlockIiiDirDat(sliderDir))
     {
         QMessageBox::warning(nullptr, "启动求解器失败",
-                             "块体稳定分析更新 IIIDIR.DAT 失败。");
+                             "块体稳定分析无法更新求解器运行配置。");
         return false;
     }
-
-    if (m_solverProcess)
-        finishSolverProcess(true);
-    else
-        QProcess::execute("taskkill", {"-f", "-im", "PCCAE_CPU.exe"});
 
     m_activeComputeWidget = m_pendingComputeWidget;
     m_pendingComputeWidget = nullptr;
     m_solverFinishedNotified = false;
+    m_activeProjectDir = QDir(projectDir).absolutePath();
+    m_activeAnalysisWorkspace = workspaceDir;
+    m_activeAnalysisUuid = owner->getUuid();
+    m_activeAnalysisName = owner->text(0).trimmed();
+    m_activeAnalysisKind = owner->data(0, ProjectNode::RoleKind).toString();
+    m_activeAnalysisType = QStringLiteral("块体稳定分析");
+    writeAnalysisManifest(m_activeAnalysisWorkspace, m_activeAnalysisUuid,
+                          m_activeAnalysisName, m_activeAnalysisKind,
+                          m_activeAnalysisType, QStringLiteral("running"));
 
     m_solverProcess = new QProcess(this);
     // 滑块计算仍使用 PCCAE_CPU.exe；运行前把 D:/IIIDIR.DAT 指向 SliderCase
@@ -3422,7 +3997,7 @@ bool Solver::launchCaveBlockSolverExecutable()
     m_solverProcess->setArguments(QStringList());
     m_solverProcess->setProcessChannelMode(QProcess::MergedChannels);
 
-    connect(m_solverProcess, &QProcess::readyReadStandardOutput, this, [this, projectDir]() {
+    connect(m_solverProcess, &QProcess::readyReadStandardOutput, this, [this]() {
         if (!m_solverProcess)
             return;
         const QString output = QString::fromLocal8Bit(m_solverProcess->readAllStandardOutput()).trimmed();
@@ -3430,7 +4005,7 @@ bool Solver::launchCaveBlockSolverExecutable()
         {
             qInfo().noquote() << ("__RAW__" + output);
             if (output.contains(QStringLiteral("结束进程")))
-                notifySolverFinished(QStringLiteral("CaveBlockStability"), projectDir);
+                notifySolverFinished();
             if (output.contains(QStringLiteral("结束进程")))
                 finishSolverProcess(true);
         }
@@ -3441,9 +4016,13 @@ bool Solver::launchCaveBlockSolverExecutable()
 
     connect(m_solverProcess,
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this, projectDir](int exitCode, QProcess::ExitStatus exitStatus) {
+            [this](int exitCode, QProcess::ExitStatus exitStatus) {
                 if (exitStatus == QProcess::NormalExit && exitCode == 0)
-                    notifySolverFinished(QStringLiteral("CaveBlockStability"), projectDir);
+                    notifySolverFinished();
+                else
+                    writeAnalysisManifest(m_activeAnalysisWorkspace, m_activeAnalysisUuid,
+                                          m_activeAnalysisName, m_activeAnalysisKind,
+                                          m_activeAnalysisType, QStringLiteral("failed"));
                 finishSolverProcess(false);
             });
 
@@ -3454,6 +4033,9 @@ bool Solver::launchCaveBlockSolverExecutable()
                              QString("块体稳定分析启动求解器进程失败：%1")
                                  .arg(m_solverProcess->errorString()));
 
+        writeAnalysisManifest(m_activeAnalysisWorkspace, m_activeAnalysisUuid,
+                              m_activeAnalysisName, m_activeAnalysisKind,
+                              m_activeAnalysisType, QStringLiteral("failed"));
         finishSolverProcess(false);
         return false;
     }
@@ -3463,7 +4045,7 @@ bool Solver::launchCaveBlockSolverExecutable()
 }
 
 
-bool Solver::launchSolverExecutable(const QString& analysisType)
+bool Solver::launchSolverExecutable(ProjectNode* analysisNode, const QString& analysisType)
 {
     const QString exePath =
         QDir::toNativeSeparators(
@@ -3475,23 +4057,45 @@ bool Solver::launchSolverExecutable(const QString& analysisType)
         QMessageBox::warning(nullptr, "启动求解器失败",
                              QString("%1无法启动：未找到随软件部署的求解程序，请修复软件安装。")
                                  .arg(analysisType));
+        clearSolverRunDirectory();
         return false;
     }
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     if (m_solverProcess)
+    {
+        if (QMessageBox::question(nullptr, QStringLiteral("已有计算正在进行"),
+                                  QStringLiteral("是否停止当前计算并开始“%1”？")
+                                      .arg(analysisType),
+                                  QMessageBox::Yes | QMessageBox::No,
+                                  QMessageBox::No) != QMessageBox::Yes)
+            return false;
         finishSolverProcess(true);
+    }
     else
         QProcess::execute("taskkill", {"-f", "-im", "PCCAE_CPU.exe"});
+
+    ProjectNode* owner = topLevelAnalysisNode(analysisNode);
+    const QString runDir = SolverFilePaths::runDirectory();
+    const QString workspaceDir = runDir;
+    if (!owner || runDir.isEmpty() || !QDir(runDir).exists() ||
+        workspaceManifestUuid(runDir) != owner->getUuid())
+    {
+        QMessageBox::warning(nullptr, QStringLiteral("启动求解器失败"),
+                             QStringLiteral("无法准备该分析的独立计算数据。"));
+        clearSolverRunDirectory();
+        return false;
+    }
 
     const int solverMode = solverModeFromAnalysisType(analysisType);
     if (solverMode > 0)
     {
-        if (!updateIiiDirDat(projectDir, solverMode))
+        if (!updateIiiDirDat(runDir, solverMode))
         {
             QMessageBox::warning(nullptr, "启动求解器失败",
-                                 QString("%1更新 IIIDIR.DAT 失败。").arg(analysisType));
+                                 QString("%1无法更新求解器运行配置。").arg(analysisType));
+            clearSolverRunDirectory();
             return false;
         }
 
@@ -3499,10 +4103,11 @@ bool Solver::launchSolverExecutable(const QString& analysisType)
         if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
             verticalAxis = meshSvc->verticalAxis();
 
-        if (!updatePrepDatFiles(projectDir, solverMode, verticalAxis))
+        if (!updatePrepDatFiles(runDir, solverMode, verticalAxis))
         {
             QMessageBox::warning(nullptr, "启动求解器失败",
-                                 QString("%1更新 PREP/DAT 文件失败。").arg(analysisType));
+                                 QString("%1无法准备网格计算数据。").arg(analysisType));
+            clearSolverRunDirectory();
             return false;
         }
     }
@@ -3510,14 +4115,23 @@ bool Solver::launchSolverExecutable(const QString& analysisType)
     m_activeComputeWidget = m_pendingComputeWidget;
     m_pendingComputeWidget = nullptr;
     m_solverFinishedNotified = false;
+    m_activeProjectDir = QDir(projectDir).absolutePath();
+    m_activeAnalysisWorkspace = workspaceDir;
+    m_activeAnalysisUuid = owner->getUuid();
+    m_activeAnalysisName = owner->text(0).trimmed();
+    m_activeAnalysisKind = owner->data(0, ProjectNode::RoleKind).toString();
+    m_activeAnalysisType = analysisType;
+    writeAnalysisManifest(m_activeAnalysisWorkspace, m_activeAnalysisUuid,
+                          m_activeAnalysisName, m_activeAnalysisKind,
+                          m_activeAnalysisType, QStringLiteral("running"));
 
     m_solverProcess = new QProcess(this);
-    m_solverProcess->setWorkingDirectory(QDir(projectDir).absolutePath());
+    m_solverProcess->setWorkingDirectory(QDir(runDir).absolutePath());
     m_solverProcess->setProgram(exePath);
     m_solverProcess->setArguments(QStringList());
     m_solverProcess->setProcessChannelMode(QProcess::MergedChannels);
 
-    connect(m_solverProcess, &QProcess::readyReadStandardOutput, this, [this, analysisType, projectDir]() {
+    connect(m_solverProcess, &QProcess::readyReadStandardOutput, this, [this]() {
         if (!m_solverProcess)
             return;
         const QString output = QString::fromLocal8Bit(m_solverProcess->readAllStandardOutput()).trimmed();
@@ -3525,7 +4139,7 @@ bool Solver::launchSolverExecutable(const QString& analysisType)
         {
             qInfo().noquote() << ("__RAW__" + output);
             if (output.contains(QStringLiteral("结束进程")))
-                notifySolverFinished(analysisType, projectDir);
+                notifySolverFinished();
             if (output.contains(QStringLiteral("结束进程")))
                 finishSolverProcess(true);
         }
@@ -3536,9 +4150,13 @@ bool Solver::launchSolverExecutable(const QString& analysisType)
 
     connect(m_solverProcess,
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this, analysisType, projectDir](int exitCode, QProcess::ExitStatus exitStatus) {
+            [this](int exitCode, QProcess::ExitStatus exitStatus) {
                 if (exitStatus == QProcess::NormalExit && exitCode == 0)
-                    notifySolverFinished(analysisType, projectDir);
+                    notifySolverFinished();
+                else
+                    writeAnalysisManifest(m_activeAnalysisWorkspace, m_activeAnalysisUuid,
+                                          m_activeAnalysisName, m_activeAnalysisKind,
+                                          m_activeAnalysisType, QStringLiteral("failed"));
                 finishSolverProcess(false);
             });
 
@@ -3549,11 +4167,15 @@ bool Solver::launchSolverExecutable(const QString& analysisType)
                              QString("%1启动求解器进程失败：%2")
                                  .arg(analysisType, m_solverProcess->errorString()));
         
+        writeAnalysisManifest(m_activeAnalysisWorkspace, m_activeAnalysisUuid,
+                              m_activeAnalysisName, m_activeAnalysisKind,
+                              m_activeAnalysisType, QStringLiteral("failed"));
         finishSolverProcess(false);
         return false;
     }
 
     setComputeWidgetRunning(m_activeComputeWidget, true);
+    clearSolverRunDirectory();
     return true;
 }
 
@@ -3634,27 +4256,19 @@ bool Solver::updateIiiDirDat(const QString& projectDir, int solverMode) const
     if (lines.size() < 2)
         return false;
 
-    const QString nativeProjectDir = QDir::toNativeSeparators(QDir(projectDir).absolutePath());
-    const QString projectWithSlash = QDir(nativeProjectDir).absolutePath() + QDir::separator();
-    const QString prepDir = projectWithSlash + "PREP";
+    QString projectWithSlash = QDir::toNativeSeparators(QDir(projectDir).absolutePath());
+    if (!projectWithSlash.endsWith(QDir::separator()))
+        projectWithSlash += QDir::separator();
+    QString inputDir = QDir::toNativeSeparators(
+        SolverFilePaths::analysisInputDirectory(projectDir));
+    if (!inputDir.endsWith(QDir::separator()))
+        inputDir += QDir::separator();
 
     lines[0] = QString("'%1'").arg(projectWithSlash);
-
-    for (int i = 0; i < lines.size(); ++i)
-    {
-        const QString trimmed = lines[i].trimmed();
-        if (trimmed.contains("\\PREP'") || trimmed.contains("/PREP'"))
-            lines[i] = QString("'%1'").arg(prepDir);
-
-        bool ok = false;
-        trimmed.toInt(&ok);
-        if (ok && i > 0)
-        {
-            const QString prev = lines[i - 1];
-            if (prev.contains("\\PREP'") || prev.contains("/PREP'"))
-                lines[i] = QString("%1").arg(solverMode, 12);
-        }
-    }
+    if (lines.size() < 9)
+        return false;
+    lines[7] = QString("'%1'").arg(inputDir);
+    lines[8] = QString("%1   ").arg(solverMode, 12);
 
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
         return false;
@@ -3664,7 +4278,8 @@ bool Solver::updateIiiDirDat(const QString& projectDir, int solverMode) const
 
 bool Solver::updatePrepDatFiles(const QString& projectDir, int solverMode, int verticalAxis) const
 {
-    QFile file(QDir(projectDir).filePath("PREP/IIIN.DAT"));
+    QFile file(QDir(SolverFilePaths::analysisInputDirectory(projectDir))
+                   .filePath(QStringLiteral("IIIN.DAT")));
     if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))
         return false;
 
@@ -3694,7 +4309,8 @@ bool Solver::updatePrepDatFiles(const QString& projectDir, int solverMode, int v
 
 bool Solver::forceSlopeIiinLayersToOne(const QString& projectDir) const
 {
-    QFile file(QDir(projectDir).filePath("PREP/IIIN.DAT"));
+    QFile file(QDir(SolverFilePaths::analysisInputDirectory(projectDir))
+                   .filePath(QStringLiteral("IIIN.DAT")));
     if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))
         return false;
 
@@ -3766,11 +4382,11 @@ bool Solver::exportInouseDatFile()
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(QDir(projectDir).absolutePath());
-    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    if (!QDir().mkpath(inputDir.absolutePath()))
         return false;
 
-    QFile file(wd.filePath("PREP/INOUSE.DAT"));
+    QFile file(inputDir.filePath(QStringLiteral("INOUSE.DAT")));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
 
@@ -4066,17 +4682,15 @@ bool Solver::exportMaMaskDatFile()
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(QDir(projectDir).absolutePath());
-
-    // 确保 PREP 文件夹存在
-    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    if (!QDir().mkpath(inputDir.absolutePath()))
         return false;
 
            // 共同的文件内容
     const QString fileContent = "   0   NUM\n";
 
            // 1. 生成 MA_MASK.DAT
-    QFile file(wd.filePath("PREP/MA_MASK.DAT"));
+    QFile file(inputDir.filePath(QStringLiteral("MA_MASK.DAT")));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
     QTextStream os(&file);
@@ -4084,7 +4698,7 @@ bool Solver::exportMaMaskDatFile()
     file.close(); // 显式关闭文件是个好习惯
 
            // 2. 生成 MA_MASK_CMM.DAT
-    QFile fileCmm(wd.filePath("PREP/MA_MASK_CMM.DAT"));
+    QFile fileCmm(inputDir.filePath(QStringLiteral("MA_MASK_CMM.DAT")));
     if (!fileCmm.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
     QTextStream osCmm(&fileCmm);
@@ -4097,11 +4711,11 @@ bool Solver::exportKetraceDatFile()
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(QDir(projectDir).absolutePath());
-    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    if (!QDir().mkpath(inputDir.absolutePath()))
         return false;
 
-    QFile file(wd.filePath("PREP/KETRACE.DAT"));
+    QFile file(inputDir.filePath(QStringLiteral("KETRACE.DAT")));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
 
@@ -4114,11 +4728,11 @@ bool Solver::exportJdtraceDatFile()
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(QDir(projectDir).absolutePath());
-    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    if (!QDir().mkpath(inputDir.absolutePath()))
         return false;
 
-    QFile file(wd.filePath("PREP/JDTRACE.DAT"));
+    QFile file(inputDir.filePath(QStringLiteral("JDTRACE.DAT")));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
 

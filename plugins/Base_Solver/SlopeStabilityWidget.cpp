@@ -2,6 +2,7 @@
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <SolverFilePaths.h>
 
 #include <QComboBox>
 #include <QDir>
@@ -12,6 +13,7 @@
 #include <QJsonArray>
 #include <QLineEdit>
 #include <QList>
+#include <QStringConverter>
 #include <QMessageBox>
 #include <QTableWidget>
 #include <QTableWidgetItem>
@@ -320,7 +322,7 @@ void SlopeStabilityWidget::setGravityLineValue(const QString& value)
 
 QString SlopeStabilityWidget::defaultValueByLine(int lineNo) const
 {
-    static const QStringList defaults = {"F:\\FEMCLASS\\Z08_SLOP3D\\PREP\\", "MACB.DAT", "3",
+    static const QStringList defaults = {"", "MACB.DAT", "3",
                                          "0.0   -9.81   0.0", "1", "500", "0.0001", "1", "IIWL.DAT",
                                          "--------------", "--------------", "JDTRACE.DAT", "KETRACE.DAT",
                                          "TDTRACE.DAT", "0", "0", "0.05", "0.0", "1", "MACHAN.DAT"};
@@ -385,10 +387,9 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    const QString projectDirAbs = QDir(projectDir).absolutePath();
-
-    QDir wd(projectDirAbs);
-    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+    QDir wd(SolverFilePaths::outputRoot(projectDir));
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    if (!QDir().mkpath(wd.absolutePath()) || !QDir().mkpath(inputDir.absolutePath()))
         return false;
 
     auto ensureTrailingSep = [](const QString& path)
@@ -404,14 +405,15 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
         return false;
 
     QTextStream os(&file);
-    const QString prepDirAbs = ensureTrailingSep(wd.filePath("PREP"));
+    os.setEncoding(QStringConverter::System);
+    const QString inputDirAbs = ensureTrailingSep(inputDir.absolutePath());
     const QString caseDirAbs = ensureTrailingSep(wd.filePath("CASE01"));
 
     for (int lineNo = 1; lineNo <= 20; ++lineNo)
     {
         QString value = lineValue(lineNo);
         if (lineNo == 1)
-            value = prepDirAbs;
+            value = inputDirAbs;
         os << quoteValue(value) << "      " << lineNo << "\n";
     }
 
@@ -521,11 +523,11 @@ bool SlopeStabilityWidget::exportTdtraceDatFile() const
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(QDir(projectDir).absolutePath());
-    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    if (!QDir().mkpath(inputDir.absolutePath()))
         return false;
 
-    QFile file(wd.filePath("PREP/TDTRACE.DAT"));
+    QFile file(inputDir.filePath(QStringLiteral("TDTRACE.DAT")));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
 

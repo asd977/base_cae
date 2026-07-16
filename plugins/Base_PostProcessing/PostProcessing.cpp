@@ -22,6 +22,7 @@
 #include <QJsonObject>
 #include <QLineEdit>
 #include <QMenu>
+#include <QSharedPointer>
 #include <QThread>
 #include <QToolButton>
 #include <QTreeWidget>
@@ -372,24 +373,65 @@ void PostProcessing::initAction()
             }
 
             projectDir = QDir(projectDir).absolutePath();
-            if (projectDir.isEmpty() || m_preparingProjects.contains(projectDir))
+            QString resultRoot = data.value(QStringLiteral("resultRoot")).toString().trimmed();
+            if (resultRoot.isEmpty())
+                resultRoot = projectDir;
+            resultRoot = QDir(resultRoot).absolutePath();
+            if (projectDir.isEmpty() || resultRoot.isEmpty())
                 return;
-
-            m_preparingProjects.insert(projectDir);
-            QThread* worker = QThread::create(
-                [projectDir]()
-                {
-                    PostResultAutoPrepare::prepareProject(projectDir);
-                });
-
-            connect(worker, &QThread::finished, this,
-                    [this, worker, projectDir]()
-                    {
-                        m_preparingProjects.remove(projectDir);
-                        worker->deleteLater();
-                    });
-            worker->start();
+            prepareResultRootAsync(projectDir, resultRoot);
         });
+}
+
+void PostProcessing::prepareResultRootAsync(const QString& projectDir, const QString& resultRoot)
+{
+    const QString projectPath = QDir(projectDir).absolutePath();
+    const QString rootPath = QDir(resultRoot).absolutePath();
+    const QString key = QDir::fromNativeSeparators(rootPath).toCaseFolded();
+    if (projectPath.isEmpty() || rootPath.isEmpty())
+        return;
+
+    if (m_preparingResultRoots.contains(key))
+    {
+        m_pendingResultRoots.insert(key);
+        return;
+    }
+
+    m_preparingResultRoots.insert(key);
+    const auto prepared = QSharedPointer<bool>::create(false);
+    const auto descriptions = QSharedPointer<QStringList>::create();
+    QThread* worker = QThread::create(
+        [projectPath, rootPath, prepared, descriptions]()
+        {
+            *prepared = PostResultAutoPrepare::prepareResultRoot(projectPath, rootPath);
+            if (*prepared)
+            {
+                *descriptions = PostResultAutoPrepare::preparedResultDescriptions(
+                    projectPath, rootPath);
+            }
+        });
+
+    connect(worker, &QThread::finished, this,
+            [this, worker, projectPath, rootPath, key, prepared, descriptions]()
+            {
+                m_preparingResultRoots.remove(key);
+                const bool prepareAgain = m_pendingResultRoots.remove(key);
+                if (*prepared)
+                {
+                    qInfo().noquote() << QStringLiteral("计算完成，已生成以下后处理结果：");
+                    for (const QString& description : *descriptions)
+                        qInfo().noquote() << QStringLiteral("  %1").arg(description);
+                }
+                else
+                {
+                    qWarning().noquote()
+                        << QStringLiteral("计算完成，但没有发现可自动生成的后处理结果。");
+                }
+                worker->deleteLater();
+                if (prepareAgain)
+                    prepareResultRootAsync(projectPath, rootPath);
+            });
+    worker->start();
 }
 
 void PostProcessing::initTreeMenu()

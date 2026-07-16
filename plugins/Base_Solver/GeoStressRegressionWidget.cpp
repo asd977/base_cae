@@ -2,10 +2,12 @@
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <SolverFilePaths.h>
 
 #include <QDir>
 #include <QFile>
 #include <QJsonObject>
+#include <QStringConverter>
 #include <QTextStream>
 
 #include "ui_GeoStressRegressionWidget.h"
@@ -62,8 +64,9 @@ bool GeoStressRegressionWidget::exportIGEOSDatFile(const ExportPayload& payload)
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(QDir(projectDir).absolutePath());
-    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+    QDir wd(SolverFilePaths::outputRoot(projectDir));
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    if (!QDir().mkpath(wd.absolutePath()) || !QDir().mkpath(inputDir.absolutePath()))
         return false;
 
     QFile file(wd.filePath("IGEOS.DAT"));
@@ -71,7 +74,8 @@ bool GeoStressRegressionWidget::exportIGEOSDatFile(const ExportPayload& payload)
         return false;
 
     QTextStream os(&file);
-    const QString prepDir = ensureTrailingSep(wd.filePath("PREP"));
+    os.setEncoding(QStringConverter::System);
+    const QString inputPath = ensureTrailingSep(inputDir.absolutePath());
     const int ndim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     const bool is2D = (ndim == 2);
 
@@ -79,13 +83,14 @@ bool GeoStressRegressionWidget::exportIGEOSDatFile(const ExportPayload& payload)
     if (!imidFile.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
     QTextStream imidOs(&imidFile);
+    imidOs.setEncoding(QStringConverter::System);
     imidOs << (is2D ? "  2\n" : "  3\n");
     imidOs << (is2D ? "  2\n" : "  3\n");
     imidOs << (is2D ? "  0\n" : "  1\n");
     imidOs << (is2D ? "   2.00000\n" : "   0.00000\n");
-    imidOs << "'" << prepDir << "'\n";
+    imidOs << "'" << inputPath << "'\n";
 
-    os << "'" << prepDir << "'       1\n";
+    os << "'" << inputPath << "'       1\n";
     os << "'" << kRoofFileName << "'       2\n";
     os << "'" << payload.sideFaceFiles.value(0, "FA_SIDE1.DAT") << "'       3\n";
     os << "'" << payload.sideFaceFiles.value(1, "FA_SIDE2.DAT") << "'       4\n";
@@ -140,11 +145,7 @@ bool GeoStressRegressionWidget::exportIGEOSDatFile(const ExportPayload& payload)
 
 QJsonObject GeoStressRegressionWidget::saveJson()
 {
-    const QString projectDir =
-        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    QDir wd(QDir(projectDir).absolutePath());
     QJsonObject obj;
-    obj["prep_dir"] = ensureTrailingSep(QDir(wd.filePath("PREP")).absolutePath());
     obj["roof"] = kRoofFileName;
     obj["factor"] = ui->factorEdit->text().trimmed();
     obj["calc_mode"] = ui->calcModeCombo->currentIndex();

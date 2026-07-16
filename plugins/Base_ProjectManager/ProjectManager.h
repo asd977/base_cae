@@ -74,6 +74,9 @@ class ProjectManager : public QObject, public ProjectManagerService
      * @brief 创建工程的所有数据文件夹（新建工程）
      */
     bool createProjectFilesFolder(bool askOverwrite = true);
+    bool migrateLegacyProjectDataFiles() const;
+    bool migrateLegacySolverFiles() const;
+    void removeLegacyRootSolverFiles() const;
     /**
      * @brief 保存项目所有模块的数据到.smproj文件
      * @param fileName .smproj名称
@@ -99,7 +102,7 @@ class ProjectManager : public QObject, public ProjectManagerService
      * @param uuid uuid
      */
     void onDeletePageSig(const QString& uuid);
-    void updateIiidirDatForProject(const QString& projectDir, bool usePrepAsRoot) const;
+    void updateIiidirDatForProject(const QString& projectDir, bool useInputAsRoot) const;
 
   private:
     ProjectTreeWidget* m_projectTreeWidget;

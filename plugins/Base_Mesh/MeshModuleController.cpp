@@ -13,6 +13,7 @@
 #include <ProjectNode.h>
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <SolverFilePaths.h>
 #include <ServiceRegistry.h>
 #include <qfiledialog.h>
 #include <services/ProjectManagerService.h>
@@ -84,7 +85,7 @@ static bool meshDomainKeyIsValid(const DomainKey& key)
     return !key.category.trimmed().isEmpty() && key.dim >= 0 && key.id != 0;
 }
 
-static const char* kMeshMapFileName = "mesh_map.json";
+static const char* kMeshMapFileName = PublicConstants::kMeshMapFileName;
 
 // 大网格保存优化：
 // 1) IIIN/DAT 网格快照只有在网格对象真正变更后才重写；
@@ -2279,8 +2280,18 @@ bool MeshModuleController::loadProject()
         const QString meshMapName =
             root.value("mesh_map_file").toString(kMeshMapFileName);
 
-        const QString snapshotPath = QDir(projectDir).filePath(snapshotName);
-        const QString meshMapPath = QDir(projectDir).filePath(meshMapName);
+        QString snapshotPath = QDir(projectDir).filePath(snapshotName);
+        QString meshMapPath = QDir(projectDir).filePath(meshMapName);
+        if (!QFileInfo::exists(snapshotPath))
+        {
+            snapshotPath = QDir(projectDir).filePath(
+                QString::fromUtf8(PublicConstants::kMeshSnapshotFileName));
+        }
+        if (!QFileInfo::exists(meshMapPath))
+        {
+            meshMapPath = QDir(projectDir).filePath(
+                QString::fromUtf8(PublicConstants::kMeshMapFileName));
+        }
 
         QString err;
 
@@ -2910,24 +2921,24 @@ void MeshModuleController::importGridFile(const QString& fileName)
             PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
         if (!projectDir.trimmed().isEmpty())
         {
-            QDir wd(QDir(projectDir).absolutePath());
-            if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+            QDir inputDir(SolverFilePaths::projectInputDirectory(projectDir));
+            if (!QDir().mkpath(inputDir.absolutePath()))
             {
                 QMessageBox::warning(nullptr, QString("DAT 备份失败"),
-                                     QString("无法创建 PREP 目录，未能备份 IIIN.DAT。"));
+                                     QString("无法创建计算输入目录，未能保存网格计算数据。"));
             }
             else
             {
-                const QString targetIiin = wd.filePath("PREP/IIIN.DAT");
+                const QString targetIiin = inputDir.filePath(QStringLiteral("IIIN.DAT"));
                 if (QFile::exists(targetIiin) && !QFile::remove(targetIiin))
                 {
                     QMessageBox::warning(nullptr, QString("DAT 备份失败"),
-                                         QString("无法覆盖 PREP/IIIN.DAT。"));
+                                         QString("无法覆盖已有网格计算数据。"));
                 }
                 else if (!QFile::copy(fileName, targetIiin))
                 {
                     QMessageBox::warning(nullptr, QString("DAT 备份失败"),
-                                         QString("导入 DAT 后备份到 PREP/IIIN.DAT 失败。"));
+                                         QString("导入后保存网格计算数据失败。"));
                 }
             }
         }
@@ -3146,13 +3157,13 @@ void MeshModuleController::onQualityStd()
     const QString projectDirNative =
         QDir::toNativeSeparators(QDir(projectDir).absolutePath());
 
-    const QString prepDir =
-        QDir::toNativeSeparators(QDir(projectDir).filePath("PREP"));
+    const QString inputDir = QDir::toNativeSeparators(
+        SolverFilePaths::projectInputDirectory(projectDir));
 
-    if (!QDir(prepDir).exists())
+    if (!QDir(inputDir).exists())
     {
         QMessageBox::warning(nullptr, "网格质量检查",
-                             QString("未找到 PREP 目录:\n%1").arg(prepDir));
+                             QString("未找到计算输入目录：\n%1").arg(inputDir));
         return;
     }
 
@@ -3187,10 +3198,10 @@ void MeshModuleController::onQualityStd()
         return path;
     };
 
-    const auto writeIiidir = [iiidirPath, prepDir, ensureTrailingSlash](const QString& rootDir) -> bool
+    const auto writeIiidir = [iiidirPath, inputDir, ensureTrailingSlash](const QString& rootDir) -> bool
     {
         const QString rootDirWithSlash = ensureTrailingSlash(rootDir);
-        const QString prepDirWithSlash = ensureTrailingSlash(prepDir);
+        const QString inputDirWithSlash = ensureTrailingSlash(inputDir);
 
         const QString content =
             QString("'%1'\n"
@@ -3202,7 +3213,7 @@ void MeshModuleController::onQualityStd()
                     "       0  ILOG_SOLVE\n"
                     "'%2'\n"
                     "           8   \n")
-                .arg(rootDirWithSlash, prepDirWithSlash);
+                .arg(rootDirWithSlash, inputDirWithSlash);
 
         QFile file(iiidirPath);
         if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
@@ -3210,7 +3221,7 @@ void MeshModuleController::onQualityStd()
             return false;
         }
 
-        file.write(content.toUtf8());
+        file.write(content.toLocal8Bit());
         file.close();
         return true;
     };
@@ -3234,10 +3245,10 @@ void MeshModuleController::onQualityStd()
     /*
      * 运行检查前写入 IIIDIR.DAT。
      *
-     * 这里传 prepDir，是为了让 A02_CKJACOBI 进入网格检查相关工作目录。
+     * 这里传计算输入目录，是为了让 A02_CKJACOBI 读取当前网格数据。
      * 程序结束后再恢复为 projectDirNative。
      */
-    if (!writeIiidir(prepDir))
+    if (!writeIiidir(inputDir))
     {
         QMessageBox::warning(nullptr, "网格质量检查",
                              QString("无法写入 %1").arg(iiidirPath));
@@ -3256,7 +3267,7 @@ void MeshModuleController::onQualityStd()
 
         QMessageBox::warning(nullptr, "网格质量检查",
                              QString("无法写入 MESG_ITASK.DAT:\n%1")
-                                 .arg(QDir(projectDir).filePath("MESG_ITASK.DAT")));
+                                 .arg(QDir(gridQualityDir).filePath("MESG_ITASK.DAT")));
         return;
     }
 

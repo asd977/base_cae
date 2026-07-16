@@ -2,6 +2,7 @@
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <SolverFilePaths.h>
 #include <QComboBox>
 #include <QDir>
 #include <QFile>
@@ -13,6 +14,7 @@
 #include <QLineEdit>
 #include <QList>
 #include <QMap>
+#include <QStringConverter>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -283,7 +285,7 @@ QString DamAnalysisWidget::quoteValue(const QString& value) const
 QString DamAnalysisWidget::defaultValueByLine(int lineNo) const
 {
     static const QStringList defaults = {
-        "F:\\FEMCLASS\\Z03_JUNZ3D\\PREP\\", "FA_DAMUP.DAT", "FA_DAMDW.DAT", "FA_DAMBASE.DAT",
+        "", "FA_DAMUP.DAT", "FA_DAMDW.DAT", "FA_DAMBASE.DAT",
         "NONE", "MA_ROCK.DAT", "MA_DAMUP.DAT", "MA_DAMDW.DAT", "MA_CORE.DAT", "4",
         "MA_PLATE.DAT", "JDTRACE.DAT", "KETRACE.DAT", "TDTRACE.DAT", "0", "0", "0.05", "0.0",
         "2", "4   10", "0.000", "1.962", "1.308", "0.1", "0.2", "2.0", "0.9", "7.0", "0",
@@ -499,17 +501,15 @@ bool DamAnalysisWidget::exportIfillDatFile(int mcase, const QString& cycleSectio
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    const QString projectDirAbs = QDir(projectDir).absolutePath();
-
-    QDir wd(projectDirAbs);
-    if (!wd.exists("PREP") && !wd.mkpath("PREP"))
+    QDir wd(SolverFilePaths::outputRoot(projectDir));
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    if (!QDir().mkpath(wd.absolutePath()) || !QDir().mkpath(inputDir.absolutePath()))
         return false;
 
     // 均质坝的坝体和基岩材料集合由求解器按当前网格层派生，避免复用旧模型结果。
-    const QDir prepDir(wd.filePath("PREP"));
-    QFile::remove(prepDir.filePath(QStringLiteral("MA_ROCK.DAT")));
-    QFile::remove(prepDir.filePath(QStringLiteral("MA_DAMUP.DAT")));
-    QFile::remove(prepDir.filePath(QStringLiteral("MA_DAMDW.DAT")));
+    QFile::remove(inputDir.filePath(QStringLiteral("MA_ROCK.DAT")));
+    QFile::remove(inputDir.filePath(QStringLiteral("MA_DAMUP.DAT")));
+    QFile::remove(inputDir.filePath(QStringLiteral("MA_DAMDW.DAT")));
 
     auto ensureTrailingSep = [](const QString& path)
     {
@@ -519,7 +519,7 @@ bool DamAnalysisWidget::exportIfillDatFile(int mcase, const QString& cycleSectio
         return p;
     };
 
-    const QString prepDirAbs = ensureTrailingSep(wd.filePath("PREP"));
+    const QString inputDirAbs = ensureTrailingSep(inputDir.absolutePath());
     const QString caseDirAbs = ensureTrailingSep(wd.filePath("CASE01FILL01"));
 
     QFile file(wd.filePath("IFILL.DAT"));
@@ -527,12 +527,13 @@ bool DamAnalysisWidget::exportIfillDatFile(int mcase, const QString& cycleSectio
         return false;
 
     QTextStream os(&file);
+    os.setEncoding(QStringConverter::System);
 
     for (int lineNo = 1; lineNo <= 40; ++lineNo)
     {
         QString value = lineValue(lineNo);
         if (lineNo == 1)
-            value = prepDirAbs;
+            value = inputDirAbs;
         else if (isFixedFileLine(lineNo))
             value = defaultValueByLine(lineNo);
         os << quoteValue(value) << "      " << lineNo << "\n";
