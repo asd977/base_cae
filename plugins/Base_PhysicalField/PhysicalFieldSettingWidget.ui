@@ -48,7 +48,7 @@
       <item>
        <widget class="QPushButton" name="importIIIDButton">
         <property name="text">
-         <string>导入 IIID.DAT 并创建约束</string>
+         <string>导入已有约束</string>
         </property>
        </widget>
       </item>

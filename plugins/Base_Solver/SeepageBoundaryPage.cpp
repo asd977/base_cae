@@ -22,18 +22,29 @@
 
 #include "SolverUiLayoutHelper.h"
 SeepageBoundaryPage::SeepageBoundaryPage(const QString& pageType, const QString& boundaryTitle,
-                                         const QString& exportFileName, QWidget* parent)
+                                         const QString& exportFileName, QWidget* parent,
+                                         bool removeFileWhenEmpty)
     : BasePage(pageType), ui(new Ui::SeepageBoundaryPage), m_boundaryTitle(boundaryTitle),
-      m_exportFileName(exportFileName)
+      m_exportFileName(exportFileName), m_removeFileWhenEmpty(removeFileWhenEmpty)
 {
     ui->setupUi(this);
     SolverUiLayoutHelper::polishPage(this);
     ui->labelBoundaryTitle->setText(boundaryTitle);
-    ui->labelFileNameValue->setText(exportFileName);
+    ui->label2->hide();
+    ui->labelFileNameValue->hide();
+    ui->boxSelectHintLabel->setText(
+        QStringLiteral("选择对象：网格节点。Shift+拖拽框选，Ctrl+拖拽取消选择；也可按边界分组批量添加节点。"));
     setupBatchGroupCombo();
 
     connect(ui->btnClear, &QPushButton::clicked, this, &SeepageBoundaryPage::onClearClicked);
     ui->tableNodes->setVisible(false);
+    connect(&PickManager::instance(), &PickManager::selectionChanged, this,
+            [this](const QString& domain, const QString& uuid, PickMode mode, GridKind)
+            {
+                if (domain == getPageType() && uuid == m_uuid && mode == PickMode::Node)
+                    updateSelectionSummary();
+            });
+    updateSelectionSummary();
 }
 
 SeepageBoundaryPage::~SeepageBoundaryPage()
@@ -44,6 +55,7 @@ SeepageBoundaryPage::~SeepageBoundaryPage()
 void SeepageBoundaryPage::beforeLoad()
 {
     setupBatchGroupCombo();
+    updateSelectionSummary();
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
 }
 
@@ -91,6 +103,20 @@ QVector<int> SeepageBoundaryPage::selectedNodeIds()
     return result;
 }
 
+int SeepageBoundaryPage::selectionCount()
+{
+    return selectedNodeIds().size();
+}
+
+void SeepageBoundaryPage::updateSelectionSummary()
+{
+    const int count = selectionCount();
+    ui->labelBoundaryTitle->setText(
+        count > 0 ? QStringLiteral("%1（已选择 %2 个节点）").arg(m_boundaryTitle).arg(count)
+                  : QStringLiteral("%1（未设置）").arg(m_boundaryTitle));
+    emit selectionCountChanged(count);
+}
+
 bool SeepageBoundaryPage::exportDatFile()
 {
     const QVector<int> ids = selectedNodeIds();
@@ -101,7 +127,13 @@ bool SeepageBoundaryPage::exportDatFile()
     if (!wd.exists("PREP"))
         wd.mkpath("PREP");
 
-    QFile file(wd.filePath("PREP/" + m_exportFileName));
+    const QString outputPath = wd.filePath("PREP/" + m_exportFileName);
+    if (ids.isEmpty() && m_removeFileWhenEmpty)
+    {
+        return !QFile::exists(outputPath) || QFile::remove(outputPath);
+    }
+
+    QFile file(outputPath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
     {
         return false;
@@ -122,6 +154,7 @@ void SeepageBoundaryPage::onClearClicked()
 {
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Node);
     PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Node);
+    updateSelectionSummary();
 }
 
 void SeepageBoundaryPage::setupBatchGroupCombo()
@@ -131,10 +164,10 @@ void SeepageBoundaryPage::setupBatchGroupCombo()
 
     ui->comboBoxDim->blockSignals(true);
     ui->comboBoxDim->clear();
-    ui->comboBoxDim->addItem(tr("-1 - 全部维度"), -1);
-    ui->comboBoxDim->addItem(tr("0 - 点边界"), 0);
-    ui->comboBoxDim->addItem(tr("1 - 线边界"), 1);
-    ui->comboBoxDim->addItem(tr("2 - 面边界"), 2);
+    ui->comboBoxDim->addItem(tr("全部边界分组"), -1);
+    ui->comboBoxDim->addItem(tr("点分组"), 0);
+    ui->comboBoxDim->addItem(tr("线分组"), 1);
+    ui->comboBoxDim->addItem(tr("面分组"), 2);
     ui->comboBoxDim->setCurrentIndex(0);
     ui->comboBoxDim->blockSignals(false);
 
@@ -224,8 +257,7 @@ void SeepageBoundaryPage::refreshGroupCombo()
         if (dimFilter >= 0 && dim != dimFilter)
             continue;
 
-        ui->comboBoxGroup->addItem(
-            QString("%1  (dim=%2, id=%3)").arg(it.value()).arg(dim).arg(physId), physId);
+        ui->comboBoxGroup->addItem(it.value(), physId);
     }
 
     ui->comboBoxGroup->blockSignals(false);
@@ -270,6 +302,7 @@ void SeepageBoundaryPage::onGroupChanged(int index)
     PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, pointIds,
                                                 false);
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Node);
+    updateSelectionSummary();
 }
 
 QJsonObject SeepageBoundaryPage::saveJson()
@@ -323,5 +356,6 @@ void SeepageBoundaryPage::loadJson(const QJsonObject& obj)
     PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, solidIds,
                                                 true);
     PickManager::instance().setSelectedPointIds(getPageType(), m_uuid, GridKind::Line, lineIds,
-                                                true);
+                                                 true);
+    updateSelectionSummary();
 }

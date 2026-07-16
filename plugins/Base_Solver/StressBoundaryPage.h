@@ -23,9 +23,13 @@ class StressBoundaryPage : public BasePage
     void beforeUnload() override;
 
     bool exportDatFile();
+    int selectionCount();
 
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
+
+  signals:
+    void selectionCountChanged(int count);
 
   private slots:
     void onClearClicked();
@@ -46,6 +50,7 @@ class StressBoundaryPage : public BasePage
     QVector<EdgeRow> selectedEdgeRows();
     void setupBatchGroupCombo();
     PickMode currentPickMode() const;
+    void updateSelectionSummary();
 
   private:
     Ui::StressBoundaryPage* ui = nullptr;

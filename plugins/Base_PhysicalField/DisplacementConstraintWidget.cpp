@@ -10,6 +10,7 @@
 
 #include <QDebug>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QPushButton>
 
 #include "ui_DisplacementConstraintWidget.h"
@@ -71,20 +72,35 @@ static QString boundaryDisplayText(MeshModuleControllerService* meshSvc, const M
         text = QStringLiteral("%1%2").arg(boundaryDimText(set.key.dim)).arg(set.key.id);
     return showDimPrefix ? QStringLiteral("%1：%2").arg(boundaryDimText(set.key.dim), text) : text;
 }
+
+static void initConstraintCombo(QComboBox* combo)
+{
+    combo->clear();
+    combo->addItem(QStringLiteral("固定"), QStringLiteral("0"));
+    combo->addItem(QStringLiteral("自由"), QStringLiteral("1"));
+    combo->addItem(QStringLiteral("悬空杆件节点（专用）"), QStringLiteral("-10000"));
+    combo->setCurrentIndex(0);
+}
+
+static void setConstraintValue(QComboBox* combo, const QString& value)
+{
+    const int index = combo->findData(value.trimmed());
+    combo->setCurrentIndex(index >= 0 ? index : 0);
+}
 }
 
 DisplacementConstraintWidget::DisplacementConstraintWidget(QWidget* parent)
     : BasePage("DisplacementConstraintWidget"), ui(new Ui::DisplacementConstraintWidget)
 {
     ui->setupUi(this);
-    ui->UXLineEdit->setText("1");
-    ui->UYLineEdit->setText("1");
-    ui->UZLineEdit->setText("1");
+    initConstraintCombo(ui->UXLineEdit);
+    initConstraintCombo(ui->UYLineEdit);
+    initConstraintCombo(ui->UZLineEdit);
 
     const int NDIM = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     const bool is2D = (NDIM == 2);
-    Q_UNUSED(NDIM);
-    Q_UNUSED(is2D);
+    ui->UZLineEdit->setEnabled(!is2D);
+    ui->UZLineEdit->setToolTip(is2D ? QStringLiteral("二维模型不使用 Z 方向") : QString());
 }
 
 DisplacementConstraintWidget::~DisplacementConstraintWidget()
@@ -209,17 +225,20 @@ void DisplacementConstraintWidget::onGroupChanged(int index)
 QJsonObject DisplacementConstraintWidget::saveJson()
 {
     QJsonObject obj;
-    obj["ux"] = ui->UXLineEdit->text();
-    obj["uy"] = ui->UYLineEdit->text();
-    obj["uz"] = ui->UZLineEdit->text();
+    obj["ux"] = ui->UXLineEdit->currentData().toString();
+    obj["uy"] = ui->UYLineEdit->currentData().toString();
+    obj["uz"] = ui->UZLineEdit->currentData().toString();
     return obj;
 }
 
 void DisplacementConstraintWidget::loadJson(const QJsonObject& obj)
 {
-    ui->UXLineEdit->setText(obj.value("ux").toString(ui->UXLineEdit->text()));
-    ui->UYLineEdit->setText(obj.value("uy").toString(ui->UYLineEdit->text()));
-    ui->UZLineEdit->setText(obj.value("uz").toString(ui->UZLineEdit->text()));
+    setConstraintValue(ui->UXLineEdit,
+                       obj.value("ux").toString(ui->UXLineEdit->currentData().toString()));
+    setConstraintValue(ui->UYLineEdit,
+                       obj.value("uy").toString(ui->UYLineEdit->currentData().toString()));
+    setConstraintValue(ui->UZLineEdit,
+                       obj.value("uz").toString(ui->UZLineEdit->currentData().toString()));
 }
 
 void DisplacementConstraintWidget::beforeUnload()
@@ -232,17 +251,17 @@ void DisplacementConstraintWidget::beforeUnload()
 
 int DisplacementConstraintWidget::uxFlag()
 {
-    return ui->UXLineEdit->text().toInt();
+    return ui->UXLineEdit->currentData().toInt();
 }
 
 int DisplacementConstraintWidget::uyFlag()
 {
-    return ui->UYLineEdit->text().toInt();
+    return ui->UYLineEdit->currentData().toInt();
 }
 
 int DisplacementConstraintWidget::uzFlag()
 {
-    return ui->UZLineEdit->text().toInt();
+    return ui->UZLineEdit->currentData().toInt();
 }
 
 void DisplacementConstraintWidget::onNodePicked(const QString& domain, const QString& activeUuid,

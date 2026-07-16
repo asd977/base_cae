@@ -1377,6 +1377,7 @@ void PickManager::toggleSelectNode(GridKind kind, vtkIdType pid)
         }
     }
 
+    emit selectionChanged(dom, uid, PickMode::Node, kind);
     markDirty(DirtyNode);
 }
 
@@ -1845,6 +1846,7 @@ void PickManager::toggleSelectEdge(GridKind kind, vtkIdType edgeKey)
         mySet.insert(edgeKey);
     }
 
+    emit selectionChanged(dom, uid, PickMode::Edge, kind);
     markDirty(DirtyEdge);
 }
 
@@ -2604,6 +2606,8 @@ void PickManager::clearSelection(const QString& domain, const QString& uuid, Pic
 
     clearOneKind(GridKind::Solid);
     clearOneKind(GridKind::Line);
+    emit selectionChanged(domain, uuid, mode, GridKind::Solid);
+    emit selectionChanged(domain, uuid, mode, GridKind::Line);
 
     if (domain == m_currentDomain && uuid == m_currentUUid && mode == m_pickMode)
     {
@@ -2643,6 +2647,8 @@ void PickManager::setSelectedPointIds(const QString& domain, const QString& uuid
         owners[pid] = uuid;
         mySet.insert(pid);
     }
+
+    emit selectionChanged(domain, uuid, PickMode::Node, kind);
 
     if (domain == m_currentDomain && uuid == m_currentUUid && m_pickMode == PickMode::Node)
         markDirty(DirtyNode);
@@ -2690,6 +2696,8 @@ void PickManager::setSelectedEdgeKeys(const QString& domain, const QString& uuid
         owners[edgeKey] = uuid;
         mySet.insert(edgeKey);
     }
+
+    emit selectionChanged(domain, uuid, PickMode::Edge, kind);
 
     if (domain == m_currentDomain && uuid == m_currentUUid && m_pickMode == PickMode::Edge)
         markDirty(DirtyEdge);

@@ -4,12 +4,12 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
+#include <QRegularExpression>
 #include <QSet>
 #include <QTextStream>
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 
 namespace
 {
@@ -23,6 +23,7 @@ struct Element
 {
     int id = 0;
     QVector<int> nodes;
+    int type = 0;
     int material = 1;
 };
 
@@ -32,9 +33,22 @@ struct Mesh
     int nodeCount = 0;
     int elementCount = 0;
     int nodesPerElement = 0;
+    int materialColumns = 0;
     QVector<Node> nodes;
     QVector<Element> elements;
-    QHash<int, int> nodeIdToOutputIndex;
+    QHash<int, int> nodeIdToIndex;
+};
+
+struct ZoneGroup
+{
+    QString name;
+    QSet<int> materials;
+};
+
+struct FieldSource
+{
+    QString path;
+    QString suffix;
 };
 
 QVector<QString> splitFields(const QString& line)
@@ -58,129 +72,10 @@ bool readNextNonEmptyLine(QTextStream& in, QString& line)
     return false;
 }
 
-bool parseMesh(const QString& filePath, Mesh& mesh, QString* error)
-{
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-    {
-        if (error)
-            *error = QStringLiteral("无法打开网格文件：%1").arg(filePath);
-        return false;
-    }
-
-    QTextStream in(&file);
-    QString line;
-    if (!readNextNonEmptyLine(in, line))
-    {
-        if (error)
-            *error = QStringLiteral("网格文件为空：%1").arg(filePath);
-        return false;
-    }
-
-    QVector<QString> header = splitFields(line);
-    if (header.size() < 5)
-    {
-        if (error)
-            *error = QStringLiteral("IIIN.DAT 首行格式不完整：%1").arg(filePath);
-        return false;
-    }
-
-    bool ok = false;
-    mesh.nodeCount = header.at(0).toInt(&ok);
-    if (!ok || mesh.nodeCount <= 0)
-    {
-        if (error)
-            *error = QStringLiteral("IIIN.DAT 节点数无效：%1").arg(filePath);
-        return false;
-    }
-    mesh.dimension = header.at(1).toInt(&ok);
-    mesh.elementCount = header.at(2).toInt(&ok);
-    mesh.nodesPerElement = header.at(3).toInt(&ok);
-
-    if (mesh.dimension != 2 && mesh.dimension != 3)
-    {
-        if (error)
-            *error = QStringLiteral("暂不支持的网格维度：%1").arg(mesh.dimension);
-        return false;
-    }
-
-    if (!readNextNonEmptyLine(in, line))
-    {
-        if (error)
-            *error = QStringLiteral("IIIN.DAT 缺少第二行：%1").arg(filePath);
-        return false;
-    }
-
-    mesh.nodes.clear();
-    mesh.nodes.reserve(mesh.nodeCount);
-    for (int i = 0; i < mesh.nodeCount; ++i)
-    {
-        if (!readNextNonEmptyLine(in, line))
-        {
-            if (error)
-                *error = QStringLiteral("IIIN.DAT 节点数据不足：%1").arg(filePath);
-            return false;
-        }
-
-        QVector<QString> fields = splitFields(line);
-        if (fields.size() < mesh.dimension + 1)
-        {
-            if (error)
-                *error = QStringLiteral("IIIN.DAT 节点行格式错误：%1").arg(line);
-            return false;
-        }
-
-        Node node;
-        node.xyz.resize(3);
-        node.xyz[0] = fields.at(0).toDouble();
-        node.xyz[1] = fields.at(1).toDouble();
-        node.xyz[2] = mesh.dimension == 3 ? fields.at(2).toDouble() : 0.0;
-        node.id = fields.at(mesh.dimension).toInt();
-        if (node.id <= 0)
-            node.id = i + 1;
-        mesh.nodeIdToOutputIndex.insert(node.id, mesh.nodes.size() + 1);
-        mesh.nodes.push_back(node);
-    }
-
-    mesh.elements.clear();
-    mesh.elements.reserve(std::max(0, mesh.elementCount));
-    for (int i = 0; i < mesh.elementCount; ++i)
-    {
-        if (!readNextNonEmptyLine(in, line))
-            break;
-
-        QVector<QString> fields = splitFields(line);
-        if (fields.size() < 2)
-            continue;
-
-        Element elem;
-        elem.id = fields.at(0).toInt();
-
-        const int availableNodeFields = fields.size() - 1;
-        const int nodeFields = std::min(mesh.nodesPerElement, availableNodeFields);
-        for (int j = 0; j < nodeFields; ++j)
-            elem.nodes.push_back(fields.at(j + 1).toInt());
-
-        const int materialIndex = 1 + mesh.nodesPerElement;
-        if (fields.size() > materialIndex)
-        {
-            bool matOk = false;
-            const int material = fields.at(materialIndex).toInt(&matOk);
-            if (matOk && material != 0)
-                elem.material = material;
-        }
-
-        if (!elem.nodes.isEmpty())
-            mesh.elements.push_back(elem);
-    }
-
-    return !mesh.nodes.isEmpty() && !mesh.elements.isEmpty();
-}
-
 QString existingFile(const QDir& dir, const QString& name)
 {
     const QFileInfo exact(dir.filePath(name));
-    if (exact.exists())
+    if (exact.exists() && exact.isFile())
         return exact.absoluteFilePath();
 
     const QFileInfoList entries = dir.entryInfoList(QDir::Files);
@@ -192,37 +87,366 @@ QString existingFile(const QDir& dir, const QString& name)
     return QString();
 }
 
+QString findInResultOrPrep(const QDir& resultDir, const QString& projectDir, const QString& name)
+{
+    QString path = existingFile(resultDir, name);
+    if (!path.isEmpty())
+        return path;
+
+    if (!projectDir.trimmed().isEmpty())
+        path = existingFile(QDir(QDir(projectDir).filePath(QStringLiteral("PREP"))), name);
+    return path;
+}
+
+bool parseMesh(const QString& filePath, Mesh& mesh, QString* error)
+{
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        if (error)
+            *error = QStringLiteral("无法打开计算网格：%1").arg(filePath);
+        return false;
+    }
+
+    QTextStream in(&file);
+    QString line;
+    if (!readNextNonEmptyLine(in, line))
+    {
+        if (error)
+            *error = QStringLiteral("计算网格为空：%1").arg(filePath);
+        return false;
+    }
+
+    const QVector<QString> header = splitFields(line);
+    if (header.size() < 5)
+    {
+        if (error)
+            *error = QStringLiteral("计算网格首行格式不完整：%1").arg(filePath);
+        return false;
+    }
+
+    bool ok = false;
+    mesh.nodeCount = header.at(0).toInt(&ok);
+    mesh.dimension = header.at(1).toInt();
+    mesh.elementCount = header.at(2).toInt();
+    mesh.nodesPerElement = header.at(3).toInt();
+    mesh.materialColumns = header.at(4).toInt();
+    if (!ok || mesh.nodeCount <= 0 || mesh.elementCount <= 0 ||
+        (mesh.dimension != 2 && mesh.dimension != 3) || mesh.nodesPerElement <= 0 ||
+        mesh.materialColumns < 2)
+    {
+        if (error)
+            *error = QStringLiteral("计算网格基本参数无效：%1").arg(filePath);
+        return false;
+    }
+
+    if (!readNextNonEmptyLine(in, line))
+    {
+        if (error)
+            *error = QStringLiteral("计算网格缺少控制行：%1").arg(filePath);
+        return false;
+    }
+
+    mesh.nodes.clear();
+    mesh.nodes.reserve(mesh.nodeCount);
+    mesh.nodeIdToIndex.clear();
+    for (int i = 0; i < mesh.nodeCount; ++i)
+    {
+        if (!readNextNonEmptyLine(in, line))
+        {
+            if (error)
+                *error = QStringLiteral("计算网格节点数据不足：%1").arg(filePath);
+            return false;
+        }
+
+        const QVector<QString> fields = splitFields(line);
+        if (fields.size() < mesh.dimension + 1)
+        {
+            if (error)
+                *error = QStringLiteral("计算网格节点行格式错误：%1").arg(line);
+            return false;
+        }
+
+        Node node;
+        node.xyz = {fields.at(0).toDouble(), fields.at(1).toDouble(),
+                    mesh.dimension == 3 ? fields.at(2).toDouble() : 0.0};
+        node.id = fields.at(mesh.dimension).toInt();
+        if (node.id <= 0)
+            node.id = i + 1;
+        mesh.nodeIdToIndex.insert(node.id, mesh.nodes.size());
+        mesh.nodes.push_back(node);
+    }
+
+    mesh.elements.clear();
+    mesh.elements.reserve(mesh.elementCount);
+    for (int i = 0; i < mesh.elementCount; ++i)
+    {
+        if (!readNextNonEmptyLine(in, line))
+            break;
+
+        const QVector<QString> fields = splitFields(line);
+        const int typeIndex = 1 + mesh.nodesPerElement;
+        const int materialIndex = typeIndex + 1;
+        if (fields.size() <= materialIndex)
+            continue;
+
+        Element element;
+        element.id = fields.at(0).toInt();
+        element.nodes.reserve(mesh.nodesPerElement);
+        for (int j = 0; j < mesh.nodesPerElement; ++j)
+            element.nodes.push_back(fields.at(j + 1).toInt());
+        element.type = fields.at(typeIndex).toInt();
+        element.material = fields.at(materialIndex).toInt();
+        if (element.type > 0 && element.material > 0)
+            mesh.elements.push_back(element);
+    }
+
+    if (mesh.elements.size() != mesh.elementCount && error)
+        *error = QStringLiteral("计算网格单元数据不足：应有 %1，实际读取 %2")
+                     .arg(mesh.elementCount)
+                     .arg(mesh.elements.size());
+    return !mesh.nodes.isEmpty() && mesh.elements.size() == mesh.elementCount;
+}
+
+int nodeAt(const Element& element, int oneBasedPosition)
+{
+    const int index = oneBasedPosition - 1;
+    return index >= 0 && index < element.nodes.size() ? element.nodes.at(index) : 0;
+}
+
+Element makeExpandedElement(const Element& source, int type,
+                            std::initializer_list<int> positions)
+{
+    Element element;
+    element.id = source.id;
+    element.type = type;
+    element.material = source.material;
+    element.nodes.reserve(static_cast<int>(positions.size()));
+    for (int position : positions)
+        element.nodes.push_back(nodeAt(source, position));
+    return element;
+}
+
+void appendExpanded(const Element& source, QVector<Element>& out)
+{
+    auto add = [&](int type, std::initializer_list<int> positions)
+    {
+        out.push_back(makeExpandedElement(source, type, positions));
+    };
+
+    switch (source.type)
+    {
+    case 1: add(1, {1, 2}); break;
+    case 2: add(1, {1, 2}); add(1, {2, 3}); break;
+    case 3: case 38: add(3, {1, 2, 3, 4}); break;
+    case 4: add(3, {1, 2, 5, 6}); add(3, {2, 3, 4, 5}); break;
+    case 5:
+        add(31, {1, 2, 8}); add(31, {2, 4, 8}); add(31, {2, 3, 4});
+        add(31, {8, 6, 7}); add(31, {8, 4, 6}); add(31, {4, 5, 6});
+        break;
+    case 6: add(6, {1, 2, 3, 4, 5, 6, 7, 8}); break;
+    case 7: case 8: case 9: case 17:
+        out.push_back(source);
+        break;
+    case 10: case 21: add(1, {1, 2}); break;
+    case 11: add(3, {1, 2, 3, 4}); break;
+    case 12:
+        add(31, {1, 2, 5}); add(31, {2, 3, 5});
+        add(31, {3, 4, 5}); add(31, {4, 1, 5});
+        break;
+    case 13: add(6, {1, 2, 3, 4, 5, 6, 7, 8}); break;
+    case 14:
+        add(1, {1, 2}); add(1, {2, 3}); add(1, {3, 4});
+        break;
+    case 15:
+        add(1, {1, 2}); add(1, {2, 3}); add(1, {3, 4}); add(1, {4, 5});
+        break;
+    case 29:
+        add(31, {1, 9, 8}); add(31, {1, 2, 9}); add(31, {2, 3, 9});
+        add(31, {3, 4, 9}); add(31, {8, 9, 7}); add(31, {9, 6, 7});
+        add(31, {9, 4, 5}); add(31, {9, 5, 6});
+        break;
+    case 31: add(31, {1, 2, 3}); break;
+    case 32:
+        add(31, {1, 2, 6}); add(31, {2, 4, 6});
+        add(31, {2, 3, 4}); add(31, {6, 4, 5});
+        break;
+    case 33:
+        add(31, {1, 10, 9}); add(31, {1, 2, 10}); add(31, {2, 5, 10});
+        add(31, {2, 3, 5}); add(31, {3, 4, 5}); add(31, {9, 6, 8});
+        add(31, {9, 10, 6}); add(31, {10, 5, 6}); add(31, {8, 6, 7});
+        break;
+    case 34:
+        add(31, {1, 13, 12}); add(31, {1, 2, 13}); add(31, {2, 14, 13});
+        add(31, {2, 3, 14}); add(31, {3, 6, 14}); add(31, {3, 4, 6});
+        add(31, {4, 5, 6}); add(31, {12, 15, 11}); add(31, {12, 13, 15});
+        add(31, {13, 7, 15}); add(31, {13, 14, 7}); add(31, {14, 6, 7});
+        add(31, {11, 8, 10}); add(31, {11, 15, 8}); add(31, {15, 7, 8});
+        add(31, {10, 8, 9});
+        break;
+    case 35: add(35, {1, 2, 3, 4}); break;
+    case 36: add(6, {1, 2, 3, 4, 10, 11, 12, 13}); break;
+    case 37: add(6, {1, 3, 5, 7, 13, 15, 17, 19}); break;
+    default: break;
+    }
+}
+
+QVector<Element> expandElements(const Mesh& mesh)
+{
+    QVector<Element> expanded;
+    expanded.reserve(mesh.elements.size());
+    for (const Element& element : mesh.elements)
+    {
+        if (element.material != 1)
+            appendExpanded(element, expanded);
+    }
+    return expanded;
+}
+
+int topologyNodeCount(int type)
+{
+    switch (type)
+    {
+    case 1: return 2;
+    case 31: return 3;
+    case 3: case 35: case 38: return 4;
+    case 6: return 8;
+    default: return 0;
+    }
+}
+
+QString topologyName(int type)
+{
+    switch (type)
+    {
+    case 1: return QStringLiteral("LINESEG");
+    case 31: return QStringLiteral("TRIANGLE");
+    case 3: case 38: return QStringLiteral("QUADRILATERAL");
+    case 35: return QStringLiteral("TETRAHEDRON");
+    case 6: return QStringLiteral("BRICK");
+    default: return QString();
+    }
+}
+
+QSet<int> readMaterialSet(const QString& path)
+{
+    QSet<int> materials;
+    if (path.isEmpty())
+        return materials;
+
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return materials;
+
+    QTextStream in(&file);
+    QString line;
+    int count = 0;
+    if (readNextNonEmptyLine(in, line))
+        count = splitFields(line).value(0).toInt();
+    for (int i = 0; i < count && readNextNonEmptyLine(in, line); ++i)
+    {
+        bool ok = false;
+        const int material = splitFields(line).value(0).toInt(&ok);
+        if (ok)
+            materials.insert(material);
+    }
+    return materials;
+}
+
+QVector<ZoneGroup> loadZoneGroups(const QDir& resultDir, const QString& projectDir,
+                                  const QVector<Element>& expanded)
+{
+    QVector<ZoneGroup> groups;
+    const QString indexPath = findInResultOrPrep(resultDir, projectDir,
+                                                  QStringLiteral("MAFILESET.DAT"));
+    if (!indexPath.isEmpty())
+    {
+        QFile file(indexPath);
+        if (file.open(QIODevice::ReadOnly | QIODevice::Text))
+        {
+            QTextStream in(&file);
+            QString line;
+            int count = 0;
+            if (readNextNonEmptyLine(in, line))
+                count = splitFields(line).value(0).toInt();
+            const QDir indexDir = QFileInfo(indexPath).dir();
+            for (int i = 0; i < count && readNextNonEmptyLine(in, line); ++i)
+            {
+                const QVector<QString> fields = splitFields(line);
+                if (fields.isEmpty())
+                    continue;
+
+                ZoneGroup group;
+                group.name = fields.at(0);
+                QString groupFileName = group.name;
+                if (QFileInfo(groupFileName).suffix().isEmpty())
+                    groupFileName += QStringLiteral(".DAT");
+                QString groupPath = existingFile(indexDir, groupFileName);
+                if (groupPath.isEmpty())
+                    groupPath = findInResultOrPrep(resultDir, projectDir, groupFileName);
+                group.materials = readMaterialSet(groupPath);
+
+                if (group.materials.isEmpty() && fields.size() >= 3)
+                {
+                    bool materialOk = false;
+                    const int material = fields.at(2).toInt(&materialOk);
+                    if (materialOk)
+                        group.materials.insert(material);
+                }
+                if (!group.materials.isEmpty())
+                    groups.push_back(group);
+            }
+        }
+    }
+
+    if (!groups.isEmpty())
+        return groups;
+
+    QList<int> materials;
+    QSet<int> seen;
+    for (const Element& element : expanded)
+    {
+        if (!seen.contains(element.material))
+        {
+            seen.insert(element.material);
+            materials.push_back(element.material);
+        }
+    }
+    std::sort(materials.begin(), materials.end());
+    for (int material : materials)
+    {
+        ZoneGroup group;
+        group.name = QStringLiteral("材料 %1").arg(material);
+        group.materials.insert(material);
+        groups.push_back(group);
+    }
+    return groups;
+}
+
 QVector<QVector<double>> readNodeValues(const QString& filePath, const Mesh& mesh, int minColumns,
                                         QString* warning)
 {
     QVector<QVector<double>> values(mesh.nodes.size());
-
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
     {
         if (warning)
-            *warning = QStringLiteral("无法打开结果文件：%1").arg(filePath);
+            *warning = QStringLiteral("无法打开节点结果：%1").arg(filePath);
         return values;
     }
 
+    int rowsRead = 0;
     QTextStream in(&file);
     while (!in.atEnd())
     {
-        const QString line = in.readLine().trimmed();
-        if (line.isEmpty())
-            continue;
-
-        QVector<QString> fields = splitFields(line);
+        const QVector<QString> fields = splitFields(in.readLine());
         if (fields.size() < minColumns + 1)
             continue;
 
         bool idOk = false;
         const int nodeId = fields.at(0).toInt(&idOk);
-        if (!idOk)
-            continue;
-
-        const int outIndex = mesh.nodeIdToOutputIndex.value(nodeId, 0);
-        if (outIndex <= 0 || outIndex > values.size())
+        const int nodeIndex = mesh.nodeIdToIndex.value(nodeId, -1);
+        if (!idOk || nodeIndex < 0)
             continue;
 
         QVector<double> row;
@@ -239,26 +463,20 @@ QVector<QVector<double>> readNodeValues(const QString& filePath, const Mesh& mes
             }
             row.push_back(value);
         }
-
         if (rowOk && row.size() >= minColumns)
-            values[outIndex - 1] = row;
+        {
+            if (values[nodeIndex].isEmpty())
+                ++rowsRead;
+            values[nodeIndex] = row;
+        }
     }
 
+    if (warning && rowsRead != mesh.nodes.size())
+        *warning = QStringLiteral("节点结果数量与网格不一致：%1，读取 %2/%3")
+                       .arg(filePath)
+                       .arg(rowsRead)
+                       .arg(mesh.nodes.size());
     return values;
-}
-
-QString elementType(const Mesh& mesh)
-{
-    if (mesh.dimension == 3)
-        return mesh.nodesPerElement >= 8 ? QStringLiteral("BRICK") : QStringLiteral("TETRAHEDRON");
-    return mesh.nodesPerElement == 3 ? QStringLiteral("TRIANGLE") : QStringLiteral("QUADRILATERAL");
-}
-
-int tecplotNodeCount(const Mesh& mesh)
-{
-    if (mesh.dimension == 3)
-        return mesh.nodesPerElement >= 8 ? 8 : 4;
-    return mesh.nodesPerElement == 3 ? 3 : 4;
 }
 
 double safeValue(const QVector<double>& row, int index)
@@ -266,63 +484,252 @@ double safeValue(const QVector<double>& row, int index)
     return index >= 0 && index < row.size() ? row.at(index) : 0.0;
 }
 
-bool writeTecplot(const QString& filePath, const Mesh& mesh, const QString& title,
-                  const QStringList& variables, const QVector<QVector<double>>& values,
-                  QString* error)
+QVector<QVector<double>> buildHeadPressure(const QVector<QVector<double>>& raw)
+{
+    QVector<QVector<double>> values(raw.size());
+    for (int i = 0; i < raw.size(); ++i)
+        values[i] = {safeValue(raw.at(i), 0), safeValue(raw.at(i), 1) * 1.0e-6};
+    return values;
+}
+
+QVector<QVector<double>> buildVelocity(const QVector<QVector<double>>& raw,
+                                       const QVector<QVector<double>>& headPressure, int dimension)
+{
+    QVector<QVector<double>> values(raw.size());
+    for (int i = 0; i < raw.size(); ++i)
+    {
+        const bool dryNode = i < headPressure.size() && headPressure.at(i).size() >= 2 &&
+                             headPressure.at(i).at(1) < 0.0;
+        const double scale = dryNode ? 0.0 : 1000.0;
+        values[i] = {safeValue(raw.at(i), 0) * scale, safeValue(raw.at(i), 1) * scale};
+        if (dimension == 3)
+            values[i].push_back(safeValue(raw.at(i), 2) * scale);
+    }
+    return values;
+}
+
+QVector<QVector<double>> buildDisplacement(const QVector<QVector<double>>& raw, int dimension)
+{
+    QVector<QVector<double>> values(raw.size());
+    for (int i = 0; i < raw.size(); ++i)
+    {
+        const double ux = safeValue(raw.at(i), 0) * 100.0;
+        const double uy = safeValue(raw.at(i), 1) * 100.0;
+        const double uz = dimension == 3 ? safeValue(raw.at(i), 2) * 100.0 : 0.0;
+        values[i] = {ux, uy};
+        if (dimension == 3)
+            values[i].push_back(uz);
+        values[i].push_back(std::sqrt(ux * ux + uy * uy + uz * uz));
+    }
+    return values;
+}
+
+QVector<QVector<double>> buildPrincipalStress(const QVector<QVector<double>>& raw, int dimension)
+{
+    QVector<QVector<double>> values(raw.size());
+    for (int i = 0; i < raw.size(); ++i)
+    {
+        if (dimension == 2)
+        {
+            const double p1 = -safeValue(raw.at(i), 1) * 1.0e-6;
+            const double p2 = -safeValue(raw.at(i), 0) * 1.0e-6;
+            values[i] = {p1, p2, std::abs(p1 - p2) * 0.5};
+        }
+        else
+        {
+            const double p1 = -safeValue(raw.at(i), 2) * 1.0e-6;
+            const double p2 = -safeValue(raw.at(i), 1) * 1.0e-6;
+            const double p3 = -safeValue(raw.at(i), 0) * 1.0e-6;
+            values[i] = {p1, p2, p3, std::abs(p1 - p3) * 0.5};
+        }
+    }
+    return values;
+}
+
+QVector<QVector<double>> buildStressLevel(const QVector<QVector<double>>& raw)
+{
+    QVector<QVector<double>> values(raw.size());
+    for (int i = 0; i < raw.size(); ++i)
+        values[i] = {safeValue(raw.at(i), 3)};
+    return values;
+}
+
+QVector<FieldSource> fieldSources(const QDir& dir, const QString& prefix, bool seepage)
+{
+    QVector<FieldSource> sources;
+    const QFileInfoList files = dir.entryInfoList(QDir::Files, QDir::Name | QDir::IgnoreCase);
+    for (const QFileInfo& info : files)
+    {
+        const QString base = info.completeBaseName();
+        if (!base.startsWith(prefix, Qt::CaseInsensitive) ||
+            info.suffix().compare(QStringLiteral("TXT"), Qt::CaseInsensitive) != 0)
+            continue;
+
+        QString suffix = base.mid(prefix.size());
+        if (!suffix.isEmpty() && suffix.front() != QLatin1Char('_') &&
+            suffix.front() != QLatin1Char('-'))
+            continue;
+        while (suffix.startsWith(QLatin1Char('_')) || suffix.startsWith(QLatin1Char('-')))
+            suffix.remove(0, 1);
+
+        if (!seepage && !suffix.isEmpty() &&
+            !suffix.startsWith(QStringLiteral("CZ"), Qt::CaseInsensitive))
+            continue;
+        if (seepage && !suffix.isEmpty() &&
+            !suffix.startsWith(QStringLiteral("METHOD"), Qt::CaseInsensitive) &&
+            !suffix.startsWith(QStringLiteral("CZ"), Qt::CaseInsensitive))
+            continue;
+
+        sources.push_back({info.absoluteFilePath(), suffix});
+    }
+
+    std::sort(sources.begin(), sources.end(), [](const FieldSource& left, const FieldSource& right)
+    {
+        if (left.suffix.isEmpty() != right.suffix.isEmpty())
+            return left.suffix.isEmpty();
+        const bool leftMethod2 = left.suffix.compare(QStringLiteral("METHOD2"), Qt::CaseInsensitive) == 0;
+        const bool rightMethod2 = right.suffix.compare(QStringLiteral("METHOD2"), Qt::CaseInsensitive) == 0;
+        if (leftMethod2 != rightMethod2)
+            return leftMethod2;
+        return left.suffix.compare(right.suffix, Qt::CaseInsensitive) < 0;
+    });
+    return sources;
+}
+
+QString outputSuffix(const QString& suffix)
+{
+    QString normalized = suffix.toLower();
+    normalized.replace(QRegularExpression(QStringLiteral("[^a-z0-9]+")), QStringLiteral("_"));
+    normalized = normalized.trimmed();
+    while (normalized.startsWith(QLatin1Char('_')))
+        normalized.remove(0, 1);
+    while (normalized.endsWith(QLatin1Char('_')))
+        normalized.chop(1);
+    return normalized.isEmpty() ? QString() : QStringLiteral("_") + normalized;
+}
+
+bool isJointType(int type)
+{
+    return type == 7 || type == 8 || type == 9 || type == 17;
+}
+
+bool writeTecplot(const QString& filePath, const Mesh& mesh, const QVector<Element>& expanded,
+                  const QVector<ZoneGroup>& groups, const QSet<int>& maskedMaterials,
+                  const QString& title, const QStringList& variables,
+                  const QVector<QVector<double>>& values, QString* error)
 {
     QFile file(filePath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
     {
         if (error)
-            *error = QStringLiteral("无法写入 Tecplot 文件：%1").arg(filePath);
+            *error = QStringLiteral("无法写入后处理缓存：%1").arg(filePath);
         return false;
     }
 
     QTextStream out(&file);
     out.setRealNumberNotation(QTextStream::ScientificNotation);
     out.setRealNumberPrecision(8);
-
     out << "TITLE=\"" << title << "\"\n";
     out << "VARIABLES=";
-    QStringList coordVars = mesh.dimension == 3 ? QStringList{"X", "Y", "Z"} : QStringList{"X", "Y"};
-    QStringList allVars = coordVars + variables;
-    for (int i = 0; i < allVars.size(); ++i)
+    const QStringList coordinates = mesh.dimension == 3 ? QStringList{"X", "Y", "Z"}
+                                                         : QStringList{"X", "Y"};
+    const QStringList allVariables = coordinates + variables;
+    for (int i = 0; i < allVariables.size(); ++i)
     {
         if (i > 0)
             out << ", ";
-        out << "\"" << allVars.at(i) << "\"";
+        out << "\"" << allVariables.at(i) << "\"";
     }
     out << "\n";
-    out << QString("ZONE N=%1,E=%2 ,F=FEPOINT,ET=%3\n")
-               .arg(mesh.nodes.size(), 8)
-               .arg(mesh.elements.size(), 8)
-               .arg(elementType(mesh));
 
-    for (int i = 0; i < mesh.nodes.size(); ++i)
+    int writtenZones = 0;
+    const QList<int> topologyOrder = {3, 31, 6, 35, 1, 38};
+    for (const ZoneGroup& group : groups)
     {
-        const Node& node = mesh.nodes.at(i);
-        out << QString("%1 %2").arg(node.xyz.at(0), 16, 'E', 8).arg(node.xyz.at(1), 16, 'E', 8);
-        if (mesh.dimension == 3)
-            out << QString(" %1").arg(node.xyz.at(2), 16, 'E', 8);
-
-        const QVector<double> row = i < values.size() ? values.at(i) : QVector<double>();
-        for (int j = 0; j < variables.size(); ++j)
-            out << QString(" %1").arg(safeValue(row, j), 16, 'E', 8);
-        out << "\n";
-    }
-
-    const int count = tecplotNodeCount(mesh);
-    for (const Element& elem : mesh.elements)
-    {
-        for (int i = 0; i < count; ++i)
+        for (int topology : topologyOrder)
         {
-            int nodeId = i < elem.nodes.size() ? elem.nodes.at(i) : elem.nodes.value(0, 1);
-            const int mapped = mesh.nodeIdToOutputIndex.value(nodeId, nodeId);
-            out << QString("%1").arg(mapped, 8);
+            QVector<const Element*> selected;
+            for (const Element& element : expanded)
+            {
+                if (element.type == topology && group.materials.contains(element.material) &&
+                    !maskedMaterials.contains(element.material) && !isJointType(element.type))
+                    selected.push_back(&element);
+            }
+            if (selected.isEmpty())
+                continue;
+
+            const int nodeCount = topologyNodeCount(topology);
+            const QString tecplotType = topologyName(topology);
+            if (nodeCount <= 0 || tecplotType.isEmpty())
+                continue;
+
+            QSet<int> usedNodeIds;
+            for (const Element* element : selected)
+            {
+                for (int i = 0; i < nodeCount; ++i)
+                {
+                    const int nodeId = element->nodes.value(i);
+                    if (mesh.nodeIdToIndex.contains(nodeId))
+                        usedNodeIds.insert(nodeId);
+                }
+            }
+
+            QVector<int> orderedNodeIds;
+            orderedNodeIds.reserve(usedNodeIds.size());
+            QHash<int, int> localNodeIds;
+            for (const Node& node : mesh.nodes)
+            {
+                if (usedNodeIds.contains(node.id))
+                {
+                    localNodeIds.insert(node.id, orderedNodeIds.size() + 1);
+                    orderedNodeIds.push_back(node.id);
+                }
+            }
+            if (orderedNodeIds.isEmpty())
+                continue;
+
+            out << QString("ZONE N=%1,E=%2 ,F=FEPOINT,ET=%3\n")
+                       .arg(orderedNodeIds.size(), 8)
+                       .arg(selected.size(), 8)
+                       .arg(tecplotType);
+            for (int nodeId : orderedNodeIds)
+            {
+                const int globalIndex = mesh.nodeIdToIndex.value(nodeId, -1);
+                const Node& node = mesh.nodes.at(globalIndex);
+                out << QString("%1 %2")
+                           .arg(node.xyz.at(0), 16, 'E', 8)
+                           .arg(node.xyz.at(1), 16, 'E', 8);
+                if (mesh.dimension == 3)
+                    out << QString(" %1").arg(node.xyz.at(2), 16, 'E', 8);
+                const QVector<double>& row = values.value(globalIndex);
+                for (int i = 0; i < variables.size(); ++i)
+                    out << QString(" %1").arg(safeValue(row, i), 16, 'E', 8);
+                out << "\n";
+            }
+
+            for (const Element* element : selected)
+            {
+                for (int i = 0; i < nodeCount; ++i)
+                {
+                    int localId = localNodeIds.value(element->nodes.value(i));
+                    if (localId <= 0)
+                        localId = 1;
+                    out << QString("%1").arg(localId, 8);
+                }
+                out << "\n";
+            }
+            ++writtenZones;
         }
-        out << "\n";
     }
 
+    if (writtenZones == 0)
+    {
+        file.close();
+        file.remove();
+        if (error)
+            *error = QStringLiteral("没有可显示的有效材料分区：%1").arg(filePath);
+        return false;
+    }
     return true;
 }
 
@@ -331,175 +738,48 @@ void addGenerated(PostResultGenerator::Result& result, const QString& path)
     result.generatedFiles << QDir::toNativeSeparators(QFileInfo(path).absoluteFilePath());
 }
 
-bool generateZones(const QDir& resultDir, const Mesh& mesh, PostResultGenerator::Result& result)
+bool generateField(const QDir& outputDir, const Mesh& mesh, const QVector<Element>& expanded,
+                   const QVector<ZoneGroup>& groups, const QSet<int>& masks,
+                   const QString& outputName, const QString& title,
+                   const QStringList& variables, const QVector<QVector<double>>& values,
+                   PostResultGenerator::Result& result)
 {
-    QSet<int> materialSet;
-    for (const Element& elem : mesh.elements)
-        materialSet.insert(elem.material);
-
-    QList<int> materials = materialSet.values();
-    std::sort(materials.begin(), materials.end());
-    if (materials.isEmpty())
-        materials << 1;
-
-    const QString fileSetPath = resultDir.filePath(QStringLiteral("MAFILESET.DAT"));
-    QFile fileSet(fileSetPath);
-    if (!fileSet.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
-    {
-        result.warnings << QStringLiteral("无法写入材料分区索引：%1").arg(fileSetPath);
-        return false;
-    }
-
-    QTextStream out(&fileSet);
-    out << QString("%1  NFILE\n").arg(materials.size(), 12);
-    for (int i = 0; i < materials.size(); ++i)
-    {
-        const QString zoneName = QStringLiteral("ZONE%1").arg(i + 1);
-        out << QString("%1 %2 %3 CAFILE   I   MATYPE\n")
-                   .arg(zoneName, -10)
-                   .arg(i + 1, 6)
-                   .arg(materials.at(i), 6);
-
-        const QString zonePath = resultDir.filePath(zoneName + QStringLiteral(".DAT"));
-        QFile zoneFile(zonePath);
-        if (!zoneFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
-        {
-            result.warnings << QStringLiteral("无法写入材料分区文件：%1").arg(zonePath);
-            continue;
-        }
-        QTextStream zoneOut(&zoneFile);
-        zoneOut << QString("%1   NUM\n").arg(1, 12);
-        zoneOut << QString("%1 %2\n").arg(materials.at(i), 6).arg(i + 1, 6);
-        addGenerated(result, zonePath);
-    }
-
-    addGenerated(result, fileSetPath);
-    return true;
-}
-
-QVector<QVector<double>> buildHeadPressure(const QVector<QVector<double>>& raw)
-{
-    QVector<QVector<double>> out(raw.size());
-    for (int i = 0; i < raw.size(); ++i)
-    {
-        const QVector<double>& row = raw.at(i);
-        out[i] = {safeValue(row, 0), safeValue(row, 1) / 1.0e6};
-    }
-    return out;
-}
-
-QVector<QVector<double>> buildVelocity(const QVector<QVector<double>>& raw, int dimension)
-{
-    QVector<QVector<double>> out(raw.size());
-    const int n = dimension == 3 ? 4 : 3;
-    for (int i = 0; i < raw.size(); ++i)
-    {
-        const double vx = safeValue(raw.at(i), 0);
-        const double vy = safeValue(raw.at(i), 1);
-        const double vz = dimension == 3 ? safeValue(raw.at(i), 2) : 0.0;
-        out[i].reserve(n);
-        out[i] << vx << vy;
-        if (dimension == 3)
-            out[i] << vz;
-        out[i] << std::sqrt(vx * vx + vy * vy + vz * vz);
-    }
-    return out;
-}
-
-QVector<QVector<double>> buildDisplacement(const QVector<QVector<double>>& raw, int dimension)
-{
-    QVector<QVector<double>> out(raw.size());
-    for (int i = 0; i < raw.size(); ++i)
-    {
-        const double ux = safeValue(raw.at(i), 0) * 100.0;
-        const double uy = safeValue(raw.at(i), 1) * 100.0;
-        const double uz = dimension == 3 ? safeValue(raw.at(i), 2) * 100.0 : 0.0;
-        out[i] << ux << uy;
-        if (dimension == 3)
-            out[i] << uz;
-        out[i] << std::sqrt(ux * ux + uy * uy + uz * uz);
-    }
-    return out;
-}
-
-QVector<QVector<double>> buildPrincipalStress(const QVector<QVector<double>>& raw)
-{
-    QVector<QVector<double>> out(raw.size());
-    for (int i = 0; i < raw.size(); ++i)
-    {
-        const double s1 = safeValue(raw.at(i), 0) / 1.0e6;
-        const double s2 = safeValue(raw.at(i), 1) / 1.0e6;
-        const double s3 = safeValue(raw.at(i), 2) / 1.0e6;
-        const double smax = std::max(s1, std::max(s2, s3));
-        const double smin = std::min(s1, std::min(s2, s3));
-        const double tmax = (smax - smin) * 0.5;
-        const double seq = std::sqrt(((s1 - s2) * (s1 - s2) + (s2 - s3) * (s2 - s3) +
-                                      (s3 - s1) * (s3 - s1)) *
-                                     0.5);
-        out[i] = {s1, s2, s3, tmax, seq};
-    }
-    return out;
-}
-
-QStringList cmmVariables(int count)
-{
-    static const QStringList known = {
-        QStringLiteral("EG_UE"), QStringLiteral("EG_UT"), QStringLiteral("EG_WP"),
-        QStringLiteral("SL"),    QStringLiteral("FUN"),   QStringLiteral("ARUPT"),
-        QStringLiteral("Kcb"),   QStringLiteral("k")};
-
-    QStringList vars;
-    for (int i = 0; i < count; ++i)
-        vars << (i < known.size() ? known.at(i) : QStringLiteral("CMM%1").arg(i + 1));
-    return vars;
-}
-
-QVector<QVector<double>> limitColumns(const QVector<QVector<double>>& raw, int count)
-{
-    QVector<QVector<double>> out(raw.size());
-    for (int i = 0; i < raw.size(); ++i)
-    {
-        out[i].reserve(count);
-        for (int j = 0; j < count; ++j)
-            out[i] << safeValue(raw.at(i), j);
-    }
-    return out;
-}
-
-bool generateFromNodeFile(const QDir& outputDir, const Mesh& mesh, const QString& sourceName,
-                          const QString& outputName, const QString& title,
-                          const QStringList& variables, const QVector<QVector<double>>& values,
-                          PostResultGenerator::Result& result)
-{
-    Q_UNUSED(sourceName);
     QString error;
-    const QString outPath = outputDir.filePath(outputName);
-    if (!writeTecplot(outPath, mesh, title, variables, values, &error))
+    const QString outputPath = outputDir.filePath(outputName);
+    if (!writeTecplot(outputPath, mesh, expanded, groups, masks, title, variables, values, &error))
     {
         result.warnings << error;
         return false;
     }
-    addGenerated(result, outPath);
+    addGenerated(result, outputPath);
     return true;
 }
 
+QString outputName(bool external, const QString& legacyName, const QString& internalBase,
+                   const QString& suffix)
+{
+    if (!external && suffix.isEmpty())
+        return legacyName;
+    return internalBase + outputSuffix(suffix) + QStringLiteral(".tec");
+}
 } // namespace
 
 PostResultGenerator::Result PostResultGenerator::generate(const Options& options)
 {
     Result result;
-
-    QDir resultDir(QDir::fromNativeSeparators(options.resultDir.trimmed()));
+    const QDir resultDir(QDir::fromNativeSeparators(options.resultDir.trimmed()));
     if (!resultDir.exists())
     {
-        result.error = QStringLiteral("成果目录不存在：%1").arg(options.resultDir);
+        result.error = QStringLiteral("计算结果不存在：%1").arg(options.resultDir);
         return result;
     }
 
-    const QString meshPath = existingFile(resultDir, QStringLiteral("IIIN.DAT"));
+    QString meshPath = existingFile(resultDir, QStringLiteral("IIIN.TXT"));
+    if (meshPath.isEmpty())
+        meshPath = existingFile(resultDir, QStringLiteral("IIIN.DAT"));
     if (meshPath.isEmpty())
     {
-        result.error = QStringLiteral("成果目录中缺少 IIIN.DAT：%1").arg(resultDir.absolutePath());
+        result.error = QStringLiteral("计算结果中缺少网格数据：%1").arg(resultDir.absolutePath());
         return result;
     }
 
@@ -511,149 +791,143 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
         return result;
     }
 
-    const bool useExternalOutputDir = !options.outputDir.trimmed().isEmpty();
-    QDir outputDir(useExternalOutputDir
-                       ? QDir::fromNativeSeparators(options.outputDir.trimmed())
-                       : resultDir.absolutePath());
-    if (!outputDir.exists() && !outputDir.mkpath(QStringLiteral(".")))
+    const QVector<Element> expanded = expandElements(mesh);
+    const QVector<ZoneGroup> groups = loadZoneGroups(resultDir, options.projectDir, expanded);
+    if (expanded.isEmpty() || groups.isEmpty())
     {
-        result.error = QStringLiteral("无法创建后处理输出目录：%1").arg(outputDir.absolutePath());
+        result.error = QStringLiteral("计算网格没有可显示的材料分区：%1").arg(resultDir.absolutePath());
         return result;
     }
 
-    auto outputName = [useExternalOutputDir](const QString& legacyName, const QString& internalName)
+    const bool external = !options.outputDir.trimmed().isEmpty();
+    QDir outputDir(external ? QDir::fromNativeSeparators(options.outputDir.trimmed())
+                            : resultDir.absolutePath());
+    if (!outputDir.exists() && !outputDir.mkpath(QStringLiteral(".")))
     {
-        return useExternalOutputDir ? internalName : legacyName;
-    };
-
-    if (!useExternalOutputDir || options.writeLegacyAuxiliaryFiles)
-        generateZones(outputDir, mesh, result);
-
-    const QString hpPath = existingFile(resultDir, QStringLiteral("IIDISP.TXT"));
-    const QString velocityPath = existingFile(resultDir, QStringLiteral("INVELO.TXT"));
-    const QString displacementPath = existingFile(resultDir, QStringLiteral("IIDISP.TXT"));
-    const QString principalPath = existingFile(resultDir, QStringLiteral("MODPRI.TXT"));
-    const QString cmmPath = existingFile(resultDir, QStringLiteral("NODCMM.TXT"));
-
-    if (!velocityPath.isEmpty())
-    {
-        QString warning;
-        const auto rawVelocity = readNodeValues(velocityPath, mesh, mesh.dimension, &warning);
-        if (!warning.isEmpty())
-            result.warnings << warning;
-        QStringList vars = mesh.dimension == 3 ? QStringList{"VX", "VY", "VZ", "VABS"}
-                                               : QStringList{"VX", "VY", "VABS"};
-        generateFromNodeFile(outputDir, mesh, QStringLiteral("INVELO.TXT"),
-                             outputName(QStringLiteral("TEC_VELO.DAT"),
-                                        QStringLiteral("velocity.tec")),
-                             QStringLiteral("VELOCITY"), vars,
-                             buildVelocity(rawVelocity, mesh.dimension), result);
-    }
-    else
-    {
-        result.skippedFiles << QStringLiteral("TEC_VELO.DAT（缺少 INVELO.TXT）");
+        result.error = QStringLiteral("无法创建后处理缓存：%1").arg(outputDir.absolutePath());
+        return result;
     }
 
-    if (!hpPath.isEmpty())
-    {
-        QString warning;
-        const auto rawHead = readNodeValues(hpPath, mesh, 2, &warning);
-        if (!warning.isEmpty())
-            result.warnings << warning;
+    const QSet<int> commonMasks = readMaterialSet(findInResultOrPrep(
+        resultDir, options.projectDir, QStringLiteral("MA_MASK.DAT")));
+    QSet<int> stressMasks = readMaterialSet(findInResultOrPrep(
+        resultDir, options.projectDir, QStringLiteral("MA_MASK_CMM.DAT")));
+    if (stressMasks.isEmpty())
+        stressMasks = commonMasks;
+    const QSet<int> noMasks;
 
-        const bool looksLikeSeepage = !velocityPath.isEmpty();
-        if (looksLikeSeepage)
+    const QVector<FieldSource> velocitySources = fieldSources(resultDir, QStringLiteral("INVELO"), true);
+    const QVector<FieldSource> displacementSources = fieldSources(resultDir, QStringLiteral("IIDISP"), false);
+    const QVector<FieldSource> seepageHeadSources = fieldSources(resultDir, QStringLiteral("IIDISP"), true);
+    const bool seepage = !velocitySources.isEmpty() ||
+                         std::any_of(seepageHeadSources.cbegin(), seepageHeadSources.cend(),
+                                     [](const FieldSource& source)
+                                     {
+                                         return source.suffix.startsWith(QStringLiteral("METHOD"),
+                                                                         Qt::CaseInsensitive);
+                                     });
+
+    QVector<QVector<double>> preferredHeadPressure;
+    if (seepage)
+    {
+        for (const FieldSource& source : seepageHeadSources)
         {
-            generateFromNodeFile(outputDir, mesh, QStringLiteral("IIDISP.TXT"),
-                                 outputName(QStringLiteral("TEC_HP.DAT"),
-                                            QStringLiteral("head_pressure.tec")),
-                                 QStringLiteral("HP-SEEPAGE (MPa)"),
-                                 QStringList{QStringLiteral("HEAD(m)"), QStringLiteral("P(MPa)")},
-                                 buildHeadPressure(rawHead), result);
+            QString warning;
+            const auto raw = readNodeValues(source.path, mesh, 2, &warning);
+            if (!warning.isEmpty())
+                result.warnings << warning;
+            if (preferredHeadPressure.isEmpty() ||
+                source.suffix.compare(QStringLiteral("METHOD2"), Qt::CaseInsensitive) == 0)
+                preferredHeadPressure = raw;
+            generateField(outputDir, mesh, expanded, groups, noMasks,
+                          outputName(external, QStringLiteral("TEC_HP.DAT"),
+                                     QStringLiteral("head_pressure"), source.suffix),
+                          QStringLiteral("HP-SEEPAGE (MPa)"),
+                          {QStringLiteral("HEAD(m)"), QStringLiteral("P(MPa)")},
+                          buildHeadPressure(raw), result);
         }
-    }
 
-    if (!displacementPath.isEmpty() && velocityPath.isEmpty())
-    {
-        QString warning;
-        const auto rawDisp = readNodeValues(displacementPath, mesh, mesh.dimension, &warning);
-        if (!warning.isEmpty())
-            result.warnings << warning;
-
-        QStringList vars = mesh.dimension == 3
-                               ? QStringList{QStringLiteral("UX(cm)"), QStringLiteral("UY(cm)"),
-                                             QStringLiteral("UZ(cm)"), QStringLiteral("UH(cm)")}
-                               : QStringList{QStringLiteral("UX(cm)"), QStringLiteral("UY(cm)"),
-                                             QStringLiteral("UH(cm)")};
-        generateFromNodeFile(outputDir, mesh, QStringLiteral("IIDISP.TXT"),
-                             outputName(QStringLiteral("TEC_DISP.DAT"),
-                                        QStringLiteral("displacement.tec")),
-                             QStringLiteral("DISP (cm)"), vars,
-                             buildDisplacement(rawDisp, mesh.dimension), result);
-    }
-    else if (displacementPath.isEmpty())
-    {
-        result.skippedFiles << QStringLiteral("TEC_DISP.DAT（缺少 IIDISP.TXT）");
-    }
-
-    if (!principalPath.isEmpty())
-    {
-        QString warning;
-        const auto rawPrincipal = readNodeValues(principalPath, mesh, 2, &warning);
-        if (!warning.isEmpty())
-            result.warnings << warning;
-
-        generateFromNodeFile(outputDir, mesh, QStringLiteral("MODPRI.TXT"),
-                             outputName(QStringLiteral("TEC_PRS.DAT"),
-                                        QStringLiteral("principal_stress.tec")),
-                             QStringLiteral("PRS (MPa)"),
-                             QStringList{QStringLiteral("PRS1(MPa)"), QStringLiteral("PRS2(MPa)"),
-                                         QStringLiteral("PRS3(MPa)"), QStringLiteral("TMAX(MPa)"),
-                                         QStringLiteral("SGMA_EQ")},
-                             buildPrincipalStress(rawPrincipal), result);
-    }
-    else
-    {
-        result.skippedFiles << QStringLiteral("TEC_PRS.DAT（缺少 MODPRI.TXT）");
-    }
-
-    if (!cmmPath.isEmpty())
-    {
-        QString warning;
-        const auto rawCmm = readNodeValues(cmmPath, mesh, 1, &warning);
-        if (!warning.isEmpty())
-            result.warnings << warning;
-
-        int count = 0;
-        for (const QVector<double>& row : rawCmm)
-            count = std::max(count, static_cast<int>(row.size()));
-        count = std::max(1, std::min(count, 8));
-
-        const QStringList vars = cmmVariables(count);
-        const auto values = limitColumns(rawCmm, count);
-        if (useExternalOutputDir && !options.writeLegacyAuxiliaryFiles)
+        for (const FieldSource& source : velocitySources)
         {
-            generateFromNodeFile(outputDir, mesh, QStringLiteral("NODCMM.TXT"),
-                                 QStringLiteral("stress_level.tec"),
-                                 QStringLiteral("STRESS LEVEL"), vars, values, result);
-        }
-        else
-        {
-            generateFromNodeFile(outputDir, mesh, QStringLiteral("NODCMM.TXT"),
-                                 QStringLiteral("TEC_CMM.DAT"), QStringLiteral("CMM"), vars,
-                                 values, result);
-            generateFromNodeFile(outputDir, mesh, QStringLiteral("NODCMM.TXT"),
-                                 QStringLiteral("TEC_SL.DAT"), QStringLiteral("SL"), vars,
-                                 values, result);
+            QString warning;
+            const auto raw = readNodeValues(source.path, mesh, mesh.dimension, &warning);
+            if (!warning.isEmpty())
+                result.warnings << warning;
+            const QStringList variables = mesh.dimension == 3
+                                              ? QStringList{QStringLiteral("UX(mm/s)"),
+                                                            QStringLiteral("UY(mm/s)"),
+                                                            QStringLiteral("UZ(mm/s)")}
+                                              : QStringList{QStringLiteral("UX(mm/s)"),
+                                                            QStringLiteral("UY(mm/s)")};
+            generateField(outputDir, mesh, expanded, groups, noMasks,
+                          outputName(external, QStringLiteral("TEC_VELO.DAT"),
+                                     QStringLiteral("velocity"), source.suffix),
+                          QStringLiteral("VELOCITY"), variables,
+                          buildVelocity(raw, preferredHeadPressure, mesh.dimension), result);
         }
     }
     else
     {
-        result.skippedFiles << QStringLiteral("TEC_CMM.DAT/TEC_SL.DAT（缺少 NODCMM.TXT）");
+        for (const FieldSource& source : displacementSources)
+        {
+            QString warning;
+            const auto raw = readNodeValues(source.path, mesh, mesh.dimension, &warning);
+            if (!warning.isEmpty())
+                result.warnings << warning;
+            const QStringList variables = mesh.dimension == 3
+                                              ? QStringList{QStringLiteral("UX(cm)"),
+                                                            QStringLiteral("UY(cm)"),
+                                                            QStringLiteral("UZ(cm)"),
+                                                            QStringLiteral("UH(cm)")}
+                                              : QStringList{QStringLiteral("UX(cm)"),
+                                                            QStringLiteral("UY(cm)"),
+                                                            QStringLiteral("UH(cm)")};
+            generateField(outputDir, mesh, expanded, groups, commonMasks,
+                          outputName(external, QStringLiteral("TEC_DISP.DAT"),
+                                     QStringLiteral("displacement"), source.suffix),
+                          QStringLiteral("DISP (cm)"), variables,
+                          buildDisplacement(raw, mesh.dimension), result);
+        }
+    }
+
+    const QVector<FieldSource> principalSources = fieldSources(resultDir, QStringLiteral("MODPRI"), false);
+    for (const FieldSource& source : principalSources)
+    {
+        QString warning;
+        const auto raw = readNodeValues(source.path, mesh, mesh.dimension == 3 ? 3 : 2, &warning);
+        if (!warning.isEmpty())
+            result.warnings << warning;
+        const QStringList variables = mesh.dimension == 3
+                                          ? QStringList{QStringLiteral("PRS1(MPa)"),
+                                                        QStringLiteral("PRS2(MPa)"),
+                                                        QStringLiteral("PRS3(MPa)"),
+                                                        QStringLiteral("TMAX(MPa)")}
+                                          : QStringList{QStringLiteral("PRS1(MPa)"),
+                                                        QStringLiteral("PRS2(MPa)"),
+                                                        QStringLiteral("TMAX(MPa)")};
+        generateField(outputDir, mesh, expanded, groups, commonMasks,
+                      outputName(external, QStringLiteral("TEC_PRS.DAT"),
+                                 QStringLiteral("principal_stress"), source.suffix),
+                      QStringLiteral("PRS (MPa)"), variables,
+                      buildPrincipalStress(raw, mesh.dimension), result);
+    }
+
+    const QVector<FieldSource> stressLevelSources = fieldSources(resultDir, QStringLiteral("NODCMM"), false);
+    for (const FieldSource& source : stressLevelSources)
+    {
+        QString warning;
+        const auto raw = readNodeValues(source.path, mesh, 4, &warning);
+        if (!warning.isEmpty())
+            result.warnings << warning;
+        generateField(outputDir, mesh, expanded, groups, stressMasks,
+                      outputName(external, QStringLiteral("TEC_SL.DAT"),
+                                 QStringLiteral("stress_level"), source.suffix),
+                      QStringLiteral("STRESS LEVEL"), {QStringLiteral("SL")},
+                      buildStressLevel(raw), result);
     }
 
     result.ok = !result.generatedFiles.isEmpty();
-    if (!result.ok && result.error.isEmpty())
-        result.error = QStringLiteral("未找到可转换的半结果文件。");
+    if (!result.ok)
+        result.error = QStringLiteral("没有找到可转换的节点结果。");
     return result;
 }

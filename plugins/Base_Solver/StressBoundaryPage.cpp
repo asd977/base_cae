@@ -354,10 +354,18 @@ StressBoundaryPage::StressBoundaryPage(const QString& pageType, const QString& b
     ui->setupUi(this);
     SolverUiLayoutHelper::polishPage(this);
     ui->labelBoundaryTitle->setText(boundaryTitle);
-    ui->labelFileNameValue->setText(exportFileName);
+    ui->label2->hide();
+    ui->labelFileNameValue->hide();
     setupBatchGroupCombo();
 
     connect(ui->btnClear, &QPushButton::clicked, this, &StressBoundaryPage::onClearClicked);
+    connect(&PickManager::instance(), &PickManager::selectionChanged, this,
+            [this](const QString& domain, const QString& uuid, PickMode mode, GridKind)
+            {
+                if (domain == getPageType() && uuid == m_uuid && mode == currentPickMode())
+                    updateSelectionSummary();
+            });
+    updateSelectionSummary();
 }
 
 StressBoundaryPage::~StressBoundaryPage()
@@ -368,6 +376,7 @@ StressBoundaryPage::~StressBoundaryPage()
 void StressBoundaryPage::beforeLoad()
 {
     setupBatchGroupCombo();
+    updateSelectionSummary();
     PickManager::instance().activate(getPageType(), m_uuid, currentPickMode());
 }
 
@@ -393,6 +402,22 @@ QVector<StressBoundaryPage::EdgeRow> StressBoundaryPage::selectedEdgeRows()
     if (rows.isEmpty())
         rows = collectRowsFromEdges(GridKind::Solid, getPageType(), m_uuid);
     return rows;
+}
+
+int StressBoundaryPage::selectionCount()
+{
+    return selectedEdgeRows().size();
+}
+
+void StressBoundaryPage::updateSelectionSummary()
+{
+    const int count = selectionCount();
+    const QString unit = currentPickMode() == PickMode::Face ? QStringLiteral("个面")
+                                                             : QStringLiteral("条边");
+    ui->labelBoundaryTitle->setText(
+        count > 0 ? QStringLiteral("%1（已选择 %2 %3）").arg(m_boundaryTitle).arg(count).arg(unit)
+                  : QStringLiteral("%1（未设置）").arg(m_boundaryTitle));
+    emit selectionCountChanged(count);
 }
 
 bool StressBoundaryPage::exportDatFile()
@@ -456,12 +481,20 @@ void StressBoundaryPage::onClearClicked()
 {
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
     PickManager::instance().clearSelection(getPageType(), m_uuid, currentPickMode());
+    updateSelectionSummary();
 }
 
 void StressBoundaryPage::setupBatchGroupCombo()
 {
     if (!ui)
         return;
+
+    const bool selectFaces = currentPickMode() == PickMode::Face;
+    ui->labelPickHint->setText(
+        selectFaces
+            ? QStringLiteral("选择对象：三维网格面。可在视图中框选，或按边界面分组批量添加。")
+            : QStringLiteral("选择对象：二维网格边。可在视图中框选，或按边界线分组批量添加。"));
+    ui->btnClear->setText(selectFaces ? QStringLiteral("清空选面") : QStringLiteral("清空选边"));
 
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
@@ -480,8 +513,7 @@ void StressBoundaryPage::setupBatchGroupCombo()
         const int dim = map.physicalDim(physId);
         if (dim != targetDim)
             continue;
-        ui->comboBoxGroup->addItem(
-            QString("%1  (dim=%2, id=%3)").arg(it.value()).arg(dim).arg(physId), physId);
+        ui->comboBoxGroup->addItem(it.value(), physId);
     }
 
     ui->comboBoxGroup->blockSignals(false);
@@ -577,6 +609,7 @@ void StressBoundaryPage::onGroupChanged(int index)
     }
 
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
+    updateSelectionSummary();
 }
 
 QJsonObject StressBoundaryPage::saveJson()
@@ -632,7 +665,8 @@ void StressBoundaryPage::loadJson(const QJsonObject& obj)
     PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
                                                 fromJson(obj.value("face_solid").toArray()), true);
     PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Line,
-                                                fromJson(obj.value("face_line").toArray()), true);
+                                                 fromJson(obj.value("face_line").toArray()), true);
+    updateSelectionSummary();
 }
 
 PickMode StressBoundaryPage::currentPickMode() const

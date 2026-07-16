@@ -453,7 +453,7 @@
         <item row="19" column="0" colspan="2">
          <widget class="QLabel" name="layerHintLabel">
           <property name="text">
-           <string>提示：边坡计算时，IIIN.DAT 中所有 LAYER 分层会统一设为 1。</string>
+           <string>提示：边坡计算时，模型中的全部网格分层将统一按第一层处理。</string>
           </property>
           <property name="wordWrap">
            <bool>true</bool>

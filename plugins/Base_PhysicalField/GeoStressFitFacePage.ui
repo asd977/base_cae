@@ -64,14 +64,14 @@
          <item row="5" column="0">
           <widget class="QLabel" name="labelHeight">
            <property name="text">
-            <string>HEIGHT</string>
+            <string>荷载高度</string>
            </property>
           </widget>
          </item>
          <item row="8" column="0">
           <widget class="QLabel" name="labelII">
            <property name="text">
-            <string>II</string>
+            <string>边界序号</string>
            </property>
           </widget>
          </item>
@@ -107,7 +107,7 @@
          <item row="3" column="1">
           <widget class="QLineEdit" name="editFname">
            <property name="placeholderText">
-            <string>例如 LEFT.DAT</string>
+            <string>留空时自动命名</string>
            </property>
            <property name="minimumSize">
             <size>
@@ -120,7 +120,7 @@
          <item row="3" column="0">
           <widget class="QLabel" name="labelFname">
            <property name="text">
-            <string>FNAME</string>
+            <string>边界名称</string>
            </property>
           </widget>
          </item>
@@ -146,7 +146,7 @@
          <item row="4" column="0">
           <widget class="QLabel" name="labelIdir">
            <property name="text">
-            <string>IDIR</string>
+            <string>法向方向</string>
            </property>
           </widget>
          </item>
@@ -214,7 +214,7 @@
          <item row="7" column="0">
           <widget class="QLabel" name="labelPgrout">
            <property name="text">
-            <string>PGROUT</string>
+            <string>灌浆压力</string>
            </property>
           </widget>
          </item>
@@ -235,7 +235,7 @@
          <item row="6" column="0">
           <widget class="QLabel" name="labelRou">
            <property name="text">
-            <string>GAMA</string>
+            <string>重度</string>
            </property>
           </widget>
          </item>

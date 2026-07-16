@@ -400,6 +400,37 @@ QString CaveBlockPlanePage::paraLine(int ii)
         .arg(ii);
 }
 
+bool CaveBlockPlanePage::validateInputs(QString* errorMessage) const
+{
+    auto fail = [errorMessage](const QString& message)
+    {
+        if (errorMessage)
+            *errorMessage = message;
+        return false;
+    };
+    auto point = [](QLineEdit* x, QLineEdit* y, QLineEdit* z)
+    {
+        return QVector3D(float(x->text().trimmed().toDouble()),
+                         float(y->text().trimmed().toDouble()),
+                         float(z->text().trimmed().toDouble()));
+    };
+    const QVector3D p1 = point(ui->x1Edit, ui->y1Edit, ui->z1Edit);
+    const QVector3D p2 = point(ui->x2Edit, ui->y2Edit, ui->z2Edit);
+    const QVector3D p3 = point(ui->x3Edit, ui->y3Edit, ui->z3Edit);
+    if (!isNonCollinear(p1, p2, p3))
+        return fail(QStringLiteral("切割面的三个点不能重合或共线。"));
+
+    bool fpOk = false;
+    bool cOk = false;
+    bool rtOk = false;
+    const double fp = ui->fpEdit->text().trimmed().toDouble(&fpOk);
+    const double cohesion = ui->cEdit->text().trimmed().toDouble(&cOk);
+    const double tension = ui->rtEdit->text().trimmed().toDouble(&rtOk);
+    if (!fpOk || fp < 0.0 || !cOk || cohesion < 0.0 || !rtOk || tension < 0.0)
+        return fail(QStringLiteral("摩擦系数、黏聚力和抗拉强度必须为非负数。"));
+    return true;
+}
+
 QVector3D CaveBlockPlanePage::p1Vector()
 {
     return QVector3D(float(editValue(ui->x1Edit)), float(editValue(ui->y1Edit)),

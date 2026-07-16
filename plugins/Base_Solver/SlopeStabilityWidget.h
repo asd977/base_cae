@@ -25,6 +25,7 @@ class SlopeStabilityWidget : public BasePage
     void beforeUnload() override;
 
     bool exportIslopDatFile() const;
+    bool validateInputs(QString* errorMessage) const;
 
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
@@ -52,6 +53,8 @@ class SlopeStabilityWidget : public BasePage
     QString strengthReserveOutputValue(int row) const;
     void updateAnalysisModeVisibility();
     void updateTimeHistoryVisibility();
+    void updateMethodVisibility();
+    void updateDampingControls();
 
   private:
     Ui::SlopeStabilityWidget* ui;

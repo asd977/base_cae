@@ -18,6 +18,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QList>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QStringList>
@@ -30,6 +31,8 @@
 #include "SolverUiLayoutHelper.h"
 namespace
 {
+constexpr int kMaximumMeasurePoints = 100;
+
 QString valueOrZero(const QString& text)
 {
     const QString value = text.trimmed();
@@ -62,6 +65,7 @@ GeoStressMeasurePointPage::GeoStressMeasurePointPage(QWidget* parent)
     Q_UNUSED(parent);
     ui->setupUi(this);
     SolverUiLayoutHelper::polishPage(this);
+    ui->dataGroup->setTitle(QStringLiteral("实测地应力数据（最多 100 个）"));
 
     ui->measureTable->setHorizontalHeaderLabels(QStringList() << "点号" << "XP" << "YP" << "ZP" << "SGX"
                                              << "SGY" << "SGZ" << "TXY" << "TYZ" << "TZX"
@@ -226,27 +230,53 @@ void GeoStressMeasurePointPage::onImportClicked()
         return;
 
     QTextStream in(&file);
+    bool reachedLimit = false;
     while (!in.atEnd())
     {
+        if (ui->measureTable->rowCount() >= kMaximumMeasurePoints)
+        {
+            reachedLimit = true;
+            break;
+        }
         const QString line = in.readLine().trimmed();
         if (line.isEmpty() || line.startsWith('#'))
             continue;
         appendImportedValues(splitDataLine(line));
     }
     syncPickedPointIds();
+    if (reachedLimit)
+        QMessageBox::information(this, QStringLiteral("已达到数量上限"),
+                                 QStringLiteral("实测地应力点最多允许 100 个。"));
 }
 
 void GeoStressMeasurePointPage::onAddManualRowClicked()
 {
+    if (ui->measureTable->rowCount() >= kMaximumMeasurePoints)
+    {
+        QMessageBox::information(this, QStringLiteral("已达到数量上限"),
+                                 QStringLiteral("实测地应力点最多允许 100 个。"));
+        return;
+    }
     appendRow(QString(), "0", "0", currentDimension() == 3 ? "0" : "0", "0", "0", "0", "0", "0", "0");
 }
 
 void GeoStressMeasurePointPage::onAppendSelectedPointsClicked()
 {
     const auto ids = PickManager::instance().getSelectedPointIds(getPageType(), m_uuid, GridKind::Solid);
+    bool reachedLimit = false;
     for (vtkIdType pid : ids)
+    {
+        if (ui->measureTable->rowCount() >= kMaximumMeasurePoints)
+        {
+            reachedLimit = true;
+            break;
+        }
         appendPointByPid(pid);
+    }
     syncPickedPointIds();
+    if (reachedLimit)
+        QMessageBox::information(this, QStringLiteral("已达到数量上限"),
+                                 QStringLiteral("实测地应力点最多允许 100 个。"));
 }
 
 void GeoStressMeasurePointPage::onRemoveRowsClicked()
@@ -270,6 +300,13 @@ void GeoStressMeasurePointPage::onNodePicked(const QString& domain, const QStrin
     if (domain != getPageType() || activeUuid != m_uuid)
         return;
 
+    if (ui->measureTable->rowCount() >= kMaximumMeasurePoints)
+    {
+        QMessageBox::information(this, QStringLiteral("已达到数量上限"),
+                                 QStringLiteral("实测地应力点最多允许 100 个。"));
+        return;
+    }
+
     Q_UNUSED(nodeId);
     Q_UNUSED(x);
     Q_UNUSED(y);
@@ -290,6 +327,10 @@ void GeoStressMeasurePointPage::applyDimensionUi()
 
     if (!ui->measureTable)
         return;
+    ui->pickGroup->setTitle(QStringLiteral("网格节点选择"));
+    ui->pickHintLabel->setText(
+        QStringLiteral("选择对象：网格节点。Shift+拖拽框选，Ctrl+拖拽取消选择。"));
+    ui->pickEnableCheckBox->setText(QStringLiteral("开启节点点选"));
     ui->measureTable->setColumnHidden(ColZ, !is3D);
     ui->measureTable->setColumnHidden(ColSgz, !is3D);
     ui->measureTable->setColumnHidden(ColTyz, !is3D);
@@ -402,6 +443,8 @@ int GeoStressMeasurePointPage::appendRow(const QString& nodeId, const QString& x
                                          const QString& sgz, const QString& txy, const QString& tyz,
                                          const QString& tzx, vtkIdType pid)
 {
+    if (!ui->measureTable || ui->measureTable->rowCount() >= kMaximumMeasurePoints)
+        return -1;
     const int row = ui->measureTable->rowCount();
     ui->measureTable->insertRow(row);
     setCellText(row, ColNodeId, nodeId, false);

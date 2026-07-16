@@ -14,6 +14,7 @@
 #include <QSet>
 #include <QTextStream>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QSpinBox>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -57,6 +58,9 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     m_accXEdit = ui->editAccX;
     m_accYEdit = ui->editAccY;
     m_accZEdit = ui->editAccZ;
+    m_accXEdit->setText(QStringLiteral("WAVE-AX.DAT"));
+    m_accYEdit->setText(QStringLiteral("WAVE-AY.DAT"));
+    m_accZEdit->setText(QStringLiteral("WAVE-AZ.DAT"));
 
     m_excavationDaysTable->setColumnCount(2);
     m_excavationDaysTable->setHorizontalHeaderLabels({"开挖级", "用时（天）"});
@@ -67,8 +71,8 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
         if (!combo)
             return;
         combo->clear();
-        combo->addItem(QString("0 - %1").arg(disableText), "0");
-        combo->addItem(QString("1 - %1").arg(enableText), "1");
+        combo->addItem(disableText, "0");
+        combo->addItem(enableText, "1");
     };
 
     setupBoolCombo(m_ifEallCombo, "计算不加固条件下一次开挖成洞",
@@ -82,42 +86,42 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     setupBoolCombo(m_ifChenCombo, "计算衬砌内力", "不需计算衬砌内力");
 
     m_ifSeepCombo->clear();
-    m_ifSeepCombo->addItem("0 - 不考虑地下水影响", "0");
-    m_ifSeepCombo->addItem("1 - 考虑地下水影响", "1");
+    m_ifSeepCombo->addItem("不考虑地下水影响", "0");
+    m_ifSeepCombo->addItem("考虑地下水影响", "1");
 
     m_dampingModeCombo->clear();
-    m_dampingModeCombo->addItem("0 - 使用系统统一阻尼", "0");
-    m_dampingModeCombo->addItem("1 - 使用分材料阻尼", "1");
+    m_dampingModeCombo->addItem("使用系统统一阻尼", "0");
+    m_dampingModeCombo->addItem("使用分材料阻尼", "1");
 
     m_calculationTypeCombo->clear();
-    m_calculationTypeCombo->addItem("1 - 仅进行静力开挖计算", "1");
-    m_calculationTypeCombo->addItem("2 - 仅进行动力计算", "2");
-    m_calculationTypeCombo->addItem("3 - 静力开挖后继续动力计算", "3");
+    m_calculationTypeCombo->addItem("仅进行静力开挖计算", "1");
+    m_calculationTypeCombo->addItem("仅进行动力计算", "2");
+    m_calculationTypeCombo->addItem("静力开挖后继续动力计算", "3");
 
     m_excavationLoadMethodCombo->clear();
-    m_excavationLoadMethodCombo->addItem("1 - 按开挖面计算（IIJX + MODSTR）", "1");
-    m_excavationLoadMethodCombo->addItem("2 - 按开挖单元计算（IIKE + ISGMAR）", "2");
+    m_excavationLoadMethodCombo->addItem("按开挖面计算", "1");
+    m_excavationLoadMethodCombo->addItem("按开挖单元计算", "2");
     m_excavationLoadMethodCombo->setCurrentIndex(1);
 
     m_iterationMethodCombo->clear();
-    m_iterationMethodCombo->addItem("0 - 线弹性分析", "0");
-    m_iterationMethodCombo->addItem("1 - 初应变法", "1");
-    m_iterationMethodCombo->addItem("2 - 初应力法", "2");
-    m_iterationMethodCombo->addItem("3 - 变刚度法（切线刚度法）", "3");
+    m_iterationMethodCombo->addItem("线弹性分析", "0");
+    m_iterationMethodCombo->addItem("初应变法", "1");
+    m_iterationMethodCombo->addItem("初应力法", "2");
+    m_iterationMethodCombo->addItem("变刚度法（切线刚度法）", "3");
     m_iterationMethodCombo->setCurrentIndex(1);
     m_iterationCountSpin->setValue(100);
 
     m_jaMethodCombo->clear();
-    m_jaMethodCombo->addItem("1 - 锚杆/锚索加固，不考虑衬砌", "1");
-    m_jaMethodCombo->addItem("2 - 同时考虑锚杆/锚索和衬砌加固", "2");
+    m_jaMethodCombo->addItem("锚杆或锚索加固，不考虑衬砌", "1");
+    m_jaMethodCombo->addItem("同时考虑锚杆、锚索和衬砌加固", "2");
     m_idayCaseEdit->setText("0");
 
     m_ifModeCombo->clear();
-    m_ifModeCombo->addItem("0 - 不进行模态分析", "0");
-    m_ifModeCombo->addItem("1 - 进行模态分析", "1");
+    m_ifModeCombo->addItem("不进行模态分析", "0");
+    m_ifModeCombo->addItem("进行模态分析", "1");
     m_ifWaveCombo->clear();
-    m_ifWaveCombo->addItem("0 - 不进行时程分析", "0");
-    m_ifWaveCombo->addItem("1 - 进行时程分析", "1");
+    m_ifWaveCombo->addItem("不进行时程分析", "0");
+    m_ifWaveCombo->addItem("进行时程分析", "1");
 
     connect(m_iexcaMaxSpin, qOverload<int>(&QSpinBox::valueChanged), this,
             &CaveSupportComputationPage::onExcavationLevelCountChanged);
@@ -125,6 +129,14 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
             &CaveSupportComputationPage::updateAnalysisModeUi);
     connect(m_ifWaveCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
             &CaveSupportComputationPage::updateDynamicDetailsUi);
+    connect(m_ifSeepCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            &CaveSupportComputationPage::updateStaticDependenciesUi);
+    for (QComboBox* combo : {m_ifEallCombo, m_ifJallCombo, m_ifE1toaCombo,
+                             m_ifJ1toaCombo, m_ifChenCombo})
+    {
+        connect(combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+                &CaveSupportComputationPage::updateStaticDependenciesUi);
+    }
     connect(ui->btnCompute, &QPushButton::clicked, this, &CaveSupportComputationPage::onComputeClicked);
 
     m_caseData = CaseData();
@@ -225,6 +237,7 @@ void CaveSupportComputationPage::updateAnalysisModeUi()
         ui->groupDyna->setVisible(showDynamic);
 
     updateDynamicDetailsUi();
+    updateStaticDependenciesUi();
 }
 
 void CaveSupportComputationPage::updateDynamicDetailsUi()
@@ -241,8 +254,87 @@ void CaveSupportComputationPage::updateDynamicDetailsUi()
     ui->spinTsta->setVisible(showTimeHistory);
     ui->labelTend->setVisible(showTimeHistory);
     ui->spinTend->setVisible(showTimeHistory);
-    ui->labelWaveFiles->setVisible(showTimeHistory);
-    ui->widgetWaveFiles->setVisible(showTimeHistory);
+    ui->labelWaveFiles->hide();
+    ui->widgetWaveFiles->hide();
+}
+
+void CaveSupportComputationPage::updateStaticDependenciesUi()
+{
+    SolverUiLayoutHelper::StableLayoutUpdate stableLayout(this);
+    const bool showStatic = calculationTypeCode() == 1 || calculationTypeCode() == 3;
+    const bool seepage = showStatic &&
+                         m_ifSeepCombo->currentData().toString() == QStringLiteral("1");
+    ui->label5->setVisible(seepage);
+    ui->line5Edit->setVisible(seepage);
+    ui->label7->setVisible(seepage);
+    ui->line7Edit->setVisible(seepage);
+
+    const bool support = showStatic &&
+        (m_ifJallCombo->currentData().toString() == QStringLiteral("1") ||
+         m_ifJ1toaCombo->currentData().toString() == QStringLiteral("1"));
+    QWidget* const supportWidgets[] = {
+        ui->label25, ui->line25Edit, ui->labelJaMethod, m_jaMethodCombo,
+        ui->labelIfChen, m_ifChenCombo, ui->labelIdayCase, m_idayCaseEdit};
+    for (QWidget* widget : supportWidgets)
+    {
+        if (widget)
+            widget->setVisible(support);
+    }
+}
+
+bool CaveSupportComputationPage::validateInputs(QString* errorMessage) const
+{
+    auto fail = [errorMessage](const QString& message)
+    {
+        if (errorMessage)
+            *errorMessage = message;
+        return false;
+    };
+    auto parse = [](const QLineEdit* edit, double* out = nullptr)
+    {
+        bool ok = false;
+        const double value = edit->text().trimmed().toDouble(&ok);
+        if (ok && out)
+            *out = value;
+        return ok;
+    };
+
+    const int type = calculationTypeCode();
+    if (type == 1 || type == 3)
+    {
+        if (m_ifSeepCombo->currentData().toString() == QStringLiteral("1") &&
+            (!parse(ui->line5Edit) || !parse(ui->line7Edit)))
+            return fail(QStringLiteral("考虑地下水影响时，洞内水位和衬砌外水位必须为数值。"));
+
+        double release = 0.0;
+        if (!parse(ui->line11Edit, &release) || release < 0.0 || release > 1.0)
+            return fail(QStringLiteral("围岩已释放荷载系数必须在 0 到 1 之间。"));
+
+        const bool hasTask = m_ifEallCombo->currentData().toString() == QStringLiteral("1") ||
+                             m_ifJallCombo->currentData().toString() == QStringLiteral("1") ||
+                             m_ifE1toaCombo->currentData().toString() == QStringLiteral("1") ||
+                             m_ifJ1toaCombo->currentData().toString() == QStringLiteral("1");
+        if (!hasTask)
+            return fail(QStringLiteral("至少需要选择一种洞室开挖任务。"));
+
+        for (int row = 0; row < m_excavationDaysTable->rowCount(); ++row)
+        {
+            const auto* item = m_excavationDaysTable->item(row, 1);
+            bool ok = false;
+            const double days = item ? item->text().trimmed().toDouble(&ok) : 0.0;
+            if (!ok || days < 0.0)
+                return fail(QStringLiteral("第 %1 级开挖用时必须为非负数。").arg(row + 1));
+        }
+    }
+
+    if ((type == 2 || type == 3) && timeHistoryEnabled())
+    {
+        if (m_dtSpin->value() <= 0.0)
+            return fail(QStringLiteral("时程分析的时间步长必须为正数。"));
+        if (m_tendSpin->value() <= m_tstaSpin->value())
+            return fail(QStringLiteral("时程分析的终止时刻必须大于起始时刻。"));
+    }
+    return true;
 }
 
 QString CaveSupportComputationPage::sectionText()
@@ -285,10 +377,7 @@ QString CaveSupportComputationPage::sectionText()
                 .arg(m_dtSpin ? m_dtSpin->value() : 0.005, 0, 'f', 6)
                 .arg(m_tstaSpin ? m_tstaSpin->value() : 0.0, 0, 'f', 6)
                 .arg(m_tendSpin ? m_tendSpin->value() : 30.0, 0, 'f', 6);
-    text += QString("'%1'  '%2'  '%3'   AX  AY  AZ\n")
-                .arg(m_accXEdit ? m_accXEdit->text().trimmed() : "ACCEX.DAT",
-                     m_accYEdit ? m_accYEdit->text().trimmed() : "ACCEY.DAT",
-                     m_accZEdit ? m_accZEdit->text().trimmed() : "ACCEZ.DAT");
+    text += "'WAVE-AX.DAT'  'WAVE-AY.DAT'  'WAVE-AZ.DAT'   AX  AY  AZ\n";
     return text;
 }
 
@@ -363,9 +452,9 @@ QJsonObject CaveSupportComputationPage::saveJson()
     obj["dt"] = m_dtSpin ? m_dtSpin->value() : 0.005;
     obj["tsta"] = m_tstaSpin ? m_tstaSpin->value() : 0.0;
     obj["tend"] = m_tendSpin ? m_tendSpin->value() : 30.0;
-    obj["acc_x"] = m_accXEdit ? m_accXEdit->text().trimmed() : "ACCEX.DAT";
-    obj["acc_y"] = m_accYEdit ? m_accYEdit->text().trimmed() : "ACCEY.DAT";
-    obj["acc_z"] = m_accZEdit ? m_accZEdit->text().trimmed() : "ACCEZ.DAT";
+    obj["acc_x"] = "WAVE-AX.DAT";
+    obj["acc_y"] = "WAVE-AY.DAT";
+    obj["acc_z"] = "WAVE-AZ.DAT";
 
     QJsonArray cases;
     QJsonObject one;
@@ -430,11 +519,11 @@ void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
     if (m_tendSpin)
         m_tendSpin->setValue(obj.value("tend").toDouble(30.0));
     if (m_accXEdit)
-        m_accXEdit->setText(obj.value("acc_x").toString("ACCEX.DAT"));
+        m_accXEdit->setText(QStringLiteral("WAVE-AX.DAT"));
     if (m_accYEdit)
-        m_accYEdit->setText(obj.value("acc_y").toString("ACCEY.DAT"));
+        m_accYEdit->setText(QStringLiteral("WAVE-AY.DAT"));
     if (m_accZEdit)
-        m_accZEdit->setText(obj.value("acc_z").toString("ACCEZ.DAT"));
+        m_accZEdit->setText(QStringLiteral("WAVE-AZ.DAT"));
 
     const QJsonArray cases = obj.value("cases").toArray();
     if (!cases.isEmpty())
@@ -625,6 +714,7 @@ void CaveSupportComputationPage::loadCaseToUi()
     m_idayCaseEdit->setText(c.idayCase);
 
     m_isUpdatingUi = false;
+    updateStaticDependenciesUi();
 }
 
 void CaveSupportComputationPage::onComputeClicked()
@@ -635,6 +725,12 @@ void CaveSupportComputationPage::onComputeClicked()
         return;
     }
 
+    QString error;
+    if (!validateInputs(&error))
+    {
+        QMessageBox::warning(this, QStringLiteral("设置不完整"), error);
+        return;
+    }
     emit computeRequested();
 }
 

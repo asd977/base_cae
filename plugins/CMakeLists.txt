@@ -7,7 +7,7 @@ set(CAE_BASE_PLUGIN_DIRS
     Base_Mesh
     Base_MaterialManager
     Base_PostProcessing
-    Base_Slover
+    Base_Solver
     Base_GlobalParameter
     Base_SurrogateModel
     Base_PhysicalField

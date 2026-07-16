@@ -24,6 +24,7 @@ class CaveBlockStabilityWidget : public BasePage
     void loadJson(const QJsonObject& obj) override;
 
     bool exportDatFiles(QVector<CaveBlockPlanePage*>& planePages);
+    bool validateInputs(QString* errorMessage) const;
   signals:
     void computeRequested();
     void stopRequested();

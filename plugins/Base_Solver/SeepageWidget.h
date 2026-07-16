@@ -26,6 +26,9 @@ class SeepageWidget : public BasePage
     double downstreamWaterLevel() const;
     double upstreamFlux() const;
     double downstreamFlux() const;
+    bool naturalFreeSurfaceEnabled() const;
+    bool drainWellEnabled() const;
+    bool validateInputs(QString* errorMessage) const;
 
     bool exportIseepDatFile() const;
 
@@ -35,6 +38,7 @@ class SeepageWidget : public BasePage
   signals:
     void computeRequested();
     void stopRequested();
+    void requirementsChanged();
 
 
   private slots:
@@ -60,6 +64,7 @@ class SeepageWidget : public BasePage
 
     bool exportHwDropDatFiles(const QString& seepCaseDirName) const;
     void updateComputeTypeVisibility();
+    void updateOptionalControls();
 
     Ui::SeepageWidget* ui;
     QVector<MaterialMapping> globalMappings_;

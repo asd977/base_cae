@@ -32,6 +32,7 @@ class GeoStressSideFacePage : public BasePage
 
     QString faceFile() const;
     FaceAttr attr() const;
+    int selectionCount() const;
     bool exportDatFile() const;
     void setFaceIndex(int index);
 

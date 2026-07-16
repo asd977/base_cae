@@ -7,10 +7,9 @@
 #include <QString>
 
 class QLineEdit;
-class QLabel;
-class QPushButton;
 class QWidget;
 class QComboBox;
+class QGroupBox;
 
 namespace Ui
 {
@@ -28,7 +27,11 @@ class DamAnalysisWidget : public BasePage
     void beforeUnload() override;
 
     bool exportIfillDatFile(int mcase, const QString& cycleSectionText) const;
+    bool validateInputs(QString* errorMessage) const;
     void setMCaseCount(int mcase);
+    bool freezeThawEnabled() const;
+    bool dynamicAnalysisEnabled() const;
+    void setUpliftReductionRequired(bool required);
 
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
@@ -36,6 +39,7 @@ class DamAnalysisWidget : public BasePage
   signals:
     void computeRequested();
     void stopRequested();
+    void requirementsChanged();
 
 
   private slots:
@@ -52,9 +56,10 @@ class DamAnalysisWidget : public BasePage
     QString lineValue(int lineNo) const;
     void setLineValue(int lineNo, const QString& value);
     bool isFixedFileLine(int lineNo) const;
-    bool validateInputs(QString* errorMessage) const;
     void updateAnalysisModeVisibility();
     void updateDynamicOptionVisibility();
+    void updateFreezeThawOptionState();
+    void updateUpliftOptionState();
 
     Ui::DamAnalysisWidget* ui;
     QMap<int, QWidget*> m_lineEditors;
@@ -70,4 +75,12 @@ class DamAnalysisWidget : public BasePage
     QComboBox* m_comboAxisDown = nullptr;
     QComboBox* m_comboIfRock = nullptr;
     QComboBox* m_comboIfIso = nullptr;
+    QGroupBox* m_groupFreezeThaw = nullptr;
+    QLineEdit* m_editFreezeCycles = nullptr;
+    QLineEdit* m_editFreezeCoefficient = nullptr;
+    QLineEdit* m_editFreezeElevation = nullptr;
+    QLineEdit* m_editFreezeCompression = nullptr;
+    QLineEdit* m_editFreezeTension = nullptr;
+    QLineEdit* m_editIceExpansion = nullptr;
+    bool m_upliftReductionRequired = false;
 };

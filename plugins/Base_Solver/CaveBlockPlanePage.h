@@ -29,6 +29,7 @@ class CaveBlockPlanePage : public BasePage
     QVector3D p1Vector();
     QVector3D normalVector();
     double pickedFaceArea();
+    bool validateInputs(QString* errorMessage) const;
 
   private:
     QString valueOrDefault(QLineEdit* edit, QString def);

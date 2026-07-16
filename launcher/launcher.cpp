@@ -46,6 +46,12 @@ int main(int argc, char** argv)
     QStringList pluginFiles = pluginDir.entryList(QStringList() << "*.dll" << "*.so", QDir::Files);
     for (const QString& fileName : pluginFiles)
     {
+        if (fileName.compare(QStringLiteral("Base_Slover.dll"), Qt::CaseInsensitive) == 0
+            && pluginFiles.contains(QStringLiteral("Base_Solver.dll"), Qt::CaseInsensitive))
+        {
+            qWarning() << "Skipping legacy solver plugin:" << fileName;
+            continue;
+        }
         QString pluginPath = pluginDir.absoluteFilePath(fileName);
         QPluginLoader* loader = new QPluginLoader(pluginPath);
         if (!loader->load())

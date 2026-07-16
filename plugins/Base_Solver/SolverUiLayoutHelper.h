@@ -14,6 +14,7 @@
 #include <QLineEdit>
 #include <QPointer>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QScrollBar>
 #include <QSizePolicy>
 #include <QTableView>
@@ -23,6 +24,15 @@
 
 namespace SolverUiLayoutHelper
 {
+inline QString semanticEnumText(const QString& text)
+{
+    static const QRegularExpression codePrefix(
+        QStringLiteral(R"(^\s*-?\d+(?:\.\d+)?\s*[-:：]\s*)"));
+    QString result = text;
+    result.remove(codePrefix);
+    return result;
+}
+
 class StableLayoutUpdate
 {
   public:
@@ -207,6 +217,9 @@ inline void polishPage(QWidget* page)
     const auto combos = page->findChildren<QComboBox*>();
     for (QComboBox* combo : combos)
     {
+        for (int i = 0; i < combo->count(); ++i)
+            combo->setItemText(i, semanticEnumText(combo->itemText(i)));
+
         combo->setMinimumWidth(0);
         combo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         combo->setMinimumHeight(28);

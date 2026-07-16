@@ -304,31 +304,74 @@ void VectorSettingWidget::populateComponentCombos()
     names.removeDuplicates();
     names.sort();
 
+    auto displayName = [](const QString& name)
+    {
+        const QString upper = name.toUpper();
+        if (upper.startsWith(QStringLiteral("UX")) || upper.startsWith(QStringLiteral("VX")))
+            return QStringLiteral("X 方向分量");
+        if (upper.startsWith(QStringLiteral("UY")) || upper.startsWith(QStringLiteral("VY")))
+            return QStringLiteral("Y 方向分量");
+        if (upper.startsWith(QStringLiteral("UZ")) || upper.startsWith(QStringLiteral("VZ")))
+            return QStringLiteral("Z 方向分量");
+        if (upper.startsWith(QStringLiteral("UH")) || upper.startsWith(QStringLiteral("VH")))
+            return QStringLiteral("合量");
+        return name;
+    };
     auto setCombo = [&](QComboBox* cb)
     {
         cb->clear();
-        cb->addItems(names);
+        for (const QString& name : names)
+            cb->addItem(displayName(name), name);
     };
     setCombo(ui->xComboBox);
     setCombo(ui->yComboBox);
     setCombo(ui->zComboBox);
 
-    auto trySelect = [&](QComboBox* cb, const char* want)
+    auto trySelect = [&](QComboBox* cb, const QStringList& prefixes)
     {
-        int idx = cb->findText(QString::fromUtf8(want));
-        if (idx >= 0)
-            cb->setCurrentIndex(idx);
+        for (int i = 0; i < cb->count(); ++i)
+        {
+            const QString name = cb->itemData(i).toString();
+            for (const QString& prefix : prefixes)
+            {
+                if (name.startsWith(prefix, Qt::CaseInsensitive))
+                {
+                    cb->setCurrentIndex(i);
+                    return;
+                }
+            }
+        }
     };
-    trySelect(ui->xComboBox, "SX");
-    trySelect(ui->yComboBox, "SY");
-    trySelect(ui->zComboBox, "SZ");
+    trySelect(ui->xComboBox, {QStringLiteral("UX"), QStringLiteral("VX"), QStringLiteral("SX")});
+    trySelect(ui->yComboBox, {QStringLiteral("UY"), QStringLiteral("VY"), QStringLiteral("SY")});
+    trySelect(ui->zComboBox, {QStringLiteral("UZ"), QStringLiteral("VZ"), QStringLiteral("SZ")});
 
     if (ui->xComboBox->currentIndex() < 0 && ui->xComboBox->count() > 0)
         ui->xComboBox->setCurrentIndex(0);
     if (ui->yComboBox->currentIndex() < 0 && ui->yComboBox->count() > 1)
         ui->yComboBox->setCurrentIndex(1);
-    if (ui->zComboBox->currentIndex() < 0 && ui->zComboBox->count() > 2)
-        ui->zComboBox->setCurrentIndex(2);
+    bool hasZComponent = false;
+    for (int i = 0; i < ui->zComboBox->count(); ++i)
+    {
+        const QString name = ui->zComboBox->itemData(i).toString();
+        if (name.startsWith(QStringLiteral("UZ"), Qt::CaseInsensitive) ||
+            name.startsWith(QStringLiteral("VZ"), Qt::CaseInsensitive) ||
+            name.startsWith(QStringLiteral("SZ"), Qt::CaseInsensitive))
+        {
+            hasZComponent = true;
+            break;
+        }
+    }
+    if (!hasZComponent)
+    {
+        ui->zComboBox->clear();
+        ui->zComboBox->addItem(QStringLiteral("二维结果，Z 分量为零"), QString());
+        ui->zComboBox->setEnabled(false);
+    }
+    else
+    {
+        ui->zComboBox->setEnabled(true);
+    }
 }
 
 vtkDataArray* VectorSettingWidget::arrayByName(vtkUnstructuredGrid* grid, const QString& name)
@@ -344,15 +387,15 @@ bool VectorSettingWidget::buildVectorArraysFromSelections(vtkUnstructuredGrid* g
     if (!grid)
         return false;
 
-    const QString xName = ui->xComboBox->currentText();
-    const QString yName = ui->yComboBox->currentText();
-    const QString zName = ui->zComboBox->currentText();
+    const QString xName = ui->xComboBox->currentData().toString();
+    const QString yName = ui->yComboBox->currentData().toString();
+    const QString zName = ui->zComboBox->currentData().toString();
 
     vtkDataArray* arrX = arrayByName(grid, xName);
     vtkDataArray* arrY = arrayByName(grid, yName);
     vtkDataArray* arrZ = arrayByName(grid, zName);
 
-    if (!arrX || !arrY || !arrZ)
+    if (!arrX || !arrY)
     {
         qWarning() << "[Vector] 所选分量数组不存在。";
         return false;
@@ -360,13 +403,14 @@ bool VectorSettingWidget::buildVectorArraysFromSelections(vtkUnstructuredGrid* g
 
     const vtkIdType nPts = grid->GetNumberOfPoints();
     if (arrX->GetNumberOfTuples() < nPts || arrY->GetNumberOfTuples() < nPts ||
-        arrZ->GetNumberOfTuples() < nPts)
+        (arrZ && arrZ->GetNumberOfTuples() < nPts))
     {
         qWarning() << "[Vector] 分量数组长度与点数不一致。";
         return false;
     }
 
-    const bool packed3 = (xName == yName && xName == zName && arrX->GetNumberOfComponents() == 3);
+    const bool packed3 = arrZ && xName == yName && xName == zName &&
+                         arrX->GetNumberOfComponents() == 3;
 
     auto vec = vtkSmartPointer<vtkFloatArray>::New();
     vec->SetName("Vector");
@@ -403,7 +447,7 @@ bool VectorSettingWidget::buildVectorArraysFromSelections(vtkUnstructuredGrid* g
         {
             const double x = arrX->GetComponent(i, 0);
             const double y = arrY->GetComponent(i, 0);
-            const double z = arrZ->GetComponent(i, 0);
+            const double z = arrZ ? arrZ->GetComponent(i, 0) : 0.0;
             vec->SetTuple3(i, static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
             const double m = std::sqrt(x * x + y * y + z * z);
             mag->SetTuple1(i, static_cast<float>(m));

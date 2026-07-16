@@ -21,6 +21,12 @@ set_target_properties(CAE_BASE PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CAE_RUNTIME_DIR}"
 )
 
+set(CAE_SOLVER_EXECUTABLE
+    "${CMAKE_SOURCE_DIR}/solver/PCCAE_CPU/PCCAE_CPU.exe"
+    CACHE FILEPATH
+    "Prebuilt solver executable deployed with CAE_BASE"
+)
+
 if(WIN32)
     set(_cae_runtime_plugin_targets
         Base_UiFrame
@@ -31,7 +37,7 @@ if(WIN32)
         Base_Mesh
         Base_MaterialManager
         Base_PostProcessing
-        Base_Slover
+        Base_Solver
         Base_GlobalParameter
         Base_SurrogateModel
         Base_PhysicalField
@@ -78,4 +84,20 @@ if(WIN32)
             VERBATIM
         )
     endforeach()
+
+    if(EXISTS "${CAE_SOLVER_EXECUTABLE}")
+        add_custom_command(TARGET CAE_BASE POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "${CAE_RUNTIME_DIR}/solver/PCCAE_CPU"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CAE_SOLVER_EXECUTABLE}"
+                "${CAE_RUNTIME_DIR}/solver/PCCAE_CPU/PCCAE_CPU.exe"
+            COMMENT "Deploying solver executable"
+            VERBATIM
+        )
+    else()
+        message(WARNING
+            "Solver executable was not found at ${CAE_SOLVER_EXECUTABLE}; "
+            "set CAE_SOLVER_EXECUTABLE to a valid prebuilt solver")
+    endif()
 endif()

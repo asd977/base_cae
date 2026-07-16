@@ -5,11 +5,14 @@
 
 #include <QComboBox>
 #include <QDir>
+#include <QDoubleValidator>
 #include <QFile>
+#include <QIntValidator>
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QMessageBox>
 #include <QTextStream>
 #include <QVector3D>
 #include <cmath>
@@ -30,8 +33,8 @@ CaveBlockStabilityWidget::CaveBlockStabilityWidget(QWidget* parent)
     Q_UNUSED(parent);
     ui->setupUi(this);
     SolverUiLayoutHelper::polishPage(this);
-    ui->comboIfDir->addItem("0 - 使用起点 A 和终点 B 定义方向", "0");
-    ui->comboIfDir->addItem("1 - 使用指定面 IM1/IM2 定义方向", "1");
+    ui->comboIfDir->addItem("使用起点和终点定义方向", "0");
+    ui->comboIfDir->addItem("使用指定面定义方向", "1");
 
     auto updateDirectionEditors = [this]()
     {
@@ -57,6 +60,18 @@ CaveBlockStabilityWidget::CaveBlockStabilityWidget(QWidget* parent)
     // ui->fileHiddenWidget->hide();
     ui->computeBtn->setText(QStringLiteral("计算"));
 
+    auto* numberValidator = new QDoubleValidator(-1.0e12, 1.0e12, 8, this);
+    numberValidator->setNotation(QDoubleValidator::ScientificNotation);
+    for (QLineEdit* edit : {ui->weightEdit, ui->xMinEdit, ui->xMaxEdit,
+                            ui->yMinEdit, ui->yMaxEdit, ui->zMinEdit, ui->zMaxEdit,
+                            ui->fxEdit, ui->fyEdit, ui->fzEdit,
+                            ui->axEdit, ui->ayEdit, ui->azEdit,
+                            ui->bxEdit, ui->byEdit, ui->bzEdit})
+        edit->setValidator(numberValidator);
+    auto* faceValidator = new QIntValidator(1, 100000000, this);
+    ui->im1Edit->setValidator(faceValidator);
+    ui->im2Edit->setValidator(faceValidator);
+
     connect(ui->computeBtn, &QPushButton::clicked, this,
             [this]()
             {
@@ -66,6 +81,12 @@ CaveBlockStabilityWidget::CaveBlockStabilityWidget(QWidget* parent)
                     return;
                 }
 
+                QString error;
+                if (!validateInputs(&error))
+                {
+                    QMessageBox::warning(this, QStringLiteral("设置不完整"), error);
+                    return;
+                }
                 emit computeRequested();
             });
 }
@@ -375,6 +396,58 @@ bool CaveBlockStabilityWidget::exportDatFiles(QVector<CaveBlockPlanePage*>& plan
     for (int i = 0; i < areas.size(); ++i)
         ps << QString("%1 %2 ICUT\n").arg(areas[i], 12, 'E', 6).arg(i + 1, 6);
 
+    return true;
+}
+
+bool CaveBlockStabilityWidget::validateInputs(QString* errorMessage) const
+{
+    auto fail = [errorMessage](const QString& message)
+    {
+        if (errorMessage)
+            *errorMessage = message;
+        return false;
+    };
+    auto value = [](const QLineEdit* edit, bool* ok = nullptr)
+    {
+        bool parsed = false;
+        const double result = edit->text().trimmed().toDouble(&parsed);
+        if (ok)
+            *ok = parsed;
+        return result;
+    };
+
+    bool ok = false;
+    if (value(ui->weightEdit, &ok) <= 0.0 || !ok)
+        return fail(QStringLiteral("块体容重必须为正数。"));
+
+    for (const auto& range : {qMakePair(ui->xMinEdit, ui->xMaxEdit),
+                              qMakePair(ui->yMinEdit, ui->yMaxEdit),
+                              qMakePair(ui->zMinEdit, ui->zMaxEdit)})
+    {
+        bool minOk = false;
+        bool maxOk = false;
+        const double minValue = value(range.first, &minOk);
+        const double maxValue = value(range.second, &maxOk);
+        if (!minOk || !maxOk || maxValue <= minValue)
+            return fail(QStringLiteral("每个方向的计算范围最大值必须大于最小值。"));
+    }
+
+    if (ui->comboIfDir->currentData().toString() == QStringLiteral("0"))
+    {
+        const QVector3D a(float(value(ui->axEdit)), float(value(ui->ayEdit)), float(value(ui->azEdit)));
+        const QVector3D b(float(value(ui->bxEdit)), float(value(ui->byEdit)), float(value(ui->bzEdit)));
+        if ((b - a).lengthSquared() <= 1.0e-12f)
+            return fail(QStringLiteral("滑移方向的起点和终点不能相同。"));
+    }
+    else
+    {
+        bool firstOk = false;
+        bool secondOk = false;
+        const int first = ui->im1Edit->text().trimmed().toInt(&firstOk);
+        const int second = ui->im2Edit->text().trimmed().toInt(&secondOk);
+        if (!firstOk || !secondOk || first <= 0 || second <= 0 || first == second)
+            return fail(QStringLiteral("定义滑移方向的两个面编号必须为不同的正整数。"));
+    }
     return true;
 }
 

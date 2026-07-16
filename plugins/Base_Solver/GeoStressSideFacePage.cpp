@@ -1,4 +1,4 @@
-#include "GeoStressOuterForcePage.h"
+#include "GeoStressSideFacePage.h"
 
 #include <CustomComboBox.h>
 #include <PublicConstants.h>
@@ -13,35 +13,30 @@
 #include <vtkUnstructuredGrid.h>
 
 #include <algorithm>
-#include <cmath>
 
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
-#include <QLocale>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSet>
 #include <QTextStream>
 
-#include "ui_GeoStressOuterForcePage.h"
+#include "ui_GeoStressSideFacePage.h"
 
 #include "SolverUiLayoutHelper.h"
 namespace
 {
-const QString kRoofFileName = "FAROOF.DAT";
-const QString kForceFileName = "FTLOAD.DAT";
-
 struct EdgeRow
 {
     int ke1 = 0;
+    int ke2 = 0;
     int jd1 = 0;
     int jd2 = 0;
     int jd3 = 0;
     int jd4 = 0;
-    int nodeCount = 0;
 };
 
 QVector<vtkIdType> toVtkKeys(const QVector<MeshIdType>& ids)
@@ -79,31 +74,34 @@ MeshTagSet findBoundarySet(MeshModuleControllerService* meshSvc, const MeshTagKe
     return {};
 }
 
-bool readForceComponents(const Ui::GeoStressOuterForcePage* ui, double& fx, double& fy,
-                         double& fz)
+EdgeRow makeEdgeRow(vtkDataArray* elemIdArr, vtkDataArray* nodeIdArr, vtkIdType cellId,
+                    vtkIdType pidA, vtkIdType pidB)
 {
-    if (!ui || !ui->fxEdit || !ui->fyEdit || !ui->fzEdit)
-        return false;
-
-    bool okX = false;
-    bool okY = false;
-    bool okZ = false;
-    fx = QLocale::c().toDouble(ui->fxEdit->text().trimmed(), &okX);
-    fy = QLocale::c().toDouble(ui->fyEdit->text().trimmed(), &okY);
-    fz = QLocale::c().toDouble(ui->fzEdit->text().trimmed(), &okZ);
-    return okX && okY && okZ;
+    EdgeRow row;
+    row.ke1 = elemIdArr ? int(elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
+    row.ke2 = 0;
+    row.jd1 = int(nodeIdArr->GetTuple1(pidA));
+    row.jd2 = int(nodeIdArr->GetTuple1(pidB));
+    return row;
 }
 
-bool hasNonZeroForce(double fx, double fy, double fz)
+EdgeRow makeFaceRow(vtkDataArray* elemIdArr, vtkDataArray* nodeIdArr, vtkIdType cellId,
+                    vtkIdList* ids)
 {
-    constexpr double kForceTolerance = 1.0e-20;
-    return std::abs(fx) > kForceTolerance || std::abs(fy) > kForceTolerance
-           || std::abs(fz) > kForceTolerance;
-}
+    EdgeRow row;
+    row.ke1 = elemIdArr ? int(elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
+    row.ke2 = 0;
 
-QString formatScientific(double value)
-{
-    return QString::asprintf("%.6E", value);
+    const int cornerCount = std::min<int>(ids ? ids->GetNumberOfIds() : 0, 4);
+    if (cornerCount >= 1)
+        row.jd1 = int(nodeIdArr->GetTuple1(ids->GetId(0)));
+    if (cornerCount >= 2)
+        row.jd2 = int(nodeIdArr->GetTuple1(ids->GetId(1)));
+    if (cornerCount >= 3)
+        row.jd3 = int(nodeIdArr->GetTuple1(ids->GetId(2)));
+    if (cornerCount >= 4)
+        row.jd4 = int(nodeIdArr->GetTuple1(ids->GetId(3)));
+    return row;
 }
 
 QVector<EdgeRow> collectRows(vtkUnstructuredGrid* grid, const QString& domain, const QString& uuid,
@@ -112,8 +110,8 @@ QVector<EdgeRow> collectRows(vtkUnstructuredGrid* grid, const QString& domain, c
     QVector<EdgeRow> rows;
     if (!grid)
         return rows;
-    PickManager& pm = PickManager::instance();
 
+    PickManager& pm = PickManager::instance();
     vtkDataArray* nodeIdArr = vtkDataArray::SafeDownCast(grid->GetPointData()->GetArray("node_id"));
     vtkDataArray* elemIdArr = vtkDataArray::SafeDownCast(grid->GetCellData()->GetArray("elem_id"));
     if (!nodeIdArr)
@@ -132,32 +130,6 @@ QVector<EdgeRow> collectRows(vtkUnstructuredGrid* grid, const QString& domain, c
         if (!cell)
             continue;
 
-        auto appendEdgeRow = [&](vtkIdType a, vtkIdType b)
-        {
-            EdgeRow r;
-            r.ke1 = elemIdArr ? int(elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
-            r.jd1 = int(nodeIdArr->GetTuple1(a));
-            r.jd2 = int(nodeIdArr->GetTuple1(b));
-            r.nodeCount = 2;
-            rows.push_back(r);
-        };
-
-        auto appendFaceRow = [&](vtkIdList* ids)
-        {
-            EdgeRow r;
-            r.ke1 = elemIdArr ? int(elemIdArr->GetTuple1(cellId)) : int(cellId + 1);
-            r.nodeCount = std::min<int>(ids ? ids->GetNumberOfIds() : 0, 4);
-            if (r.nodeCount >= 1)
-                r.jd1 = int(nodeIdArr->GetTuple1(ids->GetId(0)));
-            if (r.nodeCount >= 2)
-                r.jd2 = int(nodeIdArr->GetTuple1(ids->GetId(1)));
-            if (r.nodeCount >= 3)
-                r.jd3 = int(nodeIdArr->GetTuple1(ids->GetId(2)));
-            if (r.nodeCount >= 4)
-                r.jd4 = int(nodeIdArr->GetTuple1(ids->GetId(3)));
-            rows.push_back(r);
-        };
-
         if (mode == PickMode::Face)
         {
             vtkIdList* ids = nullptr;
@@ -172,7 +144,7 @@ QVector<EdgeRow> collectRows(vtkUnstructuredGrid* grid, const QString& domain, c
             }
             if (!ids || ids->GetNumberOfIds() < 3)
                 continue;
-            appendFaceRow(ids);
+            rows.push_back(makeFaceRow(elemIdArr, nodeIdArr, cellId, ids));
         }
         else
         {
@@ -196,30 +168,33 @@ QVector<EdgeRow> collectRows(vtkUnstructuredGrid* grid, const QString& domain, c
                 a = ids->GetId(0);
                 b = ids->GetId(ids->GetNumberOfIds() - 1);
             }
-            appendEdgeRow(a, b);
+            rows.push_back(makeEdgeRow(elemIdArr, nodeIdArr, cellId, a, b));
         }
     }
     return rows;
 }
 } // namespace
 
-GeoStressOuterForcePage::GeoStressOuterForcePage(QWidget* parent)
-    : BasePage("GeoStressRegressionOuterForce"), ui(new Ui::GeoStressOuterForcePage)
+GeoStressSideFacePage::GeoStressSideFacePage(QWidget* parent)
+    : BasePage("GeoStressRegressionSideFace"), ui(new Ui::GeoStressSideFacePage)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
     SolverUiLayoutHelper::polishPage(this);
 
-    connect(ui->clearButton, &QPushButton::clicked, this, &GeoStressOuterForcePage::onClearClicked);
-    connect(ui->batchAddButton, &QPushButton::clicked, this,
-            &GeoStressOuterForcePage::onBatchAddClicked);
+    ui->idirCombo->addItem("X 方向", "1");
+    ui->idirCombo->addItem("Y 方向", "2");
+    ui->idirCombo->addItem("Z 方向", "3");
+
+    connect(ui->clearButton, &QPushButton::clicked, this, &GeoStressSideFacePage::onClearClicked);
+    connect(ui->batchAddButton, &QPushButton::clicked, this, &GeoStressSideFacePage::onBatchAddClicked);
     connect(ui->pickEnableCheckBox, &QCheckBox::toggled, this,
             [this](bool on)
             {
                 PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, on);
             });
     connect(ui->groupCombo, &CustomComboBox::itemHovered, this,
-            &GeoStressOuterForcePage::onGroupHovered);
+            &GeoStressSideFacePage::onGroupHovered);
     connect(ui->groupCombo, &CustomComboBox::dropdownClosed, this,
             [this]()
             {
@@ -228,12 +203,12 @@ GeoStressOuterForcePage::GeoStressOuterForcePage(QWidget* parent)
             });
 }
 
-GeoStressOuterForcePage::~GeoStressOuterForcePage()
+GeoStressSideFacePage::~GeoStressSideFacePage()
 {
     delete ui;
 }
 
-void GeoStressOuterForcePage::beforeLoad()
+void GeoStressSideFacePage::beforeLoad()
 {
     PickManager::instance().activate(getPageType(), m_uuid, currentPickMode());
     if (ui->pickEnableCheckBox)
@@ -242,20 +217,22 @@ void GeoStressOuterForcePage::beforeLoad()
     refreshGroupCombo();
 }
 
-void GeoStressOuterForcePage::beforeUnload()
+void GeoStressSideFacePage::beforeUnload()
 {
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
     PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
     PickManager::instance().deactivate(getPageType(), m_uuid, currentPickMode());
 }
 
-QJsonObject GeoStressOuterForcePage::saveJson()
+QJsonObject GeoStressSideFacePage::saveJson()
 {
     QJsonObject obj;
+    obj["face_index"] = m_faceIndex;
     obj["pick_mode"] = currentPickMode() == PickMode::Face ? "face" : "edge";
-    obj["fx"] = ui->fxEdit->text().trimmed();
-    obj["fy"] = ui->fyEdit->text().trimmed();
-    obj["fz"] = ui->fzEdit->text().trimmed();
+    obj["idir"] = ui->idirCombo->currentData().toString();
+    obj["height"] = ui->heightEdit->text().trimmed();
+    obj["gama"] = ui->gamaEdit->text().trimmed();
+    obj["pgrout"] = ui->pgroutEdit->text().trimmed();
 
     auto toJson = [](const QVector<vtkIdType>& ids)
     {
@@ -264,19 +241,24 @@ QJsonObject GeoStressOuterForcePage::saveJson()
             arr.append(qint64(id));
         return arr;
     };
+
     obj["picked_edges"] = toJson(
         PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Edge, GridKind::Solid));
     obj["picked_faces"] = toJson(
         PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid));
-
     return obj;
 }
 
-void GeoStressOuterForcePage::loadJson(const QJsonObject& obj)
+void GeoStressSideFacePage::loadJson(const QJsonObject& obj)
 {
-    ui->fxEdit->setText(obj.value("fx").toString(ui->fxEdit->text()));
-    ui->fyEdit->setText(obj.value("fy").toString(ui->fyEdit->text()));
-    ui->fzEdit->setText(obj.value("fz").toString(ui->fzEdit->text()));
+    setFaceIndex(obj.value("face_index").toInt(m_faceIndex));
+    {
+        const int index = ui->idirCombo->findData(obj.value("idir").toString("1"));
+        ui->idirCombo->setCurrentIndex(index >= 0 ? index : 0);
+    }
+    ui->heightEdit->setText(obj.value("height").toString(ui->heightEdit->text()));
+    ui->gamaEdit->setText(obj.value("gama").toString(ui->gamaEdit->text()));
+    ui->pgroutEdit->setText(obj.value("pgrout").toString(ui->pgroutEdit->text()));
 
     auto fromJson = [](const QJsonArray& arr)
     {
@@ -295,68 +277,78 @@ void GeoStressOuterForcePage::loadJson(const QJsonObject& obj)
                                                 true);
 }
 
-QString GeoStressOuterForcePage::forceFile() const
+QString GeoStressSideFacePage::faceFile() const
 {
-    return kForceFileName;
+    return QString("FA_SIDE%1.DAT").arg(m_faceIndex);
 }
 
-int GeoStressOuterForcePage::forceEnabled() const
+GeoStressSideFacePage::FaceAttr GeoStressSideFacePage::attr() const
 {
-    double fx = 0.0;
-    double fy = 0.0;
-    double fz = 0.0;
-    if (!readForceComponents(ui, fx, fy, fz) || !hasNonZeroForce(fx, fy, fz))
-        return 0;
+    FaceAttr a;
+    a.idir = ui->idirCombo->currentData().toString();
+    a.height = ui->heightEdit->text().trimmed();
+    a.gama = ui->gamaEdit->text().trimmed();
+    a.pgrout = ui->pgroutEdit->text().trimmed();
+    a.ii = QString::number(m_faceIndex);
+    return a;
+}
 
+void GeoStressSideFacePage::setFaceIndex(int index)
+{
+    if (index < 1)
+        index = 1;
+    if (index > 4)
+        index = 4;
+    m_faceIndex = index;
+}
+
+int GeoStressSideFacePage::selectionCount() const
+{
     PickManager::instance().updateStructure();
     vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
     if (!grid)
         return 0;
-
-    const QVector<EdgeRow> rows =
-        collectRows(grid, QStringLiteral("GeoStressRegressionOuterForce"), m_uuid,
-                    currentPickMode());
-    return rows.isEmpty() ? 0 : 1;
+    return collectRows(grid, QStringLiteral("GeoStressRegressionSideFace"), m_uuid,
+                       currentPickMode())
+        .size();
 }
 
-bool GeoStressOuterForcePage::exportDatFiles() const
+bool GeoStressSideFacePage::exportDatFile() const
 {
-    double fx = 0.0;
-    double fy = 0.0;
-    double fz = 0.0;
-    if (!readForceComponents(ui, fx, fy, fz))
-        return false;
-
     PickManager::instance().updateStructure();
     vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
     if (!grid)
         return false;
 
-    const QVector<EdgeRow> rows =
-        collectRows(grid, QStringLiteral("GeoStressRegressionOuterForce"), m_uuid,
-                    currentPickMode());
+    const QString domain = "GeoStressRegressionSideFace";
+    const QVector<EdgeRow> rows = collectRows(grid, domain, m_uuid, currentPickMode());
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     QDir wd(projectDir);
+    if (rows.isEmpty())
+    {
+        QFile::remove(wd.filePath("PREP/" + faceFile()));
+        return false;
+    }
     if (!wd.exists("PREP") && !wd.mkpath("PREP"))
         return false;
 
-    QFile roofFile(wd.filePath("PREP/" + kRoofFileName));
-    if (!roofFile.open(QIODevice::WriteOnly | QIODevice::Text))
+    QFile file(wd.filePath("PREP/" + faceFile()));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
 
-    QTextStream roofOs(&roofFile);
+    QTextStream os(&file);
     const bool isFaceMode = (currentPickMode() == PickMode::Face);
     if (isFaceMode)
     {
-        roofOs << QString("%1        6     NJX   MAKOD\n").arg(rows.size());
-        roofOs << "    KJX     KE1     KE2     JD1     JD2     JD3     JD4  JAT\n";
+        os << QString("%1        6     NJX   MAKOD\n").arg(rows.size());
+        os << "    KJX     KE1     KE2     JD1     JD2     JD3     JD4  JAT\n";
     }
     else
     {
-        roofOs << QString("%1        4     NJX   MAKOD\n").arg(rows.size());
-        roofOs << "    KJX     KE1     KE2     JD1     JD2  JAT\n";
+        os << QString("%1        4     NJX   MAKOD\n").arg(rows.size());
+        os << "    KJX     KE1     KE2     JD1     JD2  JAT\n";
     }
 
     for (int i = 0; i < rows.size(); ++i)
@@ -364,79 +356,37 @@ bool GeoStressOuterForcePage::exportDatFiles() const
         const EdgeRow& row = rows[i];
         if (isFaceMode)
         {
-            roofOs << QString("%1 %2 %3 %4 %5 %6 %7 %8\n")
-                          .arg(i + 1, 9)
-                          .arg(row.ke1, 9)
-                          .arg(-1, 9)
-                          .arg(row.jd1, 9)
-                          .arg(row.jd2, 9)
-                          .arg(row.jd3, 9)
-                          .arg(row.jd4, 9)
-                          .arg(3, 9);
+            os << QString("%1 %2 %3 %4 %5 %6 %7 %8\n")
+                      .arg(i + 1, 9)
+                      .arg(row.ke1, 9)
+                      .arg(row.ke2, 9)
+                      .arg(row.jd1, 9)
+                      .arg(row.jd2, 9)
+                      .arg(row.jd3, 9)
+                      .arg(row.jd4, 9)
+                      .arg(6, 9);
         }
         else
         {
-            roofOs << QString("%1 %2 %3 %4 %5 %6\n")
-                          .arg(i + 1, 9)
-                          .arg(row.ke1, 9)
-                          .arg(-1, 9)
-                          .arg(row.jd1, 9)
-                          .arg(row.jd2, 9)
-                          .arg(3, 9);
+            os << QString("%1 %2 %3 %4 %5 %6\n")
+                      .arg(i + 1, 9)
+                      .arg(row.ke1, 9)
+                      .arg(row.ke2, 9)
+                      .arg(row.jd1, 9)
+                      .arg(row.jd2, 9)
+                      .arg(0, 9);
         }
     }
-
-    const QString forceName = forceFile();
-    QFile forceDat(wd.filePath("PREP/" + forceName));
-    if (!forceDat.open(QIODevice::WriteOnly | QIODevice::Text))
-        return false;
-
-    QTextStream forceOs(&forceDat);
-    forceOs << QString("%1       0.000       0.000   0.000000E+00  %2\n")
-                   .arg(rows.size())
-                   .arg(forceName);
-
-    const QString fxText = formatScientific(fx);
-    const QString fyText = formatScientific(fy);
-    const QString fzText = formatScientific(fz);
-    const QString totalText = formatScientific(std::sqrt(fx * fx + fy * fy + fz * fz));
-
-    for (int faceIndex = 0; faceIndex < rows.size(); ++faceIndex)
-    {
-        const EdgeRow& row = rows.at(faceIndex);
-        const int nfaJd = isFaceMode ? row.nodeCount : 2;
-        const int nft = faceIndex + 1;
-
-        // READ_IIWL 实际读取前三个整数：KE、NFT+NSHI、NFAJD。
-        // 第四个 NFT 与旧求解器自身输出格式保持一致，读取时会被忽略。
-        forceOs << QString("%1 %2 %3 %4  KE  NFT+NSHI  NFAJD  NFT\n")
-                       .arg(row.ke1, 9)
-                       .arg(nft, 9)
-                       .arg(nfaJd, 9)
-                       .arg(nft, 9);
-
-        const int nodeIds[] = {row.jd1, row.jd2, row.jd3, row.jd4};
-        for (int nodeIndex = 0; nodeIndex < nfaJd; ++nodeIndex)
-        {
-            forceOs << QString("%1  %2  %3  %4  P=%5\n")
-                           .arg(nodeIds[nodeIndex], 9)
-                           .arg(fxText, 14)
-                           .arg(fyText, 14)
-                           .arg(fzText, 14)
-                           .arg(totalText, 14);
-        }
-    }
-
     return true;
 }
 
-void GeoStressOuterForcePage::onClearClicked()
+void GeoStressSideFacePage::onClearClicked()
 {
     PickManager::instance().clearSelection(getPageType(), m_uuid, currentPickMode());
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
 }
 
-void GeoStressOuterForcePage::onBatchAddClicked()
+void GeoStressSideFacePage::onBatchAddClicked()
 {
     if (!ui->groupCombo || ui->groupCombo->currentIndex() < 0)
         return;
@@ -454,7 +404,7 @@ void GeoStressOuterForcePage::onBatchAddClicked()
                                                     toVtkKeys(set.edgeKeys), false);
 }
 
-void GeoStressOuterForcePage::onGroupHovered(int row)
+void GeoStressSideFacePage::onGroupHovered(int row)
 {
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc || row < 0)
@@ -468,14 +418,24 @@ void GeoStressOuterForcePage::onGroupHovered(int row)
                                                    toVtkKeys(set.edgeKeys));
 }
 
-PickMode GeoStressOuterForcePage::currentPickMode() const
+PickMode GeoStressSideFacePage::currentPickMode() const
 {
     const int ndim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     return ndim == 2 ? PickMode::Edge : PickMode::Face;
 }
 
-void GeoStressOuterForcePage::refreshGroupCombo()
+void GeoStressSideFacePage::refreshGroupCombo()
 {
+    const bool selectFaces = currentPickMode() == PickMode::Face;
+    ui->selectionGroup->setTitle(selectFaces ? QStringLiteral("网格面选择")
+                                              : QStringLiteral("网格边选择"));
+    ui->pickHintLabel->setText(
+        selectFaces
+            ? QStringLiteral("选择对象：三维网格面。Shift+拖拽框选，Ctrl+拖拽取消选择。")
+            : QStringLiteral("选择对象：二维网格边。Shift+拖拽框选，Ctrl+拖拽取消选择。"));
+    ui->pickEnableCheckBox->setText(selectFaces ? QStringLiteral("开启面点选")
+                                                 : QStringLiteral("开启边点选"));
+
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc || !ui->groupCombo)
         return;

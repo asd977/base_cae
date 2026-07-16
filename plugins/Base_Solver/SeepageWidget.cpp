@@ -2,10 +2,6 @@
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
-#include <ServiceRegistry.h>
-#include <services/MeshModuleControllerService.h>
-#include <services/MaterialManagerService.h>
-
 #include <QDir>
 #include <QComboBox>
 #include <QDialog>
@@ -13,6 +9,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLabel>
+#include <QMessageBox>
 #include <QDialogButtonBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -50,16 +47,31 @@ SeepageWidget::SeepageWidget(QWidget* parent)
     connect(ui->btnHwDropCurves, &QPushButton::clicked, this,
             &SeepageWidget::onEditHwDropCurvesClicked);
 
-    ui->comboComputeType->addItem("1 - 仅进行稳定渗流计算", 1);
-    ui->comboComputeType->addItem("2 - 仅进行非稳定渗流计算", 2);
-    ui->comboComputeType->addItem("3 - 按流程全部进行计算", 3);
+    ui->comboComputeType->addItem("仅进行稳定渗流计算", 1);
+    ui->comboComputeType->addItem("仅进行非稳定渗流计算", 2);
+    ui->comboComputeType->addItem("按流程全部进行计算", 3);
 
-    ui->comboItagFree->addItem("0 - 不计入", 0);
-    ui->comboItagFree->addItem("1 - 计入", 1);
+    ui->comboItagFree->addItem("不计入自由面修正", 0);
+    ui->comboItagFree->addItem("计入自由面修正", 1);
 
     connect(ui->comboComputeType, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this]() { updateComputeTypeVisibility(); });
+    connect(ui->checkNaturalFreeSurface, &QCheckBox::toggled, this,
+            [this]()
+            {
+                updateOptionalControls();
+                emit requirementsChanged();
+            });
+    connect(ui->checkDrainWell, &QCheckBox::toggled, this,
+            [this]() { emit requirementsChanged(); });
+
+    // 材料属性列是求解器内部约定，普通分析保持默认值即可。
+    ui->labelMainPropertyNo->hide();
+    ui->spinMainPropertyNo->hide();
+    ui->labelControlledPropertyNo->hide();
+    ui->spinControlledPropertyNo->hide();
     updateComputeTypeVisibility();
+    updateOptionalControls();
 }
 
 SeepageWidget::~SeepageWidget()
@@ -96,6 +108,12 @@ void SeepageWidget::updateComputeTypeVisibility()
                                                            : QStringLiteral("稳定与非稳定渗流参数"));
 }
 
+void SeepageWidget::updateOptionalControls()
+{
+    const bool enabled = naturalFreeSurfaceEnabled();
+    ui->comboItagFree->setEnabled(enabled);
+}
+
 double SeepageWidget::upstreamWaterLevel() const
 {
     return ui->spinUpstreamWaterLevel->value();
@@ -114,6 +132,40 @@ double SeepageWidget::upstreamFlux() const
 double SeepageWidget::downstreamFlux() const
 {
     return ui->spinDownstreamFlux->value();
+}
+
+bool SeepageWidget::naturalFreeSurfaceEnabled() const
+{
+    return ui->checkNaturalFreeSurface->isChecked();
+}
+
+bool SeepageWidget::drainWellEnabled() const
+{
+    return ui->checkDrainWell->isChecked();
+}
+
+bool SeepageWidget::validateInputs(QString* errorMessage) const
+{
+    const int type = ui->comboComputeType->currentData().toInt();
+    if (type == 2 || type == 3)
+    {
+        const double dt = ui->spinDt->value();
+        const double start = ui->spinTsta->value();
+        const double end = ui->spinTend->value();
+        if (dt <= 0.0)
+        {
+            if (errorMessage)
+                *errorMessage = QStringLiteral("非稳态渗流的时间步长必须为正数。");
+            return false;
+        }
+        if (end <= start)
+        {
+            if (errorMessage)
+                *errorMessage = QStringLiteral("非稳态渗流的终止时间必须大于起始时间。");
+            return false;
+        }
+    }
+    return true;
 }
 
 bool SeepageWidget::exportIseepDatFile() const
@@ -139,24 +191,7 @@ bool SeepageWidget::exportIseepDatFile() const
     const QString seepCaseDirName = QStringLiteral("SEEPCASE01");
     const QString seepCaseDirAbs = ensureTrailingSep(wd.filePath(seepCaseDirName));
 
-    QVector<std::pair<int, int>> globalMappings;
-    bool usedServiceMappings = false;
-    if (auto* materialService = ServiceRegistry::instance().getService<MaterialManagerService>())
-    {
-        const auto transitions = materialService->materialTransitions();
-        if (!transitions.isEmpty())
-        {
-            usedServiceMappings = true;
-            for (const auto& row : transitions)
-                globalMappings.push_back({row.first, row.second});
-        }
-    }
-    if (!usedServiceMappings)
-    {
-        for (const auto& mapping : globalMappings_)
-            globalMappings.push_back({mapping.oldMaterial, mapping.newMaterial});
-    }
-    const int globalNchange = globalMappings.size();
+    const int globalNchange = globalMappings_.size();
 
     QFile file(wd.filePath("ISEEP.DAT"));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
@@ -192,15 +227,8 @@ bool SeepageWidget::exportIseepDatFile() const
     os << globalNchange << "     NCHANGE\n";
     for (int i = 0; i < globalNchange; ++i)
     {
-        if (i < globalMappings.size())
-        {
-            os << globalMappings[i].first << " " << globalMappings[i].second
-               << "   MOLD MNEW\n";
-        }
-        else
-        {
-            os << "0 0   MOLD MNEW\n";
-        }
+        os << globalMappings_[i].oldMaterial << " " << globalMappings_[i].newMaterial << " "
+           << (i + 1) << "   MOLD MNEW II\n";
     }
 
     os << "1     MCASE\n";
@@ -260,10 +288,65 @@ bool SeepageWidget::exportHwDropDatFiles(const QString& seepCaseDirName) const
 
 void SeepageWidget::onEditGlobalMappingsClicked()
 {
-    auto* materialService = ServiceRegistry::instance().getService<MaterialManagerService>();
-    if (!materialService)
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("设置渗流材料变换"));
+    dialog.resize(560, 360);
+    auto* layout = new QVBoxLayout(&dialog);
+
+    auto* table = new QTableWidget(&dialog);
+    table->setColumnCount(2);
+    table->setHorizontalHeaderLabels({QStringLiteral("原材料号"),
+                                      QStringLiteral("变换后材料号")});
+    table->setRowCount(qMax(1, globalMappings_.size()));
+    for (int row = 0; row < globalMappings_.size(); ++row)
+    {
+        table->setItem(row, 0,
+                       new QTableWidgetItem(QString::number(globalMappings_[row].oldMaterial)));
+        table->setItem(row, 1,
+                       new QTableWidgetItem(QString::number(globalMappings_[row].newMaterial)));
+    }
+    table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    layout->addWidget(table);
+
+    auto* editButtons = new QHBoxLayout();
+    auto* addButton = new QPushButton(QStringLiteral("新增一行"), &dialog);
+    auto* removeButton = new QPushButton(QStringLiteral("删除选中行"), &dialog);
+    editButtons->addWidget(addButton);
+    editButtons->addWidget(removeButton);
+    editButtons->addStretch();
+    layout->addLayout(editButtons);
+    connect(addButton, &QPushButton::clicked, &dialog,
+            [table]() { table->insertRow(table->rowCount()); });
+    connect(removeButton, &QPushButton::clicked, &dialog,
+            [table]()
+            {
+                const int row = table->currentRow();
+                if (row >= 0)
+                    table->removeRow(row);
+            });
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
+                                         &dialog);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+
+    if (dialog.exec() != QDialog::Accepted)
         return;
-    materialService->showMaterialTransitionDialog();
+
+    QVector<MaterialMapping> mappings;
+    for (int row = 0; row < table->rowCount(); ++row)
+    {
+        const auto* oldItem = table->item(row, 0);
+        const auto* newItem = table->item(row, 1);
+        bool oldOk = false;
+        bool newOk = false;
+        const int oldMaterial = oldItem ? oldItem->text().trimmed().toInt(&oldOk) : 0;
+        const int newMaterial = newItem ? newItem->text().trimmed().toInt(&newOk) : 0;
+        if (oldOk && newOk && oldMaterial > 0 && newMaterial > 0)
+            mappings.push_back({oldMaterial, newMaterial});
+    }
+    globalMappings_ = mappings;
 }
 
 void SeepageWidget::onEditHwDropCurvesClicked()
@@ -429,6 +512,8 @@ void SeepageWidget::loadJson(const QJsonObject& obj)
     };
     waterLevelPoints_ = loadPoints(obj.value("water_level_points").toArray());
     updateComputeTypeVisibility();
+    updateOptionalControls();
+    emit requirementsChanged();
 }
 
 void SeepageWidget::onComputeClicked()
@@ -439,6 +524,12 @@ void SeepageWidget::onComputeClicked()
         return;
     }
 
+    QString error;
+    if (!validateInputs(&error))
+    {
+        QMessageBox::warning(this, QStringLiteral("设置不完整"), error);
+        return;
+    }
     emit computeRequested();
 }
 

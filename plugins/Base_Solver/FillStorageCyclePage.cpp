@@ -85,15 +85,27 @@ void FillStorageCyclePage::initValueEditors()
     ui->comboIFWAVE->setItemData(1, "1");
     ui->comboIFSETT->setItemData(0, "0");
     ui->comboIFSETT->setItemData(1, "1");
+    ui->comboIFIIWL_SEEP->setItemText(2, QStringLiteral("读取节点水头并施加面力"));
+    ui->comboIFIIWL_BODY->setItemText(2, QStringLiteral("读取节点体力"));
+    ui->labelWOMI1->setText(QStringLiteral("流变初始参数"));
 
     connect(ui->comboIFWET, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this]() { updateConditionalVisibility(); });
     connect(ui->comboIFDROP, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this]() { updateConditionalVisibility(); });
+    connect(ui->comboIFMODE, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this]() { updateConditionalVisibility(); });
     connect(ui->comboIFWAVE, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this]() { updateConditionalVisibility(); });
     connect(ui->comboIFSETT, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this]() { updateConditionalVisibility(); });
+    for (QComboBox* combo : {ui->comboIFIIWL_SEEP, ui->comboIFIIWL_BODY,
+                             ui->comboIFIIWL_FACE, ui->comboIFMODE,
+                             ui->comboIFWAVE, ui->comboIFSETT})
+    {
+        connect(combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+                [this]() { emit requirementsChanged(); });
+    }
 
     auto mkTable = [this](const QStringList& headers)
     {
@@ -108,11 +120,12 @@ void FillStorageCyclePage::initValueEditors()
     m_dropTable = mkTable({"骤降前水位", "骤降后水位"});
     m_circleTable = mkTable({"填筑开始级", "填筑结束级", "填筑结束后流变时间", "初始蓄水高程", "本级蓄水高程",
                              "蓄水结束后流变时间", "是否填筑", "是否填筑期流变", "是否蓄水",
-                             "是否蓄水期流变", "节点水头文件", "节点体力文件"});
+                             "是否蓄水期流变", "节点水头数据", "节点体力数据"});
 
-    m_wetTable->setRowCount(0);
+    m_wetTable->setRowCount(1);
+    m_wetTable->setItem(0, 0, new QTableWidgetItem("1"));
+    m_wetTable->setItem(0, 1, new QTableWidgetItem("1"));
     m_wetTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    loadWetMappingsFromService();
 
     m_dropTable->setRowCount(1);
     m_dropTable->setItem(0, 0, new QTableWidgetItem("3200.000"));
@@ -152,8 +165,8 @@ void FillStorageCyclePage::initValueEditors()
         auto setCircleCombo = [table](int row, int col, const QString& val)
         {
             auto* cb = new QComboBox(table);
-            cb->addItem("0 - 否", "0");
-            cb->addItem("1 - 是", "1");
+            cb->addItem("否", "0");
+            cb->addItem("是", "1");
             const int idx = cb->findData(val.trimmed());
             cb->setCurrentIndex(idx >= 0 ? idx : 0);
             table->setCellWidget(row, col, cb);
@@ -215,15 +228,8 @@ void FillStorageCyclePage::initValueEditors()
         updatePreview();
     };
 
-    connect(ui->btnEditWet, &QPushButton::clicked, this, [this]()
-            {
-                auto* materialService = ServiceRegistry::instance().getService<MaterialManagerService>();
-                if (!materialService)
-                    return;
-                materialService->showMaterialTransitionDialog();
-                loadWetMappingsFromService();
-                updatePreview();
-            });
+    connect(ui->btnEditWet, &QPushButton::clicked, this,
+            [openEditor, this]() { openEditor(m_wetTable, "编辑干湿材料对应表"); });
     connect(ui->btnEditDrop, &QPushButton::clicked, this,
             [openEditor, this]() { openEditor(m_dropTable, "编辑骤降前后水位表"); });
     connect(ui->btnEditCircle, &QPushButton::clicked, this,
@@ -235,26 +241,91 @@ void FillStorageCyclePage::initValueEditors()
 void FillStorageCyclePage::updateConditionalVisibility()
 {
     SolverUiLayoutHelper::StableLayoutUpdate stableLayout(this);
+    ui->groupDynamic->setVisible(m_dynamicOptionsAvailable);
 
     const bool wetEnabled = ui->comboIFWET->currentData().toString() == QStringLiteral("1");
+    const bool dropEnabled = ui->comboIFDROP->currentData().toString() == QStringLiteral("1");
+    // 关闭功能时保留已填写的数据，但不再让无关表格占据页面。
     ui->btnEditWet->setVisible(wetEnabled);
     ui->labelWetRows->setVisible(wetEnabled);
-
-    const bool dropEnabled = ui->comboIFDROP->currentData().toString() == QStringLiteral("1");
     ui->btnEditDrop->setVisible(dropEnabled);
     ui->labelDropRows->setVisible(dropEnabled);
 
+    const bool modeEnabled = ui->comboIFMODE->currentData().toString() == QStringLiteral("1");
     const bool waveEnabled = ui->comboIFWAVE->currentData().toString() == QStringLiteral("1");
     const bool creepEnabled = ui->comboIFSETT->currentData().toString() == QStringLiteral("1");
-    const bool showTime = waveEnabled || creepEnabled;
+    const bool showTime = m_dynamicOptionsAvailable &&
+                          (modeEnabled || waveEnabled || creepEnabled);
     ui->labelDT->setVisible(showTime);
     ui->editDT->setVisible(showTime);
     ui->labelTSTA->setVisible(showTime);
     ui->editTSTA->setVisible(showTime);
     ui->labelTEND->setVisible(showTime);
     ui->editTEND->setVisible(showTime);
-    ui->labelWOMI1->setVisible(creepEnabled);
-    ui->editWOMI1->setVisible(creepEnabled);
+    ui->labelWOMI1->setVisible(m_dynamicOptionsAvailable && creepEnabled);
+    ui->editWOMI1->setVisible(m_dynamicOptionsAvailable && creepEnabled);
+}
+
+void FillStorageCyclePage::setDynamicOptionsAvailable(bool available)
+{
+    if (m_dynamicOptionsAvailable == available)
+        return;
+    m_dynamicOptionsAvailable = available;
+    updateConditionalVisibility();
+}
+
+bool FillStorageCyclePage::usesDamBaseUplift() const
+{
+    return valueOf(QStringLiteral("IFIIWL_SEEP")).toInt() > 0;
+}
+
+bool FillStorageCyclePage::usesLinearDamBaseUplift() const
+{
+    return valueOf(QStringLiteral("IFIIWL_SEEP")) == QStringLiteral("1");
+}
+
+bool FillStorageCyclePage::usesDamFacePressure() const
+{
+    return valueOf(QStringLiteral("IFIIWL_FACE")) == QStringLiteral("1");
+}
+
+bool FillStorageCyclePage::validateInputs(QString* errorMessage) const
+{
+    auto fail = [errorMessage](const QString& message)
+    {
+        if (errorMessage)
+            *errorMessage = message;
+        return false;
+    };
+
+    const bool hasTimedTask = m_dynamicOptionsAvailable &&
+                              (valueOf(QStringLiteral("IFMODE")) == QStringLiteral("1") ||
+                               valueOf(QStringLiteral("IFWAVE")) == QStringLiteral("1") ||
+                               valueOf(QStringLiteral("IFSETT")) == QStringLiteral("1"));
+    if (hasTimedTask)
+    {
+        bool dtOk = false;
+        bool startOk = false;
+        bool endOk = false;
+        const double dt = valueOf(QStringLiteral("DT")).toDouble(&dtOk);
+        const double start = valueOf(QStringLiteral("TSTA")).toDouble(&startOk);
+        const double end = valueOf(QStringLiteral("TEND")).toDouble(&endOk);
+        if (!dtOk || dt <= 0.0)
+            return fail(QStringLiteral("计算时步必须为正数。"));
+        if (!startOk || !endOk || end <= start)
+            return fail(QStringLiteral("终止时间必须大于起始时间。"));
+    }
+
+    if (valueOf(QStringLiteral("IFWET")) == QStringLiteral("1") &&
+        (!m_wetTable || m_wetTable->rowCount() == 0))
+        return fail(QStringLiteral("启用湿化计算后，至少需要一组湿化材料对应关系。"));
+    if (valueOf(QStringLiteral("IFDROP")) == QStringLiteral("1") &&
+        (!m_dropTable || m_dropTable->rowCount() == 0))
+        return fail(QStringLiteral("启用水位骤降后，至少需要一组骤降前后水位。"));
+    if (!m_circleTable || m_circleTable->rowCount() == 0)
+        return fail(QStringLiteral("至少需要一个填筑蓄水阶段。"));
+
+    return true;
 }
 
 void FillStorageCyclePage::loadWetMappingsFromService()
@@ -331,17 +402,16 @@ QString FillStorageCyclePage::sectionText(int caseIndex) const
     text += QString("%1    ICASE--------------------------------------\n").arg(caseIndex);
     text += QString("%1 %2 %3     IFIIWL_SEEP IFIIWL_BODY IFIIWL_FACE\n")
                 .arg(valueOf("IFIIWL_SEEP"), valueOf("IFIIWL_BODY"), valueOf("IFIIWL_FACE"));
-    const bool wetEnabled = valueOf("IFWET") == "1";
-    const int numWet = wetEnabled && m_wetTable ? m_wetTable->rowCount() : 0;
+    const int numWet = m_wetTable ? m_wetTable->rowCount() : 0;
     text += QString("%1 %2     NUM_WET IFWET\n").arg(numWet).arg(valueOf("IFWET"));
     for (int i = 0; i < numWet; ++i)
-        text += QString("%1 %2\n").arg(tableItemText(m_wetTable, i, 0, "1"),
-                                        tableItemText(m_wetTable, i, 1, "1"));
+        text += QString("%1 %2 %3\n")
+                    .arg(tableItemText(m_wetTable, i, 0, "1"),
+                         tableItemText(m_wetTable, i, 1, "1"))
+                    .arg(i + 1);
 
-    const bool dropEnabled = valueOf("IFDROP") == "1";
-    const int numDrop = dropEnabled && m_dropTable ? m_dropTable->rowCount() : 0;
-    const QString ifDropOut = dropEnabled ? QString::number(numDrop) : QStringLiteral("0");
-    text += QString("%1 %2     NUM_DROP IFDROP\n").arg(numDrop).arg(ifDropOut);
+    const int numDrop = m_dropTable ? m_dropTable->rowCount() : 0;
+    text += QString("%1 %2     NUM_DROP IFDROP\n").arg(numDrop).arg(valueOf("IFDROP"));
     for (int i = 0; i < numDrop; ++i)
         text += QString("%1 %2 %3\n")
                     .arg(tableItemText(m_dropTable, i, 0, "0.000"),
@@ -373,7 +443,26 @@ QString FillStorageCyclePage::sectionText(int caseIndex) const
     }
 
     text += "'CASE01FILL01'     DIRDYNA\n";
-    text += "0   NUM_DYNA\n";
+    QVector<QPair<int, int>> dynamicMappings;
+    if (valueOf("IFMODE") == QStringLiteral("1"))
+    {
+        if (auto* materialService =
+                ServiceRegistry::instance().getService<MaterialManagerService>())
+        {
+            const auto transitions = materialService->materialTransitions();
+            dynamicMappings.reserve(transitions.size());
+            for (const auto& transition : transitions)
+                dynamicMappings.push_back(qMakePair(transition.first, transition.second));
+        }
+    }
+    text += QString("%1   NUM_DYNA\n").arg(dynamicMappings.size());
+    for (int i = 0; i < dynamicMappings.size(); ++i)
+    {
+        text += QString("%1 %2 %3   MACHAN MACHAN II DYNA\n")
+                    .arg(dynamicMappings.at(i).first)
+                    .arg(dynamicMappings.at(i).second)
+                    .arg(i + 1);
+    }
 
     text += QString("%1 %2 %3   IFMODE   IFWAVE     IFSETT\n")
                 .arg(valueOf("IFMODE"), valueOf("IFWAVE"), valueOf("IFSETT"));
@@ -418,6 +507,7 @@ void FillStorageCyclePage::loadJson(const QJsonObject& obj)
     jsonToTable(obj.value("circle_table").toArray(), m_circleTable, 1);
     updateConditionalVisibility();
     updatePreview();
+    emit requirementsChanged();
 }
 
 QString FillStorageCyclePage::tableItemText(QTableWidget* table, int row, int col,

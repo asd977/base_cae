@@ -5,12 +5,14 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QSet>
 
 #include <algorithm>
@@ -19,14 +21,12 @@ namespace
 {
 constexpr char kPostResultRoot[] = "post/results";
 constexpr char kManifestName[] = "manifest.json";
+constexpr int kManifestVersion = 3;
 
-struct OutputSpec
+struct GeneratedFileInfo
 {
-    QString fileName;
     QString displayName;
     QString kind;
-    QString format;
-    QStringList sourceNames;
 };
 
 QString normalizeRelativePath(QString path)
@@ -41,13 +41,14 @@ QString normalizeRelativePath(QString path)
 
 QString sourceRelativePath(const QDir& projectDir, const QString& sourceDir)
 {
-    const QString rel = normalizeRelativePath(projectDir.relativeFilePath(QDir(sourceDir).absolutePath()));
-    return rel.startsWith(QStringLiteral("..")) ? QString() : rel;
+    const QString relative = normalizeRelativePath(
+        projectDir.relativeFilePath(QDir(sourceDir).absolutePath()));
+    return relative.startsWith(QStringLiteral("..")) ? QString() : relative;
 }
 
-QString cacheDirName(const QString& relPath)
+QString cacheDirName(const QString& relativePath)
 {
-    QString name = normalizeRelativePath(relPath);
+    QString name = normalizeRelativePath(relativePath);
     name.replace(QLatin1Char('/'), QStringLiteral("__"));
     name.replace(QLatin1Char('\\'), QStringLiteral("__"));
     name.replace(QLatin1Char(':'), QLatin1Char('_'));
@@ -57,55 +58,6 @@ QString cacheDirName(const QString& relPath)
 QDir postRootDir(const QDir& projectDir)
 {
     return QDir(projectDir.filePath(QString::fromLatin1(kPostResultRoot)));
-}
-
-QVector<OutputSpec> outputSpecs(bool seepage)
-{
-    QVector<OutputSpec> specs;
-    if (seepage)
-    {
-        specs.push_back({QStringLiteral("head_pressure.tec"), QStringLiteral("水头渗压"),
-                         QStringLiteral("head_pressure"), QStringLiteral("tecplot"),
-                         {QStringLiteral("IIDISP.TXT")}});
-        specs.push_back({QStringLiteral("velocity.tec"), QStringLiteral("渗流速度"),
-                         QStringLiteral("velocity"), QStringLiteral("tecplot"),
-                         {QStringLiteral("INVELO.TXT")}});
-    }
-    else
-    {
-        specs.push_back({QStringLiteral("displacement.tec"), QStringLiteral("位移"),
-                         QStringLiteral("displacement"), QStringLiteral("tecplot"),
-                         {QStringLiteral("IIDISP.TXT")}});
-    }
-
-    specs.push_back({QStringLiteral("principal_stress.tec"), QStringLiteral("主应力"),
-                     QStringLiteral("principal_stress"), QStringLiteral("tecplot"),
-                     {QStringLiteral("MODPRI.TXT")}});
-    specs.push_back({QStringLiteral("stress_level.tec"), QStringLiteral("应力水平"),
-                     QStringLiteral("stress_level"), QStringLiteral("tecplot"),
-                     {QStringLiteral("NODCMM.TXT")}});
-    return specs;
-}
-
-QString displayNameForKind(const QString& kind)
-{
-    const QString normalized = kind.trimmed().toLower();
-    if (normalized == QStringLiteral("head_pressure") || normalized == QStringLiteral("tec_hp"))
-        return QStringLiteral("水头渗压");
-    if (normalized == QStringLiteral("velocity") || normalized == QStringLiteral("tec_velo"))
-        return QStringLiteral("渗流速度");
-    if (normalized == QStringLiteral("displacement") || normalized == QStringLiteral("tec_disp"))
-        return QStringLiteral("位移");
-    if (normalized == QStringLiteral("principal_stress") || normalized == QStringLiteral("tec_prs"))
-        return QStringLiteral("主应力");
-    if (normalized == QStringLiteral("stress_level") ||
-        normalized == QStringLiteral("stress_level_cmm") ||
-        normalized == QStringLiteral("stress_level_sl") ||
-        normalized == QStringLiteral("tec_cmm") || normalized == QStringLiteral("tec_sl"))
-        return QStringLiteral("应力水平");
-    if (normalized == QStringLiteral("vtu"))
-        return QStringLiteral("网格结果");
-    return QStringLiteral("结果数据");
 }
 
 bool findFileInfo(const QDir& dir, const QString& name, QFileInfo* out = nullptr)
@@ -128,21 +80,31 @@ bool findFileInfo(const QDir& dir, const QString& name, QFileInfo* out = nullptr
             return true;
         }
     }
-
     return false;
 }
 
-bool hasMeshFile(const QString& absPath)
+bool hasMeshFile(const QString& absolutePath)
 {
-    return findFileInfo(QDir(absPath), QStringLiteral("IIIN.DAT"));
+    const QDir dir(absolutePath);
+    return findFileInfo(dir, QStringLiteral("IIIN.TXT")) ||
+           findFileInfo(dir, QStringLiteral("IIIN.DAT"));
+}
+
+bool isSupportedFieldName(const QString& fileName)
+{
+    static const QRegularExpression expression(
+        QStringLiteral("^(?:INVELO|IIDISP|MODPRI|NODCMM)(?:[-_](?:METHOD\\d+|CZ[^.]*))?\\.TXT$"),
+        QRegularExpression::CaseInsensitiveOption);
+    return expression.match(fileName).hasMatch();
 }
 
 bool hasSupportedFieldData(const QDir& dir)
 {
-    return findFileInfo(dir, QStringLiteral("IIDISP.TXT")) ||
-           findFileInfo(dir, QStringLiteral("INVELO.TXT")) ||
-           findFileInfo(dir, QStringLiteral("MODPRI.TXT")) ||
-           findFileInfo(dir, QStringLiteral("NODCMM.TXT"));
+    const QFileInfoList files = dir.entryInfoList(QDir::Files);
+    return std::any_of(files.cbegin(), files.cend(), [](const QFileInfo& info)
+    {
+        return isSupportedFieldName(info.fileName());
+    });
 }
 
 bool hasFile(const QDir& dir, const QString& name)
@@ -150,111 +112,209 @@ bool hasFile(const QDir& dir, const QString& name)
     return findFileInfo(dir, name);
 }
 
-void appendUnique(QStringList& out, QSet<QString>& seen, const QString& relPath)
+bool hasFilePrefix(const QDir& dir, const QString& prefix)
 {
-    const QString normalized = normalizeRelativePath(relPath);
-    if (normalized.isEmpty() || seen.contains(normalized))
+    const QFileInfoList files = dir.entryInfoList(QDir::Files);
+    return std::any_of(files.cbegin(), files.cend(), [&](const QFileInfo& info)
+    {
+        return info.fileName().startsWith(prefix, Qt::CaseInsensitive);
+    });
+}
+
+void appendUnique(QStringList& paths, QSet<QString>& seen, const QString& relativePath)
+{
+    const QString normalized = normalizeRelativePath(relativePath);
+    const QString key = normalized.toLower();
+    if (normalized.isEmpty() || seen.contains(key))
         return;
-
-    seen.insert(normalized);
-    out << normalized;
+    seen.insert(key);
+    paths.push_back(normalized);
 }
 
-QDateTime newestTime(const QList<QFileInfo>& sources)
+QList<QFileInfo> sourceFiles(const QDir& sourceDir)
 {
-    QDateTime newest;
-    for (const QFileInfo& source : sources)
+    QList<QFileInfo> files;
+    const QFileInfoList entries = sourceDir.entryInfoList(QDir::Files);
+    for (const QFileInfo& info : entries)
     {
-        if (!source.exists())
-            continue;
-        const QDateTime modified = source.lastModified();
-        if (!newest.isValid() || modified > newest)
-            newest = modified;
+        const QString name = info.fileName();
+        if (isSupportedFieldName(name) ||
+            name.compare(QStringLiteral("IIIN.TXT"), Qt::CaseInsensitive) == 0 ||
+            name.compare(QStringLiteral("IIIN.DAT"), Qt::CaseInsensitive) == 0 ||
+            name.compare(QStringLiteral("MAFILESET.DAT"), Qt::CaseInsensitive) == 0 ||
+            name.compare(QStringLiteral("MA_MASK.DAT"), Qt::CaseInsensitive) == 0 ||
+            name.compare(QStringLiteral("MA_MASK_CMM.DAT"), Qt::CaseInsensitive) == 0 ||
+            (name.startsWith(QStringLiteral("ZONE"), Qt::CaseInsensitive) &&
+             name.endsWith(QStringLiteral(".DAT"), Qt::CaseInsensitive)))
+            files.push_back(info);
     }
-    return newest;
+    return files;
 }
 
-QList<QFileInfo> sourceInfos(const QDir& sourceDir, const QStringList& names)
+QList<QFileInfo> generationInputFiles(const QDir& projectDir, const QDir& sourceDir)
 {
-    QList<QFileInfo> infos;
-    QFileInfo mesh;
-    if (findFileInfo(sourceDir, QStringLiteral("IIIN.DAT"), &mesh))
-        infos << mesh;
-
-    for (const QString& name : names)
+    QList<QFileInfo> files = sourceFiles(sourceDir);
+    const QDir prepDir(projectDir.filePath(QStringLiteral("PREP")));
+    if (prepDir.exists())
     {
-        QFileInfo info;
-        if (findFileInfo(sourceDir, name, &info))
-            infos << info;
-    }
-    return infos;
-}
-
-bool outputMissingOrStale(const QDir& sourceDir, const QDir& preparedDir, const OutputSpec& spec)
-{
-    bool hasRequiredSource = false;
-    for (const QString& name : spec.sourceNames)
-    {
-        if (hasFile(sourceDir, name))
+        const QFileInfoList prepFiles = prepDir.entryInfoList(QDir::Files);
+        for (const QFileInfo& info : prepFiles)
         {
-            hasRequiredSource = true;
-            break;
+            const QString name = info.fileName();
+            if (name.compare(QStringLiteral("MAFILESET.DAT"), Qt::CaseInsensitive) == 0 ||
+                name.compare(QStringLiteral("MA_MASK.DAT"), Qt::CaseInsensitive) == 0 ||
+                name.compare(QStringLiteral("MA_MASK_CMM.DAT"), Qt::CaseInsensitive) == 0 ||
+                (name.startsWith(QStringLiteral("ZONE"), Qt::CaseInsensitive) &&
+                 name.endsWith(QStringLiteral(".DAT"), Qt::CaseInsensitive)))
+                files.push_back(info);
         }
     }
-    if (!hasRequiredSource)
-        return false;
 
-    const QFileInfo output(preparedDir.filePath(spec.fileName));
-    if (!output.exists() || !output.isFile())
-        return true;
-
-    const QDateTime newestSource = newestTime(sourceInfos(sourceDir, spec.sourceNames));
-    return newestSource.isValid() && output.lastModified() < newestSource;
+    std::sort(files.begin(), files.end(), [&](const QFileInfo& left, const QFileInfo& right)
+    {
+        const QString leftPath = projectDir.relativeFilePath(left.absoluteFilePath());
+        const QString rightPath = projectDir.relativeFilePath(right.absoluteFilePath());
+        return leftPath.compare(rightPath, Qt::CaseInsensitive) < 0;
+    });
+    return files;
 }
 
-bool manifestMissingOrStale(const QDir& sourceDir, const QDir& preparedDir,
-                            const QVector<OutputSpec>& specs)
+QJsonArray inputSnapshot(const QDir& projectDir, const QDir& sourceDir)
 {
-    QFileInfo manifest(preparedDir.filePath(QString::fromLatin1(kManifestName)));
-    if (!manifest.exists() || !manifest.isFile())
+    QJsonArray inputs;
+    for (const QFileInfo& info : generationInputFiles(projectDir, sourceDir))
+    {
+        QJsonObject input;
+        input.insert(QStringLiteral("path"), normalizeRelativePath(
+                         projectDir.relativeFilePath(info.absoluteFilePath())));
+        input.insert(QStringLiteral("size"), static_cast<double>(info.size()));
+        input.insert(QStringLiteral("modified"), static_cast<double>(
+                         info.lastModified().toMSecsSinceEpoch()));
+        inputs.append(input);
+    }
+    return inputs;
+}
+
+QString baseDisplayName(const QString& kind)
+{
+    const QString normalized = kind.toLower();
+    if (normalized == QStringLiteral("head_pressure") || normalized == QStringLiteral("tec_hp"))
+        return QStringLiteral("水头渗压");
+    if (normalized == QStringLiteral("velocity") || normalized == QStringLiteral("tec_velo"))
+        return QStringLiteral("渗流速度");
+    if (normalized == QStringLiteral("displacement") || normalized == QStringLiteral("tec_disp"))
+        return QStringLiteral("位移");
+    if (normalized == QStringLiteral("principal_stress") || normalized == QStringLiteral("tec_prs"))
+        return QStringLiteral("主应力");
+    if (normalized == QStringLiteral("stress_level") || normalized == QStringLiteral("tec_sl") ||
+        normalized == QStringLiteral("tec_cmm"))
+        return QStringLiteral("应力水平");
+    if (normalized == QStringLiteral("vtu"))
+        return QStringLiteral("网格结果");
+    return QStringLiteral("结果数据");
+}
+
+QString suffixDisplayName(const QString& suffix)
+{
+    if (suffix.isEmpty())
+        return QString();
+
+    static const QRegularExpression methodExpression(
+        QStringLiteral("^method(\\d+)$"), QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch methodMatch = methodExpression.match(suffix);
+    if (methodMatch.hasMatch())
+        return QStringLiteral("（方法 %1）").arg(methodMatch.captured(1));
+
+    static const QRegularExpression reserveExpression(
+        QStringLiteral("^cz\\d+cb(\\d+)$"), QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch reserveMatch = reserveExpression.match(suffix);
+    if (reserveMatch.hasMatch())
+    {
+        const double factor = reserveMatch.captured(1).toDouble() / 100.0;
+        return QStringLiteral("（强度储备 %1）").arg(factor, 0, 'f', 2);
+    }
+    return QStringLiteral("（派生工况）");
+}
+
+GeneratedFileInfo generatedFileInfo(const QString& fileName)
+{
+    const QString base = QFileInfo(fileName).completeBaseName().toLower();
+    const QStringList kinds = {QStringLiteral("head_pressure"), QStringLiteral("velocity"),
+                               QStringLiteral("displacement"), QStringLiteral("principal_stress"),
+                               QStringLiteral("stress_level")};
+    for (const QString& kind : kinds)
+    {
+        if (base == kind || base.startsWith(kind + QLatin1Char('_')))
+        {
+            const QString suffix = base == kind ? QString() : base.mid(kind.size() + 1);
+            return {baseDisplayName(kind) + suffixDisplayName(suffix), kind};
+        }
+    }
+    return {QStringLiteral("结果数据"), base};
+}
+
+bool manifestMissingOrStale(const QDir& projectDir, const QDir& sourceDir,
+                            const QDir& preparedDir)
+{
+    const QFileInfo manifestInfo(preparedDir.filePath(QString::fromLatin1(kManifestName)));
+    if (!manifestInfo.exists() || !manifestInfo.isFile())
         return true;
 
-    for (const OutputSpec& spec : specs)
+    QFile manifestFile(manifestInfo.absoluteFilePath());
+    if (!manifestFile.open(QIODevice::ReadOnly | QIODevice::Text))
+        return true;
+    const QJsonDocument document = QJsonDocument::fromJson(manifestFile.readAll());
+    if (!document.isObject() ||
+        document.object().value(QStringLiteral("version")).toInt() != kManifestVersion)
+        return true;
+
+    const QJsonArray storedInputs = document.object().value(QStringLiteral("inputs")).toArray();
+    const QJsonArray currentInputs = inputSnapshot(projectDir, sourceDir);
+    if (QJsonDocument(storedInputs).toJson(QJsonDocument::Compact) !=
+        QJsonDocument(currentInputs).toJson(QJsonDocument::Compact))
+        return true;
+
+    const QJsonArray files = document.object().value(QStringLiteral("files")).toArray();
+    if (files.isEmpty())
+        return true;
+    for (const QJsonValue& value : files)
     {
-        if (outputMissingOrStale(sourceDir, preparedDir, spec))
+        const QString fileName = value.toObject().value(QStringLiteral("fileName")).toString();
+        if (fileName.isEmpty() || !QFileInfo::exists(preparedDir.filePath(fileName)))
             return true;
     }
-
     return false;
 }
 
 bool writeManifest(const QDir& projectDir, const QDir& sourceDir, const QDir& preparedDir,
-                   const QVector<OutputSpec>& specs, const PostResultGenerator::Result& generated)
+                   const PostResultGenerator::Result& generated)
 {
     QJsonObject root;
-    root.insert(QStringLiteral("version"), 1);
-    root.insert(QStringLiteral("sourceDir"), sourceRelativePath(projectDir, sourceDir.absolutePath()));
-    root.insert(QStringLiteral("preparedAt"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
-
-    QSet<QString> generatedFileNames;
-    for (const QString& path : generated.generatedFiles)
-        generatedFileNames.insert(QFileInfo(path).fileName());
+    root.insert(QStringLiteral("version"), kManifestVersion);
+    root.insert(QStringLiteral("sourceDir"),
+                sourceRelativePath(projectDir, sourceDir.absolutePath()));
+    root.insert(QStringLiteral("preparedAt"),
+                QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+    root.insert(QStringLiteral("inputs"), inputSnapshot(projectDir, sourceDir));
 
     QJsonArray files;
-    for (const OutputSpec& spec : specs)
+    for (const QString& generatedPath : generated.generatedFiles)
     {
-        const QFileInfo info(preparedDir.filePath(spec.fileName));
-        if (!info.exists() || !info.isFile())
+        const QFileInfo info(generatedPath);
+        if (info.dir().absolutePath().compare(preparedDir.absolutePath(), Qt::CaseInsensitive) != 0 ||
+            info.suffix().compare(QStringLiteral("tec"), Qt::CaseInsensitive) != 0)
             continue;
 
-        QJsonObject obj;
-        obj.insert(QStringLiteral("displayName"), spec.displayName);
-        obj.insert(QStringLiteral("fileName"), spec.fileName);
-        obj.insert(QStringLiteral("kind"), spec.kind);
-        obj.insert(QStringLiteral("format"), spec.format);
-        obj.insert(QStringLiteral("size"), static_cast<qint64>(info.size()));
-        obj.insert(QStringLiteral("modified"), info.lastModified().toUTC().toString(Qt::ISODate));
-        files.append(obj);
+        const GeneratedFileInfo metadata = generatedFileInfo(info.fileName());
+        QJsonObject object;
+        object.insert(QStringLiteral("displayName"), metadata.displayName);
+        object.insert(QStringLiteral("fileName"), info.fileName());
+        object.insert(QStringLiteral("kind"), metadata.kind);
+        object.insert(QStringLiteral("format"), QStringLiteral("tecplot"));
+        object.insert(QStringLiteral("size"), static_cast<qint64>(info.size()));
+        object.insert(QStringLiteral("modified"),
+                      info.lastModified().toUTC().toString(Qt::ISODate));
+        files.append(object);
     }
     root.insert(QStringLiteral("files"), files);
 
@@ -266,7 +326,6 @@ bool writeManifest(const QDir& projectDir, const QDir& sourceDir, const QDir& pr
     QFile file(preparedDir.filePath(QString::fromLatin1(kManifestName)));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
         return false;
-
     file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     return true;
 }
@@ -277,29 +336,27 @@ QVector<PostResultAutoPrepare::ResultFile> readManifestFiles(const QDir& prepare
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
         return {};
 
-    QJsonParseError error;
-    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &error);
-    if (error.error != QJsonParseError::NoError || !doc.isObject())
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+    if (!document.isObject())
         return {};
 
     QVector<PostResultAutoPrepare::ResultFile> result;
-    const QJsonArray files = doc.object().value(QStringLiteral("files")).toArray();
+    const QJsonArray files = document.object().value(QStringLiteral("files")).toArray();
     for (const QJsonValue& value : files)
     {
-        const QJsonObject obj = value.toObject();
-        const QString fileName = obj.value(QStringLiteral("fileName")).toString();
-        if (fileName.isEmpty())
-            continue;
-
+        const QJsonObject object = value.toObject();
+        const QString fileName = object.value(QStringLiteral("fileName")).toString();
         const QFileInfo info(preparedDir.filePath(fileName));
-        if (!info.exists() || !info.isFile())
+        if (fileName.isEmpty() || !info.exists() || !info.isFile())
             continue;
 
         PostResultAutoPrepare::ResultFile entry;
-        entry.kind = obj.value(QStringLiteral("kind")).toString();
-        entry.displayName = displayNameForKind(entry.kind);
+        entry.kind = object.value(QStringLiteral("kind")).toString();
+        entry.displayName = object.value(QStringLiteral("displayName")).toString();
+        if (entry.displayName.isEmpty())
+            entry.displayName = baseDisplayName(entry.kind);
         entry.filePath = info.absoluteFilePath();
-        entry.format = obj.value(QStringLiteral("format")).toString(QStringLiteral("tecplot"));
+        entry.format = object.value(QStringLiteral("format")).toString(QStringLiteral("tecplot"));
         result.push_back(entry);
     }
     return result;
@@ -309,37 +366,31 @@ QVector<PostResultAutoPrepare::ResultFile> fallbackSourceFiles(const QDir& sourc
                                                                bool includeVtu)
 {
     QVector<PostResultAutoPrepare::ResultFile> result;
-    const QStringList names = {
-        QStringLiteral("TEC_HP.DAT"),
-        QStringLiteral("TEC_VELO.DAT"),
-        QStringLiteral("TEC_DISP.DAT"),
-        QStringLiteral("TEC_PRS.DAT"),
-        QStringLiteral("TEC_CMM.DAT"),
-        QStringLiteral("TEC_SL.DAT"),
-        QStringLiteral("*.tec"),
-    };
-
-    int genericIndex = 0;
-    QSet<QString> addedDisplayNames;
-    for (const QString& name : names)
+    const QStringList names = {QStringLiteral("TEC_HP.DAT"), QStringLiteral("TEC_VELO.DAT"),
+                               QStringLiteral("TEC_DISP.DAT"), QStringLiteral("TEC_PRS.DAT"),
+                               QStringLiteral("TEC_SL.DAT"), QStringLiteral("TEC_CMM.DAT"),
+                               QStringLiteral("*.tec")};
+    QSet<QString> seenPaths;
+    for (const QString& pattern : names)
     {
-        const bool wildcard = name.contains(QLatin1Char('*')) || name.contains(QLatin1Char('?'));
-        const QStringList matched =
-            wildcard ? sourceDir.entryList(QStringList{name}, QDir::Files, QDir::Name)
-                     : (QFileInfo::exists(sourceDir.filePath(name)) ? QStringList{name}
-                                                                    : QStringList{});
+        const bool wildcard = pattern.contains(QLatin1Char('*'));
+        const QStringList matched = wildcard
+                                        ? sourceDir.entryList({pattern}, QDir::Files, QDir::Name)
+                                        : (QFileInfo::exists(sourceDir.filePath(pattern))
+                                               ? QStringList{pattern} : QStringList{});
         for (const QString& fileName : matched)
         {
-            QFileInfo info(sourceDir.filePath(fileName));
-            PostResultAutoPrepare::ResultFile entry;
-            entry.kind = info.completeBaseName().toLower();
-            entry.displayName = displayNameForKind(entry.kind);
-            if (entry.displayName == QStringLiteral("结果数据"))
-                entry.displayName = QStringLiteral("结果数据 %1").arg(++genericIndex);
-            else if (addedDisplayNames.contains(entry.displayName))
+            const QFileInfo info(sourceDir.filePath(fileName));
+            const QString pathKey = info.absoluteFilePath().toLower();
+            if (seenPaths.contains(pathKey))
                 continue;
-            addedDisplayNames.insert(entry.displayName);
+            seenPaths.insert(pathKey);
+
+            const GeneratedFileInfo metadata = generatedFileInfo(fileName);
+            PostResultAutoPrepare::ResultFile entry;
+            entry.displayName = metadata.displayName;
             entry.filePath = info.absoluteFilePath();
+            entry.kind = metadata.kind;
             entry.format = QStringLiteral("tecplot");
             result.push_back(entry);
         }
@@ -347,23 +398,19 @@ QVector<PostResultAutoPrepare::ResultFile> fallbackSourceFiles(const QDir& sourc
 
     if (includeVtu)
     {
-        const QStringList vtus = sourceDir.entryList(QStringList{QStringLiteral("*.vtu")},
-                                                     QDir::Files, QDir::Name);
-        for (int i = 0; i < vtus.size(); ++i)
+        const QStringList files = sourceDir.entryList({QStringLiteral("*.vtu")}, QDir::Files,
+                                                      QDir::Name);
+        for (int i = 0; i < files.size(); ++i)
         {
-            const QString& fileName = vtus.at(i);
-            QFileInfo info(sourceDir.filePath(fileName));
             PostResultAutoPrepare::ResultFile entry;
-            entry.displayName = vtus.size() == 1
-                                    ? QStringLiteral("网格结果")
-                                    : QStringLiteral("网格结果 %1").arg(i + 1);
-            entry.filePath = info.absoluteFilePath();
+            entry.displayName = files.size() == 1 ? QStringLiteral("网格结果")
+                                                   : QStringLiteral("网格结果 %1").arg(i + 1);
+            entry.filePath = QFileInfo(sourceDir.filePath(files.at(i))).absoluteFilePath();
             entry.kind = QStringLiteral("vtu");
             entry.format = QStringLiteral("vtu");
             result.push_back(entry);
         }
     }
-
     return result;
 }
 } // namespace
@@ -372,15 +419,7 @@ namespace PostResultAutoPrepare
 {
 QStringList defaultResultDirectories()
 {
-    return {
-        QStringLiteral("SEEPCASE01"),
-        QStringLiteral("CASE01"),
-        QStringLiteral("GEOSTR"),
-        QStringLiteral("CASE01EALL"),
-        QStringLiteral("CASE01JALL"),
-        QStringLiteral("CASE01FILL01"),
-        QStringLiteral("CASE01JACA/J03"),
-    };
+    return {};
 }
 
 QStringList discoverResultDirectories(const QString& projectDir)
@@ -391,14 +430,24 @@ QStringList discoverResultDirectories(const QString& projectDir)
 
     QStringList result;
     QSet<QString> seen;
+    const QString postRoot = postRootDir(project).absolutePath().toLower();
 
-    for (const QString& relPath : defaultResultDirectories())
+    QDirIterator iterator(project.absolutePath(), QDir::Dirs | QDir::NoDotAndDotDot,
+                          QDirIterator::Subdirectories);
+    while (iterator.hasNext())
     {
-        const QString normalized = normalizeRelativePath(relPath);
-        const QDir source(project.filePath(normalized));
-        if (hasMeshFile(source.absolutePath()) && hasSupportedFieldData(source))
-            appendUnique(result, seen, normalized);
+        const QString absolutePath = QDir(iterator.next()).absolutePath();
+        if (absolutePath.toLower().startsWith(postRoot))
+            continue;
+        const QDir source(absolutePath);
+        if (hasMeshFile(absolutePath) && hasSupportedFieldData(source))
+            appendUnique(result, seen, project.relativeFilePath(absolutePath));
     }
+
+    std::sort(result.begin(), result.end(), [](const QString& left, const QString& right)
+    {
+        return left.compare(right, Qt::CaseInsensitive) < 0;
+    });
     return result;
 }
 
@@ -407,44 +456,51 @@ QString firstResultDirectory(const QString& projectDir)
     const QDir project(QDir::fromNativeSeparators(projectDir.trimmed()));
     if (!project.exists())
         return projectDir;
-
     if (hasMeshFile(project.absolutePath()) && hasSupportedFieldData(project))
         return project.absolutePath();
 
-    const QStringList dirs = discoverResultDirectories(project.absolutePath());
-    if (dirs.isEmpty())
-        return project.absolutePath();
-
-    return project.filePath(dirs.first());
+    const QStringList directories = discoverResultDirectories(project.absolutePath());
+    return directories.isEmpty() ? project.absolutePath() : project.filePath(directories.first());
 }
 
 QString resultGroupDisplayName(const QString& projectDir, const QString& sourceDir)
 {
     const QDir project(QDir::fromNativeSeparators(projectDir.trimmed()));
     const QDir source(QDir::fromNativeSeparators(sourceDir.trimmed()));
-    const QString rel = sourceRelativePath(project, source.absolutePath()).toUpper();
-    const QString projectHint = project.absolutePath().toUpper();
+    const QString relative = sourceRelativePath(project, source.absolutePath()).toUpper();
+    const QString leaf = QFileInfo(source.absolutePath()).fileName().toUpper();
 
-    if (hasFile(source, QStringLiteral("INVELO.TXT")) || rel.contains(QStringLiteral("SEEP")))
+    static const QRegularExpression supportStage(QStringLiteral("^J(\\d+)$"));
+    static const QRegularExpression excavationStage(QStringLiteral("^E(\\d+)$"));
+    QRegularExpressionMatch match = supportStage.match(leaf);
+    if (match.hasMatch())
+        return QStringLiteral("开挖加固第 %1 阶段").arg(match.captured(1).toInt());
+    match = excavationStage.match(leaf);
+    if (match.hasMatch())
+        return QStringLiteral("开挖第 %1 阶段").arg(match.captured(1).toInt());
+
+    if (hasFilePrefix(source, QStringLiteral("INVELO")) || relative.contains(QStringLiteral("SEEP")))
         return QStringLiteral("渗流结果");
-    if (rel.contains(QStringLiteral("GEOSTR")))
+    if (relative.contains(QStringLiteral("GEOSTR")))
         return QStringLiteral("初始地应力");
-    if (rel.contains(QStringLiteral("FILL")))
-        return QStringLiteral("填筑结果");
-    if (rel.contains(QStringLiteral("JACA")))
-        return QStringLiteral("开挖阶段结果");
-    if (rel.contains(QStringLiteral("JALL")))
+    if (relative.contains(QStringLiteral("FILL")))
+        return QStringLiteral("填筑蓄水结果");
+    if (relative.contains(QStringLiteral("PACK")))
+        return QStringLiteral("分层填筑结果");
+    if (relative.contains(QStringLiteral("JALL")))
+        return QStringLiteral("开挖加固汇总结果");
+    if (relative.contains(QStringLiteral("EALL")))
         return QStringLiteral("开挖汇总结果");
-    if (rel.contains(QStringLiteral("EALL")))
-        return QStringLiteral("开挖结果");
+
+    const QString projectHint = project.absolutePath().toUpper();
     if (projectHint.contains(QStringLiteral("SLOP")))
         return QStringLiteral("边坡结果");
     if (projectHint.contains(QStringLiteral("CAVE")))
         return QStringLiteral("洞室结果");
     if (hasFile(source, QStringLiteral("IIDISP.TXT")) ||
-        hasFile(source, QStringLiteral("MODPRI.TXT")) ||
-        hasFile(source, QStringLiteral("NODCMM.TXT")))
-        return QStringLiteral("结构结果");
+        hasFilePrefix(source, QStringLiteral("MODPRI")) ||
+        hasFilePrefix(source, QStringLiteral("NODCMM")))
+        return QStringLiteral("结构计算结果");
     return QStringLiteral("计算结果");
 }
 
@@ -454,16 +510,16 @@ QVector<ResultGroup> resultGroups(const QString& projectDir)
     if (!project.exists())
         return {};
 
-    QStringList sourcePaths;
+    QStringList sources;
     if (hasMeshFile(project.absolutePath()) && hasSupportedFieldData(project))
-        sourcePaths << project.absolutePath();
-    for (const QString& relPath : discoverResultDirectories(project.absolutePath()))
-        sourcePaths << project.filePath(relPath);
+        sources.push_back(project.absolutePath());
+    for (const QString& relativePath : discoverResultDirectories(project.absolutePath()))
+        sources.push_back(project.filePath(relativePath));
 
     QVector<ResultGroup> groups;
     QHash<QString, int> displayCounts;
     QSet<QString> seenPaths;
-    for (const QString& sourcePath : sourcePaths)
+    for (const QString& sourcePath : sources)
     {
         const QString absolutePath = QDir(sourcePath).absolutePath();
         const QString pathKey = absolutePath.toLower();
@@ -472,9 +528,10 @@ QVector<ResultGroup> resultGroups(const QString& projectDir)
         seenPaths.insert(pathKey);
 
         QString displayName = resultGroupDisplayName(project.absolutePath(), absolutePath);
-        const int count = ++displayCounts[displayName];
+        const int count = displayCounts.value(displayName) + 1;
+        displayCounts.insert(displayName, count);
         if (count > 1)
-            displayName = QStringLiteral("%1（%2）").arg(displayName).arg(count);
+            displayName += QStringLiteral(" %1").arg(count);
         groups.push_back({displayName, absolutePath});
     }
     return groups;
@@ -485,35 +542,28 @@ QString preparedDirectory(const QString& projectDir, const QString& sourceDir)
     const QDir project(QDir::fromNativeSeparators(projectDir.trimmed()));
     if (!project.exists())
         return QString();
-
-    const QString rel = sourceRelativePath(project, sourceDir);
-    if (rel.isEmpty())
-        return QString();
-
-    return postRootDir(project).filePath(cacheDirName(rel));
+    const QString relative = sourceRelativePath(project, sourceDir);
+    return relative.isEmpty() ? QString() : postRootDir(project).filePath(cacheDirName(relative));
 }
 
 bool prepareDirectory(const QString& projectDir, const QString& sourceDir)
 {
     const QDir project(QDir::fromNativeSeparators(projectDir.trimmed()));
     const QDir source(QDir::fromNativeSeparators(sourceDir.trimmed()));
-    if (!project.exists() || !source.exists())
+    if (!project.exists() || !source.exists() || !hasMeshFile(source.absolutePath()) ||
+        !hasSupportedFieldData(source))
         return false;
-
-    if (!findFileInfo(source, QStringLiteral("IIIN.DAT")))
-        return false;
-
-    const bool seepage = hasFile(source, QStringLiteral("INVELO.TXT"));
-    const QVector<OutputSpec> specs = outputSpecs(seepage);
 
     QDir prepared(preparedDirectory(project.absolutePath(), source.absolutePath()));
-    if (prepared.path().isEmpty())
+    if (prepared.path().isEmpty() || (!prepared.exists() && !prepared.mkpath(QStringLiteral("."))))
         return false;
-    if (!prepared.exists() && !prepared.mkpath(QStringLiteral(".")))
-        return false;
-
-    if (!manifestMissingOrStale(source, prepared, specs))
+    if (!manifestMissingOrStale(project, source, prepared))
         return true;
+
+    const QStringList staleFiles = prepared.entryList({QStringLiteral("*.tec")}, QDir::Files);
+    for (const QString& staleFile : staleFiles)
+        prepared.remove(staleFile);
+    prepared.remove(QString::fromLatin1(kManifestName));
 
     PostResultGenerator::Options options;
     options.projectDir = project.absolutePath();
@@ -521,23 +571,16 @@ bool prepareDirectory(const QString& projectDir, const QString& sourceDir)
     options.outputDir = prepared.absolutePath();
     options.overwrite = true;
     options.writeLegacyAuxiliaryFiles = false;
-
     const PostResultGenerator::Result generated = PostResultGenerator::generate(options);
     if (!generated.ok)
     {
         qWarning() << "Post result preparation failed:" << generated.error;
         return false;
     }
-
-    if (!writeManifest(project, source, prepared, specs, generated))
-    {
-        qWarning() << "Post result manifest write failed:" << prepared.absolutePath();
+    if (!writeManifest(project, source, prepared, generated))
         return false;
-    }
-
     for (const QString& warning : generated.warnings)
         qWarning() << "Post result preparation warning:" << warning;
-
     return true;
 }
 
@@ -548,11 +591,10 @@ bool prepareProject(const QString& projectDir)
         return false;
 
     bool preparedAny = false;
-    const QStringList dirs = discoverResultDirectories(project.absolutePath());
-    for (const QString& relPath : dirs)
+    for (const QString& relativePath : discoverResultDirectories(project.absolutePath()))
     {
-        const QString source = project.filePath(relPath);
-        preparedAny = prepareDirectory(project.absolutePath(), source) || preparedAny;
+        preparedAny = prepareDirectory(project.absolutePath(), project.filePath(relativePath)) ||
+                      preparedAny;
     }
     return preparedAny;
 }
@@ -565,25 +607,20 @@ QVector<ResultFile> resultFiles(const QString& projectDir, const QString& source
         return {};
 
     prepareDirectory(project.absolutePath(), source.absolutePath());
-
     const QString preparedPath = preparedDirectory(project.absolutePath(), source.absolutePath());
     if (!preparedPath.isEmpty())
     {
-        QVector<ResultFile> preparedFiles = readManifestFiles(QDir(preparedPath));
+        QVector<ResultFile> files = readManifestFiles(QDir(preparedPath));
         if (!includeVtu)
         {
-            preparedFiles.erase(std::remove_if(preparedFiles.begin(), preparedFiles.end(),
-                                               [](const ResultFile& file)
-                                               {
-                                                   return file.format.compare(QStringLiteral("vtu"),
-                                                                              Qt::CaseInsensitive) == 0;
-                                               }),
-                                preparedFiles.end());
+            files.erase(std::remove_if(files.begin(), files.end(), [](const ResultFile& file)
+            {
+                return file.format.compare(QStringLiteral("vtu"), Qt::CaseInsensitive) == 0;
+            }), files.end());
         }
-        if (!preparedFiles.isEmpty())
-            return preparedFiles;
+        if (!files.isEmpty())
+            return files;
     }
-
     return fallbackSourceFiles(source, includeVtu);
 }
 } // namespace PostResultAutoPrepare

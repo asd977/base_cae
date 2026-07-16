@@ -12,6 +12,7 @@
 #include <QJsonArray>
 #include <QLineEdit>
 #include <QList>
+#include <QMessageBox>
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTextStream>
@@ -109,6 +110,7 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
     ui->line5Combo->setItemData(2, "3");
     ui->line8Combo->setItemData(0, "1");
     ui->line8Combo->setItemData(1, "2");
+    ui->line8Combo->setItemText(1, QStringLiteral("施加已设置的外部荷载"));
     ui->line15Combo->setItemData(0, "0");
     ui->line15Combo->setItemData(1, "1");
     ui->line16Combo->setItemData(0, "0");
@@ -127,6 +129,10 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
             [this]() { updateAnalysisModeVisibility(); });
     connect(ui->ifWaveCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this]() { updateTimeHistoryVisibility(); });
+    connect(ui->line3Combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this]() { updateMethodVisibility(); });
+    connect(ui->line16Combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this]() { updateDampingControls(); });
 
     initStrengthReserveTable();
     connect(ui->btnCompute, &QPushButton::clicked, this, &SlopeStabilityWidget::onComputeClicked);
@@ -213,7 +219,28 @@ void SlopeStabilityWidget::updateAnalysisModeVisibility()
     ui->reserveGroup->setVisible(showStatic);
     ui->dynamicGroup->setVisible(showDynamic);
 
+    updateMethodVisibility();
+    updateDampingControls();
     updateTimeHistoryVisibility();
+}
+
+void SlopeStabilityWidget::updateMethodVisibility()
+{
+    const int type = ui->line19Combo->currentData().toString().toInt();
+    const bool showStatic = type == 1 || type == 3;
+    const bool strengthReduction =
+        ui->line3Combo->currentData().toString() != QStringLiteral("0");
+    ui->reserveGroup->setVisible(showStatic && strengthReduction);
+}
+
+void SlopeStabilityWidget::updateDampingControls()
+{
+    const int type = ui->line19Combo->currentData().toString().toInt();
+    const bool dynamic = type == 2 || type == 3;
+    const bool rayleigh = ui->line16Combo->currentData().toString() == QStringLiteral("1");
+    ui->line17Edit->setEnabled(dynamic);
+    ui->line18Edit->setEnabled(dynamic && rayleigh);
+    ui->label17->setText(rayleigh ? QStringLiteral("质量阻尼系数") : QStringLiteral("阻尼比"));
 }
 
 void SlopeStabilityWidget::updateTimeHistoryVisibility()
@@ -333,8 +360,8 @@ void SlopeStabilityWidget::setStrengthReserveOutputCombo(int row, const QString&
         return;
 
     auto* combo = new QComboBox(ui->strengthReserveTable);
-    combo->addItem(QStringLiteral("0 - 不输出该储备系数结果"), QStringLiteral("0.0000"));
-    combo->addItem(QStringLiteral("1 - 输出该储备系数结果"), QStringLiteral("1.0000"));
+    combo->addItem(QStringLiteral("不输出该储备系数结果"), QStringLiteral("0.0000"));
+    combo->addItem(QStringLiteral("输出该储备系数结果"), QStringLiteral("1.0000"));
     const QString normalized = value.trimmed().startsWith(QLatin1Char('0'))
                                    ? QStringLiteral("0.0000")
                                    : QStringLiteral("1.0000");
@@ -388,15 +415,17 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
         os << quoteValue(value) << "      " << lineNo << "\n";
     }
 
+    const bool strengthReduction =
+        ui->line3Combo->currentData().toString() != QStringLiteral("0");
     int nsrf = 0;
-    for (int row = 0; row < ui->strengthReserveTable->rowCount(); ++row)
+    for (int row = 0; strengthReduction && row < ui->strengthReserveTable->rowCount(); ++row)
     {
         const auto* factorItem = ui->strengthReserveTable->item(row, 0);
         if (factorItem && !factorItem->text().trimmed().isEmpty())
             ++nsrf;
     }
     os << nsrf << "    NSRF\n";
-    for (int row = 0; row < ui->strengthReserveTable->rowCount(); ++row)
+    for (int row = 0; strengthReduction && row < ui->strengthReserveTable->rowCount(); ++row)
     {
         const auto* factorItem = ui->strengthReserveTable->item(row, 0);
         if (!factorItem)
@@ -429,6 +458,62 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
        << quoteValue(QString::fromLatin1(kAccZFileName)) << "    ACCEX ACCEY ACCEZ\n";
 
     exportTdtraceDatFile();
+    return true;
+}
+
+bool SlopeStabilityWidget::validateInputs(QString* errorMessage) const
+{
+    auto fail = [errorMessage](const QString& message)
+    {
+        if (errorMessage)
+            *errorMessage = message;
+        return false;
+    };
+    auto number = [](const QLineEdit* edit, double* value = nullptr)
+    {
+        bool ok = false;
+        const double parsed = edit->text().trimmed().toDouble(&ok);
+        if (ok && value)
+            *value = parsed;
+        return ok;
+    };
+
+    if (!number(ui->gravityXEdit) || !number(ui->gravityYEdit) || !number(ui->gravityZEdit))
+        return fail(QStringLiteral("重力加速度必须填写三个有效数值。"));
+
+    double iterations = 0.0;
+    double tolerance = 0.0;
+    if (!number(ui->line6Edit, &iterations) || iterations <= 0.0)
+        return fail(QStringLiteral("最大迭代次数必须为正整数。"));
+    if (!number(ui->line7Edit, &tolerance) || tolerance <= 0.0)
+        return fail(QStringLiteral("迭代误差阈值必须为正数。"));
+
+    if (ui->line3Combo->currentData().toString() != QStringLiteral("0"))
+    {
+        if (ui->strengthReserveTable->rowCount() == 0)
+            return fail(QStringLiteral("强度折减计算至少需要一个储备系数。"));
+        for (int row = 0; row < ui->strengthReserveTable->rowCount(); ++row)
+        {
+            const auto* item = ui->strengthReserveTable->item(row, 0);
+            bool ok = false;
+            const double factor = item ? item->text().trimmed().toDouble(&ok) : 0.0;
+            if (!ok || factor <= 0.0)
+                return fail(QStringLiteral("第 %1 个强度储备系数必须为正数。").arg(row + 1));
+        }
+    }
+
+    const int type = ui->line19Combo->currentData().toString().toInt();
+    if ((type == 2 || type == 3) &&
+        ui->ifWaveCombo->currentData().toString() == QStringLiteral("1"))
+    {
+        double dt = 0.0;
+        double start = 0.0;
+        double end = 0.0;
+        if (!number(ui->dtEdit, &dt) || dt <= 0.0)
+            return fail(QStringLiteral("时程计算步长必须为正数。"));
+        if (!number(ui->tstaEdit, &start) || !number(ui->tendEdit, &end) || end <= start)
+            return fail(QStringLiteral("时程计算终止时刻必须大于起始时刻。"));
+    }
     return true;
 }
 
@@ -527,6 +612,12 @@ void SlopeStabilityWidget::onComputeClicked()
         return;
     }
 
+    QString error;
+    if (!validateInputs(&error))
+    {
+        QMessageBox::warning(this, QStringLiteral("设置不完整"), error);
+        return;
+    }
     emit computeRequested();
 }
 

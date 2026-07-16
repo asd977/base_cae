@@ -30,9 +30,17 @@ class FillStorageCyclePage : public BasePage
 
     QString sectionText() const;
     QString sectionText(int caseIndex) const;
+    bool usesDamBaseUplift() const;
+    bool usesLinearDamBaseUplift() const;
+    bool usesDamFacePressure() const;
+    void setDynamicOptionsAvailable(bool available);
+    bool validateInputs(QString* errorMessage) const;
 
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
+
+  signals:
+    void requirementsChanged();
 
   private:
     void initValueEditors();
@@ -50,4 +58,5 @@ class FillStorageCyclePage : public BasePage
     QTableWidget* m_wetTable = nullptr;
     QTableWidget* m_dropTable = nullptr;
     QTableWidget* m_circleTable = nullptr;
+    bool m_dynamicOptionsAvailable = true;
 };

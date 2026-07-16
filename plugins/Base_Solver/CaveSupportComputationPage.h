@@ -38,6 +38,7 @@ class CaveSupportComputationPage : public BasePage
     int excavationLoadMethodCode() const;
     bool modalAnalysisEnabled() const;
     bool timeHistoryEnabled() const;
+    bool validateInputs(QString* errorMessage) const;
 
     void loadLegacyCaveJson(const QJsonObject& obj);
 
@@ -55,6 +56,7 @@ class CaveSupportComputationPage : public BasePage
     void setComputing(bool computing);
     void updateAnalysisModeUi();
     void updateDynamicDetailsUi();
+    void updateStaticDependenciesUi();
 
 
   private:
