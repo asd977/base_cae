@@ -22,6 +22,7 @@
 #include <QRegularExpression>
 
 #include "PostResultAutoPrepare.h"
+#include "PostTecplotUtils.h"
 #include "PostVisualUtils.h"
 #include "ui_IsosurfaceSettingsWidget.h"
 
@@ -258,24 +259,7 @@ void IsosurfaceSettingsWidget::readTecplotLatest()
 void IsosurfaceSettingsWidget::readTecplot(const QString& file)
 {
     qInfo() << "等值面文件:" << file;
-    vtkSmartPointer<vtkTecplotReader> reader = vtkSmartPointer<vtkTecplotReader>::New();
-    reader->SetFileName(file.toUtf8().constData());
-    reader->Update();
-
-    vtkMultiBlockDataSet* multi = reader->GetOutput();
-
-    vtkSmartPointer<vtkAppendFilter> appender = vtkSmartPointer<vtkAppendFilter>::New();
-    for (int i = 0; i < multi->GetNumberOfBlocks(); ++i)
-    {
-        if (auto* block = vtkUnstructuredGrid::SafeDownCast(multi->GetBlock(i)))
-        {
-            appender->AddInputData(block);
-        }
-    }
-    appender->Update();
-
-    m_grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
-    m_grid->ShallowCopy(appender->GetOutput());
+    m_grid = PostTecplotUtils::readGrid(file);
 }
 
 void IsosurfaceSettingsWidget::fillScalarCombo()

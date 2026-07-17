@@ -47,6 +47,7 @@ namespace
 static const QRegularExpression kWhitespaceRe(QStringLiteral("\\s+"));
 
 static const char* kIiinVerticalAxisArrayName = "IIIN_IVERTICAL";
+static const char* kIiinConnectivityPatternArrayName = "IIIN_CONNECTIVITY_PATTERN";
 constexpr int kDefaultCalculationMatype = 2;
 constexpr int kDefaultConstructionLayer = 1;
 
@@ -1094,6 +1095,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
     QVector<int> elemNodeIds;
     elemNodeIds.resize(manod);
     vtkIdType ptIdsBuf[32];
+    QMap<vtkIdType, int> connectivityPatterns;
 
     auto vtkTypeDimension = [](int vtkCellType) -> int
     {
@@ -1344,10 +1346,29 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
             }
             if (uniqCount == 3)
             {
-                ketype = 31;
+                int pattern = 0;
+                for (int i = 0; i < qMin(manod, 4); ++i)
+                {
+                    int uniqIndex = 0;
+                    while (uniqIndex < uniqCount && uniq[uniqIndex] != elemNodeIds[i])
+                        ++uniqIndex;
+                    if (uniqIndex >= uniqCount)
+                        uniqIndex = qMin(i, uniqCount - 1);
+                    pattern |= (uniqIndex & 0x3) << (i * 2);
+                }
+
                 elemNodeIds[0] = uniq[0];
                 elemNodeIds[1] = uniq[1];
                 elemNodeIds[2] = uniq[2];
+
+                static const int triangleIds[] = {0, 1, 2};
+                const vtkIdType cellId = grid->GetNumberOfCells();
+                addCellPiece(VTK_TRIANGLE, triangleIds, 3, elemId, ketype, matype, layer,
+                             tail1, tail2, 0);
+                if (grid->GetNumberOfCells() > cellId)
+                    connectivityPatterns.insert(cellId, pattern);
+                ++readElems;
+                continue;
             }
         }
 
@@ -1364,6 +1385,15 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
     grid->GetCellData()->AddArray(tail2Arr);
     grid->GetCellData()->AddArray(originalCellIds);
     grid->GetCellData()->AddArray(cellDimArr);
+
+    auto connectivityPatternArr = vtkSmartPointer<vtkIntArray>::New();
+    connectivityPatternArr->SetName(kIiinConnectivityPatternArrayName);
+    connectivityPatternArr->SetNumberOfComponents(1);
+    connectivityPatternArr->SetNumberOfTuples(grid->GetNumberOfCells());
+    connectivityPatternArr->FillComponent(0, -1.0);
+    for (auto it = connectivityPatterns.cbegin(); it != connectivityPatterns.cend(); ++it)
+        connectivityPatternArr->SetValue(it.key(), it.value());
+    grid->GetCellData()->AddArray(connectivityPatternArr);
 
     normalizePhysicalTagSets(m_mshPickMap, QStringLiteral("IIIN"));
     return grid;
@@ -1394,6 +1424,9 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
     auto* layerArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"));
     auto* tail1Arr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("TAIL1"));
     auto* tail2Arr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("TAIL2"));
+    auto* ketypeArr = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("KETYPE"));
+    auto* connectivityPatternArr = vtkIntArray::SafeDownCast(
+        grid->GetCellData()->GetArray(kIiinConnectivityPatternArrayName));
     auto* nodeIdArr = vtkIntArray::SafeDownCast(grid->GetPointData()->GetArray("node_id"));
 
     const vtkIdType numnp = grid->GetNumberOfPoints();
@@ -1457,6 +1490,19 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
         {
             unsupported++;
             continue;
+        }
+
+        const int storedKetype =
+            (ketypeArr && cid < ketypeArr->GetNumberOfTuples()) ? ketypeArr->GetValue(cid) : 0;
+        const int connectivityPattern =
+            (connectivityPatternArr && cid < connectivityPatternArr->GetNumberOfTuples())
+                ? connectivityPatternArr->GetValue(cid)
+                : -1;
+        if (c->GetCellType() == VTK_TRIANGLE && storedKetype == 3 &&
+            connectivityPattern >= 0)
+        {
+            k = 3;
+            expN = 4;
         }
         cellKetype[oi] = k;
         cellExpN[oi] = expN;
@@ -1533,23 +1579,37 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
             vtkNodeIds.push_back(outNodeId);
         }
 
-               // 如果 expN > 实际点数（一般不会），补 0
-        while (vtkNodeIds.size() < expN)
-            vtkNodeIds.push_back(0);
-
-               // 重排到 IIIN 顺序
-        QVector<int> iiOrder = vtkToIiinOrder(k);
         QVector<int> outConn;
         outConn.reserve(expN);
+        const int connectivityPattern =
+            (connectivityPatternArr && cid < connectivityPatternArr->GetNumberOfTuples())
+                ? connectivityPatternArr->GetValue(cid)
+                : -1;
 
-        if (!iiOrder.isEmpty() && iiOrder.size() == expN)
+        if (k == 3 && vtkNodeIds.size() == 3 && connectivityPattern >= 0)
         {
-            for (int idx : iiOrder)
-                outConn.push_back(vtkNodeIds[idx]);
+            for (int i = 0; i < 4; ++i)
+            {
+                const int index = (connectivityPattern >> (i * 2)) & 0x3;
+                outConn.push_back(
+                    vtkNodeIds[std::min(index, static_cast<int>(vtkNodeIds.size()) - 1)]);
+            }
         }
         else
         {
-            outConn = vtkNodeIds; // 线性或无需重排
+            while (vtkNodeIds.size() < expN)
+                vtkNodeIds.push_back(0);
+
+            const QVector<int> iiOrder = vtkToIiinOrder(k);
+            if (!iiOrder.isEmpty() && iiOrder.size() == expN)
+            {
+                for (int idx : iiOrder)
+                    outConn.push_back(vtkNodeIds[idx]);
+            }
+            else
+            {
+                outConn = vtkNodeIds;
+            }
         }
 
                // IIIN.DAT 单元号按导出顺序从 1 开始连续编号
@@ -1559,6 +1619,8 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
         for (int j = 0; j < manod; ++j)
         {
             int nid = (j < outConn.size()) ? outConn[j] : 0;
+            if (nid == 0 && k == 31 && !outConn.isEmpty())
+                nid = outConn.last();
             out << iField(nid, 9);
         }
 

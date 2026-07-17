@@ -399,33 +399,49 @@ void PostProcessing::prepareResultRootAsync(const QString& projectDir, const QSt
 
     m_preparingResultRoots.insert(key);
     const auto prepared = QSharedPointer<bool>::create(false);
-    const auto descriptions = QSharedPointer<QStringList>::create();
+    const auto summary = QSharedPointer<PostResultAutoPrepare::PreparedResultSummary>::create();
     QThread* worker = QThread::create(
-        [projectPath, rootPath, prepared, descriptions]()
+        [projectPath, rootPath, prepared, summary]()
         {
             *prepared = PostResultAutoPrepare::prepareResultRoot(projectPath, rootPath);
             if (*prepared)
-            {
-                *descriptions = PostResultAutoPrepare::preparedResultDescriptions(
-                    projectPath, rootPath);
-            }
+                *summary = PostResultAutoPrepare::preparedResultSummary(projectPath, rootPath);
         });
 
     connect(worker, &QThread::finished, this,
-            [this, worker, projectPath, rootPath, key, prepared, descriptions]()
+            [this, worker, projectPath, rootPath, key, prepared, summary]()
             {
                 m_preparingResultRoots.remove(key);
                 const bool prepareAgain = m_pendingResultRoots.remove(key);
                 if (*prepared)
                 {
-                    qInfo().noquote() << QStringLiteral("计算完成，已生成以下后处理结果：");
-                    for (const QString& description : *descriptions)
-                        qInfo().noquote() << QStringLiteral("  %1").arg(description);
+                    const QString outputDir = QDir(rootPath).filePath(
+                        QString::fromUtf8(PublicConstants::kPostResultDirectoryName));
+                    QStringList logLines{QStringLiteral("__RAW__计算完成，后处理结果已生成。")};
+                    if (summary->groupCount > 0)
+                        logLines.push_back(QStringLiteral("生成内容：%1 组后处理结果")
+                                               .arg(summary->groupCount));
+                    if (!summary->resultTypes.isEmpty())
+                        logLines.push_back(QStringLiteral("结果类型：%1")
+                                               .arg(summary->resultTypes.join(QStringLiteral("、"))));
+                    if (!summary->resultConditions.isEmpty())
+                    {
+                        QStringList conditions = summary->resultConditions;
+                        if (summary->hasRegularResults)
+                            conditions.prepend(QStringLiteral("常规"));
+                        logLines.push_back(
+                            QStringLiteral("结果工况：%1")
+                                .arg(conditions.join(QStringLiteral("、"))));
+                    }
+                    logLines.push_back(
+                        QStringLiteral("保存位置：%1")
+                            .arg(QDir::toNativeSeparators(outputDir)));
+                    qInfo().noquote() << logLines.join(QLatin1Char('\n'));
                 }
                 else
                 {
-                    qWarning().noquote()
-                        << QStringLiteral("计算完成，但没有发现可自动生成的后处理结果。");
+                    qWarning().noquote() << QStringLiteral(
+                        "__RAW__计算完成，但没有生成可用的后处理结果。");
                 }
                 worker->deleteLater();
                 if (prepareAgain)

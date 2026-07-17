@@ -11,7 +11,11 @@
 #include <QDebug>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QMessageBox>
 #include <QPushButton>
+#include <QSet>
+
+#include <algorithm>
 
 #include "ui_DisplacementConstraintWidget.h"
 
@@ -101,6 +105,9 @@ DisplacementConstraintWidget::DisplacementConstraintWidget(QWidget* parent)
     const bool is2D = (NDIM == 2);
     ui->UZLineEdit->setEnabled(!is2D);
     ui->UZLineEdit->setToolTip(is2D ? QStringLiteral("二维模型不使用 Z 方向") : QString());
+
+    connect(ui->btnSetAllBarsSuspended, &QPushButton::clicked, this,
+            &DisplacementConstraintWidget::onSetAllBarsSuspended);
 }
 
 DisplacementConstraintWidget::~DisplacementConstraintWidget()
@@ -229,6 +236,53 @@ QJsonObject DisplacementConstraintWidget::saveJson()
     obj["uy"] = ui->UYLineEdit->currentData().toString();
     obj["uz"] = ui->UZLineEdit->currentData().toString();
     return obj;
+}
+
+void DisplacementConstraintWidget::onSetAllBarsSuspended()
+{
+    PickManager& pickManager = PickManager::instance();
+    pickManager.updateStructure();
+    vtkUnstructuredGrid* lineGrid = pickManager.lineGrid();
+    if (!lineGrid || lineGrid->GetNumberOfCells() == 0)
+    {
+        QMessageBox::information(this, QStringLiteral("没有杆单元"),
+                                 QStringLiteral("当前网格中没有可设置的杆单元。"));
+        return;
+    }
+
+    QSet<vtkIdType> usedPointIds;
+    for (vtkIdType cellId = 0; cellId < lineGrid->GetNumberOfCells(); ++cellId)
+    {
+        vtkCell* cell = lineGrid->GetCell(cellId);
+        if (!cell || cell->GetCellDimension() != 1)
+            continue;
+        for (vtkIdType i = 0; i < cell->GetNumberOfPoints(); ++i)
+            usedPointIds.insert(cell->GetPointId(i));
+    }
+
+    if (usedPointIds.isEmpty())
+    {
+        QMessageBox::information(this, QStringLiteral("没有杆单元"),
+                                 QStringLiteral("当前网格中没有可设置的杆单元。"));
+        return;
+    }
+
+    QVector<vtkIdType> pointIds;
+    pointIds.reserve(usedPointIds.size());
+    for (vtkIdType pointId : usedPointIds)
+        pointIds.push_back(pointId);
+    std::sort(pointIds.begin(), pointIds.end());
+
+    setConstraintValue(ui->UXLineEdit, QStringLiteral("-10000"));
+    setConstraintValue(ui->UYLineEdit, QStringLiteral("-10000"));
+    setConstraintValue(ui->UZLineEdit, QStringLiteral("-10000"));
+
+    pickManager.setSelectedPointIds(getPageType(), m_uuid, GridKind::Solid, {}, true);
+    pickManager.setSelectedPointIds(getPageType(), m_uuid, GridKind::Line, pointIds, true);
+
+    qInfo().noquote()
+        << QStringLiteral("__RAW__已自动选择 %1 个杆件节点并设置为悬空。")
+               .arg(pointIds.size());
 }
 
 void DisplacementConstraintWidget::loadJson(const QJsonObject& obj)

@@ -20,6 +20,14 @@ struct ResultGroup
     QString sourcePath;
 };
 
+struct PreparedResultSummary
+{
+    int groupCount = 0;
+    bool hasRegularResults = false;
+    QStringList resultTypes;
+    QStringList resultConditions;
+};
+
 QStringList defaultResultDirectories();
 QStringList discoverResultDirectories(const QString& projectDir);
 QString firstResultDirectory(const QString& projectDir);
@@ -29,7 +37,7 @@ QString preparedDirectory(const QString& projectDir, const QString& sourceDir);
 bool prepareDirectory(const QString& projectDir, const QString& sourceDir);
 bool prepareResultRoot(const QString& projectDir, const QString& resultRoot);
 bool prepareProject(const QString& projectDir);
-QStringList preparedResultDescriptions(const QString& projectDir, const QString& resultRoot);
+PreparedResultSummary preparedResultSummary(const QString& projectDir, const QString& resultRoot);
 QVector<ResultFile> resultFiles(const QString& projectDir, const QString& sourceDir,
                                 bool includeVtu = true);
 }

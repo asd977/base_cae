@@ -65,6 +65,7 @@ if(WIN32)
             COMMAND "${_cae_windeployqt}"
                 --no-translations
                 --no-compiler-runtime
+                --skip-plugin-types generic,networkinformation,tls
                 --dir "${CAE_RUNTIME_DIR}"
                 ${_cae_runtime_binaries}
             COMMENT "Deploying Qt runtime files"
@@ -86,15 +87,17 @@ if(WIN32)
     endforeach()
 
     if(EXISTS "${CAE_SOLVER_EXECUTABLE}")
-        add_custom_command(TARGET CAE_BASE POST_BUILD
+        add_custom_target(CAE_DEPLOY_SOLVER ALL
             COMMAND ${CMAKE_COMMAND} -E make_directory
                 "${CAE_RUNTIME_DIR}/solver/PCCAE_CPU"
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${CAE_SOLVER_EXECUTABLE}"
                 "${CAE_RUNTIME_DIR}/solver/PCCAE_CPU/PCCAE_CPU.exe"
+            DEPENDS "${CAE_SOLVER_EXECUTABLE}"
             COMMENT "Deploying solver executable"
             VERBATIM
         )
+        add_dependencies(CAE_BASE CAE_DEPLOY_SOLVER)
     else()
         message(WARNING
             "Solver executable was not found at ${CAE_SOLVER_EXECUTABLE}; "

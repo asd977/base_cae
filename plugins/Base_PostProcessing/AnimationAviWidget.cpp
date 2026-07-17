@@ -22,6 +22,7 @@
 #include <QRegularExpression>
 
 #include "PostVisualUtils.h"
+#include "PostTecplotUtils.h"
 #include "ui_AnimationAviWidget.h"
 // #include <vtkAVIWriter.h>
 #include <PublicConstants.h>
@@ -120,20 +121,7 @@ void AnimationAviWidget::scanFrames()
 
 vtkSmartPointer<vtkUnstructuredGrid> AnimationAviWidget::loadGridFromFile(const QString& file)
 {
-    auto reader = vtkSmartPointer<vtkTecplotReader>::New();
-    reader->SetFileName(file.toUtf8().constData());
-    reader->Update();
-
-    auto appender = vtkSmartPointer<vtkAppendFilter>::New();
-    auto mb = reader->GetOutput();
-    for (int i = 0; i < mb->GetNumberOfBlocks(); ++i)
-        if (auto g = vtkUnstructuredGrid::SafeDownCast(mb->GetBlock(i)))
-            appender->AddInputData(g);
-    appender->Update();
-
-    auto grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
-    grid->ShallowCopy(appender->GetOutput());
-    return grid;
+    return PostTecplotUtils::readGrid(file);
 }
 
 bool AnimationAviWidget::loadFrame(int index)

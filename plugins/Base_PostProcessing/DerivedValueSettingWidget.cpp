@@ -3,6 +3,8 @@
 #include <PublicConstants.h>
 #include <PublicVariables.h>
 
+#include "PostTecplotUtils.h"
+
 #include <QDir>
 #include <QEvent>
 #include <QHeaderView>
@@ -38,24 +40,7 @@ static QString sci(double v, int precision = 2)
 
 static vtkSmartPointer<vtkUnstructuredGrid> loadGridFromFile(const QString& file)
 {
-    auto reader = vtkSmartPointer<vtkTecplotReader>::New();
-    reader->SetFileName(file.toUtf8().constData());
-    reader->Update();
-
-    auto mb = reader->GetOutput();
-    if (!mb)
-        return nullptr;
-
-    auto appender = vtkSmartPointer<vtkAppendFilter>::New();
-    for (int i = 0; i < mb->GetNumberOfBlocks(); ++i)
-    {
-        if (auto g = vtkUnstructuredGrid::SafeDownCast(mb->GetBlock(i)))
-        {
-            appender->AddInputData(g);
-        }
-    }
-    appender->Update();
-    return vtkUnstructuredGrid::SafeDownCast(appender->GetOutput());
+    return PostTecplotUtils::readGrid(file);
 }
 
 struct Stats

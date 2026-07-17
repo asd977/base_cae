@@ -18,6 +18,7 @@
 #include <QRegularExpression>
 
 #include "PostResultAutoPrepare.h"
+#include "PostTecplotUtils.h"
 #include "PostVisualUtils.h"
 #include "ui_BlockSettingsWidget.h"
 
@@ -206,21 +207,7 @@ void BlockSettingsWidget::loadLatestData()
 
 void BlockSettingsWidget::readTecplot(const QString& fileName)
 {
-    auto reader = vtkSmartPointer<vtkTecplotReader>::New();
-    reader->SetFileName(fileName.toUtf8().constData());
-    reader->Update();
-
-    auto appender = vtkSmartPointer<vtkAppendFilter>::New();
-    auto mb = reader->GetOutput();
-    for (int i = 0; i < mb->GetNumberOfBlocks(); ++i)
-        if (auto g = vtkUnstructuredGrid::SafeDownCast(mb->GetBlock(i)))
-            appender->AddInputData(g);
-    appender->Update();
-
-    // ✅ 用独立的 UnstructuredGrid 保存（避免 appender 析构后悬挂）
-    auto newGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
-    newGrid->ShallowCopy(appender->GetOutput());
-    m_grid = newGrid;
+    m_grid = PostTecplotUtils::readGrid(fileName);
 
     if (!m_grid || m_grid->GetNumberOfPoints() == 0)
     {

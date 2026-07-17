@@ -394,6 +394,8 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
     static const QSet<int> twoTokenLines = {33, 34, 35};
     for (int lineNo = 1; lineNo <= 40; ++lineNo)
     {
+        if (isFixedFileLine(lineNo))
+            continue;
         if (!freezeThawEnabled() && lineNo >= 31 && lineNo <= 37)
             continue;
         const QString text = normalizeEnumValue(lineValue(lineNo));

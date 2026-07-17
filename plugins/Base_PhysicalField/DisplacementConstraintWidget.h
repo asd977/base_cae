@@ -55,6 +55,7 @@ class DisplacementConstraintWidget : public BasePage
                       int nodeId, double x, double y, double z, const QString& prevUuid);
     void onGroupChanged(int index);
     void onDimChanged(int index);
+    void onSetAllBarsSuspended();
 
   private:
     void refreshGroupCombo(int dimFilter);

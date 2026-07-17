@@ -786,35 +786,60 @@ bool prepareProject(const QString& projectDir)
     return preparedAny;
 }
 
-QStringList preparedResultDescriptions(const QString& projectDir, const QString& resultRoot)
+PreparedResultSummary preparedResultSummary(const QString& projectDir, const QString& resultRoot)
 {
     const QDir project(QDir::fromNativeSeparators(projectDir.trimmed()));
     const QDir root(QDir::fromNativeSeparators(resultRoot.trimmed()));
     if (!project.exists() || !root.exists())
         return {};
 
-    QStringList descriptions;
+    PreparedResultSummary summary;
+    QSet<QString> seenResultTypes;
+    QSet<QString> seenResultConditions;
+    const QRegularExpression additionalResultPattern(QStringLiteral(R"(^(.+?)（(.+)）$)"));
     for (const ResultGroup& group : resultGroups(project.absolutePath()))
     {
         if (!pathIsWithin(root.absolutePath(), group.sourcePath))
             continue;
 
         const QString preparedPath = preparedDirectory(project.absolutePath(), group.sourcePath);
-        QStringList resultNames;
-        QSet<QString> seen;
+        bool hasResults = false;
+        QSet<QString> seenInGroup;
         for (const ResultFile& file : readManifestFiles(QDir(preparedPath)))
         {
-            const QString name = file.displayName.trimmed();
-            if (name.isEmpty() || seen.contains(name))
+            QString resultType = file.displayName.trimmed();
+            if (resultType.isEmpty() || seenInGroup.contains(resultType))
                 continue;
-            seen.insert(name);
-            resultNames.push_back(name);
+            seenInGroup.insert(resultType);
+            hasResults = true;
+
+            const QRegularExpressionMatch match = additionalResultPattern.match(resultType);
+            if (match.hasMatch())
+            {
+                resultType = match.captured(1).trimmed();
+                const QString resultCondition = match.captured(2).trimmed();
+                if (!resultCondition.isEmpty() &&
+                    !seenResultConditions.contains(resultCondition))
+                {
+                    seenResultConditions.insert(resultCondition);
+                    summary.resultConditions.push_back(resultCondition);
+                }
+            }
+            else
+            {
+                summary.hasRegularResults = true;
+            }
+
+            if (!resultType.isEmpty() && !seenResultTypes.contains(resultType))
+            {
+                seenResultTypes.insert(resultType);
+                summary.resultTypes.push_back(resultType);
+            }
         }
-        if (!resultNames.isEmpty())
-            descriptions.push_back(QStringLiteral("%1：%2")
-                                       .arg(group.displayName, resultNames.join(QStringLiteral("、"))));
+        if (hasResults)
+            ++summary.groupCount;
     }
-    return descriptions;
+    return summary;
 }
 
 QVector<ResultFile> resultFiles(const QString& projectDir, const QString& sourceDir, bool includeVtu)

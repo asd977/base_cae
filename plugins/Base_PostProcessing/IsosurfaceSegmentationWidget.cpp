@@ -25,6 +25,7 @@
 #include <QRegularExpression>
 
 #include "PostResultAutoPrepare.h"
+#include "PostTecplotUtils.h"
 #include "PostVisualUtils.h"
 #include "ui_IsosurfaceSegmentationWidget.h"
 
@@ -228,21 +229,7 @@ void IsosurfaceSegmentationWidget::readTecplotLatest()
 
 void IsosurfaceSegmentationWidget::readTecplot(const QString& file)
 {
-    auto reader = vtkSmartPointer<vtkTecplotReader>::New();
-    reader->SetFileName(file.toUtf8().constData());
-    reader->Update();
-
-    auto appender = vtkSmartPointer<vtkAppendFilter>::New();
-    auto mb = reader->GetOutput();
-    for (int i = 0; i < mb->GetNumberOfBlocks(); ++i)
-        if (auto g = vtkUnstructuredGrid::SafeDownCast(mb->GetBlock(i)))
-            appender->AddInputData(g);
-    appender->Update();
-
-    // ✅ 独立 UnstructuredGrid
-    auto newGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
-    newGrid->ShallowCopy(appender->GetOutput());
-    m_grid = newGrid;
+    m_grid = PostTecplotUtils::readGrid(file);
 }
 
 void IsosurfaceSegmentationWidget::fillScalarCombo()

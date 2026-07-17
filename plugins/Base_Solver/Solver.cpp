@@ -4289,6 +4289,59 @@ bool Solver::updatePrepDatFiles(const QString& projectDir, int solverMode, int v
     if (lines.size() < 2)
         return false;
 
+    static const QRegularExpression intRe(QStringLiteral("[-+]?\\d+"));
+    auto integerMatches = [](const QString& line)
+    {
+        QVector<QRegularExpressionMatch> matches;
+        QRegularExpressionMatchIterator it = intRe.globalMatch(line);
+        while (it.hasNext())
+            matches.push_back(it.next());
+        return matches;
+    };
+
+    const QVector<QRegularExpressionMatch> header = integerMatches(lines.at(0));
+    if (header.size() < 4)
+        return false;
+    const int numnp = header.at(0).captured().toInt();
+    const int madim = header.at(1).captured().toInt();
+    const int nelem = header.at(2).captured().toInt();
+    const int manod = header.at(3).captured().toInt();
+    const int firstElemLine = 2 + numnp;
+    if (numnp < 0 || nelem < 0 || manod <= 0 || firstElemLine < 0 ||
+        lines.size() < firstElemLine + nelem)
+        return false;
+
+    // The legacy reinforcement interpolation always reads four nodes in 2D.
+    // Older project snapshots padded three-node triangles with node 0, which
+    // becomes a negative displacement index in MODDIS. Use a degenerate fourth
+    // node, matching the solver's original sample files.
+    if (madim == 2 && manod > 3)
+    {
+        const int ketypeTokenIndex = manod + 1;
+        for (int i = 0; i < nelem; ++i)
+        {
+            QString& line = lines[firstElemLine + i];
+            const QVector<QRegularExpressionMatch> matches = integerMatches(line);
+            if (matches.size() <= ketypeTokenIndex)
+                return false;
+            if (matches.at(ketypeTokenIndex).captured().toInt() != 31)
+                continue;
+
+            const QString repeatedNode = matches.at(3).captured();
+            for (int tokenIndex = manod; tokenIndex >= 4; --tokenIndex)
+            {
+                const QRegularExpressionMatch& nodeMatch = matches.at(tokenIndex);
+                if (nodeMatch.captured().toInt() != 0)
+                    continue;
+                QString replacement = repeatedNode;
+                if (nodeMatch.capturedLength() > replacement.size())
+                    replacement = replacement.rightJustified(nodeMatch.capturedLength(),
+                                                              QLatin1Char(' '));
+                line.replace(nodeMatch.capturedStart(), nodeMatch.capturedLength(), replacement);
+            }
+        }
+    }
+
     const int safeVerticalAxis = (verticalAxis >= 1 && verticalAxis <= 3) ? verticalAxis : 2;
     const QRegularExpression headerRe(R"(^\s*\d+\s+\d+)");
     const QRegularExpressionMatch match = headerRe.match(lines[1]);

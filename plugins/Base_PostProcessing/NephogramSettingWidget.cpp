@@ -52,6 +52,7 @@
 #include <cmath>
 
 #include "PostResultAutoPrepare.h"
+#include "PostTecplotUtils.h"
 #include "PostVisualUtils.h"
 #include "ui_NephogramSettingWidget.h"
 
@@ -312,43 +313,14 @@ void NephogramSettingWidget::on_scalarComboBox_currentIndexChanged(int)
 
 void NephogramSettingWidget::readTecplot(const QString& fileName)
 {
-    vtkSmartPointer<vtkTecplotReader> reader = vtkSmartPointer<vtkTecplotReader>::New();
-    reader->SetFileName(fileName.toUtf8().constData());
-    reader->Update();
-
-    vtkMultiBlockDataSet* multi = reader->GetOutput();
-
-    if (!multi || multi->GetNumberOfBlocks() <= 0)
-    {
-        qWarning() << "Tecplot contains no readable blocks:" << fileName;
-        return;
-    }
-
-    vtkSmartPointer<vtkAppendFilter> appender = vtkSmartPointer<vtkAppendFilter>::New();
-
-    int addedBlocks = 0;
-    for (int i = 0; i < multi->GetNumberOfBlocks(); ++i)
-    {
-        if (auto* block = vtkUnstructuredGrid::SafeDownCast(multi->GetBlock(i)))
-        {
-            appender->AddInputData(block);
-            ++addedBlocks;
-        }
-    }
-
-    if (addedBlocks == 0)
-    {
-        qWarning() << "Tecplot has no unstructured grid blocks:" << fileName;
-        return;
-    }
-
-    appender->Update();
-    m_grid = appender->GetOutput();
+    QString errorMessage;
+    m_grid = PostTecplotUtils::readGrid(fileName, &errorMessage);
     m_loadedFileName = fileName;
 
-    if (!m_grid || m_grid->GetNumberOfPoints() == 0)
+    if (!m_grid)
     {
-        qWarning() << "Failed to combine blocks for" << fileName;
+        qWarning().noquote() << errorMessage;
+        ui->scalarComboBox->clear();
         return;
     }
 
@@ -593,12 +565,8 @@ void NephogramSettingWidget::loadJson(const QJsonObject& obj)
         const int scalarIndex = ui->scalarComboBox->findText(scalar);
         if (scalarIndex >= 0)
             ui->scalarComboBox->setCurrentIndex(scalarIndex);
-        m_currentArrayName = scalar;
     }
-    else
-    {
-        m_currentArrayName = ui->scalarComboBox->currentText();
-    }
+    m_currentArrayName = ui->scalarComboBox->currentText();
 }
 
 void NephogramSettingWidget::readVtu(const QString& fileName)

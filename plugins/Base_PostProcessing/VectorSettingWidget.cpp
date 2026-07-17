@@ -25,6 +25,7 @@
 #include <QDir>
 
 #include "PostResultAutoPrepare.h"
+#include "PostTecplotUtils.h"
 #include "PostVisualUtils.h"
 #include "ui_VectorSettingWidget.h"
 
@@ -242,27 +243,7 @@ bool VectorSettingWidget::ensureDataLoaded()
 
     if (ext == "txt" || ext == "dat" || ext == "tec")
     {
-        // ---- 原来的 Tecplot ----
-        auto reader = vtkSmartPointer<vtkTecplotReader>::New();
-        reader->SetFileName(m_fileName.toUtf8().constData());
-        reader->Update();
-
-        auto multi = vtkMultiBlockDataSet::SafeDownCast(reader->GetOutput());
-        if (!multi)
-            return false;
-
-        auto appender = vtkSmartPointer<vtkAppendFilter>::New();
-        for (int i = 0; i < multi->GetNumberOfBlocks(); ++i)
-        {
-            if (auto* block = vtkUnstructuredGrid::SafeDownCast(multi->GetBlock(i)))
-            {
-                appender->AddInputData(block);
-            }
-        }
-        appender->Update();
-
-        grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
-        grid->ShallowCopy(appender->GetOutput());
+        grid = PostTecplotUtils::readGrid(m_fileName);
     }
     else if (ext == "vtu")
     {

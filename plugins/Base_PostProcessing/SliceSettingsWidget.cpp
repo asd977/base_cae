@@ -23,6 +23,7 @@
 #include <QRegularExpression>
 
 #include "PostResultAutoPrepare.h"
+#include "PostTecplotUtils.h"
 #include "PostVisualUtils.h"
 #include "ui_SliceSettingsWidget.h"
 
@@ -244,19 +245,7 @@ void SliceSettingsWidget::on_stepComboBox_currentIndexChanged(int idx)
     if (file.isEmpty())
         return;
 
-    // 读网格
-    auto reader = vtkSmartPointer<vtkTecplotReader>::New();
-    reader->SetFileName(file.toUtf8().constData());
-    reader->Update();
-
-    auto appender = vtkSmartPointer<vtkAppendFilter>::New();
-    auto mb = reader->GetOutput();
-    for (int i = 0; i < mb->GetNumberOfBlocks(); ++i)
-        if (auto g = vtkUnstructuredGrid::SafeDownCast(mb->GetBlock(i)))
-            appender->AddInputData(g);
-    appender->Update();
-
-    m_grid = appender->GetOutput();
+    m_grid = PostTecplotUtils::readGrid(file);
     if (!m_grid)
     {
         qWarning() << "append failed";

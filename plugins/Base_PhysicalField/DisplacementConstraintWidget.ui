@@ -203,6 +203,16 @@
              </property>
             </widget>
            </item>
+           <item row="3" column="0" colspan="2">
+            <widget class="QPushButton" name="btnSetAllBarsSuspended">
+             <property name="toolTip">
+              <string>选择全部杆单元节点，并将各方向设置为悬空杆件节点</string>
+             </property>
+             <property name="text">
+              <string>自动设置全部杆件为悬空</string>
+             </property>
+            </widget>
+           </item>
            <property name="leftMargin">
             <number>9</number>
            </property>
