@@ -12,6 +12,7 @@ class MaterialManager;
 class MaterialModel;
 class MaterialEntry;
 class CustomComboBox;
+class QComboBox;
 class QCheckBox;
 class QSpinBox;
 struct DomainKey;
@@ -32,8 +33,12 @@ class MaterialEntryWidget : public BasePage
 
   private slots:
     void onNameEdited(const QString& text);
+    void onNameEditingFinished();
+    void onMaterialModelActivated(int index);
     void onValueEdited(const QString& text);
+    void onOptionValueChanged(int index);
     void onSeepageModelChanged(int index);
+    void onCreepModelChanged(int index);
     void onSeepageValueEdited(const QString& text);
 
     void onMatypeChanged(int index);
@@ -56,6 +61,7 @@ class MaterialEntryWidget : public BasePage
     void appendMatypeOption(int matype);
     void rebuildForm(MaterialModel* model, MaterialEntry* entry);
     void rebuildSeepageFields(MaterialEntry* entry);
+    void rebuildCreepFields(MaterialEntry* entry);
     void clearForm();
     MaterialEntry* lookupEntry(MaterialModel** model = nullptr) const;
 
@@ -68,14 +74,21 @@ class MaterialEntryWidget : public BasePage
     QString m_entryId;
 
     bool m_isUpdating;
+    bool m_transitionChangeInProgress = false;
 
     QFormLayout* m_formLayout;
 
     QLineEdit* m_nameEdit;
+    QComboBox* m_modelCombo = nullptr;
     QMap<QString, QLineEdit*> m_valueEdits;
     CustomComboBox* m_seepageCombo = nullptr;
+    QWidget* m_seepageFieldsWidget = nullptr;
     QFormLayout* m_seepageFieldsLayout = nullptr;
     QMap<QString, QLineEdit*> m_seepageValueEdits;
+    CustomComboBox* m_creepCombo = nullptr;
+    QWidget* m_creepFieldsWidget = nullptr;
+    QFormLayout* m_creepFieldsLayout = nullptr;
+    QMap<QString, QLineEdit*> m_creepValueEdits;
 
     CustomComboBox* m_matypeCombo = nullptr;
     QPushButton* m_applyButton = nullptr;

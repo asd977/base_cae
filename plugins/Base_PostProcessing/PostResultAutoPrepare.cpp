@@ -731,7 +731,10 @@ bool prepareDirectory(const QString& projectDir, const QString& sourceDir)
     const PostResultGenerator::Result generated = PostResultGenerator::generate(options);
     if (!generated.ok)
     {
-        qWarning() << "Post result preparation failed:" << generated.error;
+        qWarning().noquote()
+            << QStringLiteral("__RAW__后处理结果生成失败：%1\n源目录：%2")
+                   .arg(generated.error)
+                   .arg(QDir::toNativeSeparators(source.absolutePath()));
         return false;
     }
     if (!writeManifest(project, source, prepared, generated))

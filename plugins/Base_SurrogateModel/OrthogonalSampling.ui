@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Orthogonal Sampling</string>
+   <string>正交采样</string>
   </property>
   <layout class="QVBoxLayout" name="root" stretch="0,0,0,0,0,0,0,0,0,0">
    <property name="spacing">
@@ -41,7 +41,7 @@
       </sizepolicy>
      </property>
      <property name="text">
-      <string>Orthogonal Sampling</string>
+      <string>正交采样</string>
      </property>
     </widget>
    </item>

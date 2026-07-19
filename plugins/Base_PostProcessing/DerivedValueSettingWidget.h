@@ -24,6 +24,9 @@ class DerivedValueSettingWidget : public BasePage
     void beforeLoad() override;   // 首次才扫描&初始化
     void beforeUnload() override; // 本页无需处理
 
+    QJsonObject saveJson() override;
+    void loadJson(const QJsonObject& obj) override;
+
   protected:
     // 让“点整行任意位置”也能切换勾选；点到复选框则走 Qt 默认逻辑
     bool eventFilter(QObject* obj, QEvent* ev) override;
@@ -50,6 +53,7 @@ class DerivedValueSettingWidget : public BasePage
         int group{};
         int order{};
         QString filePath;
+        QString displayName;
     };
 
   private:

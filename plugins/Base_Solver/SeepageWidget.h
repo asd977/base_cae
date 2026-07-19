@@ -45,16 +45,9 @@ class SeepageWidget : public BasePage
     void onComputeClicked();
     void setComputing(bool computing);
 
-    void onEditGlobalMappingsClicked();
     void onEditHwDropCurvesClicked();
 
   private:
-    struct MaterialMapping
-    {
-        int oldMaterial = 0;
-        int newMaterial = 0;
-    };
-
     struct WaterLevelPoint
     {
         double time = 0.0;
@@ -67,7 +60,6 @@ class SeepageWidget : public BasePage
     void updateOptionalControls();
 
     Ui::SeepageWidget* ui;
-    QVector<MaterialMapping> globalMappings_;
     QVector<WaterLevelPoint> waterLevelPoints_;
 };
 

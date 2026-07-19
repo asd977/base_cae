@@ -3,6 +3,7 @@
 #include <vtkSmartPointer.h>
 
 #include <QString>
+#include <QVariantMap>
 #include <QWidget>
 
 class VisualWidgetService;
@@ -12,6 +13,7 @@ class vtkContourFilter;
 class vtkPolyDataMapper;
 class vtkDataSetMapper;
 class vtkActor;
+class vtkCellDataToPointData;
 
 namespace Ui
 {
@@ -27,6 +29,8 @@ class IsosurfaceSegmentationWidget : public BasePage
     ~IsosurfaceSegmentationWidget() override;
     void beforeLoad() override;
     void beforeUnload() override;
+    QJsonObject saveJson() override;
+    void loadJson(const QJsonObject& object) override;
 
   private slots:
     void on_scalarComboBox_currentIndexChanged(int index);
@@ -46,7 +50,7 @@ class IsosurfaceSegmentationWidget : public BasePage
   private:
     // 数据
     void readTecplotLatest();
-    void readTecplot(const QString& file);
+    bool readTecplot(const QString& file);
     void fillScalarCombo();
     void setIsoSpinRangeFromScalar();
     double currentScalarMin() const;
@@ -62,6 +66,7 @@ class IsosurfaceSegmentationWidget : public BasePage
     // 生命周期辅助
     void attachActorsIfNeeded();   // 根据标志把 actor 挂回场景
     void detachActorsIfAttached(); // 仅移除，不销毁
+    void applyPendingState();
 
   private:
     Ui::IsosurfaceSegmentationWidget* ui{};
@@ -69,6 +74,8 @@ class IsosurfaceSegmentationWidget : public BasePage
 
     // 生命周期状态
     bool m_loadedOnce{false};
+    bool m_hasPendingState{false};
+    QVariantMap m_pendingState;
     bool m_attachedLow{false};
     bool m_attachedHigh{false};
     bool m_attachedIso{false};
@@ -86,6 +93,7 @@ class IsosurfaceSegmentationWidget : public BasePage
     vtkSmartPointer<vtkActor> m_actorLow;
     vtkSmartPointer<vtkActor> m_actorHigh;
 
+    vtkSmartPointer<vtkCellDataToPointData> m_cellToPoint;
     vtkSmartPointer<vtkContourFilter> m_contourIso;
     vtkSmartPointer<vtkPolyDataMapper> m_mapperIso;
     vtkSmartPointer<vtkActor> m_actorIso;

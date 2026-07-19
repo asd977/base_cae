@@ -3,7 +3,6 @@
 #include <PublicConstants.h>
 #include <PublicVariables.h>
 #include <SolverFilePaths.h>
-
 #include <QComboBox>
 #include <QDir>
 #include <QFile>
@@ -364,6 +363,7 @@ void SlopeStabilityWidget::setStrengthReserveOutputCombo(int row, const QString&
     auto* combo = new QComboBox(ui->strengthReserveTable);
     combo->addItem(QStringLiteral("不输出该储备系数结果"), QStringLiteral("0.0000"));
     combo->addItem(QStringLiteral("输出该储备系数结果"), QStringLiteral("1.0000"));
+    SolverUiLayoutHelper::configureComboSizing(combo);
     const QString normalized = value.trimmed().startsWith(QLatin1Char('0'))
                                    ? QStringLiteral("0.0000")
                                    : QStringLiteral("1.0000");
@@ -459,8 +459,7 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
        << quoteValue(QString::fromLatin1(kAccYFileName)) << "  "
        << quoteValue(QString::fromLatin1(kAccZFileName)) << "    ACCEX ACCEY ACCEZ\n";
 
-    exportTdtraceDatFile();
-    return true;
+    return exportTdtraceDatFile() && exportMaterialMappingsFile();
 }
 
 bool SlopeStabilityWidget::validateInputs(QString* errorMessage) const
@@ -516,6 +515,22 @@ bool SlopeStabilityWidget::validateInputs(QString* errorMessage) const
         if (!number(ui->tstaEdit, &start) || !number(ui->tendEdit, &end) || end <= start)
             return fail(QStringLiteral("时程计算终止时刻必须大于起始时刻。"));
     }
+    return true;
+}
+
+bool SlopeStabilityWidget::exportMaterialMappingsFile() const
+{
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    if (!QDir().mkpath(inputDir.absolutePath()))
+        return false;
+
+    QFile file(inputDir.filePath(QStringLiteral("MACHAN.DAT")));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        return false;
+    QTextStream os(&file);
+    os << "           0   NUM\n";
     return true;
 }
 

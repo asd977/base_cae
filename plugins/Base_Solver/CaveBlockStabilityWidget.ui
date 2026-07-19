@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version='1.0' encoding='UTF-8'?>
 <ui version="4.0">
  <class>CaveBlockStabilityWidget</class>
  <widget class="QWidget" name="CaveBlockStabilityWidget">
@@ -11,13 +11,13 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>块体稳定计算</string>
+   <string>块体稳定分析</string>
   </property>
   <layout class="QVBoxLayout" name="rootLayout">
    <item>
     <widget class="QLabel" name="pageHeaderLabel">
      <property name="text">
-      <string>块体稳定计算</string>
+      <string>块体稳定分析</string>
      </property>
      <property name="visible">
       <bool>false</bool>
@@ -25,598 +25,623 @@
     </widget>
    </item>
    <item>
-    <widget class="QScrollArea" name="scrollArea">
-     <property name="widgetResizable">
-      <bool>true</bool>
-     </property>
-     <property name="frameShape">
-      <enum>QFrame::NoFrame</enum>
-     </property>
-     <widget class="QWidget" name="scrollAreaWidgetContents">
-      <property name="geometry">
-       <rect>
-        <x>0</x>
-        <y>0</y>
-        <width>396</width>
-        <height>610</height>
-       </rect>
+    <widget class="QWidget" name="contentWidget">
+     <layout class="QVBoxLayout" name="contentLayout">
+      <item>
+       <widget class="QWidget" name="fileHiddenWidget">
+        <property name="visible">
+         <bool>false</bool>
+        </property>
+        <layout class="QFormLayout" name="fileFormLayout">
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelIcut">
+           <property name="text">
+            <string>ICUT文件</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QLineEdit" name="icutFileEdit">
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="labelSafe">
+           <property name="text">
+            <string>结果文件</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="1">
+          <widget class="QLineEdit" name="safeFileEdit">
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <property name="horizontalSpacing">
+          <number>14</number>
+         </property>
+         <property name="verticalSpacing">
+          <number>8</number>
+         </property>
+         <property name="fieldGrowthPolicy">
+          <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+         </property>
+         <property name="rowWrapPolicy">
+          <enum>QFormLayout::WrapLongRows</enum>
+         </property>
+         <property name="labelAlignment">
+          <set>Qt::AlignRight|Qt::AlignVCenter</set>
+         </property>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGroupBox" name="basicGroupBox">
+        <property name="title">
+         <string>基本参数</string>
+        </property>
+        <layout class="QFormLayout" name="basicFormLayout">
+         <property name="labelAlignment">
+          <set>Qt::AlignRight|Qt::AlignVCenter</set>
+         </property>
+         <property name="fieldGrowthPolicy">
+          <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+         </property>
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelWeight">
+           <property name="text">
+            <string>容重（千牛每立方米）</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QLineEdit" name="weightEdit">
+           <property name="text">
+            <string>23.52</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <property name="leftMargin">
+          <number>9</number>
+         </property>
+         <property name="topMargin">
+          <number>9</number>
+         </property>
+         <property name="rightMargin">
+          <number>9</number>
+         </property>
+         <property name="bottomMargin">
+          <number>9</number>
+         </property>
+         <property name="spacing">
+          <number>6</number>
+         </property>
+         <property name="horizontalSpacing">
+          <number>14</number>
+         </property>
+         <property name="verticalSpacing">
+          <number>8</number>
+         </property>
+         <property name="rowWrapPolicy">
+          <enum>QFormLayout::WrapLongRows</enum>
+         </property>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGroupBox" name="rangeGroupBox">
+        <property name="title">
+         <string>计算范围</string>
+        </property>
+        <layout class="QFormLayout" name="rangeFormLayout">
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelXMin">
+           <property name="text">
+            <string>X 下限</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QLineEdit" name="xMinEdit">
+           <property name="text">
+            <string>-1.0E6</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="labelXMax">
+           <property name="text">
+            <string>X 上限</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="1">
+          <widget class="QLineEdit" name="xMaxEdit">
+           <property name="text">
+            <string>1.0E6</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="0">
+          <widget class="QLabel" name="labelYMin">
+           <property name="text">
+            <string>Y 下限</string>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="1">
+          <widget class="QLineEdit" name="yMinEdit">
+           <property name="text">
+            <string>-1.0E6</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item row="3" column="0">
+          <widget class="QLabel" name="labelYMax">
+           <property name="text">
+            <string>Y 上限</string>
+           </property>
+          </widget>
+         </item>
+         <item row="3" column="1">
+          <widget class="QLineEdit" name="yMaxEdit">
+           <property name="text">
+            <string>1.0E6</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="0">
+          <widget class="QLabel" name="labelZMin">
+           <property name="text">
+            <string>Z 下限</string>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="1">
+          <widget class="QLineEdit" name="zMinEdit">
+           <property name="text">
+            <string>-1.0E6</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item row="5" column="0">
+          <widget class="QLabel" name="labelZMax">
+           <property name="text">
+            <string>Z 上限</string>
+           </property>
+          </widget>
+         </item>
+         <item row="5" column="1">
+          <widget class="QLineEdit" name="zMaxEdit">
+           <property name="text">
+            <string>1.0E6</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <property name="leftMargin">
+          <number>9</number>
+         </property>
+         <property name="topMargin">
+          <number>9</number>
+         </property>
+         <property name="rightMargin">
+          <number>9</number>
+         </property>
+         <property name="bottomMargin">
+          <number>9</number>
+         </property>
+         <property name="horizontalSpacing">
+          <number>14</number>
+         </property>
+         <property name="verticalSpacing">
+          <number>8</number>
+         </property>
+         <property name="fieldGrowthPolicy">
+          <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+         </property>
+         <property name="rowWrapPolicy">
+          <enum>QFormLayout::WrapLongRows</enum>
+         </property>
+         <property name="labelAlignment">
+          <set>Qt::AlignLeft|Qt::AlignVCenter</set>
+         </property>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGroupBox" name="forceGroupBox">
+        <property name="title">
+         <string>外力向量</string>
+        </property>
+        <layout class="QGridLayout" name="forceGridLayout">
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelFx">
+           <property name="text">
+            <string>X 方向力</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QLineEdit" name="fxEdit">
+           <property name="text">
+            <string>-50.0</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="labelFy">
+           <property name="text">
+            <string>Y 方向力</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="1">
+          <widget class="QLineEdit" name="fyEdit">
+           <property name="text">
+            <string>0.0</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="0">
+          <widget class="QLabel" name="labelFz">
+           <property name="text">
+            <string>Z 方向力</string>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="1">
+          <widget class="QLineEdit" name="fzEdit">
+           <property name="text">
+            <string>0.0</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <property name="leftMargin">
+          <number>9</number>
+         </property>
+         <property name="topMargin">
+          <number>9</number>
+         </property>
+         <property name="rightMargin">
+          <number>9</number>
+         </property>
+         <property name="bottomMargin">
+          <number>9</number>
+         </property>
+         <property name="horizontalSpacing">
+          <number>6</number>
+         </property>
+         <property name="verticalSpacing">
+          <number>6</number>
+         </property>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGroupBox" name="directionGroupBox">
+        <property name="title">
+         <string>滑移方向</string>
+        </property>
+        <layout class="QFormLayout" name="directionFormLayout">
+         <item row="0" column="0">
+          <widget class="QLabel" name="labelIfDir">
+           <property name="text">
+            <string>方向定义方式</string>
+           </property>
+          </widget>
+         </item>
+         <item row="0" column="1">
+          <widget class="QComboBox" name="comboIfDir">
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="labelAx">
+           <property name="text">
+            <string>起点 A - X</string>
+           </property>
+          </widget>
+         </item>
+         <item row="1" column="1">
+          <widget class="QLineEdit" name="axEdit">
+           <property name="text">
+            <string>0.0</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="0">
+          <widget class="QLabel" name="labelAy">
+           <property name="text">
+            <string>起点 A - Y</string>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="1">
+          <widget class="QLineEdit" name="ayEdit">
+           <property name="text">
+            <string>0.0</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item row="3" column="0">
+          <widget class="QLabel" name="labelAz">
+           <property name="text">
+            <string>起点 A - Z</string>
+           </property>
+          </widget>
+         </item>
+         <item row="3" column="1">
+          <widget class="QLineEdit" name="azEdit">
+           <property name="text">
+            <string>0.0</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="0">
+          <widget class="QLabel" name="labelBx">
+           <property name="text">
+            <string>终点 B - X</string>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="1">
+          <widget class="QLineEdit" name="bxEdit">
+           <property name="text">
+            <string>-1.0</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item row="5" column="0">
+          <widget class="QLabel" name="labelBy">
+           <property name="text">
+            <string>终点 B - Y</string>
+           </property>
+          </widget>
+         </item>
+         <item row="5" column="1">
+          <widget class="QLineEdit" name="byEdit">
+           <property name="text">
+            <string>-1.0</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item row="6" column="0">
+          <widget class="QLabel" name="labelBz">
+           <property name="text">
+            <string>终点 B - Z</string>
+           </property>
+          </widget>
+         </item>
+         <item row="6" column="1">
+          <widget class="QLineEdit" name="bzEdit">
+           <property name="text">
+            <string>-1.0</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item row="7" column="0">
+          <widget class="QLabel" name="labelIm1Vertical">
+           <property name="text">
+            <string>指定面 1</string>
+           </property>
+          </widget>
+         </item>
+         <item row="7" column="1">
+          <widget class="QLineEdit" name="im1Edit">
+           <property name="text">
+            <string>1</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item row="8" column="0">
+          <widget class="QLabel" name="labelIm2Vertical">
+           <property name="text">
+            <string>指定面 2</string>
+           </property>
+          </widget>
+         </item>
+         <item row="8" column="1">
+          <widget class="QLineEdit" name="im2Edit">
+           <property name="text">
+            <string>2</string>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>10</width>
+             <height>0</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <property name="leftMargin">
+          <number>9</number>
+         </property>
+         <property name="topMargin">
+          <number>9</number>
+         </property>
+         <property name="rightMargin">
+          <number>9</number>
+         </property>
+         <property name="bottomMargin">
+          <number>9</number>
+         </property>
+         <property name="horizontalSpacing">
+          <number>14</number>
+         </property>
+         <property name="verticalSpacing">
+          <number>8</number>
+         </property>
+         <property name="fieldGrowthPolicy">
+          <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+         </property>
+         <property name="rowWrapPolicy">
+          <enum>QFormLayout::WrapLongRows</enum>
+         </property>
+         <property name="labelAlignment">
+          <set>Qt::AlignLeft|Qt::AlignVCenter</set>
+         </property>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="computeBtn">
+        <property name="minimumSize">
+         <size>
+          <width>10</width>
+          <height>34</height>
+         </size>
+        </property>
+        <property name="text">
+         <string>计算</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="verticalSpacer">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>20</width>
+          <height>40</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <property name="leftMargin">
+       <number>9</number>
       </property>
-      <layout class="QVBoxLayout" name="contentLayout">
-       <item>
-        <widget class="QLabel" name="hintLabel">
-         <property name="text">
-          <string>先在“切割面”页面选择 1 个面，再设置块体容重、范围和滑移方向参数。</string>
-         </property>
-         <property name="wordWrap">
-          <bool>true</bool>
-         </property>
-         <property name="styleSheet">
-          <string notr="true">color:#6b7280;</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QWidget" name="fileHiddenWidget">
-         <property name="visible">
-          <bool>false</bool>
-         </property>
-         <layout class="QFormLayout" name="fileFormLayout">
-          <item row="0" column="0">
-           <widget class="QLabel" name="labelIcut">
-            <property name="text">
-             <string>ICUT文件</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <widget class="QLineEdit" name="icutFileEdit">
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="0">
-           <widget class="QLabel" name="labelSafe">
-            <property name="text">
-             <string>结果文件</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="1">
-           <widget class="QLineEdit" name="safeFileEdit">
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <property name="horizontalSpacing">
-           <number>14</number>
-          </property>
-          <property name="verticalSpacing">
-           <number>8</number>
-          </property>
-          <property name="fieldGrowthPolicy">
-           <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
-          </property>
-          <property name="rowWrapPolicy">
-           <enum>QFormLayout::WrapLongRows</enum>
-          </property>
-          <property name="labelAlignment">
-           <set>Qt::AlignRight|Qt::AlignVCenter</set>
-          </property>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="basicGroupBox">
-         <property name="title">
-          <string>1. 基本参数</string>
-         </property>
-         <layout class="QFormLayout" name="basicFormLayout">
-          <property name="labelAlignment">
-           <set>Qt::AlignRight|Qt::AlignVCenter</set>
-          </property>
-          <property name="fieldGrowthPolicy">
-           <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
-          </property>
-          <item row="0" column="0">
-           <widget class="QLabel" name="labelWeight">
-            <property name="text">
-             <string>容重 γ(kN/m³)</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <widget class="QLineEdit" name="weightEdit">
-            <property name="text">
-             <string>23.52</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <property name="leftMargin">
-           <number>9</number>
-          </property>
-          <property name="topMargin">
-           <number>9</number>
-          </property>
-          <property name="rightMargin">
-           <number>9</number>
-          </property>
-          <property name="bottomMargin">
-           <number>9</number>
-          </property>
-          <property name="spacing">
-           <number>6</number>
-          </property>
-          <property name="horizontalSpacing">
-           <number>14</number>
-          </property>
-          <property name="verticalSpacing">
-           <number>8</number>
-          </property>
-          <property name="rowWrapPolicy">
-           <enum>QFormLayout::WrapLongRows</enum>
-          </property>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="rangeGroupBox">
-         <property name="title">
-          <string>2. 计算范围</string>
-         </property>
-         <layout class="QGridLayout" name="rangeGridLayout">
-          <item row="0" column="1">
-           <widget class="QLabel" name="labelMin">
-            <property name="text">
-             <string>最小值</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignCenter</set>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="2">
-           <widget class="QLabel" name="labelMax">
-            <property name="text">
-             <string>最大值</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignCenter</set>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="0">
-           <widget class="QLabel" name="labelX">
-            <property name="text">
-             <string>X</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="1">
-           <widget class="QLineEdit" name="xMinEdit">
-            <property name="text">
-             <string>-1.0E6</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="2">
-           <widget class="QLineEdit" name="xMaxEdit">
-            <property name="text">
-             <string>1.0E6</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="0">
-           <widget class="QLabel" name="labelY">
-            <property name="text">
-             <string>Y</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="1">
-           <widget class="QLineEdit" name="yMinEdit">
-            <property name="text">
-             <string>-1.0E6</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="2">
-           <widget class="QLineEdit" name="yMaxEdit">
-            <property name="text">
-             <string>1.0E6</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="0">
-           <widget class="QLabel" name="labelZ">
-            <property name="text">
-             <string>Z</string>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="1">
-           <widget class="QLineEdit" name="zMinEdit">
-            <property name="text">
-             <string>-1.0E6</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="2">
-           <widget class="QLineEdit" name="zMaxEdit">
-            <property name="text">
-             <string>1.0E6</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <property name="leftMargin">
-           <number>9</number>
-          </property>
-          <property name="topMargin">
-           <number>9</number>
-          </property>
-          <property name="rightMargin">
-           <number>9</number>
-          </property>
-          <property name="bottomMargin">
-           <number>9</number>
-          </property>
-          <property name="horizontalSpacing">
-           <number>6</number>
-          </property>
-          <property name="verticalSpacing">
-           <number>6</number>
-          </property>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="forceGroupBox">
-         <property name="title">
-          <string>3. 外力向量</string>
-         </property>
-         <layout class="QGridLayout" name="forceGridLayout">
-          <item row="0" column="0">
-           <widget class="QLabel" name="labelFx">
-            <property name="text">
-             <string>Fx</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <widget class="QLineEdit" name="fxEdit">
-            <property name="text">
-             <string>-50.0</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="0">
-           <widget class="QLabel" name="labelFy">
-            <property name="text">
-             <string>Fy</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="1">
-           <widget class="QLineEdit" name="fyEdit">
-            <property name="text">
-             <string>0.0</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="0">
-           <widget class="QLabel" name="labelFz">
-            <property name="text">
-             <string>Fz</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="1">
-           <widget class="QLineEdit" name="fzEdit">
-            <property name="text">
-             <string>0.0</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <property name="leftMargin">
-           <number>9</number>
-          </property>
-          <property name="topMargin">
-           <number>9</number>
-          </property>
-          <property name="rightMargin">
-           <number>9</number>
-          </property>
-          <property name="bottomMargin">
-           <number>9</number>
-          </property>
-          <property name="horizontalSpacing">
-           <number>6</number>
-          </property>
-          <property name="verticalSpacing">
-           <number>6</number>
-          </property>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="directionGroupBox">
-         <property name="title">
-          <string>4. 滑移方向</string>
-         </property>
-         <layout class="QGridLayout" name="directionGridLayout">
-          <item row="0" column="0">
-           <widget class="QLabel" name="labelIfDir">
-            <property name="text">
-             <string>滑移方向定义方式（IFIX）</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1" colspan="3">
-           <widget class="QComboBox" name="comboIfDir" />
-          </item>
-          <item row="1" column="0">
-           <widget class="QLabel" name="labelA">
-            <property name="text">
-             <string>起点 A(x,y,z)</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="1">
-           <widget class="QLineEdit" name="axEdit">
-            <property name="text">
-             <string>0.0</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="2">
-           <widget class="QLineEdit" name="ayEdit">
-            <property name="text">
-             <string>0.0</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="3">
-           <widget class="QLineEdit" name="azEdit">
-            <property name="text">
-             <string>0.0</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="0">
-           <widget class="QLabel" name="labelB">
-            <property name="text">
-             <string>终点 B(x,y,z)</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="1">
-           <widget class="QLineEdit" name="bxEdit">
-            <property name="text">
-             <string>-1.0</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="2">
-           <widget class="QLineEdit" name="byEdit">
-            <property name="text">
-             <string>-1.0</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="3">
-           <widget class="QLineEdit" name="bzEdit">
-            <property name="text">
-             <string>-1.0</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="0">
-           <widget class="QLabel" name="labelIm1">
-            <property name="text">
-             <string>指定面 IM1</string>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="1">
-           <widget class="QLineEdit" name="im1Edit">
-            <property name="text">
-             <string>1</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="2">
-           <widget class="QLabel" name="labelIm2">
-            <property name="text">
-             <string>IM2</string>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="3">
-           <widget class="QLineEdit" name="im2Edit">
-            <property name="text">
-             <string>2</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <property name="leftMargin">
-           <number>9</number>
-          </property>
-          <property name="topMargin">
-           <number>9</number>
-          </property>
-          <property name="rightMargin">
-           <number>9</number>
-          </property>
-          <property name="bottomMargin">
-           <number>9</number>
-          </property>
-          <property name="horizontalSpacing">
-           <number>6</number>
-          </property>
-          <property name="verticalSpacing">
-           <number>6</number>
-          </property>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="computeBtn">
-         <property name="minimumSize">
-          <size>
-           <width>10</width>
-           <height>34</height>
-          </size>
-         </property>
-         <property name="text">
-          <string>计算</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <spacer name="verticalSpacer">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>40</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <property name="leftMargin">
-        <number>9</number>
-       </property>
-       <property name="topMargin">
-        <number>9</number>
-       </property>
-       <property name="rightMargin">
-        <number>9</number>
-       </property>
-       <property name="bottomMargin">
-        <number>9</number>
-       </property>
-       <property name="spacing">
-        <number>6</number>
-       </property>
-      </layout>
-     </widget>
+      <property name="topMargin">
+       <number>9</number>
+      </property>
+      <property name="rightMargin">
+       <number>9</number>
+      </property>
+      <property name="bottomMargin">
+       <number>9</number>
+      </property>
+      <property name="spacing">
+       <number>6</number>
+      </property>
+     </layout>
     </widget>
    </item>
    <property name="leftMargin">

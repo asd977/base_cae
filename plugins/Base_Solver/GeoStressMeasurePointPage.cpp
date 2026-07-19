@@ -221,7 +221,8 @@ void GeoStressMeasurePointPage::onClearClicked()
 void GeoStressMeasurePointPage::onImportClicked()
 {
     const QString filePath = QFileDialog::getOpenFileName(
-        this, "导入实测地应力数据", QString(), "Data Files (*.txt *.dat *.csv);;All Files (*)");
+        this, "导入实测地应力数据", QString(),
+        "数据文件 (*.txt *.dat *.csv);;所有文件 (*)");
     if (filePath.trimmed().isEmpty())
         return;
 
@@ -329,7 +330,7 @@ void GeoStressMeasurePointPage::applyDimensionUi()
         return;
     ui->pickGroup->setTitle(QStringLiteral("网格节点选择"));
     ui->pickHintLabel->setText(
-        QStringLiteral("选择对象：网格节点。Shift+拖拽框选，Ctrl+拖拽取消选择。"));
+        QStringLiteral("提示：Shift 框选，Ctrl 取消选择。"));
     ui->pickEnableCheckBox->setText(QStringLiteral("开启节点点选"));
     ui->measureTable->setColumnHidden(ColZ, !is3D);
     ui->measureTable->setColumnHidden(ColSgz, !is3D);

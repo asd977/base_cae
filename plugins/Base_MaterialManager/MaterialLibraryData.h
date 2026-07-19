@@ -16,6 +16,7 @@ struct MaterialEntry
     bool transitionOnly = false;
     int transitionMatype = -1;
     QString seepageModelKey;
+    QString creepModelKey;
     QMap<QString, QString> seepageProperties;
 };
 

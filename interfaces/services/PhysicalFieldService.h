@@ -17,5 +17,6 @@ struct PhysicalFieldService
     virtual bool importIIIDFile(const QString& filePath, QString* errorMessage = nullptr) = 0;
 
     virtual QString pageTitleByUuid(const QString& uuid) const = 0;
+    virtual void closeProject() = 0;
 };
 #endif // PHYSICALFIELDSERVICE_H

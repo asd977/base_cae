@@ -93,7 +93,7 @@
         <item row="0" column="0">
          <widget class="QLabel" name="labelVolumeIds">
           <property name="text">
-           <string>体 ID</string>
+           <string>体编号</string>
           </property>
          </widget>
         </item>
@@ -159,7 +159,7 @@
         <item row="2" column="0">
          <widget class="QLabel" name="label">
           <property name="text">
-           <string>ID组</string>
+           <string>编号组</string>
           </property>
          </widget>
         </item>

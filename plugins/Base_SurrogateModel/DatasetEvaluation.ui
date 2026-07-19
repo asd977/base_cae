@@ -436,7 +436,7 @@
        <item row="0" column="0">
         <widget class="QLabel" name="pyLab">
          <property name="text">
-          <string>Python</string>
+          <string>脚本解释器</string>
          </property>
         </widget>
        </item>

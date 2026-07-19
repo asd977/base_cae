@@ -7,184 +7,86 @@
     <x>0</x>
     <y>0</y>
     <width>374</width>
-    <height>733</height>
+    <height>860</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
-   <property name="leftMargin">
-    <number>0</number>
-   </property>
-   <property name="topMargin">
-    <number>0</number>
-   </property>
-   <property name="rightMargin">
-    <number>0</number>
-   </property>
-   <property name="bottomMargin">
-    <number>0</number>
-   </property>
+   <property name="leftMargin"><number>0</number></property>
+   <property name="topMargin"><number>0</number></property>
+   <property name="rightMargin"><number>0</number></property>
+   <property name="bottomMargin"><number>0</number></property>
    <item>
     <layout class="QVBoxLayout" name="contentLayout">
-     <property name="spacing">
-      <number>10</number>
-     </property>
-     <property name="leftMargin">
-      <number>9</number>
-     </property>
-     <property name="topMargin">
-      <number>9</number>
-     </property>
-     <property name="rightMargin">
-      <number>9</number>
-     </property>
-     <property name="bottomMargin">
-      <number>9</number>
-     </property>
+     <property name="spacing"><number>10</number></property>
+     <property name="leftMargin"><number>9</number></property>
+     <property name="topMargin"><number>9</number></property>
+     <property name="rightMargin"><number>9</number></property>
+     <property name="bottomMargin"><number>9</number></property>
      <item>
       <widget class="QGroupBox" name="dataGroupBox">
-       <property name="title">
-        <string>数据</string>
-       </property>
+       <property name="title"><string>结果数据</string></property>
        <layout class="QGridLayout" name="dataGridLayout">
-        <property name="leftMargin">
-         <number>9</number>
-        </property>
-        <property name="topMargin">
-         <number>9</number>
-        </property>
-        <property name="rightMargin">
-         <number>9</number>
-        </property>
-        <property name="bottomMargin">
-         <number>9</number>
-        </property>
-        <property name="spacing">
-         <number>8</number>
-        </property>
-        <item row="0" column="0">
-         <widget class="QLabel" name="label_result_dir">
-          <property name="text">
-           <string>结果阶段</string>
-          </property>
-         </widget>
-        </item>
-        <item row="0" column="1">
-         <widget class="QComboBox" name="resultDirComboBox">
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="0">
-         <widget class="QLabel" name="label_step">
-          <property name="text">
-           <string>结果类型</string>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="1">
-         <widget class="QComboBox" name="stepComboBox">
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="0">
-         <widget class="QLabel" name="label_scalar">
-          <property name="text">
-           <string>物理量</string>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="1">
-         <widget class="QComboBox" name="scalarComboBox">
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
+        <property name="leftMargin"><number>9</number></property>
+        <property name="topMargin"><number>9</number></property>
+        <property name="rightMargin"><number>9</number></property>
+        <property name="bottomMargin"><number>9</number></property>
+        <property name="spacing"><number>8</number></property>
+        <item row="0" column="0"><widget class="QLabel" name="label_result_dir"><property name="text"><string>结果阶段</string></property></widget></item>
+        <item row="0" column="1"><widget class="QComboBox" name="resultDirComboBox"><property name="minimumSize"><size><width>10</width><height>0</height></size></property></widget></item>
+        <item row="1" column="0"><widget class="QLabel" name="label_step"><property name="text"><string>结果类型</string></property></widget></item>
+        <item row="1" column="1"><widget class="QComboBox" name="stepComboBox"><property name="minimumSize"><size><width>10</width><height>0</height></size></property></widget></item>
+        <item row="2" column="0"><widget class="QLabel" name="label_scalar"><property name="text"><string>物理量</string></property></widget></item>
+        <item row="2" column="1"><widget class="QComboBox" name="scalarComboBox"><property name="minimumSize"><size><width>10</width><height>0</height></size></property></widget></item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QGroupBox" name="legendGroupBox">
+       <property name="title"><string>图例与颜色范围</string></property>
+       <layout class="QGridLayout" name="legendGridLayout">
+        <property name="leftMargin"><number>9</number></property>
+        <property name="topMargin"><number>9</number></property>
+        <property name="rightMargin"><number>9</number></property>
+        <property name="bottomMargin"><number>9</number></property>
+        <property name="horizontalSpacing"><number>8</number></property>
+        <property name="verticalSpacing"><number>7</number></property>
+        <item row="0" column="0" colspan="2"><widget class="QCheckBox" name="autoRangeCheckBox"><property name="text"><string>自动使用数据范围</string></property><property name="checked"><bool>true</bool></property></widget></item>
+        <item row="1" column="0"><widget class="QLabel" name="rangeMinLabel"><property name="text"><string>图例下限</string></property></widget></item>
+        <item row="1" column="1"><widget class="QDoubleSpinBox" name="rangeMinSpinBox"><property name="decimals"><number>6</number></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
+        <item row="2" column="0"><widget class="QLabel" name="rangeMaxLabel"><property name="text"><string>图例上限</string></property></widget></item>
+        <item row="2" column="1"><widget class="QDoubleSpinBox" name="rangeMaxSpinBox"><property name="decimals"><number>6</number></property><property name="keyboardTracking"><bool>false</bool></property><property name="value"><double>1.000000000000000</double></property></widget></item>
+        <item row="3" column="0"><widget class="QLabel" name="legendTitleFontLabel"><property name="text"><string>标题字号</string></property></widget></item>
+        <item row="3" column="1"><widget class="QSpinBox" name="legendTitleFontSpinBox"><property name="minimum"><number>8</number></property><property name="maximum"><number>36</number></property><property name="value"><number>16</number></property></widget></item>
+        <item row="4" column="0"><widget class="QLabel" name="legendLabelFontLabel"><property name="text"><string>刻度字号</string></property></widget></item>
+        <item row="4" column="1"><widget class="QSpinBox" name="legendLabelFontSpinBox"><property name="minimum"><number>8</number></property><property name="maximum"><number>32</number></property><property name="value"><number>13</number></property></widget></item>
+        <item row="5" column="0"><widget class="QLabel" name="legendPrecisionLabel"><property name="text"><string>数值位数</string></property></widget></item>
+        <item row="5" column="1"><widget class="QSpinBox" name="legendPrecisionSpinBox"><property name="toolTip"><string>控制色标刻度和等值线标注的有效数字位数</string></property><property name="minimum"><number>1</number></property><property name="maximum"><number>10</number></property><property name="value"><number>4</number></property></widget></item>
+        <item row="6" column="0"><widget class="QLabel" name="legendWidthLabel"><property name="text"><string>图例宽度</string></property></widget></item>
+        <item row="6" column="1"><widget class="QSpinBox" name="legendWidthSpinBox"><property name="suffix"><string> %</string></property><property name="minimum"><number>5</number></property><property name="maximum"><number>25</number></property><property name="value"><number>10</number></property></widget></item>
+        <item row="7" column="0"><widget class="QLabel" name="legendHeightLabel"><property name="text"><string>图例高度</string></property></widget></item>
+        <item row="7" column="1"><widget class="QSpinBox" name="legendHeightSpinBox"><property name="suffix"><string> %</string></property><property name="minimum"><number>25</number></property><property name="maximum"><number>90</number></property><property name="value"><number>65</number></property></widget></item>
+        <item row="8" column="0" colspan="2"><widget class="QCheckBox" name="legendMovableCheckBox"><property name="text"><string>允许拖动图例</string></property><property name="checked"><bool>false</bool></property></widget></item>
        </layout>
       </widget>
      </item>
      <item>
       <widget class="QGroupBox" name="contourGroupBox">
-       <property name="title">
-        <string>等值线</string>
-       </property>
+       <property name="title"><string>等值线</string></property>
        <layout class="QGridLayout" name="contourGridLayout">
-        <property name="leftMargin">
-         <number>9</number>
-        </property>
-        <property name="topMargin">
-         <number>9</number>
-        </property>
-        <property name="rightMargin">
-         <number>9</number>
-        </property>
-        <property name="bottomMargin">
-         <number>9</number>
-        </property>
-        <property name="spacing">
-         <number>8</number>
-        </property>
-        <item row="0" column="0">
-         <widget class="QCheckBox" name="contourEnableCheckBox">
-          <property name="text">
-           <string>显示等值线</string>
-          </property>
-         </widget>
-        </item>
-        <item row="0" column="1">
-         <widget class="QSpinBox" name="contourLevelsSpinBox">
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="minimum">
-           <number>2</number>
-          </property>
-          <property name="maximum">
-           <number>30</number>
-          </property>
-          <property name="value">
-           <number>10</number>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="0" colspan="2">
-         <widget class="QCheckBox" name="contourLabelCheckBox">
-          <property name="text">
-           <string>等值线上显示数值</string>
-          </property>
-         </widget>
-        </item>
+        <property name="leftMargin"><number>9</number></property>
+        <property name="topMargin"><number>9</number></property>
+        <property name="rightMargin"><number>9</number></property>
+        <property name="bottomMargin"><number>9</number></property>
+        <property name="spacing"><number>8</number></property>
+        <item row="0" column="0" colspan="2"><widget class="QCheckBox" name="contourEnableCheckBox"><property name="text"><string>显示等值线</string></property></widget></item>
+        <item row="1" column="0"><widget class="QLabel" name="contourLevelsLabel"><property name="text"><string>等值线数量</string></property></widget></item>
+        <item row="1" column="1"><widget class="QSpinBox" name="contourLevelsSpinBox"><property name="minimum"><number>2</number></property><property name="maximum"><number>30</number></property><property name="value"><number>10</number></property></widget></item>
+        <item row="2" column="0"><widget class="QCheckBox" name="contourLabelCheckBox"><property name="text"><string>显示数值</string></property></widget></item>
+        <item row="2" column="1"><widget class="QSpinBox" name="contourLabelFontSpinBox"><property name="prefix"><string>字号 </string></property><property name="minimum"><number>8</number></property><property name="maximum"><number>28</number></property><property name="value"><number>12</number></property></widget></item>
        </layout>
       </widget>
      </item>
-     <item>
-      <spacer name="verticalSpacer">
-       <property name="orientation">
-        <enum>Qt::Vertical</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>20</width>
-         <height>40</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
+     <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
     </layout>
    </item>
   </layout>

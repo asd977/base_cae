@@ -104,7 +104,7 @@
       <item>
        <widget class="QLabel" name="boxSelectHintLabel">
         <property name="text">
-         <string>提示：Shift+拖拽框选，Ctrl+拖拽取消选择</string>
+         <string>提示：按住上档键拖拽框选，按住控制键拖拽取消选择</string>
         </property>
         <property name="wordWrap">
          <bool>false</bool>
@@ -126,7 +126,7 @@
             <string>梁单元荷载类型（按求解器定义填写整数）</string>
            </property>
            <property name="text">
-            <string>LDTYPE</string>
+            <string>荷载类型</string>
            </property>
           </widget>
          </item>
@@ -152,7 +152,7 @@
             <string>荷载特征位置 a（按求解器定义填写）</string>
            </property>
            <property name="text">
-            <string>LOCATION</string>
+            <string>特征位置</string>
            </property>
           </widget>
          </item>
@@ -181,7 +181,7 @@
             <string>荷载大小 P（按求解器单位填写）</string>
            </property>
            <property name="text">
-            <string>LOAD</string>
+            <string>荷载值</string>
            </property>
           </widget>
          </item>
@@ -207,10 +207,10 @@
          <item row="3" column="0">
           <widget class="QLabel" name="labelIDIR">
            <property name="toolTip">
-            <string>荷载作用面/方向 IDIR（整数）</string>
+            <string>荷载作用面或方向（整数）</string>
            </property>
            <property name="text">
-            <string>ACTION</string>
+            <string>作用方向</string>
            </property>
           </widget>
          </item>
@@ -254,7 +254,7 @@
          <item row="0" column="0">
           <widget class="QLabel" name="labelNodeId">
            <property name="text">
-            <string>node_id</string>
+            <string>节点编号</string>
            </property>
           </widget>
          </item>

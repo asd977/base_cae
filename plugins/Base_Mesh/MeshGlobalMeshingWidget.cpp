@@ -59,34 +59,35 @@ void MeshGlobalWorker::run()
     request.exportNas = m_p.exportNas;
 
     if (m_p.elemType == kElemTypeHex8FromTet)
-        emit log(QStringLiteral("Starting Netgen tetra mesh generation for Hex8 conversion..."));
+        emit log(QStringLiteral("开始生成六面体网格..."));
     else
-        emit log(QStringLiteral("Starting Netgen mesh generation..."));
+        emit log(QStringLiteral("开始生成网格..."));
 
     QString err;
     NetgenMeshingResult result;
     if (!NetgenMeshGenerator::generate(request, &result, &err))
     {
-        emit finishedFail(err.isEmpty() ? QStringLiteral("Netgen mesh generation failed") : err);
+        emit finishedFail(err.isEmpty() ? QStringLiteral("网格生成失败") : err);
         return;
     }
 
     if (m_p.elemType == kElemTypeHex8FromTet)
     {
         emit log(QStringLiteral(
-                     "Hex8 mesh generated from Netgen Tet4: points=%1, boundary quads=%2, "
-                     "hex=%3, min scaled Jacobian=%4")
+                     "网格生成完成：节点 %1，边界面 %2，六面体单元 %3，几何区域 %4，最小质量 %5")
                      .arg(result.pointCount)
                      .arg(result.surfaceElementCount)
                      .arg(result.volumeElementCount)
+                     .arg(result.regionCount)
                      .arg(result.minScaledJacobian, 0, 'g', 6));
     }
     else
     {
-        emit log(QStringLiteral("Netgen mesh generated: points=%1, surface=%2, volume=%3")
+        emit log(QStringLiteral("网格生成完成：节点 %1，表面单元 %2，体单元 %3，几何区域 %4")
                      .arg(result.pointCount)
                      .arg(result.surfaceElementCount)
-                     .arg(result.volumeElementCount));
+                     .arg(result.volumeElementCount)
+                     .arg(result.regionCount));
     }
     emit finishedOK(m_tempVolPath, m_tempVtkPath, m_tempNasPath);
 }
@@ -135,8 +136,8 @@ void MeshGlobalMeshingWidget::appendLog(const QString& s)
 void MeshGlobalMeshingWidget::initCombos()
 {
     ui->cmbDim->clear();
-    ui->cmbDim->addItem(QStringLiteral("2D Surface Mesh"), 2);
-    ui->cmbDim->addItem(QStringLiteral("3D Volume Mesh"), 3);
+    ui->cmbDim->addItem(QStringLiteral("二维表面网格"), 2);
+    ui->cmbDim->addItem(QStringLiteral("三维体网格"), 3);
     ui->cmbDim->setCurrentIndex(1);
 
     ui->dsMin->setValue(0.5);
@@ -153,14 +154,15 @@ void MeshGlobalMeshingWidget::refreshElemCombo(int dim)
     ui->cmbElemType->clear();
     if (dim == 2)
     {
-        ui->cmbElemType->addItem(QStringLiteral("Triangle"), 1);
-        ui->cmbElemType->addItem(QStringLiteral("Quad-dominated"), 2);
+        ui->cmbElemType->addItem(QStringLiteral("三角形单元"), 1);
+        ui->cmbElemType->addItem(QStringLiteral("四边形为主"), 2);
         ui->cmbElemType->setCurrentIndex(0);
     }
     else
     {
-        ui->cmbElemType->addItem(QStringLiteral("Tet"), 3);
-        ui->cmbElemType->addItem(QStringLiteral("Hex8 (Tet split)"), kElemTypeHex8FromTet);
+        ui->cmbElemType->addItem(QStringLiteral("四节点四面体单元"), 3);
+        ui->cmbElemType->addItem(QStringLiteral("八节点六面体单元（由四面体转换）"),
+                                 kElemTypeHex8FromTet);
         ui->cmbElemType->setCurrentIndex(0);
     }
 }
@@ -169,9 +171,9 @@ void MeshGlobalMeshingWidget::refreshAlgoCombo(int dim)
 {
     ui->cmbAlgo->clear();
     if (dim == 2)
-        ui->cmbAlgo->addItem(QStringLiteral("Netgen Surface"), 1);
+        ui->cmbAlgo->addItem(QStringLiteral("表面网格算法"), 1);
     else
-        ui->cmbAlgo->addItem(QStringLiteral("Netgen Volume"), 1);
+        ui->cmbAlgo->addItem(QStringLiteral("体网格算法"), 1);
     ui->cmbAlgo->setCurrentIndex(0);
 }
 
@@ -236,7 +238,8 @@ void MeshGlobalMeshingWidget::onGenerate()
     auto* preService = ServiceRegistry::instance().getService<PreProcessingService>();
     if (!preService)
     {
-        QMessageBox::warning(this, QStringLiteral("Mesh"), QStringLiteral("PreProcessing service is not available"));
+        QMessageBox::warning(this, QStringLiteral("网格划分"),
+                             QStringLiteral("前处理功能尚未就绪，请稍后重试。"));
         return;
     }
 
@@ -258,25 +261,28 @@ void MeshGlobalMeshingWidget::onGenerate()
         if (localRuleCount > 0)
         {
             appendLog(QStringLiteral(
-                "Netgen backend uses global meshing parameters; existing local entity rules are not mapped."));
+                "当前网格算法仅使用整体划分参数，已有的局部控制规则暂未应用。"));
         }
     }
 
     if (p.lenMin > p.lenMax)
     {
-        QMessageBox::warning(this, QStringLiteral("Mesh"), QStringLiteral("Minimum size cannot be larger than maximum size"));
+        QMessageBox::warning(this, QStringLiteral("网格划分"),
+                             QStringLiteral("最小尺寸不能大于最大尺寸。"));
         return;
     }
 
     if (p.elemType == kElemTypeHex8FromTet && p.dimension != 3)
     {
-        QMessageBox::warning(this, QStringLiteral("Mesh"), QStringLiteral("Hex8 conversion requires 3D volume meshing"));
+        QMessageBox::warning(this, QStringLiteral("网格划分"),
+                             QStringLiteral("八节点六面体转换仅适用于三维体网格。"));
         return;
     }
 
     if (p.inputStepPath.isEmpty() || !QFileInfo::exists(p.inputStepPath))
     {
-        QMessageBox::warning(this, QStringLiteral("Mesh"), QStringLiteral("STEP file does not exist"));
+        QMessageBox::warning(this, QStringLiteral("网格划分"),
+                             QStringLiteral("几何模型文件不存在，请先完成几何建模。"));
         return;
     }
 
@@ -315,7 +321,7 @@ void MeshGlobalMeshingWidget::onGenerate()
     connect(worker, &MeshGlobalWorker::finishedOK, this,
             [this](const QString& vol, const QString& vtk, const QString& nas)
             {
-                appendLog(QStringLiteral("Netgen mesh generation succeeded"));
+                appendLog(QStringLiteral("网格生成完成。"));
                 emit meshGenerated(vol, vtk, nas);
 
                 auto* service =
@@ -325,9 +331,10 @@ void MeshGlobalMeshingWidget::onGenerate()
                     QString err;
                     if (!service->importGeneratedNetgenMesh(vtk, &err))
                     {
-                        appendLog(QStringLiteral("Generated mesh import failed: %1").arg(err));
-                        QMessageBox::warning(this, QStringLiteral("Mesh"),
-                                             QStringLiteral("Mesh generated, but import failed: %1").arg(err));
+                        appendLog(QStringLiteral("生成的网格导入失败：%1").arg(err));
+                        QMessageBox::warning(
+                            this, QStringLiteral("网格导入失败"),
+                            QStringLiteral("网格已经生成，但未能导入：%1").arg(err));
                     }
                 }
 
@@ -338,8 +345,8 @@ void MeshGlobalMeshingWidget::onGenerate()
     connect(worker, &MeshGlobalWorker::finishedFail, this,
             [this](const QString& err)
             {
-                appendLog(QStringLiteral("Netgen mesh generation failed: %1").arg(err));
-                QMessageBox::critical(this, QStringLiteral("Mesh"), err);
+                appendLog(QStringLiteral("网格生成失败：%1").arg(err));
+                QMessageBox::critical(this, QStringLiteral("网格生成失败"), err);
                 if (m_thread)
                     m_thread->quit();
             });
@@ -352,20 +359,20 @@ void MeshGlobalMeshingWidget::onExportAs()
 {
     const QString filters =
         m_lastGeneratedHex8
-            ? QStringLiteral("VTK (*.vtk);;Nastran (*.nas);;All (*.*)")
-            : QStringLiteral("Netgen (*.vol);;VTK (*.vtk);;Nastran (*.nas);;All (*.*)");
+            ? QStringLiteral("VTK 网格文件 (*.vtk);;Nastran 网格文件 (*.nas);;所有文件 (*.*)")
+            : QStringLiteral("Netgen 网格文件 (*.vol);;VTK 网格文件 (*.vtk);;Nastran 网格文件 (*.nas);;所有文件 (*.*)");
 
     QString selectedFilter;
     QString savePath = QFileDialog::getSaveFileName(
-        this, QStringLiteral("Save Mesh As"), QString(), filters, &selectedFilter);
+        this, QStringLiteral("网格另存为"), QString(), filters, &selectedFilter);
     if (savePath.isEmpty())
         return;
 
     if (QFileInfo(savePath).suffix().isEmpty())
     {
-        if (selectedFilter.startsWith(QStringLiteral("Nastran")))
+        if (selectedFilter.contains(QStringLiteral("*.nas")))
             savePath += QStringLiteral(".nas");
-        else if (!m_lastGeneratedHex8 && selectedFilter.startsWith(QStringLiteral("Netgen")))
+        else if (!m_lastGeneratedHex8 && selectedFilter.contains(QStringLiteral("*.vol")))
             savePath += QStringLiteral(".vol");
         else
             savePath += QStringLiteral(".vtk");
@@ -385,9 +392,9 @@ void MeshGlobalMeshingWidget::onExportAs()
         if (m_lastGeneratedHex8)
         {
             QMessageBox::warning(
-                this, QStringLiteral("Export"),
-                QStringLiteral("Hex8 (Tet split) is not stored in Netgen VOL format. "
-                               "Please export VTK or Nastran instead."));
+                this, QStringLiteral("导出网格"),
+                QStringLiteral("八节点六面体转换结果不能保存为 Netgen 网格格式，"
+                               "请选择 VTK 或 Nastran 网格格式。"));
             return;
         }
         src = tempVolPath();
@@ -395,26 +402,28 @@ void MeshGlobalMeshingWidget::onExportAs()
     else
     {
         QMessageBox::warning(
-            this, QStringLiteral("Export"),
-            QStringLiteral("Please use a supported extension: .vtk, .nas%1")
-                .arg(m_lastGeneratedHex8 ? QString() : QStringLiteral(" or .vol")));
+            this, QStringLiteral("导出网格"),
+            QStringLiteral("请选择支持的网格文件扩展名：.vtk、.nas%1")
+                .arg(m_lastGeneratedHex8 ? QString() : QStringLiteral(" 或 .vol")));
         return;
     }
 
     if (!QFileInfo::exists(src))
     {
-        QMessageBox::warning(this, QStringLiteral("Export"), QStringLiteral("Temporary mesh file does not exist"));
+        QMessageBox::warning(this, QStringLiteral("导出网格"),
+                             QStringLiteral("临时网格文件不存在，请先生成网格。"));
         return;
     }
 
     QFile::remove(savePath);
     if (!QFile::copy(src, savePath))
     {
-        QMessageBox::warning(this, QStringLiteral("Export"), QStringLiteral("Failed to copy mesh file"));
+        QMessageBox::warning(this, QStringLiteral("导出网格"),
+                             QStringLiteral("网格文件复制失败，请检查保存位置是否可写。"));
         return;
     }
 
-    appendLog(QStringLiteral("Saved as: %1").arg(savePath));
+    appendLog(QStringLiteral("网格已保存至：%1").arg(savePath));
 }
 
 void MeshGlobalMeshingWidget::onOpenTempDir()

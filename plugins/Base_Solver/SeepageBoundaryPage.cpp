@@ -34,7 +34,7 @@ SeepageBoundaryPage::SeepageBoundaryPage(const QString& pageType, const QString&
     ui->label2->hide();
     ui->labelFileNameValue->hide();
     ui->boxSelectHintLabel->setText(
-        QStringLiteral("选择对象：网格节点。Shift+拖拽框选，Ctrl+拖拽取消选择；也可按边界分组批量添加节点。"));
+        QStringLiteral("提示：Shift 框选节点，Ctrl 取消选择。"));
     setupBatchGroupCombo();
 
     connect(ui->btnClear, &QPushButton::clicked, this, &SeepageBoundaryPage::onClearClicked);

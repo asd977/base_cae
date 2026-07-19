@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version='1.0' encoding='UTF-8'?>
 <ui version="4.0">
  <class>CaveExcavationWidget</class>
  <widget class="QWidget" name="CaveExcavationWidget">
@@ -6,73 +6,129 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>900</width>
-    <height>760</height>
+    <width>760</width>
+    <height>560</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>洞室开挖</string>
+   <string>洞室开挖工程</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="leftMargin">
-    <number>0</number>
+    <number>18</number>
    </property>
    <property name="topMargin">
-    <number>0</number>
+    <number>16</number>
    </property>
    <property name="rightMargin">
-    <number>0</number>
+    <number>18</number>
    </property>
    <property name="bottomMargin">
-    <number>0</number>
+    <number>16</number>
+   </property>
+   <property name="spacing">
+    <number>12</number>
    </property>
    <item>
     <widget class="QLabel" name="pageHeaderLabel">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
      <property name="text">
-      <string>洞室开挖参数</string>
-     </property>
-     <property name="visible">
-      <bool>false</bool>
+      <string>洞室开挖工程</string>
      </property>
     </widget>
    </item>
    <item>
-    <layout class="QVBoxLayout" name="contentLayout">
-     <property name="leftMargin">
-      <number>9</number>
+    <widget class="QGroupBox" name="calculationGroup">
+     <property name="title">
+      <string>计算流程</string>
      </property>
-     <property name="topMargin">
-      <number>9</number>
+     <layout class="QGridLayout" name="calculationLayout">
+      <property name="horizontalSpacing">
+       <number>12</number>
+      </property>
+      <property name="verticalSpacing">
+       <number>8</number>
+      </property>
+      <item row="0" column="0">
+       <widget class="QLabel" name="geoStressIndexLabel">
+        <property name="text">
+         <string>1</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QPushButton" name="geoStressButton">
+        <property name="text">
+         <string>地应力回归分析</string>
+        </property>
+        <property name="minimumHeight">
+         <number>40</number>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLabel" name="geoStressDescriptionLabel">
+        <property name="text">
+         <string>设置侧立面、实测地应力点和外面力，并执行地应力回归。</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="visible">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="supportIndexLabel">
+        <property name="text">
+         <string>2</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QPushButton" name="caveSupportButton">
+        <property name="text">
+         <string>开挖与加固分析</string>
+        </property>
+        <property name="minimumHeight">
+         <number>40</number>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QLabel" name="supportDescriptionLabel">
+        <property name="text">
+         <string>设置开挖体、施工阶段、静力或动力参数并执行计算。</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="visible">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
      </property>
-     <property name="rightMargin">
-      <number>9</number>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
      </property>
-     <property name="bottomMargin">
-      <number>9</number>
-     </property>
-     <property name="spacing">
-      <number>6</number>
-     </property>
-     <item>
-      <spacer name="verticalSpacer">
-       <property name="orientation">
-        <enum>Qt::Vertical</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>20</width>
-         <height>40</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-    </layout>
+    </spacer>
    </item>
   </layout>
  </widget>

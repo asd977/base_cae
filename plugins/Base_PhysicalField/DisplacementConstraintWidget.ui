@@ -17,7 +17,7 @@
    </size>
   </property>
   <property name="windowTitle">
-   <string>Form</string>
+   <string>位移约束</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="leftMargin">
@@ -139,7 +139,7 @@
         <item>
          <widget class="QLabel" name="boxSelectHintLabel">
           <property name="text">
-           <string>提示：Shift+拖拽框选，Ctrl+拖拽取消选择</string>
+           <string>提示：按住上档键拖拽框选，按住控制键拖拽取消选择</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>
@@ -272,7 +272,7 @@
            <item row="2" column="1">
             <widget class="QLabel" name="YLabel">
              <property name="text">
-              <string>YLabel</string>
+              <string>Y 方向</string>
              </property>
             </widget>
            </item>
@@ -292,14 +292,14 @@
            <item row="4" column="1">
             <widget class="QLabel" name="PrevUuidLabel">
              <property name="text">
-              <string>PrevUuidLabel</string>
+              <string>原约束标识</string>
              </property>
             </widget>
            </item>
            <item row="1" column="1">
             <widget class="QLabel" name="XLabel">
              <property name="text">
-              <string>XLabel</string>
+              <string>X 方向</string>
              </property>
             </widget>
            </item>
@@ -338,14 +338,14 @@
               </size>
              </property>
              <property name="text">
-              <string>PointId</string>
+              <string>节点编号</string>
              </property>
             </widget>
            </item>
            <item row="3" column="1">
             <widget class="QLabel" name="ZLabel">
              <property name="text">
-              <string>ZLabel</string>
+              <string>Z 方向</string>
              </property>
             </widget>
            </item>

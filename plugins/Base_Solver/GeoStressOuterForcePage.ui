@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version='1.0' encoding='UTF-8'?>
 <ui version="4.0">
  <class>GeoStressOuterForcePage</class>
  <widget class="QWidget" name="GeoStressOuterForcePage">
@@ -68,7 +68,7 @@
         <item>
          <widget class="QLabel" name="pickHintLabel">
           <property name="text">
-           <string>提示：Shift+拖拽框选，Ctrl+拖拽取消选择</string>
+           <string>提示：Shift 框选，Ctrl 取消选择。</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>
@@ -191,7 +191,7 @@
         <item row="0" column="0">
          <widget class="QLabel" name="fxLabel">
           <property name="text">
-           <string>FX</string>
+           <string>X 方向力</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>
@@ -214,7 +214,7 @@
         <item row="1" column="0">
          <widget class="QLabel" name="fyLabel">
           <property name="text">
-           <string>FY</string>
+           <string>Y 方向力</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>
@@ -237,7 +237,7 @@
         <item row="2" column="0">
          <widget class="QLabel" name="fzLabel">
           <property name="text">
-           <string>FZ</string>
+           <string>Z 方向力</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>

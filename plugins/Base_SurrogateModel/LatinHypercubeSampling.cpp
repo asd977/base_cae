@@ -566,7 +566,7 @@ void LatinHypercubeSampling::runPythonLHS_File()
     QFile tf("C:/project/base_cae/build/release/scripts/lhs_input.json");
     if (!tf.open(QIODevice::WriteOnly))
     {
-        QMessageBox::warning(this, tr("错误"), tr("无法创建临时 JSON 文件"));
+        QMessageBox::warning(this, tr("错误"), tr("无法创建临时配置文件。"));
         return;
     }
     tf.write(jsonText.toUtf8());
@@ -593,7 +593,7 @@ void LatinHypercubeSampling::runPythonLHS_File()
     p->start(pythonExe, args);
     if (!p->waitForStarted(10000))
     {
-        QMessageBox::warning(this, tr("错误"), tr("Python 未能启动"));
+        QMessageBox::warning(this, tr("错误"), tr("脚本解释器未能启动。"));
         p->deleteLater();
         return;
     }
@@ -607,11 +607,12 @@ void LatinHypercubeSampling::runPythonLHS_File()
     if (exitCode != 0)
     {
         QMessageBox::warning(this, tr("脚本失败"),
-                             tr("Python 返回码：%1\n输出：\n%2").arg(exitCode).arg(out));
+                             tr("脚本返回码：%1\n输出：\n%2").arg(exitCode).arg(out));
     }
     else
     {
-        QMessageBox::information(this, tr("完成"), tr("LHS 采样完成。输出目录：\n%1").arg(workDir));
+        QMessageBox::information(this, tr("完成"),
+                                 tr("拉丁超立方采样完成。输出目录：\n%1").arg(workDir));
     }
 
     QFile::remove(tf.fileName()); // 确认 OK 后再启用自动清理

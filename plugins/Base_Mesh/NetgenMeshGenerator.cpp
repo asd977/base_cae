@@ -16,12 +16,17 @@ namespace nglib
 #include <vtkPointData.h>
 #include <vtkPoints.h>
 #include <vtkSmartPointer.h>
+#include <vtkStringArray.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkUnstructuredGridWriter.h>
 
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QLocale>
+#include <QMap>
+#include <QSet>
+#include <QTemporaryFile>
 #include <QTextStream>
 #include <QtGlobal>
 
@@ -39,7 +44,8 @@ using namespace nglib;
 
 namespace
 {
-constexpr int kDefaultCalculationMatype = 2;
+constexpr int kDefaultCalculationMatype = 3;
+constexpr int kMaxSolverMatype = 300;
 constexpr int kDefaultConstructionLayer = 1;
 constexpr int kElemTypeHex8FromTet = 4;
 
@@ -159,7 +165,75 @@ int mapVolumeTypeToVtk(Ng_Volume_Element_Type type, int& nodeCount, int& ketype)
     return -1;
 }
 
-void addDefaultArrays(vtkUnstructuredGrid* grid)
+QVector<int> readNetgenElementRegions(const QString& filePath, int dimension,
+                                      int expectedElementCount)
+{
+    QVector<int> regions;
+    if (filePath.trimmed().isEmpty() || expectedElementCount <= 0)
+        return regions;
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return regions;
+
+    QTextStream stream(&file);
+    bool foundSection = false;
+    while (!stream.atEnd())
+    {
+        const QString section = stream.readLine().trimmed().toLower();
+        const bool matches = dimension == 3
+            ? section == QStringLiteral("volumeelements")
+            : section.startsWith(QStringLiteral("surfaceelements"));
+        if (matches)
+        {
+            foundSection = true;
+            break;
+        }
+    }
+    if (!foundSection)
+        return regions;
+
+    QString countLine;
+    while (!stream.atEnd() && countLine.isEmpty())
+        countLine = stream.readLine().trimmed();
+
+    bool countOk = false;
+    const int storedElementCount = countLine.toInt(&countOk);
+    if (!countOk || storedElementCount != expectedElementCount)
+        return {};
+
+    regions.reserve(storedElementCount);
+    while (!stream.atEnd() && regions.size() < storedElementCount)
+    {
+        const QString line = stream.readLine().simplified();
+        if (line.isEmpty())
+            continue;
+        const QStringList fields = line.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        if (fields.isEmpty())
+            return {};
+
+        bool regionOk = false;
+        const int region = fields.front().toInt(&regionOk);
+        if (!regionOk)
+            return {};
+        regions.push_back(region);
+    }
+
+    return regions.size() == storedElementCount ? regions : QVector<int>{};
+}
+
+int regionCount(const QVector<int>& regions)
+{
+    QSet<int> unique;
+    for (int region : regions)
+    {
+        if (region > 0)
+            unique.insert(region);
+    }
+    return unique.size();
+}
+
+void addDefaultArrays(vtkUnstructuredGrid* grid, const QVector<int>& elementRegions)
 {
     if (!grid)
         return;
@@ -201,6 +275,8 @@ void addDefaultArrays(vtkUnstructuredGrid* grid)
     tail2->SetName("TAIL2");
     auto originalCellIds = vtkSmartPointer<vtkIdTypeArray>::New();
     originalCellIds->SetName("vtkOriginalCellIds");
+    auto groupName = vtkSmartPointer<vtkStringArray>::New();
+    groupName->SetName("GroupName");
 
     matype->SetNumberOfTuples(nCells);
     layer->SetNumberOfTuples(nCells);
@@ -210,6 +286,23 @@ void addDefaultArrays(vtkUnstructuredGrid* grid)
     tail1->SetNumberOfTuples(nCells);
     tail2->SetNumberOfTuples(nCells);
     originalCellIds->SetNumberOfTuples(nCells);
+    groupName->SetNumberOfValues(nCells);
+
+    QSet<int> uniqueRegions;
+    if (elementRegions.size() == nCells)
+    {
+        for (int region : elementRegions)
+        {
+            if (region > 0)
+                uniqueRegions.insert(region);
+        }
+    }
+    QList<int> sortedRegions = uniqueRegions.values();
+    std::sort(sortedRegions.begin(), sortedRegions.end());
+    QMap<int, int> regionToMatype;
+    int nextMatype = kDefaultCalculationMatype;
+    for (int region : sortedRegions)
+        regionToMatype.insert(region, nextMatype++);
 
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
@@ -257,14 +350,20 @@ void addDefaultArrays(vtkUnstructuredGrid* grid)
             break;
         }
 
-        matype->SetValue(cid, kDefaultCalculationMatype);
+        const int sourceRegion = elementRegions.size() == nCells
+            ? elementRegions.at(static_cast<int>(cid))
+            : 0;
+        matype->SetValue(cid, regionToMatype.value(sourceRegion, kDefaultCalculationMatype));
         layer->SetValue(cid, kDefaultConstructionLayer);
         ketype->SetValue(cid, k);
         elemId->SetValue(cid, static_cast<int>(cid) + 1);
-        srcPart->SetValue(cid, 0);
+        srcPart->SetValue(cid, sourceRegion);
         tail1->SetValue(cid, 0);
         tail2->SetValue(cid, 0);
         originalCellIds->SetValue(cid, cid);
+        groupName->SetValue(cid, sourceRegion > 0
+                                     ? QStringLiteral("几何区域 %1").arg(sourceRegion).toStdString()
+                                     : std::string{});
     }
 
     grid->GetCellData()->AddArray(matype);
@@ -275,9 +374,11 @@ void addDefaultArrays(vtkUnstructuredGrid* grid)
     grid->GetCellData()->AddArray(tail1);
     grid->GetCellData()->AddArray(tail2);
     grid->GetCellData()->AddArray(originalCellIds);
+    grid->GetCellData()->AddArray(groupName);
 }
 
 vtkSmartPointer<vtkUnstructuredGrid> convertNetgenMesh(Ng_Mesh* mesh, int dimension,
+                                                       const QVector<int>& elementRegions,
                                                        QString* errMsg)
 {
     auto grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
@@ -298,6 +399,7 @@ vtkSmartPointer<vtkUnstructuredGrid> convertNetgenMesh(Ng_Mesh* mesh, int dimens
         points->InsertNextPoint(p);
     }
     grid->SetPoints(points);
+    QVector<int> importedRegions;
 
     if (dimension == 3)
     {
@@ -324,7 +426,10 @@ vtkSmartPointer<vtkUnstructuredGrid> convertNetgenMesh(Ng_Mesh* mesh, int dimens
                 ids[k] = static_cast<vtkIdType>(pi[k] - 1);
             }
             if (ok)
+            {
                 grid->InsertNextCell(vtkType, nodeCount, ids);
+                importedRegions.push_back(elementRegions.value(i - 1, 0));
+            }
         }
     }
     else
@@ -353,7 +458,10 @@ vtkSmartPointer<vtkUnstructuredGrid> convertNetgenMesh(Ng_Mesh* mesh, int dimens
                 ids[k] = static_cast<vtkIdType>(pi[k] - 1);
             }
             if (ok)
+            {
                 grid->InsertNextCell(vtkType, nodeCount, ids);
+                importedRegions.push_back(elementRegions.value(i - 1, 0));
+            }
         }
     }
 
@@ -363,7 +471,7 @@ vtkSmartPointer<vtkUnstructuredGrid> convertNetgenMesh(Ng_Mesh* mesh, int dimens
         return nullptr;
     }
 
-    addDefaultArrays(grid);
+    addDefaultArrays(grid, importedRegions);
     return grid;
 }
 
@@ -900,20 +1008,45 @@ bool NetgenMeshGenerator::generate(const NetgenMeshingRequest& request, NetgenMe
     if (mp.second_order)
         Ng_OCC_Generate_SecondOrder(geom, mesh);
 
-    if (request.exportVol && request.elemType != kElemTypeHex8FromTet &&
-        !request.volPath.trimmed().isEmpty())
-        Ng_SaveMesh(mesh, QFile::encodeName(request.volPath).constData());
+    QString metadataMeshPath = request.volPath.trimmed();
+    QTemporaryFile temporaryMesh;
+    if (metadataMeshPath.isEmpty())
+    {
+        temporaryMesh.setFileTemplate(
+            QDir::tempPath() + QStringLiteral("/cae_netgen_regions_XXXXXX.vol"));
+        if (temporaryMesh.open())
+        {
+            metadataMeshPath = temporaryMesh.fileName();
+            temporaryMesh.close();
+        }
+    }
+    if (!metadataMeshPath.isEmpty())
+        Ng_SaveMesh(mesh, QFile::encodeName(metadataMeshPath).constData());
+
+    const int sourceElementCount = request.dimension == 3 ? Ng_GetNE(mesh) : Ng_GetNSE(mesh);
+    const QVector<int> elementRegions =
+        readNetgenElementRegions(metadataMeshPath, request.dimension, sourceElementCount);
 
     NetgenMeshingResult localResult;
     localResult.pointCount = Ng_GetNP(mesh);
     localResult.surfaceElementCount = Ng_GetNSE(mesh);
     localResult.volumeElementCount = Ng_GetNE(mesh);
-    localResult.grid = convertNetgenMesh(mesh, request.dimension, errMsg);
+    localResult.regionCount = regionCount(elementRegions);
+    if (localResult.regionCount > kMaxSolverMatype - kDefaultCalculationMatype + 1)
+    {
+        setError(errMsg, QStringLiteral("几何分区过多，自动生成的材料编号将超过 300"));
+        cleanup();
+        return false;
+    }
+    localResult.grid = convertNetgenMesh(mesh, request.dimension, elementRegions, errMsg);
     if (!localResult.grid)
     {
         cleanup();
         return false;
     }
+
+    if (!request.exportVol && !metadataMeshPath.isEmpty())
+        QFile::remove(metadataMeshPath);
 
     if (request.dimension == 3 && request.elemType == kElemTypeHex8FromTet)
     {

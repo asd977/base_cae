@@ -11,6 +11,8 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QObject>
+#include <QStringList>
+#include <QVariantMap>
 
 #include "ProjectTreeWidget.h"
 #include "SettingWidget.h"
@@ -66,6 +68,16 @@ class ProjectManager : public QObject, public ProjectManagerService
      * @brief 链接ribbon框的信号
      */
     void initRibbonActionConn();
+    void closeCurrentProjectModules();
+    bool confirmProjectSwitch(bool* currentProjectSaved);
+    bool saveCurrentProject(QStringList* failedModules = nullptr);
+    bool loadCurrentProjectModules(QStringList* failedModules = nullptr);
+    bool activateProject(const QString& manifestPath, const QString& projectName,
+                         const QVariantMap& globalValues,
+                         QStringList* failedModules = nullptr);
+    bool prepareProjectDirectory(const QString& projectDir, QString* errorMessage = nullptr) const;
+    void applyProjectContext(const QString& manifestPath, const QString& projectName,
+                             const QVariantMap& globalValues);
     /**
      * @brief 移除文件夹
      */
@@ -73,10 +85,11 @@ class ProjectManager : public QObject, public ProjectManagerService
     /**
      * @brief 创建工程的所有数据文件夹（新建工程）
      */
-    bool createProjectFilesFolder(bool askOverwrite = true);
-    bool migrateLegacyProjectDataFiles() const;
-    bool migrateLegacySolverFiles() const;
-    void removeLegacyRootSolverFiles() const;
+    bool createProjectFilesFolder(const QString& projectPath, const QString& projectName,
+                                  bool askOverwrite = true);
+    bool migrateLegacyProjectDataFiles(const QString& projectDir) const;
+    bool migrateLegacySolverFiles(const QString& projectDir) const;
+    void removeLegacyRootSolverFiles(const QString& projectDir) const;
     /**
      * @brief 保存项目所有模块的数据到.smproj文件
      * @param fileName .smproj名称
@@ -85,7 +98,8 @@ class ProjectManager : public QObject, public ProjectManagerService
     bool saveAllProModelData(const QString& fileName);
 
     bool writeProjectManifest() const;
-    bool readProjectManifest(const QString& manifestPath);
+    bool readProjectManifest(const QString& manifestPath, QString* projectName,
+                             QVariantMap* globalValues) const;
     /**
      * @brief 保存树节点信息
      */

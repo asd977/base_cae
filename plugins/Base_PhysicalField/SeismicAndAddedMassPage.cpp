@@ -254,7 +254,8 @@ void SeismicAndAddedMassPage::on_btnClear_clicked()
 void SeismicAndAddedMassPage::on_btnImportCsv_clicked()
 {
     const QString filePath = QFileDialog::getOpenFileName(
-        this, tr("导入地震波 CSV"), QString(), tr("CSV Files (*.csv);;All Files (*)"));
+        this, tr("导入地震波表格"), QString(),
+        tr("逗号分隔数据文件 (*.csv);;所有文件 (*)"));
     if (filePath.isEmpty())
         return;
 

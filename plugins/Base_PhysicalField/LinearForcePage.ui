@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Form</string>
+   <string>线荷载</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="leftMargin">
@@ -151,28 +151,28 @@
         <item row="4" column="0">
          <widget class="QLabel" name="label">
           <property name="text">
-           <string>FX</string>
+           <string>X 方向力</string>
           </property>
          </widget>
         </item>
         <item row="6" column="0">
          <widget class="QLabel" name="label_3">
           <property name="text">
-           <string>FZ</string>
+           <string>Z 方向力</string>
           </property>
          </widget>
         </item>
         <item row="5" column="0">
          <widget class="QLabel" name="label_2">
           <property name="text">
-           <string>FY</string>
+           <string>Y 方向力</string>
           </property>
          </widget>
         </item>
         <item row="3" column="0" colspan="2">
          <widget class="QLabel" name="boxSelectHintLabel">
           <property name="text">
-           <string>提示：Shift+拖拽框选，Ctrl+拖拽取消选择</string>
+           <string>提示：按住上档键拖拽框选，按住控制键拖拽取消选择</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>

@@ -4,6 +4,7 @@
 #include <services/VisualWidgetService.h>
 
 #include <QHash>
+#include <QList>
 #include <QPointer>
 #include <QString>
 #include <QVBoxLayout>
@@ -26,7 +27,6 @@ class vtkPolyData;
 class QFrame;
 class QToolButton;
 class QSlider;
-class QResizeEvent;
 class QMenu;
 class QLabel;
 class QStackedWidget;
@@ -86,9 +86,6 @@ class VisualizationWidget : public QWidget, public VisualWidgetService
 
     void showOrientationMarker(bool on);
 
-  protected:
-    void resizeEvent(QResizeEvent* event) override;
-
   private:
     void initVtk();
     void initViewToolbar();
@@ -98,6 +95,7 @@ class VisualizationWidget : public QWidget, public VisualWidgetService
     void updateProjectionButtonIcon();
     void updateScaleButtonIcon();
     void applyGlobalOpacity(double alpha, bool renderNow = true);
+    void updateScaleActorBounds();
 
     static vtkMapper* actorMapper(vtkProp* prop);
 
@@ -109,6 +107,7 @@ class VisualizationWidget : public QWidget, public VisualWidgetService
         QString group;
         vtkSmartPointer<vtkProp> prop;
         bool visible = true;
+        double opacity = 1.0;
     };
 
   private:
@@ -134,7 +133,8 @@ class VisualizationWidget : public QWidget, public VisualWidgetService
     QPointer<QToolButton> m_opacityButton;
     QPointer<QMenu> m_opacityMenu;
     QPointer<QLabel> m_opacityPercentLabel;
-    bool m_isParallelProjection = false;
+    bool m_isParallelProjection = true;
     vtkSmartPointer<vtkCubeAxesActor> m_cubeAxesActor;
     bool m_isScaleVisible = false;
+    double m_globalOpacity = 1.0;
 };

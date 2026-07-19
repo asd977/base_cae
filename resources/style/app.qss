@@ -1,4 +1,4 @@
-/*
+﻿/*
  * POWERCHINA-GEOCAE balanced light theme
  *
  * Direction:
@@ -11,7 +11,7 @@
 QWidget {
     font-family: "Microsoft YaHei UI", "Microsoft YaHei", "微软雅黑", "Segoe UI", sans-serif;
     font-size: 9pt;
-    color: #252b31;
+    color: #000000;
 }
 
 QMainWindow,
@@ -20,7 +20,7 @@ QDialog {
 }
 
 QLabel {
-    color: #252b31;
+    color: #000000;
     background: transparent;
 }
 
@@ -36,7 +36,7 @@ QLabel#pageHeaderLabel {
 }
 
 QLabel#pageNameLabel {
-    color: #252b31;
+    color: #000000;
     font-size: 9.5pt;
     font-weight: 600;
     padding: 0px;
@@ -53,7 +53,7 @@ QLabel#boxSelectHintLabel {
 QPushButton {
     min-height: 26px;
     padding: 0px 10px;
-    color: #2d343a;
+    color: #000000;
     background: #ffffff;
     border: 1px solid #c9cfd5;
     border-radius: 2px;
@@ -102,7 +102,7 @@ QPushButton#sectionTitleButton {
     max-height: 29px;
     padding: 0px 2px;
     text-align: left;
-    color: #343b42;
+    color: #000000;
     background: transparent;
     border: none;
     border-bottom: 1px solid #e0e4e7;
@@ -128,9 +128,9 @@ QDateTimeEdit,
 QTimeEdit,
 QDateEdit {
     min-height: 26px;
-    padding-left: 7px;
-    padding-right: 7px;
-    color: #252b31;
+    padding-left: 6px;
+    padding-right: 6px;
+    color: #000000;
     background: #ffffff;
     border: 1px solid #c9cfd5;
     border-radius: 2px;
@@ -157,7 +157,7 @@ QDoubleSpinBox:focus,
 QDateTimeEdit:focus,
 QTimeEdit:focus,
 QDateEdit:focus {
-    border-color: #557d94;
+    border-color: #7f909c;
 }
 
 QLineEdit:disabled,
@@ -172,17 +172,20 @@ QDoubleSpinBox:disabled {
 
 QComboBox {
     min-height: 26px;
-    padding-left: 7px;
-    padding-right: 24px;
-    color: #252b31;
+    padding-left: 6px;
+    padding-right: 3px;
+    color: #000000;
     background: #ffffff;
     border: 1px solid #c9cfd5;
     border-radius: 2px;
 }
 
-QComboBox:hover,
+QComboBox:hover {
+    border-color: #a5b0b8;
+}
+
 QComboBox:focus {
-    border-color: #557d94;
+    border-color: #7f909c;
 }
 
 QComboBox:disabled {
@@ -192,9 +195,9 @@ QComboBox:disabled {
 }
 
 QComboBox::drop-down {
-    subcontrol-origin: padding;
+    subcontrol-origin: border;
     subcontrol-position: top right;
-    width: 22px;
+    width: 18px;
     background: transparent;
     border: none;
 }
@@ -206,7 +209,7 @@ QComboBox::down-arrow {
 }
 
 QComboBox QAbstractItemView {
-    color: #252b31;
+    color: #000000;
     background: #ffffff;
     border: 1px solid #c9cfd5;
     outline: none;
@@ -250,17 +253,21 @@ QDoubleSpinBox::down-arrow {
 
 QCheckBox,
 QRadioButton {
-    spacing: 6px;
-    color: #30373d;
+    spacing: 5px;
+    color: #000000;
 }
+
+/* Checkbox indicators are drawn globally by NeutralCheckStyle.
+   Keep only text spacing here so QCheckBox and item-view checks stay consistent. */
 
 /* -------------------------------------------------------------------------
    Sections and content surfaces
    ------------------------------------------------------------------------- */
 QGroupBox {
-    margin-top: 11px;
-    padding: 13px 9px 9px 9px;
-    color: #343b42;
+    /* margin-top reserves space for the title; content padding remains compact. */
+    margin-top: 12px;
+    padding: 7px 6px 6px 6px;
+    color: #000000;
     background: #ffffff;
     border: 1px solid #dfe3e6;
     border-radius: 2px;
@@ -270,10 +277,17 @@ QGroupBox {
 QGroupBox::title {
     subcontrol-origin: margin;
     subcontrol-position: top left;
-    left: 7px;
-    padding: 0px 4px;
-    color: #4b545c;
+    left: 6px;
+    top: 0px;
+    padding: 0px 3px;
+    color: #000000;
     background: #ffffff;
+}
+
+QGroupBox::indicator {
+    width: 14px;
+    height: 14px;
+    margin-right: 3px;
 }
 
 QStackedWidget#projectSettingStackWidget,
@@ -298,7 +312,7 @@ QWidget[dimDisabled="true"] {
    Tree, lists and tables
    ------------------------------------------------------------------------- */
 QTreeWidget#projectTreeWidget {
-    color: #2c3339;
+    color: #000000;
     background: #ffffff;
     border: none;
     outline: none;
@@ -309,14 +323,20 @@ QTreeWidget#projectTreeWidget::item {
     height: 26px;
     padding-left: 4px;
     padding-right: 5px;
-    color: #2c3339;
+    color: #000000;
     background: transparent;
     border: none;
+    font-weight: 400;
 }
 
 QTreeWidget#projectTreeWidget::item:hover {
     color: #294f66;
     background: #f2f5f7;
+}
+
+QTreeWidget#projectTreeWidget::item:disabled {
+    color: #8a95a5;
+    background: #f7f8f9;
 }
 
 QTreeWidget#projectTreeWidget::item:selected {
@@ -328,34 +348,12 @@ QTreeWidget#projectTreeWidget::item:selected:hover {
     background: #dde6ea;
 }
 
-QTreeWidget#projectTreeWidget::branch {
-    background: transparent;
-    border-image: none;
-    image: none;
-}
-
-QTreeWidget#projectTreeWidget::branch:has-children:closed {
-    image: url(:/resources/style/chevron_right.svg);
-}
-
-QTreeWidget#projectTreeWidget::branch:has-children:open {
-    image: url(:/resources/style/chevron_down.svg);
-}
-
-QTreeWidget#projectTreeWidget::branch:selected {
-    background: #e6ecef;
-}
-
-QTreeWidget#projectTreeWidget::branch:hover:!selected {
-    background: #f2f5f7;
-}
-
 QListWidget,
 QTreeView,
 QListView,
 QTableView,
 QTableWidget {
-    color: #2c3339;
+    color: #000000;
     background: #ffffff;
     border: 1px solid #dfe3e6;
     alternate-background-color: #f8f9fa;
@@ -369,6 +367,11 @@ QListWidget::item,
 QListView::item {
     min-height: 24px;
     padding: 3px 6px;
+}
+
+QListWidget#appliedMatypesList::item {
+    min-height: 24px;
+    padding: 2px 5px;
 }
 
 QListWidget::item:hover,
@@ -385,7 +388,7 @@ QListView::item:selected {
 QHeaderView::section {
     min-height: 27px;
     padding: 0px 7px;
-    color: #465058;
+    color: #000000;
     background: #f5f6f7;
     border: none;
     border-right: 1px solid #e1e4e6;
@@ -405,7 +408,7 @@ QTabBar::tab {
     min-height: 28px;
     padding: 0px 13px;
     margin: 0px;
-    color: #5a646c;
+    color: #000000;
     background: #f5f6f7;
     border: none;
     border-right: 1px solid #e0e4e7;
@@ -429,7 +432,7 @@ QTabBar::tab:selected {
    Menus and tooltips
    ------------------------------------------------------------------------- */
 QMenu {
-    color: #2c3339;
+    color: #000000;
     background: #ffffff;
     border: 1px solid #c9cfd5;
     padding: 3px 0px;
@@ -521,7 +524,7 @@ QFrame#visualizationViewToolbar QToolButton {
     min-width: 27px;
     min-height: 25px;
     padding: 2px;
-    color: #465159;
+    color: #000000;
     background: transparent;
     border: 1px solid transparent;
     border-radius: 2px;
@@ -549,7 +552,7 @@ QMenu#visualizationOpacityMenu {
 }
 
 QLabel#visualizationOpacityPercentLabel {
-    color: #343b42;
+    color: #000000;
     font-weight: 600;
 }
 
@@ -577,7 +580,7 @@ QSlider#visualizationOpacitySlider::handle:vertical {
 }
 
 QStatusBar {
-    color: #657078;
+    color: #000000;
     background: #f6f7f8;
     border-top: 1px solid #dfe3e6;
 }

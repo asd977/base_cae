@@ -3,24 +3,51 @@
 #include <PublicConstants.h>
 #include <PublicVariables.h>
 #include <SolverFilePaths.h>
+#include <ServiceRegistry.h>
+#include <services/MeshModuleControllerService.h>
+#include <services/VisualWidgetService.h>
+#include <QAbstractItemView>
+#include <QColor>
 #include <QComboBox>
 #include <QDir>
 #include <QFile>
 #include <QFormLayout>
 #include <QGroupBox>
+#include <QHeaderView>
+#include <QHBoxLayout>
+#include <QIcon>
 #include <QIntValidator>
 #include <QJsonArray>
 #include <QLabel>
 #include <QLineEdit>
 #include <QList>
 #include <QMap>
-#include <QStringConverter>
 #include <QMessageBox>
+#include <QPixmap>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSet>
+#include <QSpinBox>
+#include <QStringConverter>
+#include <QTableWidget>
+#include <QTableWidgetItem>
 #include <QTextStream>
+#include <QVBoxLayout>
 #include <QWidget>
+
+#include <vtkActor.h>
+#include <vtkCell.h>
+#include <vtkCellData.h>
+#include <vtkDataArray.h>
+#include <vtkDataSetMapper.h>
+#include <vtkExtractCells.h>
+#include <vtkGeometryFilter.h>
+#include <vtkIdList.h>
+#include <vtkProperty.h>
+#include <vtkUnstructuredGrid.h>
+
+#include <algorithm>
+#include <limits>
 
 #include "ui_DamAnalysisWidget.h"
 
@@ -30,21 +57,589 @@ DamAnalysisWidget::DamAnalysisWidget(QWidget* parent)
 {
     ui->setupUi(this);
     initValueEditors();
+    setupConstructionLayerUi();
     SolverUiLayoutHelper::polishPage(this);
     connect(ui->btnCompute, &QPushButton::clicked, this, &DamAnalysisWidget::onComputeClicked);
 }
 
 DamAnalysisWidget::~DamAnalysisWidget()
 {
+    clearConstructionLayerHighlights(false);
     delete ui;
 }
 
 void DamAnalysisWidget::beforeLoad()
 {
+    m_constructionLayerUiActive = true;
+    auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    vtkUnstructuredGrid* grid = meshService ? meshService->getVtkUnstructuredGrid() : nullptr;
+    if (m_constructionLayerUiDirty && grid &&
+        m_constructionPanelGridMTime == qulonglong(grid->GetMTime()))
+    {
+        updateConstructionLayerHighlights();
+    }
+    else
+    {
+        rebuildConstructionLayerPanel();
+    }
 }
 
 void DamAnalysisWidget::beforeUnload()
 {
+    m_constructionLayerUiActive = false;
+    clearConstructionLayerHighlights();
+}
+
+QPair<int, int> DamAnalysisWidget::constructionLayerRange() const
+{
+    auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    vtkUnstructuredGrid* grid = meshService ? meshService->getVtkUnstructuredGrid() : nullptr;
+    if (!grid || grid->GetNumberOfCells() <= 0 || !grid->GetCellData())
+        return {};
+
+    vtkDataArray* layerArray = grid->GetCellData()->GetArray("LAYER");
+    if (!layerArray)
+        return {};
+    vtkDataArray* materialArray = grid->GetCellData()->GetArray("MATYPE");
+
+    const int targetDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    int minimumLayer = std::numeric_limits<int>::max();
+    int maximumLayer = std::numeric_limits<int>::min();
+    bool hasFoundation = false;
+    QSet<int> damLayers;
+    for (vtkIdType cellId = 0; cellId < grid->GetNumberOfCells(); ++cellId)
+    {
+        vtkCell* cell = grid->GetCell(cellId);
+        if (!cell || cell->GetCellDimension() != targetDim)
+            continue;
+        if (materialArray && int(materialArray->GetTuple1(cellId)) == 1)
+            continue;
+        const int layer = int(layerArray->GetTuple1(cellId));
+        if (layer == 1)
+        {
+            hasFoundation = true;
+            continue;
+        }
+        if (layer < 1)
+            return {};
+        damLayers.insert(layer);
+        minimumLayer = qMin(minimumLayer, layer);
+        maximumLayer = qMax(maximumLayer, layer);
+    }
+    if (!hasFoundation || minimumLayer != 2 || maximumLayer < minimumLayer)
+        return {};
+    for (int layer = 2; layer <= maximumLayer; ++layer)
+    {
+        if (!damLayers.contains(layer))
+            return {};
+    }
+    return qMakePair(minimumLayer, maximumLayer);
+}
+
+void DamAnalysisWidget::setupConstructionLayerUi()
+{
+    m_groupConstructionLayers = new QGroupBox(QStringLiteral("坝体施工分层"), this);
+    m_groupConstructionLayers->setObjectName(QStringLiteral("groupConstructionLayers"));
+    auto* layout = new QVBoxLayout(m_groupConstructionLayers);
+    m_labelConstructionLayerStatus = new QLabel(m_groupConstructionLayers);
+    m_labelConstructionLayerStatus->setObjectName(QStringLiteral("labelConstructionLayerStatus"));
+    m_labelConstructionLayerStatus->setWordWrap(true);
+    layout->addWidget(m_labelConstructionLayerStatus);
+
+    m_constructionRegionTable = new QTableWidget(m_groupConstructionLayers);
+    m_constructionRegionTable->setObjectName(QStringLiteral("constructionRegionTable"));
+    m_constructionRegionTable->setMinimumHeight(240);
+    m_constructionRegionTable->setMaximumHeight(360);
+    m_constructionRegionTable->setColumnCount(4);
+    m_constructionRegionTable->setHorizontalHeaderLabels(
+        {QStringLiteral("网格区域"), QStringLiteral("当前识别"),
+         QStringLiteral("单元数"), QStringLiteral("区域用途")});
+    m_constructionRegionTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    m_constructionRegionTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    m_constructionRegionTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    m_constructionRegionTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+    m_constructionRegionTable->verticalHeader()->setVisible(false);
+    m_constructionRegionTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_constructionRegionTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_constructionRegionTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_constructionRegionTable->setAlternatingRowColors(true);
+    layout->addWidget(m_constructionRegionTable);
+
+    auto* controls = new QHBoxLayout();
+    auto* countLabel = new QLabel(QStringLiteral("坝体填筑层数"), m_groupConstructionLayers);
+    m_fillLayerCount = new QSpinBox(m_groupConstructionLayers);
+    m_fillLayerCount->setObjectName(QStringLiteral("fillLayerCount"));
+    m_fillLayerCount->setRange(1, 200);
+    m_fillLayerCount->setValue(8);
+    controls->addWidget(countLabel);
+    controls->addWidget(m_fillLayerCount);
+    controls->addStretch();
+    layout->addLayout(controls);
+    ui->contentLayout->insertWidget(0, m_groupConstructionLayers);
+
+    connect(m_fillLayerCount, qOverload<int>(&QSpinBox::valueChanged),
+            this, &DamAnalysisWidget::markConstructionLayerDirty);
+    connect(m_constructionRegionTable, &QTableWidget::currentCellChanged, this,
+            [this]() { updateConstructionLayerHighlights(); });
+
+    rebuildConstructionLayerPanel();
+}
+
+QString DamAnalysisWidget::constructionRegionDisplayText(const MeshTagKey& key) const
+{
+    if (key.category.compare(QStringLiteral("LAYER"), Qt::CaseInsensitive) == 0)
+    {
+        if (key.id == 1)
+            return QStringLiteral("坝基（现有分层）");
+        if (key.id > 1)
+            return QStringLiteral("填筑第 %1 层（现有分层）").arg(key.id - 1);
+        return QStringLiteral("待修正区域");
+    }
+
+    auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshService)
+        return QStringLiteral("网格区域 %1").arg(key.id);
+    if (key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0)
+    {
+        const QString materialName = meshService->matypePhysicalName(key.id, key.dim).trimmed();
+        if (!materialName.isEmpty())
+            return materialName;
+        for (const MeshTagSet& tag : meshService->domainTagSets())
+        {
+            if (tag.key == key && tag.name.startsWith(QStringLiteral("几何区域")))
+                return tag.name;
+        }
+        return QStringLiteral("材料区域 %1").arg(key.id);
+    }
+    return meshService->displayTextOfTag(key);
+}
+
+void DamAnalysisWidget::rebuildConstructionLayerPanel()
+{
+    if (!m_labelConstructionLayerStatus || !m_constructionRegionTable || !m_fillLayerCount)
+        return;
+
+    m_constructionLayerUiUpdating = true;
+    m_constructionLayerUiDirty = false;
+    m_constructionRegionKeys.clear();
+    m_constructionRegionCells.clear();
+    m_constructionRegionTable->clearContents();
+    m_constructionRegionTable->setRowCount(0);
+
+    auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    vtkUnstructuredGrid* grid = meshService ? meshService->getVtkUnstructuredGrid() : nullptr;
+    if (!meshService || !grid || grid->GetNumberOfCells() <= 0 || !grid->GetCellData())
+    {
+        m_existingConstructionLayersValid = false;
+        m_constructionPanelGridMTime = 0;
+        m_labelConstructionLayerStatus->setText(QStringLiteral("尚未生成或导入网格"));
+        m_constructionRegionTable->setEnabled(false);
+        m_fillLayerCount->setEnabled(false);
+        m_constructionLayerUiUpdating = false;
+        clearConstructionLayerHighlights();
+        return;
+    }
+
+    m_constructionRegionTable->setEnabled(true);
+    m_fillLayerCount->setEnabled(true);
+    m_constructionPanelGridMTime = qulonglong(grid->GetMTime());
+    const int targetDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    vtkDataArray* layerArray = grid->GetCellData()->GetArray("LAYER");
+    vtkDataArray* materialArray = grid->GetCellData()->GetArray("MATYPE");
+    QSet<MeshIdType> requiredCells;
+    QMap<int, int> layerCounts;
+    for (vtkIdType cellId = 0; cellId < grid->GetNumberOfCells(); ++cellId)
+    {
+        vtkCell* cell = grid->GetCell(cellId);
+        if (!cell || cell->GetCellDimension() != targetDim)
+            continue;
+        if (materialArray && int(materialArray->GetTuple1(cellId)) == 1)
+            continue;
+        requiredCells.insert(static_cast<MeshIdType>(cellId));
+        if (layerArray)
+            ++layerCounts[int(layerArray->GetTuple1(cellId))];
+    }
+
+    const QPair<int, int> currentRange = constructionLayerRange();
+    m_existingConstructionLayersValid = currentRange.first == 2;
+    bool hasAssignedDamLayer = false;
+    for (auto it = layerCounts.constBegin(); it != layerCounts.constEnd(); ++it)
+    {
+        if (it.key() > 1)
+        {
+            hasAssignedDamLayer = true;
+            break;
+        }
+    }
+    struct RegionChoice
+    {
+        MeshTagKey key;
+        QVector<MeshIdType> cells;
+    };
+    auto collectRegions = [&](const QString& category)
+    {
+        QVector<RegionChoice> regions;
+        for (const MeshTagSet& tag : meshService->domainTagSets())
+        {
+            if (tag.key.category.compare(category, Qt::CaseInsensitive) != 0 ||
+                tag.key.dim != targetDim)
+                continue;
+            QVector<MeshIdType> cells;
+            for (MeshIdType cellId : meshService->cellIdsOfTag(tag.key))
+            {
+                if (requiredCells.contains(cellId))
+                    cells.push_back(cellId);
+            }
+            if (!cells.isEmpty())
+                regions.push_back({tag.key, cells});
+        }
+        return regions;
+    };
+    auto isExactPartition = [&](const QVector<RegionChoice>& regions)
+    {
+        if (regions.size() < 2)
+            return false;
+        QHash<MeshIdType, int> occurrences;
+        for (const RegionChoice& region : regions)
+        {
+            for (MeshIdType cellId : region.cells)
+                ++occurrences[cellId];
+        }
+        if (occurrences.size() != requiredCells.size())
+            return false;
+        for (MeshIdType cellId : requiredCells)
+        {
+            if (occurrences.value(cellId) != 1)
+                return false;
+        }
+        return true;
+    };
+
+    QVector<RegionChoice> regions;
+    const QStringList preferredCategories = m_existingConstructionLayersValid
+        ? QStringList{QStringLiteral("LAYER"), QStringLiteral("Physical"), QStringLiteral("MATYPE")}
+        : QStringList{QStringLiteral("Physical"), QStringLiteral("MATYPE"), QStringLiteral("LAYER")};
+    for (const QString& category : preferredCategories)
+    {
+        QVector<RegionChoice> candidate = collectRegions(category);
+        if (isExactPartition(candidate))
+        {
+            regions = std::move(candidate);
+            break;
+        }
+    }
+
+    m_constructionRegionTable->setRowCount(regions.size());
+    const QColor foundationColor(QStringLiteral("#2F8FB5"));
+    const QColor damColor(QStringLiteral("#E28A2B"));
+    auto colorIcon = [](const QColor& color)
+    {
+        QPixmap swatch(14, 14);
+        swatch.fill(color);
+        return QIcon(swatch);
+    };
+
+    for (int row = 0; row < regions.size(); ++row)
+    {
+        const RegionChoice& region = regions.at(row);
+        m_constructionRegionKeys.push_back(region.key);
+        m_constructionRegionCells.push_back(region.cells);
+
+        int foundationCount = 0;
+        int damCount = 0;
+        for (MeshIdType rawCellId : region.cells)
+        {
+            const vtkIdType cellId = static_cast<vtkIdType>(rawCellId);
+            const int layer = layerArray ? int(layerArray->GetTuple1(cellId)) : 0;
+            if (layer == 1)
+                ++foundationCount;
+            else if (layer > 1)
+                ++damCount;
+        }
+
+        QString recognizedText = QStringLiteral("待指定");
+        if (hasAssignedDamLayer && foundationCount == region.cells.size())
+            recognizedText = QStringLiteral("坝基");
+        else if (hasAssignedDamLayer && damCount == region.cells.size())
+            recognizedText = QStringLiteral("坝体");
+        else if (hasAssignedDamLayer && foundationCount + damCount > 0)
+            recognizedText = QStringLiteral("混合区域");
+
+        auto* nameItem = new QTableWidgetItem(constructionRegionDisplayText(region.key));
+        auto* recognizedItem = new QTableWidgetItem(recognizedText);
+        auto* countItem = new QTableWidgetItem(QString::number(region.cells.size()));
+        nameItem->setFlags(nameItem->flags() & ~Qt::ItemIsEditable);
+        recognizedItem->setFlags(recognizedItem->flags() & ~Qt::ItemIsEditable);
+        countItem->setFlags(countItem->flags() & ~Qt::ItemIsEditable);
+        m_constructionRegionTable->setItem(row, 0, nameItem);
+        m_constructionRegionTable->setItem(row, 1, recognizedItem);
+        m_constructionRegionTable->setItem(row, 2, countItem);
+
+        auto* purpose = new QComboBox(m_constructionRegionTable);
+        purpose->addItem(QStringLiteral("请选择"), 0);
+        purpose->addItem(colorIcon(foundationColor), QStringLiteral("坝基"), 1);
+        purpose->addItem(colorIcon(damColor), QStringLiteral("坝体"), 2);
+        const QString name = nameItem->text().toCaseFolded();
+        const bool nameLooksLikeDam = name.contains(QStringLiteral("坝体")) ||
+                                      name.contains(QStringLiteral("填筑")) ||
+                                      name.contains(QStringLiteral("dam")) ||
+                                      name.contains(QStringLiteral("fill"));
+        const bool nameLooksLikeFoundation = name.contains(QStringLiteral("坝基")) ||
+                                             name.contains(QStringLiteral("基岩")) ||
+                                             name.contains(QStringLiteral("foundation")) ||
+                                             name.contains(QStringLiteral("rock"));
+        int purposeValue = 0;
+        if (hasAssignedDamLayer && foundationCount == region.cells.size())
+            purposeValue = 1;
+        else if (hasAssignedDamLayer && damCount == region.cells.size())
+            purposeValue = 2;
+        else if (nameLooksLikeDam && !nameLooksLikeFoundation)
+            purposeValue = 2;
+        else if (nameLooksLikeFoundation && !nameLooksLikeDam)
+            purposeValue = 1;
+        purpose->setCurrentIndex(purpose->findData(purposeValue));
+        SolverUiLayoutHelper::configureComboSizing(purpose);
+        purpose->setToolTip(QStringLiteral("蓝色表示坝基，橙色表示坝体"));
+        connect(purpose, qOverload<int>(&QComboBox::currentIndexChanged),
+                this, &DamAnalysisWidget::markConstructionLayerDirty);
+        m_constructionRegionTable->setCellWidget(row, 3, purpose);
+    }
+
+    m_fillLayerCount->setValue(m_existingConstructionLayersValid ? currentRange.second - 1 : 8);
+    if (m_existingConstructionLayersValid)
+    {
+        int damCellCount = 0;
+        for (auto it = layerCounts.constBegin(); it != layerCounts.constEnd(); ++it)
+        {
+            if (it.key() > 1)
+                damCellCount += it.value();
+        }
+        m_labelConstructionLayerStatus->setText(
+            QStringLiteral("已识别现有分层：坝基 %1 个单元，坝体 %2 个单元，共 %3 个填筑层")
+                .arg(layerCounts.value(1))
+                .arg(damCellCount)
+                .arg(currentRange.second - 1));
+    }
+    else if (!regions.isEmpty() && !hasAssignedDamLayer)
+    {
+        m_labelConstructionLayerStatus->setText(
+            QStringLiteral("已识别 %1 个网格区域，请逐项指定坝基或坝体")
+                .arg(regions.size()));
+    }
+    else if (layerArray && !layerCounts.isEmpty())
+    {
+        m_labelConstructionLayerStatus->setText(
+            QStringLiteral("现有分层不完整，请在区域用途中修正"));
+    }
+    else
+    {
+        m_labelConstructionLayerStatus->setText(QStringLiteral("尚未设置坝体施工分层"));
+    }
+    if (regions.isEmpty())
+    {
+        m_labelConstructionLayerStatus->setText(
+            m_labelConstructionLayerStatus->text() +
+            QStringLiteral("；网格缺少可独立识别的坝基和坝体区域"));
+    }
+    m_fillLayerCount->setEnabled(!regions.isEmpty());
+
+    if (m_constructionRegionTable->rowCount() > 0)
+        m_constructionRegionTable->setCurrentCell(0, 0);
+    m_constructionLayerUiUpdating = false;
+    updateConstructionLayerHighlights();
+}
+
+void DamAnalysisWidget::markConstructionLayerDirty()
+{
+    if (m_constructionLayerUiUpdating)
+        return;
+    m_constructionLayerUiDirty = true;
+    updateConstructionLayerHighlights();
+    applyConstructionLayerChanges();
+}
+
+void DamAnalysisWidget::applyConstructionLayerChanges()
+{
+    auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshService || !m_fillLayerCount || m_constructionRegionCells.isEmpty())
+        return;
+
+    QSet<MeshIdType> foundationCells;
+    QSet<MeshIdType> damCells;
+    int firstUnassignedRow = -1;
+    for (int row = 0; row < m_constructionRegionCells.size(); ++row)
+    {
+        auto* purpose = qobject_cast<QComboBox*>(m_constructionRegionTable->cellWidget(row, 3));
+        const int purposeValue = purpose ? purpose->currentData().toInt() : 0;
+        if (purposeValue == 0)
+        {
+            if (firstUnassignedRow < 0)
+                firstUnassignedRow = row;
+            continue;
+        }
+        QSet<MeshIdType>& target = purposeValue == 2 ? damCells : foundationCells;
+        for (MeshIdType cellId : m_constructionRegionCells.at(row))
+            target.insert(cellId);
+    }
+
+    if (firstUnassignedRow >= 0)
+    {
+        m_constructionRegionTable->setCurrentCell(firstUnassignedRow, 0);
+        m_labelConstructionLayerStatus->setText(
+            QStringLiteral("还有区域未指定用途，黄色高亮处需要选择坝基或坝体"));
+        updateConstructionLayerHighlights();
+        return;
+    }
+
+    clearConstructionLayerHighlights(false);
+    QString error;
+    if (!meshService->assignDamConstructionLayers(
+            foundationCells, damCells, m_fillLayerCount->value(), &error))
+    {
+        m_labelConstructionLayerStatus->setText(error);
+        updateConstructionLayerHighlights();
+        return;
+    }
+
+    rebuildConstructionLayerPanel();
+    const QPair<int, int> range = constructionLayerRange();
+    if (range.first == 2)
+        emit constructionLayersChanged(range.first, range.second);
+}
+
+void DamAnalysisWidget::clearConstructionLayerHighlights(bool renderNow)
+{
+    auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!visual)
+        return;
+    const QString prefix = QStringLiteral("dam.construction.%1.").arg(m_uuid);
+    visual->removeProp(prefix + QStringLiteral("foundation"), false);
+    visual->removeProp(prefix + QStringLiteral("body"), false);
+    visual->removeProp(prefix + QStringLiteral("preview"), false);
+    m_constructionBaseHighlightSignature.clear();
+    if (renderNow)
+        visual->render();
+}
+
+void DamAnalysisWidget::updateConstructionLayerHighlights()
+{
+    if (!m_constructionLayerUiActive || m_constructionLayerUiUpdating)
+        return;
+
+    auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    vtkUnstructuredGrid* grid = meshService ? meshService->getVtkUnstructuredGrid() : nullptr;
+    if (!visual || !grid || grid->GetNumberOfCells() <= 0)
+        return;
+
+    QSet<MeshIdType> foundationCells;
+    QSet<MeshIdType> damCells;
+    for (int row = 0; row < m_constructionRegionCells.size(); ++row)
+    {
+        auto* purpose = qobject_cast<QComboBox*>(m_constructionRegionTable->cellWidget(row, 3));
+        const int purposeValue = purpose ? purpose->currentData().toInt() : 0;
+        if (purposeValue == 0)
+            continue;
+        QSet<MeshIdType>& target = purposeValue == 2 ? damCells : foundationCells;
+        for (MeshIdType cellId : m_constructionRegionCells.at(row))
+            target.insert(cellId);
+    }
+
+    if (m_constructionRegionCells.isEmpty() && grid->GetCellData())
+    {
+        vtkDataArray* layerArray = grid->GetCellData()->GetArray("LAYER");
+        vtkDataArray* materialArray = grid->GetCellData()->GetArray("MATYPE");
+        const int targetDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+        if (layerArray)
+        {
+            for (vtkIdType cellId = 0; cellId < grid->GetNumberOfCells(); ++cellId)
+            {
+                vtkCell* cell = grid->GetCell(cellId);
+                if (!cell || cell->GetCellDimension() != targetDim ||
+                    (materialArray && int(materialArray->GetTuple1(cellId)) == 1))
+                    continue;
+                if (int(layerArray->GetTuple1(cellId)) == 1)
+                    foundationCells.insert(static_cast<MeshIdType>(cellId));
+                else if (int(layerArray->GetTuple1(cellId)) > 1)
+                    damCells.insert(static_cast<MeshIdType>(cellId));
+            }
+        }
+    }
+
+    QSet<MeshIdType> previewCells;
+    const int row = m_constructionRegionTable->currentRow();
+    if (row >= 0 && row < m_constructionRegionCells.size())
+    {
+        for (MeshIdType cellId : m_constructionRegionCells.at(row))
+            previewCells.insert(cellId);
+    }
+
+    const QString prefix = QStringLiteral("dam.construction.%1.").arg(m_uuid);
+    QStringList roleSignature;
+    roleSignature.reserve(m_constructionRegionCells.size());
+    for (int row = 0; row < m_constructionRegionCells.size(); ++row)
+    {
+        auto* purpose = qobject_cast<QComboBox*>(m_constructionRegionTable->cellWidget(row, 3));
+        roleSignature.push_back(purpose ? purpose->currentData().toString() : QStringLiteral("0"));
+    }
+    const QString baseSignature =
+        QStringLiteral("%1:%2:%3")
+            .arg(quintptr(grid))
+            .arg(qulonglong(grid->GetMTime()))
+            .arg(roleSignature.join(QLatin1Char(',')));
+    const bool rebuildBaseHighlights =
+        baseSignature != m_constructionBaseHighlightSignature;
+    if (rebuildBaseHighlights)
+    {
+        visual->removeProp(prefix + QStringLiteral("foundation"), false);
+        visual->removeProp(prefix + QStringLiteral("body"), false);
+    }
+    visual->removeProp(prefix + QStringLiteral("preview"), false);
+
+    auto addHighlight = [&](const QString& suffix, const QString& name,
+                            const QSet<MeshIdType>& cells, const QColor& color,
+                            double opacity, double lineWidth)
+    {
+        if (cells.isEmpty())
+            return;
+        auto ids = vtkSmartPointer<vtkIdList>::New();
+        ids->SetNumberOfIds(cells.size());
+        int index = 0;
+        for (MeshIdType cellId : cells)
+            ids->SetId(index++, static_cast<vtkIdType>(cellId));
+        auto extract = vtkSmartPointer<vtkExtractCells>::New();
+        extract->SetInputData(grid);
+        extract->SetCellList(ids);
+        auto geometry = vtkSmartPointer<vtkGeometryFilter>::New();
+        geometry->SetInputConnection(extract->GetOutputPort());
+        geometry->Update();
+        auto mapper = vtkSmartPointer<vtkDataSetMapper>::New();
+        mapper->SetInputData(geometry->GetOutput());
+        mapper->ScalarVisibilityOff();
+        mapper->SetResolveCoincidentTopologyToPolygonOffset();
+        mapper->SetRelativeCoincidentTopologyPolygonOffsetParameters(-1.0, -1.0);
+        auto actor = vtkSmartPointer<vtkActor>::New();
+        actor->SetMapper(mapper);
+        actor->PickableOff();
+        actor->GetProperty()->SetColor(color.redF(), color.greenF(), color.blueF());
+        actor->GetProperty()->SetOpacity(opacity);
+        actor->GetProperty()->EdgeVisibilityOn();
+        actor->GetProperty()->SetEdgeColor(color.redF(), color.greenF(), color.blueF());
+        actor->GetProperty()->SetLineWidth(lineWidth);
+        visual->addProp(prefix + suffix, actor, QStringLiteral("土石坝"), name, false, false);
+    };
+
+    if (rebuildBaseHighlights)
+    {
+        addHighlight(QStringLiteral("foundation"), QStringLiteral("坝基区域"), foundationCells,
+                     QColor(QStringLiteral("#2F8FB5")), 0.34, 1.5);
+        addHighlight(QStringLiteral("body"), QStringLiteral("坝体区域"), damCells,
+                     QColor(QStringLiteral("#E28A2B")), 0.34, 1.5);
+        m_constructionBaseHighlightSignature = baseSignature;
+    }
+    addHighlight(QStringLiteral("preview"), QStringLiteral("当前查看区域"), previewCells,
+                 QColor(QStringLiteral("#F2D13D")), 0.76, 2.5);
+    visual->render();
 }
 
 void DamAnalysisWidget::initValueEditors()
@@ -86,15 +681,24 @@ void DamAnalysisWidget::initValueEditors()
     m_editFreezeCoefficient =
         addFreezeEdit(QStringLiteral("冻融影响系数"), QStringLiteral("-0.206"),
                       QStringLiteral("editLine32"));
-    m_editFreezeElevation =
-        addFreezeEdit(QStringLiteral("影响高程范围（下限 上限）"),
-                      QStringLiteral("2100.0 2105.0"), QStringLiteral("editLine33"));
-    m_editFreezeCompression =
-        addFreezeEdit(QStringLiteral("抗压强度系数（b c）"), QStringLiteral("2.7110 2.9480"),
-                      QStringLiteral("editLine34"));
-    m_editFreezeTension =
-        addFreezeEdit(QStringLiteral("抗拉强度系数（b c）"), QStringLiteral("24.381 3.1310"),
-                      QStringLiteral("editLine35"));
+    m_editFreezeElevationMin =
+        addFreezeEdit(QStringLiteral("影响高程下限"), QStringLiteral("2100.0"),
+                      QStringLiteral("editFreezeElevationMin"));
+    m_editFreezeElevationMax =
+        addFreezeEdit(QStringLiteral("影响高程上限"), QStringLiteral("2105.0"),
+                      QStringLiteral("editFreezeElevationMax"));
+    m_editFreezeCompressionB =
+        addFreezeEdit(QStringLiteral("抗压强度系数 b"), QStringLiteral("2.7110"),
+                      QStringLiteral("editFreezeCompressionB"));
+    m_editFreezeCompressionC =
+        addFreezeEdit(QStringLiteral("抗压强度系数 c"), QStringLiteral("2.9480"),
+                      QStringLiteral("editFreezeCompressionC"));
+    m_editFreezeTensionB =
+        addFreezeEdit(QStringLiteral("抗拉强度系数 b"), QStringLiteral("24.381"),
+                      QStringLiteral("editFreezeTensionB"));
+    m_editFreezeTensionC =
+        addFreezeEdit(QStringLiteral("抗拉强度系数 c"), QStringLiteral("3.1310"),
+                      QStringLiteral("editFreezeTensionC"));
     m_editIceExpansion =
         addFreezeEdit(QStringLiteral("冰线膨胀率"), QStringLiteral("0.0357"),
                       QStringLiteral("editLine37"));
@@ -133,9 +737,10 @@ void DamAnalysisWidget::initValueEditors()
     m_lineEditors[30] = ui->editLine30;
     m_lineEditors[31] = m_editFreezeCycles;
     m_lineEditors[32] = m_editFreezeCoefficient;
-    m_lineEditors[33] = m_editFreezeElevation;
-    m_lineEditors[34] = m_editFreezeCompression;
-    m_lineEditors[35] = m_editFreezeTension;
+    // 33~35 行在界面中拆成独立参数，导出时由 lineValue() 按原格式重新拼接。
+    m_lineEditors[33] = nullptr;
+    m_lineEditors[34] = nullptr;
+    m_lineEditors[35] = nullptr;
     m_lineEditors[36] = nullptr;
     m_lineEditors[37] = m_editIceExpansion;
     m_lineEditors[38] = nullptr;
@@ -144,21 +749,34 @@ void DamAnalysisWidget::initValueEditors()
 
     ui->comboLine15->setItemData(0, "0");
     ui->comboLine15->setItemData(1, "1");
+    ui->comboLine15->setItemText(0, QStringLiteral("系统统一阻尼"));
+    ui->comboLine15->setItemText(1, QStringLiteral("按材料分别设置阻尼"));
 
     ui->comboLine16->setItemData(0, "0");
     ui->comboLine16->setItemData(1, "1");
+    ui->comboLine16->setItemText(0, QStringLiteral("非瑞雷阻尼"));
+    ui->comboLine16->setItemText(1, QStringLiteral("瑞雷阻尼"));
 
     ui->comboLine19->setItemData(0, "1");
     ui->comboLine19->setItemData(1, "2");
     ui->comboLine19->setItemData(2, "3");
+    ui->comboLine19->setItemText(0, QStringLiteral("仅静力计算"));
+    ui->comboLine19->setItemText(1, QStringLiteral("仅动力计算"));
+    ui->comboLine19->setItemText(2, QStringLiteral("先静力后动力计算"));
 
     ui->comboLine29->setItemData(0, "0");
     ui->comboLine29->setItemData(1, "1");
+    ui->comboLine29->setItemText(0, QStringLiteral("不计算"));
+    ui->comboLine29->setItemText(1, QStringLiteral("计算"));
 
     m_comboMethodIter->setItemData(0, "1");
     m_comboMethodIter->setItemData(1, "2");
     m_comboMethodIter->setItemData(2, "3");
     m_comboMethodIter->setItemData(3, "4");
+    m_comboMethodIter->setItemText(0, QStringLiteral("常刚度法（初应变法）"));
+    m_comboMethodIter->setItemText(1, QStringLiteral("常刚度法（初应力法）"));
+    m_comboMethodIter->setItemText(2, QStringLiteral("变刚度法（切线刚度法）"));
+    m_comboMethodIter->setItemText(3, QStringLiteral("中点增量法（土坝填筑）"));
     m_comboMethodIter->setCurrentIndex(3);
 
     m_comboAxisUp->setItemData(0, "1");
@@ -167,11 +785,22 @@ void DamAnalysisWidget::initValueEditors()
     m_comboAxisDown->setItemData(0, "1");
     m_comboAxisDown->setItemData(1, "2");
     m_comboAxisDown->setItemData(2, "3");
+    for (QComboBox* combo : {m_comboAxisUp, m_comboAxisDown})
+    {
+        combo->setItemText(0, QStringLiteral("X 轴"));
+        combo->setItemText(1, QStringLiteral("Y 轴"));
+        combo->setItemText(2, QStringLiteral("Z 轴"));
+    }
     m_comboAxisUp->setCurrentIndex(0);
     m_comboAxisDown->setCurrentIndex(2);
 
     m_comboIfRock->setItemData(0, "0");
     m_comboIfRock->setItemData(1, "1");
+    m_comboIfRock->setItemText(0, QStringLiteral("优先复用已有基岩状态"));
+    m_comboIfRock->setItemText(1, QStringLiteral("本次重新计算基岩自重"));
+    m_comboIfRock->setCurrentIndex(1);
+    m_comboIfRock->setToolTip(
+        QStringLiteral("首次计算默认重新建立；选择复用但结果不完整时会自动重新计算。"));
     m_comboIfIso->setItemData(0, "0");
     m_comboIfIso->setItemData(1, "1");
     m_comboIfIso->setItemText(0, QStringLiteral("按建模材料计算"));
@@ -203,8 +832,10 @@ void DamAnalysisWidget::initValueEditors()
 void DamAnalysisWidget::updateFreezeThawOptionState()
 {
     const bool enabled = freezeThawEnabled();
-    for (QLineEdit* edit : {m_editFreezeCycles, m_editFreezeCoefficient, m_editFreezeElevation,
-                            m_editFreezeCompression, m_editFreezeTension, m_editIceExpansion})
+    for (QLineEdit* edit : {m_editFreezeCycles, m_editFreezeCoefficient,
+                            m_editFreezeElevationMin, m_editFreezeElevationMax,
+                            m_editFreezeCompressionB, m_editFreezeCompressionC,
+                            m_editFreezeTensionB, m_editFreezeTensionC, m_editIceExpansion})
     {
         if (edit)
             edit->setEnabled(enabled);
@@ -332,6 +963,18 @@ QString DamAnalysisWidget::lineValue(int lineNo) const
                                     m_editIter->text().trimmed());
     if (lineNo == 31 && !freezeThawEnabled())
         return QStringLiteral("0");
+    if (lineNo == 33)
+        return QStringLiteral("%1 %2")
+            .arg(m_editFreezeElevationMin->text().trimmed(),
+                 m_editFreezeElevationMax->text().trimmed());
+    if (lineNo == 34)
+        return QStringLiteral("%1 %2")
+            .arg(m_editFreezeCompressionB->text().trimmed(),
+                 m_editFreezeCompressionC->text().trimmed());
+    if (lineNo == 35)
+        return QStringLiteral("%1 %2")
+            .arg(m_editFreezeTensionB->text().trimmed(),
+                 m_editFreezeTensionC->text().trimmed());
 
     QWidget* w = m_lineEditors.value(lineNo, nullptr);
     if (auto* combo = qobject_cast<QComboBox*>(w))
@@ -355,6 +998,27 @@ void DamAnalysisWidget::setLineValue(int lineNo, const QString& value)
         if (idx >= 0)
             m_comboMethodIter->setCurrentIndex(idx);
         m_editIter->setText(iter);
+        return;
+    }
+    if (lineNo >= 33 && lineNo <= 35)
+    {
+        const QStringList parts =
+            value.trimmed().split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
+        auto setPair = [&parts](QLineEdit* first, QLineEdit* second,
+                                const QString& firstDefault, const QString& secondDefault)
+        {
+            first->setText(parts.value(0, firstDefault));
+            second->setText(parts.value(1, secondDefault));
+        };
+        if (lineNo == 33)
+            setPair(m_editFreezeElevationMin, m_editFreezeElevationMax,
+                    QStringLiteral("2100.0"), QStringLiteral("2105.0"));
+        else if (lineNo == 34)
+            setPair(m_editFreezeCompressionB, m_editFreezeCompressionC,
+                    QStringLiteral("2.7110"), QStringLiteral("2.9480"));
+        else
+            setPair(m_editFreezeTensionB, m_editFreezeTensionC,
+                    QStringLiteral("24.381"), QStringLiteral("3.1310"));
         return;
     }
 
@@ -388,6 +1052,17 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
         if (errorMessage)
             *errorMessage = message;
     };
+
+    if (m_constructionLayerUiDirty)
+    {
+        setError(QStringLiteral("尚未完成坝体施工分层，请为每个区域指定坝基或坝体。"));
+        return false;
+    }
+    if (constructionLayerRange().first != 2)
+    {
+        setError(QStringLiteral("尚未完成坝体施工分层，请先指定坝基和坝体。"));
+        return false;
+    }
 
     static const QSet<int> oneTokenLines = {10, 15, 16, 17, 18, 19, 21, 22, 23, 24,
                                            25, 26, 27, 28, 29, 30, 31, 32, 37};
@@ -482,9 +1157,9 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
         return false;
     }
 
-    const QStringList elevationRange = m_editFreezeElevation->text().trimmed().split(
-        QRegularExpression("\\s+"), Qt::SkipEmptyParts);
-    if (freezeThawEnabled() && elevationRange.at(0).toDouble() > elevationRange.at(1).toDouble())
+    if (freezeThawEnabled() &&
+        m_editFreezeElevationMin->text().toDouble() >
+            m_editFreezeElevationMax->text().toDouble())
     {
         setError("冻融影响高程下限不能大于上限。");
         return false;
@@ -555,7 +1230,26 @@ bool DamAnalysisWidget::exportIfillDatFile(int mcase, const QString& cycleSectio
               .arg(m_comboAxisUp->currentData().toString(),
                    m_comboAxisDown->currentData().toString())
               << "    IXUPDW IYUPDW XAMID YAMID XBMID YBMID\n";
-    os << QString("%1 %2").arg(m_comboIfRock->currentData().toString(),
+    QString rockSelfWeightMode = m_comboIfRock->currentData().toString();
+    if (rockSelfWeightMode == QStringLiteral("0"))
+    {
+        const QDir rockStateDir(wd.filePath(QStringLiteral("DISK00")));
+        const QStringList requiredStateFiles = {
+            QStringLiteral("IIDISP.TXT"),
+            QStringLiteral("ISGMAR.TXT"),
+            QStringLiteral("IIICMM.TXT")};
+        const bool completeState =
+            std::all_of(requiredStateFiles.cbegin(), requiredStateFiles.cend(),
+                        [&rockStateDir](const QString& fileName)
+                        {
+                            const QFileInfo info(rockStateDir.filePath(fileName));
+                            return info.isFile() && info.size() > 0;
+                        });
+        if (!completeState)
+            rockSelfWeightMode = QStringLiteral("1");
+    }
+
+    os << QString("%1 %2").arg(rockSelfWeightMode,
                                m_comboIfIso->currentData().toString())
               << "    IFROCK IFISO\n";
 

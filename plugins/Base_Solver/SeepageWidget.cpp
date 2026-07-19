@@ -44,10 +44,10 @@ SeepageWidget::SeepageWidget(QWidget* parent)
     ui->setupUi(this);
     SolverUiLayoutHelper::polishPage(this);
     connect(ui->btnCompute, &QPushButton::clicked, this, &SeepageWidget::onComputeClicked);
-    connect(ui->btnGlobalMappings, &QPushButton::clicked, this,
-            &SeepageWidget::onEditGlobalMappingsClicked);
     connect(ui->btnHwDropCurves, &QPushButton::clicked, this,
             &SeepageWidget::onEditHwDropCurvesClicked);
+    ui->labelGlobalMappings->hide();
+    ui->btnGlobalMappings->hide();
 
     ui->comboComputeType->addItem("仅进行稳定渗流计算", 1);
     ui->comboComputeType->addItem("仅进行非稳定渗流计算", 2);
@@ -192,8 +192,6 @@ bool SeepageWidget::exportIseepDatFile() const
     const QString seepCaseDirName = QStringLiteral("SEEPCASE01");
     const QString seepCaseDirAbs = ensureTrailingSep(wd.filePath(seepCaseDirName));
 
-    const int globalNchange = globalMappings_.size();
-
     QFile file(wd.filePath("ISEEP.DAT"));
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
     {
@@ -226,12 +224,7 @@ bool SeepageWidget::exportIseepDatFile() const
     os << "'" << ui->comboComputeType->currentData().toInt() << "'\n";
     os << "'------------'\n";
 
-    os << globalNchange << "     NCHANGE\n";
-    for (int i = 0; i < globalNchange; ++i)
-    {
-        os << globalMappings_[i].oldMaterial << " " << globalMappings_[i].newMaterial << " "
-           << (i + 1) << "   MOLD MNEW II\n";
-    }
+    os << "0     NCHANGE\n";
 
     os << "1     MCASE\n";
     os << "1 1   JISUAN CASE  II\n";
@@ -286,69 +279,6 @@ bool SeepageWidget::exportHwDropDatFiles(const QString& seepCaseDirName) const
 
     return writeCurve(QStringLiteral("HWDROP_UP.DAT"), true) &&
            writeCurve(QStringLiteral("HWDROP_DW.DAT"), false);
-}
-
-void SeepageWidget::onEditGlobalMappingsClicked()
-{
-    QDialog dialog(this);
-    dialog.setWindowTitle(QStringLiteral("设置渗流材料变换"));
-    dialog.resize(560, 360);
-    auto* layout = new QVBoxLayout(&dialog);
-
-    auto* table = new QTableWidget(&dialog);
-    table->setColumnCount(2);
-    table->setHorizontalHeaderLabels({QStringLiteral("原材料号"),
-                                      QStringLiteral("变换后材料号")});
-    table->setRowCount(qMax(1, globalMappings_.size()));
-    for (int row = 0; row < globalMappings_.size(); ++row)
-    {
-        table->setItem(row, 0,
-                       new QTableWidgetItem(QString::number(globalMappings_[row].oldMaterial)));
-        table->setItem(row, 1,
-                       new QTableWidgetItem(QString::number(globalMappings_[row].newMaterial)));
-    }
-    table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    layout->addWidget(table);
-
-    auto* editButtons = new QHBoxLayout();
-    auto* addButton = new QPushButton(QStringLiteral("新增一行"), &dialog);
-    auto* removeButton = new QPushButton(QStringLiteral("删除选中行"), &dialog);
-    editButtons->addWidget(addButton);
-    editButtons->addWidget(removeButton);
-    editButtons->addStretch();
-    layout->addLayout(editButtons);
-    connect(addButton, &QPushButton::clicked, &dialog,
-            [table]() { table->insertRow(table->rowCount()); });
-    connect(removeButton, &QPushButton::clicked, &dialog,
-            [table]()
-            {
-                const int row = table->currentRow();
-                if (row >= 0)
-                    table->removeRow(row);
-            });
-
-    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
-                                         &dialog);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addWidget(buttons);
-
-    if (dialog.exec() != QDialog::Accepted)
-        return;
-
-    QVector<MaterialMapping> mappings;
-    for (int row = 0; row < table->rowCount(); ++row)
-    {
-        const auto* oldItem = table->item(row, 0);
-        const auto* newItem = table->item(row, 1);
-        bool oldOk = false;
-        bool newOk = false;
-        const int oldMaterial = oldItem ? oldItem->text().trimmed().toInt(&oldOk) : 0;
-        const int newMaterial = newItem ? newItem->text().trimmed().toInt(&newOk) : 0;
-        if (oldOk && newOk && oldMaterial > 0 && newMaterial > 0)
-            mappings.push_back({oldMaterial, newMaterial});
-    }
-    globalMappings_ = mappings;
 }
 
 void SeepageWidget::onEditHwDropCurvesClicked()
@@ -432,15 +362,6 @@ QJsonObject SeepageWidget::saveJson()
     obj["natural_free_surface"] = ui->checkNaturalFreeSurface->isChecked();
     obj["drain_well"] = ui->checkDrainWell->isChecked();
     obj["compute_type"] = ui->comboComputeType->currentData().toInt();
-    QJsonArray globalMappingsArray;
-    for (const auto& mapping : std::as_const(globalMappings_))
-    {
-        QJsonObject rowObj;
-        rowObj["old"] = mapping.oldMaterial;
-        rowObj["new"] = mapping.newMaterial;
-        globalMappingsArray.append(rowObj);
-    }
-    obj["global_mappings_table"] = globalMappingsArray;
     obj["iter"] = ui->spinIter->value();
     obj["itag_free"] = ui->comboItagFree->currentData().toInt();
     obj["seep_case_dir"] = QStringLiteral("SEEPCASE01");
@@ -482,14 +403,6 @@ void SeepageWidget::loadJson(const QJsonObject& obj)
     if (computeTypeIndex < 0)
         computeTypeIndex = 0;
     ui->comboComputeType->setCurrentIndex(computeTypeIndex);
-    const QJsonArray globalMappingsArray = obj.value("global_mappings_table").toArray();
-    globalMappings_.clear();
-    for (int r = 0; r < globalMappingsArray.size(); ++r)
-    {
-        const QJsonObject rowObj = globalMappingsArray.at(r).toObject();
-        globalMappings_.push_back(
-            {rowObj.value("old").toInt(), rowObj.value("new").toInt()});
-    }
     ui->spinIter->setValue(obj.value("iter").toInt(ui->spinIter->value()));
     const int itagFree = obj.value("itag_free").toInt(ui->comboItagFree->currentData().toInt());
     int itagIndex = ui->comboItagFree->findData(itagFree);

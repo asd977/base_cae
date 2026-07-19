@@ -10,6 +10,8 @@
 class CaveSupportComputationPage;
 class CaveExcavationBodyPage;
 class CaveBlockPlanePage;
+class CaveExcavationWidget;
+class DamAnalysisWidget;
 class QWidget;
 
 class Solver : public QObject, public SolverService
@@ -42,12 +44,17 @@ class Solver : public QObject, public SolverService
     void initAction();
     void initTreeMenu();
     void setupNodeRole(ProjectNode* node, const QString& kind) const;
+    void connectCaveOverview(CaveExcavationWidget* page, ProjectNode* analysisNode) const;
     ProjectNode* findChildByPageType(ProjectNode* parent, const QString& pageType) const;
     bool canDeleteNode(ProjectNode* node) const;
+    void moveNodeByUuid(const QString& uuid, int direction);
+    void normalizeChildNodeOrder(ProjectNode* parent) const;
+    void refreshRootOverview() const;
     void connectBoundaryStatus(ProjectNode* node) const;
     void syncSeepageConditionalNodes(ProjectNode* analysisNode) const;
     void syncDamConditionalNodes(ProjectNode* analysisNode) const;
-    void updateBoundaryNodeStatus(ProjectNode* node, int selectionCount) const;
+    void updateBoundaryNodeStatus(ProjectNode* node, int selectionCount, bool enabled = true,
+                                  const QString& disabledReason = {}) const;
     int countFillStorageCycles(ProjectNode* analysisNode) const;
     int countGeoStressChildren(ProjectNode* geostressNode, const QString& pageType) const;
     int minimumGeoStressSideFaceCount() const;
@@ -55,11 +62,11 @@ class Solver : public QObject, public SolverService
     void syncChildNodeNames(ProjectNode* parent) const;
     void renameNodeByUuid(const QString& uuid);
     void syncDamAnalysisMCase(ProjectNode* analysisNode) const;
+    void connectDamLayerUpdates(DamAnalysisWidget* page, ProjectNode* analysisNode) const;
     void addFillStorageCycleNode(ProjectNode* analysisNode, bool setCurrent) const;
     void addGeoStressRegressionNode(ProjectNode* analysisNode, bool setCurrent);
     void addCaveSupportComputationNode(ProjectNode* analysisNode, bool setCurrent);
     void addCaveExcavationBodyNode(ProjectNode* supportNode, bool setCurrent) const;
-    void addCaveBlockStabilityNode(ProjectNode* analysisNode, bool setCurrent);
     void addCaveBlockPlaneNode(ProjectNode* blockNode, bool setCurrent) const;
     void addGeoStressSideFaceNode(ProjectNode* geostressNode, bool setCurrent) const;
     void addGeoStressMeasurePointNode(ProjectNode* geostressNode, bool setCurrent) const;
@@ -85,7 +92,8 @@ class Solver : public QObject, public SolverService
     bool updateIiiDirDat(const QString& projectDir, int solverMode) const;
     bool updateCaveBlockIiiDirDat(const QString& sliderDir) const;
     bool updatePrepDatFiles(const QString& projectDir, int solverMode, int verticalAxis) const;
-    bool forceSlopeIiinLayersToOne(const QString& projectDir) const;
+    bool normalizeGeoStressSolidLayers(QString* errorMessage) const;
+    bool forceIiinLayersToOne(const QString& analysisDir) const;
     void removeNodeByUuid(const QString& uuid);
     void deleteNodeRecursively(ProjectNode* node) const;
 

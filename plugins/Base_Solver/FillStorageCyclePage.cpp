@@ -1,11 +1,18 @@
 #include "FillStorageCyclePage.h"
 
+#include <PickManager.h>
+#include <PublicConstants.h>
+#include <PublicVariables.h>
 #include <ServiceRegistry.h>
 #include <services/MaterialManagerService.h>
+#include <services/MeshModuleControllerService.h>
 
+#include <QAbstractItemView>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QFontMetrics>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QPushButton>
 #include <QVBoxLayout>
@@ -13,18 +20,45 @@
 #include <QItemSelectionModel>
 #include <QJsonArray>
 #include <QLineEdit>
+#include <QLabel>
+#include <QMessageBox>
+#include <QSet>
+#include <QSignalBlocker>
+#include <QStyle>
+#include <QStyleOptionHeader>
 #include <QTableWidget>
 #include <QWidget>
 
 #include "ui_FillStorageCyclePage.h"
 
 #include "SolverUiLayoutHelper.h"
+
+namespace
+{
+constexpr int FIRST_COMPUTABLE_MATYPE = 2;
+constexpr int MAX_MATERIAL_RELATIONS = 300;
+
+int currentDomainDimension()
+{
+    const int meshDimension =
+        PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    return meshDimension == 3 ? 3 : 2;
+}
+
+DomainKey materialDomainKey(int matype)
+{
+    if (matype < FIRST_COMPUTABLE_MATYPE)
+        return DomainKey{};
+    return DomainKey{QStringLiteral("MATYPE"), currentDomainDimension(), matype};
+}
+}
+
 FillStorageCyclePage::FillStorageCyclePage(QWidget* parent)
     : BasePage("FillStorageCycle"), ui(new Ui::FillStorageCyclePage)
 {
     ui->setupUi(this);
-    SolverUiLayoutHelper::polishPage(this);
     initValueEditors();
+    SolverUiLayoutHelper::polishPage(this);
     updatePreview();
 }
 
@@ -35,10 +69,34 @@ FillStorageCyclePage::~FillStorageCyclePage()
 
 void FillStorageCyclePage::beforeLoad()
 {
+    m_materialHighlightActive = true;
+    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Domain);
+    refreshMaterialMappingOptions(m_wetTable);
+    refreshMaterialMappingOptions(m_dynamicMaterialTable);
+
+    const bool wetEnabled = valueOf(QStringLiteral("IFWET")) == QStringLiteral("1");
+    QTableWidget* table = nullptr;
+    if (wetEnabled && m_wetTable)
+        table = m_wetTable;
+    else if (m_dynamicOptionsAvailable && m_dynamicMaterialTable)
+        table = m_dynamicMaterialTable;
+    if (table && table->rowCount() > 0)
+    {
+        table->setCurrentCell(qMax(0, table->currentRow()), 0);
+        refreshMaterialMappingHighlight(table, table->currentRow());
+    }
+    else
+    {
+        clearMaterialMappingHighlight();
+    }
 }
 
 void FillStorageCyclePage::beforeUnload()
 {
+    clearMaterialMappingHighlight();
+    PickManager::instance().clearDomainSelection(getPageType(), m_uuid);
+    PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Domain);
+    m_materialHighlightActive = false;
 }
 
 void FillStorageCyclePage::initValueEditors()
@@ -85,14 +143,46 @@ void FillStorageCyclePage::initValueEditors()
     ui->comboIFWAVE->setItemData(1, "1");
     ui->comboIFSETT->setItemData(0, "0");
     ui->comboIFSETT->setItemData(1, "1");
+    ui->groupWet->setChecked(
+        ui->comboIFWET->currentData().toString() == QStringLiteral("1"));
+    ui->groupDrop->setChecked(
+        ui->comboIFDROP->currentData().toString() == QStringLiteral("1"));
     ui->comboIFIIWL_SEEP->setItemText(2, QStringLiteral("读取节点水头并施加面力"));
     ui->comboIFIIWL_BODY->setItemText(2, QStringLiteral("读取节点体力"));
     ui->labelWOMI1->setText(QStringLiteral("流变初始参数"));
 
+    connect(ui->groupWet, &QGroupBox::toggled, this,
+            [this](bool checked)
+            {
+                const int index = checked ? 1 : 0;
+                if (ui->comboIFWET->currentIndex() != index)
+                    ui->comboIFWET->setCurrentIndex(index);
+            });
+    connect(ui->groupDrop, &QGroupBox::toggled, this,
+            [this](bool checked)
+            {
+                const int index = checked ? 1 : 0;
+                if (ui->comboIFDROP->currentIndex() != index)
+                    ui->comboIFDROP->setCurrentIndex(index);
+            });
     connect(ui->comboIFWET, qOverload<int>(&QComboBox::currentIndexChanged), this,
-            [this]() { updateConditionalVisibility(); });
+            [this]()
+            {
+                const bool checked =
+                    ui->comboIFWET->currentData().toString() == QStringLiteral("1");
+                if (ui->groupWet->isChecked() != checked)
+                    ui->groupWet->setChecked(checked);
+                updateConditionalVisibility();
+            });
     connect(ui->comboIFDROP, qOverload<int>(&QComboBox::currentIndexChanged), this,
-            [this]() { updateConditionalVisibility(); });
+            [this]()
+            {
+                const bool checked =
+                    ui->comboIFDROP->currentData().toString() == QStringLiteral("1");
+                if (ui->groupDrop->isChecked() != checked)
+                    ui->groupDrop->setChecked(checked);
+                updateConditionalVisibility();
+            });
     connect(ui->comboIFMODE, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this]() { updateConditionalVisibility(); });
     connect(ui->comboIFWAVE, qOverload<int>(&QComboBox::currentIndexChanged), this,
@@ -107,30 +197,49 @@ void FillStorageCyclePage::initValueEditors()
                 [this]() { emit requirementsChanged(); });
     }
 
-    auto mkTable = [this](const QStringList& headers)
+    auto mkTable = [this](const QStringList& headers, bool dataOnly = true)
     {
         auto* t = new QTableWidget(this);
         t->setColumnCount(headers.size());
         t->setHorizontalHeaderLabels(headers);
-        t->hide(); // 仅作为后台数据容器，避免显示在页面左上角
+        if (dataOnly)
+            t->hide();
         return t;
     };
 
-    m_wetTable = mkTable({"原材料号", "湿化后材料号"});
-    m_dropTable = mkTable({"骤降前水位", "骤降后水位"});
-    m_circleTable = mkTable({"填筑开始级", "填筑结束级", "填筑结束后流变时间", "初始蓄水高程", "本级蓄水高程",
+    m_wetTable = mkTable({"坝体当前材料", "浸润后材料"}, false);
+    m_dynamicMaterialTable = mkTable({"网格静力材料", "动力本构材料"}, false);
+    m_dropTable = mkTable({"骤降前水位", "骤降后水位"}, false);
+    m_circleTable = mkTable({"填筑开始层", "填筑结束层", "填筑结束后流变时间", "初始蓄水高程", "本阶段蓄水高程",
                              "蓄水结束后流变时间", "是否填筑", "是否填筑期流变", "是否蓄水",
-                             "是否蓄水期流变", "节点水头数据", "节点体力数据"});
+                             "是否蓄水期流变", "节点水头数据（可选）", "节点体力数据（可选）"});
 
-    m_wetTable->setRowCount(1);
-    m_wetTable->setItem(0, 0, new QTableWidgetItem("1"));
-    m_wetTable->setItem(0, 1, new QTableWidgetItem("1"));
+    m_wetTable->setRowCount(0);
     m_wetTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    m_wetTable->verticalHeader()->hide();
+    m_wetTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_wetTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_wetTable->setToolTip(QStringLiteral("湿化计算时使用的材料对应关系"));
+    m_wetTable->setAlternatingRowColors(true);
+    m_dynamicMaterialTable->setRowCount(0);
+    m_dynamicMaterialTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    m_dynamicMaterialTable->verticalHeader()->hide();
+    m_dynamicMaterialTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_dynamicMaterialTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_dynamicMaterialTable->setToolTip(
+        QStringLiteral("仅在本阶段启用动力或地震波动计算时使用"));
+    m_dynamicMaterialTable->setAlternatingRowColors(true);
 
     m_dropTable->setRowCount(1);
     m_dropTable->setItem(0, 0, new QTableWidgetItem("3200.000"));
     m_dropTable->setItem(0, 1, new QTableWidgetItem("3160.000"));
     m_dropTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    m_dropTable->verticalHeader()->hide();
+    m_dropTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_dropTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_dropTable->setAlternatingRowColors(true);
+    m_dropTable->setMinimumHeight(108);
+    m_dropTable->setMaximumHeight(180);
 
     m_circleTable->setRowCount(1);
     const QStringList defaults = {"2", "9", "0.0000", "0.0000", "28.0000", "0.0000", "1", "0",
@@ -140,14 +249,23 @@ void FillStorageCyclePage::initValueEditors()
     m_circleTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
 
     connect(m_wetTable, &QTableWidget::cellChanged, this, [this]() { updatePreview(); });
+    connect(m_dynamicMaterialTable, &QTableWidget::cellChanged, this,
+            [this]() { updatePreview(); });
+    connect(m_wetTable, &QTableWidget::currentCellChanged, this,
+            [this](int currentRow, int, int, int)
+            { refreshMaterialMappingHighlight(m_wetTable, currentRow); });
+    connect(m_dynamicMaterialTable, &QTableWidget::currentCellChanged, this,
+            [this](int currentRow, int, int, int)
+            { refreshMaterialMappingHighlight(m_dynamicMaterialTable, currentRow); });
     connect(m_dropTable, &QTableWidget::cellChanged, this, [this]() { updatePreview(); });
     connect(m_circleTable, &QTableWidget::cellChanged, this, [this]() { updatePreview(); });
 
     auto openEditor = [this](QTableWidget* src, const QString& title)
     {
+        const bool isCircleTable = (src == m_circleTable);
         QDialog dlg(this);
         dlg.setWindowTitle(title);
-        dlg.resize(900, 420);
+        dlg.resize(isCircleTable ? 980 : 900, isCircleTable ? 520 : 420);
         auto* layout = new QVBoxLayout(&dlg);
         auto* table = new QTableWidget(&dlg);
         table->setColumnCount(src->columnCount());
@@ -157,11 +275,49 @@ void FillStorageCyclePage::initValueEditors()
         table->setHorizontalHeaderLabels(headers);
         table->setRowCount(src->rowCount());
         for (int r = 0; r < src->rowCount(); ++r)
+        {
             for (int c = 0; c < src->columnCount(); ++c)
-                table->setItem(r, c, new QTableWidgetItem(tableItemText(src, r, c, QString())));
-        table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+            {
+                QString value = tableItemText(src, r, c, QString());
+                if (isCircleTable && c >= 10 &&
+                    (value.compare(QStringLiteral("NONE"), Qt::CaseInsensitive) == 0 ||
+                     value.compare(QStringLiteral("'NONE'"), Qt::CaseInsensitive) == 0))
+                {
+                    value.clear();
+                }
+                table->setItem(r, c, new QTableWidgetItem(value));
+            }
+        }
+        if (isCircleTable)
+        {
+            QHeaderView* header = table->horizontalHeader();
+            header->setSectionResizeMode(QHeaderView::Interactive);
+            header->setStretchLastSection(false);
+            header->setMinimumSectionSize(48);
+            table->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
+            table->setWordWrap(false);
+            table->setTextElideMode(Qt::ElideNone);
 
-        const bool isCircleTable = (src == m_circleTable);
+            // 只按完整表头计算列宽，并交给当前 Qt 样式补足内边距。
+            const QFontMetrics metrics(header->font());
+            for (int column = 0; column < headers.size(); ++column)
+            {
+                QStyleOptionHeader option;
+                option.initFrom(header);
+                option.text = headers.at(column);
+                const QSize textSize(metrics.horizontalAdvance(option.text), metrics.height());
+                const int headerWidth = header->style()->sizeFromContents(
+                    QStyle::CT_HeaderSection, &option, textSize, header).width() + 2;
+                table->setColumnWidth(column, qMax(header->minimumSectionSize(), headerWidth));
+            }
+        }
+        else
+        {
+            table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+        }
+        table->setSelectionBehavior(QAbstractItemView::SelectRows);
+        table->setSelectionMode(QAbstractItemView::SingleSelection);
+
         auto setCircleCombo = [table](int row, int col, const QString& val)
         {
             auto* cb = new QComboBox(table);
@@ -183,31 +339,84 @@ void FillStorageCyclePage::initValueEditors()
         layout->addWidget(table);
 
         auto* btnRow = new QHBoxLayout();
-        auto* btnAdd = new QPushButton("新增一行", &dlg);
-        auto* btnDel = new QPushButton("删除选中行", &dlg);
+        auto* btnAdd = new QPushButton(isCircleTable ? QStringLiteral("新增阶段")
+                                                     : QStringLiteral("新增一行"),
+                                       &dlg);
+        auto* btnDel = new QPushButton(isCircleTable ? QStringLiteral("删除阶段")
+                                                     : QStringLiteral("删除选中行"),
+                                       &dlg);
         btnRow->addWidget(btnAdd);
         btnRow->addWidget(btnDel);
         btnRow->addStretch();
         layout->addLayout(btnRow);
 
-        connect(btnAdd, &QPushButton::clicked, &dlg, [table, isCircleTable, setCircleCombo]() {
+        connect(btnAdd, &QPushButton::clicked, &dlg, [this, table, isCircleTable, setCircleCombo]() {
             const int row = table->rowCount();
             table->insertRow(row);
             if (isCircleTable)
             {
+                int firstLayer = 2;
+                double initialElevation = 0.0;
+                if (row > 0)
+                {
+                    bool layerOk = false;
+                    const int previousEnd = tableItemText(
+                        table, row - 1, 1, QStringLiteral("1")).toInt(&layerOk);
+                    firstLayer = layerOk ? qMax(2, previousEnd + 1) : 2;
+                    initialElevation = tableItemText(
+                        table, row - 1, 4, QStringLiteral("0")).toDouble();
+                }
+                const QStringList defaults = {
+                    QString::number(firstLayer), QString::number(firstLayer),
+                    QStringLiteral("0.0000"), QString::number(initialElevation, 'f', 4),
+                    QString::number(initialElevation, 'f', 4), QStringLiteral("0.0000"),
+                    QStringLiteral("1"), QStringLiteral("0"), QStringLiteral("1"),
+                    QStringLiteral("0"), QString(), QString()};
+                for (int column = 0; column < defaults.size(); ++column)
+                    table->setItem(row, column, new QTableWidgetItem(defaults.at(column)));
                 for (int c : {6, 7, 8, 9})
-                    setCircleCombo(row, c, "0");
+                    setCircleCombo(row, c, defaults.at(c));
             }
         });
-        connect(btnDel, &QPushButton::clicked, &dlg, [table]() {
+        connect(btnDel, &QPushButton::clicked, &dlg, [table, isCircleTable, &dlg]() {
+            if (isCircleTable && table->rowCount() <= 1)
+            {
+                QMessageBox::information(&dlg, QStringLiteral("无法删除"),
+                                         QStringLiteral("至少需要保留一个填筑蓄水阶段。"));
+                return;
+            }
             const auto rows = table->selectionModel()->selectedRows();
             for (int i = rows.size() - 1; i >= 0; --i)
                 table->removeRow(rows.at(i).row());
         });
 
         auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+        buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("应用"));
+        buttons->button(QDialogButtonBox::Cancel)->setText(QStringLiteral("取消"));
         layout->addWidget(buttons);
-        connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::accepted, &dlg,
+                [this, table, isCircleTable, &dlg]()
+                {
+                    if (isCircleTable)
+                    {
+                        for (int row = 0; row < table->rowCount(); ++row)
+                        {
+                            bool firstOk = false;
+                            bool lastOk = false;
+                            const int first = tableItemText(table, row, 0, QString()).toInt(&firstOk);
+                            const int last = tableItemText(table, row, 1, QString()).toInt(&lastOk);
+                            if (!firstOk || !lastOk || first < 2 || last < first)
+                            {
+                                QMessageBox::warning(
+                                    &dlg, QStringLiteral("阶段设置不完整"),
+                                    QStringLiteral("第 %1 个阶段的填筑层范围无效，请设置为从第 2 层开始且结束层不小于开始层。")
+                                        .arg(row + 1));
+                                return;
+                            }
+                        }
+                    }
+                    dlg.accept();
+                });
         connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
 
         if (dlg.exec() != QDialog::Accepted)
@@ -218,7 +427,14 @@ void FillStorageCyclePage::initValueEditors()
         {
             for (int c = 0; c < table->columnCount(); ++c)
             {
-                const QString val = tableItemText(table, r, c, QString());
+                QString val = tableItemText(table, r, c, QString());
+                if (isCircleTable && c >= 10)
+                {
+                    if (val.isEmpty() || val == QStringLiteral("无"))
+                        val = QStringLiteral("'NONE'");
+                    else if (!val.startsWith(QLatin1Char('\'')))
+                        val = QStringLiteral("'%1'").arg(val);
+                }
                 if (src->item(r, c))
                     src->item(r, c)->setText(val);
                 else
@@ -228,32 +444,131 @@ void FillStorageCyclePage::initValueEditors()
         updatePreview();
     };
 
+    ui->btnEditWet->setText(QStringLiteral("新增关系"));
+    m_removeWetMaterialButton = new QPushButton(QStringLiteral("删除选中"), this);
+    ui->layoutWet->insertWidget(1, m_removeWetMaterialButton);
     connect(ui->btnEditWet, &QPushButton::clicked, this,
-            [openEditor, this]() { openEditor(m_wetTable, "编辑干湿材料对应表"); });
+            [this]() { addMaterialMappingRow(m_wetTable); });
+    connect(m_removeWetMaterialButton, &QPushButton::clicked, this,
+            [this]() { removeSelectedMaterialMapping(m_wetTable); });
+    ui->layoutWetMapping->addWidget(m_wetTable);
+    ui->btnEditDrop->setText(QStringLiteral("新增水位"));
+    m_removeDropButton = new QPushButton(QStringLiteral("删除选中"), this);
+    ui->layoutDrop->insertWidget(1, m_removeDropButton);
+    ui->layoutDropMain->addWidget(m_dropTable);
     connect(ui->btnEditDrop, &QPushButton::clicked, this,
-            [openEditor, this]() { openEditor(m_dropTable, "编辑骤降前后水位表"); });
+            [this]()
+            {
+                const int row = m_dropTable->rowCount();
+                m_dropTable->insertRow(row);
+                QString before = QStringLiteral("3200.000");
+                QString after = QStringLiteral("3160.000");
+                if (row > 0)
+                {
+                    after = tableItemText(m_dropTable, row - 1, 1, after);
+                    before = after;
+                }
+                m_dropTable->setItem(row, 0, new QTableWidgetItem(before));
+                m_dropTable->setItem(row, 1, new QTableWidgetItem(after));
+                m_dropTable->setCurrentCell(row, 0);
+                m_dropTable->editItem(m_dropTable->item(row, 0));
+                updatePreview();
+                updateConditionalVisibility();
+            });
+    connect(m_removeDropButton, &QPushButton::clicked, this,
+            [this]()
+            {
+                if (m_dropTable->rowCount() <= 1)
+                {
+                    QMessageBox::information(this, QStringLiteral("无法删除"),
+                                             QStringLiteral("至少保留一组水位。"));
+                    return;
+                }
+                int row = m_dropTable->currentRow();
+                if (row < 0)
+                    row = m_dropTable->rowCount() - 1;
+                m_dropTable->removeRow(row);
+                updatePreview();
+                updateConditionalVisibility();
+            });
     connect(ui->btnEditCircle, &QPushButton::clicked, this,
-            [openEditor, this]() { openEditor(m_circleTable, "编辑填筑-蓄水周期表"); });
+            [openEditor, this]() { openEditor(m_circleTable, "编辑填筑与蓄水周期表"); });
 
+    m_dynamicMaterialGroup =
+        new QGroupBox(QStringLiteral("动力材料对应"), this);
+    auto* dynamicMaterialGroupLayout = new QVBoxLayout(m_dynamicMaterialGroup);
+    dynamicMaterialGroupLayout->setContentsMargins(9, 9, 9, 9);
+    dynamicMaterialGroupLayout->setSpacing(6);
+    m_dynamicMaterialHint = new QLabel(
+        QStringLiteral("提示：需启用拟静力或地震波动。"),
+        m_dynamicMaterialGroup);
+    m_dynamicMaterialHint->setWordWrap(true);
+    dynamicMaterialGroupLayout->addWidget(m_dynamicMaterialHint);
+    m_dynamicMaterialControls = new QWidget(m_dynamicMaterialGroup);
+    auto* dynamicMappingLayout = new QHBoxLayout(m_dynamicMaterialControls);
+    dynamicMappingLayout->setContentsMargins(0, 0, 0, 0);
+    m_addDynamicMaterialButton = new QPushButton(QStringLiteral("新增关系"), m_dynamicMaterialControls);
+    m_removeDynamicMaterialButton = new QPushButton(QStringLiteral("删除选中"), m_dynamicMaterialControls);
+    m_dynamicMaterialSummary = new QLabel(m_dynamicMaterialControls);
+    dynamicMappingLayout->addWidget(m_addDynamicMaterialButton);
+    dynamicMappingLayout->addWidget(m_removeDynamicMaterialButton);
+    dynamicMappingLayout->addWidget(m_dynamicMaterialSummary);
+    dynamicMappingLayout->addStretch();
+    dynamicMaterialGroupLayout->addWidget(m_dynamicMaterialControls);
+    dynamicMaterialGroupLayout->addWidget(m_dynamicMaterialTable);
+    const int dynamicGroupIndex = ui->verticalLayoutContent->indexOf(ui->groupDynamic);
+    ui->verticalLayoutContent->insertWidget(
+        dynamicGroupIndex >= 0 ? dynamicGroupIndex + 1 : ui->verticalLayoutContent->count(),
+        m_dynamicMaterialGroup);
+    connect(m_addDynamicMaterialButton, &QPushButton::clicked, this,
+            [this]() { addMaterialMappingRow(m_dynamicMaterialTable); });
+    connect(m_removeDynamicMaterialButton, &QPushButton::clicked, this,
+            [this]() { removeSelectedMaterialMapping(m_dynamicMaterialTable); });
+
+    updateMaterialTableHeight(m_wetTable);
+    updateMaterialTableHeight(m_dynamicMaterialTable);
     updateConditionalVisibility();
 }
 
 void FillStorageCyclePage::updateConditionalVisibility()
 {
     SolverUiLayoutHelper::StableLayoutUpdate stableLayout(this);
-    ui->groupDynamic->setVisible(m_dynamicOptionsAvailable);
+    ui->groupDynamic->setVisible(true);
+    ui->labelDynamicHint->setVisible(!m_dynamicOptionsAvailable);
+    if (!m_dynamicOptionsAvailable)
+        ui->labelDynamicHint->setText(QStringLiteral("提示：需先启用动力计算。"));
+    ui->groupDynamic->setEnabled(m_dynamicOptionsAvailable);
 
-    const bool wetEnabled = ui->comboIFWET->currentData().toString() == QStringLiteral("1");
-    const bool dropEnabled = ui->comboIFDROP->currentData().toString() == QStringLiteral("1");
-    // 关闭功能时保留已填写的数据，但不再让无关表格占据页面。
-    ui->btnEditWet->setVisible(wetEnabled);
-    ui->labelWetRows->setVisible(wetEnabled);
-    ui->btnEditDrop->setVisible(dropEnabled);
-    ui->labelDropRows->setVisible(dropEnabled);
+    const bool wetEnabled = ui->groupWet->isChecked();
+    const bool dropEnabled = ui->groupDrop->isChecked();
+    ui->btnEditWet->setEnabled(wetEnabled);
+    if (m_removeWetMaterialButton)
+        m_removeWetMaterialButton->setEnabled(wetEnabled && m_wetTable &&
+                                              m_wetTable->rowCount() > 0);
+    ui->labelWetRows->setEnabled(wetEnabled);
+    if (m_wetTable)
+    {
+        m_wetTable->setVisible(true);
+        m_wetTable->setEnabled(wetEnabled);
+    }
+    ui->btnEditDrop->setVisible(true);
+    ui->btnEditDrop->setEnabled(dropEnabled);
+    if (m_removeDropButton)
+        m_removeDropButton->setEnabled(dropEnabled && m_dropTable &&
+                                       m_dropTable->rowCount() > 1);
+    ui->labelDropRows->setVisible(true);
+    ui->labelDropRows->setEnabled(dropEnabled);
+    if (m_dropTable)
+    {
+        m_dropTable->setVisible(true);
+        m_dropTable->setEnabled(dropEnabled);
+    }
 
     const bool modeEnabled = ui->comboIFMODE->currentData().toString() == QStringLiteral("1");
     const bool waveEnabled = ui->comboIFWAVE->currentData().toString() == QStringLiteral("1");
     const bool creepEnabled = ui->comboIFSETT->currentData().toString() == QStringLiteral("1");
+    const bool dynamicMaterialMappingEnabled =
+        m_dynamicOptionsAvailable && (modeEnabled || waveEnabled);
     const bool showTime = m_dynamicOptionsAvailable &&
                           (modeEnabled || waveEnabled || creepEnabled);
     ui->labelDT->setVisible(showTime);
@@ -264,6 +579,60 @@ void FillStorageCyclePage::updateConditionalVisibility()
     ui->editTEND->setVisible(showTime);
     ui->labelWOMI1->setVisible(m_dynamicOptionsAvailable && creepEnabled);
     ui->editWOMI1->setVisible(m_dynamicOptionsAvailable && creepEnabled);
+    if (m_dynamicMaterialGroup)
+    {
+        m_dynamicMaterialGroup->setVisible(true);
+        m_dynamicMaterialGroup->setEnabled(true);
+    }
+    if (m_dynamicMaterialHint)
+    {
+        m_dynamicMaterialHint->setVisible(!dynamicMaterialMappingEnabled);
+        if (!dynamicMaterialMappingEnabled)
+        {
+            m_dynamicMaterialHint->setText(
+                m_dynamicOptionsAvailable
+                    ? QStringLiteral("提示：需启用拟静力或地震波动。")
+                    : QStringLiteral("提示：需先启用动力计算。"));
+        }
+    }
+    if (m_dynamicMaterialControls)
+    {
+        m_dynamicMaterialControls->setVisible(true);
+        m_dynamicMaterialControls->setEnabled(dynamicMaterialMappingEnabled);
+    }
+    if (m_dynamicMaterialTable)
+    {
+        m_dynamicMaterialTable->setVisible(true);
+        m_dynamicMaterialTable->setEnabled(dynamicMaterialMappingEnabled);
+    }
+
+    if (m_materialHighlightActive)
+    {
+        if (m_activeMaterialTable == m_wetTable && !wetEnabled)
+            m_activeMaterialTable = nullptr;
+        if (m_activeMaterialTable == m_dynamicMaterialTable &&
+            !dynamicMaterialMappingEnabled)
+            m_activeMaterialTable = nullptr;
+        if (!m_activeMaterialTable)
+        {
+            if (wetEnabled && m_wetTable && m_wetTable->rowCount() > 0)
+                m_activeMaterialTable = m_wetTable;
+            else if (dynamicMaterialMappingEnabled && m_dynamicMaterialTable &&
+                     m_dynamicMaterialTable->rowCount() > 0)
+                m_activeMaterialTable = m_dynamicMaterialTable;
+        }
+
+        if (m_activeMaterialTable)
+        {
+            const int row = qMax(0, m_activeMaterialTable->currentRow());
+            m_activeMaterialTable->setCurrentCell(row, 0);
+            refreshMaterialMappingHighlight(m_activeMaterialTable, row);
+        }
+        else
+        {
+            clearMaterialMappingHighlight();
+        }
+    }
 }
 
 void FillStorageCyclePage::setDynamicOptionsAvailable(bool available)
@@ -316,42 +685,487 @@ bool FillStorageCyclePage::validateInputs(QString* errorMessage) const
             return fail(QStringLiteral("终止时间必须大于起始时间。"));
     }
 
-    if (valueOf(QStringLiteral("IFWET")) == QStringLiteral("1") &&
-        (!m_wetTable || m_wetTable->rowCount() == 0))
-        return fail(QStringLiteral("启用湿化计算后，至少需要一组湿化材料对应关系。"));
+    if (valueOf(QStringLiteral("IFWET")) == QStringLiteral("1"))
+    {
+        QString mappingError;
+        if (!validateMaterialMappings(m_wetTable, QStringLiteral("浸润材料关系"), true,
+                                      &mappingError))
+            return fail(mappingError);
+    }
     if (valueOf(QStringLiteral("IFDROP")) == QStringLiteral("1") &&
         (!m_dropTable || m_dropTable->rowCount() == 0))
         return fail(QStringLiteral("启用水位骤降后，至少需要一组骤降前后水位。"));
     if (!m_circleTable || m_circleTable->rowCount() == 0)
         return fail(QStringLiteral("至少需要一个填筑蓄水阶段。"));
 
+    const bool dynamicEnabled = valueOf(QStringLiteral("IFMODE")) == QStringLiteral("1") ||
+                                valueOf(QStringLiteral("IFWAVE")) == QStringLiteral("1");
+    if (dynamicEnabled)
+    {
+        QString mappingError;
+        if (!validateMaterialMappings(m_dynamicMaterialTable,
+                                      QStringLiteral("动力及地震波动材料关系"),
+                                      false, &mappingError))
+            return fail(mappingError);
+    }
+
+    QString layerError;
+    if (fillLayerRanges(&layerError).isEmpty())
+        return fail(layerError);
+
     return true;
 }
 
-void FillStorageCyclePage::loadWetMappingsFromService()
+QVector<QPair<int, int>> FillStorageCyclePage::fillLayerRanges(QString* errorMessage) const
 {
-    auto* materialService = ServiceRegistry::instance().getService<MaterialManagerService>();
-    if (!materialService)
-        return;
-    const auto transitions = materialService->materialTransitions();
-    if (transitions.isEmpty())
+    if (errorMessage)
+        errorMessage->clear();
+
+    const auto fail = [errorMessage](const QString& message)
     {
-        m_wetTable->setRowCount(0);
+        if (errorMessage)
+            *errorMessage = message;
+        return QVector<QPair<int, int>>{};
+    };
+
+    if (!m_circleTable || m_circleTable->rowCount() <= 0)
+        return fail(QStringLiteral("至少需要一个填筑蓄水阶段。"));
+
+    QVector<QPair<int, int>> ranges;
+    ranges.reserve(m_circleTable->rowCount());
+    for (int row = 0; row < m_circleTable->rowCount(); ++row)
+    {
+        bool startOk = false;
+        bool endOk = false;
+        const int startLayer = tableItemText(m_circleTable, row, 0, QString()).toInt(&startOk);
+        const int endLayer = tableItemText(m_circleTable, row, 1, QString()).toInt(&endOk);
+        if (!startOk || !endOk)
+        {
+            return fail(QStringLiteral("第 %1 个阶段的填筑开始层和结束层必须为整数。")
+                            .arg(row + 1));
+        }
+        if (startLayer < 2)
+        {
+            return fail(QStringLiteral("第 %1 个阶段的填筑开始层不能小于 2；第 1 层为坝基。")
+                            .arg(row + 1));
+        }
+        if (endLayer < startLayer)
+        {
+            return fail(QStringLiteral("第 %1 个阶段的填筑结束层不能小于开始层。")
+                            .arg(row + 1));
+        }
+        ranges.push_back(qMakePair(startLayer, endLayer));
+    }
+    return ranges;
+}
+
+void FillStorageCyclePage::setFillLayerRange(int firstLayer, int lastLayer)
+{
+    if (!m_circleTable || firstLayer < 2 || lastLayer < firstLayer)
+        return;
+    if (m_circleTable->rowCount() > 1)
+        return;
+    if (m_circleTable->rowCount() == 0)
+        m_circleTable->setRowCount(1);
+
+    auto setCell = [this](int column, int value)
+    {
+        if (QTableWidgetItem* item = m_circleTable->item(0, column))
+            item->setText(QString::number(value));
+        else
+            m_circleTable->setItem(0, column, new QTableWidgetItem(QString::number(value)));
+    };
+    setCell(0, firstLayer);
+    setCell(1, lastLayer);
+    updatePreview();
+    emit requirementsChanged();
+}
+
+QVector<QPair<int, int>> FillStorageCyclePage::materialMappings(QTableWidget* table) const
+{
+    QVector<QPair<int, int>> mappings;
+    if (!table)
+        return mappings;
+    mappings.reserve(table->rowCount());
+    for (int row = 0; row < table->rowCount(); ++row)
+    {
+        bool sourceOk = false;
+        bool targetOk = false;
+        const int source = tableItemText(table, row, 0, QString()).toInt(&sourceOk);
+        const int target = tableItemText(table, row, 1, QString()).toInt(&targetOk);
+        mappings.push_back({sourceOk ? source : 0, targetOk ? target : 0});
+    }
+    return mappings;
+}
+
+void FillStorageCyclePage::setMaterialMappings(
+    QTableWidget* table, const QVector<QPair<int, int>>& mappings)
+{
+    if (!table)
+        return;
+    table->setRowCount(0);
+    for (const auto& mapping : mappings)
+        addMaterialMappingRow(table, mapping.first, mapping.second);
+    updateMaterialTableHeight(table);
+}
+
+void FillStorageCyclePage::addMaterialMappingRow(QTableWidget* table, int sourceMaterial,
+                                                 int targetMaterial)
+{
+    if (!table)
+        return;
+
+    const bool userRequestedRow = sourceMaterial <= 0 || targetMaterial <= 0;
+    if (userRequestedRow && table->rowCount() >= MAX_MATERIAL_RELATIONS)
+    {
+        QMessageBox::information(
+            this, QStringLiteral("数量已达上限"),
+            QStringLiteral("求解器最多支持 300 组材料关系，不能继续新增。"));
         return;
     }
 
-    m_wetTable->setRowCount(transitions.size());
-    for (int i = 0; i < transitions.size(); ++i)
+    const QMap<int, QString> sourceOptions = materialSourceOptions();
+    if (sourceMaterial <= 0)
     {
-        if (m_wetTable->item(i, 0))
-            m_wetTable->item(i, 0)->setText(QString::number(transitions[i].first));
-        else
-            m_wetTable->setItem(i, 0, new QTableWidgetItem(QString::number(transitions[i].first)));
-        if (m_wetTable->item(i, 1))
-            m_wetTable->item(i, 1)->setText(QString::number(transitions[i].second));
-        else
-            m_wetTable->setItem(i, 1, new QTableWidgetItem(QString::number(transitions[i].second)));
+        QSet<int> usedSources;
+        for (const auto& mapping : materialMappings(table))
+            usedSources.insert(mapping.first);
+        for (auto it = sourceOptions.cbegin(); it != sourceOptions.cend(); ++it)
+        {
+            if (!usedSources.contains(it.key()))
+            {
+                sourceMaterial = it.key();
+                break;
+            }
+        }
+        if (sourceMaterial <= 0 && !sourceOptions.isEmpty())
+            sourceMaterial = sourceOptions.cbegin().key();
     }
+
+    const QMap<int, QString> targetOptions = materialTargetOptions(table, sourceMaterial);
+    if (targetMaterial <= 0 && !targetOptions.isEmpty())
+        targetMaterial = targetOptions.cbegin().key();
+
+    const int row = table->rowCount();
+    table->insertRow(row);
+    for (int column = 0; column < 2; ++column)
+    {
+        auto* item = new QTableWidgetItem();
+        item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+        table->setItem(row, column, item);
+    }
+
+    auto* sourceCombo = new QComboBox(table);
+    auto* targetCombo = new QComboBox(table);
+    populateMaterialCombo(sourceCombo, sourceOptions, sourceMaterial,
+                          QStringLiteral("暂无已施加的坝体材料"), true);
+    populateMaterialCombo(
+        targetCombo, targetOptions, targetMaterial,
+        table == m_wetTable ? QStringLiteral("请先准备浸润后材料")
+                            : QStringLiteral("请先添加坝料动力本构材料"),
+        true);
+    table->setCellWidget(row, 0, sourceCombo);
+    table->setCellWidget(row, 1, targetCombo);
+
+    connect(sourceCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this, table, sourceCombo, targetCombo]()
+            {
+                int row = -1;
+                for (int candidate = 0; candidate < table->rowCount(); ++candidate)
+                {
+                    if (table->cellWidget(candidate, 0) == sourceCombo)
+                    {
+                        row = candidate;
+                        break;
+                    }
+                }
+
+                const int source = sourceCombo->currentData().toInt();
+                const int oldTarget = targetCombo->currentData().toInt();
+                const QMap<int, QString> options = materialTargetOptions(table, source);
+                const int target = options.contains(oldTarget)
+                    ? oldTarget
+                    : (options.isEmpty() ? 0 : options.cbegin().key());
+                populateMaterialCombo(
+                    targetCombo, options, target,
+                    table == m_wetTable ? QStringLiteral("请先准备浸润后材料")
+                                        : QStringLiteral("请先添加坝料动力本构材料"),
+                    false);
+                if (row >= 0)
+                {
+                    table->setCurrentCell(row, 0);
+                    refreshMaterialMappingHighlight(table, row);
+                }
+                updatePreview();
+            });
+    connect(targetCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this, table, targetCombo]()
+            {
+                for (int row = 0; row < table->rowCount(); ++row)
+                {
+                    if (table->cellWidget(row, 1) == targetCombo)
+                    {
+                        table->setCurrentCell(row, 1);
+                        refreshMaterialMappingHighlight(table, row);
+                        break;
+                    }
+                }
+                updatePreview();
+            });
+
+    auto activateRow = [this, table](QComboBox* combo, int column)
+    {
+        for (int candidate = 0; candidate < table->rowCount(); ++candidate)
+        {
+            if (table->cellWidget(candidate, column) == combo)
+            {
+                table->setCurrentCell(candidate, column);
+                refreshMaterialMappingHighlight(table, candidate);
+                break;
+            }
+        }
+    };
+    connect(sourceCombo, qOverload<int>(&QComboBox::activated), this,
+            [activateRow, sourceCombo](int) { activateRow(sourceCombo, 0); });
+    connect(targetCombo, qOverload<int>(&QComboBox::activated), this,
+            [activateRow, targetCombo](int) { activateRow(targetCombo, 1); });
+
+    table->setCurrentCell(row, 0);
+    refreshMaterialMappingHighlight(table, row);
+    updateMaterialTableHeight(table);
+    updatePreview();
+}
+
+void FillStorageCyclePage::removeSelectedMaterialMapping(QTableWidget* table)
+{
+    if (!table)
+        return;
+    int row = table->currentRow();
+    const auto selectedRows = table->selectionModel()->selectedRows();
+    if (!selectedRows.isEmpty())
+        row = selectedRows.first().row();
+    if (row < 0)
+        return;
+    table->removeRow(row);
+    if (table->rowCount() > 0)
+    {
+        const int nextRow = qMin(row, table->rowCount() - 1);
+        table->setCurrentCell(nextRow, 0);
+        refreshMaterialMappingHighlight(table, nextRow);
+    }
+    else
+    {
+        clearMaterialMappingHighlight();
+    }
+    updateMaterialTableHeight(table);
+    updatePreview();
+}
+
+void FillStorageCyclePage::refreshMaterialMappingOptions(QTableWidget* table)
+{
+    if (!table)
+        return;
+    const auto mappings = materialMappings(table);
+    setMaterialMappings(table, mappings);
+}
+
+QMap<int, QString> FillStorageCyclePage::materialSourceOptions() const
+{
+    if (auto* materialService =
+            ServiceRegistry::instance().getService<MaterialManagerService>())
+    {
+        return materialService->damStaticMaterialLabels();
+    }
+    return {};
+}
+
+QMap<int, QString> FillStorageCyclePage::materialTargetOptions(QTableWidget* table,
+                                                               int sourceMaterial) const
+{
+    auto* materialService =
+        ServiceRegistry::instance().getService<MaterialManagerService>();
+    if (!materialService)
+        return {};
+    if (table == m_wetTable)
+        return materialService->damWetMaterialLabels(sourceMaterial);
+    if (table == m_dynamicMaterialTable)
+        return materialService->damDynamicMaterialLabels(sourceMaterial);
+    return {};
+}
+
+void FillStorageCyclePage::populateMaterialCombo(QComboBox* combo,
+                                                  const QMap<int, QString>& options,
+                                                  int currentMaterial,
+                                                  const QString& emptyText,
+                                                  bool retainUnavailable) const
+{
+    if (!combo)
+        return;
+
+    const QSignalBlocker blocker(combo);
+    combo->clear();
+    for (auto it = options.cbegin(); it != options.cend(); ++it)
+    {
+        combo->addItem(it.value(), it.key());
+        combo->setItemData(combo->count() - 1, it.value(), Qt::ToolTipRole);
+    }
+
+    int currentIndex = combo->findData(currentMaterial);
+    if (currentIndex < 0 && retainUnavailable && currentMaterial > 0)
+    {
+        const QString unavailable =
+            QStringLiteral("编号 %1  当前不可用").arg(currentMaterial);
+        combo->insertItem(0, unavailable, currentMaterial);
+        combo->setItemData(0, unavailable, Qt::ToolTipRole);
+        currentIndex = 0;
+    }
+
+    if (combo->count() == 0)
+    {
+        combo->addItem(emptyText, QVariant());
+        combo->setItemData(0, emptyText, Qt::ToolTipRole);
+        combo->setEnabled(false);
+        SolverUiLayoutHelper::configureComboSizing(combo);
+        return;
+    }
+
+    combo->setEnabled(true);
+    combo->setCurrentIndex(currentIndex >= 0 ? currentIndex : 0);
+    SolverUiLayoutHelper::configureComboSizing(combo);
+}
+
+void FillStorageCyclePage::refreshMaterialMappingHighlight(QTableWidget* table, int row)
+{
+    // 选中状态交给全局表格样式绘制，不再为单个下拉框写局部 QSS。
+    // 三维材料域的预览/已应用颜色仍由 PickManager 维护。
+    for (QTableWidget* candidateTable : {m_wetTable, m_dynamicMaterialTable})
+    {
+        if (candidateTable && candidateTable != table)
+            candidateTable->clearSelection();
+    }
+    if (table && row >= 0 && row < table->rowCount())
+        table->selectRow(row);
+
+    m_activeMaterialTable = table;
+    if (!m_materialHighlightActive || !table || row < 0 || row >= table->rowCount())
+    {
+        if (m_materialHighlightActive)
+            clearMaterialMappingHighlight();
+        return;
+    }
+
+    const int source = tableItemText(table, row, 0, QString()).toInt();
+    const int target = tableItemText(table, row, 1, QString()).toInt();
+    const DomainKey sourceKey = materialDomainKey(source);
+    const DomainKey targetKey = materialDomainKey(target);
+
+    QSet<DomainKey> applied;
+    if (sourceKey.isValid())
+        applied.insert(sourceKey);
+    if (targetKey.isValid())
+        applied.insert(targetKey);
+
+    auto& pickManager = PickManager::instance();
+    pickManager.activate(getPageType(), m_uuid, PickMode::Domain);
+    pickManager.setAppliedDomains(getPageType(), m_uuid, applied);
+    pickManager.setSelectedDomain(getPageType(), m_uuid, DomainKey{});
+    pickManager.setPreviewDomain(getPageType(), m_uuid, sourceKey);
+    pickManager.setPreDeleteDomain(getPageType(), m_uuid, targetKey);
+}
+
+void FillStorageCyclePage::clearMaterialMappingHighlight()
+{
+    auto& pickManager = PickManager::instance();
+    pickManager.setAppliedDomains(getPageType(), m_uuid, {});
+    pickManager.setSelectedDomain(getPageType(), m_uuid, DomainKey{});
+    pickManager.setPreviewDomain(getPageType(), m_uuid, DomainKey{});
+    pickManager.setPreDeleteDomain(getPageType(), m_uuid, DomainKey{});
+}
+
+void FillStorageCyclePage::updateMaterialTableHeight(QTableWidget* table) const
+{
+    if (!table)
+        return;
+    const int visibleRows = qBound(2, table->rowCount(), 5);
+    const int headerHeight = table->horizontalHeader()->sizeHint().height();
+    const int rowHeight = table->verticalHeader()->defaultSectionSize();
+    const int frameHeight = table->frameWidth() * 2 + 2;
+    const int compactHeight = headerHeight + qMin(2, qMax(1, table->rowCount())) * rowHeight
+                              + frameHeight;
+    const int preferredHeight = headerHeight + visibleRows * rowHeight + frameHeight;
+    table->setMinimumHeight(compactHeight);
+    table->setMaximumHeight(preferredHeight);
+}
+
+bool FillStorageCyclePage::validateMaterialMappings(QTableWidget* table,
+                                                    const QString& relationName,
+                                                    bool required,
+                                                    QString* errorMessage) const
+{
+    if (errorMessage)
+        errorMessage->clear();
+    const auto mappings = materialMappings(table);
+    if (mappings.isEmpty())
+    {
+        if (!required)
+            return true;
+        if (errorMessage)
+            *errorMessage = QStringLiteral("%1至少需要一组。").arg(relationName);
+        return false;
+    }
+    if (mappings.size() > MAX_MATERIAL_RELATIONS)
+    {
+        if (errorMessage)
+            *errorMessage = QStringLiteral("%1不能超过 300 组。").arg(relationName);
+        return false;
+    }
+
+    const QMap<int, QString> sourceOptions = materialSourceOptions();
+
+    QSet<int> usedSources;
+    QSet<int> usedTargets;
+    for (int row = 0; row < mappings.size(); ++row)
+    {
+        const int source = mappings.at(row).first;
+        const int target = mappings.at(row).second;
+        const QString prefix = QStringLiteral("%1第 %2 组：").arg(relationName).arg(row + 1);
+        auto fail = [errorMessage, prefix](const QString& message)
+        {
+            if (errorMessage)
+                *errorMessage = prefix + message;
+            return false;
+        };
+        if (source <= 0 || target <= 0)
+            return fail(QStringLiteral("材料选择不完整。"));
+        if (source == target)
+            return fail(QStringLiteral("前后材料不能相同。"));
+        if (usedSources.contains(source))
+            return fail(QStringLiteral("同一种当前材料不能重复设置。"));
+        if (table == m_dynamicMaterialTable && usedTargets.contains(target))
+            return fail(QStringLiteral("同一种动力及地震波动材料不能对应多个静力材料。"));
+        if (!sourceOptions.contains(source))
+            return fail(QStringLiteral("左侧材料不是已施加到坝体网格的静力材料，请重新选择。"));
+        const QMap<int, QString> targetOptions = materialTargetOptions(table, source);
+        if (!targetOptions.contains(target))
+        {
+            return fail(table == m_wetTable
+                            ? QStringLiteral("右侧材料必须是已启用的坝体计算阶段材料。")
+                            : QStringLiteral("右侧材料必须是已启用的坝料动力及地震波动计算阶段材料。"));
+        }
+        if (table == m_dynamicMaterialTable)
+        {
+            auto* materialService =
+                ServiceRegistry::instance().getService<MaterialManagerService>();
+            if (!materialService ||
+                !materialService->setDamDynamicSourceMatype(target, source))
+            {
+                return fail(QStringLiteral("无法更新动力材料的静力母材料编号。"));
+            }
+        }
+        usedSources.insert(source);
+        usedTargets.insert(target);
+    }
+    return true;
 }
 
 QString FillStorageCyclePage::valueOf(const QString& key) const
@@ -384,9 +1198,29 @@ void FillStorageCyclePage::setValueOf(const QString& key, const QString& value)
 
 void FillStorageCyclePage::updatePreview()
 {
-    ui->labelWetRows->setText(QString("当前行数: %1").arg(m_wetTable ? m_wetTable->rowCount() : 0));
-    ui->labelDropRows->setText(QString("当前行数: %1").arg(m_dropTable ? m_dropTable->rowCount() : 0));
-    ui->labelCircleRows->setText(QString("当前行数: %1").arg(m_circleTable ? m_circleTable->rowCount() : 0));
+    ui->labelWetRows->setText(QStringLiteral("共 %1 组").arg(m_wetTable ? m_wetTable->rowCount() : 0));
+    ui->labelDropRows->setText(QStringLiteral("共 %1 组").arg(m_dropTable ? m_dropTable->rowCount() : 0));
+    ui->labelCircleRows->setText(
+        QStringLiteral("共 %1 个阶段").arg(m_circleTable ? m_circleTable->rowCount() : 0));
+    if (m_dynamicMaterialSummary)
+        m_dynamicMaterialSummary->setText(
+            QStringLiteral("共 %1 组").arg(m_dynamicMaterialTable
+                                               ? m_dynamicMaterialTable->rowCount()
+                                               : 0));
+    const bool wetEnabled = ui->groupWet->isChecked();
+    if (m_removeWetMaterialButton)
+        m_removeWetMaterialButton->setEnabled(
+            wetEnabled && m_wetTable && m_wetTable->rowCount() > 0);
+    const bool dynamicMaterialMappingEnabled =
+        m_dynamicOptionsAvailable &&
+        (ui->comboIFMODE->currentData().toString() == QStringLiteral("1") ||
+         ui->comboIFWAVE->currentData().toString() == QStringLiteral("1"));
+    if (m_removeDynamicMaterialButton)
+        m_removeDynamicMaterialButton->setEnabled(
+            dynamicMaterialMappingEnabled && m_dynamicMaterialTable &&
+            m_dynamicMaterialTable->rowCount() > 0);
+    updateMaterialTableHeight(m_wetTable);
+    updateMaterialTableHeight(m_dynamicMaterialTable);
 }
 
 QString FillStorageCyclePage::sectionText() const
@@ -402,7 +1236,8 @@ QString FillStorageCyclePage::sectionText(int caseIndex) const
     text += QString("%1    ICASE--------------------------------------\n").arg(caseIndex);
     text += QString("%1 %2 %3     IFIIWL_SEEP IFIIWL_BODY IFIIWL_FACE\n")
                 .arg(valueOf("IFIIWL_SEEP"), valueOf("IFIIWL_BODY"), valueOf("IFIIWL_FACE"));
-    const int numWet = m_wetTable ? m_wetTable->rowCount() : 0;
+    const int numWet = valueOf("IFWET") == QStringLiteral("1") && m_wetTable
+        ? m_wetTable->rowCount() : 0;
     text += QString("%1 %2     NUM_WET IFWET\n").arg(numWet).arg(valueOf("IFWET"));
     for (int i = 0; i < numWet; ++i)
         text += QString("%1 %2 %3\n")
@@ -410,7 +1245,8 @@ QString FillStorageCyclePage::sectionText(int caseIndex) const
                          tableItemText(m_wetTable, i, 1, "1"))
                     .arg(i + 1);
 
-    const int numDrop = m_dropTable ? m_dropTable->rowCount() : 0;
+    const int numDrop = valueOf("IFDROP") == QStringLiteral("1") && m_dropTable
+        ? m_dropTable->rowCount() : 0;
     text += QString("%1 %2     NUM_DROP IFDROP\n").arg(numDrop).arg(valueOf("IFDROP"));
     for (int i = 0; i < numDrop; ++i)
         text += QString("%1 %2 %3\n")
@@ -444,17 +1280,9 @@ QString FillStorageCyclePage::sectionText(int caseIndex) const
 
     text += "'CASE01FILL01'     DIRDYNA\n";
     QVector<QPair<int, int>> dynamicMappings;
-    if (valueOf("IFMODE") == QStringLiteral("1"))
-    {
-        if (auto* materialService =
-                ServiceRegistry::instance().getService<MaterialManagerService>())
-        {
-            const auto transitions = materialService->materialTransitions();
-            dynamicMappings.reserve(transitions.size());
-            for (const auto& transition : transitions)
-                dynamicMappings.push_back(qMakePair(transition.first, transition.second));
-        }
-    }
+    if (valueOf("IFMODE") == QStringLiteral("1") ||
+        valueOf("IFWAVE") == QStringLiteral("1"))
+        dynamicMappings = materialMappings(m_dynamicMaterialTable);
     text += QString("%1   NUM_DYNA\n").arg(dynamicMappings.size());
     for (int i = 0; i < dynamicMappings.size(); ++i)
     {
@@ -485,6 +1313,7 @@ QJsonObject FillStorageCyclePage::saveJson()
     }
     obj["values"] = values;
     obj["wet_table"] = tableToJson(m_wetTable);
+    obj["dynamic_material_table"] = tableToJson(m_dynamicMaterialTable);
     obj["drop_table"] = tableToJson(m_dropTable);
     obj["circle_table"] = tableToJson(m_circleTable);
     return obj;
@@ -502,7 +1331,35 @@ void FillStorageCyclePage::loadJson(const QJsonObject& obj)
             current = edit->text();
         setValueOf(it.key(), values.value(it.key()).toString(current));
     }
-    jsonToTable(obj.value("wet_table").toArray(), m_wetTable, 1);
+
+    auto mappingsFromJson = [](const QJsonArray& rows)
+    {
+        QVector<QPair<int, int>> mappings;
+        mappings.reserve(rows.size());
+        for (const auto& value : rows)
+        {
+            int source = 0;
+            int target = 0;
+            if (value.isArray())
+            {
+                const QJsonArray columns = value.toArray();
+                source = columns.size() > 0 ? columns.at(0).toVariant().toInt() : 0;
+                target = columns.size() > 1 ? columns.at(1).toVariant().toInt() : 0;
+            }
+            else if (value.isObject())
+            {
+                const QJsonObject mapping = value.toObject();
+                source = mapping.value("source").toInt();
+                target = mapping.value("target").toInt();
+            }
+            if (source > 0 || target > 0)
+                mappings.push_back({source, target});
+        }
+        return mappings;
+    };
+    setMaterialMappings(m_wetTable, mappingsFromJson(obj.value("wet_table").toArray()));
+    setMaterialMappings(m_dynamicMaterialTable,
+                        mappingsFromJson(obj.value("dynamic_material_table").toArray()));
     jsonToTable(obj.value("drop_table").toArray(), m_dropTable, 1);
     jsonToTable(obj.value("circle_table").toArray(), m_circleTable, 1);
     updateConditionalVisibility();

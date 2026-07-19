@@ -1,4 +1,4 @@
-﻿#include "CurveSettingsWidget.h"
+#include "CurveSettingsWidget.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -11,6 +11,10 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QScopedValueRollback>
+#include <QSignalBlocker>
+#include <QStyle>
+
+#include <algorithm>
 
 #include "PostResultAutoPrepare.h"
 #include "ui_CurveSettingsWidget.h"
@@ -25,21 +29,36 @@ CurveSettingsWidget::CurveSettingsWidget(VisualWidgetService* visualService, QWi
 
     ui->xFieldComboBox->addItem(QStringLiteral("计算步"), QStringLiteral("ISTEP"));
     ui->xFieldComboBox->addItem(QStringLiteral("迭代次数"), QStringLiteral("LOOP"));
+    // 默认只显示最常用的两条曲线，避免不同量纲的 4 条曲线首次打开时挤在一起。
     ui->fosCheckBox->setChecked(true);
-    ui->ptotCheckBox->setChecked(true);
+    ui->ptotCheckBox->setChecked(false);
     ui->maxUrCheckBox->setChecked(true);
-    ui->loopCheckBox->setChecked(true);
+    ui->loopCheckBox->setChecked(false);
+
+    ui->fosCheckBox->setToolTip(QStringLiteral("安全系数"));
+    ui->ptotCheckBox->setToolTip(QStringLiteral("总荷载"));
+    ui->maxUrCheckBox->setToolTip(QStringLiteral("最大位移比"));
+    ui->loopCheckBox->setToolTip(QStringLiteral("单步迭代次数"));
 
     connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &CurveSettingsWidget::onResultDirChanged);
     connect(ui->fileComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &CurveSettingsWidget::reloadAndShowCurve);
     connect(ui->xFieldComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &CurveSettingsWidget::reloadAndShowCurve);
+            [this]
+            {
+                updateLoopAvailability();
+                reloadAndShowCurve();
+            });
     connect(ui->fosCheckBox, &QCheckBox::toggled, this, &CurveSettingsWidget::reloadAndShowCurve);
     connect(ui->ptotCheckBox, &QCheckBox::toggled, this, &CurveSettingsWidget::reloadAndShowCurve);
     connect(ui->maxUrCheckBox, &QCheckBox::toggled, this, &CurveSettingsWidget::reloadAndShowCurve);
     connect(ui->loopCheckBox, &QCheckBox::toggled, this, &CurveSettingsWidget::reloadAndShowCurve);
+    connect(ui->showLegendCheckBox, &QCheckBox::toggled, this,
+            &CurveSettingsWidget::reloadAndShowCurve);
+
+    updateLoopAvailability();
+    setStatus(QStringLiteral("选择结果阶段后自动显示曲线。"));
 }
 
 CurveSettingsWidget::~CurveSettingsWidget()
@@ -79,6 +98,7 @@ QJsonObject CurveSettingsWidget::saveJson()
     obj["showPtot"] = ui->ptotCheckBox->isChecked();
     obj["showMaxUr"] = ui->maxUrCheckBox->isChecked();
     obj["showLoop"] = ui->loopCheckBox->isChecked();
+    obj["showLegend"] = ui->showLegendCheckBox->isChecked();
     return obj;
 }
 
@@ -123,9 +143,11 @@ void CurveSettingsWidget::loadJson(const QJsonObject& obj)
         ui->xFieldComboBox->setCurrentIndex(xIdx);
 
     ui->fosCheckBox->setChecked(obj.value("showFos").toBool(true));
-    ui->ptotCheckBox->setChecked(obj.value("showPtot").toBool(true));
+    ui->ptotCheckBox->setChecked(obj.value("showPtot").toBool(false));
     ui->maxUrCheckBox->setChecked(obj.value("showMaxUr").toBool(true));
-    ui->loopCheckBox->setChecked(obj.value("showLoop").toBool(true));
+    ui->loopCheckBox->setChecked(obj.value("showLoop").toBool(false));
+    ui->showLegendCheckBox->setChecked(obj.value("showLegend").toBool(false));
+    updateLoopAvailability();
 }
 
 void CurveSettingsWidget::reloadAndShowCurve()
@@ -136,11 +158,13 @@ void CurveSettingsWidget::reloadAndShowCurve()
     const QString traceFile = selectedTraceFilePath();
     if (traceFile.isEmpty())
     {
+        setStatus(QStringLiteral("当前结果阶段没有可用的 TRACE.TXT。"), true);
         return;
     }
 
     if (!m_visualService)
     {
+        setStatus(QStringLiteral("可视化服务尚未初始化。"), true);
         return;
     }
 
@@ -148,11 +172,24 @@ void CurveSettingsWidget::reloadAndShowCurve()
                                ? QStringLiteral("ISTEP")
                                : ui->xFieldComboBox->currentData().toString();
     const QStringList yFields = selectedYFields();
+    const bool hasCurveField = std::any_of(yFields.cbegin(), yFields.cend(), [](const QString& field)
+    {
+        return field != QStringLiteral("__SHOW_LEGEND__");
+    });
+    if (!hasCurveField)
+    {
+        setStatus(QStringLiteral("至少选择一条纵轴曲线。"), true);
+        return;
+    }
+
     QString curveErr;
     if (!m_visualService->showCurveFromTraceFile(traceFile, xField, yFields, &curveErr))
     {
-        Q_UNUSED(curveErr);
+        setStatus(curveErr.isEmpty() ? QStringLiteral("曲线显示失败。") : curveErr, true);
+        return;
     }
+
+    setStatus(QString());
 }
 
 void CurveSettingsWidget::onResultDirChanged()
@@ -237,5 +274,38 @@ QStringList CurveSettingsWidget::selectedYFields() const
         ys << "MAX UR";
     if (ui->loopCheckBox->isChecked())
         ys << "LOOP";
+    // 通过保留标记传递图例状态，不改变 VisualWidgetService 的公共接口。
+    if (ui->showLegendCheckBox->isChecked())
+        ys << "__SHOW_LEGEND__";
     return ys;
+}
+
+
+void CurveSettingsWidget::updateLoopAvailability()
+{
+    const bool loopIsXAxis =
+        ui->xFieldComboBox->currentData().toString() == QStringLiteral("LOOP");
+
+    if (loopIsXAxis && ui->loopCheckBox->isChecked())
+    {
+        const QSignalBlocker blocker(ui->loopCheckBox);
+        ui->loopCheckBox->setChecked(false);
+    }
+
+    ui->loopCheckBox->setEnabled(!loopIsXAxis);
+    ui->loopCheckBox->setToolTip(loopIsXAxis
+                                     ? QStringLiteral("横轴已使用迭代次数，不能重复作为纵轴。")
+                                     : QStringLiteral("单步迭代次数"));
+}
+
+void CurveSettingsWidget::setStatus(const QString& text, bool error)
+{
+    if (!ui->statusLabel)
+        return;
+
+    ui->statusLabel->setVisible(error && !text.trimmed().isEmpty());
+    ui->statusLabel->setText(error ? text : QString());
+    ui->statusLabel->setProperty("error", error);
+    ui->statusLabel->style()->unpolish(ui->statusLabel);
+    ui->statusLabel->style()->polish(ui->statusLabel);
 }

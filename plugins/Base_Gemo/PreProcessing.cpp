@@ -625,13 +625,18 @@ void PreProcessing::closeProject()
         ProjectNode* node = static_cast<ProjectNode*>(m_geomNode->child(0));
         if (node)
         {
+            QString uuid = node->data(0, ProjectNode::RoleUuid).toString();
+            if (uuid.isEmpty())
+                uuid = node->getUuid();
+            GeometryCleanup::removeExistingGeometry(uuid, false);
             if (auto* page = node->getPage())
             {
+                page->beforeUnload();
                 page->deleteLater();
-
                 node->setPage(nullptr);
             }
-            delete m_geomNode->takeChild(0);
+            m_geomNode->removeChild(node);
+            delete node;
         }
     }
 
@@ -642,29 +647,44 @@ void PreProcessing::closeProject()
         {
             if (auto* page = node->getPage())
             {
+                page->beforeUnload();
                 page->deleteLater();
-
                 node->setPage(nullptr);
             }
-            delete m_gridNode->takeChild(0);
+            m_gridNode->removeChild(node);
+            delete node;
         }
     }
 
-    // 从工程树移除根节点
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+    const auto detachRoot = [](ProjectNode* root)
     {
-    }
+        if (!root)
+            return;
+        if (auto* parent = dynamic_cast<ProjectNode*>(root->parent()))
+            parent->removeChild(root);
+        else if (QTreeWidget* tree = root->treeWidget())
+        {
+            const int index = tree->indexOfTopLevelItem(root);
+            if (index >= 0)
+                tree->takeTopLevelItem(index);
+        }
+    };
     if (m_geomNode)
     {
+        detachRoot(m_geomNode);
         delete m_geomNode;
         m_geomNode = nullptr;
     }
 
     if (m_gridNode)
     {
+        detachRoot(m_gridNode);
         delete m_gridNode;
         m_gridNode = nullptr;
     }
+
+    if (auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>())
+        visual->render();
 }
 
 void PreProcessing::generateStepFile()
@@ -900,7 +920,7 @@ bool PreProcessing::exportGeom()
     // 更稳：直接从 GeomManager 导出（避免你本地 map 和 manager 生命周期不一致）
     QString filePath =
         QFileDialog::getSaveFileName(nullptr, tr("导出几何"), QDir::homePath(),
-                                     tr("Geometry Files (*.step *.stp *.iges *.igs *.brep)"));
+                                     tr("几何模型文件 (*.step *.stp *.iges *.igs *.brep)"));
     if (filePath.isEmpty())
         return false;
 

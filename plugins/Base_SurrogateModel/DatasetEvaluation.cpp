@@ -138,7 +138,7 @@ void DatasetEvaluation::wireSignals()
     connect(ui->browsePyBtn, &QPushButton::clicked, this,
             [this]
             {
-                const QString f = QFileDialog::getOpenFileName(this, tr("选择 Python 解释器"));
+                const QString f = QFileDialog::getOpenFileName(this, tr("选择脚本解释器"));
                 if (!f.isEmpty())
                     ui->pythonExeEdit->setText(f);
             });
@@ -435,7 +435,7 @@ bool DatasetEvaluation::runRbfEval(const QString& trainPayloadPath, const QStrin
     if (!QFileInfo::exists(py))
     {
         if (consoleOut)
-            *consoleOut = tr("Python 解释器不存在");
+            *consoleOut = tr("脚本解释器不存在");
         return false;
     }
     if (!QFileInfo::exists(sc))
@@ -472,7 +472,7 @@ bool DatasetEvaluation::runRbfEval(const QString& trainPayloadPath, const QStrin
     if (!p.waitForStarted(10000))
     {
         if (consoleOut)
-            *consoleOut = tr("Python 启动失败");
+            *consoleOut = tr("脚本解释器启动失败");
         return false;
     }
     p.waitForFinished(-1);

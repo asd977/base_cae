@@ -8,10 +8,15 @@
 #include <vtkTecplotReader.h>
 #include <vtkUnstructuredGrid.h>
 
+#include <QByteArray>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QTemporaryFile>
 
 #ifdef Q_OS_WIN
@@ -22,6 +27,59 @@
 
 namespace
 {
+struct GridCacheEntry
+{
+    qint64 size = -1;
+    qint64 modifiedMs = -1;
+    quint64 accessSerial = 0;
+    vtkSmartPointer<vtkUnstructuredGrid> grid;
+};
+
+QMutex& gridCacheMutex()
+{
+    static QMutex mutex;
+    return mutex;
+}
+
+QHash<QString, GridCacheEntry>& gridCache()
+{
+    static QHash<QString, GridCacheEntry> cache;
+    return cache;
+}
+
+quint64& gridCacheSerial()
+{
+    static quint64 serial = 0;
+    return serial;
+}
+
+vtkSmartPointer<vtkUnstructuredGrid> shallowGridCopy(vtkUnstructuredGrid* source)
+{
+    if (!source)
+        return nullptr;
+    auto copy = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    copy->ShallowCopy(source);
+    return copy;
+}
+
+void trimGridCacheLocked()
+{
+    constexpr int maxEntries = 8;
+    auto& cache = gridCache();
+    while (cache.size() > maxEntries)
+    {
+        auto oldest = cache.end();
+        for (auto it = cache.begin(); it != cache.end(); ++it)
+        {
+            if (oldest == cache.end() || it->accessSerial < oldest->accessSerial)
+                oldest = it;
+        }
+        if (oldest == cache.end())
+            break;
+        cache.erase(oldest);
+    }
+}
+
 bool isAsciiPath(const QString& path)
 {
     for (const QChar ch : path)
@@ -114,11 +172,30 @@ vtkSmartPointer<vtkUnstructuredGrid> readGrid(const QString& fileName,
                                               QString* errorMessage)
 {
     const QString sourcePath = QDir::fromNativeSeparators(fileName.trimmed());
-    if (!QFileInfo::exists(sourcePath))
+    const QFileInfo sourceInfo(sourcePath);
+    if (!sourceInfo.exists() || !sourceInfo.isFile())
     {
         if (errorMessage)
             *errorMessage = QStringLiteral("结果文件不存在：%1").arg(fileName);
         return nullptr;
+    }
+
+    const QString cacheKey = sourceInfo.canonicalFilePath().isEmpty()
+                                 ? sourceInfo.absoluteFilePath()
+                                 : sourceInfo.canonicalFilePath();
+    const qint64 fileSize = sourceInfo.size();
+    const qint64 modifiedMs = sourceInfo.lastModified().toMSecsSinceEpoch();
+    {
+        QMutexLocker locker(&gridCacheMutex());
+        auto it = gridCache().find(cacheKey);
+        if (it != gridCache().end() && it->size == fileSize &&
+            it->modifiedMs == modifiedMs && it->grid)
+        {
+            it->accessSerial = ++gridCacheSerial();
+            if (errorMessage)
+                errorMessage->clear();
+            return shallowGridCopy(it->grid);
+        }
     }
 
     QString vtkPath = sourcePath;
@@ -196,6 +273,20 @@ vtkSmartPointer<vtkUnstructuredGrid> readGrid(const QString& fileName,
 
     auto grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
     grid->ShallowCopy(appended);
-    return grid;
+
+    {
+        QMutexLocker locker(&gridCacheMutex());
+        GridCacheEntry entry;
+        entry.size = fileSize;
+        entry.modifiedMs = modifiedMs;
+        entry.accessSerial = ++gridCacheSerial();
+        entry.grid = grid;
+        gridCache().insert(cacheKey, entry);
+        trimGridCacheLocked();
+    }
+
+    if (errorMessage)
+        errorMessage->clear();
+    return shallowGridCopy(grid);
 }
 }

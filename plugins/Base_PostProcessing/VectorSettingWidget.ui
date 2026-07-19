@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version='1.0' encoding='UTF-8'?>
 <ui version="4.0">
  <class>VectorSettingWidget</class>
  <widget class="QWidget" name="VectorSettingWidget">
@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Form</string>
+   <string>矢量设置</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="leftMargin">
@@ -150,7 +150,16 @@
       </widget>
      </item>
      <item>
-      <widget class="QPushButton" name="pushButton_2">
+      <widget class="QLabel" name="pushButton_2">
+       <property name="font">
+        <font>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="margin">
+        <number>2</number>
+       </property>
        <property name="text">
         <string>向量设置</string>
        </property>
@@ -170,22 +179,13 @@
              </size>
             </property>
             <property name="text">
-             <string>放大倍数</string>
+             <string>箭头长度</string>
             </property>
            </widget>
           </item>
           <item row="5" column="1">
-           <widget class="QSlider" name="scaleSlider">
-            <property name="maximum">
-             <number>100</number>
-            </property>
-            <property name="value">
-             <number>100</number>
-            </property>
-            <property name="orientation">
-             <enum>Qt::Orientation::Horizontal</enum>
-            </property>
-           </widget>
+           <widget class="QDoubleSpinBox" name="scaleSpinBox">
+            <property name="decimals"><number>2</number></property><property name="minimum"><double>0.100000000000000</double></property><property name="maximum"><double>10.000000000000000</double></property><property name="singleStep"><double>0.100000000000000</double></property><property name="value"><double>1.000000000000000</double></property><property name="suffix"><string> 倍</string></property><property name="toolTip"><string>调整矢量箭头的整体长度</string></property></widget>
           </item>
           <item row="3" column="1">
            <widget class="QComboBox" name="zComboBox">
@@ -200,7 +200,7 @@
           <item row="2" column="0">
            <widget class="QLabel" name="label_4">
             <property name="text">
-             <string>Y组件</string>
+             <string>Y 方向分量</string>
             </property>
            </widget>
           </item>
@@ -226,20 +226,29 @@
              </size>
             </property>
             <property name="text">
-             <string>X组件</string>
+             <string>X 方向分量</string>
             </property>
            </widget>
           </item>
           <item row="4" column="1">
-           <widget class="QLineEdit" name="maskSzieTextEdit">
-            <property name="text">
-             <string>1</string>
-            </property>
+           <widget class="QSpinBox" name="maskSizeSpinBox">
             <property name="minimumSize">
              <size>
               <width>10</width>
               <height>0</height>
              </size>
+            </property>
+            <property name="keyboardTracking">
+             <bool>false</bool>
+            </property>
+            <property name="minimum">
+             <number>1</number>
+            </property>
+            <property name="maximum">
+             <number>1000000</number>
+            </property>
+            <property name="value">
+             <number>1</number>
             </property>
            </widget>
           </item>
@@ -266,11 +275,11 @@
           <item row="3" column="0">
            <widget class="QLabel" name="label_5">
             <property name="text">
-             <string>Z组件</string>
+             <string>Z 方向分量</string>
             </property>
            </widget>
           </item>
-          <property name="leftMargin">
+          <item row="6" column="0"><widget class="QLabel" name="labelThickness"><property name="text"><string>箭头粗细</string></property></widget></item><item row="6" column="1"><widget class="QDoubleSpinBox" name="thicknessSpinBox"><property name="decimals"><number>2</number></property><property name="minimum"><double>0.250000000000000</double></property><property name="maximum"><double>4.000000000000000</double></property><property name="singleStep"><double>0.100000000000000</double></property><property name="value"><double>1.000000000000000</double></property><property name="suffix"><string> 倍</string></property><property name="toolTip"><string>调整箭杆和箭头的粗细</string></property></widget></item><property name="leftMargin">
            <number>0</number>
           </property>
           <property name="topMargin">
@@ -411,6 +420,6 @@
    </item>
   </layout>
  </widget>
- <resources />
- <connections />
+ <resources/>
+ <connections/>
 </ui>

@@ -9,6 +9,7 @@
 #include <vtkUnstructuredGrid.h>
 
 #include <QString>
+#include <QVariantMap>
 #include <QWidget>
 
 class VisualWidgetService;
@@ -28,6 +29,8 @@ class BlockSettingsWidget : public BasePage
     // 生命周期
     void beforeLoad() override;
     void beforeUnload() override;
+    QJsonObject saveJson() override;
+    void loadJson(const QJsonObject& object) override;
 
   private slots:
     void on_scalarComboBox_currentIndexChanged(int index);
@@ -41,13 +44,14 @@ class BlockSettingsWidget : public BasePage
   private:
     // 数据加载（选取 data 目录里“最新”的 stress_strainX-Y.txt）
     void loadLatestData();
-    void readTecplot(const QString& fileName);
+    bool readTecplot(const QString& fileName);
 
     // 管线与渲染
     void buildClipPipelineIfNeeded();
     void updatePlaneFromUI();
     void updateColoringFromUI();
     void renderNow();
+    void applyPendingState();
 
   private:
     Ui::BlockSettingsWidget* ui{};
@@ -56,6 +60,8 @@ class BlockSettingsWidget : public BasePage
     // 生命周期状态
     bool m_loadedOnce{false}; // 是否已完成首次加载与建管线
     bool m_isAttached{false}; // 当前 actor 是否已挂到场景
+    bool m_hasPendingState{false};
+    QVariantMap m_pendingState;
 
     // 数据
     vtkSmartPointer<vtkUnstructuredGrid> m_grid;

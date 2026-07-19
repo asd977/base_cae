@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version='1.0' encoding='UTF-8'?>
 <ui version="4.0">
  <class>GeoStressMeasurePointPage</class>
  <widget class="QWidget" name="GeoStressMeasurePointPage">
@@ -68,7 +68,7 @@
         <item>
          <widget class="QLabel" name="pickHintLabel">
           <property name="text">
-           <string>提示：Shift+拖拽框选，Ctrl+拖拽取消选择</string>
+           <string>提示：Shift 框选，Ctrl 取消选择。</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>
@@ -181,52 +181,52 @@
           </column>
           <column>
            <property name="text">
-            <string>XP</string>
+            <string>X 坐标</string>
            </property>
           </column>
           <column>
            <property name="text">
-            <string>YP</string>
+            <string>Y 坐标</string>
            </property>
           </column>
           <column>
            <property name="text">
-            <string>ZP</string>
+            <string>Z 坐标</string>
            </property>
           </column>
           <column>
            <property name="text">
-            <string>SGX</string>
+            <string>X 方向正应力</string>
            </property>
           </column>
           <column>
            <property name="text">
-            <string>SGY</string>
+            <string>Y 方向正应力</string>
            </property>
           </column>
           <column>
            <property name="text">
-            <string>SGZ</string>
+            <string>Z 方向正应力</string>
            </property>
           </column>
           <column>
            <property name="text">
-            <string>TXY</string>
+            <string>XY 剪应力</string>
            </property>
           </column>
           <column>
            <property name="text">
-            <string>TYZ</string>
+            <string>YZ 剪应力</string>
            </property>
           </column>
           <column>
            <property name="text">
-            <string>TZX</string>
+            <string>ZX 剪应力</string>
            </property>
           </column>
           <column>
            <property name="text">
-            <string>pid</string>
+            <string>测点编号</string>
            </property>
           </column>
           <attribute name="horizontalHeaderStretchLastSection">

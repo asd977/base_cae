@@ -13,7 +13,6 @@
 #include <vtkDataSet.h>
 #include <vtkDataSetMapper.h>
 #include <vtkLookupTable.h>
-#include <vtkNew.h>
 #include <vtkMapper.h>
 #include <vtkPointData.h>
 #include <vtkPointLocator.h>
@@ -24,8 +23,10 @@
 #include <vtkRendererCollection.h>
 #include <vtkScalarBarActor.h>
 
+#include <QByteArray>
 #include <QDebug>
 #include <QHeaderView>
+#include <QJsonObject>
 #include <QTableWidget>
 #include <cmath>
 #include <limits>
@@ -70,20 +71,35 @@ ProbeSettingsWidget::~ProbeSettingsWidget()
 void ProbeSettingsWidget::beforeLoad()
 {
     ensureVisualService();
+    if (m_hasPendingEnabledState)
+    {
+        m_hasPendingEnabledState = false;
+        ui->enableProbeCheckBox->setChecked(m_pendingEnabledState);
+    }
 
     // 回到页面时，如果 UI 上是开启状态，就确保已 hook
     if (ui->enableProbeCheckBox && ui->enableProbeCheckBox->isChecked() && !m_hooked)
         hookInteractor();
 }
 
+QJsonObject ProbeSettingsWidget::saveJson()
+{
+    QJsonObject object;
+    object.insert(QStringLiteral("enabled"),
+                  ui->enableProbeCheckBox && ui->enableProbeCheckBox->isChecked());
+    return object;
+}
+
+void ProbeSettingsWidget::loadJson(const QJsonObject& object)
+{
+    m_pendingEnabledState = object.value(QStringLiteral("enabled")).toBool(false);
+    m_hasPendingEnabledState = true;
+}
+
 void ProbeSettingsWidget::beforeUnload()
 {
-    // 离开页面时关闭复选框，同时通过 toggled(false) 关闭拾取功能。
-    // 不清表、不销毁 picker，保留已有拾取结果。
-    if (ui->enableProbeCheckBox && ui->enableProbeCheckBox->isChecked())
-        ui->enableProbeCheckBox->setChecked(false);
-    else
-        unhookInteractor();
+    // 离开页面只解绑拾取，保留复选框与表格状态；返回页面后按原状态恢复。
+    unhookInteractor();
 }
 
 bool ProbeSettingsWidget::ensureVisualService()
@@ -229,24 +245,30 @@ void ProbeSettingsWidget::handlePick(int displayX, int displayY)
     long long pointId = m_picker->GetPointId();
     long long cellId = m_picker->GetCellId();
 
-    // 若没有 pointId，但需要点数据，使用最近点兜底
+    // 若没有 pointId，但需要点数据，复用最近点定位器，避免每次点击都重建。
     if (assoc == 0 && pointId < 0)
     {
-        vtkNew<vtkPointLocator> locator;
-        locator->SetDataSet(ds);
-        locator->BuildLocator();
-        pointId = locator->FindClosestPoint(pos);
+        if (!m_pointLocator || m_locatorDataSet != ds)
+        {
+            m_pointLocator = vtkSmartPointer<vtkPointLocator>::New();
+            m_pointLocator->SetDataSet(ds);
+            m_pointLocator->BuildLocator();
+            m_locatorDataSet = ds;
+        }
+        pointId = m_pointLocator->FindClosestPoint(pos);
     }
 
     double value = std::numeric_limits<double>::quiet_NaN();
-    if (!fetchScalarValue(ds, arrayName, assoc, pointId, cellId, value))
+    int components = 0;
+    if (!fetchScalarValue(ds, arrayName, assoc, pointId, cellId, value, components))
+    {
+        qWarning() << "[Probe] Unable to read array" << arrayName << "from picked data.";
         return;
+    }
 
-    appendRow(pos, arrayName, (assoc == 0 ? "Point" : "Cell"), value);
-
-    // 立即刷新（可选）
-    if (rw)
-        rw->Render();
+    const QString shownName = components > 1 ? arrayName + QStringLiteral(" |模长|") : arrayName;
+    appendRow(pos, shownName, (assoc == 0 ? QStringLiteral("节点") : QStringLiteral("单元")),
+              value);
 }
 
 vtkDataSet* ProbeSettingsWidget::datasetFromActor(vtkActor* actor) const
@@ -313,31 +335,49 @@ QString ProbeSettingsWidget::fallbackArrayNameFromScalarBar() const
 }
 
 bool ProbeSettingsWidget::fetchScalarValue(vtkDataSet* ds, const QString& arrayName, int assoc,
-                                           long long pointId, long long cellId,
-                                           double& outValue) const
+                                           long long pointId, long long cellId, double& outValue,
+                                           int& outComponents) const
 {
-    if (!ds)
+    outComponents = 0;
+    if (!ds || arrayName.isEmpty())
         return false;
+
     vtkDataArray* arr = nullptr;
+    vtkIdType tupleId = -1;
+    const QByteArray encodedName = arrayName.toUtf8();
     if (assoc == 0)
     {
-        arr = ds->GetPointData()->GetArray(arrayName.toUtf8().constData());
-        if (!arr || pointId < 0 || pointId >= arr->GetNumberOfTuples())
-            return false;
-        outValue = arr->GetComponent(pointId, 0);
-        return true;
+        arr = ds->GetPointData() ? ds->GetPointData()->GetArray(encodedName.constData()) : nullptr;
+        tupleId = static_cast<vtkIdType>(pointId);
     }
     else
     {
-        arr = ds->GetCellData()->GetArray(arrayName.toUtf8().constData());
-        if (!arr)
-            return false;
-        // 若 cellId 无效，尝试用 FindCell：但这里通常 pick 已返回
-        if (cellId < 0 || cellId >= arr->GetNumberOfTuples())
-            return false;
-        outValue = arr->GetComponent(cellId, 0);
-        return true;
+        arr = ds->GetCellData() ? ds->GetCellData()->GetArray(encodedName.constData()) : nullptr;
+        tupleId = static_cast<vtkIdType>(cellId);
     }
+
+    if (!arr || tupleId < 0 || tupleId >= arr->GetNumberOfTuples())
+        return false;
+
+    outComponents = arr->GetNumberOfComponents();
+    if (outComponents <= 0)
+        return false;
+
+    if (outComponents == 1)
+    {
+        outValue = arr->GetComponent(tupleId, 0);
+    }
+    else
+    {
+        double sumSquares = 0.0;
+        for (int component = 0; component < outComponents; ++component)
+        {
+            const double value = arr->GetComponent(tupleId, component);
+            sumSquares += value * value;
+        }
+        outValue = std::sqrt(sumSquares);
+    }
+    return std::isfinite(outValue);
 }
 
 void ProbeSettingsWidget::setupTableIfNeeded()
@@ -365,8 +405,11 @@ void ProbeSettingsWidget::appendRow(const double pos[3], const QString& arrayNam
     if (!ui->probeTable)
         return;
 
-    // 新记录插到最上面（最新在上）
+    // 新记录插到最上面（最新在上），限制记录数量避免长时间拾取导致表格持续膨胀。
+    constexpr int kMaximumProbeRows = 500;
     ui->probeTable->insertRow(0);
+    while (ui->probeTable->rowCount() > kMaximumProbeRows)
+        ui->probeTable->removeRow(ui->probeTable->rowCount() - 1);
 
     auto makeItem = [](const QString& s)
     {

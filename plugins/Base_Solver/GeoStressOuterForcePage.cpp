@@ -482,8 +482,8 @@ void GeoStressOuterForcePage::refreshGroupCombo()
                                               : QStringLiteral("网格边选择"));
     ui->pickHintLabel->setText(
         selectFaces
-            ? QStringLiteral("选择对象：三维网格面。Shift+拖拽框选，Ctrl+拖拽取消选择。")
-            : QStringLiteral("选择对象：二维网格边。Shift+拖拽框选，Ctrl+拖拽取消选择。"));
+            ? QStringLiteral("提示：Shift 框选网格面，Ctrl 取消选择。")
+            : QStringLiteral("提示：Shift 框选网格边，Ctrl 取消选择。"));
     ui->pickEnableCheckBox->setText(selectFaces ? QStringLiteral("开启面点选")
                                                  : QStringLiteral("开启边点选"));
 

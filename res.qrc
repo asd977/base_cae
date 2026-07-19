@@ -121,6 +121,9 @@
         <file>resources/style/app.qss</file>
         <file>resources/style/chevron_right.svg</file>
         <file>resources/style/chevron_down.svg</file>
+        <file>resources/style/check_mark.svg</file>
+        <file>resources/style/radio_dot.svg</file>
+        <file>resources/style/radio_dot_disabled.svg</file>
         <file>resources/menu/minimal/app-new.svg</file>
         <file>resources/menu/minimal/app-open.svg</file>
         <file>resources/menu/minimal/app-save.svg</file>

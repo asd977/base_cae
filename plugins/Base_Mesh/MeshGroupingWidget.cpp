@@ -24,6 +24,7 @@
 #include <vtkUnstructuredGrid.h>
 
 #include <QMap>
+#include <QLabel>
 #include <QMessageBox>
 #include <QSet>
 #include <QTableWidgetItem>
@@ -36,7 +37,8 @@
 namespace
 {
 const QString kRangePreviewPropId = "mesh.grouping.range.preview";
-constexpr int FIRST_COMPUTABLE_MATYPE = 2;
+constexpr int FIRST_AUTO_MATYPE = 3;
+constexpr int MAX_SOLVER_MATYPE = 300;
 
 static bool physicalTagExists(const MshPickMap& pick, int physId)
 {
@@ -112,25 +114,38 @@ MeshGroupingWidget::MeshGroupingWidget(QWidget* parent)
     ui->setupUi(this);
 
     ui->cmbTargetArray->clear();
-    ui->cmbTargetArray->addItem("材料分组(MATYPE)", "MATYPE");
-    ui->cmbTargetArray->addItem("填筑层分组(LAYER)", "LAYER");
+    ui->cmbTargetArray->addItem("材料分组", "MATYPE");
+    ui->cmbTargetArray->addItem("填筑层分组", "LAYER");
     ui->cmbRangeTargetArray->clear();
-    ui->cmbRangeTargetArray->addItem("材料分组(MATYPE)", "MATYPE");
-    ui->cmbRangeTargetArray->addItem("填筑层分组(LAYER)", "LAYER");
+    ui->cmbRangeTargetArray->addItem("材料分组", "MATYPE");
+    ui->cmbRangeTargetArray->addItem("填筑层分组", "LAYER");
+
+    auto* matypeHint = new QLabel(
+        QStringLiteral("材料编号 1 不参加计算；编号 2 仅兼容旧数据且固定按线弹性处理；新建材料分组从 3 开始。"),
+        this);
+    matypeHint->setObjectName(QStringLiteral("matypeNumberingHint"));
+    matypeHint->setWordWrap(true);
+    ui->contentLayout->insertWidget(2, matypeHint);
+    ui->spStartValue->setToolTip(
+        QStringLiteral("自动材料分组从 3 开始，避免误用求解器保留的编号 2。"));
+    ui->spTargetValue->setToolTip(
+        QStringLiteral("新建材料分组使用 3 至 300；编号 2 仅兼容旧数据。"));
 
     auto syncMatypeNumberBounds = [this]()
     {
         const bool autoTargetIsMatype =
             ui->cmbTargetArray->currentData().toString().compare("MATYPE", Qt::CaseInsensitive) == 0;
-        ui->spStartValue->setMinimum(autoTargetIsMatype ? FIRST_COMPUTABLE_MATYPE : 1);
-        if (autoTargetIsMatype && ui->spStartValue->value() < FIRST_COMPUTABLE_MATYPE)
-            ui->spStartValue->setValue(FIRST_COMPUTABLE_MATYPE);
+        ui->spStartValue->setMinimum(autoTargetIsMatype ? FIRST_AUTO_MATYPE : 1);
+        ui->spStartValue->setMaximum(autoTargetIsMatype ? MAX_SOLVER_MATYPE : 1000000);
+        if (autoTargetIsMatype && ui->spStartValue->value() < FIRST_AUTO_MATYPE)
+            ui->spStartValue->setValue(FIRST_AUTO_MATYPE);
 
         const bool rangeTargetIsMatype =
             ui->cmbRangeTargetArray->currentData().toString().compare("MATYPE", Qt::CaseInsensitive) == 0;
-        ui->spTargetValue->setMinimum(rangeTargetIsMatype ? FIRST_COMPUTABLE_MATYPE : 1);
-        if (rangeTargetIsMatype && ui->spTargetValue->value() < FIRST_COMPUTABLE_MATYPE)
-            ui->spTargetValue->setValue(FIRST_COMPUTABLE_MATYPE);
+        ui->spTargetValue->setMinimum(rangeTargetIsMatype ? FIRST_AUTO_MATYPE : 1);
+        ui->spTargetValue->setMaximum(rangeTargetIsMatype ? MAX_SOLVER_MATYPE : 1000000);
+        if (rangeTargetIsMatype && ui->spTargetValue->value() < FIRST_AUTO_MATYPE)
+            ui->spTargetValue->setValue(FIRST_AUTO_MATYPE);
     };
 
     connect(ui->btnAutoGrouping, &QPushButton::clicked, this, &MeshGroupingWidget::onAutoGrouping);
@@ -207,7 +222,7 @@ void MeshGroupingWidget::onAutoGrouping()
     auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshService)
     {
-        QMessageBox::warning(this, "网格分组", "MeshModuleControllerService 不可用");
+        QMessageBox::warning(this, "网格分组", "网格管理功能尚未就绪，请稍后重试。");
         return;
     }
 
@@ -231,7 +246,7 @@ void MeshGroupingWidget::onRangeGrouping()
     auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshService)
     {
-        QMessageBox::warning(this, "网格分组", "MeshModuleControllerService 不可用");
+        QMessageBox::warning(this, "网格分组", "网格管理功能尚未就绪，请稍后重试。");
         return;
     }
 
@@ -274,7 +289,7 @@ void MeshGroupingWidget::detectBoundaryGroupsBySurfacePatches()
     auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshService)
     {
-        QMessageBox::warning(this, "边界自动分组", "MeshModuleControllerService 不可用");
+        QMessageBox::warning(this, "边界自动分组", "网格管理功能尚未就绪，请稍后重试。");
         return;
     }
 

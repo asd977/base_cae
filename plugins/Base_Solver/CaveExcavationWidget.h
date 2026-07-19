@@ -14,7 +14,7 @@ class CaveExcavationWidget : public BasePage
 {
     Q_OBJECT
 
-  public:
+public:
     explicit CaveExcavationWidget(QWidget* parent = nullptr);
     ~CaveExcavationWidget() override;
 
@@ -24,7 +24,11 @@ class CaveExcavationWidget : public BasePage
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
 
-  private:
+signals:
+    void openGeoStressRequested();
+    void openCaveSupportRequested();
+
+private:
     Ui::CaveExcavationWidget* ui;
 };
 

@@ -48,7 +48,8 @@ static const QRegularExpression kWhitespaceRe(QStringLiteral("\\s+"));
 
 static const char* kIiinVerticalAxisArrayName = "IIIN_IVERTICAL";
 static const char* kIiinConnectivityPatternArrayName = "IIIN_CONNECTIVITY_PATTERN";
-constexpr int kDefaultCalculationMatype = 2;
+constexpr int kFirstComputableMatype = 2;
+constexpr int kDefaultCalculationMatype = 3;
 constexpr int kDefaultConstructionLayer = 1;
 
 static int normalizedVerticalAxis(int axis, int fallback = 2)
@@ -2995,7 +2996,9 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAnsysInpGrid(const QString&
 
     auto appendCellArrays = [&](const AnsysElem& elem, int ketype)
     {
-        matypeArr->InsertNextValue(elem.mat >= kDefaultCalculationMatype ? elem.mat : kDefaultCalculationMatype);
+        matypeArr->InsertNextValue(elem.mat >= kFirstComputableMatype
+                                       ? elem.mat
+                                       : kDefaultCalculationMatype);
         layerArr->InsertNextValue(kDefaultConstructionLayer);
         ketypeArr->InsertNextValue(ketype);
         elemIdArr->InsertNextValue(elem.id > 0 ? elem.id : static_cast<int>(grid->GetNumberOfCells()));

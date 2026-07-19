@@ -104,7 +104,7 @@
       <item>
        <widget class="QLabel" name="boxSelectHintLabel">
         <property name="text">
-         <string>提示：Shift+拖拽框选，Ctrl+拖拽取消选择</string>
+         <string>提示：按住上档键拖拽框选，按住控制键拖拽取消选择</string>
         </property>
         <property name="wordWrap">
          <bool>false</bool>
@@ -126,14 +126,14 @@
             </sizepolicy>
            </property>
            <property name="text">
-            <string>FX</string>
+            <string>X 方向力</string>
            </property>
           </widget>
          </item>
          <item row="1" column="0">
           <widget class="QLabel" name="labelFy">
            <property name="text">
-            <string>FY</string>
+            <string>Y 方向力</string>
            </property>
           </widget>
          </item>
@@ -197,28 +197,28 @@
          <item row="2" column="0">
           <widget class="QLabel" name="labelFz">
            <property name="text">
-            <string>FZ</string>
+            <string>Z 方向力</string>
            </property>
           </widget>
          </item>
          <item row="3" column="0">
           <widget class="QLabel" name="labelMx">
            <property name="text">
-            <string>Mx</string>
+            <string>绕 X 轴力矩</string>
            </property>
           </widget>
          </item>
          <item row="4" column="0">
           <widget class="QLabel" name="labelMy">
            <property name="text">
-            <string>My</string>
+            <string>绕 Y 轴力矩</string>
            </property>
           </widget>
          </item>
          <item row="5" column="0">
           <widget class="QLabel" name="labelMz">
            <property name="text">
-            <string>Mz</string>
+            <string>绕 Z 轴力矩</string>
            </property>
           </widget>
          </item>
@@ -276,7 +276,7 @@
          <item row="0" column="0">
           <widget class="QLabel" name="labelNodeId">
            <property name="text">
-            <string>node_id</string>
+            <string>节点编号</string>
            </property>
           </widget>
          </item>

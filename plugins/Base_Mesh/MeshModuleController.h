@@ -58,6 +58,10 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     bool groupByCoordinateRange(double xmin, double xmax, double ymin, double ymax, double zmin,
                                 double zmax, const QString& targetArrayName, int value,
                                 const QString& groupName, QString* errMsg = nullptr) override;
+    bool assignDamConstructionLayers(const QSet<MeshIdType>& foundationCellIds,
+                                     const QSet<MeshIdType>& damCellIds,
+                                     int fillLayerCount,
+                                     QString* errMsg = nullptr) override;
 
     void setEdgeControlRules(const QVector<EdgeControlRule>& rules) override;
     void setFaceControlRules(const QVector<FaceControlRule>& rules) override;

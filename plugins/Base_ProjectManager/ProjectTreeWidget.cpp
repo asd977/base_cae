@@ -78,7 +78,7 @@ void ProjectTreeWidget::applyTreeTheme()
     m_treeWidget->setSelectionMode(QAbstractItemView::SingleSelection);
     m_treeWidget->setExpandsOnDoubleClick(true);
     m_treeWidget->setEditTriggers(QAbstractItemView::EditKeyPressed);
-    m_treeWidget->setAnimated(true);
+    m_treeWidget->setAnimated(false);
     m_treeWidget->setUniformRowHeights(true);
     m_treeWidget->setIconSize(QSize(16, 16));
     m_treeWidget->setRootIsDecorated(true);

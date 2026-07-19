@@ -104,7 +104,7 @@
       <item>
        <widget class="QLabel" name="boxSelectHintLabel">
         <property name="text">
-         <string>提示：Shift+拖拽框选，Ctrl+拖拽取消选择</string>
+         <string>提示：按住上档键拖拽框选，按住控制键拖拽取消选择</string>
         </property>
         <property name="wordWrap">
          <bool>false</bool>
@@ -120,14 +120,14 @@
          <item row="0" column="0">
           <widget class="QLabel" name="labelAlfa">
            <property name="text">
-            <string>ALFA</string>
+            <string>线膨胀系数</string>
            </property>
           </widget>
          </item>
          <item row="1" column="0">
           <widget class="QLabel" name="labelDT">
            <property name="text">
-            <string>DT</string>
+            <string>温度变化量</string>
            </property>
           </widget>
          </item>
@@ -175,7 +175,7 @@
          <item row="0" column="0">
           <widget class="QLabel" name="labelNodeId">
            <property name="text">
-            <string>node_id</string>
+            <string>节点编号</string>
            </property>
           </widget>
          </item>

@@ -76,6 +76,25 @@ if(WIN32)
         message(WARNING "windeployqt was not found; the release folder may require a Qt PATH")
     endif()
 
+    execute_process(
+        COMMAND "${_cae_qmake_executable}" -query QT_INSTALL_TRANSLATIONS
+        OUTPUT_VARIABLE _cae_qt_translations_dir
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    set(_cae_qt_chinese_translation
+        "${_cae_qt_translations_dir}/qtbase_zh_CN.qm")
+    if(EXISTS "${_cae_qt_chinese_translation}")
+        add_custom_command(TARGET CAE_BASE POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "${CAE_RUNTIME_DIR}/translations"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${_cae_qt_chinese_translation}"
+                "${CAE_RUNTIME_DIR}/translations/qtbase_zh_CN.qm"
+            COMMENT "Deploying Chinese Qt translations"
+            VERBATIM
+        )
+    endif()
+
     file(GLOB _cae_vtk_runtime_dlls "${CAE_VTK_ROOT}/bin/*.dll")
     foreach(_cae_vtk_runtime_dll IN LISTS _cae_vtk_runtime_dlls)
         add_custom_command(TARGET CAE_BASE POST_BUILD

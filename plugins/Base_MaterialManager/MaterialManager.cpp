@@ -1,4 +1,4 @@
-#include "MaterialManager.h"
+﻿#include "MaterialManager.h"
 
 #include <ProjectNode.h>
 #include <PublicConstants.h>
@@ -36,6 +36,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QSaveFile>
 #include <QDialogButtonBox>
 #include <QShortcut>
 #include <QSplitter>
@@ -54,11 +55,45 @@ constexpr int REFERENCE_DIALOG_HEIGHT = 680;
 constexpr int DEFAULT_NCON            = 200;
 constexpr int MIN_NMAT                = 10;
 constexpr int FIRST_COMPUTABLE_MATYPE = 2;
+constexpr int MAX_SOLVER_MATYPE       = 300;
 constexpr double CO_THRESHOLD         = 1.0e-1;
 
 bool isComputableMatype(int matype)
 {
     return matype >= FIRST_COMPUTABLE_MATYPE;
+}
+
+bool isDamStaticModel(const QString& modelKey)
+{
+    static const QSet<QString> keys = {
+        QStringLiteral("soil_eb"), QStringLiteral("soil_kg"),
+        QStringLiteral("soil_emu"), QStringLiteral("soil_nanshui"),
+        QStringLiteral("soil_emu_crush")};
+    return keys.contains(modelKey);
+}
+
+bool defaultMaterialNameIndex(const QString& name, int* index)
+{
+    const QString trimmed = name.trimmed();
+    const QString prefix = QStringLiteral("材料");
+    if (!trimmed.startsWith(prefix))
+        return false;
+
+    bool ok = false;
+    const int value = trimmed.mid(prefix.size()).toInt(&ok);
+    if (!ok || value <= 0)
+        return false;
+
+    if (index)
+        *index = value;
+    return true;
+}
+
+QString compactMaterialLabel(int matype, const MaterialEntry& entry)
+{
+    const QString name = entry.name.trimmed().isEmpty() ? QStringLiteral("未命名材料")
+                                                        : entry.name.trimmed();
+    return QStringLiteral("编号 %1  %2").arg(matype).arg(name);
 }
 
 struct ReferenceTableData
@@ -118,7 +153,7 @@ QVector<ReferenceTableData> buildMaterialReferenceTables()
     tables.append(t);
 
     t = {};
-    t.modelName = QStringLiteral("E-B模型");
+    t.modelName = QStringLiteral("E-B本构");
     t.tableName = QStringLiteral("样表2 土体E-B模型参数(IB=-1)");
     t.columns << "材料" << "编号" << "干容重" << "天然容重" << "饱和容重" << "φ0" << "Δφ" << "c(KPa)"
               << "Rf"
@@ -180,7 +215,7 @@ QVector<ReferenceTableData> buildMaterialReferenceTables()
     tables.append(t);
 
     t = {};
-    t.modelName = QStringLiteral("E-μ模型");
+    t.modelName = QStringLiteral("E-μ本构");
     t.tableName = QStringLiteral("样表5 土体E-μ模型参数(IB=-3)");
     t.columns << "材料" << "编号" << "干容重" << "天然容重" << "饱和容重" << "φ0" << "Δφ" << "c" << "Rf" << "K" << "n" << "G" << "D" << "F";
     t.rows.append(QStringList() << "上游铺盖（回填石渣料）" << "4" << "1.8" << "2.0" << "2.2" << "35" << "0" << "0.0" << "0.75" << "500" << "0.4" << "0.38" << "2.7" << "0.15");
@@ -195,7 +230,7 @@ QVector<ReferenceTableData> buildMaterialReferenceTables()
     tables.append(t);
 
     t = {};
-    t.modelName = QStringLiteral("E-μ破碎模型");
+    t.modelName = QStringLiteral("E-μ破碎本构");
     t.tableName = QStringLiteral("样表15 土体E-μ破碎模型参数(IB=-6)");
     t.columns << "材料" << "编号" << "干容重" << "天然容重" << "饱和容重" << "φ0" << "Δφ" << "c" << "Rf" << "K" << "n" << "C1" << "n1" << "C2" << "n2" << "C3" << "n3";
     t.rows.append(QStringList() << "上游铺盖（回填石渣料）" << "4" << "1.8" << "2.0" << "2.2" << "35" << "0" << "0.0" << "0.75" << "500" << "0.4" << "0.38" << "2.7" << "0.38" << "2.7" << "0.38" << "2.7");
@@ -226,7 +261,7 @@ QVector<ReferenceTableData> buildMaterialReferenceTables()
     tables.append(t);
 
     t = {};
-    t.modelName = QStringLiteral("各向同性本构");
+    t.modelName = QStringLiteral("摩尔-库仑本构");
     t.tableName = QStringLiteral("样表7 大岗山高拱坝各向同性岩体物理力学参数表");
     t.columns << "岩体代号" << "序号" << "E" << "μ" << "容重" << "内摩擦系数" << "凝聚力C'";
     t.rows.append(QStringList() << "空化" << "1" << "0.001" << "0.3" << "0.0" << "1.7" << "200.0");
@@ -253,7 +288,7 @@ QVector<ReferenceTableData> buildMaterialReferenceTables()
     tables.append(t);
 
     t = {};
-    t.modelName = QStringLiteral("非线性土体模型");
+    t.modelName = QStringLiteral("南水非线性本构");
     t.tableName = QStringLiteral("样表9 土体南水模型参数（IB=-5）");
     t.columns << "材料" << "编号" << "干容重" << "天然容重" << "饱和容重" << "φ0" << "Δφ" << "c" << "Rf" << "K" << "Kur" << "n" << "cd" << "nd" << "Rd";
     t.rows.append(QStringList() << "垫层料" << "7" << "2.10" << "2.15" << "2.20" << "46.0" << "6.0" << "0.0" << "0.79" << "867" << "1133" << "0.39" << "0.0043" << "0.62" << "0.72");
@@ -265,7 +300,7 @@ QVector<ReferenceTableData> buildMaterialReferenceTables()
     tables.append(t);
 
     t = {};
-    t.modelName = QStringLiteral("K-G模型");
+    t.modelName = QStringLiteral("K-G本构");
     t.tableName = QStringLiteral("样表10 土体科大K-G模型参数(IB=-2)");
     t.columns << "材料" << "编号" << "干容重" << "天然容重" << "饱和容重" << "Ki,Kie" << "αk,αke" << "Gi,Gie" << "αG,αGe" << "βG" << "a" << "b";
     t.rows.append(QStringList() << "覆盖层3" << "4" << "1.8" << "2.0" << "2.2" << "168" << "68" << "114" << "115" << "-60" << "190" << "1.92");
@@ -578,6 +613,7 @@ bool MaterialManager::saveProject()
                             hasValidTransition ? entry.transitionMatype : -1);
 
             entryObj.insert(QStringLiteral("seepage_model_key"), entry.seepageModelKey);
+            entryObj.insert(QStringLiteral("creep_model_key"), entry.creepModelKey);
             QJsonObject seepagePropertiesObj;
             for (auto it = entry.seepageProperties.constBegin();
                  it != entry.seepageProperties.constEnd(); ++it)
@@ -610,8 +646,8 @@ bool MaterialManager::saveProject()
         transitionArray.append(row);
     }
     root.insert(QStringLiteral("material_transitions"), transitionArray);
-    root.insert(QStringLiteral("show_transition_node"),
-                (m_transitionNode != nullptr) || !m_materialTransitions.isEmpty());
+    // 旧版全局材料变换数据继续保存用于工程迁移，但不再创建材料树节点。
+    root.insert(QStringLiteral("show_transition_node"), false);
 
     QFile file(QDir(m_workPath).filePath(PublicConstants::kMaterialProjectFileName));
     if (!file.open(QIODevice::WriteOnly))
@@ -698,6 +734,11 @@ bool MaterialManager::loadProject()
                         m_models[modelIndex].columns.append(it.key());
                     }
                 }
+                for (const QString& column : m_models[modelIndex].columns)
+                {
+                    if (!entry.properties.contains(column))
+                        entry.properties.insert(column, QStringLiteral("0"));
+                }
 
                 const QJsonArray applied = entryObj.value(QStringLiteral("applied_matypes")).toArray();
                 for (const auto& matypeValue : applied)
@@ -710,10 +751,24 @@ bool MaterialManager::loadProject()
                     entryObj.value(QStringLiteral("transition_matype")).toInt(-1);
                 entry.transitionMatype =
                     isComputableMatype(transitionMatype) ? transitionMatype : -1;
-                entry.transitionOnly = entryObj.value(QStringLiteral("transition_only")).toBool(false) &&
+                const bool supportsCalculationStage =
+                    isDamStaticModel(key) || key == QStringLiteral("dam_dynamic");
+                entry.transitionOnly = supportsCalculationStage &&
+                                       entryObj.value(QStringLiteral("transition_only")).toBool(false) &&
                                        isComputableMatype(entry.transitionMatype);
+                if (!entry.transitionOnly)
+                    entry.transitionMatype = -1;
 
-                entry.seepageModelKey = entryObj.value(QStringLiteral("seepage_model_key")).toString();
+                const QString legacySupplementalKey =
+                    entryObj.value(QStringLiteral("seepage_model_key")).toString();
+                if (legacySupplementalKey == QStringLiteral("jk_corewall_steady_seepage"))
+                    entry.seepageModelKey = legacySupplementalKey;
+                else
+                    entry.creepModelKey = legacySupplementalKey;
+                const QString storedCreepKey =
+                    entryObj.value(QStringLiteral("creep_model_key")).toString();
+                if (!storedCreepKey.isEmpty())
+                    entry.creepModelKey = storedCreepKey;
                 const QJsonObject seepageProperties =
                     entryObj.value(QStringLiteral("seepage_properties")).toObject();
                 for (auto it = seepageProperties.constBegin(); it != seepageProperties.constEnd(); ++it)
@@ -749,13 +804,6 @@ bool MaterialManager::loadProject()
         if (isComputableMatype(oldMatype) && isComputableMatype(newMatype))
             m_materialTransitions.push_back({oldMatype, newMatype});
     }
-    const bool showTransitionNode =
-        root.value(QStringLiteral("show_transition_node")).toBool(!m_materialTransitions.isEmpty());
-    if (showTransitionNode)
-    {
-        ensureTransitionNode();
-    }
-
     bool recoveredFromCalculationData = false;
     if (m_addedEntryIds.isEmpty())
     {
@@ -860,6 +908,24 @@ void MaterialManager::setMaterialTransitions(const QVector<QPair<int, int>>& tra
     }
 }
 
+bool MaterialManager::hasConfiguredMaterials() const
+{
+    for (const auto& model : m_models)
+    {
+        for (const auto& entry : model.materials)
+        {
+            if (!m_addedEntryIds.contains(entry.id))
+                continue;
+            if (!entry.appliedMatypes.isEmpty() ||
+                (entry.transitionOnly && isComputableMatype(entry.transitionMatype)))
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 QString MaterialManager::addMaterialToModel(const QString& modelKey, bool addToProjectTree)
 {
     MaterialModel* model = findModel(modelKey);
@@ -868,24 +934,26 @@ QString MaterialManager::addMaterialToModel(const QString& modelKey, bool addToP
         return QString();
     }
 
+    // 材料名称在整个工程内保持唯一，避免切换模型后出现多个“材料1”。
     int maxIndex = 0;
-    for (const auto& entry : model->materials)
+    for (const auto& existingModel : m_models)
     {
-        if (!entry.name.startsWith(QStringLiteral("材料")))
+        for (const auto& existingEntry : existingModel.materials)
         {
-            continue;
-        }
-        bool ok = false;
-        const int index = entry.name.mid(QStringLiteral("材料").size()).toInt(&ok);
-        if (ok)
-        {
-            maxIndex = qMax(maxIndex, index);
+            if (!existingEntry.name.startsWith(QStringLiteral("材料")))
+                continue;
+
+            bool ok = false;
+            const int index =
+                existingEntry.name.mid(QStringLiteral("材料").size()).toInt(&ok);
+            if (ok)
+                maxIndex = qMax(maxIndex, index);
         }
     }
 
     MaterialEntry entry;
     entry.id = QUuid::createUuid().toString();
-    entry.name = QString("材料%1").arg(maxIndex + 1);
+    entry.name = makeUniqueMaterialName(QString("材料%1").arg(maxIndex + 1));
     for (const QString& column : model->columns)
     {
         entry.properties.insert(column, isAutoNumberColumn(column) ? QString() : QStringLiteral("0"));
@@ -950,8 +1018,12 @@ void MaterialManager::setupTreeWidget()
                                               if (!model)
                                                   return;
 
+                                              QStringList entryIds;
+                                              entryIds.reserve(model->materials.size());
                                               for (const auto& entry : model->materials)
-                                                  m_addedEntryIds.remove(entry.id);
+                                                  entryIds.append(entry.id);
+                                              for (const QString& entryId : entryIds)
+                                                  clearEntryProjectState(entryId);
 
                                               rebuildProjectTree();
                                           });
@@ -1058,6 +1130,129 @@ MaterialEntry* MaterialManager::findEntry(const QString& id, MaterialModel** out
         *outModel = nullptr;
     }
     return nullptr;
+}
+
+QString MaterialManager::makeUniqueMaterialName(const QString& requestedName,
+                                                const QString& excludeEntryId) const
+{
+    QString baseName = requestedName.trimmed();
+    if (baseName.isEmpty())
+        baseName = QStringLiteral("未命名材料");
+
+    QSet<QString> usedNames;
+    for (const auto& model : m_models)
+    {
+        for (const auto& entry : model.materials)
+        {
+            if (!excludeEntryId.isEmpty() && entry.id == excludeEntryId)
+                continue;
+            usedNames.insert(entry.name.trimmed().toCaseFolded());
+        }
+    }
+
+    if (!usedNames.contains(baseName.toCaseFolded()))
+        return baseName;
+
+    int defaultIndex = 0;
+    if (defaultMaterialNameIndex(baseName, &defaultIndex))
+    {
+        for (int candidateIndex = defaultIndex + 1;; ++candidateIndex)
+        {
+            const QString candidate = QStringLiteral("材料%1").arg(candidateIndex);
+            if (!usedNames.contains(candidate.toCaseFolded()))
+                return candidate;
+        }
+    }
+
+    for (int suffix = 2;; ++suffix)
+    {
+        const QString candidate = QStringLiteral("%1 (%2)").arg(baseName).arg(suffix);
+        if (!usedNames.contains(candidate.toCaseFolded()))
+            return candidate;
+    }
+}
+
+bool MaterialManager::changeEntryModel(const QString& entryId,
+                                       const QString& targetModelKey,
+                                       QString* error)
+{
+    if (error)
+        error->clear();
+
+    if (entryId.isEmpty() || targetModelKey.isEmpty())
+    {
+        if (error)
+            *error = QStringLiteral("材料或目标材料模型无效。");
+        return false;
+    }
+
+    int sourceModelIndex = -1;
+    int sourceEntryIndex = -1;
+    int targetModelIndex = -1;
+
+    for (int modelIndex = 0; modelIndex < m_models.size(); ++modelIndex)
+    {
+        if (m_models.at(modelIndex).key == targetModelKey)
+            targetModelIndex = modelIndex;
+
+        const auto& materials = m_models.at(modelIndex).materials;
+        for (int entryIndex = 0; entryIndex < materials.size(); ++entryIndex)
+        {
+            if (materials.at(entryIndex).id == entryId)
+            {
+                sourceModelIndex = modelIndex;
+                sourceEntryIndex = entryIndex;
+                break;
+            }
+        }
+    }
+
+    if (sourceModelIndex < 0 || sourceEntryIndex < 0)
+    {
+        if (error)
+            *error = QStringLiteral("没有找到当前材料。");
+        return false;
+    }
+    if (targetModelIndex < 0)
+    {
+        if (error)
+            *error = QStringLiteral("没有找到目标材料模型。");
+        return false;
+    }
+    if (sourceModelIndex == targetModelIndex)
+        return true;
+
+    MaterialEntry movedEntry = m_models[sourceModelIndex].materials.at(sourceEntryIndex);
+    MaterialModel& targetModel = m_models[targetModelIndex];
+
+    // 不删除旧模型参数：当前模型只读取自身 columns，保留旧值可避免用户切回时丢失数据。
+    // 目标模型缺少的字段再补默认值。
+    for (const QString& column : targetModel.columns)
+    {
+        if (!movedEntry.properties.contains(column))
+        {
+            movedEntry.properties.insert(column,
+                                         isAutoNumberColumn(column) ? QString()
+                                                                    : QStringLiteral("0"));
+        }
+    }
+
+    const bool targetSupportsCalculationStage =
+        isDamStaticModel(targetModel.key) || targetModel.key == QStringLiteral("dam_dynamic");
+    if (!targetSupportsCalculationStage || !isComputableMatype(movedEntry.transitionMatype))
+    {
+        movedEntry.transitionOnly = false;
+        movedEntry.transitionMatype = -1;
+    }
+
+    m_models[sourceModelIndex].materials.removeAt(sourceEntryIndex);
+    targetModel.materials.append(movedEntry);
+    syncAutoNumberProperties(&targetModel, &targetModel.materials.last());
+
+    // entryId 和网格关联保持不变，因此树节点和所有高亮状态都可以继续复用。
+    notifyLibraryChanged(true);
+    focusOnMaterial(entryId);
+    return true;
 }
 
 void MaterialManager::notifyLibraryChanged(bool refreshProjectTree)
@@ -1200,6 +1395,11 @@ void MaterialManager::setValueStrings(QVector<QStringList> values)
                 m_models[index].columns.append(columnName);
             }
         }
+        for (const QString& column : m_models[index].columns)
+        {
+            if (!entry.properties.contains(column))
+                entry.properties.insert(column, QStringLiteral("0"));
+        }
 
         m_models[index].materials.append(entry);
         const QStringList matypeList =
@@ -1213,8 +1413,12 @@ void MaterialManager::setValueStrings(QVector<QStringList> values)
                 m_models[index].materials.last().appliedMatypes.insert(value);
             }
         }
-        m_models[index].materials.last().transitionOnly = transitionOnly;
-        m_models[index].materials.last().transitionMatype = transitionMatype;
+        const bool supportsCalculationStage =
+            isDamStaticModel(key) || key == QStringLiteral("dam_dynamic");
+        m_models[index].materials.last().transitionOnly =
+            supportsCalculationStage && transitionOnly;
+        m_models[index].materials.last().transitionMatype =
+            supportsCalculationStage && transitionOnly ? transitionMatype : -1;
         syncAutoNumberProperties(&m_models[index], &m_models[index].materials.last());
     }
 
@@ -1253,6 +1457,61 @@ bool MaterialManager::validateTransitionMatype(const QString& entryId, int matyp
             *error = QStringLiteral("编号必须大于等于 2；1 表示不进入计算。");
         return false;
     }
+    if (matype > MAX_SOLVER_MATYPE)
+    {
+        if (error)
+            *error = QStringLiteral("材料编号不能超过 300。");
+        return false;
+    }
+    if (matype == 2)
+    {
+        if (error)
+        {
+            *error = QStringLiteral(
+                "材料编号 2 是求解器保留的线弹性编号，仅用于兼容旧数据。新建计算阶段材料请使用 3 以上的空闲编号。");
+        }
+        return false;
+    }
+
+    const MaterialModel* currentModel = nullptr;
+    const MaterialEntry* currentEntry = nullptr;
+    for (const auto& model : m_models)
+    {
+        for (const auto& entry : model.materials)
+        {
+            if (entry.id == entryId)
+            {
+                currentModel = &model;
+                currentEntry = &entry;
+                break;
+            }
+        }
+        if (currentEntry)
+            break;
+    }
+    if (!currentEntry || !currentModel || !m_addedEntryIds.contains(entryId))
+    {
+        if (error)
+            *error = QStringLiteral("当前材料已不在工程中，请重新添加后再设置。");
+        return false;
+    }
+    if (!isDamStaticModel(currentModel->key) &&
+        currentModel->key != QStringLiteral("dam_dynamic"))
+    {
+        if (error)
+            *error = QStringLiteral("该材料模型不支持作为浸润、动力或地震波动计算阶段材料。");
+        return false;
+    }
+    if (!currentEntry->appliedMatypes.isEmpty())
+    {
+        if (error)
+        {
+            *error = QStringLiteral(
+                "该材料已经施加到网格，不能同时作为计算阶段材料。请复制或新建一份材料参数后再设置。");
+        }
+        return false;
+    }
+
     const QSet<int> meshMatypes = availableMatypes();
     if (meshMatypes.contains(matype))
     {
@@ -1265,6 +1524,8 @@ bool MaterialManager::validateTransitionMatype(const QString& entryId, int matyp
     {
         for (const auto& entry : model.materials)
         {
+            if (!m_addedEntryIds.contains(entry.id))
+                continue;
             if (entry.id == entryId)
                 continue;
             if (entry.appliedMatypes.contains(matype))
@@ -1276,7 +1537,7 @@ bool MaterialManager::validateTransitionMatype(const QString& entryId, int matyp
             if (entry.transitionOnly && entry.transitionMatype == matype)
             {
                 if (error)
-                    *error = QStringLiteral("该编号已被其他“后续变换材料”占用。");
+                    *error = QStringLiteral("该编号已被其他计算阶段材料占用。");
                 return false;
             }
         }
@@ -1285,6 +1546,11 @@ bool MaterialManager::validateTransitionMatype(const QString& entryId, int matyp
 }
 
 QMap<int, QString> MaterialManager::transitionSourceLabels() const
+{
+    return assignedMaterialLabels();
+}
+
+QMap<int, QString> MaterialManager::assignedMaterialLabels() const
 {
     QMap<int, QString> labels;
     for (const auto& model : m_models)
@@ -1297,7 +1563,7 @@ QMap<int, QString> MaterialManager::transitionSourceLabels() const
             {
                 if (!isComputableMatype(matype) || labels.contains(matype))
                     continue;
-                labels.insert(matype, QStringLiteral("%1/%2 [#%3]")
+                labels.insert(matype, QStringLiteral("%1/%2（编号 %3）")
                                           .arg(model.displayName, entry.name,
                                                QString::number(matype)));
             }
@@ -1308,6 +1574,11 @@ QMap<int, QString> MaterialManager::transitionSourceLabels() const
 
 QMap<int, QString> MaterialManager::transitionTargetLabels() const
 {
+    return calculationMaterialLabels();
+}
+
+QMap<int, QString> MaterialManager::calculationMaterialLabels() const
+{
     QMap<int, QString> labels;
     for (const auto& model : m_models)
     {
@@ -1319,7 +1590,7 @@ QMap<int, QString> MaterialManager::transitionTargetLabels() const
             {
                 if (!isComputableMatype(matype) || labels.contains(matype))
                     continue;
-                labels.insert(matype, QStringLiteral("%1/%2 [#%3]")
+                labels.insert(matype, QStringLiteral("%1/%2（编号 %3）")
                                           .arg(model.displayName, entry.name,
                                                QString::number(matype)));
             }
@@ -1327,13 +1598,105 @@ QMap<int, QString> MaterialManager::transitionTargetLabels() const
                 !labels.contains(entry.transitionMatype))
             {
                 labels.insert(entry.transitionMatype,
-                              QStringLiteral("%1/%2 [T#%3]")
+                              QStringLiteral("%1/%2（阶段材料，编号 %3）")
                                   .arg(model.displayName, entry.name,
                                        QString::number(entry.transitionMatype)));
             }
         }
     }
     return labels;
+}
+
+QMap<int, QString> MaterialManager::damStaticMaterialLabels() const
+{
+    QMap<int, QString> labels;
+    for (const auto& model : m_models)
+    {
+        if (!isDamStaticModel(model.key))
+            continue;
+        for (const auto& entry : model.materials)
+        {
+            if (!m_addedEntryIds.contains(entry.id))
+                continue;
+            for (int matype : entry.appliedMatypes)
+            {
+                if (isComputableMatype(matype) && !labels.contains(matype))
+                    labels.insert(matype, compactMaterialLabel(matype, entry));
+            }
+        }
+    }
+    return labels;
+}
+
+QMap<int, QString> MaterialManager::damWetMaterialLabels(int sourceMatype) const
+{
+    QMap<int, QString> labels;
+    for (const auto& model : m_models)
+    {
+        if (!isDamStaticModel(model.key))
+            continue;
+        for (const auto& entry : model.materials)
+        {
+            if (!m_addedEntryIds.contains(entry.id))
+                continue;
+            if (entry.transitionOnly && isComputableMatype(entry.transitionMatype) &&
+                entry.transitionMatype != sourceMatype &&
+                !labels.contains(entry.transitionMatype))
+            {
+                labels.insert(entry.transitionMatype,
+                              compactMaterialLabel(entry.transitionMatype, entry));
+            }
+        }
+    }
+    return labels;
+}
+
+QMap<int, QString> MaterialManager::damDynamicMaterialLabels(int sourceMatype) const
+{
+    Q_UNUSED(sourceMatype);
+    QMap<int, QString> labels;
+    for (const auto& model : m_models)
+    {
+        if (model.key != QStringLiteral("dam_dynamic"))
+            continue;
+        for (const auto& entry : model.materials)
+        {
+            if (!m_addedEntryIds.contains(entry.id))
+                continue;
+
+            if (entry.transitionOnly && isComputableMatype(entry.transitionMatype) &&
+                !labels.contains(entry.transitionMatype))
+            {
+                labels.insert(entry.transitionMatype,
+                              compactMaterialLabel(entry.transitionMatype, entry));
+            }
+        }
+    }
+    return labels;
+}
+
+bool MaterialManager::setDamDynamicSourceMatype(int dynamicMatype, int sourceMatype)
+{
+    if (!isComputableMatype(dynamicMatype) || !isComputableMatype(sourceMatype))
+        return false;
+    for (auto& model : m_models)
+    {
+        if (model.key != QStringLiteral("dam_dynamic"))
+            continue;
+        for (auto& entry : model.materials)
+        {
+            if (!m_addedEntryIds.contains(entry.id) || !entry.transitionOnly ||
+                entry.transitionMatype != dynamicMatype)
+            {
+                continue;
+            }
+            entry.properties.insert(QStringLiteral("静力计算编号"),
+                                    QString::number(sourceMatype));
+            notifyEntryUpdated(entry.id, false);
+            return true;
+        }
+    }
+    return false;
 }
 
 void MaterialManager::focusOnMaterial(const QString& entryId)
@@ -1345,6 +1708,10 @@ void MaterialManager::focusOnMaterial(const QString& entryId)
     ProjectNode* item = m_entryItems.value(entryId, nullptr);
     if (item)
     {
+        if (m_rootItem)
+            m_rootItem->setExpanded(true);
+        if (auto* parent = dynamic_cast<ProjectNode*>(item->parent()))
+            parent->setExpanded(true);
         m_projectManagerService->setCurrentItem(item);
     }
 }
@@ -1358,6 +1725,8 @@ void MaterialManager::focusOnModel(const QString& modelKey)
     ProjectNode* item = m_modelItems.value(modelKey, nullptr);
     if (item)
     {
+        if (m_rootItem)
+            m_rootItem->setExpanded(true);
         m_projectManagerService->setCurrentItem(item);
     }
 }
@@ -1369,9 +1738,49 @@ void MaterialManager::ensureEntryIds()
         for (auto& entry : model.materials)
         {
             if (entry.id.isEmpty())
-            {
                 entry.id = QUuid::createUuid().toString();
+        }
+    }
+    normalizeMaterialNames();
+}
+
+void MaterialManager::normalizeMaterialNames()
+{
+    QSet<QString> usedNames;
+    for (auto& model : m_models)
+    {
+        for (auto& entry : model.materials)
+        {
+            QString baseName = entry.name.trimmed();
+            if (baseName.isEmpty())
+                baseName = QStringLiteral("未命名材料");
+
+            QString candidate = baseName;
+            if (usedNames.contains(candidate.toCaseFolded()))
+            {
+                int defaultIndex = 0;
+                if (defaultMaterialNameIndex(baseName, &defaultIndex))
+                {
+                    for (int candidateIndex = defaultIndex + 1;; ++candidateIndex)
+                    {
+                        candidate = QStringLiteral("材料%1").arg(candidateIndex);
+                        if (!usedNames.contains(candidate.toCaseFolded()))
+                            break;
+                    }
+                }
+                else
+                {
+                    for (int suffix = 2;; ++suffix)
+                    {
+                        candidate = QStringLiteral("%1 (%2)").arg(baseName).arg(suffix);
+                        if (!usedNames.contains(candidate.toCaseFolded()))
+                            break;
+                    }
+                }
             }
+
+            entry.name = candidate;
+            usedNames.insert(candidate.toCaseFolded());
         }
     }
 }
@@ -1411,8 +1820,6 @@ void MaterialManager::rebuildProjectTree()
             m_rootItem->addChild(modelItem);
         }
         modelItem->setText(0, model->displayName);
-        modelItem->setExpanded(false);
-
         if (m_modelWidgets.contains(model->key))
         {
             m_modelWidgets[model->key]->setModel(*model);
@@ -1525,7 +1932,6 @@ void MaterialManager::rebuildProjectTree()
         }
     }
 
-    m_rootItem->setExpanded(false);
 }
 
 void MaterialManager::clearProjectTree()
@@ -1562,8 +1968,33 @@ void MaterialManager::removeEntryFromProjectTree(const QString& entryId)
     {
         return;
     }
-    m_addedEntryIds.remove(entryId);
+    clearEntryProjectState(entryId);
     rebuildProjectTree();
+}
+
+void MaterialManager::clearEntryProjectState(const QString& entryId)
+{
+    MaterialModel* model = nullptr;
+    MaterialEntry* entry = findEntry(entryId, &model);
+    if (entry)
+    {
+        entry->appliedMatypes.clear();
+        entry->transitionOnly = false;
+        entry->transitionMatype = -1;
+        syncAutoNumberProperties(model, entry);
+    }
+    for (auto it = m_matypeOwnerById.begin(); it != m_matypeOwnerById.end();)
+    {
+        if (it.value() == entryId)
+            it = m_matypeOwnerById.erase(it);
+        else
+            ++it;
+    }
+    m_addedEntryIds.remove(entryId);
+    m_selectedMatypes.remove(entryId);
+    m_previewMatypes.remove(entryId);
+    m_preDeleteMatypes.remove(entryId);
+    clearMatypeHighlight(entryId);
 }
 
 QSet<int> MaterialManager::availableMatypes() const
@@ -1745,10 +2176,55 @@ void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
 {
     if (!isComputableMatype(matype))
         return;
-
-    MaterialEntry* entry = findEntry(entryId);
-    if (!entry)
+    if (matype > MAX_SOLVER_MATYPE)
+    {
+        QMessageBox::warning(nullptr, QStringLiteral("材料编号超出范围"),
+                             QStringLiteral("求解器只接受 1 至 300 的材料编号，请先修改网格材料分组。"));
         return;
+    }
+
+    MaterialModel* model = nullptr;
+    MaterialEntry* entry = findEntry(entryId, &model);
+    if (!entry || !model)
+        return;
+
+    if (entry->transitionOnly)
+    {
+        QMessageBox::warning(
+            nullptr, QStringLiteral("材料用途冲突"),
+            QStringLiteral("该材料已作为计算阶段材料使用，不能再直接施加到网格。"));
+        return;
+    }
+
+    if (matype == 2)
+    {
+        QMessageBox::warning(
+            nullptr, QStringLiteral("材料编号受限"),
+            QStringLiteral(
+                "材料编号 2 是求解器保留的线弹性编号，仅用于兼容旧数据，不能新施加材料。\n\n请先把网格材料分组改为 3 以上的空闲编号。"));
+        return;
+    }
+
+    for (const auto& candidateModel : m_models)
+    {
+        for (const auto& candidateEntry : candidateModel.materials)
+        {
+            if (!m_addedEntryIds.contains(candidateEntry.id) ||
+                candidateEntry.id == entryId || !candidateEntry.transitionOnly ||
+                candidateEntry.transitionMatype != matype)
+            {
+                continue;
+            }
+            QMessageBox::warning(
+                nullptr, QStringLiteral("材料编号已被使用"),
+                QStringLiteral("材料编号 %1 已作为“%2”的计算阶段编号，不能再施加到网格。")
+                    .arg(matype)
+                    .arg(candidateEntry.name.trimmed().isEmpty()
+                             ? QStringLiteral("未命名材料")
+                             : candidateEntry.name.trimmed()));
+            return;
+        }
+    }
 
     auto findOwnerEntryId = [&](int targetMatype) -> QString
     {
@@ -1756,7 +2232,8 @@ void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
         {
             for (const auto& e : model.materials)
             {
-                if (e.appliedMatypes.contains(targetMatype))
+                if (m_addedEntryIds.contains(e.id) &&
+                    e.appliedMatypes.contains(targetMatype))
                     return e.id;
             }
         }
@@ -1764,6 +2241,11 @@ void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
     };
 
     QString ownerId = m_matypeOwnerById.value(matype);
+    if (!ownerId.isEmpty() && !m_addedEntryIds.contains(ownerId))
+    {
+        m_matypeOwnerById.remove(matype);
+        ownerId.clear();
+    }
     if (ownerId.isEmpty())
         ownerId = findOwnerEntryId(matype);
     if (!ownerId.isEmpty() && ownerId != entryId)
@@ -1772,6 +2254,21 @@ void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
         MaterialEntry* ownerEntry = findEntry(ownerId, &ownerModel);
         if (ownerEntry)
         {
+            const QString ownerName = ownerEntry->name.trimmed().isEmpty()
+                                          ? QStringLiteral("未命名材料")
+                                          : ownerEntry->name.trimmed();
+            const auto answer = QMessageBox::question(
+                nullptr, QStringLiteral("材料分组已被使用"),
+                QStringLiteral(
+                    "材料分组 %1 当前属于“%2”。继续施加会将该分组转移到“%3”。是否继续？")
+                    .arg(matype)
+                    .arg(ownerName, entry->name.trimmed().isEmpty()
+                                        ? QStringLiteral("未命名材料")
+                                        : entry->name.trimmed()),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+            if (answer != QMessageBox::Yes)
+                return;
+
             ownerEntry->appliedMatypes.remove(matype);
             if (m_selectedMatypes.value(ownerId, -1) == matype)
                 m_selectedMatypes.remove(ownerId);
@@ -1789,8 +2286,6 @@ void MaterialManager::applyMatypeToEntry(const QString& entryId, int matype)
     setSelectedMatypeForEntry(entryId, matype);
     entry->appliedMatypes.insert(matype);
     m_matypeOwnerById.insert(matype, entryId);
-    MaterialModel* model = nullptr;
-    findEntry(entryId, &model);
     syncAutoNumberProperties(model, entry);
 
     // 施加后通常清掉 predelete/preview
@@ -1880,7 +2375,19 @@ bool MaterialManager::generateCaculateFile()
                     continue;
                 maxMatype = qMax(maxMatype, matype);
 
-                // 如果同一个 MATYPE 被多个材料占用，这里默认“后者覆盖前者”
+                const auto existing = matypeMap.constFind(matype);
+                if (existing != matypeMap.constEnd() && existing->entry != &entry)
+                {
+                    QMessageBox::warning(
+                        nullptr, QStringLiteral("材料分组重复"),
+                        QStringLiteral(
+                            "材料分组 %1 同时关联了“%2”和“%3”。请在材料管理中保留一个关联后再计算，系统不会自动选择或覆盖。")
+                            .arg(matype)
+                            .arg(existing->entry ? existing->entry->name
+                                                 : QStringLiteral("未命名材料"),
+                                 entry.name));
+                    return false;
+                }
                 matypeMap[matype] = MatInfo{&model, &entry};
             }
         }
@@ -1888,6 +2395,117 @@ bool MaterialManager::generateCaculateFile()
 
     if (maxMatype < 0 || m_workPath.isEmpty())
         return false;
+    if (maxMatype > MAX_SOLVER_MATYPE)
+    {
+        QMessageBox::warning(nullptr, QStringLiteral("材料编号超出范围"),
+                             QStringLiteral("材料编号不能超过 300，请先修改网格分组和材料关联。"));
+        return false;
+    }
+
+    for (auto it = matypeMap.constBegin(); it != matypeMap.constEnd(); ++it)
+    {
+        const MatInfo& info = it.value();
+        if (!info.model || !info.entry)
+            continue;
+
+        for (const QString& column : info.model->columns)
+        {
+            if (isAutoNumberColumn(column))
+                continue;
+            bool ok = false;
+            info.entry->properties.value(column).trimmed().toDouble(&ok);
+            if (!ok)
+            {
+                QMessageBox::warning(
+                    nullptr, QStringLiteral("材料参数不完整"),
+                    QStringLiteral("材料“%1”的“%2”必须填写为数值。")
+                        .arg(info.entry->name.trimmed().isEmpty()
+                                 ? QStringLiteral("未命名材料")
+                                 : info.entry->name.trimmed(),
+                             column));
+                return false;
+            }
+        }
+
+        const QStringList supplementalKeys = {info.entry->seepageModelKey,
+                                              info.entry->creepModelKey};
+        for (const QString& supplementalKey : supplementalKeys)
+        {
+            if (supplementalKey.isEmpty())
+                continue;
+            const MaterialModel* supplementalModel = nullptr;
+            for (const auto& candidate : m_seepageModels)
+            {
+                if (candidate.key == supplementalKey)
+                {
+                    supplementalModel = &candidate;
+                    break;
+                }
+            }
+            if (!supplementalModel)
+                continue;
+            for (const QString& column : supplementalModel->columns)
+            {
+                if (isAutoNumberColumn(column))
+                    continue;
+                bool ok = false;
+                info.entry->seepageProperties.value(column).trimmed().toDouble(&ok);
+                if (!ok)
+                {
+                    QMessageBox::warning(
+                        nullptr, QStringLiteral("材料参数不完整"),
+                        QStringLiteral("材料“%1”的“%2”必须填写为数值。")
+                            .arg(info.entry->name.trimmed().isEmpty()
+                                     ? QStringLiteral("未命名材料")
+                                     : info.entry->name.trimmed(),
+                                 column));
+                    return false;
+                }
+            }
+        }
+
+        if (info.model->key == QStringLiteral("dam_dynamic"))
+        {
+            bool sourceOk = false;
+            const double sourceValue =
+                info.entry->properties.value(QStringLiteral("静力计算编号")).toDouble(&sourceOk);
+            const int sourceMatype =
+                sourceOk ? static_cast<int>(std::llround(sourceValue)) : -1;
+            const auto sourceIt = matypeMap.constFind(sourceMatype);
+            if (!sourceOk || std::fabs(sourceValue - sourceMatype) > 1.0e-8 ||
+                sourceMatype == it.key() || sourceIt == matypeMap.constEnd() ||
+                !sourceIt->model || sourceIt->model->key == QStringLiteral("dam_dynamic"))
+            {
+                QMessageBox::warning(
+                    nullptr, QStringLiteral("动力材料设置不完整"),
+                    QStringLiteral("材料“%1”需要选择一个已经配置的静力母材料编号，且不能指向动力材料自身。")
+                        .arg(info.entry->name.trimmed().isEmpty()
+                                 ? QStringLiteral("未命名材料")
+                                 : info.entry->name.trimmed()));
+                return false;
+            }
+        }
+        else if (info.model->key == QStringLiteral("huangjinping_underground_plant"))
+        {
+            bool sourceOk = false;
+            const double sourceValue =
+                info.entry->properties.value(QStringLiteral("母岩材料编号")).toDouble(&sourceOk);
+            const int sourceMatype =
+                sourceOk ? static_cast<int>(std::llround(sourceValue)) : it.key();
+            if (sourceOk && sourceValue >= FIRST_COMPUTABLE_MATYPE &&
+                (std::fabs(sourceValue - sourceMatype) > 1.0e-8 ||
+                 !matypeMap.contains(sourceMatype)))
+            {
+                QMessageBox::warning(
+                    nullptr, QStringLiteral("围岩材料设置不完整"),
+                    QStringLiteral("材料“%1”的母岩材料编号必须对应已配置的材料；留空或填0时默认为当前材料。")
+                        .arg(info.entry->name.trimmed().isEmpty()
+                                 ? QStringLiteral("未命名材料")
+                                 : info.entry->name.trimmed()));
+                return false;
+            }
+        }
+    }
 
     // ===== 2) NMAT / NCON =====
     const int ncon = DEFAULT_NCON;
@@ -1900,7 +2518,7 @@ bool MaterialManager::generateCaculateFile()
         return false;
     const QString filePath = workDir.filePath(QStringLiteral("IMAT.DAT"));
 
-    QFile file(filePath);
+    QSaveFile file(filePath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
 
@@ -1998,7 +2616,7 @@ bool MaterialManager::generateCaculateFile()
     };
 
     auto applySeepageModel = [&](const QString& seepageModelKey, const MaterialEntry* entry,
-                                 int matIndex)
+                                  int matIndex)
     {
         auto setRow = [&](int row, double value)
         {
@@ -2033,8 +2651,8 @@ bool MaterialManager::generateCaculateFile()
                 setRow(89, 2.0e3);
             if (values[90 - 1][matIndex] < tol)
                 setRow(90, 2.0e3);
-            if (values[99 - 1][matIndex] < tol)
-                setRow(99, 1.0);
+            if (values[101 - 1][matIndex] < tol)
+                setRow(101, 1.0);
             return;
         }
         if (seepageModelKey == QStringLiteral("shenzhujiang_creep"))
@@ -2073,14 +2691,22 @@ bool MaterialManager::generateCaculateFile()
         }
         if (seepageModelKey == QStringLiteral("xiyuan_creep"))
         {
-            setRow(2, seepageValueOf(entry, QStringLiteral("瞬时弹性模量E1（GPa）")));
-            setRow(3, seepageValueOf(entry, QStringLiteral("粘塑性模量E2（GPa）")));
+            setRow(2, seepageValueOf(entry, QStringLiteral("瞬时弹性模量E1（GPa）")) * 1.0e9);
+            setRow(3, seepageValueOf(entry, QStringLiteral("粘塑性模量E2（GPa）")) * 1.0e9);
             setRow(4, seepageValueOf(entry, QStringLiteral("泊松比μ1")));
             setRow(5, seepageValueOf(entry, QStringLiteral("泊松比μ2")));
             setRow(103, seepageValueOf(entry, QStringLiteral("粘弹性系数η1")));
             setRow(104, seepageValueOf(entry, QStringLiteral("粘塑性系数η2")));
             setRow(102, 4.0);
         }
+    };
+
+    auto applySupplementalModels = [&](const MaterialEntry* entry, int matIndex)
+    {
+        if (!entry)
+            return;
+        applySeepageModel(entry->seepageModelKey, entry, matIndex);
+        applySeepageModel(entry->creepModelKey, entry, matIndex);
     };
 
     // 填值：黄金坪地下厂房模型按 CONMAT 行号写入，其他模型仍走 columnOutputRows
@@ -2096,9 +2722,60 @@ bool MaterialManager::generateCaculateFile()
 
         const int matIndex = matype - 1;
 
+        if (info.model->key == QStringLiteral("hoek_brown_rock"))
+        {
+            const double ee = valueOf(info.entry, QStringLiteral("变形模量E（GPa）")) * 1.0e9;
+            const double pu = valueOf(info.entry, QStringLiteral("泊松比μ"));
+            const double rou = valueOf(info.entry, QStringLiteral("容重t/m3")) * 1.0e3;
+            const double fmb = valueOf(info.entry, QStringLiteral("岩体常数mb"));
+            const double fa = valueOf(info.entry, QStringLiteral("岩体常数a"));
+            const double fs = valueOf(info.entry, QStringLiteral("岩体常数s"));
+            const double sgci =
+                valueOf(info.entry, QStringLiteral("完整岩石单轴抗压强度σci（MPa）")) *
+                1.0e6;
+
+            auto setRow = [&](int row, double value)
+            {
+                if (row >= 1 && row <= ncon)
+                    values[row - 1][matIndex] = value;
+            };
+            setRow(1, 11.0);
+            setRow(2, ee);
+            setRow(3, ee);
+            setRow(4, pu);
+            setRow(5, pu);
+            setRow(6, std::fabs(1.0 + pu) > 1.0e-12 ? ee / 2.0 / (1.0 + pu) : 0.0);
+            setRow(7, rou);
+            setRow(8, 1.0);
+            setRow(13, 0.0);
+            setRow(14, 1.0);
+            setRow(15, 0.0);
+            setRow(16, 0.0);
+            setRow(17, 0.0);
+            setRow(18, 1.0);
+            setRow(19, 0.0);
+            setRow(20, 0.0);
+            setRow(21, 0.0);
+            setRow(22, 1.0);
+            setRow(23, 0.0);
+            setRow(35, 0.0);
+            setRow(64, 0.0);
+            setRow(65, 1.0);
+            setRow(66, 1.0);
+            setRow(70, fa);
+            setRow(75, fmb);
+            setRow(76, fs);
+            setRow(84, static_cast<double>(matype));
+            setRow(115, sgci);
+            applySupplementalModels(info.entry, matIndex);
+            continue;
+        }
+
         if (info.model->key == QStringLiteral("huangjinping_underground_plant")) // 黄金坪厂房(样表1 2)
         {
-            const double matypeOri = static_cast<double>(matype);
+            double matypeOri = valueOf(info.entry, QStringLiteral("母岩材料编号"));
+            if (qRound64(matypeOri) < FIRST_COMPUTABLE_MATYPE)
+                matypeOri = static_cast<double>(matype);
             const double itagEx = valueOf(info.entry, QStringLiteral("岩类分区"));
             const double alfaBa = valueOf(info.entry, QStringLiteral("半开挖区荷载释放系数"));
             const double laReborn = valueOf(info.entry, QStringLiteral("再生时对应开挖级"));
@@ -2117,7 +2794,7 @@ bool MaterialManager::generateCaculateFile()
             const double ee = eeGpa * 1.0e9;
             const double rou = rouTm3 * 1.0e3;
             const double fai = std::atan(ff) * 180.0 / 3.141592653589793;
-            const double dilationAngle = dilationAngleInput ;
+            const double dilationAngle = dilationAngleInput;
             const double co = coMpa * 1.0e6;
 
             // 默认替代：用 Mohr-Coulomb 近似计算 RC/RT（原 DEFAULT_RTRC 未给出）
@@ -2199,7 +2876,7 @@ bool MaterialManager::generateCaculateFile()
             {
                 setRow(59, laReborn);
             }
-            applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
+            applySupplementalModels(info.entry, matIndex);
             continue;
         }
 
@@ -2210,6 +2887,7 @@ bool MaterialManager::generateCaculateFile()
             const double rouTm3 = valueOf(info.entry, QStringLiteral("容重t/m3"));
             const double ff = valueOf(info.entry, QStringLiteral("抗剪断强度内摩擦系数"));
             const double coMpa = valueOf(info.entry, QStringLiteral("凝聚力C‘（MPa）"));
+            const double dilationAngle = valueOf(info.entry, QStringLiteral("剪胀角(°)"));
 
             const double ibuck = 2.0;
             const double matypeOri = static_cast<double>(matype);
@@ -2286,7 +2964,7 @@ bool MaterialManager::generateCaculateFile()
             setRow(92, rt);
             setRow(94, fai);
             setRow(95, co);
-            setRow(99, fai);
+            setRow(99, dilationAngle);
             setRow(100, itagEx);
 
             if (qRound64(itagEx) == -1)
@@ -2297,7 +2975,7 @@ bool MaterialManager::generateCaculateFile()
             {
                 setRow(59, laReborn);
             }
-            applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
+            applySupplementalModels(info.entry, matIndex);
             continue;
         }
 
@@ -2314,6 +2992,7 @@ bool MaterialManager::generateCaculateFile()
             const double dryN = valueOf(info.entry, QStringLiteral("n"));
             const double dryKur = valueOf(info.entry, QStringLiteral("Kur"));
             const double dryKb = valueOf(info.entry, QStringLiteral("Kb"));
+            const double dryM = valueOf(info.entry, QStringLiteral("m"));
 
 
             const double dryRou = dryRouTm3 * 1.0e3;
@@ -2340,14 +3019,14 @@ bool MaterialManager::generateCaculateFile()
             setRow(72, dryKur);
             setRow(73, dryN);
             setRow(74, dryKb);
-            setRow(75, dryN);
+            setRow(75, dryM);
             setRow(76, dFai);
             setRow(11, fai);
             setRow(12, co);
             setRow(94, fai);
             setRow(95, co);
             setRow(99, fai);
-            applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
+            applySupplementalModels(info.entry, matIndex);
             continue;
         }
 
@@ -2392,7 +3071,7 @@ bool MaterialManager::generateCaculateFile()
             setRow(77, g);             // 对应 DRYG
             setRow(78, d);             // 对应 DRYD
             setRow(79, f);             // 对应 DRYF
-            setRow(75, g);             // 找不到
+            setRow(75, dryN);
             setRow(76, dFai);
             setRow(78, d);
             setRow(79, f);
@@ -2400,7 +3079,7 @@ bool MaterialManager::generateCaculateFile()
             setRow(12, co);
             setRow(94, fai);
             setRow(95, co);
-            applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
+            applySupplementalModels(info.entry, matIndex);
             continue;
         }
 
@@ -2457,7 +3136,7 @@ bool MaterialManager::generateCaculateFile()
             setRow(112, cn2);
             setRow(113, cbk3);
             setRow(114, cn3);
-            applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
+            applySupplementalModels(info.entry, matIndex);
             continue;
         }
 
@@ -2508,7 +3187,7 @@ bool MaterialManager::generateCaculateFile()
             setRow(12, co);
             setRow(94, fai);
             setRow(95, co);
-            applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
+            applySupplementalModels(info.entry, matIndex);
             continue;
         }
 
@@ -2553,7 +3232,7 @@ bool MaterialManager::generateCaculateFile()
             setRow(78, alfak);
             setRow(77, agi);
             setRow(79, alfag);
-            applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
+            applySupplementalModels(info.entry, matIndex);
             continue;
         }
 
@@ -2661,8 +3340,8 @@ bool MaterialManager::generateCaculateFile()
                 }
             };
 
-            setRow(2, ee1);
-            setRow(3, ee2);
+            setRow(2, ee1 * 1.0e9);
+            setRow(3, ee2 * 1.0e9);
             setRow(4, pu1);
             setRow(5, pu2);
             setRow(103, vc1);
@@ -2749,7 +3428,7 @@ bool MaterialManager::generateCaculateFile()
             setRow(106, ckp);
             setRow(107, cnv);
             setRow(108, cnp);
-            applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
+            applySupplementalModels(info.entry, matIndex);
             continue;
         }
 
@@ -2788,8 +3467,8 @@ bool MaterialManager::generateCaculateFile()
                 setRow(89, 2.0e3);
             if (values[90 - 1][matIndex] < tol)
                 setRow(90, 2.0e3);
-            if (values[99 - 1][matIndex] < tol)
-                setRow(99, 1.0);
+            if (values[101 - 1][matIndex] < tol)
+                setRow(101, 1.0);
             continue;
         }
 
@@ -2828,7 +3507,7 @@ bool MaterialManager::generateCaculateFile()
             setRow(37, bb);
             setRow(39, 1.0);
             setRow(89, alfaFbar);
-            applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
+            applySupplementalModels(info.entry, matIndex);
             continue;
         }
 
@@ -2850,7 +3529,38 @@ bool MaterialManager::generateCaculateFile()
             values[targetRow - 1][matIndex] = ok ? v : 0.0;
         }
 
-        applySeepageModel(info.entry->seepageModelKey, info.entry, matIndex);
+        applySupplementalModels(info.entry, matIndex);
+    }
+
+    // 动力材料必须在全部静力材料写完后再继承母材料。材料编号不应影响继承结果。
+    const QList<int> dynamicOverrideRows = {
+        1, 4, 5, 11, 12, 13, 35, 58, 59, 60, 61, 62, 63, 80, 81, 82,
+        83, 84, 85, 86, 87, 88, 94, 95, 105, 106, 107, 108};
+    for (auto it = matypeMap.constBegin(); it != matypeMap.constEnd(); ++it)
+    {
+        const MatInfo& info = it.value();
+        if (!info.model || !info.entry ||
+            info.model->key != QStringLiteral("dam_dynamic"))
+        {
+            continue;
+        }
+
+        const int matIndex = it.key() - 1;
+        const int sourceMatype =
+            qRound64(valueOf(info.entry, QStringLiteral("静力计算编号")));
+        const int sourceIndex = sourceMatype - 1;
+        QMap<int, double> overrides;
+        for (int row : dynamicOverrideRows)
+            overrides.insert(row, values[row - 1][matIndex]);
+
+        for (int row = 0; row < ncon; ++row)
+            values[row][matIndex] = values[row][sourceIndex];
+        for (auto overrideIt = overrides.constBegin(); overrideIt != overrides.constEnd();
+             ++overrideIt)
+        {
+            values[overrideIt.key() - 1][matIndex] = overrideIt.value();
+        }
+        applySupplementalModels(info.entry, matIndex);
     }
 
     // ===== 5) 按你示例的 1P 科学计数格式输出：0.2000E+01 这种 =====
@@ -2932,14 +3642,21 @@ bool MaterialManager::generateCaculateFile()
         }
     }
 
-    file.close();
+    out.flush();
+    if (!file.commit())
+        return false;
 
     // ===== 8) 同步生成 MACB.DAT / MACHAN.DAT =====
-    const QList<int> macbMatypes = matypeMap.keys(); // QMap keys 默认升序
+    QList<int> macbMatypes;
+    for (auto it = matypeMap.constBegin(); it != matypeMap.constEnd(); ++it)
+    {
+        if (it->entry && it->entry->appliedMatypes.contains(it.key()))
+            macbMatypes.append(it.key());
+    }
 
     auto writeNumDat = [&](const QString& fileName, const QList<int>& ids) -> bool
     {
-        QFile outFile(workDir.filePath(fileName));
+        QSaveFile outFile(workDir.filePath(fileName));
         if (!outFile.open(QIODevice::WriteOnly | QIODevice::Text))
         {
             return false;
@@ -2951,15 +3668,22 @@ bool MaterialManager::generateCaculateFile()
         {
             ts << QString("%1\n").arg(id, 8);
         }
-        outFile.close();
-        return true;
+        ts.flush();
+        return outFile.commit();
     };
 
     if (!writeNumDat(QStringLiteral("MACB.DAT"), macbMatypes))
     {
         return false;
     }
-    if (!writeNumDat(QStringLiteral("MACHAN.DAT"), QList<int>{}))
+    QSaveFile transitionFile(workDir.filePath(QStringLiteral("MACHAN.DAT")));
+    if (!transitionFile.open(QIODevice::WriteOnly | QIODevice::Text))
+        return false;
+    QTextStream transitionStream(&transitionFile);
+    // 材料替换现由各分析独立写入。保留空文件只为兼容仍要求该文件存在的旧流程。
+    transitionStream << QString("%1   NUM\n").arg(0, 12);
+    transitionStream.flush();
+    if (!transitionFile.commit())
     {
         return false;
     }
@@ -3168,7 +3892,46 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
 
     // 正向导出会同步写 MACB.DAT，那里才是真正“需要的”材料号；IMAT.DAT 的 NMAT
     // 可能为了 10 列分组被补齐，也可能包含求解器默认 VOID 材料，不能逐列全部创建。
-    QSet<int> targetMatypes = readMatypeList(QStringLiteral("MACB.DAT"));
+    const QSet<int> appliedTargetMatypes = readMatypeList(QStringLiteral("MACB.DAT"));
+    QSet<int> targetMatypes = appliedTargetMatypes;
+    QVector<QPair<int, int>> importedTransitions;
+    {
+        const QFileInfo imatInfo(filePath);
+        QFile transitionFile(imatInfo.dir().filePath(QStringLiteral("MACHAN.DAT")));
+        if (transitionFile.open(QIODevice::ReadOnly | QIODevice::Text))
+        {
+            QTextStream transitionStream(&transitionFile);
+            bool firstLine = true;
+            while (!transitionStream.atEnd())
+            {
+                const QStringList nums = numericTokens(transitionStream.readLine());
+                if (firstLine)
+                {
+                    firstLine = false;
+                    continue;
+                }
+                if (nums.size() >= 2)
+                {
+                    bool oldOk = false;
+                    bool newOk = false;
+                    const int oldMatype = nums.at(0).toInt(&oldOk);
+                    const int newMatype = nums.at(1).toInt(&newOk);
+                    if (oldOk && newOk && isComputableMatype(oldMatype) &&
+                        isComputableMatype(newMatype) && oldMatype != newMatype)
+                    {
+                        importedTransitions.push_back({oldMatype, newMatype});
+                    }
+                }
+                for (int i = 0; i < qMin(2, nums.size()); ++i)
+                {
+                    bool ok = false;
+                    const int matype = nums.at(i).toInt(&ok);
+                    if (ok && isComputableMatype(matype) && matype <= nmat)
+                        targetMatypes.insert(matype);
+                }
+            }
+        }
+    }
     const bool hasExplicitMatypeList = !targetMatypes.isEmpty();
 
     auto looksLikeForwardDefaultVoid = [&]() -> bool
@@ -3189,7 +3952,7 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
     {
         const int ib = static_cast<int>(std::llround(rowValue(matIndex, 1)));
         if (ib == -1 || ib == -2 || ib == -3 || ib == -4 || ib == -5 || ib == -6 || ib == 1 ||
-            ib == 2)
+            ib == 2 || ib == 11)
         {
             return true;
         }
@@ -3268,6 +4031,8 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
             return findModel(QStringLiteral("soil_nanshui"));
         if (ib == -6)
             return findModel(QStringLiteral("soil_emu_crush"));
+        if (ib == 11)
+            return findModel(QStringLiteral("hoek_brown_rock"));
         if (ib == 1 && (nearlyEqual(rowValue(matIndex, 13), 2.0) || isNonZero(matIndex, 38) ||
                         isNonZero(matIndex, 93)))
             return findModel(QStringLiteral("huangjinping_bar_element"));
@@ -3305,6 +4070,51 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
             setSeepageProperty(entry, QStringLiteral("渗透系数K(Lu)"), k1 / 1.0e-7);
             setSeepageProperty(entry, QStringLiteral("允许比降"), rip);
         }
+
+        const int creepType = qRound64(rowValue(matIndex, 102));
+        if (creepType == 1)
+        {
+            entry.creepModelKey = QStringLiteral("shenzhujiang_creep");
+            setSeepageProperty(entry, QStringLiteral("应变速率系数α"), rowValue(matIndex, 14));
+            setSeepageProperty(entry, QStringLiteral("体积流变系数b"), rowValue(matIndex, 15));
+            setSeepageProperty(entry, QStringLiteral("剪切流变系数d"), rowValue(matIndex, 16));
+        }
+        else if (creepType == 2)
+        {
+            entry.creepModelKey = QStringLiteral("liguoying_creep");
+            setSeepageProperty(entry, QStringLiteral("应变速率系数α"), rowValue(matIndex, 14));
+            setSeepageProperty(entry, QStringLiteral("体积流变系数b"), rowValue(matIndex, 15));
+            setSeepageProperty(entry, QStringLiteral("体积流变系数c"), rowValue(matIndex, 16));
+            setSeepageProperty(entry, QStringLiteral("剪切流变系数d"), rowValue(matIndex, 17));
+            setSeepageProperty(entry, QStringLiteral("体积流变指数m1"), rowValue(matIndex, 18));
+            setSeepageProperty(entry, QStringLiteral("体积流变指数m2"), rowValue(matIndex, 19));
+            setSeepageProperty(entry, QStringLiteral("剪切流变指数m3"), rowValue(matIndex, 20));
+        }
+        else if (creepType == 3)
+        {
+            entry.creepModelKey = QStringLiteral("nine_param_creep");
+            setSeepageProperty(entry, QStringLiteral("应变速率系数λv"), rowValue(matIndex, 14));
+            setSeepageProperty(entry, QStringLiteral("体积流变系数Cα"), rowValue(matIndex, 15));
+            setSeepageProperty(entry, QStringLiteral("体积流变系数Cβ"), rowValue(matIndex, 16));
+            setSeepageProperty(entry, QStringLiteral("体积流变指数dα"), rowValue(matIndex, 17));
+            setSeepageProperty(entry, QStringLiteral("体积流变指数dβ"), rowValue(matIndex, 18));
+            setSeepageProperty(entry, QStringLiteral("主应变系数c"), rowValue(matIndex, 19));
+            setSeepageProperty(entry, QStringLiteral("主应变系数d"), rowValue(matIndex, 20));
+            setSeepageProperty(entry, QStringLiteral("主应变流变系数η"), rowValue(matIndex, 21));
+            setSeepageProperty(entry, QStringLiteral("主应变流变系数m"), rowValue(matIndex, 22));
+        }
+        else if (creepType == 4)
+        {
+            entry.creepModelKey = QStringLiteral("xiyuan_creep");
+            setSeepageProperty(entry, QStringLiteral("瞬时弹性模量E1（GPa）"),
+                               rowValue(matIndex, 2) / 1.0e9);
+            setSeepageProperty(entry, QStringLiteral("粘塑性模量E2（GPa）"),
+                               rowValue(matIndex, 3) / 1.0e9);
+            setSeepageProperty(entry, QStringLiteral("泊松比μ1"), rowValue(matIndex, 4));
+            setSeepageProperty(entry, QStringLiteral("泊松比μ2"), rowValue(matIndex, 5));
+            setSeepageProperty(entry, QStringLiteral("粘弹性系数η1"), rowValue(matIndex, 103));
+            setSeepageProperty(entry, QStringLiteral("粘塑性系数η2"), rowValue(matIndex, 104));
+        }
     };
 
     int count = 0;
@@ -3336,9 +4146,22 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
         }
 
         const int ib = static_cast<int>(std::llround(rowValue(matIndex, 1)));
-        if (model->key == QStringLiteral("huangjinping_underground_plant"))
+        if (model->key == QStringLiteral("hoek_brown_rock"))
+        {
+            setProperty(entry, QStringLiteral("序号"), matype);
+            setProperty(entry, QStringLiteral("变形模量E（GPa）"), rowValue(matIndex, 2) / 1.0e9);
+            setProperty(entry, QStringLiteral("泊松比μ"), rowValue(matIndex, 4));
+            setProperty(entry, QStringLiteral("容重t/m3"), rowValue(matIndex, 7) / 1.0e3);
+            setProperty(entry, QStringLiteral("岩体常数mb"), rowValue(matIndex, 75));
+            setProperty(entry, QStringLiteral("岩体常数a"), rowValue(matIndex, 70));
+            setProperty(entry, QStringLiteral("岩体常数s"), rowValue(matIndex, 76));
+            setProperty(entry, QStringLiteral("完整岩石单轴抗压强度σci（MPa）"),
+                        rowValue(matIndex, 115) / 1.0e6);
+        }
+        else if (model->key == QStringLiteral("huangjinping_underground_plant"))
         {
             setProperty(entry, QStringLiteral("编号"), matype);
+            setProperty(entry, QStringLiteral("母岩材料编号"), rowValue(matIndex, 84));
             setProperty(entry, QStringLiteral("岩类分区"), rowValue(matIndex, 100));
             setProperty(entry, QStringLiteral("半开挖区荷载释放系数"), rowValue(matIndex, 58));
             setProperty(entry, QStringLiteral("再生时对应开挖级"), rowValue(matIndex, 59));
@@ -3428,8 +4251,10 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
         else if (model->key == QStringLiteral("xiyuan_creep"))
         {
             setProperty(entry, QStringLiteral("序号"), matype);
-            setProperty(entry, QStringLiteral("瞬时弹性模量E1（GPa）"), rowValue(matIndex, 2));
-            setProperty(entry, QStringLiteral("粘塑性模量E2（GPa）"), rowValue(matIndex, 3));
+            setProperty(entry, QStringLiteral("瞬时弹性模量E1（GPa）"),
+                        rowValue(matIndex, 2) / 1.0e9);
+            setProperty(entry, QStringLiteral("粘塑性模量E2（GPa）"),
+                        rowValue(matIndex, 3) / 1.0e9);
             setProperty(entry, QStringLiteral("泊松比μ1"), rowValue(matIndex, 4));
             setProperty(entry, QStringLiteral("泊松比μ2"), rowValue(matIndex, 5));
             setProperty(entry, QStringLiteral("粘弹性系数η1"), rowValue(matIndex, 103));
@@ -3505,11 +4330,24 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
                 existingEntry.appliedMatypes.remove(matype);
             }
         }
-        entry.appliedMatypes.insert(matype);
+        if (appliedTargetMatypes.contains(matype))
+        {
+            entry.appliedMatypes.insert(matype);
+        }
+        else
+        {
+            entry.transitionOnly = true;
+            entry.transitionMatype = matype;
+        }
         model->materials.append(entry);
         m_addedEntryIds.insert(entry.id);
         m_matypeOwnerById.insert(matype, entry.id);
         ++count;
+    }
+
+    if (!importedTransitions.isEmpty())
+    {
+        m_materialTransitions = importedTransitions;
     }
 
     if (count <= 0)

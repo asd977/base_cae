@@ -79,6 +79,25 @@ static int CountKind(ProjectNode* root, const QString& kind)
     return cnt;
 }
 
+static void DeletePhysicalFieldNodeTree(ProjectNode* node)
+{
+    if (!node)
+        return;
+    const auto children = node->getChildren();
+    for (ProjectNode* child : children)
+    {
+        node->removeChild(child);
+        DeletePhysicalFieldNodeTree(child);
+    }
+    if (BasePage* page = node->getPage())
+    {
+        page->beforeUnload();
+        delete page;
+        node->setPage(nullptr);
+    }
+    delete node;
+}
+
 static void CollectNodesByKind(ProjectNode* root, const QString& kind, QList<ProjectNode*>& out)
 {
     if (!root)
@@ -325,6 +344,8 @@ void PhysicalField::removeNodeByUuid(const QString& uuid)
 
 void PhysicalField::newProject()
 {
+    if (m_node)
+        closeProject();
     auto physicalFieldSettingWidget = std::make_unique<PhysicalFieldSettingWidget>();
 
     QString uuid = QUuid::createUuid().toString();
@@ -337,6 +358,24 @@ void PhysicalField::newProject()
 
     auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
     projectManagerService->addTreeItem(m_node);
+}
+
+void PhysicalField::closeProject()
+{
+    ProjectNode* root = m_node;
+    m_node = nullptr;
+    if (!root)
+        return;
+
+    if (auto* parent = dynamic_cast<ProjectNode*>(root->parent()))
+        parent->removeChild(root);
+    else if (QTreeWidget* tree = root->treeWidget())
+    {
+        const int index = tree->indexOfTopLevelItem(root);
+        if (index >= 0)
+            tree->takeTopLevelItem(index);
+    }
+    DeletePhysicalFieldNodeTree(root);
 }
 
 bool PhysicalField::writeJsonFile(const QString& filePath, const QJsonObject& obj) const

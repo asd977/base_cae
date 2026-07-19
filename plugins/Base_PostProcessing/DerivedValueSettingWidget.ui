@@ -60,7 +60,16 @@
       <number>6</number>
      </property>
      <item>
-      <widget class="QPushButton" name="sectionTitleButton">
+      <widget class="QLabel" name="sectionTitleButton">
+       <property name="font">
+        <font>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="margin">
+        <number>2</number>
+       </property>
        <property name="text">
         <string>数据</string>
        </property>
@@ -229,7 +238,16 @@
       </widget>
      </item>
      <item>
-      <widget class="QPushButton" name="pushButton_2">
+      <widget class="QLabel" name="pushButton_2">
+       <property name="font">
+        <font>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="margin">
+        <number>2</number>
+       </property>
        <property name="text">
         <string>数据列表</string>
        </property>
@@ -338,7 +356,16 @@
       </widget>
      </item>
      <item>
-      <widget class="QPushButton" name="pushButton_3">
+      <widget class="QLabel" name="pushButton_3">
+       <property name="font">
+        <font>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="margin">
+        <number>2</number>
+       </property>
        <property name="text">
         <string>结果</string>
        </property>

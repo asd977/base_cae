@@ -6,6 +6,7 @@
 
 class QComboBox;
 class QLineEdit;
+class QPushButton;
 class QSpinBox;
 class QTableWidget;
 class QWidget;
@@ -107,7 +108,6 @@ class CaveSupportComputationPage : public BasePage
     QLineEdit* m_accXEdit = nullptr;
     QLineEdit* m_accYEdit = nullptr;
     QLineEdit* m_accZEdit = nullptr;
-
     CaseData m_caseData;
     bool m_isUpdatingUi = false;
 };

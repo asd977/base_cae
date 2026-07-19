@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version='1.0' encoding='UTF-8'?>
 <ui version="4.0">
  <class>GeoStressSideFacePage</class>
  <widget class="QWidget" name="GeoStressSideFacePage">
@@ -68,7 +68,7 @@
         <item>
          <widget class="QLabel" name="pickHintLabel">
           <property name="text">
-           <string>提示：Shift+拖拽框选，Ctrl+拖拽取消选择</string>
+           <string>提示：Shift 框选，Ctrl 取消选择。</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>

@@ -1,15 +1,19 @@
-﻿#include "IsosurfaceSettingsWidget.h"
+#include "IsosurfaceSettingsWidget.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
 #include <services/VisualWidgetService.h>
 #include <vtkAppendFilter.h>
+#include <vtkCellData.h>
+#include <vtkCellDataToPointData.h>
+#include <vtkDataArray.h>
 #include <vtkContourFilter.h>
 #include <vtkDataObject.h> // for SetInputArrayToProcess
 #include <vtkDataSetSurfaceFilter.h>
 #include <vtkLookupTable.h>
 #include <vtkMultiBlockDataSet.h>
 #include <vtkPointData.h>
+#include <vtkPolyData.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkProperty.h>
 #include <vtkRenderWindow.h>
@@ -17,10 +21,16 @@
 #include <vtkTecplotReader.h>
 #include <vtkUnstructuredGrid.h>
 
+#include <QByteArray>
 #include <QDebug>
 #include <QDir>
+#include <QFileInfo>
+#include <QJsonObject>
 #include <QRegularExpression>
+#include <QSignalBlocker>
 
+#include "PostFieldUtils.h"
+#include "ResultDisplayNames.h"
 #include "PostResultAutoPrepare.h"
 #include "PostTecplotUtils.h"
 #include "PostVisualUtils.h"
@@ -89,13 +99,15 @@ IsosurfaceSettingsWidget::IsosurfaceSettingsWidget(VisualWidgetService* ppw, QWi
     // UI 默认
     ui->percentCheckBox->setChecked(true);
     ui->isoSlider->setRange(0, 100);
+    ui->isoSlider->setTracking(false);
+    ui->isoSlider->setToolTip(QStringLiteral("松开滑块后更新等值面，避免拖动时连续重算"));
     ui->isoSlider->setValue(50);
     ui->isoSpin->setDecimals(3);
     ui->isoSpin->setSingleStep(0.001);
 
     if (ui->isoCountSpin)
     {
-        ui->isoCountSpin->setRange(1, 999);
+        ui->isoCountSpin->setRange(1, 100);
         if (ui->isoCountSpin->value() < 1)
             ui->isoCountSpin->setValue(5);
     }
@@ -150,9 +162,124 @@ void IsosurfaceSettingsWidget::beforeLoad()
         m_loadedOnce = true;
     }
 
+    applyPendingState();
+
     // 切回页面：按状态把之前的内容挂回去
     reattachAccordingToState();
+    if (m_visualService)
+    {
+        const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+        if (!field.name.isEmpty())
+        {
+            m_visualService->showScalarBar(true, false);
+            if (auto* scalarBar = m_visualService->scalarBarActor())
+                scalarBar->SetTitle(ResultDisplayNames::displayName(field.name).toUtf8().constData());
+        }
+    }
     renderNow();
+}
+
+QJsonObject IsosurfaceSettingsWidget::saveJson()
+{
+    const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+    QJsonObject object;
+    object.insert(QStringLiteral("resultDir"), ui->resultDirComboBox->currentData().toString());
+    object.insert(QStringLiteral("stepFile"), ui->stepComboBox->currentData().toString());
+    object.insert(QStringLiteral("fieldName"), field.name);
+    object.insert(QStringLiteral("fieldAssociation"), field.association);
+    object.insert(QStringLiteral("percentMode"), ui->percentCheckBox->isChecked());
+    object.insert(QStringLiteral("isoPercent"), ui->isoSlider->value());
+    object.insert(QStringLiteral("isoValue"), ui->isoSpin->value());
+    object.insert(QStringLiteral("singleMode"), ui->singleIsoGroupBox->isChecked());
+    object.insert(QStringLiteral("isoCount"), ui->isoCountSpin->value());
+    object.insert(QStringLiteral("includeEnds"), ui->includeEndsCheck->isChecked());
+    return object;
+}
+
+void IsosurfaceSettingsWidget::loadJson(const QJsonObject& object)
+{
+    m_pendingState.clear();
+    for (auto it = object.constBegin(); it != object.constEnd(); ++it)
+        m_pendingState.insert(it.key(), it.value().toVariant());
+    m_hasPendingState = true;
+    if (m_loadedOnce)
+        applyPendingState();
+}
+
+void IsosurfaceSettingsWidget::applyPendingState()
+{
+    if (!m_hasPendingState)
+        return;
+
+    const QVariantMap state = m_pendingState;
+    m_pendingState.clear();
+    m_hasPendingState = false;
+
+    const QString resultDir = state.value(QStringLiteral("resultDir")).toString();
+    if (!resultDir.isEmpty())
+    {
+        const int index = ui->resultDirComboBox->findData(resultDir);
+        if (index >= 0)
+        {
+            const QSignalBlocker blocker(ui->resultDirComboBox);
+            ui->resultDirComboBox->setCurrentIndex(index);
+            m_dataPath = resultDir;
+        }
+    }
+    loadFileName(m_dataPath);
+
+    const QString stepFile = state.value(QStringLiteral("stepFile")).toString();
+    if (!stepFile.isEmpty())
+    {
+        const int index = ui->stepComboBox->findData(stepFile);
+        if (index >= 0)
+        {
+            const QSignalBlocker blocker(ui->stepComboBox);
+            ui->stepComboBox->setCurrentIndex(index);
+            on_stepComboBox_currentIndexChanged(index);
+        }
+    }
+
+    {
+        const QSignalBlocker blocker(ui->scalarComboBox);
+        PostFieldUtils::selectField(
+            ui->scalarComboBox, state.value(QStringLiteral("fieldName")).toString(),
+            state.value(QStringLiteral("fieldAssociation"),
+                        vtkDataObject::FIELD_ASSOCIATION_POINTS).toInt());
+    }
+    setIsoSpinRangeFromScalar();
+
+    {
+        const QSignalBlocker percentBlocker(ui->percentCheckBox);
+        const QSignalBlocker sliderBlocker(ui->isoSlider);
+        const QSignalBlocker spinBlocker(ui->isoSpin);
+        const QSignalBlocker singleBlocker(ui->singleIsoGroupBox);
+        const QSignalBlocker multiBlocker(ui->multiIsoGroupBox);
+        const QSignalBlocker countBlocker(ui->isoCountSpin);
+        const QSignalBlocker endsBlocker(ui->includeEndsCheck);
+
+        const bool percentMode = state.value(QStringLiteral("percentMode"), true).toBool();
+        const bool singleMode = state.value(QStringLiteral("singleMode"), true).toBool();
+        ui->percentCheckBox->setChecked(percentMode);
+        ui->isoSlider->setValue(state.value(QStringLiteral("isoPercent"), 50).toInt());
+        if (!percentMode)
+            ui->isoSpin->setValue(state.value(QStringLiteral("isoValue"), ui->isoSpin->value()).toDouble());
+        ui->singleIsoGroupBox->setChecked(singleMode);
+        ui->multiIsoGroupBox->setChecked(!singleMode);
+        ui->isoCountSpin->setValue(state.value(QStringLiteral("isoCount"), 5).toInt());
+        ui->includeEndsCheck->setChecked(state.value(QStringLiteral("includeEnds"), false).toBool());
+    }
+
+    detachAllFromScene();
+    m_actorOverall = nullptr;
+    clearMultiResults();
+    m_singleDisplayed = false;
+    m_multiDisplayed = false;
+    updateOverallColoring();
+    if (ui->singleIsoGroupBox->isChecked())
+        updateSingleIsoRealtime();
+    else if (m_actorOverall)
+        addActorByService(m_visualService, m_actorOverall, false);
 }
 
 void IsosurfaceSettingsWidget::refreshResultGroups()
@@ -188,6 +315,8 @@ void IsosurfaceSettingsWidget::beforeUnload()
 {
     // 只移除，不销毁
     detachAllFromScene();
+    if (m_visualService)
+        m_visualService->showScalarBar(false, false);
 }
 
 void IsosurfaceSettingsWidget::loadFileName(QString dataPath)
@@ -256,28 +385,23 @@ void IsosurfaceSettingsWidget::readTecplotLatest()
         readTecplot(best);
 }
 
-void IsosurfaceSettingsWidget::readTecplot(const QString& file)
+bool IsosurfaceSettingsWidget::readTecplot(const QString& file)
 {
-    qInfo() << "等值面文件:" << file;
-    m_grid = PostTecplotUtils::readGrid(file);
+    QString errorMessage;
+    auto newGrid = PostTecplotUtils::readGrid(file, &errorMessage);
+    if (!newGrid || newGrid->GetNumberOfPoints() == 0 || newGrid->GetNumberOfCells() == 0)
+    {
+        qWarning() << "[Isosurface] Failed to read grid:" << file << errorMessage;
+        return false;
+    }
+    m_grid = newGrid;
+    return true;
 }
 
 void IsosurfaceSettingsWidget::fillScalarCombo()
 {
-    ui->scalarComboBox->blockSignals(true);
-    ui->scalarComboBox->clear();
-    if (!m_grid)
-        return;
-
-    auto pd = m_grid->GetPointData();
-    for (int i = 0; i < pd->GetNumberOfArrays(); ++i)
-        if (const char* n = pd->GetArrayName(i))
-            ui->scalarComboBox->addItem(QString::fromUtf8(n));
-
-    if (ui->scalarComboBox->count())
-        ui->scalarComboBox->setCurrentIndex(0);
-
-    ui->scalarComboBox->blockSignals(false);
+    // QSignalBlocker 可保证所有提前返回路径都会恢复信号状态。
+    PostFieldUtils::fillCombo(ui->scalarComboBox, m_grid);
     setIsoSpinRangeFromScalar();
 }
 
@@ -285,8 +409,8 @@ void IsosurfaceSettingsWidget::setIsoSpinRangeFromScalar()
 {
     if (!m_grid)
         return;
-    const QString name = ui->scalarComboBox->currentText();
-    auto arr = m_grid->GetPointData()->GetArray(name.toUtf8().data());
+    const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+    vtkDataArray* arr = PostFieldUtils::array(m_grid, field);
     if (!arr)
         return;
 
@@ -299,12 +423,18 @@ void IsosurfaceSettingsWidget::setIsoSpinRangeFromScalar()
 
 vtkLookupTable* IsosurfaceSettingsWidget::ensureLUT()
 {
-    auto scalarBar = m_visualService->scalarBarActor();
-    auto lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable());
+    if (!m_visualService)
+        return nullptr;
+    auto* scalarBar = m_visualService->scalarBarActor();
+    if (!scalarBar)
+        return nullptr;
+
+    auto* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable());
     if (!lut)
     {
-        lut = vtkSmartPointer<vtkLookupTable>::New();
-        scalarBar->SetLookupTable(lut);
+        auto newLut = vtkSmartPointer<vtkLookupTable>::New();
+        scalarBar->SetLookupTable(newLut);
+        lut = newLut;
     }
     return lut;
 }
@@ -313,14 +443,17 @@ void IsosurfaceSettingsWidget::updateOverallColoring()
 {
     if (!m_grid)
         return;
-    const QString scalar = ui->scalarComboBox->currentText();
-    auto arr = m_grid->GetPointData()->GetArray(scalar.toUtf8().data());
+    const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+    vtkDataArray* arr = PostFieldUtils::array(m_grid, field);
     if (!arr)
         return;
+    const QByteArray encodedName = field.name.toUtf8();
 
     double range[2];
     arr->GetRange(range);
-    auto lut = ensureLUT();
+    auto* lut = ensureLUT();
+    if (!lut)
+        return;
     lut->SetTableRange(range);
     lut->Build();
 
@@ -333,18 +466,30 @@ void IsosurfaceSettingsWidget::updateOverallColoring()
     auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
     mapper->SetInputData(polyData);
     mapper->SetLookupTable(lut);
-    mapper->SetScalarModeToUsePointFieldData();
-    mapper->SelectColorArray(scalar.toUtf8().data());
+    if (field.association == vtkDataObject::FIELD_ASSOCIATION_CELLS)
+        mapper->SetScalarModeToUseCellFieldData();
+    else
+        mapper->SetScalarModeToUsePointFieldData();
+    mapper->SelectColorArray(encodedName.constData());
     mapper->SetScalarRange(range);
 
     m_actorOverall = vtkSmartPointer<vtkActor>::New();
     m_actorOverall->SetMapper(mapper);
     m_actorOverall->GetProperty()->SetRepresentationToSurface();
+
+    if (m_visualService)
+    {
+        m_visualService->showScalarBar(true, false);
+        if (auto* scalarBar = m_visualService->scalarBarActor())
+            scalarBar->SetTitle(ResultDisplayNames::displayName(field.name).toUtf8().constData());
+    }
 }
 
 void IsosurfaceSettingsWidget::renderNow()
 {
-    if (auto rw = m_visualService->renderWindow())
+    if (!m_visualService)
+        return;
+    if (auto* rw = m_visualService->renderWindow())
         rw->Render();
 }
 
@@ -375,33 +520,51 @@ QVector<double> IsosurfaceSettingsWidget::multiIsoValuesFromUI() const
     return vals;
 }
 
-void IsosurfaceSettingsWidget::ensureSinglePipeline()
+bool IsosurfaceSettingsWidget::ensureSinglePipeline()
 {
     if (!m_grid)
-        return;
+        return false;
 
-    const QString scalar = ui->scalarComboBox->currentText();
-    // 确保 active
-    if (m_grid->GetPointData()->GetArray(scalar.toUtf8().data()))
+    const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+    vtkDataArray* arr = PostFieldUtils::array(m_grid, field);
+    if (!arr)
     {
-        m_grid->GetPointData()->SetActiveScalars(scalar.toUtf8().data());
+        qWarning() << "[Isosurface] Scalar array not found:" << field.name;
+        return false;
     }
-    else
-    {
-        qWarning() << "Scalar array not found for single pipeline:" << scalar;
-        return;
-    }
+    const QByteArray encodedName = field.name.toUtf8();
+    QString contourArrayName = field.name;
 
     if (!m_contourSingle)
     {
         m_contourSingle = vtkSmartPointer<vtkContourFilter>::New();
-        m_contourSingle->SetInputData(m_grid);
         m_contourSingle->ComputeNormalsOn();
         m_contourSingle->SetNumberOfContours(1);
     }
-    // 指定输入数组（点数据、名字为 scalar）
+
+    if (field.association == vtkDataObject::FIELD_ASSOCIATION_CELLS)
+    {
+        if (!m_cellToPoint)
+        {
+            m_cellToPoint = vtkSmartPointer<vtkCellDataToPointData>::New();
+            m_cellToPoint->PassCellDataOn();
+        }
+        auto preparedGrid = PostFieldUtils::prepareCellScalarForPointConversion(
+            m_grid, field, &contourArrayName);
+        if (!preparedGrid)
+            return false;
+        m_cellToPoint->SetInputData(preparedGrid);
+        m_cellToPoint->Update();
+        m_contourSingle->SetInputConnection(m_cellToPoint->GetOutputPort());
+    }
+    else
+    {
+        m_grid->GetPointData()->SetActiveScalars(encodedName.constData());
+        m_contourSingle->SetInputData(m_grid);
+    }
+    const QByteArray contourArray = contourArrayName.toUtf8();
     m_contourSingle->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS,
-                                            scalar.toUtf8().data());
+                                            contourArray.constData());
 
     if (!m_mapperSingle)
     {
@@ -415,25 +578,28 @@ void IsosurfaceSettingsWidget::ensureSinglePipeline()
         m_actorSingle->GetProperty()->SetRepresentationToSurface();
     }
 
-    // LUT/着色
-    auto arr = m_grid->GetPointData()->GetArray(scalar.toUtf8().data());
     double range[2];
     arr->GetRange(range);
-    auto lut = ensureLUT();
+    auto* lut = ensureLUT();
+    if (!lut)
+        return false;
     lut->SetTableRange(range);
     lut->Build();
 
     m_mapperSingle->SetLookupTable(lut);
     m_mapperSingle->SetScalarModeToUsePointFieldData();
-    m_mapperSingle->SelectColorArray(scalar.toUtf8().data());
+    m_mapperSingle->SelectColorArray(contourArray.constData());
     m_mapperSingle->SetScalarRange(range);
+    m_mapperSingle->ScalarVisibilityOn();
+    return true;
 }
 
 void IsosurfaceSettingsWidget::updateSingleIsoRealtime()
 {
     if (!m_grid)
         return;
-    ensureSinglePipeline();
+    if (!ensureSinglePipeline() || !m_contourSingle || !m_actorSingle)
+        return;
 
     const double iso = currentSingleIsoFromUI();
     m_contourSingle->SetValue(0, iso);
@@ -442,11 +608,18 @@ void IsosurfaceSettingsWidget::updateSingleIsoRealtime()
 
     // 隐藏整体 & 多等值面
     if (m_actorOverall)
-        removeActorByService(m_visualService, m_actorOverall);
+        removeActorByService(m_visualService, m_actorOverall, false);
     hideMultiActorsFromScene();
 
     // 挂单等值面
-    addActorByService(m_visualService, m_actorSingle);
+    addActorByService(m_visualService, m_actorSingle, false);
+    if (m_visualService)
+    {
+        const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+        m_visualService->showScalarBar(true, false);
+        if (auto* scalarBar = m_visualService->scalarBarActor())
+            scalarBar->SetTitle(ResultDisplayNames::displayName(field.name).toUtf8().constData());
+    }
     m_singleDisplayed = true;
     m_multiDisplayed = false;
 
@@ -464,77 +637,91 @@ void IsosurfaceSettingsWidget::buildMultiIsoResult()
     if (!m_grid)
         return;
 
-    const QString scalar = ui->scalarComboBox->currentText();
-    auto arr = m_grid->GetPointData()->GetArray(scalar.toUtf8().data());
+    const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+    vtkDataArray* arr = PostFieldUtils::array(m_grid, field);
     if (!arr)
     {
-        qWarning() << "Scalar array not found for multi:" << scalar;
+        qWarning() << "[Isosurface] Scalar array not found for multi:" << field.name;
         return;
     }
+    const QByteArray encodedName = field.name.toUtf8();
+    QString contourArrayName = field.name;
 
-    // 设 active（以防）
-    m_grid->GetPointData()->SetActiveScalars(scalar.toUtf8().data());
-
-    // 清空旧的
     clearMultiResults();
 
-    // LUT
     double range[2];
     arr->GetRange(range);
-    auto lut = ensureLUT();
+    auto* lut = ensureLUT();
+    if (!lut)
+        return;
     lut->SetTableRange(range);
     lut->Build();
 
-    // 值列表
-    const auto values = multiIsoValuesFromUI();
+    const QVector<double> values = multiIsoValuesFromUI();
+    auto contour = vtkSmartPointer<vtkContourFilter>::New();
+    contour->ComputeNormalsOn();
+    contour->SetNumberOfContours(values.size());
+    for (int i = 0; i < values.size(); ++i)
+        contour->SetValue(i, values.at(i));
 
-    for (double v : values)
+    if (field.association == vtkDataObject::FIELD_ASSOCIATION_CELLS)
     {
-        auto contour = vtkSmartPointer<vtkContourFilter>::New();
-        contour->SetInputData(m_grid);
-        contour->SetNumberOfContours(1);
-        contour->SetValue(0, v);
-        contour->ComputeNormalsOn();
-        // 指定输入数组
-        contour->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS,
-                                        scalar.toUtf8().data());
-        contour->Update();
-
-        auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
-        mapper->SetInputConnection(contour->GetOutputPort());
-        mapper->SetLookupTable(lut);
-        mapper->SetScalarModeToUsePointFieldData();
-        mapper->SelectColorArray(scalar.toUtf8().data());
-        mapper->SetScalarRange(range);
-
-        auto actor = vtkSmartPointer<vtkActor>::New();
-        actor->SetMapper(mapper);
-        actor->GetProperty()->SetRepresentationToSurface();
-
-        addActorByService(m_visualService, actor);
-
-        m_multiContours << contour;
-        m_multiMappers << mapper;
-        m_multiActors << actor;
+        if (!m_cellToPoint)
+        {
+            m_cellToPoint = vtkSmartPointer<vtkCellDataToPointData>::New();
+            m_cellToPoint->PassCellDataOn();
+        }
+        auto preparedGrid = PostFieldUtils::prepareCellScalarForPointConversion(
+            m_grid, field, &contourArrayName);
+        if (!preparedGrid)
+            return;
+        m_cellToPoint->SetInputData(preparedGrid);
+        m_cellToPoint->Update();
+        contour->SetInputConnection(m_cellToPoint->GetOutputPort());
     }
+    else
+    {
+        m_grid->GetPointData()->SetActiveScalars(encodedName.constData());
+        contour->SetInputData(m_grid);
+    }
+    const QByteArray contourArray = contourArrayName.toUtf8();
+    contour->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS,
+                                    contourArray.constData());
+    contour->Update();
 
-    // 多面模式：隐藏整体、隐藏单等值面
+    auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    mapper->SetInputConnection(contour->GetOutputPort());
+    mapper->SetLookupTable(lut);
+    mapper->SetScalarModeToUsePointFieldData();
+    mapper->SelectColorArray(contourArray.constData());
+    mapper->SetScalarRange(range);
+    mapper->ScalarVisibilityOn();
+
+    auto actor = vtkSmartPointer<vtkActor>::New();
+    actor->SetMapper(mapper);
+    actor->GetProperty()->SetRepresentationToSurface();
+
+    m_multiContours << contour;
+    m_multiMappers << mapper;
+    m_multiActors << actor;
+
     if (m_actorOverall)
-        removeActorByService(m_visualService, m_actorOverall);
+        removeActorByService(m_visualService, m_actorOverall, false);
     if (m_actorSingle)
-        removeActorByService(m_visualService, m_actorSingle);
+        removeActorByService(m_visualService, m_actorSingle, false);
+    addActorByService(m_visualService, actor, false);
+
     m_singleDisplayed = false;
     m_multiDisplayed = true;
-
     renderNow();
 }
 
 void IsosurfaceSettingsWidget::detachAllFromScene()
 {
     if (m_actorOverall)
-        removeActorByService(m_visualService, m_actorOverall);
+        removeActorByService(m_visualService, m_actorOverall, false);
     if (m_actorSingle)
-        removeActorByService(m_visualService, m_actorSingle);
+        removeActorByService(m_visualService, m_actorSingle, false);
     hideMultiActorsFromScene();
 }
 
@@ -550,7 +737,7 @@ void IsosurfaceSettingsWidget::reattachAccordingToState()
     {
         for (auto& a : m_multiActors)
             if (a)
-                addActorByService(m_visualService, a);
+                addActorByService(m_visualService, a, false);
         return;
     }
 
@@ -577,7 +764,7 @@ void IsosurfaceSettingsWidget::hideMultiActorsFromScene()
 {
     for (auto& a : m_multiActors)
         if (a)
-            removeActorByService(m_visualService, a);
+            removeActorByService(m_visualService, a, false);
 }
 
 void IsosurfaceSettingsWidget::clearMultiResults()
@@ -593,20 +780,16 @@ void IsosurfaceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
     if (!m_grid)
         return;
 
-    // 设 ActiveScalars，并更新范围
-    const QString scalar = ui->scalarComboBox->currentText();
-    if (auto arr = m_grid->GetPointData()->GetArray(scalar.toUtf8().data()))
+    const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+    vtkDataArray* arr = PostFieldUtils::array(m_grid, field);
+    if (!arr)
     {
-        m_grid->GetPointData()->SetActiveScalars(scalar.toUtf8().data());
-        arr->GetRange(m_scalarRange);
-    }
-    else
-    {
-        qWarning() << "Scalar array not found:" << scalar;
+        qWarning() << "[Isosurface] Scalar array not found:" << field.name;
         return;
     }
+    arr->GetRange(m_scalarRange);
     if (m_actorOverall)
-        removeActorByService(m_visualService, m_actorOverall);
+        removeActorByService(m_visualService, m_actorOverall, false);
     m_actorOverall = nullptr;
     setIsoSpinRangeFromScalar();
     updateOverallColoring();
@@ -677,7 +860,7 @@ void IsosurfaceSettingsWidget::on_singleIsoGroupBox_toggled(bool checked)
     {
         // 退出单等值面：隐藏单面，显示整体
         if (m_actorSingle)
-            removeActorByService(m_visualService, m_actorSingle);
+            removeActorByService(m_visualService, m_actorSingle, false);
         m_singleDisplayed = false;
         if (m_actorOverall)
             addActorByService(m_visualService, m_actorOverall);
@@ -699,7 +882,7 @@ void IsosurfaceSettingsWidget::on_multiIsoGroupBox_toggled(bool checked)
     {
         // 进入多等值面：暂不自动生成，显示整体；实时单面（若有）需隐藏
         if (m_actorSingle)
-            removeActorByService(m_visualService, m_actorSingle);
+            removeActorByService(m_visualService, m_actorSingle, false);
         m_singleDisplayed = false;
 
         hideMultiActorsFromScene();
@@ -739,8 +922,9 @@ void IsosurfaceSettingsWidget::on_stepComboBox_currentIndexChanged(int index)
         return;
     }
 
-    // 读取新数据
-    readTecplot(fullName);
+    // 读取失败时保留当前有效结果，避免后续解引用空网格。
+    if (!readTecplot(fullName))
+        return;
 
     // 用新数据刷新 scalar 下拉与范围
     fillScalarCombo(); // 或者至少 setIsoSpinRangeFromScalar();
@@ -749,11 +933,11 @@ void IsosurfaceSettingsWidget::on_stepComboBox_currentIndexChanged(int index)
     // 1) 单等值面：移除并标记为未显示（确保不会挡住整体云图）
     if (m_actorSingle)
     {
-        removeActorByService(m_visualService, m_actorSingle);
+        removeActorByService(m_visualService, m_actorSingle, false);
     }
     if (m_actorOverall)
     {
-        removeActorByService(m_visualService, m_actorOverall);
+        removeActorByService(m_visualService, m_actorOverall, false);
     }
     m_contourSingle = nullptr;
     m_mapperSingle = nullptr;

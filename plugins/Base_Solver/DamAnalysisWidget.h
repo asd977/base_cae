@@ -1,15 +1,23 @@
-﻿#pragma once
+#pragma once
 
 #include <BasePage.h>
 
 #include <QJsonObject>
 #include <QMap>
+#include <QPair>
+#include <QSet>
 #include <QString>
+#include <QVector>
+
+#include <struct/MeshMap.h>
 
 class QLineEdit;
 class QWidget;
 class QComboBox;
 class QGroupBox;
+class QLabel;
+class QSpinBox;
+class QTableWidget;
 
 namespace Ui
 {
@@ -32,6 +40,7 @@ class DamAnalysisWidget : public BasePage
     bool freezeThawEnabled() const;
     bool dynamicAnalysisEnabled() const;
     void setUpliftReductionRequired(bool required);
+    QPair<int, int> constructionLayerRange() const;
 
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
@@ -40,6 +49,7 @@ class DamAnalysisWidget : public BasePage
     void computeRequested();
     void stopRequested();
     void requirementsChanged();
+    void constructionLayersChanged(int firstLayer, int lastLayer);
 
 
   private slots:
@@ -60,6 +70,13 @@ class DamAnalysisWidget : public BasePage
     void updateDynamicOptionVisibility();
     void updateFreezeThawOptionState();
     void updateUpliftOptionState();
+    void setupConstructionLayerUi();
+    void rebuildConstructionLayerPanel();
+    void applyConstructionLayerChanges();
+    void markConstructionLayerDirty();
+    void updateConstructionLayerHighlights();
+    void clearConstructionLayerHighlights(bool renderNow = true);
+    QString constructionRegionDisplayText(const MeshTagKey& key) const;
 
     Ui::DamAnalysisWidget* ui;
     QMap<int, QWidget*> m_lineEditors;
@@ -78,9 +95,24 @@ class DamAnalysisWidget : public BasePage
     QGroupBox* m_groupFreezeThaw = nullptr;
     QLineEdit* m_editFreezeCycles = nullptr;
     QLineEdit* m_editFreezeCoefficient = nullptr;
-    QLineEdit* m_editFreezeElevation = nullptr;
-    QLineEdit* m_editFreezeCompression = nullptr;
-    QLineEdit* m_editFreezeTension = nullptr;
+    QLineEdit* m_editFreezeElevationMin = nullptr;
+    QLineEdit* m_editFreezeElevationMax = nullptr;
+    QLineEdit* m_editFreezeCompressionB = nullptr;
+    QLineEdit* m_editFreezeCompressionC = nullptr;
+    QLineEdit* m_editFreezeTensionB = nullptr;
+    QLineEdit* m_editFreezeTensionC = nullptr;
     QLineEdit* m_editIceExpansion = nullptr;
+    QGroupBox* m_groupConstructionLayers = nullptr;
+    QLabel* m_labelConstructionLayerStatus = nullptr;
+    QTableWidget* m_constructionRegionTable = nullptr;
+    QSpinBox* m_fillLayerCount = nullptr;
+    QVector<MeshTagKey> m_constructionRegionKeys;
+    QVector<QVector<MeshIdType>> m_constructionRegionCells;
+    bool m_constructionLayerUiActive = false;
+    bool m_constructionLayerUiUpdating = false;
+    bool m_constructionLayerUiDirty = false;
+    bool m_existingConstructionLayersValid = false;
+    qulonglong m_constructionPanelGridMTime = 0;
+    QString m_constructionBaseHighlightSignature;
     bool m_upliftReductionRequired = false;
 };

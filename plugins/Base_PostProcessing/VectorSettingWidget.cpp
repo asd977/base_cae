@@ -1,4 +1,4 @@
-﻿#include "VectorSettingWidget.h"
+#include "VectorSettingWidget.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -23,9 +23,13 @@
 
 #include <QDebug>
 #include <QDir>
+#include <QFileInfo>
+#include <QJsonObject>
+#include <QSignalBlocker>
 
 #include "PostResultAutoPrepare.h"
 #include "PostTecplotUtils.h"
+#include "ResultDisplayNames.h"
 #include "PostVisualUtils.h"
 #include "ui_VectorSettingWidget.h"
 
@@ -43,30 +47,19 @@ VectorSettingWidget::VectorSettingWidget(VisualWidgetService* postProcessingWidg
     // 槽函数连接
     connect(ui->confirmPushButton, &QPushButton::clicked, this,
             &VectorSettingWidget::on_confirmPushButton_clicked);
-    connect(ui->scaleSlider, &QSlider::valueChanged, this,
-            &VectorSettingWidget::on_scaleSlider_valueChanged);
+    connect(ui->scaleSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            &VectorSettingWidget::on_scaleSpinBox_valueChanged);
+    connect(ui->thicknessSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            &VectorSettingWidget::on_thicknessSpinBox_valueChanged);
     connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &VectorSettingWidget::on_resultDirComboBox_currentIndexChanged);
 
-    // 文本框校验：抽样间隔必须为正整数
-    ui->maskSzieTextEdit->setValidator(new QIntValidator(1, 1000000, this));
-    if (ui->maskSzieTextEdit->text().isEmpty())
-        ui->maskSzieTextEdit->setText(QString("1"));
+    // 采样间隔使用数值框，避免非法文本和空值。
+    ui->maskSizeSpinBox->setRange(1, 1000000);
 
-    // ——改这里：确保有合理范围，并把默认值设置为“中点”——
-    // 如果 .ui 里没设范围，给个兜底 1~300（对应 0.01~3.00）
-    if (ui->scaleSlider->minimum() >= ui->scaleSlider->maximum())
-    {
-        ui->scaleSlider->setRange(1, 300);
-    }
-    {
-        QSignalBlocker block(ui->scaleSlider); // 防止构造期触发 valueChanged
-        const int min = ui->scaleSlider->minimum();
-        const int max = ui->scaleSlider->maximum();
-        const int mid = min + (max - min) / 2; // 中点
-        ui->scaleSlider->setValue(mid);
-    }
-    m_scaleFactor = ui->scaleSlider->value() / 100.0; // 初始放大系数=中点(比如1.50)
+    // 长度和粗细使用可直接输入的数值控件，避免滑块无法看出当前倍率。
+    m_scaleFactor = ui->scaleSpinBox->value();
+    m_thicknessFactor = ui->thicknessSpinBox->value();
 
     m_visualService = postProcessingWidget;
 }
@@ -87,7 +80,7 @@ double VectorSettingWidget::computeAutoBaseScale(vtkUnstructuredGrid* grid)
     const double diag = std::sqrt(dx * dx + dy * dy + dz * dz);
     if (diag <= 0.0 || !std::isfinite(diag))
         return 1.0;
-    return diag * 0.1; // 3% 的对角线：可按需要改 0.02~0.05
+    return diag * 0.06; // 默认箭头基准长度为模型包围盒对角线的 6%
 }
 
 void VectorSettingWidget::beforeLoad()
@@ -110,8 +103,101 @@ void VectorSettingWidget::beforeLoad()
         if (m_visualService && m_vectorActor)
         {
             addActorByService(m_visualService, m_vectorActor);
+            m_visualService->showScalarBar(true, false);
+            if (auto* scalarBar = m_visualService->scalarBarActor())
+                scalarBar->SetTitle(QStringLiteral("矢量大小 |V|").toUtf8().constData());
             requestRender();
         }
+    }
+    m_loadedOnce = true;
+    applyPendingState();
+}
+
+QJsonObject VectorSettingWidget::saveJson()
+{
+    QJsonObject object;
+    object.insert(QStringLiteral("resultDir"), ui->resultDirComboBox->currentData().toString());
+    object.insert(QStringLiteral("stepFile"), ui->stepComboBox->currentData().toString());
+    object.insert(QStringLiteral("xField"), ui->xComboBox->currentData().toString());
+    object.insert(QStringLiteral("yField"), ui->yComboBox->currentData().toString());
+    object.insert(QStringLiteral("zField"), ui->zComboBox->currentData().toString());
+    object.insert(QStringLiteral("maskRatio"), ui->maskSizeSpinBox->value());
+    object.insert(QStringLiteral("scale"), ui->scaleSpinBox->value());
+    object.insert(QStringLiteral("thickness"), ui->thicknessSpinBox->value());
+    return object;
+}
+
+void VectorSettingWidget::loadJson(const QJsonObject& object)
+{
+    m_pendingState.clear();
+    for (auto it = object.constBegin(); it != object.constEnd(); ++it)
+        m_pendingState.insert(it.key(), it.value().toVariant());
+    m_hasPendingState = true;
+    if (m_loadedOnce)
+        applyPendingState();
+}
+
+void VectorSettingWidget::applyPendingState()
+{
+    if (!m_hasPendingState)
+        return;
+
+    const QVariantMap state = m_pendingState;
+    m_pendingState.clear();
+    m_hasPendingState = false;
+
+    const QString resultDir = state.value(QStringLiteral("resultDir")).toString();
+    if (!resultDir.isEmpty())
+    {
+        const int index = ui->resultDirComboBox->findData(resultDir);
+        if (index >= 0)
+        {
+            const QSignalBlocker blocker(ui->resultDirComboBox);
+            ui->resultDirComboBox->setCurrentIndex(index);
+            m_dataPath = resultDir;
+        }
+    }
+    loadFileName(m_dataPath);
+
+    const QString stepFile = state.value(QStringLiteral("stepFile")).toString();
+    if (!stepFile.isEmpty())
+    {
+        const int index = ui->stepComboBox->findData(stepFile);
+        if (index >= 0)
+        {
+            const QSignalBlocker blocker(ui->stepComboBox);
+            ui->stepComboBox->setCurrentIndex(index);
+            on_stepComboBox_currentIndexChanged(index);
+        }
+    }
+
+    auto restoreCombo = [](QComboBox* combo, const QString& name)
+    {
+        if (!combo || name.isEmpty())
+            return;
+        const int index = combo->findData(name);
+        if (index >= 0)
+            combo->setCurrentIndex(index);
+    };
+    restoreCombo(ui->xComboBox, state.value(QStringLiteral("xField")).toString());
+    restoreCombo(ui->yComboBox, state.value(QStringLiteral("yField")).toString());
+    restoreCombo(ui->zComboBox, state.value(QStringLiteral("zField")).toString());
+    ui->maskSizeSpinBox->setValue(
+        std::max(1, state.value(QStringLiteral("maskRatio"), 1).toInt()));
+    {
+        double scale = state.value(QStringLiteral("scale"), 1.0).toDouble();
+        // 兼容旧工程中滑块按 25～400 保存的整数值。
+        if (scale > 10.0)
+            scale /= 100.0;
+        const QSignalBlocker blocker(ui->scaleSpinBox);
+        ui->scaleSpinBox->setValue(qBound(0.1, scale, 10.0));
+        m_scaleFactor = ui->scaleSpinBox->value();
+    }
+    {
+        const QSignalBlocker blocker(ui->thicknessSpinBox);
+        ui->thicknessSpinBox->setValue(
+            qBound(0.25, state.value(QStringLiteral("thickness"), 1.0).toDouble(), 4.0));
+        m_thicknessFactor = ui->thicknessSpinBox->value();
     }
 }
 
@@ -146,12 +232,12 @@ void VectorSettingWidget::on_resultDirComboBox_currentIndexChanged(int index)
 
 void VectorSettingWidget::beforeUnload()
 {
-    // 页面被切换：仅隐藏当前向量箭头，保留对象以便回来后快速恢复
+    // 页面被切换：仅隐藏当前向量箭头，保留对象以便回来后快速恢复。
     if (m_visualService && m_vectorActor)
-    {
-        removeActorByService(m_visualService, m_vectorActor);
-        requestRender();
-    }
+        removeActorByService(m_visualService, m_vectorActor, false);
+    if (m_visualService)
+        m_visualService->showScalarBar(false, false);
+    requestRender();
     // 不要置空 m_vectorActor/m_glyph/m_grid —— 保持状态以用于恢复
 }
 
@@ -287,16 +373,7 @@ void VectorSettingWidget::populateComponentCombos()
 
     auto displayName = [](const QString& name)
     {
-        const QString upper = name.toUpper();
-        if (upper.startsWith(QStringLiteral("UX")) || upper.startsWith(QStringLiteral("VX")))
-            return QStringLiteral("X 方向分量");
-        if (upper.startsWith(QStringLiteral("UY")) || upper.startsWith(QStringLiteral("VY")))
-            return QStringLiteral("Y 方向分量");
-        if (upper.startsWith(QStringLiteral("UZ")) || upper.startsWith(QStringLiteral("VZ")))
-            return QStringLiteral("Z 方向分量");
-        if (upper.startsWith(QStringLiteral("UH")) || upper.startsWith(QStringLiteral("VH")))
-            return QStringLiteral("合量");
-        return name;
+        return ResultDisplayNames::displayName(name);
     };
     auto setCombo = [&](QComboBox* cb)
     {
@@ -412,6 +489,8 @@ bool VectorSettingWidget::buildVectorArraysFromSelections(vtkUnstructuredGrid* g
         for (vtkIdType i = 0; i < nPts; ++i)
         {
             arrX->GetTuple(i, t);
+            if (!std::isfinite(t[0]) || !std::isfinite(t[1]) || !std::isfinite(t[2]))
+                t[0] = t[1] = t[2] = 0.0;
             vec->SetTuple3(i, static_cast<float>(t[0]), static_cast<float>(t[1]),
                            static_cast<float>(t[2]));
             const double m = std::sqrt(t[0] * t[0] + t[1] * t[1] + t[2] * t[2]);
@@ -426,9 +505,15 @@ bool VectorSettingWidget::buildVectorArraysFromSelections(vtkUnstructuredGrid* g
     {
         for (vtkIdType i = 0; i < nPts; ++i)
         {
-            const double x = arrX->GetComponent(i, 0);
-            const double y = arrY->GetComponent(i, 0);
-            const double z = arrZ ? arrZ->GetComponent(i, 0) : 0.0;
+            double x = arrX->GetComponent(i, 0);
+            double y = arrY->GetComponent(i, 0);
+            double z = arrZ ? arrZ->GetComponent(i, 0) : 0.0;
+            if (!std::isfinite(x))
+                x = 0.0;
+            if (!std::isfinite(y))
+                y = 0.0;
+            if (!std::isfinite(z))
+                z = 0.0;
             vec->SetTuple3(i, static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
             const double m = std::sqrt(x * x + y * y + z * z);
             mag->SetTuple1(i, static_cast<float>(m));
@@ -453,7 +538,7 @@ void VectorSettingWidget::rebuildPipeline()
         return;
 
     // 抽样间隔
-    m_maskOnRatio = ui->maskSzieTextEdit->text().toInt();
+    m_maskOnRatio = ui->maskSizeSpinBox->value();
     if (m_maskOnRatio < 1)
         m_maskOnRatio = 1;
 
@@ -484,24 +569,23 @@ void VectorSettingWidget::rebuildPipeline()
     mask->Update();
 
     // 箭头源
-    auto arrow = vtkSmartPointer<vtkArrowSource>::New();
-    arrow->SetTipLength(0.35);   // 默认 0.35（可调）
-    arrow->SetTipRadius(0.08);   // 更粗的锥头
-    arrow->SetShaftRadius(0.02); // 更粗的箭杆
+    m_arrowSource = vtkSmartPointer<vtkArrowSource>::New();
+    m_arrowSource->SetTipLength(0.35);
+    m_arrowSource->SetTipRadius(0.08 * m_thicknessFactor);
+    m_arrowSource->SetShaftRadius(0.02 * m_thicknessFactor);
 
     // Glyph：向量用于朝向；上色用 VectorMag
     m_glyph = vtkSmartPointer<vtkGlyph3D>::New();
 #if VTK_MAJOR_VERSION >= 9
     m_glyph->SetInputConnection(mask->GetOutputPort());
-    m_glyph->SetSourceConnection(arrow->GetOutputPort());
+    m_glyph->SetSourceConnection(m_arrowSource->GetOutputPort());
 #else
     m_glyph->SetInputConnection(0, mask->GetOutputPort());
-    m_glyph->SetSourceConnection(0, arrow->GetOutputPort());
+    m_glyph->SetSourceConnection(0, m_arrowSource->GetOutputPort());
 #endif
     m_glyph->OrientOn();
     m_glyph->SetVectorModeToUseVector();
     m_glyph->SetScaleModeToDataScalingOff(); // 等长
-    m_glyph->SetScaleFactor(m_scaleFactor);  // 使用滑条设置
     // 指定向量与标量数组
     m_glyph->SetInputArrayToProcess(1, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS,
                                     "Vector"); // vectors
@@ -546,8 +630,9 @@ void VectorSettingWidget::rebuildPipeline()
         mapper->SetLookupTable(lut);
         mapper->UseLookupTableScalarRangeOn();
 
-        scalarBar->SetTitle("‖Vector‖");
+        scalarBar->SetTitle(QStringLiteral("矢量大小 |V|").toUtf8().constData());
         scalarBar->Modified();
+        m_visualService->showScalarBar(true, false);
     }
     else
     {
@@ -569,7 +654,8 @@ void VectorSettingWidget::requestRender() const
 {
     if (!m_visualService)
         return;
-    m_visualService->renderWindow()->Render();
+    if (auto* renderWindow = m_visualService->renderWindow())
+        renderWindow->Render();
 }
 
 void VectorSettingWidget::on_confirmPushButton_clicked()
@@ -577,14 +663,28 @@ void VectorSettingWidget::on_confirmPushButton_clicked()
     rebuildPipeline();
 }
 
-void VectorSettingWidget::on_scaleSlider_valueChanged(int value)
+void VectorSettingWidget::on_scaleSpinBox_valueChanged(double value)
 {
-    m_scaleFactor = value / 100.0;
+    m_scaleFactor = qBound(0.1, value, 10.0);
     if (m_glyph)
     {
         const double base = computeAutoBaseScale(m_grid);
         m_glyph->SetScaleFactor(base * m_scaleFactor);
         m_glyph->Update();
+        requestRender();
+    }
+}
+
+void VectorSettingWidget::on_thicknessSpinBox_valueChanged(double value)
+{
+    m_thicknessFactor = qBound(0.25, value, 4.0);
+    if (m_arrowSource)
+    {
+        m_arrowSource->SetTipRadius(0.08 * m_thicknessFactor);
+        m_arrowSource->SetShaftRadius(0.02 * m_thicknessFactor);
+        m_arrowSource->Modified();
+        if (m_glyph)
+            m_glyph->Update();
         requestRender();
     }
 }

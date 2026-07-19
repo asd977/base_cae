@@ -1,4 +1,4 @@
-﻿#include "BlockSettingsWidget.h"
+#include "BlockSettingsWidget.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -13,15 +13,21 @@
 #include <vtkTecplotReader.h>
 #include <vtkUnstructuredGrid.h>
 
+#include <QByteArray>
 #include <QDebug>
+#include <QJsonObject>
 #include <QDir>
 #include <QRegularExpression>
+#include <QSignalBlocker>
 
+#include "PostFieldUtils.h"
+#include "ResultDisplayNames.h"
 #include "PostResultAutoPrepare.h"
 #include "PostTecplotUtils.h"
 #include "PostVisualUtils.h"
 #include "ui_BlockSettingsWidget.h"
 
+#include <algorithm>
 #include <cmath>
 
 BlockSettingsWidget::BlockSettingsWidget(VisualWidgetService* postProcessingWidget, QWidget* parent)
@@ -34,6 +40,8 @@ BlockSettingsWidget::BlockSettingsWidget(VisualWidgetService* postProcessingWidg
     m_actor = vtkSmartPointer<vtkActor>::New();
 
     ui->blockSlider->setRange(0, 100);
+    ui->blockSlider->setTracking(false);
+    ui->blockSlider->setToolTip(QStringLiteral("松开滑块后更新切块，避免连续重算"));
     ui->blockSlider->setValue(50);
     ui->blockLineEdit->setText(QString("0.50"));
     ui->flipCheckBox->setChecked(false);
@@ -95,7 +103,97 @@ void BlockSettingsWidget::beforeLoad()
         updatePlaneFromUI();
     }
 
+    applyPendingState();
     renderNow();
+}
+
+QJsonObject BlockSettingsWidget::saveJson()
+{
+    const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+    QJsonObject object;
+    object.insert(QStringLiteral("resultDir"), ui->resultDirComboBox->currentData().toString());
+    object.insert(QStringLiteral("stepFile"), ui->stepComboBox->currentData().toString());
+    object.insert(QStringLiteral("fieldName"), field.name);
+    object.insert(QStringLiteral("fieldAssociation"), field.association);
+    object.insert(QStringLiteral("planeIndex"), ui->planeComboBox->currentIndex());
+    object.insert(QStringLiteral("position"), ui->blockSlider->value());
+    object.insert(QStringLiteral("flip"), ui->flipCheckBox->isChecked());
+    return object;
+}
+
+void BlockSettingsWidget::loadJson(const QJsonObject& object)
+{
+    m_pendingState.clear();
+    for (auto it = object.constBegin(); it != object.constEnd(); ++it)
+        m_pendingState.insert(it.key(), it.value().toVariant());
+    m_hasPendingState = true;
+    if (m_loadedOnce)
+        applyPendingState();
+}
+
+void BlockSettingsWidget::applyPendingState()
+{
+    if (!m_hasPendingState)
+        return;
+
+    const QVariantMap state = m_pendingState;
+    m_pendingState.clear();
+    m_hasPendingState = false;
+
+    const QString resultDir = state.value(QStringLiteral("resultDir")).toString();
+    if (!resultDir.isEmpty())
+    {
+        const int index = ui->resultDirComboBox->findData(resultDir);
+        if (index >= 0)
+        {
+            const QSignalBlocker blocker(ui->resultDirComboBox);
+            ui->resultDirComboBox->setCurrentIndex(index);
+            m_dataPath = resultDir;
+        }
+    }
+    loadFileName(m_dataPath);
+
+    const QString stepFile = state.value(QStringLiteral("stepFile")).toString();
+    if (!stepFile.isEmpty())
+    {
+        const int index = ui->stepComboBox->findData(stepFile);
+        if (index >= 0)
+        {
+            const QSignalBlocker blocker(ui->stepComboBox);
+            ui->stepComboBox->setCurrentIndex(index);
+            if (readTecplot(stepFile))
+            {
+                if (m_clipper)
+                    m_clipper->SetInputData(m_grid);
+            }
+        }
+    }
+
+    {
+        const QSignalBlocker fieldBlocker(ui->scalarComboBox);
+        PostFieldUtils::selectField(
+            ui->scalarComboBox, state.value(QStringLiteral("fieldName")).toString(),
+            state.value(QStringLiteral("fieldAssociation"),
+                        vtkDataObject::FIELD_ASSOCIATION_POINTS).toInt());
+    }
+    {
+        const QSignalBlocker planeBlocker(ui->planeComboBox);
+        ui->planeComboBox->setCurrentIndex(
+            std::max(0, std::min(state.value(QStringLiteral("planeIndex"), 0).toInt(),
+                                 std::max(0, ui->planeComboBox->count() - 1))));
+    }
+    {
+        const QSignalBlocker positionBlocker(ui->blockSlider);
+        ui->blockSlider->setValue(state.value(QStringLiteral("position"), 50).toInt());
+    }
+    {
+        const QSignalBlocker flipBlocker(ui->flipCheckBox);
+        ui->flipCheckBox->setChecked(state.value(QStringLiteral("flip"), false).toBool());
+    }
+
+    buildClipPipelineIfNeeded();
+    updateColoringFromUI();
+    updatePlaneFromUI();
 }
 
 void BlockSettingsWidget::refreshResultGroups()
@@ -134,6 +232,8 @@ void BlockSettingsWidget::beforeUnload()
         removeActorByService(m_visualService, m_actor);
         m_isAttached = false;
     }
+    if (m_visualService)
+        m_visualService->showScalarBar(false, false);
 }
 
 void BlockSettingsWidget::loadFileName(QString dataPath)
@@ -205,15 +305,17 @@ void BlockSettingsWidget::loadLatestData()
         readTecplot(bestFile);
 }
 
-void BlockSettingsWidget::readTecplot(const QString& fileName)
+bool BlockSettingsWidget::readTecplot(const QString& fileName)
 {
-    m_grid = PostTecplotUtils::readGrid(fileName);
-
-    if (!m_grid || m_grid->GetNumberOfPoints() == 0)
+    QString errorMessage;
+    auto newGrid = PostTecplotUtils::readGrid(fileName, &errorMessage);
+    if (!newGrid || newGrid->GetNumberOfPoints() == 0 || newGrid->GetNumberOfCells() == 0)
     {
-        qWarning() << "clip: no grid";
-        return;
+        qWarning() << "[Block] Failed to read grid:" << fileName << errorMessage;
+        return false;
     }
+
+    m_grid = newGrid;
 
     // 缓存范围
     double b[6];
@@ -225,19 +327,9 @@ void BlockSettingsWidget::readTecplot(const QString& fileName)
     m_ZRange[0] = b[4];
     m_ZRange[1] = b[5];
 
-    // 标量下拉：尽量保留之前的选择
-    const QString prev = ui->scalarComboBox->currentText();
-    QStringList scalars;
-    auto pd = m_grid->GetPointData();
-    for (int i = 0; i < pd->GetNumberOfArrays(); ++i)
-        if (const char* n = pd->GetArrayName(i))
-            scalars << QString::fromUtf8(n);
-    ui->scalarComboBox->blockSignals(true);
-    ui->scalarComboBox->clear();
-    ui->scalarComboBox->addItems(scalars);
-    int keep = ui->scalarComboBox->findText(prev);
-    ui->scalarComboBox->setCurrentIndex(keep >= 0 ? keep : (scalars.isEmpty() ? -1 : 0));
-    ui->scalarComboBox->blockSignals(false);
+    // 标量下拉同时区分节点数据与单元数据，并尽量保留之前的选择。
+    PostFieldUtils::fillCombo(ui->scalarComboBox, m_grid);
+    return true;
 }
 
 void BlockSettingsWidget::buildClipPipelineIfNeeded()
@@ -310,38 +402,57 @@ void BlockSettingsWidget::updateColoringFromUI()
     if (!m_grid || !m_mapper)
         return;
 
-    const QString scalar = ui->scalarComboBox->currentText();
-    if (scalar.isEmpty())
-        return;
-
-    auto arr = m_grid->GetPointData()->GetArray(scalar.toUtf8().data());
+    const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+    vtkDataArray* arr = PostFieldUtils::array(m_grid, field);
     if (!arr)
         return;
 
-    // 设为 active，保证后续 mapper/过滤器行为一致
-    m_grid->GetPointData()->SetActiveScalars(scalar.toUtf8().data());
+    const QByteArray encodedName = field.name.toUtf8();
+    if (field.association == vtkDataObject::FIELD_ASSOCIATION_CELLS)
+        m_grid->GetCellData()->SetActiveScalars(encodedName.constData());
+    else
+        m_grid->GetPointData()->SetActiveScalars(encodedName.constData());
 
     double range[2];
     arr->GetRange(range);
 
-    auto lut = vtkLookupTable::SafeDownCast(m_visualService->scalarBarActor()->GetLookupTable());
+    if (!m_visualService)
+        return;
+    auto* scalarBar = m_visualService->scalarBarActor();
+    if (!scalarBar)
+        return;
+    auto* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable());
     if (!lut)
     {
-        lut = vtkSmartPointer<vtkLookupTable>::New();
-        m_visualService->scalarBarActor()->SetLookupTable(lut);
+        auto newLut = vtkSmartPointer<vtkLookupTable>::New();
+        scalarBar->SetLookupTable(newLut);
+        lut = newLut;
     }
     lut->SetTableRange(range);
     lut->Build();
 
     m_mapper->SetLookupTable(lut);
-    m_mapper->SetScalarModeToUsePointFieldData();
-    m_mapper->SelectColorArray(scalar.toUtf8().data());
+    if (field.association == vtkDataObject::FIELD_ASSOCIATION_CELLS)
+        m_mapper->SetScalarModeToUseCellFieldData();
+    else
+        m_mapper->SetScalarModeToUsePointFieldData();
+    m_mapper->SelectColorArray(encodedName.constData());
     m_mapper->SetScalarRange(range);
+    m_mapper->ScalarVisibilityOn();
+
+    if (m_visualService)
+    {
+        m_visualService->showScalarBar(true, false);
+        if (auto* scalarBar = m_visualService->scalarBarActor())
+            scalarBar->SetTitle(ResultDisplayNames::displayName(field.name).toUtf8().constData());
+    }
 }
 
 void BlockSettingsWidget::renderNow()
 {
-    if (auto rw = m_visualService->renderWindow())
+    if (!m_visualService)
+        return;
+    if (auto* rw = m_visualService->renderWindow())
         rw->Render();
 }
 
@@ -382,8 +493,9 @@ void BlockSettingsWidget::on_stepComboBox_currentIndexChanged(int index)
     if (file.isEmpty())
         return;
 
-    // 读取新数据
-    readTecplot(file);
+    // 读取失败时保留上一份有效结果，不继续把空输入送入 VTK 管线。
+    if (!readTecplot(file))
+        return;
 
     // 如已建管线，切换输入；否则现在就建
     if (!m_clipper)

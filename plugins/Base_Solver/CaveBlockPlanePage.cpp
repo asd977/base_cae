@@ -270,13 +270,12 @@ double polygonArea(const QVector<QVector3D>& pts)
 } // namespace
 
 CaveBlockPlanePage::CaveBlockPlanePage(QWidget* parent)
-    : BasePage("CaveBlockPlanePage"), ui(new Ui::CaveBlockPlanePage)
+    : BasePage("CaveBlockPlane"), ui(new Ui::CaveBlockPlanePage)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
     SolverUiLayoutHelper::polishPage(this);
     setAttribute(Qt::WA_StyledBackground, true);
-    setStyleSheet("background-color: white;");
 
     auto* validator = new QDoubleValidator(-1.0e12, 1.0e12, 6, this);
     validator->setNotation(QDoubleValidator::ScientificNotation);
@@ -289,7 +288,7 @@ CaveBlockPlanePage::CaveBlockPlanePage(QWidget* parent)
     }
 
     if (ui->faceStatusLabel)
-        ui->faceStatusLabel->setText(QStringLiteral("未选择切割面"));
+        ui->faceStatusLabel->setText(QStringLiteral("未选择滑块面"));
 
     if (ui->clearFaceBtn)
     {
@@ -299,7 +298,7 @@ CaveBlockPlanePage::CaveBlockPlanePage(QWidget* parent)
                     m_selectedFaceKey = kInvalidFaceKey;
                     PickManager::instance().clearSelection(getPageType(), m_uuid, currentPickMode());
                     if (ui->faceStatusLabel)
-                        ui->faceStatusLabel->setText(QStringLiteral("未选择切割面"));
+                        ui->faceStatusLabel->setText(QStringLiteral("未选择滑块面"));
                 });
     }
 }
@@ -418,7 +417,7 @@ bool CaveBlockPlanePage::validateInputs(QString* errorMessage) const
     const QVector3D p2 = point(ui->x2Edit, ui->y2Edit, ui->z2Edit);
     const QVector3D p3 = point(ui->x3Edit, ui->y3Edit, ui->z3Edit);
     if (!isNonCollinear(p1, p2, p3))
-        return fail(QStringLiteral("切割面的三个点不能重合或共线。"));
+        return fail(QStringLiteral("滑块面的三个点不能重合或共线。"));
 
     bool fpOk = false;
     bool cOk = false;
@@ -487,7 +486,7 @@ void CaveBlockPlanePage::syncPointsFromSelectedFace()
     if (keys.isEmpty())
     {
         if (ui->faceStatusLabel)
-            ui->faceStatusLabel->setText(QStringLiteral("未选择切割面"));
+            ui->faceStatusLabel->setText(QStringLiteral("未选择滑块面"));
         return;
     }
 
@@ -514,7 +513,7 @@ void CaveBlockPlanePage::syncPointsFromSelectedFace()
 
     if (ui->faceStatusLabel)
         ui->faceStatusLabel->setText(
-            QStringLiteral("已选择 1 个切割面，面积：%1").arg(pickedFaceArea(), 0, 'f', 4));
+            QStringLiteral("已选择 1 个滑块面，面积：%1").arg(pickedFaceArea(), 0, 'f', 4));
 }
 
 PickMode CaveBlockPlanePage::currentPickMode()

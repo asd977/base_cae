@@ -3,6 +3,7 @@
 #include <vtkSmartPointer.h>
 
 #include <QString>
+#include <QVariantMap>
 #include <QVector>
 #include <QWidget>
 
@@ -13,6 +14,7 @@ class vtkPolyDataNormals;
 class vtkPolyDataMapper;
 class vtkActor;
 class vtkLookupTable;
+class vtkCellDataToPointData;
 
 namespace Ui
 {
@@ -28,8 +30,10 @@ class IsosurfaceSettingsWidget : public BasePage
     ~IsosurfaceSettingsWidget() override;
 
     // 生命周期（首次才重置，其余只挂载/卸载）
-    void beforeLoad();
-    void beforeUnload();
+    void beforeLoad() override;
+    void beforeUnload() override;
+    QJsonObject saveJson() override;
+    void loadJson(const QJsonObject& object) override;
 
   private slots:
     // 数据与 UI
@@ -48,7 +52,7 @@ class IsosurfaceSettingsWidget : public BasePage
 
   private:
     /* ------- 内部助手 ------- */
-    void readTecplot(const QString& file);
+    bool readTecplot(const QString& file);
     void fillScalarCombo();
     void setIsoSpinRangeFromScalar();
     double scalarMin() const
@@ -70,7 +74,7 @@ class IsosurfaceSettingsWidget : public BasePage
     QVector<double> multiIsoValuesFromUI() const; // N个等距值，含/不含端点
 
     // 结果构建
-    void ensureSinglePipeline();    // 单等值面：若未创建则创建管线
+    bool ensureSinglePipeline();    // 单等值面：若未创建则创建管线
     void updateSingleIsoRealtime(); // 单等值面：实时更新+显示
     void buildSingleIsoResult();    // （保留：供需要时复用）
     void buildMultiIsoResult();     // 多等值面：仅“确定”时调用
@@ -80,16 +84,20 @@ class IsosurfaceSettingsWidget : public BasePage
     void reattachAccordingToState();
     void hideMultiActorsFromScene();
     void clearMultiResults();
+    void applyPendingState();
 
   private:
     Ui::IsosurfaceSettingsWidget* ui{};
     VisualWidgetService* m_visualService{};
 
     bool m_loadedOnce{false};
+    bool m_hasPendingState{false};
+    QVariantMap m_pendingState;
     QString m_dataPath;
 
     // 数据
     vtkSmartPointer<vtkUnstructuredGrid> m_grid;
+    vtkSmartPointer<vtkCellDataToPointData> m_cellToPoint;
     double m_scalarRange[2]{0.0, 1.0};
 
     // 整体云图

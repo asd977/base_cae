@@ -182,12 +182,12 @@ void OrthogonalSampling::runPythonOrth_File()
     const QString sc = R"(C:\project\base_cae\build\release\scripts\Orthogonal.py)";
     if (py.isEmpty() || sc.isEmpty())
     {
-        QMessageBox::warning(this, tr("缺少路径"), tr("请先选择 Python 解释器与脚本文件。"));
+        QMessageBox::warning(this, tr("缺少路径"), tr("请先选择脚本解释器与脚本文件。"));
         return;
     }
     if (!QFileInfo::exists(py) || !QFileInfo(py).isFile())
     {
-        QMessageBox::warning(this, tr("无效路径"), tr("Python 解释器不存在。"));
+        QMessageBox::warning(this, tr("无效路径"), tr("脚本解释器不存在。"));
         return;
     }
     if (!QFileInfo::exists(sc) || !QFileInfo(sc).isFile())
@@ -207,7 +207,7 @@ void OrthogonalSampling::runPythonOrth_File()
     QFile tf("C:/project/base_cae/build/release/scripts/orthogonal_input.json");
     if (!tf.open(QIODevice::WriteOnly))
     {
-        QMessageBox::warning(this, tr("错误"), tr("无法创建临时 JSON 文件"));
+        QMessageBox::warning(this, tr("错误"), tr("无法创建临时配置文件。"));
         return;
     }
     tf.write(jsonText.toUtf8());
@@ -226,7 +226,7 @@ void OrthogonalSampling::runPythonOrth_File()
     p->start(py, args);
     if (!p->waitForStarted(10000))
     {
-        QMessageBox::warning(this, tr("错误"), tr("Python 未能启动"));
+        QMessageBox::warning(this, tr("错误"), tr("脚本解释器未能启动。"));
         p->deleteLater();
         return;
     }
@@ -245,9 +245,7 @@ void OrthogonalSampling::runPythonOrth_File()
     {
         QMessageBox::information(
             this, tr("完成"),
-            tr("脚本已完成。\n结果文件在脚本目录：\nOrthogonal_sample_result."
-               "txt\nOrthogonal_statistical_evaluation.txt\n(若为2/3维，还会生成 "
-               "Orthogonal_sample.png)"));
+            tr("正交采样已完成。采样结果、统计评估和可用的结果图片均已保存到脚本目录。"));
         // 显示输出目录并加载结果
         ui->outputDirEdit->setText(QDir::toNativeSeparators(scriptDir));
         loadOrthOutputsFromDir(scriptDir);

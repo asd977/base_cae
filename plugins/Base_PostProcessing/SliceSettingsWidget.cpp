@@ -1,11 +1,15 @@
-﻿#include "SliceSettingsWidget.h"
+#include "SliceSettingsWidget.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
 #include <services/VisualWidgetService.h>
 #include <vtkActor.h>
 #include <vtkAppendFilter.h>
+#include <vtkCellData.h>
+#include <vtkCellDataToPointData.h>
 #include <vtkCutter.h>
+#include <vtkDataArray.h>
+#include <vtkDataObject.h>
 #include <vtkLookupTable.h>
 #include <vtkMultiBlockDataSet.h>
 #include <vtkPlane.h>
@@ -18,10 +22,15 @@
 #include <vtkTecplotReader.h>
 #include <vtkUnstructuredGrid.h>
 
+#include <QByteArray>
 #include <QDebug>
 #include <QDir>
+#include <QJsonObject>
 #include <QRegularExpression>
+#include <QSignalBlocker>
 
+#include "PostFieldUtils.h"
+#include "ResultDisplayNames.h"
 #include "PostResultAutoPrepare.h"
 #include "PostTecplotUtils.h"
 #include "PostVisualUtils.h"
@@ -81,6 +90,8 @@ SliceSettingsWidget::SliceSettingsWidget(VisualWidgetService* postProcessingWidg
       m_visualService(postProcessingWidget)
 {
     ui->setupUi(this);
+    ui->sliceSlider->setTracking(false);
+    ui->sliceSlider->setToolTip(QStringLiteral("松开滑块后更新切面预览，避免连续重绘"));
 
     // 互斥：两组 GroupBox 必须是 checkable
     if (ui->singleSliceGroupBox)
@@ -125,7 +136,7 @@ SliceSettingsWidget::SliceSettingsWidget(VisualWidgetService* postProcessingWidg
     // 多切面数量默认
     if (ui->sliceNumSpin)
     {
-        ui->sliceNumSpin->setRange(1, 999);
+        ui->sliceNumSpin->setRange(1, 100);
         if (ui->sliceNumSpin->value() < 1)
             ui->sliceNumSpin->setValue(5);
     }
@@ -155,11 +166,120 @@ void SliceSettingsWidget::beforeLoad()
         m_loadedOnce = true;
     }
 
+    applyPendingState();
+
     // 切回页面：根据状态挂回
     reattachAccordingToDisplayState();
+    if (m_visualService)
+    {
+        const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+        if (!field.name.isEmpty())
+        {
+            m_visualService->showScalarBar(true, false);
+            if (auto* scalarBar = m_visualService->scalarBarActor())
+                scalarBar->SetTitle(ResultDisplayNames::displayName(field.name).toUtf8().constData());
+        }
+    }
 
-    if (auto rw = m_visualService->renderWindow())
-        rw->Render();
+    if (m_visualService)
+        if (auto* rw = m_visualService->renderWindow())
+            rw->Render();
+}
+
+QJsonObject SliceSettingsWidget::saveJson()
+{
+    const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+    QJsonObject object;
+    object.insert(QStringLiteral("resultDir"), ui->resultDirComboBox->currentData().toString());
+    object.insert(QStringLiteral("stepFile"), ui->stepComboBox->currentData().toString());
+    object.insert(QStringLiteral("fieldName"), field.name);
+    object.insert(QStringLiteral("fieldAssociation"), field.association);
+    object.insert(QStringLiteral("planeIndex"), ui->planeComboBox->currentIndex());
+    object.insert(QStringLiteral("position"), ui->sliceSlider->value());
+    object.insert(QStringLiteral("singleMode"), ui->singleSliceGroupBox->isChecked());
+    object.insert(QStringLiteral("sliceCount"), ui->sliceNumSpin->value());
+    object.insert(QStringLiteral("includeEnds"), ui->includeEndsCheck->isChecked());
+    return object;
+}
+
+void SliceSettingsWidget::loadJson(const QJsonObject& object)
+{
+    m_pendingState.clear();
+    for (auto it = object.constBegin(); it != object.constEnd(); ++it)
+        m_pendingState.insert(it.key(), it.value().toVariant());
+    m_hasPendingState = true;
+    if (m_loadedOnce)
+        applyPendingState();
+}
+
+void SliceSettingsWidget::applyPendingState()
+{
+    if (!m_hasPendingState)
+        return;
+
+    const QVariantMap state = m_pendingState;
+    m_pendingState.clear();
+    m_hasPendingState = false;
+
+    const QString resultDir = state.value(QStringLiteral("resultDir")).toString();
+    if (!resultDir.isEmpty())
+    {
+        const int index = ui->resultDirComboBox->findData(resultDir);
+        if (index >= 0)
+        {
+            const QSignalBlocker blocker(ui->resultDirComboBox);
+            ui->resultDirComboBox->setCurrentIndex(index);
+            m_dataPath = resultDir;
+        }
+    }
+    loadFileName(m_dataPath);
+
+    const QString stepFile = state.value(QStringLiteral("stepFile")).toString();
+    if (!stepFile.isEmpty())
+    {
+        const int index = ui->stepComboBox->findData(stepFile);
+        if (index >= 0)
+        {
+            const QSignalBlocker blocker(ui->stepComboBox);
+            ui->stepComboBox->setCurrentIndex(index);
+            on_stepComboBox_currentIndexChanged(index);
+        }
+    }
+
+    {
+        const QSignalBlocker fieldBlocker(ui->scalarComboBox);
+        PostFieldUtils::selectField(
+            ui->scalarComboBox, state.value(QStringLiteral("fieldName")).toString(),
+            state.value(QStringLiteral("fieldAssociation"),
+                        vtkDataObject::FIELD_ASSOCIATION_POINTS).toInt());
+    }
+    {
+        const QSignalBlocker planeBlocker(ui->planeComboBox);
+        const int maximumIndex = std::max(0, ui->planeComboBox->count() - 1);
+        ui->planeComboBox->setCurrentIndex(std::max(0, std::min(state.value(QStringLiteral("planeIndex"), 0).toInt(),
+                                  maximumIndex)));
+    }
+    {
+        const QSignalBlocker positionBlocker(ui->sliceSlider);
+        const QSignalBlocker singleBlocker(ui->singleSliceGroupBox);
+        const QSignalBlocker multiBlocker(ui->multiSliceGroupBox);
+        const QSignalBlocker countBlocker(ui->sliceNumSpin);
+        const QSignalBlocker endsBlocker(ui->includeEndsCheck);
+        const bool singleMode = state.value(QStringLiteral("singleMode"), true).toBool();
+        ui->sliceSlider->setValue(state.value(QStringLiteral("position"), 50).toInt());
+        ui->singleSliceGroupBox->setChecked(singleMode);
+        ui->multiSliceGroupBox->setChecked(!singleMode);
+        ui->sliceNumSpin->setValue(state.value(QStringLiteral("sliceCount"), 5).toInt());
+        ui->includeEndsCheck->setChecked(state.value(QStringLiteral("includeEnds"), false).toBool());
+    }
+
+    detachAllFromScene();
+    m_singleDisplayed = false;
+    m_multiDisplayed = false;
+    clearMultiSlicesAll();
+    on_scalarComboBox_currentIndexChanged(ui->scalarComboBox->currentIndex());
+    if (ui->singleSliceGroupBox->isChecked())
+        showCutPlane();
 }
 
 void SliceSettingsWidget::refreshResultGroups()
@@ -195,7 +315,12 @@ void SliceSettingsWidget::beforeUnload()
 {
     // 只移除，不销毁
     detachAllFromScene();
-    m_visualService->renderWindow()->Render();
+    if (m_visualService)
+    {
+        m_visualService->showScalarBar(false, false);
+        if (auto* rw = m_visualService->renderWindow())
+            rw->Render();
+    }
 }
 
 void SliceSettingsWidget::loadFileName(QString dataPath)
@@ -245,12 +370,14 @@ void SliceSettingsWidget::on_stepComboBox_currentIndexChanged(int idx)
     if (file.isEmpty())
         return;
 
-    m_grid = PostTecplotUtils::readGrid(file);
-    if (!m_grid)
+    QString errorMessage;
+    auto newGrid = PostTecplotUtils::readGrid(file, &errorMessage);
+    if (!newGrid || newGrid->GetNumberOfPoints() == 0 || newGrid->GetNumberOfCells() == 0)
     {
-        qWarning() << "append failed";
+        qWarning() << "[Slice] Failed to read grid:" << file << errorMessage;
         return;
     }
+    m_grid = newGrid;
 
     // 范围
     double b[6];
@@ -262,14 +389,8 @@ void SliceSettingsWidget::on_stepComboBox_currentIndexChanged(int idx)
     m_ZRange[0] = b[4];
     m_ZRange[1] = b[5];
 
-    // 填标量
-    QStringList scalars;
-    auto pd = m_grid->GetPointData();
-    for (int i = 0; i < pd->GetNumberOfArrays(); ++i)
-        if (const char* n = pd->GetArrayName(i))
-            scalars << QString::fromUtf8(n);
-    ui->scalarComboBox->clear();
-    ui->scalarComboBox->addItems(scalars);
+    // 同名节点/单元变量分别显示，避免选错数据关联。
+    PostFieldUtils::fillCombo(ui->scalarComboBox, m_grid);
 
     // UI 不自动出结果
     ui->planeComboBox->setCurrentIndex(0);
@@ -282,9 +403,9 @@ void SliceSettingsWidget::on_stepComboBox_currentIndexChanged(int idx)
 
     // 清理结果显示
     if (m_sliceActor)
-        removeActorByService(m_visualService, m_sliceActor);
+        removeActorByService(m_visualService, m_sliceActor, false);
     if (m_slicePlaneActor)
-        removeActorByService(m_visualService, m_slicePlaneActor);
+        removeActorByService(m_visualService, m_slicePlaneActor, false);
     clearMultiSlicesAll();
 
     // 上色整体云图
@@ -292,30 +413,36 @@ void SliceSettingsWidget::on_stepComboBox_currentIndexChanged(int idx)
         on_scalarComboBox_currentIndexChanged(ui->scalarComboBox->currentIndex());
 
     reattachAccordingToDisplayState();
-    if (auto rw = m_visualService->renderWindow())
-        rw->Render();
+    if (m_visualService)
+        if (auto* rw = m_visualService->renderWindow())
+            rw->Render();
 }
 
 void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
 {
     if (!m_grid)
         return;
-    const QString scalar = ui->scalarComboBox->currentText();
-    auto arr = m_grid->GetPointData()->GetArray(scalar.toUtf8().data());
+    const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+    vtkDataArray* arr = PostFieldUtils::array(m_grid, field);
     if (!arr)
     {
-        qWarning() << "no scalar" << scalar;
+        qWarning() << "[Slice] Scalar array not found:" << field.name;
         return;
     }
+    const QByteArray encodedName = field.name.toUtf8();
 
     // LUT
     double range[2];
     arr->GetRange(range);
-    auto lut = vtkLookupTable::SafeDownCast(m_visualService->scalarBarActor()->GetLookupTable());
+    auto* scalarBar = m_visualService->scalarBarActor();
+    if (!scalarBar)
+        return;
+    auto* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable());
     if (!lut)
     {
-        lut = vtkSmartPointer<vtkLookupTable>::New();
-        m_visualService->scalarBarActor()->SetLookupTable(lut);
+        auto newLut = vtkSmartPointer<vtkLookupTable>::New();
+        scalarBar->SetLookupTable(newLut);
+        lut = newLut;
     }
     lut->SetTableRange(range);
     lut->Build();
@@ -330,14 +457,20 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
     auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
     mapper->SetInputData(polyData);
     mapper->SetLookupTable(lut);
-    mapper->SetScalarModeToUsePointFieldData();
-    mapper->SelectColorArray(scalar.toUtf8().data());
+    if (field.association == vtkDataObject::FIELD_ASSOCIATION_CELLS)
+        mapper->SetScalarModeToUseCellFieldData();
+    else
+        mapper->SetScalarModeToUsePointFieldData();
+    mapper->SelectColorArray(encodedName.constData());
     mapper->SetScalarRange(range);
 
     if (!m_actor)
         m_actor = vtkSmartPointer<vtkActor>::New();
     m_actor->SetMapper(mapper);
     m_actor->GetProperty()->SetRepresentationToSurface();
+    m_visualService->showScalarBar(true, false);
+    if (auto* scalarBar = m_visualService->scalarBarActor())
+        scalarBar->SetTitle(ResultDisplayNames::displayName(field.name).toUtf8().constData());
 
     // 没有在显示结果时，才把整体云图挂上
     if (!m_singleDisplayed && !m_multiDisplayed)
@@ -347,7 +480,7 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
     if (m_singleDisplayed)
     {
         if (m_sliceActor)
-            removeActorByService(m_visualService, m_sliceActor);
+            removeActorByService(m_visualService, m_sliceActor, false);
         buildSingleSliceResult();
     }
     else if (m_multiDisplayed)
@@ -356,8 +489,9 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
         buildMultiSliceResult();
     }
 
-    if (auto rw = m_visualService->renderWindow())
-        rw->Render();
+    if (m_visualService)
+        if (auto* rw = m_visualService->renderWindow())
+            rw->Render();
 }
 
 void SliceSettingsWidget::on_planeComboBox_currentIndexChanged(int)
@@ -369,7 +503,7 @@ void SliceSettingsWidget::on_planeComboBox_currentIndexChanged(int)
 
 void SliceSettingsWidget::showCutPlane(int)
 {
-    if (!m_grid)
+    if (!m_grid || !m_visualService)
         return;
 
     // 仅单切面模式预览；多切面模式不预览
@@ -453,12 +587,15 @@ void SliceSettingsWidget::showCutPlane(int)
     // 确保挂上（从多切面切回单切面时尤为关键）
     addActorByService(m_visualService, m_slicePlaneActor);
 
-    if (auto rw = m_visualService->renderWindow())
-        rw->Render();
+    if (m_visualService)
+        if (auto* rw = m_visualService->renderWindow())
+            rw->Render();
 }
 
 void SliceSettingsWidget::on_confirmButton_clicked()
 {
+    if (!m_visualService)
+        return;
     const bool singleMode = ui->singleSliceGroupBox && ui->singleSliceGroupBox->isChecked();
     const bool multiMode = ui->multiSliceGroupBox && ui->multiSliceGroupBox->isChecked();
 
@@ -466,11 +603,11 @@ void SliceSettingsWidget::on_confirmButton_clicked()
     {
         // 多切面：隐藏整体和单切面预览/结果，生成多切面结果
         if (m_actor)
-            removeActorByService(m_visualService, m_actor);
+            removeActorByService(m_visualService, m_actor, false);
         if (m_slicePlaneActor)
-            removeActorByService(m_visualService, m_slicePlaneActor);
+            removeActorByService(m_visualService, m_slicePlaneActor, false);
         if (m_sliceActor)
-            removeActorByService(m_visualService, m_sliceActor);
+            removeActorByService(m_visualService, m_sliceActor, false);
 
         buildMultiSliceResult();
 
@@ -481,9 +618,9 @@ void SliceSettingsWidget::on_confirmButton_clicked()
     {
         // 单切面：隐藏整体和预览，生成单切面结果
         if (m_actor)
-            removeActorByService(m_visualService, m_actor);
+            removeActorByService(m_visualService, m_actor, false);
         if (m_slicePlaneActor)
-            removeActorByService(m_visualService, m_slicePlaneActor);
+            removeActorByService(m_visualService, m_slicePlaneActor, false);
 
         buildSingleSliceResult();
 
@@ -502,8 +639,9 @@ void SliceSettingsWidget::on_confirmButton_clicked()
             addActorByService(m_visualService, m_actor);
     }
 
-    if (auto rw = m_visualService->renderWindow())
-        rw->Render();
+    if (m_visualService)
+        if (auto* rw = m_visualService->renderWindow())
+            rw->Render();
 }
 
 void SliceSettingsWidget::on_singleSliceGroupBox_toggled(bool checked)
@@ -530,17 +668,18 @@ void SliceSettingsWidget::on_singleSliceGroupBox_toggled(bool checked)
     {
         // 退出单切面模式：隐藏预览与单切面结果，仅显示整体
         if (m_slicePlaneActor)
-            removeActorByService(m_visualService, m_slicePlaneActor);
+            removeActorByService(m_visualService, m_slicePlaneActor, false);
         if (m_sliceActor)
-            removeActorByService(m_visualService, m_sliceActor);
+            removeActorByService(m_visualService, m_sliceActor, false);
         m_singleDisplayed = false;
 
         if (m_actor)
             addActorByService(m_visualService, m_actor);
     }
 
-    if (auto rw = m_visualService->renderWindow())
-        rw->Render();
+    if (m_visualService)
+        if (auto* rw = m_visualService->renderWindow())
+            rw->Render();
 }
 
 void SliceSettingsWidget::on_multiSliceGroupBox_toggled(bool checked)
@@ -557,9 +696,9 @@ void SliceSettingsWidget::on_multiSliceGroupBox_toggled(bool checked)
     {
         // 进入多切面模式：隐藏单切面预览/结果，仅显示整体（不自动出结果）
         if (m_slicePlaneActor)
-            removeActorByService(m_visualService, m_slicePlaneActor);
+            removeActorByService(m_visualService, m_slicePlaneActor, false);
         if (m_sliceActor)
-            removeActorByService(m_visualService, m_sliceActor);
+            removeActorByService(m_visualService, m_sliceActor, false);
         m_singleDisplayed = false;
 
         if (m_actor)
@@ -576,128 +715,184 @@ void SliceSettingsWidget::on_multiSliceGroupBox_toggled(bool checked)
         showCutPlane(); // 恢复预览（如果单切面组处于勾选状态）
     }
 
-    if (auto rw = m_visualService->renderWindow())
-        rw->Render();
+    if (m_visualService)
+        if (auto* rw = m_visualService->renderWindow())
+            rw->Render();
 }
 
 void SliceSettingsWidget::buildSingleSliceResult()
 {
-    if (!m_grid)
-        return;
-    const QString scalar = ui->scalarComboBox->currentText();
-    if (scalar.isEmpty())
+    if (!m_grid || !m_visualService)
         return;
 
-    auto lut = vtkLookupTable::SafeDownCast(m_visualService->scalarBarActor()->GetLookupTable());
+    const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+    vtkDataArray* arr = PostFieldUtils::array(m_grid, field);
+    if (!arr)
+        return;
+    const QByteArray encodedName = field.name.toUtf8();
+    QString sliceArrayName = field.name;
+
+    if (!m_visualService)
+        return;
+    auto* scalarBar = m_visualService->scalarBarActor();
+    auto* lut = scalarBar ? vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable()) : nullptr;
     if (!lut)
         return;
 
     double range[2]{0, 1};
-    if (auto arr = m_grid->GetPointData()->GetArray(scalar.toUtf8().data()))
-        arr->GetRange(range);
+    arr->GetRange(range);
     lut->SetTableRange(range);
     lut->Build();
 
     auto cutter = vtkSmartPointer<vtkCutter>::New();
     cutter->SetCutFunction(m_plane);
-    cutter->SetInputData(m_grid);
+    if (field.association == vtkDataObject::FIELD_ASSOCIATION_CELLS)
+    {
+        if (!m_cellToPoint)
+        {
+            m_cellToPoint = vtkSmartPointer<vtkCellDataToPointData>::New();
+            m_cellToPoint->PassCellDataOn();
+        }
+        auto preparedGrid = PostFieldUtils::prepareCellScalarForPointConversion(
+            m_grid, field, &sliceArrayName);
+        if (!preparedGrid)
+            return;
+        m_cellToPoint->SetInputData(preparedGrid);
+        m_cellToPoint->Update();
+        cutter->SetInputConnection(m_cellToPoint->GetOutputPort());
+    }
+    else
+    {
+        cutter->SetInputData(m_grid);
+    }
     cutter->Update();
 
     auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
     mapper->SetInputConnection(cutter->GetOutputPort());
     mapper->SetLookupTable(lut);
     mapper->SetScalarModeToUsePointFieldData();
-    mapper->SelectColorArray(scalar.toUtf8().data());
+    const QByteArray sliceArray = sliceArrayName.toUtf8();
+    mapper->SelectColorArray(sliceArray.constData());
     mapper->SetScalarRange(range);
+    mapper->ScalarVisibilityOn();
 
     if (m_sliceActor)
-        removeActorByService(m_visualService, m_sliceActor);
+        removeActorByService(m_visualService, m_sliceActor, false);
 
     m_sliceActor = vtkSmartPointer<vtkActor>::New();
     m_sliceActor->SetMapper(mapper);
     m_sliceActor->GetProperty()->SetRepresentationToSurface();
 
-    addActorByService(m_visualService, m_sliceActor);
+    addActorByService(m_visualService, m_sliceActor, false);
+    m_visualService->showScalarBar(true, false);
+    if (auto* scalarBar = m_visualService->scalarBarActor())
+        scalarBar->SetTitle(ResultDisplayNames::displayName(field.name).toUtf8().constData());
 }
 
 void SliceSettingsWidget::buildMultiSliceResult()
 {
-    if (!m_grid)
+    if (!m_grid || !m_visualService)
         return;
 
-    clearMultiSlicesAll(); // 清空旧的多切面
+    clearMultiSlicesAll();
 
-    const int N = ui->sliceNumSpin ? std::max(1, ui->sliceNumSpin->value()) : 1;
-    const bool includeEnds = (ui->includeEndsCheck ? ui->includeEndsCheck->isChecked() : false);
-    const QString dir =
-        ui->planeComboBox->currentText().isEmpty() ? "XY" : ui->planeComboBox->currentText();
+    const int count = ui->sliceNumSpin ? std::max(1, ui->sliceNumSpin->value()) : 1;
+    const bool includeEnds = ui->includeEndsCheck && ui->includeEndsCheck->isChecked();
+    const QString direction =
+        ui->planeComboBox->currentText().isEmpty() ? QStringLiteral("XY")
+                                                    : ui->planeComboBox->currentText();
 
-    // LUT/标量
-    auto lut = vtkLookupTable::SafeDownCast(m_visualService->scalarBarActor()->GetLookupTable());
-    const QString scalar = ui->scalarComboBox->currentText();
+    const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+    vtkDataArray* arr = PostFieldUtils::array(m_grid, field);
+    if (!arr)
+        return;
+    const QByteArray encodedName = field.name.toUtf8();
+    QString sliceArrayName = field.name;
+
+    if (!m_visualService)
+        return;
+    auto* scalarBar = m_visualService->scalarBarActor();
+    auto* lut = scalarBar ? vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable()) : nullptr;
+    if (!lut)
+        return;
     double range[2]{0, 1};
-    if (lut && !scalar.isEmpty())
+    arr->GetRange(range);
+    lut->SetTableRange(range);
+    lut->Build();
+
+    if (field.association == vtkDataObject::FIELD_ASSOCIATION_CELLS)
     {
-        if (auto arr = m_grid->GetPointData()->GetArray(scalar.toUtf8().data()))
-            arr->GetRange(range);
-        lut->SetTableRange(range);
-        lut->Build();
+        if (!m_cellToPoint)
+        {
+            m_cellToPoint = vtkSmartPointer<vtkCellDataToPointData>::New();
+            m_cellToPoint->PassCellDataOn();
+        }
+        auto preparedGrid = PostFieldUtils::prepareCellScalarForPointConversion(
+            m_grid, field, &sliceArrayName);
+        if (!preparedGrid)
+            return;
+        m_cellToPoint->SetInputData(preparedGrid);
+        m_cellToPoint->Update();
     }
 
-    // t 分布：包含端点的话，两个端点都包含（并向内收 eps）
-    const auto ts = genUniformTs(N, includeEnds);
+    const QVector<double> positions = genUniformTs(count, includeEnds);
+    double bounds[6];
+    m_grid->GetBounds(bounds);
+    const double dx = bounds[1] - bounds[0];
+    const double dy = bounds[3] - bounds[2];
+    const double dz = bounds[5] - bounds[4];
 
-    // 包围盒
-    double b[6];
-    m_grid->GetBounds(b);
-    const double dx = b[1] - b[0], dy = b[3] - b[2], dz = b[5] - b[4];
-
-    for (double t : ts)
+    for (double position : positions)
     {
         auto plane = vtkSmartPointer<vtkPlane>::New();
         double origin[3] = {0, 0, 0};
-        if (dir == "YZ")
+        if (direction == QStringLiteral("YZ"))
         {
-            origin[0] = b[0] + t * dx;
+            origin[0] = bounds[0] + position * dx;
             plane->SetNormal(1, 0, 0);
         }
-        else if (dir == "XZ")
+        else if (direction == QStringLiteral("XZ"))
         {
-            origin[1] = b[2] + t * dy;
+            origin[1] = bounds[2] + position * dy;
             plane->SetNormal(0, 1, 0);
         }
         else
         {
-            origin[2] = b[4] + t * dz;
+            origin[2] = bounds[4] + position * dz;
             plane->SetNormal(0, 0, 1);
         }
         plane->SetOrigin(origin);
 
         auto cutter = vtkSmartPointer<vtkCutter>::New();
         cutter->SetCutFunction(plane);
-        cutter->SetInputData(m_grid);
+        if (field.association == vtkDataObject::FIELD_ASSOCIATION_CELLS)
+            cutter->SetInputConnection(m_cellToPoint->GetOutputPort());
+        else
+            cutter->SetInputData(m_grid);
         cutter->Update();
 
         auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
         mapper->SetInputConnection(cutter->GetOutputPort());
-        if (lut && !scalar.isEmpty())
-        {
-            mapper->SetLookupTable(lut);
-            mapper->SetScalarModeToUsePointFieldData();
-            mapper->SelectColorArray(scalar.toUtf8().data());
-            mapper->SetScalarRange(range);
-        }
+        mapper->SetLookupTable(lut);
+        mapper->SetScalarModeToUsePointFieldData();
+        const QByteArray sliceArray = sliceArrayName.toUtf8();
+        mapper->SelectColorArray(sliceArray.constData());
+        mapper->SetScalarRange(range);
+        mapper->ScalarVisibilityOn();
 
         auto actor = vtkSmartPointer<vtkActor>::New();
         actor->SetMapper(mapper);
-
-        addActorByService(m_visualService, actor);
+        addActorByService(m_visualService, actor, false);
 
         m_multiPlanes << plane;
         m_multiCutters << cutter;
         m_multiMappers << mapper;
         m_multiActors << actor;
     }
+
+    m_visualService->showScalarBar(true, false);
+    if (auto* scalarBar = m_visualService->scalarBarActor())
+        scalarBar->SetTitle(ResultDisplayNames::displayName(field.name).toUtf8().constData());
 }
 
 void SliceSettingsWidget::hideMultiSlicesFromScene()
@@ -705,7 +900,7 @@ void SliceSettingsWidget::hideMultiSlicesFromScene()
     for (auto& a : m_multiActors)
     {
         if (a)
-            removeActorByService(m_visualService, a);
+            removeActorByService(m_visualService, a, false);
     }
 }
 
@@ -730,7 +925,7 @@ void SliceSettingsWidget::reattachAccordingToDisplayState()
     {
         for (auto& a : m_multiActors)
             if (a)
-                addActorByService(m_visualService, a);
+                addActorByService(m_visualService, a, false);
         return;
     }
 
@@ -761,10 +956,10 @@ void SliceSettingsWidget::reattachAccordingToDisplayState()
 void SliceSettingsWidget::detachAllFromScene()
 {
     if (m_actor)
-        removeActorByService(m_visualService, m_actor);
+        removeActorByService(m_visualService, m_actor, false);
     if (m_slicePlaneActor)
-        removeActorByService(m_visualService, m_slicePlaneActor);
+        removeActorByService(m_visualService, m_slicePlaneActor, false);
     if (m_sliceActor)
-        removeActorByService(m_visualService, m_sliceActor);
+        removeActorByService(m_visualService, m_sliceActor, false);
     hideMultiSlicesFromScene();
 }

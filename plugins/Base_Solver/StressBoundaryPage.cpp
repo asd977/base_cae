@@ -493,8 +493,8 @@ void StressBoundaryPage::setupBatchGroupCombo()
     const bool selectFaces = currentPickMode() == PickMode::Face;
     ui->labelPickHint->setText(
         selectFaces
-            ? QStringLiteral("选择对象：三维网格面。可在视图中框选，或按边界面分组批量添加。")
-            : QStringLiteral("选择对象：二维网格边。可在视图中框选，或按边界线分组批量添加。"));
+            ? QStringLiteral("提示：可框选网格面，或按边界分组添加。")
+            : QStringLiteral("提示：可框选网格边，或按边界分组添加。"));
     ui->btnClear->setText(selectFaces ? QStringLiteral("清空选面") : QStringLiteral("清空选边"));
 
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();

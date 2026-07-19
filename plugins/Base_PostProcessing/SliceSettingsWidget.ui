@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Form</string>
+   <string>切片设置</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="leftMargin">
@@ -110,17 +110,17 @@
            <widget class="QComboBox" name="planeComboBox">
             <item>
              <property name="text">
-              <string>YZ</string>
+              <string>YZ 平面</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>XZ</string>
+              <string>XZ 平面</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>XY</string>
+              <string>XY 平面</string>
              </property>
             </item>
             <property name="minimumSize">
@@ -219,7 +219,16 @@
       </widget>
      </item>
      <item>
-      <widget class="QPushButton" name="pushButton_2">
+      <widget class="QLabel" name="pushButton_2">
+       <property name="font">
+        <font>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="margin">
+        <number>2</number>
+       </property>
        <property name="text">
         <string>切面数量</string>
        </property>

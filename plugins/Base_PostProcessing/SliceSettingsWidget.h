@@ -4,6 +4,7 @@
 #include <vtkSmartPointer.h>
 
 #include <QString>
+#include <QVariantMap>
 #include <QVector>
 #include <QWidget>
 
@@ -15,6 +16,7 @@ class vtkPolyDataMapper;
 class vtkPlaneSource;
 class vtkCutter;
 class vtkLookupTable;
+class vtkCellDataToPointData;
 
 namespace Ui
 {
@@ -30,8 +32,10 @@ class SliceSettingsWidget : public BasePage
     ~SliceSettingsWidget();
 
     // 页面生命周期：外部切换页时调用
-    void beforeLoad();   // 首次真正加载；其后仅把上次显示的内容挂回
-    void beforeUnload(); // 只移除 actor，不销毁对象（状态保留）
+    void beforeLoad() override;   // 首次真正加载；其后仅把上次显示的内容挂回
+    void beforeUnload() override; // 只移除 actor，不销毁对象（状态保留）
+    QJsonObject saveJson() override;
+    void loadJson(const QJsonObject& object) override;
 
   private slots:
     // 文件/标量/方向
@@ -75,16 +79,20 @@ class SliceSettingsWidget : public BasePage
     // m_singleDisplayed/m_multiDisplayed）
     void reattachAccordingToDisplayState();
     void detachAllFromScene();
+    void applyPendingState();
 
   private:
     Ui::SliceSettingsWidget* ui{};
     VisualWidgetService* m_visualService{};
 
     bool m_loadedOnce{false};
+    bool m_hasPendingState{false};
+    QVariantMap m_pendingState;
     QString m_dataPath;
 
     // 网格 & 范围
     vtkSmartPointer<vtkUnstructuredGrid> m_grid;
+    vtkSmartPointer<vtkCellDataToPointData> m_cellToPoint;
     double m_XRange[2]{0, 0}, m_YRange[2]{0, 0}, m_ZRange[2]{0, 0};
 
     // 整体云图

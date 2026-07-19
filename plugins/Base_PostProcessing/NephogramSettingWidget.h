@@ -1,4 +1,4 @@
-﻿#ifndef NEPHOGRAMSETTINGWIDGET_H
+#ifndef NEPHOGRAMSETTINGWIDGET_H
 #define NEPHOGRAMSETTINGWIDGET_H
 
 #include <BasePage.h>
@@ -16,6 +16,8 @@
 class VisualWidgetService;
 class vtkDataArray;
 class vtkObject;
+class vtkScalarBarActor;
+class vtkScalarBarWidget;
 namespace Ui
 {
 class NephogramSettingWidget;
@@ -49,12 +51,27 @@ class NephogramSettingWidget : public BasePage
     void initResultDirectoryOptions();
     QString selectedResultDirectoryPath() const;
     void readTecplot(const QString& fileName);
+    void readVtu(const QString& fileName);
+
+    QString currentScalarName() const;
+    QString currentScalarDisplayName() const;
+    void refreshCurrentVisualization();
+    void updateRangeEditorState();
+    void setRangeControls(double minV, double maxV);
+    bool displayRange(double dataMin, double dataMax, double& minV, double& maxV) const;
+    void applyLegendAppearance(vtkScalarBarActor* scalarBar) const;
+    void updateLegendInteraction();
+    void onScalarBarInteractionEnd(vtkObject* caller, unsigned long eventId, void* callData);
 
     vtkDataArray* findScalarArray(vtkUnstructuredGrid* grid, const QString& scalarName,
                                   bool& usePointData) const;
     void updateLookupTableRange(vtkLookupTable* lut, double minV, double maxV) const;
     void configureMapper(vtkDataSetMapper* mapper, const QString& scalarName, bool usePointData,
                          double minV, double maxV, vtkLookupTable* lut) const;
+
+    void updateContourOverlay(const QString& scalarName, bool usePointData, double minV,
+                              double maxV);
+    void clearContourOverlay();
 
   private:
     Ui::NephogramSettingWidget* ui{nullptr};
@@ -64,19 +81,19 @@ class NephogramSettingWidget : public BasePage
     vtkSmartPointer<vtkDataSetMapper> m_mapper;
     vtkSmartPointer<vtkUnstructuredGrid> m_grid;
 
-    // —— 状态/路径 ——
     QString m_dataPath;
     QString m_loadedFileName;
-    QString m_currentArrayName; // 仅用于渲染同步（不做持久化）
+    QString m_currentArrayName;
     QMap<QString, QString> m_stepFileMap;
-    bool m_initialized{false};   // 首次进入才读数据/填 step
-    bool m_actorAttached{false}; // 避免重复 addActor
-    bool m_loadingState{false};  // 项目反序列化时只恢复 UI 状态，不立即渲染
+    bool m_initialized{false};
+    bool m_actorAttached{false};
+    bool m_loadingState{false};
+    bool m_updatingRangeControls{false};
+    bool m_hasLegendPosition{false};
+    double m_legendPositionX{0.0};
+    double m_legendPositionY{0.0};
 
-    void readVtu(const QString& fileName);
-    void updateContourOverlay(const QString& scalarName, bool usePointData, double minV, double maxV);
-    void clearContourOverlay();
-
+    vtkSmartPointer<vtkScalarBarWidget> m_scalarBarWidget;
     vtkSmartPointer<vtkActor> m_contourActor;
     vtkSmartPointer<vtkActor2D> m_contourLabelActor;
 };

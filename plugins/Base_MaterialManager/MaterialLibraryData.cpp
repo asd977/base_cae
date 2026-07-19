@@ -2,22 +2,43 @@
 
 namespace
 {
+MaterialModel createHoekBrownModel()
+{
+    MaterialModel model;
+    model.key = QStringLiteral("hoek_brown_rock");
+    model.displayName = QStringLiteral("霍克-布朗本构");
+    model.ib = 11;
+
+    model.columns << QStringLiteral("序号") << QStringLiteral("变形模量E（GPa）")
+                  << QStringLiteral("泊松比μ") << QStringLiteral("容重t/m3")
+                  << QStringLiteral("岩体常数mb") << QStringLiteral("岩体常数a")
+                  << QStringLiteral("岩体常数s")
+                  << QStringLiteral("完整岩石单轴抗压强度σci（MPa）");
+    model.columnOutputRows = QVector<int>(model.columns.size(), -1);
+    return model;
+}
+
 MaterialModel createHuangjinpingModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("huangjinping_underground_plant");
     model.displayName = QStringLiteral("围岩开挖模型");
-    model.ib = 0;
+    model.ib = 2;
 
-    model.columns << QStringLiteral("编号") << QStringLiteral("岩类分区")
+    model.columns << QStringLiteral("编号") << QStringLiteral("母岩材料编号")
+                  << QStringLiteral("岩类分区")
                   << QStringLiteral("半开挖区荷载释放系数")
                   << QStringLiteral("再生时对应开挖级")
                   << QStringLiteral("变形模量E（GPa）") << QStringLiteral("泊松比μ")
                   << QStringLiteral("容重t/m3")
                   << QStringLiteral("抗剪断强度内摩擦系数")
                   << QStringLiteral("凝聚力C‘（MPa）")
+                  << QStringLiteral("剪胀角(°)")
                   << QStringLiteral("洞室边缘松弛系数α0")
                   << QStringLiteral("松弛距离d0");
+    model.displayColumns = model.columns;
+    model.displayColumns[1] = QStringLiteral("母岩材料编号（默认同当前编号）");
+    model.displayColumns[2] = QStringLiteral("开挖状态标志");
 
     model.columnOutputRows = QVector<int>(model.columns.size(), -1);
     return model;
@@ -39,6 +60,22 @@ MaterialModel createDamDynamicModel()
                   << QStringLiteral("RATIAO2(0.3)") << QStringLiteral("RATIAO3(0.5)")
                   << QStringLiteral("Kv")
                   << QStringLiteral("Kp") << QStringLiteral("nv") << QStringLiteral("np");
+    model.displayColumns = model.columns;
+    model.displayColumns[1] = QStringLiteral("静力母材料编号");
+    model.displayColumns[2] = QStringLiteral("是否液化（0否，1是）");
+    model.displayColumns[3] = QStringLiteral("动力模量系数K1");
+    model.displayColumns[4] = QStringLiteral("动力模量指数n1");
+    model.displayColumns[5] = QStringLiteral("内摩擦角φ（°）");
+    model.displayColumns[6] = QStringLiteral("凝聚力c（kPa）");
+    model.displayColumns[7] = QStringLiteral("泊松比μ");
+    model.displayColumns[8] = QStringLiteral("最大阻尼比λmax");
+    model.displayColumns[9] = QStringLiteral("液化循环次数NL(0.1)");
+    model.displayColumns[10] = QStringLiteral("液化循环次数NL(0.3)");
+    model.displayColumns[11] = QStringLiteral("液化循环次数NL(0.5)");
+    model.displayColumns[12] = QStringLiteral("动力回归系数Kv");
+    model.displayColumns[13] = QStringLiteral("动力回归系数Kp");
+    model.displayColumns[14] = QStringLiteral("动力回归指数nv");
+    model.displayColumns[15] = QStringLiteral("动力回归指数np");
 
     model.columnOutputRows = QVector<int>(model.columns.size(), -1);
     return model;
@@ -64,7 +101,7 @@ MaterialModel createSoilEmuModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("soil_emu");
-    model.displayName = QStringLiteral("E-μ模型");
+    model.displayName = QStringLiteral("E-μ本构");
     model.ib = -3;
 
     model.columns << QStringLiteral("材料编号") << QStringLiteral("干容重(t/m3)")
@@ -82,7 +119,7 @@ MaterialModel createSoilEmuCrushModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("soil_emu_crush");
-    model.displayName = QStringLiteral("E-μ破碎模型");
+    model.displayName = QStringLiteral("E-μ破碎本构");
     model.ib = -6;
 
     model.columns << QStringLiteral("材料编号") << QStringLiteral("干容重(t/m3)")
@@ -103,13 +140,15 @@ MaterialModel createHuangjinpingBarModel()
     MaterialModel model;
     model.key = QStringLiteral("huangjinping_bar_element");
     model.displayName = QStringLiteral("锚杆单元模型");
-    model.ib = 0;
+    model.ib = 1;
 
     model.columns << QStringLiteral("序号") << QStringLiteral("变模E1,E2（GPa）")
                   << QStringLiteral("容重t/m3") << QStringLiteral("杆面积（m2）")
                   << QStringLiteral("抗拉（压）强度ft（MPa）") << QStringLiteral("间距(m)")
                   << QStringLiteral("排距(m)") << QStringLiteral("预应力T（KN）")
                   << QStringLiteral("预应系数");
+    model.displayColumns = model.columns;
+    model.displayColumns[1] = QStringLiteral("弹性模量E（GPa）");
 
     model.columnOutputRows = QVector<int>(model.columns.size(), -1);
     return model;
@@ -120,8 +159,8 @@ MaterialModel createDagangshanIsotropicModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("dagangshan_isotropic");
-    model.displayName = QStringLiteral("各向同性本构");
-    model.ib = 0;
+    model.displayName = QStringLiteral("摩尔-库仑本构");
+    model.ib = 2;
 
     model.columns << QStringLiteral("序号") << QStringLiteral("变形模量E（GPa）")
                   << QStringLiteral("泊松比μ") << QStringLiteral("容重t/m3")
@@ -138,7 +177,7 @@ MaterialModel createNanshuiModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("soil_nanshui");
-    model.displayName = QStringLiteral("非线性土体模型");
+    model.displayName = QStringLiteral("南水非线性本构");
     model.ib = -5;
 
     model.columns << QStringLiteral("材料编号") << QStringLiteral("干容重(t/m3)")
@@ -157,7 +196,7 @@ MaterialModel createSoilKgModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("soil_kg");
-    model.displayName = QStringLiteral("K-G模型");
+    model.displayName = QStringLiteral("K-G本构");
     model.ib = -2;
 
     model.columns << QStringLiteral("材料编号") << QStringLiteral("干容重(t/m3)")
@@ -242,7 +281,7 @@ MaterialModel createSoilEbModel()
 {
     MaterialModel model;
     model.key = QStringLiteral("soil_eb");
-    model.displayName = QStringLiteral("E-B模型");
+    model.displayName = QStringLiteral("E-B本构");
     model.ib = -1;
 
     model.columns << QStringLiteral("材料编号") << QStringLiteral("干容重(t/m3)")
@@ -259,7 +298,7 @@ MaterialModel createSoilEbModel()
 
 QVector<MaterialModel> createDefaultMaterialModels()
 {
-    return {createHuangjinpingModel(), createSoilEbModel(), createSoilEmuModel(),
+    return {createHoekBrownModel(), createHuangjinpingModel(), createSoilEbModel(), createSoilEmuModel(),
             createSoilEmuCrushModel(),
             createDamDynamicModel(), createHuangjinpingBarModel(), createDagangshanIsotropicModel(),
             createNanshuiModel(), createSoilKgModel()};

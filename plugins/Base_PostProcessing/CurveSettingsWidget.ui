@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version='1.0' encoding='UTF-8'?>
 <ui version="4.0">
  <class>CurveSettingsWidget</class>
  <widget class="QWidget" name="CurveSettingsWidget">
@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>520</width>
+    <width>360</width>
     <height>547</height>
    </rect>
   </property>
@@ -197,7 +197,7 @@
           </property>
          </layout>
         </item>
-        <property name="leftMargin">
+        <item><widget class="QCheckBox" name="showLegendCheckBox"><property name="text"><string>显示曲线图例</string></property><property name="checked"><bool>false</bool></property><property name="toolTip"><string>在曲线图右上角显示各曲线名称</string></property></widget></item><property name="leftMargin">
          <number>9</number>
         </property>
         <property name="topMargin">
@@ -210,6 +210,19 @@
          <number>9</number>
         </property>
        </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="statusLabel">
+       <property name="text">
+        <string/>
+       </property>
+       <property name="wordWrap">
+        <bool>true</bool>
+       </property>
+       <property name="objectName">
+        <string>postStatusLabel</string>
+       </property>
       </widget>
      </item>
      <item>
@@ -229,6 +242,6 @@
    </item>
   </layout>
  </widget>
- <resources />
- <connections />
+ <resources/>
+ <connections/>
 </ui>

@@ -70,7 +70,7 @@
           <widget class="QTableWidget" name="tblMatypeGroups">
            <column>
             <property name="text">
-             <string>MATYPE</string>
+             <string>材料编号</string>
             </property>
            </column>
            <column>
@@ -117,7 +117,7 @@
           <widget class="QTableWidget" name="tblLayerGroups">
            <column>
             <property name="text">
-             <string>LAYER</string>
+             <string>填筑层编号</string>
             </property>
            </column>
            <column>
@@ -171,7 +171,7 @@
           <widget class="QTableWidget" name="tblBoundaryGroups">
            <column>
             <property name="text">
-             <string>PhysID</string>
+             <string>边界编号</string>
             </property>
            </column>
            <column>
@@ -489,7 +489,7 @@
         <item row="4" column="1" colspan="2">
          <widget class="QLineEdit" name="edtGroupName">
           <property name="text">
-           <string>CustomGroup</string>
+           <string>自定义分组</string>
           </property>
           <property name="minimumSize">
            <size>

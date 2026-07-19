@@ -349,7 +349,7 @@ void PostContourReaderWidget::displayModel(bool resetCamera)
     auto* ren = m_visualService->renderer();
     if (!ren)
     {
-        setStatusMessage(QStringLiteral("后处理 renderer 为空，无法显示洞室变形轮廓图。"));
+        setStatusMessage(QStringLiteral("后处理绘图功能尚未就绪，无法显示洞室变形轮廓图。"));
         return;
     }
 

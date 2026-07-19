@@ -110,8 +110,7 @@ bool GeoStressRegressionWidget::exportIGEOSDatFile(const ExportPayload& payload)
     os << "'" << QString::number(forceEnabled) << "'      11\n";
     os << "'" << ui->lambdaEdit->text().trimmed() << "'      12\n";
 
-    os << "   1     NCHANGE\n";
-    os << "   1     1     1    MACHAN    MACHAN  II\n";
+    os << "   0     NCHANGE\n";
     os << QString("%1    NUM_GEO\n").arg(payload.measureRows.size());
     if (is2D)
     {

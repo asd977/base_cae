@@ -72,22 +72,22 @@ void SMProcess::onError(ProcessError error)
     switch (error)
     {
     case FailedToStart:
-        errorStr = "Error: Failed to start";
+        errorStr = "错误：程序启动失败";
         break;
     case Crashed:
-        errorStr = "Error: Program crashed";
+        errorStr = "错误：程序异常退出";
         break;
     case Timedout:
-        errorStr = "Error: Run timeout";
+        errorStr = "错误：程序运行超时";
         break;
     case ReadError:
-        errorStr = "Error: ReadError";
+        errorStr = "错误：读取数据失败";
         break;
     case WriteError:
-        errorStr = "Error: WriteError";
+        errorStr = "错误：写入数据失败";
         break;
     default:
-        errorStr = "Error: Unknown error";
+        errorStr = "错误：发生未知错误";
         break;
     }
     qInfo().noquote() << errorStr;

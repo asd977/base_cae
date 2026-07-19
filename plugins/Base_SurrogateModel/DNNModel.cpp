@@ -74,7 +74,7 @@ void DNNModel::beforeUnload()
 void DNNModel::on_browseSourceFilepushButton_clicked()
 {
     QString filePath =
-        QFileDialog::getOpenFileName(this, ("选择源文件"), "", tr("All Files (*.*)"));
+        QFileDialog::getOpenFileName(this, ("选择源文件"), "", tr("所有文件 (*.*)"));
 
     if (!filePath.isEmpty())
     {
@@ -418,7 +418,7 @@ void DNNModel::getLayerParameters(QString& layerSizesStr, QString& activationFun
     int rowCount = ui->layerWidget->rowCount();
     if (rowCount < 2)
     {
-        QMessageBox::critical(this, ("错误"), ("layerWidget 必须包含输入层和输出层"));
+        QMessageBox::critical(this, ("错误"), ("模型结构必须包含输入层和输出层。"));
         layerSizesStr.clear();
         activationFunctionsStr.clear();
         return;
@@ -548,7 +548,7 @@ void DNNModel::on_startTrainModel_clicked()
     m_trainModelProcess->start();
     if (!m_trainModelProcess->waitForStarted())
     {
-        QMessageBox::critical(this, ("错误"), ("无法启动 Python 训练脚本"));
+        QMessageBox::critical(this, ("错误"), ("无法启动模型训练脚本。"));
         return;
     }
 
@@ -647,7 +647,7 @@ void DNNModel::on_continueTrainModel_clicked()
     m_trainModelProcess->start();
     if (!m_trainModelProcess->waitForStarted())
     {
-        QMessageBox::critical(this, ("错误"), ("无法启动 Python 训练脚本"));
+        QMessageBox::critical(this, ("错误"), ("无法启动模型训练脚本。"));
         return;
     }
 }
@@ -829,7 +829,7 @@ void DNNModel::updateLineGraph()
     process.start();
     if (!process.waitForStarted())
     {
-        QMessageBox::critical(this, ("错误"), ("无法启动 Python 预测脚本"));
+        QMessageBox::critical(this, ("错误"), ("无法启动模型预测脚本。"));
         return;
     }
 

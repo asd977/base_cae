@@ -61,6 +61,7 @@
 #include <QStringList>
 #include <QVector>
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -77,6 +78,8 @@ constexpr int MIN_EDGE_POINTS   = 2;
 constexpr int MIN_FACE_POINTS   = 3;
 constexpr int MAX_MESH_DIM      = 3;
 constexpr int FIRST_COMPUTABLE_MATYPE = 2;
+constexpr int FIRST_AUTO_MATYPE = 3;
+constexpr int MAX_SOLVER_MATYPE = 300;
 constexpr double CENTER_FACTOR  = 0.5;
 constexpr double DEFAULT_ALPHA  = 1.0;
 
@@ -2046,6 +2049,8 @@ MeshModuleController::MeshModuleController(QObject* parent) : QObject(parent)
 
 void MeshModuleController::newProject()
 {
+    if (m_gridNode || m_hasGrid || m_importedGrid)
+        closeProject();
     auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
     m_verticalAxis = 2;
     delete m_importSettingsWidget;
@@ -2230,6 +2235,8 @@ bool MeshModuleController::saveProject()
 
 bool MeshModuleController::loadProject()
 {
+    if (m_gridNode || m_hasGrid || m_importedGrid)
+        closeProject();
     auto* projectManagerService = ServiceRegistry::instance().getService<ProjectManagerService>();
 
     delete m_importSettingsWidget;
@@ -2481,9 +2488,88 @@ bool MeshModuleController::loadProject()
 
 void MeshModuleController::closeProject()
 {
+    ProjectNode* root = m_gridNode;
+    m_gridNode = nullptr;
+    if (root)
+    {
+        if (auto* parent = dynamic_cast<ProjectNode*>(root->parent()))
+            parent->removeChild(root);
+        else if (QTreeWidget* tree = root->treeWidget())
+        {
+            const int index = tree->indexOfTopLevelItem(root);
+            if (index >= 0)
+                tree->takeTopLevelItem(index);
+        }
+
+        std::function<void(ProjectNode*)> destroyNode = [&](ProjectNode* node)
+        {
+            if (!node)
+                return;
+            const auto children = node->getChildren();
+            for (ProjectNode* child : children)
+            {
+                node->removeChild(child);
+                destroyNode(child);
+            }
+            if (BasePage* page = node->getPage())
+            {
+                page->beforeUnload();
+                delete page;
+                node->setPage(nullptr);
+            }
+            delete node;
+        };
+        destroyNode(root);
+    }
+
+    m_importSettingsWidget = nullptr;
+    m_gridEditingWidget = nullptr;
+
+    if (m_visualWidgetService)
+    {
+        const QStringList propIds = {
+            QStringLiteral("mesh.imported.surface"),
+            QStringLiteral("mesh.imported.line"),
+            QStringLiteral("mesh.global.surf"),
+            QStringLiteral("mesh.global.wire"),
+            QStringLiteral("mesh.face.control.highlight"),
+            QStringLiteral("mesh.edge.control.highlight"),
+            QStringLiteral("mesh.volume.control.highlight"),
+            QStringLiteral("mesh.grouping.range.preview")};
+        for (const QString& propId : propIds)
+            m_visualWidgetService->removeProp(propId, false);
+    }
+
+    m_importedGrid = nullptr;
+    m_hasGrid = false;
+    m_sourceFileName.clear();
+    m_verticalAxis = 2;
+    m_previewSurfaceMapper = nullptr;
+    m_previewSurfaceActor = nullptr;
+    m_previewSurfaceGrid = nullptr;
+    m_previewLineMapper = nullptr;
+    m_previewLineActor = nullptr;
+    m_previewLineGrid = nullptr;
+    m_previewMapper = nullptr;
+    m_previewActor = nullptr;
+    m_previewGrid = nullptr;
+    m_splitCacheSource = nullptr;
+    m_splitCacheLine = nullptr;
+    m_splitCacheNonLine = nullptr;
     m_edgeRules.clear();
     m_faceRules.clear();
     m_volumeRules.clear();
+
+    MeshGridIO::instance().setMeshMap(MshPickMap{});
+    PickManager::instance().resetProjectState();
+
+    auto& variables = PublicVariables::instance();
+    const QStringList meshKeys = variables.keysForOwner(QStringLiteral("mesh"));
+    for (const QString& key : meshKeys)
+        variables.remove(key, QStringLiteral("mesh"));
+
+    if (m_visualWidgetService)
+        m_visualWidgetService->render();
 }
 
 QVector<MeshTagSet> MeshModuleController::domainTagSets() const
@@ -2837,7 +2923,7 @@ void MeshModuleController::onImportGridFileDialog()
 {
     QString fileName;
     QFileDialog dialog(nullptr, QString("选择网格文件"));
-    dialog.setNameFilter(QString("Grid Files (*.nas *.inp *.flac3d *.f3grid *.DAT *.vtk)"));
+    dialog.setNameFilter(QString("网格文件 (*.nas *.inp *.flac3d *.f3grid *.DAT *.vtk)"));
     dialog.setFilter(QDir::Files);
     if (dialog.exec() == QDialog::Accepted)
     {
@@ -3016,8 +3102,8 @@ void MeshModuleController::onExportGrid()
                               ? QString("IIIN.dat")
                               : MeshGridIO::defaultIiinOutputPath(m_sourceFileName);
 
-    QString fileName = QFileDialog::getSaveFileName(nullptr, QString("导出 IIIN.DAT"), defaultPath,
-                                                    QString("IIIN Grid (*.dat)"));
+    QString fileName = QFileDialog::getSaveFileName(nullptr, QString("导出计算网格"), defaultPath,
+                                                    QString("计算网格文件 (*.dat)"));
     if (fileName.isEmpty())
         return;
 
@@ -3712,6 +3798,8 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
 
     auto* layArr =
         vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"));
+    auto* groupNameArr =
+        vtkStringArray::SafeDownCast(grid->GetCellData()->GetAbstractArray("GroupName"));
 
     auto addDomainTag = [&](const QString& category, int dim, int id, vtkIdType cid)
     {
@@ -3741,7 +3829,10 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
         {
             MeshTagSet set;
             set.key = key;
-            set.name = QString("%1=%2").arg(category).arg(id);
+            const QString groupName = groupNameArr && cid < groupNameArr->GetNumberOfValues()
+                ? QString::fromStdString(groupNameArr->GetValue(cid)).trimmed()
+                : QString();
+            set.name = groupName.isEmpty() ? QString("%1=%2").arg(category).arg(id) : groupName;
             set.source = "GridCellData";
 
             pick.tagSets.insert(key, set);
@@ -3831,13 +3922,22 @@ bool MeshModuleController::autoGroupingBySpatialBins(int binCount, const QString
         return false;
     }
     const bool targetIsMatype = targetArrayName.compare("MATYPE", Qt::CaseInsensitive) == 0;
-    if ((targetIsMatype && startValue < FIRST_COMPUTABLE_MATYPE) ||
+    if ((targetIsMatype && startValue < FIRST_AUTO_MATYPE) ||
         (!targetIsMatype && startValue <= 0))
     {
         if (errMsg && targetIsMatype)
-            *errMsg = QStringLiteral("MATYPE 起始编号必须大于等于 2，1 表示不进入计算");
+            *errMsg = QStringLiteral(
+                "自动材料分组必须从编号 3 或更大编号开始；编号 1 不参加计算，编号 2 固定按线弹性处理");
         else if (errMsg)
             *errMsg = QString("起始编号必须大于 0");
+        return false;
+    }
+    if (targetIsMatype && startValue + binCount - 1 > MAX_SOLVER_MATYPE)
+    {
+        if (errMsg)
+        {
+            *errMsg = QStringLiteral("自动分组后的材料编号不能超过 300，请减小起始编号或分组数量");
+        }
         return false;
     }
     if (targetArrayName.trimmed().isEmpty())
@@ -3983,14 +4083,21 @@ bool MeshModuleController::groupByCoordinateRange(double xmin, double xmax, doub
     const bool targetIsLayer = targetArrayName.compare("LAYER", Qt::CaseInsensitive) == 0;
     const bool targetIsMatype = targetArrayName.compare("MATYPE", Qt::CaseInsensitive) == 0;
     if ((targetIsLayer && value == 0) ||
-        (targetIsMatype && value < FIRST_COMPUTABLE_MATYPE) ||
+        (targetIsMatype && value < FIRST_AUTO_MATYPE) ||
         (!targetIsLayer && !targetIsMatype && value <= 0))
     {
         if (errMsg && targetIsMatype)
-            *errMsg = QStringLiteral("MATYPE 分组编号必须大于等于 2，1 表示不进入计算");
+            *errMsg = QStringLiteral(
+                "新建材料分组编号必须大于等于 3；编号 1 不参加计算，编号 2 仅兼容旧数据");
         else if (errMsg)
             *errMsg = targetIsLayer ? QString("LAYER 分组编号不能为 0")
                                     : QString("分组编号必须大于 0");
+        return false;
+    }
+    if (targetIsMatype && value > MAX_SOLVER_MATYPE)
+    {
+        if (errMsg)
+            *errMsg = QStringLiteral("材料分组编号不能超过 300");
         return false;
     }
     if (targetArrayName.trimmed().isEmpty())
@@ -4064,6 +4171,188 @@ bool MeshModuleController::groupByCoordinateRange(double xmin, double xmax, doub
         return false;
     }
 
+    m_importedGrid->GetCellData()->Modified();
+    m_importedGrid->Modified();
+    syncPickMapGroupingFromGrid(m_importedGrid);
+    displayCurrentGrid();
+    return true;
+}
+
+bool MeshModuleController::assignDamConstructionLayers(
+    const QSet<MeshIdType>& foundationCellIds,
+    const QSet<MeshIdType>& damCellIds,
+    int fillLayerCount,
+    QString* errMsg)
+{
+    const auto fail = [errMsg](const QString& message)
+    {
+        if (errMsg)
+            *errMsg = message;
+        return false;
+    };
+
+    if (!m_importedGrid || m_importedGrid->GetNumberOfCells() <= 0)
+        return fail(QStringLiteral("当前没有可设置施工分层的网格。"));
+    if (foundationCellIds.isEmpty())
+        return fail(QStringLiteral("请至少指定一个坝基区域。"));
+    if (damCellIds.isEmpty())
+        return fail(QStringLiteral("请至少指定一个坝体区域。"));
+    if (fillLayerCount <= 0)
+        return fail(QStringLiteral("填筑层数必须为正整数。"));
+
+    for (MeshIdType cid : foundationCellIds)
+    {
+        if (damCellIds.contains(cid))
+            return fail(QStringLiteral("坝基区域与坝体区域存在重叠，请重新选择。"));
+    }
+
+    int targetDim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
+    if (targetDim < 2 || targetDim > 3)
+    {
+        targetDim = 0;
+        for (vtkIdType cid = 0; cid < m_importedGrid->GetNumberOfCells(); ++cid)
+        {
+            if (vtkCell* cell = m_importedGrid->GetCell(cid))
+                targetDim = qMax(targetDim, cell->GetCellDimension());
+        }
+    }
+
+    const vtkIdType cellCount = m_importedGrid->GetNumberOfCells();
+    vtkDataArray* materialArray = m_importedGrid->GetCellData()->GetArray("MATYPE");
+    QSet<vtkIdType> foundation;
+    QSet<vtkIdType> dam;
+    auto collectValidCells = [&](const QSet<MeshIdType>& source, QSet<vtkIdType>* target) -> bool
+    {
+        for (MeshIdType rawId : source)
+        {
+            const vtkIdType cid = static_cast<vtkIdType>(rawId);
+            if (cid < 0 || cid >= cellCount)
+                return false;
+            vtkCell* cell = m_importedGrid->GetCell(cid);
+            if (cell && cell->GetCellDimension() == targetDim)
+                target->insert(cid);
+        }
+        return true;
+    };
+    if (!collectValidCells(foundationCellIds, &foundation) ||
+        !collectValidCells(damCellIds, &dam))
+    {
+        return fail(QStringLiteral("所选区域包含无效网格单元，请刷新网格后重试。"));
+    }
+    if (foundation.isEmpty() || dam.isEmpty())
+        return fail(QStringLiteral("所选区域中没有当前维度的实体单元。"));
+
+    int unassignedCount = 0;
+    for (vtkIdType cid = 0; cid < cellCount; ++cid)
+    {
+        vtkCell* cell = m_importedGrid->GetCell(cid);
+        if (!cell || cell->GetCellDimension() != targetDim)
+            continue;
+        const int material = materialArray ? int(materialArray->GetTuple1(cid)) : 2;
+        if (material == 1)
+            continue;
+        if (!foundation.contains(cid) && !dam.contains(cid))
+            ++unassignedCount;
+    }
+    if (unassignedCount > 0)
+    {
+        return fail(QStringLiteral("还有 %1 个实体单元未归入坝基或坝体区域。")
+                        .arg(unassignedCount));
+    }
+
+    QSet<int> foundationMaterials;
+    QSet<int> damMaterials;
+    if (materialArray)
+    {
+        for (vtkIdType cid : std::as_const(foundation))
+        {
+            const int material = int(materialArray->GetTuple1(cid));
+            if (material != 1)
+                foundationMaterials.insert(material);
+        }
+        for (vtkIdType cid : std::as_const(dam))
+        {
+            const int material = int(materialArray->GetTuple1(cid));
+            if (material != 1)
+                damMaterials.insert(material);
+        }
+        QStringList conflicts;
+        for (int material : std::as_const(foundationMaterials))
+        {
+            if (damMaterials.contains(material))
+                conflicts << QString::number(material);
+        }
+        if (!conflicts.isEmpty())
+        {
+            return fail(QStringLiteral("坝基与坝体不能共用材料号 %1，请先分别设置材料。")
+                            .arg(conflicts.join(QStringLiteral("、"))));
+        }
+    }
+
+    const int axis = qBound(1, m_verticalAxis, 3) - 1;
+    struct DamCellCenter
+    {
+        vtkIdType cellId = -1;
+        double elevation = 0.0;
+    };
+    QVector<DamCellCenter> damCenters;
+    damCenters.reserve(dam.size());
+    double minimumElevation = std::numeric_limits<double>::max();
+    double maximumElevation = -std::numeric_limits<double>::max();
+    for (vtkIdType cid : std::as_const(dam))
+    {
+        double bounds[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+        m_importedGrid->GetCell(cid)->GetBounds(bounds);
+        const double elevation = CENTER_FACTOR * (bounds[axis * 2] + bounds[axis * 2 + 1]);
+        damCenters.push_back({cid, elevation});
+        minimumElevation = qMin(minimumElevation, elevation);
+        maximumElevation = qMax(maximumElevation, elevation);
+    }
+    if (fillLayerCount > 1 && maximumElevation <= minimumElevation)
+        return fail(QStringLiteral("坝体单元在竖向上没有足够跨度，无法划分多个填筑层。"));
+
+    QHash<vtkIdType, int> plannedLayers;
+    QVector<int> layerCellCounts(fillLayerCount, 0);
+    const double span = maximumElevation - minimumElevation;
+    for (const DamCellCenter& item : std::as_const(damCenters))
+    {
+        int bin = 0;
+        if (fillLayerCount > 1 && span > 0.0)
+        {
+            const double normalized = (item.elevation - minimumElevation) / span;
+            bin = qMin(fillLayerCount - 1, int(std::floor(normalized * fillLayerCount)));
+        }
+        plannedLayers.insert(item.cellId, 2 + bin);
+        ++layerCellCounts[bin];
+    }
+    for (int i = 0; i < layerCellCounts.size(); ++i)
+    {
+        if (layerCellCounts.at(i) == 0)
+        {
+            return fail(QStringLiteral("填筑层数过多，第 %1 个填筑层没有网格单元。")
+                            .arg(i + 1));
+        }
+    }
+
+    auto* layerArray = vtkIntArray::SafeDownCast(
+        m_importedGrid->GetCellData()->GetArray("LAYER"));
+    if (!layerArray)
+    {
+        auto newLayerArray = vtkSmartPointer<vtkIntArray>::New();
+        newLayerArray->SetName("LAYER");
+        newLayerArray->SetNumberOfComponents(1);
+        newLayerArray->SetNumberOfTuples(cellCount);
+        newLayerArray->FillComponent(0, 1);
+        m_importedGrid->GetCellData()->AddArray(newLayerArray);
+        layerArray = newLayerArray;
+    }
+
+    for (vtkIdType cid : std::as_const(foundation))
+        layerArray->SetValue(cid, 1);
+    for (auto it = plannedLayers.constBegin(); it != plannedLayers.constEnd(); ++it)
+        layerArray->SetValue(it.key(), it.value());
+
+    layerArray->Modified();
     m_importedGrid->GetCellData()->Modified();
     m_importedGrid->Modified();
     syncPickMapGroupingFromGrid(m_importedGrid);

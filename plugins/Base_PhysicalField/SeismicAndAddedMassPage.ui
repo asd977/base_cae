@@ -48,20 +48,20 @@
       <item>
        <widget class="QGroupBox" name="groupBoxAmp">
         <property name="title">
-         <string>幅值系数（写出到头行 AMP_* ）</string>
+         <string>地震波幅值系数</string>
         </property>
         <layout class="QGridLayout" name="gridLayout">
          <item row="2" column="0">
           <widget class="QLabel" name="labelAmpZ">
            <property name="text">
-            <string>AMP_AZ</string>
+            <string>Z 方向幅值</string>
            </property>
           </widget>
          </item>
          <item row="1" column="0">
           <widget class="QLabel" name="labelAmpY">
            <property name="text">
-            <string>AMP_AY</string>
+            <string>Y 方向幅值</string>
            </property>
           </widget>
          </item>
@@ -112,7 +112,7 @@
             </sizepolicy>
            </property>
            <property name="text">
-            <string>AMP_AX</string>
+            <string>X 方向幅值</string>
            </property>
           </widget>
          </item>
@@ -187,7 +187,7 @@
           <item>
            <widget class="QPushButton" name="btnImportCsv">
             <property name="text">
-             <string>导入CSV(时间,X,Y,Z)</string>
+             <string>导入表格数据（时间、X、Y、Z）</string>
             </property>
            </widget>
           </item>

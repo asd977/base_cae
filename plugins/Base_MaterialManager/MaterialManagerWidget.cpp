@@ -6,6 +6,7 @@
 #include <QFileDialog>
 #include <QHeaderView>
 #include <QMessageBox>
+#include <QSet>
 #include <QTreeWidget>
 #include <QUuid>
 
@@ -32,21 +33,44 @@ MaterialManagerWidget::~MaterialManagerWidget()
 
 void MaterialManagerWidget::refreshSummary(const QVector<MaterialModel>& models)
 {
+    QSet<QString> expandedModelKeys;
+    for (int index = 0; index < ui->treeWidget->topLevelItemCount(); ++index)
+    {
+        QTreeWidgetItem* item = ui->treeWidget->topLevelItem(index);
+        if (item && item->isExpanded())
+            expandedModelKeys.insert(item->data(0, Qt::UserRole).toString());
+    }
+
+    QString selectedModelKey;
+    QString selectedEntryId;
+    if (QTreeWidgetItem* selectedItem = ui->treeWidget->currentItem())
+    {
+        selectedModelKey = selectedItem->data(0, Qt::UserRole).toString();
+        selectedEntryId = selectedItem->data(0, Qt::UserRole + 1).toString();
+    }
+
     ui->treeWidget->clear();
+    QTreeWidgetItem* restoredSelection = nullptr;
     for (const auto& model : models)
     {
         auto* modelItem = new QTreeWidgetItem(ui->treeWidget);
         modelItem->setText(0, model.displayName);
         modelItem->setData(0, Qt::UserRole, model.key);
+        modelItem->setExpanded(expandedModelKeys.contains(model.key));
+        if (selectedEntryId.isEmpty() && selectedModelKey == model.key)
+            restoredSelection = modelItem;
         for (const auto& entry : model.materials)
         {
             auto* entryItem = new QTreeWidgetItem(modelItem);
             entryItem->setText(0, entry.name);
             entryItem->setData(0, Qt::UserRole, model.key);
             entryItem->setData(0, Qt::UserRole + 1, entry.id);
+            if (!selectedEntryId.isEmpty() && selectedEntryId == entry.id)
+                restoredSelection = entryItem;
         }
     }
-    ui->treeWidget->collapseAll();
+    if (restoredSelection)
+        ui->treeWidget->setCurrentItem(restoredSelection);
 }
 
 void MaterialManagerWidget::beforeLoad()

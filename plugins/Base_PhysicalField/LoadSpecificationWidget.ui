@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Form</string>
+   <string>荷载设置</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="leftMargin">
@@ -97,7 +97,7 @@
       <item>
        <widget class="QCheckBox" name="clickCheckBox">
         <property name="text">
-         <string>CheckBox</string>
+         <string>启用</string>
         </property>
        </widget>
       </item>

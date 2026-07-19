@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Form</string>
+   <string>材料管理</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_2">
    <property name="spacing">
@@ -133,14 +133,14 @@
        <item>
         <widget class="QPushButton" name="generateImatButton">
          <property name="text">
-          <string>生成 IMAT.DAT（测试）</string>
+          <string>生成材料计算数据（测试）</string>
          </property>
         </widget>
        </item>
        <item>
         <widget class="QPushButton" name="importImatButton">
          <property name="text">
-          <string>导入 IMAT.DAT 并创建</string>
+          <string>导入材料计算数据并创建材料</string>
          </property>
         </widget>
        </item>

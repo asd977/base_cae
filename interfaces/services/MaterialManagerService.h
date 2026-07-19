@@ -2,6 +2,7 @@
 #define MATERIALMANAGERSERVICE_H
 
 #include <QString>
+#include <QMap>
 #include <QVector>
 #include <QPair>
 class BasePage;
@@ -24,6 +25,13 @@ struct MaterialManagerService
     virtual QVector<QPair<int, int>> materialTransitions() const = 0;
     virtual void setMaterialTransitions(const QVector<QPair<int, int>>& transitions) = 0;
     virtual bool generateIMATFile() = 0;
+    virtual bool hasConfiguredMaterials() const = 0;
+    virtual QMap<int, QString> assignedMaterialLabels() const = 0;
+    virtual QMap<int, QString> calculationMaterialLabels() const = 0;
+    virtual QMap<int, QString> damStaticMaterialLabels() const = 0;
+    virtual QMap<int, QString> damWetMaterialLabels(int sourceMatype) const = 0;
+    virtual QMap<int, QString> damDynamicMaterialLabels(int sourceMatype) const = 0;
+    virtual bool setDamDynamicSourceMatype(int dynamicMatype, int sourceMatype) = 0;
 };
 
 #endif // MATERIALMANAGERSERVICE_H

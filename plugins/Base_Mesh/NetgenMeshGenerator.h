@@ -35,6 +35,7 @@ struct NetgenMeshingResult
     int pointCount = 0;
     int surfaceElementCount = 0;
     int volumeElementCount = 0;
+    int regionCount = 0;
 
     // Hex8 (Tet split) quality summary. For non-Hex8 meshes these keep
     // their default values.

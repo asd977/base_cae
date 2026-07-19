@@ -1,4 +1,4 @@
-#include "UiFrame.h"
+﻿#include "UiFrame.h"
 
 #include <EventManager.h>
 #include <PublicConstants.h>
@@ -23,6 +23,7 @@
 #include <QString>
 #include <QSizePolicy>
 #include <QSlider>
+#include <QTabBar>
 #include <QVBoxLayout>
 
 // SARibbon
@@ -191,7 +192,13 @@ void UiFrame::initDockManager()
 QAction* UiFrame::addWidget(QWidget* widget, QString name)
 {
     ads::CDockWidget* dockWidget = new ads::CDockWidget(name);
-    dockWidget->setWidget(widget);
+
+    // ADS 默认会为普通 QWidget 再套一层 QScrollArea。可视化这类自适应画布不需要
+    // 外层滚动区，否则窗口变窄时会出现横向滚动条，并把右侧工具按钮推到视口外。
+    const bool forceNoScrollArea =
+        widget && widget->property("dockForceNoScrollArea").toBool();
+    dockWidget->setWidget(widget, forceNoScrollArea ? ads::CDockWidget::ForceNoScrollArea
+                                                    : ads::CDockWidget::AutoScrollArea);
 
     dockWidget->setFeature(ads::CDockWidget::DockWidgetClosable, true);
     dockWidget->setFeature(ads::CDockWidget::DockWidgetMovable, true);
@@ -337,7 +344,7 @@ void UiFrame::setDockWidgetStyle()
         }
 
         ads--CAutoHideTab {
-            color: #657078;
+            color: #000000;
             background: transparent;
             border: none;
             border-radius: 2px;
@@ -447,7 +454,7 @@ void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
         ads--CDockWidgetTab:hover,
         ads--CDockWidgetTab[activeTab="true"],
         ads--CDockWidgetTab[focused="true"] {
-            color: #293139;
+            color: #000000;
             background: transparent;
             border: none;
             min-height: 29px;
@@ -459,7 +466,7 @@ void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
         ads--CDockWidgetTab:hover QLabel#dockWidgetTabLabel,
         ads--CDockWidgetTab[activeTab="true"] QLabel#dockWidgetTabLabel,
         ads--CDockWidgetTab[focused="true"] QLabel#dockWidgetTabLabel {
-            color: #293139;
+            color: #000000;
             background: transparent;
             font-family: "Microsoft YaHei UI", "Microsoft YaHei", "微软雅黑", "Segoe UI";
             font-size: 9.5pt;
@@ -469,7 +476,7 @@ void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
 
     const QString multiTabStyle = QString::fromUtf8(R"(
         ads--CDockWidgetTab {
-            color: #5d676f;
+            color: #000000;
             background: transparent;
             border: none;
             border-bottom: 2px solid transparent;
@@ -493,7 +500,7 @@ void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
         }
 
         ads--CDockWidgetTab QLabel#dockWidgetTabLabel {
-            color: #5d676f;
+            color: #000000;
             background: transparent;
             font-family: "Microsoft YaHei UI", "Microsoft YaHei", "微软雅黑", "Segoe UI";
             font-size: 9pt;
@@ -580,39 +587,13 @@ void UiFrame::initSARibbon()
             border-bottom: 1px solid #d7dde1;
         }
 
-        SARibbonBar#geoCaeRibbonBar QTabBar {
-            background: #ffffff;
-            border: none;
-        }
-
-        SARibbonBar#geoCaeRibbonBar QTabBar::tab {
-            color: #3d464e;
-            background: transparent;
-            border: none;
-            border-bottom: 2px solid transparent;
-            border-radius: 0px;
-            min-height: 30px;
-            padding: 0px 16px;
-            margin: 0px;
-            font-size: 10pt;
-        }
-
-        SARibbonBar#geoCaeRibbonBar QTabBar::tab:hover:!selected {
-            color: #2e5367;
-            background: #f3f5f6;
-        }
-
-        SARibbonBar#geoCaeRibbonBar QTabBar::tab:selected {
-            color: #284d61;
-            background: #ffffff;
-            border-bottom: 2px solid #4f778d;
-            font-weight: 600;
+        SARibbonBar#geoCaeRibbonBar QLabel {
+            color: #000000;
         }
 
         SARibbonBar#geoCaeRibbonBar QStackedWidget {
-            background: #fbfcfc;
+            background: #ffffff;
             border: none;
-            border-top: 1px solid #e3e6e8;
         }
 
         SARibbonBar#geoCaeRibbonBar SARibbonPannel {
@@ -622,7 +603,7 @@ void UiFrame::initSARibbon()
         }
 
         SARibbonBar#geoCaeRibbonBar QToolButton {
-            color: #2f373e;
+            color: #000000;
             background: transparent;
             border: 1px solid transparent;
             border-radius: 2px;
@@ -645,6 +626,49 @@ void UiFrame::initSARibbon()
 
     buildRibbonAppButton();
     buildRibbonTabs();
+
+    // 直接给 Ribbon 的分类 TabBar 设置样式，避免全局 app.qss 中标准 QTabBar 的
+    // 2px 底边与 Ribbon 自身的 1px 基线叠加，造成最后一个 Tab 与右侧长线接缝变粗。
+    if (auto* categoryTabBar = m_ribbon->findChild<QTabBar*>())
+    {
+        categoryTabBar->setDocumentMode(true);
+        categoryTabBar->setExpanding(false);
+        categoryTabBar->setStyleSheet(QString::fromUtf8(R"(
+            QTabBar {
+                background: #ffffff;
+                border: none;
+                border-bottom: 1px solid #bac5cc;
+            }
+
+            QTabBar::tab {
+                color: #000000;
+                background: transparent;
+                border: none;
+                border-radius: 0px;
+                min-width: 0px;
+                min-height: 30px;
+                padding: 0px 10px;
+                margin: 0px;
+                font-size: 10pt;
+            }
+
+            QTabBar::tab:hover:!selected {
+                color: #2e5367;
+                background: #f3f5f6;
+            }
+
+            QTabBar::tab:selected {
+                color: #284d61;
+                background: #ffffff;
+                border-left: 1px solid #bac5cc;
+                border-top: 1px solid #bac5cc;
+                border-right: 1px solid #bac5cc;
+                border-bottom: 1px solid #ffffff;
+                margin-bottom: -1px;
+                font-weight: 600;
+            }
+        )"));
+    }
 }
 
 
@@ -656,11 +680,9 @@ void UiFrame::buildRibbonAppButton()
     btn->setMinimumWidth(64);
     btn->setStyleSheet(QString::fromUtf8(R"(
         QAbstractButton#geoCaeFileButton {
-            color: #30383f;
-            background: #ffffff;
+            color: #ffffff;
+            background: #2f6f9f;
             border: none;
-            border-right: 1px solid #e0e4e7;
-            border-bottom: 2px solid transparent;
             border-radius: 0px;
             padding: 0px 15px;
             font-size: 10pt;
@@ -668,14 +690,14 @@ void UiFrame::buildRibbonAppButton()
         }
 
         QAbstractButton#geoCaeFileButton:hover {
-            color: #294f66;
-            background: #f3f5f6;
+            color: #ffffff;
+            background: #3b7eae;
         }
 
-        QAbstractButton#geoCaeFileButton:pressed {
-            color: #284d61;
-            background: #e8edef;
-            border-bottom: 2px solid #4f778d;
+        QAbstractButton#geoCaeFileButton:pressed,
+        QAbstractButton#geoCaeFileButton:checked {
+            color: #ffffff;
+            background: #285f89;
         }
     )"));
 
@@ -936,20 +958,20 @@ void UiFrame::buildRibbonTabs()
                     });
         };
 
-               // ---------- 土体模型 ----------
+               // ---------- 土体本构 ----------
         {
-            auto* panel = cate->addPannel("土体模型");
+            auto* panel = cate->addPannel("土体本构");
 
             auto* actSoilEb =
-                makeAction(this, ":/resources/menu/minimal/mat-soil-eb.svg", "E-B模型");
+                makeAction(this, ":/resources/menu/minimal/mat-soil-eb.svg", "E-B本构");
             auto* actSoilEmu =
-                makeAction(this, ":/resources/menu/minimal/mat-soil-emu.svg", "E-μ模型");
+                makeAction(this, ":/resources/menu/minimal/mat-soil-emu.svg", "E-μ本构");
             auto* actSoilEmuCrush =
-                makeAction(this, ":/resources/menu/minimal/mat-soil-emu-crush.svg", "E-μ破碎");
+                makeAction(this, ":/resources/menu/minimal/mat-soil-emu-crush.svg", "E-μ破碎本构");
             auto* actNanshui =
-                makeAction(this, ":/resources/menu/minimal/mat-nanshui.svg", "非线性土体");
+                makeAction(this, ":/resources/menu/minimal/mat-nanshui.svg", "南水非线性本构");
             auto* actKg =
-                makeAction(this, ":/resources/menu/minimal/mat-kg.svg", "K-G模型");
+                makeAction(this, ":/resources/menu/minimal/mat-kg.svg", "K-G本构");
 
             addActionToPanel(panel, actSoilEb, 2);
             addActionToPanel(panel, actSoilEmu, 2);
@@ -964,44 +986,52 @@ void UiFrame::buildRibbonTabs()
             addMaterialAction(actKg, QStringLiteral("soil_kg"));
         }
 
+               // ---------- 岩体本构 ----------
+        {
+            auto* panel = cate->addPannel("岩体本构");
+
+            auto* actHoekBrown =
+                makeAction(this, ":/resources/menu/minimal/mat-dagangshan.svg", "霍克-布朗本构");
+            auto* actDagangshan =
+                makeAction(this, ":/resources/menu/minimal/mat-dagangshan.svg", "摩尔-库仑本构");
+
+            addActionToPanel(panel, actHoekBrown, 2);
+            addActionToPanel(panel, actDagangshan, 2);
+
+            addMaterialAction(actHoekBrown, QStringLiteral("hoek_brown_rock"));
+            addMaterialAction(actDagangshan, QStringLiteral("dagangshan_isotropic"));
+        }
+
                // ---------- 工程模型 ----------
         {
             auto* panel = cate->addPannel("工程模型");
 
             auto* actHjp =
-                makeAction(this, ":/resources/menu/minimal/mat-hjp.svg", "围岩开挖");
+                makeAction(this, ":/resources/menu/minimal/mat-hjp.svg", "围岩开挖模型");
             auto* actDynamic =
-                makeAction(this, ":/resources/menu/minimal/mat-dynamic.svg", "动力本构");
+                makeAction(this, ":/resources/menu/minimal/mat-dynamic.svg", "坝料动力本构");
             auto* actBar =
-                makeAction(this, ":/resources/menu/minimal/mat-bar.svg", "锚杆单元");
-            auto* actDagangshan =
-                makeAction(this, ":/resources/menu/minimal/mat-dagangshan.svg", "各向同性");
+                makeAction(this, ":/resources/menu/minimal/mat-bar.svg", "锚杆单元模型");
 
             addActionToPanel(panel, actHjp, 2);
             addActionToPanel(panel, actDynamic, 2);
             addActionToPanel(panel, actBar, 2);
-            addActionToPanel(panel, actDagangshan, 2);
 
             addMaterialAction(actHjp, QStringLiteral("huangjinping_underground_plant"));
             addMaterialAction(actDynamic, QStringLiteral("dam_dynamic"));
             addMaterialAction(actBar, QStringLiteral("huangjinping_bar_element"));
-            addMaterialAction(actDagangshan, QStringLiteral("dagangshan_isotropic"));
         }
 
-               // ---------- 数据与变换 ----------
+               // ---------- 材料参考 ----------
         {
-            auto* panel = cate->addPannel("数据与变换");
+            auto* panel = cate->addPannel("材料参考");
 
             auto* actBuiltinMaterial =
                 makeAction(this, ":/resources/menu/minimal/mat-builtin-material.svg", "材料示例");
             auto* actBuiltinSeepage =
                 makeAction(this, ":/resources/menu/minimal/mat-builtin-seepage.svg", "渗流示例");
-            auto* actMaterialTransition =
-                makeAction(this, ":/resources/menu/minimal/mat-transition.svg", "材料变换");
-
             addActionToPanel(panel, actBuiltinMaterial, 3);
             addActionToPanel(panel, actBuiltinSeepage, 3);
-            addActionToPanel(panel, actMaterialTransition, 3);
 
             connect(actBuiltinMaterial, &QAction::triggered, this,
                     []()
@@ -1019,15 +1049,6 @@ void UiFrame::buildRibbonTabs()
                             ServiceRegistry::instance().getService<MaterialManagerService>();
                         if (materialService)
                             materialService->showBuiltinSeepageListDialog();
-                    });
-
-            connect(actMaterialTransition, &QAction::triggered, this,
-                    []()
-                    {
-                        auto* materialService =
-                            ServiceRegistry::instance().getService<MaterialManagerService>();
-                        if (materialService)
-                            materialService->showMaterialTransitionDialog();
                     });
         }
     }

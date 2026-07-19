@@ -80,10 +80,11 @@ void KeyValueLineEdit::updateTooltip()
     {
         const QVariant v = PublicVariables::instance().get(k);
         // 只做提示，不改变显示文本
-        setToolTip(tr("Key: %1（归属UUID：%2）\n当前值: %3").arg(k, ownerUuid, v.toString()));
+        setToolTip(tr("参数键名：%1（所属页面标识：%2）\n当前值：%3")
+                       .arg(k, ownerUuid, v.toString()));
     }
     else
     {
-        setToolTip(tr("Key: %1（未定义，将按字面量使用）").arg(k));
+        setToolTip(tr("参数键名：%1（未定义，将按输入值使用）").arg(k));
     }
 }

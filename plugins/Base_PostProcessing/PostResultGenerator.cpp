@@ -370,6 +370,10 @@ QSet<int> readMaterialSet(const QString& path)
 QVector<ZoneGroup> loadZoneGroups(const QDir& resultDir, const QString& projectDir,
                                   const QVector<Element>& expanded)
 {
+    QSet<int> availableMaterials;
+    for (const Element& element : expanded)
+        availableMaterials.insert(element.material);
+
     QVector<ZoneGroup> groups;
     const QString indexPath = findInResultOrInput(resultDir, projectDir,
                                                   QStringLiteral("MAFILESET.DAT"));
@@ -407,25 +411,21 @@ QVector<ZoneGroup> loadZoneGroups(const QDir& resultDir, const QString& projectD
                     if (materialOk)
                         group.materials.insert(material);
                 }
+                group.materials.intersect(availableMaterials);
                 if (!group.materials.isEmpty())
                     groups.push_back(group);
             }
         }
     }
 
-    if (!groups.isEmpty())
-        return groups;
+    QSet<int> groupedMaterials;
+    for (const ZoneGroup& group : groups)
+        groupedMaterials.unite(group.materials);
 
     QList<int> materials;
-    QSet<int> seen;
-    for (const Element& element : expanded)
-    {
-        if (!seen.contains(element.material))
-        {
-            seen.insert(element.material);
-            materials.push_back(element.material);
-        }
-    }
+    for (int material : availableMaterials)
+        if (!groupedMaterials.contains(material))
+            materials.push_back(material);
     std::sort(materials.begin(), materials.end());
     for (int material : materials)
     {

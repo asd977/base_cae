@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version='1.0' encoding='UTF-8'?>
 <ui version="4.0">
  <class>SeepageBoundaryPage</class>
  <widget class="QWidget" name="SeepageBoundaryPage">
@@ -89,7 +89,7 @@
      <item>
       <widget class="QLabel" name="boxSelectHintLabel">
        <property name="text">
-        <string>提示：Shift+拖拽框选，Ctrl+拖拽取消选择</string>
+        <string>提示：Shift 框选节点，Ctrl 取消选择。</string>
        </property>
        <property name="wordWrap">
         <bool>false</bool>

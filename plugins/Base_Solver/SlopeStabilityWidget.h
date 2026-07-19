@@ -60,6 +60,7 @@ class SlopeStabilityWidget : public BasePage
     Ui::SlopeStabilityWidget* ui;
     QMap<int, QWidget*> m_lineEditors;
     bool exportTdtraceDatFile() const;
+    bool exportMaterialMappingsFile() const;
 };
 
 #endif // SLOPESTABILITYWIDGET_H

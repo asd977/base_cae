@@ -1,4 +1,4 @@
-#include "MaterialEntryWidget.h"
+﻿#include "MaterialEntryWidget.h"
 
 #include <CustomComboBox.h>
 
@@ -6,11 +6,15 @@
 #include <QBrush>
 #include <QCheckBox>
 #include <QColor>
+#include <QDoubleValidator>
 #include <QFontDatabase>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMessageBox>
-#include <QScrollArea>
+#include <QMetaObject>
+#include <QScopedValueRollback>
+#include <QSet>
+#include <QSizePolicy>
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QTimer>
@@ -26,23 +30,35 @@
 namespace
 {
 constexpr int FIRST_COMPUTABLE_MATYPE = 2;
+constexpr int FIRST_SUGGESTED_MATYPE = 3;
+constexpr int MAX_SOLVER_MATYPE = 300;
 
 bool isComputableMatype(int matype)
 {
     return matype >= FIRST_COMPUTABLE_MATYPE;
 }
 
+bool isDamStaticMaterialModel(const QString& modelKey)
+{
+    static const QSet<QString> keys = {
+        QStringLiteral("soil_eb"), QStringLiteral("soil_kg"),
+        QStringLiteral("soil_emu"), QStringLiteral("soil_nanshui"),
+        QStringLiteral("soil_emu_crush")};
+    return keys.contains(modelKey);
+}
+
 QString matypeDisplayText(int matype, const MshPickMap* pickMap = nullptr)
 {
     if (!isComputableMatype(matype))
         return QString();
+    QString display;
     if (pickMap)
     {
         QString name = pickMap->physicalName(matype, 3).trimmed();
         if (name.isEmpty())
             name = pickMap->physicalName(matype).trimmed();
         if (!name.isEmpty())
-            return name;
+            display = name;
     }
     else if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
     {
@@ -50,9 +66,13 @@ QString matypeDisplayText(int matype, const MshPickMap* pickMap = nullptr)
         if (name.isEmpty())
             name = meshService->matypePhysicalName(matype).trimmed();
         if (!name.isEmpty())
-            return name;
+            display = name;
     }
-    return QString::number(matype);
+    if (display.isEmpty())
+        display = QString::number(matype);
+    if (matype == 2)
+        display += QStringLiteral("（保留编号，固定线弹性）");
+    return display;
 }
 }
 
@@ -61,35 +81,29 @@ MaterialEntryWidget::MaterialEntryWidget(MaterialManager* manager, QWidget* pare
       m_formLayout(new QFormLayout), m_nameEdit(nullptr)
 {
     setAttribute(Qt::WA_StyledBackground, true);
-    auto* pageHeaderLabel = new QLabel("材料参数设置", this);
-    pageHeaderLabel->setObjectName("pageHeaderLabel");
 
     m_formLayout->setContentsMargins(9, 9, 9, 9);
-    m_formLayout->setSpacing(6);
+    m_formLayout->setHorizontalSpacing(8);
+    m_formLayout->setVerticalSpacing(6);
+    m_formLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    m_formLayout->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    m_formLayout->setFormAlignment(Qt::AlignTop);
 
     auto* container = new QWidget(this);
     container->setLayout(m_formLayout);
+    container->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
     QPalette containerPal = container->palette();
     containerPal.setColor(QPalette::Window, Qt::white);
     container->setPalette(containerPal);
     container->setAutoFillBackground(true);
 
-    auto* scrollArea = new QScrollArea(this);
-    scrollArea->setWidget(container);
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setFrameShape(QFrame::NoFrame);
-    scrollArea->setStyleSheet("QScrollArea { background-color: white; border: none; }");
-    QPalette scrollPal = scrollArea->palette();
-    scrollPal.setColor(QPalette::Window, Qt::white);
-    scrollArea->setPalette(scrollPal);
-    if (scrollArea->viewport()) {
-        scrollArea->viewport()->setPalette(scrollPal);
-    }
-
+    // Dock 外层已经统一提供滚动区域。材料页本身只负责内容布局，
+    // 避免嵌套滚动条和 QFormLayout 将可扩展行拉出大块空白。
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->addWidget(pageHeaderLabel);
-    layout->addWidget(scrollArea);
+    layout->setSpacing(0);
+    layout->addWidget(container, 0, Qt::AlignTop);
+    layout->addStretch(1);
 }
 
 MaterialEntryWidget::~MaterialEntryWidget()
@@ -165,6 +179,11 @@ void MaterialEntryWidget::beforeUnload()
 
 void MaterialEntryWidget::setEntry(const QString& modelKey, const QString& entryId)
 {
+    // 工程树刷新时，大多数材料并没有发生变化。避免重复销毁并重建所有材料页，
+    // 否则材料较多时切换模型会出现明显卡顿。
+    if (m_modelKey == modelKey && m_entryId == entryId && m_nameEdit)
+        return;
+
     m_modelKey = modelKey;
     m_entryId = entryId;
 
@@ -186,6 +205,62 @@ void MaterialEntryWidget::onNameEdited(const QString& text)
     m_materialManager->notifyEntryUpdated(m_entryId, true);
 }
 
+void MaterialEntryWidget::onNameEditingFinished()
+{
+    if (m_isUpdating || !m_nameEdit || !m_materialManager)
+        return;
+
+    MaterialEntry* entry = lookupEntry();
+    if (!entry)
+        return;
+
+    const QString uniqueName =
+        m_materialManager->makeUniqueMaterialName(m_nameEdit->text(), m_entryId);
+    if (entry->name == uniqueName && m_nameEdit->text() == uniqueName)
+        return;
+
+    entry->name = uniqueName;
+    {
+        const QSignalBlocker blocker(m_nameEdit);
+        m_nameEdit->setText(uniqueName);
+    }
+    m_materialManager->notifyEntryUpdated(m_entryId, true);
+}
+
+void MaterialEntryWidget::onMaterialModelActivated(int)
+{
+    if (m_isUpdating || !m_modelCombo || !m_materialManager)
+        return;
+
+    const QString targetModelKey = m_modelCombo->currentData().toString();
+    if (targetModelKey.isEmpty() || targetModelKey == m_modelKey)
+        return;
+
+    // 切换会重建当前材料页。排到本次下拉框信号处理结束后执行，
+    // 避免在 QComboBox 正在发射 activated 时删除它自身。
+    m_modelCombo->setEnabled(false);
+    QMetaObject::invokeMethod(
+        this,
+        [this, targetModelKey]()
+        {
+            QString error;
+            if (!m_materialManager->changeEntryModel(m_entryId, targetModelKey, &error))
+            {
+                if (m_modelCombo)
+                {
+                    const QSignalBlocker blocker(m_modelCombo);
+                    const int oldIndex = m_modelCombo->findData(m_modelKey);
+                    m_modelCombo->setCurrentIndex(oldIndex >= 0 ? oldIndex : 0);
+                    m_modelCombo->setEnabled(true);
+                }
+                QMessageBox::warning(this, QStringLiteral("切换材料模型"),
+                                     error.isEmpty() ? QStringLiteral("切换材料模型失败。")
+                                                     : error);
+            }
+        },
+        Qt::QueuedConnection);
+}
+
 void MaterialEntryWidget::onValueEdited(const QString& text)
 {
     if (m_isUpdating)
@@ -205,6 +280,22 @@ void MaterialEntryWidget::onValueEdited(const QString& text)
     m_materialManager->notifyEntryUpdated(m_entryId, false);
 }
 
+void MaterialEntryWidget::onOptionValueChanged(int)
+{
+    if (m_isUpdating)
+        return;
+
+    auto* combo = qobject_cast<QComboBox*>(sender());
+    MaterialModel* model = nullptr;
+    MaterialEntry* entry = lookupEntry(&model);
+    if (!combo || !entry || !model)
+        return;
+
+    const QString column = combo->property("columnName").toString();
+    entry->properties.insert(column, combo->currentData().toString());
+    m_materialManager->notifyEntryUpdated(m_entryId, false);
+}
+
 void MaterialEntryWidget::onSeepageModelChanged(int)
 {
     if (m_isUpdating || !m_seepageCombo)
@@ -218,6 +309,21 @@ void MaterialEntryWidget::onSeepageModelChanged(int)
     entry->seepageModelKey = m_seepageCombo->currentData().toString();
     m_materialManager->notifyEntryUpdated(m_entryId, false);
     rebuildSeepageFields(entry);
+}
+
+void MaterialEntryWidget::onCreepModelChanged(int)
+{
+    if (m_isUpdating || !m_creepCombo)
+        return;
+
+    MaterialModel* model = nullptr;
+    MaterialEntry* entry = lookupEntry(&model);
+    if (!entry || !model)
+        return;
+
+    entry->creepModelKey = m_creepCombo->currentData().toString();
+    m_materialManager->notifyEntryUpdated(m_entryId, false);
+    rebuildCreepFields(entry);
 }
 
 void MaterialEntryWidget::onSeepageValueEdited(const QString& text)
@@ -267,25 +373,94 @@ void MaterialEntryWidget::rebuildSeepageFields(MaterialEntry* entry)
             break;
         }
     }
+    if (m_seepageFieldsWidget && m_formLayout)
+        m_formLayout->setRowVisible(m_seepageFieldsWidget, selectedSeepageModel != nullptr);
     if (!selectedSeepageModel)
-    {
         return;
-    }
 
-    for (const QString& column : selectedSeepageModel->columns)
+    for (int columnIndex = 0; columnIndex < selectedSeepageModel->columns.size(); ++columnIndex)
     {
+        const QString& column = selectedSeepageModel->columns.at(columnIndex);
         if (MaterialManager::isAutoNumberColumn(column))
         {
             continue;
         }
+        if (!entry->seepageProperties.contains(column))
+            entry->seepageProperties.insert(column, QStringLiteral("0"));
         auto* seepageValueEdit =
             new QLineEdit(entry->seepageProperties.value(column, QStringLiteral("0")), this);
         seepageValueEdit->setMinimumWidth(10);
+        auto* validator = new QDoubleValidator(seepageValueEdit);
+        validator->setNotation(QDoubleValidator::ScientificNotation);
+        seepageValueEdit->setValidator(validator);
         seepageValueEdit->setProperty("columnName", column);
         connect(seepageValueEdit, &QLineEdit::textEdited, this,
                 &MaterialEntryWidget::onSeepageValueEdited);
-        m_seepageFieldsLayout->addRow(column, seepageValueEdit);
+        const QString label = columnIndex < selectedSeepageModel->displayColumns.size()
+                                  ? selectedSeepageModel->displayColumns.at(columnIndex)
+                                  : column;
+        m_seepageFieldsLayout->addRow(label, seepageValueEdit);
         m_seepageValueEdits.insert(column, seepageValueEdit);
+    }
+}
+
+void MaterialEntryWidget::rebuildCreepFields(MaterialEntry* entry)
+{
+    if (!m_creepFieldsLayout || !entry)
+        return;
+
+    while (m_creepFieldsLayout->rowCount() > 0)
+    {
+        QLayoutItem* labelItem = m_creepFieldsLayout->itemAt(0, QFormLayout::LabelRole);
+        QLayoutItem* fieldItem = m_creepFieldsLayout->itemAt(0, QFormLayout::FieldRole);
+        if (labelItem)
+            delete labelItem->widget();
+        if (fieldItem)
+            delete fieldItem->widget();
+        m_creepFieldsLayout->removeRow(0);
+    }
+    m_creepValueEdits.clear();
+
+    const QString creepModelKey =
+        m_creepCombo ? m_creepCombo->currentData().toString() : entry->creepModelKey;
+    const MaterialModel* selectedModel = nullptr;
+    const auto& supplementalModels = m_materialManager->seepageModels();
+    for (const auto& model : supplementalModels)
+    {
+        if (model.key == creepModelKey &&
+            model.key != QStringLiteral("jk_corewall_steady_seepage"))
+        {
+            selectedModel = &model;
+            break;
+        }
+    }
+    if (m_creepFieldsWidget && m_formLayout)
+        m_formLayout->setRowVisible(m_creepFieldsWidget, selectedModel != nullptr);
+    if (!selectedModel)
+        return;
+
+    for (int columnIndex = 0; columnIndex < selectedModel->columns.size(); ++columnIndex)
+    {
+        const QString& column = selectedModel->columns.at(columnIndex);
+        if (MaterialManager::isAutoNumberColumn(column))
+            continue;
+        if (!entry->seepageProperties.contains(column))
+            entry->seepageProperties.insert(column, QStringLiteral("0"));
+
+        auto* valueEdit =
+            new QLineEdit(entry->seepageProperties.value(column, QStringLiteral("0")), this);
+        valueEdit->setMinimumWidth(10);
+        auto* validator = new QDoubleValidator(valueEdit);
+        validator->setNotation(QDoubleValidator::ScientificNotation);
+        valueEdit->setValidator(validator);
+        valueEdit->setProperty("columnName", column);
+        connect(valueEdit, &QLineEdit::textEdited, this,
+                &MaterialEntryWidget::onSeepageValueEdited);
+        const QString label = columnIndex < selectedModel->displayColumns.size()
+                                  ? selectedModel->displayColumns.at(columnIndex)
+                                  : column;
+        m_creepFieldsLayout->addRow(label, valueEdit);
+        m_creepValueEdits.insert(column, valueEdit);
     }
 }
 
@@ -304,7 +479,25 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     m_nameEdit = new QLineEdit(entry->name, this);
     m_nameEdit->setMinimumWidth(10);
     connect(m_nameEdit, &QLineEdit::textEdited, this, &MaterialEntryWidget::onNameEdited);
+    connect(m_nameEdit, &QLineEdit::editingFinished, this,
+            &MaterialEntryWidget::onNameEditingFinished);
     m_formLayout->addRow(QString("材料名称"), m_nameEdit);
+
+    // ===== 材料模型：材料条目可直接在已有模型之间切换 =====
+    m_modelCombo = new QComboBox(this);
+    m_modelCombo->setMinimumWidth(10);
+    m_modelCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_modelCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    m_modelCombo->setMinimumContentsLength(0);
+    for (const MaterialModel& availableModel : m_materialManager->models())
+        m_modelCombo->addItem(availableModel.displayName, availableModel.key);
+    const int modelIndex = m_modelCombo->findData(model->key);
+    m_modelCombo->setCurrentIndex(modelIndex >= 0 ? modelIndex : 0);
+    m_modelCombo->setToolTip(
+        QStringLiteral("切换后保留材料名称、网格关联、附加模型和已有参数；新模型缺少的参数初始化为 0。"));
+    connect(m_modelCombo, QOverload<int>::of(&QComboBox::activated), this,
+            &MaterialEntryWidget::onMaterialModelActivated);
+    m_formLayout->addRow(QStringLiteral("材料模型"), m_modelCombo);
 
     // 先取 appliedList，后面初始化要用
     QList<int> appliedList = entry->appliedMatypes.values();
@@ -314,9 +507,14 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     QWidget* matypeRowWidget = new QWidget(this);
     auto* rowLayout = new QHBoxLayout(matypeRowWidget);
     rowLayout->setContentsMargins(0, 0, 0, 0);
+    rowLayout->setSpacing(6);
 
     m_matypeCombo = new CustomComboBox(matypeRowWidget);
-    m_matypeCombo->setMinimumWidth(10);
+    m_matypeCombo->setMinimumWidth(84);
+    m_matypeCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    m_matypeCombo->setMinimumContentsLength(4);
+    m_matypeCombo->setToolTip(
+        QStringLiteral("编号 1 不参加计算；编号 2 仅兼容旧数据；新材料使用 3 至 300。"));
     m_matypeCombo->addItem(QString("未选择"), QVariant());
     m_matypeOptionsLoaded = false;
     for (int value : appliedList)
@@ -346,12 +544,19 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
 
     m_formLayout->addRow(QString("关联MATYPE"), matypeRowWidget);
 
-    // ===== 已施加 MATYPE 列表 + 移除 =====
+    // ===== 已施加 MATYPE 列表：列表占满整行，操作按钮放在下方 =====
     QWidget* appliedRowWidget = new QWidget(this);
-    auto* appliedLayout = new QHBoxLayout(appliedRowWidget);
+    appliedRowWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    auto* appliedLayout = new QVBoxLayout(appliedRowWidget);
     appliedLayout->setContentsMargins(0, 0, 0, 0);
+    appliedLayout->setSpacing(5);
 
     m_appliedMatypesList = new QListWidget(appliedRowWidget);
+    m_appliedMatypesList->setObjectName(QStringLiteral("appliedMatypesList"));
+    m_appliedMatypesList->setFixedHeight(96);
+    m_appliedMatypesList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_appliedMatypesList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    m_appliedMatypesList->setUniformItemSizes(true);
     for (int value : appliedList)
     {
         auto* item = new QListWidgetItem(matypeDisplayText(value), m_appliedMatypesList);
@@ -365,33 +570,54 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     connect(m_removeButton, &QPushButton::clicked, this,
             &MaterialEntryWidget::onRemoveMatypeClicked);
 
+    auto* removeRow = new QHBoxLayout;
+    removeRow->setContentsMargins(0, 0, 0, 0);
+    removeRow->setSpacing(0);
+    removeRow->addStretch(1);
+    removeRow->addWidget(m_removeButton);
+
     appliedLayout->addWidget(m_appliedMatypesList);
-    appliedLayout->addWidget(m_removeButton);
+    appliedLayout->addLayout(removeRow);
 
     m_formLayout->addRow(QString("已施加材料单元"), appliedRowWidget);
 
-    QWidget* transitionRowWidget = new QWidget(this);
-    auto* transitionLayout = new QHBoxLayout(transitionRowWidget);
-    transitionLayout->setContentsMargins(0, 0, 0, 0);
-    m_transitionOnlyCheck = new QCheckBox(QStringLiteral("仅用于后续变换"), transitionRowWidget);
-    m_transitionOnlyCheck->setChecked(entry->transitionOnly);
-    m_transitionMatypeSpin = new QSpinBox(transitionRowWidget);
-    m_transitionMatypeSpin->setMinimumWidth(10);
-    m_transitionMatypeSpin->setRange(FIRST_COMPUTABLE_MATYPE, 1000000);
-    m_transitionMatypeSpin->setValue(isComputableMatype(entry->transitionMatype)
-                                         ? entry->transitionMatype
-                                         : FIRST_COMPUTABLE_MATYPE);
-    m_transitionMatypeSpin->setEnabled(true);
-    transitionLayout->addWidget(m_transitionOnlyCheck);
-    transitionLayout->addWidget(new QLabel(QStringLiteral("编号"), transitionRowWidget));
-    transitionLayout->addWidget(m_transitionMatypeSpin);
-    transitionLayout->addStretch();
-    connect(m_transitionOnlyCheck, &QCheckBox::stateChanged, this,
-            &MaterialEntryWidget::onTransitionModeChanged);
-    connect(m_transitionMatypeSpin, qOverload<int>(&QSpinBox::valueChanged), this,
-            &MaterialEntryWidget::onTransitionMatypeChanged);
-    m_formLayout->addRow(QStringLiteral("后续变换"), transitionRowWidget);
-    if (entry->transitionOnly)
+    const bool isDynamicMaterial = model->key == QStringLiteral("dam_dynamic");
+    const bool supportsCalculationStage =
+        isDynamicMaterial || isDamStaticMaterialModel(model->key);
+    if (supportsCalculationStage)
+    {
+        QWidget* transitionRowWidget = new QWidget(this);
+        auto* transitionLayout = new QHBoxLayout(transitionRowWidget);
+        transitionLayout->setContentsMargins(0, 0, 0, 0);
+        const QString stageUseText =
+            isDynamicMaterial ? QStringLiteral("作为计算阶段材料（动力及地震波动）")
+                              : QStringLiteral("作为计算阶段材料（浸润）");
+        const QString stageUseTip =
+            isDynamicMaterial
+                ? QStringLiteral("该材料只供土石坝动力及地震波动计算的材料对应关系选择，不直接分配给网格。")
+                : QStringLiteral("该材料只供土石坝浸润计算的材料对应关系选择，不直接分配给网格。");
+        m_transitionOnlyCheck = new QCheckBox(stageUseText, transitionRowWidget);
+        m_transitionOnlyCheck->setChecked(entry->transitionOnly);
+        m_transitionOnlyCheck->setToolTip(stageUseTip);
+        m_transitionMatypeSpin = new QSpinBox(transitionRowWidget);
+        m_transitionMatypeSpin->setMinimumWidth(10);
+        m_transitionMatypeSpin->setRange(FIRST_SUGGESTED_MATYPE, MAX_SOLVER_MATYPE);
+        m_transitionMatypeSpin->setValue(isComputableMatype(entry->transitionMatype)
+                                             ? entry->transitionMatype
+                                             : FIRST_SUGGESTED_MATYPE);
+        m_transitionMatypeSpin->setToolTip(stageUseTip);
+        m_transitionMatypeSpin->setEnabled(true);
+        transitionLayout->addWidget(m_transitionOnlyCheck);
+        transitionLayout->addWidget(new QLabel(QStringLiteral("编号"), transitionRowWidget));
+        transitionLayout->addWidget(m_transitionMatypeSpin);
+        transitionLayout->addStretch();
+        connect(m_transitionOnlyCheck, &QCheckBox::stateChanged, this,
+                &MaterialEntryWidget::onTransitionModeChanged);
+        connect(m_transitionMatypeSpin, qOverload<int>(&QSpinBox::valueChanged), this,
+                &MaterialEntryWidget::onTransitionMatypeChanged);
+        m_formLayout->addRow(QStringLiteral("材料用途"), transitionRowWidget);
+    }
+    if (m_transitionOnlyCheck && entry->transitionOnly)
     {
         if (m_matypeCombo)
             m_matypeCombo->setEnabled(false);
@@ -404,39 +630,117 @@ void MaterialEntryWidget::rebuildForm(MaterialModel* model, MaterialEntry* entry
     }
 
     // ===== 动态字段（放在 MATYPE 区域下面）=====
-    for (const QString& column : model->columns)
+    for (int columnIndex = 0; columnIndex < model->columns.size(); ++columnIndex)
     {
+        const QString& column = model->columns.at(columnIndex);
         if (MaterialManager::isAutoNumberColumn(column))
         {
             continue;
         }
+        if (model->key == QStringLiteral("dam_dynamic") &&
+            column == QStringLiteral("静力计算编号"))
+        {
+            continue;
+        }
+        const QString label = columnIndex < model->displayColumns.size()
+                                  ? model->displayColumns.at(columnIndex)
+                                  : column;
+        if (model->key == QStringLiteral("dam_dynamic") &&
+            column == QStringLiteral("是否液化"))
+        {
+            auto* optionBox = new QComboBox(this);
+            optionBox->addItem(QStringLiteral("否"), QStringLiteral("0"));
+            optionBox->addItem(QStringLiteral("是"), QStringLiteral("1"));
+            const int optionIndex = optionBox->findData(entry->properties.value(column));
+            if (optionIndex < 0)
+                entry->properties.insert(column, QStringLiteral("0"));
+            optionBox->setCurrentIndex(optionIndex >= 0 ? optionIndex : 0);
+            optionBox->setProperty("columnName", column);
+            connect(optionBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+                    &MaterialEntryWidget::onOptionValueChanged);
+            m_formLayout->addRow(QStringLiteral("是否液化"), optionBox);
+            continue;
+        }
+        if (model->key == QStringLiteral("huangjinping_underground_plant") &&
+            column == QStringLiteral("岩类分区"))
+        {
+            auto* optionBox = new QComboBox(this);
+            optionBox->addItem(QStringLiteral("普通围岩"), QStringLiteral("0"));
+            optionBox->addItem(QStringLiteral("半开挖区"), QStringLiteral("-1"));
+            optionBox->addItem(QStringLiteral("开挖区"), QStringLiteral("-2"));
+            optionBox->addItem(QStringLiteral("再生材料"), QStringLiteral("1"));
+            optionBox->addItem(QStringLiteral("加固材料"), QStringLiteral("2"));
+            const QString storedValue = entry->properties.value(column);
+            int optionIndex = optionBox->findData(storedValue);
+            if (optionIndex < 0 && !storedValue.trimmed().isEmpty())
+            {
+                optionBox->addItem(QStringLiteral("原工程设置（%1）").arg(storedValue),
+                                   storedValue);
+                optionIndex = optionBox->count() - 1;
+            }
+            optionBox->setCurrentIndex(optionIndex >= 0 ? optionIndex : 0);
+            optionBox->setProperty("columnName", column);
+            connect(optionBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+                    &MaterialEntryWidget::onOptionValueChanged);
+            m_formLayout->addRow(QStringLiteral("开挖状态"), optionBox);
+            continue;
+        }
         auto* valueEdit = new QLineEdit(entry->properties.value(column), this);
         valueEdit->setMinimumWidth(10);
+        auto* validator = new QDoubleValidator(valueEdit);
+        validator->setNotation(QDoubleValidator::ScientificNotation);
+        valueEdit->setValidator(validator);
         valueEdit->setProperty("columnName", column);
         connect(valueEdit, &QLineEdit::textEdited, this, &MaterialEntryWidget::onValueEdited);
-        m_formLayout->addRow(column, valueEdit);
+        m_formLayout->addRow(label, valueEdit);
         m_valueEdits.insert(column, valueEdit);
     }
 
-    // ===== 渗流/流变模型（放到最下方）=====
+    // ===== 渗流与流变是两个可同时启用的附加模型 =====
     m_seepageCombo = new CustomComboBox(this);
     m_seepageCombo->setMinimumWidth(10);
     m_seepageCombo->addItem(QStringLiteral("无"), QString());
     const auto& seepageModels = m_materialManager->seepageModels();
     for (const auto& seepageModel : seepageModels)
     {
-        m_seepageCombo->addItem(seepageModel.displayName, seepageModel.key);
+        if (seepageModel.key == QStringLiteral("jk_corewall_steady_seepage"))
+            m_seepageCombo->addItem(seepageModel.displayName, seepageModel.key);
     }
     int seepageIndex = m_seepageCombo->findData(entry->seepageModelKey);
     m_seepageCombo->setCurrentIndex(seepageIndex >= 0 ? seepageIndex : 0);
     connect(m_seepageCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &MaterialEntryWidget::onSeepageModelChanged);
-    m_formLayout->addRow(QStringLiteral("渗流/流变模型"), m_seepageCombo);
-    auto* seepageFieldsWidget = new QWidget(this);
-    m_seepageFieldsLayout = new QFormLayout(seepageFieldsWidget);
+    m_formLayout->addRow(QStringLiteral("渗流模型"), m_seepageCombo);
+    m_seepageFieldsWidget = new QWidget(this);
+    m_seepageFieldsLayout = new QFormLayout(m_seepageFieldsWidget);
     m_seepageFieldsLayout->setContentsMargins(0, 0, 0, 0);
-    m_formLayout->addRow(QStringLiteral("渗流参数"), seepageFieldsWidget);
+    m_seepageFieldsLayout->setHorizontalSpacing(8);
+    m_seepageFieldsLayout->setVerticalSpacing(6);
+    m_seepageFieldsLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    m_formLayout->addRow(QStringLiteral("渗流参数"), m_seepageFieldsWidget);
     rebuildSeepageFields(entry);
+
+    m_creepCombo = new CustomComboBox(this);
+    m_creepCombo->setMinimumWidth(10);
+    m_creepCombo->addItem(QStringLiteral("无"), QString());
+    for (const auto& creepModel : seepageModels)
+    {
+        if (creepModel.key != QStringLiteral("jk_corewall_steady_seepage"))
+            m_creepCombo->addItem(creepModel.displayName, creepModel.key);
+    }
+    const int creepIndex = m_creepCombo->findData(entry->creepModelKey);
+    m_creepCombo->setCurrentIndex(creepIndex >= 0 ? creepIndex : 0);
+    connect(m_creepCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &MaterialEntryWidget::onCreepModelChanged);
+    m_formLayout->addRow(QStringLiteral("流变模型"), m_creepCombo);
+    m_creepFieldsWidget = new QWidget(this);
+    m_creepFieldsLayout = new QFormLayout(m_creepFieldsWidget);
+    m_creepFieldsLayout->setContentsMargins(0, 0, 0, 0);
+    m_creepFieldsLayout->setHorizontalSpacing(8);
+    m_creepFieldsLayout->setVerticalSpacing(6);
+    m_creepFieldsLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    m_formLayout->addRow(QStringLiteral("流变参数"), m_creepFieldsWidget);
+    rebuildCreepFields(entry);
 
     // ===== 初始化选中 MATYPE =====
     int initialMatype = m_materialManager->selectedMatypeForEntry(m_entryId);
@@ -478,10 +782,16 @@ void MaterialEntryWidget::clearForm()
     }
 
     m_nameEdit = nullptr;
+    m_modelCombo = nullptr;
     m_valueEdits.clear();
     m_seepageCombo = nullptr;
+    m_seepageFieldsWidget = nullptr;
     m_seepageFieldsLayout = nullptr;
     m_seepageValueEdits.clear();
+    m_creepCombo = nullptr;
+    m_creepFieldsWidget = nullptr;
+    m_creepFieldsLayout = nullptr;
+    m_creepValueEdits.clear();
 
     m_matypeCombo = nullptr;
     m_applyButton = nullptr;
@@ -676,29 +986,17 @@ void MaterialEntryWidget::onAppliedMatypeSelected(const QString& text)
 
 void MaterialEntryWidget::onTransitionModeChanged(int state)
 {
-    MaterialEntry* entry = lookupEntry();
-    if (!entry || !m_transitionMatypeSpin)
+    if (m_isUpdating || m_transitionChangeInProgress)
         return;
+    MaterialEntry* entry = lookupEntry();
+    if (!entry || !m_transitionOnlyCheck || !m_transitionMatypeSpin)
+        return;
+    QScopedValueRollback<bool> guard(m_transitionChangeInProgress, true);
     const bool enabled = (state == Qt::Checked);
     if (!enabled)
     {
-        int sourceMatype = m_materialManager->selectedMatypeForEntry(m_entryId);
-        if (!isComputableMatype(sourceMatype) && m_matypeCombo)
-        {
-            const QVariant sourceData = m_matypeCombo->currentData();
-            sourceMatype = sourceData.isValid() ? sourceData.toInt() : -1;
-        }
         entry->transitionOnly = false;
         entry->transitionMatype = m_transitionMatypeSpin->value();
-        if (isComputableMatype(sourceMatype))
-        {
-            auto mappings = m_materialManager->materialTransitions();
-            mappings.erase(std::remove_if(mappings.begin(), mappings.end(),
-                                          [sourceMatype](const QPair<int, int>& p)
-                                          { return p.first == sourceMatype; }),
-                           mappings.end());
-            m_materialManager->setMaterialTransitions(mappings);
-        }
         if (m_matypeCombo)
             m_matypeCombo->setEnabled(true);
         if (m_applyButton)
@@ -716,37 +1014,23 @@ void MaterialEntryWidget::onTransitionModeChanged(int state)
     {
         QMessageBox::warning(this, QStringLiteral("提示"), error);
         QSignalBlocker blocker(m_transitionOnlyCheck);
-        m_transitionOnlyCheck->setChecked(false);
+        m_transitionOnlyCheck->setCheckState(Qt::Unchecked);
+        m_transitionOnlyCheck->setEnabled(false);
         entry->transitionOnly = false;
+        if (m_matypeCombo)
+            m_matypeCombo->setEnabled(true);
+        if (m_applyButton)
+            m_applyButton->setEnabled(true);
+        if (m_appliedMatypesList)
+            m_appliedMatypesList->setEnabled(true);
+        if (m_removeButton)
+            m_removeButton->setEnabled(true);
         return;
     }
     entry->transitionOnly = true;
     entry->transitionMatype = matype;
-    int sourceMatype = m_materialManager->selectedMatypeForEntry(m_entryId);
-    if (!isComputableMatype(sourceMatype) && m_matypeCombo)
-    {
-        const QVariant sourceData = m_matypeCombo->currentData();
-        sourceMatype = sourceData.isValid() ? sourceData.toInt() : -1;
-    }
-    if (isComputableMatype(sourceMatype))
-    {
-        auto mappings = m_materialManager->materialTransitions();
-        bool replaced = false;
-        for (auto& p : mappings)
-        {
-            if (p.first == sourceMatype)
-            {
-                p.second = matype;
-                replaced = true;
-                break;
-            }
-        }
-        if (!replaced)
-            mappings.push_back({sourceMatype, matype});
-        m_materialManager->setMaterialTransitions(mappings);
-    }
-    entry->appliedMatypes.clear();
-    m_materialManager->refreshEntryWidgetMatypes(entry->id, entry->appliedMatypes, -1);
+    m_transitionOnlyCheck->setEnabled(true);
+    m_transitionMatypeSpin->setEnabled(true);
     if (m_matypeCombo)
         m_matypeCombo->setEnabled(false);
     if (m_applyButton)
@@ -760,16 +1044,18 @@ void MaterialEntryWidget::onTransitionModeChanged(int state)
 
 void MaterialEntryWidget::onTransitionMatypeChanged(int value)
 {
-    MaterialEntry* entry = lookupEntry();
-    if (!entry || !m_transitionOnlyCheck)
+    if (m_isUpdating || m_transitionChangeInProgress)
         return;
-    const int previousMatype = entry->transitionMatype;
-    entry->transitionMatype = value;
+    MaterialEntry* entry = lookupEntry();
+    if (!entry || !m_transitionOnlyCheck || !m_transitionMatypeSpin)
+        return;
     if (!m_transitionOnlyCheck->isChecked())
     {
-        m_materialManager->notifyEntryUpdated(entry->id, false);
+        m_transitionOnlyCheck->setEnabled(true);
         return;
     }
+    QScopedValueRollback<bool> guard(m_transitionChangeInProgress, true);
+    const int previousMatype = entry->transitionMatype;
     QString error;
     if (!m_materialManager->validateTransitionMatype(m_entryId, value, &error))
     {
@@ -778,33 +1064,11 @@ void MaterialEntryWidget::onTransitionMatypeChanged(int value)
         QSignalBlocker blocker(m_transitionMatypeSpin);
         m_transitionMatypeSpin->setValue(isComputableMatype(previousMatype)
                                              ? previousMatype
-                                             : FIRST_COMPUTABLE_MATYPE);
+                                             : FIRST_SUGGESTED_MATYPE);
         return;
     }
     entry->transitionOnly = true;
-    int sourceMatype = m_materialManager->selectedMatypeForEntry(m_entryId);
-    if (!isComputableMatype(sourceMatype) && m_matypeCombo)
-    {
-        const QVariant sourceData = m_matypeCombo->currentData();
-        sourceMatype = sourceData.isValid() ? sourceData.toInt() : -1;
-    }
-    if (isComputableMatype(sourceMatype))
-    {
-        auto mappings = m_materialManager->materialTransitions();
-        bool replaced = false;
-        for (auto& p : mappings)
-        {
-            if (p.first == sourceMatype)
-            {
-                p.second = value;
-                replaced = true;
-                break;
-            }
-        }
-        if (!replaced)
-            mappings.push_back({sourceMatype, value});
-        m_materialManager->setMaterialTransitions(mappings);
-    }
+    entry->transitionMatype = value;
     m_materialManager->notifyEntryUpdated(entry->id, false);
 }
 

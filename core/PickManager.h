@@ -54,6 +54,7 @@ class CORE_EXPORT PickManager : public QObject
 
     void activate(const QString& domain, const QString& uuid, PickMode mode);
     void deactivate(const QString& domain, const QString& uuid, PickMode mode);
+    void resetProjectState();
 
     QVector<vtkIdType> getIdList(const QString& domain, const QString& uuid, PickMode mode) const;
     QVector<vtkIdType> getIdList(const QString& domain, const QString& uuid, PickMode mode,

@@ -104,6 +104,10 @@ struct MeshModuleControllerService
                                         double zmin, double zmax, const QString& targetArrayName,
                                         int value, const QString& groupName,
                                         QString* errMsg = nullptr) = 0;
+    virtual bool assignDamConstructionLayers(const QSet<MeshIdType>& foundationCellIds,
+                                             const QSet<MeshIdType>& damCellIds,
+                                             int fillLayerCount,
+                                             QString* errMsg = nullptr) = 0;
 
     virtual void setEdgeControlRules(const QVector<EdgeControlRule>& rules) = 0;
     virtual void setFaceControlRules(const QVector<FaceControlRule>& rules) = 0;

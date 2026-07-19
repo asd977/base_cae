@@ -15,6 +15,8 @@
 #include <QFile>
 #include <QIcon>
 #include <QDirIterator>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMessageBox>
 #include <QTimer>
 #include <QVariant>
@@ -234,163 +236,350 @@ void ProjectManager::setNodeDimmed(const QString& uuid, bool dimmed)
     }
 }
 
-void ProjectManager::openProject()
+void ProjectManager::closeCurrentProjectModules()
 {
-    // todo 打开工程文件
-    QFileDialog dialog(nullptr, "选择工程文件");
-    dialog.setNameFilter("Project Files (*.xml)");
-    dialog.setFilter(QDir::Files);
-    QString smprjo_path = "";
-    if (dialog.exec() == QDialog::Accepted)
+    // Modules keep direct pointers to their tree roots. Release them while the
+    // old tree is still valid; clearing the tree first leaves dangling roots.
+    if (auto* postProcessingService =
+            ServiceRegistry::instance().getService<PostProcessingService>())
     {
-        smprjo_path = dialog.selectedFiles().first();
+        postProcessingService->closeProject();
     }
-    if (smprjo_path == "")
-        return;
-    QFileInfo fileInfo(smprjo_path);
-    if (!readProjectManifest(smprjo_path))
+    if (auto* solverService = ServiceRegistry::instance().getService<SolverService>())
     {
-        m_projectName = fileInfo.baseName();
+        solverService->closeProject();
     }
-    if (m_projectName.isEmpty())
+    if (auto* boundaryService =
+            ServiceRegistry::instance().getService<BoundaryConditionsService>())
     {
-        m_projectName = fileInfo.baseName();
+        boundaryService->closeProject();
+    }
+    if (auto* physicalFieldService =
+            ServiceRegistry::instance().getService<PhysicalFieldService>())
+    {
+        physicalFieldService->closeProject();
+    }
+    if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+    {
+        meshService->closeProject();
+    }
+    if (auto* preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>())
+    {
+        preProcessingService->closeProject();
+    }
+}
+
+bool ProjectManager::confirmProjectSwitch(bool* currentProjectSaved)
+{
+    if (currentProjectSaved)
+        *currentProjectSaved = true;
+    if (!m_rootNode || m_projectTempFolder.isEmpty())
+        return true;
+
+    QMessageBox messageBox(QMessageBox::Question, QStringLiteral("打开其他工程"),
+                           QStringLiteral("当前工程将被关闭，是否先保存当前修改？"),
+                           QMessageBox::NoButton);
+    auto* saveButton = messageBox.addButton(QStringLiteral("保存并打开"),
+                                            QMessageBox::AcceptRole);
+    auto* discardButton = messageBox.addButton(QStringLiteral("不保存直接打开"),
+                                               QMessageBox::DestructiveRole);
+    auto* cancelButton = messageBox.addButton(QStringLiteral("取消"), QMessageBox::RejectRole);
+    messageBox.setDefaultButton(saveButton);
+    messageBox.exec();
+
+    if (messageBox.clickedButton() == cancelButton)
+        return false;
+    if (messageBox.clickedButton() == discardButton)
+    {
+        if (currentProjectSaved)
+            *currentProjectSaved = false;
+        return true;
     }
 
-    // The selected XML defines the project root. The enclosing folder may be renamed
-    // independently from the project display name stored in the manifest.
-    m_projectTempFolder = fileInfo.absolutePath();
+    QStringList failedModules;
+    if (!saveCurrentProject(&failedModules))
+    {
+        QMessageBox::warning(
+            nullptr, QStringLiteral("当前工程保存失败"),
+            QStringLiteral("以下内容未能保存，已取消工程切换：\n%1")
+                .arg(failedModules.join(QStringLiteral("、"))));
+        return false;
+    }
+    return true;
+}
+
+bool ProjectManager::saveCurrentProject(QStringList* failedModules)
+{
+    QStringList failures;
+    if (m_projectTempFolder.isEmpty() ||
+        !QDir(m_projectTempFolder).mkpath(
+            QString::fromUtf8(PublicConstants::kProjectDataDirectoryName)))
+    {
+        failures << QStringLiteral("工程目录");
+    }
+    else
+    {
+        if (auto* service = ServiceRegistry::instance().getService<PostProcessingService>();
+            service && !service->saveProject())
+            failures << QStringLiteral("后处理");
+        if (auto* service = ServiceRegistry::instance().getService<PreProcessingService>();
+            service && !service->saveProject())
+            failures << QStringLiteral("几何");
+        if (auto* service = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+            service && !service->saveProject())
+            failures << QStringLiteral("网格");
+        if (auto* service = ServiceRegistry::instance().getService<MaterialManagerService>();
+            service && !service->saveProject())
+            failures << QStringLiteral("材料");
+        if (auto* service = ServiceRegistry::instance().getService<BoundaryConditionsService>();
+            service && !service->saveProject())
+            failures << QStringLiteral("边界条件");
+        if (auto* service = ServiceRegistry::instance().getService<SolverService>();
+            service && !service->saveProject())
+            failures << QStringLiteral("计算分析");
+        if (auto* service = ServiceRegistry::instance().getService<PhysicalFieldService>();
+            service && !service->saveProject())
+            failures << QStringLiteral("约束与荷载");
+        if (!writeProjectManifest())
+            failures << QStringLiteral("工程索引");
+        if (!migrateLegacyProjectDataFiles(m_projectTempFolder))
+            failures << QStringLiteral("工程数据整理");
+        removeLegacyRootSolverFiles(m_projectTempFolder);
+    }
+
+    failures.removeDuplicates();
+    if (failedModules)
+        *failedModules = failures;
+    return failures.isEmpty();
+}
+
+bool ProjectManager::loadCurrentProjectModules(QStringList* failedModules)
+{
+    QStringList failures;
+    if (auto* service = ServiceRegistry::instance().getService<GlobalParameterService>())
+        service->newProject();
+    if (auto* service = ServiceRegistry::instance().getService<PreProcessingService>();
+        service && !service->loadProject())
+        failures << QStringLiteral("几何");
+    if (auto* service = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+        service && !service->loadProject())
+        failures << QStringLiteral("网格");
+    if (auto* service = ServiceRegistry::instance().getService<MaterialManagerService>();
+        service && !service->loadProject())
+        failures << QStringLiteral("材料");
+    if (auto* service = ServiceRegistry::instance().getService<PhysicalFieldService>();
+        service && !service->loadProject())
+        failures << QStringLiteral("约束与荷载");
+    if (auto* service = ServiceRegistry::instance().getService<BoundaryConditionsService>();
+        service && !service->loadProject())
+        failures << QStringLiteral("边界条件");
+    if (auto* service = ServiceRegistry::instance().getService<SolverService>();
+        service && !service->loadProject())
+        failures << QStringLiteral("计算分析");
+    if (auto* service = ServiceRegistry::instance().getService<PostProcessingService>();
+        service && !service->loadProject())
+        failures << QStringLiteral("后处理");
+
+    failures.removeDuplicates();
+    if (failedModules)
+        *failedModules = failures;
+    return failures.isEmpty();
+}
+
+void ProjectManager::applyProjectContext(const QString& manifestPath, const QString& projectName,
+                                         const QVariantMap& globalValues)
+{
+    auto& variables = PublicVariables::instance();
+    const QStringList oldProjectKeys = variables.keysForOwner(QStringLiteral("project_dir"));
+    for (const QString& key : oldProjectKeys)
+        variables.remove(key, QStringLiteral("project_dir"));
+
+    const QFileInfo manifestInfo(manifestPath);
+    m_projectName = projectName.trimmed().isEmpty() ? manifestInfo.baseName()
+                                                    : projectName.trimmed();
+    m_projectTempFolder = manifestInfo.absolutePath();
     m_projectPath = m_projectTempFolder;
-    PublicVariables::instance().set(PublicConstants::kProjectDirectoryKey, m_projectTempFolder,
-                                    "project_dir");
-    QDir projectDir(m_projectTempFolder);
-    const bool foldersReady = projectDir.exists() &&
-                              projectDir.mkpath(QString::fromUtf8(
-                                  PublicConstants::kProjectInputDirectoryName));
-    if (!foldersReady || !migrateLegacyProjectDataFiles() || !migrateLegacySolverFiles())
-    {
-        m_outputService->outputLog("工程文件有误,打开失败");
-        return;
-    }
-    // todo 获取工程文件里面的所有内容 读取各自模块存取的数据 注意:怎么存怎么取!!!
-    m_projectEnginePath = fileInfo.absoluteFilePath();
-    QStringList files /*= JlCompress::extractDir(smprjo_path, m_projectTempFolder)*/;
+    m_projectEnginePath = manifestInfo.absoluteFilePath();
+    variables.set(PublicConstants::kProjectDirectoryKey, m_projectTempFolder,
+                  QStringLiteral("project_dir"));
 
+    for (auto it = globalValues.constBegin(); it != globalValues.constEnd(); ++it)
+    {
+        if (it.key() == QString::fromLatin1(PublicConstants::kProjectDirectoryKey))
+            continue;
+        const QString existingOwner = variables.ownerOf(it.key());
+        const QString owner = !existingOwner.isEmpty()
+                                  ? existingOwner
+                                  : it.key() == QString::fromLatin1(PublicConstants::kMeshDimension)
+                                        ? QStringLiteral("mesh")
+                                        : QStringLiteral("project_dir");
+        variables.set(it.key(), it.value(), owner);
+    }
+}
+
+bool ProjectManager::activateProject(const QString& manifestPath, const QString& projectName,
+                                     const QVariantMap& globalValues,
+                                     QStringList* failedModules)
+{
+    applyProjectContext(manifestPath, projectName, globalValues);
     updateIiidirDatForProject(m_projectTempFolder, false);
 
     m_projectTreeWidget->buildDefaultProjectTree(m_projectName);
     m_rootNode = m_projectTreeWidget->m_rootNode;
     m_projectTreeWidget->blockSignal(true);
-
-    // 按“新建工程”一致的顺序恢复模块，保证树节点顺序稳定。
-    //    if (auto* globalParameterService =
-    //    ServiceRegistry::instance().getService<GlobalParameterService>())
-    //    {
-    //        globalParameterService->newProject();
-    //    }
-
-    if (auto* preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>())
-    {
-        preProcessingService->loadProject();
-    }
-    if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
-    {
-        meshService->loadProject();
-    }
-    if (auto* materialManagerService =
-            ServiceRegistry::instance().getService<MaterialManagerService>())
-    {
-        materialManagerService->loadProject();
-    }
-    if (auto* physicalFieldService = ServiceRegistry::instance().getService<PhysicalFieldService>())
-    {
-        physicalFieldService->loadProject();
-    }
-    if (auto* boundaryConditionsService =
-            ServiceRegistry::instance().getService<BoundaryConditionsService>())
-    {
-        boundaryConditionsService->loadProject();
-    }
-    if (auto* solverService = ServiceRegistry::instance().getService<SolverService>())
-    {
-        solverService->loadProject();
-    }
-    if (auto* postProcessingService =
-            ServiceRegistry::instance().getService<PostProcessingService>())
-    {
-        postProcessingService->loadProject();
-    }
-
-    // 代理模型暂不参与打开恢复。
-    // if (auto* surrogateService =
-    // ServiceRegistry::instance().getService<SurrogateModelService>())
-    // {
-    //     surrogateService->loadProject();
-    // }
-
+    const bool loaded = loadCurrentProjectModules(failedModules);
     m_projectTreeWidget->blockSignal(false);
+    return loaded;
+}
+
+bool ProjectManager::prepareProjectDirectory(const QString& projectDir,
+                                             QString* errorMessage) const
+{
+    const auto fail = [errorMessage](const QString& message)
+    {
+        if (errorMessage)
+            *errorMessage = message;
+        return false;
+    };
+
+    QDir directory(projectDir);
+    if (!directory.exists())
+        return fail(QStringLiteral("工程目录不存在。"));
+    if (!directory.mkpath(QString::fromUtf8(PublicConstants::kProjectInputDirectoryName)))
+        return fail(QStringLiteral("工程目录不可写，无法准备工程数据。"));
+    if (!migrateLegacyProjectDataFiles(projectDir) || !migrateLegacySolverFiles(projectDir))
+        return fail(QStringLiteral("旧版工程数据整理失败，请关闭正在占用工程文件的程序。"));
+
+    const QStringList jsonFiles = {
+        QString::fromUtf8(PublicConstants::kPreProcessingProjectFileName),
+        QString::fromUtf8(PublicConstants::kMeshProjectFileName),
+        QString::fromUtf8(PublicConstants::kMaterialProjectFileName),
+        QString::fromUtf8(PublicConstants::kPhysicalFieldProjectFileName),
+        QString::fromUtf8(PublicConstants::kSolverProjectFileName),
+        QString::fromUtf8(PublicConstants::kPostProcessingProjectFileName)};
+    QJsonObject meshRoot;
+    for (const QString& relativePath : jsonFiles)
+    {
+        QFile file(directory.filePath(relativePath));
+        if (!file.exists())
+            continue;
+        if (!file.open(QIODevice::ReadOnly))
+            return fail(QStringLiteral("无法读取工程数据：%1").arg(relativePath));
+        QJsonParseError parseError{};
+        const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
+        if (parseError.error != QJsonParseError::NoError || !document.isObject())
+            return fail(QStringLiteral("工程数据格式错误：%1").arg(relativePath));
+        if (relativePath == QString::fromUtf8(PublicConstants::kMeshProjectFileName))
+            meshRoot = document.object();
+    }
+
+    if (meshRoot.value(QStringLiteral("has_grid")).toBool(false))
+    {
+        const QString snapshot = meshRoot.value(QStringLiteral("snapshot_file"))
+                                     .toString(QString::fromUtf8(
+                                         PublicConstants::kMeshSnapshotFileName));
+        const QFileInfo snapshotInfo(directory.filePath(snapshot));
+        if (!snapshotInfo.exists() || snapshotInfo.size() <= 0)
+            return fail(QStringLiteral("工程记录了网格，但网格数据文件缺失。"));
+    }
+    return true;
+}
+
+void ProjectManager::openProject()
+{
+    QFileDialog dialog(nullptr, "选择工程文件");
+    dialog.setNameFilter("Project Files (*.xml)");
+    dialog.setFilter(QDir::Files);
+    if (dialog.exec() != QDialog::Accepted || dialog.selectedFiles().isEmpty())
+        return;
+
+    const QFileInfo targetInfo(dialog.selectedFiles().first());
+    const QString targetManifest = targetInfo.absoluteFilePath();
+    const QString currentCanonical = QFileInfo(m_projectEnginePath).canonicalFilePath();
+    const QString targetCanonical = targetInfo.canonicalFilePath();
+    if (!currentCanonical.isEmpty() && currentCanonical == targetCanonical)
+    {
+        QMessageBox::information(nullptr, QStringLiteral("工程已打开"),
+                                 QStringLiteral("选择的就是当前工程。"));
+        return;
+    }
+
+    QString targetName;
+    QVariantMap targetGlobals;
+    if (!readProjectManifest(targetManifest, &targetName, &targetGlobals))
+    {
+        QMessageBox::warning(nullptr, QStringLiteral("无法打开工程"),
+                             QStringLiteral("选择的工程索引文件无法读取或格式不正确。"));
+        return;
+    }
+
+    bool currentProjectSaved = true;
+    if (!confirmProjectSwitch(&currentProjectSaved))
+        return;
+
+    QString prepareError;
+    if (!prepareProjectDirectory(targetInfo.absolutePath(), &prepareError))
+    {
+        QMessageBox::warning(nullptr, QStringLiteral("无法打开工程"), prepareError);
+        return;
+    }
+
+    const bool hadCurrentProject = m_rootNode && !m_projectEnginePath.isEmpty();
+    const QString previousManifest = m_projectEnginePath;
+    const QString previousName = m_projectName;
+    QVariantMap previousGlobals =
+        PublicVariables::instance().snapshotForOwner(QStringLiteral("project_dir"));
+    const QVariantMap meshGlobals =
+        PublicVariables::instance().snapshotForOwner(QStringLiteral("mesh"));
+    for (auto it = meshGlobals.constBegin(); it != meshGlobals.constEnd(); ++it)
+        previousGlobals.insert(it.key(), it.value());
+
+    closeCurrentProjectModules();
+    QStringList failedModules;
+    if (activateProject(targetManifest, targetName, targetGlobals, &failedModules))
+    {
+        if (m_outputService)
+            m_outputService->outputLog(QStringLiteral("已打开工程：%1").arg(targetInfo.absolutePath()));
+        return;
+    }
+
+    closeCurrentProjectModules();
+    QStringList rollbackFailures;
+    bool restored = false;
+    if (hadCurrentProject && QFileInfo::exists(previousManifest))
+    {
+        QString ignoredError;
+        prepareProjectDirectory(QFileInfo(previousManifest).absolutePath(), &ignoredError);
+        restored = activateProject(previousManifest, previousName, previousGlobals,
+                                   &rollbackFailures);
+    }
+
+    QString message = QStringLiteral("新工程的以下内容加载失败：%1。")
+                          .arg(failedModules.join(QStringLiteral("、")));
+    if (restored)
+    {
+        message += currentProjectSaved
+                       ? QStringLiteral("\n已恢复原工程。")
+                       : QStringLiteral("\n已从磁盘恢复原工程，未保存的修改无法恢复。");
+    }
+    else
+    {
+        message += QStringLiteral("\n原工程也未能恢复，请重新打开工程。");
+        if (!rollbackFailures.isEmpty())
+            message += QStringLiteral("\n恢复失败内容：%1。")
+                           .arg(rollbackFailures.join(QStringLiteral("、")));
+    }
+    QMessageBox::warning(nullptr, QStringLiteral("工程切换失败"), message);
 }
 
 void ProjectManager::saveProject()
 {
-    if (m_projectTempFolder.isEmpty())
-        return;
-
-    if (!QDir(m_projectTempFolder).mkpath(
-            QString::fromUtf8(PublicConstants::kProjectDataDirectoryName)))
+    QStringList failedModules;
+    if (!saveCurrentProject(&failedModules) && m_outputService)
     {
-        qWarning() << "failed to create project data directory";
-        return;
+        m_outputService->outputLog(
+            QStringLiteral("工程保存失败：%1").arg(failedModules.join(QStringLiteral("、"))));
     }
-
-    if (auto* postProcessingService =
-            ServiceRegistry::instance().getService<PostProcessingService>())
-    {
-        postProcessingService->saveProject();
-    }
-
-    if (auto* preProcessingService = ServiceRegistry::instance().getService<PreProcessingService>())
-    {
-        preProcessingService->saveProject();
-    }
-
-    if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
-    {
-        meshService->saveProject();
-    }
-
-    if (auto* materialManagerService =
-            ServiceRegistry::instance().getService<MaterialManagerService>())
-    {
-        materialManagerService->saveProject();
-    }
-
-    if (auto* boundaryConditionsService =
-            ServiceRegistry::instance().getService<BoundaryConditionsService>())
-    {
-        boundaryConditionsService->saveProject();
-    }
-
-    if (auto* solverService = ServiceRegistry::instance().getService<SolverService>())
-    {
-        solverService->saveProject();
-    }
-
-    if (auto* physicalFieldService = ServiceRegistry::instance().getService<PhysicalFieldService>())
-    {
-        physicalFieldService->saveProject();
-    }
-
-    // 代理模型暂不参与工程保存。
-    // if (auto* surrogateService =
-    // ServiceRegistry::instance().getService<SurrogateModelService>())
-    // {
-    //     surrogateService->saveProject();
-    // }
-
-    writeProjectManifest();
-    migrateLegacyProjectDataFiles();
-    removeLegacyRootSolverFiles();
 }
 
 void ProjectManager::newProject()
@@ -407,20 +596,26 @@ void ProjectManager::newProject()
         return;
     }
 
-    m_projectName = dialog.projectName();
-    m_projectPath = dialog.projectPath();
-    if (m_projectName == "" || m_projectPath == "")
+    const QString projectName = dialog.projectName();
+    const QString projectPath = dialog.projectPath();
+    if (projectName.isEmpty() || projectPath.isEmpty())
     {
         return;
     }
 
-    m_projectEnginePath =
-        QDir(QDir(m_projectPath).filePath(m_projectName)).filePath(m_projectName + ".xml");
-    if (!createProjectFilesFolder(true))
+    if (!confirmProjectSwitch(nullptr))
+        return;
+
+    if (!createProjectFilesFolder(projectPath, projectName, true))
     {
         return;
     }
-    m_projectTreeWidget->buildDefaultProjectTree(m_projectName);
+
+    const QString projectDir = QDir(projectPath).filePath(projectName);
+    const QString manifestPath = QDir(projectDir).filePath(projectName + QStringLiteral(".xml"));
+    closeCurrentProjectModules();
+    applyProjectContext(manifestPath, projectName, QVariantMap{});
+    m_projectTreeWidget->buildDefaultProjectTree(projectName);
     m_rootNode = m_projectTreeWidget->m_rootNode;
     m_projectTreeWidget->blockSignal(true);
     if (auto* globalParameterService =
@@ -472,7 +667,15 @@ void ProjectManager::newProject()
     // }
 
     m_projectTreeWidget->blockSignal(false);
-    QTreeWidget* treeWidget = m_projectTreeWidget->m_treeWidget;
+
+    QStringList failedModules;
+    if (!saveCurrentProject(&failedModules))
+    {
+        QMessageBox::warning(
+            nullptr, QStringLiteral("工程创建未完成"),
+            QStringLiteral("工程已打开，但以下内容未能初始保存：%1")
+                .arg(failedModules.join(QStringLiteral("、"))));
+    }
 }
 
 void ProjectManager::exportCurDatabase()
@@ -487,7 +690,7 @@ void ProjectManager::exitProject()
 
 bool ProjectManager::isHaveProject()
 {
-    return true;
+    return m_rootNode != nullptr && !m_projectTempFolder.isEmpty();
 }
 
 void ProjectManager::onImportGeomAct()
@@ -579,36 +782,22 @@ void ProjectManager::onEntityGridAct()
 
 bool ProjectManager::removeDir(QString dirPath)
 {
-    QDir dir(dirPath);
+    QDir dir(QDir::cleanPath(dirPath));
     if (!dir.exists())
         return true;
-    dir.setFilter(QDir::AllEntries | QDir::NoDotAndDotDot);
-    QFileInfoList fileList = dir.entryInfoList();
-    for (QFileInfo file : fileList)
-    {
-        if (file.isFile())
-        {
-            file.dir().remove(file.fileName());
-        }
-        else
-        {
-            removeDir(file.absoluteFilePath());
-        }
-    }
-    return dir.rmpath(dir.absolutePath());
+    return dir.removeRecursively();
 }
 
-bool ProjectManager::createProjectFilesFolder(bool askOverwrite)
+bool ProjectManager::createProjectFilesFolder(const QString& projectPath,
+                                              const QString& projectName,
+                                              bool askOverwrite)
 {
-    if (m_projectPath.isEmpty() || m_projectName.isEmpty())
+    if (projectPath.isEmpty() || projectName.isEmpty())
     {
         return false;
     }
 
-    const QString tempPath = QDir(m_projectPath).filePath(m_projectName);
-    m_projectTempFolder = tempPath;
-    PublicVariables::instance().set(PublicConstants::kProjectDirectoryKey, m_projectTempFolder,
-                                    "project_dir");
+    const QString tempPath = QDir(projectPath).filePath(projectName);
 
     QDir dir(tempPath);
     if (dir.exists())
@@ -625,6 +814,9 @@ bool ProjectManager::createProjectFilesFolder(bool askOverwrite)
             }
             if (!removeDir(tempPath))
             {
+                QMessageBox::critical(
+                    nullptr, QStringLiteral("无法覆盖工程"),
+                    QStringLiteral("无法清理已有工程目录，请关闭正在占用其中文件的程序后重试。"));
                 return false;
             }
         }
@@ -635,27 +827,31 @@ bool ProjectManager::createProjectFilesFolder(bool askOverwrite)
             {
                 return false;
             }
-            return migrateLegacyProjectDataFiles() && migrateLegacySolverFiles();
+            return migrateLegacyProjectDataFiles(tempPath) &&
+                   migrateLegacySolverFiles(tempPath);
         }
     }
 
-    if (!dir.mkpath(tempPath))
+    if (!QDir().mkpath(tempPath))
+    {
+        QMessageBox::critical(nullptr, QStringLiteral("无法创建工程"),
+                              QStringLiteral("无法重新创建工程目录：\n%1").arg(tempPath));
+        return false;
+    }
+
+    QDir projectDir(tempPath);
+    if (!projectDir.mkpath(
+            QString::fromUtf8(PublicConstants::kProjectInputDirectoryName)))
     {
         return false;
     }
 
-    if (!dir.mkpath(dir.filePath(
-            QString::fromUtf8(PublicConstants::kProjectInputDirectoryName))))
-    {
-        return false;
-    }
-
-    return migrateLegacyProjectDataFiles() && migrateLegacySolverFiles();
+    return migrateLegacyProjectDataFiles(tempPath) && migrateLegacySolverFiles(tempPath);
 }
 
-bool ProjectManager::migrateLegacySolverFiles() const
+bool ProjectManager::migrateLegacySolverFiles(const QString& projectDir) const
 {
-    const QDir project(m_projectTempFolder);
+    const QDir project(projectDir);
     const QString legacyName = QString::fromLatin1(PublicConstants::kLegacyInputDirectoryName);
     const QString inputName = QString::fromUtf8(PublicConstants::kAnalysisInputDirectoryName);
     const QString projectInput = project.filePath(
@@ -702,13 +898,13 @@ bool ProjectManager::migrateLegacySolverFiles() const
         }
     }
 
-    removeLegacyRootSolverFiles();
+    removeLegacyRootSolverFiles(projectDir);
     return QDir().mkpath(projectInput);
 }
 
-void ProjectManager::removeLegacyRootSolverFiles() const
+void ProjectManager::removeLegacyRootSolverFiles(const QString& projectDir) const
 {
-    const QDir project(m_projectTempFolder);
+    const QDir project(projectDir);
     const QStringList names = {
         QStringLiteral("IFILL.DAT"),      QStringLiteral("ISEEP.DAT"),
         QStringLiteral("ICAVE.DAT"),      QStringLiteral("ISLOP.DAT"),
@@ -719,9 +915,9 @@ void ProjectManager::removeLegacyRootSolverFiles() const
         QFile::remove(project.filePath(name));
 }
 
-bool ProjectManager::migrateLegacyProjectDataFiles() const
+bool ProjectManager::migrateLegacyProjectDataFiles(const QString& projectDir) const
 {
-    const QDir project(m_projectTempFolder);
+    const QDir project(projectDir);
     const QStringList relativePaths = {
         QString::fromUtf8(PublicConstants::kPostProcessingProjectFileName),
         QString::fromUtf8(PublicConstants::kPreProcessingProjectFileName),
@@ -815,23 +1011,35 @@ bool ProjectManager::writeProjectManifest() const
     return true;
 }
 
-bool ProjectManager::readProjectManifest(const QString& manifestPath)
+bool ProjectManager::readProjectManifest(const QString& manifestPath, QString* projectName,
+                                         QVariantMap* globalValues) const
 {
+    if (projectName)
+        projectName->clear();
+    if (globalValues)
+        globalValues->clear();
+
     QFile file(manifestPath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
         return false;
 
     QXmlStreamReader xml(&file);
+    QString documentRoot;
     while (!xml.atEnd())
     {
         xml.readNext();
         if (xml.isStartElement())
         {
-            if (xml.name().toString() == "Name")
+            const QString elementName = xml.name().toString();
+            if (documentRoot.isEmpty())
+                documentRoot = elementName;
+            if ((elementName == QStringLiteral("Name") ||
+                 elementName == QStringLiteral("ProjectName")) &&
+                projectName && projectName->isEmpty())
             {
-                m_projectName = xml.readElementText().trimmed();
+                *projectName = xml.readElementText().trimmed();
             }
-            else if (xml.name().toString() == "Value")
+            else if (elementName == QStringLiteral("Value"))
             {
                 const auto attrs = xml.attributes();
                 const QString key = attrs.value("key").toString();
@@ -842,20 +1050,20 @@ bool ProjectManager::readProjectManifest(const QString& manifestPath)
                     val = text.toInt();
                 else if (type == "double")
                     val = text.toDouble();
-                const QString owner = PublicVariables::instance().ownerOf(key);
-                if (!owner.isEmpty())
-                {
-                    PublicVariables::instance().set(key, val, owner);
-                }
-                else
-                {
-                    PublicVariables::instance().set(key, val, "project_dir");
-                }
+                else if (type == "bool")
+                    val = text.compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0 ||
+                          text == QStringLiteral("1");
+                if (globalValues && !key.isEmpty())
+                    globalValues->insert(key, val);
             }
         }
     }
 
-    return !xml.hasError();
+    if (projectName && projectName->isEmpty())
+        *projectName = QFileInfo(manifestPath).baseName();
+    const bool supportedRoot = documentRoot == QStringLiteral("SmartCAEProject") ||
+                               documentRoot == QStringLiteral("Project");
+    return supportedRoot && !xml.hasError();
 }
 
 bool ProjectManager::saveAllProModelData(const QString& fileName)

@@ -18,6 +18,7 @@ class PhysicalField : public QObject, public PhysicalFieldService
 
     BasePage* getPhysicalFiledSettingWidget();
     void newProject();
+    void closeProject() override;
     bool saveProject() override;
     bool loadProject() override;
 
@@ -43,7 +44,7 @@ class PhysicalField : public QObject, public PhysicalFieldService
     void addBeamLoadPage();
 
   private:
-    ProjectNode* m_node;
+    ProjectNode* m_node = nullptr;
     void initAction();
     void intitTreeMenu();
 

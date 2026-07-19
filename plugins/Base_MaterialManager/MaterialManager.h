@@ -35,7 +35,14 @@ class MaterialManager : public QObject, public MaterialManagerService
     void showMaterialTransitionDialog() override;
     QVector<QPair<int, int>> materialTransitions() const override;
     void setMaterialTransitions(const QVector<QPair<int, int>>& transitions) override;
+    QMap<int, QString> assignedMaterialLabels() const override;
+    QMap<int, QString> calculationMaterialLabels() const override;
+    QMap<int, QString> damStaticMaterialLabels() const override;
+    QMap<int, QString> damWetMaterialLabels(int sourceMatype) const override;
+    QMap<int, QString> damDynamicMaterialLabels(int sourceMatype) const override;
+    bool setDamDynamicSourceMatype(int dynamicMatype, int sourceMatype) override;
     bool generateIMATFile() override;
+    bool hasConfiguredMaterials() const override;
 
     QString addMaterialToModel(const QString& modelKey, bool addToProjectTree = true);
 
@@ -44,6 +51,10 @@ class MaterialManager : public QObject, public MaterialManagerService
 
     MaterialModel* findModel(const QString& key);
     MaterialEntry* findEntry(const QString& id, MaterialModel** outModel = nullptr);
+    QString makeUniqueMaterialName(const QString& requestedName,
+                                   const QString& excludeEntryId = QString()) const;
+    bool changeEntryModel(const QString& entryId, const QString& targetModelKey,
+                          QString* error = nullptr);
 
     void notifyLibraryChanged(bool refreshProjectTree = true);
     void notifyEntryUpdated(const QString& entryId, bool nameChanged);
@@ -97,8 +108,10 @@ class MaterialManager : public QObject, public MaterialManagerService
     void setupTreeWidget();
     void loadDefaultLibrary();
     void ensureEntryIds();
+    void normalizeMaterialNames();
     void rebuildProjectTree();
     void clearProjectTree();
+    void clearEntryProjectState(const QString& entryId);
     // 原 highlightMatypes 扩展为 3 态输入（Selected / Preview / PreDelete）
     void highlightMatypes(const QString& entryId, const QSet<int>& matypes, int selectedMatype,
                           int previewMatype, int preDeleteMatype);

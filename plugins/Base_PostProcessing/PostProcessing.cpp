@@ -22,6 +22,7 @@
 #include <QJsonObject>
 #include <QLineEdit>
 #include <QMenu>
+#include <QSaveFile>
 #include <QSharedPointer>
 #include <QThread>
 #include <QToolButton>
@@ -60,6 +61,9 @@ const QVector<PostNodeSpec>& postNodeSpecs()
         {"等值面", PublicConstants::kPagePostProcessIsosurface},
         {"等值面分割", PublicConstants::kPagePostProcessIsosurfaceSegmentation},
         {"曲线", PublicConstants::kPagePostProcessCurve},
+        {"动画", PublicConstants::kPagePostProcessAnimation},
+        {"派生值", PublicConstants::kPagePostProcessDerivative},
+        {"洞室变形轮廓图", PublicConstants::kPagePostProcessContourReader},
     };
     return specs;
 }
@@ -408,8 +412,9 @@ void PostProcessing::prepareResultRootAsync(const QString& projectDir, const QSt
                 *summary = PostResultAutoPrepare::preparedResultSummary(projectPath, rootPath);
         });
 
+    connect(worker, &QThread::finished, worker, &QObject::deleteLater);
     connect(worker, &QThread::finished, this,
-            [this, worker, projectPath, rootPath, key, prepared, summary]()
+            [this, projectPath, rootPath, key, prepared, summary]()
             {
                 m_preparingResultRoots.remove(key);
                 const bool prepareAgain = m_pendingResultRoots.remove(key);
@@ -443,7 +448,6 @@ void PostProcessing::prepareResultRootAsync(const QString& projectDir, const QSt
                     qWarning().noquote() << QStringLiteral(
                         "__RAW__计算完成，但没有生成可用的后处理结果。");
                 }
-                worker->deleteLater();
                 if (prepareAgain)
                     prepareResultRootAsync(projectPath, rootPath);
             });
@@ -544,15 +548,15 @@ void PostProcessing::removeRootFromTree()
     if (!m_root)
         return;
 
-    if (QTreeWidget* tree = m_root->treeWidget())
+    if (auto* parent = dynamic_cast<ProjectNode*>(m_root->parent()))
+    {
+        parent->removeChild(m_root);
+    }
+    else if (QTreeWidget* tree = m_root->treeWidget())
     {
         const int index = tree->indexOfTopLevelItem(m_root);
         if (index >= 0)
             tree->takeTopLevelItem(index);
-    }
-    else if (QTreeWidgetItem* parent = m_root->parent())
-    {
-        parent->removeChild(m_root);
     }
 }
 
@@ -668,12 +672,15 @@ void PostProcessing::closeProject()
 
 bool PostProcessing::writeJsonFile(const QString& filePath, const QJsonObject& obj)
 {
-    QFile f(filePath);
-    if (!f.open(QIODevice::WriteOnly))
+    QSaveFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly))
         return false;
-    QJsonDocument doc(obj);
-    f.write(doc.toJson(QJsonDocument::Indented));
-    return true;
+
+    const QJsonDocument document(obj);
+    if (file.write(document.toJson(QJsonDocument::Indented)) < 0)
+        return false;
+
+    return file.commit();
 }
 
 bool PostProcessing::readJsonFile(const QString& filePath, QJsonObject& out)

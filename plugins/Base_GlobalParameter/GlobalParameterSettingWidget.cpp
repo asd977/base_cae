@@ -32,7 +32,7 @@ void GlobalParameterSettingWidget::setupUiBehavior()
     Q_ASSERT(table);
 
     table->setColumnCount(2);
-    table->setHorizontalHeaderLabels({tr("Key"), tr("Value")});
+    table->setHorizontalHeaderLabels({tr("参数键名"), tr("参数值")});
     table->horizontalHeader()->setStretchLastSection(true);
     table->verticalHeader()->setVisible(false);
     table->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -201,7 +201,7 @@ void GlobalParameterSettingWidget::onItemChanged(QTableWidgetItem* item)
             if (!PublicVariables::instance().registerKey(newKey, m_pageUuid, &conflict))
             {
                 QMessageBox::warning(this, tr("键名冲突"),
-                                     tr("键 [%1] 已被 UUID=%2 使用。")
+                                     tr("参数键名 [%1] 已被页面标识 %2 使用。")
                                          .arg(newKey, conflict.isEmpty() ? tr("未知") : conflict));
                 m_blockItemChanged = true;
                 item->setText(oldKey);
@@ -227,7 +227,7 @@ void GlobalParameterSettingWidget::onItemChanged(QTableWidgetItem* item)
             if (!PublicVariables::instance().renameKey(oldKey, newKey, m_pageUuid, &conflict))
             {
                 QMessageBox::warning(this, tr("键名冲突"),
-                                     tr("键 [%1] 已被 UUID=%2 使用，或原键不属于本页面。")
+                                     tr("参数键名 [%1] 已被页面标识 %2 使用，或原键不属于本页面。")
                                          .arg(newKey, conflict.isEmpty() ? tr("未知") : conflict));
                 m_blockItemChanged = true;
                 item->setText(oldKey);

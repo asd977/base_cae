@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version='1.0' encoding='UTF-8'?>
 <ui version="4.0">
  <class>SolverSettingWidget</class>
  <widget class="QWidget" name="SolverSettingWidget">
@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>648</width>
-    <height>598</height>
+    <width>760</width>
+    <height>620</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -15,32 +15,136 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayoutRoot">
    <property name="leftMargin">
-    <number>0</number>
+    <number>18</number>
    </property>
    <property name="topMargin">
-    <number>0</number>
+    <number>16</number>
    </property>
    <property name="rightMargin">
-    <number>0</number>
+    <number>18</number>
    </property>
    <property name="bottomMargin">
-    <number>0</number>
+    <number>16</number>
+   </property>
+   <property name="spacing">
+    <number>12</number>
    </property>
    <item>
     <widget class="QLabel" name="pageHeaderLabel">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
      <property name="text">
-      <string>计算分析管理</string>
+      <string>计算分析</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="overviewDescriptionLabel">
+     <property name="text">
+      <string>创建和管理当前工程的计算分析。</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
      </property>
      <property name="visible">
       <bool>false</bool>
      </property>
     </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="createAnalysisGroup">
+     <property name="title">
+      <string>新建分析</string>
+     </property>
+     <layout class="QGridLayout" name="createAnalysisLayout">
+      <property name="horizontalSpacing">
+       <number>10</number>
+      </property>
+      <property name="verticalSpacing">
+       <number>10</number>
+      </property>
+      <item row="0" column="0">
+       <widget class="QPushButton" name="seepageButton">
+        <property name="text">
+         <string>渗流分析</string>
+        </property>
+        <property name="minimumHeight">
+         <number>38</number>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QPushButton" name="damButton">
+        <property name="text">
+         <string>土石坝分析</string>
+        </property>
+        <property name="minimumHeight">
+         <number>38</number>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QPushButton" name="slopeButton">
+        <property name="text">
+         <string>边坡分析</string>
+        </property>
+        <property name="minimumHeight">
+         <number>38</number>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QPushButton" name="caveButton">
+        <property name="text">
+         <string>洞室开挖工程</string>
+        </property>
+        <property name="minimumHeight">
+         <number>38</number>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0" colspan="2">
+       <widget class="QPushButton" name="blockButton">
+        <property name="text">
+         <string>块体稳定分析</string>
+        </property>
+        <property name="minimumHeight">
+         <number>38</number>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="analysisOverviewGroup">
+     <property name="title">
+      <string>当前工程</string>
+     </property>
+     <layout class="QVBoxLayout" name="analysisOverviewLayout">
+      <item>
+       <widget class="QLabel" name="analysisSummaryLabel">
+        <property name="text">
+         <string>共 0 个分析</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
    </item>
   </layout>
  </widget>

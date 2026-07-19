@@ -32,6 +32,8 @@ class CurveSettingsWidget : public BasePage
     QString selectedResultDirectoryPath() const;
     QString selectedTraceFilePath() const;
     QStringList selectedYFields() const;
+    void updateLoopAvailability();
+    void setStatus(const QString& text, bool error = false);
 
   private:
     Ui::CurveSettingsWidget* ui = nullptr;

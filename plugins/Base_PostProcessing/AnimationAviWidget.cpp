@@ -484,14 +484,15 @@ bool AnimationAviWidget::exportAVI(const QString& fileName, double fps)
 
 void AnimationAviWidget::on_saveAviButton_clicked()
 {
-    QString fn = QFileDialog::getSaveFileName(this, "保存 AVI", QString(), "AVI (*.avi)");
+    QString fn = QFileDialog::getSaveFileName(this, "保存动画视频", QString(),
+                                              "动画视频文件 (*.avi)");
     if (fn.isEmpty())
         return;
 
     if (exportAVI(fn, ui->fpsSpin->value()))
-        QMessageBox::information(this, "完成", "AVI 导出成功。");
+        QMessageBox::information(this, "完成", "动画视频导出成功。");
     else
-        QMessageBox::warning(this, "失败", "AVI 导出失败。");
+        QMessageBox::warning(this, "失败", "动画视频导出失败。");
 }
 
 void AnimationAviWidget::on_loadPushButton_clicked()
