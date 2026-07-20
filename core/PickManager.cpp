@@ -95,8 +95,6 @@ struct RgbColor
 static const RgbColor kPickNormalColor   = {199, 199, 199, 255};
 static const RgbColor kPickPreviewColor  = {255, 153, 0, 255};
 static const RgbColor kPickSelectedColor  = {64, 170, 64, 255};
-constexpr unsigned char kSelectionContextAlpha = 56;
-constexpr double kSelectionContextOpacity = 56.0 / 255.0;
 constexpr double kDomainContextOpacity = 0.20;
 static const RgbColor kDomainAppliedColor   = {103, 156, 193, 255};
 static const RgbColor kDomainSelectedColor  = {40, 121, 175, 255};
@@ -1124,64 +1122,9 @@ void PickManager::restoreSelectionContextOpacity()
 
 void PickManager::updateSelectionContextOpacity()
 {
-    bool hasSelection = false;
-    if (!m_currentDomain.isEmpty() && !m_currentUUid.isEmpty())
-    {
-        const QString& domain = m_currentDomain;
-        const QString& uuid = m_currentUUid;
-        if (m_pickMode == PickMode::Node)
-        {
-            hasSelection =
-                !m_pointsSolidByDomainUuid.value(domain).value(uuid).isEmpty() ||
-                !m_pointsLineByDomainUuid.value(domain).value(uuid).isEmpty() ||
-                !m_previewPointsSolidByDomainUuid.value(domain).value(uuid).isEmpty() ||
-                !m_previewPointsLineByDomainUuid.value(domain).value(uuid).isEmpty();
-        }
-        else if (m_pickMode == PickMode::Edge)
-        {
-            hasSelection =
-                !m_edgesSolidByDomainUuid.value(domain).value(uuid).isEmpty() ||
-                !m_edgesLineByDomainUuid.value(domain).value(uuid).isEmpty() ||
-                !m_previewEdgesSolidByDomainUuid.value(domain).value(uuid).isEmpty() ||
-                !m_previewEdgesLineByDomainUuid.value(domain).value(uuid).isEmpty();
-        }
-    }
-
-    if (!hasSelection)
-    {
-        restoreSelectionContextOpacity();
-        return;
-    }
-
-    const auto fade = [](vtkProp* currentProp, vtkWeakPointer<vtkProp>& savedProp,
-                         double& savedOpacity, bool& active)
-    {
-        if (active && savedProp.GetPointer() != currentProp)
-        {
-            if (auto* oldActor = vtkActor::SafeDownCast(savedProp.GetPointer()))
-                oldActor->GetProperty()->SetOpacity(savedOpacity);
-            savedProp = nullptr;
-            savedOpacity = 1.0;
-            active = false;
-        }
-
-        auto* actor = vtkActor::SafeDownCast(currentProp);
-        if (!actor)
-            return;
-
-        if (!active)
-        {
-            savedProp = currentProp;
-            savedOpacity = actor->GetProperty()->GetOpacity();
-            active = true;
-        }
-        actor->GetProperty()->SetOpacity(savedOpacity * kSelectionContextOpacity);
-    };
-
-    fade(m_solidProp, m_contextOpacitySolidProp, m_savedContextOpacitySolid,
-         m_contextOpacitySolidActive);
-    fade(m_lineProp, m_contextOpacityLineProp, m_savedContextOpacityLine,
-         m_contextOpacityLineActive);
+    // 点、边、面选择用于约束和荷载等设置，只突出选中对象，不弱化其余网格。
+    // 需要查看内部区域的透明显示由 Domain 模式单独控制。
+    restoreSelectionContextOpacity();
 }
 
 void PickManager::applyDomainContextStyle()
@@ -2720,8 +2663,7 @@ void PickManager::rebuildFaceColorForActive()
         return;
     }
 
-    RgbColor normal = kPickNormalColor;
-    normal.a = kSelectionContextAlpha;
+    const RgbColor normal = kPickNormalColor;
     const RgbColor previewColor = kPickPreviewColor;
     const RgbColor selectedColor = kPickSelectedColor;
 
@@ -2809,6 +2751,18 @@ void PickManager::rebuildDomainHighlightActors()
         }
         return;
     }
+
+    const auto isMaterialDomain = [](const DomainKey& key)
+    {
+        return domainKeyIsValidForDisplay(key) &&
+               key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0;
+    };
+    const bool isMaterialSelection =
+        std::any_of(applied.cbegin(), applied.cend(), isMaterialDomain) ||
+        isMaterialDomain(selected) || isMaterialDomain(preview) || isMaterialDomain(preDelete);
+    const bool useTransparentContext =
+        m_currentDomain.compare(QStringLiteral("CaveExcavationBody"), Qt::CaseInsensitive) == 0 ||
+        isMaterialSelection;
 
     QSet<vtkIdType> appliedSolidCells;
     QSet<vtkIdType> appliedLineCells;
@@ -3009,7 +2963,10 @@ void PickManager::rebuildDomainHighlightActors()
 
     m_domainFocusActor->SetVisibility(hasSolidFocus);
     m_domainLineFocusActor->SetVisibility(hasLineFocus);
-    applyDomainContextStyle();
+    if (useTransparentContext)
+        applyDomainContextStyle();
+    else
+        restoreDomainContextStyle();
 
     m_domainColoringActive = true;
     m_visual->render();

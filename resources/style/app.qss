@@ -1,4 +1,4 @@
-﻿/*
+/*
  * POWERCHINA-GEOCAE balanced light theme
  *
  * Direction:
@@ -60,6 +60,16 @@ MaterialTransitionPage#materialTransitionPage {
 
 QScrollArea#dashboardScrollArea QWidget#qt_scrollarea_viewport {
     background: #ffffff;
+}
+
+
+/* Mesh quality page uses the current theme's editable/content surface.
+   The C++ page does not hard-code any color; QPalette::Base changes with the theme. */
+MeshQualityCheckWidget#meshQualityCheckPage,
+QScrollArea#meshQualityCheckScrollArea,
+QWidget#meshQualityCheckViewport,
+QWidget#meshQualityCheckContent {
+    background-color: palette(base);
 }
 
 /* -------------------------------------------------------------------------

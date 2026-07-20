@@ -3,6 +3,26 @@
     ${CMAKE_SOURCE_DIR}/res.qrc
 )
 
+# Windows Explorer/taskbar executable icon. OUTPUT_NAME only changes the file
+# name; the .ico still has to be compiled into the internal CMake target.
+if(WIN32)
+    set(CAE_APP_ICON "${CMAKE_SOURCE_DIR}/resources/icon.ico")
+    if(EXISTS "${CAE_APP_ICON}")
+        # Keep forward slashes in the generated .rc file. A native Windows path
+        # contains sequences such as "\r" in "\resources", which RC parses as
+        # an escape character and turns into a carriage return.
+        file(TO_CMAKE_PATH "${CAE_APP_ICON}" CAE_APP_ICON_RC)
+        configure_file(
+            "${CMAKE_CURRENT_SOURCE_DIR}/app.rc.in"
+            "${CMAKE_CURRENT_BINARY_DIR}/app.rc"
+            @ONLY
+        )
+        target_sources(CAE_BASE PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/app.rc")
+    else()
+        message(WARNING "Application icon was not found: ${CAE_APP_ICON}")
+    endif()
+endif()
+
 target_include_directories(CAE_BASE
     PRIVATE
         ${CMAKE_SOURCE_DIR}/core

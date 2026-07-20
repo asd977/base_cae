@@ -16,6 +16,7 @@ class vtkDataSet;
 class vtkUnstructuredGrid;
 class GridEditingWidget;
 class MeshImportSettingsWidget;
+class MeshQualityCheckWidget;
 
 class MeshModuleController : public QObject, public MeshModuleControllerService
 {
@@ -87,12 +88,16 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     void onCtrlSurface();
     void onCtrlEdge();
     void onQualityStd();
+    void runQualityCheck();
+    void stopQualityCheck();
+    void updateQualityCheckContext(bool useSuggestedObject);
+    int suggestedQualityObjectType() const;
     void onMeshEdit();
     void onMeshGrouping();
     void openImportSettingsPage(bool setCurrent = true);
     void openGridDisplayControlPage();
 
-    void displayCurrentGrid(); // 只显示 m_importedGrid
+    void displayCurrentGrid(bool fitView = false); // 只显示 m_importedGrid
 
     void splitGridByDim(vtkUnstructuredGrid* src, vtkSmartPointer<vtkUnstructuredGrid>& outLine,
                         vtkSmartPointer<vtkUnstructuredGrid>& outNonLine);
@@ -111,6 +116,7 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     VisualWidgetService* m_visualWidgetService = nullptr;
     GridEditingWidget* m_gridEditingWidget = nullptr;
     MeshImportSettingsWidget* m_importSettingsWidget = nullptr;
+    MeshQualityCheckWidget* m_qualityCheckWidget = nullptr;
     int m_verticalAxis = 2;
 
     vtkSmartPointer<vtkMapper> m_previewSurfaceMapper;

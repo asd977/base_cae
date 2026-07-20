@@ -7,6 +7,7 @@
 #include <MeshGlobalMeshingWidget.h>
 #include <MeshGroupingWidget.h>
 #include <MeshImportSettingsWidget.h>
+#include <MeshQualityCheckWidget.h>
 #include <MeshSingleMeshingWidget.h>
 #include <MeshVolumeControlWidget.h>
 #include <PickManager.h>
@@ -16,6 +17,7 @@
 #include <SolverFilePaths.h>
 #include <ServiceRegistry.h>
 #include <qfiledialog.h>
+#include <services/OutputService.h>
 #include <services/ProjectManagerService.h>
 #include <services/VisualWidgetService.h>
 #include <vtkActor.h>
@@ -46,6 +48,7 @@
 #include <QByteArray>
 #include <QColor>
 #include <QCoreApplication>
+#include <QDialog>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -55,10 +58,12 @@
 #include <QJsonObject>
 #include <QMessageBox>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QRegularExpression>
 #include <QTimer>
 #include <QSet>
 #include <QStringList>
+#include <QTreeWidgetItemIterator>
 #include <QVector>
 #include <algorithm>
 #include <cmath>
@@ -82,6 +87,63 @@ constexpr int FIRST_AUTO_MATYPE = 3;
 constexpr int MAX_SOLVER_MATYPE = 300;
 constexpr double CENTER_FACTOR  = 0.5;
 constexpr double DEFAULT_ALPHA  = 1.0;
+
+struct GridQualityRuntime
+{
+    MeshQualityCheckOptions options;
+    QByteArray outputBytes;
+    QSet<QString> answeredPrompts;
+    bool finalAnswerSent = false;
+    bool iiidirRestored = false;
+    bool reportedError = false;
+    int highestStep = -1;
+    int unsupportedElementType = -1;
+};
+
+static const QStringList& gridQualityCaseNames()
+{
+    static const QStringList names = {
+        QStringLiteral("全面检查"),
+        QStringLiteral("研究对象合理性检查"),
+        QStringLiteral("垂直轴合理性检查"),
+        QStringLiteral("单元材料检查"),
+        QStringLiteral("单元类型合理性检查"),
+        QStringLiteral("单元施工层检查"),
+        QStringLiteral("单元重复性检查"),
+        QStringLiteral("单元其他属性合理性检查"),
+        QStringLiteral("杆单元端点位置检查"),
+        QStringLiteral("线对线及点对点单元检查"),
+        QStringLiteral("共线不合理节点检查"),
+        QStringLiteral("同坐标不同节点编号检查"),
+        QStringLiteral("计算范围检查"),
+        QStringLiteral("土坝计算层检查"),
+        QStringLiteral("单元节点排序检查"),
+        QStringLiteral("雅可比求逆检查"),
+        QStringLiteral("夹层单元厚度检查"),
+        QStringLiteral("单元长细比检查"),
+        QStringLiteral("土坝悬空填筑单元检查"),
+        QStringLiteral("材料参数合理性检查")};
+    return names;
+}
+
+static QString gridQualityCaseDisplayName(int checkCase)
+{
+    const auto& names = gridQualityCaseNames();
+    if (checkCase < 0 || checkCase >= names.size())
+        return QString::number(checkCase);
+    return QStringLiteral("%1：%2").arg(checkCase).arg(names.at(checkCase));
+}
+
+static QString gridQualityObjectDisplayName(int objectType)
+{
+    switch (objectType)
+    {
+    case 6: return QStringLiteral("洞室");
+    case 8: return QStringLiteral("均质坝");
+    case 7: return QStringLiteral("边坡");
+    default: return QStringLiteral("洞室");
+    }
+}
 
 static bool meshDomainKeyIsValid(const DomainKey& key)
 {
@@ -2229,6 +2291,12 @@ bool MeshModuleController::saveProject()
         obj["title"] = node->text(0);
         obj["module"] = node->data(0, ProjectNode::RoleModule).toString();
         obj["kind"] = node->data(0, ProjectNode::RoleKind).toString();
+        if (BasePage* page = node->getPage())
+        {
+            const QJsonObject pageData = page->saveJson();
+            if (!pageData.isEmpty())
+                obj["page_data"] = pageData;
+        }
 
         QJsonArray children;
 
@@ -2396,7 +2464,8 @@ bool MeshModuleController::loadProject()
 
         markGridSnapshotSaved(snapshotPath, m_importedGrid);
 
-        displayCurrentGrid();
+        // 工程网格恢复完成后自动适应一次视图。
+        displayCurrentGrid(true);
 
         PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
     }
@@ -2463,6 +2532,17 @@ bool MeshModuleController::loadProject()
         if (kind == "MeshGrouping")
             return new MeshGroupingWidget();
 
+        if (kind == "MeshQualityCheck")
+        {
+            auto* page = new MeshQualityCheckWidget();
+            m_qualityCheckWidget = page;
+            connect(page, &MeshQualityCheckWidget::checkRequested,
+                    this, &MeshModuleController::runQualityCheck);
+            connect(page, &MeshQualityCheckWidget::stopRequested,
+                    this, &MeshModuleController::stopQualityCheck);
+            return page;
+        }
+
         if (kind == "MeshImportSettings")
             return nullptr;
 
@@ -2505,6 +2585,8 @@ bool MeshModuleController::loadProject()
         node->setData(0, ProjectNode::RoleKind, kind);
         node->setData(0, ProjectNode::RoleUuid, uuid);
 
+        page->loadJson(obj.value("page_data").toObject());
+
         parent->addChild(node);
 
         const QJsonArray children = obj.value("children").toArray();
@@ -2522,11 +2604,21 @@ bool MeshModuleController::loadProject()
         loadNode(m_gridNode, n.toObject());
     }
 
+    updateQualityCheckContext(false);
+
     return true;
 }
 
 void MeshModuleController::closeProject()
 {
+    if (auto* qualityProcess = findChild<QProcess*>(QStringLiteral("gridQualityProcess"));
+        qualityProcess && qualityProcess->state() != QProcess::NotRunning)
+    {
+        qualityProcess->setProperty("qualityStopRequested", true);
+        qualityProcess->kill();
+        qualityProcess->waitForFinished(3000);
+    }
+
     ProjectNode* root = m_gridNode;
     m_gridNode = nullptr;
     if (root)
@@ -2563,6 +2655,7 @@ void MeshModuleController::closeProject()
 
     m_importSettingsWidget = nullptr;
     m_gridEditingWidget = nullptr;
+    m_qualityCheckWidget = nullptr;
 
     if (m_visualWidgetService)
     {
@@ -3077,8 +3170,9 @@ void MeshModuleController::importGridFile(const QString& fileName)
 
     // 导入完成后直接进入“显示控制”，并优先按 MATYPE 显示材料颜色。
     meshDisplayPreferMaterialColors(m_importedGrid);
-    displayCurrentGrid();
+    displayCurrentGrid(true);
     openGridDisplayControlPage();
+    updateQualityCheckContext(true);
 
     PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
 }
@@ -3105,8 +3199,9 @@ bool MeshModuleController::importGeneratedNetgenMesh(const QString& vtkPath, QSt
 
     syncPickMapGroupingFromGrid(m_importedGrid);
     meshDisplayPreferMaterialColors(m_importedGrid);
-    displayCurrentGrid();
+    displayCurrentGrid(true);
     openGridDisplayControlPage();
+    updateQualityCheckContext(true);
     PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
     return true;
 }
@@ -3271,6 +3366,134 @@ void MeshModuleController::onCtrlEdge()
 
 void MeshModuleController::onQualityStd()
 {
+    if (!m_gridNode)
+    {
+        QMessageBox::warning(nullptr, "网格质量检查", "请先新建或打开工程。");
+        return;
+    }
+
+    if (auto* existed = findDirectChildByKind(m_gridNode, QStringLiteral("MeshQualityCheck")))
+    {
+        m_qualityCheckWidget = dynamic_cast<MeshQualityCheckWidget*>(existed->getPage());
+        updateQualityCheckContext(false);
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(existed);
+        return;
+    }
+
+    auto* page = new MeshQualityCheckWidget();
+    m_qualityCheckWidget = page;
+    connect(page, &MeshQualityCheckWidget::checkRequested,
+            this, &MeshModuleController::runQualityCheck);
+    connect(page, &MeshQualityCheckWidget::stopRequested,
+            this, &MeshModuleController::stopQualityCheck);
+
+    auto* node = new ProjectNode(QStringLiteral("质量检查"),
+                                 QUuid::createUuid().toString(), page);
+    node->setData(0, ProjectNode::RoleModule, QStringLiteral("Mesh"));
+    node->setData(0, ProjectNode::RoleKind, QStringLiteral("MeshQualityCheck"));
+    m_gridNode->addChild(node);
+    m_gridNode->setExpanded(true);
+    updateQualityCheckContext(true);
+
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(node);
+}
+
+int MeshModuleController::suggestedQualityObjectType() const
+{
+    const int gridObject = MeshGridIO::objectTypeOfGrid(m_importedGrid, 0);
+    bool hasCave = false;
+    bool hasDam = false;
+    bool hasSlope = false;
+    if (m_gridNode && m_gridNode->treeWidget())
+    {
+        QTreeWidgetItemIterator iterator(m_gridNode->treeWidget());
+        while (*iterator)
+        {
+            auto* node = dynamic_cast<ProjectNode*>(*iterator);
+            if (node && node->data(0, ProjectNode::RoleModule).toString()
+                            == QStringLiteral("Solver"))
+            {
+                const QString kind = node->data(0, ProjectNode::RoleKind).toString();
+                hasCave = hasCave || kind == QStringLiteral("CaveExcavationAnalysis");
+                hasDam = hasDam || kind == QStringLiteral("DamAnalysis");
+                hasSlope = hasSlope || kind == QStringLiteral("SlopeStabilityAnalysis");
+            }
+            ++iterator;
+        }
+    }
+
+    const int detectedCount = static_cast<int>(hasCave) + static_cast<int>(hasDam)
+                              + static_cast<int>(hasSlope);
+    if (detectedCount == 1)
+        return hasCave ? 6 : hasDam ? 8 : 7;
+    if (gridObject == 6 || gridObject == 7 || gridObject == 8)
+        return gridObject;
+    return 6;
+}
+
+void MeshModuleController::updateQualityCheckContext(bool useSuggestedObject)
+{
+    if (!m_qualityCheckWidget || !m_importedGrid
+        || m_importedGrid->GetNumberOfCells() <= 0)
+        return;
+
+    double rawBounds[6] = {};
+    m_importedGrid->GetBounds(rawBounds);
+    std::array<double, 6> bounds = {};
+    std::copy(std::begin(rawBounds), std::end(rawBounds), bounds.begin());
+
+    int dimension = 2;
+    const vtkIdType cellCount = m_importedGrid->GetNumberOfCells();
+    const vtkIdType sampleCount = qMin<vtkIdType>(cellCount, 512);
+    for (vtkIdType i = 0; i < sampleCount; ++i)
+    {
+        if (auto* cell = m_importedGrid->GetCell(i))
+            dimension = qMax(dimension, cell->GetCellDimension());
+        if (dimension >= 3)
+            break;
+    }
+    dimension = qBound(2, dimension, 3);
+
+    QVector<double> positiveSpans;
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        const double span = rawBounds[axis * 2 + 1] - rawBounds[axis * 2];
+        if (span > 0.0)
+            positiveSpans.push_back(span);
+    }
+    std::sort(positiveSpans.begin(), positiveSpans.end(), std::greater<double>());
+    double measure = 1.0;
+    const int usedDimensions = qMin(dimension, positiveSpans.size());
+    for (int i = 0; i < usedDimensions; ++i)
+        measure *= positiveSpans.at(i);
+    const double characteristicLength =
+        usedDimensions > 0
+            ? std::pow(measure / qMax<vtkIdType>(1, cellCount), 1.0 / usedDimensions)
+            : 1.0;
+
+    m_qualityCheckWidget->setMeshContext(suggestedQualityObjectType(), m_verticalAxis,
+                                         cellCount, dimension, bounds,
+                                         characteristicLength, useSuggestedObject);
+}
+
+void MeshModuleController::stopQualityCheck()
+{
+    auto* process = findChild<QProcess*>(QStringLiteral("gridQualityProcess"));
+    if (!process || process->state() == QProcess::NotRunning)
+        return;
+
+    process->setProperty("qualityStopRequested", true);
+    if (m_qualityCheckWidget)
+        m_qualityCheckWidget->setStatus(QStringLiteral("正在停止检查。"));
+    if (auto* output = ServiceRegistry::instance().getService<OutputService>())
+        output->outputLog(QStringLiteral("正在停止网格质量检查"));
+    process->kill();
+}
+
+void MeshModuleController::runQualityCheck()
+{
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
 
@@ -3280,20 +3503,89 @@ void MeshModuleController::onQualityStd()
         return;
     }
 
+    if (!m_hasGrid || !m_importedGrid || m_importedGrid->GetNumberOfCells() <= 0)
+    {
+        QMessageBox::warning(nullptr, "网格质量检查", "当前没有可检查的网格，请先导入或生成网格。");
+        return;
+    }
+
+    if (auto* runningProcess = findChild<QProcess*>(QStringLiteral("gridQualityProcess"));
+        runningProcess && runningProcess->state() != QProcess::NotRunning)
+    {
+        QMessageBox::information(nullptr, "网格质量检查", "网格质量检查正在进行，请等待本次检查完成。");
+        return;
+    }
+
+    if (!m_qualityCheckWidget)
+        return;
+    updateQualityCheckContext(false);
+    const MeshQualityCheckOptions options = m_qualityCheckWidget->options();
+
+    QStringList unsupportedJacobianTypes;
+    if (options.checkCase == 0 || options.checkCase == 15)
+    {
+        static const QSet<int> supportedTypes = {
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 21,
+            29, 31, 32, 33, 34, 35, 38};
+        QSet<int> unsupported;
+        if (auto* array = m_importedGrid->GetCellData()->GetArray("KETYPE"))
+        {
+            for (vtkIdType i = 0; i < array->GetNumberOfTuples(); ++i)
+            {
+                const int type = static_cast<int>(std::llround(array->GetComponent(i, 0)));
+                if (!supportedTypes.contains(type))
+                    unsupported.insert(type);
+            }
+        }
+        QList<int> ordered = unsupported.values();
+        std::sort(ordered.begin(), ordered.end());
+        for (int type : ordered)
+            unsupportedJacobianTypes.push_back(QString::number(type));
+    }
+
     const QString iiidirPath = QStringLiteral("D:/IIIDIR.DAT");
 
     const QString projectDirNative =
         QDir::toNativeSeparators(QDir(projectDir).absolutePath());
 
     const QString inputDir = QDir::toNativeSeparators(
-        SolverFilePaths::projectInputDirectory(projectDir));
+        QDir(projectDir).absoluteFilePath(QStringLiteral("工程数据/网格质量检查")));
 
-    if (!QDir(inputDir).exists())
+    if (!QDir().mkpath(inputDir))
     {
         QMessageBox::warning(nullptr, "网格质量检查",
-                             QString("未找到计算输入目录：\n%1").arg(inputDir));
+                             QString("无法创建网格质量检查数据目录：\n%1").arg(inputDir));
         return;
     }
+
+    const QString iiinPath = QDir(inputDir).filePath(QStringLiteral("IIIN.DAT"));
+    QString exportError;
+    MeshGridIO::setVerticalAxis(m_importedGrid, m_verticalAxis);
+    if (!MeshGridIO::instance().exportIiinFile(
+            iiinPath, m_importedGrid, &exportError, m_verticalAxis))
+    {
+        QMessageBox::warning(
+            nullptr, "网格质量检查",
+            exportError.isEmpty() ? QStringLiteral("无法准备当前网格的质量检查数据。")
+                                  : exportError);
+        return;
+    }
+
+    const QStringList staleOutputFiles = {
+        QStringLiteral("III110.DAT"), QStringLiteral("KEARRAY.DAT"),
+        QStringLiteral("MABAR.DAT"), QStringLiteral("MAROCK.DAT")};
+    for (const QString& fileName : staleOutputFiles)
+        QFile::remove(QDir(inputDir).filePath(fileName));
+
+    const QString calculationInputDir = SolverFilePaths::projectInputDirectory(projectDir);
+    const QString sourceMaterialFile =
+        QDir(calculationInputDir).filePath(QStringLiteral("IMAT.DAT"));
+    const QString qualityMaterialFile =
+        QDir(inputDir).filePath(QStringLiteral("IMAT.DAT"));
+    if (QFileInfo::exists(sourceMaterialFile))
+        copyFileOverwrite(sourceMaterialFile, qualityMaterialFile);
+    else
+        QFile::remove(qualityMaterialFile);
 
     const QString gridQualityDir =
             QDir(QCoreApplication::applicationDirPath()).filePath("grid_quality");
@@ -3326,7 +3618,8 @@ void MeshModuleController::onQualityStd()
         return path;
     };
 
-    const auto writeIiidir = [iiidirPath, inputDir, ensureTrailingSlash](const QString& rootDir) -> bool
+    const auto writeIiidir = [iiidirPath, inputDir, ensureTrailingSlash](const QString& rootDir,
+                                                                         int objectType) -> bool
     {
         const QString rootDirWithSlash = ensureTrailingSlash(rootDir);
         const QString inputDirWithSlash = ensureTrailingSlash(inputDir);
@@ -3340,8 +3633,9 @@ void MeshModuleController::onQualityStd()
                     "           0  ILOG_GZKZR\n"
                     "       0  ILOG_SOLVE\n"
                     "'%2'\n"
-                    "           8   \n")
-                .arg(rootDirWithSlash, inputDirWithSlash);
+                    "%3   \n")
+                .arg(rootDirWithSlash, inputDirWithSlash)
+                .arg(qBound(0, objectType, 8), 12);
 
         QFile file(iiidirPath);
         if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
@@ -3370,80 +3664,355 @@ void MeshModuleController::onQualityStd()
 
         return true;
     };
-    /*
-     * 运行检查前写入 IIIDIR.DAT。
-     *
-     * 这里传计算输入目录，是为了让 A02_CKJACOBI 读取当前网格数据。
-     * 程序结束后再恢复为 projectDirNative。
-     */
-    if (!writeIiidir(inputDir))
+    QByteArray originalIiidir;
+    bool hadOriginalIiidir = false;
+    {
+        QFile originalFile(iiidirPath);
+        if (originalFile.open(QIODevice::ReadOnly))
+        {
+            originalIiidir = originalFile.readAll();
+            hadOriginalIiidir = true;
+        }
+    }
+
+    // 检查程序通过 D:/IIIDIR.DAT 找到当前工程的独立检查数据。
+    if (!writeIiidir(inputDir, options.expectedObject))
     {
         QMessageBox::warning(nullptr, "网格质量检查",
                              QString("无法写入 %1").arg(iiidirPath));
         return;
     }
 
-    /*
-     * MESG_ITASK.DAT 要放在当前工作目录。
-     *
-     * 你下面 process->setWorkingDirectory(gridQualityDir)，
-     * 所以这里先在 grid_quality 目录下检查/创建 MESG_ITASK.DAT。
-     */
-    if (!writeMesgItask(gridQualityDir))
+    // A02_CKJACOBI 从 IIIDIR.DAT 指定的数据目录读取任务号，而不是从程序目录读取。
+    if (!writeMesgItask(inputDir))
     {
-        writeIiidir(projectDirNative);
+        if (hadOriginalIiidir)
+        {
+            QFile restoreFile(iiidirPath);
+            if (restoreFile.open(QIODevice::WriteOnly | QIODevice::Truncate))
+                restoreFile.write(originalIiidir);
+        }
+        else
+        {
+            writeIiidir(projectDirNative, options.expectedObject);
+        }
 
         QMessageBox::warning(nullptr, "网格质量检查",
-                             QString("无法写入 MESG_ITASK.DAT:\n%1")
-                                 .arg(QDir(gridQualityDir).filePath("MESG_ITASK.DAT")));
+                             QString("无法准备网格质量检查任务配置：\n%1")
+                                 .arg(QDir(inputDir).filePath("MESG_ITASK.DAT")));
         return;
     }
 
     auto* process = new QProcess(this);
+    process->setObjectName(QStringLiteral("gridQualityProcess"));
     process->setProgram(exePath);
-
-    /*
-     * 这里沿用你现在的写法：
-     * 工作目录设置为 grid_quality。
-     *
-     * 因为 A02_CKJACOBI.exe 是控制台程序，
-     * 并且可能依赖当前目录下的控制文件。
-     */
     process->setWorkingDirectory(gridQualityDir);
+    process->setProcessChannelMode(QProcess::MergedChannels);
+
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.insert(QStringLiteral("FORT_BUFFERED"), QStringLiteral("FALSE"));
+    process->setProcessEnvironment(environment);
 
 #ifdef Q_OS_WIN
     process->setCreateProcessArgumentsModifier(
         [](QProcess::CreateProcessArguments* args)
         {
-            /*
-             * 创建新的控制台窗口，也就是弹出黑窗口。
-             */
-            args->flags |= CREATE_NEW_CONSOLE;
-
-            /*
-             * 不让 Qt 接管标准输入输出。
-             * 否则 Fortran 控制台程序可能无法正常在黑窗口中输入参数。
-             */
-            args->startupInfo->dwFlags &= ~STARTF_USESTDHANDLES;
+            args->flags |= CREATE_NO_WINDOW;
         });
 #endif
+
+    auto runtime = std::make_shared<GridQualityRuntime>();
+    runtime->options = options;
+
+    const auto outputLog = [](const QString& message) {
+        const QString text = message.trimmed();
+        if (text.isEmpty())
+            return;
+        if (auto* output = ServiceRegistry::instance().getService<OutputService>())
+            output->outputLog(text);
+    };
+
+    const auto restoreIiidir = [runtime, iiidirPath, originalIiidir, hadOriginalIiidir,
+                                writeIiidir, projectDirNative, options]() {
+        if (runtime->iiidirRestored)
+            return;
+        runtime->iiidirRestored = true;
+
+        if (hadOriginalIiidir)
+        {
+            QFile restoreFile(iiidirPath);
+            if (restoreFile.open(QIODevice::WriteOnly | QIODevice::Truncate))
+                restoreFile.write(originalIiidir);
+            return;
+        }
+        writeIiidir(projectDirNative, options.expectedObject);
+    };
+
+    const auto sendAnswer = [process, outputLog](const QString& answer, const QString& description) {
+        if (process->state() == QProcess::NotRunning)
+            return;
+        if (!description.trimmed().isEmpty())
+            outputLog(QStringLiteral("检查参数：%1").arg(description));
+        process->write((answer + QLatin1Char('\n')).toLocal8Bit());
+    };
+
+    const auto processPrompts = [runtime, sendAnswer, process](const QString& line) {
+        static const QRegularExpression stepPattern(
+            QStringLiteral("ISTEP\\s*==\\s*(\\d+)"),
+            QRegularExpression::CaseInsensitiveOption);
+        static const QRegularExpression internalErrorPattern(
+            QStringLiteral("ERROR\\s+\\d+\\s+IN|ERROR\\s+IN|UN-EXPECTED|FORRTL|SEVERE"),
+            QRegularExpression::CaseInsensitiveOption);
+        static const QRegularExpression elementTypePattern(
+            QStringLiteral("KETYPE\\s*=\\s*(\\d+)"),
+            QRegularExpression::CaseInsensitiveOption);
+
+        const auto stepMatch = stepPattern.match(line);
+        if (stepMatch.hasMatch())
+            runtime->highestStep = qMax(runtime->highestStep,
+                                        stepMatch.captured(1).toInt());
+        if (internalErrorPattern.match(line).hasMatch())
+            runtime->reportedError = true;
+        const auto elementTypeMatch = elementTypePattern.match(line);
+        if (elementTypeMatch.hasMatch())
+            runtime->unsupportedElementType = elementTypeMatch.captured(1).toInt();
+
+        const auto sendOnce = [runtime, &line, &sendAnswer](const QString& key,
+                                                            const QString& prompt,
+                                                            const QString& answer,
+                                                            const QString& description) {
+            if (runtime->answeredPrompts.contains(key) || !line.contains(prompt))
+                return;
+            runtime->answeredPrompts.insert(key);
+            sendAnswer(answer, description);
+        };
+
+        sendOnce(QStringLiteral("object"), QStringLiteral("需要改变网格文件中的研究对象类型吗"),
+                 runtime->options.repairObject ? QStringLiteral("1") : QStringLiteral("0"),
+                 runtime->options.repairObject ? QStringLiteral("修正研究对象")
+                                                : QStringLiteral("不修改研究对象"));
+        sendOnce(QStringLiteral("vertical"), QStringLiteral("需要改变网格文件中的垂直向轴号吗"),
+                 QString::number(runtime->options.repairVerticalAxis),
+                 runtime->options.repairVerticalAxis == 3 ? QStringLiteral("垂直轴修正为 Z 轴")
+                                                          : runtime->options.repairVerticalAxis == 2
+                                                                ? QStringLiteral("垂直轴修正为 Y 轴")
+                                                                : QStringLiteral("不修改垂直轴"));
+        sendOnce(QStringLiteral("attributes"), QStringLiteral("需要修正属性吗"),
+                 runtime->options.repairAttributes ? QStringLiteral("1") : QStringLiteral("0"),
+                 runtime->options.repairAttributes ? QStringLiteral("清零异常单元属性")
+                                                   : QStringLiteral("不修改单元属性"));
+        sendOnce(QStringLiteral("minimumDistance"), QStringLiteral("节点间最小距离是多少"),
+                 QString::number(runtime->options.minimumNodeDistance, 'g', 12),
+                 QStringLiteral("节点最小距离 = %1")
+                     .arg(runtime->options.minimumNodeDistance, 0, 'g', 12));
+        sendOnce(QStringLiteral("replaceNodes"), QStringLiteral("需要节点替换吗"),
+                 runtime->options.replaceNearbyNodes ? QStringLiteral("1") : QStringLiteral("0"),
+                 runtime->options.replaceNearbyNodes ? QStringLiteral("合并距离过近的节点")
+                                                     : QStringLiteral("不合并距离过近的节点"));
+        sendOnce(QStringLiteral("boundaryTolerance"), QStringLiteral("边界节点坐标值差值容限"),
+                 QString::number(runtime->options.boundaryTolerance, 'g', 12),
+                 QStringLiteral("边界坐标容限 = %1")
+                     .arg(runtime->options.boundaryTolerance, 0, 'g', 12));
+        sendOnce(QStringLiteral("jacobianTolerance"), QStringLiteral("雅可比行列式容限值"),
+                 QString::number(runtime->options.jacobianTolerance, 'g', 12),
+                 QStringLiteral("雅可比行列式容限 = %1")
+                     .arg(runtime->options.jacobianTolerance, 0, 'g', 12));
+        sendOnce(QStringLiteral("jacobianStart"), QStringLiteral("雅可比检查的起始单元"),
+                 QString::number(runtime->options.jacobianStartElement),
+                 QStringLiteral("雅可比检查起始单元 = %1")
+                     .arg(runtime->options.jacobianStartElement));
+        sendOnce(QStringLiteral("aspectRatio"), QStringLiteral("最大长细比容限值"),
+                 QString::number(runtime->options.maximumAspectRatio, 'g', 12),
+                 QStringLiteral("最大长细比 = %1")
+                     .arg(runtime->options.maximumAspectRatio, 0, 'g', 12));
+
+        if (line.contains(QStringLiteral("这个值有问题吗")))
+        {
+            sendAnswer(runtime->options.useSpecifiedBounds ? QStringLiteral("1")
+                                                            : QStringLiteral("0"),
+                       runtime->options.useSpecifiedBounds
+                           ? QStringLiteral("使用指定模型边界")
+                           : QStringLiteral("按当前模型边界归整临近节点"));
+        }
+
+        const QStringList boundPromptKeys = {
+            QStringLiteral("X方向最小值"), QStringLiteral("X方向最大值"),
+            QStringLiteral("Y方向最小值"), QStringLiteral("Y方向最大值"),
+            QStringLiteral("Z方向最小值"), QStringLiteral("Z方向最大值")};
+        for (int i = 0; i < boundPromptKeys.size(); ++i)
+        {
+            const QString& boundKey = boundPromptKeys.at(i);
+            if (line.contains(boundKey + QStringLiteral("期望值")))
+            {
+                sendOnce(QStringLiteral("bound%1").arg(i),
+                         boundKey + QStringLiteral("期望值"),
+                         QString::number(runtime->options.bounds[i], 'g', 15),
+                         QStringLiteral("%1 = %2")
+                             .arg(boundKey, QString::number(runtime->options.bounds[i], 'g', 15)));
+            }
+        }
+
+        const QString upperLine = line.toUpper();
+        if (!runtime->finalAnswerSent
+            && (line.contains(QStringLiteral("输入任意键，结束进程"))
+                || upperLine.contains(QStringLiteral("INPUT ANY CHAR"))
+                || upperLine.contains(QStringLiteral("PRESS ANY"))))
+        {
+            runtime->finalAnswerSent = true;
+            sendAnswer(QStringLiteral("0"), QString());
+            process->closeWriteChannel();
+        }
+    };
+
+    const auto consumeOutput = [runtime, processPrompts, outputLog](const QByteArray& bytes,
+                                                                    bool flushRemainder) {
+        runtime->outputBytes.append(bytes);
+        QStringList decodedLines;
+        for (;;)
+        {
+            const qsizetype newline = runtime->outputBytes.indexOf('\n');
+            if (newline < 0)
+                break;
+            QByteArray lineBytes = runtime->outputBytes.left(newline);
+            runtime->outputBytes.remove(0, newline + 1);
+            if (lineBytes.endsWith('\r'))
+                lineBytes.chop(1);
+            const QString line = QString::fromLocal8Bit(lineBytes);
+            decodedLines.push_back(line);
+        }
+
+        if (flushRemainder && !runtime->outputBytes.isEmpty())
+        {
+            const QString line = QString::fromLocal8Bit(runtime->outputBytes);
+            runtime->outputBytes.clear();
+            decodedLines.push_back(line);
+        }
+
+        if (!decodedLines.isEmpty())
+        {
+            outputLog(decodedLines.join(QLatin1Char('\n')));
+            for (const QString& line : decodedLines)
+                processPrompts(line);
+        }
+    };
+
+    connect(process, &QProcess::readyReadStandardOutput, this, [process, consumeOutput]() {
+        consumeOutput(process->readAllStandardOutput(), false);
+    });
 
     connect(process,
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this,
-            [writeIiidir, projectDirNative, process](int exitCode, QProcess::ExitStatus exitStatus)
+            [this, process, runtime, restoreIiidir, consumeOutput, outputLog, iiinPath, inputDir]
+            (int exitCode, QProcess::ExitStatus exitStatus)
             {
-                writeIiidir(projectDirNative);
+                consumeOutput(process->readAllStandardOutput(), true);
+                restoreIiidir();
 
-                if (exitStatus == QProcess::NormalExit && exitCode == 0)
+                if (process->property("qualityStopRequested").toBool())
                 {
-                    QMessageBox::information(nullptr, "网格质量检查", "网格质量检查执行完成。");
+                    outputLog(QStringLiteral("网格质量检查已停止"));
+                    if (m_qualityCheckWidget)
+                    {
+                        m_qualityCheckWidget->setRunning(false);
+                        m_qualityCheckWidget->setStatus(QStringLiteral("检查已停止。"));
+                    }
+                    process->deleteLater();
+                    return;
+                }
+
+                const bool processSucceeded =
+                    exitStatus == QProcess::NormalExit && exitCode == 0;
+                const bool fullCheckCompleted =
+                    runtime->options.checkCase != 0 || runtime->highestStep >= 19;
+                const bool checkCompleted = processSucceeded && !runtime->reportedError
+                                            && fullCheckCompleted;
+
+                if (processSucceeded && !runtime->reportedError
+                    && runtime->options.applyCorrections)
+                {
+                    QString reloadError;
+                    auto checkedGrid = MeshGridIO::instance().loadIiinFile(iiinPath, &reloadError);
+                    if (checkedGrid && checkedGrid->GetNumberOfCells() > 0)
+                    {
+                        m_importedGrid = checkedGrid;
+                        m_hasGrid = true;
+                        m_verticalAxis = MeshGridIO::verticalAxisOfGrid(m_importedGrid, m_verticalAxis);
+                        if (m_importSettingsWidget)
+                            m_importSettingsWidget->setVerticalAxis(m_verticalAxis);
+                        if (m_gridEditingWidget)
+                            m_gridEditingWidget->setEditableGrid(m_importedGrid, m_sourceFileName);
+                        syncPickMapGroupingFromGrid(m_importedGrid);
+                        m_splitCacheSource = nullptr;
+                        m_splitCacheLine = nullptr;
+                        m_splitCacheNonLine = nullptr;
+                        meshDisplayPreferMaterialColors(m_importedGrid);
+                        displayCurrentGrid();
+                        PickManager::instance().clearDomainSelection(
+                            QStringLiteral("MaterialManager"));
+                        updateQualityCheckContext(false);
+                        outputLog(QStringLiteral("检查修正已应用到当前网格"));
+                    }
+                    else if (!reloadError.trimmed().isEmpty())
+                    {
+                        outputLog(QStringLiteral("检查数据重新载入失败：%1").arg(reloadError));
+                    }
+
+                }
+
+                QString statusText;
+                if (checkCompleted)
+                {
+                    statusText = runtime->options.checkCase == 0
+                                     ? QStringLiteral("全面检查已完成。")
+                                     : QStringLiteral("所选检查已完成。");
+                    outputLog(QStringLiteral("网格质量检查完成"));
+                }
+                else if (runtime->reportedError && runtime->unsupportedElementType > 0)
+                {
+                    statusText = QStringLiteral(
+                        "检查工具不支持单元类型 %1 的当前检查，本次结果不完整。")
+                                     .arg(runtime->unsupportedElementType);
+                    outputLog(QStringLiteral(
+                        "网格质量检查未完成：检查工具在第 %1 项处理单元类型 %2 时停止，"
+                        "不能判定为检查通过。")
+                                  .arg(runtime->highestStep)
+                                  .arg(runtime->unsupportedElementType));
+                }
+                else if (processSucceeded && !fullCheckCompleted && !runtime->reportedError)
+                {
+                    statusText = QStringLiteral(
+                        "全面检查在第 %1 项结束，请根据日志处理问题后重新检查。")
+                                     .arg(runtime->highestStep);
+                    outputLog(QStringLiteral(
+                        "网格质量检查未完整执行：最高执行到第 %1 项，不能判定为全面通过。")
+                                  .arg(runtime->highestStep));
+                }
+                else if (runtime->reportedError)
+                {
+                    statusText = QStringLiteral("检查工具在第 %1 项发生内部错误，本次结果不完整。")
+                                     .arg(runtime->highestStep);
+                    outputLog(QStringLiteral(
+                        "网格质量检查未完成：检查工具在第 %1 项发生内部错误。")
+                                  .arg(runtime->highestStep));
                 }
                 else
                 {
-                    QMessageBox::warning(nullptr, "网格质量检查",
-                                         QString("网格质量检查程序异常结束。\n退出码: %1")
-                                             .arg(exitCode));
+                    statusText = QStringLiteral("检查程序异常结束，退出码：%1。")
+                                     .arg(exitCode);
+                    outputLog(QStringLiteral("网格质量检查异常结束，退出码：%1")
+                                  .arg(exitCode));
+                }
+
+                const QString reportPath =
+                    QDir(inputDir).filePath(QStringLiteral("III110.DAT"));
+                if (QFileInfo::exists(reportPath))
+                    outputLog(QStringLiteral("检查报告：%1")
+                                  .arg(QDir::toNativeSeparators(reportPath)));
+                if (m_qualityCheckWidget)
+                {
+                    m_qualityCheckWidget->setRunning(false);
+                    m_qualityCheckWidget->setStatus(statusText, !checkCompleted);
                 }
 
                 process->deleteLater();
@@ -3452,29 +4021,44 @@ void MeshModuleController::onQualityStd()
     connect(process,
             &QProcess::errorOccurred,
             this,
-            [writeIiidir, projectDirNative, process](QProcess::ProcessError error)
+            [outputLog](QProcess::ProcessError error)
             {
-                writeIiidir(projectDirNative);
-
-                QMessageBox::warning(nullptr, "网格质量检查",
-                                     QString("网格质量检查程序启动或执行失败。\n错误码: %1")
-                                         .arg(static_cast<int>(error)));
-
-                process->deleteLater();
+                outputLog(QStringLiteral("网格质量检查进程错误，错误码：%1")
+                              .arg(static_cast<int>(error)));
             });
 
+    outputLog(QStringLiteral("网格质量检查开始"));
+    outputLog(QStringLiteral("研究对象：%1")
+                  .arg(gridQualityObjectDisplayName(options.expectedObject)));
+    outputLog(options.applyCorrections
+                  ? QStringLiteral("检查方式：检查完成后将有效修正应用到当前网格")
+                  : QStringLiteral("检查方式：仅检查独立副本，不修改当前网格"));
+    if (!unsupportedJacobianTypes.isEmpty())
+    {
+        outputLog(QStringLiteral(
+            "检查提示：当前网格包含单元类型 %1，现有质量检查工具未实现这些类型的"
+            "雅可比检查，第 15 项可能提前停止。")
+                      .arg(unsupportedJacobianTypes.join(QStringLiteral("、"))));
+    }
+    m_qualityCheckWidget->setRunning(true);
     process->start();
 
     if (!process->waitForStarted(3000))
     {
-        writeIiidir(projectDirNative);
+        restoreIiidir();
 
-        QMessageBox::warning(nullptr, "网格质量检查",
-                             QString("启动失败:\n%1").arg(exePath));
+        const QString errorText = process->errorString().trimmed();
+        outputLog(QStringLiteral("网格质量检查启动失败：%1").arg(errorText));
+        m_qualityCheckWidget->setRunning(false);
+        m_qualityCheckWidget->setStatus(QStringLiteral("检查程序启动失败。"), true);
+        QMessageBox::warning(nullptr, "网格质量检查", "网格质量检查程序启动失败。");
 
         process->deleteLater();
         return;
     }
+
+    sendAnswer(QString::number(options.checkCase),
+               QStringLiteral("检查项目 = %1").arg(gridQualityCaseDisplayName(options.checkCase)));
 }
 
 void MeshModuleController::onMeshGrouping()
@@ -3571,7 +4155,7 @@ void MeshModuleController::openGridDisplayControlPage()
         pm->setCurrentItem(node);
 }
 
-void MeshModuleController::displayCurrentGrid()
+void MeshModuleController::displayCurrentGrid(bool fitView)
 {
     const qint64 rev = PublicVariables::instance().get("pick_structure_revision").toLongLong();
     PublicVariables::instance().set("pick_structure_revision", rev + 1, "project_dir");
@@ -3600,8 +4184,9 @@ void MeshModuleController::displayCurrentGrid()
     surfProp->EdgeVisibilityOn();
     surfProp->SetEdgeColor(0.0, 0.0, 0.0);
     surfProp->SetLineWidth(1.0);
+    // 当前 Mapper 还是空输入，不能在 addProp 阶段提前重置相机。
     m_visualWidgetService->addProp(kMeshSurfId, surfActor, QString("网格"),
-                                   QString("导入网格-面/体"), true, true);
+                                   QString("导入网格-面/体"), false, false);
 
     auto emptyLine = vtkSmartPointer<vtkUnstructuredGrid>::New();
     auto lineMapper = vtkSmartPointer<vtkDataSetMapper>::New();
@@ -3616,7 +4201,7 @@ void MeshModuleController::displayCurrentGrid()
     lineProp->SetSpecular(0.0);
     lineProp->RenderLinesAsTubesOn();
     m_visualWidgetService->addProp(kMeshLineId, lineActor, QString("网格"),
-                                   QString("导入网格-线"), true, true);
+                                   QString("导入网格-线"), false, false);
 
     m_previewSurfaceGrid = m_importedGrid;
     m_previewSurfaceActor = surfActor;
@@ -3647,7 +4232,12 @@ void MeshModuleController::displayCurrentGrid()
 
            // 必须在网格 prop 完成更新后再同步 PickManager 结构，否则会抓到旧 actor/mapper。
     PickManager::instance().updateStructure();
-    m_visualWidgetService->render();
+
+    // 仅在导入、生成或工程恢复时自动适应；普通显示刷新保留当前视角。
+    if (fitView)
+        m_visualWidgetService->resetCamera(true);
+    else
+        m_visualWidgetService->render();
 }
 
 vtkSmartPointer<vtkUnstructuredGrid> MeshModuleController::getVtkUnstructuredGrid()

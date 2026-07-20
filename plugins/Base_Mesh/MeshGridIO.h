@@ -38,6 +38,8 @@ class MeshGridIO
 
     static int verticalAxisOfGrid(vtkUnstructuredGrid* grid, int fallback = 2);
     static void setVerticalAxis(vtkUnstructuredGrid* grid, int axis);
+    static int objectTypeOfGrid(vtkUnstructuredGrid* grid, int fallback = 0);
+    static void setObjectType(vtkUnstructuredGrid* grid, int objectType);
 
     static QString defaultIiinOutputPath(const QString& sourceFile);
 

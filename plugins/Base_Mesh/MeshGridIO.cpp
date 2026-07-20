@@ -47,6 +47,7 @@ namespace
 static const QRegularExpression kWhitespaceRe(QStringLiteral("\\s+"));
 
 static const char* kIiinVerticalAxisArrayName = "IIIN_IVERTICAL";
+static const char* kIiinObjectTypeArrayName = "IIIN_IOBJECT";
 static const char* kIiinConnectivityPatternArrayName = "IIIN_CONNECTIVITY_PATTERN";
 constexpr int kFirstComputableMatype = 2;
 constexpr int kDefaultCalculationMatype = 3;
@@ -1042,6 +1043,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
     auto grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
     grid->SetPoints(pts);
     setVerticalAxis(grid, ivertical);
+    setObjectType(grid, iobject);
     grid->GetPointData()->AddArray(nodeIdArr);
     grid->GetPointData()->AddArray(originalPointIds);
 
@@ -1442,7 +1444,7 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
     const double am = 1.0;
     const int extra = 5;
     const double d1 = 0.0, d2 = 0.0, d3 = 0.0;
-    const int iobject = 0;
+    const int iobject = objectTypeOfGrid(grid);
     const int ivertical = verticalAxisOfGrid(grid, normalizedVerticalAxis(verticalAxis));
 
            // 导出目标维度单元：
@@ -1659,6 +1661,34 @@ void MeshGridIO::setVerticalAxis(vtkUnstructuredGrid* grid, int axis)
     arr->SetNumberOfTuples(1);
     arr->SetValue(0, normalizedVerticalAxis(axis));
     grid->GetFieldData()->RemoveArray(kIiinVerticalAxisArrayName);
+    grid->GetFieldData()->AddArray(arr);
+}
+
+int MeshGridIO::objectTypeOfGrid(vtkUnstructuredGrid* grid, int fallback)
+{
+    const int safeFallback = qBound(0, fallback, 8);
+    if (!grid || !grid->GetFieldData())
+        return safeFallback;
+
+    auto* objectArr = vtkIntArray::SafeDownCast(
+        grid->GetFieldData()->GetArray(kIiinObjectTypeArrayName));
+    if (!objectArr || objectArr->GetNumberOfTuples() <= 0)
+        return safeFallback;
+
+    return qBound(0, objectArr->GetValue(0), 8);
+}
+
+void MeshGridIO::setObjectType(vtkUnstructuredGrid* grid, int objectType)
+{
+    if (!grid)
+        return;
+
+    auto arr = vtkSmartPointer<vtkIntArray>::New();
+    arr->SetName(kIiinObjectTypeArrayName);
+    arr->SetNumberOfComponents(1);
+    arr->SetNumberOfTuples(1);
+    arr->SetValue(0, qBound(0, objectType, 8));
+    grid->GetFieldData()->RemoveArray(kIiinObjectTypeArrayName);
     grid->GetFieldData()->AddArray(arr);
 }
 

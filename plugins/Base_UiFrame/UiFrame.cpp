@@ -351,7 +351,7 @@ void UiFrame::initDockManager()
 
     ads::CDockManager::setConfigFlag(ads::CDockManager::OpaqueSplitterResize, true);
     ads::CDockManager::setConfigFlag(ads::CDockManager::XmlCompressionEnabled, false);
-    ads::CDockManager::setConfigFlag(ads::CDockManager::FocusHighlighting, false);
+    ads::CDockManager::setConfigFlag(ads::CDockManager::FocusHighlighting, true);
     ads::CDockManager::setAutoHideConfigFlags(ads::CDockManager::DefaultAutoHideConfig);
     ads::CDockManager::setConfigFlag(ads::CDockManager::AlwaysShowTabs, true);
 
@@ -786,9 +786,10 @@ void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
             color: @text@;
             background: transparent;
             border: none;
-            min-height: 29px;
-            max-height: 29px;
-            padding: 0px 10px;
+            min-height: 30px;
+            max-height: 30px;
+            margin: 0px;
+            padding: 0px 11px;
         }
 
         ads--CDockWidgetTab QLabel#dockWidgetTabLabel,
@@ -803,33 +804,39 @@ void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
         }
     )"), c);
 
+    // 多标签停靠区采用轻量的“文字 + 下划线”样式。旧样式中的渐变块、
+    // 右侧竖线和整块白色选中背景会让合并后的标签显得厚重、割裂。
     QString multiTabStyle = themedStyle(QString::fromUtf8(R"(
         ads--CDockWidgetTab {
-            color: @text@;
+            color: @secondaryText@;
             background: transparent;
             border: none;
             border-bottom: 2px solid transparent;
             border-radius: 0px;
-            min-height: 29px;
-            max-height: 29px;
+            min-height: 30px;
+            max-height: 30px;
             margin: 0px;
-            padding: 0px 13px;
+            padding: 0px 14px;
         }
 
         ads--CDockWidgetTab:hover {
             color: @accent@;
             background: @hover@;
+            border-bottom-color: @border@;
         }
 
-        ads--CDockWidgetTab[activeTab="true"],
         ads--CDockWidgetTab[focused="true"] {
+            background: transparent;
+        }
+
+        ads--CDockWidgetTab[activeTab="true"] {
             color: @accent@;
-            background: @surface@;
+            background: transparent;
             border-bottom: 2px solid @accent@;
         }
 
         ads--CDockWidgetTab QLabel#dockWidgetTabLabel {
-            color: @text@;
+            color: @secondaryText@;
             background: transparent;
             font-family: "Microsoft YaHei UI", "Microsoft YaHei", "微软雅黑", "Segoe UI";
             font-size: 9pt;
@@ -840,55 +847,11 @@ void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
             color: @accent@;
         }
 
-        ads--CDockWidgetTab[activeTab="true"] QLabel#dockWidgetTabLabel,
-        ads--CDockWidgetTab[focused="true"] QLabel#dockWidgetTabLabel {
+        ads--CDockWidgetTab[activeTab="true"] QLabel#dockWidgetTabLabel {
             color: @accent@;
             font-weight: 600;
         }
     )"), c);
-
-    if (c.id == QStringLiteral("blue"))
-    {
-        singleTabStyle += QString::fromUtf8(R"(
-            ads--CDockWidgetTab,
-            ads--CDockWidgetTab:hover,
-            ads--CDockWidgetTab[activeTab="true"],
-            ads--CDockWidgetTab[focused="true"] {
-                color: #173a57;
-                background: transparent;
-            }
-
-            ads--CDockWidgetTab QLabel#dockWidgetTabLabel,
-            ads--CDockWidgetTab:hover QLabel#dockWidgetTabLabel,
-            ads--CDockWidgetTab[activeTab="true"] QLabel#dockWidgetTabLabel,
-            ads--CDockWidgetTab[focused="true"] QLabel#dockWidgetTabLabel {
-                color: #173a57;
-            }
-        )");
-
-        multiTabStyle += QString::fromUtf8(R"(
-            ads--CDockWidgetTab {
-                color: #173a57;
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 #f5f9fc, stop:1 #e1ecf4);
-                border-right: 1px solid #afc4d2;
-                border-bottom: 1px solid #9db6c8;
-            }
-
-            ads--CDockWidgetTab:hover {
-                color: #155e93;
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 #f9fcfe, stop:1 #e3eef6);
-            }
-
-            ads--CDockWidgetTab[activeTab="true"],
-            ads--CDockWidgetTab[focused="true"] {
-                color: #155e93;
-                background: #f7fafc;
-                border-bottom: 2px solid #2b70a6;
-            }
-        )");
-    }
 
     for (int i = 0; i < tabBar->count(); ++i)
     {
