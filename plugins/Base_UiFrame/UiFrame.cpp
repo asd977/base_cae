@@ -33,6 +33,7 @@
 #include <QSlider>
 #include <QTabBar>
 #include <QVBoxLayout>
+#include <QWidget>
 
 // SARibbon
 #include "SARibbonApplicationButton.h"
@@ -43,6 +44,7 @@
 #include "SARibbonComboBox.h"
 #include "SARibbonMenu.h"
 #include "SARibbonPannel.h"
+#include "SARibbonTabBar.h"
 #include "SARibbonElementFactory.h"
 
 namespace
@@ -236,6 +238,63 @@ QString dockActionIconPath(const QString& name)
 
     return QStringLiteral(":/resources/menu/concept/view-window.svg");
 }
+
+class RibbonTabGapBar final : public SARibbonBar
+{
+  public:
+    explicit RibbonTabGapBar(QWidget* parent = nullptr) : SARibbonBar(parent) {}
+
+  protected:
+    void paintTabbarBaseLine(QPainter& painter) override
+    {
+        const QColor lineColor = tabBarBaseLineColor();
+        if (!lineColor.isValid())
+            return;
+
+        QTabBar* tabBar = ribbonTabBar();
+        if (!tabBar)
+        {
+            SARibbonBar::paintTabbarBaseLine(painter);
+            return;
+        }
+
+        const QRect tabBarRect = tabBar->geometry();
+        const int lineY = tabBarRect.bottom();
+        const QMargins border = contentsMargins();
+        const int lineLeft = border.left();
+        const int lineRight = width() - border.right() - 1;
+        if (lineRight < lineLeft)
+            return;
+
+        QRect selectedGap;
+        const int current = currentIndex();
+        if (current >= 0)
+            selectedGap = tabBar->tabRect(current).translated(tabBarRect.topLeft());
+
+        painter.save();
+        painter.setPen(QPen(lineColor, 1, Qt::SolidLine));
+
+        const auto drawSegment = [&painter, lineY](int startX, int endX)
+        {
+            if (endX >= startX)
+                painter.drawLine(QPoint(startX, lineY), QPoint(endX, lineY));
+        };
+
+        const QRect lineRect(lineLeft, lineY, lineRight - lineLeft + 1, 1);
+        if (selectedGap.isValid() && selectedGap.intersects(lineRect))
+        {
+            drawSegment(lineLeft, qMin(selectedGap.left(), lineRight));
+            drawSegment(qMax(selectedGap.right(), lineLeft), lineRight);
+        }
+        else
+        {
+            drawSegment(lineLeft, lineRight);
+        }
+
+        painter.restore();
+    }
+};
+
 } // namespace
 
 UiFrame::UiFrame(QWidget* parent, SARibbonMainWindowStyles style)
@@ -856,6 +915,7 @@ void UiFrame::applyThemeToUi()
 
     if (m_ribbon)
     {
+        m_ribbon->setTabBarBaseLineColor(QColor(c.borderStrong));
         m_ribbon->setStyleSheet(themedStyle(QString::fromUtf8(R"(
             SARibbonBar#geoCaeRibbonBar {
                 background: @surface@;
@@ -870,7 +930,6 @@ void UiFrame::applyThemeToUi()
             SARibbonBar#geoCaeRibbonBar QStackedWidget {
                 background: @surface@;
                 border: none;
-                border-top: 1px solid @borderStrong@;
                 margin: 0px;
                 padding: 0px;
             }
@@ -934,7 +993,6 @@ void UiFrame::applyThemeToUi()
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                                                 stop:0 #f7fafc, stop:1 #e7f0f6);
                     border: none;
-                    border-top: 1px solid #8fa9bb;
                     margin: 0px;
                     padding: 0px;
                 }
@@ -981,10 +1039,12 @@ void UiFrame::applyThemeToUi()
         {
             categoryTabBar->setDocumentMode(true);
             categoryTabBar->setExpanding(false);
+            categoryTabBar->setDrawBase(false);
             categoryTabBar->setStyleSheet(themedStyle(QString::fromUtf8(R"(
                 QTabBar {
-                    background: @surface@;
+                    background: transparent;
                     border: none;
+                    margin-top: 2px;
                 }
 
                 QTabBar::tab {
@@ -1010,8 +1070,8 @@ void UiFrame::applyThemeToUi()
                     border-left: 1px solid @borderStrong@;
                     border-top: 1px solid @borderStrong@;
                     border-right: 1px solid @borderStrong@;
-                    border-bottom: 1px solid @surface@;
-                    margin-bottom: -1px;
+                    border-bottom: none;
+                    margin-bottom: 0px;
                     font-weight: 600;
                 }
             )"), c));
@@ -1020,9 +1080,9 @@ void UiFrame::applyThemeToUi()
             {
                 categoryTabBar->setStyleSheet(categoryTabBar->styleSheet() + QString::fromUtf8(R"(
                     QTabBar {
-                        background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                                    stop:0 #f6fafd, stop:1 #e5eef5);
+                        background: transparent;
                         border: none;
+                        margin-top: 2px;
                     }
 
                     QTabBar::tab {
@@ -1041,10 +1101,11 @@ void UiFrame::applyThemeToUi()
                         border-left: 1px solid #8fa9bb;
                         border-top: 1px solid #8fa9bb;
                         border-right: 1px solid #8fa9bb;
-                        border-bottom: 1px solid #f7fafc;
+                        border-bottom: none;
                     }
                 )"));
             }
+
         }
 
         if (QAbstractButton* button = m_ribbon->applicationButton())
@@ -1056,6 +1117,7 @@ void UiFrame::applyThemeToUi()
                     border: none;
                     border-radius: 0px;
                     padding: 0px 15px;
+                    margin-top: 2px;
                     font-size: 10pt;
                     font-weight: 600;
                 }
@@ -1323,6 +1385,8 @@ void UiFrame::initSARibbon()
     SARibbonBar::initHighDpi();
     setWindowTitle(QStringLiteral("POWERCHINA-GEOCAE"));
 
+    auto* ribbon = new RibbonTabGapBar(this);
+    setRibbonBar(ribbon);
     m_ribbon = ribbonBar();
     m_ribbon->setObjectName(QStringLiteral("geoCaeRibbonBar"));
     m_ribbon->setRibbonStyle(SARibbonBar::RibbonStyleCompactTwoRow);

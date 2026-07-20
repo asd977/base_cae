@@ -1,4 +1,4 @@
-add_executable(CAE_BASE WIN32
+﻿add_executable(CAE_BASE WIN32
     launcher.cpp
     ${CMAKE_SOURCE_DIR}/res.qrc
 )
@@ -18,6 +18,7 @@ target_link_libraries(CAE_BASE
 )
 
 set_target_properties(CAE_BASE PROPERTIES
+    OUTPUT_NAME "POWERCHINA-GEOCAE"
     RUNTIME_OUTPUT_DIRECTORY "${CAE_RUNTIME_DIR}"
 )
 

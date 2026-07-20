@@ -10,6 +10,7 @@
 #include <QDir>
 #include <QEvent>
 #include <QGroupBox>
+#include <QIcon>
 #include <QPluginLoader>
 #include <QPainter>
 #include <QPainterPath>
@@ -184,6 +185,7 @@ int main(int argc, char** argv)
 #endif
 
     QApplication app(argc, argv);
+    app.setWindowIcon(QIcon(QStringLiteral(":/resources/icon.svg")));
     app.setStyle(new NeutralCheckStyle);
 
     QTranslator qtChineseTranslator;
