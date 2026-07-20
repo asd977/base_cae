@@ -25,6 +25,7 @@ class vtkMapper;
 class vtkTransform;
 class vtkPolyData;
 class QFrame;
+class QToolBar;
 class QToolButton;
 class QSlider;
 class QMenu;
@@ -96,6 +97,8 @@ class VisualizationWidget : public QWidget, public VisualWidgetService
     void updateScaleButtonIcon();
     void applyGlobalOpacity(double alpha, bool renderNow = true);
     void updateScaleActorBounds();
+    void applyUiTheme(const QString& themeName);
+    void updateToolbarIcons();
 
     static vtkMapper* actorMapper(vtkProp* prop);
 
@@ -127,6 +130,7 @@ class VisualizationWidget : public QWidget, public VisualWidgetService
     QHash<QString, Item> m_registry;
 
     QPointer<QFrame> m_toolbar;
+    QPointer<QToolBar> m_actionToolbar;
     QPointer<QSlider> m_globalOpacitySlider;
     QPointer<QToolButton> m_projectionButton;
     QPointer<QToolButton> m_scaleButton;

@@ -65,7 +65,7 @@
         <item row="6" column="1"><widget class="QSpinBox" name="legendWidthSpinBox"><property name="suffix"><string> %</string></property><property name="minimum"><number>5</number></property><property name="maximum"><number>25</number></property><property name="value"><number>10</number></property></widget></item>
         <item row="7" column="0"><widget class="QLabel" name="legendHeightLabel"><property name="text"><string>图例高度</string></property></widget></item>
         <item row="7" column="1"><widget class="QSpinBox" name="legendHeightSpinBox"><property name="suffix"><string> %</string></property><property name="minimum"><number>25</number></property><property name="maximum"><number>90</number></property><property name="value"><number>65</number></property></widget></item>
-        <item row="8" column="0" colspan="2"><widget class="QCheckBox" name="legendMovableCheckBox"><property name="text"><string>允许拖动图例</string></property><property name="checked"><bool>false</bool></property></widget></item>
+        <item row="8" column="0" colspan="2"><widget class="QLabel" name="legendMoveHintLabel"><property name="text"><string>提示：按住鼠标中键拖动图例</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
        </layout>
       </widget>
      </item>

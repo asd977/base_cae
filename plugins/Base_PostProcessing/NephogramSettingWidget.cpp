@@ -31,8 +31,8 @@
 #include <vtkRenderWindow.h>
 #include <vtkRenderWindowInteractor.h>
 #include <vtkScalarBarActor.h>
-#include <vtkScalarBarWidget.h>
 #include <vtkCommand.h>
+#include <vtkCallbackCommand.h>
 #include <vtkSelectVisiblePoints.h>
 #include <vtkSmartPointer.h>
 #include <vtkTecplotReader.h>
@@ -89,12 +89,9 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
     m_mapper = vtkSmartPointer<vtkDataSetMapper>::New();
     m_contourActor = vtkSmartPointer<vtkActor>::New();
     m_contourLabelActor = vtkSmartPointer<vtkActor2D>::New();
-    m_scalarBarWidget = vtkSmartPointer<vtkScalarBarWidget>::New();
-    m_scalarBarWidget->RepositionableOn();
-    m_scalarBarWidget->ResizableOff();
-    m_scalarBarWidget->SelectableOn();
-    m_scalarBarWidget->AddObserver(vtkCommand::EndInteractionEvent, this,
-                                   &NephogramSettingWidget::onScalarBarInteractionEnd);
+    m_legendDragCallback = vtkSmartPointer<vtkCallbackCommand>::New();
+    m_legendDragCallback->SetClientData(this);
+    m_legendDragCallback->SetCallback(&NephogramSettingWidget::legendDragCallback);
 
     ui->rangeMinSpinBox->setRange(-1.0e100, 1.0e100);
     ui->rangeMaxSpinBox->setRange(-1.0e100, 1.0e100);
@@ -148,10 +145,6 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
             refreshLegend);
     connect(ui->legendHeightSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
             refreshLegend);
-    connect(ui->legendMovableCheckBox, &QCheckBox::toggled, this, [this](bool) {
-        updateLegendInteraction();
-        refreshCurrentVisualization();
-    });
 
     connect(ui->contourEnableCheckBox, &QCheckBox::toggled, this, [this](bool enabled) {
         ui->contourLevelsSpinBox->setEnabled(enabled);
@@ -179,8 +172,7 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
 
 NephogramSettingWidget::~NephogramSettingWidget()
 {
-    if (m_scalarBarWidget && m_scalarBarWidget->GetEnabled())
-        m_scalarBarWidget->Off();
+    removeLegendDragInteraction();
     delete ui;
 }
 
@@ -231,7 +223,6 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
     scalarBar->SetTitle(currentScalarDisplayName().toUtf8().constData());
     scalarBar->Modified();
     configureMapper(m_mapper, m_currentArrayName, usePointData, minV, maxV, lut);
-    updateLegendInteraction();
 }
 
 void NephogramSettingWidget::beforeLoad()
@@ -246,6 +237,8 @@ void NephogramSettingWidget::beforeLoad()
         qWarning() << "Visual service is null in NephogramSettingWidget.";
         return;
     }
+
+    installLegendDragInteraction();
 
     const QString previousDir = ui->resultDirComboBox->currentData().toString();
     const QString previousStep = ui->stepComboBox->currentText();
@@ -280,7 +273,6 @@ void NephogramSettingWidget::beforeLoad()
         if (auto* ren = m_visualService->renderer())
             ren->ResetCamera();
 
-        updateLegendInteraction();
         if (auto* rw = m_visualService->renderWindow())
             rw->Render();
 
@@ -308,13 +300,7 @@ void NephogramSettingWidget::beforeUnload()
         m_actorAttached = false;
     }
 
-    if (m_scalarBarWidget && m_scalarBarWidget->GetEnabled())
-        m_scalarBarWidget->Off();
-    if (m_visualService->renderer() && m_visualService->scalarBarActor() &&
-        !m_visualService->renderer()->HasViewProp(m_visualService->scalarBarActor()))
-    {
-        m_visualService->renderer()->AddActor2D(m_visualService->scalarBarActor());
-    }
+    removeLegendDragInteraction();
     m_visualService->showScalarBar(false, false);
 
     if (auto* rw = m_visualService->renderWindow())
@@ -539,7 +525,7 @@ QString NephogramSettingWidget::currentScalarName() const
 
 QString NephogramSettingWidget::currentScalarDisplayName() const
 {
-    return ResultDisplayNames::displayName(currentScalarName());
+    return ResultDisplayNames::scalarBarName(currentScalarName());
 }
 
 void NephogramSettingWidget::refreshCurrentVisualization()
@@ -631,49 +617,132 @@ void NephogramSettingWidget::applyLegendAppearance(vtkScalarBarActor* scalarBar)
     }
 }
 
-void NephogramSettingWidget::updateLegendInteraction()
+void NephogramSettingWidget::installLegendDragInteraction()
 {
-    if (!m_scalarBarWidget || !m_visualService)
+    if (!m_visualService || !m_legendDragCallback)
         return;
-
-    vtkScalarBarActor* scalarBar = m_visualService->scalarBarActor();
-    vtkRenderer* renderer = m_visualService->renderer();
-    const bool enabled = ui->legendMovableCheckBox->isChecked();
-    if (!enabled)
-    {
-        if (m_scalarBarWidget->GetEnabled())
-            m_scalarBarWidget->Off();
-        if (renderer && scalarBar && !renderer->HasViewProp(scalarBar))
-            renderer->AddActor2D(scalarBar);
-        return;
-    }
 
     vtkRenderWindowInteractor* interactor = m_visualService->interactor();
-    if (!scalarBar || !interactor)
+    if (!interactor || m_middlePressObserverId != 0)
         return;
 
-    if (renderer && renderer->HasViewProp(scalarBar))
-        renderer->RemoveActor2D(scalarBar);
-    m_scalarBarWidget->SetInteractor(interactor);
-    m_scalarBarWidget->SetScalarBarActor(scalarBar);
-    if (!m_scalarBarWidget->GetEnabled())
-        m_scalarBarWidget->On();
+    // 使用较高优先级，并只在鼠标中键命中色标时中止后续事件，
+    // 这样拖动图例不会同时触发相机平移，点在其他位置时仍保持原有操作。
+    constexpr float priority = 1.0f;
+    m_middlePressObserverId = interactor->AddObserver(
+        vtkCommand::MiddleButtonPressEvent, m_legendDragCallback, priority);
+    m_mouseMoveObserverId = interactor->AddObserver(
+        vtkCommand::MouseMoveEvent, m_legendDragCallback, priority);
+    m_middleReleaseObserverId = interactor->AddObserver(
+        vtkCommand::MiddleButtonReleaseEvent, m_legendDragCallback, priority);
 }
 
-void NephogramSettingWidget::onScalarBarInteractionEnd(vtkObject*, unsigned long, void*)
+void NephogramSettingWidget::removeLegendDragInteraction()
 {
-    if (!m_visualService)
-        return;
-    vtkScalarBarActor* scalarBar = m_visualService->scalarBarActor();
-    if (!scalarBar)
+    vtkRenderWindowInteractor* interactor = m_visualService ? m_visualService->interactor() : nullptr;
+    if (interactor)
+    {
+        if (m_middlePressObserverId != 0)
+            interactor->RemoveObserver(m_middlePressObserverId);
+        if (m_mouseMoveObserverId != 0)
+            interactor->RemoveObserver(m_mouseMoveObserverId);
+        if (m_middleReleaseObserverId != 0)
+            interactor->RemoveObserver(m_middleReleaseObserverId);
+    }
+
+    m_middlePressObserverId = 0;
+    m_mouseMoveObserverId = 0;
+    m_middleReleaseObserverId = 0;
+    m_draggingLegend = false;
+}
+
+void NephogramSettingWidget::legendDragCallback(vtkObject*, unsigned long eventId,
+                                                 void* clientData, void*)
+{
+    auto* self = static_cast<NephogramSettingWidget*>(clientData);
+    if (!self || !self->m_legendDragCallback)
         return;
 
+    self->m_legendDragCallback->AbortFlagOff();
+    if (self->handleLegendDragEvent(eventId))
+        self->m_legendDragCallback->AbortFlagOn();
+}
+
+bool NephogramSettingWidget::handleLegendDragEvent(unsigned long eventId)
+{
+    if (!m_visualService)
+        return false;
+
+    vtkRenderWindowInteractor* interactor = m_visualService->interactor();
+    vtkRenderWindow* renderWindow = m_visualService->renderWindow();
+    vtkRenderer* renderer = m_visualService->renderer();
+    vtkScalarBarActor* scalarBar = m_visualService->scalarBarActor();
+    if (!interactor || !renderWindow || !renderer || !scalarBar ||
+        scalarBar->GetVisibility() == 0)
+    {
+        m_draggingLegend = false;
+        return false;
+    }
+
+    int* eventPosition = interactor->GetEventPosition();
+    int* windowSize = renderWindow->GetSize();
+    double viewport[4];
+    renderer->GetViewport(viewport);
+
+    const double viewportWidth = (viewport[2] - viewport[0]) * windowSize[0];
+    const double viewportHeight = (viewport[3] - viewport[1]) * windowSize[1];
+    if (viewportWidth <= 0.0 || viewportHeight <= 0.0)
+        return false;
+
+    const double localX = (eventPosition[0] - viewport[0] * windowSize[0]) / viewportWidth;
+    const double localY = (eventPosition[1] - viewport[1] * windowSize[1]) / viewportHeight;
     const double* position = scalarBar->GetPosition();
-    if (!position)
-        return;
-    m_legendPositionX = position[0];
-    m_legendPositionY = position[1];
-    m_hasLegendPosition = true;
+    const double width = scalarBar->GetWidth();
+    const double height = scalarBar->GetHeight();
+
+    if (eventId == vtkCommand::MiddleButtonPressEvent)
+    {
+        // 留少量容差，标题或刻度文字附近也能顺手拖动。
+        constexpr double tolerance = 0.02;
+        const bool hit = localX >= position[0] - tolerance &&
+                         localX <= position[0] + width + tolerance &&
+                         localY >= position[1] - tolerance &&
+                         localY <= position[1] + height + tolerance;
+        if (!hit)
+            return false;
+
+        m_draggingLegend = true;
+        m_legendDragOffsetX = localX - position[0];
+        m_legendDragOffsetY = localY - position[1];
+        return true;
+    }
+
+    if (eventId == vtkCommand::MouseMoveEvent)
+    {
+        if (!m_draggingLegend)
+            return false;
+
+        const double x = qBound(0.0, localX - m_legendDragOffsetX,
+                                std::max(0.0, 1.0 - width));
+        const double y = qBound(0.0, localY - m_legendDragOffsetY,
+                                std::max(0.0, 1.0 - height));
+        scalarBar->SetPosition(x, y);
+        scalarBar->Modified();
+
+        m_legendPositionX = x;
+        m_legendPositionY = y;
+        m_hasLegendPosition = true;
+        renderWindow->Render();
+        return true;
+    }
+
+    if (eventId == vtkCommand::MiddleButtonReleaseEvent && m_draggingLegend)
+    {
+        m_draggingLegend = false;
+        return true;
+    }
+
+    return false;
 }
 
 vtkDataArray* NephogramSettingWidget::findScalarArray(vtkUnstructuredGrid* grid,
@@ -764,7 +833,6 @@ QJsonObject NephogramSettingWidget::saveJson()
     obj[QStringLiteral("legendPrecision")] = ui->legendPrecisionSpinBox->value();
     obj[QStringLiteral("legendWidth")] = ui->legendWidthSpinBox->value();
     obj[QStringLiteral("legendHeight")] = ui->legendHeightSpinBox->value();
-    obj[QStringLiteral("legendMovable")] = ui->legendMovableCheckBox->isChecked();
     if (m_visualService && m_visualService->scalarBarActor())
     {
         const double* position = m_visualService->scalarBarActor()->GetPosition();
@@ -793,8 +861,6 @@ void NephogramSettingWidget::loadJson(const QJsonObject& obj)
         obj.value(QStringLiteral("legendPrecision")).toInt(4));
     ui->legendWidthSpinBox->setValue(obj.value(QStringLiteral("legendWidth")).toInt(10));
     ui->legendHeightSpinBox->setValue(obj.value(QStringLiteral("legendHeight")).toInt(65));
-    ui->legendMovableCheckBox->setChecked(
-        obj.value(QStringLiteral("legendMovable")).toBool(false));
     m_hasLegendPosition = obj.contains(QStringLiteral("legendPositionX")) &&
                           obj.contains(QStringLiteral("legendPositionY"));
     if (m_hasLegendPosition)

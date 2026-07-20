@@ -90,12 +90,10 @@ MaterialEntryWidget::MaterialEntryWidget(MaterialManager* manager, QWidget* pare
     m_formLayout->setFormAlignment(Qt::AlignTop);
 
     auto* container = new QWidget(this);
+    container->setObjectName(QStringLiteral("materialEntryContent"));
+    container->setAttribute(Qt::WA_StyledBackground, true);
     container->setLayout(m_formLayout);
     container->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
-    QPalette containerPal = container->palette();
-    containerPal.setColor(QPalette::Window, Qt::white);
-    container->setPalette(containerPal);
-    container->setAutoFillBackground(true);
 
     // Dock 外层已经统一提供滚动区域。材料页本身只负责内容布局，
     // 避免嵌套滚动条和 QFormLayout 将可扩展行拉出大块空白。
@@ -1127,8 +1125,7 @@ void MaterialEntryWidget::onDropdownClosed()
                            // 卸载过程中只做状态清理，不回刷高亮，避免离开页面后颜色被重新点亮
                            if (!m_beforeUnloadHandled)
                            {
-                               // 下拉关闭后仅取消 Preview，并恢复到该条目的应有高亮状态
-                               //（Applied / PreDelete）。Selected 只作为下拉框当前值，不参与三维高亮。
+                               // 下拉关闭后取消悬浮预览，并恢复当前选中域及已施加域的显示状态。
                                refreshMatypeHighlightSafe();
                            }
 

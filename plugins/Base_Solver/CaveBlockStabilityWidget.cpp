@@ -33,6 +33,7 @@ CaveBlockStabilityWidget::CaveBlockStabilityWidget(QWidget* parent)
     Q_UNUSED(parent);
     ui->setupUi(this);
     SolverUiLayoutHelper::polishPage(this);
+    SolverUiLayoutHelper::setupComputeControls(this);
     ui->comboIfDir->addItem("使用起点和终点定义方向", "0");
     ui->comboIfDir->addItem("使用指定面定义方向", "1");
 
@@ -57,7 +58,7 @@ CaveBlockStabilityWidget::CaveBlockStabilityWidget(QWidget* parent)
     ui->labelIcut->hide();
     ui->labelSafe->hide();
     // ui->fileHiddenWidget->hide();
-    ui->computeBtn->setText(QStringLiteral("计算"));
+    ui->computeBtn->setText(QStringLiteral("数值法计算"));
 
     auto* numberValidator = new QDoubleValidator(-1.0e12, 1.0e12, 8, this);
     numberValidator->setNotation(QDoubleValidator::ScientificNotation);
@@ -99,7 +100,8 @@ CaveBlockStabilityWidget::~CaveBlockStabilityWidget()
 void CaveBlockStabilityWidget::setComputing(bool computing)
 {
     ui->computeBtn->setProperty("computing", computing);
-    ui->computeBtn->setText(computing ? QStringLiteral("停止") : QStringLiteral("计算"));
+    ui->computeBtn->setText(computing ? QStringLiteral("停止计算")
+                                      : QStringLiteral("数值法计算"));
 }
 
 void CaveBlockStabilityWidget::beforeLoad()

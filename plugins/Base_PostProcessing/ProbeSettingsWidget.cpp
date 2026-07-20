@@ -31,6 +31,7 @@
 #include <cmath>
 #include <limits>
 
+#include "ResultDisplayNames.h"
 #include "ui_ProbeSettingsWidget.h"
 
 static inline QString sci(double v, int prec = 6)
@@ -221,16 +222,19 @@ void ProbeSettingsWidget::handlePick(int displayX, int displayY)
     QString arrayName = activeArrayNameFromMapper(mapper);
     int assoc = arrayAssociationFromMapper(mapper); // 0 points, 1 cells, -1 unknown
 
-    // fallback：取颜色条标题或 ActiveScalars
+    // 颜色条标题现在是简短显示名，不能再当作内部数组名使用。
+    // Mapper 没有显式数组名时，直接读取数据集的活动标量。
     if (arrayName.isEmpty())
     {
-        arrayName = fallbackArrayNameFromScalarBar();
-        if (arrayName.isEmpty())
+        if (auto sa = ds->GetPointData()->GetScalars())
         {
-            if (auto sa = ds->GetPointData()->GetScalars())
-                arrayName = sa->GetName();
-            else if (auto ca = ds->GetCellData()->GetScalars())
-                arrayName = ca->GetName();
+            arrayName = QString::fromUtf8(sa->GetName() ? sa->GetName() : "");
+            assoc = 0;
+        }
+        else if (auto ca = ds->GetCellData()->GetScalars())
+        {
+            arrayName = QString::fromUtf8(ca->GetName() ? ca->GetName() : "");
+            assoc = 1;
         }
     }
     if (assoc < 0)
@@ -266,7 +270,9 @@ void ProbeSettingsWidget::handlePick(int displayX, int displayY)
         return;
     }
 
-    const QString shownName = components > 1 ? arrayName + QStringLiteral(" |模长|") : arrayName;
+    QString shownName = ResultDisplayNames::displayName(arrayName);
+    if (components > 1)
+        shownName += QStringLiteral("（模长）");
     appendRow(pos, shownName, (assoc == 0 ? QStringLiteral("节点") : QStringLiteral("单元")),
               value);
 }
@@ -387,7 +393,9 @@ void ProbeSettingsWidget::setupTableIfNeeded()
     if (ui->probeTable->columnCount() == 0)
     {
         ui->probeTable->setColumnCount(7);
-        QStringList headers{"#", "X", "Y", "Z", "Array", "Assoc", "Value"};
+        QStringList headers{QStringLiteral("序号"), QStringLiteral("X"), QStringLiteral("Y"),
+                            QStringLiteral("Z"), QStringLiteral("物理量"),
+                            QStringLiteral("类型"), QStringLiteral("数值")};
         ui->probeTable->setHorizontalHeaderLabels(headers);
         ui->probeTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
         ui->probeTable->verticalHeader()->setVisible(false);

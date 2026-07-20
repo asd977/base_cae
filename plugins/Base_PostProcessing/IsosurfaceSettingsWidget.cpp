@@ -81,20 +81,8 @@ IsosurfaceSettingsWidget::IsosurfaceSettingsWidget(VisualWidgetService* ppw, QWi
 {
     ui->setupUi(this);
 
-    // 两个 GroupBox 必须是 checkable，且互斥
-    if (ui->singleIsoGroupBox)
-        ui->singleIsoGroupBox->setCheckable(true);
-    if (ui->multiIsoGroupBox)
-        ui->multiIsoGroupBox->setCheckable(true);
-    if (ui->singleIsoGroupBox && ui->multiIsoGroupBox)
-    {
-        ui->singleIsoGroupBox->blockSignals(true);
-        ui->multiIsoGroupBox->blockSignals(true);
-        ui->singleIsoGroupBox->setChecked(true);
-        ui->multiIsoGroupBox->setChecked(false);
-        ui->singleIsoGroupBox->blockSignals(false);
-        ui->multiIsoGroupBox->blockSignals(false);
-    }
+    ui->singleIsoRadioButton->setChecked(true);
+    ui->isoModeStackedWidget->setCurrentIndex(0);
 
     // UI 默认
     ui->percentCheckBox->setChecked(true);
@@ -102,8 +90,10 @@ IsosurfaceSettingsWidget::IsosurfaceSettingsWidget(VisualWidgetService* ppw, QWi
     ui->isoSlider->setTracking(false);
     ui->isoSlider->setToolTip(QStringLiteral("松开滑块后更新等值面，避免拖动时连续重算"));
     ui->isoSlider->setValue(50);
-    ui->isoSpin->setDecimals(3);
+    ui->isoSpin->setDecimals(6);
     ui->isoSpin->setSingleStep(0.001);
+    ui->isoSlider->setEnabled(true);
+    ui->isoSpin->setEnabled(false);
 
     if (ui->isoCountSpin)
     {
@@ -129,9 +119,9 @@ IsosurfaceSettingsWidget::IsosurfaceSettingsWidget(VisualWidgetService* ppw, QWi
     connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &IsosurfaceSettingsWidget::on_resultDirComboBox_currentIndexChanged);
 
-    connect(ui->singleIsoGroupBox, &QGroupBox::toggled, this,
+    connect(ui->singleIsoRadioButton, &QRadioButton::toggled, this,
             &IsosurfaceSettingsWidget::on_singleIsoGroupBox_toggled);
-    connect(ui->multiIsoGroupBox, &QGroupBox::toggled, this,
+    connect(ui->multiIsoRadioButton, &QRadioButton::toggled, this,
             &IsosurfaceSettingsWidget::on_multiIsoGroupBox_toggled);
 }
 
@@ -173,7 +163,7 @@ void IsosurfaceSettingsWidget::beforeLoad()
         {
             m_visualService->showScalarBar(true, false);
             if (auto* scalarBar = m_visualService->scalarBarActor())
-                scalarBar->SetTitle(ResultDisplayNames::displayName(field.name).toUtf8().constData());
+                scalarBar->SetTitle(ResultDisplayNames::scalarBarName(field.name).toUtf8().constData());
         }
     }
     renderNow();
@@ -190,7 +180,7 @@ QJsonObject IsosurfaceSettingsWidget::saveJson()
     object.insert(QStringLiteral("percentMode"), ui->percentCheckBox->isChecked());
     object.insert(QStringLiteral("isoPercent"), ui->isoSlider->value());
     object.insert(QStringLiteral("isoValue"), ui->isoSpin->value());
-    object.insert(QStringLiteral("singleMode"), ui->singleIsoGroupBox->isChecked());
+    object.insert(QStringLiteral("singleMode"), ui->singleIsoRadioButton->isChecked());
     object.insert(QStringLiteral("isoCount"), ui->isoCountSpin->value());
     object.insert(QStringLiteral("includeEnds"), ui->includeEndsCheck->isChecked());
     return object;
@@ -253,8 +243,8 @@ void IsosurfaceSettingsWidget::applyPendingState()
         const QSignalBlocker percentBlocker(ui->percentCheckBox);
         const QSignalBlocker sliderBlocker(ui->isoSlider);
         const QSignalBlocker spinBlocker(ui->isoSpin);
-        const QSignalBlocker singleBlocker(ui->singleIsoGroupBox);
-        const QSignalBlocker multiBlocker(ui->multiIsoGroupBox);
+        const QSignalBlocker singleBlocker(ui->singleIsoRadioButton);
+        const QSignalBlocker multiBlocker(ui->multiIsoRadioButton);
         const QSignalBlocker countBlocker(ui->isoCountSpin);
         const QSignalBlocker endsBlocker(ui->includeEndsCheck);
 
@@ -264,11 +254,14 @@ void IsosurfaceSettingsWidget::applyPendingState()
         ui->isoSlider->setValue(state.value(QStringLiteral("isoPercent"), 50).toInt());
         if (!percentMode)
             ui->isoSpin->setValue(state.value(QStringLiteral("isoValue"), ui->isoSpin->value()).toDouble());
-        ui->singleIsoGroupBox->setChecked(singleMode);
-        ui->multiIsoGroupBox->setChecked(!singleMode);
+        ui->singleIsoRadioButton->setChecked(singleMode);
+        ui->multiIsoRadioButton->setChecked(!singleMode);
+        ui->isoModeStackedWidget->setCurrentIndex(singleMode ? 0 : 1);
         ui->isoCountSpin->setValue(state.value(QStringLiteral("isoCount"), 5).toInt());
         ui->includeEndsCheck->setChecked(state.value(QStringLiteral("includeEnds"), false).toBool());
     }
+    ui->isoSlider->setEnabled(ui->percentCheckBox->isChecked());
+    ui->isoSpin->setEnabled(!ui->percentCheckBox->isChecked());
 
     detachAllFromScene();
     m_actorOverall = nullptr;
@@ -276,7 +269,7 @@ void IsosurfaceSettingsWidget::applyPendingState()
     m_singleDisplayed = false;
     m_multiDisplayed = false;
     updateOverallColoring();
-    if (ui->singleIsoGroupBox->isChecked())
+    if (ui->singleIsoRadioButton->isChecked())
         updateSingleIsoRealtime();
     else if (m_actorOverall)
         addActorByService(m_visualService, m_actorOverall, false);
@@ -481,7 +474,7 @@ void IsosurfaceSettingsWidget::updateOverallColoring()
     {
         m_visualService->showScalarBar(true, false);
         if (auto* scalarBar = m_visualService->scalarBarActor())
-            scalarBar->SetTitle(ResultDisplayNames::displayName(field.name).toUtf8().constData());
+            scalarBar->SetTitle(ResultDisplayNames::scalarBarName(field.name).toUtf8().constData());
     }
 }
 
@@ -618,7 +611,7 @@ void IsosurfaceSettingsWidget::updateSingleIsoRealtime()
         const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
         m_visualService->showScalarBar(true, false);
         if (auto* scalarBar = m_visualService->scalarBarActor())
-            scalarBar->SetTitle(ResultDisplayNames::displayName(field.name).toUtf8().constData());
+            scalarBar->SetTitle(ResultDisplayNames::scalarBarName(field.name).toUtf8().constData());
     }
     m_singleDisplayed = true;
     m_multiDisplayed = false;
@@ -730,8 +723,8 @@ void IsosurfaceSettingsWidget::reattachAccordingToState()
     // 清空当前显示
     detachAllFromScene();
 
-    const bool singleMode = ui->singleIsoGroupBox && ui->singleIsoGroupBox->isChecked();
-    const bool multiMode = ui->multiIsoGroupBox && ui->multiIsoGroupBox->isChecked();
+    const bool singleMode = ui->singleIsoRadioButton && ui->singleIsoRadioButton->isChecked();
+    const bool multiMode = ui->multiIsoRadioButton && ui->multiIsoRadioButton->isChecked();
 
     if (m_multiDisplayed && multiMode && !m_multiActors.isEmpty())
     {
@@ -794,8 +787,8 @@ void IsosurfaceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
     setIsoSpinRangeFromScalar();
     updateOverallColoring();
 
-    const bool singleMode = ui->singleIsoGroupBox->isChecked();
-    const bool multiMode = ui->multiIsoGroupBox->isChecked();
+    const bool singleMode = ui->singleIsoRadioButton->isChecked();
+    const bool multiMode = ui->multiIsoRadioButton->isChecked();
 
     if (singleMode)
     {
@@ -811,100 +804,63 @@ void IsosurfaceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
     }
 }
 
-void IsosurfaceSettingsWidget::on_percentCheckBox_toggled(bool)
+void IsosurfaceSettingsWidget::on_percentCheckBox_toggled(bool checked)
 {
+    ui->isoSlider->setEnabled(checked);
+    ui->isoSpin->setEnabled(!checked);
     // 单等值面 = 实时更新
-    if (ui->singleIsoGroupBox && ui->singleIsoGroupBox->isChecked())
+    if (ui->singleIsoRadioButton && ui->singleIsoRadioButton->isChecked())
         updateSingleIsoRealtime();
 }
 
 void IsosurfaceSettingsWidget::on_isoSlider_valueChanged(int)
 {
     // 单等值面模式下实时
-    if (ui->singleIsoGroupBox && ui->singleIsoGroupBox->isChecked())
+    if (ui->singleIsoRadioButton && ui->singleIsoRadioButton->isChecked())
         updateSingleIsoRealtime();
 }
 
 void IsosurfaceSettingsWidget::on_isoSpin_valueChanged(double)
 {
     // 单等值面模式下实时
-    if (ui->singleIsoGroupBox && ui->singleIsoGroupBox->isChecked())
+    if (ui->singleIsoRadioButton && ui->singleIsoRadioButton->isChecked())
         updateSingleIsoRealtime();
 }
 
 void IsosurfaceSettingsWidget::on_confirmPushButton_clicked()
 {
-    // 只有“多等值面模式”按钮才生效；单等值面忽略按钮
-    if (ui->multiIsoGroupBox && ui->multiIsoGroupBox->isChecked())
-    {
+    if (ui->multiIsoRadioButton->isChecked())
         buildMultiIsoResult();
-    }
+    else
+        updateSingleIsoRealtime();
 }
 
 void IsosurfaceSettingsWidget::on_singleIsoGroupBox_toggled(bool checked)
 {
-    if (!ui->multiIsoGroupBox)
+    if (!checked)
         return;
 
-    // 互斥
-    ui->multiIsoGroupBox->blockSignals(true);
-    ui->multiIsoGroupBox->setChecked(!checked);
-    ui->multiIsoGroupBox->blockSignals(false);
-
-    if (checked)
-    {
-        // 进入单等值面：实时显示
-        updateSingleIsoRealtime();
-    }
-    else
-    {
-        // 退出单等值面：隐藏单面，显示整体
-        if (m_actorSingle)
-            removeActorByService(m_visualService, m_actorSingle, false);
-        m_singleDisplayed = false;
-        if (m_actorOverall)
-            addActorByService(m_visualService, m_actorOverall);
-        renderNow();
-    }
+    ui->isoModeStackedWidget->setCurrentIndex(0);
+    hideMultiActorsFromScene();
+    m_multiDisplayed = false;
+    updateSingleIsoRealtime();
 }
 
 void IsosurfaceSettingsWidget::on_multiIsoGroupBox_toggled(bool checked)
 {
-    if (!ui->singleIsoGroupBox)
+    if (!checked)
         return;
 
-    // 互斥
-    ui->singleIsoGroupBox->blockSignals(true);
-    ui->singleIsoGroupBox->setChecked(!checked);
-    ui->singleIsoGroupBox->blockSignals(false);
+    ui->isoModeStackedWidget->setCurrentIndex(1);
+    if (m_actorSingle)
+        removeActorByService(m_visualService, m_actorSingle, false);
+    m_singleDisplayed = false;
 
-    if (checked)
-    {
-        // 进入多等值面：暂不自动生成，显示整体；实时单面（若有）需隐藏
-        if (m_actorSingle)
-            removeActorByService(m_visualService, m_actorSingle, false);
-        m_singleDisplayed = false;
-
-        hideMultiActorsFromScene();
-        m_multiDisplayed = false;
-
-        if (m_actorOverall)
-            addActorByService(m_visualService, m_actorOverall);
-        renderNow();
-    }
-    else
-    {
-        // 退出多等值面：隐藏多面结果，回到单面实时或整体
-        hideMultiActorsFromScene();
-        m_multiDisplayed = false;
-
-        if (ui->singleIsoGroupBox->isChecked())
-        {
-            if (m_actorOverall)
-                addActorByService(m_visualService, m_actorOverall);
-            updateSingleIsoRealtime();
-        }
-    }
+    hideMultiActorsFromScene();
+    m_multiDisplayed = false;
+    if (m_actorOverall)
+        addActorByService(m_visualService, m_actorOverall);
+    renderNow();
 }
 
 void IsosurfaceSettingsWidget::on_stepComboBox_currentIndexChanged(int index)
@@ -951,8 +907,8 @@ void IsosurfaceSettingsWidget::on_stepComboBox_currentIndexChanged(int index)
     m_multiDisplayed = false;
 
     // 根据当前模式重建/显示
-    const bool singleMode = ui->singleIsoGroupBox->isChecked();
-    const bool multiMode = ui->multiIsoGroupBox->isChecked();
+    const bool singleMode = ui->singleIsoRadioButton->isChecked();
+    const bool multiMode = ui->multiIsoRadioButton->isChecked();
 
     // 多等值面模式下，尚未点“确认”之前显示整体云图
     updateOverallColoring();

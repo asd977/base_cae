@@ -21,6 +21,7 @@
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QPushButton>
+#include <QTimer>
 
 #include "ui_CaveExcavationBodyPage.h"
 
@@ -47,6 +48,14 @@ CaveExcavationBodyPage::CaveExcavationBodyPage(QWidget* parent)
     m_clearBtn = ui->clearButton;
     m_groupList = ui->groupList;
     m_removeGroupBtn = ui->removeGroupButton;
+    m_groupPreviewTimer = new QTimer(this);
+    m_groupPreviewTimer->setSingleShot(true);
+    m_groupPreviewTimer->setInterval(45);
+
+    connect(m_groupPreviewTimer, &QTimer::timeout, this, [this]()
+    {
+        updateGroupDomainHighlight(m_pendingPreviewGroup);
+    });
 
     connect(m_addGroupBtn, &QPushButton::clicked,
             this, &CaveExcavationBodyPage::onAddGroupClicked);
@@ -56,6 +65,9 @@ CaveExcavationBodyPage::CaveExcavationBodyPage(QWidget* parent)
 
     connect(m_clearBtn, &QPushButton::clicked,
             this, &CaveExcavationBodyPage::onClearClicked);
+
+    connect(m_groupCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &CaveExcavationBodyPage::onGroupChanged);
 
     if (auto* combo = qobject_cast<CustomComboBox*>(m_groupCombo))
     {
@@ -86,19 +98,23 @@ void CaveExcavationBodyPage::beforeLoad()
     // 开挖体页面统一通过“分组”选择，不直接点选单个面。
     PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
     PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, false);
+    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Face);
+    PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Face);
 
     refreshSelectedGroupList();
     refreshGroupComboMarks();
-    updatePersistentSelectionFaces();
     updateGroupDomainHighlight(0);
 }
 
 void CaveExcavationBodyPage::beforeUnload()
 {
+    m_groupPreviewTimer->stop();
+    m_pendingPreviewGroup = 0;
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Face);
     PickManager::instance().setPreviewDomain(getPageType(), m_uuid, DomainKey{});
     PickManager::instance().setPreDeleteDomain(getPageType(), m_uuid, DomainKey{});
     PickManager::instance().setSelectedDomain(getPageType(), m_uuid, DomainKey{});
+    PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Face);
 
     PickManager::instance().deactivate(getPageType(), m_uuid, currentPickMode());
 }
@@ -149,7 +165,6 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
 
     refreshSelectedGroupList();
     refreshGroupComboMarks();
-    updatePersistentSelectionFaces();
     updateGroupDomainHighlight(0);
 }
 
@@ -186,7 +201,6 @@ void CaveExcavationBodyPage::onClearClicked()
 
     refreshSelectedGroupList();
     refreshGroupComboMarks();
-    updatePersistentSelectionFaces();
     updateGroupDomainHighlight(0);
 }
 
@@ -208,7 +222,6 @@ void CaveExcavationBodyPage::onAddGroupClicked()
 
     refreshSelectedGroupList();
     refreshGroupComboMarks();
-    updatePersistentSelectionFaces();
     updateGroupDomainHighlight(0);
 }
 
@@ -233,7 +246,16 @@ void CaveExcavationBodyPage::onRemoveSelectedGroupsClicked()
 
     refreshSelectedGroupList();
     refreshGroupComboMarks();
-    updatePersistentSelectionFaces();
+    updateGroupDomainHighlight(0);
+}
+
+void CaveExcavationBodyPage::onGroupChanged(int index)
+{
+    if (!m_groupCombo || index < 0 || index >= m_groupCombo->count())
+        return;
+
+    m_groupPreviewTimer->stop();
+    m_pendingPreviewGroup = 0;
     updateGroupDomainHighlight(0);
 }
 
@@ -252,18 +274,8 @@ void CaveExcavationBodyPage::onGroupHovered(int index)
     m_groupCombo->setItemData(index, QColor(20, 70, 160), Qt::ForegroundRole);
     m_lastHoveredIndex = index;
 
-    const int gid = m_groupCombo->itemData(index).toInt();
-    if (gid == 0)
-        return;
-
-    const QVector<vtkIdType> previewFaceKeys =
-        visibleBoundaryFaceKeys(groupCellIds(gid));
-
-    PickManager::instance().setPreviewFaceKeys(
-        getPageType(), m_uuid, GridKind::Solid, previewFaceKeys);
-
-    // 只使用 FaceKey 做开挖体预览高亮，避免 DomainKey 把同分组里的杆/线单元一起高亮。
-    updateGroupDomainHighlight(0);
+    m_pendingPreviewGroup = m_groupCombo->itemData(index).toInt();
+    m_groupPreviewTimer->start();
 }
 
 void CaveExcavationBodyPage::onGroupDropdownClosed()
@@ -275,6 +287,8 @@ void CaveExcavationBodyPage::onGroupDropdownClosed()
     }
 
     m_lastHoveredIndex = -1;
+    m_groupPreviewTimer->stop();
+    m_pendingPreviewGroup = 0;
 
     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Face);
 
@@ -287,11 +301,15 @@ void CaveExcavationBodyPage::setupGroupCombo()
     if (!m_groupCombo)
         return;
 
+    m_groupPreviewTimer->stop();
+    m_pendingPreviewGroup = 0;
+
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
         return;
 
     const QVector<int> ids = availableGroupIds();
+    const QVariant currentGroup = m_groupCombo->currentData();
 
     m_groupCombo->blockSignals(true);
     m_groupCombo->clear();
@@ -313,6 +331,10 @@ void CaveExcavationBodyPage::setupGroupCombo()
                                  : QStringLiteral("%1（ID %2）").arg(name).arg(id);
         m_groupCombo->addItem(text, id);
     }
+
+    const int restoredIndex = currentGroup.isValid() ? m_groupCombo->findData(currentGroup) : -1;
+    if (restoredIndex >= 0)
+        m_groupCombo->setCurrentIndex(restoredIndex);
 
     m_groupCombo->blockSignals(false);
 
@@ -603,14 +625,22 @@ void CaveExcavationBodyPage::updatePersistentSelectionFaces()
 
 void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
 {
-    Q_UNUSED(previewGroup);
+    const QString category = selectionGroupCategory();
+    const int dim = layerDomainDim();
+    const int selectedGroup =
+        m_groupCombo && m_groupCombo->currentData().isValid()
+            ? m_groupCombo->currentData().toInt()
+            : 0;
 
-    // 不再使用 DomainKey 做开挖体高亮。
-    // 原因：同一个 LAYER 分组中可能同时包含实体单元和杆/线单元，
-    // DomainKey 高亮会把杆/线单元也带上；开挖体只应高亮和输出实体/区域单元。
-    PickManager::instance().setSelectedDomain(getPageType(), m_uuid, DomainKey{});
-    PickManager::instance().setPreviewDomain(getPageType(), m_uuid, DomainKey{});
-    PickManager::instance().setPreDeleteDomain(getPageType(), m_uuid, DomainKey{});
+    auto domainKey = [&](int groupId)
+    {
+        return groupId != 0 ? DomainKey{category, dim, groupId} : DomainKey{};
+    };
+
+    auto& pickManager = PickManager::instance();
+    pickManager.setSelectedDomain(getPageType(), m_uuid, domainKey(selectedGroup));
+    pickManager.setPreviewDomain(getPageType(), m_uuid, domainKey(previewGroup));
+    pickManager.setPreDeleteDomain(getPageType(), m_uuid, DomainKey{});
 }
 
 int CaveExcavationBodyPage::layerDomainDim() const

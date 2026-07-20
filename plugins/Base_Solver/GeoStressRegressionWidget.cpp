@@ -33,6 +33,7 @@ GeoStressRegressionWidget::GeoStressRegressionWidget(QWidget* parent)
     Q_UNUSED(parent);
     ui->setupUi(this);
     SolverUiLayoutHelper::polishPage(this);
+    SolverUiLayoutHelper::setupComputeControls(this);
 
     ui->reservedEdit->setText("0");
     ui->reservedEdit->hide();
@@ -178,5 +179,6 @@ void GeoStressRegressionWidget::onComputeClicked()
 void GeoStressRegressionWidget::setComputing(bool computing)
 {
     ui->btnCompute->setProperty("computing", computing);
-    ui->btnCompute->setText(computing ? QStringLiteral("停止") : QStringLiteral("计算"));
+    ui->btnCompute->setText(computing ? QStringLiteral("停止计算")
+                                      : QStringLiteral("数值法计算"));
 }

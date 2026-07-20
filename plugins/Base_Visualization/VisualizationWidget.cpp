@@ -1,14 +1,21 @@
 ﻿#include "VisualizationWidget.h"
 
 #include <ServiceRegistry.h>
+#include <EventManager.h>
+#include <PublicConstants.h>
+#include <StyleManager.h>
 #include <services/UiFrameService.h>
 
 #include <QAction>
+#include <QApplication>
+#include <QColor>
 #include <QDir>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
+#include <QPainter>
+#include <QPixmap>
 #include <QSet>
 #include <QSizePolicy>
 #include <QSlider>
@@ -27,6 +34,7 @@
 #include <vtkActor.h>
 #include <vtkAxesActor.h>
 #include <vtkCamera.h>
+#include <vtkCaptionActor2D.h>
 #include <vtkCubeAxesActor.h>
 #include <vtkGenericOpenGLRenderWindow.h>
 #include <vtkLookupTable.h>
@@ -93,6 +101,29 @@ void applyYaHeiTextStyle(vtkTextProperty* prop, int fontSize, bool bold = false)
         prop->SetFontFamilyToArial();
     }
 }
+
+QIcon visualizationThemeIcon(const QString& path)
+{
+    const bool darkTheme = StyleManager::currentThemeName() == QStringLiteral("dark");
+    if (path.isEmpty() || !darkTheme)
+        return QIcon(path);
+
+    const QIcon source(path);
+    QIcon result;
+    const QList<int> sizes = {16, 20, 24, 32, 48, 64};
+    for (int size : sizes)
+    {
+        QPixmap pixmap = source.pixmap(size, size);
+        if (pixmap.isNull())
+            continue;
+        QPainter painter(&pixmap);
+        painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+        painter.fillRect(pixmap.rect(), QColor(QStringLiteral("#dce5ec")));
+        painter.end();
+        result.addPixmap(pixmap);
+    }
+    return result.isNull() ? QIcon(path) : result;
+}
 }
 
 VisualizationWidget::VisualizationWidget(QWidget* parent) : QWidget(parent)
@@ -131,6 +162,14 @@ VisualizationWidget::VisualizationWidget(QWidget* parent) : QWidget(parent)
     initViewToolbar();
     if (m_toolbar)
         layout->insertWidget(0, m_toolbar);
+
+    applyUiTheme(StyleManager::currentThemeName());
+    EventManager::instance().registerHandler(
+        PublicConstants::kEventUiThemeChanged, this,
+        [this](const QVariantMap& data)
+        {
+            applyUiTheme(data.value(QStringLiteral("theme")).toString());
+        });
 
     UiFrameService* uiFrameService = ServiceRegistry::instance().getService<UiFrameService>();
     if (uiFrameService)
@@ -244,6 +283,7 @@ void VisualizationWidget::initViewToolbar()
     // 使用 QToolBar 自带的 overflow/extension 机制：空间不足时，Qt 会自动把
     // 放不下的 QAction 收进扩展菜单，不再手动计算宽度或隐藏按钮。
     auto* actionToolbar = new QToolBar(m_toolbar);
+    m_actionToolbar = actionToolbar;
     actionToolbar->setObjectName("visualizationActionToolbar");
     actionToolbar->setMovable(false);
     actionToolbar->setFloatable(false);
@@ -259,7 +299,8 @@ void VisualizationWidget::initViewToolbar()
     auto addAction = [this, actionToolbar](const QString& iconPath, const QString& text,
                                            const QString& tip, auto fn)
     {
-        QAction* action = actionToolbar->addAction(QIcon(iconPath), text);
+        QAction* action = actionToolbar->addAction(visualizationThemeIcon(iconPath), text);
+        action->setProperty("themeIconPath", iconPath);
         action->setToolTip(tip);
         connect(action, &QAction::triggered, this, fn);
         return action;
@@ -333,7 +374,9 @@ void VisualizationWidget::initViewToolbar()
     m_opacityButton->setObjectName("opacityButton");
     m_opacityButton->setAutoRaise(true);
     m_opacityButton->setToolTip(tr("整体透明度"));
-    m_opacityButton->setIcon(QIcon(":/resources/icon/view_opacity.svg"));
+    m_opacityButton->setProperty("themeIconPath", QStringLiteral(":/resources/icon/view_opacity.svg"));
+    m_opacityButton->setIcon(visualizationThemeIcon(
+        QStringLiteral(":/resources/icon/view_opacity.svg")));
     m_opacityButton->setIconSize(QSize(16, 16));
     m_opacityButton->setFixedSize(30, 30);
     m_opacityButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
@@ -446,6 +489,19 @@ bool VisualizationWidget::addProp(const QString& id, vtkSmartPointer<vtkProp> pr
 
     m_renderer->AddViewProp(prop.GetPointer());
     m_registry.insert(id, it);
+
+    // 暗色主题下网格原本的纯黑边线会与画布背景混在一起。
+    if (auto* actor = vtkActor::SafeDownCast(prop))
+    {
+        const bool dark = StyleManager::currentThemeName() == QStringLiteral("dark");
+        if (id == QStringLiteral("mesh.imported.surface"))
+            actor->GetProperty()->SetEdgeColor(dark ? 0.63 : 0.0,
+                                                dark ? 0.68 : 0.0,
+                                                dark ? 0.72 : 0.0);
+        else if (id == QStringLiteral("mesh.imported.line") && dark)
+            actor->GetProperty()->SetColor(0.72, 0.77, 0.81);
+    }
+
     updateScaleActorBounds();
 
     if (resetCam)
@@ -816,8 +872,10 @@ void VisualizationWidget::updateProjectionButtonIcon()
     if (!m_projectionButton)
         return;
 
-    const QIcon icon(m_isParallelProjection ? QString(":/resources/icon/parallel.png")
-                                            : QString(":/resources/icon/perspective.png"));
+    const QString iconPath = m_isParallelProjection
+                                 ? QStringLiteral(":/resources/icon/parallel.png")
+                                 : QStringLiteral(":/resources/icon/perspective.png");
+    const QIcon icon = visualizationThemeIcon(iconPath);
     const QString tip =
         m_isParallelProjection
             ? tr("当前为正交投影，点击切换为透视投影")
@@ -843,8 +901,10 @@ void VisualizationWidget::updateScaleButtonIcon()
     if (!m_scaleButton)
         return;
 
-    const QIcon icon(m_isScaleVisible ? QString(":/resources/icon/view_scale_on.svg")
-                                      : QString(":/resources/icon/view_scale_off.svg"));
+    const QString iconPath = m_isScaleVisible
+                                 ? QStringLiteral(":/resources/icon/view_scale_on.svg")
+                                 : QStringLiteral(":/resources/icon/view_scale_off.svg");
+    const QIcon icon = visualizationThemeIcon(iconPath);
     const QString tip = m_isScaleVisible ? tr("隐藏尺度标尺") : tr("显示尺度标尺");
 
     if (QAction* action = m_scaleButton->defaultAction())
@@ -860,6 +920,124 @@ void VisualizationWidget::updateScaleButtonIcon()
         m_scaleButton->setChecked(m_isScaleVisible);
     }
     m_scaleButton->setIconSize(QSize(16, 16));
+}
+
+void VisualizationWidget::applyUiTheme(const QString& themeName)
+{
+    const QString theme = StyleManager::normalizeThemeName(themeName);
+    const bool dark = theme == QStringLiteral("dark");
+
+    double background[3] = {244.0 / 255.0, 246.0 / 255.0, 248.0 / 255.0};
+    double background2[3] = {1.0, 1.0, 1.0};
+    double textColor[3] = {0.0, 0.0, 0.0};
+
+    if (dark)
+    {
+        background[0] = 30.0 / 255.0;
+        background[1] = 36.0 / 255.0;
+        background[2] = 42.0 / 255.0;
+        background2[0] = 43.0 / 255.0;
+        background2[1] = 51.0 / 255.0;
+        background2[2] = 59.0 / 255.0;
+        textColor[0] = 220.0 / 255.0;
+        textColor[1] = 229.0 / 255.0;
+        textColor[2] = 236.0 / 255.0;
+    }
+    else if (theme == QStringLiteral("blue"))
+    {
+        // Use a soft blue-grey canvas so it connects naturally with the dock
+        // chrome while preserving enough contrast for geometry and mesh edges.
+        background[0] = 238.0 / 255.0;
+        background[1] = 245.0 / 255.0;
+        background[2] = 249.0 / 255.0;
+        background2[0] = 248.0 / 255.0;
+        background2[1] = 251.0 / 255.0;
+        background2[2] = 253.0 / 255.0;
+    }
+
+    if (m_renderer)
+    {
+        m_renderer->SetBackground(background);
+        m_renderer->SetBackground2(background2);
+    }
+
+    if (m_scalarBar)
+    {
+        if (auto* title = m_scalarBar->GetTitleTextProperty())
+            title->SetColor(textColor);
+        if (auto* label = m_scalarBar->GetLabelTextProperty())
+            label->SetColor(textColor);
+        m_scalarBar->Modified();
+    }
+
+    if (m_cubeAxesActor)
+    {
+        for (int axis = 0; axis < 3; ++axis)
+        {
+            if (auto* title = m_cubeAxesActor->GetTitleTextProperty(axis))
+                title->SetColor(textColor);
+            if (auto* label = m_cubeAxesActor->GetLabelTextProperty(axis))
+                label->SetColor(textColor);
+        }
+        m_cubeAxesActor->GetXAxesLinesProperty()->SetColor(textColor);
+        m_cubeAxesActor->GetYAxesLinesProperty()->SetColor(textColor);
+        m_cubeAxesActor->GetZAxesLinesProperty()->SetColor(textColor);
+        m_cubeAxesActor->Modified();
+    }
+
+    if (m_axes)
+    {
+        vtkCaptionActor2D* captions[] = {
+            m_axes->GetXAxisCaptionActor2D(),
+            m_axes->GetYAxisCaptionActor2D(),
+            m_axes->GetZAxisCaptionActor2D()};
+        for (vtkCaptionActor2D* caption : captions)
+        {
+            if (caption && caption->GetCaptionTextProperty())
+                caption->GetCaptionTextProperty()->SetColor(textColor);
+        }
+        m_axes->Modified();
+    }
+
+    if (auto* meshSurface = vtkActor::SafeDownCast(getProp(QStringLiteral("mesh.imported.surface"))))
+    {
+        meshSurface->GetProperty()->SetEdgeColor(dark ? 0.63 : 0.0,
+                                                  dark ? 0.68 : 0.0,
+                                                  dark ? 0.72 : 0.0);
+    }
+    if (auto* meshLine = vtkActor::SafeDownCast(getProp(QStringLiteral("mesh.imported.line"))))
+    {
+        meshLine->GetProperty()->SetColor(dark ? 0.72 : 0.78,
+                                           dark ? 0.77 : 0.78,
+                                           dark ? 0.81 : 0.78);
+    }
+
+    updateToolbarIcons();
+    updateProjectionButtonIcon();
+    updateScaleButtonIcon();
+    render();
+}
+
+void VisualizationWidget::updateToolbarIcons()
+{
+    if (m_actionToolbar)
+    {
+        for (QAction* action : m_actionToolbar->actions())
+        {
+            if (!action)
+                continue;
+            const QString path = action->property("themeIconPath").toString();
+            if (!path.isEmpty())
+                action->setIcon(visualizationThemeIcon(path));
+        }
+    }
+
+    if (m_opacityButton)
+    {
+        const QString path = m_opacityButton->property("themeIconPath").toString();
+        if (!path.isEmpty())
+            m_opacityButton->setIcon(visualizationThemeIcon(path));
+    }
 }
 
 void VisualizationWidget::updateScaleActorBounds()

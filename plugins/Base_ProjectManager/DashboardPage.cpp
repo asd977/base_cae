@@ -1,4 +1,4 @@
-#include "DashboardPage.h"
+﻿#include "DashboardPage.h"
 #include <ContextMenuHub.h>
 #include <EventManager.h>
 #include <PublicConstants.h>
@@ -8,8 +8,8 @@
 DashboardPage::DashboardPage(ProjectNode* node, QWidget* parent)
     : BasePage("DashboardPage"), m_node(node)
 {
+    setObjectName(QStringLiteral("dashboardPage"));
     setAttribute(Qt::WA_StyledBackground, true);
-    setStyleSheet("DashboardPage { background-color: white; }");
 
     m_mainLayout = new QVBoxLayout(this);
     m_mainLayout->setContentsMargins(0, 0, 0, 0);
@@ -23,13 +23,14 @@ DashboardPage::DashboardPage(ProjectNode* node, QWidget* parent)
 
     // Scroll area for content
     m_scrollArea = new QScrollArea(this);
+    m_scrollArea->setObjectName(QStringLiteral("dashboardScrollArea"));
     m_scrollArea->setWidgetResizable(true);
     m_scrollArea->setFrameShape(QFrame::NoFrame);
-    m_scrollArea->setStyleSheet("QScrollArea { background-color: white; border: none; }");
     m_mainLayout->addWidget(m_scrollArea);
 
     m_scrollContainer = new QWidget(m_scrollArea);
-    m_scrollContainer->setStyleSheet("background-color: white;");
+    m_scrollContainer->setObjectName(QStringLiteral("dashboardScrollContainer"));
+    m_scrollContainer->setAttribute(Qt::WA_StyledBackground, true);
     m_scrollArea->setWidget(m_scrollContainer);
 
     m_scrollLayout = new QVBoxLayout(m_scrollContainer);

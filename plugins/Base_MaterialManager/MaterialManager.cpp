@@ -706,6 +706,8 @@ bool MaterialManager::loadProject()
             const QJsonObject modelObj = modelValue.toObject();
             const QString key = modelObj.value(QStringLiteral("key")).toString();
             const QString displayName = modelObj.value(QStringLiteral("display_name")).toString();
+            if (key == QStringLiteral("hoek_brown_rock"))
+                continue;
 
             int modelIndex = findModelIndex(key);
             if (modelIndex < 0)
@@ -1359,6 +1361,8 @@ void MaterialManager::setValueStrings(QVector<QStringList> values)
         const QString displayName = list.at(1);
         const QString name = list.at(2);
         const QString encoded = list.at(3);
+        if (key == QStringLiteral("hoek_brown_rock"))
+            continue;
         const QString appliedMatypes = (list.size() > 4) ? list.at(4) : QString();
         const int transitionMatypeRaw = (list.size() > 6) ? list.at(6).toInt() : -1;
         const int transitionMatype =
@@ -2017,7 +2021,6 @@ void MaterialManager::highlightMatypes(const QString& entryId, const QSet<int>& 
                                        int selectedMatype,
                                        int previewMatype, int preDeleteMatype)
 {
-    Q_UNUSED(selectedMatype);
 
     if (entryId.isEmpty())
         return;
@@ -2126,10 +2129,10 @@ void MaterialManager::highlightMatypes(const QString& entryId, const QSet<int>& 
 
     PickManager::instance().setAppliedDomains(domain, uuid, applied);
 
-    // 材料页的“当前下拉选中”不是模型高亮中的 selectedDomain。
-    // CaveExcavationBodyPage 也是 applied 持久高亮 + preview 悬浮高亮；
-    // 不设置 selectedDomain，避免选中项被 PickManager 的 selectedColor 染成红色。
-    PickManager::instance().setSelectedDomain(domain, uuid, DomainKey{});
+    PickManager::instance().setSelectedDomain(
+        domain,
+        uuid,
+        selectedMatype > 0 ? preferredKeyForMatype(selectedMatype) : DomainKey{});
 
     PickManager::instance().setPreviewDomain(
         domain,
@@ -2150,7 +2153,8 @@ void MaterialManager::refreshMatypeHighlight(const QString& entryId)
 
     const int preview = m_previewMatypes.value(entryId, -1);
     const int preDelete = m_preDeleteMatypes.value(entryId, -1);
-    highlightMatypes(entryId, entry->appliedMatypes, -1, preview, preDelete);
+    const int selected = m_selectedMatypes.value(entryId, -1);
+    highlightMatypes(entryId, entry->appliedMatypes, selected, preview, preDelete);
 }
 
 int MaterialManager::selectedMatypeForEntry(const QString& entryId) const
@@ -2721,55 +2725,6 @@ bool MaterialManager::generateCaculateFile()
             continue;
 
         const int matIndex = matype - 1;
-
-        if (info.model->key == QStringLiteral("hoek_brown_rock"))
-        {
-            const double ee = valueOf(info.entry, QStringLiteral("变形模量E（GPa）")) * 1.0e9;
-            const double pu = valueOf(info.entry, QStringLiteral("泊松比μ"));
-            const double rou = valueOf(info.entry, QStringLiteral("容重t/m3")) * 1.0e3;
-            const double fmb = valueOf(info.entry, QStringLiteral("岩体常数mb"));
-            const double fa = valueOf(info.entry, QStringLiteral("岩体常数a"));
-            const double fs = valueOf(info.entry, QStringLiteral("岩体常数s"));
-            const double sgci =
-                valueOf(info.entry, QStringLiteral("完整岩石单轴抗压强度σci（MPa）")) *
-                1.0e6;
-
-            auto setRow = [&](int row, double value)
-            {
-                if (row >= 1 && row <= ncon)
-                    values[row - 1][matIndex] = value;
-            };
-            setRow(1, 11.0);
-            setRow(2, ee);
-            setRow(3, ee);
-            setRow(4, pu);
-            setRow(5, pu);
-            setRow(6, std::fabs(1.0 + pu) > 1.0e-12 ? ee / 2.0 / (1.0 + pu) : 0.0);
-            setRow(7, rou);
-            setRow(8, 1.0);
-            setRow(13, 0.0);
-            setRow(14, 1.0);
-            setRow(15, 0.0);
-            setRow(16, 0.0);
-            setRow(17, 0.0);
-            setRow(18, 1.0);
-            setRow(19, 0.0);
-            setRow(20, 0.0);
-            setRow(21, 0.0);
-            setRow(22, 1.0);
-            setRow(23, 0.0);
-            setRow(35, 0.0);
-            setRow(64, 0.0);
-            setRow(65, 1.0);
-            setRow(66, 1.0);
-            setRow(70, fa);
-            setRow(75, fmb);
-            setRow(76, fs);
-            setRow(84, static_cast<double>(matype));
-            setRow(115, sgci);
-            applySupplementalModels(info.entry, matIndex);
-            continue;
-        }
 
         if (info.model->key == QStringLiteral("huangjinping_underground_plant")) // 黄金坪厂房(样表1 2)
         {
@@ -3952,7 +3907,7 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
     {
         const int ib = static_cast<int>(std::llround(rowValue(matIndex, 1)));
         if (ib == -1 || ib == -2 || ib == -3 || ib == -4 || ib == -5 || ib == -6 || ib == 1 ||
-            ib == 2 || ib == 11)
+            ib == 2)
         {
             return true;
         }
@@ -4031,8 +3986,6 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
             return findModel(QStringLiteral("soil_nanshui"));
         if (ib == -6)
             return findModel(QStringLiteral("soil_emu_crush"));
-        if (ib == 11)
-            return findModel(QStringLiteral("hoek_brown_rock"));
         if (ib == 1 && (nearlyEqual(rowValue(matIndex, 13), 2.0) || isNonZero(matIndex, 38) ||
                         isNonZero(matIndex, 93)))
             return findModel(QStringLiteral("huangjinping_bar_element"));
@@ -4146,19 +4099,7 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
         }
 
         const int ib = static_cast<int>(std::llround(rowValue(matIndex, 1)));
-        if (model->key == QStringLiteral("hoek_brown_rock"))
-        {
-            setProperty(entry, QStringLiteral("序号"), matype);
-            setProperty(entry, QStringLiteral("变形模量E（GPa）"), rowValue(matIndex, 2) / 1.0e9);
-            setProperty(entry, QStringLiteral("泊松比μ"), rowValue(matIndex, 4));
-            setProperty(entry, QStringLiteral("容重t/m3"), rowValue(matIndex, 7) / 1.0e3);
-            setProperty(entry, QStringLiteral("岩体常数mb"), rowValue(matIndex, 75));
-            setProperty(entry, QStringLiteral("岩体常数a"), rowValue(matIndex, 70));
-            setProperty(entry, QStringLiteral("岩体常数s"), rowValue(matIndex, 76));
-            setProperty(entry, QStringLiteral("完整岩石单轴抗压强度σci（MPa）"),
-                        rowValue(matIndex, 115) / 1.0e6);
-        }
-        else if (model->key == QStringLiteral("huangjinping_underground_plant"))
+        if (model->key == QStringLiteral("huangjinping_underground_plant"))
         {
             setProperty(entry, QStringLiteral("编号"), matype);
             setProperty(entry, QStringLiteral("母岩材料编号"), rowValue(matIndex, 84));

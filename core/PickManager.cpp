@@ -88,14 +88,20 @@ struct RgbColor
     unsigned char r = 199;
     unsigned char g = 199;
     unsigned char b = 199;
+    unsigned char a = 255;
 };
 
 // 统一拾取/高亮颜色。kPickNormalColor 的 199/255≈0.78，必须和 MeshModuleController 的默认网格灰色一致，避免预选时普通区域闪动。
-static const RgbColor kPickNormalColor   = {199, 199, 199};
-static const RgbColor kPickAppliedColor  = {64, 170, 64};
-static const RgbColor kPickPreviewColor  = {255, 153, 0};
-static const RgbColor kPickSelectedColor  = {64, 170, 64};
-static const RgbColor kPickPreDeleteColor = {255, 110, 0};
+static const RgbColor kPickNormalColor   = {199, 199, 199, 255};
+static const RgbColor kPickPreviewColor  = {255, 153, 0, 255};
+static const RgbColor kPickSelectedColor  = {64, 170, 64, 255};
+constexpr unsigned char kSelectionContextAlpha = 56;
+constexpr double kSelectionContextOpacity = 56.0 / 255.0;
+constexpr double kDomainContextOpacity = 0.20;
+static const RgbColor kDomainAppliedColor   = {103, 156, 193, 255};
+static const RgbColor kDomainSelectedColor  = {40, 121, 175, 255};
+static const RgbColor kDomainPreviewColor   = {235, 151, 45, 255};
+static const RgbColor kDomainPreDeleteColor = {200, 75, 65, 255};
 
 constexpr double kPickPreviewR = 1.0;
 constexpr double kPickPreviewG = 153.0 / 255.0;
@@ -194,17 +200,18 @@ static bool isScalarArrayName(vtkDataArray* arr, const char* name)
 static void baseColorAt(const ScalarHighlightState& state,
                         vtkIdType cid,
                         const RgbColor& fallback,
-                        unsigned char out[3])
+                        unsigned char out[4])
 {
     out[0] = fallback.r;
     out[1] = fallback.g;
     out[2] = fallback.b;
+    out[3] = fallback.a;
 
     auto* saved = vtkUnsignedCharArray::SafeDownCast(state.savedScalars);
     if (!saved || saved->GetNumberOfComponents() < 3 || cid < 0 || cid >= saved->GetNumberOfTuples())
         return;
 
-    unsigned char tmp[4] = {fallback.r, fallback.g, fallback.b, 255};
+    unsigned char tmp[4] = {fallback.r, fallback.g, fallback.b, fallback.a};
     saved->GetTypedTuple(cid, tmp);
     out[0] = tmp[0];
     out[1] = tmp[1];
@@ -273,12 +280,12 @@ static bool ensureScalarHighlight(const QString& stateKey,
     state.savedColorMode = mapper->GetColorMode();
     state.colors = vtkSmartPointer<vtkUnsignedCharArray>::New();
     state.colors->SetName(arrayName);
-    state.colors->SetNumberOfComponents(3);
+    state.colors->SetNumberOfComponents(4);
     state.colors->SetNumberOfTuples(ds->GetNumberOfCells());
     state.previousLocalIds.clear();
     state.active = true;
 
-    unsigned char base[3];
+    unsigned char base[4];
     for (vtkIdType cid = 0; cid < ds->GetNumberOfCells(); ++cid)
     {
         baseColorAt(state, cid, fallback, base);
@@ -311,7 +318,7 @@ static void updateScalarHighlight(const QString& stateKey,
 
     ScalarHighlightState& state = s_scalarHighlightStates[stateKey];
 
-    unsigned char base[3];
+    unsigned char base[4];
     for (vtkIdType cid : state.previousLocalIds)
     {
         if (targetColors.contains(cid) || cid < 0 || cid >= ds->GetNumberOfCells())
@@ -329,7 +336,7 @@ static void updateScalarHighlight(const QString& stateKey,
             continue;
 
         const RgbColor c = it.value();
-        const unsigned char tuple[3] = {c.r, c.g, c.b};
+        const unsigned char tuple[4] = {c.r, c.g, c.b, c.a};
         state.colors->SetTypedTuple(cid, tuple);
         nextLocalIds.insert(cid);
     }
@@ -402,6 +409,52 @@ PickManager::PickManager(QObject* parent) : QObject(parent)
 
     if (!m_visual)
         return;
+
+    // 域选择使用独立前景层。背景网格只提供空间参照，避免状态色铺满整个模型。
+    m_domainFocusGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    m_domainFocusMapper = vtkSmartPointer<vtkDataSetMapper>::New();
+    m_domainFocusMapper->SetInputData(m_domainFocusGrid);
+    m_domainFocusMapper->SetScalarModeToUseCellData();
+    m_domainFocusMapper->SetColorModeToDirectScalars();
+    m_domainFocusMapper->ScalarVisibilityOn();
+    m_domainFocusMapper->SetResolveCoincidentTopologyToPolygonOffset();
+    m_domainFocusMapper->SetRelativeCoincidentTopologyPolygonOffsetParameters(-1.0, -1.0);
+
+    m_domainFocusActor = vtkSmartPointer<vtkActor>::New();
+    m_domainFocusActor->SetMapper(m_domainFocusMapper);
+    m_domainFocusActor->GetProperty()->SetRepresentationToSurface();
+    m_domainFocusActor->GetProperty()->EdgeVisibilityOn();
+    m_domainFocusActor->GetProperty()->SetEdgeColor(0.12, 0.15, 0.18);
+    m_domainFocusActor->GetProperty()->SetLineWidth(1.0);
+    m_domainFocusActor->GetProperty()->LightingOn();
+    m_domainFocusActor->GetProperty()->SetAmbient(0.0);
+    m_domainFocusActor->GetProperty()->SetDiffuse(1.0);
+    m_domainFocusActor->GetProperty()->SetSpecular(0.05);
+    m_domainFocusActor->PickableOff();
+    m_domainFocusActor->SetVisibility(false);
+
+    m_visual->removeProp("pick.domain.focus", false);
+    m_visual->addProp("pick.domain.focus", m_domainFocusActor,
+                      QStringLiteral("当前网格域"), QStringLiteral("当前选择的网格域"), true, true);
+
+    m_domainLineFocusGrid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    m_domainLineFocusMapper = vtkSmartPointer<vtkDataSetMapper>::New();
+    m_domainLineFocusMapper->SetInputData(m_domainLineFocusGrid);
+    m_domainLineFocusMapper->SetScalarModeToUseCellData();
+    m_domainLineFocusMapper->SetColorModeToDirectScalars();
+    m_domainLineFocusMapper->ScalarVisibilityOn();
+
+    m_domainLineFocusActor = vtkSmartPointer<vtkActor>::New();
+    m_domainLineFocusActor->SetMapper(m_domainLineFocusMapper);
+    m_domainLineFocusActor->GetProperty()->SetLineWidth(3.0);
+    m_domainLineFocusActor->GetProperty()->LightingOn();
+    m_domainLineFocusActor->PickableOff();
+    m_domainLineFocusActor->SetVisibility(false);
+
+    m_visual->removeProp("pick.domain.line.focus", false);
+    m_visual->addProp("pick.domain.line.focus", m_domainLineFocusActor,
+                      QStringLiteral("当前线单元域"),
+                      QStringLiteral("当前选择的线单元域"), true, true);
 
            // ================== Node overlay ==================
     m_selPts = vtkSmartPointer<vtkPoints>::New();
@@ -579,6 +632,9 @@ void PickManager::clearNodeSelection_NoRefresh(const QString& domain, const QStr
 
 void PickManager::updateStructure()
 {
+    restoreDomainContextStyle();
+    clearDomainFocusOverlay();
+    restoreSelectionContextOpacity();
     restoreFaceColoring();
 
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
@@ -789,12 +845,18 @@ void PickManager::activate(const QString& domain, const QString& uuid, PickMode 
 {
     if (mode != PickMode::Face)
         restoreFaceColoring();
+    if (mode != PickMode::Domain)
+    {
+        restoreDomainContextStyle();
+        clearDomainFocusOverlay();
+    }
 
     m_currentDomain = domain;
     m_currentUUid = uuid;
     m_pickMode = mode;
 
     updateActorVisibility();
+    updateSelectionContextOpacity();
 
            // line node hints 仅 node 模式显示
     if (m_lineNodeActor)
@@ -844,6 +906,9 @@ void PickManager::deactivate(const QString& domain, const QString& uuid, PickMod
         commitFaceExclusive(domain, uuid);
 
     teardownPicking();
+    restoreSelectionContextOpacity();
+    restoreDomainContextStyle();
+    clearDomainFocusOverlay();
 
     if (m_styleDisabledByBoxSelect && m_visual)
     {
@@ -904,6 +969,9 @@ void PickManager::deactivate(const QString& domain, const QString& uuid, PickMod
 
 void PickManager::resetProjectState()
 {
+    restoreDomainContextStyle();
+    clearDomainFocusOverlay();
+    restoreSelectionContextOpacity();
     restoreFaceColoring();
     restoreAllColorHighlights();
     teardownPicking();
@@ -1032,6 +1100,198 @@ void PickManager::updateActorVisibility()
         m_previewSelActor->SetVisibility(m_pickMode == PickMode::Node);
     if (m_previewEdgeActor)
         m_previewEdgeActor->SetVisibility(m_pickMode == PickMode::Edge);
+}
+
+void PickManager::restoreSelectionContextOpacity()
+{
+    const auto restore = [](vtkWeakPointer<vtkProp>& prop, double& savedOpacity, bool& active)
+    {
+        if (active)
+        {
+            if (auto* actor = vtkActor::SafeDownCast(prop.GetPointer()))
+                actor->GetProperty()->SetOpacity(savedOpacity);
+        }
+        prop = nullptr;
+        savedOpacity = 1.0;
+        active = false;
+    };
+
+    restore(m_contextOpacitySolidProp, m_savedContextOpacitySolid,
+            m_contextOpacitySolidActive);
+    restore(m_contextOpacityLineProp, m_savedContextOpacityLine,
+            m_contextOpacityLineActive);
+}
+
+void PickManager::updateSelectionContextOpacity()
+{
+    bool hasSelection = false;
+    if (!m_currentDomain.isEmpty() && !m_currentUUid.isEmpty())
+    {
+        const QString& domain = m_currentDomain;
+        const QString& uuid = m_currentUUid;
+        if (m_pickMode == PickMode::Node)
+        {
+            hasSelection =
+                !m_pointsSolidByDomainUuid.value(domain).value(uuid).isEmpty() ||
+                !m_pointsLineByDomainUuid.value(domain).value(uuid).isEmpty() ||
+                !m_previewPointsSolidByDomainUuid.value(domain).value(uuid).isEmpty() ||
+                !m_previewPointsLineByDomainUuid.value(domain).value(uuid).isEmpty();
+        }
+        else if (m_pickMode == PickMode::Edge)
+        {
+            hasSelection =
+                !m_edgesSolidByDomainUuid.value(domain).value(uuid).isEmpty() ||
+                !m_edgesLineByDomainUuid.value(domain).value(uuid).isEmpty() ||
+                !m_previewEdgesSolidByDomainUuid.value(domain).value(uuid).isEmpty() ||
+                !m_previewEdgesLineByDomainUuid.value(domain).value(uuid).isEmpty();
+        }
+    }
+
+    if (!hasSelection)
+    {
+        restoreSelectionContextOpacity();
+        return;
+    }
+
+    const auto fade = [](vtkProp* currentProp, vtkWeakPointer<vtkProp>& savedProp,
+                         double& savedOpacity, bool& active)
+    {
+        if (active && savedProp.GetPointer() != currentProp)
+        {
+            if (auto* oldActor = vtkActor::SafeDownCast(savedProp.GetPointer()))
+                oldActor->GetProperty()->SetOpacity(savedOpacity);
+            savedProp = nullptr;
+            savedOpacity = 1.0;
+            active = false;
+        }
+
+        auto* actor = vtkActor::SafeDownCast(currentProp);
+        if (!actor)
+            return;
+
+        if (!active)
+        {
+            savedProp = currentProp;
+            savedOpacity = actor->GetProperty()->GetOpacity();
+            active = true;
+        }
+        actor->GetProperty()->SetOpacity(savedOpacity * kSelectionContextOpacity);
+    };
+
+    fade(m_solidProp, m_contextOpacitySolidProp, m_savedContextOpacitySolid,
+         m_contextOpacitySolidActive);
+    fade(m_lineProp, m_contextOpacityLineProp, m_savedContextOpacityLine,
+         m_contextOpacityLineActive);
+}
+
+void PickManager::applyDomainContextStyle()
+{
+    auto* solidActor = vtkActor::SafeDownCast(m_solidProp);
+    auto* lineActor = vtkActor::SafeDownCast(m_lineProp);
+
+    if (m_domainContextStyleActive &&
+        (m_domainContextSolidActor.GetPointer() != solidActor ||
+         m_domainContextLineActor.GetPointer() != lineActor))
+    {
+        restoreDomainContextStyle();
+    }
+
+    if (!m_domainContextStyleActive)
+    {
+        m_domainContextSolidActor = solidActor;
+        m_domainContextLineActor = lineActor;
+
+        if (solidActor)
+        {
+            vtkProperty* property = solidActor->GetProperty();
+            m_savedDomainSolidOpacity = property->GetOpacity();
+            property->GetColor(m_savedDomainSolidColor);
+            m_savedDomainSolidEdgeVisibility = property->GetEdgeVisibility();
+            if (auto* mapper = solidActor->GetMapper())
+                m_savedDomainSolidScalarVisibility = mapper->GetScalarVisibility();
+        }
+        if (lineActor)
+        {
+            vtkProperty* property = lineActor->GetProperty();
+            m_savedDomainLineOpacity = property->GetOpacity();
+            property->GetColor(m_savedDomainLineColor);
+            m_savedDomainLineEdgeVisibility = property->GetEdgeVisibility();
+            if (auto* mapper = lineActor->GetMapper())
+                m_savedDomainLineScalarVisibility = mapper->GetScalarVisibility();
+        }
+        m_domainContextStyleActive = true;
+    }
+
+    if (solidActor)
+    {
+        vtkProperty* property = solidActor->GetProperty();
+        property->SetOpacity(m_savedDomainSolidOpacity * kDomainContextOpacity);
+        property->SetColor(0.72, 0.75, 0.78);
+        property->EdgeVisibilityOff();
+        if (auto* mapper = solidActor->GetMapper())
+            mapper->ScalarVisibilityOff();
+    }
+    if (lineActor)
+    {
+        vtkProperty* property = lineActor->GetProperty();
+        property->SetOpacity(m_savedDomainLineOpacity * kDomainContextOpacity);
+        property->SetColor(0.58, 0.62, 0.66);
+        property->EdgeVisibilityOff();
+        if (auto* mapper = lineActor->GetMapper())
+            mapper->ScalarVisibilityOff();
+    }
+}
+
+void PickManager::restoreDomainContextStyle()
+{
+    if (!m_domainContextStyleActive)
+        return;
+
+    if (auto* actor = m_domainContextSolidActor.GetPointer())
+    {
+        vtkProperty* property = actor->GetProperty();
+        property->SetOpacity(m_savedDomainSolidOpacity);
+        property->SetColor(m_savedDomainSolidColor);
+        property->SetEdgeVisibility(m_savedDomainSolidEdgeVisibility);
+        if (auto* mapper = actor->GetMapper())
+            mapper->SetScalarVisibility(m_savedDomainSolidScalarVisibility);
+    }
+    if (auto* actor = m_domainContextLineActor.GetPointer())
+    {
+        vtkProperty* property = actor->GetProperty();
+        property->SetOpacity(m_savedDomainLineOpacity);
+        property->SetColor(m_savedDomainLineColor);
+        property->SetEdgeVisibility(m_savedDomainLineEdgeVisibility);
+        if (auto* mapper = actor->GetMapper())
+            mapper->SetScalarVisibility(m_savedDomainLineScalarVisibility);
+    }
+
+    m_domainContextSolidActor = nullptr;
+    m_domainContextLineActor = nullptr;
+    m_domainContextStyleActive = false;
+}
+
+void PickManager::clearDomainFocusOverlay()
+{
+    if (m_domainFocusGrid)
+    {
+        m_domainFocusGrid->Initialize();
+        m_domainFocusGrid->Modified();
+    }
+    if (m_domainFocusActor)
+        m_domainFocusActor->SetVisibility(false);
+    if (m_domainLineFocusGrid)
+    {
+        m_domainLineFocusGrid->Initialize();
+        m_domainLineFocusGrid->Modified();
+    }
+    if (m_domainLineFocusActor)
+        m_domainLineFocusActor->SetVisibility(false);
+    m_domainFocusSolidSource = nullptr;
+    m_domainFocusLineSource = nullptr;
+    m_domainFocusSolidCellIds.clear();
+    m_domainFocusLineCellIds.clear();
+    m_domainColoringActive = false;
 }
 
 void PickManager::setupPicking()
@@ -1431,6 +1691,7 @@ void PickManager::flushRebuild()
     if (!(m_dirtyBits & DirtyFace) && m_pickMode != PickMode::Face)
         restoreFaceColoring();
 
+    updateSelectionContextOpacity();
     m_dirtyBits = DirtyNone;
     m_visual->render();
 }
@@ -2459,7 +2720,8 @@ void PickManager::rebuildFaceColorForActive()
         return;
     }
 
-    const RgbColor normal = kPickNormalColor;
+    RgbColor normal = kPickNormalColor;
+    normal.a = kSelectionContextAlpha;
     const RgbColor previewColor = kPickPreviewColor;
     const RgbColor selectedColor = kPickSelectedColor;
 
@@ -2509,18 +2771,20 @@ void PickManager::rebuildDomainHighlightActors()
     if (!m_visual)
         return;
 
-    auto restoreDataset = [&](const QString& stateKey)
+    const auto clearDisplay = [this]()
     {
-        restoreScalarHighlight(stateKey);
+        restoreScalarHighlight(QStringLiteral("pick.domain.solid.scalar"));
+        restoreScalarHighlight(QStringLiteral("pick.domain.line.scalar"));
+        restoreDomainContextStyle();
+        clearDomainFocusOverlay();
+        m_domainColoringActive = false;
     };
 
     if (m_pickMode != PickMode::Domain)
     {
         if (m_domainColoringActive)
         {
-            restoreDataset(QStringLiteral("pick.domain.solid.scalar"));
-            restoreDataset(QStringLiteral("pick.domain.line.scalar"));
-            m_domainColoringActive = false;
+            clearDisplay();
             m_visual->render();
         }
         return;
@@ -2540,19 +2804,11 @@ void PickManager::rebuildDomainHighlightActors()
     {
         if (m_domainColoringActive)
         {
-            restoreDataset(QStringLiteral("pick.domain.solid.scalar"));
-            restoreDataset(QStringLiteral("pick.domain.line.scalar"));
-            m_domainColoringActive = false;
+            clearDisplay();
             m_visual->render();
         }
         return;
     }
-
-    const RgbColor normal = kPickNormalColor;
-    const RgbColor appliedColor = kPickAppliedColor;
-    const RgbColor previewColor = kPickPreviewColor;
-    const RgbColor selectedColor = kPickSelectedColor;
-    const RgbColor preDeleteColor = kPickPreDeleteColor;
 
     QSet<vtkIdType> appliedSolidCells;
     QSet<vtkIdType> appliedLineCells;
@@ -2570,14 +2826,15 @@ void PickManager::rebuildDomainHighlightActors()
         if (!domainKeyIsValidForDisplay(key))
             return;
 
-        const bool isCellDataDomain =
-            key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0 ||
-            key.category.compare(QStringLiteral("LAYER"), Qt::CaseInsensitive) == 0;
+        // 材料是跨实体/杆单元的统一属性，需要同步显示不同维度；施工层和
+        // Physical 分组按 DomainKey.dim 精确显示，避免选择开挖体时带上杆单元。
+        const bool spansDimensions =
+            key.category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0;
 
         if (key.dim == 1)
         {
             lineCells.unite(cellsOfDomain(key));
-            if (isCellDataDomain)
+            if (spansDimensions)
             {
                 solidCells.unite(cellsOfDomain(DomainKey{key.category, 2, key.id}));
                 solidCells.unite(cellsOfDomain(DomainKey{key.category, 3, key.id}));
@@ -2586,7 +2843,7 @@ void PickManager::rebuildDomainHighlightActors()
         else
         {
             solidCells.unite(cellsOfDomain(key));
-            if (isCellDataDomain)
+            if (spansDimensions)
                 lineCells.unite(cellsOfDomain(DomainKey{key.category, 1, key.id}));
         }
     };
@@ -2598,35 +2855,161 @@ void PickManager::rebuildDomainHighlightActors()
     addCellsByDim(selected, selectedSolidCells, selectedLineCells);
     addCellsByDim(preDelete, preDeleteSolidCells, preDeleteLineCells);
 
-    QHash<vtkIdType, RgbColor> solidTargetColors;
-    QHash<vtkIdType, RgbColor> lineTargetColors;
+    QHash<vtkIdType, RgbColor> solidFocusColors;
+    QHash<vtkIdType, RgbColor> lineFocusColors;
+    const auto appendCells = [this, &solidFocusColors, &lineFocusColors](
+                                 const QSet<vtkIdType>& solidCells,
+                                 const QSet<vtkIdType>& lineCells,
+                                 const RgbColor& color)
+    {
+        putSourceCellsToLocalColorMap(m_solidPickDataSet, solidCells, color, solidFocusColors);
+        putSourceCellsToLocalColorMap(m_linePickDataSet, lineCells, color, lineFocusColors);
+    };
 
-           // 颜色优先级：preDelete > selected > preview > applied。
-    putSourceCellsToLocalColorMap(m_solidPickDataSet, appliedSolidCells, appliedColor, solidTargetColors);
-    putSourceCellsToLocalColorMap(m_linePickDataSet, appliedLineCells, appliedColor, lineTargetColors);
+    // 已施加域始终可见；当前项、悬停项和待移除项按顺序覆盖基础色。
+    appendCells(appliedSolidCells, appliedLineCells, kDomainAppliedColor);
 
-    putSourceCellsToLocalColorMap(m_solidPickDataSet, previewSolidCells, previewColor, solidTargetColors);
-    putSourceCellsToLocalColorMap(m_linePickDataSet, previewLineCells, previewColor, lineTargetColors);
+    if (domainKeyIsValidForDisplay(selected))
+    {
+        const bool selectedIsApplied = std::any_of(
+            applied.cbegin(), applied.cend(),
+            [&selected](const DomainKey& key)
+            {
+                return key.category.compare(selected.category, Qt::CaseInsensitive) == 0 &&
+                       key.id == selected.id;
+            });
+        appendCells(selectedSolidCells, selectedLineCells,
+                    selectedIsApplied ? kDomainSelectedColor : kDomainPreviewColor);
+    }
 
-    putSourceCellsToLocalColorMap(m_solidPickDataSet, selectedSolidCells, selectedColor, solidTargetColors);
-    putSourceCellsToLocalColorMap(m_linePickDataSet, selectedLineCells, selectedColor, lineTargetColors);
+    if (domainKeyIsValidForDisplay(preview))
+        appendCells(previewSolidCells, previewLineCells, kDomainPreviewColor);
 
-    putSourceCellsToLocalColorMap(m_solidPickDataSet, preDeleteSolidCells, preDeleteColor, solidTargetColors);
-    putSourceCellsToLocalColorMap(m_linePickDataSet, preDeleteLineCells, preDeleteColor, lineTargetColors);
+    if (domainKeyIsValidForDisplay(preDelete))
+        appendCells(preDeleteSolidCells, preDeleteLineCells, kDomainPreDeleteColor);
 
-    updateScalarHighlight(QStringLiteral("pick.domain.solid.scalar"),
-                          "pick_domain_colors",
-                          m_solidPickDataSet,
-                          m_solidProp,
-                          solidTargetColors,
-                          normal);
+    if (solidFocusColors.isEmpty() && lineFocusColors.isEmpty())
+    {
+        clearDisplay();
+        m_visual->render();
+        return;
+    }
 
-    updateScalarHighlight(QStringLiteral("pick.domain.line.scalar"),
-                          "pick_domain_colors",
-                          m_linePickDataSet,
-                          m_lineProp,
-                          lineTargetColors,
-                          normal);
+    const auto updateFocusGrid = [](vtkDataSet* sourceGrid,
+                                    vtkUnstructuredGrid* focusGrid,
+                                    const QHash<vtkIdType, RgbColor>& focusColors,
+                                    const char* colorArrayName,
+                                    vtkDataSet*& cachedSource,
+                                    QVector<vtkIdType>& cachedCellIds) -> bool
+    {
+        if (!sourceGrid || !focusGrid || focusColors.isEmpty())
+        {
+            if (focusGrid)
+            {
+                focusGrid->Initialize();
+                focusGrid->Modified();
+            }
+            cachedSource = nullptr;
+            cachedCellIds.clear();
+            return false;
+        }
+
+        QVector<vtkIdType> validCellIds;
+        validCellIds.reserve(focusColors.size());
+        for (auto it = focusColors.cbegin(); it != focusColors.cend(); ++it)
+        {
+            const vtkIdType cid = it.key();
+            if (cid < 0 || cid >= sourceGrid->GetNumberOfCells())
+                continue;
+            validCellIds.push_back(cid);
+        }
+        std::sort(validCellIds.begin(), validCellIds.end());
+
+        if (validCellIds.isEmpty())
+        {
+            focusGrid->Initialize();
+            focusGrid->Modified();
+            cachedSource = nullptr;
+            cachedCellIds.clear();
+            return false;
+        }
+
+        const bool canReuseExtraction =
+            cachedSource == sourceGrid && cachedCellIds == validCellIds &&
+            focusGrid->GetNumberOfCells() == validCellIds.size();
+        if (!canReuseExtraction)
+        {
+            vtkNew<vtkIdList> ids;
+            ids->SetNumberOfIds(validCellIds.size());
+            for (qsizetype i = 0; i < validCellIds.size(); ++i)
+                ids->SetId(i, validCellIds.at(i));
+
+            vtkNew<vtkExtractCells> extractCells;
+            extractCells->SetInputData(sourceGrid);
+            extractCells->SetCellList(ids);
+            extractCells->AssumeSortedAndUniqueIdsOn();
+            extractCells->Update();
+
+            focusGrid->ShallowCopy(extractCells->GetOutput());
+            if (focusGrid->GetNumberOfCells() != validCellIds.size())
+            {
+                focusGrid->Initialize();
+                focusGrid->Modified();
+                cachedSource = nullptr;
+                cachedCellIds.clear();
+                return false;
+            }
+
+            cachedSource = sourceGrid;
+            cachedCellIds = validCellIds;
+        }
+
+        auto* colors = vtkUnsignedCharArray::SafeDownCast(
+            focusGrid->GetCellData()->GetArray(colorArrayName));
+        if (!colors || colors->GetNumberOfComponents() != 3 ||
+            colors->GetNumberOfTuples() != validCellIds.size())
+        {
+            auto newColors = vtkSmartPointer<vtkUnsignedCharArray>::New();
+            newColors->SetName(colorArrayName);
+            newColors->SetNumberOfComponents(3);
+            newColors->SetNumberOfTuples(validCellIds.size());
+            focusGrid->GetCellData()->SetScalars(newColors);
+            colors = newColors;
+        }
+
+        for (qsizetype i = 0; i < validCellIds.size(); ++i)
+        {
+            const RgbColor color = focusColors.value(validCellIds.at(i), kDomainAppliedColor);
+            const unsigned char tuple[3] = {color.r, color.g, color.b};
+            colors->SetTypedTuple(i, tuple);
+        }
+
+        colors->Modified();
+        if (!canReuseExtraction)
+            focusGrid->Modified();
+        return focusGrid->GetNumberOfCells() > 0;
+    };
+
+    const bool hasSolidFocus = updateFocusGrid(m_solidPickDataSet, m_domainFocusGrid,
+                                               solidFocusColors,
+                                               "pick_domain_focus_solid_colors",
+                                               m_domainFocusSolidSource,
+                                               m_domainFocusSolidCellIds);
+    const bool hasLineFocus = updateFocusGrid(m_linePickDataSet, m_domainLineFocusGrid,
+                                              lineFocusColors,
+                                              "pick_domain_focus_line_colors",
+                                              m_domainFocusLineSource,
+                                              m_domainFocusLineCellIds);
+    if (!hasSolidFocus && !hasLineFocus)
+    {
+        clearDisplay();
+        m_visual->render();
+        return;
+    }
+
+    m_domainFocusActor->SetVisibility(hasSolidFocus);
+    m_domainLineFocusActor->SetVisibility(hasLineFocus);
+    applyDomainContextStyle();
 
     m_domainColoringActive = true;
     m_visual->render();
@@ -2904,6 +3287,7 @@ void PickManager::setPreviewPointIds(const QString& domain, const QString& uuid,
     }
     m_previewSelPts->Modified();
     m_previewSelPoly->Modified();
+    updateSelectionContextOpacity();
     if (m_visual)
         m_visual->render();
 }
@@ -2976,6 +3360,7 @@ void PickManager::setPreviewEdgeKeys(const QString& domain, const QString& uuid,
     m_previewEdgePts->Modified();
     m_previewEdgeLines->Modified();
     m_previewEdgePoly->Modified();
+    updateSelectionContextOpacity();
     if (m_visual)
         m_visual->render();
 }
@@ -3023,6 +3408,8 @@ void PickManager::clearPreviewSelection(const QString& domain, const QString& uu
         if (domain == m_currentDomain && uuid == m_currentUUid && m_pickMode == PickMode::Face)
             rebuildFaceColorForActive();
     }
+    if (domain == m_currentDomain && uuid == m_currentUUid)
+        updateSelectionContextOpacity();
     if (m_visual)
         m_visual->render();
 }

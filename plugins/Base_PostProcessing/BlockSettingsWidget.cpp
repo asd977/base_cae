@@ -39,11 +39,11 @@ BlockSettingsWidget::BlockSettingsWidget(VisualWidgetService* postProcessingWidg
     m_plane = vtkSmartPointer<vtkPlane>::New();
     m_actor = vtkSmartPointer<vtkActor>::New();
 
-    ui->blockSlider->setRange(0, 100);
+    ui->blockSlider->setRange(0, 1000);
     ui->blockSlider->setTracking(false);
     ui->blockSlider->setToolTip(QStringLiteral("松开滑块后更新切块，避免连续重算"));
-    ui->blockSlider->setValue(50);
-    ui->blockLineEdit->setText(QString("0.50"));
+    ui->blockSlider->setValue(500);
+    ui->blockPositionSpin->setKeyboardTracking(false);
     ui->flipCheckBox->setChecked(false);
 
     connect(ui->stepComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
@@ -55,6 +55,8 @@ BlockSettingsWidget::BlockSettingsWidget(VisualWidgetService* postProcessingWidg
             &BlockSettingsWidget::on_planeComboBox_currentIndexChanged);
     connect(ui->blockSlider, &QSlider::valueChanged, this,
             &BlockSettingsWidget::on_blockSlider_valueChanged);
+    connect(ui->blockPositionSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            &BlockSettingsWidget::on_blockPositionSpin_valueChanged);
     connect(ui->flipCheckBox, &QCheckBox::toggled, this,
             &BlockSettingsWidget::on_flipCheckBox_toggled);
     connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
@@ -116,7 +118,10 @@ QJsonObject BlockSettingsWidget::saveJson()
     object.insert(QStringLiteral("fieldName"), field.name);
     object.insert(QStringLiteral("fieldAssociation"), field.association);
     object.insert(QStringLiteral("planeIndex"), ui->planeComboBox->currentIndex());
-    object.insert(QStringLiteral("position"), ui->blockSlider->value());
+    object.insert(QStringLiteral("position"),
+                  qRound(currentNormalizedPosition() * 100.0)); // 兼容旧工程
+    object.insert(QStringLiteral("positionRatio"), currentNormalizedPosition());
+    object.insert(QStringLiteral("positionCoordinate"), ui->blockPositionSpin->value());
     object.insert(QStringLiteral("flip"), ui->flipCheckBox->isChecked());
     return object;
 }
@@ -182,10 +187,10 @@ void BlockSettingsWidget::applyPendingState()
             std::max(0, std::min(state.value(QStringLiteral("planeIndex"), 0).toInt(),
                                  std::max(0, ui->planeComboBox->count() - 1))));
     }
-    {
-        const QSignalBlocker positionBlocker(ui->blockSlider);
-        ui->blockSlider->setValue(state.value(QStringLiteral("position"), 50).toInt());
-    }
+    double positionRatio = state.value(QStringLiteral("positionRatio"), -1.0).toDouble();
+    if (positionRatio < 0.0)
+        positionRatio = state.value(QStringLiteral("position"), 50).toDouble() / 100.0;
+    updatePositionControls(std::max(0.0, std::min(positionRatio, 1.0)));
     {
         const QSignalBlocker flipBlocker(ui->flipCheckBox);
         ui->flipCheckBox->setChecked(state.value(QStringLiteral("flip"), false).toBool());
@@ -326,6 +331,7 @@ bool BlockSettingsWidget::readTecplot(const QString& fileName)
     m_YRange[1] = b[3];
     m_ZRange[0] = b[4];
     m_ZRange[1] = b[5];
+    updatePositionControls(currentNormalizedPosition());
 
     // 标量下拉同时区分节点数据与单元数据，并尽量保留之前的选择。
     PostFieldUtils::fillCombo(ui->scalarComboBox, m_grid);
@@ -366,34 +372,31 @@ void BlockSettingsWidget::updatePlaneFromUI()
     if (!m_grid || !m_clipper)
         return;
 
-    const QString dir = ui->planeComboBox->currentText(); // "XY"/"XZ"/"YZ"
-    const double t = ui->blockSlider->value() / 100.0;
-    ui->blockLineEdit->setText(QString::number(t, 'f', 3));
+    const int planeIndex = ui->planeComboBox->currentIndex();
+    const double coordinate = ui->blockPositionSpin->value();
 
     double origin[3] = {0, 0, 0};
-    if (dir == "YZ")
-    { // X=const
-        origin[0] = m_XRange[0] + t * (m_XRange[1] - m_XRange[0]);
+    if (planeIndex == 0)
+    {
+        origin[0] = coordinate;
         m_plane->SetNormal(1, 0, 0);
     }
-    else if (dir == "XZ")
-    { // Y=const
-        origin[1] = m_YRange[0] + t * (m_YRange[1] - m_YRange[0]);
+    else if (planeIndex == 1)
+    {
+        origin[1] = coordinate;
         m_plane->SetNormal(0, 1, 0);
     }
     else
-    { // XY: Z=const
-        origin[2] = m_ZRange[0] + t * (m_ZRange[1] - m_ZRange[0]);
+    {
+        origin[2] = coordinate;
         m_plane->SetNormal(0, 0, 1);
     }
     m_plane->SetOrigin(origin);
 
-    // Flip：InsideOut = 取反
     if (ui->flipCheckBox->isChecked())
         m_clipper->InsideOutOn();
     else
         m_clipper->InsideOutOff();
-
     m_clipper->Update();
 }
 
@@ -444,7 +447,7 @@ void BlockSettingsWidget::updateColoringFromUI()
     {
         m_visualService->showScalarBar(true, false);
         if (auto* scalarBar = m_visualService->scalarBarActor())
-            scalarBar->SetTitle(ResultDisplayNames::displayName(field.name).toUtf8().constData());
+            scalarBar->SetTitle(ResultDisplayNames::scalarBarName(field.name).toUtf8().constData());
     }
 }
 
@@ -465,6 +468,8 @@ void BlockSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
 
 void BlockSettingsWidget::on_planeComboBox_currentIndexChanged(int)
 {
+    const double position = currentNormalizedPosition();
+    updatePositionControls(position);
     buildClipPipelineIfNeeded();
     updatePlaneFromUI();
     renderNow();
@@ -472,9 +477,59 @@ void BlockSettingsWidget::on_planeComboBox_currentIndexChanged(int)
 
 void BlockSettingsWidget::on_blockSlider_valueChanged(int)
 {
+    const double ratio = currentNormalizedPosition();
+    const int axis = ui->planeComboBox->currentIndex();
+    const double minimum = axis == 0 ? m_XRange[0] : (axis == 1 ? m_YRange[0] : m_ZRange[0]);
+    const double maximum = axis == 0 ? m_XRange[1] : (axis == 1 ? m_YRange[1] : m_ZRange[1]);
+    {
+        const QSignalBlocker blocker(ui->blockPositionSpin);
+        ui->blockPositionSpin->setValue(minimum + ratio * (maximum - minimum));
+    }
     buildClipPipelineIfNeeded();
     updatePlaneFromUI();
     renderNow();
+}
+
+void BlockSettingsWidget::on_blockPositionSpin_valueChanged(double value)
+{
+    const int axis = ui->planeComboBox->currentIndex();
+    const double minimum = axis == 0 ? m_XRange[0] : (axis == 1 ? m_YRange[0] : m_ZRange[0]);
+    const double maximum = axis == 0 ? m_XRange[1] : (axis == 1 ? m_YRange[1] : m_ZRange[1]);
+    const double span = maximum - minimum;
+    const double ratio = span > 0.0 ? std::max(0.0, std::min((value - minimum) / span, 1.0)) : 0.5;
+    {
+        const QSignalBlocker blocker(ui->blockSlider);
+        ui->blockSlider->setValue(qRound(ratio * ui->blockSlider->maximum()));
+    }
+    buildClipPipelineIfNeeded();
+    updatePlaneFromUI();
+    renderNow();
+}
+
+double BlockSettingsWidget::currentNormalizedPosition() const
+{
+    if (!ui->blockSlider || ui->blockSlider->maximum() <= 0)
+        return 0.5;
+    return std::max(0.0, std::min(ui->blockSlider->value() / double(ui->blockSlider->maximum()), 1.0));
+}
+
+void BlockSettingsWidget::updatePositionControls(double normalizedPosition)
+{
+    normalizedPosition = std::max(0.0, std::min(normalizedPosition, 1.0));
+    const int axis = ui->planeComboBox->currentIndex();
+    const double minimum = axis == 0 ? m_XRange[0] : (axis == 1 ? m_YRange[0] : m_ZRange[0]);
+    const double maximum = axis == 0 ? m_XRange[1] : (axis == 1 ? m_YRange[1] : m_ZRange[1]);
+    const QString axisName = axis == 0 ? QStringLiteral("X") : (axis == 1 ? QStringLiteral("Y") : QStringLiteral("Z"));
+    {
+        const QSignalBlocker sliderBlocker(ui->blockSlider);
+        const QSignalBlocker spinBlocker(ui->blockPositionSpin);
+        ui->blockSlider->setValue(qRound(normalizedPosition * ui->blockSlider->maximum()));
+        ui->blockPositionSpin->setRange(minimum, maximum);
+        ui->blockPositionSpin->setValue(minimum + normalizedPosition * (maximum - minimum));
+    }
+    ui->blockRangeLabel->setText(
+        QStringLiteral("范围：%1  %2 ～ %3")
+            .arg(axisName, QString::number(minimum, 'g', 8), QString::number(maximum, 'g', 8)));
 }
 
 void BlockSettingsWidget::on_flipCheckBox_toggled(bool)

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <BasePage.h>
 #include <vtkActor.h>
@@ -36,6 +36,7 @@ class BlockSettingsWidget : public BasePage
     void on_scalarComboBox_currentIndexChanged(int index);
     void on_planeComboBox_currentIndexChanged(int index);
     void on_blockSlider_valueChanged(int value);
+    void on_blockPositionSpin_valueChanged(double value);
     void on_flipCheckBox_toggled(bool checked);
 
     void on_stepComboBox_currentIndexChanged(int index);
@@ -52,6 +53,8 @@ class BlockSettingsWidget : public BasePage
     void updateColoringFromUI();
     void renderNow();
     void applyPendingState();
+    void updatePositionControls(double normalizedPosition);
+    double currentNormalizedPosition() const;
 
   private:
     Ui::BlockSettingsWidget* ui{};

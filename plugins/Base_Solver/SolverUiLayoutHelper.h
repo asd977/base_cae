@@ -1,10 +1,15 @@
 #pragma once
 
+#include <BasePage.h>
+
 #include <QAbstractItemModel>
 #include <QAbstractItemView>
 #include <QAbstractScrollArea>
 #include <QAbstractSpinBox>
+#include <QBoxLayout>
 #include <QComboBox>
+#include <QDynamicPropertyChangeEvent>
+#include <QEvent>
 #include <QFontMetrics>
 #include <QFormLayout>
 #include <QGridLayout>
@@ -13,10 +18,12 @@
 #include <QLabel>
 #include <QLayout>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QPointer>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollBar>
+#include <QSettings>
 #include <QSizePolicy>
 #include <QTableView>
 #include <QTableWidget>
@@ -243,6 +250,261 @@ inline void fitTableToRows(QTableWidget* table,
     const int preferredHeight = headerHeight + visibleRows * rowHeight + frame + 4;
     table->setMinimumHeight(compactHeight);
     table->setMaximumHeight(preferredHeight);
+}
+
+inline bool replaceWidgetInLayout(QLayout* layout,
+                                  QWidget* oldWidget,
+                                  QWidget* replacement)
+{
+    if (!layout || !oldWidget || !replacement)
+        return false;
+
+    for (int index = 0; index < layout->count(); ++index)
+    {
+        QLayoutItem* item = layout->itemAt(index);
+        if (!item)
+            continue;
+
+        if (item->widget() == oldWidget)
+        {
+            if (auto* box = qobject_cast<QBoxLayout*>(layout))
+            {
+                box->removeWidget(oldWidget);
+                box->insertWidget(index, replacement);
+            }
+            else if (auto* grid = qobject_cast<QGridLayout*>(layout))
+            {
+                int row = 0;
+                int column = 0;
+                int rowSpan = 1;
+                int columnSpan = 1;
+                grid->getItemPosition(index, &row, &column, &rowSpan, &columnSpan);
+                grid->removeWidget(oldWidget);
+                grid->addWidget(replacement, row, column, rowSpan, columnSpan);
+            }
+            else if (auto* form = qobject_cast<QFormLayout*>(layout))
+            {
+                int row = -1;
+                QFormLayout::ItemRole role = QFormLayout::SpanningRole;
+                form->getWidgetPosition(oldWidget, &row, &role);
+                if (row < 0)
+                    return false;
+                form->removeWidget(oldWidget);
+                form->setWidget(row, role, replacement);
+            }
+            else
+            {
+                layout->removeWidget(oldWidget);
+                layout->addWidget(replacement);
+            }
+            return true;
+        }
+
+        if (item->layout() && replaceWidgetInLayout(item->layout(), oldWidget, replacement))
+            return true;
+    }
+
+    return false;
+}
+
+inline QString computeDeviceSettingsKey(QWidget* page)
+{
+    QString pageId;
+    if (auto* basePage = qobject_cast<BasePage*>(page))
+        pageId = basePage->getUuid();
+    if (pageId.trimmed().isEmpty() && page)
+        pageId = QString::fromLatin1(page->metaObject()->className());
+    return QStringLiteral("Solver/ComputeDevice/%1").arg(pageId);
+}
+
+class ComputeControlsBinder final : public QObject
+{
+  public:
+    ComputeControlsBinder(QWidget* page,
+                          QPushButton* numericalButton,
+                          QPushButton* standardButton,
+                          QComboBox* deviceCombo)
+        : QObject(page),
+          m_page(page),
+          m_numericalButton(numericalButton),
+          m_standardButton(standardButton),
+          m_deviceCombo(deviceCombo)
+    {
+        if (m_page)
+            m_page->installEventFilter(this);
+        if (m_numericalButton)
+            m_numericalButton->installEventFilter(this);
+
+        if (m_deviceCombo)
+        {
+            QObject::connect(m_deviceCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+                             this, [this](int) { persistDevice(); });
+        }
+
+        QTimer::singleShot(0, this, [this]() {
+            restoreDevice();
+            syncComputingState();
+        });
+    }
+
+  protected:
+    bool eventFilter(QObject* watched, QEvent* event) override
+    {
+        if (watched == m_numericalButton &&
+            event->type() == QEvent::DynamicPropertyChange)
+        {
+            auto* propertyEvent = static_cast<QDynamicPropertyChangeEvent*>(event);
+            if (propertyEvent->propertyName() == QByteArrayLiteral("computing"))
+                QTimer::singleShot(0, this, [this]() { syncComputingState(); });
+        }
+        else if (watched == m_page && event->type() == QEvent::Show)
+        {
+            restoreDevice();
+            QTimer::singleShot(0, this, [this]() { syncComputingState(); });
+        }
+
+        return QObject::eventFilter(watched, event);
+    }
+
+  private:
+    void restoreDevice()
+    {
+        if (!m_page || !m_deviceCombo)
+            return;
+
+        QSettings settings;
+        const QString device = settings.value(computeDeviceSettingsKey(m_page),
+                                              QStringLiteral("cpu"))
+                                   .toString()
+                                   .toLower();
+        int index = m_deviceCombo->findData(device);
+        if (index < 0)
+            index = m_deviceCombo->findData(QStringLiteral("cpu"));
+
+        m_restoring = true;
+        if (index >= 0)
+            m_deviceCombo->setCurrentIndex(index);
+        m_restoring = false;
+
+        m_page->setProperty("solverComputeDevice",
+                            m_deviceCombo->currentData().toString());
+    }
+
+    void persistDevice()
+    {
+        if (m_restoring || !m_page || !m_deviceCombo)
+            return;
+
+        const QString device = m_deviceCombo->currentData().toString();
+        m_page->setProperty("solverComputeDevice", device);
+
+        QSettings settings;
+        settings.setValue(computeDeviceSettingsKey(m_page), device);
+    }
+
+    void syncComputingState()
+    {
+        if (!m_numericalButton)
+            return;
+
+        const bool computing = m_numericalButton->property("computing").toBool();
+        m_numericalButton->setText(computing ? QStringLiteral("停止计算")
+                                             : QStringLiteral("数值法计算"));
+        if (m_standardButton)
+            m_standardButton->setEnabled(!computing);
+        if (m_deviceCombo)
+            m_deviceCombo->setEnabled(!computing);
+    }
+
+    QPointer<QWidget> m_page;
+    QPointer<QPushButton> m_numericalButton;
+    QPointer<QPushButton> m_standardButton;
+    QPointer<QComboBox> m_deviceCombo;
+    bool m_restoring = false;
+};
+
+inline QString computeDevice(const QWidget* page)
+{
+    if (!page)
+        return QStringLiteral("cpu");
+
+    const QVariant value = page->property("solverComputeDevice");
+    if (value.isValid() && !value.toString().trimmed().isEmpty())
+        return value.toString().toLower();
+
+    if (auto* combo = page->findChild<QComboBox*>(QStringLiteral("comboComputeDevice")))
+        return combo->currentData().toString().toLower();
+
+    return QStringLiteral("cpu");
+}
+
+inline void setupComputeControls(QWidget* page)
+{
+    if (!page || page->property("_solverComputeControlsReady").toBool())
+        return;
+
+    QPushButton* numericalButton =
+        page->findChild<QPushButton*>(QStringLiteral("btnCompute"));
+    if (!numericalButton)
+        numericalButton = page->findChild<QPushButton*>(QStringLiteral("computeBtn"));
+    if (!numericalButton || !page->layout())
+        return;
+
+    auto* panel = new QWidget(numericalButton->parentWidget());
+    panel->setObjectName(QStringLiteral("solverComputeControls"));
+    panel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+
+    auto* panelLayout = new QVBoxLayout(panel);
+    panelLayout->setContentsMargins(0, 0, 0, 0);
+    panelLayout->setSpacing(8);
+
+    auto* deviceRow = new QHBoxLayout();
+    deviceRow->setContentsMargins(0, 0, 0, 0);
+    deviceRow->setSpacing(10);
+
+    auto* deviceLabel = new QLabel(QStringLiteral("计算设备"), panel);
+    auto* deviceCombo = new QComboBox(panel);
+    deviceCombo->setObjectName(QStringLiteral("comboComputeDevice"));
+    deviceCombo->addItem(QStringLiteral("CPU"), QStringLiteral("cpu"));
+    deviceCombo->addItem(QStringLiteral("GPU（接口预留）"), QStringLiteral("gpu"));
+    deviceCombo->setToolTip(
+        QStringLiteral("CPU/GPU 仅作为计算设备接口预留，当前数值法仍使用现有求解流程。"));
+
+    deviceRow->addWidget(deviceLabel);
+    deviceRow->addWidget(deviceCombo, 1);
+    panelLayout->addLayout(deviceRow);
+
+    auto* buttonRow = new QHBoxLayout();
+    buttonRow->setContentsMargins(0, 0, 0, 0);
+    buttonRow->setSpacing(10);
+
+    auto* standardButton = new QPushButton(QStringLiteral("规范法计算"), panel);
+    standardButton->setObjectName(QStringLiteral("btnStandardCompute"));
+    standardButton->setProperty("computeMethod", QStringLiteral("standard"));
+    standardButton->setToolTip(QStringLiteral("规范法计算接口预留，当前尚未接入实际计算。"));
+
+    numericalButton->setProperty("computeMethod", QStringLiteral("numerical"));
+    numericalButton->setText(QStringLiteral("数值法计算"));
+
+    if (!replaceWidgetInLayout(page->layout(), numericalButton, panel))
+    {
+        delete panel;
+        return;
+    }
+
+    buttonRow->addWidget(numericalButton, 1);
+    buttonRow->addWidget(standardButton, 1);
+    panelLayout->addLayout(buttonRow);
+
+    QObject::connect(standardButton, &QPushButton::clicked, page, [page]() {
+        QMessageBox::information(
+            page,
+            QStringLiteral("规范法计算"),
+            QStringLiteral("规范法计算接口已预留，当前尚未接入实际计算。"));
+    });
+
+    new ComputeControlsBinder(page, numericalButton, standardButton, deviceCombo);
+    page->setProperty("_solverComputeControlsReady", true);
 }
 
 inline void polishPage(QWidget* page)

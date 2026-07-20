@@ -80,6 +80,7 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
     ui->setupUi(this);
     setupStableModeSections();
     SolverUiLayoutHelper::polishPage(this);
+    SolverUiLayoutHelper::setupComputeControls(this);
 
     m_lineEditors[1] = nullptr;
     m_lineEditors[3] = ui->line3Combo;
@@ -641,5 +642,6 @@ void SlopeStabilityWidget::onComputeClicked()
 void SlopeStabilityWidget::setComputing(bool computing)
 {
     ui->btnCompute->setProperty("computing", computing);
-    ui->btnCompute->setText(computing ? QStringLiteral("停止") : QStringLiteral("计算"));
+    ui->btnCompute->setText(computing ? QStringLiteral("停止计算")
+                                      : QStringLiteral("数值法计算"));
 }

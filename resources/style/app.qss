@@ -47,6 +47,21 @@ QLabel#boxSelectHintLabel {
     color: #68727c;
 }
 
+/* Root/project and module dashboard pages use the same global surfaces as other settings pages. */
+DashboardPage#dashboardPage,
+QScrollArea#dashboardScrollArea,
+QScrollArea#dashboardScrollArea > QWidget,
+QWidget#dashboardScrollContainer,
+QWidget#materialEntryContent,
+MaterialModelWidget#materialModelPage,
+MaterialTransitionPage#materialTransitionPage {
+    background: #ffffff;
+}
+
+QScrollArea#dashboardScrollArea QWidget#qt_scrollarea_viewport {
+    background: #ffffff;
+}
+
 /* -------------------------------------------------------------------------
    Buttons
    ------------------------------------------------------------------------- */

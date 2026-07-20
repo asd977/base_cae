@@ -5,6 +5,7 @@
 #include <vtkActor.h>
 #include <vtkActor2D.h>
 #include <vtkDataSetMapper.h>
+#include <vtkCallbackCommand.h>
 #include <vtkLookupTable.h>
 #include <vtkSmartPointer.h>
 #include <vtkUnstructuredGrid.h>
@@ -17,7 +18,6 @@ class VisualWidgetService;
 class vtkDataArray;
 class vtkObject;
 class vtkScalarBarActor;
-class vtkScalarBarWidget;
 namespace Ui
 {
 class NephogramSettingWidget;
@@ -60,8 +60,11 @@ class NephogramSettingWidget : public BasePage
     void setRangeControls(double minV, double maxV);
     bool displayRange(double dataMin, double dataMax, double& minV, double& maxV) const;
     void applyLegendAppearance(vtkScalarBarActor* scalarBar) const;
-    void updateLegendInteraction();
-    void onScalarBarInteractionEnd(vtkObject* caller, unsigned long eventId, void* callData);
+    void installLegendDragInteraction();
+    void removeLegendDragInteraction();
+    bool handleLegendDragEvent(unsigned long eventId);
+    static void legendDragCallback(vtkObject* caller, unsigned long eventId,
+                                   void* clientData, void* callData);
 
     vtkDataArray* findScalarArray(vtkUnstructuredGrid* grid, const QString& scalarName,
                                   bool& usePointData) const;
@@ -93,7 +96,14 @@ class NephogramSettingWidget : public BasePage
     double m_legendPositionX{0.0};
     double m_legendPositionY{0.0};
 
-    vtkSmartPointer<vtkScalarBarWidget> m_scalarBarWidget;
+    vtkSmartPointer<vtkCallbackCommand> m_legendDragCallback;
+    unsigned long m_middlePressObserverId{0};
+    unsigned long m_mouseMoveObserverId{0};
+    unsigned long m_middleReleaseObserverId{0};
+    bool m_draggingLegend{false};
+    double m_legendDragOffsetX{0.0};
+    double m_legendDragOffsetY{0.0};
+
     vtkSmartPointer<vtkActor> m_contourActor;
     vtkSmartPointer<vtkActor2D> m_contourLabelActor;
 };

@@ -47,7 +47,9 @@ IsosurfaceSegmentationWidget::IsosurfaceSegmentationWidget(
     ui->setupUi(this);
 
     // UI 默认
-    ui->percentCheckBox->setChecked(true);
+    ui->percentModeRadioButton->setChecked(true);
+    ui->isoSlider->setEnabled(true);
+    ui->isoSpin->setEnabled(false);
     ui->isoSlider->setRange(0, 100);
     ui->isoSlider->setTracking(false);
     ui->isoSlider->setToolTip(QStringLiteral("松开滑块后更新分区，避免拖动时连续重算"));
@@ -59,17 +61,22 @@ IsosurfaceSegmentationWidget::IsosurfaceSegmentationWidget(
     ui->showHighCheckBox->setChecked(true);
     ui->showInterfaceCheckBox->setChecked(false);
 
-    ui->lowOpacitySlider->setRange(10, 100);
-    ui->highOpacitySlider->setRange(10, 100);
-    ui->ifaceOpacitySlider->setRange(10, 100);
-    ui->lowOpacitySlider->setValue(60);
-    ui->highOpacitySlider->setValue(60);
-    ui->ifaceOpacitySlider->setValue(100);
+    ui->lowOpacitySpinBox->setRange(10, 100);
+    ui->highOpacitySpinBox->setRange(10, 100);
+    ui->interfaceOpacitySpinBox->setRange(10, 100);
+    ui->lowOpacitySpinBox->setValue(60);
+    ui->highOpacitySpinBox->setValue(60);
+    ui->interfaceOpacitySpinBox->setValue(100);
+    ui->lowOpacitySpinBox->setEnabled(true);
+    ui->highOpacitySpinBox->setEnabled(true);
+    ui->interfaceOpacitySpinBox->setEnabled(false);
 
     // 信号（如用 Qt Designer 的自动连接，也可以省略）
     connect(ui->scalarComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &IsosurfaceSegmentationWidget::on_scalarComboBox_currentIndexChanged);
-    connect(ui->percentCheckBox, &QCheckBox::toggled, this,
+    connect(ui->percentModeRadioButton, &QRadioButton::toggled, this,
+            &IsosurfaceSegmentationWidget::on_percentCheckBox_toggled);
+    connect(ui->valueModeRadioButton, &QRadioButton::toggled, this,
             &IsosurfaceSegmentationWidget::on_percentCheckBox_toggled);
     connect(ui->isoSlider, &QSlider::valueChanged, this,
             &IsosurfaceSegmentationWidget::on_isoSlider_valueChanged);
@@ -83,11 +90,11 @@ IsosurfaceSegmentationWidget::IsosurfaceSegmentationWidget(
     connect(ui->showInterfaceCheckBox, &QCheckBox::toggled, this,
             &IsosurfaceSegmentationWidget::on_showInterfaceCheckBox_toggled);
 
-    connect(ui->lowOpacitySlider, &QSlider::valueChanged, this,
+    connect(ui->lowOpacitySpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
             &IsosurfaceSegmentationWidget::on_lowOpacitySlider_valueChanged);
-    connect(ui->highOpacitySlider, &QSlider::valueChanged, this,
+    connect(ui->highOpacitySpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
             &IsosurfaceSegmentationWidget::on_highOpacitySlider_valueChanged);
-    connect(ui->ifaceOpacitySlider, &QSlider::valueChanged, this,
+    connect(ui->interfaceOpacitySpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
             &IsosurfaceSegmentationWidget::on_ifaceOpacitySlider_valueChanged);
 
     connect(ui->stepComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
@@ -144,15 +151,15 @@ QJsonObject IsosurfaceSegmentationWidget::saveJson()
     object.insert(QStringLiteral("stepFile"), ui->stepComboBox->currentData().toString());
     object.insert(QStringLiteral("fieldName"), field.name);
     object.insert(QStringLiteral("fieldAssociation"), field.association);
-    object.insert(QStringLiteral("percentMode"), ui->percentCheckBox->isChecked());
+    object.insert(QStringLiteral("percentMode"), ui->percentModeRadioButton->isChecked());
     object.insert(QStringLiteral("isoPercent"), ui->isoSlider->value());
     object.insert(QStringLiteral("isoValue"), ui->isoSpin->value());
     object.insert(QStringLiteral("showLow"), ui->showLowCheckBox->isChecked());
     object.insert(QStringLiteral("showHigh"), ui->showHighCheckBox->isChecked());
     object.insert(QStringLiteral("showInterface"), ui->showInterfaceCheckBox->isChecked());
-    object.insert(QStringLiteral("lowOpacity"), ui->lowOpacitySlider->value());
-    object.insert(QStringLiteral("highOpacity"), ui->highOpacitySlider->value());
-    object.insert(QStringLiteral("interfaceOpacity"), ui->ifaceOpacitySlider->value());
+    object.insert(QStringLiteral("lowOpacity"), ui->lowOpacitySpinBox->value());
+    object.insert(QStringLiteral("highOpacity"), ui->highOpacitySpinBox->value());
+    object.insert(QStringLiteral("interfaceOpacity"), ui->interfaceOpacitySpinBox->value());
     return object;
 }
 
@@ -210,18 +217,20 @@ void IsosurfaceSegmentationWidget::applyPendingState()
     setIsoSpinRangeFromScalar();
 
     {
-        const QSignalBlocker percentBlocker(ui->percentCheckBox);
+        const QSignalBlocker percentBlocker(ui->percentModeRadioButton);
+        const QSignalBlocker valueModeBlocker(ui->valueModeRadioButton);
         const QSignalBlocker sliderBlocker(ui->isoSlider);
         const QSignalBlocker spinBlocker(ui->isoSpin);
         const QSignalBlocker lowBlocker(ui->showLowCheckBox);
         const QSignalBlocker highBlocker(ui->showHighCheckBox);
         const QSignalBlocker interfaceBlocker(ui->showInterfaceCheckBox);
-        const QSignalBlocker lowOpacityBlocker(ui->lowOpacitySlider);
-        const QSignalBlocker highOpacityBlocker(ui->highOpacitySlider);
-        const QSignalBlocker interfaceOpacityBlocker(ui->ifaceOpacitySlider);
+        const QSignalBlocker lowOpacityBlocker(ui->lowOpacitySpinBox);
+        const QSignalBlocker highOpacityBlocker(ui->highOpacitySpinBox);
+        const QSignalBlocker interfaceOpacityBlocker(ui->interfaceOpacitySpinBox);
 
         const bool percentMode = state.value(QStringLiteral("percentMode"), true).toBool();
-        ui->percentCheckBox->setChecked(percentMode);
+        ui->percentModeRadioButton->setChecked(percentMode);
+        ui->valueModeRadioButton->setChecked(!percentMode);
         ui->isoSlider->setValue(state.value(QStringLiteral("isoPercent"), 50).toInt());
         if (!percentMode)
             ui->isoSpin->setValue(state.value(QStringLiteral("isoValue"), ui->isoSpin->value()).toDouble());
@@ -229,11 +238,16 @@ void IsosurfaceSegmentationWidget::applyPendingState()
         ui->showHighCheckBox->setChecked(state.value(QStringLiteral("showHigh"), true).toBool());
         ui->showInterfaceCheckBox->setChecked(
             state.value(QStringLiteral("showInterface"), false).toBool());
-        ui->lowOpacitySlider->setValue(state.value(QStringLiteral("lowOpacity"), 60).toInt());
-        ui->highOpacitySlider->setValue(state.value(QStringLiteral("highOpacity"), 60).toInt());
-        ui->ifaceOpacitySlider->setValue(
+        ui->lowOpacitySpinBox->setValue(state.value(QStringLiteral("lowOpacity"), 60).toInt());
+        ui->highOpacitySpinBox->setValue(state.value(QStringLiteral("highOpacity"), 60).toInt());
+        ui->interfaceOpacitySpinBox->setValue(
             state.value(QStringLiteral("interfaceOpacity"), 100).toInt());
     }
+    ui->isoSlider->setEnabled(ui->percentModeRadioButton->isChecked());
+    ui->isoSpin->setEnabled(!ui->percentModeRadioButton->isChecked());
+    ui->lowOpacitySpinBox->setEnabled(ui->showLowCheckBox->isChecked());
+    ui->highOpacitySpinBox->setEnabled(ui->showHighCheckBox->isChecked());
+    ui->interfaceOpacitySpinBox->setEnabled(ui->showInterfaceCheckBox->isChecked());
 
     buildPipelineIfNeeded();
     updateColoringFromUI();
@@ -466,7 +480,7 @@ void IsosurfaceSegmentationWidget::updateIsoFromUI()
 
     // 百分比/绝对值 -> iso
     double iso = 0.0;
-    if (ui->percentCheckBox->isChecked())
+    if (ui->percentModeRadioButton->isChecked())
     {
         const double t = ui->isoSlider->value() / 100.0;
         iso = currentScalarMin() + t * (currentScalarMax() - currentScalarMin());
@@ -597,7 +611,7 @@ void IsosurfaceSegmentationWidget::updateColoringFromUI()
     {
         m_visualService->showScalarBar(true, false);
         if (auto* scalarBar = m_visualService->scalarBarActor())
-            scalarBar->SetTitle(ResultDisplayNames::displayName(field.name).toUtf8().constData());
+            scalarBar->SetTitle(ResultDisplayNames::scalarBarName(field.name).toUtf8().constData());
     }
 
     // 缓存给 Spin/Slider 使用
@@ -615,11 +629,11 @@ void IsosurfaceSegmentationWidget::updateVisibilityFromUI()
         m_actorIso->SetVisibility(ui->showInterfaceCheckBox->isChecked());
 
     if (m_actorLow)
-        m_actorLow->GetProperty()->SetOpacity(ui->lowOpacitySlider->value() / 100.0);
+        m_actorLow->GetProperty()->SetOpacity(ui->lowOpacitySpinBox->value() / 100.0);
     if (m_actorHigh)
-        m_actorHigh->GetProperty()->SetOpacity(ui->highOpacitySlider->value() / 100.0);
+        m_actorHigh->GetProperty()->SetOpacity(ui->highOpacitySpinBox->value() / 100.0);
     if (m_actorIso)
-        m_actorIso->GetProperty()->SetOpacity(ui->ifaceOpacitySlider->value() / 100.0);
+        m_actorIso->GetProperty()->SetOpacity(ui->interfaceOpacitySpinBox->value() / 100.0);
 }
 
 void IsosurfaceSegmentationWidget::renderNow()
@@ -680,13 +694,16 @@ void IsosurfaceSegmentationWidget::on_scalarComboBox_currentIndexChanged(int)
 
 void IsosurfaceSegmentationWidget::on_percentCheckBox_toggled(bool)
 {
+    const bool percentMode = ui->percentModeRadioButton->isChecked();
+    ui->isoSlider->setEnabled(percentMode);
+    ui->isoSpin->setEnabled(!percentMode);
     updateIsoFromUI();
     renderNow();
 }
 
 void IsosurfaceSegmentationWidget::on_isoSlider_valueChanged(int)
 {
-    if (!ui->percentCheckBox->isChecked())
+    if (!ui->percentModeRadioButton->isChecked())
         return;
     updateIsoFromUI();
     renderNow();
@@ -694,24 +711,27 @@ void IsosurfaceSegmentationWidget::on_isoSlider_valueChanged(int)
 
 void IsosurfaceSegmentationWidget::on_isoSpin_valueChanged(double)
 {
-    if (ui->percentCheckBox->isChecked())
+    if (ui->percentModeRadioButton->isChecked())
         return;
     updateIsoFromUI();
     renderNow();
 }
 
-void IsosurfaceSegmentationWidget::on_showLowCheckBox_toggled(bool)
+void IsosurfaceSegmentationWidget::on_showLowCheckBox_toggled(bool checked)
 {
+    ui->lowOpacitySpinBox->setEnabled(checked);
     updateVisibilityFromUI();
     renderNow();
 }
-void IsosurfaceSegmentationWidget::on_showHighCheckBox_toggled(bool)
+void IsosurfaceSegmentationWidget::on_showHighCheckBox_toggled(bool checked)
 {
+    ui->highOpacitySpinBox->setEnabled(checked);
     updateVisibilityFromUI();
     renderNow();
 }
-void IsosurfaceSegmentationWidget::on_showInterfaceCheckBox_toggled(bool)
+void IsosurfaceSegmentationWidget::on_showInterfaceCheckBox_toggled(bool checked)
 {
+    ui->interfaceOpacitySpinBox->setEnabled(checked);
     updateVisibilityFromUI();
     renderNow();
 }

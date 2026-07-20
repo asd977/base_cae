@@ -8,11 +8,8 @@ MaterialModelWidget::MaterialModelWidget(MaterialManager* manager, QWidget* pare
     : BasePage("MaterialModelWidget"), m_materialManager(manager), m_titleLabel(new QLabel(this)),
       m_summaryLabel(new QLabel(this))
 {
+    setObjectName(QStringLiteral("materialModelPage"));
     setAttribute(Qt::WA_StyledBackground, true);
-    QPalette modelPal = this->palette();
-    modelPal.setColor(QPalette::Window, Qt::white);
-    this->setPalette(modelPal);
-    this->setAutoFillBackground(true);
 
     m_titleLabel->setObjectName("pageHeaderLabel");
 

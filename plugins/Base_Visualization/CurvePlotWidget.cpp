@@ -46,15 +46,18 @@ const QStringList& supportedFields()
     return fields;
 }
 
-QColor seriesColor(int index)
+QColor seriesColor(const QString& field)
 {
-    static const QVector<QColor> colors = {
-        QColor(31, 119, 180),
-        QColor(230, 126, 34),
-        QColor(39, 174, 96),
-        QColor(192, 57, 43),
-    };
-    return colors.at(index % colors.size());
+    const QString key = field.trimmed().toUpper();
+    if (key == QStringLiteral("FOS"))
+        return QColor(31, 119, 180);
+    if (key == QStringLiteral("PTOT"))
+        return QColor(230, 126, 34);
+    if (key == QStringLiteral("MAX UR") || key == QStringLiteral("MAXUR"))
+        return QColor(39, 174, 96);
+    if (key == QStringLiteral("LOOP"))
+        return QColor(192, 57, 43);
+    return QColor(90, 100, 110);
 }
 
 
@@ -334,7 +337,7 @@ void CurvePlotWidget::renderPlot()
             continue;
 
         plot->SetInputData(m_table, 0, i + 1);
-        const QColor color = seriesColor(i);
+        const QColor color = seriesColor(m_yFields.at(i));
         plot->SetColor(static_cast<unsigned char>(color.red()),
                        static_cast<unsigned char>(color.green()),
                        static_cast<unsigned char>(color.blue()), 255);

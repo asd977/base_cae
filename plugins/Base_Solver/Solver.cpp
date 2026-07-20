@@ -3847,6 +3847,7 @@ bool Solver::normalizeGeoStressSolidLayers(QString* errorMessage) const
 
     QHash<int, int> layerByCalculationElement;
     layerByCalculationElement.reserve(int(grid->GetNumberOfCells()));
+    int compatibilityElementId = std::numeric_limits<int>::max();
 
     int exportedElementIndex = 0;
     for (vtkIdType cellId = 0; cellId < grid->GetNumberOfCells(); ++cellId)
@@ -3871,9 +3872,15 @@ bool Solver::normalizeGeoStressSolidLayers(QString* errorMessage) const
         const int calculationElementId =
             keepSourceElementIds ? sourceElementId : exportedElementIndex;
         layerByCalculationElement.insert(calculationElementId, 1);
+        compatibilityElementId = qMin(compatibilityElementId, calculationElementId);
     }
-    if (layerByCalculationElement.isEmpty())
+    if (layerByCalculationElement.isEmpty() ||
+        compatibilityElementId == std::numeric_limits<int>::max())
         return fail(QStringLiteral("无法建立实体单元与计算单元的对应关系。"));
+
+    // 旧求解器要求地应力输入至少包含一个待还原层；计算第 1 步会把 -1 还原为 1。
+    // 这里只修改本次分析的临时输入，不改变项目网格及其分层设置。
+    layerByCalculationElement[compatibilityElementId] = -1;
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();

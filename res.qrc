@@ -1,4 +1,4 @@
-<RCC>
+﻿<RCC>
     <qresource prefix="/">
         <file>resources/action_parameter.png</file>
         <file>resources/close.png</file>
@@ -59,6 +59,11 @@
         <file>resources/images/vs-pin-button-disabled.svg</file>
         <file>resources/images/vs-pin-button-pinned.svg</file>
         <file>resources/images/vs-pin-button-pinned-focused.svg</file>
+        <file>resources/images/dock-close-light.svg</file>
+        <file>resources/images/dock-pin-light.svg</file>
+        <file>resources/images/dock-pin-pinned-light.svg</file>
+        <file>resources/images/dock-menu-light.svg</file>
+        <file>resources/images/dock-detach-light.svg</file>
         <file>resources/icon.ico</file>
         <file>resources/rotate.png</file>
         <file>resources/scale.png</file>
@@ -119,6 +124,10 @@
         <file>resources/icon/view_scale_off.svg</file>
         <file>resources/icon.svg</file>
         <file>resources/style/app.qss</file>
+        <file>resources/style/app_blue.qss</file>
+        <file>resources/style/app_dark.qss</file>
+        <file>resources/style/arrow_down_light.svg</file>
+        <file>resources/style/arrow_up_light.svg</file>
         <file>resources/style/chevron_right.svg</file>
         <file>resources/style/chevron_down.svg</file>
         <file>resources/style/check_mark.svg</file>
@@ -186,6 +195,26 @@
         <file>resources/menu/minimal/mat-builtin-material.svg</file>
         <file>resources/menu/minimal/mat-builtin-seepage.svg</file>
         <file>resources/menu/minimal/mat-transition.svg</file>
+        <file>resources/menu/concept/view-visualization.svg</file>
+        <file>resources/menu/concept/view-model.svg</file>
+        <file>resources/menu/concept/view-quantity.svg</file>
+        <file>resources/menu/concept/view-settings.svg</file>
+        <file>resources/menu/concept/view-log.svg</file>
+        <file>resources/menu/concept/view-window.svg</file>
+        <file>resources/menu/concept/view-show-all.svg</file>
+        <file>resources/menu/concept/view-reset-layout.svg</file>
+        <file>resources/menu/concept/view-theme.svg</file>
+        <file>resources/menu/concept/help-about.svg</file>
+        <file>resources/menu/concept/dark/view-visualization-dark.svg</file>
+        <file>resources/menu/concept/dark/view-model-dark.svg</file>
+        <file>resources/menu/concept/dark/view-quantity-dark.svg</file>
+        <file>resources/menu/concept/dark/view-settings-dark.svg</file>
+        <file>resources/menu/concept/dark/view-log-dark.svg</file>
+        <file>resources/menu/concept/dark/view-window-dark.svg</file>
+        <file>resources/menu/concept/dark/view-show-all-dark.svg</file>
+        <file>resources/menu/concept/dark/view-reset-layout-dark.svg</file>
+        <file>resources/menu/concept/dark/view-theme-dark.svg</file>
+        <file>resources/menu/concept/dark/help-about-dark.svg</file>
     </qresource>
 </RCC>
 

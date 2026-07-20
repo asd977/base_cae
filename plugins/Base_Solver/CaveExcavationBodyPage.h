@@ -10,6 +10,7 @@
 class QComboBox;
 class QPushButton;
 class QListWidget;
+class QTimer;
 namespace Ui
 {
 class CaveExcavationBodyPage;
@@ -34,6 +35,7 @@ class CaveExcavationBodyPage : public BasePage
     void onClearClicked();
     void onAddGroupClicked();
     void onRemoveSelectedGroupsClicked();
+    void onGroupChanged(int index);
     void onGroupHovered(int index);
     void onGroupDropdownClosed();
 
@@ -57,10 +59,12 @@ class CaveExcavationBodyPage : public BasePage
     Ui::CaveExcavationBodyPage* ui = nullptr;
 
     int m_lastHoveredIndex = -1;
+    int m_pendingPreviewGroup = 0;
 
     QComboBox* m_groupCombo = nullptr;
     QPushButton* m_addGroupBtn = nullptr;
     QPushButton* m_removeGroupBtn = nullptr;
     QPushButton* m_clearBtn = nullptr;
     QListWidget* m_groupList = nullptr;
+    QTimer* m_groupPreviewTimer = nullptr;
 };

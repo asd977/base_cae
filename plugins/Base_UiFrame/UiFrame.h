@@ -1,4 +1,4 @@
-#ifndef UIFRAME_H
+﻿#ifndef UIFRAME_H
 #define UIFRAME_H
 
 #include <DockManager.h>
@@ -8,11 +8,15 @@
 #include <QAction>
 #include <QByteArray>
 #include <QCloseEvent>
+#include <QList>
+#include <QPointer>
 
 #include "SARibbonMainWindow.h"
 
 class SARibbonBar;
 class SARibbonMenu;
+class SARibbonPannel;
+class QActionGroup;
 
 namespace ads
 {
@@ -51,16 +55,38 @@ class UiFrame : public SARibbonMainWindow, public UiFrameService
     void setDockWidgetStyle();
     void updateAreaTabStyle(ads::CDockAreaWidget* area);
     void updateAllContainersTabStyle();
+    void applyThemeToUi();
+    void switchTheme(const QString& themeName);
+    void updateThemeActionChecks();
+    void updateThemedActionIcons();
+    void registerDockToggleAction(QAction* action, const QString& name);
+    void addDockActionToWindowPanel(QAction* toggleAction, const QString& name);
+    void showAllDockWidgets();
+    void resetDockLayout();
+    void showAboutDialog();
     ads::DockWidgetArea preferDockArea(const QString& name) const;
     void captureDefaultDockState();
+    void arrangeDefaultDockLayout();
 
   private:
     ads::CDockManager* m_dockManager = nullptr;
     ads::CDockAreaWidget* m_centerDockArea = nullptr;
     QByteArray m_defaultDockState;
+    QPointer<ads::CDockWidget> m_modelDockWidget;
+    QPointer<ads::CDockWidget> m_settingsDockWidget;
+    QPointer<ads::CDockWidget> m_visualDockWidget;
+    QPointer<ads::CDockWidget> m_physicalDockWidget;
+    QPointer<ads::CDockWidget> m_logDockWidget;
+    bool m_defaultLayoutArranged = false;
 
     SARibbonBar* m_ribbon = nullptr;
     SARibbonMenu* m_applicationMenu = nullptr;
+    QActionGroup* m_themeActionGroup = nullptr;
+    QAction* m_themeLightAction = nullptr;
+    QAction* m_themeBlueAction = nullptr;
+    QAction* m_themeDarkAction = nullptr;
+    SARibbonPannel* m_windowPanel = nullptr;
+    QList<QPointer<QAction>> m_dockToggleActions;
 };
 
 #endif // UIFRAME_H

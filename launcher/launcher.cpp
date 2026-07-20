@@ -4,6 +4,7 @@
 #include <StyleManager.h>
 
 #include <QApplication>
+#include <QColor>
 #include <QComboBox>
 #include <QDebug>
 #include <QDir>
@@ -13,6 +14,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QProxyStyle>
+#include <QSettings>
 #include <QStyleOption>
 #include <QSurfaceFormat>
 #include <QTranslator>
@@ -38,7 +40,10 @@ class NeutralCheckStyle final : public QProxyStyle
             return;
         }
 
-        if (element != PE_IndicatorCheckBox && element != PE_IndicatorItemViewItemCheck)
+        const bool isCheck =
+            element == PE_IndicatorCheckBox || element == PE_IndicatorItemViewItemCheck;
+        const bool isRadio = element == PE_IndicatorRadioButton;
+        if (!isCheck && !isRadio)
         {
             QProxyStyle::drawPrimitive(element, option, painter, widget);
             return;
@@ -50,45 +55,94 @@ class NeutralCheckStyle final : public QProxyStyle
         const bool checked = option->state.testFlag(State_On);
         const bool partial = option->state.testFlag(State_NoChange);
 
-        const int side = qMin(16, qMin(option->rect.width(), option->rect.height()));
+        const QString theme =
+            qApp ? qApp->property("uiTheme").toString().trimmed().toLower() : QString();
+
+        QColor borderColor;
+        QColor fillColor;
+        QColor markColor;
+        if (theme == QStringLiteral("dark"))
+        {
+            borderColor = !enabled   ? QColor(QStringLiteral("#4b535c"))
+                          : hovered ? QColor(QStringLiteral("#91a0ad"))
+                                    : QColor(QStringLiteral("#6f7a84"));
+            fillColor = !enabled   ? QColor(QStringLiteral("#252a30"))
+                        : pressed ? QColor(QStringLiteral("#353d45"))
+                                  : QColor(QStringLiteral("#22272d"));
+            markColor = enabled ? QColor(QStringLiteral("#79b4dc"))
+                                : QColor(QStringLiteral("#737e87"));
+        }
+        else if (theme == QStringLiteral("blue"))
+        {
+            borderColor = !enabled   ? QColor(QStringLiteral("#b8c7d2"))
+                          : hovered ? QColor(QStringLiteral("#4f82a7"))
+                                    : QColor(QStringLiteral("#7f9db3"));
+            fillColor = !enabled   ? QColor(QStringLiteral("#edf2f5"))
+                        : pressed ? QColor(QStringLiteral("#dfeaf2"))
+                                  : QColor(QStringLiteral("#ffffff"));
+            markColor = enabled ? QColor(QStringLiteral("#2b70a6"))
+                                : QColor(QStringLiteral("#9aaab6"));
+        }
+        else
+        {
+            borderColor = !enabled   ? QColor(QStringLiteral("#c5cbd0"))
+                          : hovered ? QColor(QStringLiteral("#66727a"))
+                                    : QColor(QStringLiteral("#8b959c"));
+            fillColor = !enabled   ? QColor(QStringLiteral("#f2f4f5"))
+                        : pressed ? QColor(QStringLiteral("#eef1f2"))
+                                  : QColor(QStringLiteral("#ffffff"));
+            markColor = enabled ? QColor(QStringLiteral("#30383d"))
+                                : QColor(QStringLiteral("#9ea6ab"));
+        }
+
+        const int preferredSide = isRadio ? 15 : 16;
+        const int side = qMin(preferredSide, qMin(option->rect.width(), option->rect.height()));
         QRect indicatorRect(0, 0, side, side);
         indicatorRect.moveCenter(option->rect.center());
-
-        const QColor borderColor = !enabled   ? QColor(QStringLiteral("#c5cbd0"))
-                                   : hovered ? QColor(QStringLiteral("#66727a"))
-                                             : QColor(QStringLiteral("#8b959c"));
-        const QColor fillColor = !enabled   ? QColor(QStringLiteral("#f2f4f5"))
-                                 : pressed ? QColor(QStringLiteral("#eef1f2"))
-                                           : QColor(QStringLiteral("#ffffff"));
-        const QColor markColor = enabled ? QColor(QStringLiteral("#30383d"))
-                                         : QColor(QStringLiteral("#9ea6ab"));
+        const QRectF outerRect = QRectF(indicatorRect).adjusted(0.65, 0.65, -0.65, -0.65);
 
         painter->save();
         painter->setRenderHint(QPainter::Antialiasing, true);
-        painter->setPen(QPen(borderColor, 1.0));
+        painter->setPen(QPen(borderColor, 1.15));
         painter->setBrush(fillColor);
-        painter->drawRoundedRect(QRectF(indicatorRect).adjusted(0.5, 0.5, -0.5, -0.5), 3.0,
-                                 3.0);
 
-        if (checked)
+        if (isRadio)
         {
-            const qreal x = indicatorRect.left();
-            const qreal y = indicatorRect.top();
-            QPainterPath checkPath;
-            checkPath.moveTo(x + side * 0.22, y + side * 0.52);
-            checkPath.lineTo(x + side * 0.43, y + side * 0.72);
-            checkPath.lineTo(x + side * 0.79, y + side * 0.30);
-            painter->setPen(QPen(markColor, 1.65, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-            painter->setBrush(Qt::NoBrush);
-            painter->drawPath(checkPath);
+            painter->drawEllipse(outerRect);
+            if (checked)
+            {
+                const qreal dotSide = qMax<qreal>(5.0, side * 0.42);
+                QRectF dotRect(0.0, 0.0, dotSide, dotSide);
+                dotRect.moveCenter(outerRect.center());
+                painter->setPen(Qt::NoPen);
+                painter->setBrush(markColor);
+                painter->drawEllipse(dotRect);
+            }
         }
-        else if (partial)
+        else
         {
-            painter->setPen(QPen(markColor, 1.8, Qt::SolidLine, Qt::RoundCap));
-            painter->drawLine(QPointF(indicatorRect.left() + side * 0.25,
-                                      indicatorRect.top() + side * 0.50),
-                              QPointF(indicatorRect.left() + side * 0.75,
-                                      indicatorRect.top() + side * 0.50));
+            painter->drawRoundedRect(outerRect, 3.0, 3.0);
+            if (checked)
+            {
+                const qreal x = indicatorRect.left();
+                const qreal y = indicatorRect.top();
+                QPainterPath checkPath;
+                checkPath.moveTo(x + side * 0.22, y + side * 0.52);
+                checkPath.lineTo(x + side * 0.43, y + side * 0.72);
+                checkPath.lineTo(x + side * 0.79, y + side * 0.30);
+                painter->setPen(
+                    QPen(markColor, 1.65, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+                painter->setBrush(Qt::NoBrush);
+                painter->drawPath(checkPath);
+            }
+            else if (partial)
+            {
+                painter->setPen(QPen(markColor, 1.8, Qt::SolidLine, Qt::RoundCap));
+                painter->drawLine(QPointF(indicatorRect.left() + side * 0.25,
+                                          indicatorRect.top() + side * 0.50),
+                                  QPointF(indicatorRect.left() + side * 0.75,
+                                          indicatorRect.top() + side * 0.50));
+            }
         }
 
         painter->restore();
@@ -105,6 +159,8 @@ class NeutralCheckStyle final : public QProxyStyle
                 return 14;
             return 16;
         }
+        if (metric == PM_ExclusiveIndicatorWidth || metric == PM_ExclusiveIndicatorHeight)
+            return 15;
         return QProxyStyle::pixelMetric(metric, option, widget);
     }
 };
@@ -144,9 +200,13 @@ int main(int argc, char** argv)
     app.setApplicationName(QStringLiteral("POWERCHINA-GEOCAE"));
     app.setOrganizationName(QStringLiteral("POWERCHINA"));
 
-    StyleManager::applyStyleSheet(app, QString(":/resources/style/app.qss"));
+    const QString exePath = QCoreApplication::applicationDirPath();
+    QSettings uiSettings(QDir(exePath).filePath(QStringLiteral("config/file.ini")),
+                         QSettings::IniFormat);
+    const QString initialTheme =
+        uiSettings.value(QStringLiteral("General/uiTheme"), QStringLiteral("light")).toString();
+    StyleManager::applyTheme(app, initialTheme);
 
-    QString exePath = QCoreApplication::applicationDirPath();
 
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, &onAppAboutToQuit);
 

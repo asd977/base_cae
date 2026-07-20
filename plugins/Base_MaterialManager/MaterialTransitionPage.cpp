@@ -1,4 +1,4 @@
-#include "MaterialTransitionPage.h"
+﻿#include "MaterialTransitionPage.h"
 
 #include <PickManager.h>
 #include <PublicConstants.h>
@@ -65,11 +65,8 @@ void clearMaterialTransitionHighlight(const QString& pageType, const QString& uu
 MaterialTransitionPage::MaterialTransitionPage(MaterialManager* manager, QWidget* parent)
     : BasePage("MaterialTransitionPage"), m_manager(manager)
 {
+    setObjectName(QStringLiteral("materialTransitionPage"));
     setAttribute(Qt::WA_StyledBackground, true);
-    QPalette transPal = this->palette();
-    transPal.setColor(QPalette::Window, Qt::white);
-    this->setPalette(transPal);
-    this->setAutoFillBackground(true);
 
     auto* pageHeaderLabel = new QLabel("材料变换设置", this);
     pageHeaderLabel->setObjectName("pageHeaderLabel");

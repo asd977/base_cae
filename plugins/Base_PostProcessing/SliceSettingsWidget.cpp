@@ -90,56 +90,32 @@ SliceSettingsWidget::SliceSettingsWidget(VisualWidgetService* postProcessingWidg
       m_visualService(postProcessingWidget)
 {
     ui->setupUi(this);
+
+    ui->sliceSlider->setRange(0, 1000);
+    ui->sliceSlider->setValue(500);
     ui->sliceSlider->setTracking(false);
-    ui->sliceSlider->setToolTip(QStringLiteral("松开滑块后更新切面预览，避免连续重绘"));
+    ui->sliceSlider->setToolTip(QStringLiteral("松开滑块后更新切面预览"));
+    ui->slicePositionSpin->setKeyboardTracking(false);
+    ui->modeStackedWidget->setCurrentIndex(0);
 
-    // 互斥：两组 GroupBox 必须是 checkable
-    if (ui->singleSliceGroupBox)
-        ui->singleSliceGroupBox->setCheckable(true);
-    if (ui->multiSliceGroupBox)
-        ui->multiSliceGroupBox->setCheckable(true);
-
-    // 默认进入单切面模式
-    if (ui->singleSliceGroupBox && ui->multiSliceGroupBox)
-    {
-        ui->singleSliceGroupBox->blockSignals(true);
-        ui->multiSliceGroupBox->blockSignals(true);
-        ui->singleSliceGroupBox->setChecked(true);
-        ui->multiSliceGroupBox->setChecked(false);
-        ui->singleSliceGroupBox->blockSignals(false);
-        ui->multiSliceGroupBox->blockSignals(false);
-    }
-
-    // 单切面预览（滑条/方向改变时）
     connect(ui->sliceSlider, &QSlider::valueChanged, this, &SliceSettingsWidget::showCutPlane);
+    connect(ui->slicePositionSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            &SliceSettingsWidget::on_slicePositionSpin_valueChanged);
     connect(ui->planeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &SliceSettingsWidget::on_planeComboBox_currentIndexChanged);
     connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &SliceSettingsWidget::on_resultDirComboBox_currentIndexChanged);
-
-    // 确认按钮（不自动出结果，只有点确认才生成）
     connect(ui->confirmButton, &QPushButton::clicked, this,
             &SliceSettingsWidget::on_confirmButton_clicked);
-
-    // 互斥切换
-    connect(ui->singleSliceGroupBox, &QGroupBox::toggled, this,
-            &SliceSettingsWidget::on_singleSliceGroupBox_toggled);
-    connect(ui->multiSliceGroupBox, &QGroupBox::toggled, this,
-            &SliceSettingsWidget::on_multiSliceGroupBox_toggled);
-
-    // 标量/步号
+    connect(ui->singleSliceRadioButton, &QRadioButton::toggled, this,
+            &SliceSettingsWidget::on_singleSliceRadioButton_toggled);
     connect(ui->scalarComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &SliceSettingsWidget::on_scalarComboBox_currentIndexChanged);
     connect(ui->stepComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &SliceSettingsWidget::on_stepComboBox_currentIndexChanged);
 
-    // 多切面数量默认
-    if (ui->sliceNumSpin)
-    {
-        ui->sliceNumSpin->setRange(1, 100);
-        if (ui->sliceNumSpin->value() < 1)
-            ui->sliceNumSpin->setValue(5);
-    }
+    ui->sliceNumSpin->setRange(1, 100);
+    ui->sliceNumSpin->setValue(5);
 }
 
 SliceSettingsWidget::~SliceSettingsWidget()
@@ -177,7 +153,7 @@ void SliceSettingsWidget::beforeLoad()
         {
             m_visualService->showScalarBar(true, false);
             if (auto* scalarBar = m_visualService->scalarBarActor())
-                scalarBar->SetTitle(ResultDisplayNames::displayName(field.name).toUtf8().constData());
+                scalarBar->SetTitle(ResultDisplayNames::scalarBarName(field.name).toUtf8().constData());
         }
     }
 
@@ -195,8 +171,11 @@ QJsonObject SliceSettingsWidget::saveJson()
     object.insert(QStringLiteral("fieldName"), field.name);
     object.insert(QStringLiteral("fieldAssociation"), field.association);
     object.insert(QStringLiteral("planeIndex"), ui->planeComboBox->currentIndex());
-    object.insert(QStringLiteral("position"), ui->sliceSlider->value());
-    object.insert(QStringLiteral("singleMode"), ui->singleSliceGroupBox->isChecked());
+    object.insert(QStringLiteral("position"),
+                  qRound(currentNormalizedPosition() * 100.0)); // 兼容旧工程
+    object.insert(QStringLiteral("positionRatio"), currentNormalizedPosition());
+    object.insert(QStringLiteral("positionCoordinate"), ui->slicePositionSpin->value());
+    object.insert(QStringLiteral("singleMode"), isSingleMode());
     object.insert(QStringLiteral("sliceCount"), ui->sliceNumSpin->value());
     object.insert(QStringLiteral("includeEnds"), ui->includeEndsCheck->isChecked());
     return object;
@@ -260,25 +239,28 @@ void SliceSettingsWidget::applyPendingState()
                                   maximumIndex)));
     }
     {
-        const QSignalBlocker positionBlocker(ui->sliceSlider);
-        const QSignalBlocker singleBlocker(ui->singleSliceGroupBox);
-        const QSignalBlocker multiBlocker(ui->multiSliceGroupBox);
+        const QSignalBlocker singleBlocker(ui->singleSliceRadioButton);
+        const QSignalBlocker multiBlocker(ui->multiSliceRadioButton);
         const QSignalBlocker countBlocker(ui->sliceNumSpin);
         const QSignalBlocker endsBlocker(ui->includeEndsCheck);
         const bool singleMode = state.value(QStringLiteral("singleMode"), true).toBool();
-        ui->sliceSlider->setValue(state.value(QStringLiteral("position"), 50).toInt());
-        ui->singleSliceGroupBox->setChecked(singleMode);
-        ui->multiSliceGroupBox->setChecked(!singleMode);
+        ui->singleSliceRadioButton->setChecked(singleMode);
+        ui->multiSliceRadioButton->setChecked(!singleMode);
+        ui->modeStackedWidget->setCurrentIndex(singleMode ? 0 : 1);
         ui->sliceNumSpin->setValue(state.value(QStringLiteral("sliceCount"), 5).toInt());
         ui->includeEndsCheck->setChecked(state.value(QStringLiteral("includeEnds"), false).toBool());
     }
+    double positionRatio = state.value(QStringLiteral("positionRatio"), -1.0).toDouble();
+    if (positionRatio < 0.0)
+        positionRatio = state.value(QStringLiteral("position"), 50).toDouble() / 100.0;
+    updatePositionControls(std::max(0.0, std::min(positionRatio, 1.0)));
 
     detachAllFromScene();
     m_singleDisplayed = false;
     m_multiDisplayed = false;
     clearMultiSlicesAll();
     on_scalarComboBox_currentIndexChanged(ui->scalarComboBox->currentIndex());
-    if (ui->singleSliceGroupBox->isChecked())
+    if (isSingleMode())
         showCutPlane();
 }
 
@@ -394,8 +376,7 @@ void SliceSettingsWidget::on_stepComboBox_currentIndexChanged(int idx)
 
     // UI 不自动出结果
     ui->planeComboBox->setCurrentIndex(0);
-    ui->sliceSlider->setValue(50);
-    ui->sliceLineEdit->setText("0.5");
+    updatePositionControls(0.5);
 
     // 切步后：默认只显示整体云图
     m_singleDisplayed = false;
@@ -470,7 +451,7 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
     m_actor->GetProperty()->SetRepresentationToSurface();
     m_visualService->showScalarBar(true, false);
     if (auto* scalarBar = m_visualService->scalarBarActor())
-        scalarBar->SetTitle(ResultDisplayNames::displayName(field.name).toUtf8().constData());
+        scalarBar->SetTitle(ResultDisplayNames::scalarBarName(field.name).toUtf8().constData());
 
     // 没有在显示结果时，才把整体云图挂上
     if (!m_singleDisplayed && !m_multiDisplayed)
@@ -496,8 +477,9 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
 
 void SliceSettingsWidget::on_planeComboBox_currentIndexChanged(int)
 {
-    // 仅单切面模式预览
-    if (ui->singleSliceGroupBox && ui->singleSliceGroupBox->isChecked())
+    const double position = currentNormalizedPosition();
+    updatePositionControls(position);
+    if (isSingleMode())
         showCutPlane();
 }
 
@@ -507,12 +489,21 @@ void SliceSettingsWidget::showCutPlane(int)
         return;
 
     // 仅单切面模式预览；多切面模式不预览
-    if (!(ui->singleSliceGroupBox && ui->singleSliceGroupBox->isChecked()))
+    if (!isSingleMode())
         return;
 
-    const double t = ui->sliceSlider->value() / 100.0;
-    ui->sliceLineEdit->setText(QString::number(t, 'f', 3));
-    const QString dir = ui->planeComboBox->currentText();
+    const int planeIndex = ui->planeComboBox->currentIndex();
+    const double minimum = planeIndex == 0 ? m_XRange[0]
+                                           : (planeIndex == 1 ? m_YRange[0] : m_ZRange[0]);
+    const double maximum = planeIndex == 0 ? m_XRange[1]
+                                           : (planeIndex == 1 ? m_YRange[1] : m_ZRange[1]);
+    if (sender() == ui->sliceSlider)
+    {
+        const QSignalBlocker blocker(ui->slicePositionSpin);
+        ui->slicePositionSpin->setValue(
+            minimum + currentNormalizedPosition() * (maximum - minimum));
+    }
+    const double coordinate = std::max(minimum, std::min(ui->slicePositionSpin->value(), maximum));
 
     double b[6];
     m_grid->GetBounds(b);
@@ -523,9 +514,9 @@ void SliceSettingsWidget::showCutPlane(int)
     if (!m_plane)
         m_plane = vtkSmartPointer<vtkPlane>::New();
 
-    if (dir == "YZ")
+    if (planeIndex == 0)
     {
-        const double x = b[0] + t * dx;
+        const double x = coordinate;
         O[0] = x;
         O[1] = b[2] - ey;
         O[2] = b[4] - ez;
@@ -537,9 +528,9 @@ void SliceSettingsWidget::showCutPlane(int)
         P2[2] = b[5] + ez;
         m_plane->SetNormal(1, 0, 0);
     }
-    else if (dir == "XZ")
+    else if (planeIndex == 1)
     {
-        const double y = b[2] + t * dy;
+        const double y = coordinate;
         O[0] = b[0] - ex;
         O[1] = y;
         O[2] = b[4] - ez;
@@ -553,7 +544,7 @@ void SliceSettingsWidget::showCutPlane(int)
     }
     else
     { // XY
-        const double z = b[4] + t * dz;
+        const double z = coordinate;
         O[0] = b[0] - ex;
         O[1] = b[2] - ey;
         O[2] = z;
@@ -574,8 +565,11 @@ void SliceSettingsWidget::showCutPlane(int)
         m_slicePlaneMapper->SetInputConnection(m_slicePlaneSource->GetOutputPort());
         m_slicePlaneActor = vtkSmartPointer<vtkActor>::New();
         m_slicePlaneActor->SetMapper(m_slicePlaneMapper);
-        m_slicePlaneActor->GetProperty()->SetColor(1, 0, 1);
-        m_slicePlaneActor->GetProperty()->SetOpacity(0.25);
+        m_slicePlaneActor->GetProperty()->SetColor(0.55, 0.68, 0.78);
+        m_slicePlaneActor->GetProperty()->SetOpacity(0.16);
+        m_slicePlaneActor->GetProperty()->SetEdgeVisibility(true);
+        m_slicePlaneActor->GetProperty()->SetEdgeColor(0.28, 0.40, 0.50);
+        m_slicePlaneActor->GetProperty()->SetLineWidth(1.0);
         m_slicePlaneActor->GetProperty()->SetLighting(false);
     }
 
@@ -596,8 +590,8 @@ void SliceSettingsWidget::on_confirmButton_clicked()
 {
     if (!m_visualService)
         return;
-    const bool singleMode = ui->singleSliceGroupBox && ui->singleSliceGroupBox->isChecked();
-    const bool multiMode = ui->multiSliceGroupBox && ui->multiSliceGroupBox->isChecked();
+    const bool singleMode = isSingleMode();
+    const bool multiMode = !singleMode;
 
     if (multiMode)
     {
@@ -644,35 +638,25 @@ void SliceSettingsWidget::on_confirmButton_clicked()
             rw->Render();
 }
 
-void SliceSettingsWidget::on_singleSliceGroupBox_toggled(bool checked)
+void SliceSettingsWidget::on_singleSliceRadioButton_toggled(bool checked)
 {
-    if (!ui->multiSliceGroupBox)
-        return;
-
-    // 互斥：改动另一组的勾选状态（避免递归）
-    ui->multiSliceGroupBox->blockSignals(true);
-    ui->multiSliceGroupBox->setChecked(!checked);
-    ui->multiSliceGroupBox->blockSignals(false);
+    ui->modeStackedWidget->setCurrentIndex(checked ? 0 : 1);
 
     if (checked)
     {
-        // 进入单切面模式：隐藏多切面结果，显示整体并预览紫面
         hideMultiSlicesFromScene();
         m_multiDisplayed = false;
-
         if (m_actor)
             addActorByService(m_visualService, m_actor);
-        showCutPlane(); // 创建/更新并挂载预览
+        showCutPlane();
     }
     else
     {
-        // 退出单切面模式：隐藏预览与单切面结果，仅显示整体
         if (m_slicePlaneActor)
             removeActorByService(m_visualService, m_slicePlaneActor, false);
         if (m_sliceActor)
             removeActorByService(m_visualService, m_sliceActor, false);
         m_singleDisplayed = false;
-
         if (m_actor)
             addActorByService(m_visualService, m_actor);
     }
@@ -682,42 +666,50 @@ void SliceSettingsWidget::on_singleSliceGroupBox_toggled(bool checked)
             rw->Render();
 }
 
-void SliceSettingsWidget::on_multiSliceGroupBox_toggled(bool checked)
+void SliceSettingsWidget::on_slicePositionSpin_valueChanged(double value)
 {
-    if (!ui->singleSliceGroupBox)
-        return;
-
-    // 互斥：改动另一组的勾选状态（避免递归）
-    ui->singleSliceGroupBox->blockSignals(true);
-    ui->singleSliceGroupBox->setChecked(!checked);
-    ui->singleSliceGroupBox->blockSignals(false);
-
-    if (checked)
+    const int axis = ui->planeComboBox->currentIndex();
+    const double minimum = axis == 0 ? m_XRange[0] : (axis == 1 ? m_YRange[0] : m_ZRange[0]);
+    const double maximum = axis == 0 ? m_XRange[1] : (axis == 1 ? m_YRange[1] : m_ZRange[1]);
+    const double span = maximum - minimum;
+    const double ratio = span > 0.0 ? std::max(0.0, std::min((value - minimum) / span, 1.0)) : 0.5;
     {
-        // 进入多切面模式：隐藏单切面预览/结果，仅显示整体（不自动出结果）
-        if (m_slicePlaneActor)
-            removeActorByService(m_visualService, m_slicePlaneActor, false);
-        if (m_sliceActor)
-            removeActorByService(m_visualService, m_sliceActor, false);
-        m_singleDisplayed = false;
-
-        if (m_actor)
-            addActorByService(m_visualService, m_actor);
+        const QSignalBlocker blocker(ui->sliceSlider);
+        ui->sliceSlider->setValue(qRound(ratio * ui->sliceSlider->maximum()));
     }
-    else
+    showCutPlane();
+}
+
+bool SliceSettingsWidget::isSingleMode() const
+{
+    return ui->singleSliceRadioButton && ui->singleSliceRadioButton->isChecked();
+}
+
+double SliceSettingsWidget::currentNormalizedPosition() const
+{
+    if (!ui->sliceSlider || ui->sliceSlider->maximum() <= 0)
+        return 0.5;
+    return std::max(0.0, std::min(ui->sliceSlider->value() / double(ui->sliceSlider->maximum()), 1.0));
+}
+
+void SliceSettingsWidget::updatePositionControls(double normalizedPosition)
+{
+    normalizedPosition = std::max(0.0, std::min(normalizedPosition, 1.0));
+    const int axis = ui->planeComboBox->currentIndex();
+    const double minimum = axis == 0 ? m_XRange[0] : (axis == 1 ? m_YRange[0] : m_ZRange[0]);
+    const double maximum = axis == 0 ? m_XRange[1] : (axis == 1 ? m_YRange[1] : m_ZRange[1]);
+    const QString axisName = axis == 0 ? QStringLiteral("X") : (axis == 1 ? QStringLiteral("Y") : QStringLiteral("Z"));
+
     {
-        // 退出多切面模式：隐藏多切面结果，仅显示整体，允许单切面预览
-        hideMultiSlicesFromScene();
-        m_multiDisplayed = false;
-
-        if (m_actor)
-            addActorByService(m_visualService, m_actor);
-        showCutPlane(); // 恢复预览（如果单切面组处于勾选状态）
+        const QSignalBlocker sliderBlocker(ui->sliceSlider);
+        const QSignalBlocker spinBlocker(ui->slicePositionSpin);
+        ui->sliceSlider->setValue(qRound(normalizedPosition * ui->sliceSlider->maximum()));
+        ui->slicePositionSpin->setRange(minimum, maximum);
+        ui->slicePositionSpin->setValue(minimum + normalizedPosition * (maximum - minimum));
     }
-
-    if (m_visualService)
-        if (auto* rw = m_visualService->renderWindow())
-            rw->Render();
+    ui->sliceRangeLabel->setText(
+        QStringLiteral("范围：%1  %2 ～ %3")
+            .arg(axisName, QString::number(minimum, 'g', 8), QString::number(maximum, 'g', 8)));
 }
 
 void SliceSettingsWidget::buildSingleSliceResult()
@@ -786,7 +778,7 @@ void SliceSettingsWidget::buildSingleSliceResult()
     addActorByService(m_visualService, m_sliceActor, false);
     m_visualService->showScalarBar(true, false);
     if (auto* scalarBar = m_visualService->scalarBarActor())
-        scalarBar->SetTitle(ResultDisplayNames::displayName(field.name).toUtf8().constData());
+        scalarBar->SetTitle(ResultDisplayNames::scalarBarName(field.name).toUtf8().constData());
 }
 
 void SliceSettingsWidget::buildMultiSliceResult()
@@ -798,9 +790,7 @@ void SliceSettingsWidget::buildMultiSliceResult()
 
     const int count = ui->sliceNumSpin ? std::max(1, ui->sliceNumSpin->value()) : 1;
     const bool includeEnds = ui->includeEndsCheck && ui->includeEndsCheck->isChecked();
-    const QString direction =
-        ui->planeComboBox->currentText().isEmpty() ? QStringLiteral("XY")
-                                                    : ui->planeComboBox->currentText();
+    const int planeIndex = ui->planeComboBox->currentIndex();
 
     const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
     vtkDataArray* arr = PostFieldUtils::array(m_grid, field);
@@ -846,12 +836,12 @@ void SliceSettingsWidget::buildMultiSliceResult()
     {
         auto plane = vtkSmartPointer<vtkPlane>::New();
         double origin[3] = {0, 0, 0};
-        if (direction == QStringLiteral("YZ"))
+        if (planeIndex == 0)
         {
             origin[0] = bounds[0] + position * dx;
             plane->SetNormal(1, 0, 0);
         }
-        else if (direction == QStringLiteral("XZ"))
+        else if (planeIndex == 1)
         {
             origin[1] = bounds[2] + position * dy;
             plane->SetNormal(0, 1, 0);
@@ -892,7 +882,7 @@ void SliceSettingsWidget::buildMultiSliceResult()
 
     m_visualService->showScalarBar(true, false);
     if (auto* scalarBar = m_visualService->scalarBarActor())
-        scalarBar->SetTitle(ResultDisplayNames::displayName(field.name).toUtf8().constData());
+        scalarBar->SetTitle(ResultDisplayNames::scalarBarName(field.name).toUtf8().constData());
 }
 
 void SliceSettingsWidget::hideMultiSlicesFromScene()
@@ -918,8 +908,8 @@ void SliceSettingsWidget::reattachAccordingToDisplayState()
     // 全部清空当前场景上的本页 actor
     detachAllFromScene();
 
-    const bool singleMode = ui->singleSliceGroupBox && ui->singleSliceGroupBox->isChecked();
-    const bool multiMode = ui->multiSliceGroupBox && ui->multiSliceGroupBox->isChecked();
+    const bool singleMode = isSingleMode();
+    const bool multiMode = !singleMode;
 
     if (m_multiDisplayed && multiMode && !m_multiActors.isEmpty())
     {
@@ -939,7 +929,7 @@ void SliceSettingsWidget::reattachAccordingToDisplayState()
     if (m_actor)
         addActorByService(m_visualService, m_actor);
 
-    // 单切面模式下，如果没有结果在显示，恢复紫色预览
+    // 单切面模式下，如果没有结果在显示，恢复切面预览
     if (singleMode && !m_singleDisplayed)
     {
         if (m_slicePlaneSource && m_slicePlaneActor)

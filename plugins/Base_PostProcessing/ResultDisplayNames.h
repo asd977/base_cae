@@ -123,6 +123,99 @@ inline QString displayName(const QString& rawName)
     return unit.isEmpty() ? translated : QStringLiteral("%1（%2）").arg(translated, unit);
 }
 
+inline QString scalarBarName(const QString& rawName)
+{
+    const QString raw = rawName.trimmed();
+    if (raw.isEmpty())
+        return raw;
+
+    const QString unit = unitOf(raw);
+    const QString key = keyOf(raw);
+    const bool velocityUnit = unit.contains(QLatin1Char('/')) &&
+                              unit.contains(QLatin1Char('s'), Qt::CaseInsensitive);
+
+    QString shortName;
+    if (key == QStringLiteral("UX") || key == QStringLiteral("U1") ||
+        key == QStringLiteral("DX"))
+        shortName = velocityUnit ? QStringLiteral("vₓ") : QStringLiteral("uₓ");
+    else if (key == QStringLiteral("UY") || key == QStringLiteral("U2") ||
+             key == QStringLiteral("DY"))
+        shortName = velocityUnit ? QStringLiteral("vᵧ") : QStringLiteral("uᵧ");
+    else if (key == QStringLiteral("UZ") || key == QStringLiteral("U3") ||
+             key == QStringLiteral("DZ"))
+        shortName = velocityUnit ? QStringLiteral("v_z") : QStringLiteral("u_z");
+    else if (key == QStringLiteral("UH") || key == QStringLiteral("DISP") ||
+             key == QStringLiteral("U") || key == QStringLiteral("UMAG"))
+        shortName = QStringLiteral("|u|");
+    else
+    {
+        static const QHash<QString, QString> names = {
+            {QStringLiteral("PRS1"), QStringLiteral("σ₁")},
+            {QStringLiteral("PRS2"), QStringLiteral("σ₂")},
+            {QStringLiteral("PRS3"), QStringLiteral("σ₃")},
+            {QStringLiteral("SIG1"), QStringLiteral("σ₁")},
+            {QStringLiteral("SIG2"), QStringLiteral("σ₂")},
+            {QStringLiteral("SIG3"), QStringLiteral("σ₃")},
+            {QStringLiteral("TMAX"), QStringLiteral("τmax")},
+            {QStringLiteral("SXX"), QStringLiteral("σₓ")},
+            {QStringLiteral("SYY"), QStringLiteral("σᵧ")},
+            {QStringLiteral("SZZ"), QStringLiteral("σ_z")},
+            {QStringLiteral("SXY"), QStringLiteral("τₓᵧ")},
+            {QStringLiteral("SYZ"), QStringLiteral("τᵧ_z")},
+            {QStringLiteral("SZX"), QStringLiteral("τ_zₓ")},
+            {QStringLiteral("SXZ"), QStringLiteral("τₓ_z")},
+            {QStringLiteral("MISES"), QStringLiteral("σv")},
+            {QStringLiteral("VONMISES"), QStringLiteral("σv")},
+            {QStringLiteral("SL"), QStringLiteral("应力水平")},
+
+            {QStringLiteral("EXX"), QStringLiteral("εₓ")},
+            {QStringLiteral("EYY"), QStringLiteral("εᵧ")},
+            {QStringLiteral("EZZ"), QStringLiteral("ε_z")},
+            {QStringLiteral("EXY"), QStringLiteral("γₓᵧ")},
+            {QStringLiteral("EYZ"), QStringLiteral("γᵧ_z")},
+            {QStringLiteral("EZX"), QStringLiteral("γ_zₓ")},
+            {QStringLiteral("EXZ"), QStringLiteral("γₓ_z")},
+            {QStringLiteral("E1"), QStringLiteral("ε₁")},
+            {QStringLiteral("E2"), QStringLiteral("ε₂")},
+            {QStringLiteral("E3"), QStringLiteral("ε₃")},
+            {QStringLiteral("PEXX"), QStringLiteral("εₓᵖ")},
+            {QStringLiteral("PEYY"), QStringLiteral("εᵧᵖ")},
+            {QStringLiteral("PEZZ"), QStringLiteral("ε_zᵖ")},
+            {QStringLiteral("PEXY"), QStringLiteral("γₓᵧᵖ")},
+            {QStringLiteral("PEYZ"), QStringLiteral("γᵧ_zᵖ")},
+            {QStringLiteral("PEZX"), QStringLiteral("γ_zₓᵖ")},
+            {QStringLiteral("PEXZ"), QStringLiteral("γₓ_zᵖ")},
+
+            {QStringLiteral("HEAD"), QStringLiteral("H")},
+            {QStringLiteral("HP"), QStringLiteral("H")},
+            {QStringLiteral("P"), QStringLiteral("p")},
+            {QStringLiteral("PRESSURE"), QStringLiteral("p")},
+            {QStringLiteral("PWP"), QStringLiteral("p")},
+            {QStringLiteral("POR"), QStringLiteral("p")},
+            {QStringLiteral("VX"), QStringLiteral("vₓ")},
+            {QStringLiteral("VY"), QStringLiteral("vᵧ")},
+            {QStringLiteral("VZ"), QStringLiteral("v_z")},
+            {QStringLiteral("VMAG"), QStringLiteral("|v|")},
+
+            {QStringLiteral("TEMP"), QStringLiteral("T")},
+            {QStringLiteral("TEMPERATURE"), QStringLiteral("T")},
+            {QStringLiteral("SAT"), QStringLiteral("饱和度")},
+            {QStringLiteral("SATURATION"), QStringLiteral("饱和度")},
+            {QStringLiteral("DAMAGE"), QStringLiteral("损伤")},
+            {QStringLiteral("FOS"), QStringLiteral("安全系数")},
+            {QStringLiteral("FS"), QStringLiteral("安全系数")},
+            {QStringLiteral("MATYPE"), QStringLiteral("材料号")},
+            {QStringLiteral("MATERIAL"), QStringLiteral("材料号")},
+            {QStringLiteral("LAYER"), QStringLiteral("层号")},
+            {QStringLiteral("KETYPE"), QStringLiteral("单元类型")}};
+        shortName = names.value(key);
+    }
+
+    if (shortName.isEmpty())
+        shortName = key.isEmpty() ? raw : key;
+    return unit.isEmpty() ? shortName : QStringLiteral("%1（%2）").arg(shortName, unit);
+}
+
 inline QString internalName(const QComboBox* combo)
 {
     if (!combo)

@@ -1,4 +1,4 @@
-#include "GridEditingWidget.h"
+﻿#include "GridEditingWidget.h"
 
 #include "ui_GridEditingWidget.h"
 
@@ -56,6 +56,18 @@ static const QString kGlobalFilterCustomKey = QStringLiteral("mesh.display.filte
 static const QString kGlobalFilterKetypeKey = QStringLiteral("mesh.display.filter.ketype.checked");
 static const QString kGlobalFilterMatypeKey = QStringLiteral("mesh.display.filter.matype.checked");
 static const QString kGlobalFilterLayerKey = QStringLiteral("mesh.display.filter.layer.checked");
+static const QString kGlobalColorModeKey = QStringLiteral("mesh.display.color.mode");
+
+static GridEditingWidget::ColorMode globalColorMode()
+{
+    const int value = PublicVariables::instance().get(kGlobalColorModeKey).toInt();
+    if (value < static_cast<int>(GridEditingWidget::ColorMode::None) ||
+        value > static_cast<int>(GridEditingWidget::ColorMode::Layer))
+    {
+        return GridEditingWidget::ColorMode::None;
+    }
+    return static_cast<GridEditingWidget::ColorMode>(value);
+}
 
 constexpr int kRoleCategory = Qt::UserRole + 1;
 constexpr int kRoleValue = Qt::UserRole + 2;
@@ -438,12 +450,17 @@ GridEditingWidget::GridEditingWidget(QWidget* parent)
 
     if (ui->comboBoxColorMode)
     {
+        const ColorMode initialMode = globalColorMode();
+        const QSignalBlocker blocker(ui->comboBoxColorMode);
         ui->comboBoxColorMode->clear();
         ui->comboBoxColorMode->addItem(QStringLiteral("默认颜色"), static_cast<int>(ColorMode::None));
         ui->comboBoxColorMode->addItem(QStringLiteral("按单元类型 KETYPE"), static_cast<int>(ColorMode::Ketype));
         ui->comboBoxColorMode->addItem(QStringLiteral("按材料类型 MATYPE"), static_cast<int>(ColorMode::Matype));
         ui->comboBoxColorMode->addItem(QStringLiteral("按填筑分层 LAYER"), static_cast<int>(ColorMode::Layer));
-        ui->comboBoxColorMode->setCurrentIndex(0);
+        const int initialIndex = ui->comboBoxColorMode->findData(
+            static_cast<int>(initialMode));
+        ui->comboBoxColorMode->setCurrentIndex(initialIndex >= 0 ? initialIndex : 0);
+        m_colorMode = initialMode;
     }
 
 
@@ -504,13 +521,13 @@ void GridEditingWidget::setEditableGrid(vtkUnstructuredGrid* grid, const QString
     clearData();
     m_sourceName = sourceName;
 
-           // 颜色模式只在当前网格编辑页生效，不再保存/恢复为全局状态。
-    m_colorMode = ColorMode::None;
+    // 颜色模式属于网格的全局显示状态。重新进入页面时保持导入后或用户选择的模式。
+    m_colorMode = globalColorMode();
 
     if (ui && ui->comboBoxColorMode)
     {
         const QSignalBlocker blocker(ui->comboBoxColorMode);
-        const int idx = ui->comboBoxColorMode->findData(static_cast<int>(ColorMode::None));
+        const int idx = ui->comboBoxColorMode->findData(static_cast<int>(m_colorMode));
         ui->comboBoxColorMode->setCurrentIndex(idx >= 0 ? idx : 0);
     }
 
@@ -1061,6 +1078,7 @@ void GridEditingWidget::on_comboBoxColorMode_currentIndexChanged(int index)
 
     const QVariant data = ui->comboBoxColorMode->currentData();
     m_colorMode = data.isValid() ? static_cast<ColorMode>(data.toInt()) : ColorMode::None;
+    setGlobalValue(kGlobalColorModeKey, static_cast<int>(m_colorMode));
     buildOrUpdateViewGrid();
 }
 
@@ -1090,31 +1108,7 @@ void GridEditingWidget::beforeLoad()
 
 void GridEditingWidget::beforeUnload()
 {
-    // 筛选显示仍然保留为全局状态，但颜色显示只属于网格编辑页。
-    // 离开页面时只关闭 mapper 的标量着色，不恢复筛选后的 mapper 输入。
-    refreshMeshActors();
-
-    m_colorMode = ColorMode::None;
-    if (ui && ui->comboBoxColorMode)
-    {
-        const QSignalBlocker blocker(ui->comboBoxColorMode);
-        const int idx = ui->comboBoxColorMode->findData(static_cast<int>(ColorMode::None));
-        ui->comboBoxColorMode->setCurrentIndex(idx >= 0 ? idx : 0);
-    }
-
-    if (m_surfaceMapper)
-    {
-        m_surfaceMapper->ScalarVisibilityOff();
-        m_surfaceMapper->Modified();
-    }
-    if (m_lineMapper)
-    {
-        m_lineMapper->ScalarVisibilityOff();
-        m_lineMapper->Modified();
-    }
-
-    if (m_visualWidgetService)
-        m_visualWidgetService->render();
-
+    // 筛选和着色都是全局显示状态。离开“显示控制”页面时只释放页面缓存，
+    // 不再关闭 mapper 标量着色，否则材料颜色会在切换到其他节点后突然消失。
     clearData();
 }

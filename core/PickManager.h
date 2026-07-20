@@ -17,6 +17,7 @@
 #include <vtkCellPicker.h>
 #include <vtkDataArray.h>
 #include <vtkDataSet.h>
+#include <vtkDataSetMapper.h>
 #include <vtkHardwareSelector.h>
 #include <vtkIntArray.h>
 #include <vtkPolyDataMapper2D.h>
@@ -28,6 +29,7 @@
 #include <vtkSmartPointer.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkVertexGlyphFilter.h>
+#include <vtkWeakPointer.h>
 
 #include <services/MeshModuleControllerService.h>
 
@@ -185,6 +187,11 @@ class CORE_EXPORT PickManager : public QObject
                                        vtkIdType& outOrigCellId, int& outOrigFaceLocalId) const;
 
     void updateActorVisibility();
+    void updateSelectionContextOpacity();
+    void restoreSelectionContextOpacity();
+    void applyDomainContextStyle();
+    void restoreDomainContextStyle();
+    void clearDomainFocusOverlay();
     // 将材料域高亮状态写入一套统一的 cell 颜色数组并刷新显示。
     void rebuildDomainHighlightActors();
     QSet<vtkIdType> cellsOfDomain(const DomainKey& key) const;
@@ -268,6 +275,34 @@ class CORE_EXPORT PickManager : public QObject
     vtkProp* m_lineProp = nullptr;
     vtkDataSet* m_solidPickDataSet = nullptr;
     vtkDataSet* m_linePickDataSet = nullptr;
+    vtkWeakPointer<vtkProp> m_contextOpacitySolidProp;
+    vtkWeakPointer<vtkProp> m_contextOpacityLineProp;
+    double m_savedContextOpacitySolid = 1.0;
+    double m_savedContextOpacityLine = 1.0;
+    bool m_contextOpacitySolidActive = false;
+    bool m_contextOpacityLineActive = false;
+
+    vtkSmartPointer<vtkUnstructuredGrid> m_domainFocusGrid;
+    vtkSmartPointer<vtkDataSetMapper> m_domainFocusMapper;
+    vtkSmartPointer<vtkActor> m_domainFocusActor;
+    vtkSmartPointer<vtkUnstructuredGrid> m_domainLineFocusGrid;
+    vtkSmartPointer<vtkDataSetMapper> m_domainLineFocusMapper;
+    vtkSmartPointer<vtkActor> m_domainLineFocusActor;
+    vtkDataSet* m_domainFocusSolidSource = nullptr;
+    vtkDataSet* m_domainFocusLineSource = nullptr;
+    QVector<vtkIdType> m_domainFocusSolidCellIds;
+    QVector<vtkIdType> m_domainFocusLineCellIds;
+    vtkWeakPointer<vtkActor> m_domainContextSolidActor;
+    vtkWeakPointer<vtkActor> m_domainContextLineActor;
+    double m_savedDomainSolidOpacity = 1.0;
+    double m_savedDomainLineOpacity = 1.0;
+    double m_savedDomainSolidColor[3] = {0.78, 0.78, 0.78};
+    double m_savedDomainLineColor[3] = {0.78, 0.78, 0.78};
+    int m_savedDomainSolidEdgeVisibility = 0;
+    int m_savedDomainLineEdgeVisibility = 0;
+    int m_savedDomainSolidScalarVisibility = 0;
+    int m_savedDomainLineScalarVisibility = 0;
+    bool m_domainContextStyleActive = false;
 
     // ============ line node hints ============
     vtkSmartPointer<vtkPoints> m_lineNodePts;

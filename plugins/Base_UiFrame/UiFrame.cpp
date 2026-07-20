@@ -4,6 +4,7 @@
 #include <PublicConstants.h>
 #include <ServiceRegistry.h>
 #include <services/MaterialManagerService.h>
+#include <StyleManager.h>
 
 #include <DockAreaWidget.h>
 #include <DockAreaTitleBar.h>
@@ -13,12 +14,19 @@
 #include <QPointer>
 
 #include <QAbstractButton>
+#include <QActionGroup>
+#include <QApplication>
 #include <QComboBox>
+#include <QColor>
 #include <QCoreApplication>
 #include <QDir>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QLabel>
+#include <QMenu>
+#include <QMessageBox>
+#include <QPainter>
+#include <QPixmap>
 #include <QSettings>
 #include <QString>
 #include <QSizePolicy>
@@ -39,6 +47,121 @@
 
 namespace
 {
+struct ThemeColors
+{
+    QString id;
+    QString text;
+    QString secondaryText;
+    QString accent;
+    QString window;
+    QString manager;
+    QString surface;
+    QString surfaceAlt;
+    QString panel;
+    QString border;
+    QString borderStrong;
+    QString hover;
+    QString pressed;
+    QString selection;
+    QString splitter;
+    QString splitterHover;
+    QString file;
+    QString fileHover;
+    QString filePressed;
+    QString iconTint;
+};
+
+ThemeColors currentThemeColors()
+{
+    const QString theme = StyleManager::currentThemeName();
+    if (theme == QStringLiteral("dark"))
+    {
+        return {theme,
+                QStringLiteral("#e7edf2"), QStringLiteral("#aeb8c1"),
+                QStringLiteral("#6aa6d1"), QStringLiteral("#1d2329"),
+                QStringLiteral("#181d22"), QStringLiteral("#242b32"),
+                QStringLiteral("#293139"), QStringLiteral("#293139"),
+                QStringLiteral("#3d4852"), QStringLiteral("#596672"),
+                QStringLiteral("#313b45"), QStringLiteral("#3a4856"),
+                QStringLiteral("#34506a"), QStringLiteral("#39444e"),
+                QStringLiteral("#5c6c79"), QStringLiteral("#2f78b7"),
+                QStringLiteral("#3b89c6"), QStringLiteral("#27689f"),
+                QStringLiteral("#dce5ec")};
+    }
+    if (theme == QStringLiteral("blue"))
+    {
+        return {theme,
+                QStringLiteral("#1b3549"), QStringLiteral("#647b8d"),
+                QStringLiteral("#2a6b9a"), QStringLiteral("#dfe9f1"),
+                QStringLiteral("#d3e2ed"), QStringLiteral("#eef5fa"),
+                QStringLiteral("#e5eff6"), QStringLiteral("#f3f8fb"),
+                QStringLiteral("#b4c8d7"), QStringLiteral("#829fb5"),
+                QStringLiteral("#e5f0f7"), QStringLiteral("#d5e5f0"),
+                QStringLiteral("#d9eaf5"), QStringLiteral("#adc3d2"),
+                QStringLiteral("#779ab4"), QStringLiteral("#2b70a6"),
+                QStringLiteral("#3c82b5"), QStringLiteral("#205d8c"), QString()};
+    }
+    return {QStringLiteral("light"),
+            QStringLiteral("#000000"), QStringLiteral("#68727c"),
+            QStringLiteral("#2c5368"), QStringLiteral("#f0f2f4"),
+            QStringLiteral("#edf0f2"), QStringLiteral("#ffffff"),
+            QStringLiteral("#f6f7f8"), QStringLiteral("#fbfcfc"),
+            QStringLiteral("#d7dcdf"), QStringLiteral("#bac5cc"),
+            QStringLiteral("#eef2f4"), QStringLiteral("#e0e8ec"),
+            QStringLiteral("#e6ecef"), QStringLiteral("#d9dee1"),
+            QStringLiteral("#aebac1"), QStringLiteral("#2f6f9f"),
+            QStringLiteral("#3b7eae"), QStringLiteral("#285f89"), QString()};
+}
+
+QString themedStyle(QString style, const ThemeColors& c)
+{
+    const QPair<QString, QString> tokens[] = {
+        {QStringLiteral("@text@"), c.text},
+        {QStringLiteral("@secondaryText@"), c.secondaryText},
+        {QStringLiteral("@accent@"), c.accent},
+        {QStringLiteral("@window@"), c.window},
+        {QStringLiteral("@manager@"), c.manager},
+        {QStringLiteral("@surface@"), c.surface},
+        {QStringLiteral("@surfaceAlt@"), c.surfaceAlt},
+        {QStringLiteral("@panel@"), c.panel},
+        {QStringLiteral("@border@"), c.border},
+        {QStringLiteral("@borderStrong@"), c.borderStrong},
+        {QStringLiteral("@hover@"), c.hover},
+        {QStringLiteral("@pressed@"), c.pressed},
+        {QStringLiteral("@selection@"), c.selection},
+        {QStringLiteral("@splitter@"), c.splitter},
+        {QStringLiteral("@splitterHover@"), c.splitterHover},
+        {QStringLiteral("@file@"), c.file},
+        {QStringLiteral("@fileHover@"), c.fileHover},
+        {QStringLiteral("@filePressed@"), c.filePressed}};
+    for (const auto& token : tokens)
+        style.replace(token.first, token.second);
+    return style;
+}
+
+QIcon themedIcon(const QString& path)
+{
+    const ThemeColors colors = currentThemeColors();
+    if (path.isEmpty() || colors.iconTint.isEmpty())
+        return QIcon(path);
+
+    const QIcon source(path);
+    QIcon result;
+    const QList<int> sizes = {16, 20, 24, 32, 48, 64};
+    for (int size : sizes)
+    {
+        QPixmap pixmap = source.pixmap(size, size);
+        if (pixmap.isNull())
+            continue;
+        QPainter painter(&pixmap);
+        painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+        painter.fillRect(pixmap.rect(), QColor(colors.iconTint));
+        painter.end();
+        result.addPixmap(pixmap);
+    }
+    return result.isNull() ? QIcon(path) : result;
+}
+
 inline void bindEvent(UiFrame* ctx, QAction* act, const char* eventKey)
 {
     QObject::connect(act, &QAction::triggered, ctx,
@@ -73,7 +196,45 @@ inline void addActionToPanel(SARibbonPannel* panel, QAction* act,
 
 inline QAction* makeAction(UiFrame* ctx, const QString& icon, const QString& text)
 {
-    return new QAction(QIcon(icon), text, ctx);
+    auto* action = new QAction(themedIcon(icon), text, ctx);
+    action->setProperty("themeIconPath", icon);
+    return action;
+}
+
+inline void applyActionIcon(QAction* action, const QString& icon)
+{
+    if (!action || icon.isEmpty())
+        return;
+    action->setProperty("themeIconPath", icon);
+    action->setIcon(themedIcon(icon));
+}
+
+QString dockActionIconPath(const QString& name)
+{
+    const QString lower = name.toLower();
+    if (lower.contains(QStringLiteral("可视化")) || lower.contains(QStringLiteral("图形")) ||
+        lower.contains(QStringLiteral("视图")) || lower.contains(QStringLiteral("viewer")) ||
+        lower.contains(QStringLiteral("render")))
+        return QStringLiteral(":/resources/menu/concept/view-visualization.svg");
+
+    if (lower.contains(QStringLiteral("模型")) || lower.contains(QStringLiteral("工程")) ||
+        lower.contains(QStringLiteral("tree")) || lower.contains(QStringLiteral("manager")))
+        return QStringLiteral(":/resources/menu/concept/view-model.svg");
+
+    if (lower.contains(QStringLiteral("物理")) || lower.contains(QStringLiteral("量")) ||
+        lower.contains(QStringLiteral("probe")) || lower.contains(QStringLiteral("result")))
+        return QStringLiteral(":/resources/menu/concept/view-quantity.svg");
+
+    if (lower.contains(QStringLiteral("设置")) || lower.contains(QStringLiteral("属性")) ||
+        lower.contains(QStringLiteral("panel")) || lower.contains(QStringLiteral("property")))
+        return QStringLiteral(":/resources/menu/concept/view-settings.svg");
+
+    if (lower.contains(QStringLiteral("日志")) || lower.contains(QStringLiteral("输出")) ||
+        lower.contains(QStringLiteral("消息")) || lower.contains(QStringLiteral("log")) ||
+        lower.contains(QStringLiteral("console")))
+        return QStringLiteral(":/resources/menu/concept/view-log.svg");
+
+    return QStringLiteral(":/resources/menu/concept/view-window.svg");
 }
 } // namespace
 
@@ -193,6 +354,17 @@ QAction* UiFrame::addWidget(QWidget* widget, QString name)
 {
     ads::CDockWidget* dockWidget = new ads::CDockWidget(name);
 
+    if (name == QStringLiteral("模型管理"))
+        m_modelDockWidget = dockWidget;
+    else if (name == QStringLiteral("设置"))
+        m_settingsDockWidget = dockWidget;
+    else if (name == QStringLiteral("可视化"))
+        m_visualDockWidget = dockWidget;
+    else if (name == QStringLiteral("物理量"))
+        m_physicalDockWidget = dockWidget;
+    else if (name == QStringLiteral("日志"))
+        m_logDockWidget = dockWidget;
+
     // ADS 默认会为普通 QWidget 再套一层 QScrollArea。可视化这类自适应画布不需要
     // 外层滚动区，否则窗口变窄时会出现横向滚动条，并把右侧工具按钮推到视口外。
     const bool forceNoScrollArea =
@@ -227,7 +399,11 @@ QAction* UiFrame::addWidget(QWidget* widget, QString name)
 
     captureDefaultDockState();
     updateAllContainersTabStyle();
-    return dockWidget->toggleViewAction();
+
+    QAction* toggleAction = dockWidget->toggleViewAction();
+    registerDockToggleAction(toggleAction, name);
+    arrangeDefaultDockLayout();
+    return toggleAction;
 }
 
 QAction* UiFrame::addWidgetForTabwidget(QWidget* widget, QString name)
@@ -247,7 +423,10 @@ QAction* UiFrame::addWidgetForTabwidget(QWidget* widget, QString name)
 
     captureDefaultDockState();
     updateAllContainersTabStyle();
-    return dockWidget->toggleViewAction();
+
+    QAction* toggleAction = dockWidget->toggleViewAction();
+    registerDockToggleAction(toggleAction, name);
+    return toggleAction;
 }
 
 void UiFrame::restoreUiState()
@@ -255,16 +434,14 @@ void UiFrame::restoreUiState()
     QSettings settings("config/file.ini", QSettings::IniFormat);
     const QByteArray savedState = settings.value("stateData").toByteArray();
 
-    bool success = false;
     if (!savedState.isEmpty())
-        success = m_dockManager->restoreState(savedState);
+        m_dockManager->restoreState(savedState);
 
     if (settings.contains("windowSize"))
         resize(settings.value("windowSize").toSize());
 
-    // 你原代码逻辑：restore 成功就把它当“默认布局”
-    if (success)
-        m_defaultDockState = savedState;
+    // m_defaultDockState 保留插件首次创建窗口时的布局，用于“恢复默认布局”。
+    // 用户保存的布局只负责启动恢复，不能覆盖真正的默认布局。
 
     setDockWidgetStyle();
     updateAllContainersTabStyle();
@@ -292,29 +469,33 @@ void UiFrame::storeUiState()
 
 void UiFrame::setDockWidgetStyle()
 {
-    const QString qss = QString::fromUtf8(R"(
+    if (!m_dockManager)
+        return;
+
+    const ThemeColors c = currentThemeColors();
+    QString qss = QString::fromUtf8(R"(
         ads--CDockManager,
         ads--CDockContainerWidget {
-            background: #edf0f2;
+            background: @manager@;
         }
 
         ads--CDockAreaWidget {
-            background: #ffffff;
-            border: 1px solid #d7dcdf;
+            background: @surface@;
+            border: 1px solid @border@;
         }
 
         ads--CDockAreaWidget[focused="true"] {
-            border-color: #c8d0d5;
+            border-color: @borderStrong@;
         }
 
         QSplitter::handle {
             width: 3px;
             height: 3px;
-            background: #d9dee1;
+            background: @splitter@;
         }
 
         QSplitter::handle:hover {
-            background: #aebac1;
+            background: @splitterHover@;
         }
 
         QScrollArea#dockWidgetScrollArea {
@@ -338,13 +519,13 @@ void UiFrame::setDockWidgetStyle()
         }
 
         ads--CAutoHideSideBar {
-            background: #f2f4f5;
+            background: @surfaceAlt@;
             border: none;
             qproperty-spacing: 8;
         }
 
         ads--CAutoHideTab {
-            color: #000000;
+            color: @text@;
             background: transparent;
             border: none;
             border-radius: 2px;
@@ -354,17 +535,61 @@ void UiFrame::setDockWidgetStyle()
 
         ads--CAutoHideTab:hover,
         ads--CAutoHideTab[activeTab="true"] {
-            color: #2c5368;
-            background: #e4ebef;
+            color: @accent@;
+            background: @hover@;
         }
 
         ads--CAutoHideDockContainer {
-            background: #ffffff;
-            border: 1px solid #c7d0d5;
+            background: @surface@;
+            border: 1px solid @borderStrong@;
         }
     )");
 
-    m_dockManager->setStyleSheet(qss);
+    if (c.id == QStringLiteral("dark"))
+    {
+        qss += QString::fromUtf8(R"(
+            #dockAreaAutoHideButton {
+                qproperty-icon: url(:/resources/images/dock-pin-light.svg);
+            }
+            ads--CAutoHideDockContainer #dockAreaAutoHideButton {
+                qproperty-icon: url(:/resources/images/dock-pin-pinned-light.svg);
+            }
+        )");
+    }
+    else if (c.id == QStringLiteral("blue"))
+    {
+        qss += QString::fromUtf8(R"(
+            ads--CDockManager,
+            ads--CDockContainerWidget {
+                background: #d3e2ed;
+            }
+
+            ads--CDockAreaWidget {
+                background: #f7fafc;
+                border: 1px solid #91adbf;
+            }
+
+            ads--CDockAreaWidget[focused="true"] {
+                border-color: #4d82a8;
+            }
+
+            QSplitter::handle {
+                background: #adc3d2;
+            }
+
+            QSplitter::handle:hover {
+                background: #779ab4;
+            }
+
+            ads--CAutoHideSideBar {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                            stop:0 #f3f8fb, stop:1 #e1ecf4);
+                border: 1px solid #a5bccd;
+            }
+        )");
+    }
+
+    m_dockManager->setStyleSheet(themedStyle(qss, c));
 }
 
 
@@ -377,13 +602,14 @@ void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
     if (!titleBar)
         return;
 
+    const ThemeColors c = currentThemeColors();
     const bool isSingle = area->openDockWidgetsCount() <= 1;
 
-    titleBar->setStyleSheet(QString::fromUtf8(R"(
+    QString titleStyle = QString::fromUtf8(R"(
         ads--CDockAreaTitleBar {
-            background: #f6f7f8;
+            background: @surfaceAlt@;
             border: none;
-            border-bottom: 1px solid #dce1e4;
+            border-bottom: 1px solid @border@;
             min-height: 31px;
             max-height: 31px;
         }
@@ -401,11 +627,11 @@ void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
         }
 
         ads--CDockAreaTitleBar ads--CTitleBarButton:hover {
-            background: #e8ecef;
+            background: @hover@;
         }
 
         ads--CDockAreaTitleBar ads--CTitleBarButton:pressed {
-            background: #dce2e6;
+            background: @pressed@;
         }
 
         ads--CDockAreaTitleBar #dockAreaCloseButton {
@@ -441,7 +667,51 @@ void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
             qproperty-icon: url(:/resources/images/detach-button.svg);
             qproperty-iconSize: 12px;
         }
-    )"));
+    )");
+
+    if (c.id == QStringLiteral("dark"))
+    {
+        titleStyle += QString::fromUtf8(R"(
+            ads--CDockAreaTitleBar #dockAreaCloseButton {
+                qproperty-icon: url(:/resources/images/dock-close-light.svg);
+            }
+            ads--CDockAreaTitleBar #dockAreaAutoHideButton {
+                qproperty-icon: url(:/resources/images/dock-pin-light.svg);
+            }
+            ads--CAutoHideDockContainer ads--CDockAreaTitleBar #dockAreaAutoHideButton {
+                qproperty-icon: url(:/resources/images/dock-pin-pinned-light.svg);
+            }
+            ads--CDockAreaTitleBar #tabsMenuButton {
+                qproperty-icon: url(:/resources/images/dock-menu-light.svg);
+            }
+            ads--CDockAreaTitleBar #dockAreaUndockButton {
+                qproperty-icon: url(:/resources/images/dock-detach-light.svg);
+            }
+        )");
+    }
+    else if (c.id == QStringLiteral("blue"))
+    {
+        titleStyle += QString::fromUtf8(R"(
+            ads--CDockAreaTitleBar {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                            stop:0 #f6fafd, stop:0.48 #edf4f8,
+                                            stop:1 #dce9f3);
+                border-top: 1px solid #fbfdfe;
+                border-bottom: 1px solid #9db6c8;
+            }
+
+            ads--CDockAreaTitleBar ads--CTitleBarButton:hover {
+                background: #e2eef6;
+                border: 1px solid #9eb7c8;
+            }
+
+            ads--CDockAreaTitleBar ads--CTitleBarButton:pressed {
+                background: #d2e4f0;
+                border: 1px solid #7f9fb6;
+            }
+        )");
+    }
+    titleBar->setStyleSheet(themedStyle(titleStyle, c));
 
     auto* tabBar = titleBar->tabBar();
     if (!tabBar)
@@ -449,12 +719,12 @@ void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
 
     tabBar->setStyleSheet(QStringLiteral("background: transparent; border: none;"));
 
-    const QString singleTabStyle = QString::fromUtf8(R"(
+    QString singleTabStyle = themedStyle(QString::fromUtf8(R"(
         ads--CDockWidgetTab,
         ads--CDockWidgetTab:hover,
         ads--CDockWidgetTab[activeTab="true"],
         ads--CDockWidgetTab[focused="true"] {
-            color: #000000;
+            color: @text@;
             background: transparent;
             border: none;
             min-height: 29px;
@@ -466,17 +736,17 @@ void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
         ads--CDockWidgetTab:hover QLabel#dockWidgetTabLabel,
         ads--CDockWidgetTab[activeTab="true"] QLabel#dockWidgetTabLabel,
         ads--CDockWidgetTab[focused="true"] QLabel#dockWidgetTabLabel {
-            color: #000000;
+            color: @text@;
             background: transparent;
             font-family: "Microsoft YaHei UI", "Microsoft YaHei", "微软雅黑", "Segoe UI";
             font-size: 9.5pt;
             font-weight: 600;
         }
-    )");
+    )"), c);
 
-    const QString multiTabStyle = QString::fromUtf8(R"(
+    QString multiTabStyle = themedStyle(QString::fromUtf8(R"(
         ads--CDockWidgetTab {
-            color: #000000;
+            color: @text@;
             background: transparent;
             border: none;
             border-bottom: 2px solid transparent;
@@ -488,19 +758,19 @@ void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
         }
 
         ads--CDockWidgetTab:hover {
-            color: #354b57;
-            background: #eef2f4;
+            color: @accent@;
+            background: @hover@;
         }
 
         ads--CDockWidgetTab[activeTab="true"],
         ads--CDockWidgetTab[focused="true"] {
-            color: #2c5368;
-            background: #ffffff;
-            border-bottom: 2px solid #4f778d;
+            color: @accent@;
+            background: @surface@;
+            border-bottom: 2px solid @accent@;
         }
 
         ads--CDockWidgetTab QLabel#dockWidgetTabLabel {
-            color: #000000;
+            color: @text@;
             background: transparent;
             font-family: "Microsoft YaHei UI", "Microsoft YaHei", "微软雅黑", "Segoe UI";
             font-size: 9pt;
@@ -508,15 +778,58 @@ void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
         }
 
         ads--CDockWidgetTab:hover QLabel#dockWidgetTabLabel {
-            color: #354b57;
+            color: @accent@;
         }
 
         ads--CDockWidgetTab[activeTab="true"] QLabel#dockWidgetTabLabel,
         ads--CDockWidgetTab[focused="true"] QLabel#dockWidgetTabLabel {
-            color: #2c5368;
+            color: @accent@;
             font-weight: 600;
         }
-    )");
+    )"), c);
+
+    if (c.id == QStringLiteral("blue"))
+    {
+        singleTabStyle += QString::fromUtf8(R"(
+            ads--CDockWidgetTab,
+            ads--CDockWidgetTab:hover,
+            ads--CDockWidgetTab[activeTab="true"],
+            ads--CDockWidgetTab[focused="true"] {
+                color: #173a57;
+                background: transparent;
+            }
+
+            ads--CDockWidgetTab QLabel#dockWidgetTabLabel,
+            ads--CDockWidgetTab:hover QLabel#dockWidgetTabLabel,
+            ads--CDockWidgetTab[activeTab="true"] QLabel#dockWidgetTabLabel,
+            ads--CDockWidgetTab[focused="true"] QLabel#dockWidgetTabLabel {
+                color: #173a57;
+            }
+        )");
+
+        multiTabStyle += QString::fromUtf8(R"(
+            ads--CDockWidgetTab {
+                color: #173a57;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                            stop:0 #f5f9fc, stop:1 #e1ecf4);
+                border-right: 1px solid #afc4d2;
+                border-bottom: 1px solid #9db6c8;
+            }
+
+            ads--CDockWidgetTab:hover {
+                color: #155e93;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                            stop:0 #f9fcfe, stop:1 #e3eef6);
+            }
+
+            ads--CDockWidgetTab[activeTab="true"],
+            ads--CDockWidgetTab[focused="true"] {
+                color: #155e93;
+                background: #f7fafc;
+                border-bottom: 2px solid #2b70a6;
+            }
+        )");
+    }
 
     for (int i = 0; i < tabBar->count(); ++i)
     {
@@ -535,6 +848,417 @@ void UiFrame::updateAllContainersTabStyle()
     {
         updateAreaTabStyle(area);
     }
+}
+
+void UiFrame::applyThemeToUi()
+{
+    const ThemeColors c = currentThemeColors();
+
+    if (m_ribbon)
+    {
+        m_ribbon->setStyleSheet(themedStyle(QString::fromUtf8(R"(
+            SARibbonBar#geoCaeRibbonBar {
+                background: @surface@;
+                border: none;
+                border-bottom: 1px solid @border@;
+            }
+
+            SARibbonBar#geoCaeRibbonBar QLabel {
+                color: @text@;
+            }
+
+            SARibbonBar#geoCaeRibbonBar QStackedWidget {
+                background: @surface@;
+                border: none;
+                border-top: 1px solid @borderStrong@;
+                margin: 0px;
+                padding: 0px;
+            }
+
+            SARibbonBar#geoCaeRibbonBar QStackedWidget > QWidget,
+            SARibbonBar#geoCaeRibbonBar SARibbonCategory,
+            SARibbonBar#geoCaeRibbonBar SARibbonCategory > QWidget {
+                background: @surface@;
+                border: none;
+                margin: 0px;
+                padding: 0px;
+            }
+
+            SARibbonBar#geoCaeRibbonBar SARibbonPannel,
+            SARibbonBar#geoCaeRibbonBar SARibbonPannel > QWidget {
+                background: @panel@;
+                border: none;
+                border-right: 1px solid @border@;
+            }
+
+            SARibbonBar#geoCaeRibbonBar SARibbonCategoryScrollButton,
+            SARibbonBar#geoCaeRibbonBar SARibbonButtonGroupWidget {
+                color: @text@;
+                background: @surface@;
+                border: none;
+            }
+
+            SARibbonBar#geoCaeRibbonBar QToolButton {
+                color: @text@;
+                background: transparent;
+                border: 1px solid transparent;
+                border-radius: 2px;
+                padding: 3px 6px;
+            }
+
+            SARibbonBar#geoCaeRibbonBar QToolButton:hover {
+                color: @accent@;
+                background: @hover@;
+                border-color: @border@;
+            }
+
+            SARibbonBar#geoCaeRibbonBar QToolButton:pressed,
+            SARibbonBar#geoCaeRibbonBar QToolButton:checked {
+                color: @accent@;
+                background: @pressed@;
+                border-color: @borderStrong@;
+            }
+        )"), c));
+
+        if (c.id == QStringLiteral("blue"))
+        {
+            m_ribbon->setStyleSheet(m_ribbon->styleSheet() + QString::fromUtf8(R"(
+                SARibbonBar#geoCaeRibbonBar {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                                stop:0 #f8fbfd, stop:0.42 #f1f6fa,
+                                                stop:1 #e1ecf4);
+                    border-bottom: 1px solid #8eaabd;
+                }
+
+                SARibbonBar#geoCaeRibbonBar QStackedWidget {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                                stop:0 #f7fafc, stop:1 #e7f0f6);
+                    border: none;
+                    border-top: 1px solid #8fa9bb;
+                    margin: 0px;
+                    padding: 0px;
+                }
+
+                SARibbonBar#geoCaeRibbonBar QStackedWidget > QWidget,
+                SARibbonBar#geoCaeRibbonBar SARibbonCategory,
+                SARibbonBar#geoCaeRibbonBar SARibbonCategory > QWidget {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                                stop:0 #f7fafc, stop:1 #e7f0f6);
+                    border: none;
+                    margin: 0px;
+                    padding: 0px;
+                }
+
+                SARibbonBar#geoCaeRibbonBar SARibbonPannel,
+                SARibbonBar#geoCaeRibbonBar SARibbonPannel > QWidget {
+                    background: transparent;
+                    border-right: 1px solid #b1c5d3;
+                }
+
+                SARibbonBar#geoCaeRibbonBar SARibbonCategoryScrollButton,
+                SARibbonBar#geoCaeRibbonBar SARibbonButtonGroupWidget {
+                    background: transparent;
+                }
+
+                SARibbonBar#geoCaeRibbonBar QToolButton:hover {
+                    color: #155e93;
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                                stop:0 #f9fcfe, stop:1 #e1edf5);
+                    border-color: #9db6c8;
+                }
+
+                SARibbonBar#geoCaeRibbonBar QToolButton:pressed,
+                SARibbonBar#geoCaeRibbonBar QToolButton:checked {
+                    color: #155e93;
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                                stop:0 #d4e5f0, stop:1 #edf4f8);
+                    border-color: #829fb5;
+                }
+            )"));
+        }
+
+        if (auto* categoryTabBar = m_ribbon->findChild<QTabBar*>())
+        {
+            categoryTabBar->setDocumentMode(true);
+            categoryTabBar->setExpanding(false);
+            categoryTabBar->setStyleSheet(themedStyle(QString::fromUtf8(R"(
+                QTabBar {
+                    background: @surface@;
+                    border: none;
+                }
+
+                QTabBar::tab {
+                    color: @text@;
+                    background: transparent;
+                    border: none;
+                    border-radius: 0px;
+                    min-width: 0px;
+                    min-height: 30px;
+                    padding: 0px 10px;
+                    margin: 0px;
+                    font-size: 10pt;
+                }
+
+                QTabBar::tab:hover:!selected {
+                    color: @accent@;
+                    background: @hover@;
+                }
+
+                QTabBar::tab:selected {
+                    color: @accent@;
+                    background: @surface@;
+                    border-left: 1px solid @borderStrong@;
+                    border-top: 1px solid @borderStrong@;
+                    border-right: 1px solid @borderStrong@;
+                    border-bottom: 1px solid @surface@;
+                    margin-bottom: -1px;
+                    font-weight: 600;
+                }
+            )"), c));
+
+            if (c.id == QStringLiteral("blue"))
+            {
+                categoryTabBar->setStyleSheet(categoryTabBar->styleSheet() + QString::fromUtf8(R"(
+                    QTabBar {
+                        background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                                    stop:0 #f6fafd, stop:1 #e5eef5);
+                        border: none;
+                    }
+
+                    QTabBar::tab {
+                        color: #173a57;
+                        background: transparent;
+                    }
+
+                    QTabBar::tab:hover:!selected {
+                        color: #155e93;
+                        background: #e5f0f7;
+                    }
+
+                    QTabBar::tab:selected {
+                        color: #155e93;
+                        background: #f7fafc;
+                        border-left: 1px solid #8fa9bb;
+                        border-top: 1px solid #8fa9bb;
+                        border-right: 1px solid #8fa9bb;
+                        border-bottom: 1px solid #f7fafc;
+                    }
+                )"));
+            }
+        }
+
+        if (QAbstractButton* button = m_ribbon->applicationButton())
+        {
+            button->setStyleSheet(themedStyle(QString::fromUtf8(R"(
+                QAbstractButton#geoCaeFileButton {
+                    color: #ffffff;
+                    background: @file@;
+                    border: none;
+                    border-radius: 0px;
+                    padding: 0px 15px;
+                    font-size: 10pt;
+                    font-weight: 600;
+                }
+
+                QAbstractButton#geoCaeFileButton:hover {
+                    color: #ffffff;
+                    background: @fileHover@;
+                }
+
+                QAbstractButton#geoCaeFileButton:pressed,
+                QAbstractButton#geoCaeFileButton:checked {
+                    color: #ffffff;
+                    background: @filePressed@;
+                }
+            )"), c));
+        }
+    }
+
+    const QString menuStyle = themedStyle(QString::fromUtf8(R"(
+        QMenu {
+            color: @text@;
+            background: @surface@;
+            border: 1px solid @border@;
+            padding: 3px 0px;
+        }
+
+        QMenu::item {
+            padding: 6px 28px 6px 12px;
+            background: transparent;
+        }
+
+        QMenu::item:selected {
+            color: @text@;
+            background: @hover@;
+        }
+
+        QMenu::item:disabled {
+            color: @secondaryText@;
+        }
+
+        QMenu::separator {
+            height: 1px;
+            margin: 4px 9px;
+            background: @border@;
+        }
+    )"), c);
+    for (QMenu* menu : findChildren<QMenu*>())
+    {
+        if (!menu)
+            continue;
+        menu->setStyleSheet(menuStyle);
+        menu->style()->unpolish(menu);
+        menu->style()->polish(menu);
+    }
+    if (m_applicationMenu)
+        m_applicationMenu->setStyleSheet(menuStyle);
+
+    setDockWidgetStyle();
+    updateAllContainersTabStyle();
+    updateThemedActionIcons();
+    updateThemeActionChecks();
+    update();
+}
+
+void UiFrame::switchTheme(const QString& themeName)
+{
+    auto* app = qobject_cast<QApplication*>(QApplication::instance());
+    if (!app)
+        return;
+
+    const QString normalized = StyleManager::normalizeThemeName(themeName);
+    if (!StyleManager::applyTheme(*app, normalized))
+        return;
+
+    const QString settingsPath =
+        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("config/file.ini"));
+    QSettings settings(settingsPath, QSettings::IniFormat);
+    settings.setValue(QStringLiteral("General/uiTheme"), normalized);
+    settings.sync();
+
+    applyThemeToUi();
+
+    QVariantMap data;
+    data.insert(QStringLiteral("theme"), normalized);
+    EventManager::instance().sendEvent(PublicConstants::kEventUiThemeChanged, data,
+                                       EventManager::Dispatch::Direct);
+}
+
+void UiFrame::updateThemeActionChecks()
+{
+    const QString theme = StyleManager::currentThemeName();
+    if (m_themeLightAction)
+        m_themeLightAction->setChecked(theme == QStringLiteral("light"));
+    if (m_themeBlueAction)
+        m_themeBlueAction->setChecked(theme == QStringLiteral("blue"));
+    if (m_themeDarkAction)
+        m_themeDarkAction->setChecked(theme == QStringLiteral("dark"));
+}
+
+void UiFrame::updateThemedActionIcons()
+{
+    const QList<QAction*> actions = findChildren<QAction*>();
+    for (QAction* action : actions)
+    {
+        if (!action)
+            continue;
+        const QString path = action->property("themeIconPath").toString();
+        if (!path.isEmpty())
+            action->setIcon(themedIcon(path));
+    }
+}
+
+void UiFrame::registerDockToggleAction(QAction* action, const QString& name)
+{
+    if (!action)
+        return;
+
+    for (const QPointer<QAction>& existing : m_dockToggleActions)
+    {
+        if (existing == action)
+            return;
+    }
+
+    action->setText(name);
+    action->setToolTip(tr("显示或隐藏%1窗口").arg(name));
+    applyActionIcon(action, dockActionIconPath(name));
+    m_dockToggleActions.append(action);
+
+    addDockActionToWindowPanel(action, name);
+}
+
+void UiFrame::addDockActionToWindowPanel(QAction* toggleAction, const QString& name)
+{
+    if (!m_windowPanel || !toggleAction)
+        return;
+
+    // DockWidget 的原始 toggleViewAction 是可勾选 QAction。直接放进 Ribbon 后，
+    // 窗口处于显示状态时按钮会长期绘制 checked 背景，看起来像一排色块。
+    // Ribbon 使用无勾选状态的展示 Action，点击时再转发给真正的窗口开关。
+    auto* viewAction = makeAction(this, dockActionIconPath(name), name);
+    viewAction->setToolTip(tr("显示或隐藏%1窗口").arg(name));
+    viewAction->setCheckable(false);
+    viewAction->setEnabled(toggleAction->isEnabled());
+    viewAction->setProperty("dockToggleFacade", true);
+
+    connect(viewAction, &QAction::triggered, this,
+            [toggleAction]()
+            {
+                if (toggleAction)
+                    toggleAction->trigger();
+            });
+
+    connect(toggleAction, &QAction::changed, viewAction,
+            [viewAction, toggleAction]()
+            {
+                if (viewAction && toggleAction)
+                    viewAction->setEnabled(toggleAction->isEnabled());
+            });
+
+    addActionToPanel(m_windowPanel, viewAction, 3);
+}
+
+void UiFrame::showAllDockWidgets()
+{
+    for (const QPointer<QAction>& action : m_dockToggleActions)
+    {
+        if (action && !action->isChecked())
+            action->trigger();
+    }
+    updateAllContainersTabStyle();
+}
+
+void UiFrame::resetDockLayout()
+{
+    if (!m_dockManager)
+        return;
+
+    bool restored = false;
+    if (!m_defaultDockState.isEmpty())
+        restored = m_dockManager->restoreState(m_defaultDockState);
+
+    if (!restored)
+        showAllDockWidgets();
+
+    setDockWidgetStyle();
+    updateAllContainersTabStyle();
+}
+
+void UiFrame::showAboutDialog()
+{
+    QString versionLine;
+    const QString version = QCoreApplication::applicationVersion().trimmed();
+    if (!version.isEmpty())
+        versionLine = tr("<p>版本：%1</p>").arg(version.toHtmlEscaped());
+
+    const QString text =
+        tr("<h3>POWERCHINA-GEOCAE</h3>"
+           "<p>电建岩土工程仿真平台</p>"
+           "%1"
+           "<p>用于岩土工程的几何、网格、材料、约束荷载、计算分析与结果处理。</p>")
+            .arg(versionLine);
+
+    QMessageBox::about(this, tr("关于 POWERCHINA-GEOCAE"), text);
 }
 
 ads::DockWidgetArea UiFrame::preferDockArea(const QString& name) const
@@ -568,6 +1292,32 @@ void UiFrame::captureDefaultDockState()
     m_defaultDockState = m_dockManager->saveState();
 }
 
+void UiFrame::arrangeDefaultDockLayout()
+{
+    if (m_defaultLayoutArranged || !m_dockManager || !m_modelDockWidget ||
+        !m_settingsDockWidget || !m_visualDockWidget || !m_physicalDockWidget ||
+        !m_logDockWidget)
+        return;
+
+    // 固定默认结构：模型管理在左、设置在中、可视化在右上，
+    // 物理量与日志作为右下方同一停靠区的标签页。
+    ads::CDockAreaWidget* modelArea =
+        m_dockManager->addDockWidget(ads::LeftDockWidgetArea, m_modelDockWidget);
+    ads::CDockAreaWidget* settingsArea =
+        m_dockManager->addDockWidget(ads::RightDockWidgetArea, m_settingsDockWidget, modelArea);
+    ads::CDockAreaWidget* visualArea =
+        m_dockManager->addDockWidget(ads::RightDockWidgetArea, m_visualDockWidget, settingsArea);
+    ads::CDockAreaWidget* outputArea =
+        m_dockManager->addDockWidget(ads::BottomDockWidgetArea, m_physicalDockWidget, visualArea);
+    m_dockManager->addDockWidgetTabToArea(m_logDockWidget, outputArea);
+
+    m_centerDockArea = settingsArea;
+    m_defaultLayoutArranged = true;
+    captureDefaultDockState();
+    setDockWidgetStyle();
+    updateAllContainersTabStyle();
+}
+
 void UiFrame::initSARibbon()
 {
     SARibbonBar::initHighDpi();
@@ -578,97 +1328,9 @@ void UiFrame::initSARibbon()
     m_ribbon->setRibbonStyle(SARibbonBar::RibbonStyleCompactTwoRow);
     setRibbonTheme(SARibbonTheme::RibbonThemeOffice2013);
 
-    // Keep the established workflow. The refinement is intentionally subtle:
-    // flatter tabs, restrained hover states and one consistent accent.
-    m_ribbon->setStyleSheet(QString::fromUtf8(R"(
-        SARibbonBar#geoCaeRibbonBar {
-            background: #ffffff;
-            border: none;
-            border-bottom: 1px solid #d7dde1;
-        }
-
-        SARibbonBar#geoCaeRibbonBar QLabel {
-            color: #000000;
-        }
-
-        SARibbonBar#geoCaeRibbonBar QStackedWidget {
-            background: #ffffff;
-            border: none;
-        }
-
-        SARibbonBar#geoCaeRibbonBar SARibbonPannel {
-            background: #fbfcfc;
-            border: none;
-            border-right: 1px solid #e3e7e9;
-        }
-
-        SARibbonBar#geoCaeRibbonBar QToolButton {
-            color: #000000;
-            background: transparent;
-            border: 1px solid transparent;
-            border-radius: 2px;
-            padding: 3px 6px;
-        }
-
-        SARibbonBar#geoCaeRibbonBar QToolButton:hover {
-            color: #294f66;
-            background: #f0f3f5;
-            border-color: #dce2e5;
-        }
-
-        SARibbonBar#geoCaeRibbonBar QToolButton:pressed,
-        SARibbonBar#geoCaeRibbonBar QToolButton:checked {
-            color: #253f4d;
-            background: #e2e9ed;
-            border-color: #c7d3d9;
-        }
-    )"));
-
     buildRibbonAppButton();
     buildRibbonTabs();
-
-    // 直接给 Ribbon 的分类 TabBar 设置样式，避免全局 app.qss 中标准 QTabBar 的
-    // 2px 底边与 Ribbon 自身的 1px 基线叠加，造成最后一个 Tab 与右侧长线接缝变粗。
-    if (auto* categoryTabBar = m_ribbon->findChild<QTabBar*>())
-    {
-        categoryTabBar->setDocumentMode(true);
-        categoryTabBar->setExpanding(false);
-        categoryTabBar->setStyleSheet(QString::fromUtf8(R"(
-            QTabBar {
-                background: #ffffff;
-                border: none;
-                border-bottom: 1px solid #bac5cc;
-            }
-
-            QTabBar::tab {
-                color: #000000;
-                background: transparent;
-                border: none;
-                border-radius: 0px;
-                min-width: 0px;
-                min-height: 30px;
-                padding: 0px 10px;
-                margin: 0px;
-                font-size: 10pt;
-            }
-
-            QTabBar::tab:hover:!selected {
-                color: #2e5367;
-                background: #f3f5f6;
-            }
-
-            QTabBar::tab:selected {
-                color: #284d61;
-                background: #ffffff;
-                border-left: 1px solid #bac5cc;
-                border-top: 1px solid #bac5cc;
-                border-right: 1px solid #bac5cc;
-                border-bottom: 1px solid #ffffff;
-                margin-bottom: -1px;
-                font-weight: 600;
-            }
-        )"));
-    }
+    applyThemeToUi();
 }
 
 
@@ -678,29 +1340,6 @@ void UiFrame::buildRibbonAppButton()
     btn->setObjectName(QStringLiteral("geoCaeFileButton"));
     btn->setText(QStringLiteral("文件"));
     btn->setMinimumWidth(64);
-    btn->setStyleSheet(QString::fromUtf8(R"(
-        QAbstractButton#geoCaeFileButton {
-            color: #ffffff;
-            background: #2f6f9f;
-            border: none;
-            border-radius: 0px;
-            padding: 0px 15px;
-            font-size: 10pt;
-            font-weight: 600;
-        }
-
-        QAbstractButton#geoCaeFileButton:hover {
-            color: #ffffff;
-            background: #3b7eae;
-        }
-
-        QAbstractButton#geoCaeFileButton:pressed,
-        QAbstractButton#geoCaeFileButton:checked {
-            color: #ffffff;
-            background: #285f89;
-        }
-    )"));
-
     m_applicationMenu = new SARibbonMenu(this);
     auto* appBtn = qobject_cast<SARibbonApplicationButton*>(btn);
     appBtn->setMenu(m_applicationMenu);
@@ -1216,4 +1855,86 @@ void UiFrame::buildRibbonTabs()
         }
 
     }
+
+    // =========================
+    // 视图
+    // =========================
+    {
+        auto* cate = m_ribbon->addCategoryPage(QStringLiteral("视图"));
+        cate->setObjectName(QStringLiteral("viewObj"));
+
+        // ---------- 面板 ----------
+        m_windowPanel = cate->addPannel(QStringLiteral("窗口"));
+        for (const QPointer<QAction>& action : m_dockToggleActions)
+        {
+            if (action)
+                addDockActionToWindowPanel(action, action->text());
+        }
+
+        // ---------- 布局 ----------
+        {
+            auto* panel = cate->addPannel(QStringLiteral("布局"));
+            auto* actShowAll =
+                makeAction(this, ":/resources/menu/concept/view-show-all.svg", "显示全部窗口");
+            auto* actReset =
+                makeAction(this, ":/resources/menu/concept/view-reset-layout.svg", "恢复默认布局");
+
+            addActionToPanel(panel, actShowAll, 3);
+            addActionToPanel(panel, actReset, 3);
+
+            connect(actShowAll, &QAction::triggered, this, &UiFrame::showAllDockWidgets);
+            connect(actReset, &QAction::triggered, this, &UiFrame::resetDockLayout);
+        }
+
+        // ---------- 界面 ----------
+        {
+            auto* panel = cate->addPannel(QStringLiteral("界面"));
+            auto* actTheme =
+                makeAction(this, ":/resources/menu/concept/view-theme.svg", "界面主题");
+            auto* themeMenu = new SARibbonMenu(this);
+
+            m_themeActionGroup = new QActionGroup(this);
+            m_themeActionGroup->setExclusive(true);
+
+            m_themeLightAction = themeMenu->addAction(QStringLiteral("浅灰"));
+            m_themeBlueAction = themeMenu->addAction(QStringLiteral("工程蓝"));
+            m_themeDarkAction = themeMenu->addAction(QStringLiteral("暗色"));
+
+            const QList<QPair<QAction*, QString>> themeActions = {
+                {m_themeLightAction, QStringLiteral("light")},
+                {m_themeBlueAction, QStringLiteral("blue")},
+                {m_themeDarkAction, QStringLiteral("dark")}};
+            for (const auto& one : themeActions)
+            {
+                one.first->setCheckable(true);
+                one.first->setData(one.second);
+                m_themeActionGroup->addAction(one.first);
+            }
+
+            connect(m_themeActionGroup, &QActionGroup::triggered, this,
+                    [this](QAction* action)
+                    {
+                        if (action)
+                            switchTheme(action->data().toString());
+                    });
+
+            actTheme->setMenu(themeMenu);
+            addActionToPanel(panel, actTheme, 3);
+            updateThemeActionChecks();
+        }
+    }
+
+    // =========================
+    // 帮助
+    // =========================
+    {
+        auto* cate = m_ribbon->addCategoryPage(QStringLiteral("帮助"));
+        cate->setObjectName(QStringLiteral("helpObj"));
+
+        auto* panel = cate->addPannel(QStringLiteral("软件"));
+        auto* actAbout = makeAction(this, ":/resources/menu/concept/help-about.svg", "关于软件");
+        addActionToPanel(panel, actAbout, 3);
+        connect(actAbout, &QAction::triggered, this, &UiFrame::showAboutDialog);
+    }
+
 }

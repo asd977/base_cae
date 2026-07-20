@@ -33,6 +33,7 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
 {
     ui->setupUi(this);
     SolverUiLayoutHelper::polishPage(this);
+    SolverUiLayoutHelper::setupComputeControls(this);
     Q_UNUSED(parent);
 
     m_ifSeepCombo = ui->comboIfSeep;
@@ -741,5 +742,6 @@ void CaveSupportComputationPage::onComputeClicked()
 void CaveSupportComputationPage::setComputing(bool computing)
 {
     ui->btnCompute->setProperty("computing", computing);
-    ui->btnCompute->setText(computing ? QStringLiteral("停止") : QStringLiteral("计算"));
+    ui->btnCompute->setText(computing ? QStringLiteral("停止计算")
+                                      : QStringLiteral("数值法计算"));
 }

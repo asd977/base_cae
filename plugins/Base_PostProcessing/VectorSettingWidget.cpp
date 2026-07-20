@@ -105,7 +105,7 @@ void VectorSettingWidget::beforeLoad()
             addActorByService(m_visualService, m_vectorActor);
             m_visualService->showScalarBar(true, false);
             if (auto* scalarBar = m_visualService->scalarBarActor())
-                scalarBar->SetTitle(QStringLiteral("矢量大小 |V|").toUtf8().constData());
+                scalarBar->SetTitle(QStringLiteral("|V|").toUtf8().constData());
             requestRender();
         }
     }
@@ -630,7 +630,7 @@ void VectorSettingWidget::rebuildPipeline()
         mapper->SetLookupTable(lut);
         mapper->UseLookupTableScalarRangeOn();
 
-        scalarBar->SetTitle(QStringLiteral("矢量大小 |V|").toUtf8().constData());
+        scalarBar->SetTitle(QStringLiteral("|V|").toUtf8().constData());
         scalarBar->Modified();
         m_visualService->showScalarBar(true, false);
     }

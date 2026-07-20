@@ -1,435 +1,75 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>IsosurfaceSettingsWidget</class>
  <widget class="QWidget" name="IsosurfaceSettingsWidget">
-  <property name="geometry">
-   <rect>
-    <x>0</x>
-    <y>0</y>
-    <width>405</width>
-    <height>598</height>
-   </rect>
-  </property>
-  <property name="windowTitle">
-   <string>等值面</string>
-  </property>
-  <layout class="QVBoxLayout" name="verticalLayout_root">
-   <property name="leftMargin">
-    <number>0</number>
-   </property>
-   <property name="topMargin">
-    <number>0</number>
-   </property>
-   <property name="rightMargin">
-    <number>0</number>
-   </property>
-   <property name="bottomMargin">
-    <number>0</number>
-   </property>
+  <property name="geometry"><rect><x>0</x><y>0</y><width>420</width><height>650</height></rect></property>
+  <property name="windowTitle"><string>等值面</string></property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="spacing"><number>8</number></property><property name="leftMargin"><number>9</number></property><property name="topMargin"><number>9</number></property><property name="rightMargin"><number>9</number></property><property name="bottomMargin"><number>9</number></property>
    <item>
-    <widget class="QLabel" name="pageHeaderLabel">
-     <property name="visible">
-      <bool>false</bool>
-     </property>
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
-     <property name="text">
-      <string>等值面参数设置</string>
-     </property>
+    <widget class="QGroupBox" name="resultDataGroupBox">
+     <property name="title"><string>结果数据</string></property>
+     <layout class="QGridLayout" name="resultDataLayout">
+      <property name="horizontalSpacing"><number>8</number></property><property name="verticalSpacing"><number>6</number></property>
+      <item row="0" column="0"><widget class="QLabel" name="resultStageLabel"><property name="text"><string>结果阶段</string></property></widget></item>
+      <item row="0" column="1"><widget class="QComboBox" name="resultDirComboBox"/></item>
+      <item row="1" column="0"><widget class="QLabel" name="resultTypeLabel"><property name="text"><string>结果类型</string></property></widget></item>
+      <item row="1" column="1"><widget class="QComboBox" name="stepComboBox"/></item>
+      <item row="2" column="0"><widget class="QLabel" name="scalarLabel"><property name="text"><string>物理量</string></property></widget></item>
+      <item row="2" column="1"><widget class="QComboBox" name="scalarComboBox"/></item>
+     </layout>
     </widget>
    </item>
    <item>
-    <layout class="QVBoxLayout" name="contentLayout">
-     <property name="leftMargin">
-      <number>9</number>
-     </property>
-     <property name="topMargin">
-      <number>9</number>
-     </property>
-     <property name="rightMargin">
-      <number>9</number>
-     </property>
-     <property name="bottomMargin">
-      <number>9</number>
-     </property>
-     <property name="spacing">
-      <number>6</number>
-     </property>
-     <item>
-      <widget class="QLabel" name="label">
-       <property name="text">
-        <string>等值面</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QWidget" name="widget_2" native="true">
-       <layout class="QGridLayout" name="gridLayout">
-        <item row="0" column="0">
-         <widget class="QLabel" name="resultStageLabel">
-          <property name="text">
-           <string>结果阶段</string>
-          </property>
-         </widget>
-        </item>
-        <item row="0" column="1">
-         <widget class="QComboBox" name="resultDirComboBox"/>
-        </item>
-        <item row="2" column="0">
-         <widget class="QLabel" name="labelScalar">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="text">
-           <string>物理量</string>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="1">
-         <widget class="QComboBox" name="scalarComboBox">
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="0">
-         <widget class="QLabel" name="label_2">
-          <property name="text">
-           <string>结果类型</string>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="1">
-         <widget class="QComboBox" name="stepComboBox">
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <property name="leftMargin">
-         <number>0</number>
-        </property>
-        <property name="topMargin">
-         <number>0</number>
-        </property>
-        <property name="rightMargin">
-         <number>0</number>
-        </property>
-        <property name="bottomMargin">
-         <number>0</number>
-        </property>
+    <widget class="QGroupBox" name="geometryGroupBox">
+     <property name="title"><string>等值面设置</string></property>
+     <layout class="QVBoxLayout" name="geometryLayout">
+      <property name="spacing"><number>8</number></property>
+      <item>
+       <layout class="QHBoxLayout" name="modeLayout">
+        <item><widget class="QLabel" name="modeLabel"><property name="text"><string>生成方式</string></property></widget></item>
+        <item><widget class="QRadioButton" name="singleIsoRadioButton"><property name="text"><string>单等值面</string></property><property name="checked"><bool>true</bool></property></widget></item>
+        <item><widget class="QRadioButton" name="multiIsoRadioButton"><property name="text"><string>多等值面</string></property></widget></item>
+        <item><spacer name="modeSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property></spacer></item>
        </layout>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="pushButton_2">
-       <property name="font">
-        <font>
-         <weight>75</weight>
-         <bold>true</bold>
-        </font>
-       </property>
-       <property name="margin">
-        <number>2</number>
-       </property>
-       <property name="text">
-        <string>等值面数量</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QWidget" name="widget" native="true">
-       <layout class="QVBoxLayout" name="verticalLayout">
-        <item>
-         <widget class="QGroupBox" name="singleIsoGroupBox">
-          <property name="title">
-           <string>单等值面</string>
-          </property>
-          <property name="checkable">
-           <bool>true</bool>
-          </property>
-          <property name="checked">
-           <bool>true</bool>
-          </property>
-          <layout class="QGridLayout" name="gridLayoutSingle">
-           <item row="1" column="1">
-            <widget class="QSlider" name="isoSlider">
-             <property name="minimum">
-              <number>0</number>
-             </property>
-             <property name="maximum">
-              <number>100</number>
-             </property>
-             <property name="value">
-              <number>50</number>
-             </property>
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
-             </property>
-            </widget>
-           </item>
-           <item row="2" column="0">
-            <widget class="QLabel" name="labelAbs">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="text">
-              <string>等值数值</string>
-             </property>
-            </widget>
-           </item>
-           <item row="2" column="1">
-            <widget class="QDoubleSpinBox" name="isoSpin">
-             <property name="decimals">
-              <number>3</number>
-             </property>
-             <property name="minimum">
-              <double>-999999999.000000000000000</double>
-             </property>
-             <property name="maximum">
-              <double>999999999.000000000000000</double>
-             </property>
-             <property name="singleStep">
-              <double>0.001000000000000</double>
-             </property>
-             <property name="minimumSize">
-              <size>
-               <width>10</width>
-               <height>0</height>
-              </size>
-             </property>
-            </widget>
-           </item>
-           <item row="1" column="0">
-            <widget class="QLabel" name="labelPercent">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="text">
-              <string>等值百分比</string>
-             </property>
-            </widget>
-           </item>
-           <item row="0" column="0" colspan="2">
-            <widget class="QCheckBox" name="percentCheckBox">
-             <property name="text">
-              <string>使用百分比 (0%–100%)</string>
-             </property>
-             <property name="checked">
-              <bool>true</bool>
-             </property>
-            </widget>
-           </item>
-           <property name="leftMargin">
-            <number>9</number>
-           </property>
-           <property name="topMargin">
-            <number>9</number>
-           </property>
-           <property name="rightMargin">
-            <number>9</number>
-           </property>
-           <property name="bottomMargin">
-            <number>9</number>
-           </property>
-          </layout>
-         </widget>
-        </item>
-        <item>
-         <widget class="QGroupBox" name="multiIsoGroupBox">
-          <property name="title">
-           <string>多等值面</string>
-          </property>
-          <property name="checkable">
-           <bool>true</bool>
-          </property>
-          <property name="checked">
-           <bool>false</bool>
-          </property>
-          <layout class="QGridLayout" name="gridLayoutMulti">
-           <item row="0" column="0">
-            <layout class="QHBoxLayout" name="hLayoutCount">
-             <item>
-              <widget class="QLabel" name="labelCount">
-               <property name="text">
-                <string>数量</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QSpinBox" name="isoCountSpin">
-               <property name="minimum">
-                <number>1</number>
-               </property>
-               <property name="maximum">
-                <number>999</number>
-               </property>
-               <property name="value">
-                <number>5</number>
-               </property>
-               <property name="minimumSize">
-                <size>
-                 <width>10</width>
-                 <height>0</height>
-                </size>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <spacer name="hSpacerCount">
-               <property name="orientation">
-                <enum>Qt::Horizontal</enum>
-               </property>
-               <property name="sizeHint" stdset="0">
-                <size>
-                 <width>40</width>
-                 <height>20</height>
-                </size>
-               </property>
-              </spacer>
-             </item>
-             <property name="leftMargin">
-              <number>0</number>
-             </property>
-             <property name="topMargin">
-              <number>0</number>
-             </property>
-             <property name="rightMargin">
-              <number>0</number>
-             </property>
-             <property name="bottomMargin">
-              <number>0</number>
-             </property>
-            </layout>
-           </item>
-           <item row="1" column="0">
-            <widget class="QCheckBox" name="includeEndsCheck">
-             <property name="text">
-              <string>包含端点 (0% 与 100%)</string>
-             </property>
-             <property name="checked">
-              <bool>false</bool>
-             </property>
-            </widget>
-           </item>
-           <property name="leftMargin">
-            <number>9</number>
-           </property>
-           <property name="topMargin">
-            <number>9</number>
-           </property>
-           <property name="rightMargin">
-            <number>9</number>
-           </property>
-           <property name="bottomMargin">
-            <number>9</number>
-           </property>
-          </layout>
-         </widget>
-        </item>
-        <property name="leftMargin">
-         <number>0</number>
-        </property>
-        <property name="topMargin">
-         <number>0</number>
-        </property>
-        <property name="rightMargin">
-         <number>0</number>
-        </property>
-        <property name="bottomMargin">
-         <number>0</number>
-        </property>
-       </layout>
-      </widget>
-     </item>
-     <item>
-      <layout class="QHBoxLayout" name="hLayoutButtons">
-       <item>
-        <spacer name="hSpacerBtns">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>40</width>
-           <height>20</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <item>
-        <widget class="QPushButton" name="confirmPushButton">
-         <property name="toolTip">
-          <string>根据当前设置生成等值面/多等值面</string>
-         </property>
-         <property name="text">
-          <string>确定</string>
-         </property>
+      </item>
+      <item>
+       <widget class="QStackedWidget" name="isoModeStackedWidget">
+        <property name="currentIndex"><number>0</number></property>
+        <widget class="QWidget" name="singleIsoPage">
+         <layout class="QGridLayout" name="singleIsoLayout">
+          <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
+          <property name="horizontalSpacing"><number>8</number></property><property name="verticalSpacing"><number>6</number></property>
+          <item row="0" column="0" colspan="2"><widget class="QCheckBox" name="percentCheckBox"><property name="text"><string>使用百分比（0%～100%）</string></property><property name="checked"><bool>true</bool></property></widget></item>
+          <item row="1" column="0"><widget class="QLabel" name="percentLabel"><property name="text"><string>等值比例</string></property></widget></item>
+          <item row="1" column="1"><widget class="QSlider" name="isoSlider"><property name="minimum"><number>0</number></property><property name="maximum"><number>100</number></property><property name="value"><number>50</number></property><property name="orientation"><enum>Qt::Horizontal</enum></property></widget></item>
+          <item row="2" column="0"><widget class="QLabel" name="valueLabel"><property name="text"><string>等值数值</string></property></widget></item>
+          <item row="2" column="1"><widget class="QDoubleSpinBox" name="isoSpin"><property name="decimals"><number>6</number></property><property name="minimum"><double>-999999999.000000000000000</double></property><property name="maximum"><double>999999999.000000000000000</double></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
+         </layout>
         </widget>
-       </item>
-       <property name="leftMargin">
-        <number>0</number>
-       </property>
-       <property name="topMargin">
-        <number>0</number>
-       </property>
-       <property name="rightMargin">
-        <number>0</number>
-       </property>
-       <property name="bottomMargin">
-        <number>0</number>
-       </property>
-      </layout>
-     </item>
-     <item>
-      <spacer name="verticalSpacerBottom">
-       <property name="orientation">
-        <enum>Qt::Vertical</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>20</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-     <item>
-      <spacer name="verticalSpacer">
-       <property name="orientation">
-        <enum>Qt::Vertical</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>20</width>
-         <height>40</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
+        <widget class="QWidget" name="multiIsoPage">
+         <layout class="QGridLayout" name="multiIsoLayout">
+          <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
+          <property name="horizontalSpacing"><number>8</number></property><property name="verticalSpacing"><number>6</number></property>
+          <item row="0" column="0"><widget class="QLabel" name="countLabel"><property name="text"><string>等值面数量</string></property></widget></item>
+          <item row="0" column="1"><widget class="QSpinBox" name="isoCountSpin"><property name="minimum"><number>1</number></property><property name="maximum"><number>100</number></property><property name="value"><number>5</number></property></widget></item>
+          <item row="1" column="0" colspan="2"><widget class="QCheckBox" name="includeEndsCheck"><property name="text"><string>包含两端</string></property></widget></item>
+         </layout>
+        </widget>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="buttonLayout">
+     <item><spacer name="buttonSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+     <item><widget class="QPushButton" name="confirmPushButton"><property name="minimumSize"><size><width>100</width><height>30</height></size></property><property name="text"><string>生成等值面</string></property></widget></item>
     </layout>
    </item>
+   <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
   </layout>
  </widget>
- <resources />
- <connections />
+ <resources/>
+ <connections/>
 </ui>

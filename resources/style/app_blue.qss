@@ -1,0 +1,819 @@
+﻿/*
+ * POWERCHINA-GEOCAE engineering blue theme
+ *
+ * Direction:
+ * - keep the existing engineering workflow and native desktop character;
+ * - use soft blue-grey work areas with restrained classic gradients;
+ * - use stronger blue borders only on structural chrome, not on every content block;
+ * - reserve emphasis for selection, focus and primary actions.
+ */
+
+QWidget {
+    font-family: "Microsoft YaHei UI", "Microsoft YaHei", "微软雅黑", "Segoe UI", sans-serif;
+    font-size: 9pt;
+    color: #1b3549;
+    background-color: #eef4f8;
+}
+
+QMainWindow,
+QDialog {
+    background: #dfe9f1;
+}
+
+QLabel {
+    color: #1b3549;
+    background: transparent;
+}
+
+QFrame,
+QToolBar,
+QToolButton,
+QCheckBox,
+QRadioButton {
+    background: transparent;
+}
+
+/* The dock title already identifies the current settings area. */
+QLabel#pageHeaderLabel {
+    min-height: 0px;
+    max-height: 0px;
+    margin: 0px;
+    padding: 0px;
+    border: none;
+    color: transparent;
+    background: transparent;
+}
+
+QLabel#pageNameLabel {
+    color: #1b3549;
+    font-size: 9.5pt;
+    font-weight: 600;
+    padding: 0px;
+}
+
+QLabel[secondary="true"] {
+    color: #647b8d;
+}
+
+QLabel#boxSelectHintLabel {
+    min-height: 22px;
+    padding: 0px 6px;
+    color: #667f91;
+    background: #edf4f8;
+    border-bottom: 1px solid #d4e1ea;
+}
+
+/* Engineering-blue uses blue chrome and clean white working surfaces. */
+DashboardPage#dashboardPage,
+QScrollArea#dashboardScrollArea,
+QScrollArea#dashboardScrollArea > QWidget,
+QWidget#dashboardScrollContainer,
+QWidget#materialEntryContent,
+MaterialModelWidget#materialModelPage,
+MaterialTransitionPage#materialTransitionPage,
+QStackedWidget#projectSettingStackWidget,
+QStackedWidget#projectSettingStackWidget > QWidget {
+    background: #f7fafc;
+}
+
+QScrollArea#dashboardScrollArea QWidget#qt_scrollarea_viewport {
+    background: #f7fafc;
+}
+
+/* Cohesive engineering-blue surfaces: blue-grey chrome and softly tinted
+   content areas. Pure white is reserved for editable fields. */
+QAbstractScrollArea,
+QAbstractScrollArea > QWidget,
+QAbstractScrollArea QWidget#qt_scrollarea_viewport,
+QStackedWidget,
+QStackedWidget > QWidget,
+QSplitter,
+QSplitter > QWidget {
+    background: #f7fafc;
+}
+
+/* -------------------------------------------------------------------------
+   Buttons
+   ------------------------------------------------------------------------- */
+QPushButton {
+    min-height: 26px;
+    padding: 0px 10px;
+    color: #1b3549;
+    background: #f7fafc;
+    border: 1px solid #a9bfce;
+    border-radius: 2px;
+}
+
+QPushButton:hover {
+    color: #236a9f;
+    background: #edf5fa;
+    border-color: #789db8;
+}
+
+QPushButton:pressed {
+    background: #d5e5f0;
+    border-color: #628aa7;
+}
+
+QPushButton:disabled {
+    color: #8799a8;
+    background: #e8f0f5;
+    border-color: #bdceda;
+}
+
+QPushButton:default,
+QPushButton[primary="true"] {
+    color: #ffffff;
+    background: #2b70a6;
+    border-color: #2b70a6;
+    font-weight: 500;
+}
+
+QPushButton:default:hover,
+QPushButton[primary="true"]:hover {
+    background: #236596;
+    border-color: #236596;
+}
+
+QPushButton:default:pressed,
+QPushButton[primary="true"]:pressed {
+    background: #1d5884;
+    border-color: #1d5884;
+}
+
+/* Collapsible section controls remain structural, not decorative bands. */
+QPushButton#sectionTitleButton {
+    min-height: 29px;
+    max-height: 29px;
+    padding: 0px 2px;
+    text-align: left;
+    color: #1b3549;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid #a9c2d5;
+    border-radius: 0px;
+    font-weight: 600;
+}
+
+QPushButton#sectionTitleButton:hover {
+    color: #236a9f;
+    background: transparent;
+    border-bottom-color: #86a9c4;
+}
+
+/* -------------------------------------------------------------------------
+   Editors
+   ------------------------------------------------------------------------- */
+QLineEdit,
+QTextEdit,
+QPlainTextEdit,
+QSpinBox,
+QDoubleSpinBox,
+QDateTimeEdit,
+QTimeEdit,
+QDateEdit {
+    min-height: 26px;
+    padding-left: 6px;
+    padding-right: 6px;
+    color: #1b3549;
+    background: #f7fafc;
+    border: 1px solid #a9bfce;
+    border-radius: 2px;
+    selection-background-color: #d9eaf5;
+    selection-color: #18334a;
+}
+
+QLineEdit:hover,
+QTextEdit:hover,
+QPlainTextEdit:hover,
+QSpinBox:hover,
+QDoubleSpinBox:hover,
+QDateTimeEdit:hover,
+QTimeEdit:hover,
+QDateEdit:hover {
+    border-color: #86a8bf;
+}
+
+QLineEdit:focus,
+QTextEdit:focus,
+QPlainTextEdit:focus,
+QSpinBox:focus,
+QDoubleSpinBox:focus,
+QDateTimeEdit:focus,
+QTimeEdit:focus,
+QDateEdit:focus {
+    border-color: #5f88a6;
+}
+
+QLineEdit:disabled,
+QTextEdit:disabled,
+QPlainTextEdit:disabled,
+QSpinBox:disabled,
+QDoubleSpinBox:disabled {
+    color: #8c9ba7;
+    background: #e8f0f5;
+    border-color: #bdceda;
+}
+
+QComboBox {
+    min-height: 26px;
+    padding-left: 6px;
+    padding-right: 3px;
+    color: #1b3549;
+    background: #f7fafc;
+    border: 1px solid #a9bfce;
+    border-radius: 2px;
+}
+
+QComboBox:hover {
+    border-color: #86a8bf;
+}
+
+QComboBox:focus {
+    border-color: #5f88a6;
+}
+
+QComboBox:disabled {
+    color: #8c9ba7;
+    background: #e8f0f5;
+    border-color: #bdceda;
+}
+
+QComboBox::drop-down {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 17px;
+    background: transparent;
+    border: none;
+}
+
+QComboBox::down-arrow {
+    image: url(:/resources/arrow_down_drawn.svg);
+    width: 7px;
+    height: 7px;
+}
+
+QComboBox QAbstractItemView {
+    color: #1b3549;
+    background: #f7fafc;
+    border: 1px solid #a9bfce;
+    outline: none;
+    padding: 2px;
+    selection-background-color: #d3e9f8;
+    selection-color: #183d59;
+}
+
+QSpinBox::up-button,
+QDoubleSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 16px;
+    background: #f1f6f9;
+    border-left: 1px solid #c1d0db;
+    border-bottom: 1px solid #d4e0e8;
+}
+
+QSpinBox::down-button,
+QDoubleSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 16px;
+    background: #f1f6f9;
+    border-left: 1px solid #c1d0db;
+}
+
+QSpinBox::up-button:hover,
+QSpinBox::down-button:hover,
+QDoubleSpinBox::up-button:hover,
+QDoubleSpinBox::down-button:hover {
+    background: #e3eef5;
+}
+
+QSpinBox::up-button:pressed,
+QSpinBox::down-button:pressed,
+QDoubleSpinBox::up-button:pressed,
+QDoubleSpinBox::down-button:pressed {
+    background: #d5e5ef;
+}
+
+QSpinBox::up-arrow,
+QDoubleSpinBox::up-arrow {
+    image: url(:/resources/arrow_up_drawn.svg);
+    width: 7px;
+    height: 7px;
+}
+
+QSpinBox::down-arrow,
+QDoubleSpinBox::down-arrow {
+    image: url(:/resources/arrow_down_drawn.svg);
+    width: 7px;
+    height: 7px;
+}
+
+QCheckBox,
+QRadioButton {
+    min-height: 20px;
+    spacing: 4px;
+    color: #1b3549;
+}
+
+QCheckBox:hover,
+QRadioButton:hover {
+    color: #1d5f8d;
+}
+
+QCheckBox:disabled,
+QRadioButton:disabled {
+    color: #8c9ba7;
+}
+
+/* Checkbox, item-view checks and radio indicators are drawn globally by
+   NeutralCheckStyle so their shape and anti-aliasing stay consistent. */
+
+/* -------------------------------------------------------------------------
+   Sections and content surfaces
+   ------------------------------------------------------------------------- */
+QGroupBox {
+    /* Keep the title compact while leaving enough room for checkable groups. */
+    margin-top: 11px;
+    padding: 7px 7px 6px 7px;
+    color: #1b3549;
+    background: #f8fbfd;
+    border: 1px solid #b6c9d7;
+    border-radius: 2px;
+    font-weight: 600;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 7px;
+    top: 0px;
+    padding: 0px 4px;
+    color: #1b3549;
+    background: #f7fafc;
+}
+
+QGroupBox::indicator {
+    width: 14px;
+    height: 14px;
+    margin-right: 3px;
+}
+
+QStackedWidget#projectSettingStackWidget,
+QStackedWidget#projectSettingStackWidget > QWidget,
+DashboardPage {
+    background: #f7fafc;
+}
+
+MaterialEntryWidget,
+MaterialTransitionPage,
+MaterialModelWidget,
+CaveBlockPlanePage,
+CaveBlockStabilityWidget,
+QScrollArea,
+QScrollArea > QWidget {
+    background: #f7fafc;
+}
+
+QWidget[dimDisabled="true"] {
+    color: #8d9ca8;
+    background: #e8f0f5;
+}
+
+/* -------------------------------------------------------------------------
+   Tree, lists and tables
+   ------------------------------------------------------------------------- */
+QTreeWidget#projectTreeWidget {
+    color: #1b3549;
+    background: #f7fafc;
+    border: none;
+    outline: none;
+    show-decoration-selected: 1;
+}
+
+QTreeWidget#projectTreeWidget::item {
+    height: 26px;
+    padding-left: 4px;
+    padding-right: 5px;
+    color: #1b3549;
+    background: transparent;
+    border: none;
+    font-weight: 400;
+}
+
+QTreeWidget#projectTreeWidget::item:hover {
+    color: #236a9f;
+    background: #e5f0f7;
+}
+
+QTreeWidget#projectTreeWidget::item:disabled {
+    color: #7c92a3;
+    background: #edf3f7;
+}
+
+QTreeWidget#projectTreeWidget::item:selected {
+    color: #173e5c;
+    background: #d9eaf5;
+}
+
+QTreeWidget#projectTreeWidget::item:selected:hover {
+    background: #d5e7f3;
+}
+
+QListWidget,
+QTreeView,
+QListView,
+QTableView,
+QTableWidget {
+    color: #1b3549;
+    background: #f8fbfd;
+    border: 1px solid #bdceda;
+    alternate-background-color: #eef4f8;
+    gridline-color: #c6d5df;
+    outline: none;
+    selection-background-color: #d9eaf5;
+    selection-color: #173e5c;
+}
+
+QListWidget::item,
+QListView::item {
+    min-height: 24px;
+    padding: 3px 6px;
+}
+
+QListWidget#appliedMatypesList::item {
+    min-height: 24px;
+    padding: 2px 5px;
+}
+
+QListWidget::item:hover,
+QListView::item:hover {
+    background: #e5f0f7;
+}
+
+QListWidget::item:selected,
+QListView::item:selected {
+    color: #173e5c;
+    background: #d9eaf5;
+}
+
+QHeaderView::section {
+    min-height: 27px;
+    padding: 0px 7px;
+    color: #1b3549;
+    background: #e8f0f5;
+    border: none;
+    border-right: 1px solid #b0c7d8;
+    border-bottom: 1px solid #a9c1d3;
+    font-weight: 500;
+}
+
+/* -------------------------------------------------------------------------
+   Standard tabs: flat desktop tabs, not rounded chips
+   ------------------------------------------------------------------------- */
+QTabWidget::pane {
+    background: #f8fbfd;
+    border: 1px solid #bdceda;
+}
+
+QTabBar::tab {
+    min-height: 28px;
+    padding: 0px 13px;
+    margin: 0px;
+    color: #1b3549;
+    background: #e8f0f5;
+    border: none;
+    border-right: 1px solid #a9c2d5;
+    border-bottom: 2px solid transparent;
+    border-radius: 0px;
+}
+
+QTabBar::tab:hover:!selected {
+    color: #1d5f8d;
+    background: #e8f0f5;
+}
+
+QTabBar::tab:selected {
+    color: #2b70a6;
+    background: #f7fafc;
+    border-bottom: 2px solid #2b70a6;
+    font-weight: 600;
+}
+
+/* -------------------------------------------------------------------------
+   Menus and tooltips
+   ------------------------------------------------------------------------- */
+QMenu {
+    color: #1b3549;
+    background: #f7fafc;
+    border: 1px solid #a9bfce;
+    padding: 3px 0px;
+}
+
+QMenu::item {
+    padding: 6px 28px 6px 12px;
+    background: transparent;
+}
+
+QMenu::item:selected {
+    color: #173e5c;
+    background: #d9eaf5;
+}
+
+QMenu::separator {
+    height: 1px;
+    margin: 4px 9px;
+    background: #b3cadb;
+}
+
+QToolTip {
+    color: #ffffff;
+    background: #254a66;
+    border: none;
+    padding: 5px 8px;
+}
+
+/* -------------------------------------------------------------------------
+   Scrollbars
+   ------------------------------------------------------------------------- */
+QScrollBar:vertical {
+    width: 8px;
+    margin: 2px 1px;
+    background: transparent;
+    border: none;
+}
+
+QScrollBar:horizontal {
+    height: 8px;
+    margin: 1px 2px;
+    background: transparent;
+    border: none;
+}
+
+QScrollBar::handle:vertical,
+QScrollBar::handle:horizontal {
+    min-height: 24px;
+    min-width: 24px;
+    background: #a9bdcc;
+    border: none;
+    border-radius: 3px;
+}
+
+QScrollBar::handle:vertical:hover,
+QScrollBar::handle:horizontal:hover {
+    background: #7f9fb6;
+}
+
+QScrollBar::handle:vertical:pressed,
+QScrollBar::handle:horizontal:pressed {
+    background: #6e91aa;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical,
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+    width: 0px;
+    height: 0px;
+}
+
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical,
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {
+    background: transparent;
+}
+
+/* -------------------------------------------------------------------------
+   Visualization toolbar
+   ------------------------------------------------------------------------- */
+QFrame#visualizationViewToolbar {
+    background: #edf4f8;
+    border-bottom: 1px solid #a9c2d5;
+}
+
+QFrame#visualizationViewToolbar QToolButton {
+    min-width: 27px;
+    min-height: 25px;
+    padding: 2px;
+    color: #1b3549;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 2px;
+}
+
+QFrame#visualizationViewToolbar QToolButton:hover {
+    background: #e8f0f5;
+    border-color: #adc5d7;
+}
+
+QFrame#visualizationViewToolbar QToolButton:pressed,
+QFrame#visualizationViewToolbar QToolButton:checked {
+    background: #d5e7f3;
+    border-color: #8faec4;
+}
+
+QFrame#visualizationToolbarSeparator {
+    color: #b4c9d9;
+}
+
+QMenu#visualizationOpacityMenu {
+    background: #f7fafc;
+    border: 1px solid #a9bfce;
+    padding: 6px;
+}
+
+QLabel#visualizationOpacityPercentLabel {
+    color: #1b3549;
+    font-weight: 600;
+}
+
+QSlider#visualizationOpacitySlider::groove:vertical {
+    width: 4px;
+    background: #cbdbe7;
+    border-radius: 2px;
+}
+
+QSlider#visualizationOpacitySlider::sub-page:vertical {
+    background: #2b70a6;
+    border-radius: 2px;
+}
+
+QSlider#visualizationOpacitySlider::add-page:vertical {
+    background: #cbdbe7;
+    border-radius: 2px;
+}
+
+QSlider#visualizationOpacitySlider::handle:vertical {
+    height: 12px;
+    margin: 0px -4px;
+    background: #2b70a6;
+    border-radius: 6px;
+}
+
+QStatusBar {
+    color: #1b3549;
+    background: #e8f0f5;
+    border-top: 1px solid #b4c9d9;
+}
+
+/* -------------------------------------------------------------------------
+   Classic engineering-blue finishing layer
+
+   The reference uses white working areas, blue-grey chrome, thin blue frames
+   and shallow vertical gradients. These overrides keep that desktop character
+   without reproducing the heavy Windows-7 bevels literally.
+   ------------------------------------------------------------------------- */
+QMainWindow,
+QDialog {
+    background: #dfe9f1;
+}
+
+QPushButton {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #ffffff, stop:0.55 #f8fbfe,
+                                stop:1 #e2edf6);
+    border-color: #91aec4;
+}
+
+QPushButton:hover {
+    color: #165d91;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #ffffff, stop:0.55 #edf7fe,
+                                stop:1 #cfe5f5);
+    border-color: #5f8fb3;
+}
+
+QPushButton:pressed {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #c3dced, stop:1 #e9f4fb);
+    border-color: #4e82aa;
+}
+
+QLineEdit,
+QTextEdit,
+QPlainTextEdit,
+QSpinBox,
+QDoubleSpinBox,
+QDateTimeEdit,
+QTimeEdit,
+QDateEdit,
+QComboBox {
+    background: #ffffff;
+    border-color: #9eb7ca;
+}
+
+QGroupBox {
+    background: #f7fafc;
+    border-color: #aac1d2;
+}
+
+QGroupBox::title {
+    background: #f7fafc;
+}
+
+QTreeWidget#projectTreeWidget,
+QListWidget,
+QTreeView,
+QListView,
+QTableView,
+QTableWidget,
+QTabWidget::pane,
+QMenu,
+QMenu#visualizationOpacityMenu {
+    background: #f8fbfd;
+}
+
+QTreeWidget#projectTreeWidget::item:hover,
+QListWidget::item:hover,
+QListView::item:hover {
+    background: #e5f2fb;
+}
+
+QTreeWidget#projectTreeWidget::item:selected,
+QListWidget::item:selected,
+QListView::item:selected {
+    color: #123b59;
+    background: #d5e7f3;
+}
+
+QHeaderView::section {
+    color: #173a57;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #fbfdff, stop:1 #dceaf5);
+    border-right-color: #a7bfd1;
+    border-bottom-color: #8facbf;
+}
+
+QTabWidget::pane {
+    border-color: #8faec4;
+}
+
+QTabBar::tab {
+    color: #173a57;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #f9fcff, stop:1 #dbeaf5);
+    border-right-color: #a6bfd1;
+}
+
+QTabBar::tab:hover:!selected {
+    color: #155e93;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #ffffff, stop:1 #cfe5f5);
+}
+
+QTabBar::tab:selected {
+    color: #155e93;
+    background: #f7fafc;
+    border-bottom-color: #2b70a6;
+}
+
+QFrame#visualizationViewToolbar {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #f8fbfd, stop:1 #e5eef5);
+    border-bottom-color: #9db8cc;
+}
+
+QStatusBar {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #eef6fb, stop:1 #cddfec);
+    border-top-color: #88a9c1;
+}
+
+/* -------------------------------------------------------------------------
+   Engineering-blue detail polish
+   ------------------------------------------------------------------------- */
+QComboBox QAbstractItemView::item {
+    min-height: 24px;
+    padding: 2px 6px;
+}
+
+QComboBox QAbstractItemView::item:hover {
+    background: #e5f2fb;
+}
+
+QSpinBox:disabled::up-button,
+QSpinBox:disabled::down-button,
+QDoubleSpinBox:disabled::up-button,
+QDoubleSpinBox:disabled::down-button {
+    background: #e8f0f5;
+    border-left-color: #c8d5de;
+}
+
+QGroupBox:disabled {
+    color: #8193a1;
+    border-color: #cad6de;
+}
+
+QGroupBox:disabled::title {
+    color: #8193a1;
+}
+
+QAbstractItemView::item:focus {
+    outline: none;
+}
+
+QFrame#visualizationToolbarSeparator {
+    color: #c2d1dc;
+}

@@ -1,4 +1,4 @@
-#include "MeshModuleController.h"
+﻿#include "MeshModuleController.h"
 
 #include <EventManager.h>
 #include <GridEditingWidget.h>
@@ -1276,6 +1276,16 @@ static const QString kMeshDisplayFilterCustomKey = QStringLiteral("mesh.display.
 static const QString kMeshDisplayFilterKetypeKey = QStringLiteral("mesh.display.filter.ketype.checked");
 static const QString kMeshDisplayFilterMatypeKey = QStringLiteral("mesh.display.filter.matype.checked");
 static const QString kMeshDisplayFilterLayerKey = QStringLiteral("mesh.display.filter.layer.checked");
+static const QString kMeshDisplayColorModeKey = QStringLiteral("mesh.display.color.mode");
+
+static void meshDisplayPreferMaterialColors(vtkUnstructuredGrid* grid)
+{
+    auto* cellData = grid ? grid->GetCellData() : nullptr;
+    auto* matype = cellData ? cellData->GetArray("MATYPE") : nullptr;
+    const int colorMode = (matype && matype->GetNumberOfTuples() > 0) ? 2 : 0;
+    PublicVariables::instance().set(kMeshDisplayColorModeKey, colorMode,
+                                    QStringLiteral("project_dir"));
+}
 
 static QSet<int> meshDisplayIntSetFromString(const QString& text)
 {
@@ -2019,6 +2029,35 @@ static void meshDisplayApplyGlobalState(vtkUnstructuredGrid* fullGrid,
         surfaceMapper->ScalarVisibilityOff();
     if (lineMapper)
         lineMapper->ScalarVisibilityOff();
+
+    const int colorMode = PublicVariables::instance().get(kMeshDisplayColorModeKey).toInt();
+    const char* arrayName = nullptr;
+    switch (colorMode)
+    {
+    case 1:
+        arrayName = "KETYPE";
+        break;
+    case 2:
+        arrayName = "MATYPE";
+        break;
+    case 3:
+        arrayName = "LAYER";
+        break;
+    default:
+        break;
+    }
+
+    if (arrayName)
+    {
+        QSet<int> values = meshDisplayCollectCellInts(viewSurface, arrayName);
+        values.unite(meshDisplayCollectCellInts(viewLineGrid, arrayName));
+        vtkSmartPointer<vtkLookupTable> lut = meshDisplayBuildLookupTable(values);
+        if (lut)
+        {
+            meshDisplayApplyScalarColor(surfaceMapper, viewSurface, arrayName, lut);
+            meshDisplayApplyScalarColor(lineMapper, viewLineGrid, arrayName, lut);
+        }
+    }
 
 }
 
@@ -3036,8 +3075,10 @@ void MeshModuleController::importGridFile(const QString& fileName)
     m_splitCacheLine = nullptr;
     m_splitCacheNonLine = nullptr;
 
+    // 导入完成后直接进入“显示控制”，并优先按 MATYPE 显示材料颜色。
+    meshDisplayPreferMaterialColors(m_importedGrid);
     displayCurrentGrid();
-    openImportSettingsPage(true);
+    openGridDisplayControlPage();
 
     PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
 }
@@ -3062,8 +3103,9 @@ bool MeshModuleController::importGeneratedNetgenMesh(const QString& vtkPath, QSt
         splitGridByDim(m_importedGrid, tmpLine, tmpNonLine);
     }
 
-    displayCurrentGrid();
     syncPickMapGroupingFromGrid(m_importedGrid);
+    meshDisplayPreferMaterialColors(m_importedGrid);
+    displayCurrentGrid();
     openGridDisplayControlPage();
     PickManager::instance().clearDomainSelection(QStringLiteral("MaterialManager"));
     return true;
@@ -3771,6 +3813,10 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
            // 混合网格中杆单元必须生成 dim=1，否则 MaterialManager/PickManager 无法把 lineGrid
            // 当作独立域进行高亮。
     pick.meshDim = meshDim;
+
+    // 所有网格入口（INP、FLAC3D、VTK、工程恢复及重新分组）都在这里
+    // 统一同步实际网格维度，避免求解模块读取到未初始化或过期的全局值。
+    PublicVariables::instance().set(PublicConstants::kMeshDimension, meshDim, "mesh");
 
     QVector<MeshTagKey> removeKeys;
 

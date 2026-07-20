@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <BasePage.h>
 #include <vtkSmartPointer.h>
@@ -50,10 +50,8 @@ class SliceSettingsWidget : public BasePage
     // 确认：按当前模式（单/多）生成结果
     void on_confirmButton_clicked();
 
-    // 多切面/单切面互斥切换
-    void on_multiSliceGroupBox_toggled(bool checked);
-
-    void on_singleSliceGroupBox_toggled(bool checked);
+    void on_singleSliceRadioButton_toggled(bool checked);
+    void on_slicePositionSpin_valueChanged(double value);
 
   private:
     /* ---- 内部助手 ---- */
@@ -80,6 +78,9 @@ class SliceSettingsWidget : public BasePage
     void reattachAccordingToDisplayState();
     void detachAllFromScene();
     void applyPendingState();
+    void updatePositionControls(double normalizedPosition);
+    double currentNormalizedPosition() const;
+    bool isSingleMode() const;
 
   private:
     Ui::SliceSettingsWidget* ui{};
@@ -98,7 +99,7 @@ class SliceSettingsWidget : public BasePage
     // 整体云图
     vtkSmartPointer<vtkActor> m_actor;
 
-    // 单切面：预览平面（紫色）+ 结果面
+    // 单切面：预览平面 + 结果面
     vtkSmartPointer<vtkPlane> m_plane;
     vtkSmartPointer<vtkPlaneSource> m_slicePlaneSource;
     vtkSmartPointer<vtkPolyDataMapper> m_slicePlaneMapper;

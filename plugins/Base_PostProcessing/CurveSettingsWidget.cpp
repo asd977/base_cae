@@ -10,6 +10,11 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QIcon>
+#include <QPainter>
+#include <QPen>
+#include <QPixmap>
+#include <QSize>
 #include <QScopedValueRollback>
 #include <QSignalBlocker>
 #include <QStyle>
@@ -18,6 +23,30 @@
 
 #include "PostResultAutoPrepare.h"
 #include "ui_CurveSettingsWidget.h"
+
+namespace
+{
+QIcon curveLegendIcon(const QColor& color)
+{
+    QPixmap pixmap(24, 12);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    QPen pen(color, 3.0, Qt::SolidLine, Qt::RoundCap);
+    painter.setPen(pen);
+    painter.drawLine(QPointF(2.0, 6.0), QPointF(22.0, 6.0));
+    return QIcon(pixmap);
+}
+
+void applyCurveLegend(QCheckBox* checkBox, const QColor& color)
+{
+    if (!checkBox)
+        return;
+    checkBox->setIcon(curveLegendIcon(color));
+    checkBox->setIconSize(QSize(24, 12));
+}
+}
 
 CurveSettingsWidget::CurveSettingsWidget(VisualWidgetService* visualService, QWidget* parent)
     : BasePage(PublicConstants::kPagePostProcessCurve), ui(new Ui::CurveSettingsWidget),
@@ -39,6 +68,12 @@ CurveSettingsWidget::CurveSettingsWidget(VisualWidgetService* visualService, QWi
     ui->ptotCheckBox->setToolTip(QStringLiteral("总荷载"));
     ui->maxUrCheckBox->setToolTip(QStringLiteral("最大位移比"));
     ui->loopCheckBox->setToolTip(QStringLiteral("单步迭代次数"));
+
+    // 设置窗口始终显示与曲线一致的颜色说明；图表右上角图例仍由复选框单独控制。
+    applyCurveLegend(ui->fosCheckBox, QColor(31, 119, 180));
+    applyCurveLegend(ui->ptotCheckBox, QColor(230, 126, 34));
+    applyCurveLegend(ui->maxUrCheckBox, QColor(39, 174, 96));
+    applyCurveLegend(ui->loopCheckBox, QColor(192, 57, 43));
 
     connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &CurveSettingsWidget::onResultDirChanged);

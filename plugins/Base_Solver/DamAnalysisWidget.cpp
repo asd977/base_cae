@@ -59,6 +59,7 @@ DamAnalysisWidget::DamAnalysisWidget(QWidget* parent)
     initValueEditors();
     setupConstructionLayerUi();
     SolverUiLayoutHelper::polishPage(this);
+    SolverUiLayoutHelper::setupComputeControls(this);
     connect(ui->btnCompute, &QPushButton::clicked, this, &DamAnalysisWidget::onComputeClicked);
 }
 
@@ -1427,5 +1428,6 @@ void DamAnalysisWidget::onComputeClicked()
 void DamAnalysisWidget::setComputing(bool computing)
 {
     ui->btnCompute->setProperty("computing", computing);
-    ui->btnCompute->setText(computing ? QStringLiteral("停止") : QStringLiteral("计算"));
+    ui->btnCompute->setText(computing ? QStringLiteral("停止计算")
+                                      : QStringLiteral("数值法计算"));
 }

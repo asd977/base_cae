@@ -2,22 +2,6 @@
 
 namespace
 {
-MaterialModel createHoekBrownModel()
-{
-    MaterialModel model;
-    model.key = QStringLiteral("hoek_brown_rock");
-    model.displayName = QStringLiteral("霍克-布朗本构");
-    model.ib = 11;
-
-    model.columns << QStringLiteral("序号") << QStringLiteral("变形模量E（GPa）")
-                  << QStringLiteral("泊松比μ") << QStringLiteral("容重t/m3")
-                  << QStringLiteral("岩体常数mb") << QStringLiteral("岩体常数a")
-                  << QStringLiteral("岩体常数s")
-                  << QStringLiteral("完整岩石单轴抗压强度σci（MPa）");
-    model.columnOutputRows = QVector<int>(model.columns.size(), -1);
-    return model;
-}
-
 MaterialModel createHuangjinpingModel()
 {
     MaterialModel model;
@@ -298,7 +282,7 @@ MaterialModel createSoilEbModel()
 
 QVector<MaterialModel> createDefaultMaterialModels()
 {
-    return {createHoekBrownModel(), createHuangjinpingModel(), createSoilEbModel(), createSoilEmuModel(),
+    return {createHuangjinpingModel(), createSoilEbModel(), createSoilEmuModel(),
             createSoilEmuCrushModel(),
             createDamDynamicModel(), createHuangjinpingBarModel(), createDagangshanIsotropicModel(),
             createNanshuiModel(), createSoilKgModel()};
