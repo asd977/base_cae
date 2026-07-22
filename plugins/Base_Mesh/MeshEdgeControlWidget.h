@@ -1,4 +1,4 @@
-﻿#ifndef MESHEDGECONTROLWIDGET_H
+#ifndef MESHEDGECONTROLWIDGET_H
 #define MESHEDGECONTROLWIDGET_H
 
 #include <BasePage.h>
@@ -37,8 +37,7 @@ class MeshEdgeControlWidget : public BasePage
     struct EdgeControlItem
     {
         QString edgeIds;
-        int divisions = 10;
-        double bias = 1.0;
+        double maxSize = 1.0;
     };
 
     void setupUiState();

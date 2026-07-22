@@ -69,8 +69,9 @@ PointForcePage::~PointForcePage() = default;
 
 void PointForcePage::beforeLoad()
 {
-    PickManager::instance();
-    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
+    PickManager& pickManager = PickManager::instance();
+    pickManager.updateStructure();
+    pickManager.activate(getPageType(), m_uuid, PickMode::Node);
     setupBatchGroupCombo();
 
     QObject::disconnect(&PickManager::instance(), &PickManager::nodePicked, this, nullptr);
@@ -85,15 +86,19 @@ void PointForcePage::beforeLoad()
                          ui->labelYValue->setText(QString::number(y, 'g', 12));
                          ui->labelZValue->setText(QString::number(z, 'g', 12));
                          ui->labelPrevOwnerValue->setText(prevUuid);
-                     },
-                     Qt::UniqueConnection);
+                     });
     QObject::disconnect(ui->pickEnableCheckBox, nullptr, this, nullptr);
     QObject::connect(ui->pickEnableCheckBox, &QCheckBox::toggled, this,
                      [this](bool on)
                      {
-                         PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, on);
-                     },
-                     Qt::UniqueConnection);
+                         PickManager& pickManager = PickManager::instance();
+                         if (on)
+                         {
+                             pickManager.updateStructure();
+                             pickManager.activate(getPageType(), m_uuid, PickMode::Node);
+                         }
+                         pickManager.setClickPickEnabled(getPageType(), m_uuid, on);
+                     });
     ui->pickEnableCheckBox->setChecked(false);
     PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
 
@@ -118,7 +123,7 @@ void PointForcePage::beforeLoad()
 void PointForcePage::beforeUnload()
 {
     QObject::disconnect(&PickManager::instance(), &PickManager::nodePicked, this, nullptr);
-    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
+    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
     PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
 }
 
@@ -175,8 +180,7 @@ void PointForcePage::setupBatchGroupCombo()
             [this]()
             {
                 onGroupChanged(ui->comboBoxGroup->currentIndex());
-            },
-            Qt::UniqueConnection);
+            });
 
     if (auto* groupCombo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
     {
@@ -190,14 +194,12 @@ void PointForcePage::setupBatchGroupCombo()
                     const MeshTagKey key = comboTagKey(ui->comboBoxGroup, row);
                     PickManager::instance().setPreviewPointIds(getPageType(), m_uuid, GridKind::Solid,
                                                                toVtkIds(meshSvc->pointIdsOfTag(key)));
-                },
-                Qt::UniqueConnection);
+                });
         connect(groupCombo, &CustomComboBox::dropdownClosed, this,
                 [this]()
                 {
                     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Node);
-                },
-                Qt::UniqueConnection);
+                });
     }
 
     refreshGroupCombo();

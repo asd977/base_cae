@@ -29,7 +29,12 @@ class CaveExcavationBodyPage : public BasePage
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
 
+    int excavationLayer() const;
+    void setExcavationLayer(int layer);
     QVector<int> selectedElementIds();
+
+  signals:
+    void excavationLayerChanged(int layer);
 
   private slots:
     void onClearClicked();

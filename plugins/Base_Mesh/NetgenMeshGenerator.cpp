@@ -1,5 +1,35 @@
 #include "NetgenMeshGenerator.h"
 
+#include <BOPAlgo_Builder.hxx>
+#include <Bnd_Box.hxx>
+#include <BRepAdaptor_Curve.hxx>
+#include <BRepAdaptor_Surface.hxx>
+#include <BRepBndLib.hxx>
+#include <BRepClass3d_SolidClassifier.hxx>
+#include <BRepClass_FaceClassifier.hxx>
+#include <BRepGProp.hxx>
+#include <BRepCheck_Analyzer.hxx>
+#include <BRep_Builder.hxx>
+#include <BRepTools.hxx>
+#include <GProp_GProps.hxx>
+#include <IFSelect_ReturnStatus.hxx>
+#include <Precision.hxx>
+#include <STEPControl_Reader.hxx>
+#include <TopAbs_ShapeEnum.hxx>
+#include <TopAbs_State.hxx>
+#include <TopExp.hxx>
+#include <TopExp_Explorer.hxx>
+#include <TopTools_IndexedDataMapOfShapeListOfShape.hxx>
+#include <TopTools_IndexedMapOfShape.hxx>
+#include <TopTools_ListOfShape.hxx>
+#include <TopoDS.hxx>
+#include <TopoDS_Compound.hxx>
+#include <TopoDS_Edge.hxx>
+#include <TopoDS_Face.hxx>
+#include <TopoDS_Solid.hxx>
+#include <gp_Pnt2d.hxx>
+#include <TopoDS_Shape.hxx>
+
 namespace nglib
 {
 #include <nglib.h>
@@ -10,6 +40,7 @@ namespace nglib
 #include <vtkCellType.h>
 #include <vtkDataArray.h>
 #include <vtkDoubleArray.h>
+#include <vtkFieldData.h>
 #include <vtkIdList.h>
 #include <vtkIdTypeArray.h>
 #include <vtkIntArray.h>
@@ -25,6 +56,7 @@ namespace nglib
 #include <QFileInfo>
 #include <QLocale>
 #include <QMap>
+#include <QRegularExpression>
 #include <QSet>
 #include <QTemporaryFile>
 #include <QTextStream>
@@ -86,6 +118,157 @@ void ensureNetgenInitialized()
                    {
                        Ng_Init();
                    });
+}
+
+struct ConformalGeometryInfo
+{
+    QString geometryPath;
+    // Keep the pre-fragment OCC shape for matching the UI entity IDs. Local
+    // size restrictions are spatial, so sampling the original entity remains
+    // valid after the material regions are made conformal.
+    TopoDS_Shape controlShape;
+    int sourceRegionCount = 0;
+    int outputRegionCount = 0;
+    int sharedInterfaceCount = 0;
+    bool processed = false;
+};
+
+bool loadStepShape(const QString& path, TopoDS_Shape& shape, QString* errMsg)
+{
+    STEPControl_Reader reader;
+    const QByteArray encodedPath = QFile::encodeName(QFileInfo(path).absoluteFilePath());
+    const IFSelect_ReturnStatus status = reader.ReadFile(encodedPath.constData());
+    if (status != IFSelect_RetDone)
+    {
+        setError(errMsg, QStringLiteral("OCC 无法读取 STEP 几何：%1").arg(path));
+        return false;
+    }
+
+    const Standard_Integer transferred = reader.TransferRoots();
+    if (transferred <= 0)
+    {
+        setError(errMsg, QStringLiteral("STEP 中没有可转换的几何根节点：%1").arg(path));
+        return false;
+    }
+
+    shape = reader.OneShape();
+    if (shape.IsNull())
+    {
+        setError(errMsg, QStringLiteral("STEP 转换后得到空几何：%1").arg(path));
+        return false;
+    }
+    return true;
+}
+
+bool prepareConformalGeometry(const NetgenMeshingRequest& request,
+                              QTemporaryFile& temporaryBrep,
+                              ConformalGeometryInfo& info,
+                              QString* errMsg)
+{
+    info.geometryPath = request.inputGeometryPath;
+
+    const QFileInfo inputInfo(request.inputGeometryPath);
+    const QString suffix = inputInfo.suffix().toLower();
+    if (suffix != QStringLiteral("step") && suffix != QStringLiteral("stp"))
+        return true;
+
+    TopoDS_Shape importedShape;
+    if (!loadStepShape(request.inputGeometryPath, importedShape, errMsg))
+        return false;
+    info.controlShape = importedShape;
+
+    const TopAbs_ShapeEnum regionType = request.dimension == 3 ? TopAbs_SOLID : TopAbs_FACE;
+    TopTools_IndexedMapOfShape sourceRegions;
+    TopExp::MapShapes(importedShape, regionType, sourceRegions);
+    info.sourceRegionCount = sourceRegions.Extent();
+    info.outputRegionCount = sourceRegions.Extent();
+
+    if (!request.conformalizeRegions)
+        return true;
+
+    // 单一区域没有材料界面，不需要做布尔碎片化。
+    if (sourceRegions.Extent() <= 1)
+        return true;
+
+    TopTools_ListOfShape arguments;
+    for (Standard_Integer i = 1; i <= sourceRegions.Extent(); ++i)
+        arguments.Append(sourceRegions(i));
+
+    BOPAlgo_Builder builder;
+    builder.SetArguments(arguments);
+    builder.SetRunParallel(Standard_False);
+    builder.SetNonDestructive(Standard_True);
+    builder.SetFuzzyValue(std::max(request.tolerance, Precision::Confusion()));
+    builder.Perform();
+
+    if (builder.HasErrors() || builder.Shape().IsNull())
+    {
+        setError(errMsg, QStringLiteral(
+            "相邻几何区域无法建立共享拓扑。请检查材料分区之间是否存在间隙、重叠或自交。"));
+        return false;
+    }
+
+    TopTools_IndexedMapOfShape conformalRegions;
+    TopExp::MapShapes(builder.Shape(), regionType, conformalRegions);
+    if (conformalRegions.Extent() <= 0)
+    {
+        setError(errMsg, QStringLiteral("共形处理后没有得到有效的几何区域。"));
+        return false;
+    }
+
+    TopoDS_Compound compound;
+    BRep_Builder compoundBuilder;
+    compoundBuilder.MakeCompound(compound);
+    for (Standard_Integer i = 1; i <= conformalRegions.Extent(); ++i)
+        compoundBuilder.Add(compound, conformalRegions(i));
+
+    const TopAbs_ShapeEnum interfaceType =
+        request.dimension == 3 ? TopAbs_FACE : TopAbs_EDGE;
+    TopTools_IndexedDataMapOfShapeListOfShape interfaceOwners;
+    TopExp::MapShapesAndAncestors(compound, interfaceType, regionType, interfaceOwners);
+    for (Standard_Integer i = 1; i <= interfaceOwners.Extent(); ++i)
+    {
+        if (interfaceOwners.FindFromIndex(i).Extent() >= 2)
+            ++info.sharedInterfaceCount;
+    }
+
+    BRepCheck_Analyzer analyzer(compound, Standard_True);
+    if (!analyzer.IsValid())
+    {
+        setError(errMsg, QStringLiteral(
+            "共形处理后的几何拓扑无效。请先修复几何中的微小缝隙或重叠区域。"));
+        return false;
+    }
+
+    QString templateDir = inputInfo.absolutePath();
+    if (!QFileInfo(templateDir).isWritable())
+        templateDir = QDir::tempPath();
+    temporaryBrep.setFileTemplate(
+        QDir(templateDir).filePath(QStringLiteral("geocae_conformal_XXXXXX.brep")));
+    temporaryBrep.setAutoRemove(true);
+    if (!temporaryBrep.open())
+    {
+        setError(errMsg, QStringLiteral("无法创建共形几何临时文件。"));
+        return false;
+    }
+
+    const QString brepPath = temporaryBrep.fileName();
+    temporaryBrep.close();
+    QFile::remove(brepPath);
+
+    const QByteArray encodedBrepPath = QFile::encodeName(brepPath);
+    const Standard_Boolean writeOk = BRepTools::Write(compound, encodedBrepPath.constData());
+    const QFileInfo brepInfo(brepPath);
+    if (!writeOk || !brepInfo.exists() || brepInfo.size() <= 0)
+    {
+        setError(errMsg, QStringLiteral("共形几何临时文件写入失败：%1").arg(brepPath));
+        return false;
+    }
+
+    info.geometryPath = brepPath;
+    info.outputRegionCount = conformalRegions.Extent();
+    info.processed = true;
+    return true;
 }
 
 Ng_OCC_Geometry* loadOccGeometry(const QString& path, QString* errMsg)
@@ -166,7 +349,7 @@ int mapVolumeTypeToVtk(Ng_Volume_Element_Type type, int& nodeCount, int& ketype)
 }
 
 QVector<int> readNetgenElementRegions(const QString& filePath, int dimension,
-                                      int expectedElementCount)
+                                       int expectedElementCount)
 {
     QVector<int> regions;
     if (filePath.trimmed().isEmpty() || expectedElementCount <= 0)
@@ -220,6 +403,231 @@ QVector<int> readNetgenElementRegions(const QString& filePath, int dimension,
     }
 
     return regions.size() == storedElementCount ? regions : QVector<int>{};
+}
+
+struct NetgenBoundaryFacet
+{
+    int dimension = -1;
+    int boundaryId = 0;
+    QVector<int> pointIds;
+};
+
+struct NetgenBoundaryMetadata
+{
+    QVector<NetgenBoundaryFacet> facets;
+    QMap<QPair<int, int>, QString> names;
+};
+
+NetgenBoundaryMetadata readNetgenBoundaryMetadata(const QString& filePath, int dimension)
+{
+    NetgenBoundaryMetadata metadata;
+    // Netgen stores codimension-one boundary elements in surfaceelements* (3D)
+    // or edgesegmentsgi3 (2D), and lower-dimensional regions in
+    // edgesegmentsgi3/pointelements with names in bcnames/cd2names/cd3names.
+    // These are native Netgen regions, not Gmsh Physical groups.
+    if ((dimension != 2 && dimension != 3) || filePath.trimmed().isEmpty())
+        return metadata;
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return metadata;
+
+    QTextStream stream(&file);
+    auto readNonEmptyLine = [&stream]() -> QString
+    {
+        while (!stream.atEnd())
+        {
+            const QString line = stream.readLine().trimmed();
+            if (!line.isEmpty() && !line.startsWith(QLatin1Char('#')))
+                return line;
+        }
+        return {};
+    };
+
+    while (!stream.atEnd())
+    {
+        const QString section = stream.readLine().trimmed().toLower();
+        if (dimension == 3 && section.startsWith(QStringLiteral("surfaceelements")))
+        {
+            bool countOk = false;
+            const int count = readNonEmptyLine().toInt(&countOk);
+            if (!countOk || count < 0)
+                continue;
+
+            metadata.facets.reserve(metadata.facets.size() + count);
+            for (int i = 0; i < count && !stream.atEnd(); ++i)
+            {
+                const QStringList fields = readNonEmptyLine().simplified().split(
+                    QLatin1Char(' '), Qt::SkipEmptyParts);
+                // Netgen .vol: surfnr bcnr domin domout np p1 ... pN [geom info]
+                if (fields.size() < 6)
+                    continue;
+
+                bool boundaryOk = false;
+                bool pointCountOk = false;
+                const int boundaryId = fields.at(1).toInt(&boundaryOk);
+                const int pointCount = fields.at(4).toInt(&pointCountOk);
+                if (!boundaryOk || boundaryId <= 0 || !pointCountOk || pointCount <= 0 ||
+                    pointCount > NG_SURFACE_ELEMENT_MAXPOINTS ||
+                    fields.size() < 5 + pointCount)
+                {
+                    continue;
+                }
+
+                NetgenBoundaryFacet facet;
+                facet.dimension = 2;
+                facet.boundaryId = boundaryId;
+                facet.pointIds.reserve(pointCount);
+                bool pointsOk = true;
+                for (int p = 0; p < pointCount; ++p)
+                {
+                    bool pointOk = false;
+                    const int netgenPointId = fields.at(5 + p).toInt(&pointOk);
+                    if (!pointOk || netgenPointId <= 0)
+                    {
+                        pointsOk = false;
+                        break;
+                    }
+                    facet.pointIds.push_back(netgenPointId - 1);
+                }
+                if (pointsOk)
+                    metadata.facets.push_back(std::move(facet));
+            }
+        }
+        else if (section == QStringLiteral("edgesegmentsgi3"))
+        {
+            bool countOk = false;
+            const int count = readNonEmptyLine().toInt(&countOk);
+            if (!countOk || count < 0)
+                continue;
+
+            metadata.facets.reserve(metadata.facets.size() + count);
+            for (int i = 0; i < count && !stream.atEnd(); ++i)
+            {
+                const QStringList fields = readNonEmptyLine().simplified().split(
+                    QLatin1Char(' '), Qt::SkipEmptyParts);
+                // Netgen .vol: p1 p2 trignum1 trignum2 dist1 dist2 edsi.
+                // edsi is stored zero-based; Segment::GetIndex() is edsi + 1.
+                if (fields.size() < 7)
+                    continue;
+
+                bool firstPointOk = false;
+                bool secondPointOk = false;
+                bool edgeIndexOk = false;
+                const int firstPoint = fields.at(0).toInt(&firstPointOk);
+                const int secondPoint = fields.at(1).toInt(&secondPointOk);
+                const int boundaryId = fields.at(6).toInt(&edgeIndexOk) + 1;
+                if (!firstPointOk || !secondPointOk || !edgeIndexOk ||
+                    firstPoint <= 0 || secondPoint <= 0 || boundaryId <= 0)
+                {
+                    continue;
+                }
+
+                NetgenBoundaryFacet facet;
+                facet.dimension = 1;
+                facet.boundaryId = boundaryId;
+                facet.pointIds = {firstPoint - 1, secondPoint - 1};
+                metadata.facets.push_back(std::move(facet));
+            }
+        }
+        else if (section == QStringLiteral("pointelements"))
+        {
+            bool countOk = false;
+            const int count = readNonEmptyLine().toInt(&countOk);
+            if (!countOk || count < 0)
+                continue;
+
+            metadata.facets.reserve(metadata.facets.size() + count);
+            for (int i = 0; i < count && !stream.atEnd(); ++i)
+            {
+                const QStringList fields = readNonEmptyLine().simplified().split(
+                    QLatin1Char(' '), Qt::SkipEmptyParts);
+                if (fields.size() < 2)
+                    continue;
+
+                bool pointOk = false;
+                bool boundaryOk = false;
+                const int pointId = fields.at(0).toInt(&pointOk);
+                const int boundaryId = fields.at(1).toInt(&boundaryOk);
+                if (!pointOk || pointId <= 0 || !boundaryOk || boundaryId <= 0)
+                    continue;
+
+                NetgenBoundaryFacet facet;
+                facet.dimension = 0;
+                facet.boundaryId = boundaryId;
+                facet.pointIds = {pointId - 1};
+                metadata.facets.push_back(std::move(facet));
+            }
+        }
+        else if (section == QStringLiteral("bcnames") ||
+                 section == QStringLiteral("cd2names") ||
+                 section == QStringLiteral("cd3names"))
+        {
+            const int regionDimension = section == QStringLiteral("bcnames")
+                ? dimension - 1
+                : (section == QStringLiteral("cd2names") ? dimension - 2
+                                                          : dimension - 3);
+            bool countOk = false;
+            const int count = readNonEmptyLine().toInt(&countOk);
+            if (!countOk || count < 0)
+                continue;
+
+            for (int i = 0; i < count && !stream.atEnd(); ++i)
+            {
+                const QString line = readNonEmptyLine();
+                const int separator = line.indexOf(QRegularExpression(QStringLiteral("\\s")));
+                const QString idText = separator < 0 ? line : line.left(separator);
+                bool idOk = false;
+                const int id = idText.toInt(&idOk);
+                if (!idOk || id <= 0)
+                    continue;
+                const QString name = separator < 0 ? QString() : line.mid(separator).trimmed();
+                if (regionDimension >= 0)
+                    metadata.names.insert(qMakePair(regionDimension, id), name);
+            }
+        }
+    }
+
+    return metadata;
+}
+
+void addNetgenBoundaryMetadata(vtkUnstructuredGrid* grid,
+                               const NetgenBoundaryMetadata& metadata)
+{
+    if (!grid || metadata.facets.isEmpty())
+        return;
+
+    // [dimension, boundary id, point count, p0 ... p7]. Point ids are zero-based VTK ids.
+    auto facets = vtkSmartPointer<vtkIntArray>::New();
+    facets->SetName("NetgenBoundaryFacets");
+    facets->SetNumberOfComponents(3 + NG_SURFACE_ELEMENT_MAXPOINTS);
+    facets->SetNumberOfTuples(metadata.facets.size());
+    for (vtkIdType tuple = 0; tuple < metadata.facets.size(); ++tuple)
+    {
+        const NetgenBoundaryFacet& facet = metadata.facets.at(static_cast<int>(tuple));
+        facets->SetComponent(tuple, 0, facet.dimension);
+        facets->SetComponent(tuple, 1, facet.boundaryId);
+        facets->SetComponent(tuple, 2, facet.pointIds.size());
+        for (int component = 0; component < NG_SURFACE_ELEMENT_MAXPOINTS; ++component)
+        {
+            const int pointId = component < facet.pointIds.size()
+                ? facet.pointIds.at(component)
+                : -1;
+            facets->SetComponent(tuple, 3 + component, pointId);
+        }
+    }
+    grid->GetFieldData()->AddArray(facets);
+
+    auto names = vtkSmartPointer<vtkStringArray>::New();
+    names->SetName("NetgenBoundaryNames");
+    names->SetNumberOfComponents(3);
+    for (auto it = metadata.names.constBegin(); it != metadata.names.constEnd(); ++it)
+    {
+        names->InsertNextValue(QString::number(it.key().first).toStdString());
+        names->InsertNextValue(QString::number(it.key().second).toStdString());
+        names->InsertNextValue(it.value().toStdString());
+    }
+    grid->GetFieldData()->AddArray(names);
 }
 
 int regionCount(const QVector<int>& regions)
@@ -817,6 +1225,64 @@ vtkSmartPointer<vtkUnstructuredGrid> convertTet4ToHex8(vtkUnstructuredGrid* tetG
         return nullptr;
     }
 
+    // Preserve Netgen's native region metadata. Tet4 -> Hex8 splits native
+    // boundary edges and triangles, so add the generated midpoint/face-centre
+    // ids to their point sets for the child-edge/child-face mapping below.
+    if (tetGrid->GetFieldData())
+        hexGrid->GetFieldData()->DeepCopy(tetGrid->GetFieldData());
+    if (auto* facets = vtkIntArray::SafeDownCast(
+            hexGrid->GetFieldData()->GetArray("NetgenBoundaryFacets")))
+    {
+        for (vtkIdType tuple = 0; tuple < facets->GetNumberOfTuples(); ++tuple)
+        {
+            const int boundaryDimension = static_cast<int>(facets->GetComponent(tuple, 0));
+            const int pointCount = static_cast<int>(facets->GetComponent(tuple, 2));
+            if (boundaryDimension == 1 && pointCount == 2 &&
+                facets->GetNumberOfComponents() >= 6)
+            {
+                const vtkIdType a = static_cast<vtkIdType>(facets->GetComponent(tuple, 3));
+                const vtkIdType b = static_cast<vtkIdType>(facets->GetComponent(tuple, 4));
+                const EdgeKey edge = {std::min(a, b), std::max(a, b)};
+                const auto midpointIt = edgeMidpoints.find(edge);
+                if (midpointIt != edgeMidpoints.end())
+                {
+                    facets->SetComponent(tuple, 2, 3);
+                    facets->SetComponent(tuple, 5, midpointIt->second);
+                }
+                continue;
+            }
+
+            if (boundaryDimension != 2 || pointCount != 3 ||
+                facets->GetNumberOfComponents() < 10)
+                continue;
+
+            const vtkIdType a = static_cast<vtkIdType>(facets->GetComponent(tuple, 3));
+            const vtkIdType b = static_cast<vtkIdType>(facets->GetComponent(tuple, 4));
+            const vtkIdType c = static_cast<vtkIdType>(facets->GetComponent(tuple, 5));
+            const EdgeKey ab = {std::min(a, b), std::max(a, b)};
+            const EdgeKey bc = {std::min(b, c), std::max(b, c)};
+            const EdgeKey ca = {std::min(c, a), std::max(c, a)};
+            FaceKey abc = {a, b, c};
+            std::sort(abc.begin(), abc.end());
+
+            const auto abIt = edgeMidpoints.find(ab);
+            const auto bcIt = edgeMidpoints.find(bc);
+            const auto caIt = edgeMidpoints.find(ca);
+            const auto faceIt = faceCenters.find(abc);
+            if (abIt == edgeMidpoints.end() || bcIt == edgeMidpoints.end() ||
+                caIt == edgeMidpoints.end() || faceIt == faceCenters.end())
+            {
+                continue;
+            }
+
+            facets->SetComponent(tuple, 2, 7);
+            facets->SetComponent(tuple, 6, abIt->second);
+            facets->SetComponent(tuple, 7, bcIt->second);
+            facets->SetComponent(tuple, 8, caIt->second);
+            facets->SetComponent(tuple, 9, faceIt->second);
+        }
+    }
+
     addPointIdentityArrays(hexGrid);
     hexGrid->GetCellData()->AddArray(matype);
     hexGrid->GetCellData()->AddArray(layer);
@@ -913,6 +1379,298 @@ int nasNodeCount(int vtkType, int available)
     }
 }
 
+struct LocalRestrictionStats
+{
+    int appliedControlCount = 0;
+    int restrictedPointCount = 0;
+};
+
+struct ShapeCandidate
+{
+    TopoDS_Shape shape;
+    QVector3D center;
+    double characteristicLength = 0.0;
+};
+
+TopAbs_ShapeEnum shapeTypeForDimension(int dimension)
+{
+    if (dimension == 1)
+        return TopAbs_EDGE;
+    if (dimension == 2)
+        return TopAbs_FACE;
+    return TopAbs_SOLID;
+}
+
+bool shapeGeometryInfo(const TopoDS_Shape& shape, int dimension,
+                       QVector3D& center, double& characteristicLength)
+{
+    if (shape.IsNull())
+        return false;
+
+    GProp_GProps props;
+    if (dimension == 1)
+        BRepGProp::LinearProperties(shape, props);
+    else if (dimension == 2)
+        BRepGProp::SurfaceProperties(shape, props);
+    else
+        BRepGProp::VolumeProperties(shape, props);
+
+    const double measure = props.Mass();
+    if (!std::isfinite(measure) || measure <= 0.0)
+        return false;
+
+    const gp_Pnt p = props.CentreOfMass();
+    center = QVector3D(static_cast<float>(p.X()), static_cast<float>(p.Y()),
+                       static_cast<float>(p.Z()));
+    if (dimension == 1)
+        characteristicLength = measure;
+    else if (dimension == 2)
+        characteristicLength = std::sqrt(measure);
+    else
+        characteristicLength = std::cbrt(measure);
+    return std::isfinite(characteristicLength) && characteristicLength > 0.0;
+}
+
+QVector<ShapeCandidate> collectShapeCandidates(const TopoDS_Shape& topologyShape,
+                                               int dimension)
+{
+    QVector<ShapeCandidate> candidates;
+    if (topologyShape.IsNull())
+        return candidates;
+
+    TopTools_IndexedMapOfShape shapes;
+    TopExp::MapShapes(topologyShape, shapeTypeForDimension(dimension), shapes);
+    candidates.reserve(shapes.Extent());
+    for (Standard_Integer i = 1; i <= shapes.Extent(); ++i)
+    {
+        ShapeCandidate candidate;
+        candidate.shape = shapes(i);
+        if (shapeGeometryInfo(candidate.shape, dimension, candidate.center,
+                              candidate.characteristicLength))
+        {
+            candidates.push_back(candidate);
+        }
+    }
+    return candidates;
+}
+
+int bestCandidateIndex(const NetgenLocalSizeControl& control,
+                       const QVector<ShapeCandidate>& candidates,
+                       const QSet<int>& used)
+{
+    int bestIndex = -1;
+    double bestScore = std::numeric_limits<double>::infinity();
+    for (int i = 0; i < candidates.size(); ++i)
+    {
+        if (used.contains(i))
+            continue;
+        const ShapeCandidate& candidate = candidates.at(i);
+        const QVector3D delta = candidate.center - control.center;
+        const double scale = std::max(
+            1.0e-12, std::max(control.characteristicLength,
+                              candidate.characteristicLength));
+        const double distanceScore = static_cast<double>(delta.lengthSquared()) /
+                                     (scale * scale);
+        const double ratio = candidate.characteristicLength /
+                             std::max(1.0e-12, control.characteristicLength);
+        const double measureScore = std::abs(std::log(std::max(1.0e-12, ratio)));
+        const double score = distanceScore + 0.20 * measureScore;
+        if (score < bestScore)
+        {
+            bestScore = score;
+            bestIndex = i;
+        }
+    }
+
+    // Refuse clearly unrelated entities instead of silently refining the wrong
+    // part after topology changes.
+    return bestScore <= 6.0 ? bestIndex : -1;
+}
+
+void restrictPoint(Ng_Mesh* mesh, const gp_Pnt& point, double targetSize,
+                   LocalRestrictionStats& stats)
+{
+    double p[3] = {point.X(), point.Y(), point.Z()};
+    Ng_RestrictMeshSizePoint(mesh, p, targetSize);
+    ++stats.restrictedPointCount;
+}
+
+void restrictPoint(Ng_Mesh* mesh, const QVector3D& point, double targetSize,
+                   LocalRestrictionStats& stats)
+{
+    double p[3] = {static_cast<double>(point.x()), static_cast<double>(point.y()),
+                   static_cast<double>(point.z())};
+    Ng_RestrictMeshSizePoint(mesh, p, targetSize);
+    ++stats.restrictedPointCount;
+}
+
+void restrictEdge(Ng_Mesh* mesh, const TopoDS_Edge& edge, double targetSize,
+                  LocalRestrictionStats& stats)
+{
+    BRepAdaptor_Curve curve(edge);
+    const Standard_Real first = curve.FirstParameter();
+    const Standard_Real last = curve.LastParameter();
+
+    QVector3D center;
+    double length = 0.0;
+    if (!shapeGeometryInfo(edge, 1, center, length))
+        return;
+
+    const int segments = std::clamp(
+        static_cast<int>(std::ceil(length / std::max(targetSize * 0.75, 1.0e-12))),
+        2, 512);
+    for (int i = 0; i <= segments; ++i)
+    {
+        const double t = static_cast<double>(i) / segments;
+        const Standard_Real parameter = first + (last - first) * t;
+        restrictPoint(mesh, curve.Value(parameter), targetSize, stats);
+    }
+}
+
+void restrictFace(Ng_Mesh* mesh, const TopoDS_Face& face, double targetSize,
+                  double tolerance, LocalRestrictionStats& stats,
+                  bool includeBoundaryEdges = true)
+{
+    // Refine all trimming edges first, which is essential for the surface mesh.
+    if (includeBoundaryEdges)
+    {
+        TopTools_IndexedMapOfShape edges;
+        TopExp::MapShapes(face, TopAbs_EDGE, edges);
+        for (Standard_Integer i = 1; i <= edges.Extent(); ++i)
+            restrictEdge(mesh, TopoDS::Edge(edges(i)), targetSize, stats);
+    }
+
+    QVector3D center;
+    double characteristic = 0.0;
+    if (!shapeGeometryInfo(face, 2, center, characteristic))
+        return;
+    restrictPoint(mesh, center, targetSize, stats);
+
+    Standard_Real uMin = 0.0, uMax = 0.0, vMin = 0.0, vMax = 0.0;
+    BRepTools::UVBounds(face, uMin, uMax, vMin, vMax);
+    if (!std::isfinite(uMin) || !std::isfinite(uMax) ||
+        !std::isfinite(vMin) || !std::isfinite(vMax) ||
+        uMax <= uMin || vMax <= vMin)
+    {
+        return;
+    }
+
+    BRepAdaptor_Surface surface(face, Standard_True);
+    const int samples = std::clamp(
+        static_cast<int>(std::ceil(characteristic / std::max(targetSize, 1.0e-12))),
+        2, 32);
+    for (int iu = 0; iu <= samples; ++iu)
+    {
+        const double fu = (static_cast<double>(iu) + 0.5) / (samples + 1.0);
+        const Standard_Real u = uMin + (uMax - uMin) * fu;
+        for (int iv = 0; iv <= samples; ++iv)
+        {
+            const double fv = (static_cast<double>(iv) + 0.5) / (samples + 1.0);
+            const Standard_Real v = vMin + (vMax - vMin) * fv;
+            BRepClass_FaceClassifier classifier(face, gp_Pnt2d(u, v), tolerance);
+            const TopAbs_State state = classifier.State();
+            if (state == TopAbs_IN || state == TopAbs_ON)
+                restrictPoint(mesh, surface.Value(u, v), targetSize, stats);
+        }
+    }
+}
+
+void restrictSolid(Ng_Mesh* mesh, const TopoDS_Solid& solid, double targetSize,
+                   double tolerance, LocalRestrictionStats& stats)
+{
+    // A volume restriction must also refine its boundary surface, otherwise the
+    // later volume mesher cannot create small elements next to a coarse skin.
+    // Restrict each shared edge only once to keep large multi-face solids fast.
+    TopTools_IndexedMapOfShape boundaryEdges;
+    TopExp::MapShapes(solid, TopAbs_EDGE, boundaryEdges);
+    for (Standard_Integer i = 1; i <= boundaryEdges.Extent(); ++i)
+        restrictEdge(mesh, TopoDS::Edge(boundaryEdges(i)), targetSize, stats);
+
+    TopTools_IndexedMapOfShape boundaryFaces;
+    TopExp::MapShapes(solid, TopAbs_FACE, boundaryFaces);
+    for (Standard_Integer i = 1; i <= boundaryFaces.Extent(); ++i)
+        restrictFace(mesh, TopoDS::Face(boundaryFaces(i)), targetSize, tolerance, stats, false);
+
+    Bnd_Box box;
+    BRepBndLib::Add(solid, box);
+    if (box.IsVoid())
+        return;
+
+    Standard_Real xmin = 0.0, ymin = 0.0, zmin = 0.0;
+    Standard_Real xmax = 0.0, ymax = 0.0, zmax = 0.0;
+    box.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+    const double dx = std::max(0.0, xmax - xmin);
+    const double dy = std::max(0.0, ymax - ymin);
+    const double dz = std::max(0.0, zmax - zmin);
+    const double spacing = std::max(targetSize * 1.5, 1.0e-12);
+    const int nx = std::clamp(static_cast<int>(std::ceil(dx / spacing)), 1, 12);
+    const int ny = std::clamp(static_cast<int>(std::ceil(dy / spacing)), 1, 12);
+    const int nz = std::clamp(static_cast<int>(std::ceil(dz / spacing)), 1, 12);
+
+    BRepClass3d_SolidClassifier classifier(solid);
+    for (int ix = 0; ix < nx; ++ix)
+    {
+        const double x = xmin + dx * (ix + 0.5) / nx;
+        for (int iy = 0; iy < ny; ++iy)
+        {
+            const double y = ymin + dy * (iy + 0.5) / ny;
+            for (int iz = 0; iz < nz; ++iz)
+            {
+                const double z = zmin + dz * (iz + 0.5) / nz;
+                const gp_Pnt point(x, y, z);
+                classifier.Perform(point, tolerance);
+                const TopAbs_State state = classifier.State();
+                if (state == TopAbs_IN || state == TopAbs_ON)
+                    restrictPoint(mesh, point, targetSize, stats);
+            }
+        }
+    }
+}
+
+LocalRestrictionStats applyLocalSizeControls(Ng_Mesh* mesh,
+                                             const TopoDS_Shape& topologyShape,
+                                             const NetgenMeshingRequest& request)
+{
+    LocalRestrictionStats stats;
+    if (!mesh || topologyShape.IsNull())
+        return stats;
+
+    const double tolerance = std::max(request.tolerance, Precision::Confusion());
+    QVector<ShapeCandidate> candidates[4];
+    QSet<int> usedCandidates[4];
+    for (int dimension = 1; dimension <= 3; ++dimension)
+        candidates[dimension] = collectShapeCandidates(topologyShape, dimension);
+
+    for (const NetgenLocalSizeControl& control : request.localSizeControls)
+    {
+        if (control.dimension < 1 || control.dimension > 3 ||
+            !std::isfinite(control.targetSize) || control.targetSize <= 0.0 ||
+            control.targetSize >= request.lenMax * 0.999999)
+        {
+            continue;
+        }
+
+        const int candidateIndex = bestCandidateIndex(
+            control, candidates[control.dimension], usedCandidates[control.dimension]);
+        if (candidateIndex < 0)
+            continue;
+
+        const TopoDS_Shape& shape = candidates[control.dimension][candidateIndex].shape;
+        usedCandidates[control.dimension].insert(candidateIndex);
+        const int pointsBefore = stats.restrictedPointCount;
+        if (control.dimension == 1)
+            restrictEdge(mesh, TopoDS::Edge(shape), control.targetSize, stats);
+        else if (control.dimension == 2)
+            restrictFace(mesh, TopoDS::Face(shape), control.targetSize, tolerance, stats);
+        else
+            restrictSolid(mesh, TopoDS::Solid(shape), control.targetSize, tolerance, stats);
+
+        if (stats.restrictedPointCount > pointsBefore)
+            ++stats.appliedControlCount;
+    }
+    return stats;
+}
+
 } // namespace
 
 bool NetgenMeshGenerator::generate(const NetgenMeshingRequest& request, NetgenMeshingResult* result,
@@ -932,11 +1690,16 @@ bool NetgenMeshGenerator::generate(const NetgenMeshingRequest& request, NetgenMe
 
     ensureNetgenInitialized();
 
-    Ng_OCC_Geometry* geom = loadOccGeometry(request.inputGeometryPath, errMsg);
+    QTemporaryFile conformalBrep;
+    ConformalGeometryInfo conformalInfo;
+    if (!prepareConformalGeometry(request, conformalBrep, conformalInfo, errMsg))
+        return false;
+
+    Ng_OCC_Geometry* geom = loadOccGeometry(conformalInfo.geometryPath, errMsg);
     if (!geom)
     {
         if (errMsg && errMsg->isEmpty())
-            *errMsg = QStringLiteral("Failed to load OCC geometry: %1").arg(request.inputGeometryPath);
+            *errMsg = QStringLiteral("Failed to load OCC geometry: %1").arg(conformalInfo.geometryPath);
         return false;
     }
 
@@ -959,8 +1722,9 @@ bool NetgenMeshGenerator::generate(const NetgenMeshingRequest& request, NetgenMe
     };
 
     Ng_Meshing_Parameters mp;
-    mp.maxh = std::max(request.lenMin, request.lenMax * request.sizeFactor);
+    mp.maxh = std::max(request.lenMin, request.lenMax);
     mp.minh = std::max(0.0, request.lenMin);
+    mp.fineness = std::clamp(request.fineness, 0.0, 1.0);
     mp.second_order = request.elemType == kElemTypeHex8FromTet ? 0 : (request.elementOrder > 1 ? 1 : 0);
     mp.quad_dominated = request.elemType == 2 ? 1 : 0;
     mp.optsteps_2d = std::max(0, request.smoothing);
@@ -977,6 +1741,9 @@ bool NetgenMeshGenerator::generate(const NetgenMeshingRequest& request, NetgenMe
         cleanup();
         return false;
     }
+
+    const LocalRestrictionStats localRestrictionStats =
+        applyLocalSizeControls(mesh, conformalInfo.controlShape, request);
 
     ng = Ng_OCC_GenerateEdgeMesh(geom, mesh, &mp);
     if (ng != NG_OK)
@@ -1026,8 +1793,18 @@ bool NetgenMeshGenerator::generate(const NetgenMeshingRequest& request, NetgenMe
     const int sourceElementCount = request.dimension == 3 ? Ng_GetNE(mesh) : Ng_GetNSE(mesh);
     const QVector<int> elementRegions =
         readNetgenElementRegions(metadataMeshPath, request.dimension, sourceElementCount);
+    const NetgenBoundaryMetadata boundaryMetadata =
+        readNetgenBoundaryMetadata(metadataMeshPath, request.dimension);
 
     NetgenMeshingResult localResult;
+    localResult.sourceRegionCount = conformalInfo.sourceRegionCount;
+    localResult.conformalRegionCount = conformalInfo.processed
+        ? conformalInfo.outputRegionCount
+        : conformalInfo.sourceRegionCount;
+    localResult.sharedInterfaceCount = conformalInfo.sharedInterfaceCount;
+    localResult.conformalized = conformalInfo.processed;
+    localResult.appliedLocalControlCount = localRestrictionStats.appliedControlCount;
+    localResult.localRestrictionPointCount = localRestrictionStats.restrictedPointCount;
     localResult.pointCount = Ng_GetNP(mesh);
     localResult.surfaceElementCount = Ng_GetNSE(mesh);
     localResult.volumeElementCount = Ng_GetNE(mesh);
@@ -1044,6 +1821,7 @@ bool NetgenMeshGenerator::generate(const NetgenMeshingRequest& request, NetgenMe
         cleanup();
         return false;
     }
+    addNetgenBoundaryMetadata(localResult.grid, boundaryMetadata);
 
     if (!request.exportVol && !metadataMeshPath.isEmpty())
         QFile::remove(metadataMeshPath);

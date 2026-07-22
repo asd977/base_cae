@@ -85,8 +85,7 @@ void LinearForcePage::beforeLoad()
                      [this](bool on)
                      {
                          PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, on);
-                     },
-                     Qt::UniqueConnection);
+                     });
     ui->pickEnableCheckBox->setChecked(false);
     PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
     setupBatchGroupCombo();
@@ -126,7 +125,8 @@ void LinearForcePage::setupBatchGroupCombo()
     connect(ui->comboBoxDim, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &LinearForcePage::onDimChanged, Qt::UniqueConnection);
     auto* batchAddBtn = ui->btnBatchAdd;
     QObject::disconnect(batchAddBtn, nullptr, this, nullptr);
-    connect(batchAddBtn, &QPushButton::clicked, this, [this](){ onGroupChanged(ui->comboBoxGroup->currentIndex()); }, Qt::UniqueConnection);
+    connect(batchAddBtn, &QPushButton::clicked, this,
+            [this](){ onGroupChanged(ui->comboBoxGroup->currentIndex()); });
     if (auto* groupCombo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
     {
         QObject::disconnect(groupCombo, nullptr, this, nullptr);
@@ -139,9 +139,9 @@ void LinearForcePage::setupBatchGroupCombo()
                     if (set.key.dim == 1)
                         PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid, GridKind::Solid, toVtkKeys(set.edgeKeys));
                     
-                }, Qt::UniqueConnection);
+                });
         connect(groupCombo, &CustomComboBox::dropdownClosed, this,
-                [this](){ const int dim = ui->comboBoxDim->currentData().toInt(); PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Edge); }, Qt::UniqueConnection);
+                [this](){ const int dim = ui->comboBoxDim->currentData().toInt(); PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Edge); });
     }
     refreshGroupCombo();
 }

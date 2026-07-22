@@ -4,6 +4,8 @@
 #include <BasePage.h>
 #include <QWidget>
 
+class QComboBox;
+
 namespace Ui {
 class SolverSettingWidget;
 }
@@ -18,9 +20,13 @@ public:
 
     void beforeLoad() override;
     void beforeUnload() override;
+    QJsonObject saveJson() override;
+    void loadJson(const QJsonObject& obj) override;
 
     void setAnalysisCounts(int seepageCount, int damCount, int slopeCount,
                            int caveCount, int blockCount);
+    QString computeDevice() const;
+    void setComputeDevice(const QString& device);
 
 signals:
     void createSeepageRequested();
@@ -28,9 +34,11 @@ signals:
     void createSlopeRequested();
     void createCaveRequested();
     void createBlockRequested();
+    void computeDeviceChanged(const QString& device);
 
 private:
     Ui::SolverSettingWidget* ui;
+    QComboBox* m_computeDeviceCombo = nullptr;
 };
 
 #endif // SOLVERSETTINGWIDGET_H

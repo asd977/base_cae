@@ -945,13 +945,13 @@ void VisualizationWidget::applyUiTheme(const QString& themeName)
     }
     else if (theme == QStringLiteral("blue"))
     {
-        // Use a soft blue-grey canvas so it connects naturally with the dock
-        // chrome while preserving enough contrast for geometry and mesh edges.
-        background[0] = 238.0 / 255.0;
-        background[1] = 245.0 / 255.0;
-        background[2] = 249.0 / 255.0;
-        background2[0] = 248.0 / 255.0;
-        background2[1] = 251.0 / 255.0;
+        // Keep the canvas light, but give it enough blue to remain visually
+        // connected to the stronger engineering-blue chrome.
+        background[0] = 230.0 / 255.0;
+        background[1] = 241.0 / 255.0;
+        background[2] = 248.0 / 255.0;
+        background2[0] = 245.0 / 255.0;
+        background2[1] = 250.0 / 255.0;
         background2[2] = 253.0 / 255.0;
     }
 

@@ -1,4 +1,4 @@
-﻿#ifndef MESHFACECONTROLWIDGET_H
+#ifndef MESHFACECONTROLWIDGET_H
 #define MESHFACECONTROLWIDGET_H
 
 #include <BasePage.h>
@@ -38,9 +38,7 @@ class MeshFaceControlWidget : public BasePage
     struct FaceControlItem
     {
         QString faceIds;
-        double localSizeFactor = 1.0;
-        bool curvatureRefine = true;
-        int curvatureElementsPer2Pi = 20;
+        double maxSize = 1.0;
     };
 
     void setupUiState();

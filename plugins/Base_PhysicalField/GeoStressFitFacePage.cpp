@@ -152,8 +152,7 @@ void GeoStressFitFacePage::beforeLoad()
             [this]()
             {
                 onGroupComboChanged(ui->comboBoxGroup->currentIndex());
-            },
-            Qt::UniqueConnection);
+            });
 
     if (auto* groupCombo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
     {
@@ -171,15 +170,13 @@ void GeoStressFitFacePage::beforeLoad()
                         PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid, GridKind::Solid, toVtkKeys(set.edgeKeys));
                     else
                         PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid, GridKind::Solid, toVtkKeys(set.faceKeys));
-                },
-                Qt::UniqueConnection);
+                });
         connect(groupCombo, &CustomComboBox::dropdownClosed, this,
                 [this]()
                 {
                     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid,
                                                                   pickEdge() ? PickMode::Edge : PickMode::Face);
-                },
-                Qt::UniqueConnection);
+                });
     }
 
     // 3) 下拉框只做预览，不自动应用；由“添加”按钮触发

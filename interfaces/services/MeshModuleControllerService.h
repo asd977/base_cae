@@ -45,6 +45,13 @@ class vtkUnstructuredGrid;
 struct EdgeControlRule
 {
     QString edgeIds;
+
+    // Netgen-native local maximum element size on the selected edge.
+    // A non-positive value means that this rule came from an older project and
+    // should be converted from divisions when the edge length is available.
+    double maxSize = 0.0;
+
+    // Legacy Gmsh fields retained only for loading existing projects.
     int divisions = 10;
     double bias = 1.0;
 };
@@ -52,6 +59,11 @@ struct EdgeControlRule
 struct FaceControlRule
 {
     QString faceIds;
+
+    // Netgen-native local maximum element size on the selected face.
+    double maxSize = 0.0;
+
+    // Legacy Gmsh fields retained only for loading existing projects.
     double localSizeFactor = 1.0;
     bool curvatureRefine = true;
     int curvatureElementsPer2Pi = 20;
@@ -60,6 +72,11 @@ struct FaceControlRule
 struct VolumeControlRule
 {
     QString volumeIds;
+
+    // Netgen-native local maximum element size inside the selected volume.
+    double maxSize = 0.0;
+
+    // Legacy Gmsh field retained only for loading existing projects.
     double localSizeFactor = 1.0;
 };
 

@@ -23,14 +23,65 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QMessageBox>
+#include <QStringList>
 #include <QThread>
 #include <QUrl>
 
+#include <algorithm>
+#include <cmath>
+#include <set>
 #include <utility>
 
 namespace
 {
 constexpr int kElemTypeHex8FromTet = 4;
+
+std::set<int> parseEntityIdSet(const QString& text)
+{
+    std::set<int> ids;
+    const QStringList parts = text.split(QLatin1Char(','), Qt::SkipEmptyParts);
+    for (QString part : parts)
+    {
+        part = part.trimmed();
+        if (part.isEmpty())
+            continue;
+
+        const int dash = part.indexOf(QLatin1Char('-'));
+        if (dash > 0)
+        {
+            bool okBegin = false;
+            bool okEnd = false;
+            int begin = part.left(dash).trimmed().toInt(&okBegin);
+            int end = part.mid(dash + 1).trimmed().toInt(&okEnd);
+            if (!okBegin || !okEnd || begin <= 0 || end <= 0)
+                continue;
+            if (begin > end)
+                std::swap(begin, end);
+            for (int id = begin; id <= end; ++id)
+                ids.insert(id);
+        }
+        else
+        {
+            bool ok = false;
+            const int id = part.toInt(&ok);
+            if (ok && id > 0)
+                ids.insert(id);
+        }
+    }
+    return ids;
+}
+
+double entityCharacteristicLength(int dimension, double measure)
+{
+    if (!std::isfinite(measure) || measure <= 0.0)
+        return 0.0;
+    if (dimension == 1)
+        return measure;
+    if (dimension == 2)
+        return std::sqrt(measure);
+    return std::cbrt(measure);
+}
+
 }
 
 MeshGlobalWorker::MeshGlobalWorker(Params p, QObject* parent)
@@ -49,14 +100,38 @@ void MeshGlobalWorker::run()
     request.elemType = m_p.elemType;
     request.lenMin = m_p.lenMin;
     request.lenMax = m_p.lenMax;
-    request.sizeFactor = m_p.sizeFactor;
+    request.fineness = m_p.fineness;
     request.elementOrder = m_p.elementOrder;
     request.smoothing = m_p.smoothing;
+    request.localSizeControls = m_p.localSizeControls;
     request.fixShape = m_p.fixShape;
     request.tolerance = m_p.tolerance;
     request.exportVol = m_p.exportVol && m_p.elemType != kElemTypeHex8FromTet;
     request.exportVtk = m_p.exportVtk;
     request.exportNas = m_p.exportNas;
+
+    if (!m_p.localSizeControls.isEmpty())
+    {
+        emit log(QStringLiteral("应用局部加密：%1 个几何实体").arg(m_p.localSizeControls.size()));
+        if (m_p.legacyRuleCount > 0)
+        {
+            emit log(QStringLiteral(
+                "其中 %1 条旧版 Gmsh 规则已自动换算为 Netgen 局部最大尺寸。")
+                         .arg(m_p.legacyRuleCount));
+        }
+    }
+    if (m_p.skippedLocalControlCount > 0)
+    {
+        emit log(QStringLiteral("有 %1 个局部控制因实体信息无效或不会细化而跳过。")
+                     .arg(m_p.skippedLocalControlCount));
+    }
+    if (m_p.clampedLocalControlCount > 0)
+    {
+        emit log(QStringLiteral(
+                     "有 %1 个局部最大尺寸小于整体最小尺寸，实际按整体最小尺寸 %2 处理。")
+                     .arg(m_p.clampedLocalControlCount)
+                     .arg(m_p.lenMin, 0, 'g', 8));
+    }
 
     if (m_p.elemType == kElemTypeHex8FromTet)
         emit log(QStringLiteral("开始生成六面体网格..."));
@@ -69,6 +144,22 @@ void MeshGlobalWorker::run()
     {
         emit finishedFail(err.isEmpty() ? QStringLiteral("网格生成失败") : err);
         return;
+    }
+
+    if (result.appliedLocalControlCount > 0)
+    {
+        emit log(QStringLiteral("局部尺寸已应用：%1 个实体，写入 %2 个 Netgen 尺寸约束点")
+                     .arg(result.appliedLocalControlCount)
+                     .arg(result.localRestrictionPointCount));
+    }
+
+    if (result.conformalized)
+    {
+        emit log(QStringLiteral(
+                     "材料分区共形处理完成：原始区域 %1，处理后区域 %2，共享界面 %3；相邻区域共用节点。")
+                     .arg(result.sourceRegionCount)
+                     .arg(result.conformalRegionCount)
+                     .arg(result.sharedInterfaceCount));
     }
 
     if (m_p.elemType == kElemTypeHex8FromTet)
@@ -97,6 +188,21 @@ MeshGlobalMeshingWidget::MeshGlobalMeshingWidget(QWidget* parent)
 {
     Q_UNUSED(parent);
     ui->setupUi(this);
+
+    // Use Netgen's own global controls. The previous "size factor" was a
+    // Gmsh-style multiplier and made local rules difficult to predict.
+    ui->labelFactor->setText(tr("细化程度"));
+    ui->labelFactor->setToolTip(tr("Netgen fineness：0 表示偏粗，1 表示偏细。"));
+    ui->dsFactor->setDecimals(2);
+    ui->dsFactor->setRange(0.0, 1.0);
+    ui->dsFactor->setSingleStep(0.05);
+    ui->dsFactor->setValue(0.5);
+    ui->dsFactor->setToolTip(ui->labelFactor->toolTip());
+    ui->labelMin->setToolTip(
+        tr("Netgen 的全局尺寸下限；局部最大尺寸小于该值时会按此值处理。"));
+    ui->dsMin->setToolTip(ui->labelMin->toolTip());
+    ui->labelMax->setToolTip(tr("未设置局部控制区域所使用的全局最大尺寸。"));
+    ui->dsMax->setToolTip(ui->labelMax->toolTip());
 
     initCombos();
 
@@ -142,7 +248,7 @@ void MeshGlobalMeshingWidget::initCombos()
 
     ui->dsMin->setValue(0.5);
     ui->dsMax->setValue(5.0);
-    ui->dsFactor->setValue(1.0);
+    ui->dsFactor->setValue(0.5);
     ui->spOrder->setValue(1);
     ui->spSmooth->setValue(5);
     ui->chkFix->setChecked(true);
@@ -199,7 +305,7 @@ Params MeshGlobalMeshingWidget::collectParams() const
     p.elemType = ui->cmbElemType->currentData().toInt();
     p.lenMin = ui->dsMin->value();
     p.lenMax = ui->dsMax->value();
-    p.sizeFactor = ui->dsFactor->value();
+    p.fineness = ui->dsFactor->value();
     p.elementOrder = ui->spOrder->value();
     p.algorithm = ui->cmbAlgo->currentData().toInt();
     p.smoothing = ui->spSmooth->value();
@@ -255,13 +361,110 @@ void MeshGlobalMeshingWidget::onGenerate()
 
     if (auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>())
     {
-        const int localRuleCount = meshService->edgeControlRules().size() +
-                                   meshService->faceControlRules().size() +
-                                   meshService->volumeControlRules().size();
-        if (localRuleCount > 0)
+        const QVector<EdgeControlRule> edgeRules = meshService->edgeControlRules();
+        const QVector<FaceControlRule> faceRules = meshService->faceControlRules();
+        const QVector<VolumeControlRule> volumeRules = meshService->volumeControlRules();
+
+        auto appendControl = [&](int dimension, int entityId, double measure, double targetSize)
         {
-            appendLog(QStringLiteral(
-                "当前网格算法仅使用整体划分参数，已有的局部控制规则暂未应用。"));
+            QVector3D center;
+            if (!preService->entityCenter(dimension, entityId, center) ||
+                !std::isfinite(measure) || measure <= 0.0 ||
+                !std::isfinite(targetSize) || targetSize <= 0.0)
+            {
+                ++p.skippedLocalControlCount;
+                return;
+            }
+
+            // A restriction larger than the global maximum cannot refine anything.
+            if (targetSize >= p.lenMax * 0.999999)
+            {
+                ++p.skippedLocalControlCount;
+                return;
+            }
+
+            NetgenLocalSizeControl control;
+            control.dimension = dimension;
+            control.entityId = entityId;
+            control.center = center;
+            control.characteristicLength = entityCharacteristicLength(dimension, measure);
+            if (targetSize < p.lenMin)
+                ++p.clampedLocalControlCount;
+            control.targetSize = std::max(p.lenMin, targetSize);
+            p.localSizeControls.push_back(control);
+        };
+
+        for (const EdgeControlRule& rule : edgeRules)
+        {
+            for (int entityId : parseEntityIdSet(rule.edgeIds))
+            {
+                double length = 0.0;
+                if (!preService->entityMeasure(1, entityId, length) || length <= 0.0)
+                {
+                    ++p.skippedLocalControlCount;
+                    continue;
+                }
+
+                double target = rule.maxSize;
+                if (target <= 0.0)
+                {
+                    target = length / std::max(1, rule.divisions);
+                    ++p.legacyRuleCount;
+                }
+                appendControl(1, entityId, length, target);
+            }
+        }
+
+        for (const FaceControlRule& rule : faceRules)
+        {
+            for (int entityId : parseEntityIdSet(rule.faceIds))
+            {
+                double area = 0.0;
+                if (!preService->entityMeasure(2, entityId, area) || area <= 0.0)
+                {
+                    ++p.skippedLocalControlCount;
+                    continue;
+                }
+
+                double target = rule.maxSize;
+                if (target <= 0.0)
+                {
+                    target = p.lenMax * rule.localSizeFactor;
+                    ++p.legacyRuleCount;
+                }
+                appendControl(2, entityId, area, target);
+            }
+        }
+
+        for (const VolumeControlRule& rule : volumeRules)
+        {
+            for (int entityId : parseEntityIdSet(rule.volumeIds))
+            {
+                double volume = 0.0;
+                if (!preService->entityMeasure(3, entityId, volume) || volume <= 0.0)
+                {
+                    ++p.skippedLocalControlCount;
+                    continue;
+                }
+
+                double target = rule.maxSize;
+                if (target <= 0.0)
+                {
+                    target = p.lenMax * rule.localSizeFactor;
+                    ++p.legacyRuleCount;
+                }
+                appendControl(3, entityId, volume, target);
+            }
+        }
+
+        const int configuredRules = edgeRules.size() + faceRules.size() + volumeRules.size();
+        if (configuredRules > 0)
+        {
+            appendLog(QStringLiteral("读取 Netgen 局部尺寸：边 %1，面 %2，体 %3；有效实体 %4")
+                          .arg(edgeRules.size())
+                          .arg(faceRules.size())
+                          .arg(volumeRules.size())
+                          .arg(p.localSizeControls.size()));
         }
     }
 

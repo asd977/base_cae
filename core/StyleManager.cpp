@@ -70,18 +70,18 @@ QPalette paletteForTheme(const QString& themeName, const QStyle* style)
     }
     else if (themeName == QStringLiteral("blue"))
     {
-        // Classic engineering-blue: softly tinted work surfaces, blue-grey chrome,
-        // clear blue focus/selection and enough contrast for native controls.
+        // Classic engineering-blue: visibly blue-tinted work surfaces and chrome,
+        // with a slightly stronger accent while keeping native controls readable.
         setPaletteColors(palette,
-                         QColor(QStringLiteral("#dfe9f1")),
+                         QColor(QStringLiteral("#d3e4ef")),
                          QColor(QStringLiteral("#1b3549")),
-                         QColor(QStringLiteral("#f7fafc")),
-                         QColor(QStringLiteral("#eef4f8")),
-                         QColor(QStringLiteral("#edf4f8")),
+                         QColor(QStringLiteral("#f3f8fb")),
+                         QColor(QStringLiteral("#e9f2f8")),
+                         QColor(QStringLiteral("#e7f1f7")),
                          QColor(QStringLiteral("#fbfdfe")),
-                         QColor(QStringLiteral("#c7d7e2")),
-                         QColor(QStringLiteral("#829fb5")),
-                         QColor(QStringLiteral("#2b70a6")),
+                         QColor(QStringLiteral("#bdd1df")),
+                         QColor(QStringLiteral("#7399b5")),
+                         QColor(QStringLiteral("#2878b0")),
                          QColor(QStringLiteral("#ffffff")),
                          QColor(QStringLiteral("#8999a6")),
                          QColor(QStringLiteral("#7e92a2")),

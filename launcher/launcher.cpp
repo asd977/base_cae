@@ -75,13 +75,13 @@ class NeutralCheckStyle final : public QProxyStyle
         }
         else if (theme == QStringLiteral("blue"))
         {
-            borderColor = !enabled   ? QColor(QStringLiteral("#b8c7d2"))
-                          : hovered ? QColor(QStringLiteral("#4f82a7"))
-                                    : QColor(QStringLiteral("#7f9db3"));
-            fillColor = !enabled   ? QColor(QStringLiteral("#edf2f5"))
-                        : pressed ? QColor(QStringLiteral("#dfeaf2"))
+            borderColor = !enabled   ? QColor(QStringLiteral("#afc4d2"))
+                          : hovered ? QColor(QStringLiteral("#3f82b2"))
+                                    : QColor(QStringLiteral("#739bb7"));
+            fillColor = !enabled   ? QColor(QStringLiteral("#e8f1f6"))
+                        : pressed ? QColor(QStringLiteral("#d2e5f2"))
                                   : QColor(QStringLiteral("#ffffff"));
-            markColor = enabled ? QColor(QStringLiteral("#2b70a6"))
+            markColor = enabled ? QColor(QStringLiteral("#2878b0"))
                                 : QColor(QStringLiteral("#9aaab6"));
         }
         else

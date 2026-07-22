@@ -2,8 +2,9 @@
 
 #include <BasePage.h>
 
+#include "NetgenMeshGenerator.h"
+
 #include <QString>
-#include <QThread>
 #include <QWidget>
 
 class QThread;
@@ -20,7 +21,7 @@ struct Params
     int elemType = 3;
     double lenMin = 0.5;
     double lenMax = 5.0;
-    double sizeFactor = 1.0;
+    double fineness = 0.5;
     int elementOrder = 1;
     int algorithm = 1;
     int smoothing = 5;
@@ -29,6 +30,11 @@ struct Params
     bool exportVol = true;
     bool exportVtk = true;
     bool exportNas = true;
+
+    QVector<NetgenLocalSizeControl> localSizeControls;
+    int legacyRuleCount = 0;
+    int skippedLocalControlCount = 0;
+    int clampedLocalControlCount = 0;
 };
 
 class MeshGlobalWorker : public QObject

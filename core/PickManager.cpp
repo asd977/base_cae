@@ -663,6 +663,31 @@ void PickManager::updateStructure()
     m_lineProp = m_visual ? m_visual->getProp("mesh.imported.line") : nullptr;
     m_solidPickDataSet = dataSetFromProp(m_solidProp);
     m_linePickDataSet = dataSetFromProp(m_lineProp);
+
+    // 只允许拾取当前网格 actor。Netgen 网格导入后场景中可能同时保留几何、
+    // 旧网格或辅助 actor；不限制 PickList 时 vtkCellPicker 可能先命中其他 prop，
+    // 随后因 prop 不属于当前网格而被 pickAt() 丢弃，表现为“开启点选没有效果”。
+    if (m_cellPicker)
+    {
+        m_cellPicker->InitializePickList();
+        bool hasPickableGrid = false;
+        if (m_solidProp)
+        {
+            m_cellPicker->AddPickList(m_solidProp);
+            hasPickableGrid = true;
+        }
+        if (m_lineProp)
+        {
+            m_cellPicker->AddPickList(m_lineProp);
+            hasPickableGrid = true;
+        }
+
+        if (hasPickableGrid)
+            m_cellPicker->PickFromListOn();
+        else
+            m_cellPicker->PickFromListOff();
+    }
+
     s_localCellIndexCaches.clear();
     restoreAllColorHighlights();
 
@@ -1037,6 +1062,11 @@ void PickManager::resetProjectState()
     m_lineProp = nullptr;
     m_solidPickDataSet = nullptr;
     m_linePickDataSet = nullptr;
+    if (m_cellPicker)
+    {
+        m_cellPicker->InitializePickList();
+        m_cellPicker->PickFromListOff();
+    }
     m_solidBoundaryCellsByFaceKey.clear();
     m_solidCanonicalEdgeByPointPair.clear();
     m_lineCanonicalEdgeByPointPair.clear();
@@ -3381,6 +3411,14 @@ void PickManager::setBoxSelectEnabled(const QString& domain, const QString& uuid
 void PickManager::setClickPickEnabled(const QString& domain, const QString& uuid, bool enabled)
 {
     m_clickPickEnabledByDomainUuid[domain][uuid] = enabled;
+
+    // 页面可能在网格重新导入后仍处于激活状态，但交互观察器已经被其他页面拆除。
+    // 用户显式开启点选时，确保当前节点拾取链路重新安装。
+    if (enabled && domain == m_currentDomain && uuid == m_currentUUid &&
+        (!m_leftPressTag || !m_leftReleaseTag || !m_mouseMoveTag))
+    {
+        setupPicking();
+    }
 }
 
 bool PickManager::isBoxSelectEnabledForActive() const

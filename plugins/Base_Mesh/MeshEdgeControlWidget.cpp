@@ -6,10 +6,12 @@
 #include <services/PreProcessingService.h>
 
 #include <QColor>
+#include <QDoubleSpinBox>
 #include <QMessageBox>
 #include <QSet>
 #include <QTableWidgetItem>
 #include <algorithm>
+#include <cmath>
 
 #include "ui_MeshEdgeControlWidget.h"
 
@@ -66,6 +68,26 @@ MeshEdgeControlWidget::MeshEdgeControlWidget(QWidget* parent)
       m_highlightPropId("mesh.edge.control.highlight")
 {
     ui->setupUi(this);
+
+    // The old page exposed Gmsh transfinite-curve parameters (divisions/bias).
+    // Netgen uses a local maximum mesh size instead. Reuse the existing double
+    // spin box and remove the Gmsh-only division control.
+    ui->labelDivisions->hide();
+    ui->spinDivisions->hide();
+    ui->gridLayout->removeWidget(ui->labelBias);
+    ui->gridLayout->removeWidget(ui->spinBias);
+    ui->labelBias->setText(tr("局部最大尺寸"));
+    ui->labelBias->setToolTip(tr(
+        "限制所选边附近单元的最大尺寸。数值越小，网格越密；实际值不小于整体划分中的最小尺寸。"));
+    ui->spinBias->setDecimals(8);
+    ui->spinBias->setRange(1.0e-8, 1.0e12);
+    ui->spinBias->setSingleStep(0.1);
+    ui->spinBias->setValue(1.0);
+    ui->spinBias->setKeyboardTracking(false);
+    ui->spinBias->setToolTip(ui->labelBias->toolTip());
+    ui->gridLayout->addWidget(ui->labelBias, 4, 0);
+    ui->gridLayout->addWidget(ui->spinBias, 4, 1);
+
     setupUiState();
 
     connect(ui->btnAdd, &QPushButton::clicked, this, &MeshEdgeControlWidget::onAddControl);
@@ -73,8 +95,6 @@ MeshEdgeControlWidget::MeshEdgeControlWidget(QWidget* parent)
     connect(ui->tableControls, &QTableWidget::itemSelectionChanged, this,
             &MeshEdgeControlWidget::onSelectionChanged);
     connect(ui->editEdgeIds, &QLineEdit::textChanged, this,
-            &MeshEdgeControlWidget::onParameterEdited);
-    connect(ui->spinDivisions, qOverload<int>(&QSpinBox::valueChanged), this,
             &MeshEdgeControlWidget::onParameterEdited);
     connect(ui->spinBias, qOverload<double>(&QDoubleSpinBox::valueChanged), this,
             &MeshEdgeControlWidget::onParameterEdited);
@@ -147,7 +167,6 @@ void MeshEdgeControlWidget::onDeleteControl()
 void MeshEdgeControlWidget::onResetForm()
 {
     ui->editEdgeIds->clear();
-    ui->spinDivisions->setValue(10);
     ui->spinBias->setValue(1.0);
     ui->tableControls->clearSelection();
     clearHighlight();
@@ -244,6 +263,11 @@ bool MeshEdgeControlWidget::validateInput(QString& err, int ignoreRow) const
     QSet<int> currentIds;
     if (!parseEntityIds(ui->editEdgeIds->text().trimmed(), currentIds, err))
         return false;
+    if (!std::isfinite(ui->spinBias->value()) || ui->spinBias->value() <= 0.0)
+    {
+        err = tr("局部最大尺寸必须大于 0。");
+        return false;
+    }
     for (int i = 0; i < m_items.size(); ++i)
     {
         if (i == ignoreRow)
@@ -272,19 +296,17 @@ MeshEdgeControlWidget::EdgeControlItem MeshEdgeControlWidget::collectFormData() 
 {
     EdgeControlItem i;
     i.edgeIds = ui->editEdgeIds->text().trimmed();
-    i.divisions = ui->spinDivisions->value();
-    i.bias = ui->spinBias->value();
+    i.maxSize = ui->spinBias->value();
     return i;
 }
 void MeshEdgeControlWidget::fillFormData(const EdgeControlItem& i)
 {
     ui->editEdgeIds->setText(i.edgeIds);
-    ui->spinDivisions->setValue(i.divisions);
-    ui->spinBias->setValue(i.bias);
+    ui->spinBias->setValue(i.maxSize);
 }
 void MeshEdgeControlWidget::appendOrUpdateTableRow(int row, const EdgeControlItem& i)
 {
-    const QString summary = tr("分段:%1 偏置:%2").arg(i.divisions).arg(i.bias, 0, 'f', 2);
+    const QString summary = tr("最大尺寸 %1").arg(i.maxSize, 0, 'g', 8);
     if (row < ui->tableControls->rowCount())
     {
         ui->tableControls->item(row, 0)->setText(i.edgeIds);
@@ -338,8 +360,7 @@ void MeshEdgeControlWidget::syncRulesToService()
             continue;
         EdgeControlRule r;
         r.edgeIds = it.edgeIds;
-        r.divisions = it.divisions;
-        r.bias = it.bias;
+        r.maxSize = it.maxSize;
         rules.push_back(r);
     }
     svc->setEdgeControlRules(rules);
@@ -357,8 +378,7 @@ void MeshEdgeControlWidget::loadRulesFromService()
     {
         EdgeControlItem i;
         i.edgeIds = r.edgeIds;
-        i.divisions = r.divisions;
-        i.bias = r.bias;
+        i.maxSize = r.maxSize > 0.0 ? r.maxSize : 1.0;
         m_items.push_back(i);
         appendOrUpdateTableRow(ui->tableControls->rowCount(), i);
     }

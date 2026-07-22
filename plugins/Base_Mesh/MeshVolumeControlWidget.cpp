@@ -10,6 +10,7 @@
 #include <QSet>
 #include <QTableWidgetItem>
 #include <algorithm>
+#include <cmath>
 
 #include "ui_MeshVolumeControlWidget.h"
 
@@ -66,6 +67,16 @@ MeshVolumeControlWidget::MeshVolumeControlWidget(QWidget* parent)
       m_highlightPropId("mesh.volume.control.highlight")
 {
     ui->setupUi(this);
+
+    ui->labelMinSize->setText(tr("局部最大尺寸"));
+    ui->labelMinSize->setToolTip(tr("限制所选体区域内单元的最大尺寸。数值越小，网格越密；实际值不小于整体划分中的最小尺寸。"));
+    ui->spinLocalSizeFactor->setDecimals(8);
+    ui->spinLocalSizeFactor->setRange(1.0e-8, 1.0e12);
+    ui->spinLocalSizeFactor->setSingleStep(0.1);
+    ui->spinLocalSizeFactor->setValue(1.0);
+    ui->spinLocalSizeFactor->setKeyboardTracking(false);
+    ui->spinLocalSizeFactor->setToolTip(ui->labelMinSize->toolTip());
+
     setupUiState();
 
     connect(ui->btnAdd, &QPushButton::clicked, this, &MeshVolumeControlWidget::onAddControl);
@@ -223,7 +234,7 @@ void MeshVolumeControlWidget::onAppendSelectedEntity()
 void MeshVolumeControlWidget::setupUiState()
 {
     ui->tableControls->setColumnCount(2);
-    ui->tableControls->setHorizontalHeaderLabels({tr("体 ID"), tr("尺寸因子")});
+    ui->tableControls->setHorizontalHeaderLabels({tr("体 ID"), tr("最大尺寸")});
     ui->tableControls->horizontalHeader()->setStretchLastSection(true);
     ui->tableControls->setSelectionBehavior(QAbstractItemView::SelectRows);
     ui->tableControls->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -241,6 +252,12 @@ bool MeshVolumeControlWidget::validateInput(QString& err, int ignoreRow) const
     QSet<int> currentIds;
     if (!parseEntityIds(ui->editVolumeIds->text().trimmed(), currentIds, err))
         return false;
+    if (!std::isfinite(ui->spinLocalSizeFactor->value()) ||
+        ui->spinLocalSizeFactor->value() <= 0.0)
+    {
+        err = tr("局部最大尺寸必须大于 0。");
+        return false;
+    }
     for (int i = 0; i < m_items.size(); ++i)
     {
         if (i == ignoreRow)
@@ -269,17 +286,17 @@ MeshVolumeControlWidget::VolumeControlItem MeshVolumeControlWidget::collectFormD
 {
     VolumeControlItem i;
     i.volumeIds = ui->editVolumeIds->text().trimmed();
-    i.localSizeFactor = ui->spinLocalSizeFactor->value();
+    i.maxSize = ui->spinLocalSizeFactor->value();
     return i;
 }
 void MeshVolumeControlWidget::fillFormData(const VolumeControlItem& i)
 {
     ui->editVolumeIds->setText(i.volumeIds);
-    ui->spinLocalSizeFactor->setValue(i.localSizeFactor);
+    ui->spinLocalSizeFactor->setValue(i.maxSize);
 }
 void MeshVolumeControlWidget::appendOrUpdateTableRow(int row, const VolumeControlItem& i)
 {
-    const QString factor = QString::number(i.localSizeFactor, 'f', 2);
+    const QString factor = QString::number(i.maxSize, 'g', 8);
     if (row < ui->tableControls->rowCount())
     {
         ui->tableControls->item(row, 0)->setText(i.volumeIds);
@@ -332,7 +349,7 @@ void MeshVolumeControlWidget::syncRulesToService()
             continue;
         VolumeControlRule r;
         r.volumeIds = it.volumeIds;
-        r.localSizeFactor = it.localSizeFactor;
+        r.maxSize = it.maxSize;
         rules.push_back(r);
     }
     svc->setVolumeControlRules(rules);
@@ -350,7 +367,7 @@ void MeshVolumeControlWidget::loadRulesFromService()
     {
         VolumeControlItem i;
         i.volumeIds = r.volumeIds;
-        i.localSizeFactor = r.localSizeFactor;
+        i.maxSize = r.maxSize > 0.0 ? r.maxSize : 1.0;
         m_items.push_back(i);
         appendOrUpdateTableRow(ui->tableControls->rowCount(), i);
     }

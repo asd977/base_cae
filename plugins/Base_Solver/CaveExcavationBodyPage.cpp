@@ -21,6 +21,7 @@
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QTimer>
 
 #include "ui_CaveExcavationBodyPage.h"
@@ -51,6 +52,9 @@ CaveExcavationBodyPage::CaveExcavationBodyPage(QWidget* parent)
     m_groupPreviewTimer = new QTimer(this);
     m_groupPreviewTimer->setSingleShot(true);
     m_groupPreviewTimer->setInterval(45);
+
+    connect(ui->excavationLayerSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, &CaveExcavationBodyPage::excavationLayerChanged);
 
     connect(m_groupPreviewTimer, &QTimer::timeout, this, [this]()
     {
@@ -132,6 +136,7 @@ QJsonObject CaveExcavationBodyPage::saveJson()
         selectedGroupsArr.append(g);
 
     obj["selected_groups"] = selectedGroupsArr;
+    obj["excavation_layer"] = excavationLayer();
 
     // selected_groups 只保存分组编号；新版优先对应 Physical 分组，旧工程可回退到 LAYER。
     // face_solid / edge_solid 保留为空数组，避免旧逻辑误把高亮面当成业务数据。
@@ -144,6 +149,11 @@ QJsonObject CaveExcavationBodyPage::saveJson()
 void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
 {
     setupGroupCombo();
+
+    // 旧工程没有 excavation_layer。调用方会先按原树顺序设置兼容值，
+    // 因此这里只在字段实际存在时覆盖当前值。
+    if (obj.contains(QStringLiteral("excavation_layer")))
+        setExcavationLayer(obj.value(QStringLiteral("excavation_layer")).toInt(-1));
 
     QSet<DomainKey> domains;
 
@@ -166,6 +176,20 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
     refreshSelectedGroupList();
     refreshGroupComboMarks();
     updateGroupDomainHighlight(0);
+}
+
+int CaveExcavationBodyPage::excavationLayer() const
+{
+    return ui->excavationLayerSpinBox->value();
+}
+
+void CaveExcavationBodyPage::setExcavationLayer(int layer)
+{
+    if (layer >= 0)
+        layer = -1;
+    ui->excavationLayerSpinBox->setValue(
+        qBound(ui->excavationLayerSpinBox->minimum(), layer,
+               ui->excavationLayerSpinBox->maximum()));
 }
 
 QVector<int> CaveExcavationBodyPage::selectedElementIds()
@@ -654,7 +678,8 @@ int CaveExcavationBodyPage::layerDomainDim() const
 PickMode CaveExcavationBodyPage::currentPickMode() const
 {
     // 洞室开挖体选择本质是“分组选择”。
-    // 业务数据保存区域分组编号；新版优先使用 Physical 分组，并过滤杆/线单元。
+    // 业务数据保存区域分组编号；优先使用 Physical/Netgen REGION 分组，
+    // 并过滤杆/线单元。
     return PickMode::Domain;
 }
 
@@ -693,6 +718,21 @@ QString CaveExcavationBodyPage::selectionGroupCategory() const
             continue;
         if (!meshSvc->cellIdsOfTag(set.key).isEmpty())
             return QStringLiteral("Physical");
+    }
+
+    // Netgen does not carry Gmsh Physical volumes into its generated VTK.
+    // The generator records the originating conformal geometry part in
+    // src_part, which MeshModuleController exposes as REGION. Use it before
+    // LAYER: Netgen initializes LAYER to 1 for every cell, so LAYER would make
+    // the excavation page offer only the whole model.
+    for (const MeshTagSet& set : sets)
+    {
+        if (set.key.category.compare(QStringLiteral("REGION"), Qt::CaseInsensitive) != 0)
+            continue;
+        if (set.key.dim != targetDim || set.key.id <= 0)
+            continue;
+        if (!meshSvc->cellIdsOfTag(set.key).isEmpty())
+            return QStringLiteral("REGION");
     }
 
     // 兼容旧工程：没有 Physical 分组时，仍允许使用原来的 LAYER 分组。

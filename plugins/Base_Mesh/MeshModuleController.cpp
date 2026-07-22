@@ -31,6 +31,7 @@
 #include <vtkDataSet.h>
 #include <vtkDataSetSurfaceFilter.h>
 #include <vtkExtractCells.h>
+#include <vtkFieldData.h>
 #include <vtkIdList.h>
 #include <vtkIdTypeArray.h>
 #include <vtkIntArray.h>
@@ -44,6 +45,7 @@
 #include <vtkProperty.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkUnstructuredGridReader.h>
+#include <vtkStringArray.h>
 
 #include <QByteArray>
 #include <QColor>
@@ -69,7 +71,9 @@
 #include <cmath>
 #include <functional>
 #include <limits>
+#include <map>
 #include <memory>
+#include <vector>
 
 
 #ifdef Q_OS_WIN
@@ -2125,7 +2129,6 @@ static void meshDisplayApplyGlobalState(vtkUnstructuredGrid* fullGrid,
 
 } // namespace
 #include <QCoreApplication>
-#include <vtkStringArray.h>
 
 // === 这些头文件你后面真正实现时再加 ===
 // #include "MeshImportGridWidget.h"
@@ -2234,6 +2237,8 @@ bool MeshModuleController::saveProject()
         {
             QJsonObject obj;
             obj["edge_ids"] = rule.edgeIds;
+            obj["max_size"] = rule.maxSize;
+            // Keep the legacy values so old builds can still open the project.
             obj["divisions"] = rule.divisions;
             obj["bias"] = rule.bias;
             arr.append(obj);
@@ -2250,6 +2255,7 @@ bool MeshModuleController::saveProject()
         {
             QJsonObject obj;
             obj["face_ids"] = rule.faceIds;
+            obj["max_size"] = rule.maxSize;
             obj["local_size_factor"] = rule.localSizeFactor;
             obj["curvature_refine"] = rule.curvatureRefine;
             obj["curvature_per_2pi"] = rule.curvatureElementsPer2Pi;
@@ -2267,6 +2273,7 @@ bool MeshModuleController::saveProject()
         {
             QJsonObject obj;
             obj["volume_ids"] = rule.volumeIds;
+            obj["max_size"] = rule.maxSize;
             obj["local_size_factor"] = rule.localSizeFactor;
             arr.append(obj);
         }
@@ -2478,6 +2485,7 @@ bool MeshModuleController::loadProject()
 
         EdgeControlRule rule;
         rule.edgeIds = obj.value("edge_ids").toString();
+        rule.maxSize = obj.value("max_size").toDouble(0.0);
         rule.divisions = obj.value("divisions").toInt(10);
         rule.bias = obj.value("bias").toDouble(1.0);
 
@@ -2492,6 +2500,7 @@ bool MeshModuleController::loadProject()
 
         FaceControlRule rule;
         rule.faceIds = obj.value("face_ids").toString();
+        rule.maxSize = obj.value("max_size").toDouble(0.0);
         rule.localSizeFactor = obj.value("local_size_factor").toDouble(1.0);
         rule.curvatureRefine = obj.value("curvature_refine").toBool(true);
         rule.curvatureElementsPer2Pi = obj.value("curvature_per_2pi").toInt(20);
@@ -2507,6 +2516,7 @@ bool MeshModuleController::loadProject()
 
         VolumeControlRule rule;
         rule.volumeIds = obj.value("volume_ids").toString();
+        rule.maxSize = obj.value("max_size").toDouble(0.0);
         rule.localSizeFactor = obj.value("local_size_factor").toDouble(1.0);
 
         m_volumeRules.push_back(rule);
@@ -2734,7 +2744,12 @@ QVector<MeshTagSet> MeshModuleController::boundaryTagSets(int dimFilter) const
     for (auto it = map.tagSets.constBegin(); it != map.tagSets.constEnd(); ++it)
     {
         MeshTagSet set = it.value();
-        if (set.key.category != QStringLiteral("Physical"))
+        const bool isPhysical =
+            set.key.category.compare(QStringLiteral("Physical"), Qt::CaseInsensitive) == 0;
+        const bool isNetgenBoundary =
+            set.key.category.compare(QStringLiteral("NetgenBoundary"),
+                                     Qt::CaseInsensitive) == 0;
+        if (!isPhysical && !isNetgenBoundary)
             continue;
         if (set.key.dim < 0 || set.key.dim >= map.meshDim)
             continue;
@@ -2792,7 +2807,9 @@ QString MeshModuleController::displayTextOfTag(const MeshTagKey& key) const
     if (map.tagSets.contains(key))
     {
         const QString name = normalizePhysicalUiName(key.dim, key.id, map.tagSets.value(key).name);
-        if (key.category == QStringLiteral("Physical"))
+        if (key.category == QStringLiteral("Physical") ||
+            key.category.compare(QStringLiteral("NetgenBoundary"),
+                                 Qt::CaseInsensitive) == 0)
             return name;
         return QStringLiteral("%1：%2").arg(key.category, name);
     }
@@ -3191,6 +3208,12 @@ bool MeshModuleController::importGeneratedNetgenMesh(const QString& vtkPath, QSt
     m_importedGrid = grid;
     m_hasGrid = true;
     m_sourceFileName = vtkPath;
+
+    // A generated Netgen VTK is a new mesh, not a reload of the previous
+    // Gmsh/IIIN mesh. Keeping the old map here left stale Physical ids,
+    // boundary points and cell ids behind, so UI combo boxes targeted data
+    // from the preceding mesh.
+    MeshGridIO::instance().setMeshMap(MshPickMap{});
     {
         vtkSmartPointer<vtkUnstructuredGrid> tmpLine;
         vtkSmartPointer<vtkUnstructuredGrid> tmpNonLine;
@@ -4375,6 +4398,256 @@ vtkSmartPointer<vtkActor> MeshModuleController::createLineActor(vtkUnstructuredG
     return actor;
 }
 
+static void rebuildNetgenBoundaryTagSets(MshPickMap& pick,
+                                         vtkUnstructuredGrid* grid,
+                                         int meshDim)
+{
+    if (!grid || !grid->GetFieldData() || meshDim < 2 || meshDim > 3)
+        return;
+
+    auto* nativeFacets = vtkIntArray::SafeDownCast(
+        grid->GetFieldData()->GetArray("NetgenBoundaryFacets"));
+    if (!nativeFacets || nativeFacets->GetNumberOfComponents() < 4)
+        return;
+
+    // The VTK field data is authoritative for a newly generated Netgen mesh.
+    // Remove only old Netgen sets; Gmsh Physical groups remain a separate model.
+    QVector<MeshTagKey> removeKeys;
+    for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
+    {
+        if (it.key().category.compare(QStringLiteral("NetgenBoundary"),
+                                      Qt::CaseInsensitive) == 0)
+            removeKeys.push_back(it.key());
+    }
+    for (const MeshTagKey& key : removeKeys)
+        pick.tagSets.remove(key);
+    for (auto it = pick.pointIdToBoundaryTags.begin();
+         it != pick.pointIdToBoundaryTags.end(); ++it)
+    {
+        QVector<MeshTagKey>& tags = it.value();
+        tags.erase(std::remove_if(tags.begin(), tags.end(), [](const MeshTagKey& key)
+        {
+            return key.category.compare(QStringLiteral("NetgenBoundary"),
+                                        Qt::CaseInsensitive) == 0;
+        }), tags.end());
+    }
+
+    const auto regionKey = [](int dimension, int id)
+    {
+        return QStringLiteral("%1:%2").arg(dimension).arg(id);
+    };
+
+    QHash<QString, QString> names;
+    if (auto* nameArray = vtkStringArray::SafeDownCast(
+            grid->GetFieldData()->GetAbstractArray("NetgenBoundaryNames")))
+    {
+        const vtkIdType valueCount = nameArray->GetNumberOfValues();
+        for (vtkIdType value = 0; value + 2 < valueCount; value += 3)
+        {
+            bool dimensionOk = false;
+            bool idOk = false;
+            const int dimension = QString::fromStdString(
+                nameArray->GetValue(value)).toInt(&dimensionOk);
+            const int id = QString::fromStdString(
+                nameArray->GetValue(value + 1)).toInt(&idOk);
+            if (dimensionOk && dimension >= 0 && dimension < meshDim && idOk && id > 0)
+            {
+                names.insert(regionKey(dimension, id), QString::fromStdString(
+                    nameArray->GetValue(value + 2)).trimmed());
+            }
+        }
+    }
+
+    struct FacetRef
+    {
+        vtkIdType cellId = -1;
+        int localId = -1;
+        std::vector<vtkIdType> pointIds;
+    };
+
+    QVector<FacetRef> gridEntities[3];
+    std::map<std::vector<vtkIdType>, QVector<int>> exactEntityIndices[3];
+    QHash<vtkIdType, QVector<int>> entityIndicesByPoint[3];
+
+    auto appendEntity = [&](int entityDimension,
+                            vtkIdType cellId,
+                            int localId,
+                            vtkCell* entity)
+    {
+        if (entityDimension <= 0 || entityDimension >= meshDim || !entity ||
+            entity->GetNumberOfPoints() <= 0)
+        {
+            return;
+        }
+
+        FacetRef ref;
+        ref.cellId = cellId;
+        ref.localId = localId;
+        ref.pointIds.reserve(static_cast<std::size_t>(entity->GetNumberOfPoints()));
+        for (vtkIdType i = 0; i < entity->GetNumberOfPoints(); ++i)
+            ref.pointIds.push_back(entity->GetPointId(i));
+        std::sort(ref.pointIds.begin(), ref.pointIds.end());
+
+        const int index = gridEntities[entityDimension].size();
+        gridEntities[entityDimension].push_back(ref);
+        exactEntityIndices[entityDimension][ref.pointIds].push_back(index);
+        for (vtkIdType pointId : ref.pointIds)
+            entityIndicesByPoint[entityDimension][pointId].push_back(index);
+    };
+
+    for (vtkIdType cellId = 0; cellId < grid->GetNumberOfCells(); ++cellId)
+    {
+        vtkCell* cell = grid->GetCell(cellId);
+        if (!cell || cell->GetCellDimension() != meshDim)
+            continue;
+
+        for (int localEdge = 0; localEdge < cell->GetNumberOfEdges(); ++localEdge)
+            appendEntity(1, cellId, localEdge, cell->GetEdge(localEdge));
+        if (meshDim == 3)
+        {
+            for (int localFace = 0; localFace < cell->GetNumberOfFaces(); ++localFace)
+                appendEntity(2, cellId, localFace, cell->GetFace(localFace));
+        }
+    }
+
+    auto ensureSet = [&](int boundaryDimension, int boundaryId) -> MeshTagSet&
+    {
+        const MeshTagKey key{
+            QStringLiteral("NetgenBoundary"), boundaryDimension, boundaryId};
+        if (!pick.tagSets.contains(key))
+        {
+            MeshTagSet set;
+            set.key = key;
+            QString name = names.value(regionKey(boundaryDimension, boundaryId)).trimmed();
+            if (name.isEmpty() || name.compare(QStringLiteral("default"),
+                                                Qt::CaseInsensitive) == 0)
+                name = physicalUiNameByDim(boundaryDimension, boundaryId);
+            set.name = name;
+            set.source = QStringLiteral("Netgen");
+            pick.tagSets.insert(key, set);
+        }
+        return pick.tagSets[key];
+    };
+
+    const int componentCount = nativeFacets->GetNumberOfComponents();
+    for (vtkIdType tuple = 0; tuple < nativeFacets->GetNumberOfTuples(); ++tuple)
+    {
+        const int boundaryDimension = static_cast<int>(
+            std::llround(nativeFacets->GetComponent(tuple, 0)));
+        const int boundaryId = static_cast<int>(
+            std::llround(nativeFacets->GetComponent(tuple, 1)));
+        const int pointCount = static_cast<int>(
+            std::llround(nativeFacets->GetComponent(tuple, 2)));
+        if (boundaryDimension < 0 || boundaryDimension >= meshDim ||
+            boundaryId <= 0 || pointCount <= 0 || pointCount > componentCount - 3)
+            continue;
+
+        std::vector<vtkIdType> nativePointIds;
+        nativePointIds.reserve(static_cast<std::size_t>(pointCount));
+        bool valid = true;
+        for (int i = 0; i < pointCount; ++i)
+        {
+            const vtkIdType pointId = static_cast<vtkIdType>(
+                std::llround(nativeFacets->GetComponent(tuple, 3 + i)));
+            if (pointId < 0 || pointId >= grid->GetNumberOfPoints())
+            {
+                valid = false;
+                break;
+            }
+            nativePointIds.push_back(pointId);
+        }
+        if (!valid)
+            continue;
+        std::sort(nativePointIds.begin(), nativePointIds.end());
+        nativePointIds.erase(std::unique(nativePointIds.begin(), nativePointIds.end()),
+                             nativePointIds.end());
+
+        MeshTagSet& set = ensureSet(boundaryDimension, boundaryId);
+        for (vtkIdType pointId : nativePointIds)
+            set.pointIds.push_back(static_cast<MeshIdType>(pointId));
+
+        if (boundaryDimension == 0)
+            continue;
+
+        QVector<int> matchingEntities =
+            exactEntityIndices[boundaryDimension][nativePointIds];
+        if (matchingEntities.isEmpty() && !nativePointIds.empty())
+        {
+            // Tet4 -> Hex8 splits a native edge or triangle into smaller mesh
+            // entities. The generator extends the native point set with the
+            // generated midpoints/centre, so every child remains a subset.
+            vtkIdType seedPoint = nativePointIds.front();
+            int smallestCandidateCount =
+                entityIndicesByPoint[boundaryDimension].value(seedPoint).size();
+            for (vtkIdType pointId : nativePointIds)
+            {
+                const int candidateCount =
+                    entityIndicesByPoint[boundaryDimension].value(pointId).size();
+                if (candidateCount < smallestCandidateCount)
+                {
+                    seedPoint = pointId;
+                    smallestCandidateCount = candidateCount;
+                }
+            }
+
+            QSet<vtkIdType> nativePointSet;
+            for (vtkIdType pointId : nativePointIds)
+                nativePointSet.insert(pointId);
+            for (int entityIndex :
+                 entityIndicesByPoint[boundaryDimension].value(seedPoint))
+            {
+                if (entityIndex < 0 ||
+                    entityIndex >= gridEntities[boundaryDimension].size())
+                    continue;
+                const FacetRef& candidate =
+                    gridEntities[boundaryDimension].at(entityIndex);
+                bool isSubset = true;
+                for (vtkIdType pointId : candidate.pointIds)
+                    isSubset = isSubset && nativePointSet.contains(pointId);
+                if (isSubset)
+                    matchingEntities.push_back(entityIndex);
+            }
+        }
+
+        for (int entityIndex : matchingEntities)
+        {
+            if (entityIndex < 0 ||
+                entityIndex >= gridEntities[boundaryDimension].size())
+                continue;
+            const FacetRef& ref = gridEntities[boundaryDimension].at(entityIndex);
+            const MeshIdType entityKey =
+                (static_cast<MeshIdType>(ref.cellId) << 4) |
+                (static_cast<MeshIdType>(ref.localId) & 0xF);
+            if (boundaryDimension == 2)
+                set.faceKeys.push_back(entityKey);
+            else
+                set.edgeKeys.push_back(entityKey);
+        }
+    }
+
+    QVector<MeshTagKey> emptyKeys;
+    for (auto it = pick.tagSets.begin(); it != pick.tagSets.end(); ++it)
+    {
+        MeshTagSet& set = it.value();
+        if (set.key.category.compare(QStringLiteral("NetgenBoundary"),
+                                     Qt::CaseInsensitive) != 0)
+            continue;
+        normalizeMeshTagSet(set);
+        if (set.pointIds.isEmpty())
+        {
+            emptyKeys.push_back(set.key);
+            continue;
+        }
+        for (MeshIdType pointId : set.pointIds)
+        {
+            QVector<MeshTagKey>& tags = pick.pointIdToBoundaryTags[pointId];
+            if (!tags.contains(set.key))
+                tags.push_back(set.key);
+        }
+    }
+    for (const MeshTagKey& key : emptyKeys)
+        pick.tagSets.remove(key);
+}
 
 static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
 {
@@ -4382,6 +4655,8 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
         return;
 
     MshPickMap pick = MeshGridIO::instance().getMeshMap();
+    const bool hasRegionCellData = grid->GetCellData() &&
+        grid->GetCellData()->GetArray("src_part");
 
     int meshDim = -1;
     const vtkIdType nCells = grid->GetNumberOfCells();
@@ -4404,6 +4679,26 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
            // 当作独立域进行高亮。
     pick.meshDim = meshDim;
 
+    // The point table belongs to the current grid. Rebuild both directions
+    // every time instead of retaining ids from a previously imported mesh.
+    // Netgen writes node_id directly into the generated VTK, so no auxiliary
+    // mesh-map file is needed for node picking and solver export.
+    pick.nodeIdToPointId.clear();
+    pick.pointIdToNodeId.clear();
+    auto* nodeIdArr = grid->GetPointData()
+        ? grid->GetPointData()->GetArray("node_id")
+        : nullptr;
+    for (vtkIdType pid = 0; pid < grid->GetNumberOfPoints(); ++pid)
+    {
+        const int nodeId = nodeIdArr && pid < nodeIdArr->GetNumberOfTuples()
+            ? static_cast<int>(nodeIdArr->GetTuple1(pid))
+            : static_cast<int>(pid + 1);
+        if (nodeId <= 0)
+            continue;
+        pick.nodeIdToPointId.insert(nodeId, static_cast<int>(pid));
+        pick.pointIdToNodeId.insert(static_cast<int>(pid), nodeId);
+    }
+
     // 所有网格入口（INP、FLAC3D、VTK、工程恢复及重新分组）都在这里
     // 统一同步实际网格维度，避免求解模块读取到未初始化或过期的全局值。
     PublicVariables::instance().set(PublicConstants::kMeshDimension, meshDim, "mesh");
@@ -4420,7 +4715,14 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
         const bool isLayer =
             key.category.compare("LAYER", Qt::CaseInsensitive) == 0;
 
-        if (isMatype || isLayer)
+        const bool isRegion =
+            key.category.compare("REGION", Qt::CaseInsensitive) == 0;
+
+        // Generated Netgen VTK files carry src_part and are authoritative.
+        // IIIN project snapshots do not carry that extra array; in that case
+        // retain REGION sets restored from mesh_map.json instead of deleting
+        // the excavation grouping during project load.
+        if (isMatype || isLayer || (isRegion && hasRegionCellData))
             removeKeys.push_back(key);
     }
 
@@ -4434,6 +4736,8 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
 
     auto* layArr =
         vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"));
+    auto* regionArr =
+        vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("src_part"));
     auto* groupNameArr =
         vtkStringArray::SafeDownCast(grid->GetCellData()->GetAbstractArray("GroupName"));
 
@@ -4465,10 +4769,19 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
         {
             MeshTagSet set;
             set.key = key;
-            const QString groupName = groupNameArr && cid < groupNameArr->GetNumberOfValues()
+            // GroupName describes a Netgen source geometry region. It must
+            // not become the label of the common MATYPE/LAYER domains: all
+            // Netgen cells initially have LAYER=1, so that made the whole-model
+            // layer look like one particular geometry part in combo boxes.
+            const bool isRegion =
+                category.compare("REGION", Qt::CaseInsensitive) == 0;
+            const QString groupName = isRegion && groupNameArr &&
+                    cid < groupNameArr->GetNumberOfValues()
                 ? QString::fromStdString(groupNameArr->GetValue(cid)).trimmed()
                 : QString();
-            set.name = groupName.isEmpty() ? QString("%1=%2").arg(category).arg(id) : groupName;
+            set.name = groupName.isEmpty()
+                ? QString("%1=%2").arg(category).arg(id)
+                : groupName;
             set.source = "GridCellData";
 
             pick.tagSets.insert(key, set);
@@ -4495,9 +4808,11 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
 
         const int mat = matArr ? matArr->GetValue(cid) : 0;
         const int lay = layArr ? layArr->GetValue(cid) : 0;
+        const int region = regionArr ? regionArr->GetValue(cid) : 0;
 
         addDomainTag("MATYPE", cellDim, mat, cid);
         addDomainTag("LAYER", cellDim, lay, cid);
+        addDomainTag("REGION", cellDim, region, cid);
     }
 
            // 保留并重建已有 Physical 域标签的 cellId -> tags 反查。
@@ -4527,6 +4842,10 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
                 tags.push_back(set.key);
         }
     }
+
+    // Restore Netgen's native point/edge/face boundary regions carried by VTK.
+    // They intentionally remain distinct from Gmsh Physical groups internally.
+    rebuildNetgenBoundaryTagSets(pick, grid, meshDim);
 
     MeshGridIO::instance().setMeshMap(pick);
 }

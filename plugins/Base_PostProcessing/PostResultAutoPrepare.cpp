@@ -15,6 +15,7 @@
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QSet>
+#include <QTextStream>
 
 #include <algorithm>
 
@@ -23,7 +24,7 @@ namespace
 constexpr char kLegacyPostResultRoot[] = "post";
 constexpr char kManifestName[] = "manifest.json";
 constexpr char kLegacyAnalysisManifestFileName[] = "analysis.json";
-constexpr int kManifestVersion = 3;
+constexpr int kManifestVersion = 6;
 
 struct GeneratedFileInfo
 {
@@ -244,6 +245,41 @@ bool hasFilePrefix(const QDir& dir, const QString& prefix)
     });
 }
 
+bool usesStrengthReduction(const QDir& sourceDir)
+{
+    // NASGE uses the CZ/CB filename pair for both ordinary/overload steps and
+    // strength-reduction steps.  IKEY.LX_CUBEI is the solver's discriminator.
+    QFileInfo keyInfo;
+    if (!findFileInfo(sourceDir, QStringLiteral("IKEY.DAT"), &keyInfo) &&
+        !findFileInfo(sourceDir, QStringLiteral("IKEY.TXT"), &keyInfo))
+        return false;
+
+    QFile file(keyInfo.absoluteFilePath());
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return false;
+
+    QTextStream in(&file);
+    while (!in.atEnd())
+    {
+        const QString header = in.readLine();
+        if (!header.contains(QStringLiteral("LX_CUBEI"), Qt::CaseInsensitive))
+            continue;
+
+        while (!in.atEnd())
+        {
+            const QString valuesLine = in.readLine().trimmed();
+            if (valuesLine.isEmpty())
+                continue;
+            const QStringList values = valuesLine.simplified().split(
+                QLatin1Char(' '), Qt::SkipEmptyParts);
+            bool ok = false;
+            const int mode = values.value(2).toInt(&ok);
+            return ok && mode != 0;
+        }
+    }
+    return false;
+}
+
 void appendUnique(QStringList& paths, QSet<QString>& seen, const QString& relativePath)
 {
     const QString normalized = normalizeRelativePath(relativePath);
@@ -267,6 +303,8 @@ QList<QFileInfo> sourceFiles(const QDir& sourceDir)
             name.compare(QStringLiteral("MAFILESET.DAT"), Qt::CaseInsensitive) == 0 ||
             name.compare(QStringLiteral("MA_MASK.DAT"), Qt::CaseInsensitive) == 0 ||
             name.compare(QStringLiteral("MA_MASK_CMM.DAT"), Qt::CaseInsensitive) == 0 ||
+            name.compare(QStringLiteral("IKEY.DAT"), Qt::CaseInsensitive) == 0 ||
+            name.compare(QStringLiteral("IKEY.TXT"), Qt::CaseInsensitive) == 0 ||
             (name.startsWith(QStringLiteral("ZONE"), Qt::CaseInsensitive) &&
              name.endsWith(QStringLiteral(".DAT"), Qt::CaseInsensitive)))
             files.push_back(info);
@@ -344,7 +382,7 @@ QString baseDisplayName(const QString& kind)
     return QStringLiteral("结果数据");
 }
 
-QString suffixDisplayName(const QString& suffix)
+QString suffixDisplayName(const QString& suffix, bool strengthReduction)
 {
     if (suffix.isEmpty())
         return QString();
@@ -355,18 +393,23 @@ QString suffixDisplayName(const QString& suffix)
     if (methodMatch.hasMatch())
         return QStringLiteral("（方法 %1）").arg(methodMatch.captured(1));
 
-    static const QRegularExpression reserveExpression(
-        QStringLiteral("^cz\\d+cb(\\d+)$"), QRegularExpression::CaseInsensitiveOption);
-    const QRegularExpressionMatch reserveMatch = reserveExpression.match(suffix);
-    if (reserveMatch.hasMatch())
+    static const QRegularExpression czCbExpression(
+        QStringLiteral("^cz(\\d+)cb(\\d+)$"), QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch czCbMatch = czCbExpression.match(suffix);
+    if (czCbMatch.hasMatch())
     {
-        const double factor = reserveMatch.captured(1).toDouble() / 100.0;
-        return QStringLiteral("（强度储备 %1）").arg(factor, 0, 'f', 2);
+        const int capture = strengthReduction ? 2 : 1;
+        const double factor = czCbMatch.captured(capture).toDouble() / 100.0;
+        if (strengthReduction)
+            return QStringLiteral("（强度储备 %1）").arg(factor, 0, 'f', 2);
+        const QString factorName = factor > 1.000001 ? QStringLiteral("超载系数")
+                                                     : QStringLiteral("荷载系数");
+        return QStringLiteral("（%1 %2）").arg(factorName).arg(factor, 0, 'f', 2);
     }
     return QStringLiteral("（派生工况）");
 }
 
-GeneratedFileInfo generatedFileInfo(const QString& fileName)
+GeneratedFileInfo generatedFileInfo(const QString& fileName, bool strengthReduction)
 {
     const QString base = QFileInfo(fileName).completeBaseName().toLower();
     const QStringList kinds = {QStringLiteral("head_pressure"), QStringLiteral("velocity"),
@@ -376,8 +419,24 @@ GeneratedFileInfo generatedFileInfo(const QString& fileName)
     {
         if (base == kind || base.startsWith(kind + QLatin1Char('_')))
         {
-            const QString suffix = base == kind ? QString() : base.mid(kind.size() + 1);
-            return {baseDisplayName(kind) + suffixDisplayName(suffix), kind};
+            QString suffix = base == kind ? QString() : base.mid(kind.size() + 1);
+            const QString excavatedMarker = QStringLiteral("with_excavated");
+            bool includesExcavated = false;
+            if (suffix == excavatedMarker)
+            {
+                suffix.clear();
+                includesExcavated = true;
+            }
+            else if (suffix.endsWith(QStringLiteral("_") + excavatedMarker))
+            {
+                suffix.chop(excavatedMarker.size() + 1);
+                includesExcavated = true;
+            }
+            QString displayName = baseDisplayName(kind) +
+                                  suffixDisplayName(suffix, strengthReduction);
+            if (includesExcavated)
+                displayName += QStringLiteral("（包含已开挖体）");
+            return {displayName, kind};
         }
     }
     return {QStringLiteral("结果数据"), base};
@@ -419,6 +478,7 @@ bool manifestMissingOrStale(const QDir& projectDir, const QDir& sourceDir,
 bool writeManifest(const QDir& projectDir, const QDir& sourceDir, const QDir& preparedDir,
                    const PostResultGenerator::Result& generated)
 {
+    const bool strengthReduction = usesStrengthReduction(sourceDir);
     QJsonObject root;
     root.insert(QStringLiteral("version"), kManifestVersion);
     root.insert(QStringLiteral("sourceDir"),
@@ -435,7 +495,7 @@ bool writeManifest(const QDir& projectDir, const QDir& sourceDir, const QDir& pr
             info.suffix().compare(QStringLiteral("tec"), Qt::CaseInsensitive) != 0)
             continue;
 
-        const GeneratedFileInfo metadata = generatedFileInfo(info.fileName());
+        const GeneratedFileInfo metadata = generatedFileInfo(info.fileName(), strengthReduction);
         QJsonObject object;
         object.insert(QStringLiteral("displayName"), metadata.displayName);
         object.insert(QStringLiteral("fileName"), info.fileName());
@@ -496,6 +556,7 @@ QVector<PostResultAutoPrepare::ResultFile> fallbackSourceFiles(const QDir& sourc
                                                                bool includeVtu)
 {
     QVector<PostResultAutoPrepare::ResultFile> result;
+    const bool strengthReduction = usesStrengthReduction(sourceDir);
     const QStringList names = {QStringLiteral("TEC_HP.DAT"), QStringLiteral("TEC_VELO.DAT"),
                                QStringLiteral("TEC_DISP.DAT"), QStringLiteral("TEC_PRS.DAT"),
                                QStringLiteral("TEC_SL.DAT"), QStringLiteral("TEC_CMM.DAT"),
@@ -516,7 +577,7 @@ QVector<PostResultAutoPrepare::ResultFile> fallbackSourceFiles(const QDir& sourc
                 continue;
             seenPaths.insert(pathKey);
 
-            const GeneratedFileInfo metadata = generatedFileInfo(fileName);
+            const GeneratedFileInfo metadata = generatedFileInfo(fileName, strengthReduction);
             PostResultAutoPrepare::ResultFile entry;
             entry.displayName = metadata.displayName;
             entry.filePath = info.absoluteFilePath();

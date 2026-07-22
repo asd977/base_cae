@@ -1,4 +1,4 @@
-﻿#ifndef MESHVOLUMECONTROLWIDGET_H
+#ifndef MESHVOLUMECONTROLWIDGET_H
 #define MESHVOLUMECONTROLWIDGET_H
 
 #include <BasePage.h>
@@ -36,7 +36,7 @@ class MeshVolumeControlWidget : public BasePage
     struct VolumeControlItem
     {
         QString volumeIds;
-        double localSizeFactor = 1.0;
+        double maxSize = 1.0;
     };
 
     void setupUiState();

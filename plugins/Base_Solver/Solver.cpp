@@ -749,7 +749,7 @@ bool solverNodeCanMove(const QString& kind)
 {
     static const QSet<QString> movableKinds = {
         QStringLiteral("FillStorageCycle"), QStringLiteral("GeoStressRegressionSideFace"),
-        QStringLiteral("CaveExcavationBody"), QStringLiteral("CaveBlockPlane")};
+        QStringLiteral("CaveBlockPlane")};
     return movableKinds.contains(kind);
 }
 
@@ -889,7 +889,6 @@ void Solver::newProject()
             this, &Solver::onCaveExcavationAction);
     connect(rootPage, &SolverSettingWidget::createBlockRequested,
             this, &Solver::onCaveBlockStabilityAction);
-
     m_root = new ProjectNode("计算分析", QUuid::createUuid().toString(), rootPage);
     setupNodeRole(m_root, "SolverRoot");
     ProjectManagerService* projectManagerService =
@@ -906,6 +905,8 @@ bool Solver::saveProject()
     QJsonObject root;
     root["module"] = "Solver";
     root["root_title"] = "计算分析";
+    if (auto* rootPage = m_root->getPage())
+        root["state"] = rootPage->saveJson();
 
     QJsonArray analysisItems;
     for (ProjectNode* analysisNode : m_root->getChildren())
@@ -989,6 +990,10 @@ bool Solver::loadProject()
         return true;
 
     const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+    const QJsonObject rootState = root.value(QStringLiteral("state")).toObject();
+    auto* rootSettingsPage = dynamic_cast<SolverSettingWidget*>(m_root->getPage());
+    if (rootSettingsPage)
+        rootSettingsPage->loadJson(rootState);
     for (const auto& item : root.value("items").toArray())
     {
         const QJsonObject analysisObj = item.toObject();
@@ -1157,7 +1162,11 @@ bool Solver::loadProject()
             }
             else if (type == "CaveExcavationBody")
             {
-                page = new CaveExcavationBodyPage();
+                auto* bodyPage = new CaveExcavationBodyPage();
+                bodyPage->setExcavationLayer(
+                    -(countGeoStressChildren(analysisNode, QStringLiteral("CaveExcavationBody"))
+                      + 1));
+                page = bodyPage;
             }
             else if (type == "CaveBlockStabilityAnalysis")
             {
@@ -1241,6 +1250,11 @@ bool Solver::loadProject()
                     supportPage->loadLegacyCaveJson(analysisState);
             }
             analysisNode->addChild(node);
+            if (auto* bodyPage = dynamic_cast<CaveExcavationBodyPage*>(page))
+            {
+                connect(bodyPage, &CaveExcavationBodyPage::excavationLayerChanged, this,
+                        [this, analysisNode](int) { syncChildNodeNames(analysisNode); });
+            }
 
             if (type == "GeoStressRegressionAnalysis" || type == "CaveSupportComputation"
                 || type == "CaveBlockStabilityAnalysis")
@@ -1257,7 +1271,15 @@ bool Solver::loadProject()
                     else if (gcType == "GeoStressRegressionOuterForce")
                         gcPage = new GeoStressOuterForcePage();
                     else if (gcType == "CaveExcavationBody")
-                        gcPage = new CaveExcavationBodyPage();
+                    {
+                        auto* bodyPage = new CaveExcavationBodyPage();
+                        // 旧工程没有显式层号时，沿用原有的树顺序生成 -1、-2……；
+                        // 新工程的 loadJson 会用保存的 excavation_layer 覆盖该兼容值。
+                        bodyPage->setExcavationLayer(
+                            -(countGeoStressChildren(node, QStringLiteral("CaveExcavationBody"))
+                              + 1));
+                        gcPage = bodyPage;
+                    }
                     else if (gcType == "CaveBlockPlane" || gcType == "CaveBlockPlanePage")
                         gcPage = new CaveBlockPlanePage();
                     if (!gcPage)
@@ -1280,6 +1302,11 @@ bool Solver::loadProject()
 
                     gcPage->loadJson(gcObj.value("state").toObject());
                     node->addChild(gcNode);
+                    if (auto* bodyPage = dynamic_cast<CaveExcavationBodyPage*>(gcPage))
+                    {
+                        connect(bodyPage, &CaveExcavationBodyPage::excavationLayerChanged,
+                                this, [this, node](int) { syncChildNodeNames(node); });
+                    }
                 }
             }
         }
@@ -2064,7 +2091,14 @@ void Solver::syncChildNodeNames(ProjectNode* parent) const
         const int index = ++indexes[kind];
         const bool customTitle = solverNodeHasCustomTitle(node);
         QString displayTitle = configuredTitle;
-        if (!customTitle && solverNodeUsesAutomaticIndex(kind))
+        if (auto* bodyPage = dynamic_cast<CaveExcavationBodyPage*>(node->getPage()))
+        {
+            // 层号决定实际施工顺序，直接显示在树上，避免节点序号被误认为开挖级次。
+            displayTitle = QStringLiteral("%1（层号 %2）")
+                               .arg(configuredTitle)
+                               .arg(bodyPage->excavationLayer());
+        }
+        else if (!customTitle && solverNodeUsesAutomaticIndex(kind))
         {
             do
             {
@@ -2340,11 +2374,31 @@ void Solver::addCaveExcavationBodyNode(ProjectNode* supportNode, bool setCurrent
     if (!supportNode)
         return;
 
+    QSet<int> usedLayers;
+    for (ProjectNode* child : supportNode->getChildren())
+    {
+        if (auto* bodyPage = dynamic_cast<CaveExcavationBodyPage*>(child->getPage()))
+            usedLayers.insert(bodyPage->excavationLayer());
+    }
+
+    int newLayer = -1;
+    while (newLayer >= -999 && usedLayers.contains(newLayer))
+        --newLayer;
+    if (newLayer < -999)
+    {
+        QMessageBox::warning(nullptr, QStringLiteral("无法新增开挖体"),
+                             QStringLiteral("可用开挖层号已用完（-1 至 -999）。"));
+        return;
+    }
+
     auto* page = new CaveExcavationBodyPage();
+    page->setExcavationLayer(newLayer);
     auto* node =
         new ProjectNode(QStringLiteral("开挖体"), QUuid::createUuid().toString(), page);
     setupNodeRole(node, "CaveExcavationBody");
     supportNode->addChild(node);
+    connect(page, &CaveExcavationBodyPage::excavationLayerChanged, this,
+            [this, supportNode](int) { syncChildNodeNames(supportNode); });
     supportNode->setExpanded(true);
     syncChildNodeNames(supportNode);
 
@@ -2845,8 +2899,15 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
 
     // 先收集开挖级，再生成 IIIN/ICAVE。旧代码先导出 IIIN，导致开挖层号来不及写入。
+    struct ExcavationBodyItem
+    {
+        ProjectNode* node = nullptr;
+        CaveExcavationBodyPage* page = nullptr;
+        int layer = -1;
+    };
+
     CaveSupportComputationPage* supportPage = nullptr;
-    QVector<CaveExcavationBodyPage*> excavationBodies;
+    QVector<ExcavationBodyItem> excavationBodies;
     for (ProjectNode* child : analysisNode->getChildren())
     {
         auto* candidate = dynamic_cast<CaveSupportComputationPage*>(child->getPage());
@@ -2857,7 +2918,8 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         for (ProjectNode* bodyNode : child->getChildren())
         {
             if (auto* bodyPage = dynamic_cast<CaveExcavationBodyPage*>(bodyNode->getPage()))
-                excavationBodies.push_back(bodyPage);
+                excavationBodies.push_back(
+                    ExcavationBodyItem{bodyNode, bodyPage, bodyPage->excavationLayer()});
         }
         break;
     }
@@ -2877,6 +2939,54 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     {
         QMessageBox::warning(nullptr, "计算失败", "请至少创建一个开挖体，并为其选择区域分组。");
         return;
+    }
+
+    QHash<int, QString> ownerByLayer;
+    for (const ExcavationBodyItem& body : std::as_const(excavationBodies))
+    {
+        if (body.layer >= 0)
+        {
+            QMessageBox::warning(
+                nullptr, QStringLiteral("开挖层号无效"),
+                QStringLiteral("“%1”的开挖层号必须为负整数。")
+                    .arg(body.node ? body.node->text(0) : QStringLiteral("开挖体")));
+            return;
+        }
+        if (ownerByLayer.contains(body.layer))
+        {
+            QMessageBox::warning(
+                nullptr, QStringLiteral("开挖层号重复"),
+                QStringLiteral("开挖层号 %1 同时用于“%2”和“%3”。每一级只能对应一个开挖体节点；同一级的多个区域请添加到同一个节点。")
+                    .arg(body.layer)
+                    .arg(ownerByLayer.value(body.layer),
+                         body.node ? body.node->text(0) : QStringLiteral("开挖体")));
+            return;
+        }
+        ownerByLayer.insert(
+            body.layer, body.node ? body.node->text(0) : QStringLiteral("开挖体"));
+    }
+
+    std::stable_sort(excavationBodies.begin(), excavationBodies.end(),
+                     [](const ExcavationBodyItem& lhs, const ExcavationBodyItem& rhs)
+                     {
+                         return lhs.layer > rhs.layer; // -1、-2、-3……
+                     });
+    for (int index = 0; index < excavationBodies.size(); ++index)
+    {
+        const int expectedLayer = -(index + 1);
+        if (excavationBodies[index].layer != expectedLayer)
+        {
+            QStringList configuredLayers;
+            configuredLayers.reserve(excavationBodies.size());
+            for (const ExcavationBodyItem& body : std::as_const(excavationBodies))
+                configuredLayers.push_back(QString::number(body.layer));
+            QMessageBox::warning(
+                nullptr, QStringLiteral("开挖层号不连续"),
+                QStringLiteral("开挖层号必须从 -1 开始连续设置，不能断号。当前层号为：%1；缺少 %2。")
+                    .arg(configuredLayers.join(QStringLiteral("、")))
+                    .arg(expectedLayer));
+            return;
+        }
     }
 
     const int caveCalculationType = supportPage->calculationTypeCode();
@@ -2949,14 +3059,19 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     QSet<int> assignedSourceElements;
     for (int level = 0; level < excavationBodies.size(); ++level)
     {
-        QVector<int> elemIds = excavationBodies[level]->selectedElementIds();
+        QVector<int> elemIds = excavationBodies[level].page->selectedElementIds();
         std::sort(elemIds.begin(), elemIds.end());
         elemIds.erase(std::unique(elemIds.begin(), elemIds.end()), elemIds.end());
 
         if (elemIds.isEmpty())
         {
-            QMessageBox::warning(nullptr, "计算失败",
-                                 QString("第 %1 级开挖体没有选择任何实体单元。").arg(level + 1));
+            QMessageBox::warning(
+                nullptr, "计算失败",
+                QString("“%1”（层号 %2）没有选择任何实体单元。")
+                    .arg(excavationBodies[level].node
+                             ? excavationBodies[level].node->text(0)
+                             : QStringLiteral("开挖体"))
+                    .arg(excavationBodies[level].layer));
             return;
         }
 
@@ -3294,7 +3409,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         for (int level = 0; level < calculationElementsByLevel.size(); ++level)
         {
             for (int calculationElemId : calculationElementsByLevel[level])
-                caveLayerByElementId[calculationElemId] = -(level + 1);
+                caveLayerByElementId[calculationElemId] = excavationBodies[level].layer;
         }
 
         if (!patchIiinElementLayers(inputDir.filePath(QStringLiteral("IIIN.DAT")),
@@ -3685,17 +3800,19 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         for (int i = 0; i < excavationBodies.size(); ++i)
         {
             const QVector<int>& e = calculationElementsByLevel[i];
+            const int excavationLayer = excavationBodies[i].layer;
 
-            const QString idx = QString("%1").arg(i + 1, 2, 10, QLatin1Char('0'));
+            const QString idx =
+                QString("%1").arg(qAbs(excavationLayer), 2, 10, QLatin1Char('0'));
             const QString eFile = QString("IIKE_E%1-%1.DAT").arg(idx);
-            if (!writeIike(eFile, e, -(i + 1), -(i + 1)))
+            if (!writeIike(eFile, e, excavationLayer, excavationLayer))
             {
                 ok = false;
                 failedFiles << eFile;
             }
 
             const QString ejxFile = QString("IIJX_E%1-%1.DAT").arg(idx);
-            if (!writeIijx(ejxFile, e, -(i + 1), -(i + 1)))
+            if (!writeIijx(ejxFile, e, excavationLayer, excavationLayer))
             {
                 ok = false;
                 failedFiles << ejxFile;
@@ -3708,14 +3825,14 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
             std::sort(t.begin(), t.end());
 
             const QString tFile = QString("IIKE_T01-%1.DAT").arg(idx);
-            if (!writeIike(tFile, t, -1, -(i + 1)))
+            if (!writeIike(tFile, t, -1, excavationLayer))
             {
                 ok = false;
                 failedFiles << tFile;
             }
 
             const QString tjxFile = QString("IIJX_T01-%1.DAT").arg(idx);
-            if (!writeIijx(tjxFile, t, -1, -(i + 1)))
+            if (!writeIijx(tjxFile, t, -1, excavationLayer))
             {
                 ok = false;
                 failedFiles << tjxFile;

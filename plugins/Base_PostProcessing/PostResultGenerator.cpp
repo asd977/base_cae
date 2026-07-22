@@ -27,6 +27,7 @@ struct Element
     QVector<int> nodes;
     int type = 0;
     int material = 1;
+    int layer = 1;
 };
 
 struct Mesh
@@ -52,6 +53,27 @@ struct FieldSource
     QString path;
     QString suffix;
 };
+
+bool filesHaveSameContents(const QString& leftPath, const QString& rightPath)
+{
+    const QFileInfo leftInfo(leftPath);
+    const QFileInfo rightInfo(rightPath);
+    if (!leftInfo.exists() || !rightInfo.exists() || leftInfo.size() != rightInfo.size())
+        return false;
+
+    QFile left(leftPath);
+    QFile right(rightPath);
+    if (!left.open(QIODevice::ReadOnly) || !right.open(QIODevice::ReadOnly))
+        return false;
+
+    constexpr qint64 chunkSize = 64 * 1024;
+    while (!left.atEnd() && !right.atEnd())
+    {
+        if (left.read(chunkSize) != right.read(chunkSize))
+            return false;
+    }
+    return left.atEnd() && right.atEnd();
+}
 
 QVector<QString> splitFields(const QString& line)
 {
@@ -211,6 +233,9 @@ bool parseMesh(const QString& filePath, Mesh& mesh, QString* error)
             element.nodes.push_back(fields.at(j + 1).toInt());
         element.type = fields.at(typeIndex).toInt();
         element.material = fields.at(materialIndex).toInt();
+        const int layerIndex = materialIndex + 1;
+        if (fields.size() > layerIndex)
+            element.layer = fields.at(layerIndex).toInt();
         if (element.type > 0 && element.material > 0)
             mesh.elements.push_back(element);
     }
@@ -305,13 +330,60 @@ void appendExpanded(const Element& source, QVector<Element>& out)
     }
 }
 
-QVector<Element> expandElements(const Mesh& mesh)
+struct ExcavationVisibility
+{
+    bool enabled = false;
+    bool fullyExcavated = false;
+    int completedLevel = 0;
+};
+
+ExcavationVisibility excavationVisibility(const QDir& resultDir)
+{
+    ExcavationVisibility visibility;
+    const QString leaf = QFileInfo(resultDir.absolutePath()).fileName().toUpper();
+    static const QRegularExpression fullExpression(
+        QStringLiteral("[EJ]ALL$"), QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch fullMatch = fullExpression.match(leaf);
+    if (fullMatch.hasMatch() &&
+        (fullMatch.capturedStart() == 0 || leaf.startsWith(QStringLiteral("CASE"))))
+    {
+        visibility.enabled = true;
+        visibility.fullyExcavated = true;
+        return visibility;
+    }
+
+    static const QRegularExpression stageExpression(
+        QStringLiteral("[EJ](\\d+)$"), QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch match = stageExpression.match(leaf);
+    if (match.hasMatch() &&
+        (match.capturedStart() == 0 || leaf.startsWith(QStringLiteral("CASE"))))
+    {
+        visibility.enabled = true;
+        visibility.completedLevel = match.captured(1).toInt();
+    }
+    return visibility;
+}
+
+bool isVisibleAtExcavationStage(const Element& element,
+                                const ExcavationVisibility& visibility)
+{
+    if (!visibility.enabled || element.layer >= 0)
+        return true;
+    if (visibility.fullyExcavated)
+        return false;
+    return -element.layer > visibility.completedLevel;
+}
+
+QVector<Element> expandElements(const Mesh& mesh, const QDir& resultDir,
+                                bool includeExcavated = false)
 {
     QVector<Element> expanded;
     expanded.reserve(mesh.elements.size());
+    const ExcavationVisibility visibility = excavationVisibility(resultDir);
     for (const Element& element : mesh.elements)
     {
-        if (element.material != 1)
+        if (element.material != 1 &&
+            (includeExcavated || isVisibleAtExcavationStage(element, visibility)))
             appendExpanded(element, expanded);
     }
     return expanded;
@@ -597,6 +669,25 @@ QVector<FieldSource> fieldSources(const QDir& dir, const QString& prefix, bool s
         sources.push_back({info.absoluteFilePath(), suffix});
     }
 
+    const auto baseSource = std::find_if(
+        sources.cbegin(), sources.cend(), [](const FieldSource& source)
+        {
+            return source.suffix.isEmpty();
+        });
+    if (baseSource != sources.cend())
+    {
+        static const QRegularExpression unitCzCbResult(
+            QStringLiteral("^CZ0*100CB0*100$"),
+            QRegularExpression::CaseInsensitiveOption);
+        const QString basePath = baseSource->path;
+        sources.erase(std::remove_if(
+            sources.begin(), sources.end(), [&](const FieldSource& source)
+            {
+                return unitCzCbResult.match(source.suffix).hasMatch() &&
+                       filesHaveSameContents(basePath, source.path);
+            }), sources.end());
+    }
+
     std::sort(sources.begin(), sources.end(), [](const FieldSource& left, const FieldSource& right)
     {
         if (left.suffix.isEmpty() != right.suffix.isEmpty())
@@ -756,17 +847,48 @@ bool generateField(const QDir& outputDir, const Mesh& mesh, const QVector<Elemen
                    const QVector<ZoneGroup>& groups, const QSet<int>& masks,
                    const QString& outputName, const QString& title,
                    const QStringList& variables, const QVector<QVector<double>>& values,
-                   PostResultGenerator::Result& result)
+                   PostResultGenerator::Result& result,
+                   const QVector<Element>* expandedWithExcavated = nullptr)
 {
-    QString error;
-    const QString outputPath = outputDir.filePath(outputName);
-    if (!writeTecplot(outputPath, mesh, expanded, groups, masks, title, variables, values, &error))
+    bool generated = false;
+    if (!expanded.isEmpty())
     {
-        result.warnings << error;
-        return false;
+        QString error;
+        const QString outputPath = outputDir.filePath(outputName);
+        if (writeTecplot(outputPath, mesh, expanded, groups, masks, title, variables, values,
+                         &error))
+        {
+            addGenerated(result, outputPath);
+            generated = true;
+        }
+        else
+        {
+            result.warnings << error;
+        }
     }
-    addGenerated(result, outputPath);
-    return true;
+
+    if (expandedWithExcavated && !expandedWithExcavated->isEmpty())
+    {
+        const QFileInfo outputInfo(outputName);
+        const QString extension = outputInfo.suffix();
+        const QString withExcavatedName = outputInfo.completeBaseName() +
+            QStringLiteral("_with_excavated") +
+            (extension.isEmpty() ? QString() : QStringLiteral(".") + extension);
+        const QString withExcavatedPath = outputDir.filePath(withExcavatedName);
+        QString withExcavatedError;
+        if (writeTecplot(withExcavatedPath, mesh, *expandedWithExcavated, groups, masks,
+                         title + QStringLiteral(" - WITH EXCAVATED ELEMENTS"),
+                         variables, values, &withExcavatedError))
+        {
+            addGenerated(result, withExcavatedPath);
+            generated = true;
+        }
+        else
+        {
+            result.warnings << withExcavatedError;
+        }
+    }
+    return generated;
 }
 
 QString outputName(bool external, const QString& legacyName, const QString& internalBase,
@@ -788,7 +910,15 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
         return result;
     }
 
-    QString meshPath = existingFile(resultDir, QStringLiteral("IIIN.TXT"));
+    // 洞室求解生成的 IIIN.TXT 会把已开挖单元的负层号改回正值；
+    // 结果目录（或对应分析输入目录）的 IIIN.DAT 才保留施工阶段标记，
+    // 阶段结果必须优先读取它。
+    QString meshPath;
+    if (excavationVisibility(resultDir).enabled)
+        meshPath = findInResultOrInput(resultDir, options.projectDir,
+                                       QStringLiteral("IIIN.DAT"));
+    if (meshPath.isEmpty())
+        meshPath = existingFile(resultDir, QStringLiteral("IIIN.TXT"));
     if (meshPath.isEmpty())
         meshPath = existingFile(resultDir, QStringLiteral("IIIN.DAT"));
     if (meshPath.isEmpty())
@@ -805,9 +935,14 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
         return result;
     }
 
-    const QVector<Element> expanded = expandElements(mesh);
-    const QVector<ZoneGroup> groups = loadZoneGroups(resultDir, options.projectDir, expanded);
-    if (expanded.isEmpty() || groups.isEmpty())
+    const QVector<Element> expanded = expandElements(mesh, resultDir);
+    const QVector<Element> expandedWithExcavated = expandElements(mesh, resultDir, true);
+    const QVector<Element>* optionalExpandedWithExcavated =
+        expandedWithExcavated.size() > expanded.size() ? &expandedWithExcavated : nullptr;
+    const QVector<ZoneGroup> groups = loadZoneGroups(
+        resultDir, options.projectDir,
+        optionalExpandedWithExcavated ? expandedWithExcavated : expanded);
+    if ((expanded.isEmpty() && !optionalExpandedWithExcavated) || groups.isEmpty())
     {
         result.error = QStringLiteral("计算网格没有可显示的材料分区：%1").arg(resultDir.absolutePath());
         return result;
@@ -856,9 +991,9 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
             generateField(outputDir, mesh, expanded, groups, noMasks,
                           outputName(external, QStringLiteral("TEC_HP.DAT"),
                                      QStringLiteral("head_pressure"), source.suffix),
-                          QStringLiteral("HP-SEEPAGE (MPa)"),
-                          {QStringLiteral("HEAD(m)"), QStringLiteral("P(MPa)")},
-                          buildHeadPressure(raw), result);
+                           QStringLiteral("HP-SEEPAGE (MPa)"),
+                           {QStringLiteral("HEAD(m)"), QStringLiteral("P(MPa)")},
+                           buildHeadPressure(raw), result, optionalExpandedWithExcavated);
         }
 
         for (const FieldSource& source : velocitySources)
@@ -876,8 +1011,9 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
             generateField(outputDir, mesh, expanded, groups, noMasks,
                           outputName(external, QStringLiteral("TEC_VELO.DAT"),
                                      QStringLiteral("velocity"), source.suffix),
-                          QStringLiteral("VELOCITY"), variables,
-                          buildVelocity(raw, preferredHeadPressure, mesh.dimension), result);
+                           QStringLiteral("VELOCITY"), variables,
+                           buildVelocity(raw, preferredHeadPressure, mesh.dimension), result,
+                           optionalExpandedWithExcavated);
         }
     }
     else
@@ -899,8 +1035,9 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
             generateField(outputDir, mesh, expanded, groups, commonMasks,
                           outputName(external, QStringLiteral("TEC_DISP.DAT"),
                                      QStringLiteral("displacement"), source.suffix),
-                          QStringLiteral("DISP (cm)"), variables,
-                          buildDisplacement(raw, mesh.dimension), result);
+                           QStringLiteral("DISP (cm)"), variables,
+                           buildDisplacement(raw, mesh.dimension), result,
+                           optionalExpandedWithExcavated);
         }
     }
 
@@ -922,8 +1059,9 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
         generateField(outputDir, mesh, expanded, groups, commonMasks,
                       outputName(external, QStringLiteral("TEC_PRS.DAT"),
                                  QStringLiteral("principal_stress"), source.suffix),
-                      QStringLiteral("PRS (MPa)"), variables,
-                      buildPrincipalStress(raw, mesh.dimension), result);
+                       QStringLiteral("PRS (MPa)"), variables,
+                       buildPrincipalStress(raw, mesh.dimension), result,
+                       optionalExpandedWithExcavated);
     }
 
     const QVector<FieldSource> stressLevelSources = fieldSources(resultDir, QStringLiteral("NODCMM"), false);
@@ -936,8 +1074,8 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
         generateField(outputDir, mesh, expanded, groups, stressMasks,
                       outputName(external, QStringLiteral("TEC_SL.DAT"),
                                  QStringLiteral("stress_level"), source.suffix),
-                      QStringLiteral("STRESS LEVEL"), {QStringLiteral("SL")},
-                      buildStressLevel(raw), result);
+                       QStringLiteral("STRESS LEVEL"), {QStringLiteral("SL")},
+                       buildStressLevel(raw), result, optionalExpandedWithExcavated);
     }
 
     result.ok = !result.generatedFiles.isEmpty();

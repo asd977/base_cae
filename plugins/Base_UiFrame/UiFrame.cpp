@@ -94,14 +94,14 @@ ThemeColors currentThemeColors()
     {
         return {theme,
                 QStringLiteral("#1a3a52"), QStringLiteral("#60798b"),
-                QStringLiteral("#2b6f9f"), QStringLiteral("#dbe7ef"),
-                QStringLiteral("#d5e2eb"), QStringLiteral("#f7fafc"),
-                QStringLiteral("#eaf2f7"), QStringLiteral("#f4f8fb"),
-                QStringLiteral("#b4c7d3"), QStringLiteral("#8daabd"),
-                QStringLiteral("#e5f0f7"), QStringLiteral("#d5e6f1"),
-                QStringLiteral("#d6e8f3"), QStringLiteral("#b8cad5"),
-                QStringLiteral("#91adbf"), QStringLiteral("#2b70a6"),
-                QStringLiteral("#3c82b5"), QStringLiteral("#205d8c"), QString()};
+                QStringLiteral("#2878b0"), QStringLiteral("#cfe1ed"),
+                QStringLiteral("#c9dce9"), QStringLiteral("#f3f8fb"),
+                QStringLiteral("#e2eef6"), QStringLiteral("#edf5fa"),
+                QStringLiteral("#a8c0d0"), QStringLiteral("#7f9fb8"),
+                QStringLiteral("#d9eaf5"), QStringLiteral("#c9e1f0"),
+                QStringLiteral("#c8e2f2"), QStringLiteral("#abc2d1"),
+                QStringLiteral("#7fa2ba"), QStringLiteral("#2878b0"),
+                QStringLiteral("#3283bd"), QStringLiteral("#1f6598"), QString()};
     }
     return {QStringLiteral("light"),
             QStringLiteral("#000000"), QStringLiteral("#68727c"),
@@ -120,7 +120,7 @@ QString dockFocusBorder(const ThemeColors& colors)
     if (colors.id == QStringLiteral("dark"))
         return QStringLiteral("#4b5e6b");
     if (colors.id == QStringLiteral("blue"))
-        return QStringLiteral("#7f99aa");
+        return QStringLiteral("#6f98b4");
     return QStringLiteral("#98aab3");
 }
 
@@ -630,33 +630,33 @@ void UiFrame::setDockWidgetStyle()
             ads--CDockManager,
             ads--CDockContainerWidget {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 #dce8f0, stop:1 #cfdee8);
+                                            stop:0 #d3e4ef, stop:1 #c4d9e7);
             }
 
             ads--CDockAreaWidget {
-                background: #f7fafc;
-                border: 1px solid #a9bfcd;
+                background: #f3f8fb;
+                border: 1px solid #9eb9cb;
             }
 
             ads--CDockAreaWidget[focused="true"] {
-                background: #f7fafc;
+                background: #f3f8fb;
                 border-color: @dockFocusBorder@;
             }
 
             QSplitter::handle {
                 width: 2px;
                 height: 2px;
-                background: #b8cad5;
+                background: #abc2d1;
             }
 
             QSplitter::handle:hover {
-                background: #91adbf;
+                background: #7fa2ba;
             }
 
             ads--CAutoHideSideBar {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 #f5f9fc, stop:1 #e3edf4);
-                border: 1px solid #aec3d0;
+                                            stop:0 #f1f7fb, stop:1 #dceaf4);
+                border: 1px solid #a2bdce;
             }
         )");
     }

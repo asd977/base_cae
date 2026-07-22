@@ -56,10 +56,14 @@ class DisplacementConstraintWidget : public BasePage
     void onGroupChanged(int index);
     void onDimChanged(int index);
     void onSetAllBarsSuspended();
+    void onSelectByCoordinateRange();
+    void onUseMeshBounds();
 
   private:
     void refreshGroupCombo(int dimFilter);
+    void updateCoordinateControlState();
 
   private:
     Ui::DisplacementConstraintWidget* ui = nullptr;
+    bool m_coordinateRangeLoaded = false;
 };

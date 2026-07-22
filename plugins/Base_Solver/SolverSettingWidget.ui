@@ -50,6 +50,31 @@
     </widget>
    </item>
    <item>
+    <widget class="QGroupBox" name="calculationSettingsGroup">
+     <property name="title">
+      <string>计算设置</string>
+     </property>
+     <layout class="QFormLayout" name="calculationSettingsLayout">
+      <property name="fieldGrowthPolicy">
+       <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+      </property>
+      <property name="labelAlignment">
+       <set>Qt::AlignRight|Qt::AlignVCenter</set>
+      </property>
+      <item row="0" column="0">
+       <widget class="QLabel" name="computeDeviceLabel">
+        <property name="text">
+         <string>计算设备</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="comboComputeDevice" />
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <widget class="QGroupBox" name="createAnalysisGroup">
      <property name="title">
       <string>新建分析</string>

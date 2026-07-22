@@ -82,7 +82,8 @@ GeoStressPointPage::~GeoStressPointPage()
 
 void GeoStressPointPage::beforeLoad()
 {
-    PickManager::instance();
+    PickManager& pickManager = PickManager::instance();
+    pickManager.updateStructure();
 
     m_dim = PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt();
     if (m_dim != 2)
@@ -92,16 +93,21 @@ void GeoStressPointPage::beforeLoad()
 
     QObject::connect(&PickManager::instance(), &PickManager::nodePicked, this,
                      &GeoStressPointPage::onNodePicked, Qt::UniqueConnection);
-    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Node);
+    pickManager.activate(getPageType(), m_uuid, PickMode::Node);
     setupBatchGroupCombo();
 
     QObject::disconnect(ui->pickEnableCheckBox, nullptr, this, nullptr);
     connect(ui->pickEnableCheckBox, &QCheckBox::toggled, this,
             [this](bool on)
             {
-                PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, on);
-            },
-            Qt::UniqueConnection);
+                PickManager& pickManager = PickManager::instance();
+                if (on)
+                {
+                    pickManager.updateStructure();
+                    pickManager.activate(getPageType(), m_uuid, PickMode::Node);
+                }
+                pickManager.setClickPickEnabled(getPageType(), m_uuid, on);
+            });
 
     ui->pickEnableCheckBox->setChecked(false);
     PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
@@ -109,7 +115,7 @@ void GeoStressPointPage::beforeLoad()
 
 void GeoStressPointPage::beforeUnload()
 {
-    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
+    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
     PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Node);
 
     QObject::disconnect(&PickManager::instance(), &PickManager::nodePicked, this,
@@ -174,8 +180,7 @@ void GeoStressPointPage::setupBatchGroupCombo()
             [this]()
             {
                 onGroupChanged(ui->comboBoxGroup->currentIndex());
-            },
-            Qt::UniqueConnection);
+            });
 
     if (auto* groupCombo = qobject_cast<CustomComboBox*>(ui->comboBoxGroup))
     {
@@ -189,14 +194,12 @@ void GeoStressPointPage::setupBatchGroupCombo()
                     const MeshTagKey key = comboTagKey(ui->comboBoxGroup, row);
                     PickManager::instance().setPreviewPointIds(getPageType(), m_uuid, GridKind::Solid,
                                                                toVtkIds(meshSvc->pointIdsOfTag(key)));
-                },
-                Qt::UniqueConnection);
+                });
         connect(groupCombo, &CustomComboBox::dropdownClosed, this,
                 [this]()
                 {
                     PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Node);
-                },
-                Qt::UniqueConnection);
+                });
     }
 
     refreshGroupCombo();

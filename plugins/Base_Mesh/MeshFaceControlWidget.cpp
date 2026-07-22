@@ -10,6 +10,7 @@
 #include <QSet>
 #include <QTableWidgetItem>
 #include <algorithm>
+#include <cmath>
 
 #include "ui_MeshFaceControlWidget.h"
 
@@ -66,6 +67,22 @@ MeshFaceControlWidget::MeshFaceControlWidget(QWidget* parent)
       m_highlightPropId("mesh.face.control.highlight")
 {
     ui->setupUi(this);
+
+    // Netgen uses local maximum element size restrictions. Curvature resolution
+    // is a global Netgen meshing parameter and is configured on the overall
+    // meshing page, not per face.
+    ui->labelLocalSizeFactor->setText(tr("局部最大尺寸"));
+    ui->labelLocalSizeFactor->setToolTip(tr("限制所选面上的最大单元尺寸。数值越小，网格越密；实际值不小于整体划分中的最小尺寸。"));
+    ui->spinLocalSizeFactor->setDecimals(8);
+    ui->spinLocalSizeFactor->setRange(1.0e-8, 1.0e12);
+    ui->spinLocalSizeFactor->setSingleStep(0.1);
+    ui->spinLocalSizeFactor->setValue(1.0);
+    ui->spinLocalSizeFactor->setKeyboardTracking(false);
+    ui->spinLocalSizeFactor->setToolTip(ui->labelLocalSizeFactor->toolTip());
+    ui->checkCurvature->hide();
+    ui->labelCurvatureLevel->hide();
+    ui->spinCurvatureLevel->hide();
+
     setupUiState();
 
     connect(ui->btnAdd, &QPushButton::clicked, this, &MeshFaceControlWidget::onAddControl);
@@ -76,10 +93,7 @@ MeshFaceControlWidget::MeshFaceControlWidget(QWidget* parent)
             &MeshFaceControlWidget::onParameterEdited);
     connect(ui->spinLocalSizeFactor, qOverload<double>(&QDoubleSpinBox::valueChanged), this,
             &MeshFaceControlWidget::onParameterEdited);
-    connect(ui->checkCurvature, &QCheckBox::toggled, this,
-            &MeshFaceControlWidget::onParameterEdited);
-    connect(ui->spinCurvatureLevel, qOverload<int>(&QSpinBox::valueChanged), this,
-            &MeshFaceControlWidget::onParameterEdited);
+
     connect(ui->btnAppendEntity, &QPushButton::clicked, this,
             &MeshFaceControlWidget::onAppendSelectedEntity);
     auto* entityCombo = qobject_cast<CustomComboBox*>(ui->cmbEntity);
@@ -150,8 +164,6 @@ void MeshFaceControlWidget::onResetForm()
 {
     ui->editFaceIds->clear();
     ui->spinLocalSizeFactor->setValue(1.0);
-    ui->checkCurvature->setChecked(true);
-    ui->spinCurvatureLevel->setValue(20);
     ui->tableControls->clearSelection();
     clearHighlight();
     refreshButtons();
@@ -178,7 +190,6 @@ void MeshFaceControlWidget::onSelectionChanged()
 }
 void MeshFaceControlWidget::onParameterEdited()
 {
-    ui->spinCurvatureLevel->setEnabled(ui->checkCurvature->isChecked());
     int row = ui->tableControls->currentRow();
     if (row >= 0 && row < m_items.size())
     {
@@ -248,6 +259,12 @@ bool MeshFaceControlWidget::validateInput(QString& err, int ignoreRow) const
     QSet<int> currentIds;
     if (!parseEntityIds(ui->editFaceIds->text().trimmed(), currentIds, err))
         return false;
+    if (!std::isfinite(ui->spinLocalSizeFactor->value()) ||
+        ui->spinLocalSizeFactor->value() <= 0.0)
+    {
+        err = tr("局部最大尺寸必须大于 0。");
+        return false;
+    }
     for (int i = 0; i < m_items.size(); ++i)
     {
         if (i == ignoreRow)
@@ -276,24 +293,17 @@ MeshFaceControlWidget::FaceControlItem MeshFaceControlWidget::collectFormData() 
 {
     FaceControlItem item;
     item.faceIds = ui->editFaceIds->text().trimmed();
-    item.localSizeFactor = ui->spinLocalSizeFactor->value();
-    item.curvatureRefine = ui->checkCurvature->isChecked();
-    item.curvatureElementsPer2Pi = ui->spinCurvatureLevel->value();
+    item.maxSize = ui->spinLocalSizeFactor->value();
     return item;
 }
 void MeshFaceControlWidget::fillFormData(const FaceControlItem& item)
 {
     ui->editFaceIds->setText(item.faceIds);
-    ui->spinLocalSizeFactor->setValue(item.localSizeFactor);
-    ui->checkCurvature->setChecked(item.curvatureRefine);
-    ui->spinCurvatureLevel->setValue(item.curvatureElementsPer2Pi);
+    ui->spinLocalSizeFactor->setValue(item.maxSize);
 }
 void MeshFaceControlWidget::appendOrUpdateTableRow(int row, const FaceControlItem& item)
 {
-    const QString factor = QString::number(item.localSizeFactor, 'f', 2);
-    const QString curvature =
-        item.curvatureRefine ? tr("曲率%1").arg(item.curvatureElementsPer2Pi) : tr("曲率关");
-    const QString constraint = tr("尺寸%1, %2").arg(factor, curvature);
+    const QString constraint = tr("最大尺寸 %1").arg(item.maxSize, 0, 'g', 8);
     if (row < ui->tableControls->rowCount())
     {
         ui->tableControls->item(row, 0)->setText(item.faceIds);
@@ -346,9 +356,7 @@ void MeshFaceControlWidget::syncRulesToService()
             continue;
         FaceControlRule r;
         r.faceIds = it.faceIds;
-        r.localSizeFactor = it.localSizeFactor;
-        r.curvatureRefine = it.curvatureRefine;
-        r.curvatureElementsPer2Pi = it.curvatureElementsPer2Pi;
+        r.maxSize = it.maxSize;
         rules.push_back(r);
     }
     svc->setFaceControlRules(rules);
@@ -366,9 +374,7 @@ void MeshFaceControlWidget::loadRulesFromService()
     {
         FaceControlItem i;
         i.faceIds = r.faceIds;
-        i.localSizeFactor = r.localSizeFactor;
-        i.curvatureRefine = r.curvatureRefine;
-        i.curvatureElementsPer2Pi = r.curvatureElementsPer2Pi;
+        i.maxSize = r.maxSize > 0.0 ? r.maxSize : 1.0;
         m_items.push_back(i);
         appendOrUpdateTableRow(ui->tableControls->rowCount(), i);
     }
