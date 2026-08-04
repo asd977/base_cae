@@ -76,6 +76,16 @@ QString uniqueDisplayName(const QString& baseName, const QMap<QString, QString>&
 
     return QStringLiteral("%1 (%2)").arg(baseName).arg(index);
 }
+
+bool isValidScalarRange(double minV, double maxV)
+{
+    return std::isfinite(minV) && std::isfinite(maxV) && minV <= maxV;
+}
+
+bool isValidScalarRange(const double range[2])
+{
+    return range && isValidScalarRange(range[0], range[1]);
+}
 } // namespace
 
 NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessingWidget,
@@ -197,6 +207,14 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
 
     double dataRange[2];
     arr->GetRange(dataRange);
+    if (!isValidScalarRange(dataRange))
+    {
+        if (m_mapper)
+            m_mapper->ScalarVisibilityOff();
+        m_visualService->showScalarBar(false, false);
+        return;
+    }
+
     if (ui->autoRangeCheckBox->isChecked())
         setRangeControls(dataRange[0], dataRange[1]);
 
@@ -455,6 +473,16 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName)
 
     double dataRange[2];
     scalarArray->GetRange(dataRange);
+    if (!isValidScalarRange(dataRange))
+    {
+        qWarning() << "Scalar array has no valid range:" << selectedScalarName;
+        if (m_mapper)
+            m_mapper->ScalarVisibilityOff();
+        if (m_visualService)
+            m_visualService->showScalarBar(false, false);
+        return;
+    }
+
     if (ui->autoRangeCheckBox->isChecked())
         setRangeControls(dataRange[0], dataRange[1]);
 
@@ -561,6 +589,13 @@ void NephogramSettingWidget::setRangeControls(double minV, double maxV)
 bool NephogramSettingWidget::displayRange(double dataMin, double dataMax, double& minV,
                                            double& maxV) const
 {
+    if (!isValidScalarRange(dataMin, dataMax))
+    {
+        minV = 0.0;
+        maxV = 1.0;
+        return false;
+    }
+
     minV = ui->autoRangeCheckBox->isChecked() ? dataMin : ui->rangeMinSpinBox->value();
     maxV = ui->autoRangeCheckBox->isChecked() ? dataMax : ui->rangeMaxSpinBox->value();
     if (!std::isfinite(minV) || !std::isfinite(maxV) || minV >= maxV)
@@ -784,6 +819,12 @@ void NephogramSettingWidget::updateLookupTableRange(vtkLookupTable* lut, double 
 {
     if (!lut)
         return;
+
+    if (!isValidScalarRange(minV, maxV))
+    {
+        minV = 0.0;
+        maxV = 1.0;
+    }
 
     if (std::abs(maxV - minV) < 1e-12)
         maxV = minV + 1.0;

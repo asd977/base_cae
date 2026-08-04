@@ -93,15 +93,15 @@ ThemeColors currentThemeColors()
     if (theme == QStringLiteral("blue"))
     {
         return {theme,
-                QStringLiteral("#1a3a52"), QStringLiteral("#60798b"),
-                QStringLiteral("#2878b0"), QStringLiteral("#cfe1ed"),
-                QStringLiteral("#c9dce9"), QStringLiteral("#f3f8fb"),
-                QStringLiteral("#e2eef6"), QStringLiteral("#edf5fa"),
-                QStringLiteral("#a8c0d0"), QStringLiteral("#7f9fb8"),
-                QStringLiteral("#d9eaf5"), QStringLiteral("#c9e1f0"),
-                QStringLiteral("#c8e2f2"), QStringLiteral("#abc2d1"),
-                QStringLiteral("#7fa2ba"), QStringLiteral("#2878b0"),
-                QStringLiteral("#3283bd"), QStringLiteral("#1f6598"), QString()};
+                QStringLiteral("#073760"), QStringLiteral("#3f7193"),
+                QStringLiteral("#006ec2"), QStringLiteral("#c4e1f5"),
+                QStringLiteral("#b8d7ee"), QStringLiteral("#e9f6ff"),
+                QStringLiteral("#d5eaf8"), QStringLiteral("#e3f2fb"),
+                QStringLiteral("#82b4d6"), QStringLiteral("#2c80bd"),
+                QStringLiteral("#cce8fa"), QStringLiteral("#add9f3"),
+                QStringLiteral("#b8def6"), QStringLiteral("#7bb0d3"),
+                QStringLiteral("#2e86c7"), QStringLiteral("#006ec2"),
+                QStringLiteral("#137ecf"), QStringLiteral("#00599f"), QString()};
     }
     return {QStringLiteral("light"),
             QStringLiteral("#000000"), QStringLiteral("#68727c"),
@@ -120,7 +120,7 @@ QString dockFocusBorder(const ThemeColors& colors)
     if (colors.id == QStringLiteral("dark"))
         return QStringLiteral("#4b5e6b");
     if (colors.id == QStringLiteral("blue"))
-        return QStringLiteral("#6f98b4");
+        return QStringLiteral("#1d75b7");
     return QStringLiteral("#98aab3");
 }
 
@@ -630,33 +630,33 @@ void UiFrame::setDockWidgetStyle()
             ads--CDockManager,
             ads--CDockContainerWidget {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 #d3e4ef, stop:1 #c4d9e7);
+                                            stop:0 #c5e4f8, stop:1 #a9cfe8);
             }
 
             ads--CDockAreaWidget {
-                background: #f3f8fb;
-                border: 1px solid #9eb9cb;
+                background: #eff9ff;
+                border: 1px solid #7fb0d3;
             }
 
             ads--CDockAreaWidget[focused="true"] {
-                background: #f3f8fb;
+                background: #eff9ff;
                 border-color: @dockFocusBorder@;
             }
 
             QSplitter::handle {
                 width: 2px;
                 height: 2px;
-                background: #abc2d1;
+                background: #7bb0d3;
             }
 
             QSplitter::handle:hover {
-                background: #7fa2ba;
+                background: #2e86c7;
             }
 
             ads--CAutoHideSideBar {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 #f1f7fb, stop:1 #dceaf4);
-                border: 1px solid #a2bdce;
+                                            stop:0 #eff9ff, stop:1 #cfe7f8);
+                border: 1px solid #79afd5;
             }
         )");
     }
@@ -767,22 +767,22 @@ void UiFrame::updateAreaTabStyle(ads::CDockAreaWidget* area)
         titleStyle += QString::fromUtf8(R"(
             ads--CDockAreaTitleBar {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 #f8fbfd, stop:0.45 #eef5f9,
-                                            stop:1 #dce9f2);
+                                            stop:0 #f9fdff, stop:0.45 #e1f2fc,
+                                            stop:1 #c8e4f7);
                 border-top: 1px solid #ffffff;
-                border-bottom: 1px solid #a8bfce;
+                border-bottom: 1px solid #78acd1;
             }
 
             ads--CDockAreaTitleBar ads--CTitleBarButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 #f9fcfe, stop:1 #e1edf5);
-                border: 1px solid #a5bdcc;
+                                            stop:0 #fbfeff, stop:1 #cae7f8);
+                border: 1px solid #74acd2;
             }
 
             ads--CDockAreaTitleBar ads--CTitleBarButton:pressed {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 #d4e5f0, stop:1 #edf4f8);
-                border: 1px solid #829fb5;
+                                            stop:0 #a9d4ef, stop:1 #d6edf9);
+                border: 1px solid #2f80bb;
             }
         )");
     }
@@ -963,9 +963,9 @@ void UiFrame::applyThemeToUi()
             m_ribbon->setStyleSheet(m_ribbon->styleSheet() + QString::fromUtf8(R"(
                 SARibbonBar#geoCaeRibbonBar {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                                stop:0 #f9fcfe, stop:0.42 #f2f7fa,
-                                                stop:1 #e1ecf4);
-                    border-bottom: 1px solid #8faabd;
+                                                stop:0 #f9fdff, stop:0.42 #eaf6fe,
+                                                stop:1 #cfe8f8);
+                    border-bottom: 1px solid #579cd0;
                 }
 
                 SARibbonBar#geoCaeRibbonBar QStackedWidget,
@@ -973,7 +973,7 @@ void UiFrame::applyThemeToUi()
                 SARibbonBar#geoCaeRibbonBar SARibbonCategory,
                 SARibbonBar#geoCaeRibbonBar SARibbonCategory > QWidget {
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                                stop:0 #f8fbfd, stop:1 #e8f1f7);
+                                                stop:0 #f8fdff, stop:1 #d7edf9);
                     border: none;
                     margin: 0px;
                     padding: 0px;
@@ -982,7 +982,7 @@ void UiFrame::applyThemeToUi()
                 SARibbonBar#geoCaeRibbonBar SARibbonPannel,
                 SARibbonBar#geoCaeRibbonBar SARibbonPannel > QWidget {
                     background: transparent;
-                    border-right: 1px solid #b6c9d6;
+                    border-right: 1px solid #86b8d8;
                 }
 
                 SARibbonBar#geoCaeRibbonBar SARibbonCategoryScrollButton,
@@ -991,18 +991,18 @@ void UiFrame::applyThemeToUi()
                 }
 
                 SARibbonBar#geoCaeRibbonBar QToolButton:hover {
-                    color: #155e93;
+                    color: #005fa8;
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                                stop:0 #fbfdfe, stop:1 #e3eef6);
-                    border-color: #a8bfce;
+                                                stop:0 #fbfeff, stop:1 #cfeafd);
+                    border-color: #6ea8d2;
                 }
 
                 SARibbonBar#geoCaeRibbonBar QToolButton:pressed,
                 SARibbonBar#geoCaeRibbonBar QToolButton:checked {
-                    color: #155e93;
+                    color: #005fa8;
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                                stop:0 #d4e5f0, stop:1 #edf4f8);
-                    border-color: #829fb5;
+                                                stop:0 #a9d4ef, stop:1 #d9effb);
+                    border-color: #2f80bb;
                 }
             )"));
         }
@@ -1058,22 +1058,22 @@ void UiFrame::applyThemeToUi()
                     }
 
                     QTabBar::tab {
-                        color: #173a57;
+                        color: #073760;
                         background: transparent;
                     }
 
                     QTabBar::tab:hover:!selected {
-                        color: #155e93;
+                        color: #005fa8;
                         background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                                    stop:0 #fbfdfe, stop:1 #e5f0f7);
+                                                    stop:0 #fbfeff, stop:1 #d3edfb);
                     }
 
                     QTabBar::tab:selected {
-                        color: #155e93;
-                        background: #f8fbfd;
-                        border-left: 1px solid #8faabd;
-                        border-top: 1px solid #8faabd;
-                        border-right: 1px solid #8faabd;
+                        color: #005fa8;
+                        background: #f8fdff;
+                        border-left: 1px solid #5a9ed0;
+                        border-top: 1px solid #5a9ed0;
+                        border-right: 1px solid #5a9ed0;
                         border-bottom: none;
                     }
                 )"));
@@ -1600,16 +1600,20 @@ void UiFrame::buildRibbonTabs()
 
             auto* actMeshEdit =
                 makeAction(this, ":/resources/menu/minimal/mesh-edit.svg", "&显示控制");
+            auto* actBarElements =
+                makeAction(this, ":/resources/menu/minimal/mesh-edge.svg", "&杆单元布置");
             // auto* actMeshGrouping =
             //     makeAction(this, ":/resources/menu/minimal/mesh-group.svg", "&网格分组");
             auto* actQuality =
                 makeAction(this, ":/resources/menu/minimal/mesh-quality.svg", "&质量检查");
 
             addActionToPanel(panel, actMeshEdit, 3);
+            addActionToPanel(panel, actBarElements, 3);
             // addActionToPanel(panel, actMeshGrouping, 3);
             addActionToPanel(panel, actQuality, 3);
 
             bindEvent(this, actMeshEdit, PublicConstants::kActionPreprocessMeshEdit);
+            bindEvent(this, actBarElements, PublicConstants::kActionPreprocessBarElements);
             // bindEvent(this, actMeshGrouping, PublicConstants::kActionPreprocessMeshGrouping);
             bindEvent(this, actQuality, PublicConstants::kActionPreprocessQualityStd);
         }

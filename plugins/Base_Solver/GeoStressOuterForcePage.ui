@@ -257,6 +257,16 @@
           </property>
          </widget>
         </item>
+        <item row="3" column="0" colspan="2">
+         <widget class="QLabel" name="forceHintLabel">
+          <property name="text">
+           <string>三个方向力均为 0 时，仅生成地表面，不施加外力。</string>
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
         <property name="leftMargin">
          <number>9</number>
         </property>

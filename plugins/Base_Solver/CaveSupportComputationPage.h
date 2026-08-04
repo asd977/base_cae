@@ -11,6 +11,7 @@ class QSpinBox;
 class QTableWidget;
 class QWidget;
 class QDoubleSpinBox;
+class CaveReinforcementFieldPage;
 namespace Ui
 {
 class CaveSupportComputationPage;
@@ -39,6 +40,10 @@ class CaveSupportComputationPage : public BasePage
     int excavationLoadMethodCode() const;
     bool modalAnalysisEnabled() const;
     bool timeHistoryEnabled() const;
+    bool reinforcedTaskEnabled() const;
+    void ensureReinforcedTask();
+    CaveReinforcementFieldPage* reinforcementFieldPage() const;
+    void loadLegacyReinforcementFieldJson(const QJsonObject& obj);
     bool validateInputs(QString* errorMessage) const;
 
     void loadLegacyCaveJson(const QJsonObject& obj);
@@ -58,6 +63,7 @@ class CaveSupportComputationPage : public BasePage
     void updateAnalysisModeUi();
     void updateDynamicDetailsUi();
     void updateStaticDependenciesUi();
+    void onReinforcedTaskSelectionChanged();
 
 
   private:
@@ -108,6 +114,7 @@ class CaveSupportComputationPage : public BasePage
     QLineEdit* m_accXEdit = nullptr;
     QLineEdit* m_accYEdit = nullptr;
     QLineEdit* m_accZEdit = nullptr;
+    CaveReinforcementFieldPage* m_reinforcementFieldPage = nullptr;
     CaseData m_caseData;
     bool m_isUpdatingUi = false;
 };

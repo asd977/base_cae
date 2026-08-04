@@ -70,23 +70,22 @@ QPalette paletteForTheme(const QString& themeName, const QStyle* style)
     }
     else if (themeName == QStringLiteral("blue"))
     {
-        // Classic engineering-blue: visibly blue-tinted work surfaces and chrome,
-        // with a slightly stronger accent while keeping native controls readable.
+        // Classic engineering-blue: stronger blue chrome with pale blue work surfaces.
         setPaletteColors(palette,
-                         QColor(QStringLiteral("#d3e4ef")),
-                         QColor(QStringLiteral("#1b3549")),
-                         QColor(QStringLiteral("#f3f8fb")),
-                         QColor(QStringLiteral("#e9f2f8")),
-                         QColor(QStringLiteral("#e7f1f7")),
+                         QColor(QStringLiteral("#c4e1f5")),
+                         QColor(QStringLiteral("#073760")),
+                         QColor(QStringLiteral("#f2f9ff")),
+                         QColor(QStringLiteral("#dff1fb")),
+                         QColor(QStringLiteral("#d9edf9")),
                          QColor(QStringLiteral("#fbfdfe")),
-                         QColor(QStringLiteral("#bdd1df")),
-                         QColor(QStringLiteral("#7399b5")),
-                         QColor(QStringLiteral("#2878b0")),
+                         QColor(QStringLiteral("#8fb8d5")),
+                         QColor(QStringLiteral("#2778b2")),
+                         QColor(QStringLiteral("#006ec2")),
                          QColor(QStringLiteral("#ffffff")),
-                         QColor(QStringLiteral("#8999a6")),
-                         QColor(QStringLiteral("#7e92a2")),
-                         QColor(QStringLiteral("#f7fafc")),
-                         QColor(QStringLiteral("#1b3549")));
+                         QColor(QStringLiteral("#7a94aa")),
+                         QColor(QStringLiteral("#6689a4")),
+                         QColor(QStringLiteral("#e9f6ff")),
+                         QColor(QStringLiteral("#073760")));
     }
     else
     {

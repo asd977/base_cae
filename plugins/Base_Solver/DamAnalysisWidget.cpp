@@ -654,8 +654,8 @@ void DamAnalysisWidget::initValueEditors()
     m_editAlfa1 = ui->editAlfa1;
     m_editAlfa2 = ui->editAlfa2;
     m_editAlfa3 = ui->editAlfa3;
-    m_comboAxisUp = ui->comboAxisUp;
-    m_comboAxisDown = ui->comboAxisDown;
+    m_comboUpstreamAxis = ui->comboAxisUp;
+    m_comboPgen = ui->comboPgen;
     m_comboIfRock = ui->comboIfRock;
     m_comboIfIso = ui->comboIfIso;
 
@@ -780,20 +780,27 @@ void DamAnalysisWidget::initValueEditors()
     m_comboMethodIter->setItemText(3, QStringLiteral("中点增量法（土坝填筑）"));
     m_comboMethodIter->setCurrentIndex(3);
 
-    m_comboAxisUp->setItemData(0, "1");
-    m_comboAxisUp->setItemData(1, "2");
-    m_comboAxisUp->setItemData(2, "3");
-    m_comboAxisDown->setItemData(0, "1");
-    m_comboAxisDown->setItemData(1, "2");
-    m_comboAxisDown->setItemData(2, "3");
-    for (QComboBox* combo : {m_comboAxisUp, m_comboAxisDown})
-    {
-        combo->setItemText(0, QStringLiteral("X 轴"));
-        combo->setItemText(1, QStringLiteral("Y 轴"));
-        combo->setItemText(2, QStringLiteral("Z 轴"));
-    }
-    m_comboAxisUp->setCurrentIndex(0);
-    m_comboAxisDown->setCurrentIndex(2);
+    m_comboUpstreamAxis->setItemData(0, "1");
+    m_comboUpstreamAxis->setItemData(1, "2");
+    m_comboUpstreamAxis->setItemData(2, "3");
+    m_comboUpstreamAxis->setItemText(0, QStringLiteral("X 轴"));
+    m_comboUpstreamAxis->setItemText(1, QStringLiteral("Y 轴"));
+    m_comboUpstreamAxis->setItemText(2, QStringLiteral("Z 轴"));
+    m_comboUpstreamAxis->setToolTip(
+        QStringLiteral("IXUPDW：上下游方向所在坐标轴，不能与当前网格竖向轴相同。"));
+
+    m_comboPgen->setItemData(0, "1");
+    m_comboPgen->setItemData(1, "2");
+    m_comboPgen->setItemData(2, "3");
+    m_comboPgen->setItemData(3, "4");
+    m_comboPgen->setItemText(0, QStringLiteral("三向平均 (1)"));
+    m_comboPgen->setItemText(1, QStringLiteral("中小主应力平均 (2)"));
+    m_comboPgen->setItemText(2, QStringLiteral("两种平均再平均 (3)"));
+    m_comboPgen->setItemText(3, QStringLiteral("按主应力条件切换 (4)"));
+    m_comboPgen->setToolTip(
+        QStringLiteral("IPGEN：求解器中 PGEN 的计算方式，默认 3。"));
+    m_comboUpstreamAxis->setCurrentIndex(0);
+    m_comboPgen->setCurrentIndex(2);
 
     m_comboIfRock->setItemData(0, "0");
     m_comboIfRock->setItemData(1, "1");
@@ -1139,6 +1146,31 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
         return false;
     }
 
+    bool axisOk = false;
+    const int upstreamAxis = m_comboUpstreamAxis->currentData().toString().toInt(&axisOk);
+    if (!axisOk || upstreamAxis < 1 || upstreamAxis > 3)
+    {
+        setError("上下游轴向必须选择 X、Y、Z 中的一个。");
+        return false;
+    }
+    if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+    {
+        const int verticalAxis = meshSvc->verticalAxis();
+        if (verticalAxis >= 1 && verticalAxis <= 3 && upstreamAxis == verticalAxis)
+        {
+            setError(QStringLiteral("上下游轴向不能与当前网格竖向轴相同。"));
+            return false;
+        }
+    }
+
+    bool pgenOk = false;
+    const int pgen = m_comboPgen->currentData().toString().toInt(&pgenOk);
+    if (!pgenOk || pgen < 1 || pgen > 4)
+    {
+        setError("平均应力方式 IPGEN 必须为 1 到 4。");
+        return false;
+    }
+
     auto isNumber = [](const QLineEdit* edit)
     {
         bool ok = false;
@@ -1228,9 +1260,9 @@ bool DamAnalysisWidget::exportIfillDatFile(int mcase, const QString& cycleSectio
               .arg(m_editAlfa3->text().trimmed())
               << "    ALFA1  ALFA2  ALFA3\n";
     os << QString("%1 %2 0.000000 0.000000 0.000000 0.000000")
-              .arg(m_comboAxisUp->currentData().toString(),
-                   m_comboAxisDown->currentData().toString())
-              << "    IXUPDW IYUPDW XAMID YAMID XBMID YBMID\n";
+              .arg(m_comboUpstreamAxis->currentData().toString(),
+                   m_comboPgen->currentData().toString())
+              << "    IXUPDW IPGEN XAMID YAMID XBMID YBMID\n";
     QString rockSelfWeightMode = m_comboIfRock->currentData().toString();
     if (rockSelfWeightMode == QStringLiteral("0"))
     {
@@ -1300,8 +1332,10 @@ QJsonObject DamAnalysisWidget::saveJson()
     obj["base_values"] = arr;
     obj["x_values"] = QJsonArray {m_editX1->text(), m_editX2->text(), m_editX3->text()};
     obj["alfa_values"] = QJsonArray {m_editAlfa1->text(), m_editAlfa2->text(), m_editAlfa3->text()};
-    obj["axis_values"] = QJsonArray {m_comboAxisUp->currentData().toString(),
-                                     m_comboAxisDown->currentData().toString()};
+    obj["upstream_axis_value"] = m_comboUpstreamAxis->currentData().toString();
+    obj["pgen_value"] = m_comboPgen->currentData().toString();
+    obj["axis_values"] = QJsonArray {m_comboUpstreamAxis->currentData().toString(),
+                                     m_comboPgen->currentData().toString()};
     obj["rock_values"] = QJsonArray {m_comboIfRock->currentData().toString(),
                                       m_comboIfIso->currentData().toString()};
     obj["freeze_thaw_enabled"] = freezeThawEnabled();
@@ -1358,28 +1392,44 @@ void DamAnalysisWidget::loadJson(const QJsonObject& obj)
         m_editAlfa3->setText(parts.value(2, m_editAlfa3->text()));
     }
 
+    const QJsonValue newAxisVal = obj.value("upstream_axis_value");
+    if (newAxisVal.isString())
+    {
+        const int idx = m_comboUpstreamAxis->findData(newAxisVal.toString());
+        if (idx >= 0)
+            m_comboUpstreamAxis->setCurrentIndex(idx);
+    }
+    const QJsonValue newPgenVal = obj.value("pgen_value");
+    if (newPgenVal.isString())
+    {
+        const int idx = m_comboPgen->findData(newPgenVal.toString());
+        if (idx >= 0)
+            m_comboPgen->setCurrentIndex(idx);
+    }
+
     const QJsonValue axisVal = obj.value("axis_values");
     const QJsonArray axisArr = axisVal.toArray();
-    if (!axisArr.isEmpty())
+    if (!axisArr.isEmpty() && !newAxisVal.isString() && !newPgenVal.isString())
     {
-        const int upIdx = m_comboAxisUp->findData(axisArr.size() > 0 ? axisArr.at(0).toString() : "");
-        const int downIdx =
-            m_comboAxisDown->findData(axisArr.size() > 1 ? axisArr.at(1).toString() : "");
+        const int upIdx =
+            m_comboUpstreamAxis->findData(axisArr.size() > 0 ? axisArr.at(0).toString() : "");
+        const int pgenIdx =
+            m_comboPgen->findData(axisArr.size() > 1 ? axisArr.at(1).toString() : "");
         if (upIdx >= 0)
-            m_comboAxisUp->setCurrentIndex(upIdx);
-        if (downIdx >= 0)
-            m_comboAxisDown->setCurrentIndex(downIdx);
+            m_comboUpstreamAxis->setCurrentIndex(upIdx);
+        if (pgenIdx >= 0)
+            m_comboPgen->setCurrentIndex(pgenIdx);
     }
-    else if (axisVal.isString())
+    else if (axisVal.isString() && !newAxisVal.isString() && !newPgenVal.isString())
     {
         const QStringList parts =
             axisVal.toString().split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
-        const int upIdx = m_comboAxisUp->findData(parts.value(0));
-        const int downIdx = m_comboAxisDown->findData(parts.value(1));
+        const int upIdx = m_comboUpstreamAxis->findData(parts.value(0));
+        const int pgenIdx = m_comboPgen->findData(parts.value(1));
         if (upIdx >= 0)
-            m_comboAxisUp->setCurrentIndex(upIdx);
-        if (downIdx >= 0)
-            m_comboAxisDown->setCurrentIndex(downIdx);
+            m_comboUpstreamAxis->setCurrentIndex(upIdx);
+        if (pgenIdx >= 0)
+            m_comboPgen->setCurrentIndex(pgenIdx);
     }
 
     const QJsonValue rockVal = obj.value("rock_values");

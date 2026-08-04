@@ -22,6 +22,41 @@
 #include <QLibraryInfo>
 #include <QtGlobal>
 
+#include <vtkObjectFactory.h>
+#include <vtkOutputWindow.h>
+
+class ApplicationVtkOutputWindow final : public vtkOutputWindow
+{
+  public:
+    static ApplicationVtkOutputWindow* New();
+    vtkTypeMacro(ApplicationVtkOutputWindow, vtkOutputWindow);
+
+    void DisplayText(const char* text) override { writeToApplicationLog(QStringLiteral("信息"), text); }
+    void DisplayErrorText(const char* text) override { writeToApplicationLog(QStringLiteral("错误"), text); }
+    void DisplayWarningText(const char* text) override { writeToApplicationLog(QStringLiteral("警告"), text); }
+    void DisplayGenericWarningText(const char* text) override
+    {
+        writeToApplicationLog(QStringLiteral("警告"), text);
+    }
+    void DisplayDebugText(const char* text) override { writeToApplicationLog(QStringLiteral("调试"), text); }
+
+  protected:
+    ApplicationVtkOutputWindow() = default;
+    ~ApplicationVtkOutputWindow() override = default;
+
+  private:
+    static void writeToApplicationLog(const QString& level, const char* text)
+    {
+        const QString message = QString::fromUtf8(text ? text : "").trimmed();
+        if (message.isEmpty())
+            return;
+        qWarning().noquote()
+            << QStringLiteral("__RAW__[VTK %1] %2").arg(level, message);
+    }
+};
+
+vtkStandardNewMacro(ApplicationVtkOutputWindow);
+
 void onAppAboutToQuit()
 {
     EventManager::instance().sendEvent(PublicConstants::kEventQuitApp);
@@ -185,6 +220,9 @@ int main(int argc, char** argv)
 #endif
 
     QApplication app(argc, argv);
+    auto* vtkOutput = ApplicationVtkOutputWindow::New();
+    vtkOutputWindow::SetInstance(vtkOutput);
+    vtkOutput->Delete();
     app.setWindowIcon(QIcon(QStringLiteral(":/resources/icon.svg")));
     app.setStyle(new NeutralCheckStyle);
 

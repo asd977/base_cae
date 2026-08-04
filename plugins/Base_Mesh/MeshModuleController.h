@@ -15,6 +15,7 @@ class vtkMapper;
 class vtkDataSet;
 class vtkUnstructuredGrid;
 class GridEditingWidget;
+class BarElementPlacementWidget;
 class MeshImportSettingsWidget;
 class MeshQualityCheckWidget;
 
@@ -30,6 +31,8 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     void closeProject();
 
     QVector<MeshTagSet> domainTagSets() const override;
+    QString materialGroupCategory() const override;
+    QString excavationGroupCategory() const override;
     QVector<MeshTagSet> boundaryTagSets(int dimFilter = -1) const override;
     QVector<MeshIdType> cellIdsOfTag(const MeshTagKey& key) const override;
     QVector<MeshIdType> pointIdsOfTag(const MeshTagKey& key) const override;
@@ -70,6 +73,10 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     QVector<EdgeControlRule> edgeControlRules() const override;
     QVector<FaceControlRule> faceControlRules() const override;
     QVector<VolumeControlRule> volumeControlRules() const override;
+    bool appendBarElements(const BarElementPlacement& placement,
+                           QString* errMsg = nullptr) override;
+    bool removeBarElementRecord(int recordId, QString* errMsg = nullptr) override;
+    QVector<BarElementRecordInfo> barElementRecords() const override;
 
   private:
     void initAction();
@@ -93,6 +100,7 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     void updateQualityCheckContext(bool useSuggestedObject);
     int suggestedQualityObjectType() const;
     void onMeshEdit();
+    void onBarElements();
     void onMeshGrouping();
     void openImportSettingsPage(bool setCurrent = true);
     void openGridDisplayControlPage();
@@ -115,6 +123,7 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
 
     VisualWidgetService* m_visualWidgetService = nullptr;
     GridEditingWidget* m_gridEditingWidget = nullptr;
+    BarElementPlacementWidget* m_barElementWidget = nullptr;
     MeshImportSettingsWidget* m_importSettingsWidget = nullptr;
     MeshQualityCheckWidget* m_qualityCheckWidget = nullptr;
     int m_verticalAxis = 2;

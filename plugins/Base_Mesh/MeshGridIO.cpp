@@ -290,6 +290,106 @@ static QVector<int> vtkToIiinOrder(int ketype)
     }
 }
 
+static double signedTetraVolume(vtkUnstructuredGrid* grid, vtkCell* cell)
+{
+    if (!grid || !cell || cell->GetNumberOfPoints() < 4)
+        return 0.0;
+
+    double p0[3] = {0.0, 0.0, 0.0};
+    double p1[3] = {0.0, 0.0, 0.0};
+    double p2[3] = {0.0, 0.0, 0.0};
+    double p3[3] = {0.0, 0.0, 0.0};
+    grid->GetPoint(cell->GetPointId(0), p0);
+    grid->GetPoint(cell->GetPointId(1), p1);
+    grid->GetPoint(cell->GetPointId(2), p2);
+    grid->GetPoint(cell->GetPointId(3), p3);
+
+    const double ux = p1[0] - p0[0];
+    const double uy = p1[1] - p0[1];
+    const double uz = p1[2] - p0[2];
+    const double vx = p2[0] - p0[0];
+    const double vy = p2[1] - p0[1];
+    const double vz = p2[2] - p0[2];
+    const double wx = p3[0] - p0[0];
+    const double wy = p3[1] - p0[1];
+    const double wz = p3[2] - p0[2];
+
+    return (ux * (vy * wz - vz * wy) - uy * (vx * wz - vz * wx) +
+            uz * (vx * wy - vy * wx)) /
+           6.0;
+}
+
+static double hexCenterJacobianDet(vtkUnstructuredGrid* grid, vtkCell* cell,
+                                   const int localOrder[8])
+{
+    if (!grid || !cell || !localOrder || cell->GetNumberOfPoints() < 8)
+        return 0.0;
+
+    static constexpr double kNaturalSigns[8][3] = {
+        {-1.0, -1.0, -1.0}, {1.0, -1.0, -1.0}, {1.0, 1.0, -1.0},
+        {-1.0, 1.0, -1.0},  {-1.0, -1.0, 1.0}, {1.0, -1.0, 1.0},
+        {1.0, 1.0, 1.0},    {-1.0, 1.0, 1.0},
+    };
+
+    double jac[3][3] = {};
+    for (int i = 0; i < 8; ++i)
+    {
+        const int lid = localOrder[i];
+        if (lid < 0 || lid >= cell->GetNumberOfPoints())
+            return 0.0;
+
+        double p[3] = {0.0, 0.0, 0.0};
+        grid->GetPoint(cell->GetPointId(lid), p);
+        for (int axis = 0; axis < 3; ++axis)
+        {
+            const double dN = kNaturalSigns[i][axis] / 8.0;
+            jac[0][axis] += p[0] * dN;
+            jac[1][axis] += p[1] * dN;
+            jac[2][axis] += p[2] * dN;
+        }
+    }
+
+    return jac[0][0] * (jac[1][1] * jac[2][2] - jac[1][2] * jac[2][1]) -
+           jac[0][1] * (jac[1][0] * jac[2][2] - jac[1][2] * jac[2][0]) +
+           jac[0][2] * (jac[1][0] * jac[2][1] - jac[1][1] * jac[2][0]);
+}
+
+static void orientHex8Positive(vtkUnstructuredGrid* grid, vtkCell* cell, QVector<int>& outConn)
+{
+    if (!grid || !cell || cell->GetCellType() != VTK_HEXAHEDRON || outConn.size() < 8)
+        return;
+
+    static constexpr int kIdentity[8] = {0, 1, 2, 3, 4, 5, 6, 7};
+    const double currentDet = hexCenterJacobianDet(grid, cell, kIdentity);
+    if (!(currentDet < 0.0))
+        return;
+
+    static constexpr int kFlipCandidates[3][8] = {
+        {1, 0, 3, 2, 5, 4, 7, 6},
+        {3, 2, 1, 0, 7, 6, 5, 4},
+        {4, 5, 6, 7, 0, 1, 2, 3},
+    };
+
+    int bestCandidate = -1;
+    double bestDet = currentDet;
+    for (int i = 0; i < 3; ++i)
+    {
+        const double det = hexCenterJacobianDet(grid, cell, kFlipCandidates[i]);
+        if (det > bestDet)
+        {
+            bestDet = det;
+            bestCandidate = i;
+        }
+    }
+
+    if (bestCandidate < 0 || !(bestDet > 0.0))
+        return;
+
+    const QVector<int> oldConn = outConn;
+    for (int i = 0; i < 8; ++i)
+        outConn[i] = oldConn[kFlipCandidates[bestCandidate][i]];
+}
+
 static vtkSmartPointer<vtkIntArray> getOrCreateCellIntArray(vtkUnstructuredGrid* g,
                                                             const char* name)
 {
@@ -539,6 +639,44 @@ static int tetHexKetypeFromCell(vtkCell* cell, int fallback)
     }
 }
 
+static bool hasUsableDomainCategory(const MshPickMap& pick, const QString& category)
+{
+    for (auto it = pick.tagSets.constBegin(); it != pick.tagSets.constEnd(); ++it)
+    {
+        const MeshTagSet& set = it.value();
+        if (set.key.category.compare(category, Qt::CaseInsensitive) != 0)
+            continue;
+        if (set.key.dim != pick.meshDim || set.key.id == 0 || set.cellIds.isEmpty())
+            continue;
+        return true;
+    }
+    return false;
+}
+
+static void normalizeDomainGroupCategories(MshPickMap& pick)
+{
+    // 旧工程没有显式保存用途时，按真实来源标签恢复，而不是按 MATYPE 优先级猜测。
+    if (pick.materialGroupCategory.trimmed().isEmpty())
+    {
+        if (hasUsableDomainCategory(pick, QStringLiteral("REGION")))
+            pick.materialGroupCategory = QStringLiteral("REGION");
+        else if (hasUsableDomainCategory(pick, QStringLiteral("Physical")))
+            pick.materialGroupCategory = QStringLiteral("Physical");
+        else if (hasUsableDomainCategory(pick, QStringLiteral("MATYPE")))
+            pick.materialGroupCategory = QStringLiteral("MATYPE");
+    }
+
+    if (pick.excavationGroupCategory.trimmed().isEmpty())
+    {
+        if (hasUsableDomainCategory(pick, QStringLiteral("REGION")))
+            pick.excavationGroupCategory = QStringLiteral("REGION");
+        else if (hasUsableDomainCategory(pick, QStringLiteral("Physical")))
+            pick.excavationGroupCategory = QStringLiteral("Physical");
+        else if (hasUsableDomainCategory(pick, QStringLiteral("LAYER")))
+            pick.excavationGroupCategory = QStringLiteral("LAYER");
+    }
+}
+
 static bool looksLikeAnsysInpFile(const QString& fileName)
 {
     QFile file(fileName);
@@ -578,6 +716,8 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString& fil
                                                               QString* errMsg)
 {
     clearPickMap();
+    m_mshPickMap.materialGroupCategory = QStringLiteral("Physical");
+    m_mshPickMap.excavationGroupCategory = QStringLiteral("Physical");
 
     auto grid = loadFlac3dGrid(fileName);
     if (!grid || grid->GetNumberOfCells() == 0)
@@ -720,6 +860,8 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString& fil
 vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importInp(const QString& fileName, QString* errMsg)
 {
     clearPickMap();
+    m_mshPickMap.materialGroupCategory = QStringLiteral("Physical");
+    m_mshPickMap.excavationGroupCategory = QStringLiteral("Physical");
 
     QString parseErr;
     auto grid = looksLikeAnsysInpFile(fileName)
@@ -781,6 +923,7 @@ void MeshGridIO::setMeshMap(const MshPickMap& pickMap)
 {
     m_mshPickMap = pickMap;
     normalizePhysicalTagSets(m_mshPickMap, QStringLiteral("SetMeshMap"));
+    normalizeDomainGroupCategories(m_mshPickMap);
 }
 
 void MeshGridIO::clearPickMap()
@@ -792,6 +935,8 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadIiinFile(const QString& fil
                                                               QString* errMsg)
 {
     clearPickMap();
+    m_mshPickMap.materialGroupCategory = QStringLiteral("MATYPE");
+    m_mshPickMap.excavationGroupCategory = QStringLiteral("LAYER");
 
     QFile f(fileName);
     if (!f.open(QIODevice::ReadOnly))
@@ -1616,6 +1761,16 @@ bool MeshGridIO::exportIiinFile(const QString& fileName, vtkUnstructuredGrid* gr
         }
 
                // IIIN.DAT 单元号按导出顺序从 1 开始连续编号
+        if (k == 35 && c->GetCellType() == VTK_TETRA && outConn.size() >= 4 &&
+            signedTetraVolume(grid, c) < 0.0)
+        {
+            std::swap(outConn[1], outConn[2]);
+        }
+        else if (k == 6 && c->GetCellType() == VTK_HEXAHEDRON)
+        {
+            orientHex8Positive(grid, c, outConn);
+        }
+
         const int outElemId = oi + 1;
         out << iField(outElemId, 8);
 

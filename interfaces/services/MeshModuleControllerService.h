@@ -6,6 +6,7 @@
 #include <QString>
 #include <QVector>
 #include <QtGlobal>
+#include <array>
 #include <struct/MeshMap.h>
 
 struct DomainKey
@@ -80,6 +81,24 @@ struct VolumeControlRule
     double localSizeFactor = 1.0;
 };
 
+struct BarElementPlacement
+{
+    std::array<double, 3> start{{0.0, 0.0, 0.0}};
+    std::array<double, 3> end{{0.0, 0.0, 0.0}};
+    std::array<double, 3> arrayOffset{{0.0, 0.0, 0.0}};
+    int segmentCount = 1;
+    int arrayCount = 1;
+    int installationLayer = -1;
+};
+
+struct BarElementRecordInfo
+{
+    int id = 0;
+    int cellCount = 0;
+    int matype = 0;
+    int installationLayer = -1;
+};
+
 struct MeshModuleControllerService
 {
     virtual ~MeshModuleControllerService()
@@ -91,6 +110,8 @@ struct MeshModuleControllerService
     virtual void closeProject() = 0;
 
     virtual QVector<MeshTagSet> domainTagSets() const = 0;
+    virtual QString materialGroupCategory() const = 0;
+    virtual QString excavationGroupCategory() const = 0;
     virtual QVector<MeshTagSet> boundaryTagSets(int dimFilter = -1) const = 0;
     virtual QVector<MeshIdType> cellIdsOfTag(const MeshTagKey& key) const = 0;
     virtual QVector<MeshIdType> pointIdsOfTag(const MeshTagKey& key) const = 0;
@@ -125,6 +146,10 @@ struct MeshModuleControllerService
                                              const QSet<MeshIdType>& damCellIds,
                                              int fillLayerCount,
                                              QString* errMsg = nullptr) = 0;
+    virtual bool appendBarElements(const BarElementPlacement& placement,
+                                   QString* errMsg = nullptr) = 0;
+    virtual bool removeBarElementRecord(int recordId, QString* errMsg = nullptr) = 0;
+    virtual QVector<BarElementRecordInfo> barElementRecords() const = 0;
 
     virtual void setEdgeControlRules(const QVector<EdgeControlRule>& rules) = 0;
     virtual void setFaceControlRules(const QVector<FaceControlRule>& rules) = 0;

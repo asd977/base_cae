@@ -62,6 +62,7 @@
 #include "CaveBlockStabilityWidget.h"
 #include "CaveExcavationWidget.h"
 #include "CaveSupportComputationPage.h"
+#include "CaveReinforcementFieldPage.h"
 #include "SeepageBoundaryPage.h"
 #include "SeepageWidget.h"
 #include "StressBoundaryPage.h"
@@ -788,6 +789,10 @@ int solverChildOrderRank(ProjectNode* parent, ProjectNode* child)
         if (childKind == QStringLiteral("GeoStressRegressionMeasurePoint")) return 10;
         if (childKind == QStringLiteral("GeoStressRegressionOuterForce")) return 11;
     }
+    else if (parentKind == QStringLiteral("CaveSupportComputation"))
+    {
+        if (childKind == QStringLiteral("CaveExcavationBody")) return 0;
+    }
     return 100;
 }
 
@@ -1092,10 +1097,19 @@ bool Solver::loadProject()
         bool hasDamIceRegionNode = false;
         bool hasGeoStressRegressionNode = false;
         bool hasCaveSupportComputationNode = false;
+        QJsonObject legacyCaveReinforcementState;
         for (const auto& childV : analysisObj.value("children").toArray())
         {
             const QJsonObject childObj = childV.toObject();
             const QString type = childObj.value("type").toString();
+
+            // 兼容少数把“围岩等效加固”直接保存到分析节点下的旧工程。
+            // 新版不再恢复该独立节点，而是把状态合并进开挖与加固分析页面。
+            if (type == QStringLiteral("CaveReinforcementField"))
+            {
+                legacyCaveReinforcementState = childObj.value("state").toObject();
+                continue;
+            }
 
             BasePage* page = nullptr;
             if (type == "SeepageBoundaryUpstreamWater")
@@ -1263,6 +1277,16 @@ bool Solver::loadProject()
                 {
                     const QJsonObject gcObj = gcV.toObject();
                     const QString gcType = gcObj.value("type").toString();
+
+                    if (gcType == QStringLiteral("CaveReinforcementField"))
+                    {
+                        if (auto* supportPage =
+                                dynamic_cast<CaveSupportComputationPage*>(page))
+                            supportPage->loadLegacyReinforcementFieldJson(
+                                gcObj.value("state").toObject());
+                        continue;
+                    }
+
                     BasePage* gcPage = nullptr;
                     if (gcType == "GeoStressRegressionSideFace")
                         gcPage = new GeoStressSideFacePage();
@@ -1413,6 +1437,20 @@ bool Solver::loadProject()
                     continue;
                 if (countGeoStressChildren(child, "CaveExcavationBody") == 0)
                     addCaveExcavationBodyNode(child, false);
+            }
+        }
+        if (!legacyCaveReinforcementState.isEmpty())
+        {
+            for (ProjectNode* child : analysisNode->getChildren())
+            {
+                auto* supportPage = child
+                    ? dynamic_cast<CaveSupportComputationPage*>(child->getPage())
+                    : nullptr;
+                if (!supportPage)
+                    continue;
+                supportPage->loadLegacyReinforcementFieldJson(
+                    legacyCaveReinforcementState);
+                break;
             }
         }
         if (analysisType == "CaveBlockStabilityAnalysis"
@@ -2306,6 +2344,11 @@ GeoStressRegressionWidget::ExportPayload Solver::buildGeoStressPayload(ProjectNo
         }
         else if (auto* f = dynamic_cast<GeoStressOuterForcePage*>(child->getPage()))
         {
+            // FAROOF.DAT 描述地表面，与是否施加外力无关，必须始终导出。
+            payload.roofFileReady = f->exportRoofFile();
+            if (!payload.roofFileReady)
+                continue;
+
             // 不再无条件生成 FTLOAD.DAT。零外力或未选择作用边/面时，
             // IGEOS 的 ITAG_FT 必须保持 0，避免求解器读取无效或旧的 FTLOAD.DAT。
             const int enabled = f->forceEnabled();
@@ -2313,7 +2356,7 @@ GeoStressRegressionWidget::ExportPayload Solver::buildGeoStressPayload(ProjectNo
                 continue;
 
             // 只有文件成功生成后才允许启用 FTLOAD。
-            if (!f->exportDatFiles())
+            if (!f->exportForceFile())
                 continue;
 
             if (payload.forceFile.isEmpty())
@@ -2358,7 +2401,7 @@ void Solver::addCaveSupportComputationNode(ProjectNode* analysisNode, bool setCu
             {
                 onComputeCaveExcavation(analysisNode);
             });
-            connectStopRequest(page);
+    connectStopRequest(page);
     addCaveExcavationBodyNode(node, false);
     node->setExpanded(true);
 
@@ -2929,6 +2972,11 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         QMessageBox::warning(nullptr, "计算失败", "未找到洞室开挖计算设置页面。");
         return;
     }
+    CaveReinforcementFieldPage* reinforcementPage =
+        supportPage->reinforcementFieldPage();
+    if (reinforcementPage
+        && reinforcementPage->mode() != CaveReinforcementFieldPage::Mode::Disabled)
+        supportPage->ensureReinforcedTask();
     QString caveParameterError;
     if (!supportPage->validateInputs(&caveParameterError))
     {
@@ -3145,9 +3193,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
             if (!meshSvc)
                 return false;
 
-            vtkSmartPointer<vtkUnstructuredGrid> grid = meshSvc->getVtkUnstructuredGridSolid();
-            if (!grid || grid->GetNumberOfCells() <= 0)
-                grid = meshSvc->getVtkUnstructuredGrid();
+            vtkSmartPointer<vtkUnstructuredGrid> grid = meshSvc->getVtkUnstructuredGrid();
             if (!grid || grid->GetNumberOfCells() <= 0)
                 return false;
 
@@ -3292,9 +3338,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                 sourceInfo.exists() &&
                 sourceInfo.suffix().compare(QStringLiteral("dat"), Qt::CaseInsensitive) == 0;
 
-            ctx.grid = meshSvc->getVtkUnstructuredGridSolid();
-            if (!ctx.grid || ctx.grid->GetNumberOfCells() <= 0)
-                ctx.grid = meshSvc->getVtkUnstructuredGrid();
+            ctx.grid = meshSvc->getVtkUnstructuredGrid();
 
             if (!ctx.grid || ctx.grid->GetNumberOfCells() <= 0)
                 return ctx;
@@ -3470,7 +3514,10 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
             int ke2 = -1;
             QVector<int> nodeIds;
             int jat = 0;
+            std::array<double, 3> center{{0.0, 0.0, 0.0}};
         };
+
+        QVector<ReinforcementFaceSample> reinforcementFaces;
 
         auto writeIijx = [&](const QString& fileName, const QVector<int>& kes, int iex1,
                              int iex2) -> bool
@@ -3593,6 +3640,13 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                             row.ke1 = ke;
                             row.ke2 = oppositeKe;
                             row.nodeIds = {nodeIdOfPoint(p1), nodeIdOfPoint(p2)};
+                            double xyz[3]{};
+                            caveCtx.grid->GetPoint(p1, xyz);
+                            for (int axis = 0; axis < 3; ++axis)
+                                row.center[axis] += xyz[axis] * 0.5;
+                            caveCtx.grid->GetPoint(p2, xyz);
+                            for (int axis = 0; axis < 3; ++axis)
+                                row.center[axis] += xyz[axis] * 0.5;
                             rows.push_back(row);
                         }
                     }
@@ -3725,6 +3779,14 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                             for (vtkIdType pid : orientedPointIds)
                                 row.nodeIds.push_back(nodeIdOfPoint(pid));
 
+                            for (vtkIdType pid : orientedPointIds)
+                            {
+                                double xyz[3]{};
+                                caveCtx.grid->GetPoint(pid, xyz);
+                                for (int axis = 0; axis < 3; ++axis)
+                                    row.center[axis] += xyz[axis] / orientedPointIds.size();
+                            }
+
                             // 四面体边界面保留 3 个节点；六面体边界面保留 4 个节点。
                             // MAKOD 必须等于 2 + 实际面节点数，否则 EXCAIIWL 会在 IIWL 中
                             // 生成错误的 NFAJD。
@@ -3757,6 +3819,18 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                 {
                     while (row.nodeIds.size() < 4 && !row.nodeIds.isEmpty())
                         row.nodeIds.push_back(row.nodeIds.last());
+                }
+            }
+
+            if (fileName.startsWith(QStringLiteral("IIJX_T")))
+            {
+                // 始终保留当前累计开挖体的外表面；循环结束后即为最终开挖边界，
+                // 不会把相邻开挖体之间已经消失的内部交界面当作加固面。
+                reinforcementFaces.clear();
+                for (const IijxRow& row : std::as_const(rows))
+                {
+                    reinforcementFaces.push_back(
+                        {row.center, caveLayerByElementId.value(row.ke1, iex2)});
                 }
             }
 
@@ -3837,6 +3911,48 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
                 ok = false;
                 failedFiles << tjxFile;
             }
+        }
+
+        QHash<vtkIdType, int> effectiveCellLayers;
+        QHash<vtkIdType, int> calculationElementByCell;
+        calculationElementByCell.reserve(caveCtx.calculationElemToCellId.size());
+        for (auto it = caveCtx.calculationElemToCellId.constBegin();
+             it != caveCtx.calculationElemToCellId.constEnd(); ++it)
+            calculationElementByCell.insert(it.value(), it.key());
+        vtkDataArray* gridLayers = caveCtx.grid->GetCellData()->GetArray("LAYER");
+        for (vtkIdType cellId = 0; cellId < caveCtx.grid->GetNumberOfCells(); ++cellId)
+        {
+            vtkCell* cell = caveCtx.grid->GetCell(cellId);
+            if (!cell || (cell->GetCellDimension() != caveCtx.targetDim &&
+                          cell->GetCellDimension() != 1))
+                continue;
+            int layer = gridLayers ? static_cast<int>(gridLayers->GetTuple1(cellId)) : 1;
+            if (cell->GetCellDimension() == caveCtx.targetDim)
+            {
+                const int calculationElement = calculationElementByCell.value(cellId, 0);
+                if (calculationElement > 0)
+                    layer = caveLayerByElementId.value(calculationElement, layer);
+            }
+            effectiveCellLayers.insert(cellId, layer);
+        }
+
+        QString reinforcementError;
+        if (reinforcementPage)
+        {
+            if (!reinforcementPage->exportFieldFiles(
+                    inputDir.absolutePath(), caveCtx.grid, caveCtx.targetDim,
+                    effectiveCellLayers, reinforcementFaces, &reinforcementError))
+            {
+                ok = false;
+                failedFiles << (reinforcementError.isEmpty()
+                                    ? QStringLiteral("ALFAIE.DAT/ALFAJD.DAT")
+                                    : reinforcementError);
+            }
+        }
+        else
+        {
+            QFile::remove(inputDir.filePath(QStringLiteral("ALFAIE.DAT")));
+            QFile::remove(inputDir.filePath(QStringLiteral("ALFAJD.DAT")));
         }
 
 
@@ -4100,6 +4216,13 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
     }
 
     const GeoStressRegressionWidget::ExportPayload payload = buildGeoStressPayload(analysisNode);
+    if (!payload.roofFileReady)
+    {
+        QMessageBox::warning(nullptr, QStringLiteral("数据准备失败"),
+                             QStringLiteral("地表面数据生成失败，请检查外面力节点中选择的网格边界。"));
+        clearSolverRunDirectory();
+        return;
+    }
     if (payload.faceRows.size() != sideFaceCount)
     {
         QMessageBox::warning(nullptr, QStringLiteral("数据准备失败"),
@@ -5443,38 +5566,61 @@ bool Solver::exportInouseDatFile()
     }
     const int ndim = qMax(2, qMin(configuredNdim, meshMaxDim > 0 ? meshMaxDim : configuredNdim));
 
+    // IIIN 只导出当前研究维度的实体单元和一维杆单元。INOUSE 中所有单元号
+    // 必须使用同一导出顺序，不能直接使用包含边界面单元的 VTK cellId + 1。
+    QHash<vtkIdType, int> calculationElementByCell;
+    QVector<vtkIdType> cellByCalculationElement(1, -1);
+    calculationElementByCell.reserve(static_cast<int>(nCells));
+    for (vtkIdType cid = 0; cid < nCells; ++cid)
+    {
+        vtkCell* cell = grid->GetCell(cid);
+        if (!cell || (cell->GetCellDimension() != ndim && cell->GetCellDimension() != 1))
+            continue;
+        const int calculationElement = cellByCalculationElement.size();
+        calculationElementByCell.insert(cid, calculationElement);
+        cellByCalculationElement.push_back(cid);
+    }
+
+    const auto cellOfCalculationElement = [&](int calculationElement) -> vtkCell*
+    {
+        if (calculationElement <= 0 || calculationElement >= cellByCalculationElement.size())
+            return nullptr;
+        return grid->GetCell(cellByCalculationElement.at(calculationElement));
+    };
+
     QSet<vtkIdType> usedPointIds;
     usedPointIds.reserve(static_cast<int>(nPts));
     QVector<int> noUseElems;
     noUseElems.reserve(static_cast<int>(nCells / 10 + 1));
 
     QVector<QVector<int>> pointToSolidElems(static_cast<int>(nPts));
-    QVector<int> solidCellIds;
+    QVector<vtkIdType> solidCellIds;
     solidCellIds.reserve(static_cast<int>(nCells));
 
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
         vtkCell* cell = grid->GetCell(cid);
-        if (!cell)
+        if (!cell || !calculationElementByCell.contains(cid))
             continue;
+        const int calculationElement = calculationElementByCell.value(cid);
         vtkIdList* ptIds = cell->GetPointIds();
         const vtkIdType np = ptIds ? ptIds->GetNumberOfIds() : 0;
         if (np <= 0)
         {
-            noUseElems.push_back(static_cast<int>(cid + 1));
+            noUseElems.push_back(calculationElement);
             continue;
         }
 
         const bool isSolid = (cell->GetCellDimension() >= ndim);
         if (isSolid)
-            solidCellIds.push_back(static_cast<int>(cid + 1));
+            solidCellIds.push_back(cid);
         for (vtkIdType i = 0; i < np; ++i)
         {
             const vtkIdType pid = ptIds->GetId(i);
             usedPointIds.insert(pid);
             if (isSolid && pid >= 0 && pid < nPts)
             {
-                pointToSolidElems[static_cast<int>(pid)].push_back(static_cast<int>(cid + 1));
+                pointToSolidElems[static_cast<int>(pid)].push_back(calculationElement);
             }
         }
     }
@@ -5483,13 +5629,13 @@ bool Solver::exportInouseDatFile()
     solidGrid->SetPoints(grid->GetPoints());
     QVector<int> solidLocalToGlobal;
     solidLocalToGlobal.reserve(solidCellIds.size());
-    for (int ke : std::as_const(solidCellIds))
+    for (vtkIdType sourceCellId : std::as_const(solidCellIds))
     {
-        vtkCell* solid = grid->GetCell(static_cast<vtkIdType>(ke - 1));
+        vtkCell* solid = grid->GetCell(sourceCellId);
         if (!solid || !solid->GetPointIds())
             continue;
         solidGrid->InsertNextCell(solid->GetCellType(), solid->GetPointIds());
-        solidLocalToGlobal.push_back(ke);
+        solidLocalToGlobal.push_back(calculationElementByCell.value(sourceCellId));
     }
     auto solidLocator = vtkSmartPointer<vtkStaticCellLocator>::New();
     if (solidGrid->GetNumberOfCells() > 0)
@@ -5524,7 +5670,7 @@ bool Solver::exportInouseDatFile()
         inside.reserve(candidates.size());
         for (int ke : candidates)
         {
-            vtkCell* solid = grid->GetCell(static_cast<vtkIdType>(ke - 1));
+            vtkCell* solid = cellOfCalculationElement(ke);
             if (!solid)
                 continue;
             std::array<double, 3> closestPt{0.0, 0.0, 0.0};
@@ -5546,7 +5692,7 @@ bool Solver::exportInouseDatFile()
     {
         auto distanceToCell = [&](int ke, const double xyz[3]) -> double
         {
-            vtkCell* solid = grid->GetCell(static_cast<vtkIdType>(ke - 1));
+            vtkCell* solid = cellOfCalculationElement(ke);
             if (!solid)
                 return std::numeric_limits<double>::max();
             std::array<double, 3> closestPt{0.0, 0.0, 0.0};
@@ -5605,7 +5751,7 @@ bool Solver::exportInouseDatFile()
         rst.fill(0.0, ndim);
         if (ke <= 0)
             return;
-        vtkCell* solid = grid->GetCell(static_cast<vtkIdType>(ke - 1));
+        vtkCell* solid = cellOfCalculationElement(ke);
         if (!solid)
             return;
 
@@ -5624,7 +5770,8 @@ bool Solver::exportInouseDatFile()
     for (vtkIdType cid = 0; cid < nCells; ++cid)
     {
         vtkCell* cell = grid->GetCell(cid);
-        if (!cell || cell->GetCellDimension() != 1)
+        if (!cell || cell->GetCellDimension() != 1 ||
+            !calculationElementByCell.contains(cid))
             continue;
         vtkIdList* ptIds = cell->GetPointIds();
         if (!ptIds || ptIds->GetNumberOfIds() < 2)
@@ -5646,7 +5793,7 @@ bool Solver::exportInouseDatFile()
         grid->GetPoint(p1, xyz1);
 
         BarRow row;
-        row.ke = static_cast<int>(cid + 1);
+        row.ke = calculationElementByCell.value(cid);
         row.ke1 = pickRelatedSolid(p0, xyz0, xyz1);
         row.ke2 = pickRelatedSolid(p1, xyz1, xyz0);
         if (!s0 && !s1)

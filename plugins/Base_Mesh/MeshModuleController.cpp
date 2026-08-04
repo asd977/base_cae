@@ -1,6 +1,7 @@
 ﻿#include "MeshModuleController.h"
 
 #include <EventManager.h>
+#include <BarElementPlacementWidget.h>
 #include <GridEditingWidget.h>
 #include <MeshEdgeControlWidget.h>
 #include <MeshFaceControlWidget.h>
@@ -18,9 +19,11 @@
 #include <ServiceRegistry.h>
 #include <qfiledialog.h>
 #include <services/OutputService.h>
+#include <services/MaterialManagerService.h>
 #include <services/ProjectManagerService.h>
 #include <services/VisualWidgetService.h>
 #include <vtkActor.h>
+#include <vtkAbstractArray.h>
 #include <vtkAppendFilter.h>
 #include <vtkCell.h>
 #include <vtkCellArray.h>
@@ -29,6 +32,7 @@
 #include <vtkDataSetMapper.h>
 #include <vtkDataArray.h>
 #include <vtkDataSet.h>
+#include <vtkDataSetAttributes.h>
 #include <vtkDataSetSurfaceFilter.h>
 #include <vtkExtractCells.h>
 #include <vtkFieldData.h>
@@ -46,6 +50,7 @@
 #include <vtkUnstructuredGrid.h>
 #include <vtkUnstructuredGridReader.h>
 #include <vtkStringArray.h>
+#include <vtkVariant.h>
 
 #include <QByteArray>
 #include <QColor>
@@ -190,6 +195,148 @@ static void markGridSnapshotSaved(const QString& snapshotPath, vtkUnstructuredGr
         return;
 
     s_savedSnapshotMTimeByPath.insert(normalizedProjectPathKey(snapshotPath), gridModifiedTime(grid));
+}
+
+static double defaultNumericArrayValue(const QString& name, vtkIdType tuple)
+{
+    if (name.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0)
+        return 2.0;
+    if (name.compare(QStringLiteral("LAYER"), Qt::CaseInsensitive) == 0)
+        return 1.0;
+    if (name.compare(QStringLiteral("node_id"), Qt::CaseInsensitive) == 0 ||
+        name.compare(QStringLiteral("elem_id"), Qt::CaseInsensitive) == 0)
+    {
+        return static_cast<double>(tuple + 1);
+    }
+    if (name.startsWith(QStringLiteral("vtkOriginal"), Qt::CaseInsensitive))
+        return static_cast<double>(tuple);
+    return 0.0;
+}
+
+static bool normalizeAttributeTupleCounts(vtkDataSetAttributes* attributes,
+                                          vtkIdType expectedTuples,
+                                          const QString& association,
+                                          bool reportRepairs)
+{
+    if (!attributes || expectedTuples < 0)
+        return false;
+
+    bool changed = false;
+    for (int arrayIndex = 0; arrayIndex < attributes->GetNumberOfArrays(); ++arrayIndex)
+    {
+        vtkAbstractArray* abstractArray = attributes->GetAbstractArray(arrayIndex);
+        if (!abstractArray)
+            continue;
+        const vtkIdType oldTuples = abstractArray->GetNumberOfTuples();
+        if (oldTuples == expectedTuples)
+            continue;
+
+        const QString name = QString::fromUtf8(
+            abstractArray->GetName() ? abstractArray->GetName() : "未命名");
+        const int components = qMax(1, abstractArray->GetNumberOfComponents());
+        // SetNumberOfTuples() may reallocate without copying the old buffer.
+        // Resize() explicitly preserves existing values; Insert* then advances
+        // the valid range while initializing only newly added tuples.
+        if (!abstractArray->Resize(expectedTuples))
+        {
+            if (reportRepairs)
+            {
+                qWarning().noquote()
+                    << QStringLiteral("__RAW__[网格数据修复] %1数组“%2”无法调整为 %3 个元组。")
+                           .arg(association, name)
+                           .arg(expectedTuples);
+            }
+            continue;
+        }
+
+        if (expectedTuples > oldTuples)
+        {
+            if (vtkDataArray* dataArray = vtkDataArray::SafeDownCast(abstractArray))
+            {
+                for (vtkIdType tuple = oldTuples; tuple < expectedTuples; ++tuple)
+                {
+                    const double defaultValue = defaultNumericArrayValue(name, tuple);
+                    for (int component = 0; component < components; ++component)
+                        dataArray->InsertComponent(tuple, component, defaultValue);
+                }
+            }
+            else if (auto* stringArray = vtkStringArray::SafeDownCast(abstractArray))
+            {
+                for (vtkIdType value = oldTuples * components;
+                     value < expectedTuples * components; ++value)
+                {
+                    stringArray->InsertValue(value, std::string());
+                }
+            }
+            else
+            {
+                for (vtkIdType value = oldTuples * components;
+                     value < expectedTuples * components; ++value)
+                {
+                    abstractArray->InsertVariantValue(value, vtkVariant());
+                }
+            }
+        }
+
+        if (reportRepairs)
+        {
+            qWarning().noquote()
+                << QStringLiteral("__RAW__[网格数据修复] %1数组“%2”的元组数由 %3 调整为 %4。")
+                       .arg(association, name)
+                       .arg(oldTuples)
+                       .arg(expectedTuples);
+        }
+        changed = true;
+    }
+    return changed;
+}
+
+static bool normalizeGridAttributeTupleCounts(vtkUnstructuredGrid* grid,
+                                              bool reportRepairs = true,
+                                              bool recoverBarGroups = true)
+{
+    if (!grid)
+        return false;
+    vtkDataArray* barGroups = grid->GetCellData()->GetArray("BAR_GROUP");
+    auto* barGroupNames = vtkStringArray::SafeDownCast(
+        grid->GetCellData()->GetAbstractArray("BAR_GROUP_NAME"));
+    const vtkIdType oldBarGroupTuples =
+        barGroups ? barGroups->GetNumberOfTuples() : grid->GetNumberOfCells();
+    const bool pointChanged = normalizeAttributeTupleCounts(
+        grid->GetPointData(), grid->GetNumberOfPoints(), QStringLiteral("节点"), reportRepairs);
+    const bool cellChanged = normalizeAttributeTupleCounts(
+        grid->GetCellData(), grid->GetNumberOfCells(), QStringLiteral("单元"), reportRepairs);
+    int recoveredBarCells = 0;
+    if (recoverBarGroups && barGroups && oldBarGroupTuples > 0 &&
+        oldBarGroupTuples < grid->GetNumberOfCells())
+    {
+        for (vtkIdType cid = oldBarGroupTuples; cid < grid->GetNumberOfCells(); ++cid)
+        {
+            vtkCell* cell = grid->GetCell(cid);
+            if (!cell || cell->GetCellDimension() != 1 || cid <= 0)
+                continue;
+            vtkCell* previousCell = grid->GetCell(cid - 1);
+            const int previousGroup = static_cast<int>(barGroups->GetTuple1(cid - 1));
+            if (!previousCell || previousCell->GetCellDimension() != 1 || previousGroup <= 0)
+                continue;
+            barGroups->SetTuple1(cid, previousGroup);
+            if (barGroupNames && cid < barGroupNames->GetNumberOfValues() &&
+                cid - 1 < barGroupNames->GetNumberOfValues())
+            {
+                barGroupNames->SetValue(cid, barGroupNames->GetValue(cid - 1));
+            }
+            ++recoveredBarCells;
+        }
+    }
+    if (reportRepairs && recoveredBarCells > 0)
+    {
+        qWarning().noquote()
+            << QStringLiteral("__RAW__[网格数据修复] 已从相邻杆单元恢复 %1 个生成记录标记。")
+                   .arg(recoveredBarCells);
+    }
+    if (pointChanged || cellChanged)
+        grid->Modified();
+    return pointChanged || cellChanged;
 }
 
 static bool isGridCellDataDomainTag(const MeshTagKey& key)
@@ -1065,6 +1212,8 @@ static bool saveMeshMapJson(const QString& filePath,
     Q_UNUSED(grid);
 
     root["mesh_dim"] = pick.meshDim;
+    root["material_group_category"] = pick.materialGroupCategory;
+    root["excavation_group_category"] = pick.excavationGroupCategory;
     root["phys_id_to_name"] = intStringHashToJson(pick.physIdToName);
     root["phys_id_to_dim"] = intIntHashToJson(pick.physIdToDim);
 
@@ -1120,6 +1269,10 @@ static bool loadMeshMapJson(const QString& filePath,
     MshPickMap pick;
 
     pick.meshDim = root.value("mesh_dim").toInt();
+    pick.materialGroupCategory =
+        root.value("material_group_category").toString().trimmed();
+    pick.excavationGroupCategory =
+        root.value("excavation_group_category").toString().trimmed();
     pick.physIdToName =
         jsonToIntStringHash(root.value("phys_id_to_name").toObject());
     pick.physIdToDim =
@@ -2201,6 +2354,8 @@ bool MeshModuleController::saveProject()
 
     const bool hasGrid =
         (m_importedGrid && m_importedGrid->GetNumberOfCells() > 0);
+    if (hasGrid)
+        normalizeGridAttributeTupleCounts(m_importedGrid);
 
     root["has_grid"] = hasGrid;
     root["snapshot_file"] = PublicConstants::kMeshSnapshotFileName;
@@ -2284,6 +2439,40 @@ bool MeshModuleController::saveProject()
     root["edge_rules"] = edgeRulesToJson();
     root["face_rules"] = faceRulesToJson();
     root["volume_rules"] = volumeRulesToJson();
+
+    QJsonArray savedBarGroups;
+    if (hasGrid)
+    {
+        vtkDataArray* groupIds = m_importedGrid->GetCellData()->GetArray("BAR_GROUP");
+        vtkDataArray* elementIds = m_importedGrid->GetCellData()->GetArray("elem_id");
+        auto* groupNames = vtkStringArray::SafeDownCast(
+            m_importedGrid->GetCellData()->GetAbstractArray("BAR_GROUP_NAME"));
+        QMap<int, QJsonObject> groups;
+        QMap<int, QJsonArray> groupElements;
+        for (vtkIdType cid = 0; groupIds && cid < m_importedGrid->GetNumberOfCells(); ++cid)
+        {
+            const int groupId = static_cast<int>(groupIds->GetTuple1(cid));
+            vtkCell* cell = m_importedGrid->GetCell(cid);
+            if (groupId <= 0 || !cell || cell->GetCellDimension() != 1)
+                continue;
+            QJsonObject group = groups.value(groupId);
+            group[QStringLiteral("id")] = groupId;
+            if (groupNames && cid < groupNames->GetNumberOfValues())
+                group[QStringLiteral("name")] =
+                    QString::fromStdString(groupNames->GetValue(cid));
+            groups.insert(groupId, group);
+            groupElements[groupId].append(
+                elementIds ? static_cast<int>(elementIds->GetTuple1(cid))
+                           : static_cast<int>(cid + 1));
+        }
+        for (auto it = groups.constBegin(); it != groups.constEnd(); ++it)
+        {
+            QJsonObject group = it.value();
+            group[QStringLiteral("element_ids")] = groupElements.value(it.key());
+            savedBarGroups.append(group);
+        }
+    }
+    root[QStringLiteral("bar_element_groups")] = savedBarGroups;
 
     QJsonArray nodeItems;
 
@@ -2440,6 +2629,48 @@ bool MeshModuleController::loadProject()
             m_importSettingsWidget->setSourceFileName(m_sourceFileName);
         }
 
+        const QJsonArray savedBarGroups = root.value(QStringLiteral("bar_element_groups")).toArray();
+        if (!savedBarGroups.isEmpty())
+        {
+            const vtkIdType cellCount = m_importedGrid->GetNumberOfCells();
+            auto groupIds = vtkSmartPointer<vtkIntArray>::New();
+            groupIds->SetName("BAR_GROUP");
+            groupIds->SetNumberOfComponents(1);
+            groupIds->SetNumberOfTuples(cellCount);
+            groupIds->FillComponent(0, 0);
+            auto groupNames = vtkSmartPointer<vtkStringArray>::New();
+            groupNames->SetName("BAR_GROUP_NAME");
+            groupNames->SetNumberOfValues(cellCount);
+            for (vtkIdType cid = 0; cid < cellCount; ++cid)
+                groupNames->SetValue(cid, std::string());
+
+            QHash<int, QPair<int, QString>> groupByElementId;
+            for (const QJsonValue& value : savedBarGroups)
+            {
+                const QJsonObject group = value.toObject();
+                const int groupId = group.value(QStringLiteral("id")).toInt();
+                const QString name = group.value(QStringLiteral("name")).toString();
+                for (const QJsonValue& element : group.value(QStringLiteral("element_ids")).toArray())
+                    groupByElementId.insert(element.toInt(), qMakePair(groupId, name));
+            }
+            vtkDataArray* elementIds = m_importedGrid->GetCellData()->GetArray("elem_id");
+            for (vtkIdType cid = 0; cid < cellCount; ++cid)
+            {
+                const int elementId = elementIds
+                                          ? static_cast<int>(elementIds->GetTuple1(cid))
+                                          : static_cast<int>(cid + 1);
+                const auto it = groupByElementId.constFind(elementId);
+                if (it == groupByElementId.constEnd())
+                    continue;
+                groupIds->SetValue(cid, it.value().first);
+                groupNames->SetValue(cid, it.value().second.toStdString());
+            }
+            m_importedGrid->GetCellData()->AddArray(groupIds);
+            m_importedGrid->GetCellData()->AddArray(groupNames);
+        }
+
+        normalizeGridAttributeTupleCounts(m_importedGrid);
+
         m_splitCacheSource = nullptr;
         m_splitCacheLine = nullptr;
         m_splitCacheNonLine = nullptr;
@@ -2541,6 +2772,13 @@ bool MeshModuleController::loadProject()
 
         if (kind == "MeshGrouping")
             return new MeshGroupingWidget();
+
+        if (kind == "BarElementPlacement")
+        {
+            auto* page = new BarElementPlacementWidget();
+            m_barElementWidget = page;
+            return page;
+        }
 
         if (kind == "MeshQualityCheck")
         {
@@ -2665,6 +2903,7 @@ void MeshModuleController::closeProject()
 
     m_importSettingsWidget = nullptr;
     m_gridEditingWidget = nullptr;
+    m_barElementWidget = nullptr;
     m_qualityCheckWidget = nullptr;
 
     if (m_visualWidgetService)
@@ -2732,6 +2971,16 @@ QVector<MeshTagSet> MeshModuleController::domainTagSets() const
                   return a.key.id < b.key.id;
               });
     return out;
+}
+
+QString MeshModuleController::materialGroupCategory() const
+{
+    return MeshGridIO::instance().getMeshMapRef().materialGroupCategory.trimmed();
+}
+
+QString MeshModuleController::excavationGroupCategory() const
+{
+    return MeshGridIO::instance().getMeshMapRef().excavationGroupCategory.trimmed();
 }
 
 QVector<MeshTagSet> MeshModuleController::boundaryTagSets(int dimFilter) const
@@ -2808,6 +3057,7 @@ QString MeshModuleController::displayTextOfTag(const MeshTagKey& key) const
     {
         const QString name = normalizePhysicalUiName(key.dim, key.id, map.tagSets.value(key).name);
         if (key.category == QStringLiteral("Physical") ||
+            key.category.compare(QStringLiteral("REGION"), Qt::CaseInsensitive) == 0 ||
             key.category.compare(QStringLiteral("NetgenBoundary"),
                                  Qt::CaseInsensitive) == 0)
             return name;
@@ -3032,6 +3282,11 @@ void MeshModuleController::initAction()
         {
             onMeshEdit();
         });
+    reg(PublicConstants::kActionPreprocessBarElements,
+        [this]
+        {
+            onBarElements();
+        });
     reg(PublicConstants::kActionPreprocessMeshGrouping,
         [this]
         {
@@ -3133,6 +3388,31 @@ void MeshModuleController::importGridFile(const QString& fileName)
     m_importedGrid = grid;
     m_hasGrid = true;
     m_sourceFileName = fileName;
+
+    if (ext == "vtk")
+    {
+        // 普通 VTK 不携带 mesh_map.json，必须清掉上一张网格的分组映射。
+        // 有有效 src_part 时按 Netgen 区域处理，否则按 DAT 风格的 MATYPE/LAYER 处理。
+        MshPickMap vtkPickMap;
+        bool hasPositiveRegion = false;
+        vtkDataArray* regionArray = m_importedGrid->GetCellData()
+            ? m_importedGrid->GetCellData()->GetArray("src_part")
+            : nullptr;
+        for (vtkIdType cid = 0; regionArray && cid < regionArray->GetNumberOfTuples(); ++cid)
+        {
+            if (static_cast<int>(regionArray->GetTuple1(cid)) > 0)
+            {
+                hasPositiveRegion = true;
+                break;
+            }
+        }
+        vtkPickMap.materialGroupCategory =
+            hasPositiveRegion ? QStringLiteral("REGION") : QStringLiteral("MATYPE");
+        vtkPickMap.excavationGroupCategory =
+            hasPositiveRegion ? QStringLiteral("REGION") : QStringLiteral("LAYER");
+        MeshGridIO::instance().setMeshMap(vtkPickMap);
+    }
+
     if (ext == "dat")
         m_verticalAxis = MeshGridIO::verticalAxisOfGrid(m_importedGrid, m_verticalAxis);
     else
@@ -3213,7 +3493,10 @@ bool MeshModuleController::importGeneratedNetgenMesh(const QString& vtkPath, QSt
     // Gmsh/IIIN mesh. Keeping the old map here left stale Physical ids,
     // boundary points and cell ids behind, so UI combo boxes targeted data
     // from the preceding mesh.
-    MeshGridIO::instance().setMeshMap(MshPickMap{});
+    MshPickMap netgenPickMap;
+    netgenPickMap.materialGroupCategory = QStringLiteral("REGION");
+    netgenPickMap.excavationGroupCategory = QStringLiteral("REGION");
+    MeshGridIO::instance().setMeshMap(netgenPickMap);
     {
         vtkSmartPointer<vtkUnstructuredGrid> tmpLine;
         vtkSmartPointer<vtkUnstructuredGrid> tmpNonLine;
@@ -4146,6 +4429,29 @@ void MeshModuleController::onMeshEdit()
     openGridDisplayControlPage();
 }
 
+void MeshModuleController::onBarElements()
+{
+    if (!m_gridNode)
+        return;
+    if (auto* existed = findDirectChildByKind(m_gridNode, QStringLiteral("BarElementPlacement")))
+    {
+        if (m_barElementWidget)
+            m_barElementWidget->refreshData();
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(existed);
+        return;
+    }
+
+    auto* page = new BarElementPlacementWidget();
+    m_barElementWidget = page;
+    auto* node = new ProjectNode(QStringLiteral("杆单元布置"), QUuid::createUuid().toString(), page);
+    node->setData(0, ProjectNode::RoleModule, QStringLiteral("Mesh"));
+    node->setData(0, ProjectNode::RoleKind, QStringLiteral("BarElementPlacement"));
+    m_gridNode->addChild(node);
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        pm->setCurrentItem(node);
+}
+
 void MeshModuleController::openGridDisplayControlPage()
 {
     if (!m_gridNode)
@@ -4182,6 +4488,9 @@ void MeshModuleController::displayCurrentGrid(bool fitView)
 {
     const qint64 rev = PublicVariables::instance().get("pick_structure_revision").toLongLong();
     PublicVariables::instance().set("pick_structure_revision", rev + 1, "project_dir");
+
+    if (m_importedGrid)
+        normalizeGridAttributeTupleCounts(m_importedGrid);
 
     if (!m_visualWidgetService || !m_hasGrid || !m_importedGrid)
         return;
@@ -4655,8 +4964,18 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
         return;
 
     MshPickMap pick = MeshGridIO::instance().getMeshMap();
-    const bool hasRegionCellData = grid->GetCellData() &&
-        grid->GetCellData()->GetArray("src_part");
+    auto* regionCellData = grid->GetCellData()
+        ? vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("src_part"))
+        : nullptr;
+    bool hasUsableRegionCellData = false;
+    for (vtkIdType cid = 0; regionCellData && cid < regionCellData->GetNumberOfTuples(); ++cid)
+    {
+        if (regionCellData->GetValue(cid) > 0)
+        {
+            hasUsableRegionCellData = true;
+            break;
+        }
+    }
 
     int meshDim = -1;
     const vtkIdType nCells = grid->GetNumberOfCells();
@@ -4722,7 +5041,7 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
         // IIIN project snapshots do not carry that extra array; in that case
         // retain REGION sets restored from mesh_map.json instead of deleting
         // the excavation grouping during project load.
-        if (isMatype || isLayer || (isRegion && hasRegionCellData))
+        if (isMatype || isLayer || (isRegion && hasUsableRegionCellData))
             removeKeys.push_back(key);
     }
 
@@ -4736,8 +5055,7 @@ static void syncPickMapGroupingFromGrid(vtkUnstructuredGrid* grid)
 
     auto* layArr =
         vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"));
-    auto* regionArr =
-        vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("src_part"));
+    auto* regionArr = regionCellData;
     auto* groupNameArr =
         vtkStringArray::SafeDownCast(grid->GetCellData()->GetAbstractArray("GroupName"));
 
@@ -5313,6 +5631,555 @@ bool MeshModuleController::assignDamConstructionLayers(
     syncPickMapGroupingFromGrid(m_importedGrid);
     displayCurrentGrid();
     return true;
+}
+
+bool MeshModuleController::appendBarElements(const BarElementPlacement& placement,
+                                             QString* errMsg)
+{
+    const auto fail = [errMsg](const QString& message)
+    {
+        if (errMsg)
+            *errMsg = message;
+        return false;
+    };
+    if (!m_importedGrid || m_importedGrid->GetNumberOfCells() <= 0 ||
+        !m_importedGrid->GetPoints())
+        return fail(QStringLiteral("请先导入或生成实体网格。"));
+    normalizeGridAttributeTupleCounts(m_importedGrid);
+    if (placement.segmentCount <= 0 || placement.arrayCount <= 0)
+        return fail(QStringLiteral("分段数和阵列数量必须为正整数。"));
+    if (placement.arrayCount > 1)
+    {
+        const double offsetLength = std::sqrt(
+            placement.arrayOffset[0] * placement.arrayOffset[0]
+            + placement.arrayOffset[1] * placement.arrayOffset[1]
+            + placement.arrayOffset[2] * placement.arrayOffset[2]);
+        if (offsetLength <= 1.0e-12)
+            return fail(QStringLiteral("阵列数量大于 1 时，阵列偏移不能为零。"));
+    }
+
+    const double dx = placement.end[0] - placement.start[0];
+    const double dy = placement.end[1] - placement.start[1];
+    const double dz = placement.end[2] - placement.start[2];
+    if (std::sqrt(dx * dx + dy * dy + dz * dz) <= 1.0e-12)
+        return fail(QStringLiteral("杆单元起点和终点不能重合。"));
+
+    const vtkIdType oldPointCount = m_importedGrid->GetNumberOfPoints();
+    const vtkIdType oldCellCount = m_importedGrid->GetNumberOfCells();
+    const vtkIdType addedCellCount =
+        static_cast<vtkIdType>(placement.arrayCount) * placement.segmentCount;
+
+    // 杆单元与其他网格单元使用同一套 MATYPE 材料区域。界面未指定区域时，
+    // 为本次新增单元分配一个尚未使用的普通区域；材料仍由材料模块统一关联。
+    QSet<int> usedMatypes;
+    if (vtkDataArray* existingMatypes =
+            m_importedGrid->GetCellData()->GetArray("MATYPE"))
+    {
+        for (vtkIdType cid = 0;
+             cid < oldCellCount && cid < existingMatypes->GetNumberOfTuples(); ++cid)
+        {
+            const int value = static_cast<int>(existingMatypes->GetTuple1(cid));
+            if (value >= FIRST_AUTO_MATYPE && value <= MAX_SOLVER_MATYPE)
+                usedMatypes.insert(value);
+        }
+    }
+    if (auto* materialService =
+            ServiceRegistry::instance().getService<MaterialManagerService>())
+    {
+        const QMap<int, QString> configured = materialService->calculationMaterialLabels();
+        for (auto it = configured.constBegin(); it != configured.constEnd(); ++it)
+        {
+            if (it.key() >= FIRST_AUTO_MATYPE && it.key() <= MAX_SOLVER_MATYPE)
+                usedMatypes.insert(it.key());
+        }
+    }
+    int rodMatype = -1;
+    for (int candidate = FIRST_AUTO_MATYPE; candidate <= MAX_SOLVER_MATYPE; ++candidate)
+    {
+        if (!usedMatypes.contains(candidate))
+        {
+            rodMatype = candidate;
+            break;
+        }
+    }
+    if (rodMatype < FIRST_AUTO_MATYPE)
+        return fail(QStringLiteral("材料区域编号 3 至 300 已全部使用，无法为新增杆单元分配材料区域。"));
+
+    int recordId = 1;
+    if (vtkDataArray* records = m_importedGrid->GetCellData()->GetArray("BAR_GROUP"))
+    {
+        for (vtkIdType cid = 0; cid < oldCellCount; ++cid)
+        {
+            vtkCell* cell = m_importedGrid->GetCell(cid);
+            if (cell && cell->GetCellDimension() == 1)
+                recordId = qMax(recordId, static_cast<int>(records->GetTuple1(cid)) + 1);
+        }
+    }
+
+    // Keep the original topology and all existing attributes intact. Only new
+    // points and line cells are appended to this independent deep copy.
+    auto result = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    result->DeepCopy(m_importedGrid);
+    if (!result->GetPoints() || result->GetNumberOfPoints() != oldPointCount ||
+        result->GetNumberOfCells() != oldCellCount)
+    {
+        return fail(QStringLiteral("复制原网格失败，无法生成杆单元。"));
+    }
+    vtkPoints* points = result->GetPoints();
+
+    double bounds[6]{};
+    m_importedGrid->GetBounds(bounds);
+    const double diagonal = std::sqrt(
+        (bounds[1] - bounds[0]) * (bounds[1] - bounds[0])
+        + (bounds[3] - bounds[2]) * (bounds[3] - bounds[2])
+        + (bounds[5] - bounds[4]) * (bounds[5] - bounds[4]));
+    // IIIN.DAT currently writes five decimal places. A smaller merge tolerance can
+    // produce different node ids that are exported to exactly the same coordinate.
+    const double reuseTolerance = qMax(5.0e-6, qMin(1.0e-3, diagonal * 1.0e-10));
+    const double reuseToleranceSquared = reuseTolerance * reuseTolerance;
+
+    // Locator for every point already present in the grid, including previous bars.
+    auto pointLocator = vtkSmartPointer<vtkPointLocator>::New();
+    pointLocator->SetDataSet(m_importedGrid);
+    pointLocator->BuildLocator();
+
+    // Bar endpoints must connect to nodes used by a 2D/3D host cell. Do not silently
+    // create a visually coincident but topologically disconnected endpoint.
+    QSet<vtkIdType> hostPointIdSet;
+    for (vtkIdType cid = 0; cid < oldCellCount; ++cid)
+    {
+        vtkCell* cell = m_importedGrid->GetCell(cid);
+        if (!cell || cell->GetCellDimension() < 2 || !cell->GetPointIds())
+            continue;
+        for (vtkIdType local = 0; local < cell->GetPointIds()->GetNumberOfIds(); ++local)
+            hostPointIdSet.insert(cell->GetPointIds()->GetId(local));
+    }
+    if (hostPointIdSet.isEmpty())
+        return fail(QStringLiteral("当前网格中没有可连接杆端点的实体或面单元节点。"));
+
+    QVector<vtkIdType> hostPointIds;
+    hostPointIds.reserve(hostPointIdSet.size());
+    auto hostPoints = vtkSmartPointer<vtkPoints>::New();
+    hostPoints->SetDataType(m_importedGrid->GetPoints()->GetDataType());
+    for (vtkIdType pid = 0; pid < oldPointCount; ++pid)
+    {
+        if (!hostPointIdSet.contains(pid))
+            continue;
+        double xyz[3]{};
+        m_importedGrid->GetPoint(pid, xyz);
+        hostPoints->InsertNextPoint(xyz);
+        hostPointIds.push_back(pid);
+    }
+    auto hostGrid = vtkSmartPointer<vtkPolyData>::New();
+    hostGrid->SetPoints(hostPoints);
+    auto hostPointLocator = vtkSmartPointer<vtkPointLocator>::New();
+    hostPointLocator->SetDataSet(hostGrid);
+    hostPointLocator->BuildLocator();
+
+    const auto distanceSquared = [](const double a[3], const double b[3])
+    {
+        return (a[0] - b[0]) * (a[0] - b[0])
+               + (a[1] - b[1]) * (a[1] - b[1])
+               + (a[2] - b[2]) * (a[2] - b[2]);
+    };
+    const auto bucketCoordinate = [reuseTolerance](double value) -> qint64
+    {
+        return static_cast<qint64>(std::floor(value / reuseTolerance));
+    };
+    const auto bucketKey = [](qint64 x, qint64 y, qint64 z)
+    {
+        return QStringLiteral("%1:%2:%3").arg(x).arg(y).arg(z);
+    };
+    const auto pointKey = [reuseTolerance](const double xyz[3])
+    {
+        const qint64 x = qRound64(xyz[0] / reuseTolerance);
+        const qint64 y = qRound64(xyz[1] / reuseTolerance);
+        const qint64 z = qRound64(xyz[2] / reuseTolerance);
+        return QStringLiteral("%1:%2:%3").arg(x).arg(y).arg(z);
+    };
+    const auto edgeKey = [&pointKey](const double first[3], const double second[3])
+    {
+        QString firstKey = pointKey(first);
+        QString secondKey = pointKey(second);
+        if (secondKey < firstKey)
+            std::swap(firstKey, secondKey);
+        return firstKey + QLatin1Char('|') + secondKey;
+    };
+
+    QSet<QString> occupiedEdges;
+    for (vtkIdType cid = 0; cid < oldCellCount; ++cid)
+    {
+        vtkCell* cell = m_importedGrid->GetCell(cid);
+        if (!cell || cell->GetCellType() != VTK_LINE || cell->GetNumberOfPoints() != 2)
+            continue;
+        double first[3]{};
+        double second[3]{};
+        m_importedGrid->GetPoint(cell->GetPointId(0), first);
+        m_importedGrid->GetPoint(cell->GetPointId(1), second);
+        occupiedEdges.insert(edgeKey(first, second));
+    }
+
+    // vtkPointLocator only knows the old grid. Keep a small spatial index for
+    // points created during this operation so later bars can reuse them too.
+    QHash<QString, QVector<vtkIdType>> newPointBuckets;
+    const auto findCreatedPoint = [&](const double xyz[3]) -> vtkIdType
+    {
+        const qint64 bx = bucketCoordinate(xyz[0]);
+        const qint64 by = bucketCoordinate(xyz[1]);
+        const qint64 bz = bucketCoordinate(xyz[2]);
+        for (qint64 ix = bx - 1; ix <= bx + 1; ++ix)
+        {
+            for (qint64 iy = by - 1; iy <= by + 1; ++iy)
+            {
+                for (qint64 iz = bz - 1; iz <= bz + 1; ++iz)
+                {
+                    const auto ids = newPointBuckets.constFind(bucketKey(ix, iy, iz));
+                    if (ids == newPointBuckets.constEnd())
+                        continue;
+                    for (vtkIdType pid : ids.value())
+                    {
+                        double existing[3]{};
+                        points->GetPoint(pid, existing);
+                        if (distanceSquared(existing, xyz) <= reuseToleranceSquared)
+                            return pid;
+                    }
+                }
+            }
+        }
+        return -1;
+    };
+    const auto registerCreatedPoint = [&](vtkIdType pid, const double xyz[3])
+    {
+        newPointBuckets[bucketKey(bucketCoordinate(xyz[0]), bucketCoordinate(xyz[1]),
+                                  bucketCoordinate(xyz[2]))]
+            .push_back(pid);
+    };
+    const auto findOldPoint = [&](const double xyz[3]) -> vtkIdType
+    {
+        const vtkIdType pid = pointLocator->FindClosestPoint(xyz);
+        if (pid < 0)
+            return -1;
+        double existing[3]{};
+        m_importedGrid->GetPoint(pid, existing);
+        return distanceSquared(existing, xyz) <= reuseToleranceSquared ? pid : -1;
+    };
+    const auto findHostPoint = [&](const double xyz[3]) -> vtkIdType
+    {
+        const vtkIdType localId = hostPointLocator->FindClosestPoint(xyz);
+        if (localId < 0 || localId >= hostPointIds.size())
+            return -1;
+        double existing[3]{};
+        hostPoints->GetPoint(localId, existing);
+        if (distanceSquared(existing, xyz) > reuseToleranceSquared)
+            return -1;
+        return hostPointIds.at(localId);
+    };
+
+    for (int copy = 0; copy < placement.arrayCount; ++copy)
+    {
+        QVector<vtkIdType> rodPointIds;
+        rodPointIds.reserve(placement.segmentCount + 1);
+        for (int segment = 0; segment <= placement.segmentCount; ++segment)
+        {
+            const double ratio = static_cast<double>(segment) / placement.segmentCount;
+            double xyz[3]{};
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                xyz[axis] = placement.start[axis]
+                            + ratio * (placement.end[axis] - placement.start[axis])
+                            + copy * placement.arrayOffset[axis];
+            }
+
+            const bool isRodEndpoint = segment == 0 || segment == placement.segmentCount;
+            vtkIdType pointId = isRodEndpoint ? findHostPoint(xyz) : findOldPoint(xyz);
+            if (isRodEndpoint && pointId < 0)
+            {
+                return fail(QStringLiteral("第 %1 根杆的%2未与实体网格节点重合。"
+                                           "请点选实体节点，或将坐标调整到节点位置后再生成。")
+                                .arg(copy + 1)
+                                .arg(segment == 0 ? QStringLiteral("起点")
+                                                  : QStringLiteral("终点")));
+            }
+            if (pointId < 0)
+                pointId = findCreatedPoint(xyz);
+            if (pointId < 0)
+            {
+                pointId = points->InsertNextPoint(xyz);
+                registerCreatedPoint(pointId, xyz);
+            }
+            rodPointIds.push_back(pointId);
+        }
+
+        for (int segment = 0; segment < placement.segmentCount; ++segment)
+        {
+            const vtkIdType firstId = rodPointIds.at(segment);
+            const vtkIdType secondId = rodPointIds.at(segment + 1);
+            if (firstId == secondId)
+            {
+                return fail(QStringLiteral("第 %1 根杆的第 %2 段长度过小，合并节点后退化为零长度单元。")
+                                .arg(copy + 1)
+                                .arg(segment + 1));
+            }
+            double first[3]{};
+            double second[3]{};
+            points->GetPoint(firstId, first);
+            points->GetPoint(secondId, second);
+            const QString currentEdgeKey = edgeKey(first, second);
+            if (occupiedEdges.contains(currentEdgeKey))
+            {
+                return fail(QStringLiteral("第 %1 根杆的第 %2 段与已有杆单元重合，已取消本次生成。")
+                                .arg(copy + 1)
+                                .arg(segment + 1));
+            }
+            occupiedEdges.insert(currentEdgeKey);
+            vtkIdType endpoints[2] = {firstId, secondId};
+            result->InsertNextCell(VTK_LINE, 2, endpoints);
+        }
+    }
+
+    const vtkIdType finalPointCount = points->GetNumberOfPoints();
+    if (finalPointCount < oldPointCount ||
+        result->GetNumberOfCells() != oldCellCount + addedCellCount)
+    {
+        return fail(QStringLiteral("追加杆单元后的网格数量校验失败，原网格未被修改。"));
+    }
+
+    normalizeGridAttributeTupleCounts(result, false, false);
+
+    const auto ensureIntArray = [](vtkDataSetAttributes* attributes, const char* name,
+                                   vtkIdType tupleCount, int defaultValue) -> vtkDataArray*
+    {
+        if (vtkDataArray* existing = attributes->GetArray(name))
+            return existing;
+        auto created = vtkSmartPointer<vtkIntArray>::New();
+        created->SetName(name);
+        created->SetNumberOfComponents(1);
+        created->SetNumberOfTuples(tupleCount);
+        created->FillComponent(0, defaultValue);
+        attributes->AddArray(created);
+        return created;
+    };
+
+    vtkDataArray* nodeIds = ensureIntArray(result->GetPointData(), "node_id",
+                                           finalPointCount, 0);
+    int maxNodeId = 0;
+    for (vtkIdType pid = 0; pid < oldPointCount; ++pid)
+    {
+        int nodeId = static_cast<int>(nodeIds->GetTuple1(pid));
+        if (nodeId <= 0)
+        {
+            nodeId = static_cast<int>(pid + 1);
+            nodeIds->SetTuple1(pid, nodeId);
+        }
+        maxNodeId = qMax(maxNodeId, nodeId);
+    }
+    for (vtkIdType pid = oldPointCount; pid < finalPointCount; ++pid)
+        nodeIds->SetTuple1(pid, ++maxNodeId);
+
+    vtkDataArray* matypes = ensureIntArray(result->GetCellData(), "MATYPE",
+                                           oldCellCount + addedCellCount, 2);
+    vtkDataArray* layers = ensureIntArray(result->GetCellData(), "LAYER",
+                                          oldCellCount + addedCellCount, 1);
+    vtkDataArray* ketypes = ensureIntArray(result->GetCellData(), "KETYPE",
+                                           oldCellCount + addedCellCount, 0);
+    vtkDataArray* elementIds = ensureIntArray(result->GetCellData(), "elem_id",
+                                              oldCellCount + addedCellCount, 0);
+    ensureIntArray(result->GetCellData(), "src_part", oldCellCount + addedCellCount, 0);
+    ensureIntArray(result->GetCellData(), "TAIL1", oldCellCount + addedCellCount, 0);
+    ensureIntArray(result->GetCellData(), "TAIL2", oldCellCount + addedCellCount, 0);
+    vtkDataArray* recordIds = ensureIntArray(result->GetCellData(), "BAR_GROUP",
+                                             oldCellCount + addedCellCount, 0);
+
+    auto* recordNames = vtkStringArray::SafeDownCast(
+        result->GetCellData()->GetAbstractArray("BAR_GROUP_NAME"));
+    if (!recordNames)
+    {
+        auto created = vtkSmartPointer<vtkStringArray>::New();
+        created->SetName("BAR_GROUP_NAME");
+        created->SetNumberOfValues(oldCellCount + addedCellCount);
+        for (vtkIdType cid = 0; cid < oldCellCount + addedCellCount; ++cid)
+            created->SetValue(cid, std::string());
+        result->GetCellData()->AddArray(created);
+        recordNames = created;
+    }
+    int maxElementId = 0;
+    for (vtkIdType cid = 0; cid < oldCellCount; ++cid)
+    {
+        int elementId = static_cast<int>(elementIds->GetTuple1(cid));
+        if (elementId <= 0)
+        {
+            elementId = static_cast<int>(cid + 1);
+            elementIds->SetTuple1(cid, elementId);
+        }
+        maxElementId = qMax(maxElementId, elementId);
+    }
+    const QString recordName = QStringLiteral("杆单元生成记录 %1").arg(recordId);
+    for (vtkIdType cid = oldCellCount; cid < oldCellCount + addedCellCount; ++cid)
+    {
+        matypes->SetTuple1(cid, rodMatype);
+        layers->SetTuple1(cid, placement.installationLayer);
+        ketypes->SetTuple1(cid, 1);
+        elementIds->SetTuple1(cid, ++maxElementId);
+        recordIds->SetTuple1(cid, recordId);
+        recordNames->SetValue(cid, recordName.toStdString());
+    }
+
+    result->Modified();
+    m_importedGrid = result;
+    m_hasGrid = true;
+    m_sourceFileName.clear();
+    if (m_importSettingsWidget)
+        m_importSettingsWidget->setSourceFileName(QString());
+    m_splitCacheSource = nullptr;
+    m_splitCacheLine = nullptr;
+    m_splitCacheNonLine = nullptr;
+    syncPickMapGroupingFromGrid(m_importedGrid);
+    displayCurrentGrid();
+    PickManager::instance().updateStructure();
+    if (m_gridEditingWidget)
+        m_gridEditingWidget->setEditableGrid(m_importedGrid, QString());
+    return true;
+}
+
+bool MeshModuleController::removeBarElementRecord(int recordId, QString* errMsg)
+{
+    const auto fail = [errMsg](const QString& message)
+    {
+        if (errMsg)
+            *errMsg = message;
+        return false;
+    };
+    if (!m_importedGrid || recordId <= 0)
+        return fail(QStringLiteral("杆单元生成记录无效。"));
+    normalizeGridAttributeTupleCounts(m_importedGrid);
+    vtkDataArray* recordIds = m_importedGrid->GetCellData()->GetArray("BAR_GROUP");
+    if (!recordIds)
+        return fail(QStringLiteral("当前网格中没有可删除的杆单元生成记录。"));
+
+    const vtkIdType oldPointCount = m_importedGrid->GetNumberOfPoints();
+    const vtkIdType cellCount = m_importedGrid->GetNumberOfCells();
+    QVector<vtkIdType> retainedCells;
+    retainedCells.reserve(static_cast<int>(cellCount));
+    QSet<vtkIdType> retainedPointSet;
+    bool removed = false;
+    for (vtkIdType cid = 0; cid < cellCount; ++cid)
+    {
+        vtkCell* cell = m_importedGrid->GetCell(cid);
+        if (!cell || !cell->GetPointIds())
+            continue;
+        const bool belongsToRecord =
+            cell->GetCellDimension() == 1 &&
+            static_cast<int>(recordIds->GetTuple1(cid)) == recordId;
+        if (belongsToRecord)
+        {
+            removed = true;
+            continue;
+        }
+        retainedCells.push_back(cid);
+        for (vtkIdType local = 0; local < cell->GetPointIds()->GetNumberOfIds(); ++local)
+            retainedPointSet.insert(cell->GetPointIds()->GetId(local));
+    }
+    if (!removed)
+        return fail(QStringLiteral("未找到指定的杆单元生成记录。"));
+
+    QVector<vtkIdType> oldToNew(static_cast<int>(oldPointCount), -1);
+    QVector<vtkIdType> retainedPoints;
+    retainedPoints.reserve(retainedPointSet.size());
+    auto points = vtkSmartPointer<vtkPoints>::New();
+    points->SetDataType(m_importedGrid->GetPoints()->GetDataType());
+    for (vtkIdType oldPid = 0; oldPid < oldPointCount; ++oldPid)
+    {
+        if (!retainedPointSet.contains(oldPid))
+            continue;
+        double xyz[3]{};
+        m_importedGrid->GetPoint(oldPid, xyz);
+        const vtkIdType newPid = points->InsertNextPoint(xyz);
+        oldToNew[static_cast<int>(oldPid)] = newPid;
+        retainedPoints.push_back(oldPid);
+    }
+
+    auto result = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    result->SetPoints(points);
+    result->Allocate(retainedCells.size());
+    for (vtkIdType oldCid : retainedCells)
+    {
+        vtkCell* cell = m_importedGrid->GetCell(oldCid);
+        auto remappedIds = vtkSmartPointer<vtkIdList>::New();
+        remappedIds->SetNumberOfIds(cell->GetPointIds()->GetNumberOfIds());
+        for (vtkIdType local = 0; local < cell->GetPointIds()->GetNumberOfIds(); ++local)
+        {
+            const vtkIdType oldPid = cell->GetPointIds()->GetId(local);
+            if (oldPid < 0 || oldPid >= oldToNew.size() ||
+                oldToNew.at(static_cast<int>(oldPid)) < 0)
+            {
+                return fail(QStringLiteral("删除杆单元时节点映射失败，原网格数据可能已损坏。"));
+            }
+            remappedIds->SetId(local, oldToNew.at(static_cast<int>(oldPid)));
+        }
+        result->InsertNextCell(cell->GetCellType(), remappedIds);
+    }
+
+    result->GetFieldData()->DeepCopy(m_importedGrid->GetFieldData());
+    result->GetPointData()->CopyAllocate(m_importedGrid->GetPointData(), retainedPoints.size());
+    for (vtkIdType newPid = 0; newPid < retainedPoints.size(); ++newPid)
+    {
+        result->GetPointData()->CopyData(m_importedGrid->GetPointData(),
+                                         retainedPoints.at(newPid), newPid);
+    }
+    result->GetCellData()->CopyAllocate(m_importedGrid->GetCellData(), retainedCells.size());
+    for (vtkIdType newCid = 0; newCid < retainedCells.size(); ++newCid)
+    {
+        result->GetCellData()->CopyData(m_importedGrid->GetCellData(),
+                                        retainedCells.at(newCid), newCid);
+    }
+    normalizeGridAttributeTupleCounts(result, false, false);
+    result->Modified();
+
+    m_importedGrid = result;
+    m_hasGrid = m_importedGrid->GetNumberOfCells() > 0;
+    m_sourceFileName.clear();
+    if (m_importSettingsWidget)
+        m_importSettingsWidget->setSourceFileName(QString());
+    m_splitCacheSource = nullptr;
+    m_splitCacheLine = nullptr;
+    m_splitCacheNonLine = nullptr;
+    syncPickMapGroupingFromGrid(m_importedGrid);
+    displayCurrentGrid();
+    PickManager::instance().updateStructure();
+    if (m_gridEditingWidget)
+        m_gridEditingWidget->setEditableGrid(m_importedGrid, QString());
+    return true;
+}
+
+QVector<BarElementRecordInfo> MeshModuleController::barElementRecords() const
+{
+    QVector<BarElementRecordInfo> result;
+    if (!m_importedGrid)
+        return result;
+    normalizeGridAttributeTupleCounts(m_importedGrid);
+    vtkDataArray* recordIds = m_importedGrid->GetCellData()->GetArray("BAR_GROUP");
+    if (!recordIds)
+        return result;
+    vtkDataArray* matypes = m_importedGrid->GetCellData()->GetArray("MATYPE");
+    vtkDataArray* layers = m_importedGrid->GetCellData()->GetArray("LAYER");
+    QMap<int, BarElementRecordInfo> byId;
+    for (vtkIdType cid = 0; cid < m_importedGrid->GetNumberOfCells(); ++cid)
+    {
+        const int id = static_cast<int>(recordIds->GetTuple1(cid));
+        vtkCell* cell = m_importedGrid->GetCell(cid);
+        if (id <= 0 || !cell || cell->GetCellDimension() != 1)
+            continue;
+        BarElementRecordInfo& info = byId[id];
+        info.id = id;
+        ++info.cellCount;
+        if (matypes)
+            info.matype = static_cast<int>(matypes->GetTuple1(cid));
+        if (layers)
+            info.installationLayer = static_cast<int>(layers->GetTuple1(cid));
+    }
+    for (auto it = byId.constBegin(); it != byId.constEnd(); ++it)
+        result.push_back(it.value());
+    return result;
 }
 
 void MeshModuleController::setEdgeControlRules(const QVector<EdgeControlRule>& rules)

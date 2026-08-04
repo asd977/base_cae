@@ -5,6 +5,7 @@
 #include <PublicVariables.h>
 #include <PickManager.h>
 #include <ServiceRegistry.h>
+#include <services/MaterialManagerService.h>
 #include <services/MeshModuleControllerService.h>
 #include <struct/MeshMap.h>
 
@@ -135,10 +136,26 @@ QJsonObject CaveExcavationBodyPage::saveJson()
     for (int g : selected)
         selectedGroupsArr.append(g);
 
+    const QString category = selectionGroupCategory();
+    const int dim = layerDomainDim();
+
     obj["selected_groups"] = selectedGroupsArr;
+    obj["selected_group_category"] = category;
+    obj["selected_group_dim"] = dim;
     obj["excavation_layer"] = excavationLayer();
 
-    // selected_groups 只保存分组编号；新版优先对应 Physical 分组，旧工程可回退到 LAYER。
+    QJsonArray selectedDomainsArr;
+    for (int g : selected)
+    {
+        QJsonObject domainObj;
+        domainObj["category"] = category;
+        domainObj["dim"] = dim;
+        domainObj["id"] = g;
+        selectedDomainsArr.append(domainObj);
+    }
+    obj["selected_domains"] = selectedDomainsArr;
+
+    // selected_domains 保存完整分组键；selected_groups 继续保留，兼容旧工程。
     // face_solid / edge_solid 保留为空数组，避免旧逻辑误把高亮面当成业务数据。
     obj["face_solid"] = QJsonArray();
     obj["edge_solid"] = QJsonArray();
@@ -157,12 +174,42 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
 
     QSet<DomainKey> domains;
 
-    const auto selectedGroupsArr = obj.value("selected_groups").toArray();
-    for (const auto& v : selectedGroupsArr)
+    const QString currentCategory = selectionGroupCategory();
+    const int currentDim = layerDomainDim();
+
+    QSet<int> availableGroups;
+    for (int gid : availableGroupIds())
+        availableGroups.insert(gid);
+
+    const QJsonArray selectedDomainsArr = obj.value("selected_domains").toArray();
+    for (const QJsonValue& value : selectedDomainsArr)
     {
-        const int gid = v.toInt(std::numeric_limits<int>::min());
-        if (gid != std::numeric_limits<int>::min() && gid != 0)
-            domains.insert(DomainKey{selectionGroupCategory(), layerDomainDim(), gid});
+        const QJsonObject domainObj = value.toObject();
+        const QString category = domainObj.value("category").toString().trimmed();
+        const int dim = domainObj.value("dim").toInt(-1);
+        const int gid = domainObj.value("id").toInt(std::numeric_limits<int>::min());
+        if (category.compare(currentCategory, Qt::CaseInsensitive) != 0 || dim != currentDim ||
+            gid == std::numeric_limits<int>::min() || gid == 0)
+        {
+            continue;
+        }
+        if (availableGroups.isEmpty() || availableGroups.contains(gid))
+            domains.insert(DomainKey{currentCategory, currentDim, gid});
+    }
+
+    // 兼容旧工程：旧数据只有 selected_groups，类别由当前网格明确的开挖分组用途决定。
+    if (domains.isEmpty())
+    {
+        const auto selectedGroupsArr = obj.value("selected_groups").toArray();
+        for (const auto& v : selectedGroupsArr)
+        {
+            const int gid = v.toInt(std::numeric_limits<int>::min());
+            if (gid != std::numeric_limits<int>::min() && gid != 0 &&
+                (availableGroups.isEmpty() || availableGroups.contains(gid)))
+            {
+                domains.insert(DomainKey{currentCategory, currentDim, gid});
+            }
+        }
     }
 
     PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
@@ -338,22 +385,13 @@ void CaveExcavationBodyPage::setupGroupCombo()
     m_groupCombo->blockSignals(true);
     m_groupCombo->clear();
 
-    const QVector<MeshTagSet> sets = meshSvc->domainTagSets();
-    QHash<int, QString> names;
-    const QString category = selectionGroupCategory();
-    for (const MeshTagSet& set : sets)
-    {
-        if (set.key.category.compare(category, Qt::CaseInsensitive) == 0 && set.key.id != 0)
-            names.insert(set.key.id, set.name.trimmed());
-    }
-
     for (int id : ids)
     {
-        const QString name = names.value(id);
-        const QString text = name.isEmpty()
-                                 ? QStringLiteral("ID %1").arg(id)
-                                 : QStringLiteral("%1（ID %2）").arg(name).arg(id);
+        QString text = groupDisplayText(id).trimmed();
+        if (text.isEmpty())
+            text = QStringLiteral("ID %1").arg(id);
         m_groupCombo->addItem(text, id);
+        m_groupCombo->setItemData(m_groupCombo->count() - 1, text, Qt::ToolTipRole);
     }
 
     const int restoredIndex = currentGroup.isValid() ? m_groupCombo->findData(currentGroup) : -1;
@@ -401,6 +439,41 @@ QVector<int> CaveExcavationBodyPage::availableGroupIds() const
     out.erase(std::unique(out.begin(), out.end()), out.end());
 
     return out;
+}
+
+QString CaveExcavationBodyPage::groupDisplayText(int groupId) const
+{
+    if (groupId == 0)
+        return QString();
+
+    const QString category = selectionGroupCategory();
+    if (category.compare(QStringLiteral("MATYPE"), Qt::CaseInsensitive) == 0)
+    {
+        if (auto* materialSvc =
+                ServiceRegistry::instance().getService<MaterialManagerService>())
+        {
+            QMap<int, QString> labels = materialSvc->assignedMaterialLabels();
+            if (!labels.contains(groupId))
+                labels = materialSvc->calculationMaterialLabels();
+            const QString label = labels.value(groupId).trimmed();
+            if (!label.isEmpty())
+            {
+                const int slash = label.lastIndexOf(QLatin1Char('/'));
+                return slash >= 0 ? label.mid(slash + 1).trimmed() : label;
+            }
+        }
+        return QStringLiteral("编号 %1").arg(groupId);
+    }
+
+    if (auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>())
+    {
+        const QString text =
+            meshSvc->domainDisplayText(DomainKey{category, layerDomainDim(), groupId}).trimmed();
+        if (!text.isEmpty())
+            return text;
+    }
+
+    return QStringLiteral("%1=%2").arg(category).arg(groupId);
 }
 
 QVector<vtkIdType> CaveExcavationBodyPage::groupCellIds(int groupId) const
@@ -691,9 +764,14 @@ QSet<int> CaveExcavationBodyPage::selectedLayerGroups()
         PickManager::instance().appliedDomains(getPageType(), m_uuid);
 
     const QString category = selectionGroupCategory();
+    QSet<int> availableGroups;
+    for (int gid : availableGroupIds())
+        availableGroups.insert(gid);
+
     for (const DomainKey& key : owned)
     {
-        if (key.category.compare(category, Qt::CaseInsensitive) == 0 && key.id != 0)
+        if (key.category.compare(category, Qt::CaseInsensitive) == 0 && key.id != 0 &&
+            (availableGroups.isEmpty() || availableGroups.contains(key.id)))
             out.insert(key.id);
     }
 
@@ -709,32 +787,31 @@ QString CaveExcavationBodyPage::selectionGroupCategory() const
     const int targetDim = layerDomainDim();
     const QVector<MeshTagSet> sets = meshSvc->domainTagSets();
 
-    // 新版优先使用 Physical 体域分组做选择。这样 LAYER 可以保持真正的施工层含义。
-    for (const MeshTagSet& set : sets)
+    auto hasUsableCategory = [&](const QString& category)
     {
-        if (set.key.category.compare(QStringLiteral("Physical"), Qt::CaseInsensitive) != 0)
-            continue;
-        if (set.key.dim != targetDim || set.key.id <= 0)
-            continue;
-        if (!meshSvc->cellIdsOfTag(set.key).isEmpty())
-            return QStringLiteral("Physical");
-    }
+        for (const MeshTagSet& set : sets)
+        {
+            if (set.key.category.compare(category, Qt::CaseInsensitive) != 0)
+                continue;
+            if (set.key.dim != targetDim || set.key.id == 0)
+                continue;
+            if (!meshSvc->cellIdsOfTag(set.key).isEmpty())
+                return true;
+        }
+        return false;
+    };
 
-    // Netgen does not carry Gmsh Physical volumes into its generated VTK.
-    // The generator records the originating conformal geometry part in
-    // src_part, which MeshModuleController exposes as REGION. Use it before
-    // LAYER: Netgen initializes LAYER to 1 for every cell, so LAYER would make
-    // the excavation page offer only the whole model.
-    for (const MeshTagSet& set : sets)
-    {
-        if (set.key.category.compare(QStringLiteral("REGION"), Qt::CaseInsensitive) != 0)
-            continue;
-        if (set.key.dim != targetDim || set.key.id <= 0)
-            continue;
-        if (!meshSvc->cellIdsOfTag(set.key).isEmpty())
-            return QStringLiteral("REGION");
-    }
+    // 由网格导入/生成流程明确写入，不再由求解页面根据 MATYPE 等标签自行猜测。
+    const QString configuredCategory =
+        meshSvc->excavationGroupCategory();
+    if (!configuredCategory.isEmpty() && hasUsableCategory(configuredCategory))
+        return configuredCategory;
 
-    // 兼容旧工程：没有 Physical 分组时，仍允许使用原来的 LAYER 分组。
+    // 兼容没有用途元数据的旧工程：
+    // Netgen 用 REGION，Abaqus/Flac3D 用 Physical，IIIN/DAT 用 LAYER。
+    if (hasUsableCategory(QStringLiteral("REGION")))
+        return QStringLiteral("REGION");
+    if (hasUsableCategory(QStringLiteral("Physical")))
+        return QStringLiteral("Physical");
     return QStringLiteral("LAYER");
 }

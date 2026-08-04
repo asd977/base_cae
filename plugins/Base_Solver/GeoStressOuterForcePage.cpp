@@ -320,14 +320,8 @@ int GeoStressOuterForcePage::forceEnabled() const
     return rows.isEmpty() ? 0 : 1;
 }
 
-bool GeoStressOuterForcePage::exportDatFiles() const
+bool GeoStressOuterForcePage::exportRoofFile() const
 {
-    double fx = 0.0;
-    double fy = 0.0;
-    double fz = 0.0;
-    if (!readForceComponents(ui, fx, fy, fz))
-        return false;
-
     PickManager::instance().updateStructure();
     vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
     if (!grid)
@@ -336,6 +330,8 @@ bool GeoStressOuterForcePage::exportDatFiles() const
     const QVector<EdgeRow> rows =
         collectRows(grid, QStringLiteral("GeoStressRegressionOuterForce"), m_uuid,
                     currentPickMode());
+    if (rows.isEmpty())
+        return false;
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
@@ -386,6 +382,36 @@ bool GeoStressOuterForcePage::exportDatFiles() const
                           .arg(3, 9);
         }
     }
+
+    return true;
+}
+
+bool GeoStressOuterForcePage::exportForceFile() const
+{
+    double fx = 0.0;
+    double fy = 0.0;
+    double fz = 0.0;
+    if (!readForceComponents(ui, fx, fy, fz) || !hasNonZeroForce(fx, fy, fz))
+        return false;
+
+    PickManager::instance().updateStructure();
+    vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
+    if (!grid)
+        return false;
+
+    const QVector<EdgeRow> rows =
+        collectRows(grid, QStringLiteral("GeoStressRegressionOuterForce"), m_uuid,
+                    currentPickMode());
+    if (rows.isEmpty())
+        return false;
+
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    QDir inputDir(SolverFilePaths::outputInputDirectory(projectDir));
+    if (!QDir().mkpath(inputDir.absolutePath()))
+        return false;
+
+    const bool isFaceMode = (currentPickMode() == PickMode::Face);
 
     const QString forceName = forceFile();
     QFile forceDat(inputDir.filePath(forceName));

@@ -945,14 +945,12 @@ void VisualizationWidget::applyUiTheme(const QString& themeName)
     }
     else if (theme == QStringLiteral("blue"))
     {
-        // Keep the canvas light, but give it enough blue to remain visually
-        // connected to the stronger engineering-blue chrome.
-        background[0] = 230.0 / 255.0;
+        background[0] = 223.0 / 255.0;
         background[1] = 241.0 / 255.0;
-        background[2] = 248.0 / 255.0;
-        background2[0] = 245.0 / 255.0;
-        background2[1] = 250.0 / 255.0;
-        background2[2] = 253.0 / 255.0;
+        background[2] = 251.0 / 255.0;
+        background2[0] = 246.0 / 255.0;
+        background2[1] = 251.0 / 255.0;
+        background2[2] = 255.0 / 255.0;
     }
 
     if (m_renderer)

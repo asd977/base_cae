@@ -53,6 +53,15 @@ struct MshPickMap
 {
     int meshDim = 3;
 
+    // ----- 分组用途 -----
+    // 这里保存“业务应该使用哪一种域分组”，避免页面根据现有标签自行猜测。
+    // Netgen:       material=REGION,   excavation=REGION
+    // Abaqus/Flac3D: material=Physical, excavation=Physical
+    // IIIN/DAT:      material=MATYPE,    excavation=LAYER
+    // Physical 与 REGION 仍保留各自来源语义，但业务页面只读取这里的用途映射。
+    QString materialGroupCategory;
+    QString excavationGroupCategory;
+
     // ----- 兼容字段：PhysicalNames -----
     // 注意：业务层/界面层不要直接依赖这些字段。
     // 统一的分组与边界业务模型是 tagSets。

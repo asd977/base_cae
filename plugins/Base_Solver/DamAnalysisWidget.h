@@ -88,8 +88,8 @@ class DamAnalysisWidget : public BasePage
     QLineEdit* m_editAlfa1 = nullptr;
     QLineEdit* m_editAlfa2 = nullptr;
     QLineEdit* m_editAlfa3 = nullptr;
-    QComboBox* m_comboAxisUp = nullptr;
-    QComboBox* m_comboAxisDown = nullptr;
+    QComboBox* m_comboUpstreamAxis = nullptr;
+    QComboBox* m_comboPgen = nullptr;
     QComboBox* m_comboIfRock = nullptr;
     QComboBox* m_comboIfIso = nullptr;
     QGroupBox* m_groupFreezeThaw = nullptr;

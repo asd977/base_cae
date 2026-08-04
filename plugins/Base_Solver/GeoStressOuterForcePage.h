@@ -23,7 +23,8 @@ class GeoStressOuterForcePage : public BasePage
 
     QString forceFile() const;
     int forceEnabled() const;
-    bool exportDatFiles() const;
+    bool exportRoofFile() const;
+    bool exportForceFile() const;
 
   private slots:
     void onClearClicked();

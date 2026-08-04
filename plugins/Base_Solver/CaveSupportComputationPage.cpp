@@ -24,14 +24,19 @@
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QStringList>
+#include <QVBoxLayout>
 
 #include "ui_CaveSupportComputationPage.h"
 
+#include "CaveReinforcementFieldPage.h"
 #include "SolverUiLayoutHelper.h"
 CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     : BasePage("CaveSupportComputation"), ui(new Ui::CaveSupportComputationPage)
 {
     ui->setupUi(this);
+    m_reinforcementFieldPage = new CaveReinforcementFieldPage(this);
+    // 放在“开挖任务”之后、“动力参数”之前；它属于加固任务设置，不再作为树节点。
+    ui->contentLayout->insertWidget(4, m_reinforcementFieldPage);
     SolverUiLayoutHelper::polishPage(this);
     SolverUiLayoutHelper::setupComputeControls(this);
     Q_UNUSED(parent);
@@ -140,6 +145,10 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
         connect(combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
                 &CaveSupportComputationPage::updateStaticDependenciesUi);
     }
+    connect(m_ifJallCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            &CaveSupportComputationPage::onReinforcedTaskSelectionChanged);
+    connect(m_ifJ1toaCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            &CaveSupportComputationPage::onReinforcedTaskSelectionChanged);
     connect(ui->btnCompute, &QPushButton::clicked, this, &CaveSupportComputationPage::onComputeClicked);
 
     m_caseData = CaseData();
@@ -219,6 +228,49 @@ bool CaveSupportComputationPage::timeHistoryEnabled() const
            m_ifWaveCombo->currentData().toString() == QStringLiteral("1");
 }
 
+bool CaveSupportComputationPage::reinforcedTaskEnabled() const
+{
+    return (m_ifJallCombo && m_ifJallCombo->currentData().toString() == QStringLiteral("1"))
+           || (m_ifJ1toaCombo
+               && m_ifJ1toaCombo->currentData().toString() == QStringLiteral("1"));
+}
+
+void CaveSupportComputationPage::ensureReinforcedTask()
+{
+    saveCurrentCase();
+    if (m_caseData.ifJall == QStringLiteral("1")
+        || m_caseData.ifJ1toa == QStringLiteral("1"))
+        return;
+
+    if (m_caseData.ifE1toa == QStringLiteral("1"))
+    {
+        m_caseData.ifE1toa = QStringLiteral("0");
+        m_caseData.ifJ1toa = QStringLiteral("1");
+    }
+    else
+    {
+        m_caseData.ifEall = QStringLiteral("0");
+        m_caseData.ifJall = QStringLiteral("1");
+    }
+    loadCaseToUi();
+}
+
+CaveReinforcementFieldPage* CaveSupportComputationPage::reinforcementFieldPage() const
+{
+    return m_reinforcementFieldPage;
+}
+
+void CaveSupportComputationPage::loadLegacyReinforcementFieldJson(const QJsonObject& obj)
+{
+    if (!m_reinforcementFieldPage || obj.isEmpty())
+        return;
+
+    m_reinforcementFieldPage->loadJson(obj);
+    if (m_reinforcementFieldPage->mode() != CaveReinforcementFieldPage::Mode::Disabled)
+        ensureReinforcedTask();
+    updateStaticDependenciesUi();
+}
+
 void CaveSupportComputationPage::updateAnalysisModeUi()
 {
     SolverUiLayoutHelper::StableLayoutUpdate stableLayout(this);
@@ -283,6 +335,21 @@ void CaveSupportComputationPage::updateStaticDependenciesUi()
         if (widget)
             widget->setVisible(support);
     }
+
+    if (m_reinforcementFieldPage)
+        m_reinforcementFieldPage->setVisible(support);
+}
+
+void CaveSupportComputationPage::onReinforcedTaskSelectionChanged()
+{
+    if (m_isUpdatingUi)
+        return;
+
+    // 用户关闭全部加固任务时，同时关闭额外的围岩参数修正，避免隐藏设置在计算时
+    // 又把任务自动切回“加固”。具体参数仍保留，重新启用后可再次选择修正方式。
+    if (!reinforcedTaskEnabled() && m_reinforcementFieldPage)
+        m_reinforcementFieldPage->setMode(CaveReinforcementFieldPage::Mode::Disabled);
+    updateStaticDependenciesUi();
 }
 
 bool CaveSupportComputationPage::validateInputs(QString* errorMessage) const
@@ -482,6 +549,8 @@ QJsonObject CaveSupportComputationPage::saveJson()
             continue;
         obj[QString("line_%1").arg(i)] = controlFieldValue(i);
     }
+    if (m_reinforcementFieldPage)
+        obj[QStringLiteral("reinforcement_field")] = m_reinforcementFieldPage->saveJson();
     return obj;
 }
 
@@ -547,12 +616,23 @@ void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
     }
 
     loadLegacyCaveJson(obj);
+    if (m_reinforcementFieldPage)
+    {
+        const QJsonObject fieldState =
+            obj.value(QStringLiteral("reinforcement_field")).toObject();
+        if (!fieldState.isEmpty())
+            m_reinforcementFieldPage->loadJson(fieldState);
+    }
 
     if (m_excavationDaysTable)
         m_excavationDaysTable->setUpdatesEnabled(true);
 
     m_isUpdatingUi = false;
     loadCaseToUi();
+    if (m_reinforcementFieldPage
+        && m_reinforcementFieldPage->mode() != CaveReinforcementFieldPage::Mode::Disabled
+        && !reinforcedTaskEnabled())
+        ensureReinforcedTask();
     updateAnalysisModeUi();
 }
 

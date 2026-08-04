@@ -63,6 +63,9 @@ int GeoStressRegressionWidget::calculationModeCode() const
 
 bool GeoStressRegressionWidget::exportIGEOSDatFile(const ExportPayload& payload) const
 {
+    if (!payload.roofFileReady)
+        return false;
+
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     QDir wd(SolverFilePaths::outputRoot(projectDir));

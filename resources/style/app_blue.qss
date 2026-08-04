@@ -689,3 +689,377 @@ QWidget#OutputWidget QTextEdit#textEdit {
     border: none;
     border-radius: 0px;
 }
+
+/* -------------------------------------------------------------------------
+   Stronger reference-blue pass.
+   ------------------------------------------------------------------------- */
+QWidget {
+    color: #073760;
+    background-color: #e7f4fd;
+}
+
+QMainWindow,
+QDialog {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #d8edf9, stop:1 #bfdcf2);
+}
+
+QLabel,
+QLabel#pageNameLabel,
+QCheckBox,
+QRadioButton {
+    color: #073760;
+}
+
+QLabel[secondary="true"],
+QLabel#boxSelectHintLabel {
+    color: #3f7193;
+}
+
+DashboardPage#dashboardPage,
+QScrollArea#dashboardScrollArea,
+QScrollArea#dashboardScrollArea > QWidget,
+QWidget#dashboardScrollContainer,
+QWidget#materialEntryContent,
+MaterialModelWidget#materialModelPage,
+MaterialTransitionPage#materialTransitionPage,
+QStackedWidget#projectSettingStackWidget,
+QStackedWidget#projectSettingStackWidget > QWidget,
+MeshQualityCheckWidget#meshQualityCheckPage,
+QScrollArea#meshQualityCheckScrollArea,
+QWidget#meshQualityCheckViewport,
+QWidget#meshQualityCheckContent,
+MaterialEntryWidget,
+CaveBlockPlanePage,
+CaveBlockStabilityWidget,
+QScrollArea,
+QScrollArea > QWidget,
+QWidget#OutputWidget {
+    background: #e7f4fd;
+}
+
+QPushButton {
+    color: #073760;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #ffffff, stop:1 #d9edf9);
+    border: 1px solid #7fb0d3;
+}
+
+QPushButton:hover {
+    color: #005fa8;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #f8fdff, stop:1 #cce8fa);
+    border-color: #2f80bb;
+}
+
+QPushButton:pressed {
+    background: #add9f3;
+    border-color: #1d75b7;
+}
+
+QPushButton:default,
+QPushButton[primary="true"] {
+    color: #ffffff;
+    background: #006ec2;
+    border-color: #006ec2;
+}
+
+QPushButton:default:hover,
+QPushButton[primary="true"]:hover {
+    background: #137ecf;
+    border-color: #137ecf;
+}
+
+QPushButton:default:pressed,
+QPushButton[primary="true"]:pressed {
+    background: #00599f;
+    border-color: #00599f;
+}
+
+QLineEdit,
+QTextEdit,
+QPlainTextEdit,
+QSpinBox,
+QDoubleSpinBox,
+QDateTimeEdit,
+QTimeEdit,
+QDateEdit,
+QComboBox {
+    color: #073760;
+    background: #fbfeff;
+    border: 1px solid #7fb0d3;
+    selection-background-color: #b8def6;
+    selection-color: #073760;
+}
+
+QLineEdit:hover,
+QTextEdit:hover,
+QPlainTextEdit:hover,
+QSpinBox:hover,
+QDoubleSpinBox:hover,
+QDateTimeEdit:hover,
+QTimeEdit:hover,
+QDateEdit:hover,
+QComboBox:hover {
+    border-color: #2f80bb;
+}
+
+QLineEdit:focus,
+QTextEdit:focus,
+QPlainTextEdit:focus,
+QSpinBox:focus,
+QDoubleSpinBox:focus,
+QDateTimeEdit:focus,
+QTimeEdit:focus,
+QDateEdit:focus,
+QComboBox:focus {
+    border-color: #006ec2;
+}
+
+QComboBox QAbstractItemView,
+QMenu {
+    color: #073760;
+    background: #fbfeff;
+    border: 1px solid #7fb0d3;
+    selection-background-color: #b8def6;
+    selection-color: #073760;
+}
+
+QComboBox QAbstractItemView::item:selected,
+QMenu::item:selected {
+    color: #073760;
+    background: #b8def6;
+}
+
+QGroupBox {
+    color: #073760;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #fbfeff, stop:1 #e1f2fc);
+    border-color: #7fb0d3;
+}
+
+QGroupBox::title {
+    color: #073760;
+    background: #e7f4fd;
+}
+
+QTreeWidget#projectTreeWidget {
+    color: #073760;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #fbfeff, stop:1 #e1f2fc);
+}
+
+QTreeWidget#projectTreeWidget::item {
+    color: #073760;
+}
+
+QTreeWidget#projectTreeWidget::item:hover {
+    color: #005fa8;
+    background: #cce8fa;
+}
+
+QTreeWidget#projectTreeWidget::item:selected {
+    color: #003f75;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 #b8def6, stop:1 #dcf1fc);
+    border-left: 2px solid #006ec2;
+}
+
+QListWidget,
+QTreeView,
+QListView,
+QTableView,
+QTableWidget,
+QTabWidget::pane {
+    color: #073760;
+    background: #fbfeff;
+    border-color: #7fb0d3;
+    alternate-background-color: #e4f3fc;
+    gridline-color: #b6d5eb;
+    selection-background-color: #b8def6;
+    selection-color: #073760;
+}
+
+QHeaderView::section {
+    color: #073760;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #f8fdff, stop:1 #d2eafb);
+    border-right: 1px solid #9bc6e3;
+    border-bottom: 1px solid #72a9cf;
+}
+
+QTabBar::tab {
+    color: #073760;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #f9fdff, stop:1 #d4ecfb);
+    border-right-color: #9bc6e3;
+}
+
+QTabBar::tab:hover:!selected {
+    color: #005fa8;
+    background: #cce8fa;
+}
+
+QTabBar::tab:selected {
+    color: #006ec2;
+    background: #fbfeff;
+    border-bottom-color: #006ec2;
+}
+
+QFrame#visualizationViewToolbar {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #f9fdff, stop:1 #d2eafb);
+    border-bottom: 1px solid #72a9cf;
+}
+
+QFrame#visualizationViewToolbar QToolButton:hover {
+    background: #cce8fa;
+    border-color: #7fb0d3;
+}
+
+QFrame#visualizationViewToolbar QToolButton:pressed,
+QFrame#visualizationViewToolbar QToolButton:checked {
+    background: #add9f3;
+    border-color: #2f80bb;
+}
+
+QSlider#visualizationOpacitySlider::sub-page:vertical,
+QSlider#visualizationOpacitySlider::handle:vertical {
+    background: #006ec2;
+}
+
+QStatusBar {
+    color: #073760;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #eaf6fe, stop:1 #c9e4f6);
+    border-top: 1px solid #72a9cf;
+}
+
+QWidget#OutputWidget QTextEdit#textEdit {
+    color: #073760;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #fbfeff, stop:1 #e8f6fe);
+}
+
+/* Model tree and log panes need the same blue surface treatment as dock chrome. */
+ProjectTreeWidget,
+ProjectTreeWidget QTreeWidget#projectTreeWidget,
+ProjectTreeWidget QTreeWidget#projectTreeWidget QWidget#qt_scrollarea_viewport {
+    background: #edf8ff;
+}
+
+ProjectTreeWidget QTreeWidget#projectTreeWidget {
+    color: #073760;
+    border: none;
+    outline: none;
+    show-decoration-selected: 1;
+}
+
+ProjectTreeWidget QTreeWidget#projectTreeWidget::item {
+    min-height: 28px;
+    padding-left: 5px;
+    padding-right: 6px;
+    color: #073760;
+    background: transparent;
+    border-left: 3px solid transparent;
+}
+
+ProjectTreeWidget QTreeWidget#projectTreeWidget::item:hover {
+    color: #005fa8;
+    background: #d3edfb;
+    border-left-color: #7fb9dd;
+}
+
+ProjectTreeWidget QTreeWidget#projectTreeWidget::item:selected {
+    color: #003f75;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 #a9d9f5, stop:1 #dff3fd);
+    border-left-color: #006ec2;
+    font-weight: 500;
+}
+
+ProjectTreeWidget QTreeWidget#projectTreeWidget::item:selected:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 #9fd3f2, stop:1 #d3edfb);
+}
+
+QWidget#OutputWidget,
+QWidget#OutputWidget QTextEdit#textEdit,
+QWidget#OutputWidget QTextEdit#textEdit QWidget#qt_scrollarea_viewport {
+    background: #edf8ff;
+}
+
+QWidget#OutputWidget QTextEdit#textEdit {
+    color: #073760;
+    border: none;
+    padding: 8px;
+    selection-background-color: #b8def6;
+    selection-color: #073760;
+}
+
+QWidget#OutputWidget QPushButton#floatingClearBtn {
+    min-height: 22px;
+    max-height: 22px;
+    min-width: 44px;
+    max-width: 44px;
+    padding: 0px;
+    color: #005fa8;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #ffffff, stop:1 #d4ecfb);
+    border: 1px solid #7fb0d3;
+    border-radius: 2px;
+}
+
+QWidget#OutputWidget QPushButton#floatingClearBtn:hover {
+    color: #003f75;
+    background: #cce8fa;
+    border-color: #2f80bb;
+}
+
+QWidget#OutputWidget QPushButton#floatingClearBtn:pressed {
+    background: #add9f3;
+    border-color: #1d75b7;
+}
+
+/* New/open project dialog: keep labels and fields inside the same blue surface. */
+ProjectSetupDialog,
+ProjectSetupDialog QWidget {
+    background: #d8edf9;
+}
+
+ProjectSetupDialog QLabel {
+    color: #073760;
+    background: transparent;
+}
+
+ProjectSetupDialog QLineEdit {
+    color: #073760;
+    background: #edf8ff;
+    border: 1px solid #2f80bb;
+    selection-background-color: #b8def6;
+    selection-color: #073760;
+    placeholder-text-color: #6689a4;
+}
+
+ProjectSetupDialog QLineEdit:focus {
+    background: #f2faff;
+    border-color: #006ec2;
+}
+
+ProjectSetupDialog QPushButton {
+    color: #005fa8;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 #f8fdff, stop:1 #d4ecfb);
+    border: 1px solid #7fb0d3;
+}
+
+ProjectSetupDialog QPushButton:hover {
+    color: #003f75;
+    background: #cce8fa;
+    border-color: #2f80bb;
+}
+
+ProjectSetupDialog QPushButton:pressed {
+    background: #add9f3;
+    border-color: #1d75b7;
+}

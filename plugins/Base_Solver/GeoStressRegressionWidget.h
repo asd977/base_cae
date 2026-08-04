@@ -44,6 +44,7 @@ class GeoStressRegressionWidget : public BasePage
         QVector<FaceAttrRow> faceRows;
         QStringList sideFaceFiles;
         QString forceFile;
+        bool roofFileReady = false;
         int forceEnabled = 0;
     };
 

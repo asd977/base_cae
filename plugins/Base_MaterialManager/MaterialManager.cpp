@@ -3813,82 +3813,6 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
         entry.seepageProperties.insert(key, formatValue(value));
     };
 
-    auto readMatypeList = [&](const QString& datFileName) -> QSet<int>
-    {
-        QSet<int> result;
-        const QFileInfo imatInfo(filePath);
-        QFile datFile(imatInfo.dir().filePath(datFileName));
-        if (!datFile.open(QIODevice::ReadOnly | QIODevice::Text))
-        {
-            return result;
-        }
-        QTextStream datStream(&datFile);
-        while (!datStream.atEnd())
-        {
-            const QString line = datStream.readLine();
-            if (line.contains(QStringLiteral("NUM"), Qt::CaseInsensitive))
-            {
-                continue;
-            }
-            const QStringList nums = numericTokens(line);
-            if (nums.isEmpty())
-            {
-                continue;
-            }
-            bool ok = false;
-            const int value = nums.first().toInt(&ok);
-            if (ok && isComputableMatype(value) && value <= nmat)
-            {
-                result.insert(value);
-            }
-        }
-        return result;
-    };
-
-    // 正向导出会同步写 MACB.DAT，那里才是真正“需要的”材料号；IMAT.DAT 的 NMAT
-    // 可能为了 10 列分组被补齐，也可能包含求解器默认 VOID 材料，不能逐列全部创建。
-    const QSet<int> appliedTargetMatypes = readMatypeList(QStringLiteral("MACB.DAT"));
-    QSet<int> targetMatypes = appliedTargetMatypes;
-    QVector<QPair<int, int>> importedTransitions;
-    {
-        const QFileInfo imatInfo(filePath);
-        QFile transitionFile(imatInfo.dir().filePath(QStringLiteral("MACHAN.DAT")));
-        if (transitionFile.open(QIODevice::ReadOnly | QIODevice::Text))
-        {
-            QTextStream transitionStream(&transitionFile);
-            bool firstLine = true;
-            while (!transitionStream.atEnd())
-            {
-                const QStringList nums = numericTokens(transitionStream.readLine());
-                if (firstLine)
-                {
-                    firstLine = false;
-                    continue;
-                }
-                if (nums.size() >= 2)
-                {
-                    bool oldOk = false;
-                    bool newOk = false;
-                    const int oldMatype = nums.at(0).toInt(&oldOk);
-                    const int newMatype = nums.at(1).toInt(&newOk);
-                    if (oldOk && newOk && isComputableMatype(oldMatype) &&
-                        isComputableMatype(newMatype) && oldMatype != newMatype)
-                    {
-                        importedTransitions.push_back({oldMatype, newMatype});
-                    }
-                }
-                for (int i = 0; i < qMin(2, nums.size()); ++i)
-                {
-                    bool ok = false;
-                    const int matype = nums.at(i).toInt(&ok);
-                    if (ok && isComputableMatype(matype) && matype <= nmat)
-                        targetMatypes.insert(matype);
-                }
-            }
-        }
-    }
-    const bool hasExplicitMatypeList = !targetMatypes.isEmpty();
-
     auto looksLikeForwardDefaultVoid = [&]() -> bool
     {
         if (nmat <= 0)
@@ -3915,58 +3839,51 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
         return creepType >= 1 && creepType <= 4;
     };
 
-    if (!hasExplicitMatypeList)
+    const QSet<int> meshMatypes = availableMatypes();
+    QSet<int> targetMatypes;
+    QSet<int> appliedTargetMatypes;
+    const bool defaultVoid = looksLikeForwardDefaultVoid();
+    auto isImportableMatypeColumn = [&](int matype) -> bool
     {
-        const bool defaultVoid = looksLikeForwardDefaultVoid();
-        for (int matIndex = 0; matIndex < nmat; ++matIndex)
+        const int matIndex = matype - 1;
+        if (!isComputableMatype(matype) || matIndex < 0 || matIndex >= nmat)
         {
-            if (defaultVoid && matIndex == 0)
+            return false;
+        }
+        if (defaultVoid && matIndex == 0)
+        {
+            return false;
+        }
+        return hasAnyTypeSignature(matIndex);
+    };
+
+    if (!meshMatypes.isEmpty())
+    {
+        for (int matype : meshMatypes)
+        {
+            if (isImportableMatypeColumn(matype))
             {
-                continue;
-            }
-            if (hasAnyTypeSignature(matIndex) && isComputableMatype(matIndex + 1))
-            {
-                targetMatypes.insert(matIndex + 1);
+                targetMatypes.insert(matype);
+                appliedTargetMatypes.insert(matype);
             }
         }
     }
-
-    const QSet<int> meshMatypes = availableMatypes();
-    if (!meshMatypes.isEmpty())
+    else
     {
-        QSet<int> filteredMatypes;
-        for (int matype : targetMatypes)
+        for (int matype = FIRST_COMPUTABLE_MATYPE; matype <= nmat; ++matype)
         {
-            if (meshMatypes.contains(matype))
-            {
-                filteredMatypes.insert(matype);
-            }
+            if (isImportableMatypeColumn(matype))
+                targetMatypes.insert(matype);
         }
-
-        if (filteredMatypes.size() != targetMatypes.size())
-        {
-            QList<int> skippedMatypes;
-            for (int matype : targetMatypes)
-            {
-                if (!filteredMatypes.contains(matype))
-                {
-                    skippedMatypes << matype;
-                }
-            }
-            std::sort(skippedMatypes.begin(), skippedMatypes.end());
-            qWarning() << "Skip IMAT materials because MATYPE groups do not exist in current mesh"
-                       << skippedMatypes;
-        }
-        targetMatypes = filteredMatypes;
     }
 
     if (targetMatypes.isEmpty())
     {
         if (error)
         {
-            *error = meshMatypes.isEmpty()
-                         ? QStringLiteral("未找到需要创建的材料号。请确认同目录存在 MACB.DAT，或 IMAT.DAT 中包含可识别的材料类型标识。")
-                         : QStringLiteral("IMAT.DAT 中识别到的材料号在当前网格 MATYPE 分组中不存在，未创建材料。");
+            *error = !meshMatypes.isEmpty()
+                         ? QStringLiteral("当前网格 MATYPE 在 IMAT.DAT 中未找到可识别材料列，请确认 IMAT.DAT 与当前工程网格配置一致。")
+                         : QStringLiteral("IMAT.DAT 中未找到可识别的材料列。");
         }
         return false;
     }
@@ -4275,20 +4192,11 @@ bool MaterialManager::importIMATFile(const QString& filePath, int* importedCount
         {
             entry.appliedMatypes.insert(matype);
         }
-        else
-        {
-            entry.transitionOnly = true;
-            entry.transitionMatype = matype;
-        }
         model->materials.append(entry);
         m_addedEntryIds.insert(entry.id);
-        m_matypeOwnerById.insert(matype, entry.id);
+        if (entry.appliedMatypes.contains(matype))
+            m_matypeOwnerById.insert(matype, entry.id);
         ++count;
-    }
-
-    if (!importedTransitions.isEmpty())
-    {
-        m_materialTransitions = importedTransitions;
     }
 
     if (count <= 0)

@@ -330,7 +330,7 @@
         <item row="9" column="0">
          <widget class="QLabel" name="labelAxisUp">
           <property name="text">
-           <string>上游轴指向</string>
+           <string>上下游轴向</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>
@@ -363,9 +363,9 @@
          </widget>
         </item>
         <item row="10" column="0">
-         <widget class="QLabel" name="labelAxisDown">
+         <widget class="QLabel" name="labelPgen">
           <property name="text">
-           <string>下游轴指向</string>
+           <string>平均应力方式</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>
@@ -373,20 +373,25 @@
          </widget>
         </item>
         <item row="10" column="1">
-         <widget class="QComboBox" name="comboAxisDown">
+         <widget class="QComboBox" name="comboPgen">
           <item>
            <property name="text">
-            <string>1 - X 轴</string>
+            <string>1 - 三向平均</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>2 - Y 轴</string>
+            <string>2 - 中小主应力平均</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>3 - Z 轴</string>
+            <string>3 - 两种平均再平均</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>4 - 按主应力条件切换</string>
            </property>
           </item>
           <property name="minimumSize">

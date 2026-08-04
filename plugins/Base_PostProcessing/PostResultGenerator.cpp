@@ -54,6 +54,12 @@ struct FieldSource
     QString suffix;
 };
 
+struct RuptureFlags
+{
+    bool shear = false;
+    bool tensile = false;
+};
+
 bool filesHaveSameContents(const QString& leftPath, const QString& rightPath)
 {
     const QFileInfo leftInfo(leftPath);
@@ -640,6 +646,128 @@ QVector<QVector<double>> buildStressLevel(const QVector<QVector<double>>& raw)
     return values;
 }
 
+QVector<QVector<double>> buildPlasticStrainComponents(const QVector<QVector<double>>& raw,
+                                                       int dimension)
+{
+    constexpr double microstrain = -1.0e6;
+    QVector<QVector<double>> values(raw.size());
+    for (int i = 0; i < raw.size(); ++i)
+    {
+        if (dimension == 2)
+        {
+            values[i] = {safeValue(raw.at(i), 0) * microstrain,
+                         safeValue(raw.at(i), 1) * microstrain,
+                         safeValue(raw.at(i), 2) * microstrain};
+        }
+        else
+        {
+            values[i] = {safeValue(raw.at(i), 0) * microstrain,
+                         safeValue(raw.at(i), 1) * microstrain,
+                         safeValue(raw.at(i), 2) * microstrain,
+                         safeValue(raw.at(i), 3) * microstrain,
+                         safeValue(raw.at(i), 4) * microstrain,
+                         safeValue(raw.at(i), 5) * microstrain};
+        }
+    }
+    return values;
+}
+
+QVector<QVector<double>> buildPrincipalPlasticStrain(const QVector<QVector<double>>& raw,
+                                                      int dimension)
+{
+    constexpr double microstrain = -1.0e6;
+    QVector<QVector<double>> values(raw.size());
+    for (int i = 0; i < raw.size(); ++i)
+    {
+        if (dimension == 2)
+        {
+            const double pe1 = safeValue(raw.at(i), 1) * microstrain;
+            const double pe3 = safeValue(raw.at(i), 0) * microstrain;
+            const double maximum = std::abs(pe1 - pe3) * 0.5;
+            const double equivalent = std::abs(pe1 - pe3) / std::sqrt(2.0) * 2.0 / 3.0;
+            values[i] = {pe1, pe3, maximum, equivalent};
+        }
+        else
+        {
+            const double pe1 = safeValue(raw.at(i), 2) * microstrain;
+            const double pe2 = safeValue(raw.at(i), 1) * microstrain;
+            const double pe3 = safeValue(raw.at(i), 0) * microstrain;
+            const double maximum = std::abs(pe1 - pe3) * 0.5;
+            const double equivalent = std::sqrt(
+                0.5 * ((pe1 - pe2) * (pe1 - pe2) +
+                       (pe2 - pe3) * (pe2 - pe3) +
+                       (pe3 - pe1) * (pe3 - pe1))) * 2.0 / 3.0;
+            values[i] = {pe1, pe2, pe3, maximum, equivalent};
+        }
+    }
+    return values;
+}
+
+QHash<int, QVector<double>> readElementRuptureValues(const QString& filePath, const Mesh& mesh,
+                                                      QString* warning)
+{
+    QHash<int, QVector<double>> values;
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        if (warning)
+            *warning = QStringLiteral("无法打开高斯点破坏结果：%1").arg(filePath);
+        return values;
+    }
+
+    QSet<int> elementIds;
+    for (const Element& element : mesh.elements)
+        elementIds.insert(element.id);
+
+    QHash<int, RuptureFlags> flagsByElement;
+    int rowsRead = 0;
+    QTextStream in(&file);
+    while (!in.atEnd())
+    {
+        const QVector<QString> fields = splitFields(in.readLine());
+        if (fields.size() < 9)
+            continue;
+
+        bool elementOk = false;
+        bool gaussPointOk = false;
+        bool ruptureOk = false;
+        bool discriminatorOk = false;
+        const int elementId = fields.at(0).toInt(&elementOk);
+        const int gaussPoint = fields.at(1).toInt(&gaussPointOk);
+        const double rupture = fields.at(7).toDouble(&ruptureOk);
+        fields.at(8).toDouble(&discriminatorOk);
+        if (!elementOk || !gaussPointOk || !ruptureOk || !discriminatorOk ||
+            gaussPoint <= 0 || gaussPoint > 64 || !elementIds.contains(elementId))
+            continue;
+
+        ++rowsRead;
+        const int ruptureCode = static_cast<int>(std::lround(rupture));
+        RuptureFlags& flags = flagsByElement[elementId];
+        if (ruptureCode == 2)
+            flags.tensile = true;
+        else if (ruptureCode != 0)
+            flags.shear = true;
+    }
+
+    if (rowsRead == 0)
+    {
+        if (warning)
+            *warning = QStringLiteral("高斯点破坏结果中没有可识别的数据：%1").arg(filePath);
+        return values;
+    }
+
+    values.reserve(mesh.elements.size());
+    for (const Element& element : mesh.elements)
+    {
+        const RuptureFlags flags = flagsByElement.value(element.id);
+        values.insert(element.id,
+                      {(flags.shear || flags.tensile) ? 1.0 : 0.0,
+                       flags.shear ? 1.0 : 0.0,
+                       flags.tensile ? 1.0 : 0.0});
+    }
+    return values;
+}
+
 QVector<FieldSource> fieldSources(const QDir& dir, const QString& prefix, bool seepage)
 {
     QVector<FieldSource> sources;
@@ -838,6 +966,138 @@ bool writeTecplot(const QString& filePath, const Mesh& mesh, const QVector<Eleme
     return true;
 }
 
+bool writeCellCenteredTecplot(const QString& filePath, const Mesh& mesh,
+                              const QVector<Element>& expanded,
+                              const QVector<ZoneGroup>& groups,
+                              const QSet<int>& maskedMaterials, const QString& title,
+                              const QStringList& variables,
+                              const QHash<int, QVector<double>>& values, QString* error)
+{
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+    {
+        if (error)
+            *error = QStringLiteral("无法写入后处理缓存：%1").arg(filePath);
+        return false;
+    }
+
+    QTextStream out(&file);
+    out.setRealNumberNotation(QTextStream::ScientificNotation);
+    out.setRealNumberPrecision(8);
+    out << "TITLE=\"" << title << "\"\n";
+    out << "VARIABLES=";
+    const QStringList coordinates = mesh.dimension == 3 ? QStringList{"X", "Y", "Z"}
+                                                         : QStringList{"X", "Y"};
+    const QStringList allVariables = coordinates + variables;
+    for (int i = 0; i < allVariables.size(); ++i)
+    {
+        if (i > 0)
+            out << ", ";
+        out << "\"" << allVariables.at(i) << "\"";
+    }
+    out << "\n";
+
+    int writtenZones = 0;
+    const QList<int> topologyOrder = {3, 31, 6, 35, 1, 38};
+    for (const ZoneGroup& group : groups)
+    {
+        for (int topology : topologyOrder)
+        {
+            QVector<const Element*> selected;
+            for (const Element& element : expanded)
+            {
+                if (element.type == topology && group.materials.contains(element.material) &&
+                    !maskedMaterials.contains(element.material) && !isJointType(element.type))
+                    selected.push_back(&element);
+            }
+            if (selected.isEmpty())
+                continue;
+
+            const int nodeCount = topologyNodeCount(topology);
+            const QString tecplotType = topologyName(topology);
+            if (nodeCount <= 0 || tecplotType.isEmpty())
+                continue;
+
+            QSet<int> usedNodeIds;
+            for (const Element* element : selected)
+            {
+                for (int i = 0; i < nodeCount; ++i)
+                {
+                    const int nodeId = element->nodes.value(i);
+                    if (mesh.nodeIdToIndex.contains(nodeId))
+                        usedNodeIds.insert(nodeId);
+                }
+            }
+
+            QVector<int> orderedNodeIds;
+            orderedNodeIds.reserve(usedNodeIds.size());
+            QHash<int, int> localNodeIds;
+            for (const Node& node : mesh.nodes)
+            {
+                if (usedNodeIds.contains(node.id))
+                {
+                    localNodeIds.insert(node.id, orderedNodeIds.size() + 1);
+                    orderedNodeIds.push_back(node.id);
+                }
+            }
+            if (orderedNodeIds.isEmpty())
+                continue;
+
+            const int firstCellVariable = mesh.dimension + 1;
+            const int lastCellVariable = mesh.dimension + variables.size();
+            out << QString("ZONE N=%1,E=%2,F=FEBLOCK,ET=%3,")
+                       .arg(orderedNodeIds.size(), 8)
+                       .arg(selected.size(), 8)
+                       .arg(tecplotType);
+            if (firstCellVariable == lastCellVariable)
+                out << QString("VARLOCATION=([%1]=CELLCENTERED)\n").arg(firstCellVariable);
+            else
+                out << QString("VARLOCATION=([%1-%2]=CELLCENTERED)\n")
+                           .arg(firstCellVariable)
+                           .arg(lastCellVariable);
+
+            for (int coordinate = 0; coordinate < mesh.dimension; ++coordinate)
+            {
+                for (int nodeId : orderedNodeIds)
+                {
+                    const int globalIndex = mesh.nodeIdToIndex.value(nodeId, -1);
+                    out << QString("%1\n").arg(mesh.nodes.at(globalIndex).xyz.at(coordinate),
+                                               16, 'E', 8);
+                }
+            }
+            for (int variable = 0; variable < variables.size(); ++variable)
+            {
+                for (const Element* element : selected)
+                    out << QString("%1\n").arg(safeValue(values.value(element->id), variable),
+                                               16, 'E', 8);
+            }
+
+            for (const Element* element : selected)
+            {
+                for (int i = 0; i < nodeCount; ++i)
+                {
+                    int localId = localNodeIds.value(element->nodes.value(i));
+                    if (localId <= 0)
+                        localId = 1;
+                    out << QString("%1").arg(localId, 8);
+                }
+                out << "\n";
+            }
+            ++writtenZones;
+        }
+    }
+
+    if (writtenZones == 0)
+    {
+        file.close();
+        file.remove();
+        if (error)
+            *error = QStringLiteral("没有可显示的有效材料分区：%1").arg(filePath);
+        return false;
+    }
+    return true;
+}
+
 void addGenerated(PostResultGenerator::Result& result, const QString& path)
 {
     result.generatedFiles << QDir::toNativeSeparators(QFileInfo(path).absoluteFilePath());
@@ -879,6 +1139,58 @@ bool generateField(const QDir& outputDir, const Mesh& mesh, const QVector<Elemen
         if (writeTecplot(withExcavatedPath, mesh, *expandedWithExcavated, groups, masks,
                          title + QStringLiteral(" - WITH EXCAVATED ELEMENTS"),
                          variables, values, &withExcavatedError))
+        {
+            addGenerated(result, withExcavatedPath);
+            generated = true;
+        }
+        else
+        {
+            result.warnings << withExcavatedError;
+        }
+    }
+    return generated;
+}
+
+bool generateCellField(const QDir& outputDir, const Mesh& mesh,
+                       const QVector<Element>& expanded, const QVector<ZoneGroup>& groups,
+                       const QSet<int>& masks, const QString& outputName, const QString& title,
+                       const QStringList& variables,
+                       const QHash<int, QVector<double>>& values,
+                       PostResultGenerator::Result& result,
+                       const QVector<Element>* expandedWithExcavated = nullptr)
+{
+    if (values.isEmpty())
+        return false;
+
+    bool generated = false;
+    if (!expanded.isEmpty())
+    {
+        QString error;
+        const QString outputPath = outputDir.filePath(outputName);
+        if (writeCellCenteredTecplot(outputPath, mesh, expanded, groups, masks, title, variables,
+                                     values, &error))
+        {
+            addGenerated(result, outputPath);
+            generated = true;
+        }
+        else
+        {
+            result.warnings << error;
+        }
+    }
+
+    if (expandedWithExcavated && !expandedWithExcavated->isEmpty())
+    {
+        const QFileInfo outputInfo(outputName);
+        const QString extension = outputInfo.suffix();
+        const QString withExcavatedName = outputInfo.completeBaseName() +
+            QStringLiteral("_with_excavated") +
+            (extension.isEmpty() ? QString() : QStringLiteral(".") + extension);
+        const QString withExcavatedPath = outputDir.filePath(withExcavatedName);
+        QString withExcavatedError;
+        if (writeCellCenteredTecplot(withExcavatedPath, mesh, *expandedWithExcavated, groups,
+                                     masks, title + QStringLiteral(" - WITH EXCAVATED ELEMENTS"),
+                                     variables, values, &withExcavatedError))
         {
             addGenerated(result, withExcavatedPath);
             generated = true;
@@ -1064,6 +1376,59 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
                        optionalExpandedWithExcavated);
     }
 
+    const QVector<FieldSource> plasticComponentSources =
+        fieldSources(resultDir, QStringLiteral("MODRAI_PLS"), false);
+    for (const FieldSource& source : plasticComponentSources)
+    {
+        QString warning;
+        const int componentCount = mesh.dimension == 3 ? 6 : 3;
+        const auto raw = readNodeValues(source.path, mesh, componentCount, &warning);
+        if (!warning.isEmpty())
+            result.warnings << warning;
+        const QStringList variables = mesh.dimension == 3
+            ? QStringList{QStringLiteral("PEXX(1.0e-6eps)"),
+                          QStringLiteral("PEYY(1.0e-6eps)"),
+                          QStringLiteral("PEZZ(1.0e-6eps)"),
+                          QStringLiteral("PEXY(1.0e-6eps)"),
+                          QStringLiteral("PEYZ(1.0e-6eps)"),
+                          QStringLiteral("PEZX(1.0e-6eps)")}
+            : QStringList{QStringLiteral("PEXX(1.0e-6eps)"),
+                          QStringLiteral("PEYY(1.0e-6eps)"),
+                          QStringLiteral("PEXY(1.0e-6eps)")};
+        generateField(outputDir, mesh, expanded, groups, commonMasks,
+                      outputName(external, QStringLiteral("TEC_RAI_PLS.DAT"),
+                                 QStringLiteral("plastic_strain"), source.suffix),
+                      QStringLiteral("PLASTIC STRAIN COMPONENTS"), variables,
+                      buildPlasticStrainComponents(raw, mesh.dimension), result,
+                      optionalExpandedWithExcavated);
+    }
+
+    const QVector<FieldSource> principalPlasticSources =
+        fieldSources(resultDir, QStringLiteral("MODRAP_PLS"), false);
+    for (const FieldSource& source : principalPlasticSources)
+    {
+        QString warning;
+        const auto raw = readNodeValues(source.path, mesh, mesh.dimension == 3 ? 3 : 2, &warning);
+        if (!warning.isEmpty())
+            result.warnings << warning;
+        const QStringList variables = mesh.dimension == 3
+            ? QStringList{QStringLiteral("PE1(1.0e-6eps)"),
+                          QStringLiteral("PE2(1.0e-6eps)"),
+                          QStringLiteral("PE3(1.0e-6eps)"),
+                          QStringLiteral("PEMAX(1.0e-6eps)"),
+                          QStringLiteral("PEEQ(1.0e-6eps)")}
+            : QStringList{QStringLiteral("PE1(1.0e-6eps)"),
+                          QStringLiteral("PE3(1.0e-6eps)"),
+                          QStringLiteral("PEMAX(1.0e-6eps)"),
+                          QStringLiteral("PEEQ(1.0e-6eps)")};
+        generateField(outputDir, mesh, expanded, groups, commonMasks,
+                      outputName(external, QStringLiteral("TEC_RAP_PLS.DAT"),
+                                 QStringLiteral("principal_plastic_strain"), source.suffix),
+                      QStringLiteral("PRINCIPAL PLASTIC STRAIN"), variables,
+                      buildPrincipalPlasticStrain(raw, mesh.dimension), result,
+                      optionalExpandedWithExcavated);
+    }
+
     const QVector<FieldSource> stressLevelSources = fieldSources(resultDir, QStringLiteral("NODCMM"), false);
     for (const FieldSource& source : stressLevelSources)
     {
@@ -1076,6 +1441,23 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
                                  QStringLiteral("stress_level"), source.suffix),
                        QStringLiteral("STRESS LEVEL"), {QStringLiteral("SL")},
                        buildStressLevel(raw), result, optionalExpandedWithExcavated);
+    }
+
+    const QVector<FieldSource> ruptureSources = fieldSources(resultDir, QStringLiteral("IIICMM"), false);
+    for (const FieldSource& source : ruptureSources)
+    {
+        QString warning;
+        const auto values = readElementRuptureValues(source.path, mesh, &warning);
+        if (!warning.isEmpty())
+            result.warnings << warning;
+        generateCellField(outputDir, mesh, expanded, groups, stressMasks,
+                          outputName(external, QStringLiteral("TEC_RUPT.DAT"),
+                                     QStringLiteral("failure_zone"), source.suffix),
+                          QStringLiteral("FAILURE ZONE"),
+                          {QStringLiteral("FAILURE_ZONE"),
+                           QStringLiteral("SHEAR_FAILURE"),
+                           QStringLiteral("TENSILE_FAILURE")},
+                          values, result, optionalExpandedWithExcavated);
     }
 
     result.ok = !result.generatedFiles.isEmpty();
