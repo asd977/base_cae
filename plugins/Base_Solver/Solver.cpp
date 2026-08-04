@@ -2974,9 +2974,6 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     }
     CaveReinforcementFieldPage* reinforcementPage =
         supportPage->reinforcementFieldPage();
-    if (reinforcementPage
-        && reinforcementPage->mode() != CaveReinforcementFieldPage::Mode::Disabled)
-        supportPage->ensureReinforcedTask();
     QString caveParameterError;
     if (!supportPage->validateInputs(&caveParameterError))
     {
@@ -3937,7 +3934,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         }
 
         QString reinforcementError;
-        if (reinforcementPage)
+        if (reinforcementPage && supportPage->reinforcedTaskEnabled())
         {
             if (!reinforcementPage->exportFieldFiles(
                     inputDir.absolutePath(), caveCtx.grid, caveCtx.targetDim,

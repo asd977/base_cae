@@ -12,12 +12,15 @@
 #include <services/SurrogateModelService.h>
 
 #include <QBrush>
+#include <QCoreApplication>
+#include <QDir>
 #include <QFile>
 #include <QIcon>
 #include <QDirIterator>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMessageBox>
+#include <QSettings>
 #include <QTimer>
 #include <QVariant>
 #include <QXmlStreamReader>
@@ -490,6 +493,20 @@ void ProjectManager::openProject()
     QFileDialog dialog(nullptr, "选择工程文件");
     dialog.setNameFilter("Project Files (*.xml)");
     dialog.setFilter(QDir::Files);
+
+    const QString configFile =
+        QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("config.ini"));
+    const QSettings settings(configFile, QSettings::IniFormat);
+    QString initialDirectory =
+        settings.value(QStringLiteral("ProjectSetupDialog/defaultPath")).toString().trimmed();
+    if (!QDir(initialDirectory).exists())
+    {
+        const QFileInfo currentProjectInfo(m_projectEnginePath);
+        initialDirectory = currentProjectInfo.exists() ? currentProjectInfo.absolutePath()
+                                                       : QDir::homePath();
+    }
+    dialog.setDirectory(initialDirectory);
+
     if (dialog.exec() != QDialog::Accepted || dialog.selectedFiles().isEmpty())
         return;
 

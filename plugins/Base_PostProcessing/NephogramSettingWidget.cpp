@@ -107,6 +107,8 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
     ui->rangeMaxSpinBox->setRange(-1.0e100, 1.0e100);
     ui->rangeMinSpinBox->setDecimals(8);
     ui->rangeMaxSpinBox->setDecimals(8);
+    ui->legendIntervalSpinBox->setRange(0.0, 1.0e100);
+    ui->legendIntervalSpinBox->setDecimals(12);
 
     connect(ui->stepComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &NephogramSettingWidget::on_stepComboBox_currentIndexChanged);
@@ -151,6 +153,9 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
             refreshLegend);
     connect(ui->legendPrecisionSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
             refreshLegend);
+    connect(ui->legendIntervalSpinBox,
+            QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [this](double) { refreshCurrentVisualization(); });
     connect(ui->legendWidthSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
             refreshLegend);
     connect(ui->legendHeightSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
@@ -227,7 +232,7 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
         return;
 
     m_visualService->showScalarBar(true, false);
-    applyLegendAppearance(scalarBar);
+    applyLegendAppearance(scalarBar, minV, maxV);
 
     vtkLookupTable* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable());
     if (!lut)
@@ -609,7 +614,8 @@ bool NephogramSettingWidget::displayRange(double dataMin, double dataMax, double
     return true;
 }
 
-void NephogramSettingWidget::applyLegendAppearance(vtkScalarBarActor* scalarBar) const
+void NephogramSettingWidget::applyLegendAppearance(vtkScalarBarActor* scalarBar, double minV,
+                                                    double maxV) const
 {
     if (!scalarBar)
         return;
@@ -629,7 +635,52 @@ void NephogramSettingWidget::applyLegendAppearance(vtkScalarBarActor* scalarBar)
                            qBound(0.0, y, std::max(0.0, 1.0 - height)));
     scalarBar->SetMaximumWidthInPixels(1000);
     scalarBar->SetMaximumHeightInPixels(2000);
-    scalarBar->SetNumberOfLabels(7);
+    const double interval = ui->legendIntervalSpinBox->value();
+    const double span = maxV - minV;
+    if (interval > 0.0 && std::isfinite(interval) && isValidScalarRange(minV, maxV) &&
+        std::isfinite(span) && span > 0.0)
+    {
+        constexpr int maxLabelCount = 64;
+        const double scale = std::max({1.0, std::abs(minV), std::abs(maxV), span});
+        const double tolerance = scale * 1.0e-12;
+        const double regularStepCount = std::floor((span + tolerance) / interval);
+        const double lastRegularValue = minV + regularStepCount * interval;
+        const bool upperIsRegular = std::abs(lastRegularValue - maxV) <= tolerance;
+        const double requestedLabelCount = regularStepCount + 1.0 + (upperIsRegular ? 0.0 : 1.0);
+        const double stride = requestedLabelCount <= maxLabelCount
+                                  ? 1.0
+                                  : std::max(1.0, std::ceil(regularStepCount /
+                                                            (maxLabelCount - 2.0)));
+
+        auto labels = vtkSmartPointer<vtkDoubleArray>::New();
+        labels->SetNumberOfComponents(1);
+        for (int labelIndex = 0; labelIndex < maxLabelCount - 1; ++labelIndex)
+        {
+            const double stepIndex = labelIndex * stride;
+            if (stepIndex > regularStepCount)
+                break;
+
+            const double value = minV + stepIndex * interval;
+            if (value > maxV + tolerance)
+                break;
+            labels->InsertNextValue(std::min(value, maxV));
+        }
+
+        const vtkIdType labelCount = labels->GetNumberOfTuples();
+        const double lastLabel = labelCount > 0 ? labels->GetValue(labelCount - 1) : minV;
+        if (std::abs(lastLabel - maxV) > tolerance && labelCount < maxLabelCount)
+            labels->InsertNextValue(maxV);
+
+        scalarBar->SetCustomLabels(labels);
+        scalarBar->UseCustomLabelsOn();
+        scalarBar->SetNumberOfLabels(static_cast<int>(labels->GetNumberOfTuples()));
+    }
+    else
+    {
+        scalarBar->UseCustomLabelsOff();
+        scalarBar->SetCustomLabels(nullptr);
+        scalarBar->SetNumberOfLabels(7);
+    }
     const QByteArray labelFormat =
         QStringLiteral("%.%1g").arg(ui->legendPrecisionSpinBox->value()).toLatin1();
     scalarBar->SetLabelFormat(labelFormat.constData());
@@ -872,6 +923,7 @@ QJsonObject NephogramSettingWidget::saveJson()
     obj[QStringLiteral("legendTitleFont")] = ui->legendTitleFontSpinBox->value();
     obj[QStringLiteral("legendLabelFont")] = ui->legendLabelFontSpinBox->value();
     obj[QStringLiteral("legendPrecision")] = ui->legendPrecisionSpinBox->value();
+    obj[QStringLiteral("legendInterval")] = ui->legendIntervalSpinBox->value();
     obj[QStringLiteral("legendWidth")] = ui->legendWidthSpinBox->value();
     obj[QStringLiteral("legendHeight")] = ui->legendHeightSpinBox->value();
     if (m_visualService && m_visualService->scalarBarActor())
@@ -900,6 +952,8 @@ void NephogramSettingWidget::loadJson(const QJsonObject& obj)
         obj.value(QStringLiteral("legendLabelFont")).toInt(13));
     ui->legendPrecisionSpinBox->setValue(
         obj.value(QStringLiteral("legendPrecision")).toInt(4));
+    ui->legendIntervalSpinBox->setValue(
+        obj.value(QStringLiteral("legendInterval")).toDouble(0.0));
     ui->legendWidthSpinBox->setValue(obj.value(QStringLiteral("legendWidth")).toInt(10));
     ui->legendHeightSpinBox->setValue(obj.value(QStringLiteral("legendHeight")).toInt(65));
     m_hasLegendPosition = obj.contains(QStringLiteral("legendPositionX")) &&

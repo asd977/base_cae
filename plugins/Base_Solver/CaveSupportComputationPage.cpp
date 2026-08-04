@@ -92,6 +92,8 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     setupBoolCombo(m_ifJ1toaCombo, "计算加固条件下逐级开挖成洞",
                    "不进行加固条件下逐级开挖成洞计算");
     setupBoolCombo(m_ifChenCombo, "计算衬砌内力", "不需计算衬砌内力");
+    ui->groupParams->setToolTip(
+        QStringLiteral("四种开挖任务可以同时启用，求解器会分别计算并输出对应结果。"));
 
     m_ifSeepCombo->clear();
     m_ifSeepCombo->addItem("不考虑地下水影响", "0");
@@ -235,26 +237,6 @@ bool CaveSupportComputationPage::reinforcedTaskEnabled() const
                && m_ifJ1toaCombo->currentData().toString() == QStringLiteral("1"));
 }
 
-void CaveSupportComputationPage::ensureReinforcedTask()
-{
-    saveCurrentCase();
-    if (m_caseData.ifJall == QStringLiteral("1")
-        || m_caseData.ifJ1toa == QStringLiteral("1"))
-        return;
-
-    if (m_caseData.ifE1toa == QStringLiteral("1"))
-    {
-        m_caseData.ifE1toa = QStringLiteral("0");
-        m_caseData.ifJ1toa = QStringLiteral("1");
-    }
-    else
-    {
-        m_caseData.ifEall = QStringLiteral("0");
-        m_caseData.ifJall = QStringLiteral("1");
-    }
-    loadCaseToUi();
-}
-
 CaveReinforcementFieldPage* CaveSupportComputationPage::reinforcementFieldPage() const
 {
     return m_reinforcementFieldPage;
@@ -266,8 +248,6 @@ void CaveSupportComputationPage::loadLegacyReinforcementFieldJson(const QJsonObj
         return;
 
     m_reinforcementFieldPage->loadJson(obj);
-    if (m_reinforcementFieldPage->mode() != CaveReinforcementFieldPage::Mode::Disabled)
-        ensureReinforcedTask();
     updateStaticDependenciesUi();
 }
 
@@ -279,12 +259,17 @@ void CaveSupportComputationPage::updateAnalysisModeUi()
     const bool showStatic = (typeCode == 1 || typeCode == 3);
     const bool showDynamic = (typeCode == 2 || typeCode == 3);
 
-    if (ui->groupStaticControl)
-        ui->groupStaticControl->setVisible(showStatic);
-    if (ui->groupExcavationTime)
-        ui->groupExcavationTime->setVisible(showStatic);
-    if (ui->groupParams)
-        ui->groupParams->setVisible(showStatic);
+    // 静力开挖相关设置始终保留在页面中；不参与当前计算时仅置灰，
+    // 让用户仍能看到四种开挖任务及其依赖关系。
+    for (QWidget* group : {ui->groupStaticControl, ui->groupExcavationTime,
+                           ui->groupParams})
+    {
+        if (group)
+        {
+            group->setVisible(true);
+            group->setEnabled(showStatic);
+        }
+    }
 
     if (ui->groupDynamicControl)
         ui->groupDynamicControl->setVisible(showDynamic);
@@ -333,11 +318,17 @@ void CaveSupportComputationPage::updateStaticDependenciesUi()
     for (QWidget* widget : supportWidgets)
     {
         if (widget)
-            widget->setVisible(support);
+        {
+            widget->setVisible(true);
+            widget->setEnabled(support);
+        }
     }
 
     if (m_reinforcementFieldPage)
-        m_reinforcementFieldPage->setVisible(support);
+    {
+        m_reinforcementFieldPage->setVisible(true);
+        m_reinforcementFieldPage->setEnabled(support);
+    }
 }
 
 void CaveSupportComputationPage::onReinforcedTaskSelectionChanged()
@@ -345,10 +336,7 @@ void CaveSupportComputationPage::onReinforcedTaskSelectionChanged()
     if (m_isUpdatingUi)
         return;
 
-    // 用户关闭全部加固任务时，同时关闭额外的围岩参数修正，避免隐藏设置在计算时
-    // 又把任务自动切回“加固”。具体参数仍保留，重新启用后可再次选择修正方式。
-    if (!reinforcedTaskEnabled() && m_reinforcementFieldPage)
-        m_reinforcementFieldPage->setMode(CaveReinforcementFieldPage::Mode::Disabled);
+    // 不改写用户已经选择的修正方式；无加固任务时仅将相关设置置灰。
     updateStaticDependenciesUi();
 }
 
@@ -629,10 +617,6 @@ void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
 
     m_isUpdatingUi = false;
     loadCaseToUi();
-    if (m_reinforcementFieldPage
-        && m_reinforcementFieldPage->mode() != CaveReinforcementFieldPage::Mode::Disabled
-        && !reinforcedTaskEnabled())
-        ensureReinforcedTask();
     updateAnalysisModeUi();
 }
 

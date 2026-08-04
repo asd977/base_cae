@@ -57,9 +57,11 @@ class ProjectSetupDialog : public QDialog
   private slots:
     void browseProjectPath()
     {
-        QString dir = QFileDialog::getExistingDirectory(this, "选择项目路径", QDir::homePath(),
-                                                        QFileDialog::ShowDirsOnly |
-                                                            QFileDialog::DontResolveSymlinks);
+        const QString initialDirectory =
+            projectPath().isEmpty() ? QDir::homePath() : projectPath();
+        QString dir = QFileDialog::getExistingDirectory(
+            this, "选择项目路径", initialDirectory,
+            QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
 
         if (!dir.isEmpty())
         {

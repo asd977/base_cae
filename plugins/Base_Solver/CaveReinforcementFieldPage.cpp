@@ -464,11 +464,15 @@ void CaveReinforcementFieldPage::setMode(Mode mode)
 
 void CaveReinforcementFieldPage::updateModeUi()
 {
-    m_actualBox->setVisible(mode() == Mode::ExistingBars);
-    m_conceptBox->setVisible(mode() == Mode::Conceptual);
+    const bool useExistingBars = mode() == Mode::ExistingBars;
+    const bool useConceptual = mode() == Mode::Conceptual;
+    m_actualBox->setVisible(true);
+    m_actualBox->setEnabled(useExistingBars);
+    m_conceptBox->setVisible(true);
+    m_conceptBox->setEnabled(useConceptual);
     const bool useZhangFormula = m_formula->currentData().toInt() == 1;
-    m_actualStiffness->setEnabled(useZhangFormula);
-    m_indraratnaStiffnessCorrection->setEnabled(!useZhangFormula);
+    m_actualStiffness->setEnabled(useExistingBars && useZhangFormula);
+    m_indraratnaStiffnessCorrection->setEnabled(useExistingBars && !useZhangFormula);
 }
 
 QJsonObject CaveReinforcementFieldPage::saveJson()

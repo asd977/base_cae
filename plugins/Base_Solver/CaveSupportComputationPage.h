@@ -41,7 +41,6 @@ class CaveSupportComputationPage : public BasePage
     bool modalAnalysisEnabled() const;
     bool timeHistoryEnabled() const;
     bool reinforcedTaskEnabled() const;
-    void ensureReinforcedTask();
     CaveReinforcementFieldPage* reinforcementFieldPage() const;
     void loadLegacyReinforcementFieldJson(const QJsonObject& obj);
     bool validateInputs(QString* errorMessage) const;

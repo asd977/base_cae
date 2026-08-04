@@ -59,7 +59,7 @@ class NephogramSettingWidget : public BasePage
     void updateRangeEditorState();
     void setRangeControls(double minV, double maxV);
     bool displayRange(double dataMin, double dataMax, double& minV, double& maxV) const;
-    void applyLegendAppearance(vtkScalarBarActor* scalarBar) const;
+    void applyLegendAppearance(vtkScalarBarActor* scalarBar, double minV, double maxV) const;
     void installLegendDragInteraction();
     void removeLegendDragInteraction();
     bool handleLegendDragEvent(unsigned long eventId);
