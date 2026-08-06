@@ -106,7 +106,7 @@
              </sizepolicy>
             </property>
             <property name="text">
-             <string>结果类型</string>
+             <string>结果数据</string>
             </property>
            </widget>
           </item>

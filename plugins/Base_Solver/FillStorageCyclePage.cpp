@@ -408,7 +408,7 @@ void FillStorageCyclePage::initValueEditors()
                             if (!firstOk || !lastOk || first < 2 || last < first)
                             {
                                 QMessageBox::warning(
-                                    &dlg, QStringLiteral("阶段设置不完整"),
+                                    &dlg, QStringLiteral("请完善施工阶段"),
                                     QStringLiteral("第 %1 个阶段的填筑层范围无效，请设置为从第 2 层开始且结束层不小于开始层。")
                                         .arg(row + 1));
                                 return;
@@ -820,7 +820,7 @@ void FillStorageCyclePage::addMaterialMappingRow(QTableWidget* table, int source
     {
         QMessageBox::information(
             this, QStringLiteral("数量已达上限"),
-            QStringLiteral("求解器最多支持 300 组材料关系，不能继续新增。"));
+            QStringLiteral("材料关系最多可设置 300 组。"));
         return;
     }
 
@@ -1159,7 +1159,7 @@ bool FillStorageCyclePage::validateMaterialMappings(QTableWidget* table,
             if (!materialService ||
                 !materialService->setDamDynamicSourceMatype(target, source))
             {
-                return fail(QStringLiteral("无法更新动力材料的静力母材料编号。"));
+                return fail(QStringLiteral("无法保存动力材料关系。请检查材料设置后重试。"));
             }
         }
         usedSources.insert(source);

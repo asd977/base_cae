@@ -138,54 +138,6 @@
           </property>
          </widget>
         </item>
-        <item row="1" column="0">
-         <widget class="QLabel" name="labelSeepageSource">
-          <property name="text">
-           <string>渗流场文件</string>
-          </property>
-          <property name="toolTip">
-           <string>选择渗流计算输出的节点水头/孔压文件，或自由面点集文件。</string>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="1">
-         <widget class="QWidget" name="widgetSeepageSource">
-          <layout class="QHBoxLayout" name="layoutSeepageSource">
-           <property name="leftMargin">
-            <number>0</number>
-           </property>
-           <property name="topMargin">
-            <number>0</number>
-           </property>
-           <property name="rightMargin">
-            <number>0</number>
-           </property>
-           <property name="bottomMargin">
-            <number>0</number>
-           </property>
-           <property name="spacing">
-            <number>6</number>
-           </property>
-           <item>
-            <widget class="QLineEdit" name="editSeepageSource">
-             <property name="readOnly">
-              <bool>true</bool>
-             </property>
-             <property name="placeholderText">
-              <string>请选择渗流结果文件</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QPushButton" name="btnBrowseSeepageSource">
-             <property name="text">
-              <string>浏览…</string>
-             </property>
-            </widget>
-           </item>
-          </layout>
-         </widget>
-        </item>
         <item row="2" column="0">
          <widget class="QLabel" name="label5">
           <property name="text">

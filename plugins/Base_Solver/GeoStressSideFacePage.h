@@ -8,6 +8,8 @@ namespace Ui
 class GeoStressSideFacePage;
 }
 
+class QTimer;
+
 class GeoStressSideFacePage : public BasePage
 {
     Q_OBJECT
@@ -33,6 +35,7 @@ class GeoStressSideFacePage : public BasePage
     QString faceFile() const;
     FaceAttr attr() const;
     int selectionCount() const;
+    bool validatePressure(int verticalAxis, QString* errorMessage = nullptr) const;
     bool exportDatFile() const;
     void setFaceIndex(int index);
 
@@ -44,8 +47,20 @@ class GeoStressSideFacePage : public BasePage
   private:
     PickMode currentPickMode() const;
     void refreshGroupCombo();
+    void schedulePressurePreview();
+    void updatePressurePreview();
+    void clearPressurePreview(bool renderNow = true);
+    void restoreSelectedBoundaryHighlight();
+    void updateHeightSliderRange();
+    void syncHeightSliderFromSpinBox();
+    void setPreviewStatus(const QString& text, bool warning = false);
 
   private:
     Ui::GeoStressSideFacePage* ui = nullptr;
     int m_faceIndex = 1;
+    QTimer* m_pressurePreviewTimer = nullptr;
+    bool m_pressurePreviewActive = false;
+    bool m_updatingHeightSlider = false;
+    double m_heightSliderMinimum = 0.0;
+    double m_heightSliderMaximum = 1.0;
 };

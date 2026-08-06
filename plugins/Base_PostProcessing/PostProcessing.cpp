@@ -427,7 +427,7 @@ void PostProcessing::prepareResultRootAsync(const QString& projectDir, const QSt
                         logLines.push_back(QStringLiteral("生成内容：%1 组后处理结果")
                                                .arg(summary->groupCount));
                     if (!summary->resultTypes.isEmpty())
-                        logLines.push_back(QStringLiteral("结果类型：%1")
+                        logLines.push_back(QStringLiteral("结果数据：%1")
                                                .arg(summary->resultTypes.join(QStringLiteral("、"))));
                     if (!summary->resultConditions.isEmpty())
                     {

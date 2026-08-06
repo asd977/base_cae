@@ -1,4 +1,5 @@
 #include "NephogramSettingWidget.h"
+#include "PostComboBoxPerformance.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -93,6 +94,9 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
     : BasePage(PublicConstants::kPagePostProcessNephogram), ui(new Ui::NephogramSettingWidget)
 {
     ui->setupUi(this);
+
+    configurePostResultCombo(ui->resultDirComboBox);
+    configurePostResultCombo(ui->stepComboBox);
     m_visualService = postProcessingWidget;
 
     m_actor = vtkSmartPointer<vtkActor>::New();

@@ -1,4 +1,5 @@
 #include "IsosurfaceSegmentationWidget.h"
+#include "PostComboBoxPerformance.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -45,6 +46,9 @@ IsosurfaceSegmentationWidget::IsosurfaceSegmentationWidget(
       m_visualService(postProcessingWidget)
 {
     ui->setupUi(this);
+
+    configurePostResultCombo(ui->resultDirComboBox);
+    configurePostResultCombo(ui->stepComboBox);
 
     // UI 默认
     ui->percentModeRadioButton->setChecked(true);

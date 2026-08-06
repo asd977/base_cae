@@ -62,7 +62,7 @@ bool loadImat(const QString& filePath, QVector<QVector<double>>* values, QString
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
     {
         if (error)
-            *error = QStringLiteral("无法读取 IMAT.DAT。请先检查材料设置。");
+            *error = QStringLiteral("无法读取当前材料设置。请检查材料后重试。");
         return false;
     }
     QTextStream in(&file);
@@ -70,7 +70,7 @@ bool loadImat(const QString& filePath, QVector<QVector<double>>* values, QString
     if (header.size() < 2)
     {
         if (error)
-            *error = QStringLiteral("IMAT.DAT 文件头无效。");
+            *error = QStringLiteral("当前材料数据不完整，请重新保存材料设置。");
         return false;
     }
     const int materialCount = static_cast<int>(header.at(0));
@@ -78,7 +78,7 @@ bool loadImat(const QString& filePath, QVector<QVector<double>>* values, QString
     if (materialCount <= 0 || parameterCount <= 0)
     {
         if (error)
-            *error = QStringLiteral("IMAT.DAT 的材料数或参数数无效。");
+            *error = QStringLiteral("当前材料数据无效，请检查材料设置。");
         return false;
     }
     values->fill(QVector<double>(parameterCount + 1, 0.0), materialCount + 1);
@@ -259,7 +259,7 @@ bool writeAlfaie(const QString& path, int dimension, const QVector<FieldRow>& ro
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
     {
         if (error)
-            *error = QStringLiteral("无法写入 ALFAIE.DAT。");
+            *error = QStringLiteral("无法准备围岩加固计算数据。");
         return false;
     }
     QTextStream out(&file);
@@ -282,7 +282,7 @@ bool writeAlfaie(const QString& path, int dimension, const QVector<FieldRow>& ro
     if (!file.commit())
     {
         if (error)
-            *error = QStringLiteral("保存 ALFAIE.DAT 失败。");
+            *error = QStringLiteral("无法保存围岩加固计算数据。");
         return false;
     }
     return true;
@@ -314,7 +314,7 @@ bool writeAlfajd(const QString& path, vtkUnstructuredGrid* grid, int targetDimen
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
     {
         if (error)
-            *error = QStringLiteral("无法写入 ALFAJD.DAT。");
+            *error = QStringLiteral("无法准备围岩加固计算数据。");
         return false;
     }
     QTextStream out(&file);
@@ -347,7 +347,7 @@ bool writeAlfajd(const QString& path, vtkUnstructuredGrid* grid, int targetDimen
     if (!file.commit())
     {
         if (error)
-            *error = QStringLiteral("保存 ALFAJD.DAT 失败。");
+            *error = QStringLiteral("无法保存围岩加固计算数据。");
         return false;
     }
     return true;
@@ -363,10 +363,10 @@ CaveReinforcementFieldPage::CaveReinforcementFieldPage(QWidget* parent)
     root->setSpacing(12);
 
     auto* hint = new QLabel(
-        QStringLiteral("此功能用于把锚杆或锚索对围岩刚度、黏聚力、摩擦角及附加围压的影响"
-                       "写入 ALFAIE.DAT/ALFAJD.DAT。它与真实一维杆单元相互独立；"
-                       "如不需要额外围岩参数修正，请保持关闭。启用后计算会自动切换到"
-                       "对应的一次或逐级“加固”任务。"), this);
+        QStringLiteral("此功能用于将锚杆或锚索对围岩刚度、黏聚力、摩擦角及附加围压的影响"
+                       "自动用于计算。它与真实一维杆单元相互独立；"
+                       "如不需要额外围岩参数修正，请保持关闭。启用后会自动使用"
+                       "对应的一次或逐级加固工况。"), this);
     hint->setWordWrap(true);
     root->addWidget(hint);
 
@@ -500,7 +500,7 @@ bool CaveReinforcementFieldPage::exportFieldFiles(
     if (!directory.exists() && !QDir().mkpath(directory.absolutePath()))
     {
         if (errorMessage)
-            *errorMessage = QStringLiteral("无法创建计算输入目录。");
+            *errorMessage = QStringLiteral("无法准备围岩加固计算数据。请先保存工程后重试。");
         return false;
     }
     const QString alfaiePath = directory.filePath(QStringLiteral("ALFAIE.DAT"));

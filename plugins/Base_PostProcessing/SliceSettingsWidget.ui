@@ -20,7 +20,7 @@
       <property name="verticalSpacing"><number>6</number></property>
       <item row="0" column="0"><widget class="QLabel" name="resultStageLabel"><property name="text"><string>结果阶段</string></property></widget></item>
       <item row="0" column="1"><widget class="QComboBox" name="resultDirComboBox"/></item>
-      <item row="1" column="0"><widget class="QLabel" name="resultTypeLabel"><property name="text"><string>结果类型</string></property></widget></item>
+      <item row="1" column="0"><widget class="QLabel" name="resultTypeLabel"><property name="text"><string>结果数据</string></property></widget></item>
       <item row="1" column="1"><widget class="QComboBox" name="stepComboBox"/></item>
       <item row="2" column="0"><widget class="QLabel" name="scalarLabel"><property name="text"><string>物理量</string></property></widget></item>
       <item row="2" column="1"><widget class="QComboBox" name="scalarComboBox"/></item>

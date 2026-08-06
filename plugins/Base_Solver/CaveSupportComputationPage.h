@@ -12,8 +12,6 @@ class QDoubleSpinBox;
 class QGroupBox;
 class QLabel;
 class QLineEdit;
-class QListWidget;
-class QPushButton;
 class QSpinBox;
 class QTableWidget;
 class QWidget;
@@ -62,6 +60,7 @@ class CaveSupportComputationPage : public BasePage
     void loadLegacyReinforcementFieldJson(const QJsonObject& obj);
     bool validateInputs(QString* errorMessage) const;
     void loadLegacyCaveJson(const QJsonObject& obj);
+    QJsonObject legacyCraneBeamAreaState() const;
 
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
@@ -70,6 +69,7 @@ class CaveSupportComputationPage : public BasePage
     void computeRequested();
     void stopRequested();
     void liningEnabledChanged(bool enabled);
+    void craneBeamEnabledChanged(bool enabled);
 
   private slots:
     void onExcavationLevelCountChanged(int count);
@@ -79,8 +79,6 @@ class CaveSupportComputationPage : public BasePage
     void updateDynamicDetailsUi();
     void updateStaticDependenciesUi();
     void onReinforcedTaskSelectionChanged();
-    void onAddCraneBeamGroup();
-    void onRemoveCraneBeamGroups();
 
   private:
     struct CaseData
@@ -105,10 +103,6 @@ class CaveSupportComputationPage : public BasePage
     void setControlFieldValue(int fieldNo, const QString& value);
 
     QVector<QVariantMap> availableSeepageResults() const;
-    QVector<QVariantMap> availableCraneBeamGroups() const;
-    QVector<int> collectCraneBeamMaterialIds(QString* errorMessage = nullptr) const;
-    void refreshCraneBeamGroupCombo();
-    void refreshCraneBeamGroupList();
     void updateCraneBeamInstallStages();
     void refreshCraneBeamUi();
     QString selectedSeepageResult(QString* analysisName = nullptr) const;
@@ -153,16 +147,12 @@ class CaveSupportComputationPage : public BasePage
     QLabel* m_groundwaterStatusLabel = nullptr;
 
     QCheckBox* m_craneBeamEnabledCheck = nullptr;
-    QComboBox* m_craneBeamGroupCombo = nullptr;
-    QPushButton* m_addCraneBeamGroupButton = nullptr;
-    QListWidget* m_craneBeamGroupList = nullptr;
-    QPushButton* m_removeCraneBeamGroupButton = nullptr;
     QComboBox* m_craneBeamInstallStageCombo = nullptr;
     QDoubleSpinBox* m_craneBeamReleaseSpin = nullptr;
     QLabel* m_craneBeamStatusLabel = nullptr;
-    QVector<QVariantMap> m_craneBeamGroups;
 
     CaveReinforcementFieldPage* m_reinforcementFieldPage = nullptr;
     CaseData m_caseData;
     bool m_isUpdatingUi = false;
+    QJsonObject m_legacyCraneBeamAreaState;
 };

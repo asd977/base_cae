@@ -33,7 +33,7 @@
         <property name="spacing"><number>8</number></property>
         <item row="0" column="0"><widget class="QLabel" name="label_result_dir"><property name="text"><string>结果阶段</string></property></widget></item>
         <item row="0" column="1"><widget class="QComboBox" name="resultDirComboBox"><property name="minimumSize"><size><width>10</width><height>0</height></size></property></widget></item>
-        <item row="1" column="0"><widget class="QLabel" name="label_step"><property name="text"><string>结果类型</string></property></widget></item>
+        <item row="1" column="0"><widget class="QLabel" name="label_step"><property name="text"><string>结果数据</string></property></widget></item>
         <item row="1" column="1"><widget class="QComboBox" name="stepComboBox"><property name="minimumSize"><size><width>10</width><height>0</height></size></property></widget></item>
         <item row="2" column="0"><widget class="QLabel" name="label_scalar"><property name="text"><string>物理量</string></property></widget></item>
         <item row="2" column="1"><widget class="QComboBox" name="scalarComboBox"><property name="minimumSize"><size><width>10</width><height>0</height></size></property></widget></item>

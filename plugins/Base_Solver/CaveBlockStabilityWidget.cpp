@@ -84,7 +84,7 @@ CaveBlockStabilityWidget::CaveBlockStabilityWidget(QWidget* parent)
                 QString error;
                 if (!validateInputs(&error))
                 {
-                    QMessageBox::warning(this, QStringLiteral("设置不完整"), error);
+                    QMessageBox::warning(this, QStringLiteral("请完善块体稳定设置"), error);
                     return;
                 }
                 emit computeRequested();
@@ -447,7 +447,7 @@ bool CaveBlockStabilityWidget::validateInputs(QString* errorMessage) const
         const int first = ui->im1Edit->text().trimmed().toInt(&firstOk);
         const int second = ui->im2Edit->text().trimmed().toInt(&secondOk);
         if (!firstOk || !secondOk || first <= 0 || second <= 0 || first == second)
-            return fail(QStringLiteral("定义滑移方向的两个面编号必须为不同的正整数。"));
+            return fail(QStringLiteral("请填写两个不同的有效滑块面编号。"));
     }
     return true;
 }

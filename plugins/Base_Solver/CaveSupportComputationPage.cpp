@@ -7,7 +7,6 @@
 #include <services/MeshModuleControllerService.h>
 #include <struct/MeshMap.h>
 
-#include <QAbstractItemView>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDir>
@@ -25,8 +24,6 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
-#include <QListWidget>
-#include <QListWidgetItem>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -264,26 +261,6 @@ void CaveSupportComputationPage::setupBusinessUi()
                                              m_craneBeamGroup);
     craneForm->addRow(QString(), m_craneBeamEnabledCheck);
 
-    auto* regionRow = new QWidget(m_craneBeamGroup);
-    auto* regionLayout = new QHBoxLayout(regionRow);
-    regionLayout->setContentsMargins(0, 0, 0, 0);
-    regionLayout->setSpacing(6);
-    m_craneBeamGroupCombo = new QComboBox(regionRow);
-    m_craneBeamGroupCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-    m_addCraneBeamGroupButton = new QPushButton(QStringLiteral("添加"), regionRow);
-    regionLayout->addWidget(m_craneBeamGroupCombo, 1);
-    regionLayout->addWidget(m_addCraneBeamGroupButton);
-    craneForm->addRow(QStringLiteral("吊车梁区域"), regionRow);
-
-    m_craneBeamGroupList = new QListWidget(m_craneBeamGroup);
-    m_craneBeamGroupList->setSelectionMode(QAbstractItemView::ExtendedSelection);
-    m_craneBeamGroupList->setMinimumHeight(64);
-    craneForm->addRow(QStringLiteral("已选区域"), m_craneBeamGroupList);
-
-    m_removeCraneBeamGroupButton = new QPushButton(QStringLiteral("移除所选"),
-                                                    m_craneBeamGroup);
-    craneForm->addRow(QString(), m_removeCraneBeamGroupButton);
-
     m_craneBeamInstallStageCombo = new QComboBox(m_craneBeamGroup);
     craneForm->addRow(QStringLiteral("安装阶段"), m_craneBeamInstallStageCombo);
 
@@ -303,15 +280,13 @@ void CaveSupportComputationPage::setupBusinessUi()
     ui->contentLayout->insertWidget(6, m_craneBeamGroup);
 
     connect(m_craneBeamEnabledCheck, &QCheckBox::toggled, this,
-            [this](bool)
+            [this](bool enabled)
             {
-                if (!m_isUpdatingUi)
-                    refreshCraneBeamUi();
+                if (m_isUpdatingUi)
+                    return;
+                refreshCraneBeamUi();
+                emit craneBeamEnabledChanged(enabled);
             });
-    connect(m_addCraneBeamGroupButton, &QPushButton::clicked, this,
-            &CaveSupportComputationPage::onAddCraneBeamGroup);
-    connect(m_removeCraneBeamGroupButton, &QPushButton::clicked, this,
-            &CaveSupportComputationPage::onRemoveCraneBeamGroups);
     connect(m_craneBeamInstallStageCombo,
             qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this](int)
@@ -327,9 +302,7 @@ void CaveSupportComputationPage::setupBusinessUi()
                     refreshCraneBeamUi();
             });
 
-    refreshCraneBeamGroupCombo();
     updateCraneBeamInstallStages();
-    refreshCraneBeamGroupList();
     refreshCraneBeamUi();
 }
 
@@ -366,8 +339,6 @@ CaveSupportComputationPage::~CaveSupportComputationPage()
 
 void CaveSupportComputationPage::beforeLoad()
 {
-    refreshCraneBeamGroupCombo();
-    refreshCraneBeamGroupList();
     updateCraneBeamInstallStages();
     refreshLiningStatus();
     refreshGroundwaterStatus();
@@ -377,6 +348,27 @@ void CaveSupportComputationPage::beforeLoad()
 
 
 void CaveSupportComputationPage::beforeUnload() {}
+
+void CaveSupportComputationPage::updateCraneBeamInstallStages()
+{
+    if (!m_craneBeamInstallStageCombo)
+        return;
+
+    const int stageCount = excavationLevelCount();
+    const int previousStage = m_craneBeamInstallStageCombo->currentData().toInt();
+    const int targetStage = qBound(1, previousStage > 0 ? previousStage : 1, stageCount);
+
+    const QSignalBlocker blocker(m_craneBeamInstallStageCombo);
+    m_craneBeamInstallStageCombo->clear();
+    for (int stage = 1; stage <= stageCount; ++stage)
+    {
+        m_craneBeamInstallStageCombo->addItem(
+            QStringLiteral("第 %1 级开挖后").arg(stage), stage);
+    }
+
+    const int targetIndex = m_craneBeamInstallStageCombo->findData(targetStage);
+    m_craneBeamInstallStageCombo->setCurrentIndex(targetIndex >= 0 ? targetIndex : 0);
+}
 
 void CaveSupportComputationPage::setExcavationLevelCount(int count)
 {
@@ -486,310 +478,28 @@ void CaveSupportComputationPage::loadLegacyReinforcementFieldJson(const QJsonObj
 
 
 
-
-QVector<QVariantMap> CaveSupportComputationPage::availableCraneBeamGroups() const
+QJsonObject CaveSupportComputationPage::legacyCraneBeamAreaState() const
 {
-    QVector<QVariantMap> result;
-    auto* meshService =
-        ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    if (!meshService)
-        return result;
-
-    const int dimension =
-        PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt() == 2 ? 2 : 3;
-    const QVector<MeshTagSet> sets = meshService->domainTagSets();
-
-    QString selectedCategory;
-    const QStringList priority = {QStringLiteral("Physical"),
-                                  QStringLiteral("REGION"),
-                                  QStringLiteral("MATYPE")};
-    for (const QString& category : priority)
-    {
-        const bool usable = std::any_of(sets.cbegin(), sets.cend(),
-            [&](const MeshTagSet& set)
-            {
-                return set.key.category.compare(category, Qt::CaseInsensitive) == 0
-                    && set.key.dim == dimension && set.key.id != 0
-                    && !meshService->cellIdsOfTag(set.key).isEmpty();
-            });
-        if (usable)
-        {
-            selectedCategory = category;
-            break;
-        }
-    }
-    if (selectedCategory.isEmpty())
-        return result;
-
-    for (const MeshTagSet& set : sets)
-    {
-        if (set.key.category.compare(selectedCategory, Qt::CaseInsensitive) != 0
-            || set.key.dim != dimension || set.key.id == 0
-            || meshService->cellIdsOfTag(set.key).isEmpty())
-            continue;
-
-        QString text = set.name.trimmed();
-        if (text.isEmpty())
-            text = QStringLiteral("%1 %2").arg(selectedCategory).arg(set.key.id);
-        else
-            text = QStringLiteral("%1（%2 %3）")
-                       .arg(text, selectedCategory)
-                       .arg(set.key.id);
-
-        QVariantMap item;
-        item.insert(QStringLiteral("category"), selectedCategory);
-        item.insert(QStringLiteral("dim"), dimension);
-        item.insert(QStringLiteral("id"), set.key.id);
-        item.insert(QStringLiteral("text"), text);
-        result.push_back(item);
-    }
-
-    std::sort(result.begin(), result.end(), [](const QVariantMap& left,
-                                               const QVariantMap& right)
-    {
-        return left.value(QStringLiteral("id")).toInt()
-             < right.value(QStringLiteral("id")).toInt();
-    });
-    return result;
+    return m_legacyCraneBeamAreaState;
 }
 
-void CaveSupportComputationPage::refreshCraneBeamGroupCombo()
-{
-    if (!m_craneBeamGroupCombo)
-        return;
 
-    const QVariantMap previous = m_craneBeamGroupCombo->currentData().toMap();
-    const QVector<QVariantMap> groups = availableCraneBeamGroups();
-    const QSignalBlocker blocker(m_craneBeamGroupCombo);
-    m_craneBeamGroupCombo->clear();
-    for (const QVariantMap& group : groups)
-    {
-        m_craneBeamGroupCombo->addItem(group.value(QStringLiteral("text")).toString(), group);
-    }
-
-    int restoreIndex = -1;
-    for (int index = 0; index < m_craneBeamGroupCombo->count(); ++index)
-    {
-        const QVariantMap current = m_craneBeamGroupCombo->itemData(index).toMap();
-        if (current.value(QStringLiteral("category")) == previous.value(QStringLiteral("category"))
-            && current.value(QStringLiteral("dim")) == previous.value(QStringLiteral("dim"))
-            && current.value(QStringLiteral("id")) == previous.value(QStringLiteral("id")))
-        {
-            restoreIndex = index;
-            break;
-        }
-    }
-    if (restoreIndex >= 0)
-        m_craneBeamGroupCombo->setCurrentIndex(restoreIndex);
-}
-
-void CaveSupportComputationPage::refreshCraneBeamGroupList()
-{
-    if (!m_craneBeamGroupList)
-        return;
-
-    m_craneBeamGroupList->clear();
-    for (const QVariantMap& group : std::as_const(m_craneBeamGroups))
-    {
-        auto* item = new QListWidgetItem(
-            group.value(QStringLiteral("text")).toString(), m_craneBeamGroupList);
-        item->setData(Qt::UserRole, group);
-    }
-}
-
-void CaveSupportComputationPage::onAddCraneBeamGroup()
-{
-    if (!m_craneBeamGroupCombo || m_craneBeamGroupCombo->currentIndex() < 0)
-        return;
-
-    const QVariantMap selected = m_craneBeamGroupCombo->currentData().toMap();
-    if (selected.isEmpty())
-        return;
-
-    const auto sameGroup = [&](const QVariantMap& existing)
-    {
-        return existing.value(QStringLiteral("category"))
-                   == selected.value(QStringLiteral("category"))
-            && existing.value(QStringLiteral("dim"))
-                   == selected.value(QStringLiteral("dim"))
-            && existing.value(QStringLiteral("id"))
-                   == selected.value(QStringLiteral("id"));
-    };
-    if (std::none_of(m_craneBeamGroups.cbegin(), m_craneBeamGroups.cend(), sameGroup))
-        m_craneBeamGroups.push_back(selected);
-
-    refreshCraneBeamGroupList();
-    refreshCraneBeamUi();
-}
-
-void CaveSupportComputationPage::onRemoveCraneBeamGroups()
-{
-    if (!m_craneBeamGroupList)
-        return;
-
-    QVector<QVariantMap> removed;
-    for (QListWidgetItem* item : m_craneBeamGroupList->selectedItems())
-        removed.push_back(item->data(Qt::UserRole).toMap());
-
-    for (const QVariantMap& target : std::as_const(removed))
-    {
-        for (int index = m_craneBeamGroups.size() - 1; index >= 0; --index)
-        {
-            const QVariantMap& existing = m_craneBeamGroups.at(index);
-            if (existing.value(QStringLiteral("category"))
-                    == target.value(QStringLiteral("category"))
-                && existing.value(QStringLiteral("dim"))
-                    == target.value(QStringLiteral("dim"))
-                && existing.value(QStringLiteral("id"))
-                    == target.value(QStringLiteral("id")))
-                m_craneBeamGroups.removeAt(index);
-        }
-    }
-
-    refreshCraneBeamGroupList();
-    refreshCraneBeamUi();
-}
-
-void CaveSupportComputationPage::updateCraneBeamInstallStages()
-{
-    if (!m_craneBeamInstallStageCombo)
-        return;
-
-    const int previous = m_craneBeamInstallStageCombo->currentData().toInt();
-    const QSignalBlocker blocker(m_craneBeamInstallStageCombo);
-    m_craneBeamInstallStageCombo->clear();
-    for (int stage = 1; stage <= excavationLevelCount(); ++stage)
-    {
-        m_craneBeamInstallStageCombo->addItem(
-            QStringLiteral("第 %1 级开挖后").arg(stage), stage);
-    }
-    int index = m_craneBeamInstallStageCombo->findData(
-        qBound(1, previous > 0 ? previous : 1, excavationLevelCount()));
-    m_craneBeamInstallStageCombo->setCurrentIndex(index >= 0 ? index : 0);
-}
-
-QVector<int> CaveSupportComputationPage::collectCraneBeamMaterialIds(
-    QString* errorMessage) const
-{
-    const auto fail = [errorMessage](const QString& message)
-    {
-        if (errorMessage)
-            *errorMessage = message;
-        return QVector<int>();
-    };
-
-    if (!craneBeamEnabled())
-        return {};
-    if (m_craneBeamGroups.isEmpty())
-        return fail(QStringLiteral("请至少选择一个吊车梁区域。"));
-
-    auto* meshService =
-        ServiceRegistry::instance().getService<MeshModuleControllerService>();
-    if (!meshService)
-        return fail(QStringLiteral("无法读取当前网格。"));
-
-    vtkUnstructuredGrid* grid = meshService->getVtkUnstructuredGridSolid();
-    if (!grid)
-        grid = meshService->getVtkUnstructuredGrid();
-    if (!grid || !grid->GetCellData())
-        return fail(QStringLiteral("当前网格没有可用于吊车梁设置的实体单元。"));
-
-    vtkDataArray* materialArray = grid->GetCellData()->GetArray("MATYPE");
-    if (!materialArray)
-        return fail(QStringLiteral("当前网格缺少材料编号，无法识别吊车梁材料。"));
-
-    const int dimension =
-        PublicVariables::instance().get(PublicConstants::kMeshDimension).toInt() == 2 ? 2 : 3;
-    QSet<vtkIdType> selectedCells;
-    QSet<int> materialIds;
-    for (const QVariantMap& group : m_craneBeamGroups)
-    {
-        MeshTagKey key;
-        key.category = group.value(QStringLiteral("category")).toString();
-        key.dim = group.value(QStringLiteral("dim")).toInt();
-        key.id = group.value(QStringLiteral("id")).toInt();
-        for (MeshIdType meshCellId : meshService->cellIdsOfTag(key))
-        {
-            const vtkIdType cellId = static_cast<vtkIdType>(meshCellId);
-            if (cellId < 0 || cellId >= grid->GetNumberOfCells())
-                continue;
-            vtkCell* cell = grid->GetCell(cellId);
-            if (!cell || cell->GetCellDimension() != dimension)
-                continue;
-            selectedCells.insert(cellId);
-            const int matype = static_cast<int>(materialArray->GetTuple1(cellId));
-            if (matype > 0)
-                materialIds.insert(matype);
-        }
-    }
-
-    if (selectedCells.isEmpty() || materialIds.isEmpty())
-        return fail(QStringLiteral("所选吊车梁区域没有可计算的实体单元或材料。"));
-
-    // 求解器通过材料集合识别吊车梁，因此吊车梁必须使用独立材料。
-    for (vtkIdType cellId = 0; cellId < grid->GetNumberOfCells(); ++cellId)
-    {
-        vtkCell* cell = grid->GetCell(cellId);
-        if (!cell || cell->GetCellDimension() != dimension)
-            continue;
-        const int matype = static_cast<int>(materialArray->GetTuple1(cellId));
-        if (materialIds.contains(matype) && !selectedCells.contains(cellId))
-        {
-            return fail(QStringLiteral(
-                "吊车梁区域与其他区域共用了材料编号 %1。请给吊车梁分配独立材料后再计算。")
-                            .arg(matype));
-        }
-    }
-
-    QVector<int> sorted = materialIds.values().toVector();
-    std::sort(sorted.begin(), sorted.end());
-    return sorted;
-}
 
 void CaveSupportComputationPage::refreshCraneBeamUi()
 {
     const bool staticEnabled = calculationTypeCode() == 1 || calculationTypeCode() == 3;
     const bool enabled = staticEnabled && craneBeamEnabled();
-    for (QWidget* widget : {static_cast<QWidget*>(m_craneBeamGroupCombo),
-                            static_cast<QWidget*>(m_addCraneBeamGroupButton),
-                            static_cast<QWidget*>(m_craneBeamGroupList),
-                            static_cast<QWidget*>(m_removeCraneBeamGroupButton),
-                            static_cast<QWidget*>(m_craneBeamInstallStageCombo),
-                            static_cast<QWidget*>(m_craneBeamReleaseSpin)})
-    {
-        if (widget)
-            widget->setEnabled(enabled);
-    }
+    if (m_craneBeamInstallStageCombo)
+        m_craneBeamInstallStageCombo->setEnabled(enabled);
+    if (m_craneBeamReleaseSpin)
+        m_craneBeamReleaseSpin->setEnabled(enabled);
 
     if (!m_craneBeamStatusLabel)
         return;
-    if (!craneBeamEnabled())
-    {
-        m_craneBeamStatusLabel->setText(QStringLiteral("未启用。"));
-        return;
-    }
-    if (m_craneBeamGroups.isEmpty())
-    {
-        m_craneBeamStatusLabel->setText(
-            QStringLiteral("请选择吊车梁所在的实体或网格区域。"));
-        return;
-    }
-
-    QString validationError;
-    const QVector<int> materials = collectCraneBeamMaterialIds(&validationError);
-    if (materials.isEmpty())
-    {
-        m_craneBeamStatusLabel->setText(validationError);
-        return;
-    }
-    QStringList values;
-    for (int material : materials)
-        values.push_back(QString::number(material));
     m_craneBeamStatusLabel->setText(
-        QStringLiteral("已识别 %1 个区域，后台使用材料 %2；安装于第 %3 级开挖后。")
-            .arg(m_craneBeamGroups.size())
-            .arg(values.join(QStringLiteral("、")))
-            .arg(craneBeamInstallStage()));
+        craneBeamEnabled()
+            ? QStringLiteral("请在本节点下的“吊车梁区域”中选择实体区域。进入该节点后其余模型会半透明显示。")
+            : QStringLiteral("未启用。"));
 }
 
 QVector<QVariantMap> CaveSupportComputationPage::availableSeepageResults() const
@@ -923,7 +633,7 @@ bool CaveSupportComputationPage::validateSeepageResult(
         return fail(QStringLiteral("无法读取工程中的渗流分析结果。"));
     QTextStream input(&file);
     if (input.atEnd())
-        return fail(QStringLiteral("工程中的渗流分析结果为空。"));
+        return fail(QStringLiteral("渗流分析结果不完整。请重新计算对应的渗流工况。"));
 
     const QString firstLine = input.readLine();
     QVector<int> headerValues;
@@ -931,13 +641,13 @@ bool CaveSupportComputationPage::validateSeepageResult(
     while (matches.hasNext())
         headerValues.push_back(matches.next().captured().toInt());
     if (headerValues.size() < 3)
-        return fail(QStringLiteral("工程中的渗流分析结果格式不完整。"));
+        return fail(QStringLiteral("渗流分析结果不完整。请重新计算对应的渗流工况。"));
 
     if (input.atEnd())
-        return fail(QStringLiteral("工程中的渗流分析结果缺少标题。"));
+        return fail(QStringLiteral("渗流分析结果不完整。请重新计算对应的渗流工况。"));
     input.readLine();
     if (input.atEnd())
-        return fail(QStringLiteral("工程中的渗流分析结果缺少变量说明。"));
+        return fail(QStringLiteral("渗流分析结果不完整。请重新计算对应的渗流工况。"));
     input.readLine();
 
     QSet<int> expectedNodeIds;
@@ -982,7 +692,7 @@ bool CaveSupportComputationPage::validateSeepageResult(
     }
 
     if (resultNodeIds.isEmpty())
-        return fail(QStringLiteral("渗流分析没有有效的节点水头和孔压结果。"));
+        return fail(QStringLiteral("渗流分析结果中没有可用的水头和孔压数据。请重新计算对应的渗流工况。"));
     for (int nodeId : std::as_const(expectedNodeIds))
     {
         if (!resultNodeIds.contains(nodeId))
@@ -1050,27 +760,7 @@ bool CaveSupportComputationPage::prepareAuxiliaryInputFiles(
     // 清除旧计算可能遗留的数据。求解器内部文件由业务设置自动生成。
     QFile::remove(directory.filePath(QStringLiteral("SHUIMX.DAT")));
     QFile::remove(directory.filePath(QStringLiteral("IISEEP.DAT")));
-    const QString craneBeamSetPath = directory.filePath(QStringLiteral("MASET_DCL.DAT"));
-    QFile::remove(craneBeamSetPath);
-
-    QVector<int> craneBeamMaterials;
-    if (craneBeamEnabled())
-    {
-        craneBeamMaterials = collectCraneBeamMaterialIds(errorMessage);
-        if (craneBeamMaterials.isEmpty())
-            return false;
-    }
-
-    QSaveFile craneBeamSet(craneBeamSetPath);
-    if (!craneBeamSet.open(QIODevice::WriteOnly | QIODevice::Text))
-        return fail(QStringLiteral("无法准备吊车梁计算数据。"));
-    QTextStream craneStream(&craneBeamSet);
-    craneStream << craneBeamMaterials.size() << "     NUM_DCL\n";
-    for (int material : std::as_const(craneBeamMaterials))
-        craneStream << material << "\n";
-    craneStream.flush();
-    if (craneStream.status() != QTextStream::Ok || !craneBeamSet.commit())
-        return fail(QStringLiteral("无法保存吊车梁计算数据。"));
+    // 吊车梁材料集合由独立的“吊车梁区域”页面生成。
 
     if (groundwaterModeCode() == 0)
         return true;
@@ -1087,13 +777,13 @@ bool CaveSupportComputationPage::prepareAuxiliaryInputFiles(
 
     QTextStream input(&source);
     if (input.atEnd())
-        return fail(QStringLiteral("工程中的渗流分析结果为空。"));
+        return fail(QStringLiteral("渗流分析结果不完整。请重新计算对应的渗流工况。"));
     input.readLine(); // 结果文件头
     if (input.atEnd())
-        return fail(QStringLiteral("工程中的渗流分析结果缺少标题。"));
+        return fail(QStringLiteral("渗流分析结果不完整。请重新计算对应的渗流工况。"));
     input.readLine(); // 标题
     if (input.atEnd())
-        return fail(QStringLiteral("工程中的渗流分析结果缺少变量说明。"));
+        return fail(QStringLiteral("渗流分析结果不完整。请重新计算对应的渗流工况。"));
     input.readLine(); // 变量说明
 
     // 节点编号 -> (水头, 孔压)。使用有序映射保证导出稳定，且自动去除重复行。
@@ -1335,9 +1025,6 @@ bool CaveSupportComputationPage::validateInputs(QString* errorMessage) const
             const double release = craneBeamReleaseFactor();
             if (release < 0.0 || release > 1.0)
                 return fail(QStringLiteral("吊车梁围岩荷载释放系数必须在 0～1 之间。"));
-            QString craneError;
-            if (collectCraneBeamMaterialIds(&craneError).isEmpty())
-                return fail(craneError);
         }
 
         for (int row = 0; row < m_excavationDaysTable->rowCount(); ++row)
@@ -1513,10 +1200,6 @@ QJsonObject CaveSupportComputationPage::saveJson()
     obj[QStringLiteral("crane_beam_enabled")] = craneBeamEnabled();
     obj[QStringLiteral("crane_beam_install_stage")] = craneBeamInstallStage();
     obj[QStringLiteral("crane_beam_release_factor")] = craneBeamReleaseFactor();
-    QJsonArray craneBeamGroups;
-    for (const QVariantMap& group : std::as_const(m_craneBeamGroups))
-        craneBeamGroups.append(QJsonObject::fromVariantMap(group));
-    obj[QStringLiteral("crane_beam_groups")] = craneBeamGroups;
     if (m_reinforcementFieldPage)
         obj[QStringLiteral("reinforcement_field")] =
             m_reinforcementFieldPage->saveJson();
@@ -1608,6 +1291,12 @@ void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
         m_groundwaterCheck->setChecked(groundwater);
     }
 
+    m_legacyCraneBeamAreaState = QJsonObject();
+    const QJsonArray legacyCraneGroups =
+        obj.value(QStringLiteral("crane_beam_groups")).toArray();
+    if (!legacyCraneGroups.isEmpty())
+        m_legacyCraneBeamAreaState[QStringLiteral("crane_beam_groups")] = legacyCraneGroups;
+
     bool legacyInstallOk = false;
     const int legacyInstall =
         obj.value(QStringLiteral("line_10"))
@@ -1623,19 +1312,6 @@ void CaveSupportComputationPage::loadJson(const QJsonObject& obj)
         m_craneBeamEnabledCheck->setChecked(craneEnabled);
     }
 
-    m_craneBeamGroups.clear();
-    const QJsonArray savedCraneGroups =
-        obj.value(QStringLiteral("crane_beam_groups")).toArray();
-    for (const QJsonValue& value : savedCraneGroups)
-    {
-        const QVariantMap group = value.toObject().toVariantMap();
-        if (!group.value(QStringLiteral("category")).toString().trimmed().isEmpty()
-            && group.value(QStringLiteral("dim")).toInt() > 0
-            && group.value(QStringLiteral("id")).toInt() != 0)
-            m_craneBeamGroups.push_back(group);
-    }
-    refreshCraneBeamGroupCombo();
-    refreshCraneBeamGroupList();
     updateCraneBeamInstallStages();
     const int savedStage = obj.value(QStringLiteral("crane_beam_install_stage"))
                                .toInt(legacyInstallOk && legacyInstall < 0
@@ -1866,7 +1542,7 @@ void CaveSupportComputationPage::onComputeClicked()
     QString error;
     if (!validateInputs(&error))
     {
-        QMessageBox::warning(this, QStringLiteral("设置不完整"), error);
+        QMessageBox::warning(this, QStringLiteral("请完善开挖与加固设置"), error);
         return;
     }
     emit computeRequested();

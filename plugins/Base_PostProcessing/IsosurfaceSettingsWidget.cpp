@@ -1,4 +1,5 @@
 #include "IsosurfaceSettingsWidget.h"
+#include "PostComboBoxPerformance.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -80,6 +81,9 @@ IsosurfaceSettingsWidget::IsosurfaceSettingsWidget(VisualWidgetService* ppw, QWi
       m_visualService(ppw)
 {
     ui->setupUi(this);
+
+    configurePostResultCombo(ui->resultDirComboBox);
+    configurePostResultCombo(ui->stepComboBox);
 
     ui->singleIsoRadioButton->setChecked(true);
     ui->isoModeStackedWidget->setCurrentIndex(0);

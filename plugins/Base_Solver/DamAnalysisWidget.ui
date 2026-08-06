@@ -451,7 +451,7 @@
           </item>
           <item>
            <property name="text">
-            <string>1 - 按 IFISO 材料计算</string>
+            <string>按材料分别设置阻尼</string>
            </property>
           </item>
           <property name="minimumSize">
@@ -626,7 +626,7 @@
         <item row="6" column="0">
          <widget class="QLabel" name="labelLine24">
           <property name="text">
-           <string>反应谱特征周期 TG1</string>
+           <string>反应谱第一特征周期（秒）</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>
@@ -649,7 +649,7 @@
         <item row="7" column="0">
          <widget class="QLabel" name="labelLine25">
           <property name="text">
-           <string>反应谱特征周期 TG2</string>
+           <string>反应谱第二特征周期（秒）</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>

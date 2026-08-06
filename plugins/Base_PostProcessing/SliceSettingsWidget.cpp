@@ -1,4 +1,5 @@
 #include "SliceSettingsWidget.h"
+#include "PostComboBoxPerformance.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -90,6 +91,9 @@ SliceSettingsWidget::SliceSettingsWidget(VisualWidgetService* postProcessingWidg
       m_visualService(postProcessingWidget)
 {
     ui->setupUi(this);
+
+    configurePostResultCombo(ui->resultDirComboBox);
+    configurePostResultCombo(ui->stepComboBox);
 
     ui->sliceSlider->setRange(0, 1000);
     ui->sliceSlider->setValue(500);

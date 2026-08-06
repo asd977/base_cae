@@ -1,4 +1,5 @@
 #include "BlockSettingsWidget.h"
+#include "PostComboBoxPerformance.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -35,6 +36,9 @@ BlockSettingsWidget::BlockSettingsWidget(VisualWidgetService* postProcessingWidg
       m_visualService(postProcessingWidget)
 {
     ui->setupUi(this);
+
+    configurePostResultCombo(ui->resultDirComboBox);
+    configurePostResultCombo(ui->stepComboBox);
 
     m_plane = vtkSmartPointer<vtkPlane>::New();
     m_actor = vtkSmartPointer<vtkActor>::New();

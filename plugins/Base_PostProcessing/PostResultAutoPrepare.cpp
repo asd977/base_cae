@@ -18,13 +18,14 @@
 #include <QTextStream>
 
 #include <algorithm>
+#include <cmath>
 
 namespace
 {
 constexpr char kLegacyPostResultRoot[] = "post";
 constexpr char kManifestName[] = "manifest.json";
 constexpr char kLegacyAnalysisManifestFileName[] = "analysis.json";
-constexpr int kManifestVersion = 6;
+constexpr int kManifestVersion = 9;
 
 struct GeneratedFileInfo
 {
@@ -37,6 +38,7 @@ struct AnalysisIdentity
     QString uuid;
     QString name;
     QString kind;
+    QString analysisType;
     QString workspacePath;
 };
 
@@ -88,6 +90,11 @@ AnalysisIdentity analysisIdentityForSource(const QDir& projectDir, const QDir& s
             identity.uuid = object.value(QStringLiteral("analysisUuid")).toString().trimmed();
             identity.name = object.value(QStringLiteral("analysisName")).toString().trimmed();
             identity.kind = object.value(QStringLiteral("analysisKind")).toString().trimmed();
+            identity.analysisType =
+                object.value(QStringLiteral("lastAnalysisType")).toString().trimmed();
+            if (identity.analysisType.isEmpty())
+                identity.analysisType =
+                    object.value(QStringLiteral("analysisType")).toString().trimmed();
             identity.workspacePath = workspace.absolutePath();
             return identity;
         }
@@ -216,8 +223,13 @@ bool hasMeshFile(const QString& absolutePath)
 
 bool isSupportedFieldName(const QString& fileName)
 {
+    // Keep this list aligned with PostResultGenerator::generate().  Otherwise a
+    // directory containing only a plastic-strain or failure-zone result is skipped,
+    // and changes to those files do not invalidate the prepared-result cache.
     static const QRegularExpression expression(
-        QStringLiteral("^(?:INVELO|IIDISP|MODPRI|NODCMM)(?:[-_](?:METHOD\\d+|CZ[^.]*))?\\.TXT$"),
+        QStringLiteral(
+            "^(?:INVELO|IIDISP|MODPRI|MODRAI_PLS|MODRAP_PLS|NODCMM|IIICMM)"
+            "(?:[-_](?:METHOD\\d+|CZ[^.]*))?\\.TXT$"),
         QRegularExpression::CaseInsensitiveOption);
     return expression.match(fileName).hasMatch();
 }
@@ -366,20 +378,25 @@ QJsonArray inputSnapshot(const QDir& projectDir, const QDir& sourceDir)
 QString baseDisplayName(const QString& kind)
 {
     const QString normalized = kind.toLower();
-    if (normalized == QStringLiteral("head_pressure") || normalized == QStringLiteral("tec_hp"))
+    if (normalized == QStringLiteral("head_pressure"))
         return QStringLiteral("水头渗压");
-    if (normalized == QStringLiteral("velocity") || normalized == QStringLiteral("tec_velo"))
+    if (normalized == QStringLiteral("velocity"))
         return QStringLiteral("渗流速度");
-    if (normalized == QStringLiteral("displacement") || normalized == QStringLiteral("tec_disp"))
+    if (normalized == QStringLiteral("displacement"))
         return QStringLiteral("位移");
-    if (normalized == QStringLiteral("principal_stress") || normalized == QStringLiteral("tec_prs"))
+    if (normalized == QStringLiteral("principal_stress"))
         return QStringLiteral("主应力");
-    if (normalized == QStringLiteral("stress_level") || normalized == QStringLiteral("tec_sl") ||
-        normalized == QStringLiteral("tec_cmm"))
+    if (normalized == QStringLiteral("plastic_strain"))
+        return QStringLiteral("塑性应变");
+    if (normalized == QStringLiteral("principal_plastic_strain"))
+        return QStringLiteral("主塑性应变");
+    if (normalized == QStringLiteral("stress_level"))
         return QStringLiteral("应力水平");
+    if (normalized == QStringLiteral("failure_zone"))
+        return QStringLiteral("破坏区");
     if (normalized == QStringLiteral("vtu"))
         return QStringLiteral("网格结果");
-    return QStringLiteral("结果数据");
+    return QStringLiteral("其他结果");
 }
 
 QString suffixDisplayName(const QString& suffix, bool strengthReduction)
@@ -391,7 +408,7 @@ QString suffixDisplayName(const QString& suffix, bool strengthReduction)
         QStringLiteral("^method(\\d+)$"), QRegularExpression::CaseInsensitiveOption);
     const QRegularExpressionMatch methodMatch = methodExpression.match(suffix);
     if (methodMatch.hasMatch())
-        return QStringLiteral("（方法 %1）").arg(methodMatch.captured(1));
+        return QStringLiteral("方法 %1").arg(methodMatch.captured(1));
 
     static const QRegularExpression czCbExpression(
         QStringLiteral("^cz(\\d+)cb(\\d+)$"), QRegularExpression::CaseInsensitiveOption);
@@ -401,45 +418,73 @@ QString suffixDisplayName(const QString& suffix, bool strengthReduction)
         const int capture = strengthReduction ? 2 : 1;
         const double factor = czCbMatch.captured(capture).toDouble() / 100.0;
         if (strengthReduction)
-            return QStringLiteral("（强度储备 %1）").arg(factor, 0, 'f', 2);
+            return QStringLiteral("强度储备 %1").arg(factor, 0, 'f', 2);
         const QString factorName = factor > 1.000001 ? QStringLiteral("超载系数")
                                                      : QStringLiteral("荷载系数");
-        return QStringLiteral("（%1 %2）").arg(factorName).arg(factor, 0, 'f', 2);
+        return QStringLiteral("%1 %2").arg(factorName).arg(factor, 0, 'f', 2);
     }
-    return QStringLiteral("（派生工况）");
+    return QStringLiteral("派生工况");
 }
 
 GeneratedFileInfo generatedFileInfo(const QString& fileName, bool strengthReduction)
 {
     const QString base = QFileInfo(fileName).completeBaseName().toLower();
-    const QStringList kinds = {QStringLiteral("head_pressure"), QStringLiteral("velocity"),
-                               QStringLiteral("displacement"), QStringLiteral("principal_stress"),
-                               QStringLiteral("stress_level")};
-    for (const QString& kind : kinds)
+    struct KindAlias
     {
-        if (base == kind || base.startsWith(kind + QLatin1Char('_')))
+        const char* prefix;
+        const char* canonicalKind;
+    };
+    static const KindAlias aliases[] = {
+        {"principal_plastic_strain", "principal_plastic_strain"},
+        {"plastic_strain", "plastic_strain"},
+        {"principal_stress", "principal_stress"},
+        {"head_pressure", "head_pressure"},
+        {"stress_level", "stress_level"},
+        {"failure_zone", "failure_zone"},
+        {"displacement", "displacement"},
+        {"velocity", "velocity"},
+        {"tec_rap_pls", "principal_plastic_strain"},
+        {"tec_rai_pls", "plastic_strain"},
+        {"tec_rupt", "failure_zone"},
+        {"tec_velo", "velocity"},
+        {"tec_disp", "displacement"},
+        {"tec_prs", "principal_stress"},
+        {"tec_cmm", "stress_level"},
+        {"tec_sl", "stress_level"},
+        {"tec_hp", "head_pressure"},
+    };
+
+    for (const KindAlias& alias : aliases)
+    {
+        const QString prefix = QString::fromLatin1(alias.prefix);
+        if (base != prefix && !base.startsWith(prefix + QLatin1Char('_')))
+            continue;
+
+        QString suffix = base == prefix ? QString() : base.mid(prefix.size() + 1);
+        const QString excavatedMarker = QStringLiteral("with_excavated");
+        bool includesExcavated = false;
+        if (suffix == excavatedMarker)
         {
-            QString suffix = base == kind ? QString() : base.mid(kind.size() + 1);
-            const QString excavatedMarker = QStringLiteral("with_excavated");
-            bool includesExcavated = false;
-            if (suffix == excavatedMarker)
-            {
-                suffix.clear();
-                includesExcavated = true;
-            }
-            else if (suffix.endsWith(QStringLiteral("_") + excavatedMarker))
-            {
-                suffix.chop(excavatedMarker.size() + 1);
-                includesExcavated = true;
-            }
-            QString displayName = baseDisplayName(kind) +
-                                  suffixDisplayName(suffix, strengthReduction);
-            if (includesExcavated)
-                displayName += QStringLiteral("（包含已开挖体）");
-            return {displayName, kind};
+            suffix.clear();
+            includesExcavated = true;
         }
+        else if (suffix.endsWith(QStringLiteral("_") + excavatedMarker))
+        {
+            suffix.chop(excavatedMarker.size() + 1);
+            includesExcavated = true;
+        }
+
+        const QString kind = QString::fromLatin1(alias.canonicalKind);
+        const QString condition = suffixDisplayName(suffix, strengthReduction);
+        QString displayName = baseDisplayName(kind);
+        if (!condition.isEmpty())
+            displayName = QStringLiteral("%1 - %2").arg(condition, displayName);
+        if (includesExcavated)
+            displayName += QStringLiteral("（含已开挖体）");
+        return {displayName, kind};
     }
-    return {QStringLiteral("结果数据"), base};
+
+    return {QStringLiteral("其他结果"), base};
 }
 
 bool manifestMissingOrStale(const QDir& projectDir, const QDir& sourceDir,
@@ -520,6 +565,8 @@ bool writeManifest(const QDir& projectDir, const QDir& sourceDir, const QDir& pr
     return true;
 }
 
+void sortResultFiles(QVector<PostResultAutoPrepare::ResultFile>& files);
+
 QVector<PostResultAutoPrepare::ResultFile> readManifestFiles(const QDir& preparedDir)
 {
     QFile file(preparedDir.filePath(QString::fromLatin1(kManifestName)));
@@ -549,6 +596,7 @@ QVector<PostResultAutoPrepare::ResultFile> readManifestFiles(const QDir& prepare
         entry.format = object.value(QStringLiteral("format")).toString(QStringLiteral("tecplot"));
         result.push_back(entry);
     }
+    sortResultFiles(result);
     return result;
 }
 
@@ -559,8 +607,10 @@ QVector<PostResultAutoPrepare::ResultFile> fallbackSourceFiles(const QDir& sourc
     const bool strengthReduction = usesStrengthReduction(sourceDir);
     const QStringList names = {QStringLiteral("TEC_HP.DAT"), QStringLiteral("TEC_VELO.DAT"),
                                QStringLiteral("TEC_DISP.DAT"), QStringLiteral("TEC_PRS.DAT"),
+                               QStringLiteral("TEC_RAI_PLS.DAT"),
+                               QStringLiteral("TEC_RAP_PLS.DAT"),
                                QStringLiteral("TEC_SL.DAT"), QStringLiteral("TEC_CMM.DAT"),
-                               QStringLiteral("*.tec")};
+                               QStringLiteral("TEC_RUPT.DAT"), QStringLiteral("*.tec")};
     QSet<QString> seenPaths;
     for (const QString& pattern : names)
     {
@@ -602,7 +652,80 @@ QVector<PostResultAutoPrepare::ResultFile> fallbackSourceFiles(const QDir& sourc
             result.push_back(entry);
         }
     }
+    sortResultFiles(result);
     return result;
+}
+
+int resultTypeOrder(const QString& displayName)
+{
+    const QStringList orderedTypes = {
+        QStringLiteral("水头渗压"), QStringLiteral("渗流速度"),
+        QStringLiteral("位移"), QStringLiteral("主应力"),
+        QStringLiteral("塑性应变"), QStringLiteral("主塑性应变"),
+        QStringLiteral("应力水平"), QStringLiteral("破坏区"),
+        QStringLiteral("网格结果"), QStringLiteral("其他结果")};
+    for (int index = 0; index < orderedTypes.size(); ++index)
+    {
+        if (displayName.contains(orderedTypes.at(index)))
+            return index;
+    }
+    return orderedTypes.size();
+}
+
+struct ResultSortKey
+{
+    int conditionGroup = 0;
+    double conditionValue = 0.0;
+    int typeOrder = 0;
+    QString text;
+};
+
+ResultSortKey resultSortKey(const QString& displayName)
+{
+    ResultSortKey key;
+    key.typeOrder = resultTypeOrder(displayName);
+    key.text = displayName;
+
+    static const QRegularExpression factorExpression(
+        QStringLiteral("^(强度储备|荷载系数|超载系数)\\s+([-+]?\\d+(?:\\.\\d+)?)\\s+-\\s+"));
+    const QRegularExpressionMatch factorMatch = factorExpression.match(displayName);
+    if (factorMatch.hasMatch())
+    {
+        const QString kind = factorMatch.captured(1);
+        key.conditionGroup = kind == QStringLiteral("强度储备") ? 1 : 2;
+        key.conditionValue = factorMatch.captured(2).toDouble();
+        return key;
+    }
+
+    static const QRegularExpression methodExpression(
+        QStringLiteral("^方法\\s+(\\d+)\\s+-\\s+"));
+    const QRegularExpressionMatch methodMatch = methodExpression.match(displayName);
+    if (methodMatch.hasMatch())
+    {
+        key.conditionGroup = 3;
+        key.conditionValue = methodMatch.captured(1).toDouble();
+        return key;
+    }
+
+    if (displayName.startsWith(QStringLiteral("派生工况 - ")))
+        key.conditionGroup = 4;
+    return key;
+}
+
+void sortResultFiles(QVector<PostResultAutoPrepare::ResultFile>& files)
+{
+    std::stable_sort(files.begin(), files.end(), [](const auto& left, const auto& right)
+    {
+        const ResultSortKey leftKey = resultSortKey(left.displayName);
+        const ResultSortKey rightKey = resultSortKey(right.displayName);
+        if (leftKey.conditionGroup != rightKey.conditionGroup)
+            return leftKey.conditionGroup < rightKey.conditionGroup;
+        if (std::abs(leftKey.conditionValue - rightKey.conditionValue) > 1.0e-12)
+            return leftKey.conditionValue < rightKey.conditionValue;
+        if (leftKey.typeOrder != rightKey.typeOrder)
+            return leftKey.typeOrder < rightKey.typeOrder;
+        return QString::localeAwareCompare(leftKey.text, rightKey.text) < 0;
+    });
 }
 } // namespace
 
@@ -664,47 +787,330 @@ QString firstResultDirectory(const QString& projectDir)
     return directories.isEmpty() ? project.absolutePath() : project.filePath(directories.first());
 }
 
+QString damStageDisplayName(const QString& relativePath, const QString& leafName)
+{
+    const QString relative = relativePath.toUpper();
+    const QString leaf = leafName.toUpper();
+
+    // CPU_AUTOPACK writes each fill layer as CASE<case>PACK<cycle><layer>.
+    // The cycle number occupies two characters and the remaining suffix is
+    // the actual mesh layer number.
+    static const QRegularExpression packLayerExpression(
+        QStringLiteral("^CASE\\d+PACK(\\d{2})(\\d+)$"));
+    QRegularExpressionMatch match = packLayerExpression.match(leaf);
+    if (match.hasMatch())
+    {
+        const int cycle = match.captured(1).toInt();
+        const int layer = match.captured(2).toInt();
+        return cycle > 1
+                   ? QStringLiteral("第 %1 轮 - 第 %2 层填筑").arg(cycle).arg(layer)
+                   : QStringLiteral("第 %1 层填筑").arg(layer);
+    }
+
+    static const QRegularExpression packCycleExpression(
+        QStringLiteral("^CASE\\d+PACK(\\d+)$"));
+    match = packCycleExpression.match(leaf);
+    if (match.hasMatch())
+        return QStringLiteral("第 %1 阶段填筑").arg(match.captured(1).toInt());
+
+    static const QRegularExpression fillExpression(
+        QStringLiteral("^CASE\\d+FILL(\\d+)$"));
+    match = fillExpression.match(leaf);
+    if (match.hasMatch())
+        return QStringLiteral("第 %1 级蓄水").arg(match.captured(1).toInt());
+
+    static const QRegularExpression packCreepExpression(
+        QStringLiteral("^CASE\\d+PLIU(\\d+)$"));
+    match = packCreepExpression.match(leaf);
+    if (match.hasMatch())
+        return QStringLiteral("第 %1 阶段填筑流变").arg(match.captured(1).toInt());
+
+    static const QRegularExpression fillCreepExpression(
+        QStringLiteral("^CASE\\d+FLIU(\\d+)$"));
+    match = fillCreepExpression.match(leaf);
+    if (match.hasMatch())
+        return QStringLiteral("第 %1 阶段蓄水流变").arg(match.captured(1).toInt());
+
+    static const QRegularExpression dropExpression(
+        QStringLiteral("^CASE\\d+DROP(\\d+)$"));
+    match = dropExpression.match(leaf);
+    if (match.hasMatch())
+        return QStringLiteral("第 %1 级降水").arg(match.captured(1).toInt());
+
+    static const QRegularExpression iceExpression(
+        QStringLiteral("^CASE\\d+DICE(\\d+)$"));
+    match = iceExpression.match(leaf);
+    if (match.hasMatch())
+        return QStringLiteral("第 %1 阶段冻融结冰").arg(match.captured(1).toInt());
+
+    if (leaf == QStringLiteral("DISK00"))
+        return QStringLiteral("坝基自重状态");
+    if (leaf == QStringLiteral("DISK01"))
+        return QStringLiteral("坝体自重状态");
+    if (leaf.contains(QStringLiteral("WETT")))
+        return QStringLiteral("湿化变形");
+
+    static const QRegularExpression caseSubStageExpression(
+        QStringLiteral("(?:^|/)CASE(\\d+)/(CZ|ZH|CB|MODE|WAVE|SETT)$"));
+    match = caseSubStageExpression.match(relative);
+    if (match.hasMatch())
+    {
+        const QString code = match.captured(2);
+        QString stage;
+        if (code == QStringLiteral("CZ"))
+            stage = QStringLiteral("超载分析");
+        else if (code == QStringLiteral("ZH"))
+            stage = QStringLiteral("综合分析");
+        else if (code == QStringLiteral("CB"))
+            stage = QStringLiteral("强度储备分析");
+        else if (code == QStringLiteral("MODE"))
+            stage = QStringLiteral("模态分析");
+        else if (code == QStringLiteral("WAVE"))
+            stage = QStringLiteral("动力响应");
+        else if (code == QStringLiteral("SETT"))
+            stage = QStringLiteral("地震永久变形");
+        return stage;
+    }
+
+    if (relative.contains(QStringLiteral("PACK")))
+        return QStringLiteral("填筑过程");
+    if (relative.contains(QStringLiteral("FILL")))
+        return QStringLiteral("蓄水过程");
+    if (relative.contains(QStringLiteral("PLIU")))
+        return QStringLiteral("填筑流变");
+    if (relative.contains(QStringLiteral("FLIU")))
+        return QStringLiteral("蓄水流变");
+    if (relative.contains(QStringLiteral("DROP")))
+        return QStringLiteral("降水过程");
+    if (relative.contains(QStringLiteral("DICE")))
+        return QStringLiteral("冻融结冰");
+    return QString();
+}
+
+QString seepageStageDisplayName(const QString& relativePath, const QString& leafName)
+{
+    const QString relative = relativePath.toUpper();
+    const QString leaf = leafName.toUpper();
+
+    if (leaf == QStringLiteral("SEEPFREE") || relative.endsWith(QStringLiteral("/SEEPFREE")))
+        return QStringLiteral("天然渗流场");
+
+    static const QRegularExpression steadyExpression(
+        QStringLiteral("^SEEPCASE\\d+$"));
+    if (steadyExpression.match(leaf).hasMatch())
+        return QStringLiteral("稳态渗流");
+
+    static const QRegularExpression transientExpression(
+        QStringLiteral("^SEEPDYNA\\d+$"));
+    if (transientExpression.match(leaf).hasMatch())
+        return QStringLiteral("非稳态渗流");
+
+    if (relative.contains(QStringLiteral("SEEPDYNA")))
+        return QStringLiteral("非稳态渗流");
+    if (relative.contains(QStringLiteral("SEEPCASE")))
+        return QStringLiteral("稳态渗流");
+    return QString();
+}
+
+QString caveStageDisplayName(const QString& relativePath, const QString& leafName)
+{
+    const QString relative = relativePath.toUpper();
+    const QString leaf = leafName.toUpper();
+
+    if (leaf == QStringLiteral("GEOSTR") || relative.endsWith(QStringLiteral("/GEOSTR")))
+        return QStringLiteral("地应力回归结果");
+    if (leaf == QStringLiteral("EALL"))
+        return QStringLiteral("开挖完成状态");
+    if (leaf == QStringLiteral("JALL"))
+        return QStringLiteral("开挖与支护完成状态");
+    if (leaf == QStringLiteral("LINE") || relative.endsWith(QStringLiteral("/LINE")))
+        return QStringLiteral("衬砌计算");
+
+    static const QRegularExpression excavationExpression(QStringLiteral("^E(\\d+)$"));
+    QRegularExpressionMatch match = excavationExpression.match(leaf);
+    if (match.hasMatch() && relative.contains(QStringLiteral("/EXCA/")))
+        return QStringLiteral("第 %1 级开挖").arg(match.captured(1).toInt());
+
+    static const QRegularExpression supportExpression(QStringLiteral("^J(\\d+)$"));
+    match = supportExpression.match(leaf);
+    if (match.hasMatch() && relative.contains(QStringLiteral("/JACA/")))
+        return QStringLiteral("第 %1 级开挖与支护").arg(match.captured(1).toInt());
+
+    if (leaf == QStringLiteral("EXCA"))
+        return QStringLiteral("分级开挖");
+    if (leaf == QStringLiteral("JACA"))
+        return QStringLiteral("分级开挖与支护");
+    return QString();
+}
+
+QString slopeStageDisplayName(const QString& relativePath, const QString& leafName)
+{
+    const QString relative = relativePath.toUpper();
+    const QString leaf = leafName.toUpper();
+
+    static const QRegularExpression dynamicExpression(
+        QStringLiteral("(?:^|/)CASE(\\d+)/(MODE|WAVE)$"));
+    QRegularExpressionMatch match = dynamicExpression.match(relative);
+    if (match.hasMatch())
+    {
+        const QString stage = match.captured(2) == QStringLiteral("MODE")
+                                  ? QStringLiteral("模态分析")
+                                  : QStringLiteral("动力响应");
+        return stage;
+    }
+
+    static const QRegularExpression caseExpression(QStringLiteral("^CASE(\\d+)$"));
+    match = caseExpression.match(leaf);
+    if (match.hasMatch())
+        return QStringLiteral("稳定性计算");
+    return QString();
+}
+
+QString blockStageDisplayName(const QString& relativePath, const QString& leafName)
+{
+    const QString relative = relativePath.toUpper();
+    const QString leaf = leafName.toUpper();
+    static const QRegularExpression caseExpression(QStringLiteral("^CASE(\\d+)$"));
+    const QRegularExpressionMatch match = caseExpression.match(leaf);
+    if (relative.contains(QStringLiteral("SLIDERCASE")) && match.hasMatch())
+        return QStringLiteral("滑块稳定计算");
+    if (leaf == QStringLiteral("SLIDERCASE") || relative.endsWith(QStringLiteral("/SLIDERCASE")))
+        return QStringLiteral("块体稳定计算");
+    return QString();
+}
+
+QString genericCaseStageDisplayName(const QString& relativePath, const QString& leafName)
+{
+    const QString relative = relativePath.toUpper();
+    const QString leaf = leafName.toUpper();
+    static const QRegularExpression subStageExpression(
+        QStringLiteral("(?:^|/)CASE(\\d+)/(CZ|ZH|CB|MODE|WAVE|SETT)$"));
+    QRegularExpressionMatch match = subStageExpression.match(relative);
+    if (match.hasMatch())
+    {
+        const QString code = match.captured(2);
+        QString stage;
+        if (code == QStringLiteral("CZ"))
+            stage = QStringLiteral("超载分析");
+        else if (code == QStringLiteral("ZH"))
+            stage = QStringLiteral("综合分析");
+        else if (code == QStringLiteral("CB"))
+            stage = QStringLiteral("强度储备分析");
+        else if (code == QStringLiteral("MODE"))
+            stage = QStringLiteral("模态分析");
+        else if (code == QStringLiteral("WAVE"))
+            stage = QStringLiteral("动力响应");
+        else
+            stage = QStringLiteral("地震永久变形");
+        return stage;
+    }
+
+    static const QRegularExpression caseExpression(QStringLiteral("^CASE(\\d+)$"));
+    match = caseExpression.match(leaf);
+    if (match.hasMatch())
+        return QStringLiteral("结构计算");
+    return QString();
+}
+
 QString resultGroupDisplayName(const QString& projectDir, const QString& sourceDir)
 {
     const QDir project(QDir::fromNativeSeparators(projectDir.trimmed()));
     const QDir source(QDir::fromNativeSeparators(sourceDir.trimmed()));
     const QString relative = sourceRelativePath(project, source.absolutePath()).toUpper();
     const QString leaf = QFileInfo(source.absolutePath()).fileName().toUpper();
+    const AnalysisIdentity identity = analysisIdentityForSource(project, source);
+    const QString kind = identity.kind.trimmed();
 
-    static const QRegularExpression supportStage(QStringLiteral("^J(\\d+)$"));
-    static const QRegularExpression excavationStage(QStringLiteral("^E(\\d+)$"));
-    QRegularExpressionMatch match = supportStage.match(leaf);
-    if (match.hasMatch())
-        return QStringLiteral("开挖加固第 %1 阶段").arg(match.captured(1).toInt());
-    match = excavationStage.match(leaf);
-    if (match.hasMatch())
-        return QStringLiteral("开挖第 %1 阶段").arg(match.captured(1).toInt());
+    const QString sourcePath = QDir::fromNativeSeparators(source.absolutePath());
+    const QString workspacePath = identity.workspacePath.isEmpty()
+                                      ? QString()
+                                      : QDir::fromNativeSeparators(
+                                            QDir(identity.workspacePath).absolutePath());
+    const bool workspaceRoot = !workspacePath.isEmpty() &&
+                               sourcePath.compare(workspacePath, Qt::CaseInsensitive) == 0;
 
-    if (hasFilePrefix(source, QStringLiteral("INVELO")) || relative.contains(QStringLiteral("SEEP")))
-        return QStringLiteral("渗流结果");
-    if (relative.contains(QStringLiteral("/LINE"))
-        || leaf == QStringLiteral("LINE"))
-        return QStringLiteral("衬砌计算结果");
-    if (relative.contains(QStringLiteral("GEOSTR")))
-        return QStringLiteral("初始地应力");
-    if (relative.contains(QStringLiteral("FILL")))
-        return QStringLiteral("填筑蓄水结果");
-    if (relative.contains(QStringLiteral("PACK")))
-        return QStringLiteral("分层填筑结果");
-    if (relative.contains(QStringLiteral("JALL")))
-        return QStringLiteral("开挖加固汇总结果");
-    if (relative.contains(QStringLiteral("EALL")))
-        return QStringLiteral("开挖汇总结果");
+    QString stage;
+    if (kind == QStringLiteral("SeepageAnalysis") ||
+        relative.contains(QStringLiteral("SEEP")) ||
+        hasFilePrefix(source, QStringLiteral("INVELO")))
+    {
+        stage = seepageStageDisplayName(relative, leaf);
+        if (!stage.isEmpty())
+            return stage;
+        if (workspaceRoot)
+            return QStringLiteral("渗流计算结果");
+    }
 
-    const QString projectHint = project.absolutePath().toUpper();
-    if (projectHint.contains(QStringLiteral("SLOP")))
-        return QStringLiteral("边坡结果");
-    if (projectHint.contains(QStringLiteral("CAVE")))
-        return QStringLiteral("洞室结果");
+    if (kind == QStringLiteral("CaveExcavationAnalysis") ||
+        kind == QStringLiteral("GeoStressRegressionAnalysis") ||
+        relative.contains(QStringLiteral("GEOSTR")) ||
+        relative.contains(QStringLiteral("/EXCA")) ||
+        relative.contains(QStringLiteral("/JACA")) ||
+        leaf == QStringLiteral("EALL") || leaf == QStringLiteral("JALL") ||
+        leaf == QStringLiteral("LINE"))
+    {
+        stage = caveStageDisplayName(relative, leaf);
+        if (!stage.isEmpty())
+            return stage;
+        if (workspaceRoot)
+            return kind == QStringLiteral("GeoStressRegressionAnalysis")
+                       ? QStringLiteral("地应力回归结果")
+                       : QStringLiteral("洞室计算汇总");
+    }
+
+    if (kind == QStringLiteral("SlopeStabilityAnalysis"))
+    {
+        stage = slopeStageDisplayName(relative, leaf);
+        if (!stage.isEmpty())
+            return stage;
+        if (workspaceRoot)
+            return QStringLiteral("稳定性计算");
+    }
+
+    if (kind == QStringLiteral("CaveBlockStabilityAnalysis") ||
+        relative.contains(QStringLiteral("SLIDERCASE")))
+    {
+        stage = blockStageDisplayName(relative, leaf);
+        if (!stage.isEmpty())
+            return stage;
+        if (workspaceRoot)
+            return QStringLiteral("块体稳定计算");
+    }
+
+    const bool damPath = relative.contains(QStringLiteral("PACK")) ||
+                         relative.contains(QStringLiteral("FILL")) ||
+                         relative.contains(QStringLiteral("PLIU")) ||
+                         relative.contains(QStringLiteral("FLIU")) ||
+                         relative.contains(QStringLiteral("WETT")) ||
+                         relative.contains(QStringLiteral("DROP")) ||
+                         relative.contains(QStringLiteral("DICE")) ||
+                         leaf == QStringLiteral("DISK00") ||
+                         leaf == QStringLiteral("DISK01");
+    if (kind == QStringLiteral("DamAnalysis") || damPath)
+    {
+        stage = damStageDisplayName(relative, leaf);
+        if (!stage.isEmpty())
+            return stage;
+        if (workspaceRoot)
+            return QStringLiteral("完工状态");
+    }
+
+    stage = genericCaseStageDisplayName(relative, leaf);
+    if (!stage.isEmpty())
+        return stage;
+
+    if (workspaceRoot)
+    {
+        if (!identity.analysisType.isEmpty())
+            return QStringLiteral("%1结果").arg(identity.analysisType);
+        return QStringLiteral("计算结果");
+    }
+
     if (hasFile(source, QStringLiteral("IIDISP.TXT")) ||
         hasFilePrefix(source, QStringLiteral("MODPRI")) ||
-        hasFilePrefix(source, QStringLiteral("NODCMM")))
-        return QStringLiteral("结构计算结果");
+        hasFilePrefix(source, QStringLiteral("NODCMM")) ||
+        hasFilePrefix(source, QStringLiteral("IIICMM")))
+        return QStringLiteral("结构计算");
     return QStringLiteral("计算结果");
 }
 
@@ -734,13 +1140,7 @@ QVector<ResultGroup> resultGroups(const QString& projectDir)
         QString displayName = resultGroupDisplayName(project.absolutePath(), absolutePath);
         const AnalysisIdentity identity = analysisIdentityForSource(project, QDir(absolutePath));
         if (!identity.name.isEmpty())
-        {
-            if (identity.kind == QStringLiteral("SlopeStabilityAnalysis"))
-                displayName = QStringLiteral("边坡结果");
-            else if (identity.kind == QStringLiteral("CaveBlockStabilityAnalysis"))
-                displayName = QStringLiteral("块体稳定结果");
             displayName = QStringLiteral("%1 - %2").arg(identity.name, displayName);
-        }
         const int count = displayCounts.value(displayName) + 1;
         displayCounts.insert(displayName, count);
         if (count > 1)
@@ -863,7 +1263,9 @@ PreparedResultSummary preparedResultSummary(const QString& projectDir, const QSt
     PreparedResultSummary summary;
     QSet<QString> seenResultTypes;
     QSet<QString> seenResultConditions;
-    const QRegularExpression additionalResultPattern(QStringLiteral(R"(^(.+?)（(.+)）$)"));
+    const QRegularExpression legacyConditionPattern(QStringLiteral(R"(^(.+?)（(.+)）$)"));
+    const QRegularExpression conditionFirstPattern(
+        QStringLiteral(R"(^((?:强度储备|荷载系数|超载系数)\s+[-+]?\d+(?:\.\d+)?|方法\s+\d+|派生工况)\s+-\s+(.+)$)"));
     for (const ResultGroup& group : resultGroups(project.absolutePath()))
     {
         if (!pathIsWithin(root.absolutePath(), group.sourcePath))
@@ -880,21 +1282,34 @@ PreparedResultSummary preparedResultSummary(const QString& projectDir, const QSt
             seenInGroup.insert(resultType);
             hasResults = true;
 
-            const QRegularExpressionMatch match = additionalResultPattern.match(resultType);
-            if (match.hasMatch())
+            QString resultCondition;
+            const QRegularExpressionMatch conditionFirstMatch =
+                conditionFirstPattern.match(resultType);
+            if (conditionFirstMatch.hasMatch())
             {
-                resultType = match.captured(1).trimmed();
-                const QString resultCondition = match.captured(2).trimmed();
-                if (!resultCondition.isEmpty() &&
-                    !seenResultConditions.contains(resultCondition))
-                {
-                    seenResultConditions.insert(resultCondition);
-                    summary.resultConditions.push_back(resultCondition);
-                }
+                resultCondition = conditionFirstMatch.captured(1).trimmed();
+                resultType = conditionFirstMatch.captured(2).trimmed();
             }
             else
             {
-                summary.hasRegularResults = true;
+                const QRegularExpressionMatch legacyMatch =
+                    legacyConditionPattern.match(resultType);
+                if (legacyMatch.hasMatch())
+                {
+                    resultType = legacyMatch.captured(1).trimmed();
+                    resultCondition = legacyMatch.captured(2).trimmed();
+                }
+                else
+                {
+                    summary.hasRegularResults = true;
+                }
+            }
+
+            if (!resultCondition.isEmpty() &&
+                !seenResultConditions.contains(resultCondition))
+            {
+                seenResultConditions.insert(resultCondition);
+                summary.resultConditions.push_back(resultCondition);
             }
 
             if (!resultType.isEmpty() && !seenResultTypes.contains(resultType))

@@ -1,4 +1,5 @@
 #include "VectorSettingWidget.h"
+#include "PostComboBoxPerformance.h"
 
 #include <PublicConstants.h>
 #include <PublicVariables.h>
@@ -43,6 +44,9 @@ VectorSettingWidget::VectorSettingWidget(VisualWidgetService* postProcessingWidg
     : ui(new Ui::VectorSettingWidget), BasePage(PublicConstants::kPagePostProcessVector)
 {
     ui->setupUi(this);
+
+    configurePostResultCombo(ui->resultDirComboBox);
+    configurePostResultCombo(ui->stepComboBox);
 
     // 槽函数连接
     connect(ui->confirmPushButton, &QPushButton::clicked, this,

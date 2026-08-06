@@ -9,6 +9,7 @@
 
 class CaveSupportComputationPage;
 class CaveExcavationBodyPage;
+class CaveCraneBeamAreaPage;
 class CaveReinforcementFieldPage;
 class CaveBlockPlanePage;
 class CaveExcavationWidget;
@@ -70,6 +71,7 @@ class Solver : public QObject, public SolverService
     void addCaveSupportComputationNode(ProjectNode* analysisNode, bool setCurrent);
     void addCaveLiningBoundaryNode(ProjectNode* supportNode, bool innerBoundary,
                                    bool setCurrent) const;
+    void addCaveCraneBeamAreaNode(ProjectNode* supportNode, bool setCurrent) const;
     void addCaveExcavationBodyNode(ProjectNode* supportNode, bool setCurrent) const;
     void addCaveBlockPlaneNode(ProjectNode* blockNode, bool setCurrent) const;
     void addGeoStressSideFaceNode(ProjectNode* geostressNode, bool setCurrent) const;
@@ -88,13 +90,17 @@ class Solver : public QObject, public SolverService
     bool launchSolverExecutable(ProjectNode* analysisNode, const QString& analysisType);
     bool launchCaveBlockSolverExecutable(ProjectNode* analysisNode);
     void finishSolverProcess(bool terminateProcess);
+    void consumeSolverOutput();
+    void handleSolverProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
     void clearSolverRunDirectory() const;
     void notifySolverFinished();
     void setComputeWidgetRunning(QWidget* widget, bool computing) const;
     void connectStopRequest(QObject* page) const;
     int solverModeFromAnalysisType(const QString& analysisType) const;
-    bool updateIiiDirDat(const QString& projectDir, int solverMode) const;
-    bool updateCaveBlockIiiDirDat(const QString& sliderDir) const;
+    bool updateIiiDirDat(const QString& projectDir, int solverMode, int deviceCode,
+                         int assemblyLogInterval, int solverLogInterval) const;
+    bool updateCaveBlockIiiDirDat(const QString& sliderDir, int assemblyLogInterval,
+                                  int solverLogInterval) const;
     bool updatePrepDatFiles(const QString& projectDir, int solverMode, int verticalAxis) const;
     bool normalizeGeoStressSolidLayers(QString* errorMessage) const;
     bool forceIiinLayersToOne(const QString& analysisDir) const;
@@ -107,6 +113,8 @@ class Solver : public QObject, public SolverService
     QPointer<QWidget> m_pendingComputeWidget;
     QPointer<QWidget> m_activeComputeWidget;
     bool m_solverFinishedNotified{false};
+    QString m_solverFailureDetail;
+    qint64 m_solverStartedAtMs{0};
     QString m_activeProjectDir;
     QString m_activeAnalysisWorkspace;
     QString m_activeAnalysisUuid;

@@ -1,560 +1,84 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>SeepageWidget</class>
  <widget class="QWidget" name="SeepageWidget">
-  <property name="geometry">
-   <rect>
-    <x>0</x>
-    <y>0</y>
-    <width>424</width>
-    <height>620</height>
-   </rect>
-  </property>
-  <property name="windowTitle">
-   <string>渗流分析</string>
-  </property>
+  <property name="geometry"><rect><x>0</x><y>0</y><width>430</width><height>650</height></rect></property>
+  <property name="windowTitle"><string>渗流分析</string></property>
   <layout class="QVBoxLayout" name="verticalLayout">
-   <property name="leftMargin">
-    <number>0</number>
-   </property>
-   <property name="topMargin">
-    <number>0</number>
-   </property>
-   <property name="rightMargin">
-    <number>0</number>
-   </property>
-   <property name="bottomMargin">
-    <number>0</number>
-   </property>
-   <item>
-    <widget class="QLabel" name="pageHeaderLabel">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
-     <property name="text">
-      <string>渗流分析参数</string>
-     </property>
-     <property name="visible">
-      <bool>false</bool>
-     </property>
-    </widget>
-   </item>
+   <property name="leftMargin"><number>0</number></property>
+   <property name="topMargin"><number>0</number></property>
+   <property name="rightMargin"><number>0</number></property>
+   <property name="bottomMargin"><number>0</number></property>
+   <item><widget class="QLabel" name="pageHeaderLabel"><property name="text"><string>渗流分析参数</string></property><property name="visible"><bool>false</bool></property></widget></item>
    <item>
     <layout class="QVBoxLayout" name="contentLayout">
-     <property name="leftMargin">
-      <number>9</number>
-     </property>
-     <property name="topMargin">
-      <number>9</number>
-     </property>
-     <property name="rightMargin">
-      <number>9</number>
-     </property>
-     <property name="bottomMargin">
-      <number>9</number>
-     </property>
-     <property name="spacing">
-      <number>6</number>
-     </property>
+     <property name="leftMargin"><number>9</number></property>
+     <property name="topMargin"><number>9</number></property>
+     <property name="rightMargin"><number>9</number></property>
+     <property name="bottomMargin"><number>9</number></property>
+     <property name="spacing"><number>8</number></property>
      <item>
       <widget class="QGroupBox" name="groupBoxParameters">
-       <property name="title">
-        <string>渗流参数</string>
-       </property>
-       <layout class="QGridLayout" name="gridLayout">
-        <item row="6" column="1">
-         <widget class="QCheckBox" name="checkNaturalFreeSurface">
-          <property name="text">
-           <string>启用</string>
-          </property>
-         </widget>
-        </item>
-        <item row="0" column="1">
-         <widget class="QDoubleSpinBox" name="spinUpstreamWaterLevel">
-          <property name="decimals">
-           <number>4</number>
-          </property>
-          <property name="minimum">
-           <double>-1000000.000000000000000</double>
-          </property>
-          <property name="maximum">
-           <double>1000000.000000000000000</double>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="1">
-         <widget class="QDoubleSpinBox" name="spinUpstreamFlux">
-          <property name="decimals">
-           <number>6</number>
-          </property>
-          <property name="minimum">
-           <double>-1000000.000000000000000</double>
-          </property>
-          <property name="maximum">
-           <double>1000000.000000000000000</double>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="0">
-         <widget class="QLabel" name="labelDownWater">
-          <property name="text">
-           <string>下游水位</string>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item row="21" column="1">
-         <widget class="QDoubleSpinBox" name="spinTend">
-          <property name="prefix">
-           <string />
-          </property>
-          <property name="decimals">
-           <number>6</number>
-          </property>
-          <property name="minimum">
-           <double>-1000000.000000000000000</double>
-          </property>
-          <property name="maximum">
-           <double>1000000.000000000000000</double>
-          </property>
-          <property name="value">
-           <double>3600.000000000000000</double>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item row="22" column="1">
-         <widget class="QPushButton" name="btnHwDropCurves">
-          <property name="text">
-           <string>设置水位变化过程...</string>
-          </property>
-         </widget>
-        </item>
-        <item row="5" column="0">
-         <widget class="QLabel" name="labelControlledPropertyNo">
-          <property name="text">
-           <string>被控属性号</string>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item row="7" column="1">
-         <widget class="QCheckBox" name="checkDrainWell">
-          <property name="text">
-           <string>启用</string>
-          </property>
-         </widget>
-        </item>
-        <item row="8" column="0">
-         <widget class="QLabel" name="labelComputeType">
-          <property name="text">
-           <string>计算类型</string>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item row="0" column="0">
-         <widget class="QLabel" name="labelUpWater">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="text">
-           <string>上游水位</string>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="1">
-         <widget class="QDoubleSpinBox" name="spinDownstreamWaterLevel">
-          <property name="decimals">
-           <number>4</number>
-          </property>
-          <property name="minimum">
-           <double>-1000000.000000000000000</double>
-          </property>
-          <property name="maximum">
-           <double>1000000.000000000000000</double>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item row="18" column="1">
-         <widget class="QComboBox" name="comboItagFree">
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item row="19" column="0">
-         <widget class="QLabel" name="label">
-          <property name="text">
-           <string>时步</string>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item row="3" column="1">
-         <widget class="QDoubleSpinBox" name="spinDownstreamFlux">
-          <property name="decimals">
-           <number>6</number>
-          </property>
-          <property name="minimum">
-           <double>-1000000.000000000000000</double>
-          </property>
-          <property name="maximum">
-           <double>1000000.000000000000000</double>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="0">
-         <widget class="QLabel" name="labelUpFlux">
-          <property name="text">
-           <string>上游流量</string>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item row="20" column="0">
-         <widget class="QLabel" name="label_2">
-          <property name="text">
-           <string>起始时间</string>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item row="21" column="0">
-         <widget class="QLabel" name="label_3">
-          <property name="text">
-           <string>终止时间</string>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item row="17" column="0">
-         <widget class="QLabel" name="labelIter">
-          <property name="text">
-           <string>迭代次数</string>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item row="4" column="0">
-         <widget class="QLabel" name="labelMainPropertyNo">
-          <property name="text">
-           <string>主控属性号</string>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item row="5" column="1">
-         <widget class="QSpinBox" name="spinControlledPropertyNo">
-          <property name="minimum">
-           <number>1</number>
-          </property>
-          <property name="maximum">
-           <number>1000000</number>
-          </property>
-          <property name="value">
-           <number>2</number>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item row="10" column="1">
-         <widget class="QPushButton" name="btnGlobalMappings">
-          <property name="text">
-           <string>设置材料变换...</string>
-          </property>
-         </widget>
-        </item>
-        <item row="6" column="0">
-         <widget class="QLabel" name="labelNaturalFreeSurface">
-          <property name="text">
-           <string>考虑天然流场自由面</string>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item row="20" column="1">
-         <widget class="QDoubleSpinBox" name="spinTsta">
-          <property name="prefix">
-           <string />
-          </property>
-          <property name="decimals">
-           <number>6</number>
-          </property>
-          <property name="minimum">
-           <double>-1000000.000000000000000</double>
-          </property>
-          <property name="maximum">
-           <double>1000000.000000000000000</double>
-          </property>
-          <property name="value">
-           <double>0.000000000000000</double>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item row="4" column="1">
-         <widget class="QSpinBox" name="spinMainPropertyNo">
-          <property name="minimum">
-           <number>1</number>
-          </property>
-          <property name="maximum">
-           <number>1000000</number>
-          </property>
-          <property name="value">
-           <number>2</number>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item row="18" column="0">
-         <widget class="QLabel" name="labelItagFree">
-          <property name="text">
-           <string>天然渗流场计入方式</string>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item row="22" column="0">
-         <widget class="QLabel" name="labelHwDropFiles">
-          <property name="text">
-           <string>水位变化过程</string>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item row="19" column="1">
-         <widget class="QDoubleSpinBox" name="spinDt">
-          <property name="prefix">
-           <string />
-          </property>
-          <property name="decimals">
-           <number>6</number>
-          </property>
-          <property name="minimum">
-           <double>-1000000.000000000000000</double>
-          </property>
-          <property name="maximum">
-           <double>1000000.000000000000000</double>
-          </property>
-          <property name="value">
-           <double>60.000000000000000</double>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item row="8" column="1">
-         <widget class="QComboBox" name="comboComputeType">
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item row="3" column="0">
-         <widget class="QLabel" name="labelDownFlux">
-          <property name="text">
-           <string>下游流量</string>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item row="10" column="0">
-         <widget class="QLabel" name="labelGlobalMappings">
-          <property name="text">
-           <string>材料变换</string>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item row="7" column="0">
-         <widget class="QLabel" name="labelDrainWell">
-          <property name="text">
-           <string>考虑排水井</string>
-          </property>
-          <property name="wordWrap">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item row="17" column="1">
-         <widget class="QSpinBox" name="spinIter">
-          <property name="minimum">
-           <number>1</number>
-          </property>
-          <property name="maximum">
-           <number>1000000</number>
-          </property>
-          <property name="value">
-           <number>100</number>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>10</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <property name="leftMargin">
-         <number>9</number>
-        </property>
-        <property name="topMargin">
-         <number>9</number>
-        </property>
-        <property name="rightMargin">
-         <number>9</number>
-        </property>
-        <property name="bottomMargin">
-         <number>9</number>
-        </property>
+       <property name="title"><string>渗流设置</string></property>
+       <layout class="QGridLayout" name="gridLayoutParameters">
+        <item row="0" column="0"><widget class="QLabel" name="labelComputeType"><property name="text"><string>计算类型</string></property></widget></item>
+        <item row="0" column="1"><widget class="QComboBox" name="comboComputeType"/></item>
+        <item row="1" column="0"><widget class="QLabel" name="labelIter"><property name="text"><string>最大迭代次数</string></property></widget></item>
+        <item row="1" column="1"><widget class="QSpinBox" name="spinIter"><property name="minimum"><number>1</number></property><property name="maximum"><number>1000000</number></property><property name="value"><number>100</number></property></widget></item>
+        <item row="2" column="0"><widget class="QLabel" name="labelNaturalFreeSurface"><property name="text"><string>天然自由面</string></property></widget></item>
+        <item row="2" column="1"><widget class="QCheckBox" name="checkNaturalFreeSurface"><property name="text"><string>启用</string></property></widget></item>
+        <item row="3" column="0"><widget class="QLabel" name="labelItagFree"><property name="text"><string>自由面修正</string></property></widget></item>
+        <item row="3" column="1"><widget class="QComboBox" name="comboItagFree"/></item>
+        <item row="4" column="0"><widget class="QLabel" name="labelDrainWell"><property name="text"><string>排水井</string></property></widget></item>
+        <item row="4" column="1"><widget class="QCheckBox" name="checkDrainWell"><property name="text"><string>启用</string></property></widget></item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QGroupBox" name="groupBoxBoundarySummary">
+       <property name="title"><string>边界概览</string></property>
+       <layout class="QVBoxLayout" name="verticalLayoutSummary">
+        <item><widget class="QLabel" name="labelBoundaryLocationHint"><property name="text"><string>水位与通量在对应边界中设置。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+        <item><widget class="QLabel" name="labelUpstreamSummary"><property name="text"><string>上游：未设置</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+        <item><widget class="QLabel" name="labelDownstreamSummary"><property name="text"><string>下游：未设置</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+        <item><widget class="QLabel" name="labelHeadDifferenceSummary"><property name="text"><string>上下游水头差：0 m</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QGroupBox" name="groupBoxTransient">
+       <property name="title"><string>非稳态时间设置</string></property>
+       <layout class="QGridLayout" name="gridLayoutTransient">
+        <item row="0" column="0"><widget class="QLabel" name="labelDt"><property name="text"><string>时间步长</string></property></widget></item>
+        <item row="0" column="1"><widget class="QDoubleSpinBox" name="spinDt"><property name="decimals"><number>6</number></property><property name="minimum"><double>0.000001000000000</double></property><property name="maximum"><double>1000000000000.000000000000000</double></property><property name="value"><double>1.000000000000000</double></property><property name="keyboardTracking"><bool>false</bool></property><property name="suffix"><string> s</string></property></widget></item>
+        <item row="1" column="0"><widget class="QLabel" name="labelTsta"><property name="text"><string>起始时间</string></property></widget></item>
+        <item row="1" column="1"><widget class="QDoubleSpinBox" name="spinTsta"><property name="decimals"><number>6</number></property><property name="minimum"><double>-1000000000000.000000000000000</double></property><property name="maximum"><double>1000000000000.000000000000000</double></property><property name="keyboardTracking"><bool>false</bool></property><property name="suffix"><string> s</string></property></widget></item>
+        <item row="2" column="0"><widget class="QLabel" name="labelTend"><property name="text"><string>终止时间</string></property></widget></item>
+        <item row="2" column="1"><widget class="QDoubleSpinBox" name="spinTend"><property name="decimals"><number>6</number></property><property name="minimum"><double>-1000000000000.000000000000000</double></property><property name="maximum"><double>1000000000000.000000000000000</double></property><property name="value"><double>3600.000000000000000</double></property><property name="keyboardTracking"><bool>false</bool></property><property name="suffix"><string> s</string></property></widget></item>
+        <item row="3" column="0" colspan="2"><widget class="QLabel" name="labelTransientHint"><property name="text"><string>水位过程需覆盖起止时间。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QWidget" name="internalParametersWidget">
+       <property name="visible"><bool>false</bool></property>
+       <layout class="QHBoxLayout" name="internalLayout">
+        <item><widget class="QSpinBox" name="spinMainPropertyNo"><property name="minimum"><number>1</number></property><property name="maximum"><number>1000000</number></property><property name="value"><number>2</number></property></widget></item>
+        <item><widget class="QSpinBox" name="spinControlledPropertyNo"><property name="minimum"><number>1</number></property><property name="maximum"><number>1000000</number></property><property name="value"><number>2</number></property></widget></item>
        </layout>
       </widget>
      </item>
      <item>
       <layout class="QHBoxLayout" name="horizontalLayoutCompute">
-       <item>
-        <spacer name="horizontalSpacerCompute">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>40</width>
-           <height>20</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <item>
-        <widget class="QPushButton" name="btnCompute">
-         <property name="text">
-          <string>计算</string>
-         </property>
-        </widget>
-       </item>
-       <property name="leftMargin">
-        <number>0</number>
-       </property>
-       <property name="topMargin">
-        <number>0</number>
-       </property>
-       <property name="rightMargin">
-        <number>0</number>
-       </property>
-       <property name="bottomMargin">
-        <number>0</number>
-       </property>
+       <item><spacer name="horizontalSpacerCompute"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+       <item><widget class="QPushButton" name="btnCompute"><property name="text"><string>数值法计算</string></property></widget></item>
       </layout>
      </item>
-     <item>
-      <spacer name="verticalSpacer">
-       <property name="orientation">
-        <enum>Qt::Vertical</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>20</width>
-         <height>40</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
+     <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
     </layout>
    </item>
   </layout>
  </widget>
- <resources />
- <connections />
+ <resources/>
+ <connections/>
 </ui>

@@ -393,6 +393,18 @@ bool SlopeStabilityWidget::exportIslopDatFile() const
     if (!QDir().mkpath(wd.absolutePath()) || !QDir().mkpath(inputDir.absolutePath()))
         return false;
 
+    // 同一边坡分析重新计算时，新结果应替换旧结果。CASE01 必须由求解器创建，
+    // 否则 GPU 求解器的 NEWDIR 会把已存在但没有 FLAG_DIR.DAT 的空目录视为创建失败。
+    QDir previousCaseDir(wd.filePath(QStringLiteral("CASE01")));
+    if (previousCaseDir.exists() && !previousCaseDir.removeRecursively())
+        return false;
+
+    // 同步清理该分析的后处理缓存，计算完成后按新工况重新生成。
+    QDir previousPostDir(wd.filePath(
+        QString::fromUtf8(PublicConstants::kPostResultDirectoryName)));
+    if (previousPostDir.exists() && !previousPostDir.removeRecursively())
+        return false;
+
     auto ensureTrailingSep = [](const QString& path)
     {
         QString p = QDir::toNativeSeparators(path);
@@ -635,7 +647,7 @@ void SlopeStabilityWidget::onComputeClicked()
     QString error;
     if (!validateInputs(&error))
     {
-        QMessageBox::warning(this, QStringLiteral("设置不完整"), error);
+        QMessageBox::warning(this, QStringLiteral("请完善边坡设置"), error);
         return;
     }
     emit computeRequested();

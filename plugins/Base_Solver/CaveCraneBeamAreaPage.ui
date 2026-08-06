@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>CaveCraneBeamAreaPage</class>
+ <widget class="QWidget" name="CaveCraneBeamAreaPage">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>490</width><height>440</height></rect>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayoutRoot">
+   <property name="leftMargin"><number>0</number></property>
+   <property name="topMargin"><number>0</number></property>
+   <property name="rightMargin"><number>0</number></property>
+   <property name="bottomMargin"><number>0</number></property>
+   <property name="spacing"><number>6</number></property>
+   <item>
+    <widget class="QLabel" name="pageHeaderLabel">
+     <property name="text"><string>吊车梁区域</string></property>
+     <property name="visible"><bool>false</bool></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="hintLabel">
+     <property name="text"><string>选择吊车梁所在的实体区域。进入本页后其余模型会半透明显示，当前区域保持高亮。</string></property>
+     <property name="wordWrap"><bool>true</bool></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="pickGroupBox">
+     <property name="title"><string>选择区域</string></property>
+     <layout class="QGridLayout" name="gridLayout">
+      <item row="0" column="0"><widget class="QLabel" name="groupLabel"><property name="text"><string>分组</string></property></widget></item>
+      <item row="0" column="1"><widget class="CustomComboBox" name="groupCombo"/></item>
+      <item row="0" column="2"><widget class="QPushButton" name="addGroupButton"><property name="text"><string>添加</string></property></widget></item>
+      <item row="0" column="3"><widget class="QPushButton" name="clearButton"><property name="text"><string>清空</string></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="currentGroupBox">
+     <property name="title"><string>当前选择</string></property>
+     <layout class="QVBoxLayout" name="currentLayout">
+      <item><widget class="QListWidget" name="groupList"><property name="maximumHeight"><number>140</number></property><property name="selectionMode"><enum>QAbstractItemView::ExtendedSelection</enum></property></widget></item>
+      <item><widget class="QPushButton" name="removeGroupButton"><property name="text"><string>移除选中分组</string></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget><class>CustomComboBox</class><extends>QComboBox</extends><header>CustomComboBox.h</header></customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>

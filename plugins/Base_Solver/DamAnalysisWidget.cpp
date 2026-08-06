@@ -787,18 +787,18 @@ void DamAnalysisWidget::initValueEditors()
     m_comboUpstreamAxis->setItemText(1, QStringLiteral("Y 轴"));
     m_comboUpstreamAxis->setItemText(2, QStringLiteral("Z 轴"));
     m_comboUpstreamAxis->setToolTip(
-        QStringLiteral("IXUPDW：上下游方向所在坐标轴，不能与当前网格竖向轴相同。"));
+        QStringLiteral("选择模型的上下游方向，不能与竖向方向相同。"));
 
     m_comboPgen->setItemData(0, "1");
     m_comboPgen->setItemData(1, "2");
     m_comboPgen->setItemData(2, "3");
     m_comboPgen->setItemData(3, "4");
-    m_comboPgen->setItemText(0, QStringLiteral("三向平均 (1)"));
-    m_comboPgen->setItemText(1, QStringLiteral("中小主应力平均 (2)"));
-    m_comboPgen->setItemText(2, QStringLiteral("两种平均再平均 (3)"));
-    m_comboPgen->setItemText(3, QStringLiteral("按主应力条件切换 (4)"));
+    m_comboPgen->setItemText(0, QStringLiteral("三向平均"));
+    m_comboPgen->setItemText(1, QStringLiteral("中小主应力平均"));
+    m_comboPgen->setItemText(2, QStringLiteral("两种平均再平均"));
+    m_comboPgen->setItemText(3, QStringLiteral("按主应力条件切换"));
     m_comboPgen->setToolTip(
-        QStringLiteral("IPGEN：求解器中 PGEN 的计算方式，默认 3。"));
+        QStringLiteral("平均应力的计算方式，通常保持默认设置。"));
     m_comboUpstreamAxis->setCurrentIndex(0);
     m_comboPgen->setCurrentIndex(2);
 
@@ -936,19 +936,19 @@ QString DamAnalysisWidget::defaultValueByLine(int lineNo) const
 QString DamAnalysisWidget::descriptionByLine(int lineNo) const
 {
     static const QStringList descriptions = {
-        "计算默认文件目录", "上游水头边界集文件", "下游水头边界集文件", "心墙建基面文件",
-        "坝体中心面文件（已停用，占位参数）", "基岩材料集（层号为1）", "上游材料集（面板坝不需要）",
-        "下游材料集", "心墙材料集（面板坝不需要）",
-        "坝体类型：均质坝",
-        "面板材料集文件", "特征节点集文件", "特征单元集文件", "特征时刻文件",
-        "阻尼：0系统阻尼 / 1分材料阻尼", "瑞雷阻尼：0否 / 1是", "质量阻尼系数",
-        "刚度阻尼系数", "计算类型：1静力 / 2动力 / 3静动力", "迭代方法与迭代次数",
-        "蠕变计算时间步长 DT_CREEP", "水平最大地震加速度 AHMAX", "竖向最大地震加速度 AVMAX",
-        "反应谱特征周期 TG1", "反应谱特征周期 TG2", "反应谱 BETAMAX", "反应谱指数 EXPN",
-        "地震震级 QUAKE_LEVEL", "是否计算特征值特征向量：0否 / 1是", "特征值数",
+        "计算设置", "上游水头边界", "下游水头边界", "心墙建基面",
+        "坝体中心面", "基岩材料区域", "上游坝体材料区域",
+        "下游坝体材料区域", "心墙材料区域",
+        "坝体类型",
+        "面板材料区域", "特征节点", "特征单元", "特征时刻",
+        "阻尼设置", "瑞雷阻尼设置", "质量阻尼系数",
+        "刚度阻尼系数", "计算类型", "迭代方法与最大迭代次数",
+        "蠕变计算时间步长", "水平最大地震加速度", "竖向最大地震加速度",
+        "反应谱第一特征周期", "反应谱第二特征周期", "反应谱最大放大系数",
+        "反应谱衰减指数", "地震震级", "特征值分析", "特征值数量",
         "冻融循环次数", "冻融影响系数", "冻融影响高程范围", "冻融抗压强度系数",
-        "冻融抗拉强度系数", "结冰节点集合（内部参数）", "冰线膨胀率", "保留参数", "保留参数",
-        "保留参数"};
+        "冻融抗拉强度系数", "结冰区域", "冰线膨胀率", "系统参数", "系统参数",
+        "系统参数"};
     return descriptions.value(lineNo - 1);
 }
 
@@ -1167,7 +1167,7 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
     const int pgen = m_comboPgen->currentData().toString().toInt(&pgenOk);
     if (!pgenOk || pgen < 1 || pgen > 4)
     {
-        setError("平均应力方式 IPGEN 必须为 1 到 4。");
+        setError(QStringLiteral("请选择有效的平均应力方式。"));
         return false;
     }
 
@@ -1205,7 +1205,7 @@ bool DamAnalysisWidget::exportIfillDatFile(int mcase, const QString& cycleSectio
     QString error;
     if (!validateInputs(&error))
     {
-        QMessageBox::warning(nullptr, "参数格式错误", error);
+        QMessageBox::warning(nullptr, QStringLiteral("请完善土石坝设置"), error);
         return false;
     }
 
