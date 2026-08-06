@@ -30,6 +30,7 @@
 #include <vtkUnstructuredGrid.h>
 
 #include <algorithm>
+#include <cmath>
 #include <array>
 #include <limits>
 #include <utility>
@@ -149,24 +150,44 @@ bool SeepageWidget::drainWellEnabled() const
 
 bool SeepageWidget::validateInputs(QString* errorMessage) const
 {
+    const auto fail = [errorMessage](const QString& message)
+    {
+        if (errorMessage)
+            *errorMessage = message;
+        return false;
+    };
+
     const int type = ui->comboComputeType->currentData().toInt();
     if (type == 2 || type == 3)
     {
         const double dt = ui->spinDt->value();
         const double start = ui->spinTsta->value();
         const double end = ui->spinTend->value();
-        if (dt <= 0.0)
+        if (!std::isfinite(dt) || dt <= 0.0)
+            return fail(QStringLiteral("非稳态渗流的时间步长必须为正数。"));
+        if (!std::isfinite(start) || !std::isfinite(end) || end <= start)
+            return fail(QStringLiteral("非稳态渗流的终止时间必须大于起始时间。"));
+        if (waterLevelPoints_.size() < 2)
+            return fail(QStringLiteral("非稳态渗流至少需要两个水位过程点。"));
+
+        double previousTime = -std::numeric_limits<double>::infinity();
+        for (int i = 0; i < waterLevelPoints_.size(); ++i)
         {
-            if (errorMessage)
-                *errorMessage = QStringLiteral("非稳态渗流的时间步长必须为正数。");
-            return false;
+            const WaterLevelPoint& point = waterLevelPoints_.at(i);
+            if (!std::isfinite(point.time) || !std::isfinite(point.upHead)
+                || !std::isfinite(point.dwHead))
+                return fail(QStringLiteral("第 %1 个水位过程点包含无效数值。").arg(i + 1));
+            if (point.time <= previousTime)
+                return fail(QStringLiteral("水位过程时间必须严格递增，第 %1 个点的时间不正确。")
+                                .arg(i + 1));
+            previousTime = point.time;
         }
-        if (end <= start)
-        {
-            if (errorMessage)
-                *errorMessage = QStringLiteral("非稳态渗流的终止时间必须大于起始时间。");
-            return false;
-        }
+        if (waterLevelPoints_.first().time > start)
+            return fail(QStringLiteral("水位过程必须覆盖起始时间 %1。")
+                            .arg(start, 0, 'g', 12));
+        if (waterLevelPoints_.last().time < end)
+            return fail(QStringLiteral("水位过程必须覆盖终止时间 %1。")
+                            .arg(end, 0, 'g', 12));
     }
     return true;
 }

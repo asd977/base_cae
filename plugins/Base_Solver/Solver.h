@@ -9,6 +9,7 @@
 
 class CaveSupportComputationPage;
 class CaveExcavationBodyPage;
+class CaveReinforcementFieldPage;
 class CaveBlockPlanePage;
 class CaveExcavationWidget;
 class DamAnalysisWidget;
@@ -53,6 +54,7 @@ class Solver : public QObject, public SolverService
     void connectBoundaryStatus(ProjectNode* node) const;
     void syncSeepageConditionalNodes(ProjectNode* analysisNode) const;
     void syncDamConditionalNodes(ProjectNode* analysisNode) const;
+    void syncCaveSupportConditionalNodes(ProjectNode* supportNode) const;
     void updateBoundaryNodeStatus(ProjectNode* node, int selectionCount, bool enabled = true,
                                   const QString& disabledReason = {}) const;
     int countFillStorageCycles(ProjectNode* analysisNode) const;
@@ -66,6 +68,8 @@ class Solver : public QObject, public SolverService
     void addFillStorageCycleNode(ProjectNode* analysisNode, bool setCurrent) const;
     void addGeoStressRegressionNode(ProjectNode* analysisNode, bool setCurrent);
     void addCaveSupportComputationNode(ProjectNode* analysisNode, bool setCurrent);
+    void addCaveLiningBoundaryNode(ProjectNode* supportNode, bool innerBoundary,
+                                   bool setCurrent) const;
     void addCaveExcavationBodyNode(ProjectNode* supportNode, bool setCurrent) const;
     void addCaveBlockPlaneNode(ProjectNode* blockNode, bool setCurrent) const;
     void addGeoStressSideFaceNode(ProjectNode* geostressNode, bool setCurrent) const;

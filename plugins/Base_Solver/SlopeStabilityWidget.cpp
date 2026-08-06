@@ -483,9 +483,11 @@ bool SlopeStabilityWidget::validateInputs(QString* errorMessage) const
     if (!number(ui->gravityXEdit) || !number(ui->gravityYEdit) || !number(ui->gravityZEdit))
         return fail(QStringLiteral("重力加速度必须填写三个有效数值。"));
 
-    double iterations = 0.0;
+    bool iterationsOk = false;
+    const QString iterationsText = ui->line6Edit->text().trimmed();
+    const int iterations = iterationsText.toInt(&iterationsOk);
     double tolerance = 0.0;
-    if (!number(ui->line6Edit, &iterations) || iterations <= 0.0)
+    if (!iterationsOk || iterations <= 0 || QString::number(iterations) != iterationsText)
         return fail(QStringLiteral("最大迭代次数必须为正整数。"));
     if (!number(ui->line7Edit, &tolerance) || tolerance <= 0.0)
         return fail(QStringLiteral("迭代误差阈值必须为正数。"));

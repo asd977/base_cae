@@ -24,7 +24,7 @@ namespace
 constexpr char kLegacyPostResultRoot[] = "post";
 constexpr char kManifestName[] = "manifest.json";
 constexpr char kLegacyAnalysisManifestFileName[] = "analysis.json";
-constexpr int kManifestVersion = 7;
+constexpr int kManifestVersion = 6;
 
 struct GeneratedFileInfo
 {
@@ -217,8 +217,7 @@ bool hasMeshFile(const QString& absolutePath)
 bool isSupportedFieldName(const QString& fileName)
 {
     static const QRegularExpression expression(
-        QStringLiteral("^(?:INVELO|IIDISP|MODPRI|NODCMM|IIICMM|MODRAI_PLS|MODRAP_PLS)"
-                       "(?:[-_](?:METHOD\\d+|CZ[^.]*))?\\.TXT$"),
+        QStringLiteral("^(?:INVELO|IIDISP|MODPRI|NODCMM)(?:[-_](?:METHOD\\d+|CZ[^.]*))?\\.TXT$"),
         QRegularExpression::CaseInsensitiveOption);
     return expression.match(fileName).hasMatch();
 }
@@ -378,15 +377,6 @@ QString baseDisplayName(const QString& kind)
     if (normalized == QStringLiteral("stress_level") || normalized == QStringLiteral("tec_sl") ||
         normalized == QStringLiteral("tec_cmm"))
         return QStringLiteral("应力水平");
-    if (normalized == QStringLiteral("plastic_strain") ||
-        normalized == QStringLiteral("tec_rai_pls"))
-        return QStringLiteral("塑性应变分量");
-    if (normalized == QStringLiteral("principal_plastic_strain") ||
-        normalized == QStringLiteral("tec_rap_pls"))
-        return QStringLiteral("主塑性应变");
-    if (normalized == QStringLiteral("failure_zone") ||
-        normalized == QStringLiteral("tec_rupt"))
-        return QStringLiteral("破坏区");
     if (normalized == QStringLiteral("vtu"))
         return QStringLiteral("网格结果");
     return QStringLiteral("结果数据");
@@ -422,21 +412,9 @@ QString suffixDisplayName(const QString& suffix, bool strengthReduction)
 GeneratedFileInfo generatedFileInfo(const QString& fileName, bool strengthReduction)
 {
     const QString base = QFileInfo(fileName).completeBaseName().toLower();
-    if (base == QStringLiteral("tec_rai_pls"))
-        return {baseDisplayName(QStringLiteral("plastic_strain")),
-                QStringLiteral("plastic_strain")};
-    if (base == QStringLiteral("tec_rap_pls"))
-        return {baseDisplayName(QStringLiteral("principal_plastic_strain")),
-                QStringLiteral("principal_plastic_strain")};
-    if (base == QStringLiteral("tec_rupt"))
-        return {baseDisplayName(QStringLiteral("failure_zone")),
-                QStringLiteral("failure_zone")};
-
     const QStringList kinds = {QStringLiteral("head_pressure"), QStringLiteral("velocity"),
                                QStringLiteral("displacement"), QStringLiteral("principal_stress"),
-                               QStringLiteral("stress_level"), QStringLiteral("plastic_strain"),
-                               QStringLiteral("principal_plastic_strain"),
-                               QStringLiteral("failure_zone")};
+                               QStringLiteral("stress_level")};
     for (const QString& kind : kinds)
     {
         if (base == kind || base.startsWith(kind + QLatin1Char('_')))
@@ -582,9 +560,6 @@ QVector<PostResultAutoPrepare::ResultFile> fallbackSourceFiles(const QDir& sourc
     const QStringList names = {QStringLiteral("TEC_HP.DAT"), QStringLiteral("TEC_VELO.DAT"),
                                QStringLiteral("TEC_DISP.DAT"), QStringLiteral("TEC_PRS.DAT"),
                                QStringLiteral("TEC_SL.DAT"), QStringLiteral("TEC_CMM.DAT"),
-                               QStringLiteral("TEC_RAI_PLS.DAT"),
-                               QStringLiteral("TEC_RAP_PLS.DAT"),
-                               QStringLiteral("TEC_RUPT.DAT"),
                                QStringLiteral("*.tec")};
     QSet<QString> seenPaths;
     for (const QString& pattern : names)
@@ -707,6 +682,9 @@ QString resultGroupDisplayName(const QString& projectDir, const QString& sourceD
 
     if (hasFilePrefix(source, QStringLiteral("INVELO")) || relative.contains(QStringLiteral("SEEP")))
         return QStringLiteral("渗流结果");
+    if (relative.contains(QStringLiteral("/LINE"))
+        || leaf == QStringLiteral("LINE"))
+        return QStringLiteral("衬砌计算结果");
     if (relative.contains(QStringLiteral("GEOSTR")))
         return QStringLiteral("初始地应力");
     if (relative.contains(QStringLiteral("FILL")))

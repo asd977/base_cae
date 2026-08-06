@@ -2,15 +2,21 @@
 
 #include <BasePage.h>
 
+#include <QString>
+#include <QVariantMap>
 #include <QVector>
 
+class QCheckBox;
 class QComboBox;
+class QDoubleSpinBox;
+class QGroupBox;
+class QLabel;
 class QLineEdit;
+class QListWidget;
 class QPushButton;
 class QSpinBox;
 class QTableWidget;
 class QWidget;
-class QDoubleSpinBox;
 class CaveReinforcementFieldPage;
 namespace Ui
 {
@@ -31,20 +37,30 @@ class CaveSupportComputationPage : public BasePage
     QString sectionText();
     bool exportICaveDatFile(const QString& supportCaseSection) const;
 
-    // 由实际“开挖体”节点数量统一控制开挖级数，避免 ICAVE 与 IIKE 文件数量不一致。
+    // 由实际“开挖体”节点数量统一控制开挖级数，避免 ICAVE 与开挖文件数量不一致。
     void setExcavationLevelCount(int count);
     int excavationLevelCount() const;
 
-    // Solver 计算前校验使用。界面显示中文选项，返回值仍是 Fortran 数字代码。
+    // Solver 计算前校验和内部输入转换使用。界面只显示业务概念。
     int calculationTypeCode() const;
     int excavationLoadMethodCode() const;
     bool modalAnalysisEnabled() const;
     bool timeHistoryEnabled() const;
     bool reinforcedTaskEnabled() const;
+    int groundwaterModeCode() const;
+    bool liningEnabled() const;
+    bool craneBeamEnabled() const;
+    int craneBeamInstallStage() const;
+    double craneBeamReleaseFactor() const;
     CaveReinforcementFieldPage* reinforcementFieldPage() const;
+
+    // 自动读取当前工程最近完成且网格一致的渗流结果，并转换成洞室求解输入。
+    // 求解器内部文件名不会暴露到界面。
+    bool prepareAuxiliaryInputFiles(const QString& inputDirectory,
+                                    QString* errorMessage = nullptr) const;
+
     void loadLegacyReinforcementFieldJson(const QJsonObject& obj);
     bool validateInputs(QString* errorMessage) const;
-
     void loadLegacyCaveJson(const QJsonObject& obj);
 
     QJsonObject saveJson() override;
@@ -53,7 +69,7 @@ class CaveSupportComputationPage : public BasePage
   signals:
     void computeRequested();
     void stopRequested();
-
+    void liningEnabledChanged(bool enabled);
 
   private slots:
     void onExcavationLevelCountChanged(int count);
@@ -63,7 +79,8 @@ class CaveSupportComputationPage : public BasePage
     void updateDynamicDetailsUi();
     void updateStaticDependenciesUi();
     void onReinforcedTaskSelectionChanged();
-
+    void onAddCraneBeamGroup();
+    void onRemoveCraneBeamGroups();
 
   private:
     struct CaseData
@@ -80,10 +97,24 @@ class CaveSupportComputationPage : public BasePage
         QString idayCase = "0";
     };
 
+    void setupBusinessUi();
+    void hideInternalControls();
     void saveCurrentCase();
     void loadCaseToUi();
     QString controlFieldValue(int fieldNo) const;
     void setControlFieldValue(int fieldNo, const QString& value);
+
+    QVector<QVariantMap> availableSeepageResults() const;
+    QVector<QVariantMap> availableCraneBeamGroups() const;
+    QVector<int> collectCraneBeamMaterialIds(QString* errorMessage = nullptr) const;
+    void refreshCraneBeamGroupCombo();
+    void refreshCraneBeamGroupList();
+    void updateCraneBeamInstallStages();
+    void refreshCraneBeamUi();
+    QString selectedSeepageResult(QString* analysisName = nullptr) const;
+    bool validateSeepageResult(const QString& path, QString* errorMessage = nullptr) const;
+    void refreshLiningStatus();
+    void refreshGroundwaterStatus();
 
   private:
     Ui::CaveSupportComputationPage* ui = nullptr;
@@ -113,6 +144,24 @@ class CaveSupportComputationPage : public BasePage
     QLineEdit* m_accXEdit = nullptr;
     QLineEdit* m_accYEdit = nullptr;
     QLineEdit* m_accZEdit = nullptr;
+
+    QGroupBox* m_liningGroundwaterGroup = nullptr;
+    QGroupBox* m_craneBeamGroup = nullptr;
+    QCheckBox* m_liningEnabledCheck = nullptr;
+    QLabel* m_liningStatusLabel = nullptr;
+    QCheckBox* m_groundwaterCheck = nullptr;
+    QLabel* m_groundwaterStatusLabel = nullptr;
+
+    QCheckBox* m_craneBeamEnabledCheck = nullptr;
+    QComboBox* m_craneBeamGroupCombo = nullptr;
+    QPushButton* m_addCraneBeamGroupButton = nullptr;
+    QListWidget* m_craneBeamGroupList = nullptr;
+    QPushButton* m_removeCraneBeamGroupButton = nullptr;
+    QComboBox* m_craneBeamInstallStageCombo = nullptr;
+    QDoubleSpinBox* m_craneBeamReleaseSpin = nullptr;
+    QLabel* m_craneBeamStatusLabel = nullptr;
+    QVector<QVariantMap> m_craneBeamGroups;
+
     CaveReinforcementFieldPage* m_reinforcementFieldPage = nullptr;
     CaseData m_caseData;
     bool m_isUpdatingUi = false;

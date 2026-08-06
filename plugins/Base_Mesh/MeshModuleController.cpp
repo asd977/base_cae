@@ -3327,7 +3327,8 @@ void MeshModuleController::onImportGridFileDialog()
 {
     QString fileName;
     QFileDialog dialog(nullptr, QString("选择网格文件"));
-    dialog.setNameFilter(QString("网格文件 (*.nas *.inp *.flac3d *.f3grid *.DAT *.vtk)"));
+    dialog.setNameFilter(
+        QString("网格文件 (*.nas *.nss *.inp *.flac3d *.f3grid *.DAT *.vtk)"));
     dialog.setFilter(QDir::Files);
     if (dialog.exec() == QDialog::Accepted)
     {
@@ -3350,10 +3351,9 @@ void MeshModuleController::importGridFile(const QString& fileName)
     QString err;
     vtkSmartPointer<vtkUnstructuredGrid> grid;
 
-    if (ext == "nas")
+    if (ext == "nas" || ext == "nss")
     {
-        QMessageBox::warning(nullptr, QString("不支持的格式"), QString("当前暂不支持 .nas 格式"));
-        return;
+        grid = MeshGridIO::instance().importNastran(fileName, &err);
     }
     else if (ext == "flac3d" || ext == "f3grid")
     {
@@ -3374,7 +3374,7 @@ void MeshModuleController::importGridFile(const QString& fileName)
     else
     {
         QMessageBox::warning(nullptr, QString("不支持的格式"),
-                             QString("当前只支持 .nas / .inp / .flac3d / .f3grid / .dat / .vtk"));
+                             QString("当前只支持 .nas / .nss / .inp / .flac3d / .f3grid / .dat / .vtk"));
         return;
     }
 

@@ -20,10 +20,13 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QDir>
+#include <QHash>
+#include <QLocale>
 #include <QMap>
 #include <QObject>
 #include <QSet>
 #include <QRegularExpression>
+#include <QStringList>
 #include <QTextStream>
 #include <QVector3D>
 #include <algorithm>
@@ -31,6 +34,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <vector>
 #include <PublicVariables.h>
 #include <PublicConstants.h>
@@ -906,6 +910,518 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importInp(const QString& fileNa
         grid->GetCellData()->AddArray(layer);
     }
     normalizePhysicalTagSets(m_mshPickMap, QStringLiteral("AbaqusInp"));
+    return grid;
+}
+
+vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importNastran(const QString& fileName,
+                                                               QString* errMsg)
+{
+    clearPickMap();
+    m_mshPickMap.materialGroupCategory = QStringLiteral("Physical");
+    m_mshPickMap.excavationGroupCategory = QStringLiteral("Physical");
+
+    QFile file(fileName);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        if (errMsg)
+            *errMsg = QObject::tr("无法打开 Nastran 网格文件: %1").arg(fileName);
+        return nullptr;
+    }
+
+    QTextStream in(&file);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    in.setCodec("UTF-8");
+#else
+    in.setEncoding(QStringConverter::Utf8);
+#endif
+
+    QStringList lines;
+    while (!in.atEnd())
+        lines.push_back(in.readLine());
+
+    struct NasNode
+    {
+        int id = 0;
+        double x = 0.0;
+        double y = 0.0;
+        double z = 0.0;
+    };
+    struct NasElement
+    {
+        int id = 0;
+        int propertyId = 0;
+        int vtkType = VTK_EMPTY_CELL;
+        int ketype = 0;
+        int dimension = 0;
+        QVector<int> nodeIds;
+    };
+
+    QVector<NasNode> nodes;
+    QVector<NasElement> elements;
+    QSet<int> nodeIdsSeen;
+    QSet<int> elementIdsSeen;
+    QHash<int, QString> propertyNames;
+    int unsupportedElementCount = 0;
+    int invalidElementCount = 0;
+
+    auto setError = [errMsg](const QString& message)
+    {
+        if (errMsg)
+            *errMsg = message;
+    };
+
+    auto parseNasInt = [](const QString& text, int& value) -> bool
+    {
+        bool ok = false;
+        const qlonglong parsed = text.trimmed().toLongLong(&ok);
+        if (!ok || parsed < (std::numeric_limits<int>::min)()
+            || parsed > (std::numeric_limits<int>::max)())
+            return false;
+        value = static_cast<int>(parsed);
+        return true;
+    };
+
+    auto parseNasDouble = [](QString text, double& value) -> bool
+    {
+        text = text.trimmed();
+        if (text.isEmpty())
+            return false;
+        text.replace(QLatin1Char('D'), QLatin1Char('E'), Qt::CaseInsensitive);
+
+        if (!text.contains(QLatin1Char('E'), Qt::CaseInsensitive))
+        {
+            for (int i = text.size() - 1; i > 0; --i)
+            {
+                if ((text.at(i) == QLatin1Char('+') || text.at(i) == QLatin1Char('-'))
+                    && i + 1 < text.size() && text.at(i + 1).isDigit())
+                {
+                    text.insert(i, QLatin1Char('E'));
+                    break;
+                }
+            }
+        }
+
+        bool ok = false;
+        value = QLocale::c().toDouble(text, &ok);
+        return ok && std::isfinite(value);
+    };
+
+    auto fixedDataFields = [](const QString& line, int fieldWidth) -> QStringList
+    {
+        QStringList fields;
+        const int fieldCount = fieldWidth == 16 ? 4 : 8;
+        fields.reserve(fieldCount);
+        for (int field = 0; field < fieldCount; ++field)
+        {
+            const int pos = 8 + field * fieldWidth;
+            fields.push_back(pos < line.size() ? line.mid(pos, fieldWidth).trimmed() : QString());
+        }
+        return fields;
+    };
+
+    auto freeDataFields = [](const QString& line) -> QStringList
+    {
+        QStringList fields = line.split(QLatin1Char(','), Qt::KeepEmptyParts);
+        if (!fields.isEmpty())
+            fields.removeFirst();
+        for (QString& field : fields)
+            field = field.trimmed();
+        return fields;
+    };
+
+    auto isContinuationLine = [](const QString& line) -> bool
+    {
+        if (line.trimmed().isEmpty() || line.trimmed().startsWith(QLatin1Char('$')))
+            return false;
+        if (line.contains(QLatin1Char(',')))
+        {
+            const QString first = line.section(QLatin1Char(','), 0, 0).trimmed();
+            return first.isEmpty() || first.startsWith(QLatin1Char('+'))
+                   || first.startsWith(QLatin1Char('*'));
+        }
+        const QString first = line.left(8).trimmed();
+        return first.isEmpty() || first.startsWith(QLatin1Char('+'))
+               || first.startsWith(QLatin1Char('*'));
+    };
+
+    auto parsePropertyName = [&propertyNames](const QString& line)
+    {
+        const QString trimmed = line.trimmed();
+        if (!trimmed.startsWith(QStringLiteral("$ANSA_NAME_COMMENT;"),
+                                Qt::CaseInsensitive))
+            return;
+        const QStringList fields = trimmed.mid(1).split(QLatin1Char(';'), Qt::KeepEmptyParts);
+        if (fields.size() < 4 || fields.at(2).compare(QStringLiteral("PSOLID"),
+                                                     Qt::CaseInsensitive) != 0)
+            return;
+        bool ok = false;
+        const int propertyId = fields.at(1).trimmed().toInt(&ok);
+        const QString name = fields.at(3).trimmed();
+        if (ok && propertyId > 0 && !name.isEmpty())
+            propertyNames.insert(propertyId, name);
+    };
+
+    auto parsedNodeIds = [&parseNasInt](const QStringList& fields, int first) -> QVector<int>
+    {
+        QVector<int> result;
+        for (int i = first; i < fields.size(); ++i)
+        {
+            int nodeId = 0;
+            if (parseNasInt(fields.at(i), nodeId) && nodeId > 0)
+                result.push_back(nodeId);
+        }
+        return result;
+    };
+
+    auto appendElement = [&](const QString& rawCard, const QStringList& fields,
+                             int lineNumber) -> bool
+    {
+        const QString card = rawCard.toUpper();
+        int elementId = 0;
+        int propertyId = 0;
+        int nodeFieldStart = 2;
+        if (fields.isEmpty() || !parseNasInt(fields.value(0), elementId) || elementId <= 0)
+        {
+            ++invalidElementCount;
+            return true;
+        }
+
+        if (card == QStringLiteral("CONROD"))
+        {
+            nodeFieldStart = 1;
+            parseNasInt(fields.value(3), propertyId);
+        }
+        else if (card == QStringLiteral("PLOTEL"))
+        {
+            nodeFieldStart = 1;
+        }
+        else if (!parseNasInt(fields.value(1), propertyId))
+        {
+            ++invalidElementCount;
+            return true;
+        }
+
+        QVector<int> connectivity = parsedNodeIds(fields, nodeFieldStart);
+        NasElement element;
+        element.id = elementId;
+        element.propertyId = propertyId;
+
+        int expectedNodes = 0;
+        if (card == QStringLiteral("CHEXA"))
+        {
+            expectedNodes = connectivity.size() >= 20 ? 20 : 8;
+            element.vtkType = expectedNodes == 20 ? VTK_QUADRATIC_HEXAHEDRON : VTK_HEXAHEDRON;
+            element.ketype = expectedNodes == 20 ? 37 : 6;
+            element.dimension = 3;
+        }
+        else if (card == QStringLiteral("CTETRA"))
+        {
+            if (connectivity.size() >= 10)
+            {
+                ++unsupportedElementCount;
+                return true;
+            }
+            expectedNodes = 4;
+            element.vtkType = VTK_TETRA;
+            element.ketype = 35;
+            element.dimension = 3;
+        }
+        else if (card == QStringLiteral("CPENTA"))
+        {
+            if (connectivity.size() >= 15)
+            {
+                ++unsupportedElementCount;
+                return true;
+            }
+            expectedNodes = 6;
+            element.vtkType = VTK_WEDGE;
+            element.ketype = 38;
+            element.dimension = 3;
+        }
+        else if (card == QStringLiteral("CPYRAM"))
+        {
+            if (connectivity.size() >= 13)
+            {
+                ++unsupportedElementCount;
+                return true;
+            }
+            expectedNodes = 5;
+            element.vtkType = VTK_PYRAMID;
+            element.ketype = 39;
+            element.dimension = 3;
+        }
+        else if (card == QStringLiteral("CQUAD4"))
+        {
+            expectedNodes = 4;
+            element.vtkType = VTK_QUAD;
+            element.ketype = 3;
+            element.dimension = 2;
+        }
+        else if (card == QStringLiteral("CQUAD8"))
+        {
+            expectedNodes = 8;
+            element.vtkType = VTK_QUADRATIC_QUAD;
+            element.ketype = 5;
+            element.dimension = 2;
+        }
+        else if (card == QStringLiteral("CTRIA3"))
+        {
+            expectedNodes = 3;
+            element.vtkType = VTK_TRIANGLE;
+            element.ketype = 31;
+            element.dimension = 2;
+        }
+        else if (card == QStringLiteral("CTRIA6"))
+        {
+            expectedNodes = 6;
+            element.vtkType = VTK_QUADRATIC_TRIANGLE;
+            element.ketype = 32;
+            element.dimension = 2;
+        }
+        else if (card == QStringLiteral("CROD") || card == QStringLiteral("CBAR")
+                 || card == QStringLiteral("CBEAM") || card == QStringLiteral("CONROD")
+                 || card == QStringLiteral("PLOTEL"))
+        {
+            expectedNodes = 2;
+            element.vtkType = VTK_LINE;
+            element.ketype = 1;
+            element.dimension = 1;
+        }
+        else
+        {
+            if (card.startsWith(QLatin1Char('C')))
+                ++unsupportedElementCount;
+            return true;
+        }
+
+        if (connectivity.size() < expectedNodes)
+        {
+            ++invalidElementCount;
+            qWarning() << "[Nastran] incomplete element at line" << lineNumber << card
+                       << elementId << connectivity.size() << "/" << expectedNodes;
+            return true;
+        }
+        connectivity.resize(expectedNodes);
+
+        if (elementIdsSeen.contains(elementId))
+        {
+            setError(QObject::tr("Nastran 单元号重复：%1（第 %2 行）")
+                         .arg(elementId)
+                         .arg(lineNumber));
+            return false;
+        }
+        elementIdsSeen.insert(elementId);
+        element.nodeIds = connectivity;
+        elements.push_back(element);
+        return true;
+    };
+
+    for (int lineIndex = 0; lineIndex < lines.size(); ++lineIndex)
+    {
+        const QString line = lines.at(lineIndex);
+        const QString trimmed = line.trimmed();
+        if (trimmed.isEmpty())
+            continue;
+        if (trimmed.startsWith(QLatin1Char('$')))
+        {
+            parsePropertyName(line);
+            continue;
+        }
+        if (isContinuationLine(line))
+            continue;
+
+        const bool freeFormat = line.contains(QLatin1Char(','));
+        QString rawCard = freeFormat ? line.section(QLatin1Char(','), 0, 0).trimmed()
+                                     : line.left(8).trimmed();
+        const bool largeFormat = rawCard.endsWith(QLatin1Char('*'));
+        rawCard.remove(QLatin1Char('*'));
+        const QString card = rawCard.toUpper();
+        if (card == QStringLiteral("ENDDATA"))
+            break;
+
+        QStringList fields = freeFormat ? freeDataFields(line)
+                                        : fixedDataFields(line, largeFormat ? 16 : 8);
+        while (lineIndex + 1 < lines.size() && isContinuationLine(lines.at(lineIndex + 1)))
+        {
+            const QString continuation = lines.at(++lineIndex);
+            const QStringList continuationFields = continuation.contains(QLatin1Char(','))
+                                                       ? freeDataFields(continuation)
+                                                       : fixedDataFields(continuation,
+                                                                         largeFormat ? 16 : 8);
+            fields.append(continuationFields);
+        }
+
+        if (card == QStringLiteral("GRID"))
+        {
+            int nodeId = 0;
+            int coordinateSystem = 0;
+            double x = 0.0;
+            double y = 0.0;
+            double z = 0.0;
+            if (!parseNasInt(fields.value(0), nodeId) || nodeId <= 0
+                || (!fields.value(1).isEmpty()
+                    && !parseNasInt(fields.value(1), coordinateSystem))
+                || !parseNasDouble(fields.value(2), x) || !parseNasDouble(fields.value(3), y)
+                || !parseNasDouble(fields.value(4), z))
+            {
+                setError(QObject::tr("Nastran GRID 读取失败（第 %1 行）").arg(lineIndex + 1));
+                return nullptr;
+            }
+            if (coordinateSystem != 0)
+            {
+                setError(QObject::tr("暂不支持非全局坐标系的 GRID：节点 %1 使用坐标系 %2")
+                             .arg(nodeId)
+                             .arg(coordinateSystem));
+                return nullptr;
+            }
+            if (nodeIdsSeen.contains(nodeId))
+            {
+                setError(QObject::tr("Nastran 节点号重复：%1（第 %2 行）")
+                             .arg(nodeId)
+                             .arg(lineIndex + 1));
+                return nullptr;
+            }
+            nodeIdsSeen.insert(nodeId);
+            nodes.push_back({nodeId, x, y, z});
+            continue;
+        }
+
+        if (!appendElement(card, fields, lineIndex + 1))
+            return nullptr;
+    }
+
+    if (nodes.isEmpty())
+    {
+        setError(QObject::tr("Nastran 文件中没有可用的 GRID 节点"));
+        return nullptr;
+    }
+    if (elements.isEmpty())
+    {
+        setError(QObject::tr("Nastran 文件中没有受支持的网格单元"));
+        return nullptr;
+    }
+
+    auto points = vtkSmartPointer<vtkPoints>::New();
+    points->SetDataTypeToDouble();
+    points->SetNumberOfPoints(nodes.size());
+
+    QHash<int, vtkIdType> pointIdByNodeId;
+    pointIdByNodeId.reserve(nodes.size() * 2);
+    for (int i = 0; i < nodes.size(); ++i)
+    {
+        const NasNode& node = nodes.at(i);
+        points->SetPoint(i, node.x, node.y, node.z);
+        pointIdByNodeId.insert(node.id, static_cast<vtkIdType>(i));
+        m_mshPickMap.nodeIdToPointId.insert(node.id, i);
+        m_mshPickMap.pointIdToNodeId.insert(i, node.id);
+    }
+
+    auto grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    grid->SetPoints(points);
+    grid->Allocate(elements.size());
+
+    QVector<int> insertedElementIndices;
+    insertedElementIndices.reserve(elements.size());
+    int missingNodeElementCount = 0;
+    int meshDimension = 0;
+    for (int elementIndex = 0; elementIndex < elements.size(); ++elementIndex)
+    {
+        const NasElement& element = elements.at(elementIndex);
+        QVector<vtkIdType> pointIds;
+        pointIds.reserve(element.nodeIds.size());
+        bool missingNode = false;
+        for (int nodeId : element.nodeIds)
+        {
+            const auto it = pointIdByNodeId.constFind(nodeId);
+            if (it == pointIdByNodeId.constEnd())
+            {
+                missingNode = true;
+                break;
+            }
+            pointIds.push_back(it.value());
+        }
+        if (missingNode)
+        {
+            ++missingNodeElementCount;
+            continue;
+        }
+
+        grid->InsertNextCell(element.vtkType,
+                             static_cast<vtkIdType>(pointIds.size()),
+                             pointIds.constData());
+        insertedElementIndices.push_back(elementIndex);
+        meshDimension = qMax(meshDimension, element.dimension);
+    }
+
+    if (grid->GetNumberOfCells() == 0)
+    {
+        setError(QObject::tr("Nastran 单元引用的节点不存在，未能生成有效网格"));
+        return nullptr;
+    }
+
+    ensureDefaultArrays(grid);
+    auto* nodeIdArray =
+        vtkIntArray::SafeDownCast(grid->GetPointData()->GetArray("node_id"));
+    for (int i = 0; nodeIdArray && i < nodes.size(); ++i)
+        nodeIdArray->SetValue(i, nodes.at(i).id);
+
+    auto* matypeArray = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("MATYPE"));
+    auto* layerArray = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("LAYER"));
+    auto* ketypeArray = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("KETYPE"));
+    auto* elemIdArray = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("elem_id"));
+    auto* partArray = vtkIntArray::SafeDownCast(grid->GetCellData()->GetArray("src_part"));
+
+    QHash<int, int> propertyToMatype;
+    int nextMatype = kDefaultCalculationMatype;
+    for (vtkIdType cellId = 0; cellId < grid->GetNumberOfCells(); ++cellId)
+    {
+        const NasElement& element =
+            elements.at(insertedElementIndices.at(static_cast<int>(cellId)));
+        const int propertyId = qMax(0, element.propertyId);
+        if (!propertyToMatype.contains(propertyId))
+            propertyToMatype.insert(propertyId, nextMatype++);
+        const int matype = propertyToMatype.value(propertyId);
+
+        if (matypeArray)
+            matypeArray->SetValue(cellId, matype);
+        if (layerArray)
+            layerArray->SetValue(cellId, kDefaultConstructionLayer);
+        if (ketypeArray)
+            ketypeArray->SetValue(cellId, element.ketype);
+        if (elemIdArray)
+            elemIdArray->SetValue(cellId, element.id);
+        if (partArray)
+            partArray->SetValue(cellId, propertyId);
+
+        const QString groupName =
+            propertyNames.value(propertyId,
+                                propertyId > 0 ? QStringLiteral("PID %1").arg(propertyId)
+                                               : QStringLiteral("未分组"));
+        m_mshPickMap.physIdToName.insert(matype, groupName);
+        MeshTagSet& set =
+            ensurePhysicalTagSet(m_mshPickMap, matype, element.dimension,
+                                 QStringLiteral("Nastran"));
+        set.name = groupName;
+        set.cellIds.push_back(static_cast<MeshIdType>(cellId));
+        if (element.dimension < meshDimension)
+        {
+            vtkCell* cell = grid->GetCell(cellId);
+            for (vtkIdType i = 0; cell && i < cell->GetNumberOfPoints(); ++i)
+                set.pointIds.push_back(static_cast<MeshIdType>(cell->GetPointId(i)));
+        }
+        if (element.dimension == meshDimension)
+            m_mshPickMap.cellIdToDomainTags[static_cast<MeshIdType>(cellId)].push_back(set.key);
+    }
+
+    m_mshPickMap.meshDim = meshDimension;
+    PublicVariables::instance().set(PublicConstants::kMeshDimension, meshDimension, "mesh");
+    normalizePhysicalTagSets(m_mshPickMap, QStringLiteral("Nastran"));
+
+    qInfo() << "[Nastran] imported nodes=" << nodes.size()
+            << "cells=" << grid->GetNumberOfCells()
+            << "unsupported=" << unsupportedElementCount
+            << "invalid=" << invalidElementCount
+            << "missing-node=" << missingNodeElementCount;
     return grid;
 }
 

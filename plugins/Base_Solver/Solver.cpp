@@ -683,6 +683,8 @@ QString solverNodeBaseTitle(const QString& kind)
         {QStringLiteral("GeoStressRegressionMeasurePoint"), QStringLiteral("实测地应力点")},
         {QStringLiteral("GeoStressRegressionOuterForce"), QStringLiteral("外面力")},
         {QStringLiteral("CaveSupportComputation"), QStringLiteral("开挖与加固分析")},
+        {QStringLiteral("CaveLiningInnerBoundary"), QStringLiteral("衬砌内边界")},
+        {QStringLiteral("CaveLiningOuterBoundary"), QStringLiteral("衬砌外边界")},
         {QStringLiteral("CaveExcavationBody"), QStringLiteral("开挖体")},
         {QStringLiteral("CaveBlockPlane"), QStringLiteral("滑块面")}};
     return titles.value(kind);
@@ -714,6 +716,10 @@ QString solverNodeRelationshipHint(ProjectNode* node)
          QStringLiteral("用于所属地应力回归分析，固定 1 个")},
         {QStringLiteral("CaveSupportComputation"),
          QStringLiteral("用于所属洞室开挖，本节点执行开挖与加固分析")},
+        {QStringLiteral("CaveLiningInnerBoundary"),
+         QStringLiteral("衬砌与洞腔接触的内表面，仅在计算衬砌内力时使用")},
+        {QStringLiteral("CaveLiningOuterBoundary"),
+         QStringLiteral("衬砌与围岩接触的外表面，仅在计算衬砌内力时使用")},
         {QStringLiteral("CaveExcavationBody"),
          QStringLiteral("用于所属开挖与加固分析，可添加多个开挖体")},
         {QStringLiteral("CaveBlockPlane"),
@@ -791,7 +797,9 @@ int solverChildOrderRank(ProjectNode* parent, ProjectNode* child)
     }
     else if (parentKind == QStringLiteral("CaveSupportComputation"))
     {
-        if (childKind == QStringLiteral("CaveExcavationBody")) return 0;
+        if (childKind == QStringLiteral("CaveLiningInnerBoundary")) return 0;
+        if (childKind == QStringLiteral("CaveLiningOuterBoundary")) return 1;
+        if (childKind == QStringLiteral("CaveExcavationBody")) return 10;
     }
     return 100;
 }
@@ -1103,8 +1111,8 @@ bool Solver::loadProject()
             const QJsonObject childObj = childV.toObject();
             const QString type = childObj.value("type").toString();
 
-            // 兼容少数把“围岩等效加固”直接保存到分析节点下的旧工程。
-            // 新版不再恢复该独立节点，而是把状态合并进开挖与加固分析页面。
+            // 旧工程可能把“围岩等效加固”保存为独立树节点。新版将它并入
+            // “开挖与加固分析”页面，只迁移状态，不再恢复独立节点。
             if (type == QStringLiteral("CaveReinforcementField"))
             {
                 legacyCaveReinforcementState = childObj.value("state").toObject();
@@ -1239,7 +1247,12 @@ bool Solver::loadProject()
                         {
                             onComputeCaveExcavation(analysisNode);
                         });
-            connectStopRequest(supportPage);
+                connect(supportPage, &CaveSupportComputationPage::liningEnabledChanged, this,
+                        [this, node](bool)
+                        {
+                            syncCaveSupportConditionalNodes(node);
+                        });
+                connectStopRequest(supportPage);
             }
             else if (auto* blockPage = dynamic_cast<CaveBlockStabilityWidget*>(page))
             {
@@ -1277,16 +1290,13 @@ bool Solver::loadProject()
                 {
                     const QJsonObject gcObj = gcV.toObject();
                     const QString gcType = gcObj.value("type").toString();
-
                     if (gcType == QStringLiteral("CaveReinforcementField"))
                     {
-                        if (auto* supportPage =
-                                dynamic_cast<CaveSupportComputationPage*>(page))
+                        if (auto* supportPage = dynamic_cast<CaveSupportComputationPage*>(page))
                             supportPage->loadLegacyReinforcementFieldJson(
                                 gcObj.value("state").toObject());
                         continue;
                     }
-
                     BasePage* gcPage = nullptr;
                     if (gcType == "GeoStressRegressionSideFace")
                         gcPage = new GeoStressSideFacePage();
@@ -1294,6 +1304,18 @@ bool Solver::loadProject()
                         gcPage = new GeoStressMeasurePointPage();
                     else if (gcType == "GeoStressRegressionOuterForce")
                         gcPage = new GeoStressOuterForcePage();
+                    else if (gcType == "CaveLiningInnerBoundary")
+                    {
+                        gcPage = new StressBoundaryPage(
+                            gcType, QStringLiteral("衬砌内边界"),
+                            QStringLiteral("IIJX_CHEN.DAT"));
+                    }
+                    else if (gcType == "CaveLiningOuterBoundary")
+                    {
+                        gcPage = new StressBoundaryPage(
+                            gcType, QStringLiteral("衬砌外边界"),
+                            QStringLiteral("IIJX_WAI.DAT"));
+                    }
                     else if (gcType == "CaveExcavationBody")
                     {
                         auto* bodyPage = new CaveExcavationBodyPage();
@@ -1318,6 +1340,10 @@ bool Solver::loadProject()
                         setupNodeRole(gcNode, "GeoStressRegressionMeasurePoint");
                     else if (gcType == "GeoStressRegressionOuterForce")
                         setupNodeRole(gcNode, "GeoStressRegressionOuterForce");
+                    else if (gcType == "CaveLiningInnerBoundary")
+                        setupNodeRole(gcNode, "CaveLiningInnerBoundary");
+                    else if (gcType == "CaveLiningOuterBoundary")
+                        setupNodeRole(gcNode, "CaveLiningOuterBoundary");
                     else if (gcType == "CaveExcavationBody")
                         setupNodeRole(gcNode, "CaveExcavationBody");
                     else if (gcType == "CaveBlockPlane" || gcType == "CaveBlockPlanePage")
@@ -1326,11 +1352,28 @@ bool Solver::loadProject()
 
                     gcPage->loadJson(gcObj.value("state").toObject());
                     node->addChild(gcNode);
+                    if (dynamic_cast<StressBoundaryPage*>(gcPage))
+                        connectBoundaryStatus(gcNode);
                     if (auto* bodyPage = dynamic_cast<CaveExcavationBodyPage*>(gcPage))
                     {
                         connect(bodyPage, &CaveExcavationBodyPage::excavationLayerChanged,
                                 this, [this, node](int) { syncChildNodeNames(node); });
                     }
+                }
+            }
+        }
+
+        if (analysisType == QStringLiteral("CaveExcavationAnalysis")
+            && !legacyCaveReinforcementState.isEmpty())
+        {
+            for (ProjectNode* child : analysisNode->getChildren())
+            {
+                if (auto* supportPage = child
+                        ? dynamic_cast<CaveSupportComputationPage*>(child->getPage()) : nullptr)
+                {
+                    supportPage->loadLegacyReinforcementFieldJson(
+                        legacyCaveReinforcementState);
+                    break;
                 }
             }
         }
@@ -1435,22 +1478,13 @@ bool Solver::loadProject()
                 if (!child || !child->getPage()
                     || child->getPage()->getPageType() != "CaveSupportComputation")
                     continue;
+                if (countGeoStressChildren(child, "CaveLiningInnerBoundary") == 0)
+                    addCaveLiningBoundaryNode(child, true, false);
+                if (countGeoStressChildren(child, "CaveLiningOuterBoundary") == 0)
+                    addCaveLiningBoundaryNode(child, false, false);
                 if (countGeoStressChildren(child, "CaveExcavationBody") == 0)
                     addCaveExcavationBodyNode(child, false);
-            }
-        }
-        if (!legacyCaveReinforcementState.isEmpty())
-        {
-            for (ProjectNode* child : analysisNode->getChildren())
-            {
-                auto* supportPage = child
-                    ? dynamic_cast<CaveSupportComputationPage*>(child->getPage())
-                    : nullptr;
-                if (!supportPage)
-                    continue;
-                supportPage->loadLegacyReinforcementFieldJson(
-                    legacyCaveReinforcementState);
-                break;
+                syncCaveSupportConditionalNodes(child);
             }
         }
         if (analysisType == "CaveBlockStabilityAnalysis"
@@ -2401,9 +2435,59 @@ void Solver::addCaveSupportComputationNode(ProjectNode* analysisNode, bool setCu
             {
                 onComputeCaveExcavation(analysisNode);
             });
+    connect(page, &CaveSupportComputationPage::liningEnabledChanged, this,
+            [this, node](bool)
+            {
+                syncCaveSupportConditionalNodes(node);
+            });
     connectStopRequest(page);
+    addCaveLiningBoundaryNode(node, true, false);
+    addCaveLiningBoundaryNode(node, false, false);
     addCaveExcavationBodyNode(node, false);
+    syncCaveSupportConditionalNodes(node);
     node->setExpanded(true);
+
+    if (setCurrent)
+    {
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(node);
+    }
+}
+
+void Solver::addCaveLiningBoundaryNode(ProjectNode* supportNode, bool innerBoundary,
+                                               bool setCurrent) const
+{
+    if (!supportNode)
+        return;
+
+    const QString pageType = innerBoundary
+        ? QStringLiteral("CaveLiningInnerBoundary")
+        : QStringLiteral("CaveLiningOuterBoundary");
+    for (ProjectNode* child : supportNode->getChildren())
+    {
+        if (child && child->getPage() && child->getPage()->getPageType() == pageType)
+        {
+            if (setCurrent)
+            {
+                if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+                    pm->setCurrentItem(child);
+            }
+            return;
+        }
+    }
+
+    const QString title = innerBoundary ? QStringLiteral("衬砌内边界")
+                                        : QStringLiteral("衬砌外边界");
+    const QString fileName = innerBoundary ? QStringLiteral("IIJX_CHEN.DAT")
+                                           : QStringLiteral("IIJX_WAI.DAT");
+    auto* page = new StressBoundaryPage(pageType, title, fileName);
+    auto* node = new ProjectNode(title, QUuid::createUuid().toString(), page);
+    setupNodeRole(node, innerBoundary ? QStringLiteral("CaveLiningInnerBoundary")
+                                      : QStringLiteral("CaveLiningOuterBoundary"));
+    supportNode->addChild(node);
+    connectBoundaryStatus(node);
+    supportNode->setExpanded(true);
+    syncChildNodeNames(supportNode);
 
     if (setCurrent)
     {
@@ -2950,6 +3034,8 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     };
 
     CaveSupportComputationPage* supportPage = nullptr;
+    StressBoundaryPage* liningInnerBoundaryPage = nullptr;
+    StressBoundaryPage* liningOuterBoundaryPage = nullptr;
     QVector<ExcavationBodyItem> excavationBodies;
     for (ProjectNode* child : analysisNode->getChildren())
     {
@@ -2960,7 +3046,17 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
         supportPage = candidate;
         for (ProjectNode* bodyNode : child->getChildren())
         {
-            if (auto* bodyPage = dynamic_cast<CaveExcavationBodyPage*>(bodyNode->getPage()))
+            if (!bodyNode || !bodyNode->getPage())
+                continue;
+            const QString pageType = bodyNode->getPage()->getPageType();
+            if (pageType == QStringLiteral("CaveLiningInnerBoundary"))
+                liningInnerBoundaryPage =
+                    dynamic_cast<StressBoundaryPage*>(bodyNode->getPage());
+            else if (pageType == QStringLiteral("CaveLiningOuterBoundary"))
+                liningOuterBoundaryPage =
+                    dynamic_cast<StressBoundaryPage*>(bodyNode->getPage());
+            else if (auto* bodyPage =
+                         dynamic_cast<CaveExcavationBodyPage*>(bodyNode->getPage()))
                 excavationBodies.push_back(
                     ExcavationBodyItem{bodyNode, bodyPage, bodyPage->excavationLayer()});
         }
@@ -2979,6 +3075,30 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     {
         QMessageBox::warning(nullptr, QStringLiteral("设置不完整"), caveParameterError);
         return;
+    }
+    if (supportPage->liningEnabled())
+    {
+        if (!liningInnerBoundaryPage || !liningOuterBoundaryPage)
+        {
+            QMessageBox::warning(
+                nullptr, QStringLiteral("设置不完整"),
+                QStringLiteral("缺少衬砌边界节点，请重新打开工程或重新创建开挖与加固分析。"));
+            return;
+        }
+        if (liningInnerBoundaryPage->selectionCount() <= 0)
+        {
+            QMessageBox::warning(
+                nullptr, QStringLiteral("设置不完整"),
+                QStringLiteral("请在“衬砌内边界”节点中选择衬砌与洞腔接触的网格边或网格面。"));
+            return;
+        }
+        if (liningOuterBoundaryPage->selectionCount() <= 0)
+        {
+            QMessageBox::warning(
+                nullptr, QStringLiteral("设置不完整"),
+                QStringLiteral("请在“衬砌外边界”节点中选择衬砌与围岩接触的网格边或网格面。"));
+            return;
+        }
     }
     if (excavationBodies.isEmpty())
     {
@@ -3184,6 +3304,35 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
     }
     else
     {
+        if (supportPage->liningEnabled())
+        {
+            if (!liningInnerBoundaryPage->exportDatFile())
+            {
+                ok = false;
+                failedFiles << QStringLiteral("衬砌内边界");
+            }
+            if (!liningOuterBoundaryPage->exportDatFile())
+            {
+                ok = false;
+                failedFiles << QStringLiteral("衬砌外边界");
+            }
+        }
+        else
+        {
+            QFile::remove(inputDir.filePath(QStringLiteral("IIJX_CHEN.DAT")));
+            QFile::remove(inputDir.filePath(QStringLiteral("IIJX_WAI.DAT")));
+        }
+
+        QString caveAuxiliaryError;
+        if (!supportPage->prepareAuxiliaryInputFiles(inputDir.absolutePath(),
+                                                      &caveAuxiliaryError))
+        {
+            ok = false;
+            failedFiles << (caveAuxiliaryError.isEmpty()
+                                ? QStringLiteral("洞室地下水数据")
+                                : caveAuxiliaryError);
+        }
+
         auto writeReleKetoke = [&]() -> bool
         {
             auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
@@ -3910,6 +4059,7 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
             }
         }
 
+
         QHash<vtkIdType, int> effectiveCellLayers;
         QHash<vtkIdType, int> calculationElementByCell;
         calculationElementByCell.reserve(caveCtx.calculationElemToCellId.size());
@@ -4393,6 +4543,8 @@ bool Solver::canDeleteNode(ProjectNode* node) const
     const QString kind = node->data(0, ProjectNode::RoleKind).toString();
     static const QSet<QString> fixedKinds = {
         QStringLiteral("SeepageBoundary"), QStringLiteral("StressBoundary"),
+        QStringLiteral("CaveLiningInnerBoundary"),
+        QStringLiteral("CaveLiningOuterBoundary"),
         QStringLiteral("DamIceRegion")};
     if (fixedKinds.contains(kind))
         return false;
@@ -4488,6 +4640,9 @@ void Solver::connectBoundaryStatus(ProjectNode* node) const
                     if (parent && parent->data(0, ProjectNode::RoleKind).toString() ==
                                       QStringLiteral("DamAnalysis"))
                         syncDamConditionalNodes(parent);
+                    else if (parent && parent->data(0, ProjectNode::RoleKind).toString() ==
+                                           QStringLiteral("CaveSupportComputation"))
+                        syncCaveSupportConditionalNodes(parent);
                     else
                         updateBoundaryNodeStatus(node, count);
                 });
@@ -4565,6 +4720,29 @@ void Solver::syncDamConditionalNodes(ProjectNode* analysisNode) const
                 child, region->selectionCount(), enabled,
                 QStringLiteral("在土石坝分析中启用冻融与结冰参数"));
         }
+    }
+}
+
+void Solver::syncCaveSupportConditionalNodes(ProjectNode* supportNode) const
+{
+    auto* page = supportNode
+        ? dynamic_cast<CaveSupportComputationPage*>(supportNode->getPage()) : nullptr;
+    if (!page)
+        return;
+
+    const bool enabled = page->liningEnabled();
+    const QString reason = QStringLiteral("在开挖与加固分析中勾选“计算衬砌内力”");
+    for (ProjectNode* child : supportNode->getChildren())
+    {
+        auto* boundary = child
+            ? dynamic_cast<StressBoundaryPage*>(child->getPage()) : nullptr;
+        if (!boundary)
+            continue;
+        const QString type = boundary->getPageType();
+        if (type != QStringLiteral("CaveLiningInnerBoundary")
+            && type != QStringLiteral("CaveLiningOuterBoundary"))
+            continue;
+        updateBoundaryNodeStatus(child, boundary->selectionCount(), enabled, reason);
     }
 }
 

@@ -17,7 +17,6 @@
 #include <QLabel>
 #include <QRegularExpression>
 #include <QSaveFile>
-#include <QSizePolicy>
 #include <QTextStream>
 #include <QVBoxLayout>
 
@@ -359,40 +358,30 @@ bool writeAlfajd(const QString& path, vtkUnstructuredGrid* grid, int targetDimen
 CaveReinforcementFieldPage::CaveReinforcementFieldPage(QWidget* parent)
     : BasePage(QStringLiteral("CaveReinforcementField"))
 {
-    setParent(parent);
-    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
-
     auto* root = new QVBoxLayout(this);
-    root->setContentsMargins(0, 0, 0, 0);
-    root->setSpacing(0);
-
-    auto* container = new QGroupBox(QStringLiteral("围岩等效参数修正（可选）"), this);
-    container->setObjectName(QStringLiteral("groupEquivalentReinforcement"));
-    auto* content = new QVBoxLayout(container);
-    content->setContentsMargins(9, 9, 9, 9);
-    content->setSpacing(10);
+    root->setContentsMargins(18, 18, 18, 18);
+    root->setSpacing(12);
 
     auto* hint = new QLabel(
-        QStringLiteral("加固任务会计算模型中已有的真实一维杆单元。本设置只决定是否额外提高"
-                       "周围岩体参数；不需要等效修正时请选择“不使用”。同一批锚杆同时采用"
-                       "真实杆单元和等效修正，可能造成加固作用重复计算。"), container);
+        QStringLiteral("此功能用于把锚杆或锚索对围岩刚度、黏聚力、摩擦角及附加围压的影响"
+                       "写入 ALFAIE.DAT/ALFAJD.DAT。它与真实一维杆单元相互独立；"
+                       "如不需要额外围岩参数修正，请保持关闭。启用后计算会自动切换到"
+                       "对应的一次或逐级“加固”任务。"), this);
     hint->setWordWrap(true);
-    hint->setObjectName(QStringLiteral("equivalentReinforcementHint"));
-    content->addWidget(hint);
+    root->addWidget(hint);
 
     auto* modeForm = new QFormLayout();
-    m_mode = new QComboBox(container);
-    m_mode->setObjectName(QStringLiteral("comboEquivalentReinforcementMode"));
-    m_mode->addItem(QStringLiteral("不使用等效修正（已有杆单元仍计算）"),
+    m_mode = new QComboBox(this);
+    m_mode->addItem(QStringLiteral("关闭（不使用等效加固参数场）"),
                     static_cast<int>(Mode::Disabled));
-    m_mode->addItem(QStringLiteral("根据现有杆单元折算围岩参数"),
+    m_mode->addItem(QStringLiteral("根据现有杆单元计算"),
                     static_cast<int>(Mode::ExistingBars));
-    m_mode->addItem(QStringLiteral("按开挖面概化围岩参数"),
+    m_mode->addItem(QStringLiteral("按开挖面概化参数计算"),
                     static_cast<int>(Mode::Conceptual));
-    modeForm->addRow(QStringLiteral("等效修正方式"), m_mode);
-    content->addLayout(modeForm);
+    modeForm->addRow(QStringLiteral("计算方式"), m_mode);
+    root->addLayout(modeForm);
 
-    m_actualBox = new QGroupBox(QStringLiteral("根据现有杆单元折算"), this);
+    m_actualBox = new QGroupBox(QStringLiteral("根据现有杆单元计算"), this);
     auto* actualForm = new QFormLayout(m_actualBox);
     m_formula = new QComboBox(m_actualBox);
     m_formula->addItem(QStringLiteral("张建海系列公式"), 1);
@@ -413,9 +402,9 @@ CaveReinforcementFieldPage::CaveReinforcementFieldPage(QWidget* parent)
     actualForm->addRow(QStringLiteral("张建海公式模量增长倍数"), m_actualStiffness);
     actualForm->addRow(QStringLiteral("Indraratna 模量结果修正系数"),
                        m_indraratnaStiffnessCorrection);
-    content->addWidget(m_actualBox);
+    root->addWidget(m_actualBox);
 
-    m_conceptBox = new QGroupBox(QStringLiteral("按开挖面概化"), this);
+    m_conceptBox = new QGroupBox(QStringLiteral("按开挖面概化参数计算"), this);
     auto* conceptForm = new QFormLayout(m_conceptBox);
     const auto makePositive = [this](double value)
     {
@@ -436,8 +425,9 @@ CaveReinforcementFieldPage::CaveReinforcementFieldPage(QWidget* parent)
     conceptForm->addRow(QStringLiteral("锚索作用深度（m）"), m_cableLength);
     conceptForm->addRow(QStringLiteral("锚索黏聚力增量（MPa）"), m_cableDeltaC);
     conceptForm->addRow(QStringLiteral("加固区模量增长倍数"), m_conceptStiffness);
-    content->addWidget(m_conceptBox);
-    root->addWidget(container);
+    root->addWidget(m_conceptBox);
+
+    root->addStretch(1);
 
     connect(m_mode, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &CaveReinforcementFieldPage::updateModeUi);
@@ -454,25 +444,13 @@ CaveReinforcementFieldPage::Mode CaveReinforcementFieldPage::mode() const
     return static_cast<Mode>(m_mode->currentData().toInt());
 }
 
-void CaveReinforcementFieldPage::setMode(Mode mode)
-{
-    const int index = m_mode->findData(static_cast<int>(mode));
-    if (index >= 0)
-        m_mode->setCurrentIndex(index);
-    updateModeUi();
-}
-
 void CaveReinforcementFieldPage::updateModeUi()
 {
-    const bool useExistingBars = mode() == Mode::ExistingBars;
-    const bool useConceptual = mode() == Mode::Conceptual;
-    m_actualBox->setVisible(true);
-    m_actualBox->setEnabled(useExistingBars);
-    m_conceptBox->setVisible(true);
-    m_conceptBox->setEnabled(useConceptual);
+    m_actualBox->setVisible(mode() == Mode::ExistingBars);
+    m_conceptBox->setVisible(mode() == Mode::Conceptual);
     const bool useZhangFormula = m_formula->currentData().toInt() == 1;
-    m_actualStiffness->setEnabled(useExistingBars && useZhangFormula);
-    m_indraratnaStiffnessCorrection->setEnabled(useExistingBars && !useZhangFormula);
+    m_actualStiffness->setEnabled(useZhangFormula);
+    m_indraratnaStiffnessCorrection->setEnabled(!useZhangFormula);
 }
 
 QJsonObject CaveReinforcementFieldPage::saveJson()
