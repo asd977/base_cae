@@ -60,8 +60,8 @@ const QVector<PostNodeSpec>& postNodeSpecs()
         {"切块", PublicConstants::kPagePostProcessBlock},
         {"等值面", PublicConstants::kPagePostProcessIsosurface},
         {"等值面分割", PublicConstants::kPagePostProcessIsosurfaceSegmentation},
-        {"曲线", PublicConstants::kPagePostProcessCurve},
-        {"动画", PublicConstants::kPagePostProcessAnimation},
+        {"计算曲线", PublicConstants::kPagePostProcessCurve},
+        {"动画设置", PublicConstants::kPagePostProcessAnimation},
         {"派生值", PublicConstants::kPagePostProcessDerivative},
         {"洞室变形轮廓图", PublicConstants::kPagePostProcessContourReader},
     };
@@ -261,7 +261,7 @@ void PostProcessing::newIsosurfaceSegmentationWidget()
 
 void PostProcessing::newAnimationAviWidget()
 {
-    createPostNode(PublicConstants::kPagePostProcessAnimation, QStringLiteral("动画"));
+    createPostNode(PublicConstants::kPagePostProcessAnimation, QStringLiteral("动画设置"));
 }
 
 // void PostProcessing::newProbeSettingsWidget()
@@ -276,7 +276,7 @@ void PostProcessing::newDerivedValueSettingWidget()
 
 void PostProcessing::newCurveSettingWidget()
 {
-    createPostNode(PublicConstants::kPagePostProcessCurve, QStringLiteral("曲线"));
+    createPostNode(PublicConstants::kPagePostProcessCurve, QStringLiteral("计算曲线"));
 }
 
 void PostProcessing::newPostContourReaderWidget()

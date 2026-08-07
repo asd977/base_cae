@@ -33,6 +33,7 @@ class BlockSettingsWidget : public BasePage
     void loadJson(const QJsonObject& object) override;
 
   private slots:
+    void on_analysisComboBox_currentIndexChanged(int index);
     void on_scalarComboBox_currentIndexChanged(int index);
     void on_planeComboBox_currentIndexChanged(int index);
     void on_blockSlider_valueChanged(int value);
@@ -41,6 +42,7 @@ class BlockSettingsWidget : public BasePage
 
     void on_stepComboBox_currentIndexChanged(int index);
     void on_resultDirComboBox_currentIndexChanged(int index);
+    void on_resultTimeComboBox_currentIndexChanged(int index);
 
   private:
     // 数据加载（选取 data 目录里“最新”的 stress_strainX-Y.txt）

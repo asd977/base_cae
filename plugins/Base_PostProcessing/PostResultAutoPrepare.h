@@ -12,12 +12,32 @@ struct ResultFile
     QString filePath;
     QString kind;
     QString format;
+
+    // 序列结果元数据。静态结果的 frameKey 为空。
+    QString frameKey;
+    QString frameLabel;
+    double frameValue = 0.0;
+    QString frameUnit;
+    int frameOrder = -1;
+};
+
+struct ResultFrame
+{
+    QString key;
+    QString displayName;
+    double value = 0.0;
+    QString unit;
+    int order = -1;
 };
 
 struct ResultGroup
 {
     QString displayName;
     QString sourcePath;
+    QString analysisKey;
+    QString analysisName;
+    QString stageName;
+    int order = 0;
 };
 
 struct PreparedResultSummary
@@ -40,4 +60,9 @@ bool prepareProject(const QString& projectDir);
 PreparedResultSummary preparedResultSummary(const QString& projectDir, const QString& resultRoot);
 QVector<ResultFile> resultFiles(const QString& projectDir, const QString& sourceDir,
                                 bool includeVtu = true);
+QVector<ResultFrame> resultFrames(const QString& projectDir, const QString& sourceDir,
+                                  bool includeVtu = true);
+QVector<ResultFile> resultFilesForFrame(const QString& projectDir, const QString& sourceDir,
+                                        const QString& frameKey,
+                                        bool includeVtu = true);
 }

@@ -64,13 +64,13 @@
        <item>
         <widget class="QGroupBox" name="groupStaticLoad">
          <property name="title">
-          <string>静力渗透荷载参数</string>
+          <string>均质坝水荷载</string>
          </property>
          <layout class="QFormLayout" name="formLayoutStaticLoad">
           <item row="0" column="0">
            <widget class="QLabel" name="labelIFIIWL_SEEP">
             <property name="text">
-             <string>坝基渗透荷载方式</string>
+             <string>坝基渗透荷载</string>
             </property>
             <property name="wordWrap">
              <bool>false</bool>
@@ -79,19 +79,15 @@
           </item>
           <item row="0" column="1">
            <widget class="QComboBox" name="comboIFIIWL_SEEP">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
+            <property name="toolTip">
+             <string>当前土石坝仅支持均质坝；求解器会固定忽略坝基渗透荷载。</string>
+            </property>
             <item>
              <property name="text">
-              <string>不考虑</string>
-             </property>
-            </item>
-            <item>
-             <property name="text">
-              <string>按折减系数自动施加</string>
-             </property>
-            </item>
-            <item>
-             <property name="text">
-              <string>使用节点水头施加</string>
+              <string>均质坝固定不单独施加</string>
              </property>
             </item>
             <property name="minimumSize">
@@ -105,7 +101,7 @@
           <item row="1" column="0">
            <widget class="QLabel" name="labelIFIIWL_BODY">
             <property name="text">
-             <string>坝体渗透体力方式</string>
+             <string>坝体渗流体力</string>
             </property>
             <property name="wordWrap">
              <bool>false</bool>
@@ -114,6 +110,9 @@
           </item>
           <item row="1" column="1">
            <widget class="QComboBox" name="comboIFIIWL_BODY">
+            <property name="toolTip">
+             <string>选择读取渗流结果时，求解器同时需要同一结果步的节点水头和节点体力；坝体自重由填筑计算单独处理。</string>
+            </property>
             <item>
              <property name="text">
               <string>不考虑</string>
@@ -121,12 +120,7 @@
             </item>
             <item>
              <property name="text">
-              <string>按容重差自动计算</string>
-             </property>
-            </item>
-            <item>
-             <property name="text">
-              <string>使用节点体力</string>
+              <string>读取节点体力</string>
              </property>
             </item>
             <property name="minimumSize">
@@ -194,6 +188,160 @@
           <property name="labelAlignment">
            <set>Qt::AlignRight|Qt::AlignVCenter</set>
           </property>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupSeepageAssociation">
+         <property name="title">
+          <string>坝体渗流体力结果来源</string>
+         </property>
+         <layout class="QFormLayout" name="formLayoutSeepageAssociation">
+          <property name="leftMargin">
+           <number>9</number>
+          </property>
+          <property name="topMargin">
+           <number>9</number>
+          </property>
+          <property name="rightMargin">
+           <number>9</number>
+          </property>
+          <property name="bottomMargin">
+           <number>9</number>
+          </property>
+          <property name="horizontalSpacing">
+           <number>14</number>
+          </property>
+          <property name="verticalSpacing">
+           <number>8</number>
+          </property>
+          <property name="fieldGrowthPolicy">
+           <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+          </property>
+          <property name="rowWrapPolicy">
+           <enum>QFormLayout::WrapLongRows</enum>
+          </property>
+          <property name="labelAlignment">
+           <set>Qt::AlignRight|Qt::AlignVCenter</set>
+          </property>
+          <item row="0" column="0">
+           <widget class="QLabel" name="labelSeepageSource">
+            <property name="text">
+             <string>来源工况</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QComboBox" name="comboSeepageSource">
+            <property name="toolTip">
+             <string>仅在坝体渗流体力选择“读取渗流结果”时使用，同时读取该工况的节点水头和节点体力，并在本工况最后一个填筑蓄水阶段施加。</string>
+            </property>
+            <item>
+             <property name="text">
+              <string>未选择渗流工况</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="labelSeepageResultType">
+            <property name="text">
+             <string>结果类型</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QComboBox" name="comboSeepageResultType">
+            <property name="toolTip">
+             <string>明确指定使用稳态结果或非稳态结果，不进行自动回退。</string>
+            </property>
+            <item>
+             <property name="text">
+              <string>稳态结果</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>非稳态结果</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="2" column="0" colspan="2">
+           <widget class="QLabel" name="labelSeepageAssociationHint">
+            <property name="text">
+             <string>仅在坝基或坝体选择读取渗流结果时启用。节点水头用于坝基渗透压力，节点体力用于坝体内部渗流力；坝体自重由填筑计算单独处理。</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupSeepageTransientStep">
+         <property name="title">
+          <string>非稳态结果步</string>
+         </property>
+         <layout class="QFormLayout" name="formLayoutSeepageTransientStep">
+          <property name="leftMargin">
+           <number>9</number>
+          </property>
+          <property name="topMargin">
+           <number>9</number>
+          </property>
+          <property name="rightMargin">
+           <number>9</number>
+          </property>
+          <property name="bottomMargin">
+           <number>9</number>
+          </property>
+          <property name="horizontalSpacing">
+           <number>14</number>
+          </property>
+          <property name="verticalSpacing">
+           <number>8</number>
+          </property>
+          <property name="fieldGrowthPolicy">
+           <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+          </property>
+          <property name="rowWrapPolicy">
+           <enum>QFormLayout::WrapLongRows</enum>
+          </property>
+          <property name="labelAlignment">
+           <set>Qt::AlignRight|Qt::AlignVCenter</set>
+          </property>
+          <item row="0" column="0">
+           <widget class="QLabel" name="labelSeepageTransientStep">
+            <property name="text">
+             <string>结果步</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QComboBox" name="comboSeepageTransientStep">
+            <property name="toolTip">
+             <string>选择非稳态最终结果或某个明确的 STEP 输出。</string>
+            </property>
+            <item>
+             <property name="text">
+              <string>请选择非稳态结果步</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="1" column="0" colspan="2">
+           <widget class="QLabel" name="labelSeepageTransientHint">
+            <property name="text">
+             <string>关联工况尚未生成可用的非稳态结果。</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>
@@ -386,7 +534,7 @@
        <item>
         <widget class="QGroupBox" name="groupDynamic">
          <property name="title">
-          <string>动力与拟静力参数</string>
+          <string>动力分析参数</string>
          </property>
          <layout class="QFormLayout" name="formLayoutDynamic">
           <item row="0" column="0" colspan="2">
@@ -402,7 +550,7 @@
           <item row="1" column="0">
            <widget class="QLabel" name="labelIFMODE">
             <property name="text">
-             <string>拟静力计算</string>
+             <string>模态分析</string>
             </property>
             <property name="wordWrap">
              <bool>false</bool>
@@ -432,7 +580,7 @@
           <item row="2" column="0">
            <widget class="QLabel" name="labelIFWAVE">
             <property name="text">
-             <string>地震波动力计算</string>
+             <string>地震波时程分析</string>
             </property>
             <property name="wordWrap">
              <bool>false</bool>
@@ -462,7 +610,7 @@
           <item row="3" column="0">
            <widget class="QLabel" name="labelIFSETT">
             <property name="text">
-             <string>流变计算</string>
+             <string>地震永久沉降</string>
             </property>
             <property name="wordWrap">
              <bool>false</bool>
@@ -561,7 +709,7 @@
           <item row="7" column="0">
            <widget class="QLabel" name="labelWOMI1">
             <property name="text">
-             <string>WOMI_1</string>
+             <string>一阶圆频率 ω1</string>
             </property>
             <property name="wordWrap">
              <bool>false</bool>

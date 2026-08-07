@@ -17,6 +17,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSet>
+#include <QSignalBlocker>
 #include <QStringConverter>
 #include <QStringList>
 #include <QTextStream>
@@ -37,8 +38,8 @@ SeepageWidget::SeepageWidget(QWidget* parent)
     ui->comboComputeType->addItem(QStringLiteral("稳定渗流"), 1);
     ui->comboComputeType->addItem(QStringLiteral("非稳定渗流"), 2);
     ui->comboComputeType->addItem(QStringLiteral("稳定 + 非稳定"), 3);
-    ui->comboItagFree->addItem(QStringLiteral("不计入自由面修正"), 0);
-    ui->comboItagFree->addItem(QStringLiteral("计入自由面修正"), 1);
+    ui->comboItagFree->addItem(QStringLiteral("不继承天然水头"), 0);
+    ui->comboItagFree->addItem(QStringLiteral("继承天然水头"), 1);
 
     connect(ui->btnCompute, &QPushButton::clicked,
             this, &SeepageWidget::onComputeClicked);
@@ -233,7 +234,15 @@ void SeepageWidget::updateComputeTypeVisibility()
 
 void SeepageWidget::updateOptionalControls()
 {
-    ui->comboItagFree->setEnabled(naturalFreeSurfaceEnabled());
+    const bool enabled = naturalFreeSurfaceEnabled();
+    ui->comboItagFree->setEnabled(enabled);
+    if (!enabled && ui->comboItagFree->currentData().toInt() != 0)
+    {
+        const QSignalBlocker blocker(ui->comboItagFree);
+        const int index = ui->comboItagFree->findData(0);
+        if (index >= 0)
+            ui->comboItagFree->setCurrentIndex(index);
+    }
 }
 
 void SeepageWidget::syncBoundaryTransientSettings()
@@ -363,7 +372,9 @@ bool SeepageWidget::exportIseepDatFile() const
     os << "'------------'\n";
     os << "1     ICASE\n";
     os << "0     NCHANGE_CASE\n";
-    os << ui->spinIter->value() << " " << ui->comboItagFree->currentData().toInt()
+    const int itagFree = naturalFreeSurfaceEnabled()
+                             ? ui->comboItagFree->currentData().toInt() : 0;
+    os << ui->spinIter->value() << " " << itagFree
        << " ITER  ITAG_FREE\n";
     os << upstreamWaterLevel() << " " << downstreamWaterLevel() << " "
        << upstreamFlux() << " " << downstreamFlux() << "    HWUP HWDW HQUP HQDW\n";
@@ -551,7 +562,8 @@ QJsonObject SeepageWidget::saveJson()
     obj[QStringLiteral("drain_well")] = ui->checkDrainWell->isChecked();
     obj[QStringLiteral("compute_type")] = ui->comboComputeType->currentData().toInt();
     obj[QStringLiteral("iter")] = ui->spinIter->value();
-    obj[QStringLiteral("itag_free")] = ui->comboItagFree->currentData().toInt();
+    obj[QStringLiteral("itag_free")] = naturalFreeSurfaceEnabled()
+                                               ? ui->comboItagFree->currentData().toInt() : 0;
     obj[QStringLiteral("seep_case_dir")] = QStringLiteral("SEEPCASE01");
     obj[QStringLiteral("dt")] = ui->spinDt->value();
     obj[QStringLiteral("tsta")] = ui->spinTsta->value();

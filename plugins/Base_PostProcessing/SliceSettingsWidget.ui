@@ -1,83 +1,303 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>SliceSettingsWidget</class>
  <widget class="QWidget" name="SliceSettingsWidget">
   <property name="geometry">
-   <rect><x>0</x><y>0</y><width>420</width><height>650</height></rect>
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>420</width>
+    <height>650</height>
+   </rect>
   </property>
-  <property name="windowTitle"><string>切面</string></property>
+  <property name="windowTitle">
+   <string>切面</string>
+  </property>
   <layout class="QVBoxLayout" name="verticalLayout">
-   <property name="spacing"><number>8</number></property>
-   <property name="leftMargin"><number>9</number></property>
-   <property name="topMargin"><number>9</number></property>
-   <property name="rightMargin"><number>9</number></property>
-   <property name="bottomMargin"><number>9</number></property>
+   <property name="spacing">
+    <number>8</number>
+   </property>
+   <property name="leftMargin">
+    <number>9</number>
+   </property>
+   <property name="topMargin">
+    <number>9</number>
+   </property>
+   <property name="rightMargin">
+    <number>9</number>
+   </property>
+   <property name="bottomMargin">
+    <number>9</number>
+   </property>
    <item>
     <widget class="QGroupBox" name="resultDataGroupBox">
-     <property name="title"><string>结果数据</string></property>
+     <property name="title">
+      <string>数据选择</string>
+     </property>
      <layout class="QGridLayout" name="resultDataLayout">
-      <property name="horizontalSpacing"><number>8</number></property>
-      <property name="verticalSpacing"><number>6</number></property>
-      <item row="0" column="0"><widget class="QLabel" name="resultStageLabel"><property name="text"><string>结果阶段</string></property></widget></item>
-      <item row="0" column="1"><widget class="QComboBox" name="resultDirComboBox"/></item>
-      <item row="1" column="0"><widget class="QLabel" name="resultTypeLabel"><property name="text"><string>结果数据</string></property></widget></item>
-      <item row="1" column="1"><widget class="QComboBox" name="stepComboBox"/></item>
-      <item row="2" column="0"><widget class="QLabel" name="scalarLabel"><property name="text"><string>物理量</string></property></widget></item>
-      <item row="2" column="1"><widget class="QComboBox" name="scalarComboBox"/></item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="analysisLabel">
+        <property name="text">
+         <string>计算工况</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="analysisComboBox" />
+      </item>
+      <property name="horizontalSpacing">
+       <number>8</number>
+      </property>
+      <property name="verticalSpacing">
+       <number>6</number>
+      </property>
+      <item row="1" column="0">
+       <widget class="QLabel" name="resultStageLabel">
+        <property name="text">
+         <string>结果阶段</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="resultDirComboBox" />
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="resultTimeLabel">
+        <property name="text">
+         <string>结果时刻</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QComboBox" name="resultTimeComboBox" />
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="resultTypeLabel">
+        <property name="text">
+         <string>结果文件</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QComboBox" name="stepComboBox" />
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="scalarLabel">
+        <property name="text">
+         <string>物理量</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QComboBox" name="scalarComboBox" />
+      </item>
      </layout>
     </widget>
    </item>
    <item>
     <widget class="QGroupBox" name="geometryGroupBox">
-     <property name="title"><string>切面设置</string></property>
+     <property name="title">
+      <string>切面设置</string>
+     </property>
      <layout class="QVBoxLayout" name="geometryLayout">
-      <property name="spacing"><number>8</number></property>
+      <property name="spacing">
+       <number>8</number>
+      </property>
       <item>
        <layout class="QGridLayout" name="geometryHeaderLayout">
-        <property name="horizontalSpacing"><number>8</number></property>
-        <property name="verticalSpacing"><number>6</number></property>
-        <item row="0" column="0"><widget class="QLabel" name="planeLabel"><property name="text"><string>切面方向</string></property></widget></item>
-        <item row="0" column="1">
-         <widget class="QComboBox" name="planeComboBox">
-          <item><property name="text"><string>YZ 平面</string></property></item>
-          <item><property name="text"><string>XZ 平面</string></property></item>
-          <item><property name="text"><string>XY 平面</string></property></item>
+        <property name="horizontalSpacing">
+         <number>8</number>
+        </property>
+        <property name="verticalSpacing">
+         <number>6</number>
+        </property>
+        <item row="0" column="0">
+         <widget class="QLabel" name="planeLabel">
+          <property name="text">
+           <string>切面方向</string>
+          </property>
          </widget>
         </item>
-        <item row="1" column="0"><widget class="QLabel" name="modeLabel"><property name="text"><string>切面方式</string></property></widget></item>
+        <item row="0" column="1">
+         <widget class="QComboBox" name="planeComboBox">
+          <item>
+           <property name="text">
+            <string>YZ 平面</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>XZ 平面</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>XY 平面</string>
+           </property>
+          </item>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="modeLabel">
+          <property name="text">
+           <string>切面方式</string>
+          </property>
+         </widget>
+        </item>
         <item row="1" column="1">
          <layout class="QHBoxLayout" name="modeLayout">
-          <item><widget class="QRadioButton" name="singleSliceRadioButton"><property name="text"><string>单切面</string></property><property name="checked"><bool>true</bool></property></widget></item>
-          <item><widget class="QRadioButton" name="multiSliceRadioButton"><property name="text"><string>多切面</string></property></widget></item>
-          <item><spacer name="modeSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property></spacer></item>
+          <item>
+           <widget class="QRadioButton" name="singleSliceRadioButton">
+            <property name="text">
+             <string>单切面</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QRadioButton" name="multiSliceRadioButton">
+            <property name="text">
+             <string>多切面</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="modeSpacer">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
          </layout>
         </item>
        </layout>
       </item>
       <item>
        <widget class="QStackedWidget" name="modeStackedWidget">
-        <property name="currentIndex"><number>0</number></property>
+        <property name="currentIndex">
+         <number>0</number>
+        </property>
         <widget class="QWidget" name="singleSlicePage">
          <layout class="QVBoxLayout" name="singleSliceLayout">
-          <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
-          <property name="spacing"><number>6</number></property>
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <property name="spacing">
+           <number>6</number>
+          </property>
           <item>
            <layout class="QHBoxLayout" name="positionLayout">
-            <item><widget class="QLabel" name="positionLabel"><property name="text"><string>切面位置</string></property></widget></item>
-            <item><widget class="QDoubleSpinBox" name="slicePositionSpin"><property name="decimals"><number>6</number></property><property name="minimum"><double>-999999999.000000000000000</double></property><property name="maximum"><double>999999999.000000000000000</double></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
+            <item>
+             <widget class="QLabel" name="positionLabel">
+              <property name="text">
+               <string>切面位置</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QDoubleSpinBox" name="slicePositionSpin">
+              <property name="decimals">
+               <number>6</number>
+              </property>
+              <property name="minimum">
+               <double>-999999999.000000000000000</double>
+              </property>
+              <property name="maximum">
+               <double>999999999.000000000000000</double>
+              </property>
+              <property name="keyboardTracking">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
            </layout>
           </item>
-          <item><widget class="QSlider" name="sliceSlider"><property name="maximum"><number>1000</number></property><property name="value"><number>500</number></property><property name="orientation"><enum>Qt::Horizontal</enum></property></widget></item>
-          <item><widget class="QLabel" name="sliceRangeLabel"><property name="text"><string>范围：--</string></property></widget></item>
+          <item>
+           <widget class="QSlider" name="sliceSlider">
+            <property name="maximum">
+             <number>1000</number>
+            </property>
+            <property name="value">
+             <number>500</number>
+            </property>
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="sliceRangeLabel">
+            <property name="text">
+             <string>范围：--</string>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
         <widget class="QWidget" name="multiSlicePage">
          <layout class="QGridLayout" name="multiSliceLayout">
-          <property name="leftMargin"><number>0</number></property><property name="topMargin"><number>0</number></property><property name="rightMargin"><number>0</number></property><property name="bottomMargin"><number>0</number></property>
-          <property name="horizontalSpacing"><number>8</number></property><property name="verticalSpacing"><number>6</number></property>
-          <item row="0" column="0"><widget class="QLabel" name="sliceCountLabel"><property name="text"><string>切面数量</string></property></widget></item>
-          <item row="0" column="1"><widget class="QSpinBox" name="sliceNumSpin"><property name="minimum"><number>1</number></property><property name="maximum"><number>100</number></property><property name="value"><number>5</number></property></widget></item>
-          <item row="1" column="0" colspan="2"><widget class="QCheckBox" name="includeEndsCheck"><property name="text"><string>包含两端</string></property></widget></item>
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <property name="horizontalSpacing">
+           <number>8</number>
+          </property>
+          <property name="verticalSpacing">
+           <number>6</number>
+          </property>
+          <item row="0" column="0">
+           <widget class="QLabel" name="sliceCountLabel">
+            <property name="text">
+             <string>切面数量</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QSpinBox" name="sliceNumSpin">
+            <property name="minimum">
+             <number>1</number>
+            </property>
+            <property name="maximum">
+             <number>100</number>
+            </property>
+            <property name="value">
+             <number>5</number>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0" colspan="2">
+           <widget class="QCheckBox" name="includeEndsCheck">
+            <property name="text">
+             <string>包含两端</string>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </widget>
@@ -87,13 +307,49 @@
    </item>
    <item>
     <layout class="QHBoxLayout" name="buttonLayout">
-     <item><spacer name="buttonSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
-     <item><widget class="QPushButton" name="confirmButton"><property name="minimumSize"><size><width>92</width><height>30</height></size></property><property name="text"><string>生成切面</string></property></widget></item>
+     <item>
+      <spacer name="buttonSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="confirmButton">
+       <property name="minimumSize">
+        <size>
+         <width>92</width>
+         <height>30</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>生成多切面</string>
+       </property>
+      </widget>
+     </item>
     </layout>
    </item>
-   <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
   </layout>
  </widget>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

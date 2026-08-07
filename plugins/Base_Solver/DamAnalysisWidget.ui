@@ -78,12 +78,12 @@
           </item>
           <item>
            <property name="text">
-            <string>2 - 仅动力计算</string>
+            <string>2 - 仅动力计算（使用本工况已有静力结果）</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>3 - 静力后继续动力计算</string>
+            <string>3 - 先静力后动力计算</string>
            </property>
           </item>
           <property name="minimumSize">
@@ -741,7 +741,7 @@
         <item row="11" column="0">
          <widget class="QLabel" name="labelLine29">
           <property name="text">
-           <string>特征值计算</string>
+           <string>模态特征值求解</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>
@@ -771,7 +771,7 @@
         <item row="12" column="0">
          <widget class="QLabel" name="labelLine30">
           <property name="text">
-           <string>特征值数</string>
+           <string>模态阶数</string>
           </property>
           <property name="wordWrap">
            <bool>false</bool>

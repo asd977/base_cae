@@ -28,11 +28,13 @@
 #include <QFileInfo>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <QRadioButton>
 #include <QSignalBlocker>
 
 #include "PostFieldUtils.h"
 #include "ResultDisplayNames.h"
 #include "PostResultAutoPrepare.h"
+#include "PostResultSelectionUtils.h"
 #include "PostTecplotUtils.h"
 #include "PostVisualUtils.h"
 #include "ui_IsosurfaceSettingsWidget.h"
@@ -82,14 +84,17 @@ IsosurfaceSettingsWidget::IsosurfaceSettingsWidget(VisualWidgetService* ppw, QWi
 {
     ui->setupUi(this);
 
+    configurePostResultCombo(ui->analysisComboBox);
     configurePostResultCombo(ui->resultDirComboBox);
+    configurePostResultCombo(ui->resultTimeComboBox);
     configurePostResultCombo(ui->stepComboBox);
 
     ui->singleIsoRadioButton->setChecked(true);
     ui->isoModeStackedWidget->setCurrentIndex(0);
 
     // UI 默认
-    ui->percentCheckBox->setChecked(true);
+    ui->percentModeRadioButton->setChecked(true);
+    ui->valueModeRadioButton->setChecked(false);
     ui->isoSlider->setRange(0, 100);
     ui->isoSlider->setTracking(false);
     ui->isoSlider->setToolTip(QStringLiteral("松开滑块后更新等值面，避免拖动时连续重算"));
@@ -107,11 +112,13 @@ IsosurfaceSettingsWidget::IsosurfaceSettingsWidget(VisualWidgetService* ppw, QWi
     }
     if (ui->includeEndsCheck)
         ui->includeEndsCheck->setChecked(false);
+    ui->confirmPushButton->setText(QStringLiteral("生成多等值面"));
+    ui->confirmPushButton->setVisible(false);
 
     // 连接信号
     connect(ui->scalarComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &IsosurfaceSettingsWidget::on_scalarComboBox_currentIndexChanged);
-    connect(ui->percentCheckBox, &QCheckBox::toggled, this,
+    connect(ui->percentModeRadioButton, &QRadioButton::toggled, this,
             &IsosurfaceSettingsWidget::on_percentCheckBox_toggled);
     connect(ui->isoSlider, &QSlider::valueChanged, this,
             &IsosurfaceSettingsWidget::on_isoSlider_valueChanged);
@@ -120,8 +127,14 @@ IsosurfaceSettingsWidget::IsosurfaceSettingsWidget(VisualWidgetService* ppw, QWi
 
     connect(ui->confirmPushButton, &QPushButton::clicked, this,
             &IsosurfaceSettingsWidget::on_confirmPushButton_clicked);
+    connect(ui->analysisComboBox,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &IsosurfaceSettingsWidget::on_analysisComboBox_currentIndexChanged);
     connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &IsosurfaceSettingsWidget::on_resultDirComboBox_currentIndexChanged);
+    connect(ui->resultTimeComboBox,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &IsosurfaceSettingsWidget::on_resultTimeComboBox_currentIndexChanged);
 
     connect(ui->singleIsoRadioButton, &QRadioButton::toggled, this,
             &IsosurfaceSettingsWidget::on_singleIsoGroupBox_toggled);
@@ -166,8 +179,8 @@ void IsosurfaceSettingsWidget::beforeLoad()
         if (!field.name.isEmpty())
         {
             m_visualService->showScalarBar(true, false);
-            if (auto* scalarBar = m_visualService->scalarBarActor())
-                scalarBar->SetTitle(ResultDisplayNames::scalarBarName(field.name).toUtf8().constData());
+            applyStandardPostScalarBar(
+                m_visualService, ResultDisplayNames::scalarBarName(field.name));
         }
     }
     renderNow();
@@ -177,11 +190,13 @@ QJsonObject IsosurfaceSettingsWidget::saveJson()
 {
     const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
     QJsonObject object;
+    object.insert(QStringLiteral("analysisKey"), ui->analysisComboBox->currentData().toString());
     object.insert(QStringLiteral("resultDir"), ui->resultDirComboBox->currentData().toString());
+    object.insert(QStringLiteral("resultTime"), ui->resultTimeComboBox->currentData().toString());
     object.insert(QStringLiteral("stepFile"), ui->stepComboBox->currentData().toString());
     object.insert(QStringLiteral("fieldName"), field.name);
     object.insert(QStringLiteral("fieldAssociation"), field.association);
-    object.insert(QStringLiteral("percentMode"), ui->percentCheckBox->isChecked());
+    object.insert(QStringLiteral("percentMode"), ui->percentModeRadioButton->isChecked());
     object.insert(QStringLiteral("isoPercent"), ui->isoSlider->value());
     object.insert(QStringLiteral("isoValue"), ui->isoSpin->value());
     object.insert(QStringLiteral("singleMode"), ui->singleIsoRadioButton->isChecked());
@@ -209,18 +224,55 @@ void IsosurfaceSettingsWidget::applyPendingState()
     m_pendingState.clear();
     m_hasPendingState = false;
 
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     const QString resultDir = state.value(QStringLiteral("resultDir")).toString();
-    if (!resultDir.isEmpty())
+    const QString resolvedResultDir =
+        PostResultSelectionUtils::absoluteSourcePath(projectDir, resultDir);
+    QString analysisKey = state.value(QStringLiteral("analysisKey")).toString();
+    if (analysisKey.isEmpty() && !resolvedResultDir.isEmpty())
+        analysisKey =
+            PostResultSelectionUtils::analysisKeyForSource(projectDir, resolvedResultDir);
+
+    if (!analysisKey.isEmpty())
     {
-        const int index = ui->resultDirComboBox->findData(resultDir);
+        const int analysisIndex = ui->analysisComboBox->findData(analysisKey);
+        if (analysisIndex >= 0)
+        {
+            const QSignalBlocker blocker(ui->analysisComboBox);
+            ui->analysisComboBox->setCurrentIndex(analysisIndex);
+        }
+    }
+    PostResultSelectionUtils::populateStageCombo(
+        ui->resultDirComboBox, projectDir,
+        PostResultSelectionUtils::selectedAnalysisKey(ui->analysisComboBox),
+        resolvedResultDir);
+    if (!resolvedResultDir.isEmpty())
+    {
+        const int index = PostResultSelectionUtils::sourceComboIndex(
+            ui->resultDirComboBox, projectDir, resolvedResultDir);
         if (index >= 0)
         {
             const QSignalBlocker blocker(ui->resultDirComboBox);
             ui->resultDirComboBox->setCurrentIndex(index);
-            m_dataPath = resultDir;
         }
     }
+    m_dataPath = ui->resultDirComboBox->currentData().toString();
     loadFileName(m_dataPath);
+
+    const QString resultTime = state.value(QStringLiteral("resultTime")).toString();
+    if (!resultTime.isNull())
+    {
+        const int timeIndex = ui->resultTimeComboBox->findData(resultTime);
+        if (timeIndex >= 0)
+        {
+            {
+                const QSignalBlocker blocker(ui->resultTimeComboBox);
+                ui->resultTimeComboBox->setCurrentIndex(timeIndex);
+            }
+            on_resultTimeComboBox_currentIndexChanged(timeIndex);
+        }
+    }
 
     const QString stepFile = state.value(QStringLiteral("stepFile")).toString();
     if (!stepFile.isEmpty())
@@ -244,7 +296,8 @@ void IsosurfaceSettingsWidget::applyPendingState()
     setIsoSpinRangeFromScalar();
 
     {
-        const QSignalBlocker percentBlocker(ui->percentCheckBox);
+        const QSignalBlocker percentBlocker(ui->percentModeRadioButton);
+        const QSignalBlocker valueModeBlocker(ui->valueModeRadioButton);
         const QSignalBlocker sliderBlocker(ui->isoSlider);
         const QSignalBlocker spinBlocker(ui->isoSpin);
         const QSignalBlocker singleBlocker(ui->singleIsoRadioButton);
@@ -254,7 +307,8 @@ void IsosurfaceSettingsWidget::applyPendingState()
 
         const bool percentMode = state.value(QStringLiteral("percentMode"), true).toBool();
         const bool singleMode = state.value(QStringLiteral("singleMode"), true).toBool();
-        ui->percentCheckBox->setChecked(percentMode);
+        ui->percentModeRadioButton->setChecked(percentMode);
+        ui->valueModeRadioButton->setChecked(!percentMode);
         ui->isoSlider->setValue(state.value(QStringLiteral("isoPercent"), 50).toInt());
         if (!percentMode)
             ui->isoSpin->setValue(state.value(QStringLiteral("isoValue"), ui->isoSpin->value()).toDouble());
@@ -264,8 +318,8 @@ void IsosurfaceSettingsWidget::applyPendingState()
         ui->isoCountSpin->setValue(state.value(QStringLiteral("isoCount"), 5).toInt());
         ui->includeEndsCheck->setChecked(state.value(QStringLiteral("includeEnds"), false).toBool());
     }
-    ui->isoSlider->setEnabled(ui->percentCheckBox->isChecked());
-    ui->isoSpin->setEnabled(!ui->percentCheckBox->isChecked());
+    ui->isoSlider->setEnabled(ui->percentModeRadioButton->isChecked());
+    ui->isoSpin->setEnabled(!ui->percentModeRadioButton->isChecked());
 
     detachAllFromScene();
     m_actorOverall = nullptr;
@@ -283,21 +337,35 @@ void IsosurfaceSettingsWidget::refreshResultGroups()
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    const QString previousPath = m_dataPath;
     const QVector<PostResultAutoPrepare::ResultGroup> groups =
         PostResultAutoPrepare::resultGroups(projectDir);
+    QString previousAnalysis = ui->analysisComboBox->currentData().toString();
+    const QString previousPath = m_dataPath;
+    if (previousAnalysis.isEmpty() && !previousPath.isEmpty())
+        previousAnalysis =
+            PostResultSelectionUtils::analysisKeyForSource(groups, previousPath);
 
-    ui->resultDirComboBox->blockSignals(true);
-    ui->resultDirComboBox->clear();
-    for (const PostResultAutoPrepare::ResultGroup& group : groups)
-        ui->resultDirComboBox->addItem(group.displayName, group.sourcePath);
+    PostResultSelectionUtils::populateAnalysisCombo(
+        ui->analysisComboBox, groups, previousAnalysis);
+    PostResultSelectionUtils::populateStageCombo(
+        ui->resultDirComboBox, groups,
+        PostResultSelectionUtils::selectedAnalysisKey(ui->analysisComboBox),
+        previousPath);
 
-    int index = previousPath.isEmpty() ? -1 : ui->resultDirComboBox->findData(previousPath);
-    if (index < 0 && ui->resultDirComboBox->count() > 0)
-        index = 0;
-    ui->resultDirComboBox->setCurrentIndex(index);
-    m_dataPath = index >= 0 ? ui->resultDirComboBox->itemData(index).toString() : QString();
-    ui->resultDirComboBox->blockSignals(false);
+    m_dataPath = ui->resultDirComboBox->currentData().toString();
+}
+
+void IsosurfaceSettingsWidget::on_analysisComboBox_currentIndexChanged(int)
+{
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QString previousPath = m_dataPath;
+    PostResultSelectionUtils::populateStageCombo(
+        ui->resultDirComboBox, projectDir,
+        PostResultSelectionUtils::selectedAnalysisKey(ui->analysisComboBox),
+        previousPath);
+    m_dataPath = ui->resultDirComboBox->currentData().toString();
+    loadFileName(m_dataPath);
 }
 
 void IsosurfaceSettingsWidget::on_resultDirComboBox_currentIndexChanged(int index)
@@ -307,6 +375,24 @@ void IsosurfaceSettingsWidget::on_resultDirComboBox_currentIndexChanged(int inde
     m_dataPath = ui->resultDirComboBox->itemData(index).toString();
     loadFileName(m_dataPath);
 }
+
+void IsosurfaceSettingsWidget::on_resultTimeComboBox_currentIndexChanged(int)
+{
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QString previousName = ui->stepComboBox->currentText();
+    PostResultSelectionUtils::populateResultCombo(
+        ui->stepComboBox, projectDir, m_dataPath,
+        PostResultSelectionUtils::selectedFrameKey(ui->resultTimeComboBox),
+        QString(), false);
+
+    const int sameName = ui->stepComboBox->findText(previousName);
+    if (sameName >= 0)
+        ui->stepComboBox->setCurrentIndex(sameName);
+    if (ui->stepComboBox->count() > 0)
+        on_stepComboBox_currentIndexChanged(ui->stepComboBox->currentIndex());
+}
+
 
 void IsosurfaceSettingsWidget::beforeUnload()
 {
@@ -318,41 +404,31 @@ void IsosurfaceSettingsWidget::beforeUnload()
 
 void IsosurfaceSettingsWidget::loadFileName(QString dataPath)
 {
-    ui->stepComboBox->blockSignals(true);
-    ui->stepComboBox->clear();
-
     QDir directory(dataPath);
     if (!directory.exists())
     {
+        ui->resultTimeComboBox->clear();
+        ui->stepComboBox->clear();
         qWarning() << "Directory not found:" << dataPath;
-        ui->stepComboBox->blockSignals(false);
         return;
     }
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    const QVector<PostResultAutoPrepare::ResultFile> files =
-        PostResultAutoPrepare::resultFiles(projectDir, dataPath, false);
+    const QString previousTime = ui->resultTimeComboBox->currentData().toString();
+    const QString previousFile = ui->stepComboBox->currentData().toString();
 
-    for (const PostResultAutoPrepare::ResultFile& file : files)
-    {
-        const QString itemName = file.displayName.trimmed().isEmpty()
-                                     ? QStringLiteral("结果数据")
-                                     : file.displayName.trimmed();
-        ui->stepComboBox->addItem(itemName, file.filePath);
-    }
-
-    ui->stepComboBox->blockSignals(false);
+    PostResultSelectionUtils::populateTimeCombo(
+        ui->resultTimeComboBox, projectDir, dataPath, previousTime, false);
+    PostResultSelectionUtils::populateResultCombo(
+        ui->stepComboBox, projectDir, dataPath,
+        PostResultSelectionUtils::selectedFrameKey(ui->resultTimeComboBox),
+        previousFile, false);
 
     if (ui->stepComboBox->count() > 0)
-    {
-        ui->stepComboBox->setCurrentIndex(0);
-        on_stepComboBox_currentIndexChanged(0);
-    }
+        on_stepComboBox_currentIndexChanged(ui->stepComboBox->currentIndex());
     else
-    {
         qWarning() << "No configured result files found in" << dataPath;
-    }
 }
 
 void IsosurfaceSettingsWidget::readTecplotLatest()
@@ -477,8 +553,8 @@ void IsosurfaceSettingsWidget::updateOverallColoring()
     if (m_visualService)
     {
         m_visualService->showScalarBar(true, false);
-        if (auto* scalarBar = m_visualService->scalarBarActor())
-            scalarBar->SetTitle(ResultDisplayNames::scalarBarName(field.name).toUtf8().constData());
+        applyStandardPostScalarBar(
+            m_visualService, ResultDisplayNames::scalarBarName(field.name));
     }
 }
 
@@ -492,7 +568,7 @@ void IsosurfaceSettingsWidget::renderNow()
 
 double IsosurfaceSettingsWidget::currentSingleIsoFromUI() const
 {
-    if (ui->percentCheckBox->isChecked())
+    if (ui->percentModeRadioButton->isChecked())
     {
         const double t = ui->isoSlider->value() / 100.0;
         return scalarMin() + t * (scalarMax() - scalarMin());
@@ -614,8 +690,8 @@ void IsosurfaceSettingsWidget::updateSingleIsoRealtime()
     {
         const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
         m_visualService->showScalarBar(true, false);
-        if (auto* scalarBar = m_visualService->scalarBarActor())
-            scalarBar->SetTitle(ResultDisplayNames::scalarBarName(field.name).toUtf8().constData());
+        applyStandardPostScalarBar(
+            m_visualService, ResultDisplayNames::scalarBarName(field.name));
     }
     m_singleDisplayed = true;
     m_multiDisplayed = false;
@@ -835,8 +911,6 @@ void IsosurfaceSettingsWidget::on_confirmPushButton_clicked()
 {
     if (ui->multiIsoRadioButton->isChecked())
         buildMultiIsoResult();
-    else
-        updateSingleIsoRealtime();
 }
 
 void IsosurfaceSettingsWidget::on_singleIsoGroupBox_toggled(bool checked)
@@ -845,6 +919,7 @@ void IsosurfaceSettingsWidget::on_singleIsoGroupBox_toggled(bool checked)
         return;
 
     ui->isoModeStackedWidget->setCurrentIndex(0);
+    ui->confirmPushButton->setVisible(false);
     hideMultiActorsFromScene();
     m_multiDisplayed = false;
     updateSingleIsoRealtime();
@@ -856,6 +931,8 @@ void IsosurfaceSettingsWidget::on_multiIsoGroupBox_toggled(bool checked)
         return;
 
     ui->isoModeStackedWidget->setCurrentIndex(1);
+    ui->confirmPushButton->setVisible(true);
+    ui->confirmPushButton->setText(QStringLiteral("生成多等值面"));
     if (m_actorSingle)
         removeActorByService(m_visualService, m_actorSingle, false);
     m_singleDisplayed = false;

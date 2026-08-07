@@ -6,6 +6,7 @@
 #include <QString>
 #include <QMap>
 #include <QPair>
+#include <QSet>
 #include <QVector>
 
 class QLineEdit;
@@ -39,7 +40,30 @@ class FillStorageCyclePage : public BasePage
     bool usesDamBaseUplift() const;
     bool usesLinearDamBaseUplift() const;
     bool usesDamFacePressure() const;
+    bool usesImportedSeepageHead() const;
+    bool usesImportedSeepageBody() const;
+    bool needsSeepageAssociation() const;
+    QString seepageSourceUuid() const;
+    QString seepageSourceName() const;
+    QString seepageResultType() const;
+    QString seepageTransientStep() const;
+    void setAvailableSeepageSources(const QVector<QPair<QString, QString>>& sources);
+    void setAvailableTransientResults(const QVector<int>& steps, bool hasFinalResult);
+    void setPreparedSeepageFiles(const QString& headFile, const QString& bodyFile);
+    void clearPreparedSeepageFiles();
     void setDynamicOptionsAvailable(bool available);
+    bool hasCreepCalculation() const;
+    bool usesModalAnalysis() const;
+    bool usesWaveAnalysis() const;
+    bool usesPermanentSettlement() const;
+    bool usesWaterDrop() const;
+    bool usesWetting() const;
+    int cycleCount() const;
+    QString finalStaticStateDirectoryName(int caseIndex, int maximumDamLayer) const;
+    bool hasEffectiveWaterFill(int oneBasedCircle) const;
+    bool lastCycleHasReservoirCreep() const;
+    void setPreparedDynamicStateDirectory(const QString& directory);
+    void clearPreparedDynamicStateDirectory();
     bool validateInputs(QString* errorMessage) const;
     QVector<QPair<int, int>> fillLayerRanges(QString* errorMessage = nullptr) const;
     void setFillLayerRange(int firstLayer, int lastLayer);
@@ -94,4 +118,13 @@ class FillStorageCyclePage : public BasePage
     QTableWidget* m_activeMaterialTable = nullptr;
     bool m_dynamicOptionsAvailable = true;
     bool m_materialHighlightActive = false;
+    QString m_savedSeepageSourceUuid;
+    QString m_savedSeepageSourceName;
+    QSet<QString> m_availableSeepageSourceUuids;
+    QSet<int> m_availableTransientSteps;
+    bool m_hasTransientFinalResult = false;
+    QString m_savedSeepageTransientStep;
+    QString m_preparedHeadFile;
+    QString m_preparedBodyFile;
+    QString m_preparedDynamicStateDirectory;
 };

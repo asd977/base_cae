@@ -1,13 +1,24 @@
 #include "SolverSettingWidget.h"
 #include "ui_SolverSettingWidget.h"
 
+#include <QAbstractItemView>
 #include <QComboBox>
+#include <QHeaderView>
+#include <QHash>
 #include <QJsonObject>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
 #include <QSpinBox>
+#include <QTreeWidget>
+#include <QTreeWidgetItem>
 
 #include "SolverUiLayoutHelper.h"
+
+namespace
+{
+constexpr int kBatchUuidRole = Qt::UserRole + 1;
+}
 
 SolverSettingWidget::SolverSettingWidget(QWidget* parent)
     : BasePage("display"), ui(new Ui::SolverSettingWidget)
@@ -32,6 +43,16 @@ SolverSettingWidget::SolverSettingWidget(QWidget* parent)
     m_gpuModeCombo->setToolTip(
         QStringLiteral("默认模式沿用工况设置；GPU 模式优先使用显卡计算。"));
 
+    ui->batchAnalysisTree->setColumnCount(2);
+    ui->batchAnalysisTree->setHeaderLabels(
+        {QStringLiteral("计算节点"), QStringLiteral("状态")});
+    ui->batchAnalysisTree->setRootIsDecorated(false);
+    ui->batchAnalysisTree->setAlternatingRowColors(true);
+    ui->batchAnalysisTree->setSelectionMode(QAbstractItemView::SingleSelection);
+    ui->batchAnalysisTree->header()->setStretchLastSection(false);
+    ui->batchAnalysisTree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    ui->batchAnalysisTree->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+
     connect(ui->seepageButton, &QPushButton::clicked, this,
             &SolverSettingWidget::createSeepageRequested);
     connect(ui->damButton, &QPushButton::clicked, this,
@@ -42,6 +63,40 @@ SolverSettingWidget::SolverSettingWidget(QWidget* parent)
             &SolverSettingWidget::createCaveRequested);
     connect(ui->blockButton, &QPushButton::clicked, this,
             &SolverSettingWidget::createBlockRequested);
+
+    connect(ui->batchSelectAllButton, &QPushButton::clicked, this,
+            [this]()
+            {
+                for (int i = 0; i < ui->batchAnalysisTree->topLevelItemCount(); ++i)
+                {
+                    if (auto* item = ui->batchAnalysisTree->topLevelItem(i))
+                        item->setCheckState(0, Qt::Checked);
+                }
+            });
+    connect(ui->batchClearButton, &QPushButton::clicked, this,
+            [this]()
+            {
+                for (int i = 0; i < ui->batchAnalysisTree->topLevelItemCount(); ++i)
+                {
+                    if (auto* item = ui->batchAnalysisTree->topLevelItem(i))
+                        item->setCheckState(0, Qt::Unchecked);
+                }
+            });
+    connect(ui->batchComputeButton, &QPushButton::clicked, this,
+            [this]()
+            {
+                const QStringList uuids = checkedBatchAnalysisUuids();
+                if (uuids.isEmpty())
+                {
+                    QMessageBox::information(this, QStringLiteral("批量计算"),
+                                             QStringLiteral("请先勾选至少一个计算节点。"));
+                    return;
+                }
+                emit batchComputeRequested(uuids);
+            });
+    connect(ui->batchStopButton, &QPushButton::clicked, this,
+            &SolverSettingWidget::batchStopRequested);
+
     connect(m_computeDeviceCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int)
             {
@@ -80,6 +135,7 @@ SolverSettingWidget::SolverSettingWidget(QWidget* parent)
     updateDeviceControls();
 
     setAnalysisCounts(0, 0, 0, 0, 0);
+    setBatchRunning(false);
 }
 
 SolverSettingWidget::~SolverSettingWidget()
@@ -178,4 +234,125 @@ void SolverSettingWidget::setAnalysisCounts(int seepageCount, int damCount, int 
             .arg(slopeCount)
             .arg(caveCount)
             .arg(blockCount));
+}
+
+void SolverSettingWidget::setBatchAnalyses(const QVector<QPair<QString, QString>>& analyses)
+{
+    QHash<QString, Qt::CheckState> checkedStates;
+    QHash<QString, QString> statuses;
+    for (int i = 0; i < ui->batchAnalysisTree->topLevelItemCount(); ++i)
+    {
+        QTreeWidgetItem* item = ui->batchAnalysisTree->topLevelItem(i);
+        if (!item)
+            continue;
+        const QString uuid = item->data(0, kBatchUuidRole).toString();
+        checkedStates.insert(uuid, item->checkState(0));
+        statuses.insert(uuid, item->text(1));
+    }
+
+    ui->batchAnalysisTree->clear();
+    for (const auto& analysis : analyses)
+    {
+        auto* item = new QTreeWidgetItem(ui->batchAnalysisTree);
+        item->setText(0, analysis.second);
+        item->setText(1, statuses.value(analysis.first, QStringLiteral("待计算")));
+        item->setData(0, kBatchUuidRole, analysis.first);
+        item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+        item->setCheckState(0, checkedStates.value(analysis.first, Qt::Unchecked));
+        item->setToolTip(0, analysis.second);
+    }
+
+    const bool hasAnalyses = !analyses.isEmpty();
+    ui->batchEmptyLabel->setVisible(!hasAnalyses);
+    ui->batchAnalysisTree->setVisible(hasAnalyses);
+    ui->batchSelectAllButton->setEnabled(!m_batchRunning && hasAnalyses);
+    ui->batchClearButton->setEnabled(!m_batchRunning && hasAnalyses);
+    ui->batchComputeButton->setEnabled(!m_batchRunning && hasAnalyses);
+}
+
+void SolverSettingWidget::setBatchRunning(bool running, int total)
+{
+    m_batchRunning = running;
+    ui->calculationSettingsGroup->setEnabled(!running);
+    ui->createAnalysisGroup->setEnabled(!running);
+    ui->batchAnalysisTree->setEnabled(!running);
+    ui->batchSelectAllButton->setEnabled(!running);
+    ui->batchClearButton->setEnabled(!running);
+    ui->batchComputeButton->setEnabled(!running && ui->batchAnalysisTree->topLevelItemCount() > 0);
+    ui->batchStopButton->setEnabled(running);
+
+    if (running)
+        ui->batchProgressLabel->setText(QStringLiteral("正在批量计算：0 / %1").arg(total));
+}
+
+void SolverSettingWidget::setBatchItemStatus(const QString& uuid, const QString& status)
+{
+    if (QTreeWidgetItem* item = findBatchItem(uuid))
+    {
+        item->setText(1, status);
+        ui->batchAnalysisTree->scrollToItem(item, QAbstractItemView::PositionAtCenter);
+        ui->batchAnalysisTree->setCurrentItem(item);
+    }
+}
+
+void SolverSettingWidget::setBatchProgress(int finished, int total, int failed)
+{
+    if (total <= 0)
+    {
+        ui->batchProgressLabel->setText(QStringLiteral("未开始"));
+        return;
+    }
+
+    const int succeeded = qMax(0, finished - failed);
+    if (finished < total)
+    {
+        ui->batchProgressLabel->setText(
+            QStringLiteral("正在批量计算：%1 / %2（成功 %3，失败 %4）")
+                .arg(finished)
+                .arg(total)
+                .arg(succeeded)
+                .arg(failed));
+    }
+    else
+    {
+        ui->batchProgressLabel->setText(
+            QStringLiteral("批量计算完成：%1 / %2（成功 %3，失败 %4）")
+                .arg(finished)
+                .arg(total)
+                .arg(succeeded)
+                .arg(failed));
+    }
+}
+
+void SolverSettingWidget::setBatchStatusText(const QString& text)
+{
+    ui->batchProgressLabel->setText(text.isEmpty() ? QStringLiteral("未开始") : text);
+}
+
+QStringList SolverSettingWidget::checkedBatchAnalysisUuids() const
+{
+    QStringList uuids;
+    for (int i = 0; i < ui->batchAnalysisTree->topLevelItemCount(); ++i)
+    {
+        QTreeWidgetItem* item = ui->batchAnalysisTree->topLevelItem(i);
+        if (!item || item->checkState(0) != Qt::Checked)
+            continue;
+        const QString uuid = item->data(0, kBatchUuidRole).toString();
+        if (!uuid.isEmpty())
+            uuids.push_back(uuid);
+    }
+    return uuids;
+}
+
+QTreeWidgetItem* SolverSettingWidget::findBatchItem(const QString& uuid) const
+{
+    if (uuid.isEmpty())
+        return nullptr;
+    for (int i = 0; i < ui->batchAnalysisTree->topLevelItemCount(); ++i)
+    {
+        QTreeWidgetItem* item = ui->batchAnalysisTree->topLevelItem(i);
+        if (item && item->data(0, kBatchUuidRole).toString() == uuid)
+            return item;
+    }
+    return nullptr;
 }

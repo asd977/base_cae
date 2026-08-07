@@ -1,49 +1,205 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>BlockSettingsWidget</class>
  <widget class="QWidget" name="BlockSettingsWidget">
-  <property name="geometry"><rect><x>0</x><y>0</y><width>420</width><height>560</height></rect></property>
-  <property name="windowTitle"><string>切块</string></property>
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>420</width>
+    <height>560</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>切块</string>
+  </property>
   <layout class="QVBoxLayout" name="verticalLayout">
-   <property name="spacing"><number>8</number></property><property name="leftMargin"><number>9</number></property><property name="topMargin"><number>9</number></property><property name="rightMargin"><number>9</number></property><property name="bottomMargin"><number>9</number></property>
+   <property name="spacing">
+    <number>8</number>
+   </property>
+   <property name="leftMargin">
+    <number>9</number>
+   </property>
+   <property name="topMargin">
+    <number>9</number>
+   </property>
+   <property name="rightMargin">
+    <number>9</number>
+   </property>
+   <property name="bottomMargin">
+    <number>9</number>
+   </property>
    <item>
     <widget class="QGroupBox" name="resultDataGroupBox">
-     <property name="title"><string>结果数据</string></property>
+     <property name="title">
+      <string>数据选择</string>
+     </property>
      <layout class="QGridLayout" name="resultDataLayout">
-      <property name="horizontalSpacing"><number>8</number></property><property name="verticalSpacing"><number>6</number></property>
-      <item row="0" column="0"><widget class="QLabel" name="resultStageLabel"><property name="text"><string>结果阶段</string></property></widget></item>
-      <item row="0" column="1"><widget class="QComboBox" name="resultDirComboBox"/></item>
-      <item row="1" column="0"><widget class="QLabel" name="resultTypeLabel"><property name="text"><string>结果数据</string></property></widget></item>
-      <item row="1" column="1"><widget class="QComboBox" name="stepComboBox"/></item>
-      <item row="2" column="0"><widget class="QLabel" name="scalarLabel"><property name="text"><string>物理量</string></property></widget></item>
-      <item row="2" column="1"><widget class="QComboBox" name="scalarComboBox"/></item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="analysisLabel">
+        <property name="text">
+         <string>计算工况</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="analysisComboBox" />
+      </item>
+      <property name="horizontalSpacing">
+       <number>8</number>
+      </property>
+      <property name="verticalSpacing">
+       <number>6</number>
+      </property>
+      <item row="1" column="0">
+       <widget class="QLabel" name="resultStageLabel">
+        <property name="text">
+         <string>结果阶段</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="resultDirComboBox" />
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="resultTimeLabel">
+        <property name="text">
+         <string>结果时刻</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QComboBox" name="resultTimeComboBox" />
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="resultTypeLabel">
+        <property name="text">
+         <string>结果文件</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QComboBox" name="stepComboBox" />
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="scalarLabel">
+        <property name="text">
+         <string>物理量</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QComboBox" name="scalarComboBox" />
+      </item>
      </layout>
     </widget>
    </item>
    <item>
     <widget class="QGroupBox" name="geometryGroupBox">
-     <property name="title"><string>切块设置</string></property>
+     <property name="title">
+      <string>切块设置</string>
+     </property>
      <layout class="QGridLayout" name="geometryLayout">
-      <property name="horizontalSpacing"><number>8</number></property><property name="verticalSpacing"><number>7</number></property>
-      <item row="0" column="0"><widget class="QLabel" name="planeLabel"><property name="text"><string>切块方向</string></property></widget></item>
-      <item row="0" column="1">
-       <widget class="QComboBox" name="planeComboBox">
-        <item><property name="text"><string>YZ 平面</string></property></item>
-        <item><property name="text"><string>XZ 平面</string></property></item>
-        <item><property name="text"><string>XY 平面</string></property></item>
+      <property name="horizontalSpacing">
+       <number>8</number>
+      </property>
+      <property name="verticalSpacing">
+       <number>7</number>
+      </property>
+      <item row="0" column="0">
+       <widget class="QLabel" name="planeLabel">
+        <property name="text">
+         <string>切块方向</string>
+        </property>
        </widget>
       </item>
-      <item row="1" column="0"><widget class="QLabel" name="positionLabel"><property name="text"><string>切块位置</string></property></widget></item>
-      <item row="1" column="1"><widget class="QDoubleSpinBox" name="blockPositionSpin"><property name="decimals"><number>6</number></property><property name="minimum"><double>-999999999.000000000000000</double></property><property name="maximum"><double>999999999.000000000000000</double></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
-      <item row="2" column="0" colspan="2"><widget class="QSlider" name="blockSlider"><property name="maximum"><number>1000</number></property><property name="value"><number>500</number></property><property name="orientation"><enum>Qt::Horizontal</enum></property></widget></item>
-      <item row="3" column="0" colspan="2"><widget class="QLabel" name="blockRangeLabel"><property name="text"><string>范围：--</string></property></widget></item>
-      <item row="4" column="0" colspan="2"><widget class="QCheckBox" name="flipCheckBox"><property name="text"><string>反向保留</string></property></widget></item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="planeComboBox">
+        <item>
+         <property name="text">
+          <string>YZ 平面</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>XZ 平面</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>XY 平面</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="positionLabel">
+        <property name="text">
+         <string>切块位置</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QDoubleSpinBox" name="blockPositionSpin">
+        <property name="decimals">
+         <number>6</number>
+        </property>
+        <property name="minimum">
+         <double>-999999999.000000000000000</double>
+        </property>
+        <property name="maximum">
+         <double>999999999.000000000000000</double>
+        </property>
+        <property name="keyboardTracking">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0" colspan="2">
+       <widget class="QSlider" name="blockSlider">
+        <property name="maximum">
+         <number>1000</number>
+        </property>
+        <property name="value">
+         <number>500</number>
+        </property>
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0" colspan="2">
+       <widget class="QLabel" name="blockRangeLabel">
+        <property name="text">
+         <string>范围：--</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0" colspan="2">
+       <widget class="QCheckBox" name="flipCheckBox">
+        <property name="text">
+         <string>保留另一侧</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
-   <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
   </layout>
  </widget>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

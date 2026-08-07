@@ -29,6 +29,7 @@
 #include <QSignalBlocker>
 
 #include "PostResultAutoPrepare.h"
+#include "PostResultSelectionUtils.h"
 #include "PostTecplotUtils.h"
 #include "ResultDisplayNames.h"
 #include "PostVisualUtils.h"
@@ -37,6 +38,7 @@
 #include <stdio.h>
 #include <vtkXMLUnstructuredGridReader.h>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
@@ -45,21 +47,47 @@ VectorSettingWidget::VectorSettingWidget(VisualWidgetService* postProcessingWidg
 {
     ui->setupUi(this);
 
+    configurePostResultCombo(ui->analysisComboBox);
     configurePostResultCombo(ui->resultDirComboBox);
+    configurePostResultCombo(ui->resultTimeComboBox);
     configurePostResultCombo(ui->stepComboBox);
 
-    // 槽函数连接
-    connect(ui->confirmPushButton, &QPushButton::clicked, this,
-            &VectorSettingWidget::on_confirmPushButton_clicked);
+    // 矢量参数统一采用直接更新；采样、分量变化后无需再点“确定”。
     connect(ui->scaleSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
             &VectorSettingWidget::on_scaleSpinBox_valueChanged);
     connect(ui->thicknessSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
             &VectorSettingWidget::on_thicknessSpinBox_valueChanged);
+    connect(ui->analysisComboBox,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &VectorSettingWidget::on_analysisComboBox_currentIndexChanged);
     connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &VectorSettingWidget::on_resultDirComboBox_currentIndexChanged);
+    connect(ui->resultTimeComboBox,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &VectorSettingWidget::on_resultTimeComboBox_currentIndexChanged);
 
-    // 采样间隔使用数值框，避免非法文本和空值。
-    ui->maskSizeSpinBox->setRange(1, 1000000);
+    // 0 表示自动采样；自动模式把箭头数量控制在约 2000 个，兼顾可读性与性能。
+    ui->maskSizeSpinBox->setRange(0, 1000000);
+    ui->maskSizeSpinBox->setSpecialValueText(QStringLiteral("自动"));
+    ui->maskSizeSpinBox->setValue(0);
+
+    const auto rebuildOnSelectionChanged = [this](int)
+    {
+        if (!m_updatingControls && m_grid)
+            rebuildPipeline();
+    };
+    connect(ui->xComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            rebuildOnSelectionChanged);
+    connect(ui->yComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            rebuildOnSelectionChanged);
+    connect(ui->zComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            rebuildOnSelectionChanged);
+    connect(ui->maskSizeSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [this](int)
+            {
+                if (!m_updatingControls && m_grid)
+                    rebuildPipeline();
+            });
 
     // 长度和粗细使用可直接输入的数值控件，避免滑块无法看出当前倍率。
     m_scaleFactor = ui->scaleSpinBox->value();
@@ -87,6 +115,48 @@ double VectorSettingWidget::computeAutoBaseScale(vtkUnstructuredGrid* grid)
     return diag * 0.06; // 默认箭头基准长度为模型包围盒对角线的 6%
 }
 
+int VectorSettingWidget::computeAutoMaskRatio(vtkUnstructuredGrid* grid) const
+{
+    if (!grid)
+        return 1;
+    constexpr vtkIdType targetGlyphCount = 2000;
+    const vtkIdType pointCount = grid->GetNumberOfPoints();
+    if (pointCount <= targetGlyphCount)
+        return 1;
+    return std::max(1, static_cast<int>(std::ceil(pointCount / double(targetGlyphCount))));
+}
+
+QString VectorSettingWidget::vectorLegendTitle() const
+{
+    const QString xName = ui->xComboBox->currentData().toString();
+    const QString key = ResultDisplayNames::keyOf(xName);
+    const QString unit = ResultDisplayNames::unitOf(xName);
+
+    QString title;
+    const bool velocityUnit = unit.contains(QLatin1Char('/')) &&
+                              unit.contains(QLatin1Char('s'), Qt::CaseInsensitive);
+    if (key == QStringLiteral("UX") || key == QStringLiteral("U1") ||
+        key == QStringLiteral("DX"))
+        title = velocityUnit ? QStringLiteral("|v|") : QStringLiteral("|u|");
+    else if (key == QStringLiteral("VX") || key == QStringLiteral("V1") ||
+             key == QStringLiteral("V") || key == QStringLiteral("VEL") ||
+             key == QStringLiteral("VELOCITY") || key == QStringLiteral("VMAG"))
+        title = QStringLiteral("|v|");
+    else if (key == QStringLiteral("U") || key == QStringLiteral("DISP") ||
+             key == QStringLiteral("DISPLACEMENT") || key == QStringLiteral("UMAG"))
+        title = QStringLiteral("|u|");
+    else if (xName == ui->yComboBox->currentData().toString() &&
+             (ui->zComboBox->currentData().toString().isEmpty() ||
+              xName == ui->zComboBox->currentData().toString()))
+        title = ResultDisplayNames::scalarBarName(xName);
+    else
+        title = QStringLiteral("矢量模");
+
+    if (!unit.isEmpty() && !title.contains(unit))
+        title += QStringLiteral(" (%1)").arg(unit);
+    return title;
+}
+
 void VectorSettingWidget::beforeLoad()
 {
     showPostProcessingOnly(m_visualService, false);
@@ -106,10 +176,9 @@ void VectorSettingWidget::beforeLoad()
         // 非首次：恢复之前的显示（如果有箭头 actor，就挂回去）
         if (m_visualService && m_vectorActor)
         {
-            addActorByService(m_visualService, m_vectorActor);
+            addActorByService(m_visualService, m_vectorActor, false);
             m_visualService->showScalarBar(true, false);
-            if (auto* scalarBar = m_visualService->scalarBarActor())
-                scalarBar->SetTitle(QStringLiteral("|V|").toUtf8().constData());
+            applyStandardPostScalarBar(m_visualService, vectorLegendTitle());
             requestRender();
         }
     }
@@ -120,7 +189,9 @@ void VectorSettingWidget::beforeLoad()
 QJsonObject VectorSettingWidget::saveJson()
 {
     QJsonObject object;
+    object.insert(QStringLiteral("analysisKey"), ui->analysisComboBox->currentData().toString());
     object.insert(QStringLiteral("resultDir"), ui->resultDirComboBox->currentData().toString());
+    object.insert(QStringLiteral("resultTime"), ui->resultTimeComboBox->currentData().toString());
     object.insert(QStringLiteral("stepFile"), ui->stepComboBox->currentData().toString());
     object.insert(QStringLiteral("xField"), ui->xComboBox->currentData().toString());
     object.insert(QStringLiteral("yField"), ui->yComboBox->currentData().toString());
@@ -150,18 +221,55 @@ void VectorSettingWidget::applyPendingState()
     m_pendingState.clear();
     m_hasPendingState = false;
 
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     const QString resultDir = state.value(QStringLiteral("resultDir")).toString();
-    if (!resultDir.isEmpty())
+    const QString resolvedResultDir =
+        PostResultSelectionUtils::absoluteSourcePath(projectDir, resultDir);
+    QString analysisKey = state.value(QStringLiteral("analysisKey")).toString();
+    if (analysisKey.isEmpty() && !resolvedResultDir.isEmpty())
+        analysisKey =
+            PostResultSelectionUtils::analysisKeyForSource(projectDir, resolvedResultDir);
+
+    if (!analysisKey.isEmpty())
     {
-        const int index = ui->resultDirComboBox->findData(resultDir);
+        const int analysisIndex = ui->analysisComboBox->findData(analysisKey);
+        if (analysisIndex >= 0)
+        {
+            const QSignalBlocker blocker(ui->analysisComboBox);
+            ui->analysisComboBox->setCurrentIndex(analysisIndex);
+        }
+    }
+    PostResultSelectionUtils::populateStageCombo(
+        ui->resultDirComboBox, projectDir,
+        PostResultSelectionUtils::selectedAnalysisKey(ui->analysisComboBox),
+        resolvedResultDir);
+    if (!resolvedResultDir.isEmpty())
+    {
+        const int index = PostResultSelectionUtils::sourceComboIndex(
+            ui->resultDirComboBox, projectDir, resolvedResultDir);
         if (index >= 0)
         {
             const QSignalBlocker blocker(ui->resultDirComboBox);
             ui->resultDirComboBox->setCurrentIndex(index);
-            m_dataPath = resultDir;
         }
     }
+    m_dataPath = ui->resultDirComboBox->currentData().toString();
     loadFileName(m_dataPath);
+
+    const QString resultTime = state.value(QStringLiteral("resultTime")).toString();
+    if (!resultTime.isNull())
+    {
+        const int timeIndex = ui->resultTimeComboBox->findData(resultTime);
+        if (timeIndex >= 0)
+        {
+            {
+                const QSignalBlocker blocker(ui->resultTimeComboBox);
+                ui->resultTimeComboBox->setCurrentIndex(timeIndex);
+            }
+            on_resultTimeComboBox_currentIndexChanged(timeIndex);
+        }
+    }
 
     const QString stepFile = state.value(QStringLiteral("stepFile")).toString();
     if (!stepFile.isEmpty())
@@ -175,19 +283,29 @@ void VectorSettingWidget::applyPendingState()
         }
     }
 
+    m_updatingControls = true;
     auto restoreCombo = [](QComboBox* combo, const QString& name)
     {
         if (!combo || name.isEmpty())
             return;
         const int index = combo->findData(name);
         if (index >= 0)
+        {
+            const QSignalBlocker blocker(combo);
             combo->setCurrentIndex(index);
+        }
     };
     restoreCombo(ui->xComboBox, state.value(QStringLiteral("xField")).toString());
     restoreCombo(ui->yComboBox, state.value(QStringLiteral("yField")).toString());
     restoreCombo(ui->zComboBox, state.value(QStringLiteral("zField")).toString());
-    ui->maskSizeSpinBox->setValue(
-        std::max(1, state.value(QStringLiteral("maskRatio"), 1).toInt()));
+    {
+        const QSignalBlocker blocker(ui->maskSizeSpinBox);
+        ui->maskSizeSpinBox->setValue(
+            qBound(0, state.contains(QStringLiteral("maskRatio"))
+                          ? state.value(QStringLiteral("maskRatio")).toInt()
+                          : 0,
+                   1000000));
+    }
     {
         double scale = state.value(QStringLiteral("scale"), 1.0).toDouble();
         // 兼容旧工程中滑块按 25～400 保存的整数值。
@@ -203,27 +321,43 @@ void VectorSettingWidget::applyPendingState()
             qBound(0.25, state.value(QStringLiteral("thickness"), 1.0).toDouble(), 4.0));
         m_thicknessFactor = ui->thicknessSpinBox->value();
     }
+    m_updatingControls = false;
+    rebuildPipeline();
 }
 
 void VectorSettingWidget::refreshResultGroups()
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    const QString previousPath = m_dataPath;
     const QVector<PostResultAutoPrepare::ResultGroup> groups =
         PostResultAutoPrepare::resultGroups(projectDir);
+    QString previousAnalysis = ui->analysisComboBox->currentData().toString();
+    const QString previousPath = m_dataPath;
+    if (previousAnalysis.isEmpty() && !previousPath.isEmpty())
+        previousAnalysis =
+            PostResultSelectionUtils::analysisKeyForSource(groups, previousPath);
 
-    ui->resultDirComboBox->blockSignals(true);
-    ui->resultDirComboBox->clear();
-    for (const PostResultAutoPrepare::ResultGroup& group : groups)
-        ui->resultDirComboBox->addItem(group.displayName, group.sourcePath);
+    PostResultSelectionUtils::populateAnalysisCombo(
+        ui->analysisComboBox, groups, previousAnalysis);
+    PostResultSelectionUtils::populateStageCombo(
+        ui->resultDirComboBox, groups,
+        PostResultSelectionUtils::selectedAnalysisKey(ui->analysisComboBox),
+        previousPath);
 
-    int index = previousPath.isEmpty() ? -1 : ui->resultDirComboBox->findData(previousPath);
-    if (index < 0 && ui->resultDirComboBox->count() > 0)
-        index = 0;
-    ui->resultDirComboBox->setCurrentIndex(index);
-    m_dataPath = index >= 0 ? ui->resultDirComboBox->itemData(index).toString() : QString();
-    ui->resultDirComboBox->blockSignals(false);
+    m_dataPath = ui->resultDirComboBox->currentData().toString();
+}
+
+void VectorSettingWidget::on_analysisComboBox_currentIndexChanged(int)
+{
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QString previousPath = m_dataPath;
+    PostResultSelectionUtils::populateStageCombo(
+        ui->resultDirComboBox, projectDir,
+        PostResultSelectionUtils::selectedAnalysisKey(ui->analysisComboBox),
+        previousPath);
+    m_dataPath = ui->resultDirComboBox->currentData().toString();
+    loadFileName(m_dataPath);
 }
 
 void VectorSettingWidget::on_resultDirComboBox_currentIndexChanged(int index)
@@ -232,6 +366,23 @@ void VectorSettingWidget::on_resultDirComboBox_currentIndexChanged(int index)
         return;
     m_dataPath = ui->resultDirComboBox->itemData(index).toString();
     loadFileName(m_dataPath);
+}
+
+void VectorSettingWidget::on_resultTimeComboBox_currentIndexChanged(int)
+{
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QString previousName = ui->stepComboBox->currentText();
+    PostResultSelectionUtils::populateResultCombo(
+        ui->stepComboBox, projectDir, m_dataPath,
+        PostResultSelectionUtils::selectedFrameKey(ui->resultTimeComboBox),
+        QString(), true);
+
+    const int sameName = ui->stepComboBox->findText(previousName);
+    if (sameName >= 0)
+        ui->stepComboBox->setCurrentIndex(sameName);
+    if (ui->stepComboBox->count() > 0)
+        on_stepComboBox_currentIndexChanged(ui->stepComboBox->currentIndex());
 }
 
 void VectorSettingWidget::beforeUnload()
@@ -247,41 +398,31 @@ void VectorSettingWidget::beforeUnload()
 
 void VectorSettingWidget::loadFileName(QString dataPath)
 {
-    ui->stepComboBox->blockSignals(true);
-    ui->stepComboBox->clear();
-
     QDir directory(dataPath);
     if (!directory.exists())
     {
+        ui->resultTimeComboBox->clear();
+        ui->stepComboBox->clear();
         qWarning() << "Directory not found:" << dataPath;
-        ui->stepComboBox->blockSignals(false);
         return;
     }
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    const QVector<PostResultAutoPrepare::ResultFile> files =
-        PostResultAutoPrepare::resultFiles(projectDir, dataPath, true);
+    const QString previousTime = ui->resultTimeComboBox->currentData().toString();
+    const QString previousFile = ui->stepComboBox->currentData().toString();
 
-    for (const PostResultAutoPrepare::ResultFile& file : files)
-    {
-        const QString itemName = file.displayName.trimmed().isEmpty()
-                                     ? QStringLiteral("结果数据")
-                                     : file.displayName.trimmed();
-        ui->stepComboBox->addItem(itemName, file.filePath);
-    }
-
-    ui->stepComboBox->blockSignals(false);
+    PostResultSelectionUtils::populateTimeCombo(
+        ui->resultTimeComboBox, projectDir, dataPath, previousTime, true);
+    PostResultSelectionUtils::populateResultCombo(
+        ui->stepComboBox, projectDir, dataPath,
+        PostResultSelectionUtils::selectedFrameKey(ui->resultTimeComboBox),
+        previousFile, true);
 
     if (ui->stepComboBox->count() > 0)
-    {
-        ui->stepComboBox->setCurrentIndex(0);
-        on_stepComboBox_currentIndexChanged(0);
-    }
+        on_stepComboBox_currentIndexChanged(ui->stepComboBox->currentIndex());
     else
-    {
         qWarning() << "No configured result files found in" << dataPath;
-    }
 }
 
 void VectorSettingWidget::on_stepComboBox_currentIndexChanged(int index)
@@ -297,18 +438,12 @@ void VectorSettingWidget::on_stepComboBox_currentIndexChanged(int index)
     }
     setFileName(filePath);
 
-    // 切文件时，先把旧的箭头从场景移除，避免看到旧结果
+    // 切文件时移除旧箭头，并直接按当前设置生成新结果。
     if (m_visualService && m_vectorActor)
-    {
-        removeActorByService(m_visualService, m_vectorActor);
-        // 不置空指针，等用户点“确认”后再重建新 glyph/actor
-    }
+        removeActorByService(m_visualService, m_vectorActor, false);
 
-    // 重新加载新数据（只读，不立即建箭头；等用户点“确认”）
-    ensureDataLoaded();
-
-    // 可选：如果希望切换后自动重建箭头，放开下面一行
-    // rebuildPipeline();
+    if (ensureDataLoaded())
+        rebuildPipeline();
 }
 
 void VectorSettingWidget::setFileName(const QString& file)
@@ -359,6 +494,7 @@ void VectorSettingWidget::populateComponentCombos()
     if (!m_grid)
         return;
 
+    m_updatingControls = true;
     QStringList names;
     vtkPointData* pd = m_grid->GetPointData();
     const int nArr = pd->GetNumberOfArrays();
@@ -368,72 +504,93 @@ void VectorSettingWidget::populateComponentCombos()
         if (!arr || !arr->GetName())
             continue;
         if (arr->GetNumberOfComponents() == 1 || arr->GetNumberOfComponents() == 3)
-        {
             names << QString::fromUtf8(arr->GetName());
-        }
     }
     names.removeDuplicates();
     names.sort();
 
-    auto displayName = [](const QString& name)
+    auto setCombo = [&](QComboBox* combo)
     {
-        return ResultDisplayNames::displayName(name);
-    };
-    auto setCombo = [&](QComboBox* cb)
-    {
-        cb->clear();
+        const QSignalBlocker blocker(combo);
+        combo->clear();
         for (const QString& name : names)
-            cb->addItem(displayName(name), name);
+            combo->addItem(ResultDisplayNames::displayName(name), name);
     };
     setCombo(ui->xComboBox);
     setCombo(ui->yComboBox);
     setCombo(ui->zComboBox);
 
-    auto trySelect = [&](QComboBox* cb, const QStringList& prefixes)
+    auto findKey = [&](QComboBox* combo, const QStringList& keys) -> int
     {
-        for (int i = 0; i < cb->count(); ++i)
+        for (const QString& wanted : keys)
         {
-            const QString name = cb->itemData(i).toString();
-            for (const QString& prefix : prefixes)
+            for (int i = 0; i < combo->count(); ++i)
             {
-                if (name.startsWith(prefix, Qt::CaseInsensitive))
-                {
-                    cb->setCurrentIndex(i);
-                    return;
-                }
+                if (ResultDisplayNames::keyOf(combo->itemData(i).toString()) == wanted)
+                    return i;
             }
         }
+        return -1;
     };
-    trySelect(ui->xComboBox, {QStringLiteral("UX"), QStringLiteral("VX"), QStringLiteral("SX")});
-    trySelect(ui->yComboBox, {QStringLiteral("UY"), QStringLiteral("VY"), QStringLiteral("SY")});
-    trySelect(ui->zComboBox, {QStringLiteral("UZ"), QStringLiteral("VZ"), QStringLiteral("SZ")});
-
-    if (ui->xComboBox->currentIndex() < 0 && ui->xComboBox->count() > 0)
-        ui->xComboBox->setCurrentIndex(0);
-    if (ui->yComboBox->currentIndex() < 0 && ui->yComboBox->count() > 1)
-        ui->yComboBox->setCurrentIndex(1);
-    bool hasZComponent = false;
-    for (int i = 0; i < ui->zComboBox->count(); ++i)
+    auto selectIndex = [](QComboBox* combo, int index)
     {
-        const QString name = ui->zComboBox->itemData(i).toString();
-        if (name.startsWith(QStringLiteral("UZ"), Qt::CaseInsensitive) ||
-            name.startsWith(QStringLiteral("VZ"), Qt::CaseInsensitive) ||
-            name.startsWith(QStringLiteral("SZ"), Qt::CaseInsensitive))
+        if (combo && index >= 0 && index < combo->count())
+            combo->setCurrentIndex(index);
+    };
+
+    // 优先匹配完整的位移分量组，其次速度分量组，避免把 UX/VY/SZ 混在一起。
+    int ix = findKey(ui->xComboBox, {QStringLiteral("UX"), QStringLiteral("U1"), QStringLiteral("DX")});
+    int iy = findKey(ui->yComboBox, {QStringLiteral("UY"), QStringLiteral("U2"), QStringLiteral("DY")});
+    int iz = findKey(ui->zComboBox, {QStringLiteral("UZ"), QStringLiteral("U3"), QStringLiteral("DZ")});
+    if (ix < 0 || iy < 0)
+    {
+        ix = findKey(ui->xComboBox, {QStringLiteral("VX"), QStringLiteral("V1")});
+        iy = findKey(ui->yComboBox, {QStringLiteral("VY"), QStringLiteral("V2")});
+        iz = findKey(ui->zComboBox, {QStringLiteral("VZ"), QStringLiteral("V3")});
+    }
+
+    // 若结果直接提供三分量数组，则三个选择框指向同一数组。
+    if (ix < 0 || iy < 0)
+    {
+        int packedIndex = -1;
+        for (int i = 0; i < ui->xComboBox->count(); ++i)
         {
-            hasZComponent = true;
-            break;
+            vtkDataArray* arr = arrayByName(m_grid, ui->xComboBox->itemData(i).toString());
+            if (arr && arr->GetNumberOfComponents() == 3)
+            {
+                packedIndex = i;
+                break;
+            }
+        }
+        if (packedIndex >= 0)
+        {
+            ix = iy = iz = packedIndex;
         }
     }
-    if (!hasZComponent)
+
+    if (ix < 0 && ui->xComboBox->count() > 0)
+        ix = 0;
+    if (iy < 0 && ui->yComboBox->count() > 1)
+        iy = 1;
+    else if (iy < 0)
+        iy = ix;
+
+    selectIndex(ui->xComboBox, ix);
+    selectIndex(ui->yComboBox, iy);
+
+    if (iz >= 0)
     {
+        ui->zComboBox->setEnabled(true);
+        selectIndex(ui->zComboBox, iz);
+    }
+    else
+    {
+        const QSignalBlocker blocker(ui->zComboBox);
         ui->zComboBox->clear();
         ui->zComboBox->addItem(QStringLiteral("二维结果，Z 分量为零"), QString());
         ui->zComboBox->setEnabled(false);
     }
-    else
-    {
-        ui->zComboBox->setEnabled(true);
-    }
+    m_updatingControls = false;
 }
 
 vtkDataArray* VectorSettingWidget::arrayByName(vtkUnstructuredGrid* grid, const QString& name)
@@ -541,10 +698,15 @@ void VectorSettingWidget::rebuildPipeline()
     if (!ensureDataLoaded())
         return;
 
-    // 抽样间隔
-    m_maskOnRatio = ui->maskSizeSpinBox->value();
-    if (m_maskOnRatio < 1)
-        m_maskOnRatio = 1;
+    // 0=自动：目标约 2000 个箭头；手动值仍表示“每隔 N 个点取 1 个”。
+    m_maskOnRatio = ui->maskSizeSpinBox->value() == 0
+                        ? computeAutoMaskRatio(m_grid)
+                        : ui->maskSizeSpinBox->value();
+    m_maskOnRatio = std::max(1, m_maskOnRatio);
+    ui->maskSizeSpinBox->setToolTip(
+        ui->maskSizeSpinBox->value() == 0
+            ? QStringLiteral("自动采样：当前每隔 %1 个点显示 1 个箭头").arg(m_maskOnRatio)
+            : QStringLiteral("每隔 %1 个点显示 1 个箭头").arg(m_maskOnRatio));
 
     // 生成 Vector / VectorMag，并得到其范围
     double magMin = 0.0, magMax = 1.0;
@@ -561,7 +723,7 @@ void VectorSettingWidget::rebuildPipeline()
     if (m_vectorActor)
     {
         if (m_visualService)
-            removeActorByService(m_visualService, m_vectorActor);
+            removeActorByService(m_visualService, m_vectorActor, false);
         m_vectorActor = nullptr;
     }
 
@@ -596,7 +758,6 @@ void VectorSettingWidget::rebuildPipeline()
     m_glyph->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS,
                                     "VectorMag"); // scalars
 
-    m_glyph->SetScaleModeToDataScalingOff(); // 等长
     {
         const double base = computeAutoBaseScale(m_grid);
         m_glyph->SetScaleFactor(base * m_scaleFactor); // 自适应尺度 × 滑条倍率
@@ -634,7 +795,8 @@ void VectorSettingWidget::rebuildPipeline()
         mapper->SetLookupTable(lut);
         mapper->UseLookupTableScalarRangeOn();
 
-        scalarBar->SetTitle(QStringLiteral("|V|").toUtf8().constData());
+        applyStandardPostScalarBar(scalarBar);
+        scalarBar->SetTitle(vectorLegendTitle().toUtf8().constData());
         scalarBar->Modified();
         m_visualService->showScalarBar(true, false);
     }
@@ -649,7 +811,7 @@ void VectorSettingWidget::rebuildPipeline()
     m_vectorActor->GetProperty()->SetRepresentationToSurface();
 
     if (m_visualService)
-        addActorByService(m_visualService, m_vectorActor);
+        addActorByService(m_visualService, m_vectorActor, false);
 
     requestRender();
 }
@@ -660,11 +822,6 @@ void VectorSettingWidget::requestRender() const
         return;
     if (auto* renderWindow = m_visualService->renderWindow())
         renderWindow->Render();
-}
-
-void VectorSettingWidget::on_confirmPushButton_clicked()
-{
-    rebuildPipeline();
 }
 
 void VectorSettingWidget::on_scaleSpinBox_valueChanged(double value)

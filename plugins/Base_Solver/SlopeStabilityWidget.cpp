@@ -113,8 +113,11 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
     ui->line8Combo->setItemData(0, "1");
     ui->line8Combo->setItemData(1, "2");
     ui->line8Combo->setItemText(1, QStringLiteral("施加已设置的外部荷载"));
-    ui->line15Combo->setItemData(0, "0");
-    ui->line15Combo->setItemData(1, "1");
+    ui->line15Combo->clear();
+    ui->line15Combo->addItem(QStringLiteral("系统统一阻尼"), QStringLiteral("0"));
+    ui->line15Combo->setEnabled(false);
+    ui->line15Combo->setToolTip(
+        QStringLiteral("当前前端未提供 MACHAN.DAT 材料阻尼映射，仅导出系统统一阻尼。"));
     ui->line16Combo->setItemData(0, "0");
     ui->line16Combo->setItemData(1, "1");
     ui->line19Combo->setItemData(0, "1");
@@ -272,6 +275,9 @@ QString SlopeStabilityWidget::lineValue(int lineNo) const
 {
     if (lineNo == 4)
         return gravityLineValue();
+    // MACHAN.DAT 当前始终导出 0 个材料映射，分材料阻尼不可成立。
+    if (lineNo == 15)
+        return QStringLiteral("0");
 
     QWidget* w = m_lineEditors.value(lineNo, nullptr);
     if (auto* combo = qobject_cast<QComboBox*>(w))
@@ -286,6 +292,12 @@ void SlopeStabilityWidget::setLineValue(int lineNo, const QString& value)
     if (lineNo == 4)
     {
         setGravityLineValue(value);
+        return;
+    }
+    if (lineNo == 15)
+    {
+        Q_UNUSED(value);
+        ui->line15Combo->setCurrentIndex(0);
         return;
     }
 

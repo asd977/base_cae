@@ -1,10 +1,61 @@
-﻿#pragma once
+#pragma once
 
 #include <services/VisualWidgetService.h>
 #include <vtkActor.h>
 #include <vtkSmartPointer.h>
+#include <vtkScalarBarActor.h>
+#include <vtkTextProperty.h>
 
 #include <QString>
+
+
+inline void applyStandardPostScalarBar(vtkScalarBarActor* scalarBar)
+{
+    if (!scalarBar)
+        return;
+
+    // 后处理各页面共用同一个 ScalarBarActor。进入普通结果页时完整恢复默认样式，
+    // 避免继承云图页面的拖动位置、自定义刻度、字号等状态。
+    scalarBar->SetOrientationToVertical();
+    scalarBar->UnconstrainedFontSizeOn();
+    scalarBar->SetWidth(0.10);
+    scalarBar->SetHeight(0.65);
+    scalarBar->SetPosition(0.885, 0.175);
+    scalarBar->SetMaximumWidthInPixels(1000);
+    scalarBar->SetMaximumHeightInPixels(2000);
+    scalarBar->UseCustomLabelsOff();
+    scalarBar->SetCustomLabels(nullptr);
+    scalarBar->SetNumberOfLabels(7);
+    scalarBar->SetLabelFormat("%.4g");
+    scalarBar->DrawBackgroundOff();
+    scalarBar->DrawFrameOff();
+
+    if (vtkTextProperty* title = scalarBar->GetTitleTextProperty())
+    {
+        title->SetFontSize(16);
+        title->SetColor(0.08, 0.08, 0.08);
+        title->SetBold(1);
+    }
+    if (vtkTextProperty* label = scalarBar->GetLabelTextProperty())
+    {
+        label->SetFontSize(13);
+        label->SetColor(0.08, 0.08, 0.08);
+        label->SetBold(0);
+    }
+    scalarBar->Modified();
+}
+
+inline void applyStandardPostScalarBar(VisualWidgetService* service, const QString& title)
+{
+    if (!service)
+        return;
+    vtkScalarBarActor* scalarBar = service->scalarBarActor();
+    if (!scalarBar)
+        return;
+    applyStandardPostScalarBar(scalarBar);
+    scalarBar->SetTitle(title.toUtf8().constData());
+    scalarBar->Modified();
+}
 
 inline QString postActorId(vtkActor* actor)
 {

@@ -59,6 +59,7 @@
 #include <cmath>
 
 #include "PostResultAutoPrepare.h"
+#include "PostResultSelectionUtils.h"
 #include "ResultDisplayNames.h"
 #include "PostTecplotUtils.h"
 #include "PostVisualUtils.h"
@@ -66,18 +67,6 @@
 
 namespace
 {
-QString uniqueDisplayName(const QString& baseName, const QMap<QString, QString>& existing)
-{
-    if (!existing.contains(baseName))
-        return baseName;
-
-    int index = 2;
-    while (existing.contains(QStringLiteral("%1 (%2)").arg(baseName).arg(index)))
-        ++index;
-
-    return QStringLiteral("%1 (%2)").arg(baseName).arg(index);
-}
-
 bool isValidScalarRange(double minV, double maxV)
 {
     return std::isfinite(minV) && std::isfinite(maxV) && minV <= maxV;
@@ -95,7 +84,9 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
 {
     ui->setupUi(this);
 
+    configurePostResultCombo(ui->analysisComboBox);
     configurePostResultCombo(ui->resultDirComboBox);
+    configurePostResultCombo(ui->resultTimeComboBox);
     configurePostResultCombo(ui->stepComboBox);
     m_visualService = postProcessingWidget;
 
@@ -111,15 +102,19 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
     ui->rangeMaxSpinBox->setRange(-1.0e100, 1.0e100);
     ui->rangeMinSpinBox->setDecimals(8);
     ui->rangeMaxSpinBox->setDecimals(8);
-    ui->legendIntervalSpinBox->setRange(0.0, 1.0e100);
-    ui->legendIntervalSpinBox->setDecimals(12);
 
     connect(ui->stepComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &NephogramSettingWidget::on_stepComboBox_currentIndexChanged);
     connect(ui->scalarComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &NephogramSettingWidget::on_scalarComboBox_currentIndexChanged);
+    connect(ui->analysisComboBox,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &NephogramSettingWidget::on_analysisComboBox_currentIndexChanged);
     connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &NephogramSettingWidget::on_resultDirComboBox_currentIndexChanged);
+    connect(ui->resultTimeComboBox,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &NephogramSettingWidget::on_resultTimeComboBox_currentIndexChanged);
 
     connect(ui->autoRangeCheckBox, &QCheckBox::toggled, this, [this](bool) {
         updateRangeEditorState();
@@ -157,9 +152,8 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
             refreshLegend);
     connect(ui->legendPrecisionSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
             refreshLegend);
-    connect(ui->legendIntervalSpinBox,
-            QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
-            [this](double) { refreshCurrentVisualization(); });
+    connect(ui->legendTickCountSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            refreshLegend);
     connect(ui->legendWidthSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
             refreshLegend);
     connect(ui->legendHeightSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
@@ -267,10 +261,22 @@ void NephogramSettingWidget::beforeLoad()
 
     installLegendDragInteraction();
 
+    const QString previousAnalysis = ui->analysisComboBox->currentData().toString();
     const QString previousDir = ui->resultDirComboBox->currentData().toString();
+    const QString previousTime = ui->resultTimeComboBox->currentData().toString();
     const QString previousStep = ui->stepComboBox->currentText();
 
     initResultDirectoryOptions();
+
+    if (!previousAnalysis.isEmpty())
+    {
+        const int analysisIndex = ui->analysisComboBox->findData(previousAnalysis);
+        if (analysisIndex >= 0 && analysisIndex != ui->analysisComboBox->currentIndex())
+        {
+            ui->analysisComboBox->setCurrentIndex(analysisIndex);
+            on_analysisComboBox_currentIndexChanged(analysisIndex);
+        }
+    }
 
     if (!previousDir.isEmpty())
     {
@@ -281,6 +287,16 @@ void NephogramSettingWidget::beforeLoad()
 
     m_dataPath = selectedResultDirectoryPath();
     loadFileName(m_dataPath);
+
+    if (!previousTime.isNull())
+    {
+        const int timeIndex = ui->resultTimeComboBox->findData(previousTime);
+        if (timeIndex >= 0 && timeIndex != ui->resultTimeComboBox->currentIndex())
+        {
+            ui->resultTimeComboBox->setCurrentIndex(timeIndex);
+            on_resultTimeComboBox_currentIndexChanged(timeIndex);
+        }
+    }
 
     if (!previousStep.isEmpty())
     {
@@ -339,74 +355,89 @@ void NephogramSettingWidget::on_stepComboBox_currentIndexChanged(int index)
     if (index < 0)
         return;
 
-    const QString stepText = ui->stepComboBox->itemText(index);
-    const QString filePath = m_stepFileMap.value(stepText);
-
+    const QString filePath = ui->stepComboBox->itemData(index).toString();
     if (filePath.isEmpty())
     {
-        qWarning() << "No data file mapped for step:" << stepText;
+        qWarning() << "No data file mapped for result selection.";
         return;
     }
 
-    if (QFileInfo(filePath).suffix().compare(QStringLiteral("vtu"), Qt::CaseInsensitive) == 0)
+    if (QFileInfo(filePath).suffix().compare(QStringLiteral("vtu"),
+                                              Qt::CaseInsensitive) == 0)
     {
         readVtu(filePath);
         return;
     }
-
     readTecplot(filePath);
 }
 
 void NephogramSettingWidget::loadFileName(const QString& dataPath)
 {
-    ui->stepComboBox->blockSignals(true);
-    ui->stepComboBox->clear();
-    m_stepFileMap.clear();
-
     QDir directory(dataPath);
-
     if (!directory.exists())
     {
+        ui->resultTimeComboBox->clear();
+        ui->stepComboBox->clear();
         qWarning() << "Directory not found:" << dataPath;
-        ui->stepComboBox->blockSignals(false);
         return;
     }
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QString previousTime = ui->resultTimeComboBox->currentData().toString();
+    const QString previousFile = ui->stepComboBox->currentData().toString();
 
-    const QVector<PostResultAutoPrepare::ResultFile> preparedFiles =
-        PostResultAutoPrepare::resultFiles(projectDir, dataPath, true);
-    if (!preparedFiles.isEmpty())
-    {
-        for (const PostResultAutoPrepare::ResultFile& file : preparedFiles)
-        {
-            const QString stepName = uniqueDisplayName(
-                file.displayName.trimmed().isEmpty() ? QStringLiteral("结果数据")
-                                                     : file.displayName.trimmed(),
-                m_stepFileMap);
-            m_stepFileMap.insert(stepName, file.filePath);
-            ui->stepComboBox->addItem(stepName);
-            ui->stepComboBox->setItemData(ui->stepComboBox->count() - 1,
-                                          QStringLiteral("求解完成后自动生成"),
-                                          Qt::ToolTipRole);
-        }
+    PostResultSelectionUtils::populateTimeCombo(
+        ui->resultTimeComboBox, projectDir, dataPath, previousTime, true);
+    PostResultSelectionUtils::populateResultCombo(
+        ui->stepComboBox, projectDir, dataPath,
+        PostResultSelectionUtils::selectedFrameKey(ui->resultTimeComboBox),
+        previousFile, true);
 
-        ui->stepComboBox->blockSignals(false);
-        ui->stepComboBox->setCurrentIndex(0);
+    if (ui->stepComboBox->count() > 0)
         on_stepComboBox_currentIndexChanged(ui->stepComboBox->currentIndex());
-        return;
+    else
+    {
+        ui->scalarComboBox->clear();
+        qWarning() << "No prepared post-processing results found in" << dataPath;
     }
+}
 
-    ui->stepComboBox->blockSignals(false);
-    ui->scalarComboBox->clear();
-    qWarning() << "No prepared post-processing results found in" << dataPath;
+
+void NephogramSettingWidget::on_analysisComboBox_currentIndexChanged(int)
+{
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QString previousDir = ui->resultDirComboBox->currentData().toString();
+    PostResultSelectionUtils::populateStageCombo(
+        ui->resultDirComboBox, projectDir,
+        PostResultSelectionUtils::selectedAnalysisKey(ui->analysisComboBox),
+        previousDir);
+    m_dataPath = selectedResultDirectoryPath();
+    loadFileName(m_dataPath);
 }
 
 void NephogramSettingWidget::on_resultDirComboBox_currentIndexChanged(int)
 {
     m_dataPath = selectedResultDirectoryPath();
     loadFileName(m_dataPath);
+}
+
+void NephogramSettingWidget::on_resultTimeComboBox_currentIndexChanged(int)
+{
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QString previousName = ui->stepComboBox->currentText();
+    PostResultSelectionUtils::populateResultCombo(
+        ui->stepComboBox, projectDir, m_dataPath,
+        PostResultSelectionUtils::selectedFrameKey(ui->resultTimeComboBox),
+        QString(), true);
+
+    const int sameName = ui->stepComboBox->findText(previousName);
+    if (sameName >= 0)
+        ui->stepComboBox->setCurrentIndex(sameName);
+    if (ui->stepComboBox->count() > 0)
+        on_stepComboBox_currentIndexChanged(ui->stepComboBox->currentIndex());
 }
 
 void NephogramSettingWidget::on_scalarComboBox_currentIndexChanged(int)
@@ -516,29 +547,22 @@ void NephogramSettingWidget::initResultDirectoryOptions()
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-
-    ui->resultDirComboBox->blockSignals(true);
-    ui->resultDirComboBox->clear();
-
     const QVector<PostResultAutoPrepare::ResultGroup> groups =
         PostResultAutoPrepare::resultGroups(projectDir);
-    const QDir project(projectDir);
-    for (const PostResultAutoPrepare::ResultGroup& group : groups)
-    {
-        const QString relPath = QDir::fromNativeSeparators(
-            project.relativeFilePath(group.sourcePath));
-        ui->resultDirComboBox->addItem(group.displayName, relPath);
+    QString previousAnalysis = ui->analysisComboBox->currentData().toString();
+    const QString previousDir = ui->resultDirComboBox->currentData().toString();
+    if (previousAnalysis.isEmpty() && !previousDir.isEmpty())
+        previousAnalysis =
+            PostResultSelectionUtils::analysisKeyForSource(groups, previousDir);
 
-        const int index = ui->resultDirComboBox->count() - 1;
-        ui->resultDirComboBox->setItemData(
-            index, QStringLiteral("自动识别的计算结果"), Qt::ToolTipRole);
-    }
-
-    if (ui->resultDirComboBox->count() > 0)
-        ui->resultDirComboBox->setCurrentIndex(0);
-
-    ui->resultDirComboBox->blockSignals(false);
+    PostResultSelectionUtils::populateAnalysisCombo(
+        ui->analysisComboBox, groups, previousAnalysis);
+    PostResultSelectionUtils::populateStageCombo(
+        ui->resultDirComboBox, groups,
+        PostResultSelectionUtils::selectedAnalysisKey(ui->analysisComboBox),
+        previousDir);
 }
+
 
 QString NephogramSettingWidget::selectedResultDirectoryPath() const
 {
@@ -639,52 +663,11 @@ void NephogramSettingWidget::applyLegendAppearance(vtkScalarBarActor* scalarBar,
                            qBound(0.0, y, std::max(0.0, 1.0 - height)));
     scalarBar->SetMaximumWidthInPixels(1000);
     scalarBar->SetMaximumHeightInPixels(2000);
-    const double interval = ui->legendIntervalSpinBox->value();
-    const double span = maxV - minV;
-    if (interval > 0.0 && std::isfinite(interval) && isValidScalarRange(minV, maxV) &&
-        std::isfinite(span) && span > 0.0)
-    {
-        constexpr int maxLabelCount = 64;
-        const double scale = std::max({1.0, std::abs(minV), std::abs(maxV), span});
-        const double tolerance = scale * 1.0e-12;
-        const double regularStepCount = std::floor((span + tolerance) / interval);
-        const double lastRegularValue = minV + regularStepCount * interval;
-        const bool upperIsRegular = std::abs(lastRegularValue - maxV) <= tolerance;
-        const double requestedLabelCount = regularStepCount + 1.0 + (upperIsRegular ? 0.0 : 1.0);
-        const double stride = requestedLabelCount <= maxLabelCount
-                                  ? 1.0
-                                  : std::max(1.0, std::ceil(regularStepCount /
-                                                            (maxLabelCount - 2.0)));
-
-        auto labels = vtkSmartPointer<vtkDoubleArray>::New();
-        labels->SetNumberOfComponents(1);
-        for (int labelIndex = 0; labelIndex < maxLabelCount - 1; ++labelIndex)
-        {
-            const double stepIndex = labelIndex * stride;
-            if (stepIndex > regularStepCount)
-                break;
-
-            const double value = minV + stepIndex * interval;
-            if (value > maxV + tolerance)
-                break;
-            labels->InsertNextValue(std::min(value, maxV));
-        }
-
-        const vtkIdType labelCount = labels->GetNumberOfTuples();
-        const double lastLabel = labelCount > 0 ? labels->GetValue(labelCount - 1) : minV;
-        if (std::abs(lastLabel - maxV) > tolerance && labelCount < maxLabelCount)
-            labels->InsertNextValue(maxV);
-
-        scalarBar->SetCustomLabels(labels);
-        scalarBar->UseCustomLabelsOn();
-        scalarBar->SetNumberOfLabels(static_cast<int>(labels->GetNumberOfTuples()));
-    }
-    else
-    {
-        scalarBar->UseCustomLabelsOff();
-        scalarBar->SetCustomLabels(nullptr);
-        scalarBar->SetNumberOfLabels(7);
-    }
+    // “刻度数量”表示色标上显示的刻度标签总数，不是数值间隔。
+    // 交给 vtkScalarBarActor 在当前上下限之间均匀生成对应数量的刻度。
+    scalarBar->UseCustomLabelsOff();
+    scalarBar->SetCustomLabels(nullptr);
+    scalarBar->SetNumberOfLabels(ui->legendTickCountSpinBox->value());
     const QByteArray labelFormat =
         QStringLiteral("%.%1g").arg(ui->legendPrecisionSpinBox->value()).toLatin1();
     scalarBar->SetLabelFormat(labelFormat.constData());
@@ -919,7 +902,9 @@ QJsonObject NephogramSettingWidget::saveJson()
 {
     QJsonObject obj;
     obj[QStringLiteral("scalar")] = currentScalarName();
+    obj[QStringLiteral("analysisKey")] = ui->analysisComboBox->currentData().toString();
     obj[QStringLiteral("resultDir")] = ui->resultDirComboBox->currentData().toString();
+    obj[QStringLiteral("resultTime")] = ui->resultTimeComboBox->currentData().toString();
     obj[QStringLiteral("step")] = ui->stepComboBox->currentText();
     obj[QStringLiteral("autoRange")] = ui->autoRangeCheckBox->isChecked();
     obj[QStringLiteral("rangeMin")] = ui->rangeMinSpinBox->value();
@@ -927,7 +912,7 @@ QJsonObject NephogramSettingWidget::saveJson()
     obj[QStringLiteral("legendTitleFont")] = ui->legendTitleFontSpinBox->value();
     obj[QStringLiteral("legendLabelFont")] = ui->legendLabelFontSpinBox->value();
     obj[QStringLiteral("legendPrecision")] = ui->legendPrecisionSpinBox->value();
-    obj[QStringLiteral("legendInterval")] = ui->legendIntervalSpinBox->value();
+    obj[QStringLiteral("legendTickCount")] = ui->legendTickCountSpinBox->value();
     obj[QStringLiteral("legendWidth")] = ui->legendWidthSpinBox->value();
     obj[QStringLiteral("legendHeight")] = ui->legendHeightSpinBox->value();
     if (m_visualService && m_visualService->scalarBarActor())
@@ -956,8 +941,10 @@ void NephogramSettingWidget::loadJson(const QJsonObject& obj)
         obj.value(QStringLiteral("legendLabelFont")).toInt(13));
     ui->legendPrecisionSpinBox->setValue(
         obj.value(QStringLiteral("legendPrecision")).toInt(4));
-    ui->legendIntervalSpinBox->setValue(
-        obj.value(QStringLiteral("legendInterval")).toDouble(0.0));
+    // 旧版本的 legendInterval 表示“数值间隔”，与现在的“刻度数量”语义不同，
+    // 无法可靠换算；旧工程统一按默认 7 个刻度显示。
+    ui->legendTickCountSpinBox->setValue(
+        obj.value(QStringLiteral("legendTickCount")).toInt(7));
     ui->legendWidthSpinBox->setValue(obj.value(QStringLiteral("legendWidth")).toInt(10));
     ui->legendHeightSpinBox->setValue(obj.value(QStringLiteral("legendHeight")).toInt(65));
     m_hasLegendPosition = obj.contains(QStringLiteral("legendPositionX")) &&
@@ -976,20 +963,60 @@ void NephogramSettingWidget::loadJson(const QJsonObject& obj)
         obj.value(QStringLiteral("contourLabelFont")).toInt(12));
     updateRangeEditorState();
 
+    const QString analysisKey = obj.value(QStringLiteral("analysisKey")).toString();
     const QString resultDir = obj.value(QStringLiteral("resultDir")).toString();
+    const QString resultTime = obj.value(QStringLiteral("resultTime")).toString();
     const QString step = obj.value(QStringLiteral("step")).toString();
     const QString scalar = obj.value(QStringLiteral("scalar")).toString();
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QString resolvedResultDir =
+        PostResultSelectionUtils::absoluteSourcePath(projectDir, resultDir);
 
     initResultDirectoryOptions();
-    if (!resultDir.isEmpty())
+    QString resolvedAnalysisKey = analysisKey;
+    if (resolvedAnalysisKey.isEmpty() && !resolvedResultDir.isEmpty())
+        resolvedAnalysisKey =
+            PostResultSelectionUtils::analysisKeyForSource(projectDir, resolvedResultDir);
+    if (!resolvedAnalysisKey.isEmpty())
     {
-        const int dirIndex = ui->resultDirComboBox->findData(resultDir);
+        const int analysisIndex = ui->analysisComboBox->findData(resolvedAnalysisKey);
+        if (analysisIndex >= 0)
+        {
+            const QSignalBlocker blocker(ui->analysisComboBox);
+            ui->analysisComboBox->setCurrentIndex(analysisIndex);
+        }
+    }
+    PostResultSelectionUtils::populateStageCombo(
+        ui->resultDirComboBox, projectDir,
+        PostResultSelectionUtils::selectedAnalysisKey(ui->analysisComboBox),
+        resolvedResultDir);
+    if (!resolvedResultDir.isEmpty())
+    {
+        const int dirIndex = PostResultSelectionUtils::sourceComboIndex(
+            ui->resultDirComboBox, projectDir, resolvedResultDir);
         if (dirIndex >= 0)
+        {
+            const QSignalBlocker blocker(ui->resultDirComboBox);
             ui->resultDirComboBox->setCurrentIndex(dirIndex);
+        }
     }
 
     m_dataPath = selectedResultDirectoryPath();
     loadFileName(m_dataPath);
+
+    if (!resultTime.isNull())
+    {
+        const int timeIndex = ui->resultTimeComboBox->findData(resultTime);
+        if (timeIndex >= 0)
+        {
+            {
+                const QSignalBlocker blocker(ui->resultTimeComboBox);
+                ui->resultTimeComboBox->setCurrentIndex(timeIndex);
+            }
+            on_resultTimeComboBox_currentIndexChanged(timeIndex);
+        }
+    }
 
     if (!step.isEmpty())
     {

@@ -10,7 +10,6 @@
 #include <vtkSmartPointer.h>
 #include <vtkUnstructuredGrid.h>
 
-#include <QMap>
 #include <QString>
 #include <QWidget>
 
@@ -39,9 +38,11 @@ class NephogramSettingWidget : public BasePage
     void selectGridNode(vtkObject* caller, unsigned long eventId, void* callData);
 
   private slots:
+    void on_analysisComboBox_currentIndexChanged(int index);
     void on_stepComboBox_currentIndexChanged(int index);
     void on_scalarComboBox_currentIndexChanged(int index);
     void on_resultDirComboBox_currentIndexChanged(int index);
+    void on_resultTimeComboBox_currentIndexChanged(int index);
 
   private:
     void ensureActorAttached();
@@ -87,7 +88,6 @@ class NephogramSettingWidget : public BasePage
     QString m_dataPath;
     QString m_loadedFileName;
     QString m_currentArrayName;
-    QMap<QString, QString> m_stepFileMap;
     bool m_initialized{false};
     bool m_actorAttached{false};
     bool m_loadingState{false};

@@ -1,536 +1,1072 @@
 ﻿#include "AnimationAviWidget.h"
 
-#include <services/VisualWidgetService.h>
-#include <vtkActor.h>
-#include <vtkAppendFilter.h>
-#include <vtkCellData.h>
-#include <vtkDataArray.h>
-#include <vtkDataSetMapper.h>
-#include <vtkLookupTable.h>
-#include <vtkMultiBlockDataSet.h>
-#include <vtkPointData.h>
-#include <vtkRenderWindow.h>
-#include <vtkScalarBarActor.h>
-#include <vtkTecplotReader.h>
-#include <vtkUnstructuredGrid.h>
-#include <vtkWindowToImageFilter.h>
-
-#include <QDebug>
-#include <QDir>
-#include <QFileDialog>
-#include <QMessageBox>
-#include <QRegularExpression>
-
-#include "PostVisualUtils.h"
+#include "PostComboBoxPerformance.h"
 #include "PostTecplotUtils.h"
+#include "PostVisualUtils.h"
+#include "ResultDisplayNames.h"
 #include "ui_AnimationAviWidget.h"
-// #include <vtkAVIWriter.h>
+
 #include <PublicConstants.h>
 #include <PublicVariables.h>
+#include <ServiceRegistry.h>
+#include <services/VisualWidgetService.h>
+
+#include <vtkCell.h>
+#include <vtkCellData.h>
+#include <vtkDataArray.h>
+#include <vtkDataSetAttributes.h>
+#include <vtkDataSetMapper.h>
+#include <vtkIdList.h>
+#include <vtkLookupTable.h>
+#include <vtkPointData.h>
 #include <vtkPoints.h>
 #include <vtkProperty.h>
+#include <vtkRenderWindow.h>
+#include <vtkRenderer.h>
+#include <vtkScalarBarActor.h>
+#include <vtkTextProperty.h>
+#include <vtkUnstructuredGrid.h>
+
+#include <QDebug>
+#include <QFileInfo>
+#include <QJsonObject>
+#include <QScopedValueRollback>
+#include <QSet>
+#include <QSignalBlocker>
+#include <QTimer>
 
 #include <algorithm>
 #include <cmath>
 
-AnimationAviWidget::AnimationAviWidget(VisualWidgetService* postProcessingWidget, QWidget* parent)
-    : ui(new Ui::AnimationAviWidget), BasePage(PublicConstants::kPagePostProcessAnimation),
+namespace
+{
+QString sequenceScalarKey(const QString& sequenceKey, const QString& scalar)
+{
+    return sequenceKey + QLatin1Char('|') + scalar;
+}
+
+bool validRange(const double range[2])
+{
+    return range && std::isfinite(range[0]) && std::isfinite(range[1]) &&
+           range[0] <= range[1];
+}
+
+QString cacheKeyForPath(const QString& filePath)
+{
+    return QFileInfo(filePath).absoluteFilePath().toCaseFolded();
+}
+
+void interpolateDataAttributes(vtkDataSetAttributes* first,
+                               vtkDataSetAttributes* second,
+                               vtkDataSetAttributes* output, double factor)
+{
+    if (!first || !second || !output)
+        return;
+
+    for (int arrayIndex = 0; arrayIndex < first->GetNumberOfArrays(); ++arrayIndex)
+    {
+        vtkDataArray* firstArray = first->GetArray(arrayIndex);
+        if (!firstArray || !firstArray->GetName())
+            continue;
+
+        vtkDataArray* secondArray = second->GetArray(firstArray->GetName());
+        vtkDataArray* outputArray = output->GetArray(firstArray->GetName());
+        if (!secondArray || !outputArray ||
+            firstArray->GetNumberOfTuples() != secondArray->GetNumberOfTuples() ||
+            firstArray->GetNumberOfComponents() !=
+                secondArray->GetNumberOfComponents())
+            continue;
+
+        const vtkIdType tupleCount = firstArray->GetNumberOfTuples();
+        const int componentCount = firstArray->GetNumberOfComponents();
+        for (vtkIdType tuple = 0; tuple < tupleCount; ++tuple)
+        {
+            for (int component = 0; component < componentCount; ++component)
+            {
+                const double firstValue = firstArray->GetComponent(tuple, component);
+                const double secondValue = secondArray->GetComponent(tuple, component);
+                outputArray->SetComponent(
+                    tuple, component,
+                    firstValue + (secondValue - firstValue) * factor);
+            }
+        }
+        outputArray->Modified();
+    }
+}
+} // namespace
+
+AnimationAviWidget::AnimationAviWidget(VisualWidgetService* postProcessingWidget,
+                                       QWidget* parent)
+    : BasePage(PublicConstants::kPagePostProcessAnimation),
+      ui(new Ui::AnimationAviWidget),
       m_visualService(postProcessingWidget)
 {
     ui->setupUi(this);
 
-    ui->fpsSpin->setRange(1.0, 60.0);
-    ui->fpsSpin->setSingleStep(1.0);
-    ui->fpsSpin->setValue(10.0);
-    ui->loopCheckBox->setChecked(true);
-    ui->fixRangeCheckBox->setChecked(true);
-    ui->interpCheckBox->setChecked(false);
-    ui->interpCountSpin->setRange(0, 60);
-    ui->interpCountSpin->setValue(0);
+    configurePostResultCombo(ui->analysisComboBox);
+    configurePostResultCombo(ui->rangeComboBox);
+    configurePostResultCombo(ui->resultComboBox);
+    configurePostResultCombo(ui->scalarComboBox);
+
+    m_timer.setTimerType(Qt::PreciseTimer);
+    m_timer.setSingleShot(false);
 
     connect(&m_timer, &QTimer::timeout, this, &AnimationAviWidget::onTick);
 
-    connect(ui->prevButton, &QPushButton::clicked, this,
-            &AnimationAviWidget::on_prevButton_clicked);
-    connect(ui->nextButton, &QPushButton::clicked, this,
-            &AnimationAviWidget::on_nextButton_clicked);
-    connect(ui->frameSlider, &QSlider::valueChanged, this,
-            &AnimationAviWidget::on_frameSlider_valueChanged);
-    connect(ui->fpsSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
-            &AnimationAviWidget::on_fpsSpin_valueChanged);
-    connect(ui->loopCheckBox, &QCheckBox::toggled, this,
-            &AnimationAviWidget::on_loopCheckBox_toggled);
+    // setupUi() 已通过 QMetaObject::connectSlotsByName() 自动连接所有
+    // on_<objectName>_<signal>() 槽。这里不能再次手动连接，否则一次点击会
+    // 连续执行“播放”和“暂停”，下拉框、滑块等控件也会被重复处理。
+    connect(ui->interpCheckBox, &QCheckBox::toggled, this,
+            [this](bool)
+    {
+        m_subStep = 0;
+        updateControls();
+    });
+    connect(ui->interpCountSpin,
+            QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [this](int) { m_subStep = 0; });
 
-    connect(ui->scalarComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
-            &AnimationAviWidget::on_scalarComboBox_currentIndexChanged);
-    connect(ui->fixRangeCheckBox, &QCheckBox::toggled, this,
-            &AnimationAviWidget::on_fixRangeCheckBox_toggled);
-
-    connect(ui->saveAviButton, &QPushButton::clicked, this,
-            &AnimationAviWidget::on_saveAviButton_clicked);
+    setStatusText(QStringLiteral("等待载入动画结果"));
+    updateControls();
 }
 
 AnimationAviWidget::~AnimationAviWidget()
 {
+    stopTimer();
     delete ui;
 }
 
 void AnimationAviWidget::beforeLoad()
 {
     showPostProcessingOnly(m_visualService, false);
-    if (m_actor)
-    {
-        removeActorByService(m_visualService, m_actor);
-        addActorByService(m_visualService, m_actor);
-        renderNow();
-    }
+    if (!m_visualService)
+        m_visualService =
+            ServiceRegistry::instance().getService<VisualWidgetService>();
+
+    refreshModel();
+    if (m_actor && m_grid)
+        attachActor();
+    renderNow();
 }
 
 void AnimationAviWidget::beforeUnload()
 {
     stopTimer();
-    if (m_actor)
-        removeActorByService(m_visualService, m_actor);
+    detachActor();
+    if (m_visualService)
+        m_visualService->showScalarBar(false, false);
+    renderNow();
 }
 
-void AnimationAviWidget::scanFrames()
+QJsonObject AnimationAviWidget::saveJson()
 {
-    m_frames.clear();
-    QDir dir(m_dataPath);
-    QRegularExpression re(R"(stress_strain(\d+)-(\d+)\.txt)");
+    QJsonObject object;
+    object.insert(QStringLiteral("analysisKey"),
+                  ui->analysisComboBox->currentData().toString());
+    object.insert(QStringLiteral("rangeKey"),
+                  ui->rangeComboBox->currentData().toString());
+    object.insert(QStringLiteral("sequenceKey"),
+                  ui->resultComboBox->currentData().toString());
+    object.insert(QStringLiteral("scalar"), currentScalarName());
+    object.insert(QStringLiteral("frame"), m_currentFrame);
+    object.insert(QStringLiteral("fps"), ui->fpsSpin->value());
+    object.insert(QStringLiteral("loop"), ui->loopCheckBox->isChecked());
+    object.insert(QStringLiteral("fixedRange"),
+                  ui->fixRangeCheckBox->isChecked());
+    object.insert(QStringLiteral("interpolate"),
+                  ui->interpCheckBox->isChecked());
+    object.insert(QStringLiteral("interpolationFrames"),
+                  ui->interpCountSpin->value());
+    return object;
+}
 
-    for (const QString& f : dir.entryList(QDir::Files))
+void AnimationAviWidget::loadJson(const QJsonObject& object)
+{
+    m_pendingJson = object;
+    m_pendingAnalysisKey =
+        object.value(QStringLiteral("analysisKey")).toString();
+    m_pendingRangeKey = object.value(QStringLiteral("rangeKey")).toString();
+    m_pendingSequenceKey =
+        object.value(QStringLiteral("sequenceKey")).toString();
+    m_pendingScalar = object.value(QStringLiteral("scalar")).toString();
+
+    ui->fpsSpin->setValue(
+        object.value(QStringLiteral("fps")).toDouble(5.0));
+    ui->loopCheckBox->setChecked(
+        object.value(QStringLiteral("loop")).toBool(true));
+    ui->fixRangeCheckBox->setChecked(
+        object.value(QStringLiteral("fixedRange")).toBool(true));
+    ui->interpCheckBox->setChecked(
+        object.value(QStringLiteral("interpolate")).toBool(false));
+    ui->interpCountSpin->setValue(
+        object.value(QStringLiteral("interpolationFrames")).toInt(2));
+
+    if (!m_model.sequences().isEmpty())
+        refreshModel();
+}
+
+void AnimationAviWidget::refreshModel()
+{
+    stopTimer();
+    clearGridCache();
+    m_rangeCache.clear();
+
+    const QString projectDir = PublicVariables::instance()
+                                   .get(PublicConstants::kProjectDirectoryKey)
+                                   .toString();
+    m_model.rebuild(projectDir);
+
+    QString preferredSequence = !m_pendingSequenceKey.isEmpty()
+                                    ? m_pendingSequenceKey
+                                    : ui->resultComboBox->currentData().toString();
+    QString preferredAnalysis = !m_pendingAnalysisKey.isEmpty()
+                                    ? m_pendingAnalysisKey
+                                    : ui->analysisComboBox->currentData().toString();
+    QString preferredRange = !m_pendingRangeKey.isEmpty()
+                                 ? m_pendingRangeKey
+                                 : ui->rangeComboBox->currentData().toString();
+
+    const int preferredIndex = m_model.sequenceIndex(preferredSequence);
+    if (const auto* sequence = m_model.sequence(preferredIndex))
     {
-        auto m = re.match(f);
-        if (!m.hasMatch())
-            continue;
-        FrameItem it;
-        it.group = m.captured(1).toInt();
-        it.order = m.captured(2).toInt();
-        it.filePath = dir.filePath(f);
-        m_frames.push_back(it);
+        preferredAnalysis = sequence->analysisKey;
+        preferredRange = sequence->rangeKey;
     }
-    std::sort(m_frames.begin(), m_frames.end(),
-              [](const FrameItem& a, const FrameItem& b)
-              {
-                  if (a.group != b.group)
-                      return a.group < b.group;
-                  return a.order < b.order;
-              });
-}
 
-vtkSmartPointer<vtkUnstructuredGrid> AnimationAviWidget::loadGridFromFile(const QString& file)
-{
-    return PostTecplotUtils::readGrid(file);
-}
+    populateAnalysisCombo(preferredAnalysis);
+    populateRangeCombo(preferredRange);
+    populateResultCombo(preferredSequence);
+    activateSelectedSequence();
 
-bool AnimationAviWidget::loadFrame(int index)
-{
-    if (index < 0 || index >= m_frames.size())
-        return false;
-    m_grid = loadGridFromFile(m_frames[index].filePath);
-    if (!m_grid)
-        return false;
-
-    m_mapper->SetInputData(m_grid);
-
-    // 应用色标
-    if (ui->scalarComboBox->count() > 0)
+    if (!m_pendingScalar.isEmpty())
     {
-        const QString s = ui->scalarComboBox->currentText();
-        double range[2]{0, 1};
-        if (m_hasFixedRange)
-        {
-            range[0] = m_fixedRange[0];
-            range[1] = m_fixedRange[1];
-        }
-        else if (auto arr = m_grid->GetPointData()->GetArray(s.toUtf8().data()))
-        {
-            arr->GetRange(range);
-        }
-        applyScalarAndLUT(s, range);
+        const int scalarIndex =
+            ResultDisplayNames::findInternalName(ui->scalarComboBox,
+                                                 m_pendingScalar);
+        if (scalarIndex >= 0)
+            ui->scalarComboBox->setCurrentIndex(scalarIndex);
     }
 
-    m_currentIndex = index;
+    if (!m_pendingJson.isEmpty() && currentSequence())
+    {
+        const int frame =
+            m_pendingJson.value(QStringLiteral("frame")).toInt(0);
+        loadFrame(qBound(0, frame, currentSequence()->frames.size() - 1));
+    }
+
+    m_pendingAnalysisKey.clear();
+    m_pendingRangeKey.clear();
+    m_pendingSequenceKey.clear();
+    m_pendingScalar.clear();
+    m_pendingJson = QJsonObject();
+    updateControls();
+}
+
+void AnimationAviWidget::populateAnalysisCombo(const QString& preferredKey)
+{
+    const QSignalBlocker blocker(ui->analysisComboBox);
+    ui->analysisComboBox->clear();
+    for (const auto& item : m_model.analyses())
+        ui->analysisComboBox->addItem(item.name, item.key);
+
+    int index = preferredKey.isEmpty()
+                    ? -1
+                    : ui->analysisComboBox->findData(preferredKey);
+    if (index < 0 && ui->analysisComboBox->count() > 0)
+        index = 0;
+    ui->analysisComboBox->setCurrentIndex(index);
+}
+
+void AnimationAviWidget::populateRangeCombo(const QString& preferredKey)
+{
+    const QString analysisKey =
+        ui->analysisComboBox->currentData().toString();
+    const QSignalBlocker blocker(ui->rangeComboBox);
+    ui->rangeComboBox->clear();
+    for (const auto& item : m_model.ranges(analysisKey))
+        ui->rangeComboBox->addItem(item.name, item.key);
+
+    int index = preferredKey.isEmpty()
+                    ? -1
+                    : ui->rangeComboBox->findData(preferredKey);
+    if (index < 0 && ui->rangeComboBox->count() > 0)
+        index = 0;
+    ui->rangeComboBox->setCurrentIndex(index);
+}
+
+void AnimationAviWidget::populateResultCombo(
+    const QString& preferredSequenceKey)
+{
+    const QString analysisKey =
+        ui->analysisComboBox->currentData().toString();
+    const QString rangeKey = ui->rangeComboBox->currentData().toString();
+    const QSignalBlocker blocker(ui->resultComboBox);
+    ui->resultComboBox->clear();
+    for (const auto& item : m_model.results(analysisKey, rangeKey))
+        ui->resultComboBox->addItem(item.name, item.key);
+
+    int index = preferredSequenceKey.isEmpty()
+                    ? -1
+                    : ui->resultComboBox->findData(preferredSequenceKey);
+    if (index < 0 && ui->resultComboBox->count() > 0)
+        index = 0;
+    ui->resultComboBox->setCurrentIndex(index);
+}
+
+void AnimationAviWidget::activateSelectedSequence()
+{
+    stopTimer();
+    clearGridCache();
+    m_rangeCache.clear();
+    m_sequenceIndex = m_model.sequenceIndex(
+        ui->resultComboBox->currentData().toString());
+    m_currentFrame = -1;
     m_subStep = 0;
 
-    ui->frameSlider->blockSignals(true);
-    ui->frameSlider->setValue(index);
-    ui->frameSlider->blockSignals(false);
+    const auto* sequence = currentSequence();
+    if (!sequence)
+    {
+        m_grid = nullptr;
+        ui->scalarComboBox->clear();
+        ui->frameSlider->setRange(0, 0);
+        ui->frameSlider->setValue(0);
+        ui->frameLabel->setText(QStringLiteral("—"));
+        ui->sequenceSummaryLabel->setText(
+            QStringLiteral("暂无可播放的序列结果"));
+        setStatusText(QStringLiteral("没有找到至少包含两帧的结果序列"), true);
+        detachActor();
+        if (m_visualService)
+            m_visualService->showScalarBar(false, false);
+        updateControls();
+        renderNow();
+        return;
+    }
 
-    updateFrameLabel();
+    {
+        const QSignalBlocker blocker(ui->frameSlider);
+        ui->frameSlider->setRange(0, sequence->frames.size() - 1);
+        ui->frameSlider->setValue(0);
+    }
+
+    updateSequenceSummary();
+    if (!loadFrame(0, true))
+    {
+        setStatusText(QStringLiteral("首帧读取失败，无法播放该结果序列"), true);
+        updateControls();
+        return;
+    }
+
+    if (m_visualService && m_visualService->renderer())
+        m_visualService->renderer()->ResetCamera();
+    setStatusText(QStringLiteral("动画序列已就绪"));
+    updateControls();
     renderNow();
+}
+
+const PostAnimationSequenceModel::Sequence*
+AnimationAviWidget::currentSequence() const
+{
+    return m_model.sequence(m_sequenceIndex);
+}
+
+vtkSmartPointer<vtkUnstructuredGrid>
+AnimationAviWidget::readGrid(const QString& filePath)
+{
+    const QString key = cacheKeyForPath(filePath);
+    const auto cached = m_gridCache.constFind(key);
+    if (cached != m_gridCache.constEnd())
+        return cached.value();
+
+    QString error;
+    vtkSmartPointer<vtkUnstructuredGrid> grid =
+        PostTecplotUtils::readGrid(filePath, &error);
+    if (!grid || grid->GetNumberOfPoints() <= 0)
+    {
+        qWarning().noquote() << error;
+        return nullptr;
+    }
+
+    rememberGrid(filePath, grid);
+    return grid;
+}
+
+void AnimationAviWidget::clearGridCache()
+{
+    m_gridCache.clear();
+    m_gridCacheOrder.clear();
+}
+
+void AnimationAviWidget::rememberGrid(
+    const QString& filePath,
+    const vtkSmartPointer<vtkUnstructuredGrid>& grid)
+{
+    if (!grid)
+        return;
+
+    const QString key = cacheKeyForPath(filePath);
+    m_gridCache.insert(key, grid);
+    m_gridCacheOrder.removeAll(key);
+    m_gridCacheOrder.push_back(key);
+
+    while (m_gridCacheOrder.size() > m_gridCacheLimit)
+    {
+        const QString oldest = m_gridCacheOrder.takeFirst();
+        m_gridCache.remove(oldest);
+    }
+}
+
+void AnimationAviWidget::preloadNeighbourFrame()
+{
+    const auto* sequence = currentSequence();
+    const int next = nextFrameIndex(1);
+    if (!sequence || next < 0 || next >= sequence->frames.size())
+        return;
+
+    const QString sequenceKey = sequence->key;
+    const QString filePath = sequence->frames.at(next).filePath;
+    if (m_gridCache.contains(cacheKeyForPath(filePath)))
+        return;
+
+    QTimer::singleShot(0, this, [this, sequenceKey, filePath]()
+    {
+        const auto* active = currentSequence();
+        if (!active || active->key != sequenceKey || m_playing)
+            return;
+        readGrid(filePath);
+    });
+}
+
+bool AnimationAviWidget::loadFrame(int index, bool updateScalarList)
+{
+    const auto* sequence = currentSequence();
+    if (!sequence || index < 0 || index >= sequence->frames.size())
+        return false;
+
+    QScopedValueRollback<bool> loadingGuard(m_loadingState, true);
+    vtkSmartPointer<vtkUnstructuredGrid> grid =
+        readGrid(sequence->frames.at(index).filePath);
+    if (!grid)
+        return false;
+
+    const QString preferredScalar = currentScalarName();
+    m_grid = grid;
+    m_currentFrame = index;
+    m_subStep = 0;
+
+    if (updateScalarList || !scalarArray(m_grid, preferredScalar))
+        fillScalarCombo(m_grid, preferredScalar);
+    applyScalar(m_grid, currentScalarName());
+
+    {
+        const QSignalBlocker blocker(ui->frameSlider);
+        ui->frameSlider->setValue(index);
+    }
+    updateFrameLabel();
+    attachActor();
+    renderNow();
+    preloadNeighbourFrame();
     return true;
 }
 
-void AnimationAviWidget::fillScalarComboFromCurrentGrid()
+void AnimationAviWidget::fillScalarCombo(vtkUnstructuredGrid* grid,
+                                          const QString& preferredScalar)
 {
-    QString prev = ui->scalarComboBox->currentText();
-    ui->scalarComboBox->blockSignals(true);
-    ui->scalarComboBox->clear();
-
-    if (m_grid)
+    QStringList arrays;
+    if (grid && grid->GetPointData())
     {
-        auto pd = m_grid->GetPointData();
-        for (int i = 0; i < pd->GetNumberOfArrays(); ++i)
-            if (const char* n = pd->GetArrayName(i))
-                ui->scalarComboBox->addItem(QString::fromUtf8(n));
-    }
-
-    int keep = ui->scalarComboBox->findText(prev);
-    if (keep >= 0)
-        ui->scalarComboBox->setCurrentIndex(keep);
-    else if (ui->scalarComboBox->count() > 0)
-        ui->scalarComboBox->setCurrentIndex(0);
-
-    ui->scalarComboBox->blockSignals(false);
-}
-
-bool AnimationAviWidget::computeGlobalRange(const QString& scalar, double outRange[2])
-{
-    if (m_frames.isEmpty())
-        return false;
-    bool inited = false;
-    double gmin = 0, gmax = 0;
-
-    for (const auto& f : m_frames)
-    {
-        auto g = loadGridFromFile(f.filePath);
-        if (!g)
-            continue;
-        if (auto arr = g->GetPointData()->GetArray(scalar.toUtf8().data()))
+        for (int index = 0;
+             index < grid->GetPointData()->GetNumberOfArrays(); ++index)
         {
-            double r[2];
-            arr->GetRange(r);
-            if (!inited)
-            {
-                gmin = r[0];
-                gmax = r[1];
-                inited = true;
-            }
-            else
-            {
-                gmin = std::min(gmin, r[0]);
-                gmax = std::max(gmax, r[1]);
-            }
+            const char* name = grid->GetPointData()->GetArrayName(index);
+            if (name && *name)
+                arrays.push_back(QString::fromUtf8(name));
         }
     }
-    if (!inited)
+    if (grid && grid->GetCellData())
+    {
+        for (int index = 0;
+             index < grid->GetCellData()->GetNumberOfArrays(); ++index)
+        {
+            const char* name = grid->GetCellData()->GetArrayName(index);
+            if (name && *name &&
+                !arrays.contains(QString::fromUtf8(name)))
+                arrays.push_back(QString::fromUtf8(name));
+        }
+    }
+
+    const QSignalBlocker blocker(ui->scalarComboBox);
+    ResultDisplayNames::populateCombo(ui->scalarComboBox, arrays,
+                                     preferredScalar);
+}
+
+QString AnimationAviWidget::currentScalarName() const
+{
+    return ResultDisplayNames::internalName(ui->scalarComboBox);
+}
+
+vtkDataArray* AnimationAviWidget::scalarArray(vtkUnstructuredGrid* grid,
+                                               const QString& name,
+                                               bool* pointData) const
+{
+    if (!grid || name.isEmpty())
+        return nullptr;
+
+    if (vtkDataArray* array =
+            grid->GetPointData()->GetArray(name.toUtf8().constData()))
+    {
+        if (pointData)
+            *pointData = true;
+        return array;
+    }
+    if (vtkDataArray* array =
+            grid->GetCellData()->GetArray(name.toUtf8().constData()))
+    {
+        if (pointData)
+            *pointData = false;
+        return array;
+    }
+    return nullptr;
+}
+
+bool AnimationAviWidget::computeGlobalRange(const QString& scalarName,
+                                             double range[2])
+{
+    const auto* sequence = currentSequence();
+    if (!sequence || scalarName.isEmpty())
         return false;
-    outRange[0] = gmin;
-    outRange[1] = gmax;
+
+    const QString cacheKey = sequenceScalarKey(sequence->key, scalarName);
+    const auto cached = m_rangeCache.constFind(cacheKey);
+    if (cached != m_rangeCache.constEnd())
+    {
+        range[0] = cached.value().first;
+        range[1] = cached.value().second;
+        return true;
+    }
+
+    bool initialized = false;
+    double minimum = 0.0;
+    double maximum = 1.0;
+    for (const auto& frame : sequence->frames)
+    {
+        vtkSmartPointer<vtkUnstructuredGrid> grid = readGrid(frame.filePath);
+        vtkDataArray* array = scalarArray(grid, scalarName);
+        if (!array)
+            continue;
+
+        double localRange[2];
+        array->GetRange(localRange);
+        if (!validRange(localRange))
+            continue;
+
+        if (!initialized)
+        {
+            minimum = localRange[0];
+            maximum = localRange[1];
+            initialized = true;
+        }
+        else
+        {
+            minimum = std::min(minimum, localRange[0]);
+            maximum = std::max(maximum, localRange[1]);
+        }
+    }
+
+    if (!initialized)
+        return false;
+    if (std::abs(maximum - minimum) < 1.0e-14)
+        maximum = minimum + 1.0;
+
+    range[0] = minimum;
+    range[1] = maximum;
+    m_rangeCache.insert(cacheKey, qMakePair(minimum, maximum));
     return true;
 }
 
-void AnimationAviWidget::applyScalarAndLUT(const QString& scalar, const double range[2])
+void AnimationAviWidget::applyScalar(vtkUnstructuredGrid* grid,
+                                      const QString& scalarName)
 {
-    auto scalarBar = m_visualService->scalarBarActor();
-    auto lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable());
-    if (!lut)
+    buildPipelineIfNeeded();
+    if (!grid || scalarName.isEmpty() || !m_visualService)
     {
-        lut = vtkSmartPointer<vtkLookupTable>::New();
-        scalarBar->SetLookupTable(lut);
+        if (m_mapper)
+            m_mapper->ScalarVisibilityOff();
+        if (m_visualService)
+            m_visualService->showScalarBar(false, false);
+        return;
     }
-    lut->SetTableRange(range);
-    lut->Build();
 
-    m_mapper->SetLookupTable(lut);
-    m_mapper->SetScalarModeToUsePointFieldData();
-    m_mapper->SelectColorArray(scalar.toUtf8().data());
+    bool pointData = true;
+    vtkDataArray* array = scalarArray(grid, scalarName, &pointData);
+    if (!array)
+    {
+        m_mapper->ScalarVisibilityOff();
+        m_visualService->showScalarBar(false, false);
+        return;
+    }
+
+    double range[2];
+    array->GetRange(range);
+    if (ui->fixRangeCheckBox->isChecked())
+        computeGlobalRange(scalarName, range);
+    if (!validRange(range))
+        return;
+    if (std::abs(range[1] - range[0]) < 1.0e-14)
+        range[1] = range[0] + 1.0;
+
+    vtkScalarBarActor* scalarBar = m_visualService->scalarBarActor();
+    vtkLookupTable* lookupTable =
+        scalarBar ? vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable())
+                  : nullptr;
+    vtkSmartPointer<vtkLookupTable> ownedLookup;
+    if (!lookupTable)
+    {
+        ownedLookup = vtkSmartPointer<vtkLookupTable>::New();
+        lookupTable = ownedLookup;
+        if (scalarBar)
+            scalarBar->SetLookupTable(lookupTable);
+    }
+
+    lookupTable->SetTableRange(range);
+    lookupTable->SetNumberOfTableValues(256);
+    lookupTable->Build();
+
+    m_mapper->SetInputData(grid);
+    m_mapper->SetLookupTable(lookupTable);
     m_mapper->SetScalarRange(range);
+    if (pointData)
+        m_mapper->SetScalarModeToUsePointFieldData();
+    else
+        m_mapper->SetScalarModeToUseCellFieldData();
+    m_mapper->SelectColorArray(scalarName.toUtf8().constData());
+    m_mapper->ScalarVisibilityOn();
+
+    if (scalarBar)
+    {
+        applyStandardPostScalarBar(
+            m_visualService, ResultDisplayNames::scalarBarName(scalarName));
+        m_visualService->showScalarBar(true, false);
+    }
 }
 
 void AnimationAviWidget::buildPipelineIfNeeded()
 {
     if (m_mapper)
         return;
+
     m_mapper = vtkSmartPointer<vtkDataSetMapper>::New();
     m_actor = vtkSmartPointer<vtkActor>::New();
     m_actor->SetMapper(m_mapper);
     m_actor->GetProperty()->SetRepresentationToSurface();
-    addActorByService(m_visualService, m_actor);
+}
+
+void AnimationAviWidget::attachActor()
+{
+    buildPipelineIfNeeded();
+    if (!m_actorAttached && m_visualService && m_actor)
+    {
+        addActorByService(m_visualService, m_actor);
+        m_actorAttached = true;
+    }
+}
+
+void AnimationAviWidget::detachActor()
+{
+    if (m_actorAttached && m_visualService && m_actor)
+    {
+        removeActorByService(m_visualService, m_actor);
+        m_actorAttached = false;
+    }
+}
+
+void AnimationAviWidget::updateSequenceSummary()
+{
+    const auto* sequence = currentSequence();
+    if (!sequence || sequence->frames.isEmpty())
+    {
+        ui->sequenceSummaryLabel->setText(
+            QStringLiteral("暂无可播放的序列结果"));
+        return;
+    }
+
+    const QString axisName =
+        sequence->axis == PostAnimationSequenceModel::Axis::Time
+            ? QStringLiteral("时间序列")
+            : QStringLiteral("阶段序列");
+    const QString first = sequence->frames.constFirst().label;
+    const QString last = sequence->frames.constLast().label;
+    ui->sequenceSummaryLabel->setText(
+        QStringLiteral("%1，共 %2 帧：%3 ～ %4")
+            .arg(axisName)
+            .arg(sequence->frames.size())
+            .arg(first, last));
 }
 
 void AnimationAviWidget::updateFrameLabel()
 {
-    QString base = QString("%1 / %2").arg(m_currentIndex + 1).arg(m_frames.size());
-    QString fn = QFileInfo(m_frames[m_currentIndex].filePath).fileName();
-    if (ui->interpCheckBox->isChecked() && ui->interpCountSpin->value() > 0)
+    const auto* sequence = currentSequence();
+    if (!sequence || m_currentFrame < 0 ||
+        m_currentFrame >= sequence->frames.size())
     {
-        base += QString("  (子步 %1/%2)").arg(m_subStep).arg(ui->interpCountSpin->value());
+        ui->frameLabel->setText(QStringLiteral("—"));
+        return;
     }
-    ui->frameLabel->setText(base + "  " + fn);
+
+    QString text = QStringLiteral("%1 / %2　%3")
+                       .arg(m_currentFrame + 1)
+                       .arg(sequence->frames.size())
+                       .arg(sequence->frames.at(m_currentFrame).label);
+    if (m_subStep > 0)
+    {
+        text += QStringLiteral("　过渡 %1/%2")
+                    .arg(m_subStep)
+                    .arg(ui->interpCountSpin->value());
+    }
+    ui->frameLabel->setText(text);
+}
+
+void AnimationAviWidget::updateControls()
+{
+    const auto* sequence = currentSequence();
+    const bool hasAnalyses = ui->analysisComboBox->count() > 0;
+    const bool hasRanges = ui->rangeComboBox->count() > 0;
+    const bool hasResults = ui->resultComboBox->count() > 0;
+    const bool ready = sequence && sequence->frames.size() >= 2 && m_grid;
+
+    ui->analysisComboBox->setEnabled(hasAnalyses);
+    ui->rangeComboBox->setEnabled(hasRanges);
+    ui->resultComboBox->setEnabled(hasResults);
+    ui->scalarComboBox->setEnabled(ready &&
+                                   ui->scalarComboBox->count() > 0);
+    ui->frameSlider->setEnabled(ready);
+    ui->playPauseButton->setEnabled(ready);
+    ui->prevButton->setEnabled(ready);
+    ui->nextButton->setEnabled(ready);
+    ui->fpsSpin->setEnabled(ready);
+    ui->loopCheckBox->setEnabled(ready);
+    ui->fixRangeCheckBox->setEnabled(ready);
+
+    const bool interpolationAvailable =
+        ready && sequence->supportsInterpolation &&
+        sequence->axis == PostAnimationSequenceModel::Axis::Time;
+    ui->interpCheckBox->setEnabled(interpolationAvailable);
+    ui->interpCheckBox->setToolTip(
+        interpolationAvailable
+            ? QStringLiteral("在相邻时刻之间插入过渡帧")
+            : QStringLiteral("施工阶段或拓扑变化结果只播放原始帧"));
+    ui->interpCountSpin->setEnabled(interpolationAvailable &&
+                                    ui->interpCheckBox->isChecked());
+}
+
+void AnimationAviWidget::setStatusText(const QString& text, bool error)
+{
+    ui->statusLabel->setText(error ? QStringLiteral("提示：%1").arg(text)
+                                   : text);
 }
 
 void AnimationAviWidget::renderNow()
 {
-    if (auto rw = m_visualService->renderWindow())
-        rw->Render();
+    if (m_visualService && m_visualService->renderWindow())
+        m_visualService->renderWindow()->Render();
 }
 
-void AnimationAviWidget::startTimer()
+bool AnimationAviWidget::startTimer()
 {
-    const double fps = ui->fpsSpin->value();
-    int intervalMs = int(std::round(1000.0 / std::max(1.0, fps)));
-    m_timer.start(intervalMs);
-    m_isPlaying = true;
-    ui->playPauseButton->setText("暂停");
+    const auto* sequence = currentSequence();
+    if (!sequence || sequence->frames.size() < 2 || !m_grid)
+    {
+        setStatusText(QStringLiteral("当前没有可播放的帧"), true);
+        return false;
+    }
+
+    if (m_currentFrame < 0 && !loadFrame(0))
+    {
+        setStatusText(QStringLiteral("当前帧读取失败"), true);
+        return false;
+    }
+
+    if (!ui->loopCheckBox->isChecked() &&
+        m_currentFrame >= sequence->frames.size() - 1)
+    {
+        if (!loadFrame(0))
+            return false;
+    }
+
+    const int interval =
+        qMax(16, qRound(1000.0 / qMax(0.5, ui->fpsSpin->value())));
+    m_timer.start(interval);
+    m_playing = true;
+    ui->playPauseButton->setText(QStringLiteral("暂停"));
+    setStatusText(QStringLiteral("正在播放"));
+    return true;
 }
+
 void AnimationAviWidget::stopTimer()
 {
     m_timer.stop();
-    m_isPlaying = false;
-    ui->playPauseButton->setText("播放");
+    m_playing = false;
+    if (ui)
+        ui->playPauseButton->setText(QStringLiteral("播放"));
 }
 
-bool AnimationAviWidget::canInterpolateBetween(int i, int j) const
+int AnimationAviWidget::nextFrameIndex(int direction) const
 {
-    if (i < 0 || j < 0 || i >= m_frames.size() || j >= m_frames.size())
-        return false;
-    auto g0 = const_cast<AnimationAviWidget*>(this)->loadGridFromFile(m_frames[i].filePath);
-    auto g1 = const_cast<AnimationAviWidget*>(this)->loadGridFromFile(m_frames[j].filePath);
-    if (!g0 || !g1)
-        return false;
-    // 基础要求：点数一致（更严格可比 cell 数/类型）
-    return g0->GetNumberOfPoints() == g1->GetNumberOfPoints();
+    const auto* sequence = currentSequence();
+    if (!sequence || sequence->frames.isEmpty())
+        return -1;
+
+    int index = m_currentFrame + direction;
+    if (index >= 0 && index < sequence->frames.size())
+        return index;
+    if (!ui->loopCheckBox->isChecked())
+        return -1;
+    return direction >= 0 ? 0 : sequence->frames.size() - 1;
 }
 
-vtkSmartPointer<vtkUnstructuredGrid> AnimationAviWidget::interpolateGrids(vtkUnstructuredGrid* g0,
-                                                                          vtkUnstructuredGrid* g1,
-                                                                          double alpha) const
+bool AnimationAviWidget::advanceFrame()
 {
-    // 单元拓扑假设一致
-    auto out = vtkSmartPointer<vtkUnstructuredGrid>::New();
-    out->DeepCopy(g0); // 拷贝单元/拓扑及数组壳
+    const auto* sequence = currentSequence();
+    const int next = nextFrameIndex(1);
+    if (!sequence || next < 0)
+        return false;
 
-    // 点坐标
-    vtkIdType npts = g0->GetNumberOfPoints();
-    auto pts = vtkSmartPointer<vtkPoints>::New();
-    pts->SetNumberOfPoints(npts);
-    double p0[3], p1[3], p[3];
-    for (vtkIdType i = 0; i < npts; ++i)
+    const bool wraps = next == 0 && m_currentFrame > 0;
+    const int interpolationCount =
+        sequence->supportsInterpolation &&
+                sequence->axis == PostAnimationSequenceModel::Axis::Time &&
+                ui->interpCheckBox->isChecked()
+            ? ui->interpCountSpin->value()
+            : 0;
+
+    if (!wraps && interpolationCount > 0 &&
+        m_subStep < interpolationCount)
     {
-        g0->GetPoint(i, p0);
-        g1->GetPoint(i, p1);
-        p[0] = (1 - alpha) * p0[0] + alpha * p1[0];
-        p[1] = (1 - alpha) * p0[1] + alpha * p1[1];
-        p[2] = (1 - alpha) * p0[2] + alpha * p1[2];
-        pts->SetPoint(i, p);
+        const double factor =
+            static_cast<double>(m_subStep + 1) /
+            static_cast<double>(interpolationCount + 1);
+        ++m_subStep;
+        if (showInterpolatedFrame(next, factor))
+            return true;
+        m_subStep = interpolationCount;
     }
-    out->SetPoints(pts);
 
-    // 点标量数组：同名同分量线性插值（不存在则跳过）
-    auto pd0 = g0->GetPointData();
-    auto pd1 = g1->GetPointData();
-    auto pdO = out->GetPointData();
+    return loadFrame(next);
+}
 
-    for (int a = 0; a < pd0->GetNumberOfArrays(); ++a)
+bool AnimationAviWidget::canInterpolate(vtkUnstructuredGrid* first,
+                                         vtkUnstructuredGrid* second) const
+{
+    if (!first || !second ||
+        first->GetNumberOfPoints() != second->GetNumberOfPoints() ||
+        first->GetNumberOfCells() != second->GetNumberOfCells())
+        return false;
+
+    for (vtkIdType cellId = 0; cellId < first->GetNumberOfCells(); ++cellId)
     {
-        auto arr0 = pd0->GetArray(a);
-        if (!arr0)
-            continue;
-        const char* name = arr0->GetName();
-        auto arr1 = pd1->GetArray(name);
-        auto arrO = pdO->GetArray(name);
-        if (!arr1 || !arrO)
-            continue;
-        int ncomp = arr0->GetNumberOfComponents();
-        for (vtkIdType i = 0; i < npts; ++i)
+        vtkCell* firstCell = first->GetCell(cellId);
+        vtkCell* secondCell = second->GetCell(cellId);
+        if (!firstCell || !secondCell ||
+            firstCell->GetCellType() != secondCell->GetCellType() ||
+            firstCell->GetNumberOfPoints() != secondCell->GetNumberOfPoints())
+            return false;
+
+        vtkIdList* firstIds = firstCell->GetPointIds();
+        vtkIdList* secondIds = secondCell->GetPointIds();
+        for (vtkIdType point = 0; point < firstIds->GetNumberOfIds(); ++point)
         {
-            for (int c = 0; c < ncomp; ++c)
-            {
-                double v0 = arr0->GetComponent(i, c);
-                double v1 = arr1->GetComponent(i, c);
-                arrO->SetComponent(i, c, (1 - alpha) * v0 + alpha * v1);
-            }
+            if (firstIds->GetId(point) != secondIds->GetId(point))
+                return false;
         }
     }
+    return true;
+}
 
-    // 单元标量：可选（若有需要再加，通常着色用点数据）
-    return out;
+vtkSmartPointer<vtkUnstructuredGrid> AnimationAviWidget::interpolate(
+    vtkUnstructuredGrid* first, vtkUnstructuredGrid* second,
+    double factor) const
+{
+    if (!canInterpolate(first, second))
+        return nullptr;
+
+    vtkSmartPointer<vtkUnstructuredGrid> output =
+        vtkSmartPointer<vtkUnstructuredGrid>::New();
+    output->DeepCopy(first);
+
+    vtkSmartPointer<vtkPoints> points = vtkSmartPointer<vtkPoints>::New();
+    points->SetNumberOfPoints(first->GetNumberOfPoints());
+    double firstPoint[3];
+    double secondPoint[3];
+    double point[3];
+    for (vtkIdType index = 0; index < first->GetNumberOfPoints(); ++index)
+    {
+        first->GetPoint(index, firstPoint);
+        second->GetPoint(index, secondPoint);
+        for (int component = 0; component < 3; ++component)
+        {
+            point[component] =
+                firstPoint[component] +
+                (secondPoint[component] - firstPoint[component]) * factor;
+        }
+        points->SetPoint(index, point);
+    }
+    output->SetPoints(points);
+
+    interpolateDataAttributes(first->GetPointData(), second->GetPointData(),
+                              output->GetPointData(), factor);
+    interpolateDataAttributes(first->GetCellData(), second->GetCellData(),
+                              output->GetCellData(), factor);
+    return output;
+}
+
+bool AnimationAviWidget::showInterpolatedFrame(int nextIndex, double factor)
+{
+    const auto* sequence = currentSequence();
+    if (!m_grid || !sequence || nextIndex < 0 ||
+        nextIndex >= sequence->frames.size())
+        return false;
+
+    vtkSmartPointer<vtkUnstructuredGrid> nextGrid =
+        readGrid(sequence->frames.at(nextIndex).filePath);
+    vtkSmartPointer<vtkUnstructuredGrid> interpolatedGrid =
+        interpolate(m_grid, nextGrid, factor);
+    if (!interpolatedGrid)
+        return false;
+
+    applyScalar(interpolatedGrid, currentScalarName());
+    attachActor();
+    updateFrameLabel();
+    renderNow();
+    return true;
 }
 
 void AnimationAviWidget::onTick()
 {
-    const bool doInterp = ui->interpCheckBox->isChecked() && (ui->interpCountSpin->value() > 0);
-    const int N = ui->interpCountSpin->value();
+    if (!m_playing)
+        return;
 
-    int nextIndex = m_currentIndex + 1;
-    if (nextIndex >= m_frames.size())
+    if (!advanceFrame())
     {
-        if (ui->loopCheckBox->isChecked())
-            nextIndex = 0;
-        else
-        {
-            stopTimer();
-            return;
-        }
-    }
-
-    if (doInterp && canInterpolateBetween(m_currentIndex, nextIndex))
-    {
-        // 如果还有子步，就插值；否则切换到下一原始帧
-        if (m_subStep < N)
-        {
-            double alpha = double(m_subStep + 1) / double(N + 1);
-            auto g0 = loadGridFromFile(m_frames[m_currentIndex].filePath);
-            auto g1 = loadGridFromFile(m_frames[nextIndex].filePath);
-            auto gI = interpolateGrids(g0, g1, alpha);
-            if (gI)
-            {
-                m_mapper->SetInputData(gI);
-                // LUT 范围
-                if (ui->scalarComboBox->count() > 0)
-                {
-                    const QString s = ui->scalarComboBox->currentText();
-                    double range[2]{0, 1};
-                    if (m_hasFixedRange)
-                    {
-                        range[0] = m_fixedRange[0];
-                        range[1] = m_fixedRange[1];
-                    }
-                    else if (auto arr = gI->GetPointData()->GetArray(s.toUtf8().data()))
-                    {
-                        arr->GetRange(range);
-                    }
-                    applyScalarAndLUT(s, range);
-                }
-                m_subStep++;
-                updateFrameLabel();
-                renderNow();
-                return;
-            }
-        }
-    }
-
-    // 走到这里：进入下一原始帧
-    loadFrame(nextIndex);
-}
-
-void AnimationAviWidget::on_playPauseButton_clicked()
-{
-    qInfo() << "动画播放状态=" << m_isPlaying;
-    if (m_isPlaying)
         stopTimer();
-    else
-        startTimer();
+        setStatusText(QStringLiteral("播放结束"));
+    }
 }
-void AnimationAviWidget::on_prevButton_clicked()
+
+void AnimationAviWidget::on_analysisComboBox_currentIndexChanged(int)
 {
+    if (m_loadingState)
+        return;
     stopTimer();
-    int prev = m_currentIndex - 1;
-    if (prev < 0)
-        prev = ui->loopCheckBox->isChecked() ? (m_frames.size() - 1) : 0;
-    loadFrame(prev);
+    populateRangeCombo(QString());
+    populateResultCombo(QString());
+    activateSelectedSequence();
 }
-void AnimationAviWidget::on_nextButton_clicked()
+
+void AnimationAviWidget::on_rangeComboBox_currentIndexChanged(int)
 {
+    if (m_loadingState)
+        return;
     stopTimer();
-    int next = m_currentIndex + 1;
-    if (next >= m_frames.size())
-        next = ui->loopCheckBox->isChecked() ? 0 : (m_frames.size() - 1);
-    loadFrame(next);
+    populateResultCombo(QString());
+    activateSelectedSequence();
 }
-void AnimationAviWidget::on_frameSlider_valueChanged(int v)
+
+void AnimationAviWidget::on_resultComboBox_currentIndexChanged(int)
 {
-    stopTimer();
-    loadFrame(v);
-}
-void AnimationAviWidget::on_fpsSpin_valueChanged(double)
-{
-    if (m_isPlaying)
-        startTimer(); // 重置 interval
-}
-void AnimationAviWidget::on_loopCheckBox_toggled(bool)
-{
+    if (m_loadingState)
+        return;
+    activateSelectedSequence();
 }
 
 void AnimationAviWidget::on_scalarComboBox_currentIndexChanged(int)
 {
-    if (ui->scalarComboBox->count() == 0)
+    if (!m_grid || m_loadingState)
         return;
-    const QString s = ui->scalarComboBox->currentText();
 
-    if (ui->fixRangeCheckBox->isChecked())
-    {
-        double r[2];
-        if (computeGlobalRange(s, r))
-        {
-            m_fixedRange[0] = r[0];
-            m_fixedRange[1] = r[1];
-            m_hasFixedRange = true;
-            applyScalarAndLUT(s, m_fixedRange);
-        }
-    }
-    else
-    {
-        m_hasFixedRange = false;
-        double r[2]{0, 1};
-        if (auto arr = m_grid->GetPointData()->GetArray(s.toUtf8().data()))
-            arr->GetRange(r);
-        applyScalarAndLUT(s, r);
-    }
+    m_subStep = 0;
+    applyScalar(m_grid, currentScalarName());
     renderNow();
 }
-void AnimationAviWidget::on_fixRangeCheckBox_toggled(bool)
+
+void AnimationAviWidget::on_playPauseButton_clicked()
 {
-    on_scalarComboBox_currentIndexChanged(0);
-}
-
-bool AnimationAviWidget::exportAVI(const QString& fileName, double fps)
-{
-    return true;
-}
-
-void AnimationAviWidget::on_saveAviButton_clicked()
-{
-    QString fn = QFileDialog::getSaveFileName(this, "保存动画视频", QString(),
-                                              "动画视频文件 (*.avi)");
-    if (fn.isEmpty())
-        return;
-
-    if (exportAVI(fn, ui->fpsSpin->value()))
-        QMessageBox::information(this, "完成", "动画视频导出成功。");
-    else
-        QMessageBox::warning(this, "失败", "动画视频导出失败。");
-}
-
-void AnimationAviWidget::on_loadPushButton_clicked()
-{
-    // <project>/data
-    m_dataPath =
-        QDir(PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString())
-            .filePath("data");
-
-    scanFrames();
-    if (m_frames.isEmpty())
+    if (m_playing)
     {
-        QMessageBox::warning(this, "提示", "未找到结果文件。");
+        stopTimer();
+        setStatusText(QStringLiteral("已暂停"));
         return;
     }
 
-    ui->frameSlider->setRange(0, m_frames.size() - 1);
-    m_currentIndex = 0;
-    m_subStep = 0;
-
-    buildPipelineIfNeeded();
-    if (!loadFrame(0))
+    if (!startTimer())
         return;
 
-    fillScalarComboFromCurrentGrid();
-
-    // 固定色标（默认开）
-    if (ui->fixRangeCheckBox->isChecked() && ui->scalarComboBox->count() > 0)
+    // 先让按钮和状态文字完成刷新，再读取下一帧。这样即使结果文件较大，
+    // 用户点击后也会立即看到“正在播放”，不会感觉按钮没有响应。
+    m_timer.stop();
+    QTimer::singleShot(0, this, [this]()
     {
-        const QString s = ui->scalarComboBox->currentText();
-        double r[2];
-        if (computeGlobalRange(s, r))
+        if (!m_playing)
+            return;
+        if (!advanceFrame())
         {
-            m_fixedRange[0] = r[0];
-            m_fixedRange[1] = r[1];
-            m_hasFixedRange = true;
-            applyScalarAndLUT(s, m_fixedRange);
-            renderNow();
+            stopTimer();
+            setStatusText(QStringLiteral("无法读取下一帧"), true);
+            return;
         }
+        const int interval =
+            qMax(16, qRound(1000.0 / qMax(0.5, ui->fpsSpin->value())));
+        m_timer.start(interval);
+    });
+}
+
+void AnimationAviWidget::on_prevButton_clicked()
+{
+    stopTimer();
+    m_subStep = 0;
+    const int previous = nextFrameIndex(-1);
+    if (previous < 0)
+        setStatusText(QStringLiteral("已经是第一帧"));
+    else if (!loadFrame(previous))
+        setStatusText(QStringLiteral("上一帧读取失败"), true);
+    else
+        setStatusText(QStringLiteral("已切换到上一帧"));
+}
+
+void AnimationAviWidget::on_nextButton_clicked()
+{
+    stopTimer();
+    m_subStep = 0;
+    const int next = nextFrameIndex(1);
+    if (next < 0)
+        setStatusText(QStringLiteral("已经是最后一帧"));
+    else if (!loadFrame(next))
+        setStatusText(QStringLiteral("下一帧读取失败"), true);
+    else
+        setStatusText(QStringLiteral("已切换到下一帧"));
+}
+
+void AnimationAviWidget::on_frameSlider_valueChanged(int value)
+{
+    if (m_loadingState)
+        return;
+    stopTimer();
+    m_subStep = 0;
+    if (!loadFrame(value))
+        setStatusText(QStringLiteral("所选帧读取失败"), true);
+    else
+        setStatusText(QStringLiteral("已定位到所选帧"));
+}
+
+void AnimationAviWidget::on_fpsSpin_valueChanged(double)
+{
+    if (m_playing)
+        startTimer();
+}
+
+void AnimationAviWidget::on_fixRangeCheckBox_toggled(bool)
+{
+    if (m_grid)
+    {
+        applyScalar(m_grid, currentScalarName());
+        renderNow();
     }
 }

@@ -6,6 +6,10 @@
 #include "GeoStressRegressionWidget.h"
 #include <QProcess>
 #include <QPointer>
+#include <QPair>
+#include <QString>
+#include <QStringList>
+#include <QVector>
 
 class CaveSupportComputationPage;
 class CaveExcavationBodyPage;
@@ -14,6 +18,7 @@ class CaveReinforcementFieldPage;
 class CaveBlockPlanePage;
 class CaveExcavationWidget;
 class DamAnalysisWidget;
+class FillStorageCyclePage;
 class QWidget;
 
 class Solver : public QObject, public SolverService
@@ -40,6 +45,8 @@ class Solver : public QObject, public SolverService
     void onComputeSlopeStability(ProjectNode* analysisNode);
     void onComputeGeoStressRegression(ProjectNode* analysisNode);
     void onComputeCaveBlockStability(ProjectNode* analysisNode);
+    void onBatchComputeRequested(const QStringList& analysisUuids);
+    void onBatchStopRequested();
     void stopSolverExecutable();
 
   private:
@@ -52,9 +59,19 @@ class Solver : public QObject, public SolverService
     void moveNodeByUuid(const QString& uuid, int direction);
     void normalizeChildNodeOrder(ProjectNode* parent) const;
     void refreshRootOverview() const;
+    QVector<ProjectNode*> batchComputableNodes() const;
+    QString batchNodeDisplayName(ProjectNode* node) const;
+    bool dispatchBatchCompute(ProjectNode* node);
+    void startNextBatchCompute();
+    void completeBatchItem(bool succeeded, const QString& detail = {});
+    void finishBatchCompute(bool cancelled);
     void connectBoundaryStatus(ProjectNode* node) const;
     void syncSeepageConditionalNodes(ProjectNode* analysisNode) const;
     void syncDamConditionalNodes(ProjectNode* analysisNode) const;
+    QVector<QPair<QString, QString>> seepageAnalysisSources() const;
+    ProjectNode* findAnalysisNodeByUuid(const QString& uuid) const;
+    bool prepareDamSeepageFiles(FillStorageCyclePage* cyclePage, int cycleIndex,
+                                const QString& projectDir, QString* errorMessage) const;
     void syncCaveSupportConditionalNodes(ProjectNode* supportNode) const;
     void updateBoundaryNodeStatus(ProjectNode* node, int selectionCount, bool enabled = true,
                                   const QString& disabledReason = {}) const;
@@ -121,6 +138,13 @@ class Solver : public QObject, public SolverService
     QString m_activeAnalysisName;
     QString m_activeAnalysisKind;
     QString m_activeAnalysisType;
+    QStringList m_batchQueue;
+    QString m_batchCurrentUuid;
+    int m_batchTotal{0};
+    int m_batchFinished{0};
+    int m_batchFailed{0};
+    bool m_batchActive{false};
+    bool m_batchDispatching{false};
     bool exportInouseDatFile();
     bool exportMaMaskDatFile();
     bool exportKetraceDatFile();

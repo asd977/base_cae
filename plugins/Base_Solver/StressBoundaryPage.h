@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <BasePage.h>
 #include <PickManager.h>
@@ -48,6 +48,7 @@ class StressBoundaryPage : public BasePage
 
   private:
     QVector<EdgeRow> selectedEdgeRows();
+    QString pickDomain();
     void setupBatchGroupCombo();
     PickMode currentPickMode() const;
     void updateSelectionSummary();

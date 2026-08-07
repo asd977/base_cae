@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>曲线设置</string>
+   <string>计算曲线</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="leftMargin">
@@ -38,7 +38,7 @@
       </sizepolicy>
      </property>
      <property name="text">
-      <string>曲线显示设置</string>
+      <string>计算曲线</string>
      </property>
     </widget>
    </item>
@@ -134,7 +134,7 @@
      <item>
       <widget class="QGroupBox" name="groupBoxSeries">
        <property name="title">
-        <string>曲线设置</string>
+        <string>显示内容</string>
        </property>
        <layout class="QVBoxLayout" name="horizontalLayoutSeries">
         <item>

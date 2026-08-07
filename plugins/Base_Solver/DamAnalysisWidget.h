@@ -38,7 +38,10 @@ class DamAnalysisWidget : public BasePage
     bool validateInputs(QString* errorMessage) const;
     void setMCaseCount(int mcase);
     bool freezeThawEnabled() const;
+    double creepTimeStep(bool* ok = nullptr) const;
     bool dynamicAnalysisEnabled() const;
+    bool dynamicOnlyEnabled() const;
+    void setModalAnalysisRequired(bool required);
     void setUpliftReductionRequired(bool required);
     QPair<int, int> constructionLayerRange() const;
 
@@ -93,14 +96,6 @@ class DamAnalysisWidget : public BasePage
     QComboBox* m_comboIfRock = nullptr;
     QComboBox* m_comboIfIso = nullptr;
     QGroupBox* m_groupFreezeThaw = nullptr;
-    QLineEdit* m_editFreezeCycles = nullptr;
-    QLineEdit* m_editFreezeCoefficient = nullptr;
-    QLineEdit* m_editFreezeElevationMin = nullptr;
-    QLineEdit* m_editFreezeElevationMax = nullptr;
-    QLineEdit* m_editFreezeCompressionB = nullptr;
-    QLineEdit* m_editFreezeCompressionC = nullptr;
-    QLineEdit* m_editFreezeTensionB = nullptr;
-    QLineEdit* m_editFreezeTensionC = nullptr;
     QLineEdit* m_editIceExpansion = nullptr;
     QGroupBox* m_groupConstructionLayers = nullptr;
     QLabel* m_labelConstructionLayerStatus = nullptr;

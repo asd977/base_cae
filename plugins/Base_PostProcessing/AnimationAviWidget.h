@@ -1,16 +1,24 @@
-﻿#pragma once
+#pragma once
 
 #include <BasePage.h>
-#include <vtkSmartPointer.h>
 
+#include "PostAnimationSequenceModel.h"
+
+#include <QHash>
+#include <QJsonObject>
+#include <QPair>
+#include <QString>
+#include <QStringList>
 #include <QTimer>
-#include <QVector>
 #include <QWidget>
 
+#include <vtkActor.h>
+#include <vtkDataSetMapper.h>
+#include <vtkSmartPointer.h>
+#include <vtkUnstructuredGrid.h>
+
 class VisualWidgetService;
-class vtkUnstructuredGrid;
-class vtkDataSetMapper;
-class vtkActor;
+class vtkDataArray;
 
 namespace Ui
 {
@@ -20,86 +28,96 @@ class AnimationAviWidget;
 class AnimationAviWidget : public BasePage
 {
     Q_OBJECT
+
   public:
     explicit AnimationAviWidget(VisualWidgetService* postProcessingWidget,
                                 QWidget* parent = nullptr);
-    ~AnimationAviWidget();
+    ~AnimationAviWidget() override;
 
-    void beforeLoad();
-    void beforeUnload();
+    void beforeLoad() override;
+    void beforeUnload() override;
+    QJsonObject saveJson() override;
+    void loadJson(const QJsonObject& object) override;
 
   private slots:
-    // 播放控制
+    void on_analysisComboBox_currentIndexChanged(int index);
+    void on_rangeComboBox_currentIndexChanged(int index);
+    void on_resultComboBox_currentIndexChanged(int index);
+    void on_scalarComboBox_currentIndexChanged(int index);
     void on_playPauseButton_clicked();
     void on_prevButton_clicked();
     void on_nextButton_clicked();
     void on_frameSlider_valueChanged(int value);
-    void on_fpsSpin_valueChanged(double v);
-    void on_loopCheckBox_toggled(bool);
-
-    // 显示
-    void on_scalarComboBox_currentIndexChanged(int);
-    void on_fixRangeCheckBox_toggled(bool);
-
-    // 导出
-    void on_saveAviButton_clicked();
-
-    void on_loadPushButton_clicked();
+    void on_fpsSpin_valueChanged(double value);
+    void on_fixRangeCheckBox_toggled(bool checked);
+    void onTick();
 
   private:
-    struct FrameItem
-    {
-        int group = 0;
-        int order = 0;
-        QString filePath;
-    };
+    void refreshModel();
+    void populateAnalysisCombo(const QString& preferredKey);
+    void populateRangeCombo(const QString& preferredKey);
+    void populateResultCombo(const QString& preferredSequenceKey);
+    void activateSelectedSequence();
 
-    // 目录扫描 & 读帧
-    void scanFrames();
-    bool loadFrame(int index); // 载入“原始帧”（不含插帧）
-    vtkSmartPointer<vtkUnstructuredGrid> loadGridFromFile(const QString& file);
-    void fillScalarComboFromCurrentGrid();
-    bool computeGlobalRange(const QString& scalar, double outRange[2]);
+    const PostAnimationSequenceModel::Sequence* currentSequence() const;
+    bool loadFrame(int index, bool updateScalarList = false);
+    vtkSmartPointer<vtkUnstructuredGrid> readGrid(const QString& filePath);
+    void clearGridCache();
+    void rememberGrid(const QString& filePath,
+                      const vtkSmartPointer<vtkUnstructuredGrid>& grid);
+    void preloadNeighbourFrame();
 
-    // 渲染 & LUT
+    void fillScalarCombo(vtkUnstructuredGrid* grid, const QString& preferredScalar);
+    QString currentScalarName() const;
+    vtkDataArray* scalarArray(vtkUnstructuredGrid* grid, const QString& name,
+                              bool* pointData = nullptr) const;
+    bool computeGlobalRange(const QString& scalarName, double range[2]);
+    void applyScalar(vtkUnstructuredGrid* grid, const QString& scalarName);
+
     void buildPipelineIfNeeded();
-    void applyScalarAndLUT(const QString& scalar, const double range[2]);
+    void attachActor();
+    void detachActor();
+    void updateSequenceSummary();
     void updateFrameLabel();
+    void updateControls();
+    void setStatusText(const QString& text, bool error = false);
     void renderNow();
 
-    // 播放计时
-    void startTimer();
+    bool startTimer();
     void stopTimer();
-    void onTick(); // 计时器回调
+    int nextFrameIndex(int direction) const;
+    bool advanceFrame();
 
-    // 插帧（数据线性插值）
-    bool canInterpolateBetween(int i, int j) const;
-    vtkSmartPointer<vtkUnstructuredGrid>
-    interpolateGrids(vtkUnstructuredGrid* g0, vtkUnstructuredGrid* g1, double alpha) const;
+    bool canInterpolate(vtkUnstructuredGrid* first,
+                        vtkUnstructuredGrid* second) const;
+    vtkSmartPointer<vtkUnstructuredGrid> interpolate(
+        vtkUnstructuredGrid* first, vtkUnstructuredGrid* second,
+        double factor) const;
+    bool showInterpolatedFrame(int nextIndex, double factor);
 
-    // AVI 导出
-    bool exportAVI(const QString& fileName, double fps);
+    Ui::AnimationAviWidget* ui{nullptr};
+    VisualWidgetService* m_visualService{nullptr};
 
-  private:
-    Ui::AnimationAviWidget* ui{};
-    VisualWidgetService* m_visualService{};
+    PostAnimationSequenceModel m_model;
+    int m_sequenceIndex{-1};
+    int m_currentFrame{-1};
+    int m_subStep{0};
+    bool m_playing{false};
+    bool m_actorAttached{false};
+    bool m_loadingState{false};
 
-    // 数据
-    QString m_dataPath;
-    QVector<FrameItem> m_frames;
-    int m_currentIndex{0}; // 当前原始帧索引
-    int m_subStep{0};      // 当前插帧子步 (0..interpCount)
+    QString m_pendingAnalysisKey;
+    QString m_pendingRangeKey;
+    QString m_pendingSequenceKey;
+    QString m_pendingScalar;
+    QJsonObject m_pendingJson;
 
-    // 渲染
-    vtkSmartPointer<vtkUnstructuredGrid> m_grid;
-    vtkSmartPointer<vtkDataSetMapper> m_mapper;
-    vtkSmartPointer<vtkActor> m_actor;
-
-    // LUT（固定范围）
-    double m_fixedRange[2]{0.0, 1.0};
-    bool m_hasFixedRange{false};
-
-    // 播放
     QTimer m_timer;
-    bool m_isPlaying{false};
+    vtkSmartPointer<vtkActor> m_actor;
+    vtkSmartPointer<vtkDataSetMapper> m_mapper;
+    vtkSmartPointer<vtkUnstructuredGrid> m_grid;
+    QHash<QString, QPair<double, double>> m_rangeCache;
+    QHash<QString, vtkSmartPointer<vtkUnstructuredGrid>> m_gridCache;
+    QStringList m_gridCacheOrder;
+    int m_gridCacheLimit{4};
 };

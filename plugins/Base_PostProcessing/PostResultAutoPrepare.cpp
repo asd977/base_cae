@@ -25,12 +25,14 @@ namespace
 constexpr char kLegacyPostResultRoot[] = "post";
 constexpr char kManifestName[] = "manifest.json";
 constexpr char kLegacyAnalysisManifestFileName[] = "analysis.json";
-constexpr int kManifestVersion = 9;
+constexpr int kManifestVersion = 10;
 
 struct GeneratedFileInfo
 {
     QString displayName;
     QString kind;
+    QString frameKey;
+    int frameOrder = -1;
 };
 
 struct AnalysisIdentity
@@ -228,7 +230,8 @@ bool isSupportedFieldName(const QString& fileName)
     // and changes to those files do not invalidate the prepared-result cache.
     static const QRegularExpression expression(
         QStringLiteral(
-            "^(?:INVELO|IIDISP|MODPRI|MODRAI_PLS|MODRAP_PLS|NODCMM|IIICMM)"
+            "^(?:STEP\\d+[-_])?"
+            "(?:INVELO|IIDISP|MODPRI|MODRAI_PLS|MODRAP_PLS|NODCMM|IIICMM)"
             "(?:[-_](?:METHOD\\d+|CZ[^.]*))?\\.TXT$"),
         QRegularExpression::CaseInsensitiveOption);
     return expression.match(fileName).hasMatch();
@@ -426,6 +429,92 @@ QString suffixDisplayName(const QString& suffix, bool strengthReduction)
     return QStringLiteral("派生工况");
 }
 
+
+struct TimeSequenceInfo
+{
+    bool valid = false;
+    double start = 0.0;
+    double increment = 0.0;
+    QString unit = QStringLiteral("s");
+};
+
+TimeSequenceInfo readTimeSequenceInfo(const QDir& sourceDir)
+{
+    QFileInfo keyInfo;
+    if (!findFileInfo(sourceDir, QStringLiteral("IKEY.DAT"), &keyInfo) &&
+        !findFileInfo(sourceDir, QStringLiteral("IKEY.TXT"), &keyInfo))
+        return {};
+
+    QFile file(keyInfo.absoluteFilePath());
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return {};
+
+    QTextStream in(&file);
+    while (!in.atEnd())
+    {
+        const QString header = in.readLine().simplified();
+        if (!header.contains(QStringLiteral("TSTA"), Qt::CaseInsensitive) ||
+            !header.contains(QStringLiteral("DT"), Qt::CaseInsensitive))
+            continue;
+
+        const QStringList names = header.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        int startIndex = -1;
+        int incrementIndex = -1;
+        for (int i = 0; i < names.size(); ++i)
+        {
+            const QString name = names.at(i).trimmed();
+            if (name.compare(QStringLiteral("TSTA"), Qt::CaseInsensitive) == 0)
+                startIndex = i;
+            else if (name.compare(QStringLiteral("DT"), Qt::CaseInsensitive) == 0)
+                incrementIndex = i;
+        }
+        if (startIndex < 0 || incrementIndex < 0)
+            continue;
+
+        while (!in.atEnd())
+        {
+            const QString valuesLine = in.readLine().simplified();
+            if (valuesLine.isEmpty())
+                continue;
+            const QStringList values =
+                valuesLine.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+            if (values.size() <= qMax(startIndex, incrementIndex))
+                break;
+
+            bool startOk = false;
+            bool incrementOk = false;
+            const double start = values.at(startIndex).toDouble(&startOk);
+            const double increment = values.at(incrementIndex).toDouble(&incrementOk);
+            if (!startOk || !incrementOk || !std::isfinite(start) ||
+                !std::isfinite(increment) || increment <= 0.0)
+                break;
+
+            TimeSequenceInfo info;
+            info.valid = true;
+            info.start = start;
+            info.increment = increment;
+            return info;
+        }
+    }
+    return {};
+}
+
+QString sequenceFrameLabel(int step, const TimeSequenceInfo& timeInfo)
+{
+    if (step < 0)
+        return QStringLiteral("当前状态");
+    if (!timeInfo.valid)
+        return QStringLiteral("步 %1").arg(step);
+
+    const double value = timeInfo.start + timeInfo.increment * step;
+    const double rounded = std::round(value);
+    const QString number =
+        std::abs(value - rounded) < 1.0e-9
+            ? QString::number(static_cast<qint64>(rounded))
+            : QString::number(value, 'g', 12);
+    return QStringLiteral("%1 %2").arg(number, timeInfo.unit);
+}
+
 GeneratedFileInfo generatedFileInfo(const QString& fileName, bool strengthReduction)
 {
     const QString base = QFileInfo(fileName).completeBaseName().toLower();
@@ -474,6 +563,19 @@ GeneratedFileInfo generatedFileInfo(const QString& fileName, bool strengthReduct
             includesExcavated = true;
         }
 
+        QString frameKey;
+        int frameOrder = -1;
+        static const QRegularExpression stepExpression(
+            QStringLiteral("^step(\\d+)(?:_(.*))?$"),
+            QRegularExpression::CaseInsensitiveOption);
+        const QRegularExpressionMatch stepMatch = stepExpression.match(suffix);
+        if (stepMatch.hasMatch())
+        {
+            frameOrder = stepMatch.captured(1).toInt();
+            frameKey = QStringLiteral("step:%1").arg(frameOrder);
+            suffix = stepMatch.captured(2);
+        }
+
         const QString kind = QString::fromLatin1(alias.canonicalKind);
         const QString condition = suffixDisplayName(suffix, strengthReduction);
         QString displayName = baseDisplayName(kind);
@@ -481,10 +583,19 @@ GeneratedFileInfo generatedFileInfo(const QString& fileName, bool strengthReduct
             displayName = QStringLiteral("%1 - %2").arg(condition, displayName);
         if (includesExcavated)
             displayName += QStringLiteral("（含已开挖体）");
-        return {displayName, kind};
+
+        GeneratedFileInfo info;
+        info.displayName = displayName;
+        info.kind = kind;
+        info.frameKey = frameKey;
+        info.frameOrder = frameOrder;
+        return info;
     }
 
-    return {QStringLiteral("其他结果"), base};
+    GeneratedFileInfo info;
+    info.displayName = QStringLiteral("其他结果");
+    info.kind = base;
+    return info;
 }
 
 bool manifestMissingOrStale(const QDir& projectDir, const QDir& sourceDir,
@@ -524,6 +635,7 @@ bool writeManifest(const QDir& projectDir, const QDir& sourceDir, const QDir& pr
                    const PostResultGenerator::Result& generated)
 {
     const bool strengthReduction = usesStrengthReduction(sourceDir);
+    const TimeSequenceInfo timeInfo = readTimeSequenceInfo(sourceDir);
     QJsonObject root;
     root.insert(QStringLiteral("version"), kManifestVersion);
     root.insert(QStringLiteral("sourceDir"),
@@ -546,6 +658,19 @@ bool writeManifest(const QDir& projectDir, const QDir& sourceDir, const QDir& pr
         object.insert(QStringLiteral("fileName"), info.fileName());
         object.insert(QStringLiteral("kind"), metadata.kind);
         object.insert(QStringLiteral("format"), QStringLiteral("tecplot"));
+        if (!metadata.frameKey.isEmpty())
+        {
+            const double frameValue = timeInfo.valid
+                ? timeInfo.start + timeInfo.increment * metadata.frameOrder
+                : static_cast<double>(metadata.frameOrder);
+            object.insert(QStringLiteral("frameKey"), metadata.frameKey);
+            object.insert(QStringLiteral("frameLabel"),
+                          sequenceFrameLabel(metadata.frameOrder, timeInfo));
+            object.insert(QStringLiteral("frameValue"), frameValue);
+            object.insert(QStringLiteral("frameUnit"),
+                          timeInfo.valid ? timeInfo.unit : QString());
+            object.insert(QStringLiteral("frameOrder"), metadata.frameOrder);
+        }
         object.insert(QStringLiteral("size"), static_cast<qint64>(info.size()));
         object.insert(QStringLiteral("modified"),
                       info.lastModified().toUTC().toString(Qt::ISODate));
@@ -593,7 +718,13 @@ QVector<PostResultAutoPrepare::ResultFile> readManifestFiles(const QDir& prepare
         if (entry.displayName.isEmpty())
             entry.displayName = baseDisplayName(entry.kind);
         entry.filePath = info.absoluteFilePath();
-        entry.format = object.value(QStringLiteral("format")).toString(QStringLiteral("tecplot"));
+        entry.format = object.value(QStringLiteral("format"))
+                           .toString(QStringLiteral("tecplot"));
+        entry.frameKey = object.value(QStringLiteral("frameKey")).toString();
+        entry.frameLabel = object.value(QStringLiteral("frameLabel")).toString();
+        entry.frameValue = object.value(QStringLiteral("frameValue")).toDouble();
+        entry.frameUnit = object.value(QStringLiteral("frameUnit")).toString();
+        entry.frameOrder = object.value(QStringLiteral("frameOrder")).toInt(-1);
         result.push_back(entry);
     }
     sortResultFiles(result);
@@ -633,6 +764,10 @@ QVector<PostResultAutoPrepare::ResultFile> fallbackSourceFiles(const QDir& sourc
             entry.filePath = info.absoluteFilePath();
             entry.kind = metadata.kind;
             entry.format = QStringLiteral("tecplot");
+            entry.frameKey = metadata.frameKey;
+            entry.frameOrder = metadata.frameOrder;
+            if (entry.frameOrder >= 0)
+                entry.frameLabel = QStringLiteral("步 %1").arg(entry.frameOrder);
             result.push_back(entry);
         }
     }
@@ -716,6 +851,13 @@ void sortResultFiles(QVector<PostResultAutoPrepare::ResultFile>& files)
 {
     std::stable_sort(files.begin(), files.end(), [](const auto& left, const auto& right)
     {
+        const bool leftSequence = left.frameOrder >= 0;
+        const bool rightSequence = right.frameOrder >= 0;
+        if (leftSequence != rightSequence)
+            return !leftSequence;
+        if (leftSequence && left.frameOrder != right.frameOrder)
+            return left.frameOrder < right.frameOrder;
+
         const ResultSortKey leftKey = resultSortKey(left.displayName);
         const ResultSortKey rightKey = resultSortKey(right.displayName);
         if (leftKey.conditionGroup != rightKey.conditionGroup)
@@ -1137,15 +1279,31 @@ QVector<ResultGroup> resultGroups(const QString& projectDir)
             continue;
         seenPaths.insert(pathKey);
 
-        QString displayName = resultGroupDisplayName(project.absolutePath(), absolutePath);
+        const QString stageName =
+            resultGroupDisplayName(project.absolutePath(), absolutePath);
+        QString displayName = stageName;
         const AnalysisIdentity identity = analysisIdentityForSource(project, QDir(absolutePath));
         if (!identity.name.isEmpty())
-            displayName = QStringLiteral("%1 - %2").arg(identity.name, displayName);
+            displayName = QStringLiteral("%1 - %2").arg(identity.name, stageName);
         const int count = displayCounts.value(displayName) + 1;
         displayCounts.insert(displayName, count);
         if (count > 1)
             displayName += QStringLiteral(" %1").arg(count);
-        groups.push_back({displayName, absolutePath});
+        ResultGroup group;
+        group.displayName = displayName;
+        group.sourcePath = absolutePath;
+        group.analysisName = identity.name;
+        group.stageName = stageName;
+        if (!identity.uuid.isEmpty())
+            group.analysisKey = identity.uuid;
+        else if (!identity.workspacePath.isEmpty())
+            group.analysisKey = QDir::fromNativeSeparators(
+                identity.workspacePath).toCaseFolded();
+        else
+            group.analysisKey = QDir::fromNativeSeparators(
+                project.absolutePath()).toCaseFolded();
+        group.order = groups.size();
+        groups.push_back(group);
     }
     return groups;
 }
@@ -1347,5 +1505,65 @@ QVector<ResultFile> resultFiles(const QString& projectDir, const QString& source
             return files;
     }
     return fallbackSourceFiles(source, includeVtu);
+}
+
+QVector<ResultFrame> resultFrames(const QString& projectDir, const QString& sourceDir,
+                                  bool includeVtu)
+{
+    const QVector<ResultFile> files = resultFiles(projectDir, sourceDir, includeVtu);
+    QVector<ResultFrame> frames;
+    QSet<QString> seen;
+    bool hasStatic = false;
+
+    for (const ResultFile& file : files)
+    {
+        if (file.frameKey.isEmpty())
+        {
+            hasStatic = true;
+            continue;
+        }
+        if (seen.contains(file.frameKey))
+            continue;
+        seen.insert(file.frameKey);
+
+        ResultFrame frame;
+        frame.key = file.frameKey;
+        frame.displayName = file.frameLabel.isEmpty()
+                                ? QStringLiteral("步 %1").arg(file.frameOrder)
+                                : file.frameLabel;
+        frame.value = file.frameValue;
+        frame.unit = file.frameUnit;
+        frame.order = file.frameOrder;
+        frames.push_back(frame);
+    }
+
+    std::sort(frames.begin(), frames.end(), [](const ResultFrame& left,
+                                               const ResultFrame& right)
+    {
+        if (left.order != right.order)
+            return left.order < right.order;
+        return QString::localeAwareCompare(left.displayName, right.displayName) < 0;
+    });
+
+    if (hasStatic || frames.isEmpty())
+    {
+        ResultFrame current;
+        current.displayName = QStringLiteral("当前状态");
+        current.order = -1;
+        frames.prepend(current);
+    }
+    return frames;
+}
+
+QVector<ResultFile> resultFilesForFrame(const QString& projectDir, const QString& sourceDir,
+                                        const QString& frameKey, bool includeVtu)
+{
+    QVector<ResultFile> files = resultFiles(projectDir, sourceDir, includeVtu);
+    files.erase(std::remove_if(files.begin(), files.end(),
+                               [&](const ResultFile& file)
+    {
+        return file.frameKey != frameKey;
+    }), files.end());
+    return files;
 }
 } // namespace PostResultAutoPrepare

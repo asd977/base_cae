@@ -65,7 +65,7 @@
      <item>
       <widget class="QGroupBox" name="fileGroupBox">
        <property name="title">
-        <string>数据文件</string>
+        <string>数据选择</string>
        </property>
        <layout class="QVBoxLayout" name="fileVBoxLayout">
         <property name="leftMargin">

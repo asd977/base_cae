@@ -35,13 +35,17 @@
 #include <QStringList>
 #include <QStringConverter>
 #include <QTextStream>
+#include <QTimer>
 #include <QProcess>
 #include <QUuid>
 #include <QVariant>
 #include <QWidget>
+#include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <functional>
 #include <limits>
 #include <map>
 #include <set>
@@ -83,6 +87,167 @@ constexpr int kSolverCustomTitleRole = Qt::UserRole + 104;
 constexpr char kLegacyNamedAnalysisWorkspaceRoot[] = u8"计算结果";
 constexpr char kLegacyAnalysisWorkspaceRoot[] = ".analysis_runs";
 constexpr char kLegacyAnalysisManifestFileName[] = "analysis.json";
+
+int readFirstLineInteger(const QString& filePath, int preferredIndex)
+{
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return -1;
+
+    const QString line = QString::fromLocal8Bit(file.readLine()).trimmed();
+    const QStringList tokens =
+        line.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+    if (tokens.isEmpty())
+        return -1;
+
+    const int index = qBound(0, preferredIndex, int(tokens.size()) - 1);
+    bool ok = false;
+    const int value = tokens.at(index).toInt(&ok);
+    return ok ? value : -1;
+}
+
+int seepageFieldNodeCount(const QString& filePath)
+{
+    const QString name = QFileInfo(filePath).fileName();
+    return name.contains(QStringLiteral("IIDISP"), Qt::CaseInsensitive)
+               ? readFirstLineInteger(filePath, 1)
+               : readFirstLineInteger(filePath, 0);
+}
+
+bool waveInputHasSamples(const QString& filePath, QString* detail = nullptr)
+{
+    QFileInfo info(filePath);
+    if (!info.isFile() || info.size() <= 0)
+    {
+        if (detail)
+            *detail = QStringLiteral("文件不存在或为空");
+        return false;
+    }
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        if (detail)
+            *detail = QStringLiteral("文件无法读取");
+        return false;
+    }
+
+    const QString firstLine = QString::fromLocal8Bit(file.readLine()).trimmed();
+    const QStringList headerTokens =
+        firstLine.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+    bool countOk = false;
+    const int sampleCount = headerTokens.isEmpty() ? -1 : headerTokens.first().toInt(&countOk);
+    if (!countOk || sampleCount <= 0)
+    {
+        if (detail)
+            *detail = countOk ? QStringLiteral("数据点数量为 0")
+                              : QStringLiteral("首行缺少有效的数据点数量");
+        return false;
+    }
+
+    // 求解器示例格式第二行为列标题，随后应恰有 sampleCount 组“时间 + 加速度 + 序号”。
+    if (file.atEnd())
+    {
+        if (detail)
+            *detail = QStringLiteral("缺少地震波数据行");
+        return false;
+    }
+    file.readLine();
+
+    double previousTime = -std::numeric_limits<double>::infinity();
+    for (int i = 0; i < sampleCount; ++i)
+    {
+        if (file.atEnd())
+        {
+            if (detail)
+                *detail = QStringLiteral("声明 %1 个数据点，但文件仅包含 %2 个")
+                              .arg(sampleCount).arg(i);
+            return false;
+        }
+        const QString line = QString::fromLocal8Bit(file.readLine()).trimmed();
+        const QStringList tokens =
+            line.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+        if (tokens.size() < 2)
+        {
+            if (detail)
+                *detail = QStringLiteral("第 %1 个数据点格式错误").arg(i + 1);
+            return false;
+        }
+        bool timeOk = false;
+        bool accelerationOk = false;
+        const double time = tokens.at(0).toDouble(&timeOk);
+        const double acceleration = tokens.at(1).toDouble(&accelerationOk);
+        if (!timeOk || !accelerationOk || !std::isfinite(time)
+            || !std::isfinite(acceleration) || time < previousTime)
+        {
+            if (detail)
+                *detail = QStringLiteral("第 %1 个数据点的时间或加速度无效").arg(i + 1);
+            return false;
+        }
+        previousTime = time;
+    }
+    return true;
+}
+
+QString seepageResultDirectory(const QString& workspace, const QString& resultName)
+{
+    const QString direct = QDir(workspace).filePath(resultName);
+    if (QDir(direct).exists())
+        return QDir(direct).absolutePath();
+
+    const QString nested =
+        QDir(workspace).filePath(QStringLiteral("计算结果/%1").arg(resultName));
+    if (QDir(nested).exists())
+        return QDir(nested).absolutePath();
+
+    return {};
+}
+
+QVector<int> transientResultSteps(const QString& resultDir, bool needHead, bool needBody)
+{
+    QSet<int> headSteps;
+    QSet<int> bodySteps;
+    const QRegularExpression headPattern(
+        QStringLiteral("^STEP(\\d+)_IIDISP\\.TXT$"),
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpression bodyPattern(
+        QStringLiteral("^STEP(\\d+)_INBODY\\.TXT$"),
+        QRegularExpression::CaseInsensitiveOption);
+
+    const QStringList files = QDir(resultDir).entryList(QDir::Files, QDir::Name);
+    for (const QString& name : files)
+    {
+        QRegularExpressionMatch match = headPattern.match(name);
+        if (match.hasMatch())
+            headSteps.insert(match.captured(1).toInt());
+
+        match = bodyPattern.match(name);
+        if (match.hasMatch())
+            bodySteps.insert(match.captured(1).toInt());
+    }
+
+    QSet<int> usable;
+    if (needHead && needBody)
+    {
+        usable = headSteps;
+        usable.intersect(bodySteps);
+    }
+    else if (needHead)
+    {
+        usable = headSteps;
+    }
+    else if (needBody)
+    {
+        usable = bodySteps;
+    }
+
+    QVector<int> steps;
+    steps.reserve(usable.size());
+    for (int step : std::as_const(usable))
+        steps.push_back(step);
+    std::sort(steps.begin(), steps.end());
+    return steps;
+}
 
 struct SolverRuntimeOptions
 {
@@ -892,8 +1057,7 @@ int solverChildOrderRank(ProjectNode* parent, ProjectNode* child)
     {
         if (childKind == QStringLiteral("FillStorageCycle")) return 0;
         if (pageType == QStringLiteral("StressBoundaryDamUpstream")) return 10;
-        if (pageType == QStringLiteral("StressBoundaryDamBase")) return 11;
-        if (childKind == QStringLiteral("DamIceRegion")) return 12;
+        if (childKind == QStringLiteral("DamIceRegion")) return 11;
     }
     else if (parentKind == QStringLiteral("SeepageAnalysis"))
     {
@@ -1022,6 +1186,10 @@ void Solver::newProject()
             this, &Solver::onCaveExcavationAction);
     connect(rootPage, &SolverSettingWidget::createBlockRequested,
             this, &Solver::onCaveBlockStabilityAction);
+    connect(rootPage, &SolverSettingWidget::batchComputeRequested,
+            this, &Solver::onBatchComputeRequested);
+    connect(rootPage, &SolverSettingWidget::batchStopRequested,
+            this, &Solver::onBatchStopRequested);
     m_root = new ProjectNode("计算分析", QUuid::createUuid().toString(), rootPage);
     setupNodeRole(m_root, "SolverRoot");
     ProjectManagerService* projectManagerService =
@@ -1214,7 +1382,6 @@ bool Solver::loadProject()
         bool hasSeepageNaturalBoundaryNode = false;
         bool hasSeepageDrainWellNode = false;
         bool hasDamUpstreamBoundaryNode = false;
-        bool hasDamBaseBoundaryNode = false;
         bool hasDamIceRegionNode = false;
         bool hasGeoStressRegressionNode = false;
         bool hasCaveSupportComputationNode = false;
@@ -1235,17 +1402,17 @@ bool Solver::loadProject()
             BasePage* page = nullptr;
             if (type == "SeepageBoundaryUpstreamWater")
             {
-                page = new SeepageBoundaryPage(type, "上游水头边界", "JD_UPSEEP.DAT");
+                page = new SeepageBoundaryPage(type, "上游渗流边界", "JD_UPSEEP.DAT");
                 hasSeepageUpstreamBoundaryNode = true;
             }
             else if (type == "SeepageBoundaryDownstreamWater")
             {
-                page = new SeepageBoundaryPage(type, "下游水头边界", "JD_DWSEEP.DAT");
+                page = new SeepageBoundaryPage(type, "下游渗流边界", "JD_DWSEEP.DAT");
                 hasSeepageDownstreamBoundaryNode = true;
             }
             else if (type == "SeepageBoundaryNaturalSeepage")
             {
-                page = new SeepageBoundaryPage(type, "天然渗流水头边界", "JDFREE.DAT");
+                page = new SeepageBoundaryPage(type, "天然渗流边界", "JDFREE.DAT");
                 hasSeepageNaturalBoundaryNode = true;
             }
             else if (type == "SeepageBoundaryDrainWell")
@@ -1255,13 +1422,14 @@ bool Solver::loadProject()
             }
             else if (type == "StressBoundaryDamUpstream")
             {
-                page = new StressBoundaryPage(type, "上游水头边界", "FA_DAMUP.DAT");
+                page = new StressBoundaryPage(type, "上游水压力作用面", "FA_DAMUP.DAT");
                 hasDamUpstreamBoundaryNode = true;
             }
             else if (type == "StressBoundaryDamBase")
             {
-                page = new StressBoundaryPage(type, "坝基扬压力边界", "FA_DAMBASE.DAT");
-                hasDamBaseBoundaryNode = true;
+                // 旧工程兼容：当前只提供均质坝，求解器固定忽略 IFIIWL_SEEP，
+                // 因此不再恢复无效的坝基扬压力边界节点。
+                continue;
             }
             else if (type == "DamIceRegion")
             {
@@ -1319,8 +1487,21 @@ bool Solver::loadProject()
             if (!page)
                 continue;
 
+            // 边界节点名称描述的是长期稳定的业务对象，而不是当前边界类型。
+            // 旧工程中可能保存为“上游水头边界”或“上游定通量边界”，
+            // 加载时统一迁移，切换水位/通量后树节点名称不再变化。
+            QString childTitle = childObj.value("title").toString("边界");
+            if (type == QStringLiteral("SeepageBoundaryUpstreamWater"))
+                childTitle = QStringLiteral("上游渗流边界");
+            else if (type == QStringLiteral("SeepageBoundaryDownstreamWater"))
+                childTitle = QStringLiteral("下游渗流边界");
+            else if (type == QStringLiteral("SeepageBoundaryNaturalSeepage"))
+                childTitle = QStringLiteral("天然渗流边界");
+            else if (type == QStringLiteral("StressBoundaryDamUpstream"))
+                childTitle = QStringLiteral("上游水压力作用面");
+
             auto* node = new ProjectNode(
-                childObj.value("title").toString("边界"),
+                childTitle,
                 childObj.value("uuid").toString(QUuid::createUuid().toString()), page);
             if (type == "FillStorageCycle")
                 setupNodeRole(node, "FillStorageCycle");
@@ -1533,15 +1714,15 @@ bool Solver::loadProject()
                 connectBoundaryStatus(node);
             };
             if (!hasSeepageUpstreamBoundaryNode)
-                addMissingBoundary(QStringLiteral("上游水头边界"),
+                addMissingBoundary(QStringLiteral("上游渗流边界"),
                                    QStringLiteral("SeepageBoundaryUpstreamWater"),
                                    QStringLiteral("JD_UPSEEP.DAT"), false);
             if (!hasSeepageDownstreamBoundaryNode)
-                addMissingBoundary(QStringLiteral("下游水头边界"),
+                addMissingBoundary(QStringLiteral("下游渗流边界"),
                                    QStringLiteral("SeepageBoundaryDownstreamWater"),
                                    QStringLiteral("JD_DWSEEP.DAT"), false);
             if (!hasSeepageNaturalBoundaryNode)
-                addMissingBoundary(QStringLiteral("天然渗流水头边界"),
+                addMissingBoundary(QStringLiteral("天然渗流边界"),
                                    QStringLiteral("SeepageBoundaryNaturalSeepage"),
                                    QStringLiteral("JDFREE.DAT"), false);
             if (!hasSeepageDrainWellNode)
@@ -1576,19 +1757,9 @@ bool Solver::loadProject()
         if ((analysisType == "StressStrainAnalysis" || analysisType == "DamAnalysis")
             && !hasDamUpstreamBoundaryNode)
         {
-            auto* page = new StressBoundaryPage("StressBoundaryDamUpstream", "上游水头边界",
+            auto* page = new StressBoundaryPage("StressBoundaryDamUpstream", "上游水压力作用面",
                                                 "FA_DAMUP.DAT");
-            auto* node = new ProjectNode("上游水头边界", QUuid::createUuid().toString(), page);
-            setupNodeRole(node, "StressBoundary");
-            analysisNode->addChild(node);
-            connectBoundaryStatus(node);
-        }
-        if ((analysisType == "StressStrainAnalysis" || analysisType == "DamAnalysis")
-            && !hasDamBaseBoundaryNode)
-        {
-            auto* page = new StressBoundaryPage("StressBoundaryDamBase", "坝基扬压力边界",
-                                                "FA_DAMBASE.DAT");
-            auto* node = new ProjectNode("坝基扬压力边界", QUuid::createUuid().toString(), page);
+            auto* node = new ProjectNode("上游水压力作用面", QUuid::createUuid().toString(), page);
             setupNodeRole(node, "StressBoundary");
             analysisNode->addChild(node);
             connectBoundaryStatus(node);
@@ -1693,6 +1864,12 @@ bool Solver::loadProject()
 
 void Solver::closeProject()
 {
+    m_batchActive = false;
+    m_batchDispatching = false;
+    m_batchQueue.clear();
+    m_batchCurrentUuid.clear();
+    if (m_solverProcess)
+        finishSolverProcess(true);
     clearSolverRunDirectory();
     if (!m_root)
         return;
@@ -1934,6 +2111,12 @@ void Solver::removeNodeByUuid(const QString& uuid)
 {
     if (!m_root || uuid.isEmpty())
         return;
+    if (m_batchActive)
+    {
+        QMessageBox::information(nullptr, QStringLiteral("批量计算进行中"),
+                                 QStringLiteral("请先完成或停止批量计算，再删除计算节点。"));
+        return;
+    }
 
     auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
     ProjectNode* node = pm ? pm->findNodeByUuid(uuid) : nullptr;
@@ -1948,6 +2131,19 @@ void Solver::removeNodeByUuid(const QString& uuid)
     auto* parent = dynamic_cast<ProjectNode*>(node->parent());
     if (!parent)
         return;
+
+    const bool parentWasExpanded = parent->isExpanded();
+    const int removedIndex = parent->indexOfChild(node);
+    ProjectNode* fallbackSelection = nullptr;
+    if (removedIndex >= 0 && removedIndex + 1 < parent->childCount())
+        fallbackSelection = dynamic_cast<ProjectNode*>(parent->child(removedIndex + 1));
+    else if (removedIndex > 0)
+        fallbackSelection = dynamic_cast<ProjectNode*>(parent->child(removedIndex - 1));
+    if (!fallbackSelection)
+        fallbackSelection = parent;
+
+    const QString removedKind =
+        node->data(0, ProjectNode::RoleKind).toString();
     const bool removesAnalysis = parent == m_root;
     const QString workspaceToRemove = removesAnalysis ? analysisWorkspace(node) : QString();
 
@@ -1976,6 +2172,22 @@ void Solver::removeNodeByUuid(const QString& uuid)
     }
     if (parent == m_root)
         syncAnalysisNodeNames();
+
+    parent->setExpanded(parentWasExpanded);
+    if (pm && fallbackSelection)
+        pm->setCurrentItem(fallbackSelection);
+
+    // 删除渗流工况后，立即刷新土石坝页面中的关联状态。
+    if (removesAnalysis && removedKind == QStringLiteral("SeepageAnalysis"))
+    {
+        for (ProjectNode* analysis : m_root->getChildren())
+        {
+            if (analysis &&
+                analysis->data(0, ProjectNode::RoleKind).toString()
+                    == QStringLiteral("DamAnalysis"))
+                syncDamConditionalNodes(analysis);
+        }
+    }
 }
 
 void Solver::renameNodeByUuid(const QString& uuid)
@@ -2124,14 +2336,46 @@ void Solver::normalizeChildNodeOrder(ProjectNode* parent) const
     if (!parent || parent->childCount() < 2)
         return;
 
-    QList<QTreeWidgetItem*> items = parent->takeChildren();
-    std::stable_sort(items.begin(), items.end(),
+    QList<QTreeWidgetItem*> originalItems;
+    originalItems.reserve(parent->childCount());
+    for (int i = 0; i < parent->childCount(); ++i)
+        originalItems.push_back(parent->child(i));
+
+    QList<QTreeWidgetItem*> sortedItems = originalItems;
+    std::stable_sort(sortedItems.begin(), sortedItems.end(),
                      [parent](QTreeWidgetItem* lhs, QTreeWidgetItem* rhs)
                      {
                          return solverChildOrderRank(parent, dynamic_cast<ProjectNode*>(lhs))
                                 < solverChildOrderRank(parent, dynamic_cast<ProjectNode*>(rhs));
                      });
-    parent->addChildren(items);
+
+    // 顺序没有变化时不要重新挂接节点，否则 Qt 会重置整棵子树的展开状态。
+    if (sortedItems == originalItems)
+        return;
+
+    QHash<QTreeWidgetItem*, bool> expandedStates;
+    auto captureExpandedState = [&](auto&& self, QTreeWidgetItem* item) -> void
+    {
+        if (!item)
+            return;
+        expandedStates.insert(item, item->isExpanded());
+        for (int i = 0; i < item->childCount(); ++i)
+            self(self, item->child(i));
+    };
+    for (QTreeWidgetItem* item : std::as_const(originalItems))
+        captureExpandedState(captureExpandedState, item);
+
+    QTreeWidget* tree = parent->treeWidget();
+    QTreeWidgetItem* currentItem = tree ? tree->currentItem() : nullptr;
+
+    parent->takeChildren();
+    parent->addChildren(sortedItems);
+
+    for (auto it = expandedStates.cbegin(); it != expandedStates.cend(); ++it)
+        it.key()->setExpanded(it.value());
+
+    if (tree && currentItem && currentItem->treeWidget() == tree)
+        tree->setCurrentItem(currentItem);
 }
 
 void Solver::refreshRootOverview() const
@@ -2157,6 +2401,274 @@ void Solver::refreshRootOverview() const
         else if (kind == QStringLiteral("CaveBlockStabilityAnalysis")) ++block;
     }
     page->setAnalysisCounts(seepage, dam, slope, cave, block);
+
+    QVector<QPair<QString, QString>> batchItems;
+    for (ProjectNode* node : batchComputableNodes())
+    {
+        if (!node)
+            continue;
+        batchItems.push_back(qMakePair(node->getUuid(), batchNodeDisplayName(node)));
+    }
+    page->setBatchAnalyses(batchItems);
+}
+
+QVector<ProjectNode*> Solver::batchComputableNodes() const
+{
+    QVector<ProjectNode*> nodes;
+    if (!m_root)
+        return nodes;
+
+    static const QSet<QString> computableKinds = {
+        QStringLiteral("SeepageAnalysis"),
+        QStringLiteral("DamAnalysis"),
+        QStringLiteral("SlopeStabilityAnalysis"),
+        QStringLiteral("CaveBlockStabilityAnalysis"),
+        QStringLiteral("GeoStressRegression"),
+        QStringLiteral("CaveSupportComputation")};
+
+    std::function<void(ProjectNode*)> collect = [&](ProjectNode* node)
+    {
+        if (!node)
+            return;
+        const QString kind = node->data(0, ProjectNode::RoleKind).toString();
+        if (computableKinds.contains(kind))
+            nodes.push_back(node);
+        for (ProjectNode* child : node->getChildren())
+            collect(child);
+    };
+
+    for (ProjectNode* child : m_root->getChildren())
+        collect(child);
+    return nodes;
+}
+
+QString Solver::batchNodeDisplayName(ProjectNode* node) const
+{
+    if (!node)
+        return {};
+
+    QStringList names;
+    QTreeWidgetItem* item = node;
+    while (item && item != m_root)
+    {
+        const QString name = item->text(0).trimmed();
+        if (!name.isEmpty())
+            names.prepend(name);
+        item = item->parent();
+    }
+    return names.join(QStringLiteral(" / "));
+}
+
+bool Solver::dispatchBatchCompute(ProjectNode* node)
+{
+    if (!node)
+        return false;
+
+    const QString kind = node->data(0, ProjectNode::RoleKind).toString();
+    m_batchDispatching = true;
+    if (kind == QStringLiteral("SeepageAnalysis"))
+        onComputeSeepage(node);
+    else if (kind == QStringLiteral("DamAnalysis"))
+        onComputeStressStrain(node);
+    else if (kind == QStringLiteral("SlopeStabilityAnalysis"))
+        onComputeSlopeStability(node);
+    else if (kind == QStringLiteral("CaveBlockStabilityAnalysis"))
+        onComputeCaveBlockStability(node);
+    else if (kind == QStringLiteral("GeoStressRegression"))
+        onComputeGeoStressRegression(node);
+    else if (kind == QStringLiteral("CaveSupportComputation"))
+    {
+        ProjectNode* owner = topLevelAnalysisNode(node);
+        if (!owner)
+        {
+            m_batchDispatching = false;
+            return false;
+        }
+        onComputeCaveExcavation(owner);
+    }
+    else
+    {
+        m_batchDispatching = false;
+        return false;
+    }
+    m_batchDispatching = false;
+    return true;
+}
+
+void Solver::onBatchComputeRequested(const QStringList& analysisUuids)
+{
+    if (!m_root || analysisUuids.isEmpty())
+        return;
+
+    if (m_batchActive)
+    {
+        QMessageBox::information(nullptr, QStringLiteral("批量计算"),
+                                 QStringLiteral("当前已有一组批量计算正在执行。"));
+        return;
+    }
+
+    if (m_solverProcess)
+    {
+        if (QMessageBox::question(nullptr, QStringLiteral("已有计算正在进行"),
+                                  QStringLiteral("是否停止当前计算并开始批量计算？"),
+                                  QMessageBox::Yes | QMessageBox::No,
+                                  QMessageBox::No) != QMessageBox::Yes)
+            return;
+        finishSolverProcess(true);
+    }
+
+    QSet<QString> requested;
+    for (const QString& uuid : analysisUuids)
+        requested.insert(uuid);
+    QStringList ordered;
+    for (ProjectNode* node : batchComputableNodes())
+    {
+        if (node && requested.contains(node->getUuid()))
+            ordered.push_back(node->getUuid());
+    }
+    if (ordered.isEmpty())
+    {
+        QMessageBox::information(nullptr, QStringLiteral("批量计算"),
+                                 QStringLiteral("所选节点已经不存在或不能直接计算。"));
+        refreshRootOverview();
+        return;
+    }
+
+    m_batchQueue = ordered;
+    m_batchCurrentUuid.clear();
+    m_batchTotal = ordered.size();
+    m_batchFinished = 0;
+    m_batchFailed = 0;
+    m_batchActive = true;
+
+    if (auto* page = dynamic_cast<SolverSettingWidget*>(m_root->getPage()))
+    {
+        page->setBatchRunning(true, m_batchTotal);
+        page->setBatchProgress(0, m_batchTotal, 0);
+        for (const QString& uuid : std::as_const(m_batchQueue))
+            page->setBatchItemStatus(uuid, QStringLiteral("等待"));
+    }
+
+    QTimer::singleShot(0, this, &Solver::startNextBatchCompute);
+}
+
+void Solver::onBatchStopRequested()
+{
+    if (!m_batchActive)
+        return;
+    stopSolverExecutable();
+}
+
+void Solver::startNextBatchCompute()
+{
+    if (!m_batchActive || !m_root || !m_batchCurrentUuid.isEmpty())
+        return;
+
+    if (m_batchQueue.isEmpty())
+    {
+        finishBatchCompute(false);
+        return;
+    }
+
+    m_batchCurrentUuid = m_batchQueue.takeFirst();
+    auto* page = dynamic_cast<SolverSettingWidget*>(m_root->getPage());
+    if (page)
+        page->setBatchItemStatus(m_batchCurrentUuid, QStringLiteral("准备中"));
+
+    ProjectNode* node = nullptr;
+    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+        node = pm->findNodeByUuid(m_batchCurrentUuid);
+    if (!node || node->data(0, ProjectNode::RoleModule).toString() != QStringLiteral("Solver"))
+    {
+        completeBatchItem(false, QStringLiteral("节点不存在"));
+        QTimer::singleShot(0, this, &Solver::startNextBatchCompute);
+        return;
+    }
+
+    if (!dispatchBatchCompute(node))
+    {
+        completeBatchItem(false, QStringLiteral("该节点不能直接计算"));
+        QTimer::singleShot(0, this, &Solver::startNextBatchCompute);
+        return;
+    }
+
+    // 所有现有求解流程在准备成功后都会启动 QProcess。若没有进程，说明该节点在
+    // 参数校验、输入文件生成或程序启动阶段已经失败；批量测试继续执行下一个节点。
+    if (!m_solverProcess)
+    {
+        completeBatchItem(false, QStringLiteral("计算未启动"));
+        QTimer::singleShot(0, this, &Solver::startNextBatchCompute);
+        return;
+    }
+
+    if (page)
+        page->setBatchItemStatus(m_batchCurrentUuid, QStringLiteral("计算中"));
+}
+
+void Solver::completeBatchItem(bool succeeded, const QString& detail)
+{
+    if (!m_batchActive || m_batchCurrentUuid.isEmpty())
+        return;
+
+    if (auto* page = m_root ? dynamic_cast<SolverSettingWidget*>(m_root->getPage()) : nullptr)
+    {
+        QString status = succeeded ? QStringLiteral("完成") : QStringLiteral("失败");
+        if (!succeeded && !detail.trimmed().isEmpty())
+            status += QStringLiteral("（%1）").arg(detail.trimmed());
+        page->setBatchItemStatus(m_batchCurrentUuid, status);
+    }
+
+    ++m_batchFinished;
+    if (!succeeded)
+        ++m_batchFailed;
+    m_batchCurrentUuid.clear();
+
+    if (auto* page = m_root ? dynamic_cast<SolverSettingWidget*>(m_root->getPage()) : nullptr)
+        page->setBatchProgress(m_batchFinished, m_batchTotal, m_batchFailed);
+}
+
+void Solver::finishBatchCompute(bool cancelled)
+{
+    if (!m_batchActive)
+        return;
+
+    const int total = m_batchTotal;
+    const int finished = m_batchFinished;
+    const int failed = m_batchFailed;
+    const int succeeded = qMax(0, finished - failed);
+
+    m_batchActive = false;
+    m_batchDispatching = false;
+    m_batchQueue.clear();
+    m_batchCurrentUuid.clear();
+
+    if (auto* page = m_root ? dynamic_cast<SolverSettingWidget*>(m_root->getPage()) : nullptr)
+    {
+        page->setBatchRunning(false, total);
+        if (cancelled)
+        {
+            page->setBatchStatusText(
+                QStringLiteral("批量计算已停止：已执行 %1 / %2（成功 %3，失败 %4）")
+                    .arg(finished)
+                    .arg(total)
+                    .arg(succeeded)
+                    .arg(failed));
+        }
+        else
+        {
+            page->setBatchProgress(total, total, failed);
+        }
+    }
+
+    if (!cancelled)
+    {
+        QMessageBox::information(
+            nullptr, QStringLiteral("批量计算完成"),
+            QStringLiteral("共执行 %1 个计算节点：成功 %2，失败 %3。")
+                .arg(total)
+                .arg(qMax(0, total - failed))
+                .arg(failed));
+    }
 }
 
 void Solver::setupNodeRole(ProjectNode* node, const QString& kind) const
@@ -2356,6 +2868,8 @@ void Solver::syncChildNodeNames(ProjectNode* parent) const
         if (auto* sidePage = dynamic_cast<GeoStressSideFacePage*>(node->getPage()))
             sidePage->setFaceIndex(index);
     }
+
+    refreshRootOverview();
 }
 
 void Solver::addFillStorageCycleNode(ProjectNode* analysisNode, bool setCurrent) const
@@ -2803,10 +3317,10 @@ void Solver::onSeepageAction()
     };
 
     SeepageBoundaryPage* upstreamPage =
-        addBoundary("上游水头边界", "SeepageBoundaryUpstreamWater", "JD_UPSEEP.DAT");
+        addBoundary("上游渗流边界", "SeepageBoundaryUpstreamWater", "JD_UPSEEP.DAT");
     SeepageBoundaryPage* downstreamPage =
-        addBoundary("下游水头边界", "SeepageBoundaryDownstreamWater", "JD_DWSEEP.DAT");
-    addBoundary("天然渗流水头边界", "SeepageBoundaryNaturalSeepage", "JDFREE.DAT");
+        addBoundary("下游渗流边界", "SeepageBoundaryDownstreamWater", "JD_DWSEEP.DAT");
+    addBoundary("天然渗流边界", "SeepageBoundaryNaturalSeepage", "JDFREE.DAT");
     {
         auto* page = new SeepageBoundaryPage("SeepageBoundaryDrainWell", "排水井区域",
                                              "JDJING.DAT", nullptr, true);
@@ -2854,8 +3368,7 @@ void Solver::onStressStrainAction()
         connectBoundaryStatus(node);
     };
 
-    addBoundary("上游水头边界", "StressBoundaryDamUpstream", "FA_DAMUP.DAT");
-    addBoundary("坝基扬压力边界", "StressBoundaryDamBase", "FA_DAMBASE.DAT");
+    addBoundary("上游水压力作用面", "StressBoundaryDamUpstream", "FA_DAMUP.DAT");
 
     auto* iceRegionPage =
         new SeepageBoundaryPage("DamIceRegion", "结冰区域", "JMFW.DAT", nullptr, true);
@@ -2948,6 +3461,12 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
 {
     try
     {
+    if (m_batchActive && !m_batchDispatching)
+    {
+        QMessageBox::information(nullptr, QStringLiteral("批量计算进行中"),
+                                 QStringLiteral("请先完成或停止当前批量计算。"));
+        return;
+    }
     m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
@@ -2975,11 +3494,11 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
             missingBoundaries << title;
     };
     requireBoundary(QStringLiteral("SeepageBoundaryUpstreamWater"),
-                    QStringLiteral("上游水头边界"), true);
+                    QStringLiteral("上游渗流边界"), true);
     requireBoundary(QStringLiteral("SeepageBoundaryDownstreamWater"),
-                    QStringLiteral("下游水头边界"), true);
+                    QStringLiteral("下游渗流边界"), true);
     requireBoundary(QStringLiteral("SeepageBoundaryNaturalSeepage"),
-                    QStringLiteral("天然渗流水头边界"), seepagePage->naturalFreeSurfaceEnabled());
+                    QStringLiteral("天然渗流边界"), seepagePage->naturalFreeSurfaceEnabled());
     requireBoundary(QStringLiteral("SeepageBoundaryDrainWell"),
                     QStringLiteral("排水井区域"), seepagePage->drainWellEnabled());
     if (!missingBoundaries.isEmpty())
@@ -2989,6 +3508,25 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
             QStringLiteral("以下边界尚未选择：\n%1")
                 .arg(missingBoundaries.join(QLatin1Char('\n'))));
         return;
+    }
+
+    if (seepagePage->naturalFreeSurfaceEnabled())
+    {
+        ProjectNode* naturalNode = findChildByPageType(
+            analysisNode, QStringLiteral("SeepageBoundaryNaturalSeepage"));
+        auto* naturalPage = naturalNode
+                                ? dynamic_cast<SeepageBoundaryPage*>(naturalNode->getPage())
+                                : nullptr;
+        QString naturalError;
+        if (!naturalPage || !naturalPage->validateSpecialInputs(&naturalError))
+        {
+            QMessageBox::warning(
+                nullptr, QStringLiteral("请完善天然渗流边界"),
+                naturalError.isEmpty()
+                    ? QStringLiteral("天然渗流边界节点缺少有效天然水头设置。")
+                    : naturalError);
+            return;
+        }
     }
 
     // 纯非稳态计算必须复用当前分析工况自己的初始水头场。
@@ -3090,6 +3628,12 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
 {
     try
     {
+    if (m_batchActive && !m_batchDispatching)
+    {
+        QMessageBox::information(nullptr, QStringLiteral("批量计算进行中"),
+                                 QStringLiteral("请先完成或停止当前批量计算。"));
+        return;
+    }
     m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
@@ -3109,7 +3653,6 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
         return;
     }
 
-    bool needsBaseBoundary = false;
     bool needsFaceBoundary = false;
     int cycleIndex = 0;
     QVector<FillStorageCyclePage*> cyclePages;
@@ -3129,7 +3672,6 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
                     .arg(cycleIndex).arg(error));
             return;
         }
-        needsBaseBoundary = needsBaseBoundary || cycle->usesDamBaseUplift();
         needsFaceBoundary = needsFaceBoundary || cycle->usesDamFacePressure();
     }
     if (cycleIndex == 0)
@@ -3138,6 +3680,104 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
             nullptr, QStringLiteral("请添加施工阶段"),
             QStringLiteral("土石坝分析至少需要一个填筑蓄水阶段。"));
         return;
+    }
+    if (cyclePages.size() > 99)
+    {
+        QMessageBox::warning(
+            nullptr, QStringLiteral("工况数量超限"),
+            QStringLiteral("当前求解器使用两位工况目录编号，单个土石坝分析最多支持 99 个工况。"));
+        return;
+    }
+
+    // 求解器的无浸润骤降分支把初始状态固定指向 CASE##FILL##，
+    // 且 FILL 后缀错误地使用 ICASE。只有“循环数 = 工况号”且对应 FILL 实际存在时才安全。
+    for (int i = 0; i < cyclePages.size(); ++i)
+    {
+        FillStorageCyclePage* cycle = cyclePages.at(i);
+        const int caseIndex = i + 1;
+        if (cycle && cycle->usesWaterDrop() && !cycle->usesWetting()
+            && (cycle->cycleCount() != caseIndex
+                || !cycle->hasEffectiveWaterFill(caseIndex)
+                || cycle->lastCycleHasReservoirCreep()))
+        {
+            QMessageBox::warning(
+                nullptr, QStringLiteral("水位骤降计算限制"),
+                QStringLiteral("第 %1 个工况未启用浸润变形时，求解器固定从 CASE%2FILL%2 读取骤降初始状态，"
+                               "不会继承该次蓄水后的 FLIU 流变状态。当前设置无法保证读取到本工况最终静力状态；"
+                               "请启用有效浸润变形，或使该工况的填筑蓄水循环数等于 %1、对应循环实际执行蓄水，"
+                               "且该循环不再执行蓄水期流变。")
+                    .arg(caseIndex)
+                    .arg(caseIndex, 2, 10, QLatin1Char('0')));
+            return;
+        }
+    }
+
+    const bool hasModal = std::any_of(
+        cyclePages.cbegin(), cyclePages.cend(),
+        [](const FillStorageCyclePage* cycle)
+        {
+            return cycle && cycle->usesModalAnalysis();
+        });
+    const bool hasWave = std::any_of(
+        cyclePages.cbegin(), cyclePages.cend(),
+        [](const FillStorageCyclePage* cycle)
+        {
+            return cycle && cycle->usesWaveAnalysis();
+        });
+    if (stressPage->dynamicOnlyEnabled() && !hasModal && !hasWave)
+    {
+        QMessageBox::warning(
+            nullptr, QStringLiteral("请设置动力分析"),
+            QStringLiteral("当前选择了“仅动力计算”，但所有工况都没有启用模态分析或地震波时程分析。"));
+        return;
+    }
+    stressPage->setModalAnalysisRequired(hasModal);
+
+    // 结冰分支同样把初始状态固定指向 CASE(ICASE)FILL(ICASE)，并且不会继承
+    // 后续 WETT / DROP / 最后一循环 FLIU。只允许求解器能够明确闭环的组合。
+    if (stressPage->freezeThawEnabled())
+    {
+        for (int i = 0; i < cyclePages.size(); ++i)
+        {
+            const FillStorageCyclePage* cycle = cyclePages.at(i);
+            const int caseIndex = i + 1;
+            const bool supported =
+                cycle && cycle->cycleCount() == caseIndex
+                && cycle->hasEffectiveWaterFill(caseIndex)
+                && !cycle->usesWetting()
+                && !cycle->usesWaterDrop()
+                && !cycle->lastCycleHasReservoirCreep();
+            if (!supported)
+            {
+                QMessageBox::warning(
+                    nullptr, QStringLiteral("结冰区域计算限制"),
+                    QStringLiteral("第 %1 个工况的结冰变形无法与当前施工序列可靠衔接。"
+                                   "求解器固定从 CASE%2FILL%2 读取结冰初始状态，且不会继承浸润、"
+                                   "水位骤降或最后一次蓄水期流变。请使用与该固定入口一致的工况进行结冰测试。")
+                        .arg(caseIndex)
+                        .arg(caseIndex, 2, 10, QLatin1Char('0')));
+                return;
+            }
+        }
+    }
+
+    const bool hasCreep = std::any_of(
+        cyclePages.cbegin(), cyclePages.cend(),
+        [](const FillStorageCyclePage* cycle)
+        {
+            return cycle && cycle->hasCreepCalculation();
+        });
+    if (hasCreep)
+    {
+        bool creepDtOk = false;
+        const double creepDt = stressPage->creepTimeStep(&creepDtOk);
+        if (!creepDtOk || !std::isfinite(creepDt) || creepDt <= 0.0)
+        {
+            QMessageBox::warning(
+                nullptr, QStringLiteral("请完善流变设置"),
+                QStringLiteral("已启用填筑期或蓄水期流变，蠕变计算时间步长必须大于 0。"));
+            return;
+        }
     }
 
     QStringList missingNodes;
@@ -3151,9 +3791,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
             missingNodes << title;
     };
     requireStressBoundary(QStringLiteral("StressBoundaryDamUpstream"),
-                          QStringLiteral("上游水压力边界"), needsFaceBoundary);
-    requireStressBoundary(QStringLiteral("StressBoundaryDamBase"),
-                          QStringLiteral("坝基扬压力边界"), needsBaseBoundary);
+                          QStringLiteral("上游水压力作用面"), needsFaceBoundary);
     if (stressPage->freezeThawEnabled())
     {
         ProjectNode* node = findChildByPageType(analysisNode, QStringLiteral("DamIceRegion"));
@@ -3172,6 +3810,46 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
     if (!beginCommonCompute(analysisNode, "土石坝分析"))
         return;
 
+    if (hasWave)
+    {
+        const QString inputDir = SolverFilePaths::outputInputDirectory(projectDir);
+        QStringList invalidWaveFiles;
+        for (const QString& name : {QStringLiteral("WAVE-AX.DAT"),
+                                    QStringLiteral("WAVE-AY.DAT"),
+                                    QStringLiteral("WAVE-AZ.DAT")})
+        {
+            QString detail;
+            if (!waveInputHasSamples(QDir(inputDir).filePath(name), &detail))
+                invalidWaveFiles << QStringLiteral("%1：%2").arg(name, detail);
+        }
+        if (!invalidWaveFiles.isEmpty())
+        {
+            QMessageBox::warning(
+                nullptr, QStringLiteral("地震波数据无效"),
+                QStringLiteral("已启用地震波时程分析，但以下输入不能用于计算：\n%1\n"
+                               "请在工程计算输入中准备有效的三向地震波文件。")
+                    .arg(invalidWaveFiles.join(QLatin1Char('\n'))));
+            clearSolverRunDirectory();
+            return;
+        }
+    }
+
+    for (int i = 0; i < cyclePages.size(); ++i)
+    {
+        QString associationError;
+        if (!prepareDamSeepageFiles(
+                cyclePages.at(i), i + 1, projectDir, &associationError))
+        {
+            QMessageBox::warning(
+                nullptr, QStringLiteral("渗流结果关联失败"),
+                QStringLiteral("第 %1 个填筑蓄水阶段：%2")
+                    .arg(i + 1)
+                    .arg(associationError));
+            clearSolverRunDirectory();
+            return;
+        }
+    }
+
     QVector<QPair<int, int>> fillLayerRanges;
     for (FillStorageCyclePage* cycle : std::as_const(cyclePages))
         fillLayerRanges += cycle->fillLayerRanges();
@@ -3186,6 +3864,121 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
             nullptr, QStringLiteral("请检查施工分层"), damLayerError);
         clearSolverRunDirectory();
         return;
+    }
+
+    DamLayerSummary damLayerSummary;
+    if (!readDamLayerSummary(damIiinPath, &damLayerSummary, &damLayerError))
+    {
+        QMessageBox::warning(
+            nullptr, QStringLiteral("请检查施工分层"), damLayerError);
+        clearSolverRunDirectory();
+        return;
+    }
+
+    auto withTrailingNativeSeparator = [](QString path)
+    {
+        path = QDir::toNativeSeparators(path);
+        const QChar separator = QDir::separator();
+        if (!path.endsWith(separator))
+            path.append(separator);
+        return path;
+    };
+    const QDir damRunRoot(SolverFilePaths::outputRoot(projectDir));
+    for (int i = 0; i < cyclePages.size(); ++i)
+    {
+        FillStorageCyclePage* cycle = cyclePages.at(i);
+        cycle->clearPreparedDynamicStateDirectory();
+        QString stateDirectoryName =
+            cycle->finalStaticStateDirectoryName(i + 1, damLayerSummary.maximumDamLayer);
+        // 求解器先执行结冰变形，再进入模态/地震波分支。结冰启用时，动力初始状态
+        // 应继承本工况 DICE 的结果，而不是回退到结冰前的 FILL 状态。
+        if (stressPage->freezeThawEnabled())
+        {
+            const int caseIndex = i + 1;
+            const QString caseCode = caseIndex < 10
+                                         ? QStringLiteral("0%1").arg(caseIndex)
+                                         : QString::number(caseIndex);
+            stateDirectoryName =
+                QStringLiteral("CASE%1DICE%1").arg(caseCode);
+        }
+        if (stateDirectoryName.isEmpty())
+        {
+            QMessageBox::warning(
+                nullptr, QStringLiteral("无法确定动力初始状态"),
+                QStringLiteral("第 %1 个工况的施工序列无法映射到求解器工作目录。")
+                    .arg(i + 1));
+            clearSolverRunDirectory();
+            return;
+        }
+        if ((cycle->usesModalAnalysis() || cycle->usesWaveAnalysis())
+            && stateDirectoryName == QStringLiteral("DISK00"))
+        {
+            QMessageBox::warning(
+                nullptr, QStringLiteral("缺少动力初始状态"),
+                QStringLiteral("第 %1 个工况启用了动力分析，但施工序列没有形成坝体静力结果。")
+                    .arg(i + 1));
+            clearSolverRunDirectory();
+            return;
+        }
+
+        const QString dynamicStatePath = damRunRoot.filePath(stateDirectoryName);
+        if (stressPage->dynamicOnlyEnabled()
+            && (cycle->usesModalAnalysis() || cycle->usesWaveAnalysis()))
+        {
+            QString sourcePath = dynamicStatePath;
+            QString sourceDescription = stateDirectoryName;
+
+            // 仅动力 + 结冰时，求解器会在进入动力分支前从固定 FILL 入口
+            // 重新形成 DICE；若已有 DICE 可直接使用，否则检查它所依赖的 FILL。
+            if (stressPage->freezeThawEnabled() && !QDir(sourcePath).exists())
+            {
+                const int caseIndex = i + 1;
+                const QString caseCode = caseIndex < 10
+                                             ? QStringLiteral("0%1").arg(caseIndex)
+                                             : QString::number(caseIndex);
+                sourceDescription = QStringLiteral("CASE%1FILL%1").arg(caseCode);
+                sourcePath = damRunRoot.filePath(sourceDescription);
+            }
+
+            const QDir sourceDir(sourcePath);
+            QStringList missingStateFiles;
+            const QStringList requiredStateFiles =
+                stressPage->freezeThawEnabled() && sourceDescription.contains(QStringLiteral("FILL"))
+                    ? QStringList{QStringLiteral("IIDISP.TXT"),
+                                  QStringLiteral("ISGMAR.TXT"),
+                                  QStringLiteral("IIICMM.TXT")}
+                    : QStringList{QStringLiteral("ISGMAR.TXT"),
+                                  QStringLiteral("IIICMM.TXT")};
+            if (!sourceDir.exists())
+            {
+                missingStateFiles << QStringLiteral("结果目录不存在");
+            }
+            else
+            {
+                for (const QString& fileName : requiredStateFiles)
+                {
+                    const QFileInfo info(sourceDir.filePath(fileName));
+                    if (!info.isFile() || info.size() <= 0)
+                        missingStateFiles << fileName;
+                }
+            }
+
+            if (!missingStateFiles.isEmpty())
+            {
+                QMessageBox::warning(
+                    nullptr, QStringLiteral("缺少已有静力结果"),
+                    QStringLiteral("第 %1 个工况选择了“仅动力计算”，但本分析工况中没有可用的前序静力状态 %2。\n"
+                                   "缺少：%3\n\n请先将计算类型切换为“仅静力计算”，使用相同工况完成一次静力计算，再切回“仅动力计算”。")
+                        .arg(i + 1)
+                        .arg(sourceDescription)
+                        .arg(missingStateFiles.join(QStringLiteral("、"))));
+                clearSolverRunDirectory();
+                return;
+            }
+        }
+
+        cycle->setPreparedDynamicStateDirectory(
+            withTrailingNativeSeparator(dynamicStatePath));
     }
 
     QFile iautoFile(QDir(SolverFilePaths::outputRoot(projectDir))
@@ -3217,7 +4010,11 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
         ++mcase;
         cycleSections << fillStorageCyclePage->sectionText(mcase);
     }
-    cycleSectionText = cycleSections.join("\n");
+    cycleSectionText =
+        QStringLiteral("%1    NCASE\n"
+                       " ----------------------------------------------\n")
+            .arg(mcase)
+        + cycleSections.join(QStringLiteral("\n"));
     stressPage->setMCaseCount(mcase);
 
     if (!stressPage->exportIfillDatFile(mcase, cycleSectionText))
@@ -3281,6 +4078,12 @@ void Solver::onComputeCaveExcavation(ProjectNode* analysisNode)
 {
     try
     {
+    if (m_batchActive && !m_batchDispatching)
+    {
+        QMessageBox::information(nullptr, QStringLiteral("批量计算进行中"),
+                                 QStringLiteral("请先完成或停止当前批量计算。"));
+        return;
+    }
     m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
@@ -4454,6 +5257,12 @@ void Solver::onComputeSlopeStability(ProjectNode* analysisNode)
 {
     try
     {
+    if (m_batchActive && !m_batchDispatching)
+    {
+        QMessageBox::information(nullptr, QStringLiteral("批量计算进行中"),
+                                 QStringLiteral("请先完成或停止当前批量计算。"));
+        return;
+    }
     m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
@@ -4584,6 +5393,12 @@ void Solver::onComputeGeoStressRegression(ProjectNode* analysisNode)
 {
     try
     {
+    if (m_batchActive && !m_batchDispatching)
+    {
+        QMessageBox::information(nullptr, QStringLiteral("批量计算进行中"),
+                                 QStringLiteral("请先完成或停止当前批量计算。"));
+        return;
+    }
     m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
     auto* page = analysisNode
                      ? dynamic_cast<GeoStressRegressionWidget*>(analysisNode->getPage())
@@ -4753,6 +5568,12 @@ void Solver::onComputeCaveBlockStability(ProjectNode* analysisNode)
 {
     try
     {
+    if (m_batchActive && !m_batchDispatching)
+    {
+        QMessageBox::information(nullptr, QStringLiteral("批量计算进行中"),
+                                 QStringLiteral("请先完成或停止当前批量计算。"));
+        return;
+    }
     m_pendingComputeWidget = qobject_cast<QWidget*>(sender());
     if (!analysisNode || !analysisNode->getPage())
         return;
@@ -4854,8 +5675,14 @@ void Solver::consumeSolverOutput()
             solverErrorFromRunLogs(m_activeAnalysisWorkspace, m_solverStartedAtMs);
         if (m_solverFailureDetail.isEmpty())
         {
+            const bool batchItemFinished = m_batchActive && !m_batchCurrentUuid.isEmpty();
             notifySolverFinished();
             finishSolverProcess(true);
+            if (batchItemFinished)
+            {
+                completeBatchItem(true);
+                QTimer::singleShot(0, this, &Solver::startNextBatchCompute);
+            }
         }
     }
 }
@@ -4868,9 +5695,21 @@ void Solver::handleSolverProcessFinished(int exitCode, QProcess::ExitStatus exit
 
     const bool succeeded = exitStatus == QProcess::NormalExit && exitCode == 0
                            && m_solverFailureDetail.isEmpty();
+    QString failureReason;
     if (succeeded)
     {
         notifySolverFinished();
+
+        if (m_activeAnalysisKind == QStringLiteral("SeepageAnalysis") && m_root)
+        {
+            for (ProjectNode* analysis : m_root->getChildren())
+            {
+                if (analysis &&
+                    analysis->data(0, ProjectNode::RoleKind).toString()
+                        == QStringLiteral("DamAnalysis"))
+                    syncDamConditionalNodes(analysis);
+            }
+        }
     }
     else
     {
@@ -4878,21 +5717,29 @@ void Solver::handleSolverProcessFinished(int exitCode, QProcess::ExitStatus exit
                               m_activeAnalysisName, m_activeAnalysisKind,
                               m_activeAnalysisType, QStringLiteral("failed"));
 
-        QString reason = m_solverFailureDetail;
-        if (reason.isEmpty() && exitStatus == QProcess::CrashExit)
-            reason = QStringLiteral("求解器进程异常退出");
-        if (reason.isEmpty())
-            reason = QStringLiteral("求解器退出码：%1").arg(exitCode);
+        failureReason = m_solverFailureDetail;
+        if (failureReason.isEmpty() && exitStatus == QProcess::CrashExit)
+            failureReason = QStringLiteral("求解器进程异常退出");
+        if (failureReason.isEmpty())
+            failureReason = QStringLiteral("求解器退出码：%1").arg(exitCode);
 
-        qWarning().noquote() << m_activeAnalysisType << "failed:" << reason
+        qWarning().noquote() << m_activeAnalysisType << "failed:" << failureReason
                              << "exitCode=" << exitCode
                              << "exitStatus=" << static_cast<int>(exitStatus);
         QMessageBox::warning(
             nullptr, QStringLiteral("计算未完成"),
             QStringLiteral("%1未完成。\n%2")
-                .arg(m_activeAnalysisType, customerFacingSolverFailure(reason)));
+                .arg(m_activeAnalysisType, customerFacingSolverFailure(failureReason)));
     }
+
+    const bool batchItemFinished = m_batchActive && !m_batchCurrentUuid.isEmpty();
     finishSolverProcess(false);
+    if (batchItemFinished)
+    {
+        completeBatchItem(succeeded,
+                          succeeded ? QString() : QStringLiteral("求解失败"));
+        QTimer::singleShot(0, this, &Solver::startNextBatchCompute);
+    }
 }
 
 void Solver::finishSolverProcess(bool terminateProcess)
@@ -5110,40 +5957,253 @@ void Solver::syncSeepageConditionalNodes(ProjectNode* analysisNode) const
     }
 }
 
+QVector<QPair<QString, QString>> Solver::seepageAnalysisSources() const
+{
+    QVector<QPair<QString, QString>> sources;
+    if (!m_root)
+        return sources;
+
+    for (ProjectNode* node : m_root->getChildren())
+    {
+        if (!node ||
+            node->data(0, ProjectNode::RoleKind).toString()
+                != QStringLiteral("SeepageAnalysis"))
+            continue;
+        sources.push_back(qMakePair(node->getUuid(), node->text(0).trimmed()));
+    }
+    return sources;
+}
+
+ProjectNode* Solver::findAnalysisNodeByUuid(const QString& uuid) const
+{
+    if (!m_root || uuid.trimmed().isEmpty())
+        return nullptr;
+
+    for (ProjectNode* node : m_root->getChildren())
+    {
+        if (node && node->getUuid() == uuid)
+            return node;
+    }
+    return nullptr;
+}
+
+bool Solver::prepareDamSeepageFiles(FillStorageCyclePage* cyclePage,
+                                    int cycleIndex,
+                                    const QString& projectDir,
+                                    QString* errorMessage) const
+{
+    if (errorMessage)
+        errorMessage->clear();
+    if (!cyclePage)
+        return false;
+
+    cyclePage->clearPreparedSeepageFiles();
+    if (!cyclePage->needsSeepageAssociation())
+        return true;
+
+    auto fail = [errorMessage](const QString& message)
+    {
+        if (errorMessage)
+            *errorMessage = message;
+        return false;
+    };
+
+    ProjectNode* sourceNode =
+        findAnalysisNodeByUuid(cyclePage->seepageSourceUuid());
+    if (!sourceNode ||
+        sourceNode->data(0, ProjectNode::RoleKind).toString()
+            != QStringLiteral("SeepageAnalysis"))
+        return fail(QStringLiteral("关联的渗流工况不存在，请重新选择。"));
+
+    const QString sourceWorkspace = analysisWorkspace(sourceNode);
+    const QString steadyDir =
+        seepageResultDirectory(sourceWorkspace, QStringLiteral("SEEPCASE01"));
+    const QString transientDir =
+        seepageResultDirectory(sourceWorkspace, QStringLiteral("SEEPDYNA01"));
+    const bool needBody = cyclePage->usesImportedSeepageBody();
+    // 均质坝的渗流体力由 FILLFBLOAD2 处理，它会同时读取 CAHEAD/CABODY。
+    const bool needHead = needBody;
+
+    QString headPath;
+    QString bodyPath;
+    QString description;
+
+    if (cyclePage->seepageResultType() == QStringLiteral("steady"))
+    {
+        description = QStringLiteral("稳态结果");
+        if (!steadyDir.isEmpty())
+        {
+            headPath = QDir(steadyDir).filePath(QStringLiteral("IIDISP.TXT"));
+            bodyPath = QDir(steadyDir).filePath(QStringLiteral("INBODY.TXT"));
+        }
+    }
+    else
+    {
+        const QString selectedStep = cyclePage->seepageTransientStep();
+        if (selectedStep.isEmpty())
+            return fail(QStringLiteral("请选择一个明确的非稳态结果步。"));
+
+        if (selectedStep == QStringLiteral("final"))
+        {
+            description = QStringLiteral("非稳态最终结果");
+            if (!transientDir.isEmpty())
+            {
+                headPath =
+                    QDir(transientDir).filePath(QStringLiteral("IIDISP.TXT"));
+                bodyPath =
+                    QDir(transientDir).filePath(QStringLiteral("INBODY.TXT"));
+            }
+        }
+        else
+        {
+            bool stepOk = false;
+            const int step = selectedStep.toInt(&stepOk);
+            if (!stepOk || step < 0)
+                return fail(QStringLiteral("所选非稳态结果步无效。"));
+
+            description = QStringLiteral("非稳态 STEP%1").arg(step);
+            if (!transientDir.isEmpty())
+            {
+                headPath = QDir(transientDir).filePath(
+                    QStringLiteral("STEP%1_IIDISP.TXT").arg(step));
+                bodyPath = QDir(transientDir).filePath(
+                    QStringLiteral("STEP%1_INBODY.TXT").arg(step));
+            }
+        }
+    }
+
+    if (needHead && !QFileInfo::exists(headPath))
+        return fail(QStringLiteral("%1缺少节点水头文件。").arg(description));
+    if (needBody && !QFileInfo::exists(bodyPath))
+        return fail(QStringLiteral("%1缺少节点体力文件。").arg(description));
+
+    const QString currentIiin =
+        QDir(SolverFilePaths::outputInputDirectory(projectDir))
+            .filePath(QStringLiteral("IIIN.DAT"));
+    const int currentNodeCount = readFirstLineInteger(currentIiin, 0);
+    if (currentNodeCount <= 0)
+        return fail(QStringLiteral("无法读取当前土石坝网格节点数。"));
+
+    // IFILL.DAT 第一行的 DIR_DEFAULT 指向“计算输入”目录；
+    // PACKIIWL/FILLFTSEEP2/FILLFBLOAD2 都从该目录读取 CAHEAD/CABODY。
+    const QString inputDirectory =
+        SolverFilePaths::outputInputDirectory(projectDir);
+    if (!QDir().mkpath(inputDirectory))
+        return fail(QStringLiteral("无法写入土石坝计算输入目录。"));
+
+    QString preparedHeadFile;
+    QString preparedBodyFile;
+    if (needHead)
+    {
+        const int sourceNodeCount = seepageFieldNodeCount(headPath);
+        if (sourceNodeCount != currentNodeCount)
+        {
+            return fail(
+                QStringLiteral("关联工况“%1”的节点水头与当前网格不一致（%2 / %3 个节点）。")
+                    .arg(sourceNode->text(0).trimmed())
+                    .arg(sourceNodeCount)
+                    .arg(currentNodeCount));
+        }
+
+        preparedHeadFile =
+            QStringLiteral("SEEP_C%1_HEAD.TXT")
+                .arg(cycleIndex, 2, 10, QLatin1Char('0'));
+        if (!copyFileReplacing(
+                headPath, QDir(inputDirectory).filePath(preparedHeadFile)))
+            return fail(QStringLiteral("复制%1节点水头失败。").arg(description));
+    }
+
+    if (needBody)
+    {
+        const int sourceNodeCount = seepageFieldNodeCount(bodyPath);
+        if (sourceNodeCount != currentNodeCount)
+        {
+            return fail(
+                QStringLiteral("关联工况“%1”的节点体力与当前网格不一致（%2 / %3 个节点）。")
+                    .arg(sourceNode->text(0).trimmed())
+                    .arg(sourceNodeCount)
+                    .arg(currentNodeCount));
+        }
+
+        preparedBodyFile =
+            QStringLiteral("SEEP_C%1_BODY.TXT")
+                .arg(cycleIndex, 2, 10, QLatin1Char('0'));
+        if (!copyFileReplacing(
+                bodyPath, QDir(inputDirectory).filePath(preparedBodyFile)))
+            return fail(QStringLiteral("复制%1节点体力失败。").arg(description));
+    }
+
+    cyclePage->setPreparedSeepageFiles(
+        preparedHeadFile, preparedBodyFile);
+    return true;
+}
+
 void Solver::syncDamConditionalNodes(ProjectNode* analysisNode) const
 {
     auto* page = analysisNode ? dynamic_cast<DamAnalysisWidget*>(analysisNode->getPage()) : nullptr;
     if (!page)
         return;
 
-    bool usesBase = false;
-    bool usesLinearBase = false;
+    const QVector<QPair<QString, QString>> seepageSources =
+        seepageAnalysisSources();
     bool usesFace = false;
+    bool usesModal = false;
     for (ProjectNode* child : analysisNode->getChildren())
     {
         auto* cycle = child ? dynamic_cast<FillStorageCyclePage*>(child->getPage()) : nullptr;
         if (!cycle)
             continue;
+
+        cycle->setAvailableSeepageSources(seepageSources);
+
+        QVector<int> transientSteps;
+        bool hasTransientFinal = false;
+        ProjectNode* sourceNode =
+            findAnalysisNodeByUuid(cycle->seepageSourceUuid());
+        if (sourceNode && cycle->needsSeepageAssociation())
+        {
+            const QString transientDir =
+                seepageResultDirectory(
+                    analysisWorkspace(sourceNode),
+                    QStringLiteral("SEEPDYNA01"));
+            const bool needHead = cycle->usesImportedSeepageHead();
+            const bool needBody = cycle->usesImportedSeepageBody();
+            if (!transientDir.isEmpty())
+            {
+                transientSteps =
+                    transientResultSteps(transientDir, needHead, needBody);
+                const QFileInfo finalHead(
+                    QDir(transientDir).filePath(QStringLiteral("IIDISP.TXT")));
+                const QFileInfo finalBody(
+                    QDir(transientDir).filePath(QStringLiteral("INBODY.TXT")));
+                hasTransientFinal =
+                    (!needHead || (finalHead.isFile() && finalHead.size() > 0))
+                    && (!needBody || (finalBody.isFile() && finalBody.size() > 0));
+            }
+        }
+        if (cycle->needsSeepageAssociation())
+            cycle->setAvailableTransientResults(
+                transientSteps, hasTransientFinal);
         cycle->setDynamicOptionsAvailable(page->dynamicAnalysisEnabled());
-        usesBase = usesBase || cycle->usesDamBaseUplift();
-        usesLinearBase = usesLinearBase || cycle->usesLinearDamBaseUplift();
         usesFace = usesFace || cycle->usesDamFacePressure();
+        usesModal = usesModal || cycle->usesModalAnalysis();
     }
 
-    page->setUpliftReductionRequired(usesLinearBase);
+    page->setModalAnalysisRequired(page->dynamicAnalysisEnabled() && usesModal);
+
+    // 当前仅提供均质坝，坝基渗透荷载与折减参数均不参与计算。
+    page->setUpliftReductionRequired(false);
     for (ProjectNode* child : analysisNode->getChildren())
     {
         if (auto* boundary = child ? dynamic_cast<StressBoundaryPage*>(child->getPage()) : nullptr)
         {
             const QString pageType = boundary->getPageType();
-            const bool enabled = pageType == QStringLiteral("StressBoundaryDamBase")
-                                     ? usesBase
-                                     : pageType == QStringLiteral("StressBoundaryDamUpstream")
-                                           ? usesFace
-                                           : true;
-            const QString reason = pageType == QStringLiteral("StressBoundaryDamBase")
-                                       ? QStringLiteral("在填筑蓄水阶段中选择坝基渗透荷载")
-                                       : QStringLiteral("在填筑蓄水阶段中选择坝体水面压力");
+            const bool enabled = pageType == QStringLiteral("StressBoundaryDamUpstream")
+                                     ? usesFace
+                                     : false;
+            const QString reason = pageType == QStringLiteral("StressBoundaryDamUpstream")
+                                       ? QStringLiteral("在填筑蓄水阶段中选择坝体水面压力")
+                                       : QStringLiteral("当前仅提供均质坝，不使用坝基扬压力边界");
             updateBoundaryNodeStatus(child, boundary->selectionCount(), enabled, reason);
         }
         else if (auto* region = child ? dynamic_cast<SeepageBoundaryPage*>(child->getPage()) : nullptr)
@@ -5152,7 +6212,7 @@ void Solver::syncDamConditionalNodes(ProjectNode* analysisNode) const
                                  || page->freezeThawEnabled();
             updateBoundaryNodeStatus(
                 child, region->selectionCount(), enabled,
-                QStringLiteral("在土石坝分析中启用冻融与结冰参数"));
+                QStringLiteral("在土石坝分析中启用结冰区域变形"));
         }
     }
 }
@@ -5487,6 +6547,18 @@ void Solver::notifySolverFinished()
 
 void Solver::stopSolverExecutable()
 {
+    if (m_batchActive)
+    {
+        if (m_root && !m_batchCurrentUuid.isEmpty())
+        {
+            if (auto* page = dynamic_cast<SolverSettingWidget*>(m_root->getPage()))
+                page->setBatchItemStatus(m_batchCurrentUuid, QStringLiteral("已停止"));
+        }
+        m_batchQueue.clear();
+        finishSolverProcess(true);
+        finishBatchCompute(true);
+        return;
+    }
     finishSolverProcess(true);
 }
 

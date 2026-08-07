@@ -13,7 +13,6 @@ class vtkUnstructuredGrid;
 class vtkPlane;
 class vtkActor;
 class vtkPolyDataMapper;
-class vtkPlaneSource;
 class vtkCutter;
 class vtkLookupTable;
 class vtkCellDataToPointData;
@@ -38,16 +37,18 @@ class SliceSettingsWidget : public BasePage
     void loadJson(const QJsonObject& object) override;
 
   private slots:
+    void on_analysisComboBox_currentIndexChanged(int index);
     // 文件/标量/方向
     void on_stepComboBox_currentIndexChanged(int index);
     void on_resultDirComboBox_currentIndexChanged(int index);
+    void on_resultTimeComboBox_currentIndexChanged(int index);
     void on_scalarComboBox_currentIndexChanged(int index);
     void on_planeComboBox_currentIndexChanged(int index);
 
-    // 单切面预览（紫色大截面），仅在“单切面模式”才预览
+    // 单切面位置变化后直接更新真实切面结果。
     void showCutPlane(int dummy = 0);
 
-    // 确认：按当前模式（单/多）生成结果
+    // 多切面由按钮显式生成；单切面调用时仅做兼容刷新。
     void on_confirmButton_clicked();
 
     void on_singleSliceRadioButton_toggled(bool checked);
@@ -62,7 +63,7 @@ class SliceSettingsWidget : public BasePage
     // 整体云图
     void updateNephogram(const QString& scalar);
 
-    // 单切面：按当前 m_plane 生成切面云图（仅在确认时调用）
+    // 单切面：按当前 m_plane 生成切面云图。
     void buildSingleSliceResult();
 
     // 多切面：按数量/端点/方向等距生成（仅在确认时调用）
@@ -99,12 +100,9 @@ class SliceSettingsWidget : public BasePage
     // 整体云图
     vtkSmartPointer<vtkActor> m_actor;
 
-    // 单切面：预览平面 + 结果面
+    // 单切面结果
     vtkSmartPointer<vtkPlane> m_plane;
-    vtkSmartPointer<vtkPlaneSource> m_slicePlaneSource;
-    vtkSmartPointer<vtkPolyDataMapper> m_slicePlaneMapper;
-    vtkSmartPointer<vtkActor> m_slicePlaneActor; // 预览
-    vtkSmartPointer<vtkActor> m_sliceActor;      // 结果
+    vtkSmartPointer<vtkActor> m_sliceActor;
 
     // 多切面：一组结果（确认后生成）
     QVector<vtkSmartPointer<vtkPlane>> m_multiPlanes;

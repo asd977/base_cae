@@ -25,6 +25,7 @@
 #include <QSlider>
 #include <QStringList>
 #include <QTableWidget>
+#include <QTableWidgetItem>
 #include <QTextStream>
 
 #include <vtkActor.h>
@@ -301,6 +302,25 @@ SeepageBoundaryPage::SeepageBoundaryPage(const QString& pageType,
     setupBatchGroupCombo();
     configureHydraulicUi();
 
+    const bool naturalFree = isNaturalFreeSurfacePage();
+    ui->groupBoxNaturalFree->setVisible(naturalFree);
+    if (naturalFree)
+    {
+        ui->comboNaturalHeadMode->setItemData(0, QStringLiteral("elevation"));
+        ui->comboNaturalHeadMode->setItemData(1, QStringLiteral("uniform"));
+        ui->comboNaturalCorrection->setItemData(0, 0);
+        ui->comboNaturalCorrection->setItemData(1, 1);
+        ui->comboNaturalCorrection->setItemData(2, 2);
+        ui->spinNaturalUniformHead->setEnabled(false);
+
+        connect(ui->comboNaturalHeadMode, qOverload<int>(&QComboBox::currentIndexChanged),
+                this, [this](int) { refreshNaturalFreeUi(); });
+        connect(ui->comboNaturalCorrection, qOverload<int>(&QComboBox::currentIndexChanged),
+                this, [this](int) { refreshNaturalFreeUi(); });
+        connect(ui->spinNaturalUniformHead, qOverload<double>(&QDoubleSpinBox::valueChanged),
+                this, [this](double) { refreshNaturalFreeUi(); });
+    }
+
     connect(ui->btnClear, &QPushButton::clicked,
             this, &SeepageBoundaryPage::onClearClicked);
     connect(ui->checkEnablePointPick, &QCheckBox::toggled,
@@ -311,11 +331,13 @@ SeepageBoundaryPage::SeepageBoundaryPage(const QString& pageType,
                 if (domain != pickDomain() || uuid != m_uuid || mode != PickMode::Node)
                     return;
                 updateSelectionSummary();
+                refreshNaturalFreeUi();
                 updateWaterLevelSliderRange();
                 updateWaterLevelPreview();
             });
 
     updateSelectionSummary();
+    refreshNaturalFreeUi();
     updateHydraulicSummary();
 }
 
@@ -347,6 +369,7 @@ void SeepageBoundaryPage::beforeLoad()
 
     m_pageActive = true;
     updateSelectionSummary();
+    refreshNaturalFreeUi();
     updateWaterLevelSliderRange();
     updateWaterLevelPreview();
 }
@@ -367,29 +390,20 @@ QVector<int> SeepageBoundaryPage::selectedNodeIds()
     if (!meshSvc)
         return {};
 
-    auto nodeIdArray = [](vtkUnstructuredGrid* grid) -> vtkIntArray*
-    {
-        if (!grid || !grid->GetPointData())
-            return nullptr;
-        if (auto* array = vtkIntArray::SafeDownCast(
-                grid->GetPointData()->GetArray("node_id")))
-            return array;
-        return vtkIntArray::SafeDownCast(grid->GetPointData()->GetArray("NodeId"));
-    };
-
     QSet<int> merged;
     auto collect = [&](GridKind kind, vtkUnstructuredGrid* grid)
     {
-        vtkIntArray* ids = nodeIdArray(grid);
-        if (!grid || !ids)
+        vtkDataArray* ids = findPointIdArray(grid);
+        if (!grid || !ids || ids->GetNumberOfComponents() <= 0)
             return;
         const QVector<vtkIdType> selected =
             PickManager::instance().getSelectedPointIds(pickDomain(), m_uuid, kind);
         for (vtkIdType pointId : selected)
         {
-            if (pointId < 0 || pointId >= grid->GetNumberOfPoints())
+            if (pointId < 0 || pointId >= grid->GetNumberOfPoints()
+                || pointId >= ids->GetNumberOfTuples())
                 continue;
-            merged.insert(ids->GetValue(int(pointId)));
+            merged.insert(static_cast<int>(std::llround(ids->GetComponent(pointId, 0))));
         }
     };
 
@@ -638,8 +652,22 @@ bool SeepageBoundaryPage::exportDatFile()
             return false;
         QTextStream os(&file);
         os << ids.size() << "\n";
-        for (int i = 0; i < ids.size(); ++i)
-            os << ids[i] << " " << (i + 1) << "\n";
+        if (isNaturalFreeSurfacePage())
+        {
+            const QMap<int, double> elevations = selectedNodeElevations();
+            const int correction = naturalHeadCorrection();
+            os.setRealNumberNotation(QTextStream::FixedNotation);
+            os.setRealNumberPrecision(8);
+            for (int id : ids)
+                os << id << " " << naturalHeadForNode(id, elevations) << " " << correction << "\n";
+        }
+        else
+        {
+            // JD_UPSEEP.DAT、JD_DWSEEP.DAT、JDJING.DAT、JMFW.DAT
+            // 在求解器中都按“每行一个节点号”读取。
+            for (int id : ids)
+                os << id << "\n";
+        }
     }
 
     if (!hasHydraulicParameters())
@@ -704,6 +732,7 @@ void SeepageBoundaryPage::onClearClicked()
     PickManager::instance().clearPreviewSelection(pickDomain(), m_uuid, PickMode::Node);
     PickManager::instance().clearSelection(pickDomain(), m_uuid, PickMode::Node);
     updateSelectionSummary();
+    refreshNaturalFreeUi();
     updateWaterLevelSliderRange();
     updateWaterLevelPreview();
 }
@@ -837,6 +866,138 @@ void SeepageBoundaryPage::onGroupChanged(int index)
     updateSelectionSummary();
     updateWaterLevelSliderRange();
     updateWaterLevelPreview();
+}
+
+bool SeepageBoundaryPage::isNaturalFreeSurfacePage()
+{
+    return getPageType() == QStringLiteral("SeepageBoundaryNaturalSeepage");
+}
+
+QMap<int, double> SeepageBoundaryPage::selectedNodeElevations()
+{
+    QMap<int, double> result;
+    if (!isNaturalFreeSurfacePage())
+        return result;
+
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshSvc)
+        return result;
+    int verticalAxis = meshSvc->verticalAxis() - 1;
+    if (verticalAxis < 0 || verticalAxis > 2)
+        verticalAxis = 1;
+
+    auto collect = [&](GridKind kind, vtkUnstructuredGrid* grid)
+    {
+        if (!grid)
+            return;
+        vtkDataArray* ids = findPointIdArray(grid);
+        if (!ids)
+            return;
+        const QVector<vtkIdType> selected =
+            PickManager::instance().getSelectedPointIds(pickDomain(), m_uuid, kind);
+        for (vtkIdType pointId : selected)
+        {
+            if (pointId < 0 || pointId >= grid->GetNumberOfPoints())
+                continue;
+            const int nodeId = static_cast<int>(std::llround(ids->GetComponent(pointId, 0)));
+            if (result.contains(nodeId))
+                continue;
+            double point[3] = {0.0, 0.0, 0.0};
+            grid->GetPoint(pointId, point);
+            result.insert(nodeId, point[verticalAxis]);
+        }
+    };
+
+    collect(GridKind::Solid, meshSvc->getVtkUnstructuredGridSolid());
+    collect(GridKind::Line, meshSvc->getVtkUnstructuredGridLine());
+    return result;
+}
+
+void SeepageBoundaryPage::refreshNaturalFreeUi()
+{
+    if (!isNaturalFreeSurfacePage())
+        return;
+
+    const bool uniformHead =
+        ui->comboNaturalHeadMode->currentData().toString() == QStringLiteral("uniform");
+    ui->labelNaturalUniformHead->setEnabled(uniformHead);
+    ui->spinNaturalUniformHead->setEnabled(uniformHead);
+
+    const int count = selectedNodeIds().size();
+    ui->labelNaturalFreeHint->setText(
+        count <= 0
+            ? QStringLiteral("请先选择天然渗流边界节点。")
+            : QStringLiteral("已选择 %1 个节点。天然水头和水头修正对本边界节点统一生效。")
+                  .arg(count));
+}
+
+double SeepageBoundaryPage::naturalHeadForNode(
+    int nodeId, const QMap<int, double>& elevations) const
+{
+    if (ui->comboNaturalHeadMode->currentData().toString() == QStringLiteral("uniform"))
+        return ui->spinNaturalUniformHead->value();
+    return elevations.value(nodeId, 0.0);
+}
+
+int SeepageBoundaryPage::naturalHeadCorrection() const
+{
+    const int correction = ui->comboNaturalCorrection->currentData().toInt();
+    return qBound(0, correction, 2);
+}
+
+bool SeepageBoundaryPage::validateSpecialInputs(QString* errorMessage)
+{
+    if (errorMessage)
+        errorMessage->clear();
+    if (!isNaturalFreeSurfacePage())
+        return true;
+
+    const QVector<int> ids = selectedNodeIds();
+    if (ids.isEmpty())
+    {
+        if (errorMessage)
+            *errorMessage = QStringLiteral("天然渗流边界尚未选择节点。");
+        return false;
+    }
+
+    const QString mode = ui->comboNaturalHeadMode->currentData().toString();
+    if (mode == QStringLiteral("elevation"))
+    {
+        const QMap<int, double> elevations = selectedNodeElevations();
+        for (int id : ids)
+        {
+            if (!elevations.contains(id) || !std::isfinite(elevations.value(id)))
+            {
+                if (errorMessage)
+                    *errorMessage = QStringLiteral("无法取得天然渗流边界节点 %1 的高程。").arg(id);
+                return false;
+            }
+        }
+    }
+    else if (mode == QStringLiteral("uniform"))
+    {
+        if (!std::isfinite(ui->spinNaturalUniformHead->value()))
+        {
+            if (errorMessage)
+                *errorMessage = QStringLiteral("天然渗流边界的指定水头无效。");
+            return false;
+        }
+    }
+    else
+    {
+        if (errorMessage)
+            *errorMessage = QStringLiteral("天然渗流边界的水头方式无效。");
+        return false;
+    }
+
+    const int correction = ui->comboNaturalCorrection->currentData().toInt();
+    if (correction < 0 || correction > 2)
+    {
+        if (errorMessage)
+            *errorMessage = QStringLiteral("天然渗流边界的水头修正方式无效。");
+        return false;
+    }
+    return true;
 }
 
 void SeepageBoundaryPage::configureHydraulicUi()
@@ -1467,6 +1628,14 @@ QJsonObject SeepageBoundaryPage::saveJson()
     obj[QStringLiteral("picked_line")] = toJson(
         PickManager::instance().getSelectedPointIds(pickDomain(), m_uuid, GridKind::Line));
 
+    if (isNaturalFreeSurfacePage())
+    {
+        obj[QStringLiteral("natural_head_mode")] =
+            ui->comboNaturalHeadMode->currentData().toString();
+        obj[QStringLiteral("natural_uniform_head")] = ui->spinNaturalUniformHead->value();
+        obj[QStringLiteral("natural_correction")] = naturalHeadCorrection();
+    }
+
     if (hasHydraulicParameters())
     {
         obj[QStringLiteral("boundary_condition_type")] =
@@ -1519,6 +1688,48 @@ void SeepageBoundaryPage::loadJson(const QJsonObject& obj)
         pickDomain(), m_uuid, GridKind::Line,
         fromJson(obj.value(QStringLiteral("picked_line")).toArray()), true);
 
+    if (isNaturalFreeSurfacePage())
+    {
+        QString headMode = obj.value(QStringLiteral("natural_head_mode")).toString();
+        double uniformHead = obj.value(QStringLiteral("natural_uniform_head")).toDouble(0.0);
+        int correction = obj.value(QStringLiteral("natural_correction")).toInt(0);
+
+        // 兼容上一版逐节点天然水头数据：若没有新的统一参数，默认迁移为
+        // “使用节点高程”，并在旧数据修正类型一致时继承其 ISX。
+        if (headMode.isEmpty())
+        {
+            headMode = QStringLiteral("elevation");
+            const QJsonArray legacyRows =
+                obj.value(QStringLiteral("natural_free_values")).toArray();
+            bool first = true;
+            int commonCorrection = 0;
+            bool sameCorrection = true;
+            for (const auto& value : legacyRows)
+            {
+                const int legacyCorrection =
+                    qBound(0, value.toObject().value(QStringLiteral("isx")).toInt(0), 2);
+                if (first)
+                {
+                    commonCorrection = legacyCorrection;
+                    uniformHead = value.toObject().value(QStringLiteral("head")).toDouble(0.0);
+                    first = false;
+                }
+                else if (legacyCorrection != commonCorrection)
+                {
+                    sameCorrection = false;
+                }
+            }
+            correction = sameCorrection ? commonCorrection : 0;
+        }
+
+        const int headIndex = ui->comboNaturalHeadMode->findData(headMode);
+        ui->comboNaturalHeadMode->setCurrentIndex(headIndex >= 0 ? headIndex : 0);
+        ui->spinNaturalUniformHead->setValue(uniformHead);
+        correction = qBound(0, correction, 2);
+        const int correctionIndex = ui->comboNaturalCorrection->findData(correction);
+        ui->comboNaturalCorrection->setCurrentIndex(correctionIndex >= 0 ? correctionIndex : 0);
+    }
+
     if (hasHydraulicParameters())
     {
         m_hasHydraulicState = obj.contains(QStringLiteral("water_level"))
@@ -1558,6 +1769,7 @@ void SeepageBoundaryPage::loadJson(const QJsonObject& obj)
     updateBoundaryConditionUi();
     refreshWaterLevelCurveTable();
     updateSelectionSummary();
+    refreshNaturalFreeUi();
     updateWaterLevelSliderRange();
     updateHydraulicSummary();
     updateWaterLevelPreview();

@@ -1,65 +1,327 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>IsosurfaceSegmentationWidget</class>
  <widget class="QWidget" name="IsosurfaceSegmentationWidget">
-  <property name="geometry"><rect><x>0</x><y>0</y><width>420</width><height>700</height></rect></property>
-  <property name="windowTitle"><string>等值面分割</string></property>
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>420</width>
+    <height>700</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>等值面分割</string>
+  </property>
   <layout class="QVBoxLayout" name="verticalLayout">
-   <property name="spacing"><number>8</number></property><property name="leftMargin"><number>9</number></property><property name="topMargin"><number>9</number></property><property name="rightMargin"><number>9</number></property><property name="bottomMargin"><number>9</number></property>
+   <property name="spacing">
+    <number>8</number>
+   </property>
+   <property name="leftMargin">
+    <number>9</number>
+   </property>
+   <property name="topMargin">
+    <number>9</number>
+   </property>
+   <property name="rightMargin">
+    <number>9</number>
+   </property>
+   <property name="bottomMargin">
+    <number>9</number>
+   </property>
    <item>
     <widget class="QGroupBox" name="resultDataGroupBox">
-     <property name="title"><string>结果数据</string></property>
+     <property name="title">
+      <string>数据选择</string>
+     </property>
      <layout class="QGridLayout" name="resultDataLayout">
-      <property name="horizontalSpacing"><number>8</number></property><property name="verticalSpacing"><number>6</number></property>
-      <item row="0" column="0"><widget class="QLabel" name="resultStageLabel"><property name="text"><string>结果阶段</string></property></widget></item>
-      <item row="0" column="1"><widget class="QComboBox" name="resultDirComboBox"/></item>
-      <item row="1" column="0"><widget class="QLabel" name="resultTypeLabel"><property name="text"><string>结果数据</string></property></widget></item>
-      <item row="1" column="1"><widget class="QComboBox" name="stepComboBox"/></item>
-      <item row="2" column="0"><widget class="QLabel" name="scalarLabel"><property name="text"><string>物理量</string></property></widget></item>
-      <item row="2" column="1"><widget class="QComboBox" name="scalarComboBox"/></item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="analysisLabel">
+        <property name="text">
+         <string>计算工况</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="analysisComboBox" />
+      </item>
+      <property name="horizontalSpacing">
+       <number>8</number>
+      </property>
+      <property name="verticalSpacing">
+       <number>6</number>
+      </property>
+      <item row="1" column="0">
+       <widget class="QLabel" name="resultStageLabel">
+        <property name="text">
+         <string>结果阶段</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="resultDirComboBox" />
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="resultTimeLabel">
+        <property name="text">
+         <string>结果时刻</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QComboBox" name="resultTimeComboBox" />
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="resultTypeLabel">
+        <property name="text">
+         <string>结果文件</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QComboBox" name="stepComboBox" />
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="scalarLabel">
+        <property name="text">
+         <string>物理量</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QComboBox" name="scalarComboBox" />
+      </item>
      </layout>
     </widget>
    </item>
    <item>
     <widget class="QGroupBox" name="thresholdGroupBox">
-     <property name="title"><string>分割阈值</string></property>
+     <property name="title">
+      <string>分割阈值</string>
+     </property>
      <layout class="QGridLayout" name="thresholdLayout">
-      <property name="horizontalSpacing"><number>8</number></property><property name="verticalSpacing"><number>6</number></property>
-      <item row="0" column="0"><widget class="QLabel" name="modeLabel"><property name="text"><string>阈值方式</string></property></widget></item>
+      <property name="horizontalSpacing">
+       <number>8</number>
+      </property>
+      <property name="verticalSpacing">
+       <number>6</number>
+      </property>
+      <item row="0" column="0">
+       <widget class="QLabel" name="modeLabel">
+        <property name="text">
+         <string>阈值方式</string>
+        </property>
+       </widget>
+      </item>
       <item row="0" column="1">
        <layout class="QHBoxLayout" name="modeLayout">
-        <item><widget class="QRadioButton" name="percentModeRadioButton"><property name="text"><string>比例</string></property><property name="checked"><bool>true</bool></property></widget></item>
-        <item><widget class="QRadioButton" name="valueModeRadioButton"><property name="text"><string>数值</string></property></widget></item>
-        <item><spacer name="modeSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property></spacer></item>
+        <item>
+         <widget class="QRadioButton" name="percentModeRadioButton">
+          <property name="text">
+           <string>比例</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QRadioButton" name="valueModeRadioButton">
+          <property name="text">
+           <string>数值</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="modeSpacer">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
        </layout>
       </item>
-      <item row="1" column="0"><widget class="QLabel" name="percentLabel"><property name="text"><string>阈值比例</string></property></widget></item>
-      <item row="1" column="1"><widget class="QSlider" name="isoSlider"><property name="minimum"><number>0</number></property><property name="maximum"><number>100</number></property><property name="value"><number>50</number></property><property name="orientation"><enum>Qt::Horizontal</enum></property></widget></item>
-      <item row="2" column="0"><widget class="QLabel" name="valueLabel"><property name="text"><string>阈值数值</string></property></widget></item>
-      <item row="2" column="1"><widget class="QDoubleSpinBox" name="isoSpin"><property name="decimals"><number>6</number></property><property name="minimum"><double>-999999999.000000000000000</double></property><property name="maximum"><double>999999999.000000000000000</double></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="percentLabel">
+        <property name="text">
+         <string>阈值比例</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QSlider" name="isoSlider">
+        <property name="minimum">
+         <number>0</number>
+        </property>
+        <property name="maximum">
+         <number>100</number>
+        </property>
+        <property name="value">
+         <number>50</number>
+        </property>
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="valueLabel">
+        <property name="text">
+         <string>阈值数值</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QDoubleSpinBox" name="isoSpin">
+        <property name="decimals">
+         <number>6</number>
+        </property>
+        <property name="minimum">
+         <double>-999999999.000000000000000</double>
+        </property>
+        <property name="maximum">
+         <double>999999999.000000000000000</double>
+        </property>
+        <property name="keyboardTracking">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
    <item>
     <widget class="QGroupBox" name="displayGroupBox">
-     <property name="title"><string>区域显示</string></property>
+     <property name="title">
+      <string>区域显示</string>
+     </property>
      <layout class="QGridLayout" name="displayLayout">
-      <property name="horizontalSpacing"><number>8</number></property><property name="verticalSpacing"><number>7</number></property>
-      <item row="0" column="0"><widget class="QCheckBox" name="showLowCheckBox"><property name="text"><string>低值区域</string></property><property name="checked"><bool>true</bool></property></widget></item>
-      <item row="0" column="1"><widget class="QLabel" name="lowOpacityLabel"><property name="text"><string>透明度</string></property></widget></item>
-      <item row="0" column="2"><widget class="QSpinBox" name="lowOpacitySpinBox"><property name="minimum"><number>10</number></property><property name="maximum"><number>100</number></property><property name="value"><number>60</number></property><property name="suffix"><string> %</string></property></widget></item>
-      <item row="1" column="0"><widget class="QCheckBox" name="showHighCheckBox"><property name="text"><string>高值区域</string></property><property name="checked"><bool>true</bool></property></widget></item>
-      <item row="1" column="1"><widget class="QLabel" name="highOpacityLabel"><property name="text"><string>透明度</string></property></widget></item>
-      <item row="1" column="2"><widget class="QSpinBox" name="highOpacitySpinBox"><property name="minimum"><number>10</number></property><property name="maximum"><number>100</number></property><property name="value"><number>60</number></property><property name="suffix"><string> %</string></property></widget></item>
-      <item row="2" column="0"><widget class="QCheckBox" name="showInterfaceCheckBox"><property name="text"><string>分界面</string></property></widget></item>
-      <item row="2" column="1"><widget class="QLabel" name="interfaceOpacityLabel"><property name="text"><string>透明度</string></property></widget></item>
-      <item row="2" column="2"><widget class="QSpinBox" name="interfaceOpacitySpinBox"><property name="minimum"><number>10</number></property><property name="maximum"><number>100</number></property><property name="value"><number>100</number></property><property name="suffix"><string> %</string></property></widget></item>
+      <property name="horizontalSpacing">
+       <number>8</number>
+      </property>
+      <property name="verticalSpacing">
+       <number>7</number>
+      </property>
+      <item row="0" column="0">
+       <widget class="QCheckBox" name="showLowCheckBox">
+        <property name="text">
+         <string>低值区域</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLabel" name="lowOpacityLabel">
+        <property name="text">
+         <string>透明度</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="2">
+       <widget class="QSpinBox" name="lowOpacitySpinBox">
+        <property name="minimum">
+         <number>10</number>
+        </property>
+        <property name="maximum">
+         <number>100</number>
+        </property>
+        <property name="value">
+         <number>60</number>
+        </property>
+        <property name="suffix">
+         <string> %</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QCheckBox" name="showHighCheckBox">
+        <property name="text">
+         <string>高值区域</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLabel" name="highOpacityLabel">
+        <property name="text">
+         <string>透明度</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="2">
+       <widget class="QSpinBox" name="highOpacitySpinBox">
+        <property name="minimum">
+         <number>10</number>
+        </property>
+        <property name="maximum">
+         <number>100</number>
+        </property>
+        <property name="value">
+         <number>60</number>
+        </property>
+        <property name="suffix">
+         <string> %</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QCheckBox" name="showInterfaceCheckBox">
+        <property name="text">
+         <string>分界面</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QLabel" name="interfaceOpacityLabel">
+        <property name="text">
+         <string>透明度</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="2">
+       <widget class="QSpinBox" name="interfaceOpacitySpinBox">
+        <property name="minimum">
+         <number>10</number>
+        </property>
+        <property name="maximum">
+         <number>100</number>
+        </property>
+        <property name="value">
+         <number>100</number>
+        </property>
+        <property name="suffix">
+         <string> %</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
-   <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
   </layout>
  </widget>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

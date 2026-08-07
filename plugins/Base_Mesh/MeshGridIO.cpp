@@ -17,6 +17,7 @@
 #include <vtkWedge.h>
 
 #include <QDebug>
+#include <QDataStream>
 #include <QFile>
 #include <QFileInfo>
 #include <QDir>
@@ -76,14 +77,16 @@ static inline bool parseDouble(const QString& s, double& v)
     return ok;
 }
 
-static inline MeshTagKey domainPhysicalKey(int physId)
+static inline MeshTagKey domainPhysicalKey(int physId, int dimension = 3)
 {
-    return MeshTagKey{QStringLiteral("Physical"), 3, physId};
+    return MeshTagKey{QStringLiteral("Physical"), dimension, physId};
 }
 
-static inline MeshTagSet& ensureDomainPhysicalTagSet(MshPickMap& pickMap, int physId)
+static inline MeshTagSet& ensureDomainPhysicalTagSet(MshPickMap& pickMap,
+                                                     int physId,
+                                                     int dimension = 3)
 {
-    const MeshTagKey key = domainPhysicalKey(physId);
+    const MeshTagKey key = domainPhysicalKey(physId, dimension);
     if (!pickMap.tagSets.contains(key))
     {
         MeshTagSet set;
@@ -99,12 +102,15 @@ static inline MeshTagSet& ensureDomainPhysicalTagSet(MshPickMap& pickMap, int ph
     return set;
 }
 
-static inline void appendDomainPhysicalCell(MshPickMap& pickMap, int physId, MeshIdType cellId)
+static inline void appendDomainPhysicalCell(MshPickMap& pickMap,
+                                            int physId,
+                                            MeshIdType cellId,
+                                            int dimension = 3)
 {
     if (physId <= 0 || cellId < 0)
         return;
 
-    MeshTagSet& set = ensureDomainPhysicalTagSet(pickMap, physId);
+    MeshTagSet& set = ensureDomainPhysicalTagSet(pickMap, physId, dimension);
     set.cellIds.push_back(cellId);
     pickMap.cellIdToDomainTags[cellId].push_back(set.key);
 }
@@ -733,6 +739,17 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importFlac3D(const QString& fil
 
     ensureDefaultArrays(grid);
 
+    int domainDimension = 0;
+    for (vtkIdType cid = 0; cid < grid->GetNumberOfCells(); ++cid)
+    {
+        if (vtkCell* cell = grid->GetCell(cid))
+            domainDimension = qMax(domainDimension, cell->GetCellDimension());
+    }
+    if (domainDimension <= 0)
+        domainDimension = 3;
+    m_mshPickMap.meshDim = domainDimension;
+    PublicVariables::instance().set(PublicConstants::kMeshDimension, domainDimension, "mesh");
+
     auto* cd = grid->GetCellData();
     auto* fd = grid->GetFieldData();
 
@@ -883,6 +900,17 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importInp(const QString& fileNa
     }
     ensureDefaultArrays(grid);
 
+    int domainDimension = 0;
+    for (vtkIdType cid = 0; cid < grid->GetNumberOfCells(); ++cid)
+    {
+        if (vtkCell* cell = grid->GetCell(cid))
+            domainDimension = qMax(domainDimension, cell->GetCellDimension());
+    }
+    if (domainDimension <= 0)
+        domainDimension = 3;
+    m_mshPickMap.meshDim = domainDimension;
+    PublicVariables::instance().set(PublicConstants::kMeshDimension, domainDimension, "mesh");
+
     auto* cd = grid->GetCellData();
     auto* matype = cd ? vtkIntArray::SafeDownCast(cd->GetArray("MATYPE")) : nullptr;
     auto* layer = cd ? vtkIntArray::SafeDownCast(cd->GetArray("LAYER")) : nullptr;
@@ -893,7 +921,8 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::importInp(const QString& fileNa
         {
             const MeshTagKey& key = it.key();
             const MeshTagSet& set = it.value();
-            if (key.category != QStringLiteral("Physical") || key.dim != 3 || key.id <= 0)
+            if (key.category != QStringLiteral("Physical") || key.dim != domainDimension ||
+                key.id <= 0)
                 continue;
             const int physId = key.id;
             for (MeshIdType rawCid : set.cellIds)
@@ -2391,14 +2420,177 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadFlac3dGrid(const QString& f
 
            // ========= 打开文件 =========
     QFile f(fileName);
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+    if (!f.open(QIODevice::ReadOnly))
     {
         qWarning() << "cannot open flac3d file:" << fileName;
         return nullptr;
     }
 
            // ========= 一些解析工具 =========
-    auto stripInlineComment = [](QString s) -> QString
+    QSet<QString> seenSlots;
+    quint32 fileMagic = 0;
+    {
+        QDataStream probe(&f);
+        probe.setByteOrder(QDataStream::LittleEndian);
+        probe >> fileMagic;
+    }
+    f.seek(0);
+
+    constexpr quint32 kFlac3dBinaryMagic = 0x51F6E7E6u;
+    const bool isBinaryGrid = fileMagic == kFlac3dBinaryMagic;
+    if (isBinaryGrid)
+    {
+        auto parseBinary = [&]() -> bool
+        {
+            QDataStream stream(&f);
+            stream.setByteOrder(QDataStream::LittleEndian);
+            stream.setFloatingPointPrecision(QDataStream::DoublePrecision);
+            const qint64 fileSize = f.size();
+
+            auto readCount = [&](qint32& count, qint64 maximum) -> bool
+            {
+                stream >> count;
+                return stream.status() == QDataStream::Ok && count >= 0 && count <= maximum;
+            };
+            auto readString = [&](QString& value) -> bool
+            {
+                quint16 byteCount = 0;
+                stream >> byteCount;
+                if (stream.status() != QDataStream::Ok)
+                    return false;
+                QByteArray bytes;
+                bytes.resize(static_cast<int>(byteCount));
+                if (byteCount > 0 &&
+                    stream.readRawData(bytes.data(), static_cast<int>(byteCount)) != byteCount)
+                {
+                    return false;
+                }
+                value = QString::fromUtf8(bytes);
+                return true;
+            };
+
+            quint32 magic = 0;
+            qint32 dimension = 0;
+            qint32 nodeCount = 0;
+            stream >> magic >> dimension;
+            if (magic != kFlac3dBinaryMagic || dimension < 1 || dimension > 3 ||
+                !readCount(nodeCount, fileSize / 28) || nodeCount == 0)
+            {
+                return false;
+            }
+
+            for (qint32 i = 0; i < nodeCount; ++i)
+            {
+                qint32 id = 0;
+                NodeData node{};
+                stream >> id >> node.x >> node.y >> node.z;
+                if (stream.status() != QDataStream::Ok || id <= 0)
+                    return false;
+                nodes.insert(id, node);
+            }
+
+            qint32 zoneCount = 0;
+            if (!readCount(zoneCount, fileSize / 12) || zoneCount == 0)
+                return false;
+            zones.reserve(zoneCount);
+            for (qint32 i = 0; i < zoneCount; ++i)
+            {
+                qint32 id = 0;
+                qint32 vertexCount = 0;
+                stream >> id >> vertexCount;
+                if (stream.status() != QDataStream::Ok || id <= 0 ||
+                    (vertexCount != 4 && vertexCount != 5 && vertexCount != 6 &&
+                     vertexCount != 8))
+                {
+                    return false;
+                }
+
+                Zone zone;
+                zone.id = id;
+                zone.type = vertexCount == 4 ? QStringLiteral("T4")
+                                             : vertexCount == 5 ? QStringLiteral("P5")
+                                             : vertexCount == 6 ? QStringLiteral("W6")
+                                                                : QStringLiteral("B8");
+                zone.verts.reserve(vertexCount);
+                for (qint32 j = 0; j < vertexCount; ++j)
+                {
+                    qint32 nodeId = 0;
+                    stream >> nodeId;
+                    if (stream.status() != QDataStream::Ok || !nodes.contains(nodeId))
+                        return false;
+                    zone.verts.push_back(nodeId);
+                }
+                zones.push_back(zone);
+            }
+
+            auto readGroups = [&](bool zoneGroup) -> bool
+            {
+                qint32 groupCount = 0;
+                if (!readCount(groupCount, fileSize / 4))
+                    return false;
+                for (qint32 i = 0; i < groupCount; ++i)
+                {
+                    QString name;
+                    QString slot;
+                    qint32 memberCount = 0;
+                    if (!readString(name) || !readString(slot) ||
+                        !readCount(memberCount, fileSize / 4))
+                    {
+                        return false;
+                    }
+                    seenSlots.insert(slot.isEmpty() ? QStringLiteral("<none>") : slot);
+                    for (qint32 j = 0; j < memberCount; ++j)
+                    {
+                        qint32 memberId = 0;
+                        stream >> memberId;
+                        if (stream.status() != QDataStream::Ok)
+                            return false;
+                        if (zoneGroup && !name.isEmpty())
+                        {
+                            QStringList& groups = zoneGroups[memberId];
+                            if (!groups.contains(name))
+                                groups.push_back(name);
+                        }
+                    }
+                }
+                return true;
+            };
+
+            if (!readGroups(true))
+                return false;
+
+            qint32 faceCount = 0;
+            if (!readCount(faceCount, fileSize / 12))
+                return false;
+            for (qint32 i = 0; i < faceCount; ++i)
+            {
+                qint32 faceId = 0;
+                qint32 vertexCount = 0;
+                stream >> faceId >> vertexCount;
+                if (stream.status() != QDataStream::Ok || vertexCount < 3 || vertexCount > 64)
+                    return false;
+                for (qint32 j = 0; j < vertexCount; ++j)
+                {
+                    qint32 nodeId = 0;
+                    stream >> nodeId;
+                    if (stream.status() != QDataStream::Ok)
+                        return false;
+                }
+            }
+
+            return readGroups(false) && stream.status() == QDataStream::Ok;
+        };
+
+        if (!parseBinary())
+        {
+            qWarning() << "invalid binary flac3d grid:" << fileName;
+            return nullptr;
+        }
+        f.close();
+    }
+    else
+    {
+        auto stripInlineComment = [](QString s) -> QString
     {
         // 处理： "305238 * FACES" 这种行内注释
         const int p = s.indexOf('*');
@@ -2433,8 +2625,6 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadFlac3dGrid(const QString& f
     QString curGroupName;
     QString curSlot = kWantedSlot;
     bool inZGroupIds = false;
-    QSet<QString> seenSlots;
-
     auto parseZoneIdToken = [&](const QString& t)
     {
         // 支持： 12  或  12-20
@@ -2606,6 +2796,7 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadFlac3dGrid(const QString& f
         // 其它段落（FACE GROUPS 等）这里暂不处理
     }
     f.close();
+    }
 
     if (nodes.isEmpty() || zones.isEmpty())
     {
@@ -2702,6 +2893,22 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadFlac3dGrid(const QString& f
     {
         if (ids.size() != 8)
             return false;
+
+        if (isBinaryGrid)
+        {
+            // Binary f3grid uses FLAC3D's internal brick topology, not VTK's corner order.
+            constexpr int flacToVtk[8] = {5, 7, 6, 3, 2, 4, 1, 0};
+            auto hex = vtkSmartPointer<vtkHexahedron>::New();
+            for (int vtkCorner = 0; vtkCorner < 8; ++vtkCorner)
+            {
+                const int sourceCorner = flacToVtk[vtkCorner];
+                if (!idMap.contains(ids[sourceCorner]))
+                    return false;
+                hex->GetPointIds()->SetId(vtkCorner, idMap.value(ids[sourceCorner]));
+            }
+            grid->InsertNextCell(hex->GetCellType(), hex->GetPointIds());
+            return true;
+        }
 
         struct P
         {
@@ -3074,6 +3281,10 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
             return 6;
         if (tUpper.startsWith("C3D5"))
             return 5;
+        if (tUpper.startsWith("S4"))
+            return 4;
+        if (tUpper.startsWith("S3"))
+            return 3;
         if (tUpper.startsWith("T3D2") || tUpper.startsWith("B31"))
             return 2;
         if (tUpper.startsWith("T3D3"))
@@ -3368,6 +3579,22 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
             const vtkIdType cid = grid->InsertNextCell(VTK_PYRAMID, 5, ids);
             elemIdToCellIds[e.id].push_back(cid);
         }
+        else if (e.type.startsWith("S4") && e.conn.size() == 4)
+        {
+            vtkIdType ids[4];
+            for (int i = 0; i < 4; ++i)
+                ids[i] = idMap.value(e.conn[i]);
+            const vtkIdType cid = grid->InsertNextCell(VTK_QUAD, 4, ids);
+            elemIdToCellIds[e.id].push_back(cid);
+        }
+        else if (e.type.startsWith("S3") && e.conn.size() == 3)
+        {
+            vtkIdType ids[3];
+            for (int i = 0; i < 3; ++i)
+                ids[i] = idMap.value(e.conn[i]);
+            const vtkIdType cid = grid->InsertNextCell(VTK_TRIANGLE, 3, ids);
+            elemIdToCellIds[e.id].push_back(cid);
+        }
         else if ((e.type.startsWith("T3D2") || e.type.startsWith("B31")) && e.conn.size() == 2)
         {
             vtkIdType ids[2];
@@ -3385,6 +3612,16 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
             elemIdToCellIds[e.id].push_back(cid);
         }
     }
+
+    int domainDimension = 0;
+    for (vtkIdType cid = 0; cid < grid->GetNumberOfCells(); ++cid)
+    {
+        if (vtkCell* cell = grid->GetCell(cid))
+            domainDimension = qMax(domainDimension, cell->GetCellDimension());
+    }
+    if (domainDimension <= 0)
+        return nullptr;
+    m_mshPickMap.meshDim = domainDimension;
 
     int nextPhysId = kDefaultCalculationMatype;
     QHash<QString, int> groupToPhysId;
@@ -3437,9 +3674,10 @@ vtkSmartPointer<vtkUnstructuredGrid> MeshGridIO::loadAbaqusInpGrid(const QString
         if (physId <= 0)
             continue;
 
-        if (dim >= 3)
+        if (dim == domainDimension)
         {
-            MeshTagSet& set = ensureDomainPhysicalTagSet(m_mshPickMap, physId);
+            MeshTagSet& set =
+                ensureDomainPhysicalTagSet(m_mshPickMap, physId, domainDimension);
             set.name = setName;
             set.cellIds = allCellIds.values().toVector();
             for (MeshIdType cid : set.cellIds)

@@ -246,7 +246,7 @@
                 <item row="16" column="0">
                   <widget class="QLabel" name="label15">
                     <property name="text">
-                      <string>系统阻尼/分材料阻尼</string>
+                      <string>阻尼作用范围</string>
                     </property>
                     <property name="wordWrap">
                       <bool>false</bool>
@@ -255,14 +255,15 @@
                 </item>
                 <item row="16" column="1">
                   <widget class="QComboBox" name="line15Combo">
+                    <property name="enabled">
+                      <bool>false</bool>
+                    </property>
+                    <property name="toolTip">
+                      <string>当前前端未提供 MACHAN.DAT 材料阻尼映射，仅导出系统统一阻尼。</string>
+                    </property>
                     <item>
                       <property name="text">
-                        <string>0 - 系统阻尼</string>
-                      </property>
-                    </item>
-                    <item>
-                      <property name="text">
-                        <string>1 - 分材料阻尼</string>
+                        <string>系统统一阻尼</string>
                       </property>
                     </item>
                     <property name="minimumSize">

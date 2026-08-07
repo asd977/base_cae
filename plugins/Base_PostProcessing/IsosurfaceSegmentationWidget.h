@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <BasePage.h>
 #include <vtkSmartPointer.h>
 
@@ -33,6 +33,7 @@ class IsosurfaceSegmentationWidget : public BasePage
     void loadJson(const QJsonObject& object) override;
 
   private slots:
+    void on_analysisComboBox_currentIndexChanged(int index);
     void on_scalarComboBox_currentIndexChanged(int index);
     void on_percentCheckBox_toggled(bool checked);
     void on_isoSlider_valueChanged(int v);
@@ -46,6 +47,7 @@ class IsosurfaceSegmentationWidget : public BasePage
 
     void on_stepComboBox_currentIndexChanged(int index);
     void on_resultDirComboBox_currentIndexChanged(int index);
+    void on_resultTimeComboBox_currentIndexChanged(int index);
 
   private:
     // 数据

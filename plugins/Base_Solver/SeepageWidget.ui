@@ -25,12 +25,13 @@
         <item row="0" column="1"><widget class="QComboBox" name="comboComputeType"/></item>
         <item row="1" column="0"><widget class="QLabel" name="labelIter"><property name="text"><string>最大迭代次数</string></property></widget></item>
         <item row="1" column="1"><widget class="QSpinBox" name="spinIter"><property name="minimum"><number>1</number></property><property name="maximum"><number>1000000</number></property><property name="value"><number>100</number></property></widget></item>
-        <item row="2" column="0"><widget class="QLabel" name="labelNaturalFreeSurface"><property name="text"><string>天然自由面</string></property></widget></item>
+        <item row="2" column="0"><widget class="QLabel" name="labelNaturalFreeSurface"><property name="text"><string>天然渗流场</string></property></widget></item>
         <item row="2" column="1"><widget class="QCheckBox" name="checkNaturalFreeSurface"><property name="text"><string>启用</string></property></widget></item>
-        <item row="3" column="0"><widget class="QLabel" name="labelItagFree"><property name="text"><string>自由面修正</string></property></widget></item>
+        <item row="3" column="0"><widget class="QLabel" name="labelItagFree"><property name="text"><string>天然水头继承</string></property></widget></item>
         <item row="3" column="1"><widget class="QComboBox" name="comboItagFree"/></item>
         <item row="4" column="0"><widget class="QLabel" name="labelDrainWell"><property name="text"><string>排水井</string></property></widget></item>
         <item row="4" column="1"><widget class="QCheckBox" name="checkDrainWell"><property name="text"><string>启用</string></property></widget></item>
+        <item row="5" column="0" colspan="2"><widget class="QLabel" name="labelNaturalFreeHint"><property name="text"><string>天然渗流场启用后，需在“天然渗流边界”中为节点设置天然水头；选择“继承天然水头”后，稳态工况会读取这些水头，并按每个节点的上游/下游标识决定是否用当前库水位修正。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
        </layout>
       </widget>
      </item>

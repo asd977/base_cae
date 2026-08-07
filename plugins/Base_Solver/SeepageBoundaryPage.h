@@ -3,6 +3,7 @@
 #include <BasePage.h>
 
 #include <QJsonObject>
+#include <QMap>
 #include <QPair>
 #include <QString>
 #include <QVector>
@@ -57,6 +58,7 @@ class SeepageBoundaryPage : public BasePage
     void setTransientCurveEnabled(bool enabled, double startTime, double endTime);
     bool validateHydraulicInputs(bool transient, double startTime, double endTime,
                                  QString* errorMessage);
+    bool validateSpecialInputs(QString* errorMessage);
 
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
@@ -90,6 +92,11 @@ class SeepageBoundaryPage : public BasePage
     void updateWaterLevelSliderRange();
     void updateWaterLevelPreview();
     void clearWaterLevelPreview();
+    bool isNaturalFreeSurfacePage();
+    QMap<int, double> selectedNodeElevations();
+    void refreshNaturalFreeUi();
+    double naturalHeadForNode(int nodeId, const QMap<int, double>& elevations) const;
+    int naturalHeadCorrection() const;
     bool selectedPointBounds(double bounds[6]);
     QString hydraulicRoleName() const;
     QString pickDomain();

@@ -363,7 +363,7 @@ StressBoundaryPage::StressBoundaryPage(const QString& pageType, const QString& b
     connect(&PickManager::instance(), &PickManager::selectionChanged, this,
             [this](const QString& domain, const QString& uuid, PickMode mode, GridKind)
             {
-                if (domain == getPageType() && uuid == m_uuid && mode == currentPickMode())
+                if (domain == pickDomain() && uuid == m_uuid && mode == currentPickMode())
                     updateSelectionSummary();
             });
     updateSelectionSummary();
@@ -374,17 +374,25 @@ StressBoundaryPage::~StressBoundaryPage()
     delete ui;
 }
 
+QString StressBoundaryPage::pickDomain()
+{
+    // PickManager 在同一 domain 内会维护选择归属。多个土石坝工况使用相同
+    // 边界类型和相同坝面时，必须为每个页面建立独立 domain，避免后加载
+    // 的工况覆盖前一个工况的选择。
+    return QStringLiteral("%1/%2").arg(getPageType(), m_uuid);
+}
+
 void StressBoundaryPage::beforeLoad()
 {
     setupBatchGroupCombo();
     updateSelectionSummary();
-    PickManager::instance().activate(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().activate(pickDomain(), m_uuid, currentPickMode());
 }
 
 void StressBoundaryPage::beforeUnload()
 {
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
-    PickManager::instance().deactivate(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().clearPreviewSelection(pickDomain(), m_uuid, currentPickMode());
+    PickManager::instance().deactivate(pickDomain(), m_uuid, currentPickMode());
 }
 
 QVector<StressBoundaryPage::EdgeRow> StressBoundaryPage::selectedEdgeRows()
@@ -393,15 +401,15 @@ QVector<StressBoundaryPage::EdgeRow> StressBoundaryPage::selectedEdgeRows()
 
     if (currentPickMode() == PickMode::Face)
     {
-        QVector<EdgeRow> rows = collectRowsFromFaces(GridKind::Solid, getPageType(), m_uuid);
+        QVector<EdgeRow> rows = collectRowsFromFaces(GridKind::Solid, pickDomain(), m_uuid);
         if (rows.isEmpty())
-            rows = collectRowsFromFaces(GridKind::Line, getPageType(), m_uuid);
+            rows = collectRowsFromFaces(GridKind::Line, pickDomain(), m_uuid);
         return rows;
     }
 
-    QVector<EdgeRow> rows = collectRowsFromEdges(GridKind::Line, getPageType(), m_uuid);
+    QVector<EdgeRow> rows = collectRowsFromEdges(GridKind::Line, pickDomain(), m_uuid);
     if (rows.isEmpty())
-        rows = collectRowsFromEdges(GridKind::Solid, getPageType(), m_uuid);
+        rows = collectRowsFromEdges(GridKind::Solid, pickDomain(), m_uuid);
     return rows;
 }
 
@@ -480,8 +488,8 @@ bool StressBoundaryPage::exportDatFile()
 
 void StressBoundaryPage::onClearClicked()
 {
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
-    PickManager::instance().clearSelection(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().clearPreviewSelection(pickDomain(), m_uuid, currentPickMode());
+    PickManager::instance().clearSelection(pickDomain(), m_uuid, currentPickMode());
     updateSelectionSummary();
 }
 
@@ -543,7 +551,7 @@ void StressBoundaryPage::setupBatchGroupCombo()
                         QVector<vtkIdType> faceKeys;
                         for (qint64 k : map.physicalFaceKeys(physId))
                             faceKeys.push_back(vtkIdType(k));
-                        PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid,
+                        PickManager::instance().setPreviewFaceKeys(pickDomain(), m_uuid,
                                                                    GridKind::Solid, faceKeys);
                     }
                     else
@@ -551,7 +559,7 @@ void StressBoundaryPage::setupBatchGroupCombo()
                         QVector<vtkIdType> edgeKeys;
                         for (qint64 k : map.physicalEdgeKeys(physId))
                             edgeKeys.push_back(vtkIdType(k));
-                        PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid,
+                        PickManager::instance().setPreviewEdgeKeys(pickDomain(), m_uuid,
                                                                    GridKind::Solid, edgeKeys);
                     }
                 },
@@ -560,7 +568,7 @@ void StressBoundaryPage::setupBatchGroupCombo()
         connect(groupCombo, &CustomComboBox::dropdownClosed, this,
                 [this]()
                 {
-                    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid,
+                    PickManager::instance().clearPreviewSelection(pickDomain(), m_uuid,
                                                                   currentPickMode());
                 },
                 Qt::UniqueConnection);
@@ -594,7 +602,7 @@ void StressBoundaryPage::onGroupChanged(int index)
         for (qint64 k : faceKeysInt)
             faceKeys.push_back(static_cast<vtkIdType>(k));
 
-        PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
+        PickManager::instance().setSelectedFaceKeys(pickDomain(), m_uuid, GridKind::Solid,
                                                     faceKeys, false);
     }
     else
@@ -605,11 +613,11 @@ void StressBoundaryPage::onGroupChanged(int index)
         for (qint64 k : edgeKeysInt)
             edgeKeys.push_back(static_cast<vtkIdType>(k));
 
-        PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
+        PickManager::instance().setSelectedEdgeKeys(pickDomain(), m_uuid, GridKind::Solid,
                                                     edgeKeys, false);
     }
 
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().clearPreviewSelection(pickDomain(), m_uuid, currentPickMode());
     updateSelectionSummary();
 }
 
@@ -627,13 +635,13 @@ QJsonObject StressBoundaryPage::saveJson()
     };
     obj["pick_mode"] = (currentPickMode() == PickMode::Face) ? "face" : "edge";
     obj["edge_solid"] = toJson(
-        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Edge, GridKind::Solid));
+        PickManager::instance().getIdList(pickDomain(), m_uuid, PickMode::Edge, GridKind::Solid));
     obj["edge_line"] = toJson(
-        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Edge, GridKind::Line));
+        PickManager::instance().getIdList(pickDomain(), m_uuid, PickMode::Edge, GridKind::Line));
     obj["face_solid"] = toJson(
-        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid));
+        PickManager::instance().getIdList(pickDomain(), m_uuid, PickMode::Face, GridKind::Solid));
     obj["face_line"] = toJson(
-        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Line));
+        PickManager::instance().getIdList(pickDomain(), m_uuid, PickMode::Face, GridKind::Line));
     return obj;
 }
 
@@ -659,13 +667,13 @@ void StressBoundaryPage::loadJson(const QJsonObject& obj)
         return out;
     };
 
-    PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
+    PickManager::instance().setSelectedEdgeKeys(pickDomain(), m_uuid, GridKind::Solid,
                                                 fromJson(obj.value("edge_solid").toArray()), true);
-    PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Line,
+    PickManager::instance().setSelectedEdgeKeys(pickDomain(), m_uuid, GridKind::Line,
                                                 fromJson(obj.value("edge_line").toArray()), true);
-    PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
+    PickManager::instance().setSelectedFaceKeys(pickDomain(), m_uuid, GridKind::Solid,
                                                 fromJson(obj.value("face_solid").toArray()), true);
-    PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Line,
+    PickManager::instance().setSelectedFaceKeys(pickDomain(), m_uuid, GridKind::Line,
                                                  fromJson(obj.value("face_line").toArray()), true);
     updateSelectionSummary();
 }

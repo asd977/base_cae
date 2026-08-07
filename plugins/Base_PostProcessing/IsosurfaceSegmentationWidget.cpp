@@ -32,6 +32,7 @@
 #include "PostFieldUtils.h"
 #include "ResultDisplayNames.h"
 #include "PostResultAutoPrepare.h"
+#include "PostResultSelectionUtils.h"
 #include "PostTecplotUtils.h"
 #include "PostVisualUtils.h"
 #include "ui_IsosurfaceSegmentationWidget.h"
@@ -47,7 +48,9 @@ IsosurfaceSegmentationWidget::IsosurfaceSegmentationWidget(
 {
     ui->setupUi(this);
 
+    configurePostResultCombo(ui->analysisComboBox);
     configurePostResultCombo(ui->resultDirComboBox);
+    configurePostResultCombo(ui->resultTimeComboBox);
     configurePostResultCombo(ui->stepComboBox);
 
     // UI 默认
@@ -103,8 +106,14 @@ IsosurfaceSegmentationWidget::IsosurfaceSegmentationWidget(
 
     connect(ui->stepComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &IsosurfaceSegmentationWidget::on_stepComboBox_currentIndexChanged);
+    connect(ui->analysisComboBox,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &IsosurfaceSegmentationWidget::on_analysisComboBox_currentIndexChanged);
     connect(ui->resultDirComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &IsosurfaceSegmentationWidget::on_resultDirComboBox_currentIndexChanged);
+    connect(ui->resultTimeComboBox,
+            QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &IsosurfaceSegmentationWidget::on_resultTimeComboBox_currentIndexChanged);
 }
 
 IsosurfaceSegmentationWidget::~IsosurfaceSegmentationWidget()
@@ -151,7 +160,9 @@ QJsonObject IsosurfaceSegmentationWidget::saveJson()
 {
     const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
     QJsonObject object;
+    object.insert(QStringLiteral("analysisKey"), ui->analysisComboBox->currentData().toString());
     object.insert(QStringLiteral("resultDir"), ui->resultDirComboBox->currentData().toString());
+    object.insert(QStringLiteral("resultTime"), ui->resultTimeComboBox->currentData().toString());
     object.insert(QStringLiteral("stepFile"), ui->stepComboBox->currentData().toString());
     object.insert(QStringLiteral("fieldName"), field.name);
     object.insert(QStringLiteral("fieldAssociation"), field.association);
@@ -186,18 +197,55 @@ void IsosurfaceSegmentationWidget::applyPendingState()
     m_pendingState.clear();
     m_hasPendingState = false;
 
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     const QString resultDir = state.value(QStringLiteral("resultDir")).toString();
-    if (!resultDir.isEmpty())
+    const QString resolvedResultDir =
+        PostResultSelectionUtils::absoluteSourcePath(projectDir, resultDir);
+    QString analysisKey = state.value(QStringLiteral("analysisKey")).toString();
+    if (analysisKey.isEmpty() && !resolvedResultDir.isEmpty())
+        analysisKey =
+            PostResultSelectionUtils::analysisKeyForSource(projectDir, resolvedResultDir);
+
+    if (!analysisKey.isEmpty())
     {
-        const int index = ui->resultDirComboBox->findData(resultDir);
+        const int analysisIndex = ui->analysisComboBox->findData(analysisKey);
+        if (analysisIndex >= 0)
+        {
+            const QSignalBlocker blocker(ui->analysisComboBox);
+            ui->analysisComboBox->setCurrentIndex(analysisIndex);
+        }
+    }
+    PostResultSelectionUtils::populateStageCombo(
+        ui->resultDirComboBox, projectDir,
+        PostResultSelectionUtils::selectedAnalysisKey(ui->analysisComboBox),
+        resolvedResultDir);
+    if (!resolvedResultDir.isEmpty())
+    {
+        const int index = PostResultSelectionUtils::sourceComboIndex(
+            ui->resultDirComboBox, projectDir, resolvedResultDir);
         if (index >= 0)
         {
             const QSignalBlocker blocker(ui->resultDirComboBox);
             ui->resultDirComboBox->setCurrentIndex(index);
-            m_dataPath = resultDir;
         }
     }
+    m_dataPath = ui->resultDirComboBox->currentData().toString();
     loadFileName(m_dataPath);
+
+    const QString resultTime = state.value(QStringLiteral("resultTime")).toString();
+    if (!resultTime.isNull())
+    {
+        const int timeIndex = ui->resultTimeComboBox->findData(resultTime);
+        if (timeIndex >= 0)
+        {
+            {
+                const QSignalBlocker blocker(ui->resultTimeComboBox);
+                ui->resultTimeComboBox->setCurrentIndex(timeIndex);
+            }
+            on_resultTimeComboBox_currentIndexChanged(timeIndex);
+        }
+    }
 
     const QString stepFile = state.value(QStringLiteral("stepFile")).toString();
     if (!stepFile.isEmpty())
@@ -264,21 +312,35 @@ void IsosurfaceSegmentationWidget::refreshResultGroups()
 {
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    const QString previousPath = m_dataPath;
     const QVector<PostResultAutoPrepare::ResultGroup> groups =
         PostResultAutoPrepare::resultGroups(projectDir);
+    QString previousAnalysis = ui->analysisComboBox->currentData().toString();
+    const QString previousPath = m_dataPath;
+    if (previousAnalysis.isEmpty() && !previousPath.isEmpty())
+        previousAnalysis =
+            PostResultSelectionUtils::analysisKeyForSource(groups, previousPath);
 
-    ui->resultDirComboBox->blockSignals(true);
-    ui->resultDirComboBox->clear();
-    for (const PostResultAutoPrepare::ResultGroup& group : groups)
-        ui->resultDirComboBox->addItem(group.displayName, group.sourcePath);
+    PostResultSelectionUtils::populateAnalysisCombo(
+        ui->analysisComboBox, groups, previousAnalysis);
+    PostResultSelectionUtils::populateStageCombo(
+        ui->resultDirComboBox, groups,
+        PostResultSelectionUtils::selectedAnalysisKey(ui->analysisComboBox),
+        previousPath);
 
-    int index = previousPath.isEmpty() ? -1 : ui->resultDirComboBox->findData(previousPath);
-    if (index < 0 && ui->resultDirComboBox->count() > 0)
-        index = 0;
-    ui->resultDirComboBox->setCurrentIndex(index);
-    m_dataPath = index >= 0 ? ui->resultDirComboBox->itemData(index).toString() : QString();
-    ui->resultDirComboBox->blockSignals(false);
+    m_dataPath = ui->resultDirComboBox->currentData().toString();
+}
+
+void IsosurfaceSegmentationWidget::on_analysisComboBox_currentIndexChanged(int)
+{
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QString previousPath = m_dataPath;
+    PostResultSelectionUtils::populateStageCombo(
+        ui->resultDirComboBox, projectDir,
+        PostResultSelectionUtils::selectedAnalysisKey(ui->analysisComboBox),
+        previousPath);
+    m_dataPath = ui->resultDirComboBox->currentData().toString();
+    loadFileName(m_dataPath);
 }
 
 void IsosurfaceSegmentationWidget::on_resultDirComboBox_currentIndexChanged(int index)
@@ -288,43 +350,51 @@ void IsosurfaceSegmentationWidget::on_resultDirComboBox_currentIndexChanged(int 
     m_dataPath = ui->resultDirComboBox->itemData(index).toString();
     loadFileName(m_dataPath);
 }
+
+void IsosurfaceSegmentationWidget::on_resultTimeComboBox_currentIndexChanged(int)
+{
+    const QString projectDir =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
+    const QString previousName = ui->stepComboBox->currentText();
+    PostResultSelectionUtils::populateResultCombo(
+        ui->stepComboBox, projectDir, m_dataPath,
+        PostResultSelectionUtils::selectedFrameKey(ui->resultTimeComboBox),
+        QString(), false);
+
+    const int sameName = ui->stepComboBox->findText(previousName);
+    if (sameName >= 0)
+        ui->stepComboBox->setCurrentIndex(sameName);
+    if (ui->stepComboBox->count() > 0)
+        on_stepComboBox_currentIndexChanged(ui->stepComboBox->currentIndex());
+}
+
 void IsosurfaceSegmentationWidget::loadFileName(QString dataPath)
 {
-    ui->stepComboBox->blockSignals(true);
-    ui->stepComboBox->clear();
-
     QDir directory(dataPath);
     if (!directory.exists())
     {
+        ui->resultTimeComboBox->clear();
+        ui->stepComboBox->clear();
         qWarning() << "Directory not found:" << dataPath;
-        ui->stepComboBox->blockSignals(false);
         return;
     }
 
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
-    const QVector<PostResultAutoPrepare::ResultFile> files =
-        PostResultAutoPrepare::resultFiles(projectDir, dataPath, false);
+    const QString previousTime = ui->resultTimeComboBox->currentData().toString();
+    const QString previousFile = ui->stepComboBox->currentData().toString();
 
-    for (const PostResultAutoPrepare::ResultFile& file : files)
-    {
-        const QString itemName = file.displayName.trimmed().isEmpty()
-                                     ? QStringLiteral("结果数据")
-                                     : file.displayName.trimmed();
-        ui->stepComboBox->addItem(itemName, file.filePath);
-    }
-
-    ui->stepComboBox->blockSignals(false);
+    PostResultSelectionUtils::populateTimeCombo(
+        ui->resultTimeComboBox, projectDir, dataPath, previousTime, false);
+    PostResultSelectionUtils::populateResultCombo(
+        ui->stepComboBox, projectDir, dataPath,
+        PostResultSelectionUtils::selectedFrameKey(ui->resultTimeComboBox),
+        previousFile, false);
 
     if (ui->stepComboBox->count() > 0)
-    {
-        ui->stepComboBox->setCurrentIndex(0);
-        on_stepComboBox_currentIndexChanged(0);
-    }
+        on_stepComboBox_currentIndexChanged(ui->stepComboBox->currentIndex());
     else
-    {
         qWarning() << "No configured result files found in" << dataPath;
-    }
 }
 
 void IsosurfaceSegmentationWidget::beforeUnload()
@@ -613,9 +683,9 @@ void IsosurfaceSegmentationWidget::updateColoringFromUI()
 
     if (m_visualService)
     {
+        applyStandardPostScalarBar(
+            m_visualService, ResultDisplayNames::scalarBarName(field.name));
         m_visualService->showScalarBar(true, false);
-        if (auto* scalarBar = m_visualService->scalarBarActor())
-            scalarBar->SetTitle(ResultDisplayNames::scalarBarName(field.name).toUtf8().constData());
     }
 
     // 缓存给 Spin/Slider 使用

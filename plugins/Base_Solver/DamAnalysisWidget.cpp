@@ -27,6 +27,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSet>
+#include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStringConverter>
 #include <QTableWidget>
@@ -663,46 +664,19 @@ void DamAnalysisWidget::initValueEditors()
     damTypeLabel->setObjectName(QStringLiteral("labelDamTypeValue"));
     ui->formLayoutMode->addRow(QStringLiteral("坝体类型"), damTypeLabel);
 
-    m_groupFreezeThaw = new QGroupBox(QStringLiteral("冻融与结冰参数"), this);
+    m_groupFreezeThaw = new QGroupBox(QStringLiteral("结冰区域变形（均质坝）"), this);
     m_groupFreezeThaw->setObjectName(QStringLiteral("groupFreezeThaw"));
     m_groupFreezeThaw->setCheckable(true);
     m_groupFreezeThaw->setChecked(false);
     auto* freezeForm = new QFormLayout(m_groupFreezeThaw);
-    auto addFreezeEdit = [this, freezeForm](const QString& label, const QString& value,
-                                            const QString& objectName)
-    {
-        auto* edit = new QLineEdit(value, m_groupFreezeThaw);
-        edit->setObjectName(objectName);
-        freezeForm->addRow(label, edit);
-        return edit;
-    };
-    m_editFreezeCycles = addFreezeEdit(QStringLiteral("冻融循环次数"), QStringLiteral("0"),
-                                      QStringLiteral("editLine31"));
-    m_editFreezeCycles->setValidator(new QIntValidator(0, 1000000, m_editFreezeCycles));
-    m_editFreezeCoefficient =
-        addFreezeEdit(QStringLiteral("冻融影响系数"), QStringLiteral("-0.206"),
-                      QStringLiteral("editLine32"));
-    m_editFreezeElevationMin =
-        addFreezeEdit(QStringLiteral("影响高程下限"), QStringLiteral("2100.0"),
-                      QStringLiteral("editFreezeElevationMin"));
-    m_editFreezeElevationMax =
-        addFreezeEdit(QStringLiteral("影响高程上限"), QStringLiteral("2105.0"),
-                      QStringLiteral("editFreezeElevationMax"));
-    m_editFreezeCompressionB =
-        addFreezeEdit(QStringLiteral("抗压强度系数 b"), QStringLiteral("2.7110"),
-                      QStringLiteral("editFreezeCompressionB"));
-    m_editFreezeCompressionC =
-        addFreezeEdit(QStringLiteral("抗压强度系数 c"), QStringLiteral("2.9480"),
-                      QStringLiteral("editFreezeCompressionC"));
-    m_editFreezeTensionB =
-        addFreezeEdit(QStringLiteral("抗拉强度系数 b"), QStringLiteral("24.381"),
-                      QStringLiteral("editFreezeTensionB"));
-    m_editFreezeTensionC =
-        addFreezeEdit(QStringLiteral("抗拉强度系数 c"), QStringLiteral("3.1310"),
-                      QStringLiteral("editFreezeTensionC"));
-    m_editIceExpansion =
-        addFreezeEdit(QStringLiteral("冰线膨胀率"), QStringLiteral("0.0357"),
-                      QStringLiteral("editLine37"));
+    auto* iceHint = new QLabel(
+        QStringLiteral("启用后需在模型树“结冰区域”选择受冰冻作用节点。均质坝不使用面板坝的冻融材料退化参数。"),
+        m_groupFreezeThaw);
+    iceHint->setWordWrap(true);
+    freezeForm->addRow(iceHint);
+    m_editIceExpansion = new QLineEdit(QStringLiteral("0.0357"), m_groupFreezeThaw);
+    m_editIceExpansion->setObjectName(QStringLiteral("editLine37"));
+    freezeForm->addRow(QStringLiteral("冰线膨胀率"), m_editIceExpansion);
     ui->contentLayout->insertWidget(ui->contentLayout->indexOf(ui->btnCompute),
                                     m_groupFreezeThaw);
 
@@ -736,9 +710,9 @@ void DamAnalysisWidget::initValueEditors()
     m_lineEditors[28] = ui->editLine28;
     m_lineEditors[29] = ui->comboLine29;
     m_lineEditors[30] = ui->editLine30;
-    m_lineEditors[31] = m_editFreezeCycles;
-    m_lineEditors[32] = m_editFreezeCoefficient;
-    // 33~35 行在界面中拆成独立参数，导出时由 lineValue() 按原格式重新拼接。
+    // 均质坝不使用 31~35 行的面板坝冻融材料退化参数，固定输出安全默认值。
+    m_lineEditors[31] = nullptr;
+    m_lineEditors[32] = nullptr;
     m_lineEditors[33] = nullptr;
     m_lineEditors[34] = nullptr;
     m_lineEditors[35] = nullptr;
@@ -758,17 +732,22 @@ void DamAnalysisWidget::initValueEditors()
     ui->comboLine16->setItemText(0, QStringLiteral("非瑞雷阻尼"));
     ui->comboLine16->setItemText(1, QStringLiteral("瑞雷阻尼"));
 
-    ui->comboLine19->setItemData(0, "1");
-    ui->comboLine19->setItemData(1, "2");
-    ui->comboLine19->setItemData(2, "3");
-    ui->comboLine19->setItemText(0, QStringLiteral("仅静力计算"));
-    ui->comboLine19->setItemText(1, QStringLiteral("仅动力计算"));
-    ui->comboLine19->setItemText(2, QStringLiteral("先静力后动力计算"));
+    ui->comboLine19->clear();
+    ui->comboLine19->addItem(QStringLiteral("仅静力计算"), QStringLiteral("1"));
+    ui->comboLine19->addItem(QStringLiteral("仅动力计算（使用本工况已有静力结果）"),
+                             QStringLiteral("2"));
+    ui->comboLine19->addItem(QStringLiteral("先静力后动力计算"), QStringLiteral("3"));
+    ui->comboLine19->setToolTip(
+        QStringLiteral("仅动力计算会读取本分析工况上一次静力计算形成的结果目录；"
+                       "请先用相同工况完成静力计算。"));
 
     ui->comboLine29->setItemData(0, "0");
     ui->comboLine29->setItemData(1, "1");
     ui->comboLine29->setItemText(0, QStringLiteral("不计算"));
     ui->comboLine29->setItemText(1, QStringLiteral("计算"));
+    ui->comboLine29->setToolTip(
+        QStringLiteral("由填筑蓄水阶段中的“模态分析”自动控制，无需在此重复设置。"));
+    ui->comboLine29->setEnabled(false);
 
     m_comboMethodIter->setItemData(0, "1");
     m_comboMethodIter->setItemData(1, "2");
@@ -824,8 +803,6 @@ void DamAnalysisWidget::initValueEditors()
             [this]() { updateDynamicOptionVisibility(); });
     connect(ui->comboLine29, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this]() { updateDynamicOptionVisibility(); });
-    connect(m_editFreezeCycles, &QLineEdit::textChanged, this,
-            [this]() { updateFreezeThawOptionState(); });
     connect(m_groupFreezeThaw, &QGroupBox::toggled, this,
             [this]()
             {
@@ -839,15 +816,8 @@ void DamAnalysisWidget::initValueEditors()
 
 void DamAnalysisWidget::updateFreezeThawOptionState()
 {
-    const bool enabled = freezeThawEnabled();
-    for (QLineEdit* edit : {m_editFreezeCycles, m_editFreezeCoefficient,
-                            m_editFreezeElevationMin, m_editFreezeElevationMax,
-                            m_editFreezeCompressionB, m_editFreezeCompressionC,
-                            m_editFreezeTensionB, m_editFreezeTensionC, m_editIceExpansion})
-    {
-        if (edit)
-            edit->setEnabled(enabled);
-    }
+    if (m_editIceExpansion)
+        m_editIceExpansion->setEnabled(freezeThawEnabled());
 }
 
 bool DamAnalysisWidget::freezeThawEnabled() const
@@ -855,10 +825,38 @@ bool DamAnalysisWidget::freezeThawEnabled() const
     return m_groupFreezeThaw && m_groupFreezeThaw->isChecked();
 }
 
+double DamAnalysisWidget::creepTimeStep(bool* ok) const
+{
+    bool localOk = false;
+    const double value = ui->editLine21->text().trimmed().toDouble(&localOk);
+    if (ok)
+        *ok = localOk;
+    return value;
+}
+
 bool DamAnalysisWidget::dynamicAnalysisEnabled() const
 {
     const int type = ui->comboLine19->currentData().toString().toInt();
     return type == 2 || type == 3;
+}
+
+bool DamAnalysisWidget::dynamicOnlyEnabled() const
+{
+    return ui->comboLine19->currentData().toString().toInt() == 2;
+}
+
+void DamAnalysisWidget::setModalAnalysisRequired(bool required)
+{
+    const QString value = required ? QStringLiteral("1") : QStringLiteral("0");
+    const int index = ui->comboLine29->findData(value);
+    if (index >= 0 && ui->comboLine29->currentIndex() != index)
+    {
+        const QSignalBlocker blocker(ui->comboLine29);
+        ui->comboLine29->setCurrentIndex(index);
+    }
+    ui->comboLine29->setEnabled(false);
+    ui->labelLine29->setEnabled(dynamicAnalysisEnabled());
+    updateDynamicOptionVisibility();
 }
 
 void DamAnalysisWidget::setUpliftReductionRequired(bool required)
@@ -886,11 +884,14 @@ void DamAnalysisWidget::updateAnalysisModeVisibility()
     SolverUiLayoutHelper::StableLayoutUpdate stableLayout(this);
 
     const int type = ui->comboLine19->currentData().toString().toInt();
-    const bool showStatic = (type == 1 || type == 3);
-    const bool showDynamic = (type == 2 || type == 3);
+    const bool staticEnabled = (type == 1 || type == 3);
+    const bool dynamicEnabled = (type == 2 || type == 3);
 
-    ui->groupStatic->setVisible(showStatic);
-    ui->groupDynamic->setVisible(showDynamic);
+    // 参数区固定显示，只通过启用状态表达当前计算模式，避免界面反复跳动。
+    ui->groupStatic->setVisible(true);
+    ui->groupDynamic->setVisible(true);
+    ui->groupStatic->setEnabled(staticEnabled);
+    ui->groupDynamic->setEnabled(dynamicEnabled);
 
     updateDynamicOptionVisibility();
 }
@@ -900,8 +901,8 @@ void DamAnalysisWidget::updateDynamicOptionVisibility()
     SolverUiLayoutHelper::StableLayoutUpdate stableLayout(this);
 
     const int type = ui->comboLine19->currentData().toString().toInt();
-    const bool showDynamic = (type == 2 || type == 3);
-    const bool rayleigh = showDynamic &&
+    const bool dynamicEnabled = (type == 2 || type == 3);
+    const bool rayleigh = dynamicEnabled &&
                           ui->comboLine16->currentData().toString() == QStringLiteral("1");
 
     // 次级开关采用“禁用”而不是反复插入/删除表单行，避免页面高度跳动。
@@ -910,7 +911,7 @@ void DamAnalysisWidget::updateDynamicOptionVisibility()
     ui->labelLine18->setEnabled(rayleigh);
     ui->editLine18->setEnabled(rayleigh);
 
-    const bool eigen = showDynamic &&
+    const bool eigen = dynamicEnabled &&
                        ui->comboLine29->currentData().toString() == QStringLiteral("1");
     ui->labelLine30->setEnabled(eigen);
     ui->editLine30->setEnabled(eigen);
@@ -927,16 +928,16 @@ QString DamAnalysisWidget::defaultValueByLine(int lineNo) const
         "", "FA_DAMUP.DAT", "FA_DAMDW.DAT", "FA_DAMBASE.DAT",
         "NONE", "MA_ROCK.DAT", "MA_DAMUP.DAT", "MA_DAMDW.DAT", "MA_CORE.DAT", "4",
         "MA_PLATE.DAT", "JDTRACE.DAT", "KETRACE.DAT", "TDTRACE.DAT", "0", "0", "0.05", "0.0",
-        "2", "4   10", "0.000", "1.962", "1.308", "0.1", "0.2", "2.0", "0.9", "7.0", "0",
+        "1", "4   10", "0.000", "1.962", "1.308", "0.1", "0.2", "2.0", "0.9", "7.0", "0",
         "10", "0", "-0.206", "2100.0 2105.0", "2.7110 2.9480", "24.381 3.1310",
-        "JMFW.DAT", "0.0357", "---", "---", "---"};
+        "JMFW.DAT", "0.0357", "0", "---", "---"};
     return defaults.value(lineNo - 1);
 }
 
 QString DamAnalysisWidget::descriptionByLine(int lineNo) const
 {
     static const QStringList descriptions = {
-        "计算设置", "上游水头边界", "下游水头边界", "心墙建基面",
+        "计算设置", "上游水压力作用面", "下游水压力作用面", "心墙建基面",
         "坝体中心面", "基岩材料区域", "上游坝体材料区域",
         "下游坝体材料区域", "心墙材料区域",
         "坝体类型",
@@ -945,9 +946,10 @@ QString DamAnalysisWidget::descriptionByLine(int lineNo) const
         "刚度阻尼系数", "计算类型", "迭代方法与最大迭代次数",
         "蠕变计算时间步长", "水平最大地震加速度", "竖向最大地震加速度",
         "反应谱第一特征周期", "反应谱第二特征周期", "反应谱最大放大系数",
-        "反应谱衰减指数", "地震震级", "特征值分析", "特征值数量",
-        "冻融循环次数", "冻融影响系数", "冻融影响高程范围", "冻融抗压强度系数",
-        "冻融抗拉强度系数", "结冰区域", "冰线膨胀率", "系统参数", "系统参数",
+        "反应谱衰减指数", "地震震级", "模态特征值求解", "模态阶数",
+        "面板坝冻融循环次数（均质坝不用）", "面板坝冻融影响系数（均质坝不用）",
+        "面板坝冻融影响高程（均质坝不用）", "面板坝冻融抗压系数（均质坝不用）",
+        "面板坝冻融抗拉系数（均质坝不用）", "结冰区域", "冰线膨胀率", "保留参数（求解器未使用）", "系统参数",
         "系统参数"};
     return descriptions.value(lineNo - 1);
 }
@@ -969,20 +971,12 @@ QString DamAnalysisWidget::lineValue(int lineNo) const
     if (lineNo == 20)
         return QString("%1 %2").arg(m_comboMethodIter->currentData().toString(),
                                     m_editIter->text().trimmed());
-    if (lineNo == 31 && !freezeThawEnabled())
-        return QStringLiteral("0");
-    if (lineNo == 33)
-        return QStringLiteral("%1 %2")
-            .arg(m_editFreezeElevationMin->text().trimmed(),
-                 m_editFreezeElevationMax->text().trimmed());
-    if (lineNo == 34)
-        return QStringLiteral("%1 %2")
-            .arg(m_editFreezeCompressionB->text().trimmed(),
-                 m_editFreezeCompressionC->text().trimmed());
-    if (lineNo == 35)
-        return QStringLiteral("%1 %2")
-            .arg(m_editFreezeTensionB->text().trimmed(),
-                 m_editFreezeTensionC->text().trimmed());
+    if (lineNo >= 31 && lineNo <= 35)
+        return defaultValueByLine(lineNo);
+    // P038 虽然在 IFILL.DAT 中保留，但当前求解器只读取该行而未参与结冰开关判断。
+    // 结冰计算实际由 JMFW.DAT 是否存在触发，因此这里固定写 0，避免制造一个“假开关”。
+    if (lineNo == 38)
+        return defaultValueByLine(lineNo);
 
     QWidget* w = m_lineEditors.value(lineNo, nullptr);
     if (auto* combo = qobject_cast<QComboBox*>(w))
@@ -1008,32 +1002,17 @@ void DamAnalysisWidget::setLineValue(int lineNo, const QString& value)
         m_editIter->setText(iter);
         return;
     }
-    if (lineNo >= 33 && lineNo <= 35)
-    {
-        const QStringList parts =
-            value.trimmed().split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
-        auto setPair = [&parts](QLineEdit* first, QLineEdit* second,
-                                const QString& firstDefault, const QString& secondDefault)
-        {
-            first->setText(parts.value(0, firstDefault));
-            second->setText(parts.value(1, secondDefault));
-        };
-        if (lineNo == 33)
-            setPair(m_editFreezeElevationMin, m_editFreezeElevationMax,
-                    QStringLiteral("2100.0"), QStringLiteral("2105.0"));
-        else if (lineNo == 34)
-            setPair(m_editFreezeCompressionB, m_editFreezeCompressionC,
-                    QStringLiteral("2.7110"), QStringLiteral("2.9480"));
-        else
-            setPair(m_editFreezeTensionB, m_editFreezeTensionC,
-                    QStringLiteral("24.381"), QStringLiteral("3.1310"));
+    if (lineNo >= 31 && lineNo <= 35)
         return;
-    }
+    if (lineNo == 38)
+        return;
+
 
     QWidget* w = m_lineEditors.value(lineNo, nullptr);
     if (auto* combo = qobject_cast<QComboBox*>(w))
     {
-        const int idx = combo->findData(value.trimmed());
+        const QString normalizedValue = value.trimmed();
+        const int idx = combo->findData(normalizedValue);
         if (idx >= 0)
             combo->setCurrentIndex(idx);
         return;
@@ -1048,7 +1027,7 @@ void DamAnalysisWidget::setLineValue(int lineNo, const QString& value)
 bool DamAnalysisWidget::isFixedFileLine(int lineNo) const
 {
     static const QSet<int> fixedLines = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
-                                         36, 38, 39, 40};
+                                         31, 32, 33, 34, 35, 36, 38, 39, 40};
     return fixedLines.contains(lineNo);
 }
 
@@ -1073,13 +1052,11 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
     }
 
     static const QSet<int> oneTokenLines = {10, 15, 16, 17, 18, 19, 21, 22, 23, 24,
-                                           25, 26, 27, 28, 29, 30, 31, 32, 37};
-    static const QSet<int> twoTokenLines = {33, 34, 35};
+                                           25, 26, 27, 28, 29, 30, 37};
+    static const QSet<int> twoTokenLines;
     for (int lineNo = 1; lineNo <= 40; ++lineNo)
     {
         if (isFixedFileLine(lineNo))
-            continue;
-        if (!freezeThawEnabled() && lineNo >= 31 && lineNo <= 37)
             continue;
         const QString text = normalizeEnumValue(lineValue(lineNo));
         if (text.trimmed().isEmpty())
@@ -1120,14 +1097,6 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
                 }
             }
         }
-    }
-
-    bool cyclesOk = false;
-    const int freezeCycles = m_editFreezeCycles->text().toInt(&cyclesOk);
-    if (freezeThawEnabled() && (!cyclesOk || freezeCycles <= 0))
-    {
-        setError("启用冻融结冰后，冻融循环次数必须为正整数。");
-        return false;
     }
 
     bool iceExpansionOk = false;
@@ -1190,13 +1159,6 @@ bool DamAnalysisWidget::validateInputs(QString* errorMessage) const
         return false;
     }
 
-    if (freezeThawEnabled() &&
-        m_editFreezeElevationMin->text().toDouble() >
-            m_editFreezeElevationMax->text().toDouble())
-    {
-        setError("冻融影响高程下限不能大于上限。");
-        return false;
-    }
     return true;
 }
 
@@ -1216,10 +1178,18 @@ bool DamAnalysisWidget::exportIfillDatFile(int mcase, const QString& cycleSectio
     if (!QDir().mkpath(wd.absolutePath()) || !QDir().mkpath(inputDir.absolutePath()))
         return false;
 
-    // 均质坝的坝体和基岩材料集合由求解器按当前网格层派生，避免复用旧模型结果。
-    QFile::remove(inputDir.filePath(QStringLiteral("MA_ROCK.DAT")));
-    QFile::remove(inputDir.filePath(QStringLiteral("MA_DAMUP.DAT")));
-    QFile::remove(inputDir.filePath(QStringLiteral("MA_DAMDW.DAT")));
+    // 均质坝的坝体和基岩材料集合由求解器按当前网格层派生，避免复用
+    // 旧模型的面板坝/心墙坝区域文件。坝基扬压力在均质坝分支中固定不用。
+    for (const QString& obsoleteFile : {
+             QStringLiteral("MA_ROCK.DAT"),
+             QStringLiteral("MA_DAMUP.DAT"),
+             QStringLiteral("MA_DAMDW.DAT"),
+             QStringLiteral("MA_CORE.DAT"),
+             QStringLiteral("MA_PLATE.DAT"),
+             QStringLiteral("FA_DAMBASE.DAT")})
+    {
+        QFile::remove(inputDir.filePath(obsoleteFile));
+    }
 
     auto ensureTrailingSep = [](const QString& path)
     {
@@ -1338,6 +1308,8 @@ QJsonObject DamAnalysisWidget::saveJson()
                                      m_comboPgen->currentData().toString()};
     obj["rock_values"] = QJsonArray {m_comboIfRock->currentData().toString(),
                                       m_comboIfIso->currentData().toString()};
+    obj["ice_deformation_enabled"] = freezeThawEnabled();
+    // 兼容旧工程字段。
     obj["freeze_thaw_enabled"] = freezeThawEnabled();
     return obj;
 }
@@ -1455,9 +1427,9 @@ void DamAnalysisWidget::loadJson(const QJsonObject& obj)
             m_comboIfIso->setCurrentIndex(isoIdx);
     }
 
-    const bool freezeEnabled = obj.contains("freeze_thaw_enabled")
-                                   ? obj.value("freeze_thaw_enabled").toBool(false)
-                                   : m_editFreezeCycles->text().toInt() > 0;
+    const bool freezeEnabled = obj.contains("ice_deformation_enabled")
+                                   ? obj.value("ice_deformation_enabled").toBool(false)
+                                   : obj.value("freeze_thaw_enabled").toBool(false);
     m_groupFreezeThaw->setChecked(freezeEnabled);
     updateAnalysisModeVisibility();
     updateFreezeThawOptionState();

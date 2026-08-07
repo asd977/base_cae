@@ -593,9 +593,13 @@ QVector<QVector<double>> buildVelocity(const QVector<QVector<double>>& raw,
         const bool dryNode = i < headPressure.size() && headPressure.at(i).size() >= 2 &&
                              headPressure.at(i).at(1) < 0.0;
         const double scale = dryNode ? 0.0 : 1000.0;
-        values[i] = {safeValue(raw.at(i), 0) * scale, safeValue(raw.at(i), 1) * scale};
+        const double vx = safeValue(raw.at(i), 0) * scale;
+        const double vy = safeValue(raw.at(i), 1) * scale;
+        const double vz = dimension == 3 ? safeValue(raw.at(i), 2) * scale : 0.0;
+        values[i] = {vx, vy};
         if (dimension == 3)
-            values[i].push_back(safeValue(raw.at(i), 2) * scale);
+            values[i].push_back(vz);
+        values[i].push_back(std::sqrt(vx * vx + vy * vy + vz * vz));
     }
     return values;
 }
@@ -772,31 +776,68 @@ QVector<FieldSource> fieldSources(const QDir& dir, const QString& prefix, bool s
 {
     QVector<FieldSource> sources;
     const QFileInfoList files = dir.entryInfoList(QDir::Files, QDir::Name | QDir::IgnoreCase);
+    const QRegularExpression stepExpression(
+        QStringLiteral("^STEP(\\d+)[_-](.+)$"),
+        QRegularExpression::CaseInsensitiveOption);
+
+    auto acceptedCondition = [seepage](const QString& condition)
+    {
+        if (condition.isEmpty())
+            return true;
+        if (!seepage)
+            return condition.startsWith(QStringLiteral("CZ"), Qt::CaseInsensitive);
+        return condition.startsWith(QStringLiteral("METHOD"), Qt::CaseInsensitive) ||
+               condition.startsWith(QStringLiteral("CZ"), Qt::CaseInsensitive);
+    };
+
     for (const QFileInfo& info : files)
     {
-        const QString base = info.completeBaseName();
-        if (!base.startsWith(prefix, Qt::CaseInsensitive) ||
-            info.suffix().compare(QStringLiteral("TXT"), Qt::CaseInsensitive) != 0)
+        if (info.suffix().compare(QStringLiteral("TXT"), Qt::CaseInsensitive) != 0)
             continue;
 
-        QString suffix = base.mid(prefix.size());
-        if (!suffix.isEmpty() && suffix.front() != QLatin1Char('_') &&
-            suffix.front() != QLatin1Char('-'))
-            continue;
-        while (suffix.startsWith(QLatin1Char('_')) || suffix.startsWith(QLatin1Char('-')))
-            suffix.remove(0, 1);
+        QString base = info.completeBaseName();
+        QString sequencePrefix;
+        const QRegularExpressionMatch stepMatch = stepExpression.match(base);
+        if (stepMatch.hasMatch())
+        {
+            sequencePrefix = QStringLiteral("STEP%1").arg(stepMatch.captured(1).toInt());
+            base = stepMatch.captured(2);
+        }
 
-        if (!seepage && !suffix.isEmpty() &&
-            !suffix.startsWith(QStringLiteral("CZ"), Qt::CaseInsensitive))
-            continue;
-        if (seepage && !suffix.isEmpty() &&
-            !suffix.startsWith(QStringLiteral("METHOD"), Qt::CaseInsensitive) &&
-            !suffix.startsWith(QStringLiteral("CZ"), Qt::CaseInsensitive))
+        if (!base.startsWith(prefix, Qt::CaseInsensitive))
             continue;
 
+        QString condition = base.mid(prefix.size());
+        if (!condition.isEmpty() && condition.front() != QLatin1Char('_') &&
+            condition.front() != QLatin1Char('-'))
+            continue;
+        while (condition.startsWith(QLatin1Char('_')) ||
+               condition.startsWith(QLatin1Char('-')))
+            condition.remove(0, 1);
+        if (!acceptedCondition(condition))
+            continue;
+
+        QString suffix = sequencePrefix;
+        if (!condition.isEmpty())
+        {
+            if (!suffix.isEmpty())
+                suffix += QLatin1Char('_');
+            suffix += condition;
+        }
         sources.push_back({info.absoluteFilePath(), suffix});
     }
 
+    auto sequenceStep = [](const QString& suffix)
+    {
+        static const QRegularExpression expression(
+            QStringLiteral("^STEP(\\d+)(?:_|$)"),
+            QRegularExpression::CaseInsensitiveOption);
+        const QRegularExpressionMatch match = expression.match(suffix);
+        return match.hasMatch() ? match.captured(1).toInt() : -1;
+    };
+
+    // 求解器通常会把最后一个 STEP 文件再复制成无后缀文件。避免同一最终
+    // 时刻在“当前状态”和时间序列中重复出现。
     const auto baseSource = std::find_if(
         sources.cbegin(), sources.cend(), [](const FieldSource& source)
         {
@@ -804,24 +845,57 @@ QVector<FieldSource> fieldSources(const QDir& dir, const QString& prefix, bool s
         });
     if (baseSource != sources.cend())
     {
-        static const QRegularExpression unitCzCbResult(
-            QStringLiteral("^CZ0*100CB0*100$"),
-            QRegularExpression::CaseInsensitiveOption);
-        const QString basePath = baseSource->path;
-        sources.erase(std::remove_if(
-            sources.begin(), sources.end(), [&](const FieldSource& source)
+        int latestIndex = -1;
+        int latestStep = -1;
+        for (int i = 0; i < sources.size(); ++i)
+        {
+            const int step = sequenceStep(sources.at(i).suffix);
+            if (step > latestStep &&
+                !sources.at(i).suffix.contains(QLatin1Char('_')))
             {
-                return unitCzCbResult.match(source.suffix).hasMatch() &&
-                       filesHaveSameContents(basePath, source.path);
-            }), sources.end());
+                latestStep = step;
+                latestIndex = i;
+            }
+        }
+        if (latestIndex >= 0 &&
+            filesHaveSameContents(baseSource->path, sources.at(latestIndex).path))
+        {
+            const QString basePath = baseSource->path;
+            sources.erase(std::remove_if(
+                sources.begin(), sources.end(), [&](const FieldSource& source)
+                {
+                    return source.suffix.isEmpty() && source.path == basePath;
+                }), sources.end());
+        }
+        else
+        {
+            static const QRegularExpression unitCzCbResult(
+                QStringLiteral("^CZ0*100CB0*100$"),
+                QRegularExpression::CaseInsensitiveOption);
+            const QString basePath = baseSource->path;
+            sources.erase(std::remove_if(
+                sources.begin(), sources.end(), [&](const FieldSource& source)
+                {
+                    return unitCzCbResult.match(source.suffix).hasMatch() &&
+                           filesHaveSameContents(basePath, source.path);
+                }), sources.end());
+        }
     }
 
-    std::sort(sources.begin(), sources.end(), [](const FieldSource& left, const FieldSource& right)
+    std::sort(sources.begin(), sources.end(), [&](const FieldSource& left,
+                                                   const FieldSource& right)
     {
-        if (left.suffix.isEmpty() != right.suffix.isEmpty())
-            return left.suffix.isEmpty();
-        const bool leftMethod2 = left.suffix.compare(QStringLiteral("METHOD2"), Qt::CaseInsensitive) == 0;
-        const bool rightMethod2 = right.suffix.compare(QStringLiteral("METHOD2"), Qt::CaseInsensitive) == 0;
+        const int leftStep = sequenceStep(left.suffix);
+        const int rightStep = sequenceStep(right.suffix);
+        if ((leftStep >= 0) != (rightStep >= 0))
+            return leftStep < 0;
+        if (leftStep >= 0 && leftStep != rightStep)
+            return leftStep < rightStep;
+
+        const bool leftMethod2 =
+            left.suffix.endsWith(QStringLiteral("METHOD2"), Qt::CaseInsensitive);
+        const bool rightMethod2 =
+            right.suffix.endsWith(QStringLiteral("METHOD2"), Qt::CaseInsensitive);
         if (leftMethod2 != rightMethod2)
             return leftMethod2;
         return left.suffix.compare(right.suffix, Qt::CaseInsensitive) < 0;
@@ -1289,6 +1363,7 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
                                      });
 
     QVector<QVector<double>> preferredHeadPressure;
+    QHash<QString, QVector<QVector<double>>> headPressureBySuffix;
     if (seepage)
     {
         for (const FieldSource& source : seepageHeadSources)
@@ -1297,6 +1372,7 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
             const auto raw = readNodeValues(source.path, mesh, 2, &warning);
             if (!warning.isEmpty())
                 result.warnings << warning;
+            headPressureBySuffix.insert(source.suffix.toCaseFolded(), raw);
             if (preferredHeadPressure.isEmpty() ||
                 source.suffix.compare(QStringLiteral("METHOD2"), Qt::CaseInsensitive) == 0)
                 preferredHeadPressure = raw;
@@ -1317,14 +1393,19 @@ PostResultGenerator::Result PostResultGenerator::generate(const Options& options
             const QStringList variables = mesh.dimension == 3
                                               ? QStringList{QStringLiteral("UX(mm/s)"),
                                                             QStringLiteral("UY(mm/s)"),
-                                                            QStringLiteral("UZ(mm/s)")}
+                                                            QStringLiteral("UZ(mm/s)"),
+                                                            QStringLiteral("VMAG(mm/s)")}
                                               : QStringList{QStringLiteral("UX(mm/s)"),
-                                                            QStringLiteral("UY(mm/s)")};
+                                                            QStringLiteral("UY(mm/s)"),
+                                                            QStringLiteral("VMAG(mm/s)")};
+            const QVector<QVector<double>> frameHeadPressure =
+                headPressureBySuffix.value(source.suffix.toCaseFolded(),
+                                           preferredHeadPressure);
             generateField(outputDir, mesh, expanded, groups, noMasks,
                           outputName(external, QStringLiteral("TEC_VELO.DAT"),
                                      QStringLiteral("velocity"), source.suffix),
                            QStringLiteral("VELOCITY"), variables,
-                           buildVelocity(raw, preferredHeadPressure, mesh.dimension), result,
+                           buildVelocity(raw, frameHeadPressure, mesh.dimension), result,
                            optionalExpandedWithExcavated);
         }
     }

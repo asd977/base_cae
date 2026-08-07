@@ -1,125 +1,534 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='UTF-8'?>
 <ui version="4.0">
  <class>SeepageBoundaryPage</class>
  <widget class="QWidget" name="SeepageBoundaryPage">
   <property name="geometry">
-   <rect><x>0</x><y>0</y><width>420</width><height>860</height></rect>
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>420</width>
+    <height>860</height>
+   </rect>
   </property>
-  <property name="windowTitle"><string>渗流边界</string></property>
+  <property name="windowTitle">
+   <string>渗流边界</string>
+  </property>
   <layout class="QVBoxLayout" name="verticalLayout">
-   <property name="leftMargin"><number>0</number></property>
-   <property name="topMargin"><number>0</number></property>
-   <property name="rightMargin"><number>0</number></property>
-   <property name="bottomMargin"><number>0</number></property>
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
    <item>
     <widget class="QLabel" name="pageHeaderLabel">
-     <property name="text"><string>渗流边界设置</string></property>
-     <property name="visible"><bool>false</bool></property>
+     <property name="text">
+      <string>渗流边界设置</string>
+     </property>
+     <property name="visible">
+      <bool>false</bool>
+     </property>
     </widget>
    </item>
    <item>
     <layout class="QVBoxLayout" name="contentLayout">
-     <property name="leftMargin"><number>9</number></property>
-     <property name="topMargin"><number>9</number></property>
-     <property name="rightMargin"><number>9</number></property>
-     <property name="bottomMargin"><number>9</number></property>
-     <property name="spacing"><number>8</number></property>
+     <property name="leftMargin">
+      <number>9</number>
+     </property>
+     <property name="topMargin">
+      <number>9</number>
+     </property>
+     <property name="rightMargin">
+      <number>9</number>
+     </property>
+     <property name="bottomMargin">
+      <number>9</number>
+     </property>
+     <property name="spacing">
+      <number>8</number>
+     </property>
      <item>
       <widget class="QGroupBox" name="groupBoxSelection">
-       <property name="title"><string>边界选择</string></property>
+       <property name="title">
+        <string>边界选择</string>
+       </property>
        <layout class="QGridLayout" name="gridLayoutSelection">
         <item row="0" column="0" colspan="3">
          <widget class="QLabel" name="boxSelectHintLabel">
-          <property name="text"><string>Shift 框选，Ctrl 取消。</string></property>
-          <property name="wordWrap"><bool>true</bool></property>
+          <property name="text">
+           <string>Shift 框选，Ctrl 取消。</string>
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
          </widget>
         </item>
-        <item row="1" column="0" colspan="3"><widget class="QCheckBox" name="checkEnablePointPick"><property name="text"><string>开启点选</string></property><property name="checked"><bool>false</bool></property></widget></item>
-        <item row="2" column="0"><widget class="QLabel" name="labelDim"><property name="text"><string>分组维度</string></property></widget></item>
-        <item row="2" column="1" colspan="2"><widget class="CustomComboBox" name="comboBoxDim"/></item>
-        <item row="3" column="0"><widget class="QLabel" name="labelGroup"><property name="text"><string>批量分组</string></property></widget></item>
-        <item row="3" column="1"><widget class="CustomComboBox" name="comboBoxGroup"/></item>
-        <item row="3" column="2"><widget class="QPushButton" name="btnBatchAdd"><property name="text"><string>添加</string></property></widget></item>
+        <item row="1" column="0" colspan="3">
+         <widget class="QCheckBox" name="checkEnablePointPick">
+          <property name="text">
+           <string>开启点选</string>
+          </property>
+          <property name="checked">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="labelDim">
+          <property name="text">
+           <string>分组维度</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1" colspan="2">
+         <widget class="CustomComboBox" name="comboBoxDim" />
+        </item>
+        <item row="3" column="0">
+         <widget class="QLabel" name="labelGroup">
+          <property name="text">
+           <string>批量分组</string>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="1">
+         <widget class="CustomComboBox" name="comboBoxGroup" />
+        </item>
+        <item row="3" column="2">
+         <widget class="QPushButton" name="btnBatchAdd">
+          <property name="text">
+           <string>添加</string>
+          </property>
+         </widget>
+        </item>
        </layout>
       </widget>
      </item>
      <item>
       <widget class="QGroupBox" name="groupBoxInfo">
-       <property name="title"><string>边界概览</string></property>
+       <property name="title">
+        <string>边界概览</string>
+       </property>
        <layout class="QGridLayout" name="gridLayoutInfo">
-        <item row="0" column="0"><widget class="QLabel" name="label1"><property name="text"><string>选择情况</string></property></widget></item>
-        <item row="0" column="1"><widget class="QLabel" name="labelBoundaryTitle"><property name="text"><string>未选择节点</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
-        <item row="1" column="0"><widget class="QLabel" name="labelElevationRange"><property name="text"><string>高程范围</string></property></widget></item>
-        <item row="1" column="1"><widget class="QLabel" name="labelElevationRangeValue"><property name="text"><string>-</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+        <item row="0" column="0">
+         <widget class="QLabel" name="label1">
+          <property name="text">
+           <string>选择情况</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QLabel" name="labelBoundaryTitle">
+          <property name="text">
+           <string>未选择节点</string>
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="labelElevationRange">
+          <property name="text">
+           <string>高程范围</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QLabel" name="labelElevationRangeValue">
+          <property name="text">
+           <string>-</string>
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QGroupBox" name="groupBoxNaturalFree">
+       <property name="title">
+        <string>天然渗流边界参数</string>
+       </property>
+       <property name="visible">
+        <bool>false</bool>
+       </property>
+       <layout class="QFormLayout" name="formLayoutNaturalFree">
+        <item row="0" column="0" colspan="2">
+         <widget class="QLabel" name="labelNaturalFreeHint">
+          <property name="text">
+           <string>所选节点统一使用下列天然水头和水头修正规则。</string>
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="labelNaturalHeadMode">
+          <property name="text">
+           <string>天然水头</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QComboBox" name="comboNaturalHeadMode">
+          <item>
+           <property name="text">
+            <string>使用节点高程</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>统一指定水头</string>
+           </property>
+          </item>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="labelNaturalUniformHead">
+          <property name="text">
+           <string>指定水头 (m)</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QDoubleSpinBox" name="spinNaturalUniformHead">
+          <property name="decimals">
+           <number>4</number>
+          </property>
+          <property name="minimum">
+           <double>-1000000.000000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>1000000.000000000000000</double>
+          </property>
+          <property name="keyboardTracking">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="0">
+         <widget class="QLabel" name="labelNaturalCorrection">
+          <property name="text">
+           <string>水头修正</string>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="1">
+         <widget class="QComboBox" name="comboNaturalCorrection">
+          <item>
+           <property name="text">
+            <string>不修正</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>按上游水位修正</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>按下游水位修正</string>
+           </property>
+          </item>
+         </widget>
+        </item>
+        <item row="4" column="0" colspan="2">
+         <widget class="QLabel" name="labelNaturalCorrectionHint">
+          <property name="text">
+           <string>水头修正仅影响后续蓄水工况：不修正；低于上游/下游水位时分别抬至对应水位。</string>
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
        </layout>
       </widget>
      </item>
      <item>
       <widget class="QGroupBox" name="groupBoxHydraulic">
-       <property name="title"><string>边界条件</string></property>
+       <property name="title">
+        <string>边界条件</string>
+       </property>
        <layout class="QGridLayout" name="gridLayoutHydraulic">
-        <item row="0" column="0"><widget class="QLabel" name="labelBoundaryConditionType"><property name="text"><string>类型</string></property></widget></item>
-        <item row="0" column="1"><widget class="QComboBox" name="comboBoundaryConditionType"/></item>
-        <item row="1" column="0"><widget class="QLabel" name="labelWaterLevel"><property name="text"><string>水位</string></property></widget></item>
-        <item row="1" column="1"><widget class="QDoubleSpinBox" name="spinWaterLevel"><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
-        <item row="2" column="0"><widget class="QLabel" name="labelWaterLevelSlider"><property name="text"><string>视图调节</string></property></widget></item>
-        <item row="2" column="1"><widget class="QSlider" name="sliderWaterLevel"><property name="orientation"><enum>Qt::Horizontal</enum></property></widget></item>
-        <item row="3" column="0"><widget class="QLabel" name="labelFlux"><property name="text"><string>边界通量</string></property></widget></item>
-        <item row="3" column="1"><widget class="QDoubleSpinBox" name="spinFlux"><property name="decimals"><number>10</number></property><property name="minimum"><double>-1000000000000.000000000000000</double></property><property name="maximum"><double>1000000000000.000000000000000</double></property><property name="singleStep"><double>0.000000100000000</double></property><property name="keyboardTracking"><bool>false</bool></property></widget></item>
-        <item row="4" column="0" colspan="2"><widget class="QLabel" name="labelFluxHint"><property name="text"><string>-</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
-        <item row="5" column="0" colspan="2"><widget class="QLabel" name="labelCurveTitle"><property name="text"><string>水位变化过程</string></property></widget></item>
+        <item row="0" column="0">
+         <widget class="QLabel" name="labelBoundaryConditionType">
+          <property name="text">
+           <string>类型</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QComboBox" name="comboBoundaryConditionType" />
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="labelWaterLevel">
+          <property name="text">
+           <string>水位</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QDoubleSpinBox" name="spinWaterLevel">
+          <property name="decimals">
+           <number>4</number>
+          </property>
+          <property name="minimum">
+           <double>-1000000.000000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>1000000.000000000000000</double>
+          </property>
+          <property name="keyboardTracking">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="labelWaterLevelSlider">
+          <property name="text">
+           <string>视图调节</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QSlider" name="sliderWaterLevel">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="0">
+         <widget class="QLabel" name="labelFlux">
+          <property name="text">
+           <string>边界通量</string>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="1">
+         <widget class="QDoubleSpinBox" name="spinFlux">
+          <property name="decimals">
+           <number>10</number>
+          </property>
+          <property name="minimum">
+           <double>-1000000000000.000000000000000</double>
+          </property>
+          <property name="maximum">
+           <double>1000000000000.000000000000000</double>
+          </property>
+          <property name="singleStep">
+           <double>0.000000100000000</double>
+          </property>
+          <property name="keyboardTracking">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="0" colspan="2">
+         <widget class="QLabel" name="labelFluxHint">
+          <property name="text">
+           <string>-</string>
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="5" column="0" colspan="2">
+         <widget class="QLabel" name="labelCurveTitle">
+          <property name="text">
+           <string>水位变化过程</string>
+          </property>
+         </widget>
+        </item>
         <item row="6" column="0" colspan="2">
          <widget class="QTableWidget" name="tableWaterLevelCurve">
-          <property name="minimumHeight"><number>150</number></property>
-          <property name="alternatingRowColors"><bool>true</bool></property>
-          <property name="selectionMode"><enum>QAbstractItemView::SingleSelection</enum></property>
-          <property name="selectionBehavior"><enum>QAbstractItemView::SelectRows</enum></property>
-          <property name="columnCount"><number>2</number></property>
-          <column><property name="text"><string>时间 (s)</string></property></column>
-          <column><property name="text"><string>水位 (m)</string></property></column>
+          <property name="minimumHeight">
+           <number>150</number>
+          </property>
+          <property name="alternatingRowColors">
+           <bool>true</bool>
+          </property>
+          <property name="selectionMode">
+           <enum>QAbstractItemView::SingleSelection</enum>
+          </property>
+          <property name="selectionBehavior">
+           <enum>QAbstractItemView::SelectRows</enum>
+          </property>
+          <property name="columnCount">
+           <number>2</number>
+          </property>
+          <column>
+           <property name="text">
+            <string>时间 (s)</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>水位 (m)</string>
+           </property>
+          </column>
          </widget>
         </item>
         <item row="7" column="0" colspan="2">
          <widget class="QWidget" name="widgetCurveButtons">
           <layout class="QHBoxLayout" name="horizontalLayoutCurveButtons">
-           <property name="leftMargin"><number>0</number></property>
-           <property name="topMargin"><number>0</number></property>
-           <property name="rightMargin"><number>0</number></property>
-           <property name="bottomMargin"><number>0</number></property>
-           <item><widget class="QPushButton" name="btnAddWaterLevelPoint"><property name="text"><string>添加</string></property></widget></item>
-           <item><widget class="QPushButton" name="btnRemoveWaterLevelPoint"><property name="text"><string>删除</string></property></widget></item>
-           <item><widget class="QPushButton" name="btnResetWaterLevelCurve"><property name="text"><string>恒定水位</string></property></widget></item>
-           <item><spacer name="horizontalSpacerCurve"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
+           <item>
+            <widget class="QPushButton" name="btnAddWaterLevelPoint">
+             <property name="text">
+              <string>添加</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnRemoveWaterLevelPoint">
+             <property name="text">
+              <string>删除</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnResetWaterLevelCurve">
+             <property name="text">
+              <string>恒定水位</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <spacer name="horizontalSpacerCurve">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>40</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
           </layout>
          </widget>
         </item>
-        <item row="8" column="0" colspan="2"><widget class="QLabel" name="labelCurveHint"><property name="text"><string>时间递增，覆盖分析时段。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
-        <item row="9" column="0" colspan="2"><widget class="QCheckBox" name="checkShowWaterLevelPreview"><property name="text"><string>显示边界预览</string></property><property name="checked"><bool>true</bool></property></widget></item>
-        <item row="10" column="0" colspan="2"><widget class="QLabel" name="labelHydraulicStatus"><property name="text"><string>-</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+        <item row="8" column="0" colspan="2">
+         <widget class="QLabel" name="labelCurveHint">
+          <property name="text">
+           <string>时间递增，覆盖分析时段。</string>
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="9" column="0" colspan="2">
+         <widget class="QCheckBox" name="checkShowWaterLevelPreview">
+          <property name="text">
+           <string>显示边界预览</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="10" column="0" colspan="2">
+         <widget class="QLabel" name="labelHydraulicStatus">
+          <property name="text">
+           <string>-</string>
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
        </layout>
       </widget>
      </item>
      <item>
       <widget class="QTableWidget" name="tableNodes">
-       <property name="columnCount"><number>2</number></property>
-       <column><property name="text"><string>序号</string></property></column>
-       <column><property name="text"><string>点编号</string></property></column>
+       <property name="columnCount">
+        <number>2</number>
+       </property>
+       <column>
+        <property name="text">
+         <string>序号</string>
+        </property>
+       </column>
+       <column>
+        <property name="text">
+         <string>点编号</string>
+        </property>
+       </column>
       </widget>
      </item>
      <item>
       <layout class="QHBoxLayout" name="horizontalLayoutBtns">
-       <item><widget class="QPushButton" name="btnClear"><property name="text"><string>清空选择</string></property></widget></item>
-       <item><spacer name="horizontalSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+       <item>
+        <widget class="QPushButton" name="btnClear">
+         <property name="text">
+          <string>清空选择</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="horizontalSpacer">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>40</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
       </layout>
      </item>
-     <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+     <item>
+      <spacer name="verticalSpacer">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>20</width>
+         <height>40</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
     </layout>
    </item>
   </layout>
  </widget>
  <customwidgets>
-  <customwidget><class>CustomComboBox</class><extends>QComboBox</extends><header>CustomComboBox.h</header></customwidget>
+  <customwidget>
+   <class>CustomComboBox</class>
+   <extends>QComboBox</extends>
+   <header>CustomComboBox.h</header>
+  </customwidget>
  </customwidgets>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

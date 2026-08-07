@@ -36,11 +36,12 @@ class VectorSettingWidget : public BasePage
     void setFileName(const QString& file);
 
   private slots:
-    void on_confirmPushButton_clicked();
+    void on_analysisComboBox_currentIndexChanged(int index);
     void on_scaleSpinBox_valueChanged(double value);
     void on_thicknessSpinBox_valueChanged(double value);
     void on_stepComboBox_currentIndexChanged(int index);
     void on_resultDirComboBox_currentIndexChanged(int index);
+    void on_resultTimeComboBox_currentIndexChanged(int index);
 
   private:
     bool ensureDataLoaded();
@@ -54,6 +55,8 @@ class VectorSettingWidget : public BasePage
     void refreshResultGroups();
     void applyPendingState();
     double computeAutoBaseScale(vtkUnstructuredGrid* grid);
+    int computeAutoMaskRatio(vtkUnstructuredGrid* grid) const;
+    QString vectorLegendTitle() const;
     vtkSmartPointer<vtkUnstructuredGrid> readVtu(const QString& fileName);
 
   private:
@@ -72,6 +75,7 @@ class VectorSettingWidget : public BasePage
     QString m_dataPath;
     bool m_loadedOnce{false};
     bool m_hasPendingState{false};
+    bool m_updatingControls{false};
     QVariantMap m_pendingState;
 };
 

@@ -1,341 +1,173 @@
-<?xml version='1.0' encoding='utf-8'?>
+<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>AnimationAviWidget</class>
  <widget class="QWidget" name="AnimationAviWidget">
   <property name="geometry">
-   <rect>
-    <x>0</x>
-    <y>0</y>
-    <width>516</width>
-    <height>648</height>
-   </rect>
+   <rect><x>0</x><y>0</y><width>380</width><height>590</height></rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
-   <property name="spacing">
-    <number>6</number>
-   </property>
-   <property name="leftMargin">
-    <number>0</number>
-   </property>
-   <property name="topMargin">
-    <number>0</number>
-   </property>
-   <property name="rightMargin">
-    <number>0</number>
-   </property>
-   <property name="bottomMargin">
-    <number>0</number>
-   </property>
+   <property name="leftMargin"><number>12</number></property>
+   <property name="topMargin"><number>12</number></property>
+   <property name="rightMargin"><number>12</number></property>
+   <property name="bottomMargin"><number>12</number></property>
+   <property name="spacing"><number>10</number></property>
    <item>
-    <widget class="QLabel" name="pageHeaderLabel">
-     <property name="visible">
-      <bool>false</bool>
-     </property>
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
-     <property name="text">
-      <string>动画参数设置</string>
-     </property>
+    <widget class="QGroupBox" name="resultGroupBox">
+     <property name="title"><string>动画数据</string></property>
+     <layout class="QGridLayout" name="resultGridLayout">
+      <property name="horizontalSpacing"><number>8</number></property>
+      <property name="verticalSpacing"><number>8</number></property>
+      <item row="0" column="0">
+       <widget class="QLabel" name="analysisLabel">
+        <property name="text"><string>计算工况</string></property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="analysisComboBox"/>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="rangeLabel">
+        <property name="text"><string>动画范围</string></property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="rangeComboBox"/>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="resultLabel">
+        <property name="text"><string>结果文件</string></property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QComboBox" name="resultComboBox"/>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="scalarLabel">
+        <property name="text"><string>物理量</string></property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QComboBox" name="scalarComboBox"/>
+      </item>
+      <item row="4" column="0" colspan="2">
+       <widget class="QLabel" name="sequenceSummaryLabel">
+        <property name="text"><string>暂无可播放的序列结果</string></property>
+        <property name="wordWrap"><bool>true</bool></property>
+       </widget>
+      </item>
+     </layout>
     </widget>
    </item>
    <item>
-    <layout class="QVBoxLayout" name="contentLayout">
-     <property name="leftMargin">
-      <number>9</number>
-     </property>
-     <property name="topMargin">
-      <number>9</number>
-     </property>
-     <property name="rightMargin">
-      <number>9</number>
-     </property>
-     <property name="bottomMargin">
-      <number>9</number>
-     </property>
-     <property name="spacing">
-      <number>6</number>
-     </property>
-     <item>
-      <widget class="QLabel" name="label">
-       <property name="text">
-        <string>动画</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QWidget" name="widget" native="true">
-       <layout class="QVBoxLayout" name="verticalLayout_2">
+    <widget class="QGroupBox" name="playbackGroupBox">
+     <property name="title"><string>播放控制</string></property>
+     <layout class="QVBoxLayout" name="playbackLayout">
+      <property name="spacing"><number>8</number></property>
+      <item>
+       <widget class="QLabel" name="frameLabel">
+        <property name="text"><string>—</string></property>
+        <property name="alignment"><set>Qt::AlignCenter</set></property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QSlider" name="frameSlider">
+        <property name="orientation"><enum>Qt::Horizontal</enum></property>
+        <property name="minimum"><number>0</number></property>
+        <property name="maximum"><number>0</number></property>
+        <property name="tracking"><bool>true</bool></property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="buttonLayout">
         <item>
-         <widget class="QPushButton" name="loadPushButton">
-          <property name="text">
-           <string>加载</string>
-          </property>
+         <widget class="QPushButton" name="prevButton">
+          <property name="text"><string>上一帧</string></property>
          </widget>
         </item>
         <item>
-         <layout class="QHBoxLayout" name="hl_scalar">
-          <item>
-           <widget class="QLabel" name="labelScalar">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-            <property name="text">
-             <string>标量</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QComboBox" name="scalarComboBox">
-            <property name="minimumSize">
-             <size>
-              <width>10</width>
-              <height>0</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QCheckBox" name="fixRangeCheckBox">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-            <property name="text">
-             <string>固定全序列色标</string>
-            </property>
-           </widget>
-          </item>
-          <property name="leftMargin">
-           <number>0</number>
-          </property>
-          <property name="topMargin">
-           <number>0</number>
-          </property>
-          <property name="rightMargin">
-           <number>0</number>
-          </property>
-          <property name="bottomMargin">
-           <number>0</number>
-          </property>
-         </layout>
+         <widget class="QPushButton" name="playPauseButton">
+          <property name="text"><string>播放</string></property>
+         </widget>
         </item>
         <item>
-         <layout class="QVBoxLayout" name="hl_interp">
-          <item>
-           <widget class="QCheckBox" name="interpCheckBox">
-            <property name="text">
-             <string>启用插帧</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <layout class="QHBoxLayout" name="interpParamsRow">
-            <item>
-             <widget class="QLabel" name="labelInterp">
-              <property name="text">
-               <string>每步插入帧数</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QSpinBox" name="interpCountSpin">
-              <property name="minimum">
-               <number>0</number>
-              </property>
-              <property name="maximum">
-               <number>60</number>
-              </property>
-              <property name="value">
-               <number>0</number>
-              </property>
-              <property name="minimumSize">
-               <size>
-                <width>10</width>
-                <height>0</height>
-               </size>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <spacer name="horizontalSpacer">
-              <property name="orientation">
-               <enum>Qt::Horizontal</enum>
-              </property>
-              <property name="sizeHint" stdset="0">
-               <size>
-                <width>40</width>
-                <height>20</height>
-               </size>
-              </property>
-             </spacer>
-            </item>
-            <property name="leftMargin">
-             <number>0</number>
-            </property>
-            <property name="topMargin">
-             <number>0</number>
-            </property>
-            <property name="rightMargin">
-             <number>0</number>
-            </property>
-            <property name="bottomMargin">
-             <number>0</number>
-            </property>
-           </layout>
-          </item>
-          <property name="leftMargin">
-           <number>0</number>
-          </property>
-          <property name="topMargin">
-           <number>0</number>
-          </property>
-          <property name="rightMargin">
-           <number>0</number>
-          </property>
-          <property name="bottomMargin">
-           <number>0</number>
-          </property>
-         </layout>
+         <widget class="QPushButton" name="nextButton">
+          <property name="text"><string>下一帧</string></property>
+         </widget>
         </item>
-        <property name="leftMargin">
-         <number>0</number>
-        </property>
-        <property name="topMargin">
-         <number>0</number>
-        </property>
-        <property name="rightMargin">
-         <number>0</number>
-        </property>
-        <property name="bottomMargin">
-         <number>0</number>
-        </property>
        </layout>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="pushButton_2">
-       <property name="font">
-        <font>
-         <weight>75</weight>
-         <bold>true</bold>
-        </font>
-       </property>
-       <property name="margin">
-        <number>2</number>
-       </property>
-       <property name="text">
-        <string>控制</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QSlider" name="frameSlider">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <layout class="QGridLayout" name="gridLayout">
-       <item row="0" column="0">
-        <widget class="QLabel" name="frameLabel">
-         <property name="text">
-          <string>0 / 0</string>
-         </property>
-        </widget>
-       </item>
-       <item row="1" column="0">
-        <widget class="QPushButton" name="playPauseButton">
-         <property name="text">
-          <string>播放</string>
-         </property>
-        </widget>
-       </item>
-       <item row="1" column="2">
-        <widget class="QPushButton" name="nextButton">
-         <property name="text">
-          <string>下一帧</string>
-         </property>
-        </widget>
-       </item>
-       <item row="0" column="1">
-        <widget class="QLabel" name="labelFps">
-         <property name="text">
-          <string>帧率</string>
-         </property>
-        </widget>
-       </item>
-       <item row="0" column="2">
-        <widget class="QDoubleSpinBox" name="fpsSpin">
-         <property name="minimumSize">
-          <size>
-           <width>10</width>
-           <height>0</height>
-          </size>
-         </property>
-        </widget>
-       </item>
-       <item row="0" column="4">
-        <widget class="QCheckBox" name="loopCheckBox">
-         <property name="text">
-          <string>循环</string>
-         </property>
-        </widget>
-       </item>
-       <item row="1" column="1">
-        <widget class="QPushButton" name="prevButton">
-         <property name="text">
-          <string>上一帧</string>
-         </property>
-        </widget>
-       </item>
-       <item row="1" column="4">
-        <widget class="QPushButton" name="saveAviButton">
-         <property name="text">
-          <string>导出视频</string>
-         </property>
-        </widget>
-       </item>
-       <property name="leftMargin">
-        <number>0</number>
-       </property>
-       <property name="topMargin">
-        <number>0</number>
-       </property>
-       <property name="rightMargin">
-        <number>0</number>
-       </property>
-       <property name="bottomMargin">
-        <number>0</number>
-       </property>
-      </layout>
-     </item>
-     <item>
-      <spacer name="verticalSpacer">
-       <property name="orientation">
-        <enum>Qt::Vertical</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>20</width>
-         <height>40</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-    </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="statusLabel">
+        <property name="text"><string>等待载入动画结果</string></property>
+        <property name="alignment"><set>Qt::AlignCenter</set></property>
+        <property name="wordWrap"><bool>true</bool></property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="optionGroupBox">
+     <property name="title"><string>播放设置</string></property>
+     <layout class="QGridLayout" name="optionGridLayout">
+      <property name="horizontalSpacing"><number>8</number></property>
+      <property name="verticalSpacing"><number>8</number></property>
+      <item row="0" column="0">
+       <widget class="QLabel" name="fpsLabel">
+        <property name="text"><string>播放速度（帧/秒）</string></property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QDoubleSpinBox" name="fpsSpin">
+        <property name="decimals"><number>1</number></property>
+        <property name="minimum"><double>0.500000000000000</double></property>
+        <property name="maximum"><double>30.000000000000000</double></property>
+        <property name="singleStep"><double>0.500000000000000</double></property>
+        <property name="value"><double>5.000000000000000</double></property>
+       </widget>
+      </item>
+      <item row="1" column="0" colspan="2">
+       <widget class="QCheckBox" name="loopCheckBox">
+        <property name="text"><string>循环播放</string></property>
+        <property name="checked"><bool>true</bool></property>
+       </widget>
+      </item>
+      <item row="2" column="0" colspan="2">
+       <widget class="QCheckBox" name="fixRangeCheckBox">
+        <property name="text"><string>统一色标范围</string></property>
+        <property name="checked"><bool>true</bool></property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QCheckBox" name="interpCheckBox">
+        <property name="text"><string>平滑过渡</string></property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QSpinBox" name="interpCountSpin">
+        <property name="toolTip"><string>相邻时刻之间插入的过渡帧数</string></property>
+        <property name="minimum"><number>1</number></property>
+        <property name="maximum"><number>20</number></property>
+        <property name="value"><number>2</number></property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="tipLabel">
+     <property name="text"><string>时间点或施工阶段由滑块控制，不再额外占用下拉框。</string></property>
+     <property name="wordWrap"><bool>true</bool></property>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation"><enum>Qt::Vertical</enum></property>
+     <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
+    </spacer>
    </item>
   </layout>
  </widget>
- <resources />
- <connections />
+ <resources/>
+ <connections/>
 </ui>
