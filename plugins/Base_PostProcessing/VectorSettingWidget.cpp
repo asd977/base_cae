@@ -52,6 +52,24 @@ VectorSettingWidget::VectorSettingWidget(VisualWidgetService* postProcessingWidg
     configurePostResultCombo(ui->resultTimeComboBox);
     configurePostResultCombo(ui->stepComboBox);
 
+    ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+    connect(ui->showScalarBarCheckBox, &QCheckBox::toggled, this, [this](bool checked) {
+        postScalarBarStyle().visible = checked;
+        if (m_visualService)
+        {
+            m_visualService->showScalarBar(checked, false);
+            m_visualService->render();
+        }
+    });
+    connect(ui->displaySettingsButton, &QPushButton::clicked, this, [this]() {
+        if (editPostDisplaySettings(this, m_visualService, false, false))
+        {
+            ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+            if (m_visualService)
+                m_visualService->render();
+        }
+    });
+
     // 矢量参数统一采用直接更新；采样、分量变化后无需再点“确定”。
     connect(ui->scaleSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
             &VectorSettingWidget::on_scaleSpinBox_valueChanged);
@@ -160,6 +178,7 @@ QString VectorSettingWidget::vectorLegendTitle() const
 void VectorSettingWidget::beforeLoad()
 {
     showPostProcessingOnly(m_visualService, false);
+    ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
     const QString proj =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     refreshResultGroups();
@@ -177,7 +196,7 @@ void VectorSettingWidget::beforeLoad()
         if (m_visualService && m_vectorActor)
         {
             addActorByService(m_visualService, m_vectorActor, false);
-            m_visualService->showScalarBar(true, false);
+            m_visualService->showScalarBar(postScalarBarStyle().visible, false);
             applyStandardPostScalarBar(m_visualService, vectorLegendTitle());
             requestRender();
         }
@@ -349,6 +368,8 @@ void VectorSettingWidget::refreshResultGroups()
 
 void VectorSettingWidget::on_analysisComboBox_currentIndexChanged(int)
 {
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     const QString previousPath = m_dataPath;
@@ -362,6 +383,8 @@ void VectorSettingWidget::on_analysisComboBox_currentIndexChanged(int)
 
 void VectorSettingWidget::on_resultDirComboBox_currentIndexChanged(int index)
 {
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     if (index < 0)
         return;
     m_dataPath = ui->resultDirComboBox->itemData(index).toString();
@@ -427,6 +450,8 @@ void VectorSettingWidget::loadFileName(QString dataPath)
 
 void VectorSettingWidget::on_stepComboBox_currentIndexChanged(int index)
 {
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     if (index < 0)
         return;
 
@@ -705,8 +730,8 @@ void VectorSettingWidget::rebuildPipeline()
     m_maskOnRatio = std::max(1, m_maskOnRatio);
     ui->maskSizeSpinBox->setToolTip(
         ui->maskSizeSpinBox->value() == 0
-            ? QStringLiteral("自动采样：当前每隔 %1 个点显示 1 个箭头").arg(m_maskOnRatio)
-            : QStringLiteral("每隔 %1 个点显示 1 个箭头").arg(m_maskOnRatio));
+            ? QStringLiteral("自动采样，当前间隔：%1").arg(m_maskOnRatio)
+            : QStringLiteral("当前采样间隔：%1").arg(m_maskOnRatio));
 
     // 生成 Vector / VectorMag，并得到其范围
     double magMin = 0.0, magMax = 1.0;
@@ -798,7 +823,7 @@ void VectorSettingWidget::rebuildPipeline()
         applyStandardPostScalarBar(scalarBar);
         scalarBar->SetTitle(vectorLegendTitle().toUtf8().constData());
         scalarBar->Modified();
-        m_visualService->showScalarBar(true, false);
+        m_visualService->showScalarBar(postScalarBarStyle().visible, false);
     }
     else
     {

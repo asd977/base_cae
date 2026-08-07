@@ -197,7 +197,7 @@
           </property>
          </layout>
         </item>
-        <item><widget class="QCheckBox" name="showLegendCheckBox"><property name="text"><string>显示曲线图例</string></property><property name="checked"><bool>false</bool></property><property name="toolTip"><string>在曲线图右上角显示各曲线名称</string></property></widget></item><property name="leftMargin">
+        <item><widget class="QCheckBox" name="showLegendCheckBox"><property name="text"><string>显示曲线图例</string></property><property name="checked"><bool>false</bool></property></widget></item><property name="leftMargin">
          <number>9</number>
         </property>
         <property name="topMargin">

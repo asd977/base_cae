@@ -21,6 +21,7 @@
 #include <services/OutputService.h>
 #include <services/MaterialManagerService.h>
 #include <services/ProjectManagerService.h>
+#include <services/UiFrameService.h>
 #include <services/VisualWidgetService.h>
 #include <vtkActor.h>
 #include <vtkAbstractArray.h>
@@ -2302,6 +2303,7 @@ MeshModuleController::MeshModuleController(QObject* parent) : QObject(parent)
     ServiceRegistry::instance().registerService<MeshModuleControllerService>(this);
     m_visualWidgetService = ServiceRegistry::instance().getService<VisualWidgetService>();
     initAction();
+    ensureGridDisplayControlPanel();
 }
 
 void MeshModuleController::newProject()
@@ -2797,10 +2799,10 @@ bool MeshModuleController::loadProject()
 
         if (kind == "MeshEdit")
         {
-            auto* w = new GridEditingWidget();
-            m_gridEditingWidget = w;
+            ensureGridDisplayControlPanel();
+            auto* w = m_gridEditingWidget;
 
-            if (m_importedGrid && m_importedGrid->GetNumberOfCells() > 0)
+            if (w && m_importedGrid && m_importedGrid->GetNumberOfCells() > 0)
             {
                 w->setEditableGrid(m_importedGrid, m_sourceFileName);
             }
@@ -2892,8 +2894,15 @@ void MeshModuleController::closeProject()
             }
             if (BasePage* page = node->getPage())
             {
-                page->beforeUnload();
-                delete page;
+                if (page == m_gridEditingWidget)
+                {
+                    node->setPage(nullptr);
+                }
+                else
+                {
+                    page->beforeUnload();
+                    delete page;
+                }
                 node->setPage(nullptr);
             }
             delete node;
@@ -2902,7 +2911,12 @@ void MeshModuleController::closeProject()
     }
 
     m_importSettingsWidget = nullptr;
-    m_gridEditingWidget = nullptr;
+    if (m_gridEditingWidget)
+    {
+        m_gridEditingWidget->clearGrid();
+        if (auto* uiFrame = ServiceRegistry::instance().getService<UiFrameService>())
+            uiFrame->setWidgetVisible(m_gridEditingWidget, false);
+    }
     m_barElementWidget = nullptr;
     m_qualityCheckWidget = nullptr;
 
@@ -4429,6 +4443,41 @@ void MeshModuleController::onMeshEdit()
     openGridDisplayControlPage();
 }
 
+void MeshModuleController::ensureGridDisplayControlPanel()
+{
+    if (!m_gridEditingWidget)
+    {
+        m_gridEditingWidget = new GridEditingWidget();
+        m_gridEditingWidget->setProperty("projectTreeDockPanel", true);
+        m_gridEditingWidget->setMinimumWidth(280);
+        m_gridEditingWidget->resize(320, 680);
+    }
+
+    if (m_gridEditingWidget->property("uiFrameDockWidget").isValid())
+        return;
+
+    if (auto* uiFrame = ServiceRegistry::instance().getService<UiFrameService>())
+    {
+        uiFrame->addWidget(m_gridEditingWidget, QStringLiteral("显示控制"));
+        uiFrame->setWidgetVisible(m_gridEditingWidget, false);
+    }
+}
+
+void MeshModuleController::showGridDisplayControlPanel()
+{
+    ensureGridDisplayControlPanel();
+    if (!m_gridEditingWidget)
+        return;
+
+    if (m_importedGrid && m_importedGrid->GetNumberOfCells() > 0)
+        m_gridEditingWidget->setEditableGrid(m_importedGrid, m_sourceFileName);
+    else
+        m_gridEditingWidget->clearGrid();
+
+    if (auto* uiFrame = ServiceRegistry::instance().getService<UiFrameService>())
+        uiFrame->setWidgetVisible(m_gridEditingWidget, true);
+}
+
 void MeshModuleController::onBarElements()
 {
     if (!m_gridNode)
@@ -4457,6 +4506,8 @@ void MeshModuleController::openGridDisplayControlPage()
     if (!m_gridNode)
         return;
 
+    ensureGridDisplayControlPanel();
+
     if (auto* existed = findDirectChildByKind(m_gridNode, "MeshEdit"))
     {
         if (m_gridEditingWidget && m_importedGrid && m_importedGrid->GetNumberOfCells() > 0)
@@ -4464,13 +4515,13 @@ void MeshModuleController::openGridDisplayControlPage()
             m_gridEditingWidget->setEditableGrid(m_importedGrid, m_sourceFileName);
         }
 
+        showGridDisplayControlPanel();
         if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
             pm->setCurrentItem(existed);
         return;
     }
 
-    auto* w = new GridEditingWidget();
-    m_gridEditingWidget = w;
+    auto* w = m_gridEditingWidget;
     if (m_importedGrid && m_importedGrid->GetNumberOfCells() > 0)
     {
         w->setEditableGrid(m_importedGrid, m_sourceFileName);
@@ -4480,6 +4531,7 @@ void MeshModuleController::openGridDisplayControlPage()
     node->setData(0, ProjectNode::RoleModule, "Mesh");
     node->setData(0, ProjectNode::RoleKind, "MeshEdit");
     m_gridNode->addChild(node);
+    showGridDisplayControlPanel();
     if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
         pm->setCurrentItem(node);
 }

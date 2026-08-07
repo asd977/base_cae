@@ -103,7 +103,7 @@
              </size>
             </property>
             <property name="placeholderText">
-             <string>选择轮廓图 SCR 文件</string>
+             <string>选择轮廓图数据文件（SCR）</string>
             </property>
            </widget>
           </item>

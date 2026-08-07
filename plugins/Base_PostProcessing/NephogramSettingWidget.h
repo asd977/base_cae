@@ -7,6 +7,7 @@
 #include <vtkDataSetMapper.h>
 #include <vtkCallbackCommand.h>
 #include <vtkLookupTable.h>
+#include <vtkPolyData.h>
 #include <vtkSmartPointer.h>
 #include <vtkUnstructuredGrid.h>
 
@@ -72,6 +73,9 @@ class NephogramSettingWidget : public BasePage
     void updateLookupTableRange(vtkLookupTable* lut, double minV, double maxV) const;
     void configureMapper(vtkDataSetMapper* mapper, const QString& scalarName, bool usePointData,
                          double minV, double maxV, vtkLookupTable* lut) const;
+    bool prepareDisplaySurface(const QString& scalarName, bool sourceUsePointData,
+                               bool& mapperUsePointData);
+    void invalidateDisplaySurface();
 
     void updateContourOverlay(const QString& scalarName, bool usePointData, double minV,
                               double maxV);
@@ -84,6 +88,8 @@ class NephogramSettingWidget : public BasePage
     vtkSmartPointer<vtkActor> m_actor;
     vtkSmartPointer<vtkDataSetMapper> m_mapper;
     vtkSmartPointer<vtkUnstructuredGrid> m_grid;
+    vtkSmartPointer<vtkPolyData> m_displaySurface;
+    bool m_displaySurfaceUsePointData{true};
 
     QString m_dataPath;
     QString m_loadedFileName;

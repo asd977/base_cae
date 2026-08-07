@@ -32,6 +32,7 @@
 #include <QSizePolicy>
 #include <QSlider>
 #include <QTabBar>
+#include <QVariant>
 #include <QVBoxLayout>
 #include <QWidget>
 
@@ -421,6 +422,11 @@ void UiFrame::initDockManager()
 QAction* UiFrame::addWidget(QWidget* widget, QString name)
 {
     ads::CDockWidget* dockWidget = new ads::CDockWidget(name);
+    if (widget)
+    {
+        widget->setProperty("uiFrameDockWidget",
+                            QVariant::fromValue(static_cast<QObject*>(dockWidget)));
+    }
 
     if (name == QStringLiteral("模型管理"))
         m_modelDockWidget = dockWidget;
@@ -446,6 +452,11 @@ QAction* UiFrame::addWidget(QWidget* widget, QString name)
 
     const ads::DockWidgetArea area = preferDockArea(name);
     ads::CDockAreaWidget* targetArea = m_centerDockArea;
+    if (name == QStringLiteral("显示控制") && m_visualDockWidget &&
+        m_visualDockWidget->dockAreaWidget())
+    {
+        targetArea = m_visualDockWidget->dockAreaWidget();
+    }
 
     if (!targetArea)
     {
@@ -474,9 +485,29 @@ QAction* UiFrame::addWidget(QWidget* widget, QString name)
     return toggleAction;
 }
 
+void UiFrame::setWidgetVisible(QWidget* widget, bool visible)
+{
+    if (!widget)
+        return;
+
+    QObject* dockObject = widget->property("uiFrameDockWidget").value<QObject*>();
+    auto* dockWidget = qobject_cast<ads::CDockWidget*>(dockObject);
+    if (!dockWidget)
+        return;
+
+    dockWidget->toggleView(visible);
+    if (visible)
+        dockWidget->raise();
+}
+
 QAction* UiFrame::addWidgetForTabwidget(QWidget* widget, QString name)
 {
     ads::CDockWidget* dockWidget = new ads::CDockWidget(name);
+    if (widget)
+    {
+        widget->setProperty("uiFrameDockWidget",
+                            QVariant::fromValue(static_cast<QObject*>(dockWidget)));
+    }
     dockWidget->setWidget(widget);
 
     dockWidget->setFeature(ads::CDockWidget::DockWidgetMovable, true);

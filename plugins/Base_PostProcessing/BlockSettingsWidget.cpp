@@ -6,6 +6,8 @@
 #include <services/VisualWidgetService.h>
 #include <vtkAppendFilter.h>
 #include <vtkLookupTable.h>
+#include <vtkCellDataToPointData.h>
+#include <vtkDataSetSurfaceFilter.h>
 #include <vtkMultiBlockDataSet.h>
 #include <vtkPointData.h>
 #include <vtkProperty.h>
@@ -43,16 +45,55 @@ BlockSettingsWidget::BlockSettingsWidget(VisualWidgetService* postProcessingWidg
     configurePostResultCombo(ui->resultTimeComboBox);
     configurePostResultCombo(ui->stepComboBox);
 
+    ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+    connect(ui->showScalarBarCheckBox, &QCheckBox::toggled, this, [this](bool checked) {
+        postScalarBarStyle().visible = checked;
+        if (m_visualService)
+        {
+            m_visualService->showScalarBar(checked, false);
+            m_visualService->render();
+        }
+    });
+    ui->showContourCheckBox->setChecked(postContourStyle().enabled);
+    connect(ui->showContourCheckBox, &QCheckBox::toggled, this, [this](bool checked) {
+        postContourStyle().enabled = checked;
+        updateContourOverlay();
+        if (m_visualService)
+            m_visualService->render();
+    });
+    connect(ui->displaySettingsButton, &QPushButton::clicked, this, [this]() {
+        const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+        double dataMin = 0.0;
+        double dataMax = 1.0;
+        if (m_grid)
+        {
+            if (vtkDataArray* array = PostFieldUtils::array(m_grid, field))
+            {
+                double range[2]{0.0, 1.0};
+                array->GetRange(range);
+                dataMin = range[0];
+                dataMax = range[1];
+            }
+        }
+        if (editPostDisplaySettings(this, m_visualService, true, false,
+                                    field.name, dataMin, dataMax))
+        {
+            ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+            ui->showContourCheckBox->setChecked(postContourStyle().enabled);
+            updateColoringFromUI();
+            renderNow();
+        }
+    });
+
     m_plane = vtkSmartPointer<vtkPlane>::New();
     m_actor = vtkSmartPointer<vtkActor>::New();
 
     ui->blockSlider->setRange(0, 1000);
     ui->blockSlider->setTracking(false);
-    ui->blockSlider->setToolTip(QStringLiteral("松开滑块后更新切块，避免连续重算"));
     ui->blockSlider->setValue(500);
     ui->blockPositionSpin->setKeyboardTracking(false);
     ui->flipCheckBox->setChecked(false);
-    ui->flipCheckBox->setToolTip(QStringLiteral("切换裁剪方向，保留切平面的另一侧"));
+    ui->flipCheckBox->setToolTip(QStringLiteral("勾选后保留切平面的另一侧"));
 
     connect(ui->stepComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &BlockSettingsWidget::on_stepComboBox_currentIndexChanged);
@@ -85,6 +126,8 @@ BlockSettingsWidget::~BlockSettingsWidget()
 void BlockSettingsWidget::beforeLoad()
 {
     showPostProcessingOnly(m_visualService, false);
+    ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+    ui->showContourCheckBox->setChecked(postContourStyle().enabled);
     refreshResultGroups();
     if (m_dataPath.isEmpty())
     {
@@ -278,6 +321,8 @@ void BlockSettingsWidget::refreshResultGroups()
 
 void BlockSettingsWidget::on_analysisComboBox_currentIndexChanged(int)
 {
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     const QString previousPath = m_dataPath;
@@ -291,6 +336,8 @@ void BlockSettingsWidget::on_analysisComboBox_currentIndexChanged(int)
 
 void BlockSettingsWidget::on_resultDirComboBox_currentIndexChanged(int index)
 {
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     if (index < 0)
         return;
     m_dataPath = ui->resultDirComboBox->itemData(index).toString();
@@ -322,6 +369,8 @@ void BlockSettingsWidget::beforeUnload()
         removeActorByService(m_visualService, m_actor);
         m_isAttached = false;
     }
+    if (m_contourActor)
+        removeActorByService(m_visualService, m_contourActor, false);
     if (m_visualService)
         m_visualService->showScalarBar(false, false);
 }
@@ -410,6 +459,10 @@ bool BlockSettingsWidget::readTecplot(const QString& fileName)
 
     // 标量下拉同时区分节点数据与单元数据，并尽量保留之前的选择。
     PostFieldUtils::fillCombo(ui->scalarComboBox, m_grid);
+    const int sharedFieldIndex = PostResultSelectionUtils::findSharedField(
+        ui->scalarComboBox, PostFieldUtils::NameRole, PostFieldUtils::AssociationRole);
+    if (sharedFieldIndex >= 0)
+        ui->scalarComboBox->setCurrentIndex(sharedFieldIndex);
     return true;
 }
 
@@ -491,8 +544,10 @@ void BlockSettingsWidget::updateColoringFromUI()
     else
         m_grid->GetPointData()->SetActiveScalars(encodedName.constData());
 
-    double range[2];
-    arr->GetRange(range);
+    double dataRange[2];
+    arr->GetRange(dataRange);
+    double range[2]{dataRange[0], dataRange[1]};
+    resolvePostDisplayRange(field.name, dataRange[0], dataRange[1], range[0], range[1]);
 
     if (!m_visualService)
         return;
@@ -522,8 +577,49 @@ void BlockSettingsWidget::updateColoringFromUI()
     {
         applyStandardPostScalarBar(
             m_visualService, ResultDisplayNames::scalarBarName(field.name));
-        m_visualService->showScalarBar(true, false);
+        m_visualService->showScalarBar(postScalarBarStyle().visible, false);
     }
+    updateContourOverlay();
+}
+
+void BlockSettingsWidget::updateContourOverlay()
+{
+    if (m_contourActor)
+    {
+        removeActorByService(m_visualService, m_contourActor, false);
+        m_contourActor = nullptr;
+    }
+    if (!m_visualService || !m_grid || !m_clipper || !postContourStyle().enabled)
+        return;
+
+    const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+    vtkDataArray* array = PostFieldUtils::array(m_grid, field);
+    if (!array)
+        return;
+    double dataRange[2]{0.0, 1.0};
+    array->GetRange(dataRange);
+    double range[2]{dataRange[0], dataRange[1]};
+    resolvePostDisplayRange(field.name, dataRange[0], dataRange[1], range[0], range[1]);
+
+    vtkSmartPointer<vtkDataSetSurfaceFilter> surface = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+    if (field.association == vtkDataObject::FIELD_ASSOCIATION_CELLS)
+    {
+        auto cellToPoint = vtkSmartPointer<vtkCellDataToPointData>::New();
+        cellToPoint->SetInputConnection(m_clipper->GetOutputPort());
+        cellToPoint->PassCellDataOn();
+        cellToPoint->Update();
+        surface->SetInputConnection(cellToPoint->GetOutputPort());
+    }
+    else
+    {
+        surface->SetInputConnection(m_clipper->GetOutputPort());
+    }
+    surface->Update();
+
+    m_contourActor = createPostContourActor(surface->GetOutputPort(), field.name,
+                                            range[0], range[1]);
+    if (m_contourActor)
+        addActorByService(m_visualService, m_contourActor, false);
 }
 
 void BlockSettingsWidget::renderNow()
@@ -536,6 +632,11 @@ void BlockSettingsWidget::renderNow()
 
 void BlockSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
 {
+    PostResultSelectionUtils::rememberFieldSelection(ui->scalarComboBox,
+                                                     PostFieldUtils::NameRole,
+                                                     PostFieldUtils::AssociationRole);
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     buildClipPipelineIfNeeded();
     updateColoringFromUI();
     renderNow();
@@ -616,6 +717,8 @@ void BlockSettingsWidget::on_flipCheckBox_toggled(bool)
 
 void BlockSettingsWidget::on_stepComboBox_currentIndexChanged(int index)
 {
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     if (index < 0)
         return;
 

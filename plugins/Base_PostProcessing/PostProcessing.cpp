@@ -1,4 +1,4 @@
-﻿
+
 #include "PostProcessing.h"
 
 #include <ContextMenuHub.h>
@@ -39,6 +39,8 @@
 #include "ProbeSettingsWidget.h"
 #include "PostContourReaderWidget.h"
 #include "PostResultAutoPrepare.h"
+#include "PostResultSelectionUtils.h"
+#include "PostVisualUtils.h"
 VTK_MODULE_INIT(vtkRenderingOpenGL2)
 VTK_MODULE_INIT(vtkRenderingContextOpenGL2)
 VTK_MODULE_INIT(vtkInteractionStyle);
@@ -288,6 +290,11 @@ void PostProcessing::newProject()
 {
     if (m_root)
         closeProject();
+
+    PostResultSelectionUtils::clearSharedResultSelection();
+    postScalarBarStyle() = PostScalarBarStyle{};
+    postContourStyle() = PostContourStyle{};
+    postFieldRangeStyles().clear();
 
     m_root = new ProjectNode("后处理");
     m_root->setData(0, ProjectNode::RoleUuid, m_root->getUuid());
@@ -572,6 +579,8 @@ bool PostProcessing::saveProject()
     QJsonObject root;
     root["module"] = "PostProcessing";
     root["root_title"] = "后处理";
+    root["result_context"] = PostResultSelectionUtils::saveSharedResultSelection();
+    root["display_settings"] = savePostDisplaySettings();
 
     QJsonArray items;
     const int n = m_root->childCount();
@@ -600,6 +609,11 @@ bool PostProcessing::loadProject()
     if (m_root)
         closeProject();
 
+    PostResultSelectionUtils::clearSharedResultSelection();
+    postScalarBarStyle() = PostScalarBarStyle{};
+    postContourStyle() = PostContourStyle{};
+    postFieldRangeStyles().clear();
+
     m_root = new ProjectNode("后处理");
     m_root->setData(0, ProjectNode::RoleUuid, m_root->getUuid());
     m_root->setData(0, ProjectNode::RoleModule, "PostProcessing");
@@ -617,6 +631,11 @@ bool PostProcessing::loadProject()
     {
         return true;
     }
+
+    if (root.value(QStringLiteral("result_context")).isObject())
+        PostResultSelectionUtils::loadSharedResultSelection(root.value(QStringLiteral("result_context")).toObject());
+    if (root.value(QStringLiteral("display_settings")).isObject())
+        loadPostDisplaySettings(root.value(QStringLiteral("display_settings")).toObject());
 
     const QJsonArray items = root.value("items").toArray();
     for (const auto& v : items)

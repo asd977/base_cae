@@ -26,6 +26,7 @@
 #include <vtkPoints.h>
 #include <vtkPolyData.h>
 #include <vtkPolyDataMapper.h>
+#include <vtkPolyDataNormals.h>
 #include <vtkProperty.h>
 #include <vtkRenderer.h>
 #include <vtkRendererCollection.h>
@@ -36,6 +37,7 @@
 #include <vtkCallbackCommand.h>
 #include <vtkSelectVisiblePoints.h>
 #include <vtkSmartPointer.h>
+#include <vtkStripper.h>
 #include <vtkTecplotReader.h>
 #include <vtkTextProperty.h>
 #include <vtkUnstructuredGrid.h>
@@ -100,6 +102,7 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
 
     ui->rangeMinSpinBox->setRange(-1.0e100, 1.0e100);
     ui->rangeMaxSpinBox->setRange(-1.0e100, 1.0e100);
+
     ui->rangeMinSpinBox->setDecimals(8);
     ui->rangeMaxSpinBox->setDecimals(8);
 
@@ -145,41 +148,44 @@ NephogramSettingWidget::NephogramSettingWidget(VisualWidgetService* postProcessi
                 refreshCurrentVisualization();
             });
 
-    const auto refreshLegend = [this](int) { refreshCurrentVisualization(); };
-    connect(ui->legendTitleFontSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
-            refreshLegend);
-    connect(ui->legendLabelFontSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
-            refreshLegend);
-    connect(ui->legendPrecisionSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
-            refreshLegend);
-    connect(ui->legendTickCountSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
-            refreshLegend);
-    connect(ui->legendWidthSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
-            refreshLegend);
-    connect(ui->legendHeightSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
-            refreshLegend);
-
-    connect(ui->contourEnableCheckBox, &QCheckBox::toggled, this, [this](bool enabled) {
-        ui->contourLevelsSpinBox->setEnabled(enabled);
-        ui->contourLabelCheckBox->setEnabled(enabled);
-        ui->contourLabelFontSpinBox->setEnabled(enabled && ui->contourLabelCheckBox->isChecked());
-        refreshCurrentVisualization();
+    ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+    connect(ui->showScalarBarCheckBox, &QCheckBox::toggled, this, [this](bool checked) {
+        postScalarBarStyle().visible = checked;
+        if (m_visualService)
+        {
+            m_visualService->showScalarBar(checked, false);
+            m_visualService->render();
+        }
     });
-    connect(ui->contourLevelsSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
-            [this](int) { refreshCurrentVisualization(); });
-    connect(ui->contourLabelCheckBox, &QCheckBox::toggled, this, [this](bool checked) {
-        ui->contourLabelFontSpinBox->setEnabled(checked &&
-                                                ui->contourEnableCheckBox->isChecked());
-        refreshCurrentVisualization();
+    ui->showContourCheckBox->setChecked(postContourStyle().enabled);
+    connect(ui->showContourCheckBox, &QCheckBox::toggled, this, [this](bool checked) {
+        postContourStyle().enabled = checked;
+        updateNephogram(currentScalarName());
     });
-    connect(ui->contourLabelFontSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), this,
-            [this](int) { refreshCurrentVisualization(); });
+    connect(ui->displaySettingsButton, &QPushButton::clicked, this, [this]() {
+        double dataMin = 0.0;
+        double dataMax = 1.0;
+        if (m_grid && !currentScalarName().isEmpty())
+        {
+            bool usePointData = true;
+            if (vtkDataArray* array = findScalarArray(m_grid, currentScalarName(), usePointData))
+            {
+                double range[2]{0.0, 1.0};
+                array->GetRange(range);
+                dataMin = range[0];
+                dataMax = range[1];
+            }
+        }
+        if (editPostDisplaySettings(this, m_visualService, true, true,
+                                    currentScalarName(), dataMin, dataMax))
+        {
+            ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+            ui->showContourCheckBox->setChecked(postContourStyle().enabled);
+            refreshCurrentVisualization();
+        }
+    });
 
     updateRangeEditorState();
-    ui->contourLevelsSpinBox->setEnabled(ui->contourEnableCheckBox->isChecked());
-    ui->contourLabelCheckBox->setEnabled(ui->contourEnableCheckBox->isChecked());
-    ui->contourLabelFontSpinBox->setEnabled(ui->contourEnableCheckBox->isChecked() &&
-                                            ui->contourLabelCheckBox->isChecked());
     initResultDirectoryOptions();
 }
 
@@ -218,18 +224,26 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
         return;
     }
 
-    if (ui->autoRangeCheckBox->isChecked())
-        setRangeControls(dataRange[0], dataRange[1]);
-
+    {
+        PostFieldRangeStyle& rangeStyle = postFieldRangeStyle(m_currentArrayName,
+                                                              dataRange[0], dataRange[1]);
+        const QSignalBlocker autoBlocker(ui->autoRangeCheckBox);
+        const QSignalBlocker minBlocker(ui->rangeMinSpinBox);
+        const QSignalBlocker maxBlocker(ui->rangeMaxSpinBox);
+        ui->autoRangeCheckBox->setChecked(rangeStyle.automatic);
+        ui->rangeMinSpinBox->setValue(rangeStyle.initialized ? rangeStyle.minimum : dataRange[0]);
+        ui->rangeMaxSpinBox->setValue(rangeStyle.initialized ? rangeStyle.maximum : dataRange[1]);
+    }
     double minV = dataRange[0];
     double maxV = dataRange[1];
-    displayRange(dataRange[0], dataRange[1], minV, maxV);
+    resolvePostDisplayRange(m_currentArrayName, dataRange[0], dataRange[1], minV, maxV);
 
     vtkScalarBarActor* scalarBar = m_visualService->scalarBarActor();
     if (!scalarBar)
         return;
 
-    m_visualService->showScalarBar(true, false);
+    postScalarBarStyle().visible = ui->showScalarBarCheckBox->isChecked();
+    m_visualService->showScalarBar(postScalarBarStyle().visible, false);
     applyLegendAppearance(scalarBar, minV, maxV);
 
     vtkLookupTable* lut = vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable());
@@ -243,12 +257,17 @@ void NephogramSettingWidget::syncScalarBarFromCurrent()
     updateLookupTableRange(lut, minV, maxV);
     scalarBar->SetTitle(currentScalarDisplayName().toUtf8().constData());
     scalarBar->Modified();
-    configureMapper(m_mapper, m_currentArrayName, usePointData, minV, maxV, lut);
+
+    bool mapperUsePointData = usePointData;
+    prepareDisplaySurface(m_currentArrayName, usePointData, mapperUsePointData);
+    configureMapper(m_mapper, m_currentArrayName, mapperUsePointData, minV, maxV, lut);
 }
 
 void NephogramSettingWidget::beforeLoad()
 {
     showPostProcessingOnly(m_visualService, false);
+    ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+    ui->showContourCheckBox->setChecked(postContourStyle().enabled);
 
     if (!m_visualService)
         m_visualService = ServiceRegistry::instance().getService<VisualWidgetService>();
@@ -261,49 +280,13 @@ void NephogramSettingWidget::beforeLoad()
 
     installLegendDragInteraction();
 
-    const QString previousAnalysis = ui->analysisComboBox->currentData().toString();
-    const QString previousDir = ui->resultDirComboBox->currentData().toString();
-    const QString previousTime = ui->resultTimeComboBox->currentData().toString();
-    const QString previousStep = ui->stepComboBox->currentText();
+    // 后处理云图优先启用 FXAA，主要改善等值线和模型轮廓的像素锯齿。
+    if (auto* ren = m_visualService->renderer())
+        ren->UseFXAAOn();
 
     initResultDirectoryOptions();
-
-    if (!previousAnalysis.isEmpty())
-    {
-        const int analysisIndex = ui->analysisComboBox->findData(previousAnalysis);
-        if (analysisIndex >= 0 && analysisIndex != ui->analysisComboBox->currentIndex())
-        {
-            ui->analysisComboBox->setCurrentIndex(analysisIndex);
-            on_analysisComboBox_currentIndexChanged(analysisIndex);
-        }
-    }
-
-    if (!previousDir.isEmpty())
-    {
-        const int dirIndex = ui->resultDirComboBox->findData(previousDir);
-        if (dirIndex >= 0)
-            ui->resultDirComboBox->setCurrentIndex(dirIndex);
-    }
-
     m_dataPath = selectedResultDirectoryPath();
     loadFileName(m_dataPath);
-
-    if (!previousTime.isNull())
-    {
-        const int timeIndex = ui->resultTimeComboBox->findData(previousTime);
-        if (timeIndex >= 0 && timeIndex != ui->resultTimeComboBox->currentIndex())
-        {
-            ui->resultTimeComboBox->setCurrentIndex(timeIndex);
-            on_resultTimeComboBox_currentIndexChanged(timeIndex);
-        }
-    }
-
-    if (!previousStep.isEmpty())
-    {
-        const int previousIndex = ui->stepComboBox->findText(previousStep);
-        if (previousIndex >= 0)
-            ui->stepComboBox->setCurrentIndex(previousIndex);
-    }
 
     if (ui->stepComboBox->currentIndex() == -1)
         m_initialized = false;
@@ -352,6 +335,8 @@ void NephogramSettingWidget::beforeUnload()
 
 void NephogramSettingWidget::on_stepComboBox_currentIndexChanged(int index)
 {
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     if (index < 0)
         return;
 
@@ -406,6 +391,8 @@ void NephogramSettingWidget::loadFileName(const QString& dataPath)
 
 void NephogramSettingWidget::on_analysisComboBox_currentIndexChanged(int)
 {
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     const QString previousDir = ui->resultDirComboBox->currentData().toString();
@@ -419,12 +406,16 @@ void NephogramSettingWidget::on_analysisComboBox_currentIndexChanged(int)
 
 void NephogramSettingWidget::on_resultDirComboBox_currentIndexChanged(int)
 {
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     m_dataPath = selectedResultDirectoryPath();
     loadFileName(m_dataPath);
 }
 
 void NephogramSettingWidget::on_resultTimeComboBox_currentIndexChanged(int)
 {
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     const QString previousName = ui->stepComboBox->currentText();
@@ -442,6 +433,9 @@ void NephogramSettingWidget::on_resultTimeComboBox_currentIndexChanged(int)
 
 void NephogramSettingWidget::on_scalarComboBox_currentIndexChanged(int)
 {
+    PostResultSelectionUtils::rememberFieldSelection(ui->scalarComboBox);
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     updateNephogram(currentScalarName());
 }
 
@@ -449,6 +443,7 @@ void NephogramSettingWidget::readTecplot(const QString& fileName)
 {
     QString errorMessage;
     m_grid = PostTecplotUtils::readGrid(fileName, &errorMessage);
+    invalidateDisplaySurface();
     m_loadedFileName = fileName;
 
     if (!m_grid)
@@ -492,7 +487,11 @@ void NephogramSettingWidget::readTecplot(const QString& fileName)
     }
 
     const QString previousScalar = currentScalarName();
-    ResultDisplayNames::populateCombo(ui->scalarComboBox, scalarNames, previousScalar);
+    const QString preferredScalar = !PostResultSelectionUtils::sharedResultSelection().fieldName.isEmpty()
+                                        ? PostResultSelectionUtils::sharedResultSelection().fieldName
+                                        : previousScalar;
+    ResultDisplayNames::populateCombo(ui->scalarComboBox, scalarNames, preferredScalar);
+    PostResultSelectionUtils::rememberFieldSelection(ui->scalarComboBox);
     updateNephogram(currentScalarName());
 }
 
@@ -523,18 +522,41 @@ void NephogramSettingWidget::updateNephogram(const QString& selectedScalarName)
         return;
     }
 
-    if (ui->autoRangeCheckBox->isChecked())
-        setRangeControls(dataRange[0], dataRange[1]);
-
+    PostFieldRangeStyle& rangeStyle = postFieldRangeStyle(selectedScalarName,
+                                                          dataRange[0], dataRange[1]);
+    {
+        const QSignalBlocker autoBlocker(ui->autoRangeCheckBox);
+        const QSignalBlocker minBlocker(ui->rangeMinSpinBox);
+        const QSignalBlocker maxBlocker(ui->rangeMaxSpinBox);
+        ui->autoRangeCheckBox->setChecked(rangeStyle.automatic);
+        ui->rangeMinSpinBox->setValue(rangeStyle.initialized ? rangeStyle.minimum : dataRange[0]);
+        ui->rangeMaxSpinBox->setValue(rangeStyle.initialized ? rangeStyle.maximum : dataRange[1]);
+    }
     double minV = dataRange[0];
     double maxV = dataRange[1];
-    displayRange(dataRange[0], dataRange[1], minV, maxV);
+    resolvePostDisplayRange(selectedScalarName, dataRange[0], dataRange[1], minV, maxV);
+
+    bool mapperUsePointData = usePointData;
+    if (!prepareDisplaySurface(selectedScalarName, usePointData, mapperUsePointData))
+        return;
 
     syncScalarBarFromCurrent();
 
-    m_mapper->SetInputData(m_grid);
+    if (m_displaySurface)
+        m_mapper->SetInputData(m_displaySurface);
+    else
+        m_mapper->SetInputData(m_grid);
     m_actor->SetMapper(m_mapper);
-    m_actor->GetProperty()->SetRepresentationToSurface();
+    auto* surfaceProperty = m_actor->GetProperty();
+    surfaceProperty->SetRepresentationToSurface();
+    surfaceProperty->EdgeVisibilityOff();
+    surfaceProperty->SetInterpolationToPhong();
+    surfaceProperty->LightingOn();
+    // 保留云图本身的颜色，同时用轻微漫反射增强三维形体感，避免“塑料感”。
+    surfaceProperty->SetAmbient(0.48);
+    surfaceProperty->SetDiffuse(0.50);
+    surfaceProperty->SetSpecular(0.02);
+    surfaceProperty->SetSpecularPower(16.0);
     ensureActorAttached();
 
     updateContourOverlay(selectedScalarName, usePointData, minV, maxV);
@@ -550,7 +572,12 @@ void NephogramSettingWidget::initResultDirectoryOptions()
     const QVector<PostResultAutoPrepare::ResultGroup> groups =
         PostResultAutoPrepare::resultGroups(projectDir);
     QString previousAnalysis = ui->analysisComboBox->currentData().toString();
-    const QString previousDir = ui->resultDirComboBox->currentData().toString();
+    QString previousDir = ui->resultDirComboBox->currentData().toString();
+    const auto& sharedSelection = PostResultSelectionUtils::sharedResultSelection();
+    if (previousAnalysis.isEmpty())
+        previousAnalysis = sharedSelection.analysisKey;
+    if (previousDir.isEmpty())
+        previousDir = sharedSelection.resultDir;
     if (previousAnalysis.isEmpty() && !previousDir.isEmpty())
         previousAnalysis =
             PostResultSelectionUtils::analysisKeyForSource(groups, previousDir);
@@ -645,49 +672,12 @@ bool NephogramSettingWidget::displayRange(double dataMin, double dataMax, double
 void NephogramSettingWidget::applyLegendAppearance(vtkScalarBarActor* scalarBar, double minV,
                                                     double maxV) const
 {
+    Q_UNUSED(minV);
+    Q_UNUSED(maxV);
     if (!scalarBar)
         return;
 
-    const double width = ui->legendWidthSpinBox->value() / 100.0;
-    const double height = ui->legendHeightSpinBox->value() / 100.0;
-    const double defaultX = std::max(0.01, 0.985 - width);
-    const double defaultY = std::max(0.01, 0.5 * (1.0 - height));
-    const double x = m_hasLegendPosition ? m_legendPositionX : defaultX;
-    const double y = m_hasLegendPosition ? m_legendPositionY : defaultY;
-
-    scalarBar->SetOrientationToVertical();
-    scalarBar->UnconstrainedFontSizeOn();
-    scalarBar->SetWidth(width);
-    scalarBar->SetHeight(height);
-    scalarBar->SetPosition(qBound(0.0, x, std::max(0.0, 1.0 - width)),
-                           qBound(0.0, y, std::max(0.0, 1.0 - height)));
-    scalarBar->SetMaximumWidthInPixels(1000);
-    scalarBar->SetMaximumHeightInPixels(2000);
-    // “刻度数量”表示色标上显示的刻度标签总数，不是数值间隔。
-    // 交给 vtkScalarBarActor 在当前上下限之间均匀生成对应数量的刻度。
-    scalarBar->UseCustomLabelsOff();
-    scalarBar->SetCustomLabels(nullptr);
-    scalarBar->SetNumberOfLabels(ui->legendTickCountSpinBox->value());
-    const QByteArray labelFormat =
-        QStringLiteral("%.%1g").arg(ui->legendPrecisionSpinBox->value()).toLatin1();
-    scalarBar->SetLabelFormat(labelFormat.constData());
-    scalarBar->DrawBackgroundOff();
-    scalarBar->DrawFrameOff();
-
-    vtkTextProperty* titleProperty = scalarBar->GetTitleTextProperty();
-    vtkTextProperty* labelProperty = scalarBar->GetLabelTextProperty();
-    if (titleProperty)
-    {
-        titleProperty->SetFontSize(ui->legendTitleFontSpinBox->value());
-        titleProperty->SetColor(0.08, 0.08, 0.08);
-        titleProperty->SetBold(1);
-    }
-    if (labelProperty)
-    {
-        labelProperty->SetFontSize(ui->legendLabelFontSpinBox->value());
-        labelProperty->SetColor(0.08, 0.08, 0.08);
-        labelProperty->SetBold(0);
-    }
+    applyStandardPostScalarBar(scalarBar);
 }
 
 void NephogramSettingWidget::installLegendDragInteraction()
@@ -800,6 +790,10 @@ bool NephogramSettingWidget::handleLegendDragEvent(unsigned long eventId)
         const double y = qBound(0.0, localY - m_legendDragOffsetY,
                                 std::max(0.0, 1.0 - height));
         scalarBar->SetPosition(x, y);
+        PostScalarBarStyle& style = postScalarBarStyle();
+        style.hasCustomPosition = true;
+        style.positionX = x;
+        style.positionY = y;
         scalarBar->Modified();
 
         m_legendPositionX = x;
@@ -867,13 +861,109 @@ void NephogramSettingWidget::updateLookupTableRange(vtkLookupTable* lut, double 
     if (std::abs(maxV - minV) < 1e-12)
         maxV = minV + 1.0;
 
-    lut->SetNumberOfTableValues(256);
+    // 不再使用 VTK 默认 HSV 彩虹。默认 HSV 饱和度太高、过渡偏硬，
+    // 在有限元网格上很容易产生“色块感”。这里使用更柔和的工程彩虹，
+    // 并提高采样数，让连续云图和色标的过渡更细腻。
+    struct ColorStop
+    {
+        double t;
+        double r;
+        double g;
+        double b;
+    };
+
+    static constexpr ColorStop kStops[] = {
+        {0.00, 0.10, 0.20, 0.72},
+        {0.16, 0.05, 0.43, 0.92},
+        {0.32, 0.00, 0.72, 0.88},
+        {0.48, 0.13, 0.78, 0.55},
+        {0.64, 0.72, 0.84, 0.22},
+        {0.80, 0.98, 0.65, 0.12},
+        {0.92, 0.94, 0.28, 0.10},
+        {1.00, 0.72, 0.04, 0.08},
+    };
+
+    constexpr int tableSize = 512;
+    constexpr int stopCount = int(sizeof(kStops) / sizeof(kStops[0]));
+    lut->SetNumberOfTableValues(tableSize);
     lut->SetTableRange(minV, maxV);
-    lut->SetHueRange(2.0 / 3.0, 0.0);
-    lut->SetSaturationRange(1.0, 1.0);
-    lut->SetValueRange(1.0, 1.0);
-    lut->SetRampToLinear();
+
+    for (int i = 0; i < tableSize; ++i)
+    {
+        const double t = double(i) / double(tableSize - 1);
+        int hi = 1;
+        while (hi < stopCount && t > kStops[hi].t)
+            ++hi;
+        hi = std::min(hi, stopCount - 1);
+        const int lo = std::max(0, hi - 1);
+        const double span = std::max(kStops[hi].t - kStops[lo].t, 1.0e-12);
+        const double u = std::clamp((t - kStops[lo].t) / span, 0.0, 1.0);
+
+        const double r = kStops[lo].r + (kStops[hi].r - kStops[lo].r) * u;
+        const double g = kStops[lo].g + (kStops[hi].g - kStops[lo].g) * u;
+        const double b = kStops[lo].b + (kStops[hi].b - kStops[lo].b) * u;
+        lut->SetTableValue(i, r, g, b, 1.0);
+    }
+
+    lut->SetNanColor(0.55, 0.55, 0.55, 1.0);
     lut->Build();
+}
+
+bool NephogramSettingWidget::prepareDisplaySurface(const QString& scalarName,
+                                                    bool sourceUsePointData,
+                                                    bool& mapperUsePointData)
+{
+    mapperUsePointData = sourceUsePointData;
+    if (!m_grid || scalarName.isEmpty())
+        return false;
+
+    mapperUsePointData = sourceUsePointData;
+
+    if (m_displaySurface && m_displaySurfaceUsePointData == mapperUsePointData)
+    {
+        const QByteArray scalarUtf8 = scalarName.toUtf8();
+        vtkDataArray* cachedArray = mapperUsePointData
+                                       ? m_displaySurface->GetPointData()->GetArray(scalarUtf8.constData())
+                                       : m_displaySurface->GetCellData()->GetArray(scalarUtf8.constData());
+        if (cachedArray)
+            return true;
+    }
+
+    auto surfaceFilter = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
+    surfaceFilter->SetInputData(m_grid);
+    surfaceFilter->Update();
+
+    auto* surface = surfaceFilter->GetOutput();
+    if (!surface || surface->GetNumberOfPoints() <= 0 || surface->GetNumberOfCells() <= 0)
+        return false;
+
+    // 生成连续点法线。小角度网格面平滑过渡，真正的尖锐几何边仍保留，
+    // 比直接绘制三角面片更接近商用 CAE 的表面质感。
+    auto normals = vtkSmartPointer<vtkPolyDataNormals>::New();
+    normals->SetInputData(surface);
+    normals->ComputePointNormalsOn();
+    normals->ComputeCellNormalsOff();
+    normals->ConsistencyOn();
+    normals->SplittingOn();
+    normals->SetFeatureAngle(55.0);
+    normals->Update();
+
+    if (!m_displaySurface)
+        m_displaySurface = vtkSmartPointer<vtkPolyData>::New();
+    m_displaySurface->ShallowCopy(normals->GetOutput());
+    m_displaySurfaceUsePointData = mapperUsePointData;
+
+    const QByteArray scalarUtf8 = scalarName.toUtf8();
+    vtkDataArray* displayArray = mapperUsePointData
+                                     ? m_displaySurface->GetPointData()->GetArray(scalarUtf8.constData())
+                                     : m_displaySurface->GetCellData()->GetArray(scalarUtf8.constData());
+    return displayArray != nullptr;
+}
+
+void NephogramSettingWidget::invalidateDisplaySurface()
+{
+    m_displaySurface = nullptr;
+    m_displaySurfaceUsePointData = true;
 }
 
 void NephogramSettingWidget::configureMapper(vtkDataSetMapper* mapper, const QString& scalarName,
@@ -909,22 +999,25 @@ QJsonObject NephogramSettingWidget::saveJson()
     obj[QStringLiteral("autoRange")] = ui->autoRangeCheckBox->isChecked();
     obj[QStringLiteral("rangeMin")] = ui->rangeMinSpinBox->value();
     obj[QStringLiteral("rangeMax")] = ui->rangeMaxSpinBox->value();
-    obj[QStringLiteral("legendTitleFont")] = ui->legendTitleFontSpinBox->value();
-    obj[QStringLiteral("legendLabelFont")] = ui->legendLabelFontSpinBox->value();
-    obj[QStringLiteral("legendPrecision")] = ui->legendPrecisionSpinBox->value();
-    obj[QStringLiteral("legendTickCount")] = ui->legendTickCountSpinBox->value();
-    obj[QStringLiteral("legendWidth")] = ui->legendWidthSpinBox->value();
-    obj[QStringLiteral("legendHeight")] = ui->legendHeightSpinBox->value();
+    const PostScalarBarStyle& barStyle = postScalarBarStyle();
+    const PostContourStyle& contourStyle = postContourStyle();
+    obj[QStringLiteral("showScalarBar")] = ui->showScalarBarCheckBox->isChecked();
+    obj[QStringLiteral("legendTitleFont")] = barStyle.titleFont;
+    obj[QStringLiteral("legendLabelFont")] = barStyle.labelFont;
+    obj[QStringLiteral("legendPrecision")] = barStyle.precision;
+    obj[QStringLiteral("legendTickCount")] = barStyle.tickCount;
+    obj[QStringLiteral("legendWidth")] = barStyle.widthPercent;
+    obj[QStringLiteral("legendHeight")] = barStyle.heightPercent;
     if (m_visualService && m_visualService->scalarBarActor())
     {
         const double* position = m_visualService->scalarBarActor()->GetPosition();
         obj[QStringLiteral("legendPositionX")] = position[0];
         obj[QStringLiteral("legendPositionY")] = position[1];
     }
-    obj[QStringLiteral("contourEnabled")] = ui->contourEnableCheckBox->isChecked();
-    obj[QStringLiteral("contourLevels")] = ui->contourLevelsSpinBox->value();
-    obj[QStringLiteral("contourLabels")] = ui->contourLabelCheckBox->isChecked();
-    obj[QStringLiteral("contourLabelFont")] = ui->contourLabelFontSpinBox->value();
+    obj[QStringLiteral("contourEnabled")] = contourStyle.enabled;
+    obj[QStringLiteral("contourLevels")] = contourStyle.levels;
+    obj[QStringLiteral("contourLabels")] = contourStyle.labels;
+    obj[QStringLiteral("contourLabelFont")] = contourStyle.labelFont;
     return obj;
 }
 
@@ -935,32 +1028,31 @@ void NephogramSettingWidget::loadJson(const QJsonObject& obj)
     ui->autoRangeCheckBox->setChecked(obj.value(QStringLiteral("autoRange")).toBool(true));
     ui->rangeMinSpinBox->setValue(obj.value(QStringLiteral("rangeMin")).toDouble(0.0));
     ui->rangeMaxSpinBox->setValue(obj.value(QStringLiteral("rangeMax")).toDouble(1.0));
-    ui->legendTitleFontSpinBox->setValue(
-        obj.value(QStringLiteral("legendTitleFont")).toInt(16));
-    ui->legendLabelFontSpinBox->setValue(
-        obj.value(QStringLiteral("legendLabelFont")).toInt(13));
-    ui->legendPrecisionSpinBox->setValue(
-        obj.value(QStringLiteral("legendPrecision")).toInt(4));
-    // 旧版本的 legendInterval 表示“数值间隔”，与现在的“刻度数量”语义不同，
-    // 无法可靠换算；旧工程统一按默认 7 个刻度显示。
-    ui->legendTickCountSpinBox->setValue(
-        obj.value(QStringLiteral("legendTickCount")).toInt(7));
-    ui->legendWidthSpinBox->setValue(obj.value(QStringLiteral("legendWidth")).toInt(10));
-    ui->legendHeightSpinBox->setValue(obj.value(QStringLiteral("legendHeight")).toInt(65));
+    PostScalarBarStyle& barStyle = postScalarBarStyle();
+    PostContourStyle& contourStyle = postContourStyle();
+    barStyle.visible = obj.value(QStringLiteral("showScalarBar")).toBool(barStyle.visible);
+    barStyle.titleFont = obj.value(QStringLiteral("legendTitleFont")).toInt(barStyle.titleFont);
+    barStyle.labelFont = obj.value(QStringLiteral("legendLabelFont")).toInt(barStyle.labelFont);
+    barStyle.precision = obj.value(QStringLiteral("legendPrecision")).toInt(barStyle.precision);
+    barStyle.tickCount = obj.value(QStringLiteral("legendTickCount")).toInt(barStyle.tickCount);
+    barStyle.widthPercent = obj.value(QStringLiteral("legendWidth")).toInt(barStyle.widthPercent);
+    barStyle.heightPercent = obj.value(QStringLiteral("legendHeight")).toInt(barStyle.heightPercent);
+    ui->showScalarBarCheckBox->setChecked(barStyle.visible);
     m_hasLegendPosition = obj.contains(QStringLiteral("legendPositionX")) &&
                           obj.contains(QStringLiteral("legendPositionY"));
     if (m_hasLegendPosition)
     {
         m_legendPositionX = obj.value(QStringLiteral("legendPositionX")).toDouble();
         m_legendPositionY = obj.value(QStringLiteral("legendPositionY")).toDouble();
+        barStyle.hasCustomPosition = true;
+        barStyle.positionX = m_legendPositionX;
+        barStyle.positionY = m_legendPositionY;
     }
-    ui->contourEnableCheckBox->setChecked(
-        obj.value(QStringLiteral("contourEnabled")).toBool(false));
-    ui->contourLevelsSpinBox->setValue(obj.value(QStringLiteral("contourLevels")).toInt(10));
-    ui->contourLabelCheckBox->setChecked(
-        obj.value(QStringLiteral("contourLabels")).toBool(false));
-    ui->contourLabelFontSpinBox->setValue(
-        obj.value(QStringLiteral("contourLabelFont")).toInt(12));
+    contourStyle.enabled = obj.value(QStringLiteral("contourEnabled")).toBool(contourStyle.enabled);
+    contourStyle.levels = obj.value(QStringLiteral("contourLevels")).toInt(contourStyle.levels);
+    contourStyle.labels = obj.value(QStringLiteral("contourLabels")).toBool(contourStyle.labels);
+    contourStyle.labelFont = obj.value(QStringLiteral("contourLabelFont")).toInt(contourStyle.labelFont);
+    ui->showContourCheckBox->setChecked(contourStyle.enabled);
     updateRangeEditorState();
 
     const QString analysisKey = obj.value(QStringLiteral("analysisKey")).toString();
@@ -968,6 +1060,14 @@ void NephogramSettingWidget::loadJson(const QJsonObject& obj)
     const QString resultTime = obj.value(QStringLiteral("resultTime")).toString();
     const QString step = obj.value(QStringLiteral("step")).toString();
     const QString scalar = obj.value(QStringLiteral("scalar")).toString();
+    if (!scalar.isEmpty() && obj.contains(QStringLiteral("autoRange")))
+    {
+        PostFieldRangeStyle& rangeStyle = postFieldRangeStyle(scalar);
+        rangeStyle.automatic = obj.value(QStringLiteral("autoRange")).toBool(true);
+        rangeStyle.minimum = obj.value(QStringLiteral("rangeMin")).toDouble(0.0);
+        rangeStyle.maximum = obj.value(QStringLiteral("rangeMax")).toDouble(1.0);
+        rangeStyle.initialized = rangeStyle.maximum > rangeStyle.minimum;
+    }
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     const QString resolvedResultDir =
@@ -1077,6 +1177,7 @@ void NephogramSettingWidget::readVtu(const QString& fileName)
     }
 
     m_grid = grid;
+    invalidateDisplaySurface();
     m_loadedFileName = fileName;
 
     QStringList scalarNames;
@@ -1112,7 +1213,11 @@ void NephogramSettingWidget::readVtu(const QString& fileName)
     }
 
     const QString previousScalar = currentScalarName();
-    ResultDisplayNames::populateCombo(ui->scalarComboBox, scalarNames, previousScalar);
+    const QString preferredScalar = !PostResultSelectionUtils::sharedResultSelection().fieldName.isEmpty()
+                                        ? PostResultSelectionUtils::sharedResultSelection().fieldName
+                                        : previousScalar;
+    ResultDisplayNames::populateCombo(ui->scalarComboBox, scalarNames, preferredScalar);
+    PostResultSelectionUtils::rememberFieldSelection(ui->scalarComboBox);
     updateNephogram(currentScalarName());
 }
 
@@ -1142,30 +1247,30 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName,
 
     clearContourOverlay();
 
-    if (!ui->contourEnableCheckBox->isChecked())
+    if (!postContourStyle().enabled)
         return;
 
     if (scalarName.isEmpty())
         return;
 
-    // 保持逻辑简单：只抽外表面，然后用表面上的点数据生成等值线。
-    // 如果结果是 CellData，只在抽出的表面上转 PointData，避免体内部单元参与平均。
-    auto surfaceFilter = vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-    surfaceFilter->SetInputData(m_grid);
-    surfaceFilter->Update();
-
-    vtkPolyData* surface = surfaceFilter->GetOutput();
+    // 等值线与云图使用同一张显示表面，避免两套插值造成视觉错位。
+    bool mapperUsePointData = usePointData;
+    prepareDisplaySurface(scalarName, usePointData, mapperUsePointData);
+    vtkPolyData* surface = m_displaySurface;
     if (!surface || surface->GetNumberOfPoints() <= 0 || surface->GetNumberOfCells() <= 0)
         return;
 
     vtkSmartPointer<vtkPolyData> contourInput = vtkSmartPointer<vtkPolyData>::New();
+    const QByteArray scalarNameUtf8 = scalarName.toUtf8();
 
-    if (usePointData)
+    if (surface->GetPointData() &&
+        surface->GetPointData()->GetArray(scalarNameUtf8.constData()))
     {
         contourInput->ShallowCopy(surface);
     }
     else
     {
+        // 原始单元显示模式下，等值线仍需要点标量；这里仅为等值线做显示转换。
         auto cellToPoint = vtkSmartPointer<vtkCellDataToPointData>::New();
         cellToPoint->SetInputData(surface);
         cellToPoint->PassCellDataOff();
@@ -1181,7 +1286,6 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName,
         return;
     }
 
-    const QByteArray scalarNameUtf8 = scalarName.toUtf8();
     auto* pointData = contourInput->GetPointData();
     vtkDataArray* contourArray = pointData ? pointData->GetArray(scalarNameUtf8.constData()) : nullptr;
 
@@ -1205,7 +1309,7 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName,
                                     vtkDataObject::FIELD_ASSOCIATION_POINTS,
                                     scalarNameUtf8.constData());
 
-    const int levels = std::max(1, ui->contourLevelsSpinBox->value());
+    const int levels = std::max(1, postContourStyle().levels);
     contour->SetNumberOfContours(levels);
 
     if (levels == 1)
@@ -1224,7 +1328,13 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName,
 
     contour->Update();
 
-    vtkPolyData* contourOutput = contour->GetOutput();
+    // 把等值线的碎线段连接成长折线。几何位置不做“造假式平滑”，
+    // 但连接后的线在抗锯齿和标签布置上会更稳定。
+    auto stripper = vtkSmartPointer<vtkStripper>::New();
+    stripper->SetInputConnection(contour->GetOutputPort());
+    stripper->Update();
+
+    vtkPolyData* contourOutput = stripper->GetOutput();
     if (!contourOutput || contourOutput->GetNumberOfCells() <= 0 ||
         contourOutput->GetNumberOfPoints() <= 0)
     {
@@ -1239,28 +1349,28 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName,
 
     auto contourMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
     contourMapper->SetInputData(contourData);
-    contourMapper->SetLookupTable(m_mapper->GetLookupTable());
-    contourMapper->SetScalarModeToUsePointFieldData();
-    contourMapper->SelectColorArray(scalarNameUtf8.constData());
-    contourMapper->SetScalarRange(minV, maxV);
-    contourMapper->InterpolateScalarsBeforeMappingOn();
-    contourMapper->ScalarVisibilityOn();
+    // 商软常用深色等值线叠加在连续云图上，而不是让线条继续使用同一 LUT。
+    // 这样每条线的轮廓更清楚，也不会在相近颜色区域里“消失”。
+    contourMapper->ScalarVisibilityOff();
     contourMapper->SetResolveCoincidentTopologyToPolygonOffset();
     contourMapper->SetRelativeCoincidentTopologyLineOffsetParameters(-1.0, -1.0);
 
     m_contourActor->SetMapper(contourMapper);
     m_contourActor->PickableOff();
-    m_contourActor->GetProperty()->LightingOff();
-    m_contourActor->GetProperty()->SetOpacity(0.92);
-    m_contourActor->GetProperty()->SetLineWidth(1.2);
+    auto* contourProperty = m_contourActor->GetProperty();
+    contourProperty->LightingOff();
+    contourProperty->SetColor(0.10, 0.10, 0.10);
+    contourProperty->SetOpacity(0.82);
+    contourProperty->SetLineWidth(1.0);
+    contourProperty->SetRenderLinesAsTubes(true);
 
     ren->AddActor(m_contourActor);
 
-    if (!ui->contourLabelCheckBox->isChecked())
+    if (!postContourStyle().labels)
         return;
 
     vtkDataArray* contourScalars = contourData->GetPointData()
-                                       ? contourData->GetPointData()->GetScalars()
+                                       ? contourData->GetPointData()->GetArray(scalarNameUtf8.constData())
                                        : nullptr;
     if (!contourScalars)
         return;
@@ -1274,8 +1384,15 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName,
     const double span = std::max(std::abs(maxV - minV), 1e-12);
     const double tol = span * 1e-5;
 
-    QVector<double> addedLevels;
-    addedLevels.reserve(maxLabels);
+    struct LabelCandidate
+    {
+        double value{0.0};
+        vtkIdType pointId{-1};
+        double length{0.0};
+    };
+
+    QVector<LabelCandidate> candidates;
+    candidates.reserve(levels);
 
     const vtkIdType cellCount = contourData->GetNumberOfCells();
     for (vtkIdType ci = 0; ci < cellCount; ++ci)
@@ -1285,33 +1402,69 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName,
             continue;
 
         vtkIdList* ids = cell->GetPointIds();
-        if (!ids || ids->GetNumberOfIds() <= 0)
+        if (!ids || ids->GetNumberOfIds() < 2)
             continue;
 
         const vtkIdType midId = ids->GetId(ids->GetNumberOfIds() / 2);
         const double v = contourScalars->GetComponent(midId, 0);
 
-        bool exists = false;
-        for (double lv : addedLevels)
+        double lineLength = 0.0;
+        double p0[3];
+        contourData->GetPoint(ids->GetId(0), p0);
+        for (vtkIdType pi = 1; pi < ids->GetNumberOfIds(); ++pi)
         {
-            if (std::abs(lv - v) <= tol)
+            double p1[3];
+            contourData->GetPoint(ids->GetId(pi), p1);
+            const double dx = p1[0] - p0[0];
+            const double dy = p1[1] - p0[1];
+            const double dz = p1[2] - p0[2];
+            lineLength += std::sqrt(dx * dx + dy * dy + dz * dz);
+            p0[0] = p1[0];
+            p0[1] = p1[1];
+            p0[2] = p1[2];
+        }
+
+        int existing = -1;
+        for (int i = 0; i < candidates.size(); ++i)
+        {
+            if (std::abs(candidates[i].value - v) <= tol)
             {
-                exists = true;
+                existing = i;
                 break;
             }
         }
 
-        if (exists)
-            continue;
+        if (existing < 0)
+        {
+            candidates.push_back({v, midId, lineLength});
+        }
+        else if (lineLength > candidates[existing].length)
+        {
+            // 同一等值级只在最长的一条连续线附近标一个值，减少标签堆叠。
+            candidates[existing] = {v, midId, lineLength};
+        }
+    }
 
+    std::sort(candidates.begin(), candidates.end(),
+              [](const LabelCandidate& a, const LabelCandidate& b) {
+                  return a.value < b.value;
+              });
+
+    const int labelCount = std::min(maxLabels, static_cast<int>(candidates.size()));
+    for (int i = 0; i < labelCount; ++i)
+    {
+        int candidateIndex = i;
+        if (candidates.size() > labelCount && labelCount > 1)
+        {
+            const double t = double(i) / double(labelCount - 1);
+            candidateIndex = int(std::lround(t * double(candidates.size() - 1)));
+        }
+
+        const auto& candidate = candidates[candidateIndex];
         double p[3];
-        contourData->GetPoint(midId, p);
+        contourData->GetPoint(candidate.pointId, p);
         labelPts->InsertNextPoint(p);
-        labelVals->InsertNextValue(v);
-        addedLevels.push_back(v);
-
-        if (addedLevels.size() >= maxLabels)
-            break;
+        labelVals->InsertNextValue(candidate.value);
     }
 
     if (labelPts->GetNumberOfPoints() <= 0)
@@ -1329,12 +1482,16 @@ void NephogramSettingWidget::updateContourOverlay(const QString& scalarName,
     labelMapper->SetInputConnection(visiblePoints->GetOutputPort());
     labelMapper->SetLabelModeToLabelScalars();
     const QByteArray contourLabelFormat =
-        QStringLiteral("%.%1g").arg(ui->legendPrecisionSpinBox->value()).toLatin1();
+        QStringLiteral("%.%1g").arg(postScalarBarStyle().precision).toLatin1();
     labelMapper->SetLabelFormat(contourLabelFormat.constData());
-    labelMapper->GetLabelTextProperty()->SetFontSize(ui->contourLabelFontSpinBox->value());
+    labelMapper->GetLabelTextProperty()->SetFontSize(postContourStyle().labelFont);
     labelMapper->GetLabelTextProperty()->SetColor(0.08, 0.08, 0.08);
-    labelMapper->GetLabelTextProperty()->SetBold(1);
-    labelMapper->GetLabelTextProperty()->SetShadow(1);
+    labelMapper->GetLabelTextProperty()->SetBold(0);
+    labelMapper->GetLabelTextProperty()->SetShadow(0);
+    labelMapper->GetLabelTextProperty()->SetBackgroundColor(1.0, 1.0, 1.0);
+    labelMapper->GetLabelTextProperty()->SetBackgroundOpacity(0.72);
+    labelMapper->GetLabelTextProperty()->SetJustificationToCentered();
+    labelMapper->GetLabelTextProperty()->SetVerticalJustificationToCentered();
 
     m_contourLabelActor->SetMapper(labelMapper);
     ren->AddActor2D(m_contourLabelActor);

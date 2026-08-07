@@ -3,6 +3,7 @@
 
 #include <ContextMenuHub.h>
 #include <QHeaderView.h>
+#include <services/UiFrameService.h>
 #include <services/VisualWidgetService.h>
 
 #include <QAction>
@@ -61,6 +62,17 @@ void ProjectTreeWidget::init()
     applyTreeTheme();
     connect(m_treeWidget, &QTreeWidget::currentItemChanged, this,
             &ProjectTreeWidget::onCurItemChanged);
+    connect(m_treeWidget, &QTreeWidget::itemClicked, this,
+            [this](QTreeWidgetItem* item, int)
+            {
+                auto* node = dynamic_cast<ProjectNode*>(item);
+                BasePage* page = node ? node->getPage() : nullptr;
+                QWidget* widget = page ? page->getWidget() : nullptr;
+                if (!widget || !widget->property("projectTreeDockPanel").toBool())
+                    return;
+                if (auto* uiFrame = ServiceRegistry::instance().getService<UiFrameService>())
+                    uiFrame->setWidgetVisible(widget, true);
+            });
 }
 
 void ProjectTreeWidget::applyTreeTheme()
@@ -88,6 +100,7 @@ void ProjectTreeWidget::applyTreeTheme()
 }
 void ProjectTreeWidget::buildDefaultProjectTree(const QString& projectName)
 {
+    m_activeSettingsPage = nullptr;
     m_treeWidget->clear();
     nodeMap.clear();
 
@@ -119,24 +132,21 @@ void ProjectTreeWidget::onCurItemChanged(QTreeWidgetItem* current, QTreeWidgetIt
         node->setPage(page);
     }
 
-    // 1. 处理旧页面的卸载（同页重入不触发 unload）
-    BasePage* prevPage = nullptr;
-    if (previous)
+    QWidget* widget = page->getWidget();
+    if (widget && widget->property("projectTreeDockPanel").toBool())
     {
-        auto* prevNode = dynamic_cast<ProjectNode*>(previous);
-        if (prevNode)
-        {
-            prevPage = prevNode->getPage();
-            if (prevPage && prevPage != page)
-            {
-                prevPage->beforeUnload();
-            }
-        }
+        page->beforeLoad();
+        ensureSceneVisibleForCurrentNode(current);
+        return;
     }
 
-    // 2. 获取并配置新页面
-    QWidget* widget = page->getWidget();
+    // 1. 处理旧页面的卸载（同页重入不触发 unload）
+    Q_UNUSED(previous);
+    BasePage* prevPage = m_activeSettingsPage.data();
+    if (prevPage && prevPage != page)
+        prevPage->beforeUnload();
 
+    // 2. 获取并配置新页面
     // 关键修正：确保新页面具有拉伸属性
     if (widget->sizePolicy().verticalPolicy() != QSizePolicy::Expanding)
     {
@@ -153,6 +163,7 @@ void ProjectTreeWidget::onCurItemChanged(QTreeWidgetItem* current, QTreeWidgetIt
     {
         page->beforeLoad();
     }
+    m_activeSettingsPage = page;
     m_stackWidget->setCurrentWidget(widget);
 
     const QString pageTitle = normalizedPageTitle(widget, current);
@@ -270,6 +281,8 @@ void ProjectTreeWidget::deletePage(QTreeWidgetItem* item)
 
     if (BasePage* page = node->getPage())
     {
+        if (m_activeSettingsPage == page)
+            m_activeSettingsPage = nullptr;
         const QString uuid = page->getUuid();
         QWidget* widget = page->getWidget();
         m_stackWidget->removeWidget(widget);
@@ -322,7 +335,13 @@ void ProjectTreeWidget::deleteProjectNode(ProjectNode* node)
     }
     if (node->getPage())
     {
-        delete node->getPage();
+        BasePage* page = node->getPage();
+        if (m_activeSettingsPage == page)
+            m_activeSettingsPage = nullptr;
+        if (page->getWidget()->property("projectTreeDockPanel").toBool())
+            node->setPage(nullptr);
+        else
+            delete page;
     }
     delete node;
 }
@@ -346,4 +365,3 @@ void ProjectTreeWidget::blockSignal(bool value)
         m_treeWidget->blockSignals(false);
     }
 }
-

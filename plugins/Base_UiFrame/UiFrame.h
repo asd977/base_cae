@@ -34,6 +34,7 @@ class UiFrame : public SARibbonMainWindow, public UiFrameService
     ~UiFrame() override;
 
     QAction* addWidget(QWidget* widget, QString name) override;
+    void setWidgetVisible(QWidget* widget, bool visible) override;
     void restoreUiState();
     void storeUiState();
 

@@ -84,6 +84,7 @@ class Solver : public QObject, public SolverService
     void syncDamAnalysisMCase(ProjectNode* analysisNode) const;
     void connectDamLayerUpdates(DamAnalysisWidget* page, ProjectNode* analysisNode) const;
     void addFillStorageCycleNode(ProjectNode* analysisNode, bool setCurrent) const;
+    void addSeepageNaturalBoundaryNode(ProjectNode* analysisNode, bool setCurrent) const;
     void addGeoStressRegressionNode(ProjectNode* analysisNode, bool setCurrent);
     void addCaveSupportComputationNode(ProjectNode* analysisNode, bool setCurrent);
     void addCaveLiningBoundaryNode(ProjectNode* supportNode, bool innerBoundary,

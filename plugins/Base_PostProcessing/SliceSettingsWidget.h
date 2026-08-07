@@ -103,12 +103,14 @@ class SliceSettingsWidget : public BasePage
     // 单切面结果
     vtkSmartPointer<vtkPlane> m_plane;
     vtkSmartPointer<vtkActor> m_sliceActor;
+    vtkSmartPointer<vtkActor> m_sliceContourActor;
 
     // 多切面：一组结果（确认后生成）
     QVector<vtkSmartPointer<vtkPlane>> m_multiPlanes;
     QVector<vtkSmartPointer<vtkCutter>> m_multiCutters;
     QVector<vtkSmartPointer<vtkPolyDataMapper>> m_multiMappers;
     QVector<vtkSmartPointer<vtkActor>> m_multiActors;
+    QVector<vtkSmartPointer<vtkActor>> m_multiContourActors;
 
     // 显示状态（用于 beforeLoad 挂回）
     bool m_singleDisplayed{false}; // 正在显示单切面结果

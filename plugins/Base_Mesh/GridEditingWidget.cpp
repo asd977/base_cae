@@ -6,6 +6,7 @@
 #include <PublicVariables.h>
 #include <services/VisualWidgetService.h>
 #include <services/MeshModuleControllerService.h>
+#include <services/UiFrameService.h>
 
 #include "MeshGridIO.h"
 #include "PickManager.h"
@@ -586,6 +587,8 @@ void GridEditingWidget::refreshMeshActors()
     m_lineMapper = nullptr;
 
     if (!m_visualWidgetService)
+        m_visualWidgetService = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!m_visualWidgetService)
         return;
 
     m_surfaceActor = vtkActor::SafeDownCast(m_visualWidgetService->getProp(kImportedMeshSurfacePropId));
@@ -1095,6 +1098,9 @@ void GridEditingWidget::highlightMatypes(const QSet<int>& matypes,
 
 void GridEditingWidget::beforeLoad()
 {
+    if (auto* uiFrame = ServiceRegistry::instance().getService<UiFrameService>())
+        uiFrame->setWidgetVisible(this, true);
+
     auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     vtkUnstructuredGrid* grid = meshService ? meshService->getVtkUnstructuredGrid() : nullptr;
     if (!grid || grid->GetNumberOfCells() <= 0)
@@ -1108,7 +1114,5 @@ void GridEditingWidget::beforeLoad()
 
 void GridEditingWidget::beforeUnload()
 {
-    // 筛选和着色都是全局显示状态。离开“显示控制”页面时只释放页面缓存，
-    // 不再关闭 mapper 标量着色，否则材料颜色会在切换到其他节点后突然消失。
-    clearData();
+    // The dock panel remains active while users work on other settings pages.
 }

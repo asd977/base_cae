@@ -58,7 +58,18 @@ class SeepageBoundaryPage : public BasePage
     void setTransientCurveEnabled(bool enabled, double startTime, double endTime);
     bool validateHydraulicInputs(bool transient, double startTime, double endTime,
                                  QString* errorMessage);
+    struct NaturalFreeEntry
+    {
+        int nodeId = 0;
+        double head = 0.0;
+        int correction = 0;
+    };
+
     bool validateSpecialInputs(QString* errorMessage);
+    QVector<NaturalFreeEntry> naturalFreeEntries(QString* errorMessage = nullptr);
+    int naturalHeadCorrection();
+    void setNaturalReferenceWaterLevels(bool upstreamAvailable, double upstreamLevel,
+                                        bool downstreamAvailable, double downstreamLevel);
 
     QJsonObject saveJson() override;
     void loadJson(const QJsonObject& obj) override;
@@ -92,11 +103,12 @@ class SeepageBoundaryPage : public BasePage
     void updateWaterLevelSliderRange();
     void updateWaterLevelPreview();
     void clearWaterLevelPreview();
+    void updateNaturalCorrectionPreview();
+    void clearNaturalCorrectionPreview();
     bool isNaturalFreeSurfacePage();
     QMap<int, double> selectedNodeElevations();
     void refreshNaturalFreeUi();
     double naturalHeadForNode(int nodeId, const QMap<int, double>& elevations) const;
-    int naturalHeadCorrection() const;
     bool selectedPointBounds(double bounds[6]);
     QString hydraulicRoleName() const;
     QString pickDomain();
@@ -117,4 +129,8 @@ class SeepageBoundaryPage : public BasePage
     double m_sliderMinLevel = 0.0;
     double m_sliderMaxLevel = 1.0;
     bool m_updatingCurveTable = false;
+    bool m_upstreamReferenceAvailable = false;
+    bool m_downstreamReferenceAvailable = false;
+    double m_upstreamReferenceLevel = 0.0;
+    double m_downstreamReferenceLevel = 0.0;
 };

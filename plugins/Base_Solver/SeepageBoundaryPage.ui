@@ -61,8 +61,11 @@
        <layout class="QGridLayout" name="gridLayoutSelection">
         <item row="0" column="0" colspan="3">
          <widget class="QLabel" name="boxSelectHintLabel">
+          <property name="visible">
+           <bool>false</bool>
+          </property>
           <property name="text">
-           <string>Shift 框选，Ctrl 取消。</string>
+           <string/>
           </property>
           <property name="wordWrap">
            <bool>true</bool>
@@ -72,7 +75,7 @@
         <item row="1" column="0" colspan="3">
          <widget class="QCheckBox" name="checkEnablePointPick">
           <property name="text">
-           <string>开启点选</string>
+           <string>点选节点</string>
           </property>
           <property name="checked">
            <bool>false</bool>
@@ -82,7 +85,7 @@
         <item row="2" column="0">
          <widget class="QLabel" name="labelDim">
           <property name="text">
-           <string>分组维度</string>
+           <string>分组类型</string>
           </property>
          </widget>
         </item>
@@ -92,7 +95,7 @@
         <item row="3" column="0">
          <widget class="QLabel" name="labelGroup">
           <property name="text">
-           <string>批量分组</string>
+           <string>按分组添加</string>
           </property>
          </widget>
         </item>
@@ -102,7 +105,7 @@
         <item row="3" column="2">
          <widget class="QPushButton" name="btnBatchAdd">
           <property name="text">
-           <string>添加</string>
+           <string>添加分组</string>
           </property>
          </widget>
         </item>
@@ -112,13 +115,13 @@
      <item>
       <widget class="QGroupBox" name="groupBoxInfo">
        <property name="title">
-        <string>边界概览</string>
+        <string>选择信息</string>
        </property>
        <layout class="QGridLayout" name="gridLayoutInfo">
         <item row="0" column="0">
          <widget class="QLabel" name="label1">
           <property name="text">
-           <string>选择情况</string>
+           <string>节点</string>
           </property>
          </widget>
         </item>
@@ -135,7 +138,7 @@
         <item row="1" column="0">
          <widget class="QLabel" name="labelElevationRange">
           <property name="text">
-           <string>高程范围</string>
+           <string>高程</string>
           </property>
          </widget>
         </item>
@@ -155,96 +158,56 @@
      <item>
       <widget class="QGroupBox" name="groupBoxNaturalFree">
        <property name="title">
-        <string>天然渗流边界参数</string>
+        <string>水头设置</string>
        </property>
        <property name="visible">
         <bool>false</bool>
        </property>
        <layout class="QFormLayout" name="formLayoutNaturalFree">
-        <item row="0" column="0" colspan="2">
+        <item row="0" column="0">
+         <widget class="QLabel" name="labelNaturalHead">
+          <property name="text">
+           <string>初始水头</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
          <widget class="QLabel" name="labelNaturalFreeHint">
           <property name="text">
-           <string>所选节点统一使用下列天然水头和水头修正规则。</string>
-          </property>
-          <property name="wordWrap">
-           <bool>true</bool>
+           <string>取节点高程</string>
           </property>
          </widget>
         </item>
         <item row="1" column="0">
-         <widget class="QLabel" name="labelNaturalHeadMode">
+         <widget class="QLabel" name="labelNaturalCorrection">
           <property name="text">
-           <string>天然水头</string>
+           <string>水头处理</string>
           </property>
          </widget>
         </item>
         <item row="1" column="1">
-         <widget class="QComboBox" name="comboNaturalHeadMode">
-          <item>
-           <property name="text">
-            <string>使用节点高程</string>
-           </property>
-          </item>
-          <item>
-           <property name="text">
-            <string>统一指定水头</string>
-           </property>
-          </item>
-         </widget>
-        </item>
-        <item row="2" column="0">
-         <widget class="QLabel" name="labelNaturalUniformHead">
-          <property name="text">
-           <string>指定水头 (m)</string>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="1">
-         <widget class="QDoubleSpinBox" name="spinNaturalUniformHead">
-          <property name="decimals">
-           <number>4</number>
-          </property>
-          <property name="minimum">
-           <double>-1000000.000000000000000</double>
-          </property>
-          <property name="maximum">
-           <double>1000000.000000000000000</double>
-          </property>
-          <property name="keyboardTracking">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item row="3" column="0">
-         <widget class="QLabel" name="labelNaturalCorrection">
-          <property name="text">
-           <string>水头修正</string>
-          </property>
-         </widget>
-        </item>
-        <item row="3" column="1">
          <widget class="QComboBox" name="comboNaturalCorrection">
           <item>
            <property name="text">
-            <string>不修正</string>
+            <string>保持天然水头</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>按上游水位修正</string>
+            <string>低于上游水头时改为上游水头</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>按下游水位修正</string>
+            <string>低于下游水头时改为下游水头</string>
            </property>
           </item>
          </widget>
         </item>
-        <item row="4" column="0" colspan="2">
-         <widget class="QLabel" name="labelNaturalCorrectionHint">
+        <item row="2" column="0" colspan="2">
+         <widget class="QLabel" name="labelNaturalPreviewSummary">
           <property name="text">
-           <string>水头修正仅影响后续蓄水工况：不修正；低于上游/下游水位时分别抬至对应水位。</string>
+           <string/>
           </property>
           <property name="wordWrap">
            <bool>true</bool>
@@ -296,7 +259,7 @@
         <item row="2" column="0">
          <widget class="QLabel" name="labelWaterLevelSlider">
           <property name="text">
-           <string>视图调节</string>
+           <string>水位调节</string>
           </property>
          </widget>
         </item>
@@ -486,7 +449,7 @@
        <item>
         <widget class="QPushButton" name="btnClear">
          <property name="text">
-          <string>清空选择</string>
+          <string>清除选择</string>
          </property>
         </widget>
        </item>

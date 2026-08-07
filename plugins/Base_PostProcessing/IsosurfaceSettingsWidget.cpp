@@ -89,6 +89,42 @@ IsosurfaceSettingsWidget::IsosurfaceSettingsWidget(VisualWidgetService* ppw, QWi
     configurePostResultCombo(ui->resultTimeComboBox);
     configurePostResultCombo(ui->stepComboBox);
 
+    ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+    connect(ui->showScalarBarCheckBox, &QCheckBox::toggled, this, [this](bool checked) {
+        postScalarBarStyle().visible = checked;
+        if (m_visualService)
+        {
+            m_visualService->showScalarBar(checked, false);
+            m_visualService->render();
+        }
+    });
+    connect(ui->displaySettingsButton, &QPushButton::clicked, this, [this]() {
+        const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+        double dataMin = 0.0;
+        double dataMax = 1.0;
+        if (m_grid)
+        {
+            if (vtkDataArray* array = PostFieldUtils::array(m_grid, field))
+            {
+                double range[2]{0.0, 1.0};
+                array->GetRange(range);
+                dataMin = range[0];
+                dataMax = range[1];
+            }
+        }
+        if (editPostDisplaySettings(this, m_visualService, false, false,
+                                    field.name, dataMin, dataMax))
+        {
+            ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+            updateOverallColoring();
+            if (m_singleDisplayed)
+                updateSingleIsoRealtime();
+            else if (m_multiDisplayed)
+                buildMultiIsoResult();
+            renderNow();
+        }
+    });
+
     ui->singleIsoRadioButton->setChecked(true);
     ui->isoModeStackedWidget->setCurrentIndex(0);
 
@@ -97,7 +133,6 @@ IsosurfaceSettingsWidget::IsosurfaceSettingsWidget(VisualWidgetService* ppw, QWi
     ui->valueModeRadioButton->setChecked(false);
     ui->isoSlider->setRange(0, 100);
     ui->isoSlider->setTracking(false);
-    ui->isoSlider->setToolTip(QStringLiteral("松开滑块后更新等值面，避免拖动时连续重算"));
     ui->isoSlider->setValue(50);
     ui->isoSpin->setDecimals(6);
     ui->isoSpin->setSingleStep(0.001);
@@ -150,6 +185,7 @@ IsosurfaceSettingsWidget::~IsosurfaceSettingsWidget()
 void IsosurfaceSettingsWidget::beforeLoad()
 {
     showPostProcessingOnly(m_visualService, false);
+    ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
     refreshResultGroups();
     if (ui->stepComboBox->currentIndex() == -1)
     {
@@ -178,7 +214,7 @@ void IsosurfaceSettingsWidget::beforeLoad()
         const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
         if (!field.name.isEmpty())
         {
-            m_visualService->showScalarBar(true, false);
+            m_visualService->showScalarBar(postScalarBarStyle().visible, false);
             applyStandardPostScalarBar(
                 m_visualService, ResultDisplayNames::scalarBarName(field.name));
         }
@@ -357,6 +393,8 @@ void IsosurfaceSettingsWidget::refreshResultGroups()
 
 void IsosurfaceSettingsWidget::on_analysisComboBox_currentIndexChanged(int)
 {
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     const QString previousPath = m_dataPath;
@@ -370,6 +408,8 @@ void IsosurfaceSettingsWidget::on_analysisComboBox_currentIndexChanged(int)
 
 void IsosurfaceSettingsWidget::on_resultDirComboBox_currentIndexChanged(int index)
 {
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     if (index < 0)
         return;
     m_dataPath = ui->resultDirComboBox->itemData(index).toString();
@@ -475,6 +515,10 @@ void IsosurfaceSettingsWidget::fillScalarCombo()
 {
     // QSignalBlocker 可保证所有提前返回路径都会恢复信号状态。
     PostFieldUtils::fillCombo(ui->scalarComboBox, m_grid);
+    const int sharedFieldIndex = PostResultSelectionUtils::findSharedField(
+        ui->scalarComboBox, PostFieldUtils::NameRole, PostFieldUtils::AssociationRole);
+    if (sharedFieldIndex >= 0)
+        ui->scalarComboBox->setCurrentIndex(sharedFieldIndex);
     setIsoSpinRangeFromScalar();
 }
 
@@ -522,8 +566,10 @@ void IsosurfaceSettingsWidget::updateOverallColoring()
         return;
     const QByteArray encodedName = field.name.toUtf8();
 
-    double range[2];
-    arr->GetRange(range);
+    double dataRange[2];
+    arr->GetRange(dataRange);
+    double range[2]{dataRange[0], dataRange[1]};
+    resolvePostDisplayRange(field.name, dataRange[0], dataRange[1], range[0], range[1]);
     auto* lut = ensureLUT();
     if (!lut)
         return;
@@ -552,7 +598,7 @@ void IsosurfaceSettingsWidget::updateOverallColoring()
 
     if (m_visualService)
     {
-        m_visualService->showScalarBar(true, false);
+        m_visualService->showScalarBar(postScalarBarStyle().visible, false);
         applyStandardPostScalarBar(
             m_visualService, ResultDisplayNames::scalarBarName(field.name));
     }
@@ -651,8 +697,10 @@ bool IsosurfaceSettingsWidget::ensureSinglePipeline()
         m_actorSingle->GetProperty()->SetRepresentationToSurface();
     }
 
-    double range[2];
-    arr->GetRange(range);
+    double dataRange[2];
+    arr->GetRange(dataRange);
+    double range[2]{dataRange[0], dataRange[1]};
+    resolvePostDisplayRange(field.name, dataRange[0], dataRange[1], range[0], range[1]);
     auto* lut = ensureLUT();
     if (!lut)
         return false;
@@ -689,7 +737,7 @@ void IsosurfaceSettingsWidget::updateSingleIsoRealtime()
     if (m_visualService)
     {
         const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
-        m_visualService->showScalarBar(true, false);
+        m_visualService->showScalarBar(postScalarBarStyle().visible, false);
         applyStandardPostScalarBar(
             m_visualService, ResultDisplayNames::scalarBarName(field.name));
     }
@@ -722,8 +770,10 @@ void IsosurfaceSettingsWidget::buildMultiIsoResult()
 
     clearMultiResults();
 
-    double range[2];
-    arr->GetRange(range);
+    double dataRange[2];
+    arr->GetRange(dataRange);
+    double range[2]{dataRange[0], dataRange[1]};
+    resolvePostDisplayRange(field.name, dataRange[0], dataRange[1], range[0], range[1]);
     auto* lut = ensureLUT();
     if (!lut)
         return;
@@ -850,6 +900,11 @@ void IsosurfaceSettingsWidget::clearMultiResults()
 
 void IsosurfaceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
 {
+    PostResultSelectionUtils::rememberFieldSelection(ui->scalarComboBox,
+                                                     PostFieldUtils::NameRole,
+                                                     PostFieldUtils::AssociationRole);
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     if (!m_grid)
         return;
 
@@ -946,6 +1001,8 @@ void IsosurfaceSettingsWidget::on_multiIsoGroupBox_toggled(bool checked)
 
 void IsosurfaceSettingsWidget::on_stepComboBox_currentIndexChanged(int index)
 {
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     if (index < 0)
         return;
 

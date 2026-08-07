@@ -64,10 +64,6 @@ CurveSettingsWidget::CurveSettingsWidget(VisualWidgetService* visualService, QWi
     ui->maxUrCheckBox->setChecked(true);
     ui->loopCheckBox->setChecked(false);
 
-    ui->fosCheckBox->setToolTip(QStringLiteral("安全系数"));
-    ui->ptotCheckBox->setToolTip(QStringLiteral("总荷载"));
-    ui->maxUrCheckBox->setToolTip(QStringLiteral("最大位移比"));
-    ui->loopCheckBox->setToolTip(QStringLiteral("单步迭代次数"));
 
     // 设置窗口始终显示与曲线一致的颜色说明；图表右上角图例仍由复选框单独控制。
     applyCurveLegend(ui->fosCheckBox, QColor(31, 119, 180));
@@ -193,13 +189,13 @@ void CurveSettingsWidget::reloadAndShowCurve()
     const QString traceFile = selectedTraceFilePath();
     if (traceFile.isEmpty())
     {
-        setStatus(QStringLiteral("当前结果阶段没有可用的 TRACE.TXT。"), true);
+        setStatus(QStringLiteral("当前结果阶段没有可用的计算曲线数据。"), true);
         return;
     }
 
     if (!m_visualService)
     {
-        setStatus(QStringLiteral("可视化服务尚未初始化。"), true);
+        setStatus(QStringLiteral("结果视图暂不可用，请重新打开结果页面。"), true);
         return;
     }
 
@@ -329,8 +325,8 @@ void CurveSettingsWidget::updateLoopAvailability()
 
     ui->loopCheckBox->setEnabled(!loopIsXAxis);
     ui->loopCheckBox->setToolTip(loopIsXAxis
-                                     ? QStringLiteral("横轴已使用迭代次数，不能重复作为纵轴。")
-                                     : QStringLiteral("单步迭代次数"));
+                                     ? QStringLiteral("横轴已选择迭代次数，不能同时作为纵轴")
+                                     : QString());
 }
 
 void CurveSettingsWidget::setStatus(const QString& text, bool error)

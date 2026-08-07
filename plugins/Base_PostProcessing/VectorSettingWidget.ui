@@ -1,82 +1,274 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='utf-8'?>
 <ui version="4.0">
  <class>VectorSettingWidget</class>
  <widget class="QWidget" name="VectorSettingWidget">
   <property name="geometry">
-   <rect><x>0</x><y>0</y><width>374</width><height>610</height></rect>
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>374</width>
+    <height>610</height>
+   </rect>
   </property>
-  <property name="windowTitle"><string>矢量</string></property>
+  <property name="windowTitle">
+   <string>矢量</string>
+  </property>
   <layout class="QVBoxLayout" name="verticalLayout">
-   <property name="spacing"><number>10</number></property>
-   <property name="leftMargin"><number>9</number></property>
-   <property name="topMargin"><number>9</number></property>
-   <property name="rightMargin"><number>9</number></property>
-   <property name="bottomMargin"><number>9</number></property>
+   <property name="spacing">
+    <number>10</number>
+   </property>
+   <property name="leftMargin">
+    <number>9</number>
+   </property>
+   <property name="topMargin">
+    <number>9</number>
+   </property>
+   <property name="rightMargin">
+    <number>9</number>
+   </property>
+   <property name="bottomMargin">
+    <number>9</number>
+   </property>
    <item>
     <widget class="QGroupBox" name="dataGroupBox">
-     <property name="title"><string>数据选择</string></property>
+     <property name="title">
+      <string>结果</string>
+     </property>
      <layout class="QGridLayout" name="dataGridLayout">
-      <property name="horizontalSpacing"><number>8</number></property>
-      <property name="verticalSpacing"><number>6</number></property>
-      <item row="0" column="0"><widget class="QLabel" name="analysisLabel"><property name="text"><string>计算工况</string></property></widget></item>
-      <item row="0" column="1"><widget class="QComboBox" name="analysisComboBox"/></item>
-      <item row="1" column="0"><widget class="QLabel" name="resultStageLabel"><property name="text"><string>结果阶段</string></property></widget></item>
-      <item row="1" column="1"><widget class="QComboBox" name="resultDirComboBox"/></item>
-      <item row="2" column="0"><widget class="QLabel" name="resultTimeLabel"><property name="text"><string>结果时刻</string></property></widget></item>
-      <item row="2" column="1"><widget class="QComboBox" name="resultTimeComboBox"/></item>
-      <item row="3" column="0"><widget class="QLabel" name="resultFileLabel"><property name="text"><string>结果文件</string></property></widget></item>
-      <item row="3" column="1"><widget class="QComboBox" name="stepComboBox"/></item>
+      <property name="horizontalSpacing">
+       <number>8</number>
+      </property>
+      <property name="verticalSpacing">
+       <number>6</number>
+      </property>
+      <item row="0" column="0">
+       <widget class="QLabel" name="analysisLabel">
+        <property name="text">
+         <string>计算工况</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="analysisComboBox" />
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="resultStageLabel">
+        <property name="text">
+         <string>结果阶段</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="resultDirComboBox" />
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="resultTimeLabel">
+        <property name="text">
+         <string>结果时刻</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QComboBox" name="resultTimeComboBox" />
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="resultFileLabel">
+        <property name="text">
+         <string>结果文件</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QComboBox" name="stepComboBox" />
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="displayGroupBox">
+     <property name="title">
+      <string>显示</string>
+     </property>
+     <layout class="QGridLayout" name="displayGridLayout">
+      <property name="horizontalSpacing">
+       <number>8</number>
+      </property>
+      <property name="verticalSpacing">
+       <number>7</number>
+      </property>
+      <item row="0" column="0">
+       <widget class="QCheckBox" name="showScalarBarCheckBox">
+        <property name="text">
+         <string>显示色标</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QPushButton" name="displaySettingsButton">
+        <property name="text">
+         <string>显示设置...</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
    <item>
     <widget class="QGroupBox" name="vectorGroupBox">
-     <property name="title"><string>矢量设置</string></property>
+     <property name="title">
+      <string>矢量设置</string>
+     </property>
      <layout class="QGridLayout" name="vectorGridLayout">
-      <property name="horizontalSpacing"><number>8</number></property>
-      <property name="verticalSpacing"><number>7</number></property>
-      <item row="0" column="0"><widget class="QLabel" name="xLabel"><property name="text"><string>X 分量</string></property></widget></item>
-      <item row="0" column="1"><widget class="QComboBox" name="xComboBox"/></item>
-      <item row="1" column="0"><widget class="QLabel" name="yLabel"><property name="text"><string>Y 分量</string></property></widget></item>
-      <item row="1" column="1"><widget class="QComboBox" name="yComboBox"/></item>
-      <item row="2" column="0"><widget class="QLabel" name="zLabel"><property name="text"><string>Z 分量</string></property></widget></item>
-      <item row="2" column="1"><widget class="QComboBox" name="zComboBox"/></item>
-      <item row="3" column="0"><widget class="QLabel" name="samplingLabel"><property name="text"><string>采样间隔</string></property></widget></item>
+      <property name="horizontalSpacing">
+       <number>8</number>
+      </property>
+      <property name="verticalSpacing">
+       <number>7</number>
+      </property>
+      <item row="0" column="0">
+       <widget class="QLabel" name="xLabel">
+        <property name="text">
+         <string>X 分量</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="xComboBox" />
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="yLabel">
+        <property name="text">
+         <string>Y 分量</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="yComboBox" />
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="zLabel">
+        <property name="text">
+         <string>Z 分量</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QComboBox" name="zComboBox" />
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="samplingLabel">
+        <property name="text">
+         <string>采样间隔</string>
+        </property>
+       </widget>
+      </item>
       <item row="3" column="1">
        <widget class="QSpinBox" name="maskSizeSpinBox">
-        <property name="toolTip"><string>自动模式会根据节点数量控制箭头密度；手动值表示每隔 N 个点显示 1 个箭头。</string></property>
-        <property name="keyboardTracking"><bool>false</bool></property>
-        <property name="minimum"><number>0</number></property>
-        <property name="maximum"><number>1000000</number></property>
-        <property name="specialValueText"><string>自动</string></property>
-        <property name="value"><number>0</number></property>
+        <property name="toolTip">
+         <string>自动根据模型规模调整箭头密度；也可输入采样间隔。</string>
+        </property>
+        <property name="keyboardTracking">
+         <bool>false</bool>
+        </property>
+        <property name="minimum">
+         <number>0</number>
+        </property>
+        <property name="maximum">
+         <number>1000000</number>
+        </property>
+        <property name="specialValueText">
+         <string>自动</string>
+        </property>
+        <property name="value">
+         <number>0</number>
+        </property>
        </widget>
       </item>
-      <item row="4" column="0"><widget class="QLabel" name="scaleLabel"><property name="text"><string>箭头长度</string></property></widget></item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="scaleLabel">
+        <property name="text">
+         <string>箭头长度</string>
+        </property>
+       </widget>
+      </item>
       <item row="4" column="1">
        <widget class="QDoubleSpinBox" name="scaleSpinBox">
-        <property name="decimals"><number>2</number></property><property name="minimum"><double>0.100000000000000</double></property>
-        <property name="maximum"><double>10.000000000000000</double></property><property name="singleStep"><double>0.100000000000000</double></property>
-        <property name="value"><double>1.000000000000000</double></property><property name="suffix"><string> 倍</string></property>
-        <property name="keyboardTracking"><bool>false</bool></property><property name="toolTip"><string>调整矢量箭头的整体长度</string></property>
+        <property name="decimals">
+         <number>2</number>
+        </property>
+        <property name="minimum">
+         <double>0.100000000000000</double>
+        </property>
+        <property name="maximum">
+         <double>10.000000000000000</double>
+        </property>
+        <property name="singleStep">
+         <double>0.100000000000000</double>
+        </property>
+        <property name="value">
+         <double>1.000000000000000</double>
+        </property>
+        <property name="suffix">
+         <string> 倍</string>
+        </property>
+        <property name="keyboardTracking">
+         <bool>false</bool>
+        </property>
        </widget>
       </item>
-      <item row="5" column="0"><widget class="QLabel" name="thicknessLabel"><property name="text"><string>箭头粗细</string></property></widget></item>
+      <item row="5" column="0">
+       <widget class="QLabel" name="thicknessLabel">
+        <property name="text">
+         <string>箭头粗细</string>
+        </property>
+       </widget>
+      </item>
       <item row="5" column="1">
        <widget class="QDoubleSpinBox" name="thicknessSpinBox">
-        <property name="decimals"><number>2</number></property><property name="minimum"><double>0.250000000000000</double></property>
-        <property name="maximum"><double>4.000000000000000</double></property><property name="singleStep"><double>0.100000000000000</double></property>
-        <property name="value"><double>1.000000000000000</double></property><property name="suffix"><string> 倍</string></property>
-        <property name="keyboardTracking"><bool>false</bool></property><property name="toolTip"><string>调整箭杆和箭头的粗细</string></property>
+        <property name="decimals">
+         <number>2</number>
+        </property>
+        <property name="minimum">
+         <double>0.250000000000000</double>
+        </property>
+        <property name="maximum">
+         <double>4.000000000000000</double>
+        </property>
+        <property name="singleStep">
+         <double>0.100000000000000</double>
+        </property>
+        <property name="value">
+         <double>1.000000000000000</double>
+        </property>
+        <property name="suffix">
+         <string> 倍</string>
+        </property>
+        <property name="keyboardTracking">
+         <bool>false</bool>
+        </property>
        </widget>
       </item>
      </layout>
     </widget>
    </item>
-   <item><widget class="QLabel" name="hintLabel"><property name="text"><string>分量、采样、长度和粗细修改后直接更新显示。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
-   <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
   </layout>
  </widget>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>

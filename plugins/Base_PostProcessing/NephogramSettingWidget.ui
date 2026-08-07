@@ -43,7 +43,7 @@
      <item>
       <widget class="QGroupBox" name="dataGroupBox">
        <property name="title">
-        <string>数据选择</string>
+        <string>结果</string>
        </property>
        <layout class="QGridLayout" name="dataGridLayout">
         <item row="0" column="0">
@@ -136,11 +136,11 @@
       </widget>
      </item>
      <item>
-      <widget class="QGroupBox" name="legendGroupBox">
+      <widget class="QGroupBox" name="displayGroupBox">
        <property name="title">
-        <string>图例与颜色范围</string>
+        <string>显示</string>
        </property>
-       <layout class="QGridLayout" name="legendGridLayout">
+       <layout class="QGridLayout" name="displayGridLayout">
         <property name="leftMargin">
          <number>9</number>
         </property>
@@ -159,8 +159,35 @@
         <property name="verticalSpacing">
          <number>7</number>
         </property>
-        <item row="0" column="0" colspan="2">
+        <item row="0" column="0">
+         <widget class="QCheckBox" name="showScalarBarCheckBox">
+          <property name="text">
+           <string>显示色标</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QCheckBox" name="showContourCheckBox">
+          <property name="text">
+           <string>显示等值线</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QPushButton" name="displaySettingsButton">
+          <property name="text">
+           <string>显示设置...</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0" colspan="2">
          <widget class="QCheckBox" name="autoRangeCheckBox">
+          <property name="visible">
+           <bool>false</bool>
+          </property>
           <property name="text">
            <string>自动使用数据范围</string>
           </property>
@@ -169,15 +196,21 @@
           </property>
          </widget>
         </item>
-        <item row="1" column="0">
+        <item row="3" column="0">
          <widget class="QLabel" name="rangeMinLabel">
+          <property name="visible">
+           <bool>false</bool>
+          </property>
           <property name="text">
-           <string>图例下限</string>
+           <string>范围下限</string>
           </property>
          </widget>
         </item>
-        <item row="1" column="1">
+        <item row="3" column="1">
          <widget class="QDoubleSpinBox" name="rangeMinSpinBox">
+          <property name="visible">
+           <bool>false</bool>
+          </property>
           <property name="decimals">
            <number>6</number>
           </property>
@@ -186,15 +219,21 @@
           </property>
          </widget>
         </item>
-        <item row="2" column="0">
+        <item row="4" column="0">
          <widget class="QLabel" name="rangeMaxLabel">
+          <property name="visible">
+           <bool>false</bool>
+          </property>
           <property name="text">
-           <string>图例上限</string>
+           <string>范围上限</string>
           </property>
          </widget>
         </item>
-        <item row="2" column="1">
+        <item row="4" column="1">
          <widget class="QDoubleSpinBox" name="rangeMaxSpinBox">
+          <property name="visible">
+           <bool>false</bool>
+          </property>
           <property name="decimals">
            <number>6</number>
           </property>
@@ -206,222 +245,13 @@
           </property>
          </widget>
         </item>
-        <item row="3" column="0">
-         <widget class="QLabel" name="legendTitleFontLabel">
-          <property name="text">
-           <string>标题字号</string>
-          </property>
-         </widget>
-        </item>
-        <item row="3" column="1">
-         <widget class="QSpinBox" name="legendTitleFontSpinBox">
-          <property name="minimum">
-           <number>8</number>
-          </property>
-          <property name="maximum">
-           <number>36</number>
-          </property>
-          <property name="value">
-           <number>16</number>
-          </property>
-         </widget>
-        </item>
-        <item row="4" column="0">
-         <widget class="QLabel" name="legendLabelFontLabel">
-          <property name="text">
-           <string>刻度字号</string>
-          </property>
-         </widget>
-        </item>
-        <item row="4" column="1">
-         <widget class="QSpinBox" name="legendLabelFontSpinBox">
-          <property name="minimum">
-           <number>8</number>
-          </property>
-          <property name="maximum">
-           <number>32</number>
-          </property>
-          <property name="value">
-           <number>13</number>
-          </property>
-         </widget>
-        </item>
-        <item row="5" column="0">
-         <widget class="QLabel" name="legendPrecisionLabel">
-          <property name="text">
-           <string>数值位数</string>
-          </property>
-         </widget>
-        </item>
-        <item row="5" column="1">
-         <widget class="QSpinBox" name="legendPrecisionSpinBox">
-          <property name="toolTip">
-           <string>控制色标刻度和等值线标注的有效数字位数</string>
-          </property>
-          <property name="minimum">
-           <number>1</number>
-          </property>
-          <property name="maximum">
-           <number>10</number>
-          </property>
-          <property name="value">
-           <number>4</number>
-          </property>
-         </widget>
-        </item>
-        <item row="6" column="0">
-         <widget class="QLabel" name="legendTickCountLabel">
-          <property name="text">
-           <string>刻度数量</string>
-          </property>
-         </widget>
-        </item>
-        <item row="6" column="1">
-         <widget class="QSpinBox" name="legendTickCountSpinBox">
-          <property name="toolTip">
-           <string>设置色标上显示的刻度标签总数，包含上下限刻度。</string>
-          </property>
-          <property name="keyboardTracking">
-           <bool>false</bool>
-          </property>
-          <property name="minimum">
-           <number>2</number>
-          </property>
-          <property name="maximum">
-           <number>64</number>
-          </property>
-          <property name="value">
-           <number>7</number>
-          </property>
-         </widget>
-        </item>
-        <item row="7" column="0">
-         <widget class="QLabel" name="legendWidthLabel">
-          <property name="text">
-           <string>图例宽度</string>
-          </property>
-         </widget>
-        </item>
-        <item row="7" column="1">
-         <widget class="QSpinBox" name="legendWidthSpinBox">
-          <property name="suffix">
-           <string> %</string>
-          </property>
-          <property name="minimum">
-           <number>5</number>
-          </property>
-          <property name="maximum">
-           <number>25</number>
-          </property>
-          <property name="value">
-           <number>10</number>
-          </property>
-         </widget>
-        </item>
-        <item row="8" column="0">
-         <widget class="QLabel" name="legendHeightLabel">
-          <property name="text">
-           <string>图例高度</string>
-          </property>
-         </widget>
-        </item>
-        <item row="8" column="1">
-         <widget class="QSpinBox" name="legendHeightSpinBox">
-          <property name="suffix">
-           <string> %</string>
-          </property>
-          <property name="minimum">
-           <number>25</number>
-          </property>
-          <property name="maximum">
-           <number>90</number>
-          </property>
-          <property name="value">
-           <number>65</number>
-          </property>
-         </widget>
-        </item>
-        <item row="9" column="0" colspan="2">
+        <item row="5" column="0" colspan="2">
          <widget class="QLabel" name="legendMoveHintLabel">
           <property name="text">
-           <string>提示：按住鼠标中键拖动图例</string>
+           <string>按住鼠标中键可拖动色标</string>
           </property>
           <property name="wordWrap">
            <bool>true</bool>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </widget>
-     </item>
-     <item>
-      <widget class="QGroupBox" name="contourGroupBox">
-       <property name="title">
-        <string>等值线</string>
-       </property>
-       <layout class="QGridLayout" name="contourGridLayout">
-        <property name="leftMargin">
-         <number>9</number>
-        </property>
-        <property name="topMargin">
-         <number>9</number>
-        </property>
-        <property name="rightMargin">
-         <number>9</number>
-        </property>
-        <property name="bottomMargin">
-         <number>9</number>
-        </property>
-        <property name="spacing">
-         <number>8</number>
-        </property>
-        <item row="0" column="0" colspan="2">
-         <widget class="QCheckBox" name="contourEnableCheckBox">
-          <property name="text">
-           <string>显示等值线</string>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="0">
-         <widget class="QLabel" name="contourLevelsLabel">
-          <property name="text">
-           <string>等值线数量</string>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="1">
-         <widget class="QSpinBox" name="contourLevelsSpinBox">
-          <property name="minimum">
-           <number>2</number>
-          </property>
-          <property name="maximum">
-           <number>30</number>
-          </property>
-          <property name="value">
-           <number>10</number>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="0">
-         <widget class="QCheckBox" name="contourLabelCheckBox">
-          <property name="text">
-           <string>显示数值</string>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="1">
-         <widget class="QSpinBox" name="contourLabelFontSpinBox">
-          <property name="prefix">
-           <string>字号 </string>
-          </property>
-          <property name="minimum">
-           <number>8</number>
-          </property>
-          <property name="maximum">
-           <number>28</number>
-          </property>
-          <property name="value">
-           <number>12</number>
           </property>
          </widget>
         </item>

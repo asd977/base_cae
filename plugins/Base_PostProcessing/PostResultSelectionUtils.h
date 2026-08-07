@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QDir>
 #include <QHash>
+#include <QJsonObject>
 #include <QSet>
 #include <QSignalBlocker>
 #include <QString>
@@ -12,6 +13,107 @@
 namespace PostResultSelectionUtils
 {
 
+
+
+struct SharedResultSelection
+{
+    QString analysisKey;
+    QString resultDir;
+    QString timeKey;
+    QString resultFile;
+    QString fieldName;
+    int fieldAssociation{-1};
+};
+
+inline SharedResultSelection& sharedResultSelection()
+{
+    static SharedResultSelection selection;
+    return selection;
+}
+
+inline void clearSharedResultSelection()
+{
+    sharedResultSelection() = SharedResultSelection{};
+}
+
+inline void rememberBasicSelection(const QComboBox* analysisCombo,
+                                   const QComboBox* stageCombo,
+                                   const QComboBox* timeCombo,
+                                   const QComboBox* resultCombo)
+{
+    SharedResultSelection& selection = sharedResultSelection();
+    if (analysisCombo && analysisCombo->currentIndex() >= 0)
+        selection.analysisKey = analysisCombo->currentData().toString();
+    if (stageCombo && stageCombo->currentIndex() >= 0)
+        selection.resultDir = stageCombo->currentData().toString();
+    if (timeCombo && timeCombo->currentIndex() >= 0)
+        selection.timeKey = timeCombo->currentData().toString();
+    if (resultCombo && resultCombo->currentIndex() >= 0)
+        selection.resultFile = resultCombo->currentData().toString();
+}
+
+inline void rememberFieldSelection(const QComboBox* combo,
+                                   int nameRole = Qt::UserRole,
+                                   int associationRole = Qt::UserRole + 1)
+{
+    if (!combo || combo->currentIndex() < 0)
+        return;
+    SharedResultSelection& selection = sharedResultSelection();
+    selection.fieldName = combo->currentData(nameRole).toString();
+    if (selection.fieldName.isEmpty())
+        selection.fieldName = combo->currentText();
+    const QVariant association = combo->currentData(associationRole);
+    selection.fieldAssociation = association.isValid() ? association.toInt() : -1;
+}
+
+inline int findSharedField(const QComboBox* combo,
+                           int nameRole = Qt::UserRole,
+                           int associationRole = Qt::UserRole + 1)
+{
+    if (!combo)
+        return -1;
+    const SharedResultSelection& selection = sharedResultSelection();
+    if (selection.fieldName.isEmpty())
+        return -1;
+    for (int i = 0; i < combo->count(); ++i)
+    {
+        QString name = combo->itemData(i, nameRole).toString();
+        if (name.isEmpty())
+            name = combo->itemText(i);
+        if (name != selection.fieldName)
+            continue;
+        if (selection.fieldAssociation < 0)
+            return i;
+        const QVariant association = combo->itemData(i, associationRole);
+        if (!association.isValid() || association.toInt() == selection.fieldAssociation)
+            return i;
+    }
+    return -1;
+}
+
+inline QJsonObject saveSharedResultSelection()
+{
+    const SharedResultSelection& selection = sharedResultSelection();
+    QJsonObject obj;
+    obj[QStringLiteral("analysisKey")] = selection.analysisKey;
+    obj[QStringLiteral("resultDir")] = selection.resultDir;
+    obj[QStringLiteral("timeKey")] = selection.timeKey;
+    obj[QStringLiteral("resultFile")] = selection.resultFile;
+    obj[QStringLiteral("fieldName")] = selection.fieldName;
+    obj[QStringLiteral("fieldAssociation")] = selection.fieldAssociation;
+    return obj;
+}
+
+inline void loadSharedResultSelection(const QJsonObject& obj)
+{
+    SharedResultSelection& selection = sharedResultSelection();
+    selection.analysisKey = obj.value(QStringLiteral("analysisKey")).toString();
+    selection.resultDir = obj.value(QStringLiteral("resultDir")).toString();
+    selection.timeKey = obj.value(QStringLiteral("timeKey")).toString();
+    selection.resultFile = obj.value(QStringLiteral("resultFile")).toString();
+    selection.fieldName = obj.value(QStringLiteral("fieldName")).toString();
+    selection.fieldAssociation = obj.value(QStringLiteral("fieldAssociation")).toInt(-1);
+}
 
 inline QString absoluteSourcePath(const QString& projectDir, const QString& sourcePath)
 {
@@ -57,7 +159,10 @@ inline void populateAnalysisCombo(
         combo->addItem(name, group.analysisKey);
     }
 
-    int index = preferredKey.isEmpty() ? -1 : combo->findData(preferredKey);
+    const QString resolvedPreferred = !sharedResultSelection().analysisKey.isEmpty()
+                                          ? sharedResultSelection().analysisKey
+                                          : preferredKey;
+    int index = resolvedPreferred.isEmpty() ? -1 : combo->findData(resolvedPreferred);
     if (index < 0 && combo->count() > 0)
         index = 0;
     combo->setCurrentIndex(index);
@@ -92,9 +197,10 @@ inline void populateStageCombo(
         combo->addItem(name, group.sourcePath);
     }
 
-    int index = preferredSourcePath.isEmpty()
-                    ? -1
-                    : combo->findData(preferredSourcePath);
+    const QString resolvedPreferred = !sharedResultSelection().resultDir.isEmpty()
+                                          ? sharedResultSelection().resultDir
+                                          : preferredSourcePath;
+    int index = resolvedPreferred.isEmpty() ? -1 : combo->findData(resolvedPreferred);
     if (index < 0 && combo->count() > 0)
         index = 0;
     combo->setCurrentIndex(index);
@@ -150,7 +256,10 @@ inline void populateTimeCombo(QComboBox* combo, const QString& projectDir,
     for (const auto& frame : frames)
         combo->addItem(frame.displayName, frame.key);
 
-    int index = preferredKey.isNull() ? -1 : combo->findData(preferredKey);
+    const QString resolvedPreferred = !sharedResultSelection().timeKey.isEmpty()
+                                          ? sharedResultSelection().timeKey
+                                          : preferredKey;
+    int index = resolvedPreferred.isEmpty() ? -1 : combo->findData(resolvedPreferred);
     if (index < 0 && combo->count() > 0)
         index = 0;
     combo->setCurrentIndex(index);
@@ -158,8 +267,8 @@ inline void populateTimeCombo(QComboBox* combo, const QString& projectDir,
     const bool hasSequence =
         frames.size() > 1 || (!frames.isEmpty() && !frames.constFirst().key.isEmpty());
     combo->setEnabled(hasSequence);
-    combo->setToolTip(hasSequence ? QStringLiteral("选择结果时刻")
-                                  : QStringLiteral("当前结果没有时间序列"));
+    combo->setToolTip(hasSequence ? QString()
+                                  : QStringLiteral("当前结果仅包含一个时刻"));
 }
 
 inline void populateResultCombo(QComboBox* combo, const QString& projectDir,
@@ -188,7 +297,10 @@ inline void populateResultCombo(QComboBox* combo, const QString& projectDir,
         combo->addItem(name, file.filePath);
     }
 
-    int index = preferredFile.isEmpty() ? -1 : combo->findData(preferredFile);
+    const QString resolvedPreferred = !sharedResultSelection().resultFile.isEmpty()
+                                          ? sharedResultSelection().resultFile
+                                          : preferredFile;
+    int index = resolvedPreferred.isEmpty() ? -1 : combo->findData(resolvedPreferred);
     if (index < 0 && combo->count() > 0)
         index = 0;
     combo->setCurrentIndex(index);

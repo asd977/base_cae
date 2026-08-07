@@ -53,13 +53,44 @@ IsosurfaceSegmentationWidget::IsosurfaceSegmentationWidget(
     configurePostResultCombo(ui->resultTimeComboBox);
     configurePostResultCombo(ui->stepComboBox);
 
+    ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+    connect(ui->showScalarBarCheckBox, &QCheckBox::toggled, this, [this](bool checked) {
+        postScalarBarStyle().visible = checked;
+        if (m_visualService)
+        {
+            m_visualService->showScalarBar(checked, false);
+            m_visualService->render();
+        }
+    });
+    connect(ui->displaySettingsButton, &QPushButton::clicked, this, [this]() {
+        const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+        double dataMin = 0.0;
+        double dataMax = 1.0;
+        if (m_grid)
+        {
+            if (vtkDataArray* array = PostFieldUtils::array(m_grid, field))
+            {
+                double range[2]{0.0, 1.0};
+                array->GetRange(range);
+                dataMin = range[0];
+                dataMax = range[1];
+            }
+        }
+        if (editPostDisplaySettings(this, m_visualService, false, false,
+                                    field.name, dataMin, dataMax))
+        {
+            ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+            updateColoringFromUI();
+            renderNow();
+        }
+    });
+
     // UI 默认
     ui->percentModeRadioButton->setChecked(true);
     ui->isoSlider->setEnabled(true);
     ui->isoSpin->setEnabled(false);
     ui->isoSlider->setRange(0, 100);
     ui->isoSlider->setTracking(false);
-    ui->isoSlider->setToolTip(QStringLiteral("松开滑块后更新分区，避免拖动时连续重算"));
     ui->isoSlider->setValue(50);
     ui->isoSpin->setDecimals(3);
     ui->isoSpin->setSingleStep(0.001);
@@ -124,6 +155,7 @@ IsosurfaceSegmentationWidget::~IsosurfaceSegmentationWidget()
 void IsosurfaceSegmentationWidget::beforeLoad()
 {
     showPostProcessingOnly(m_visualService, false);
+    ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
     refreshResultGroups();
     if (m_dataPath.isEmpty())
     {
@@ -332,6 +364,8 @@ void IsosurfaceSegmentationWidget::refreshResultGroups()
 
 void IsosurfaceSegmentationWidget::on_analysisComboBox_currentIndexChanged(int)
 {
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     const QString previousPath = m_dataPath;
@@ -345,6 +379,8 @@ void IsosurfaceSegmentationWidget::on_analysisComboBox_currentIndexChanged(int)
 
 void IsosurfaceSegmentationWidget::on_resultDirComboBox_currentIndexChanged(int index)
 {
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     if (index < 0)
         return;
     m_dataPath = ui->resultDirComboBox->itemData(index).toString();
@@ -448,6 +484,10 @@ bool IsosurfaceSegmentationWidget::readTecplot(const QString& file)
 void IsosurfaceSegmentationWidget::fillScalarCombo()
 {
     PostFieldUtils::fillCombo(ui->scalarComboBox, m_grid);
+    const int sharedFieldIndex = PostResultSelectionUtils::findSharedField(
+        ui->scalarComboBox, PostFieldUtils::NameRole, PostFieldUtils::AssociationRole);
+    if (sharedFieldIndex >= 0)
+        ui->scalarComboBox->setCurrentIndex(sharedFieldIndex);
     setIsoSpinRangeFromScalar();
 }
 
@@ -634,8 +674,10 @@ void IsosurfaceSegmentationWidget::updateColoringFromUI()
     const int assoc = field.association;
     const QByteArray encodedName = field.name.toUtf8();
 
-    double range[2];
-    arr->GetRange(range);
+    double dataRange[2];
+    arr->GetRange(dataRange);
+    double range[2]{dataRange[0], dataRange[1]};
+    resolvePostDisplayRange(field.name, dataRange[0], dataRange[1], range[0], range[1]);
 
     if (!m_visualService)
         return;
@@ -685,7 +727,7 @@ void IsosurfaceSegmentationWidget::updateColoringFromUI()
     {
         applyStandardPostScalarBar(
             m_visualService, ResultDisplayNames::scalarBarName(field.name));
-        m_visualService->showScalarBar(true, false);
+        m_visualService->showScalarBar(postScalarBarStyle().visible, false);
     }
 
     // 缓存给 Spin/Slider 使用
@@ -758,6 +800,11 @@ void IsosurfaceSegmentationWidget::detachActorsIfAttached()
 
 void IsosurfaceSegmentationWidget::on_scalarComboBox_currentIndexChanged(int)
 {
+    PostResultSelectionUtils::rememberFieldSelection(ui->scalarComboBox,
+                                                     PostFieldUtils::NameRole,
+                                                     PostFieldUtils::AssociationRole);
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     buildPipelineIfNeeded(); // 首次保障已构建（后续无事发生）
     setIsoSpinRangeFromScalar();
     updateColoringFromUI();
@@ -827,6 +874,8 @@ void IsosurfaceSegmentationWidget::on_ifaceOpacitySlider_valueChanged(int)
 
 void IsosurfaceSegmentationWidget::on_stepComboBox_currentIndexChanged(int index)
 {
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     if (index < 0)
         return;
 

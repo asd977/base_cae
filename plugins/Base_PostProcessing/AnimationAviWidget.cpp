@@ -751,17 +751,16 @@ void AnimationAviWidget::updateControls()
         sequence->axis == PostAnimationSequenceModel::Axis::Time;
     ui->interpCheckBox->setEnabled(interpolationAvailable);
     ui->interpCheckBox->setToolTip(
-        interpolationAvailable
-            ? QStringLiteral("在相邻时刻之间插入过渡帧")
-            : QStringLiteral("施工阶段或拓扑变化结果只播放原始帧"));
+        interpolationAvailable ? QString()
+                               : QStringLiteral("当前结果不支持平滑过渡"));
     ui->interpCountSpin->setEnabled(interpolationAvailable &&
                                     ui->interpCheckBox->isChecked());
 }
 
 void AnimationAviWidget::setStatusText(const QString& text, bool error)
 {
-    ui->statusLabel->setText(error ? QStringLiteral("提示：%1").arg(text)
-                                   : text);
+    Q_UNUSED(error);
+    ui->statusLabel->setText(text);
 }
 
 void AnimationAviWidget::renderNow()

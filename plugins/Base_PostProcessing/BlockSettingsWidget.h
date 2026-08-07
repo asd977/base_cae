@@ -53,6 +53,7 @@ class BlockSettingsWidget : public BasePage
     void buildClipPipelineIfNeeded();
     void updatePlaneFromUI();
     void updateColoringFromUI();
+    void updateContourOverlay();
     void renderNow();
     void applyPendingState();
     void updatePositionControls(double normalizedPosition);
@@ -78,6 +79,7 @@ class BlockSettingsWidget : public BasePage
     vtkSmartPointer<vtkTableBasedClipDataSet> m_clipper;
     vtkSmartPointer<vtkDataSetMapper> m_mapper;
     vtkSmartPointer<vtkActor> m_actor;
+    vtkSmartPointer<vtkActor> m_contourActor;
     void loadFileName(QString dataPath);
     void refreshResultGroups();
 };

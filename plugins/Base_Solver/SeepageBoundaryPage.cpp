@@ -44,6 +44,8 @@
 #include <vtkPolyDataMapper.h>
 #include <vtkProperty.h>
 #include <vtkSmartPointer.h>
+#include <vtkSphereSource.h>
+#include <vtkTubeFilter.h>
 #include <vtkUnstructuredGrid.h>
 
 #include <algorithm>
@@ -295,8 +297,9 @@ SeepageBoundaryPage::SeepageBoundaryPage(const QString& pageType,
     else if (pageType == QStringLiteral("SeepageBoundaryDownstreamWater"))
         m_hydraulicRole = HydraulicRole::Downstream;
 
-    ui->labelBoundaryTitle->setText(QStringLiteral("未选择节点"));
-    ui->boxSelectHintLabel->setText(QStringLiteral("Shift 框选，Ctrl 取消。"));
+    ui->labelBoundaryTitle->setText(QStringLiteral("未选择"));
+    ui->boxSelectHintLabel->hide();
+    ui->checkEnablePointPick->setToolTip(QStringLiteral("开启后可在模型中单击选择节点。"));
     ui->tableNodes->hide();
 
     setupBatchGroupCombo();
@@ -306,19 +309,15 @@ SeepageBoundaryPage::SeepageBoundaryPage(const QString& pageType,
     ui->groupBoxNaturalFree->setVisible(naturalFree);
     if (naturalFree)
     {
-        ui->comboNaturalHeadMode->setItemData(0, QStringLiteral("elevation"));
-        ui->comboNaturalHeadMode->setItemData(1, QStringLiteral("uniform"));
         ui->comboNaturalCorrection->setItemData(0, 0);
         ui->comboNaturalCorrection->setItemData(1, 1);
         ui->comboNaturalCorrection->setItemData(2, 2);
-        ui->spinNaturalUniformHead->setEnabled(false);
-
-        connect(ui->comboNaturalHeadMode, qOverload<int>(&QComboBox::currentIndexChanged),
-                this, [this](int) { refreshNaturalFreeUi(); });
         connect(ui->comboNaturalCorrection, qOverload<int>(&QComboBox::currentIndexChanged),
-                this, [this](int) { refreshNaturalFreeUi(); });
-        connect(ui->spinNaturalUniformHead, qOverload<double>(&QDoubleSpinBox::valueChanged),
-                this, [this](double) { refreshNaturalFreeUi(); });
+                this, [this](int)
+                {
+                    refreshNaturalFreeUi();
+                    emit hydraulicParametersChanged();
+                });
     }
 
     connect(ui->btnClear, &QPushButton::clicked,
@@ -343,6 +342,7 @@ SeepageBoundaryPage::SeepageBoundaryPage(const QString& pageType,
 
 SeepageBoundaryPage::~SeepageBoundaryPage()
 {
+    clearNaturalCorrectionPreview();
     clearWaterLevelPreview();
     delete ui;
 }
@@ -377,6 +377,7 @@ void SeepageBoundaryPage::beforeLoad()
 void SeepageBoundaryPage::beforeUnload()
 {
     m_pageActive = false;
+    clearNaturalCorrectionPreview();
     clearWaterLevelPreview();
     PickManager& picker = PickManager::instance();
     picker.clearPreviewSelection(pickDomain(), m_uuid, PickMode::Node);
@@ -603,8 +604,8 @@ void SeepageBoundaryPage::updateSelectionSummary()
 {
     const int count = selectionCount();
     ui->labelBoundaryTitle->setText(
-        count > 0 ? QStringLiteral("已选择 %1 个节点").arg(count)
-                  : QStringLiteral("未选择节点"));
+        count > 0 ? QStringLiteral("%1 个节点").arg(count)
+                  : QStringLiteral("未选择"));
 
     double bounds[6];
     if (selectedPointBounds(bounds))
@@ -713,9 +714,6 @@ bool SeepageBoundaryPage::exportDatFile()
 void SeepageBoundaryPage::onPointPickToggled(bool enabled)
 {
     PickManager::instance().setClickPickEnabled(pickDomain(), m_uuid, enabled);
-    ui->boxSelectHintLabel->setText(
-        enabled ? QStringLiteral("单击点选；Shift 框选，Ctrl 取消。")
-                : QStringLiteral("Shift 框选，Ctrl 取消。"));
 }
 
 void SeepageBoundaryPage::onBoundaryConditionTypeChanged(int)
@@ -918,31 +916,126 @@ void SeepageBoundaryPage::refreshNaturalFreeUi()
     if (!isNaturalFreeSurfacePage())
         return;
 
-    const bool uniformHead =
-        ui->comboNaturalHeadMode->currentData().toString() == QStringLiteral("uniform");
-    ui->labelNaturalUniformHead->setEnabled(uniformHead);
-    ui->spinNaturalUniformHead->setEnabled(uniformHead);
+    ui->labelNaturalFreeHint->setText(QStringLiteral("取节点高程"));
 
-    const int count = selectedNodeIds().size();
-    ui->labelNaturalFreeHint->setText(
-        count <= 0
-            ? QStringLiteral("请先选择天然渗流边界节点。")
-            : QStringLiteral("已选择 %1 个节点。天然水头和水头修正对本边界节点统一生效。")
-                  .arg(count));
+    const QMap<int, double> elevations = selectedNodeElevations();
+    const int correction = naturalHeadCorrection();
+    if (correction == 0)
+    {
+        ui->labelNaturalPreviewSummary->setText(
+            elevations.isEmpty()
+                ? QString()
+                : QStringLiteral("处理结果：%1 个节点保持天然水头。")
+                      .arg(elevations.size()));
+        updateNaturalCorrectionPreview();
+        return;
+    }
+
+    const bool upstream = correction == 1;
+    const bool referenceAvailable = upstream ? m_upstreamReferenceAvailable
+                                             : m_downstreamReferenceAvailable;
+    const double referenceLevel = upstream ? m_upstreamReferenceLevel
+                                           : m_downstreamReferenceLevel;
+    const QString side = upstream ? QStringLiteral("上游") : QStringLiteral("下游");
+
+    if (!referenceAvailable)
+    {
+        ui->labelNaturalPreviewSummary->setText(
+            QStringLiteral("%1水头：未设置").arg(side));
+        updateNaturalCorrectionPreview();
+        return;
+    }
+
+    if (elevations.isEmpty())
+    {
+        ui->labelNaturalPreviewSummary->clear();
+        updateNaturalCorrectionPreview();
+        return;
+    }
+
+    int changed = 0;
+    for (auto it = elevations.constBegin(); it != elevations.constEnd(); ++it)
+    {
+        if (it.value() < referenceLevel)
+            ++changed;
+    }
+    const int kept = elevations.size() - changed;
+    // 只对“计算时会被改写水头”的节点使用额外颜色。
+    // 未受影响的节点继续保持模型原有的选择/显示样式，避免额外颜色造成误解。
+    ui->labelNaturalPreviewSummary->setTextFormat(Qt::RichText);
+    ui->labelNaturalPreviewSummary->setText(
+        QStringLiteral("%1水头：%2 m<br>"
+                       "<span style=\"color:#E67E22;\">●</span> "
+                       "改为%1水头：%3 个&nbsp;&nbsp;"
+                       "保持天然水头：%4 个")
+            .arg(side)
+            .arg(referenceLevel, 0, 'g', 10)
+            .arg(changed)
+            .arg(kept));
+    updateNaturalCorrectionPreview();
+}
+
+void SeepageBoundaryPage::setNaturalReferenceWaterLevels(
+    bool upstreamAvailable, double upstreamLevel,
+    bool downstreamAvailable, double downstreamLevel)
+{
+    m_upstreamReferenceAvailable = upstreamAvailable;
+    m_upstreamReferenceLevel = upstreamLevel;
+    m_downstreamReferenceAvailable = downstreamAvailable;
+    m_downstreamReferenceLevel = downstreamLevel;
+    refreshNaturalFreeUi();
 }
 
 double SeepageBoundaryPage::naturalHeadForNode(
     int nodeId, const QMap<int, double>& elevations) const
 {
-    if (ui->comboNaturalHeadMode->currentData().toString() == QStringLiteral("uniform"))
-        return ui->spinNaturalUniformHead->value();
     return elevations.value(nodeId, 0.0);
 }
 
-int SeepageBoundaryPage::naturalHeadCorrection() const
+int SeepageBoundaryPage::naturalHeadCorrection()
 {
+    if (!ui || !isNaturalFreeSurfacePage())
+        return 0;
     const int correction = ui->comboNaturalCorrection->currentData().toInt();
     return qBound(0, correction, 2);
+}
+
+QVector<SeepageBoundaryPage::NaturalFreeEntry>
+SeepageBoundaryPage::naturalFreeEntries(QString* errorMessage)
+{
+    QVector<NaturalFreeEntry> entries;
+    if (errorMessage)
+        errorMessage->clear();
+    if (!isNaturalFreeSurfacePage())
+        return entries;
+
+    const QVector<int> ids = selectedNodeIds();
+    if (ids.isEmpty())
+    {
+        if (errorMessage)
+            *errorMessage = QStringLiteral("天然渗流初始面尚未选择节点。");
+        return entries;
+    }
+
+    const QMap<int, double> elevations = selectedNodeElevations();
+    const int correction = naturalHeadCorrection();
+    entries.reserve(ids.size());
+    for (int id : ids)
+    {
+        if (!elevations.contains(id) || !std::isfinite(elevations.value(id)))
+        {
+            if (errorMessage)
+                *errorMessage = QStringLiteral("无法取得天然渗流初始面节点 %1 的高程。").arg(id);
+            entries.clear();
+            return entries;
+        }
+        NaturalFreeEntry entry;
+        entry.nodeId = id;
+        entry.head = elevations.value(id);
+        entry.correction = correction;
+        entries.push_back(entry);
+    }
+    return entries;
 }
 
 bool SeepageBoundaryPage::validateSpecialInputs(QString* errorMessage)
@@ -952,52 +1045,299 @@ bool SeepageBoundaryPage::validateSpecialInputs(QString* errorMessage)
     if (!isNaturalFreeSurfacePage())
         return true;
 
-    const QVector<int> ids = selectedNodeIds();
-    if (ids.isEmpty())
+    QString entryError;
+    const QVector<NaturalFreeEntry> entries = naturalFreeEntries(&entryError);
+    if (entries.isEmpty())
     {
         if (errorMessage)
-            *errorMessage = QStringLiteral("天然渗流边界尚未选择节点。");
+            *errorMessage = entryError.isEmpty()
+                ? QStringLiteral("天然渗流初始面尚未选择节点。") : entryError;
         return false;
     }
 
-    const QString mode = ui->comboNaturalHeadMode->currentData().toString();
-    if (mode == QStringLiteral("elevation"))
-    {
-        const QMap<int, double> elevations = selectedNodeElevations();
-        for (int id : ids)
-        {
-            if (!elevations.contains(id) || !std::isfinite(elevations.value(id)))
-            {
-                if (errorMessage)
-                    *errorMessage = QStringLiteral("无法取得天然渗流边界节点 %1 的高程。").arg(id);
-                return false;
-            }
-        }
-    }
-    else if (mode == QStringLiteral("uniform"))
-    {
-        if (!std::isfinite(ui->spinNaturalUniformHead->value()))
-        {
-            if (errorMessage)
-                *errorMessage = QStringLiteral("天然渗流边界的指定水头无效。");
-            return false;
-        }
-    }
-    else
-    {
-        if (errorMessage)
-            *errorMessage = QStringLiteral("天然渗流边界的水头方式无效。");
-        return false;
-    }
-
-    const int correction = ui->comboNaturalCorrection->currentData().toInt();
+    const int correction = naturalHeadCorrection();
     if (correction < 0 || correction > 2)
     {
         if (errorMessage)
-            *errorMessage = QStringLiteral("天然渗流边界的水头修正方式无效。");
+            *errorMessage = QStringLiteral("天然渗流初始面的水头处理方式无效。");
+        return false;
+    }
+    if (correction == 1 && !m_upstreamReferenceAvailable)
+    {
+        if (errorMessage)
+            *errorMessage = QStringLiteral("请先将上游边界设置为水位边界并选择节点。");
+        return false;
+    }
+    if (correction == 2 && !m_downstreamReferenceAvailable)
+    {
+        if (errorMessage)
+            *errorMessage = QStringLiteral("请先将下游边界设置为水位边界并选择节点。");
         return false;
     }
     return true;
+}
+
+void SeepageBoundaryPage::clearNaturalCorrectionPreview()
+{
+    auto* visualSvc = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!visualSvc)
+        return;
+    const QString prefix = QStringLiteral("seepage_natural_correction_%1").arg(m_uuid);
+    visualSvc->removeProp(prefix, false); // 兼容旧版本预览对象
+    visualSvc->removeProp(prefix + QStringLiteral("_level"), false);
+    visualSvc->removeProp(prefix + QStringLiteral("_changed"), false);
+    visualSvc->removeProp(prefix + QStringLiteral("_kept"), true);
+}
+
+void SeepageBoundaryPage::updateNaturalCorrectionPreview()
+{
+    if (!isNaturalFreeSurfacePage())
+        return;
+
+    auto* visualSvc = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!visualSvc)
+        return;
+
+    const QString prefix = QStringLiteral("seepage_natural_correction_%1").arg(m_uuid);
+    visualSvc->removeProp(prefix, false);
+    visualSvc->removeProp(prefix + QStringLiteral("_level"), false);
+    visualSvc->removeProp(prefix + QStringLiteral("_changed"), false);
+    visualSvc->removeProp(prefix + QStringLiteral("_kept"), false);
+
+    const int correction = naturalHeadCorrection();
+    if (!m_pageActive || correction == 0)
+    {
+        visualSvc->render();
+        return;
+    }
+
+    const bool upstream = correction == 1;
+    const bool referenceAvailable = upstream ? m_upstreamReferenceAvailable
+                                             : m_downstreamReferenceAvailable;
+    const double referenceLevel = upstream ? m_upstreamReferenceLevel
+                                           : m_downstreamReferenceLevel;
+    if (!referenceAvailable || !std::isfinite(referenceLevel))
+    {
+        visualSvc->render();
+        return;
+    }
+
+    auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    if (!meshSvc)
+        return;
+
+    vtkUnstructuredGrid* modelGrid = meshSvc->getVtkUnstructuredGridSolid();
+    if (!modelGrid)
+        modelGrid = meshSvc->getVtkUnstructuredGrid();
+    if (!modelGrid || modelGrid->GetNumberOfPoints() <= 0)
+        return;
+
+    int verticalAxis = meshSvc->verticalAxis() - 1;
+    if (verticalAxis < 0 || verticalAxis > 2)
+        verticalAxis = 1;
+
+    double modelBounds[6];
+    modelGrid->GetBounds(modelBounds);
+    const double modelSpan = std::max({modelBounds[1] - modelBounds[0],
+                                       modelBounds[3] - modelBounds[2],
+                                       modelBounds[5] - modelBounds[4], 1.0});
+    const double tolerance = modelSpan * 1.0e-8;
+    const double modelCenter[3] = {
+        0.5 * (modelBounds[0] + modelBounds[1]),
+        0.5 * (modelBounds[2] + modelBounds[3]),
+        0.5 * (modelBounds[4] + modelBounds[5])
+    };
+
+    auto changedPoints = vtkSmartPointer<vtkPoints>::New();
+    QSet<QString> seenCoordinates;
+    double selectedBounds[6] = {
+        std::numeric_limits<double>::max(), -std::numeric_limits<double>::max(),
+        std::numeric_limits<double>::max(), -std::numeric_limits<double>::max(),
+        std::numeric_limits<double>::max(), -std::numeric_limits<double>::max()
+    };
+    double selectedCenterSum[3] = {0.0, 0.0, 0.0};
+    int selectedCount = 0;
+
+    auto appendSelected = [&](GridKind kind, vtkUnstructuredGrid* grid)
+    {
+        if (!grid)
+            return;
+        const QVector<vtkIdType> selected =
+            PickManager::instance().getSelectedPointIds(pickDomain(), m_uuid, kind);
+        for (vtkIdType pointId : selected)
+        {
+            if (pointId < 0 || pointId >= grid->GetNumberOfPoints())
+                continue;
+
+            double point[3] = {0.0, 0.0, 0.0};
+            grid->GetPoint(pointId, point);
+            const QString key = QStringLiteral("%1|%2|%3")
+                                    .arg(point[0], 0, 'g', 16)
+                                    .arg(point[1], 0, 'g', 16)
+                                    .arg(point[2], 0, 'g', 16);
+            if (seenCoordinates.contains(key))
+                continue;
+            seenCoordinates.insert(key);
+
+            for (int axis = 0; axis < 3; ++axis)
+            {
+                selectedBounds[2 * axis] = std::min(selectedBounds[2 * axis], point[axis]);
+                selectedBounds[2 * axis + 1] =
+                    std::max(selectedBounds[2 * axis + 1], point[axis]);
+                selectedCenterSum[axis] += point[axis];
+            }
+            ++selectedCount;
+
+            if (point[verticalAxis] >= referenceLevel)
+                continue;
+
+            // 变化节点仍使用原节点位置，不再额外生成偏移球体。
+            // 通过点深度偏移让橙色点覆盖原来的选中点，避免“橙色球里还有红点”。
+            changedPoints->InsertNextPoint(point);
+        }
+    };
+
+    appendSelected(GridKind::Solid, meshSvc->getVtkUnstructuredGridSolid());
+    appendSelected(GridKind::Line, meshSvc->getVtkUnstructuredGridLine());
+
+    // 变化节点只叠加一层橙色点，不再使用球体。
+    // 点深度偏移用于稳定覆盖 PickManager 原来的红色选中点，显示上保持“一个点一种颜色”。
+    if (changedPoints->GetNumberOfPoints() > 0)
+    {
+        auto pointPoly = vtkSmartPointer<vtkPolyData>::New();
+        pointPoly->SetPoints(changedPoints);
+
+        auto verts = vtkSmartPointer<vtkCellArray>::New();
+        for (vtkIdType i = 0; i < changedPoints->GetNumberOfPoints(); ++i)
+        {
+            verts->InsertNextCell(1);
+            verts->InsertCellPoint(i);
+        }
+        pointPoly->SetVerts(verts);
+
+        auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+        mapper->SetInputData(pointPoly);
+        mapper->ScalarVisibilityOff();
+        mapper->SetResolveCoincidentTopologyToPolygonOffset();
+        mapper->SetRelativeCoincidentTopologyPointOffsetParameter(-8.0);
+
+        auto actor = vtkSmartPointer<vtkActor>::New();
+        actor->SetMapper(mapper);
+        actor->PickableOff();
+        actor->GetProperty()->LightingOff();
+        actor->GetProperty()->SetColor(0.95, 0.45, 0.10);
+        actor->GetProperty()->SetPointSize(10.0);
+        actor->GetProperty()->RenderPointsAsSpheresOn();
+        visualSvc->addProp(prefix + QStringLiteral("_changed"), actor,
+                           QStringLiteral("天然渗流初始面"),
+                           upstream ? QStringLiteral("改为上游水头")
+                                    : QStringLiteral("改为下游水头"),
+                           false, false);
+    }
+
+    if (selectedCount <= 0)
+    {
+        visualSvc->render();
+        return;
+    }
+
+    if (referenceLevel >= modelBounds[2 * verticalAxis] - tolerance
+        && referenceLevel <= modelBounds[2 * verticalAxis + 1] + tolerance)
+    {
+        int lineAxis = -1;
+        double largestSpan = -1.0;
+        for (int axis = 0; axis < 3; ++axis)
+        {
+            if (axis == verticalAxis)
+                continue;
+            const double span = selectedBounds[2 * axis + 1] - selectedBounds[2 * axis];
+            if (span > largestSpan)
+            {
+                largestSpan = span;
+                lineAxis = axis;
+            }
+        }
+
+        if (lineAxis >= 0)
+        {
+            const int otherAxis = 3 - verticalAxis - lineAxis;
+            double selectedCenter[3] = {
+                selectedCenterSum[0] / selectedCount,
+                selectedCenterSum[1] / selectedCount,
+                selectedCenterSum[2] / selectedCount
+            };
+
+            double start = selectedBounds[2 * lineAxis];
+            double end = selectedBounds[2 * lineAxis + 1];
+            const double minimumLength = modelSpan * 0.06;
+            if (end - start < minimumLength)
+            {
+                const double mid = 0.5 * (start + end);
+                start = mid - 0.5 * minimumLength;
+                end = mid + 0.5 * minimumLength;
+            }
+            const double padding = std::max((end - start) * 0.08, modelSpan * 0.012);
+            start = std::max(modelBounds[2 * lineAxis], start - padding);
+            end = std::min(modelBounds[2 * lineAxis + 1], end + padding);
+
+            double p0[3] = {selectedCenter[0], selectedCenter[1], selectedCenter[2]};
+            double p1[3] = {selectedCenter[0], selectedCenter[1], selectedCenter[2]};
+            p0[verticalAxis] = p1[verticalAxis] = referenceLevel;
+            p0[lineAxis] = start;
+            p1[lineAxis] = end;
+
+            // 不再画一个会穿入模型的“方框”。只画一条水头参考线，
+            // 并沿所选边界所在的模型外侧轻微偏移，避免深度遮挡和闪烁。
+            const double sideDelta = selectedCenter[otherAxis] - modelCenter[otherAxis];
+            const double sideSign = std::abs(sideDelta) > tolerance
+                                      ? (sideDelta > 0.0 ? 1.0 : -1.0)
+                                      : 1.0;
+            const double lineOffset = modelSpan * 0.008;
+            p0[otherAxis] = p1[otherAxis] = selectedCenter[otherAxis]
+                                              + sideSign * lineOffset;
+
+            auto linePoints = vtkSmartPointer<vtkPoints>::New();
+            vtkIdType ids[2] = {linePoints->InsertNextPoint(p0),
+                                linePoints->InsertNextPoint(p1)};
+            auto lineCells = vtkSmartPointer<vtkCellArray>::New();
+            lineCells->InsertNextCell(2, ids);
+            auto linePoly = vtkSmartPointer<vtkPolyData>::New();
+            linePoly->SetPoints(linePoints);
+            linePoly->SetLines(lineCells);
+
+            // 使用细管而不是 OpenGL 线宽，解决不同视角/显卡下线条若隐若现的问题。
+            auto tube = vtkSmartPointer<vtkTubeFilter>::New();
+            tube->SetInputData(linePoly);
+            tube->SetRadius(modelSpan * 0.0018);
+            tube->SetNumberOfSides(12);
+            tube->CappingOn();
+            tube->Update();
+
+            auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+            mapper->SetInputConnection(tube->GetOutputPort());
+            mapper->ScalarVisibilityOff();
+            mapper->SetResolveCoincidentTopologyToPolygonOffset();
+
+            auto actor = vtkSmartPointer<vtkActor>::New();
+            actor->SetMapper(mapper);
+            actor->PickableOff();
+            actor->GetProperty()->LightingOff();
+            if (upstream)
+                actor->GetProperty()->SetColor(0.08, 0.40, 0.95);
+            else
+                actor->GetProperty()->SetColor(0.02, 0.70, 0.82);
+
+            visualSvc->addProp(prefix + QStringLiteral("_level"), actor,
+                               QStringLiteral("天然渗流初始面"),
+                               QStringLiteral("%1水头 %2 m")
+                                   .arg(upstream ? QStringLiteral("上游")
+                                                 : QStringLiteral("下游"))
+                                   .arg(referenceLevel, 0, 'g', 10),
+                               false, false);
+        }
+    }
+
+    visualSvc->render();
 }
 
 void SeepageBoundaryPage::configureHydraulicUi()
@@ -1077,9 +1417,10 @@ void SeepageBoundaryPage::updateBoundaryConditionUi()
     ui->sliderWaterLevel->setVisible(head);
     ui->labelFlux->setVisible(!head);
     ui->spinFlux->setVisible(!head);
+    ui->labelFluxHint->setVisible(!head);
     ui->labelFluxHint->setText(
-        head ? QStringLiteral("通量由水头差计算。")
-             : QStringLiteral("正值流出，负值流入；计算中保持不变。"));
+        head ? QString()
+             : QStringLiteral("正值表示流出，负值表示流入。"));
     ui->checkShowWaterLevelPreview->setText(
         head ? QStringLiteral("显示当前水位")
              : QStringLiteral("显示通量方向"));
@@ -1630,9 +1971,9 @@ QJsonObject SeepageBoundaryPage::saveJson()
 
     if (isNaturalFreeSurfacePage())
     {
-        obj[QStringLiteral("natural_head_mode")] =
-            ui->comboNaturalHeadMode->currentData().toString();
-        obj[QStringLiteral("natural_uniform_head")] = ui->spinNaturalUniformHead->value();
+        // 天然自由面节点的压力水头为 0，天然总水头直接取节点高程。
+        // 仅保存求解器真实需要由用户决定的 ISX 修正方式。
+        obj[QStringLiteral("natural_head_mode")] = QStringLiteral("elevation");
         obj[QStringLiteral("natural_correction")] = naturalHeadCorrection();
     }
 
@@ -1690,15 +2031,12 @@ void SeepageBoundaryPage::loadJson(const QJsonObject& obj)
 
     if (isNaturalFreeSurfacePage())
     {
-        QString headMode = obj.value(QStringLiteral("natural_head_mode")).toString();
-        double uniformHead = obj.value(QStringLiteral("natural_uniform_head")).toDouble(0.0);
         int correction = obj.value(QStringLiteral("natural_correction")).toInt(0);
 
-        // 兼容上一版逐节点天然水头数据：若没有新的统一参数，默认迁移为
-        // “使用节点高程”，并在旧数据修正类型一致时继承其 ISX。
-        if (headMode.isEmpty())
+        // 兼容早期逐节点天然水头数据：只迁移一致的 ISX。
+        // 旧版“统一指定水头”不再恢复；天然自由面水头统一回归节点高程。
+        if (!obj.contains(QStringLiteral("natural_correction")))
         {
-            headMode = QStringLiteral("elevation");
             const QJsonArray legacyRows =
                 obj.value(QStringLiteral("natural_free_values")).toArray();
             bool first = true;
@@ -1711,7 +2049,6 @@ void SeepageBoundaryPage::loadJson(const QJsonObject& obj)
                 if (first)
                 {
                     commonCorrection = legacyCorrection;
-                    uniformHead = value.toObject().value(QStringLiteral("head")).toDouble(0.0);
                     first = false;
                 }
                 else if (legacyCorrection != commonCorrection)
@@ -1719,12 +2056,10 @@ void SeepageBoundaryPage::loadJson(const QJsonObject& obj)
                     sameCorrection = false;
                 }
             }
-            correction = sameCorrection ? commonCorrection : 0;
+            if (!first && sameCorrection)
+                correction = commonCorrection;
         }
 
-        const int headIndex = ui->comboNaturalHeadMode->findData(headMode);
-        ui->comboNaturalHeadMode->setCurrentIndex(headIndex >= 0 ? headIndex : 0);
-        ui->spinNaturalUniformHead->setValue(uniformHead);
         correction = qBound(0, correction, 2);
         const int correctionIndex = ui->comboNaturalCorrection->findData(correction);
         ui->comboNaturalCorrection->setCurrentIndex(correctionIndex >= 0 ? correctionIndex : 0);

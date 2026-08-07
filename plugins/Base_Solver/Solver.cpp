@@ -24,6 +24,7 @@
 #include <QJsonObject>
 #include <QInputDialog>
 #include <QLineEdit>
+#include <QMap>
 #include <QMessageBox>
 #include <QMenu>
 #include <QCoreApplication>
@@ -968,7 +969,8 @@ QString solverNodeBaseTitle(const QString& kind)
         {QStringLiteral("CaveLiningOuterBoundary"), QStringLiteral("衬砌外边界")},
         {QStringLiteral("CaveCraneBeamArea"), QStringLiteral("吊车梁区域")},
         {QStringLiteral("CaveExcavationBody"), QStringLiteral("开挖体")},
-        {QStringLiteral("CaveBlockPlane"), QStringLiteral("滑块面")}};
+        {QStringLiteral("CaveBlockPlane"), QStringLiteral("滑块面")},
+        {QStringLiteral("SeepageNaturalBoundary"), QStringLiteral("天然渗流初始面")}};
     return titles.value(kind);
 }
 
@@ -978,39 +980,16 @@ QString solverNodeRelationshipHint(ProjectNode* node)
         return {};
 
     const QString kind = node->data(0, ProjectNode::RoleKind).toString();
+    // 只保留对客户真正有帮助、且仅凭节点名称不容易判断的说明。
     static const QHash<QString, QString> hints = {
-        {QStringLiteral("SeepageAnalysis"), QStringLiteral("本节点设置并执行渗流计算")},
-        {QStringLiteral("DamAnalysis"), QStringLiteral("本节点设置并执行土石坝分析")},
-        {QStringLiteral("SlopeStabilityAnalysis"), QStringLiteral("本节点设置并执行边坡计算")},
-        {QStringLiteral("CaveExcavationAnalysis"),
-         QStringLiteral("洞室开挖工程容器，本节点不直接计算")},
-        {QStringLiteral("CaveBlockStabilityAnalysis"),
-         QStringLiteral("本节点设置并执行块体稳定分析")},
-        {QStringLiteral("FillStorageCycle"),
-         QStringLiteral("用于所属土石坝分析，可添加多个阶段")},
-        {QStringLiteral("GeoStressRegression"),
-         QStringLiteral("用于所属洞室开挖，本节点执行地应力回归分析")},
-        {QStringLiteral("GeoStressRegressionSideFace"),
-         QStringLiteral("用于所属地应力回归分析，最多 4 个")},
-        {QStringLiteral("GeoStressRegressionMeasurePoint"),
-         QStringLiteral("用于所属地应力回归分析，固定 1 个")},
-        {QStringLiteral("GeoStressRegressionOuterForce"),
-         QStringLiteral("用于所属地应力回归分析，固定 1 个")},
-        {QStringLiteral("CaveSupportComputation"),
-         QStringLiteral("用于所属洞室开挖，本节点执行开挖与加固分析")},
+        {QStringLiteral("FillStorageCycle"), QStringLiteral("填筑、蓄水及流变阶段")},
         {QStringLiteral("CaveLiningInnerBoundary"),
-         QStringLiteral("衬砌与洞腔接触的内表面，仅在计算衬砌内力时使用")},
+         QStringLiteral("衬砌与洞腔接触的内表面")},
         {QStringLiteral("CaveLiningOuterBoundary"),
-         QStringLiteral("衬砌与围岩接触的外表面，仅在计算衬砌内力时使用")},
-        {QStringLiteral("CaveCraneBeamArea"),
-         QStringLiteral("吊车梁所在实体区域，仅在考虑吊车梁施工时使用")},
-        {QStringLiteral("CaveExcavationBody"),
-         QStringLiteral("用于所属开挖与加固分析，可添加多个开挖体")},
-        {QStringLiteral("CaveBlockPlane"),
-         QStringLiteral("用于所属块体稳定分析；选择对象：网格面（单选），可添加多个滑块面")},
-        {QStringLiteral("StressBoundary"), QStringLiteral("用于所属土石坝分析")},
-        {QStringLiteral("SeepageBoundary"), QStringLiteral("用于所属渗流分析")},
-        {QStringLiteral("DamIceRegion"), QStringLiteral("用于所属土石坝分析")}};
+         QStringLiteral("衬砌与围岩接触的外表面")},
+        {QStringLiteral("CaveCraneBeamArea"), QStringLiteral("吊车梁所在实体区域")},
+        {QStringLiteral("SeepageNaturalBoundary"), QStringLiteral("初始地下水自由面")},
+        {QStringLiteral("DamIceRegion"), QStringLiteral("结冰作用节点")}};
     return hints.value(kind);
 }
 
@@ -1021,7 +1000,7 @@ bool solverNodeUsesAutomaticIndex(const QString& kind)
         QStringLiteral("SlopeStabilityAnalysis"), QStringLiteral("CaveExcavationAnalysis"),
         QStringLiteral("CaveBlockStabilityAnalysis"), QStringLiteral("FillStorageCycle"),
         QStringLiteral("GeoStressRegressionSideFace"), QStringLiteral("CaveExcavationBody"),
-        QStringLiteral("CaveBlockPlane")};
+        QStringLiteral("CaveBlockPlane"), QStringLiteral("SeepageNaturalBoundary")};
     return repeatableKinds.contains(kind);
 }
 
@@ -1032,7 +1011,7 @@ bool solverNodeCanRename(const QString& kind)
         QStringLiteral("SlopeStabilityAnalysis"), QStringLiteral("CaveExcavationAnalysis"),
         QStringLiteral("CaveBlockStabilityAnalysis"), QStringLiteral("FillStorageCycle"),
         QStringLiteral("GeoStressRegressionSideFace"), QStringLiteral("CaveExcavationBody"),
-        QStringLiteral("CaveBlockPlane")};
+        QStringLiteral("CaveBlockPlane"), QStringLiteral("SeepageNaturalBoundary")};
     return renamableKinds.contains(kind);
 }
 
@@ -1040,7 +1019,7 @@ bool solverNodeCanMove(const QString& kind)
 {
     static const QSet<QString> movableKinds = {
         QStringLiteral("FillStorageCycle"), QStringLiteral("GeoStressRegressionSideFace"),
-        QStringLiteral("CaveBlockPlane")};
+        QStringLiteral("CaveBlockPlane"), QStringLiteral("SeepageNaturalBoundary")};
     return movableKinds.contains(kind);
 }
 
@@ -1412,7 +1391,7 @@ bool Solver::loadProject()
             }
             else if (type == "SeepageBoundaryNaturalSeepage")
             {
-                page = new SeepageBoundaryPage(type, "天然渗流边界", "JDFREE.DAT");
+                page = new SeepageBoundaryPage(type, "天然渗流初始面", "JDFREE.DAT");
                 hasSeepageNaturalBoundaryNode = true;
             }
             else if (type == "SeepageBoundaryDrainWell")
@@ -1496,7 +1475,7 @@ bool Solver::loadProject()
             else if (type == QStringLiteral("SeepageBoundaryDownstreamWater"))
                 childTitle = QStringLiteral("下游渗流边界");
             else if (type == QStringLiteral("SeepageBoundaryNaturalSeepage"))
-                childTitle = QStringLiteral("天然渗流边界");
+                childTitle = QStringLiteral("天然渗流初始面");
             else if (type == QStringLiteral("StressBoundaryDamUpstream"))
                 childTitle = QStringLiteral("上游水压力作用面");
 
@@ -1525,6 +1504,8 @@ bool Solver::loadProject()
                 setupNodeRole(node, "CaveBlockPlane");
             else if (type.startsWith("StressBoundary"))
                 setupNodeRole(node, "StressBoundary");
+            else if (type == QStringLiteral("SeepageBoundaryNaturalSeepage"))
+                setupNodeRole(node, "SeepageNaturalBoundary");
             else if (type.startsWith("SeepageBoundary"))
                 setupNodeRole(node, "SeepageBoundary");
             else if (type == "DamIceRegion")
@@ -1709,7 +1690,10 @@ bool Solver::loadProject()
                 auto* page = new SeepageBoundaryPage(type, title, fileName, nullptr,
                                                      removeWhenEmpty);
                 auto* node = new ProjectNode(title, QUuid::createUuid().toString(), page);
-                setupNodeRole(node, "SeepageBoundary");
+                setupNodeRole(node,
+                              type == QStringLiteral("SeepageBoundaryNaturalSeepage")
+                                  ? QStringLiteral("SeepageNaturalBoundary")
+                                  : QStringLiteral("SeepageBoundary"));
                 analysisNode->addChild(node);
                 connectBoundaryStatus(node);
             };
@@ -1722,7 +1706,7 @@ bool Solver::loadProject()
                                    QStringLiteral("SeepageBoundaryDownstreamWater"),
                                    QStringLiteral("JD_DWSEEP.DAT"), false);
             if (!hasSeepageNaturalBoundaryNode)
-                addMissingBoundary(QStringLiteral("天然渗流边界"),
+                addMissingBoundary(QStringLiteral("天然渗流初始面"),
                                    QStringLiteral("SeepageBoundaryNaturalSeepage"),
                                    QStringLiteral("JDFREE.DAT"), false);
             if (!hasSeepageDrainWellNode)
@@ -1952,7 +1936,20 @@ void Solver::initTreeMenu()
                 return;
             }
 
-            if (kind == QStringLiteral("DamAnalysis"))
+            if (kind == QStringLiteral("SeepageAnalysis"))
+            {
+                ContextMenuHub::addSeparator(menu);
+                ContextMenuHub::addAction(
+                    menu, this, "添加天然渗流初始面",
+                    [this, uuid]()
+                    {
+                        auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+                        auto* analysisNode = pm ? pm->findNodeByUuid(uuid) : nullptr;
+                        if (analysisNode)
+                            addSeepageNaturalBoundaryNode(analysisNode, true);
+                    });
+            }
+            else if (kind == QStringLiteral("DamAnalysis"))
             {
                 ContextMenuHub::addSeparator(menu);
                 ContextMenuHub::addAction(
@@ -2684,10 +2681,6 @@ void Solver::setupNodeRole(ProjectNode* node, const QString& kind) const
     const QString relationship = solverNodeRelationshipHint(node);
     if (!relationship.isEmpty())
         tooltip.push_back(relationship);
-    if (solverNodeCanMove(kind))
-        tooltip.push_back(QStringLiteral("可通过右键菜单调整顺序"));
-    else if (!solverNodeCanRename(kind) && kind != QStringLiteral("SolverRoot"))
-        tooltip.push_back(QStringLiteral("固定功能节点，名称由系统管理"));
     node->setToolTip(0, tooltip.join(QLatin1Char('\n')));
 }
 
@@ -2898,6 +2891,30 @@ void Solver::addFillStorageCycleNode(ProjectNode* analysisNode, bool setCurrent)
     {
         if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
             pm->setCurrentItem(fillStorageCycleNode);
+    }
+}
+
+void Solver::addSeepageNaturalBoundaryNode(ProjectNode* analysisNode, bool setCurrent) const
+{
+    if (!analysisNode)
+        return;
+
+    auto* page = new SeepageBoundaryPage(
+        QStringLiteral("SeepageBoundaryNaturalSeepage"),
+        QStringLiteral("天然渗流初始面"), QStringLiteral("JDFREE.DAT"));
+    auto* node = new ProjectNode(QStringLiteral("天然渗流初始面"),
+                                 QUuid::createUuid().toString(), page);
+    setupNodeRole(node, QStringLiteral("SeepageNaturalBoundary"));
+    analysisNode->addChild(node);
+    analysisNode->setExpanded(true);
+    connectBoundaryStatus(node);
+    syncChildNodeNames(analysisNode);
+    syncSeepageConditionalNodes(analysisNode);
+
+    if (setCurrent)
+    {
+        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
+            pm->setCurrentItem(node);
     }
 }
 
@@ -3310,7 +3327,10 @@ void Solver::onSeepageAction()
     {
         auto* page = new SeepageBoundaryPage(pageType, name, fileName);
         auto* node = new ProjectNode(name, QUuid::createUuid().toString(), page);
-        setupNodeRole(node, "SeepageBoundary");
+        setupNodeRole(node,
+                      pageType == QStringLiteral("SeepageBoundaryNaturalSeepage")
+                          ? QStringLiteral("SeepageNaturalBoundary")
+                          : QStringLiteral("SeepageBoundary"));
         analysisNode->addChild(node);
         connectBoundaryStatus(node);
         return page;
@@ -3320,7 +3340,7 @@ void Solver::onSeepageAction()
         addBoundary("上游渗流边界", "SeepageBoundaryUpstreamWater", "JD_UPSEEP.DAT");
     SeepageBoundaryPage* downstreamPage =
         addBoundary("下游渗流边界", "SeepageBoundaryDownstreamWater", "JD_DWSEEP.DAT");
-    addBoundary("天然渗流边界", "SeepageBoundaryNaturalSeepage", "JDFREE.DAT");
+    addBoundary("天然渗流初始面", "SeepageBoundaryNaturalSeepage", "JDFREE.DAT");
     {
         auto* page = new SeepageBoundaryPage("SeepageBoundaryDrainWell", "排水井区域",
                                              "JDJING.DAT", nullptr, true);
@@ -3334,6 +3354,7 @@ void Solver::onSeepageAction()
 
     m_root->addChild(analysisNode);
     analysisNode->setExpanded(true);
+    syncChildNodeNames(analysisNode);
     syncAnalysisNodeNames();
     syncSeepageConditionalNodes(analysisNode);
     if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
@@ -3497,8 +3518,6 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
                     QStringLiteral("上游渗流边界"), true);
     requireBoundary(QStringLiteral("SeepageBoundaryDownstreamWater"),
                     QStringLiteral("下游渗流边界"), true);
-    requireBoundary(QStringLiteral("SeepageBoundaryNaturalSeepage"),
-                    QStringLiteral("天然渗流边界"), seepagePage->naturalFreeSurfaceEnabled());
     requireBoundary(QStringLiteral("SeepageBoundaryDrainWell"),
                     QStringLiteral("排水井区域"), seepagePage->drainWellEnabled());
     if (!missingBoundaries.isEmpty())
@@ -3510,21 +3529,65 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
         return;
     }
 
+    QMap<int, SeepageBoundaryPage::NaturalFreeEntry> mergedNaturalEntries;
     if (seepagePage->naturalFreeSurfaceEnabled())
     {
-        ProjectNode* naturalNode = findChildByPageType(
-            analysisNode, QStringLiteral("SeepageBoundaryNaturalSeepage"));
-        auto* naturalPage = naturalNode
-                                ? dynamic_cast<SeepageBoundaryPage*>(naturalNode->getPage())
-                                : nullptr;
-        QString naturalError;
-        if (!naturalPage || !naturalPage->validateSpecialInputs(&naturalError))
+        QStringList naturalErrors;
+        int naturalBoundaryCount = 0;
+        for (ProjectNode* child : analysisNode->getChildren())
+        {
+            auto* naturalPage = child
+                ? dynamic_cast<SeepageBoundaryPage*>(child->getPage()) : nullptr;
+            if (!naturalPage || naturalPage->getPageType()
+                                    != QStringLiteral("SeepageBoundaryNaturalSeepage"))
+                continue;
+
+            ++naturalBoundaryCount;
+            QString naturalError;
+            if (!naturalPage->validateSpecialInputs(&naturalError))
+            {
+                naturalErrors << QStringLiteral("%1：%2")
+                                     .arg(child->text(0), naturalError);
+                continue;
+            }
+
+            const auto entries = naturalPage->naturalFreeEntries(&naturalError);
+            if (!naturalError.isEmpty())
+            {
+                naturalErrors << QStringLiteral("%1：%2")
+                                     .arg(child->text(0), naturalError);
+                continue;
+            }
+
+            for (const auto& entry : entries)
+            {
+                auto it = mergedNaturalEntries.find(entry.nodeId);
+                if (it == mergedNaturalEntries.end())
+                {
+                    mergedNaturalEntries.insert(entry.nodeId, entry);
+                    continue;
+                }
+
+                const bool sameHead = std::abs(it.value().head - entry.head) <= 1.0e-8;
+                const bool sameCorrection = it.value().correction == entry.correction;
+                if (!sameHead || !sameCorrection)
+                {
+                    naturalErrors << QStringLiteral(
+                        "节点 %1 同时属于多个天然渗流初始面，但水头处理方式不同。")
+                                         .arg(entry.nodeId);
+                }
+            }
+        }
+
+        if (naturalBoundaryCount <= 0 || mergedNaturalEntries.isEmpty())
+            naturalErrors << QStringLiteral("至少需要设置一个天然渗流初始面。");
+
+        naturalErrors.removeDuplicates();
+        if (!naturalErrors.isEmpty())
         {
             QMessageBox::warning(
-                nullptr, QStringLiteral("请完善天然渗流边界"),
-                naturalError.isEmpty()
-                    ? QStringLiteral("天然渗流边界节点缺少有效天然水头设置。")
-                    : naturalError);
+                nullptr, QStringLiteral("请完善天然渗流初始面"),
+                naturalErrors.join(QLatin1Char('\n')));
             return;
         }
     }
@@ -3585,6 +3648,39 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
         failedFiles << QStringLiteral("渗流计算参数");
     }
 
+    // 多个天然渗流初始面在前端独立设置，求解器仍只读取一个 JDFREE.DAT。
+    // 这里统一合并，避免各页面依次导出时互相覆盖。
+    const QString naturalPath = QDir(SolverFilePaths::outputInputDirectory(projectDir))
+                                    .filePath(QStringLiteral("JDFREE.DAT"));
+    if (seepagePage->naturalFreeSurfaceEnabled())
+    {
+        QFile naturalFile(naturalPath);
+        if (!naturalFile.open(QIODevice::WriteOnly | QIODevice::Text))
+        {
+            ok = false;
+            failedFiles << QStringLiteral("天然渗流初始面");
+        }
+        else
+        {
+            QTextStream os(&naturalFile);
+            os.setRealNumberNotation(QTextStream::FixedNotation);
+            os.setRealNumberPrecision(8);
+            os << mergedNaturalEntries.size() << "\n";
+            for (auto it = mergedNaturalEntries.constBegin();
+                 it != mergedNaturalEntries.constEnd(); ++it)
+            {
+                const auto& entry = it.value();
+                os << entry.nodeId << " " << entry.head << " "
+                   << entry.correction << "\n";
+            }
+        }
+    }
+    else if (QFile::exists(naturalPath) && !QFile::remove(naturalPath))
+    {
+        ok = false;
+        failedFiles << QStringLiteral("天然渗流初始面数据");
+    }
+
     for (ProjectNode* child : analysisNode->getChildren())
     {
         auto* boundaryPage = dynamic_cast<SeepageBoundaryPage*>(child->getPage());
@@ -3592,9 +3688,8 @@ void Solver::onComputeSeepage(ProjectNode* analysisNode)
             continue;
 
         const QString type = boundaryPage->getPageType();
-        if (type == QStringLiteral("SeepageBoundaryNaturalSeepage") &&
-            !seepagePage->naturalFreeSurfaceEnabled())
-            continue;
+        if (type == QStringLiteral("SeepageBoundaryNaturalSeepage"))
+            continue; // 已在上方统一合并导出
         if (type == QStringLiteral("SeepageBoundaryDrainWell") && !seepagePage->drainWellEnabled())
             continue;
 
@@ -5816,6 +5911,9 @@ bool Solver::canDeleteNode(ProjectNode* node) const
         return false;
     if (kind == QStringLiteral("FillStorageCycle"))
         return countFillStorageCycles(parent) > 1;
+    if (kind == QStringLiteral("SeepageNaturalBoundary"))
+        return countGeoStressChildren(
+                   parent, QStringLiteral("SeepageBoundaryNaturalSeepage")) > 1;
     if (kind == QStringLiteral("CaveExcavationBody"))
         return countGeoStressChildren(parent, QStringLiteral("CaveExcavationBody")) > 1;
     if (kind == QStringLiteral("CaveBlockPlane"))
@@ -5868,19 +5966,30 @@ void Solver::updateBoundaryNodeStatus(ProjectNode* node, int selectionCount, boo
     const QString relationship = solverNodeRelationshipHint(node);
     if (!relationship.isEmpty())
         tooltip.push_back(relationship);
-    if (!enabled && !disabledReason.isEmpty())
-        tooltip.push_back(QStringLiteral("当前未启用：%1").arg(disabledReason));
+    if (!enabled)
+        tooltip.push_back(disabledReason.isEmpty() ? QStringLiteral("未启用") : disabledReason);
     tooltip.push_back(QStringLiteral("选择对象：%1").arg(objectName));
     tooltip.push_back(selectionCount > 0 ? QStringLiteral("已选择 %1 个").arg(selectionCount)
-                                         : QStringLiteral("尚未设置"));
+                                         : QStringLiteral("未选择"));
     if (auto* seepageBoundary = dynamic_cast<SeepageBoundaryPage*>(node->getPage()))
     {
         if (seepageBoundary->hasHydraulicParameters())
         {
-            tooltip.push_back(QStringLiteral("水位：%1 m")
-                                  .arg(seepageBoundary->waterLevel(), 0, 'g', 10));
-            tooltip.push_back(QStringLiteral("流量：%1")
-                                  .arg(seepageBoundary->flux(), 0, 'g', 10));
+            if (seepageBoundary->usesWaterLevel())
+                tooltip.push_back(QStringLiteral("水位：%1 m")
+                                      .arg(seepageBoundary->waterLevel(), 0, 'g', 10));
+            else if (seepageBoundary->usesFlux())
+                tooltip.push_back(QStringLiteral("通量：%1 m/s")
+                                      .arg(seepageBoundary->flux(), 0, 'g', 10));
+        }
+        if (seepageBoundary->getPageType()
+            == QStringLiteral("SeepageBoundaryNaturalSeepage"))
+        {
+            const int correction = seepageBoundary->naturalHeadCorrection();
+            tooltip.push_back(
+                correction == 1 ? QStringLiteral("水头处理：低于上游水头时改为上游水头")
+              : correction == 2 ? QStringLiteral("水头处理：低于下游水头时改为下游水头")
+                                : QStringLiteral("水头处理：保持天然水头"));
         }
     }
     node->setToolTip(0, tooltip.join(QLatin1Char('\n')));
@@ -5908,7 +6017,12 @@ void Solver::connectBoundaryStatus(ProjectNode* node) const
         connect(page, &SeepageBoundaryPage::hydraulicParametersChanged, this,
                 [this, node, page]()
                 {
-                    updateBoundaryNodeStatus(node, page->selectionCount());
+                    auto* parent = dynamic_cast<ProjectNode*>(node->parent());
+                    if (parent && parent->data(0, ProjectNode::RoleKind).toString() ==
+                                      QStringLiteral("SeepageAnalysis"))
+                        syncSeepageConditionalNodes(parent);
+                    else
+                        updateBoundaryNodeStatus(node, page->selectionCount());
                 });
         updateBoundaryNodeStatus(node, page->selectionCount());
     }
@@ -5936,6 +6050,31 @@ void Solver::syncSeepageConditionalNodes(ProjectNode* analysisNode) const
     auto* page = analysisNode ? dynamic_cast<SeepageWidget*>(analysisNode->getPage()) : nullptr;
     if (!page)
         return;
+
+    bool upstreamAvailable = false;
+    bool downstreamAvailable = false;
+    double upstreamLevel = 0.0;
+    double downstreamLevel = 0.0;
+
+    // 天然渗流初始面的水头处理直接引用同一分析工况中的上下游水位。
+    // 只有真正的水位边界且已经选择节点时，才作为可用参考值。
+    for (ProjectNode* child : analysisNode->getChildren())
+    {
+        auto* boundary = child ? dynamic_cast<SeepageBoundaryPage*>(child->getPage()) : nullptr;
+        if (!boundary || !boundary->usesWaterLevel() || boundary->selectionCount() <= 0)
+            continue;
+        if (boundary->getPageType() == QStringLiteral("SeepageBoundaryUpstreamWater"))
+        {
+            upstreamAvailable = true;
+            upstreamLevel = boundary->waterLevel();
+        }
+        else if (boundary->getPageType() == QStringLiteral("SeepageBoundaryDownstreamWater"))
+        {
+            downstreamAvailable = true;
+            downstreamLevel = boundary->waterLevel();
+        }
+    }
+
     for (ProjectNode* child : analysisNode->getChildren())
     {
         if (auto* boundary = child ? dynamic_cast<SeepageBoundaryPage*>(child->getPage()) : nullptr)
@@ -5945,12 +6084,15 @@ void Solver::syncSeepageConditionalNodes(ProjectNode* analysisNode) const
             if (boundary->getPageType() == QStringLiteral("SeepageBoundaryNaturalSeepage"))
             {
                 enabled = page->naturalFreeSurfaceEnabled();
-                reason = QStringLiteral("在渗流参数中启用天然渗流面");
+                reason = QStringLiteral("天然渗流未启用");
+                boundary->setNaturalReferenceWaterLevels(
+                    upstreamAvailable, upstreamLevel,
+                    downstreamAvailable, downstreamLevel);
             }
             else if (boundary->getPageType() == QStringLiteral("SeepageBoundaryDrainWell"))
             {
                 enabled = page->drainWellEnabled();
-                reason = QStringLiteral("在渗流参数中启用排水井");
+                reason = QStringLiteral("排水井未启用");
             }
             updateBoundaryNodeStatus(child, boundary->selectionCount(), enabled, reason);
         }
@@ -6202,8 +6344,8 @@ void Solver::syncDamConditionalNodes(ProjectNode* analysisNode) const
                                      ? usesFace
                                      : false;
             const QString reason = pageType == QStringLiteral("StressBoundaryDamUpstream")
-                                       ? QStringLiteral("在填筑蓄水阶段中选择坝体水面压力")
-                                       : QStringLiteral("当前仅提供均质坝，不使用坝基扬压力边界");
+                                       ? QStringLiteral("坝体水面压力未启用")
+                                       : QStringLiteral("均质坝不使用坝基扬压力边界");
             updateBoundaryNodeStatus(child, boundary->selectionCount(), enabled, reason);
         }
         else if (auto* region = child ? dynamic_cast<SeepageBoundaryPage*>(child->getPage()) : nullptr)
@@ -6212,7 +6354,7 @@ void Solver::syncDamConditionalNodes(ProjectNode* analysisNode) const
                                  || page->freezeThawEnabled();
             updateBoundaryNodeStatus(
                 child, region->selectionCount(), enabled,
-                QStringLiteral("在土石坝分析中启用结冰区域变形"));
+                QStringLiteral("结冰区域变形未启用"));
         }
     }
 }
@@ -6238,14 +6380,14 @@ void Solver::syncCaveSupportConditionalNodes(ProjectNode* supportNode) const
             {
                 updateBoundaryNodeStatus(
                     child, boundary->selectionCount(), liningEnabled,
-                    QStringLiteral("在开挖与加固分析中勾选“计算衬砌内力”"));
+                    QStringLiteral("衬砌内力计算未启用"));
             }
         }
         else if (auto* cranePage = dynamic_cast<CaveCraneBeamAreaPage*>(child->getPage()))
         {
             updateBoundaryNodeStatus(
                 child, cranePage->selectionCount(), craneEnabled,
-                QStringLiteral("在开挖与加固分析中勾选“考虑吊车梁施工”"));
+                QStringLiteral("吊车梁施工未启用"));
         }
     }
 }

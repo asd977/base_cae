@@ -145,19 +145,13 @@
       </item>
       <item row="3" column="1">
        <widget class="QSpinBox" name="interpCountSpin">
-        <property name="toolTip"><string>相邻时刻之间插入的过渡帧数</string></property>
+        <property name="toolTip"><string>设置相邻结果之间的过渡帧数</string></property>
         <property name="minimum"><number>1</number></property>
         <property name="maximum"><number>20</number></property>
         <property name="value"><number>2</number></property>
        </widget>
       </item>
      </layout>
-    </widget>
-   </item>
-   <item>
-    <widget class="QLabel" name="tipLabel">
-     <property name="text"><string>时间点或施工阶段由滑块控制，不再额外占用下拉框。</string></property>
-     <property name="wordWrap"><bool>true</bool></property>
     </widget>
    </item>
    <item>

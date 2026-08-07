@@ -12,6 +12,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMenu>
+#include <QPointer>
 #include <QStackedLayout>
 #include <QTextStream>
 #include <QWidget>
@@ -78,6 +79,8 @@ class ProjectTreeWidget : public QWidget
     QHBoxLayout* m_layout;
     QString m_projectTreeXmlPath = "./project.xml"; // 项目树结构保存地址
     QMap<QString, ProjectNode*> nodeMap;            // 节点的map
+    QPointer<BasePage> m_activeSettingsPage;
+
   protected:
     /**
      * @brief 右键节点弹出的删除事件

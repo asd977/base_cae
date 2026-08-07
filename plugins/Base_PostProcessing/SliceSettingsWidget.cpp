@@ -97,10 +97,53 @@ SliceSettingsWidget::SliceSettingsWidget(VisualWidgetService* postProcessingWidg
     configurePostResultCombo(ui->resultTimeComboBox);
     configurePostResultCombo(ui->stepComboBox);
 
+    ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+    connect(ui->showScalarBarCheckBox, &QCheckBox::toggled, this, [this](bool checked) {
+        postScalarBarStyle().visible = checked;
+        if (m_visualService)
+        {
+            m_visualService->showScalarBar(checked, false);
+            m_visualService->render();
+        }
+    });
+    ui->showContourCheckBox->setChecked(postContourStyle().enabled);
+    connect(ui->showContourCheckBox, &QCheckBox::toggled, this, [this](bool checked) {
+        postContourStyle().enabled = checked;
+        if (m_singleDisplayed)
+            buildSingleSliceResult();
+        else if (m_multiDisplayed)
+            buildMultiSliceResult();
+    });
+    connect(ui->displaySettingsButton, &QPushButton::clicked, this, [this]() {
+        const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+        double dataMin = 0.0;
+        double dataMax = 1.0;
+        if (m_grid)
+        {
+            if (vtkDataArray* array = PostFieldUtils::array(m_grid, field))
+            {
+                double range[2]{0.0, 1.0};
+                array->GetRange(range);
+                dataMin = range[0];
+                dataMax = range[1];
+            }
+        }
+        if (!editPostDisplaySettings(this, m_visualService, true, false,
+                                     field.name, dataMin, dataMax))
+            return;
+        ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+        ui->showContourCheckBox->setChecked(postContourStyle().enabled);
+        if (m_singleDisplayed)
+            buildSingleSliceResult();
+        else if (m_multiDisplayed)
+            buildMultiSliceResult();
+        else if (ui->scalarComboBox->currentIndex() >= 0)
+            on_scalarComboBox_currentIndexChanged(ui->scalarComboBox->currentIndex());
+    });
+
     ui->sliceSlider->setRange(0, 1000);
     ui->sliceSlider->setValue(500);
     ui->sliceSlider->setTracking(false);
-    ui->sliceSlider->setToolTip(QStringLiteral("松开滑块后直接更新切面结果"));
     ui->slicePositionSpin->setKeyboardTracking(false);
     ui->modeStackedWidget->setCurrentIndex(0);
 
@@ -139,6 +182,8 @@ SliceSettingsWidget::~SliceSettingsWidget()
 void SliceSettingsWidget::beforeLoad()
 {
     showPostProcessingOnly(m_visualService, false);
+    ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+    ui->showContourCheckBox->setChecked(postContourStyle().enabled);
     refreshResultGroups();
     if (!m_loadedOnce)
     {
@@ -164,7 +209,7 @@ void SliceSettingsWidget::beforeLoad()
         const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
         if (!field.name.isEmpty())
         {
-            m_visualService->showScalarBar(true, false);
+            m_visualService->showScalarBar(postScalarBarStyle().visible, false);
             applyStandardPostScalarBar(
                 m_visualService, ResultDisplayNames::scalarBarName(field.name));
         }
@@ -340,6 +385,8 @@ void SliceSettingsWidget::refreshResultGroups()
 
 void SliceSettingsWidget::on_analysisComboBox_currentIndexChanged(int)
 {
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     const QString projectDir =
         PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString();
     const QString previousPath = m_dataPath;
@@ -353,6 +400,8 @@ void SliceSettingsWidget::on_analysisComboBox_currentIndexChanged(int)
 
 void SliceSettingsWidget::on_resultDirComboBox_currentIndexChanged(int index)
 {
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     if (index < 0)
         return;
     m_dataPath = ui->resultDirComboBox->itemData(index).toString();
@@ -447,6 +496,10 @@ void SliceSettingsWidget::on_stepComboBox_currentIndexChanged(int idx)
 
     // 同名节点/单元变量分别显示，避免选错数据关联。
     PostFieldUtils::fillCombo(ui->scalarComboBox, m_grid);
+    const int sharedFieldIndex = PostResultSelectionUtils::findSharedField(
+        ui->scalarComboBox, PostFieldUtils::NameRole, PostFieldUtils::AssociationRole);
+    if (sharedFieldIndex >= 0)
+        ui->scalarComboBox->setCurrentIndex(sharedFieldIndex);
 
     // UI 不自动出结果
     ui->planeComboBox->setCurrentIndex(0);
@@ -473,6 +526,11 @@ void SliceSettingsWidget::on_stepComboBox_currentIndexChanged(int idx)
 
 void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
 {
+    PostResultSelectionUtils::rememberFieldSelection(ui->scalarComboBox,
+                                                     PostFieldUtils::NameRole,
+                                                     PostFieldUtils::AssociationRole);
+    PostResultSelectionUtils::rememberBasicSelection(ui->analysisComboBox, ui->resultDirComboBox,
+                                                     ui->resultTimeComboBox, ui->stepComboBox);
     if (!m_grid)
         return;
     const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
@@ -485,8 +543,10 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
     const QByteArray encodedName = field.name.toUtf8();
 
     // LUT
-    double range[2];
-    arr->GetRange(range);
+    double dataRange[2];
+    arr->GetRange(dataRange);
+    double range[2]{dataRange[0], dataRange[1]};
+    resolvePostDisplayRange(field.name, dataRange[0], dataRange[1], range[0], range[1]);
     auto* scalarBar = m_visualService->scalarBarActor();
     if (!scalarBar)
         return;
@@ -522,7 +582,7 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
     m_actor->SetMapper(mapper);
     m_actor->GetProperty()->SetRepresentationToSurface();
     applyStandardPostScalarBar(m_visualService, ResultDisplayNames::scalarBarName(field.name));
-    m_visualService->showScalarBar(true, false);
+    m_visualService->showScalarBar(postScalarBarStyle().visible, false);
 
     // 没有在显示结果时，才把整体云图挂上
     if (!m_singleDisplayed && !m_multiDisplayed)
@@ -651,6 +711,8 @@ void SliceSettingsWidget::on_singleSliceRadioButton_toggled(bool checked)
     {
         if (m_sliceActor)
             removeActorByService(m_visualService, m_sliceActor, false);
+        if (m_sliceContourActor)
+            removeActorByService(m_visualService, m_sliceContourActor, false);
         m_singleDisplayed = false;
         if (m_actor)
             addActorByService(m_visualService, m_actor, false);
@@ -726,8 +788,10 @@ void SliceSettingsWidget::buildSingleSliceResult()
     if (!lut)
         return;
 
-    double range[2]{0, 1};
-    arr->GetRange(range);
+    double dataRange[2]{0, 1};
+    arr->GetRange(dataRange);
+    double range[2]{dataRange[0], dataRange[1]};
+    resolvePostDisplayRange(field.name, dataRange[0], dataRange[1], range[0], range[1]);
     lut->SetTableRange(range);
     lut->Build();
 
@@ -765,14 +829,21 @@ void SliceSettingsWidget::buildSingleSliceResult()
 
     if (m_sliceActor)
         removeActorByService(m_visualService, m_sliceActor, false);
+    if (m_sliceContourActor)
+        removeActorByService(m_visualService, m_sliceContourActor, false);
+    m_sliceContourActor = nullptr;
 
     m_sliceActor = vtkSmartPointer<vtkActor>::New();
     m_sliceActor->SetMapper(mapper);
     m_sliceActor->GetProperty()->SetRepresentationToSurface();
 
     addActorByService(m_visualService, m_sliceActor, false);
+    m_sliceContourActor = createPostContourActor(cutter->GetOutputPort(), sliceArrayName,
+                                                  range[0], range[1]);
+    if (m_sliceContourActor)
+        addActorByService(m_visualService, m_sliceContourActor, false);
     applyStandardPostScalarBar(m_visualService, ResultDisplayNames::scalarBarName(field.name));
-    m_visualService->showScalarBar(true, false);
+    m_visualService->showScalarBar(postScalarBarStyle().visible, false);
 }
 
 void SliceSettingsWidget::buildMultiSliceResult()
@@ -799,8 +870,10 @@ void SliceSettingsWidget::buildMultiSliceResult()
     auto* lut = scalarBar ? vtkLookupTable::SafeDownCast(scalarBar->GetLookupTable()) : nullptr;
     if (!lut)
         return;
-    double range[2]{0, 1};
-    arr->GetRange(range);
+    double dataRange[2]{0, 1};
+    arr->GetRange(dataRange);
+    double range[2]{dataRange[0], dataRange[1]};
+    resolvePostDisplayRange(field.name, dataRange[0], dataRange[1], range[0], range[1]);
     lut->SetTableRange(range);
     lut->Build();
 
@@ -868,19 +941,31 @@ void SliceSettingsWidget::buildMultiSliceResult()
         actor->SetMapper(mapper);
         addActorByService(m_visualService, actor, false);
 
+        auto contourActor = createPostContourActor(cutter->GetOutputPort(), sliceArrayName,
+                                                   range[0], range[1]);
+        if (contourActor)
+            addActorByService(m_visualService, contourActor, false);
+
         m_multiPlanes << plane;
         m_multiCutters << cutter;
         m_multiMappers << mapper;
         m_multiActors << actor;
+        if (contourActor)
+            m_multiContourActors << contourActor;
     }
 
     applyStandardPostScalarBar(m_visualService, ResultDisplayNames::scalarBarName(field.name));
-    m_visualService->showScalarBar(true, false);
+    m_visualService->showScalarBar(postScalarBarStyle().visible, false);
 }
 
 void SliceSettingsWidget::hideMultiSlicesFromScene()
 {
     for (auto& a : m_multiActors)
+    {
+        if (a)
+            removeActorByService(m_visualService, a, false);
+    }
+    for (auto& a : m_multiContourActors)
     {
         if (a)
             removeActorByService(m_visualService, a, false);
@@ -894,6 +979,7 @@ void SliceSettingsWidget::clearMultiSlicesAll()
     m_multiCutters.clear();
     m_multiMappers.clear();
     m_multiActors.clear();
+    m_multiContourActors.clear();
 }
 
 void SliceSettingsWidget::reattachAccordingToDisplayState()
@@ -909,12 +995,19 @@ void SliceSettingsWidget::reattachAccordingToDisplayState()
         for (auto& a : m_multiActors)
             if (a)
                 addActorByService(m_visualService, a, false);
+        for (auto& a : m_multiContourActors)
+            if (a)
+                addActorByService(m_visualService, a, false);
         return;
     }
 
     if (m_singleDisplayed && singleMode && m_sliceActor)
     {
-        addActorByService(m_visualService, m_sliceActor);
+        addActorByService(m_visualService, m_sliceActor, false);
+        if (m_sliceContourActor)
+            addActorByService(m_visualService, m_sliceContourActor, false);
+        if (m_visualService)
+            m_visualService->render();
         return;
     }
 
@@ -933,5 +1026,7 @@ void SliceSettingsWidget::detachAllFromScene()
         removeActorByService(m_visualService, m_actor, false);
     if (m_sliceActor)
         removeActorByService(m_visualService, m_sliceActor, false);
+    if (m_sliceContourActor)
+        removeActorByService(m_visualService, m_sliceContourActor, false);
     hideMultiSlicesFromScene();
 }

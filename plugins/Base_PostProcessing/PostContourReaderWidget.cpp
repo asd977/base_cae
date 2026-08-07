@@ -144,7 +144,7 @@ void PostContourReaderWidget::onLoadClicked()
 
     if (filePath.isEmpty())
     {
-        QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("请先选择轮廓图数据文件。"));
+        QMessageBox::warning(this, QStringLiteral("轮廓图"), QStringLiteral("请先选择轮廓图数据文件。"));
         return;
     }
 

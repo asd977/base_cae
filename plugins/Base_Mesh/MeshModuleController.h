@@ -104,6 +104,8 @@ class MeshModuleController : public QObject, public MeshModuleControllerService
     void onMeshGrouping();
     void openImportSettingsPage(bool setCurrent = true);
     void openGridDisplayControlPage();
+    void ensureGridDisplayControlPanel();
+    void showGridDisplayControlPanel();
 
     void displayCurrentGrid(bool fitView = false); // 只显示 m_importedGrid
 
