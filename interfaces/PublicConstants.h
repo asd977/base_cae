@@ -1,4 +1,4 @@
-﻿#ifndef PUBLICCONSTANT_H
+#ifndef PUBLICCONSTANT_H
 #define PUBLICCONSTANT_H
 
 namespace PublicConstants
@@ -40,6 +40,7 @@ constexpr char kActionExportCurrentDatabase[] = "export_current_database";
 // --- PostProcess / 后处理 ---
 constexpr char kActionPostProcessOccBoolean[] = "new_occboolen";
 constexpr char kActionPostProcessNephogram[] = "new_nephogram";
+constexpr char kActionPostProcessDisplayControl[] = "post_display_control";
 constexpr char kActionPostProcessVector[] = "new_vector";
 constexpr char kActionPostProcessSection[] = "new_section";
 constexpr char kActionPostProcessDice[] = "new_dice";
@@ -131,6 +132,7 @@ constexpr char kActionPreprocessCtrlVolume[] = "grid_ctrl_volume";   // 体控�
 constexpr char kActionPreprocessCtrlSurface[] = "grid_ctrl_surface"; // 面控制
 constexpr char kActionPreprocessCtrlEdge[] = "mesh_ctrl_edge";       // 边控制
 constexpr char kActionPreprocessMeshEdit[] = "mesh_ctrl_edit";       // 显示控制
+constexpr char kActionPreprocessMeshDisplayPanel[] = "mesh_ctrl_display_panel"; // 仅打开显示控制面板，不切换当前结果/场景
 constexpr char kActionPreprocessBarElements[] = "mesh_bar_elements"; // 杆单元布置
 constexpr char kActionPreprocessMeshGrouping[] = "mesh_grouping";    // 网格分组
 constexpr char kActionPreprocessQualityStd[] = "grid_quality_std";   // 网格质量标准

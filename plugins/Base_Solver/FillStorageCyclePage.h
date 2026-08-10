@@ -6,9 +6,11 @@
 #include <QString>
 #include <QMap>
 #include <QPair>
+#include <QPointer>
 #include <QSet>
 #include <QVector>
 
+class QObject;
 class QLineEdit;
 class QLabel;
 class QPushButton;
@@ -83,10 +85,28 @@ class FillStorageCyclePage : public BasePage
     void jsonToTable(const QJsonArray& arr, QTableWidget* table, int minRows);
     void updatePreview();
     void updateConditionalVisibility();
+    void openConstructionStageEditor();
+    void closeConstructionStageEditor();
+    int constructionStagePreviewMode() const;
+    void updateConstructionStageLabels();
+    void updateConstructionStageSummary();
+    void updateConstructionStagePreviewFromEditor();
+    void syncConstructionStageEditorToSource();
+    void insertConstructionStageRow(int insertAt, int sourceRow, bool duplicate);
+    void removeConstructionStageRow(int row);
+    void onConstructionStageCurrentCellChanged(int currentRow, int currentColumn,
+                                               int previousRow, int previousColumn);
+    void onConstructionStageCellChanged(int row, int column);
+    void onConstructionStageModeChanged(int index);
+    void addConstructionStage();
+    void removeCurrentConstructionStage();
+    void onConstructionStageEditorDestroyed(QObject* object);
+    void updateConstructionStagePreview(QTableWidget* table, int row, int previewMode = 0);
+    void clearConstructionStagePreview(bool renderNow = true);
     QVector<QPair<int, int>> materialMappings(QTableWidget* table) const;
     void setMaterialMappings(QTableWidget* table, const QVector<QPair<int, int>>& mappings);
     void addMaterialMappingRow(QTableWidget* table, int sourceMaterial = 0,
-                               int targetMaterial = 0);
+                               int targetMaterial = 0, int insertAt = -1);
     void removeSelectedMaterialMapping(QTableWidget* table);
     void refreshMaterialMappingOptions(QTableWidget* table);
     QMap<int, QString> materialSourceOptions() const;
@@ -107,6 +127,13 @@ class FillStorageCyclePage : public BasePage
     QTableWidget* m_dynamicMaterialTable = nullptr;
     QTableWidget* m_dropTable = nullptr;
     QTableWidget* m_circleTable = nullptr;
+    QPointer<QWidget> m_constructionStageEditor;
+    QPointer<QTableWidget> m_constructionStageTable;
+    QPointer<QComboBox> m_constructionStageModeCombo;
+    QPointer<QLabel> m_constructionStageTitleLabel;
+    QPointer<QLabel> m_constructionStageFillLabel;
+    QPointer<QLabel> m_constructionStageWaterLabel;
+    bool m_pageActive = false;
     QGroupBox* m_dynamicMaterialGroup = nullptr;
     QWidget* m_dynamicMaterialControls = nullptr;
     QPushButton* m_addDynamicMaterialButton = nullptr;

@@ -1,4 +1,4 @@
-﻿#include "AnimationAviWidget.h"
+#include "AnimationAviWidget.h"
 
 #include "PostComboBoxPerformance.h"
 #include "PostTecplotUtils.h"
@@ -69,6 +69,9 @@ void interpolateDataAttributes(vtkDataSetAttributes* first,
         if (!firstArray || !firstArray->GetName())
             continue;
 
+        if (ResultDisplayNames::isInternalField(QString::fromUtf8(firstArray->GetName())))
+            continue;
+
         vtkDataArray* secondArray = second->GetArray(firstArray->GetName());
         vtkDataArray* outputArray = output->GetArray(firstArray->GetName());
         if (!secondArray || !outputArray ||
@@ -126,6 +129,18 @@ AnimationAviWidget::AnimationAviWidget(VisualWidgetService* postProcessingWidget
             QOverload<int>::of(&QSpinBox::valueChanged), this,
             [this](int) { m_subStep = 0; });
 
+    EventManager::instance().registerHandler(
+        postDisplaySettingsChangedEvent(), this,
+        [this](const QVariantMap& data)
+        {
+            if (!property("postDisplayActive").toBool() || !m_grid)
+                return;
+            if (data.value(QStringLiteral("reason")).toString() == QStringLiteral("mesh-filter"))
+                m_rangeCache.clear();
+            applyScalar(m_grid, currentScalarName());
+            renderNow();
+        });
+
     setStatusText(QStringLiteral("等待载入动画结果"));
     updateControls();
 }
@@ -138,6 +153,7 @@ AnimationAviWidget::~AnimationAviWidget()
 
 void AnimationAviWidget::beforeLoad()
 {
+    setProperty("postDisplayActive", true);
     showPostProcessingOnly(m_visualService, false);
     if (!m_visualService)
         m_visualService =
@@ -151,6 +167,9 @@ void AnimationAviWidget::beforeLoad()
 
 void AnimationAviWidget::beforeUnload()
 {
+    setPostViewActive(false);
+    setProperty("postDisplayActive", false);
+    clearPostDisplayContext();
     stopTimer();
     detachActor();
     if (m_visualService)
@@ -479,7 +498,11 @@ void AnimationAviWidget::fillScalarCombo(vtkUnstructuredGrid* grid,
         {
             const char* name = grid->GetPointData()->GetArrayName(index);
             if (name && *name)
-                arrays.push_back(QString::fromUtf8(name));
+            {
+                const QString qName = QString::fromUtf8(name);
+                if (!ResultDisplayNames::isInternalField(qName))
+                    arrays.push_back(qName);
+            }
         }
     }
     if (grid && grid->GetCellData())
@@ -488,9 +511,12 @@ void AnimationAviWidget::fillScalarCombo(vtkUnstructuredGrid* grid,
              index < grid->GetCellData()->GetNumberOfArrays(); ++index)
         {
             const char* name = grid->GetCellData()->GetArrayName(index);
-            if (name && *name &&
-                !arrays.contains(QString::fromUtf8(name)))
-                arrays.push_back(QString::fromUtf8(name));
+            if (name && *name)
+            {
+                const QString qName = QString::fromUtf8(name);
+                if (!ResultDisplayNames::isInternalField(qName) && !arrays.contains(qName))
+                    arrays.push_back(qName);
+            }
         }
     }
 
@@ -544,13 +570,18 @@ bool AnimationAviWidget::computeGlobalRange(const QString& scalarName,
         return true;
     }
 
+    // 计算整段序列范围时会临时读取多帧，不能让最后一帧覆盖当前界面的
+    // 网格筛选状态提示。
+    const PostMeshFilterReport currentFilterReport = postMeshFilterReport();
+
     bool initialized = false;
     double minimum = 0.0;
     double maximum = 1.0;
     for (const auto& frame : sequence->frames)
     {
         vtkSmartPointer<vtkUnstructuredGrid> grid = readGrid(frame.filePath);
-        vtkDataArray* array = scalarArray(grid, scalarName);
+        vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(grid);
+        vtkDataArray* array = scalarArray(displayGrid, scalarName);
         if (!array)
             continue;
 
@@ -572,6 +603,7 @@ bool AnimationAviWidget::computeGlobalRange(const QString& scalarName,
         }
     }
 
+    postMeshFilterReport() = currentFilterReport;
     if (!initialized)
         return false;
     if (std::abs(maximum - minimum) < 1.0e-14)
@@ -596,10 +628,21 @@ void AnimationAviWidget::applyScalar(vtkUnstructuredGrid* grid,
         return;
     }
 
-    bool pointData = true;
-    vtkDataArray* array = scalarArray(grid, scalarName, &pointData);
-    if (!array)
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(grid);
+    if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
     {
+        clearPostDisplayContext();
+        m_mapper->SetInputData(displayGrid);
+        m_mapper->ScalarVisibilityOff();
+        m_visualService->showScalarBar(false, false);
+        return;
+    }
+
+    bool pointData = true;
+    vtkDataArray* array = scalarArray(displayGrid, scalarName, &pointData);
+    if (!array || array->GetNumberOfTuples() <= 0)
+    {
+        clearPostDisplayContext();
         m_mapper->ScalarVisibilityOff();
         m_visualService->showScalarBar(false, false);
         return;
@@ -607,12 +650,26 @@ void AnimationAviWidget::applyScalar(vtkUnstructuredGrid* grid,
 
     double range[2];
     array->GetRange(range);
-    if (ui->fixRangeCheckBox->isChecked())
-        computeGlobalRange(scalarName, range);
     if (!validRange(range))
         return;
-    if (std::abs(range[1] - range[0]) < 1.0e-14)
-        range[1] = range[0] + 1.0;
+
+    // “统一色标范围”属于动画播放自身的显示方式：开启时，自动范围采用整段序列范围；
+    // 公共“结果显示”中的自定义范围仍可覆盖它。
+    if (ui->fixRangeCheckBox->isChecked())
+        computeGlobalRange(scalarName, range);
+
+    if (property("postDisplayActive").toBool())
+        publishPostDisplayContext(scalarName, range[0], range[1], false, false, true);
+
+    double displayMin = range[0];
+    double displayMax = range[1];
+    resolvePostDisplayRange(scalarName, range[0], range[1], displayMin, displayMax);
+    if (std::abs(displayMax - displayMin) < 1.0e-14)
+    {
+        const double delta = std::max(std::abs(displayMin) * 1.0e-6, 1.0e-9);
+        displayMin -= delta;
+        displayMax += delta;
+    }
 
     vtkScalarBarActor* scalarBar = m_visualService->scalarBarActor();
     vtkLookupTable* lookupTable =
@@ -627,13 +684,11 @@ void AnimationAviWidget::applyScalar(vtkUnstructuredGrid* grid,
             scalarBar->SetLookupTable(lookupTable);
     }
 
-    lookupTable->SetTableRange(range);
-    lookupTable->SetNumberOfTableValues(256);
-    lookupTable->Build();
+    applyStandardPostLookupTable(lookupTable, displayMin, displayMax);
 
-    m_mapper->SetInputData(grid);
+    m_mapper->SetInputData(displayGrid);
     m_mapper->SetLookupTable(lookupTable);
-    m_mapper->SetScalarRange(range);
+    m_mapper->SetScalarRange(displayMin, displayMax);
     if (pointData)
         m_mapper->SetScalarModeToUsePointFieldData();
     else
@@ -645,7 +700,7 @@ void AnimationAviWidget::applyScalar(vtkUnstructuredGrid* grid,
     {
         applyStandardPostScalarBar(
             m_visualService, ResultDisplayNames::scalarBarName(scalarName));
-        m_visualService->showScalarBar(true, false);
+        m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
     }
 }
 
@@ -665,7 +720,8 @@ void AnimationAviWidget::attachActor()
     buildPipelineIfNeeded();
     if (!m_actorAttached && m_visualService && m_actor)
     {
-        addActorByService(m_visualService, m_actor);
+        addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("animation")),
+                          m_actor, QStringLiteral("动画结果"));
         m_actorAttached = true;
     }
 }
@@ -674,7 +730,7 @@ void AnimationAviWidget::detachActor()
 {
     if (m_actorAttached && m_visualService && m_actor)
     {
-        removeActorByService(m_visualService, m_actor);
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("animation")));
         m_actorAttached = false;
     }
 }

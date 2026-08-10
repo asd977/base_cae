@@ -46,6 +46,7 @@ VectorSettingWidget::VectorSettingWidget(VisualWidgetService* postProcessingWidg
     : ui(new Ui::VectorSettingWidget), BasePage(PublicConstants::kPagePostProcessVector)
 {
     ui->setupUi(this);
+    ui->displayGroupBox->setVisible(false);
 
     configurePostResultCombo(ui->analysisComboBox);
     configurePostResultCombo(ui->resultDirComboBox);
@@ -57,7 +58,7 @@ VectorSettingWidget::VectorSettingWidget(VisualWidgetService* postProcessingWidg
         postScalarBarStyle().visible = checked;
         if (m_visualService)
         {
-            m_visualService->showScalarBar(checked, false);
+            m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
             m_visualService->render();
         }
     });
@@ -110,6 +111,17 @@ VectorSettingWidget::VectorSettingWidget(VisualWidgetService* postProcessingWidg
     // 长度和粗细使用可直接输入的数值控件，避免滑块无法看出当前倍率。
     m_scaleFactor = ui->scaleSpinBox->value();
     m_thicknessFactor = ui->thicknessSpinBox->value();
+
+    EventManager::instance().registerHandler(
+        postDisplaySettingsChangedEvent(), this,
+        [this](const QVariantMap&)
+        {
+            if (!property("postDisplayActive").toBool() || !m_grid)
+                return;
+            const QSignalBlocker blocker(ui->showScalarBarCheckBox);
+            ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+            rebuildPipeline();
+        });
 
     m_visualService = postProcessingWidget;
 }
@@ -177,6 +189,8 @@ QString VectorSettingWidget::vectorLegendTitle() const
 
 void VectorSettingWidget::beforeLoad()
 {
+    setProperty("postDisplayActive", true);
+    clearPostDisplayContext();
     showPostProcessingOnly(m_visualService, false);
     ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
     const QString proj =
@@ -192,14 +206,8 @@ void VectorSettingWidget::beforeLoad()
     }
     else
     {
-        // 非首次：恢复之前的显示（如果有箭头 actor，就挂回去）
-        if (m_visualService && m_vectorActor)
-        {
-            addActorByService(m_visualService, m_vectorActor, false);
-            m_visualService->showScalarBar(postScalarBarStyle().visible, false);
-            applyStandardPostScalarBar(m_visualService, vectorLegendTitle());
-            requestRender();
-        }
+        // 再次进入时也按当前筛选和显示设置重建，避免恢复旧筛选下的箭头。
+        rebuildPipeline();
     }
     m_loadedOnce = true;
     applyPendingState();
@@ -410,9 +418,12 @@ void VectorSettingWidget::on_resultTimeComboBox_currentIndexChanged(int)
 
 void VectorSettingWidget::beforeUnload()
 {
+    setPostViewActive(false);
+    setProperty("postDisplayActive", false);
+    clearPostDisplayContext();
     // 页面被切换：仅隐藏当前向量箭头，保留对象以便回来后快速恢复。
     if (m_visualService && m_vectorActor)
-        removeActorByService(m_visualService, m_vectorActor, false);
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("vector")), false);
     if (m_visualService)
         m_visualService->showScalarBar(false, false);
     requestRender();
@@ -465,7 +476,7 @@ void VectorSettingWidget::on_stepComboBox_currentIndexChanged(int index)
 
     // 切文件时移除旧箭头，并直接按当前设置生成新结果。
     if (m_visualService && m_vectorActor)
-        removeActorByService(m_visualService, m_vectorActor, false);
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("vector")), false);
 
     if (ensureDataLoaded())
         rebuildPipeline();
@@ -528,8 +539,10 @@ void VectorSettingWidget::populateComponentCombos()
         vtkDataArray* arr = pd->GetArray(i);
         if (!arr || !arr->GetName())
             continue;
-        if (arr->GetNumberOfComponents() == 1 || arr->GetNumberOfComponents() == 3)
-            names << QString::fromUtf8(arr->GetName());
+        const QString arrayName = QString::fromUtf8(arr->GetName());
+        if (!ResultDisplayNames::isInternalField(arrayName) &&
+            (arr->GetNumberOfComponents() == 1 || arr->GetNumberOfComponents() == 3))
+            names << arrayName;
     }
     names.removeDuplicates();
     names.sort();
@@ -723,9 +736,25 @@ void VectorSettingWidget::rebuildPipeline()
     if (!ensureDataLoaded())
         return;
 
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    if (!displayGrid || displayGrid->GetNumberOfCells() <= 0 ||
+        displayGrid->GetNumberOfPoints() <= 0)
+    {
+        clearPostDisplayContext();
+        if (m_vectorActor && m_visualService)
+            removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("vector")), false);
+        m_vectorActor = nullptr;
+        if (m_visualService)
+        {
+            m_visualService->showScalarBar(false, false);
+            requestRender();
+        }
+        return;
+    }
+
     // 0=自动：目标约 2000 个箭头；手动值仍表示“每隔 N 个点取 1 个”。
     m_maskOnRatio = ui->maskSizeSpinBox->value() == 0
-                        ? computeAutoMaskRatio(m_grid)
+                        ? computeAutoMaskRatio(displayGrid)
                         : ui->maskSizeSpinBox->value();
     m_maskOnRatio = std::max(1, m_maskOnRatio);
     ui->maskSizeSpinBox->setToolTip(
@@ -735,8 +764,22 @@ void VectorSettingWidget::rebuildPipeline()
 
     // 生成 Vector / VectorMag，并得到其范围
     double magMin = 0.0, magMax = 1.0;
-    if (!buildVectorArraysFromSelections(m_grid, magMin, magMax))
+    if (!buildVectorArraysFromSelections(displayGrid, magMin, magMax))
+    {
+        clearPostDisplayContext();
+        if (m_vectorActor && m_visualService)
+            removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("vector")), false);
+        m_vectorActor = nullptr;
+        if (m_visualService)
+        {
+            m_visualService->showScalarBar(false, false);
+            requestRender();
+        }
         return;
+    }
+
+    if (property("postDisplayActive").toBool())
+        publishPostDisplayContext(QStringLiteral("VectorMag"), magMin, magMax, false, false, true);
 
     auto nearlyEqual = [](double a, double b)
     {
@@ -748,13 +791,13 @@ void VectorSettingWidget::rebuildPipeline()
     if (m_vectorActor)
     {
         if (m_visualService)
-            removeActorByService(m_visualService, m_vectorActor, false);
+            removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("vector")), false);
         m_vectorActor = nullptr;
     }
 
     // 抽样
     auto mask = vtkSmartPointer<vtkMaskPoints>::New();
-    mask->SetInputData(m_grid);
+    mask->SetInputData(displayGrid);
     mask->SetOnRatio(m_maskOnRatio); // 每隔 N 个取 1 个
     mask->RandomModeOff();
     mask->Update();
@@ -784,7 +827,7 @@ void VectorSettingWidget::rebuildPipeline()
                                     "VectorMag"); // scalars
 
     {
-        const double base = computeAutoBaseScale(m_grid);
+        const double base = computeAutoBaseScale(displayGrid);
         m_glyph->SetScaleFactor(base * m_scaleFactor); // 自适应尺度 × 滑条倍率
     }
     m_glyph->Update();
@@ -797,12 +840,16 @@ void VectorSettingWidget::rebuildPipeline()
     mapper->SelectColorArray("VectorMag");
     mapper->SetColorModeToMapScalars();
 
-    // 同步色标 LUT（与 VectorMag 一致）
-    if (!(magMax > magMin) || nearlyEqual(magMax, magMin))
+    // 同步色标 LUT（与 VectorMag 一致）。公共“显示范围”对矢量模同样生效。
+    double displayMin = magMin;
+    double displayMax = magMax;
+    resolvePostDisplayRange(QStringLiteral("VectorMag"), magMin, magMax, displayMin, displayMax);
+    if (!(displayMax > displayMin) || nearlyEqual(displayMax, displayMin))
     {
-        // 常量场兜底，使 LUT 有一个有效范围
-        magMin = 0.0;
-        magMax = 1.0;
+        const double center = std::isfinite(displayMin) ? displayMin : 0.0;
+        const double delta = std::max(std::abs(center) * 1.0e-6, 1.0e-9);
+        displayMin = center - delta;
+        displayMax = center + delta;
     }
 
     if (vtkSmartPointer<vtkScalarBarActor> scalarBar =
@@ -816,18 +863,18 @@ void VectorSettingWidget::rebuildPipeline()
             lut = l;
             scalarBar->SetLookupTable(lut);
         }
-        lut->SetRange(magMin, magMax);
+        applyStandardPostLookupTable(lut, displayMin, displayMax);
         mapper->SetLookupTable(lut);
         mapper->UseLookupTableScalarRangeOn();
 
         applyStandardPostScalarBar(scalarBar);
         scalarBar->SetTitle(vectorLegendTitle().toUtf8().constData());
         scalarBar->Modified();
-        m_visualService->showScalarBar(postScalarBarStyle().visible, false);
+        m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
     }
     else
     {
-        mapper->SetScalarRange(magMin, magMax);
+        mapper->SetScalarRange(displayMin, displayMax);
     }
 
     // Actor
@@ -836,7 +883,8 @@ void VectorSettingWidget::rebuildPipeline()
     m_vectorActor->GetProperty()->SetRepresentationToSurface();
 
     if (m_visualService)
-        addActorByService(m_visualService, m_vectorActor, false);
+        addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("vector")),
+                          m_vectorActor, QStringLiteral("矢量"), false);
 
     requestRender();
 }
@@ -854,7 +902,8 @@ void VectorSettingWidget::on_scaleSpinBox_valueChanged(double value)
     m_scaleFactor = qBound(0.1, value, 10.0);
     if (m_glyph)
     {
-        const double base = computeAutoBaseScale(m_grid);
+        vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+        const double base = computeAutoBaseScale(displayGrid);
         m_glyph->SetScaleFactor(base * m_scaleFactor);
         m_glyph->Update();
         requestRender();

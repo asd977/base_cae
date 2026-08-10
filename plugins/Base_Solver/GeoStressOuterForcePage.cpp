@@ -217,14 +217,14 @@ GeoStressOuterForcePage::GeoStressOuterForcePage(QWidget* parent)
     connect(ui->pickEnableCheckBox, &QCheckBox::toggled, this,
             [this](bool on)
             {
-                PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, on);
+                PickManager::instance().setClickPickEnabled(pickDomain(), m_uuid, on);
             });
     connect(ui->groupCombo, &CustomComboBox::itemHovered, this,
             &GeoStressOuterForcePage::onGroupHovered);
     connect(ui->groupCombo, &CustomComboBox::dropdownClosed, this,
             [this]()
             {
-                PickManager::instance().clearPreviewSelection(getPageType(), m_uuid,
+                PickManager::instance().clearPreviewSelection(pickDomain(), m_uuid,
                                                               currentPickMode());
             });
 }
@@ -234,20 +234,26 @@ GeoStressOuterForcePage::~GeoStressOuterForcePage()
     delete ui;
 }
 
+QString GeoStressOuterForcePage::pickDomain() const
+{
+    return QStringLiteral("GeoStressRegressionOuterForce/%1").arg(m_uuid);
+}
+
+
 void GeoStressOuterForcePage::beforeLoad()
 {
-    PickManager::instance().activate(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().activate(pickDomain(), m_uuid, currentPickMode());
     if (ui->pickEnableCheckBox)
         ui->pickEnableCheckBox->setChecked(false);
-    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
+    PickManager::instance().setClickPickEnabled(pickDomain(), m_uuid, false);
     refreshGroupCombo();
 }
 
 void GeoStressOuterForcePage::beforeUnload()
 {
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
-    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
-    PickManager::instance().deactivate(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().clearPreviewSelection(pickDomain(), m_uuid, currentPickMode());
+    PickManager::instance().setClickPickEnabled(pickDomain(), m_uuid, true);
+    PickManager::instance().deactivate(pickDomain(), m_uuid, currentPickMode());
 }
 
 QJsonObject GeoStressOuterForcePage::saveJson()
@@ -266,9 +272,9 @@ QJsonObject GeoStressOuterForcePage::saveJson()
         return arr;
     };
     obj["picked_edges"] = toJson(
-        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Edge, GridKind::Solid));
+        PickManager::instance().getIdList(pickDomain(), m_uuid, PickMode::Edge, GridKind::Solid));
     obj["picked_faces"] = toJson(
-        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid));
+        PickManager::instance().getIdList(pickDomain(), m_uuid, PickMode::Face, GridKind::Solid));
 
     return obj;
 }
@@ -288,10 +294,10 @@ void GeoStressOuterForcePage::loadJson(const QJsonObject& obj)
         return ids;
     };
 
-    PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
+    PickManager::instance().setSelectedEdgeKeys(pickDomain(), m_uuid, GridKind::Solid,
                                                 fromJson(obj.value("picked_edges").toArray()),
                                                 true);
-    PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
+    PickManager::instance().setSelectedFaceKeys(pickDomain(), m_uuid, GridKind::Solid,
                                                 fromJson(obj.value("picked_faces").toArray()),
                                                 true);
 }
@@ -315,7 +321,7 @@ int GeoStressOuterForcePage::forceEnabled() const
         return 0;
 
     const QVector<EdgeRow> rows =
-        collectRows(grid, QStringLiteral("GeoStressRegressionOuterForce"), m_uuid,
+        collectRows(grid, pickDomain(), m_uuid,
                     currentPickMode());
     return rows.isEmpty() ? 0 : 1;
 }
@@ -328,7 +334,7 @@ bool GeoStressOuterForcePage::exportRoofFile() const
         return false;
 
     const QVector<EdgeRow> rows =
-        collectRows(grid, QStringLiteral("GeoStressRegressionOuterForce"), m_uuid,
+        collectRows(grid, pickDomain(), m_uuid,
                     currentPickMode());
     if (rows.isEmpty())
         return false;
@@ -400,7 +406,7 @@ bool GeoStressOuterForcePage::exportForceFile() const
         return false;
 
     const QVector<EdgeRow> rows =
-        collectRows(grid, QStringLiteral("GeoStressRegressionOuterForce"), m_uuid,
+        collectRows(grid, pickDomain(), m_uuid,
                     currentPickMode());
     if (rows.isEmpty())
         return false;
@@ -459,8 +465,8 @@ bool GeoStressOuterForcePage::exportForceFile() const
 
 void GeoStressOuterForcePage::onClearClicked()
 {
-    PickManager::instance().clearSelection(getPageType(), m_uuid, currentPickMode());
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().clearSelection(pickDomain(), m_uuid, currentPickMode());
+    PickManager::instance().clearPreviewSelection(pickDomain(), m_uuid, currentPickMode());
 }
 
 void GeoStressOuterForcePage::onBatchAddClicked()
@@ -474,10 +480,10 @@ void GeoStressOuterForcePage::onBatchAddClicked()
     const MeshTagSet set =
         findBoundarySet(meshSvc, comboTagKey(ui->groupCombo, ui->groupCombo->currentIndex()));
     if (currentPickMode() == PickMode::Face)
-        PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
+        PickManager::instance().setSelectedFaceKeys(pickDomain(), m_uuid, GridKind::Solid,
                                                     toVtkKeys(set.faceKeys), false);
     else
-        PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
+        PickManager::instance().setSelectedEdgeKeys(pickDomain(), m_uuid, GridKind::Solid,
                                                     toVtkKeys(set.edgeKeys), false);
 }
 
@@ -488,10 +494,10 @@ void GeoStressOuterForcePage::onGroupHovered(int row)
         return;
     const MeshTagSet set = findBoundarySet(meshSvc, comboTagKey(ui->groupCombo, row));
     if (currentPickMode() == PickMode::Face)
-        PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid, GridKind::Solid,
+        PickManager::instance().setPreviewFaceKeys(pickDomain(), m_uuid, GridKind::Solid,
                                                    toVtkKeys(set.faceKeys));
     else
-        PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
+        PickManager::instance().setPreviewEdgeKeys(pickDomain(), m_uuid, GridKind::Solid,
                                                    toVtkKeys(set.edgeKeys));
 }
 

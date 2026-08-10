@@ -80,12 +80,18 @@ CaveCraneBeamAreaPage::~CaveCraneBeamAreaPage()
     delete ui;
 }
 
+QString CaveCraneBeamAreaPage::pickDomain() const
+{
+    return QStringLiteral("CaveCraneBeamArea/%1").arg(m_uuid);
+}
+
+
 void CaveCraneBeamAreaPage::beforeLoad()
 {
     setupGroupCombo();
-    PickManager::instance().activate(getPageType(), m_uuid, PickMode::Domain);
-    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
-    PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, false);
+    PickManager::instance().activate(pickDomain(), m_uuid, PickMode::Domain);
+    PickManager::instance().setClickPickEnabled(pickDomain(), m_uuid, false);
+    PickManager::instance().setBoxSelectEnabled(pickDomain(), m_uuid, false);
     refreshSelectedGroupList();
     refreshGroupComboMarks();
     updateGroupDomainHighlight(0);
@@ -96,10 +102,10 @@ void CaveCraneBeamAreaPage::beforeUnload()
     m_groupPreviewTimer->stop();
     m_pendingPreviewGroup = 0;
     auto& pickManager = PickManager::instance();
-    pickManager.setPreviewDomain(getPageType(), m_uuid, DomainKey{});
-    pickManager.setPreDeleteDomain(getPageType(), m_uuid, DomainKey{});
-    pickManager.setSelectedDomain(getPageType(), m_uuid, DomainKey{});
-    pickManager.deactivate(getPageType(), m_uuid, PickMode::Domain);
+    pickManager.setPreviewDomain(pickDomain(), m_uuid, DomainKey{});
+    pickManager.setPreDeleteDomain(pickDomain(), m_uuid, DomainKey{});
+    pickManager.setSelectedDomain(pickDomain(), m_uuid, DomainKey{});
+    pickManager.deactivate(pickDomain(), m_uuid, PickMode::Domain);
 }
 
 QJsonObject CaveCraneBeamAreaPage::saveJson()
@@ -162,7 +168,7 @@ void CaveCraneBeamAreaPage::loadJson(const QJsonObject& object)
         }
     }
 
-    PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
+    PickManager::instance().setAppliedDomains(pickDomain(), m_uuid, domains);
     refreshSelectedGroupList();
     refreshGroupComboMarks();
     updateGroupDomainHighlight(0);
@@ -283,10 +289,10 @@ int CaveCraneBeamAreaPage::selectionCount()
 void CaveCraneBeamAreaPage::onClearClicked()
 {
     auto& pickManager = PickManager::instance();
-    pickManager.setAppliedDomains(getPageType(), m_uuid, {});
-    pickManager.setSelectedDomain(getPageType(), m_uuid, DomainKey{});
-    pickManager.setPreviewDomain(getPageType(), m_uuid, DomainKey{});
-    pickManager.setPreDeleteDomain(getPageType(), m_uuid, DomainKey{});
+    pickManager.setAppliedDomains(pickDomain(), m_uuid, {});
+    pickManager.setSelectedDomain(pickDomain(), m_uuid, DomainKey{});
+    pickManager.setPreviewDomain(pickDomain(), m_uuid, DomainKey{});
+    pickManager.setPreDeleteDomain(pickDomain(), m_uuid, DomainKey{});
     refreshSelectedGroupList();
     refreshGroupComboMarks();
     updateGroupDomainHighlight(0);
@@ -301,9 +307,9 @@ void CaveCraneBeamAreaPage::onAddGroupClicked()
     if (id == 0)
         return;
     QSet<DomainKey> domains =
-        PickManager::instance().appliedDomains(getPageType(), m_uuid);
+        PickManager::instance().appliedDomains(pickDomain(), m_uuid);
     domains.insert(DomainKey{selectionGroupCategory(), domainDimension(), id});
-    PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
+    PickManager::instance().setAppliedDomains(pickDomain(), m_uuid, domains);
     refreshSelectedGroupList();
     refreshGroupComboMarks();
     updateGroupDomainHighlight(0);
@@ -315,13 +321,13 @@ void CaveCraneBeamAreaPage::onRemoveSelectedGroupsClicked()
     if (!m_groupList)
         return;
     QSet<DomainKey> domains =
-        PickManager::instance().appliedDomains(getPageType(), m_uuid);
+        PickManager::instance().appliedDomains(pickDomain(), m_uuid);
     for (QListWidgetItem* item : m_groupList->selectedItems())
     {
         const int id = item->data(Qt::UserRole).toInt();
         domains.remove(DomainKey{selectionGroupCategory(), domainDimension(), id});
     }
-    PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
+    PickManager::instance().setAppliedDomains(pickDomain(), m_uuid, domains);
     refreshSelectedGroupList();
     refreshGroupComboMarks();
     updateGroupDomainHighlight(0);
@@ -517,9 +523,9 @@ void CaveCraneBeamAreaPage::updateGroupDomainHighlight(int previewGroup)
                        : DomainKey{selectionGroupCategory(), domainDimension(), id};
     };
     auto& pickManager = PickManager::instance();
-    pickManager.setSelectedDomain(getPageType(), m_uuid, key(current));
-    pickManager.setPreviewDomain(getPageType(), m_uuid, key(previewGroup));
-    pickManager.setPreDeleteDomain(getPageType(), m_uuid, DomainKey{});
+    pickManager.setSelectedDomain(pickDomain(), m_uuid, key(current));
+    pickManager.setPreviewDomain(pickDomain(), m_uuid, key(previewGroup));
+    pickManager.setPreDeleteDomain(pickDomain(), m_uuid, DomainKey{});
 }
 
 QSet<int> CaveCraneBeamAreaPage::selectedGroups()
@@ -528,7 +534,7 @@ QSet<int> CaveCraneBeamAreaPage::selectedGroups()
     const QString category = selectionGroupCategory();
     const int dim = domainDimension();
     for (const DomainKey& key :
-         PickManager::instance().appliedDomains(getPageType(), m_uuid))
+         PickManager::instance().appliedDomains(pickDomain(), m_uuid))
     {
         if (key.category.compare(category, Qt::CaseInsensitive) == 0
             && key.dim == dim && key.id != 0)

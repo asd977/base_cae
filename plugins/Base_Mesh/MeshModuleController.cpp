@@ -1,4 +1,4 @@
-﻿#include "MeshModuleController.h"
+#include "MeshModuleController.h"
 
 #include <EventManager.h>
 #include <BarElementPlacementWidget.h>
@@ -71,6 +71,7 @@
 #include <QTimer>
 #include <QSet>
 #include <QStringList>
+#include <QTreeWidget>
 #include <QTreeWidgetItemIterator>
 #include <QVector>
 #include <algorithm>
@@ -2914,8 +2915,6 @@ void MeshModuleController::closeProject()
     if (m_gridEditingWidget)
     {
         m_gridEditingWidget->clearGrid();
-        if (auto* uiFrame = ServiceRegistry::instance().getService<UiFrameService>())
-            uiFrame->setWidgetVisible(m_gridEditingWidget, false);
     }
     m_barElementWidget = nullptr;
     m_qualityCheckWidget = nullptr;
@@ -3295,6 +3294,13 @@ void MeshModuleController::initAction()
         [this]
         {
             onMeshEdit();
+        });
+    reg(PublicConstants::kActionPreprocessMeshDisplayPanel,
+        [this]
+        {
+            // 后处理等场景只需要打开筛选面板，不切换模型树当前节点，
+            // 避免把网格 Actor 重新显示到当前结果上。
+            showGridDisplayControlPanel();
         });
     reg(PublicConstants::kActionPreprocessBarElements,
         [this]
@@ -4449,8 +4455,9 @@ void MeshModuleController::ensureGridDisplayControlPanel()
     {
         m_gridEditingWidget = new GridEditingWidget();
         m_gridEditingWidget->setProperty("projectTreeDockPanel", true);
-        m_gridEditingWidget->setMinimumWidth(280);
-        m_gridEditingWidget->resize(320, 680);
+        m_gridEditingWidget->setProperty("visualControlPanel", true);
+        // 这是辅助控制面板，不应因为树节点属于 Mesh 就强制切换当前场景。
+        m_gridEditingWidget->setProperty("preserveSceneOnActivation", true);
     }
 
     if (m_gridEditingWidget->property("uiFrameDockWidget").isValid())
@@ -4508,32 +4515,32 @@ void MeshModuleController::openGridDisplayControlPage()
 
     ensureGridDisplayControlPanel();
 
+    auto activatePanelNode = [this](ProjectNode* node)
+    {
+        if (!node)
+            return;
+        QTreeWidget* tree = node->treeWidget();
+        const bool alreadyCurrent = tree && tree->currentItem() == node;
+        auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>();
+        if (pm)
+            pm->setCurrentItem(node);
+        if (!pm || !tree || alreadyCurrent)
+            showGridDisplayControlPanel();
+    };
+
     if (auto* existed = findDirectChildByKind(m_gridNode, "MeshEdit"))
     {
-        if (m_gridEditingWidget && m_importedGrid && m_importedGrid->GetNumberOfCells() > 0)
-        {
-            m_gridEditingWidget->setEditableGrid(m_importedGrid, m_sourceFileName);
-        }
-
-        showGridDisplayControlPanel();
-        if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-            pm->setCurrentItem(existed);
+        activatePanelNode(existed);
         return;
     }
 
     auto* w = m_gridEditingWidget;
-    if (m_importedGrid && m_importedGrid->GetNumberOfCells() > 0)
-    {
-        w->setEditableGrid(m_importedGrid, m_sourceFileName);
-    }
 
     auto* node = new ProjectNode("显示控制", QUuid::createUuid().toString(), w);
     node->setData(0, ProjectNode::RoleModule, "Mesh");
     node->setData(0, ProjectNode::RoleKind, "MeshEdit");
     m_gridNode->addChild(node);
-    showGridDisplayControlPanel();
-    if (auto* pm = ServiceRegistry::instance().getService<ProjectManagerService>())
-        pm->setCurrentItem(node);
+    activatePanelNode(node);
 }
 
 void MeshModuleController::displayCurrentGrid(bool fitView)

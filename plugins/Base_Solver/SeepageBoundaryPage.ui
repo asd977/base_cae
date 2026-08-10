@@ -194,12 +194,12 @@
           </item>
           <item>
            <property name="text">
-            <string>低于上游水头时改为上游水头</string>
+            <string>下限取上游水头</string>
            </property>
           </item>
           <item>
            <property name="text">
-            <string>低于下游水头时改为下游水头</string>
+            <string>下限取下游水头</string>
            </property>
           </item>
          </widget>

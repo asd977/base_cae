@@ -32,6 +32,7 @@ class GeoStressOuterForcePage : public BasePage
     void onGroupHovered(int row);
 
   private:
+    QString pickDomain() const;
     PickMode currentPickMode() const;
     void refreshGroupCombo();
 

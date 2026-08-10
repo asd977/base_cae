@@ -9,7 +9,6 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
-#include <QSpinBox>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 
@@ -29,8 +28,6 @@ SolverSettingWidget::SolverSettingWidget(QWidget* parent)
 
     m_computeDeviceCombo = ui->comboComputeDevice;
     m_gpuModeCombo = ui->comboGpuMode;
-    m_assemblyLogSpin = ui->spinAssemblyLogInterval;
-    m_solverLogSpin = ui->spinSolverLogInterval;
     m_computeDeviceCombo->clear();
     m_computeDeviceCombo->addItem(QStringLiteral("CPU 计算"), QStringLiteral("cpu"));
     m_computeDeviceCombo->addItem(QStringLiteral("GPU 计算"), QStringLiteral("gpu"));
@@ -110,17 +107,6 @@ SolverSettingWidget::SolverSettingWidget(QWidget* parent)
             {
                 QSettings().setValue(QStringLiteral("Solver/GpuDeviceMode"), gpuDeviceMode());
             });
-    connect(m_assemblyLogSpin, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, [](int value)
-            {
-                QSettings().setValue(QStringLiteral("Solver/AssemblyLogInterval"), value);
-            });
-    connect(m_solverLogSpin, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, [](int value)
-            {
-                QSettings().setValue(QStringLiteral("Solver/SolveLogInterval"), value);
-            });
-
     QSettings settings;
     setComputeDevice(settings.value(QStringLiteral("Solver/ComputeDevice"),
                                     QStringLiteral("cpu")).toString());
@@ -128,10 +114,6 @@ SolverSettingWidget::SolverSettingWidget(QWidget* parent)
         1, settings.value(QStringLiteral("Solver/GpuDeviceMode"), 2).toInt(), 2);
     const int gpuModeIndex = m_gpuModeCombo->findData(gpuMode);
     m_gpuModeCombo->setCurrentIndex(gpuModeIndex >= 0 ? gpuModeIndex : 1);
-    m_assemblyLogSpin->setValue(qMax(
-        0, settings.value(QStringLiteral("Solver/AssemblyLogInterval"), 0).toInt()));
-    m_solverLogSpin->setValue(
-        qMax(0, settings.value(QStringLiteral("Solver/SolveLogInterval"), 0).toInt()));
     updateDeviceControls();
 
     setAnalysisCounts(0, 0, 0, 0, 0);
@@ -143,7 +125,7 @@ SolverSettingWidget::~SolverSettingWidget()
     delete ui;
 }
 
-void SolverSettingWidget::beforeLoad() {}
+void SolverSettingWidget::beforeLoad() { emit rootActivated(); }
 void SolverSettingWidget::beforeUnload() {}
 
 QJsonObject SolverSettingWidget::saveJson()
@@ -151,8 +133,6 @@ QJsonObject SolverSettingWidget::saveJson()
     QJsonObject obj;
     obj[QStringLiteral("compute_device")] = computeDevice();
     obj[QStringLiteral("gpu_device_mode")] = gpuDeviceMode();
-    obj[QStringLiteral("assembly_log_interval")] = assemblyLogInterval();
-    obj[QStringLiteral("solver_log_interval")] = solverLogInterval();
     return obj;
 }
 
@@ -165,12 +145,6 @@ void SolverSettingWidget::loadJson(const QJsonObject& obj)
     const int gpuModeIndex = m_gpuModeCombo ? m_gpuModeCombo->findData(gpuMode) : -1;
     if (gpuModeIndex >= 0)
         m_gpuModeCombo->setCurrentIndex(gpuModeIndex);
-    if (m_assemblyLogSpin)
-        m_assemblyLogSpin->setValue(qMax(
-            0, obj.value(QStringLiteral("assembly_log_interval")).toInt(0)));
-    if (m_solverLogSpin)
-        m_solverLogSpin->setValue(
-            qMax(0, obj.value(QStringLiteral("solver_log_interval")).toInt(0)));
     updateDeviceControls();
 }
 
@@ -201,16 +175,6 @@ int SolverSettingWidget::gpuDeviceMode() const
     if (!m_gpuModeCombo)
         return 2;
     return qBound(1, m_gpuModeCombo->currentData().toInt(), 2);
-}
-
-int SolverSettingWidget::assemblyLogInterval() const
-{
-    return m_assemblyLogSpin ? qMax(0, m_assemblyLogSpin->value()) : 0;
-}
-
-int SolverSettingWidget::solverLogInterval() const
-{
-    return m_solverLogSpin ? qMax(0, m_solverLogSpin->value()) : 0;
 }
 
 void SolverSettingWidget::updateDeviceControls()

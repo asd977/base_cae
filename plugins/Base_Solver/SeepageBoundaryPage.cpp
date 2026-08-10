@@ -124,7 +124,7 @@ FluxFaceCollection collectFluxFaces(const QString& domain, const QString& uuid)
     auto* meshSvc = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     if (!meshSvc)
     {
-        result.error = QStringLiteral("网格服务不可用。");
+        result.error = QStringLiteral("无法读取网格，请重新加载工程。");
         return result;
     }
 
@@ -133,7 +133,7 @@ FluxFaceCollection collectFluxFaces(const QString& domain, const QString& uuid)
         grid = meshSvc->getVtkUnstructuredGrid();
     if (!grid || grid->GetNumberOfCells() <= 0)
     {
-        result.error = QStringLiteral("没有可用的实体网格。");
+        result.error = QStringLiteral("未找到可用网格。");
         return result;
     }
 
@@ -153,7 +153,7 @@ FluxFaceCollection collectFluxFaces(const QString& domain, const QString& uuid)
     vtkDataArray* elementIdArray = findElementIdArray(grid);
     if (!nodeIdArray)
     {
-        result.error = QStringLiteral("网格缺少节点编号。");
+        result.error = QStringLiteral("当前网格无法用于边界设置，请重新生成或导入网格。");
         return result;
     }
 
@@ -250,7 +250,7 @@ FluxFaceCollection collectFluxFaces(const QString& domain, const QString& uuid)
         const int nodeCount = row.nodeIds.size();
         if (nodeCount < 2 || nodeCount > 4)
         {
-            result.error = QStringLiteral("所选区域包含暂不支持的边界面，请重新选择。");
+            result.error = QStringLiteral("所选区域不能作为渗流边界，请重新选择外边界。");
             result.rows.clear();
             return result;
         }
@@ -258,7 +258,7 @@ FluxFaceCollection collectFluxFaces(const QString& domain, const QString& uuid)
             result.nodeCount = nodeCount;
         else if (result.nodeCount != nodeCount)
         {
-            result.error = QStringLiteral("所选区域包含不同类型的边界面，请分开设置。");
+            result.error = QStringLiteral("所选区域包含多种边界类型，请分开选择。");
             result.rows.clear();
             return result;
         }
@@ -275,7 +275,7 @@ FluxFaceCollection collectFluxFaces(const QString& domain, const QString& uuid)
                       rhs.nodeIds.cbegin(), rhs.nodeIds.cend());
               });
     if (result.rows.isEmpty() && result.error.isEmpty())
-        result.error = QStringLiteral("未从所选节点识别出外边界面。");
+        result.error = QStringLiteral("所选节点未形成有效外边界，请重新选择。");
     return result;
 }
 }
@@ -304,6 +304,58 @@ SeepageBoundaryPage::SeepageBoundaryPage(const QString& pageType,
 
     setupBatchGroupCombo();
     configureHydraulicUi();
+
+    SolverUiLayoutHelper::installTableRowContextMenu(
+        ui->tableWaterLevelCurve,
+        [this](int insertAt, int sourceRow, bool duplicate)
+        {
+            if (m_waterLevelCurve.isEmpty())
+                m_waterLevelCurve = defaultWaterLevelCurve();
+            insertAt = qBound(0, insertAt, int(m_waterLevelCurve.size()));
+
+            double time = 0.0;
+            double level = waterLevel();
+            if (duplicate && sourceRow >= 0 && sourceRow < int(m_waterLevelCurve.size()))
+            {
+                level = m_waterLevelCurve.at(sourceRow).second;
+            }
+            else if (insertAt > 0)
+            {
+                level = m_waterLevelCurve.at(insertAt - 1).second;
+            }
+            else if (!m_waterLevelCurve.isEmpty())
+            {
+                level = m_waterLevelCurve.first().second;
+            }
+
+            if (insertAt > 0 && insertAt < int(m_waterLevelCurve.size()))
+                time = 0.5 * (m_waterLevelCurve.at(insertAt - 1).first
+                              + m_waterLevelCurve.at(insertAt).first);
+            else if (insertAt == 0 && !m_waterLevelCurve.isEmpty())
+                time = m_waterLevelCurve.first().first - 1.0;
+            else if (!m_waterLevelCurve.isEmpty())
+                time = m_waterLevelCurve.last().first + 1.0;
+
+            m_waterLevelCurve.insert(insertAt, qMakePair(time, level));
+            m_hasHydraulicState = true;
+            refreshWaterLevelCurveTable();
+            ui->tableWaterLevelCurve->setCurrentCell(insertAt, 0);
+            emit hydraulicParametersChanged();
+        },
+        [this](int row)
+        {
+            if (m_waterLevelCurve.size() <= 2
+                || row < 0 || row >= m_waterLevelCurve.size())
+                return;
+            m_waterLevelCurve.removeAt(row);
+            m_hasHydraulicState = true;
+            refreshWaterLevelCurveTable();
+            if (!m_waterLevelCurve.isEmpty())
+                ui->tableWaterLevelCurve->setCurrentCell(
+                    qMin(row, int(m_waterLevelCurve.size()) - 1), 0);
+            emit hydraulicParametersChanged();
+        },
+        2);
 
     const bool naturalFree = isNaturalFreeSurfacePage();
     ui->groupBoxNaturalFree->setVisible(naturalFree);
@@ -925,7 +977,7 @@ void SeepageBoundaryPage::refreshNaturalFreeUi()
         ui->labelNaturalPreviewSummary->setText(
             elevations.isEmpty()
                 ? QString()
-                : QStringLiteral("处理结果：%1 个节点保持天然水头。")
+                : QStringLiteral("%1 个节点使用天然水头。")
                       .arg(elevations.size()));
         updateNaturalCorrectionPreview();
         return;
@@ -1025,7 +1077,7 @@ SeepageBoundaryPage::naturalFreeEntries(QString* errorMessage)
         if (!elevations.contains(id) || !std::isfinite(elevations.value(id)))
         {
             if (errorMessage)
-                *errorMessage = QStringLiteral("无法取得天然渗流初始面节点 %1 的高程。").arg(id);
+                *errorMessage = QStringLiteral("无法读取节点 %1 的高程，请重新选择。").arg(id);
             entries.clear();
             return entries;
         }
@@ -1059,7 +1111,7 @@ bool SeepageBoundaryPage::validateSpecialInputs(QString* errorMessage)
     if (correction < 0 || correction > 2)
     {
         if (errorMessage)
-            *errorMessage = QStringLiteral("天然渗流初始面的水头处理方式无效。");
+            *errorMessage = QStringLiteral("天然水头处理方式无效，请重新选择。");
         return false;
     }
     if (correction == 1 && !m_upstreamReferenceAvailable)

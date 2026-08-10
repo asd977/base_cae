@@ -154,6 +154,42 @@ SlopeStabilityWidget::SlopeStabilityWidget(QWidget* parent)
         if (row >= 0)
             ui->strengthReserveTable->removeRow(row);
     });
+
+    SolverUiLayoutHelper::installTableRowContextMenu(
+        ui->strengthReserveTable,
+        [this](int insertAt, int sourceRow, bool duplicate)
+        {
+            QString factor = QStringLiteral("1.0000");
+            QString output = QStringLiteral("1.0000");
+            if (duplicate && sourceRow >= 0
+                && sourceRow < ui->strengthReserveTable->rowCount())
+            {
+                if (const auto* item = ui->strengthReserveTable->item(sourceRow, 0))
+                    factor = item->text().trimmed();
+                output = strengthReserveOutputValue(sourceRow);
+            }
+            insertAt = qBound(0, insertAt, ui->strengthReserveTable->rowCount());
+            ui->strengthReserveTable->insertRow(insertAt);
+            ui->strengthReserveTable->setItem(
+                insertAt, 0, new QTableWidgetItem(factor.isEmpty()
+                                                      ? QStringLiteral("1.0000")
+                                                      : factor));
+            setStrengthReserveOutputCombo(insertAt, output);
+            ui->strengthReserveTable->setCurrentCell(insertAt, 0);
+            SolverUiLayoutHelper::fitTableToRows(
+                ui->strengthReserveTable, ui->strengthReserveTable->rowCount(), 5, 7);
+        },
+        [this](int row)
+        {
+            if (row < 0 || row >= ui->strengthReserveTable->rowCount())
+                return;
+            ui->strengthReserveTable->removeRow(row);
+            if (ui->strengthReserveTable->rowCount() > 0)
+                ui->strengthReserveTable->setCurrentCell(
+                    qMin(row, ui->strengthReserveTable->rowCount() - 1), 0);
+            SolverUiLayoutHelper::fitTableToRows(
+                ui->strengthReserveTable, ui->strengthReserveTable->rowCount(), 5, 7);
+        });
     updateAnalysisModeVisibility();
 }
 

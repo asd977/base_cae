@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>填筑与蓄水周期</string>
+   <string>施工阶段（填筑—蓄水）</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <property name="leftMargin">
@@ -83,11 +83,11 @@
              <bool>false</bool>
             </property>
             <property name="toolTip">
-             <string>当前土石坝仅支持均质坝；求解器会固定忽略坝基渗透荷载。</string>
+             <string>均质坝不单独设置坝基渗透荷载。</string>
             </property>
             <item>
              <property name="text">
-              <string>均质坝固定不单独施加</string>
+              <string>不单独施加</string>
              </property>
             </item>
             <property name="minimumSize">
@@ -111,7 +111,7 @@
           <item row="1" column="1">
            <widget class="QComboBox" name="comboIFIIWL_BODY">
             <property name="toolTip">
-             <string>选择读取渗流结果时，求解器同时需要同一结果步的节点水头和节点体力；坝体自重由填筑计算单独处理。</string>
+             <string>读取渗流结果时，同时使用节点水头和节点体力。</string>
             </property>
             <item>
              <property name="text">
@@ -134,7 +134,7 @@
           <item row="2" column="0">
            <widget class="QLabel" name="labelIFIIWL_FACE">
             <property name="text">
-             <string>坝体水面压力方式</string>
+             <string>坝体水压力</string>
             </property>
             <property name="wordWrap">
              <bool>false</bool>
@@ -194,7 +194,7 @@
        <item>
         <widget class="QGroupBox" name="groupSeepageAssociation">
          <property name="title">
-          <string>坝体渗流体力结果来源</string>
+          <string>渗流结果</string>
          </property>
          <layout class="QFormLayout" name="formLayoutSeepageAssociation">
           <property name="leftMargin">
@@ -234,7 +234,7 @@
           <item row="0" column="1">
            <widget class="QComboBox" name="comboSeepageSource">
             <property name="toolTip">
-             <string>仅在坝体渗流体力选择“读取渗流结果”时使用，同时读取该工况的节点水头和节点体力，并在本工况最后一个填筑蓄水阶段施加。</string>
+             <string>选择已完成的渗流工况。</string>
             </property>
             <item>
              <property name="text">
@@ -253,7 +253,7 @@
           <item row="1" column="1">
            <widget class="QComboBox" name="comboSeepageResultType">
             <property name="toolTip">
-             <string>明确指定使用稳态结果或非稳态结果，不进行自动回退。</string>
+             <string>选择稳态或非稳态结果。</string>
             </property>
             <item>
              <property name="text">
@@ -270,7 +270,7 @@
           <item row="2" column="0" colspan="2">
            <widget class="QLabel" name="labelSeepageAssociationHint">
             <property name="text">
-             <string>仅在坝基或坝体选择读取渗流结果时启用。节点水头用于坝基渗透压力，节点体力用于坝体内部渗流力；坝体自重由填筑计算单独处理。</string>
+             <string>用于坝体渗流体力计算。</string>
             </property>
             <property name="wordWrap">
              <bool>true</bool>
@@ -323,7 +323,7 @@
           <item row="0" column="1">
            <widget class="QComboBox" name="comboSeepageTransientStep">
             <property name="toolTip">
-             <string>选择非稳态最终结果或某个明确的 STEP 输出。</string>
+             <string>选择所需结果步。</string>
             </property>
             <item>
              <property name="text">
@@ -335,7 +335,7 @@
           <item row="1" column="0" colspan="2">
            <widget class="QLabel" name="labelSeepageTransientHint">
             <property name="text">
-             <string>关联工况尚未生成可用的非稳态结果。</string>
+             <string>暂无可用的非稳态结果。</string>
             </property>
             <property name="wordWrap">
              <bool>true</bool>
@@ -540,7 +540,7 @@
           <item row="0" column="0" colspan="2">
            <widget class="QLabel" name="labelDynamicHint">
             <property name="text">
-             <string>提示：需先启用动力计算。</string>
+             <string>启用动力计算后可设置。</string>
             </property>
             <property name="wordWrap">
              <bool>true</bool>
@@ -762,23 +762,23 @@
        <item>
         <widget class="QGroupBox" name="groupCycle">
          <property name="title">
-          <string>填筑与蓄水周期</string>
+          <string>施工阶段（填筑—蓄水）</string>
          </property>
          <layout class="QHBoxLayout" name="layoutCircle">
           <item>
-           <widget class="QPushButton" name="btnEditCircle">
+           <widget class="QLabel" name="labelCircleRows">
             <property name="text">
-             <string>编辑填筑与蓄水周期表</string>
+             <string>共 0 个阶段</string>
+            </property>
+            <property name="wordWrap">
+             <bool>false</bool>
             </property>
            </widget>
           </item>
           <item>
-           <widget class="QLabel" name="labelCircleRows">
+           <widget class="QPushButton" name="btnEditCircle">
             <property name="text">
-             <string>当前行数: 0</string>
-            </property>
-            <property name="wordWrap">
-             <bool>false</bool>
+             <string>编辑阶段</string>
             </property>
            </widget>
           </item>

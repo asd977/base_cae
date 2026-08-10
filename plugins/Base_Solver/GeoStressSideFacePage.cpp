@@ -427,14 +427,14 @@ GeoStressSideFacePage::GeoStressSideFacePage(QWidget* parent)
     connect(ui->pickEnableCheckBox, &QCheckBox::toggled, this,
             [this](bool on)
             {
-                PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, on);
+                PickManager::instance().setClickPickEnabled(pickDomain(), m_uuid, on);
             });
     connect(ui->groupCombo, &CustomComboBox::itemHovered, this,
             &GeoStressSideFacePage::onGroupHovered);
     connect(ui->groupCombo, &CustomComboBox::dropdownClosed, this,
             [this]()
             {
-                PickManager::instance().clearPreviewSelection(getPageType(), m_uuid,
+                PickManager::instance().clearPreviewSelection(pickDomain(), m_uuid,
                                                               currentPickMode());
             });
 
@@ -491,7 +491,7 @@ GeoStressSideFacePage::GeoStressSideFacePage(QWidget* parent)
     connect(&PickManager::instance(), &PickManager::selectionChanged, this,
             [this](const QString& domain, const QString& uuid, PickMode mode, GridKind kind)
             {
-                if (kind == GridKind::Solid && domain == getPageType() && uuid == m_uuid
+                if (kind == GridKind::Solid && domain == pickDomain() && uuid == m_uuid
                     && mode == currentPickMode())
                 {
                     updateHeightSliderRange();
@@ -507,6 +507,12 @@ GeoStressSideFacePage::~GeoStressSideFacePage()
     delete ui;
 }
 
+QString GeoStressSideFacePage::pickDomain() const
+{
+    return QStringLiteral("GeoStressRegressionSideFace/%1").arg(m_uuid);
+}
+
+
 void GeoStressSideFacePage::beforeLoad()
 {
     m_pressurePreviewActive = true;
@@ -515,10 +521,10 @@ void GeoStressSideFacePage::beforeLoad()
     // 必须先更新网格引用，再 activate() 重建当前面拾取索引和选面高亮。
     PickManager& picker = PickManager::instance();
     picker.updateStructure();
-    picker.activate(getPageType(), m_uuid, currentPickMode());
+    picker.activate(pickDomain(), m_uuid, currentPickMode());
     if (ui->pickEnableCheckBox)
         ui->pickEnableCheckBox->setChecked(false);
-    picker.setClickPickEnabled(getPageType(), m_uuid, false);
+    picker.setClickPickEnabled(pickDomain(), m_uuid, false);
     refreshGroupCombo();
     updateHeightSliderRange();
     restoreSelectedBoundaryHighlight();
@@ -531,9 +537,9 @@ void GeoStressSideFacePage::beforeUnload()
     if (m_pressurePreviewTimer)
         m_pressurePreviewTimer->stop();
     clearPressurePreview();
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
-    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
-    PickManager::instance().deactivate(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().clearPreviewSelection(pickDomain(), m_uuid, currentPickMode());
+    PickManager::instance().setClickPickEnabled(pickDomain(), m_uuid, true);
+    PickManager::instance().deactivate(pickDomain(), m_uuid, currentPickMode());
 }
 
 QJsonObject GeoStressSideFacePage::saveJson()
@@ -556,9 +562,9 @@ QJsonObject GeoStressSideFacePage::saveJson()
     };
 
     obj["picked_edges"] = toJson(
-        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Edge, GridKind::Solid));
+        PickManager::instance().getIdList(pickDomain(), m_uuid, PickMode::Edge, GridKind::Solid));
     obj["picked_faces"] = toJson(
-        PickManager::instance().getIdList(getPageType(), m_uuid, PickMode::Face, GridKind::Solid));
+        PickManager::instance().getIdList(pickDomain(), m_uuid, PickMode::Face, GridKind::Solid));
     return obj;
 }
 
@@ -585,10 +591,10 @@ void GeoStressSideFacePage::loadJson(const QJsonObject& obj)
         return ids;
     };
 
-    PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
+    PickManager::instance().setSelectedEdgeKeys(pickDomain(), m_uuid, GridKind::Solid,
                                                 fromJson(obj.value("picked_edges").toArray()),
                                                 true);
-    PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
+    PickManager::instance().setSelectedFaceKeys(pickDomain(), m_uuid, GridKind::Solid,
                                                 fromJson(obj.value("picked_faces").toArray()),
                                                 true);
     updateHeightSliderRange();
@@ -625,7 +631,7 @@ int GeoStressSideFacePage::selectionCount() const
     vtkUnstructuredGrid* grid = PickManager::instance().solidGrid();
     if (!grid)
         return 0;
-    return collectRows(grid, QStringLiteral("GeoStressRegressionSideFace"), m_uuid,
+    return collectRows(grid, pickDomain(), m_uuid,
                        currentPickMode())
         .size();
 }
@@ -655,7 +661,7 @@ bool GeoStressSideFacePage::validatePressure(int verticalAxis, QString* errorMes
         return fail(QStringLiteral("无法读取侧立面%1的网格数据。").arg(m_faceIndex));
 
     const QVector<EdgeRow> rows = collectRows(
-        grid, QStringLiteral("GeoStressRegressionSideFace"), m_uuid, currentPickMode());
+        grid, pickDomain(), m_uuid, currentPickMode());
     vtkDataArray* nodeIdArr =
         vtkDataArray::SafeDownCast(grid->GetPointData()->GetArray("node_id"));
     if (rows.isEmpty() || !nodeIdArr)
@@ -714,7 +720,7 @@ bool GeoStressSideFacePage::exportDatFile() const
     if (!grid)
         return false;
 
-    const QString domain = "GeoStressRegressionSideFace";
+    const QString domain = pickDomain();
     const QVector<EdgeRow> rows = collectRows(grid, domain, m_uuid, currentPickMode());
 
     const QString projectDir =
@@ -776,8 +782,8 @@ bool GeoStressSideFacePage::exportDatFile() const
 
 void GeoStressSideFacePage::onClearClicked()
 {
-    PickManager::instance().clearSelection(getPageType(), m_uuid, currentPickMode());
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().clearSelection(pickDomain(), m_uuid, currentPickMode());
+    PickManager::instance().clearPreviewSelection(pickDomain(), m_uuid, currentPickMode());
 }
 
 void GeoStressSideFacePage::onBatchAddClicked()
@@ -791,10 +797,10 @@ void GeoStressSideFacePage::onBatchAddClicked()
     const MeshTagSet set =
         findBoundarySet(meshSvc, comboTagKey(ui->groupCombo, ui->groupCombo->currentIndex()));
     if (currentPickMode() == PickMode::Face)
-        PickManager::instance().setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid,
+        PickManager::instance().setSelectedFaceKeys(pickDomain(), m_uuid, GridKind::Solid,
                                                     toVtkKeys(set.faceKeys), false);
     else
-        PickManager::instance().setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
+        PickManager::instance().setSelectedEdgeKeys(pickDomain(), m_uuid, GridKind::Solid,
                                                     toVtkKeys(set.edgeKeys), false);
 }
 
@@ -805,10 +811,10 @@ void GeoStressSideFacePage::onGroupHovered(int row)
         return;
     const MeshTagSet set = findBoundarySet(meshSvc, comboTagKey(ui->groupCombo, row));
     if (currentPickMode() == PickMode::Face)
-        PickManager::instance().setPreviewFaceKeys(getPageType(), m_uuid, GridKind::Solid,
+        PickManager::instance().setPreviewFaceKeys(pickDomain(), m_uuid, GridKind::Solid,
                                                    toVtkKeys(set.faceKeys));
     else
-        PickManager::instance().setPreviewEdgeKeys(getPageType(), m_uuid, GridKind::Solid,
+        PickManager::instance().setPreviewEdgeKeys(pickDomain(), m_uuid, GridKind::Solid,
                                                    toVtkKeys(set.edgeKeys));
 }
 
@@ -877,7 +883,7 @@ void GeoStressSideFacePage::restoreSelectedBoundaryHighlight()
     PickManager& picker = PickManager::instance();
     const PickMode mode = currentPickMode();
     const QVector<vtkIdType> selectedKeys =
-        picker.getIdList(getPageType(), m_uuid, mode, GridKind::Solid);
+        picker.getIdList(pickDomain(), m_uuid, mode, GridKind::Solid);
     if (selectedKeys.isEmpty())
         return;
 
@@ -885,13 +891,13 @@ void GeoStressSideFacePage::restoreSelectedBoundaryHighlight()
     // 先置空再恢复同一组 key，强制 PickManager 重建所选面的正常高亮。
     if (mode == PickMode::Face)
     {
-        picker.setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, {}, true);
-        picker.setSelectedFaceKeys(getPageType(), m_uuid, GridKind::Solid, selectedKeys, true);
+        picker.setSelectedFaceKeys(pickDomain(), m_uuid, GridKind::Solid, {}, true);
+        picker.setSelectedFaceKeys(pickDomain(), m_uuid, GridKind::Solid, selectedKeys, true);
     }
     else
     {
-        picker.setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid, {}, true);
-        picker.setSelectedEdgeKeys(getPageType(), m_uuid, GridKind::Solid, selectedKeys, true);
+        picker.setSelectedEdgeKeys(pickDomain(), m_uuid, GridKind::Solid, {}, true);
+        picker.setSelectedEdgeKeys(pickDomain(), m_uuid, GridKind::Solid, selectedKeys, true);
     }
 }
 
@@ -920,7 +926,7 @@ void GeoStressSideFacePage::updateHeightSliderRange()
     double selectedMaximum = std::numeric_limits<double>::lowest();
     const bool faceMode = currentPickMode() == PickMode::Face;
     const auto selectedKeys = PickManager::instance().getIdList(
-        getPageType(), m_uuid, currentPickMode(), GridKind::Solid);
+        pickDomain(), m_uuid, currentPickMode(), GridKind::Solid);
     for (vtkIdType key : selectedKeys)
     {
         const vtkIdType cellId = faceMode ? PickManager::instance().unpackFaceCellId(key)
@@ -1053,7 +1059,7 @@ void GeoStressSideFacePage::updatePressurePreview()
         verticalAxis = 1;
     const bool faceMode = currentPickMode() == PickMode::Face;
     const auto selectedKeys = PickManager::instance().getIdList(
-        getPageType(), m_uuid, currentPickMode(), GridKind::Solid);
+        pickDomain(), m_uuid, currentPickMode(), GridKind::Solid);
     if (selectedKeys.isEmpty())
     {
         setPreviewStatus(QStringLiteral("请先选择侧立面边界，再调节侧压高程。"), true);

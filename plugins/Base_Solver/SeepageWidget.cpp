@@ -214,7 +214,7 @@ bool SeepageWidget::validateInputs(QString* errorMessage) const
         }
         if (duplicateCount > 0)
         {
-            return fail(QStringLiteral("上下游边界存在 %1 个重复节点。请将同一节点只分配给一个边界。")
+            return fail(QStringLiteral("上下游边界有 %1 个重复节点，请重新分配。")
                             .arg(duplicateCount));
         }
     }

@@ -47,6 +47,7 @@ IsosurfaceSegmentationWidget::IsosurfaceSegmentationWidget(
       m_visualService(postProcessingWidget)
 {
     ui->setupUi(this);
+    ui->displayGroupBox->setVisible(false);
 
     configurePostResultCombo(ui->analysisComboBox);
     configurePostResultCombo(ui->resultDirComboBox);
@@ -58,7 +59,7 @@ IsosurfaceSegmentationWidget::IsosurfaceSegmentationWidget(
         postScalarBarStyle().visible = checked;
         if (m_visualService)
         {
-            m_visualService->showScalarBar(checked, false);
+            m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
             m_visualService->render();
         }
     });
@@ -81,6 +82,8 @@ IsosurfaceSegmentationWidget::IsosurfaceSegmentationWidget(
         {
             ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
             updateColoringFromUI();
+            updateIsoFromUI();
+            updateVisibilityFromUI();
             renderNow();
         }
     });
@@ -145,6 +148,24 @@ IsosurfaceSegmentationWidget::IsosurfaceSegmentationWidget(
     connect(ui->resultTimeComboBox,
             QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &IsosurfaceSegmentationWidget::on_resultTimeComboBox_currentIndexChanged);
+
+    EventManager::instance().registerHandler(
+        postDisplaySettingsChangedEvent(), this,
+        [this](const QVariantMap& data)
+        {
+            if (!property("postDisplayActive").toBool())
+                return;
+            {
+                const QSignalBlocker scalarBarBlocker(ui->showScalarBarCheckBox);
+                ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+            }
+            if (data.value(QStringLiteral("reason")).toString() == QStringLiteral("mesh-filter"))
+                setIsoSpinRangeFromScalar();
+            updateColoringFromUI();
+            updateIsoFromUI();
+            updateVisibilityFromUI();
+            renderNow();
+        });
 }
 
 IsosurfaceSegmentationWidget::~IsosurfaceSegmentationWidget()
@@ -154,6 +175,7 @@ IsosurfaceSegmentationWidget::~IsosurfaceSegmentationWidget()
 
 void IsosurfaceSegmentationWidget::beforeLoad()
 {
+    setProperty("postDisplayActive", true);
     showPostProcessingOnly(m_visualService, false);
     ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
     refreshResultGroups();
@@ -435,6 +457,9 @@ void IsosurfaceSegmentationWidget::loadFileName(QString dataPath)
 
 void IsosurfaceSegmentationWidget::beforeUnload()
 {
+    setPostViewActive(false);
+    setProperty("postDisplayActive", false);
+    clearPostDisplayContext();
     // 只移除，不销毁对象
     detachActorsIfAttached();
     if (m_visualService)
@@ -498,9 +523,11 @@ void IsosurfaceSegmentationWidget::buildPipelineIfNeeded()
     if (m_threshLow)
         return; // 已构建
 
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+
     // 低值侧
     m_threshLow = vtkSmartPointer<vtkThreshold>::New();
-    m_threshLow->SetInputData(m_grid);
+    m_threshLow->SetInputData(displayGrid);
 
     m_mapperLow = vtkSmartPointer<vtkDataSetMapper>::New();
     m_mapperLow->SetInputConnection(m_threshLow->GetOutputPort());
@@ -511,7 +538,7 @@ void IsosurfaceSegmentationWidget::buildPipelineIfNeeded()
 
     // 高值侧
     m_threshHigh = vtkSmartPointer<vtkThreshold>::New();
-    m_threshHigh->SetInputData(m_grid);
+    m_threshHigh->SetInputData(displayGrid);
 
     m_mapperHigh = vtkSmartPointer<vtkDataSetMapper>::New();
     m_mapperHigh->SetInputConnection(m_threshHigh->GetOutputPort());
@@ -525,7 +552,7 @@ void IsosurfaceSegmentationWidget::buildPipelineIfNeeded()
     m_cellToPoint->PassCellDataOn();
 
     m_contourIso = vtkSmartPointer<vtkContourFilter>::New();
-    m_contourIso->SetInputData(m_grid);
+    m_contourIso->SetInputData(displayGrid);
 
     m_mapperIso = vtkSmartPointer<vtkPolyDataMapper>::New();
     m_mapperIso->SetInputConnection(m_contourIso->GetOutputPort());
@@ -538,17 +565,20 @@ void IsosurfaceSegmentationWidget::buildPipelineIfNeeded()
     // 首次构建时：加入场景，并记挂载标志
     if (m_actorLow && !m_attachedLow)
     {
-        addActorByService(m_visualService, m_actorLow, false);
+        addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("low")),
+                          m_actorLow, QStringLiteral("低值区域"), false);
         m_attachedLow = true;
     }
     if (m_actorHigh && !m_attachedHigh)
     {
-        addActorByService(m_visualService, m_actorHigh, false);
+        addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("high")),
+                          m_actorHigh, QStringLiteral("高值区域"), false);
         m_attachedHigh = true;
     }
     if (m_actorIso && !m_attachedIso)
     {
-        addActorByService(m_visualService, m_actorIso, false);
+        addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("iso")),
+                          m_actorIso, QStringLiteral("分割等值面"), false);
         m_attachedIso = true;
     }
 }
@@ -557,9 +587,12 @@ void IsosurfaceSegmentationWidget::setIsoSpinRangeFromScalar()
 {
     if (!m_grid)
         return;
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
+        return;
     const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
-    vtkDataArray* arr = PostFieldUtils::array(m_grid, field);
-    if (!arr)
+    vtkDataArray* arr = PostFieldUtils::array(displayGrid, field);
+    if (!arr || arr->GetNumberOfTuples() <= 0)
         return;
 
     arr->GetRange(m_scalarRange);
@@ -584,9 +617,15 @@ void IsosurfaceSegmentationWidget::updateIsoFromUI()
     if (!m_grid || !m_threshLow || !m_threshHigh || !m_contourIso)
         return;
 
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
+        return;
+    m_threshLow->SetInputData(displayGrid);
+    m_threshHigh->SetInputData(displayGrid);
+
     const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
-    vtkDataArray* selectedArray = PostFieldUtils::array(m_grid, field);
-    if (!selectedArray)
+    vtkDataArray* selectedArray = PostFieldUtils::array(displayGrid, field);
+    if (!selectedArray || selectedArray->GetNumberOfTuples() <= 0)
         return;
     const QByteArray encodedName = field.name.toUtf8();
     const int assoc = field.association;
@@ -643,7 +682,7 @@ void IsosurfaceSegmentationWidget::updateIsoFromUI()
     if (assoc == vtkDataObject::FIELD_ASSOCIATION_CELLS)
     {
         auto preparedGrid = PostFieldUtils::prepareCellScalarForPointConversion(
-            m_grid, field, &contourArrayName);
+            displayGrid, field, &contourArrayName);
         if (!preparedGrid)
             return;
         m_cellToPoint->SetInputData(preparedGrid);
@@ -652,7 +691,7 @@ void IsosurfaceSegmentationWidget::updateIsoFromUI()
     }
     else
     {
-        m_contourIso->SetInputData(m_grid);
+        m_contourIso->SetInputData(displayGrid);
     }
     const QByteArray contourArray = contourArrayName.toUtf8();
     m_contourIso->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS,
@@ -667,15 +706,35 @@ void IsosurfaceSegmentationWidget::updateColoringFromUI()
     if (!m_grid || !m_mapperLow || !m_mapperHigh || !m_mapperIso)
         return;
 
-    const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
-    vtkDataArray* arr = PostFieldUtils::array(m_grid, field);
-    if (!arr)
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
+    {
+        clearPostDisplayContext();
+        detachActorsIfAttached();
+        if (m_visualService)
+            m_visualService->showScalarBar(false, false);
         return;
+    }
+    m_threshLow->SetInputData(displayGrid);
+    m_threshHigh->SetInputData(displayGrid);
+
+    const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+    vtkDataArray* arr = PostFieldUtils::array(displayGrid, field);
+    if (!arr || arr->GetNumberOfTuples() <= 0)
+    {
+        clearPostDisplayContext();
+        detachActorsIfAttached();
+        if (m_visualService)
+            m_visualService->showScalarBar(false, false);
+        return;
+    }
     const int assoc = field.association;
     const QByteArray encodedName = field.name.toUtf8();
 
     double dataRange[2];
     arr->GetRange(dataRange);
+    if (property("postDisplayActive").toBool())
+        publishPostDisplayContext(field.name, dataRange[0], dataRange[1], false, false);
     double range[2]{dataRange[0], dataRange[1]};
     resolvePostDisplayRange(field.name, dataRange[0], dataRange[1], range[0], range[1]);
 
@@ -691,8 +750,7 @@ void IsosurfaceSegmentationWidget::updateColoringFromUI()
         scalarBar->SetLookupTable(newLut);
         lut = newLut;
     }
-    lut->SetTableRange(range);
-    lut->Build();
+    applyStandardPostLookupTable(lut, range[0], range[1]);
 
     // 低值侧
     m_mapperLow->SetLookupTable(lut);
@@ -727,12 +785,12 @@ void IsosurfaceSegmentationWidget::updateColoringFromUI()
     {
         applyStandardPostScalarBar(
             m_visualService, ResultDisplayNames::scalarBarName(field.name));
-        m_visualService->showScalarBar(postScalarBarStyle().visible, false);
+        m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
     }
 
-    // 缓存给 Spin/Slider 使用
-    m_scalarRange[0] = range[0];
-    m_scalarRange[1] = range[1];
+    // 阈值始终使用原始数据范围；显示范围只影响着色。
+    m_scalarRange[0] = dataRange[0];
+    m_scalarRange[1] = dataRange[1];
 }
 
 void IsosurfaceSegmentationWidget::updateVisibilityFromUI()
@@ -764,17 +822,20 @@ void IsosurfaceSegmentationWidget::attachActorsIfNeeded()
 {
     if (m_actorLow && !m_attachedLow)
     {
-        addActorByService(m_visualService, m_actorLow, false);
+        addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("low")),
+                          m_actorLow, QStringLiteral("低值区域"), false);
         m_attachedLow = true;
     }
     if (m_actorHigh && !m_attachedHigh)
     {
-        addActorByService(m_visualService, m_actorHigh, false);
+        addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("high")),
+                          m_actorHigh, QStringLiteral("高值区域"), false);
         m_attachedHigh = true;
     }
     if (m_actorIso && !m_attachedIso)
     {
-        addActorByService(m_visualService, m_actorIso, false);
+        addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("iso")),
+                          m_actorIso, QStringLiteral("分割等值面"), false);
         m_attachedIso = true;
     }
 }
@@ -783,17 +844,17 @@ void IsosurfaceSegmentationWidget::detachActorsIfAttached()
 {
     if (m_actorLow && m_attachedLow)
     {
-        removeActorByService(m_visualService, m_actorLow, false);
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("low")), false);
         m_attachedLow = false;
     }
     if (m_actorHigh && m_attachedHigh)
     {
-        removeActorByService(m_visualService, m_actorHigh, false);
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("high")), false);
         m_attachedHigh = false;
     }
     if (m_actorIso && m_attachedIso)
     {
-        removeActorByService(m_visualService, m_actorIso, false);
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("iso")), false);
         m_attachedIso = false;
     }
 }

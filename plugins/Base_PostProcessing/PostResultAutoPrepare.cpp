@@ -25,7 +25,7 @@ namespace
 constexpr char kLegacyPostResultRoot[] = "post";
 constexpr char kManifestName[] = "manifest.json";
 constexpr char kLegacyAnalysisManifestFileName[] = "analysis.json";
-constexpr int kManifestVersion = 10;
+constexpr int kManifestVersion = 11;
 
 struct GeneratedFileInfo
 {

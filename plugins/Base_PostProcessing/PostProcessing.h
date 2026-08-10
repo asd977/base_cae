@@ -13,6 +13,8 @@
 #include "SliceSettingsWidget.h"
 #include "VectorSettingWidget.h"
 
+class PostDisplayControlWidget;
+
 class PostProcessing : public QObject, public PostProcessingService
 {
     Q_OBJECT
@@ -51,6 +53,7 @@ class PostProcessing : public QObject, public PostProcessingService
     SliceSettingsWidget* m_sliceSettingWidget{nullptr};
 
     BlockSettingsWidget* m_blockSettingsWidget{nullptr};
+    PostDisplayControlWidget* m_displayControlWidget{nullptr};
     ProjectNode* m_root{nullptr};
     QSet<QString> m_preparingResultRoots;
     QSet<QString> m_pendingResultRoots;

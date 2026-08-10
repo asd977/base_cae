@@ -91,6 +91,7 @@ SliceSettingsWidget::SliceSettingsWidget(VisualWidgetService* postProcessingWidg
       m_visualService(postProcessingWidget)
 {
     ui->setupUi(this);
+    ui->displayGroupBox->setVisible(false);
 
     configurePostResultCombo(ui->analysisComboBox);
     configurePostResultCombo(ui->resultDirComboBox);
@@ -102,7 +103,7 @@ SliceSettingsWidget::SliceSettingsWidget(VisualWidgetService* postProcessingWidg
         postScalarBarStyle().visible = checked;
         if (m_visualService)
         {
-            m_visualService->showScalarBar(checked, false);
+            m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
             m_visualService->render();
         }
     });
@@ -169,6 +170,22 @@ SliceSettingsWidget::SliceSettingsWidget(VisualWidgetService* postProcessingWidg
     connect(ui->stepComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &SliceSettingsWidget::on_stepComboBox_currentIndexChanged);
 
+    EventManager::instance().registerHandler(
+        postDisplaySettingsChangedEvent(), this,
+        [this](const QVariantMap&)
+        {
+            if (!property("postDisplayActive").toBool())
+                return;
+            {
+                const QSignalBlocker scalarBarBlocker(ui->showScalarBarCheckBox);
+                const QSignalBlocker contourBlocker(ui->showContourCheckBox);
+                ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+                ui->showContourCheckBox->setChecked(postContourStyle().enabled);
+            }
+            if (ui->scalarComboBox->currentIndex() >= 0)
+                on_scalarComboBox_currentIndexChanged(ui->scalarComboBox->currentIndex());
+        });
+
     ui->sliceNumSpin->setRange(1, 100);
     ui->sliceNumSpin->setValue(5);
     ui->confirmButton->setVisible(false); // 单切面实时更新；仅多切面需要生成按钮
@@ -181,6 +198,7 @@ SliceSettingsWidget::~SliceSettingsWidget()
 
 void SliceSettingsWidget::beforeLoad()
 {
+    setProperty("postDisplayActive", true);
     showPostProcessingOnly(m_visualService, false);
     ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
     ui->showContourCheckBox->setChecked(postContourStyle().enabled);
@@ -209,9 +227,21 @@ void SliceSettingsWidget::beforeLoad()
         const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
         if (!field.name.isEmpty())
         {
-            m_visualService->showScalarBar(postScalarBarStyle().visible, false);
+            m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
             applyStandardPostScalarBar(
                 m_visualService, ResultDisplayNames::scalarBarName(field.name));
+        }
+    }
+
+    if (m_grid)
+    {
+        const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+        if (vtkDataArray* array = PostFieldUtils::array(m_grid, field))
+        {
+            double dataRange[2]{0.0, 1.0};
+            array->GetRange(dataRange);
+            if (property("postDisplayActive").toBool())
+                publishPostDisplayContext(field.name, dataRange[0], dataRange[1], true, false);
         }
     }
 
@@ -428,6 +458,9 @@ void SliceSettingsWidget::on_resultTimeComboBox_currentIndexChanged(int)
 
 void SliceSettingsWidget::beforeUnload()
 {
+    setPostViewActive(false);
+    setProperty("postDisplayActive", false);
+    clearPostDisplayContext();
     // 只移除，不销毁
     detachAllFromScene();
     if (m_visualService)
@@ -511,7 +544,7 @@ void SliceSettingsWidget::on_stepComboBox_currentIndexChanged(int idx)
 
     // 清理结果显示
     if (m_sliceActor)
-        removeActorByService(m_visualService, m_sliceActor, false);
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice")), false);
     clearMultiSlicesAll();
 
     // 上色整体云图
@@ -533,11 +566,24 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
                                                      ui->resultTimeComboBox, ui->stepComboBox);
     if (!m_grid)
         return;
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
+    {
+        clearPostDisplayContext();
+        detachAllFromScene();
+        if (m_visualService)
+            m_visualService->showScalarBar(false, false);
+        return;
+    }
     const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
-    vtkDataArray* arr = PostFieldUtils::array(m_grid, field);
-    if (!arr)
+    vtkDataArray* arr = PostFieldUtils::array(displayGrid, field);
+    if (!arr || arr->GetNumberOfTuples() <= 0)
     {
         qWarning() << "[Slice] Scalar array not found:" << field.name;
+        clearPostDisplayContext();
+        detachAllFromScene();
+        if (m_visualService)
+            m_visualService->showScalarBar(false, false);
         return;
     }
     const QByteArray encodedName = field.name.toUtf8();
@@ -545,6 +591,8 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
     // LUT
     double dataRange[2];
     arr->GetRange(dataRange);
+    if (property("postDisplayActive").toBool())
+        publishPostDisplayContext(field.name, dataRange[0], dataRange[1], true, false);
     double range[2]{dataRange[0], dataRange[1]};
     resolvePostDisplayRange(field.name, dataRange[0], dataRange[1], range[0], range[1]);
     auto* scalarBar = m_visualService->scalarBarActor();
@@ -557,13 +605,12 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
         scalarBar->SetLookupTable(newLut);
         lut = newLut;
     }
-    lut->SetTableRange(range);
-    lut->Build();
+    applyStandardPostLookupTable(lut, range[0], range[1]);
 
     // 整体云图
     vtkSmartPointer<vtkDataSetSurfaceFilter> surfaceFilter =
         vtkSmartPointer<vtkDataSetSurfaceFilter>::New();
-    surfaceFilter->SetInputData(m_grid);
+    surfaceFilter->SetInputData(displayGrid);
     surfaceFilter->Update();
 
     vtkSmartPointer<vtkPolyData> polyData = surfaceFilter->GetOutput();
@@ -582,17 +629,18 @@ void SliceSettingsWidget::on_scalarComboBox_currentIndexChanged(int)
     m_actor->SetMapper(mapper);
     m_actor->GetProperty()->SetRepresentationToSurface();
     applyStandardPostScalarBar(m_visualService, ResultDisplayNames::scalarBarName(field.name));
-    m_visualService->showScalarBar(postScalarBarStyle().visible, false);
+    m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
 
     // 没有在显示结果时，才把整体云图挂上
     if (!m_singleDisplayed && !m_multiDisplayed)
-        addActorByService(m_visualService, m_actor);
+        addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("surface")),
+                          m_actor, QStringLiteral("结果表面"));
 
     // 若已经在显示结果，重建结果以复用新 LUT
     if (m_singleDisplayed)
     {
         if (m_sliceActor)
-            removeActorByService(m_visualService, m_sliceActor, false);
+            removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice")), false);
         buildSingleSliceResult();
     }
     else if (m_multiDisplayed)
@@ -659,7 +707,7 @@ void SliceSettingsWidget::showCutPlane(int)
 
     // 位置变化后直接显示真实切面结果。
     if (m_actor)
-        removeActorByService(m_visualService, m_actor, false);
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("surface")), false);
     hideMultiSlicesFromScene();
 
     buildSingleSliceResult();
@@ -683,9 +731,9 @@ void SliceSettingsWidget::on_confirmButton_clicked()
 
     // 多切面计算量更大，仍由“生成多切面”按钮显式触发。
     if (m_actor)
-        removeActorByService(m_visualService, m_actor, false);
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("surface")), false);
     if (m_sliceActor)
-        removeActorByService(m_visualService, m_sliceActor, false);
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice")), false);
 
     buildMultiSliceResult();
     m_singleDisplayed = false;
@@ -710,12 +758,13 @@ void SliceSettingsWidget::on_singleSliceRadioButton_toggled(bool checked)
     else
     {
         if (m_sliceActor)
-            removeActorByService(m_visualService, m_sliceActor, false);
+            removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice")), false);
         if (m_sliceContourActor)
-            removeActorByService(m_visualService, m_sliceContourActor, false);
+            removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice-contour")), false);
         m_singleDisplayed = false;
         if (m_actor)
-            addActorByService(m_visualService, m_actor, false);
+            addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("surface")),
+                          m_actor, QStringLiteral("结果表面"), false);
     }
 
     if (m_visualService)
@@ -774,9 +823,12 @@ void SliceSettingsWidget::buildSingleSliceResult()
     if (!m_grid || !m_visualService)
         return;
 
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
+        return;
     const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
-    vtkDataArray* arr = PostFieldUtils::array(m_grid, field);
-    if (!arr)
+    vtkDataArray* arr = PostFieldUtils::array(displayGrid, field);
+    if (!arr || arr->GetNumberOfTuples() <= 0)
         return;
     const QByteArray encodedName = field.name.toUtf8();
     QString sliceArrayName = field.name;
@@ -792,8 +844,7 @@ void SliceSettingsWidget::buildSingleSliceResult()
     arr->GetRange(dataRange);
     double range[2]{dataRange[0], dataRange[1]};
     resolvePostDisplayRange(field.name, dataRange[0], dataRange[1], range[0], range[1]);
-    lut->SetTableRange(range);
-    lut->Build();
+    applyStandardPostLookupTable(lut, range[0], range[1]);
 
     auto cutter = vtkSmartPointer<vtkCutter>::New();
     cutter->SetCutFunction(m_plane);
@@ -805,7 +856,7 @@ void SliceSettingsWidget::buildSingleSliceResult()
             m_cellToPoint->PassCellDataOn();
         }
         auto preparedGrid = PostFieldUtils::prepareCellScalarForPointConversion(
-            m_grid, field, &sliceArrayName);
+            displayGrid, field, &sliceArrayName);
         if (!preparedGrid)
             return;
         m_cellToPoint->SetInputData(preparedGrid);
@@ -814,7 +865,7 @@ void SliceSettingsWidget::buildSingleSliceResult()
     }
     else
     {
-        cutter->SetInputData(m_grid);
+        cutter->SetInputData(displayGrid);
     }
     cutter->Update();
 
@@ -828,22 +879,24 @@ void SliceSettingsWidget::buildSingleSliceResult()
     mapper->ScalarVisibilityOn();
 
     if (m_sliceActor)
-        removeActorByService(m_visualService, m_sliceActor, false);
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice")), false);
     if (m_sliceContourActor)
-        removeActorByService(m_visualService, m_sliceContourActor, false);
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice-contour")), false);
     m_sliceContourActor = nullptr;
 
     m_sliceActor = vtkSmartPointer<vtkActor>::New();
     m_sliceActor->SetMapper(mapper);
     m_sliceActor->GetProperty()->SetRepresentationToSurface();
 
-    addActorByService(m_visualService, m_sliceActor, false);
+    addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice")),
+                      m_sliceActor, QStringLiteral("切面"), false);
     m_sliceContourActor = createPostContourActor(cutter->GetOutputPort(), sliceArrayName,
                                                   range[0], range[1]);
     if (m_sliceContourActor)
-        addActorByService(m_visualService, m_sliceContourActor, false);
+        addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice-contour")),
+                          m_sliceContourActor, QStringLiteral("切面等值线"), false);
     applyStandardPostScalarBar(m_visualService, ResultDisplayNames::scalarBarName(field.name));
-    m_visualService->showScalarBar(postScalarBarStyle().visible, false);
+    m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
 }
 
 void SliceSettingsWidget::buildMultiSliceResult()
@@ -857,9 +910,12 @@ void SliceSettingsWidget::buildMultiSliceResult()
     const bool includeEnds = ui->includeEndsCheck && ui->includeEndsCheck->isChecked();
     const int planeIndex = ui->planeComboBox->currentIndex();
 
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
+        return;
     const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
-    vtkDataArray* arr = PostFieldUtils::array(m_grid, field);
-    if (!arr)
+    vtkDataArray* arr = PostFieldUtils::array(displayGrid, field);
+    if (!arr || arr->GetNumberOfTuples() <= 0)
         return;
     const QByteArray encodedName = field.name.toUtf8();
     QString sliceArrayName = field.name;
@@ -874,8 +930,7 @@ void SliceSettingsWidget::buildMultiSliceResult()
     arr->GetRange(dataRange);
     double range[2]{dataRange[0], dataRange[1]};
     resolvePostDisplayRange(field.name, dataRange[0], dataRange[1], range[0], range[1]);
-    lut->SetTableRange(range);
-    lut->Build();
+    applyStandardPostLookupTable(lut, range[0], range[1]);
 
     if (field.association == vtkDataObject::FIELD_ASSOCIATION_CELLS)
     {
@@ -885,7 +940,7 @@ void SliceSettingsWidget::buildMultiSliceResult()
             m_cellToPoint->PassCellDataOn();
         }
         auto preparedGrid = PostFieldUtils::prepareCellScalarForPointConversion(
-            m_grid, field, &sliceArrayName);
+            displayGrid, field, &sliceArrayName);
         if (!preparedGrid)
             return;
         m_cellToPoint->SetInputData(preparedGrid);
@@ -925,7 +980,7 @@ void SliceSettingsWidget::buildMultiSliceResult()
         if (field.association == vtkDataObject::FIELD_ASSOCIATION_CELLS)
             cutter->SetInputConnection(m_cellToPoint->GetOutputPort());
         else
-            cutter->SetInputData(m_grid);
+            cutter->SetInputData(displayGrid);
         cutter->Update();
 
         auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
@@ -939,12 +994,17 @@ void SliceSettingsWidget::buildMultiSliceResult()
 
         auto actor = vtkSmartPointer<vtkActor>::New();
         actor->SetMapper(mapper);
-        addActorByService(m_visualService, actor, false);
+        const int sliceIndex = m_multiActors.size();
+        addActorByService(m_visualService,
+                          postActorId(getUuid(), QStringLiteral("slice-%1").arg(sliceIndex)),
+                          actor, QStringLiteral("切面 %1").arg(sliceIndex + 1), false);
 
         auto contourActor = createPostContourActor(cutter->GetOutputPort(), sliceArrayName,
                                                    range[0], range[1]);
         if (contourActor)
-            addActorByService(m_visualService, contourActor, false);
+            addActorByService(m_visualService,
+                              postActorId(getUuid(), QStringLiteral("slice-contour-%1").arg(sliceIndex)),
+                              contourActor, QStringLiteral("切面等值线 %1").arg(sliceIndex + 1), false);
 
         m_multiPlanes << plane;
         m_multiCutters << cutter;
@@ -955,20 +1015,24 @@ void SliceSettingsWidget::buildMultiSliceResult()
     }
 
     applyStandardPostScalarBar(m_visualService, ResultDisplayNames::scalarBarName(field.name));
-    m_visualService->showScalarBar(postScalarBarStyle().visible, false);
+    m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
 }
 
 void SliceSettingsWidget::hideMultiSlicesFromScene()
 {
-    for (auto& a : m_multiActors)
+    for (int i = 0; i < m_multiActors.size(); ++i)
     {
-        if (a)
-            removeActorByService(m_visualService, a, false);
+        if (m_multiActors[i])
+            removeActorByService(
+                m_visualService,
+                postActorId(getUuid(), QStringLiteral("slice-%1").arg(i)), false);
     }
-    for (auto& a : m_multiContourActors)
+    for (int i = 0; i < m_multiContourActors.size(); ++i)
     {
-        if (a)
-            removeActorByService(m_visualService, a, false);
+        if (m_multiContourActors[i])
+            removeActorByService(
+                m_visualService,
+                postActorId(getUuid(), QStringLiteral("slice-contour-%1").arg(i)), false);
     }
 }
 
@@ -992,20 +1056,28 @@ void SliceSettingsWidget::reattachAccordingToDisplayState()
 
     if (m_multiDisplayed && multiMode && !m_multiActors.isEmpty())
     {
-        for (auto& a : m_multiActors)
-            if (a)
-                addActorByService(m_visualService, a, false);
-        for (auto& a : m_multiContourActors)
-            if (a)
-                addActorByService(m_visualService, a, false);
+        for (int i = 0; i < m_multiActors.size(); ++i)
+            if (m_multiActors[i])
+                addActorByService(
+                    m_visualService,
+                    postActorId(getUuid(), QStringLiteral("slice-%1").arg(i)),
+                    m_multiActors[i], QStringLiteral("切面 %1").arg(i + 1), false);
+        for (int i = 0; i < m_multiContourActors.size(); ++i)
+            if (m_multiContourActors[i])
+                addActorByService(
+                    m_visualService,
+                    postActorId(getUuid(), QStringLiteral("slice-contour-%1").arg(i)),
+                    m_multiContourActors[i], QStringLiteral("切面等值线 %1").arg(i + 1), false);
         return;
     }
 
     if (m_singleDisplayed && singleMode && m_sliceActor)
     {
-        addActorByService(m_visualService, m_sliceActor, false);
+        addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice")),
+                      m_sliceActor, QStringLiteral("切面"), false);
         if (m_sliceContourActor)
-            addActorByService(m_visualService, m_sliceContourActor, false);
+            addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice-contour")),
+                          m_sliceContourActor, QStringLiteral("切面等值线"), false);
         if (m_visualService)
             m_visualService->render();
         return;
@@ -1013,7 +1085,8 @@ void SliceSettingsWidget::reattachAccordingToDisplayState()
 
     // 默认：整体云图
     if (m_actor)
-        addActorByService(m_visualService, m_actor);
+        addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("surface")),
+                          m_actor, QStringLiteral("结果表面"));
 
     // 单切面模式没有单独预览状态，直接恢复/生成真实切面结果。
     if (singleMode && !m_singleDisplayed)
@@ -1023,10 +1096,10 @@ void SliceSettingsWidget::reattachAccordingToDisplayState()
 void SliceSettingsWidget::detachAllFromScene()
 {
     if (m_actor)
-        removeActorByService(m_visualService, m_actor, false);
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("surface")), false);
     if (m_sliceActor)
-        removeActorByService(m_visualService, m_sliceActor, false);
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice")), false);
     if (m_sliceContourActor)
-        removeActorByService(m_visualService, m_sliceContourActor, false);
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("slice-contour")), false);
     hideMultiSlicesFromScene();
 }

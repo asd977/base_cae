@@ -87,6 +87,54 @@ GeoStressMeasurePointPage::GeoStressMeasurePointPage(QWidget* parent)
     connect(ui->appendSelectedPointsButton, &QPushButton::clicked, this,
             &GeoStressMeasurePointPage::onAppendSelectedPointsClicked);
     connect(ui->removeRowsButton, &QPushButton::clicked, this, &GeoStressMeasurePointPage::onRemoveRowsClicked);
+
+    SolverUiLayoutHelper::installTableRowContextMenu(
+        ui->measureTable,
+        [this](int insertAt, int sourceRow, bool duplicate)
+        {
+            if (ui->measureTable->rowCount() >= kMaximumMeasurePoints)
+            {
+                QMessageBox::information(this, QStringLiteral("已达到数量上限"),
+                                         QStringLiteral("实测地应力点最多允许 100 个。"));
+                return;
+            }
+
+            QStringList values;
+            for (int column = 0; column < ColCount; ++column)
+                values.push_back(duplicate && sourceRow >= 0
+                                     && sourceRow < ui->measureTable->rowCount()
+                                     ? cellText(sourceRow, column)
+                                     : QString());
+
+            insertAt = qBound(0, insertAt, ui->measureTable->rowCount());
+            ui->measureTable->insertRow(insertAt);
+            setCellText(insertAt, ColNodeId, values.value(ColNodeId), false);
+            setCellText(insertAt, ColX, duplicate ? values.value(ColX) : QStringLiteral("0"));
+            setCellText(insertAt, ColY, duplicate ? values.value(ColY) : QStringLiteral("0"));
+            setCellText(insertAt, ColZ, duplicate ? values.value(ColZ) : QStringLiteral("0"));
+            setCellText(insertAt, ColSgx, duplicate ? values.value(ColSgx) : QStringLiteral("0"));
+            setCellText(insertAt, ColSgy, duplicate ? values.value(ColSgy) : QStringLiteral("0"));
+            setCellText(insertAt, ColSgz, duplicate ? values.value(ColSgz) : QStringLiteral("0"));
+            setCellText(insertAt, ColTxy, duplicate ? values.value(ColTxy) : QStringLiteral("0"));
+            setCellText(insertAt, ColTyz, duplicate ? values.value(ColTyz) : QStringLiteral("0"));
+            setCellText(insertAt, ColTzx, duplicate ? values.value(ColTzx) : QStringLiteral("0"));
+            setCellText(insertAt, ColPid,
+                        duplicate ? values.value(ColPid) : QStringLiteral("-1"), false);
+            applyDimensionUi();
+            ui->measureTable->setCurrentCell(insertAt, ColX);
+            syncPickedPointIds();
+        },
+        [this](int row)
+        {
+            if (row < 0 || row >= ui->measureTable->rowCount())
+                return;
+            ui->measureTable->removeRow(row);
+            if (ui->measureTable->rowCount() > 0)
+                ui->measureTable->setCurrentCell(
+                    qMin(row, ui->measureTable->rowCount() - 1), ColX);
+            syncPickedPointIds();
+        });
+
     connect(ui->pickEnableCheckBox, &QCheckBox::toggled, this,
             [this](bool on)
             {

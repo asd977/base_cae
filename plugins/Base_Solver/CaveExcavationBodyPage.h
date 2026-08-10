@@ -45,6 +45,7 @@ class CaveExcavationBodyPage : public BasePage
     void onGroupDropdownClosed();
 
   private:
+    QString pickDomain() const;
     void setupGroupCombo();
     QVector<int> availableGroupIds() const;
     QString groupDisplayText(int groupId) const;

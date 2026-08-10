@@ -81,6 +81,19 @@ PostContourReaderWidget::PostContourReaderWidget(QWidget* parent)
     ui->showTextCheckBox->setChecked(false);
     ui->textFontSizeSpinBox->setEnabled(false);
 
+    EventManager::instance().registerHandler(
+        postDisplaySettingsChangedEvent(), this,
+        [this](const QVariantMap& data)
+        {
+            if (!property("postDisplayActive").toBool() ||
+                data.value(QStringLiteral("reason")).toString() != QStringLiteral("visibility"))
+                return;
+            if (postSceneStyle().visible)
+                displayModel(false);
+            else
+                removeActorsFromRenderer();
+        });
+
     setStatusMessage(QStringLiteral("未选择轮廓图数据文件。"));
 }
 
@@ -92,6 +105,8 @@ PostContourReaderWidget::~PostContourReaderWidget()
 
 void PostContourReaderWidget::beforeLoad()
 {
+    setProperty("postDisplayActive", true);
+    clearPostDisplayContext();
     ensureVisualService();
 
     if (m_visualService)
@@ -103,6 +118,9 @@ void PostContourReaderWidget::beforeLoad()
 
 void PostContourReaderWidget::beforeUnload()
 {
+    setPostViewActive(false);
+    setProperty("postDisplayActive", false);
+    clearPostDisplayContext();
     removeActorsFromRenderer();
 }
 
@@ -353,14 +371,24 @@ void PostContourReaderWidget::displayModel(bool resetCamera)
         return;
     }
 
-    if (m_lineActor && m_model.lines.size() > 0)
+    if (postSceneStyle().visible)
     {
-        ren->AddActor(m_lineActor);
-        m_lineActorAttached = true;
-    }
+        if (m_lineActor && m_model.lines.size() > 0)
+        {
+            m_lineActorAttached = addActorByService(
+                m_visualService, postActorId(getUuid(), QStringLiteral("outline")),
+                m_lineActor, QStringLiteral("轮廓线"), false);
+        }
 
-    for (auto& actor : m_textActors)
-        ren->AddActor2D(actor);
+        for (int i = 0; i < m_textActors.size(); ++i)
+        {
+            if (!m_textActors[i])
+                continue;
+            addPostPropByService(
+                m_visualService, postActorId(getUuid(), QStringLiteral("label-%1").arg(i)),
+                m_textActors[i], QStringLiteral("轮廓标注 %1").arg(i + 1), false);
+        }
+    }
 
     if (resetCamera)
         ren->ResetCamera();
@@ -455,15 +483,18 @@ void PostContourReaderWidget::removeActorsFromRenderer()
     if (!m_visualService)
         return;
 
-    auto* ren = m_visualService->renderer();
-    if (!ren)
-        return;
-
     if (m_lineActor)
-        ren->RemoveActor(m_lineActor);
+        removeActorByService(m_visualService,
+                             postActorId(getUuid(), QStringLiteral("outline")), false);
 
-    for (auto& actor : m_textActors)
-        ren->RemoveActor2D(actor);
+    for (int i = 0; i < m_textActors.size(); ++i)
+    {
+        if (!m_textActors[i])
+            continue;
+        removePostPropByService(
+            m_visualService, postActorId(getUuid(), QStringLiteral("label-%1").arg(i)),
+            m_textActors[i], false);
+    }
 
     m_lineActorAttached = false;
 

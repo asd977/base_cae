@@ -8,4 +8,5 @@ struct UiFrameService
     virtual QAction* addWidget(QWidget* widget, QString name) = 0;
     virtual QAction* addWidgetForTabwidget(QWidget* widget, QString name) = 0;
     virtual void setWidgetVisible(QWidget* widget, bool visible) = 0;
+    virtual void showWidgetInLogArea(QWidget* widget, QString name) = 0;
 };

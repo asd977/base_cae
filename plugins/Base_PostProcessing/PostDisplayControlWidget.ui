@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PostDisplayControlWidget</class>
+ <widget class="QWidget" name="PostDisplayControlWidget">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>320</width><height>700</height></rect>
+  </property>
+  <property name="windowTitle"><string>结果显示</string></property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="leftMargin"><number>8</number></property>
+   <property name="topMargin"><number>7</number></property>
+   <property name="rightMargin"><number>8</number></property>
+   <property name="bottomMargin"><number>8</number></property>
+   <property name="spacing"><number>7</number></property>
+   <item>
+    <widget class="QGroupBox" name="visibilityGroupBox">
+     <property name="postControlSection" stdset="0"><bool>true</bool></property>
+     <property name="title"><string>结果图层</string></property>
+     <layout class="QVBoxLayout" name="visibilityLayout">
+      <property name="leftMargin"><number>8</number></property>
+      <property name="topMargin"><number>7</number></property>
+      <property name="rightMargin"><number>8</number></property>
+      <property name="bottomMargin"><number>8</number></property>
+      <property name="spacing"><number>5</number></property>
+      <item><widget class="QCheckBox" name="showResultsCheckBox"><property name="text"><string>显示结果</string></property><property name="checked"><bool>true</bool></property></widget></item>
+      <item><widget class="QCheckBox" name="followMeshFilterCheckBox"><property name="text"><string>跟随网格筛选</string></property><property name="toolTip"><string>结果仅显示网格筛选中勾选的区域</string></property><property name="checked"><bool>true</bool></property></widget></item>
+      <item>
+       <widget class="QPushButton" name="meshFilterButton">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text"><string>设置网格筛选...</string></property>
+       </widget>
+      </item>
+      <item><widget class="QLabel" name="meshFilterStatusLabel"><property name="text"><string/></property><property name="wordWrap"><bool>true</bool></property><property name="visible"><bool>false</bool></property><property name="secondary" stdset="0"><bool>true</bool></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="rangeGroupBox">
+     <property name="postControlSection" stdset="0"><bool>true</bool></property>
+     <property name="title"><string>数据范围</string></property>
+     <layout class="QGridLayout" name="rangeLayout" columnstretch="0,1">
+      <property name="leftMargin"><number>8</number></property>
+      <property name="topMargin"><number>7</number></property>
+      <property name="rightMargin"><number>8</number></property>
+      <property name="bottomMargin"><number>8</number></property>
+      <property name="horizontalSpacing"><number>8</number></property>
+      <property name="verticalSpacing"><number>5</number></property>
+      <item row="0" column="0"><widget class="QLabel" name="currentFieldLabel"><property name="text"><string>当前物理量</string></property></widget></item>
+      <item row="0" column="1"><widget class="QLabel" name="currentFieldValueLabel"><property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Preferred"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property><property name="text"><string>未选择结果</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+      <item row="1" column="0" colspan="2"><widget class="QCheckBox" name="autoRangeCheckBox"><property name="text"><string>自动使用数据范围</string></property><property name="checked"><bool>true</bool></property></widget></item>
+      <item row="2" column="0"><widget class="QLabel" name="rangeMinLabel"><property name="text"><string>范围下限</string></property></widget></item>
+      <item row="2" column="1"><widget class="QDoubleSpinBox" name="rangeMinSpinBox"><property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Fixed"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property><property name="minimumSize"><size><width>100</width><height>0</height></size></property></widget></item>
+      <item row="3" column="0"><widget class="QLabel" name="rangeMaxLabel"><property name="text"><string>范围上限</string></property></widget></item>
+      <item row="3" column="1"><widget class="QDoubleSpinBox" name="rangeMaxSpinBox"><property name="sizePolicy"><sizepolicy hsizetype="Ignored" vsizetype="Fixed"><horstretch>1</horstretch><verstretch>0</verstretch></sizepolicy></property><property name="minimumSize"><size><width>100</width><height>0</height></size></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="scalarBarGroupBox">
+     <property name="postControlSection" stdset="0"><bool>true</bool></property>
+     <property name="title"><string>色标</string></property>
+     <layout class="QFormLayout" name="scalarBarFormLayout">
+      <property name="fieldGrowthPolicy"><enum>QFormLayout::AllNonFixedFieldsGrow</enum></property>
+      <property name="rowWrapPolicy"><enum>QFormLayout::WrapLongRows</enum></property>
+      <property name="labelAlignment"><set>Qt::AlignLeft|Qt::AlignVCenter</set></property>
+      <property name="formAlignment"><set>Qt::AlignLeft|Qt::AlignTop</set></property>
+      <property name="leftMargin"><number>8</number></property>
+      <property name="topMargin"><number>7</number></property>
+      <property name="rightMargin"><number>8</number></property>
+      <property name="bottomMargin"><number>8</number></property>
+      <property name="horizontalSpacing"><number>8</number></property>
+      <property name="verticalSpacing"><number>5</number></property>
+      <item row="0" column="0" colspan="2"><widget class="QCheckBox" name="showScalarBarCheckBox"><property name="text"><string>显示色标</string></property><property name="checked"><bool>true</bool></property></widget></item>
+      <item row="1" column="0"><widget class="QLabel" name="tickCountLabel"><property name="text"><string>刻度数量</string></property></widget></item>
+      <item row="1" column="1"><widget class="QSpinBox" name="tickCountSpinBox"><property name="minimum"><number>2</number></property><property name="maximum"><number>64</number></property><property name="value"><number>7</number></property></widget></item>
+      <item row="2" column="0"><widget class="QLabel" name="precisionLabel"><property name="text"><string>有效位数</string></property></widget></item>
+      <item row="2" column="1"><widget class="QSpinBox" name="precisionSpinBox"><property name="minimum"><number>1</number></property><property name="maximum"><number>10</number></property><property name="value"><number>4</number></property></widget></item>
+      <item row="3" column="0"><widget class="QLabel" name="titleFontLabel"><property name="text"><string>标题字号</string></property></widget></item>
+      <item row="3" column="1"><widget class="QSpinBox" name="titleFontSpinBox"><property name="minimum"><number>8</number></property><property name="maximum"><number>36</number></property><property name="value"><number>14</number></property></widget></item>
+      <item row="4" column="0"><widget class="QLabel" name="labelFontLabel"><property name="text"><string>刻度字号</string></property></widget></item>
+      <item row="4" column="1"><widget class="QSpinBox" name="labelFontSpinBox"><property name="minimum"><number>8</number></property><property name="maximum"><number>32</number></property><property name="value"><number>11</number></property></widget></item>
+      <item row="5" column="0"><widget class="QLabel" name="barWidthLabel"><property name="text"><string>宽度</string></property></widget></item>
+      <item row="5" column="1"><widget class="QSpinBox" name="barWidthSpinBox"><property name="minimum"><number>5</number></property><property name="maximum"><number>25</number></property><property name="suffix"><string> %</string></property><property name="value"><number>8</number></property></widget></item>
+      <item row="6" column="0"><widget class="QLabel" name="barHeightLabel"><property name="text"><string>高度</string></property></widget></item>
+      <item row="6" column="1"><widget class="QSpinBox" name="barHeightSpinBox"><property name="minimum"><number>25</number></property><property name="maximum"><number>90</number></property><property name="suffix"><string> %</string></property><property name="value"><number>62</number></property></widget></item>
+      <item row="7" column="0" colspan="2">
+       <widget class="QPushButton" name="resetBarPositionButton">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Ignored" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text"><string>恢复默认位置</string></property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="contourGroupBox">
+     <property name="postControlSection" stdset="0"><bool>true</bool></property>
+     <property name="title"><string>等值线</string></property>
+     <layout class="QFormLayout" name="contourFormLayout">
+      <property name="fieldGrowthPolicy"><enum>QFormLayout::AllNonFixedFieldsGrow</enum></property>
+      <property name="rowWrapPolicy"><enum>QFormLayout::WrapLongRows</enum></property>
+      <property name="labelAlignment"><set>Qt::AlignLeft|Qt::AlignVCenter</set></property>
+      <property name="leftMargin"><number>8</number></property>
+      <property name="topMargin"><number>7</number></property>
+      <property name="rightMargin"><number>8</number></property>
+      <property name="bottomMargin"><number>8</number></property>
+      <property name="horizontalSpacing"><number>8</number></property>
+      <property name="verticalSpacing"><number>5</number></property>
+      <item row="0" column="0" colspan="2"><widget class="QCheckBox" name="showContourCheckBox"><property name="text"><string>显示等值线</string></property></widget></item>
+      <item row="1" column="0"><widget class="QLabel" name="contourLevelLabel"><property name="text"><string>等值线数量</string></property></widget></item>
+      <item row="1" column="1"><widget class="QSpinBox" name="contourLevelSpinBox"><property name="minimum"><number>2</number></property><property name="maximum"><number>30</number></property><property name="value"><number>10</number></property></widget></item>
+      <item row="2" column="0" colspan="2"><widget class="QCheckBox" name="contourLabelsCheckBox"><property name="text"><string>显示数值标注</string></property></widget></item>
+      <item row="3" column="0"><widget class="QLabel" name="contourLabelFontLabel"><property name="text"><string>标注字号</string></property></widget></item>
+      <item row="3" column="1"><widget class="QSpinBox" name="contourLabelFontSpinBox"><property name="minimum"><number>8</number></property><property name="maximum"><number>28</number></property><property name="value"><number>10</number></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>12</height></size></property></spacer></item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

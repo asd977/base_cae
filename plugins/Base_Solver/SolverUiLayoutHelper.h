@@ -6,6 +6,7 @@
 #include <QAbstractItemView>
 #include <QAbstractScrollArea>
 #include <QAbstractSpinBox>
+#include <QAction>
 #include <QBoxLayout>
 #include <QComboBox>
 #include <QDynamicPropertyChangeEvent>
@@ -19,6 +20,7 @@
 #include <QLayout>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QMenu>
 #include <QPointer>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -28,6 +30,8 @@
 #include <QTableView>
 #include <QTableWidget>
 #include <QTimer>
+#include <functional>
+#include <utility>
 #include <QWidget>
 
 namespace SolverUiLayoutHelper
@@ -198,6 +202,64 @@ inline void configureComboSizing(QComboBox* combo)
     if (combo->view())
         combo->view()->setTextElideMode(Qt::ElideNone);
     bindComboPopupWidth(combo);
+}
+
+using TableRowInsertHandler = std::function<void(int insertRow, int sourceRow, bool duplicate)>;
+using TableRowDeleteHandler = std::function<void(int row)>;
+
+inline void installTableRowContextMenu(QTableWidget* table,
+                                       TableRowInsertHandler insertHandler,
+                                       TableRowDeleteHandler deleteHandler,
+                                       int minimumRows = 0)
+{
+    if (!table || !insertHandler || !deleteHandler)
+        return;
+
+    table->setContextMenuPolicy(Qt::CustomContextMenu);
+    QObject::connect(table, &QWidget::customContextMenuRequested, table,
+                     [table, insertHandler = std::move(insertHandler),
+                      deleteHandler = std::move(deleteHandler), minimumRows](const QPoint& pos)
+                     {
+                         int row = table->indexAt(pos).row();
+                         if (row < 0)
+                             row = table->currentRow();
+                         if (row < 0 && table->rowCount() > 0)
+                             row = table->rowCount() - 1;
+
+                         QMenu menu(table);
+                         QAction* insertAbove = menu.addAction(QStringLiteral("在上方插入"));
+                         QAction* insertBelow = menu.addAction(QStringLiteral("在下方插入"));
+                         QAction* duplicateRow = menu.addAction(QStringLiteral("复制当前行"));
+                         menu.addSeparator();
+                         QAction* removeRow = menu.addAction(QStringLiteral("删除当前行"));
+
+                         duplicateRow->setEnabled(row >= 0 && row < table->rowCount());
+                         removeRow->setEnabled(row >= 0 && row < table->rowCount()
+                                               && table->rowCount() > minimumRows);
+
+                         QAction* chosen = menu.exec(table->viewport()->mapToGlobal(pos));
+                         if (!chosen)
+                             return;
+
+                         if (chosen == insertAbove)
+                         {
+                             const int insertAt = row >= 0 ? row : table->rowCount();
+                             insertHandler(insertAt, row, false);
+                         }
+                         else if (chosen == insertBelow)
+                         {
+                             const int insertAt = row >= 0 ? row + 1 : table->rowCount();
+                             insertHandler(insertAt, row, false);
+                         }
+                         else if (chosen == duplicateRow && row >= 0)
+                         {
+                             insertHandler(row + 1, row, true);
+                         }
+                         else if (chosen == removeRow && row >= 0)
+                         {
+                             deleteHandler(row);
+                         }
+                     });
 }
 
 inline void polishTable(QTableView* table, int minimumHeight = 120, int maximumHeight = 240)

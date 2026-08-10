@@ -31,7 +31,7 @@
         <item row="3" column="1"><widget class="QComboBox" name="comboItagFree"/></item>
         <item row="4" column="0"><widget class="QLabel" name="labelDrainWell"><property name="text"><string>排水井</string></property></widget></item>
         <item row="4" column="1"><widget class="QCheckBox" name="checkDrainWell"><property name="text"><string>启用</string></property></widget></item>
-        <item row="5" column="0" colspan="2"><widget class="QLabel" name="labelNaturalFreeHint"><property name="text"><string>天然渗流场启用后，需在“天然渗流边界”中为节点设置天然水头；选择“继承天然水头”后，稳态工况会读取这些水头，并按每个节点的上游/下游标识决定是否用当前库水位修正。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+        <item row="5" column="0" colspan="2"><widget class="QLabel" name="labelNaturalFreeHint"><property name="text"><string>天然水头在“天然渗流初始面”中设置。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
        </layout>
       </widget>
      </item>
@@ -39,7 +39,7 @@
       <widget class="QGroupBox" name="groupBoxBoundarySummary">
        <property name="title"><string>边界概览</string></property>
        <layout class="QVBoxLayout" name="verticalLayoutSummary">
-        <item><widget class="QLabel" name="labelBoundaryLocationHint"><property name="text"><string>水位与通量在对应边界中设置。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+        <item><widget class="QLabel" name="labelBoundaryLocationHint"><property name="text"><string>在上下游边界中设置水位或通量。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
         <item><widget class="QLabel" name="labelUpstreamSummary"><property name="text"><string>上游：未设置</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
         <item><widget class="QLabel" name="labelDownstreamSummary"><property name="text"><string>下游：未设置</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
         <item><widget class="QLabel" name="labelHeadDifferenceSummary"><property name="text"><string>上下游水头差：0 m</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>

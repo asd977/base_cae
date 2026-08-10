@@ -664,13 +664,13 @@ void DamAnalysisWidget::initValueEditors()
     damTypeLabel->setObjectName(QStringLiteral("labelDamTypeValue"));
     ui->formLayoutMode->addRow(QStringLiteral("坝体类型"), damTypeLabel);
 
-    m_groupFreezeThaw = new QGroupBox(QStringLiteral("结冰区域变形（均质坝）"), this);
+    m_groupFreezeThaw = new QGroupBox(QStringLiteral("结冰变形"), this);
     m_groupFreezeThaw->setObjectName(QStringLiteral("groupFreezeThaw"));
     m_groupFreezeThaw->setCheckable(true);
     m_groupFreezeThaw->setChecked(false);
     auto* freezeForm = new QFormLayout(m_groupFreezeThaw);
     auto* iceHint = new QLabel(
-        QStringLiteral("启用后需在模型树“结冰区域”选择受冰冻作用节点。均质坝不使用面板坝的冻融材料退化参数。"),
+        QStringLiteral("启用后，请在“结冰区域”选择受冰冻作用的节点。"),
         m_groupFreezeThaw);
     iceHint->setWordWrap(true);
     freezeForm->addRow(iceHint);
@@ -738,15 +738,14 @@ void DamAnalysisWidget::initValueEditors()
                              QStringLiteral("2"));
     ui->comboLine19->addItem(QStringLiteral("先静力后动力计算"), QStringLiteral("3"));
     ui->comboLine19->setToolTip(
-        QStringLiteral("仅动力计算会读取本分析工况上一次静力计算形成的结果目录；"
-                       "请先用相同工况完成静力计算。"));
+        QStringLiteral("使用“仅动力计算”前，请先用相同工况完成一次静力计算。"));
 
     ui->comboLine29->setItemData(0, "0");
     ui->comboLine29->setItemData(1, "1");
     ui->comboLine29->setItemText(0, QStringLiteral("不计算"));
     ui->comboLine29->setItemText(1, QStringLiteral("计算"));
     ui->comboLine29->setToolTip(
-        QStringLiteral("由填筑蓄水阶段中的“模态分析”自动控制，无需在此重复设置。"));
+        QStringLiteral("模态分析在填筑蓄水阶段中设置。"));
     ui->comboLine29->setEnabled(false);
 
     m_comboMethodIter->setItemData(0, "1");
@@ -787,7 +786,7 @@ void DamAnalysisWidget::initValueEditors()
     m_comboIfRock->setItemText(1, QStringLiteral("本次重新计算基岩自重"));
     m_comboIfRock->setCurrentIndex(1);
     m_comboIfRock->setToolTip(
-        QStringLiteral("首次计算默认重新建立；选择复用但结果不完整时会自动重新计算。"));
+        QStringLiteral("可重新计算，也可复用已有基岩状态。"));
     m_comboIfIso->setItemData(0, "0");
     m_comboIfIso->setItemData(1, "1");
     m_comboIfIso->setItemText(0, QStringLiteral("按建模材料计算"));

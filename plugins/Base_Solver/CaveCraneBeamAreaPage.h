@@ -47,6 +47,7 @@ class CaveCraneBeamAreaPage : public BasePage
     void onGroupDropdownClosed();
 
   private:
+    QString pickDomain() const;
     void setupGroupCombo();
     QVector<int> availableGroupIds();
     QString groupDisplayText(int groupId);

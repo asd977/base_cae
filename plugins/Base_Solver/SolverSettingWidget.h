@@ -8,7 +8,6 @@
 #include <QWidget>
 
 class QComboBox;
-class QSpinBox;
 class QTreeWidgetItem;
 
 namespace Ui {
@@ -38,8 +37,6 @@ public:
     QString computeDevice() const;
     void setComputeDevice(const QString& device);
     int gpuDeviceMode() const;
-    int assemblyLogInterval() const;
-    int solverLogInterval() const;
 
 signals:
     void createSeepageRequested();
@@ -50,6 +47,7 @@ signals:
     void batchComputeRequested(const QStringList& analysisUuids);
     void batchStopRequested();
     void computeDeviceChanged(const QString& device);
+    void rootActivated();
 
 private:
     void updateDeviceControls();
@@ -59,8 +57,6 @@ private:
     Ui::SolverSettingWidget* ui;
     QComboBox* m_computeDeviceCombo = nullptr;
     QComboBox* m_gpuModeCombo = nullptr;
-    QSpinBox* m_assemblyLogSpin = nullptr;
-    QSpinBox* m_solverLogSpin = nullptr;
     bool m_batchRunning = false;
 };
 

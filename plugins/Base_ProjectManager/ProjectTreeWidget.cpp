@@ -136,7 +136,16 @@ void ProjectTreeWidget::onCurItemChanged(QTreeWidgetItem* current, QTreeWidgetIt
     if (widget && widget->property("projectTreeDockPanel").toBool())
     {
         page->beforeLoad();
-        ensureSceneVisibleForCurrentNode(current);
+
+        // Dock 型控制页是当前场景的辅助工具，不等同于切换到它所属的模块。
+        // 例如在后处理云图中打开“网格显示控制”，应该只修改筛选条件，
+        // 不能因为节点属于 Mesh 就把网格 Actor 强制显示出来覆盖云图。
+        QWidget* activeWidget = m_activeSettingsPage ? m_activeSettingsPage->getWidget() : nullptr;
+        const bool preserveActivePostScene =
+            widget->property("preserveSceneOnActivation").toBool() &&
+            activeWidget && activeWidget->property("postDisplayActive").toBool();
+        if (!preserveActivePostScene)
+            ensureSceneVisibleForCurrentNode(current);
         return;
     }
 
@@ -338,7 +347,8 @@ void ProjectTreeWidget::deleteProjectNode(ProjectNode* node)
         BasePage* page = node->getPage();
         if (m_activeSettingsPage == page)
             m_activeSettingsPage = nullptr;
-        if (page->getWidget()->property("projectTreeDockPanel").toBool())
+        QWidget* pageWidget = page->getWidget();
+        if (pageWidget && pageWidget->property("projectTreeDockPanel").toBool())
             node->setPage(nullptr);
         else
             delete page;

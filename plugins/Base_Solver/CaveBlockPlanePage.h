@@ -32,6 +32,7 @@ class CaveBlockPlanePage : public BasePage
     bool validateInputs(QString* errorMessage) const;
 
   private:
+    QString pickDomain() const;
     QString valueOrDefault(QLineEdit* edit, QString def);
     void syncPointsFromSelectedFace();
     PickMode currentPickMode();

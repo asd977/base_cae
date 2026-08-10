@@ -17,6 +17,7 @@ class SARibbonBar;
 class SARibbonMenu;
 class SARibbonPannel;
 class QActionGroup;
+class QStackedWidget;
 
 namespace ads
 {
@@ -34,6 +35,7 @@ class UiFrame : public SARibbonMainWindow, public UiFrameService
     ~UiFrame() override;
 
     QAction* addWidget(QWidget* widget, QString name) override;
+    void showWidgetInLogArea(QWidget* widget, QString name) override;
     void setWidgetVisible(QWidget* widget, bool visible) override;
     void restoreUiState();
     void storeUiState();
@@ -78,6 +80,10 @@ class UiFrame : public SARibbonMainWindow, public UiFrameService
     QPointer<ads::CDockWidget> m_visualDockWidget;
     QPointer<ads::CDockWidget> m_physicalDockWidget;
     QPointer<ads::CDockWidget> m_logDockWidget;
+    QPointer<ads::CDockWidget> m_logContextDockWidget;
+    QPointer<QStackedWidget> m_logContextStack;
+    QPointer<ads::CDockWidget> m_visualControlAnchorDockWidget;
+    QList<QPointer<ads::CDockWidget>> m_visualControlDockWidgets;
     bool m_defaultLayoutArranged = false;
 
     SARibbonBar* m_ribbon = nullptr;

@@ -81,6 +81,7 @@ class GridEditingWidget : public BasePage
     QSet<int> checkedValuesForCategory(const QString& category) const;
     QString displayTextForFilterValue(const QString& category, int value) const;
 
+    void updateContextPresentation();
     void applyColorMode();
     void applyScalarColor(vtkMapper* mapper,
                           vtkDataSet* dataSet,

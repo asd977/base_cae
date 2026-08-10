@@ -180,6 +180,59 @@ CaveSupportComputationPage::CaveSupportComputationPage(QWidget* parent)
     connect(ui->btnCompute, &QPushButton::clicked, this,
             &CaveSupportComputationPage::onComputeClicked);
 
+    SolverUiLayoutHelper::installTableRowContextMenu(
+        m_excavationDaysTable,
+        [this](int insertAt, int sourceRow, bool duplicate)
+        {
+            if (!m_excavationDaysTable || !m_iexcaMaxSpin)
+                return;
+            QStringList days;
+            for (int row = 0; row < m_excavationDaysTable->rowCount(); ++row)
+            {
+                const auto* item = m_excavationDaysTable->item(row, 1);
+                days.push_back(item ? item->text().trimmed() : QStringLiteral("0"));
+            }
+            insertAt = qBound(0, insertAt, int(days.size()));
+            QString newValue = QStringLiteral("0");
+            if (duplicate && sourceRow >= 0 && sourceRow < int(days.size()))
+                newValue = days.at(sourceRow);
+            days.insert(insertAt, newValue);
+            m_iexcaMaxSpin->setValue(int(days.size()));
+            for (int row = 0; row < int(days.size()); ++row)
+            {
+                if (!m_excavationDaysTable->item(row, 1))
+                    m_excavationDaysTable->setItem(row, 1, new QTableWidgetItem(days.at(row)));
+                else
+                    m_excavationDaysTable->item(row, 1)->setText(days.at(row));
+            }
+            m_excavationDaysTable->setCurrentCell(insertAt, 1);
+        },
+        [this](int row)
+        {
+            if (!m_excavationDaysTable || !m_iexcaMaxSpin
+                || m_excavationDaysTable->rowCount() <= 1
+                || row < 0 || row >= m_excavationDaysTable->rowCount())
+                return;
+            QStringList days;
+            for (int i = 0; i < m_excavationDaysTable->rowCount(); ++i)
+            {
+                if (i == row)
+                    continue;
+                const auto* item = m_excavationDaysTable->item(i, 1);
+                days.push_back(item ? item->text().trimmed() : QStringLiteral("0"));
+            }
+            m_iexcaMaxSpin->setValue(int(days.size()));
+            for (int i = 0; i < int(days.size()); ++i)
+            {
+                if (!m_excavationDaysTable->item(i, 1))
+                    m_excavationDaysTable->setItem(i, 1, new QTableWidgetItem(days.at(i)));
+                else
+                    m_excavationDaysTable->item(i, 1)->setText(days.at(i));
+            }
+            m_excavationDaysTable->setCurrentCell(qMin(row, int(days.size()) - 1), 1);
+        },
+        1);
+
     m_caseData = CaseData();
     onExcavationLevelCountChanged(m_iexcaMaxSpin->value());
     loadCaseToUi();

@@ -296,7 +296,7 @@ CaveBlockPlanePage::CaveBlockPlanePage(QWidget* parent)
                 [this]()
                 {
                     m_selectedFaceKey = kInvalidFaceKey;
-                    PickManager::instance().clearSelection(getPageType(), m_uuid, currentPickMode());
+                    PickManager::instance().clearSelection(pickDomain(), m_uuid, currentPickMode());
                     if (ui->faceStatusLabel)
                         ui->faceStatusLabel->setText(QStringLiteral("未选择滑块面"));
                 });
@@ -309,12 +309,18 @@ CaveBlockPlanePage::~CaveBlockPlanePage()
     delete ui;
 }
 
+QString CaveBlockPlanePage::pickDomain() const
+{
+    return QStringLiteral("CaveBlockPlane/%1").arg(m_uuid);
+}
+
+
 void CaveBlockPlanePage::beforeLoad()
 {
     PickManager::instance().updateStructure();
-    PickManager::instance().activate(getPageType(), m_uuid, currentPickMode());
-    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, true);
-    PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, false);
+    PickManager::instance().activate(pickDomain(), m_uuid, currentPickMode());
+    PickManager::instance().setClickPickEnabled(pickDomain(), m_uuid, true);
+    PickManager::instance().setBoxSelectEnabled(pickDomain(), m_uuid, false);
 
     connect(&PickManager::instance(), &PickManager::selectionChanged, this,
             &CaveBlockPlanePage::onPickSelectionChanged, Qt::UniqueConnection);
@@ -326,8 +332,8 @@ void CaveBlockPlanePage::beforeUnload()
 {
     disconnect(&PickManager::instance(), &PickManager::selectionChanged, this,
                &CaveBlockPlanePage::onPickSelectionChanged);
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, currentPickMode());
-    PickManager::instance().deactivate(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().clearPreviewSelection(pickDomain(), m_uuid, currentPickMode());
+    PickManager::instance().deactivate(pickDomain(), m_uuid, currentPickMode());
 }
 
 QJsonObject CaveBlockPlanePage::saveJson()
@@ -371,7 +377,7 @@ void CaveBlockPlanePage::loadJson(const QJsonObject& obj)
     {
         m_selectedFaceKey = static_cast<vtkIdType>(obj.value("face_key").toVariant().toLongLong());
         PickManager::instance().setSelectedFaceKeys(
-            getPageType(), m_uuid, currentGridKind(), QVector<vtkIdType>{m_selectedFaceKey}, true);
+            pickDomain(), m_uuid, currentGridKind(), QVector<vtkIdType>{m_selectedFaceKey}, true);
     }
 }
 
@@ -529,7 +535,7 @@ GridKind CaveBlockPlanePage::currentGridKind()
 QVector<vtkIdType> CaveBlockPlanePage::selectedFaceKeys()
 {
     return PickManager::instance().getIdList(
-        getPageType(),
+        pickDomain(),
         m_uuid,
         currentPickMode(),
         currentGridKind());
@@ -582,7 +588,7 @@ void CaveBlockPlanePage::normalizeAndSyncSelectedFace()
     {
         m_enforcingSingleFace = true;
         PickManager::instance().setSelectedFaceKeys(
-            getPageType(), m_uuid, currentGridKind(), QVector<vtkIdType>{keep}, true);
+            pickDomain(), m_uuid, currentGridKind(), QVector<vtkIdType>{keep}, true);
         m_enforcingSingleFace = false;
     }
 
@@ -594,7 +600,7 @@ void CaveBlockPlanePage::onPickSelectionChanged(const QString& domain,
                                                 PickMode mode,
                                                 GridKind kind)
 {
-    if (domain != getPageType() || uuid != m_uuid || mode != currentPickMode() ||
+    if (domain != pickDomain() || uuid != m_uuid || mode != currentPickMode() ||
         kind != currentGridKind())
         return;
 

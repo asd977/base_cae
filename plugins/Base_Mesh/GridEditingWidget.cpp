@@ -1,9 +1,11 @@
-﻿#include "GridEditingWidget.h"
+#include "GridEditingWidget.h"
+#include <EventManager.h>
 
 #include "ui_GridEditingWidget.h"
 
 #include <ServiceRegistry.h>
 #include <PublicVariables.h>
+#include <PublicConstants.h>
 #include <services/VisualWidgetService.h>
 #include <services/MeshModuleControllerService.h>
 #include <services/UiFrameService.h>
@@ -35,6 +37,7 @@
 #include <QColor>
 #include <QComboBox>
 #include <QHash>
+#include <QHeaderView>
 #include <QSignalBlocker>
 #include <QStringList>
 #include <QTreeWidget>
@@ -57,6 +60,7 @@ static const QString kGlobalFilterCustomKey = QStringLiteral("mesh.display.filte
 static const QString kGlobalFilterKetypeKey = QStringLiteral("mesh.display.filter.ketype.checked");
 static const QString kGlobalFilterMatypeKey = QStringLiteral("mesh.display.filter.matype.checked");
 static const QString kGlobalFilterLayerKey = QStringLiteral("mesh.display.filter.layer.checked");
+static const QString kGlobalFilterProjectKey = QStringLiteral("mesh.display.filter.project");
 static const QString kGlobalColorModeKey = QStringLiteral("mesh.display.color.mode");
 
 static GridEditingWidget::ColorMode globalColorMode()
@@ -138,7 +142,14 @@ static QSet<int> intSetFromString(const QString& text)
 
 static bool globalFilterIsCustom()
 {
-    return PublicVariables::instance().get(kGlobalFilterCustomKey).toBool();
+    if (!PublicVariables::instance().get(kGlobalFilterCustomKey).toBool())
+        return false;
+
+    const QString storedProject =
+        PublicVariables::instance().get(kGlobalFilterProjectKey).toString().trimmed();
+    const QString currentProject =
+        PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey).toString().trimmed();
+    return storedProject.isEmpty() || currentProject.isEmpty() || storedProject == currentProject;
 }
 
 static QSet<int> globalCheckedValues(const QString& category)
@@ -447,6 +458,8 @@ GridEditingWidget::GridEditingWidget(QWidget* parent)
     Q_UNUSED(parent);
 
     ui->setupUi(this);
+    setProperty("visualControlPanel", true);
+    setAttribute(Qt::WA_StyledBackground, true);
     m_visualWidgetService = ServiceRegistry::instance().getService<VisualWidgetService>();
 
     if (ui->comboBoxColorMode)
@@ -455,9 +468,9 @@ GridEditingWidget::GridEditingWidget(QWidget* parent)
         const QSignalBlocker blocker(ui->comboBoxColorMode);
         ui->comboBoxColorMode->clear();
         ui->comboBoxColorMode->addItem(QStringLiteral("默认颜色"), static_cast<int>(ColorMode::None));
-        ui->comboBoxColorMode->addItem(QStringLiteral("按单元类型 KETYPE"), static_cast<int>(ColorMode::Ketype));
-        ui->comboBoxColorMode->addItem(QStringLiteral("按材料类型 MATYPE"), static_cast<int>(ColorMode::Matype));
-        ui->comboBoxColorMode->addItem(QStringLiteral("按填筑分层 LAYER"), static_cast<int>(ColorMode::Layer));
+        ui->comboBoxColorMode->addItem(QStringLiteral("按单元类型"), static_cast<int>(ColorMode::Ketype));
+        ui->comboBoxColorMode->addItem(QStringLiteral("按材料类型"), static_cast<int>(ColorMode::Matype));
+        ui->comboBoxColorMode->addItem(QStringLiteral("按填筑分层"), static_cast<int>(ColorMode::Layer));
         const int initialIndex = ui->comboBoxColorMode->findData(
             static_cast<int>(initialMode));
         ui->comboBoxColorMode->setCurrentIndex(initialIndex >= 0 ? initialIndex : 0);
@@ -467,8 +480,9 @@ GridEditingWidget::GridEditingWidget(QWidget* parent)
 
     if (ui->checkBoxAutoApply)
     {
-        ui->checkBoxAutoApply->setChecked(false);
-        ui->checkBoxAutoApply->setToolTip(QStringLiteral("取消/勾选筛选项时只修改列表状态；需要立即重建显示时再勾选此项。复杂网格建议保持关闭，然后点击“应用筛选”。"));
+        // 默认即时应用；大型网格仍可关闭此选项后手动应用。
+        ui->checkBoxAutoApply->setChecked(true);
+        ui->checkBoxAutoApply->setToolTip(QStringLiteral("勾选后，筛选项变化会立即更新显示。"));
     }
 
     if (ui->treeWidgetFilterValues)
@@ -479,12 +493,28 @@ GridEditingWidget::GridEditingWidget(QWidget* parent)
                                                     << QStringLiteral("数量"));
         ui->treeWidgetFilterValues->setRootIsDecorated(true);
         ui->treeWidgetFilterValues->setAlternatingRowColors(true);
+        ui->treeWidgetFilterValues->setUniformRowHeights(true);
+        ui->treeWidgetFilterValues->setTextElideMode(Qt::ElideRight);
+        if (QHeaderView* header = ui->treeWidgetFilterValues->header())
+        {
+            header->setStretchLastSection(false);
+            header->setMinimumSectionSize(48);
+            header->setSectionResizeMode(0, QHeaderView::Stretch);
+            header->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+        }
         connect(ui->treeWidgetFilterValues,
                 &QTreeWidget::itemChanged,
                 this,
                 &GridEditingWidget::onFilterTreeItemChanged);
     }
 
+    EventManager::instance().registerHandler(
+        QStringLiteral("post.display.view.active.changed"), this,
+        [this](const QVariantMap&)
+        {
+            updateContextPresentation();
+        });
+    updateContextPresentation();
 }
 
 GridEditingWidget::~GridEditingWidget()
@@ -684,8 +714,12 @@ void GridEditingWidget::buildOrUpdateViewGrid()
     const bool showSurface = m_viewSurface && m_viewSurface->GetNumberOfCells() > 0;
     const bool showLine = m_viewLineGrid && m_viewLineGrid->GetNumberOfCells() > 0;
 
-    m_visualWidgetService->setVisible(kImportedMeshSurfacePropId, showSurface, false);
-    m_visualWidgetService->setVisible(kImportedMeshLinePropId, showLine, false);
+    const bool postViewActive =
+        PublicVariables::instance().get(QStringLiteral("post.display.view.active")).toBool();
+    m_visualWidgetService->setVisible(kImportedMeshSurfacePropId,
+                                      !postViewActive && showSurface, false);
+    m_visualWidgetService->setVisible(kImportedMeshLinePropId,
+                                      !postViewActive && showLine, false);
 
     applyColorMode();
     PickManager::instance().updateStructure();
@@ -817,9 +851,9 @@ void GridEditingWidget::buildFilterTreeFromGrid()
         updateParentCheckState(group);
     };
 
-    addGroup(kCategoryKetype, QStringLiteral("单元类型 KETYPE"), ketypeCounts);
-    addGroup(kCategoryMatype, QStringLiteral("材料类型 MATYPE"), matypeCounts);
-    addGroup(kCategoryLayer, QStringLiteral("填筑分层 LAYER"), layerCounts);
+    addGroup(kCategoryKetype, QStringLiteral("单元类型"), ketypeCounts);
+    addGroup(kCategoryMatype, QStringLiteral("材料类型"), matypeCounts);
+    addGroup(kCategoryLayer, QStringLiteral("填筑分层"), layerCounts);
 
     ui->treeWidgetFilterValues->expandAll();
     ui->treeWidgetFilterValues->resizeColumnToContents(0);
@@ -924,8 +958,17 @@ void GridEditingWidget::applyFilterFromTree()
     setGlobalValue(kGlobalFilterKetypeKey, intSetToString(m_filterKetypes));
     setGlobalValue(kGlobalFilterMatypeKey, intSetToString(m_filterMatypes));
     setGlobalValue(kGlobalFilterLayerKey, intSetToString(m_filterLayers));
+    setGlobalValue(kGlobalFilterProjectKey,
+                   PublicVariables::instance().get(PublicConstants::kProjectDirectoryKey));
 
     buildOrUpdateViewGrid();
+
+    QVariantMap filterEvent;
+    filterEvent.insert(QStringLiteral("custom"), customFilter);
+    filterEvent.insert(QStringLiteral("ketype"), intSetToString(m_filterKetypes));
+    filterEvent.insert(QStringLiteral("matype"), intSetToString(m_filterMatypes));
+    filterEvent.insert(QStringLiteral("layer"), intSetToString(m_filterLayers));
+    EventManager::instance().sendEvent(QStringLiteral("mesh.display.filter.changed"), filterEvent);
 }
 
 void GridEditingWidget::onFilterTreeItemChanged(QTreeWidgetItem* item, int column)
@@ -1096,10 +1139,40 @@ void GridEditingWidget::highlightMatypes(const QSet<int>& matypes,
     Q_UNUSED(preDeleteMatype);
 }
 
+void GridEditingWidget::updateContextPresentation()
+{
+    if (!ui)
+        return;
+
+    const bool postViewActive =
+        PublicVariables::instance().get(QStringLiteral("post.display.view.active")).toBool();
+
+    if (ui->labelColorMode)
+        ui->labelColorMode->setVisible(!postViewActive);
+    if (ui->comboBoxColorMode)
+        ui->comboBoxColorMode->setVisible(!postViewActive);
+    if (ui->treeWidgetFilterValues && ui->treeWidgetFilterValues->headerItem())
+        ui->treeWidgetFilterValues->headerItem()->setText(
+            0, postViewActive ? QStringLiteral("结果筛选项") : QStringLiteral("筛选项"));
+
+    // 后处理激活时，这个面板只负责筛选结果区域，不负责把网格本体叠加出来。
+    // 主动压住所有常用网格 Actor，避免其它显示路径把网格重新打开。
+    if (postViewActive && m_visualWidgetService)
+    {
+        m_visualWidgetService->setVisible(QStringLiteral("mesh.global.surf"), false, false);
+        m_visualWidgetService->setVisible(QStringLiteral("mesh.global.wire"), false, false);
+        m_visualWidgetService->setVisible(kImportedMeshSurfacePropId, false, false);
+        m_visualWidgetService->setVisible(kImportedMeshLinePropId, false, false);
+        m_visualWidgetService->render();
+    }
+}
+
 void GridEditingWidget::beforeLoad()
 {
     if (auto* uiFrame = ServiceRegistry::instance().getService<UiFrameService>())
         uiFrame->setWidgetVisible(this, true);
+
+    updateContextPresentation();
 
     auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
     vtkUnstructuredGrid* grid = meshService ? meshService->getVtkUnstructuredGrid() : nullptr;

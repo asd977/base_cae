@@ -254,8 +254,6 @@ struct SolverRuntimeOptions
 {
     bool useGpu = false;
     int deviceCode = 0;
-    int assemblyLogInterval = 0;
-    int solverLogInterval = 0;
     QString executableRelativePath;
 };
 
@@ -269,10 +267,6 @@ SolverRuntimeOptions solverRuntimeOptions()
     const int gpuDeviceMode = qBound(
         1, settings.value(QStringLiteral("Solver/GpuDeviceMode"), 2).toInt(), 2);
     options.deviceCode = options.useGpu ? gpuDeviceMode : 0;
-    options.assemblyLogInterval = qMax(
-        0, settings.value(QStringLiteral("Solver/AssemblyLogInterval"), 0).toInt());
-    options.solverLogInterval = qMax(
-        0, settings.value(QStringLiteral("Solver/SolveLogInterval"), 0).toInt());
     options.executableRelativePath = options.useGpu
         ? QStringLiteral("solver/PCCAE_GPU/PCCAE_GPU.exe")
         : QStringLiteral("solver/PCCAE_CPU/PCCAE_CPU.exe");
@@ -1169,6 +1163,24 @@ void Solver::newProject()
             this, &Solver::onBatchComputeRequested);
     connect(rootPage, &SolverSettingWidget::batchStopRequested,
             this, &Solver::onBatchStopRequested);
+    connect(rootPage, &SolverSettingWidget::rootActivated, this,
+            [this]()
+            {
+                if (!m_root)
+                    return;
+                m_root->setExpanded(true);
+                std::function<void(ProjectNode*)> collapseTree =
+                    [&collapseTree](ProjectNode* node)
+                    {
+                        if (!node)
+                            return;
+                        node->setExpanded(false);
+                        for (ProjectNode* child : node->getChildren())
+                            collapseTree(child);
+                    };
+                for (ProjectNode* analysisNode : m_root->getChildren())
+                    collapseTree(analysisNode);
+            });
     m_root = new ProjectNode("计算分析", QUuid::createUuid().toString(), rootPage);
     setupNodeRole(m_root, "SolverRoot");
     ProjectManagerService* projectManagerService =
@@ -1836,7 +1848,8 @@ bool Solver::loadProject()
         for (ProjectNode* child : analysisNode->getChildren())
             syncChildNodeNames(child);
         m_root->addChild(analysisNode);
-        analysisNode->setExpanded(true);
+        // 工程打开时只展示计算分析的直接子节点，不递归展开每个分析。
+        analysisNode->setExpanded(false);
         syncSeepageConditionalNodes(analysisNode);
         syncDamConditionalNodes(analysisNode);
     }
@@ -3780,7 +3793,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
     {
         QMessageBox::warning(
             nullptr, QStringLiteral("工况数量超限"),
-            QStringLiteral("当前求解器使用两位工况目录编号，单个土石坝分析最多支持 99 个工况。"));
+            QStringLiteral("单个土石坝分析最多支持 99 个工况。"));
         return;
     }
 
@@ -3797,12 +3810,9 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
         {
             QMessageBox::warning(
                 nullptr, QStringLiteral("水位骤降计算限制"),
-                QStringLiteral("第 %1 个工况未启用浸润变形时，求解器固定从 CASE%2FILL%2 读取骤降初始状态，"
-                               "不会继承该次蓄水后的 FLIU 流变状态。当前设置无法保证读取到本工况最终静力状态；"
-                               "请启用有效浸润变形，或使该工况的填筑蓄水循环数等于 %1、对应循环实际执行蓄水，"
-                               "且该循环不再执行蓄水期流变。")
-                    .arg(caseIndex)
-                    .arg(caseIndex, 2, 10, QLatin1Char('0')));
+                QStringLiteral("第 %1 个工况的水位骤降与当前施工阶段冲突。"
+                               "请检查蓄水、浸润和流变设置。")
+                    .arg(caseIndex));
             return;
         }
     }
@@ -3846,11 +3856,9 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
             {
                 QMessageBox::warning(
                     nullptr, QStringLiteral("结冰区域计算限制"),
-                    QStringLiteral("第 %1 个工况的结冰变形无法与当前施工序列可靠衔接。"
-                                   "求解器固定从 CASE%2FILL%2 读取结冰初始状态，且不会继承浸润、"
-                                   "水位骤降或最后一次蓄水期流变。请使用与该固定入口一致的工况进行结冰测试。")
-                        .arg(caseIndex)
-                        .arg(caseIndex, 2, 10, QLatin1Char('0')));
+                    QStringLiteral("第 %1 个工况的结冰变形与当前施工阶段冲突。"
+                                   "请确保结冰前已完成蓄水，并关闭浸润变形、水位骤降和蓄水期流变。")
+                        .arg(caseIndex));
                 return;
             }
         }
@@ -3921,9 +3929,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
         {
             QMessageBox::warning(
                 nullptr, QStringLiteral("地震波数据无效"),
-                QStringLiteral("已启用地震波时程分析，但以下输入不能用于计算：\n%1\n"
-                               "请在工程计算输入中准备有效的三向地震波文件。")
-                    .arg(invalidWaveFiles.join(QLatin1Char('\n'))));
+                QStringLiteral("三向地震波数据不完整或格式无效，请重新检查地震波输入。"));
             clearSolverRunDirectory();
             return;
         }
@@ -4000,7 +4006,7 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
         {
             QMessageBox::warning(
                 nullptr, QStringLiteral("无法确定动力初始状态"),
-                QStringLiteral("第 %1 个工况的施工序列无法映射到求解器工作目录。")
+                QStringLiteral("第 %1 个工况没有形成可用于动力计算的静力状态，请检查施工阶段设置。")
                     .arg(i + 1));
             clearSolverRunDirectory();
             return;
@@ -4062,11 +4068,8 @@ void Solver::onComputeStressStrain(ProjectNode* analysisNode)
             {
                 QMessageBox::warning(
                     nullptr, QStringLiteral("缺少已有静力结果"),
-                    QStringLiteral("第 %1 个工况选择了“仅动力计算”，但本分析工况中没有可用的前序静力状态 %2。\n"
-                                   "缺少：%3\n\n请先将计算类型切换为“仅静力计算”，使用相同工况完成一次静力计算，再切回“仅动力计算”。")
-                        .arg(i + 1)
-                        .arg(sourceDescription)
-                        .arg(missingStateFiles.join(QStringLiteral("、"))));
+                    QStringLiteral("第 %1 个工况没有可用的前序静力结果。请先用相同工况完成一次静力计算，再运行“仅动力计算”。")
+                        .arg(i + 1));
                 clearSolverRunDirectory();
                 return;
             }
@@ -6907,8 +6910,7 @@ bool Solver::launchCaveBlockSolverExecutable(ProjectNode* analysisNode)
         return false;
     }
 
-    if (!updateCaveBlockIiiDirDat(sliderDir, runtimeOptions.assemblyLogInterval,
-                                  runtimeOptions.solverLogInterval))
+    if (!updateCaveBlockIiiDirDat(sliderDir))
     {
         QMessageBox::warning(
             nullptr, QStringLiteral("计算程序未启动"),
@@ -7023,9 +7025,7 @@ bool Solver::launchSolverExecutable(ProjectNode* analysisNode, const QString& an
     const int solverMode = solverModeFromAnalysisType(analysisType);
     if (solverMode > 0)
     {
-        if (!updateIiiDirDat(runDir, solverMode, runtimeOptions.deviceCode,
-                             runtimeOptions.assemblyLogInterval,
-                             runtimeOptions.solverLogInterval))
+        if (!updateIiiDirDat(runDir, solverMode, runtimeOptions.deviceCode))
         {
             QMessageBox::warning(
                 nullptr, QStringLiteral("计算程序未启动"),
@@ -7065,12 +7065,10 @@ bool Solver::launchSolverExecutable(ProjectNode* analysisNode, const QString& an
 
     m_solverProcess = new QProcess(this);
     qInfo().noquote()
-        << QStringLiteral("启动%1求解器：%2；IDEVICE=%3，组装日志间隔=%4，求解日志间隔=%5")
+        << QStringLiteral("启动%1求解器：%2；IDEVICE=%3")
                .arg(runtimeOptions.useGpu ? QStringLiteral("GPU") : QStringLiteral("CPU"),
                     exePath)
-               .arg(runtimeOptions.deviceCode)
-               .arg(runtimeOptions.assemblyLogInterval)
-               .arg(runtimeOptions.solverLogInterval);
+               .arg(runtimeOptions.deviceCode);
     m_solverProcess->setWorkingDirectory(QDir(runDir).absolutePath());
     m_solverProcess->setProgram(exePath);
     m_solverProcess->setArguments(QStringList());
@@ -7128,8 +7126,7 @@ int Solver::solverModeFromAnalysisType(const QString& analysisType) const
 }
 
 
-bool Solver::updateCaveBlockIiiDirDat(const QString& sliderDir, int assemblyLogInterval,
-                                      int solverLogInterval) const
+bool Solver::updateCaveBlockIiiDirDat(const QString& sliderDir) const
 {
     QFile file("D:/IIIDIR.DAT");
     if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -7147,8 +7144,8 @@ bool Solver::updateCaveBlockIiiDirDat(const QString& sliderDir, int assemblyLogI
 
     lines[0] = QString("'%1'").arg(nativeSliderDir);
     lines[4] = QString("%1  IDEVICE").arg(0, 9);
-    lines[5] = QString("%1  ILOG_GZKZR").arg(qMax(0, assemblyLogInterval), 9);
-    lines[6] = QString("%1  ILOG_SOLVE").arg(qMax(0, solverLogInterval), 9);
+    lines[5] = QString("%1  ILOG_GZKZR").arg(0, 9);
+    lines[6] = QString("%1  ILOG_SOLVE").arg(0, 9);
 
     bool updatedModeLine = false;
     for (int i = lines.size() - 1; i >= 1; --i)
@@ -7182,8 +7179,7 @@ bool Solver::updateCaveBlockIiiDirDat(const QString& sliderDir, int assemblyLogI
     return true;
 }
 
-bool Solver::updateIiiDirDat(const QString& projectDir, int solverMode, int deviceCode,
-                             int assemblyLogInterval, int solverLogInterval) const
+bool Solver::updateIiiDirDat(const QString& projectDir, int solverMode, int deviceCode) const
 {
     QFile file("D:/IIIDIR.DAT");
     if (!file.exists() || !file.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -7207,8 +7203,8 @@ bool Solver::updateIiiDirDat(const QString& projectDir, int solverMode, int devi
     if (lines.size() < 9)
         return false;
     lines[4] = QString("%1  IDEVICE").arg(qBound(0, deviceCode, 2), 9);
-    lines[5] = QString("%1  ILOG_GZKZR").arg(qMax(0, assemblyLogInterval), 9);
-    lines[6] = QString("%1  ILOG_SOLVE").arg(qMax(0, solverLogInterval), 9);
+    lines[5] = QString("%1  ILOG_GZKZR").arg(0, 9);
+    lines[6] = QString("%1  ILOG_SOLVE").arg(0, 9);
     lines[7] = QString("'%1'").arg(inputDir);
     lines[8] = QString("%1   ").arg(solverMode, 12);
 

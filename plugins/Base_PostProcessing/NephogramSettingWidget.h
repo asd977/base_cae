@@ -73,8 +73,8 @@ class NephogramSettingWidget : public BasePage
     void updateLookupTableRange(vtkLookupTable* lut, double minV, double maxV) const;
     void configureMapper(vtkDataSetMapper* mapper, const QString& scalarName, bool usePointData,
                          double minV, double maxV, vtkLookupTable* lut) const;
-    bool prepareDisplaySurface(const QString& scalarName, bool sourceUsePointData,
-                               bool& mapperUsePointData);
+    bool prepareDisplaySurface(vtkUnstructuredGrid* sourceGrid, const QString& scalarName,
+                               bool sourceUsePointData, bool& mapperUsePointData);
     void invalidateDisplaySurface();
 
     void updateContourOverlay(const QString& scalarName, bool usePointData, double minV,

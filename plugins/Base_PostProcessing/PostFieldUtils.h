@@ -143,7 +143,8 @@ inline void fillCombo(QComboBox* combo, vtkDataSet* dataSet)
         {
             vtkDataArray* dataArray = pointData->GetArray(i);
             const char* name = pointData->GetArrayName(i);
-            if (dataArray && dataArray->GetNumberOfComponents() == 1 && name && *name)
+            if (dataArray && dataArray->GetNumberOfComponents() == 1 && name && *name &&
+                !ResultDisplayNames::isInternalField(QString::fromUtf8(name)))
                 fields.push_back({QString::fromUtf8(name),
                                   vtkDataObject::FIELD_ASSOCIATION_POINTS});
         }
@@ -154,7 +155,8 @@ inline void fillCombo(QComboBox* combo, vtkDataSet* dataSet)
         {
             vtkDataArray* dataArray = cellData->GetArray(i);
             const char* name = cellData->GetArrayName(i);
-            if (dataArray && dataArray->GetNumberOfComponents() == 1 && name && *name)
+            if (dataArray && dataArray->GetNumberOfComponents() == 1 && name && *name &&
+                !ResultDisplayNames::isInternalField(QString::fromUtf8(name)))
                 fields.push_back({QString::fromUtf8(name),
                                   vtkDataObject::FIELD_ASSOCIATION_CELLS});
         }

@@ -38,6 +38,7 @@
 #include "IsosurfaceSettingsWidget.h"
 #include "ProbeSettingsWidget.h"
 #include "PostContourReaderWidget.h"
+#include "PostDisplayControlWidget.h"
 #include "PostResultAutoPrepare.h"
 #include "PostResultSelectionUtils.h"
 #include "PostVisualUtils.h"
@@ -225,6 +226,13 @@ PostProcessing::PostProcessing()
     if (uiFrameService)
         uiFrameService->addWidget(tmp, "物理量");
 
+    m_displayControlWidget = new PostDisplayControlWidget(visualService());
+    if (uiFrameService)
+    {
+        uiFrameService->addWidget(m_displayControlWidget, QStringLiteral("结果显示"));
+        uiFrameService->setWidgetVisible(m_displayControlWidget, false);
+    }
+
     initPageFactory();
     initAction();
     initTreeMenu();
@@ -294,7 +302,16 @@ void PostProcessing::newProject()
     PostResultSelectionUtils::clearSharedResultSelection();
     postScalarBarStyle() = PostScalarBarStyle{};
     postContourStyle() = PostContourStyle{};
+    postSceneStyle() = PostSceneStyle{};
+    postDisplaySettingsAuthoritative() = true;
     postFieldRangeStyles().clear();
+    clearPostDisplayContext();
+    postMeshFilterReport() = PostMeshFilterReport{};
+    setPostViewActive(false);
+    if (m_visualService)
+        m_visualService->showScalarBar(false, false);
+    if (m_displayControlWidget)
+        m_displayControlWidget->syncFromState();
 
     m_root = new ProjectNode("后处理");
     m_root->setData(0, ProjectNode::RoleUuid, m_root->getUuid());
@@ -308,6 +325,28 @@ void PostProcessing::newProject()
 
 void PostProcessing::initAction()
 {
+    EventManager::instance().registerHandler(
+        meshDisplayFilterChangedEvent(), this,
+        [this](const QVariantMap&)
+        {
+            if (!postSceneStyle().followMeshFilter)
+                return;
+            notifyPostDisplaySettingsChanged(QStringLiteral("mesh-filter"));
+            if (m_displayControlWidget)
+                m_displayControlWidget->syncFromState();
+        });
+
+    EventManager::instance().registerHandler(
+        PublicConstants::kActionPostProcessDisplayControl, this,
+        [this](const QVariantMap&)
+        {
+            if (auto* uiFrame = ServiceRegistry::instance().getService<UiFrameService>())
+                if (m_displayControlWidget)
+                {
+                    m_displayControlWidget->syncFromState();
+                    uiFrame->setWidgetVisible(m_displayControlWidget, true);
+                }
+        });
     EventManager::instance().registerHandler(PublicConstants::kActionPostProcessNephogram, this,
                                              [this](const QVariantMap&)
                                              {
@@ -612,7 +651,16 @@ bool PostProcessing::loadProject()
     PostResultSelectionUtils::clearSharedResultSelection();
     postScalarBarStyle() = PostScalarBarStyle{};
     postContourStyle() = PostContourStyle{};
+    postSceneStyle() = PostSceneStyle{};
+    postDisplaySettingsAuthoritative() = false;
     postFieldRangeStyles().clear();
+    clearPostDisplayContext();
+    postMeshFilterReport() = PostMeshFilterReport{};
+    setPostViewActive(false);
+    if (m_visualService)
+        m_visualService->showScalarBar(false, false);
+    if (m_displayControlWidget)
+        m_displayControlWidget->syncFromState();
 
     m_root = new ProjectNode("后处理");
     m_root->setData(0, ProjectNode::RoleUuid, m_root->getUuid());
@@ -629,13 +677,23 @@ bool PostProcessing::loadProject()
     QJsonObject root;
     if (!readJsonFile(filePath, root))
     {
+        postDisplaySettingsAuthoritative() = true;
+        if (m_displayControlWidget)
+            m_displayControlWidget->syncFromState();
         return true;
     }
 
     if (root.value(QStringLiteral("result_context")).isObject())
         PostResultSelectionUtils::loadSharedResultSelection(root.value(QStringLiteral("result_context")).toObject());
     if (root.value(QStringLiteral("display_settings")).isObject())
+    {
         loadPostDisplaySettings(root.value(QStringLiteral("display_settings")).toObject());
+        postDisplaySettingsAuthoritative() = true;
+    }
+    if (m_displayControlWidget)
+        m_displayControlWidget->syncFromState();
+    if (m_visualService)
+        m_visualService->setGroupVisible(QStringLiteral("post"), postSceneStyle().visible, false);
 
     const QJsonArray items = root.value("items").toArray();
     for (const auto& v : items)
@@ -653,6 +711,9 @@ bool PostProcessing::loadProject()
         if (BasePage* page = node->getPage())
             page->loadJson(state);
     }
+    postDisplaySettingsAuthoritative() = true;
+    if (m_displayControlWidget)
+        m_displayControlWidget->syncFromState();
     return true;
 }
 
@@ -660,6 +721,18 @@ void PostProcessing::closeProject()
 {
     if (!m_root)
         return;
+
+    clearPostDisplayContext();
+    postMeshFilterReport() = PostMeshFilterReport{};
+    setPostViewActive(false);
+    if (m_visualService)
+    {
+        m_visualService->showScalarBar(false, false);
+        m_visualService->setGroupVisible(QStringLiteral("post"), false, false);
+        m_visualService->render();
+    }
+    if (m_displayControlWidget)
+        m_displayControlWidget->syncFromState();
 
     while (m_root->childCount() > 0)
     {

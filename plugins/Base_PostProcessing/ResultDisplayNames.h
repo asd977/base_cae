@@ -5,9 +5,26 @@
 #include <QRegularExpression>
 #include <QString>
 #include <QStringList>
+#include <QSet>
 
 namespace ResultDisplayNames
 {
+inline bool isInternalField(const QString& rawName)
+{
+    QString key = rawName.trimmed().toUpper();
+    key.remove(QLatin1Char(' '));
+    static const QSet<QString> internal = {
+        QStringLiteral("NODE_ID"), QStringLiteral("NODEID"),
+        QStringLiteral("ELEM_ID"), QStringLiteral("ELEMENT_ID"),
+        QStringLiteral("ELEMENTID"), QStringLiteral("CELL_ID"),
+        QStringLiteral("VTKORIGINALPOINTIDS"), QStringLiteral("VTKORIGINALCELLIDS"),
+        QStringLiteral("KETYPE"), QStringLiteral("MATYPE"), QStringLiteral("LAYER"),
+        QStringLiteral("REGIONID"), QStringLiteral("ZONEID"),
+        QStringLiteral("BAR_GROUP"), QStringLiteral("SRC_PART")
+    };
+    return internal.contains(key);
+}
+
 inline QString unitOf(const QString& rawName)
 {
     static const QRegularExpression unitRegex(
@@ -110,6 +127,7 @@ inline QString displayName(const QString& rawName)
             {QStringLiteral("VY"), QStringLiteral("Y速度 v_y")},
             {QStringLiteral("VZ"), QStringLiteral("Z速度 v_z")},
             {QStringLiteral("VMAG"), QStringLiteral("速度模 |v|")},
+            {QStringLiteral("VECTORMAG"), QStringLiteral("矢量模")},
 
             {QStringLiteral("TEMP"), QStringLiteral("温度 T")},
             {QStringLiteral("TEMPERATURE"), QStringLiteral("温度 T")},
@@ -212,6 +230,7 @@ inline QString scalarBarName(const QString& rawName)
             {QStringLiteral("VY"), QStringLiteral("v_y")},
             {QStringLiteral("VZ"), QStringLiteral("v_z")},
             {QStringLiteral("VMAG"), QStringLiteral("|v|")},
+            {QStringLiteral("VECTORMAG"), QStringLiteral("|V|")},
 
             {QStringLiteral("TEMP"), QStringLiteral("T")},
             {QStringLiteral("TEMPERATURE"), QStringLiteral("T")},
@@ -260,7 +279,7 @@ inline int findInternalName(const QComboBox* combo, const QString& rawName)
 
 inline void addScalarItem(QComboBox* combo, const QString& rawName)
 {
-    if (combo)
+    if (combo && !isInternalField(rawName))
         combo->addItem(displayName(rawName), rawName);
 }
 

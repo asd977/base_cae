@@ -39,6 +39,7 @@ BlockSettingsWidget::BlockSettingsWidget(VisualWidgetService* postProcessingWidg
       m_visualService(postProcessingWidget)
 {
     ui->setupUi(this);
+    ui->displayGroupBox->setVisible(false);
 
     configurePostResultCombo(ui->analysisComboBox);
     configurePostResultCombo(ui->resultDirComboBox);
@@ -50,7 +51,7 @@ BlockSettingsWidget::BlockSettingsWidget(VisualWidgetService* postProcessingWidg
         postScalarBarStyle().visible = checked;
         if (m_visualService)
         {
-            m_visualService->showScalarBar(checked, false);
+            m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
             m_visualService->render();
         }
     });
@@ -116,6 +117,23 @@ BlockSettingsWidget::BlockSettingsWidget(VisualWidgetService* postProcessingWidg
     connect(ui->resultTimeComboBox,
             QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &BlockSettingsWidget::on_resultTimeComboBox_currentIndexChanged);
+
+    EventManager::instance().registerHandler(
+        postDisplaySettingsChangedEvent(), this,
+        [this](const QVariantMap&)
+        {
+            if (!property("postDisplayActive").toBool())
+                return;
+            {
+                const QSignalBlocker scalarBarBlocker(ui->showScalarBarCheckBox);
+                const QSignalBlocker contourBlocker(ui->showContourCheckBox);
+                ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
+                ui->showContourCheckBox->setChecked(postContourStyle().enabled);
+            }
+            updateColoringFromUI();
+            updateContourOverlay();
+            renderNow();
+        });
 }
 
 BlockSettingsWidget::~BlockSettingsWidget()
@@ -125,6 +143,7 @@ BlockSettingsWidget::~BlockSettingsWidget()
 
 void BlockSettingsWidget::beforeLoad()
 {
+    setProperty("postDisplayActive", true);
     showPostProcessingOnly(m_visualService, false);
     ui->showScalarBarCheckBox->setChecked(postScalarBarStyle().visible);
     ui->showContourCheckBox->setChecked(postContourStyle().enabled);
@@ -153,7 +172,8 @@ void BlockSettingsWidget::beforeLoad()
         // 非首次：恢复 actor（如果之前被 beforeUnload 隐藏）
         if (m_actor && !m_isAttached)
         {
-            addActorByService(m_visualService, m_actor);
+            addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("block")),
+                          m_actor, QStringLiteral("切块"));
             m_isAttached = true;
         }
         // 确保 mapper/LUT/plane 与当前 UI 一致
@@ -363,14 +383,17 @@ void BlockSettingsWidget::on_resultTimeComboBox_currentIndexChanged(int)
 
 void BlockSettingsWidget::beforeUnload()
 {
+    setPostViewActive(false);
+    setProperty("postDisplayActive", false);
+    clearPostDisplayContext();
     // 只移除，不销毁；保持状态与对象以便回来恢复
     if (m_actor && m_isAttached)
     {
-        removeActorByService(m_visualService, m_actor);
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("block")));
         m_isAttached = false;
     }
     if (m_contourActor)
-        removeActorByService(m_visualService, m_contourActor, false);
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("contour")), false);
     if (m_visualService)
         m_visualService->showScalarBar(false, false);
 }
@@ -474,8 +497,9 @@ void BlockSettingsWidget::buildClipPipelineIfNeeded()
         return;
 
     // 1) Clip
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
     m_clipper = vtkSmartPointer<vtkTableBasedClipDataSet>::New();
-    m_clipper->SetInputData(m_grid);
+    m_clipper->SetInputData(displayGrid);
     m_clipper->SetClipFunction(m_plane);
     m_clipper->InsideOutOff();             // 默认保留法向一侧
     m_clipper->GenerateClippedOutputOff(); // 不输出反面
@@ -491,7 +515,8 @@ void BlockSettingsWidget::buildClipPipelineIfNeeded()
     m_actor->GetProperty()->SetRepresentationToSurface();
 
     // 首次建管线时即挂入场景
-    addActorByService(m_visualService, m_actor);
+    addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("block")),
+                          m_actor, QStringLiteral("切块"));
     m_isAttached = true;
 }
 
@@ -530,22 +555,46 @@ void BlockSettingsWidget::updatePlaneFromUI()
 
 void BlockSettingsWidget::updateColoringFromUI()
 {
-    if (!m_grid || !m_mapper)
+    if (!m_grid || !m_mapper || !m_clipper)
         return;
 
-    const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
-    vtkDataArray* arr = PostFieldUtils::array(m_grid, field);
-    if (!arr)
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
+    {
+        clearPostDisplayContext();
+        if (m_actor)
+            m_actor->SetVisibility(false);
+        if (m_visualService)
+            m_visualService->showScalarBar(false, false);
         return;
+    }
+    m_clipper->SetInputData(displayGrid);
+    m_clipper->Update();
+    if (m_actor)
+        m_actor->SetVisibility(postSceneStyle().visible);
+
+    const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
+    vtkDataArray* arr = PostFieldUtils::array(displayGrid, field);
+    if (!arr || arr->GetNumberOfTuples() <= 0)
+    {
+        clearPostDisplayContext();
+        if (m_actor)
+            m_actor->SetVisibility(false);
+        if (m_visualService)
+            m_visualService->showScalarBar(false, false);
+        return;
+    }
 
     const QByteArray encodedName = field.name.toUtf8();
     if (field.association == vtkDataObject::FIELD_ASSOCIATION_CELLS)
-        m_grid->GetCellData()->SetActiveScalars(encodedName.constData());
+        displayGrid->GetCellData()->SetActiveScalars(encodedName.constData());
     else
-        m_grid->GetPointData()->SetActiveScalars(encodedName.constData());
+        displayGrid->GetPointData()->SetActiveScalars(encodedName.constData());
 
     double dataRange[2];
     arr->GetRange(dataRange);
+    if (property("postDisplayActive").toBool())
+        publishPostDisplayContext(field.name, dataRange[0], dataRange[1], true, false);
     double range[2]{dataRange[0], dataRange[1]};
     resolvePostDisplayRange(field.name, dataRange[0], dataRange[1], range[0], range[1]);
 
@@ -561,8 +610,7 @@ void BlockSettingsWidget::updateColoringFromUI()
         scalarBar->SetLookupTable(newLut);
         lut = newLut;
     }
-    lut->SetTableRange(range);
-    lut->Build();
+    applyStandardPostLookupTable(lut, range[0], range[1]);
 
     m_mapper->SetLookupTable(lut);
     if (field.association == vtkDataObject::FIELD_ASSOCIATION_CELLS)
@@ -577,7 +625,7 @@ void BlockSettingsWidget::updateColoringFromUI()
     {
         applyStandardPostScalarBar(
             m_visualService, ResultDisplayNames::scalarBarName(field.name));
-        m_visualService->showScalarBar(postScalarBarStyle().visible, false);
+        m_visualService->showScalarBar(postScalarBarShouldBeVisible(), false);
     }
     updateContourOverlay();
 }
@@ -586,15 +634,18 @@ void BlockSettingsWidget::updateContourOverlay()
 {
     if (m_contourActor)
     {
-        removeActorByService(m_visualService, m_contourActor, false);
+        removeActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("contour")), false);
         m_contourActor = nullptr;
     }
     if (!m_visualService || !m_grid || !m_clipper || !postContourStyle().enabled)
         return;
 
+    vtkSmartPointer<vtkUnstructuredGrid> displayGrid = postFilteredResultGrid(m_grid);
+    if (!displayGrid || displayGrid->GetNumberOfCells() <= 0)
+        return;
     const PostFieldUtils::Field field = PostFieldUtils::selectedField(ui->scalarComboBox);
-    vtkDataArray* array = PostFieldUtils::array(m_grid, field);
-    if (!array)
+    vtkDataArray* array = PostFieldUtils::array(displayGrid, field);
+    if (!array || array->GetNumberOfTuples() <= 0)
         return;
     double dataRange[2]{0.0, 1.0};
     array->GetRange(dataRange);
@@ -619,7 +670,8 @@ void BlockSettingsWidget::updateContourOverlay()
     m_contourActor = createPostContourActor(surface->GetOutputPort(), field.name,
                                             range[0], range[1]);
     if (m_contourActor)
-        addActorByService(m_visualService, m_contourActor, false);
+        addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("contour")),
+                          m_contourActor, QStringLiteral("等值线"), false);
 }
 
 void BlockSettingsWidget::renderNow()
@@ -737,7 +789,7 @@ void BlockSettingsWidget::on_stepComboBox_currentIndexChanged(int index)
     }
     else
     {
-        m_clipper->SetInputData(m_grid);
+        m_clipper->SetInputData(postFilteredResultGrid(m_grid));
         m_clipper->Update();
     }
 
@@ -748,7 +800,8 @@ void BlockSettingsWidget::on_stepComboBox_currentIndexChanged(int index)
     // 确保 actor 已挂
     if (m_actor && !m_isAttached)
     {
-        addActorByService(m_visualService, m_actor);
+        addActorByService(m_visualService, postActorId(getUuid(), QStringLiteral("block")),
+                          m_actor, QStringLiteral("切块"));
         m_isAttached = true;
     }
 

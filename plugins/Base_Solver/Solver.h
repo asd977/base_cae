@@ -115,10 +115,8 @@ class Solver : public QObject, public SolverService
     void setComputeWidgetRunning(QWidget* widget, bool computing) const;
     void connectStopRequest(QObject* page) const;
     int solverModeFromAnalysisType(const QString& analysisType) const;
-    bool updateIiiDirDat(const QString& projectDir, int solverMode, int deviceCode,
-                         int assemblyLogInterval, int solverLogInterval) const;
-    bool updateCaveBlockIiiDirDat(const QString& sliderDir, int assemblyLogInterval,
-                                  int solverLogInterval) const;
+    bool updateIiiDirDat(const QString& projectDir, int solverMode, int deviceCode) const;
+    bool updateCaveBlockIiiDirDat(const QString& sliderDir) const;
     bool updatePrepDatFiles(const QString& projectDir, int solverMode, int verticalAxis) const;
     bool normalizeGeoStressSolidLayers(QString* errorMessage) const;
     bool forceIiinLayersToOne(const QString& analysisDir) const;

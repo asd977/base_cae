@@ -28,6 +28,7 @@
 #include <QPainter>
 #include <QPixmap>
 #include <QSettings>
+#include <QStackedWidget>
 #include <QString>
 #include <QSizePolicy>
 #include <QSlider>
@@ -451,14 +452,23 @@ QAction* UiFrame::addWidget(QWidget* widget, QString name)
     dockWidget->setFeature(ads::CDockWidget::DockWidgetFloatable, true);
 
     const ads::DockWidgetArea area = preferDockArea(name);
+    const bool isVisualControlPanel =
+        widget && widget->property("visualControlPanel").toBool();
+    ads::CDockAreaWidget* visualControlArea =
+        m_visualControlAnchorDockWidget
+            ? m_visualControlAnchorDockWidget->dockAreaWidget()
+            : nullptr;
     ads::CDockAreaWidget* targetArea = m_centerDockArea;
-    if (name == QStringLiteral("显示控制") && m_visualDockWidget &&
-        m_visualDockWidget->dockAreaWidget())
+    if (isVisualControlPanel && m_visualDockWidget && m_visualDockWidget->dockAreaWidget())
     {
         targetArea = m_visualDockWidget->dockAreaWidget();
     }
 
-    if (!targetArea)
+    if (isVisualControlPanel && visualControlArea)
+    {
+        m_dockManager->addDockWidgetTabToArea(dockWidget, visualControlArea);
+    }
+    else if (!targetArea)
     {
         targetArea = m_dockManager->addDockWidget(area, dockWidget);
         if (area == ads::CenterDockWidgetArea)
@@ -471,6 +481,13 @@ QAction* UiFrame::addWidget(QWidget* widget, QString name)
     else
     {
         m_dockManager->addDockWidget(area, dockWidget, targetArea);
+    }
+
+    if (isVisualControlPanel)
+    {
+        m_visualControlDockWidgets.append(dockWidget);
+        if (!m_visualControlAnchorDockWidget)
+            m_visualControlAnchorDockWidget = dockWidget;
     }
 
     if (!m_centerDockArea && targetArea)
@@ -498,6 +515,57 @@ void UiFrame::setWidgetVisible(QWidget* widget, bool visible)
     dockWidget->toggleView(visible);
     if (visible)
         dockWidget->raise();
+}
+
+void UiFrame::showWidgetInLogArea(QWidget* widget, QString name)
+{
+    if (!widget || !m_dockManager)
+        return;
+
+    if (!m_logContextDockWidget)
+    {
+        m_logContextDockWidget = new ads::CDockWidget(name);
+        m_logContextStack = new QStackedWidget(m_logContextDockWidget);
+        m_logContextStack->setContentsMargins(0, 0, 0, 0);
+        m_logContextDockWidget->setWidget(
+            m_logContextStack, ads::CDockWidget::ForceNoScrollArea);
+        m_logContextDockWidget->setFeatures(ads::CDockWidget::DockWidgetMovable);
+
+        ads::CDockAreaWidget* outputArea =
+            m_logDockWidget ? m_logDockWidget->dockAreaWidget() : nullptr;
+        if (!outputArea && m_physicalDockWidget)
+            outputArea = m_physicalDockWidget->dockAreaWidget();
+
+        if (outputArea)
+        {
+            m_dockManager->addDockWidgetTabToArea(m_logContextDockWidget, outputArea);
+        }
+        else if (m_visualDockWidget && m_visualDockWidget->dockAreaWidget())
+        {
+            m_dockManager->addDockWidget(ads::BottomDockWidgetArea,
+                                         m_logContextDockWidget,
+                                         m_visualDockWidget->dockAreaWidget());
+        }
+        else
+        {
+            m_dockManager->addDockWidget(ads::BottomDockWidgetArea,
+                                         m_logContextDockWidget);
+        }
+    }
+
+    if (!m_logContextStack || !m_logContextDockWidget)
+        return;
+
+    if (m_logContextStack->indexOf(widget) < 0)
+        m_logContextStack->addWidget(widget);
+    m_logContextStack->setCurrentWidget(widget);
+    m_logContextDockWidget->setWindowTitle(name);
+    widget->setProperty("uiFrameDockWidget",
+                        QVariant::fromValue(static_cast<QObject*>(m_logContextDockWidget.data())));
+
+    m_logContextDockWidget->toggleView(true);
+    m_logContextDockWidget->raise();
+    updateAllContainersTabStyle();
 }
 
 QAction* UiFrame::addWidgetForTabwidget(QWidget* widget, QString name)
@@ -535,6 +603,40 @@ void UiFrame::restoreUiState()
 
     if (!savedState.isEmpty())
         m_dockManager->restoreState(savedState);
+
+    // Older layouts may not contain control panels added by newer plug-ins.
+    ads::CDockAreaWidget* visualControlArea =
+        m_visualControlAnchorDockWidget
+            ? m_visualControlAnchorDockWidget->dockAreaWidget()
+            : nullptr;
+    if (!visualControlArea)
+    {
+        for (const auto& dockWidget : m_visualControlDockWidgets)
+        {
+            if (dockWidget && dockWidget->dockAreaWidget())
+            {
+                visualControlArea = dockWidget->dockAreaWidget();
+                break;
+            }
+        }
+    }
+
+    for (const auto& dockWidget : m_visualControlDockWidgets)
+    {
+        if (!dockWidget || dockWidget->dockAreaWidget())
+            continue;
+
+        if (visualControlArea)
+        {
+            m_dockManager->addDockWidgetTabToArea(dockWidget, visualControlArea);
+        }
+        else if (m_visualDockWidget && m_visualDockWidget->dockAreaWidget())
+        {
+            visualControlArea = m_dockManager->addDockWidget(
+                ads::RightDockWidgetArea, dockWidget, m_visualDockWidget->dockAreaWidget());
+        }
+        dockWidget->toggleView(false);
+    }
 
     if (settings.contains("windowSize"))
         resize(settings.value("windowSize").toSize());
@@ -1885,6 +1987,8 @@ void UiFrame::buildRibbonTabs()
         {
             auto* panel = cate->addPannel("显示");
 
+            auto* actDisplayControl =
+                makeAction(this, ":/resources/menu/minimal/mesh-edit.svg", "&显示控制");
             auto* actNeph =
                 makeAction(this, ":/resources/menu/minimal/post-nephogram.svg", "&云图");
             auto* actVec =
@@ -1893,11 +1997,14 @@ void UiFrame::buildRibbonTabs()
                 makeAction(this, ":/resources/menu/minimal/post-slice.svg", "&切面");
             auto* actDice =
                 makeAction(this, ":/resources/menu/minimal/post-block.svg", "&切块");
+            addActionToPanel(panel, actDisplayControl, 3);
             addActionToPanel(panel, actNeph, 3);
             addActionToPanel(panel, actVec, 3);
             addActionToPanel(panel, actSlc, 2);
             addActionToPanel(panel, actDice, 2);
 
+            bindEvent(this, actDisplayControl,
+                      PublicConstants::kActionPostProcessDisplayControl);
             bindEvent(this, actNeph, PublicConstants::kActionPostProcessNephogram);
             bindEvent(this, actVec, PublicConstants::kActionPostProcessVector);
             bindEvent(this, actSlc, PublicConstants::kActionPostProcessSection);

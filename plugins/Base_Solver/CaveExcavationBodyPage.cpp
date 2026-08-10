@@ -92,19 +92,25 @@ CaveExcavationBodyPage::~CaveExcavationBodyPage()
     delete ui;
 }
 
+QString CaveExcavationBodyPage::pickDomain() const
+{
+    return QStringLiteral("CaveExcavationBody/%1").arg(m_uuid);
+}
+
+
 void CaveExcavationBodyPage::beforeLoad()
 {
     setupGroupCombo();
 
     const PickMode mode = currentPickMode();
 
-    PickManager::instance().activate(getPageType(), m_uuid, mode);
+    PickManager::instance().activate(pickDomain(), m_uuid, mode);
 
     // 开挖体页面统一通过“分组”选择，不直接点选单个面。
-    PickManager::instance().setClickPickEnabled(getPageType(), m_uuid, false);
-    PickManager::instance().setBoxSelectEnabled(getPageType(), m_uuid, false);
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Face);
-    PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Face);
+    PickManager::instance().setClickPickEnabled(pickDomain(), m_uuid, false);
+    PickManager::instance().setBoxSelectEnabled(pickDomain(), m_uuid, false);
+    PickManager::instance().clearPreviewSelection(pickDomain(), m_uuid, PickMode::Face);
+    PickManager::instance().clearSelection(pickDomain(), m_uuid, PickMode::Face);
 
     refreshSelectedGroupList();
     refreshGroupComboMarks();
@@ -115,13 +121,13 @@ void CaveExcavationBodyPage::beforeUnload()
 {
     m_groupPreviewTimer->stop();
     m_pendingPreviewGroup = 0;
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Face);
-    PickManager::instance().setPreviewDomain(getPageType(), m_uuid, DomainKey{});
-    PickManager::instance().setPreDeleteDomain(getPageType(), m_uuid, DomainKey{});
-    PickManager::instance().setSelectedDomain(getPageType(), m_uuid, DomainKey{});
-    PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Face);
+    PickManager::instance().clearPreviewSelection(pickDomain(), m_uuid, PickMode::Face);
+    PickManager::instance().setPreviewDomain(pickDomain(), m_uuid, DomainKey{});
+    PickManager::instance().setPreDeleteDomain(pickDomain(), m_uuid, DomainKey{});
+    PickManager::instance().setSelectedDomain(pickDomain(), m_uuid, DomainKey{});
+    PickManager::instance().clearSelection(pickDomain(), m_uuid, PickMode::Face);
 
-    PickManager::instance().deactivate(getPageType(), m_uuid, currentPickMode());
+    PickManager::instance().deactivate(pickDomain(), m_uuid, currentPickMode());
 }
 
 QJsonObject CaveExcavationBodyPage::saveJson()
@@ -212,13 +218,13 @@ void CaveExcavationBodyPage::loadJson(const QJsonObject& obj)
         }
     }
 
-    PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
+    PickManager::instance().setAppliedDomains(pickDomain(), m_uuid, domains);
 
     // 清理旧版可能残留的单面选择，当前页面以分组选择为准。
     PickManager::instance().setSelectedFaceKeys(
-        getPageType(), m_uuid, GridKind::Solid, QVector<vtkIdType>{}, true);
+        pickDomain(), m_uuid, GridKind::Solid, QVector<vtkIdType>{}, true);
     PickManager::instance().setSelectedEdgeKeys(
-        getPageType(), m_uuid, GridKind::Solid, QVector<vtkIdType>{}, true);
+        pickDomain(), m_uuid, GridKind::Solid, QVector<vtkIdType>{}, true);
 
     refreshSelectedGroupList();
     refreshGroupComboMarks();
@@ -262,13 +268,13 @@ QVector<int> CaveExcavationBodyPage::selectedElementIds()
 
 void CaveExcavationBodyPage::onClearClicked()
 {
-    PickManager::instance().setAppliedDomains(getPageType(), m_uuid, {});
-    PickManager::instance().setSelectedDomain(getPageType(), m_uuid, DomainKey{});
-    PickManager::instance().setPreviewDomain(getPageType(), m_uuid, DomainKey{});
-    PickManager::instance().setPreDeleteDomain(getPageType(), m_uuid, DomainKey{});
+    PickManager::instance().setAppliedDomains(pickDomain(), m_uuid, {});
+    PickManager::instance().setSelectedDomain(pickDomain(), m_uuid, DomainKey{});
+    PickManager::instance().setPreviewDomain(pickDomain(), m_uuid, DomainKey{});
+    PickManager::instance().setPreDeleteDomain(pickDomain(), m_uuid, DomainKey{});
 
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Face);
-    PickManager::instance().clearSelection(getPageType(), m_uuid, PickMode::Face);
+    PickManager::instance().clearPreviewSelection(pickDomain(), m_uuid, PickMode::Face);
+    PickManager::instance().clearSelection(pickDomain(), m_uuid, PickMode::Face);
 
     refreshSelectedGroupList();
     refreshGroupComboMarks();
@@ -285,11 +291,11 @@ void CaveExcavationBodyPage::onAddGroupClicked()
         return;
 
     QSet<DomainKey> domains =
-        PickManager::instance().appliedDomains(getPageType(), m_uuid);
+        PickManager::instance().appliedDomains(pickDomain(), m_uuid);
 
     domains.insert(DomainKey{selectionGroupCategory(), layerDomainDim(), gid});
 
-    PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
+    PickManager::instance().setAppliedDomains(pickDomain(), m_uuid, domains);
 
     refreshSelectedGroupList();
     refreshGroupComboMarks();
@@ -302,7 +308,7 @@ void CaveExcavationBodyPage::onRemoveSelectedGroupsClicked()
         return;
 
     QSet<DomainKey> domains =
-        PickManager::instance().appliedDomains(getPageType(), m_uuid);
+        PickManager::instance().appliedDomains(pickDomain(), m_uuid);
 
     const auto items = m_groupList->selectedItems();
     for (QListWidgetItem* item : items)
@@ -313,7 +319,7 @@ void CaveExcavationBodyPage::onRemoveSelectedGroupsClicked()
             domains.remove(DomainKey{selectionGroupCategory(), layerDomainDim(), gid});
     }
 
-    PickManager::instance().setAppliedDomains(getPageType(), m_uuid, domains);
+    PickManager::instance().setAppliedDomains(pickDomain(), m_uuid, domains);
 
     refreshSelectedGroupList();
     refreshGroupComboMarks();
@@ -361,7 +367,7 @@ void CaveExcavationBodyPage::onGroupDropdownClosed()
     m_groupPreviewTimer->stop();
     m_pendingPreviewGroup = 0;
 
-    PickManager::instance().clearPreviewSelection(getPageType(), m_uuid, PickMode::Face);
+    PickManager::instance().clearPreviewSelection(pickDomain(), m_uuid, PickMode::Face);
 
     refreshGroupComboMarks();
     updateGroupDomainHighlight(0);
@@ -717,7 +723,7 @@ void CaveExcavationBodyPage::updatePersistentSelectionFaces()
     }
 
     PickManager::instance().setSelectedFaceKeys(
-        getPageType(), m_uuid, GridKind::Solid, allFaceKeys, true);
+        pickDomain(), m_uuid, GridKind::Solid, allFaceKeys, true);
 }
 
 void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
@@ -735,9 +741,9 @@ void CaveExcavationBodyPage::updateGroupDomainHighlight(int previewGroup)
     };
 
     auto& pickManager = PickManager::instance();
-    pickManager.setSelectedDomain(getPageType(), m_uuid, domainKey(selectedGroup));
-    pickManager.setPreviewDomain(getPageType(), m_uuid, domainKey(previewGroup));
-    pickManager.setPreDeleteDomain(getPageType(), m_uuid, DomainKey{});
+    pickManager.setSelectedDomain(pickDomain(), m_uuid, domainKey(selectedGroup));
+    pickManager.setPreviewDomain(pickDomain(), m_uuid, domainKey(previewGroup));
+    pickManager.setPreDeleteDomain(pickDomain(), m_uuid, DomainKey{});
 }
 
 int CaveExcavationBodyPage::layerDomainDim() const
@@ -761,7 +767,7 @@ QSet<int> CaveExcavationBodyPage::selectedLayerGroups()
     QSet<int> out;
 
     const QSet<DomainKey> owned =
-        PickManager::instance().appliedDomains(getPageType(), m_uuid);
+        PickManager::instance().appliedDomains(pickDomain(), m_uuid);
 
     const QString category = selectionGroupCategory();
     QSet<int> availableGroups;

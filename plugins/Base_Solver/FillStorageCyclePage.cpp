@@ -1,4 +1,4 @@
-#include "FillStorageCyclePage.h"
+﻿#include "FillStorageCyclePage.h"
 
 #include <PickManager.h>
 #include <PublicConstants.h>
@@ -6,12 +6,16 @@
 #include <ServiceRegistry.h>
 #include <services/MaterialManagerService.h>
 #include <services/MeshModuleControllerService.h>
+#include <services/UiFrameService.h>
+#include <services/VisualWidgetService.h>
 
 #include <QAbstractItemView>
 #include <QComboBox>
+#include <QCheckBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFontMetrics>
+#include <QFrame>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QPushButton>
@@ -27,8 +31,29 @@
 #include <QStyle>
 #include <QStyleOptionHeader>
 #include <QTableWidget>
+#include <QTimer>
 #include <QWidget>
+#include <algorithm>
+#include <array>
 #include <cmath>
+
+#include <vtkActor.h>
+#include <vtkBillboardTextActor3D.h>
+#include <vtkCell.h>
+#include <vtkCellData.h>
+#include <vtkDataArray.h>
+#include <vtkDataSetMapper.h>
+#include <vtkExtractCells.h>
+#include <vtkGeometryFilter.h>
+#include <vtkIdList.h>
+#include <vtkLineSource.h>
+#include <vtkPlaneSource.h>
+#include <vtkPolyData.h>
+#include <vtkPolyDataMapper.h>
+#include <vtkProperty.h>
+#include <vtkSmartPointer.h>
+#include <vtkTextProperty.h>
+#include <vtkUnstructuredGrid.h>
 
 #include "ui_FillStorageCyclePage.h"
 
@@ -38,6 +63,87 @@ namespace
 {
 constexpr int FIRST_COMPUTABLE_MATYPE = 2;
 constexpr int MAX_MATERIAL_RELATIONS = 300;
+constexpr double CYCLE_BRANCH_TOLERANCE = 1.0e-3;
+
+QString cycleTableValue(QTableWidget* table, int row, int column,
+                        const QString& fallback = QString())
+{
+    if (!table || row < 0 || row >= table->rowCount() || column < 0
+        || column >= table->columnCount())
+        return fallback;
+    if (auto* combo = qobject_cast<QComboBox*>(table->cellWidget(row, column)))
+    {
+        const QString value = combo->currentData().toString().trimmed();
+        return value.isEmpty() ? fallback : value;
+    }
+    const QTableWidgetItem* item = table->item(row, column);
+    const QString value = item ? item->text().trimmed() : QString();
+    return value.isEmpty() ? fallback : value;
+}
+
+void setCycleTableValue(QTableWidget* table, int row, int column, const QString& value)
+{
+    if (!table || row < 0 || row >= table->rowCount() || column < 0
+        || column >= table->columnCount())
+        return;
+    if (auto* combo = qobject_cast<QComboBox*>(table->cellWidget(row, column)))
+    {
+        const QSignalBlocker blocker(combo);
+        const int index = combo->findData(value);
+        combo->setCurrentIndex(index >= 0 ? index : 0);
+        return;
+    }
+    QTableWidgetItem* item = table->item(row, column);
+    if (!item)
+    {
+        item = new QTableWidgetItem;
+        table->setItem(row, column, item);
+    }
+    item->setText(value);
+}
+
+void synchronizeAutomaticCycleBranches(QTableWidget* table)
+{
+    if (!table)
+        return;
+
+    const QSignalBlocker blocker(table);
+    for (int row = 0; row < table->rowCount(); ++row)
+    {
+        bool startLayerOk = false;
+        bool endLayerOk = false;
+        bool packCreepOk = false;
+        bool waterStartOk = false;
+        bool waterEndOk = false;
+        bool fillCreepOk = false;
+
+        const int startLayer = cycleTableValue(table, row, 0).toInt(&startLayerOk);
+        const int endLayer = cycleTableValue(table, row, 1).toInt(&endLayerOk);
+        const double packCreep = cycleTableValue(table, row, 2).toDouble(&packCreepOk);
+        const double waterStart = cycleTableValue(table, row, 3).toDouble(&waterStartOk);
+        const double waterEnd = cycleTableValue(table, row, 4).toDouble(&waterEndOk);
+        const double fillCreep = cycleTableValue(table, row, 5).toDouble(&fillCreepOk);
+
+        const bool packEnabled = startLayerOk && endLayerOk && startLayer >= 2
+                                 && endLayer >= startLayer;
+        const bool packCreepEnabled = packCreepOk && std::isfinite(packCreep)
+                                      && packCreep >= CYCLE_BRANCH_TOLERANCE;
+        const bool fillEnabled = waterStartOk && waterEndOk && std::isfinite(waterStart)
+                                 && std::isfinite(waterEnd)
+                                 && waterEnd - waterStart >= CYCLE_BRANCH_TOLERANCE;
+        const bool fillCreepEnabled = fillCreepOk && std::isfinite(fillCreep)
+                                      && fillCreep >= CYCLE_BRANCH_TOLERANCE;
+
+        setCycleTableValue(table, row, 6, packEnabled ? QStringLiteral("1")
+                                                      : QStringLiteral("0"));
+        setCycleTableValue(table, row, 7, packCreepEnabled ? QStringLiteral("1")
+                                                           : QStringLiteral("0"));
+        setCycleTableValue(table, row, 8, fillEnabled ? QStringLiteral("1")
+                                                      : QStringLiteral("0"));
+        setCycleTableValue(table, row, 9, fillCreepEnabled ? QStringLiteral("1")
+                                                           : QStringLiteral("0"));
+    }
+}
 
 int currentDomainDimension()
 {
@@ -52,6 +158,101 @@ DomainKey materialDomainKey(int matype)
         return DomainKey{};
     return DomainKey{QStringLiteral("MATYPE"), currentDomainDimension(), matype};
 }
+
+void addStagePreviewLine(VisualWidgetService* visual, const QString& groupName,
+                         const QString& id, const QString& name,
+                         const double point0[3], const double point1[3],
+                         const std::array<double, 3>& color, double width)
+{
+    if (!visual)
+        return;
+
+    auto line = vtkSmartPointer<vtkLineSource>::New();
+    line->SetPoint1(point0);
+    line->SetPoint2(point1);
+    line->Update();
+
+    auto mapper = vtkSmartPointer<vtkPolyDataMapper>::New();
+    mapper->SetInputConnection(line->GetOutputPort());
+
+    auto actor = vtkSmartPointer<vtkActor>::New();
+    actor->SetMapper(mapper);
+    actor->PickableOff();
+    actor->GetProperty()->LightingOff();
+    actor->GetProperty()->SetColor(color[0], color[1], color[2]);
+    actor->GetProperty()->SetLineWidth(width);
+
+    visual->addProp(id, actor, groupName, name, false, false);
+}
+
+void addStagePreviewLabel(VisualWidgetService* visual, const QString& groupName,
+                          const QString& id, const QString& name,
+                          const QString& textValue, const double position[3],
+                          const std::array<double, 3>& color, bool alignRight,
+                          int fontSize, double backgroundOpacity)
+{
+    if (!visual)
+        return;
+
+    auto label = vtkSmartPointer<vtkBillboardTextActor3D>::New();
+    const QByteArray encoded = textValue.toUtf8();
+    label->SetInput(encoded.constData());
+    label->SetPosition(position[0], position[1], position[2]);
+    label->PickableOff();
+
+    vtkTextProperty* property = label->GetTextProperty();
+    property->SetFontSize(fontSize);
+    property->SetColor(color[0], color[1], color[2]);
+    property->SetBackgroundColor(1.0, 1.0, 1.0);
+    property->SetBackgroundOpacity(backgroundOpacity);
+    property->SetVerticalJustificationToCentered();
+    if (alignRight)
+        property->SetJustificationToRight();
+    else
+        property->SetJustificationToLeft();
+
+    visual->addProp(id, label, groupName, name, false, false);
+}
+
+bool stagePreviewLevelVisible(double level, const double modelBounds[6],
+                              int verticalAxis, double tolerance)
+{
+    return std::isfinite(level)
+           && level >= modelBounds[2 * verticalAxis] - tolerance
+           && level <= modelBounds[2 * verticalAxis + 1] + tolerance;
+}
+
+void addStageWaterTick(VisualWidgetService* visual, const QString& groupName,
+                       const QString& idPrefix, const QString& suffix,
+                       const QString& name, const QString& labelText, double level,
+                       const std::array<double, 3>& color, bool strong,
+                       const double modelBounds[6], int verticalAxis, int sideAxis,
+                       int depthAxis, double waterBase, double depthCoordinate,
+                       double tickLength, double labelGap)
+{
+    double outerPoint[3] = {
+        0.5 * (modelBounds[0] + modelBounds[1]),
+        0.5 * (modelBounds[2] + modelBounds[3]),
+        0.5 * (modelBounds[4] + modelBounds[5])};
+    outerPoint[verticalAxis] = level;
+    outerPoint[sideAxis] = waterBase;
+    if (depthAxis >= 0)
+        outerPoint[depthAxis] = depthCoordinate;
+
+    double tickEnd[3] = {outerPoint[0], outerPoint[1], outerPoint[2]};
+    tickEnd[sideAxis] -= tickLength;
+
+    addStagePreviewLine(visual, groupName, idPrefix + suffix, name,
+                        tickEnd, outerPoint, color, strong ? 3.2 : 2.0);
+
+    double labelPosition[3] = {outerPoint[0], outerPoint[1], outerPoint[2]};
+    labelPosition[sideAxis] += labelGap;
+    addStagePreviewLabel(visual, groupName,
+                         idPrefix + suffix + QStringLiteral(".label"),
+                         name + QStringLiteral("标注"), labelText,
+                         labelPosition, color, false, strong ? 15 : 13,
+                         strong ? 0.90 : 0.72);
+}
 }
 
 FillStorageCyclePage::FillStorageCyclePage(QWidget* parent)
@@ -65,11 +266,21 @@ FillStorageCyclePage::FillStorageCyclePage(QWidget* parent)
 
 FillStorageCyclePage::~FillStorageCyclePage()
 {
+    m_pageActive = false;
+    closeConstructionStageEditor();
+    if (m_constructionStageEditor)
+    {
+        QWidget* editor = m_constructionStageEditor.data();
+        m_constructionStageEditor = nullptr;
+        editor->deleteLater();
+    }
+    clearConstructionStagePreview(false);
     delete ui;
 }
 
 void FillStorageCyclePage::beforeLoad()
 {
+    m_pageActive = true;
     m_materialHighlightActive = true;
     PickManager::instance().activate(getPageType(), m_uuid, PickMode::Domain);
     refreshMaterialMappingOptions(m_wetTable);
@@ -91,12 +302,22 @@ void FillStorageCyclePage::beforeLoad()
         clearMaterialMappingHighlight();
     }
 
+    QTimer::singleShot(0, this,
+                       [this]()
+                       {
+                           if (m_pageActive)
+                               openConstructionStageEditor();
+                       });
+
     // 结果目录可能刚由渗流计算生成，打开页面时重新扫描可用结果。
     emit requirementsChanged();
 }
 
 void FillStorageCyclePage::beforeUnload()
 {
+    m_pageActive = false;
+    closeConstructionStageEditor();
+    clearConstructionStagePreview(false);
     clearMaterialMappingHighlight();
     PickManager::instance().clearDomainSelection(getPageType(), m_uuid);
     PickManager::instance().deactivate(getPageType(), m_uuid, PickMode::Domain);
@@ -159,8 +380,8 @@ void FillStorageCyclePage::initValueEditors()
     ui->comboSeepageResultType->setItemData(0, QStringLiteral("steady"));
     ui->comboSeepageResultType->setItemData(1, QStringLiteral("transient"));
     ui->comboSeepageTransientStep->setItemData(0, QString());
-    ui->labelWOMI1->setText(QStringLiteral("一阶圆频率 ω1（无模态结果时）"));
-    ui->editWOMI1->setToolTip(QStringLiteral("仅在执行地震波时程且未同时进行模态分析时必填。"));
+    ui->labelWOMI1->setText(QStringLiteral("一阶圆频率 ω1"));
+    ui->editWOMI1->setToolTip(QStringLiteral("未做模态分析时填写。"));
 
     connect(ui->groupWet, &QGroupBox::toggled, this,
             [this](bool checked)
@@ -257,9 +478,11 @@ void FillStorageCyclePage::initValueEditors()
     m_wetTable = mkTable({"坝体当前材料", "浸润后材料"}, false);
     m_dynamicMaterialTable = mkTable({"网格静力材料", "动力本构材料"}, false);
     m_dropTable = mkTable({"骤降前水位", "骤降后水位"}, false);
-    m_circleTable = mkTable({"填筑开始层", "填筑结束层", "填筑结束后流变时间", "初始蓄水高程", "本阶段蓄水高程",
-                             "蓄水结束后流变时间", "是否填筑", "是否填筑期流变", "是否蓄水",
-                             "是否蓄水期流变", "节点水头数据（可选）", "节点体力数据（可选）"});
+    m_circleTable = mkTable({"填筑起始层", "填筑结束层", "填筑后流变时间", "起始水位", "目标水位",
+                             "蓄水后流变时间", "填筑", "填筑流变", "蓄水",
+                             "蓄水流变", "节点水头数据（可选）", "节点体力数据（可选）"});
+    // 内部仍保留求解器需要的 12 列；界面只显示前 6 项施工参数。
+    // IF_PACK / IF_PLIU / IF_FILL / IF_FLIU 始终由施工参数自动生成。
 
     m_wetTable->setRowCount(0);
     m_wetTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
@@ -274,7 +497,7 @@ void FillStorageCyclePage::initValueEditors()
     m_dynamicMaterialTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_dynamicMaterialTable->setSelectionMode(QAbstractItemView::SingleSelection);
     m_dynamicMaterialTable->setToolTip(
-        QStringLiteral("仅在本阶段启用动力或地震波动计算时使用"));
+        QStringLiteral("用于动力分析的材料对应关系。"));
     m_dynamicMaterialTable->setAlternatingRowColors(true);
 
     m_dropTable->setRowCount(1);
@@ -306,199 +529,6 @@ void FillStorageCyclePage::initValueEditors()
             { refreshMaterialMappingHighlight(m_dynamicMaterialTable, currentRow); });
     connect(m_dropTable, &QTableWidget::cellChanged, this, [this]() { updatePreview(); });
     connect(m_circleTable, &QTableWidget::cellChanged, this, [this]() { updatePreview(); });
-
-    auto openEditor = [this](QTableWidget* src, const QString& title)
-    {
-        const bool isCircleTable = (src == m_circleTable);
-        QDialog dlg(this);
-        dlg.setWindowTitle(title);
-        dlg.resize(isCircleTable ? 980 : 900, isCircleTable ? 520 : 420);
-        auto* layout = new QVBoxLayout(&dlg);
-        auto* table = new QTableWidget(&dlg);
-        table->setColumnCount(src->columnCount());
-        QStringList headers;
-        for (int c = 0; c < src->columnCount(); ++c)
-            headers << (src->horizontalHeaderItem(c) ? src->horizontalHeaderItem(c)->text() : QString());
-        table->setHorizontalHeaderLabels(headers);
-        table->setRowCount(src->rowCount());
-        if (isCircleTable)
-        {
-            // CAHEAD/CABODY 由“坝体渗流体力结果来源”统一生成，
-            // 不允许在施工阶段表里手工填写两个互相冲突的来源。
-            table->setColumnHidden(10, true);
-            table->setColumnHidden(11, true);
-        }
-        for (int r = 0; r < src->rowCount(); ++r)
-        {
-            for (int c = 0; c < src->columnCount(); ++c)
-            {
-                QString value = tableItemText(src, r, c, QString());
-                if (isCircleTable && c >= 10 &&
-                    (value.compare(QStringLiteral("NONE"), Qt::CaseInsensitive) == 0 ||
-                     value.compare(QStringLiteral("'NONE'"), Qt::CaseInsensitive) == 0))
-                {
-                    value.clear();
-                }
-                table->setItem(r, c, new QTableWidgetItem(value));
-            }
-        }
-        if (isCircleTable)
-        {
-            QHeaderView* header = table->horizontalHeader();
-            header->setSectionResizeMode(QHeaderView::Interactive);
-            header->setStretchLastSection(false);
-            header->setMinimumSectionSize(48);
-            table->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
-            table->setWordWrap(false);
-            table->setTextElideMode(Qt::ElideNone);
-
-            // 只按完整表头计算列宽，并交给当前 Qt 样式补足内边距。
-            const QFontMetrics metrics(header->font());
-            for (int column = 0; column < headers.size(); ++column)
-            {
-                if (table->isColumnHidden(column))
-                    continue;
-                QStyleOptionHeader option;
-                option.initFrom(header);
-                option.text = headers.at(column);
-                const QSize textSize(metrics.horizontalAdvance(option.text), metrics.height());
-                const int headerWidth = header->style()->sizeFromContents(
-                    QStyle::CT_HeaderSection, &option, textSize, header).width() + 2;
-                table->setColumnWidth(column, qMax(header->minimumSectionSize(), headerWidth));
-            }
-        }
-        else
-        {
-            table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-        }
-        table->setSelectionBehavior(QAbstractItemView::SelectRows);
-        table->setSelectionMode(QAbstractItemView::SingleSelection);
-
-        auto setCircleCombo = [table](int row, int col, const QString& val)
-        {
-            auto* cb = new QComboBox(table);
-            cb->addItem("否", "0");
-            cb->addItem("是", "1");
-            const int idx = cb->findData(val.trimmed());
-            cb->setCurrentIndex(idx >= 0 ? idx : 0);
-            table->setCellWidget(row, col, cb);
-        };
-
-        if (isCircleTable)
-        {
-            for (int r = 0; r < table->rowCount(); ++r)
-            {
-                for (int c : {6, 7, 8, 9})
-                    setCircleCombo(r, c, tableItemText(src, r, c, "0"));
-            }
-        }
-        layout->addWidget(table);
-
-        auto* btnRow = new QHBoxLayout();
-        auto* btnAdd = new QPushButton(isCircleTable ? QStringLiteral("新增阶段")
-                                                     : QStringLiteral("新增一行"),
-                                       &dlg);
-        auto* btnDel = new QPushButton(isCircleTable ? QStringLiteral("删除阶段")
-                                                     : QStringLiteral("删除选中行"),
-                                       &dlg);
-        btnRow->addWidget(btnAdd);
-        btnRow->addWidget(btnDel);
-        btnRow->addStretch();
-        layout->addLayout(btnRow);
-
-        connect(btnAdd, &QPushButton::clicked, &dlg, [this, table, isCircleTable, setCircleCombo]() {
-            const int row = table->rowCount();
-            table->insertRow(row);
-            if (isCircleTable)
-            {
-                int firstLayer = 2;
-                double initialElevation = 0.0;
-                if (row > 0)
-                {
-                    bool layerOk = false;
-                    const int previousEnd = tableItemText(
-                        table, row - 1, 1, QStringLiteral("1")).toInt(&layerOk);
-                    firstLayer = layerOk ? qMax(2, previousEnd + 1) : 2;
-                    initialElevation = tableItemText(
-                        table, row - 1, 4, QStringLiteral("0")).toDouble();
-                }
-                const QStringList defaults = {
-                    QString::number(firstLayer), QString::number(firstLayer),
-                    QStringLiteral("0.0000"), QString::number(initialElevation, 'f', 4),
-                    QString::number(initialElevation, 'f', 4), QStringLiteral("0.0000"),
-                    QStringLiteral("1"), QStringLiteral("0"), QStringLiteral("1"),
-                    QStringLiteral("0"), QString(), QString()};
-                for (int column = 0; column < defaults.size(); ++column)
-                    table->setItem(row, column, new QTableWidgetItem(defaults.at(column)));
-                for (int c : {6, 7, 8, 9})
-                    setCircleCombo(row, c, defaults.at(c));
-            }
-        });
-        connect(btnDel, &QPushButton::clicked, &dlg, [table, isCircleTable, &dlg]() {
-            if (isCircleTable && table->rowCount() <= 1)
-            {
-                QMessageBox::information(&dlg, QStringLiteral("无法删除"),
-                                         QStringLiteral("至少需要保留一个填筑蓄水阶段。"));
-                return;
-            }
-            const auto rows = table->selectionModel()->selectedRows();
-            for (int i = rows.size() - 1; i >= 0; --i)
-                table->removeRow(rows.at(i).row());
-        });
-
-        auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
-        buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("应用"));
-        buttons->button(QDialogButtonBox::Cancel)->setText(QStringLiteral("取消"));
-        layout->addWidget(buttons);
-        connect(buttons, &QDialogButtonBox::accepted, &dlg,
-                [this, table, isCircleTable, &dlg]()
-                {
-                    if (isCircleTable)
-                    {
-                        for (int row = 0; row < table->rowCount(); ++row)
-                        {
-                            bool firstOk = false;
-                            bool lastOk = false;
-                            const int first = tableItemText(table, row, 0, QString()).toInt(&firstOk);
-                            const int last = tableItemText(table, row, 1, QString()).toInt(&lastOk);
-                            if (!firstOk || !lastOk || first < 2 || last < first)
-                            {
-                                QMessageBox::warning(
-                                    &dlg, QStringLiteral("请完善施工阶段"),
-                                    QStringLiteral("第 %1 个阶段的填筑层范围无效，请设置为从第 2 层开始且结束层不小于开始层。")
-                                        .arg(row + 1));
-                                return;
-                            }
-                        }
-                    }
-                    dlg.accept();
-                });
-        connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
-
-        if (dlg.exec() != QDialog::Accepted)
-            return;
-
-        src->setRowCount(table->rowCount());
-        for (int r = 0; r < table->rowCount(); ++r)
-        {
-            for (int c = 0; c < table->columnCount(); ++c)
-            {
-                QString val = tableItemText(table, r, c, QString());
-                if (isCircleTable && c >= 10)
-                {
-                    if (val.isEmpty() || val == QStringLiteral("无"))
-                        val = QStringLiteral("'NONE'");
-                    else if (!val.startsWith(QLatin1Char('\'')))
-                        val = QStringLiteral("'%1'").arg(val);
-                }
-                if (src->item(r, c))
-                    src->item(r, c)->setText(val);
-                else
-                    src->setItem(r, c, new QTableWidgetItem(val));
-            }
-        }
-        updatePreview();
-    };
 
     ui->btnEditWet->setText(QStringLiteral("新增关系"));
     m_removeWetMaterialButton = new QPushButton(QStringLiteral("删除选中"), this);
@@ -547,16 +577,13 @@ void FillStorageCyclePage::initValueEditors()
                 updatePreview();
                 updateConditionalVisibility();
             });
-    connect(ui->btnEditCircle, &QPushButton::clicked, this,
-            [openEditor, this]() { openEditor(m_circleTable, "编辑填筑与蓄水周期表"); });
-
     m_dynamicMaterialGroup =
         new QGroupBox(QStringLiteral("动力材料对应"), this);
     auto* dynamicMaterialGroupLayout = new QVBoxLayout(m_dynamicMaterialGroup);
     dynamicMaterialGroupLayout->setContentsMargins(9, 9, 9, 9);
     dynamicMaterialGroupLayout->setSpacing(6);
     m_dynamicMaterialHint = new QLabel(
-        QStringLiteral("提示：需启用模态分析或地震波时程分析。"),
+        QStringLiteral("启用模态或地震波分析后可设置。"),
         m_dynamicMaterialGroup);
     m_dynamicMaterialHint->setWordWrap(true);
     dynamicMaterialGroupLayout->addWidget(m_dynamicMaterialHint);
@@ -581,9 +608,816 @@ void FillStorageCyclePage::initValueEditors()
     connect(m_removeDynamicMaterialButton, &QPushButton::clicked, this,
             [this]() { removeSelectedMaterialMapping(m_dynamicMaterialTable); });
 
+    auto installMaterialRowMenu = [this](QTableWidget* table)
+    {
+        SolverUiLayoutHelper::installTableRowContextMenu(
+            table,
+            [this, table](int insertAt, int sourceRow, bool duplicate)
+            {
+                int sourceMaterial = 0;
+                int targetMaterial = 0;
+                if (duplicate && sourceRow >= 0 && sourceRow < table->rowCount())
+                {
+                    sourceMaterial = tableItemText(table, sourceRow, 0, QString()).toInt();
+                    targetMaterial = tableItemText(table, sourceRow, 1, QString()).toInt();
+                }
+                addMaterialMappingRow(table, sourceMaterial, targetMaterial, insertAt);
+            },
+            [this, table](int row)
+            {
+                if (row < 0 || row >= table->rowCount())
+                    return;
+                table->setCurrentCell(row, 0);
+                removeSelectedMaterialMapping(table);
+            });
+    };
+    installMaterialRowMenu(m_wetTable);
+    installMaterialRowMenu(m_dynamicMaterialTable);
+
+    SolverUiLayoutHelper::installTableRowContextMenu(
+        m_dropTable,
+        [this](int insertAt, int sourceRow, bool duplicate)
+        {
+            insertAt = qBound(0, insertAt, m_dropTable->rowCount());
+            QString before = QStringLiteral("3200.000");
+            QString after = QStringLiteral("3160.000");
+            if (duplicate && sourceRow >= 0 && sourceRow < m_dropTable->rowCount())
+            {
+                before = tableItemText(m_dropTable, sourceRow, 0, before);
+                after = tableItemText(m_dropTable, sourceRow, 1, after);
+            }
+            else if (insertAt > 0)
+            {
+                before = tableItemText(m_dropTable, insertAt - 1, 1, before);
+                after = before;
+            }
+            m_dropTable->insertRow(insertAt);
+            m_dropTable->setItem(insertAt, 0, new QTableWidgetItem(before));
+            m_dropTable->setItem(insertAt, 1, new QTableWidgetItem(after));
+            m_dropTable->setCurrentCell(insertAt, 0);
+            updatePreview();
+            updateConditionalVisibility();
+        },
+        [this](int row)
+        {
+            if (row < 0 || row >= m_dropTable->rowCount() || m_dropTable->rowCount() <= 1)
+                return;
+            m_dropTable->removeRow(row);
+            if (m_dropTable->rowCount() > 0)
+                m_dropTable->setCurrentCell(qMin(row, m_dropTable->rowCount() - 1), 0);
+            updatePreview();
+            updateConditionalVisibility();
+        },
+        1);
+
     updateMaterialTableHeight(m_wetTable);
     updateMaterialTableHeight(m_dynamicMaterialTable);
     updateConditionalVisibility();
+}
+
+void FillStorageCyclePage::openConstructionStageEditor()
+{
+    auto* uiFrame = ServiceRegistry::instance().getService<UiFrameService>();
+    if (!uiFrame || !m_circleTable)
+        return;
+
+    if (m_constructionStageEditor)
+    {
+        uiFrame->setWidgetVisible(m_constructionStageEditor, true);
+        updateConstructionStageLabels();
+        updateConstructionStageSummary();
+        updateConstructionStagePreviewFromEditor();
+        return;
+    }
+
+    auto* editor = new QWidget;
+    editor->setObjectName(QStringLiteral("constructionStageEditor"));
+    editor->setAttribute(Qt::WA_StyledBackground, true);
+    m_constructionStageEditor = editor;
+
+    auto* layout = new QVBoxLayout(editor);
+    layout->setContentsMargins(8, 6, 8, 7);
+    layout->setSpacing(5);
+
+    // 模型显示使用下拉框，默认“截至当前阶段”，最符合施工过程查看习惯。
+    auto* modeRow = new QHBoxLayout;
+    modeRow->setSpacing(6);
+    modeRow->addWidget(new QLabel(QStringLiteral("模型显示"), editor));
+    auto* modeCombo = new QComboBox(editor);
+    modeCombo->setObjectName(QStringLiteral("comboConstructionStagePreviewMode"));
+    modeCombo->addItem(QStringLiteral("当前阶段"), 0);
+    modeCombo->addItem(QStringLiteral("截至当前阶段"), 1);
+    modeCombo->addItem(QStringLiteral("全部阶段"), 2);
+    modeCombo->setCurrentIndex(1);
+    modeCombo->setMinimumWidth(140);
+    m_constructionStageModeCombo = modeCombo;
+    modeRow->addWidget(modeCombo);
+    modeRow->addStretch();
+    layout->addLayout(modeRow);
+
+    // 当前阶段摘要只保留用户真正需要核对的信息。
+    auto* summaryRow = new QHBoxLayout;
+    summaryRow->setSpacing(16);
+    auto* stageTitle = new QLabel(editor);
+    QFont stageTitleFont = stageTitle->font();
+    stageTitleFont.setBold(true);
+    stageTitle->setFont(stageTitleFont);
+    auto* fillSummary = new QLabel(editor);
+    auto* waterSummary = new QLabel(editor);
+    m_constructionStageTitleLabel = stageTitle;
+    m_constructionStageFillLabel = fillSummary;
+    m_constructionStageWaterLabel = waterSummary;
+    summaryRow->addWidget(stageTitle);
+    summaryRow->addWidget(fillSummary);
+    summaryRow->addWidget(waterSummary);
+    summaryRow->addStretch();
+    layout->addLayout(summaryRow);
+
+    auto* table = new QTableWidget(editor);
+    m_constructionStageTable = table;
+    table->setColumnCount(m_circleTable->columnCount());
+    QStringList headers;
+    for (int column = 0; column < m_circleTable->columnCount(); ++column)
+    {
+        headers << (m_circleTable->horizontalHeaderItem(column)
+                        ? m_circleTable->horizontalHeaderItem(column)->text()
+                        : QString());
+    }
+    table->setHorizontalHeaderLabels(headers);
+    table->setRowCount(m_circleTable->rowCount());
+    for (int row = 0; row < m_circleTable->rowCount(); ++row)
+    {
+        for (int column = 0; column < m_circleTable->columnCount(); ++column)
+        {
+            QString value = tableItemText(m_circleTable, row, column, QString());
+            if (column >= 10
+                && (value.compare(QStringLiteral("NONE"), Qt::CaseInsensitive) == 0
+                    || value.compare(QStringLiteral("'NONE'"), Qt::CaseInsensitive) == 0))
+            {
+                value.clear();
+            }
+            table->setItem(row, column, new QTableWidgetItem(value));
+        }
+    }
+
+    table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table->setSelectionMode(QAbstractItemView::SingleSelection);
+    table->setAlternatingRowColors(true);
+    table->verticalHeader()->setVisible(true);
+    table->verticalHeader()->setDefaultSectionSize(28);
+    table->verticalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    table->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
+    table->setWordWrap(false);
+    table->setTextElideMode(Qt::ElideRight);
+
+    synchronizeAutomaticCycleBranches(table);
+    for (int column = 6; column <= 11; ++column)
+        table->setColumnHidden(column, true);
+
+    QHeaderView* header = table->horizontalHeader();
+    header->setSectionResizeMode(QHeaderView::Interactive);
+    header->setStretchLastSection(false);
+    header->setMinimumSectionSize(72);
+    const QFontMetrics metrics(header->font());
+    for (int column = 0; column < 6 && column < headers.size(); ++column)
+    {
+        QStyleOptionHeader option;
+        option.initFrom(header);
+        option.text = headers.at(column);
+        const QSize textSize(metrics.horizontalAdvance(option.text), metrics.height());
+        const int headerWidth = header->style()->sizeFromContents(
+            QStyle::CT_HeaderSection, &option, textSize, header).width() + 16;
+        table->setColumnWidth(column, qMax(header->minimumSectionSize(), headerWidth));
+    }
+    layout->addWidget(table, 1);
+
+    SolverUiLayoutHelper::installTableRowContextMenu(
+        table,
+        [this](int insertAt, int sourceRow, bool duplicate)
+        {
+            insertConstructionStageRow(insertAt, sourceRow, duplicate);
+        },
+        [this](int row)
+        {
+            removeConstructionStageRow(row);
+        },
+        1);
+
+    auto* editButtons = new QHBoxLayout;
+    auto* addButton = new QPushButton(QStringLiteral("新增阶段"), editor);
+    auto* removeButton = new QPushButton(QStringLiteral("删除阶段"), editor);
+    editButtons->addWidget(addButton);
+    editButtons->addWidget(removeButton);
+    editButtons->addStretch();
+    layout->addLayout(editButtons);
+
+    connect(modeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &FillStorageCyclePage::onConstructionStageModeChanged);
+    connect(table, &QTableWidget::currentCellChanged,
+            this, &FillStorageCyclePage::onConstructionStageCurrentCellChanged);
+    connect(table, &QTableWidget::cellChanged,
+            this, &FillStorageCyclePage::onConstructionStageCellChanged);
+    connect(addButton, &QPushButton::clicked,
+            this, &FillStorageCyclePage::addConstructionStage);
+    connect(removeButton, &QPushButton::clicked,
+            this, &FillStorageCyclePage::removeCurrentConstructionStage);
+    connect(editor, &QObject::destroyed,
+            this, &FillStorageCyclePage::onConstructionStageEditorDestroyed);
+
+    if (table->rowCount() > 0)
+        table->setCurrentCell(0, 0);
+    updateConstructionStageLabels();
+    updateConstructionStageSummary();
+    updateConstructionStagePreviewFromEditor();
+
+    // 施工阶段标注与湿化/动力材料显示完全独立，可同时查看。
+    uiFrame->showWidgetInLogArea(editor, QStringLiteral("施工阶段"));
+}
+
+int FillStorageCyclePage::constructionStagePreviewMode() const
+{
+    if (!m_constructionStageModeCombo)
+        return 1;
+
+    bool ok = false;
+    const int mode = m_constructionStageModeCombo->currentData().toInt(&ok);
+    return ok ? qBound(0, mode, 2) : 1;
+}
+
+void FillStorageCyclePage::updateConstructionStageLabels()
+{
+    if (!m_constructionStageTable)
+        return;
+
+    for (int row = 0; row < m_constructionStageTable->rowCount(); ++row)
+    {
+        m_constructionStageTable->setVerticalHeaderItem(
+            row, new QTableWidgetItem(QStringLiteral("阶段 %1").arg(row + 1)));
+    }
+}
+
+void FillStorageCyclePage::updateConstructionStageSummary()
+{
+    if (!m_constructionStageTable || !m_constructionStageTitleLabel
+        || !m_constructionStageFillLabel || !m_constructionStageWaterLabel)
+    {
+        return;
+    }
+
+    int row = m_constructionStageTable->currentRow();
+    if (row < 0 && m_constructionStageTable->rowCount() > 0)
+        row = 0;
+    if (row < 0)
+    {
+        m_constructionStageTitleLabel->setText(QStringLiteral("暂无阶段"));
+        m_constructionStageFillLabel->clear();
+        m_constructionStageWaterLabel->clear();
+        return;
+    }
+
+    m_constructionStageTitleLabel->setText(QStringLiteral("阶段 %1").arg(row + 1));
+
+    bool firstOk = false;
+    bool lastOk = false;
+    const int firstLayer = tableItemText(
+        m_constructionStageTable, row, 0, QString()).toInt(&firstOk);
+    const int lastLayer = tableItemText(
+        m_constructionStageTable, row, 1, QString()).toInt(&lastOk);
+    m_constructionStageFillLabel->setText(
+        firstOk && lastOk
+            ? QStringLiteral("填筑：%1–%2 层").arg(firstLayer).arg(lastLayer)
+            : QStringLiteral("填筑：—"));
+
+    bool startOk = false;
+    bool endOk = false;
+    const double startWater = tableItemText(
+        m_constructionStageTable, row, 3, QString()).toDouble(&startOk);
+    const double endWater = tableItemText(
+        m_constructionStageTable, row, 4, QString()).toDouble(&endOk);
+    m_constructionStageWaterLabel->setText(
+        startOk && endOk && std::isfinite(startWater) && std::isfinite(endWater)
+            ? QStringLiteral("水位：%1 → %2 m")
+                  .arg(startWater, 0, 'g', 8)
+                  .arg(endWater, 0, 'g', 8)
+            : QStringLiteral("水位：—"));
+}
+
+void FillStorageCyclePage::updateConstructionStagePreviewFromEditor()
+{
+    if (!m_constructionStageTable)
+        return;
+
+    int row = m_constructionStageTable->currentRow();
+    if (row < 0 && m_constructionStageTable->rowCount() > 0)
+        row = 0;
+    updateConstructionStagePreview(
+        m_constructionStageTable, row, constructionStagePreviewMode());
+}
+
+void FillStorageCyclePage::syncConstructionStageEditorToSource()
+{
+    if (!m_constructionStageTable || !m_circleTable)
+        return;
+
+    synchronizeAutomaticCycleBranches(m_constructionStageTable);
+    {
+        const QSignalBlocker blocker(m_circleTable);
+        m_circleTable->setRowCount(m_constructionStageTable->rowCount());
+        for (int row = 0; row < m_constructionStageTable->rowCount(); ++row)
+        {
+            for (int column = 0; column < m_constructionStageTable->columnCount(); ++column)
+            {
+                QString value = tableItemText(
+                    m_constructionStageTable, row, column, QString());
+                if (column >= 10)
+                {
+                    if (value.isEmpty() || value == QStringLiteral("无"))
+                        value = QStringLiteral("'NONE'");
+                    else if (!value.startsWith(QLatin1Char('\'')))
+                        value = QStringLiteral("'%1'").arg(value);
+                }
+                if (m_circleTable->item(row, column))
+                    m_circleTable->item(row, column)->setText(value);
+                else
+                    m_circleTable->setItem(row, column, new QTableWidgetItem(value));
+            }
+        }
+    }
+
+    synchronizeAutomaticCycleBranches(m_circleTable);
+    updatePreview();
+    emit requirementsChanged();
+}
+
+void FillStorageCyclePage::insertConstructionStageRow(int insertAt, int sourceRow,
+                                                       bool duplicate)
+{
+    if (!m_constructionStageTable)
+        return;
+
+    QTableWidget* table = m_constructionStageTable;
+    insertAt = qBound(0, insertAt, table->rowCount());
+    {
+        const QSignalBlocker blocker(table);
+        table->insertRow(insertAt);
+
+        if (duplicate && sourceRow >= 0 && sourceRow < table->rowCount())
+        {
+            const int actualSource = sourceRow >= insertAt ? sourceRow + 1 : sourceRow;
+            for (int column = 0; column < table->columnCount(); ++column)
+            {
+                table->setItem(insertAt, column,
+                               new QTableWidgetItem(tableItemText(
+                                   table, actualSource, column, QString())));
+            }
+        }
+        else
+        {
+            int firstLayer = 2;
+            double initialElevation = 0.0;
+            if (insertAt > 0)
+            {
+                bool layerOk = false;
+                const int previousEnd = tableItemText(
+                    table, insertAt - 1, 1, QStringLiteral("1")).toInt(&layerOk);
+                firstLayer = layerOk ? qMax(2, previousEnd + 1) : 2;
+
+                bool waterOk = false;
+                const double previousWater = tableItemText(
+                    table, insertAt - 1, 4, QStringLiteral("0")).toDouble(&waterOk);
+                initialElevation = waterOk ? previousWater : 0.0;
+            }
+
+            const QStringList defaults = {
+                QString::number(firstLayer), QString::number(firstLayer),
+                QStringLiteral("0.0000"), QString::number(initialElevation, 'f', 4),
+                QString::number(initialElevation, 'f', 4), QStringLiteral("0.0000"),
+                QStringLiteral("1"), QStringLiteral("0"), QStringLiteral("0"),
+                QStringLiteral("0"), QString(), QString()};
+            for (int column = 0; column < defaults.size(); ++column)
+                table->setItem(insertAt, column, new QTableWidgetItem(defaults.at(column)));
+        }
+
+        synchronizeAutomaticCycleBranches(table);
+        table->setCurrentCell(insertAt, 0);
+    }
+
+    updateConstructionStageLabels();
+    syncConstructionStageEditorToSource();
+    updateConstructionStageSummary();
+    updateConstructionStagePreviewFromEditor();
+}
+
+void FillStorageCyclePage::removeConstructionStageRow(int row)
+{
+    if (!m_constructionStageTable || !m_constructionStageEditor)
+        return;
+
+    QTableWidget* table = m_constructionStageTable;
+    if (table->rowCount() <= 1)
+    {
+        QMessageBox::information(m_constructionStageEditor.data(),
+                                 QStringLiteral("无法删除"),
+                                 QStringLiteral("至少需要保留一个施工阶段。"));
+        return;
+    }
+    if (row < 0 || row >= table->rowCount())
+        return;
+
+    {
+        const QSignalBlocker blocker(table);
+        table->removeRow(row);
+        table->setCurrentCell(qMin(row, table->rowCount() - 1), 0);
+    }
+
+    updateConstructionStageLabels();
+    syncConstructionStageEditorToSource();
+    updateConstructionStageSummary();
+    updateConstructionStagePreviewFromEditor();
+}
+
+void FillStorageCyclePage::onConstructionStageCurrentCellChanged(
+    int currentRow, int currentColumn, int previousRow, int previousColumn)
+{
+    Q_UNUSED(currentRow)
+    Q_UNUSED(currentColumn)
+    Q_UNUSED(previousRow)
+    Q_UNUSED(previousColumn)
+    updateConstructionStageSummary();
+    updateConstructionStagePreviewFromEditor();
+}
+
+void FillStorageCyclePage::onConstructionStageCellChanged(int row, int column)
+{
+    Q_UNUSED(row)
+    if (!m_constructionStageTable)
+        return;
+
+    if (column >= 0 && column <= 5)
+        synchronizeAutomaticCycleBranches(m_constructionStageTable);
+    syncConstructionStageEditorToSource();
+    updateConstructionStageSummary();
+    updateConstructionStagePreviewFromEditor();
+}
+
+void FillStorageCyclePage::onConstructionStageModeChanged(int index)
+{
+    Q_UNUSED(index)
+    updateConstructionStagePreviewFromEditor();
+}
+
+void FillStorageCyclePage::addConstructionStage()
+{
+    if (!m_constructionStageTable)
+        return;
+    insertConstructionStageRow(
+        m_constructionStageTable->rowCount(),
+        m_constructionStageTable->rowCount() - 1,
+        false);
+}
+
+void FillStorageCyclePage::removeCurrentConstructionStage()
+{
+    if (!m_constructionStageTable)
+        return;
+
+    int row = m_constructionStageTable->currentRow();
+    if (row < 0)
+        row = m_constructionStageTable->rowCount() - 1;
+    removeConstructionStageRow(row);
+}
+
+void FillStorageCyclePage::onConstructionStageEditorDestroyed(QObject* object)
+{
+    Q_UNUSED(object)
+    m_constructionStageEditor = nullptr;
+    m_constructionStageTable = nullptr;
+    m_constructionStageModeCombo = nullptr;
+    m_constructionStageTitleLabel = nullptr;
+    m_constructionStageFillLabel = nullptr;
+    m_constructionStageWaterLabel = nullptr;
+    clearConstructionStagePreview();
+}
+
+void FillStorageCyclePage::closeConstructionStageEditor()
+{
+    if (!m_constructionStageEditor)
+        return;
+
+    QWidget* editor = m_constructionStageEditor.data();
+    clearConstructionStagePreview();
+    if (auto* uiFrame = ServiceRegistry::instance().getService<UiFrameService>())
+        uiFrame->setWidgetVisible(editor, false);
+
+}
+
+void FillStorageCyclePage::clearConstructionStagePreview(bool renderNow)
+{
+    auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    if (!visual)
+        return;
+
+    const QString prefix = QStringLiteral("dam.stage.preview.%1.").arg(m_uuid);
+    // 兼容旧版预览对象，同时清理当前版本增加的阶段标签和水位标记。
+    visual->removeProp(prefix + QStringLiteral("layers"), false);
+    visual->removeProp(prefix + QStringLiteral("water.start"), false);
+    visual->removeProp(prefix + QStringLiteral("water.end"), false);
+    for (int stage = 0; stage < 256; ++stage)
+    {
+        const QString stagePrefix = prefix + QStringLiteral("stage.%1.").arg(stage);
+        visual->removeProp(stagePrefix + QStringLiteral("layers"), false);
+        visual->removeProp(stagePrefix + QStringLiteral("label"), false);
+        visual->removeProp(stagePrefix + QStringLiteral("height.range"), false);
+        visual->removeProp(stagePrefix + QStringLiteral("height.low"), false);
+        visual->removeProp(stagePrefix + QStringLiteral("height.high"), false);
+        visual->removeProp(stagePrefix + QStringLiteral("height.label"), false);
+        visual->removeProp(stagePrefix + QStringLiteral("water.start"), false);
+        visual->removeProp(stagePrefix + QStringLiteral("water.start.label"), false);
+        visual->removeProp(stagePrefix + QStringLiteral("water.end"), false);
+        visual->removeProp(stagePrefix + QStringLiteral("water.end.label"), false);
+        visual->removeProp(stagePrefix + QStringLiteral("water.change"), false);
+        visual->removeProp(stagePrefix + QStringLiteral("water.change.label"), false);
+    }
+    if (renderNow)
+        visual->render();
+}
+
+void FillStorageCyclePage::updateConstructionStagePreview(QTableWidget* table, int row,
+                                                           int previewMode)
+{
+    clearConstructionStagePreview(false);
+    if (!table || row < 0 || row >= table->rowCount())
+        return;
+
+    auto* visual = ServiceRegistry::instance().getService<VisualWidgetService>();
+    auto* meshService = ServiceRegistry::instance().getService<MeshModuleControllerService>();
+    vtkUnstructuredGrid* grid = meshService ? meshService->getVtkUnstructuredGrid() : nullptr;
+    if (!visual || !grid || grid->GetNumberOfCells() <= 0)
+        return;
+
+    // 施工阶段预览只使用模型外侧标尺，不改变模型本体颜色，
+    // 也不修改湿化材料、动力材料等其它模型显示状态。
+
+    previewMode = qBound(0, previewMode, 2);
+    QVector<int> stages;
+    if (previewMode == 0)
+    {
+        stages.push_back(row);
+    }
+    else if (previewMode == 1)
+    {
+        for (int stage = 0; stage <= row; ++stage)
+            stages.push_back(stage);
+    }
+    else
+    {
+        for (int stage = 0; stage < table->rowCount(); ++stage)
+            stages.push_back(stage);
+    }
+
+    const QString prefix = QStringLiteral("dam.stage.preview.%1.").arg(m_uuid);
+    constexpr const char* groupName = "土石坝施工阶段标注";
+
+    // 阶段标尺使用中性灰阶，避免与材料着色产生颜色语义冲突。
+    // 当前阶段只通过线宽与文字强调，不再使用黄色/橙色表达。
+    const std::array<double, 3> currentStageColor{0.16, 0.18, 0.20};
+    const std::array<double, 3> otherStageColor{0.56, 0.59, 0.62};
+    const std::array<double, 3> startWaterColor{0.35, 0.63, 0.80};
+    const std::array<double, 3> targetWaterColor{0.08, 0.39, 0.67};
+
+    double modelBounds[6];
+    grid->GetBounds(modelBounds);
+
+    int verticalAxis = meshService->verticalAxis() - 1;
+    if (verticalAxis < 0 || verticalAxis > 2)
+        verticalAxis = 1;
+
+    const double spans[3] = {
+        modelBounds[1] - modelBounds[0],
+        modelBounds[3] - modelBounds[2],
+        modelBounds[5] - modelBounds[4]};
+    const double modelSpan = std::max({spans[0], spans[1], spans[2], 1.0});
+    const double tolerance = modelSpan * 1.0e-8;
+    const int targetDimension = currentDomainDimension();
+
+    // 在两个非竖直方向中，跨度较大的方向用于把标尺放到模型左右两侧。
+    int sideAxis = -1;
+    int depthAxis = -1;
+    double sideSpan = -1.0;
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        if (axis == verticalAxis)
+            continue;
+        if (spans[axis] > sideSpan)
+        {
+            sideSpan = spans[axis];
+            sideAxis = axis;
+        }
+    }
+    for (int axis = 0; axis < 3; ++axis)
+    {
+        if (axis != verticalAxis && axis != sideAxis)
+        {
+            depthAxis = axis;
+            break;
+        }
+    }
+    if (sideAxis < 0)
+        return;
+
+    sideSpan = std::max(sideSpan, modelSpan * 0.10);
+    const double depthSpan =
+        depthAxis >= 0 ? std::max(spans[depthAxis], modelSpan * 0.05) : modelSpan * 0.05;
+    const double stageBase =
+        modelBounds[2 * sideAxis] - std::max(sideSpan * 0.08, modelSpan * 0.035);
+    const double stageStep = std::max(sideSpan * 0.055, modelSpan * 0.022);
+    const double waterBase =
+        modelBounds[2 * sideAxis + 1] + std::max(sideSpan * 0.08, modelSpan * 0.035);
+    const double tickLength = std::max(sideSpan * 0.035, modelSpan * 0.016);
+    const double labelGap = std::max(sideSpan * 0.018, modelSpan * 0.010);
+    const double depthCoordinate =
+        depthAxis >= 0
+            ? modelBounds[2 * depthAxis + 1] + std::max(depthSpan * 0.025, modelSpan * 0.006)
+            : 0.0;
+
+    vtkDataArray* layerArray =
+        grid->GetCellData() ? grid->GetCellData()->GetArray("LAYER") : nullptr;
+
+    // 左侧：只画阶段的高程区间标尺。模型本体完全不着色。
+    for (int displayIndex = 0; displayIndex < stages.size(); ++displayIndex)
+    {
+        const int stageRow = stages.at(displayIndex);
+        bool firstOk = false;
+        bool lastOk = false;
+        const int firstLayer =
+            tableItemText(table, stageRow, 0, QString()).toInt(&firstOk);
+        const int lastLayer =
+            tableItemText(table, stageRow, 1, QString()).toInt(&lastOk);
+        if (!firstOk || !lastOk || firstLayer < 2 || lastLayer < firstLayer || !layerArray)
+            continue;
+
+        bool found = false;
+        double elevationLow = 0.0;
+        double elevationHigh = 0.0;
+        for (vtkIdType cellId = 0; cellId < grid->GetNumberOfCells(); ++cellId)
+        {
+            vtkCell* cell = grid->GetCell(cellId);
+            if (!cell || cell->GetCellDimension() != targetDimension)
+                continue;
+
+            const int layer =
+                static_cast<int>(std::llround(layerArray->GetTuple1(cellId)));
+            if (layer < firstLayer || layer > lastLayer)
+                continue;
+
+            double cellBounds[6];
+            cell->GetBounds(cellBounds);
+            const double low = cellBounds[2 * verticalAxis];
+            const double high = cellBounds[2 * verticalAxis + 1];
+            if (!std::isfinite(low) || !std::isfinite(high))
+                continue;
+
+            if (!found)
+            {
+                elevationLow = low;
+                elevationHigh = high;
+                found = true;
+            }
+            else
+            {
+                elevationLow = std::min(elevationLow, low);
+                elevationHigh = std::max(elevationHigh, high);
+            }
+        }
+        if (!found)
+            continue;
+
+        const bool current = stageRow == row;
+        const auto& color = current ? currentStageColor : otherStageColor;
+        const double rulerCoordinate = stageBase - displayIndex * stageStep;
+        const QString stagePrefix =
+            prefix + QStringLiteral("stage.%1.").arg(stageRow);
+
+        double lowPoint[3] = {
+            0.5 * (modelBounds[0] + modelBounds[1]),
+            0.5 * (modelBounds[2] + modelBounds[3]),
+            0.5 * (modelBounds[4] + modelBounds[5])};
+        double highPoint[3] = {lowPoint[0], lowPoint[1], lowPoint[2]};
+        lowPoint[verticalAxis] = elevationLow;
+        highPoint[verticalAxis] = elevationHigh;
+        lowPoint[sideAxis] = highPoint[sideAxis] = rulerCoordinate;
+        if (depthAxis >= 0)
+            lowPoint[depthAxis] = highPoint[depthAxis] = depthCoordinate;
+
+        addStagePreviewLine(visual, QString::fromUtf8(groupName),
+                            stagePrefix + QStringLiteral("height.range"),
+                            QStringLiteral("阶段 %1 高程范围").arg(stageRow + 1),
+                            lowPoint, highPoint, color, current ? 3.2 : 1.8);
+
+        double lowTickEnd[3] = {lowPoint[0], lowPoint[1], lowPoint[2]};
+        double highTickEnd[3] = {highPoint[0], highPoint[1], highPoint[2]};
+        lowTickEnd[sideAxis] += tickLength;
+        highTickEnd[sideAxis] += tickLength;
+        addStagePreviewLine(visual, QString::fromUtf8(groupName),
+                            stagePrefix + QStringLiteral("height.low"),
+                            QStringLiteral("阶段 %1 起始高程").arg(stageRow + 1),
+                            lowPoint, lowTickEnd, color, current ? 3.2 : 1.8);
+        addStagePreviewLine(visual, QString::fromUtf8(groupName),
+                            stagePrefix + QStringLiteral("height.high"),
+                            QStringLiteral("阶段 %1 结束高程").arg(stageRow + 1),
+                            highPoint, highTickEnd, color, current ? 3.2 : 1.8);
+
+        double labelPosition[3] = {
+            0.5 * (lowPoint[0] + highPoint[0]),
+            0.5 * (lowPoint[1] + highPoint[1]),
+            0.5 * (lowPoint[2] + highPoint[2])};
+        labelPosition[sideAxis] = rulerCoordinate - labelGap;
+
+        const QString labelText =
+            current
+                ? QStringLiteral("阶段 %1\n填筑层 %2–%3\n高程 %4–%5 m")
+                      .arg(stageRow + 1)
+                      .arg(firstLayer)
+                      .arg(lastLayer)
+                      .arg(elevationLow, 0, 'g', 8)
+                      .arg(elevationHigh, 0, 'g', 8)
+                : QStringLiteral("阶段 %1  ·  填筑层 %2–%3  ·  高程 %4–%5 m")
+                      .arg(stageRow + 1)
+                      .arg(firstLayer)
+                      .arg(lastLayer)
+                      .arg(elevationLow, 0, 'g', 8)
+                      .arg(elevationHigh, 0, 'g', 8);
+        addStagePreviewLabel(visual, QString::fromUtf8(groupName),
+                             stagePrefix + QStringLiteral("height.label"),
+                             QStringLiteral("阶段 %1 高程标注").arg(stageRow + 1),
+                             labelText, labelPosition, color, true,
+                             current ? 15 : 13, current ? 0.90 : 0.72);
+    }
+
+    // 右侧：只标当前阶段的水位，不再把半透明水位面铺到模型内部。
+    bool startOk = false;
+    bool endOk = false;
+    const double startWater =
+        tableItemText(table, row, 3, QString()).toDouble(&startOk);
+    const double endWater =
+        tableItemText(table, row, 4, QString()).toDouble(&endOk);
+
+    const bool hasStart = startOk
+                          && stagePreviewLevelVisible(
+                              startWater, modelBounds, verticalAxis, tolerance);
+    const bool hasEnd = endOk
+                        && stagePreviewLevelVisible(
+                            endWater, modelBounds, verticalAxis, tolerance);
+    const bool waterChanges =
+        startOk && endOk && std::isfinite(startWater) && std::isfinite(endWater)
+        && std::abs(endWater - startWater) >= CYCLE_BRANCH_TOLERANCE;
+    const QString waterPrefix =
+        prefix + QStringLiteral("stage.%1.").arg(row);
+
+    if (waterChanges && hasStart)
+    {
+        addStageWaterTick(visual, QString::fromUtf8(groupName), waterPrefix,
+                          QStringLiteral("water.start"),
+                          QStringLiteral("阶段 %1 起始水位").arg(row + 1),
+                          QStringLiteral("起始水位  %1 m").arg(startWater, 0, 'g', 8),
+                          startWater, startWaterColor, false, modelBounds, verticalAxis,
+                          sideAxis, depthAxis, waterBase, depthCoordinate, tickLength,
+                          labelGap);
+    }
+
+    if (hasEnd)
+    {
+        addStageWaterTick(visual, QString::fromUtf8(groupName), waterPrefix,
+                          QStringLiteral("water.end"),
+                          QStringLiteral("阶段 %1 目标水位").arg(row + 1),
+                          waterChanges
+                              ? QStringLiteral("目标水位  %1 m").arg(endWater, 0, 'g', 8)
+                              : QStringLiteral("当前水位  %1 m").arg(endWater, 0, 'g', 8),
+                          endWater, targetWaterColor, true, modelBounds, verticalAxis,
+                          sideAxis, depthAxis, waterBase, depthCoordinate, tickLength,
+                          labelGap);
+    }
+
+    if (waterChanges && hasStart && hasEnd)
+    {
+        double startPoint[3] = {
+            0.5 * (modelBounds[0] + modelBounds[1]),
+            0.5 * (modelBounds[2] + modelBounds[3]),
+            0.5 * (modelBounds[4] + modelBounds[5])};
+        double endPoint[3] = {startPoint[0], startPoint[1], startPoint[2]};
+        startPoint[verticalAxis] = startWater;
+        endPoint[verticalAxis] = endWater;
+        startPoint[sideAxis] = endPoint[sideAxis] = waterBase;
+        if (depthAxis >= 0)
+            startPoint[depthAxis] = endPoint[depthAxis] = depthCoordinate;
+
+        addStagePreviewLine(visual, QString::fromUtf8(groupName),
+                            waterPrefix + QStringLiteral("water.change"),
+                            QStringLiteral("阶段 %1 水位变化范围").arg(row + 1),
+                            startPoint, endPoint, targetWaterColor, 2.2);
+    }
+
+    visual->render();
 }
 
 void FillStorageCyclePage::updateConditionalVisibility()
@@ -603,8 +1437,8 @@ void FillStorageCyclePage::updateConditionalVisibility()
     ui->labelDynamicHint->setVisible(true);
     ui->labelDynamicHint->setText(
         m_dynamicOptionsAvailable
-            ? QStringLiteral("当前计算模式包含动力计算，可设置以下参数。")
-            : QStringLiteral("当前为仅静力计算，动力参数保留显示，但不参与本次计算。"));
+            ? QStringLiteral("动力参数已启用。")
+            : QStringLiteral("当前为静力计算，动力参数不参与计算。"));
     ui->groupDynamic->setEnabled(m_dynamicOptionsAvailable);
 
     const bool wetEnabled = ui->groupWet->isChecked();
@@ -681,10 +1515,8 @@ void FillStorageCyclePage::updateConditionalVisibility()
         m_dynamicMaterialHint->setVisible(true);
         m_dynamicMaterialHint->setText(
             dynamicMaterialMappingEnabled
-                ? QStringLiteral("动力材料关系用于模态/地震波计算。")
-                : (m_dynamicOptionsAvailable
-                       ? QStringLiteral("未启用模态或地震波计算，动力材料关系暂不参与本次计算。")
-                       : QStringLiteral("当前为仅静力计算，动力材料关系保留但不参与本次计算。")));
+                ? QStringLiteral("动力材料关系已启用。")
+                : QStringLiteral("动力材料关系当前不参与计算。"));
     }
     if (m_dynamicMaterialControls)
     {
@@ -864,7 +1696,7 @@ void FillStorageCyclePage::setAvailableTransientResults(
             continue;
         m_availableTransientSteps.insert(step);
         ui->comboSeepageTransientStep->addItem(
-            QStringLiteral("STEP%1").arg(step), QString::number(step));
+            QStringLiteral("结果步 %1").arg(step), QString::number(step));
     }
 
     int index = selectedStep.isEmpty()
@@ -876,8 +1708,8 @@ void FillStorageCyclePage::setAvailableTransientResults(
 
     ui->labelSeepageTransientHint->setText(
         ui->comboSeepageTransientStep->count() > 1
-            ? QStringLiteral("所选结果仅在本工况最后一个实际蓄水阶段作为坝体渗流场施加；前序阶段不重复施加。")
-            : QStringLiteral("关联工况尚未生成可用的非稳态结果。"));
+            ? QStringLiteral("所选渗流结果将用于最后一个蓄水阶段。")
+            : QStringLiteral("关联工况暂无可用的非稳态结果。"));
 }
 
 void FillStorageCyclePage::setPreparedSeepageFiles(
@@ -1054,6 +1886,8 @@ void FillStorageCyclePage::clearPreparedDynamicStateDirectory()
 
 bool FillStorageCyclePage::validateInputs(QString* errorMessage) const
 {
+    synchronizeAutomaticCycleBranches(m_circleTable);
+
     auto fail = [errorMessage](const QString& message)
     {
         if (errorMessage)
@@ -1090,9 +1924,9 @@ bool FillStorageCyclePage::validateInputs(QString* errorMessage) const
     }
 
     if (cycleCount() > 99)
-        return fail(QStringLiteral("当前求解器的施工循环目录编号仅支持 01～99；单个工况最多设置 99 个填筑蓄水循环。"));
+        return fail(QStringLiteral("单个工况最多设置 99 个施工阶段。"));
     if (m_dropTable && m_dropTable->rowCount() > 99)
-        return fail(QStringLiteral("当前求解器的水位骤降目录编号仅支持 01～99；最多设置 99 组水位骤降。"));
+        return fail(QStringLiteral("最多设置 99 组水位骤降。"));
 
     const bool modeEnabled = usesModalAnalysis();
     const bool waveEnabled = usesWaveAnalysis();
@@ -1121,7 +1955,7 @@ bool FillStorageCyclePage::validateInputs(QString* errorMessage) const
         const double omega = valueOf(QStringLiteral("WOMI_1")).toDouble(&omegaOk);
         if (!omegaOk || !std::isfinite(omega) || omega < 0.001)
             return fail(QStringLiteral(
-                "未启用模态分析时，地震波时程分析必须指定一阶圆频率 ω1（不小于 0.001）。"));
+                "未做模态分析时，请填写一阶圆频率 ω1（≥ 0.001）。"));
     }
 
     if (valueOf(QStringLiteral("IFWET")) == QStringLiteral("1"))
@@ -1133,12 +1967,11 @@ bool FillStorageCyclePage::validateInputs(QString* errorMessage) const
         // 求解器的浸润分支固定从 CASE##FILL##(NCIRCLE) 读取初始状态。
         if (cycleCount() <= 0 || !hasEffectiveWaterFill(cycleCount()))
             return fail(QStringLiteral(
-                "启用浸润变形时，最后一个填筑蓄水循环必须实际执行蓄水并形成 FILL 结果。"));
+                "启用浸润变形时，最后一个填筑蓄水循环必须执行蓄水。"));
         if (tableItemText(m_circleTable, cycleCount() - 1, 9, QStringLiteral("0"))
             == QStringLiteral("1"))
             return fail(QStringLiteral(
-                "当前求解器的浸润分支固定读取最后一次蓄水 FILL 状态，不能与最后循环的蓄水期流变连续组合；"
-                "请二选一进行测试。"));
+                "浸润变形不能与最后一个循环的蓄水期流变同时启用。"));
     }
     if (valueOf(QStringLiteral("IFDROP")) == QStringLiteral("1"))
     {
@@ -1158,7 +1991,7 @@ bool FillStorageCyclePage::validateInputs(QString* errorMessage) const
         }
     }
     if (!m_circleTable || m_circleTable->rowCount() == 0)
-        return fail(QStringLiteral("至少需要一个填筑蓄水阶段。"));
+        return fail(QStringLiteral("至少需要一个施工阶段。"));
 
     // IFIIWL_BODY=2 是工况级开关，而 CAHEAD/CABODY 是逐施工循环给出的文件名。
     // 当前界面只允许明确选择一组渗流结果，因此只在最后一个实际蓄水阶段施加一次。
@@ -1169,12 +2002,10 @@ bool FillStorageCyclePage::validateInputs(QString* errorMessage) const
         const int finalCycle = m_circleTable->rowCount();
         if (!hasEffectiveWaterFill(finalCycle))
             return fail(QStringLiteral(
-                "读取渗流结果作为坝体渗流体力时，最后一个填筑蓄水阶段必须实际执行蓄水；"
-                "所选节点水头和节点体力只在该阶段施加一次。"));
+                "读取渗流结果时，最后一个填筑蓄水阶段必须执行蓄水。"));
         if (usesWaterDrop())
             return fail(QStringLiteral(
-                "当前求解器的水位骤降分支没有独立的骤降后渗流场输入，不能与“读取渗流结果（水头 + 节点体力）”可靠组合；"
-                "请关闭其中一项分别测试。"));
+                "读取渗流结果时，暂不能同时启用水位骤降。请关闭其中一项。"));
     }
 
     for (int row = 0; row < m_circleTable->rowCount(); ++row)
@@ -1194,30 +2025,31 @@ bool FillStorageCyclePage::validateInputs(QString* errorMessage) const
         if (!packCreepOk || !waterStartOk || !waterEndOk || !fillCreepOk
             || !std::isfinite(packCreepTime) || !std::isfinite(waterStart)
             || !std::isfinite(waterEnd) || !std::isfinite(fillCreepTime))
-            return fail(QStringLiteral("第 %1 个填筑蓄水阶段包含无效数值。").arg(row + 1));
+            return fail(QStringLiteral("第 %1 个阶段包含无效数值。").arg(row + 1));
+        if (packCreepTime < 0.0 || fillCreepTime < 0.0)
+            return fail(QStringLiteral("第 %1 个阶段的流变时间不能为负数。")
+                            .arg(row + 1));
+        if (waterEnd < waterStart)
+            return fail(QStringLiteral("第 %1 个阶段：目标水位不能低于起始水位；降水请使用“水位骤降”。")
+                            .arg(row + 1));
 
         int enabledOperations = 0;
         for (int column = 6; column <= 9; ++column)
         {
             const QString flag = tableItemText(m_circleTable, row, column, QStringLiteral("0"));
             if (flag != QStringLiteral("0") && flag != QStringLiteral("1"))
-                return fail(QStringLiteral("第 %1 个填筑蓄水阶段的计算开关只能为 0 或 1。")
+                return fail(QStringLiteral("第 %1 个阶段的计算选项无效。")
                                 .arg(row + 1));
             if (flag == QStringLiteral("1"))
                 ++enabledOperations;
         }
         if (enabledOperations == 0)
-            return fail(QStringLiteral("第 %1 个填筑蓄水阶段至少应启用一种计算。")
+            return fail(QStringLiteral("第 %1 个阶段至少启用一项计算。")
                             .arg(row + 1));
-        if (tableItemText(m_circleTable, row, 8, QStringLiteral("0")) == QStringLiteral("1"))
-        {
-            if (waterEnd < waterStart)
-                return fail(QStringLiteral("第 %1 个阶段是蓄水计算，结束水位不能低于起始水位；降水请使用“水位骤降”。")
-                                .arg(row + 1));
-            if (std::abs(waterEnd - waterStart) < 1.0e-3)
-                return fail(QStringLiteral("第 %1 个阶段启用蓄水计算后，起始水位与结束水位不能相同。")
-                                .arg(row + 1));
-        }
+        if (tableItemText(m_circleTable, row, 8, QStringLiteral("0")) == QStringLiteral("1")
+            && std::abs(waterEnd - waterStart) < CYCLE_BRANCH_TOLERANCE)
+            return fail(QStringLiteral("第 %1 个阶段启用蓄水计算后，起始水位与目标水位不能相同。")
+                            .arg(row + 1));
         if (tableItemText(m_circleTable, row, 7, QStringLiteral("0")) == QStringLiteral("1")
             && packCreepTime <= 0.0)
             return fail(QStringLiteral("第 %1 个阶段启用填筑期流变后，流变时间必须大于 0。")
@@ -1258,7 +2090,7 @@ QVector<QPair<int, int>> FillStorageCyclePage::fillLayerRanges(QString* errorMes
     };
 
     if (!m_circleTable || m_circleTable->rowCount() <= 0)
-        return fail(QStringLiteral("至少需要一个填筑蓄水阶段。"));
+        return fail(QStringLiteral("至少需要一个施工阶段。"));
 
     QVector<QPair<int, int>> ranges;
     ranges.reserve(m_circleTable->rowCount());
@@ -1339,13 +2171,12 @@ void FillStorageCyclePage::setMaterialMappings(
 }
 
 void FillStorageCyclePage::addMaterialMappingRow(QTableWidget* table, int sourceMaterial,
-                                                 int targetMaterial)
+                                                 int targetMaterial, int insertAt)
 {
     if (!table)
         return;
 
-    const bool userRequestedRow = sourceMaterial <= 0 || targetMaterial <= 0;
-    if (userRequestedRow && table->rowCount() >= MAX_MATERIAL_RELATIONS)
+    if (table->rowCount() >= MAX_MATERIAL_RELATIONS)
     {
         QMessageBox::information(
             this, QStringLiteral("数量已达上限"),
@@ -1375,7 +2206,8 @@ void FillStorageCyclePage::addMaterialMappingRow(QTableWidget* table, int source
     if (targetMaterial <= 0 && !targetOptions.isEmpty())
         targetMaterial = targetOptions.cbegin().key();
 
-    const int row = table->rowCount();
+    const int row = insertAt < 0 ? table->rowCount()
+                                 : qBound(0, insertAt, table->rowCount());
     table->insertRow(row);
     for (int column = 0; column < 2; ++column)
     {
@@ -1576,6 +2408,9 @@ void FillStorageCyclePage::refreshMaterialMappingHighlight(QTableWidget* table, 
         table->selectRow(row);
 
     m_activeMaterialTable = table;
+
+    // 材料域高亮与施工阶段外侧标尺属于两套独立显示，可同时存在。
+
     if (!m_materialHighlightActive || !table || row < 0 || row >= table->rowCount())
     {
         if (m_materialHighlightActive)
@@ -1671,15 +2506,15 @@ bool FillStorageCyclePage::validateMaterialMappings(QTableWidget* table,
         if (usedSources.contains(source))
             return fail(QStringLiteral("同一种当前材料不能重复设置。"));
         if (table == m_dynamicMaterialTable && usedTargets.contains(target))
-            return fail(QStringLiteral("同一种动力及地震波动材料不能对应多个静力材料。"));
+            return fail(QStringLiteral("同一种动力材料不能对应多个静力材料。"));
         if (!sourceOptions.contains(source))
-            return fail(QStringLiteral("左侧材料不是已施加到坝体网格的静力材料，请重新选择。"));
+            return fail(QStringLiteral("请选择已施加到坝体的静力材料。"));
         const QMap<int, QString> targetOptions = materialTargetOptions(table, source);
         if (!targetOptions.contains(target))
         {
             return fail(table == m_wetTable
-                            ? QStringLiteral("右侧材料必须是已启用的坝体计算阶段材料。")
-                            : QStringLiteral("右侧材料必须是已启用的坝料动力及地震波动计算阶段材料。"));
+                            ? QStringLiteral("请选择可用的浸润后材料。")
+                            : QStringLiteral("请选择可用的动力材料。"));
         }
         if (table == m_dynamicMaterialTable)
         {
@@ -1727,10 +2562,12 @@ void FillStorageCyclePage::setValueOf(const QString& key, const QString& value)
 
 void FillStorageCyclePage::updatePreview()
 {
+    synchronizeAutomaticCycleBranches(m_circleTable);
     ui->labelWetRows->setText(QStringLiteral("共 %1 组").arg(m_wetTable ? m_wetTable->rowCount() : 0));
     ui->labelDropRows->setText(QStringLiteral("共 %1 组").arg(m_dropTable ? m_dropTable->rowCount() : 0));
     ui->labelCircleRows->setText(
-        QStringLiteral("共 %1 个阶段").arg(m_circleTable ? m_circleTable->rowCount() : 0));
+        QStringLiteral("共 %1 个阶段")
+            .arg(m_circleTable ? m_circleTable->rowCount() : 0));
     if (m_dynamicMaterialSummary)
         m_dynamicMaterialSummary->setText(
             QStringLiteral("共 %1 组").arg(m_dynamicMaterialTable
@@ -1790,7 +2627,7 @@ QString FillStorageCyclePage::sectionText(int caseIndex) const
     text += "0     NCHANGE\n";
     const int nCircle = m_circleTable ? m_circleTable->rowCount() : 0;
     text += QString("%1  NCIRCLE\n").arg(nCircle);
-    text += "JPACK_STA JPACK_END TT_PACK HWJ_STA HWJ_END TT_FILL IF_PACK IF_PLIU IF_FILL IF_FLIU CAHEAD CABODY\n";
+    text += "JPACK_STA JPACK_END TT_PLIU HWJ_STA HWJ_END TT_FLIU IF_PACK IF_PLIU IF_FILL IF_FLIU CAHEAD CABODY\n";
     for (int i = 0; i < nCircle; ++i)
     {
         // 一个工况只明确选择一组渗流结果，因此将它施加在本工况的
@@ -1849,6 +2686,7 @@ QString FillStorageCyclePage::sectionText(int caseIndex) const
 
 QJsonObject FillStorageCyclePage::saveJson()
 {
+    synchronizeAutomaticCycleBranches(m_circleTable);
     QJsonObject obj;
     QJsonObject values;
     for (auto it = m_editors.cbegin(); it != m_editors.cend(); ++it)
@@ -1920,7 +2758,10 @@ void FillStorageCyclePage::loadJson(const QJsonObject& obj)
     setMaterialMappings(m_dynamicMaterialTable,
                         mappingsFromJson(obj.value("dynamic_material_table").toArray()));
     jsonToTable(obj.value("drop_table").toArray(), m_dropTable, 1);
+
+    // 计算分支由可见施工参数统一生成，避免隐藏开关与求解器目录链不一致。
     jsonToTable(obj.value("circle_table").toArray(), m_circleTable, 1);
+    synchronizeAutomaticCycleBranches(m_circleTable);
     m_savedSeepageSourceUuid = obj.value("seepage_source_uuid").toString();
     m_savedSeepageSourceName = obj.value("seepage_source_name").toString();
 

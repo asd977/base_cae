@@ -25,7 +25,8 @@ struct Element
 {
     int id = 0;
     QVector<int> nodes;
-    int type = 0;
+    int type = 0;             // 后处理实际输出的拓扑类型
+    int sourceType = 0;       // 原始网格 KETYPE，拆分高阶单元后仍保持不变
     int material = 1;
     int layer = 1;
 };
@@ -238,6 +239,7 @@ bool parseMesh(const QString& filePath, Mesh& mesh, QString* error)
         for (int j = 0; j < mesh.nodesPerElement; ++j)
             element.nodes.push_back(fields.at(j + 1).toInt());
         element.type = fields.at(typeIndex).toInt();
+        element.sourceType = element.type;
         element.material = fields.at(materialIndex).toInt();
         const int layerIndex = materialIndex + 1;
         if (fields.size() > layerIndex)
@@ -265,6 +267,7 @@ Element makeExpandedElement(const Element& source, int type,
     Element element;
     element.id = source.id;
     element.type = type;
+    element.sourceType = source.sourceType > 0 ? source.sourceType : source.type;
     element.material = source.material;
     element.nodes.reserve(static_cast<int>(positions.size()));
     for (int position : positions)
@@ -940,7 +943,10 @@ bool writeTecplot(const QString& filePath, const Mesh& mesh, const QVector<Eleme
     out << "VARIABLES=";
     const QStringList coordinates = mesh.dimension == 3 ? QStringList{"X", "Y", "Z"}
                                                          : QStringList{"X", "Y"};
-    const QStringList allVariables = coordinates + variables;
+    const QStringList cellMetadata = {QStringLiteral("KETYPE"), QStringLiteral("MATYPE"),
+                                      QStringLiteral("LAYER"), QStringLiteral("elem_id")};
+    const QStringList allVariables = coordinates + QStringList{QStringLiteral("node_id")} +
+                                     variables + cellMetadata;
     for (int i = 0; i < allVariables.size(); ++i)
     {
         if (i > 0)
@@ -995,24 +1001,50 @@ bool writeTecplot(const QString& filePath, const Mesh& mesh, const QVector<Eleme
             if (orderedNodeIds.isEmpty())
                 continue;
 
-            out << QString("ZONE N=%1,E=%2 ,F=FEPOINT,ET=%3\n")
+            // 使用 FEBLOCK 同时保存节点结果和单元分组元数据。这样后处理筛选
+            // 不再依赖几何坐标，即便以后显示变形后的节点坐标也能稳定关联。
+            const int firstCellVariable = mesh.dimension + 2 + variables.size();
+            const int lastCellVariable = firstCellVariable + cellMetadata.size() - 1;
+            out << QString("ZONE N=%1,E=%2,F=FEBLOCK,ET=%3,")
                        .arg(orderedNodeIds.size(), 8)
                        .arg(selected.size(), 8)
-                       .arg(tecplotType);
-            for (int nodeId : orderedNodeIds)
+                       .arg(tecplotType)
+                << QString("VARLOCATION=([%1-%2]=CELLCENTERED)\n")
+                       .arg(firstCellVariable)
+                       .arg(lastCellVariable);
+
+            for (int coordinate = 0; coordinate < mesh.dimension; ++coordinate)
             {
-                const int globalIndex = mesh.nodeIdToIndex.value(nodeId, -1);
-                const Node& node = mesh.nodes.at(globalIndex);
-                out << QString("%1 %2")
-                           .arg(node.xyz.at(0), 16, 'E', 8)
-                           .arg(node.xyz.at(1), 16, 'E', 8);
-                if (mesh.dimension == 3)
-                    out << QString(" %1").arg(node.xyz.at(2), 16, 'E', 8);
-                const QVector<double>& row = values.value(globalIndex);
-                for (int i = 0; i < variables.size(); ++i)
-                    out << QString(" %1").arg(safeValue(row, i), 16, 'E', 8);
-                out << "\n";
+                for (int nodeId : orderedNodeIds)
+                {
+                    const int globalIndex = mesh.nodeIdToIndex.value(nodeId, -1);
+                    out << QString("%1\n").arg(mesh.nodes.at(globalIndex).xyz.at(coordinate),
+                                               16, 'E', 8);
+                }
             }
+
+            for (int nodeId : orderedNodeIds)
+                out << QString("%1\n").arg(nodeId);
+
+            for (int variable = 0; variable < variables.size(); ++variable)
+            {
+                for (int nodeId : orderedNodeIds)
+                {
+                    const int globalIndex = mesh.nodeIdToIndex.value(nodeId, -1);
+                    out << QString("%1\n").arg(safeValue(values.value(globalIndex), variable),
+                                               16, 'E', 8);
+                }
+            }
+
+            for (const Element* element : selected)
+                out << QString("%1\n").arg(element->sourceType > 0 ? element->sourceType
+                                                                       : element->type);
+            for (const Element* element : selected)
+                out << QString("%1\n").arg(element->material);
+            for (const Element* element : selected)
+                out << QString("%1\n").arg(element->layer);
+            for (const Element* element : selected)
+                out << QString("%1\n").arg(element->id);
 
             for (const Element* element : selected)
             {
@@ -1062,7 +1094,10 @@ bool writeCellCenteredTecplot(const QString& filePath, const Mesh& mesh,
     out << "VARIABLES=";
     const QStringList coordinates = mesh.dimension == 3 ? QStringList{"X", "Y", "Z"}
                                                          : QStringList{"X", "Y"};
-    const QStringList allVariables = coordinates + variables;
+    const QStringList cellMetadata = {QStringLiteral("KETYPE"), QStringLiteral("MATYPE"),
+                                      QStringLiteral("LAYER"), QStringLiteral("elem_id")};
+    const QStringList allVariables = coordinates + QStringList{QStringLiteral("node_id")} +
+                                     variables + cellMetadata;
     for (int i = 0; i < allVariables.size(); ++i)
     {
         if (i > 0)
@@ -1117,8 +1152,9 @@ bool writeCellCenteredTecplot(const QString& filePath, const Mesh& mesh,
             if (orderedNodeIds.isEmpty())
                 continue;
 
-            const int firstCellVariable = mesh.dimension + 1;
-            const int lastCellVariable = mesh.dimension + variables.size();
+            const int firstCellVariable = mesh.dimension + 2;
+            const int lastCellVariable = firstCellVariable + variables.size() +
+                                         cellMetadata.size() - 1;
             out << QString("ZONE N=%1,E=%2,F=FEBLOCK,ET=%3,")
                        .arg(orderedNodeIds.size(), 8)
                        .arg(selected.size(), 8)
@@ -1139,12 +1175,25 @@ bool writeCellCenteredTecplot(const QString& filePath, const Mesh& mesh,
                                                16, 'E', 8);
                 }
             }
+            for (int nodeId : orderedNodeIds)
+                out << QString("%1\n").arg(nodeId);
+
             for (int variable = 0; variable < variables.size(); ++variable)
             {
                 for (const Element* element : selected)
                     out << QString("%1\n").arg(safeValue(values.value(element->id), variable),
                                                16, 'E', 8);
             }
+
+            for (const Element* element : selected)
+                out << QString("%1\n").arg(element->sourceType > 0 ? element->sourceType
+                                                                       : element->type);
+            for (const Element* element : selected)
+                out << QString("%1\n").arg(element->material);
+            for (const Element* element : selected)
+                out << QString("%1\n").arg(element->layer);
+            for (const Element* element : selected)
+                out << QString("%1\n").arg(element->id);
 
             for (const Element* element : selected)
             {
